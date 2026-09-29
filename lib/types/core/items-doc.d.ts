@@ -100,16 +100,45 @@ export interface ItemsDoc {
 /** A fresh empty checklist (host first boot; revision 0 marks "never committed"). */
 export declare function emptyItemsDoc(now: number): ItemsDoc;
 /**
+ * The document's own order, as a COMPARATOR — five keys, in this order:
+ * unfinished first, then urgency, then whichever of the three dates is nearest,
+ * then age, then the short number.
+ *
+ * WHY IT IS A SEPARATE COMPARATOR AND NOT ONLY A SORT. The panel offers this
+ * order to the reader as 顺序, and the reader's 顺序 and the document's stored
+ * order are the same promise: two devices holding one document show the same
+ * list. Written twice — once as the merge's `sortRows` and once as a surface
+ * option — the two would be free to disagree about which of two rows comes
+ * first, and the list a person sees would stop being the list the document
+ * holds. So the keys live here and the surface composes them with its own
+ * tie-break tail (a replica can hold two rows the host has not numbered yet, so
+ * the short number alone is not yet a total order there).
+ *
+ * EVERY KEY IS FINITE AND EVERY KEY BREAKS A TIE, which is the whole law. The
+ * urgency scale is the MODEL's ({@link itemPriorityRankOf}, loudest first) rather
+ * than a second ranking written here: the enum in `item.ts` is declared low to
+ * high for the dropdown, and reading its index as a rank produced a 优先级 that
+ * put 紧急 last while this order put it first — two rulers, opposite directions,
+ * in the same panel.
+ *
+ * The short number is unique in a settled document, so on the host the
+ * comparison is TOTAL and the result cannot depend on the order the rows
+ * arrived in; on a replica {@link refRankOf} keeps that true for the rows the
+ * host has not numbered yet.
+ *
+ * @param a - the left row.
+ * @param b - the right row.
+ * @returns negative, zero or positive; zero means "these five keys say nothing",
+ *   which is a real answer the caller must finish itself.
+ */
+export declare function compareItemOrder(a: ItemRecord, b: ItemRecord): number;
+/**
  * The document's own order, and a PURE FUNCTION of the document — which the
  * board cannot say of its own (a card's slot is a manual drag, so two devices
  * can disagree about it and the host settles it by arrival). The checklist has
  * no manual order (the new-field admission rule kept `order` out of the model),
  * so its order is derived, so two replicas holding the same rows show the same
  * list without ever syncing the order itself.
- *
- * Finished rows last, then urgency, then whichever of the three dates is
- * nearest, then age, then the short number — which is unique, so the comparison
- * is TOTAL and the result cannot depend on the order the rows arrived in.
  *
  * @param rows - the finished rows (numbers assigned, tombstones settled).
  */

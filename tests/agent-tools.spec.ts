@@ -481,6 +481,58 @@ describe('steps without an id are repaired, never dropped', () => {
   })
 })
 
+describe('a shape the writer got wrong is REFUSED, and nothing is half-written', () => {
+  // THE TWO REFUSALS THAT MATTER MOST, because both have a wrong answer that
+  // looks like a right one. A checklist supplied as a string can be read as "no
+  // steps" — and `item.update` replaces the WHOLE row, so the reader's ticked
+  // boxes are gone and the receipt says the edit was refused. A tag list
+  // supplied as a number can be read as "no tags" — and the row is filed with
+  // its structure stripped, which is the loss a capture-first surface exists to
+  // prevent. So the rule is one sentence: an unreadable shape is never a repair.
+  it('a checklist that is not a list leaves the ticked boxes exactly as they were', async () => {
+    const board = face()
+    await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { body: '带勾选', steps: [{ id: 's-1', text: '第一步', done: true }] } }],
+    })
+    const before = board.getItemsDoc().items[0]?.steps ?? []
+    expect(before.map(step => step.done)).toEqual([true])
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.update', payload: { of: '#1', steps: 'oops' } }],
+    })
+    const receipt = result.reports[0]
+    expect(receipt?.ok, 'the edit reported success on a checklist it could not read').toBe(false)
+    expect(receipt?.detail, 'the refusal does not say what shape a checklist is, so the writer has nothing to act on').toMatch(/列表|steps/i)
+    // The document, not the receipt: a refused edit that still emptied the list
+    // is the exact failure, and only reading the merged document back catches it.
+    expect(board.getItemsDoc().items[0]?.steps ?? []).toEqual(before)
+  })
+
+  it('a tag list that is not a list refuses the row rather than filing it unlabelled', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { body: '带标签', tags: ['画廊'], steps: [{ id: 's-1', text: '第一步', done: true }] } }],
+    })
+    expect(result.reports[0]?.ok).toBe(true)
+    const before = JSON.stringify(board.getItemsDoc().items)
+    const refused = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { body: '标签是数字', tags: 123 } }],
+    })
+    expect(refused.reports[0]?.ok, 'a row was filed with its structure silently stripped').toBe(false)
+    // Nothing about the document moved — not even the previous row, because a
+    // write that half-succeeded is the state this plugin cannot recover from.
+    expect(JSON.stringify(board.getItemsDoc().items)).toBe(before)
+  })
+
+  it('the refusals are distinguishable from each other, so the writer knows which one they hit', async () => {
+    // One generic "bad input" for both would be safe, and useless: the writer
+    // cannot fix a sentence that does not say which field was wrong.
+    const board = face()
+    const badSteps = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#1', steps: 'oops' } }] })
+    const badTags = await runBatch(deps(board), { ops: [{ op: 'item.create', payload: { body: 'x', tags: 123 } }] })
+    expect(badSteps.reports[0]?.detail).not.toBe(badTags.reports[0]?.detail)
+  })
+})
+
 describe('the four simple document actions, proven through the merge grammar', () => {
   it('board.cruise writes the section, and reads it back clamped', async () => {
     const board = face()

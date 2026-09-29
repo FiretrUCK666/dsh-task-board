@@ -2,15 +2,14 @@
  * The task list, as a workbench of three pages.
  *
  * WHAT THIS SURFACE IS FOR. The board answers "who is running". This answers
- * "what else is on me, which one is most urgent, and what am I doing today" —
- * and it is a set of PAGES rather than one long column because each page
+ * "what else is on me, which one is most urgent, and what am I doing today" — * and it is a set of PAGES rather than one long column because each page
  * answers a different question about the same rows. A page here is a
  * CLASSIFICATION, never a second rendering: a "list / board / calendar" switch
  * would duplicate the board sitting next to it, and two surfaces keeping the
  * same state is how both end up wrong.
  *
- * WHY THE SURFACE IS QUIET. The header carries exactly four things — title,
- * search, the page rail, the capture box — and everything else lives INSIDE the
+ * WHY THE SURFACE IS QUIET. The header carries exactly four things —title,
+ * search, the page rail, the capture box —and everything else lives INSIDE the
  * page it acts on, beside the rows it acts on. Low density is not fewer
  * features; it is putting each feature next to the thing it changes.
  *
@@ -19,8 +18,8 @@
  * 1. The page is a QUERY, never a second copy. A page filters and orders rows
  *    that live in one document; it stores nothing, so a row edited anywhere
  *    shows the same everywhere at the same moment.
- * 2. The page rail carries CONTAINER pages only. A derived view — a tag, the
- *    neglected rows, whatever a triage line opened — is a page you ARRIVE at,
+ * 2. The page rail carries CONTAINER pages only. A derived view —a tag, the
+ *    neglected rows, whatever a triage line opened —is a page you ARRIVE at,
  *    not a destination the rail grows. A rail that gains an entry every time
  *    the reader asks a question has turned a map into a log.
  * 3. "The host cannot be reached" and "you have nothing" look identical if you
@@ -35,32 +34,35 @@ import type { ItemRecord } from '../../core/item.ts'
 import {
   EMPTY_ITEM_QUERY,
   ITEM_PAGES,
-  ITEM_SORTS,
+  ITEM_STATUS_ORDER,
+  itemGroupCountsOf,
   itemMatchContextOf,
+  itemPageCountsOf,
   itemRefOf,
   itemRowViewOf,
-  itemSlicesOf,
-  isInboxItem,
   parseItemQuery,
-  scheduleBucketsOf,
-  triageLinesOf,
-  type ItemFlag,
   type ItemPageId,
-  type ItemSlice,
-  type ItemSort,
   type ItemStatusView,
 } from '../../core/item-view.ts'
+/* The write semantics are the model's, not this panel's: the same pure functions
+   the agent's tool calls, so a field the model ruled derived cannot be written
+   here either. `model.ts` keeps only what a browser can do and a document cannot
+   — minting an id, and formatting a date. */
+import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, type ItemPatch } from '../../core/item-transitions.ts'
 import { itemTitleOf } from '../../core/item.ts'
-import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
+import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
-import { itemsArchive, itemsRestore } from '../items-archive.ts'
-import { Button, Segmented } from '../board/ui.tsx'
+import { itemsRestore } from '../items-archive.ts'
+import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemComposer } from './composer.tsx'
 import { ItemDetail } from './detail-pane.tsx'
 import { ItemRowLine } from './row-line.tsx'
-import { addItem, editItem, formatItemDate, removeItem, toggleItemStep, type ItemDensity, type ItemEdit } from './model.ts'
-import { DEFAULT_VIEW_PREFS, readViewPrefs, toggleCollapsed, writeViewPrefs, type ItemViewPrefs } from './view-prefs.ts'
+import { InboxPage } from './pages/inbox.tsx'
+import { ListPage } from './pages/list.tsx'
+import { SchedulePage } from './pages/schedule.tsx'
+import { newItemId } from './model.ts'
+import { DEFAULT_VIEW_PREFS, readViewPrefs, writeViewPrefs, type ItemViewPrefs } from './view-prefs.ts'
 import type { ItemListFace } from './register.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
@@ -82,7 +84,7 @@ const PAGE_ARIA: Readonly<Record<ItemPageId, 'item.page.inbox.aria' | 'item.page
  *
  * A row's group is what the reader sees it filed under; the value the row menu
  * writes is a different vocabulary (`item.status.*`) because it is a different
- * act. They read as the same word, and they are — but a header that silently
+ * act. They read as the same word, and they are —but a header that silently
  * renders nothing because it reached for the wrong one is a header with no
  * name at all, which is exactly what happened once.
  */
@@ -92,32 +94,14 @@ const STATUS_LABEL: Readonly<Record<ItemStatusView, 'item.group.inProgress' | 'i
   blocked: 'item.group.blocked',
   done: 'item.group.done',
 }
-const SORT_LABEL: Readonly<Record<ItemSort, 'item.sort.due' | 'item.sort.priority' | 'item.sort.recent' | 'item.sort.ref'>> = {
-  due: 'item.sort.due',
-  priority: 'item.sort.priority',
-  recent: 'item.sort.recent',
-  ref: 'item.sort.ref',
-}
-const BUCKET_LABEL: Readonly<Record<string, TaskBoardKey>> = {
-  hardOverdue: 'item.bucket.hardOverdue',
-  behind: 'item.bucket.behind',
-  today: 'item.bucket.today',
-  tomorrow: 'item.bucket.tomorrow',
-  week: 'item.bucket.week',
-  later: 'item.bucket.later',
-  undated: 'item.bucket.undated',
-  gated: 'item.bucket.gated',
-}
-const TRIAGE_LABEL: Readonly<Record<ItemFlag, 'item.triage.behind' | 'item.triage.stale' | 'item.triage.blocked' | 'item.triage.undated'>> = {
-  behind: 'item.triage.behind',
-  stale: 'item.triage.stale',
-  blocked: 'item.triage.blocked',
-  undated: 'item.triage.undated',
-  hardOverdue: 'item.triage.behind',
-  gated: 'item.triage.undated',
-  linked: 'item.triage.undated',
-  done: 'item.triage.undated',
-}
+/* The seven orderings' table moved to `filter-bar.tsx` with the control that
+   reads it. It is deliberately NOT kept here as a second copy: a closed
+   `Record` over `ItemSort` that no component renders is seven words nothing can
+   click, and the day the model adds an eighth tier there would be two tables —
+   one of them wrong, and the compiler perfectly happy about both. The agenda's
+   `BUCKET_LABEL` and the list page's `TRIAGE_LABEL` moved the same way, to
+   `pages/schedule.tsx` and `pages/list.tsx`: a table belongs to the page that
+   renders it, not to the shell that used to render every page at once. */
 
 export interface ItemListPanelProps {
   readonly face: ItemListFace
@@ -158,13 +142,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [selected, setSelected] = useState<string | undefined>(undefined)
   const [openRow, setOpenRow] = useState<string | undefined>(undefined)
   const [menuRow, setMenuRow] = useState<string | undefined>(undefined)
-  const [confirming, setConfirming] = useState<string | undefined>(undefined)
+  /** The one-shot undo. `undefined` = nothing was just removed. */
+  const [undo, setUndo] = useState<{ readonly ids: readonly string[]; readonly at: number } | undefined>(undefined)
+  /**
+   * How many rows the undo is putting back RIGHT NOW, or `undefined` when it is
+   * not running.
+   *
+   * It is its own state and not a field on `undo` because the two have different
+   * lifetimes: the receipt outlives the work (it still has to offer the button
+   * and the thirty-day window after the rows are back), while this is true only
+   * between the press and the last restore. Collapsing them would make the
+   * receipt flicker through a third state it has no word for, and an undo whose
+   * own affordance is the one that flickers is an undo nobody trusts.
+   */
+  const [restoring, setRestoring] = useState<number | undefined>(undefined)
   const [asking, setAsking] = useState<string | undefined>(undefined)
   const [asked, setAsked] = useState<string | undefined>(undefined)
-  /** Undefined = the archive has not been opened, so nothing is said about it. */
-  const [archive, setArchive] = useState<{ kind: 'loading' } | { kind: 'ready'; rows: readonly ItemRecord[] } | { kind: 'unreadable' } | undefined>(undefined)
-  const [restoring, setRestoring] = useState<number | undefined>(undefined)
-  const [archiveNote, setArchiveNote] = useState<string | undefined>(undefined)
   const seeded = useRef(false)
 
   // The detail lives beside the list only when there is room for both. The
@@ -206,7 +199,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *
    * The search text is the one field that is deliberately never persisted, so
    * writing on every keystroke would put a string into storage on each letter
-   * only for `writeViewPrefs` to drop it — a write per character for a value
+   * only for `writeViewPrefs` to drop it —a write per character for a value
    * nobody keeps. The state still updates either way; only the write is
    * conditional.
    */
@@ -225,38 +218,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), running }), [now, running])
   const lostHost = replica?.hostLostItems() === true
   const filtering = prefs.search.trim() !== ''
-
-  /**
-   * Open the archive: the rows a delete is still holding.
-   *
-   * Three states, not two, and the third is the one that matters: an archive
-   * that failed to load must not look like an archive with nothing in it. "You
-   * have not removed anything" and "I could not reach the host" are different
-   * facts, and showing the first when the second happened would tell the reader
-   * their deletions are gone when they may be sitting on the disk.
-   */
-  const openArchive = useCallback(async () => {
-    setArchive({ kind: 'loading' })
-    const reply = await itemsArchive()
-    setArchive(reply.ok ? { kind: 'ready', rows: reply.deleted } : { kind: 'unreadable' })
-  }, [])
-
-  /** Put one row back, then re-read — the archive is now a different document. */
-  const restoreOne = useCallback(async (item: ItemRecord) => {
-    const clientId = replica?.clientId()
-    if (clientId === undefined) { setArchiveNote(t('item.archive.refused', { ref: `#${item.ref}`, why: 'hostUnavailable' })); return }
-    setArchiveNote(undefined)
-    setRestoring(item.ref)
-    const reply = await itemsRestore(item.ref, clientId)
-    setRestoring(undefined)
-    setArchiveNote(reply.ok && reply.restored !== undefined
-      ? t('item.archive.restored', { ref: `#${item.ref}` })
-      : t('item.archive.refused', {
-        ref: `#${item.ref}`,
-        why: reply.ok ? 'gone' : reply.why,
-      }))
-    if (reply.ok) await openArchive()
-  }, [openArchive, replica])
 
   const askOne = useCallback((item: ItemRecord) => {    // Read once: the closure outlives this line, and a property re-proven
     // inside an async callback is a narrowing that stops holding when the
@@ -278,6 +239,87 @@ export function ItemListPanel(props: ItemListPanelProps) {
     })()
   }, [])
 
+  /**
+   * Turn one row into a board card —THE ONLY ACTION HERE THAT WRITES TWO
+   * DOCUMENTS, so it says so in its receipt rather than reporting a single
+   * 「凡已生效」: that sentence is TRUE of both documents and useless for
+   * telling them apart, and a reader who cannot tell which side failed has no
+   * way to know whether to look at the row or at the card.
+   *
+   * The decision is NOT made here. `planItemPromotion` is the model's, shared
+   * with the agent's tool call, and it is what decides whether this is even a
+   * promotion: a row already hanging off a card is reported as the state it is
+   * rather than performed a second time (a second card would leave the note
+   * pointing at whichever one was written last), and a row with no title at all
+   * is refused with a sentence instead of minting a card with no name.
+   *
+   * THE ORDER IS THE WHOLE SUBTLETY, and it is not arbitrary: the card is created
+   * BEFORE the link, because a half-finished promotion that leaves a card
+   * without its link is indistinguishable from a note nobody promoted, while the
+   * other order leaves the note pointing at a card that does not exist —a state
+   * the interface would have to render as a defect.
+   */
+  /**
+   * Delete is one press and one undo, and the undo is the ONLY thing standing
+   * between the reader and a tombstone —so the receipt says both: that it can be
+   * taken back now, and that afterwards there are thirty days and an archive.
+   * A receipt that only said 「deleted」 would be true and useless.
+   *
+   * IT RESTORES BY THE ROW'S OWN ID, never by its number. A row the reader wrote
+   * a minute ago has `ref === 0` —the document has not numbered it yet —so a
+   * restore addressed by number finds no tombstone, the route answers 200, the
+   * document does not change, and the one promise this receipt makes would be the
+   * one thing that silently does not happen. The short number is what a person
+   * says out loud; it is not an address.
+   */
+  const removeOne = useCallback((item: ItemRecord) => {
+    setMenuRow(undefined)
+    setUndo({ ids: [item.id], at: Date.now() })
+    if (selected === item.id) setSelected(undefined)
+    apply(removeItemRecord(items, item.id))
+  }, [apply, items, selected])
+
+  /** Take it back. One call per row, because the archive is addressed one at a
+   *  time —and every outcome is reported, so a batch that only half came back
+   *  says so rather than reporting a single 「one」. */
+  const runUndo = useCallback(() => {
+    const pending = undo
+    setUndo(undefined)
+    if (pending === undefined) return
+    const clientId = replica?.clientId()
+    if (clientId === undefined) { setAsked(t('item.undo.refused', { n: String(pending.ids.length) })); return }
+    setRestoring(pending.ids.length)
+    void (async () => {
+      let back = 0
+      for (const id of pending.ids) {
+        const reply = await itemsRestore({ id }, clientId)
+        if (reply.ok && reply.restored !== undefined) back += 1
+      }
+      setRestoring(undefined)
+      setAsked(back === pending.ids.length
+        ? t('item.undo.done', { n: String(back) })
+        : t('item.undo.partial', { back: String(back), total: String(pending.ids.length) }))
+    })()
+  }, [replica, undo])
+
+  const promoteOne = useCallback((item: ItemRecord) => {
+    setMenuRow(undefined)
+    const controller = face.controller
+    if (controller === undefined) { setAsked(t('item.promote.noBoard')); return }
+    const plan = planItemPromotion(item)
+    if (plan.kind === 'refused') {
+      setAsked(plan.why === 'alreadyLinked'
+        ? t('item.promote.already', { title: cards.find(card => card.id === plan.taskId)?.title ?? plan.taskId })
+        : t('item.promote.noTitle'))
+      return
+    }
+    const at = Date.now()
+    const task = controller.createTask({ ...plan.task, status: 'todo' })
+    if (task === undefined) { setAsked(t('item.promote.refused')); return }
+    apply(applyItemPatch(items, item.id, { taskId: task.id }, at))
+    setAsked(t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }))
+  }, [apply, cards, face.controller, items])
+
   if (replica === undefined) {
     return (
       <div className={css.itemPanelStage} data-dsh-taskboard-view="">
@@ -288,12 +330,21 @@ export function ItemListPanel(props: ItemListPanelProps) {
     )
   }
 
-  const english = isEnglish()
   const showDetailPane = !narrow
   const shown = selected !== undefined ? items.filter(item => item.id === selected) : items
-  const slices = itemSlicesOf(items, { query, ctx: matchCtx, sort: prefs.sort, includeDone: prefs.showDone })
-  const buckets = scheduleBucketsOf(items, query, matchCtx, prefs.sort)
-  const triage = triageLinesOf(items, now)
+
+  /* THREE NUMBERS AND ONE DECOMPOSITION, and no fourth anywhere.
+     The rail's three and the header's total are read from the map of the
+     document, which does not read the clock and does not read the filter —a
+     count that moved when the reader typed would be a count about the search
+     wearing the name of a count about their work. The group breakdown is the
+     map's own decomposition and is ALWAYS four tiers, so the numbers the reader
+     can add up are exactly the ones the document holds. It used to be sliced
+     out of `itemSlicesOf`, which meant the breakdown silently lost the finished
+     group whenever the finished switch was off —a summary whose denominator
+     answered to a control nobody could see. */
+  const pageCounts = itemPageCountsOf(items)
+  const groupCounts = itemGroupCountsOf(items, running)
 
   const picked = selected === undefined ? undefined : items.find(item => item.id === selected)
 
@@ -301,22 +352,32 @@ export function ItemListPanel(props: ItemListPanelProps) {
     <ItemDetail
       item={item}
       cards={cards}
-      counts={slices.map(slice => ({ label: t(STATUS_LABEL[slice.status]), value: slice.items.length }))}
+      counts={ITEM_STATUS_ORDER.map(status => ({ label: t(STATUS_LABEL[status]), value: groupCounts[status] }))}
       recent={[...items]
         .sort((a, b) => b.updatedAt - a.updatedAt)
         .slice(0, 5)
         // `itemRefOf` rather than a template: a row the document has not
         // numbered yet has no name to show, and building `#${item.ref}` here
         // would put the ledger's own "nobody has numbered me" sentinel back on
-        // screen — the exact thing the row line refuses to do.
-        .map(item => ({ ref: itemRefOf(item).text ?? '—', title: itemTitleOf(item), id: item.id }))}
-      confirmingRemove={confirming === item?.id}
-      onConfirmRemove={() => { if (item !== undefined) { apply(removeItem(items, item.id)); setConfirming(undefined); setSelected(undefined) } }}
-      onCancelRemove={() => setConfirming(undefined)}
+        // screen —the exact thing the row line refuses to do.
+        //
+        // The `id` travels WITH the row and is what the click hands back: the
+        // short number is a name to read, never an address, and picking a row by
+        // its label is how a list ends up selecting the wrong one the day two
+        // rows share a number shape.
+        .map(row => ({ ref: itemRefOf(row).text ?? '—', title: itemTitleOf(row), id: row.id }))}
       onPickRecent={id => setSelected(id)}
-      onEdit={(patch: ItemEdit) => { if (item !== undefined) apply(editItem(items, item.id, patch, Date.now())) }}
-      onToggleStep={stepId => { if (item !== undefined) apply(toggleItemStep(items, item.id, stepId, Date.now())) }}
-      onRemove={() => { if (item !== undefined) setConfirming(item.id) }}
+      onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
+      onToggleStep={stepId => {
+        if (item === undefined) return
+        // The shared writer SETS a step rather than toggling it, so the new
+        // state is stated here. Inverting a boolean the caller never read is how
+        // a click on a stale row flips the wrong step.
+        const step = item.steps.find(one => one.id === stepId)
+        if (step === undefined) return
+        apply(applyItemStep(items, item.id, stepId, !step.done, Date.now()))
+      }}
+      onRemove={() => { if (item !== undefined) removeOne(item) }}
     />
   )
 
@@ -336,262 +397,36 @@ export function ItemListPanel(props: ItemListPanelProps) {
       onAsk={() => askOne(item)}
       onMenuToggle={() => setMenuRow(menuRow === item.id ? undefined : item.id)}
       onMenuClose={() => setMenuRow(undefined)}
-      onMark={status => { apply(editItem(items, item.id, { status }, Date.now())); setMenuRow(undefined) }}
-      onPromote={() => setMenuRow(undefined)}
-      onRemove={() => { setConfirming(item.id); setMenuRow(undefined) }}
+      onMark={status => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) }}
+      onPromote={() => promoteOne(item)}
+      onRemove={() => removeOne(item)}
       detail={narrow ? detail(item) : undefined}
     />
   ))
 
-  const listPage = (slices: readonly ItemSlice[]) => slices.map(slice => {
-    const folded = prefs.collapsed.includes(slice.status)
-    const ratio = slice.progress === undefined ? undefined : slice.progress.total === 0 ? 0 : slice.progress.done / slice.progress.total
-    return (
-      <section key={slice.status} className={css.itemGroup}>
-        <h2 className={css.itemGroupHead}>
-          <button
-            type="button"
-            className={css.itemGroupToggle}
-            aria-expanded={!folded}
-            aria-controls={`item-group-${slice.status}`}
-            onClick={() => choose({ collapsed: toggleCollapsed(prefs.collapsed, slice.status) })}
-          >
-            <span className={css.itemGroupChevron} aria-hidden="true">›</span>
-            {t(STATUS_LABEL[slice.status])}
-            <span className={css.itemGroupCount}>{slice.items.length}</span>
-          </button>
-          {/* The group's own arithmetic, and a 2px bar BESIDE its number rather
-              than a rule under the head: at the full group measure a hairline
-              sitting under the text reads as an underline of that text, and one
-              that appears on some groups and not others reads as a selection.
-              No steps means no bar and no bare zero. */}
-          {slice.progress !== undefined && (
-            <p className={css.itemGroupStats}>
-              {t('item.groupSteps', { done: String(slice.progress.done), total: String(slice.progress.total) })}
-              <span className={css.itemGroupProgress}>
-                <span className={css.itemGroupProgressFill} style={{ inlineSize: `${Math.round((ratio ?? 0) * 100)}%` }} />
-              </span>
-            </p>
-          )}
-        </h2>
-        <div className={css.itemGroupList} id={`item-group-${slice.status}`}>
-          {folded
-            ? null
-            : slice.items.length === 0
-              ? <p className={css.itemEmptyGroup}>{t('item.group.empty')}</p>
-              : <ul className={css.itemList}>{rows(slice.items)}</ul>}
-        </div>
-      </section>
-    )
-  })
-
-  // The inbox membership is READ, never restated. This predicate also decides
-  // which rows the triage strip's "no date" line EXEMPTS, so an inline copy
-  // here is a second answer to a question two surfaces already share: change
-  // one and the panel and the strip quietly disagree about what "unfiled" is.
-  const inbox = useMemo(() => items.filter(isInboxItem), [items])
-
+  /* The page body: three files, one contract. Each page owns its own content and
+     nothing else may reach in here — which is what keeps this an assembly layer
+     rather than a 900-line file with three sections of it pretending to be
+     separate. The archive deliberately lives INSIDE the list page: it is a
+     list-page entry, and it is the one thing here with three states instead of
+     two, so all three of them belong to the page that owns it. */
+  const pageProps = {
+    items,
+    now,
+    running,
+    query,
+    matchCtx,
+    prefs,
+    choose,
+    narrow,
+    filtering,
+    renderRows: rows,
+  }
   const body = prefs.page === 'inbox'
-    ? (
-      <>
-        <p className={css.itemInboxNote}>{t('item.inbox.note')}</p>
-        <div className={css.itemInboxList}>
-          {inbox.length === 0
-            ? <p className={css.itemState}>{t('item.empty')}</p>
-            : <ul className={css.itemList}>{rows(inbox)}</ul>}
-        </div>
-      </>
-    )
+    ? <InboxPage {...pageProps} />
     : prefs.page === 'list'
-      ? (
-        <>
-          {/* Every line is a sentence AND a button. A number a reader cannot act
-              on is a scoreboard, and a scoreboard on a personal list rewards
-              opening the app rather than finishing anything. */}
-          {triage.length === 0
-            ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
-            : (
-              <div className={css.itemTriage} aria-label={t('item.triage.title')}>
-                <h3 className={css.itemSectionTitle}>{t('item.triage.title')}</h3>
-                {triage.map(line => (
-                  <div key={line.id} className={css.itemTriageRow} data-severity={line.severity}>
-                    <span className={css.itemTriageText}>
-                      {t(TRIAGE_LABEL[line.id], {
-                        n: String(line.count),
-                        days: String(line.worstDays ?? 0),
-                      })}
-                    </span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className={css.itemTriageAction}
-                      onClick={() => choose({ search: `has:${line.id}` })}
-                    >
-                      {t('item.triage.open')}
-                    </Button>
-                  </div>
-                ))}
-              </div>
-            )}
-          {/* THE ARCHIVE LINE, and the archive itself when it is open. A
-              capture-first surface lives or dies on 「我没有刚弄丢」, so the way
-              back is announced here rather than hidden behind a menu nobody
-              opens — and it states the window instead of implying it, because a
-              restore button that has quietly stopped working is worse than one
-              that never appeared.
-
-              The archive is a PAGE the reader arrives at, not a rail entry: a
-              rail that grows a tab every time the reader asks a question turns
-              a map into a log. */}
-          {archive === undefined
-            ? (
-              <div className={css.itemTriageRow}>
-                <span className={css.itemTriageText}>{t('item.archive.window')}</span>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={css.itemTriageAction}
-                  onClick={() => { setArchiveNote(undefined); void openArchive() }}
-                >
-                  {t('item.archive.open')}
-                </Button>
-              </div>
-            )
-            : (
-              <section className={css.itemGroup}>
-                <h2 className={css.itemGroupHead}>
-                  <button
-                    type="button"
-                    className={css.itemGroupToggle}
-                    onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}
-                  >
-                    {t('item.archive.title')}
-                    <span className={css.itemGroupCount}>{archive.kind === 'ready' ? archive.rows.length : 0}</span>
-                  </button>
-                </h2>
-                <div className={css.itemGroupList}>
-                  {archiveNote !== undefined && (
-                    <p className={css.itemState} role="status">{archiveNote}</p>
-                  )}
-                  {archive.kind === 'loading' && <p className={css.itemState} role="status">{t('item.loading')}</p>}
-                  {/* Not reachable is NOT empty. Saying 「你没有删过任何一条」 when
-                      the host was simply never reached would tell the reader their
-                      deletions are gone when they may be sitting on the disk. */}
-                  {archive.kind === 'unreadable' && (
-                    <p className={css.itemState} role="status">{t('item.archive.unreadable')}</p>
-                  )}
-                  {archive.kind === 'ready' && archive.rows.length === 0 && (
-                    <p className={css.itemState}>{t('item.archive.empty')}</p>
-                  )}
-                  {archive.kind === 'ready' && archive.rows.length > 0 && (
-                    <ul className={css.itemList}>
-                      {archive.rows.map(row => (
-                        <li key={row.id} className={css.itemRow} data-status="done">
-                          <span className={css.itemRef}>{itemRefOf(row).text ?? '—'}</span>
-                          <span className={css.itemTitle}>
-                            <span className={css.itemTitleText}>{itemTitleOf(row)}</span>
-                          </span>
-                          <span className={css.itemRowActions}>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              disabled={restoring === row.ref}
-                              onClick={() => { void restoreOne(row) }}
-                            >
-                              {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
-                            </Button>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                  <p className={css.itemHint}>{t('item.archive.window')}</p>
-                  <Button variant="ghost" size="sm" onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}>
-                    {t('item.archive.close')}
-                  </Button>
-                </div>
-              </section>
-            )}
-          {filtering && (
-            <div className={css.itemFilterRow}>
-              <Button variant="ghost" size="sm" className={css.itemClearFilter} onClick={() => choose({ search: '' })}>
-                {t('item.filter.clear')}
-              </Button>
-            </div>
-          )}
-          {shown.length === 0 && filtering
-            ? <p className={css.itemState}>{t('item.noMatch')}</p>
-            : items.length === 0              /* AN EMPTY DOCUMENT IS NOT THREE EMPTY GROUPS. Keeping an empty
-                 group's header is a rule about a list that HAS rows and one
-                 group that happens to be empty — it keeps the reader's map.
-                 With nothing in the document there is no map to keep, and three
-                 headers each saying 「这一组还没有事项」 is the same sentence
-                 three times: the first screen a new reader meets says "nothing
-                 here" three times and never says what this panel is FOR. One
-                 sentence, and it is about the panel. */
-              ? <p className={css.itemState}>{t('item.empty')}</p>
-              : listPage(slices)}
-        </>
-      )
-      : (
-        <div className={css.itemAgenda}>
-          {buckets.map(bucket => {
-            // The two buckets that answer a DIFFERENT question get their own
-            // named containers, not an absence. A reader who cannot see where a
-            // row went assumes it was lost — and "not yet startable" and "no
-            // date" are exactly the two rows a reader would assume were lost.
-            if (bucket.id === 'gated') {
-              if (bucket.items.length === 0) return null
-              return (
-                <section key={bucket.id} className={css.itemGatedFold}>
-                  <h2 className={css.itemGatedFoldHead}>
-                    {t(BUCKET_LABEL.gated)}
-                    <span className={css.itemGroupCount}>{bucket.items.length}</span>
-                  </h2>
-                  <p className={css.itemHint}>{t('item.gated.hint')}</p>
-                  <div className={css.itemGatedFoldList}>
-                    <ul className={css.itemList}>{rows(bucket.items)}</ul>
-                  </div>
-                </section>
-              )
-            }
-            if (bucket.id === 'undated') {
-              return (
-                <section key={bucket.id} className={css.itemNoDateTray}>
-                  <h2 className={css.itemNoDateTrayLabel}>
-                    {t(BUCKET_LABEL.undated)}
-                    <span className={css.itemGroupCount}>{bucket.items.length}</span>
-                  </h2>
-                  {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
-                  <div className={css.itemGroupList}>
-                    {bucket.items.length === 0
-                      ? <p className={css.itemEmptyGroup}>{t('item.agenda.emptyDay')}</p>
-                      : <ul className={css.itemList}>{rows(bucket.items)}</ul>}
-                  </div>
-                </section>
-              )
-            }
-            return (
-              <section key={bucket.id} className={css.itemAgendaDay}>
-                <h2 className={css.itemGroupHead}>
-                  <span className={css.itemGroupToggle}>
-                    {t(BUCKET_LABEL[bucket.id] ?? 'item.bucket.later')}
-                    <span className={css.itemGroupCount}>{bucket.items.length}</span>
-                  </span>
-                  {bucket.day !== undefined && (
-                    <span className={css.itemAgendaDayLabel}>{formatItemDate(bucket.day, english)}</span>
-                  )}
-                </h2>
-                <div className={css.itemAgendaList}>
-                  {bucket.items.length === 0
-                    ? <p className={css.itemEmptyGroup}>{t('item.agenda.emptyDay')}</p>
-                    : <ul className={css.itemList}>{rows(bucket.items)}</ul>}
-                </div>
-              </section>
-            )
-          })}
-        </div>
-      )
+      ? <ListPage {...pageProps} counts={groupCounts} clientId={replica?.clientId()} />
+      : <SchedulePage {...pageProps} />
 
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
@@ -623,49 +458,60 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 type="button"
                 role="tab"
                 aria-selected={prefs.page === page}
-                aria-label={t(PAGE_ARIA[page])}
+                // The count is INSIDE the accessible name, not beside it. An
+                // `aria-label` replaces the element's own text, so a number
+                // rendered next to the word would be announced to nobody —and
+                // the number is the reason to pick this tab over the other two.
+                aria-label={t(PAGE_ARIA[page], { n: String(pageCounts[page]) })}
                 className={`${css.itemPageTab}${prefs.page === page ? ` ${css.itemPageTabActive}` : ''}`}
                 onClick={() => choose({ page })}
               >
                 {t(PAGE_LABEL[page])}
+                <span className={css.itemPageTabCount}>{pageCounts[page]}</span>
               </button>
             ))}
           </div>
 
-          {prefs.page === 'list' && (
-            <div className={css.itemHeaderRow} aria-label={t('item.filter.label')}>
-              <Segmented
-                ariaLabel={t('item.sort.label')}
-                value={prefs.sort}
-                options={ITEM_SORTS.map(sort => ({ value: sort, label: t(SORT_LABEL[sort]) }))}
-                onChange={next => choose({ sort: next as ItemSort })}
-              />
-              {/* Density is a low-frequency choice, and on a phone the second
-                  control costs a whole line and says nothing the reader needs
-                  while they are scanning. It is not hidden — the wide band has
-                  it, and the narrow band's job is to give the LIST the width. */}
-              {!narrow && (
-                <Segmented
-                  ariaLabel={t('item.density')}
-                  value={prefs.density}
-                  options={[
-                    { value: 'compact', label: t('item.density.compact') },
-                    { value: 'comfy', label: t('item.density.comfy') },
-                  ]}
-                  onChange={next => choose({ density: next as ItemDensity })}
-                />
-              )}
-            </div>
-          )}
+          {/* ONE control, on the trailing edge, on all three pages and in both
+              bands. It used to be hidden on a phone on the grounds that the
+              second control "costs a whole line and says nothing the reader
+              needs while they are scanning" —which is the move rule 11 bans
+              outright, and it was wrong on its own terms too: row height is a
+              SETTING the reader chose, and a phone reader could not change their
+              own setting. It is a text action pressed when the roomy tier is the
+              current one, never a filled button —switching row height is a
+              preference, not an announcement. */}
+          <div className={css.itemHeadActions}>
+            <Button
+              variant="ghost"
+              size="sm"
+              pressed={prefs.density === 'comfy'}
+              onClick={() => choose({ density: prefs.density === 'comfy' ? 'compact' : 'comfy' })}
+            >
+              {/* The visible word is the TIER, not the control's own name, so
+                  the control needs a name of its own —otherwise a screen reader
+                  announces 「紧凑」 and the reader has no way to know it is a
+                  setting about row height. It rides in as hidden text rather
+                  than as an `aria-label`, because the shared `Button` takes its
+                  props one by one and does not spread the rest, and reaching past
+                  it would mean editing a component the whole board shares. The
+                  name is the same in both bands; only the control's shape differs
+                  by band, and the name must not drift with it. */}
+              <span className={css.itemNameOnly}>{t('item.density')}</span>
+              {t(prefs.density === 'comfy' ? 'item.density.comfy' : 'item.density.compact')}
+            </Button>
+          </div>
 
           <ItemComposer
             now={now}
             onSave={input => {
-              const result = addItem(items, input, Date.now())
-              // A refusal changes nothing AND keeps the words, so the reader can
+              // The refusal belongs to the EDITOR, not to the writer: a blank
+              // capture is decided by the shared emptiness rule, and refusing it
+              // here changes nothing AND keeps the words, so the reader can
               // finish the thought instead of losing it to a surprise.
-              if (result.added === undefined) return false
-              apply(result.items)
+              if (isBlankCapture(input)) return false
+              const made = captureItemRecord(input, Date.now(), newItemId)
+              apply([...items, made.item])
               return true
             }}
           />
@@ -682,35 +528,67 @@ export function ItemListPanel(props: ItemListPanelProps) {
         {asked !== undefined && <p className={css.itemState} role="status" data-ask-receipt="">{asked}</p>}
 
         <div className={css.itemWorkbench} ref={surfaceRef}>
-          {/* `.dshTbScroll` is the SHARED scroll mount — the one class the
+          {/* THE LIST CARD, and the scroll body inside it. Two boxes, because
+              one box cannot be the page's frame and its scroller at the same
+              time: as the scroller it had no frame, and as the frame it could
+              not scroll. The card is the grid item that draws; the scroller is
+              its second child.
+
+              `.dshTbScroll` is the SHARED scroll mount —the one class the
               board's thin-bar rules are written against. The list's own sheet
               deliberately does not restate them, so a Chromium change moves one
               mechanism instead of two that drift. */}
-          <div className={`${narrow ? css.itemScroll : css.itemListPane} ${boardCss.dshTbScroll}`}>
-            {body}
+          <div className={css.itemListCard}>
+            <div className={`${css.itemScroll} ${boardCss.dshTbScroll}`}>
+              {/* THE RECEIPT. It sits at the top of the list the row left, not in
+                  a corner and not in a dialog: the reader's eye is already here,
+                  and an undo that has to be found is an undo that is not used.
+                  It states BOTH halves of the promise —the undo that is
+                  available now, and the thirty-day window that remains after it
+                  is spent —because a receipt that only said 「removed」 would be
+                  true and useless. */}
+              {undo !== undefined && (
+                <div className={css.itemReceipt} role="status">
+                  <span className={css.itemReceiptText}>
+                    {restoring !== undefined
+                      ? t('item.undo.working')
+                      : t('item.undo.said', { n: String(undo.ids.length) })}
+                  </span>
+                  <span className={css.itemReceiptWindow}>{t('item.archive.window')}</span>
+                  {restoring === undefined && (
+                    <Button variant="ghost" size="sm" onClick={runUndo}>{t('item.undo.do')}</Button>
+                  )}
+                </div>
+              )}
+              {body}
+            </div>
           </div>
           {showDetailPane && (
             <div className={css.itemDetailPane}>
               {/* The pane is titled by the ROW ON SHOW, never by one of the five
                   section names inside it. A section name as a page title says
                   「here are the fields」 before the reader knows which row they
-                  are looking at — and the whole point of the pane is that the
+                  are looking at —and the whole point of the pane is that the
                   list beside it stays readable.
 
-                  With nothing picked the head says NOTHING: the empty state
-                  below already opens with that sentence, and saying it twice
-                  in one column reads as two panes that failed to load. */}
-              <div className={css.itemDetailHead}>
-                {picked !== undefined && (
-                  <h2 className={css.itemSectionTitle}>
+                  With nothing picked the head is NOT EMPTY, which is the whole
+                  requirement: an empty box with a bottom border is a rule
+                  floating in a column with nothing above or below it, and it
+                  reads as a page that failed to finish loading. The sentence
+                  below it is not repeated here for the same reason. */}
+              {picked === undefined
+                ? <h2 className={css.itemDetailHead}>{t('item.detail.emptyTitle')}</h2>
+                : (
+                  <h2 className={css.itemDetailHead}>
                     <span className={css.itemRef}>{itemRefOf(picked).text ?? '—'}</span>
                     {' '}
                     {itemTitleOf(picked)}
                   </h2>
                 )}
-              </div>
-              <div className={`${css.itemDetailBody} ${boardCss.dshTbScroll ?? ''}`}>
-                {detail(picked)}
+              <div className={css.itemDetailInner}>
+                <div className={`${css.itemDetailBody} ${boardCss.dshTbScroll ?? ''}`}>
+                  {detail(picked)}
+                </div>
               </div>
             </div>
           )}

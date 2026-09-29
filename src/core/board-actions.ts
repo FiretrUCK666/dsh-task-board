@@ -46,6 +46,7 @@
 import { MANUAL_STATUSES } from './tasks.ts'
 import type { TaskUpdatePatch } from './controller.ts'
 import * as taskTransitions from './task-transitions.ts'
+import * as itemTransitions from './item-transitions.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
 import { ITEM_PAGES } from './item-view.ts'
 
@@ -712,6 +713,14 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
+    // The four checklist writes are `semantic` for the same reason the card's
+    // are: each one carries meaning a field write does not — a fresh row's
+    // constructor and its step ids, the no-op law, the "only that one entry
+    // moves" law, the difference between "gone from the list" and "erased". The
+    // panel and this tool must go through the SAME function for each, and
+    // `semanticOf` is what makes that checkable instead of a convention.
+    semantic: true,
+    semanticOf: 'captureItemRecord',
     summary: '记一条清单条目。标题可以留空（会从正文首行补），步骤只有一层、进度自动算。',
     params: {
       body: { about: '正文，Markdown' },
@@ -740,6 +749,8 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
+    semantic: true,
+    semanticOf: 'applyItemPatch',
     summary: '改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。',
     params: {
       of: { about: '要改的条目编号：填那个数字本身（12），不要带 # 号——# 只是它显示时的样子' },
@@ -766,6 +777,8 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'guarded',
     surface: 'ui+ai',
+    semantic: true,
+    semanticOf: 'removeItemRecord',
     summary: '删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。',
     params: {
       of: { about: '要删的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -783,6 +796,8 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
+    semantic: true,
+    semanticOf: 'applyItemStep',
     summary: '勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。',
     params: {
       of: { about: '条目编号：填那个数字本身（12），不要带 # 号' },
@@ -903,9 +918,15 @@ export interface CatalogChecks {
  * that no longer resolves. Read from the module, a rename simply stops existing
  * and the action that named it goes red on its own — which is the whole point
  * of `semantic` in the first place.
+ *
+ * BOTH transition modules, because the checklist is the second synced document
+ * and its write path used to be a SECOND COPY of the same semantics: a panel
+ * that edits a row through its own function and a model that edits it through
+ * the tool can compute two different documents, which is the one failure two
+ * devices cannot detect between them.
  */
 const SEMANTIC_FUNCTIONS: Record<string, true> = Object.fromEntries(
-  Object.keys(taskTransitions).map(name => [name, true]),
+  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions)].map(name => [name, true]),
 )
 
 /** What the catalog itself guarantees. Mechanical, so it costs nothing to keep

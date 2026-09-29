@@ -129,15 +129,16 @@ export interface BoardRouteDeps {
      */
     ask(request: AskRequest): Promise<AskRouteView>;
     /**
-     * Bring one deleted checklist row back, by its short number.
+     * Bring one deleted checklist row back, by whichever name the caller holds.
      *
      * A SERVICE operation and not a client commit: a tombstone is stamped one
      * millisecond above the row it removed, so re-submitting that row untouched
      * is exactly the stale copy the tombstone exists to swallow — the commit
      * would be accepted, nothing would change, and the caller would be told it
-     * worked. `undefined` means no tombstone holds that number.
+     * worked. `undefined` means no tombstone holds that row, and that is never
+     * dressed up as a success.
      */
-    restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined>;
+    restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined>;
     subscribe(listener: (event: BoardEvent) => void): () => void;
 }
 /** What the panel sends: which card's session, and which item in it. */
@@ -156,15 +157,27 @@ export type AskRouteView = {
     readonly ok: false;
     readonly why: string;
 };
-/** What a restore asks for: which number, and who is asking. */
-export interface RestoreRequest {
+/**
+ * WHICH ROW a restore names. Two NAMED addresses, never one falling back to the
+ * other — see {@link RestoreAddress} for why both exist and why a request may
+ * carry only one of them.
+ */
+export type RestoreAddress = {
+    readonly kind: 'id';
+    readonly id: string;
+} | {
+    readonly kind: 'ref';
     readonly ref: number;
+};
+/** What a restore asks for: which row, and who is asking. */
+export interface RestoreRequest {
+    readonly of: RestoreAddress;
     readonly clientId: string;
 }
 /**
  * The restore's answer.
  *
- * `restored` is `undefined` for "no tombstone holds that number" AND for "the
+ * `restored` is `undefined` for "no tombstone holds that row" AND for "the
  * host is not serving documents" — and the two are told apart by `available`,
  * because they are different facts with different remedies. It is NOT a
  * success with a missing row: the caller is told the row did not come back.

@@ -268,9 +268,22 @@ export interface ItemMatchContext {
     readonly now: number;
     /** Untouched days past which a row counts as neglected. */
     readonly staleDays: number;
+    /**
+     * The board's live state, keyed by card id — the input the DERIVED status
+     * needs, and the reason 进行中 is filterable at all.
+     *
+     * Optional rather than required, and the absence is a real answer rather than
+     * a gap: a caller with no board in front of it (a dry run, a host that cannot
+     * see the engine) passes nothing, 进行中 then matches nothing, and a row that
+     * is quietly running is never reported as 待办. What that caller must not do
+     * is guess "not running" and filter the running rows into 待办, which is what
+     * hard-coding `false` did — `status:inProgress` was a documented filter that
+     * silently matched nothing, in the search box AND in the model's query.
+     */
+    readonly running?: ReadonlyMap<string, boolean>;
 }
-/** The default reading context: right now, the default threshold. */
-export declare function itemMatchContextOf(now: number, staleDays?: number): ItemMatchContext;
+/** The default reading context: right now, the default threshold, no board. */
+export declare function itemMatchContextOf(now: number, staleDays?: number, running?: ReadonlyMap<string, boolean>): ItemMatchContext;
 /**
  * Whether a row satisfies a parsed query.
  *
@@ -300,9 +313,11 @@ export declare function itemMatches(item: ItemRecord, query: ItemQuery, ctx: Ite
  * @param text - the raw query, parsed on each call.
  * @param now - the reading clock.
  * @param staleDays - the neglect threshold; the default when omitted.
+ * @param running - the board's live state, for the derived 进行中; without it
+ *   that one status matches nothing rather than matching everything.
  * @returns whether the row passes.
  */
-export declare function itemMatchesText(item: ItemRecord, text: string, now: number, staleDays?: number): boolean;
+export declare function itemMatchesText(item: ItemRecord, text: string, now: number, staleDays?: number, running?: ReadonlyMap<string, boolean>): boolean;
 /** The short number a row is called by, or the unnumbered placeholder. */
 export interface ItemRef {
     /** `#12`, or `undefined` while the document has not numbered it yet. */
@@ -362,18 +377,51 @@ export interface ItemRowContext {
  * @returns what the row says.
  */
 export declare function itemRowViewOf(item: ItemRecord, ctx: ItemRowContext): ItemRowView;
-/** How a page orders its rows. ONE order, shared by every page. */
-export type ItemSort = 'due' | 'priority' | 'recent' | 'ref';
-/** The orderings, in the order the surface offers them. */
+/**
+ * How a page orders its rows. ONE order, shared by every page.
+ *
+ * Seven keys, and the set is CLOSED for the same reason the page set is: an
+ * ordering is a question a reader can ask, and a list that grows one per
+ * preference is a list whose menu nobody reads. Every key is a pure derivation
+ * of fields the row already carries — no key asks the document for anything, so
+ * ordering a page never needs a round trip and two devices holding one document
+ * can never order it differently.
+ */
+export type ItemSort = 'sequence' | 'starts' | 'due' | 'hard' | 'priority' | 'birth' | 'title';
+/** The orderings, in the order the surface offers them — the first is the default. */
 export declare const ITEM_SORTS: readonly ItemSort[];
+/**
+ * The ordering a reader meets before choosing one.
+ *
+ * 顺序 rather than a date column, and the reason is that the date columns
+ * cannot be right for a list that is mostly not scheduled: a row with no date
+ * has to sort somewhere, and a date-first default spends the reader's first
+ * screen on rows they never dated while the dated ones — the ones with a
+ * promise attached — sink. 顺序 is the document's own order, so the first thing
+ * a reader sees is what the document already believes.
+ */
+export declare const DEFAULT_ITEM_SORT: ItemSort;
 /**
  * Order rows under one rule.
  *
- * A total order, and the same one everywhere: every branch breaks ties, so two
- * devices holding the same rows render the same sequence and a row that moves
- * between pages does not reshuffle under the reader. A "nearest date" order
- * that leaves undated rows in document order is not a total order, and that is
- * how a list ends up looking different on two devices holding one document.
+ * A total order, and the same one everywhere — which is the promise all seven
+ * orderings have to keep, and the reason the comparison is built as one chain
+ * rather than as seven independent comparators. The chain, in order, and EVERY
+ * link is load-bearing:
+ *
+ *  - **the number cohort decides first** ({@link numberCohortOf}): a row the
+ *    document has not numbered yet waits at the end, in all seven orderings, so
+ *    a note the reader just typed never displaces their own work;
+ *  - then this ordering's own key, read from {@link KEY_GAPS} — one row per
+ *    ordering, so an ordering nobody wrote a key for is a build failure rather
+ *    than a quiet fallback;
+ *  - then the short number, which the document hands out exactly once and never
+ *    reuses, so it is the one key that can end any chain of numbered rows;
+ *  - then the freshest change, and finally the identity, which is unique. Those
+ *    last two are what make the chain total on a REPLICA as well as on the host:
+ *    two rows the document has not numbered yet tie the number too, and something
+ *    still has to break that.
+ *
  * @param rows - the rows to order.
  * @param sort - which rule.
  * @returns the ordered copy.
@@ -427,6 +475,32 @@ export interface ItemSliceOptions {
 export declare function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOptions): ItemSlice[];
 /** Whether a row belongs on a working page at all. Finished work is history. */
 export declare function isLiveItem(item: ItemRecord): boolean;
+/**
+ * Whether a row is a MEMBER of the agenda — the one membership test, read by the
+ * agenda fill and by the page rail's count, so the number on the rail is the
+ * number of rows the page actually holds.
+ *
+ * Two exclusions, each one borrowed rather than re-argued:
+ *
+ *  - **FINISHED WORK IS HISTORY.** An agenda that lists work as still to do is
+ *    the one lie an agenda cannot carry, and the reader's own "show me what I
+ *    finished" belongs on the list page where the finished group is.
+ *  - **AN UNFILED CAPTURE IS NOT ON AN AGENDA.** This is the half that used to
+ *    be wrong: a bare note landed in the agenda's 「没有日期」 bucket, while the
+ *    triage strip exempted exactly those rows from its own 「没有日期」 line —
+ *    two surfaces, one predicate, two answers, and the second one was wrong. A
+ *    thought the reader wrote a minute ago has not failed to be scheduled, it has
+ *    not been READ twice yet, and the inbox is the page that holds it. So the
+ *    agenda takes {@link isInboxItem}, the very predicate the triage strip uses,
+ *    and `收件 ∩ 日程 = ∅` becomes true in the code rather than only in the
+ *    product note.
+ *
+ * A filed row with no date still belongs here — it is in the 「没有日期」
+ * bucket, which is a named container rather than nowhere.
+ * @param item - the row.
+ * @returns whether the agenda holds it.
+ */
+export declare function isAgendaItem(item: ItemRecord): boolean;
 /**
  * The agenda's buckets, in the order they read.
  *
@@ -517,3 +591,120 @@ export interface TriageLine {
  * @returns the lines, loudest first.
  */
 export declare function triageLinesOf(items: readonly ItemRecord[], now: number, staleDays?: number): TriageLine[];
+/**
+ * The three numbers on the page rail, in page order.
+ *
+ * A `Record` keyed by {@link ItemPageId} rather than an array, so a page cannot
+ * be added to the rail without a count and a page cannot be counted twice — the
+ * same closed-Record idiom the sort menu and the group heads use, and for the
+ * same reason: a key that does not exist is a compile error, and a key nobody
+ * reads is a question that will be answered differently by the next surface.
+ */
+export type ItemPageCounts = Readonly<Record<ItemPageId, number>>;
+/**
+ * How many rows each page holds.
+ *
+ * EVERY COUNT IS A JUDGMENT ALREADY MADE ELSEWHERE, and this function adds no
+ * new one. The inbox is {@link isInboxItem} — the very predicate the agenda's
+ * membership and the triage strip's "no date" line share, so a row cannot be
+ * filed on the rail and unfiled in the strip. The agenda is {@link isAgendaItem},
+ * which is what the agenda itself fills by, so the number on the rail is the
+ * number of rows the page actually holds rather than a second opinion about it.
+ *
+ * AND THE LIST PAGE COUNTS EVERYTHING, INCLUDING FINISHED WORK. That is not an
+ * oversight, it is the product's central promise: completion is a switch inside
+ * the list, never a fourth page, and a rail that quietly stopped counting the
+ * rows a reader finished would be a second, invisible 「已完成」 page. So the
+ * total the header shows is this number, and a filter says 「显示 X 条，共 M 条」
+ * rather than replacing it.
+ *
+ * THERE IS NO CLOCK AND NO CONTEXT IN THE SIGNATURE, and that is the design
+ * rather than an omission. The rail is a map of the DOCUMENT, and a number that
+ * moved with the time of day — or with the search box, or with a board that is
+ * not attached — would be a map that redraws itself under the person following
+ * it. Which of the three dates a row has is the agenda's business; how many rows
+ * the agenda holds is not.
+ *
+ * @param items - every row in the document, tombstones already settled.
+ * @returns one number per page, in page order.
+ */
+export declare function itemPageCountsOf(items: readonly ItemRecord[]): ItemPageCounts;
+/**
+ * The four group counts, ALWAYS all four.
+ *
+ * The shape is a `Record` over the four derived statuses, which is the model's
+ * way of saying that a surface may not invent a fifth group and may not drop
+ * one: a header that renders only the groups it has rows for is a header that
+ * hides the map of the list, and a detail pane's empty state that counts
+ * differently from the header above it is the same defect in a second place.
+ *
+ * 进行中 is DERIVED, so this count is only as good as the `running` map it is
+ * handed — which is the board's live state, read by the same derivation the row
+ * itself reads. A caller that has no board in front of it (a query answer, a
+ * dry run) passes an EMPTY map, which makes 进行中 zero rather than guessing:
+ * a row that is quietly running must not be counted as 待办 and must never be
+ * counted as 进行中 on a host that cannot see the session.
+ *
+ * @param items - every row in the document.
+ * @param running - card id → whether that card is running, right now.
+ * @returns one count per group, in {@link ITEM_STATUS_ORDER}.
+ */
+export declare function itemGroupCountsOf(items: readonly ItemRecord[], running: ReadonlyMap<string, boolean>): Readonly<Record<ItemStatusView, number>>;
+/** The four tiles of the overview, in reading order. */
+export declare const ITEM_INSIGHT_IDS: readonly ["open", "overdue", "today", "week"];
+export type ItemInsightId = typeof ITEM_INSIGHT_IDS[number];
+/** One overview tile: how many, and how much of the list that is. */
+export interface ItemInsightTile {
+    /** Stable id, so a surface maps it to a word rather than to a position. */
+    readonly id: ItemInsightId;
+    readonly count: number;
+    /**
+     * This tile's share of {@link ItemInsight.total}, 0..1 — the fill of a 2px
+     * hairline meter.
+     *
+     * It is a SHARE OF THE LIST and not a gauge: a meter that filled to the brim
+     * for "3 of 3 late" would draw full confidence over the reader's worst day.
+     * With one denominator for all four tiles the numbers are also comparable with
+     * each other, which is the only thing a row of four meters is for.
+     */
+    readonly ratio: number;
+}
+/** The whole overview: four tiles and the one number they are shares of. */
+export interface ItemInsight {
+    /**
+     * What the tiles are shares OF: the rows that are still live, finished work
+     * included in nothing. A reader's overdue count is a share of what is left to
+     * do, and a list with nothing left has no share to give — which is why `total`
+     * is stated rather than inferred from a ratio.
+     */
+    readonly total: number;
+    readonly tiles: readonly ItemInsightTile[];
+}
+/**
+ * The overview: how much is left, how much of it is late, what is on today and
+ * what is inside the week.
+ *
+ * FOUR QUESTIONS, FOUR ANSWERS, EACH ONE A COUNT OF WHOLE ROWS — no estimate, no
+ * trend, no comparison with last week. A tile that answered "trending worse"
+ * would need a history this document does not keep, and a number invented from
+ * a history nobody stored is the exact shape of a lie a dashboard tells.
+ *
+ * The buckets come from {@link scheduleBucketOf} rather than from a second set
+ * of date tests, which is what makes "逾期" mean here exactly what "逾期" means
+ * on the agenda: the two late buckets, and nothing else. A gated row is not
+ * overdue and not due — it is waiting on a date the reader set — so it counts
+ * for neither, and saying otherwise would nag about work that cannot be done
+ * today.
+ *
+ * 本周 IS THE SEVEN-DAY HORIZON FROM TODAY (today, tomorrow and the coming week),
+ * not the calendar week: a week that has not started yet answers a question the
+ * reader did not ask, and a horizon is what a personal list is actually
+ * planning on. It deliberately OVERLAPS 今天, because both tiles are read
+ * together and a 本周 that excluded today would make the pair disagree by one
+ * row for no reason.
+ *
+ * @param items - every row in the document.
+ * @param now - the reading clock.
+ * @returns the four tiles and the number they are shares of.
+ */
+export declare function itemInsightOf(items: readonly ItemRecord[], now: number): ItemInsight;

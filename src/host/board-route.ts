@@ -149,15 +149,16 @@ export interface BoardRouteDeps {
    */
   ask(request: AskRequest): Promise<AskRouteView>
   /**
-   * Bring one deleted checklist row back, by its short number.
+   * Bring one deleted checklist row back, by whichever name the caller holds.
    *
    * A SERVICE operation and not a client commit: a tombstone is stamped one
    * millisecond above the row it removed, so re-submitting that row untouched
    * is exactly the stale copy the tombstone exists to swallow — the commit
    * would be accepted, nothing would change, and the caller would be told it
-   * worked. `undefined` means no tombstone holds that number.
+   * worked. `undefined` means no tombstone holds that row, and that is never
+   * dressed up as a success.
    */
-  restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined>
+  restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined>
   subscribe(listener: (event: BoardEvent) => void): () => void
 }
 
@@ -174,16 +175,23 @@ export type AskRouteView =
   | { readonly ok: true; readonly sessionId: string; readonly said: string }
   | { readonly ok: false; readonly why: string }
 
-/** What a restore asks for: which number, and who is asking. */
+/**
+ * WHICH ROW a restore names. Two NAMED addresses, never one falling back to the
+ * other — see {@link RestoreAddress} for why both exist and why a request may
+ * carry only one of them.
+ */
+export type RestoreAddress = { readonly kind: 'id'; readonly id: string } | { readonly kind: 'ref'; readonly ref: number }
+
+/** What a restore asks for: which row, and who is asking. */
 export interface RestoreRequest {
-  readonly ref: number
+  readonly of: RestoreAddress
   readonly clientId: string
 }
 
 /**
  * The restore's answer.
  *
- * `restored` is `undefined` for "no tombstone holds that number" AND for "the
+ * `restored` is `undefined` for "no tombstone holds that row" AND for "the
  * host is not serving documents" — and the two are told apart by `available`,
  * because they are different facts with different remedies. It is NOT a
  * success with a missing row: the caller is told the row did not come back.
@@ -194,19 +202,46 @@ export interface RestoreRouteView {
   readonly restored?: ItemRecord
 }
 
-/** Parse the restore body: a number that is a number, and a caller id. */
-function parseRestoreBody(body: unknown): RestoreRequest | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
+/**
+ * Parse the restore body: EXACTLY ONE of the two names, and a caller id.
+ *
+ * WHY TWO NAMES, AND WHY THEY ARE NOT INTERCHANGEABLE. A tombstone is stored
+ * under the row's uuid, so the identity is the address that always resolves —
+ * including for a row written seconds ago, which has NO short number yet
+ * (`ref === 0`, the document's own "not numbered" sentinel). That is the row an
+ * undo gesture has to be able to bring back, and it is the one a reader cannot
+ * name: they did not read a number, they pressed undo. The short number is the
+ * other name because it is the one a person and a model SAY OUT LOUD, and the
+ * model's `item.restore` quotes it back from a receipt it read a turn earlier.
+ *
+ * So each caller sends the name it actually holds, and a request carrying BOTH
+ * is refused rather than resolved by preference: a body with both keys is a
+ * caller that does not know which row it meant, and picking one for it would
+ * restore a row the caller did not ask for — a silent wrong answer about
+ * somebody's own words, which is worse than a refusal it can fix.
+ *
+ * @param body - the request body.
+ * @returns the request, or the refusal to answer with.
+ */
+function parseRestoreBody(body: unknown): { readonly ok: true; readonly request: RestoreRequest } | { readonly ok: false; readonly why: string } {
+  if (typeof body !== 'object' || body === null) return { ok: false, why: 'restore needs a JSON body' }
   const record = body as Record<string, unknown>
   // A `#` is how the number is SPOKEN, not how it is sent — the same rule the
   // model's `item.restore` follows, and one reader for both callers.
-  const ref = typeof record.ref === 'string'
+  const rawRef = typeof record.ref === 'string'
     ? Number(record.ref.replace('#', '').trim())
     : record.ref
-  if (typeof ref !== 'number' || !Number.isInteger(ref) || ref <= 0) return undefined
+  const ref = typeof rawRef === 'number' && Number.isInteger(rawRef) && rawRef > 0 ? rawRef : undefined
+  const id = typeof record.id === 'string' && record.id !== '' ? record.id : undefined
   const clientId = clientIdOf(record)
-  if (clientId === undefined) return undefined
-  return { ref, clientId }
+  if (clientId === undefined) return { ok: false, why: 'restore needs a clientId' }
+  if (id !== undefined && ref !== undefined) {
+    return { ok: false, why: 'restore names one row: give id or ref, not both — a body with both does not know which row it meant' }
+  }
+  if (id === undefined && ref === undefined) {
+    return { ok: false, why: 'restore needs to be told which row: id or ref, and one of them' }
+  }
+  return { ok: true, request: { of: id !== undefined ? { kind: 'id', id } : { kind: 'ref', ref: ref as number }, clientId } }
 }
 
 /** Parse the ask body: both fields are required and both are plain scalars. */
@@ -486,16 +521,24 @@ export function createBoardHandler(
       // outranks the very row it removed, so only the host can write the stamp
       // that beats it. See `DocumentService.restoreItem`.
       const ask2 = parseRestoreBody(payload)
-      if (ask2 === undefined) {
-        json(res, MALFORMED)
+      if (!ask2.ok) {
+        // A parameter error is answered AS a parameter error, with the sentence
+        // that fixes it: the two failure shapes here (no name at all, or two
+        // names) are both a caller that can act on the answer, and collapsing
+        // them into one "malformed" is how a caller retries the same wrong body.
+        // The STATUS is this prefix's convention and not this tail's choice:
+        // 200 carrying `{ ok: false }` in the envelope, so one client code path
+        // reads every refusal on this prefix. A tail that answered 4xx would be
+        // the one a client could not handle with the rest.
+        json(res, { ok: false, error: { code: 'invalid_argument', message: ask2.why } })
         return
       }
       if (!deps.available()) {
         json(res, { ok: true as const, value: { available: false, revision: 0, restored: undefined } satisfies RestoreRouteView })
         return
       }
-      deps.noteActivity(ask2.clientId)
-      const restored = await deps.restoreItem(ask2.ref, ask2.clientId)
+      deps.noteActivity(ask2.request.clientId)
+      const restored = await deps.restoreItem(ask2.request.of, ask2.request.clientId)
       json(res, {
         ok: true as const,
         value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
@@ -675,7 +718,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     commit: commit => service.commit(commit),
     itemsDoc: () => service.getItemsDoc(),
     commitItems: commit => service.commitItems(commit),
-    restoreItem: (ref, clientId) => service.restoreItem(ref, clientId),
+    restoreItem: (of, clientId) => service.restoreItem(of, clientId),
     acquireLease: (clientId, ttlMs, active) => service.acquireLease(clientId, ttlMs, active),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),

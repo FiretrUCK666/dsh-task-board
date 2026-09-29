@@ -41,6 +41,12 @@ import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from
 import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, restoredItemOf } from '../core/items-doc.ts'
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
+// Types only, and the reason is that a restore is addressed by TWO names: the
+// wire shape and the row it names are one decision, and a service that declared
+// its own copy of the address would be free to disagree with the route about
+// which name a caller is allowed to send. The module is erased at build time, so
+// this costs no runtime edge.
+import type { RestoreAddress } from './board-route.ts'
 import { retireLegacyUnitFile, unitDirectoryPath, type RetireOptions, type RetireOutcome } from './data-root.ts'
 
 // The wire types live in the shared core (the client sync layer reads the
@@ -440,7 +446,7 @@ export class DocumentService {
   }
 
   /**
-   * Bring one deleted checklist row back.
+   * Bring one deleted checklist row back, by identity or by short number.
    *
    * WHY THIS IS A SERVICE OPERATION AND NOT A CLIENT COMMIT. A tombstone is
    * stamped one millisecond ABOVE the row it removed, so re-submitting that row
@@ -451,18 +457,30 @@ export class DocumentService {
    * nothing else, and the row then rides the ordinary commit path, so restore
    * is a put like any other and needs no second merge rule.
    *
-   * The row is found by its SHORT NUMBER, because that is the name a person
-   * says out loud. A number with no tombstone behind it is not a restore: the
-   * row is either present (nothing to do) or it was never numbered, and either
-   * way "restoring" it would be a second row with a second number.
-   * @param ref - the short number, without its `#`.
+   * THE TWO ADDRESSES DIFFER ONLY IN HOW THE ROW IS FOUND, never in what is
+   * written. By `id` there is no lookup at all: the tombstones are keyed by
+   * identity, so the caller's uuid IS the key — which is what makes a row that
+   * the document has not numbered yet (`ref === 0`) restorable at all, and an
+   * undo gesture cannot know a number nobody has been shown. By `ref` the number
+   * is a NAME, so it has to be looked up among the deletions first. Both end in
+   * the same {@link restoredItemOf}, so the stamp that beats the tombstone is
+   * written by one piece of code.
+   *
+   * An address that matches no tombstone is `undefined`, never a silent
+   * success: the row is either still in the document (nothing to do), never
+   * numbered, or past the tombstone's life — and in all three cases "restoring"
+   * it would be a second row with a second number.
+   *
+   * @param of - which row, named by identity or by short number.
    * @param clientId - who asked, for the broadcast and the activity note.
-   * @returns the restored row, or `undefined` when no tombstone holds that number.
+   * @returns the restored row, or `undefined` when no tombstone holds that row.
    */
-  async restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined> {
-    const carried = deletedItemsOf(this.items).find(item => item.ref === ref)
-    if (carried === undefined) return undefined
-    const restored = restoredItemOf(this.items, carried.id, this.now())
+  async restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined> {
+    const id = of.kind === 'id'
+      ? of.id
+      : deletedItemsOf(this.items).find(item => item.ref === of.ref)?.id
+    if (id === undefined) return undefined
+    const restored = restoredItemOf(this.items, id, this.now())
     if (restored === undefined) return undefined
     await this.commitItems({ clientId, items: [restored], changed: [restored.id], deleted: [] })
     return restored

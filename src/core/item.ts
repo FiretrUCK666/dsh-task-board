@@ -98,8 +98,46 @@ export interface ItemRecord {
 /** The closed status enum, in display order (进行中 is derived, never listed). */
 export const ITEM_STATUSES: readonly ItemStatus[] = ['open', 'blocked', 'done']
 
-/** The four priority tiers, lowest first. */
+/**
+ * The four priority tiers, listed LOW to HIGH — an ENUM order, not a ranking.
+ *
+ * Read it wherever tiers are LISTED (a dropdown, a filter menu, a `oneOf` the
+ * catalog renders). Never sort on it: {@link itemPriorityRankOf} is the scale
+ * that orders, and it runs the other way.
+ */
 export const ITEM_PRIORITIES: readonly ItemPriority[] = ['low', 'normal', 'high', 'urgent']
+
+/**
+ * The tiers on the scale every ORDERING reads: the loud one is SMALL, so an
+ * ascending compare puts 紧急 first.
+ *
+ * IT LIVES HERE, IN THE MODEL, AND NOT BESIDE THE TIER LIST, because the two are
+ * opposites and that is the trap. {@link ITEM_PRIORITIES} is declared lowest-first
+ * because that is how the tiers are named in a table, and sorting on its index
+ * puts the reader's most urgent row at the bottom of the page — which is exactly
+ * what happened: the document's own order and the surface's 「优先级」 were two
+ * rulers pointing opposite ways, and the panel's comment claimed they were one.
+ * So there is ONE rank table, in the one module that owns what a priority IS, and
+ * both orderings read it.
+ *
+ * `ITEM_PRIORITIES` keeps its own order for the places that genuinely want the
+ * tiers listed low to high (a settings list, a completion menu). Those are
+ * allowed to read the enum; nothing that ORDERS is.
+ *
+ * @param priority - the tier.
+ * @returns 0 for the loudest, rising as the row matters less. Ties never happen:
+ *   every tier has a rank, which is what lets an ordering stay a total one.
+ */
+const PRIORITY_RANKS: Readonly<Record<ItemPriority, number>> = { urgent: 0, high: 1, normal: 2, low: 3 }
+
+/**
+ * How loud a tier is, as a number small enough to sort on.
+ * @param priority - the tier.
+ * @returns 0 for 紧急, 3 for 低; never a tie between two different tiers.
+ */
+export function itemPriorityRankOf(priority: ItemPriority): number {
+  return PRIORITY_RANKS[priority]
+}
 
 /**
  * A verdict on one field: may an action write it, and if not, why not. The
@@ -123,8 +161,25 @@ export interface FieldSpec {
   readonly why: string
 }
 
-/** Every field of {@link ItemRecord}, ruled on. */
-export const ITEM_FIELDS: Record<keyof ItemRecord, FieldSpec> = {
+/** Every field of {@link ItemRecord}, ruled on.
+ *
+ *  `as const satisfies` rather than a bare annotation, and the reason is that
+ *  the verdict has to be READABLE, not only writable: `item-transitions.ts`
+ *  derives the patch type from the `access` column, so a field ruled
+ *  `derived` or `forbidden` cannot be patched.
+ *
+ *  AND THE FAILURE IS SILENT, WHICH IS THE WHOLE POINT OF WRITING IT DOWN. An
+ *  annotation widens `access` to the union of all three verdicts, so every key
+ *  stops being `writable` and `WritableItemKey` collapses to `never` — which
+ *  makes `ItemPatch` the EMPTY object type, and `{}` accepts any object literal
+ *  there is. The gate does not fail the build; it OPENS, and a patch may then
+ *  carry `ref`, `origin` or `id` straight into a row. Measured, not guessed: with
+ *  this annotation in place `pnpm typecheck` is silent on a patch smuggling
+ *  `ref`; with it reverted the same line also compiles, and only the
+ *  `@ts-expect-error` ratchet in `item-transitions.ts` notices. So do not
+ *  "simplify" this back into an annotation — the exhaustiveness check survives
+ *  either way, and that is exactly what makes the change look harmless. */
+export const ITEM_FIELDS = {
   id: { access: 'forbidden', why: '身份由文档分配；副本重述它就是换了一行' },
   ref: { access: 'derived', why: '短编号来自文档上的单调计数器，写它等于在别人脚下重排整张清单' },
   title: { access: 'writable', why: '一行标题，可以留空（空了就从正文首行补）' },
@@ -141,7 +196,7 @@ export const ITEM_FIELDS: Record<keyof ItemRecord, FieldSpec> = {
   origin: { access: 'forbidden', why: '来源标记是出事时的追溯凭据，出生后不可改写' },
   createdAt: { access: 'derived', why: '出生时刻，只有文档写' },
   updatedAt: { access: 'derived', why: '同步合并的 LWW 键，只能由写入漏斗盖章' },
-}
+} as const satisfies Record<keyof ItemRecord, FieldSpec>
 
 /** Progress from the steps, or undefined when the row has no checklist at all. */
 export interface ItemProgress {
@@ -333,13 +388,29 @@ function isItemRecordShape(value: unknown): value is RawItem {
   return true
 }
 
-/** A finite timestamp, or undefined for every other shape (including NaN). */
-function normalizeInstant(raw: unknown): number | undefined {
+/**
+ * A finite timestamp, or undefined for every other shape (including NaN).
+ *
+ * EXPORTED, because "can this value be a moment" is one question with three
+ * callers — the persisted row, the model writing a date, and a fresh capture —
+ * and it lives next to the field ruling that says what a date MEANS. A value
+ * that is not a finite number is not a promise; it is a sentence somebody typed
+ * where a calendar was expected, and storing it would produce a row whose date
+ * sorts and renders as though it were a day.
+ */
+export function itemInstantOf(raw: unknown): number | undefined {
   return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
 }
 
-/** Tags: strings only, blanks dropped, order kept, duplicates folded. */
-function normalizeTags(raw: unknown): string[] {
+/**
+ * Tags: strings only, blanks dropped, order kept, duplicates folded.
+ *
+ * One grammar for the persisted row and for a writer's list alike, so the same
+ * words cannot be filed twice on one surface and once on the other. Order is
+ * kept because a tag list is read as a phrase, and the first tag is the one a
+ * reader is most likely to have meant first.
+ */
+export function itemTagsOf(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const tags: string[] = []
   for (const entry of raw) {
@@ -418,10 +489,10 @@ export function parseItems(raw: string | null, mintRef: RefMinter): ItemRecord[]
       // enum is ours.
       status: ITEM_STATUSES.includes(row.status as ItemStatus) ? row.status as ItemStatus : 'open',
       priority: ITEM_PRIORITIES.includes(row.priority as ItemPriority) ? row.priority as ItemPriority : 'normal',
-      tags: normalizeTags(row.tags),
-      startsAfter: normalizeInstant(row.startsAfter),
-      dueAt: normalizeInstant(row.dueAt),
-      hardDueAt: normalizeInstant(row.hardDueAt),
+      tags: itemTagsOf(row.tags),
+      startsAfter: itemInstantOf(row.startsAfter),
+      dueAt: itemInstantOf(row.dueAt),
+      hardDueAt: itemInstantOf(row.hardDueAt),
       taskId: typeof row.taskId === 'string' && row.taskId !== '' ? row.taskId : undefined,
       origin: {
         source: row.origin.source,

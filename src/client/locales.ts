@@ -696,7 +696,6 @@ export const zh = {
   'item.section.plan': '计划与期限',
   'item.section.link': '关联',
   'item.section.danger': '来源与危险区',
-  'item.group.empty': '这一组还没有事项',
   'item.danger.hint': '删除后这一条仍可恢复。',
 
   // 页面轨：轨上只有这三片，派生页不占轨。
@@ -704,9 +703,9 @@ export const zh = {
   'item.page.inbox': '收件',
   'item.page.list': '清单',
   'item.page.schedule': '日程',
-  'item.page.inbox.aria': '收件：刚记下、还没给它结构的条目',
-  'item.page.list.aria': '清单：全部没做完的事',
-  'item.page.schedule.aria': '日程：按时间排的事',
+  'item.page.inbox.aria': '收件：刚记下、还没给它结构的条目，{n} 条',
+  'item.page.list.aria': '清单：全部没做完的事，{n} 条',
+  'item.page.schedule.aria': '日程：按时间排的事，{n} 条',
 
   // 要处理：每条一句话加一个按钮。没有按钮的数字不上面板。
   'item.triage.title': '要处理',
@@ -756,7 +755,6 @@ export const zh = {
   'item.bucket.later': '以后',
   'item.bucket.undated': '没有日期',
   'item.bucket.gated': '还没到开始时间',
-  'item.agenda.emptyDay': '这一天没有排事。',
   'item.gated.hint': '这些是门，不是到期日。到了该开始的那天它们自己会进来。',
   'item.noDate.hint': '没定日期不等于今天。拖到某一天，或者就让它待着。',
 
@@ -771,16 +769,46 @@ export const zh = {
 
   'item.filter.label': '筛选',
   'item.filter.clear': '清空筛选',
+  'item.facet.status': '状态',
+  'item.insight.title': '一共这些',
+  'item.insight.base': '每根条都是「还没做完的 {n} 条」里的份额。',
+  'item.facet.priority': '优先级',
+  'item.facet.tag': '标签',
+  'item.facet.date': '日期',
+  'item.due.overdueShort': '超期',
+  'item.due.undated': '没定日期',
+  'item.triage.behindShort': '落后',
+  // 七档排序，全部是名词而不是「按……」的动词短语：它们要能并排进一条
+  // 分段药丸里当七个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
+  // 七个动作，读者会当成七个可以分别按的钮。
   'item.sort.label': '排序',
-  'item.sort.due': '按日期',
-  'item.sort.priority': '按优先级',
-  'item.sort.recent': '按最近改动',
-  'item.sort.ref': '按编号',
-  'item.state.clearFilter': '清空筛选',
+  'item.sort.sequence': '顺序',
+  'item.sort.starts': '最早开始',
+  'item.sort.due': '截止',
+  'item.sort.hard': '硬期限',
+  'item.sort.priority': '优先级',
+  'item.sort.birth': '出生时刻',
+  'item.sort.title': '标题',
+
+  // 转成看板卡片：唯一一个同时写两份文档的动作，所以回执说的是「发生了什么」
+  // 而不是一句「已生效」。五种说法是五种事实——已经连着的、没有标题的、
+  // 看板没就绪的、看板没收下的、成功了的——把它们并成一句就是在其中一种
+  // 情况下说谎。
+  'item.promote.said': '「{title}」变成一张看板卡片了，清单这一条和它互相链接。',
+  'item.promote.already': '这一条已经挂在「{title}」那张卡上了，没有再建一张。',
+  'item.promote.noTitle': '这一条没有标题，正文也是空的——建出来的卡会是一个没有名字的东西。先给它写一句话。',
+  'item.promote.noBoard': '看板那边还没准备好。这一条还在清单里，没有丢。',
+  'item.promote.refused': '看板没有收下这张新卡。这一条还在清单里，没有丢。',
 
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
   'item.archive.window': '删除后 30 天内可以找回来。',
+  'item.undo.said': '删掉了 {n} 条。',
+  'item.undo.working': '正在找回来…',
+  'item.undo.do': '撤销',
+  'item.undo.done': '{n} 条找回来了。',
+  'item.undo.partial': '{back} 条找回来了，{total} 条没有。30 天内可以在「已删除」里看看剩下的。',
+  'item.undo.refused': '没能找回来：这台机器读不到主机。30 天内可以在「已删除」里找。',
   'item.archive.title': '已删除',
   'item.archive.empty': '没有删掉过任何一条。',
   'item.archive.open': '看看',
@@ -1453,7 +1481,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.section.plan': 'Plan and dates',
   'item.section.link': 'Links',
   'item.section.danger': 'Origin and danger zone',
-  'item.group.empty': 'Nothing in this group yet',
   'item.danger.hint': 'Removed items stay recoverable.',
 
   // The page rail. Only these three are destinations; a derived view is a page
@@ -1462,9 +1489,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.page.inbox': 'Inbox',
   'item.page.list': 'List',
   'item.page.schedule': 'Agenda',
-  'item.page.inbox.aria': 'Inbox: notes you just wrote, not yet given any structure',
-  'item.page.list.aria': 'List: everything not finished',
-  'item.page.schedule.aria': 'Agenda: the same work, by date',
+  'item.page.inbox.aria': 'Inbox: notes you just wrote, not yet given any structure, {n}',
+  'item.page.list.aria': 'List: everything not finished, {n}',
+  'item.page.schedule.aria': 'Agenda: the same work, by date, {n}',
 
   // What needs a decision. One sentence and one button each — a number with no
   // button is a scoreboard, not a to-do.
@@ -1517,7 +1544,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.bucket.later': 'Further out',
   'item.bucket.undated': 'No date',
   'item.bucket.gated': 'Not startable yet',
-  'item.agenda.emptyDay': 'Nothing scheduled for this day.',
   'item.gated.hint': 'These are gates, not due dates. Each one comes in on the day it opens.',
   'item.noDate.hint': 'No date does not mean today. Move one onto a day, or leave it where it is.',
 
@@ -1532,17 +1558,44 @@ export const en: Record<keyof typeof zh, string> = {
 
   'item.filter.label': 'Filter',
   'item.filter.clear': 'Clear the filter',
+  'item.facet.status': 'Status',
+  'item.insight.title': 'All of it',
+  'item.insight.base': 'Each bar is a share of the {n} rows not finished yet.',
+  'item.facet.priority': 'Priority',
+  'item.facet.tag': 'Tags',
+  'item.facet.date': 'Date',
+  'item.due.overdueShort': 'Past due',
+  'item.due.undated': 'No date',
+  'item.triage.behindShort': 'Behind',
   'item.sort.label': 'Order',
-  'item.sort.due': 'By date',
-  'item.sort.priority': 'By priority',
-  'item.sort.recent': 'By last change',
-  'item.sort.ref': 'By number',
-  'item.state.clearFilter': 'Clear the filter',
+  'item.sort.sequence': 'Sequence',
+  'item.sort.starts': 'Not before',
+  'item.sort.due': 'Wanted by',
+  'item.sort.hard': 'Hard deadline',
+  'item.sort.priority': 'Priority',
+  'item.sort.birth': 'Created',
+  'item.sort.title': 'Title',
+
+  // Making a board card: the one action that writes two documents, so the
+  // receipt says what happened rather than a single "done". Five sentences are
+  // five facts — already linked, no title, board not ready, board declined, and
+  // it worked — and folding them into one is lying in four of the five.
+  'item.promote.said': '“{title}” is a board card now, and the two are linked.',
+  'item.promote.already': 'This row is already on the card “{title}”; no second card was made.',
+  'item.promote.noTitle': 'No title and no body — the card would be a thing with no name. Write it a sentence first.',
+  'item.promote.noBoard': 'The board is not ready yet. The row is still here; nothing was lost.',
+  'item.promote.refused': 'The board did not take the new card. The row is still here; nothing was lost.',
 
   // The archive. Not a tab on the rail: a page the reader arrives at. The
   // thirty-day window is stated rather than implied, because a restore button
   // that has quietly stopped working is worse than one that never appeared.
   'item.archive.window': 'You can bring one back for 30 days after removing it.',
+  'item.undo.said': 'Removed {n}.',
+  'item.undo.working': 'Bringing it back…',
+  'item.undo.do': 'Undo',
+  'item.undo.done': '{n} brought back.',
+  'item.undo.partial': '{back} of {total} came back. The rest are under “Removed” for the next 30 days.',
+  'item.undo.refused': 'Could not bring it back: this device cannot reach the host. It is under “Removed” for 30 days.',
   'item.archive.title': 'Removed',
   'item.archive.empty': 'You have not removed anything.',
   'item.archive.open': 'Look',

@@ -20,7 +20,8 @@ import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
 import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
-import { formatItemDate, parseItemDate, toItemDateField, type ItemEdit } from './model.ts'
+import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
+import type { ItemPatch } from '../../core/item-transitions.ts'
 import css from './item.module.css'
 
 const PRIORITY_LABEL: Readonly<Record<ItemPriority, 'item.priority.low' | 'item.priority.normal' | 'item.priority.high' | 'item.priority.urgent'>> = {
@@ -58,15 +59,18 @@ export interface ItemDetailProps {
   readonly cards: readonly { readonly id: string; readonly title: string }[]
   /** The per-group counts, for the pane's "before you pick" state. */
   readonly counts: readonly { readonly label: string; readonly value: number }[]
-  /** The most recently touched rows, for the same state. */
-  readonly recent: readonly { readonly ref: string; readonly title: string }[]
-  readonly onEdit: (edit: ItemEdit) => void
+  /** The most recently touched rows, for the same state. `id` travels WITH the
+   *  row: the short number is a name to read, never an address, and picking a
+   *  row by its label is how a list ends up selecting the wrong one. */
+  readonly recent: readonly { readonly id: string; readonly ref: string; readonly title: string }[]
+  /**
+   * One field write. The patch's shape is the shared writer's, so a field the
+   * model ruled derived or forbidden cannot be written from here even by
+   * accident: the type is derived from the same verdict table the writer uses.
+   */
+  readonly onEdit: (edit: ItemPatch) => void
   readonly onToggleStep: (stepId: string) => void
   readonly onRemove: () => void
-  /** True while the reader has confirmed the delete. */
-  readonly confirmingRemove: boolean
-  readonly onConfirmRemove: () => void
-  readonly onCancelRemove: () => void
   readonly onPickRecent: (id: string) => void
 }
 
@@ -80,17 +84,31 @@ export function ItemDetail(props: ItemDetailProps) {
   if (item === undefined) {
     return (
       <div className={css.itemDetailEmpty}>
-        <h3 className={css.itemSectionTitle}>{t('item.detail.emptyTitle')}</h3>
-        <p className={`${css.itemHint} ${css.itemEmptyHint}`}>{t('item.detail.emptyHint')}</p>
+        {/* NOT the head's sentence again. The head already says 「还没选中任何一条」
+            — it has to, because an empty box with a bottom border and nothing
+            above it reads as a page that failed to load — and saying it twice in
+            one column is one fact told twice, which is the same reason the count
+            `0` does not get a second sentence under it. What the body adds is
+            the one thing the head cannot say: what to DO about it. */}
+        <p className={css.itemHint}>{t('item.detail.emptyHint')}</p>
         <h4 className={css.itemEmptyRecentHead}>{t('item.detail.emptyCounts')}</h4>
-        <div className={css.itemEmptyCounts}>
+        {/* EVERY BUCKET, NAMED, ALWAYS FOUR — including the finished one, and
+            whatever the finished switch is doing. These are four words and four
+            numbers with nothing around them: the old version framed each one in
+            its own filled cell, and four framed cells in a column that has no
+            other job is a second, smaller dashboard competing with the overview
+            strip for the same answer. Plain rows say the same thing and cost
+            nothing. The set does not move with the switch — a tally that answered
+            to a control the reader cannot see is a tally that changes on its
+            own. */}
+        <dl className={css.itemEmptyTally}>
           {props.counts.map(count => (
-            <div key={count.label} className={css.itemEmptyCount}>
-              <span className={css.itemEmptyCountValue}>{count.value}</span>
-              <span className={css.itemEmptyCountLabel}>{count.label}</span>
+            <div key={count.label} className={css.itemEmptyTallyRow}>
+              <dt className={css.itemEmptyTallyLabel}>{count.label}</dt>
+              <dd className={css.itemEmptyTallyValue}>{count.value}</dd>
             </div>
           ))}
-        </div>
+        </dl>
         <h3 className={css.itemEmptyRecentHead}>{t('item.detail.emptyRecent')}</h3>
         <div className={css.itemEmptyRecent}>
           {props.recent.length === 0
@@ -98,8 +116,8 @@ export function ItemDetail(props: ItemDetailProps) {
             : (
               <ul className={css.itemList}>
                 {props.recent.map(row => (
-                  <li key={row.ref} className={css.itemRow}>
-                    <button type="button" className={css.itemRowMain} onClick={() => props.onPickRecent(row.ref)}>
+                  <li key={row.id} className={css.itemRecentRow}>
+                    <button type="button" className={css.itemRecentRowMain} onClick={() => props.onPickRecent(row.id)}>
                       <span className={css.itemRef}>{row.ref}</span>
                       <span className={css.itemTitle}><span className={css.itemTitleText}>{row.title}</span></span>
                     </button>
@@ -261,17 +279,16 @@ export function ItemDetail(props: ItemDetailProps) {
         </div>
         <div className={css.itemDangerZone}>
           <p className={css.itemDangerHint}>{t('item.danger.hint')}</p>
-          {/* Two steps in place, never a dialog: the action is reversible for
-              thirty days, and a modal asking to confirm a reversible action is
-              friction with no decision behind it. */}
-          {props.confirmingRemove
-            ? (
-              <div className={css.itemDeleteConfirm}>
-                <Button variant="dangerGhost" onClick={props.onConfirmRemove}>{t('item.menu.delete')}</Button>
-                <Button variant="ghost" onClick={props.onCancelRemove}>{t('item.state.clearFilter')}</Button>
-              </div>
-            )
-            : <Button variant="dangerGhost" onClick={props.onRemove}>{t('item.menu.delete')}</Button>}
+          {/* ONE PRESS, NO QUESTION. The delete used to replace itself with a
+              second danger button plus a 「cancel」 whose label was borrowed from
+              the clear-filter string — so the way OUT of a delete read as the way
+              out of a search, and a reversible action was made to feel
+              irreversible by a dialog-shaped pause. What replaced it is one press
+              and a receipt carrying one undo, which is also the only shape that
+              can be honest: the receipt has to state the thirty-day window and
+              where the row is found afterwards, because once the undo is spent
+              that archive is the whole of what is left. */}
+          <Button variant="dangerGhost" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
         </div>
         {english === false && item.hardDueAt !== undefined && item.hardDueAt < Date.now() && (
           <p className={css.itemHint}>{formatItemDate(item.hardDueAt, english)}</p>

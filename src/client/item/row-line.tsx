@@ -19,13 +19,31 @@
  * has no hover, so a fact that only exists on one is a fact the phone does not
  * have.
  */
+import { useRef } from 'react'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
+import type { ItemPriority } from '../../core/item.ts'
 import { isEnglish, t } from '../locales.ts'
 import { formatItemDate } from './model.ts'
 import type { ItemDensity } from './model.ts'
 import { Button } from '../board/ui.tsx'
+import { ItemRowMenu } from './row-menu.tsx'
 import css from './item.module.css'
+
+/** Each priority's word. A closed table, so a tier the model adds fails here. */
+const PRIORITY_LABEL: Readonly<Record<ItemPriority, 'item.priority.low' | 'item.priority.normal' | 'item.priority.high' | 'item.priority.urgent'>> = {
+  low: 'item.priority.low',
+  normal: 'item.priority.normal',
+  high: 'item.priority.high',
+  urgent: 'item.priority.urgent',
+}
+
+/** The three marks a reader can put a row into, and each one's word. */
+const MARK_LABEL: Readonly<Record<'open' | 'blocked' | 'done', 'item.status.open' | 'item.status.blocked' | 'item.status.done'>> = {
+  open: 'item.status.open',
+  blocked: 'item.status.blocked',
+  done: 'item.status.done',
+}
 
 /** The four date readings, and the tone each one speaks in. */
 type DueTone = 'soft-late' | 'over' | 'soon' | 'set'
@@ -109,6 +127,16 @@ export function ItemRowLine(props: ItemRowLineProps) {
   const english = isEnglish()
   const due = dueLine(view, english)
   const regionId = `${panelId}-${item.id}`
+  /* The two boxes the menu is placed against: its own trigger, and THIS PANEL's
+     root. The panel root is found by walking up to the surface the panel marked
+     with its own data attribute — never by a host class name, because a host
+     class is the one thing on this surface that is allowed to change without
+     telling us. */
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLElement | null>(null)
+  if (panelRef.current === null && typeof document !== 'undefined') {
+    panelRef.current = document.querySelector<HTMLElement>('[data-dsh-taskboard-view]')
+  }
   return (
     <li
       className={css.itemRow}
@@ -131,6 +159,27 @@ export function ItemRowLine(props: ItemRowLineProps) {
         <span className={css.itemRef} title={ref.numbered ? undefined : t('item.ref.pending')}>
           {ref.text ?? '—'}
         </span>
+        {/* THE PRIORITY PILL, and only when the model says this row is worth
+            interrupting for. `priorityLoud` is the model's own word for it — the
+            default tier stays quiet, because a pill on every row is a pill nobody
+            reads, and the reader who cares about priority is the one filtering on
+            it. The model has computed this field since the row projection was
+            written and the interface never read it, which is how a derived
+            judgment turns into folklore and then into a bug report.
+
+            IT IS NEUTRAL INK, and that is a budget decision rather than a taste
+            one. The surface has three attention positions and four danger ones,
+            all spent: the triage sentences, a deadline inside the week, the
+            running dot, an overrun, the blocked dot, the delete, the overdue
+            tile. A pill that spent a fifth colour would be the first thing on the
+            row that is neither the title nor a date. Priority is carried by the
+            WORD — 「紧急」 says it — and by the fixed place it occupies, not by a
+            seventh colour. A colour's share of attention is what it means. */}
+        {view.priorityLoud && (
+          <span className={css.itemPriority} data-level={view.item.priority}>
+            {t(PRIORITY_LABEL[view.item.priority])}
+          </span>
+        )}
         <span className={css.itemTitle}>
           <span className={css.itemTitleText}>{title}</span>
         </span>
@@ -168,6 +217,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
           </Button>
         )}
         <button
+          ref={triggerRef}
           type="button"
           className={css.itemRowMenuButton}
           aria-haspopup="menu"
@@ -175,7 +225,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
           // The menu is the region this control governs, so it names it. A
           // disclosure that says "I am open" without saying "I open THAT" is
           // announcing a state the listener cannot tie to anything.
-          aria-controls={`${panelId}-menu-${item.id}`}
+          aria-controls={`item-menu-${item.id}`}
           aria-label={t('item.menu.more')}
           onClick={onMenuToggle}
         >
@@ -184,32 +234,35 @@ export function ItemRowLine(props: ItemRowLineProps) {
       </span>
 
       {menuOpen && (
-        <div className={css.itemRowMenu} id={`${panelId}-menu-${item.id}`} role="menu" aria-label={t('item.menu.more')} onBlur={onMenuClose}>
-          {/* Only where there is something to expand. On a wide surface the
-              detail lives in the pane and the row toggle is not what opens it,
-              so offering "expand" there would name an action the reader cannot
-              take. */}
-          {props.inPlace && (
-            <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onToggle}>
-              {t(props.expanded ? 'item.menu.collapse' : 'item.menu.expand')}
-            </button>
-          )}
-          <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onMark.bind(null, 'open')}>
-            {t('item.status.open')}
-          </button>
-          <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onMark.bind(null, 'blocked')}>
-            {t('item.status.blocked')}
-          </button>
-          <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onMark.bind(null, 'done')}>
-            {t('item.status.done')}
-          </button>
-          <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onPromote}>
-            {t('item.menu.promote')}
-          </button>
-          <button type="button" role="menuitem" className={css.itemRowMenuButton} onClick={props.onRemove}>
-            {t('item.menu.delete')}
-          </button>
-        </div>
+        <ItemRowMenu
+          rowId={item.id}
+          trigger={triggerRef.current}
+          panel={panelRef.current}
+          onClose={onMenuClose}
+          actions={[
+            // Only where there is something to expand. On a wide surface the
+            // detail lives in the pane and the row toggle is not what opens it,
+            // so offering "expand" there would name an action the reader cannot
+            // take.
+            ...(props.inPlace
+              ? [{ key: 'expand', label: t(props.expanded ? 'item.menu.collapse' : 'item.menu.expand'), onPick: props.onToggle }]
+              : []),
+            /* ONLY THE STATES THIS ROW IS NOT IN. Offering 「标为待办」 on a row
+               that is already 待办 is a button that cannot do anything, and the
+               product's own rule is that the interface carries no action which
+               does nothing when pressed. It also reads as a bug for a different
+               reason: a reader who cannot tell which entry is a no-op will try
+               all three, and the two that work will look unreliable rather than
+               the one that was always dead. The comparison is against the STORED
+               status, not the derived one — 「进行中」 is not a state a reader can
+               put a row into, so it is never offered either. */
+            ...(['open', 'blocked', 'done'] as const)
+              .filter(mark => mark !== item.status)
+              .map(mark => ({ key: mark, label: t(MARK_LABEL[mark]), onPick: () => props.onMark(mark) })),
+            { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
+            { key: 'remove', label: t('item.menu.delete'), onPick: props.onRemove },
+          ]}
+        />
       )}
 
       {inPlace && expanded && <div className={css.itemDetail} id={regionId}>{props.detail}</div>}

@@ -32,6 +32,32 @@ export type RestoreReply = {
     readonly why: string;
 };
 /**
+ * WHICH ROW TO BRING BACK — and the two keys are NAMED, never one standing in
+ * for the other.
+ *
+ * The tombstone is keyed by the row's own id, so an id always finds the right
+ * one. The short number is what a person says out loud, so a number is what a
+ * reader can be told to type. They are not interchangeable:
+ *
+ *  - a row the reader JUST wrote has `ref === 0`, because the document has not
+ *    numbered it yet. Addressing that one by number finds no tombstone, the
+ *    route answers 200, the document does not change, and a delete that
+ *    promised an undo has quietly no way back. So an undo — which the interface
+ *    offers one second after the delete and then never again — addresses by
+ *    `id`, which is the only key that exists for every row.
+ *  - the model's `item.restore` asks 「把 #12 找回来」, and it has no other handle
+ *    on the row, so it addresses by `ref`.
+ *
+ * Hence a union rather than two optional fields: "both" and "neither" are
+ * unrepresentable at the type, and the host rejects them anyway. Making them
+ * optional would have made a typo a silently unaddressed restore.
+ */
+export type RestoreAddress = {
+    readonly id: string;
+} | {
+    readonly ref: number;
+};
+/**
  * Put one deleted row back.
  *
  * It is a HOST operation and not a client commit, and the reason is worth
@@ -42,11 +68,11 @@ export type RestoreReply = {
  * so only the host may write it.
  *
  * A refusal is reported as a refusal. `ok: true` with no row is NOT success —
- * it is "nothing holds that number", and the panel has to say so rather than
- * close the archive as if the row were back.
- * @param ref - the short number, with or without its `#`.
+ * it is "nothing holds that key", and the panel has to say so rather than close
+ * the archive as if the row were back.
+ * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
  * @param clientId - this device's id, which every write on this prefix carries.
  * @param fetchImpl - injected for tests.
  * @returns what happened.
  */
-export declare function itemsRestore(ref: number, clientId: string, fetchImpl?: typeof fetch): Promise<RestoreReply>;
+export declare function itemsRestore(address: RestoreAddress, clientId: string, fetchImpl?: typeof fetch): Promise<RestoreReply>;

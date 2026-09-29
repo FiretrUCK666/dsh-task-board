@@ -85,6 +85,29 @@ export type RestoreReply =
   | { readonly ok: false; readonly why: string }
 
 /**
+ * WHICH ROW TO BRING BACK — and the two keys are NAMED, never one standing in
+ * for the other.
+ *
+ * The tombstone is keyed by the row's own id, so an id always finds the right
+ * one. The short number is what a person says out loud, so a number is what a
+ * reader can be told to type. They are not interchangeable:
+ *
+ *  - a row the reader JUST wrote has `ref === 0`, because the document has not
+ *    numbered it yet. Addressing that one by number finds no tombstone, the
+ *    route answers 200, the document does not change, and a delete that
+ *    promised an undo has quietly no way back. So an undo — which the interface
+ *    offers one second after the delete and then never again — addresses by
+ *    `id`, which is the only key that exists for every row.
+ *  - the model's `item.restore` asks 「把 #12 找回来」, and it has no other handle
+ *    on the row, so it addresses by `ref`.
+ *
+ * Hence a union rather than two optional fields: "both" and "neither" are
+ * unrepresentable at the type, and the host rejects them anyway. Making them
+ * optional would have made a typo a silently unaddressed restore.
+ */
+export type RestoreAddress = { readonly id: string } | { readonly ref: number }
+
+/**
  * Put one deleted row back.
  *
  * It is a HOST operation and not a client commit, and the reason is worth
@@ -95,15 +118,15 @@ export type RestoreReply =
  * so only the host may write it.
  *
  * A refusal is reported as a refusal. `ok: true` with no row is NOT success —
- * it is "nothing holds that number", and the panel has to say so rather than
- * close the archive as if the row were back.
- * @param ref - the short number, with or without its `#`.
+ * it is "nothing holds that key", and the panel has to say so rather than close
+ * the archive as if the row were back.
+ * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
  * @param clientId - this device's id, which every write on this prefix carries.
  * @param fetchImpl - injected for tests.
  * @returns what happened.
  */
 export async function itemsRestore(
-  ref: number,
+  address: RestoreAddress,
   clientId: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<RestoreReply> {
@@ -113,14 +136,20 @@ export async function itemsRestore(
     const response = await fetchImpl(routeUrl('/api/dsh-task-board/board/items/restore'), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
-      body: JSON.stringify({ ref, clientId }),
+      body: JSON.stringify('id' in address ? { id: address.id, clientId } : { ref: address.ref, clientId }),
       signal: controller.signal,
     })
     if (!response.ok) return { ok: false, why: `hostRefused ${response.status}` }
     const payload: unknown = await response.json()
     const value = (payload as { value?: unknown } | null)?.value
     if (typeof value !== 'object' || value === null) return { ok: false, why: 'malformedAnswer' }
-    const record = value as { available?: unknown; restored?: unknown }
+    const record = value as { available?: unknown; restored?: unknown; error?: { code?: unknown } }
+    // The host's own refusal code, when it gave one. A wrong address and a host
+    // that cannot be reached are different facts and the panel words them
+    // differently, so the code is carried rather than flattened into one
+    // "restore failed".
+    const code = record.error?.code
+    if (typeof code === 'string' && code !== '') return { ok: false, why: code }
     // A host serving no documents is a different fact from a host that heard
     // the question and found nothing, and the two need different words.
     if (record.available !== true) return { ok: false, why: 'hostUnavailable' }

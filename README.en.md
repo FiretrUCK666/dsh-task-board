@@ -154,23 +154,36 @@ Restart `dsh web` afterwards.
   It has **pages**, and a page is a different question about your items — not a different
   way of drawing the same ones:
 
-  | Page | Answers |
-  | --- | --- |
-  | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. |
-  | **List** | Everything unfinished, grouped by state; each group header carries that group's own count and step total. |
-  | **Schedule** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. |
+  | Page | Answers | On the rail |
+  | --- | --- | --- |
+  | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. | how many |
+  | **List** | Everything unfinished, grouped by state; each group header carries that group's own count and step total. | how many |
+  | **Schedule** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. | how many |
 
-  Three pages sit on the page rail, and **an empty page does not appear on it**; tag, stale,
-  archive and filtered views are not destinations — you click into them and they open.
+  **All three pages stay on the rail, and an empty one shows 0** — "asked, and the answer is
+  zero" and "this question does not exist" are two different things. Tag, stale, archive and
+  filtered views are not destinations — you click into them and they open.
   **Missing a due date is only "behind schedule", and only the hard deadline turns a row
   red.** English has one word for "dead" and Chinese has three, so the distinction is made
   in the grammar instead: the three times read **from** (earliest start), **by** (due) and
   **hard by** (hard deadline). The hard deadline is the only one that may ever be called a
   deadline; a missed due date is behind schedule.
 
-  Deleting goes through a tombstone, and a tombstone **carries the row**, so a deleted item is
-  **recoverable for 30 days** — unlike cards. The list page says the window in a line of its own
-  and a button opens the archive, where one click brings the original text back. The capture box
+  **The list page is the only workbench**, because sorting, picking and batching only become
+  questions past a few dozen rows. It opens with a one-line **overview** (open, overdue, today,
+  this week), then a **filter bar** — state, priority, tag, date — where each choice writes
+  itself into the search box, so what you typed and what you clicked are one thing you can edit
+  either way; then the rows, grouped by state. **Seven orderings** (sequence / earliest start /
+  due / hard deadline / priority / created / title), **two row heights** and **multi-select
+  batching** (state, priority, date, ask AI, delete) all live on this page — tick a few rows and
+  the batch bar appears. **The inbox deliberately has none of them**: someone who just typed a
+  line is still looking at the input, and filtering answers a different question.
+
+  Deleting is one press and one undo, with no confirmation dialog: the receipt appears in
+  place and says both "you can take this back now" and "after that, 30 days", and a tombstone
+  **carries the row**, so a deleted item is **recoverable for 30 days** — unlike cards. The list
+  page says the window in a line of its own and a button opens the archive, where one click
+  brings the original text back. The capture box
   takes inline
   syntax: `#tag`, `!1`–`!4` for priority, `@today` / `@hard 9/30` for dates, and a leading
   `- [ ]` for a step. The parsed result shows as chips **as you type**, and a word that was

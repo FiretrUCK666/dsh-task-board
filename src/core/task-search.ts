@@ -31,9 +31,25 @@ export function parseItemSearch(query: string): ItemQuery {
   return parseItemQuery(query)
 }
 
-/** The reading clock a checklist filter is judged against. */
-export function itemSearchContext(now: number, staleDays?: number): ItemMatchContext {
-  return itemMatchContextOf(now, staleDays)
+/**
+ * The reading clock a checklist filter is judged against.
+ *
+ * `running` is the board's live state keyed by card id, and the host's query
+ * passes it for one reason: `status:inProgress` is a filter the interface offers
+ * and the model must be able to reproduce, row for row. A host that hands over no
+ * live state does not get a wrong answer for that one status — it gets an empty
+ * one, which is the honest shape of "I cannot see whether it is running".
+ *
+ * @param now - the reading clock.
+ * @param staleDays - the neglect threshold.
+ * @param running - the board's live state, when the caller has one.
+ */
+export function itemSearchContext(
+  now: number,
+  staleDays?: number,
+  running?: ReadonlyMap<string, boolean>,
+): ItemMatchContext {
+  return itemMatchContextOf(now, staleDays, running)
 }
 
 /**

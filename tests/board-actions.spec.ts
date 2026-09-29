@@ -194,7 +194,15 @@ describe('the catalog gate', () => {
   })
 
   it('catches a function named without the mark', () => {
-    const findings = actionCatalogFindings({ actions: poison('item.update', { semanticOf: 'itemStatusOf' }) })
+    // `semantic: undefined` rather than a different action, and the reason is
+    // worth keeping: `poison` MERGES over the real declaration, so poisoning
+    // `item.update` left the `semantic: true` it really carries, and the gate
+    // then reported a true fact (that action DOES name a shared function)
+    // instead of the one under test. Clearing the mark is what isolates the
+    // case, and it keeps the probe pointed at the same action the case above
+    // uses — so the pair still reads as "the same declaration, marked and
+    // unmarked" rather than as two unrelated actions.
+    const findings = actionCatalogFindings({ actions: poison('item.update', { semantic: undefined, semanticOf: 'itemStatusOf' }) })
     expect(findings.join('\n')).toContain('without being marked semantic')
   })
 

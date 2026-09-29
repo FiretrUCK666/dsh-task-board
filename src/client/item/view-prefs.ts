@@ -20,7 +20,7 @@
  * the default, which is a wrong-but-working preference rather than a blank
  * panel.
  */
-import { ITEM_SORTS, ITEM_STATUS_ORDER, type ItemPageId, type ItemSort, type ItemStatusView } from '../../core/item-view.ts'
+import { DEFAULT_ITEM_SORT, ITEM_SORTS, ITEM_STATUS_ORDER, type ItemPageId, type ItemSort, type ItemStatusView } from '../../core/item-view.ts'
 import { ITEM_PAGES } from '../../core/item-view.ts'
 import type { ItemDensity } from './model.ts'
 
@@ -60,7 +60,10 @@ export interface ItemViewPrefs {
  */
 export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   page: 'list',
-  sort: 'due',
+  // Read from the model rather than written here: the default ordering is a
+  // derivation the document owns, and a second copy of the word "due" in a
+  // preference file is a default that starts lying the day the derivation moves.
+  sort: DEFAULT_ITEM_SORT,
   density: 'compact',
   showDone: false,
   collapsed: [],

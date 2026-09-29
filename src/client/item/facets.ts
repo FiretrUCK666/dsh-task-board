@@ -1,0 +1,159 @@
+/**
+ * The facets are an EDITOR for the search box, and that is the whole design.
+ *
+ * WHY NOT A SECOND FILTER ENGINE. The list already has one grammar — the one in
+ * `core/item-view.ts`, which `parseItemQuery` reads and `itemMatches` applies,
+ * and which `task-search.ts` registers the model's qualifiers against. If the
+ * facet row kept its own state and merely happened to produce the same result,
+ * then a filter set in the panel and the same filter typed into the box would be
+ * two different things that agree today: retype one as the other and the list
+ * changes, and nothing anywhere reports an error. So the facets own no state at
+ * all. Clicking one writes a token into the search box, and the search box is
+ * the only filter that exists.
+ *
+ * WHY THE RAW TEXT IS EDITED AND NEVER REBUILT FROM THE PARSE. The obvious
+ * implementation is: parse, drop the facet's value, re-serialize, write back.
+ * It is wrong in a way no test catches. `parseItemQuery` NORMALIZES — it
+ * lowercases every free word and every tag — so a round trip silently
+ * lowercases everything the reader typed, drops their capitalisation, and
+ * re-orders nothing but changes the text they will see in the box. A reader who
+ * searched for 「Gallery」 finds their own query rewritten under them, and a
+ * reader who typed a tag in capitals can no longer type it again.
+ *
+ * So this module splits the ORIGINAL string on whitespace, adds or removes
+ * exactly one token, and writes the rest back BYTE FOR BYTE. Every other token
+ * — the reader's words, their capitalisation, their spacing — survives
+ * untouched. This is the rule to state, because the next reader will find the
+ * round-trip version shorter and think it is the better one.
+ *
+ * WHAT IS NOT DECIDED HERE. Nothing. Which values exist per facet is a table of
+ * tokens and words; whether one is currently ON is asked of
+ * `parseItemQuery`; which rows a query matches is asked of `itemMatches`. This
+ * file is a text editor with a vocabulary, and the vocabulary is the grammar
+ * core already speaks.
+ */
+import type { ItemFlag, ItemQuery, ItemStatusView } from '../../core/item-view.ts'
+import type { ItemPriority } from '../../core/item.ts'
+import type { TaskBoardKey } from '../locales.ts'
+
+/** The four faces a filter row offers. */
+export type ItemFacetId = 'status' | 'priority' | 'tag' | 'date'
+
+/** One selectable value of a FIXED facet: the token, and a word we have. */
+export interface FacetValue {
+  /** Exactly what is written into the search box. */
+  readonly token: string
+  /** The stable value, for asking core whether it is already on. */
+  readonly key: string
+  readonly label: TaskBoardKey
+}
+
+/**
+ * A tag's own chip. A separate type rather than a `FacetValue` with an empty
+ * label, because a tag is the READER'S word and the locale has no entry for it
+ * — and a chip that renders `undefined` because it reached for a dictionary it
+ * was never going to find is the exact failure a closed Record exists to stop.
+ */
+export interface TagFacetValue {
+  readonly token: string
+  /** Lower-cased, because the grammar lower-cases tags and the comparison has to. */
+  readonly key: string
+  /** Spelled the way the reader spelled it. */
+  readonly text: string
+}
+
+/** The three fixed facets, and their values, in reading order. */
+export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: TaskBoardKey; readonly values: readonly FacetValue[] }[] = [
+  {
+    id: 'status',
+    label: 'item.facet.status',
+    values: [
+      { token: 'status:inProgress', key: 'inProgress', label: 'item.group.inProgress' },
+      { token: 'status:open', key: 'open', label: 'item.group.open' },
+      { token: 'status:blocked', key: 'blocked', label: 'item.group.blocked' },
+      { token: 'status:done', key: 'done', label: 'item.group.done' },
+    ],
+  },
+  {
+    id: 'priority',
+    label: 'item.facet.priority',
+    values: [
+      { token: 'p1', key: 'urgent', label: 'item.priority.urgent' },
+      { token: 'p2', key: 'high', label: 'item.priority.high' },
+      { token: 'p3', key: 'normal', label: 'item.priority.normal' },
+      { token: 'p4', key: 'low', label: 'item.priority.low' },
+    ],
+  },
+  {
+    id: 'date',
+    label: 'item.facet.date',
+    values: [
+      { token: 'has:hardOverdue', key: 'hardOverdue', label: 'item.due.overdueShort' },
+      { token: 'has:behind', key: 'behind', label: 'item.triage.behindShort' },
+      { token: 'has:undated', key: 'undated', label: 'item.due.undated' },
+      { token: 'has:gated', key: 'gated', label: 'item.bucket.gated' },
+    ],
+  },
+]
+
+/** The status facet's values, keyed the way the model names a group. */
+const STATUS_KEYS: ReadonlySet<string> = new Set(['inProgress', 'open', 'blocked', 'done'])
+
+/**
+ * Whether a facet's value is currently in the query.
+ *
+ * Asked of the PARSE, never of a set this module kept: the box's text is the
+ * only state there is, so a value the reader typed by hand lights up exactly
+ * like one they clicked, which is the behaviour that makes the box and the chips
+ * read as one control instead of two that happen to share a row.
+ */
+export function isFacetOn(query: ItemQuery, facet: ItemFacetId, key: string): boolean {
+  if (facet === 'status') return query.status.includes(key as ItemStatusView) && STATUS_KEYS.has(key)
+  if (facet === 'priority') return query.priority.includes(key as ItemPriority)
+  if (facet === 'date') return query.flags.has(key as ItemFlag)
+  return query.tags.includes(key.toLowerCase())
+}
+
+/**
+ * Add or remove one token, leaving every other character alone.
+ *
+ * @param text - the search box's contents, exactly as typed.
+ * @param token - the facet token, e.g. `status:open`.
+ * @param on - whether it should end up present.
+ * @returns the new text. An absent token and an explicit removal both leave the
+ *   reader's other words byte-identical.
+ */
+export function withFacetToken(text: string, token: string, on: boolean): string {
+  const kept = text.split(/\s+/).filter(part => part !== '' && part.toLowerCase() !== token.toLowerCase())
+  if (!on) return kept.join(' ')
+  return [...kept, token].join(' ')
+}
+
+/**
+ * The tag facet's values: the tags this document actually holds.
+ *
+ * Derived here rather than asked of core, and the reason is worth being honest
+ * about: it is a DISPLAY list, not a judgment. Nothing decides whether a row
+ * matches a tag — `itemMatches` does, against the tags on the row — so a tag
+ * that is missing from this list is a tag the reader cannot click, not a tag the
+ * search cannot find. Typing it still works, which is why this is allowed to be
+ * a convenience rather than the gate.
+ *
+ * Sorted, and de-duplicated case-insensitively while keeping the first spelling
+ * seen: a list of chips whose order changes between renders is a list nobody
+ * can find anything in.
+ */
+export function tagFacetValuesOf(tagLists: readonly (readonly string[])[]): TagFacetValue[] {
+  const byLower = new Map<string, string>()
+  for (const tags of tagLists) {
+    for (const tag of tags) {
+      const key = tag.trim()
+      if (key === '') continue
+      const lower = key.toLowerCase()
+      if (!byLower.has(lower)) byLower.set(lower, key)
+    }
+  }
+  return [...byLower.entries()]
+    .sort((a, b) => (a[1] < b[1] ? -1 : a[1] > b[1] ? 1 : 0))
+    .map(([lower, spelled]) => ({ token: `#${spelled}`, key: lower, text: spelled }))
+}

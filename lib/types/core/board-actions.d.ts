@@ -841,6 +841,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "captureItemRecord";
         readonly summary: "记一条清单条目。标题可以留空（会从正文首行补），步骤只有一层、进度自动算。";
         readonly params: {
             readonly body: {
@@ -901,6 +903,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "applyItemPatch";
         readonly summary: "改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。";
         readonly params: {
             readonly of: {
@@ -965,6 +969,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "removeItemRecord";
         readonly summary: "删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。";
         readonly params: {
             readonly of: {
@@ -978,6 +984,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "applyItemStep";
         readonly summary: "勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。";
         readonly params: {
             readonly of: {

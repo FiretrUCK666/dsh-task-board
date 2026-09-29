@@ -35,7 +35,19 @@
  *     confident nothing.
  */
 import type { ItemDateConflict, ItemPriority, ItemRecord, ItemStatusView } from './item.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemDateConflict, itemProgressOf, itemStatusOf, itemTitleOf } from './item.ts'
+import {
+  ITEM_STATUSES,
+  itemDateConflict,
+  itemPriorityRankOf,
+  itemProgressOf,
+  itemStatusOf,
+  itemTitleOf,
+} from './item.ts'
+// The 顺序 ordering IS the document's own order, read as a comparator rather
+// than restated: the reader's 顺序 and the order the document stores are one
+// promise, and a second copy of five keys would be free to disagree with the
+// first about which of two rows comes first.
+import { compareItemOrder } from './items-doc.ts'
 
 /**
  * The status a row DISPLACES as, re-exported so a surface reading this module
@@ -393,11 +405,62 @@ export interface ItemMatchContext {
   readonly now: number
   /** Untouched days past which a row counts as neglected. */
   readonly staleDays: number
+  /**
+   * The board's live state, keyed by card id — the input the DERIVED status
+   * needs, and the reason 进行中 is filterable at all.
+   *
+   * Optional rather than required, and the absence is a real answer rather than
+   * a gap: a caller with no board in front of it (a dry run, a host that cannot
+   * see the engine) passes nothing, 进行中 then matches nothing, and a row that
+   * is quietly running is never reported as 待办. What that caller must not do
+   * is guess "not running" and filter the running rows into 待办, which is what
+   * hard-coding `false` did — `status:inProgress` was a documented filter that
+   * silently matched nothing, in the search box AND in the model's query.
+   */
+  readonly running?: ReadonlyMap<string, boolean>
 }
 
-/** The default reading context: right now, the default threshold. */
-export function itemMatchContextOf(now: number, staleDays: number = DEFAULT_STALE_DAYS): ItemMatchContext {
-  return { now, staleDays }
+/** The default reading context: right now, the default threshold, no board. */
+export function itemMatchContextOf(
+  now: number,
+  staleDays: number = DEFAULT_STALE_DAYS,
+  running?: ReadonlyMap<string, boolean>,
+): ItemMatchContext {
+  return { now, staleDays, ...running === undefined ? {} : { running } }
+}
+
+/**
+ * The row's DERIVED status, from the board's live state — the ONE place a row is
+ * asked whether it is 进行中.
+ *
+ * Every surface that shows or filters a status goes through here: the row
+ * projection, the group counts, the group fill and the query. Four call sites
+ * spelling out `taskId !== undefined && running.get(taskId) === true` is four
+ * places for the derived status to be quietly wrong in one of them — and the
+ * wrong one is always the facet, because a facet that disagrees with the row it
+ * counts is a facet that sends the reader to an empty group.
+ *
+ * @param item - the row.
+ * @param running - the board's live state keyed by card id, or `undefined` when
+ *   the caller has no board. A row whose card is not in the map is not running;
+ *   a card this host cannot see is `false` here, which is why the live verdict
+ *   itself is `unknown` upstream and never arrives as a guess.
+ * @returns the stored status, or the derived 进行中.
+ */
+function derivedStatusOf(item: ItemRecord, running: ReadonlyMap<string, boolean> | undefined): ItemStatusView {
+  return itemStatusOf(item, item.taskId !== undefined && running?.get(item.taskId) === true)
+}
+
+/**
+ * The row's DERIVED status against a reading context — the one door between the
+ * two, so the search box, the pages and the model's query cannot disagree about
+ * which rows are 进行中.
+ * @param item - the row.
+ * @param ctx - the clock and the board's live state.
+ * @returns the stored status, or the derived 进行中.
+ */
+function statusInContext(item: ItemRecord, ctx: ItemMatchContext): ItemStatusView {
+  return derivedStatusOf(item, ctx.running)
 }
 
 /** The text a free word is matched against. Lower-cased once, here. */
@@ -423,7 +486,7 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
   }
   if (query.tags.length > 0 && !query.tags.some(tag => item.tags.some(row => row.toLowerCase() === tag))) return false
   if (query.priority.length > 0 && !query.priority.includes(item.priority)) return false
-  if (query.status.length > 0 && !query.status.includes(itemStatusOf(item, false))) return false
+  if (query.status.length > 0 && !query.status.includes(statusInContext(item, ctx))) return false
   if (query.flags.size === 0) return true
   const posture = datePostureOf(item, ctx.now)
   const stale = staleDaysOf(item, ctx.now)
@@ -457,10 +520,18 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
  * @param text - the raw query, parsed on each call.
  * @param now - the reading clock.
  * @param staleDays - the neglect threshold; the default when omitted.
+ * @param running - the board's live state, for the derived 进行中; without it
+ *   that one status matches nothing rather than matching everything.
  * @returns whether the row passes.
  */
-export function itemMatchesText(item: ItemRecord, text: string, now: number, staleDays: number = DEFAULT_STALE_DAYS): boolean {
-  return itemMatches(item, parseItemQuery(text), itemMatchContextOf(now, staleDays))
+export function itemMatchesText(
+  item: ItemRecord,
+  text: string,
+  now: number,
+  staleDays: number = DEFAULT_STALE_DAYS,
+  running?: ReadonlyMap<string, boolean>,
+): boolean {
+  return itemMatches(item, parseItemQuery(text), itemMatchContextOf(now, staleDays, running))
 }
 
 // ── rows ───────────────────────────────────────────────────────────────────
@@ -532,7 +603,7 @@ export function itemRowViewOf(item: ItemRecord, ctx: ItemRowContext): ItemRowVie
     item,
     ref: itemRefOf(item),
     title: itemTitleOf(item),
-    status: itemStatusOf(item, item.taskId !== undefined && ctx.running.get(item.taskId) === true),
+    status: derivedStatusOf(item, ctx.running),
     progress: itemProgressOf(item),
     posture: datePostureOf(item, ctx.now),
     soft,
@@ -545,11 +616,32 @@ export function itemRowViewOf(item: ItemRecord, ctx: ItemRowContext): ItemRowVie
 
 // ── grouping, sorting, slicing ─────────────────────────────────────────────
 
-/** How a page orders its rows. ONE order, shared by every page. */
-export type ItemSort = 'due' | 'priority' | 'recent' | 'ref'
+/**
+ * How a page orders its rows. ONE order, shared by every page.
+ *
+ * Seven keys, and the set is CLOSED for the same reason the page set is: an
+ * ordering is a question a reader can ask, and a list that grows one per
+ * preference is a list whose menu nobody reads. Every key is a pure derivation
+ * of fields the row already carries — no key asks the document for anything, so
+ * ordering a page never needs a round trip and two devices holding one document
+ * can never order it differently.
+ */
+export type ItemSort = 'sequence' | 'starts' | 'due' | 'hard' | 'priority' | 'birth' | 'title'
 
-/** The orderings, in the order the surface offers them. */
-export const ITEM_SORTS: readonly ItemSort[] = ['due', 'priority', 'recent', 'ref']
+/** The orderings, in the order the surface offers them — the first is the default. */
+export const ITEM_SORTS: readonly ItemSort[] = ['sequence', 'starts', 'due', 'hard', 'priority', 'birth', 'title']
+
+/**
+ * The ordering a reader meets before choosing one.
+ *
+ * 顺序 rather than a date column, and the reason is that the date columns
+ * cannot be right for a list that is mostly not scheduled: a row with no date
+ * has to sort somewhere, and a date-first default spends the reader's first
+ * screen on rows they never dated while the dated ones — the ones with a
+ * promise attached — sink. 顺序 is the document's own order, so the first thing
+ * a reader sees is what the document already believes.
+ */
+export const DEFAULT_ITEM_SORT: ItemSort = 'sequence'
 
 /**
  * The instant a row is sorted by under the `due` order: the nearest date it owns.
@@ -564,31 +656,215 @@ export const ITEM_SORTS: readonly ItemSort[] = ['due', 'priority', 'recent', 're
  * spot in a screenshot.
  */
 function dueSortKeyOf(item: ItemRecord): number {
-  return item.hardDueAt ?? item.dueAt ?? Number.MAX_SAFE_INTEGER
+  return item.hardDueAt ?? item.dueAt ?? UNSET_DATE
+}
+
+/**
+ * The same sentinel for every date column that has one. Named once because the
+ * law is one: a row without this field is not "at the beginning" and not
+ * "unbounded", it is at the END, and only a FINITE end can be subtracted.
+ */
+const UNSET_DATE = Number.MAX_SAFE_INTEGER
+
+/**
+ * 最早开始 — the gate, soonest first, and a row with no gate at the END.
+ *
+ * Stated in full because the two bugs this file has had were both "the sentinel
+ * was right in the key and the comment said nothing about where the row lands":
+ * a row with no date is not at the beginning of a column, it is past all of them,
+ * and only the finite sentinel puts it there. Same law as {@link dueSortKeyOf},
+ * so it is spelled the same way.
+ */
+function startsSortKeyOf(item: ItemRecord): number {
+  return item.startsAfter ?? UNSET_DATE
+}
+
+/**
+ * 硬期限 — the one date that does not move, soonest first, and a row with none
+ * at the END. The same finite sentinel as the other two date columns, for the
+ * same reason: `Infinity` here would make two undated rows compare `NaN`, and a
+ * `NaN` comparator stops comparing that pair altogether.
+ */
+function hardSortKeyOf(item: ItemRecord): number {
+  return item.hardDueAt ?? UNSET_DATE
+}
+
+/**
+ * The four tiers as ONE number, read from the model — never re-ranked here.
+ *
+ * This used to be `ITEM_PRIORITIES.indexOf(item.priority)`, and that was wrong in
+ * the most user-visible way a sort can be: the enum is declared lowest-first
+ * because that is how the tiers are named in a dropdown, so the index put 紧急
+ * LAST while 顺序 — which reads the model's rank — put it FIRST. Switching the
+ * sort on one page therefore moved the reader's most urgent row from the top to
+ * the bottom, and the comment above this function claimed the two scales were
+ * one. They were two rulers pointing opposite ways.
+ *
+ * {@link itemPriorityRankOf} is the one ruler, and it lives in the model because
+ * that is what owns what a priority IS; the document's order and this ordering
+ * are its two readers. A second ranking written here would be free to drift again,
+ * and a drift in a RANKING is invisible until a reader notices their list
+ * reshuffling.
+ */
+function prioritySortKeyOf(item: ItemRecord): number {
+  return itemPriorityRankOf(item.priority)
+}
+
+/**
+ * Compare two titles WITHOUT the reader's locale.
+ *
+ * `localeCompare` is the obvious tool and the wrong one here: its answer depends
+ * on the device's language, so two devices sorting the same rows could put
+ * 「Zebra」 and 「Ärger」 in either order, and the checklist would differ between
+ * a phone and a laptop for no reason a reader could see. Code-unit order is
+ * boring and identical everywhere, and the case-folded first pass is what keeps
+ * `apple` and `Apple` next to each other instead of splitting the alphabet in
+ * two — a Latin-1 case fold, not a locale's, so it stays device-independent.
+ */
+function compareTitles(a: string, b: string): number {
+  const left = a.toLowerCase()
+  const right = b.toLowerCase()
+  if (left < right) return -1
+  if (left > right) return 1
+  if (a < b) return -1
+  if (a > b) return 1
+  return 0
+}
+
+/**
+ * ONE ROW PER ORDERING, keyed by the union — so the table cannot fall behind the
+ * set. This replaced an `if` chain, and the chain had a defect that only the
+ * table removes: its last line was a shared exit that served 「title」 (which has
+ * no numeric key) AND any ordering somebody added without a key, and the comment
+ * above that line explained only `title`. So the missing branch would arrive
+ * wearing a comment that said it was deliberate — a defect coming back in
+ * borrowed clothes. Here there is no such exit: `title` is a row like any other,
+ * and a new member of {@link ItemSort} that nobody wrote a key for is a BUILD
+ * FAILURE (`Property 'brandNew' is missing in type …`) rather than a quiet
+ * fallback.
+ *
+ * It is the same move, and for the same reason, as deriving the patch type from
+ * the model's ruling table: a hand-kept list of "the things you may do here"
+ * stops agreeing with the real one the first time somebody adds a member, and the
+ * failure is invisible because nothing about the old list looks wrong.
+ *
+ * EVERY ROW RETURNS A FINITE NUMBER, which is the contract the defect
+ * {@link dueSortKeyOf} documents: a comparator that ever returns `NaN` stops
+ * comparing that pair, which makes the order partial, which makes two devices
+ * holding one document show two lists. `0` is the row's way of saying "these two
+ * rows tie on me" — never a shrug.
+ */
+const KEY_GAPS: Readonly<Record<ItemSort, (a: ItemRecord, b: ItemRecord) => number>> = {
+  sequence: (a, b) => compareItemOrder(a, b),
+  starts: (a, b) => startsSortKeyOf(a) - startsSortKeyOf(b),
+  due: (a, b) => dueSortKeyOf(a) - dueSortKeyOf(b),
+  hard: (a, b) => hardSortKeyOf(a) - hardSortKeyOf(b),
+  priority: (a, b) => prioritySortKeyOf(a) - prioritySortKeyOf(b),
+  // 出生时刻 is the one row with NO sentinel, and it is correct for a reason
+  // worth writing down: every row has a birth instant, so there is no "unset" to
+  // stand at the wrong end of the column, and the two values are plain finite
+  // numbers whose difference is always a number. Subtracting a sentinel is only
+  // ever a bug when there IS a sentinel.
+  birth: (a, b) => a.createdAt - b.createdAt,
+  // 标题 is the one row that is not arithmetic, and it is here rather than
+  // special-cased by the caller so that this table is the whole answer to "what
+  // does each ordering read". Code units, never the reader's locale.
+  title: (a, b) => compareTitles(itemTitleOf(a), itemTitleOf(b)),
+}
+
+/**
+ * Which cohort a row is in for the purpose of WHERE IT SITS: `0` for a row the
+ * document has numbered, `1` for one it has not.
+ *
+ * THIS IS THE FIRST KEY OF ALL SEVEN, BEFORE ANY OTHER, and that position is the
+ * whole law. The tempting fix is to let the sentinel do its work where the
+ * document's own comparator ends — last, after the dates and the age — but then a
+ * row the reader has just typed still jumps above their existing work whenever
+ * its own key happens to favour it, which is exactly the reshuffle the default
+ * ordering exists to prevent. A number the DOCUMENT has not handed out yet means
+ * the row's place in the reader's own sequence is not decided yet, and an
+ * undecided row waits at the end until it is.
+ *
+ * AND IT IS NOT A SORTING PREFERENCE, WHICH IS WHY 标题 IS NOT AN EXCEPTION TO IT.
+ * An ordering changes 「按什么维度读」, not 「这份列表由谁组成」: the rows under the
+ * title ordering are the same rows, and the batch the reader has just written is
+ * in it either way. Make this one an exception and switching orderings would move
+ * that batch from 「all at the end」 to 「sorted in among the others」, which reads
+ * as "my notes were reorganized" — one inexplicable event instead of one
+ * learnable rule. An exception has to be kept alive by a comment, comments expire,
+ * and an expired exception is the next silent fork.
+ *
+ * THE PRICE, STATED RATHER THAN DISCOVERED. Under 标题 a note called 「AAA」 waits
+ * below one called 「ZZZ」 for the length of one round trip, which looks wrong for
+ * about a second and is then right for good. The window is short on a connected
+ * host and is the whole offline case, and it is the offline case where a list that
+ * reshuffles under every keystroke costs the reader the most. A list that moves
+ * once when a note joins it is cheaper than a list that moves every time. And the
+ * price is not peculiar to 标题 — it is the same price in every ordering, which is
+ * the other reason to pay it once instead of seven times.
+ *
+ * It is also the same law `items-doc.ts` applies to its own last key, at a
+ * narrower scope: there it settles a tie between two rows the document HAS
+ * numbered, here it keeps an unnumbered row out of the way of every numbered one.
+ * One principle, two scopes — not one rule written twice.
+ */
+function numberCohortOf(item: ItemRecord): number {
+  return item.ref > 0 ? 0 : 1
+}
+
+/**
+ * The short number a row is ordered by, with the unnumbered pushed to the end.
+ *
+ * The same law the previous 编号 ordering used, kept as a function because after
+ * {@link numberCohortOf} has separated the two cohorts it is what orders the
+ * numbered ones among themselves, and it is still the last word for two rows the
+ * document has not numbered yet.
+ */
+function refSortKeyOf(item: ItemRecord): number {
+  return item.ref > 0 ? item.ref : UNSET_DATE
 }
 
 /**
  * Order rows under one rule.
  *
- * A total order, and the same one everywhere: every branch breaks ties, so two
- * devices holding the same rows render the same sequence and a row that moves
- * between pages does not reshuffle under the reader. A "nearest date" order
- * that leaves undated rows in document order is not a total order, and that is
- * how a list ends up looking different on two devices holding one document.
+ * A total order, and the same one everywhere — which is the promise all seven
+ * orderings have to keep, and the reason the comparison is built as one chain
+ * rather than as seven independent comparators. The chain, in order, and EVERY
+ * link is load-bearing:
+ *
+ *  - **the number cohort decides first** ({@link numberCohortOf}): a row the
+ *    document has not numbered yet waits at the end, in all seven orderings, so
+ *    a note the reader just typed never displaces their own work;
+ *  - then this ordering's own key, read from {@link KEY_GAPS} — one row per
+ *    ordering, so an ordering nobody wrote a key for is a build failure rather
+ *    than a quiet fallback;
+ *  - then the short number, which the document hands out exactly once and never
+ *    reuses, so it is the one key that can end any chain of numbered rows;
+ *  - then the freshest change, and finally the identity, which is unique. Those
+ *    last two are what make the chain total on a REPLICA as well as on the host:
+ *    two rows the document has not numbered yet tie the number too, and something
+ *    still has to break that.
+ *
  * @param rows - the rows to order.
  * @param sort - which rule.
  * @returns the ordered copy.
  */
 export function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort): ItemRecord[] {
+  // Hoisted out of the comparator, and the fallback is NOT what keeps the table
+  // honest — the table's TYPE is, and that is what turns a forgotten key into a
+  // build failure. This covers the one input the type cannot: a string that
+  // arrived from outside it, which in this plugin means a device-local
+  // preference written by an older build. 顺序 is the truthful answer to "an
+  // ordering I do not know" (it is the default, and the document's own order),
+  // where throwing would take the whole panel down over a row height.
+  const gapOf = KEY_GAPS[sort] ?? KEY_GAPS.sequence
   const out = [...rows]
-  const rank = (priority: ItemPriority): number => ITEM_PRIORITIES.indexOf(priority)
   out.sort((a, b) => {
-    let gap = 0
-    if (sort === 'due') gap = dueSortKeyOf(a) - dueSortKeyOf(b)
-    else if (sort === 'priority') gap = rank(a.priority) - rank(b.priority)
-    else if (sort === 'recent') gap = b.updatedAt - a.updatedAt
-    else gap = (a.ref > 0 ? a.ref : Number.MAX_SAFE_INTEGER) - (b.ref > 0 ? b.ref : Number.MAX_SAFE_INTEGER)
+    const cohort = numberCohortOf(a) - numberCohortOf(b)
+    if (cohort !== 0) return cohort
+    const gap = gapOf(a, b)
     if (gap !== 0) return gap
+    if (refSortKeyOf(a) !== refSortKeyOf(b)) return refSortKeyOf(a) - refSortKeyOf(b)
     if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
@@ -643,7 +919,7 @@ export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOpt
   const groups = includeDone ? ITEM_STATUS_ORDER : ITEM_STATUS_ORDER.filter(status => status !== 'done')
   const buckets = new Map<ItemStatusView, ItemRecord[]>(groups.map(status => [status, []]))
   for (const item of items) {
-    const status = itemStatusOf(item, item.taskId !== undefined && ctx.running.get(item.taskId) === true)
+    const status = derivedStatusOf(item, ctx.running)
     if (!buckets.has(status)) continue
     if (!itemMatches(item, query, ctx)) continue
     buckets.get(status)?.push(item)
@@ -665,6 +941,35 @@ export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOpt
 /** Whether a row belongs on a working page at all. Finished work is history. */
 export function isLiveItem(item: ItemRecord): boolean {
   return item.status !== 'done'
+}
+
+/**
+ * Whether a row is a MEMBER of the agenda — the one membership test, read by the
+ * agenda fill and by the page rail's count, so the number on the rail is the
+ * number of rows the page actually holds.
+ *
+ * Two exclusions, each one borrowed rather than re-argued:
+ *
+ *  - **FINISHED WORK IS HISTORY.** An agenda that lists work as still to do is
+ *    the one lie an agenda cannot carry, and the reader's own "show me what I
+ *    finished" belongs on the list page where the finished group is.
+ *  - **AN UNFILED CAPTURE IS NOT ON AN AGENDA.** This is the half that used to
+ *    be wrong: a bare note landed in the agenda's 「没有日期」 bucket, while the
+ *    triage strip exempted exactly those rows from its own 「没有日期」 line —
+ *    two surfaces, one predicate, two answers, and the second one was wrong. A
+ *    thought the reader wrote a minute ago has not failed to be scheduled, it has
+ *    not been READ twice yet, and the inbox is the page that holds it. So the
+ *    agenda takes {@link isInboxItem}, the very predicate the triage strip uses,
+ *    and `收件 ∩ 日程 = ∅` becomes true in the code rather than only in the
+ *    product note.
+ *
+ * A filed row with no date still belongs here — it is in the 「没有日期」
+ * bucket, which is a named container rather than nowhere.
+ * @param item - the row.
+ * @returns whether the agenda holds it.
+ */
+export function isAgendaItem(item: ItemRecord): boolean {
+  return isLiveItem(item) && !isInboxItem(item)
 }
 
 // ── the schedule page ──────────────────────────────────────────────────────
@@ -773,11 +1078,10 @@ export function scheduleBucketsOf(
 ): ScheduleBucket[] {
   const filled = new Map<ScheduleBucketId, ItemRecord[]>(SCHEDULE_BUCKETS.map(id => [id, []]))
   for (const item of items) {
-    // Finished rows never reach the agenda, whatever the query says: a day
-    // that lists work as still to do is the one lie an agenda cannot carry,
-    // and the reader's own "show me what I finished" belongs on the list page
-    // where the finished group actually is.
-    if (!isLiveItem(item)) continue
+    // Membership is {@link isAgendaItem} and nothing else: finished work is
+    // history, and an unfiled capture is the inbox's, not a date-shaped hole in
+    // the agenda. The buckets below are then a pure function of the row.
+    if (!isAgendaItem(item)) continue
     if (!itemMatches(item, query, ctx)) continue
     filled.get(scheduleBucketOf(item, ctx.now))?.push(item)
   }
@@ -871,4 +1175,166 @@ function worstOf(rows: readonly ItemRecord[], now: number): number | undefined {
     if (days !== undefined && (worst === undefined || days > worst)) worst = days
   }
   return worst
+}
+
+// ── the numbers the workbench chrome reads ─────────────────────────────────
+
+/**
+ * The three numbers on the page rail, in page order.
+ *
+ * A `Record` keyed by {@link ItemPageId} rather than an array, so a page cannot
+ * be added to the rail without a count and a page cannot be counted twice — the
+ * same closed-Record idiom the sort menu and the group heads use, and for the
+ * same reason: a key that does not exist is a compile error, and a key nobody
+ * reads is a question that will be answered differently by the next surface.
+ */
+export type ItemPageCounts = Readonly<Record<ItemPageId, number>>
+
+/**
+ * How many rows each page holds.
+ *
+ * EVERY COUNT IS A JUDGMENT ALREADY MADE ELSEWHERE, and this function adds no
+ * new one. The inbox is {@link isInboxItem} — the very predicate the agenda's
+ * membership and the triage strip's "no date" line share, so a row cannot be
+ * filed on the rail and unfiled in the strip. The agenda is {@link isAgendaItem},
+ * which is what the agenda itself fills by, so the number on the rail is the
+ * number of rows the page actually holds rather than a second opinion about it.
+ *
+ * AND THE LIST PAGE COUNTS EVERYTHING, INCLUDING FINISHED WORK. That is not an
+ * oversight, it is the product's central promise: completion is a switch inside
+ * the list, never a fourth page, and a rail that quietly stopped counting the
+ * rows a reader finished would be a second, invisible 「已完成」 page. So the
+ * total the header shows is this number, and a filter says 「显示 X 条，共 M 条」
+ * rather than replacing it.
+ *
+ * THERE IS NO CLOCK AND NO CONTEXT IN THE SIGNATURE, and that is the design
+ * rather than an omission. The rail is a map of the DOCUMENT, and a number that
+ * moved with the time of day — or with the search box, or with a board that is
+ * not attached — would be a map that redraws itself under the person following
+ * it. Which of the three dates a row has is the agenda's business; how many rows
+ * the agenda holds is not.
+ *
+ * @param items - every row in the document, tombstones already settled.
+ * @returns one number per page, in page order.
+ */
+export function itemPageCountsOf(items: readonly ItemRecord[]): ItemPageCounts {
+  let inbox = 0
+  let schedule = 0
+  for (const item of items) {
+    if (isInboxItem(item)) inbox += 1
+    if (isAgendaItem(item)) schedule += 1
+  }
+  return { inbox, list: items.length, schedule }
+}
+
+/**
+ * The four group counts, ALWAYS all four.
+ *
+ * The shape is a `Record` over the four derived statuses, which is the model's
+ * way of saying that a surface may not invent a fifth group and may not drop
+ * one: a header that renders only the groups it has rows for is a header that
+ * hides the map of the list, and a detail pane's empty state that counts
+ * differently from the header above it is the same defect in a second place.
+ *
+ * 进行中 is DERIVED, so this count is only as good as the `running` map it is
+ * handed — which is the board's live state, read by the same derivation the row
+ * itself reads. A caller that has no board in front of it (a query answer, a
+ * dry run) passes an EMPTY map, which makes 进行中 zero rather than guessing:
+ * a row that is quietly running must not be counted as 待办 and must never be
+ * counted as 进行中 on a host that cannot see the session.
+ *
+ * @param items - every row in the document.
+ * @param running - card id → whether that card is running, right now.
+ * @returns one count per group, in {@link ITEM_STATUS_ORDER}.
+ */
+export function itemGroupCountsOf(
+  items: readonly ItemRecord[],
+  running: ReadonlyMap<string, boolean>,
+): Readonly<Record<ItemStatusView, number>> {
+  const counts: Record<ItemStatusView, number> = { inProgress: 0, open: 0, blocked: 0, done: 0 }
+  for (const item of items) {
+    counts[derivedStatusOf(item, running)] += 1
+  }
+  return counts
+}
+
+/** The four tiles of the overview, in reading order. */
+export const ITEM_INSIGHT_IDS = ['open', 'overdue', 'today', 'week'] as const
+export type ItemInsightId = typeof ITEM_INSIGHT_IDS[number]
+
+/** One overview tile: how many, and how much of the list that is. */
+export interface ItemInsightTile {
+  /** Stable id, so a surface maps it to a word rather than to a position. */
+  readonly id: ItemInsightId
+  readonly count: number
+  /**
+   * This tile's share of {@link ItemInsight.total}, 0..1 — the fill of a 2px
+   * hairline meter.
+   *
+   * It is a SHARE OF THE LIST and not a gauge: a meter that filled to the brim
+   * for "3 of 3 late" would draw full confidence over the reader's worst day.
+   * With one denominator for all four tiles the numbers are also comparable with
+   * each other, which is the only thing a row of four meters is for.
+   */
+  readonly ratio: number
+}
+
+/** The whole overview: four tiles and the one number they are shares of. */
+export interface ItemInsight {
+  /**
+   * What the tiles are shares OF: the rows that are still live, finished work
+   * included in nothing. A reader's overdue count is a share of what is left to
+   * do, and a list with nothing left has no share to give — which is why `total`
+   * is stated rather than inferred from a ratio.
+   */
+  readonly total: number
+  readonly tiles: readonly ItemInsightTile[]
+}
+
+/**
+ * The overview: how much is left, how much of it is late, what is on today and
+ * what is inside the week.
+ *
+ * FOUR QUESTIONS, FOUR ANSWERS, EACH ONE A COUNT OF WHOLE ROWS — no estimate, no
+ * trend, no comparison with last week. A tile that answered "trending worse"
+ * would need a history this document does not keep, and a number invented from
+ * a history nobody stored is the exact shape of a lie a dashboard tells.
+ *
+ * The buckets come from {@link scheduleBucketOf} rather than from a second set
+ * of date tests, which is what makes "逾期" mean here exactly what "逾期" means
+ * on the agenda: the two late buckets, and nothing else. A gated row is not
+ * overdue and not due — it is waiting on a date the reader set — so it counts
+ * for neither, and saying otherwise would nag about work that cannot be done
+ * today.
+ *
+ * 本周 IS THE SEVEN-DAY HORIZON FROM TODAY (today, tomorrow and the coming week),
+ * not the calendar week: a week that has not started yet answers a question the
+ * reader did not ask, and a horizon is what a personal list is actually
+ * planning on. It deliberately OVERLAPS 今天, because both tiles are read
+ * together and a 本周 that excluded today would make the pair disagree by one
+ * row for no reason.
+ *
+ * @param items - every row in the document.
+ * @param now - the reading clock.
+ * @returns the four tiles and the number they are shares of.
+ */
+export function itemInsightOf(items: readonly ItemRecord[], now: number): ItemInsight {
+  const live = items.filter(isLiveItem)
+  const counts: Record<ItemInsightId, number> = { open: 0, overdue: 0, today: 0, week: 0 }
+  for (const item of live) {
+    // The stored status, deliberately: 进行中 is the same row as 待办 seen from
+    // a running card, and a tile that moved work out of 待办 while the card ran
+    // would make the number rise and fall with the engine rather than with the
+    // reader's work. `isLiveItem` already excluded the finished rows.
+    if (item.status === 'open') counts.open += 1
+    const bucket = scheduleBucketOf(item, now)
+    if (bucket === 'hardOverdue' || bucket === 'behind') counts.overdue += 1
+    if (bucket === 'today') counts.today += 1
+    if (bucket === 'today' || bucket === 'tomorrow' || bucket === 'week') counts.week += 1
+  }
+  const total = live.length
+  return {
+    total,
+    tiles: ITEM_INSIGHT_IDS.map(id => ({ id, count: counts[id], ratio: total === 0 ? 0 : counts[id] / total })),
+  }
 }

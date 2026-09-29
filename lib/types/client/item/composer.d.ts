@@ -1,9 +1,9 @@
-import type { CapturedItem } from './model.ts';
+import { type ItemCapture } from '../../core/item-transitions.ts';
 export interface ItemComposerProps {
     /** The writing clock, so a parse resolves `@today` against a fixed now. */
     readonly now: number;
-    /** Hand the finished capture over. Returning nothing means it was refused. */
-    readonly onSave: (input: CapturedItem) => boolean;
+    /** Hand the finished capture over. Returning `false` means it was refused. */
+    readonly onSave: (input: ItemCapture) => boolean;
 }
 /**
  * The capture box.

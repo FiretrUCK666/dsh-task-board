@@ -19,7 +19,7 @@
  * has nothing to press.
  */
 import { useCallback, useMemo, useRef, useState } from 'react'
-import type { CapturedItem } from './model.ts'
+import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerToken } from './compose-parse.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
@@ -39,8 +39,8 @@ const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], 'item.token.tag' | 'it
 export interface ItemComposerProps {
   /** The writing clock, so a parse resolves `@today` against a fixed now. */
   readonly now: number
-  /** Hand the finished capture over. Returning nothing means it was refused. */
-  readonly onSave: (input: CapturedItem) => boolean
+  /** Hand the finished capture over. Returning `false` means it was refused. */
+  readonly onSave: (input: ItemCapture) => boolean
 }
 
 /**
@@ -56,9 +56,11 @@ export function ItemComposer({ now, onSave }: ItemComposerProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement | null>(null)
   const parsed = useMemo(() => parseComposerInput(text, now), [text, now])
-  // The same emptiness rule the save path uses, so the button's disabled state
-  // can never disagree with what pressing it would do.
-  const saveable = parsed.title.trim() !== '' || parsed.body.trim() !== '' || parsed.steps.length > 0
+  // The SAME emptiness rule the save path uses, read from the shared writer
+  // rather than restated here. Two spellings of "is this blank" are two answers,
+  // and the one that decides whether a button is lit is the one nobody can afford
+  // to have drift from the one that decides what pressing it does.
+  const saveable = !isBlankCapture(parsed)
 
   const save = useCallback(() => {
     // The parse is the save's only source: what the chips showed is what gets
@@ -67,6 +69,10 @@ export function ItemComposer({ now, onSave }: ItemComposerProps) {
       title: parsed.title,
       body: parsed.body,
       notes: '',
+      // Stated, never defaulted. The provenance is the audit trail's handle and
+      // the field table forbids anyone rewriting it afterwards, so a capture box
+      // that left it out would have it guessed on the reader's behalf.
+      origin: 'human',
       status: 'open',
       priority: parsed.priority ?? 'normal',
       steps: parsed.steps,

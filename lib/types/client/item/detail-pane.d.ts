@@ -16,7 +16,7 @@
  * layer.
  */
 import type { ItemRecord } from '../../core/item.ts';
-import { type ItemEdit } from './model.ts';
+import type { ItemPatch } from '../../core/item-transitions.ts';
 export interface ItemDetailProps {
     /** The row on show, or `undefined` before anything is picked. */
     readonly item: ItemRecord | undefined;
@@ -30,18 +30,22 @@ export interface ItemDetailProps {
         readonly label: string;
         readonly value: number;
     }[];
-    /** The most recently touched rows, for the same state. */
+    /** The most recently touched rows, for the same state. `id` travels WITH the
+     *  row: the short number is a name to read, never an address, and picking a
+     *  row by its label is how a list ends up selecting the wrong one. */
     readonly recent: readonly {
+        readonly id: string;
         readonly ref: string;
         readonly title: string;
     }[];
-    readonly onEdit: (edit: ItemEdit) => void;
+    /**
+     * One field write. The patch's shape is the shared writer's, so a field the
+     * model ruled derived or forbidden cannot be written from here even by
+     * accident: the type is derived from the same verdict table the writer uses.
+     */
+    readonly onEdit: (edit: ItemPatch) => void;
     readonly onToggleStep: (stepId: string) => void;
     readonly onRemove: () => void;
-    /** True while the reader has confirmed the delete. */
-    readonly confirmingRemove: boolean;
-    readonly onConfirmRemove: () => void;
-    readonly onCancelRemove: () => void;
     readonly onPickRecent: (id: string) => void;
 }
 /**

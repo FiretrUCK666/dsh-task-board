@@ -92,16 +92,14 @@ AI 应直接改本文并提交，而不是绕过它、只做口头约定、或�
 - 宿主：DeepSeek Harness (DSH) Web GUI，本机运行；一切皆插件，本插件以 cordis 插件形态
   存在。平台与用户名不写死——需要时用 `process.platform`、`os.homedir()` 现场发现。
 - 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则 `os.homedir()` 下的 `.dsh`；
-  激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制全貌」。
-- **生效规则**：host 半区改动需重启 `dsh web`；client 半区改动刷新页面即可。
-- 兄弟插件：本目录所在 `Plugins` 下的平级独立插件，与本项目互不依赖、互不引用。
+  激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制全貌」。**生效规则**：host 半区改动
+  需重启 `dsh web`；client 半区改动刷新页面即可。
 
 ## 版本管理与发布（必守）
 
-本项目是「本地仓库 + 远端 `origin` + npm 包」三处结构。**维护者只描述需求，git 与发布由
-agent 执行**，不必重复交代流程。三处互不自动同步：`git push` 让从 GitHub 源安装的人立刻
-可更新；tag + Release 立版本节点并写更新说明；`npm publish` 更新 npm 上的版本（市场的更新
-提示也读它）。**未发布 ≠ 别人拿不到**——push 之后 GitHub 源安装的人就已经拿到了。
+本项目是「本地仓库 + 远端 `origin` + npm 包」三处结构，**维护者只描述需求，git 与发布由 agent
+执行**。三处互不自动同步：`git push` 让从 GitHub 源安装的人立刻可更新；tag + Release 立版本节点
+并写更新说明；`npm publish` 更新 npm 上的版本。**未发布 ≠ 别人拿不到**。
 
 ### 先确认角色（涉及推送/发布前先做一次）
 
@@ -214,16 +212,15 @@ agent 执行**，不必重复交代流程。三处互不自动同步：`git push
 | 何时变 | 每次 DSH 升级都跟上 | **只在真不兼容时上移**，默认不动 |
 
 **「插件在新版上照常工作」恰恰说明旧下限仍成立——这时不要动它。** 只有两种情况才上移：
-用了只有新版才有的 API，或在旧版上实测加载失败。上移时**两处一起改**（漏一处就会出现
-「README 说支持、装上去却报错」），且 README 那行必须写**具体版本号**。
+用了只有新版才有的 API，或在旧版上实测加载失败。上移时**两处一起改**，且 README 那行必须写
+**具体版本号**。
 
 ### 平台模块表跟随 shell
 
-`shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，决定哪些 import 走
-external、哪些必须内联；与真实 shell 不符会在运行时炸。**每次 DSH 升级都要重新核对**，不要
-假定它长期有效。**核对方法**：在 `<dsh>/node_modules/@deepseek-ai/dsh-web-frontend/dist/assets/`
-下找**含 `__ModuleLoader__` 的那个 bundle**（文件名是内容哈希，所以按符号找、不按文件名找），
-读它附近 `staticModules` 工厂返回的 seed 对象键（`react` 家族 + `@deepseek-ai/dsh-client-*`）。
+`shared/web-platform.ts` 的 `PLATFORM_MODULES` 是浏览器模块表的**镜像**，与真实 shell 不符会在
+运行时炸。**每次 DSH 升级都要重新核对**（核对方法：到 `dsh-web-frontend/dist/assets/` 下找**含
+`__ModuleLoader__` 的那个 bundle**——文件名是内容哈希，按符号找不按文件名找——读它附近
+`staticModules` 工厂返回的 seed 对象键）。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
@@ -278,8 +275,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（看板本身在根 tail；`/items` 是第二份文档；`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
-| host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；`per-record` 布局下单元名就是目录名，而平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**——这就是数据根叫 `dsh_task_board` 而不是 `dsh-task-board` 的原因） |
-| 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名，不改既有文件） |
+| host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；`per-record` 布局下单元名就是目录名，而平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**——这就是数据根叫 `dsh_task_board` 的原因） |
+| 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名） |
 | 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制全貌」） |
 | **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
 | **清单舞台 slot** | `main`，`key: dsh-task-board-items`（与看板同一个座位、不同键） |
@@ -288,8 +285,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
 **本插件没有设置项，这是有意的**：每个行为都已经是使用者自己的选择（任务、定时、巡航、规则
-都是看板上的数据，在界面里直接编辑），而「插件开不开」是插件管理页的开关——再加一个 `Config`
-schema 就是给同一件事再加一个控件。
+都是看板上的数据，在界面里直接编辑），而「插件开不开」是插件管理页的开关。
 
 **本插件向 agent 播报的是行为准则，不是能力清单**：注入 `systemPrompt` 的 `tool:taskboard` 一节，
 **固定文本**（变动会击穿提示缓存）。能力清单一律走 `taskboard_capabilities` 按需查——
@@ -311,23 +307,17 @@ schema 就是给同一件事再加一个控件。
 **前提**：那一行必须是**真实装载的** Loader 条目。否则插件管理页的 `listPlugins()` 会给它
 `readOnlyReason: "unaddressable"`，两个开关都锁住——不是本插件的问题，是组合没把这一行装上。
 
-**插件详情页没有「slot 列表开关」这种东西**：那个页面上的「包含的组件 / Components」是
-**区块标题**，枚举的是 bundle 自己 `cordis.patch.yml` 里的 `insert:` 条目行（每行带 `rowId`
-与 `moduleName`），与 slot 名毫无关系。详情页里真实存在的开关只有两个：右上角「启用 {name}」
-（包级）与每行「启用组件 {name}」（条目级）。只改 `disabled`/`config` 而不 `insert` 的覆盖行
-不出现在那个列表里。
+**插件详情页没有「slot 列表开关」这种东西**：那个页面上的「包含的组件 / Components」是**区块标题**，
+枚举的是 bundle 自己 `cordis.patch.yml` 里的 `insert:` 条目行，与 slot 名毫无关系；详情页里真实的
+开关只有两个（右上角「启用 {name}」与每行「启用组件 {name}」），只改 `disabled`/`config` 而不
+`insert` 的覆盖行不出现在那个列表里。**插件不注册设置页、也不读自己的启用状态**：加载器只求值
+激活的行，所以插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是判断逻辑**。
 
-两者都不需要插件配合：插件不注册设置页、也不读自己的启用状态。加载器只求值激活的行，所以
-插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是判断逻辑**。
-
-`cordis.yml` **不是配置文件**，是 profile 的**空根**（内容就是一段注释加 `[]`），由宿主在启动时
-写成这样；`dsh --profile <名字> --dump-config` 渲染的扁平快照是诊断输出，不要把它留在那里。
-
-挂载：包内 `cordis.patch.yml` 由 `package.json` 的 `dsh.bundle.patch` 指向，安装命令
-（`dsh plugin --profile web add <包名或路径>`）只负责把包登记进 `bundles`。**三种安装方式
-（npm / GitHub / 本地 `link:`）在这件事上完全一致，装完不需要任何手工步骤**，也不需要往
-`cordis.patch.yml` 写任何东西（手写会造成同一个插件出现两条）。界面入口与存储单元在启动时
-自动建立；显示名/说明/图标来自包内 `locale/` 与 `icon.svg`。
+`cordis.yml` **不是配置文件**，是 profile 的**空根**（一段注释加 `[]`），由宿主在启动时写成这样；
+`dsh --profile <名字> --dump-config` 渲染的扁平快照是诊断输出，不要把它留在那里。挂载由
+`package.json` 的 `dsh.bundle.patch` 指向包内 `cordis.patch.yml`，安装命令只负责把包登记进
+`bundles`；**三种安装方式（npm / GitHub / 本地 `link:`）在这件事上完全一致，装完不需要任何
+手工步骤**，手写 `cordis.patch.yml` 反而会造成同一个插件出现两条。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
@@ -379,31 +369,27 @@ schema 就是给同一件事再加一个控件。
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
 
-**每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个
-半区永远不激活，什么也注册不出来。所以 `inject` 只列真正用到的：本插件**不**注入
-`settings` / `configForms`（没有设置项要读写），**也不注入右栏那个服务**（清单曾在打开时顺手收起
-右栏，主舞台面板并不和它争地方，那条连同 `dsh-client-ui-sidebar-right` 一起删了）。
-**留一行没有使用者的服务，和留一个没有使用者的座位是同一种过时。**
-
-该脚本另带反向检查（源码不得引用宿主已撤的成员），用 `--probe-removed` 自测：它拿一组
-已知不存在的成员去扫源码，**必须报红**——否则说明检查本身失效了，而不是源码干净。
-服务节同样自带自测，用 `--probe-services`：它拿一个不可能存在的服务名与一个不可能存在
-的成员各喂一次，两次都必须报红。
+**每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个半区永远不
+激活，什么也注册不出来。所以 `inject` 只列真正用到的（本插件**不**注入 `settings` /
+`configForms`，也**不**注入右栏那个服务——清单曾在打开时顺手收起右栏，主舞台面板并不和它争
+地方，那条连同 `dsh-client-ui-sidebar-right` 一起删了）。**留一行没有使用者的服务，和留一个
+没有使用者的座位是同一种过时。** 该脚本另带两组反向自测（`--probe-removed` / `--probe-services`）：
+拿一组**不可能存在**的成员与服务名各扫一次，**两次都必须报红**——否则说明检查本身失效了，
+而不是源码干净。
 
 **两条使用纪律**（比表本身更重要）：
 
-1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方
-   slot；自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` /
-   `data-dsh-taskboard-panel`），不读写 shell 的节点或类名——那是唯一不能靠文档兜住的
-   脆弱面（shell 换实现即失效，且不报错）。
+1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方 slot；
+   自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
+   不读写 shell 的节点或类名——那是唯一不能靠文档兜住的脆弱面（shell 换实现即失效，且不报错）。
 2. **接口只按名读，绝不 `instanceof`、绝不跨包值导入。** 宿主成员缺失时降级并说真话
    （`openSession` 返回 `false` 让 UI 就近报错），不抛、不静默假装成功。
 
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 
 这一节是**索引**，只回答「有什么、归谁、去哪读」：**机制只有一份，写在它所属的模块注释里**，
-下面出现的每个文件与函数名就是那个位置。**已经成文的规则不在这里重写一遍**——`关键不变量`、
-`DESIGN.md`、硬性规范里各有一份，重复的第三份只会在其中一份改动时变成谎话。
+下面出现的每个文件与函数名就是那个位置。**已经成文的规则不在这里重写一遍**——重复的第三份
+只会在其中一份改动时变成谎话。
 
 ### host 半区（DSH 主进程）
 
@@ -442,38 +428,33 @@ schema 就是给同一件事再加一个控件。
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
 - `src/client/item/`：**清单面板**，与看板同一形状的第二个主舞台面板（`main` key =
   `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口，
-  两图标同构）。**它是一个有内部分页的工作台，不是单页**：页面身份是**写死的产品常量**
-  （`item-view.ts` 的 `ITEM_PAGES`），页面之间换的是「按什么维度看这些条目」，**不是同一批数据的
-  另一种排法**；排法最多是页内一个两态开关，且开关两端共享同一套排序。**空的页不上页面轨**，
-  派生页（标签、停滞、归档、筛选结果）**不进轨**，只给入口。分页、几何与每页的行文法成文在
-  `DESIGN.md` 的清单节，本文不复述。挂上卡的事项才给「问 AI」（`board-ask.ts` → `/board/ask`
-  → 与 `/task` 同一个 `handOver`），**回执说是哪一个会话**，失败也是一句话。
+  两图标同构；**座位见宿主契约表，此处不复述**）。**它是一个有内部分页的工作台**：页面身份是
+  **写死的产品常量**（`ITEM_PAGES`），三页**永远在轨上、各带自己的数，空页写 0 而不消失**——
+  「被问到而答案是零」与「这个问题根本不存在」是两件事；派生页（标签、停滞、归档、筛选结果）
+  **不进轨**，只给入口。几何、分页与每页的行文法成文在 `DESIGN.md` 的清单节，本文不复述。
+  挂上卡的事项才给「问 AI」（`board-ask.ts` → `/board/ask`），**回执说是哪一个会话**；
   **一律不用 Dialog**（`boardBox()` 会锚到看板上去）。`hostLostItems()` 为真时说「host 读不到」，
   **不能显示成「你一条都没有」**。副本只存在**一个** holder（`itemListStage`）上。
-  **归档是派生页**（`items-archive.ts` → `GET /board/items?includeDeleted=1` 与
-  `POST /board/items/restore`）：**恢复是 host 操作而不是客户端提交**——墓碑的戳压在它删掉的那
-  一行之上，原样重提会被墓碑吃掉，接口回 200 而文档没变，所以只有 host 能写那个戳。
-  面板的义务是**恢复没回来就说没回来**，且**「读不到」不得画成「空」**。
-  `src/client/surfaces.ts` 开机读一次 `/board/surfaces` 决定注册哪些面板，**读不到就什么都不收窄**。
+  `src/client/surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
+  **恢复是 host 操作而不是客户端提交**（`items-archive.ts` → `GET /board/items?includeDeleted=1`
+  与 `POST /board/items/restore`）：墓碑的戳压在它删掉的那一行之上，原样重提会被墓碑吃掉，
+  接口回 200 而文档没变，所以只有 host 能写那个戳。**寻址键有两个、各具名、互不为兜底**：界面的
+  一次撤销传 `id`（刚记下的行 `ref === 0`，按编号找不到墓碑），模型的 `item.restore` 传 `ref`
+  （编号是「人说得出口的那个东西」）。面板的义务是**恢复没回来就说没回来**，且**「读不到」不得画
+  成「空」**。
 
-### 设计系统层（成文契约在 `DESIGN.md`，展开解释见代码注释与 spec）
+### 设计系统层（**成文契约全在 `DESIGN.md`**；此处只留改代码前必须先知道的三件事）
 
-- **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）；表面三层；浮层同一 chrome，尺寸按
-  板盒百分比算（**禁 vw/vh**）；Dialog 默认 portal 到板盒，Escape 只在一处管。
-- **圆角几何在根层一次声明**（`corner-shape` 与 `border-radius` 是不继承的两条轴，换肤只重映射
-  `--dsh-tb-corner`）。**禁止逐处补 `corner-shape`，也禁止把 `50%` 换成 px 半径去「修圆」**——
-  半径从来不是问题。
-- **光效**：判定与形态见 `DESIGN.md`；这里只留跨表面的一半——**两口钟各读各的粒度**：卡片光读
-  **任务未读**（打开详情即灭），行/点读**轮次未读**（`sessionUnviewedOf` 是唯一判据），表面只读
-  自己不互相重推。
-- **响应式与触屏**：参照是**表面自身宽度**（板 `dsh-tb` / 面板 `dsh-tb-panel`），**禁
-  `@media(max-width)`**；JS 侧唯一开关是 `useSurfaceNarrow`。
-- **排版/间距/加载**：表单行用具名 areas 让标签让位；说明必须可点可达（**禁只挂 `title=`**）；
-  间距一律 gap 声明、偏移由令牌派生（禁手写像素）；加载三态见 `DESIGN.md`；共用部件复用
-  `ui.tsx` / `Chip` / `Dialog` / `Markdown` / `AutomationEditor`。
-- **拖拽**：`drop-position` / `drag-autoscroll` / `use-flip` 三件套与整条投放契约见 `DESIGN.md`。
-  **已知缺口（触屏）**：换栏走 HTML5 拖放，触屏不触发，而**从工作区拖会话进看板的接收端是同一套**、
-  那一半的**发起端在宿主**，本插件修不了。
+- **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）。**画布层吃画布令牌、内层表面才吃
+  不透明层令牌**（The Opaque Inner Rule）——把画布当内层画，宿主的玻璃皮肤就一点也透不进来。
+  尺寸按板盒百分比算（**禁 vw/vh**）；`Dialog` 默认 portal 到板盒，Escape 只在一处管。
+- **圆角与形状是两条轴**：`corner-shape` 在根层**一次**声明（全表一处也不许补），`--dsh-tb-corner`
+  是换肤的唯一开关。**「圆变方」从来不是半径的问题**，改半径永远修不好它。
+- **判据一律不落在界面上**：行轨定值、字阶、颜色预算、三种日期的四种读法、窄屏逐控件结论，全部
+  成文在 `DESIGN.md` 的对应节，并且多数各带一条机械断言。**改界面前先读那一节，别从代码反推。**
+  响应式**禁 `@media(max-width)`**（JS 侧唯一开关是 `useSurfaceNarrow`）；触屏**只加热区不改几何**；
+  拖拽的投放与排序契约见 `DESIGN.md`（**已知缺口：换栏走 HTML5 拖放，触屏不触发，而那一半的发起端
+  在宿主，本插件修不了**）。
 
 ### 核心层（`src/core/` 纯逻辑）
 
@@ -484,8 +465,19 @@ schema 就是给同一件事再加一个控件。
   （**清单的全部推导：查询文法 / 分组 / 排序 / 行投影 / 三个日期的读法 / 停滞与豁免 / 要处理句子，
   以及页面集 `ITEM_PAGES`**——**界面与模型读的是同一份**，`task-search.ts` 的 `matchItemQuery`
   只是通向它的一道门）· `board-actions`（动作目录，界面与 AI 的唯一同步面，见硬性规范 12）·
-  `task-transitions`（语义层，界面与 AI 调同一套纯函数）· `colors`/`session-list`/
+  `task-transitions`（看板的语义层）· **`item-transitions`（清单的语义层，与界面同一批纯函数：
+  补丁 / 步骤 / 删除 / 恢复 / 快记造行 / 提升成卡）**· `colors`/`session-list`/
   `session-display`/`session-groups`/`comment-thread`/`question-rpc`/`store`。
+- **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集合由 `ITEM_FIELDS`
+  的 `access` 列**推导**（`WritableItemKey`），所以被判 `derived` / `forbidden` 的字段在编译期就
+  patch 不进去。**这层保护有一个失效方向，而且失效时不报错**：`ITEM_FIELDS` 一旦被「简化」回
+  `Record<…, FieldSpec>` 标注（排他性检查照样过、编译照样绿），`access` 拓宽成并集 →
+  `WritableItemKey` 塌成 `never` → `ItemPatch` 变成 `{}` → **`{}` 接受任何对象字面量** →
+  `{ ref: 3 }` 静默通过。**门禁不是变成一堵墙，是变成一扇敞开的门。** 所以那一行
+  `@ts-expect-error` 棘轮是承重的：标注回退时它让 `tsc` 报 `TS2578`，退化从此是**构建失败**。
+  **它放在 core 而不是 spec，因为 spec 要有人记得打开。** 同族的第二个实例在 `item-view.ts`
+  的 `KEY_GAPS`（按 `Record<ItemSort, …>` 建表，加一档排序会红两处：卡语义与卡话）——**手写的
+  「我列全了吗」永远该由类型或文件系统回答，而不是由一个人记得维护。**
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
   抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
   （点卡片）**绝不动轮次戳**——卡片是摘要不是对话；「第 N 次执行」只在真有编号运行时说。
@@ -525,30 +517,26 @@ schema 就是给同一件事再加一个控件。
   同一个谓词（注释却宣称它们是「显示/门禁」之分）——现在只留 `hasOpenRun`。
 - **当前值与历史值必须分开读**（权限那类 bug 的根）：**历史页捎带的 projections 是「这个会话当时
   做过什么」**（待办、token、上下文压力），**描述会话「现在是什么设置」的一律走活投影读**
-  （`SessionConfigFace.readPermission` → `remote.session.projections`）。`/permission` 不开新一轮
-  对话，历史页里那份拷贝永远不刷新——面板曾一直显示改动前的预设。**宿主把两件事分开存**（照
-  `dsh-api-session-controller` 的 typert 契约抄）：`permissions` 投影线上**只有
-  `{ currentValue: string }`**，候选项来自**另一个** `permissionPresets` 目录
-  （`catalog.listPermissions()`）——索要一个 `options` 数组，就把好好的值判成「读不到」。
-  **活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替：「默认」本身
-  就是一句关于会话状态的话。**实时选择器里不得有「取消设置」项**（`/permission` 没这个动作，选了
-  等于没选）；运行配置表单里的「默认」含义不同（本次运行不写预设），留在那里。目录里没有的当前值
-  **照原样显示**，不许悄悄改写成列表里第一项。
+  （`SessionConfigFace.readPermission` → `remote.session.projections`）——`/permission` 不开新一轮
+  对话，所以历史页里那份拷贝永远不刷新，面板曾一直显示改动前的预设。**宿主把两件事分开存**：
+  `permissions` 投影线上**只有 `{ currentValue: string }`**，候选项来自**另一个**
+  `permissionPresets` 目录（`catalog.listPermissions()`）——索要一个 `options` 数组，就把好好的值
+  判成「读不到」。**活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替
+  （「默认」本身就是一句关于会话状态的话）；目录里没有的当前值**照原样显示**，不许悄悄改写成
+  列表里第一项。**实时选择器里不得有「取消设置」项**（`/permission` 没这个动作，选了等于没选）；
+  运行配置表单里的「默认」含义不同（本次运行不写预设），留在那里。
 - **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
-  "or undefined without a retained generation"；`create()` 的文档原文：先 retain 再借）。所以
-  凡是**拥有**一段工作的一次运行、一次续跑、一次新建会话配置，一律经
-  `execution.sessions.hold` 借到**结算为止**（`platform.sessionHoldFactory` 是唯一实现，
-  引用来源标签走 `SessionReferenceSourceMap` 声明合并，不传裸字符串）；`binding` 只留给
-  不得比持有者活得久的读（目标条目的即时投影、结算 reconcile 的一次探测、重命名降级）。
-  借不到就诚实失败：开不了会话按 `configError`/结算失败带着宿主给的原因上报，绝不静默。
-- **自动化不许有「上着却跑不起来」的规则**（死臂）：任务级排期与**会话规则**同一条律，
-  读侧（`ruleReadiness` / `sessionRuleReadiness` 报 blocked）与写侧（`setSchedule` 拒绝
-  上臂、`controller.deadArmedRule` 三条会话写入路径共用）缺一不可。发送方式留空是另一
-  条独立的失败。**送达闸门同理唯一**：`controller.ruleDeliverable`（在场且未归档）由
-  cron 心跳、`fireOnCompleteRules`、`fireLoopRule` 三条路径共用——归档是「可恢复的隐藏」，
-  往收起来的对话发消息等于把它从原生侧边栏的视角里复活。跳过/暂停的档期一律**前滚到
-  下一个匹配**（与任务级排期同一分支），且**不盖 `lastAt`**：那个戳记的是「真的发出去
-  过」，跳过不是发送。
+  "or undefined without a retained generation"）。所以凡是**拥有**一段工作的一次运行、一次续跑、
+  一次新建会话配置，一律经 `execution.sessions.hold` 借到**结算为止**（`platform.sessionHoldFactory`
+  是唯一实现，引用来源标签走声明合并，不传裸字符串）；`binding` 只留给不得比持有者活得久的读
+  （目标条目的即时投影、结算 reconcile 的一次探测、重命名降级）。借不到就诚实失败：开不了会话
+  按 `configError` 带着宿主给的原因上报，绝不静默。
+- **自动化不许有「上着却跑不起来」的规则**（死臂）：任务级排期与**会话规则**同一条律，读侧
+  （`ruleReadiness` / `sessionRuleReadiness` 报 blocked）与写侧（`setSchedule` 拒绝上臂、
+  `controller.deadArmedRule` 三条会话写入路径共用）缺一不可。**送达闸门同理唯一**：
+  `controller.ruleDeliverable`（在场且未归档）由 cron 心跳、`fireOnCompleteRules`、`fireLoopRule`
+  三条路径共用——往收起来的对话发消息等于把它从原生侧边栏的视角里复活。跳过/暂停的档期一律
+  **前滚到下一个匹配**，且**不盖 `lastAt`**：那个戳记的是「真的发出去过」，跳过不是发送。
 - **车道 = 会话**：`isOpenRound` 唯一判定；预算数轮；卡片离进行中唯一判定 `leaveRunningTargetOf`
   （open/live/schedule 三腿），不另起特判。
 - **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 自带 `answer`/`cancel` 时就卡作答（身份守卫：
@@ -595,7 +583,7 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜像 / 草稿 / preSync
    备份**（真相在 host 存储单元），回退模式下它们就是真相——两种模式下用户数据都不因升级丢失。
    首次连上 host 时：host 为空则本地整视图 bootstrap；host 有数据则按 LWW 逐记录并入，分歧的
-   整视图一次性备份到 `dsh.taskBoard.preSync.v1`（只此一次，之后不再产生副本）。
+   整视图一次性备份到 `dsh.taskBoard.preSync.v1`（只此一次）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：**运行时没有任何依赖**（`dependencies` 为空；schema 层随设置项一起去掉了，
@@ -625,20 +613,13 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
     ③ 触屏没有 hover——承载必要信息的说明不能只挂 `title=`，必须可点可达。
 12. **动作目录是界面与模型之间唯一的同步面，改界面必须同时改它**：
     `src/core/board-actions.ts` 是动作目录（一条表，四个表面读它：工具 schema、能力查询、
-    指令规则、覆盖门禁）。两个方向各有各的门禁，缺一不可：
-    - **字段方向是编译期的**：任务补丁的每个字段必须有裁定（`Record<keyof TaskUpdatePatch,
-      FieldSpec>`），少一个键 `tsc` 就失败；
-    - **界面方向是静态扫描的**：`scripts/verify-action-coverage.mjs`（`pnpm verify` 内含）
-      扫出界面调用的每一个 controller public 方法，核对它**要么**在目录里、**要么**在该脚本的
-      `INTERNAL` 表里带一句理由。两者都不是就**报红并指名是哪个方法**——那正是「界面加了
-      功能而模型不知道」。**读投影与视图开关不是动作**，但它们进 `INTERNAL` 时必须写清理由：
-      没有理由的豁免与漏掉一个没有区别。`INTERNAL` 里以 `DEBT: ` 开头的理由是**如实记下的
-      欠账**（人能在界面上做、目录还没收），每次运行都把笔数打出来，让缺口不会烂在看不见的
-      地方。**新写的方法、改名的属性**：两个方向都报红，别把门禁降级成提醒。
-    - **说清不等于说得进去**：一句写在散文里的默认值，门禁读不到；`ParamSpec.default` 里的
-      同一个默认值，门禁与渲染器都读得到。**「说清」只解决了「人读到没读到」，而门禁与渲染器
-      读的是字段——散文里那句话对它们等于不存在。** 所以任何要跨表面同步的判定，都必须落在
-      字段上（「不传 = cron」要写成 `default`，不是写在 `summary` 里）。
+    指令规则、覆盖门禁）。**改界面的任何一处之前先问「目录里有同名同参的动作吗」**：两个方向
+    各有各的门禁（字段方向编译期、界面方向静态扫描），缺一不可，**门禁红了就改实现，别改门禁**。
+    读投影与视图开关不是动作，进 `INTERNAL` 时**必须写清理由**——没有理由的豁免与漏掉一个没有
+    区别；`DEBT: ` 开头的理由是如实记下的欠账，每次运行都把笔数打出来。
+    **说清不等于说得进去**：一句写在散文里的默认值，门禁读不到；`ParamSpec.default` 里的同一个
+    默认值，门禁与渲染器都读得到。**任何要跨表面同步的判定，都必须落在字段上**，不是落在
+    `summary` 里。机制细节与自测方式见 `scripts/verify-action-coverage.mjs` 的头注释。
 13. **共享接线的参数签名就是接口，改它等于改别人的文件。** 模块之间靠参数传递的形状
     （`registerItemList(ctx, itemStage)` 这类）是**接口**，调用方是别人：把两个参数改成一个，
     不会让调用方「顺带更新」，只会让它在自己的时刻坏掉。**要改签名，先把所有调用点找出来**；
@@ -648,13 +629,12 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
     注释再匹配**。遇到一条让实现变得不如以前的检查，先怀疑检查的读法，别先怀疑实现。
 15. **「我没查过」和「我查过」在报告里长得一模一样。** 报告里写过「核了 X、核了 Y」，
     就意味着没核的那几处不会有人替你核——而它们常常正是地基。**核过的逐条列出来，没核的
-    明说没核**：含糊的肯定比一句「这条我没看」贵得多。
+    明说没核**：含糊的肯定比一句「这条我没看」贵。
 
 ## 测试（布局约定）
 
-- **一个 src 模块一个 spec，契约按表面/域分组**（review 页纯逻辑 / card 契约 / host 路由 /
-  拖拽几何 / 端到端 controller），清单以 `tests/` 目录为准。**新增逻辑即配测试**——测试是契约，
-  不是附件；不要随手加文件，先归入对应域的现有 spec。
+- **一个 src 模块一个 spec，契约按表面/域分组**，清单以 `tests/` 目录为准。**新增逻辑即配测试**
+  ——测试是契约不是附件；不要随手加文件，先归入对应域的现有 spec。
 - **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约全状态机
   （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听，首租前 proto 为 undefined）；
   `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实
@@ -667,7 +647,8 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
-  全线失败时依然全绿——这类「假面比现实宽容」的测试比没有测试更危险。
+  全线失败时依然全绿——**「假面比现实宽容」和「假面比现实窄」一样危险**：前者让缺陷隐身，
+  后者把正确的实现报成缺陷。
 - **`task-demand.spec.ts` 钉的是「三处同读一个门」**：`gateOf` / `sessionGateOf` /
   `boardDemandOf` 的每条用例都是一处曾经互相矛盾的表面对；**任何把它退回单条车道的改动
   （加回 `comment === undefined` 过滤）都必须让这里变红**。`session-permission.spec.ts` 同理

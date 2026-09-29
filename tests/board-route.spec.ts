@@ -126,10 +126,21 @@ function fakeDeps() {
     // production path — the one that is actually the interesting part — went
     // untested. Both halves below are the REAL implementations; only the
     // storage and the broadcast belong to the service.
-    restoreItem: async (ref, clientId) => {
-      const carried = deletedItemsOf(items).find(row => row.ref === ref)
-      if (carried === undefined) return undefined
-      const restored = restoredItemOf(items, carried.id, T0 + 1)
+    //
+    // THE ADDRESS IS A UNION, NOT A NUMBER, and that is the whole point of the
+    // change. A tombstone is filed under the row's uuid; the short number is
+    // what a person and a model say out loud. The interface's undo has a uuid
+    // and often NO number — a row captured seconds ago still carries the
+    // document's "not numbered yet" zero — so a restore addressed only by
+    // number could not bring back the row the reader most wants back. Each
+    // caller sends the name it actually holds, and a body carrying both is
+    // refused rather than resolved by preference.
+    restoreItem: async (of, clientId) => {
+      const id = of.kind === 'id'
+        ? of.id
+        : deletedItemsOf(items).find(row => row.ref === of.ref)?.id
+      if (id === undefined) return undefined
+      const restored = restoredItemOf(items, id, T0 + 1)
       if (restored === undefined) return undefined
       items = applyItemsCommit(items, { clientId, items: [restored], changed: [restored.id], deleted: [] }, T0 + 1)
       return restored
@@ -503,6 +514,87 @@ describe('POST /board/items/restore', () => {
     const res = fakeRes()
     await handler(fakeReq('POST', `${BASE}/items/restore`, 'not json', 'text/plain'), res)
     expect(res.state.status).toBe(415)
+  })
+
+  /**
+   * THE CASE THE SECOND NAME EXISTS FOR.
+   *
+   * A row captured seconds ago has no short number yet — the document hands
+   * out numbers, and it has not seen this one. The interface's undo holds a
+   * uuid and nothing else, so a restore addressed only by number had exactly
+   * one way to fail on exactly the row the reader most wants back: the request
+   * went out, the host answered 200, and the document did not change. A 200
+   * that changed nothing is worse than a refusal, because it tells the reader
+   * their row is filed when it is not.
+   */
+  async function withAnUnnumberedDeletedRow() {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const original = row({ id: 'i-fresh', ref: 0, title: '刚记下的那一行' })
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [original], deleted: [] }), fakeRes())
+    await handler(fakeReq('POST', `${BASE}/items`, {
+      clientId: 'c', items: [], deleted: [{ id: 'i-fresh', baseUpdatedAt: original.updatedAt }],
+    }), fakeRes())
+    return { h, handler }
+  }
+
+  it('brings back a row the document has not numbered yet, by its identity', async () => {
+    const { h, handler } = await withAnUnnumberedDeletedRow()
+    expect(h.deps.itemsDoc().items).toEqual([])
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', id: 'i-fresh' }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).restored?.title, 'the undo reported success and left the row in the grave — an answer that changes nothing is a lie').toBe('刚记下的那一行')
+    // The document, not the answer: this is the assertion that catches a 200.
+    expect(h.deps.itemsDoc().items.map(i => i.id)).toEqual(['i-fresh'])
+    expect(h.deps.itemsDoc().tombstones['i-fresh']).toBeUndefined()
+  })
+
+  it('refuses a body that names one row twice, rather than picking one for the caller', async () => {
+    const { h, handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', id: 'i-a', ref: 4 }), res)
+    // HTTP 200 carrying `{ok:false}`: this prefix answers every malformed body
+    // the same way, and a tail that answered differently would be the one a
+    // client could not handle with a single code path.
+    expect(res.state.status).toBe(200)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+    // And a refused restore must not half-apply: the two names agreed here by
+    // accident, and a body that happened to be consistent is not a licence to
+    // restore a row the caller did not choose.
+    expect(h.deps.itemsDoc().items).toEqual([])
+  })
+
+  it('refuses a body that names no row at all', async () => {
+    const { h, handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c' }), res)
+    expect(res.state.status).toBe(200)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+    expect(h.deps.itemsDoc().items).toEqual([])
+  })
+
+  it('says "no grave holds that row" rather than reporting a success with nothing in it', async () => {
+    const { handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/restore`, { clientId: 'c', id: 'i-never-existed' }), res)
+    expect(res.state.status).toBe(200)
+    // `available: true` beside a missing `restored` is the fact "the host is
+    // serving documents and no tombstone holds that id" — two different things
+    // from "the host is not serving documents", and the panel's obligation is to
+    // say which one happened rather than to report a success.
+    expect(valueOf(res).available).toBe(true)
+    expect(valueOf(res).restored).toBeUndefined()
+  })
+
+  it('the tombstone is still keyed by identity, so the probe is the real one', async () => {
+    // The negative control for the case above. If the tombstone were ever keyed
+    // by the short number, the interface's undo would break the moment a row
+    // had none — and the route cases above would still be green, because they
+    // go through `restoredItemOf` whatever it reads. So the key is asserted
+    // here, on the document the real path produced, where the fact lives.
+    const { h } = await withAnUnnumberedDeletedRow()
+    expect(Object.keys(h.deps.itemsDoc().tombstones), 'the grave is not filed under the row identity').toEqual(['i-fresh'])
   })
 })
 

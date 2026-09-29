@@ -86,7 +86,21 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   return config
 }
 import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemTitleOf, type ItemRecord, type ItemStep } from '../../core/item.ts'
+// The checklist's write semantics: the SAME four functions the capture box and
+// the detail pane call. A field write the tool does itself is a second answer to
+// a question two surfaces already share, and the checklist is the second synced
+// document — two writers with two no-op laws is a document whose replicas
+// disagree about which edits happened.
+import {
+  applyItemPatch,
+  applyItemStep,
+  captureItemRecord,
+  isItemListValue,
+  planItemPromotion,
+  readItemStepList,
+  removeItemRecord,
+} from '../../core/item-transitions.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemTagsOf, type ItemRecord } from '../../core/item.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -1089,9 +1103,33 @@ function applyOne(
       return { doc: { ...doc, tasks: doc.tasks.filter(task => task.id !== found.id) }, items, task: found }
     }
     case 'item.create': {
+      // The row is built by the SHARED constructor the capture box also goes
+      // through, so a row the model writes and a row a person writes cannot come
+      // out two ways (step ids, trimming, the neutral tiers, the provenance).
+      if (!isItemListValue(payload.steps) || !isItemListValue(payload.tags)) {
+        return 'steps 与 tags 要么是一份列表，要么别传；现在这个不是列表，所以什么都没写。'
+      }
+      const link = linkOf(payload.taskId)
+      const made = captureItemRecord({
+        title: typeof payload.title === 'string' ? payload.title : '',
+        body: typeof payload.body === 'string' ? payload.body : '',
+        notes: typeof payload.notes === 'string' ? payload.notes : '',
+        origin: 'ai',
+        // Status and priority go through the constructor's neutral fallback
+        // rather than a check here: the catalog's oneOf already fences the model
+        // (checkParams), and the fallback is the same repair the inbound grammar
+        // makes, so a value from a future build costs a tier and not the row.
+        status: payload.status,
+        priority: payload.priority,
+        steps: payload.steps,
+        tags: payload.tags,
+        startsAfter: payload.startsAfter,
+        dueAt: payload.dueAt,
+        hardDueAt: payload.hardDueAt,
+        ...link === undefined ? {} : { taskId: link },
+      }, now, deps.uuid)
       // The row arrives with no number at all: the document mints it, which is
       // the only thing that may hand one out.
-      const made = createItemFrom(payload, deps, now)
       const merged = applyItemsCommit(items, { clientId: 'model', items: [...items.items, made.item], deleted: [] }, now)
       const stored = merged.items.find(item => item.id === made.item.id) ?? made.item
       return { doc, items: merged, item: stored, note: mintedNote(made.mintedSteps) }
@@ -1111,6 +1149,11 @@ function applyOne(
       if (payload.priority !== undefined && !ITEM_PRIORITIES.includes(payload.priority as ItemRecord['priority'])) {
         return `priority 只能是 ${ITEM_PRIORITIES.join(' / ')}，收到的是「${String(payload.priority)}」。`
       }
+      // 整份替换的两件要能被读：写成一个读不出来的形状不是“清空”，是“没说清”，
+      // 按清空处理就是把读者自己写的几行勾选抹掉，还没有一句话告诉他。
+      if (!isItemListValue(payload.steps) || !isItemListValue(payload.tags)) {
+        return 'steps 与 tags 要么是一份列表，要么别传；现在这个不是列表，所以这一条没有动。'
+      }
       // 三时间互不覆盖：没传的沿用，传了空（null 或空串）的是删承诺，传了数字的是新承诺，
       // 传了别的形状的是没说清，沿用旧的不动它。
       const nextInstant = (field: 'startsAfter' | 'dueAt' | 'hardDueAt'): number | undefined => {
@@ -1124,45 +1167,41 @@ function applyOne(
       const nextTaskId = payload.taskId === undefined
         ? found.taskId
         : (payload.taskId === null || payload.taskId === '' ? undefined : (typeof payload.taskId === 'string' ? payload.taskId : found.taskId))
-      const steps = payload.steps === undefined ? undefined : readSteps(payload.steps, deps)
-      const next: ItemRecord = {
-        ...found,
-        title: payload.title === undefined ? found.title : payload.title as string,
-        body: payload.body === undefined ? found.body : payload.body as string,
-        notes: payload.notes === undefined ? found.notes : payload.notes as string,
-        status: payload.status === undefined ? found.status : payload.status as ItemRecord['status'],
-        priority: payload.priority === undefined ? found.priority : payload.priority as ItemRecord['priority'],
-        tags: payload.tags === undefined ? found.tags : readTags(payload.tags),
+      // The step list is read once, against the row it will live in, so the ids
+      // it mints are the row's own deterministic ones.
+      const steps = payload.steps === undefined ? undefined : readItemStepList(payload.steps, found.id)
+      // The patch is a SPREAD, so an explicit undefined clears a promise and an
+      // absent key leaves it alone — and the shared writer stamps `updatedAt`
+      // ONLY when the patch really changed something, which is what keeps a
+      // no-op from burning a revision on every device.
+      const rows = applyItemPatch(items.items, found.id, {
+        title: payload.title as string | undefined,
+        body: payload.body as string | undefined,
+        notes: payload.notes as string | undefined,
+        status: payload.status as ItemRecord['status'] | undefined,
+        priority: payload.priority as ItemRecord['priority'] | undefined,
+        tags: payload.tags === undefined ? found.tags : itemTagsOf(payload.tags),
         startsAfter: nextInstant('startsAfter'),
         dueAt: nextInstant('dueAt'),
         hardDueAt: nextInstant('hardDueAt'),
         taskId: nextTaskId,
-        ...(steps === undefined ? {} : { steps: steps.steps }),
-        updatedAt: now,
-      }
-      // 无变化不烧 revision：内容逐字段比对，步骤按值比对，全等即“已经是这样了”。
-      const sameSteps = steps === undefined || JSON.stringify(steps.steps) === JSON.stringify(found.steps)
-      const unchanged = next.title === found.title
-        && next.body === found.body
-        && next.notes === found.notes
-        && next.status === found.status
-        && next.priority === found.priority
-        && JSON.stringify(next.tags) === JSON.stringify(found.tags)
-        && next.startsAfter === found.startsAfter
-        && next.dueAt === found.dueAt
-        && next.hardDueAt === found.hardDueAt
-        && next.taskId === found.taskId
-        && sameSteps
-      if (unchanged) return { doc, items, item: found, unchanged: true }
+        ...steps === undefined ? {} : { steps: steps.steps },
+      }, now)
+      if (rows === items.items) return { doc, items, item: found, unchanged: true }
+      const next = rows.find(item => item.id === found.id) ?? found
       const note = steps === undefined ? undefined : mintedNote(steps.minted)
       return note === undefined
-        ? { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
-        : { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next, note }
+        ? { doc, items: withItemRows(items, rows), item: next }
+        : { doc, items: withItemRows(items, rows), item: next, note }
     }
     case 'item.delete': {
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
-      return { doc, items: { ...items, items: items.items.filter(item => item.id !== found.id) }, item: found }
+      // The list half only. The tombstone that makes this recoverable is the
+      // merge grammar's, and the receipt says 「已生效」 either way — which is
+      // true, because a tombstoned delete IS the deletion this document means.
+      const rows = removeItemRecord(items.items, found.id)
+      return { doc, items: withItemRows(items, rows), item: found }
     }
     case 'item.step': {
       const found = findItem()
@@ -1179,44 +1218,52 @@ function applyOne(
           : `这一条的步骤是：${found.steps.map(step => `${step.id}${step.done ? '（已勾）' : ''}`).join('、')}。`
         return `这一条里没有 id 为 ${stepId} 的步骤。${names}`
       }
-      const current = found.steps[at]!
-      if (current.done === payload.done) {
-        return { doc, items, item: found, unchanged: true }
-      }
-      // Only that one entry moves. The whole list is NOT rebuilt, so a step the
-      // caller never mentioned cannot be lost to a list it reconstructed from
-      // memory — which is the reason this is its own action.
-      const steps = found.steps.slice()
-      steps[at] = { ...current, done: payload.done }
-      const next: ItemRecord = { ...found, steps, updatedAt: now }
-      return { doc, items: { ...items, items: items.items.map(item => (item.id === found.id ? next : item)) }, item: next }
+      // Only that one entry moves, and a step already in this state is not a
+      // write at all. Both halves of that live in the shared writer, which the
+      // capture box's checkbox calls too.
+      const rows = applyItemStep(items.items, found.id, stepId, payload.done, now)
+      if (rows === items.items) return { doc, items, item: found, unchanged: true }
+      return { doc, items: withItemRows(items, rows), item: rows.find(item => item.id === found.id) ?? found }
     }
     case 'item.promote': {
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
-      if (found.taskId !== undefined) {
-        // Already promoted. Re-promoting would make a second card and leave
-        // the item pointing at whichever one was written last, so this is
-        // reported as the state it is rather than performed again.
-        return `这一条已经挂在卡片上了（${found.taskId}），没有再建一张。`
+      // The four judgments are the SHARED plan, and the panel's 转成卡片 button
+      // goes through the very same one — a row that the model may promote and a
+      // row a person may promote have to be the same question, or the button and
+      // the action disagree about when it is allowed. The plan answers with a
+      // CODE; the sentences below are this surface's, because the reader of a
+      // model receipt is not the reader of a panel.
+      const plan = planItemPromotion(found, {
+        ...payload.cardTitle === undefined ? {} : { cardTitle: String(payload.cardTitle) },
+        ...payload.cardPrompt === undefined ? {} : { cardPrompt: String(payload.cardPrompt) },
+      })
+      if (plan.kind === 'refused') {
+        if (plan.why === 'alreadyLinked') {
+          // Already promoted. Re-promoting would make a second card and leave
+          // the item pointing at whichever one was written last, so this is
+          // reported as the state it is rather than performed again.
+          return `这一条已经挂在卡片上了（${plan.taskId}），没有再建一张。`
+        }
+        return '这条没有标题，正文也是空的——建出来的卡会是一个没有名字的东西。先给它写一句话。'
       }
-      const title = (payload.cardTitle === undefined ? itemTitleOf(found) : String(payload.cardTitle)).trim()
-      if (title === '') return '这条没有标题，正文也是空的——建出来的卡会是一个没有名字的东西。先给它写一句话。'
-      const prompt = (payload.cardPrompt === undefined ? found.body : String(payload.cardPrompt)).trim()
       // The card is created BEFORE the link, and the order is not arbitrary: a
       // half-finished promote that leaves the card without its link shows up as
       // an untouched note, which is indistinguishable from "not promoted yet".
       // The other order would leave the note pointing at a card that does not
       // exist — a state the interface would have to render as a defect.
-      const task = createTask({ title, description: found.notes, prompt, status: 'todo' }, now, deps.uuid())
-      // `itemTitleOf` already borrowed the body's first line for an untitled
-      // row, so the card's title is never blank on this path.
-      const linked: ItemRecord = { ...found, taskId: task.id, updatedAt: now }
+      // The column is `createTask`'s own default ('todo'), not a decision here.
+      const task = createTask({ ...plan.task, status: 'todo' }, now, deps.uuid())
+      // The link is a field write on the checklist row, so it goes through the
+      // same shared writer as every other one — which is also what keeps this op
+      // from appending a SECOND copy of the row instead of editing the one that
+      // is already there.
+      const rows = applyItemPatch(items.items, found.id, { taskId: task.id }, now)
       return {
         doc: { ...doc, tasks: [...doc.tasks, task] },
-        items: { ...items, items: [...items.items, linked] },
+        items: withItemRows(items, rows),
         task,
-        item: linked,
+        item: rows.find(item => item.id === found.id) ?? found,
       }
     }
     case 'item.restore': {
@@ -1268,35 +1315,22 @@ function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveS
 }
 
 /**
- * Read a step list the way the document stores one: `{ id, text, done }`.
+ * The board's live state keyed by card id — the shape every checklist derivation
+ * that needs 进行中 asks for.
  *
- * A step without an `id` is DROPPED SILENTLY by the row grammar — so a model
- * that writes three steps and gets one back would never know two of them
- * vanished. Each missing id is therefore minted here, in order, and the fact
- * is reported back: a repaired row is fine, a silently shortened one is not.
+ * The panel builds the same map from the controller's own `liveStateOf`, and the
+ * two are the same map: one derivation, read from whichever side is asking. A
+ * card this host cannot see is `false` rather than absent, and absent is what
+ * would make a running row read as 待办.
+ *
+ * @param sources - the live host faces.
+ * @param tasks - the cards to read, which is the whole board ledger.
+ * @returns card id → whether that card is running right now.
  */
-function readSteps(raw: unknown, deps: ToolDeps): { steps: ItemStep[]; minted: number } {
-  if (raw === undefined || raw === null) return { steps: [], minted: 0 }
-  if (!Array.isArray(raw)) return { steps: [], minted: 0 }
-  const steps: ItemStep[] = []
-  let minted = 0
-  for (const entry of raw) {
-    if (typeof entry === 'string') {
-      steps.push({ id: deps.uuid(), text: entry, done: false })
-      minted += 1
-      continue
-    }
-    if (typeof entry !== 'object' || entry === null) continue
-    const step = entry as { id?: unknown; text?: unknown; done?: unknown }
-    if (typeof step.text !== 'string' || step.text.trim() === '') continue
-    if (typeof step.id === 'string' && step.id !== '') {
-      steps.push({ id: step.id, text: step.text, done: step.done === true })
-      continue
-    }
-    steps.push({ id: deps.uuid(), text: step.text, done: step.done === true })
-    minted += 1
-  }
-  return { steps, minted }
+function runningMapOf(sources: SessionPostureSources, tasks: readonly TaskRecord[]): Map<string, boolean> {
+  const running = new Map<string, boolean>()
+  for (const task of tasks) running.set(task.id, livenessOf(sources, task) === 'running')
+  return running
 }
 
 /** The sentence a caller shows when steps had to be given ids. */
@@ -1305,65 +1339,28 @@ function mintedNote(minted: number): string | undefined {
 }
 
 /**
- * 清单三时间的读法：只认有限数字，其余一律当没有。
- * 新建时“没有”就是不带承诺；更新时“没有”另有清空语义，由调用方区分
- * “没传”（沿用）与“传了空”（删承诺），这里只回答“这个值能不能算一个时刻”。
+ * The checklist document carrying `rows` — or THE SAME DOCUMENT when the shared
+ * writer moved nothing.
+ *
+ * The identity is the point, exactly as it is for the rows themselves: the batch
+ * loop commits a document only when it is handed a different one, so a receipt
+ * that says 「没有改动」 and a commit that burns a revision would be two
+ * different stories about one keystroke. The copy is here rather than in the
+ * shared writer because the writer promises never to hand back a mutable array
+ * it did not build (a caller's list is `readonly`), while the document owns a
+ * mutable one.
  */
-function readInstant(raw: unknown): number | undefined {
-  return typeof raw === 'number' && Number.isFinite(raw) ? raw : undefined
-}
-
-/**
- * 标签的读法，与行内文法同一条律：只收字符串，裁边，去空，去重，保序。
- * 模型传进来的非字符串与空串在这里掉队，而不是跟着落盘。
- */
-function readTags(raw: unknown): string[] {
-  if (!Array.isArray(raw)) return []
-  const tags: string[] = []
-  for (const entry of raw) {
-    if (typeof entry !== 'string') continue
-    const tag = entry.trim()
-    if (tag === '' || tags.includes(tag)) continue
-    tags.push(tag)
-  }
-  return tags
+function withItemRows(doc: ItemsDoc, rows: readonly ItemRecord[]): ItemsDoc {
+  return rows === doc.items ? doc : { ...doc, items: [...rows] }
 }
 
 /**
  * 挂卡链接的读法：零张或一张，只存链接。
  * 空串与 null 读作“没有挂”，非字符串读作“没有挂”而不是一条断链。
+ * `null` 与空串是"摘掉挂卡"的意思，所以返回 undefined；别的形状不是断链，是没说清。
  */
-function readTaskLink(raw: unknown): string | undefined {
+function linkOf(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw !== '' ? raw : undefined
-}
-
-function createItemFrom(payload: Record<string, unknown>, deps: ToolDeps, now: number): { item: ItemRecord; mintedSteps: number } {
-  const { steps, minted } = readSteps(payload.steps, deps)
-  // 状态与优先级走目录的 oneOf 校验（checkParams 先拦），这里只做兜底：
-  // 未知值回中性档，与入库文法的修法一致，行本身不丢。
-  const status = ITEM_STATUSES.includes(payload.status as ItemRecord['status']) ? payload.status as ItemRecord['status'] : 'open'
-  const priority = ITEM_PRIORITIES.includes(payload.priority as ItemRecord['priority']) ? payload.priority as ItemRecord['priority'] : 'normal'
-  return {
-    mintedSteps: minted,
-    item: {
-    id: deps.uuid(),
-    ref: 0,
-    title: typeof payload.title === 'string' ? payload.title : '',
-    body: typeof payload.body === 'string' ? payload.body : '',
-    notes: typeof payload.notes === 'string' ? payload.notes : '',
-    steps,
-    status,
-    priority,
-    tags: readTags(payload.tags),
-    startsAfter: readInstant(payload.startsAfter),
-    dueAt: readInstant(payload.dueAt),
-    hardDueAt: readInstant(payload.hardDueAt),
-    taskId: readTaskLink(payload.taskId),
-    origin: { source: 'ai', at: now },
-    createdAt: now,
-    updatedAt: now,
-    },
-  }
 }
 
 /* ── the three tools, assembled from the catalog ─────────────────────────── */
@@ -1558,7 +1555,15 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   // someone says a filter "does nothing". The context is built ONCE and the
   // same clock is handed to every row, so one answer cannot disagree with
   // itself about what "stale" or "overdue" means.
-  const itemCtx = itemSearchContext(deps.now())
+  //
+  // The live state goes in with it, and that is not an optimisation: 进行中 is
+  // DERIVED, so without it `status:inProgress` is a filter the interface offers
+  // and this query cannot reproduce — the model would be told "nothing is
+  // running" about a row that is. The map is read through the board's own
+  // derivation (`livenessOf` → `sessionRunningOf`), the same one the card's border
+  // and breathing read, and a session this host cannot see is NOT counted as
+  // running: `unknown` is a real answer, never a guess in the other direction.
+  const itemCtx = itemSearchContext(deps.now(), undefined, runningMapOf(deps.sources, doc.tasks))
   const matchedItems = items.items
     .filter(item => matchItemQuery(item, filter, itemCtx))
     .slice(0, limit)

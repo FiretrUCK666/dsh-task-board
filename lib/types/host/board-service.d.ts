@@ -1,6 +1,7 @@
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts';
 import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
+import type { RestoreAddress } from './board-route.ts';
 import { type RetireOptions, type RetireOutcome } from './data-root.ts';
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts';
 export type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
@@ -211,7 +212,7 @@ export declare class DocumentService {
      */
     commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
     /**
-     * Bring one deleted checklist row back.
+     * Bring one deleted checklist row back, by identity or by short number.
      *
      * WHY THIS IS A SERVICE OPERATION AND NOT A CLIENT COMMIT. A tombstone is
      * stamped one millisecond ABOVE the row it removed, so re-submitting that row
@@ -222,15 +223,25 @@ export declare class DocumentService {
      * nothing else, and the row then rides the ordinary commit path, so restore
      * is a put like any other and needs no second merge rule.
      *
-     * The row is found by its SHORT NUMBER, because that is the name a person
-     * says out loud. A number with no tombstone behind it is not a restore: the
-     * row is either present (nothing to do) or it was never numbered, and either
-     * way "restoring" it would be a second row with a second number.
-     * @param ref - the short number, without its `#`.
+     * THE TWO ADDRESSES DIFFER ONLY IN HOW THE ROW IS FOUND, never in what is
+     * written. By `id` there is no lookup at all: the tombstones are keyed by
+     * identity, so the caller's uuid IS the key — which is what makes a row that
+     * the document has not numbered yet (`ref === 0`) restorable at all, and an
+     * undo gesture cannot know a number nobody has been shown. By `ref` the number
+     * is a NAME, so it has to be looked up among the deletions first. Both end in
+     * the same {@link restoredItemOf}, so the stamp that beats the tombstone is
+     * written by one piece of code.
+     *
+     * An address that matches no tombstone is `undefined`, never a silent
+     * success: the row is either still in the document (nothing to do), never
+     * numbered, or past the tombstone's life — and in all three cases "restoring"
+     * it would be a second row with a second number.
+     *
+     * @param of - which row, named by identity or by short number.
      * @param clientId - who asked, for the broadcast and the activity note.
-     * @returns the restored row, or `undefined` when no tombstone holds that number.
+     * @returns the restored row, or `undefined` when no tombstone holds that row.
      */
-    restoreItem(ref: number, clientId: string): Promise<ItemRecord | undefined>;
+    restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined>;
     /**
      * Acquire or renew the engine lease. Liveness is the leaseState view (an
      * open SSE stream or any board API call keeps the holder alive); a free or

@@ -23,6 +23,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
+import { itemSurfaceSource } from './panel-harness.ts'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
 
 const T0 = 1_700_000_000_000
@@ -50,11 +51,31 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
   }
 }
 
-/** A replica stand-in with just the surface the panel reads. */
+/**
+ * A replica stand-in.
+ *
+ * IT ANSWERS EVERY MEMBER OF THE SURFACE THE PANEL READS, not "just enough to
+ * get a green tick". It used to stand for `ChecklistReplica` with five members
+ * and the panel then grew a sixth read — this device's id, which every host
+ * write on the checklist prefix carries — so the fake was NARROWER than the
+ * thing it stands in for and eighteen cases in this file began throwing
+ * `clientId is not a function` at a panel that was correct.
+ *
+ * The narrow fake is the same hazard as the permissive one, pointed the other
+ * way: a stand-in that is smaller than reality turns a legitimate call into a
+ * crash (so the suite reports a defect that does not exist), while a stand-in
+ * that is BIGGER than reality swallows a call the real host would refuse (so
+ * the suite stays green on a defect that does). Either way the fake has stopped
+ * being a statement about the contract and become a statement about the
+ * implementation, which is the one thing a test double must never be.
+ * `tests/panel-harness.ts` models the same face for the render spec, and the two
+ * are kept in step deliberately rather than by accident.
+ */
 function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}) {
   return {
     view: () => items,
     setItems: () => undefined,
+    clientId: () => 'client-under-test',
     hostLostItems: () => over.hostLost === true,
     isSynced: () => over.synced !== false,
     onRemote: () => () => undefined,
@@ -133,9 +154,20 @@ describe('a row is legible at rest', () => {
   it('says a slipped plan as a slip, in neutral words', () => {
     // The one claim the whole three-date branch exists for. Red is reserved for
     // a missed HARD deadline and nothing else.
-    const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })])
-    expect(html).toContain('落后')
-    expect(html).not.toContain('超期')
+    //
+    // READ THE ROW, NOT THE PAGE, and the reason is specific rather than
+    // stylistic. The claim is about the WORD this row's own date line uses, and
+    // a page-wide search for a forbidden word is not that claim: the overview
+    // strip's own tile is labelled with the same two characters, so the search
+    // started reporting this row as loud because an UNRELATED control elsewhere
+    // on the surface uses the same word — and the cheapest response to that red
+    // is to rename a correct label, which fixes the symptom and destroys the
+    // tile. A gate that punishes a word appearing anywhere is a gate about
+    // vocabulary, not about tone.
+    const row = /<li[^>]*>[\s\S]*?Slipped[\s\S]*?<\/li>/.exec(renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })]))?.[0] ?? ''
+    expect(row, 'the row is not on the page at all — both assertions below would pass on an empty string').not.toBe('')
+    expect(row).toContain('落后')
+    expect(row, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')
   })
 
   it('says a missed hard deadline as an overrun', () => {
@@ -163,11 +195,38 @@ describe('the hand-off appears only where there is a target', () => {
 })
 
 describe('empty is two different facts, and they do not look the same', () => {
-  it('an empty GROUP inside a list that has rows keeps its header', () => {
+  it('an empty GROUP inside a list that has rows keeps its header, its count and nothing else', () => {
     // A group that disappears the moment it empties reads as a broken filter
     // rather than an empty queue, and the reader loses the map of the list.
+    // So the HEADER stays — and the count beside it stays, and says zero.
+    //
+    // THE SENTENCE UNDER IT IS GONE, and this half of the case used to pin the
+    // opposite. 「这一组还没有事项」 was printed once per empty group, so a
+    // document with two empty buckets said the same thing twice, in the middle
+    // of a list that had rows in it — the reader is told a bucket is empty
+    // before they have any reason to ask, and the page reads as though part of
+    // it failed. The count is the statement: a group head that says 0 IS the
+    // sentence, and it is in the one place the reader looks for the map.
     const html = renderPanel([item({ id: 'a', ref: 1, status: 'open' })])
-    expect(html).toContain('这一组还没有事项')
+    // Every bucket is on screen, named, with its number.
+    for (const label of ['进行中', '待办', '受阻']) {
+      expect(html, `the ${label} bucket is missing from a list that still has rows`).toContain(label)
+    }
+    const heads = [...html.matchAll(/itemGroupToggle[^>]*>([\s\S]*?)<\/button>/g)]
+      .map(match => (match[1] ?? '').replace(/<[^>]*>/g, ''))
+    expect(heads.length, 'no group header was rendered at all').toBeGreaterThan(0)
+    // A bucket with nothing in it reports a zero rather than nothing.
+    expect(heads.some(text => /进行中\D*0/.test(text)), `no empty bucket reports 0: ${JSON.stringify(heads)}`).toBe(true)
+    // The three heads together account for every row the document holds, so
+    // the numbers on screen and the number in the header are the same fact told
+    // two ways — a header that says 「共 7 条」 beside three buckets adding up to
+    // 5 is a page disagreeing with itself.
+    const shown = heads.map(text => Number(/(\d+)\s*$/.exec(text)?.[1] ?? Number.NaN))
+    expect(shown.every(Number.isInteger), `a bucket reports no number: ${JSON.stringify(heads)}`).toBe(true)
+    expect(shown.reduce((sum, n) => sum + n, 0), 'the three bucket counts do not add up to the document').toBe(1)
+    // And the sentence that repeated itself is not there any more.
+    expect(html.includes('这一组还没有事项') ? `…${html.slice(Math.max(0, html.indexOf('这一组还没有事项') - 120), html.indexOf('这一组还没有事项') + 40)}…` : 'none',
+      'the per-group emptiness sentence is back').toBe('none')
   })
 
   it('an empty DOCUMENT is not three empty groups', () => {
@@ -280,10 +339,11 @@ describe('the tool card reads the producer, not a memory of it', () => {
 })
 
 describe('the panel draws no judgment of its own', () => {
-  const source = readFileSync(
-    fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)),
-    'utf8',
-  )
+  // The whole SURFACE, not `panel.tsx`: the claim is about the panel as a
+  // surface, and the panel became nine files. A gate wired to one path starts
+  // reporting a move as a defect, and the pressure to fix that is always in the
+  // direction of loosening the gate.
+  const source = itemSurfaceSource()
 
   it('imports the shared derivation layer instead of re-deriving any of it', () => {
     // Every judgment the list draws is made in one file, read by the human

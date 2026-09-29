@@ -19,25 +19,32 @@ import {
   DEFAULT_STALE_DAYS,
   EMPTY_ITEM_QUERY,
   HARD_SOON_DAYS,
+  ITEM_INSIGHT_IDS,
   ITEM_PAGES,
   ITEM_SORTS,
   ITEM_STATUS_ORDER,
   SCHEDULE_BUCKETS,
   datePostureOf,
+  isAgendaItem,
   isInboxItem,
+  itemGroupCountsOf,
+  itemInsightOf,
   itemMatches,
   itemMatchesText,
+  itemPageCountsOf,
   itemRefOf,
   itemRowViewOf,
   itemSlicesOf,
   itemMatchContextOf,
   parseItemQuery,
   scheduleBucketOf,
+  scheduleBucketsOf,
   sortItemsOf,
   staleDaysOf,
   triageLinesOf,
 } from '../src/core/item-view.ts'
 import { itemDateConflict } from '../src/core/item.ts'
+import { compareItemOrder } from '../src/core/items-doc.ts'
 
 const T0 = new Date(2026, 8, 29, 10, 0, 0).getTime()
 const DAY = 86_400_000
@@ -298,6 +305,150 @@ describe('grouping and ordering', () => {
   })
 })
 
+describe('the seven orderings, one case each on the question they exist to answer', () => {
+  it('顺序 IS the document\'s own order, pair by pair, because two devices must not disagree', () => {
+    // THE DEFAULT ORDER IS A CONTRACT WITH THE HOST, not a preference. The
+    // checklist's order is derived (the new-field admission rule kept `order`
+    // out of the model), so a row has exactly one place it can be — and if the
+    // surface's answer and the document's answer differ for even ONE pair, two
+    // replicas holding the same rows render two lists, with nothing red anywhere
+    // and no screenshot on earth that would show it.
+    //
+    // Pair by pair rather than "the arrays are equal", because the arrays can
+    // agree while a pair disagrees: a chain of transpositions can round-trip.
+    // The case is built so the five document keys are all live, so a reader
+    // cannot tell which pair moved.
+    const rows = [
+      row({ id: '1', status: 'open', priority: 'low', ref: 9, createdAt: T0 + 4 * DAY, dueAt: T0 + 4 * DAY }),
+      row({ id: '2', status: 'done', priority: 'urgent', ref: 1, createdAt: T0 }),
+      row({ id: '3', status: 'blocked', priority: 'high', ref: 5, createdAt: T0 + 2 * DAY, dueAt: T0 - DAY }),
+      row({ id: '4', status: 'open', priority: 'urgent', ref: 3, createdAt: T0 + DAY, dueAt: T0 + DAY }),
+      row({ id: '5', status: 'open', priority: 'low', ref: 7, createdAt: T0 + 3 * DAY, dueAt: T0 + 3 * DAY }),
+    ]
+    const ordered = sortItemsOf(rows, 'sequence')
+    for (const a of rows) {
+      for (const b of rows) {
+        if (a.id === b.id) continue
+        const expected = Math.sign(compareItemOrder(a, b))
+        const actual = ordered.findIndex(r => r.id === a.id) - ordered.findIndex(r => r.id === b.id)
+        // The document's own "these keys say nothing" is resolved by the number,
+        // which the surface also ends on — so equal means "same row", which is
+        // only reachable when the two are the same row, excluded above.
+        expect(Math.sign(actual), `the surface puts ${a.id} ${actual < 0 ? 'before' : 'after'} ${b.id}, and the document says the other way`).toBe(expected)
+      }
+    }
+    // And the control: the comparator really does separate this set, so the
+    // pairs above are not all passing on a zero.
+    const signs = rows.flatMap(a => rows.filter(b => a.id !== b.id).map(b => Math.sign(compareItemOrder(a, b))))
+    expect(new Set(signs), 'every pair in the fixture compares equal, so the pair loop above proves nothing').not.toEqual(new Set([0]))
+  })
+
+  it('a row the document has not numbered yet goes to the END of every ordering, never the top', () => {
+    // `ref: 0` is the document's own "nobody has numbered me" sentinel. Sorted
+    // as a number it is the SMALLEST, so every fresh row — and on a replica
+    // every optimistically created row is `ref: 0` — would jump to the top of
+    // the list and shove the reader's own work down the page every time they
+    // typed something.
+    const fresh = row({ id: 'fresh', ref: 0, createdAt: T0 - DAY, updatedAt: T0 - DAY, dueAt: T0 - 5 * DAY })
+    const numbered = row({ id: 'numbered', ref: 1, createdAt: T0 + DAY, updatedAt: T0 + DAY, dueAt: T0 + 30 * DAY })
+    for (const sort of ITEM_SORTS) {
+      const ordered = sortItemsOf([fresh, numbered], sort).map(r => r.id)
+      expect(ordered, `${sort} puts an unnumbered row first — every row the reader has just typed jumps to the top of their own list`).toEqual(['numbered', 'fresh'])
+      // The control, and it is the half that matters: on its own the unnumbered
+      // row still has to be a real answer, not a dropped one.
+      expect(sortItemsOf([fresh], sort).map(r => r.id), sort).toEqual(['fresh'])
+    }
+  })
+
+  it('the title ordering is code-unit, so it is the same answer on every device', () => {
+    // `localeCompare` is the obvious tool and the wrong one: its answer depends
+    // on the device's language, so a phone and a laptop could sort the same
+    // rows into two different lists for no reason a reader could see.
+    //
+    // THE EXPECTED ORDER IS WRITTEN BY HAND, and the ground truth underneath it
+    // is four facts about code units that any device agrees on. Using
+    // `localeCompare` to state the expectation would be asking the thing under
+    // test to grade itself, and it would pass on whatever the platform says:
+    //
+    //   'Apple' < 'apple'    — U+0041 before U+0061
+    //   'apple' < 'ärger'    — U+00E4 is after every ASCII letter
+    //   'ärger' < '中'        — the CJK block starts at U+4E00
+    //   '中文字幕' < '中文标题' — 幕 U+5E55 before 标 U+6807
+    //
+    // And the rule being pinned is a TWO-PASS one: a Latin-1 case fold decides
+    // first, so 'apple' and 'Apple' sit next to each other instead of splitting
+    // the alphabet; the RAW code units decide only when the fold ties, which is
+    // what puts 'Apple' before 'apple' rather than after it.
+    expect('Apple' < 'apple').toBe(true)
+    expect('apple' < 'ärger').toBe(true)
+    expect('ärger' < '中').toBe(true)
+    expect('中文字幕' < '中文标题').toBe(true)
+    const rows = [
+      row({ id: 'cjk-2', ref: 1, title: '中文字幕' }),
+      row({ id: 'lat-1', ref: 2, title: 'apple' }),
+      row({ id: 'cjk-1', ref: 3, title: '中文标题' }),
+      row({ id: 'lat-2', ref: 4, title: 'Apple' }),
+      row({ id: 'umlaut', ref: 5, title: 'Ärger' }),
+    ]
+    expect(sortItemsOf(rows, 'title').map(r => r.id))
+      .toEqual(['lat-2', 'lat-1', 'umlaut', 'cjk-2', 'cjk-1'])
+    // And the fold is doing its job: the two spellings of one word are ADJACENT,
+    // which is the only reason the first pass exists. A locale's answer would
+    // also place them together, so this does not distinguish the two — the four
+    // code-unit facts above do, and they are the part that matters.
+    const ordered = sortItemsOf(rows, 'title').map(r => r.id)
+    expect(ordered.indexOf('lat-2') + 1, 'the case fold did not keep the two spellings together').toBe(ordered.indexOf('lat-1'))
+  })
+
+  it('优先级 puts the loud tier at the TOP, which is the opposite of the enum\'s own order', () => {
+    // The enum is declared lowest-first because that is how the tiers read in a
+    // table. Sorting on it would put the reader's most urgent row at the bottom
+    // of the page — and the direction is not a matter of taste: 顺序 already
+    // puts it at the top, so switching between the two orders would move the
+    // reader's most urgent row from the first line to the last.
+    const rows = [
+      row({ id: 'low', ref: 1, priority: 'low' }),
+      row({ id: 'normal', ref: 2, priority: 'normal' }),
+      row({ id: 'high', ref: 3, priority: 'high' }),
+      row({ id: 'urgent', ref: 4, priority: 'urgent' }),
+    ]
+    expect(sortItemsOf(rows, 'priority').map(r => r.id)).toEqual(['urgent', 'high', 'normal', 'low'])
+    // And the two orders must AGREE about where the loud tier sits, because the
+    // panel's own comment says the scale is "the same one the document's order
+    // uses". Stated as an agreement rather than as a number, so it keeps holding
+    // if a fifth tier is added to the enum.
+    for (const sort of ['sequence', 'priority'] as const) {
+      const ordered = sortItemsOf(rows, sort).map(r => r.id)
+      expect(ordered.indexOf('urgent'), `${sort} does not put the loudest tier first`).toBeLessThan(ordered.indexOf('high'))
+      expect(ordered.indexOf('low'), `${sort} does not put the quietest tier last`).toBeGreaterThan(ordered.indexOf('normal'))
+    }
+  })
+
+  it('the probe bites: a NaN gap is not a total order, and the pair loop is what sees it', () => {
+    // THE DEFECT THIS WHOLE BLOCK EXISTS FOR. Two undated rows both answer
+    // `Infinity`; `Infinity - Infinity` is `NaN`; a comparator that returns
+    // `NaN` makes `Array.prototype.sort` treat the pair as EQUAL and move on —
+    // so those two rows are never ordered against each other at all. The
+    // consequence is not a wrong number, it is a list whose order depends on
+    // the order the rows happened to arrive in, which differs per device.
+    //
+    // Shown here as a comparator, because that is the shape the real code has
+    // and the shape the gate above would catch if it ever came back.
+    const withNaN = (a: number | undefined, b: number | undefined): number => (a ?? Infinity) - (b ?? Infinity)
+    expect(Number.isNaN(withNaN(undefined, undefined)), 'the probe is not reproducing the NaN gap').toBe(true)
+    expect(Number.isNaN(withNaN(1, undefined)), 'the probe is not reproducing the one-sided gap').toBe(false)
+    // And the real function does NOT have it — that is the claim, and it is
+    // what the pair loop above verifies pair by pair rather than in the abstract.
+    const undated = [row({ id: 'u1', ref: 2 }), row({ id: 'u2', ref: 1 })]
+    expect(sortItemsOf(undated, 'due').map(r => r.id)).toEqual(['u2', 'u1'])
+    for (const sort of ITEM_SORTS) {
+      const forward = sortItemsOf(undated, sort).map(r => r.id)
+      const backward = sortItemsOf([...undated].reverse(), sort).map(r => r.id)
+      expect(forward, `${sort} orders two undated rows by input order`).toEqual(backward)
+    }
+  })
+})
+
 describe('the agenda', () => {
   it('is a fixed set of buckets, in reading order', () => {
     // A page that grows a column under demand is a page nobody scans.
@@ -356,5 +507,155 @@ describe('the page set is a closed constant', () => {
     // A rail that grows an entry every time the reader asks a question has
     // turned a map into a log.
     expect([...ITEM_PAGES]).toEqual(['inbox', 'list', 'schedule'])
+  })
+})
+
+describe('the numbers on the rail are facts about the DOCUMENT', () => {
+  const finished = row({ id: 'f', status: 'done' })
+  const unfiled = row({ id: 'u' })
+  const dated = row({ id: 'd', dueAt: T0 + DAY })
+
+  it('the list page counts everything, finished work included', () => {
+    // Completion is a switch INSIDE the list, never a fourth page. A rail that
+    // quietly stopped counting the rows a reader finished would be a second,
+    // invisible 「已完成」 page.
+    expect(itemPageCountsOf([finished, unfiled, dated]).list).toBe(3)
+  })
+
+  it('the inbox counts what the inbox holds, and the agenda counts what the agenda holds', () => {
+    const counts = itemPageCountsOf([finished, unfiled, dated])
+    expect(counts.inbox, 'a row nobody has filed is not on the inbox rail cell').toBe(1)
+    expect(counts.schedule, 'an unfiled capture has no date, so it is not on the agenda — and not in its "no date" tray either').toBe(1)
+  })
+
+  it('and the rail agrees with the pages it counts', () => {
+    // The failure this exists for is a SECOND opinion: the rail is a map of
+    // the document, so its number has to be the number of rows the page
+    // actually holds rather than a re-derivation that can drift.
+    const rows = [finished, unfiled, dated, row({ id: 'x', status: 'blocked' })]
+    const counts = itemPageCountsOf(rows)
+    const ctx = { ...itemMatchContextOf(T0), running: new Map<string, boolean>() }
+    const onAgenda = scheduleBucketsOf(rows, EMPTY_ITEM_QUERY, ctx, 'due').flatMap(b => b.items.map(i => i.id))
+    expect(counts.schedule).toBe(onAgenda.length)
+    expect(counts.inbox).toBe(rows.filter(isInboxItem).length)
+  })
+
+  it('an empty document reads zero on all three, and does not answer one of them', () => {
+    expect(itemPageCountsOf([])).toEqual({ inbox: 0, list: 0, schedule: 0 })
+  })
+
+  it('THE MEMBERSHIP, STATED ONCE: a capture is on the inbox and on no agenda at all', () => {
+    // The two surfaces answered this separately and drifted, so the strip said a
+    // fresh capture is not "unscheduled" while the agenda filed it under exactly
+    // that. One predicate, two consumers, and the cases below are the two
+    // directions of the round trip.
+    for (const capture of [unfiled, row({ id: 'u2', body: '只有正文' })]) {
+      expect(isInboxItem(capture), 'a row with no priority, no date, no tag and no card is still unfiled').toBe(true)
+      expect(isAgendaItem(capture), 'a capture is on an agenda, which is how a row nobody decided about ends up filed under a date nobody chose').toBe(false)
+    }
+    // And the dated row is the other way round, so the predicates are not both
+    // answering false for everything.
+    expect(isAgendaItem(dated)).toBe(true)
+    expect(isInboxItem(dated)).toBe(false)
+  })
+
+  it('the probe bites: a second spelling of the exemption is reported', () => {
+    // A copy inlined at the call site is the drift in its raw form. The shape
+    // below is the one that was really there — "the agenda is everything still
+    // live" — which cannot tell "no date because nobody decided" from "no date
+    // because it was never scheduled", so it files the capture.
+    const shared = (rows: readonly ItemRecord[]): number => rows.filter(isAgendaItem).length
+    const inlined = (rows: readonly ItemRecord[]): number => rows.filter(r => r.status !== 'done').length
+    // Agreement first, on the two rows where the two answers SHOULD agree, so
+    // the control is isolating the spellings rather than a difference in rows.
+    expect(shared([dated])).toBe(1)
+    expect(inlined([dated])).toBe(1)
+    expect(shared([finished])).toBe(0)
+    expect(inlined([finished])).toBe(0)
+    // And disagreement on the capture, which is the one row the two spellings
+    // were written to answer differently.
+    expect(shared([unfiled]), 'a capture is on an agenda').toBe(0)
+    expect(inlined([unfiled]), 'the inline copy filed an unfiled capture — a reader\'s thought landed under a date nobody chose').toBe(1)
+  })
+})
+
+describe('the four group counts are four, whatever the rows happen to be', () => {
+  it('always returns every key, all four, even for an empty document', () => {
+    // A header that renders only the groups it has rows for is a header that
+    // hides the map of the list, and a pane's empty state that counts
+    // differently from the header above it is the same defect in a second
+    // place. The shape being a closed Record is the model's way of saying that
+    // no surface may drop one.
+    expect(Object.keys(itemGroupCountsOf([], new Map())).sort()).toEqual([...ITEM_STATUS_ORDER].sort())
+    expect(itemGroupCountsOf([], new Map())).toEqual({ inProgress: 0, open: 0, blocked: 0, done: 0 })
+  })
+
+  it('a row hanging off a running card counts as 进行中, and off an idle one as 待办', () => {
+    const linked = row({ id: 'l', taskId: 'card-1' })
+    expect(itemGroupCountsOf([linked], new Map([['card-1', true]]))).toEqual({ inProgress: 1, open: 0, blocked: 0, done: 0 })
+    expect(itemGroupCountsOf([linked], new Map([['card-1', false]]))).toEqual({ inProgress: 0, open: 1, blocked: 0, done: 0 })
+  })
+
+  it('a caller with no board in front of it is told nothing is running, rather than being guessed at', () => {
+    // A query answer and a dry run pass an empty map. That must make 进行中
+    // zero — a row that is quietly running must not be counted as 待办, and must
+    // never be counted as 进行中 on a host that cannot see the session.
+    const linked = row({ id: 'l', taskId: 'card-1' })
+    expect(itemGroupCountsOf([linked], new Map()).inProgress).toBe(0)
+  })
+
+  it('the four add up to the document, so the header and the buckets cannot disagree', () => {
+    const rows = [
+      row({ id: 'a' }), row({ id: 'b', status: 'blocked' }), row({ id: 'c', status: 'done' }),
+      row({ id: 'd', taskId: 'card-1' }),
+    ]
+    const counts = itemGroupCountsOf(rows, new Map([['card-1', true]]))
+    expect(Object.values(counts).reduce((sum, n) => sum + n, 0)).toBe(rows.length)
+  })
+})
+
+describe('the overview is four counts of whole rows, and shares of one denominator', () => {
+  const live = row({ id: 'a' })
+  const late = row({ id: 'b', dueAt: T0 - 2 * DAY })
+  const finished = row({ id: 'f', status: 'done', dueAt: T0 - 30 * DAY })
+
+  it('the tiles come in a fixed order, because a tile is named by its id not its position', () => {
+    expect(itemInsightOf([live, late], T0).tiles.map(tile => tile.id)).toEqual([...ITEM_INSIGHT_IDS])
+  })
+
+  it('the denominator is what is left to do, and a list with nothing left has no share to give', () => {
+    expect(itemInsightOf([live, late, finished], T0).total).toBe(2)
+    const empty = itemInsightOf([], T0)
+    expect(empty.total).toBe(0)
+    // Zero, not a division by zero and not NaN: a meter drawn to "full" over an
+    // empty list is the dashboard lying with a straight face.
+    for (const tile of empty.tiles) expect(tile.ratio).toBe(0)
+  })
+
+  it('each ratio is that tile\'s share of the same denominator, so the four are comparable', () => {
+    const insight = itemInsightOf([live, late, row({ id: 'c' })], T0)
+    for (const tile of insight.tiles) expect(tile.ratio).toBe(tile.count / insight.total)
+    expect(insight.tiles.reduce((sum, tile) => sum + tile.count, 0)).toBeGreaterThan(0)
+  })
+
+  it('逾期 means the two late buckets and nothing else, so a gated row is nagged about by neither', () => {
+    // A gated row is waiting on a date the reader set; saying it is overdue
+    // nags about work that cannot be done today.
+    const gated = row({ id: 'g', startsAfter: T0 + 9 * DAY, dueAt: T0 + 20 * DAY })
+    const tiles = itemInsightOf([gated], T0).tiles
+    const byId = new Map(tiles.map(tile => [tile.id, tile.count]))
+    expect(byId.get('overdue')).toBe(0)
+    expect(byId.get('today')).toBe(0)
+  })
+
+  it('本周 deliberately overlaps 今天, because the two tiles are read together', () => {
+    // A 本周 that excluded today would make the pair disagree by one row for no
+    // reason the reader could see. The row's date is T0 itself rather than
+    // "tomorrow", because a date typed as a day lands at local midnight and
+    // T0 + a day is tomorrow — the two cases differ by one bucket, which is
+    // the whole point of pinning the instant.
+    const byId = new Map(itemInsightOf([row({ id: 't', dueAt: T0 })], T0).tiles.map(tile => [tile.id, tile.count]))
+    expect(byId.get('today')).toBe(1)
+    expect(byId.get('week')).toBe(1)
   })
 })
