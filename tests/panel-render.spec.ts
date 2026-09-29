@@ -285,7 +285,37 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
   const bare = (sheet: string): string =>
     sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
-  it('the token IS zeroed under reduced motion, on both surfaces', () => {
+  it('the reduced-motion block is the LAST thing in the sheet, and that is load-bearing', () => {
+    // POSITION, NOT COSMETICS. The block sat in the middle, and at equal
+    // specificity the later declaration wins — so the five selectors it NAMES
+    // (three entrances plus two `120ms` colour tints, all of which spell their
+    // own duration instead of reading the token) were declared after it and all
+    // kept animating. A reader with motion sensitivity got the fade-up anyway, and
+    // every assertion in this file stayed green.
+    //
+    // So the invariant is mechanical: nothing may be declared after the block that
+    // the block is meant to silence. Asserted as an ORDER, because the failure is
+    // an order — and because a comment saying "keep this last" is exactly the kind
+    // of instruction the next edit moves past.
+    const sheet = readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')
+    const last = sheet.lastIndexOf('@media (prefers-reduced-motion: reduce)')
+    expect(last, 'the sheet has no reduced-motion block at all — motion preference is not honoured anywhere')
+      .toBeGreaterThan(0)
+    const after = sheet.slice(last)
+    // Inside the block is fine. After it, only whitespace and comments may appear.
+    const close = after.indexOf('\n}')
+    const tail = close >= 0 ? after.slice(close + 2) : after
+    const declarations = tail
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+      .replace(/@media[^{]*\{[\s\S]*?\n\}/g, '')
+      .trim()
+    expect(declarations,
+      `something is declared AFTER the reduced-motion block, so at equal specificity it wins and the motion is not reduced: ${declarations.slice(0, 200)}`)
+      .toBe('')
+  })
+
+  it('the token IS zeroed under reduced motion, on the view scope', () => {
     const block = (sheet: string): string => {
       const start = sheet.indexOf('@media (prefers-reduced-motion: reduce)')
       return start < 0 ? '' : sheet.slice(start, start + 1400)

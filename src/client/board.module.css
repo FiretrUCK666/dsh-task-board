@@ -4394,137 +4394,7 @@ button.interactionOption:focus-visible,
   box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
-/* --- reduced motion: ONE TOKEN, not a list of names ----------------------------
-   Everything below used to be a hand-written list of every selector that happens
-   to carry a transition or an animation. That is the wrong instrument, and it was
-   failing in four separate ways at once: a selector the list forgot (the whole
-   list panel, which has no block here at all), a selector the list named but a
-   LATER rule out-specified (`.reviewMessage`, `.reviewContext`, `.reviewComment`
-   all sit after this block at equal specificity, so their entrance played), a
-   pseudo-element the list could not reach (`.sessionRow::after`), and a member
-   dropped from a selector list (`.dangerGhostButton` inside a four-name list,
-   `.detail` inside a three-name one — class names are whole tokens, so naming a
-   prefix never covers the longer one).
 
-   Meanwhile 40 of the 42 transitions already read ONE token, `--dsh-tb-motion`.
-   So the policy is now written where the durations come from: the token goes to
-   zero, and every transition that was reading it stops moving. The names below
-   are kept ONLY for the handful that do not read it — the ones spelling a literal
-   duration, and the ones carrying an animation rather than a transition.
-
-   `:where()` on the scope matters twice over: it keeps this block at zero
-   specificity, so it cannot out-rank the rules it is meant to silence, AND it
-   lets the token win against anything that re-declares it further down. */
-@media (prefers-reduced-motion: reduce) {
-  [data-dsh-taskboard-view],
-  [data-dsh-taskboard-view] :where(*),
-  [data-dsh-taskboard-panel],
-  [data-dsh-taskboard-panel] :where(*) {
-    /* THE WHOLE POLICY, IN ONE NUMBER. Every transition on both sheets reads
-       this, so this is what 「尊重系统的减弱动效设置」 actually means here — not
-       a list that has to be updated when someone adds a hover. */
-    --dsh-tb-motion: 0s;
-  }
-
-  /* The ones that spell a duration instead of reading the token, and the ones
-     that animate. Named explicitly, and each is decorative: a colour change, a
-     fade-up, a chevron turn. Nothing below carries information that its static
-     end state does not. */
-  .reviewMessage[data-role='user'] .reviewMessageText,
-  .reviewCommentCancel,
-  .columnTab,
-  .cruisePill,
-  .cruiseMore,
-  .cardQuickRun,
-  .card.dragging {
-    transition: none;
-  }
-
-  .boardHeader,
-  .columns,
-  .thumbBar,
-  .card[data-fresh],
-  .modalBackdrop,
-  .modal,
-  .detail,
-  .review,
-  .reviewMessage,
-  .reviewComment,
-  .reviewContext,
-  .cruisePopover,
-  /* The two drop REJECTIONS are a one-shot flash, not a standing state, so they
-     are stopped outright rather than slowed. */
-  .column[data-dragreject],
-  .sessionDropZone[data-flash],
-  /* …and so is the drop ACCEPTANCE ring, which is the one breath in this file
-     that had no case for surviving: a still accent border plus the focus ring
-     already say 「这一列接得住」, and a drag-hover affordance is the least
-     load-bearing place in the product to be breathing. */
-  .column[data-dropaccept='link'] {
-    animation: none;
-  }
-
-  /* A chevron is an INDICATOR, so it keeps a state change — but a rotation that
-     travels is motion, and the state it reports is also in the group's expanded
-     attribute. The turn becomes a step, which is the reduced-motion translation of
-     the same fact rather than its absence. */
-  .itemGroupChevron {
-    transition-duration: 0s;
-  }
-
-  /* FUNCTIONAL STATE PULSE — EXEMPT, not deleted. The breathing ring says
-     "this is running" / "this is unread"; a still ring reads as "stuck" (the
-     opposite of the truth) and cannot be told apart from a finished card, so
-     the pulse survives reduced-motion the same way the spinner's does: the
-     same animation, slower and gentler. */
-  [data-dsh-taskboard-view] {
-    --dsh-tb-breath: 5s ease-in-out;
-    --dsh-tb-breath-spread: 2px;
-    --dsh-tb-breath-halo: 8px;
-  }
-
-  .dropIndicator {
-    /* Static ring only: the indicator has no entrance animation to strip,
-       this keeps its reduced-motion look hairline-bordered. */
-    box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
-  }
-
-  .sessionDropZone[data-bindactive] {
-    animation: none;
-    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
-  }
-
-  .sessionDropZone[data-flash] {
-    animation: none;
-    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
-  }
-
-  .column[data-dragreject] {
-    animation: none;
-    box-shadow: inset 0 0 0 1px var(--dsh-tb-danger);
-  }
-
-  /* The SPINNER is a functional state indicator, not decoration: a frozen
-     spinner reads as "stuck / not working" — the exact opposite of the truth
-     (the run IS progressing). So it is EXEMPT from the reduced-motion kill and
-     keeps rotating (only calmer). Entrance / hover / FLIP motion above stay
-     suppressed — the distinction is: motion that IS the information survives,
-     motion that only pleases is dropped. */
-  .spinner {
-    animation-duration: 1.4s;
-  }
-
-  /* The bell's arrival ping is the same class of message (it IS the "just
-     arrived" tense): it replays once, slower, then rests as the static dot. */
-  .notifyPulse {
-    animation-duration: 1.8s;
-  }
-
-  /* The demand flash with it (same tense, same law). */
-  .boardDemand[data-fresh] {
-    animation-duration: 1.8s;
-  }
-}
 
 /* --- auto-cruise (board header) ---------------------------------------------- */
 
@@ -7531,4 +7401,148 @@ span.interactionOptions {
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+/* --- reduced motion: ONE TOKEN, not a list of names ----------------------------
+   Everything below used to be a hand-written list of every selector that happens
+   to carry a transition or an animation. That is the wrong instrument, and it was
+   failing in four separate ways at once: a selector the list forgot (the whole
+   list panel, which has no block here at all), a selector the list named but a
+   LATER rule out-specified (`.reviewMessage`, `.reviewContext`, `.reviewComment`
+   all sit after this block at equal specificity, so their entrance played), a
+   pseudo-element the list could not reach (`.sessionRow::after`), and a member
+   dropped from a selector list (`.dangerGhostButton` inside a four-name list,
+   `.detail` inside a three-name one — class names are whole tokens, so naming a
+   prefix never covers the longer one).
+
+   Meanwhile 40 of the 42 transitions already read ONE token, `--dsh-tb-motion`.
+   So the policy is now written where the durations come from: the token goes to
+   zero, and every transition that was reading it stops moving. The names below
+   are kept ONLY for the handful that do not read it — the ones spelling a literal
+   duration, and the ones carrying an animation rather than a transition.
+
+   `:where()` on the scope keeps this block at ZERO specificity, so it cannot
+   out-rank a rule that has more — and that is the other half of why this block
+   LIVES HERE.
+
+   **POSITION IS NOT COSMETIC. THIS BLOCK IS THE LAST THING IN THE FILE ON
+   PURPOSE.** It sat in the middle, and at equal specificity the later rule wins —
+   so the five selectors it NAMES (`.reviewMessage`, `.reviewContext`,
+   `.reviewComment`, and the two `120ms` colour tints) were all declared *after* it
+   and all kept animating. A reader with motion sensitivity got the full
+   fade-up anyway. The split was exactly source order: everything declared before
+   the old position stopped, everything after survived.
+
+   Which makes this a trap with a sign on it: **moving it back into the middle,
+   "where the other overrides live", silently re-breaks the five.** The token
+   cannot save them, because they spell their own durations instead of reading
+   it — that is the whole reason they are named here at all. */
+@media (prefers-reduced-motion: reduce) {
+  [data-dsh-taskboard-view],
+  [data-dsh-taskboard-view] :where(*),
+  [data-dsh-taskboard-panel],
+  [data-dsh-taskboard-panel] :where(*) {
+    /* THE WHOLE POLICY, IN ONE NUMBER. Every transition on both sheets reads
+       this, so this is what 「尊重系统的减弱动效设置」 actually means here — not
+       a list that has to be updated when someone adds a hover. */
+    --dsh-tb-motion: 0s;
+  }
+
+  /* The ones that spell a duration instead of reading the token, and the ones
+     that animate. Named explicitly, and each is decorative: a colour change, a
+     fade-up, a chevron turn. Nothing below carries information that its static
+     end state does not. */
+  .reviewMessage[data-role='user'] .reviewMessageText,
+  .reviewCommentCancel,
+  .columnTab,
+  .cruisePill,
+  .cruiseMore,
+  .cardQuickRun,
+  .card.dragging {
+    transition: none;
+  }
+
+  .boardHeader,
+  .columns,
+  .thumbBar,
+  .card[data-fresh],
+  .modalBackdrop,
+  .modal,
+  .detail,
+  .review,
+  .reviewMessage,
+  .reviewComment,
+  .reviewContext,
+  .cruisePopover,
+  /* The two drop REJECTIONS are a one-shot flash, not a standing state, so they
+     are stopped outright rather than slowed. */
+  .column[data-dragreject],
+  .sessionDropZone[data-flash],
+  /* …and so is the drop ACCEPTANCE ring, which is the one breath in this file
+     that had no case for surviving: a still accent border plus the focus ring
+     already say 「这一列接得住」, and a drag-hover affordance is the least
+     load-bearing place in the product to be breathing. */
+  .column[data-dropaccept='link'] {
+    animation: none;
+  }
+
+  /* A chevron is an INDICATOR, so it keeps a state change — but a rotation that
+     travels is motion, and the state it reports is also in the group's expanded
+     attribute. The turn becomes a step, which is the reduced-motion translation of
+     the same fact rather than its absence. */
+  .itemGroupChevron {
+    transition-duration: 0s;
+  }
+
+  /* FUNCTIONAL STATE PULSE — EXEMPT, not deleted. The breathing ring says
+     "this is running" / "this is unread"; a still ring reads as "stuck" (the
+     opposite of the truth) and cannot be told apart from a finished card, so
+     the pulse survives reduced-motion the same way the spinner's does: the
+     same animation, slower and gentler. */
+  [data-dsh-taskboard-view] {
+    --dsh-tb-breath: 5s ease-in-out;
+    --dsh-tb-breath-spread: 2px;
+    --dsh-tb-breath-halo: 8px;
+  }
+
+  .dropIndicator {
+    /* Static ring only: the indicator has no entrance animation to strip,
+       this keeps its reduced-motion look hairline-bordered. */
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
+  }
+
+  .sessionDropZone[data-bindactive] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
+  }
+
+  .sessionDropZone[data-flash] {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--dsh-tb-accent);
+  }
+
+  .column[data-dragreject] {
+    animation: none;
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-danger);
+  }
+
+  /* The SPINNER is a functional state indicator, not decoration: a frozen
+     spinner reads as "stuck / not working" — the exact opposite of the truth
+     (the run IS progressing). So it is EXEMPT from the reduced-motion kill and
+     keeps rotating (only calmer). Entrance / hover / FLIP motion above stay
+     suppressed — the distinction is: motion that IS the information survives,
+     motion that only pleases is dropped. */
+  .spinner {
+    animation-duration: 1.4s;
+  }
+
+  /* The bell's arrival ping is the same class of message (it IS the "just
+     arrived" tense): it replays once, slower, then rests as the static dot. */
+  .notifyPulse {
+    animation-duration: 1.8s;
+  }
+
+  /* The demand flash with it (same tense, same law). */
+  .boardDemand[data-fresh] {
+    animation-duration: 1.8s;
+  }
 }
