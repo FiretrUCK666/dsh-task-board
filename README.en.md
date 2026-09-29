@@ -174,8 +174,7 @@ Restart `dsh web` afterwards.
   this week), then a **filter bar** — state, priority, tag, date — where each choice writes
   itself into the search box, so what you typed and what you clicked are one thing you can edit
   either way; then the rows, grouped by state. **Seven orderings** (sequence / earliest start /
-  due / hard deadline / priority / created / title), **two row heights** and **multi-select
-  batching** (state, priority, date, ask AI, delete) all live on this page — tick a few rows and
+  due / hard deadline / priority / created / title), **two row heights** and **multi-select  batching** (state, priority, date, ask AI, delete) all live on this page — tick a few rows and
   the batch bar appears. **The inbox deliberately has none of them**: someone who just typed a
   line is still looking at the input, and filtering answers a different question.
 
@@ -185,7 +184,8 @@ Restart `dsh web` afterwards.
   page says the window in a line of its own and a button opens the archive, where one click
   brings the original text back. The capture box
   takes inline
-  syntax: `#tag`, `!1`–`!4` for priority, `@2026-09-30` / `@2026-10-30` for dates, and a leading
+  syntax: `#tag`, `!1`–`!4` for priority, `@2026/12/24` for a full date (slashes — a
+  dashed `@2026-12-24` is **not** a date here and stays in the text as words), and a leading
   `- [ ]` for a step. The parsed result shows as chips **as you type**, and a word that was
   recognised wrongly turns back into plain text when you click it. What the agent does and
   what you do are the same implementation — including ticking one step, turning an item
@@ -196,8 +196,7 @@ Restart `dsh web` afterwards.
   discussed" needs nothing relayed. How many items to write, whether to amend one, whether
   to open a card — the model's own judgement; this plugin fixes no workflow. It looks the
   capability list up on demand instead of carrying it in its prompt, because a stale
-  capability list is worse than none. What the agent does and what you do in the interface
-  are the SAME implementation, so one thing cannot produce two results. A batch runs in
+  capability list is worse than none. A batch runs in
   order, stops at the first failure, rolls back nothing, reports item by item. Actions the
   interface locks down are locked down for the agent too, and it says why — marking a card
   read is the clearest case, because it clears the very gate waiting on you. There is no
