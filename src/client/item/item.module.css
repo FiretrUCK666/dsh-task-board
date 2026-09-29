@@ -1890,14 +1890,26 @@
 }
 
 /* A face with something ON says so on the pill, so a closed pill is still an
-   honest answer to 「is anything filtered」. The press is a hairline plus a wash
-   rather than the accent fill: the page rail already spends the accent fill on
-   「you are here」, and a second filled family in the same bar makes the
-   selection read as decoration. */
+   honest answer to 「is anything filtered」 — and it says it in INK, which is what
+   this rule now spends.
+
+   It used to spend the accent: a hairline in `--dsh-tb-accent` plus a 10% wash
+   of it, **while the comment directly above said it would not** — and the page
+   rail already spends the accent on 「你在这里」, in the same bar. Two filled
+   families in one row, and the sixth position of a budget that says five.
+
+   That is the same oversight, half fixed: the overview tile had its accent press
+   taken away for exactly this reason, and the facet toggle — its twin, one screen
+   away — kept it. **Two rules that say the same thing in different words are one rule, and it gets fixed once.**
+
+   Ink is also the better answer, not merely the cheaper one. The page tab's fill
+   says 「你在这一页」, a position claim. A filter pill saying 「有筛选」 is a state
+   claim, and a state claim is exactly what the ink hierarchy is for: text-1 against
+   the resting text-2, with the wash carrying the rest. */
 .itemFacetToggle[data-active] {
   color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+  border-color: var(--dsh-tb-text-3);
+  background: var(--dsh-tb-hover);
 }
 
 .itemFacetActive {

@@ -1275,22 +1275,62 @@ describe('the colour budget is a budget, counted at the token layer', () => {
    * counting one would make the budget unreachable for a correct sheet.
    */
   function positionsOf(token: string): string[] {
-    const paints = new RegExp(`(?:^|[;\\s])(?:color|background(?:-color)?|border[\\w-]*color|fill|stroke)\\s*:\\s*var\\(${token}\\)(?!\\s*,)`)
-    const selectors = new Set<string>()
+    // A POSITION, NOT A SELECTOR — and that is the second half of what was wrong.
+    //
+    // Counting selectors made the keyboard focus ring cost eighteen positions: one
+    // ring, drawn on eighteen different controls. A budget is a claim about what a
+    // reader SEES, and a reader sees one ring. So the families that are visually
+    // one thing are collapsed by their state, and everything else stands alone.
+    //
+    // The list is short ON PURPOSE. A family that is not named here is counted per
+    // selector, which is the strict reading — so adding a new focus-like state
+    // without naming it costs eighteen, and the budget says so loudly rather than
+    // quietly reinterpreting itself.
+    const FAMILIES: ReadonlyArray<{ readonly key: string; readonly is: (s: string) => boolean }> = [
+      { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) },
+    ]
+    const positions = new Map<string, string[]>()
     for (const rule of declarationRules(css)) {
-      if (paints.test(rule.body)) selectors.add(rule.selector)
+      if (!paintsToken(rule.body, token)) continue
+      const family = FAMILIES.find(entry => entry.is(rule.selector))
+      const key = family === undefined ? rule.selector : family.key
+      const bucket = positions.get(key)
+      if (bucket === undefined) positions.set(key, [rule.selector])
+      else if (!bucket.includes(rule.selector)) bucket.push(rule.selector)
     }
-    return [...selectors]
+    return [...positions.values()].map(group => group.join(' + '))
   }
 
   it('accent, attention and danger each stay inside their stated budget', () => {
     // The budgets are small on purpose. A semantic ink used in eight places is
     // not a signal any more; it is the colour of the product, and the one row
     // that is genuinely urgent arrives in the same ink as the chrome.
+    //
+    // THE READER BELOW SEES EVERY SPELLING, and that is the whole point of this
+    // rewrite. It used to match only a BARE `var(--token)` on
+    // color/background/border*color, which is one of the four ways this sheet
+    // spends a semantic ink — so the count came out at 5 and passed while the
+    // sheet carried 7 real positions: seventeen focus OUTLINES, a `color-mix()`
+    // wash, and an `accent-color` were all invisible to it, and three unlisted
+    // things stood in for three listed ones and landed on exactly the limit. **A
+    // counter that cannot see a spelling reports a number, and the number looks
+    // like an answer.** Each spelling below was proved to still move or paint
+    // when the old reader was green.
+    // SEVEN, and every one of them is named in `DESIGN.md`. It said five while
+    // the sheet carried seven, and the old counter agreed with the record by
+    // coincidence: it could not see `outline` (eighteen focus rings), `color-mix`
+    // or `accent-color`, so three unlisted things stood in for three listed ones
+    // and landed on the number. **A counter that cannot see a spelling reports a
+    // number, and the number looks like an answer.**
+    //
+    // The two focus families are counted apart on purpose: the field's focus is a
+    // border AND a ring, every other control's is a ring only, so they are two
+    // drawings of one idea rather than one drawing. Collapsing them would make the
+    // number smaller than the page, which is the same lie in the other direction.
     const budget: Readonly<Record<string, number>> = {
-      '--dsh-tb-accent': 5,
+      '--dsh-tb-accent': 7,
       '--dsh-tb-attention': 3,
-      '--dsh-tb-danger': 4,
+      '--dsh-tb-danger': 3,
     }
     for (const [token, limit] of Object.entries(budget)) {
       const positions = positionsOf(token)
@@ -1298,23 +1338,64 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     }
   })
 
-  it('the counter bites, and a colour that is only a fallback is not a position', () => {
-    const painted = '.a { color: var(--dsh-tb-accent); }\n.b { border-color: var(--dsh-tb-accent); }\n.c { color: var(--dsh-tb-accent, red); }\n.d { --x: var(--dsh-tb-accent); }\n'
+  it('the counter sees all four spellings, and only the fallback is not a position', () => {
+    // Every shape this sheet actually uses, planted at once.
+    const painted = [
+      '.a { color: var(--dsh-tb-accent); }',
+      '.b { border-color: var(--dsh-tb-accent); }',
+      // the focus ring — `outline` was not in the property list at all, which is
+      // how eighteen declarations stayed invisible
+      '.c:focus-visible { outline: 2px solid var(--dsh-tb-accent); }',
+      // the wash — a `color-mix` of the token is the same ink spent
+      '.d[data-active] { background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent); }',
+      // the native control's tint
+      '.e input { accent-color: var(--dsh-tb-accent); }',
+      // and the two that are NOT positions, for the reason already given
+      '.f { color: var(--dsh-tb-accent, red); }',
+      '.g { --x: var(--dsh-tb-accent); }',
+    ].join('\n')
     const count = (text: string): number => {
       const selectors = new Set<string>()
       for (const rule of declarationRules(text)) {
-        if (/(?:^|[;\s])(?:color|background(?:-color)?|border[\w-]*color)\s*:\s*var\(--dsh-tb-accent\)(?!\s*,)/.test(rule.body)) {
-          selectors.add(rule.selector)
-        }
+        if (paintsToken(rule.body, '--dsh-tb-accent')) selectors.add(rule.selector)
       }
       return selectors.size
     }
-    // Two paint; the fallback does not (the author already answered for the
-    // silent host), and a custom property that merely stores the token paints
-    // nothing at all.
-    expect(count(painted), 'the counter is wrong about which declarations paint').toBe(2)
+    // Five paint: a, b, c, d, e. The fallback does not (the author already
+    // answered for the silent host), and a custom property that merely STORES the
+    // token paints nothing.
+    expect(count(painted), 'the counter is blind to a spelling this sheet uses, so the budget counts the wrong things').toBe(5)
   })
 })
+
+/**
+ * Does this declaration body PAINT the token, in any of the spellings?
+ *
+ * A budget is a claim about what a reader SEES, so the reader has to recognise
+ * every way the ink can reach a surface. The four that matter, and the two that
+ * look like them but are not:
+ *
+ * - a bare `var(--token)` on a colour-bearing property, including `outline` and
+ *   `accent-color`, which a focus ring and a native checkbox both ride on;
+ * - a `color-mix()` OF the token, which is the same ink at a lower alpha and
+ *   therefore the same POSITION — a wash beside a rail is still a wash beside a rail;
+ * - a value that merely STORES the token in a custom property paints nothing;
+ * - a value that uses the token as a FALLBACK (`var(--token, red)`) is the
+ *   author's own answer for a silent host, not a position they spent.
+ *
+ * @param body - one declaration block, comments already stripped.
+ * @param token - the custom property name.
+ * @returns whether the block paints that token.
+ */
+function paintsToken(body: string, token: string): boolean {
+  // After the token comes either `)` (a real use) or `,` (a fallback), so the
+  // lookahead excludes the COMMA. Excluding the paren instead — which reads like
+  // the same guard — rejects every bare `var(--token)` and leaves only the
+  // fallback-shaped ones, which is the exact inverse of the intent.
+  const use = new RegExp(`var\\(\\s*${token.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&')}\\s*(?!\\s*,)`)
+  if (!use.test(body)) return false
+  return /(?:^|[;{\s])(?:color|background(?:-color)?|border[\w-]*color|outline|accent-color|fill|stroke)\s*:/.test(body)
+}
 
 /**
  * THE RENDER ARTIFACT.
