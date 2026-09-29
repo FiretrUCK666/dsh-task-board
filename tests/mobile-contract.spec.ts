@@ -862,6 +862,23 @@ describe('button geometry (one base for every variant)', () => {
     const iconBase = source.indexOf('background: transparent;\n  border: none;')
     expect(bell).toBeGreaterThan(iconBase)
     expect(source.slice(bell, source.indexOf('}', bell))).toContain('var(--dsh-tb-chip-fill)')
+
+    // THE OUTCOME, WHICH THE CASCADE GATE ABOVE CANNOT SEE. Asserting that the
+    // rule comes later proves the chip fill wins; it says nothing about SIZE, and
+    // the bell measured 30×30 against five 28px siblings — one pixel proud above
+    // and below, which reads as a control dropped in rather than one placed.
+    //
+    // The cause was a dead declaration: `.notifyBell` declared 28×28 near the top
+    // of a 7500-line sheet, and `.iconButton` declares 30×30 about 1700 lines
+    // later at the SAME specificity, so the later one won and the 28 was
+    // decorative. So the size is stated in the rule that already exists to beat
+    // `.iconButton`, from the shared token — one number, and a sibling that
+    // changes the control height moves the bell with it.
+    const bellRule = source.slice(bell, source.indexOf('}', bell))
+    expect(bellRule, 'the bell declares no size, so .iconButton decides it and it stands 1px proud of its five siblings')
+      .toMatch(/inline-size:\s*var\(--dsh-tb-button-h\)/)
+    expect(bellRule, 'the bell declares no height, so it is 30x30 while every sibling is 28x28')
+      .toMatch(/block-size:\s*var\(--dsh-tb-button-h\)/)
   })
 
   it('the compact column header is declared ONCE (no dead second padding)', () => {
