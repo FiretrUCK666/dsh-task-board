@@ -71,6 +71,8 @@ import {
   type ItemSelection,
 } from './selection.ts'
 import { ItemBatchBar } from './batch-bar.tsx'
+import { ItemQueryChips } from './query-chips.tsx'
+import { freeTextOf, withFacetToken } from './facets.ts'
 import { InboxPage } from './pages/inbox.tsx'
 import { ListPage } from './pages/list.tsx'
 import { SchedulePage } from './pages/schedule.tsx'
@@ -576,12 +578,30 @@ export function ItemListPanel(props: ItemListPanelProps) {
           </div>
 
           <div className={css.itemSearchRow}>
+            {/* THE BOX HOLDS THE READER'S WORDS, and the qualifiers stand beside
+                it as chips. The STATE is still one string — `prefs.search` is the
+                whole query, the model reads the same grammar, and a reader who
+                wants the raw form can still type it — but `value` is the free-text
+                part, so pressing a facet no longer prints `status:inProgress`
+                into a field labelled 「搜索标题、正文、备注与标签」. On change the
+                typed words are written BACK over whatever qualifiers are on, which
+                is the only place in this surface where a re-serialisation would
+                have been safe: the qualifier set is being re-derived from the
+                tables rather than copied out of the text, and the words the
+                reader typed keep their own capitalisation because they are carried
+                across, never parsed and re-printed. */}
             <input
               className={css.itemSearch}
-              value={prefs.search}
+              value={freeTextOf(prefs.search)}
               placeholder={t('item.search')}
-              aria-label={t('item.search')}
-              onChange={event => choose({ search: event.target.value })}
+              aria-label={t('item.search.label')}
+              onChange={event => { choose({ search: withFacetToken(freeTextOf(prefs.search), event.target.value, true) }) }}
+            />
+            <ItemQueryChips
+              text={prefs.search}
+              tags={items.map(item => item.tags)}
+              onSearch={next => choose({ search: next })}
+              onClearQualifiers={() => choose({ search: freeTextOf(prefs.search) })}
             />
           </div>
 

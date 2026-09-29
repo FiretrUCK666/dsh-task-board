@@ -64,6 +64,55 @@ export declare const ITEM_FACETS: readonly {
     readonly values: readonly FacetValue[];
 }[];
 /**
+ * The part of the query that is the reader TYPING — their words, and nothing else.
+ *
+ * THIS IS THE WHOLE POINT OF THE FUNCTION, so it is worth being explicit about
+ * what it buys. The query is ONE string, and it stays one string: the model reads
+ * the same grammar, and a reader who wants it can still type `status:open` into
+ * the box. What changes is only how the page SHOWS it. Before this, every facet
+ * press printed its own implementation into a field labelled 「搜索标题、正文、
+ * 备注与标签」, so a control showed the reader its source code; now the box holds
+ * the words and the qualifiers stand beside it as chips that say 「状态：进行中」.
+ *
+ * Split on whitespace and keep, because that is the only lossless direction —
+ * `parseItemQuery` lower-cases, so anything derived from it would come back
+ * rewritten under the reader's hands.
+ *
+ * @param text - the whole query, exactly as it stands.
+ * @returns the reader's own words, joined by single spaces.
+ */
+export declare function freeTextOf(text: string): string;
+/**
+ * One qualifier, as the reader sees it.
+ *
+ * `facet` and `value` are the two halves of the chip's own name; `tag` exists
+ * because a tag is the reader's word and has no dictionary entry, and a chip that
+ * reached for one would render `undefined`. `token` is the exact string in the
+ * box, so removing the chip is the same byte-for-byte operation as adding it was.
+ */
+export interface QueryChip {
+    readonly facet: TaskBoardKey;
+    readonly value: TaskBoardKey | null;
+    readonly tag: string | null;
+    readonly token: string;
+}
+/**
+ * The qualifiers in a query, as chips, in a stable order.
+ *
+ * Ordered by FACET and then by the facet's own value order rather than by where
+ * the token happens to sit in the text: a chip row that reorders as the reader
+ * types is a row nobody can learn, and the reader's own words can be in any order
+ * at all. Tokens this module does not recognise are left in the BOX — a qualifier
+ * typed by hand that is not in the tables is still a filter, and quietly hiding it
+ * would be the worst kind of wrong: the list would be filtered with nothing on
+ * screen saying so.
+ *
+ * @param text - the whole query, exactly as it stands.
+ * @param tags - the document's tags, so a tag chip can show the reader's spelling.
+ * @returns one chip per recognised qualifier, in reading order.
+ */
+export declare function queryChipsOf(text: string, tags?: readonly (readonly string[])[]): QueryChip[];
+/**
  * Whether a facet's value is currently in the query.
  *
  * Asked of the PARSE, never of a set this module kept: the box's text is the

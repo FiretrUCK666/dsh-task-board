@@ -96,7 +96,121 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
   },
 ]
 
-/** The status facet's values, keyed the way the model names a group. */
+/**
+ * Every token the FACET EDITS speak, lower-cased.
+ *
+ * This is the one list that decides 「is this word a control or is it the
+ * reader's」, and it is built from the tables above rather than written out, so a
+ * new value cannot be added without this knowing about it. A hand-written list of
+ * prefixes would be one more place for the two to disagree.
+ */
+function qualifierTokensOf(): ReadonlySet<string> {
+  const out = new Set<string>()
+  for (const facet of ITEM_FACETS) {
+    for (const value of facet.values) out.add(value.token.toLowerCase())
+  }
+  return out
+}
+
+const QUALIFIER_TOKENS = qualifierTokensOf()
+
+/** Is this token one the facets write — a control the reader set, not a word? */
+function isQualifierToken(token: string): boolean {
+  const lower = token.toLowerCase()
+  if (QUALIFIER_TOKENS.has(lower)) return true
+  // A tag is a qualifier too, and it is the READER's own word, so it is
+  // recognised by its sigil rather than by a table. `#` on its own is not a tag.
+  return lower.startsWith('#') && lower.length > 1
+}
+
+/**
+ * The part of the query that is the reader TYPING — their words, and nothing else.
+ *
+ * THIS IS THE WHOLE POINT OF THE FUNCTION, so it is worth being explicit about
+ * what it buys. The query is ONE string, and it stays one string: the model reads
+ * the same grammar, and a reader who wants it can still type `status:open` into
+ * the box. What changes is only how the page SHOWS it. Before this, every facet
+ * press printed its own implementation into a field labelled 「搜索标题、正文、
+ * 备注与标签」, so a control showed the reader its source code; now the box holds
+ * the words and the qualifiers stand beside it as chips that say 「状态：进行中」.
+ *
+ * Split on whitespace and keep, because that is the only lossless direction —
+ * `parseItemQuery` lower-cases, so anything derived from it would come back
+ * rewritten under the reader's hands.
+ *
+ * @param text - the whole query, exactly as it stands.
+ * @returns the reader's own words, joined by single spaces.
+ */
+export function freeTextOf(text: string): string {
+  return text.split(/\s+/).filter(part => part !== '' && !isQualifierToken(part)).join(' ')
+}
+
+/**
+ * One qualifier, as the reader sees it.
+ *
+ * `facet` and `value` are the two halves of the chip's own name; `tag` exists
+ * because a tag is the reader's word and has no dictionary entry, and a chip that
+ * reached for one would render `undefined`. `token` is the exact string in the
+ * box, so removing the chip is the same byte-for-byte operation as adding it was.
+ */
+export interface QueryChip {
+  readonly facet: TaskBoardKey
+  readonly value: TaskBoardKey | null
+  readonly tag: string | null
+  readonly token: string
+}
+
+/**
+ * The qualifiers in a query, as chips, in a stable order.
+ *
+ * Ordered by FACET and then by the facet's own value order rather than by where
+ * the token happens to sit in the text: a chip row that reorders as the reader
+ * types is a row nobody can learn, and the reader's own words can be in any order
+ * at all. Tokens this module does not recognise are left in the BOX — a qualifier
+ * typed by hand that is not in the tables is still a filter, and quietly hiding it
+ * would be the worst kind of wrong: the list would be filtered with nothing on
+ * screen saying so.
+ *
+ * @param text - the whole query, exactly as it stands.
+ * @param tags - the document's tags, so a tag chip can show the reader's spelling.
+ * @returns one chip per recognised qualifier, in reading order.
+ */
+export function queryChipsOf(text: string, tags: readonly (readonly string[])[] = []): QueryChip[] {
+  const byTag = new Map<string, string>()
+  for (const list of tags) {
+    for (const tag of list) {
+      const key = tag.trim()
+      if (key !== '' && !byTag.has(key.toLowerCase())) byTag.set(key.toLowerCase(), key)
+    }
+  }
+  const present = new Set(text.split(/\s+/).filter(part => part !== '').map(part => part.toLowerCase()))
+  const chips: QueryChip[] = []
+  for (const facet of ITEM_FACETS) {
+    for (const value of facet.values) {
+      if (!present.has(value.token.toLowerCase())) continue
+      chips.push({ facet: facet.label, value: value.label, tag: null, token: value.token })
+    }
+  }
+  // A tag the reader typed by hand and that this document does not hold is still
+  // a filter on screen, so it gets a chip too — with the spelling THEY used,
+  // because the whole point of the chip is to show their own word back to them.
+  for (const spelled of byTag.values()) {
+    const token = `#${spelled}`
+    if (!present.has(token.toLowerCase())) continue
+    chips.push({ facet: 'item.facet.tag', value: null, tag: spelled, token })
+  }
+  for (const part of text.split(/\s+/)) {
+    const lower = part.toLowerCase()
+    if (lower === '' || !lower.startsWith('#') || lower.length < 2) continue
+    if (byTag.has(lower)) continue
+    if (chips.some(chip => chip.token.toLowerCase() === lower)) continue
+    chips.push({ facet: 'item.facet.tag', value: null, tag: part.slice(1), token: part })
+  }
+  return chips
+}
+
+/**
+ * The status facet's values, keyed the way the model names a group. */
 const STATUS_KEYS: ReadonlySet<string> = new Set(['inProgress', 'open', 'blocked', 'done'])
 
 /**

@@ -602,6 +602,10 @@ export declare const zh: {
     'item.ask.busy': string;
     'item.ask.said': string;
     'item.ask.refused': string;
+    'item.search.label': string;
+    'item.search.remove': string;
+    'item.search.removeFacet': string;
+    'item.search.clearQualifiers': string;
     'item.batch.arm': string;
     'item.batch.armed': string;
     'item.batch.count': string;

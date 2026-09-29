@@ -393,9 +393,15 @@
 /* The justification that used to sit here argued that a full-measure field
    would be a grey bar with a magnifier's worth of meaning in it. That was an
    argument against an uncapped TRACK, and the track is capped now. */
+/* The box and the chips SHARE this row, and the row is a COLUMN because the
+   chips are a second line of their own. It was a bare flex row when the box held
+   the whole query; an `<input>` cannot contain anything, so the split is the only
+   honest way to show one string in two registers — the reader's words in the box,
+   the qualifiers beside it as things that can be taken off. */
 .itemSearchRow {
   grid-area: search;
   display: flex;
+  flex-direction: column;
   min-inline-size: 0;
 }
 
@@ -420,6 +426,89 @@
 
 .itemSearch::placeholder {
   color: var(--dsh-tb-text-3);
+}
+
+/* The qualifiers, said the way a reader names them: 「状态：进行中」 with a way to
+   take it off. They WRAP, so a query with five of them takes two lines rather than
+   a horizontal scrollbar for the whole page — a chip row that scrolls sideways
+   hides half of every chip, and a chip is a filter the reader cannot read. */
+.itemQueryChips {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-block-start: 8px;
+  min-inline-size: 0;
+}
+
+.itemQueryChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  block-size: 24px;
+  padding-inline: 10px 2px;
+  box-sizing: border-box;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+}
+
+.itemQueryChipLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--dsh-tb-text-2);
+}
+
+/* The remove is a × INSIDE the pill, not a second control beside it, so it costs
+   20px of the chip and nothing else. Its hit area is heated on touch in the
+   coarse-pointer block along with every other small control. */
+.itemQueryChipRemove {
+  flex: none;
+  position: relative;
+  inline-size: 20px;
+  block-size: 20px;
+  padding: 0;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1;
+  color: var(--dsh-tb-text-3);
+  background: none;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  cursor: pointer;
+}
+
+.itemQueryChipRemove:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.itemQueryChipRemove:focus-visible,
+.itemQueryClear:focus-visible {
+  outline: 2px solid var(--dsh-tb-accent);
+  outline-offset: 1px;
+}
+
+.itemQueryClear {
+  flex: none;
+  position: relative;
+  padding: 0 4px;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--dsh-tb-text-3);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+
+.itemQueryClear:hover {
+  color: var(--dsh-tb-text-1);
 }
 
 /* THE FOCUS RING IS ONE POSITION, painted by one rule for every field on this

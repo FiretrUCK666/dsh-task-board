@@ -684,6 +684,85 @@ describe('a press is a change to the document, not a change to the menu', () => 
   })
 })
 
+describe('the search box does not print the grammar', () => {
+  /**
+   * THE LARGEST SINGLE REASON THE PAGE READ AS MACHINE-MADE, and it was one
+   * binding. The query is one string and it stays one string — the model reads the
+   * same grammar, and a reader who wants the raw form can type it. But the field
+   * was bound to the WHOLE query, so every facet press printed its own
+   * implementation into a field labelled 「搜索标题、正文、备注与标签」:
+   * `status:inProgress`, `has:hardOverdue`, `p1`. A control showing the reader its
+   * source code is a control that has not been finished.
+   *
+   * So the split is enforced here on the BINDING, not on the strings: the box
+   * takes the free-text half, and the qualifiers are DERIVED from the same string
+   * into chips. A gate on the strings would have to enumerate every token, and the
+   * next value added to a facet table would slip past it; a gate on the binding
+   * cannot be outrun, because the defect WAS the binding.
+   */
+  const panel = code(read('src/client/item/panel.tsx'))
+
+  it('the field is bound to the free-text half, not to the whole query', () => {
+    const field = /<input[^>]*className=\{css\.itemSearch\}[\s\S]{0,400}?\/>/.exec(panel)?.[0] ?? ''
+    expect(field, 'the search field is not where this gate expected it — the markup moved and this is now checking nothing').not.toBe('')
+    const bound = /value=\{([^}]*)\}/.exec(field)?.[1] ?? ''
+    expect(bound, 'the search field has no value binding at all').not.toBe('')
+    expect(bound, 'the field is bound to the whole query, so every facet press prints its own token into it')
+      .toMatch(/freeTextOf\(/)
+    expect(bound, 'the field was bound to the raw query again').not.toBe(/^prefs\.search$/)
+  })
+
+  it('the chips are DERIVED from that same string, and clearing them keeps the reader\'s words', () => {
+    expect(panel, 'the query is written to state somewhere other than the one string it was always in')
+      .toMatch(/<ItemQueryChips[\s\S]{0,400}?text=\{prefs\.search\}/)
+    expect(panel, 'clearing the qualifiers also throws away what the reader typed')
+      .toMatch(/onClearQualifiers=\{\(\) => choose\(\{ search: freeTextOf\(prefs\.search\) \}\)\}/)
+  })
+
+  it('pressing a facet does NOT print its token into the box, and the chip says it in words', () => {
+    // THE DEFECT, EXERCISED RATHER THAN INSPECTED. The gates above read the
+    // binding; this presses the control, because the thing a reader notices is
+    // what the field says afterwards. One press, three claims: the field still
+    // holds only the reader's words, a chip appears naming the value the way a
+    // person would, and the reader's own words are untouched by it.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const box = (): HTMLInputElement => panel.surface.querySelector('input') as HTMLInputElement
+      // React controls this input, so assigning `.value` writes to the DOM node
+      // without going through the change handler it listens to — the field stays
+      // empty and the rest of the gate is measuring nothing. The native setter is
+      // what a real keystroke ends up calling.
+      const nativeSetter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
+      expect(nativeSetter, 'this environment has no input value setter to drive the field with').toBeDefined()
+      act(() => {
+        nativeSetter?.call(box(), 'Gallery')
+        box().dispatchEvent(new Event('input', { bubbles: true }))
+      })
+
+      // Press the 待办 value in the status face.
+      const chip = findByText(panel.surface, '待办')
+      expect(chip, 'the status face offers no value to press, so this gate is asserting nothing').not.toBeNull()
+      act(() => { chip?.click() })
+
+      expect(box().value, 'the field printed a grammar token into itself, so the control showed the reader its own source')
+        .not.toMatch(/status:|has:|^p[1-4]$|^\#/)
+      expect(box().value, "the reader's own word was thrown away by a facet press").toContain('Gallery')
+      const chips = panel.surface.querySelector('[class*="itemQueryChips"]')
+      expect(chips, 'the qualifier is filtering the list with nothing on screen saying what is filtering it').not.toBeNull()
+      expect(chips?.textContent ?? '', 'the chip is not naming the value the way a reader would').toContain('待办')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the probe bites: a box bound to the raw query is reported', () => {
+    const binding = (source: string): string => /value=\{([^}]*)\}/.exec(source)?.[1] ?? ''
+    const raw = 'const x = <input className={css.itemSearch} value={prefs.search} />'
+    expect(binding(raw), 'the probe did not bite — the detector cannot see a raw binding').toBe('prefs.search')
+    expect(binding(raw), 'a box bound to the whole query passed as a split one').not.toMatch(/freeTextOf\(/)
+  })
+})
+
 describe('the row menu is placed by arithmetic, not by hope', () => {
   /**
    * The pure kernel, imported so a missing module is ONE finding rather than a
