@@ -23,6 +23,8 @@
 
 import { spawnSync } from 'node:child_process'
 import { writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 
 function git(args, cwd) {
   const r = spawnSync('git', args, { cwd, encoding: 'utf8', windowsHide: true })
@@ -67,7 +69,14 @@ function main() {
   if (subjects.length === 0) lines.push('（该区间无提交记录）')
   else for (const s of subjects) lines.push(`- ${s}`)
   lines.push('', `**完整改动**：${compare}`, '')
-  const target = outPath ?? `./${tag}-notes.md`
+  // THE DEFAULT GOES TO THE OS TEMP DIRECTORY, and it is the same defect the
+  // release workflow had: `verify-standalone.mjs` enumerates the repository root
+  // and refuses a file the project does not declare, so a script whose job is to
+  // produce a scratch file must not produce it there. Writing `./${tag}-notes.md`
+  // by default meant that running this by hand — which is how anyone reads the
+  // notes before publishing — left a file that made the very next `pnpm verify`
+  // fail. The caller may still pass any path; the default just stops being a trap.
+  const target = outPath ?? join(tmpdir(), `${tag}-notes.md`)
   try {
     writeFileSync(target, lines.join('\n'), { encoding: 'utf8' })
   } catch (error) {

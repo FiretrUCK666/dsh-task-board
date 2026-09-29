@@ -95,13 +95,30 @@ jobs:
 
       # GitHub Release 起草中文说明：提交记录本来就是中文人话，收集即正文。
       # 无上一标签的首版也能起草（全量提交），不会交英文白卷。
+      #
+      # THE NOTES GO TO `$RUNNER_TEMP`, NOT TO THE REPOSITORY ROOT, and that is the
+      # whole reason this step does not break the next one. The notes used to be
+      # written to `notes.md` in the checkout, and `npm publish` runs
+      # `prepublishOnly` → `pnpm verify` → `verify-standalone.mjs`, which ENUMERATES
+      # the root and refuses a file the project does not declare. So the step wrote
+      # the file and the very next step refused to publish because of it: v0.8.8's
+      # publish died on `the repository root carries files it does not declare:
+      # notes.md` after every real gate had already passed.
+      #
+      # The fix is HERE and not in the allow-list. That check's own comment says why
+      # — 「the allow-list is the project's own declaration files, not a pattern: a
+      # pattern would have let this through, which is how it got here」 — and adding
+      # `notes.md` to it would be doing the thing it documents. A file nobody
+      # declared is the same defect whether a person left it or a step did, and the
+      # step can simply write somewhere the gate is not looking.
       - name: Create GitHub Release (idempotent)
         run: |
+          NOTES="${RUNNER_TEMP}/release-notes.md"
           if gh release view "${GITHUB_REF_NAME}" >/dev/null 2>&1; then
             echo "Release ${GITHUB_REF_NAME} already exists, skipping."
           else
-            node scripts/draft-release-notes.mjs "${GITHUB_REF_NAME}" notes.md
-            gh release create "${GITHUB_REF_NAME}" --notes-file notes.md --title "${GITHUB_REF_NAME}"
+            node scripts/draft-release-notes.mjs "${GITHUB_REF_NAME}" "$NOTES"
+            gh release create "${GITHUB_REF_NAME}" --notes-file "$NOTES" --title "${GITHUB_REF_NAME}"
           fi
         env:
           GH_TOKEN: ${{ github.token }}
