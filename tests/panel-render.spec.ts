@@ -176,7 +176,7 @@ function unownedBoardTransitions(sheet: string): { selector: string; value: stri
       const stops = /(?:^|[;{\s])transition\s*:\s*none/.test(rule.body)
         || /(?:^|[;{\s])transition-duration\s*:\s*0s/.test(rule.body)
       if (!stops) continue
-      for (const part of rule.selector.split(',')) silenced.add(part.trim().replace(/\s+/g, ' '))
+      for (const part of selectorName(rule.selector).split(',')) silenced.add(part.trim())
     }
   }
   // The policy's own `transition: none` IS the naming, so the policy is not
@@ -185,9 +185,27 @@ function unownedBoardTransitions(sheet: string): { selector: string; value: stri
   return declarationRules(outside)
     .filter(rule => !/var\(--dsh-tb-motion\)/.test(rule.body))
     .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])transition\s*:\s*([^;}]+)/g)]
-      .map(call => ({ selector: rule.selector, value: (call[1] ?? '').trim() })))
+      .map(call => ({ selector: selectorName(rule.selector), value: (call[1] ?? '').trim() })))
     .filter(found => ![...silenced].some(named =>
       named === found.selector || /^[:[]/.test(named.slice(found.selector.length))))
+}
+
+/**
+ * A rule's selector, without whatever at-rule prelude the reader glued onto it.
+ *
+ * `declarationRules` takes the text between the previous `}` and this `{`, so a
+ * rule written inside an at-rule can arrive carrying the at-rule's own name —
+ * `@media (prefers-reduced-motion: reduce) .columnEmpty` for a rule that is not
+ * in that block at all. That is harmless for an `.includes` or a `.test` and
+ * actively misleading for anything that compares a selector for EQUALITY or
+ * prints one to a reader, which is why the trimming lives here rather than in
+ * the shared reader: changing that one would merge two same-named rules from
+ * different at-rules into a single key, and the colour budget counts KEYS.
+ * @param selector - the selector half as the reader returned it.
+ * @returns the selector proper.
+ */
+function selectorName(selector: string): string {
+  return selector.split('{').pop()?.trim().replace(/\s+/g, ' ') ?? ''
 }
 
 /** Whether a rule's block says a class may give way rather than overflow. */
@@ -233,6 +251,16 @@ describe('the panel renders against the host it will actually run in', () => {
     const boardOnly = readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8')
     const leftover = [...boardOnly.matchAll(/^\.item[A-Z][A-Za-z]*\s*\{/gm)].map(m => m[0])
     expect(leftover, `these list rules are still in board.module.css: ${leftover.join(', ')}`).toEqual([])
+    // The assertion that is left CAN fail, and this is the state it used to
+    // stand in for: `panelCss()` writes each sheet's path into the string as a
+    // banner comment, so on a concatenation carrying two banners and no rules
+    // the old conjunction still held. Nothing is being asserted about that
+    // string now — and this line exists so the next reader does not put the
+    // banner check back.
+    expect(
+      /\.item[A-Z]/.test('/* src/client/board.module.css */\n/* src/client/item/item.module.css */\n'),
+      'this assertion cannot tell a panel with list rules from one without, so it will pass on an empty read',
+    ).toBe(false)
   })
 
   it('names only tokens the host declares, in the list\'s own sheet and in the shared alias layer', () => {
@@ -1179,18 +1207,38 @@ describe('the group arithmetic is stated once, and the counts do not follow a hi
     // whole content — a family with no line under any of its heads is reported
     // by name rather than counted away.
     const BUCKETS = ['itemGroupHead', 'itemAgendaDay', 'itemNoDateTray', 'itemGatedFold'] as const
-    const rules = declarationRules(css)
     // A line is a VALUE, so `border-block-end: 0` — the rule that takes a day
     // label's line away when the day has no list — is not one.
-    const drawsLine = (family: string): boolean => rules
-      .filter(rule => rule.selector.includes(family))
-      .some(rule => [...rule.body.matchAll(/(?:^|[;{\s])(?:border-block-end|border-bottom)\s*:\s*([^;]+)/g)]
-        .some(call => !/^\s*(?:0|none)\s*$/.test(call[1] ?? '')))
-    const airOnly = BUCKETS.filter(family => !drawsLine(family))
+    const bucketsOnAir = (text: string): string[] => {
+      const rules = declarationRules(text)
+      const drawsLine = (family: string): boolean => rules
+        .filter(rule => rule.selector.includes(family))
+        .some(rule => [...rule.body.matchAll(/(?:^|[;{\s])(?:border-block-end|border-bottom)\s*:\s*([^;]+)/g)]
+          .some(call => !/^\s*(?:0|none)\s*$/.test(call[1] ?? '')))
+      return BUCKETS.filter(family => !drawsLine(family))
+    }
+    const airOnly = bucketsOnAir(css)
     expect(
       airOnly,
       `these buckets draw no rule under their head: ${airOnly.join(', ')} — ${BUCKETS.length - airOnly.length} of ${BUCKETS.length} do, and a head is a caption floating over rows, which air alone does not separate`,
     ).toEqual([])
+    // The reader, on a sheet that has all four families and one of them without
+    // a line — the exact shape `length > 0` cannot see, because the other three
+    // still carry theirs.
+    const sheet = BUCKETS.map(family => `.${family}Head { border-block-end: var(--dsh-tb-border); }`).join('\n')
+    expect(bucketsOnAir(sheet), 'the reader reports a sheet that gives every bucket a line').toEqual([])
+    const GATED = '.itemGatedFoldHead { border-block-end: var(--dsh-tb-border); }'
+    expect(
+      bucketsOnAir(sheet.replace(GATED, '.itemGatedFoldHead { padding-block-end: 7px; }')),
+      'a bucket whose line was removed was not reported by name, so the gate still cannot tell four from one',
+    ).toEqual(['itemGatedFold'])
+    // And the line taken away EXPLICITLY is not a line either — that is the
+    // spelling the sheet itself uses to drop a day label's rule when the day has
+    // no list, and reading it as a line would make a removal look like a fix.
+    expect(
+      bucketsOnAir(sheet.replace(GATED, '.itemGatedFoldHead { border-block-end: 0; }')),
+      'a line explicitly set to 0 was counted as a line',
+    ).toEqual(['itemGatedFold'])
   })
 
   it('the head keeps its arithmetic beside its name, not pushed to the end of the track', () => {
@@ -1359,6 +1407,15 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     const real = '.a { border: 1px solid red; }'.match(BORDER)
     expect(real, 'a real border was not reported — the reader has stopped biting').not.toBeNull()
     expect(real?.[0]).toMatch(/border:\s*$/)
+    // And the GUARD is proved too, because a guard nobody checked is the same
+    // defect as the loop it guards: a sheet the sentence has been renamed out of
+    // answers `[]` and the loop over it would pass in silence.
+    const rulesNamed = (text: string, name: string): number => rulesOf(text, name).length
+    expect(rulesNamed('.itemTriageText { white-space: normal; }', 'itemTriageText')).toBe(1)
+    expect(
+      rulesNamed('.itemTriageTextRenamed { white-space: nowrap; }', 'itemTriageText'),
+      'the reader cannot tell a renamed class from a compliant one, so the guard above is the only thing standing between a rename and a silent pass',
+    ).toBe(0)
   })
 
   it('nothing in the list track grows along the block axis', () => {
@@ -1446,7 +1503,7 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     const shouting = (text: string): { selector: string; property: string }[] => declarationRules(stripCssComments(text))
       .filter(rule => TONE.test(rule.selector))
       .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:/g)]
-        .map(match => ({ selector: rule.selector, property: match[1] as string }))
+        .map(match => ({ selector: selectorName(rule.selector), property: match[1] as string }))
         .filter(found => !INK.has(found.property) && !SLOT.has(found.property)))
     const tones = declarationRules(live).filter(rule => TONE.test(rule.selector))
     expect(

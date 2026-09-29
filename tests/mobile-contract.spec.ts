@@ -90,6 +90,55 @@ function ruleExact(scope: string, selector: string): string {
   return scope.slice(at, end < 0 ? undefined : end)
 }
 
+/**
+ * Every `<marker> {` block in a sheet, brace-matched — ALL of them, not the last.
+ *
+ * `lastIndexOf` reads ONE block and calls it the block, and a sheet is allowed
+ * to have several: the board has three reduced-motion blocks today. So the next
+ * component that appends a block of its own silently moves what every
+ * reduced-motion assertion is looking at, and a correct sheet goes red. Blocks
+ * are COLLECTED here, and a claim about the policy asks whether ANY of them
+ * carries it.
+ *
+ * Comments come off first. A comment that quotes a block would otherwise be
+ * brace-matched exactly like a real one, and this repo's own rule 14 says a
+ * checker that reads the decoration reports the explanation as the thing it
+ * forbids.
+ * @param marker - the opening text, braces included.
+ * @param text - the sheet; the board's own unless a caller passes a fixture.
+ * @returns each block's own text, in source order.
+ */
+function allBlocksOf(marker: string, text: string = withoutComments(source)): string[] {
+  const out: string[] = []
+  for (let at = text.indexOf(marker); at >= 0; at = text.indexOf(marker, at + 1)) {
+    let depth = 0
+    for (let i = at + marker.length - 1; i < text.length; i++) {
+      if (text[i] === '{') depth++
+      else if (text[i] === '}') { depth--; if (depth === 0) { out.push(text.slice(at, i + 1)); break } }
+    }
+  }
+  return out
+}
+
+/**
+ * `ruleOf`, but it PROVES the subject is there before the caller negates it.
+ *
+ * `ruleOf` answers `''` for a name the sheet has not got, and every "must not
+ * contain" assertion over `''` passes — so a renamed or deleted rule turned a
+ * negative into a green tick. The helper is added rather than folded into
+ * `ruleOf` itself because the SAME reader is used in both polarities in this
+ * file, and several of those call sites ask about a rule that is allowed to be
+ * absent (`presetModal`, `autoModal`): a reader that threw would turn those into
+ * failures about a rule nobody promised.
+ * @param name - the class, without the dot.
+ * @returns the rule's own text, with a guard attached to the assertion.
+ */
+function ruleOfPresent(name: string): string {
+  const rule = ruleOf(name)
+  expect(rule, `there is no .${name} rule in the board sheet, so this gate is reading nothing`).not.toBe('')
+  return rule
+}
+
 describe('responsive container mechanism', () => {
   it('the board view root is a named size container', () => {
     const root = blockWith(/container-type:\s*inline-size/)
@@ -107,9 +156,33 @@ describe('responsive container mechanism', () => {
     // The columns rule must be overridden inside a @container dsh-tb block…
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(compact).not.toBe('')
-    // …and there must be NO leftover viewport width media query driving the
-    // board's own column grid (the old @media (max-width: …) mechanism).
-    expect(source).not.toMatch(/@media\s*\(max-width:\s*7\d\dpx\)/)
+    // …and there must be NO viewport width media query driving the board's own
+    // column grid (the old @media (max-width: …) mechanism).
+    //
+    // THE OLD CHECK NAMED ONE PREFIX. `/@media\s*\(max-width:\s*7\d\dpx\)/` matches
+    // 700px–799px and nothing else: `640px`, `900px`, `1024px`, any other width,
+    // and every `min-width` a future author writes all pass, while the project
+    // bans the construct outright (「响应式禁 @media(max-width)」, the only switch
+    // is `useSurfaceNarrow`). A check that can only catch the spelling it was
+    // written for is a check that reports the mistake it remembers.
+    //
+    // COMMENTS OFF FIRST, and that is this repo's own rule 14: the sheet explains
+    // the ban in prose, and a reader that keeps the comments reports the
+    // explanation as the violation — leaving the next author to delete a correct
+    // note rather than delete the query.
+    // The WHOLE condition, not just the feature, so the failure names the query
+    // a reader has to go and delete rather than the half of it they can grep.
+    const widthQueriesIn = (text: string): string[] => [...withoutComments(text).matchAll(/@media[^{]*?\([^)]*\b(?:max|min)-width[^)]*\)/g)]
+      .map(match => match[0].trim())
+    const widthQueries = widthQueriesIn(source)
+    expect(widthQueries, `a viewport width media query decides this board's layout: ${widthQueries.join(' | ')}`).toEqual([])
+    // The reader, on the four shapes the old prefix could not see and the one it
+    // must not answer to.
+    for (const banned of ['@media (max-width: 640px) { .a { color: red; } }', '@media (max-width: 900px) { .a { color: red; } }', '@media screen and (min-width: 700px) { .a { color: red; } }']) {
+      expect(widthQueriesIn(banned), `the reader cannot see ${banned.split('(')[1]?.split(')')[0]}`).toHaveLength(1)
+    }
+    expect(widthQueriesIn('@media (hover: none) and (pointer: coarse) { .a { color: red; } }'), 'a non-width media query was reported').toHaveLength(0)
+    expect(widthQueriesIn('/* the old mechanism was @media (max-width: 700px) */\n.a { color: red; }'), 'a query quoted in a comment was read as a violation').toHaveLength(0)
   })
 
   it('shape switches read the surface, never the viewport (single truth)', () => {
@@ -372,7 +445,14 @@ describe('board header and navigator legibility', () => {
     // `overflow: hidden` on the container also cut the 4px box-shadow of the
     // child dot (and its 12px line box was shorter than dot + glow), so the
     // warning indicator read as chopped in half.
-    const status = ruleOf('boardStatus')
+    //
+    // THE NEGATIVE NEEDS A SUBJECT. `ruleOf` answers `''` for a name the sheet
+    // has not got, and `expect('').not.toMatch(/overflow:\s*hidden/)` is true —
+    // so renaming or deleting `.boardStatus` turned this assertion into a green
+    // tick about a rule that no longer exists. The two positives below already
+    // prove the reader works (an absent rule fails a `toMatch`); this one could
+    // not, which is why it is the only one that needed the guard.
+    const status = ruleOfPresent('boardStatus')
     expect(status).not.toMatch(/overflow:\s*hidden/)
     expect(ruleOf('boardStatusText')).toMatch(/overflow:\s*hidden/)
     expect(ruleOf('boardStatusText')).toMatch(/text-overflow:\s*ellipsis/)
@@ -1139,42 +1219,81 @@ describe('keyboard inset math', () => {
 })
 
 describe('reduced-motion functional exemption', () => {
-  // There are several reduced-motion blocks; the LAST one carries the spinner
-  // + entrance rules. Grab it by brace-balancing from its @media line.
-  const reduced = (() => {
-    const marker = '@media (prefers-reduced-motion: reduce) {'
-    const start = source.lastIndexOf(marker)
-    if (start < 0) return ''
-    let depth = 0
-    for (let i = start + marker.length - 1; i < source.length; i++) {
-      if (source[i] === '{') depth++
-      else if (source[i] === '}') { depth--; if (depth === 0) return source.slice(start, i + 1) }
-    }
-    return ''
-  })()
+  // EVERY reduced-motion block, not the last one.
+  //
+  // There are three in this sheet, and the old reader took `lastIndexOf` — so it
+  // read one of them and called it the block. That has two failure directions
+  // and both of them are wrong in a way nobody can see: a block that is not the
+  // last is invisible (a component that adds its own reduced-motion block for
+  // its own thing is never read), and a block APPENDED at the end silently
+  // becomes the one everything is asserted against, which turns these five
+  // tests red on a correct sheet the day a new component needs a block of its
+  // own. The question each of these asks is 「does the policy hold somewhere
+  // under this query」, and that is a question about ALL of them.
+  const REDUCED = '@media (prefers-reduced-motion: reduce) {'
+  const reducedBlocks = allBlocksOf(REDUCED)
+  expect(
+    reducedBlocks.length,
+    'the board sheet has no reduced-motion block at all — motion preference is honoured nowhere',
+  ).toBeGreaterThan(0)
+  /**
+   * Whether ANY ONE block says this — and only ever within a single block.
+   *
+   * The per-block form matters for the negatives: joining the blocks into one
+   * string and matching across the seam would pair a selector named in one
+   * block with a declaration in the next, which is a finding about no rule at
+   * all, and it is exactly the kind of wrong that deletes a correct rule.
+   */
+  const inAnyBlock = (pattern: RegExp): boolean => reducedBlocks.some(block => pattern.test(block))
 
   it('the spinner keeps animating (only calmer) under reduced motion', () => {
-    expect(reduced).toMatch(/\.spinner\s*\{\s*\n?\s*animation-duration:\s*[\d.]+s/)
-    expect(reduced).not.toMatch(/\.spinner\s*\{\s*\n?\s*animation:\s*none/)
+    expect(inAnyBlock(/\.spinner\s*\{\s*\n?\s*animation-duration:\s*[\d.]+s/)).toBe(true)
+    expect(inAnyBlock(/\.spinner\s*\{\s*\n?\s*animation:\s*none/)).toBe(false)
   })
 
   it('the breathing RING also survives — it is a state message, not decoration', () => {
     // A still ring reads as "stuck" (the opposite of "running") and cannot be
     // told apart from a finished-and-unread card, so the ring joins the
     // spinner's exemption: slower and gentler, never `animation: none`.
-    expect(reduced).not.toMatch(/\.card\[data-light=[^\]]+\][\s\S]{0,80}animation:\s*none/)
-    expect(reduced).not.toMatch(/\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/)
-    expect(reduced).not.toMatch(/\.notifyPulse\s*\{[\s\S]{0,80}animation:\s*none/)
-    expect(reduced).toMatch(/\.notifyPulse\s*\{[\s\S]*?animation-duration:/)
+    //
+    // THE TWO NEGATIVES BELOW USED TO NAME SELECTORS THAT APPEAR IN NO BLOCK AT
+    // ALL, so they could not fail: the block under `lastIndexOf` is the policy
+    // one, and it says nothing about `.card[data-light]` or `.sessionRow::after`.
+    // Read over every block they become the claim they were always meant to be
+    // — no block may silence a state message — and the subjects really are
+    // stylesheet rules, so a block that silenced one would now be caught.
+    expect(inAnyBlock(/\.card\[data-light=[^\]]+\][\s\S]{0,80}animation:\s*none/)).toBe(false)
+    expect(inAnyBlock(/\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/)).toBe(false)
+    expect(inAnyBlock(/\.notifyPulse\s*\{[\s\S]{0,80}animation:\s*none/)).toBe(false)
+    expect(inAnyBlock(/\.notifyPulse\s*\{[\s\S]*?animation-duration:/)).toBe(true)
     // The amplitude lives in tokens, which is how the pulse is softened
     // instead of deleted.
-    expect(reduced).toMatch(/--dsh-tb-breath:\s*[\d.]+s/)
-    expect(reduced).toMatch(/--dsh-tb-breath-spread:/)
+    expect(inAnyBlock(/--dsh-tb-breath:\s*[\d.]+s/)).toBe(true)
+    expect(inAnyBlock(/--dsh-tb-breath-spread:/)).toBe(true)
     expect(source).toMatch(/@keyframes dshTbBreathRing\s*\{[\s\S]*?var\(--dsh-tb-breath-spread\)/)
   })
 
   it('decorative entrance motion is still suppressed', () => {
-    expect(reduced).toMatch(/\.modalBackdrop[\s\S]*?animation:\s*none/)
+    expect(inAnyBlock(/\.modalBackdrop[\s\S]*?animation:\s*none/)).toBe(true)
+  })
+
+  it('the reader sees a block that is not the last, and a block that silences a state message', () => {
+    // Both shapes that broke the old reader, on sheets it cannot have been
+    // tuned against. The first is the trap this whole describe was living in:
+    // append a block for a new component and `lastIndexOf` moves the goalposts
+    // without anyone deciding to move them.
+    const notLast = allBlocksOf(REDUCED, `${REDUCED}\n  .thingNew { animation: none; }\n}\n.unrelated { color: red; }\n${REDUCED}\n  .spinner { animation-duration: 1.4s; }\n}\n`)
+    expect(
+      notLast.some(block => /\.spinner\s*\{\s*\n?\s*animation-duration:/.test(block)),
+      'the reader cannot see a policy block that is not the last one',
+    ).toBe(true)
+    // And the shape the two negatives could not see at all: a block that
+    // silences the row halo.
+    const silencing = allBlocksOf(REDUCED, `${REDUCED}\n  .sessionRow::after { animation: none; }\n}\n`)
+    expect(
+      silencing.some(block => /\.sessionRow::after\s*\{\s*\n?\s*animation:\s*none/.test(block)),
+      'a state message silenced in a block is invisible to the reader, so the negative can never fire',
+    ).toBe(true)
   })
 
   it('the entrance grammar is ONE keyframes, joined — never a second family', () => {
