@@ -43,7 +43,7 @@ import {
   staleDaysOf,
   triageLinesOf,
 } from '../src/core/item-view.ts'
-import { itemDateConflict } from '../src/core/item.ts'
+import { itemDateConflict, isItemRecordShape } from '../src/core/item.ts'
 import { compareItemOrder } from '../src/core/items-doc.ts'
 
 const T0 = new Date(2026, 8, 29, 10, 0, 0).getTime()
@@ -287,6 +287,33 @@ describe('grouping and ordering', () => {
     const soon = row({ id: 'soon', hardDueAt: T0 + DAY, dueAt: T0 + 40 * DAY })
     const far = row({ id: 'far', dueAt: T0 + 30 * DAY })
     expect(sortItemsOf([far, soon], 'due').map(r => r.id)).toEqual(['soon', 'far'])
+  })
+
+  it('a stamp that is not FINITE is refused, so no ordering can return NaN', () => {
+    // The totality gate above proves order-independence for FINITE keys, and every
+    // fixture in this file comes from one `row()` helper with a finite clock — so
+    // the `1e999` path was unreachable from this suite and the `birth` ordering's
+    // `Infinity - Infinity` had nothing standing in front of it.
+    //
+    // `JSON.parse('1e999')` is `Infinity`, not a parse error, so a persisted or
+    // hand-edited file carries it quietly. `Array.prototype.sort` treats a `NaN`
+    // comparison as EQUAL, which does not fail: the rows are simply never ordered
+    // against each other and the list falls back to arrival order, so two devices
+    // holding one document show two lists. The only thing standing between that
+    // and a reader is the shape guard asking for a finite NUMBER rather than a
+    // finite-looking one.
+    const infinite = (id: string, createdAt: number): ItemRecord =>
+      ({ ...row({ id }), createdAt } as unknown as ItemRecord)
+    // The two rows differ ONLY in a stamp the grammar must have refused.
+    const a = infinite('a', Number.POSITIVE_INFINITY)
+    const b = infinite('b', Number.POSITIVE_INFINITY)
+    expect(isItemRecordShape({ ...a }), 'an infinite stamp passed the shape guard').toBe(false)
+    expect(isItemRecordShape({ ...b, updatedAt: Number.POSITIVE_INFINITY }), 'an infinite updatedAt passed the shape guard').toBe(false)
+    // And the comparator itself must never shrug, whatever reaches it.
+    for (const sort of ITEM_SORTS) {
+      const ordered = sortItemsOf([a, b] as never, sort)
+      expect(ordered, `the ${sort} ordering collapsed two rows it could not tell apart`).toHaveLength(2)
+    }
   })
 
   it('every ordering is a TOTAL order, so equal keys never reshuffle', () => {

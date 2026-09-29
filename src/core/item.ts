@@ -369,15 +369,39 @@ interface RawItem {
  * notes, three dates) to fix one checkbox is the bug, not the repair. So the
  * row is checked and the entries are repaired.
  */
-function isItemRecordShape(value: unknown): value is RawItem {
+/**
+ * The shape guard, exported because it is a CONTRACT and not a private helper.
+ *
+ * Everything downstream — the merge, the sort, the row projection — assumes a row
+ * that passed here has FINITE numbers, because a `NaN` comparator does not throw:
+ * `Array.prototype.sort` treats it as "equal", so the order quietly becomes
+ * arrival order and two devices holding one document render two different lists.
+ * A guard whose failure mode is invisible has to be reachable from a test, and it
+ * was not.
+ */
+export function isItemRecordShape(value: unknown): value is RawItem {
   if (typeof value !== 'object' || value === null) return false
   const row = value as Record<string, unknown>
   if (typeof row.id !== 'string' || row.id === '') return false
   if (typeof row.title !== 'string') return false
   if (typeof row.body !== 'string') return false
   if (typeof row.notes !== 'string') return false
-  if (typeof row.createdAt !== 'number') return false
-  if (typeof row.updatedAt !== 'number') return false
+  /* FINITE, not merely a number — and the two stamps are the last place in this
+     shape guard that was not already asking.
+     The three DATES go through `itemInstantOf`, which requires `Number.isFinite`;
+     these two only asked `typeof === 'number'`, and `JSON.parse('1e999')` is
+     `Infinity`, not an error. So a persisted row could carry an infinite stamp,
+     and `KEY_GAPS.birth` is `a.createdAt - b.createdAt` — `Infinity - Infinity`
+     is `NaN`. A `NaN` comparator makes `Array.prototype.sort` treat the pair as
+     EQUAL, so those rows are never ordered against each other and the list falls
+     back to arrival order: **two devices holding one document render two
+     different lists, and nothing anywhere goes red.**
+
+     That is the same partial-order defect `dueSortKeyOf` carries a long comment
+     about having already paid for once, reached through the back door of a guard
+     that checked the type and not the value. */
+  if (typeof row.createdAt !== 'number' || !Number.isFinite(row.createdAt)) return false
+  if (typeof row.updatedAt !== 'number' || !Number.isFinite(row.updatedAt)) return false
   if (row.taskId !== undefined && typeof row.taskId !== 'string') return false
   if (!Array.isArray(row.steps)) return false
   if (typeof row.origin !== 'object' || row.origin === null) return false

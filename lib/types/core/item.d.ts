@@ -289,6 +289,58 @@ export interface NewItemInput {
  */
 export declare function newItem(input: NewItemInput, origin: ItemOrigin, id: string, now: number): ItemRecord;
 /**
+ * The validated-but-unrepaired shape: the medium's words, checked for the
+ * fields that must be right for the row to exist at all, and left `unknown` for
+ * the ones the normalizers below repair. A guard that promised more than it
+ * checked would make every cast downstream a lie.
+ */
+interface RawItem {
+    id: string;
+    title: string;
+    body: string;
+    notes: string;
+    createdAt: number;
+    updatedAt: number;
+    steps: unknown;
+    origin: {
+        source: ItemOriginSource;
+        at: number;
+        sessionId?: string;
+    };
+    ref?: unknown;
+    status?: unknown;
+    priority?: unknown;
+    tags?: unknown;
+    startsAfter?: unknown;
+    dueAt?: unknown;
+    hardDueAt?: unknown;
+    taskId?: unknown;
+}
+/**
+ * Structural check for a persisted row: what makes a row a ROW. Status and
+ * priority stay free (the normalizers below repair them), and so do the steps'
+ * own entries — those are repaired one by one in {@link normalizeSteps}.
+ *
+ * ONE DELIBERATE DIVERGENCE FROM THE LEDGER GRAMMAR. `parseLedger` drops a
+ * whole task when one of its execution rounds is malformed, and that is right
+ * there: a round is a fact about a run, and silently keeping the card without it
+ * would misreport its history. A checklist step is a line the person typed, and
+ * the blast radius is the other way round — dropping the whole item (body,
+ * notes, three dates) to fix one checkbox is the bug, not the repair. So the
+ * row is checked and the entries are repaired.
+ */
+/**
+ * The shape guard, exported because it is a CONTRACT and not a private helper.
+ *
+ * Everything downstream — the merge, the sort, the row projection — assumes a row
+ * that passed here has FINITE numbers, because a `NaN` comparator does not throw:
+ * `Array.prototype.sort` treats it as "equal", so the order quietly becomes
+ * arrival order and two devices holding one document render two different lists.
+ * A guard whose failure mode is invisible has to be reachable from a test, and it
+ * was not.
+ */
+export declare function isItemRecordShape(value: unknown): value is RawItem;
+/**
  * A finite timestamp, or undefined for every other shape (including NaN).
  *
  * EXPORTED, because "can this value be a moment" is one question with three
@@ -323,3 +375,4 @@ export type RefMinter = () => number;
  *  one name.
  */
 export declare function parseItems(raw: string | null, mintRef: RefMinter): ItemRecord[];
+export {};
