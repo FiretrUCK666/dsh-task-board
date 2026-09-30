@@ -414,21 +414,18 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降纯轮询）。
 - `src/client/item/`：**清单面板**，与看板同一形状的第二个主舞台面板（`main` key =
-  `dsh-task-board-items`，面板列表 `order` 120 紧跟看板，共用同一个 `selectPanel(null)` 出口，
-  两图标同构；**座位见宿主契约表，此处不复述**）。**它是一个有内部分页的工作台**：页面身份是
-  **写死的产品常量**（`ITEM_PAGES`），三页**永远在轨上、各带自己的数，空页写 0 而不消失**——
-  「被问到而答案是零」与「这个问题根本不存在」是两件事；派生页（标签、停滞、归档、筛选结果）
-  **不进轨**，只给入口。几何、分页与每页的行文法成文在 `DESIGN.md` 的清单节，本文不复述。
-  挂上卡的事项才给「问 AI」（`board-ask.ts` → `/board/ask`），**回执说是哪一个会话**；
-  **一律不用 Dialog**（`boardBox()` 会锚到看板上去）。`hostLostItems()` 为真时说「host 读不到」，
-  **不能显示成「你一条都没有」**。副本只存在**一个** holder（`itemListStage`）上。
-  `src/client/surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
-  **恢复是 host 操作而不是客户端提交**（`items-archive.ts` → `GET /board/items?includeDeleted=1`
-  与 `POST /board/items/restore`）：墓碑的戳压在它删掉的那一行之上，原样重提会被墓碑吃掉，
-  接口回 200 而文档没变，所以只有 host 能写那个戳。**寻址键有两个、各具名、互不为兜底**：界面的
-  一次撤销传 `id`（刚记下的行 `ref === 0`，按编号找不到墓碑），模型的 `item.restore` 传 `ref`
-  （编号是「人说得出口的那个东西」）。面板的义务是**恢复没回来就说没回来**，且**「读不到」不得画
-  成「空」**。
+  `dsh-task-board-items`，面板列表 `order` 120，共用同一个 `selectPanel(null)` 出口；**座位见宿主
+  契约表**）。**它是一个有内部分页的工作台**：页面身份是**写死的产品常量**（`ITEM_PAGES`），
+  三页**永远在轨上、各带自己的数，空页写 0 不消失**——「被问到而答案是零」与「这个问题根本不存在」
+  是两件事；派生页（标签、停滞、归档、筛选结果）**不进轨**，只给入口。几何、分页与每页的行文法
+  成文在 `DESIGN.md` 的清单节。挂上卡的事项才给「问 AI」（`board-ask.ts`），**回执说是哪一个
+  会话**；**一律不用 Dialog**。`hostLostItems()` 为真时说「host 读不到」，**不能显示成「你一条都
+  没有」**。副本只存在**一个** holder（`itemListStage`）上。`surfaces.ts` 开机读一次
+  `/board/surfaces`，**读不到就什么都不收窄**。**恢复是 host 操作而不是客户端提交**
+  （`items-archive.ts`）：墓碑的戳压在它删掉的那一行之上，原样重提会被墓碑吃掉，接口回 200 而
+  文档没变，所以只有 host 能写那个戳。**寻址键有两个、各具名、互不为兜底**：界面的撤销传 `id`
+  （刚记下的行 `ref === 0`，按编号找不到墓碑），模型的 `item.restore` 传 `ref`。面板的义务是
+  **恢复没回来就说没回来**，且**「读不到」不得画成「空」**。
 
 ### 设计系统层（**成文契约全在 `DESIGN.md`**；此处只留改代码前必须先知道的三件事）
 
@@ -456,16 +453,14 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   补丁 / 步骤 / 删除 / 恢复 / 快记造行 / 提升成卡）**· `colors`/`session-list`/
   `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在
   `src/client/board/`，不在核心层）。
-- **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集合由 `ITEM_FIELDS`
-  的 `access` 列**推导**（`WritableItemKey`），所以被判 `derived` / `forbidden` 的字段在编译期就
-  patch 不进去。**这层保护有一个失效方向，而且失效时不报错**：`ITEM_FIELDS` 一旦被「简化」回
-  `Record<…, FieldSpec>` 标注（排他性检查照样过、编译照样绿），`access` 拓宽成并集 →
-  `WritableItemKey` 塌成 `never` → `ItemPatch` 变成 `{}` → **`{}` 接受任何对象字面量** →
-  `{ ref: 3 }` 静默通过。**门禁不是变成一堵墙，是变成一扇敞开的门。** 所以那一行
-  `@ts-expect-error` 棘轮是承重的：标注回退时它让 `tsc` 报 `TS2578`，退化从此是**构建失败**。
-  **它放在 core 而不是 spec，因为 spec 要有人记得打开。** 同族的第二个实例在 `item-view.ts`
-  的 `KEY_GAPS`（按 `Record<ItemSort, …>` 建表，加一档排序会红两处：卡语义与卡话）——**手写的
-  「我列全了吗」永远该由类型或文件系统回答，而不是由一个人记得维护。**
+- **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
+  `access` 列**推导**（`WritableItemKey`），被判 `derived` / `forbidden` 的字段编译期就 patch 不进去。
+  **这层保护有一个失效方向，失效时不报错**：`ITEM_FIELDS` 退回 `Record<…, FieldSpec>` 标注 →
+  `access` 拓宽成并集 → `WritableItemKey` 塌成 `never` → `ItemPatch` 变 `{}` → **`{}` 接受任何
+  对象字面量** → `{ ref: 3 }` 静默通过。**门禁不是变成一堵墙，是变成一扇敞开的门**，所以那行
+  `@ts-expect-error` 棘轮是承重的（退化从此是**构建失败**），且它放在 core 而非 spec，因为 spec
+  要有人记得打开。同族第二实例在 `item-view.ts` 的 `KEY_GAPS`（`Record<ItemSort, …>` 建表）。
+  **手写的「我列全了吗」永远该由类型或文件系统回答**；塌掉的具体链路写在 `item-transitions.ts`。
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
   抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
   （点卡片）**绝不动轮次戳**——卡片是摘要不是对话；「第 N 次执行」只在真有编号运行时说。
@@ -636,9 +631,11 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   `controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是会话选择器
   名单的**唯一**规则处（子代理/空白槽/归档的排除、工作区归属账本、未分组尾组，官方
   `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞回归用例（跨栏落地不得读卡片
-  自己那条外来键当守卫）；`review-page` / `mobile-contract` /
-  `card-contract` 承载**全部 CSS 布局契约**（见设计系统层）；`file-reference-grammar` /
-  `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
+  自己那条外来键当守卫）；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` /
+  `review-page`，**清单**的 CSS 布局契约**全在 `panel-render.spec.ts`**（经 `panel-harness.ts`
+  台架，`card-contract` 另有五条打清单的源文本契约）；看渲染结果用
+  `DSH_PANEL_HTML=<path> pnpm test` 出页面、再 `node scripts/shot-panel.mjs` 截图；
+  `file-reference-grammar` / `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
   全线失败时依然全绿——**「假面比现实宽容」和「假面比现实窄」一样危险**：前者让缺陷隐身，

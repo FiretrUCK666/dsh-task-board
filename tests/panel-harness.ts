@@ -681,9 +681,17 @@ export function cssMembersOf(jsx: string): Map<string, string> {
  * @param items - the rows to render, or `[]` for the empty document.
  * @param band - which band to render.
  * @param page - which page to open.
+ * @param scheme - which theme table the host's own tokens resolve against.
  */
-export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page): void {
+export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light'): void {
   const aligned = alignClassNames(renderPanel(items, band, page), panelCss())
+  // THE HOST'S OWN DARK TABLE, NOT A RECONSTRUCTED ONE. `hostTokenCss()`
+  // concatenates every stylesheet the theme bundle ships, and the dark table in
+  // it is selected by `body[data-ds-dark-theme]` — so putting the attribute on
+  // the body is what makes the page resolve against the host's real dark
+  // semantic tokens. Reconstructing a dark theme by hand would photograph this
+  // plugin's own guess, which is the one thing a capture cannot be evidence for.
+  const bodyAttributes = scheme === 'dark' ? ' data-ds-dark-theme' : ''
   const document_ = [
     '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
     // WITHOUT THIS, EVERY NARROW SCREENSHOT IS A LIE. The harness asks the
@@ -703,7 +711,7 @@ export function writeRenderArtifact(target: string, items: readonly ItemRecord[]
     // auto-height box would not have reproduced anything.
     'html,body{margin:0;block-size:100%;}',
     'body{display:flex;flex-direction:column;overflow:hidden;}',
-    '</style></head><body>',
+    `</style></head><body${bodyAttributes}>`,
     aligned.html,
     '</body></html>',
   ].join('\n')

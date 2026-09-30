@@ -1854,11 +1854,14 @@ describe('the render artifact', () => {
     // the empty state is a designed state, and it is the one most likely to be
     // drawn badly.
     const empty = process.env.DSH_PANEL_EMPTY === '1'
+    // The dark capture resolves against the host's own dark semantic table, so
+    // it is a reading of the shell's output rather than of a guess rebuilt here.
+    const scheme = process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light'
     // NO SEED FOR THE SEARCH BOX, and that is not an omission: the search text is
     // the one view field deliberately NOT remembered, so a harness cannot open
     // the artifact on a filtered page. The filtered page is proven where it can
     // be — by pressing a facet, in `item-workbench.spec.ts`.
-    writeRenderArtifact(target, empty ? [] : fixtures(), band, page)
+    writeRenderArtifact(target, empty ? [] : fixtures(), band, page, scheme)
     expect(existsSync(target)).toBe(true)
   })
 })
