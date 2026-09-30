@@ -22,26 +22,9 @@
  * failure the whole `core/item-view.ts` layer exists to prevent.
  */
 import type { ReactNode } from 'react';
-import type { ItemPriority, ItemRecord } from '../../../core/item.ts';
-import type { ItemQuery, ItemMatchContext, ItemStatusView } from '../../../core/item-view.ts';
+import type { ItemRecord } from '../../../core/item.ts';
+import type { ItemQuery, ItemMatchContext } from '../../../core/item-view.ts';
 import type { ItemViewPrefs } from '../view-prefs.ts';
-import type { TaskBoardKey } from '../../locales.ts';
-/** The name of each group, read off the GROUP vocabulary. */
-export declare const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>>;
-/**
- * Each priority's word, ONE table for the whole surface.
- *
- * It was declared separately by the row and by the batch bar, which is two
- * closed `Record`s over the same enum: the second one is a table nobody
- * maintains, and the day the model grows a tier the copy that is still a plain
- * union compiles fine and renders `undefined`. A closed table in one place fails
- * `tsc` the moment the enum moves, which is the entire reason to want one.
- */
-export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>>;
-/** The agenda's buckets and the word for each. */
-export declare const BUCKET_LABEL: Readonly<Record<string, TaskBoardKey>>;
-/** The triage sentences and the word for each line. */
-export declare const TRIAGE_LABEL: Readonly<Record<string, TaskBoardKey>>;
 /** What every page body receives. */
 export interface ItemPageProps {
     /** Every row in the document. Pages filter; none of them owns it. */

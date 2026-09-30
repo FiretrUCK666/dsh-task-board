@@ -23,7 +23,8 @@
 import { scheduleBucketsOf, type ScheduleBucketId } from '../../../core/item-view.ts'
 import { t, isEnglish } from '../../locales.ts'
 import { formatItemDate } from '../model.ts'
-import { BUCKET_LABEL, type ItemPageProps } from './page-props.ts'
+import { BUCKET_LABEL } from '../labels.ts'
+import type { ItemPageProps } from './page-props.ts'
 import css from '../item.module.css'
 
 export function SchedulePage(props: ItemPageProps) {
@@ -43,7 +44,7 @@ export function SchedulePage(props: ItemPageProps) {
           return (
             <section key={bucket.id} className={css.itemGatedFold}>
               <h2 className={css.itemGatedFoldHead}>
-                {t(BUCKET_LABEL.gated ?? 'item.bucket.later')}
+                {t(BUCKET_LABEL.gated)}
                 <span className={css.itemGroupCount}>{bucket.items.length}</span>
               </h2>
               <p className={css.itemHint}>{t('item.gated.hint')}</p>
@@ -57,7 +58,7 @@ export function SchedulePage(props: ItemPageProps) {
           return (
             <section key={bucket.id} className={css.itemNoDateTray}>
               <h2 className={css.itemNoDateTrayLabel}>
-                {t(BUCKET_LABEL.undated ?? 'item.bucket.later')}
+                {t(BUCKET_LABEL.undated)}
                 <span className={css.itemGroupCount}>{bucket.items.length}</span>
               </h2>
               {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
@@ -73,7 +74,7 @@ export function SchedulePage(props: ItemPageProps) {
           <section key={bucket.id as ScheduleBucketId} className={css.itemAgendaDay}>
             <h2 className={css.itemGroupHead}>
               <span className={css.itemGroupToggle}>
-                {t(BUCKET_LABEL[bucket.id] ?? 'item.bucket.later')}
+                {t(BUCKET_LABEL[bucket.id])}
                 <span className={css.itemGroupCount}>{bucket.items.length}</span>
               </span>
               {bucket.day !== undefined && (

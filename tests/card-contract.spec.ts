@@ -353,32 +353,73 @@ describe('the column header and the cards under it share ONE text edge', () => {
     expect(list, 'the list page has a batch bar but no longer draws pickboxes').toMatch(/renderRows\(slice\.items,\s*props\.picking\)/)
   })
 
+  /**
+   * WHAT THE PANEL RECONCILES ITS HOLDING AGAINST, and whether the set is built
+   * by asking the matcher over the document.
+   *
+   * THE CLAIM IS ABOUT A NAME, NOT ABOUT A LINE. The defect is a value that
+   * answers the wrong question: a set of rows that is 「the rows the detail rail
+   * is about」 rather than 「the rows that pass the filter」. On the wide band the
+   * rail is always present, so a row being read is the NORMAL state and such a
+   * set collapses to one id — arm, tick three other rows, type one character in
+   * the search box, and all three are dropped. A holding died from a keystroke
+   * that had nothing to do with selecting.
+   *
+   * THE READING IS SHAPE-AGNOSTIC, and getting there took two tries, both
+   * instructive. A version matching `const x = items.filter(item => itemMatches(`
+   * demanded one particular SPELLING: wrapping the value in `useMemo` — which is
+   * what a list of forty rows needs — turned a true claim red. Fixing that with
+   * 「up to the first newline that closes a call」 was no better: it then rejected
+   * a correct ONE-LINER, because the terminator it waited for never arrived. A
+   * check that pushes the implementation into a worse shape is a check about
+   * typography, and the project already wrote that rule down. So the gate asks
+   * the QUESTION — is the reconciled set built by the matcher over the document?
+   * — inside a bounded window after the declaration, and reads whatever shape
+   * the answer is written in.
+   */
+  function readHolding(src: string): { readonly name: string | undefined; readonly built: boolean } {
+    // The updater's own parameter name is NOT part of the claim — it is whatever
+    // the enclosing arrow function called it — so the call is read as
+    // `reconcile(<anything>, <name>)`.
+    const name = /reconcile\(\s*\w+\s*,\s*(\w+)\s*\)/.exec(src)?.[1]
+    if (name === undefined) return { name, built: false }
+    // 400 characters: comfortably more than any one-line or `useMemo` form of
+    // this expression, and short enough that the following statement — which is
+    // the `reconcile` call itself — cannot supply a match on the value's behalf.
+    const window = new RegExp(`(?:const|let)\\s+${name}\\s*=([\\s\\S]{0,400})`).exec(src)?.[1] ?? ''
+    return { name, built: /items\s*\.\s*filter\(/.test(window) && /itemMatches\(/.test(window) }
+  }
+
   it('a holding is reconciled against the FILTER, not against what the page happens to draw', () => {
-    // The comment above this effect claimed two things the code did not do:
-    // narrowing the filter drops the rows it hides (nothing here asked
-    // `itemMatches`), and the rule is implemented "in one place". It was stated
-    // confidently and specifically, which is what made it read as true.
-    //
-    // The live bug: `shown` COLLAPSES to the single row in the detail pane, so
-    // with a row open the holding was reconciled against one id — arm, tick three
-    // OTHER rows, type one character, and all three were dropped. **A holding died
-    // from a keystroke that had nothing to do with selecting.**
-    //
-    // The gate is on the PREDICATE, because that is what makes the comment true.
-    // Asserting the effect "mentions itemMatches" would pass on a call in a
-    // comment, which is the failure mode this very file has produced twice.
     const src = readFileSync(fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    const reconcileCall = /reconcile\(current, (\w+)\)/.exec(src)?.[1]
-    expect(reconcileCall, 'the holding is reconciled against something the gate cannot name').toBeDefined()
-    // The set it reconciles against must be the FILTERED document, not `shown`
-    // (the page's rows) and not `items` (the whole document, filter ignored).
-    expect(reconcileCall, 'the holding is reconciled against the page or the whole document, so the filter is not what bounds it')
+    const { name, built } = readHolding(src)
+    expect(name, 'the holding is reconciled against something the gate cannot name').toBeDefined()
+    // Neither the page's rows nor the whole document: one is the wrong question,
+    // the other ignores the filter entirely.
+    expect(name, 'the holding is reconciled against the page or the whole document, so the filter is not what bounds it')
       .not.toMatch(/^(shown|items)$/)
-    // And the set must actually be built by asking the matcher.
-    const built = new RegExp(`const ${reconcileCall} = items\\.filter\\(item => itemMatches\\(`).test(src)
-    expect(built, 'the reconciled set is not built by the filter, so hidden rows stay held')
-      .toBe(true)
+    expect(built, `${String(name)} is not built by filtering the document through the matcher, so rows the filter hides stay held`).toBe(true)
+  })
+
+  it('the probe bites: a set built from the PAGE is reported, whatever shape it is written in', () => {
+    // Fed synthetic sources rather than the current file: a control written
+    // against today's implementation passes by accident the day the defect is
+    // fixed, and then proves nothing for ever after. Three shapes, because two
+    // of them are shapes this reader has already got wrong once.
+    const reconcile = 'setSelection(c => reconcile(c, pointable))'
+    expect(
+      readHolding(`const pointable = items.filter(item => itemMatches(item, q, c)).map(r => r.id)\n${reconcile}`).built,
+      'the probe does not recognise a correct one-line set — this probe proves nothing',
+    ).toBe(true)
+    expect(
+      readHolding(`const pointable = useMemo(\n  () => items.filter(item => itemMatches(item, q, c)).map(r => r.id),\n  [items, q, c],\n)\n${reconcile}`).built,
+      'the reader still demands one particular spelling, so a correct `useMemo` reads as broken',
+    ).toBe(true)
+    expect(
+      readHolding(`const pointable = items.filter(r => r.id === selected)\n${reconcile}`).built,
+      'a set built from the page\'s rows was accepted',
+    ).toBe(false)
   })
 
   it('both READMEs name the surface the way the surface names itself', () => {

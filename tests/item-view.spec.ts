@@ -16,10 +16,10 @@
 import { describe, expect, it } from 'vitest'
 import type { ItemRecord } from '../src/core/item.ts'
 import {
+  DEFAULT_ITEM_SORT,
   DEFAULT_STALE_DAYS,
   EMPTY_ITEM_QUERY,
   HARD_SOON_DAYS,
-  ITEM_INSIGHT_IDS,
   ITEM_PAGES,
   ITEM_SORTS,
   ITEM_STATUS_ORDER,
@@ -30,16 +30,17 @@ import {
   itemGroupCountsOf,
   itemInsightOf,
   itemMatches,
-  itemMatchesText,
   itemPageCountsOf,
   itemRefOf,
   itemRowViewOf,
   itemSlicesOf,
   itemMatchContextOf,
   parseItemQuery,
+  recentItemsOf,
   scheduleBucketOf,
   scheduleBucketsOf,
   sortItemsOf,
+  startOfDay,
   staleDaysOf,
   triageLinesOf,
 } from '../src/core/item-view.ts'
@@ -245,10 +246,30 @@ describe('the query grammar', () => {
     expect(itemMatches(row(), EMPTY_ITEM_QUERY, ctx())).toBe(true)
   })
 
-  it('offers the same answer through the one-call form the model uses', () => {
+  it('is ONE grammar, and the model\'s own door into it is the same function', () => {
+    // There used to be a second entry point here — `itemMatchesText(item, text,
+    // now)` — for "a caller that filters a set in one pass". Nothing in the tree
+    // called it: `task-search.ts`'s `matchItemQuery` and the panel both parse
+    // once and walk the rows, which is what the doc comment on that function
+    // recommends. Two same-named-nearby functions differing only in whether the
+    // first argument is a string is the easiest drift to introduce and the
+    // hardest to notice, so the parse-plus-match convenience is gone and the
+    // parse is done by the caller that can hoist it.
     const target = row({ tags: ['gallery'], dueAt: T0 - DAY })
-    expect(itemMatchesText(target, 'gallery has:behind', T0)).toBe(true)
-    expect(itemMatchesText(target, 'gallery has:hardOverdue', T0)).toBe(false)
+    const read = itemMatchContextOf(T0)
+    expect(itemMatches(target, parseItemQuery('gallery has:behind'), read)).toBe(true)
+    expect(itemMatches(target, parseItemQuery('gallery has:hardOverdue'), read)).toBe(false)
+  })
+
+  it('parseItemSearch is gone too: task-search forwarded the same parser', () => {
+    // `parseItemSearch` was `parseItemQuery` under a second name, exported so a
+    // surface could read the clauses. Its only caller was a test that already
+    // imported the real one. A re-export is not a convenience — it is a second
+    // name for one function, and names are what drift.
+    const parsed = parseItemQuery('has:behind #gallery p1')
+    expect(parsed.flags.has('behind')).toBe(true)
+    expect(parsed.tags).toEqual(['gallery'])
+    expect(parsed.priority).toEqual(['urgent'])
   })
 })
 
@@ -292,8 +313,8 @@ describe('grouping and ordering', () => {
   it('a stamp that is not FINITE is refused, so no ordering can return NaN', () => {
     // The totality gate above proves order-independence for FINITE keys, and every
     // fixture in this file comes from one `row()` helper with a finite clock — so
-    // the `1e999` path was unreachable from this suite and the `birth` ordering's
-    // `Infinity - Infinity` had nothing standing in front of it.
+    // the `1e999` path was unreachable from this suite and the one ordering that
+    // subtracted a raw document field had nothing standing in front of it.
     //
     // `JSON.parse('1e999')` is `Infinity`, not a parse error, so a persisted or
     // hand-edited file carries it quietly. `Array.prototype.sort` treats a `NaN`
@@ -301,7 +322,8 @@ describe('grouping and ordering', () => {
     // against each other and the list falls back to arrival order, so two devices
     // holding one document show two lists. The only thing standing between that
     // and a reader is the shape guard asking for a finite NUMBER rather than a
-    // finite-looking one.
+    // finite-looking one — and the tail of the comparator chain, which ends in
+    // `b.updatedAt - a.updatedAt` and so needs the same guarantee.
     const infinite = (id: string, createdAt: number): ItemRecord =>
       ({ ...row({ id }), createdAt } as unknown as ItemRecord)
     // The two rows differ ONLY in a stamp the grammar must have refused.
@@ -332,7 +354,7 @@ describe('grouping and ordering', () => {
   })
 })
 
-describe('the seven orderings, one case each on the question they exist to answer', () => {
+describe('the orderings, one case each on the question they exist to answer', () => {
   it('顺序 IS the document\'s own order, pair by pair, because two devices must not disagree', () => {
     // THE DEFAULT ORDER IS A CONTRACT WITH THE HOST, not a preference. The
     // checklist's order is derived (the new-field admission rule kept `order`
@@ -473,6 +495,113 @@ describe('the seven orderings, one case each on the question they exist to answe
       const backward = sortItemsOf([...undated].reverse(), sort).map(r => r.id)
       expect(forward, `${sort} orders two undated rows by input order`).toEqual(backward)
     }
+  })
+})
+
+describe('the ordering set is CLOSED, and 顺序 is the only default', () => {
+  it('offers exactly the six orderings a reader can tell apart', () => {
+    // 出生时刻 was the seventh and is gone, because for a reader it did not ask
+    // anything 顺序 does not ask: both answer "which of these is mine, and in
+    // what order did they arrive", one read from the document's own comparator
+    // and one read from `createdAt`. Two menu entries that produce near-identical
+    // lists is one entry too many, and a menu nobody reads is the failure mode
+    // the closed set exists to prevent. Pinned exactly, because a closed set that
+    // is only "probably closed" is an open set with better manners.
+    expect([...ITEM_SORTS]).toEqual(['sequence', 'starts', 'due', 'hard', 'priority', 'title'])
+    expect(new Set(ITEM_SORTS).size, 'an ordering is listed twice').toBe(ITEM_SORTS.length)
+  })
+
+  it('defaults to the document\'s own order, not to a date column', () => {
+    // A date-first default spends the reader's first screen on rows they never
+    // dated, and sinks the ones with a promise attached. `sequence` is the
+    // document's own order, so the first thing a reader sees is what the
+    // document already believes. And the default must be IN the offered set: a
+    // default nobody can pick back is a default a device-local preference written
+    // by an older build silently falls out of, which is the one input the
+    // comparator table's TYPE cannot catch.
+    expect(DEFAULT_ITEM_SORT).toBe('sequence')
+    expect(ITEM_SORTS).toContain(DEFAULT_ITEM_SORT)
+    expect(ITEM_SORTS[0], 'the offered order and the default are two facts that must not drift apart').toBe(DEFAULT_ITEM_SORT)
+  })
+})
+
+describe('the recent-rows list is a derivation, not a component', () => {
+  it('answers "what have I been working on", newest first', () => {
+    const rows = [
+      row({ id: 'old', ref: 1, updatedAt: T0 - 5 * DAY }),
+      row({ id: 'new', ref: 2, updatedAt: T0 - 1 * DAY }),
+      row({ id: 'mid', ref: 3, updatedAt: T0 - 3 * DAY }),
+    ]
+    expect(recentItemsOf(rows, 2).map(r => r.id)).toEqual(['new', 'mid'])
+    expect(recentItemsOf(rows, 99).map(r => r.id)).toEqual(['new', 'mid', 'old'])
+    // Fewer than asked for is a real answer, not a gap to be filled.
+    expect(recentItemsOf(rows.slice(0, 1), 5)).toHaveLength(1)
+    expect(recentItemsOf(rows, 0)).toEqual([])
+  })
+
+  it('does NOT decide membership: this is about change, not about pages', () => {
+    // Finished work is still the most recently changed thing a reader did, and an
+    // unfiled capture is still a thought they just had. Exempting either here
+    // would make this a second membership judgment living in the sort module, and
+    // the one membership predicate is `isAgendaItem` / `isInboxItem`.
+    const rows = [row({ id: 'done', status: 'done', updatedAt: T0 }), row({ id: 'fresh', ref: 2, updatedAt: T0 - DAY })]
+    expect(recentItemsOf(rows, 5).map(r => r.id)).toEqual(['done', 'fresh'])
+  })
+
+  it('is a TOTAL order even when two rows changed in the same millisecond', () => {
+    // THE DEFECT THIS EXISTS FOR. It was an inline
+    // `[...items].sort((a, b) => b.updatedAt - a.updatedAt)` in a component: a
+    // two-key comparator, so two rows edited in the same millisecond compared
+    // EQUAL, `Array.prototype.sort` left their order to arrival, and the jump
+    // list came out in a different order on a phone than on a laptop. Same defect
+    // as every partial order in this layer, in the one place the layer could not
+    // see.
+    const tied = [
+      row({ id: 'b', ref: 2, updatedAt: T0 }),
+      row({ id: 'a', ref: 1, updatedAt: T0 }),
+      row({ id: 'c', ref: 3, updatedAt: T0 }),
+    ]
+    const forward = recentItemsOf(tied, 3).map(r => r.id)
+    const backward = recentItemsOf([...tied].reverse(), 3).map(r => r.id)
+    expect(forward).toEqual(['a', 'b', 'c'])
+    expect(backward, 'the recent list depends on the order the rows happened to arrive in').toEqual(forward)
+  })
+
+  it('never mutates what it was handed', () => {
+    const rows = [row({ id: 'b', ref: 2, updatedAt: T0 - DAY }), row({ id: 'a', ref: 1, updatedAt: T0 })]
+    const before = [...rows]
+    recentItemsOf(rows, 5)
+    expect(rows.map(r => r.id)).toEqual(before.map(r => r.id))
+  })
+})
+
+describe('today is one local midnight, written down once', () => {
+  it('`startOfDay` is the local day boundary, not a UTC slice', () => {
+    // The bare `toISOString().slice(0, 10)` is the classic version of this and it
+    // puts any reader in a negative-offset zone a day early. The boundary is a
+    // `Date` with the clock zeroed, in the reader's own zone.
+    const noon = new Date(2026, 8, 29, 12, 34, 56, 789).getTime()
+    expect(startOfDay(noon)).toBe(new Date(2026, 8, 29, 0, 0, 0, 0).getTime())
+    expect(new Date(startOfDay(noon)).getHours()).toBe(0)
+    expect(new Date(startOfDay(noon)).getMinutes()).toBe(0)
+  })
+
+  it('is idempotent, so a caller can apply it to an already-truncated instant', () => {
+    // The agenda applies it to a bucket day it derived from a row's date and then
+    // to the reading clock, so the two must agree rather than drift by an hour
+    // across a daylight-saving change.
+    const beforeDst = new Date(2026, 2, 7, 23, 30, 0).getTime()
+    const afterDst = new Date(2026, 2, 9, 0, 30, 0).getTime()
+    for (const at of [beforeDst, afterDst]) expect(startOfDay(startOfDay(at))).toBe(startOfDay(at))
+  })
+
+  it('the bucket boundary agrees with it, which is what it was factored out for', () => {
+    // The agenda used to carry its own copy of this function; the capture box
+    // carried a third. One boundary, and the test that would have caught a
+    // second copy disagreeing with the first.
+    const dstDay = new Date(2026, 2, 8, 0, 30, 0).getTime()
+    expect(scheduleBucketOf(row({ dueAt: dstDay + 3600_000 }), dstDay + 3600_000)).toBe('today')
+    expect(startOfDay(dstDay + 3600_000)).toBe(startOfDay(dstDay))
   })
 })
 
@@ -641,48 +770,80 @@ describe('the four group counts are four, whatever the rows happen to be', () =>
   })
 })
 
-describe('the overview is four counts of whole rows, and shares of one denominator', () => {
+describe('the overview answers two questions, and its numbers cannot add up to a lie', () => {
   const live = row({ id: 'a' })
   const late = row({ id: 'b', dueAt: T0 - 2 * DAY })
   const finished = row({ id: 'f', status: 'done', dueAt: T0 - 30 * DAY })
 
-  it('the tiles come in a fixed order, because a tile is named by its id not its position', () => {
-    expect(itemInsightOf([live, late], T0).tiles.map(tile => tile.id)).toEqual([...ITEM_INSIGHT_IDS])
-  })
-
   it('the denominator is what is left to do, and a list with nothing left has no share to give', () => {
     expect(itemInsightOf([live, late, finished], T0).total).toBe(2)
-    const empty = itemInsightOf([], T0)
-    expect(empty.total).toBe(0)
-    // Zero, not a division by zero and not NaN: a meter drawn to "full" over an
-    // empty list is the dashboard lying with a straight face.
-    for (const tile of empty.tiles) expect(tile.ratio).toBe(0)
-  })
-
-  it('each ratio is that tile\'s share of the same denominator, so the four are comparable', () => {
-    const insight = itemInsightOf([live, late, row({ id: 'c' })], T0)
-    for (const tile of insight.tiles) expect(tile.ratio).toBe(tile.count / insight.total)
-    expect(insight.tiles.reduce((sum, tile) => sum + tile.count, 0)).toBeGreaterThan(0)
+    expect(itemInsightOf([], T0)).toEqual({ total: 0, overdue: 0 })
   })
 
   it('逾期 means the two late buckets and nothing else, so a gated row is nagged about by neither', () => {
     // A gated row is waiting on a date the reader set; saying it is overdue
     // nags about work that cannot be done today.
     const gated = row({ id: 'g', startsAfter: T0 + 9 * DAY, dueAt: T0 + 20 * DAY })
-    const tiles = itemInsightOf([gated], T0).tiles
-    const byId = new Map(tiles.map(tile => [tile.id, tile.count]))
-    expect(byId.get('overdue')).toBe(0)
-    expect(byId.get('today')).toBe(0)
+    expect(itemInsightOf([gated], T0)).toEqual({ total: 1, overdue: 0 })
+    expect(itemInsightOf([live, late], T0)).toEqual({ total: 2, overdue: 1 })
   })
 
-  it('本周 deliberately overlaps 今天, because the two tiles are read together', () => {
-    // A 本周 that excluded today would make the pair disagree by one row for no
-    // reason the reader could see. The row's date is T0 itself rather than
-    // "tomorrow", because a date typed as a day lands at local midnight and
-    // T0 + a day is tomorrow — the two cases differ by one bucket, which is
-    // the whole point of pinning the instant.
-    const byId = new Map(itemInsightOf([row({ id: 't', dueAt: T0 })], T0).tiles.map(tile => [tile.id, tile.count]))
-    expect(byId.get('today')).toBe(1)
-    expect(byId.get('week')).toBe(1)
+  it('it counts a MISSED HARD deadline too, not only a slipped plan', () => {
+    expect(itemInsightOf([row({ id: 'h', hardDueAt: T0 - DAY })], T0)).toEqual({ total: 1, overdue: 1 })
+  })
+
+  it('finished work is in neither number, so 逾期 is a subset of total and the pair cannot disagree', () => {
+    // The retired strip printed five tiles over one denominator, and four of them
+    // were a CROSS-CUT of the group counts rather than a decomposition of the
+    // total — so the tiles could never have summed to the number printed under
+    // them, and no screenshot can show that. The shape that survives is the one
+    // where the arithmetic is checkable by eye: both numbers count live rows,
+    // and late rows are a subset of live rows by construction.
+    const rows = [live, late, finished, row({ id: 'd', hardDueAt: T0 - 3 * DAY })]
+    const insight = itemInsightOf(rows, T0)
+    expect(insight.total).toBe(3)
+    expect(insight.overdue).toBe(2)
+    expect(insight.overdue, 'a subset larger than its set is the cross-cut defect in its purest form').toBeLessThanOrEqual(insight.total)
+    // And the four group heads still add up to the whole document, which is the
+    // other place a reader can check the numbers they are shown.
+    const counts = itemGroupCountsOf(rows, new Map())
+    expect(Object.values(counts).reduce((sum, n) => sum + n, 0)).toBe(rows.length)
+    expect(counts.done).toBe(1)
+  })
+
+  it('the model\'s query and the overview count the same overdue rows', () => {
+    // One predicate, two readers: the tile's number and the filter it writes are
+    // `has:overdue`, and that flag is judged with the same scope the count uses.
+    const rows = [live, late, row({ id: 'h', hardDueAt: T0 - DAY }), finished, row({ id: 'u', startsAfter: T0 + 9 * DAY })]
+    const read = { ...itemMatchContextOf(T0), running: new Map<string, boolean>() }
+    const jumped = rows.filter(item => itemMatches(item, parseItemQuery('has:overdue'), read))
+    expect(jumped.map(item => item.id).sort()).toEqual(['b', 'h'])
+    expect(jumped).toHaveLength(itemInsightOf(rows, T0).overdue)
+  })
+
+  it('THE PROBE BITES: a cross-cut is not a decomposition, and no test can see that', () => {
+    // The failure this whole block exists for, restated as a shape. Five tiles
+    // over one denominator read as a decomposition, and each of them is
+    // individually true — which is exactly why nothing catches it. Only the sum
+    // is wrong, and only a reader mentally adding five numbers would notice, which
+    // is not a thing a person does with a glance.
+    const total = 5
+    const groupHeads = [2, 1, 1, 1]
+    const crossCut = [2, 3, 3, 3]
+    const tiles = [...groupHeads, ...crossCut]
+    expect(tiles.every(n => n >= 0 && n <= total), 'each tile is individually true — that is what makes the shape dangerous').toBe(true)
+    expect(groupHeads.reduce((sum, n) => sum + n, 0), 'the four group heads DO decompose the document').toBe(total)
+    expect(tiles.reduce((sum, n) => sum + n, 0), 'and the five tiles cannot, so the caption underneath them was a lie').not.toBe(total)
+    // The surviving pair has no such pretence: it is a SUBSET relation, which is
+    // a shape a test can assert, rather than a sum nobody can.
+    expect(crossCut[0], 'overdue is a subset of the live rows, never larger than them').toBeLessThanOrEqual(total)
+  })
+
+  it('the retained pair is exactly the pair with no other home', () => {
+    // 未完成 is the rail's `list` cell minus the finished rows and 逾期 is the
+    // agenda's two late buckets. Nothing else the strip used to print is still
+    // asked for anywhere, so nothing else is computed on every render.
+    const insight = itemInsightOf([live, late, finished], T0) as unknown as Record<string, unknown>
+    expect(Object.keys(insight).sort()).toEqual(['overdue', 'total'])
   })
 })

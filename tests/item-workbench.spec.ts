@@ -27,9 +27,29 @@
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
 import { act } from 'react'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import type { ItemRecord } from '../src/core/item.ts'
+import { freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
+import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type ItemKeyActions } from '../src/client/item/keyboard.ts'
+
+/** The action names the registrar can call, read off the closed action union. */
+const knownActions: ReadonlySet<string> = new Set<ItemKeyAction>([
+  'quickCapture', 'moveNext', 'movePrev', 'pick', 'rename', 'open',
+  'close', 'priority', 'dueToday', 'remove', 'undo', 'palette',
+])
+
+/** A handler set that records what it was asked to do, for the reader cases. */
+function recordOfActions(sink: (action: string) => void): ItemKeyActions {
+  const call = (): void => undefined
+  const record = (action: string) => (): void => { sink(action) }
+  return {
+    quickCapture: record('quickCapture'),
+    moveNext: call, movePrev: call, pick: record('pick'), rename: record('rename'),
+    open: record('open'), close: record('close'),
+    priority: arg => { sink(`priority:${arg ?? ''}`) },
+    dueToday: record('dueToday'), remove: record('remove'), undo: record('undo'),
+    palette: record('palette'),
+  }
+}
 import {
   EMPTY_ITEM_QUERY,
   ITEM_SORTS,
@@ -47,25 +67,52 @@ import {
   type ItemFlag,
   type ItemQuery,
 } from '../src/core/item-view.ts'
-import { click, fixtures, itemSurfaceFiles, itemSurfaceSource, mountPanel, press, renderPanel, type Page } from './panel-harness.ts'
+// `type` is the harness's 「type into a field」 helper and it collides with the
+// `type` keyword as a bare import name, so it is renamed at the boundary rather
+// than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
+// works.
+import { type as typeInto, click, coreSurfaceSource, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, press, readSource, renderPanel, type Page } from './panel-harness.ts'
 
 // A fixed clock, so every date-derived claim is reproducible.
 const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
 const DAY = 86_400_000
 
 /**
- * A source file, read by path: this file runs under jsdom, where a relative
- * `new URL(..., import.meta.url)` does not survive the environment's URL
- * wiring, while `process.cwd()` is the repo root here.
+ * A source file, read by the END of its path rather than by all of it.
  *
- * For a claim made about the SURFACE, use `itemSurfaceSource()` instead of
- * naming files here — a hand-written list of the files that exist is the defect,
- * because it stops agreeing with the filesystem the first time the panel is
- * split, and every one of those breaks arrives as a small emergency.
+ * The gate below that says every one of these resolved is the one that tells a
+ * moved file from a broken rule; this helper only hands over the text.
+ * @param rel - the end of a repository-relative path under `src/`.
+ * @returns the file's text, or `''` when nothing under `src/` ends this way.
  */
 function read(rel: string): string {
-  return readFileSync(join(process.cwd(), ...rel.split('/')), 'utf8')
+  return readSource(rel)
 }
+
+/**
+ * Every file a gate in this file reads one at a time, located.
+ *
+ * The list is here rather than derived so that a NEW narrow claim is one line
+ * and a MOVED file is a failure with a name in it. The gate over this list is
+ * what separates 「the file is not there any more」 from 「the rule does not
+ * hold」 — two different emergencies whose repairs point in opposite
+ * directions, and only the second one is anybody's fault.
+ */
+const LOCATED = [
+  'client/item/row-line.tsx',
+  'client/item/detail-pane.tsx',
+  'client/item/view-prefs.ts',
+  'client/item/panel.tsx',
+  'client/item/menu-place.ts',
+  'client/item/item.module.css',
+  'client/locales.ts',
+  'client/index.ts',
+  'client/platform.ts',
+  'core/item-view.ts',
+  'core/item-transitions.ts',
+  'client/item/command-palette.tsx',
+  'client/item/query-chips.tsx',
+].map(suffix => locateSource(suffix))
 
 /** Comments removed, so a rule about CODE never bans the prose explaining it. */
 function code(text: string): string {
@@ -94,9 +141,13 @@ function clientSources(): string[] {
 const surfaceSource = itemSurfaceSource()
 
 const panelSource = surfaceSource
-const rowSource = read('src/client/item/row-line.tsx')
-const detailSource = read('src/client/item/detail-pane.tsx')
-const prefsSource = read('src/client/item/view-prefs.ts')
+/** The command palette's own source, for claims about the box it now holds. */
+const palette = readSource('client/item/command-palette.tsx')
+/** The one component that draws the qualifier chips. */
+const chipsComponent = readSource('client/item/query-chips.tsx')
+const rowSource = read('client/item/row-line.tsx')
+const detailSource = read('client/item/detail-pane.tsx')
+const prefsSource = read('client/item/view-prefs.ts')
 
 /**
  * What each order is CALLED, read out of the dictionary.
@@ -112,7 +163,7 @@ const SORT_LABELS: readonly string[] = (() => {
   // Chinese dictionary before the English one. Taking both would double every
   // label and the count would stop meaning "how many orders".
   const byKey = new Map<string, string>()
-  for (const match of read('src/client/locales.ts').matchAll(/'(item\.sort\.\w+)'\s*:\s*'([^']*)'/g)) {
+  for (const match of read('client/locales.ts').matchAll(/'(item\.sort\.\w+)'\s*:\s*'([^']*)'/g)) {
     if (!byKey.has(match[1] as string)) byKey.set(match[1] as string, match[2] as string)
   }
   return [...byKey.values()]
@@ -143,6 +194,59 @@ function oneRow(patch: Partial<ItemRecord>): ItemRecord[] {
     ...patch,
   }]
 }
+
+describe('a gate that reads one file knows whether the file is there', () => {
+  it('every file this file reads one at a time exists under src/', () => {
+    // THE GATE THIS ENABLES. Every claim below reads one file by the END of its
+    // path, so a component that is renamed or moved keeps working — but that is
+    // only true while the file EXISTS, and a file that has moved away leaves
+    // `source` empty, which turns each of those claims red for a reason that has
+    // nothing to do with the claim. This is the one place that says so, with a
+    // message naming the file and listing its directory, so 「the file moved」 is
+    // never reported as 「the rule is broken」 — the two repairs point in opposite
+    // directions and only the second one is anybody's fault.
+    const lost = LOCATED.filter(located => located.path === undefined)
+    expect(
+      lost.map(located => located.missing),
+      'a gate in this file reads a file that is not under src/ any more',
+    ).toEqual([])
+  })
+
+  it('the locator resolves a file by the end of its path, wherever it lives', () => {
+    // The move the whole arrangement exists for, exercised against the real
+    // filesystem: the same suffix resolves whether the file sits where it always
+    // has or one directory deeper.
+    const direct = locateSource('client/item/view-prefs.ts')
+    const renamed = locateSource('item/view-prefs.ts')
+    expect(direct.path, 'a suffix that names a file that exists was not resolved').toBe('src/client/item/view-prefs.ts')
+    expect(renamed.path, 'the directory part of the path was treated as required, so a moved file still breaks the gate').toBe(direct.path)
+    expect(renamed.source).toBe(direct.source)
+  })
+
+  it('the probe bites: a file that cannot exist is reported as not there', () => {
+    // A check that cannot fail is worse than no check. Feed the locator a name no
+    // file could have and require it to SAY SO, with the directory contents in the
+    // message — otherwise an empty `source` is indistinguishable from an empty
+    // file, and a gate reading it would report a rule that does not hold.
+    const missing = locateSource('client/item/there-is-no-such-module.tsx')
+    expect(missing.path, 'a file that does not exist was reported as found').toBeUndefined()
+    expect(missing.source, 'a missing file handed back text for a gate to match against').toBe('')
+    expect(missing.missing, 'the failure message does not name what was looked for').toContain('client/item/there-is-no-such-module.tsx')
+    expect(missing.missing, 'the failure message does not say what the directory actually holds').toContain('src/client/item/')
+  })
+
+  it('the probe bites: an ambiguous suffix is refused rather than guessed at', () => {
+    // Two files ending the same way is a claim about a file that does not exist —
+    // it is two of them, and picking one is a coin toss dressed as a fact. There
+    // are two `index.ts` under src/ today, which is exactly the shape: a suffix
+    // coarse enough to catch a moved file is also coarse enough to catch a
+    // namesake, and the honest answer to that is to say which two.
+    const ambiguous = locateSource('index.ts')
+    expect(ambiguous.path, 'a suffix matching several files was resolved to one of them').toBeUndefined()
+    expect(ambiguous.missing, 'the refusal does not say how many files it matched').toMatch(/matches 2 files/)
+    expect(ambiguous.missing, 'the refusal does not name the files it could have meant').toContain('src/client/index.ts')
+  })
+})
 
 describe('every remembered preference is one the reader can change', () => {
   const prefsBody = /(?:export\s+)?interface\s+ItemViewPrefs\s*\{([\s\S]*?)\n\}/.exec(prefsSource)?.[1] ?? ''
@@ -406,21 +510,30 @@ describe('the finished work is one click away on the list, and on no other page'
     expect(renderPanel(rows, 'wide', 'list'), 'the 已完成 bucket is not on screen while the reader has not opened it').toContain('已完成')
   })
 
-  it('and the entrance a real reader finds IS the switch', () => {
-    // The most valuable half, because it pins reachability at the ENTRANCE a
-    // reader finds rather than at an abstract preference. "The finished rows are
+  it('and the entrance a real reader finds IS the control', () => {
+    // The most valuable half, because it pins reachability at an ENTRANCE a
+    // reader can find, not at an abstract stored value. "The finished rows are
     // one gesture away" is a claim about a gesture; the version above is a claim
-    // about a stored value, and a preference nobody can reach is the defect this
+    // about a preference, and a preference nobody can reach is the defect this
     // whole refactor started from.
+    //
+    // THE ENTRANCE IS NOW THE GROUP'S OWN FOLD, and the claim moved with it rather
+    // than being deleted. It used to be a tile on the overview strip; the strip is
+    // retired and the page-level `showDone` went with it, because it was the same
+    // sentence said a second time by a control that then disappeared — and a
+    // preference whose control is gone is not a setting, it is a trap with the
+    // handle filed off. **One intent, one control**, and this case now pins that
+    // the surviving control is one a reader can see and press.
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      const tile = findByText(panel.surface, '已完成')
-      expect(tile, 'the overview has no finished tile — the switch has no entrance, so the rows behind it are unreachable by any route').toBeDefined()
-      click(tile)
-      const showing = panel.surface.textContent ?? ''
-      for (const row of rows.filter(r => r.status === 'done')) {
-        expect(showing, 'one click on the finished tile did not put the finished row on screen').toContain(row.title)
-      }
+      const fold = [...panel.surface.querySelectorAll('[class*="itemGroupToggle"]')]
+        .find(node => (node.textContent ?? '').includes('已完成'))
+      expect(fold, 'the finished group has no visible fold — the rows behind it are unreachable by any route a reader can see').toBeDefined()
+      // It has to be a real disclosure: an `aria-expanded` that names nothing is
+      // a control that announces a state the listener cannot tie to a region.
+      expect(fold?.getAttribute('aria-expanded'), 'the fold does not say whether it is open').toBeDefined()
+      expect(fold?.getAttribute('aria-controls'), 'the fold announces its state but names no region').toBeTruthy()
+      expect((panel.surface.textContent ?? ''), 'the finished row is not on the page with the switch on').toContain(rows[0]?.title ?? '__none__')
     } finally {
       panel.dispose()
     }
@@ -573,20 +686,29 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
-  it('the detail rail\'s head says what the rail is, even with nothing picked', () => {
+  it('the detail rail\'s head names the row in it, and there is no such thing as an empty rail', () => {
     // An empty head with a rule under it is a horizontal line that came from
-    // nowhere: the reader has not chosen anything yet, so the line is not
-    // separating two things, and a rule that separates nothing reads as a
-    // rendering fault. The head says the two characters that name the column.
+    // nowhere: nothing is being separated, and a rule that separates nothing reads
+    // as a rendering fault. That used to be fixed by giving the empty rail a
+    // heading that named the column.
+    //
+    // THE BETTER FIX WAS TO STOP DRAWING IT. The rail is 37% of a wide stage and
+    // is now rendered only when a row is chosen, so the whole state this case was
+    // written against — a column with a head and a rule and no row in it — cannot
+    // be reached. What remains worth pinning is the consequence, which is STRONGER
+    // than the sentence it replaces: the head is never empty, because whenever the
+    // rail exists it exists for a row, and the head says which one.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const heads = [...panel.surface.querySelectorAll('h2')].filter(head => !head.closest('button'))
-      const railHead = heads.find(head => {
-        const cls = head.className
-        return /item[A-Za-z]*Detail[A-Za-z]*Head/.test(cls)
-      })
-      expect(railHead, 'the detail rail has no head at all — the column beside the list is not named when nothing is picked').toBeDefined()
-      expect((railHead?.textContent ?? '').trim(), 'the detail head is an empty box with a rule under it — a line that separates nothing reads as a broken render').not.toBe('')
+      const railHead = (): Element | undefined => [...panel.surface.querySelectorAll('h2')]
+        .filter(head => !head.closest('button'))
+        .find(head => /item[A-Za-z]*Detail[A-Za-z]*Head/.test(head.className))
+      expect(railHead(), 'a fresh panel drew a detail head with no row in it — a rule that separates nothing reads as a broken render').toBeUndefined()
+      const row = panel.surface.querySelector('[class*="itemRowMain"]')
+      click(row)
+      const head = railHead()
+      expect(head, 'a chosen row produced no detail head — the column beside the list is not named').toBeDefined()
+      expect((head?.textContent ?? '').trim(), 'the detail head is an empty box with a rule under it').not.toBe('')
     } finally {
       panel.dispose()
     }
@@ -628,21 +750,33 @@ describe('a press is a change to the document, not a change to the menu', () => 
     // tile writes, the rows that token keeps must be the rows the tile counted.
     // Asserted by asking the model, so a future tile that counts one bucket and
     // filters another cannot pass.
+    // THE SUBJECT IS THE EMPTY-BUCKET SUMMARY'S CHIP NOW. The strip is retired,
+    // and the claim is the same one a reader can still check: whatever number a
+    // chip prints, the rows that chip's filter keeps must be those rows. The chip
+    // is the surface's remaining 「a number you can press to filter」, so the
+    // defect this caught has a home rather than losing its only test.
+    //
+    // The gate is on the SHAPE rather than on the two values: whatever token the
+    // chip writes, the rows that token keeps must be the rows the chip counted.
+    // Asserted by asking the model, so a future chip that counts one bucket and
+    // filters another cannot pass.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const tile = findByText(panel.surface, '超期')
-      expect(tile, 'the overdue tile is gone, so this gate is asserting nothing').not.toBeNull()
-      const counted = (panel.surface.textContent ?? '').match(/超期\s*(\d+)/)?.[1]
-      expect(counted, 'the overdue tile shows no number to compare against').toBeDefined()
+      const chip = panel.surface.querySelector('[class*="itemEmptyGroup"][data-status]')
+      expect(chip, 'no bucket chip is drawn at all, so this gate is asserting nothing — a number with no press behind it is a scoreboard').not.toBeNull()
+      // `[0]`, not `[1]`: the pattern has no capture group, so `[1]` is always
+      // undefined and the whole case reports 「prints no number」 for a chip that
+      // is printing one — a gate that is red for the wrong reason is a gate
+      // somebody relaxes instead of reads.
+      const said = Number(/\d+/.exec(chip?.textContent ?? '')?.[0] ?? Number.NaN)
+      expect(Number.isInteger(said), `the chip prints no number to compare against: ${JSON.stringify(chip?.textContent)}`).toBe(true)
       const before = panel.surface.querySelectorAll('li[class*="itemRow"]').length
-      act(() => { tile?.click() })
-      // The press filters, so the number of rows under it can only be checked by
-      // the filter's own account: it must not be LARGER than what the tile counted,
-      // and it must not be the count of the narrower bucket alone.
+      act(() => { chip?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
       const after = panel.surface.querySelectorAll('li[class*="itemRow"]').length
-      expect(after, 'pressing the overdue tile did not filter at all').toBeLessThan(before)
-      const query = panel.surface.querySelector('input') as HTMLInputElement
-      expect(query.value, 'the box shows a raw grammar token again').not.toMatch(/^has:/)
+      expect(after, 'pressing the chip did not filter at all').toBeLessThan(before)
+      // The count it prints and the rows it keeps are ONE fact. A chip that says
+      // 0 and keeps 2 is the exact defect this case was written for.
+      expect(after, `the chip says ${String(said)} and filtering to it left ${String(after)} rows — the number and the list are two different facts`).toBe(said)
     } finally {
       panel.dispose()
     }
@@ -661,14 +795,14 @@ describe('a press is a change to the document, not a change to the menu', () => 
     // So the gate is on the CONSTRUCTION SITE, and it asks for the argument by
     // name. The mirror is deliberately not defaulted inside the replica: a default
     // that quietly builds one is a default nobody can find at the call site.
-    const root = read('src/client/index.ts')
+    const root = read('client/index.ts')
     const site = /new BoardSyncClient\(\{([\s\S]*?)\n {4}\}\)/.exec(root)?.[1] ?? ''
     expect(site, 'the sync client is no longer constructed where this gate looks for it — the markup moved and this is now checking nothing')
       .not.toBe('')
     expect(site, 'the checklist is still built with NO offline mirror, so a note written while the host is down is lost on reload')
       .toMatch(/checklistMirror:\s*createChecklistMirror\(\)/)
     // And the mirror must be a real one: the key the reader's notes live under.
-    const platform = read('src/client/platform.ts')
+    const platform = read('client/platform.ts')
     expect(platform, 'the mirror exists but writes somewhere that is not the documented key')
       .toMatch(/dsh\.taskBoard\.items\.v1/)
   })
@@ -776,23 +910,38 @@ describe('the search box does not print the grammar', () => {
    * next value added to a facet table would slip past it; a gate on the binding
    * cannot be outrun, because the defect WAS the binding.
    */
-  const panel = code(read('src/client/item/panel.tsx'))
+  const panel = code(read('client/item/panel.tsx'))
 
   it('the field is bound to the free-text half, not to the whole query', () => {
-    const field = /<input[^>]*className=\{css\.itemSearch\}[\s\S]{0,400}?\/>/.exec(panel)?.[0] ?? ''
+    // THE FIELD IS IN THE PALETTE NOW, and the claim did not move with the markup
+    // so much as acquire a second address. It used to be read off `panel.tsx`; it
+    // is the same binding in `command-palette.tsx`, against the same one string.
+    // The wiring changed and the claim did not — which is the point of stating
+    // what a claim IS rather than which file it was typed into.
+    const field = /<input[^>]*className=\{css\.itemSearch\}[\s\S]{0,400}?\/>/.exec(palette)?.[0] ?? ''
     expect(field, 'the search field is not where this gate expected it — the markup moved and this is now checking nothing').not.toBe('')
     const bound = /value=\{([^}]*)\}/.exec(field)?.[1] ?? ''
     expect(bound, 'the search field has no value binding at all').not.toBe('')
     expect(bound, 'the field is bound to the whole query, so every facet press prints its own token into it')
       .toMatch(/freeTextOf\(/)
-    expect(bound, 'the field was bound to the raw query again').not.toBe(/^prefs\.search$/)
+    expect(bound, 'the field was bound to the raw query again').not.toBe(/^props\.text$/)
   })
 
   it('the chips are DERIVED from that same string, and clearing them keeps the reader\'s words', () => {
-    expect(panel, 'the query is written to state somewhere other than the one string it was always in')
-      .toMatch(/<ItemQueryChips[\s\S]{0,400}?text=\{prefs\.search\}/)
-    expect(panel, 'clearing the qualifiers also throws away what the reader typed')
-      .toMatch(/onClearQualifiers=\{\(\) => choose\(\{ search: freeTextOf\(prefs\.search\) \}\)\}/)
+    // The chips are DERIVED from the box's own string, and they were moved back
+    // into `query-chips.tsx` after being inlined into the palette — two renderings
+    // of one control, one of them imported by nobody. So this reads the component
+    // that draws them, which is the one place the answer now lives.
+    expect(chipsComponent, 'the chips are not derived from the box\'s own string')
+      .toMatch(/queryChipsOf\(props\.text, props\.tags\)/)
+    expect(chipsComponent, 'the chips were bound to the raw query again')
+      .toMatch(/withFacetToken\(props\.text, chip\.token, false\)/)
+    // And the palette reaches for that component rather than drawing its own.
+    expect(palette, 'the palette draws its own copy of the chips instead of using the one component').not.toMatch(/itemQueryChipRemove/)
+    // And the panel still owns that string: the palette is handed the same
+    // `search` preference the list page reads, not a second copy of it.
+    expect(panel, 'the palette keeps its own copy of the query instead of reading the panel\'s')
+      .toMatch(/text=\{prefs\.search\}/)
   })
 
   it('pressing a facet does NOT print its token into the box, and the chip says it in words', () => {
@@ -803,7 +952,13 @@ describe('the search box does not print the grammar', () => {
     // person would, and the reader's own words are untouched by it.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
+      // THE BOX IS BEHIND A KEYSTROKE NOW, and opening it is part of the claim: a
+      // filter the reader cannot reach without a keyboard is a filter the phone
+      // does not have, and hard rule 11 makes that a REMOVED control rather than
+      // a moved one. So the gate opens the palette the way a reader does.
+      press(panel.surface, '/')
       const box = (): HTMLInputElement => panel.surface.querySelector('input') as HTMLInputElement
+      expect(box(), 'the palette opened on nothing, so the search box is unreachable without a mouse').not.toBeNull()
       // React controls this input, so assigning `.value` writes to the DOM node
       // without going through the change handler it listens to — the field stays
       // empty and the rest of the gate is measuring nothing. The native setter is
@@ -856,31 +1011,52 @@ describe('the ordering is ONE control, and the narrow band only wraps it', () =>
    * a declaration — both controls were perfectly well declared. It was that only
    * one of them was ever on screen.
    */
-  const bar = code(read('src/client/item/filter-bar.tsx'))
+  const bar = code(read('client/item/command-palette.tsx'))
 
-  it('the bar renders one ordering control, and no band decides otherwise', () => {
-    const selects = /<select[\s\S]*?item\.sort\.label[\s\S]*?<\/select>/.test(bar)
-    expect(selects, 'the phone band has its own ordering control again — the same setting with a different component and a different name')
-      .toBe(false)
-    const segmented = (bar.match(/<Segmented/g) ?? []).length
-    expect(segmented, `the ordering control is rendered ${segmented} times; it must be one control in both bands`).toBe(1)
+  it('the palette offers ONE ordering control, and no band decides otherwise', () => {
+    // THE SUBJECT MOVED, THE CLAIM DID NOT. The ordering used to live on the
+    // filter bar, which had a `<select>` at the base band and a segmented row
+    // from 720 — the same setting with two components and two names, which is
+    // the shape rule 11 bans outright. The bar is retired; the six orders are in
+    // the command palette now, and the state bar carries only a trigger that
+    // NAMES the current one.
+    //
+    // So the claim is checked where the orders are now: exactly one chooser, no
+    // second spelling, and every order reachable. What is deliberately NOT
+    // asserted is that the current order appears exactly once on screen — the
+    // state bar naming it and the palette offering it are the same control seen
+    // from two states, and a gate that counted the two would forbid the reader
+    // from being told what they are looking at.
+    const choosers = (bar.match(/SORT_LABEL\[/g) ?? []).length
+    expect(choosers, 'the orders are chosen in more than one place — the same setting with two components again').toBe(1)
+    expect(bar, 'the ordering chooser is a `<select>` again, which is how the phone lost the segmented row').not.toMatch(/<select/)
+    // Every order the model offers is reachable, and the orders come from the
+    // model rather than from a list written here.
+    expect(bar, 'the palette does not read the orders from the model').toContain('ITEM_SORTS')
+    expect(bar, 'the palette writes its own list of order labels instead of the one closed table').not.toMatch(/item\.sort\.\w+'\s*:\s*'/)
   })
 
-  it('and no stylesheet hides it at a width', () => {
-    const sheet = code(read('src/client/item/item.module.css'))
-    const hidden = [...sheet.matchAll(/\.itemFilterWide\s*\{([^}]*)\}/g)]
-      .map(match => match[1] ?? '')
+  it('and no stylesheet hides a control at a width', () => {
+    // The shape of the old case, kept as a RULE rather than as the two classes
+    // it happened to name: a stylesheet must not be able to remove a control at a
+    // width, because 「the phone is offered what the desk is offered」 stops being
+    // true the moment a width is allowed an opinion.
+    const sheet = code(read('client/item/item.module.css'))
+    const hidden = [...sheet.matchAll(/\.(itemFacetChip|itemStatebarAction|itemCommandTrigger|itemRowMain)\s*\{([^}]*)\}/g)]
+      .map(match => match[2] ?? '')
       .filter(body => /display\s*:\s*none/.test(body))
-    expect(hidden, 'a width is told to hide the ordering control, which is how the phone lost it').toEqual([])
-    expect(sheet, 'the second ordering control still has a class of its own').not.toMatch(/\.itemFilterSelect\b/)
+    expect(hidden, 'a width is told to hide a control, which is how the phone lost it').toEqual([])
   })
 
   it('the probe bites: a hidden control is reported', () => {
-    const detector = (css: string): number => [...css.matchAll(/\.itemFilterWide\s*\{([^}]*)\}/g)]
-      .map(match => match[1] ?? '')
+    // Run through the SAME class list the gate above uses, so the probe tests the
+    // reader rather than a copy of it — a copy drifts from its original the first
+    // time the original is fixed, and then it proves nothing for ever after.
+    const detector = (css: string): number => [...css.matchAll(/\.(itemFacetChip|itemStatebarAction|itemCommandTrigger|itemRowMain)\s*\{([^}]*)\}/g)]
+      .map(match => match[2] ?? '')
       .filter(body => /display\s*:\s*none/.test(body)).length
-    expect(detector('.itemFilterWide { display: none; }'), 'the probe did not bite — a hidden control passes').toBe(1)
-    expect(detector('.itemFilterWide { display: flex; }'), 'a visible control is reported as hidden').toBe(0)
+    expect(detector('.itemFacetChip { display: none; }'), 'the probe did not bite — a hidden control passes').toBe(1)
+    expect(detector('.itemFacetChip { display: flex; }'), 'a visible control is reported as hidden').toBe(0)
   })
 })
 
@@ -906,7 +1082,7 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
   it('the pure kernel exists, and it is pure', async () => {
     const place = await kernel()
     expect(place, 'src/client/item/menu-place.ts has no placeRowMenu — the menu is positioned by a declaration that assumes the room is there').toBeDefined()
-    const source = read('src/client/item/menu-place.ts')
+    const source = read('client/item/menu-place.ts')
     // Pure means pure: no DOM, no clock, no module state. A placement function
     // that reads `getBoundingClientRect` itself cannot be tested on the three
     // shapes below without a browser, which is the whole reason it is a
@@ -1093,11 +1269,18 @@ describe('the inbox is one membership, and the agenda reads it from there', () =
     // named predicate two consumers read cannot drift from itself the way two
     // inlined copies can. Scanning the call sites instead would forbid the
     // indirection and buy nothing.
-    const source = read('src/core/item-view.ts')
+    // THE WHOLE SHARED LAYER, not one file of it. The two predicates were
+    // re-exported out of `item-view.ts` into their own module, and a gate wired
+    // to the old path answered 「the inbox predicate is gone from the shared
+    // module」 — which was false, the export was still there, and the reader of
+    // that sentence would have gone hunting for a deleted function instead of a
+    // moved one. The claim is about where the ANSWER lives (the shared layer)
+    // and never about which file holds it today.
+    const source = coreSurfaceSource()
     const inbox = /export function isInboxItem\b[\s\S]*?\n\}/.exec(source)?.[0] ?? ''
-    expect(inbox, 'the inbox predicate is gone from the shared module').not.toBe('')
+    expect(inbox, 'the inbox predicate is gone from the shared layer').not.toBe('')
     const member = /export function isAgendaItem\b[\s\S]*?\n\}/.exec(source)?.[0] ?? ''
-    expect(member, 'there is no named agenda membership in the shared module — the exemption is being written at each call site').not.toBe('')
+    expect(member, 'there is no named agenda membership in the shared layer — the exemption is being written at each call site').not.toBe('')
     expect(member, 'the agenda membership states its own idea of what an unfiled capture is, instead of reading the one predicate').toMatch(/\bisInboxItem\b/)
     // And both consumers read the member rather than re-deciding for themselves.
     expect(code(source), 'the agenda fills its buckets without asking the named membership').toMatch(/\bisAgendaItem\b/)
@@ -1121,7 +1304,7 @@ describe('a batch is one write through the shared semantics, not a loop over the
     // other does not. So a multi-select writes through the SAME function the
     // single-row path uses, and that function lives in `core/`, not in the
     // panel.
-    const shared = [...read('src/core/item-transitions.ts').matchAll(/export function (\w+)/g)].map(m => m[1] as string)
+    const shared = [...read('core/item-transitions.ts').matchAll(/export function (\w+)/g)].map(m => m[1] as string)
     expect(shared.length, 'src/core/item-transitions.ts exports no write functions — the shared layer is not there to be shared').toBeGreaterThan(2)
     const batch = /batch|selected|multi/i.exec(panelSource)
     expect(batch, 'the panel has no batch at all — the gate is asserting against a feature that does not exist').not.toBeNull()
@@ -1208,7 +1391,7 @@ describe('the row is a grid whose tracks are fixed, because alignment is a promi
     // eye reads a ragged left edge as a page nobody set, before it has read a
     // single word. Fixed tracks are the fix, and they are fixed ONCE on the
     // root so they cannot drift between rows.
-    const css = read('src/client/item/item.module.css')
+    const css = read('client/item/item.module.css')
     const gridOf = (name: string): string => new RegExp(`\\.${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css)?.[1] ?? ''
     const columns = (body: string): string[] => [...body.matchAll(/grid-template-columns\s*:\s*([^;]+)/g)].map(m => (m[1] ?? '').trim())
     for (const body of [gridOf('itemRowMain'), gridOf('itemRowMeta')]) {
@@ -1272,63 +1455,411 @@ function openRowMenu(root: HTMLElement): void {
   click(trigger)
 }
 
-describe('a meter states a fraction, so its denominator has to be the one it names', () => {
-  /**
-   * THE FOURTH TILE DREW A FRACTION OF NOTHING, and every other gate was green.
-   *
-   * The strip states its denominator in a caption under the tiles — 「每根条都是
-   * 『还没做完的 n 条』里的份额」— and four of the five meters honoured it. The
-   * fifth was the finished group, whose count was divided by the UNFINISHED total:
-   * a row the reader has already finished is not part of the work still open, so
-   * the bar claimed a share of a set it is not in. The number was plausible, the
-   * caption above it was true about the other four, and nothing anywhere
-   * contradicted it — which is exactly the shape of defect that only a test
-   * written from the sentence in the caption can catch.
-   */
-  /**
-   * The strip's meters, counted.
-   *
-   * `:not([class*="itemTileBarFill"])` is load-bearing rather than fussy: a
-   * track is `itemTileBar` and its fill is `itemTileBarFill`, so a plain
-   * `[class*="itemTileBar"]` matches BOTH and every meter counts twice. That is
-   * not a smaller number, it is a different one — four meters read as eight, and
-   * the gate below would have been quietly wrong rather than red.
-   */
-  const meters = (root: ParentNode): number =>
-    root.querySelectorAll('[class*="itemTileBar"]:not([class*="itemTileBarFill"])').length
-
-  it('the finished group draws no meter, because it is no share of what is owed', () => {
+/**
+ * 「A METER STATES A FRACTION, SO ITS DENOMINATOR HAS TO BE THE ONE IT NAMES」 —
+ * RETIRED, and the reason is written down so the next reader does not take the
+ * silence for 「there was never a check here」.
+ *
+ * The invariant was real and it caught a real thing: a bar whose count is divided
+ * by a total the bar is not a part of is a plausible number, is contradicted by
+ * nothing on screen, and every other gate reads it as a percentage. The overview
+ * strip's fifth tile was one — the finished group's count over the UNFINISHED
+ * total — under a caption that was true about the other four.
+ *
+ * The check moved to the group heads' own meter when the strip was retired, and
+ * then the group meter went too. So the page has NO meter at all: the four group
+ * counts are group HEADS and the overdue count is the date facet, and both are
+ * plain numbers a reader can add up against the header. The colour budget is
+ * what finally settled it — nine 2px accent bars on one screen against a budget
+ * of seven, all of them restating a number printed next to them.
+ *
+ * WHAT THIS MEANS FOR THE NEXT METER. Nothing on this surface draws a fraction
+ * now, so there is nothing for the rule to police, and a gate with no subject is
+ * worse than no gate: it would be a green tick asserting nothing, which is the
+ * one thing this repository is most careful about. **The first meter drawn on this
+ * surface again must come back with this check attached** — read the sentence
+ * beside it, then require the bar to be the share of what that sentence says. A
+ * bar over the list total, or over the rows still open, is the defect it exists
+ * for.
+ */
+describe('a meter states a fraction — nothing on this page draws one', () => {
+  it('and the counts that took their place are plain numbers, so there is no fraction left to police', () => {
+    // A LIVE version of the retired check, pointed at the claim that replaced
+    // it: whatever the four group heads and the overdue facet print must be a
+    // COUNT a reader can check against the header, with no bar anywhere claiming
+    // to be a share of it. This is the smallest honest gate the retirement
+    // leaves behind — it cannot fail on a meter (there are none) and it fails the
+    // moment a meter comes back without one.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const finished = findByText(panel.surface, '已完成')
-      expect(finished, 'no tile names the finished group, so this gate is asserting nothing').not.toBeNull()
+      const bars = panel.surface.querySelectorAll('[class*="itemTileBar"], [class*="itemGroupProgress"]')
       expect(
-        finished?.querySelector('[class*="itemTileBar"]'),
-        'the finished group draws a meter over the unfinished denominator — a fraction of a set this row is not in',
-      ).toBeNull()
-      // Four, because the strip has five tiles and the finished one is the odd
-      // one out; anything else means a tile appeared or vanished, and the number
-      // four stops being a statement about this strip.
-      expect(
-        meters(panel.surface),
-        'the strip does not carry exactly four meters, so 「the finished one is the odd one out」 is no longer a statement about it',
-      ).toBe(4)
+        [...bars].map(node => node.className),
+        'a meter is back on this surface — it has to be the share of the fraction spelled out beside it, so this retirement is over',
+      ).toEqual([])
+      // And the group heads still print a number each: a retirement must not
+      // quietly become a deletion.
+      const counts = [...panel.surface.querySelectorAll('[class*="itemGroupCount"]')]
+        .map(node => Number(/(\d+)\s*$/.exec(node.textContent ?? '')?.[1] ?? Number.NaN))
+      expect(counts.length, 'the group heads no longer carry numbers, so 「the counts went back to the heads」 is not true').toBeGreaterThan(0)
+      expect(counts.every(Number.isInteger), `a group head reports no number: ${JSON.stringify(counts)}`).toBe(true)
     } finally {
       panel.dispose()
     }
   })
 
-  it('the probe bites: this counter can see a fifth meter, and is not fooled by a fill', () => {
-    // Two synthetic strips through the SAME counter the gate uses, so four is
-    // information rather than a number that would come out four on anything.
-    const strip = (tracks: number, fills: number): HTMLElement => {
-      const box = document.createElement('div')
-      box.innerHTML = '<p><span class="_itemTileBar_x"></span></p>'.repeat(tracks)
-        + '<p><span class="_itemTileBarFill_x"></span></p>'.repeat(fills)
-      return box
+  it('the probe bites: a bar with a sentence beside it is reported, so the retirement cannot hide a returning meter', () => {
+    // The shape the retired check existed to catch, fed through the check that
+    // replaced it. If this ever passes, the gate above has stopped being able to
+    // fail and the whole block is decoration.
+    const findsAMeter = (root: ParentNode): string[] =>
+      [...root.querySelectorAll('[class*="itemTileBar"], [class*="itemGroupProgress"]')].map(node => node.className)
+    const box = document.createElement('div')
+    box.innerHTML = '<p><span class="_itemTileBar_x"><span class="_itemTileBarFill_x"></span></span></p>'
+    expect(findsAMeter(box), 'the probe did not bite — a returning meter is invisible to this gate').not.toEqual([])
+  })
+})
+
+describe('the keyboard flow is one table, and every key in it has something behind it', () => {
+  // 398 LINES OF GRAMMAR WITH NO TEST, and then a table nobody checks. The
+  // property that matters is not that the keys work — that is what pressing one
+  // is for — but that there is no key WITHOUT something behind it. A shortcut
+  // that does nothing is a promise the interface makes and breaks, and it is the
+  // same defect as a button that only explains itself when pressed: the reader
+  // cannot tell it apart from a broken panel.
+  it('every action the map names is an action the panel can perform', () => {
+    // THE CLOSED RECORD IS THE GATE, and this is the case that makes it worth
+    // having. `ItemKeyActions` is `Record<ItemKeyAction, …>`, so a name added to
+    // the map without a handler does not compile — which is why the panel's
+    // object literal below type-checks at all, and why it is written out HERE as
+    // well: a reader of this file can see which actions exist without opening
+    // the component.
+    const named = [...new Set(ITEM_KEYS.map(binding => binding.action))].sort()
+    expect(named.length, 'the map names no actions at all — the gate is asserting nothing').toBeGreaterThan(3)
+    // A name with no handler is a COMPILE error, not a runtime one, so what is
+    // checkable here is the weaker and still useful half: every action the map
+    // names is one the shared record knows about. The strong half is `tsc`.
+    for (const action of named) {
+      expect(knownActions.has(action), `the map names "${action}", which is not a key action the registrar can call`).toBe(true)
     }
-    expect(meters(strip(5, 5)), 'the probe did not bite — a fifth track is invisible to the counter').toBe(5)
-    expect(meters(strip(4, 4)), 'the counter is counting fills as tracks, so every meter reads twice').toBe(4)
+  })
+
+  it('no key is bound to a name twice with a different meaning', () => {
+    // `J` and `↓` both mean 「next」, which is right. Two bindings with the same
+    // CHORD meaning different things is not: the first one in the table wins and
+    // the second is unreachable, so a reader who finds the second in the docs is
+    // pressing a key that does something else.
+    const byChord = new Map<string, string>()
+    for (const binding of ITEM_KEYS) {
+      const chord = `${binding.cmd === true ? 'cmd+' : ''}${binding.shift === true ? 'shift+' : ''}${binding.key}`
+      const seen = byChord.get(chord)
+      if (seen !== undefined) {
+        expect(seen, `${chord} is bound twice with different meanings (${seen} and ${binding.what}) — one of them is unreachable`).toBe(binding.what)
+      }
+      byChord.set(chord, binding.what)
+    }
+    expect(byChord.size, 'no chords were read at all — the gate is asserting nothing').toBe(ITEM_KEYS.length)
+  })
+
+  it('a key the reader is TYPING into is not a command', () => {
+    // The rule that makes a letter-key flow safe to have at all. `j`, `k` and
+    // `d` are letters, and a reader searching for 「jdk」 must get three letters
+    // rather than two letters and a cursor jump — which is a failure with no
+    // error and no visible cause.
+    const search = { key: 'j', metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
+    expect(claimsKey(search), 'a bare letter in a text field is claimed as a command — the reader cannot type it').toBe(false)
+    const onThePage = { ...search, target: document.createElement('div') }
+    expect(claimsKey(onThePage), 'the same letter is not claimed on the page itself — the key does nothing anywhere').toBe(true)
+  })
+
+  it('a ⌘ chord still works while the reader is typing, because it is not typing', () => {
+    const undo = { key: 'z', metaKey: true, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
+    expect(claimsKey(undo), '⌘Z is swallowed by a text field, so undo cannot be reached from the search box').toBe(true)
+    const plain = { ...undo, metaKey: false }
+    expect(claimsKey(plain), 'a bare `z` in a text field is claimed as undo').toBe(false)
+  })
+
+  it('the digits set priorities in the order a reader already knows them', () => {
+    // `!1` is the loudest thing this model can say, so `1` is the loudest here.
+    // The table runs the OTHER way from `ITEM_PRIORITIES`, which is bottom-to-top,
+    // and getting that backwards is the kind of wrong nobody notices until a
+    // reader has pressed `1` on four rows meaning 「the most urgent thing there
+    // is」 and got 「the quietest」.
+    for (const [digit, tier] of [['1', 'urgent'], ['2', 'high'], ['3', 'normal'], ['4', 'low']] as const) {
+      const event = { key: digit, metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') }
+      const binding = bindingFor(event, { focusedId: 'r-1', somethingOpen: false })
+      expect(binding?.action, `${digit} does not set a priority`).toBe('priority')
+      expect(binding?.arg, `${digit} sets the wrong tier`).toBe(tier)
+    }
+  })
+
+  it('a key that needs a row does nothing without one, and is still swallowed', () => {
+    // The two answers are DIFFERENT on purpose. 「Does nothing」 so a priority key
+    // with no row under the cursor does not patch row zero; 「still swallowed」 so
+    // `1` on an empty page does not type a `1` into the search box or scroll the
+    // panel. A key that returns early without claiming the event is the defect.
+    const empty = { key: '1', metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') }
+    const ran: string[] = []
+    const actions = recordOfActions(name => { ran.push(name) })
+    expect(claimsKey(empty), 'a priority key on an empty page is not claimed, so the browser takes it').toBe(true)
+    const taken = dispatchKey(empty, { focusedId: undefined, somethingOpen: false }, actions)
+    expect(taken, 'an inert key let the event travel to the browser').toBe(true)
+    expect(ran, 'a key with no row under the cursor patched something anyway').toEqual([])
+    dispatchKey(empty, { focusedId: 'r-1', somethingOpen: false }, actions)
+    expect(ran, 'the same key with a row under the cursor did nothing — the binding is unreachable').toEqual(['priority:urgent'])
+  })
+
+  it('the probe bites: the readers can see a key the table does not have', () => {
+    // Two synthetic events the table has no binding for, and the two that it
+    // does. If `claimsKey` and `bindingFor` were reading an empty map, every one
+    // of these would pass for the same reason.
+    const off = (key: string) => ({ key, metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') })
+    const state = { focusedId: 'r-1', somethingOpen: false }
+    expect(claimsKey(off('q')), 'the reader claims a key the map does not have — it is guessing').toBe(false)
+    expect(claimsKey(off('z')), 'a bare `z` is claimed — ⌘ is the platform\'s chord, so `z` alone is a letter').toBe(false)
+    // A chord the map genuinely does not have, and one it does: the readers must
+    // tell those apart, which they cannot if either always answers the same way.
+    expect(bindingFor({ ...off('q'), metaKey: true }, state), 'the map has no ⌘Q, and the reader invented one').toBeUndefined()
+    expect(bindingFor({ ...off('z'), metaKey: true }, state)?.action, 'the map HAS ⌘Z and the reader cannot see it').toBe('undo')
+    expect(bindingFor(off('j'), state)?.action, 'the reader cannot see a bare key that is in the map').toBe('moveNext')
+  })
+})
+
+describe('the command palette BEHAVES, which a static capture cannot show', () => {
+  // WHY THIS FILE AND WHY IT MOUNTS. The render bench writes `renderToStaticMarkup`
+  // into a plain HTML document: no runtime, no handlers, no hydration. It can
+  // therefore photograph the palette, and it can never answer the three questions
+  // that decide whether the feature exists at all: **does `⌘K` open it, does the
+  // caret land in the box, and does pressing a chip change the query.** A capture
+  // that shows an open palette is a picture of markup, and markup is not a
+  // feature — so this drives the real component with real key events.
+  const open = (panel: ReturnType<typeof mountPanel>): boolean => {
+    press(panel.surface, 'k', { metaKey: true })
+    return panel.surface.querySelector('[class*="itemCommandPalette"]') !== null
+  }
+
+  it('⌘K opens it and Esc closes it', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      expect(panel.surface.querySelector('[class*="itemCommandPalette"]'), 'the palette is on screen before anything asked for it').toBeNull()
+      expect(open(panel), '⌘K did not open the palette — the keyboard map names a control nothing answers').toBe(true)
+      press(panel.surface, 'Escape')
+      expect(panel.surface.querySelector('[class*="itemCommandPalette"]'), 'Esc did not close the palette').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('/ opens it too, and so does the button on the spine', () => {
+    // Three ways in, because a surface with one is a surface half of whose
+    // readers cannot use it. The button is here because a filter a mouse cannot
+    // reach is a filter the phone does not have.
+    const bySlash = mountPanel(fixtures(), 'list', 'wide')
+    const byButton = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      press(bySlash.surface, '/')
+      expect(bySlash.surface.querySelector('[class*="itemCommandPalette"]'), '`/` did not open the palette').not.toBeNull()
+      const trigger = byButton.surface.querySelector('[class*="itemCommandTrigger"]')
+      expect(trigger, 'the spine draws no ⌘K trigger, so a mouse user has no way into the palette at all').not.toBeNull()
+      click(trigger)
+      expect(byButton.surface.querySelector('[class*="itemCommandPalette"]'), 'the spine trigger did not open the palette').not.toBeNull()
+    } finally {
+      bySlash.dispose()
+      byButton.dispose()
+    }
+  })
+
+  it('the caret lands in the box, because a box you have to click first is a box you came here to avoid', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      open(panel)
+      const box = panel.surface.querySelector('[class*="itemCommandPalette"] input') as HTMLInputElement | null
+      expect(box, 'the palette opened with no field to type into').not.toBeNull()
+      expect(document.activeElement, 'the palette opened and the focus stayed behind — the reader has to reach for the mouse to type the word they are already thinking').toBe(box)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('a bare letter typed while the box is open is TEXT, and not a command', () => {
+    // The rule that makes a letter-key flow safe to have at all. `j` and `d` are
+    // keys here; a reader who has just typed 「登录」 and presses `j` must get a `j`.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      open(panel)
+      const box = panel.surface.querySelector('[class*="itemCommandPalette"] input') as HTMLInputElement
+      typeInto(box, 'jdk')
+      expect(box.value, 'the reader\'s own word lost characters to the key map').toBe('jdk')
+      expect(panel.surface.querySelector('[class*="itemCommandPalette"]'), 'a letter closed the palette — the key map claimed a keystroke inside a text field').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('pressing a chip writes the filter and the list answers to it', () => {
+    // The whole chain, end to end: a press in the palette, the panel's single
+    // query string, and the rows underneath. A palette whose chips draw but do
+    // not write is a picture of a control, and this is the case that would have
+    // caught it — the render bench cannot, because nothing there responds to a
+    // press.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const before = panel.surface.querySelectorAll('[class*="itemRow"]').length
+      open(panel)
+      const chip = findByText(panel.surface, '待办')
+      expect(chip, 'the palette offers no status value to press').not.toBeNull()
+      click(chip)
+      const after = panel.surface.querySelectorAll('[class*="itemRow"]').length
+      expect(after, 'pressing a chip did not narrow the list — the control is drawn and wired to nothing').toBeLessThan(before)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the probe bites: a key map with no ⌘K binding cannot pass the first case', () => {
+    // The reader the gate uses, fed an event for a chord the map has not got, and
+    // one it has. If both answered the same way the first case would be a green
+    // tick asserting nothing — which is the one thing a keyboard gate must never be.
+    const map = (keys: readonly { key: string; cmd?: boolean }[], event: { key: string; metaKey: boolean }): boolean =>
+      keys.some(binding => binding.key === event.key && (binding.cmd === true) === event.metaKey)
+    const withCommandK = [{ key: 'k', cmd: true }]
+    expect(map(withCommandK, { key: 'k', metaKey: true }), 'the detector cannot see ⌘K — the gate proves nothing').toBe(true)
+    expect(map(withCommandK, { key: 'k', metaKey: false }), 'a bare `k` was read as ⌘K').toBe(false)
+    expect(map(withCommandK, { key: 'z', metaKey: true }), 'a chord the map does not have was read as bound').toBe(false)
+  })
+})
+
+describe('the detail rail is rented when a row is chosen, and not before', () => {
+  // THE OTHER HALF of `panel-render`'s band case, and it is here because this file
+  // runs under jsdom: which row is open is LIVE state, and there is nothing to
+  // seed it with — a prop that existed only for a test would be a second way to
+  // say which row is open, which is exactly what the harness warns against for the
+  // preference fields. The reader's gesture is the only honest way in, and it is
+  // the one that also proves the rail appears as a CONSEQUENCE of choosing rather
+  // than because something asked for it.
+  for (const band of ['wide', 'narrow'] as const) {
+    it(`the ${band} band: nothing chosen means no rail, and a row chosen decides the rest`, () => {
+      const panel = mountPanel(fixtures(), 'list', band)
+      try {
+        const rail = (): boolean => panel.surface.querySelector('[class*="itemDetailPane"]') !== null
+        expect(rail(), `a fresh ${band} panel drew a detail rail before anything was chosen — 37% of the stage saying nothing`).toBe(false)
+        const row = panel.surface.querySelector('[class*="itemRowMain"]')
+        expect(row, `the ${band} panel drew no row to choose`).not.toBeNull()
+        click(row)
+        expect(
+          rail(),
+          band === 'wide'
+            ? 'a wide surface with a row chosen draws no detail rail — the row cannot be read anywhere'
+            : 'a narrow surface drew a detail rail — on that band the detail opens in the row, and a rail would be a second copy of it',
+        ).toBe(band === 'wide')
+      } finally {
+        panel.dispose()
+      }
+    })
+  }
+})
+
+describe('the facet editor never rewrites what the reader typed', () => {
+  // 398 LINES, THIRTEEN EXPORTS, NO TESTS — until now. This is the module that
+  // stands between a reader's words and the grammar, and the failure it can
+  // commit is silent: the query comes back rewritten under the reader's hands.
+  // Nothing throws, nothing logs, and the rows still match, so it stays hidden
+  // until a reader looks for their own sentence and does not find it.
+  //
+  // So the claims below are about the WORDS, not about the result. 「The same
+  // rows match」 is true both before and after the text is mangled, and it is
+  // exactly the property that hides the defect.
+
+  it('a facet press adds one token and takes one away, leaving the reader\'s words', () => {
+    // THE ROUND TRIP NOBODY SHOULD WRITE. Parse, drop the value, re-serialize,
+    // write back — and `parseItemQuery` normalises, lower-casing every free word.
+    // A reader who searched 「Gallery」 finds 「gallery」 under their hands, and a
+    // reader who typed a tag in capitals can no longer type it again.
+    //
+    // Pinned on the WORDS, not on the whitespace between them: the field is one
+    // line, so a run of spaces collapsing to one is invisible to the reader,
+    // while capitalisation is the thing they typed on purpose.
+    const typed = 'Gallery Work notes'
+    expect(withFacetToken(typed, 'status:open', true), 'a press lost or rewrote the reader\'s own words').toBe('Gallery Work notes status:open')
+    expect(withFacetToken(withFacetToken(typed, 'status:open', true), 'status:open', false)).toBe(typed)
+  })
+
+  it('the box holds the words, and the qualifiers are not in it', () => {
+    // What the reader TYPING, and nothing else. If a press prints
+    // `status:open` into a field labelled 「搜索标题、正文、备注与标签」, the control
+    // is showing the reader its own source code.
+    expect(freeTextOf('status:open #work Gallery')).toBe('Gallery')
+    expect(freeTextOf('  '), 'an empty box came back with something in it').toBe('')
+    expect(freeTextOf('Gallery'), 'a plain phrase lost words').toBe('Gallery')
+  })
+
+  it('a qualifier the grammar knows but the chip tables do not is still a qualifier', () => {
+    // The hand-built token set this replaced had drifted from the grammar twice,
+    // and each drift cost the same thing: the filter applied, the raw token sat
+    // in the field the reader was typing in, and no chip said what had filtered
+    // the list. `ITEM_FLAGS` carries nine flags and the date face offers four, so
+    // `has:overdue` is a real filter this file has no button for — and it must
+    // still come out of the WORDS, or it prints itself into the reader's text.
+    expect(ITEM_FLAGS, 'the grammar no longer has the flag this case was written about').toContain('overdue')
+    expect(freeTextOf('has:overdue'), 'a qualifier the grammar understands was left in the words box').toBe('')
+  })
+
+  it('a word that merely looks like a qualifier stays in the box', () => {
+    // The other direction, and the one that makes the rule a rule rather than a
+    // shape test: an unrecognised token is a WORD the reader typed, and hiding it
+    // would filter the list with nothing on screen accounting for the filter.
+    expect(freeTextOf('has:notAFlag')).toBe('has:notAFlag')
+  })
+
+  it('chips are in FACET order, not in the order the text happens to sit in', () => {
+    // A chip row that reorders as the reader types is a row nobody can learn, and
+    // the reader's own words may be in any order at all.
+    const a = queryChipsOf('p1 status:open Gallery', [])
+    const b = queryChipsOf('Gallery status:open p1', [])
+    expect(a.map(chip => chip.token), 'the chips came back in a different order for the same filter').toEqual(b.map(chip => chip.token))
+    expect(a.map(chip => chip.token)).toEqual(['status:open', 'p1'])
+  })
+
+  it('a tag chip shows the spelling the reader spelled it with', () => {
+    // A tag is the reader's own word and has no dictionary entry, which is why it
+    // is its own type. A chip that could not spell it would render `undefined`.
+    // When the document holds two spellings of one tag, the first one seen is the
+    // one kept — which is the rule, so it is pinned rather than assumed.
+    const [chip, ...rest] = queryChipsOf('#Design', [['Design'], ['design']])
+    expect(rest, 'one tag produced more than one chip').toEqual([])
+    expect(chip?.tag).toBe('Design')
+  })
+
+  it('the tag list is the document\'s, de-duplicated case-insensitively and in one order', () => {
+    // A list of chips whose order changes between renders is a list nobody can
+    // find anything in. The order is the plain string order of the first
+    // spelling seen — capitals before lower-case — which is arbitrary-looking but
+    // TOTAL, and totality is the property that matters here.
+    const values = tagFacetValuesOf([['Zebra', 'apple'], ['APPLE'], ['  '], []])
+    expect(values.map(value => value.text), 'a tag was duplicated under a different case').toEqual(['Zebra', 'apple'])
+    expect(values.map(value => value.key)).toEqual(['zebra', 'apple'])
+    expect(tagFacetValuesOf([['b'], ['a']]).map(value => value.text), 'the same document gave two orders').toEqual(['a', 'b'])
+  })
+
+  it('the probe bites: a re-serialising editor is reported as one', () => {
+    // Fed the copy the defect actually came from, inlined — the version that is
+    // shorter and looks like the better one, because it goes through the parser
+    // and therefore through its normalisation. A control written against today's
+    // implementation would pass by accident the day the defect is fixed, and then
+    // prove nothing for ever after. The positive arm uses the REAL editor, so
+    // this also states that the shipped one is faithful.
+    const wordsSurvived = (original: string, result: string): boolean => freeTextOf(result) === original
+    const reSerialising = (text: string, token: string): string =>
+      [...text.toLowerCase().split(/\s+/).filter(part => part !== token), token].join(' ')
+    const typed = 'Gallery Work'
+    expect(
+      wordsSurvived(typed, withFacetToken(typed, 'status:open', true)),
+      'the detector reports the real editor as a rewriter — this probe proves nothing',
+    ).toBe(true)
+    expect(
+      wordsSurvived(typed, reSerialising(typed, 'status:open')),
+      'a re-serialising editor passed as a faithful one',
+    ).toBe(false)
   })
 })
 
@@ -1344,7 +1875,7 @@ describe('a surface finds its OWN box, not the first one in the document', () =>
    * to prevent. `useSurfaceNarrow` already resolves the same box with `closest`.
    */
   it('the row asks for its nearest ancestor rather than the document', () => {
-    const source = code(read('src/client/item/row-line.tsx'))
+    const source = code(read('client/item/row-line.tsx'))
     expect(
       source,
       'the row resolves this surface\'s own box from the document, and the board panel carries the same attribute',

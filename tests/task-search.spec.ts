@@ -18,7 +18,6 @@ import {
   matchItemQuery,
   matchTask,
   parseBoardQuery,
-  parseItemSearch,
   itemSearchContext,
   removeFilterToken,
   splitFilterTokens,
@@ -321,7 +320,6 @@ describe('the checklist grammar is delegated, never restated', () => {
     ]
     for (const query of queries) {
       const parsed = parseItemQuery(query)
-      expect(parseItemSearch(query)).toEqual(parsed)
       for (const row of rows) {
         expect(matchItemQuery(row, query, ctx), `delegation diverged on ${JSON.stringify(query)} / ${row.id}`)
           .toBe(itemMatches(row, parsed, ctx))
@@ -332,9 +330,14 @@ describe('the checklist grammar is delegated, never restated', () => {
   it('parses and matches through ONE grammar when called in either order', () => {
     // Order independence: composing by hand and composing through the door must
     // not differ, or "the panel" and "the model" stop being the same question.
+    // This used to also assert that `parseItemSearch` agreed with
+    // `parseItemQuery` — it was `parseItemQuery` under a second name, forwarded
+    // so a surface could read the clauses. Nothing in the tree called it, and a
+    // re-export is not a convenience: it is a second name for one function, and
+    // names are what drift.
     const row = item({ dueAt: now - DAY })
     expect(matchItemQuery(row, 'has:behind', ctx)).toBe(true)
-    expect(itemMatches(row, parseItemSearch('has:behind'), ctx)).toBe(true)
+    expect(itemMatches(row, parseItemQuery('has:behind'), ctx)).toBe(true)
     expect(matchItemQuery(row, 'has:undated', ctx)).toBe(false)
   })
 })
@@ -437,11 +440,18 @@ describe('the checklist haystack is built in exactly one place', () => {
     // behavioural test in this file.
     //
     // Scanned over all of `src/core`, not just the file the grammar is expected
-    // to be in: `item.ts` and `item-view.ts` are where a copy would actually
+    // to be in: `item.ts` and the query module are where a copy would actually
     // land — they are the two files that already hold the row's fields and the
     // row's derivations, so they are the two places a re-implementation feels
     // like it belongs.
-    expect(haystackBuilders(coreRoot)).toEqual(['core/item-view.ts'])
+    //
+    // The name moved when the derivation layer split by question, so the
+    // assertion names the MODULE rather than the layer's facade: what is being
+    // pinned is "exactly one file joins these fields", not "the file is called
+    // item-view.ts". A facade name here would have failed on a pure
+    // reorganization and taught the next reader to expect a layout that is no
+    // longer there.
+    expect(haystackBuilders(coreRoot)).toEqual(['core/item-query.ts'])
   })
 
   it('exists once across ALL of src, host included', () => {
@@ -449,10 +459,14 @@ describe('the checklist haystack is built in exactly one place', () => {
     // of this grammar, it is the one that answers a model rather than a person,
     // and it is the one most likely to be "just this once, inline" — which is
     // exactly how the copy that drifts in silently arrives.
-    expect(haystackBuilders(srcRoot)).toEqual(['core/item-view.ts'])
+    expect(haystackBuilders(srcRoot)).toEqual(['core/item-query.ts'])
   })
 
   it('the door names the module, so the dependency is visible in the import list', () => {
+    // The facade, deliberately: `task-search.ts` is the board's own door and it
+    // reaches the checklist's grammar through the layer's front door rather than
+    // by naming an internal module. That is the arrangement that lets the layer
+    // be reorganized without touching every caller.
     expect(readFileSync(join(coreRoot, 'task-search.ts'), 'utf8')).toMatch(/from '\.\/item-view\.ts'/)
   })
 

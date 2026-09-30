@@ -43,6 +43,10 @@ function catalog(overrides: Record<string, unknown> = {}) {
   // because a test has no other source for it; the gate itself reads this out of
   // the real catalog and never from a list of its own.
   const declared = (overrides?.declaredRelays as string[] | undefined) ?? ['alpha.run', 'alpha.move']
+  // The checklist write lane's table. The gate REFUSES to run when it cannot
+  // read this block, so a fixture without it would not be testing the lane — it
+  // would be testing the refusal. `handlers` is the knob the probes turn.
+  const handlers = (overrides?.handlers as string[] | undefined) ?? ['itemTransitions.captureItemRecord']
   return `
 export interface ActionShape {
   readonly relay?: ${declared.map(d => `'${d}'`).join(' | ')}
@@ -69,6 +73,10 @@ export const ACTIONS = {
     },${relayMove}
   },
 } as const satisfies Record<string, ActionShape>
+
+export const ITEM_HANDLERS = {
+${handlers.map(h => `  '${h.split('.').pop()}': ${h},`).join('\n')}
+} as const satisfies Readonly<Record<string, unknown>>
 
 export const BOARD_VERBS: readonly BoardVerb[] = [${VERB_LIST}]
 `
@@ -105,9 +113,15 @@ const BASE = {
   coreExportNames: ['moveTaskToStatus', 'resolveCardDrop'],
   agentsText: '新增动作必须进 src/core/board-actions.ts。',
   presentFiles: ['src/core/board-actions.ts'],
+  // The checklist's own write layer: the functions a panel may call to change a
+  // document. The gate asks the CATALOG's `ITEM_HANDLERS` whether each one it
+  // sees called is bound to an action, so both halves have to be present for the
+  // lane to mean anything.
+  itemWriteNames: ['captureItemRecord', 'unboundWrite'],
   scanFiles: [
     { path: 'src/client/board/Board.tsx', text: 'controller.createTask("a")\ncontroller.moveTask("a", "todo")\ncontroller.getSnapshot()\n' },
     { path: 'src/client/index.ts', text: 'sync.start()\n' },
+    { path: 'src/client/item/panel.tsx', text: 'const made = captureItemRecord(input, now, mint)\n' },
   ],
 }
 
@@ -118,9 +132,21 @@ function tools(engineBranch: string, documentBody = "switch (id) {\n      case '
   return `function applyOne(id: string) {\n  if (spec.lane === 'engine') {\n${engineBranch}\n  } else if (spec.lane === 'document') {\n    ${documentBody}\n  }\n}\n`
 }
 
-const input = (overrides: Partial<CoverageInput> = {}): CoverageInput => ({ catalogText: catalog(), ...BASE, ...overrides })
-const run = (overrides: Partial<CoverageInput> = {}) => actionCoverageFindings(input(overrides))
-const findings = (overrides: Partial<CoverageInput> = {}) => run(overrides).join('\n')
+/**
+ * The gate's input, plus the one field its inferred type does not carry.
+ *
+ * `actionCoverageFindings` reads `input.itemWriteNames` (the checklist write
+ * layer's own function names) and `readRepo` supplies it, but the type TS infers
+ * for the untyped `.mjs` does not include it, so an object literal carrying it is
+ * rejected as an excess property. Declaring the field here rather than casting the
+ * object away: the gate really does accept it, and if the script's type surface
+ * ever catches up this intersection still compiles.
+ */
+type Input = Partial<CoverageInput> & { readonly itemWriteNames?: readonly string[] }
+
+const input = (overrides: Input = {}) => ({ catalogText: catalog(), ...BASE, ...overrides })
+const run = (overrides: Input = {}) => actionCoverageFindings(input(overrides))
+const findings = (overrides: Input = {}) => run(overrides).join('\n')
 
 describe('the gate is green on a consistent pair', () => {
   it('passes the synthetic baseline', () => {
@@ -539,6 +565,95 @@ describe('3 — catalog coherence', () => {
   it('catches a verb list that drifted from the contract', () => {
     const drifted = catalog().replace("'query',", "'query', 'archive',")
     expect(findings({ catalogText: drifted })).toContain('outside the declared verbs')
+  })
+})
+
+describe('the checklist write lane: a panel write the catalog says nothing about', () => {
+  // THE LANE, AND WHY IT NEEDS ITS OWN PROBES. The method scan is structurally
+  // blind to this panel: it writes through bare core functions (`applyItemPatch`
+  // / `captureItemRecord` / …) because the model has to call the very same ones,
+  // and a bare call has no receiver for the method scan to classify. So the
+  // check runs the other way: a write-layer call the PANEL makes is legal exactly
+  // when the catalog binds that function in `ITEM_HANDLERS` or declares it in
+  // `INTERNAL` with a reason. Before the lane existed, adding such a button left
+  // the gate green — the failure mode where the gate says nothing about a whole
+  // panel, rather than saying something wrong about it.
+
+  it('passes the synthetic baseline, where the call IS bound', () => {
+    // The reverse half first, because it is the half that is easy to forget: a
+    // check that fires on a true declaration teaches the next reader that the
+    // fix for a finding is to delete the rule.
+    expect(actionCoverageFindings(input())).toEqual([])
+  })
+
+  it('catches a write the catalog binds no action to', () => {
+    // The same probe run by hand on the real file, done here in the INPUT so no
+    // product file is ever modified to prove a gate works. ONE binding is
+    // dropped from the table — the table stays readable, which matters, because
+    // an EMPTY table is a different case (the gate refuses to run on it, which
+    // the case below covers) and would prove nothing about the lane.
+    const out = findings({
+      catalogText: catalog({ handlers: ['itemTransitions.captureItemRecord'] }),
+      scanFiles: [...BASE.scanFiles, { path: 'src/client/item/panel.tsx', text: 'applyItemPatch(rows, id, patch, now)\n' }],
+      itemWriteNames: ['captureItemRecord', 'applyItemPatch'],
+    })
+    expect(out, 'the lane is silent on a checklist write nobody told the model about').toContain('applyItemPatch()')
+    expect(out).toContain('neither a value in ITEM_HANDLERS nor an INTERNAL entry with a reason')
+    expect(out, 'the finding must point at the file so the reader knows where to look').toContain('src/client/item/panel.tsx:1')
+  })
+
+  it('and is quiet again once that write is bound', () => {
+    // The pair to the case above. Without it, "the gate fires" proves only that
+    // the gate fires.
+    expect(run({
+      catalogText: catalog({ handlers: ['itemTransitions.captureItemRecord', 'itemTransitions.applyItemPatch'] }),
+      scanFiles: [...BASE.scanFiles, { path: 'src/client/item/panel.tsx', text: 'applyItemPatch(rows, id, patch, now)\n' }],
+      itemWriteNames: ['captureItemRecord', 'applyItemPatch'],
+    })).toEqual([])
+  })
+
+  it('accepts a write the panel makes with no action behind it, once it says why', () => {
+    // The `INTERNAL` half of "either one". This is the shape the real repo is in
+    // for `restoreItemRecord` and `isBlankCapture`: the panel really calls them,
+    // and there really is no catalog action, because they are not actions.
+    const files = [...BASE.scanFiles, { path: 'src/client/item/panel.tsx', text: 'const empty = isBlankCapture(input)\n' }]
+    expect(findings({ scanFiles: files, itemWriteNames: ['captureItemRecord', 'isBlankCapture'] }))
+      .toContain('isBlankCapture()')
+    expect(run({
+      scanFiles: files,
+      itemWriteNames: ['captureItemRecord', 'isBlankCapture'],
+      internal: { getSnapshot: '读投影', isBlankCapture: '判一条快记是不是空——判空不是动作，它不写任何东西' },
+    })).toEqual([])
+  })
+
+  it('still refuses to declare one whose reason is empty', () => {
+    // An unexplained exclusion and a forgotten one look identical from here, so
+    // the ledger's rule has to reach this lane too.
+    const files = [...BASE.scanFiles, { path: 'src/client/item/panel.tsx', text: 'const empty = isBlankCapture(input)\n' }]
+    expect(findings({
+      scanFiles: files,
+      itemWriteNames: ['captureItemRecord', 'isBlankCapture'],
+      internal: { getSnapshot: '读投影', isBlankCapture: '   ' },
+    })).toContain('has an empty reason')
+  })
+
+  it('does not read a method call as a bare core call', () => {
+    // The negative lookbehind is load-bearing: the panel holds documents and
+    // other objects, so a call that merely SHARES a name is not a write, and a
+    // gate that cannot tell the two reports every one of them.
+    const files = [...BASE.scanFiles, { path: 'src/client/item/panel.tsx', text: 'view.captureItemRecord(x)\nsomething.applyItemPatch(a, b, c, d)\n' }]
+    expect(run({ scanFiles: files, itemWriteNames: ['captureItemRecord', 'applyItemPatch'] })).toEqual([])
+  })
+
+  it('reports the lane as unreadable rather than passing it on nothing', () => {
+    // The refusal that keeps this lane honest: a catalog it cannot read the
+    // table out of — or one whose table binds NOTHING — would otherwise leave the
+    // whole checklist unwatched, silently. An empty table is the more dangerous
+    // of the two, because it looks like a real declaration.
+    const stripped = catalog().replace(/export const ITEM_HANDLERS[\s\S]*?\n} as const[^\n]*\n/, '')
+    expect(findings({ catalogText: stripped })).toContain('cannot read ITEM_HANDLERS')
+    expect(findings({ catalogText: catalog({ handlers: [] }) }))
+      .toContain('would have passed on empty input')
   })
 })
 

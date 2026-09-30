@@ -23,13 +23,7 @@
  * grammar for callers that already have an `ItemRecord`.
  */
 import type { ItemRecord } from './item.ts'
-import { itemMatchContextOf, itemMatches, parseItemQuery, type ItemMatchContext, type ItemQuery } from './item-view.ts'
-
-/** The parsed checklist query, for a surface that needs the clauses themselves
- *  (a filter bar rendering what is active, a completion list). */
-export function parseItemSearch(query: string): ItemQuery {
-  return parseItemQuery(query)
-}
+import { itemMatchContextOf, itemMatches, parseItemQuery, type ItemMatchContext } from './item-view.ts'
 
 /**
  * The reading clock a checklist filter is judged against.

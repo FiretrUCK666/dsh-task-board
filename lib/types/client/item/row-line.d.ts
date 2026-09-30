@@ -1,8 +1,7 @@
 import type { ItemRowView } from '../../core/item-view.ts';
-import type { ItemDensity } from './model.ts';
 export interface ItemRowLineProps {
     readonly view: ItemRowView;
-    readonly density: ItemDensity; /** Whether this row's detail is open in place. */
+    /** Whether this row's detail is open in place. */
     readonly expanded: boolean;
     /** Whether this row is the one the detail pane is showing. */
     readonly selected: boolean;
@@ -27,6 +26,15 @@ export interface ItemRowLineProps {
     readonly onSelect: () => void;
     readonly onAsk: () => void;
     readonly asking: boolean;
+    /**
+     * This row's own receipt, drawn under the control that earned it.
+     *
+     * A receipt that is about one row is printed beside that row. A receipt printed
+     * at the top of the card is read after the eye has moved on, and a reader who
+     * pressed 「问 AI」 on a row two screens down is looking at THAT row, not at the
+     * top of the list — so a sentence there is a sentence they have to go and find.
+     */
+    readonly receipt?: string;
     /** The menu's open state and its dismissal, so one click closes it. */
     readonly menuOpen: boolean;
     readonly onMenuToggle: () => void;

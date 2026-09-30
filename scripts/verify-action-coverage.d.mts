@@ -28,6 +28,11 @@ export interface CoverageInput {
   scanFiles: { path: string; text: string }[]
   /** Every exported name across src/core, the set a `semanticOf` must hit. */
   coreExportNames: string[]
+  /** The exported names of the checklist's own write layer (item-transitions and
+   *  items-doc). A call to one of these from src/client is a document change,
+   *  and it has to be either a value in ITEM_HANDLERS or an INTERNAL entry with
+   *  a reason — the method scan above cannot see that shape at all. */
+  itemWriteNames: string[]
   /** The text of AGENTS.md, for the rule/thing agreement check. */
   agentsText: string
   /** Repo-relative paths that exist, as the check needs to know them. */

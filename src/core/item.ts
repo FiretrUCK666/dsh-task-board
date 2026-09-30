@@ -401,15 +401,15 @@ export function isItemRecordShape(value: unknown): value is RawItem {
      The three DATES go through `itemInstantOf`, which requires `Number.isFinite`;
      these two only asked `typeof === 'number'`, and `JSON.parse('1e999')` is
      `Infinity`, not an error. So a persisted row could carry an infinite stamp,
-     and `KEY_GAPS.birth` is `a.createdAt - b.createdAt` — `Infinity - Infinity`
-     is `NaN`. A `NaN` comparator makes `Array.prototype.sort` treat the pair as
-     EQUAL, so those rows are never ordered against each other and the list falls
-     back to arrival order: **two devices holding one document render two
-     different lists, and nothing anywhere goes red.**
+     and every ordering's tie-break tail subtracts `updatedAt` — `Infinity -
+     Infinity` is `NaN`. A `NaN` comparator makes `Array.prototype.sort` treat the
+     pair as EQUAL, so those rows are never ordered against each other and the
+     list falls back to arrival order: **two devices holding one document render
+     two different lists, and nothing anywhere goes red.**
 
-     That is the same partial-order defect `dueSortKeyOf` carries a long comment
-     about having already paid for once, reached through the back door of a guard
-     that checked the type and not the value. */
+     That is the same partial-order defect the date sort keys carry a long
+     comment about having already paid for once, reached through the back door of
+     a guard that checked the type and not the value. */
   if (typeof row.createdAt !== 'number' || !Number.isFinite(row.createdAt)) return false
   if (typeof row.updatedAt !== 'number' || !Number.isFinite(row.updatedAt)) return false
   if (row.taskId !== undefined && typeof row.taskId !== 'string') return false

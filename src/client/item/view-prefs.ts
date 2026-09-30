@@ -15,14 +15,21 @@
  *
  * EVERY READ IS VALIDATED. The stored value is JSON written by an older build
  * or by a hand, and a preference store that throws on a shape it does not
- * recognise takes the whole panel down over a row height. So each field is
+ * recognise takes the whole panel down over a preference. So each field is
  * checked against the set it belongs to and anything unrecognised falls back to
  * the default, which is a wrong-but-working preference rather than a blank
  * panel.
+ *
+ * AND A FIELD THAT NO LONGER EXISTS IS NOT MIGRATED, IT IS IGNORED. `density`
+ * was one: a record written by an older build still carries the key, and
+ * reading it must not throw, must not be resurrected by a default, and must not
+ * have to be explicitly deleted before this module can parse its own output. The
+ * reader below simply never names it, so a record from any build at all parses
+ * to the same shape. That is the whole migration: a field is removed by not
+ * reading it.
  */
 import { DEFAULT_ITEM_SORT, ITEM_SORTS, ITEM_STATUS_ORDER, type ItemPageId, type ItemSort, type ItemStatusView } from '../../core/item-view.ts'
 import { ITEM_PAGES } from '../../core/item-view.ts'
-import type { ItemDensity } from './model.ts'
 
 /**
  * The key. Same family as the plugin's other device-local keys, and a NEW name:
@@ -38,14 +45,54 @@ export interface ItemViewPrefs {
   readonly page: ItemPageId
   /** The one ordering, shared by every page. */
   readonly sort: ItemSort
-  /** Row height. */
-  readonly density: ItemDensity
-  /** Whether the finished group is open. Off by default: it is history. */
-  readonly showDone: boolean
+  /**
+   * NO `showDone` FIELD, and the reason is the general rule rather than a
+   * preference for tidiness: **one intent, one control.**
+   *
+   * 「这一页不要已完成的行」 is already carried by the GROUP'S OWN FOLD — it has a
+   * visible control, a drawn arrow, and per-group memory in `collapsed`, and a
+   * reader never has to know it exists in order to use it. `showDone` was the same
+   * sentence said a second time at page level, written by a control that lived on
+   * a strip the reader only saw when the strip was there.
+   *
+   * The strip is retired, so what `showDone` left behind is not a capability but
+   * a switch nobody can reach: a device that stored `showDone: false` could never
+   * turn it back on, because the only thing that wrote it no longer exists.
+   * **A preference whose control is gone is not a setting; it is a trap with the
+   * handle filed off.** Note that it is not redundant for every reader — the flag
+   * set has no 「not done」, so before this change only `showDone` could express
+   * the intent. That is the argument FOR keeping a control, not an argument for
+   * keeping a second one: the fold already expresses it, better.
+   *
+   * The upgrade path is the one the row-height switch took, and the rule is the
+   * general one: **a field is removed by not reading it**, so a record written by
+   * any build at all parses to the same shape.
+   */
   /** Which groups the reader had folded away. */
   readonly collapsed: readonly ItemStatusView[]
   /** The unformatted search text, for the session. Never persisted. */
   readonly search: string
+  /**
+   * A TEMPORARY layer over this panel, for the length of one look at it.
+   *
+   * It is a field here rather than a prop on the panel because `ItemViewPrefs` is
+   * ALREADY the one place that says 「which view is on screen」 — `page` is on it,
+   * and the render bench has always chosen a page by writing exactly this record.
+   * A prop that existed only to draw a screenshot would be a SECOND way to say
+   * 「the palette is open」, and the two would drift the first time somebody added
+   * the real control; the one that drifts is the one nobody looks at.
+   *
+   * WHY IT IS NEVER WRITTEN, which is the whole of its effect on product state.
+   * `writeViewPrefs` does not emit this key, so a real device cannot leave one
+   * behind — and a reader who quit with the palette open finds a clean panel next
+   * time, because there was never anything to restore. The rule is **never
+   * WRITTEN**, not never READ: the bench has to be able to write the key, and the
+   * only thing that makes a leftover impossible is that nothing produces one.
+   *
+   * `search` is the same shape and the same reason, one field above: a value that
+   * is part of the view and not part of the memory.
+   */
+  readonly overlay?: 'palette'
 }
 
 /**
@@ -64,22 +111,13 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   // derivation the document owns, and a second copy of the word "due" in a
   // preference file is a default that starts lying the day the derivation moves.
   sort: DEFAULT_ITEM_SORT,
-  density: 'compact',
-  /**
-   * ON, and this is the one default that was wrong by measurement rather than by
-   * taste.
-   *
-   * With it off, the 已完成 GROUP does not exist on the page at all — a reader who
-   * had finished things found three groups where the surface has four, and had no
-   * way to tell whether the fourth was empty, filtered away, or forgotten. The
-   * switch still exists and the tile still drives it; what changed is that the
-   * page's SHAPE no longer changes under the reader. A control that hides a whole
-   * section of a list by default is a control whose absence looks like a bug, and
-   * 「我明明做过的事去哪了」 is the single most expensive thing a task list can say.
-   */
-  showDone: true,
   collapsed: [],
   search: '',
+  // Never written, so this is `undefined` on every real read. It is named here
+  // rather than left off the object so the shape is one value rather than
+  // 「present on some reads and absent on others」, which is the difference
+  // between a field and a rumour.
+  overlay: undefined,
 }
 
 /** The first page is the inbox, because it is the one a thought arrives at. */
@@ -89,10 +127,6 @@ function isPage(value: unknown): value is ItemPageId {
 
 function isSort(value: unknown): value is ItemSort {
   return typeof value === 'string' && (ITEM_SORTS as readonly string[]).includes(value)
-}
-
-function isDensity(value: unknown): value is ItemDensity {
-  return value === 'compact' || value === 'comfy'
 }
 
 function isGroup(value: unknown): value is ItemStatusView {
@@ -126,19 +160,23 @@ export function readViewPrefs(): ItemViewPrefs {
   return {
     page: isPage(record.page) ? record.page : DEFAULT_VIEW_PREFS.page,
     sort: isSort(record.sort) ? record.sort : DEFAULT_VIEW_PREFS.sort,
-    density: isDensity(record.density) ? record.density : DEFAULT_VIEW_PREFS.density,
-    // A BOOLEAN FALLS BACK TO THE DEFAULT, and `=== true` was the bug. Coercing
-    // "absent" to `false` only happens to agree with the default while the default
-    // IS false — so the day a boolean's default became `true`, every record written
-    // before it, and every damaged record, silently switched that preference OFF.
-    // For `showDone` that meant a reader who had finished things found the group
-    // gone with no way to tell whether it was empty or filtered. The question this
-    // line asks is 「did the reader say so」, and a record that never said so must
-    // get the DEFAULT, not the other boolean.
-    showDone: typeof record.showDone === 'boolean' ? record.showDone : DEFAULT_VIEW_PREFS.showDone,
+    // `record.showDone` and `record.density` ARE DELIBERATELY NEVER NAMED HERE,
+    // and that is the whole upgrade path for both: a field is removed by not
+    // reading it, so a record written by any build at all parses to this shape.
+    // Naming them — even to default them — is what turns a retired setting back
+    // into a live one, because a default with a reader is a setting whose control
+    // somebody will eventually be asked to rebuild.
     collapsed: [...new Set(collapsed)],
     // Never restored: see the module header.
     search: '',
+    // READ, AND ONLY THE ONE VALUE THAT MEANS SOMETHING. The key is never written
+    // by this module, so a real device cannot have produced one; this branch
+    // exists for the render bench, which writes the same record `page` is
+    // written through. Anything else in the slot is dropped, because a field
+    // that accepts anything it is handed is a field the compiler checks nothing
+    // about — the same reason `isPage` and `isSort` check against the model's own
+    // vocabulary rather than against a string shape.
+    overlay: record.overlay === 'palette' ? 'palette' : undefined,
   }
 }
 
@@ -151,9 +189,13 @@ export function writeViewPrefs(prefs: ItemViewPrefs): void {
     window.localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({
       page: prefs.page,
       sort: prefs.sort,
-      density: prefs.density,
-      showDone: prefs.showDone,
       collapsed: prefs.collapsed,
+      // `search` and `overlay` are ABSENT from this object on purpose. Both are
+      // part of the view and not part of the memory, and a key that appears here
+      // once appears forever: the day somebody adds it to the serialised shape
+      // because it seemed harmless, a reader who quit with the palette open comes
+      // back to a panel that will not go away, and the preference store is the
+      // last place anyone looks when a panel opens itself.
     }))
   } catch {
     // No storage, or no room for it. The panel works exactly the same; only

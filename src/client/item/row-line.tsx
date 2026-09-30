@@ -22,28 +22,12 @@
 import { useLayoutEffect, useRef } from 'react'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
-import type { ItemPriority } from '../../core/item.ts'
 import { isEnglish, t } from '../locales.ts'
 import { formatItemDate } from './model.ts'
-import type { ItemDensity } from './model.ts'
 import { Button } from '../board/ui.tsx'
 import { ItemRowMenu } from './row-menu.tsx'
+import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import css from './item.module.css'
-
-/** Each priority's word. A closed table, so a tier the model adds fails here. */
-const PRIORITY_LABEL: Readonly<Record<ItemPriority, 'item.priority.low' | 'item.priority.normal' | 'item.priority.high' | 'item.priority.urgent'>> = {
-  low: 'item.priority.low',
-  normal: 'item.priority.normal',
-  high: 'item.priority.high',
-  urgent: 'item.priority.urgent',
-}
-
-/** The three marks a reader can put a row into, and each one's word. */
-const MARK_LABEL: Readonly<Record<'open' | 'blocked' | 'done', 'item.status.open' | 'item.status.blocked' | 'item.status.done'>> = {
-  open: 'item.status.open',
-  blocked: 'item.status.blocked',
-  done: 'item.status.done',
-}
 
 /** The four date readings, and the tone each one speaks in. */
 type DueTone = 'soft-late' | 'over' | 'soon' | 'set'
@@ -137,7 +121,7 @@ function softLine(view: ItemRowView): { text: string } | undefined {
 
 export interface ItemRowLineProps {
   readonly view: ItemRowView
-  readonly density: ItemDensity  /** Whether this row's detail is open in place. */
+  /** Whether this row's detail is open in place. */
   readonly expanded: boolean
   /** Whether this row is the one the detail pane is showing. */
   readonly selected: boolean
@@ -162,6 +146,15 @@ export interface ItemRowLineProps {
   readonly onSelect: () => void
   readonly onAsk: () => void
   readonly asking: boolean
+  /**
+   * This row's own receipt, drawn under the control that earned it.
+   *
+   * A receipt that is about one row is printed beside that row. A receipt printed
+   * at the top of the card is read after the eye has moved on, and a reader who
+   * pressed 「问 AI」 on a row two screens down is looking at THAT row, not at the
+   * top of the list — so a sentence there is a sentence they have to go and find.
+   */
+  readonly receipt?: string
   /** The menu's open state and its dismissal, so one click closes it. */
   readonly menuOpen: boolean
   readonly onMenuToggle: () => void
@@ -179,7 +172,7 @@ export interface ItemRowLineProps {
  * @returns the row, its menu and, when it belongs here, its in-place detail.
  */
 export function ItemRowLine(props: ItemRowLineProps) {
-  const { view, density, expanded, selected, inPlace, panelId, menuOpen, onMenuToggle, onMenuClose } = props
+  const { view, expanded, selected, inPlace, panelId, menuOpen, onMenuToggle, onMenuClose } = props
   const { item, ref, title, status, progress, posture } = view
   const english = isEnglish()
   const due = dueLine(view, english)
@@ -207,38 +200,47 @@ export function ItemRowLine(props: ItemRowLineProps) {
       className={css.itemRow}
       data-picking={props.picking ? '' : undefined}
       data-status={status}
-      data-density={density}
       data-open={inPlace && expanded ? '' : undefined}
       data-selected={selected ? '' : undefined}
     >
+      {/* THE PICKBOX IS A REAL CONTROL, AND IT IS NOT INSIDE THE ROW BUTTON.
+
+          It was a `<span role="checkbox">` nested in a `<button>`, which is two
+          mistakes at once. A button's content model is phrasing content and owns
+          its accessible NAME, so the checkbox's own label was concatenated into
+          the row's: a screen reader announced 「checkbox 修登录 超期 8 天」 for a
+          control whose only job is to be ticked. And a `span` with a role has no
+          tab stop of its own, so the one way into the batch was a pointer — a
+          keyboard user could not select a row at all, and the batch is the only
+          way to change forty rows without forty presses.
+
+          An `<input type="checkbox">` is focusable, announces itself, and takes
+          Space. It is a sibling of the button rather than a child, so the two
+          names stay two names, and clicking the row still opens the row. */}
+      {props.picking && (
+        <input
+          type="checkbox"
+          className={css.itemPick}
+          checked={props.picked}
+          onChange={props.onPick}
+          aria-label={props.picked ? t('item.batch.picked') : t('item.batch.pick')}
+        />
+      )}
       <button
         type="button"
         className={css.itemRowMain}
         aria-expanded={inPlace ? expanded : undefined}
         aria-controls={inPlace ? regionId : undefined}
         onClick={() => {
-          // While the reader is holding rows, a tap on the row IS the pick. It
-          // cannot be both: the row's own toggle would open five details at once,
-          // and a reader who has said 「多选」 and then taps rows is picking rows.
-          if (props.picking) { props.onPick(); return }
           props.onSelect()
           props.onToggle()
         }}
       >
-        {/* Track 1, shared and mutually exclusive: the state dot while the row is
-            being read, the pickbox while it is being selected. */}
-        {props.picking
-          ? (
-            <span
-              className={css.itemPick}
-              data-picked={props.picked ? '' : undefined}
-              role="checkbox"
-              aria-checked={props.picked}
-              aria-label={props.picked ? t('item.batch.picked') : t('item.batch.pick')}
-              onClick={event => { event.stopPropagation(); props.onPick() }}
-            />
-          )
-          : <span className={css.itemStateMark} aria-hidden="true" />}
+        {/* Track 1, while the row is being read: the state mark. The pickbox
+            above takes this track when the reader is holding rows — one track,
+            two states, and the list's left edge moves once for the whole list
+            rather than once per row. */}
+        {!props.picking && <span className={css.itemStateMark} aria-hidden="true" />}
         <span className={css.itemRef} title={ref.numbered ? undefined : t('item.ref.pending')}>
           {ref.text ?? '—'}
         </span>
@@ -311,8 +313,22 @@ export function ItemRowLine(props: ItemRowLineProps) {
             when pressed is lying about what it does, so a row with no board card
             gets no hand-off at all. */}
         {item.taskId !== undefined && (
-          <Button variant="ghost" size="sm" className={css.itemAsk} onClick={props.onAsk} disabled={props.asking}>
-            {t(props.asking ? 'item.ask.busy' : 'item.ask')}
+          /* THE WORD DOES NOT CHANGE WHILE IT WAITS. The row's action track is a
+             fixed number of pixels wide, and 「问 AI」 (two characters) becoming
+             「交给模型…」 (five) is +15px in a 76px track — enough to push the ⋯
+             past the edge, so the right-hand ragged edge of the list moved every
+             time a row was handed to the model. `aria-busy` says the same thing to
+             assistive technology, which is the audience a width change was never
+             for, and the control stays exactly where the reader's eye already is. */
+          <Button
+            variant="ghost"
+            size="sm"
+            className={css.itemAsk}
+            onClick={props.onAsk}
+            disabled={props.asking}
+            aria-busy={props.asking}
+          >
+            {t('item.ask')}
           </Button>
         )}
         <button
@@ -331,6 +347,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
           <span aria-hidden="true">···</span>
         </button>
       </span>
+
+      {props.receipt !== undefined && (
+        <p className={css.itemState} role="status">{props.receipt}</p>
+      )}
 
       {menuOpen && (
         <ItemRowMenu
@@ -357,7 +377,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
                put a row into, so it is never offered either. */
             ...(['open', 'blocked', 'done'] as const)
               .filter(mark => mark !== item.status)
-              .map(mark => ({ key: mark, label: t(MARK_LABEL[mark]), onPick: () => props.onMark(mark) })),
+              .map(mark => ({ key: mark, label: t(STATUS_LABEL[mark]), onPick: () => props.onMark(mark) })),
             { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
             { key: 'remove', label: t('item.menu.delete'), onPick: props.onRemove },
           ]}

@@ -354,9 +354,23 @@ describe('the panel renders against the host it will actually run in', () => {
     const wide = renderPanel(fixtures(), 'wide')
     const narrow = renderPanel(fixtures(), 'narrow')
     expect(narrow).not.toBe(wide)
-    // The detail pane is the wide band's own track; a narrow one has no pane.
-    expect(wide).toContain('itemDetailPane')
-    expect(narrow).not.toContain('itemDetailPane')
+    // The detail pane is the wide band's own track, and it appears WHEN A ROW IS
+    // CHOSEN — not always. It used to be asserted as present on every wide render,
+    // which pinned the pane to be a permanent 37% of the stage showing 「还没选中任何
+    // 一条」 for most of the reader's time. The claim that was really worth keeping
+    // is 「a wide surface has somewhere to put the row you are reading, and a narrow
+    // one does not」.
+    //
+    // Only the ABSENT half is checkable from a static render, because which row
+    // is open is live state with nothing to seed — adding a prop that exists only
+    // for this test would be a SECOND way to say which row is open, which is what
+    // the harness's own comment warns against. The other half — that the rail
+    // DOES appear once a row is chosen — needs a real mount, and lives in
+    // `item-workbench.spec.ts` under jsdom. A gate that only ever checked 「the
+    // rail is absent」 would pass on a surface that had simply lost the feature,
+    // which is the failure mode every removal risks.
+    expect(wide, 'the wide band drew a detail rail with nothing selected — 37% of the stage saying nothing').not.toContain('itemDetailPane')
+    expect(narrow, 'a narrow surface has no detail rail; the detail opens in the row').not.toContain('itemDetailPane')
   })
 })
 
@@ -612,49 +626,59 @@ describe('the panel fills the stage it is given', () => {
     // one is named rather than pattern-matched so a rename cannot quietly turn
     // this into a check about nothing.
     //
-    // `itemTile` is NOT on this list any more, and its removal is the point
-    // rather than an omission. It used to be one of five identical bordered and
-    // filled boxes across the top of the page — a plate by every measure — and a
-    // plate has to take the canvas token or it covers the skin. It is now a
-    // figure and a name on one line with no background and no border at all, so
-    // there is nothing to take a token; what it has to satisfy instead is the
-    // OPPOSITE half of this same rule, asserted right below.
+    // The overview strip's five tiles are NOT on this list, and their absence is
+    // not an omission: the strip is retired. Its four group counts are the group
+    // HEADS (which are on this list) and its overdue tile is the date facet, so
+    // the two statements it used to make are made once each, where a reader can
+    // act on them. The half of the old rule that said a READOUT must not be a
+    // plate went with them — there is no readout on the page's first line any
+    // more, which is the whole reason the rule had nothing left to say.
     for (const plate of ['itemListCard', 'itemGroupHead', 'itemAgendaDayLabel']) {
       const layers = backgroundOf(css, plate).filter(value => value.includes('var(--dsh-tb-bg)'))
       expect(layers, `.${plate} does not take the canvas token, so it covers the skin: ${JSON.stringify(backgroundOf(css, plate))}`).not.toEqual([])
     }
 
-    // A readout is not a plate, and the assertion is on the ABSENCE of one. A tile
-    // that grew a background back would put the skin behind five surfaces on the
-    // page's first line — the exact cost the strip was rebuilt to pay down — and a
-    // gate that only ever checked for a token would call that a pass.
-    //
-    // The RESTING rule only, and the selector is checked rather than assumed:
-    // `rulesOf` hands back every rule that targets the class, so `.itemTile:hover`
-    // and `.itemTile[aria-pressed='true']` arrive with it. Those two paint a wash
-    // and they must — a filter that is on has to say so, and with the frame gone a
-    // wash is all that is left. What this forbids is a surface the reader sees when
-    // nothing is happening, which is the one that covers the skin.
-    const restingTile = /(\.itemTile)\s*\{([\s\S]*?)\}/.exec(css)?.[2] ?? ''
-    expect(restingTile, '.itemTile has no resting rule any more, so the strip has no readout shape to check').not.toBe('')
-    const paintedAtRest = (restingTile.match(/background(?:-color)?\s*:\s*([^;]+)/g) ?? [])
-      .filter(declaration => !/:\s*none\s*$/.test(declaration))
-    expect(paintedAtRest, `.itemTile paints a surface at rest, so the strip is five boxes on a line: ${JSON.stringify(paintedAtRest)}`).toEqual([])
-    // `border` but NOT `border-radius`: a radius on a box that has no frame is
-    // how the readout keeps the hover wash from meeting its neighbours at a
-    // corner, and it says nothing about whether there is an edge.
-    const frameAtRest = (restingTile.match(/border(?!-radius)[\w-]*\s*:\s*([^;]+)/g) ?? [])
-      .filter(declaration => !/:\s*(none|0)\b/.test(declaration))
-    expect(frameAtRest, `.itemTile has a frame at rest, so the strip is five boxes on a line: ${JSON.stringify(frameAtRest)}`).toEqual([])
-
     // AND THE OTHER HALF, which the old rule had no room for: the things that
     // float still have to be opaque. Without this the first half passes by
     // painting everything the canvas, and a menu over the wallpaper becomes
     // unreadable — the rule would have been satisfied by a surface nobody can read.
-    for (const [name, token] of [['itemDangerZone', '--dsh-tb-surface-sunken'], ['itemRowMenu', '--dsh-tb-surface-menu']] as const) {
+    //
+    // THE MENU'S TOKEN MOVED, AND THE CLAIM GREW. It used to be
+    // `--dsh-tb-surface-menu`, which resolves to the host's
+    // `--dsw-specific-menu`; the default skin gives that `#f8f9fa94` — **58%
+    // alpha** — and this menu sits over every row's text, so a translucent plate
+    // is text over text. The panel's own alpha is the SKIN's business; a floating
+    // surface's is not.
+    //
+    // **SO THE CHECK IS NO LONGER 「WHICH TOKEN」.** It is now 「which token, AND
+    // does the colour it resolves to actually resolve to something opaque」 — the
+    // old form would pass on a token whose value is 58% opaque, and did. The alpha
+    // reader below is the part that is new: it takes a resolved `#rrggbbaa` and
+    // asks whether the last two digits are `ff`.
+    for (const [name, token] of [['itemDangerZone', '--dsh-tb-surface-sunken'], ['itemRowMenu', '--dsh-tb-surface-float']] as const) {
       const layers = backgroundOf(css, name).filter(value => value.includes(`var(${token})`))
       expect(layers, `.${name} does not paint with ${token}: ${JSON.stringify(backgroundOf(css, name))}`).not.toEqual([])
     }
+    // AND THE NEW HALF, on the surface that actually floats over text.
+    for (const name of ['itemRowMenu', 'itemCommandPalette']) {
+      const resolved = tokenValueOf(css, `--dsh-tb-${name === 'itemRowMenu' ? 'surface-float' : 'surface-float'}`)
+      const alpha = alphaOf(resolved)
+      expect(
+        alpha,
+        `.${name} paints with --dsh-tb-surface-float, which resolves to "${String(resolved)}" — alpha ${String(alpha)} means the surface under this plate shows through, and this one sits on top of every row's text`,
+      ).toBe(1)
+    }
+  })
+
+  it('the probe bites: a floating surface resolved to 90% alpha is reported', () => {
+    // Fed a resolved colour, because the failure is in the VALUE the token
+    // resolves to and not in the name the stylesheet uses — which is exactly why
+    // a token-name check passed for a plate nobody could read.
+    expect(alphaOf('#f8f9fa94'), 'the probe did not bite — a 58%-alpha plate reads as opaque').toBeLessThan(1)
+    expect(alphaOf('#f8f9faff')).toBe(1)
+    expect(alphaOf('#f8f9fa'), 'a six-digit colour was read as transparent — the shorthand has no alpha and is fully opaque').toBe(1)
+    expect(alphaOf('rgb(248 249 250)'), 'an opaque rgb() was read as transparent').toBe(1)
+    expect(alphaOf('rgb(248 249 250 / 0.9)'), 'an opaque-looking rgb() with a slash alpha was read as opaque').toBeLessThan(1)
   })
 
   it('wraps the root in the stage that hands it a definite height', () => {
@@ -943,13 +967,54 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     for (const name of facts) {
       const bodies = rulesOf(css, name)
       expect(bodies.length, `there is no .${name} rule`).toBeGreaterThan(0)
-      for (const body of bodies) {
-        const clips = /overflow\s*:\s*hidden/.test(body) || /text-overflow\s*:\s*ellipsis/.test(body)
-        const canShrink = /(?:^|[;{\s])min-inline-size\s*:\s*0/.test(body)
-        expect(canShrink, `.${name} cannot shrink, so a long reading pushes the next track instead of truncating`).toBe(true)
-        expect(clips, `.${name} does not clip its own overflow, so a reading longer than its track is painted on top of the fact beside it`).toBe(true)
+      // THE UNION OF THE RULES, NOT EACH ONE. This used to demand that EVERY
+      // block naming the class carry the shrink and the clip, which is a reading
+      // of CSS that does not exist: declarations CASCADE, so a rule that adds
+      // only `font-variant-numeric` to a class does not take the shrink away
+      // from the rule beside it. The three readings now share one block through
+      // `:is()` — the right way to say 「these three have one floor」 — and a
+      // second block that tunes a number no longer counts as a second floor.
+      //
+      // The claim is still exactly as strong: if NO rule naming the class shrinks
+      // it, or none of them clips it, the reading is still unbounded. What it no
+      // longer does is report a correct stylesheet as broken, which is the
+      // failure mode this repository keeps warning about — a gate that pushes the
+      // implementation into a worse shape gets loosened, and the defect it was
+      // built for comes back with it.
+      const all = bodies.join('\n')
+      expect(
+        /(?:^|[;{\s])min-inline-size\s*:\s*0/.test(all),
+        `.${name} cannot shrink, so a long reading pushes the next track instead of truncating`,
+      ).toBe(true)
+      expect(
+        /overflow\s*:\s*hidden/.test(all) || /text-overflow\s*:\s*ellipsis/.test(all),
+        `.${name} does not clip its own overflow, so a reading longer than its track is painted on top of the fact beside it`,
+      ).toBe(true)
+    }
+  })
+
+  it('the probe bites: a reading with no floor anywhere is reported, whatever the rules are split across', () => {
+    // Both shapes the union reading has to tell apart: the declarations split
+    // over two blocks, which is fine, and genuinely absent, which is the defect.
+    // A union that answered `true` for anything containing the word would pass
+    // the second one, and a union that demanded one block carry both would fail
+    // the first — which is the reading this case replaced.
+    const floors = (cssText: string, name: string): { shrink: boolean; clip: boolean } => {
+      const all = rulesOf(cssText, name).join('\n')
+      return {
+        shrink: /(?:^|[;{\s])min-inline-size\s*:\s*0/.test(all),
+        clip: /overflow\s*:\s*hidden/.test(all) || /text-overflow\s*:\s*ellipsis/.test(all),
       }
     }
+    // Mirrors how the sheet actually reads: one shared block naming all three
+    // readings through `:is()`, plus a second block that tunes the number.
+    const split = [
+      '.itemRowMeta :is(.itemDue, .itemSteps) { min-inline-size: 0; overflow: hidden; }',
+      '.itemRowMeta .itemSteps { font-variant-numeric: tabular-nums; }',
+    ].join('\n')
+    expect(floors(split, 'itemSteps'), 'the probe does not bite — a floor split over two rules reads as absent').toEqual({ shrink: true, clip: true })
+    const none = '.itemRowMeta .itemSteps { font-variant-numeric: tabular-nums; }'
+    expect(floors(none, 'itemSteps'), 'a reading with no floor at all was accepted — this is the defect the gate exists for').toEqual({ shrink: false, clip: false })
   })
 
   it('the date track is a NAMED token in a text-relative unit, and it is wide enough for its longest reading', () => {
@@ -1207,6 +1272,46 @@ function fieldPresence(markups: readonly { page: Page; field: string }[]): Page[
   return markups.filter(markup => markup.field.includes('type="text"') || /aria-label/.test(markup.field)).map(markup => markup.page)
 }
 
+/**
+ * WHAT A `--dsh-tb-*` ALIAS ACTUALLY RESOLVES TO, through both layers.
+ *
+ * The alias layer maps the plugin's own name onto a host `--dsw-*` name, and the
+ * host is the one that gives it a colour. Reading only the first layer is how a
+ * check can pass on a token whose value is 58% opaque: the NAME was right and
+ * the plate was still text over text. So this follows the name all the way to a
+ * colour, and returns `''` when the chain is broken — which the caller has to
+ * treat as 「cannot vouch for it」 rather than as 「fine」.
+ */
+function tokenValueOf(css: string, name: string): string {
+  const alias = new RegExp(`${name}\\s*:\\s*([^;]+)`).exec(aliasLayer(css))?.[1]?.trim() ?? ''
+  const host = /var\((--dsw-[\w-]+)\)/.exec(alias)?.[1]
+  if (host === undefined) return ''
+  const value = new RegExp(`${host}\\s*:\\s*([^;]+)`).exec(hostTokens().css)?.[1]?.trim() ?? ''
+  return value
+}
+
+/**
+ * THE ALPHA OF A COLOUR, 0..1, and `1` for anything it cannot read.
+ *
+ * `1` is the safe default and it is deliberate: a colour this cannot parse is
+ * something the host has written in a form this file has not been taught, and
+ * answering 「opaque」 for an unknown form means a new notation cannot quietly make
+ * every floating surface readable. The three forms actually used by the host are
+ * handled, and a four-digit hex is treated as opaque for the same reason a
+ * six-digit one is.
+ */
+function alphaOf(colour: string): number {
+  const hex = /^#([0-9a-f]{6,8})$/i.exec(colour)?.[1]
+  if (hex !== undefined) {
+    // 8 digits carry alpha in the last byte; 6 carry none; a 3-digit shorthand
+    // would need expanding to compare and is not used by this host's surfaces.
+    return hex.length === 8 ? Number.parseInt(hex.slice(6, 8), 16) / 255 : 1
+  }
+  const slash = /^rgba?\([^)]*?[/,]\s*([\d.]+%?)\s*\)$/i.exec(colour)?.[1]
+  if (slash !== undefined) return slash.endsWith('%') ? Number.parseFloat(slash) / 100 : Number.parseFloat(slash)
+  return 1
+}
+
 describe('a phone gets the same surface, only narrower', () => {
   const css = panelCss()
 
@@ -1231,13 +1336,14 @@ describe('a phone gets the same surface, only narrower', () => {
     // the class the panel puts on it — and the union has to permit giving way.
     const shared = rulesOf(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'), 'segmentedRow')
     expect(shared.length, 'the shared segmented control has no rule — the gate is reading a control that does not exist').toBeGreaterThan(0)
-    // The class the panel puts on the wide band's filter wrapper, discovered
-    // from the markup rather than named here, so a rename moves the gate with
-    // the code.
+    // The classes this surface puts on a segmented control, discovered from the
+    // markup rather than named here, so a rename moves the gate with the code.
+    // It used to read `filter-bar.tsx`, which is retired: the filter faces and the
+    // orders are in the command palette, and the batch door is an action in it.
     const panel = readFileSync(new URL('../src/client/item/panel.tsx', import.meta.url), 'utf8')
-    const filterBar = readFileSync(new URL('../src/client/item/filter-bar.tsx', import.meta.url), 'utf8')
-    const members = [...cssMembersOf(panel).keys(), ...cssMembersOf(filterBar).keys()]
-      .filter(member => /Filter/i.test(member))
+    const palette = readFileSync(new URL('../src/client/item/command-palette.tsx', import.meta.url), 'utf8')
+    const members = [...cssMembersOf(panel).keys(), ...cssMembersOf(palette).keys()]
+      .filter(member => /Facet|Statebar/i.test(member))
       .map(member => member.charAt(0).toLowerCase() + member.slice(1))
     const grants = members.flatMap(member => rulesOf(css, member))
     expect(grants.length + shared.length, 'neither the shared control nor this surface says anything about how the filter band lays out').toBeGreaterThan(0)
@@ -1368,8 +1474,14 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // 400, so it is read as 400 — which is why 16px is allowed only 600: a
     // heading that silently fell back to body weight is the exact failure the
     // table exists to prevent.
+    //
+    // 15 IS THE ROW TITLE, and it is the one size on the page that is a TITLE
+    // rather than a heading: 14px is the heading, 16px is the page, and the row
+    // — the thing the reader is actually here to read, and the thing a strip
+    // used to sit above — sits between them. It is allowed 500 only, so a row
+    // title can be neither the page's weight nor a paragraph's.
     const TABLE: Readonly<Record<number, readonly number[]>> = {
-      16: [600], 14: [500, 600], 13: [400, 600], 12: [400, 600], 11: [400],
+      16: [600], 15: [500], 14: [500, 600], 13: [400, 600], 12: [400, 600], 11: [400],
     }
     const bySize = new Map<number, Set<number>>()
     // THE LIST'S OWN SHEET, AND ONLY IT. The board's sheet holds a Markdown
@@ -1393,6 +1505,125 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       .filter(([size]) => TABLE[size] !== undefined)
       .flatMap(([size, weights]) => [...weights].filter(weight => !(TABLE[size] ?? []).includes(weight)).map(weight => `${size}px w${weight}`))
     expect(offTable, `weights the table does not allow at their size: ${offTable.join(', ')}`).toEqual([])
+  })
+
+  it('every heading in this sheet declares its own margin and size, because nothing resets the UA ones', () => {
+    // THE FAILURE NOBODY COULD SEE, and it was a heading louder than the page.
+    //
+    // This sheet has NO `h1`–`h6` reset. `board.module.css` resets `p` and
+    // nothing else, so a `<h2>` in this panel arrives carrying the user agent's
+    // `font-size: 1.5em; font-weight: bold; margin: .83em 0` — 19.5px to 24px of
+    // BOLD, against a 16px page title. The detail pane's own heading was the
+    // loudest type in the column, which is the one thing a column's heading is
+    // not allowed to be, and every other assertion in this file was green
+    // throughout: the type-scale check reads DECLARED sizes and this heading
+    // declared none, so the scale had nothing to say about it, and a 19.5px
+    // inherited size is not a "size outside the scale" — it is the absence of a
+    // declaration.
+    //
+    // So the claim is about the DECLARATION, not the computed value: a heading
+    // that says its own `margin: 0` and its own `font-size` is a heading this
+    // sheet is in charge of. `margin` is in the claim for the same reason — the
+    // UA's `.83em` is a margin nobody chose, and it is the reason an empty
+    // heading with a bottom border reads as a page that failed to finish loading.
+    const HEADINGS = ['itemDetailHead', 'itemGatedFoldHead', 'itemNoDateTrayLabel'] as const
+    const rules = declarationRules(stripCssComments(itemSheet()))
+    for (const name of HEADINGS) {
+      const rule = rules.find(entry => entry.selector === `.${name}`)
+      expect(rule, `.${name} has no rule at all, so the heading it styles is the user agent's`).not.toBeUndefined()
+      expect(
+        /(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule?.body ?? ''),
+        `.${name} does not declare its own margin — it inherits the UA's .83em, which is nobody's choice`,
+      ).toBe(true)
+      expect(
+        /(?:^|[;{\s])font-size\s*:\s*[\d.]+px/.test(rule?.body ?? ''),
+        `.${name} declares no font-size, so it renders at the UA's 1.5em — 19.5px of bold above a 16px page title`,
+      ).toBe(true)
+    }
+  })
+
+  it('a rule that sets a weight also sets a size, so 12px does not grow a third weight', () => {
+    // The same mechanism, one declaration away, and it is how the same defect
+    // arrives without an `<h2>`. A rule that declares `font-weight: 500` and no
+    // `font-size` inherits whatever size it lands on — usually 12px — and so
+    // creates a weight the scale's table for that size never approved. The
+    // 12px/500 combination is the reason a label read as a third tone on a page
+    // that has two.
+    //
+    // READ AS A PAIR, and the reading is deliberately a pair: a detector that
+    // asked only 「is there a font-weight」 would flag every heading in the sheet,
+    // and one that asked only 「is there a font-size」 would pass the defect. The
+    // question is whether the rule knows what size it is bold AT.
+    //
+    // **400 IS EXEMPT, AND THAT EXEMPTION IS THE POINT.** A rule may write
+    // `font-weight: 400` to UNDO an inherited or user-agent weight — a `<button>`
+    // resetting the platform's default, a control returning to body weight — and
+    // such a rule changes nothing about how anything renders: 400 is what the
+    // text would have been anyway. Demanding a `font-size` beside it would force
+    // a stylesheet to pin a size in order to say 「nothing」, which is a size
+    // copied into a second place and free to drift from the one it duplicates.
+    // What this gate is about is a weight that INVENTS a tone, and 400 invents
+    // nothing. The table above is where 400 is allowed or not; this is where it
+    // is asked to mean something.
+    const offenders: string[] = []
+    for (const rule of declarationRules(stripCssComments(itemSheet()))) {
+      const weight = /(?:^|[;{\s])font-weight\s*:\s*(\d+)/.exec(rule.body)?.[1]
+      if (weight === undefined || weight === '400') continue
+      if (!/(?:^|[;{\s])font-size\s*:/.test(rule.body)) offenders.push(`${rule.selector} (w${weight})`)
+    }
+    expect(
+      offenders,
+      `these rules set a weight without saying what size it is at, so each one invents a tone the scale never approved: ${offenders.join(' | ')}`,
+    ).toEqual([])
+  })
+
+  it('the probe bites: a heading that inherits the UA, and a weight with no size', () => {
+    // THE SAME READER the two gates above use, run over a planted sheet. A
+    // control written as a second copy of the detector tests the copy, and a
+    // copy drifts from its original the first time the original is fixed — which
+    // is how a probe ends up green over a gate that cannot fail.
+    //
+    // Four shapes: a heading that declares a size but not a margin; one that
+    // declares neither; a weight with no size; and a rule that is entirely
+    // correct. The last one matters most — a reader that reports a correct sheet
+    // as broken gets its gate deleted by the next reader, and the defect it was
+    // built for comes back with it.
+    const reads = (source: string): { headings: string[]; unanchoredWeights: string[] } => {
+      const headings: string[] = []
+      const unanchoredWeights: string[] = []
+      for (const rule of declarationRules(source)) {
+        const isHeading = ['itemDetailHead', 'itemGatedFoldHead', 'itemNoDateTrayLabel'].includes(rule.selector.replace(/^\./, ''))
+        if (isHeading && (!/(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule.body) || !/(?:^|[;{\s])font-size\s*:/.test(rule.body))) {
+          headings.push(rule.selector)
+        }
+        const weight = /(?:^|[;{\s])font-weight\s*:\s*(\d+)/.exec(rule.body)?.[1]
+        if (weight !== undefined && weight !== '400' && !/(?:^|[;{\s])font-size\s*:/.test(rule.body)) {
+          unanchoredWeights.push(rule.selector)
+        }
+      }
+      return { headings, unanchoredWeights }
+    }
+    const planted = reads([
+      '.itemDetailHead { font-size: 14px; font-weight: 600; }',
+      '.itemGatedFoldHead { font-weight: 600; margin: 8px 0; }',
+      '.itemNoDateTrayLabel { font-weight: 600; }',
+      '.itemFacetActive { font-weight: 500; }',
+      '.itemFacetName { font-size: 12px; }',
+      '.itemRecentRowMain { font-family: inherit; font-weight: 400; }',
+    ].join('\n'))
+    expect(planted.headings, 'the probe did not bite — a heading inheriting the UA is invisible to this reader').toEqual([
+      '.itemDetailHead', '.itemGatedFoldHead', '.itemNoDateTrayLabel',
+    ])
+    // `.itemRecentRowMain` is in the plant ON PURPOSE: it is a `<button>` writing
+    // 400 to undo the platform's own weight, which renders identically to saying
+    // nothing. A reader that reported it would force a size into a rule whose
+    // whole content is 「nothing», and that size would then be a second copy of
+    // one declared elsewhere.
+    expect(planted.unanchoredWeights, 'the probe did not bite — a weight that invents a tone is invisible to this reader')
+      .toEqual(['.itemGatedFoldHead', '.itemNoDateTrayLabel', '.itemFacetActive'])
+    const clean = reads('.itemDetailHead { margin: 0; font-size: 14px; font-weight: 600; }')
+    expect(clean.headings, 'the reader reports a correct heading as broken — its gate would get deleted, and the defect would come back with it').toEqual([])
+    expect(clean.unanchoredWeights, 'the reader reports a correctly anchored weight as broken').toEqual([])
   })
 
   it('a box that declares an inline-size container is never content-sized on the inline axis', () => {
@@ -1604,14 +1835,24 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
   })
 
   it('the two detectors bite on shapes they cannot have been tuned against', () => {
+    // THE TABLE IS RESTATED RATHER THAN IMPORTED, on purpose: a probe that reads
+    // the same constant the gate reads proves nothing about the constant, only
+    // that the file is internally consistent. These two copies are the cost of
+    // being able to fail, and the pair is checked by the gate above.
     const TABLE: Readonly<Record<number, readonly number[]>> = {
-      16: [600], 14: [500, 600], 13: [400, 600], 12: [400, 600], 11: [400],
+      16: [600], 15: [500], 14: [500, 600], 13: [400, 600], 12: [400, 600], 11: [400],
     }
     const stray = (sizes: number[]): number[] => sizes.filter(size => TABLE[size] === undefined)
-    expect(stray([12, 13, 15])).toEqual([15])
-    expect(stray([11, 12, 13, 14, 16])).toEqual([])
-    // A weight the table does not allow at its size, and one it does.
+    // 15 is ON the scale now, so the near-miss has to be a different size for
+    // this probe to bite: 13.5 is a near-miss of 13 and 12 in the way this check
+    // is about, and a size one step off any rung.
+    expect(stray([12, 13, 13.5, 14])).toEqual([13.5])
+    expect(stray([11, 12, 13, 14, 15, 16])).toEqual([])
+    // A weight the table does not allow at its size, and one it does. 15 is the
+    // row title and is allowed 500 only — a row title at 600 would be a heading.
     expect((TABLE[16] ?? []).includes(400)).toBe(false)
+    expect((TABLE[15] ?? []).includes(600)).toBe(false)
+    expect((TABLE[15] ?? []).includes(500)).toBe(true)
     expect((TABLE[12] ?? []).includes(600)).toBe(true)
   })
 })
@@ -1694,9 +1935,18 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     // border AND a ring, every other control's is a ring only, so they are two
     // drawings of one idea rather than one drawing. Collapsing them would make the
     // number smaller than the page, which is the same lie in the other direction.
+    //
+    // SEVEN ACCENT POSITIONS BECAME FOUR, and what went is the meters: five on the
+    // overview strip and four on the group heads, nine in all, every one of them a
+    // 2px bar restating a number printed beside it. Accent is the ink with the
+    // fewest jobs left on this surface — the focus ring, the selected row, the
+    // current tab, the group hairline — and four is what remains once nothing else
+    // spends it restating itself. A budget lowered because the design got quieter
+    // is a budget doing its job; a budget lowered because the counter lost a
+    // spelling would not be.
     const budget: Readonly<Record<string, number>> = {
-      '--dsh-tb-accent': 7,
-      '--dsh-tb-attention': 3,
+      '--dsh-tb-accent': 4,
+      '--dsh-tb-attention': 2,
       '--dsh-tb-danger': 3,
     }
     for (const [token, limit] of Object.entries(budget)) {

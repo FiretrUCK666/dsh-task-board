@@ -16,8 +16,16 @@
  *    document only ever hands out the SHORT number, which a replica must guess
  *    optimistically;
  *  - the date formatting, because the wording is a locale and the input is a
- *    `<input type="date">` — a shape only a browser draws;
- *  - the row-height type, which is a preference key rather than a fact.
+ *    `<input type="date">` — a shape only a browser draws.
+ *
+ * A ROW-HEIGHT TYPE IS DELIBERATELY NOT HERE, and no density control is offered,
+ * because a preference whose effect the reader cannot see is worse than no
+ * preference: the control still takes a track in the header, still spends a
+ * dictionary word, and still teaches the reader that this row height is
+ * something they set — and when they change it and nothing moves, they conclude
+ * the panel is broken. A row's block padding is a FLOOR for a coarse pointer,
+ * not a tier: 12px is what a finger needs to hit, and it is the same number on a
+ * desk, so the honest form of this fact is a constant rather than a setting.
  *
  * NOTHING HERE JUDGES ANYTHING about a row. What a row says, which page it is
  * on, how it groups, what its three dates mean, and what an edit DOES to the
@@ -93,6 +101,3 @@ export function toItemDateField(at: number | undefined): string {
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }
-
-/** Row-height tiers. The reader picks one; `view-prefs.ts` is where it is kept. */
-export type ItemDensity = 'compact' | 'comfy'

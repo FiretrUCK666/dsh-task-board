@@ -23,6 +23,15 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
+import {
+  NO_SELECTION,
+  allPicked,
+  reconcile,
+  selectedCount,
+  selectionActive,
+  setAllPicked,
+  togglePicked,
+} from '../src/client/item/selection.ts'
 import { itemSurfaceSource } from './panel-harness.ts'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
 
@@ -96,7 +105,12 @@ describe('the workbench is a set of pages, and the rail says which', () => {
     // reader learns what a page is for by opening it.
     const html = renderPanel([])
     for (const short of ['收件', '清单', '日程']) expect(html, short).toContain(short)
-    for (const aria of ['刚记下、还没给它结构的条目', '全部没做完的事', '按时间排的事']) {
+    // 「清单」 IS EVERY ROW, FINISHED ONES INCLUDED — 已完成 is a SWITCH on this
+    // page, not another page, so naming it 「全部没做完的事」 told a screen reader
+    // the page holds something it does not. The sentence is the map of the panel,
+    // and a map that omits what is on it is the one kind of map that is worse
+    // than no map.
+    for (const aria of ['刚记下、还没给它结构的条目', '全部条目，含已完成的', '按时间排的事']) {
       expect(html, aria).toContain(aria)
     }
   })
@@ -105,8 +119,16 @@ describe('the workbench is a set of pages, and the rail says which', () => {
     // Low density is not fewer features; it is putting each feature next to the
     // thing it changes. Grouping, filtering, ordering and batching live INSIDE
     // the page, beside the rows they act on.
+    //
+    // SEARCH IS NOT ON THE SPINE ANY MORE and the claim is unchanged by that: the
+    // search is still on this panel, still one string, still bound to the
+    // free-text half — it is behind two keystrokes instead of costing 190px of the
+    // first screen. So the assertion is now 「is the search drawn in the header」,
+    // which is a question about furniture, and the claim it was standing in for
+    // is answered elsewhere: the palette's own gate presses `/`, types, and
+    // presses a facet.
     const html = renderPanel([item()])
-    expect(html).toContain('itemSearch')
+    expect(html, 'the search box is drawn in the spine, which is the 190px this surface no longer spends').not.toContain('itemSearch')
     expect(html).toContain('itemPageRail')
     expect(html).toContain('itemComposer')
   })
@@ -221,18 +243,28 @@ describe('empty is two different facts, and they do not look the same', () => {
     for (const label of ['进行中', '待办', '受阻']) {
       expect(html, `the ${label} bucket is missing from a list that still has rows`).toContain(label)
     }
-    const heads = [...html.matchAll(/itemGroupToggle[^>]*>([\s\S]*?)<\/button>/g)]
-      .map(match => (match[1] ?? '').replace(/<[^>]*>/g, ''))
+    // TWO SHAPES NOW, and the claim reads both: a bucket with rows keeps its own
+    // block, and CONSECUTIVE EMPTY BUCKETS SHARE ONE LINE. That is a compression
+    // of the air around them, not of the information in them — the empty ones are
+    // still named, still counted, and still buttons that filter to themselves. So
+    // the reading here is 「every bucket, wherever it is drawn, reports a number」,
+    // and it would catch an empty bucket that quietly lost its count as readily as
+    // one that quietly lost its name.
+    const heads = [
+      ...[...html.matchAll(/itemGroupToggle[^>]*>([\s\S]*?)<\/button>/g)].map(match => (match[1] ?? '').replace(/<[^>]*>/g, '')),
+      ...[...html.matchAll(/itemEmptyGroup[^>]*>([\s\S]*?)<\/button>/g)].map(match => (match[1] ?? '').replace(/<[^>]*>/g, '')),
+    ]
     expect(heads.length, 'no group header was rendered at all').toBeGreaterThan(0)
     // A bucket with nothing in it reports a zero rather than nothing.
     expect(heads.some(text => /进行中\D*0/.test(text)), `no empty bucket reports 0: ${JSON.stringify(heads)}`).toBe(true)
-    // The three heads together account for every row the document holds, so
-    // the numbers on screen and the number in the header are the same fact told
-    // two ways — a header that says 「共 7 条」 beside three buckets adding up to
-    // 5 is a page disagreeing with itself.
+    // The numbers on screen and the number in the header are the same fact told
+    // two ways — a header that says 「共 7 条」 beside buckets adding up to 5 is a
+    // page disagreeing with itself. This is now checked over BOTH shapes, which
+    // is the stronger half: the compression moved the numbers around, and the
+    // sum is what proves the move did not lose one.
     const shown = heads.map(text => Number(/(\d+)\s*$/.exec(text)?.[1] ?? Number.NaN))
     expect(shown.every(Number.isInteger), `a bucket reports no number: ${JSON.stringify(heads)}`).toBe(true)
-    expect(shown.reduce((sum, n) => sum + n, 0), 'the three bucket counts do not add up to the document').toBe(1)
+    expect(shown.reduce((sum, n) => sum + n, 0), `the bucket counts do not add up to the document: ${JSON.stringify(heads)}`).toBe(1)
     // And the sentence that repeated itself is not there any more.
     expect(html.includes('这一组还没有事项') ? `…${html.slice(Math.max(0, html.indexOf('这一组还没有事项') - 120), html.indexOf('这一组还没有事项') + 40)}…` : 'none',
       'the per-group emptiness sentence is back').toBe('none')
@@ -344,6 +376,91 @@ describe('the tool card reads the producer, not a memory of it', () => {
 
   it('keeps "accepted" and "executed" as SEPARATE fields', () => {
     expect(presentation).toMatch(/enginePending:/)
+  })
+})
+
+describe('a holding may only name rows the reader can point at', () => {
+  // 138 LINES, SEVEN EXPORTS, NO TESTS — until now. This is the module whose own
+  // header names its own reason for existing: 「a batch that writes to rows the
+  // reader cannot see is the worst thing a batch surface can do」. It had no test
+  // standing behind that sentence, and the panel has in fact shipped three ways
+  // of breaking it (a detail selection collapsing the visible set, a page switch
+  // leaving the holding behind, a deleted row staying in it).
+  //
+  // So the claims below are INVARIANTS, not shapes: they have to hold through the
+  // control that chooses how a row gets held, which is changing underneath this.
+
+  it('starts with nothing held, and holding a row never touches the set it was handed', () => {
+    const first = togglePicked(NO_SELECTION, 'a')
+    expect([...first.ids]).toEqual(['a'])
+    const second = togglePicked(first, 'b')
+    expect([...first.ids], 'the earlier holding was mutated by a later press — a toggle then undoes the wrong row').toEqual(['a'])
+    expect([...second.ids].sort()).toEqual(['a', 'b'])
+  })
+
+  it('a row the reader can no longer see leaves the holding', () => {
+    // THE claim the whole module is for. Narrowing the filter takes the rows it
+    // hides out, so 「已选 4 条」 always means four rows the reader can point at.
+    const held = togglePicked(togglePicked(togglePicked(NO_SELECTION, 'a'), 'b'), 'c')
+    const after = reconcile(held, ['a', 'b'])
+    expect([...after.ids].sort(), 'a row the filter hid is still held, and the batch can still write to it').toEqual(['a', 'b'])
+  })
+
+  it('a row that is no longer in the document at all leaves the holding too', () => {
+    // Writing to a deleted row is a write to a tombstone. It needs no rule of its
+    // own: a row the document no longer holds is by definition a row the filter
+    // predicate no longer returns, so `visible` already excludes it and the
+    // deletion is covered by the same one-line rule as the filter. A second
+    // parameter for it would be a second place to forget the same thing.
+    const held = togglePicked(togglePicked(NO_SELECTION, 'a'), 'gone')
+    expect([...reconcile(held, ['a']).ids], 'a deleted row is still held, so the batch can write to a tombstone').toEqual(['a'])
+  })
+
+  it('when nothing is left to hold, the holding is empty rather than a shape with nothing in it', () => {
+    // The state a surface can no longer reach must not survive: held rows that no
+    // row draws are held rows that only a write can still see.
+    const after = reconcile(togglePicked(NO_SELECTION, 'a'), [])
+    expect(after.ids.size, 'the holding is still carrying a row nothing on screen points at').toBe(0)
+    expect(selectionActive(after), 'an empty holding is still acting as if something were held').toBe(false)
+  })
+
+  it('reconciling an unchanged holding hands back the SAME one, so nothing re-renders', () => {
+    // Identity, not equality: the panel writes this into state on every document
+    // change, and a fresh object each time is a render each time for no reason.
+    const held = togglePicked(NO_SELECTION, 'a')
+    expect(reconcile(held, ['a', 'b']), 'the holding was rebuilt although nothing left it').toBe(held)
+  })
+
+  it('select-all reaches the rows on screen and nothing beyond them', () => {
+    // `visible` rather than 「everything」 on purpose: a select-all that reached
+    // past the filter would tick rows the reader cannot see, and the bar would
+    // then say 「选了 40 条」 over a list of eight.
+    const all = setAllPicked(NO_SELECTION, ['a', 'b'], true)
+    expect([...all.ids].sort()).toEqual(['a', 'b'])
+    expect(selectedCount(all)).toBe(2)
+    expect(allPicked(all, ['a', 'b']), 'every visible row is held and the box says otherwise').toBe(true)
+    expect(allPicked(all, ['a', 'b', 'c']), 'the box claims all held while a third row is not').toBe(false)
+  })
+
+  it('an empty view is not 「nothing held」, or the select-all invites a click that does nothing', () => {
+    expect(allPicked(NO_SELECTION, []), 'select-all over nothing reports 「not all」, which invites a click with nothing behind it').toBe(true)
+  })
+
+  it('releasing everything leaves the reader on nothing rather than on a stale holding', () => {
+    const held = setAllPicked(togglePicked(NO_SELECTION, 'z'), ['a', 'b', 'z'], true)
+    expect([...setAllPicked(held, ['a', 'b', 'z'], false).ids], 'rows stayed held after 「release all」').toEqual([])
+  })
+
+  it('the probe bites: the reach of a select-all is measured, not assumed', () => {
+    // The detector reads the VISIBLE list, so a select-all wired to the whole
+    // document — the one implementation this module exists to prevent — has to
+    // report differently from a correct one. Fed a document-shaped list where
+    // the reader can only see three of nine rows.
+    const document_ = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h', 'i']
+    const onScreen = document_.slice(0, 3)
+    const reached = setAllPicked(NO_SELECTION, onScreen, true).ids
+    expect(reached.size, 'the detector cannot see a select-all that reached past the filter — this probe proves nothing').toBe(3)
+    expect([...reached].some(id => !onScreen.includes(id)), 'a row the reader cannot see was ticked').toBe(false)
   })
 })
 

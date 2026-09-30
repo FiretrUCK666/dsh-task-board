@@ -199,21 +199,35 @@ describe('the catalog gate', () => {
     // true, or the fix for a finding would be to delete the finding. The
     // registry is read from the transitions module, so this passes because the
     // function is really there — not because a list was updated to agree.
+    //
+    // THE FIXTURE IS A BOARD ACTION, and that is not a detail. `poison` MERGES
+    // over the real declaration, so poisoning `item.update` here would produce a
+    // copy claiming 「`item.update` is implemented by `moveTaskToStatus`」 — which
+    // `ITEM_HANDLERS` contradicts, because that action really is bound to
+    // `applyItemPatch`. The copy would then be caught by the binding check
+    // instead of passing, and the case would be asserting about two rules at
+    // once. A fixture must be minimal with respect to the OTHER rules, or the
+    // finding it produces is not the one under test.
+    expect(ACTIONS['task.move'].semantic, 'the fixture needs a real semantic action').toBe(true)
+    expect(ACTIONS['task.move'].semanticOf).toBe('moveTaskToStatus')
     expect(actionCatalogFindings({
-      actions: poison('item.update', { semantic: true, semanticOf: 'moveTaskToStatus' }),
+      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatus' }),
     })).toEqual([])
   })
 
   it('catches a function named without the mark', () => {
     // `semantic: undefined` rather than a different action, and the reason is
-    // worth keeping: `poison` MERGES over the real declaration, so poisoning
-    // `item.update` left the `semantic: true` it really carries, and the gate
-    // then reported a true fact (that action DOES name a shared function)
-    // instead of the one under test. Clearing the mark is what isolates the
-    // case, and it keeps the probe pointed at the same action the case above
-    // uses — so the pair still reads as "the same declaration, marked and
-    // unmarked" rather than as two unrelated actions.
-    const findings = actionCatalogFindings({ actions: poison('item.update', { semantic: undefined, semanticOf: 'itemStatusOf' }) })
+    // worth keeping: `poison` MERGES over the real declaration, so poisoning an
+    // action left the `semantic: true` it really carries, and the gate then
+    // reported a true fact (that action DOES name a shared function) instead of
+    // the one under test. Clearing the mark is what isolates the case, and it
+    // keeps the probe pointed at the same action the case above uses — so the
+    // pair still reads as "the same declaration, marked and unmarked" rather than
+    // as two unrelated actions.
+    //
+    // Same board action as the case above, and for the same reason: an item
+    // action would also trip the binding check, which is a different rule.
+    const findings = actionCatalogFindings({ actions: poison('task.move', { semantic: undefined, semanticOf: 'itemStatusOf' }) })
     expect(findings.join('\n')).toContain('without being marked semantic')
   })
 

@@ -1,25 +1,23 @@
-/**
- * The detail: the same component, in two places.
- *
- * Level 1 of the two this panel has, and there is no level 3 — a third level
- * inside a column is where a reader loses their place entirely. The wide band
- * puts it in a side pane beside the list; the narrow band puts it in the row.
- * SAME component, SAME five sections, SAME spacing; only the box differs, and
- * neither placement writes its own width. The field grid answers to its own
- * container (`dsh-tb-item-detail`) rather than to the panel, because at 1080px
- * the side pane is 296px wide and at 2380px it is 816px — one answer taken from
- * the surface would be wrong in both.
- *
- * It is never a dialog. `boardBox()` resolves to the FIRST board box, so a
- * layer opened from this panel would anchor itself to the board — a different
- * surface — and a layer that floats over another surface is not this surface's
- * layer.
- */
-import type { ItemRecord } from '../../core/item.ts';
+import type { ItemRowView } from '../../core/item-view.ts';
 import type { ItemPatch } from '../../core/item-transitions.ts';
 export interface ItemDetailProps {
-    /** The row on show, or `undefined` before anything is picked. */
-    readonly item: ItemRecord | undefined;
+    /**
+     * The row on show AS ITS PROJECTION, or `undefined` before anything is picked.
+     *
+     * The projection and not the record, because the pane asks derived questions —
+     * has this row's hard deadline passed — and a derived question answered from
+     * the record is a SECOND derivation. It read `Date.now()` for the clock, which
+     * is not the panel's clock: the panel owns a `now` that ticks while it is on
+     * screen and is what every other date on this surface is drawn against, so the
+     * one line in the pane that answered for itself could disagree with the row
+     * above it, and it disagreed exactly at midnight — and could never disagree in
+     * a test, because the bench's clock is fixed and a fresh `Date.now()` is not.
+     *
+     * The model already publishes the answer, on the same projection the row line
+     * reads, so the pane and the row cannot answer differently. `item` is still
+     * reachable as `view.item` for the fields the pane edits.
+     */
+    readonly view: ItemRowView | undefined;
     /** The board cards a row may hang off, already titled. */
     readonly cards: readonly {
         readonly id: string;

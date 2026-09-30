@@ -17,6 +17,7 @@ import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { emptyItemsDoc, applyItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import type { ItemRecord } from '../src/core/item.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import {
   capabilityView,
@@ -50,13 +51,16 @@ const NOW = 1_700_000_000_000
  *  from one that was faked into existence, and a test written against it is
  *  green on a machine where the real thing is broken. */
 interface FakeFace extends ToolCommitFace {
+  /** The stored documents, so a test can seed AND assert on the merged truth. */
+  doc: BoardDoc
+  items: ItemsDoc
   writes: string[]
   commits: number
   seed(doc: BoardDoc): void
   seedItems(items: ItemsDoc): void
 }
 function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
-  const box: FakeFace & { doc: BoardDoc; items: ItemsDoc } = {
+  const box: FakeFace = {
     doc: emptyBoardDoc(NOW),
     items: emptyItemsDoc(NOW),
     writes: [],
@@ -112,6 +116,173 @@ function toolNamed(name: string): ToolDefinition {
   if (tool === undefined) throw new Error(`no tool named ${name}`)
   return tool
 }
+
+/** Run the read tool and return the value it hands the model. */
+async function query(args: Record<string, unknown>, board = face()): Promise<Record<string, unknown>> {
+  const tool = createTaskboardTools(deps(board)).find(candidate => candidate.name === 'taskboard_query')
+  if (tool === undefined || tool.execute === undefined) throw new Error('no taskboard_query')
+  return await tool.execute(args, undefined as never) as Record<string, unknown>
+}
+
+/** The text the model actually reads, which is not the JSON. */
+async function queryText(args: Record<string, unknown>, board = face()): Promise<string> {
+  const tool = createTaskboardTools(deps(board)).find(candidate => candidate.name === 'taskboard_query')
+  if (tool === undefined || tool.execute === undefined) throw new Error('no taskboard_query')
+  const value = await tool.execute(args, undefined as never)
+  const rendered = tool.output.render(args, value as never)
+  return rendered.map(block => (block.type === 'text' ? block.text : '')).join('\n')
+}
+
+/** A row carrying something in every field the read side can be asked for. */
+function richItem(): ItemRecord {
+  return {
+    id: 'i-rich', ref: 7, title: 'A note', body: 'the body', notes: 'the notes',
+    steps: [{ id: 's1', text: 'one', done: false }, { id: 's2', text: 'two', done: true }],
+    status: 'open', priority: 'high', tags: ['gallery', 'later'],
+    startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
+    origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
+  }
+}
+
+describe('the read tool answers what it says it answers', () => {
+  it('`detail` is not a promise — it was declared, described, destructured, and never read', async () => {
+    // THE DEFECT. `detail` has been in the schema with the description
+    // 「brief 只回标题与状态；full 连正文一起回」 since it was written, and the
+    // body destructured it and then never branched on it. Every row came back
+    // with a title whatever the caller asked for — so a model that asked for the
+    // contents of a note got a title and had NO WAY TO TELL that it had been
+    // given the wrong answer. It simply believed it. On a note-taking subsystem
+    // whose whole point is writing things down.
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    const brief = await query({}, box)
+    const full = await query({ detail: 'full' }, box)
+    expect(full.detail, 'the answer does not even say which projection it used').toBe('full')
+    expect(brief.detail).toBe('brief')
+    expect(Object.keys((brief.items as Record<string, unknown>[])[0] ?? {}), 'brief is carrying the body already')
+      .not.toContain('body')
+  })
+
+  it('`full` returns the whole written row: the fields a model could write and not read', async () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    const rows = (await query({ detail: 'full' }, box)).items as Record<string, unknown>[]
+    const row = rows[0] as Record<string, never>
+    expect(row.body).toBe('the body')
+    expect(row.notes).toBe('the notes')
+    expect(row.tags).toEqual(['gallery', 'later'])
+    expect(row.steps).toEqual([
+      { id: 's1', text: 'one', done: false },
+      { id: 's2', text: 'two', done: true },
+    ])
+    // The number is read back so `item.step` can be aimed at a line, which is
+    // the whole reason a model needs the list rather than a count.
+    expect(row.progress).toEqual({ done: 1, total: 2, ratio: 0.5 })
+  })
+
+  it('and the PROSE carries the content, not only the JSON', async () => {
+    // A model asked for the body and handed a title has been lied to even when
+    // the JSON underneath is right — `render` is what the model actually reads.
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    expect(await queryText({ detail: 'full' }, box)).toContain('正文：the body')
+    expect(await queryText({}, box)).not.toContain('正文：')
+  })
+
+  it('says a derived status, not the stored one — so a filter and a row agree', async () => {
+    // THE SECOND READ DEFECT. `itemRow` reported the STORED status while
+    // `status:inProgress` filters the DERIVED one, so a row hanging off a
+    // running card was filtered into 「进行中」 and came back printed 「待办」,
+    // with nothing in the answer saying those are different questions. A model
+    // that has just asked 「what is running」 must not be told the answer is empty.
+    const box = face()
+    const running = face()
+    // TWO things have to be true, and the second is the one that is easy to get
+    // wrong: the card has to EXIST in the ledger, and it has to own a SESSION
+    // that is working. A card's liveness is read through the sessions hanging on
+    // it — `relatedSessionIdsOf` → `sessionRunningOf` — so a card with no binds
+    // is idle no matter what it is called. (A `taskId` pointing at a card that is
+    // not there is likewise 待办: the honest answer for an unresolvable link.)
+    running.seed({ ...emptyBoardDoc(NOW), tasks: [{
+      ...card('live'), id: 'card-live', binds: [{ kind: 'session', sessionId: 's-live' }],
+    }] })
+    running.seedItems(applyItemsCommit(running.items, {
+      clientId: 'test', items: [{ ...richItem(), taskId: 'card-live' }], deleted: [],
+    }, NOW))
+    const tool = createTaskboardTools({ ...deps(running), sources: runningSources({ 's-live': 'running' }) })
+      .find(candidate => candidate.name === 'taskboard_query')
+    if (tool === undefined) throw new Error('no taskboard_query')
+    const answer = await tool.execute!({ filter: 'status:inProgress' }, undefined as never) as { items: { status: string }[] }
+    expect(answer.items).toHaveLength(1)
+    expect(answer.items[0]?.status, 'a row that matched 进行中 came back saying 待办').toBe('inProgress')
+    // And the stored tier is still reachable, under its own name.
+    const detailed = await tool.execute!({ detail: 'full', filter: 'status:inProgress' }, undefined as never) as { items: { storedStatus: string; taskId?: string }[] }
+    expect(detailed.items[0]?.storedStatus).toBe('open')
+    expect(detailed.items[0]?.taskId).toBe('card-live')
+    // The control: with nothing running the same filter matches nothing, rather
+    // than reporting the row as 待办.
+    const idle = await query({ filter: 'status:inProgress' }, box)
+    expect(idle.items).toEqual([])
+  })
+
+  it('truncation is reported for BOTH lists, so a short answer is never read as a whole one', async () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [richItem(), { ...richItem(), id: 'i-2', ref: 8 }], deleted: [],
+    }, NOW))
+    expect((await query({ limit: 1 }, box)).truncated, 'the notes list hit the limit and nobody said so').toBe(true)
+    expect((await query({ limit: 50 }, box)).truncated).toBe(false)
+  })
+})
+
+describe('a two-document action says which documents it moved', () => {
+  it('names both on a promote, because one commit of two is two commits', async () => {
+    // `item.promote` writes the board AND the checklist, through two separate
+    // commits. A receipt that says 「已生效」 with no subject is a claim about
+    // both documents made by a pair of operations where either can fail alone.
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    const result = await runBatch(deps(box), { ops: [{ op: 'item.promote', payload: { of: '#7' } }] })
+    const report = result.reports[0]
+    expect(report?.documents, 'the receipt does not say which documents it touched').toEqual(['board', 'items'])
+    expect(report?.detail).toContain('看板与清单')
+  })
+
+  it('names the half that landed when the second commit is refused', async () => {
+    // The case the old sentence got wrong: the board commit succeeded, the
+    // items commit threw, and the report said 「没写进去」 about the WHOLE op —
+    // which is how a reader learns that this tool's failure sentences do not
+    // mean what they say, and is left looking at a card that really exists.
+    const base = face()
+    base.seedItems(applyItemsCommit(base.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    const half = face({
+      ...base,
+      commitItems: async () => { throw new Error('disk full') },
+    })
+    const result = await runBatch(deps(half), { ops: [{ op: 'item.promote', payload: { of: '#7' } }] })
+    const report = result.reports[0]
+    expect(report?.ok).toBe(false)
+    expect(report?.detail).toContain('disk full')
+    expect(report?.detail, 'the half that DID land is not named').toContain('看板')
+    expect(report?.detail).toContain('没有回滚')
+    expect(report?.documents).toEqual(['board'])
+  })
+
+  it('keeps the single-document sentence byte-identical, so honest receipts do not churn', async () => {
+    const box = face()
+    const result = await runBatch(deps(box), { ops: [{ op: 'item.create', payload: { body: 'x' } }] })
+    expect(result.reports[0]?.detail).toContain('已生效。')
+    expect(result.reports[0]?.documents).toEqual(['items'])
+  })
+
+  it('a rehearsal says 会写入, because a dry run that reads as a completed write is the one line it must never print', async () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, { clientId: 'test', items: [richItem()], deleted: [] }, NOW))
+    const result = await runBatch(deps(box), { ops: [{ op: 'item.promote', payload: { of: '#7' } }], dry_run: true })
+    expect(result.reports[0]?.detail).toContain('会写入')
+    expect(result.reports[0]?.detail).not.toContain('已写入')
+  })
+})
 
 describe('the run-config field list exists once', () => {
   /**

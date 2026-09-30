@@ -41,11 +41,17 @@ if (process.argv.includes('--probe-encoding')) {
     { path: 'probe/replaced.md', bytes: Buffer.from('# ok\nbroken \uFFFD here\n', 'utf8') },
     { path: 'probe/bom.md', bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# ok\n', 'utf8')]) },
     { path: 'probe/crlf.md', bytes: Buffer.from('# ok\r\nstill ok\n', 'utf8') },
+    // The double-encoded case, and it is built so that the ONLY thing wrong
+    // with it is the fingerprint: valid UTF-8, no BOM, no CR, no replacement
+    // character. Remove the U+20AC check and this file is reported clean, which
+    // is precisely the point — the probe fails when the load-bearing check is
+    // removed rather than when a symptom check is removed.
+    { path: 'probe/mojibake.ts', bytes: Buffer.from('// note: 锛囨€?\nexport const x = 1\n', 'utf8') },
     { path: 'probe/watcher.cmd', bytes: Buffer.from('@echo off\r\nrem Windows batch keeps CRLF\n', 'utf8') },
     { path: 'probe/clean.md', bytes: Buffer.from('# clean\n', 'utf8') },
   ]
   const found = damaged.flatMap(f => encodingFindings(f.path, f.bytes))
-  const expected = ['probe/replaced.md:2', 'probe/bom.md:1', 'probe/crlf.md:1']
+  const expected = ['probe/replaced.md:2', 'probe/bom.md:1', 'probe/crlf.md:1', 'probe/mojibake.ts:1']
   const missing = expected.filter(want => !found.some(f => f.startsWith(want)))
   if (missing.length > 0) {
     console.error(`verify-standalone PROBE FAILED: the encoding audit did not report ${missing.join(', ')} — it does not bite, so it is not a check`)
@@ -570,6 +576,24 @@ export function encodingFindings(path, bytes) {
     if (crlf !== -1) {
       out.push(`${path}:${text.slice(0, crlf).split('\n').length}: has a CRLF line ending — .gitattributes declares this repository LF, and a stray CRLF ends up verbatim inside lib/client.js.map's embedded sources`)
     }
+  }
+  // DOUBLE ENCODING, and it is invisible to the two checks above by
+  // construction. Reading UTF-8 through a legacy codepage (what
+  // `Get-Content -Raw` does on Windows PowerShell, which defaults to the ANSI
+  // code page) and writing the result back yields perfectly valid UTF-8 that
+  // contains no replacement character, no BOM and no CR line — and 308 bytes of
+  // Chinese are gone, irreversibly. A gate that watches for damage symptoms
+  // cannot see it; this watches for the fingerprint instead.
+  //
+  // U+20AC is that fingerprint because this repository is written in Chinese and
+  // English about a task board, so a euro sign in a tracked file is never
+  // legitimate — while the codepage round trip produces one for every multi-byte
+  // character whose trailing byte lands in the 0x80 block, which is most of
+  // them. Cheap, total, and it has no false positives here for the same reason a
+  // lint for tabs in a Go file has none.
+  const euro = text.indexOf('\u20AC')
+  if (euro !== -1) {
+    out.push(`${path}:${text.slice(0, euro).split('\n').length}: contains U+20AC (€) — a euro sign is not text this repository writes, and it is the fingerprint of a file read through a legacy code page and written back (Get-Content -Raw on Windows PowerShell does exactly that). That round trip destroys bytes irreversibly and produces no U+FFFD, so the two checks above stay silent through it. Restore the file from git rather than editing the damaged copy`)
   }
   return out
 }

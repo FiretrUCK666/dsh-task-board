@@ -608,9 +608,7 @@ export declare const zh: {
     'item.empty': string;
     'item.count': string;
     'item.countFiltered': string;
-    'item.groupSteps': string;
     'item.ask': string;
-    'item.ask.busy': string;
     'item.ask.said': string;
     'item.ask.refused': string;
     'item.why.noSuchItem': string;
@@ -641,9 +639,6 @@ export declare const zh: {
     'item.noMatch': string;
     'item.search': string;
     'item.steps': string;
-    'item.density': string;
-    'item.density.compact': string;
-    'item.density.comfy': string;
     'item.group.inProgress': string;
     'item.group.open': string;
     'item.group.blocked': string;
@@ -702,6 +697,7 @@ export declare const zh: {
     'item.page.list.aria': string;
     'item.page.schedule.aria': string;
     'item.triage.title': string;
+    'item.triage.folded': string;
     'item.triage.nothing': string;
     'item.triage.behind': string;
     'item.triage.stale': string;
@@ -753,8 +749,6 @@ export declare const zh: {
     'item.filter.label': string;
     'item.filter.clear': string;
     'item.facet.status': string;
-    'item.insight.title': string;
-    'item.insight.base': string;
     'item.facet.priority': string;
     'item.facet.tag': string;
     'item.facet.date': string;
@@ -767,7 +761,6 @@ export declare const zh: {
     'item.sort.due': string;
     'item.sort.hard': string;
     'item.sort.priority': string;
-    'item.sort.birth': string;
     'item.sort.title': string;
     'item.promote.said': string;
     'item.promote.already': string;

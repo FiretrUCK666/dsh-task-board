@@ -112,7 +112,13 @@ export function setAllPicked(selection: ItemSelection, visible: readonly string[
  * @returns whether every one of them is held.
  */
 export function allPicked(selection: ItemSelection, visible: readonly string[]): boolean {
-  return visible.length > 0 && visible.every(id => selection.ids.has(id))
+  // NO `visible.length > 0` TERM, and its absence is the claim: `every` over an
+  // empty list is already `true`, which is what 「all held」 means of a list with
+  // nothing on it. A guard here would make the one answer the reader can act on
+  // — the box is only drawn while there IS something to select, so this branch
+  // is about the box agreeing with itself — into an invitation to press a
+  // control that does nothing.
+  return visible.every(id => selection.ids.has(id))
 }
 
 /**

@@ -110,6 +110,134 @@ export function itemSurfaceFiles(): { readonly path: string; readonly source: st
   return out
 }
 
+/* ── one file, FOUND BY THE END OF ITS PATH ────────────────────────────────
+ *
+ * `itemSurfaceSource()` answers 「what does the whole panel say」. Several gates
+ * have a narrower question — 「what does the ROW say」, 「what does the PREF file
+ * say」 — and each of those reached for a literal path to ask it. That is the same
+ * hand-maintained list of the things that exist that the directory walk above
+ * exists to delete, one level down: a component that is renamed, split or moved
+ * a directory turns every gate wired to its old path red, and the failure reads
+ * like a broken claim rather than a moved file. Under time pressure the only
+ * available repair is to loosen the gate, so the gate is what gets loosened.
+ *
+ * So a narrow claim names the END of a path, not the whole of it, and the
+ * filesystem answers where it lives. `client/item/row-line.tsx` still resolves
+ * after the file moves to `client/item/rows/line.tsx`.
+ *
+ * AND THE TWO FAILURES ARE NAMED SEPARATELY, which is the half that matters.
+ * `source` is `''` for a file that is not there, so a claim written against it
+ * cannot quietly pass — every pattern misses — and `missing` carries a sentence
+ * naming what was asked for and listing what IS in that directory, so the report
+ * says 「the file is not here any more」 instead of 「the rule does not hold」.
+ * Those are different emergencies with different repairs, and a reader who
+ * cannot tell them apart is being pushed towards the wrong one.
+ */
+const SRC_ROOT = join(repoRoot, 'src')
+
+/** One located file: where it is, what it says, and why it is empty. */
+export interface LocatedSource {
+  /** The path ending the caller asked for, echoed back for the message. */
+  readonly suffix: string
+  /** The repository-relative path, or `undefined` when nothing ends this way. */
+  readonly path: string | undefined
+  /** The file's text, or `''` when there is no such file. */
+  readonly source: string
+  /** A sentence explaining an empty `source`. `''` when the file was found. */
+  readonly missing: string
+}
+
+/** Every file under `src/`, by repository-relative path, so a suffix can be answered. */
+function srcFiles(): readonly string[] {
+  const out: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else out.push(relative(repoRoot, full).replaceAll('\\', '/'))
+    }
+  }
+  walk(SRC_ROOT)
+  // Sorted, so the candidate list in a failure message is the same on every run.
+  return out.sort()
+}
+
+const SRC_FILE_LIST = srcFiles()
+
+/**
+ * Find one file under `src/` by the end of its path.
+ *
+ * Throws on an AMBIGUOUS suffix, because a suffix that matches two files is a
+ * claim about a file that does not exist — it is two, and which one it meant is
+ * a question nobody asked.
+ * @param suffix - the end of the repository-relative path, e.g.
+ *   `client/item/row-line.tsx`.
+ * @returns where the file is and what it says, or an empty source that says why.
+ */
+export function locateSource(suffix: string): LocatedSource {
+  const wanted = suffix.replaceAll('\\', '/').replace(/^\/+/, '')
+  const hits = SRC_FILE_LIST.filter(path => path === wanted || path.endsWith(`/${wanted}`))
+  if (hits.length === 1) {
+    const path = hits[0] as string
+    return { suffix: wanted, path, source: readFileSync(join(repoRoot, ...path.split('/')), 'utf8'), missing: '' }
+  }
+  const dir = wanted.split('/').slice(0, -1).join('/')
+  // Matched on the directory as a SEGMENT SEQUENCE inside the path, not as a
+  // prefix: the list holds repository-relative paths (`src/client/item/…`) while
+  // `dir` is the caller's relative to `src/`, and neither a prefix comparison nor
+  // a suffix comparison between the two finds anything — so the message that
+  // exists to say what IS there would list nothing at all. A directory is not
+  // itself a list entry, which is what defeated the suffix reading.
+  const siblings = dir === ''
+    ? SRC_FILE_LIST
+    : SRC_FILE_LIST.filter(path => path.includes(`/${dir}/`))
+  const why = hits.length === 0
+    ? `no file under src/ ends with "${wanted}"`
+    : `"${wanted}" matches ${hits.length} files (${hits.join(', ')}) — name it more precisely`
+  return {
+    suffix: wanted,
+    path: undefined,
+    source: '',
+    missing: `the file this gate reads is NOT THERE: ${why}. ${dir === '' ? 'src/' : `${dir}/`} holds: ${siblings.join(', ')}`,
+  }
+}
+
+/** The text of one file found by the end of its path; `''` when it is not there. */
+export function readSource(suffix: string): string {
+  return locateSource(suffix).source
+}
+
+/**
+ * The whole shared layer, as one string.
+ *
+ * `itemSurfaceSource()` does this for the panel. A claim about the SHARED layer
+ * needs the same treatment, because the shared layer is several files and moves
+ * between them: `isInboxItem` and `isAgendaItem` were re-exported out of
+ * `item-view.ts` and the gate wired to that one path reported 「the inbox
+ * predicate is gone from the shared module」 — which was false, the export was
+ * still there, and the reader of that message would have gone looking for a
+ * deleted function instead of a moved one. Same class as the ten path gates,
+ * one directory over, and the same repair.
+ *
+ * Only `.ts` is read: the layer is pure logic, and concatenating a stylesheet
+ * into a source scan would let a word in a comment answer a claim about code.
+ */
+export function coreSurfaceSource(): string {
+  const core = join(repoRoot, 'src', 'core')
+  const files: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
+      const full = join(dir, entry.name)
+      if (entry.isDirectory()) walk(full)
+      else if (entry.name.endsWith('.ts')) files.push(full)
+    }
+  }
+  walk(core)
+  return files
+    .map(full => `\n/* ==== ${relative(core, full).replaceAll('\\', '/')} ==== */\n${readFileSync(full, 'utf8')}`)
+    .join('')
+}
+
 /** A fixed clock, so every date-derived rendering is reproducible. */
 export const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
 export const DAY = 86_400_000
@@ -428,6 +556,25 @@ export function renderPanel(
   } as never))))
 }
 
+/**
+ * THE TEMPORARY LAYER A CAPTURE ASKS FOR, read from `DSH_PANEL_OPEN`.
+ *
+ * It goes through the SAME record the page goes through, for the same reason the
+ * page does: a switch that exists only to take a screenshot is a second way of
+ * saying 「the palette is open」, and the two ways drift the first time somebody
+ * adds the real control. `ItemViewPrefs.overlay` is the one place that says
+ * 「which view is on screen」, so a capture sets it there and gets the same reader
+ * a reader would.
+ *
+ * `undefined` when the variable is absent, so the ordinary capture is an ordinary
+ * panel with nothing over it. An unrecognised value is treated as absent rather
+ * than guessed at: a typo in a shell variable must not produce a page of
+ * something nobody asked for.
+ */
+export function overlayOfEnv(): 'palette' | undefined {
+  return process.env.DSH_PANEL_OPEN === 'palette' ? 'palette' : undefined
+}
+
 /** Locate the installed DSH, the same way the toolchain does: by resolution. */
 function dshHome(): string | undefined {
   for (const root of [join(process.env.APPDATA ?? '', 'npm', 'node_modules'), join(process.env.HOME ?? '', '.npm', 'node_modules')]) {
@@ -684,7 +831,14 @@ export function cssMembersOf(jsx: string): Map<string, string> {
  * @param scheme - which theme table the host's own tokens resolve against.
  */
 export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light'): void {
-  const aligned = alignClassNames(renderPanel(items, band, page), panelCss())
+  // `DSH_PANEL_OPEN` rides the SAME `prefs` channel as the page, and the
+  // environment is read HERE rather than inside the panel, so a capture can ask
+  // for the open palette and the product code has no idea a capture exists.
+  const overlay = overlayOfEnv()
+  const aligned = alignClassNames(
+    renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }),
+    panelCss(),
+  )
   // THE HOST'S OWN DARK TABLE, NOT A RECONSTRUCTED ONE. `hostTokenCss()`
   // concatenates every stylesheet the theme bundle ships, and the dark table in
   // it is selected by `body[data-ds-dark-theme]` — so putting the attribute on
@@ -946,10 +1100,29 @@ export function type(field: Element | null | undefined, value: string): void {
   })
 }
 
-/** A keyboard event on a control, for the Escape path. */
-export function press(element: Element | null | undefined, key: string): void {
+/**
+ * A keyboard event on a control, with its modifiers.
+ *
+ * The modifiers are a parameter rather than a separate function because a key map
+ * is mostly about WHICH CHORD — `k` alone is 「往上」 on this surface and `⌘K` is
+ * the palette — and a helper that can only press a bare key cannot exercise the
+ * half of the map that is about chords. They default to none, so the ordinary
+ * `press(node, 'Escape')` still reads exactly as it did.
+ */
+export function press(
+  element: Element | null | undefined,
+  key: string,
+  modifiers: { readonly metaKey?: boolean; readonly shiftKey?: boolean; readonly ctrlKey?: boolean } = {},
+): void {
   if (element === null || element === undefined) throw new Error('the control to press is not on screen')
   act(() => {
-    element.dispatchEvent(new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true }))
+    element.dispatchEvent(new KeyboardEvent('keydown', {
+      key,
+      bubbles: true,
+      cancelable: true,
+      metaKey: modifiers.metaKey === true,
+      shiftKey: modifiers.shiftKey === true,
+      ctrlKey: modifiers.ctrlKey === true,
+    }))
   })
 }

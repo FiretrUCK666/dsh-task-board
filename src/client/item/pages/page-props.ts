@@ -22,62 +22,16 @@
  * failure the whole `core/item-view.ts` layer exists to prevent.
  */
 import type { ReactNode } from 'react'
-import type { ItemPriority, ItemRecord } from '../../../core/item.ts'
-import type { ItemQuery, ItemMatchContext, ItemStatusView } from '../../../core/item-view.ts'
+import type { ItemRecord } from '../../../core/item.ts'
+import type { ItemQuery, ItemMatchContext } from '../../../core/item-view.ts'
 import type { ItemViewPrefs } from '../view-prefs.ts'
-import type { TaskBoardKey } from '../../locales.ts'
 
-/** The name of each group, read off the GROUP vocabulary. */
-export const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>> = {
-  inProgress: 'item.group.inProgress',
-  open: 'item.group.open',
-  blocked: 'item.group.blocked',
-  done: 'item.group.done',
-}
-
-/**
- * Each priority's word, ONE table for the whole surface.
- *
- * It was declared separately by the row and by the batch bar, which is two
- * closed `Record`s over the same enum: the second one is a table nobody
- * maintains, and the day the model grows a tier the copy that is still a plain
- * union compiles fine and renders `undefined`. A closed table in one place fails
- * `tsc` the moment the enum moves, which is the entire reason to want one.
- */
-export const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>> = {
-  low: 'item.priority.low',
-  normal: 'item.priority.normal',
-  high: 'item.priority.high',
-  urgent: 'item.priority.urgent',
-}
-
-/** The agenda's buckets and the word for each. */
-export const BUCKET_LABEL: Readonly<Record<string, TaskBoardKey>> = {
-  hardOverdue: 'item.bucket.hardOverdue',
-  behind: 'item.bucket.behind',
-  today: 'item.bucket.today',
-  tomorrow: 'item.bucket.tomorrow',
-  week: 'item.bucket.week',
-  later: 'item.bucket.later',
-  undated: 'item.bucket.undated',
-  gated: 'item.bucket.gated',
-}
-
-/** The triage sentences and the word for each line. */
-export const TRIAGE_LABEL: Readonly<Record<string, TaskBoardKey>> = {
-  behind: 'item.triage.behind',
-  stale: 'item.triage.stale',
-  blocked: 'item.triage.blocked',
-  undated: 'item.triage.undated',
-  // Three flags share a word with a line that has no entry of its own. That is a
-  // deliberate collapse rather than a missing key: the strip only ever emits four
-  // ids, and a table keyed over the whole flag set has to say something about the
-  // rest. The right something is the nearest honest line, not a blank.
-  hardOverdue: 'item.triage.behind',
-  gated: 'item.triage.undated',
-  linked: 'item.triage.undated',
-  done: 'item.triage.undated',
-}
+/* The word tables are NOT here. `group`, `priority`, `status`, `bucket` and
+   `triage` are five vocabularies the model owns, and a file that passes state
+   around is not the place that should also be the one naming them: they used to
+   be, and the copies that drifted out of it were the ones with no owner. They
+   live in `../labels.ts`, one closed table each, and this module is only the
+   bundle a page body is handed. */
 
 /** What every page body receives. */
 export interface ItemPageProps {

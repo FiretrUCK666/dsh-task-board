@@ -21,10 +21,13 @@
  * reader who typed a tag in capitals can no longer type it again.
  *
  * So this module splits the ORIGINAL string on whitespace, adds or removes
- * exactly one token, and writes the rest back BYTE FOR BYTE. Every other token
- * — the reader's words, their capitalisation, their spacing — survives
- * untouched. This is the rule to state, because the next reader will find the
- * round-trip version shorter and think it is the better one.
+ * exactly one token, and writes the rest back with the reader's own WORDS,
+ * their capitalisation and their order intact. The one thing it does not
+ * preserve is the run of spaces BETWEEN them: the box is a single line, so
+ * collapsing whitespace there is invisible, while capitalisation is something
+ * the reader typed on purpose. This is the rule to state, because the next
+ * reader will find the round-trip version shorter and think it is the better
+ * one.
  *
  * WHAT IS NOT DECIDED HERE. Nothing. Which values exist per facet is a table of
  * tokens and words; whether one is currently ON is asked of
@@ -128,7 +131,7 @@ export declare function isFacetOn(query: ItemQuery, facet: ItemFacetId, key: str
  * @param token - the facet token, e.g. `status:open`.
  * @param on - whether it should end up present.
  * @returns the new text. An absent token and an explicit removal both leave the
- *   reader's other words byte-identical.
+ *   reader's other words as they were typed, capitalisation included.
  */
 export declare function withFacetToken(text: string, token: string, on: boolean): string;
 /**

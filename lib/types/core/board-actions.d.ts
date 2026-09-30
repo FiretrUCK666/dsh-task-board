@@ -1,5 +1,7 @@
 import type { TaskUpdatePatch } from './controller.ts';
+import * as itemTransitions from './item-transitions.ts';
 import { type FieldSpec } from './item.ts';
+import * as itemsDocument from './items-doc.ts';
 export type { FieldSpec };
 /** The thirteen verbs. The table is a CONTRACT: a fourteenth verb is a decision,
  *  not a convenience, and the catalog is written to fit inside these. */
@@ -899,16 +901,19 @@ export declare const ACTIONS: {
                 readonly list: "string";
             };
             readonly startsAfter: {
-                readonly about: "最早开始（毫秒时间戳）";
+                readonly about: "最早开始";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly dueAt: {
-                readonly about: "截止（毫秒时间戳）";
+                readonly about: "截止";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly hardDueAt: {
-                readonly about: "硬期限（毫秒时间戳）";
+                readonly about: "硬期限";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly taskId: {
                 readonly about: "关联的看板卡片（零张或一张）";
@@ -967,14 +972,17 @@ export declare const ACTIONS: {
             readonly startsAfter: {
                 readonly about: "最早开始";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly dueAt: {
                 readonly about: "截止";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly hardDueAt: {
                 readonly about: "硬期限";
                 readonly optional: true;
+                readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly taskId: {
                 readonly about: "关联的看板卡片";
@@ -1025,6 +1033,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "planItemPromotion";
         readonly summary: "把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。";
         readonly params: {
             readonly of: {
@@ -1046,6 +1056,8 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "restoredItemOf";
         readonly summary: "把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。";
         readonly params: {
             readonly of: {
@@ -1076,6 +1088,78 @@ export declare const ACTIONS: {
 };
 /** Every action the catalog declares. The closed union every other type keys on. */
 export type ActionId = keyof typeof ACTIONS;
+/** The checklist's actions, DERIVED from {@link ActionId} rather than listed. */
+export type ItemActionId = Extract<ActionId, `item.${string}`>;
+/**
+ * Actions this catalog describes that have NO core binding, each with the reason
+ * — the checklist half of the ledger the gate keeps for controller methods.
+ *
+ * AN EXEMPTION WITHOUT A REASON IS A FORGOTTEN ACTION. So the marker is its own
+ * word, it is its own VERDICT (this one means "the catalog describes it and no
+ * single implementation answers it yet", which is the opposite end from "we
+ * forgot to tell the model"), and a bare marker records a decision while
+ * documenting no decision. The gate counts them separately from a real debt so
+ * neither number can hide inside the other.
+ *
+ * THE ONLY ENTRY IS ONE NOBODY NOTICED. `item.navigate` is `surface: 'ui'`, so the
+ * model is never offered it and the tool-side debt table does not apply — which
+ * left it with no check at all, in three places at once: this catalog, the
+ * capability query, and a spec pinning the ui-only list. Meanwhile the panel has
+ * no single function that "go to a page, or focus a row" could call: page and
+ * selection are two pieces of the panel's own state, the same class of UI the
+ * controller-method scan cannot see. So the honest state is the one recorded
+ * here, not a `semanticOf` naming a function nobody wrote.
+ */
+export declare const NOT_YET_BUILT: Partial<Record<ActionId, string>>;
+/**
+ * WHICH CORE FUNCTION EACH CHECKLIST WRITE GOES THROUGH — the binding the
+ * coverage gate could not see.
+ *
+ * WHY IT HAD TO BE BUILT. Every other verb in this catalog is bound to a
+ * `BoardController` method, and the gate finds it by scanning for
+ * `controller.method()` across `src/client`. The checklist's writes are NOT
+ * controller methods: the panel calls the shared pure functions directly
+ * (`applyItemPatch` / `applyItemStep` / `captureItemRecord` / …) because the
+ * model has to call the same ones. So the gate had nothing to recognise, and the
+ * consequence is the worst kind: **a button added to the checklist and never
+ * told to the model leaves the gate green**. Not "green by luck" — green by
+ * construction, because the syntax it looks for is not in that file at all.
+ *
+ * THE KEY SET IS THE TYPE, AND THE EXEMPTION IS PART OF IT.
+ * `satisfies Readonly<Record<BoundItemActionId, ItemHandler>>` means an action
+ * cannot be added without deciding here what implements it — and the decision is
+ * a VALUE, either a real function or a written reason. That is the same move as
+ * deriving the patch type from `ITEM_FIELDS`, for the same reason: a hand-kept
+ * list of "what each action calls" stops agreeing with the real one the first
+ * time somebody adds an action, and nothing about the old list looks wrong when
+ * it does.
+ *
+ * Written as `Record<ItemActionId, …>` the very first compile of this table
+ * failed on `item.navigate` — the one action in the catalog nobody has ever
+ * built. That is the gate working: a new checklist action now fails the build
+ * until it is either bound or reasoned about, and neither can happen quietly.
+ *
+ * `ItemActionId` is derived by PREFIX rather than listed, so a new domain in the
+ * catalog does not have to be added here to keep this table honest.
+ */
+export declare const ITEM_HANDLERS: {
+    readonly 'item.create': typeof itemTransitions.captureItemRecord;
+    readonly 'item.update': typeof itemTransitions.applyItemPatch;
+    readonly 'item.delete': typeof itemTransitions.removeItemRecord;
+    readonly 'item.step': typeof itemTransitions.applyItemStep;
+    readonly 'item.promote': typeof itemTransitions.planItemPromotion;
+    readonly 'item.restore': typeof itemsDocument.restoredItemOf;
+};
+/**
+ * {@link ITEM_HANDLERS} by NAME, read off the table itself rather than written
+ * out beside it.
+ *
+ * The same argument as {@link SEMANTIC_FUNCTIONS}: a second list of names is a
+ * thing to keep in step with the code, and the day it stops agreeing nothing says
+ * so. Read off the table, a rename moves both at once and a binding that was
+ * deleted stops vouching for itself the same moment.
+ */
+export declare const ITEM_HANDLER_NAMES: Record<string, string>;
 /** The verbs, as data — the coverage gate and any renderer read this, never a
  *  second hand-written list. `query` is the read lane's verb and has no action
  *  here on purpose: a query is not a change, and its shape comes from the
@@ -1107,6 +1191,18 @@ export interface CatalogChecks {
     readonly taskFields?: Readonly<Record<string, FieldSpec>>;
     /** The checklist row's field verdicts. */
     readonly itemFields?: Readonly<Record<string, FieldSpec>>;
+    /**
+     * Which core function each checklist action binds to, keyed by action id. The
+     * real table is {@link ITEM_HANDLERS}.
+     *
+     * Injectable for the same reason as everything else here: a check that has only
+     * ever passed against the real table is indistinguishable from a check that
+     * cannot fail, so the tests feed it a deliberately broken copy and assert each
+     * new rule bites.
+     */
+    readonly itemHandlers?: Readonly<Record<string, string>>;
+    /** The "described but not bound" ledger. The real one is {@link NOT_YET_BUILT}. */
+    readonly notYetBuilt?: Readonly<Record<string, string>>;
 }
 /** What the catalog itself guarantees. Mechanical, so it costs nothing to keep
  *  honest: the coverage gate runs this over the real table, and the tests run it

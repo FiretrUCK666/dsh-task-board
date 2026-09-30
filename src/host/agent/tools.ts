@@ -100,7 +100,8 @@ import {
   readItemStepList,
   removeItemRecord,
 } from '../../core/item-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemTagsOf, type ItemRecord } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
+import { derivedStatusOf } from '../../core/item-membership.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -260,7 +261,57 @@ export function filterHelp(): { keys: readonly string[]; values: readonly string
 /* ── receipts the model can read back ────────────────────────────────────── */
 
 interface TaskRow { readonly title: string; readonly status: string }
-interface ItemRow { readonly ref: string; readonly id: string; readonly title: string; readonly status: string }
+
+/**
+ * A CARD'S WRITTEN CONTENT, and what `detail: 'full'` adds to a brief row.
+ *
+ * The checklist's fields had no read path at all for as long as this tool
+ * existed, which is the whole defect: a note-taking subsystem where a model can
+ * write a body, a notes line and four steps and then cannot read any of them
+ * back. It can only re-query and be handed a title. So the content the model can
+ * WRITE is exactly the content it must be able to READ, and the read is the same
+ * projection, not a summary of it.
+ */
+interface TaskDetail extends TaskRow {
+  readonly description: string
+  readonly prompt: string
+}
+
+interface ItemRow {
+  readonly ref: string
+  readonly id: string
+  readonly title: string
+  /**
+   * The DERIVED status — what the reader sees, and what `status:inProgress`
+   * filters on.
+   *
+   * It used to be the STORED one, which is the same defect as a facet counting
+   * by a different predicate than the list under it: a row hanging off a running
+   * card filters into `status:inProgress` and then comes back printed as `open`,
+   * with nothing in the answer saying the two are different questions. A model
+   * that has just asked 「what is running」 must not be told the answer is empty.
+   */
+  readonly status: ItemStatusView
+  /** The stored tier, for the caller that needs to know a row reads `inProgress`
+   *  because its card is running. Never the one a filter compares. */
+  readonly storedStatus: ItemStatus
+  /** The linked card, or `undefined` — never a second copy of its title. */
+  readonly taskId: string | undefined
+}
+
+/** What `detail: 'full'` adds to a brief checklist row: the whole row, minus
+ *  its identity, which the brief row already carries. */
+interface ItemDetail extends ItemRow {
+  readonly body: string
+  readonly notes: string
+  readonly tags: readonly string[]
+  readonly steps: readonly { readonly id: string; readonly text: string; readonly done: boolean }[]
+  /** Millisecond stamps; read them as whole local days (see the catalog). */
+  readonly startsAfter: number | undefined
+  readonly dueAt: number | undefined
+  readonly hardDueAt: number | undefined
+  readonly progress: { readonly done: number; readonly total: number } | undefined
+}
 
 /**
  * A card is named by its TITLE, and the board has no short number for cards —
@@ -273,9 +324,41 @@ function taskRow(task: TaskRecord): TaskRow {
   return { title: task.title, status: task.status }
 }
 
-/** An item's number is the document-minted one (`#12`), never its uuid. */
-function itemRow(item: ItemRecord): ItemRow {
-  return { ref: `#${item.ref}`, id: item.id, title: item.title, status: item.status }
+/** The same row with its written content, for `detail: 'full'`. */
+function taskDetailRow(task: TaskRecord): TaskDetail {
+  return { ...taskRow(task), description: task.description, prompt: task.prompt }
+}
+
+/**
+ * An item's number is the document-minted one (`#12`), never its uuid — and its
+ * status is the DERIVED one, read through the very function the panel reads, so
+ * a query answer and the row on screen cannot disagree about the same row.
+ */
+function itemRow(item: ItemRecord, running?: ReadonlyMap<string, boolean>): ItemRow {
+  return {
+    ref: `#${item.ref}`,
+    id: item.id,
+    title: itemTitleOf(item),
+    status: derivedStatusOf(item, running),
+    storedStatus: item.status,
+    taskId: item.taskId,
+  }
+}
+
+/** The same row with everything a reader typed, for `detail: 'full'`. */
+function itemDetailRow(item: ItemRecord, running?: ReadonlyMap<string, boolean>): ItemDetail {
+  const read = itemRow(item, running)
+  return {
+    ...read,
+    body: item.body,
+    notes: item.notes,
+    tags: [...item.tags],
+    steps: item.steps.map(step => ({ id: step.id, text: step.text, done: step.done })),
+    startsAfter: item.startsAfter,
+    dueAt: item.dueAt,
+    hardDueAt: item.hardDueAt,
+    progress: itemProgressOf(item),
+  }
 }
 
 /* ── op resolution: the catalog decides what exists and who may do it ────── */
@@ -321,6 +404,30 @@ function presentationOf(result: ExecuteResult): HostJson {
   } as unknown as HostJson
 }
 
+/** Which of the two synced documents an op moved. */
+export type ActionDocument = 'board' | 'items'
+
+/** What each one is called in a receipt the model reads. */
+const DOCUMENT_LABEL: Readonly<Record<ActionDocument, string>> = {
+  board: '看板',
+  items: '清单',
+}
+
+/**
+ * The sentence for an op that landed, and the ONLY place 「已生效」 is written.
+ *
+ * One document is the historical sentence and stays exactly as it was: the
+ * subject-less form is honest when there is one subject. Two documents get their
+ * subjects named, because 「已生效」 about a promote that wrote the card and lost
+ * the link is a claim about a half that the reader cannot see from the receipt.
+ * A rehearsal says 会写入 for the same reason — a receipt that reads as a
+ * completed write inside a dry run is the one line this tool must never print.
+ */
+function landedWord(dryRun: boolean, moved: readonly ActionDocument[]): string {
+  if (moved.length <= 1) return '已生效。'
+  return `${dryRun ? '会写入' : '已写入'}${moved.map(doc => DOCUMENT_LABEL[doc]).join('与')}两份文档。`
+}
+
 export interface OpReport {
   /** The op's own words back, so a report points at something. */
   readonly op: string
@@ -331,6 +438,20 @@ export interface OpReport {
   /** The short number and title this op touched, when it touched one. */
   readonly ref?: string
   readonly title?: string
+  /**
+   * WHICH DOCUMENTS ACTUALLY MOVED, and it is here because an action that writes
+   * two documents cannot be reported by a subject-less 「已生效」.
+   *
+   * `item.promote` is the one: it creates a card AND links the row. The two
+   * commits are separate, so a medium that takes the first and refuses the
+   * second leaves the document in a half state — and the receipt used to say
+   * 「没写进去」 about the whole op, which is how a reader learns that this tool's
+   * failure sentences do not mean what they say. It is also what the catalog's
+   * comment on that action used to CLAIM `applyOne` did, and did not.
+   *
+   * Absent on a refusal and on a no-op, because those moved nothing.
+   */
+  readonly documents?: readonly ActionDocument[]
   /** What happened, or what to change. Never a bare error code. */
   readonly detail: string
 }
@@ -704,6 +825,10 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     // another device outranked reads here as `unchanged` — which is the fact.
     let noop = next.unchanged === true
     let declined = false
+    // Which documents this op actually got written. Tracked OUTSIDE the try so a
+    // throw on the SECOND commit still knows the first one landed — that is the
+    // whole reason this list exists.
+    const moved: ActionDocument[] = []
     if (request.dry_run !== true) {
       /* A COMMIT THAT REFUSES IS A REPORT, NOT A THROWN TOOL CALL.
          `DocumentService.commit` rejects when the medium will not take the write —
@@ -722,25 +847,38 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
           const before = doc
           doc = await board.commit(boardCommitOf(before, nextDoc))
           if (doc === before) declined = true
+          else moved.push('board')
         }
         if (nextItems !== items) {
           const before = items
           items = await board.commitItems(itemsCommitOf(before, nextItems))
           if (items === before) declined = true
+          else moved.push('items')
         }
       } catch (error) {
-        // `failed` is the loop's OWN stop signal, so the ops after this one are
-        // reported by the same branch that reports them after any other failure —
-        // one place decides what 「未执行」 means, not two.
+        // The half that DID land is named, because "没写进去" on its own reads as
+        // "nothing happened" and the reader is then looking at a card that exists.
+        const kept = moved.length === 0
+          ? ''
+          : `${moved.map(doc2 => DOCUMENT_LABEL[doc2]).join('与')}那一份已经写进去了，没有回滚。`
         raw.push({
           op: step.op,
           ok: false,
-          detail: `没写进去：${error instanceof Error ? error.message : String(error)}`,
+          ...(moved.length === 0 ? {} : { documents: moved }),
+          detail: `没写进去：${error instanceof Error ? error.message : String(error)}${kept}`,
         })
+        // `failed` is the loop's OWN stop signal, so the ops after this one are
+        // reported by the same branch that reports them after any other failure —
+        // one place decides what 「未执行」 means, not two.
         failed = true
         continue
       }
     } else {
+      // A rehearsal reports what WOULD be written, so it tracks the same two
+      // documents — 「会写入两份」 is the sentence that makes a two-document
+      // action's rehearsal worth reading.
+      if (nextDoc !== doc) moved.push('board')
+      if (nextItems !== items) moved.push('items')
       doc = nextDoc
       items = nextItems
     }
@@ -751,10 +889,15 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       op: step.op,
       ok: true,
       ...(task === undefined ? {} : { title: task.title }),
-      ...(item === undefined ? {} : { ref: `#${item.ref}`, title: item.title }),
+      ...(item === undefined ? {} : { ref: `#${item.ref}`, title: itemTitleOf(item) }),
+      ...(moved.length === 0 ? {} : { documents: moved }),
+      // A one-document op keeps the subject-less sentence it always used, so
+      // every receipt that was honest stays byte-identical. The two-document
+      // form is the only one that had to change, and it is the only one that
+      // was previously lying.
       detail: `${declined
         ? '这一条没有改成——另一台设备刚改过它，这次没写进去。'
-        : noop ? '这一条已经是这样了，没有改动。' : '已生效。'}${next.note ?? ''}`,
+        : noop ? '这一条已经是这样了，没有改动。' : landedWord(request.dry_run === true, moved)}${next.note ?? ''}`,
     })
   }
 
@@ -791,7 +934,15 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     itemsRevision: items.revision,
     counts,
     enginePending,
-    ...(request.dry_run === true ? {} : { changed: { tasks: changedTasks.map(taskRow), items: changedItems.map(itemRow) } }),
+    ...(request.dry_run === true ? {} : {
+      // The same derivation the query answers with, over the document as it
+      // stands AFTER the batch — so a receipt and a query cannot print two
+      // different statuses for the same row.
+      changed: {
+        tasks: changedTasks.map(taskRow),
+        items: changedItems.map(row => itemRow(row, runningMapOf(deps.sources, doc.tasks))),
+      },
+    }),
   }
   // The key is remembered only now, after the writes, and only for a real run:
   // a batch that half-failed still burned revisions, and a retry carrying the
@@ -1462,6 +1613,48 @@ function linkOf(raw: unknown): string | undefined {
   return typeof raw === 'string' && raw !== '' ? raw : undefined
 }
 
+/** The written content of a card, as prose, or nothing on a brief row. */
+function taskBodyOf(row: TaskRow & Partial<TaskDetail>): string {
+  if (row.description === undefined && row.prompt === undefined) return ''
+  return [`详情：${row.description ?? ''}`, `Prompt：${row.prompt ?? ''}`]
+    .map(line => line.replace(/\s+$/, ''))
+    .filter(line => !line.endsWith('：'))
+    .map(line => `  ${line}`)
+    .join('\n')
+}
+
+/** The written content of a checklist row, as prose, or nothing on a brief row. */
+function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
+  if (row.body === undefined) return ''
+  const lines: string[] = []
+  if (row.body !== '') lines.push(`  正文：${row.body}`)
+  if (row.notes !== undefined && row.notes !== '') lines.push(`  备注：${row.notes}`)
+  if (row.tags !== undefined && row.tags.length > 0) lines.push(`  标签：${row.tags.join('、')}`)
+  if (row.steps !== undefined && row.steps.length > 0) {
+    lines.push(`  步骤：${row.steps.map(step => `${step.done ? '[x]' : '[ ]'} ${step.text}（id ${step.id}）`).join('；')}`)
+  }
+  if (row.progress !== undefined) lines.push(`  进度：${row.progress.done}/${row.progress.total}`)
+  // The dates are printed as the raw stamp AND the local day, because the reader
+  // of this line is a model that has been told the unit is a day — so a bare
+  // 13-digit number is the one thing that would make it guess.
+  for (const [label, at] of [['最早开始', row.startsAfter], ['截止', row.dueAt], ['硬期限', row.hardDueAt]] as const) {
+    if (at !== undefined) lines.push(`  ${label}：${at}（${localDayOf(at)}）`)
+  }
+  if (row.taskId !== undefined && row.taskId !== '') lines.push(`  关联卡片：${row.taskId}`)
+  if (row.storedStatus !== undefined && row.storedStatus !== row.status) {
+    lines.push(`  存储状态：${row.storedStatus}`)
+  }
+  return lines.join('\n')
+}
+
+/** A stamp as the local calendar day it names, for a reader that thinks in days. */
+function localDayOf(at: number): string {
+  const date = new Date(at)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
+}
+
 /* ── the three tools, assembled from the catalog ─────────────────────────── */
 
 const CAPABILITIES_DESCRIPTION =
@@ -1527,7 +1720,14 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
       type: 'object',
       properties: {
         filter: { type: 'string', description: `${filterHelp().syntax}。可用的筛选：${filterHelp().keys.join(' ')}` },
-        detail: { type: 'string', enum: ['brief', 'full'], description: 'brief 只回标题与状态；full 连正文一起回' },
+        detail: {
+          type: 'string',
+          enum: ['brief', 'full'],
+          // The description is the whole contract for this parameter, so it states
+          // what each value RETURNS rather than gesturing at "more". It used to
+          // say 「full 连正文一起回」 while no branch anywhere read it.
+          description: 'brief 只回编号、标题与状态；full 连正文、备注、步骤、标签、进度与三个日期一起回。full 的体积大得多，请配合 limit 用——清单条目的状态是「派生」的：挂在正在跑的卡上的行读作 inProgress（存的那一档在 storedStatus 里）。',
+        },
         limit: { type: 'number', description: '最多回多少行（默认 20，上限 100）。AI 侧查询在服务端就截断，不会把整份清单塞进上下文。' },
         posture: { type: 'string', description: '给一个会话 id，连它的在跑/归档/等批准/等回答态势一起回。态势是会话的事实，卡片不是会话，所以要会话 id。' },
       },
@@ -1539,25 +1739,42 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
         properties: {
           ok: { type: 'boolean' },
           filter: { type: 'string' },
+          /** Echoed so a model can tell a brief answer from a full one without
+           *  inferring it from which fields happen to be absent. */
+          detail: { type: 'string' },
           tasks: { type: 'array', items: { type: 'object' } },
           items: { type: 'array', items: { type: 'object' } },
-          detail: { type: 'string' },
+          /** Whether either list hit the limit — so a short answer is never
+           *  mistaken for a complete one. */
+          truncated: { type: 'boolean' },
         },
-        required: ['ok', 'filter', 'tasks', 'items'],
+        required: ['ok', 'filter', 'detail', 'tasks', 'items'],
         additionalProperties: true,
       },
       // The count first, because "how much is there" is the question behind
       // every further turn; then the rows with the short number the model must
       // quote back.
+      //
+      // `detail: 'full'` RENDERS ITS CONTENT HERE, not in a second render path:
+      // a caller that asked for the body of a note and gets a title has been
+      // lied to, and the lie is invisible because the JSON is right there. So the
+      // prose carries what the projection carries.
       render: (_args, value) => {
-        const result = value as { ok?: boolean; detail?: string; filter?: string; tasks?: { title: string; status: string }[]; items?: { ref: string; title: string; status: string }[] }
-        if (result.ok === false) return text([result.detail ?? '这次查询没有读到数据。'])
+        const result = value as {
+          ok?: boolean
+          detail?: string
+          filter?: string
+          truncated?: boolean
+          tasks?: (TaskRow & Partial<TaskDetail>)[]
+          items?: (ItemRow & Partial<ItemDetail>)[]
+        }
+        if (result.ok === false) return text([(result as { detail?: string }).detail ?? '这次查询没有读到数据。'])
         const tasks = result.tasks ?? []
         const items = result.items ?? []
         return text([
-          `卡片 ${tasks.length} 条，清单条目 ${items.length} 条${result.filter === undefined || result.filter === '' ? '' : `（筛选：${result.filter}）`}。`,
-          ...tasks.map(row => `卡片：${row.title}（${row.status}）`),
-          ...items.map(row => `${row.ref} ${row.title}（${row.status}）`),
+          `卡片 ${tasks.length} 条，清单条目 ${items.length} 条${result.filter === undefined || result.filter === '' ? '' : `（筛选：${result.filter}）`}。${result.truncated === true ? '（已达 limit 的上限，还有更多。）' : ''}`,
+          ...tasks.map(row => `卡片：${row.title}（${row.status}）\n${taskBodyOf(row)}`),
+          ...items.map(row => `${row.ref} ${row.title}（${row.status}）\n${itemBodyOf(row)}`),
         ])
       },
     },
@@ -1641,12 +1858,24 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   }
   const request = (args ?? {}) as { filter?: string; detail?: string; limit?: number; posture?: string }
   const limit = Math.min(100, Math.max(1, request.limit ?? 20))
+  /* `detail` USED TO BE A LIE, and it was the worst kind of lie this tool can
+     tell: the parameter was declared, described in prose as 「full 连正文一起回」,
+     destructured here — and then never read by a single branch below. Every row
+     came back with its title and its status whatever the caller asked for, so a
+     model that asked for the contents of a note and was handed a title had no
+     way to tell that it had been given the wrong answer; it just believed it.
+
+     So it is read here, and it decides the PROJECTION, not the wording: `full`
+     is the whole written row and `brief` is the name. Both are the model's
+     choice, and `limit` is still the only knob that bounds the size — which is
+     why the parameter's own text tells the caller to bring it down with `full`. */
+  const full = request.detail === 'full'
   const doc = board.getDoc()
   const items = board.getItemsDoc()
   const filter = (request.filter ?? '').trim()
   const needle = filter.toLowerCase()
   const tasks = doc.tasks.filter(task => needle === '' || task.title.toLowerCase().includes(needle)).slice(0, limit)
-  const rows = tasks.map(taskRow)
+  const rows = full ? tasks.map(taskDetailRow) : tasks.map(taskRow)
   // The checklist is matched by the SAME grammar the search box a person types
   // into uses, reached through the one door that leads to it. This used to be a
   // second haystack assembled here, and two search boxes that agree today and
@@ -1663,9 +1892,22 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   // and breathing read, and a session this host cannot see is NOT counted as
   // running: `unknown` is a real answer, never a guess in the other direction.
   const itemCtx = itemSearchContext(deps.now(), undefined, runningMapOf(deps.sources, doc.tasks))
+  const running = itemCtx.running
   const matchedItems = items.items
     .filter(item => matchItemQuery(item, filter, itemCtx))
     .slice(0, limit)
+  // The SAME map the filter was judged with is handed to the projection, so the
+  // rows a filter returned and the status printed on them come from one read of
+  // the board's live state. A row that matched `status:inProgress` because a card
+  // is running cannot come back labelled `open`, which is the whole point.
+  const itemRows = full
+    ? matchedItems.map(item => itemDetailRow(item, running))
+    : matchedItems.map(item => itemRow(item, running))
+  // Truncation is reported for BOTH lists, not just the cards: the number the
+  // caller is given is "how many rows came back", and the two lists are capped
+  // by the same `limit`, so a full board of cards could otherwise hide an
+  // unbounded list of notes behind a `truncated: false`.
+  const truncated = tasks.length >= limit || matchedItems.length >= limit
   if (request.posture !== undefined && request.posture !== '') {
     // Posture is a fact about a SESSION, and a card is not a session — so the
     // caller names the session, rather than this tool guessing which of a
@@ -1673,10 +1915,12 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
     return {
       ok: true,
       filter,
+      detail: full ? 'full' : 'brief',
       tasks: rows,
-      items: matchedItems.map(itemRow),
+      items: itemRows,
+      truncated,
       posture: await deps.posture(request.posture),
     }
   }
-  return { ok: true, filter, tasks: rows, items: matchedItems.map(itemRow), truncated: tasks.length >= limit }
+  return { ok: true, filter, detail: full ? 'full' : 'brief', tasks: rows, items: itemRows, truncated }
 }

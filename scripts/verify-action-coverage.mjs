@@ -213,6 +213,15 @@ const INTERNAL = {
   subscribeGoalActivation: '订阅目标上膛/解甲（返回退订函数）',
   start: '生命周期：装配时由 `ctx.effect` 调一次',
   dispose: '生命周期：effect 清理时释放订阅、定时器与 SSE',
+  // --- the checklist's own core functions that are not actions ----------------
+  // The checklist panel does not write through `controller` methods: it calls the
+  // pure functions in `core/item-transitions` directly, which is the whole point
+  // of that module (a write is a function over an array, and the panel and the
+  // tool call it). That shape is invisible to the method scan, so the functions
+  // the panel calls are declared here or in `ITEM_HANDLERS` — one of the two, and
+  // the core-side check holds the two to each other.
+  restoreItemRecord: '面板那一次撤销的落盘半步。**与目录里的 `item.restore` 是同一套重打墓碑戳的规则，但寻址键不同、不可互换**：面板刚删掉的行 `ref === 0`、按编号找不到墓碑，所以它传 `id`；模型只说得出编号，所以 `item.restore` 传 `ref`（见 `items-archive.ts` 的两个键）。同一条规则、两个地址，不是一个动作的两种叫法——要合并就得先让两个地址都成立，那是一次合并文法的决定，不是这张表能顺手写的',
+  isBlankCapture: '判一条快记是不是空。**判空不是动作**——它不写任何东西，只回答「要不要收下」。与 `isBlankMessage` 同一族：一个空位判断，两条表面各有一个，因为它们问的不是同一件事（消息问「文字空且无图无文件」，快记问「连结构都解析不出来」）',
   // --- sync and engine plumbing: nobody clicks these --------------------------
   // Called by the sync engine, the scheduler or a timer — never by a person and
   // never by the tool. A future one of these that DID become user-reachable
@@ -353,6 +362,7 @@ function readCatalog(source) {
   const end = source.indexOf('} as const satisfies', start)
   if (end === -1) return null
   const table = source.slice(start, end)
+  const constants = constantsOf(source)
 
   // An id line is a two-space-indented quoted key. Counting the lines and the
   // entries separately is what makes a drifted pattern loud: if the two ever
@@ -400,8 +410,8 @@ function readCatalog(source) {
             hasRange: /\brange:\s*\{/.test(spec),
             hasObject: /\bobject:\s*\[/.test(spec),
             hasList: /\blist:\s*(?:'|object|\{)/.test(spec),
-            oneOf: oneOfValues(spec),
-            default: /\bdefault:\s*'([^']*)'/.exec(spec)?.[1],
+            oneOf: oneOfValues(spec, constants),
+            default: fieldValue(spec, 'default', constants),
             requiredWhen: /\brequiredWhen:\s*'([^']*)'/.exec(spec)?.[1],
             appliesWhen: /\bappliesWhen:\s*'([^']*)'/.exec(spec)?.[1],
           })
@@ -463,14 +473,47 @@ function coreExports(files) {
   return names
 }
 
+/** The `const`s a ParamSpec may point at instead of repeating a value.
+ *
+ * A gate that reads the catalog as TEXT sees the reference, not the value — the
+ * same gap that made `oneOf: MOVABLE` read as "declares no closed set". Writing
+ * one sentence six times is six things that can drift, so the catalog names a
+ * constant instead; the alternative is teaching every reader to resolve it, and
+ * the readers are not only this file. So the resolution happens HERE, once, and
+ * a reference the gate cannot resolve is a FINDING rather than a silent pass. */
+function constantsOf(source) {
+  const out = new Map()
+  for (const m of source.matchAll(/^const ([A-Z_$][\w$]*)\s*=\s*'([^']*)'/gm)) out.set(m[1], m[2])
+  for (const m of source.matchAll(/^const ([A-Z_$][\w$]*)\s*=\s*(\[[^\]]*\])/gm)) {
+    out.set(m[1], [...m[2].matchAll(/'([^']*)'/g)].map(v => v[1]))
+  }
+  return out
+}
+
+/** The string a spec field carries, following one constant reference if it is
+ *  one. An unresolvable reference returns the reference text so the caller can
+ *  name it in the finding instead of quietly finding nothing. */
+function fieldValue(spec, field, constants) {
+  const literal = new RegExp(`\\b${field}:\\s*'([^']*)'`).exec(spec)
+  if (literal !== null) return literal[1]
+  const ref = new RegExp(`\\b${field}:\\s*([A-Z_$][\\w$]*)`).exec(spec)
+  if (ref === null) return undefined
+  const value = constants.get(ref[1])
+  if (typeof value === 'string') return value
+  return `UNRESOLVED:${ref[1]}`
+}
+
 /** The string values of a `oneOf`, or undefined when the param declares none.
  *  The array can be a reference (`oneOf: MOVABLE`) rather than a literal, and
  *  that counts as "declared a closed set" — the fake-boolean check only needs
  *  to see the two boolean spellings when they are written out. */
-function oneOfValues(spec) {
-  const at = /\boneOf:\s*\[([^\]]*)\]/.exec(spec)
+function oneOfValues(spec, constants) {
+  const at = /\boneOf:\s*(\[[^\]]*\]|[A-Z_$][\w$]*)/.exec(spec)
   if (at === null) return undefined
-  return [...at[1].matchAll(/'([^']*)'/g)].map(m => m[1])
+  const body = at[1].startsWith('[') ? at[1] : constants.get(at[1])
+  if (typeof body !== 'string' && !Array.isArray(body)) return undefined
+  const text = Array.isArray(body) ? body.join('') : body
+  return [...text.matchAll(/'([^']*)'/g)].map(m => m[1])
 }
 
 /** Every `receiver.method(` call in the scan roots, restricted to methods that
@@ -486,6 +529,31 @@ function callSites(files, publicMethods) {
     }
   }
   return sites
+}
+
+/** The core functions `ITEM_HANDLERS` binds an action id to, read off the table
+ * itself as the function NAME (the values are written `module.fn`, and only the
+ * property is the name the panel calls it by).
+ *
+ * Read off the table rather than kept beside it, for the reason
+ * `SEMANTIC_FUNCTIONS` gives in the core: a second list of names is a thing to
+ * keep in step with the code, and the day it stops agreeing nothing says so.
+ * Returns null when the table cannot be read at all, which the caller turns
+ * into a finding — a lane that cannot see its input must never report success. */
+function itemHandlerNames(catalogSource) {
+  const at = catalogSource.indexOf('export const ITEM_HANDLERS')
+  if (at === -1) return null
+  const body = catalogSource.slice(at)
+  const end = body.indexOf('\n} as const')
+  if (end === -1) return null
+  // Function name -> action id, because a finding that cannot name the action
+  // is a finding the reader has to go and look up: the table holds the id and
+  // dropping it on the way out means the message says "bind it in ITEM_HANDLERS"
+  // without saying which row.
+  const names = new Map()
+  for (const m of body.slice(0, end).matchAll(/^\s*'([^']+)'\s*:\s*[\w$]+\.([A-Za-z_$][\w$]*)\s*,/gm)) names.set(m[2], m[1])
+  if (names.size === 0) return null
+  return names
 }
 
 /** Covered method -> action id, plus the two-sided complaint about the table. */
@@ -648,6 +716,17 @@ export function actionCoverageFindings(input) {
       fail(`${action.id}: names semanticOf "${action.semanticOf}" without being marked semantic`)
     }
     for (const param of action.params) {
+      // A reference the gate cannot resolve is a FINDING, not an absent value.
+      // "The default reads as absent" and "the default names a constant this
+      // file cannot see" are the same screen to a reader and opposite facts to
+      // the program, and the second one is how a rule loses its own wording
+      // without anything turning red.
+      for (const field of ['default', 'requiredWhen', 'appliesWhen']) {
+        const value = param[field]
+        if (typeof value === 'string' && value.startsWith('UNRESOLVED:')) {
+          fail(`${action.id}.${param.name}: ${field} points at the constant ${value.slice('UNRESOLVED:'.length)}, which this gate could not read out of src/core/board-actions.ts — either the name is wrong or it is not a module-level string constant. Write the text out, or make the constant one this reader can resolve`)
+        }
+      }
       if (param.optional && param.requiredWhen !== undefined) {
         fail(`${action.id}.${param.name}: declared both optional and requiredWhen — pick one, or a schema renderer prints both and the caller cannot tell which is true`)
       }
@@ -707,6 +786,51 @@ export function actionCoverageFindings(input) {
       }
     }
   }
+
+  // 1c. THE CHECKLIST'S OWN WRITE SHAPE. The panel does not write through
+  // `controller` methods, so the scan above is structurally blind to every
+  // write it makes: it calls the pure functions in `core/item-transitions` and
+  // `core/items-doc` directly, and those calls match no receiver in the table.
+  // The consequence was a green gate on a panel it said nothing about — add a
+  // button that writes a field and the catalog never learns it exists.
+  //
+  // So the receipt is the other way round: a checklist write is legal exactly
+  // when the function it calls is either a value in `ITEM_HANDLERS` (the
+  // catalogue names it) or an `INTERNAL` entry with a reason (it does not, and
+  // we are saying why). Nothing else is a legal way for the panel to change a
+  // document.
+  const handlerNames = itemHandlerNames(input.catalogText)
+  if (handlerNames === null) {
+    fail('cannot read ITEM_HANDLERS out of src/core/board-actions.ts — the table or its `as const satisfies` tail was not found, so the checklist write lane below would have passed on empty input')
+    return failures.slice()
+  }
+  const writeNames = new Set(input.itemWriteNames ?? [])
+  const called = new Map()
+  for (const file of input.scanFiles) {
+    // A BARE call: the panel imports the function itself, so there is no
+    // receiver to classify. The negative lookbehind keeps `obj.applyItemPatch(`
+    // and `foo.bar(...)` out — only a name standing on its own is a call to the
+    // core function rather than to a method that happens to share its name.
+    for (const m of file.text.matchAll(/(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[1]
+      if (!writeNames.has(name) || handlerNames.has(name)) continue
+      if (!called.has(name)) {
+        called.set(name, `${file.path}:${file.text.slice(0, m.index).split('\n').length}`)
+      }
+    }
+  }
+  for (const [name, where] of called) {
+    const reason = internal[name]
+    if (reason === undefined) {
+      fail(`${where}: the panel calls ${name}() from the checklist's own write layer, and it is neither a value in ITEM_HANDLERS nor an INTERNAL entry with a reason — this is a checklist write the catalog says nothing about. Bind it in ITEM_HANDLERS as an action id (the rows that take a core function today are ${[...handlerNames.values()].join(', ')}), or declare in INTERNAL why it is not an action`)
+    } else if (reason.trim() === '') {
+      fail(`INTERNAL.${name} has an empty reason — an unexplained exclusion is indistinguishable from a forgotten one`)
+    } else if (markerOf(reason) !== undefined && reason.slice(markerOf(reason).length).trim() === '') {
+      const kind = markerOf(reason) === DEBT ? 'DEBT' : 'NOT-FOR-THE-MODEL'
+      fail(`INTERNAL.${name} is marked "${kind}" with no reason after the marker — the marker is the verdict, the sentence after it is the decision; a bare one says "we decided" without saying what was decided`)
+    }
+  }
+  notes.push(`checklist write lane: ${handlerNames.size} core function(s) bound to an action, ${called.size} unbound call(s) the panel makes, ${[...called.keys()].length === 0 ? 'all declared' : 'each declared in INTERNAL with a reason'}`)
 
   // 1b. the OTHER direction: model -> execution. The gate above asks whether the
   // UI grew something the catalog does not mention; this one asks whether the
@@ -968,6 +1092,15 @@ export function readRepo(root) {
     boardDocText: existsSync(at('src', 'core', 'board-doc.ts')) ? read('src/core/board-doc.ts') : '',
     scanFiles,
     coreExportNames: [...coreExports(coreFiles)],
+    // The checklist's own write layer: the two modules whose exports the panel
+    // calls to change a document. Not "every core export" and not "every
+    // checklist module" — the derivation layer exports a hundred readers, and a
+    // lane that demanded an action for each of them would cry wolf, which is how
+    // a coverage check stops being read as evidence about anything. The two
+    // names here are the ones a write actually goes through.
+    itemWriteNames: [
+      ...coreExports(coreFiles.filter(f => /item-transitions|items-doc/.test(f.path))),
+    ],
     agentsText: existsSync(at('AGENTS.md')) ? readFileSync(at('AGENTS.md'), 'utf8') : '',
     presentFiles,
   }

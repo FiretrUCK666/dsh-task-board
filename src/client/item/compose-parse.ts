@@ -29,6 +29,17 @@
  * reader's only remaining option is to stop writing in the box at all.
  */
 import type { ItemPriority } from '../../core/item.ts'
+/**
+ * THE DAY BOUNDARY IS THE MODEL'S, and this file used to carry its own copy.
+ *
+ * `@今天`, `@明天` and a bare `@9/30` all resolve against 「which day is it」, and
+ * that question is answered once, in `core`, because the answer has to agree
+ * across every surface: the capture box writing a date, the three date readings
+ * on a row, and the agenda deciding which day a row belongs to. Two copies is
+ * not a style question — the two differ the moment one of them is asked on a
+ * device in another timezone, and nothing anywhere reports it.
+ */
+import { startOfDay } from '../../core/item-view.ts'
 
 /** A whole day in milliseconds. */
 const DAY_MS = 86_400_000
@@ -105,13 +116,6 @@ const WEEKDAYS: Readonly<Record<string, number>> = {
 /** Fixed words for the near days. */
 const NEAR_DAYS: Readonly<Record<string, number>> = {
   '今天': 0, '今日': 0, '明天': 1, '明日': 1, '后天': 2, '大后天': 3,
-}
-
-/** Local midnight, the boundary every one of these words means. */
-function startOfDay(at: number): number {
-  const date = new Date(at)
-  date.setHours(0, 0, 0, 0)
-  return date.getTime()
 }
 
 /**

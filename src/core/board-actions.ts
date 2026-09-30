@@ -48,6 +48,7 @@ import type { TaskUpdatePatch } from './controller.ts'
 import * as taskTransitions from './task-transitions.ts'
 import * as itemTransitions from './item-transitions.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
+import * as itemsDocument from './items-doc.ts'
 import { ITEM_PAGES } from './item-view.ts'
 
 // The field-verdict vocabulary belongs to the models (item.ts), not here: this
@@ -252,6 +253,30 @@ export const TASK_FIELDS: Record<keyof TaskUpdatePatch, FieldSpec> = {
  *  import the model module to print a value list. */
 const ITEM_STATUS_VALUES: readonly string[] = ITEM_STATUSES
 const ITEM_PRIORITY_VALUES: readonly string[] = ITEM_PRIORITIES
+
+/**
+ * WHAT A DATE PARAMETER ACTUALLY IS, in one string every date parameter carries.
+ *
+ * Three surfaces read the same three fields and none of them agreed: the catalog
+ * said 「毫秒时间戳」, the interface's `<input type="date">` produces LOCAL
+ * MIDNIGHT (a date is a day, and the reader's day is theirs rather than UTC's),
+ * and `datePostureOf` judges by whole local-day boundaries. A model that
+ * believed the catalog sent the current instant, and the row came out overdue at
+ * 00:00:00.001.
+ *
+ * So it is a FIELD, on every date-writing action, carrying the same value — which
+ * is what makes it readable by a schema renderer rather than only by whoever
+ * reads the prose. 「说清不等于说得进去」: a default stated in a sentence is not a
+ * default anything can check. And it is ONE constant rather than six literals,
+ * because six copies of a sentence that has to agree are six things that can
+ * drift — the reader of the field is the const, and the const is the one place
+ * the rule is written down.
+ *
+ * (A gate reading this file as TEXT has to resolve the reference; the field's
+ * being a constant is the same kind of thing as `oneOf: MOVABLE`, which the
+ * catalog has always done.)
+ */
+const DATE_GRANULARITY = '毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。'
 
 /**
  * THE CATALOG. Keyed by action id; the id set is the closed `ActionId` union,
@@ -756,9 +781,12 @@ export const ACTIONS = {
       status: { about: '开放 / 受阻 / 完成', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签', optional: true, list: 'string' },
-      startsAfter: { about: '最早开始（毫秒时间戳）', optional: true },
-      dueAt: { about: '截止（毫秒时间戳）', optional: true },
-      hardDueAt: { about: '硬期限（毫秒时间戳）', optional: true },
+      // The granularity is a FIELD on all three dates, and in the same words.
+      // It used to be 「毫秒时间戳」 in `about` here and nothing at all in
+      // `item.update`, which is a third reading of the same three fields.
+      startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
+      dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
+      hardDueAt: { about: '硬期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片（零张或一张）', optional: true },
     },
   },
@@ -784,9 +812,10 @@ export const ACTIONS = {
       status: { about: '开放 / 受阻 / 完成（「进行中」是派生的，不可写）', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
-      startsAfter: { about: '最早开始', optional: true },
-      dueAt: { about: '截止', optional: true },
-      hardDueAt: { about: '硬期限', optional: true },
+      // The same field, the same value, for the same reason as `item.create`'s.
+      startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
+      dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
+      hardDueAt: { about: '硬期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片', optional: true },
     },
   },
@@ -826,14 +855,27 @@ export const ACTIONS = {
   },
 
   'item.promote': {
-    // THE ONE ACTION THAT WRITES TWO DOCUMENTS, so the receipt is not a
-    // single "已生效". See `applyOne` for the order and the partial sentence;
-    // the model has to be able to read the same shape the interface reads.
+    // THE ONE ACTION THAT WRITES TWO DOCUMENTS, so the receipt names both rather
+    // than saying a subject-less 「已生效」 — see `OpReport.documents` on the tool
+    // side, which is where the half-landed case is actually said out loud. The
+    // comment here used to point at `applyOne` for that sentence; `applyOne`
+    // never said it, which is a promise in a comment that nothing keeps.
+    //
+    // It carries `semantic` for the same reason the other four checklist writes
+    // do, and it was MISSING it: the panel's 转成卡片 button and this tool both
+    // call `planItemPromotion`, so the judgment 「这一条能不能变成卡」 was already
+    // decided in one function — while the catalog said the action had no shared
+    // semantics, which is precisely the state in which somebody grows a second
+    // judgment beside it and the two disagree. The binding is recorded in
+    // {@link ITEM_HANDLERS}, and `actionCatalogFindings` holds the two to each
+    // other so they cannot drift.
     verb: 'create',
     domain: 'item',
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
+    semantic: true,
+    semanticOf: 'planItemPromotion',
     summary: '把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。',
     params: {
       of: { about: '要提升的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -851,6 +893,14 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
+    // `semantic` for the same reason as the other five checklist writes, and the
+    // binding check caught this one missing: the panel's undo reaches it through
+    // the host service and the model reaches it through the tool, and BOTH go
+    // through `restoredItemOf`, whose whole job is re-stamping the row above the
+    // tombstone it has to outrank. Two callers that each did that arithmetic would
+    // be two documents that could disagree about whether a restore worked.
+    semantic: true,
+    semanticOf: 'restoredItemOf',
     summary: '把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。',
     params: {
       of: { about: '要恢复的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -886,6 +936,126 @@ export const ACTIONS = {
 
 /** Every action the catalog declares. The closed union every other type keys on. */
 export type ActionId = keyof typeof ACTIONS
+
+/** The checklist's actions, DERIVED from {@link ActionId} rather than listed. */
+export type ItemActionId = Extract<ActionId, `item.${string}`>
+
+/**
+ * The core function one action's effect travels through.
+ *
+ * THE UNION OF WHAT THE TWO MODULES ACTUALLY EXPORT, derived rather than written
+ * out — so the table's value type cannot fall behind the code, and a new shared
+ * function is bindable the moment it is exported. It is a union of real
+ * signatures, not an erased `(...args: never[]) => never`: an erased type would
+ * have let this table name a function that does not exist, which is the one
+ * thing this table exists to prevent.
+ *
+ * BOTH modules, because the checklist's write path is not all in one file: the
+ * restore re-stamp belongs to the document grammar (the tombstone it has to
+ * outrank is the grammar's), so binding `item.restore` to `item-transitions`
+ * would have pointed the gate at the wrong module.
+ */
+type ItemHandler =
+  | (typeof itemTransitions)[keyof typeof itemTransitions]
+  | (typeof itemsDocument)[keyof typeof itemsDocument]
+
+/** The marker a {@link NOT_YET_BUILT} reason must start with. */
+const NOT_YET_BUILT_MARKER = 'NOT-YET-BUILT: '
+
+/**
+ * Actions this catalog describes that have NO core binding, each with the reason
+ * — the checklist half of the ledger the gate keeps for controller methods.
+ *
+ * AN EXEMPTION WITHOUT A REASON IS A FORGOTTEN ACTION. So the marker is its own
+ * word, it is its own VERDICT (this one means "the catalog describes it and no
+ * single implementation answers it yet", which is the opposite end from "we
+ * forgot to tell the model"), and a bare marker records a decision while
+ * documenting no decision. The gate counts them separately from a real debt so
+ * neither number can hide inside the other.
+ *
+ * THE ONLY ENTRY IS ONE NOBODY NOTICED. `item.navigate` is `surface: 'ui'`, so the
+ * model is never offered it and the tool-side debt table does not apply — which
+ * left it with no check at all, in three places at once: this catalog, the
+ * capability query, and a spec pinning the ui-only list. Meanwhile the panel has
+ * no single function that "go to a page, or focus a row" could call: page and
+ * selection are two pieces of the panel's own state, the same class of UI the
+ * controller-method scan cannot see. So the honest state is the one recorded
+ * here, not a `semanticOf` naming a function nobody wrote.
+ */
+export const NOT_YET_BUILT: Partial<Record<ActionId, string>> = {
+  'item.navigate': NOT_YET_BUILT_MARKER + '切页与聚焦都是面板自己的局部 state（prefs.page 与 selected），没有一个可被门禁识别的入口函数——与本文件其余「核心函数绑不到界面调用点」的动作同一类，所以 `semanticOf` 只能空着。要接上就是给清单面板加一个具名的 `goTo(page?, ref?)`，并把 `itemRefOf` 的查号收进它，然后删掉这一行。',
+}
+
+/** Every checklist action that must be bound to a core function to be legal. */
+type BoundItemActionId = Exclude<ItemActionId, keyof typeof NOT_YET_BUILT>
+
+/**
+ * WHICH CORE FUNCTION EACH CHECKLIST WRITE GOES THROUGH — the binding the
+ * coverage gate could not see.
+ *
+ * WHY IT HAD TO BE BUILT. Every other verb in this catalog is bound to a
+ * `BoardController` method, and the gate finds it by scanning for
+ * `controller.method()` across `src/client`. The checklist's writes are NOT
+ * controller methods: the panel calls the shared pure functions directly
+ * (`applyItemPatch` / `applyItemStep` / `captureItemRecord` / …) because the
+ * model has to call the same ones. So the gate had nothing to recognise, and the
+ * consequence is the worst kind: **a button added to the checklist and never
+ * told to the model leaves the gate green**. Not "green by luck" — green by
+ * construction, because the syntax it looks for is not in that file at all.
+ *
+ * THE KEY SET IS THE TYPE, AND THE EXEMPTION IS PART OF IT.
+ * `satisfies Readonly<Record<BoundItemActionId, ItemHandler>>` means an action
+ * cannot be added without deciding here what implements it — and the decision is
+ * a VALUE, either a real function or a written reason. That is the same move as
+ * deriving the patch type from `ITEM_FIELDS`, for the same reason: a hand-kept
+ * list of "what each action calls" stops agreeing with the real one the first
+ * time somebody adds an action, and nothing about the old list looks wrong when
+ * it does.
+ *
+ * Written as `Record<ItemActionId, …>` the very first compile of this table
+ * failed on `item.navigate` — the one action in the catalog nobody has ever
+ * built. That is the gate working: a new checklist action now fails the build
+ * until it is either bound or reasoned about, and neither can happen quietly.
+ *
+ * `ItemActionId` is derived by PREFIX rather than listed, so a new domain in the
+ * catalog does not have to be added here to keep this table honest.
+ */
+export const ITEM_HANDLERS = {
+  'item.create': itemTransitions.captureItemRecord,
+  'item.update': itemTransitions.applyItemPatch,
+  'item.delete': itemTransitions.removeItemRecord,
+  'item.step': itemTransitions.applyItemStep,
+  'item.promote': itemTransitions.planItemPromotion,
+  // The restore half is `items-doc`'s, not `item-transitions`' — it is the same
+  // re-stamp-above-the-tombstone rule the panel's undo goes through, and it
+  // belongs to the merge grammar because the tombstone it has to outrank is the
+  // grammar's. Naming the wrong module here would be a binding to a function
+  // that exists and is not the one both surfaces call.
+  'item.restore': itemsDocument.restoredItemOf,
+} as const satisfies Readonly<Record<BoundItemActionId, ItemHandler>>
+
+/**
+ * {@link ITEM_HANDLERS} by NAME, read off the table itself rather than written
+ * out beside it.
+ *
+ * The same argument as {@link SEMANTIC_FUNCTIONS}: a second list of names is a
+ * thing to keep in step with the code, and the day it stops agreeing nothing says
+ * so. Read off the table, a rename moves both at once and a binding that was
+ * deleted stops vouching for itself the same moment.
+ */
+export const ITEM_HANDLER_NAMES: Record<string, string> = Object.fromEntries(
+  Object.entries(ITEM_HANDLERS).map(([id, fn]) => [id, fn.name]),
+)
+
+/**
+ * The model's three date fields — the parameters whose GRANULARITY is a decision
+ * rather than a type, and so has to be stated rather than inferred.
+ *
+ * Named as the model's field names on purpose: the check asks "does this
+ * parameter say what a date means", and a fourth date in the model is then a
+ * four-character edit here rather than a fourth place to forget the sentence.
+ */
+const ITEM_DATE_PARAMS: ReadonlySet<string> = new Set(['startsAfter', 'dueAt', 'hardDueAt'])
 
 /** The verbs, as data — the coverage gate and any renderer read this, never a
  *  second hand-written list. `query` is the read lane's verb and has no action
@@ -928,6 +1098,18 @@ export interface CatalogChecks {
   readonly taskFields?: Readonly<Record<string, FieldSpec>>
   /** The checklist row's field verdicts. */
   readonly itemFields?: Readonly<Record<string, FieldSpec>>
+  /**
+   * Which core function each checklist action binds to, keyed by action id. The
+   * real table is {@link ITEM_HANDLERS}.
+   *
+   * Injectable for the same reason as everything else here: a check that has only
+   * ever passed against the real table is indistinguishable from a check that
+   * cannot fail, so the tests feed it a deliberately broken copy and assert each
+   * new rule bites.
+   */
+  readonly itemHandlers?: Readonly<Record<string, string>>
+  /** The "described but not bound" ledger. The real one is {@link NOT_YET_BUILT}. */
+  readonly notYetBuilt?: Readonly<Record<string, string>>
 }
 
 /**
@@ -938,14 +1120,21 @@ export interface CatalogChecks {
  * and the action that named it goes red on its own — which is the whole point
  * of `semantic` in the first place.
  *
- * BOTH transition modules, because the checklist is the second synced document
- * and its write path used to be a SECOND COPY of the same semantics: a panel
- * that edits a row through its own function and a model that edits it through
- * the tool can compute two different documents, which is the one failure two
- * devices cannot detect between them.
+ * BOTH transition modules AND the document grammar, because the checklist is the
+ * second synced document and its write path used to be a SECOND COPY of the same
+ * semantics: a panel that edits a row through its own function and a model that
+ * edits it through the tool can compute two different documents, which is the one
+ * failure two devices cannot detect between them.
+ *
+ * The document grammar is in this list because `restoredItemOf` lives there: the
+ * restore re-stamp belongs to the merge grammar (the tombstone it has to outrank
+ * is the grammar's), so a registry built from the two transition modules alone
+ * would have reported a shared function that both surfaces really call as one
+ * that does not exist — which is the one failure this registry exists to prevent,
+ * pointing the other way.
  */
 const SEMANTIC_FUNCTIONS: Record<string, true> = Object.fromEntries(
-  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions)].map(name => [name, true]),
+  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions), ...Object.keys(itemsDocument)].map(name => [name, true]),
 )
 
 /** What the catalog itself guarantees. Mechanical, so it costs nothing to keep
@@ -966,6 +1155,8 @@ export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
     board: checks.taskFields ?? TASK_FIELDS,
     item: checks.itemFields ?? ITEM_FIELDS,
   }
+  const handlers: Readonly<Record<string, string | undefined>> = checks.itemHandlers ?? ITEM_HANDLER_NAMES
+  const notYetBuilt: Readonly<Record<string, string | undefined>> = checks.notYetBuilt ?? NOT_YET_BUILT
   const findings: string[] = []
   for (const [id, spec] of Object.entries(table)) {
     if (!BOARD_VERBS.includes(spec.verb)) findings.push(`${id}: verb "${spec.verb}" is not one of the declared verbs`)
@@ -998,7 +1189,50 @@ export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
       if (verdict !== undefined && verdict.access !== 'writable') {
         findings.push(`${id}.${param}: offered as a parameter, but the model rules this field "${verdict.access}" — ${verdict.why}`)
       }
+      // A DATE PARAMETER MUST CARRY ITS GRANULARITY. Every date the checklist
+      // holds is a DAY a person typed, the interface produces local midnight and
+      // the read side judges by whole local days — so "milliseconds" written in a
+      // sentence is enough to make a model send 「now」 and produce a row that
+      // reads as overdue at 00:00:00.001. The value has to be a FIELD, because a
+      // default in prose is not a default anything can check.
+      if (spec.domain === 'item' && ITEM_DATE_PARAMS.has(param) && p.default === undefined) {
+        findings.push(`${id}.${param}: a date parameter with no \`default\` — the granularity and the local-midnight rule have to be a field, not a sentence (see DATE_GRANULARITY)`)
+      }
     }
+    // ── the checklist's binding, which the controller-method scan cannot see ──
+    // Two statements about one action that must not disagree: the catalog row
+    // says "this action means more than its field writes and both surfaces share
+    // one function", and {@link ITEM_HANDLERS} says "here is that function". If
+    // they drift, one of them is describing an action nobody implements — which
+    // is the state a button added to the panel and never told to the model used
+    // to be able to reach with the gate still green.
+    if (spec.domain === 'item') {
+      const bound: string | undefined = handlers[id]
+      if (bound !== undefined) {
+        if (spec.semantic !== true) {
+          findings.push(`${id}: bound to the core function "${bound}" in ITEM_HANDLERS, so it must be marked semantic — a bound action that does not say so is an action the next reader will grow a second implementation beside`)
+        } else if (spec.semanticOf !== bound) {
+          findings.push(`${id}: ITEM_HANDLERS binds it to "${bound}" but the catalog names semanticOf "${spec.semanticOf}" — the binding and the claim are two statements about one action and they must be the same one`)
+        }
+      } else {
+        const reason: string | undefined = notYetBuilt[id]
+        if (reason === undefined) {
+          findings.push(`${id}: a checklist action with no entry in ITEM_HANDLERS and none in NOT_YET_BUILT — bind it to the core function the panel and the tool both call, or record why there is not one`)
+        } else if (!reason.startsWith(NOT_YET_BUILT_MARKER)) {
+          findings.push(`${id}: its NOT_YET_BUILT reason does not start with "${NOT_YET_BUILT_MARKER}" — the marker is the verdict and the sentence after it is the decision; a bare one records a decision without documenting one`)
+        } else if (reason.slice(NOT_YET_BUILT_MARKER.length).trim() === '') {
+          findings.push(`${id}: marked NOT-YET-BUILT with no reason after the marker`)
+        }
+      }
+    }
+  }
+  // The reverse direction: a ledger entry for an action that is bound, or that
+  // the catalog does not declare at all. A paid debt left in the table is a red
+  // light left burning on purpose, which is how an allow-list becomes
+  // indistinguishable from a ledger.
+  for (const id of Object.keys(notYetBuilt)) {
+    if (handlers[id] !== undefined) findings.push(`NOT_YET_BUILT.${id}: it IS bound in ITEM_HANDLERS — decide which one is true and delete the other`)
+    if (!(id in table)) findings.push(`NOT_YET_BUILT.${id}: names an action the catalog does not declare`)
   }
   return findings
 }

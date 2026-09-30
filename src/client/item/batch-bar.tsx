@@ -28,7 +28,7 @@
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button, Segmented } from '../board/ui.tsx'
-import { PRIORITY_LABEL } from './pages/page-props.ts'
+import { PRIORITY_LABEL } from './labels.ts'
 import css from './item.module.css'
 
 export interface ItemBatchBarProps {

@@ -15,13 +15,20 @@
  *
  * EVERY READ IS VALIDATED. The stored value is JSON written by an older build
  * or by a hand, and a preference store that throws on a shape it does not
- * recognise takes the whole panel down over a row height. So each field is
+ * recognise takes the whole panel down over a preference. So each field is
  * checked against the set it belongs to and anything unrecognised falls back to
  * the default, which is a wrong-but-working preference rather than a blank
  * panel.
+ *
+ * AND A FIELD THAT NO LONGER EXISTS IS NOT MIGRATED, IT IS IGNORED. `density`
+ * was one: a record written by an older build still carries the key, and
+ * reading it must not throw, must not be resurrected by a default, and must not
+ * have to be explicitly deleted before this module can parse its own output. The
+ * reader below simply never names it, so a record from any build at all parses
+ * to the same shape. That is the whole migration: a field is removed by not
+ * reading it.
  */
 import { type ItemPageId, type ItemSort, type ItemStatusView } from '../../core/item-view.ts';
-import type { ItemDensity } from './model.ts';
 /**
  * The key. Same family as the plugin's other device-local keys, and a NEW name:
  * the existing ones are named in the project's data-key contract and must not be
@@ -35,8 +42,6 @@ export interface ItemViewPrefs {
     readonly page: ItemPageId;
     /** The one ordering, shared by every page. */
     readonly sort: ItemSort;
-    /** Row height. */
-    readonly density: ItemDensity;
     /** Whether the finished group is open. Off by default: it is history. */
     readonly showDone: boolean;
     /** Which groups the reader had folded away. */

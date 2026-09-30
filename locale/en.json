@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Task Board",
-    "description": "A sidebar entry plus a multi-column kanban board: tasks run for real through DSH sessions, with 5-field cron schedules, session automation rules and auto-cruise. Board truth lives on the host, so desktop and phone see the same board."
+    "description": "Two main-stage panels: a multi-column board (tasks run for real through DSH sessions, with 5-field cron schedules, session automation rules and auto-cruise) and a task-list workbench (Inbox / List / Schedule, inline capture grammar, command palette and keyboard flow). Data lives on the host, so desktop and phone see the same copy."
   }
 }

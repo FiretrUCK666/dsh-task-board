@@ -18,10 +18,10 @@
  * be reachable in every state, including the empty list, or a first-time reader
  * has nothing to press.
  */
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerToken } from './compose-parse.ts'
-import { t } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
@@ -36,11 +36,34 @@ const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], 'item.token.tag' | 'it
   step: 'item.token.step',
 }
 
+/**
+ * THE THREE EXAMPLES, and each is text the parser really reads.
+ *
+ * One per kind of structure the box understands, because a reader who has
+ * learned one has learned where to look for the others. An example that the
+ * parser would not accept would be the worst kind of tutorial: it would look
+ * right, fail silently on save, and leave the reader thinking the box dropped it.
+ */
+const COMPOSER_EXAMPLES: readonly { readonly token: string; readonly text: string; readonly what: TaskBoardKey }[] = [
+  { token: '#', text: '#画廊', what: 'item.token.tag' },
+  { token: '!', text: '!1', what: 'item.token.priority' },
+  { token: '@', text: '@今天', what: 'item.token.due' },
+]
+
 export interface ItemComposerProps {
   /** The writing clock, so a parse resolves `@today` against a fixed now. */
   readonly now: number
   /** Hand the finished capture over. Returning `false` means it was refused. */
   readonly onSave: (input: ItemCapture) => boolean
+  /**
+   * Put the caret in the box, from outside.
+   *
+   * This is what the `A` key calls, and it is a PROP rather than a method on a
+   * ref for one reason: the composer owns its own input, and a parent reaching
+   * into a child's DOM node is a parent that has to know how the child is built.
+   * The gesture is 「write something now」, so that is what the parent asks for.
+   */
+  readonly focusRequest?: number
 }
 
 /**
@@ -52,10 +75,19 @@ export interface ItemComposerProps {
  * @param props - the clock and the save hand-off.
  * @returns the box, its live chips and its hint.
  */
-export function ItemComposer({ now, onSave }: ItemComposerProps) {
+export function ItemComposer({ now, onSave, focusRequest }: ItemComposerProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement | null>(null)
   const parsed = useMemo(() => parseComposerInput(text, now), [text, now])
+  // A COUNTER AND NOT A BOOLEAN, because the same key pressed twice must move the
+  // caret twice: a boolean that is already `true` is indistinguishable from a new
+  // request, so the second `A` would do nothing and the key would look broken.
+  // A counter is not state about the box — nothing renders it — so it cannot go
+  // stale in a way a reader can see.
+  useEffect(() => {
+    if (focusRequest === undefined || focusRequest === 0) return
+    input.current?.focus()
+  }, [focusRequest])
   // The SAME emptiness rule the save path uses, read from the shared writer
   // rather than restated here. Two spellings of "is this blank" are two answers,
   // and the one that decides whether a button is lit is the one nobody can afford
@@ -137,7 +169,34 @@ export function ItemComposer({ now, onSave }: ItemComposerProps) {
           {t('item.compose.add')}
         </Button>
       </div>
-      <p className={css.itemHint}>{t('item.compose.hint')}</p>
+      {/* SHOW, DON'T EXPLAIN. This line used to be a sentence describing the
+          syntax — forty pixels of 11px grey standing between the reader and their
+          first task, describing three examples instead of letting them try one.
+          Three pressable tokens cost a line, and a token the reader presses is
+          the only example that answers 「what does this actually do」.
+
+          THEY PUT THE REAL TEXT IN, and not a placeholder: a reader who presses
+          `#` wants to see what a tag looks like in their own box, and grey
+          placeholder text that vanishes on the next keystroke teaches a syntax
+          without ever letting them keep it. The text is what the parser really
+          reads, because an example that does not parse is a lie about the
+          surface's own grammar. */}
+      <div className={css.itemComposerExamples} role="group" aria-label={t('item.compose.hint')}>
+        {COMPOSER_EXAMPLES.map(example => (
+          <button
+            key={example.token}
+            type="button"
+            className={css.itemFacetChip}
+            aria-label={`${example.token} — ${t(example.what)}`}
+            onClick={() => {
+              setText(current => current.trim() === '' ? example.text : `${current} ${example.text}`)
+              input.current?.focus()
+            }}
+          >
+            {example.token}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

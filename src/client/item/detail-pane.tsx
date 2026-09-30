@@ -17,24 +17,14 @@
  */
 import type { ItemRecord, ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
+import type { ItemRowView } from '../../core/item-view.ts'
 import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
+import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
 import css from './item.module.css'
-
-const PRIORITY_LABEL: Readonly<Record<ItemPriority, 'item.priority.low' | 'item.priority.normal' | 'item.priority.high' | 'item.priority.urgent'>> = {
-  low: 'item.priority.low',
-  normal: 'item.priority.normal',
-  high: 'item.priority.high',
-  urgent: 'item.priority.urgent',
-}
-const STATUS_LABEL: Readonly<Record<ItemStatus, 'item.status.open' | 'item.status.blocked' | 'item.status.done'>> = {
-  open: 'item.status.open',
-  blocked: 'item.status.blocked',
-  done: 'item.status.done',
-}
 
 const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
   human: 'item.origin.human',
@@ -53,8 +43,23 @@ function Field(props: { readonly label: string; readonly children: React.ReactNo
 }
 
 export interface ItemDetailProps {
-  /** The row on show, or `undefined` before anything is picked. */
-  readonly item: ItemRecord | undefined
+  /**
+   * The row on show AS ITS PROJECTION, or `undefined` before anything is picked.
+   *
+   * The projection and not the record, because the pane asks derived questions —
+   * has this row's hard deadline passed — and a derived question answered from
+   * the record is a SECOND derivation. It read `Date.now()` for the clock, which
+   * is not the panel's clock: the panel owns a `now` that ticks while it is on
+   * screen and is what every other date on this surface is drawn against, so the
+   * one line in the pane that answered for itself could disagree with the row
+   * above it, and it disagreed exactly at midnight — and could never disagree in
+   * a test, because the bench's clock is fixed and a fresh `Date.now()` is not.
+   *
+   * The model already publishes the answer, on the same projection the row line
+   * reads, so the pane and the row cannot answer differently. `item` is still
+   * reachable as `view.item` for the fields the pane edits.
+   */
+  readonly view: ItemRowView | undefined
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
   /** The most recently touched rows, for the "before you pick" state. `id` travels WITH the
@@ -78,7 +83,8 @@ export interface ItemDetailProps {
  * @returns the five sections, or the empty state.
  */
 export function ItemDetail(props: ItemDetailProps) {
-  const { item } = props
+  const { view } = props
+  const item = view?.item
   if (item === undefined) {
     return (
       <div className={css.itemDetailEmpty}>
@@ -291,7 +297,7 @@ export function ItemDetail(props: ItemDetailProps) {
               that archive is the whole of what is left. */}
           <Button variant="dangerGhost" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
         </div>
-        {english === false && item.hardDueAt !== undefined && item.hardDueAt < Date.now() && (
+        {item.hardDueAt !== undefined && view?.posture.kind === 'hardOverdue' && (
           <p className={css.itemHint}>{formatItemDate(item.hardDueAt, english)}</p>
         )}
       </section>

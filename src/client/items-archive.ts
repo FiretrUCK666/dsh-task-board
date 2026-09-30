@@ -17,6 +17,7 @@
  */
 import { routeUrl } from './route-base.ts'
 import type { ItemRecord } from '../core/item.ts'
+import { isItemRecordShape } from '../core/item.ts'
 
 /** How long to wait before telling the reader the host could not be reached. */
 const ARCHIVE_TIMEOUT_MS = 8_000
@@ -31,15 +32,33 @@ export type ArchiveReply =
   | { readonly ok: true; readonly deleted: readonly ItemRecord[] }
   | { readonly ok: false; readonly why: string }
 
-/** Whether a payload is a row this panel can render, read narrowly on purpose. */
-function isItemRecord(value: unknown): value is ItemRecord {
-  if (typeof value !== 'object' || value === null) return false
-  const row = value as Record<string, unknown>
-  return typeof row.id === 'string' && row.id !== ''
-    && typeof row.ref === 'number'
-    && typeof row.title === 'string'
-    && typeof row.body === 'string'
-    && typeof row.status === 'string'
+/**
+ * Whether an answer is a row — asked ONCE, by the model, which is the only layer
+ * that knows what a row is.
+ *
+ * This file used to carry a private guard of its own, and it was a weakened copy
+ * of the model's: the same question — 「is this payload a row」 — with two answers
+ * in two layers, neither able to see the other. The copy checked five fields and
+ * let through a row with no `notes`, no `tags` and a non-finite `updatedAt`. The
+ * model's asks for finite stamps for a reason written down inside it: a `NaN`
+ * comparator makes `Array.prototype.sort` treat a pair as EQUAL, so the order
+ * quietly becomes arrival order and two devices holding one document render two
+ * different lists, with nothing anywhere red.
+ *
+ * The file lives OUTSIDE `src/client/item/`, which is the other half of why the
+ * copy survived: the panel's own 「this surface does not judge」 gate never read
+ * this file, so the rule that would have caught it was pointed somewhere the
+ * code was not.
+ *
+ * THE ONE THING THAT IS STILL LOCAL is the narrowing, and it is narrowing rather
+ * than judgment: the model's guard reports `RawItem`, which is deliberately not
+ * exported, so somebody has to say 「and that is a row this panel renders」. The
+ * question is not re-asked here — `isItemRecordShape` has already answered it,
+ * and this body cannot answer anything else. What is forbidden is growing that
+ * body into a second opinion, which is what it used to be.
+ */
+function archivedRow(value: unknown): value is ItemRecord {
+  return isItemRecordShape(value)
 }
 
 /**
@@ -71,7 +90,7 @@ export async function itemsArchive(
     // answer from a host that never heard of the question, and reporting it as
     // empty would tell the reader their deletions are gone when they may not be.
     if (!Array.isArray(deleted)) return { ok: false, why: 'unrecognisedAnswer' }
-    return { ok: true, deleted: deleted.filter(isItemRecord) }
+    return { ok: true, deleted: deleted.filter(archivedRow) }
   } catch (error) {
     return { ok: false, why: error instanceof Error ? error.message : String(error) }
   } finally {
@@ -166,7 +185,7 @@ export async function itemsRestore(
     // A host serving no documents is a different fact from a host that heard
     // the question and found nothing, and the two need different words.
     if (record.available !== true) return { ok: false, why: 'hostUnavailable' }
-    return { ok: true, restored: isItemRecord(record.restored) ? record.restored : undefined }
+    return { ok: true, restored: archivedRow(record.restored) ? record.restored : undefined }
   } catch (error) {
     return { ok: false, why: error instanceof Error ? error.message : String(error) }
   } finally {

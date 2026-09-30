@@ -54,6 +54,7 @@
 import { type ActionDanger, type ActionDomain, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
 import { type BoardCommand, type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
 import { type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
+import { type ItemStatus, type ItemStatusView } from '../../core/item.ts';
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts';
 export interface ToolCommitFace {
     getDoc(): BoardDoc;
@@ -138,8 +139,25 @@ interface ItemRow {
     readonly ref: string;
     readonly id: string;
     readonly title: string;
-    readonly status: string;
+    /**
+     * The DERIVED status — what the reader sees, and what `status:inProgress`
+     * filters on.
+     *
+     * It used to be the STORED one, which is the same defect as a facet counting
+     * by a different predicate than the list under it: a row hanging off a running
+     * card filters into `status:inProgress` and then comes back printed as `open`,
+     * with nothing in the answer saying the two are different questions. A model
+     * that has just asked 「what is running」 must not be told the answer is empty.
+     */
+    readonly status: ItemStatusView;
+    /** The stored tier, for the caller that needs to know a row reads `inProgress`
+     *  because its card is running. Never the one a filter compares. */
+    readonly storedStatus: ItemStatus;
+    /** The linked card, or `undefined` — never a second copy of its title. */
+    readonly taskId: string | undefined;
 }
+/** Which of the two synced documents an op moved. */
+export type ActionDocument = 'board' | 'items';
 export interface OpReport {
     /** The op's own words back, so a report points at something. */
     readonly op: string;
@@ -150,6 +168,20 @@ export interface OpReport {
     /** The short number and title this op touched, when it touched one. */
     readonly ref?: string;
     readonly title?: string;
+    /**
+     * WHICH DOCUMENTS ACTUALLY MOVED, and it is here because an action that writes
+     * two documents cannot be reported by a subject-less 「已生效」.
+     *
+     * `item.promote` is the one: it creates a card AND links the row. The two
+     * commits are separate, so a medium that takes the first and refuses the
+     * second leaves the document in a half state — and the receipt used to say
+     * 「没写进去」 about the whole op, which is how a reader learns that this tool's
+     * failure sentences do not mean what they say. It is also what the catalog's
+     * comment on that action used to CLAIM `applyOne` did, and did not.
+     *
+     * Absent on a refusal and on a no-op, because those moved nothing.
+     */
+    readonly documents?: readonly ActionDocument[];
     /** What happened, or what to change. Never a bare error code. */
     readonly detail: string;
 }

@@ -23,24 +23,23 @@
  * would tell a reader their deletions are gone when they may be sitting on disk.
  */
 import { useCallback, useState } from 'react'
-import { Disclosure } from '../../board/ui.tsx'
-import { itemSlicesOf, triageLinesOf, type ItemFlag, type ItemSlice, type ItemStatusView } from '../../../core/item-view.ts'
+import { itemSlicesOf, triageLinesOf, type ItemSlice } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
 import { t } from '../../locales.ts'
+import { toggleCollapsed } from '../view-prefs.ts'
 import { itemsArchive, itemsRestore, type ArchiveReply } from '../../items-archive.ts'
 import { whyLabelOf } from '../why-label.ts'
 import { Button } from '../../board/ui.tsx'
-import { ItemFilterBar } from '../filter-bar.tsx'
-import { ItemInsightStrip } from '../insight-strip.tsx'
-import { GROUP_LABEL, TRIAGE_LABEL, type ItemPageProps } from './page-props.ts'
+import { ItemStateBar } from '../state-bar.tsx'
+import { GROUP_LABEL, TRIAGE_SHORT } from '../labels.ts'
+import { isFacetOn, withFacetToken } from '../facets.ts'
+import type { ItemPageProps } from './page-props.ts'
 import css from '../item.module.css'
 
-/** The four group counts, plus the list total. Read by the strip, not derived
- *  here: this page must not be the place that decides what the numbers are. */
+/** The list page's own two additions: nothing but the device's id. */
 export interface ItemListPageProps extends ItemPageProps {
-  readonly counts: Readonly<Record<ItemStatusView, number>>
   /** This device's id, which every host write on this prefix carries. */
   readonly clientId: string | undefined
 }
@@ -61,9 +60,14 @@ export function ListPage(props: ItemListPageProps) {
     setNote(note === undefined ? undefined : { words: note, raw })
   }, [])
 
-  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: prefs.showDone })
+  // THE FINISHED GROUP IS ALWAYS HERE, and the reader's way to put it away is the
+  // group's own fold — a visible control, a drawn arrow, and per-group memory.
+  // `includeDone` used to be a page-level switch written by a control on a strip
+  // that is retired, so a device that had stored it off could never turn it back
+  // on: **a preference whose control is gone is not a setting, it is a trap with
+  // the handle filed off.** One intent, one control.
+  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: true })
   const triage = triageLinesOf(items, now)
-  const [triageOpen, setTriageOpen] = useState(false)
 
   const openArchive = useCallback(async () => {
     setArchive({ kind: 'loading' })
@@ -110,20 +114,72 @@ export function ListPage(props: ItemListPageProps) {
     if (reply.ok) await openArchive()
   }, [openArchive, props.clientId])
 
-  const groups = (runs: readonly ItemSlice[]) => runs.map(slice => {
+  /**
+   * THE GROUPS, and the empty ones share one line.
+   *
+   * Measured on a 1600px board: three empty buckets cost 201px of the first
+   * screen, and every one of those 67px blocks held a name, a number and no rows.
+   * A 折叠 is one of the four moves hard rule 11 allows, and this is that move
+   * applied to CONTENT rather than to a control — **nothing is hidden and nothing
+   * is removed**: each bucket keeps its name, keeps its count, and stays a button
+   * that filters to it exactly as the group head does. What changes is that
+   * consecutive empty buckets stand shoulder to shoulder instead of each taking
+   * a block and the air around it.
+   *
+   * ONLY *CONSECUTIVE* EMPTIES SHARE A LINE. A bucket with rows in it is a
+   * heading with content under it, and it separates the runs — so the reader's
+   * eye still gets a full block where there is something to read, and the air
+   * is spent only where there is not.
+   *
+   * AND AN ENTIRELY EMPTY DOCUMENT IS NOT A ROW OF ZEROS. A list that holds
+   * nothing has no groups to compress, and 「进行中 0 · 受阻 0 · 已完成 0」 would be
+   * a document-shaped answer to a question about work. That case keeps the one
+   * sentence, which says the useful thing.
+   *
+   * AT THE END, WITH THE ARCHIVE, and the reason is that the summary was answering
+   * the wrong question at the wrong moment. 「Which buckets are empty」 is what a
+   * reader asks when a row they expected is NOT on screen — it is an answer to a
+   * failed search, not a preface to reading. At the top of the page it spent 110px
+   * (38 of it words, 72 of it air) to say three facts about buckets before the
+   * reader had seen a single row of the one bucket they came for, and the ratio of
+   * air to ink was the worst on the surface. Beside the archive it is what it
+   * always was: 「the accounts of this page」, both about things that are not on
+   * this page.
+   *
+   * Nothing is lost by the move. Every empty bucket keeps its name, its count and
+   * its filter, in the same place a reader would go looking for 「where did it
+   * go」 — which is the bottom of the page.
+   */
+  const emptyRuns: ItemSlice[][] = []
+  const groups = (runs: readonly ItemSlice[]) => {
+    const out: React.ReactNode[] = []
+    let empties: readonly ItemSlice[] = []
+    const flush = (): void => {
+      if (empties.length === 0) return
+      emptyRuns.push([...empties])
+      empties = []
+    }
+    for (const slice of runs) {
+      if (slice.items.length === 0) { empties = [...empties, slice]; continue }
+      flush()
+      out.push(group(slice))
+    }
+    flush()
+    return out
+  }
+
+  /** One bucket with rows in it, which is the shape that keeps a whole block. */
+  const group = (slice: ItemSlice) => {
     const folded = prefs.collapsed.includes(slice.status)
-    const ratio = slice.progress === undefined || slice.progress.total === 0
-      ? 0
-      : slice.progress.done / slice.progress.total
     return (
-      <section key={slice.status} className={css.itemGroup} data-empty={slice.items.length === 0 ? '' : undefined}>
+      <section key={slice.status} className={css.itemGroup}>
         <h2 className={css.itemGroupHead}>
           <button
             type="button"
             className={css.itemGroupToggle}
             aria-expanded={!folded}
             aria-controls={`item-group-${slice.status}`}
-            onClick={() => choose({ collapsed: prefs.collapsed.includes(slice.status) ? prefs.collapsed.filter(g => g !== slice.status) : [...prefs.collapsed, slice.status] })}
+            onClick={() => choose({ collapsed: toggleCollapsed(prefs.collapsed, slice.status) })}
           >
             {/* The fold indicator is DRAWN; see `.itemGroupChevron`. It was the
                 text character `›`, which paired with the board's rotation copied
@@ -133,18 +189,13 @@ export function ListPage(props: ItemListPageProps) {
             {t(GROUP_LABEL[slice.status])}
             <span className={css.itemGroupCount}>{slice.items.length}</span>
           </button>
-          {/* The group's own arithmetic, and a 2px bar BESIDE its number rather
-              than a rule under the head: at the full group measure a hairline
-              under the text reads as an underline of that text, and one that
-              appears on some groups and not others reads as a selection. */}
-          {slice.progress !== undefined && (
-            <p className={css.itemGroupStats}>
-              {t('item.groupSteps', { done: String(slice.progress.done), total: String(slice.progress.total) })}
-              <span className={css.itemGroupProgress}>
-                <span className={css.itemGroupProgressFill} style={{ inlineSize: `${Math.round(ratio * 100)}%` }} />
-              </span>
-            </p>
-          )}
+          {/* NO METER BESIDE THE COUNT, and the count is now the whole of the
+              group's arithmetic. A 2px accent bar is one of the few saturated
+              marks on this surface and the budget for them is small; four group
+              bars under four group heads spends four of them restating a number
+              the reader is already looking at, in the one place on the page they
+              are most likely to stop reading. A group that has steps says so on
+              its own rows, which is where a reader looks to find out. */}
         </h2>
         <div className={css.itemGroupList} id={`item-group-${slice.status}`}>
           {/* An empty group keeps its HEAD — the reader's map, and a group that
@@ -152,201 +203,229 @@ export function ListPage(props: ItemListPageProps) {
               an empty queue. It does NOT get a second sentence: the count `0` has
               already said it, and saying it again in lighter ink turns one fact
               into something that looks like data. */}
-          {folded || slice.items.length === 0 ? null : <ul className={css.itemList}>{props.renderRows(slice.items, props.picking)}</ul>}
+          {folded ? null : <ul className={css.itemList}>{props.renderRows(slice.items, props.picking)}</ul>}
         </div>
       </section>
     )
-  })
+  }
 
-  const nothingToShow = props.filtering ? t('item.noMatch') : t('item.empty')
+  /**
+   * WHICH OF TWO FACTS IS TRUE, decided by the DOCUMENT rather than by whether a
+   * filter happens to be typed.
+   *
+   * 「Nothing here」 and 「nothing here matched」 look identical on screen, and
+   * they point at opposite repairs: one is fixed by writing something, the other
+   * by clearing a filter. Deciding it on `filtering` alone gets it backwards in
+   * the state a new reader is actually in — an empty document with a search box
+   * already holding a word says 「没有匹配的结果。清空搜索或换个筛选看看。」, which
+   * invites a reader to clear a search that was never what emptied the page.
+   */
+  const nothingToShow = items.length === 0 ? t('item.empty') : t('item.noMatch')
 
-  return (
-    <>
-      <ItemInsightStrip
-        items={items}
-        counts={props.counts}
-        now={now}
-        query={query}
-        onSearch={next => choose({ search: next })}
-        onShowDone={on => choose({ showDone: on })}
-        showDone={prefs.showDone}
-      />
-      <ItemFilterBar
-        query={query}
-        onSearch={next => choose({ search: next })}
-        sort={prefs.sort}
-        onSort={next => choose({ sort: next })}
-        tags={items.map(item => item.tags)}
-        filtering={props.filtering}
-        onClear={() => choose({ search: '' })}
-        armed={props.armed === true}
-        onArm={props.onArm ?? (() => undefined)}
-        allPicked={props.allPicked === true}
-        onPickAll={props.onPickAll ?? (() => undefined)}
-        selectable={props.selectable === true}
-      />
-      {props.batch}
-      {triage.length === 0
-        ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
-        : props.narrow
-          ? (
-            /* THE NARROW FOLD, and it is the ONLY place this surface collapses anything.
-               Measured on a 390×844 phone: the first group head sat at y=668, so 79%
-               of the screen was spent before a single row — and this block was 173px
-               of that, four lines of summary standing above the rows they summarise.
-
-               折叠 is one of the four moves hard rule 11 allows (换行 / 换列 / 让位 /
-               折叠); hiding the CONTENT would not be, and is not what this does. The
-               header carries the COUNTS, so a folded block still says 「1 项过了想要
-               的日子 · 1 项卡住了」 — a reader is not deprived of the summary, only
-               of the per-line 「去看」 buttons, and one tap brings both back. Nothing
-               is removed, nothing is shrunk, and no control disappears: the fold
-               IS the control.
-
-               The WIDE band keeps every line open. There is room for it there, and a
-               summary that stays folded on a screen with space to show it is a
-               control the reader has to pay for with no reason. */
-            <div aria-label={t('item.triage.title')}>
-            <Disclosure
-              title={t('item.triage.title')}
-              summary={triage.map(line => t(TRIAGE_LABEL[line.id as ItemFlag] ?? 'item.triage.undated', {
-                n: String(line.count),
-                days: String(line.worstDays ?? 0),
-              })).join(' · ')}
-              open={triageOpen}
-              onToggle={() => { setTriageOpen(current => !current) }}
-            >
-              {triage.map(line => (
-                <div key={line.id} className={css.itemTriageRow} data-severity={line.severity}>
-                  <span className={css.itemTriageText}>
-                    {t(TRIAGE_LABEL[line.id as ItemFlag] ?? 'item.triage.undated', {
-                      n: String(line.count),
-                      days: String(line.worstDays ?? 0),
-                    })}
-                  </span>
+  /**
+   * THE ARCHIVE LINE, and it is the LAST thing on the page.
+   *
+   * A capture-first surface lives or dies on 「我没有刚弄丢」, so the way back is
+   * announced rather than hidden behind a menu nobody opens — and it states the
+   * window instead of implying it, because a restore button that has quietly
+   * stopped working is worse than one that never appeared. It is a DERIVED page:
+   * it does not occupy the rail, because a rail that grows an entry every time
+   * the reader asks a question turns a map into a log.
+   *
+   * AT THE END, and the reason is a measurement rather than a preference: it was
+   * drawn above the first row, where a reader who has just captured a thought
+   * has to look past a thirty-day retention window to reach their own work. The
+   * delete receipt already states the window at the moment it matters — which is
+   * the moment the reader might want it — so the standing announcement is a
+   * duplicate of a thing they have just been told, sitting above the thing they
+   * came for.
+   *
+   * PM flagged this as the one decision in the round that makes an entrance WEAKER
+   * rather than quieter, and that is true. What keeps it honest: nothing is
+   * removed, the window is still stated, and the entry is still a single press
+   * below everything else on the page.
+   */
+  const archiveLine = archive === undefined
+    ? (
+      /* ITS OWN CLASS, and the reason is spacing rather than naming. This is a
+         footnote about the archive — it is not one more thing needing your
+         attention — and it was wearing `.itemTriageRow`, which is a row in the
+         triage list: that class carries a hairline above itself, the padding of
+         a tappable row, and its own hover. So the page drew a divider under the
+         triage block, gave a sentence 40px of height, and opened the space
+         between two bands to 51px where the rhythm says 12. One class holding
+         two unrelated meanings is how a rhythm stops being a rhythm: the number
+         that is supposed to describe the page was being spent on a footnote. */
+      <p className={css.itemArchiveRow}>
+        <span className={css.itemArchiveNote}>{t('item.archive.window')}</span>
+        <Button
+          variant="ghost"
+          size="sm"
+          className={css.itemArchiveAction}
+          onClick={() => { setArchiveNote(undefined); void openArchive() }}
+        >
+          {t('item.archive.open')}
+        </Button>
+      </p>
+    )
+    : (
+      <section className={css.itemGroup}>
+        <h2 className={css.itemGroupHead}>
+          <button
+            type="button"
+            className={css.itemGroupToggle}
+            onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}
+          >
+            {t('item.archive.title')}
+            {/* A COUNT ONLY WHERE THERE IS ONE TO COUNT. It used to print `0` in
+                every state but `ready`, so an archive the host could not be reached
+                for showed the same number as an archive that is genuinely empty —
+                and the sentence under it says the opposite of what the number
+                implies. The whole reason this block is a page of its own is that
+                「读不到」 must never be drawn as 「空」; the number was undoing that in
+                the corner nobody looks at. */}
+            {archive.kind === 'ready' && <span className={css.itemGroupCount}>{archive.rows.length}</span>}
+          </button>
+        </h2>
+        <div className={css.itemGroupList}>
+          {/* The SENTENCE is what the reader reads; the raw code is the `title`, so
+              the host's own vocabulary is one hover away for whoever has to
+              diagnose it and invisible to everyone else. */}
+          {archiveNote !== undefined && <p className={css.itemState} role="status" title={archiveNote.raw}>{archiveNote.words}</p>}
+          {archive.kind === 'loading' && <p className={css.itemState} role="status">{t('item.loading')}</p>}
+          {/* NOT REACHABLE IS NOT EMPTY. Saying 「你没有删过任何一条」 when the host
+              was simply never reached would tell the reader their deletions are
+              gone when they may be sitting on the disk. */}
+          {archive.kind === 'unreadable' && <p className={css.itemState} role="status">{t('item.archive.unreadable')}</p>}
+          {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemState}>{t('item.archive.empty')}</p>}
+          {archive.kind === 'ready' && archive.rows.length > 0 && (
+            <ul className={css.itemList}>
+              {archive.rows.map(row => (
+                <li key={row.id} className={css.itemRecentRow}>
+                  <span className={css.itemRef}>{itemRefOf(row).text ?? '—'}</span>
+                  <span className={css.itemTitle}><span className={css.itemTitleText}>{itemTitleOf(row)}</span></span>
                   <Button
                     variant="ghost"
                     size="sm"
-                    className={css.itemTriageAction}
-                    onClick={() => choose({ search: `has:${line.id}` })}
+                    disabled={restoring === row.ref}
+                    onClick={() => { void restoreOne(row) }}
                   >
-                    {t('item.triage.open')}
+                    {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
                   </Button>
-                </div>
+                </li>
               ))}
-            </Disclosure>
-            </div>
-          )
-          : (
+            </ul>
+          )}
+          <p className={css.itemHint}>{t('item.archive.window')}</p>
+          <Button variant="ghost" size="sm" onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}>
+            {t('item.archive.close')}
+          </Button>
+        </div>
+      </section>
+    )
+
+  return (
+    <>
+      {/* THE ANSWER COMES FIRST, then the machinery. A reader who has narrowed
+          the list should be able to read WHAT is on without opening the panel
+          that holds it — so the state bar is the first thing on the page and the
+          filter bar is the thing that explains itself when asked. */}
+      <ItemStateBar
+        query={query}
+        tags={items.map(item => item.tags)}
+        sort={prefs.sort}
+        onSort={next => choose({ sort: next })}
+        onClear={() => choose({ search: '' })}
+      />
+      {props.batch}
+      {/* NO FILTER BAR IN THE LIST. The search box, the four facet faces and the
+          six orders all live in the command palette, and a second copy of each on
+          the page is a control the reader has to reconcile rather than one they
+          have to learn: the same four faces, the same six orders, drawn twice, and
+          nothing on screen saying they are the same thing.
+
+          The batch door went with it, and that is the one removal here that is not
+          purely de-duplication — so it went somewhere rather than nowhere. `X` on a
+          row still picks, and 「多选」 and 「全选」 are actions in the palette, which
+          is the same place every other thing you can ask for already is. A reader
+          with a mouse can still reach the batch; they reach it by asking, not by
+          spotting a control. */}
+      {triage.length === 0
+        ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
+        : (
+          /* ONE LINE, IN BOTH BANDS, and this is the same move as the empty-group
+             compression: 让位, not hiding.
+
+             It was four sentences, one per line, each with a 「去看」 button at its
+             right end — 155px standing between the reader and their first row. The
+             buttons were four identical controls pointing at four different
+             sentences that were themselves clickable, so they carried no
+             information a reader did not already have one press away.
+
+             What is left is every number, and each is still a filter: the same
+             `withFacetToken` writer the group head and the empty-group summary use,
+             so pressing 「1 卡住」 puts `has:blocked` into the one query the whole
+             surface reads. The counts are not decoration and they are not a
+             summary — they are the four filters, drawn as four words.
+
+             BOTH BANDS, and that is the deliberate part. A reader on a phone
+             folded this and a reader at a desk did not, which made the same four
+             facts two different shapes depending on how much room the reader had,
+             and 「the phone is offered what the desk is offered」 stops being true
+             the moment a control changes shape by band. */
           <div className={css.itemTriage} aria-label={t('item.triage.title')}>
             <h3 className={css.itemSectionTitle}>{t('item.triage.title')}</h3>
-            {triage.map(line => (
-              <div key={line.id} className={css.itemTriageRow} data-severity={line.severity}>
-                <span className={css.itemTriageText}>
-                  {t(TRIAGE_LABEL[line.id as ItemFlag] ?? 'item.triage.undated', {
-                    n: String(line.count),
-                    days: String(line.worstDays ?? 0),
-                  })}
+            <p className={css.itemTriageText}>
+              <span>{t('item.triage.folded', { n: String(triage.reduce((sum, line) => sum + line.count, 0)) })}</span>
+              {triage.map(line => (
+                <span key={line.id}>
+                  {' · '}
+                  <button
+                    type="button"
+                    className={css.itemTriageAction}
+                    aria-pressed={isFacetOn(query, 'date', line.id)}
+                    onClick={() => choose({ search: withFacetToken(query.text, `has:${line.id}`, !isFacetOn(query, 'date', line.id)) })}
+                  >
+                    {t(TRIAGE_SHORT[line.id], { n: String(line.count) })}
+                  </button>
                 </span>
-                {/* A TEXT ACTION, because a pill has an intrinsic width and a
-                    flex row puts it wherever the slack is — which put 「去看」
-                    660px from the sentence it acts on. No flex value fixes that;
-                    the control has to change. */}
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className={css.itemTriageAction}
-                  onClick={() => choose({ search: `has:${line.id}` })}
-                >
-                  {t('item.triage.open')}
-                </Button>
-              </div>
-            ))}
+              ))}
+            </p>
           </div>
-        )}
-
-      {/* THE ARCHIVE LINE: a capture-first surface lives or dies on 「我没有刚弄丢」,
-          so the way back is announced here rather than hidden behind a menu nobody
-          opens — and it states the window instead of implying it, because a restore
-          button that has quietly stopped working is worse than one that never
-          appeared. It is a DERIVED page: it does not occupy the rail, because a
-          rail that grows an entry every time the reader asks a question turns a map
-          into a log. */}
-      {archive === undefined
-        ? (
-          /* ITS OWN CLASS, and the reason is spacing rather than naming. This is a
-             footnote about the archive — it is not one more thing needing your
-             attention — and it was wearing `.itemTriageRow`, which is a row in the
-             triage list: that class carries a hairline above itself, the padding of
-             a tappable row, and its own hover. So the page drew a divider under the
-             triage block, gave a sentence 40px of height, and opened the space
-             between two bands to 51px where the rhythm says 12. One class holding
-             two unrelated meanings is how a rhythm stops being a rhythm: the number
-             that is supposed to describe the page was being spent on a footnote. */
-          <p className={css.itemArchiveRow}>
-            <span className={css.itemArchiveNote}>{t('item.archive.window')}</span>
-            <Button
-              variant="ghost"
-              size="sm"
-              className={css.itemArchiveAction}
-              onClick={() => { setArchiveNote(undefined); void openArchive() }}
-            >
-              {t('item.archive.open')}
-            </Button>
-          </p>
-        )
-        : (
-          <section className={css.itemGroup}>
-            <h2 className={css.itemGroupHead}>
-              <button
-                type="button"
-                className={css.itemGroupToggle}
-                onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}
-              >
-                {t('item.archive.title')}
-                <span className={css.itemGroupCount}>{archive.kind === 'ready' ? archive.rows.length : 0}</span>
-              </button>
-            </h2>
-            <div className={css.itemGroupList}>
-              {/* The SENTENCE is what the reader reads; the raw code is the
-                  `title`, so the host's own vocabulary is one hover away for
-                  whoever has to diagnose it and invisible to everyone else. */}
-              {archiveNote !== undefined && <p className={css.itemState} role="status" title={archiveNote.raw}>{archiveNote.words}</p>}
-              {archive.kind === 'loading' && <p className={css.itemState} role="status">{t('item.loading')}</p>}
-              {/* NOT REACHABLE IS NOT EMPTY. Saying 「你没有删过任何一条」 when the
-                  host was simply never reached would tell the reader their
-                  deletions are gone when they may be sitting on the disk. */}
-              {archive.kind === 'unreadable' && <p className={css.itemState} role="status">{t('item.archive.unreadable')}</p>}
-              {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemState}>{t('item.archive.empty')}</p>}
-              {archive.kind === 'ready' && archive.rows.length > 0 && (
-                <ul className={css.itemList}>
-                  {archive.rows.map(row => (
-                    <li key={row.id} className={css.itemRecentRow}>
-                      <span className={css.itemRef}>{itemRefOf(row).text ?? '—'}</span>
-                      <span className={css.itemTitle}><span className={css.itemTitleText}>{itemTitleOf(row)}</span></span>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        disabled={restoring === row.ref}
-                        onClick={() => { void restoreOne(row) }}
-                      >
-                        {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
-                      </Button>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <p className={css.itemHint}>{t('item.archive.window')}</p>
-              <Button variant="ghost" size="sm" onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}>
-                {t('item.archive.close')}
-              </Button>
-            </div>
-          </section>
         )}
 
       {items.length === 0 || (props.filtering && slices.every(run => run.items.length === 0))
         ? <p className={css.itemState}>{nothingToShow}</p>
         : groups(slices)}
+
+      {/* THE ACCOUNTS OF THIS PAGE, last: which buckets are empty, and the way
+          back to what was deleted. Both are answers to a reader who is looking
+          for something and not finding it, which is why neither is above the
+          rows. */}
+      {emptyRuns.map(run => (
+        <div key={`empty-${run.map(slice => slice.status).join('-')}`} className={css.itemEmptyGroups} role="group">
+          {/* The separator is a SIBLING of the buttons, not a wrapper around them.
+              A wrapper would have needed a class of its own, and a class that
+              exists only to hold a middot is a class the stylesheet has to be told
+              about for the sake of one glyph. */}
+          {run.map((slice, at) => (
+            <span key={slice.status} style={{ display: 'contents' }}>
+              {at > 0 && <span className={css.itemEmptyGroupSep} aria-hidden="true">·</span>}
+              <button
+                type="button"
+                className={css.itemEmptyGroup}
+                data-status={slice.status}
+                aria-pressed={isFacetOn(query, 'status', slice.status)}
+                onClick={() => choose({ search: withFacetToken(query.text, `status:${slice.status}`, !isFacetOn(query, 'status', slice.status)) })}
+              >
+                {t(GROUP_LABEL[slice.status])}
+                <span className={css.itemEmptyGroupCount}>{slice.items.length}</span>
+              </button>
+            </span>
+          ))}
+        </div>
+      ))}
+      {archiveLine}
     </>
   )
 }
