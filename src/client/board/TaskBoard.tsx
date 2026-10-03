@@ -1885,7 +1885,30 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
               }}
               onDrop={handleDrop(column.status)}
             >
-              <header className={css.columnHeader}>
+              {/* **不是一个 `<header>`，而且这件事是被迫也是自正的。**
+                *
+                * MEASURED: the host ships `div[class*="_centerCol"] header { padding:
+                * 4px 16px 2px 16px !important }`, and this column sits inside that
+                * container — so the shell's `!important` beat our own padding (their
+                * selector is (0,1,2), ours was (0,1,0)), the left inset collapsed
+                * from 37px to the shell's 16px, and the status dot — absolutely
+                * positioned into the 21px rail the cards leave — landed **on the
+                * first character of the column's name**. On a phone that is not
+                * cosmetic: the title is `text-overflow: ellipsis`, so the shell was
+                * shortening the column's name.
+                *
+                * Every token on this element was correct and every `calc()` resolved
+                * (1 + 8 + 28 = 37) — the defect was never arithmetic. **Ten rounds of
+                * measuring the wrong thing** came from a hand-written style scanner
+                * that was itself wrong four separate times; Chrome's own
+                * `CSS.getMatchedStylesForNode` named the shell rule in one call.
+                *
+                * And the tag was wrong anyway: a `<header>` is a **landmark** only
+                * outside a sectioning element, and this one lives inside the column
+                * `<section>` — so it never was one. A `div` with the same class says
+                * the same thing, stays out of the shell's selector, and drops a
+                * landmark that was never real. */}
+              <div className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                 <h3 className={css.columnTitle} title={t(STATUS_KEY[column.status])}>
                   {/* **短名，不是全名。** 顶上那排列导航用的也是这张短表，所以在手机上
@@ -1900,7 +1923,7 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   {t(STATUS_SHORT_KEY[column.status])}
                 </h3>
                 <span className={css.columnCount}>{tasks.length}</span>
-              </header>
+              </div>
               {/* Drag events bubble from the cards: the container tracks the
                   drag source (dragstart/dragend); reorder anchors are
                   computed from pointer coordinates, not from hovered

@@ -31,6 +31,7 @@
  *   node scripts/shot-panel.mjs --out shot.png [--url http://127.0.0.1:3080]
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
  *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--label text]
+ *        [--css-for "<selector>" [--property padding]]
  *
  * `--eval` runs once in the page after load, before the capture, and its
  * console output is printed — which is how the caller clicks into a panel
@@ -55,6 +56,8 @@ function parseArgs(argv) {
     full: false,
     eval: '',
     label: '',
+    cssFor: '',
+    property: 'padding',
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
@@ -75,7 +78,7 @@ function parseArgs(argv) {
     if (key === 'full') { out.full = true; continue }
     if (key === undefined) {
       console.error(`shot-panel: unknown flag ${flag}`)
-      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label')
+      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property')
       process.exit(2)
     }
     out[key] = argv[i + 1] ?? ''
@@ -412,6 +415,42 @@ try {
     // The click lands, the panel mounts, and the layout settles: give it the
     // same settle a human hand would, rather than capturing mid-paint.
     await new Promise(done => setTimeout(done, 1200))
+  }
+
+  if (args.cssFor !== '') {
+    // ASK THE BROWSER, NOT THE PAGE. **Why this exists, in the shape it cost:**
+    // reading `document.styleSheets` from inside the page and matching selectors by
+    // hand produced FIVE different wrong answers in a row — a comma-separated
+    // selector list read as one name, a modern browser's `CSSStyleRule.cssRules`
+    // (an empty array) making every rule look like a nested container, a probe
+    // element parked on `<body>` where the custom properties never reached it, and
+    // an injected rule whose class name came from the very class being tested.
+    // **A hand-written scanner is a second implementation of the cascade, and it
+    // will be wrong in ways nobody can see.** Chrome already has the authoritative
+    // answer, including the layer and the source line of every declaration.
+    await browser.send('DOM.enable', {}, sessionId)
+    await browser.send('CSS.enable', {}, sessionId)
+    const { root } = await browser.send('DOM.getDocument', { depth: 0 }, sessionId)
+    const { nodeId } = await browser.send('DOM.querySelector', { nodeId: root.nodeId, selector: args.cssFor }, sessionId)
+    if (nodeId === undefined || nodeId === 0) {
+      console.error(`shot-panel: --css-for: ${args.cssFor} matched nothing`)
+    } else {
+      const matched = await browser.send('CSS.getMatchedStylesForNode', { nodeId }, sessionId)
+      const want = args.property.toLowerCase()
+      const lines = []
+      for (const entry of matched.matchedCSSRules ?? []) {
+        const rule = entry.rule
+        const text = rule.style.cssText ?? ''
+        const hits = text.split(';').filter(part => part.trim().toLowerCase().startsWith(`${want}:`) || part.trim().toLowerCase().startsWith(`${want}-`))
+        if (hits.length === 0) continue
+        const origin = rule.origin === 'regular' ? '' : ` [${rule.origin}]`
+        const layer = rule.layers?.map(l => l.text).join('') ?? ''
+        lines.push(`  ${rule.selectorList.text}${origin}${layer ? ` @layer ${layer}` : ''}\n      full: ${text.replace(/\s+/g, ' ').slice(0, 300)}`)
+      }
+      console.error(`shot-panel: --css-for ${args.cssFor} — rules touching \`${args.property}\` (${lines.length}):`)
+      for (const line of lines) console.error(line)
+    }
+    await new Promise(done => setTimeout(done, 200))
   }
 
   const shot = await browser.send('Page.captureScreenshot', {
