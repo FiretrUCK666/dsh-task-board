@@ -41,11 +41,24 @@ export interface ItemStatsProps {
     readonly on: ReadonlySet<string>;
 }
 /**
- * The band.
+ * The band — and it renders at ZERO.
  *
- * It renders nothing when there is nothing to say: a row of three zeros is the
- * worst kind of empty, because it has no row to point at and no content either.
+ * It used to filter `stat.n > 0` and return nothing when every count was 0, on the
+ * reasoning that 「a row of three zeros has no row to point at」. Measured on a
+ * real document that reasoning is wrong in a way the reader pays for: the band
+ * vanishes, and **a page with nothing to do looks exactly like a page whose
+ * triage strip stopped rendering** — which is not a distinction anyone can make
+ * from the screen, and which is why 「感觉根本不知道这个任务清单是干嘛用的」 was
+ * reported at all.
+ *
+ * **「被问到而答案是零」和「这个问题根本不存在」是两件事** — that is already why the
+ * page rail prints `0` on an empty page rather than hiding the tab. The band is the
+ * same question asked about the reader's own work, so it answers the same way.
+ *
+ * Zero here is also the GOOD news, and good news deserves the same pixels as bad:
+ * three zeros at the top of the page are the panel saying 「没有一件卡在你手上」,
+ * and hiding them spends the reader's most reliable signal to deliver silence.
  * @param props - the three questions, their counts and the toggle.
- * @returns the band, or nothing.
+ * @returns the band.
  */
 export declare function ItemStats(props: ItemStatsProps): import("react").JSX.Element | null;
