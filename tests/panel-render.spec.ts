@@ -385,6 +385,48 @@ describe('the panel renders against the host it will actually run in', () => {
     expect(wide, 'the wide band drew a detail rail with nothing selected — a permanent column saying nothing').not.toContain('itemDetailPane')
     expect(narrow, 'a narrow surface has no detail rail; the detail opens in the row').not.toContain('itemDetailPane')
   })
+
+  // A CLAIM ABOUT HOW MANY OF SOMETHING ARE ON SCREEN HAS TO BE COUNTED.
+  //
+  // This one was wrong for two rounds and nothing was red. 「三张统计卡」is a claim
+  // about a COUNT, and it was true on the fixtures (all three numbers non-zero, so
+  // three cards render) while being false on a real document — `triageLinesOf`
+  // drops the zero lines, `flatMap` drops the tiles that have none, and the band
+  // that looked like three cards was 「最多画三张」. Removing a second filter on the
+  // receiving side changed nothing, because the zeros were already gone before
+  // they arrived, and **a defect defended twice looks defended once**.
+  //
+  // It was caught by opening the live panel at 412px and counting the cards in the
+  // picture — 2427 passing tests did not notice, because no test ever said the
+  // number. **So the number is now said, on the case that makes it a claim at
+  // all**: a document where every count is zero.
+  it('the stat band says all three counts, including zero — 「被问到而答案是零」', () => {
+    // `_itemStat_<hash>` and NOT `itemStat\b`: the bundle's names are delimited by
+    // underscores, which are word characters, so a word boundary after `itemStat`
+    // never fires and the count came out 0 for every render — **a checker whose
+    // read is wrong is worse than no checker**, because it looks like evidence.
+    // The trailing underscore also keeps it off `_itemStatLabel_` and `_itemStats_`.
+    const countCards = (html: string): number => (html.match(/_itemStat_[a-z0-9]+/g) ?? []).length
+    // **THE CASE IS 「有行，但三个数全是零」, NOT 「没有行」.** An empty document
+    // replaces the whole workbench with 「还没有事项」, so the band is not on screen
+    // there for a completely different and perfectly good reason — asserting on it
+    // would have been a gate that passes for the wrong thing.
+    //
+    // Rows that are all `done` are the honest construction: they are real rows the
+    // page still lists, and triage counts only unfinished work, so every one of the
+    // three answers is genuinely zero.
+    const allDone = fixtures().map(item => ({ ...item, status: 'done' as const }))
+    const quiet = renderPanel(allDone, 'wide', 'list')
+    expect(countCards(quiet),
+      'the stat band is GONE when every count is zero — 「没有一件卡在你手上」 and 「这条带子不渲染」 are indistinguishable on screen, and only one of them is true')
+      .toBe(3)
+    for (const label of ['落后', '卡住', '没日期']) {
+      expect(quiet, `${label} is not on screen at all, so its zero is never stated`).toContain(label)
+    }
+    // And the band is not decoration either: a document WITH work still says three.
+    expect(countCards(renderPanel(fixtures(), 'wide', 'list')),
+      'the band lost a card on a document that has work in it').toBe(3)
+  })
 })
 
 /**
