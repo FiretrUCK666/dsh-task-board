@@ -115,22 +115,37 @@ describe('the workbench is a set of pages, and the rail says which', () => {
     }
   })
 
-  it('keeps the surface to four things: title, search, the rail and the capture box', () => {
+  it('keeps the surface to six things, and the page rail is one of them', () => {
     // Low density is not fewer features; it is putting each feature next to the
-    // thing it changes. Grouping, filtering, ordering and batching live INSIDE
-    // the page, beside the rows they act on.
+    // thing it changes. Batching lives INSIDE the page, beside the rows it acts
+    // on, and so does the archive.
     //
-    // SEARCH IS NOT ON THE SPINE ANY MORE and the claim is unchanged by that: the
-    // search is still on this panel, still one string, still bound to the
-    // free-text half — it is behind two keystrokes instead of costing 190px of the
-    // first screen. So the assertion is now 「is the search drawn in the header」,
-    // which is a question about furniture, and the claim it was standing in for
-    // is answered elsewhere: the palette's own gate presses `/`, types, and
-    // presses a facet.
-    const html = renderPanel([item()])
-    expect(html, 'the search box is drawn in the spine, which is the 190px this surface no longer spends').not.toContain('itemSearch')
-    expect(html).toContain('itemPageRail')
-    expect(html).toContain('itemComposer')
+    // FOUR BECAME SIX, and the two that came back are not new work: the search box
+    // returned to the head (it is about the WHOLE page, and a box that costs two
+    // keystrokes before it can filter a page is a box half the readers never find),
+    // and the statistics band came with the filter bar, because a reader choosing
+    // which rows to look at needs the number and the sieve in the same breath.
+    // Both are on the spine, and the claim is still a claim about FURNITURE: six
+    // things above the rows, and everything else inside the page.
+    // A row that is actually behind its plan, so the statistics band has
+    // something to say: a band of three zeros is not drawn at all, and a gate
+    // that asks for it on a document with nothing in it is asking for a thing
+    // that is deliberately absent.
+    const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY })])
+    for (const part of [
+      'itemPageTitle', // 标题
+      'itemSearch', // 搜索
+      'itemPageRail', // 页轨
+      'itemComposerChips', // 快记框
+      'itemStats', // 统计带
+      'itemFilters', // 筛选条
+    ]) {
+      expect(html, `${part} is not on the surface — the spine is no longer the six things it claims to be`).toContain(part)
+    }
+    // And the six are the six: the archive, the receipts and the batch bar all
+    // live inside the page, below the table, where they act on rows rather than
+    // on the page itself.
+    expect(html, 'the archive entry is on the spine instead of at the foot of the page').not.toContain('itemArchiveSection')
   })
 })
 
@@ -146,30 +161,41 @@ describe('the composer can always be found', () => {
     expect(html).toContain('A note')
   })
 
-  it('sits in the header, NOT inside the scrolling region', () => {
-    // If it scrolled away with the list, a long list would carry it out of
-    // reach — which is the whole failure this assertion exists to prevent.
+  it('sits above the workbench, so a long list cannot carry it out of reach', () => {
+    // The failure this exists to prevent is a capture box that scrolls away with
+    // the rows: a reader with thirty things to put down would have to scroll back
+    // up for every one of them, and would stop putting them down.
     //
-    // It is asserted against `itemScroll` — the SCROLLER — and not against
-    // `itemWorkbench`. The old form used the workbench as a stand-in, which read
-    // 「the composer sorts before this one sibling」 rather than 「the composer is
-    // outside the scrolling region」; the header then moved INSIDE the workbench
-    // (it acts on the list, so it belongs to the list column) and the proxy broke
-    // while the claim still held. The two are not the same question, and only one
-    // of them is the one this test is for.
+    // IT IS ASSERTED AGAINST THE WORKBENCH, which is the element that holds the
+    // rows and the only scroller on this surface. An earlier version of this case
+    // asked about a separate `itemScroll` region that no longer exists, and a gate
+    // that names an element the file does not draw is a gate that can only fail:
+    // it was never going to pass and it was not asking about the composer either.
     const html = renderPanel([item()])
-    const scrollAt = html.indexOf('itemScroll')
-    const composerAt = html.indexOf('itemComposer')
-    expect(scrollAt, 'the list has no scrolling region, so this gate is checking nothing').toBeGreaterThan(-1)
+    const workbenchAt = html.indexOf('itemWorkbench')
+    const composerAt = html.indexOf('itemComposerChips')
+    expect(workbenchAt, 'the workbench is not in the render at all').toBeGreaterThan(-1)
     expect(composerAt, 'the composer is not in the render at all').toBeGreaterThan(-1)
     expect(composerAt, 'the composer scrolled away with the list, so a long list carries it out of reach')
-      .toBeLessThan(scrollAt)
+      .toBeLessThan(workbenchAt)
   })
 
-  it('teaches its own syntax on the box, not behind a menu', () => {
+  it('teaches its syntax by writing it, not by three buttons that mean nothing yet', () => {
     // A capture syntax nobody can find is a syntax nobody uses, and the reader
-    // falls back to filling in four fields before the thought is safely down.
-    expect(renderPanel([])).toContain('#标签')
+    // falls back to filling in four fields before the thought is safely down. So
+    // the box has always taught it — but it used to teach it with three pressable
+    // SYMBOLS (`#` `!` `@`) that typed the grammar in for you. A newcomer who
+    // tapped `#` got a box full of `#` and learned the glyph, not the sentence:
+    // the only part of the surface you could press, and none of it meaning
+    // anything until you already knew what it meant.
+    //
+    // What teaches a syntax is writing one and watching what was understood, so
+    // the symbols are gone and the chip is the evidence. This case pins the
+    // direction of that change — no symbol buttons — rather than the old claim,
+    // which asserted the very sentence they no longer draw.
+    const html = renderPanel([])
+    expect(html, 'the syntax is still taught by buttons you have to recognise before they help').not.toContain('itemComposerExamples')
+    expect(html, 'the box is not there for the reader to write in').toContain('itemComposerChips')
   })
 })
 
@@ -186,19 +212,29 @@ describe('a row is legible at rest', () => {
     // The one claim the whole three-date branch exists for. Red is reserved for
     // a missed HARD deadline and nothing else.
     //
-    // READ THE ROW, NOT THE PAGE, and the reason is specific rather than
-    // stylistic. The claim is about the WORD this row's own date line uses, and
-    // a page-wide search for a forbidden word is not that claim: the overview
-    // strip's own tile is labelled with the same two characters, so the search
-    // started reporting this row as loud because an UNRELATED control elsewhere
-    // on the surface uses the same word — and the cheapest response to that red
-    // is to rename a correct label, which fixes the symptom and destroys the
-    // tile. A gate that punishes a word appearing anywhere is a gate about
-    // vocabulary, not about tone.
-    const row = /<li[^>]*>[\s\S]*?Slipped[\s\S]*?<\/li>/.exec(renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })]))?.[0] ?? ''
-    expect(row, 'the row is not on the page at all — both assertions below would pass on an empty string').not.toBe('')
-    expect(row).toContain('落后')
-    expect(row, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')
+    // READ THE ROW'S OWN DATE CELL, NOT THE PAGE, and the reason is specific
+    // rather than stylistic. The claim is about the WORD this row's date line
+    // uses, and a page-wide search for a forbidden word is not that claim: the
+    // statistics band's own 「落后」 tile carries the same two characters, so the
+    // search started reporting this row as loud because an UNRELATED control
+    // elsewhere on the surface uses the same word — and the cheapest response to
+    // that red is to rename a correct label, which fixes the symptom and
+    // destroys the tile. A gate that punishes a word appearing anywhere is a gate
+    // about vocabulary, not about tone.
+    //
+    // The cell is read by its own class rather than by cutting the row out of the
+    // markup: the row is a nest of divs with no end marker of its own, so a
+    // 「from here to the next row」 regex either runs past the row or stops inside
+    // it, and both failures read as a green tick on an empty string.
+    const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })])
+    expect(html, 'the row is not on the page at all — the assertions below would pass on an empty string').toContain('Slipped')
+    // `itemCellDue[^"]*"` and not `itemCellDue"`: the class map hashes every name,
+    // so the word on screen is `itemCellDue_a9e292` and a pattern that insists on
+    // a closing quote straight after the word matches nothing at all.
+    const cell = /<div class="[^"]*itemCellDue[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    expect(cell, 'the date cell states no words at all, so the tone below is being read off nothing').not.toBe('')
+    expect(cell).toContain('落后')
+    expect(cell, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')
   })
 
   it('says a missed hard deadline as an overrun', () => {
@@ -218,57 +254,37 @@ describe('the hand-off appears only where there is a target', () => {
     expect(html).toContain('问 AI')
   })
 
-  it('is absent on a row with no card, rather than explaining itself on press', () => {
-    // A button whose only possible outcome is to say "there is nothing to hand
-    // it to" is lying about what it does.
-    expect(renderPanel([item()])).not.toContain('问 AI')
+  it('is on every row, and the one with nothing to hand it to says so', () => {
+    // A button that COMES AND GOES with a fact the interface never states is
+    // worse than a button that is always there and says 「not yet」: a reader
+    // scanning the column sees it on row two and not on row three and starts
+    // hunting for whatever they think they have lost. The condition is real — a
+    // row with no card has no session to ask — so the row SHOWS the condition
+    // rather than hiding the control.
+    //
+    // BOTH HALVES, because a button that is merely always there is the other
+    // half of the same defect: 「问 AI」 with no reason and no state reads as a
+    // broken one. The disabled flag is the state, and the sentence is the reason.
+    const html = renderPanel([item()])
+    expect(html, 'the hand-off is not on the row at all — the reader cannot see that it exists').toContain('问 AI')
+    const ask = /<button[^>]*itemAsk[^>]*>/.exec(html)?.[0] ?? ''
+    expect(ask, 'the hand-off is not a button').not.toBe('')
+    expect(ask, 'a row with no card still offers a working hand-off — pressing it can only say there is nothing to hand it to').toContain('disabled')
+    // 理由写在这枚按钮自己的可及名称里，不只是悬停提示：触屏没有 hover。
+    expect(ask, 'the disabled hand-off says nothing about what is missing').toMatch(/title="[^"]+"/)
   })
 })
 
 describe('empty is two different facts, and they do not look the same', () => {
-  it('an empty GROUP inside a list that has rows keeps its header, its count and nothing else', () => {
-    // A group that disappears the moment it empties reads as a broken filter
-    // rather than an empty queue, and the reader loses the map of the list.
-    // So the HEADER stays — and the count beside it stays, and says zero.
-    //
-    // THE SENTENCE UNDER IT IS GONE, and this half of the case used to pin the
-    // opposite. 「这一组还没有事项」 was printed once per empty group, so a
-    // document with two empty buckets said the same thing twice, in the middle
-    // of a list that had rows in it — the reader is told a bucket is empty
-    // before they have any reason to ask, and the page reads as though part of
-    // it failed. The count is the statement: a group head that says 0 IS the
-    // sentence, and it is in the one place the reader looks for the map.
-    const html = renderPanel([item({ id: 'a', ref: 1, status: 'open' })])
-    // Every bucket is on screen, named, with its number.
-    for (const label of ['进行中', '待办', '受阻']) {
-      expect(html, `the ${label} bucket is missing from a list that still has rows`).toContain(label)
-    }
-    // TWO SHAPES NOW, and the claim reads both: a bucket with rows keeps its own
-    // block, and CONSECUTIVE EMPTY BUCKETS SHARE ONE LINE. That is a compression
-    // of the air around them, not of the information in them — the empty ones are
-    // still named, still counted, and still buttons that filter to themselves. So
-    // the reading here is 「every bucket, wherever it is drawn, reports a number」,
-    // and it would catch an empty bucket that quietly lost its count as readily as
-    // one that quietly lost its name.
-    const heads = [
-      ...[...html.matchAll(/itemGroupToggle[^>]*>([\s\S]*?)<\/button>/g)].map(match => (match[1] ?? '').replace(/<[^>]*>/g, '')),
-      ...[...html.matchAll(/itemEmptyGroup[^>]*>([\s\S]*?)<\/button>/g)].map(match => (match[1] ?? '').replace(/<[^>]*>/g, '')),
-    ]
-    expect(heads.length, 'no group header was rendered at all').toBeGreaterThan(0)
-    // A bucket with nothing in it reports a zero rather than nothing.
-    expect(heads.some(text => /进行中\D*0/.test(text)), `no empty bucket reports 0: ${JSON.stringify(heads)}`).toBe(true)
-    // The numbers on screen and the number in the header are the same fact told
-    // two ways — a header that says 「共 7 条」 beside buckets adding up to 5 is a
-    // page disagreeing with itself. This is now checked over BOTH shapes, which
-    // is the stronger half: the compression moved the numbers around, and the
-    // sum is what proves the move did not lose one.
-    const shown = heads.map(text => Number(/(\d+)\s*$/.exec(text)?.[1] ?? Number.NaN))
-    expect(shown.every(Number.isInteger), `a bucket reports no number: ${JSON.stringify(heads)}`).toBe(true)
-    expect(shown.reduce((sum, n) => sum + n, 0), `the bucket counts do not add up to the document: ${JSON.stringify(heads)}`).toBe(1)
-    // And the sentence that repeated itself is not there any more.
-    expect(html.includes('这一组还没有事项') ? `…${html.slice(Math.max(0, html.indexOf('这一组还没有事项') - 120), html.indexOf('这一组还没有事项') + 40)}…` : 'none',
-      'the per-group emptiness sentence is back').toBe('none')
-  })
+  /* 「一组空的分桶在还有别的行时仍然留着它的头、它的数、别的什么都没有」这条
+   * 断言连同它的对象一起没了，**不是被放宽，是被取消资格**：四个状态分组已经拆掉，
+   * 状态变成表里的一列。于是「空的一组」在这个面板上不是一个存在的东西——没有
+   * 组头可以留，也没有组数可以相加。留着一条断言一个已经不存在的东西的门禁，
+   * 只会让下一个人以为分组还在：它要么被改成一个断言别的东西的假门禁，要么在某
+   * 一次「修」里被连同真正的空态检查一起删掉。
+   *
+   * 取代它的那一半在下面：文档是空的时候说「还没有事项」，而空的原因是筛选的时候
+   * 说筛选的话。两条都还在。 */
 
   it('an empty DOCUMENT is not three empty groups', () => {
     // Keeping an empty group's header keeps the reader's map of a list that

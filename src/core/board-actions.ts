@@ -907,6 +907,41 @@ export const ACTIONS = {
     },
   },
 
+  'item.purge': {
+    // Its own action and not a second `item.delete`, because the two halves of a
+    // deletion are different verbs with different prices: the first can be
+    // taken back and the second cannot. `item.delete` is `guarded` for exactly
+    // that reason, and an action that quietly carried both prices would let a
+    // model learn that deleting is cheap.
+    //
+    // The verb is `delete` because it deletes — a fourteenth verb for a thing
+    // that is already in the list would teach the next reader of `BOARD_VERBS`
+    // that 「删」 means two different things, and the `danger` field is where
+    // 「this one is final」 belongs (it is what the tool's dry-run sentence and
+    // the capability view both read).
+    verb: 'delete',
+    domain: 'item',
+    lane: 'document',
+    // The one irreversible checklist action, and the only honest answer: there
+    // is no tombstone left holding the text afterwards, so nothing brings it
+    // back. `item.delete` is `guarded` rather than irreversible precisely
+    // because the tombstone makes it recoverable — this is the one that closes
+    // that door, so it is the one a caller should rehearse first.
+    danger: 'irreversible',
+    surface: 'ui+ai',
+    // `semantic` for the reason the other five carry it: the archive drawer and
+    // the tool both have to answer 「这一条还能不能找回来」, and the answer is
+    // decided by whether the tombstone still holds text. Two callers each
+    // guessing that would be two surfaces that disagree about whether a
+    // deletion is still recoverable.
+    semantic: true,
+    semanticOf: 'purgeItemTombstone',
+    summary: '把一条已删除的清单条目彻底清掉：连墓碑里留着的正文一起扔掉，撤不回来。只想让它从清单里消失就用删除（那个还能找回）。对着还没删过的条目用这一条会被拒。',
+    params: {
+      of: { about: '要清掉的条目编号：填那个数字本身（12），不要带 # 号' },
+    },
+  },
+
   'item.navigate': {
     // `ui`, like every other navigation: "open this" means nothing in another
     // context, and a model that could retarget a person's screen would be a
@@ -1032,6 +1067,12 @@ export const ITEM_HANDLERS = {
   // grammar's. Naming the wrong module here would be a binding to a function
   // that exists and is not the one both surfaces call.
   'item.restore': itemsDocument.restoredItemOf,
+  // The purge half is `items-doc`'s for the same reason the restore half is, and
+  // the reason is not tidiness: what a purge writes is a tombstone's own field,
+  // so the merge grammar is the module that owns the question, and a function
+  // in `item-transitions` would have had to answer 「墓碑里还有没有正文」 without
+  // ever seeing a tombstone.
+  'item.purge': itemsDocument.purgeItemTombstone,
 } as const satisfies Readonly<Record<BoundItemActionId, ItemHandler>>
 
 /**

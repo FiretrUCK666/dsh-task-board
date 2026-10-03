@@ -16,9 +16,10 @@ import { join } from 'node:path'
 import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
-import { emptyItemsDoc, applyItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import { emptyItemsDoc, applyItemsCommit, deletedItemsOf, purgeItemTombstone, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
+import { itemQualifierVocabulary } from '../src/core/item-query.ts'
 import {
   capabilityView,
   clearIdempotentReplies,
@@ -81,6 +82,19 @@ function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
       box.commits += 1
       box.items = applyItemsCommit(box.items, commit, NOW + 1)
       return box.items
+    },
+    // The REAL document function, for the same reason `commitItems` is: a fake
+    // that handed back a pre-emptied tombstone map would pass while the only
+    // implementation that can be wrong went untested. The tool always addresses
+    // by identity here — it turned the spoken number into one before asking.
+    async purgeItem(of) {
+      const id = of.kind === 'id'
+        ? of.id
+        : deletedItemsOf(box.items).find(row => row.ref === of.ref)?.id
+      if (id === undefined) return { kind: 'alreadyGone', doc: box.items }
+      const outcome = purgeItemTombstone(box.items, id)
+      if (outcome.doc !== box.items) box.items = outcome.doc
+      return outcome
     },
     submitCommand: () => ({ queued: false }),
     ...overrides,
@@ -413,17 +427,46 @@ describe('the op enum is generated, and the tool is what the model sees', () => 
     expect(refuseOp('task.nope').detail).toContain('没有 task.nope 这个动作')
   })
 
-  it('renders the filter vocabulary from the search registry, not a second list', () => {
-    // Every enumerated value the registry can complete is offered, and nothing
-    // that is not: a free-text key (`ws:`) contributes no values, which is the
-    // registry's own answer, not an omission here.
-    for (const value of enumeratedFilters()) {
-      const key = `${value.slice(0, value.indexOf(':') + 1)}`
-      expect(QUALIFIER_KEYS).toContain(key)
+  it('teaches the model EVERY vocabulary both registries parse, not one of them', () => {
+    // **THIS USED TO BE A SELF-PROVING ASSERTION.** It compared the tool's
+    // description against `QUALIFIER_KEYS` — which is what GENERATES that
+    // description — so it could only ever say 「描述与它自己的来源一致」. And it
+    // was green while the model was being taught a vocabulary that was half
+    // wrong: `taskboard_query`'s filter string is parsed by `matchItemQuery` for
+    // the item list too, so the board-only keys it taught (`has:*`, `is:*`) fell
+    // through there as **free words and matched nothing, silently**, while
+    // everything the list speaks was never mentioned.
+    //
+    // **THE CLAIM IS ABOUT THE PARSER, NOT ABOUT THE DESCRIPTION.** For every
+    // token the ITEM grammar reads as a qualifier, the tool must name it; and
+    // vice versa — a key in the description the parser does not know is a word
+    // that silently matches nothing, which is the same defect pointing the other
+    // way. That second half is what makes this test able to fail.
+    const vocabulary = itemQualifierVocabulary()
+    expect(vocabulary.length, 'the item vocabulary is empty — the derivation broke, not the description').toBeGreaterThan(0)
+    const filter = (toolNamed('taskboard_query').parameters.properties as { filter: { description: string } }).filter
+    const said = filter.description
+    for (const token of vocabulary) {
+      expect(said, `the model is never told \`${token}\`, so a query using it silently matches nothing`).toContain(token)
     }
-    const query = toolNamed('taskboard_query')
-    const filter = (query.parameters.properties as { filter: { description: string } }).filter
-    for (const key of QUALIFIER_KEYS) expect(filter.description).toContain(key)
+    // And every board key survives alongside it — the two lists are additive.
+    for (const key of QUALIFIER_KEYS) {
+      expect(said, `the board's own key \`${key}\` disappeared from the description`).toContain(key)
+    }
+    // THE OTHER HALF, which the old assertion got right and this one keeps: the
+    // description must also offer the VALUES, or the model knows the key and
+    // still has to guess what goes after the colon. A free-text key (`ws:`)
+    // contributes no values, and that is the registry's own answer rather than an
+    // omission here.
+    for (const value of enumeratedFilters()) {
+      expect(said, `the model is told \`${value.slice(0, value.indexOf(':') + 1)}\` exists but never told \`${value}\` is one of its values`).toContain(value)
+    }
+    // And the round trip, which is the part that actually catches a stale list:
+    // take the words out of the description and hand them back to the parser. A
+    // word that survives being taught AND parsed is a real qualifier; one that
+    // does not is a promise the tool cannot keep.
+    const taught = vocabulary.concat(QUALIFIER_KEYS).filter(token => said.includes(token))
+    expect(taught.length, 'nothing was taught at all').toBeGreaterThan(0)
   })
 })
 
@@ -606,6 +649,58 @@ describe('the checklist verbs a person can reach and a model now shares', () => 
     expect(result.dryRun).toBe(true)
     expect(board.writes).toEqual([])
     expect(board.getDoc().tasks).toHaveLength(0)
+  })
+
+  it('item.purge erases the text behind a deletion, and the row cannot come back', async () => {
+    const board = withItem()
+    await runBatch(deps(board), { ops: [{ op: 'item.delete', payload: { of: '#1' } }] })
+    expect(deletedItemsOf(board.getItemsDoc())).toHaveLength(1)
+
+    const purged = await runBatch(deps(board), { ops: [{ op: 'item.purge', payload: { of: '#1' } }] })
+    expect(purged.ok).toBe(true)
+    expect(purged.reports[0]?.detail).toContain('撤不回来')
+    // The archive is a read over tombstones, so this is where the row is gone —
+    // and the tombstone itself is still there, which is what stops a replica
+    // that never heard about the purge from handing the row back.
+    expect(deletedItemsOf(board.getItemsDoc())).toEqual([])
+    expect(board.getItemsDoc().tombstones['i-1']).toBeDefined()
+
+    const back = await runBatch(deps(board), { ops: [{ op: 'item.restore', payload: { of: '#1' } }] })
+    expect(back.reports[0]?.ok, 'a purged row is not restorable — that is what irreversible means').toBe(false)
+    expect(board.getItemsDoc().items).toEqual([])
+  })
+
+  it('item.purge refuses a row that is still in the list, and says which action does that', async () => {
+    // 「已彻底删除」 about a row the reader can scroll up and see is the one lie
+    // this tool must not tell, and the fix is named rather than merely refused:
+    // a model that knows which action deletes will use it.
+    const board = withItem()
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.purge', payload: { of: '#1' } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('item.delete')
+    expect(board.getItemsDoc().items).toHaveLength(1)
+  })
+
+  it('item.purge on something already gone is a success, not a failure about finished work', async () => {
+    const board = withItem()
+    await runBatch(deps(board), { ops: [{ op: 'item.delete', payload: { of: '#1' } }] })
+    const first = await runBatch(deps(board), { ops: [{ op: 'item.purge', payload: { of: '#1' } }] })
+    expect(first.ok).toBe(true)
+    const again = await runBatch(deps(board), { ops: [{ op: 'item.purge', payload: { of: '#1' } }] })
+    expect(again.ok, 'a retry must not be reported as a failure about work that is finished').toBe(true)
+    expect(again.reports[0]?.kind).toBe('unchanged')
+  })
+
+  it('item.purge rehearses in the future tense and writes nothing', async () => {
+    // The one action on this surface that leaves nothing to undo, so a rehearsal
+    // that reads as a completed write is the most expensive lie here.
+    const board = withItem()
+    await runBatch(deps(board), { ops: [{ op: 'item.delete', payload: { of: '#1' } }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.purge', payload: { of: '#1' } }], dry_run: true })
+    expect(result.dryRun).toBe(true)
+    expect(result.reports[0]?.detail).toContain('会写入')
+    expect(result.reports[0]?.detail).not.toContain('已生效')
+    expect(deletedItemsOf(board.getItemsDoc())).toHaveLength(1)
   })
 })
 

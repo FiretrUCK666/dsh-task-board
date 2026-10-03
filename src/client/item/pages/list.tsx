@@ -23,18 +23,16 @@
  * would tell a reader their deletions are gone when they may be sitting on disk.
  */
 import { useCallback, useState } from 'react'
-import { itemSlicesOf, triageLinesOf, type ItemSlice } from '../../../core/item-view.ts'
+import { itemSlicesOf } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
 import { t } from '../../locales.ts'
-import { toggleCollapsed } from '../view-prefs.ts'
-import { itemsArchive, itemsRestore, type ArchiveReply } from '../../items-archive.ts'
+import { itemsArchive, itemsPurge, itemsRestore, type ArchiveReply } from '../../items-archive.ts'
+import { removeItemRecord } from '../../../core/item-transitions.ts'
 import { whyLabelOf } from '../why-label.ts'
 import { Button } from '../../board/ui.tsx'
-import { ItemStateBar } from '../state-bar.tsx'
-import { GROUP_LABEL, TRIAGE_SHORT } from '../labels.ts'
-import { isFacetOn, withFacetToken } from '../facets.ts'
+import { ItemTable } from '../item-table.tsx'
 import type { ItemPageProps } from './page-props.ts'
 import css from '../item.module.css'
 
@@ -42,6 +40,21 @@ import css from '../item.module.css'
 export interface ItemListPageProps extends ItemPageProps {
   /** This device's id, which every host write on this prefix carries. */
   readonly clientId: string | undefined
+  /**
+   * Whether the finished rows are on the list, and the one way to change it.
+   *
+   * IT IS HERE AND NOT ON THE SHARED BUNDLE because the switch belongs to THIS
+   * page and to no other: the agenda is a sequence of days and the inbox holds
+   * rows nobody has filed, so 「隐藏已完成」 on either of them is a question with
+   * no answer. It used to be drawn on the filter bar and wired to a `useState`
+   * that NOTHING read — the slice was cut with a hard-coded `includeDone: true` —
+   * so the control said one thing and the list did the other, which is worse than
+   * having no control: the reader unticks it, the finished rows stay, and the
+   * natural conclusion is that the panel has lost the rows rather than that the
+   * switch is a picture of a switch.
+   */
+  readonly showDone: boolean
+  readonly onShowDone: (next: boolean) => void
 }
 
 type ArchiveState =
@@ -51,23 +64,30 @@ type ArchiveState =
   | undefined
 
 export function ListPage(props: ItemListPageProps) {
-  const { items, now, query, prefs, choose } = props
+  const { items, query, prefs } = props
   const [archive, setArchive] = useState<ArchiveState>(undefined)
   const [restoring, setRestoring] = useState<number | undefined>(undefined)
+  /**
+   * WHICH ARCHIVED ROW IS BEING ERASED, by identity.
+   *
+   * `restoring` is a number because the reader sees 「#7 正在找回」 and a number
+   * is what the archive shows next to every row; the erase has no number to
+   * disable against, because a number can be reused between the press and the
+   * answer and disabling `#7` then would grey out somebody else's row.
+   */
+  const [purging, setPurging] = useState<string | undefined>(undefined)
   const [archiveNote, setNote] = useState<{ readonly words: string; readonly raw: string } | undefined>(undefined)
   /** One way to write the note, so 「clear it」 and 「say a code」 cannot disagree. */
   const setArchiveNote = useCallback((note: string | undefined, raw = note ?? '') => {
     setNote(note === undefined ? undefined : { words: note, raw })
   }, [])
 
-  // THE FINISHED GROUP IS ALWAYS HERE, and the reader's way to put it away is the
-  // group's own fold — a visible control, a drawn arrow, and per-group memory.
-  // `includeDone` used to be a page-level switch written by a control on a strip
-  // that is retired, so a device that had stored it off could never turn it back
-  // on: **a preference whose control is gone is not a setting, it is a trap with
-  // the handle filed off.** One intent, one control.
-  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: true })
-  const triage = triageLinesOf(items, now)
+  // 已完成是一个开关，不是另一层。四个分组拆掉之后，这一页和「已完成」那一页之间
+  // 的全部区别就是这一枚勾选框——而它必须真的切到切出来的清单上。
+  // `includeDone: true` 写死过一次：开关画在筛选条上、标着字、还存着状态，而这一行
+  // 是唯一读那个状态的地方，它没读。读者拨了开关、完成的行还在，于是面板看起来
+  // 像是把行弄丢了，而不是开关坏在表面。
+  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: props.showDone })
 
   const openArchive = useCallback(async () => {
     setArchive({ kind: 'loading' })
@@ -115,6 +135,63 @@ export function ListPage(props: ItemListPageProps) {
   }, [openArchive, props.clientId])
 
   /**
+   * 彻底删除 ONE ARCHIVED ROW, and the receipt names the thing it destroyed.
+   *
+   * THE ROW LEAVES THE ARRAY THROUGH THE SHARED WRITER, `removeItemRecord`, and
+   * that is not a formality: it is the same function the list page's own delete
+   * uses, so 「a row with this id is no longer in this document」 is one statement
+   * in one place rather than a second answer written beside it. A local
+   * `rows.filter(...)` would be the same sentence in a second language, and the
+   * first time the two disagree the archive shows a row that has already been
+   * destroyed — the one failure a purge cannot recover from.
+   *
+   * THE TWO HOST REFUSES GET TWO SENTENCES, and the second one is the reason this
+   * function exists rather than a confirmation dialog. A short number is
+   * REUSED: erase `#12` and the next row written into this document becomes
+   * `#12`, so a number typed or held from a moment ago can name a row that is
+   * still on the list. The host refuses to destroy it, and the reader has to be
+   * told THAT — not 「删除失败」, which reads as a broken button, and not silence,
+   * which reads as a success that destroyed somebody's live note.
+   */
+  const purgeOne = useCallback(async (row: ItemRecord) => {
+    const label = itemRefOf(row).text ?? '—'
+    if (props.clientId === undefined) {
+      const why = whyLabelOf('hostUnavailable')
+      setArchiveNote(t('item.archive.purgeRefused', { ref: label, why: why.words }), why.raw)
+      return
+    }
+    setArchiveNote(undefined)
+    setPurging(row.id)
+    const reply = await itemsPurge({ id: row.id }, props.clientId)
+    setPurging(undefined)
+    if (!reply.ok) {
+      const why = whyLabelOf(reply.why)
+      setArchiveNote(t('item.archive.purgeRefused', { ref: label, why: why.words }), why.raw)
+      return
+    }
+    // The name points at a live row, so this archive did NOT shrink — and the
+    // archive is re-read rather than patched, because the live row is not ours
+    // to explain here; the receipt is.
+    if (reply.notDeleted) {
+      setArchiveNote(t('item.archive.purgeLive', { ref: label }), 'notDeleted')
+      await openArchive()
+      return
+    }
+    if (reply.erased !== undefined) {
+      setArchive(current => (current?.kind === 'ready'
+        ? { kind: 'ready', rows: removeItemRecord(current.rows, row.id) }
+        : current))
+      setArchiveNote(t('item.archive.purged', { title: itemTitleOf(reply.erased) }), `erased ${row.id}`)
+      return
+    }
+    // Nothing held that name any more. The reader wanted it gone and it is gone,
+    // so this is a receipt and not a refusal — and the archive is re-read because
+    // the row may have been taken by another device rather than by this press.
+    setArchiveNote(t('item.archive.purgeGone', { ref: label }), 'nothingToErase')
+    await openArchive()
+  }, [openArchive, props.clientId])
+
+  /**
    * THE GROUPS, and the empty ones share one line.
    *
    * Measured on a 1600px board: three empty buckets cost 201px of the first
@@ -150,64 +227,6 @@ export function ListPage(props: ItemListPageProps) {
    * its filter, in the same place a reader would go looking for 「where did it
    * go」 — which is the bottom of the page.
    */
-  const emptyRuns: ItemSlice[][] = []
-  const groups = (runs: readonly ItemSlice[]) => {
-    const out: React.ReactNode[] = []
-    let empties: readonly ItemSlice[] = []
-    const flush = (): void => {
-      if (empties.length === 0) return
-      emptyRuns.push([...empties])
-      empties = []
-    }
-    for (const slice of runs) {
-      if (slice.items.length === 0) { empties = [...empties, slice]; continue }
-      flush()
-      out.push(group(slice))
-    }
-    flush()
-    return out
-  }
-
-  /** One bucket with rows in it, which is the shape that keeps a whole block. */
-  const group = (slice: ItemSlice) => {
-    const folded = prefs.collapsed.includes(slice.status)
-    return (
-      <section key={slice.status} className={css.itemGroup}>
-        <h2 className={css.itemGroupHead}>
-          <button
-            type="button"
-            className={css.itemGroupToggle}
-            aria-expanded={!folded}
-            aria-controls={`item-group-${slice.status}`}
-            onClick={() => choose({ collapsed: toggleCollapsed(prefs.collapsed, slice.status) })}
-          >
-            {/* The fold indicator is DRAWN; see `.itemGroupChevron`. It was the
-                text character `›`, which paired with the board's rotation copied
-                for a glyph pointing the other way made the two states read
-                backwards. */}
-            <span className={css.itemGroupChevron} aria-hidden="true" />
-            {t(GROUP_LABEL[slice.status])}
-            <span className={css.itemGroupCount}>{slice.items.length}</span>
-          </button>
-          {/* NO METER BESIDE THE COUNT, and the count is now the whole of the
-              group's arithmetic. A 2px accent bar is one of the few saturated
-              marks on this surface and the budget for them is small; four group
-              bars under four group heads spends four of them restating a number
-              the reader is already looking at, in the one place on the page they
-              are most likely to stop reading. A group that has steps says so on
-              its own rows, which is where a reader looks to find out. */}
-        </h2>
-        <div className={css.itemGroupList} id={`item-group-${slice.status}`}>
-          {/* An empty group keeps its HEAD — the reader's map, and a group that
-              vanishes the moment it empties reads as a broken filter rather than
-              an empty queue. It does NOT get a second sentence: the count `0` has
-              already said it, and saying it again in lighter ink turns one fact
-              into something that looks like data. */}
-          {folded ? null : <ul className={css.itemList}>{props.renderRows(slice.items, props.picking)}</ul>}
-        </div>
-      </section>
-    )
-  }
 
   /**
    * WHICH OF TWO FACTS IS TRUE, decided by the DOCUMENT rather than by whether a
@@ -269,11 +288,11 @@ export function ListPage(props: ItemListPageProps) {
       </p>
     )
     : (
-      <section className={css.itemGroup}>
-        <h2 className={css.itemGroupHead}>
+      <section className={css.itemArchiveSection}>
+        <h2 className={css.itemArchiveHead}>
           <button
             type="button"
-            className={css.itemGroupToggle}
+            className={css.itemArchiveToggle}
             onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}
           >
             {t('item.archive.title')}
@@ -284,26 +303,26 @@ export function ListPage(props: ItemListPageProps) {
                 implies. The whole reason this block is a page of its own is that
                 「读不到」 must never be drawn as 「空」; the number was undoing that in
                 the corner nobody looks at. */}
-            {archive.kind === 'ready' && <span className={css.itemGroupCount}>{archive.rows.length}</span>}
+            {archive.kind === 'ready' && <span className={css.itemArchiveCount}>{archive.rows.length}</span>}
           </button>
         </h2>
-        <div className={css.itemGroupList}>
+        <div className={css.itemArchiveList}>
           {/* The SENTENCE is what the reader reads; the raw code is the `title`, so
               the host's own vocabulary is one hover away for whoever has to
               diagnose it and invisible to everyone else. */}
-          {archiveNote !== undefined && <p className={css.itemState} role="status" title={archiveNote.raw}>{archiveNote.words}</p>}
-          {archive.kind === 'loading' && <p className={css.itemState} role="status">{t('item.loading')}</p>}
+          {archiveNote !== undefined && <p className={css.itemArchiveNote} role="status" title={archiveNote.raw}>{archiveNote.words}</p>}
+          {archive.kind === 'loading' && <p className={css.itemArchiveNote} role="status">{t('item.loading')}</p>}
           {/* NOT REACHABLE IS NOT EMPTY. Saying 「你没有删过任何一条」 when the host
               was simply never reached would tell the reader their deletions are
               gone when they may be sitting on the disk. */}
-          {archive.kind === 'unreadable' && <p className={css.itemState} role="status">{t('item.archive.unreadable')}</p>}
-          {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemState}>{t('item.archive.empty')}</p>}
+          {archive.kind === 'unreadable' && <p className={css.itemArchiveNote} role="status">{t('item.archive.unreadable')}</p>}
+          {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemArchiveNote}>{t('item.archive.empty')}</p>}
           {archive.kind === 'ready' && archive.rows.length > 0 && (
-            <ul className={css.itemList}>
+            <ul className={css.itemRecentList}>
               {archive.rows.map(row => (
                 <li key={row.id} className={css.itemRecentRow}>
-                  <span className={css.itemRef}>{itemRefOf(row).text ?? '—'}</span>
-                  <span className={css.itemTitle}><span className={css.itemTitleText}>{itemTitleOf(row)}</span></span>
+                  <span className={css.itemRefChip}>{itemRefOf(row).text ?? '—'}</span>
+                  <span className={css.itemRecentTitle}><span className={css.itemRecentTitleText}>{itemTitleOf(row)}</span></span>
                   <Button
                     variant="ghost"
                     size="sm"
@@ -311,6 +330,21 @@ export function ListPage(props: ItemListPageProps) {
                     onClick={() => { void restoreOne(row) }}
                   >
                     {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
+                  </Button>
+                  {/* 彻底删除 IS ON THE ARCHIVED ROW AND NOWHERE ELSE. It is the one
+                      press here with no undo at all, so it sits beside the row it
+                      destroys rather than at the bottom of the drawer: a reader who
+                      has to hunt for it is not being warned, they are being routed
+                      through a maze to the irreversible. And the thirty-day sentence
+                      is directly above it, which is the last thing that should be
+                      said before it. */}
+                  <Button
+                    variant="dangerGhost"
+                    size="sm"
+                    disabled={purging === row.id}
+                    onClick={() => { void purgeOne(row) }}
+                  >
+                    {t(purging === row.id ? 'item.archive.purging' : 'item.archive.purge')}
                   </Button>
                 </li>
               ))}
@@ -324,107 +358,23 @@ export function ListPage(props: ItemListPageProps) {
       </section>
     )
 
-  return (
+return (
     <>
-      {/* THE ANSWER COMES FIRST, then the machinery. A reader who has narrowed
-          the list should be able to read WHAT is on without opening the panel
-          that holds it — so the state bar is the first thing on the page and the
-          filter bar is the thing that explains itself when asked. */}
-      <ItemStateBar
-        query={query}
-        tags={items.map(item => item.tags)}
-        sort={prefs.sort}
-        onSort={next => choose({ sort: next })}
-        onClear={() => choose({ search: '' })}
-      />
+      {/* NO STATE BAR, NO TRIAGE STRIP, NO GROUP HEADS. Each of them was a
+          second place counting something the table already says: the state bar
+          named the filter the filter bar already carries, the triage strip was
+          three of the three tiles the page now wears above the table, and the
+          group heads were a heading per status over a column that already carries
+          the status on every row. One table, one status column, one set of numbers
+          — and a status appears as many times as there are rows in it, which is
+          what makes the filter's count and the table's rows the same fact by
+          construction. */}
       {props.batch}
-      {/* NO FILTER BAR IN THE LIST. The search box, the four facet faces and the
-          six orders all live in the command palette, and a second copy of each on
-          the page is a control the reader has to reconcile rather than one they
-          have to learn: the same four faces, the same six orders, drawn twice, and
-          nothing on screen saying they are the same thing.
-
-          The batch door went with it, and that is the one removal here that is not
-          purely de-duplication — so it went somewhere rather than nowhere. `X` on a
-          row still picks, and 「多选」 and 「全选」 are actions in the palette, which
-          is the same place every other thing you can ask for already is. A reader
-          with a mouse can still reach the batch; they reach it by asking, not by
-          spotting a control. */}
-      {triage.length === 0
-        ? <p className={css.itemTriageText}>{t('item.triage.nothing')}</p>
-        : (
-          /* ONE LINE, IN BOTH BANDS, and this is the same move as the empty-group
-             compression: 让位, not hiding.
-
-             It was four sentences, one per line, each with a 「去看」 button at its
-             right end — 155px standing between the reader and their first row. The
-             buttons were four identical controls pointing at four different
-             sentences that were themselves clickable, so they carried no
-             information a reader did not already have one press away.
-
-             What is left is every number, and each is still a filter: the same
-             `withFacetToken` writer the group head and the empty-group summary use,
-             so pressing 「1 卡住」 puts `has:blocked` into the one query the whole
-             surface reads. The counts are not decoration and they are not a
-             summary — they are the four filters, drawn as four words.
-
-             BOTH BANDS, and that is the deliberate part. A reader on a phone
-             folded this and a reader at a desk did not, which made the same four
-             facts two different shapes depending on how much room the reader had,
-             and 「the phone is offered what the desk is offered」 stops being true
-             the moment a control changes shape by band. */
-          <div className={css.itemTriage} aria-label={t('item.triage.title')}>
-            <h3 className={css.itemSectionTitle}>{t('item.triage.title')}</h3>
-            <p className={css.itemTriageText}>
-              <span>{t('item.triage.folded', { n: String(triage.reduce((sum, line) => sum + line.count, 0)) })}</span>
-              {triage.map(line => (
-                <span key={line.id}>
-                  {' · '}
-                  <button
-                    type="button"
-                    className={css.itemTriageAction}
-                    aria-pressed={isFacetOn(query, 'date', line.id)}
-                    onClick={() => choose({ search: withFacetToken(query.text, `has:${line.id}`, !isFacetOn(query, 'date', line.id)) })}
-                  >
-                    {t(TRIAGE_SHORT[line.id], { n: String(line.count) })}
-                  </button>
-                </span>
-              ))}
-            </p>
-          </div>
-        )}
-
-      {items.length === 0 || (props.filtering && slices.every(run => run.items.length === 0))
-        ? <p className={css.itemState}>{nothingToShow}</p>
-        : groups(slices)}
-
-      {/* THE ACCOUNTS OF THIS PAGE, last: which buckets are empty, and the way
-          back to what was deleted. Both are answers to a reader who is looking
-          for something and not finding it, which is why neither is above the
-          rows. */}
-      {emptyRuns.map(run => (
-        <div key={`empty-${run.map(slice => slice.status).join('-')}`} className={css.itemEmptyGroups} role="group">
-          {/* The separator is a SIBLING of the buttons, not a wrapper around them.
-              A wrapper would have needed a class of its own, and a class that
-              exists only to hold a middot is a class the stylesheet has to be told
-              about for the sake of one glyph. */}
-          {run.map((slice, at) => (
-            <span key={slice.status} style={{ display: 'contents' }}>
-              {at > 0 && <span className={css.itemEmptyGroupSep} aria-hidden="true">·</span>}
-              <button
-                type="button"
-                className={css.itemEmptyGroup}
-                data-status={slice.status}
-                aria-pressed={isFacetOn(query, 'status', slice.status)}
-                onClick={() => choose({ search: withFacetToken(query.text, `status:${slice.status}`, !isFacetOn(query, 'status', slice.status)) })}
-              >
-                {t(GROUP_LABEL[slice.status])}
-                <span className={css.itemEmptyGroupCount}>{slice.items.length}</span>
-              </button>
-            </span>
-          ))}
-        </div>
-      ))}
+      <ItemTable
+        rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking)}
+        empty={nothingToShow}
+        noMatch={items.length === 0 ? undefined : nothingToShow}
+      />
       {archiveLine}
     </>
   )

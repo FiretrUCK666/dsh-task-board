@@ -26,6 +26,7 @@ import { isInboxItem, itemMatches } from '../../../core/item-view.ts'
 import { t } from '../../locales.ts'
 import { useMemo } from 'react'
 import type { ItemPageProps } from './page-props.ts'
+import { ItemTable } from '../item-table.tsx'
 import css from '../item.module.css'
 
 export function InboxPage(props: ItemPageProps) {
@@ -42,11 +43,14 @@ export function InboxPage(props: ItemPageProps) {
   return (
     <>
       <p className={css.itemInboxNote}>{t('item.inbox.note')}</p>
-      <div className={css.itemInboxList}>
-        {rows.length === 0
-          ? <p className={css.itemState}>{nothingToShow}</p>
-          : <ul className={css.itemList}>{props.renderRows(rows, false)}</ul>}
-      </div>
+      {/* The same TABLE as the list page, with the pickbox column empty: the inbox
+          has no batch surface, so `picking` is `false` and a row must not offer a
+          tick that leads nowhere. */}
+      <ItemTable
+        rows={props.renderRows(rows, false)}
+        empty={nothingToShow}
+        noMatch={props.filtering ? nothingToShow : undefined}
+      />
     </>
   )
 }

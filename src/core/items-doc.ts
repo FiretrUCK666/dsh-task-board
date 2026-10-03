@@ -62,6 +62,16 @@
  * changed the document, and a counter allowed to roll back on a no-op would
  * re-mint a number that is in use.
  *
+ * ── THE THIRD PATH: A TOMBSTONE WITH NOTHING LEFT IN IT ─────────────────────
+ *
+ * A delete writes a tombstone, a restore reads one, and {@link purgeItemTombstone}
+ * empties one. The third path is here because the other two together are not a
+ * complete promise: a checklist is a page of things a person wrote down, and
+ * 「删除后仍可恢复」 with no end would keep their words on the medium for as long
+ * as the plugin is installed. Purging takes the text out and LEAVES THE STAMP —
+ * see that function for why the two halves are separable and why only one of them
+ * is the reader's business.
+ *
  * ── WHY THIS DOCUMENT HAS NO SECTIONS ───────────────────────────────────────
  *
  * The board carries three synced sections beside its rows; the checklist
@@ -436,6 +446,92 @@ export function restoredItemOf(doc: ItemsDoc, id: string, now: number): ItemReco
   const tomb = doc.tombstones[id]
   if (tomb?.row === undefined) return undefined
   return { ...(tomb.row as ItemRecord), updatedAt: Math.max(now, tomb.at + 1) }
+}
+
+/**
+ * What one purge decided, and the document as it stands after it.
+ *
+ * `doc` is THE SAME OBJECT when nothing moved — the identity law every write in
+ * this document keeps, because the host service reads identity to decide whether
+ * it must persist and announce anything, and a fresh-but-equal document would
+ * make a purge that erased nothing look like a write.
+ *
+ * THREE ANSWERS, AND ONLY ONE OF THEM IS A REFUSAL. `purged` is the write.
+ * `alreadyGone` is SUCCESS on purpose: the callers are a drawer that clicks
+ * whatever it is reading and a model retrying a batch, so the tombstone may
+ * already be empty by the time the request lands, and answering 「清不掉」 about
+ * something that is already clean is a failure report about a success — the
+ * hardest kind to chase, because everything the reader sees says it worked.
+ * `notDeleted` is the one refusal, and it exists because the id named a row that
+ * is STILL IN THE LIST: reporting 「已彻底删除」 about a row the reader can
+ * scroll up and see would be the worst answer this document could give.
+ */
+export type ItemPurge =
+  | { readonly kind: 'purged'; readonly doc: ItemsDoc; readonly erased: ItemRecord }
+  | { readonly kind: 'alreadyGone'; readonly doc: ItemsDoc }
+  | { readonly kind: 'notDeleted'; readonly doc: ItemsDoc }
+
+/**
+ * Take the TEXT out of one tombstone — the third path, where the first two are
+ * the delete that writes the tombstone and the restore that reads it.
+ *
+ * THE PAYLOAD GOES AND THE TOMBSTONE STAYS, and that is the whole design, so it
+ * is worth being explicit about which of the two halves the reader asked for.
+ * What 「彻底删除」 promises is that the row's own words are gone: nothing can
+ * restore it, the archive cannot show it, and the medium no longer holds them.
+ * What it must NOT promise is that the delete stops suppressing — the stamp in
+ * a tombstone is the only thing standing between a stale replica and a
+ * resurrection, and deleting the key would let a device that had been asleep for
+ * a week hand its copy back and put the row on screen again. So the entry
+ * survives as a bare stamp until the TTL prunes it, which is the same window
+ * every other delete already has. The two halves are separable facts, and only
+ * one of them is the reader's business.
+ *
+ * WHY IT IS NOT A COMMIT. The merge grammar's wire shape is rows plus deletions;
+ * a tombstone's payload is a field of the host's own tombstone map, and neither
+ * stream can carry 「stop keeping this text」. So this is a document operation on
+ * the host, exactly like the restore's re-stamp, and the caller is a service
+ * that persists and announces it rather than a replica that submits it.
+ *
+ * WHY THE REVISION MOVES ANYWAY. {@link sameItemsDocs} would call this
+ * unchanged, and it is RIGHT to: the kernel's predicate compares tombstones by
+ * their two stamps and never by `row`, because a payload is something the host
+ * may hold and a replica may not, and a predicate that read it would have two
+ * devices trading the same commit forever. That convergence rule is about
+ * replicas comparing DOCUMENTS, and this is not that: on the host the payload is
+ * a real fact about a reader's own words, and `revision` is the only thing that
+ * makes another device re-read this document at all. A purge that left the
+ * counter alone would persist the erasure and tell nobody — the archive entry
+ * would sit on every other screen until some unrelated write happened to move
+ * the number. So the counter moves here, by hand, with the blind spot named
+ * rather than worked around.
+ *
+ * NOTHING ELSE MOVES. `items` is never touched (a live row is a refusal, not a
+ * delete), no other tombstone is touched, and `nextRef` is left exactly where it
+ * was: a purged row's short number is never reissued, which is the whole reason
+ * that counter is document state rather than `max(ref) + 1`.
+ *
+ * @param doc - the authoritative checklist.
+ * @param id - the row whose text should go, by identity — the only key that
+ *   names every row, including one the document has not numbered yet.
+ * @returns what the purge decided, with the document it decided it on.
+ */
+export function purgeItemTombstone(doc: ItemsDoc, id: string): ItemPurge {
+  const tomb = doc.tombstones[id]
+  if (tomb === undefined) {
+    // A live row is a refusal and a vanished row is not, and the document can
+    // tell them apart: the id is either still in the list or is not in it.
+    return doc.items.some(item => item.id === id) ? { kind: 'notDeleted', doc } : { kind: 'alreadyGone', doc }
+  }
+  // Already empty: a retry, or a delete that predates this rule and kept no
+  // text. Nothing to erase, so nothing is written and nothing is announced.
+  if (tomb.row === undefined) return { kind: 'alreadyGone', doc }
+  const tombstones = { ...doc.tombstones, [id]: { at: tomb.at, seenAt: tomb.seenAt } }
+  return {
+    kind: 'purged',
+    erased: tomb.row as ItemRecord,
+    doc: { ...doc, revision: doc.revision + 1, tombstones },
+  }
 }
 
 /** Normalize an unknown persisted document: the medium's word is data, not

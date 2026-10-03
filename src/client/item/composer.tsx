@@ -14,6 +14,15 @@
  * shown as a chip as it is typed, and clicking one puts the characters back.
  * A parser that can be wrong without a way to undo it is worse than no parser.
  *
+ * THE CHIPS TEACH BY BEING WRITTEN, NOT BY AN EXPLANATION. This box used to end
+ * with three pressable symbols — `#` `!` `@` — that typed the grammar in for the
+ * reader. They were the only part of the surface a newcomer could press, and
+ * none of them meant anything until you already knew what they meant: a reader who
+ * tapped `#` and got a box full of `#` learns the glyph, not the sentence. What
+ * teaches a syntax is writing one, and this box shows what it understood while
+ * you write it — which is also the only evidence a first-time reader gets that
+ * the syntax exists at all.
+ *
  * It is a control, not a dialog, and it is never hidden: the entry point has to
  * be reachable in every state, including the empty list, or a first-time reader
  * has nothing to press.
@@ -21,7 +30,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerToken } from './compose-parse.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
@@ -37,18 +46,23 @@ const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], 'item.token.tag' | 'it
 }
 
 /**
- * THE THREE EXAMPLES, and each is text the parser really reads.
+ * THE SHAPE ON EACH RECOGNISED PIECE, and it is NOT a cross.
  *
- * One per kind of structure the box understands, because a reader who has
- * learned one has learned where to look for the others. An example that the
- * parser would not accept would be the worst kind of tutorial: it would look
- * right, fail silently on save, and leave the reader thinking the box dropped it.
+ * Pressing this puts the characters BACK into the box — it is a parser undoing
+ * itself, not a chip being thrown away. A cross says 「this is gone」, and the
+ * reader who pressed it (and said so: 「点那个叉，它会往输入框里面继续输入，没有
+ * 把它叉掉」) watched the word COME BACK. Worse, the cross was borrowed: the
+ * qualifier chip beside the search box really does delete, so the same glyph sat
+ * in two places on one screen meaning two opposite things, an inch apart, and
+ * the only way to tell them was to press them.
+ *
+ * **SO ONE SHAPE, ONE MEANING, ON THIS SURFACE: `×` REMOVES A CONDITION FROM THE
+ * QUERY, AND NOTHING ELSE.** Any control that puts text back borrows a shape that
+ * means 「put back」 — an arrow curving the way the text goes — or a word. Never
+ * the cross. The rule is worth more than either chip, because it is what stops
+ * the next cross from appearing next to something that is not a deletion.
  */
-const COMPOSER_EXAMPLES: readonly { readonly token: string; readonly text: string; readonly what: TaskBoardKey }[] = [
-  { token: '#', text: '#画廊', what: 'item.token.tag' },
-  { token: '!', text: '!1', what: 'item.token.priority' },
-  { token: '@', text: '@今天', what: 'item.token.due' },
-]
+const RESTORE_MARK = '↩'
 
 export interface ItemComposerProps {
   /** The writing clock, so a parse resolves `@today` against a fixed now. */
@@ -130,73 +144,49 @@ export function ItemComposer({ now, onSave, focusRequest }: ItemComposerProps) {
   }, [])
 
   return (
-    <div className={css.itemComposer}>
-      <div className={css.itemComposerChips}>
-        <input
-          ref={input}
-          className={css.itemInput}
-          value={text}
-          placeholder={t('item.compose.title')}
-          aria-label={t('item.compose.title')}
-          onChange={event => setText(event.target.value)}
-          onKeyDown={event => {
-            // An IME composition owns Enter while it is running: saving there
-            // would file half a word and swallow the keystroke that chose it.
-            if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
-            event.preventDefault()
-            save()
-          }}
-        />
-        {parsed.tokens.map(token => (
-          <button
-            key={`${token.start}-${token.kind}`}
-            type="button"
-            className={`${css.itemChip} ${boardCss.chipFill}`}
-            title={t('item.token.undo')}
-            aria-label={`${t(TOKEN_LABEL[token.kind])} — ${t('item.token.undo')}`}
-            onClick={() => unparse(token)}
-          >
-            <span className={boardCss.chipBody}>{t(TOKEN_LABEL[token.kind])}</span>
-            <span className={css.itemChipReset} aria-hidden="true">×</span>
-          </button>
-        ))}
-        {/* The button is not a convenience, it is the ONLY way to save on a
-            phone: Enter in a single-line field is a newline there, and a
-            capture surface whose save gesture does not exist under the thumb is
-            a capture surface that loses thoughts. It sits on the base band
-            beside the input and takes its own line when the row runs out. */}
-        <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
-          {t('item.compose.add')}
-        </Button>
-      </div>
-      {/* SHOW, DON'T EXPLAIN. This line used to be a sentence describing the
-          syntax — forty pixels of 11px grey standing between the reader and their
-          first task, describing three examples instead of letting them try one.
-          Three pressable tokens cost a line, and a token the reader presses is
-          the only example that answers 「what does this actually do」.
-
-          THEY PUT THE REAL TEXT IN, and not a placeholder: a reader who presses
-          `#` wants to see what a tag looks like in their own box, and grey
-          placeholder text that vanishes on the next keystroke teaches a syntax
-          without ever letting them keep it. The text is what the parser really
-          reads, because an example that does not parse is a lie about the
-          surface's own grammar. */}
-      <div className={css.itemComposerExamples} role="group" aria-label={t('item.compose.hint')}>
-        {COMPOSER_EXAMPLES.map(example => (
-          <button
-            key={example.token}
-            type="button"
-            className={css.itemFacetChip}
-            aria-label={`${example.token} — ${t(example.what)}`}
-            onClick={() => {
-              setText(current => current.trim() === '' ? example.text : `${current} ${example.text}`)
-              input.current?.focus()
-            }}
-          >
-            {example.token}
-          </button>
-        ))}
-      </div>
+    /* NO WRAPPER, and the reason is that a box which lays nothing out does not
+     * need a name. The composer used to sit in a `div` of its own, and the only
+     * thing that div did was exist — the chips row below it is the layout, and
+     * the parent's grid is what puts the box under the filter bar. A class on the
+     * outer box was a promise of styling that never arrived, and a promise nobody
+     * keeps is a rule nobody dares delete. */
+    <div className={css.itemComposerChips}>
+      <input
+        ref={input}
+        className={css.itemInput}
+        value={text}
+        placeholder={t('item.compose.title')}
+        aria-label={t('item.compose.title')}
+        onChange={event => setText(event.target.value)}
+        onKeyDown={event => {
+          // An IME composition owns Enter while it is running: saving there
+          // would file half a word and swallow the keystroke that chose it.
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+          event.preventDefault()
+          save()
+        }}
+      />
+      {parsed.tokens.map(token => (
+        <button
+          key={`${token.start}-${token.kind}`}
+          type="button"
+          className={`${css.itemPill} ${boardCss.chipFill}`}
+          title={t('item.token.undo')}
+          aria-label={`${t(TOKEN_LABEL[token.kind])} — ${t('item.token.undo')}`}
+          onClick={() => unparse(token)}
+        >
+          <span className={boardCss.chipBody}>{t(TOKEN_LABEL[token.kind])}</span>
+          <span aria-hidden="true">{RESTORE_MARK}</span>
+        </button>
+      ))}
+      {/* The button is not a convenience, it is the ONLY way to save on a
+          phone: Enter in a single-line field is a newline there, and a
+          capture surface whose save gesture does not exist under the thumb is
+          a capture surface that loses thoughts. It sits on the base band
+          beside the input and takes its own line when the row runs out. */}
+      <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
+        {t('item.compose.add')}
+      </Button>
     </div>
   )
 }

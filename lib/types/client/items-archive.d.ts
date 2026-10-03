@@ -76,3 +76,42 @@ export type RestoreAddress = {
  * @returns what happened.
  */
 export declare function itemsRestore(address: RestoreAddress, clientId: string, fetchImpl?: typeof fetch): Promise<RestoreReply>;
+/**
+ * 「彻底删除」 THREE ANSWERS, and none of them is a boolean.
+ *
+ * `erased` is the row that was actually destroyed, and its TITLE is what the
+ * receipt quotes — the reader pressed a button next to a name, so the receipt
+ * names the thing they pressed it on rather than saying 「done」 about a list.
+ *
+ * `notDeleted` is the case that looks most like a bug and is not: the short
+ * number the reader clicked now names a row that is still ON THE LIST. A number
+ * is reused the moment a row is erased, so `#12` a moment later can be somebody
+ * else's note. The host refuses rather than destroys the wrong row, and the
+ * panel's whole job is to say THAT instead of either erasing it or reporting a
+ * failure the reader cannot act on.
+ *
+ * NEITHER is the honest third answer: the host heard the question, the name held
+ * nothing to erase, and the archive no longer has that row. That is not an error
+ * — the reader wanted it gone and it is gone — so it gets a receipt, not a
+ * refusal.
+ */
+export type PurgeReply = {
+    readonly ok: true;
+    readonly erased: ItemRecord | undefined;
+    readonly notDeleted: boolean;
+} | {
+    readonly ok: false;
+    readonly why: string;
+};
+/**
+ * Destroy one archived row for good, tombstone included.
+ *
+ * The one action on this surface with no way back, which is why it lives in the
+ * archive rather than in the row menu: a reader who has to walk to the account of
+ * their deletions has at least read the thirty-day sentence on the way.
+ * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
+ * @param clientId - this device's id, which every write on this prefix carries.
+ * @param fetchImpl - injected for tests.
+ * @returns what the host did, in the three shapes above.
+ */
+export declare function itemsPurge(address: RestoreAddress, clientId: string, fetchImpl?: typeof fetch): Promise<PurgeReply>;

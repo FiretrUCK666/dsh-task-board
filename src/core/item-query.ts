@@ -34,8 +34,15 @@ import { datePostureOf } from './item-dates.ts'
 import { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts'
 import { derivedStatusOf, isInboxItem, isLiveItem } from './item-membership.ts'
 
-/** Qualifier keys the grammar recognises, mapped onto STABLE field values. */
-const PRIORITY_BY_TOKEN: Readonly<Record<string, ItemPriority>> = {
+/** Qualifier keys the grammar recognises, mapped onto STABLE field values.
+ *
+ *  **Exported so the model can be taught this table instead of a copy of it.**
+ *  It used to be private, which is why `taskboard_query`'s filter help could only
+ *  report the BOARD's keys: the item vocabulary had no reader outside this file,
+ *  so anything that wanted to describe it had to retype it — and a retyped list is
+ *  a list that goes stale silently.
+ */
+export const PRIORITY_BY_TOKEN: Readonly<Record<string, ItemPriority>> = {
   p1: 'urgent', p2: 'high', p3: 'normal', p4: 'low',
 }
 
@@ -74,6 +81,35 @@ export type ItemFlag =
 
 /** The qualifier keys the grammar accepts, as the STABLE values behind them. */
 export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'gated', 'blocked', 'linked', 'done']
+
+/**
+ * **EVERY token this grammar reads as a qualifier, derived from the tables above.**
+ *
+ * This exists because the model was being taught a vocabulary that was half of
+ * this one. `taskboard_query`'s filter help reported the BOARD's keys only, and
+ * the same string is parsed by `matchItemQuery` for the item list — so `has:auto`
+ * and `is:unread` (both board keys, both taught) fell through as **free words and
+ * matched nothing**, while `status:`, `p1`–`p4`, `!1`–`!4`, `has:` and `#标签` —
+ * everything the list actually speaks — were never mentioned at all.
+ *
+ * A vocabulary that is only half-taught is worse than none: the model uses the
+ * half it knows, gets silence, and has no way to tell 「no match」 from
+ * 「I used it wrong」.
+ *
+ * **DERIVED, NEVER TYPED.** Every entry comes from `ITEM_FLAGS`, `PRIORITY_BY_TOKEN`
+ * or `ITEM_STATUSES` — the same tables the parser reads — so adding a flag is one
+ * edit here and one edit there, and they cannot disagree because there is only
+ * one of each.
+ */
+export function itemQualifierVocabulary(): readonly string[] {
+  return [
+    ...ITEM_STATUSES.map(status => `status:${status}`),
+    ...Object.keys(PRIORITY_BY_TOKEN).sort().map(token => token),
+    '!1', '!2', '!3', '!4',
+    ...ITEM_FLAGS.map(flag => `has:${flag}`),
+    '#标签',
+  ]
+}
 
 /**
  * Lowercased token to flag, so the grammar is case-insensitive WITHOUT

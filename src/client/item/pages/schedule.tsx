@@ -25,6 +25,7 @@ import { t, isEnglish } from '../../locales.ts'
 import { formatItemDate } from '../model.ts'
 import { BUCKET_LABEL } from '../labels.ts'
 import type { ItemPageProps } from './page-props.ts'
+import { ItemTable } from '../item-table.tsx'
 import css from '../item.module.css'
 
 export function SchedulePage(props: ItemPageProps) {
@@ -45,11 +46,11 @@ export function SchedulePage(props: ItemPageProps) {
             <section key={bucket.id} className={css.itemGatedFold}>
               <h2 className={css.itemGatedFoldHead}>
                 {t(BUCKET_LABEL.gated)}
-                <span className={css.itemGroupCount}>{bucket.items.length}</span>
+                <span className={css.itemSectionCount}>{bucket.items.length}</span>
               </h2>
               <p className={css.itemHint}>{t('item.gated.hint')}</p>
               <div className={css.itemGatedFoldList}>
-                <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
+                <ItemTable rows={props.renderRows(bucket.items, false)} empty='' />
               </div>
             </section>
           )
@@ -59,31 +60,39 @@ export function SchedulePage(props: ItemPageProps) {
             <section key={bucket.id} className={css.itemNoDateTray}>
               <h2 className={css.itemNoDateTrayLabel}>
                 {t(BUCKET_LABEL.undated)}
-                <span className={css.itemGroupCount}>{bucket.items.length}</span>
+                <span className={css.itemSectionCount}>{bucket.items.length}</span>
               </h2>
               {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
               {bucket.items.length > 0 && (
                 <div className={css.itemAgendaList}>
-                  <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
+                  <ItemTable rows={props.renderRows(bucket.items, false)} empty='' />
                 </div>
               )}
             </section>
           )
         }
+        /* 一节两行：名字与它的条数，然后是这一天的日期。
+         *
+         * 曾经是一个 `<h2>` 里套一个只装「名字 + 数字」的 `<span>`——那个盒子
+         * 什么都不排版（`.itemGroupToggle` 在这一轮的样式表里已经不存在了），
+         * 而它套着的目的是把两个词并排放进一个能排的盒子里。现在 `<h2>` 自己
+         * 就是那一行，内层盒子去掉，剩下的那一行有了一个自己的名字。
+         *
+         * 日期是**另一行**，因为它是这一节读出来的那句话（`.itemAgendaDayLabel`
+         * 自带那条分隔线与行距），把它塞进 `<h2>` 里会让一条线挂在两样东西
+         * 中间，而它标的是「这一节的行从这里开始」。 */
         return (
           <section key={bucket.id as ScheduleBucketId} className={css.itemAgendaDay}>
-            <h2 className={css.itemGroupHead}>
-              <span className={css.itemGroupToggle}>
-                {t(BUCKET_LABEL[bucket.id])}
-                <span className={css.itemGroupCount}>{bucket.items.length}</span>
-              </span>
-              {bucket.day !== undefined && (
-                <span className={css.itemAgendaDayLabel}>{formatItemDate(bucket.day, english)}</span>
-              )}
+            <h2 className={css.itemAgendaDayHead}>
+              {t(BUCKET_LABEL[bucket.id])}
+              <span className={css.itemSectionCount}>{bucket.items.length}</span>
             </h2>
+            {bucket.day !== undefined && (
+              <p className={css.itemAgendaDayLabel}>{formatItemDate(bucket.day, english)}</p>
+            )}
             {bucket.items.length > 0 && (
               <div className={css.itemAgendaList}>
-                <ul className={css.itemList}>{props.renderRows(bucket.items, false)}</ul>
+                <ItemTable rows={props.renderRows(bucket.items, false)} empty='' />
               </div>
             )}
           </section>

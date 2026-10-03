@@ -1065,6 +1065,21 @@ export declare const ACTIONS: {
             };
         };
     };
+    readonly 'item.purge': {
+        readonly verb: "delete";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "irreversible";
+        readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "purgeItemTombstone";
+        readonly summary: "把一条已删除的清单条目彻底清掉：连墓碑里留着的正文一起扔掉，撤不回来。只想让它从清单里消失就用删除（那个还能找回）。对着还没删过的条目用这一条会被拒。";
+        readonly params: {
+            readonly of: {
+                readonly about: "要清掉的条目编号：填那个数字本身（12），不要带 # 号";
+            };
+        };
+    };
     readonly 'item.navigate': {
         readonly verb: "navigate";
         readonly domain: "item";
@@ -1149,6 +1164,7 @@ export declare const ITEM_HANDLERS: {
     readonly 'item.step': typeof itemTransitions.applyItemStep;
     readonly 'item.promote': typeof itemTransitions.planItemPromotion;
     readonly 'item.restore': typeof itemsDocument.restoredItemOf;
+    readonly 'item.purge': typeof itemsDocument.purgeItemTombstone;
 };
 /**
  * {@link ITEM_HANDLERS} by NAME, read off the table itself rather than written

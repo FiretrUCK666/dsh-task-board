@@ -1,10 +1,10 @@
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts';
-import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
+import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
-import type { RestoreAddress } from './board-route.ts';
+import type { ItemAddress } from './board-route.ts';
 import { type RetireOptions, type RetireOutcome } from './data-root.ts';
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts';
-export type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
+export type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 /** Structural face of the storage hub's opened KV unit (no SDK import).
  *
  *  The real unit is `table + key` plus a DECLARED global slot, not a key-value
@@ -241,7 +241,48 @@ export declare class DocumentService {
      * @param clientId - who asked, for the broadcast and the activity note.
      * @returns the restored row, or `undefined` when no tombstone holds that row.
      */
-    restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined>;
+    restoreItem(of: ItemAddress, clientId: string): Promise<ItemRecord | undefined>;
+    /**
+     * Take the text out of one deleted row, by identity or by short number.
+     *
+     * WHY THIS IS A SERVICE OPERATION AND NOT A CLIENT COMMIT, and it is the
+     * mirror image of the restore's reason. A commit carries rows and deletions;
+     * a tombstone's payload is a field of THIS host's own tombstone map, and
+     * neither stream has a move that says 「stop keeping this text」 — a replica
+     * cannot even SEE a tombstone, let alone edit one. So the merge path cannot
+     * express a purge at all, and the only writer that can is the host.
+     *
+     * THE SAME LANE, THE SAME DURABILITY ORDER, THE SAME NO-OP RULE as
+     * {@link commitItems}: a purge that erases nothing writes nothing and
+     * announces nothing, and one that erases something is on the medium before the
+     * caller is told it is. A purge reported as done over a full disk would leave
+     * the reader's own words sitting on the disk and a receipt saying they are
+     * gone — the one loss on this surface that is both silent and permanent.
+     *
+     * IDEMPOTENT, and the answer says which of the two happened. A drawer that
+     * clicks what it is reading and a model retrying a batch both arrive after
+     * the tombstone may already be empty, and 「清不掉」 about something already
+     * clean is a failure report about a success. The identity of the returned
+     * document is what distinguishes the two: the same object means nothing
+     * moved.
+     *
+     * @param of - which row, named by identity or by short number.
+     * @param clientId - who asked, for the broadcast and the activity note.
+     * @returns what the purge decided, and the document it decided it on.
+     */
+    purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>;
+    /**
+     * The checklist's write lane's two steps, in the only order that is honest:
+     * the medium takes it, then anything observable moves.
+     *
+     * Shared by {@link commitItems} and {@link purgeItem} because they have ONE
+     * rule between them and the rule is not per-method: a write that is not on
+     * the medium is not a write, and both of them must refuse rather than lose
+     * it. A second copy of 「put, then assign, then broadcast」 is a second place
+     * for the order to be wrong, and this order is the whole defect that once made
+     * a full disk look like a saved note.
+     */
+    private putItemsDoc;
     /**
      * Acquire or renew the engine lease. Liveness is the leaseState view (an
      * open SSE stream or any board API call keeps the holder alive); a free or

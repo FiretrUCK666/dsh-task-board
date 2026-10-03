@@ -15,7 +15,7 @@ import { describe, expect, it } from 'vitest'
 import { emptyBoardDoc, type BoardCommit, type BoardDoc } from '../src/core/board-doc.ts'
 import { createTask } from '../src/core/tasks.ts'
 import { applyCommit } from '../src/core/board-doc.ts'
-import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, restoredItemOf, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, purgeItemTombstone, restoredItemOf, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 import { createBoardHandler, parseBoardCommit, parseItemsCommit, type BoardRouteDeps } from '../src/host/board-route.ts'
 import type { BoardCommand, BoardEvent, LeaseState } from '../src/host/board-service.ts'
@@ -144,6 +144,18 @@ function fakeDeps() {
       if (restored === undefined) return undefined
       items = applyItemsCommit(items, { clientId, items: [restored], changed: [restored.id], deleted: [] }, T0 + 1)
       return restored
+    },
+    // The purge half, again the REAL document function: this double stands in
+    // for the SERVICE, and the thing worth checking is the grammar's answer, so
+    // only the storage and the broadcast are allowed to be fake.
+    purgeItem: async (of, _clientId) => {
+      const id = of.kind === 'id'
+        ? of.id
+        : deletedItemsOf(items).find(row => row.ref === of.ref)?.id
+      if (id === undefined) return { kind: 'alreadyGone', doc: items }
+      const outcome = purgeItemTombstone(items, id)
+      if (outcome.doc !== items) items = outcome.doc
+      return outcome
     },
     acquireLease: clientId => {
       lease = leaseOf(true, clientId)
@@ -648,6 +660,106 @@ describe('POST /board/items/restore', () => {
     // here, on the document the real path produced, where the fact lives.
     const { h } = await withAnUnnumberedDeletedRow()
     expect(Object.keys(h.deps.itemsDoc().tombstones), 'the grave is not filed under the row identity').toEqual(['i-fresh'])
+  })
+})
+
+describe('POST /board/items/purge', () => {
+  /** A document holding one deleted row behind its tombstone, beside a live one. */
+  async function withADeletedRow() {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const original = row({ id: 'i-a', ref: 4, title: '清掉我吧' })
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [original, row({ id: 'i-live', ref: 5, title: '还在' })], deleted: [] }), fakeRes())
+    await handler(fakeReq('POST', `${BASE}/items`, { clientId: 'c', items: [], deleted: [{ id: 'i-a', baseUpdatedAt: original.updatedAt }] }), fakeRes())
+    return { h, handler }
+  }
+
+  function valueOf(res: ReturnType<typeof fakeRes>): {
+    available?: boolean
+    revision?: number
+    erased?: { title?: string }
+    notDeleted?: true
+  } {
+    return (JSON.parse(res.state.body) as { value?: Record<string, never> }).value ?? {}
+  }
+
+  it('takes the text out, and says which row it destroyed', async () => {
+    const { h, handler } = await withADeletedRow()
+    const before = h.deps.itemsDoc().revision
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', id: 'i-a' }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).available).toBe(true)
+    expect(valueOf(res).erased?.title).toBe('清掉我吧')
+    // The document, not the answer: the archive is a read over tombstones, so
+    // this is where 「这一行该消失」 becomes true, and the revision has to move or
+    // no other device would ever come and look.
+    expect(deletedItemsOf(h.deps.itemsDoc())).toEqual([])
+    expect(valueOf(res).revision).toBe(before + 1)
+  })
+
+  it('takes the row the drawer clicked, by the number it reads out loud', async () => {
+    // The same two names the restore has, and the same rule: whoever holds an id
+    // sends the id, and a body carrying both is refused rather than resolved by
+    // preference.
+    const { h, handler } = await withADeletedRow()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', ref: '#4' }), fakeRes())
+    expect(deletedItemsOf(h.deps.itemsDoc())).toEqual([])
+  })
+
+  it('a second purge of the same row SUCCEEDS, because there is nothing left to erase', async () => {
+    // The drawer clicks what it is reading, and a retry or a second device can
+    // both land after the tombstone is already empty. Answering 「清不掉」 there
+    // would be a failure report about work that is finished — and the panel's
+    // only honest move with that answer is to keep showing a row that is gone.
+    const { h, handler } = await withADeletedRow()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', id: 'i-a' }), fakeRes())
+    const after = h.deps.itemsDoc().revision
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', id: 'i-a' }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).available).toBe(true)
+    expect(valueOf(res).erased, 'a second purge reports nothing erased — and nothing refused').toBeUndefined()
+    expect(valueOf(res).notDeleted).toBeUndefined()
+    // No write, no revision: the caller gets an answer and the medium is untouched.
+    expect(h.deps.itemsDoc().revision).toBe(after)
+  })
+
+  it('refuses a row that is still in the list, rather than reporting a success', async () => {
+    const { h, handler } = await withADeletedRow()
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', id: 'i-live' }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).notDeleted).toBe(true)
+    expect(valueOf(res).erased).toBeUndefined()
+    // Nothing moved, and the live row is still exactly where it was.
+    expect(h.deps.itemsDoc().items.map(item => item.id)).toEqual(['i-live'])
+  })
+
+  it('keeps the guards every POST on this prefix shares', async () => {
+    const { h, handler } = await withADeletedRow()
+    // CSRF: the same content-type rule as every other tail, not this tail's own.
+    const text = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, 'not json', 'text/plain'), text)
+    expect(text.state.status).toBe(415)
+    // Addressing: exactly one name, a caller id, and a positive whole number.
+    for (const body of [{ id: 'i-a', ref: 4 }, { clientId: 'c' }, { clientId: 'c', ref: 0 }, { clientId: 'c', ref: 'four' }]) {
+      const res = fakeRes()
+      await handler(fakeReq('POST', `${BASE}/items/purge`, body), res)
+      expect(res.state.status, JSON.stringify(body)).toBe(200)
+      expect(JSON.parse(res.state.body).ok, JSON.stringify(body)).toBe(false)
+    }
+    expect(deletedItemsOf(h.deps.itemsDoc()).map(item => item.id)).toEqual(['i-a'])
+  })
+
+  it('a host serving no documents says so, instead of reporting a purge that never ran', async () => {
+    const { h, handler } = await withADeletedRow()
+    h.setAvailable(false)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/items/purge`, { clientId: 'c', id: 'i-a' }), res)
+    expect(res.state.status).toBe(200)
+    expect(valueOf(res).available).toBe(false)
+    expect(valueOf(res).erased).toBeUndefined()
   })
 })
 

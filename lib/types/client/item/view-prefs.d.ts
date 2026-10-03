@@ -42,13 +42,81 @@ export interface ItemViewPrefs {
     readonly page: ItemPageId;
     /** The one ordering, shared by every page. */
     readonly sort: ItemSort;
-    /** Whether the finished group is open. Off by default: it is history. */
-    readonly showDone: boolean;
+    /**
+     * NO `showDone` FIELD, and the reason is the general rule rather than a
+     * preference for tidiness: **one intent, one control.**
+     *
+     * 「这一页不要已完成的行」 is already carried by the GROUP'S OWN FOLD — it has a
+     * visible control, a drawn arrow, and per-group memory in `collapsed`, and a
+     * reader never has to know it exists in order to use it. `showDone` was the same
+     * sentence said a second time at page level, written by a control that lived on
+     * a strip the reader only saw when the strip was there.
+     *
+     * The strip is retired, so what `showDone` left behind is not a capability but
+     * a switch nobody can reach: a device that stored `showDone: false` could never
+     * turn it back on, because the only thing that wrote it no longer exists.
+     * **A preference whose control is gone is not a setting; it is a trap with the
+     * handle filed off.** Note that it is not redundant for every reader — the flag
+     * set has no 「not done」, so before this change only `showDone` could express
+     * the intent. That is the argument FOR keeping a control, not an argument for
+     * keeping a second one: the fold already expresses it, better.
+     *
+     * The upgrade path is the one the row-height switch took, and the rule is the
+     * general one: **a field is removed by not reading it**, so a record written by
+     * any build at all parses to the same shape.
+     */
     /** Which groups the reader had folded away. */
     readonly collapsed: readonly ItemStatusView[];
     /** The unformatted search text, for the session. Never persisted. */
     readonly search: string;
+    /**
+     * A TEMPORARY layer over this panel, for the length of one look at it.
+     *
+     * It is a field here rather than a prop on the panel because `ItemViewPrefs` is
+     * ALREADY the one place that says 「which view is on screen」 — `page` is on it,
+     * and the render bench has always chosen a page by writing exactly this record.
+     * A prop that existed only to draw a screenshot would be a SECOND way to say
+     * 「the palette is open」, and the two would drift the first time somebody added
+     * the real control; the one that drifts is the one nobody looks at.
+     *
+     * WHY IT IS NEVER WRITTEN, which is the whole of its effect on product state.
+     * `writeViewPrefs` does not emit this key, so a real device cannot leave one
+     * behind — and a reader who quit with the palette open finds a clean panel next
+     * time, because there was never anything to restore. The rule is **never
+     * WRITTEN**, not never READ: the bench has to be able to write the key, and the
+     * only thing that makes a leftover impossible is that nothing produces one.
+     *
+     * `search` is the same shape and the same reason, one field above: a value that
+     * is part of the view and not part of the memory.
+     */
+    readonly overlay?: ItemOverlay;
 }
+/**
+ * EVERY STATE THE SURFACE CAN **BE ASKED** TO OPEN, in one list.
+ *
+ * WHY IT IS A CONSTANT AND NOT A STRING IN THE FIELD ABOVE. The value is read by
+ * the panel when it mounts and by the render bench before it renders — and a bench
+ * that keeps its own list of what can be opened is a second truth about the same
+ * question, so a state added here and forgotten there is a state nobody can
+ * photograph and nobody notices is missing. One declaration, imported by both.
+ *
+ * AND A CONSTANT IS ALSO A PROMISE, which is the half that bites. This list used
+ * to name five states and the panel could open TWO of them: `palette` and
+ * `create`. The key sheet is a `useState` inside the palette that opens it, the
+ * archive is a section at the foot of the list page, and the batch bar is a
+ * function of the holding rather than a state at all. A bench asked for
+ * `DSH_PANEL_OPEN=keys` therefore photographed an ordinary panel and called it the
+ * key sheet — a capture that cannot be evidence is worse than no capture, because
+ * the next reader believes it.
+ *
+ * The three that are not here are not missing: each is a LAYER OF SOMETHING ELSE,
+ * reached through it, and a state that can only be reached through another state
+ * is not a state the surface can be put into. What belongs in this list is what a
+ * reader — or a bench — can name directly and have the panel honour it.
+ */
+export declare const ITEM_OVERLAYS: readonly ["palette", "create"];
+/** One of the openable states. */
+export type ItemOverlay = typeof ITEM_OVERLAYS[number];
 /**
  * The state a first-time reader meets.
  *

@@ -42,6 +42,7 @@ import {
   parseItemQuery,
   recentItemsOf,
   startOfDay,
+  triageLinesOf,
   type ItemPageId,
   type ItemRowView,
 } from '../../core/item-view.ts'
@@ -54,14 +55,18 @@ import { itemTitleOf } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
 import { itemsRestore } from '../items-archive.ts'
-import { Button, Icon } from '../board/ui.tsx'
+import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemComposer } from './composer.tsx'
 import { ItemDetail } from './detail-pane.tsx'
-import { ItemRowLine } from './row-line.tsx'
+import { ItemStats } from './item-stats.tsx'
+import { ItemFilters } from './item-filters.tsx'
+import { ItemCreateDialog } from './item-create-dialog.tsx'
+import { ITEM_FACETS, freeTextOf, tagFacetValuesOf, withFacetToken } from './facets.ts'
 import {
   NO_SELECTION,
   allPicked,
+  pickThrough,
   reconcile,
   selectionActive,
   selectedCount,
@@ -77,12 +82,11 @@ import { ListPage } from './pages/list.tsx'
 import { SchedulePage } from './pages/schedule.tsx'
 import { newItemId } from './model.ts'
 import { useItemKeys } from './use-item-keys.ts'
-import { ItemCommandPalette, type PaletteAction } from './command-palette.tsx'
+import { ItemCommandPalette, type PaletteAction, type PaletteCommands } from './command-palette.tsx'
 import type { ItemKeyActions } from './keyboard.ts'
-import { DEFAULT_VIEW_PREFS, readViewPrefs, writeViewPrefs, type ItemViewPrefs } from './view-prefs.ts'
+import { DEFAULT_VIEW_PREFS, readViewPrefs, writeViewPrefs, type ItemOverlay, type ItemViewPrefs } from './view-prefs.ts'
 import type { ItemListFace } from './register.tsx'
 import css from './item.module.css'
-import boardCss from '../board.module.css'
 
 /** The three page names, as closed keys so no name is ever built by template. */
 const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.inbox' | 'item.page.list' | 'item.page.schedule'>> = {
@@ -177,6 +181,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
    */
   const [selection, setSelection] = useState<ItemSelection>(NO_SELECTION)
   /**
+   * THE ROW A RANGE STARTS FROM, and it is a ref because nothing renders it.
+   *
+   * A ref rather than state for the ordinary reason a caret position is a ref: it
+   * is bookkeeping about what the reader did, and putting it in state would
+   * re-render the whole list on every tick of a checkbox. It is NOT forgotten when
+   * the holding is cleared, because 「从刚才那一条一直选到这里」 is a question
+   * about the last press and not about how much is held right now.
+   */
+  const pickAnchor = useRef<string | undefined>(undefined)
+  /**
    * WHERE THE KEYBOARD CURSOR IS, which is its own state and not the detail
    * selection.
    *
@@ -197,9 +211,48 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * open by a prop. `view-prefs.ts` has why the key is never written; this is the
    * other end of it.
    */
-  const [paletteOpen, setPaletteOpen] = useState(() => prefs.overlay === 'palette')
+  /**
+   * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
+   * record so a render can begin with one of them already open.
+   *
+   * `prefs.overlay` is read ONCE, as an initialiser: a record is a snapshot of a
+   * panel that genuinely opened, and nothing after that is a reader's presses.
+   * One reader for all of them rather than one `useState` per layer — a state per
+   * layer is a state per layer that the bench has to be taught about.
+   */
+  const [overlay, setOverlay] = useState<ItemOverlay | undefined>(prefs.overlay)
+  const openLayer = (next: ItemOverlay | undefined): void => setOverlay(current => (current === next ? undefined : next))
+  const paletteOpen = overlay === 'palette'
+  /**
+   * What the command box can be asked to do, and where the focus goes back to.
+   *
+   * Two refs, two directions, and no state: the box PUBLISHES its four commands
+   * here (they are derived from its own text, so they are not this panel's to
+   * compute), and this panel OWNS the trigger that opened it — so when the box
+   * reports that it closed, the focus goes back to the control the reader
+   * actually pressed. A modal surface that takes the caret and never gives it
+   * back leaves the panel with no focus at all, and the next key answers to
+   * nothing.
+   */
+  const paletteCommands = useRef<PaletteCommands | undefined>(undefined)
+  const paletteTrigger = useRef<HTMLButtonElement | null>(null)
+  /**
+   * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
+   * record so a render can begin with one of them already open.
+   *
+   * `prefs.overlay` is read ONCE, as an initialiser: a record is a snapshot of a
+   * panel that genuinely opened, and nothing after that is a reader's presses.
+   */
+  const [showDone, setShowDone] = useState(true)
   /** Bumped by the `A` key; the composer moves its caret when it changes. */
   const [captureFocus, setCaptureFocus] = useState(0)
+  /**
+   * Bumped by the row menu's 「编辑步骤」; the add field takes the caret when it
+   * changes. A counter for the reason `captureFocus` is one — the same press has
+   * to work twice, and a boolean that is already `true` cannot tell the second
+   * press from the first.
+   */
+  const [stepsFocus, setStepsFocus] = useState(0)
   const seeded = useRef(false)
 
   // The detail lives beside the list only when there is room for both. The
@@ -444,7 +497,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
     return (
       <div className={css.itemPanelStage} data-dsh-taskboard-view="">
         <div className={css.itemRoot}>
-          <p className={css.itemState} role="status">{t('item.loading')}</p>
+          {/* 「还没有行」那一档，不是「有一行提示」。副本还没落定的时候这个面板
+              本来就没有东西可画，一句居中的话是这个状态唯一正确的形状；一条贴着
+              左沿的 11px 提示会像一行被漏掉的正文。 */}
+          <p className={css.itemListEmpty} role="status">{t('item.loading')}</p>
         </div>
       </div>
     )
@@ -548,6 +604,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
         .map(row => ({ ref: itemRefOf(row).text ?? '—', title: itemTitleOf(row), id: row.id }))}
       onPickRecent={id => setSelected(id)}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
+      /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
+         every other field takes. The pane computed the new order with the shared
+         pure functions and hands the answer over; this is the only place a step
+         reaches the document, so a step added by thumb and a step added by the
+         model are the same write. */
+      onEditSteps={steps => { if (item !== undefined) apply(applyItemPatch(items, item.id, { steps }, Date.now())) }}
+      stepsFocus={stepsFocus}
       onToggleStep={stepId => {
         if (item === undefined) return
         // The shared writer SETS a step rather than toggling it, so the new
@@ -561,8 +624,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
     />
   )
 
-  /* ROWS, AS A FACTORY, and the picking state is a PARAMETER — because the
-     pickbox must not follow the rows to pages that have no batch surface.
+  /* ROWS, AS A FACTORY, and whether the page can batch is a PARAMETER — because
+     the pickbox must not follow the rows to pages that have no batch surface.
 
      The batch BAR is only handed to the list page, and the panel's comment here
      claimed the omission of multi-select on the other two pages was "enforced by
@@ -573,34 +636,69 @@ export function ItemListPanel(props: ItemListPanelProps) {
      disarm**. PRODUCT.md says the inbox and the agenda have no multi-select at
      all, and per AGENTS.md PRODUCT wins: **the code is what changes.**
 
-     So the state arrives as an argument and each page says what it accepts.
-     The list page passes the real one; the other two pass `false`, which is the
-     same thing the list page passed before anyone could select anything. */
-  const rows = (list: readonly ItemRecord[], picking: boolean) => list.map(item => (
-    <ItemRowLine
-      key={item.id}
-      view={itemRowViewOf(item, { now, running })}
-      expanded={openRow === item.id}
-      selected={selected === item.id}
-      picking={picking}
-      picked={selection.ids.has(item.id)}
-      onPick={() => setSelection(current => togglePicked(current, item.id))}
-      inPlace={narrow}
-      panelId="item"
-      menuOpen={menuRow === item.id}
-      asking={asking === item.id}
-      onToggle={() => setOpenRow(openRow === item.id ? undefined : item.id)}
-      onSelect={() => { setSelected(item.id); setCursor(item.id) }}
-      onAsk={() => askOne(item)}
-      receipt={receipt?.id === item.id ? receipt.words : undefined}
-      onMenuToggle={() => setMenuRow(menuRow === item.id ? undefined : item.id)}
-      onMenuClose={() => setMenuRow(undefined)}
-      onMark={status => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) }}
-      onPromote={() => promoteOne(item)}
-      onRemove={() => removeOne(item)}
-      detail={narrow ? detail(item) : undefined}
-    />
-  ))
+     So the flag arrives as an argument and each page says what it accepts. The
+     list page passes the real one; the other two pass `false`, which is the same
+     thing the list page passed before anyone could select anything. */
+  /* AND IT HANDS OVER PROPS, NOT ELEMENTS. The table draws its own rows — the
+     head and the body must agree on seven tracks, and a page that wrapped these
+     in its own `<ul>` would be a second table without a head. */
+  const rows = (list: readonly ItemRecord[], picking: boolean) => list.map(item => ({
+    view: itemRowViewOf(item, { now, running }),
+    expanded: openRow === item.id,
+    selected: selected === item.id,
+    picking,
+    picked: selection.ids.has(item.id),
+    /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
+       rather than derived: the anchor is 「the last row this reader held with a
+       plain press」, which is a fact about what they did, not a fact any row
+       knows. A row cannot work it out, and a module that could would be holding
+       a second opinion about where the reader started.
+
+       AND THE ORDER IS `list` — the list this page handed the table, already
+       sorted — NOT `visibleIds`. Those are two different orders: the page rail
+       counts in document order and the table draws in the reader's chosen one, so
+       a range measured over `visibleIds` picks the rows BETWEEN two ticks on a
+       screen that is not showing them between. The claim is 「这两条之间屏幕上看见的
+       那几条」, and the screen is the sorted list. */
+    onPick: (extend: boolean) => {
+      if (extend && pickAnchor.current !== undefined) {
+        const order = list.map(one => one.id)
+        setSelection(current => pickThrough(current, order, pickAnchor.current as string, item.id))
+        return
+      }
+      pickAnchor.current = item.id
+      setSelection(current => togglePicked(current, item.id))
+    },
+    inPlace: narrow,
+    panelId: 'item',
+    /* THE ROW EDITS ITS OWN TITLE, THROUGH THE SAME WRITER. A hand-off rather
+       than an import of the transition functions, so the row never learns how
+       the document is written — and the patch it sends is the same patch the
+       detail card sends, so 「改标题」 in two places is one edit. */
+    onPatch: (patch: { readonly title: string }) => apply(applyItemPatch(items, item.id, patch, Date.now())),
+    menuOpen: menuRow === item.id,
+    asking: asking === item.id,
+    onToggle: () => setOpenRow(openRow === item.id ? undefined : item.id),
+    onSelect: () => { setSelected(item.id); setCursor(item.id) },
+    onAsk: () => askOne(item),
+    receipt: receipt?.id === item.id ? receipt.words : undefined,
+    onMenuToggle: () => setMenuRow(menuRow === item.id ? undefined : item.id),
+    onMenuClose: () => setMenuRow(undefined),
+    onMark: (status: 'open' | 'blocked' | 'done') => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
+    /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、在窄档把它展开，然后把
+         光标交给步骤那一栏。三件事必须一起发生——只选不展开的话，桌面上读者看见
+         的是右边的详情栏，手机上什么也没发生。 */
+    onSteps: () => {
+      setMenuRow(undefined)
+      setSelected(item.id)
+      setCursor(item.id)
+      if (narrow) setOpenRow(item.id)
+      setStepsFocus(count => count + 1)
+    },
+    onPromote: () => promoteOne(item),
+    onRemove: () => removeOne(item),
+    detail: narrow ? detail(item) : undefined,
+  }))
 
   /* The page body: three files, one contract. Each page owns its own content and
      nothing else may reach in here — which is what keeps this an assembly layer
@@ -630,7 +728,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     rename: () => { if (cursor !== undefined) setSelected(cursor) },
     open: () => { if (cursor !== undefined) setSelected(cursor) },
     close: () => {
-      if (paletteOpen) { setPaletteOpen(false); return }
+      if (paletteOpen) { openLayer(undefined); return }
       if (menuRow !== undefined) { setMenuRow(undefined); return }
       if (openRow !== undefined) { setOpenRow(undefined); return }
       if (selected !== undefined) setSelected(undefined)
@@ -642,7 +740,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
       if (target !== undefined) removeOne(target)
     },
     undo: () => { if (undo !== undefined) runUndo() },
-    palette: () => setPaletteOpen(true),
+    palette: () => openLayer('palette'),
+    /* THE FOUR THAT BELONG TO THE BOX, not to the rows. Each one is a question
+       the panel cannot answer on its own — the candidate cursor is derived from
+       the palette's own text and the palette's own options — so the palette
+       publishes four commands and this file keeps them. One direction: the box
+       fills the ref, the map calls it, and neither reads the other's state. */
+    keyHelp: () => paletteCommands.current?.showKeys(),
+    palettePrev: () => paletteCommands.current?.step(-1),
+    paletteNext: () => paletteCommands.current?.step(1),
+    palettePick: () => paletteCommands.current?.pick(),
   // EVERY VALUE A HANDLER READS IS IN THIS LIST, and that sentence is here
   // because leaving one out is not a lint warning — it is a key that silently
   // does the wrong thing. `close` reads `paletteOpen`, `menuRow`, `openRow` and
@@ -663,7 +770,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }
 
   useItemKeys({
-    state: { focusedId: cursor, somethingOpen: paletteOpen || menuRow !== undefined || openRow !== undefined },
+    state: {
+      focusedId: cursor,
+      somethingOpen: paletteOpen || menuRow !== undefined || openRow !== undefined,
+      // Its OWN field rather than a reading of `somethingOpen`: the arrows mean
+      // one thing on the rows and another inside the box, and a menu being open
+      // is a third fact that must not hand the box's keys to a row cursor.
+      paletteOpen,
+    },
     actions: keyActions,
     surfaceRef,
   })
@@ -678,7 +792,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
     choose,
     narrow,
     filtering,
-    picking: selection.armed,
+    /* 「这一页能不能多选」是**页面**的常量，不是读者的模式。收件装的是还没分流的
+       东西、日程按天读，PRODUCT 说这两页根本没有多选面；清单页有，于是它的每一
+       行都带一个空框。于是这一行不再读 holding——读它会让「读者正在多选吗」这件
+       事决定一个页面事实，而读者改一次筛选就能改掉它。 */
+    picking: prefs.page === 'list',
     renderRows: rows,
   }
   /**
@@ -764,6 +882,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       ? <ListPage
         {...pageProps}
         clientId={replica?.clientId()}
+        showDone={showDone}
+        onShowDone={setShowDone}
         batch={batch}
         armed={selection.armed}
         onArm={on => setSelection(current => setArmed(current, on))}
@@ -772,6 +892,80 @@ export function ItemListPanel(props: ItemListPanelProps) {
         selectable={visibleIds.length > 0}
       />
       : <SchedulePage {...pageProps} />
+
+  /**
+ * THE THREE NUMBERS, each counted where it is filtered.
+ *
+ * `triageLinesOf` is the model's own reading and it counts over the WHOLE
+ * document rather than over what the filter left — a number that moved when
+ * the reader typed would be a number about the search wearing the name of a
+ * number about their work. Pressing one writes the very token that produced
+ * it, through the same writer every other filter uses, so 「落后 3」 leaves
+ * exactly three rows on screen.
+ *
+ * THREE OF THEM, NAMED HERE, because three is the product's answer to
+ * 「我今天该动哪几件」 and a band of four is a band with one question too many.
+ * The line the reader is NOT shown is 停滞: it is the only one whose answer
+ * changes with the clock rather than with the document, so it belongs to the
+ * row that says it and not to the page that counts everything else.
+ */
+/** Each tile pairs the model's flag with a label that is ONLY a noun. */
+  const STAT_TILES = [
+    { flag: 'behind', label: 'item.stat.behind' },
+    { flag: 'blocked', label: 'item.stat.blocked' },
+    { flag: 'undated', label: 'item.stat.undated' },
+  ] as const
+
+  const statLines = useMemo(() => STAT_TILES
+    .flatMap(tile => triageLinesOf(items, now)
+      .filter(line => line.id === tile.flag)
+      .map(line => ({
+        id: tile.flag,
+        // The tile's own key, NOT `TRIAGE_SHORT`: that table is the one written
+        // for 「a number inside a sentence」, so half its entries carry `{n}` and
+        // half do not — and borrowing it puts 「落后」 beside 「1 卡住」 on the same
+        // row of three cards, where the number is already drawn 28px to the right.
+        label: tile.label,
+        n: line.count,
+        total: items.length,
+        token: `has:${tile.flag}`,
+      }))), [items, now])
+
+  /** The qualifier tokens the current query already carries, lower-cased. */
+  const queryTokens = useMemo(
+    () => new Set(prefs.search.split(/\s+/).filter(part => part !== '').map(part => part.toLowerCase())),
+    [prefs.search],
+  )
+
+  /** Add a token, or take it off when it is already there. One writer either way. */
+  const toggleToken = useCallback((token: string) => {
+    choose({ search: withFacetToken(prefs.search, token, !queryTokens.has(token.toLowerCase())) })
+  }, [choose, prefs.search, queryTokens])
+
+  /**
+   * HOW MANY ROWS ONE FILTER TOKEN WOULD LEAVE, asked of the same parse the
+   * table reads. A tile whose number and whose jump disagree is the defect this
+   * pair exists to make impossible — and the only way it cannot happen is both
+   * sides asking the same question of the same string.
+   */
+  const countOfToken = useCallback((token: string) =>
+    items.filter(item => itemMatches(item, parseItemQuery(withFacetToken('', token, true)), matchCtx)).length,
+  [items, matchCtx])
+
+  /** The four faces, built from the model's tables and the document's own tags. */
+  const facetFaces = useMemo(() => [
+    ...ITEM_FACETS.filter(facet => facet.id !== 'priority').map(facet => ({
+      id: facet.id,
+      label: facet.label,
+      values: facet.values.map(value => ({ token: value.token, key: value.key, label: t(value.label) })),
+    })),
+    {
+      id: 'tag',
+      label: 'item.facet.tag' as const,
+      values: tagFacetValuesOf(items.map(item => item.tags))
+        .map(value => ({ token: value.token, key: value.key, label: value.text })),
+    },
+  ], [items])
 
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
@@ -788,79 +982,98 @@ export function ItemListPanel(props: ItemListPanelProps) {
           rows={items}
           actions={paletteActions}
           onPickRow={id => { setSelected(id); setCursor(id) }}
-          onClose={() => setPaletteOpen(false)}
+          onClose={() => openLayer(undefined)}
+          /* THE FOCUS GOES BACK WHERE IT CAME FROM. The box declared itself modal,
+             and a modal surface that takes the caret and never gives it back
+             leaves the panel with no focus at all — the next key answers to
+             nothing and the reader has to click their way out of their own
+             surface. The box cannot do this itself: it does not own the button
+             the reader pressed. */
+          onClosed={() => paletteTrigger.current?.focus()}
+          onCommands={commands => { paletteCommands.current = commands }}
         />
-        <div className={css.itemWorkbench} ref={surfaceRef}>
-          {/* THE LIST COLUMN: the header, the status lines and the list card are
-              ONE column, because the header acts on the list. Measured on a 1440
-              board: the header ran x=0..1440 while the card ran x=24..744, so the
-              search box — which filters the ROWS — sat at x≈1010..1360, on top of
-              the DETAIL pane. The header's own rule already says it: 「每个功能都要
-              挨着它改变的东西」. A control 700px from the thing it changes is a
-              control the reader has to reason about rather than use. */}
-          <div className={css.itemListColumn}>
-<header className={css.itemHeader}>
-          <div className={css.itemHeaderRow}>
-            <h1 className={css.itemHeadTitle}>{t('itemTab.title')}</h1>
-            <p className={css.itemCount}>
-              {filtering
-                /* THE MATCH SET, not the detail selection. `shown` is 「which
-                   rows the detail rail is about」, so using its length here printed
-                   「显示 42 / 共 42 条」 over a list of three rows the filter left,
-                   and 「显示 1 / 共 42 条」 the moment a row was picked. The
-                   sentence claims to be about the FILTER, so it has to be counted
-                   the way the filter counts — one predicate, the same one the list
-                   is drawing from, not a second count of something nearby. */
-                ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
-                : t('item.count', { n: String(items.length) })}
-            </p>
-            {/* THE ONE MOUSE DOOR INTO THE PALETTE, and it sits on the title row
-                because that row is about the whole surface rather than about the
-                list. Before this, `⌘K` was the ONLY way to open it: a filter a
-                mouse cannot reach is a filter the phone does not have, and hard
-                rule 11 counts that as a REMOVED control rather than a moved one.
+        {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
+            different layer that can be open with the box shut. */}
+        <ItemCreateDialog
+          open={overlay === 'create'}
+          onClose={() => openLayer(undefined)}
+          cards={cards.map(card => ({ id: card.id, title: card.title }))}
+          onCreate={input => {
+            if (isBlankCapture(input)) return false
+            const made = captureItemRecord(input, Date.now(), newItemId)
+            apply([...items, made.item])
+            return true
+          }}
+        />
 
-                THE GLYPH IS TEXT, not an icon, and the reason is that the shared
-                icon set has no search glyph — and a panel that invents its own
-                glyph for one button has drawn a second visual language to say
-                something it already has a word for. `⌘K` is what the key is.
-
-                IT IS NOT A LABEL BUTTON. A visible 「搜索」 at this size competes
-                with the page title it sits beside, and the reader who wants to
-                find something is the one already looking at the list. The name
-                reaches assistive technology; the glyph reaches everyone else.
-
-                IT IS A DIRECT CHILD OF THE HEADER, and it was inside the title
-                row, which put it in the `title` cell and left the `actions` cell
-                empty. **CSS cannot fix that**: `order` only moves a container's
-                own direct children, and the button was a grandchild — so the cell
-                the stylesheet reserved for it was simply never filled, and no
-                amount of stylesheet work could have moved it there. Structure, not
-                style, and the structure is what this line is.
-
-                The other repair — declaring an `actions` cell INSIDE the title row
-                — would have put the button to the LEFT of the page rail, which
-                splits the first line in two. A spine reads as one line of identity
-                and then the navigation; a search trigger wedged between them is
-                neither. */}
+        {/* THE SHELL CARD. One card carries the whole page — head, rail, stats,
+            filters, workbench — so 「this is the page」 is one surface rather than
+            five bands of floating boxes, and the card's own hairline is the only
+            border between the page and the panel behind it. */}
+        <div className={css.itemShell}>
+          <div className={css.itemShellHead}>
+            <div className={css.itemShellHeadMain}>
+              <h1 className={css.itemPageTitle}>{t('itemTab.title')}</h1>
+              <p className={css.itemPageCount}>
+                {filtering
+                  /* THE MATCH SET, not the detail selection. The sentence claims
+                     to be about the FILTER, so it is counted the way the filter
+                     counts — one predicate, the same one the table draws from. */
+                  ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
+                  : t('item.count', { n: String(items.length) })}
+              </p>
+            </div>
+            <div className={css.itemShellHeadTools}>
+              {/* THE SEARCH BOX IS IN THE HEAD, at a fixed measure, because it is
+                  about the WHOLE page rather than about the table under it. One
+                  string, one writer: it is the same `prefs.search` the palette
+                  types into and the same one the filter bar writes into, so
+                  filtering from either place produces the same document state. */}
+              <input
+                className={css.itemSearch}
+                value={freeTextOf(prefs.search)}
+                placeholder={t('item.search')}
+                aria-label={t('item.search.label')}
+                onChange={event => { choose({ search: withFacetToken(freeTextOf(prefs.search), event.target.value, true) }) }}
+              />
+              {/* ＋新建：一枚实心主按钮，和快记框是同一个写入口的两扇门。快记框给已经握着
+                  * 那句话的人，这一枚给还没想到句子的人——两件事，不是一件事的两种
+                  * 样子，所以两扇门，**一条写路径**（两边都走 `captureItemRecord`）。 */}
+              <Button
+                variant="primary"
+                size="sm"
+                className={css.itemNewButton}
+                onClick={() => openLayer('create')}
+              >
+                {t('item.create.title')}
+              </Button>
+              {/* THE ONE MOUSE DOOR INTO THE SEARCH, AND IT SAYS WHAT IT IS.
+                  *
+                  * It used to carry 「⌘K」 on its face, which is a KEY on a LABEL: a
+                  * key says how to press it, not what it does — so a reader without
+                  * a keyboard, or one who simply does not press ⌘K, is looking at a
+                  * glyph with nothing to read. So the face is 「筛选」 and the key
+                  * goes into the tooltip and the accessible name, where a reader who
+                  * already knows it can find it and nobody else has to.
+                  *
+                  * IT IS NOT REMOVED, and that is the rule under it: a control only
+                  * the keyboard can open is a control the phone does not have. */}
+              <button
+                ref={paletteTrigger}
+                type="button"
+                className={css.itemCommandTrigger}
+                aria-label={t('item.commandTrigger.name')}
+                title={t('item.commandTrigger.title')}
+                onClick={() => openLayer('palette')}
+              >
+                <span aria-hidden="true">{t('item.commandTrigger.short')}</span>
+              </button>
+            </div>
           </div>
-          <button
-            type="button"
-            className={css.itemCommandTrigger}
-            aria-label={t('item.palette.open')}
-            title={t('item.palette.open')}
-            onClick={() => setPaletteOpen(true)}
-          >
-            <span aria-hidden="true">⌘K</span>
-          </button>
 
-          {/* NO SEARCH BOX IN THE SPINE. The box is in the command palette, which
-              `⌘K` and `/` open, and the palette holds the same single string
-              through the same callbacks — so the filter is one fact with one
-              writer, it is simply written in a box that does not cost 190px of
-              the first screen. What the spine keeps INSTEAD is the answer: the
-              state bar names what is filtered, and the count beside the title
-              says what is left. */}
+          {/* THE THREE PAGES, each with its own count, and the current one is a
+              rule under the word rather than a pill around it: a pill says
+              「here is a thing」 where an underline says 「this is where I am」. */}
           <div className={css.itemPageRail} role="tablist" aria-label={t('item.page.rail')}>
             {ITEM_PAGES.map(page => (
               <button
@@ -868,12 +1081,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 type="button"
                 role="tab"
                 aria-selected={prefs.page === page}
-                // The count is INSIDE the accessible name, not beside it. An
+                // The count is INSIDE the accessible name, not beside it: an
                 // `aria-label` replaces the element's own text, so a number
-                // rendered next to the word would be announced to nobody —and
-                // the number is the reason to pick this tab over the other two.
+                // rendered next to the word would be announced to nobody.
                 aria-label={t(PAGE_ARIA[page], { n: String(pageCounts[page]) })}
-                className={`${css.itemPageTab}${prefs.page === page ? ` ${css.itemPageTabActive}` : ''}`}
+                className={css.itemPageTab}
                 onClick={() => choose({ page })}
               >
                 {t(PAGE_LABEL[page])}
@@ -882,58 +1094,62 @@ export function ItemListPanel(props: ItemListPanelProps) {
             ))}
           </div>
 
+          {/* 统计带与筛选条只长在清单页上。它们问的是「在我这几十条里挑哪几条」，
+              而收件装的是还没分流的东西、日程按天读——在那一页上给筛选轨，等于
+              给一个答案还没成形的页面配一把筛子。 */}
+          {prefs.page === 'list' && (
+            <>
+              <ItemStats stats={statLines} on={queryTokens} onToggle={toggleToken} />
+              <ItemFilters
+                faces={facetFaces}
+                text={prefs.search}
+                onSearch={next => choose({ search: next })}
+                sort={prefs.sort}
+                onSort={next => choose({ sort: next })}
+                tags={items.map(item => item.tags)}
+                showDone={showDone}
+                onShowDone={setShowDone}
+                countOf={countOfToken}
+              />
+            </>
+          )}
+
+          {/* 快记框：这一页唯一常驻的输入。它不占一条自己的轨——它在工作台之上，
+              在表之上，读者的眼睛落在第一条行之前只需要经过头、轨、筛选。 */}
           <ItemComposer
             now={now}
             focusRequest={captureFocus}
             onSave={input => {
               // The refusal belongs to the EDITOR, not to the writer: a blank
               // capture is decided by the shared emptiness rule, and refusing it
-              // here changes nothing AND keeps the words, so the reader can
-              // finish the thought instead of losing it to a surprise.
+              // here changes nothing AND keeps the words.
               if (isBlankCapture(input)) return false
               const made = captureItemRecord(input, Date.now(), newItemId)
               apply([...items, made.item])
               return true
             }}
           />
-        </header>
 
-        {/* Reading in-flight, unreachable and syncing are THREE different
-            facts, and NEITHER hides the list: the local mirror is whole and
-            usable, so covering it would be a worse answer than a banner. A row
-            written here is already on screen before the host has it, and saying
-            so is the difference between "saved" and "saved everywhere". */}
-        {lostHost
-          ? <p className={css.itemState} role="status">{t('item.hostLost')}</p>
-          : replica.isSynced() === false && <p className={css.itemState} role="status">{t('item.syncing')}</p>}
-        {/* ONLY THE RECEIPTS WITH NO ROW OF THEIR OWN. A receipt that is about one
-            row is drawn beside that row, under the control that earned it — a
-            receipt about 「问 AI」 printed at the top of the card is a sentence
-            about a button the reader is no longer looking at, and it is read after
-            the eye has already moved on. */}
-        {receipt !== undefined && receipt.id === undefined && (
-          <p className={css.itemState} role="status">{receipt.words}</p>
-        )}
+          <div className={css.itemWorkbench} ref={surfaceRef}>
+            <div className={css.itemListColumn}>
+              {/* Reading in-flight, unreachable and syncing are THREE different
+                  facts, and NEITHER hides the list: the local mirror is whole and
+                  usable, so covering it would be a worse answer than a banner. */}
+              {lostHost
+                ? <p className={css.itemHint} role="status">{t('item.hostLost')}</p>
+                : replica.isSynced() === false && <p className={css.itemHint} role="status">{t('item.syncing')}</p>}
+              {/* ONLY THE RECEIPTS WITH NO ROW OF THEIR OWN. A receipt that is about
+                  one row is drawn beside that row, under the control that earned
+                  it. */}
+              {receipt !== undefined && receipt.id === undefined && (
+                <p className={css.itemHint} role="status">{receipt.words}</p>
+              )}
 
-                  {/* THE LIST CARD, and the scroll body inside it. Two boxes, because
-              one box cannot be the page's frame and its scroller at the same
-              time: as the scroller it had no frame, and as the frame it could
-              not scroll. The card is the grid item that draws; the scroller is
-              its second child.
-
-              `.dshTbScroll` is the SHARED scroll mount —the one class the
-              board's thin-bar rules are written against. The list's own sheet
-              deliberately does not restate them, so a Chromium change moves one
-              mechanism instead of two that drift. */}
-          <div className={css.itemListCard}>
-            <div className={`${css.itemScroll} ${boardCss.dshTbScroll}`}>
-              {/* THE RECEIPT. It sits at the top of the list the row left, not in
-                  a corner and not in a dialog: the reader's eye is already here,
-                  and an undo that has to be found is an undo that is not used.
-                  It states BOTH halves of the promise —the undo that is
-                  available now, and the thirty-day window that remains after it
-                  is spent —because a receipt that only said 「removed」 would be
-                  true and useless. */}
+              {/* THE RECEIPT. It sits at the top of the list the row left, not in a
+                  corner and not in a dialog: the reader's eye is already here, and
+                  an undo that has to be found is an undo that is not used. It
+                  states BOTH halves of the promise — the undo available now, and
+                  the thirty-day window that remains after it is spent. */}
               {undo !== undefined && (
                 <div className={css.itemReceipt} role="status">
                   <span className={css.itemReceiptText}>
@@ -949,59 +1165,37 @@ export function ItemListPanel(props: ItemListPanelProps) {
               )}
               {body}
             </div>
-          </div>
-          </div>
-          {showDetailPane && (
-            <div className={css.itemDetailPane}>
-              {/* The pane is titled by the ROW ON SHOW, never by one of the five
-                  section names inside it. A section name as a page title says
-                  「here are the fields」 before the reader knows which row they
-                  are looking at —and the whole point of the pane is that the
-                  list beside it stays readable.
-
-                  With nothing picked the head is NOT EMPTY, which is the whole
-                  requirement: an empty box with a bottom border is a rule
-                  floating in a column with nothing above or below it, and it
-                  reads as a page that failed to finish loading. The sentence
-                  below it is not repeated here for the same reason. */}
-              {picked === undefined
-                ? <h2 className={css.itemDetailHead}>{t('item.detail.emptyTitle')}</h2>
-                : (
-                  <h2 className={css.itemDetailHead}>
-                    <span className={css.itemRef}>{itemRefOf(picked).text ?? '—'}</span>
-                    {' '}
-                    {itemTitleOf(picked)}
-                    {/* THE WAY OUT, ON THE BAND THAT HAS NO OTHER ONE.
-                        The narrow band opens the row in place and the row toggles
-                        itself closed, so it never needed a control. The wide band
-                        opens a SEPARATE pane, and it had none at all: `setSelected
-                        (undefined)` existed at exactly one place in this file — the
-                        delete path — so above 1080px a reader could open a row and
-                        not leave it except by deleting the row they were reading.
-
-                        A pane you cannot close is not a pane, it is a trap, and the
-                        reader's way out has to be a control rather than a fact
-                        about the layout. It is the LAST thing in a flex row, so it
-                        takes the head's free space instead of pushing the title
-                        anywhere. */}
-                    <button
-                      type="button"
-                      className={`${css.iconButton} ${css.itemDetailClose}`}
-                      aria-label={t('item.detail.close')}
-                      title={t('item.detail.close')}
-                      onClick={() => { setSelected(undefined) }}
-                    >
-                      <Icon name="close" />
-                    </button>
-                  </h2>
-                )}
-              <div className={css.itemDetailInner}>
-                <div className={`${css.itemDetailBody} ${boardCss.dshTbScroll ?? ''}`}>
-                  {detail(picked)}
-                </div>
+            {showDetailPane && (
+              <div className={css.itemDetailPane}>
+                {/* The pane is titled by THE ROW, never by one of the section names
+                    inside it: a section name as a page title says 「here are the
+                    fields」 before the reader knows which row they are looking at.
+                    The TITLE itself is drawn once, inside 「标题与正文」 — a card head
+                    that repeats it prints the same words twice on one screen. */}
+                {picked === undefined
+                  ? <h2 className={css.itemDetailHead}><span className={css.itemDetailHeadTitle}>{t('item.detail.emptyTitle')}</span></h2>
+                  : (
+                    <h2 className={css.itemDetailHead}>
+                      <span className={css.itemDetailHeadTitle}>
+                        {itemRefOf(picked).text ?? t('item.ref.pending')}
+                      </span>
+                      {/* THE WAY OUT, ON THE BAND THAT HAS NO OTHER ONE. A pane the
+                          reader cannot leave is not a pane, it is a trap. */}
+                      <button
+                        type="button"
+                        className={css.itemDetailClose}
+                        aria-label={t('item.detail.close')}
+                        title={t('item.detail.close')}
+                        onClick={() => { setSelected(undefined) }}
+                      >
+                        <span aria-hidden="true">×</span>
+                      </button>
+                    </h2>
+                  )}
+                <div className={css.itemDetailBody}>{detail(picked)}</div>
               </div>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
     </div>

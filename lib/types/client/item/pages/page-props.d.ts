@@ -25,6 +25,7 @@ import type { ReactNode } from 'react';
 import type { ItemRecord } from '../../../core/item.ts';
 import type { ItemQuery, ItemMatchContext } from '../../../core/item-view.ts';
 import type { ItemViewPrefs } from '../view-prefs.ts';
+import type { ItemRowLineProps } from '../row-line.tsx';
 /** What every page body receives. */
 export interface ItemPageProps {
     /** Every row in the document. Pages filter; none of them owns it. */
@@ -53,11 +54,28 @@ export interface ItemPageProps {
     readonly choose: (next: Partial<ItemViewPrefs>) => void;
     /** Whether the detail lives in the row (narrow) or in the rail (wide). */
     readonly narrow: boolean;
-    /** The one row renderer, shared by all three pages. */
-    readonly renderRows: (list: readonly ItemRecord[], picking: boolean) => ReactNode;
-    /** Whether this page has a batch surface. The ONLY page that does is the list.
-     *  A page that has no batch bar must not draw pickboxes: the reader would be
-     *  ticking into a holding with no bar and no way to disarm. */
+    /** The one row renderer, shared by all three pages — and it hands over PROPS
+     *  rather than elements, because the table draws its own rows: the head and the
+     *  body must agree on seven tracks, and a page that wrapped rows in its own
+     *  `<ul>` would be a second table without a head. */
+    readonly renderRows: (list: readonly ItemRecord[], picking: boolean) => readonly ItemRowLineProps[];
+    /**
+     * Whether this PAGE has a batch surface, and therefore whether every one of its
+     * rows carries a pickbox.
+     *
+     * A PAGE FACT AND NOT A MODE, and the name is older than the meaning. It used to
+     * carry 「the reader is holding several rows」, which made the control's existence
+     * depend on a step the reader had to discover first: the pickbox column was 44px
+     * of nothing across the whole list, and the only way in was `X`. PRODUCT puts
+     * multi-select on the list page alone, so the question is 「which page am I on」 —
+     * one answer per page rather than one per moment.
+     *
+     * THE NAME STAYS `picking`, because that is the word the pages and the shared
+     * contract already speak — `renderRows(list, picking)`, read literally by the
+     * source gate in `card-contract.spec.ts` — and 「can this row be picked」 is what
+     * the flag has always meant. Renaming it would have moved one word through four
+     * files and a stylesheet owner to fix a word that was not wrong.
+     */
     readonly picking: boolean;
     /**
      * The batch bar, or nothing.

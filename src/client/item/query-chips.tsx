@@ -16,11 +16,12 @@
  * function, and removing one is the same byte-for-byte operation adding one was.
  * There is nothing to fall out of step, because there is nothing to keep.
  *
- * **A HAND-TYPED QUALIFIER STILL GETS A CHIP**, even one this file has no word
- * for: it is still filtering the list, and hiding it would be the worst possible
- * kind of wrong — a filtered list with nothing on screen saying what filtered it.
+ * THE CHIP SAYS BOTH HALVES — the kind AND the value, in the reader's words
+ * rather than in the grammar's. 「标签：画廊」 is a filter a reader can read back
+ * and take off; `画廊` alone is a word, and the only place on this surface where
+ * the filter is stated in the language it is written in rather than in the
+ * tokens it is written with.
  */
-import type { TaskBoardKey } from '../locales.ts'
 import { t } from '../locales.ts'
 import { queryChipsOf, withFacetToken, type QueryChip } from './facets.ts'
 import css from './item.module.css'
@@ -36,11 +37,26 @@ export interface ItemQueryChipsProps {
   readonly onClearQualifiers: () => void
 }
 
-/** The chip's own name: 「状态：进行中」, and for a tag the reader's own word. */
+/**
+ * THE CHIP'S OWN NAME, and it is always 「种类：值」.
+ *
+ * The value is the half that makes the chip removable rather than decorative:
+ * 「状态」 on its own says a filter is on without saying which, and a chip a
+ * reader cannot read is a chip they will not press. It is also the only place the
+ * filter is stated in the reader's language rather than in the grammar's — the
+ * text underneath is one string and still says `has:hardOverdue`, which is the
+ * implementation, not the filter.
+ *
+ * Total by construction: a chip that somehow arrives without either value falls
+ * back to its facet's own name instead of reaching for a dictionary entry that
+ * does not exist. `undefined` renders as nothing at all, so the miss would look
+ * like a chip labelled 「状态：」 — a filter applied, described by nothing.
+ */
 function chipLabel(chip: QueryChip): string {
   const facet = t(chip.facet)
   if (chip.tag !== null) return `${facet}：${chip.tag}`
-  return `${facet}：${t(chip.value as TaskBoardKey)}`
+  if (chip.value === null) return facet
+  return `${facet}：${t(chip.value)}`
 }
 
 export function ItemQueryChips(props: ItemQueryChipsProps) {

@@ -67,6 +67,10 @@ function depsFor(service: DocumentService): BoardRouteDeps {
     // would pass while the production path — the one that has to clear the
     // tombstone — went untested.
     restoreItem: (ref, clientId) => service.restoreItem(ref, clientId),
+    // The purge's real service method too: erasing a tombstone's payload is the
+    // one write in this document that a commit cannot express, so a stand-in
+    // would test nothing that matters.
+    purgeItem: (of, clientId) => service.purgeItem(of, clientId),
     acquireLease: (clientId, ttlMs) => service.acquireLease(clientId, ttlMs),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),

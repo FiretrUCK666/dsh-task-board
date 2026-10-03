@@ -1,5 +1,5 @@
 /**
- * The archive's one read: the rows a delete is still holding.
+ * The archive: the one read, and the two writes that only the host may do.
  *
  * WHY IT IS A CALL AND NOT A SLICE OF THE REPLICA. The checklist replica
  * deliberately EXCLUDES deleted rows from `view()` — that is what makes it the
@@ -8,12 +8,20 @@
  * lives behind its tombstone on the host, so the only honest way to see it is
  * to ask the host for it, and only when the reader actually opens the archive.
  *
- * It is a DERIVED page, not a destination: it does not occupy the page rail,
+ * IT IS A DERIVED page, not a destination: it does not occupy the page rail,
  * because a rail that grows an entry every time the reader asks a question
  * turns a map into a log. The reader arrives here by clicking the count.
  *
- * Same discipline as every other call in this layer — one route, one envelope,
- * and an honest failure instead of a plausible-looking empty list.
+ * THREE CALLS, ONE FILE, and the file is the unit. Reading the archive,
+ * bringing a row back and erasing it for good are three halves of ONE question —
+ * 「what did I delete, and what can I do about it」 — and they are the three
+ * calls that may not be a client commit, because a tombstone carries a stamp
+ * only the host knows. Splitting the erase out into a second module would mean a
+ * second reader of the same envelope, which is the copy this file was written to
+ * avoid.
+ *
+ * Same discipline as every other call in this layer — one route per verb, one
+ * envelope, and an honest failure instead of a plausible-looking empty list.
  */
 import { routeUrl } from './route-base.ts'
 import type { ItemRecord } from '../core/item.ts'
@@ -127,32 +135,42 @@ export type RestoreReply =
 export type RestoreAddress = { readonly id: string } | { readonly ref: number }
 
 /**
- * Put one deleted row back.
+ * ONE POST TO THE ARCHIVE, and both of its answers come out of it.
  *
- * It is a HOST operation and not a client commit, and the reason is worth
- * stating once: a tombstone is stamped one millisecond above the row it
- * removed, so re-submitting that row untouched is exactly the stale copy the
- * tombstone exists to swallow. The commit would be accepted, nothing would
- * change, and the reader would be told it worked. Only the host knows the stamp,
- * so only the host may write it.
+ * 找回 and 彻底删除 are the same request with a different verb: one route, one
+ * addressing union, one envelope, one timeout, one set of failure words. They
+ * were two functions once and the second was a copy of the first, so every lesson
+ * written into the copy — the refusal read BEFORE the value, `available` meaning
+ * what it means — is a lesson somebody has to remember twice. The route is the
+ * only thing that differs, so the route is the only parameter.
  *
- * A refusal is reported as a refusal. `ok: true` with no row is NOT success —
- * it is "nothing holds that key", and the panel has to say so rather than close
- * the archive as if the row were back.
+ * The failure vocabulary is also shared, and it is deliberately NOT widened:
+ * `invalid_argument` reaches here as a code, and `whyLabelOf` is what turns a
+ * code into a sentence the reader can act on. A second table of words for the
+ * second verb would be two places where 「你给的编号不对」 is written down.
+ */
+type ArchivePost =
+  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: false; readonly why: string }
+
+/**
+ * Send one addressed write to the archive and read the envelope it answers with.
+ * @param verb - the host route segment, `restore` or `purge`.
  * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
  * @param clientId - this device's id, which every write on this prefix carries.
  * @param fetchImpl - injected for tests.
- * @returns what happened.
+ * @returns the host's own `value`, or a refusal that names the reason.
  */
-export async function itemsRestore(
+async function postToArchive(
+  verb: 'restore' | 'purge',
   address: RestoreAddress,
   clientId: string,
-  fetchImpl: typeof fetch = fetch,
-): Promise<RestoreReply> {
+  fetchImpl: typeof fetch,
+): Promise<ArchivePost> {
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, ARCHIVE_TIMEOUT_MS)
   try {
-    const response = await fetchImpl(routeUrl('/api/dsh-task-board/board/items/restore'), {
+    const response = await fetchImpl(routeUrl(`/api/dsh-task-board/board/items/${verb}`), {
       method: 'POST',
       headers: { 'content-type': 'application/json', accept: 'application/json' },
       body: JSON.stringify('id' in address ? { id: address.id, clientId } : { ref: address.ref, clientId }),
@@ -175,20 +193,97 @@ export async function itemsRestore(
     if (typeof refused === 'string' && refused !== '') return { ok: false, why: refused }
     const value = envelope?.value
     if (typeof value !== 'object' || value === null) return { ok: false, why: 'malformedAnswer' }
-    const record = value as { available?: unknown; restored?: unknown; error?: { code?: unknown } }
+    const record = value as { available?: unknown; error?: { code?: unknown } }
     // The host's own refusal code, when it gave one. A wrong address and a host
     // that cannot be reached are different facts and the panel words them
     // differently, so the code is carried rather than flattened into one
-    // "restore failed".
+    // "the archive said no".
     const code = record.error?.code
     if (typeof code === 'string' && code !== '') return { ok: false, why: code }
     // A host serving no documents is a different fact from a host that heard
     // the question and found nothing, and the two need different words.
     if (record.available !== true) return { ok: false, why: 'hostUnavailable' }
-    return { ok: true, restored: archivedRow(record.restored) ? record.restored : undefined }
+    return { ok: true, value: record }
   } catch (error) {
     return { ok: false, why: error instanceof Error ? error.message : String(error) }
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/**
+ * Put one deleted row back.
+ *
+ * It is a HOST operation and not a client commit, and the reason is worth
+ * stating once: a tombstone is stamped one millisecond above the row it
+ * removed, so re-submitting that row untouched is exactly the stale copy the
+ * tombstone exists to swallow. The commit would be accepted, nothing would
+ * change, and the reader would be told it worked. Only the host knows the stamp,
+ * so only the host may write it.
+ *
+ * A refusal is reported as a refusal. `ok: true` with no row is NOT success —
+ * it is "nothing holds that key", and the panel has to say so rather than close
+ * the archive as if the row were back.
+ * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
+ * @param clientId - this device's id, which every write on this prefix carries.
+ * @param fetchImpl - injected for tests.
+ * @returns what happened.
+ */
+export async function itemsRestore(
+  address: RestoreAddress,
+  clientId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<RestoreReply> {
+  const reply = await postToArchive('restore', address, clientId, fetchImpl)
+  return reply.ok
+    ? { ok: true, restored: archivedRow(reply.value.restored) ? reply.value.restored : undefined }
+    : reply
+}
+
+/**
+ * 「彻底删除」 THREE ANSWERS, and none of them is a boolean.
+ *
+ * `erased` is the row that was actually destroyed, and its TITLE is what the
+ * receipt quotes — the reader pressed a button next to a name, so the receipt
+ * names the thing they pressed it on rather than saying 「done」 about a list.
+ *
+ * `notDeleted` is the case that looks most like a bug and is not: the short
+ * number the reader clicked now names a row that is still ON THE LIST. A number
+ * is reused the moment a row is erased, so `#12` a moment later can be somebody
+ * else's note. The host refuses rather than destroys the wrong row, and the
+ * panel's whole job is to say THAT instead of either erasing it or reporting a
+ * failure the reader cannot act on.
+ *
+ * NEITHER is the honest third answer: the host heard the question, the name held
+ * nothing to erase, and the archive no longer has that row. That is not an error
+ * — the reader wanted it gone and it is gone — so it gets a receipt, not a
+ * refusal.
+ */
+export type PurgeReply =
+  | { readonly ok: true; readonly erased: ItemRecord | undefined; readonly notDeleted: boolean }
+  | { readonly ok: false; readonly why: string }
+
+/**
+ * Destroy one archived row for good, tombstone included.
+ *
+ * The one action on this surface with no way back, which is why it lives in the
+ * archive rather than in the row menu: a reader who has to walk to the account of
+ * their deletions has at least read the thirty-day sentence on the way.
+ * @param address - the row's own id, or its short number. See {@link RestoreAddress}.
+ * @param clientId - this device's id, which every write on this prefix carries.
+ * @param fetchImpl - injected for tests.
+ * @returns what the host did, in the three shapes above.
+ */
+export async function itemsPurge(
+  address: RestoreAddress,
+  clientId: string,
+  fetchImpl: typeof fetch = fetch,
+): Promise<PurgeReply> {
+  const reply = await postToArchive('purge', address, clientId, fetchImpl)
+  if (!reply.ok) return reply
+  return {
+    ok: true,
+    erased: archivedRow(reply.value.erased) ? reply.value.erased : undefined,
+    notDeleted: reply.value.notDeleted === true,
   }
 }

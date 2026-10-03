@@ -44,7 +44,7 @@ import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { createTask } from '../src/core/tasks.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
-import { DEFAULT_VIEW_PREFS, VIEW_PREFS_KEY } from '../src/client/item/view-prefs.ts'
+import { DEFAULT_VIEW_PREFS, ITEM_OVERLAYS, VIEW_PREFS_KEY, type ItemOverlay } from '../src/client/item/view-prefs.ts'
 import type { ItemListFace } from '../src/client/item/register.tsx'
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..')
@@ -557,7 +557,7 @@ export function renderPanel(
 }
 
 /**
- * THE TEMPORARY LAYER A CAPTURE ASKS FOR, read from `DSH_PANEL_OPEN`.
+ * THE LAYER A CAPTURE ASKS FOR, read from `DSH_PANEL_OPEN`.
  *
  * It goes through the SAME record the page goes through, for the same reason the
  * page does: a switch that exists only to take a screenshot is a second way of
@@ -566,13 +566,34 @@ export function renderPanel(
  * 「which view is on screen」, so a capture sets it there and gets the same reader
  * a reader would.
  *
+ * **THE SET OF STATES IS IMPORTED, NOT TYPED HERE.** It used to compare against
+ * the literal `'palette'`, so every layer added after that one was unreachable:
+ * `DSH_PANEL_OPEN=create` silently produced an ordinary panel, and the capture
+ * looked like a CSS failure when nothing had failed. **A gate that cannot see
+ * which states exist is a gate that answers 「no」 for every state it has not
+ * heard of**, and that reads exactly like a working gate.
+ *
+ * So the names come from the product module that owns them. Add a layer there and
+ * it is photographable the same day; miss it here and this function says so
+ * rather than quietly rendering nothing.
+ *
  * `undefined` when the variable is absent, so the ordinary capture is an ordinary
  * panel with nothing over it. An unrecognised value is treated as absent rather
- * than guessed at: a typo in a shell variable must not produce a page of
- * something nobody asked for.
+ * than guessed at — but it is REPORTED, because a typo in a shell variable is
+ * exactly the case where a silent fallback costs an hour of looking at the wrong
+ * screenshot.
  */
-export function overlayOfEnv(): 'palette' | undefined {
-  return process.env.DSH_PANEL_OPEN === 'palette' ? 'palette' : undefined
+export function overlayOfEnv(): ItemOverlay | undefined {
+  const asked = process.env.DSH_PANEL_OPEN
+  if (asked === undefined || asked === '') return undefined
+  const known = ITEM_OVERLAYS.find(name => name === asked)
+  if (known === undefined) {
+    throw new Error(
+      `DSH_PANEL_OPEN=${asked} names no layer. The ones this panel has are: ${ITEM_OVERLAYS.join(', ')}. `
+      + 'Rendering an ordinary panel here would produce a screenshot that looks like a CSS failure.',
+    )
+  }
+  return known
 }
 
 /** Locate the installed DSH, the same way the toolchain does: by resolution. */
@@ -702,7 +723,16 @@ export function aliasLayer(css: string): string {
 
 /** The panel's own stylesheets, as written (the module class names are literal here). */
 export function panelCss(): string {
-  const sheets = ['src/client/board.module.css', 'src/client/item/item.module.css']
+  // The surface's sheets are ENUMERATED, and a surface with a sheet of its own
+  // has to be added here or it renders unstyled in every screenshot — which reads
+  // as a CSS failure and is really a missing line. Found by looking: the key
+  // help sheet's own rules were absent from the artifact, so the `?` button came
+  // out unstyled and looked like a margin rule that did not work.
+  const sheets = [
+    'src/client/board.module.css',
+    'src/client/item/item.module.css',
+    'src/client/item/key-help.module.css',
+  ]
   return sheets
     .map(sheet => {
       const path = join(repoRoot, sheet)

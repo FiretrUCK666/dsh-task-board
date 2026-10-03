@@ -92,8 +92,36 @@ export interface ItemViewPrefs {
    * `search` is the same shape and the same reason, one field above: a value that
    * is part of the view and not part of the memory.
    */
-  readonly overlay?: 'palette'
+  readonly overlay?: ItemOverlay
 }
+
+/**
+ * EVERY STATE THE SURFACE CAN **BE ASKED** TO OPEN, in one list.
+ *
+ * WHY IT IS A CONSTANT AND NOT A STRING IN THE FIELD ABOVE. The value is read by
+ * the panel when it mounts and by the render bench before it renders — and a bench
+ * that keeps its own list of what can be opened is a second truth about the same
+ * question, so a state added here and forgotten there is a state nobody can
+ * photograph and nobody notices is missing. One declaration, imported by both.
+ *
+ * AND A CONSTANT IS ALSO A PROMISE, which is the half that bites. This list used
+ * to name five states and the panel could open TWO of them: `palette` and
+ * `create`. The key sheet is a `useState` inside the palette that opens it, the
+ * archive is a section at the foot of the list page, and the batch bar is a
+ * function of the holding rather than a state at all. A bench asked for
+ * `DSH_PANEL_OPEN=keys` therefore photographed an ordinary panel and called it the
+ * key sheet — a capture that cannot be evidence is worse than no capture, because
+ * the next reader believes it.
+ *
+ * The three that are not here are not missing: each is a LAYER OF SOMETHING ELSE,
+ * reached through it, and a state that can only be reached through another state
+ * is not a state the surface can be put into. What belongs in this list is what a
+ * reader — or a bench — can name directly and have the panel honour it.
+ */
+export const ITEM_OVERLAYS = ['palette', 'create'] as const
+
+/** One of the openable states. */
+export type ItemOverlay = typeof ITEM_OVERLAYS[number]
 
 /**
  * The state a first-time reader meets.
@@ -169,14 +197,14 @@ export function readViewPrefs(): ItemViewPrefs {
     collapsed: [...new Set(collapsed)],
     // Never restored: see the module header.
     search: '',
-    // READ, AND ONLY THE ONE VALUE THAT MEANS SOMETHING. The key is never written
-    // by this module, so a real device cannot have produced one; this branch
-    // exists for the render bench, which writes the same record `page` is
-    // written through. Anything else in the slot is dropped, because a field
-    // that accepts anything it is handed is a field the compiler checks nothing
-    // about — the same reason `isPage` and `isSort` check against the model's own
-    // vocabulary rather than against a string shape.
-    overlay: record.overlay === 'palette' ? 'palette' : undefined,
+    // READ, AND ONLY A NAME IN THE TABLE ABOVE. The key is never written by this
+    // module, so a real device cannot have produced one; this branch exists for
+    // the render bench, which writes the same record `page` is written through.
+    // Anything else in the slot is dropped, because a field that accepts anything
+    // it is handed is a field the compiler checks nothing about — the same reason
+    // `isPage` and `isSort` check against the model's own vocabulary rather than
+    // against a string shape.
+    overlay: ITEM_OVERLAYS.includes(record.overlay as ItemOverlay) ? record.overlay as ItemOverlay : undefined,
   }
 }
 

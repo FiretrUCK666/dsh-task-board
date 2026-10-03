@@ -53,14 +53,33 @@
  */
 import { type ActionDanger, type ActionDomain, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
 import { type BoardCommand, type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
-import { type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
+import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
 import { type ItemStatus, type ItemStatusView } from '../../core/item.ts';
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts';
+import type { ItemAddress } from '../board-route.ts';
 export interface ToolCommitFace {
     getDoc(): BoardDoc;
     getItemsDoc(): ItemsDoc;
     commit(commit: BoardCommit): Promise<BoardDoc>;
     commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
+    /**
+     * Erase one deleted row's text — the host's own operation, and the only one
+     * that can: a commit carries rows and deletions, and a tombstone's payload is
+     * a field the merge grammar never shows a replica. So it is on this face
+     * rather than in the batch's commit path, and the batch asks for it the same
+     * way the panel's HTTP route does.
+     *
+     * THE ADDRESS IS THE SERVICE'S OWN, not a narrowed copy of it. The tool has
+     * already turned the number a model says out loud into the row's identity by
+     * the time it gets here, and a second signature that took a bare id would be a
+     * second name for one operation — with the real service no longer assignable
+     * to this face, which is how a structural view starts drifting from the class
+     * it is a view of.
+     *
+     * A face that cannot purge must say so rather than pretend: the model would
+     * otherwise be told 「已生效」 about words that are still on disk.
+     */
+    purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>;
     /** Relay one command to whichever replica holds the seat. `queued` = no
      *  engine. The whole union: the catalog decides which carrier an action
      *  rides, and the relay carries it as-is. */
@@ -125,7 +144,21 @@ export declare function capabilityView(): {
  *  the registry itself, one key at a time. A key added there appears here with
  *  no edit on this side. */
 export declare function enumeratedFilters(): readonly string[];
-/** The filter syntax, in the words the registry uses. */
+/** The filter syntax, in the words BOTH registries use — and **both** is the
+ *  point, not a nicety.
+ *
+ *  `taskboard_query`'s `filter` string is parsed by `matchItemQuery` for the item
+ *  list AND by the board's own search. It used to describe only the board's keys,
+ *  so the model was taught board keys (`has:*`, `is:*`) that the list silently
+ *  treats as free words — a query that returns nothing and reports no error —
+ *  while everything the list actually speaks (`status:`, `p1`–`p4`, `!1`–`!4`,
+ *  `has:`, `#标签`) was never mentioned at all. **A vocabulary taught by half is
+ *  worse than none**: the model cannot tell 「no match」 from 「I used it wrong」.
+ *
+ *  Both halves are DERIVED from the registry that parses them, so a flag added to
+ *  one appears in the description without anyone editing this file — which is the
+ *  only arrangement in which the description cannot go stale quietly.
+ */
 export declare function filterHelp(): {
     keys: readonly string[];
     values: readonly string[];

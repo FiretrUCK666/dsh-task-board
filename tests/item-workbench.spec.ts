@@ -35,6 +35,7 @@ import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type
 const knownActions: ReadonlySet<string> = new Set<ItemKeyAction>([
   'quickCapture', 'moveNext', 'movePrev', 'pick', 'rename', 'open',
   'close', 'priority', 'dueToday', 'remove', 'undo', 'palette',
+  'keyHelp', 'palettePrev', 'paletteNext', 'palettePick',
 ])
 
 /** A handler set that records what it was asked to do, for the reader cases. */
@@ -48,6 +49,9 @@ function recordOfActions(sink: (action: string) => void): ItemKeyActions {
     priority: arg => { sink(`priority:${arg ?? ''}`) },
     dueToday: record('dueToday'), remove: record('remove'), undo: record('undo'),
     palette: record('palette'),
+    keyHelp: record('keyHelp'),
+    palettePrev: record('palettePrev'), paletteNext: record('paletteNext'),
+    palettePick: record('palettePick'),
   }
 }
 import {
@@ -72,6 +76,10 @@ import {
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
 // works.
 import { type as typeInto, click, coreSurfaceSource, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, press, readSource, renderPanel, type Page } from './panel-harness.ts'
+import { pickThrough } from '../src/client/item/selection.ts'
+import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
+import { whyLabelOf } from '../src/client/item/why-label.ts'
+import type { ItemStep } from '../src/core/item.ts'
 
 // A fixed clock, so every date-derived claim is reproducible.
 const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
@@ -321,17 +329,42 @@ describe('every handler a row or a detail declares is actually connected', () =>
     expect(detailHandlers.length, 'no on* props were read from ItemDetailProps').toBeGreaterThan(3)
   })
 
-  for (const [component, handlers, source] of [
-    ['ItemRowLine', rowHandlers, panelSource],
-    ['ItemDetail', detailHandlers, panelSource],
-  ] as const) {
-    it(`the panel passes every ${component} handler`, () => {
-      const element = elementMarkup(source, component)
-      expect(element, `${component} is not rendered by the panel any more — this gate is reading a component nobody mounts`).not.toBe('')
-      const missing = handlers.filter(handler => !new RegExp(`\\b${handler}\\s*=`).test(element))
-      expect(missing, `${component} declares ${missing.join(', ')} and the panel passes nothing for it — the control exists and is wired to nothing`).toEqual([])
-    })
-  }
+  /* `ItemRowLine` 不再有一条这样扫 JSX 的门禁，**因为它扫的那件事已经不存在了**。
+   *
+   * 旧的门禁在面板的源码里找 `<ItemRowLine onXxx=…>`，然后要求 `ItemRowLineProps`
+   * 声明的每一个 handler 都在那上面出现。行现在不是这样被交出去的：面板把一个
+   * **对象字面量**交给 `renderRows`，表格再把它展开成行。于是 `<ItemRowLine` 这个
+   * 元素在面板源码里根本不存在，扫描永远读到空字符串，而断言永远红——它不是发现了
+   * 一个缺口，它是问了一个不存在的东西。
+   *
+   * 那缺口的另一半由类型系统守着，而且守得更紧：`ItemRowLineProps` 的十一个 handler
+   * 全是必填，缺一个就是构建失败（`tsc --noEmit` 绿就是证据）。一个必填属性既不能被
+   * 漏传也不能被多传，所以「控制存在而没有接线」这件事在这个组件上已经不可表达。
+   * 再加一条扫字符串的门禁，只会在下一次有人把行改成别的东西时提醒他们去改门禁，
+   * 而不是去改代码。
+   *
+   * `ItemDetail` 那一条留着：它仍然是被 JSX 直接交出去的，所以那条扫描仍然在问一
+   * 个真的问题。 */
+  it('the panel passes every ItemDetail handler', () => {
+    const element = elementMarkup(panelSource, 'ItemDetail')
+    expect(element, 'ItemDetail is not rendered by the panel any more — this gate is reading a component nobody mounts').not.toBe('')
+    const missing = detailHandlers.filter(handler => !new RegExp(`\\b${handler}\\s*=`).test(element))
+    expect(missing, `ItemDetail declares ${missing.join(', ')} and the panel passes nothing for it — the control exists and is wired to nothing`).toEqual([])
+  })
+
+  it('the row is handed a COMPLETE props object, and the compiler is what says so', () => {
+    // The half that replaced the deleted scan, stated as the thing that is now
+    // load-bearing: the factory builds one object literal per row and the props
+    // type is all-required, so a handler that stops being wired is a build
+    // failure rather than a runtime shrug. This case exists so the NEXT reader
+    // finds the claim and the proof in the same place — and so that a future
+    // change which makes one of them optional has something to notice.
+    const factory = /const rows = \(list[\s\S]*?list\.map\(item => \(\{([\s\S]*?)\n  \}\)\)/.exec(panelSource)?.[1] ?? ''
+    expect(factory, 'the row factory is not in the panel any more — find the new seam before trusting anything below').not.toBe('')
+    for (const handler of rowHandlers) {
+      expect(factory, `ItemRowLine declares ${handler} and the row factory never mentions it`).toContain(handler)
+    }
+  })
 
   it('no handler is a shell whose only effect is to dismiss itself', () => {
     // THE DEFECT THIS EXISTS FOR. A menu entry named for an action, whose
@@ -517,23 +550,37 @@ describe('the finished work is one click away on the list, and on no other page'
     // about a preference, and a preference nobody can reach is the defect this
     // whole refactor started from.
     //
-    // THE ENTRANCE IS NOW THE GROUP'S OWN FOLD, and the claim moved with it rather
-    // than being deleted. It used to be a tile on the overview strip; the strip is
-    // retired and the page-level `showDone` went with it, because it was the same
-    // sentence said a second time by a control that then disappeared — and a
-    // preference whose control is gone is not a setting, it is a trap with the
-    // handle filed off. **One intent, one control**, and this case now pins that
-    // the surviving control is one a reader can see and press.
+    // THE ENTRANCE IS THE 「隐藏已完成」 SWITCH IN THE FILTER BAR, and the claim
+    // moved with the structure rather than being deleted. It used to be a tile on
+    // the overview strip, then the finished group's own fold; both are gone with
+    // the groups, because a fold over a group that no longer exists is a control
+    // for a question the page no longer has. What is left is a switch that says
+    // the sentence in the reader's own words, sitting on the bar beside every
+    // other filter — and **one intent, one control** is the whole of the claim.
+    //
+    // So it is pressed. Not seeded: seeding a preference proves the panel READS
+    // it, and the defect this case was written for is a panel that reads a setting
+    // whose control is gone.
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      const fold = [...panel.surface.querySelectorAll('[class*="itemGroupToggle"]')]
-        .find(node => (node.textContent ?? '').includes('已完成'))
-      expect(fold, 'the finished group has no visible fold — the rows behind it are unreachable by any route a reader can see').toBeDefined()
-      // It has to be a real disclosure: an `aria-expanded` that names nothing is
-      // a control that announces a state the listener cannot tie to a region.
-      expect(fold?.getAttribute('aria-expanded'), 'the fold does not say whether it is open').toBeDefined()
-      expect(fold?.getAttribute('aria-controls'), 'the fold announces its state but names no region').toBeTruthy()
-      expect((panel.surface.textContent ?? ''), 'the finished row is not on the page with the switch on').toContain(rows[0]?.title ?? '__none__')
+      const finished = rows.filter(row => row.status === 'done')
+      expect(finished.length, 'the fixture holds no finished row, so this case is proving nothing').toBeGreaterThan(0)
+      const label = [...panel.surface.querySelectorAll('label')]
+        .find(node => (node.textContent ?? '').includes('隐藏已完成'))
+      expect(label, 'there is no 「隐藏已完成」 control anywhere on the page — the finished rows are unreachable by any route a reader can see').toBeDefined()
+      const box = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null
+      expect(box, '「隐藏已完成」 is not a real checkbox — it cannot be pressed by a thumb or a keyboard').not.toBeNull()
+      // 开着的状态：完成的行在表里。
+      expect((box as HTMLInputElement).checked, 'the switch opens off, so the finished rows start off the page').toBe(true)
+      expect((panel.surface.textContent ?? ''), 'the finished row is not on the page with the switch as it opens').toContain(finished[0]?.title ?? '__none__')
+      // 按一下——**真的按**，不是往偏好里塞一个值。这一条曾经红过，而红的方式很
+      // 难看：清单页把 `includeDone` 写死成 true，于是这枚开关画着、标着、存着，
+      // 而没有任何东西读它。读者拨了它、完成的行还在，面板看起来像是把行弄丢了。
+      act(() => { (box as HTMLInputElement).click() })
+      expect((panel.surface.textContent ?? ''), 'the finished row is still on the page after the switch was pressed — the control is a picture of a control').not.toContain(finished[0]?.title ?? '__none__')
+      // And back again, because a switch you cannot undo is a door.
+      act(() => { (box as HTMLInputElement).click() })
+      expect((panel.surface.textContent ?? ''), 'the switch did not put the finished rows back').toContain(finished[0]?.title ?? '__none__')
     } finally {
       panel.dispose()
     }
@@ -585,7 +632,10 @@ describe('the finished work is one click away on the list, and on no other page'
 
   it('the three numbers and the header count are the same fact told three ways', () => {
     const html = renderPanel(rows, 'wide', 'list')
-    const header = /itemCount[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    // `itemPageCount` and not `itemCount`: the header's own class is the page
+    // count, and a pattern written for an older name matches nothing at all — so
+    // the case reported 「页头没有写数」 about a header that was counting.
+    const header = /itemPageCount[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
     const total = Number(/(?:共\s*)?(\d+)/.exec(header)?.[1] ?? Number.NaN)
     expect(Number.isInteger(total), `the header states no count: "${header}"`).toBe(true)
     const rail = /itemPageRail[\s\S]*?<\/div>/.exec(html)?.[0] ?? ''
@@ -667,20 +717,36 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
-  it('a row in 「最近动过」 is picked by its identity, and lands on that row', () => {
-    // The pane's "before you pick" state lists the five most recently touched
-    // rows. Each one is a button, and a button that selects nothing is the
-    // worst kind: it looks like a link, it is focusable, and pressing it
-    // changes the pane by not changing it. The panel knows the row's uuid and
-    // shows its short number; the number is a NAME, not an address, and a row
-    // the document has not numbered yet has no name at all.
+  /* 「「最近动过」里的某一行是按身份选中的，并落到那一行」这一条删掉了，**因为它
+   * 的对象已经不在这个界面上了**。
+   *
+   * 原来的诊断是「`<ul>` 现在是 `class="undefined"`，所以找不到」——那一半是真的
+   * （那一行的类名确实死过），但它不是找不到的原因。真正的原因是：宽档上详情轨
+   * 只在**选中了某一行之后**才渲染（`showDetailPane = !narrow && picked !==
+   * undefined`），窄档上详情长在行里、而行一定是有 id 的。两条路上
+   * `ItemDetail` 收到的 `view` 都永远有值，所以它那整个「还没选中」的分支——一句
+   * 提示加一个「最近动过」——在这个面板上一次都画不出来。
+   *
+   * 也就是说：这不是一条过期断言，是一段**死代码**。留着断言等于把死代码钉成
+   * 设计；删掉断言而不报告，等于让下一个人继续以为「最近动过」是个入口。代码本身
+   * 还在 `detail-pane.tsx` 里，等一个决定：要么给详情轨一个入口，要么把这一段拿
+   * 掉。**这个决定是产品决定，不是实现细节，所以留给定夺。**
+   *
+   * 取代它的是下面那条：详情轨的头永远不为空，而且只在选中时存在。 */
+  it('a row is picked by its identity from the list, and lands on that row', () => {
+    // The reachable half of the claim above, and the one a reader actually
+    // exercises: press a row in the table, and the row you pressed is the row
+    // you get. The panel knows the row's uuid; the short number it shows is a
+    // NAME to read, never an address.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const recent = findByText(panel.surface, '这一条做完了') ?? findByText(panel.surface, '这一条硬期限已经过了整整九天')
-      click(recent)
-      const showing = panel.surface.textContent ?? ''
-      const landed = fixtures().some(row => showing.includes(row.title) && (row.title.length > 6))
-      expect(landed, 'pressing a recent row did not put that row on screen — the entry is selecting by a name, not by an identity').toBe(true)
+      const row = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
+        .find(node => (node.textContent ?? '').includes('这一条硬期限已经过了整整九天'))
+      expect(row, 'the list drew no row to choose').toBeDefined()
+      click(row)
+      const head = [...panel.surface.querySelectorAll('[class*="itemDetailHeadTitle"]')][0]
+      expect(head, 'pressing a row produced no detail head — the column beside the list is not named').toBeDefined()
+      expect((head?.textContent ?? '').trim(), 'the detail head names no row').not.toBe('')
     } finally {
       panel.dispose()
     }
@@ -704,7 +770,7 @@ describe('a press is a change to the document, not a change to the menu', () => 
         .filter(head => !head.closest('button'))
         .find(head => /item[A-Za-z]*Detail[A-Za-z]*Head/.test(head.className))
       expect(railHead(), 'a fresh panel drew a detail head with no row in it — a rule that separates nothing reads as a broken render').toBeUndefined()
-      const row = panel.surface.querySelector('[class*="itemRowMain"]')
+      const row = panel.surface.querySelector('[class*="itemTableRow"]')
       click(row)
       const head = railHead()
       expect(head, 'a chosen row produced no detail head — the column beside the list is not named').toBeDefined()
@@ -750,33 +816,38 @@ describe('a press is a change to the document, not a change to the menu', () => 
     // tile writes, the rows that token keeps must be the rows the tile counted.
     // Asserted by asking the model, so a future tile that counts one bucket and
     // filters another cannot pass.
-    // THE SUBJECT IS THE EMPTY-BUCKET SUMMARY'S CHIP NOW. The strip is retired,
-    // and the claim is the same one a reader can still check: whatever number a
-    // chip prints, the rows that chip's filter keeps must be those rows. The chip
-    // is the surface's remaining 「a number you can press to filter」, so the
-    // defect this caught has a home rather than losing its only test.
+    // THE SUBJECT IS THE STATISTICS BAND'S TILE NOW. The empty-bucket summary is
+    // retired with the groups, and the claim is the same one a reader can still
+    // check: whatever number a tile prints, the rows that tile's filter keeps must
+    // be those rows. The band is the surface's remaining 「a number you can press
+    // to filter」, so the defect this caught has a home rather than losing its only
+    // test.
     //
     // The gate is on the SHAPE rather than on the two values: whatever token the
-    // chip writes, the rows that token keeps must be the rows the chip counted.
-    // Asserted by asking the model, so a future chip that counts one bucket and
+    // tile writes, the rows that token keeps must be the rows the tile counted.
+    // Asserted by asking the model, so a future tile that counts one bucket and
     // filters another cannot pass.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const chip = panel.surface.querySelector('[class*="itemEmptyGroup"][data-status]')
-      expect(chip, 'no bucket chip is drawn at all, so this gate is asserting nothing — a number with no press behind it is a scoreboard').not.toBeNull()
+      // `button[itemStat…]` and not the band: the band is a `div`, so a selector
+      // that only asks for the name finds the container first and clicks an
+      // element with no handler on it — and then reports 「没有接线」 about a tile
+      // that is wired perfectly well.
+      const chip = panel.surface.querySelector('button[class*="itemStat"]')
+      expect(chip, 'no statistics tile is drawn at all, so this gate is asserting nothing — a number with no press behind it is a scoreboard').not.toBeNull()
       // `[0]`, not `[1]`: the pattern has no capture group, so `[1]` is always
-      // undefined and the whole case reports 「prints no number」 for a chip that
+      // undefined and the whole case reports 「prints no number」 for a tile that
       // is printing one — a gate that is red for the wrong reason is a gate
       // somebody relaxes instead of reads.
       const said = Number(/\d+/.exec(chip?.textContent ?? '')?.[0] ?? Number.NaN)
-      expect(Number.isInteger(said), `the chip prints no number to compare against: ${JSON.stringify(chip?.textContent)}`).toBe(true)
-      const before = panel.surface.querySelectorAll('li[class*="itemRow"]').length
+      expect(Number.isInteger(said), `the tile prints no number to compare against: ${JSON.stringify(chip?.textContent)}`).toBe(true)
+      const before = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
       act(() => { chip?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-      const after = panel.surface.querySelectorAll('li[class*="itemRow"]').length
-      expect(after, 'pressing the chip did not filter at all').toBeLessThan(before)
-      // The count it prints and the rows it keeps are ONE fact. A chip that says
+      const after = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
+      expect(after, 'pressing the tile did not filter at all').toBeLessThan(before)
+      // The count it prints and the rows it keeps are ONE fact. A tile that says
       // 0 and keeps 2 is the exact defect this case was written for.
-      expect(after, `the chip says ${String(said)} and filtering to it left ${String(after)} rows — the number and the list are two different facts`).toBe(said)
+      expect(after, `the tile says ${String(said)} and filtering to it left ${String(after)} rows — the number and the list are two different facts`).toBe(said)
     } finally {
       panel.dispose()
     }
@@ -918,7 +989,15 @@ describe('the search box does not print the grammar', () => {
     // is the same binding in `command-palette.tsx`, against the same one string.
     // The wiring changed and the claim did not — which is the point of stating
     // what a claim IS rather than which file it was typed into.
-    const field = /<input[^>]*className=\{css\.itemSearch\}[\s\S]{0,400}?\/>/.exec(palette)?.[0] ?? ''
+    // Located by the anchor and cut at the tag's own end, rather than by a regex with
+    // a character window in it. The window was the whole reason this gate broke:
+    // a field that grows one ARIA attribute stops being found, and the failure is
+    // reported as 「the search field is not where this gate expected it」 — which
+    // reads like a moved control and is really a number that went stale.
+    const anchor = palette.indexOf('className={css.itemSearch}')
+    const field = anchor < 0
+      ? ''
+      : palette.slice(palette.lastIndexOf('<input', anchor), palette.indexOf('/>', anchor) + 2)
     expect(field, 'the search field is not where this gate expected it — the markup moved and this is now checking nothing').not.toBe('')
     const bound = /value=\{([^}]*)\}/.exec(field)?.[1] ?? ''
     expect(bound, 'the search field has no value binding at all').not.toBe('')
@@ -1027,9 +1106,13 @@ describe('the ordering is ONE control, and the narrow band only wraps it', () =>
     // state bar naming it and the palette offering it are the same control seen
     // from two states, and a gate that counted the two would forbid the reader
     // from being told what they are looking at.
-    const choosers = (bar.match(/SORT_LABEL\[/g) ?? []).length
+    const choosers = (bar.match(/ITEM_SORTS\.map\(/g) ?? []).length
     expect(choosers, 'the orders are chosen in more than one place — the same setting with two components again').toBe(1)
     expect(bar, 'the ordering chooser is a `<select>` again, which is how the phone lost the segmented row').not.toMatch(/<select/)
+    // The word for each order is read from the closed table, never typed here —
+    // and it may be READ more than once (the one that is on says so in words),
+    // because reading a name twice is not choosing a setting twice.
+    expect(bar, 'the palette writes its own list of order labels instead of the one closed table').not.toMatch(/item\.sort\.\w+'\s*:\s*'/)
     // Every order the model offers is reachable, and the orders come from the
     // model rather than from a list written here.
     expect(bar, 'the palette does not read the orders from the model').toContain('ITEM_SORTS')
@@ -1209,13 +1292,28 @@ describe('the summary says four things, and they do not move under a switch', ()
     expect(fromSlices(true).length).toBe(ITEM_STATUS_ORDER.length)
   })
 
-  it('the pane shows all four, and the four add up to what the panel is showing', () => {
+  it('the band shows three, and the three are the three you have to act on today', () => {
+    // THREE, NOT FOUR, and the fourth is not missing — it is 停滞, and it is the
+    // one number on this surface that is not a question.
+    //
+    // 「落后」「卡住」「没日期」 each answer a question a reader opens the list
+    // with, and each is answered by FILTERING, so each one is a door. 「放置 31
+    // 天」 answers none of them: a row nobody has touched in a month is not
+    // something to do *today*, it is something to have noticed once, and it is
+    // already on the row that says it. Putting it in the band would make the band
+    // a fourth number the reader has to read rather than press, which is exactly
+    // the furniture this band replaced.
+    //
+    // So the test is on the three, by name. The four status names are NOT here:
+    // the status is a column now, and a status per group head was a second place
+    // counting what the table already counts.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const surface = panel.surface.textContent ?? ''
-      for (const label of ['进行中', '待办', '受阻', '已完成']) {
-        expect(surface, `the summary tile for ${label} is missing`).toContain(label)
+      for (const label of ['落后', '卡住', '没日期']) {
+        expect(surface, `the statistics tile for ${label} is missing`).toContain(label)
       }
+      expect(surface, 'the staleness count is back in the band — it is a row fact, not a question about today').not.toContain('放置')
     } finally {
       panel.dispose()
     }
@@ -1394,7 +1492,14 @@ describe('the row is a grid whose tracks are fixed, because alignment is a promi
     const css = read('client/item/item.module.css')
     const gridOf = (name: string): string => new RegExp(`\\.${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css)?.[1] ?? ''
     const columns = (body: string): string[] => [...body.matchAll(/grid-template-columns\s*:\s*([^;]+)/g)].map(m => (m[1] ?? '').trim())
-    for (const body of [gridOf('itemRowMain'), gridOf('itemRowMeta')]) {
+    /* 行与表头各一份，**而且必须两份都在**：表头那一行的七条轨是它标注的那些格子的
+     * 轨，两边只要有一边换了数，表头就盖在错的格子上——而这是这个面板唯一一处
+     * 「同一组数写在两个地方」的地方，样式表的注释里也是这么说的。
+     *
+     * 名字跟着结构走：行是 `.itemTableRow`，表头那一行是 `.itemTableHeadRow`。
+     * 曾经的名字（`itemRowMain` / `itemRowMeta`）属于一个「一行 = 身份轨 + 事实
+     * 行」的行，而行现在是七格的一行，两个名字都不存在了。 */
+    for (const body of [gridOf('itemTableRow'), gridOf('itemTableHeadRow')]) {
       expect(body, 'the row grid rule is not where the file says it is').not.toBe('')
       for (const value of columns(body)) {
         // Content-sized tracks are the defect; `minmax(0, 1fr)` is the fix and
@@ -1483,13 +1588,14 @@ function openRowMenu(root: HTMLElement): void {
  * for.
  */
 describe('a meter states a fraction — nothing on this page draws one', () => {
-  it('and the counts that took their place are plain numbers, so there is no fraction left to police', () => {
-    // A LIVE version of the retired check, pointed at the claim that replaced
-    // it: whatever the four group heads and the overdue facet print must be a
-    // COUNT a reader can check against the header, with no bar anywhere claiming
-    // to be a share of it. This is the smallest honest gate the retirement
-    // leaves behind — it cannot fail on a meter (there are none) and it fails the
-    // moment a meter comes back without one.
+  /* 「取而代之的那些数是纯数字，所以已经没有分数可查了」这一条连同它的对象一起
+   * 没了。分组拆掉之后，组头上**没有**任何一个数了，而这条断言的一半正是在数它们
+   * ——一半的对象没了，剩下的那一半（没有量表）已经被下面那条钉住了，而它一个字都
+   * 不需要改。留着一个断言已经不存在的东西的门禁，是这个文件里最容易长成假的
+   * 一种门禁。 */
+  it('no meter is on this surface, and the check that says so is the live one', () => {
+    // 「没有量表」本身就是要保住的性质：它是这条断言被拆成两条之后剩下的那一条，
+    // 而且它不依赖任何别的结构——只要有一个分数条回来，它就红。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const bars = panel.surface.querySelectorAll('[class*="itemTileBar"], [class*="itemGroupProgress"]')
@@ -1497,12 +1603,6 @@ describe('a meter states a fraction — nothing on this page draws one', () => {
         [...bars].map(node => node.className),
         'a meter is back on this surface — it has to be the share of the fraction spelled out beside it, so this retirement is over',
       ).toEqual([])
-      // And the group heads still print a number each: a retirement must not
-      // quietly become a deletion.
-      const counts = [...panel.surface.querySelectorAll('[class*="itemGroupCount"]')]
-        .map(node => Number(/(\d+)\s*$/.exec(node.textContent ?? '')?.[1] ?? Number.NaN))
-      expect(counts.length, 'the group heads no longer carry numbers, so 「the counts went back to the heads」 is not true').toBeGreaterThan(0)
-      expect(counts.every(Number.isInteger), `a group head reports no number: ${JSON.stringify(counts)}`).toBe(true)
     } finally {
       panel.dispose()
     }
@@ -1544,21 +1644,42 @@ describe('the keyboard flow is one table, and every key in it has something behi
     }
   })
 
-  it('no key is bound to a name twice with a different meaning', () => {
-    // `J` and `↓` both mean 「next」, which is right. Two bindings with the same
-    // CHORD meaning different things is not: the first one in the table wins and
-    // the second is unreachable, so a reader who finds the second in the docs is
-    // pressing a key that does something else.
-    const byChord = new Map<string, string>()
+  it('a chord bound twice is bound twice ON PURPOSE, and never by accident', () => {
+    // `J` and `↓` both mean 「next」, which is right. So do `↑`/`↓`/`↵` mean one
+    // thing in the panel and another in the palette — and the only thing that
+    // makes the second reachable is a `when`, because `bindingFor` takes the
+    // binding that APPLIES rather than the first that matches. So a chord bound
+    // twice with two different meanings must have both halves gated: one binding
+    // that always applies and one that never applies would leave the gated one
+    // unreachable, which is the same defect the old first-match rule had.
+    //
+    // It used to be asserted as 「no chord is bound twice at all」, which was true
+    // until the palette took the arrows — and the rule it was really stating
+    // (a reader must never find a key that does something else) is now checked
+    // directly, on both halves, further down this block.
+    const byChord = new Map<string, typeof ITEM_KEYS[number][]>()
     for (const binding of ITEM_KEYS) {
       const chord = `${binding.cmd === true ? 'cmd+' : ''}${binding.shift === true ? 'shift+' : ''}${binding.key}`
-      const seen = byChord.get(chord)
-      if (seen !== undefined) {
-        expect(seen, `${chord} is bound twice with different meanings (${seen} and ${binding.what}) — one of them is unreachable`).toBe(binding.what)
-      }
-      byChord.set(chord, binding.what)
+      byChord.set(chord, [...(byChord.get(chord) ?? []), binding])
     }
-    expect(byChord.size, 'no chords were read at all — the gate is asserting nothing').toBe(ITEM_KEYS.length)
+    const shared = [...byChord.values()].filter(group => group.length > 1)
+    expect(shared.length, 'no chord is shared at all — the gate is asserting nothing, and the palette\'s arrows are the case it is for').toBeGreaterThan(0)
+    for (const group of shared) {
+      const chord = `${group[0]?.cmd === true ? 'cmd+' : ''}${group[0]?.shift === true ? 'shift+' : ''}${group[0]?.key}`
+      const meanings = new Set(group.map(binding => binding.what))
+      for (const binding of group) {
+        expect(binding.when, `${chord} is shared with ${[...meanings].join(' and ')}, but "${binding.what}" applies everywhere — so the other meaning is unreachable`).toBeDefined()
+      }
+    }
+    // And the exact pair the palette needs: the arrows and Enter change owner
+    // with the box, and each owner answers in exactly one state.
+    const arrow = (key: string, paletteOpen: boolean): string | undefined =>
+      bindingFor({ key, metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') },
+        { focusedId: 'r-1', somethingOpen: paletteOpen, paletteOpen })?.action
+    expect(arrow('arrowdown', false), '↓ does not walk the rows while the palette is shut').toBe('moveNext')
+    expect(arrow('arrowdown', true), '↓ walks the panel\'s rows while the reader is choosing inside the palette').toBe('paletteNext')
+    expect(arrow('enter', false), '↵ does not open the row while the palette is shut').toBe('open')
+    expect(arrow('enter', true), '↵ opens the row under the cursor instead of running the candidate the reader can see selected').toBe('palettePick')
   })
 
   it('a key the reader is TYPING into is not a command', () => {
@@ -1587,7 +1708,7 @@ describe('the keyboard flow is one table, and every key in it has something behi
     // is」 and got 「the quietest」.
     for (const [digit, tier] of [['1', 'urgent'], ['2', 'high'], ['3', 'normal'], ['4', 'low']] as const) {
       const event = { key: digit, metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') }
-      const binding = bindingFor(event, { focusedId: 'r-1', somethingOpen: false })
+      const binding = bindingFor(event, { focusedId: 'r-1', somethingOpen: false, paletteOpen: false })
       expect(binding?.action, `${digit} does not set a priority`).toBe('priority')
       expect(binding?.arg, `${digit} sets the wrong tier`).toBe(tier)
     }
@@ -1602,10 +1723,10 @@ describe('the keyboard flow is one table, and every key in it has something behi
     const ran: string[] = []
     const actions = recordOfActions(name => { ran.push(name) })
     expect(claimsKey(empty), 'a priority key on an empty page is not claimed, so the browser takes it').toBe(true)
-    const taken = dispatchKey(empty, { focusedId: undefined, somethingOpen: false }, actions)
+    const taken = dispatchKey(empty, { focusedId: undefined, somethingOpen: false, paletteOpen: false }, actions)
     expect(taken, 'an inert key let the event travel to the browser').toBe(true)
     expect(ran, 'a key with no row under the cursor patched something anyway').toEqual([])
-    dispatchKey(empty, { focusedId: 'r-1', somethingOpen: false }, actions)
+    dispatchKey(empty, { focusedId: 'r-1', somethingOpen: false, paletteOpen: false }, actions)
     expect(ran, 'the same key with a row under the cursor did nothing — the binding is unreachable').toEqual(['priority:urgent'])
   })
 
@@ -1614,7 +1735,7 @@ describe('the keyboard flow is one table, and every key in it has something behi
     // does. If `claimsKey` and `bindingFor` were reading an empty map, every one
     // of these would pass for the same reason.
     const off = (key: string) => ({ key, metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') })
-    const state = { focusedId: 'r-1', somethingOpen: false }
+    const state = { focusedId: 'r-1', somethingOpen: false, paletteOpen: false }
     expect(claimsKey(off('q')), 'the reader claims a key the map does not have — it is guessing').toBe(false)
     expect(claimsKey(off('z')), 'a bare `z` is claimed — ⌘ is the platform\'s chord, so `z` alone is a letter').toBe(false)
     // A chord the map genuinely does not have, and one it does: the readers must
@@ -1704,12 +1825,15 @@ describe('the command palette BEHAVES, which a static capture cannot show', () =
     // press.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const before = panel.surface.querySelectorAll('[class*="itemRow"]').length
+      // `itemTableRow` and not `itemRow`: the row is a seven-cell table row now,
+      // and `itemRow` as a substring matches nothing — so before and after were
+      // both 0 and the comparison reported 「没有变窄」 about a chain that works.
+      const before = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
       open(panel)
       const chip = findByText(panel.surface, '待办')
       expect(chip, 'the palette offers no status value to press').not.toBeNull()
       click(chip)
-      const after = panel.surface.querySelectorAll('[class*="itemRow"]').length
+      const after = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
       expect(after, 'pressing a chip did not narrow the list — the control is drawn and wired to nothing').toBeLessThan(before)
     } finally {
       panel.dispose()
@@ -1743,7 +1867,7 @@ describe('the detail rail is rented when a row is chosen, and not before', () =>
       try {
         const rail = (): boolean => panel.surface.querySelector('[class*="itemDetailPane"]') !== null
         expect(rail(), `a fresh ${band} panel drew a detail rail before anything was chosen — 37% of the stage saying nothing`).toBe(false)
-        const row = panel.surface.querySelector('[class*="itemRowMain"]')
+        const row = panel.surface.querySelector('[class*="itemTableRow"]')
         expect(row, `the ${band} panel drew no row to choose`).not.toBeNull()
         click(row)
         expect(
@@ -1893,3 +2017,407 @@ describe('a surface finds its OWN box, not the first one in the document', () =>
   })
 })
 
+
+/* ═══════════════════════════════════════════════════════════════════════════
+ * 这一段是本轮接上的四件东西，每一件都按本文件的开头那条规矩配了一条「探针」：
+ * 门禁必须是能被喂坏的，否则它只是一枚绿勾。
+ * ═══════════════════════════════════════════════════════════════════════════ */
+describe('a title is edited where it is printed, and on a thumb too', () => {
+  it('双击改标题, and 「改标题」 is the same edit under a thumb', () => {
+    // 双击是**桌上**的手势。触屏没有双击，而触屏是硬性规范 11 里的一等公民，所以
+    // 同一件事必须有一个按拇指够得到的入口——行菜单里的「改标题」。两个入口走同
+    // // 一个 `onPatch`，所以这不是两处实现，是一个手势的两种按法。
+    for (const band of ['wide', 'narrow'] as const) {
+      const panel = mountPanel(oneRow({ title: '原来的标题' }), 'list', band)
+      try {
+        const row = panel.surface.querySelector('[class*="itemTableRow"]')
+        const title = row?.querySelector('[class*="itemCellTitleText"]')
+        expect(title, `the ${band} band row printed no title to edit`).toBeDefined()
+        // 桌上：双击那一格。
+    // 一次 `onClick` 先选中这一行（详情轨因此出现），`dblclick` 再把标题换成字段——
+        act(() => { title?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
+        const field = panel.surface.querySelector('[class*="itemCellTitle"] input') as HTMLInputElement | null
+        expect(field, `pressing the title twice on the ${band} band opened no field — the desktop path is gone`).not.toBeNull()
+        if (field !== null) {
+          typeInto(field, '改过的标题')
+          press(field, 'Enter')
+          expect(panel.lastWrite()[0]?.title, `the title written on the ${band} band never reached the document`).toBe('改过的标题')
+        }
+        // 拇指：行菜单里的「改标题」。
+        openRowMenu(panel.surface)
+        const entry = findMenuEntry(panel.surface, '改标题')
+        expect(entry, `the ${band} band row menu offers no way to edit the title — a phone has no double press`).not.toBeNull()
+      } finally {
+        panel.dispose()
+      }
+    }
+  })
+})
+
+describe('the checklist is a list a reader can change, not a list they can only tick', () => {
+  /** A row that already carries two steps, so order and removal are both real. */
+  function twoSteps(): ItemRecord[] {
+    return oneRow({
+      steps: [
+        { id: 'r-1.s1', text: '第一步', done: false },
+        { id: 'r-1.s2', text: '第二步', done: true },
+      ],
+    })
+  }
+  /** Open one row's detail so the editor is on screen, whatever band we are on. */
+  function openDetail(panel: ReturnType<typeof mountPanel>): void {
+    const row = panel.surface.querySelector('[class*="itemTableRow"]')
+    click(row)
+  }
+  /** The step texts currently in the editor, in the order they are drawn. */
+  // 读每一行里的那个 `span`，而不是读 `data-done`：那个属性只在**做完**的时候才
+  // 出现（`data-done={step.done ? '' : undefined}`），所以按它找会漏掉还没做的步，
+  // 而「漏掉还没做的那几步」正好是这条用例要抓的那种错。
+  const stepsShown = (root: ParentNode): string[] =>
+    [...root.querySelectorAll('[class*="itemStepList"] > li')]
+      .map(li => li.querySelector('label span')?.textContent ?? '')
+
+  it('「编辑步骤」 is in the row menu, and it opens the editor with the caret in the field', () => {
+    // The ENTRANCE, because a control that exists only as a function is a control
+    // nobody can reach — and on a touch surface 「编辑步骤」 in a ⋯ menu is the
+    // only route there is.
+    for (const band of ['wide', 'narrow'] as const) {
+      const panel = mountPanel(twoSteps(), 'list', band)
+      try {
+        openRowMenu(panel.surface)
+        const entry = findMenuEntry(panel.surface, '编辑步骤')
+        expect(entry, `the ${band} band row menu offers no way to edit the checklist`).not.toBeNull()
+        click(entry)
+        const field = [...panel.surface.querySelectorAll('input')]
+          .find(node => (node.getAttribute('aria-label') ?? '').includes('这一步要做什么'))
+        expect(field, `pressing 「编辑步骤」 on the ${band} band put no add-step field on screen`).toBeDefined()
+      } finally {
+        panel.dispose()
+      }
+    }
+  })
+
+  it('a step can be added, taken off, and moved — and the document is what changes', () => {
+    const panel = mountPanel(twoSteps(), 'list', 'wide')
+    try {
+      openDetail(panel)
+      expect(stepsShown(panel.surface), 'the two steps are not on screen to begin with').toEqual(['第一步', '第二步'])
+
+      // 加一步，写进文档。
+      const field = [...panel.surface.querySelectorAll('input')]
+        .find(node => (node.getAttribute('aria-label') ?? '').includes('这一步要做什么')) as HTMLInputElement
+      typeInto(field, '第三步')
+      const add = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '加一步')
+      click(add)
+      expect(stepsShown(panel.surface), 'the typed step never reached the document').toEqual(['第一步', '第二步', '第三步'])
+      expect(panel.lastWrite()[0]?.steps.map(step => step.text), 'the write reached the document but not the checklist').toEqual(['第一步', '第二步', '第三步'])
+
+      // 挪上去：第二步越过第一步。
+      //
+      // 找的是 `title`，`aria-label` 也一起看，但断言落在**今天真的在屏幕上**的
+      // 那一半上：共享的 `Button` 目前不转发 `aria-label`——它在标记里被传下去了，
+      // 然后在渲染时不见了（`board/ui.tsx` 的 props 表里没有这一项，元素上也没
+      // 写）。等它转发之后，这一行自然就变成更严的门禁，那时它应该被改严。
+      const controlNamed = (prefix: string): Element | undefined =>
+        [...panel.surface.querySelectorAll('button')]
+          .find(node => `${node.getAttribute('title') ?? ''}${node.getAttribute('aria-label') ?? ''}`.startsWith(prefix))
+      const up = controlNamed('往上挪一步：第二步')
+      expect(up, 'no control moves a step up').toBeDefined()
+      click(up)
+      expect(stepsShown(panel.surface), 'the step did not move — the control is a picture of a control').toEqual(['第二步', '第一步', '第三步'])
+
+      // 去掉一步，而且留下的是剩下的两步。
+      const drop = controlNamed('去掉这一步：第一步')
+      expect(drop, 'no control takes a step off').toBeDefined()
+      click(drop)
+      expect(stepsShown(panel.surface), 'the step is still on screen after being taken off').toEqual(['第二步', '第三步'])
+      expect(panel.lastWrite()[0]?.steps.length, 'the document kept a step the reader deleted').toBe(2)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the three edits are answered by pure functions, and they refuse the impossible', () => {
+    // The pure half, asked directly. A view that computes its own order has no
+    // place to be wrong until a reader is looking at it; these are the answers the
+    // panel hands to the writer, and each of them has to be the SAME ARRAY back
+    // when there is nothing to change — because that is what tells the writer not
+    // to burn a revision on a press that cannot do anything.
+    const base: ItemStep[] = [
+      { id: 'a.s1', text: '一', done: false },
+      { id: 'a.s2', text: '二', done: true },
+    ]
+    expect(addStep(base, 'a', '   '), 'a blank line became a step').toBe(base)
+    expect(addStep(base, 'a', ' 三 ').map(step => step.text), 'the words were not trimmed').toEqual(['一', '二', '三'])
+    expect(addStep(base, 'a', '三').map(step => step.id), 'the new step reuses an id that is already on the row').toEqual(['a.s1', 'a.s2', 'a.s3'])
+    expect(removeStep(base, 'nope'), 'a step that is not there was removed anyway').toBe(base)
+    expect(moveStep(base, 'a.s1', -1), 'the first step wrapped to the end').toBe(base)
+    expect(moveStep(base, 'a.s2', 1), 'the last step wrapped to the start').toBe(base)
+    // AND THE IDS TRAVEL WITH THE ENTRIES: a rebuild from positions renumbers the
+    // steps that stayed, and a step is ADDRESSED by its id, so the model would
+    // then be asked about a step that means something else.
+    expect(moveStep(base, 'a.s2', -1).map(step => step.id), 'moving a step renumbered the ones that stayed').toEqual(['a.s2', 'a.s1'])
+  })
+
+  it('the probe bites: a reordering that renumbers, and a blank line that files', () => {
+    const renumbering = (steps: ItemStep[], stepId: string): ItemStep[] => {
+      const at = steps.findIndex(step => step.id === stepId)
+      const next = steps.slice()
+      next.splice(at, 1)
+      next.push(steps[at] as ItemStep)
+      return next.map((step, position) => ({ ...step, id: `a.s${position + 1}` }))
+    }
+    const filesBlanks = (steps: ItemStep[], text: string): ItemStep[] => [...steps, { id: 'a.s9', text, done: false }]
+    const base: ItemStep[] = [{ id: 'a.s1', text: '一', done: false }, { id: 'a.s2', text: '二', done: false }]
+    /* 探针比的是**配对**，不是 id 的列表。
+     *
+     * 重新编号的那一份，id 列表和原来一模一样——因为它按位置把整张表重编了一遍，
+     * 于是 `a.s1` 还在列表的第一个位置上，只是挂在**另一句话**下面。真正要守住的是
+     * 「一个 id 永远指着同一句话」：步骤是被 id 指名的（`item.step` 拿它当参数，
+     * 模型会把它念回来），所以重编之后的清单会让模型问到一个意思已经变了的东西。
+     * 只比 id 列表的那道门禁，在这一份坏实现上是绿的。 */
+    const paired = (steps: readonly ItemStep[]): string => steps.map(step => `${step.id}·${step.text}`).join('|')
+    const wanted = 'a.s2·二|a.s1·一'
+    // 三条断言合起来才是「这条门禁还能红」：真的那一份被判为对，而两份坏的各被判
+    // 为坏。只写第一条的话，它在实现改坏的那天会跟着一起坏，然后永远绿下去。
+    expect(paired(moveStep(base, 'a.s1', 1)), 'the detector reports the real reordering as a renumbering — this probe proves nothing').toBe(wanted)
+    expect(paired(renumbering(base, 'a.s1')), 'a renumbering reordering passed as an id-preserving one').not.toBe(wanted)
+    expect(filesBlanks(base, '  ').length, 'a blank line was filed as a step and the check accepted it').not.toBe(addStep(base, 'a', '  ').length)
+  })
+})
+
+describe('a row is held with the mouse, with shift, and with the keyboard', () => {
+  /** The pickbox of the nth row on screen, in the order the reader sees them. */
+  const pickboxOf = (root: ParentNode, nth = 0): HTMLInputElement | undefined =>
+    [...root.querySelectorAll('[class*="itemCellPick"] input')][nth] as HTMLInputElement | undefined
+
+  /** A tick, with shift if the reader is holding it. */
+  function tick(box: HTMLInputElement, withShift = false): void {
+    act(() => {
+      box.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: withShift }))
+    })
+  }
+
+  it('the pickbox is on every row of the list page, with no arming first', () => {
+    // THE COLUMN WAS 44px OF NOTHING. The box appeared only once the reader had
+    // pressed `X` (or found 多选 in the palette), so a reader who wanted to hold
+    // five rows had to know a keyboard chord existed before a control they could
+    // see did. It is a real `<input>`, so it is in the tab order from the first
+    // render — the claim is not 「it can appear」 but 「it is there before anything
+    // is pressed」。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const rows = panel.surface.querySelectorAll('[class*="itemTableRow"]')
+      expect(rows.length, 'the fixture drew no rows').toBeGreaterThan(1)
+      for (const [at, row] of [...rows].entries()) {
+        expect(pickboxOf(row), `row ${String(at)} has no pickbox on a page that can batch`).toBeDefined()
+      }
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('and it is NOT on the two pages that have no batch bar', () => {
+    // PRODUCT puts multi-select on the list page alone, and a tick on a page with
+    // no bar is a tick into a holding the reader can neither see nor empty.
+    for (const page of ['inbox', 'schedule'] as const) {
+      const panel = mountPanel(fixtures(), page, 'wide')
+      try {
+        expect(pickboxOf(panel.surface), `the ${page} page draws a pickbox and has no bar to act on it`).toBeUndefined()
+      } finally {
+        panel.dispose()
+      }
+    }
+  })
+
+  it('one tick holds one row, and SHIFT holds the run between two of them', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const rows = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
+      const first = pickboxOf(rows[0] as Element) as HTMLInputElement
+      const last = pickboxOf(rows[3] as Element) as HTMLInputElement
+      tick(first)
+      expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'one tick put nothing in the holding').toContain('1')
+      // SHIFT 从刚才那一条一直到这里：中间四行一起被握住。
+      tick(last, true)
+      const held = [...panel.surface.querySelectorAll('[class*="itemCellPick"] input')]
+        .filter(box => (box as HTMLInputElement).checked)
+      expect(held.length, 'shift did not hold the run between the two boxes').toBe(4)
+      expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'the bar and the boxes disagree about how many are held').toContain('4')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('shift with nothing held is one row, not the whole list', () => {
+    // 没有锚点就没有「从哪到哪」。猜一个锚点就是让一次看起来像「加上接下来六条」
+    // 的按压变成握住整张表。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const rows = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
+      tick(pickboxOf(rows[2] as Element) as HTMLInputElement, true)
+      const held = [...panel.surface.querySelectorAll('[class*="itemCellPick"] input')]
+        .filter(box => (box as HTMLInputElement).checked)
+      expect(held.length, 'a shift with no anchor held something other than the one row under the pointer').toBe(1)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the range is measured over the rows ON SCREEN, not over the document', () => {
+    // 读者勾了第一条、滚过两行被筛掉的、Shift 勾第七条，说的是「这两条之间屏幕上
+    // 看见的那几条」。按文档算就会悄悄把那两行也算进去，于是批量条说「已选 8 条」
+    // 而读者能指出来的只有六个——这正是这个模块存在的理由。
+    const held = pickThrough({ armed: true, ids: new Set(['a']) }, ['a', 'b', 'c'], 'a', 'c')
+    expect([...held.ids].sort(), 'the range was not measured over the visible order').toEqual(['a', 'b', 'c'])
+    // 文档里的 'x' 在屏上不在，所以它没有被握住。
+    expect(held.ids.has('x'), 'a row the reader cannot see was held').toBe(false)
+    expect(pickThrough({ armed: true, ids: new Set() }, ['a', 'b', 'c'], 'zz', 'c').ids.size, 'a missing anchor turned into a range').toBe(1)
+  })
+
+  it('the probe bites: a document-ordered range passes for a screen-ordered one', () => {
+    const screen = ['a', 'b', 'c']
+    const document = ['a', 'x', 'y', 'b', 'c']
+    const overDocument = (from: string, to: string): Set<string> => {
+      const ids = new Set<string>()
+      for (let at = document.indexOf(from); at <= document.indexOf(to); at += 1) ids.add(document[at] as string)
+      return ids
+    }
+    const real = pickThrough({ armed: true, ids: new Set() }, screen, 'a', 'c').ids
+    expect([...real].sort(), 'the detector reports the real range as a document-ordered one — this probe proves nothing').toEqual(['a', 'b', 'c'])
+    expect(overDocument('a', 'c').has('x'), 'a document-ordered range passed as a screen-ordered one').toBe(true)
+  })
+})
+
+/* 「彻底删除」的三种答案都要在**界面上**验一遍，而不只是验那个函数答了什么。
+ *
+ * 台架自己的假主机只答 restore 一条路，而且它是在**挂载的时候**装上 `fetch` 的——
+ * 所以这一段用的假主机必须装在挂载**之后**，那也正是读者的主机所在的位置：面板
+ * 是在按钮被按下的那一刻去读 `fetch`，不是在它被建起来的时候。`dispose()` 会把
+ * 台架那一个放回去，所以不会有东西漏到下一条用例里。 */
+describe('the archive is the reader\'s account, and erasing is the last thing in it', () => {
+  /** The one row the fake host is holding, and the whole of its record. */
+  const ARCHIVED: ItemRecord = {
+    id: 'gone-1', ref: 7, title: '删掉的那一条', body: '', notes: '', steps: [],
+    status: 'open', priority: 'normal', tags: [],
+    startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
+    origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
+  }
+
+  /**
+   * THE HOST, as far as this surface is concerned.
+   *
+   * `answer` decides only the purge route; the archive read answers from the row
+   * above, so the two halves cannot drift apart into a green case.
+   * @param answer - what the host says about the erase.
+   * @returns a function that puts the real `fetch` back.
+   */
+  function hostThatPurges(answer: (address: { id?: string }) => unknown): () => void {
+    const real = globalThis.fetch
+    globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
+      const body = JSON.parse(String(init?.body ?? '{}')) as { id?: string }
+      const value = url.includes('/board/items/purge')
+        ? answer(body)
+        : { available: true, deleted: [ARCHIVED] }
+      return new Response(JSON.stringify({ ok: true, value }), { status: 200, headers: { 'content-type': 'application/json' } })
+    }) as typeof fetch
+    return () => { globalThis.fetch = real }
+  }
+
+  /** Let every already-resolved promise inside the panel land. */
+  const settle = async (): Promise<void> => {
+    for (let round = 0; round < 4; round += 1) await act(async () => { await Promise.resolve() })
+  }
+
+  /** Mount, install the host, and open the archive — the order the reader meets. */
+  async function openArchive(answer: (address: { id?: string }) => unknown): Promise<{ panel: ReturnType<typeof mountPanel>; undo: () => void }> {
+    const panel = mountPanel(oneRow({ id: 'live-1', title: '还在的那一条' }), 'list', 'wide')
+    const undo = hostThatPurges(answer)
+    const look = findByText(panel.surface, '看看')
+    expect(look, 'the archive has no entrance on the list page').not.toBeNull()
+    click(look)
+    await settle()
+    return { panel, undo }
+  }
+
+  /** 每一行旁边的那一枚「彻底删除」。 */
+  const purgeButtonOf = (row: Element | null): Element | undefined =>
+    [...(row?.querySelectorAll('button') ?? [])].find(node => (node.textContent ?? '').trim() === '彻底删除')
+
+  it('every archived row offers 彻底删除, and the button belongs to that row', async () => {
+    const { panel, undo } = await openArchive(() => ({ available: true }))
+    try {
+      const row = panel.surface.querySelector('[class*="itemRecentRow"]')
+      expect(row, 'the archive drew no row to hold the deleted one').not.toBeNull()
+      expect(purgeButtonOf(row), 'an archived row offers no way to erase it — 彻底删除 is nowhere').toBeDefined()
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
+
+  it('erasing takes the row off the page and names the thing it erased', async () => {
+    // 回执写的是**被按掉的那一件**，不是「已删除」：读者是按在一行旁边的，而三十天
+    // 之后他唯一能回忆起来的就是那行标题。
+    const seen: (string | undefined)[] = []
+    const { panel, undo } = await openArchive(body => {
+      seen.push(body.id)
+      return { available: true, revision: 2, erased: ARCHIVED }
+    })
+    try {
+      expect(panel.surface.textContent, 'the archive is not holding the deleted row').toContain('删掉的那一条')
+      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      await settle()
+      expect(seen, 'the press never reached the host').toEqual(['gone-1'])
+      // 行离开这一页了。
+      expect(panel.surface.querySelectorAll('[class*="itemRecentRow"]').length, 'the erased row is still on the page').toBe(0)
+      // 而回执说的是它。
+      expect(panel.surface.textContent, 'the receipt does not name the row that was erased').toContain('已清掉')
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
+
+  it('a name that now points at a LIVE row is refused in words, and the row stays', async () => {
+    // 短编号会被重用：清掉 #12 之后，写进本文档的下一行就是 #12。所以一个刚拿过
+    // 的编号可能指着清单里还活着的一条。主机拒绝销毁它，而这一层要说的是**这件
+    // 事**——不是「删除失败」（那读起来像按钮坏了），也不是沉默（那读起来像一次
+    // 成功地毁了别人的东西）。
+    const { panel, undo } = await openArchive(() => ({ available: true, revision: 2, notDeleted: true }))
+    try {
+      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      await settle()
+      const said = panel.surface.textContent ?? ''
+      expect(said, 'the reader was not told that the name points at a row that is still on the list').toContain('还活着')
+      expect(said, 'the failure was reported as a broken button rather than as the fact it is').not.toContain('没能彻底删除')
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
+
+  it('a host that heard the question and found nothing is a receipt, not a refusal', async () => {
+    // 已经不在归档里了：读者要的是它没了，而它确实没了。报一个错，等于告诉他一件
+    // 已经办成的事失败了——而那正是最让人不再按第二次的那种回执。
+    const { panel, undo } = await openArchive(() => ({ available: true, revision: 2 }))
+    try {
+      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      await settle()
+      const said = panel.surface.textContent ?? ''
+      expect(said, 'the reader was shown a failure for a row that was already gone').not.toContain('没能彻底删除')
+      expect(said, 'nothing at all was said — a silent press is a press that looks broken').not.toContain('正在清掉')
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
+
+  it('the probe bites: an unreachable host and a wrong address are two different sentences', () => {
+    // 两个代码，两个句子。合成一个「删除失败」就是让读者去查一个他无从查的按钮。
+    expect(whyLabelOf('invalid_argument').words, 'a wrong address is reported as a host that cannot be reached').not.toBe(whyLabelOf('hostUnavailable').words)
+    expect(whyLabelOf('hostUnavailable').raw).not.toBe(whyLabelOf('invalid_argument').raw)
+  })
+})

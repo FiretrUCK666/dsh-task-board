@@ -1887,7 +1887,18 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
             >
               <header className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-                <h3 className={css.columnTitle}>{t(STATUS_KEY[column.status])}</h3>
+                <h3 className={css.columnTitle} title={t(STATUS_KEY[column.status])}>
+                  {/* **短名，不是全名。** 顶上那排列导航用的也是这张短表，所以在手机上
+                    * 「规划」（药丸）与「待规划」（列头）会同屏出现——同一个状态说了两个
+                    * 名字，读者会当成两件不同的事，而那一列其实只有一列。
+                    *
+                    * 全名没有被丢掉：它在这个 `<h3>` 的 `title` 上，也是列头按钮的
+                    * `aria-label`。**看得见的那个词要唯一，读屏与悬停拿到的是完整的那个。**
+                    * 两张表本来就该同时存在——手机上五个等宽格子只剩一个半字，全名在
+                    * 那里全部塌成「待…」「进…」「已…」，于是列头这一处也跟着用短名，
+                    * 而不是引入第三套按宽度切换的名字。 */}
+                  {t(STATUS_SHORT_KEY[column.status])}
+                </h3>
                 <span className={css.columnCount}>{tasks.length}</span>
               </header>
               {/* Drag events bubble from the cards: the container tracks the

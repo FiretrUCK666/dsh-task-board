@@ -18,7 +18,7 @@ export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'dangerGhost';
  *  `size="sm"` is the quiet row/header variant (view-session, refresh, row
  *  actions): one compact size for every secondary in-list affordance, so the
  *  board never mixes a full-size button into a row. */
-export declare function Button({ variant, size, type, className, disabled, pressed, onClick, title, children }: {
+export declare function Button({ variant, size, type, className, disabled, pressed, onClick, title, label, children }: {
     variant?: ButtonVariant;
     size?: 'sm';
     type?: 'button' | 'submit';
@@ -29,6 +29,11 @@ export declare function Button({ variant, size, type, className, disabled, press
     pressed?: boolean;
     onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
     title?: string;
+    /** The button's ACCESSIBLE NAME, for a button whose face is a word that does
+     *  not name what it does. `title` is not a substitute: hard rule 11 says a
+     *  control that only explains itself on hover has no explanation on a phone,
+     *  and a title is exactly that. */
+    label?: string;
     children: ReactNode;
 }): import("react").JSX.Element;
 /**

@@ -66,6 +66,36 @@ export declare function setArmed(selection: ItemSelection, armed: boolean): Item
  */
 export declare function togglePicked(selection: ItemSelection, id: string): ItemSelection;
 /**
+ * SHIFT: hold everything BETWEEN two rows, in the order the reader can see.
+ *
+ * The range is built from the ORDER THE READER SEES — the sorted, filtered list
+ * the table actually drew — and not from the document. The difference is the whole
+ * point: a reader who ticks the first row, scrolls past two rows the filter left
+ * out, and shift-ticks the seventh means 「the rows between these two on this
+ * screen」. A range computed over the document would hold rows that are not on the
+ * screen at all, and the batch bar would then say 「已选 8 条」 over six boxes the
+ * reader can point at — the exact lie this module exists to prevent.
+ *
+ * It is also not the same as the *filtered* set in document order, which is what
+ * the select-all box counts: the page sorts what it draws, so the third row on
+ * screen is not the third row of the document under any order but 「按截止」.
+ *
+ * A MISSING ANCHOR IS NOT A RANGE, it is one row. Shift with nothing held has
+ * nowhere to measure from, and guessing an anchor is how a press that looked like
+ * 「add the next six」 ends up holding the whole list.
+ *
+ * HOLDING, NOT TOGGLING: the rows inside the range all become held and the ones
+ * already held stay held. The alternative — flipping each one — makes the same
+ * press mean a different thing depending on what happened to be selected, which
+ * is the one property a range gesture must not have.
+ * @param selection - the current holding.
+ * @param visible - the rows on screen, in order, by identity.
+ * @param anchor - the row the range starts from: the last one held by a plain press.
+ * @param target - the row the range ends at.
+ * @returns the next holding.
+ */
+export declare function pickThrough(selection: ItemSelection, visible: readonly string[], anchor: string, target: string): ItemSelection;
+/**
  * Hold every row the reader can currently see, or release them all.
  *
  * `visible` rather than 「everything」 on purpose: the pickbox exists on the rows

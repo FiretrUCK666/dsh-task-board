@@ -1373,6 +1373,14 @@
   cursor: inherit;
 }
 
+/* **这一格不进文档流，由上面那条 `.columnHeader > .statusDot` 定位。**
+ *
+ * 我一度在这里补一份 `position: absolute`，理由是「这条规则没有 position，所以点压在
+ * 列名上」——**那个理由是假的**：`position` 在那条**后代选择器**上，而它更具体，所以
+ * 本来就赢。补上来的是一条更靠左的竞争规则（9px vs 原来的 21px）与一份多余的
+ * margin——**一个被更具体的规则完全压住的声明，看起来像修好了，而它什么也没改。**
+ * 「注释说的和规则写的对不上」是真的，但**结论跳了一步**：注释里那句话对应的
+ * 规则不在这个块里。 */
 .statusDot {
   width: 8px;
   height: 8px;
@@ -1835,6 +1843,16 @@
   gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
+  /* **这一行不做任何补偿。** 它曾经把整行往左拉了「药丸内衬 + 描边」那么多，让
+   * 药丸里的**字**和上面的「更新于」齐平——字是齐了，可药丸的**盒子**凸到了内容左沿
+   * 之外，看上去像从卡片里探出来一块。**有描边的东西，读者对齐的是它的边界，不是
+   * 边界里的字**：药丸的盒子左沿 = 内容的左沿 = 「更新于」的字左沿，三者同在一条
+   * 线上，而盒子里的字靠它自己的内衬往里让，那是药丸的内部，不是这一行的对齐问题。
+   *
+   * 所以那一行与上一行共用同一条左沿，**零偏移**——这也是这一段唯一要钉住的事，
+   * 因为两种错法看起来是同一个问题的两面。 */
+  --card-badge-pad: 6px;
+  --card-badge-hair: 1px;
 }
 
 /* A CHIP IS AN OBJECT, AND AN OBJECT HAS AN EDGE. Every chip on a card is
@@ -1854,8 +1872,8 @@
    The gap still does the separating; this is what gives the gap something to
    separate. */
 .cardBadges .chip {
-  padding: 0 6px;
-  border: var(--dsh-tb-border-soft);
+  padding: 0 var(--card-badge-pad);
+  border: var(--card-badge-hair) solid var(--dsw-alias-border-l1);
   border-radius: var(--dsh-tb-pill);
 }
 
@@ -2490,40 +2508,30 @@
    mounts is the one mechanism those surfaces have in common; a mount that
    travelled to whichever stylesheet happened to be edited first would move the
    mechanism again, and this list has already moved twice for no reason. */
-.dshTbScroll {
-  /* Nothing of its own to declare: the whole point of the class is to be the
-     selector the shared rules below are written against. The one declaration
-     here is the reason the class is safe to hand to any element — a scroll
-     container that cannot shrink below its content is not a scroll container,
-     and the min-height that makes it one belongs with the mount rather than in
-     six separate surfaces. */
-  min-block-size: 0;
-  min-inline-size: 0;
-}
 
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, .dshTbScroll)::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -7729,9 +7737,10 @@ span.interactionOptions {
      travels is motion, and the state it reports is also in the group's expanded
      attribute. The turn becomes a step, which is the reduced-motion translation of
      the same fact rather than its absence. */
-  .itemGroupChevron {
-    transition-duration: 0s;
-  }
+  /* `.itemGroupChevron` 原来在这一档被静音成 0s——它是清单页四个分组那个折叠箭头，
+   * 而分组已经拆掉了，箭头跟着没有消费者。这条留着的形状是**一条永不生效的
+   * 规则在等着它的类名回来**：没人能从截图上看出它，可它会让下一个人以为折叠
+   * 箭头还在某处活着，所以连同它上面那段解释一并拿掉。 */
 
   /* FUNCTIONAL STATE PULSE — EXEMPT, not deleted. The breathing ring says
      "this is running" / "this is unread"; a still ring reads as "stuck" (the

@@ -157,12 +157,18 @@ Restart `dsh web` afterwards.
   | Page | Answers | On the rail |
   | --- | --- | --- |
   | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. | how many |
-  | **List** | Everything unfinished, grouped by state; each group header carries that group's own count and step total. | how many |
+  | **List** | Every entry you have, as **one table**: tick / state / title / priority / due / tag. The head is sortable — tap a column name to order by it. | how many |
   | **Agenda** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. | how many |
 
   **All three pages stay on the rail, and an empty one shows 0** — "asked, and the answer is
-  zero" and "this question does not exist" are two different things. Tag, stale, archive and
+  zero" and "this question does not exist" are two different things. In the list table
+  **state is a column** (**To do / In progress / Blocked / Done**), so a state is said once
+  and in one place. Tag, stale, archive and
   filtered views are not destinations — you click into them and they open.
+  The due column says different things in different weights: **Past due** is the one that
+  turns red, "behind" and "is today" differ only in how dark the ink is, and only the
+  **hard deadline** makes a row genuinely overdue — a date that slipped and a promise that
+  was broken are two things, and the interface says so separately.
   **Missing a due date is only "behind schedule", and only the hard deadline turns a row
   red.** English has one word for "dead" and Chinese has three, so the distinction is made
   in the grammar instead: the three times read **from** (earliest start), **by** (due) and
@@ -170,25 +176,29 @@ Restart `dsh web` afterwards.
   deadline; a missed due date is behind schedule.
 
   **The list page is the only workbench**, because sorting, picking and batching only become
-  questions past a few dozen rows. It opens with a one-line **overview** (**In progress /
-  To do / Blocked / Done / Past due** — tapping one filters the list to that class), then a **filter bar** — state, priority, tag, date — where each choice writes
-  itself into the search box, so what you typed and what you clicked are one thing you can edit
-  either way; then the rows, grouped by state. **Seven orderings** (sequence / earliest start /
-  due / hard deadline / priority / created / title) and **multi-select  batching** (state, priority,
-  date, ask AI, delete) live on this page — tick a few rows and the batch bar appears. **The inbox
-  deliberately has no batching**: someone who just typed a line is still looking at the input, and
-  batching answers a different question.
+  questions past a few dozen rows. It opens with **three stat tiles** — **Behind / Blocked / No
+  date** — each of which filters the list to that one thing; they answer 「what needs me now」,
+  not 「how many states are there」. Below them a **filter bar** — state, date, tag. Priority is
+  deliberately not among them: it answers 「set the focused row to this」 rather than 「show me
+  these」, so it lives in the `⌘K` palette. Then the table itself.
+  **Six orderings** (sequence / earliest start / due / hard deadline / priority / title) and
+  **multi-select batching** (state, priority, date, ask AI, delete) live on this page — tick a few
+  rows and the batch bar appears. **The inbox deliberately has no batching**: someone who just
+  typed a line is still looking at the input, and batching answers a different question.
 
-  **Row height is not on this page — and the inbox is not the page that lacks it.** That switch is
-  in the **header**, outside the page switch, so **all three pages have it**. A user setting that
-  is missing from one page excludes that page's devices, and row height is 「how this page is read」,
-  which every page has an opinion about.
+  **Row height is not a switch.** It is a fixed value, because it is a fact settled by touch
+  targets and the type scale rather than a reader's preference. *Density* is the preference — and
+  a switch that moves internal spacing but not row height is worse than none: the reader presses
+  it, sees only the word 「compact」 said differently, and stops believing it.
 
-  Deleting is one press and one undo, with no confirmation dialog: the receipt appears in
-  place and says both "you can take this back now" and "after that, 30 days", and a tombstone
-  **carries the row**, so a deleted item is **recoverable for 30 days** — unlike cards. The list
-  page says the window in a line of its own and a button opens the archive, where one click
-  brings the original text back. The capture box
+  Deleting is a road with three steps: **delete** (one press and one undo, no confirmation
+  dialog), **restore**, and **erase for good**. Deleting leaves a tombstone **carrying the row**,
+  so an item is **recoverable for 30 days** — unlike cards. Erasing for good takes the *text*
+  out and **leaves the stamp**, because that stamp is the only thing stopping a device that was
+  asleep for a week from handing its stale copy back and putting the row on screen: without it
+  "erase for good" would be "erase, and you can still undo it". The list page says the window in
+  a line of its own and the entry beside it opens the archive drawer, where every row offers
+  both restore and erase. The capture box
   takes inline
   syntax: `#tag`, `!1`–`!4` for priority, `@2026/12/24` for a full date (slashes — a
   dashed `@2026-12-24` is **not** a date here and stays in the text as words), and a leading

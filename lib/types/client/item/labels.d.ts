@@ -57,6 +57,17 @@ export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>
  * members.
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
+/**
+ * The triage lines' SHORT words, for the one-line form.
+ *
+ * A separate table rather than a truncation of the long sentences, because the
+ * long ones are sentences with a consequence — 「1 项过了想要的日子」 tells a reader
+ * what HAPPENED, and 「落后」 alone is a label with no claim. On the one line there
+ * is no room for the sentence, so the short form is deliberately a LABEL: it
+ * names the line and its count, and it writes the same filter the long sentence
+ * wrote, through the same writer.
+ */
+export declare const TRIAGE_SHORT: Readonly<Record<ItemFlag, TaskBoardKey>>;
 /** The four groups a row sorts into, and the word for each. */
 export declare const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>>;
 /** The agenda's buckets and the word for each. */

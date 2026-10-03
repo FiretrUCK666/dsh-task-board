@@ -223,10 +223,56 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // hairline, which is the quietest edge the design system has.
     const rule = ruleFor('.cardBadges .chip')
     expect(rule, 'card chips have no edge again, so a multi-chip card reads as one sentence').not.toBe('')
-    expect(rule).toMatch(/border:\s*var\(--dsh-tb-border-soft\)/)
+    // THE CLAIM, NOT THE SPELLING. This used to read
+    // `border: var(--dsh-tb-border-soft)`, which pins ONE way of writing a
+    // hairline rather than the hairline itself — and this same file has already
+    // ruled that move out twice (see the colour mark and the workspace dot
+    // below, where the mechanism is explicitly left free). What has to hold is
+    // that the chip draws an edge that is not zero.
+    expect(rule, 'the chip declares no border, so the two words of a chip row touch').toMatch(/(?:^|[;\s])border(?:-[a-z-]+)?\s*:\s*(?!0\b|none\b)/)
     // Padding is what makes it read as an edge the chip owns rather than a rule
-    // floating between two words.
-    expect(rule, 'the chip has a border but no bearing, so the edge touches the text').toMatch(/padding:\s*0\s+6px/)
+    // floating between two words. It is a TOKEN now, and the reason is below.
+    expect(rule, 'the chip has a border but no bearing, so the edge touches the text')
+      .toMatch(/(?:^|[;\s])padding(?:-inline)?\s*:\s*0\s+var\(--card-badge-pad\)/)
+
+    // THE COMPENSATION, and this is the half the old assertion could not see.
+    // A chip's own bearing plus its hairline pushes its TEXT right of the meta
+    // row directly above it, which spends no bearing of its own — MEASURED: the
+    // 待你决断 / 新留言 row sat 7px right of 「更新于 …」 on the same card, so the
+    // badge row read as indented rather than as aligned.
+    //
+    // So the row gives back exactly what the chip takes, and the two numbers are
+    // named ONCE on the row and spent by the chip through the same tokens. That
+    // is the whole reason they are tokens: a hand-written `calc(-1 * 7px)` is
+    // correct on the day it is written and silently wrong the day somebody rounds
+    // the border from 1px to 2px.
+    const row = ruleFor('.cardBadges')
+    const hair = /--card-badge-hair\s*:\s*([^;]+)/.exec(row)?.[1]?.trim()
+    const pad = /--card-badge-pad\s*:\s*([^;]+)/.exec(row)?.[1]?.trim()
+    expect(hair, 'the badge row does not name the hairline width it gives back').toBeDefined()
+    expect(pad, 'the badge row does not name the bearing it gives back').toBeDefined()
+    expect(hair, 'the hairline the row gives back is not a length').toMatch(/^\d*\.?\d+px$/)
+    expect(pad, 'the bearing the row gives back is not a length').toMatch(/^\d*\.?\d+px$/)
+    expect(rule, 'the chip spends a border width the row does not give back').toContain('border: var(--card-badge-hair) solid')
+    expect(rule, 'the chip spends a bearing the row does not give back').toContain('padding: 0 var(--card-badge-pad)')
+    // **AND THE ROW IS NOT SHIFTED — zero offset, in EITHER direction.** Two
+    // mistakes look like one problem here and both were made in this file:
+    //
+    //   1. no offset at all → the chips' TEXT sits one bearing right of 「更新于」,
+    //      which reads as 「这一行往右偏了」;
+    //   2. compensating by the chip's bearing → the chips' BOX then hangs LEFT of
+    //      the content edge, which reads as 「有东西从卡片里探出来」.
+    //
+    // **Neither is the fix, and that is the finding.** A chip with a visible border
+    // is aligned by its BOX: the box belongs on the content edge — the same x as
+    // 「更新于」 above and the card title above that — and the text inside it yields
+    // to its own bearing, which is the chip's business and not this row's alignment.
+    // The reference workbench puts its badges flush with the text column for exactly
+    // this reason, and its badges are bordered too.
+    //
+    // So the claim is one line and it is checkable: **this row is not moved.**
+    expect(row, 'the badge row is shifted along the inline axis, so its chips no longer start on the same left edge as the line above — either sign of a shift is the same defect')
+      .not.toMatch(/margin-inline-start|translate|left:/)
   })
 
   it('every LEADING MARK on a card hangs in the padding, so one column has one text edge', () => {
@@ -257,11 +303,33 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // where the text starts.** So this asserts the only thing that actually
     // decides it — the mark's own inline bearing, which has to be NEGATIVE, i.e.
     // it must give its width back — and the mechanism is left to be chosen again.
-    for (const [name, selector] of [['the colour mark', '.cardColorMark'], ['the workspace dot', '.cardWorkspaceDot']] as const) {
+    // The claim is one sentence: a mark is not content, so it must not occupy the
+    // text's own column. **Two mechanisms satisfy that, and which one a given mark
+    // uses is a fact about THAT mark's rail** — a card mark hangs in the rail by
+    // handing its width back, while a column's dot hangs in the gutter the cards
+    // leave by leaving the flow entirely. Asking for one spelling would forbid the
+    // other, so this asks the question.
+    //
+    // A mark that is out of flow must also say WHERE it lands: `position: absolute`
+    // with no inset is a mark floating over whatever happens to be to its left, and
+    // that is a worse defect than the one it replaced.
+    const MARKS: readonly (readonly [string, string, boolean])[] = [
+      ['the colour mark', '.cardColorMark', false],
+      ['the workspace dot', '.cardWorkspaceDot', false],
+      ["the column's status dot", '.columnHeader > .statusDot', true],
+    ]
+    for (const [name, selector, outOfFlow] of MARKS) {
       const mark = ruleFor(selector)
-      const bearing = /margin-inline-start:\s*([^;]+)/.exec(mark)?.[1] ?? ''
-      expect(bearing, `${name} has no inline bearing of its own, so it pushes the text off the card's text line`).not.toBe('')
-      expect(bearing, `${name} occupies width in the text's own column — the rail exists so a mark can hang in the padding instead`)
+      if (outOfFlow) {
+        expect(/position\s*:\s*absolute/.test(mark),
+          `${name} is supposed to hang in the gutter the cards leave, and it is in the text's own column instead — the column's name gets pushed right by the dot's own width`).toBe(true)
+        expect(mark,
+          `${name} is out of flow but says nowhere to land, so it floats over whatever is to its left`).toMatch(/inset-inline-start\s*:|inset\s*:/)
+        continue
+      }
+      const bearing = /margin-inline-start\s*:\s*([^;]+)/.exec(mark)?.[1] ?? ''
+      expect(bearing, `${name} is in the text's own column and gives nothing back, so it pushes the text off the line — the rail exists so a mark can hang in the padding instead`).not.toBe('')
+      expect(bearing, `${name} occupies width in the text's column — it must hand its width back, or its width becomes the title's indent`)
         .toMatch(/^calc\(.*-\s*var\(--card-mark-col\)\)$/)
     }
   })
@@ -279,8 +347,20 @@ describe('the column header and the cards under it share ONE text edge', () => {
     const src = readFileSync(fileURLToPath(new URL('../src/client/item/row-line.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     expect(src, 'the soft reading is still derived and still dropped by the row').toContain('softLine(view)')
+    // THE CLAIM IS 「没有就不说」, not a piece of JSX. It used to pin the old shape
+    // (`soft !== undefined && <span className={css.itemDue}`), and when the row's
+    // second line became a joined line of readings the spelling changed while the
+    // behaviour did not — so the gate went red over a row that still says both
+    // dates and still says one when there is only one.
+    //
+    // Two halves, because either one alone is satisfiable by the wrong thing: the
+    // undefined case must be spelled, AND the empty result must be filtered before
+    // the join. Without the second, an absent soft reading renders as a lone 「·」
+    // at the end of the line — a doubled date AND a stray separator.
     expect(src, 'the soft reading is never rendered, so a doubly-slipped row still says one date')
-      .toMatch(/soft !== undefined && <span className=\{css\.itemDue\}/)
+      .toMatch(/soft !== undefined\s*\?\s*soft\.text\s*:\s*undefined/)
+    expect(src, 'an absent reading is joined in rather than filtered, so the line ends on a lone separator')
+      .toMatch(/filter\([^)]*!==\s*undefined[^)]*\)/)
     // It is only worth saying when the HARD reading spoke. When the combined
     // reading is the plan's, `softLine` returns undefined — saying it twice is
     // noise, and the gate is that the two paths are distinguishable at all.
@@ -350,7 +430,18 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // And the one page that DOES batch takes the real state, not a constant.
     const list = readFileSync(fileURLToPath(new URL('../src/client/item/pages/list.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    expect(list, 'the list page has a batch bar but no longer draws pickboxes').toMatch(/renderRows\(slice\.items,\s*props\.picking\)/)
+    // THE SECOND ARGUMENT IS THE CLAIM, so the gate reads that and not the row list.
+    // It pinned `renderRows(slice.items, props.picking)` — the list page's rows
+    // arrive as ONE flattened list now that the status buckets are gone, so the
+    // spelling moved and the behaviour did not.
+    // A bounded span rather than `[^)]*`, because the first argument is now
+    // `slices.flatMap(slice => slice.items)` and **the first `)` is inside it** —
+    // so a pattern that stops at the first closing parenthesis reads a truncated
+    // call and reports the page as having lost the argument. A gate whose pattern
+    // cannot count one level of nesting is a gate that will keep finding defects in
+    // the pattern.
+    expect(list, 'the list page has a batch bar but does not hand renderRows the real picking state')
+      .toMatch(/renderRows\([\s\S]{0,160}?,\s*props\.picking\s*\)/)
   })
 
   /**

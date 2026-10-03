@@ -38,21 +38,23 @@
 import { join } from 'node:path'
 import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
 import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
-import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, restoredItemOf } from '../core/items-doc.ts'
-import type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, purgeItemTombstone, restoredItemOf } from '../core/items-doc.ts'
+import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
-// Types only, and the reason is that a restore is addressed by TWO names: the
-// wire shape and the row it names are one decision, and a service that declared
-// its own copy of the address would be free to disagree with the route about
-// which name a caller is allowed to send. The module is erased at build time, so
-// this costs no runtime edge.
-import type { RestoreAddress } from './board-route.ts'
+// Types only, and the reason is that an operation on a deleted row is addressed
+// by TWO names: the wire shape and the row it names are one decision, and a
+// service that declared its own copy of the address would be free to disagree
+// with the route about which name a caller is allowed to send. Both the restore
+// and the purge are addressed by it, which is why it is named for the ROW and
+// not for either operation. The module is erased at build time, so this costs
+// no runtime edge.
+import type { ItemAddress } from './board-route.ts'
 import { retireLegacyUnitFile, unitDirectoryPath, type RetireOptions, type RetireOutcome } from './data-root.ts'
 
 // The wire types live in the shared core (the client sync layer reads the
 // same shapes); re-exported here so host callers keep one import surface.
 export type { BoardCommand, BoardEvent, LeaseState } from '../core/board-doc.ts'
-export type { ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
+export type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 
 /** Structural face of the storage hub's opened KV unit (no SDK import).
  *
@@ -452,11 +454,9 @@ export class DocumentService {
        * that exists only in this process's heap, is the one loss on this surface
        * that is both silent and permanent — a checklist row is often the only
        * record of an idea, and the window where it can vanish is exactly the
-       * window where the disk is full. */
-      if (this.unit !== undefined) {
-        await this.unit.putRecord(BOARD_UNIT_TABLE, ITEMS_DOCUMENT, next)
-      }
-      this.items = next
+       * window where the disk is full. The two steps are `putItemsDoc`'s, so the
+       * order is written down once for both checklist writes. */
+      await this.putItemsDoc(next)
       this.broadcast({ type: 'commit', document: ITEMS_DOCUMENT, revision: next.revision, clientId: commit.clientId })
       return next
     })
@@ -492,7 +492,7 @@ export class DocumentService {
    * @param clientId - who asked, for the broadcast and the activity note.
    * @returns the restored row, or `undefined` when no tombstone holds that row.
    */
-  async restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined> {
+  async restoreItem(of: ItemAddress, clientId: string): Promise<ItemRecord | undefined> {
     const id = of.kind === 'id'
       ? of.id
       : deletedItemsOf(this.items).find(item => item.ref === of.ref)?.id
@@ -501,6 +501,70 @@ export class DocumentService {
     if (restored === undefined) return undefined
     await this.commitItems({ clientId, items: [restored], changed: [restored.id], deleted: [] })
     return restored
+  }
+
+  /**
+   * Take the text out of one deleted row, by identity or by short number.
+   *
+   * WHY THIS IS A SERVICE OPERATION AND NOT A CLIENT COMMIT, and it is the
+   * mirror image of the restore's reason. A commit carries rows and deletions;
+   * a tombstone's payload is a field of THIS host's own tombstone map, and
+   * neither stream has a move that says 「stop keeping this text」 — a replica
+   * cannot even SEE a tombstone, let alone edit one. So the merge path cannot
+   * express a purge at all, and the only writer that can is the host.
+   *
+   * THE SAME LANE, THE SAME DURABILITY ORDER, THE SAME NO-OP RULE as
+   * {@link commitItems}: a purge that erases nothing writes nothing and
+   * announces nothing, and one that erases something is on the medium before the
+   * caller is told it is. A purge reported as done over a full disk would leave
+   * the reader's own words sitting on the disk and a receipt saying they are
+   * gone — the one loss on this surface that is both silent and permanent.
+   *
+   * IDEMPOTENT, and the answer says which of the two happened. A drawer that
+   * clicks what it is reading and a model retrying a batch both arrive after
+   * the tombstone may already be empty, and 「清不掉」 about something already
+   * clean is a failure report about a success. The identity of the returned
+   * document is what distinguishes the two: the same object means nothing
+   * moved.
+   *
+   * @param of - which row, named by identity or by short number.
+   * @param clientId - who asked, for the broadcast and the activity note.
+   * @returns what the purge decided, and the document it decided it on.
+   */
+  async purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge> {
+    return this.enqueue(async () => {
+      const id = of.kind === 'id'
+        ? of.id
+        : deletedItemsOf(this.items).find(item => item.ref === of.ref)?.id
+      // A number no tombstone holds is a row whose text is already gone (a
+      // retry, a pruned TTL, or a number that never existed). There is nothing
+      // left to erase and nothing to refuse, so this is the same answer the id
+      // path gives for an empty tombstone — success, and no write.
+      if (id === undefined) return { kind: 'alreadyGone', doc: this.items } as const
+      const outcome = purgeItemTombstone(this.items, id)
+      if (outcome.kind !== 'purged') return outcome
+      await this.putItemsDoc(outcome.doc)
+      this.broadcast({ type: 'commit', document: ITEMS_DOCUMENT, revision: outcome.doc.revision, clientId })
+      return outcome
+    })
+  }
+
+  /**
+   * The checklist's write lane's two steps, in the only order that is honest:
+   * the medium takes it, then anything observable moves.
+   *
+   * Shared by {@link commitItems} and {@link purgeItem} because they have ONE
+   * rule between them and the rule is not per-method: a write that is not on
+   * the medium is not a write, and both of them must refuse rather than lose
+   * it. A second copy of 「put, then assign, then broadcast」 is a second place
+   * for the order to be wrong, and this order is the whole defect that once made
+   * a full disk look like a saved note.
+   */
+  private async putItemsDoc(next: ItemsDoc): Promise<void> {
+    if (this.unit !== undefined) {
+      await this.unit.putRecord(BOARD_UNIT_TABLE, ITEMS_DOCUMENT, next)
+    }
+    this.items = next
   }
 
   /**

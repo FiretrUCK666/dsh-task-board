@@ -57,3 +57,5 @@ coverage/
 # installs straight from this repository without running a build. It must be
 # committed in the same commit as the src change that produced it; CI fails
 # when the two drift apart.
+# 静态渲染台架的产物：每跑一次出图就冒一个，verify 会因为「根目录有未申报的文件」变红
+tmp-*.html

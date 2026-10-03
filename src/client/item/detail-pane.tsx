@@ -15,7 +15,7 @@
  * surface — and a layer that floats over another surface is not this surface's
  * layer.
  */
-import type { ItemRecord, ItemPriority, ItemStatus } from '../../core/item.ts'
+import type { ItemRecord, ItemPriority, ItemStatus, ItemStep } from '../../core/item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { isEnglish, t } from '../locales.ts'
@@ -23,6 +23,8 @@ import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
+import { ItemSteps } from './step-editor.tsx'
+import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
 import css from './item.module.css'
 
@@ -72,6 +74,25 @@ export interface ItemDetailProps {
    * accident: the type is derived from the same verdict table the writer uses.
    */
   readonly onEdit: (edit: ItemPatch) => void
+  /**
+   * Write the WHOLE checklist back, through the panel's one writer.
+   *
+   * A list rather than four verbs, and the reason is that the step list is
+   * REPLACED by design — the model reads it the same way. So 「加一步」 and
+   * 「挪上去」 are two answers this pane computes with the shared pure functions
+   * and hands over whole; the panel writes once. Four verbs here would be four
+   * writes, and four writes are four chances for two devices to interleave into a
+   * list neither of them meant.
+   */
+  readonly onEditSteps: (steps: ItemStep[]) => void
+  /**
+   * Bumped by the row menu's 「编辑步骤」, so the add field takes the caret.
+   *
+   * A COUNTER AND NOT A REF, for the reason the capture box's `focusRequest` is
+   * one: the same press has to work twice, and a ref cannot tell the second press
+   * from the first.
+   */
+  readonly stepsFocus?: number
   readonly onToggleStep: (stepId: string) => void
   readonly onRemove: () => void
   readonly onPickRecent: (id: string) => void
@@ -113,12 +134,12 @@ export function ItemDetail(props: ItemDetailProps) {
           {props.recent.length === 0
             ? <p className={css.itemHint}>{t('item.detail.emptyNone')}</p>
             : (
-              <ul className={css.itemList}>
+              <ul className={css.itemRecentList}>
                 {props.recent.map(row => (
                   <li key={row.id} className={css.itemRecentRow}>
                     <button type="button" className={css.itemRecentRowMain} onClick={() => props.onPickRecent(row.id)}>
-                      <span className={css.itemRef}>{row.ref}</span>
-                      <span className={css.itemTitle}><span className={css.itemTitleText}>{row.title}</span></span>
+                      <span className={css.itemRefChip}>{row.ref}</span>
+                      <span className={css.itemRecentTitle}><span className={css.itemRecentTitleText}>{row.title}</span></span>
                     </button>
                   </li>
                 ))}
@@ -130,6 +151,8 @@ export function ItemDetail(props: ItemDetailProps) {
   }
 
   const english = isEnglish()
+  /** Hand the whole list back to the one writer, as a fresh array it may keep. */
+  const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
   return (
     <>
       <section className={css.itemSection}>
@@ -149,22 +172,22 @@ export function ItemDetail(props: ItemDetailProps) {
             onChange={event => props.onEdit({ body: event.target.value })}
           />
         </Field>
-        {item.steps.length > 0 && (
-          <ul className={css.itemStepList}>
-            {item.steps.map(step => (
-              <li key={step.id} className={css.itemStep}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={step.done}
-                    onChange={() => props.onToggleStep(step.id)}
-                  />
-                  <span data-done={step.done ? '' : undefined}>{step.text}</span>
-                </label>
-              </li>
-            ))}
-          </ul>
-        )}
+        {/* 步骤是这一页唯一「能改顺序」的东西，所以编辑器就长在它本来被读到的
+            地方：勾选框是原来的那一个，去掉与挪动是加在它旁边的三个控件，而
+            「编辑步骤」那一项只是把读者送到这里并把光标放进输入框。
+
+            四条手出边都是**整份清单**，不是四种算术：加减与排序住在 `steps.ts`
+            的纯函数里，而这一层只负责把它们算好的答案交给面板，面板再走同一个
+            共享写入口。清单的算法因此只有一个住处——一份在别处重写的「挪上去」
+            就是一份会跟这里慢慢走偏的顺序。 */}
+        <ItemSteps
+          item={item}
+          focusRequest={props.stepsFocus}
+          onToggle={props.onToggleStep}
+          onAdd={text => write(addStep(item.steps, item.id, text))}
+          onRemove={stepId => write(removeStep(item.steps, stepId))}
+          onMove={(stepId, by) => write(moveStep(item.steps, stepId, by))}
+        />
       </section>
 
       <section className={css.itemSection}>

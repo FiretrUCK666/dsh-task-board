@@ -10,6 +10,11 @@
  *                                     (?since=N answers unchanged for N >= revision)
  *   POST /api/<ns>/board/items      → ItemsCommit {clientId, items, changed, deleted}
  *                                     → the authoritative checklist after the merge
+ *   POST /api/<ns>/board/items/restore → {of:{id|ref}, clientId} → bring a
+ *                                     deleted row back (a host operation)
+ *   POST /api/<ns>/board/items/purge   → {of:{id|ref}, clientId} → erase a
+ *                                     deleted row's text for good (also a host
+ *                                     operation; idempotent)
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
@@ -33,7 +38,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
-import { deletedItemsOf, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
+import { deletedItemsOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { relatedSessionIdsOf } from '../core/task-live.ts'
 import { acquireBoardService, DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
@@ -158,7 +163,21 @@ export interface BoardRouteDeps {
    * worked. `undefined` means no tombstone holds that row, and that is never
    * dressed up as a success.
    */
-  restoreItem(of: RestoreAddress, clientId: string): Promise<ItemRecord | undefined>
+  restoreItem(of: ItemAddress, clientId: string): Promise<ItemRecord | undefined>
+  /**
+   * Take the text out of one tombstone, by whichever name the caller holds.
+   *
+   * A SERVICE operation for the opposite reason the restore is one, and the
+   * reason is the same fact read from the other side: a tombstone's payload is
+   * a field of this host's own tombstone map, and a client commit carries rows
+   * and deletions — it has no move that says 「stop keeping this text」. So the
+   * merge path cannot express a purge at all, and only the host may write it.
+   *
+   * It never refuses for want of a tombstone: a row whose text is already gone
+   * answers as a success, because the callers click what they are reading and a
+   * retry must not be reported as a failure about work that is finished.
+   */
+  purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>
   subscribe(listener: (event: BoardEvent) => void): () => void
 }
 
@@ -186,15 +205,22 @@ export type AskRouteView =
   | { readonly ok: false; readonly why: string }
 
 /**
- * WHICH ROW a restore names. Two NAMED addresses, never one falling back to the
- * other — see {@link RestoreAddress} for why both exist and why a request may
- * carry only one of them.
+ * WHICH ROW an operation on a DELETED row names. Two NAMED addresses, never one
+ * falling back to the other.
+ *
+ * Both a restore and a purge are addressed this way, and they are addressed
+ * this way for one reason: a tombstone is filed under the row's uuid, and the
+ * two callers hold different names for the same row. The panel's drawer has the
+ * uuid and often no number at all (a row it just deleted still carries the
+ * document's 「not numbered yet」 zero), while the model's `item.restore` /
+ * `item.purge` say 「#12」 out loud and hold nothing else. So each caller sends
+ * the name it actually holds, and neither key is a fallback for the other.
  */
-export type RestoreAddress = { readonly kind: 'id'; readonly id: string } | { readonly kind: 'ref'; readonly ref: number }
+export type ItemAddress = { readonly kind: 'id'; readonly id: string } | { readonly kind: 'ref'; readonly ref: number }
 
 /** What a restore asks for: which row, and who is asking. */
 export interface RestoreRequest {
-  readonly of: RestoreAddress
+  readonly of: ItemAddress
   readonly clientId: string
 }
 
@@ -213,7 +239,38 @@ export interface RestoreRouteView {
 }
 
 /**
- * Parse the restore body: EXACTLY ONE of the two names, and a caller id.
+ * The purge's answer — the restore's shape, because the two operations differ
+ * only in what they do to the payload, and a second envelope for the second
+ * operation would be a second dialect on one prefix.
+ *
+ * THE THREE SHAPES, ALL SUCCESSES EXCEPT ONE, and the caller can tell them
+ * apart without a code:
+ *
+ *  - `erased` present: the text is gone as of this revision, and here is the
+ *    row it was — the receipt can name what was destroyed.
+ *  - neither: there was nothing left to erase (a retry, or a delete that never
+ *    kept text). This IS the success, and it is the same answer the drawer needs
+ *    when a second click arrives after the first landed.
+ *  - `notDeleted`: the name resolved to a row that is STILL IN THE LIST. The
+ *    one refusal, and it is reported rather than smoothed into a success — a
+ *    「已彻底删除」 about a row the reader can scroll up and see is the one lie
+ *    this route must not tell.
+ */
+export interface PurgeRouteView {
+  readonly available: boolean
+  readonly revision: number
+  /** The row whose text is gone, when there was one to name. */
+  readonly erased?: ItemRecord
+  /** The name resolved to a live row: nothing was purged. */
+  readonly notDeleted?: true
+}
+
+/**
+ * Parse the body of an operation on a DELETED row: EXACTLY ONE of the two
+ * names, and a caller id. One reader, both tails — the purge inherits the
+ * restore's addressing rules rather than re-deciding them, because a second
+ * reader of 「which row」 is a second answer to the same question and the two
+ * would be free to disagree about which caller may send which name.
  *
  * WHY TWO NAMES, AND WHY THEY ARE NOT INTERCHANGEABLE. A tombstone is stored
  * under the row's uuid, so the identity is the address that always resolves —
@@ -222,34 +279,43 @@ export interface RestoreRouteView {
  * undo gesture has to be able to bring back, and it is the one a reader cannot
  * name: they did not read a number, they pressed undo. The short number is the
  * other name because it is the one a person and a model SAY OUT LOUD, and the
- * model's `item.restore` quotes it back from a receipt it read a turn earlier.
+ * model's `item.restore` / `item.purge` quote it back from a receipt they read a
+ * turn earlier.
  *
  * So each caller sends the name it actually holds, and a request carrying BOTH
  * is refused rather than resolved by preference: a body with both keys is a
  * caller that does not know which row it meant, and picking one for it would
- * restore a row the caller did not ask for — a silent wrong answer about
- * somebody's own words, which is worse than a refusal it can fix.
+ * act on a row the caller did not ask for — a silent wrong answer about
+ * somebody's own words, which is worse than a refusal it can fix. A purge gets
+ * the same rule for a sharper reason: resolving the wrong tombstone would
+ * destroy words the caller never offered to destroy.
  *
  * @param body - the request body.
- * @returns the request, or the refusal to answer with.
+ * @param what - the operation's own word, so a refusal names what was refused
+ *   instead of repeating the first tail's name. The RULES are shared; the
+ *   sentence is the caller's.
+ * @returns the address plus the caller id, or the refusal to answer with.
  */
-function parseRestoreBody(body: unknown): { readonly ok: true; readonly request: RestoreRequest } | { readonly ok: false; readonly why: string } {
-  if (typeof body !== 'object' || body === null) return { ok: false, why: 'restore needs a JSON body' }
+function parseItemAddressBody(
+  body: unknown,
+  what: 'restore' | 'purge',
+): { readonly ok: true; readonly request: { readonly of: ItemAddress; readonly clientId: string } } | { readonly ok: false; readonly why: string } {
+  if (typeof body !== 'object' || body === null) return { ok: false, why: `${what} needs a JSON body` }
   const record = body as Record<string, unknown>
   // A `#` is how the number is SPOKEN, not how it is sent — the same rule the
-  // model's `item.restore` follows, and one reader for both callers.
+  // model's `item.restore` follows, and one reader for every caller.
   const rawRef = typeof record.ref === 'string'
     ? Number(record.ref.replace('#', '').trim())
     : record.ref
   const ref = typeof rawRef === 'number' && Number.isInteger(rawRef) && rawRef > 0 ? rawRef : undefined
   const id = typeof record.id === 'string' && record.id !== '' ? record.id : undefined
   const clientId = clientIdOf(record)
-  if (clientId === undefined) return { ok: false, why: 'restore needs a clientId' }
+  if (clientId === undefined) return { ok: false, why: `${what} needs a clientId` }
   if (id !== undefined && ref !== undefined) {
-    return { ok: false, why: 'restore names one row: give id or ref, not both — a body with both does not know which row it meant' }
+    return { ok: false, why: `${what} names one row: give id or ref, not both — a body with both does not know which row it meant` }
   }
   if (id === undefined && ref === undefined) {
-    return { ok: false, why: 'restore needs to be told which row: id or ref, and one of them' }
+    return { ok: false, why: `${what} needs to be told which row: id or ref, and one of them` }
   }
   return { ok: true, request: { of: id !== undefined ? { kind: 'id', id } : { kind: 'ref', ref: ref as number }, clientId } }
 }
@@ -473,6 +539,13 @@ export function createBoardHandler(
       // that removes a row WITHOUT going through a commit would make this
       // short-circuit quietly serve a stale archive, and the symptom would be
       // an archive that fills in late or not at all — with no error anywhere.
+      //
+      // A PURGE is that second path, and it is safe for a reason worth stating:
+      // emptying a tombstone's text does not go through a commit (no commit can
+      // carry it), so `purgeItemTombstone` moves the checklist's own revision by
+      // hand — which is also the only thing that makes another device re-read
+      // this document at all. Were that bump ever dropped, the erasure would sit
+      // on the medium and every other screen would keep showing the row.
       const includeDeleted = url.searchParams.get('includeDeleted') === '1'
       if (view.unchanged !== true && includeDeleted) {
         json(res, { ok: true as const, value: { ...view, deleted: deletedItemsOf(deps.itemsDoc()) } })
@@ -555,7 +628,7 @@ export function createBoardHandler(
       // Restoring is a SERVICE operation, not a client commit: the tombstone
       // outranks the very row it removed, so only the host can write the stamp
       // that beats it. See `DocumentService.restoreItem`.
-      const ask2 = parseRestoreBody(payload)
+      const ask2 = parseItemAddressBody(payload, 'restore')
       if (!ask2.ok) {
         // A parameter error is answered AS a parameter error, with the sentence
         // that fixes it: the two failure shapes here (no name at all, or two
@@ -578,6 +651,43 @@ export function createBoardHandler(
         ok: true as const,
         value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
       })
+      return
+    }
+
+    if (tail === '/items/purge') {
+      // The third path, and the mirror image of the one above: a purge has to
+      // REACH PAST the tombstone to change the document, and a client commit
+      // cannot see a tombstone at all — it carries rows and deletions. So this
+      // is a service operation, and the same addressing rules, the same refusal
+      // shape and the same envelope as the restore above.
+      const ask3 = parseItemAddressBody(payload, 'purge')
+      if (!ask3.ok) {
+        json(res, { ok: false, error: { code: 'invalid_argument', message: ask3.why } })
+        return
+      }
+      if (!deps.available()) {
+        json(res, { ok: true as const, value: { available: false, revision: 0 } satisfies PurgeRouteView })
+        return
+      }
+      deps.noteActivity(ask3.request.clientId)
+      // A persist failure is refused in this prefix's convention rather than
+      // thrown out of the handler: a purge the medium would not take leaves the
+      // text on disk, and a caller told it succeeded is a reader whose words are
+      // still there and who has been told otherwise.
+      try {
+        const outcome = await deps.purgeItem(ask3.request.of, ask3.request.clientId)
+        json(res, {
+          ok: true as const,
+          value: {
+            available: true,
+            revision: deps.itemsDoc().revision,
+            ...outcome.kind === 'purged' ? { erased: outcome.erased } : {},
+            ...outcome.kind === 'notDeleted' ? { notDeleted: true as const } : {},
+          } satisfies PurgeRouteView,
+        })
+      } catch (error) {
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+      }
       return
     }
 
@@ -769,6 +879,7 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     itemsDoc: () => service.getItemsDoc(),
     commitItems: commit => service.commitItems(commit),
     restoreItem: (of, clientId) => service.restoreItem(of, clientId),
+    purgeItem: (of, clientId) => service.purgeItem(of, clientId),
     acquireLease: (clientId, ttlMs, active) => service.acquireLease(clientId, ttlMs, active),
     releaseLease: clientId => service.releaseLease(clientId),
     noteActivity: clientId => service.noteActivity(clientId),

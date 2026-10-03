@@ -19,6 +19,7 @@ import {
   emptyItemsDoc,
   ITEM_ROW_OPS,
   normalizeItemsDoc,
+  purgeItemTombstone,
   restoredItemOf,
   sameItemsDocs,
   sortItems,
@@ -531,6 +532,131 @@ describe('restoring is an ordinary put', () => {
     const two = applyItemsCommit(one, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 }] }), T0 + 2)
     const three = applyItemsCommit(two, commitOf({ deleted: [{ id: 'i-b', baseUpdatedAt: T0 }] }), T0 + 5)
     expect(deletedItemsOf(three).map(item => item.id)).toEqual(['i-b', 'i-a'])
+  })
+})
+
+describe('purging takes the text out and leaves the delete standing', () => {
+  /**
+   * A document holding two deleted rows behind their tombstones, plus one live
+   * row that was never deleted.
+   */
+  const withTwoDeletes = () => {
+    const seeded = applyItemsCommit(emptyItemsDoc(T0), commitOf({
+      items: [row({ id: 'i-a', ref: 5, title: 'gone A' }), row({ id: 'i-b', ref: 6, title: 'gone B' }), row({ id: 'i-live', ref: 7, title: 'still here' })],
+    }), T0 + 1)
+    const one = applyItemsCommit(seeded, commitOf({ deleted: [{ id: 'i-a', baseUpdatedAt: T0 }] }), T0 + 10)
+    return applyItemsCommit(one, commitOf({ deleted: [{ id: 'i-b', baseUpdatedAt: T0 }] }), T0 + 20)
+  }
+
+  it('empties the tombstone, so the archive stops showing the row', () => {
+    // THE PROMISE THE READER CAN CHECK: the row is gone from the archive, and
+    // `restoredItemOf` — the function the panel's undo and the model both call —
+    // now has nothing to give back. Both halves are read from the same document,
+    // so a surface cannot show a row that is still recoverable or hide one that
+    // is not.
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-a')
+    expect(out.kind).toBe('purged')
+    expect(out.kind === 'purged' && out.erased.title).toBe('gone A')
+    expect(deletedItemsOf(out.doc).map(item => item.id)).toEqual(['i-b'])
+    expect(restoredItemOf(out.doc, 'i-a', T0 + 30)).toBeUndefined()
+  })
+
+  it('a purge that finds nothing left to erase is a SUCCESS that writes nothing', () => {
+    // The callers click what they are reading, and a network retry or a second
+    // device can both arrive after the tombstone is already empty. Reporting
+    // 「清不掉」 there is a failure report about work that is finished, which is
+    // the hardest kind to chase: everything the reader sees says it worked.
+    // THE SAME OBJECT, because the host service reads identity to decide whether
+    // to persist and announce, and a fresh-but-equal document would make an
+    // erasure of nothing look like a write.
+    const once = purgeItemTombstone(withTwoDeletes(), 'i-a')
+    const twice = purgeItemTombstone(once.doc, 'i-a')
+    expect(twice.kind).toBe('alreadyGone')
+    expect(twice.doc).toBe(once.doc)
+    // And an id that was never deleted at all is the same answer, not a refusal:
+    // the caller asked for there to be nothing left, and there is.
+    const never = purgeItemTombstone(once.doc, 'i-never-existed')
+    expect(never.kind).toBe('alreadyGone')
+    expect(never.doc).toBe(once.doc)
+  })
+
+  it('a row that was never deleted is REFUSED, because the row is still on screen', () => {
+    // The one refusal, and it exists because the alternative is a receipt about a
+    // row the reader can scroll up and see: 「已彻底删除」 about a live note is the
+    // worst answer this document could give. The purge is about DELETED rows;
+    // deleting a live one is `item.delete`, which can still be undone.
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-live')
+    expect(out.kind).toBe('notDeleted')
+    expect(out.doc).toBe(doc)
+    expect(out.doc.items.map(item => item.id)).toEqual(['i-live'])
+  })
+
+  it('leaves every other tombstone, the live rows and the number counter alone', () => {
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-a')
+    expect(out.doc.items).toBe(doc.items)
+    expect(out.doc.nextRef).toBe(doc.nextRef)
+    expect(out.doc.tombstones['i-b']).toBe(doc.tombstones['i-b'])
+    // The purged tombstone KEEPS ITS STAMPS, which is the half of the operation
+    // that is not the reader's business: the stamp is what stops a stale
+    // replica from handing the row back.
+    expect(out.doc.tombstones['i-a']).toEqual({ at: doc.tombstones['i-a']!.at, seenAt: doc.tombstones['i-a']!.seenAt })
+  })
+
+  it('a purged row cannot come back — not through a restore, and not through a stale replica', () => {
+    // THE INVERSE OF RESTORE, and the question the action's price turns on. The
+    // answer is no, and the reason is structural rather than a rule somebody
+    // could relax: the payload is the document's only copy of the text, so once
+    // it is gone there is nothing to hand back — and a replica that never heard
+    // about the purge still cannot resurrect the row, because the tombstone it
+    // left behind is exactly the thing that swallows a stale copy.
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-a')
+    const stale = applyItemsCommit(out.doc, commitOf({ items: [row({ id: 'i-a', ref: 5, title: 'gone A' })] }), T0 + 40)
+    expect(stale.items.map(item => item.id)).toEqual(['i-live'])
+    expect(stale.tombstones['i-a']).toBeDefined()
+    expect(deletedItemsOf(stale).map(item => item.id)).toEqual(['i-b'])
+    // And a restore asked for by the number the row used to carry has nothing to
+    // answer with — which is why a purge is irreversible and a delete is not.
+    expect(restoredItemOf(stale, 'i-a', T0 + 40)).toBeUndefined()
+  })
+
+  it('moves the revision even though this document\'s own no-op predicate cannot see it', () => {
+    // WHY THE REVISION IS BUMPED BY HAND. `sameItemsDocs` — the predicate that
+    // decides whether a commit persisted and announced anything — compares
+    // tombstones by their two stamps and never by the payload, and it is RIGHT
+    // to: a payload is something the host may hold and a replica may not, and a
+    // predicate that read it would have two devices trading the same commit
+    // forever. That rule is about replicas comparing documents, and this is not
+    // that. On the host the payload is a real fact about a reader's own words,
+    // and the revision is the only thing that makes another device re-read this
+    // document at all — so a purge that left the counter alone would erase the
+    // text on disk and tell nobody, and the archive entry would sit on every
+    // other screen until some unrelated write happened to move the number.
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-a')
+    expect(sameItemsDocs(doc, out.doc), 'the shared predicate is blind to the payload by design').toBe(true)
+    expect(out.doc.revision).toBe(doc.revision + 1)
+    // …and the erasure survives the round trip through the file, which is the
+    // only moment the medium can lose it.
+    const reloaded = normalizeItemsDoc(JSON.parse(JSON.stringify(out.doc)))
+    expect(deletedItemsOf(reloaded).map(item => item.id)).toEqual(['i-b'])
+    expect(reloaded.revision).toBe(out.doc.revision)
+  })
+
+  it('never reissues a purged row\'s number', () => {
+    // The counter is document state for exactly this reason: a derived
+    // `max(ref) + 1` would hand the number of a row that is gone — and, while a
+    // deletion is still recoverable, the number of a row that merely HIDES — to
+    // the next row, so a later restore would put two #5s on the list. Purging
+    // does not reopen that door; it makes the number unreachable forever.
+    const doc = withTwoDeletes()
+    const out = purgeItemTombstone(doc, 'i-a')
+    const later = applyItemsCommit(out.doc, commitOf({ items: [row({ id: 'i-new', ref: 0, title: 'new' })] }), T0 + 50)
+    expect(later.items.find(item => item.id === 'i-new')!.ref).not.toBe(5)
+    expect(numbersAreUnique(later)).toBe(true)
   })
 })
 

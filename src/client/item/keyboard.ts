@@ -30,11 +30,24 @@
  * are all `core/item-view.ts` and `core/item-transitions.ts`, read here and by
  * `taskboard_query` alike.
  */
+import type { TaskBoardKey } from '../locales.ts'
 
-/** Every action the flow can name. A name with no handler is a dead key. */
+/**
+ * Every action the flow can name. A name with no handler is a dead key.
+ *
+ * THE LAST FOUR ARE THE PALETTE'S OWN, and they are here for the same reason the
+ * rest are: a key the help sheet prints must be a key the registrar can call.
+ * `palettePrev` / `paletteNext` / `palettePick` share their CHORD with the row
+ * cursor's `movePrev` / `moveNext` / `open`, and they are told apart by their
+ * `when` — so {@link bindingFor} has to prefer a binding that APPLIES rather
+ * than taking the first one that matches. That is the difference between a table
+ * whose order happens to work and one whose correctness does not depend on where
+ * a line was typed.
+ */
 export type ItemKeyAction =
   | 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open'
   | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette'
+  | 'keyHelp' | 'palettePrev' | 'paletteNext' | 'palettePick'
 
 /** The four tiers, in the order the digits run. */
 export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low'
@@ -42,16 +55,7 @@ export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low'
 /**
  * Which group a binding belongs to, so the help sheet is a list and not a wall.
  *
- * The groups exist so the HELP SHEET and the palette can both print the map
- * rather than restate it. `?` is NOT in the table below, because the sheet it
- * prints does not exist yet. An unbound key is honest — the reader presses it
- * and nothing happens, which is the same as a key that does not exist. A BOUND
- * key whose surface renders nothing is a control that promises an action, and
- * this repository refuses to ship those:
- * it is the same defect as a button that only explains itself when pressed.
- * The three belong in the table the day their surfaces land, and the
- * `ItemKeyActions` record is closed, so adding them is a compile error until a
- * handler exists for each.
+ * The groups exist so the HELP SHEET can print the map rather than restate it.
  */
 export type KeyGroup = 'write' | 'move' | 'edit' | 'surface'
 
@@ -65,9 +69,24 @@ export interface KeyBinding {
   readonly cmd?: boolean
   /** Whether shift is held. */
   readonly shift?: boolean
+  /**
+   * Whether the binding is a COMMAND even inside a text field.
+   *
+   * THIS IS THE RULE, STATED PER KEY, because the rule used to live inside one
+   * boolean: `usable()` skipped every bare key while the reader was typing
+   * except the two keys (`Esc`, `↵`) someone had remembered to spell out. Two
+   * keys written inside a condition is a list that lives apart from the table,
+   * so the next command that belongs there has to be found before it can be
+   * added. Here the exception travels with the binding.
+   *
+   * It is opt-IN for the same reason the skip is opt-out: a key that applies
+   * while the reader is typing is a key that can never be typed, so it has to be
+   * said out loud on the binding rather than inferred.
+   */
+  readonly typing?: boolean
   readonly group: KeyGroup
-  /** What it does, as a dictionary key. */
-  readonly what: string
+  /** What it does, as a dictionary key — typed, so a typo cannot ship a blank word. */
+  readonly what: TaskBoardKey
   /** The action this binding names. */
   readonly action: ItemKeyAction
   /** The argument it carries, when it carries one. */
@@ -89,6 +108,19 @@ export interface KeyState {
   readonly focusedId: string | undefined
   /** Whether anything at all is open — a menu, a row's detail, the palette. */
   readonly somethingOpen: boolean
+  /**
+   * Whether the COMMAND PALETTE is the thing that is open.
+   *
+   * A SEPARATE FIELD rather than a reading of `somethingOpen`, and the reason is
+   * the arrows. `↑` `↓` move the row cursor, and they also move the palette's
+   * candidate cursor; `somethingOpen` is true for a row menu and an expanded row
+   * as well, so a predicate written against it would hand the palette's bindings
+   * to a menu that happens to be open — and since the table is searched in order,
+   * the row cursor's binding would quietly win and the palette's would be the
+   * unreachable one. 「Something is open」 and 「the palette is what is open」 are
+   * two facts, and merging them is how one key ends up doing two things.
+   */
+  readonly paletteOpen: boolean
 }
 
 /**
@@ -103,19 +135,37 @@ export interface KeyState {
  * `⌘⌫` DELETES and is not its own inverse: the receipt carries the undo, and an
  * undo that is also the thing it undoes is a control whose meaning depends on the
  * last thing that happened.
+ *
+ * THE PALETTE'S SHARE OF THE ARROWS IS NOT A SHORTCUT CUT IN HALF. `↑` `↓` `↵`
+ * carry their meaning with them: inside the palette they move the candidate and
+ * run it, outside it they move the row and open it. Each pair is separated by
+ * `when`, and {@link bindingFor} prefers the binding that applies — so the
+ * palette works whether the caret is in its field or on one of its chips.
+ *
+ * `?` IS A BARE KEY, and that is the whole answer to 「how is a key that you type
+ * inside a text field ever a shortcut」. It is not one while the caret is in a
+ * field, because a key bound inside a field can never be typed — and the one
+ * place the reader would most want it is exactly there. So `?` follows the rule
+ * the rest of the table follows (panel has the focus, nothing is being typed),
+ * and the palette — which is where the caret always is — carries a `?` button
+ * that a finger can reach. Two ways in beats one key that only works sometimes.
  */
 export const ITEM_KEYS: readonly KeyBinding[] = [
   { keys: 'A', key: 'a', group: 'write', what: 'item.keys.quickCapture', action: 'quickCapture' },
   { keys: '⌘K', key: 'k', cmd: true, group: 'surface', what: 'item.keys.palette', action: 'palette' },
   { keys: '/', key: '/', group: 'surface', what: 'item.keys.palette', action: 'palette' },
-  { keys: 'J', key: 'j', group: 'move', what: 'item.keys.next', action: 'moveNext' },
-  { keys: 'K', key: 'k', group: 'move', what: 'item.keys.prev', action: 'movePrev' },
-  { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.next', action: 'moveNext' },
-  { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.prev', action: 'movePrev' },
+  { keys: '?', key: '?', shift: true, group: 'surface', what: 'item.keys.keyHelp', action: 'keyHelp' },
+  { keys: 'J', key: 'j', group: 'move', what: 'item.keys.next', action: 'moveNext', when: s => !s.paletteOpen },
+  { keys: 'K', key: 'k', group: 'move', what: 'item.keys.prev', action: 'movePrev', when: s => !s.paletteOpen },
+  { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.next', action: 'moveNext', when: s => !s.paletteOpen },
+  { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.prev', action: 'movePrev', when: s => !s.paletteOpen },
+  { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.paletteNext', action: 'paletteNext', typing: true, when: s => s.paletteOpen },
+  { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.palettePrev', action: 'palettePrev', typing: true, when: s => s.paletteOpen },
   { keys: 'X', key: 'x', group: 'edit', what: 'item.keys.pick', action: 'pick', when: s => s.focusedId !== undefined },
   { keys: 'E', key: 'e', group: 'edit', what: 'item.keys.rename', action: 'rename', when: s => s.focusedId !== undefined },
-  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.open', action: 'open', when: s => s.focusedId !== undefined },
-  { keys: 'Esc', key: 'escape', group: 'surface', what: 'item.keys.close', action: 'close' },
+  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.open', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen },
+  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.palettePick', action: 'palettePick', typing: true, when: s => s.paletteOpen },
+  { keys: 'Esc', key: 'escape', group: 'surface', what: 'item.keys.close', action: 'close', typing: true },
   { keys: '1', key: '1', group: 'edit', what: 'item.keys.priorityUrgent', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined },
   { keys: '2', key: '2', group: 'edit', what: 'item.keys.priorityHigh', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined },
   { keys: '3', key: '3', group: 'edit', what: 'item.keys.priorityNormal', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined },
@@ -161,33 +211,38 @@ export function isCommand(event: KeyEventLike): boolean {
  * A BARE KEY IS SKIPPED WHILE THE READER IS TYPING, and this is the rule that
  * makes the flow safe to have at all: `j`, `k` and `d` are letters, and a reader
  * searching for 「jdk」 must get three letters rather than two letters and a
- * cursor jump. `⌘`-held chords and `Esc` are NOT skipped, because those are
- * deliberate gestures rather than typing.
+ * cursor jump. `⌘`-held chords are NOT skipped, because those are deliberate
+ * gestures rather than typing, and the few keys that are commands even inside a
+ * field — `Esc`, `↵`, the palette's own arrows — SAY SO on their binding.
  */
 function usable(binding: KeyBinding, event: KeyEventLike): boolean {
   if (binding.key !== event.key.toLowerCase()) return false
   if ((binding.cmd === true) !== isCommand(event)) return false
   if ((binding.shift === true) !== (event.shiftKey === true)) return false
-  if (isTypingTarget(event.target) && binding.cmd !== true && binding.key !== 'escape' && binding.key !== 'enter') return false
+  if (isTypingTarget(event.target) && binding.cmd !== true && binding.typing !== true) return false
   return true
 }
 
 /**
  * THE BINDING A KEY EVENT IS, or `undefined` when this keystroke is not ours.
  *
- * The `state` is NOT consulted here and that is deliberate: which keys are
- * BOUND is a property of the table, and which of them APPLY is a property of
- * the surface. Reading `when` here would make 「is this key ours」 depend on what
- * happens to be selected, and a key that is bound-but-inert must still be
- * swallowed so the browser does not scroll the panel.
+ * TWO QUESTIONS, NOT ONE. Which bindings a chord REACHES is a property of the
+ * table; which of them APPLIES is a property of the surface. Returning the first
+ * match — the whole of what this used to do — made the table's ORDER the thing
+ * that decided behaviour, which is invisible in review and breaks the day a line
+ * is moved: the palette's `↵` sits below the row's `↵`, and the row's wins the
+ * moment the caret is not in the palette's field.
+ *
+ * So the applicable binding wins, and the first match is still returned when none
+ * of them applies, because a key that is bound but inert must be swallowed.
  *
  * @param event - the key event.
- * @param state - what the flow knows right now; read by {@link dispatchKey}.
- * @returns the binding, including one whose `when` is false.
+ * @param state - what the flow knows right now.
+ * @returns the binding that applies, else the first one that matches, else nothing.
  */
 export function bindingFor(event: KeyEventLike, state: KeyState): KeyBinding | undefined {
-  void state
-  return ITEM_KEYS.find(binding => usable(binding, event))
+  const matched = ITEM_KEYS.filter(binding => usable(binding, event))
+  return matched.find(binding => binding.when === undefined || binding.when(state)) ?? matched[0]
 }
 
 /**

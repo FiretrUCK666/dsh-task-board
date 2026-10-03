@@ -64,8 +64,9 @@ import {
   type ParamSpec,
 } from '../../core/board-actions.ts'
 import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery } from '../../core/task-search.ts'
+import { itemQualifierVocabulary } from '../../core/item-query.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
-import { applyItemsCommit, deletedItemsOf, restoredItemOf, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
+import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
@@ -105,6 +106,10 @@ import { derivedStatusOf } from '../../core/item-membership.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
+// Types only: which row a purge names is decided by the route that receives it,
+// and a tool face that declared its own copy of the address would be free to
+// disagree with the service about which name a caller may send. Erased at build.
+import type { ItemAddress } from '../board-route.ts'
 
 /* ── the host faces this tool reads ────────────────────────────────────────
  * Structural and late-bound: the same discipline as session-state.ts. Nothing
@@ -116,6 +121,24 @@ export interface ToolCommitFace {
   getItemsDoc(): ItemsDoc
   commit(commit: BoardCommit): Promise<BoardDoc>
   commitItems(commit: ItemsCommit): Promise<ItemsDoc>
+  /**
+   * Erase one deleted row's text — the host's own operation, and the only one
+   * that can: a commit carries rows and deletions, and a tombstone's payload is
+   * a field the merge grammar never shows a replica. So it is on this face
+   * rather than in the batch's commit path, and the batch asks for it the same
+   * way the panel's HTTP route does.
+   *
+   * THE ADDRESS IS THE SERVICE'S OWN, not a narrowed copy of it. The tool has
+   * already turned the number a model says out loud into the row's identity by
+   * the time it gets here, and a second signature that took a bare id would be a
+   * second name for one operation — with the real service no longer assignable
+   * to this face, which is how a structural view starts drifting from the class
+   * it is a view of.
+   *
+   * A face that cannot purge must say so rather than pretend: the model would
+   * otherwise be told 「已生效」 about words that are still on disk.
+   */
+  purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>
   /** Relay one command to whichever replica holds the seat. `queued` = no
    *  engine. The whole union: the catalog decides which carrier an action
    *  rides, and the relay carries it as-is. */
@@ -249,12 +272,26 @@ export function enumeratedFilters(): readonly string[] {
   return QUALIFIER_KEYS.flatMap(key => completeBoardQuery(key))
 }
 
-/** The filter syntax, in the words the registry uses. */
+/** The filter syntax, in the words BOTH registries use — and **both** is the
+ *  point, not a nicety.
+ *
+ *  `taskboard_query`'s `filter` string is parsed by `matchItemQuery` for the item
+ *  list AND by the board's own search. It used to describe only the board's keys,
+ *  so the model was taught board keys (`has:*`, `is:*`) that the list silently
+ *  treats as free words — a query that returns nothing and reports no error —
+ *  while everything the list actually speaks (`status:`, `p1`–`p4`, `!1`–`!4`,
+ *  `has:`, `#标签`) was never mentioned at all. **A vocabulary taught by half is
+ *  worse than none**: the model cannot tell 「no match」 from 「I used it wrong」.
+ *
+ *  Both halves are DERIVED from the registry that parses them, so a flag added to
+ *  one appears in the description without anyone editing this file — which is the
+ *  only arrangement in which the description cannot go stale quietly.
+ */
 export function filterHelp(): { keys: readonly string[]; values: readonly string[]; syntax: string } {
   return {
-    keys: QUALIFIER_KEYS,
+    keys: [...QUALIFIER_KEYS, ...itemQualifierVocabulary()],
     values: enumeratedFilters(),
-    syntax: '空格分隔；`key:value` 是筛选，其余是字面搜索；未识别的 key 当普通文字处理，不会报错',
+    syntax: '空格分隔；`key:value` 是筛选，其余是字面搜索；未识别的 key 当普通文字处理，不会报错。看板与任务清单共用这一串，但**两边各认自己的一半**，所以请按要查的那一面挑词',
   }
 }
 
@@ -797,6 +834,68 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       continue
     }
 
+    // A THIRD KIND, beside the relay and the document write, and it is here
+    // because a purge has NO move in the merge grammar: the text it erases lives
+    // in a field of the host's own tombstone map, which a commit — rows plus
+    // deletions — cannot carry and a replica cannot see. So the batch asks the
+    // service for it, the same `purgeItem` the panel's HTTP route calls, and
+    // reports from what came back. Routing it through the commit path instead
+    // would be the exact failure this tool must not ship: the receipt would say
+    // 「已生效」 about words that are still on the disk.
+    if (next.purge !== undefined) {
+      const said = `#${String(payload.of ?? '').replace('#', '').trim()}`
+      if (request.dry_run === true) {
+        // A rehearsal touches nothing, so it says what WOULD go — and for this one
+        // action the tense is the whole message, because it is the only action on
+        // this surface that leaves nothing behind to undo.
+        raw.push({
+          op: step.op,
+          ok: true,
+          ref: said,
+          detail: `会写入。（${said} 的正文与删除记录会被清掉，撤不回来）`,
+        })
+        continue
+      }
+      let purged: ItemPurge
+      try {
+        purged = await board.purgeItem({ kind: 'id', id: next.purge }, 'model')
+      } catch (error) {
+        raw.push({
+          op: step.op,
+          ok: false,
+          detail: `没写进去：${error instanceof Error ? error.message : String(error)}正文还在，没有回滚。`,
+        })
+        failed = true
+        continue
+      }
+      if (purged.kind === 'notDeleted') {
+        // The service found a live row behind that name. Reported rather than
+        // smoothed into a success: the batch must not say it destroyed something
+        // it did not destroy.
+        raw.push({
+          op: step.op,
+          ok: false,
+          ref: said,
+          detail: `清单里的 ${said} 没有删过，没有可清除的删除记录。要删它用 item.delete（那条还能找回）。`,
+        })
+        failed = true
+        continue
+      }
+      // The service's document is the truth, including when it is the SAME one
+      // it already had: that identity is how a purge that found nothing left to
+      // erase is told apart from one that erased something.
+      const wasMoved = purged.doc !== items
+      items = purged.doc
+      raw.push({
+        op: step.op,
+        ok: true,
+        ...(purged.kind === 'purged' ? { ref: `#${purged.erased.ref}`, title: itemTitleOf(purged.erased) } : {}),
+        ...(wasMoved ? { documents: ['items'] as const } : {}),
+        detail: `${wasMoved ? '已生效。' : '这一条已经是这样了，没有改动。'}${purged.kind === 'purged' ? `（#${purged.erased.ref} 的正文与删除记录已清掉，撤不回来）` : '（这一条已经清干净了，没有可清除的内容）'}`,
+      })
+      continue
+    }
+
     // Everything that is not a relay arrives here as a document change, and it
     // travels the same merge grammar every device writes through.
     const { doc: nextDoc, items: nextItems, task, item } = next
@@ -998,7 +1097,7 @@ function applyOne(
   payload: Record<string, unknown>,
   deps: ToolDeps,
   now: number,
-): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string; relay?: true } | string {
+): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string; relay?: true; purge?: string } | string {
   const edited = (task: TaskRecord): TaskRecord => ({ ...task, updatedAt: now })
   const findTask = (): TaskRecord | undefined => doc.tasks.find(task => task.id === payload.of || task.title === payload.of)
   const findItem = (): ItemRecord | undefined => {
@@ -1516,6 +1615,35 @@ function applyOne(
         item: rows.find(item => item.id === found.id) ?? found,
       }
     }
+    case 'item.purge': {
+      // ADDRESSED BY ITS SHORT NUMBER, the same name `item.restore` takes: it is
+      // the one a person and a model say out loud, and the uuid is never spoken.
+      // So the row is found among the deletions first, exactly as the restore
+      // finds it — and a number that is in neither list is answered out loud
+      // rather than by guessing which of the two situations it is.
+      const wanted = String(payload.of).replace('#', '').trim()
+      const carried = deletedItemsOf(items).find(item => String(item.ref) === wanted)
+      if (carried === undefined) {
+        // A row that is STILL THERE is the one refusal worth making: answering
+        // 「已彻底删除」 about something the reader can scroll up and see would
+        // be a receipt about a row that exists. The tool does not purge it
+        // either — this action's price is 「undo that is gone」, and an unasked
+        // irreversible write is not something to spring on a model that was
+        // pointing at the wrong number.
+        const live = items.items.find(item => String(item.ref) === wanted)
+        if (live !== undefined) {
+          return `清单里的 #${wanted} 没有删过，没有可清除的删除记录。要删它用 item.delete（那条还能找回）。`
+        }
+        // Neither in the list nor behind a tombstone that still holds text: it
+        // was already purged, or it never existed. The model's own snapshot is
+        // the document's truth here, so no write is needed to say so.
+        return { doc, items, unchanged: true, note: `（#${wanted} 之前已经清干净了，或者从来没有过；这次没有可清除的内容）` }
+      }
+      // The local copy is what a rehearsal reports and what the receipt names;
+      // the erasure itself is the service's, because only it may write one.
+      const outcome = purgeItemTombstone(items, carried.id)
+      return { doc, items: outcome.doc, item: carried, purge: carried.id }
+    }
     case 'item.restore': {
       const wanted = String(payload.of).replace('#', '').trim()
       // The row to bring back is the one the TOMBSTONE holds, not one rebuilt
@@ -1529,7 +1657,14 @@ function applyOne(
       // still in the document, and "restoring" it would be a second row.
       const carried = deletedItemsOf(items).find(item => String(item.ref) === wanted)
       if (carried === undefined) {
-        return `清单里没有 #${wanted}，也没有一条删掉之后还留着的。删掉超过 30 天的找不回来了。`
+        // Four situations read as one here and the tool CANNOT tell them apart
+        // from a number alone, because the number lived in the text: the row was
+        // purged (this document no longer holds its number anywhere), the
+        // tombstone aged out, the delete predates text-keeping, or it never
+        // existed. Every one of them means the same thing to a caller, and the
+        // sentence says all four rather than naming one and being wrong three
+        // times.
+        return `清单里没有 #${wanted}，也没有一条删掉之后还留着的：它要么已经彻底清掉了，要么删掉超过 30 天，要么从来没有过。找不回内容，只能重新记一条。`
       }
       const restored = restoredItemOf(items, carried.id, now)
       if (restored === undefined) {
@@ -1719,7 +1854,15 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
     parameters: {
       type: 'object',
       properties: {
-        filter: { type: 'string', description: `${filterHelp().syntax}。可用的筛选：${filterHelp().keys.join(' ')}` },
+        // **THE VALUES GO IN TOO, AND THAT HALF WAS MISSING AS WELL.** The description
+        // named `has:` but never said `has:auto` was one of its values — so the model
+        // knew the key existed and still had to guess what goes after the colon,
+        // which is the same silence as not knowing the key at all. Both halves now
+        // come from the registries, so neither can go stale on its own.
+        filter: {
+          type: 'string',
+          description: `${filterHelp().syntax}。可用的筛选：${filterHelp().keys.join(' ')}。可用的取值：${filterHelp().values.join(' ')}`,
+        },
         detail: {
           type: 'string',
           enum: ['brief', 'full'],
