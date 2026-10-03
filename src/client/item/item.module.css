@@ -592,6 +592,15 @@
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  /* **卡自己撑满那一列。** 列容器（`.itemListColumn`）是 `flex-direction: column`
+   * 且被工作台的 `minmax(0,1fr)` 轨道拉满，而这张卡没有 `flex`，于是它只有内容那么
+   * 高，列的余下部分是一片空白——出图上就是列表底下那一大块什么都没有。
+   *
+   * **把空白挪进卡里，而不是把它消掉。** 外面是「一个洞」，里面是「一张表，底下还有
+   * 空位」——后者有边、有圆角、有投影，读起来是设计；前者读起来是没排完。短列表
+   * 不因此变形：卡里的行仍然从上往下排，只是卡片到列底。 */
+  flex: 1 1 auto;
+  min-block-size: 0;
   min-inline-size: 0;
   padding: var(--item-card-pad);
   background: var(--item-surface);
