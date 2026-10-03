@@ -44,3 +44,21 @@ export interface TriageLine {
  * @returns the lines, loudest first.
  */
 export declare function triageLinesOf(items: readonly ItemRecord[], now: number, staleDays?: number): TriageLine[];
+/**
+ * The same four lines, INCLUDING the ones whose count is zero.
+ *
+ * **THE ZEROS ARE FILTERED AT THE CALL SITE, NOT HERE, because two callers ask two
+ * different questions.** The 「要处理」 band asks 「有没有话要说」— a band with nothing in
+ * it is a paragraph about nothing, so it takes the filtered list. The stat cards ask
+ * 「这三件事各是几件」— and **a card must not disappear because its own answer is
+ * zero**, or a page whose work is all on track looks exactly like a page whose
+ * triage strip stopped rendering.
+ *
+ * That distinction was lost once: `triageLinesOf` dropped the zeros, the stat band
+ * filtered again on its own side (belt and braces, so the bug could not show), and
+ * the two together made 「三张卡」 into 「最多画三张」. Removing the second filter
+ * changed nothing, because the zeros were already gone before they arrived. **The
+ * duplicate guard was the reason it stayed broken: a defect defended twice looks
+ * defended once.**
+ */
+export declare function allTriageLinesOf(items: readonly ItemRecord[], now: number, staleDays?: number): TriageLine[];

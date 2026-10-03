@@ -72,7 +72,7 @@ export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './ite
 export type { ItemRef, ItemRowContext, ItemRowView, ItemSlice, ItemSliceOptions } from './item-rows.ts';
 export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-schedule.ts';
 export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts';
-export { triageLinesOf } from './item-triage.ts';
+export { triageLinesOf, allTriageLinesOf } from './item-triage.ts';
 export type { TriageLine, TriageSeverity } from './item-triage.ts';
 export { ITEM_PAGES, itemGroupCountsOf, itemInsightOf, itemPageCountsOf } from './item-counts.ts';
 export type { ItemInsight, ItemPageCounts, ItemPageId } from './item-counts.ts';
