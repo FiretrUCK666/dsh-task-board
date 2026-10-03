@@ -42,7 +42,7 @@ import {
   parseItemQuery,
   recentItemsOf,
   startOfDay,
-  triageLinesOf,
+  allTriageLinesOf,
   type ItemPageId,
   type ItemRowView,
 } from '../../core/item-view.ts'
@@ -917,7 +917,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
   ] as const
 
   const statLines = useMemo(() => STAT_TILES
-    .flatMap(tile => triageLinesOf(items, now)
+    // **三张卡各答各的问题，所以三张都在。** 读 `allTriageLinesOf` 而不是
+    // `triageLinesOf`：后者只给非零的行，而「这一张的答案是零」不是「这一张不存在」。
+    // 从前挑出非零的那几个 tile，在数据源就已经把零扔了，于是「最多画三张」——
+    // **而它看起来完全正常**：数据全在日程上时，三张卡里有一张，画出来的那一张是对的。
+    .flatMap(tile => allTriageLinesOf(items, now)
       .filter(line => line.id === tile.flag)
       .map(line => ({
         id: tile.flag,

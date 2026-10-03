@@ -97,7 +97,7 @@ export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-sc
 export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts'
 
 // ── item-triage ────────────────────────────────────────────────────────────
-export { triageLinesOf } from './item-triage.ts'
+export { triageLinesOf, allTriageLinesOf } from './item-triage.ts'
 export type { TriageLine, TriageSeverity } from './item-triage.ts'
 
 // ── item-counts ────────────────────────────────────────────────────────────

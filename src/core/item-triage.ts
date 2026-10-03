@@ -50,6 +50,27 @@ export interface TriageLine {
  * @returns the lines, loudest first.
  */
 export function triageLinesOf(items: readonly ItemRecord[], now: number, staleDays: number = DEFAULT_STALE_DAYS): TriageLine[] {
+  return allTriageLinesOf(items, now, staleDays).filter(line => line.count > 0)
+}
+
+/**
+ * The same four lines, INCLUDING the ones whose count is zero.
+ *
+ * **THE ZEROS ARE FILTERED AT THE CALL SITE, NOT HERE, because two callers ask two
+ * different questions.** The 「要处理」 band asks 「有没有话要说」— a band with nothing in
+ * it is a paragraph about nothing, so it takes the filtered list. The stat cards ask
+ * 「这三件事各是几件」— and **a card must not disappear because its own answer is
+ * zero**, or a page whose work is all on track looks exactly like a page whose
+ * triage strip stopped rendering.
+ *
+ * That distinction was lost once: `triageLinesOf` dropped the zeros, the stat band
+ * filtered again on its own side (belt and braces, so the bug could not show), and
+ * the two together made 「三张卡」 into 「最多画三张」. Removing the second filter
+ * changed nothing, because the zeros were already gone before they arrived. **The
+ * duplicate guard was the reason it stayed broken: a defect defended twice looks
+ * defended once.**
+ */
+export function allTriageLinesOf(items: readonly ItemRecord[], now: number, staleDays: number = DEFAULT_STALE_DAYS): TriageLine[] {
   // Only unfinished work can be waiting on the reader. A finished row that once
   // sat behind a date is a fact about the past, and listing it under "behind"
   // would nag about something the reader already did.
@@ -67,13 +88,12 @@ export function triageLinesOf(items: readonly ItemRecord[], now: number, staleDa
   // it belongs: the two lines answer two different questions and together they
   // cover the case.
   const undated = live.filter(item => datePostureOf(item, now).kind === 'none' && !isInboxItem(item))
-  const lines: TriageLine[] = [
+  return [
     { id: 'behind', count: behind.length, severity: 'warn', items: behind, worstDays: worstOf(behind, now) },
     { id: 'stale', count: stale.length, severity: 'warn', items: stale, worstDays: worstOf(stale, now) },
     { id: 'blocked', count: blocked.length, severity: 'warn', items: blocked, worstDays: worstOf(blocked, now) },
     { id: 'undated', count: undated.length, severity: 'muted', items: undated, worstDays: undefined },
   ]
-  return lines.filter(line => line.count > 0)
 }
 
 /** The oldest untouched run among a set, which is the number worth saying. */
