@@ -991,6 +991,49 @@
   border-color: var(--item-hair);
 }
 
+/* ── 7.9 零行的一行摘要 ───────────────────────────────────────────────────
+ *
+ * **这套类曾经被删过，而它当时确实是死的。** 清单页拆掉四个分组之后就没有组件引用
+ * 它们了，门禁如实报了「定义了但没人引用」，清理把它们一并删掉——**那一刻它完全
+ * 正确**。后来日程页的空日节压行时重新用上了同一套，**而样式没有跟着回来**：没有
+ * 规则的元素继承祖先的字号与墨色，出图上是 18px 左右的黑体，而不是一行小字灰。
+ *
+ * 所以这里记的不是「它们是活的」，是**它们死过又活了**：一个类被删之后又被重新用上，
+ * 样式不会自己回来。这不是门禁的错——门禁在删除那一刻是对的，错的是「删掉的东西还会有
+ * 第二个使用者」这件事没有写在任何地方。
+ *
+ * 一行摘要的样子是**小字、第三层墨、名字与数之间 6px 的沟**：它回答「哪几天是空的」，
+ * 而答案是轻的。写重了就变成一条与上面标题同量级的内容，而它下面一行任务都没有。 */
+.itemEmptyGroups {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 16px;
+  color: var(--item-ink-3);
+}
+
+.itemEmptyGroup {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  white-space: nowrap;
+  color: var(--item-ink-3);
+}
+
+.itemEmptyGroupCount {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--item-ink-3);
+}
+
+.itemEmptyGroupSep {
+  color: var(--item-ink-3);
+}
+
 /* ── 8. 空态 ─────────────────────────────────────────────────────────────── */
 
 .itemListEmpty,
