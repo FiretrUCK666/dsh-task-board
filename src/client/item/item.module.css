@@ -1551,7 +1551,14 @@ textarea.itemInput {
   font-size: 13px;
   font-weight: 400;
   line-height: 1;
-  color: var(--item-ink-3);
+  /* **`⋯` 是第二层墨，不是第三层。** 它原来吃 `--item-ink-3`（占位、次要文字那一档），
+   * 而 `⋯` 不是文字，是**这一行唯一那个「还有别的」的入口**——与可点的「问 AI」并排时，
+   * 暗色下 `⋯` 落在第三层墨上几乎看不见，而「问 AI」有描边所以还有轮廓，于是那一格里
+   * 「能用」和「不能用」的两枚控件**看起来像同一种东西，只是深浅不同**。
+   *
+   * 它也不能是第一层墨：它是三个点，和标题那种实心文字不是一个重量。第二层是
+   * 「可操作但不抢眼」，正是三个点该在的位置。 */
+  color: var(--item-ink-2);
   background: none;
   border: 0;
   border-radius: var(--item-radius-pill);
