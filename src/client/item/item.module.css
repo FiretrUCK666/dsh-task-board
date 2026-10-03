@@ -2394,7 +2394,16 @@ textarea.itemInput {
  * 满一行，于是状态、优先级、截止、标签落到第二行，放不下就再落第三行。
  *
  * **不许缩字号、不许藏控件**：状态、优先级、截止、标签全部还在，只是换了行。
- * 行高仍然是一笔定值（78 与 98），不是随内容长出来的一个数。 */
+ * 行高仍然是一笔定值（78 与 98），不是随内容长出来的一个数。
+ *
+ * **而标题在这一档是唯一该换行的那一格，量出来它必须换。** MEASURED on a 412px
+ * surface with the shipped fixture: 七行标题**全部**以省略号收尾——「这一条硬期限已经…」、
+ * 「这一条很久没有人…」。原因是一条算得出来的账：346px 的内容宽里，勾选轨 36 + 操作格 96
+ * + 两条沟 16 已经拿走 148，标题只剩 198，而 15px 的中文一行约十三个字。
+ *
+ * **七行全部截断 = 这一列在窄屏上不成立。** 硬性规范 11 给的出路写得很清楚：容器装不下时
+ * **让位**，不是压扁——而截断正是压扁的一种。所以标题换行，行高跟着从 98 到 122（两行标题
+ * ＋ 一行编号 ＋ 一行事实 ＋ 内距与沟），**仍然是定值，仍然不是随内容长出来的一个数**。 */
 .itemTableRow,
 .itemTableRow:has(.itemCellMeta) {
   display: flex;
@@ -2409,7 +2418,26 @@ textarea.itemInput {
 }
 
 .itemTableRow:has(.itemCellMeta) {
-  min-block-size: 98px;
+  min-block-size: 122px;
+}
+
+/* **标题在窄档换行，其余各格不换。** 换行是让位里唯一不损失信息的那种——控件换行仍然
+ * 在，只是换了位置；文字换行仍然完整，而截断丢的是内容。 */
+.itemTableRow .itemCellTitle {
+  min-inline-size: 0;
+}
+
+.itemTableRow .itemCellTitleText {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  /* **`white-space: normal` 是这条规则里最要紧的一行。** 窄屏的基础档给这一格的是
+   * `nowrap`（一行 + 省略号），而 `-webkit-line-clamp` 在 `nowrap` 之下永远只有一行可夹，
+   * 于是「允许两行」写上去而读出来仍是一行——**规则说它换行了，图上它没有**。
+   * 换行是 `white-space` 决定的，不是 `line-clamp` 决定的。 */
+  white-space: normal;
+  overflow-wrap: anywhere;
 }
 
 /* 第一行三件：勾选圈定值、标题吃掉剩下的、⋯ 定值贴右。
