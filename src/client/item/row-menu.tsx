@@ -34,6 +34,19 @@ export interface RowMenuAction {
   readonly key: string
   readonly label: string
   readonly onPick: () => void
+  /**
+   * SHOWN BUT NOT TAKEN, and the reason beside it.
+   *
+   * A menu entry used to be a sentence. It became a button — which is the right
+   * control — and that change opened the question of what an unavailable one
+   * looks like, and the answer is NOT to leave it out: a list whose length changes
+   * with a fact the reader cannot see is a list nobody can learn. So the entry
+   * stays, it is `aria-disabled` rather than absent, and the hint names the fact
+   * that is missing. **The reader is never left to work out whether the entry
+   * is broken or their row is.**
+   */
+  readonly disabled?: boolean
+  readonly hint?: string
 }
 
 export interface ItemRowMenuProps {
@@ -114,6 +127,11 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
   }, [props.trigger, props.panel])
 
   const pick = useCallback((action: RowMenuAction) => {
+    // A disabled entry closes nothing and runs nothing. It is not `pointer-events:
+    // none` in CSS either: that would take the entry out of the keyboard order
+    // without saying so, and a `disabled` control the reader cannot reach is the
+    // one thing they cannot discover.
+    if (action.disabled === true) return
     props.onClose()
     action.onPick()
   }, [props])
@@ -169,9 +187,12 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
             type="button"
             role="menuitem"
             className={css.itemRowMenuItem}
+            aria-disabled={action.disabled === true || undefined}
+            title={action.hint}
             onClick={() => pick(action)}
           >
-            {action.label}
+            <span className={css.itemRowMenuLabel}>{action.label}</span>
+            {action.hint !== undefined && <span className={css.itemRowMenuHint}>{action.hint}</span>}
           </button>
         ))}
       </div>

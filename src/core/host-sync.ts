@@ -66,7 +66,7 @@ import type {
   CruiseValue,
   LeaseWire,
 } from './board-doc.ts'
-import { emptyItemsDoc, ITEM_ROW_OPS } from './items-doc.ts'
+import { deletedItemsOf, emptyItemsDoc, ITEM_ROW_OPS } from './items-doc.ts'
 import type { ItemsCommit, ItemsDoc } from './items-doc.ts'
 import type { ItemRecord } from './item.ts'
 import type { RunPresetStore, RunPresetsDocument } from './run-presets.ts'
@@ -1014,6 +1014,26 @@ export class ChecklistReplica {
   /** The effective local view: baseline overlaid with un-acked rows, with
    *  accrued deletions excluded on both sides (same law as the board's rows —
    *  the dirty array keeps its order, baseline-only rows append read-only). */
+  /**
+   * THE ROWS A TOMBSTONE STILL HOLDS — the archive, read out of the document this
+   * replica already carries.
+   *
+   * `view()` is the LIVE document only, and that is correct: a deleted row is
+   * gone from every ordinary view the moment it is deleted, which is the entire
+   * point of deleting it. So the archive is the one place those rows are still
+   * readable — and it is a READ, not a fetch: the tombstones live in the very
+   * document this class holds, so asking it for them costs nothing and cannot
+   * disagree with the list it sits beside.
+   *
+   * A row whose payload has already been purged is simply not here, and
+   * `purgeItemTombstone` is what says so — the surface never has to know the
+   * difference between 「deleted」 and 「gone for good」 to draw an honest list.
+   */
+  archive(): readonly ItemRecord[] {
+    return deletedItemsOf(this.doc)
+  }
+
+  /** @see {@link ChecklistReplica.view} */
   view(): readonly ItemRecord[] {
     const base = this.doc.items
     const deletedIds = new Set(this.deleted.map(entry => entry.id))

@@ -23,14 +23,15 @@
  *     empty collection, never a zero or a "none" string standing in for a value
  *     nobody computed — so a surface that forgot to ask cannot paint a confident
  *     nothing.
- *  4. **A COUNT AND ITS JUMP ARE ONE PREDICATE, BY CONSTRUCTION.** Every flag
- *     below is emitted together with the triage line and the filter it opens, so
- *     the number on a tile and the list under it cannot be made to disagree; see
- *     the note inside {@link itemMatches}, which is where that promise is kept.
+ *  4. **A COUNT AND ITS JUMP ARE ONE PREDICATE, BY CONSTRUCTION.** Every flag is
+ *     a named entry in {@link ITEM_FLAG_TESTS}, and anything that COUNTS one
+ *     calls the same function the jump calls — so the number on a tile and the
+ *     list under it cannot be made to disagree.
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts'
-import { ITEM_STATUSES, itemTitleOf } from './item.ts'
+import { ITEM_STATUSES, ITEM_STATUS_VIEWS, itemTitleOf } from './item.ts'
 import { datePostureOf } from './item-dates.ts'
+import type { DatePosture } from './item-dates.ts'
 import { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts'
 import { derivedStatusOf, isInboxItem, isLiveItem } from './item-membership.ts'
 
@@ -97,13 +98,23 @@ export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdu
  * 「I used it wrong」.
  *
  * **DERIVED, NEVER TYPED.** Every entry comes from `ITEM_FLAGS`, `PRIORITY_BY_TOKEN`
- * or `ITEM_STATUSES` — the same tables the parser reads — so adding a flag is one
- * edit here and one edit there, and they cannot disagree because there is only
- * one of each.
+ * or {@link ITEM_STATUS_VIEWS} — the same tables the parser reads — so adding a
+ * flag is one edit here and one edit there, and they cannot disagree because
+ * there is only one of each.
+ *
+ * **AND IT SPELLED OUT `status:inProgress` FOR SIX RELEASES' WORTH.** The
+ * statuses came from `ITEM_STATUSES`, which is the three a person can CHOOSE
+ * (`open` / `blocked` / `done`); `inProgress` is the fourth a person can only be
+ * SHOWN, and it is not in that table because it is derived from a card. The
+ * parser has always accepted `status:inprogress` and `isItemQualifierToken` has
+ * always said yes — but this list, which is what `taskboard_query` teaches the
+ * model, never mentioned it. So the token worked for a reader who guessed it and
+ * was invisible to the model that was told the whole vocabulary. **A vocabulary
+ * that is derived from one of the two halves of a type teaches one half.**
  */
 export function itemQualifierVocabulary(): readonly string[] {
   return [
-    ...ITEM_STATUSES.map(status => `status:${status}`),
+    ...ITEM_STATUS_VIEWS.map(view => `status:${view.toLowerCase()}`),
     ...Object.keys(PRIORITY_BY_TOKEN).sort().map(token => token),
     '!1', '!2', '!3', '!4',
     ...ITEM_FLAGS.map(flag => `has:${flag}`),
@@ -271,6 +282,67 @@ function haystackOf(item: ItemRecord): string {
   return [itemTitleOf(item), item.body, item.notes, ...item.tags].join('\n').toLowerCase()
 }
 
+/** What a flag test is given. ONE probe per row, so two flags cannot disagree
+ *  about the same row's date posture — a disagreement that is invisible until a
+ *  rail prints a number the jump does not honour. */
+export interface ItemFlagProbe {
+  readonly item: ItemRecord
+  readonly posture: DatePosture
+  readonly stale: number | undefined
+  readonly ctx: ItemMatchContext
+}
+
+/** Build the probe a flag test reads. One posture, one staleness, one clock. */
+export function flagProbeOf(item: ItemRecord, ctx: ItemMatchContext): ItemFlagProbe {
+  return { item, posture: datePostureOf(item, ctx.now), stale: staleDaysOf(item, ctx.now), ctx }
+}
+
+/**
+ * EVERY FLAG, AS A NAMED PREDICATE, IN A TABLE KEYED ON THE UNION.
+ *
+ * These were a nested ternary chain inside {@link itemMatches}, and the chain's
+ * final `else` was the `done` test. Nothing checked that every flag had an arm:
+ * add a flag to {@link ItemFlag} and to {@link ITEM_FLAGS}, forget the arm, and
+ * the row silently filters as 「已完成」 — a compile-clean build and a filter
+ * that lies. That is the same shape {@link ITEM_SORTS} refuses with
+ * `Record<ItemSort, …>` in `item-sort.ts`, and the same one
+ * {@link ITEM_FIELDS} refuses with `as const satisfies Record<…>` in `item.ts`.
+ * Three tables, one reason: a table keyed on the union is a BUILD FAILURE when a
+ * member has no entry, and an `if` chain is a runtime surprise when it does not.
+ *
+ * THE SCOPE LIVES HERE, not in the count. `behind` and `undated` are produced by
+ * the triage lines, and both count only UNFINISHED work (`undated` only rows
+ * that are not bare captures). The flag tests below carry that same scope so a
+ * jump cannot land on more rows than the number promised — a defect that was real
+ * here once, and the reason the scope is written next to the predicate instead of
+ * next to the number that reads it.
+ */
+export const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) => boolean>> = {
+  hardOverdue: probe => isLiveItem(probe.item) && probe.posture.kind === 'hardOverdue',
+  behind: probe => isLiveItem(probe.item) && probe.posture.kind === 'behind',
+  overdue: probe => isLiveItem(probe.item)
+    && (probe.posture.kind === 'hardOverdue' || probe.posture.kind === 'behind'),
+  stale: probe => probe.stale !== undefined && probe.stale >= probe.ctx.staleDays,
+  undated: probe => isLiveItem(probe.item) && !isInboxItem(probe.item) && probe.posture.kind === 'none',
+  gated: probe => probe.posture.kind === 'gated',
+  blocked: probe => probe.item.status === 'blocked',
+  linked: probe => probe.item.taskId !== undefined,
+  done: probe => probe.item.status === 'done',
+}
+
+/**
+ * Does this row pass this flag? The surface form of {@link ITEM_FLAG_TESTS},
+ * for anything that has the row and the context but not a probe yet.
+ *
+ * **This is also how a number is COUNTED.** A rail, a tile or a count line that
+ * wants 「how many rows does this flag hold」 calls this on the same row — so the
+ * number on screen and the list behind it are one predicate by construction,
+ * which is the promise rule 4 of this module makes.
+ */
+export function itemHasFlag(item: ItemRecord, flag: ItemFlag, ctx: ItemMatchContext): boolean {
+  return ITEM_FLAG_TESTS[flag](flagProbeOf(item, ctx))
+}
+
 /**
  * Whether a row satisfies a parsed query.
  *
@@ -291,44 +363,10 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
   if (query.priority.length > 0 && !query.priority.includes(item.priority)) return false
   if (query.status.length > 0 && !query.status.includes(derivedStatusOf(item, ctx.running))) return false
   if (query.flags.size === 0) return true
-  const posture = datePostureOf(item, ctx.now)
-  const stale = staleDaysOf(item, ctx.now)
+  // One probe for the whole row, so two flags cannot read two different postures.
+  const probe = flagProbeOf(item, ctx)
   for (const flag of query.flags) {
-    // A FLAG IS A JUMP, AND A JUMP MUST LAND EXACTLY WHERE ITS NUMBER SAYS.
-    // `behind` and `undated` are produced by the triage lines, and both of those
-    // count only UNFINISHED work (and `undated` only rows that are not bare
-    // captures). The flag tests below had NO such test, so pressing 「去看」 on
-    // 「落后 3」 listed every FINISHED row that once sat behind a date, and
-    // pressing it on 「没日期」 listed every new capture plus every finished
-    // undated row: a jump that lands on more than the number promised, with
-    // nothing on screen saying the number had changed its meaning.
-    //
-    // This is the same defect the `overdue` comment below already describes for
-    // the overview tile, and the fix is the same: **the count and the jump are
-    // one predicate, by construction.** The scope lives in the flag test so it
-    // cannot drift away from the line that produced the number.
-    const live = isLiveItem(item)
-    /* `overdue` IS 「either kind of late」, which is the one reading two flags
-       share, and it is scoped to UNFINISHED work for the same reason `behind` is
-       — the overview counts late rows out of the live ones, so a filter that
-       also kept finished rows would land on more than the number promised, with
-       nothing on screen saying the number had changed its meaning. `hardOverdue`
-       carried the same missing guard for the same reason: it is the other half
-       of this same union, and the facet a reader clicks for 「逾期」, so both
-       halves now judge with the scope the count used.
-
-       The scope lives in the flag tests rather than in the count, so it cannot
-       drift away from the line that produced the number. */
-    const holds = flag === 'hardOverdue' ? live && posture.kind === 'hardOverdue'
-      : flag === 'behind' ? live && posture.kind === 'behind'
-        : flag === 'overdue' ? live && (posture.kind === 'hardOverdue' || posture.kind === 'behind')
-          : flag === 'stale' ? stale !== undefined && stale >= ctx.staleDays
-            : flag === 'undated' ? live && !isInboxItem(item) && posture.kind === 'none'
-              : flag === 'gated' ? posture.kind === 'gated'
-                : flag === 'blocked' ? item.status === 'blocked'
-                  : flag === 'linked' ? item.taskId !== undefined
-                    : item.status === 'done'
-    if (!holds) return false
+    if (!ITEM_FLAG_TESTS[flag](probe)) return false
   }
   return true
 }

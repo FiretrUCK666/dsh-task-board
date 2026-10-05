@@ -39,7 +39,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts';
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
-import { type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
+import { DocumentService, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
 /** The commit body size cap: the whole ledger travels per commit. */
 export declare const BOARD_BODY_LIMIT_BYTES: number;
 /** The SSE keep-alive cadence (below common proxy idle timeouts). */
@@ -263,6 +263,38 @@ export declare function parseBoardCommit(body: unknown): BoardCommit | undefined
 export declare function parseItemsCommit(body: unknown): ItemsCommit | undefined;
 /** The pure request processor (one prefix route, dispatched by path tail). */
 export declare function createBoardHandler(deps: BoardRouteDeps, base: string): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
+/**
+ * Hand one checklist item to the model of the session its card runs in.
+ *
+ * WHY THE CARD DECIDES THE TARGET. The panel is a main-stage page, so no
+ * conversation is on screen while it is open — there is no "current session" to
+ * send anything to. The card is what the item hangs off, and the card already
+ * knows its sessions, so the target is a fact the document already holds rather
+ * than a picker the reader has to answer.
+ *
+ * WHICH SESSION WHEN THERE ARE SEVERAL: one that is actually running. A card can
+ * hold several sessions, and "the one doing work right now" is the only choice
+ * that matches what the reader means by "ask the AI about this". When none is
+ * running the FIRST bound session is used, and the receipt names it either way —
+ * a hand-off that cannot be told apart afterwards is not a receipt.
+ *
+ * THE HAND-OFF ITSELF is `handOver` from the agent surface: one path into a
+ * model, shared with the two slash commands.
+ *
+ * **Exported so it can be tested without a storage hub.** This function decides
+ * WHICH CONVERSATION a person's text goes to, and it had no coverage at all: the
+ * route's `deps.ask` seam is replaced in every route test, so the production
+ * wiring at `registerBoardRoute` — which is the only place this body actually
+ * runs — was never executed. That is why a request naming card A with a row of
+ * card B survived: nothing had ever asked the function what it does with two
+ * names that disagree.
+ *
+ * @param ctx - the host context, read for `agents` at call time.
+ * @param service - the two-document face.
+ * @param request - the card and the row, as the parser accepted them.
+ * @returns the receipt naming the session, or a refusal code.
+ */
+export declare function handOneItemToItsCardSession(ctx: Context, service: DocumentService, request: AskRequest): Promise<AskRouteView>;
 /**
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,

@@ -24,8 +24,11 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
+import { toItemDateField } from './model.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { PRIORITY_LABEL } from './labels.ts'
+import { ItemComposer } from './composer.tsx'
+import type { ComposerParse } from './compose-parse.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
@@ -38,6 +41,14 @@ export interface ItemCreateDialogProps {
   readonly onClose: () => void
   /** Hand the finished capture over. `false` means it was refused; keep the words. */
   readonly onCreate: (input: ItemCapture) => boolean
+/**
+   * The writing clock, so `@today` in the grammar resolves against a fixed now.
+   *
+   * It is a PROP and not a call to `Date.now()` inside the parser because that
+   * clock decides what a date the reader typed MEANT. A test that cannot set it
+   * cannot pin `@明天`, and a host that cannot set it cannot replay one.
+   */
+  readonly now: number
   /** Cards the reader can hang the row on, by id. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
 }
@@ -59,7 +70,15 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const [due, setDue] = useState('')
   const [tags, setTags] = useState('')
   const [taskId, setTaskId] = useState('')
-  const [words, setWords] = useState('')
+const [words, setWords] = useState('')
+  /** WHAT THE GRAMMAR UNDERSTOOD, handed up by the box on every keystroke.
+   *
+   *  THE FIELDS BELOW ARE A VIEW OF THIS, NOT A SECOND PLACE TO TYPE. The line
+   *  above them is one sentence; the grid underneath is that sentence read field
+   *  by field. Keeping them in step by copying is how 「我打了 @明天，日期框是空的」
+   *  happens — so the copy is made once per keystroke instead, and the reader can
+   *  still overrule any single field by hand afterwards. */
+  const [parsed, setParsed] = useState<ComposerParse | undefined>(undefined)
   const sheet = useRef<HTMLDivElement | null>(null)
   const titleField = useRef<HTMLInputElement | null>(null)
 
@@ -68,10 +87,33 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   // holding the previous row's words is a dialog that will file the same thing
   // twice.
   useEffect(() => {
-    if (!props.open) return
+if (!props.open) return
     setTitle(''); setBody(''); setPriority('normal'); setDue(''); setTags(''); setTaskId(''); setWords('')
+    setParsed(undefined)
     titleField.current?.focus()
   }, [props.open])
+
+  /* THE GRAMMAR FILLS THE FORM, ONCE PER KEYSTROKE.
+   *
+   * Seeding on every keystroke is right because it is the ONLY moment the two
+   * sides are guaranteed to agree: the reader is looking at the sentence they are
+   * typing. Seeding once on 「open」 would leave the grid describing nothing, and
+   * re-seeding on 「submit」 would overwrite the fields the reader corrected by
+   * hand — which is the one thing this grid is for.
+   *
+   * It only writes a field the reader has NOT touched. That is what makes the
+   * form editable without the two sides fighting over it: a hand-edited date is
+   * never rewritten because the sentence above still says `@明天`. */
+  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set())
+  const mark = (field: string) => setTouched(current => new Set(current).add(field))
+  useEffect(() => {
+    if (parsed === undefined) return
+    if (!touched.has('title')) setTitle(parsed.title)
+    if (!touched.has('body')) setBody(parsed.body)
+if (!touched.has('priority') && parsed.priority !== undefined) setPriority(parsed.priority)
+    if (!touched.has('tags')) setTags(parsed.tags.join('、'))
+    if (!touched.has('dueAt') && parsed.dueAt !== undefined) setDue(toItemDateField(parsed.dueAt))
+  }, [parsed, touched])
 
   const submit = (): void => {
     const input: ItemCapture = {
@@ -118,31 +160,49 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
           props.onClose()
         }}
       >
-        {/* 左边是那句话，右边是那句话会变成什么。 */}
+{/* 左边是那句话，右边是那句话会变成什么。 */}
         <div className={css.itemCreateDialogMain}>
-          <input
-            ref={titleField}
-            className={css.itemCreateDialogTitle}
-            value={title}
-            placeholder={t('item.field.title')}
-            aria-label={t('item.field.title')}
-            onChange={event => setTitle(event.target.value)}
-            onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit() } }}
-          />
+          {/* THE GRAMMAR IS THE FIRST LINE, AND IT IS THE ONLY LINE THAT IS
+              * REQUIRED.
+              *
+              * It used to be an always-on box above the workbench, which meant a
+              * reader could never put a second thought into a row — the sentence
+              * was filed the instant they pressed Enter — and it meant this sheet
+              * was a second, stranger way to do the same thing. Now there is ONE
+              * door: ＋新建一条, and its first line is the sentence itself, with
+              * the chips under it saying what was understood.
+              *
+              * AND THE FIELDS BELOW ARE SEEDED FROM THAT PARSE, not typed twice.
+              * They are the same sentence read field by field, which is what lets
+              * them stay on the surface at all: a field the grammar can fill is a
+              * field nobody has to learn, and a field the reader can overrule is a
+              * field nobody has to give up either. */}
+          <ItemComposer now={props.now} onChange={setParsed} />
+          <div className={css.itemCreateDialogSeeded}>
+            <input
+              ref={titleField}
+              className={css.itemCreateDialogTitle}
+              value={title}
+              placeholder={t('item.field.title')}
+              aria-label={t('item.field.title')}
+              onChange={event => { mark('title'); setTitle(event.target.value) }}
+              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit() } }}
+            />
           <textarea
             className={css.itemCreateDialogBody}
             value={body}
             rows={6}
             placeholder={t('item.create.body')}
             aria-label={t('item.create.body')}
-            onChange={event => setBody(event.target.value)}
+            onChange={event => { mark('body'); setBody(event.target.value) }}
           />
+</div>
         </div>
 
         <div className={css.itemCreateDialogFields}>
           <label className={css.itemField}>
             <span className={css.itemFieldLabel}>{t('item.batch.priority')}</span>
-            <select className={css.itemFieldValue} value={priority} onChange={event => setPriority(event.target.value as ItemPriority)}>
+            <select className={css.itemFieldValue} value={priority} onChange={event => { mark('priority'); setPriority(event.target.value as ItemPriority) }}>
               {PRIORITIES.map(one => <option key={one} value={one}>{t(PRIORITY_LABEL[one])}</option>)}
             </select>
           </label>
@@ -152,12 +212,18 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               className={css.itemFieldValue}
               type="date"
               value={due}
-              onChange={event => setDue(event.target.value)}
+              onChange={event => { mark('dueAt'); setDue(event.target.value) }}
             />
           </label>
           <label className={css.itemField}>
             <span className={css.itemFieldLabel}>{t('item.field.tags')}</span>
-            <input className={css.itemFieldValue} value={tags} onChange={event => setTags(event.target.value)} />
+            <input
+              className={css.itemFieldValue}
+              value={tags}
+              placeholder={t('item.field.tagsHint')}
+              aria-label={`${t('item.field.tags')}：${t('item.field.tagsHint')}`}
+              onChange={event => { mark('tags'); setTags(event.target.value) }}
+            />
           </label>
           <label className={css.itemField}>
             <span className={css.itemFieldLabel}>{t('item.field.taskId')}</span>

@@ -95,6 +95,16 @@ export interface ToolDeps {
      *  is still working asks the SAME derivation the board does — never a second
      *  one written here. */
     sources: SessionPostureSources;
+    /**
+     * A workspace's display name, when this host knows one.
+     *
+     * OPTIONAL, and deliberately so: `ws:` is a board-side qualifier whose whole
+     * job is 「cards in a workspace called this」, and a card with no workspace is
+     * not in any workspace. Guessing a name would make the qualifier answer for a
+     * host that cannot see it, so a host without this face simply does not offer
+     * `ws:` — which is the honest answer, and the same one the board gives.
+     */
+    workspaceTitle?: (workspaceId: string) => string;
     now: () => number;
     uuid: () => string;
 }
@@ -234,10 +244,14 @@ export interface ExecuteRequest {
      *
      * A model that retries after a timeout cannot tell "my write did not land"
      * from "my write landed and the answer was lost", so it retries — and without
-     * a key the retry is a second write. This is what makes the retry safe, and
-     * it is why the field exists at all: it was declared, never read, and a
-     * promise nobody keeps is worse than no promise, because the caller is told
-     * it is protected.
+     * a key the retry is a second write. This is what makes the retry safe.
+     *
+     * A STRING, and the published schema says so. It was once declared and never
+     * read, and while it was unread a promise nobody kept was worse than no
+     * promise, because the caller was told it was protected; it is read now (see
+     * the batch runner) and the schema publishes its real shape, because a key
+     * published as a boolean arrives as `true`, fails the reader's string guard,
+     * and fails open — silently, with the schema still claiming the protection.
      */
     readonly idempotencyKey?: string;
 }

@@ -50,6 +50,8 @@ export function InboxPage(props: ItemPageProps) {
         rows={props.renderRows(rows, false)}
         empty={nothingToShow}
         noMatch={props.filtering ? nothingToShow : undefined}
+        now={props.now}
+        sort={props.sort}
       />
     </>
   )

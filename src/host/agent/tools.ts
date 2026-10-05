@@ -63,7 +63,9 @@ import {
   type ActionSurface,
   type ParamSpec,
 } from '../../core/board-actions.ts'
-import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery } from '../../core/task-search.ts'
+import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery, matchTask } from '../../core/task-search.ts'
+import { hasLiveAutomation } from '../../core/automation.ts'
+import { taskUnviewed } from '../../core/session-display.ts'
 import { itemQualifierVocabulary } from '../../core/item-query.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
@@ -103,6 +105,11 @@ import {
 } from '../../core/item-transitions.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
 import { derivedStatusOf } from '../../core/item-membership.ts'
+import { planItemAsk } from '../../core/item-ask.ts'
+// THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
+// panel's hand-off route. A second copy of these four lines is a second thing to
+// keep in step, and the first time they drifted nobody would have found out.
+import { handOver } from './commands.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -153,6 +160,16 @@ export interface ToolDeps {
    *  is still working asks the SAME derivation the board does — never a second
    *  one written here. */
   sources: SessionPostureSources
+  /**
+   * A workspace's display name, when this host knows one.
+   *
+   * OPTIONAL, and deliberately so: `ws:` is a board-side qualifier whose whole
+   * job is 「cards in a workspace called this」, and a card with no workspace is
+   * not in any workspace. Guessing a name would make the qualifier answer for a
+   * host that cannot see it, so a host without this face simply does not offer
+   * `ws:` — which is the honest answer, and the same one the board gives.
+   */
+  workspaceTitle?: (workspaceId: string) => string
   now: () => number
   uuid: () => string
 }
@@ -553,10 +570,14 @@ export interface ExecuteRequest {
    *
    * A model that retries after a timeout cannot tell "my write did not land"
    * from "my write landed and the answer was lost", so it retries — and without
-   * a key the retry is a second write. This is what makes the retry safe, and
-   * it is why the field exists at all: it was declared, never read, and a
-   * promise nobody keeps is worse than no promise, because the caller is told
-   * it is protected.
+   * a key the retry is a second write. This is what makes the retry safe.
+   *
+   * A STRING, and the published schema says so. It was once declared and never
+   * read, and while it was unread a promise nobody kept was worse than no
+   * promise, because the caller was told it was protected; it is read now (see
+   * the batch runner) and the schema publishes its real shape, because a key
+   * published as a boolean arrives as `true`, fails the reader's string guard,
+   * and fails open — silently, with the schema still claiming the protection.
    */
   readonly idempotencyKey?: string
 }
@@ -1615,6 +1636,45 @@ function applyOne(
         item: rows.find(item => item.id === found.id) ?? found,
       }
     }
+    case 'item.ask': {
+      const found = findItem()
+      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      // THE SAME PLAN THE PANEL'S BUTTON CALLS. Which conversation a row's words
+      // go to is one judgment, and the model asking the same question the person
+      // asked must reach the same answer — or the row behaves differently
+      // depending on who typed, which is the one thing a shared action cannot be.
+      const card = found.taskId === undefined
+        ? undefined
+        : doc.tasks.find(task => task.id === found.taskId)
+      const agents = deps.sources.agents?.()
+      if (agents === undefined) return '这台机器上没有会话的模型通道，问不了这一条。'
+      const verdict = planItemAsk({
+        item: found,
+        card,
+        sessions: card === undefined ? [] : relatedSessionIdsOf(card),
+        isRunning: sessionId => sessionRunningOf(deps.sources, sessionId).value === true,
+        hasAgent: sessionId => agents.get(sessionId) !== undefined,
+      })
+      if (!verdict.ok) {
+        // The refusals say what to DO, not only what is wrong: a model that is
+        // told 「no card」 and nothing else will try again the same way.
+        if (verdict.why === 'noCard') return '这一条没有挂在任何看板卡片上，没有会话可以说话。先用 item.promote 把它变成一张卡。'
+        if (verdict.why === 'taskHasNoSession') return '这一条挂着的那张卡还没有会话可以说话。'
+        if (verdict.why === 'rowBelongsElsewhere') return '这一条挂的不是那张卡，别替它挑一张。'
+        return '那张卡挂着的会话现在不在跑。'
+      }
+      const followup = agents.get(verdict.sessionId)?.followup
+      if (followup === undefined) return '那张卡挂着的会话现在不在跑。'
+      const result = handOver({ followup }, verdict.text)
+      if (result.kind !== 'success') return result.text
+      // NOT `unchanged`. That flag means 「you asked for something the document
+      // already was」, and its receipt says exactly that — so an `item.ask`
+      // marked with it read 「这一条已经是这样了，没有改动」 immediately followed
+      // by 「已经问过 s-1 这个会话」, which is a sentence arguing with itself. A
+      // question writes no document and still HAPPENED, so it is reported as a
+      // landed op carrying a note, not as a no-op.
+      return { doc, items, item: found, note: `已经问过 ${verdict.sessionId} 这个会话，没有改动清单。` }
+    }
     case 'item.purge': {
       // ADDRESSED BY ITS SHORT NUMBER, the same name `item.restore` takes: it is
       // the one a person and a model say out loud, and the uuid is never spoken.
@@ -1805,8 +1865,24 @@ const EXECUTE_DESCRIPTION =
  *  stays a pure function of the catalog and the host faces. */
 export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] {
   const opEnum = [...TOOL_ACTION_IDS]
+  /**
+   * The envelope's published shape is DERIVED from the spec's own shape field.
+   *
+   * It used to be `type: 'boolean'` for every entry, which is how
+   * `idempotencyKey` — a string, read as a string, stored in a `Map<string, …>`
+   * — came out of this schema as a boolean. A model that obeyed it sent `true`,
+   * the reader's `typeof === 'string'` guard yielded `''`, and the whole
+   * retry-safety feature did nothing while the schema claimed it was in force.
+   *
+   * Reading `spec.boolean` instead means the shape is stated once, in the
+   * catalog, and a parameter that changes kind cannot be published as the wrong
+   * one — the renderer has nothing to hardcode.
+   */
   const envelope = Object.fromEntries(
-    Object.entries(EXECUTE_ENVELOPE_PARAMS).map(([name, spec]) => [name, { type: 'boolean', description: spec.about }]),
+    Object.entries(EXECUTE_ENVELOPE_PARAMS).map(([name, spec]) => [name, {
+      type: spec.boolean === true ? 'boolean' : 'string',
+      description: spec.about,
+    }]),
   )
 
   const capabilities: ToolDefinition = {
@@ -2016,8 +2092,32 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   const doc = board.getDoc()
   const items = board.getItemsDoc()
   const filter = (request.filter ?? '').trim()
-  const needle = filter.toLowerCase()
-  const tasks = doc.tasks.filter(task => needle === '' || task.title.toLowerCase().includes(needle)).slice(0, limit)
+  /* The CARDS run the board's own grammar, the same one the board's search box
+   * runs — and it did not. This half was a whole-string `includes` against the
+   * title, while `filterHelp()` advertised `has:auto` / `is:unread` / `ws:` as
+   * usable values, so a model that sent one got back the cards whose TITLE
+   * happened to contain those characters and a zero everywhere else. The
+   * checklist half below has been on its real grammar all along; these two lines
+   * were the reason a filter could be 「does nothing」 for half the document and
+   * work on the other half.
+   *
+   * The facets are the ones the board itself supplies, from the same core
+   * functions its own components read (`hasLiveAutomation`, `taskUnviewed`), so
+   * 「which cards are on fire」 has one answer rather than one per surface. A
+   * workspace title is the one facet the HOST owns, so it is passed in rather
+   * than guessed: a card with no workspace is not in any workspace, and saying
+   * so is better than matching it against a name nobody gave it.
+   */
+  const workspaceTitle = deps.workspaceTitle
+  const tasks = doc.tasks
+    .filter(task => matchTask(task, filter, [], {
+      ...(task.workspaceId !== undefined && workspaceTitle !== undefined
+        ? { workspaceTitle: workspaceTitle(task.workspaceId) }
+        : {}),
+      hasAutomation: hasLiveAutomation(task),
+      isUnviewed: taskUnviewed(task),
+    }))
+    .slice(0, limit)
   const rows = full ? tasks.map(taskDetailRow) : tasks.map(taskRow)
   // The checklist is matched by the SAME grammar the search box a person types
   // into uses, reached through the one door that leads to it. This used to be a

@@ -118,7 +118,17 @@ export interface ItemViewPrefs {
  * is not a state the surface can be put into. What belongs in this list is what a
  * reader — or a bench — can name directly and have the panel honour it.
  */
-export const ITEM_OVERLAYS = ['palette', 'create'] as const
+/**
+ * THE OPENABLE STATES, and the list is what the strip above it has to earn.
+ *
+ * `palette` and `create` are surfaces of their own. `filters` and `sort` are not:
+ * they are **panels inside the strip** — they take the same space the bar already
+ * owns and they push nothing around, so a reader who opens one and closes it is
+ * exactly where they were. Putting them in this union is what lets the bench and
+ * the keyboard reach them by the same name the UI does, instead of the UI growing
+ * a second, private way of saying 「打开筛选」.
+ */
+export const ITEM_OVERLAYS = ['palette', 'create', 'filters', 'sort'] as const
 
 /** One of the openable states. */
 export type ItemOverlay = typeof ITEM_OVERLAYS[number]

@@ -1,5 +1,7 @@
 import type { TaskUpdatePatch } from './controller.ts';
 import * as itemTransitions from './item-transitions.ts';
+import * as itemAsk from './item-ask.ts';
+import * as itemNavigate from './item-navigate.ts';
 import { type FieldSpec } from './item.ts';
 import * as itemsDocument from './items-doc.ts';
 export type { FieldSpec };
@@ -1050,6 +1052,22 @@ export declare const ACTIONS: {
             };
         };
     };
+    readonly 'item.ask': {
+        readonly verb: "speak";
+        readonly domain: "item";
+        readonly lane: "document";
+        readonly danger: "reversible";
+        readonly surface: "ui+ai";
+        readonly semantic: true;
+        readonly semanticOf: "planItemAsk";
+        readonly summary: "把一条清单条目交给模型，问它关于这一条的事并让它回话。只会送到这一条自己挂着的那张卡的会话上：优先送正在跑的那个，没有就送第一个。这一条不是执行——不会开一轮、不会动看板上的栏位，只是把这个条目（连同它的步骤）作为一句话送进一个会话。想让它真的去做，用 item.promote 先变成卡，再在卡上开工。";
+        readonly params: {
+            readonly of: {
+                readonly about: "要问的条目编号：填那个数字本身（12），不要带 # 号";
+                readonly appliesWhen: "这一条必须已经挂在一张看板卡片上：没有卡的条目没有会话可以说话，会被拒。";
+            };
+        };
+    };
     readonly 'item.restore': {
         readonly verb: "restore";
         readonly domain: "item";
@@ -1086,7 +1104,9 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui";
-        readonly summary: "把清单面板切到某个页面，或者聚焦到某一条。只有界面能调：模型不替人翻界面。";
+        readonly semantic: true;
+        readonly semanticOf: "planItemNavigation";
+        readonly summary: "把清单面板切到某个页面，或者聚焦到某一条。只给编号就跳到那一行所在的那一页；两样都给就照给的来。只有界面能调：模型不替人翻界面。";
         readonly params: {
             readonly page: {
                 readonly about: "要去哪个页面";
@@ -1124,6 +1144,21 @@ export type ItemActionId = Extract<ActionId, `item.${string}`>;
  * selection are two pieces of the panel's own state, the same class of UI the
  * controller-method scan cannot see. So the honest state is the one recorded
  * here, not a `semanticOf` naming a function nobody wrote.
+ */
+/**
+ * The ledger of catalogued actions with no core binding.
+ *
+ * **EMPTY, and that is the point.** It used to hold one row —
+ * `item.navigate` — with a reason saying the judgment lived in the panel's local
+ * state and no gate could see it. The judgment 「#12 在哪一页」 now lives in
+ * `item-navigate.ts` next to the two predicates that decide it, so the row has a
+ * function to bind to and this ledger has nothing left to excuse.
+ *
+ * The type is still here and still enforced: `BoundItemActionId` excludes it, so
+ * a new item action is a BUILD FAILURE until it is either bound or written here
+ * with a reason. An empty ledger means every listed action is implemented — and
+ * a future `item.*` that arrives without a binding cannot join the catalog
+ * quietly, which is the only reason the escape hatch is worth keeping.
  */
 export declare const NOT_YET_BUILT: Partial<Record<ActionId, string>>;
 /**
@@ -1163,6 +1198,8 @@ export declare const ITEM_HANDLERS: {
     readonly 'item.delete': typeof itemTransitions.removeItemRecord;
     readonly 'item.step': typeof itemTransitions.applyItemStep;
     readonly 'item.promote': typeof itemTransitions.planItemPromotion;
+    readonly 'item.ask': typeof itemAsk.planItemAsk;
+    readonly 'item.navigate': typeof itemNavigate.planItemNavigation;
     readonly 'item.restore': typeof itemsDocument.restoredItemOf;
     readonly 'item.purge': typeof itemsDocument.purgeItemTombstone;
 };

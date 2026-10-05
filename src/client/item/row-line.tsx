@@ -1,69 +1,106 @@
 /**
- * One row of the table: the list's only unit of work.
+ * The row line: four tracks, and a sentence with a reading at the end of it.
  *
- * WHY A TABLE ROW AND NOT A LINE OF TEXT. The list is a list of things to DO,
- * and the fastest way to read a column of them is to scan the column — the status
- * down one edge, the deadlines down another, the titles down the middle. A row
- * that mixes four facts into one wrapped sentence cannot be scanned by any of
- * them, so every fact on it competes with every other fact on every row above it.
+ * ══ WHY IT IS NOT A TABLE ROW ═══════════════════════════════════════════════
  *
- * SEVEN CELLS, ALWAYS SEVEN, AND THE HEAD IS THE PROOF. The head row and the body
- * row declare the same seven tracks, and the first and last have no label (there
- * is nothing to call 「tick」 or 「⋯」), so an empty cell is still a cell: drop it
- * and every cell after it slides one column left, and the head ends up labelling
- * the wrong data. This file therefore renders seven, always, and the head is
- * rendered from the same list of names.
+ * It was one — a pickbox column, a status pill, then one column each for the title,
+ * the priority, the date and the tags, with ⋮ last. Two things were wrong with that
+ * shape and neither was about the columns:
  *
- * THE ROW'S SHAPE IS NOT DECIDED HERE. Whether this reads as a table row or as a
- * stacked two-line row is the LIST COLUMN's width, read by a container query in
- * the stylesheet — so there is no breakpoint in this file, and none of these
- * cells knows which shape it is in.
+ *   THE ⋮ DID NOT STAY PUT. Two `auto` tracks sized themselves to their contents, so
+ *   ⋮ stopped wherever the tags happened to end: a row with one tag sat flush
+ *   right, a row with three pulled inwards by two hundred pixels. **A grid says 「I am
+ *   the last column」 once and means it at every width**; a flex row has to be told,
+ *   and being told means being told wrong the next time a tag gets longer.
  *
- * EVERY FACT IS VISIBLE AT REST. Status, number, title, the date verdict and the
- * step count are all on the line with no hover and no second click. Touch has no
- * hover, so a fact that only exists on one is a fact the phone does not have.
+ *   THE ROW SAID EACH FACT TWICE. The status had a column AND a word; the date had a
+ *   column AND a reading on the meta line. Now: the bead says the state as a shape,
+ *   the sentence says the row, and the reading says what the calendar says — one
+ *   fact in one place.
+ *
+ * ══ WHY MULTI-SELECT IS A MODIFIER AND NOT A COLUMN ════════════════════════
+ *
+ * Forty-four pixels of empty box down every row, on every page, to serve a mode a
+ * reader has to discover first. Shift- or ⌘-click, or the 「持有」 entry in ⋮ — and
+ * the pickbox column is gone rather than hidden, because a control that is invisible
+ * until a step happens is a step.
+ *
+ * ══ WHY THE BEAD IS SHAPES AND NOT A DOT ═══════════════════════════════════
+ *
+ * Four states, and the word is not on the row any more. So the shape has to carry it:
+ * a filled dot is 待办, a dot inside a halo is 进行中, a broken ring is 受阻, an empty
+ * ring is 完成. Readable with the colour taken away — which is what a row that has to
+ * be scanned fast needs to be.
  */
-import { useLayoutEffect, useRef, useState } from 'react'
-import type { ItemRowView } from '../../core/item-view.ts'
+import { useEffect, useRef, useState } from 'react'
+import type { ItemPriority, ItemRowView, ItemStatusView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
-import { isEnglish, t } from '../locales.ts'
+import { t } from '../locales.ts'
+import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { formatItemDate } from './model.ts'
-import { Button } from '../board/ui.tsx'
 import { ItemRowMenu } from './row-menu.tsx'
-import { GROUP_LABEL, PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import css from './item.module.css'
 
-/** The four date readings, and the tone each one speaks in. */
-type DueTone = 'soft-late' | 'over' | 'soon' | 'set'
-
-/**
- * SHIFT, read off the event that actually carries it.
- *
- * A checkbox's `change` is React's name for the `click` underneath it, so the very
- * same `MouseEvent` is sitting in `nativeEvent` — the modifier is right there and
- * the TYPE says `Event`. Declaring the handler as `onClick` instead would leave a
- * controlled field with no `onChange`, and React answers that with a read-only
- * warning on every render of every row.
- * @param event - the change React synthesised from a click.
- * @returns whether the reader held shift.
- */
-function shiftOf(event: React.ChangeEvent<HTMLInputElement>): boolean {
-  return (event.nativeEvent as MouseEvent).shiftKey === true
+/** How the four states are marked. One shape each, no word on the row. */
+function stateMark(status: ItemStatusView) {
+  switch (status) {
+    case 'inProgress':
+      return (
+        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+          <circle cx="5" cy="5" r="4" fill="var(--dsh-tb-accent)" />
+          <circle cx="5" cy="5" r="7" fill="none" stroke="var(--dsh-tb-accent)" strokeOpacity="0.28" strokeWidth="1" />
+        </svg>
+      )
+    case 'blocked':
+      return (
+        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+          <circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="5 2.4" />
+        </svg>
+      )
+    case 'done':
+      return (
+        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+          <circle cx="5" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
+        </svg>
+      )
+    default:
+      return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="2.5" fill="currentColor" /></svg>
+  }
 }
 
+/** The priority chip, and the only solid pill on this surface. */
+function prioChip(priority: ItemPriority) {
+  return (
+    <i className={css.itemPrioChip} data-tone={priority} title={`${t('item.field.priority')}${t(PRIORITY_LABEL[priority])}`}>
+      !{PRIORITY_DIGIT[priority]}
+    </i>
+  )
+}
+
+/** `!1`..`!4` from the model's own table, so a re-tiering cannot leave a chip lying. */
+const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
+
+type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
+
 /**
- * What the date cell says, and how loudly.
+ * THE ONE DATE READING THE ROW CARRIES.
  *
- * The one rule worth stating out loud: a missed WANTED-BY date is not an alarm.
- * It is a fact about a plan that slipped, so it reads in neutral ink and says
- * 「落后 N 天」. Only a missed HARD deadline is red, because that is the one the
- * reader cannot re-negotiate alone. Painting a slipped plan red is how a soft
- * deadline becomes a hard one without anybody ever deciding that.
+ * One, not two. It used to print the hard deadline's reading at the end of the
+ * sentence AND the plan's reading on the line below — two numbers, two words for
+ * 「late」, two lines, and a reader has to work out which is about which date.
+ *
+ * The plan's reading is not lost: it is on the date axis in the expanded row, in the
+ * column that already says 「截止」. **一个事实在一行里说一次，在它自己的那一栏里
+ * 说一次。**
+ *
+ * And only the HARD date is red, because that is the one a reader cannot
+ * re-negotiate alone. Painting a slipped plan red is how a soft deadline quietly
+ * becomes a hard one without anybody deciding that.
  * @param view - the row's projection.
  * @param english - whether the reader's language is English.
- * @returns the tone and the words, or nothing when the row has no date.
+ * @returns the tone and the words, or nothing when no date says anything yet.
  */
-function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: string } | undefined {
+function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueTone; text: string } | undefined {
   const { posture } = view
   switch (posture.kind) {
     case 'behind':
@@ -76,15 +113,13 @@ function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: st
       return { tone: 'set', text: t('item.due.today') }
     case 'hardAhead':
     case 'upcoming':
-      return { tone: 'set', text: t('item.due.set', { when: formatItemDate(posture.at, english) }) }
+      return { tone: 'set', text: t('item.due.set', { when: formatItemDate(posture.at, english, now) }) }
     case 'contradiction':
-      // Said, never repaired and never hidden: a row whose three dates disagree
-      // is the one row the reader most needs to see, and a schedule that
-      // swallowed it would be the quietest possible way to lose their words.
-      //
-      // AND THE TWO NAMES ARE THE ONES THAT DISAGREE — read off the conflict, so
-      // each of the three possible pairs names the two fields that are actually
-      // in it rather than one hard-coded pair that is wrong for the other two.
+      // Said, never repaired and never hidden: a row whose three dates disagree is
+      // the one row the reader most needs to see, and a list that swallowed it would
+      // be the quietest possible way to lose their words. And the two names are the
+      // ones that disagree — read off the conflict, so each of the three possible
+      // pairs names the two fields actually in it.
       return {
         tone: 'over',
         text: t('item.dates.contradict', {
@@ -98,315 +133,194 @@ function dueLine(view: ItemRowView, english: boolean): { tone: DueTone; text: st
   }
 }
 
-/**
- * The three date FIELDS, and the one sentence each is named by.
- *
- * A map, because the three cases must not each restate a name: a `switch` over
- * the field would be a second list of the same three, and a fourth date field
- * would have to be added in two places.
- */
+/** The three date FIELDS and the sentence each is named by — one map, not three cases. */
 const DATE_FIELD_KEY = {
   startsAfter: 'item.field.startsAfter',
   dueAt: 'item.field.dueAt',
   hardDueAt: 'item.field.hardDueAt',
 } as const satisfies Record<'startsAfter' | 'dueAt' | 'hardDueAt', string>
 
-/**
- * THE SOFT DATE'S OWN READING, when the combined reading is a HARD one.
- *
- * `posture` answers 「which of the three dates is the one being broken」, and the
- * hard deadline outranks the plan — correctly, because missing a hard deadline is
- * worse. But that ranking is a choice about which fact to LEAD with, and it used
- * to also be a choice about which facts to SAY. So a row that had slipped both
- * said one.
- *
- * Only the slip is reported, never the soft date standing: 「计划超期 N 天」 is the
- * fact the combined reading swallowed. When the combined reading is NOT a hard
- * one this is `undefined` — the soft date is then already the one being spoken,
- * and saying it twice would be noise.
- */
-function softLine(view: ItemRowView): { text: string } | undefined {
-  const { posture, soft } = view
-  const hardSpoke = posture.kind === 'hardOverdue' || posture.kind === 'hardSoon' || posture.kind === 'contradiction'
-  if (!hardSpoke || soft.days === undefined || (!soft.overdue && !soft.today)) return undefined
-  if (soft.overdue) return { text: t('item.due.planBehind', { days: String(soft.days) }) }
-  return { text: t('item.due.planToday') }
-}
-
-/** What the meta line says about this row, in the order that reads. */
+/** What the meta line says, in the order that reads. */
 function metaLine(view: ItemRowView): string {
   const parts: string[] = []
   /* THE NUMBER, OR THE FACT THAT THERE ISN'T ONE YET. `itemRefOf` rather than a
-     template, because the ledger's own `#0` sentinel is a fact about storage and
-     must never reach the screen; and the row is still worth a word when the
-     document has not numbered it, because 「编号待定」 says 「this will have a
-     number」 where a blank cell says 「there is nothing here」. */
+   * template, because the ledger's own `#0` sentinel is a fact about storage and must
+   * never reach the screen; and the row is still worth a word when the document has
+   * not numbered it, because 「编号待定」 says 「this will have a number」 where a
+   * blank cell says 「there is nothing here」. */
   parts.push(view.ref.text ?? t('item.ref.pending'))
   if (view.progress !== undefined) parts.push(t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) }))
   // Only once it has actually been neglected. A row touched a minute ago answers
-  // zero, and printing 「放置 0 天」 on every fresh row turns the one signal that is
-  // supposed to be rare into furniture. The threshold is the one the panel's own
-  // triage reads, so the row and the triage never disagree about what counts.
+  // zero, and printing 「放着 0 天」 on every fresh row turns the one signal that is
+  // supposed to be rare into furniture. The threshold is the one the rail's own
+  // 「没人动的」 reads, so the row and the rail never disagree.
   if (view.staleDays !== undefined && view.staleDays >= DEFAULT_STALE_DAYS) parts.push(t('item.stale', { days: String(view.staleDays) }))
   return parts.join(' · ')
 }
 
 export interface ItemRowLineProps {
   readonly view: ItemRowView
-  /** Whether this row's detail is open in place (the band with no detail card). */
-  readonly expanded: boolean
-  /** Whether this row is the one the detail card is showing. */
-  readonly selected: boolean
-  /** Whether the detail lives in the row rather than in the card beside it. */
-  readonly inPlace: boolean
-  /**
-   * Whether THIS PAGE has a batch surface — which is what puts a pickbox in cell
-   * one, on every row, all the time.
-   *
-   * It used to mean 「the reader is holding several rows」 and the box appeared
-   * only then, which is the same condition stated as a MODE. A mode is something
-   * the reader has to discover before the control exists: on this panel the only
-   * way in was `X`, so the pickbox column was 44px of nothing on every row and the
-   * only multi-select a mouse could reach was 「arm the batch in the palette and
-   * then look for a box that is not there yet」. A page that CAN batch can say so
-   * with a box that is simply there.
-   */
-  readonly picking: boolean
-  /** Whether THIS row is held. */
-  readonly picked: boolean
-  /**
-   * Hold or release this row. The flag is the SHIFT the reader pressed, and it is
-   * a parameter rather than something this file reads off the event: 「hold a
-   * range」 is a decision about the DOCUMENT, and the document is not this row's.
-   */
-  readonly onPick: (extend: boolean) => void
+  /** THE PANEL'S CLOCK, passed in rather than read. Two clocks on one row is a row
+   *  that says 「还早」 and shows last year's date. */
+  readonly now: number
   readonly panelId: string
-  readonly onToggle: () => void
+  readonly expanded: boolean
+  readonly selected: boolean
   readonly onSelect: () => void
-  readonly onAsk: () => void
-  readonly asking: boolean
-  /** Write a patch to THIS row — the hand-off the in-place title editor uses. */
+  readonly onToggle: () => void
+  /** Whether this PAGE batches. The inbox and the agenda answer false, so a row there
+   *  carries no way to be held. */
+  readonly picking: boolean
+  readonly picked: boolean
+  /** Hold one row, optionally as a range over what is on screen. */
+  readonly onPick: (extend: boolean) => void
   readonly onPatch: (patch: { readonly title: string }) => void
-  /** This row's own receipt, drawn under the control that earned it. */
-  readonly receipt?: string
   readonly menuOpen: boolean
   readonly onMenuToggle: () => void
   readonly onMenuClose: () => void
+  readonly onAsk: () => void
+  readonly asking: boolean
+  readonly receipt?: string
   readonly onMark: (status: 'open' | 'blocked' | 'done') => void
-  /** Open the checklist editor and put the caret in its field. */
+  /** Open the checklist and put the caret in its field. Three things at once: close
+   *  the menu, select the row, expand it — picking without expanding leaves the
+   *  reader looking at a selected row with no checklist on screen. */
   readonly onSteps: () => void
   readonly onPromote: () => void
+  /** 开工 — run the card this row hangs off, through the SAME `runTask` the
+   *  catalog's `task.run` binds. Not `rerunTask`: a row that runs a card one way
+   *  while the model runs it another is two definitions of 「开工」 on one
+   *  installation. */
+  readonly onStart: () => void
+  /** Whether that card is running, so 「开工」 is not offered twice. */
+  readonly running: boolean
   readonly onRemove: () => void
   /** The in-place detail, rendered only when `inPlace` and open. */
+  readonly inPlace: boolean
   readonly detail?: React.ReactNode
 }
 
 /**
- * One row: seven cells, in the order the head names them.
- * @param props - the projection, the panel's state and the hand-offs.
- * @returns the row, its menu and, when it belongs here, its in-place detail.
+ * One row.
+ * @param props - the projection and every hand-off it needs.
+ * @returns the row: a bead, a sentence, its tags and one control.
  */
 export function ItemRowLine(props: ItemRowLineProps) {
   const { view, expanded, selected, inPlace, panelId, menuOpen, onMenuToggle, onMenuClose } = props
-  const { item, title, status, posture } = view
-  const english = isEnglish()
-  const due = dueLine(view, english)
-  const soft = softLine(view)
-  const regionId = `${panelId}-${item.id}`
-  /* The two boxes the menu is placed against: its own trigger, and THIS PANEL's
-     root — found by asking this row for its NEAREST ancestor carrying the
-     attribute, never `document.querySelector`, which answers 「the first one in
-     the document」 and the board carries the SAME attribute. A menu clamped to the
-     board's box is the exact failure this geometry exists to prevent. */
-  const rowRef = useRef<HTMLDivElement | null>(null)
-  const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const panelRef = useRef<HTMLElement | null>(null)
-  useLayoutEffect(() => {
-    panelRef.current = rowRef.current?.closest<HTMLElement>('[data-dsh-taskboard-view]') ?? null
-  }, [])
-
-  /* THE TITLE IS EDITED WHERE IT IS PRINTED. Four fields are a form and a form is
-     a trip; the three words a reader wants to change are IN the sentence they are
-     complaining about. So the title cell swaps its text for a field on a double
-     press and writes through the same `onPatch` the detail card writes through —
-     one writer, so a title changed here and a title changed there are the same
-     edit. `Esc` abandons it because a reader who pressed Escape wanted to look,
-     not to save. */
+  const item = view.item
+  const english = t('item.field.title') === 'Title'
   const [editing, setEditing] = useState(false)
-  const [draft, setDraft] = useState(title)
-  const editor = useRef<HTMLInputElement | null>(null)
-  const startEditing = (): void => {
-    setDraft(title)
-    setEditing(true)
+  const [draft, setDraft] = useState(item.title)
+  const triggerRef = useRef<HTMLButtonElement | null>(null)
+  const panelRef = useRef<HTMLDivElement | null>(null)
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const regionId = `${panelId}-row-${item.id}-detail`
+
+  // The draft follows the row it is renaming, and a row's title changes from three
+  // places — the pencil, the keyboard, the model — so an edit that started on a stale
+  // value would file the stale value.
+  useEffect(() => { if (!editing) setDraft(item.title) }, [item.title, editing])
+  useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+
+  const startEditing = (): void => { setDraft(item.title); setEditing(true); onMenuClose() }
+  const commitTitle = (): void => {
+    const words = draft.trim()
+    if (words !== '' && words !== item.title) props.onPatch({ title: words })
+    setEditing(false)
   }
-  useLayoutEffect(() => {
-    if (editing) editor.current?.select()
-  }, [editing])
+
+  const due = dueLine(view, english, props.now)
 
   return (
     <div
-      ref={rowRef}
-      className={css.itemTableRow}
-      data-status={status}
+      className={css.itemRow}
+      role="listitem"
+      data-status={view.status}
       data-open={inPlace && expanded ? '' : undefined}
       data-selected={selected ? '' : undefined}
-      aria-selected={selected}
-      /* THE ROW ITSELF IS THE WAY INTO THE DETAIL, and it used to be nothing at
-         * all: `onSelect` was declared, handed by the panel, and called by no
-         * element on screen. So on a desk — where the detail lives in a rail
-         * beside the list — a reader with a mouse could not read a row at all:
-         * the rail appeared for the keyboard, and the only pointer route was the
-         * `⋯` menu's 「展开详情」, which is offered only on the band where the
-         * detail lives IN the row. Both halves of the surface were correct and
-         * together they left the most common gesture on the page missing.
-         *
-         * It is the row and not the title, because a row in a table is one target:
-         * a reader aiming at 「这一条挂在一张卡上」 is aiming at the row, and
-         * requiring the press to land inside the text is a rule nobody can see.
-         * The three controls inside it stop the press on their way up — each one
-         * is a different intent, and none of them means 「读这一行」. */
-      onClick={props.onSelect}
+      data-picked={props.picked ? '' : undefined}
+      onClick={() => { props.onSelect(); if (!inPlace) props.onToggle() }}
     >
-      {/* 1. THE PICKBOX, AND IT IS ALWAYS THERE ON A PAGE THAT CAN BATCH.
-          *
-          * It is a real control rather than a `<span role="checkbox">`: a role on
-          * a span has no tab stop of its own, and a batch is the only way to change
-          * forty rows without forty presses.
-          *
-          * ALWAYS, rather than 「once the reader has armed the batch」. The
-          * pickbox column is 44px wide on every row, so drawing nothing in it for
-          * the whole time a reader is looking at the list is a column of nothing —
-          * and the reader who wants to tick five rows has to guess that `X` is what
-          * makes the boxes appear. It is a real `<input>`, so it is in the tab
-          * order whether or not anyone has pressed anything, and the unpressed box
-          * says 「this row can be held」 without a word. */}
-      <div className={css.itemCellPick}>
-        {props.picking && (
-          <input
-            type="checkbox"
-            checked={props.picked}
-            onChange={event => props.onPick(shiftOf(event))}
-            // 勾选不是「读这一行」：勾完这一行不该顺手把详情轨也打开。
-            onClick={event => event.stopPropagation()}
-            aria-label={props.picked ? t('item.batch.picked') : t('item.batch.pick')}
-          />
-        )}
+      {/* THE BEAD: a shape, and it is the only thing that says the state. */}
+      <span className={css.itemRowLead} aria-hidden="true">{stateMark(view.status)}</span>
+
+      <div className={css.itemRowCell}>
+        {editing
+          ? (
+            <input
+              ref={inputRef}
+              className={css.itemRowTitleInput}
+              value={draft}
+              onChange={event => setDraft(event.target.value)}
+              onBlur={commitTitle}
+              onKeyDown={event => {
+                if (event.key === 'Enter') { event.preventDefault(); commitTitle() }
+                if (event.key === 'Escape') { event.preventDefault(); setEditing(false) }
+              }}
+            />
+          )
+          : (
+            /* THE SENTENCE, AND THE READING AT ITS END.
+             *
+             * 行内排版，不是 flex —— flex 的换行是在**收缩之前**按基准尺寸决定的，于是
+             * 芯片 30px 加上整句的 max-content 超过一行宽时，**整句被推到下一行、芯片
+             * 自己留在上面**。412px 上每一行都成了「一行芯片 + 三行标题」。换成正常的行内
+             * 流之后，芯片是段首的一个词、读法是句末的一个短语，文字自己折行。 */
+            <h3 className={css.itemRowTitle}>
+              <button type="button" className={css.itemPrioButton} onClick={event => { event.stopPropagation(); startEditing() }}>
+                {prioChip(item.priority)}
+              </button>
+              <span className={css.itemRowText}>{item.title}</span>
+              {due !== undefined && (
+                <span className={css.itemRowTail} data-tone={due.tone}>{`（${due.text}）`}</span>
+              )}
+            </h3>
+          )}
+
+        {/* THE META LINE SAYS THREE THINGS, and it used to say four.
+         *
+         * **状态不在这里。** 它原来印着「待办」，而左边那个点已经说了同一件事——一个
+         * 事实在一行里出现两遍，读者得先判断哪一遍算数。
+         *
+         * 挂着的卡由一枚记号说，不占一个字——那一行已经被四件事实占满了。 */}
+        <p className={css.itemRowMeta}>
+          {item.taskId !== undefined && (
+            <svg className={css.itemRowCard} viewBox="0 0 9 9" width="9" height="9" aria-hidden="true">
+              <rect x="1" y="1" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="1" />
+            </svg>
+          )}
+          {metaLine(view)}
+        </p>
       </div>
 
-      {/* 2. THE STATUS IS A COLUMN, NOT A GROUP HEADER. Four groups meant the same
-          status appeared once per group and the count of everything else was a
-          separate number to keep in step; one row per item means a status appears
-          as many times as there are rows in it, and the number of rows in it is
-          what the filter asks. `inProgress` is derived, so it is the one pill that
-          is filled: it is the only status that is not written anywhere. */}
-      <div className={css.itemCellState} data-col="state">
-        <span className={css.itemPill} data-kind={status === 'done' ? 'done' : status === 'blocked' ? 'blocked' : status === 'open' ? undefined : 'running'}>
-          {t(GROUP_LABEL[status])}
-        </span>
-      </div>
+      {/* TAGS, AS CHIPS, AND ALWAYS VISIBLE. They were bare words in a column, which
+          made the one field a reader scans a list FOR the hardest to find: a word with
+          no edge is a word the eye slides off. */}
+      {item.tags.length > 0 && (
+        <p className={css.itemRowTags}>
+          {item.tags.map(tag => <span key={tag} className={css.itemTag}>#{tag}</span>)}
+        </p>
+      )}
 
-      {/* 3. THE TITLE, and under it the facts that are not columns. */}
-      <div className={css.itemCellTitle}>
-        {editing ? (
-          <input
-            ref={editor}
-            className={css.itemInput}
-            value={draft}
-            aria-label={t('item.field.title')}
-            onChange={event => setDraft(event.target.value)}
-            onKeyDown={event => {
-              if (event.key === 'Escape') { setEditing(false); return }
-              if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
-              event.preventDefault()
-              setEditing(false)
-              if (draft.trim() !== '') props.onPatch({ title: draft.trim() })
-            }}
-            onBlur={() => { setEditing(false) }}
-          />
-        ) : (
-          <>
-            <span
-              className={css.itemCellTitleText}
-              onDoubleClick={startEditing}
-            >
-              {title}
-            </span>
-            <span className={css.itemCellMeta}>
-              {[
-                metaLine(view),
-                soft !== undefined ? soft.text : undefined,
-              ].filter(part => part !== undefined && part !== '').join(' · ')}
-            </span>
-          </>
-        )}
-      </div>
-
-      {/* 4. PRIORITY. Every row carries it, in a fixed column, so the column can be
-          scanned — which is the whole point of a column. The four tones are the
-          sheet's four: 紧急 / 高 are the only filled priorities, and 进行中 is the
-          third filled thing on the page. */}
-      <div className={css.itemCellPrio} data-col="prio">
-        <span className={css.itemPill} data-tone={item.priority}>{t(PRIORITY_LABEL[item.priority])}</span>
-      </div>
-
-      {/* 5. THE DATE, and only the date the reader can act on. A gate is shown as a
-          gate: it is the one field that says 「not yet」 and it never takes part in
-          the four date tones. */}
-      <div className={css.itemCellDue} data-tone={due?.tone ?? undefined}>
-        {due?.text ?? (posture.kind === 'gated'
-          ? t('item.startsAfter', { when: formatItemDate(posture.startsAfter, english) })
-          : '')}
-      </div>
-
-      {/* 6. TAGS, as words rather than pills: a pill has an intrinsic width, and a
-          fixed column with pills in it squeezes the title instead. */}
-      <div className={css.itemCellTags}>
-        {item.tags.map(tag => <span key={tag} className={css.itemTag}>{tag}</span>)}
-      </div>
-
-      {/* 7. WHAT THIS ROW CAN DO — AND EVERY ROW SHOWS THE SAME SET.
-          *
-          * 「问 AI」 used to appear ONLY on a row that hangs off a board card, so a
-          * reader scanning the column saw it on row two and not on row three and
-          * started looking for whatever they thought they had lost. An action that
-          * comes and goes with a fact the interface never states is worse than an
-          * action that is always there and says 「not yet」 — the condition is real
-          * (a row with no card has no session to ask), so the fix is to SHOW the
-          * condition rather than to hide the button.
-          *
-          * A disabled control is still announced and still has a `title`, and it
-          * says which of the two facts is missing — the reader is never left to
-          * work out whether the button is broken or the row is.
-          */}
-      <div className={css.itemCellMenu}>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={css.itemAsk}
-          onClick={event => { event.stopPropagation(); props.onAsk() }}
-          disabled={item.taskId === undefined || props.asking}
-          aria-busy={props.asking}
-          aria-label={item.taskId === undefined ? t('item.ask.noCard') : undefined}
-          title={item.taskId === undefined ? t('item.ask.noCard') : undefined}
-        >
-          {t('item.ask')}
-        </Button>
-        <button
-          ref={triggerRef}
-          type="button"
-          className={css.itemMenuButton}
-          aria-haspopup="menu"
-          aria-expanded={menuOpen}
-          // The menu is the region this control governs, so it names it. A
-          // disclosure that says 「I am open」 without saying 「I open THAT」 is
-          // announcing a state the listener cannot tie to anything.
-          aria-controls={`item-menu-${item.id}`}
-          aria-label={t('item.menu.more')}
-          onClick={event => { event.stopPropagation(); onMenuToggle() }}
-        >
-          <span aria-hidden="true">···</span>
-        </button>
-      </div>
+      <button
+        ref={triggerRef}
+        type="button"
+        className={css.itemRowDots}
+        aria-haspopup="menu"
+        aria-expanded={menuOpen}
+        // The menu is the region this control governs, so it names it. A disclosure
+        // that says 「I am open」 without saying 「I open THAT」 announces a state the
+        // listener cannot tie to anything.
+        aria-controls={`item-menu-${item.id}`}
+        aria-label={t('item.menu.more')}
+        onClick={event => { event.stopPropagation(); onMenuToggle() }}
+      >
+        <svg viewBox="0 0 4 16" width="4" height="16" aria-hidden="true">
+          <circle cx="2" cy="3" r="1.3" fill="currentColor" />
+          <circle cx="2" cy="8" r="1.3" fill="currentColor" />
+          <circle cx="2" cy="13" r="1.3" fill="currentColor" />
+        </svg>
+      </button>
 
       {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
 
@@ -417,31 +331,62 @@ export function ItemRowLine(props: ItemRowLineProps) {
           panel={panelRef.current}
           onClose={onMenuClose}
           actions={[
-            // Only where there is something to expand. On a band with a detail
-            // card the row toggle is not what opens it, so offering 「expand」
-            // there would name an action the reader cannot take.
+            /* THE THREE VERBS, IN THE ORDER THE READER MEETS THEM, none repeating
+             * another.
+             *
+             * 变成看板卡片 first, because it is the one that changes what this row IS
+             * attached to; everything below it only changes what it says. The draft had
+             * 「交给模型去做」 in this slot, and swapping them puts the decision a row
+             * cannot make without you above the one it can.
+             *
+             * LISTED EVEN WHEN IT CANNOT ACT, disabled with the reason — the same
+             * treatment 「问一句」 gets. An entry that comes and goes with a fact the
+             * interface never states is worse than one that is always there and says
+             * 「not yet」. */
+            { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
+            {
+              key: 'start',
+              label: t('item.menu.start'),
+              hint: item.taskId === undefined ? t('item.menu.startNoCard') : undefined,
+              disabled: item.taskId === undefined || props.running,
+              onPick: props.onStart,
+            },
+            {
+              key: 'ask',
+              label: t('item.ask'),
+              hint: item.taskId === undefined ? t('item.ask.noCard') : undefined,
+              disabled: item.taskId === undefined || props.asking,
+              onPick: props.onAsk,
+            },
+            // Only where there is something to expand. On a band with a detail card
+            // the row toggle is not what opens it, so offering 「expand」 there would
+            // name an action the reader cannot take.
             ...(inPlace
               ? [{ key: 'expand', label: t(expanded ? 'item.menu.collapse' : 'item.menu.expand'), onPick: props.onToggle }]
               : []),
-            /* ONLY THE STATES THIS ROW IS NOT IN. Offering 「标为待办」 on a row
-               that is already 待办 is a button that cannot do anything. The
-               comparison is against the STORED status, not the derived one — 「进行中」
-               is not a state a reader can put a row into, so it is never offered. */
+            { key: 'steps', label: t('item.menu.steps'), onPick: props.onSteps },
+            { key: 'rename', label: t('item.menu.rename'), onPick: startEditing },
+            /* ONLY THE STATES THIS ROW IS NOT IN. Offering 「标为待办」 on a row that is
+             * already 待办 is a button that cannot do anything. The comparison is
+             * against the STORED status, not the derived one — 「进行中」 is not a
+             * state a reader can put a row into, so it is never offered. */
             ...(['open', 'blocked', 'done'] as const)
               .filter(mark => mark !== item.status)
               .map(mark => ({ key: mark, label: t(STATUS_LABEL[mark]), onPick: () => props.onMark(mark) })),
-            { key: 'rename', label: t('item.menu.rename'), onPick: startEditing },
-            /* 「编辑步骤」是唯一一件不在这一行身上发生的事：它把读者送到这一行的
-                步骤那一栏，并把光标放进那个框。所以在有步骤的清单页上按它是对的，
-                在一条没有步骤的行上按它也一样是对的——那个框照样能加第一步。 */
-            { key: 'steps', label: t('item.menu.steps'), onPick: props.onSteps },
-            { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
-            { key: 'remove', label: t('item.menu.delete'), onPick: props.onRemove },
+            /* HOLDING ONE ROW WITHOUT A MODIFIER, because the pickbox that used to do
+             * this was a column on every row for one checkbox. The entry says which
+             * state it is in, because a menu whose labels flip is a menu nobody can
+             * learn. */
+            ...(props.picking
+              ? [{ key: 'pick', label: t(props.picked ? 'item.batch.release' : 'item.batch.hold'), onPick: () => props.onPick(false) }]
+              : []),
+            { key: 'remove', label: t('item.menu.delete'), hint: t('item.archive.window'), onPick: props.onRemove },
           ]}
         />
       )}
 
       {inPlace && expanded && <div className={css.itemDetail} id={regionId}>{props.detail}</div>}
+      <div ref={panelRef} hidden />
     </div>
   )
 }

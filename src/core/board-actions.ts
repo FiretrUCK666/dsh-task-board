@@ -47,6 +47,8 @@ import { MANUAL_STATUSES } from './tasks.ts'
 import type { TaskUpdatePatch } from './controller.ts'
 import * as taskTransitions from './task-transitions.ts'
 import * as itemTransitions from './item-transitions.ts'
+import * as itemAsk from './item-ask.ts'
+import * as itemNavigate from './item-navigate.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
 import * as itemsDocument from './items-doc.ts'
 import { ITEM_PAGES } from './item-view.ts'
@@ -884,6 +886,27 @@ export const ACTIONS = {
     },
   },
 
+  'item.ask': {
+    // THE ONE THE PANEL HAD AND THE CATALOG DID NOT. The panel's 「问一句」
+    // button called a private route function, so `verify-action-coverage` — which
+    // reads what the CATALOG carries — could not see it, and a model had no way
+    // to ask a question about a row it had just read. 「界面有的动作 AI 没有」
+    // was not an oversight; it is what happens when a judgment lives in a route
+    // instead of in a function the catalog can name. It lives in
+    // `src/core/item-ask.ts` now, both callers go through it, and it is here.
+    verb: 'speak',
+    domain: 'item',
+    lane: 'document',
+    danger: 'reversible',
+    surface: 'ui+ai',
+    semantic: true,
+    semanticOf: 'planItemAsk',
+    summary: '把一条清单条目交给模型，问它关于这一条的事并让它回话。只会送到这一条自己挂着的那张卡的会话上：优先送正在跑的那个，没有就送第一个。这一条不是执行——不会开一轮、不会动看板上的栏位，只是把这个条目（连同它的步骤）作为一句话送进一个会话。想让它真的去做，用 item.promote 先变成卡，再在卡上开工。',
+    params: {
+      of: { about: '要问的条目编号：填那个数字本身（12），不要带 # 号', appliesWhen: '这一条必须已经挂在一张看板卡片上：没有卡的条目没有会话可以说话，会被拒。' },
+    },
+  },
+
   'item.restore': {
     // Its own verb, not `create`: the row already exists in the document, held
     // behind a tombstone. Re-creating it would be a second row with a second
@@ -952,7 +975,15 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui',
-    summary: '把清单面板切到某个页面，或者聚焦到某一条。只有界面能调：模型不替人翻界面。',
+    // `semantic` for the same reason every other checklist row carries it, and
+    // the binding check caught this one missing while it was NOT_YET_BUILT: the
+    // panel had 「go to a page」 and 「focus a row」 as two pieces of local state
+    // with no named function behind them, so 「#12 belongs to which page」 was a
+    // question only a React component could answer. It is in `item-navigate.ts`
+    // now, next to the two predicates that decide it.
+    semantic: true,
+    semanticOf: 'planItemNavigation',
+    summary: '把清单面板切到某个页面，或者聚焦到某一条。只给编号就跳到那一行所在的那一页；两样都给就照给的来。只有界面能调：模型不替人翻界面。',
     params: {
       page: {
         about: '要去哪个页面',
@@ -989,10 +1020,16 @@ export type ItemActionId = Extract<ActionId, `item.${string}`>
  * restore re-stamp belongs to the document grammar (the tombstone it has to
  * outrank is the grammar's), so binding `item.restore` to `item-transitions`
  * would have pointed the gate at the wrong module.
+ *
+ * Now THREE, and the third is the hand-off: which conversation a row's words go
+ * to is a judgment about the row AND the card together, so it is not a member of
+ * either of the two above.
  */
 type ItemHandler =
   | (typeof itemTransitions)[keyof typeof itemTransitions]
   | (typeof itemsDocument)[keyof typeof itemsDocument]
+  | (typeof itemAsk)[keyof typeof itemAsk]
+  | (typeof itemNavigate)[keyof typeof itemNavigate]
 
 /** The marker a {@link NOT_YET_BUILT} reason must start with. */
 const NOT_YET_BUILT_MARKER = 'NOT-YET-BUILT: '
@@ -1017,9 +1054,22 @@ const NOT_YET_BUILT_MARKER = 'NOT-YET-BUILT: '
  * controller-method scan cannot see. So the honest state is the one recorded
  * here, not a `semanticOf` naming a function nobody wrote.
  */
-export const NOT_YET_BUILT: Partial<Record<ActionId, string>> = {
-  'item.navigate': NOT_YET_BUILT_MARKER + '切页与聚焦都是面板自己的局部 state（prefs.page 与 selected），没有一个可被门禁识别的入口函数——与本文件其余「核心函数绑不到界面调用点」的动作同一类，所以 `semanticOf` 只能空着。要接上就是给清单面板加一个具名的 `goTo(page?, ref?)`，并把 `itemRefOf` 的查号收进它，然后删掉这一行。',
-}
+/**
+ * The ledger of catalogued actions with no core binding.
+ *
+ * **EMPTY, and that is the point.** It used to hold one row —
+ * `item.navigate` — with a reason saying the judgment lived in the panel's local
+ * state and no gate could see it. The judgment 「#12 在哪一页」 now lives in
+ * `item-navigate.ts` next to the two predicates that decide it, so the row has a
+ * function to bind to and this ledger has nothing left to excuse.
+ *
+ * The type is still here and still enforced: `BoundItemActionId` excludes it, so
+ * a new item action is a BUILD FAILURE until it is either bound or written here
+ * with a reason. An empty ledger means every listed action is implemented — and
+ * a future `item.*` that arrives without a binding cannot join the catalog
+ * quietly, which is the only reason the escape hatch is worth keeping.
+ */
+export const NOT_YET_BUILT: Partial<Record<ActionId, string>> = {}
 
 /** Every checklist action that must be bound to a core function to be legal. */
 type BoundItemActionId = Exclude<ItemActionId, keyof typeof NOT_YET_BUILT>
@@ -1061,6 +1111,18 @@ export const ITEM_HANDLERS = {
   'item.delete': itemTransitions.removeItemRecord,
   'item.step': itemTransitions.applyItemStep,
   'item.promote': itemTransitions.planItemPromotion,
+  // The hand-off half is `item-ask`'s, for the same reason the restore half is
+  // `items-doc`'s: which session a row's words go to is a judgment about the CARD
+  // and the row together, and a function in the route would have answered it a
+  // second time for the model. Naming the wrong module here would be a binding to
+  // a function that exists and is not the one the panel calls.
+  'item.ask': itemAsk.planItemAsk,
+  // The jump is a DOCUMENT question — 「#12 在哪一页」 is answered by the same
+  // `isInboxItem` / `isAgendaItem` that decide membership everywhere else — and
+  // the panel only moves once this has answered it. Binding it the other way
+  // round would have left the only place that knows the page set inside a
+  // component, which is where this row lived for as long as it was unbuilt.
+  'item.navigate': itemNavigate.planItemNavigation,
   // The restore half is `items-doc`'s, not `item-transitions`' — it is the same
   // re-stamp-above-the-tombstone rule the panel's undo goes through, and it
   // belongs to the merge grammar because the tombstone it has to outrank is the
@@ -1123,8 +1185,18 @@ export const TOOL_ACTION_IDS: readonly ActionId[] = (
  * has no room for one).
  */
 export const EXECUTE_ENVELOPE_PARAMS: Readonly<Record<string, ParamSpec>> = {
-  dry_run: { about: '只演练不落盘：整批在文档克隆上跑，返回会改什么', optional: true },
-  idempotencyKey: { about: '幂等键：同一个键重试不会重复执行、不会重复烧钱', optional: true },
+  dry_run: { about: '只演练不落盘：整批在文档克隆上跑，返回会改什么', optional: true, boolean: true },
+  /**
+   * NOT a boolean, and the fact that it is a string is stated by its ABSENCE of
+   * `boolean` — which is why the renderer below has to read the shape field
+   * rather than assume one. It used to publish as `type: 'boolean'` because the
+   * whole envelope was stamped with that type, so a model obeying the published
+   * schema sent `true`; the reader guards on `typeof === 'string'`, the key came
+   * out empty, and the retry-safety promise did nothing at all while the schema
+   * said it was in force. **A promise published in the wrong shape is worse than
+   * no promise, because the caller is told it is protected.**
+   */
+  idempotencyKey: { about: '幂等键：同一个键重试不会重复执行、不会重复烧钱；自己编一个稳定字符串，重试时原样再发一遍', optional: true },
 }
 
 /** The inputs a catalog check runs against. All optional: with none supplied
@@ -1175,7 +1247,7 @@ export interface CatalogChecks {
  * pointing the other way.
  */
 const SEMANTIC_FUNCTIONS: Record<string, true> = Object.fromEntries(
-  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions), ...Object.keys(itemsDocument)].map(name => [name, true]),
+  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions), ...Object.keys(itemsDocument), ...Object.keys(itemAsk), ...Object.keys(itemNavigate)].map(name => [name, true]),
 )
 
 /** What the catalog itself guarantees. Mechanical, so it costs nothing to keep

@@ -108,18 +108,38 @@ function card(title: string, now = NOW): BoardDoc['tasks'][number] {
   return { id: `t-${title}`, title, description: '', prompt: 'p', status: 'todo', order: 0, createdAt: now, updatedAt: now, executions: [] }
 }
 /** Live faces over a fixed set of session statuses; anything else is
- *  `unknown`, which is what a host that cannot see a session must say. */
-function runningSources(running: Record<string, 'running' | 'idle'>): ToolDeps['sources'] {
-  return { agents: () => ({ get: (id: string) => (id in running ? { status: running[id] } : undefined) }) }
+ *  `unknown`, which is what a host that cannot see a session must say.
+ *
+ *  `said` collects what a hand-off actually delivered, because a hand-off that
+ *  cannot be observed is a hand-off that cannot be tested — and the two callers
+ *  of it (the panel's button and `item.ask`) used to be the one thing nobody
+ *  could check. */
+function runningSources(
+  running: Record<string, 'running' | 'idle'>,
+  said: string[] = [],
+): ToolDeps['sources'] {
+  return {
+    agents: () => ({
+      get: (id: string) => (id in running
+        ? {
+            status: running[id],
+            followup: (message: unknown) => {
+              const text = (message as { content: Array<{ text: string }> }).content[0]?.text ?? ''
+              said.push(`${id}: ${text}`)
+            },
+          }
+        : undefined),
+    }),
+  }
 }
-function deps(board: ToolCommitFace | undefined = face()): ToolDeps {
+function deps(board: ToolCommitFace | undefined = face(), sources: ToolDeps['sources'] = runningSources({})): ToolDeps {
   return {
     board: () => board,
     posture: async () => ({
       sessionId: 's', running: { value: false }, archived: { value: false },
       awaitingApproval: { value: false }, awaitingAnswer: { value: false },
     }),
-    sources: runningSources({}),
+    sources,
     now: () => NOW,
     uuid: () => `id-${++seq}`,
   }
@@ -407,6 +427,26 @@ describe('the capability answer is the catalog, rendered', () => {
 })
 
 describe('the op enum is generated, and the tool is what the model sees', () => {
+  it('the CARDS run the board grammar, not a title substring', async () => {
+    // THE CLAIM. `filterHelp()` advertises `has:auto` / `is:unread` / `ws:` as
+    // usable values, and this half of the query was a whole-string `includes`
+    // against `task.title` — so a model that sent one got back the cards whose
+    // TITLE happened to contain those characters, and zero everywhere else. The
+    // checklist half has been on its real grammar all along, which is how one
+    // filter could be 「does nothing」 for half the document and work on the other.
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [
+        { ...card('带规则的卡'), rules: [{ id: 'r-1', sessionId: 's-1', instruction: '每天看一眼', trigger: 'cron', cron: '0 9 * * *', send: 'queue', enabled: true }] },
+        { ...card('普通的卡') },
+      ],
+    })
+    const matched = await query({ filter: 'has:auto' }, board)
+    const titles = (matched.tasks as Array<{ title: string }>).map(row => row.title)
+    expect(titles, 'an advertised qualifier matched nothing the reader could act on').toContain('带规则的卡')
+    expect(titles).not.toContain('普通的卡')
+  })
   it('offers exactly the catalog actions a model may reach', () => {
     const items = (toolNamed('taskboard_execute').parameters.properties as { ops: { items: { properties: { op: { enum: string[] } } } } }).ops
     expect(items.items.properties.op.enum).toEqual([...TOOL_ACTION_IDS])
@@ -757,6 +797,29 @@ describe('the idempotency key is a promise the tool keeps', () => {
     expect(retried.replayed).toBeUndefined()
     expect(up.getItemsDoc().items).toHaveLength(1)
   })
+
+  it('and the PUBLISHED schema says so, because a key published as a boolean never arrives', () => {
+    // The behaviour above was always correct; the promise was not reachable,
+    // because the whole envelope was published as `type: 'boolean'`. A model
+    // that obeys the schema sends `idempotencyKey: true`; the reader guards on
+    // `typeof === 'string'`, yields '', and the retry-safety path never runs —
+    // silently, with the schema still claiming the protection is in force.
+    //
+    // So the assertion is about the SHAPE, not the behaviour: the two envelope
+    // parameters have different kinds and the schema has to publish both of them.
+    const envelope = toolNamed('taskboard_execute').parameters.properties as Record<string, { type?: string }>
+    expect(envelope.dry_run?.type, 'dry_run is a flag').toBe('boolean')
+    expect(envelope.idempotencyKey?.type, 'idempotencyKey is a caller-chosen string, not a flag').toBe('string')
+  })
+
+  it('and every envelope parameter publishes a shape, rather than inheriting one', () => {
+    const envelope = toolNamed('taskboard_execute').parameters.properties as Record<string, { type?: string }>
+    const published = new Set(['ops', 'dry_run', 'idempotencyKey'])
+    for (const [name, spec] of Object.entries(envelope)) {
+      if (!published.has(name)) continue
+      expect(spec.type, `${name} is published with no JSON type, so a model is told nothing about what to send`).toBeDefined()
+    }
+  })
 })
 
 describe('the receipt a card renders', () => {
@@ -1060,6 +1123,113 @@ describe('the five new document actions, proven through the merge grammar', () =
     expect(doc.runPresets.value.defaultId).toBeUndefined()
     const missed = await runBatch(deps(board), { ops: [{ op: 'preset.delete', payload: { of: 'nope' } }] })
     expect(missed.reports[0]?.detail).toContain('没有 id 为 nope 的预设')
+  })
+})
+
+describe('a model asks a question about a row, through the same plan the panel uses', () => {
+  /** One row, hung off a card, in a document the fake face will hand back. */
+  function oneItem(patch: Partial<ItemRecord>): ItemsDoc {
+    return applyItemsCommit(emptyItemsDoc(NOW), {
+      clientId: 'c',
+      items: [{
+        id: 'i-1',
+        ref: 1,
+        title: '量一遍地板',
+        body: '',
+        notes: '',
+        steps: [{ id: 'i-1.s1', text: '在真机上量', done: false }],
+        status: 'open',
+        priority: 'normal',
+        tags: [],
+        startsAfter: undefined,
+        dueAt: undefined,
+        hardDueAt: undefined,
+        taskId: undefined,
+        origin: { source: 'human', at: NOW },
+        createdAt: NOW,
+        updatedAt: NOW,
+        ...patch,
+      }],
+      deleted: [],
+    }, NOW)
+  }
+
+  /** One card holding one session, and one row hanging off it. */
+  function linked(said: string[], running: Record<string, 'running' | 'idle'> = { 's-1': 'idle' }) {
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{ ...card('挂着的卡'), binds: [{ kind: 'session', sessionId: 's-1' }] }],
+    })
+    board.seedItems(oneItem({ taskId: 't-挂着的卡' }))
+    return { board, said, run: () => deps(board, runningSources(running, said)) }
+  }
+
+  it('hands the row to that card session, with its steps, and writes nothing', async () => {
+    const said: string[] = []
+    const { board, run } = linked(said)
+    const before = board.getItemsDoc().items[0]
+    const out = await runBatch(run(), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(true)
+    expect(said, 'nothing was said').toHaveLength(1)
+    expect(said[0]).toContain('s-1')
+    expect(said[0]).toContain('量一遍地板')
+    expect(said[0]).toContain('在真机上量')
+    // A question is not a write. Reporting it as a change would make every
+    // 「问一句」 look like an edit of the document.
+    expect(board.getItemsDoc().items[0]).toBe(before)
+  })
+
+  it('says what to DO when the row has no card, rather than only what is wrong', async () => {
+    const said: string[] = []
+    const board = face()
+    board.seedItems(oneItem({ taskId: undefined }))
+    const out = await runBatch(deps(board, runningSources({}, said)), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(false)
+    expect(out.reports[0]?.detail).toContain('item.promote')
+    expect(said).toEqual([])
+  })
+
+  it('refuses a number that names no row, and names the number back', async () => {
+    const said: string[] = []
+    const { run } = linked(said)
+    const out = await runBatch(run(), { ops: [{ op: 'item.ask', payload: { of: 99 } }] })
+    expect(out.ok).toBe(false)
+    expect(out.reports[0]?.detail).toContain('#99')
+  })
+
+  it('says so when the card has no session to talk to', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('空的卡')] })
+    board.seedItems(oneItem({ taskId: 't-空的卡' }))
+    const out = await runBatch(deps(board), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(false)
+    expect(out.reports[0]?.detail).toContain('会话')
+  })
+
+  it('prefers the RUNNING session when the card has several', async () => {
+    const said: string[] = []
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{ ...card('多会话的卡'), binds: [{ kind: 'session', sessionId: 's-idle' }, { kind: 'session', sessionId: 's-busy' }] }],
+    })
+    board.seedItems(oneItem({ taskId: 't-多会话的卡' }))
+    const out = await runBatch(deps(board, runningSources({ 's-idle': 'idle', 's-busy': 'running' }, said)), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(true)
+    // 「the one doing work right now」 is the only choice that matches what a
+    // reader means by asking; taking the first bound one would send the question
+    // to a conversation that finished an hour ago.
+    expect(said[0]?.startsWith('s-busy:')).toBe(true)
+  })
+
+  it('the catalog carries it, so a model is told it exists', () => {
+    expect(ACTIONS['item.ask']).toBeDefined()
+    expect(ACTIONS['item.ask']?.surface).toBe('ui+ai')
+    expect(TOOL_ACTION_IDS).toContain('item.ask')
+    // The summary has to distinguish a question from work, or a model that wants
+    // the job done will use this and think it started.
+    expect(ACTIONS['item.ask']?.summary).toContain('item.promote')
   })
 })
 

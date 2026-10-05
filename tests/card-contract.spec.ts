@@ -344,33 +344,28 @@ describe('the column header and the cards under it share ONE text edge', () => {
     //
     // The gate is on the SURFACE, because the defect was a derivation nobody read:
     // the model was always right, so every model-level gate was green throughout.
-    const src = readFileSync(fileURLToPath(new URL('../src/client/item/row-line.tsx', import.meta.url)), 'utf8')
+    const row = readFileSync(fileURLToPath(new URL('../src/client/item/row-line.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
-    expect(src, 'the soft reading is still derived and still dropped by the row').toContain('softLine(view)')
-    // THE CLAIM IS 「没有就不说」, not a piece of JSX. It used to pin the old shape
-    // (`soft !== undefined && <span className={css.itemDue}`), and when the row's
-    // second line became a joined line of readings the spelling changed while the
-    // behaviour did not — so the gate went red over a row that still says both
-    // dates and still says one when there is only one.
-    //
-    // Two halves, because either one alone is satisfiable by the wrong thing: the
-    // undefined case must be spelled, AND the empty result must be filtered before
-    // the join. Without the second, an absent soft reading renders as a lone 「·」
-    // at the end of the line — a doubled date AND a stray separator.
-    expect(src, 'the soft reading is never rendered, so a doubly-slipped row still says one date')
-      .toMatch(/soft !== undefined\s*\?\s*soft\.text\s*:\s*undefined/)
-    expect(src, 'an absent reading is joined in rather than filtered, so the line ends on a lone separator')
-      .toMatch(/filter\([^)]*!==\s*undefined[^)]*\)/)
-    // It is only worth saying when the HARD reading spoke. When the combined
-    // reading is the plan's, `softLine` returns undefined — saying it twice is
-    // noise, and the gate is that the two paths are distinguishable at all.
-    expect(src, 'the soft line speaks unconditionally, so a row that only slipped its plan says it twice')
-      .toMatch(/hardSpoke = posture\.kind === 'hardOverdue'/)
-    // A slipped PLAN is never painted in the hard tone. That is the whole reason
-    // the two dates are separate facts: painting the plan red is how a soft
-    // deadline becomes a hard one without anybody deciding that.
-    expect(src, 'the soft reading borrows the hard tone, so a slipped plan looks like a missed deadline')
-      .not.toMatch(/data-tone=\{due\.tone\}\{soft\.text\}/)
+    const detail = readFileSync(fileURLToPath(new URL('../src/client/item/detail-pane.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(detail, 'the plan is judged on its own, beside the column that names it').toContain('item.dates.behind')
+    // AND THE ROW CARRIES ONE READING. Two is how 「超期」 stops meaning one thing:
+    // the tail is the only date reading the row prints, so the plan's slip has
+    // exactly one place to live, and it is not here.
+    const tails = (row.match(/css\.itemRowTail/g) ?? []).length
+    expect(tails, `the row prints a date reading in ${tails} places — one word cannot mean two things`).toBe(1)
+    // A SLIPPED PLAN IS NEVER PAINTED IN THE HARD TONE. Painting it red is how a
+    // soft deadline becomes a hard one without anybody deciding that — and the tone
+    // is chosen where the verdict is, not where it is printed.
+    expect(row, 'a slipped plan is painted with the hard tone').not.toMatch(/case 'behind':[\s\S]{0,120}tone: 'over'/)
+
+    expect(row, 'the hard verdict is spoken only for the hard date').toMatch(/case 'hardOverdue':[\s\S]{0,120}tone: 'over'/)
+
+    // AND THE ROW PRINTS THE VERDICT ITS POSTURE NAMES. `dueLine` is a switch over
+    // one `posture.kind` and every arm names its own tone, so there is no path that
+    // prints a verdict the posture did not choose — which is the shape a row carries
+    // one reading in.
+    expect(row, 'the verdict is chosen by the posture, not beside it').toMatch(/function dueLine[\s\S]*switch \(posture\.kind\)/)
   })
 
   it('a contradiction names the two fields that DISAGREE, not a fixed pair', () => {

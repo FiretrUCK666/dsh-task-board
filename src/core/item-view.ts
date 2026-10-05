@@ -62,6 +62,7 @@
 
 // ── the vocabulary the models own, re-exported so one import reads it ────────
 export type { ItemPriority, ItemStatus, ItemStatusView } from './item.ts'
+export { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts'
 
 // ── item-dates ─────────────────────────────────────────────────────────────
 export { DAY_MS, HARD_SOON_DAYS, datePostureOf, startOfDay } from './item-dates.ts'
@@ -81,12 +82,29 @@ export type { ItemSort } from './item-sort.ts'
 export {
   EMPTY_ITEM_QUERY,
   ITEM_FLAGS,
+  ITEM_FLAG_TESTS,
+  flagProbeOf,
   isItemQualifierToken,
+  itemHasFlag,
   itemMatchContextOf,
   itemMatches,
+  itemQualifierVocabulary,
   parseItemQuery,
+  PRIORITY_BY_TOKEN,
 } from './item-query.ts'
-export type { ItemFlag, ItemMatchContext, ItemQuery } from './item-query.ts'
+export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts'
+
+// ── item-rail ──────────────────────────────────────────────────────────────
+export { itemRailGroupsOf } from './item-rail.ts'
+export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts'
+
+// ── item-navigate ──────────────────────────────────────────────────────────
+export { itemPageOf, planItemNavigation } from './item-navigate.ts'
+export type { ItemNavigation, ItemNavigationRefusal } from './item-navigate.ts'
+
+// ── item-ask ───────────────────────────────────────────────────────────────
+export { itemAskText, planItemAsk } from './item-ask.ts'
+export type { ItemAskRefusal, ItemAskVerdict } from './item-ask.ts'
 
 // ── item-rows ──────────────────────────────────────────────────────────────
 export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './item-rows.ts'

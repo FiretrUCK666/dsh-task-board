@@ -428,11 +428,16 @@ export function fixtures(): ItemRecord[] {
  * panel hands back. A replica that swallowed the write would make a no-op look
  * like a working button.
  */
-export function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}) {
+export function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[] } = {}) {
   const writes: (readonly ItemRecord[])[] = []
   return {
     writes,
     view: () => items,
+    /** The rows behind a tombstone. Empty unless the fixture says otherwise, and
+     *  that is the honest default: `view()` is the live document only, so a
+     *  harness that leaves the archive empty is drawing a panel where nothing has
+     *  been deleted — not one where the archive is broken. */
+    archive: () => over.deleted ?? [],
     setItems: (next: readonly ItemRecord[]) => { writes.push(next) },
     clientId: () => 'client-under-test',
     hostLostItems: () => over.hostLost === true,
@@ -549,10 +554,20 @@ export function renderPanel(
   page: Page = 'list',
   controller: unknown = { getSnapshot: () => ({ tasks: [{ id: 'task-1', title: '画廊第二版', description: '' }] }), liveStateOf: () => 'idle' },
   prefs: Record<string, unknown> = {},
+  /** WHICH ROW IS EXPANDED, for a capture. `renderToStaticMarkup` presses nothing,
+   *  so the expansion is the one state a static render cannot reach by itself. */
+  openRow?: string,
 ): string {
   return withBand(band, () => withPrefs({ page, ...prefs }, () => renderToStaticMarkup(createElement(ItemListPanel, {
     signal: new AbortController().signal,
     face: faceOf(fakeReplica(items), controller),
+    /* THE BENCH'S CLOCK, and it is the fixture's own. Without this the panel read
+     * the real `Date.now()` while every row was dated relative to {@link NOW}, so a
+     * fixture built to be nine days late rendered as fifteen days late — a
+     * photograph of a panel disagreeing with its own data, and one that looks
+     * entirely plausible in both directions. */
+    now: NOW,
+    ...(openRow === undefined ? {} : { openRow }),
   } as never))))
 }
 
@@ -594,6 +609,26 @@ export function overlayOfEnv(): ItemOverlay | undefined {
     )
   }
   return known
+}
+
+/**
+ * THE ROW A CAPTURE EXPANDS, read from `DSH_PANEL_ROW`.
+ *
+ * ONE VARIABLE PER MEANING. `DSH_PANEL_OPEN` used to answer two questions at once
+ * — 「哪一层开着」 for `overlayOfEnv` and 「哪一行展开」 for the render bench — and a
+ * variable with two meanings can only ever hold one of them. So asking for an
+ * expanded row threw 「names no layer」, and asking for a layer left the expansion
+ * closed: **the largest thing on this panel could not be photographed at all**, in
+ * a bench whose own comment says that state must not go unlooked-at.
+ *
+ * The row is named by its `id` rather than by its title or its short number: a
+ * fixture whose wording changes would otherwise silently photograph whichever row
+ * happened to match, and a capture of the wrong row is a capture of nothing.
+ */
+export function openRowOfEnv(): string | undefined {
+  const asked = process.env.DSH_PANEL_ROW
+  if (asked === undefined || asked === '') return undefined
+  return asked
 }
 
 /** Locate the installed DSH, the same way the toolchain does: by resolution. */
@@ -860,13 +895,13 @@ export function cssMembersOf(jsx: string): Map<string, string> {
  * @param page - which page to open.
  * @param scheme - which theme table the host's own tokens resolve against.
  */
-export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light'): void {
+export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light', openRow?: string): void {
   // `DSH_PANEL_OPEN` rides the SAME `prefs` channel as the page, and the
   // environment is read HERE rather than inside the panel, so a capture can ask
   // for the open palette and the product code has no idea a capture exists.
   const overlay = overlayOfEnv()
   const aligned = alignClassNames(
-    renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }),
+    renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }, openRow),
     panelCss(),
   )
   // THE HOST'S OWN DARK TABLE, NOT A RECONSTRUCTED ONE. `hostTokenCss()`

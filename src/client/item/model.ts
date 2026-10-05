@@ -64,10 +64,28 @@ export function newItemId(): string {
  * @param english - whether the active UI language is English.
  * @returns a short human date.
  */
-export function formatItemDate(at: number, english: boolean): string {
+export function formatItemDate(at: number, english: boolean, now: number = Date.now()): string {
   const date = new Date(at)
-  return english
-    ? date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  const sameYear = date.getFullYear() === new Date(now).getFullYear()
+  if (english) {
+    /* `year: 'numeric'` IS the whole condition, not a preference: the default
+     * drops the year on every date, so a deadline in the next year reads exactly
+     * like one in this year — and 「明年十月」 is the one date a reader cannot
+     * afford to misread. */
+    return date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      ...(sameYear ? {} : { year: 'numeric' }),
+    })
+  }
+  /* THE YEAR IS DROPPED ONLY WHEN IT IS THIS YEAR'S. 同一年的日期印不印年份，
+   * 规则不随调用点变：四个地方读日期（行尾、详情、日程日名、卡片）如果各自
+   * 决定一次，就会出现同一份文档里两种写法。
+   *
+   * `now` 是一个参数而不是内部读钟：面板有一份可注入的钟，测试要的是**给定**
+   * 的今天而不是机器的今天，而一个「自己读钟」的格式化函数没法被确定地测。 */
+  return sameYear
+    ? `${date.getMonth() + 1}月${date.getDate()}日`
     : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
 }
 
@@ -96,7 +114,20 @@ export function parseItemDate(value: string): number | undefined {
 
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export function toItemDateField(at: number | undefined): string {
-  if (at === undefined) return ''
+  return at === undefined ? '' : localDayKey(at)
+}
+
+/**
+ * A moment as `yyyy-mm-dd`, in LOCAL time.
+ *
+ * LOCAL, not UTC, and that is the whole comment. The reader's calendar is local:
+ * a row due today is due today on the machine they are sitting at, and a key
+ * built from `toISOString()` puts every row that falls after the evening
+ * cutoff — or anywhere west of Greenwich — on the wrong day. It is the same
+ * reason `startOfDay` is local in core, and the same reason a stored instant is
+ * never printed as a bare date without going through here.
+ */
+export function localDayKey(at: number): string {
   const date = new Date(at)
   const pad = (n: number): string => String(n).padStart(2, '0')
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`

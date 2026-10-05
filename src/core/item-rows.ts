@@ -17,7 +17,7 @@
  * exactly as the projection and the query do, rather than re-deciding either.
  */
 import type { ItemRecord, ItemStatusView } from './item.ts'
-import { itemProgressOf, itemTitleOf } from './item.ts'
+import { ITEM_STATUS_VIEWS, itemProgressOf, itemTitleOf } from './item.ts'
 import { datePostureOf, type DatePosture, type SoftPosture } from './item-dates.ts'
 import { softPostureOf } from './item-dates.ts'
 import { staleDaysOf } from './item-stale.ts'
@@ -114,8 +114,15 @@ export interface ItemSlice {
   readonly progress: { readonly done: number; readonly total: number } | undefined
 }
 
-/** The four groups, in the order they read top to bottom. */
-export const ITEM_STATUS_ORDER: readonly ItemStatusView[] = ['inProgress', 'open', 'blocked', 'done']
+/** The four groups, in the order they read top to bottom.
+ *
+ *  DERIVED, not a second literal. The four values and their order live once, in
+ *  {@link ITEM_STATUS_VIEWS} next to the types they are made of; this name is
+ *  kept because a row GROUPING and a STATUS LIST are the same fact wearing two
+ *  hats, and the tests pin this name. Two arrays holding the same four strings
+ *  is two answers to 「in what order do statuses read」, and only one of them
+ *  would move when the answer changes. */
+export const ITEM_STATUS_ORDER: readonly ItemStatusView[] = ITEM_STATUS_VIEWS
 
 /** What one grouping pass needs to know. One bag, so the order stays stable. */
 export interface ItemSliceOptions {

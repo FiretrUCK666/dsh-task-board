@@ -28,6 +28,7 @@
  * line, in order, and still readable.
  */
 import { scheduleBucketsOf, type ScheduleBucketId } from '../../../core/item-view.ts'
+import type { ItemSort } from '../../../core/item-sort.ts'
 import { t, isEnglish } from '../../locales.ts'
 import { formatItemDate } from '../model.ts'
 import { BUCKET_LABEL } from '../labels.ts'
@@ -65,7 +66,7 @@ export function SchedulePage(props: ItemPageProps) {
   for (const bucket of buckets) {
     if (isEmptyDay(bucket)) { empties = [...empties, bucket]; continue }
     flush()
-    blocks.push(<AgendaSection key={bucket.id} bucket={bucket} english={english} renderRows={props.renderRows} />)
+    blocks.push(<AgendaSection key={bucket.id} bucket={bucket} english={english} renderRows={props.renderRows} now={props.now} sort={props.sort} />)
   }
   flush()
 
@@ -104,10 +105,14 @@ function EmptyDays({ days }: { readonly days: readonly Bucket[] }): React.ReactN
  * nothing — and an empty bucket never reaches here anyway, since `EmptyDays` took
  * the days and `gated` returns null.
  */
-function AgendaSection({ bucket, english, renderRows }: {
+function AgendaSection({ bucket, english, renderRows, now, sort }: {
   readonly bucket: Bucket
   readonly english: boolean
   readonly renderRows: ItemPageProps['renderRows']
+  /** The panel's clock and the reader's ordering, handed down so the tables this
+   *  section draws can tell whether a day heading would be a true statement. */
+  readonly now: number
+  readonly sort: ItemSort
 }): React.ReactNode {
   if (bucket.id === 'gated') {
     if (bucket.items.length === 0) return null
@@ -119,7 +124,7 @@ function AgendaSection({ bucket, english, renderRows }: {
         </h2>
         <p className={css.itemHint}>{t('item.gated.hint')}</p>
         <div className={css.itemGatedFoldList}>
-          <ItemTable rows={renderRows(bucket.items, false)} empty='' />
+          <ItemTable rows={renderRows(bucket.items, false)} empty='' now={now} sort={sort} />
         </div>
       </section>
     )
@@ -135,7 +140,7 @@ function AgendaSection({ bucket, english, renderRows }: {
         {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
         {bucket.items.length > 0 && (
           <div className={css.itemAgendaList}>
-            <ItemTable rows={renderRows(bucket.items, false)} empty='' />
+            <ItemTable rows={renderRows(bucket.items, false)} empty='' now={now} sort={sort} />
           </div>
         )}
       </section>
@@ -163,7 +168,7 @@ function AgendaSection({ bucket, english, renderRows }: {
       )}
       {bucket.items.length > 0 && (
         <div className={css.itemAgendaList}>
-          <ItemTable rows={renderRows(bucket.items, false)} empty='' />
+          <ItemTable rows={renderRows(bucket.items, false)} empty='' now={now} sort={sort} />
         </div>
       )}
     </section>

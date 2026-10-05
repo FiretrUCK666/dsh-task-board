@@ -29,21 +29,21 @@
  *    draws, and its only decisions are which page is open and which row is
  *    selected.
  */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import type { ItemRecord } from '../../core/item.ts'
 import {
   EMPTY_ITEM_QUERY,
   ITEM_PAGES,
   itemMatchContextOf,
   itemMatches,
-  itemPageCountsOf,
-  itemRefOf,
   itemRowViewOf,
+  planItemNavigation,
+  itemRailGroupsOf,
+  ITEM_SORTS,
   parseItemQuery,
-  recentItemsOf,
   startOfDay,
-  allTriageLinesOf,
   type ItemPageId,
+  type ItemRailEntry,
   type ItemRowView,
 } from '../../core/item-view.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
@@ -57,12 +57,14 @@ import { itemsAsk } from '../board-ask.ts'
 import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
-import { ItemComposer } from './composer.tsx'
 import { ItemDetail } from './detail-pane.tsx'
-import { ItemStats } from './item-stats.tsx'
 import { ItemFilters } from './item-filters.tsx'
 import { ItemCreateDialog } from './item-create-dialog.tsx'
-import { ITEM_FACETS, freeTextOf, tagFacetValuesOf, withFacetToken } from './facets.ts'
+import { ITEM_FACETS, freeTextOf, isTokenIn, tagFacetValuesOf, withFacetToken } from './facets.ts'
+import { ItemRail } from './rail.tsx'
+import { ItemQueryChips } from './query-chips.tsx'
+import { SORT_LABEL } from './labels.ts'
+import { localDayKey } from './model.ts'
 import {
   NO_SELECTION,
   allPicked,
@@ -94,12 +96,6 @@ const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.inbox' | 'item.page.lis
   list: 'item.page.list',
   schedule: 'item.page.schedule',
 }
-/** The accessible full name; the short one above is what a narrow rail can hold. */
-const PAGE_ARIA: Readonly<Record<ItemPageId, 'item.page.inbox.aria' | 'item.page.list.aria' | 'item.page.schedule.aria'>> = {
-  inbox: 'item.page.inbox.aria',
-  list: 'item.page.list.aria',
-  schedule: 'item.page.schedule.aria',
-}
 /* Every closed table moved to `labels.ts`, which is now the one place they live:
    priority, status, group, bucket, triage and the orderings. It is deliberately
    NOT kept here as a second copy: a closed `Record` over `ItemSort` that no
@@ -111,6 +107,27 @@ const PAGE_ARIA: Readonly<Record<ItemPageId, 'item.page.inbox.aria' | 'item.page
 export interface ItemListPanelProps {
   readonly face: ItemListFace
   readonly signal: AbortSignal
+  /**
+   * WHICH ROW IS OPEN IN PLACE AT MOUNT, for the capture bench only.
+   *
+   * The expansion is the largest thing on this panel and the only state a static
+   * render cannot reach by itself — `renderToStaticMarkup` presses nothing. So the
+   * bench names a row here, and the product code has no idea a capture exists.
+   */
+  readonly openRow?: string
+  /**
+   * THE CLOCK TO START FROM, for the capture bench only.
+   *
+   * Every date on this panel is judged against one instant, and the bench cannot
+   * supply that instant any other way: the panel owns its clock, so rows dated
+   * relative to the bench's `NOW` were being read against the real `Date.now()`.
+   * The two numbers are each individually plausible, which is why nothing caught it
+   * — a fixture built to be nine days late simply photographed as fifteen days late.
+   *
+   * A SEED, not an override: the panel ages from here either way, so a seeded
+   * capture still ticks, and a real panel starts at the real clock.
+   */
+  readonly now?: number
 }
 
 /** Whether a board card is running, keyed by card id. */
@@ -143,9 +160,23 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
   const [items, setItems] = useState<readonly ItemRecord[]>(() => replica?.view() ?? [])
   const [prefs, setPrefs] = useState<ItemViewPrefs>(readViewPrefs)
-  const [now, setNow] = useState(() => Date.now())
+  /* THE PANEL'S OWN CLOCK, and it is seeded rather than read.
+   *
+   * Every date on this surface is judged against one `now`: 「超期 15 天」, 「今天」,
+   * 「这行是昨天写的」. If the reading bench cannot set it, then the bench's rows and
+   * the bench's readings are about **different days** — the fixture says nine days
+   * late, the clock says fifteen, and the screenshot is a true photograph of a
+   * panel whose own date column contradicts its own fixture. That is exactly what
+   * happened: `NOW` was pinned in the harness while the panel read `Date.now()`,
+   * so every date in every capture was wrong by however far the two had drifted,
+   * and nothing complained because both numbers are individually plausible.
+   *
+   * It is a seed, not an override: the tick that refreshes it runs either way, so a
+   * seeded panel still ages, and a real one starts at the real clock.
+   */
+  const [now, setNow] = useState(() => (typeof props.now === 'number' ? props.now : Date.now()))
   const [selected, setSelected] = useState<string | undefined>(undefined)
-  const [openRow, setOpenRow] = useState<string | undefined>(undefined)
+  const [openRow, setOpenRow] = useState<string | undefined>(props.openRow)
   const [menuRow, setMenuRow] = useState<string | undefined>(undefined)
   /** The one-shot undo. `undefined` = nothing was just removed. */
   const [undo, setUndo] = useState<{ readonly ids: readonly string[]; readonly at: number } | undefined>(undefined)
@@ -221,8 +252,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * layer is a state per layer that the bench has to be taught about.
    */
   const [overlay, setOverlay] = useState<ItemOverlay | undefined>(prefs.overlay)
+  /** Toggle, and the toggle is what a disclosure wants: pressing the chip that is
+   *  already open closes it. Reading the state is therefore the whole contract,
+   *  so it is read from `overlay` at every call site rather than from a
+   *  function that both reads and writes. */
   const openLayer = (next: ItemOverlay | undefined): void => setOverlay(current => (current === next ? undefined : next))
   const paletteOpen = overlay === 'palette'
+  const filtersOpen = overlay === 'filters'
+  const sortOpen = overlay === 'sort'
+  const topPanels = useId()
   /**
    * What the command box can be asked to do, and where the focus goes back to.
    *
@@ -235,7 +273,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * nothing.
    */
   const paletteCommands = useRef<PaletteCommands | undefined>(undefined)
-  const paletteTrigger = useRef<HTMLButtonElement | null>(null)
+  /* THE ELEMENT THE FOCUS GOES BACK TO when the palette closes — and it is the SEARCH
+   BOX.
+   *
+   * 它原来是一枚单独的「命令」按钮，就站在搜索框旁边：邻居 32px 而它 28px、形状也不
+   * 一样、夹在两枚药丸中间——于是它自己变成了「这是什么」。而它存在的唯一理由是
+   * 「一个只能键盘打开的控件等于没有」。**搜索框已经回答了那一条**（点它开面板、
+   * 打字收窄它，本就是同一件事的两个阶段），所以入口就是搜索框，不再有第二枚控件。 */
+  const paletteTrigger = useRef<HTMLInputElement | null>(null)
   /**
    * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
    * record so a render can begin with one of them already open.
@@ -244,8 +289,19 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * panel that genuinely opened, and nothing after that is a reader's presses.
    */
   const [showDone, setShowDone] = useState(true)
-  /** Bumped by the `A` key; the composer moves its caret when it changes. */
-  const [captureFocus, setCaptureFocus] = useState(0)
+  /* WHICH RAIL ENTRY THE READER IS STANDING IN. Kept apart from the query
+   * because two of the entries are SETS — 「刚记的」 and 「已删除」 — and a set
+   * writes no token, so deriving 「where am I」 from the query alone would leave
+   * those two unable to ever look selected. */
+  const [railEntry, setRailEntry] = useState<string | undefined>(undefined)
+  /** The rows behind a tombstone. The list reads the live document, so the archive
+   *  is invisible to it — which is the point: a deleted row is gone from every
+   *  ordinary view the moment it is deleted. */
+  const deletedItems = useMemo(
+    () => (replica === undefined ? [] : replica.archive()),
+    [replica, items],
+  )
+  const railMonth = useMemo(() => localDayKey(now).slice(0, 7), [now])
   /**
    * Bumped by the row menu's 「编辑步骤」; the add field takes the caret when it
    * changes. A counter for the reason `captureFocus` is one — the same press has
@@ -281,6 +337,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     read()
     return replica.onRemote(read)
   }, [replica])
+
 
   const apply = useCallback((next: readonly ItemRecord[]) => {
     if (next === items) return
@@ -550,59 +607,31 @@ export function ItemListPanel(props: ItemListPanelProps) {
      out of `itemSlicesOf`, which meant the breakdown silently lost the finished
      group whenever the finished switch was off —a summary whose denominator
      answered to a control nobody could see. */
-  const pageCounts = itemPageCountsOf(items)
+  const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, running })
 
-  const picked = selected === undefined ? undefined : items.find(item => item.id === selected)
-
-  /**
-   * THE DETAIL RAIL APPEARS WHEN A ROW IS CHOSEN, and not before.
-   *
-   * It used to be a permanent 595px — 37% of a wide stage — showing 「还没选中任何
-   * 一条」, a second hint and five recently-touched rows, and being empty the rest
-   * of the time. **A column that holds 37% of the width and says nothing for 80%
-   * of the time is rented land.** The reader has not asked for a second place to
-   * look, and their rows are in the other column.
-   *
-   * This is the spine's own rule applied sideways. The header keeps only what the
-   * reader needs in the moment; a detail rail for a row nobody is reading is the
-   * horizontal version of a control for a filter nobody set.
-   *
-   * AND THE LIST DOES NOT GROW WHEN IT GOES, which looks like a bug in a
-   * screenshot and is not: `--item-list-col` is a capped measure, so 960px is the
-   * most this content should ever be, and widening the list into the space would
-   * only pull the title further from the date beside it. A centred 960px column is
-   * the right shape for a list with nothing beside it.
-   *
-   * On the NARROW band there was never a rail — the detail opens in the row — so
-   * this changes nothing there, which is why it needs no second answer for the
-   * phone.
-   */
-  const showDetailPane = !narrow && picked !== undefined
-  /** The projection, built once per row, read by the row line and the detail alike. */
-  const viewOf = (item: ItemRecord | undefined): ItemRowView | undefined =>
-    item === undefined ? undefined : itemRowViewOf(item, { now, running })
-
-  const detail = (item: ItemRecord | undefined) => (
+  /* THE DETAIL IS BUILT FOR ONE ROW, and that row is the one it was asked about.
+   * The prop is required rather than optional, so a caller cannot reach a
+   * 「nothing picked yet」 branch that no reader can get to. */
+  const detail = (item: ItemRecord) => (
     <ItemDetail
       view={viewOf(item)}
       cards={cards}
-      recent={recentItemsOf(items, 5)
-        // `itemRefOf` rather than a template: a row the document has not
-        // numbered yet has no name to show, and building `#${item.ref}` here
-        // would put the ledger's own "nobody has numbered me" sentinel back on
-        // screen —the exact thing the row line refuses to do.
-        //
-        // The `id` travels WITH the row and is what the click hands back: the
-        // short number is a name to read, never an address, and picking a row by
-        // its label is how a list ends up selecting the wrong one the day two
-        // rows share a number shape.
-        //
-        // The ORDER and the COUNT are `recentItemsOf`'s, not this component's: a
-        // component that sorts its own list is a component holding a second
-        // opinion about what 「recently」 means, and the reader has no way to
-        // discover that the two disagree.
-        .map(row => ({ ref: itemRefOf(row).text ?? '—', title: itemTitleOf(row), id: row.id }))}
-      onPickRecent={id => setSelected(id)}
+/* 这一条自己的五个动作，**传进去而不是查出来**。它们原来散在三处（⋯ 菜单、展
+       * 开区最后一节、行上），读者要先知道某个动作住在哪才能按它；而查出来还意味着这
+       * 个组件知道外面有什么全局状态——两件都不是好事。
+       *
+       * 「新建一张卡」此刻开的是命令面板而不是直接建卡：新建一张看板卡要选工作区、
+       * 要选会话、可能还要一套运行配置，而**这些决定不该由一个清单行替读者做**。
+       * 所以它把读者送到那个专门做这件事的面，而清单这一边不假装自己能做。 */
+      now={now}
+      onAsk={() => { if (item !== undefined) askOne(item) }}
+      asking={item !== undefined && asking === item.id}
+      onPromote={() => { if (item !== undefined) promoteOne(item) }}
+      onStart={() => {
+        const cardId = item?.taskId
+        if (cardId !== undefined) void face.controller?.runTask(cardId, 'manual')
+      }}
+      onNewCard={() => openLayer('palette')}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
          every other field takes. The pane computed the new order with the shared
@@ -669,7 +698,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
       pickAnchor.current = item.id
       setSelection(current => togglePicked(current, item.id))
     },
-    inPlace: narrow,
+    /* THE DETAIL OPENS IN PLACE ON EVERY BAND. It used to open in a right-hand
+     * pane on the wide one and in the row on the narrow one, so there were two
+     * places to look for the same fields — and when the pane went, the wide band
+     * was left with nowhere at all. One place, on every band: the row the reader
+     * pressed, which is where their eyes already are. */
+    inPlace: true,
+    /* THE PANEL'S CLOCK GOES WITH THE ROW, so the date the row PRINTS is judged
+       by the same now that decided whether it is late. Two clocks on one row is a
+       row that says 「还早」 and shows last year's date. */
+    now,
     panelId: 'item',
     /* THE ROW EDITS ITS OWN TITLE, THROUGH THE SAME WRITER. A hand-off rather
        than an import of the transition functions, so the row never learns how
@@ -685,19 +723,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
     onMenuToggle: () => setMenuRow(menuRow === item.id ? undefined : item.id),
     onMenuClose: () => setMenuRow(undefined),
     onMark: (status: 'open' | 'blocked' | 'done') => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
-    /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、在窄档把它展开，然后把
-         光标交给步骤那一栏。三件事必须一起发生——只选不展开的话，桌面上读者看见
-         的是右边的详情栏，手机上什么也没发生。 */
+    /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、把它展开，然后把
+         光标交给步骤那一栏。三件事必须一起发生——只选不展开的话，读者看见的是
+         一行被选中，而步骤编辑器仍然不在屏幕上。 */
     onSteps: () => {
       setMenuRow(undefined)
       setSelected(item.id)
       setCursor(item.id)
-      if (narrow) setOpenRow(item.id)
+      setOpenRow(item.id)
       setStepsFocus(count => count + 1)
     },
     onPromote: () => promoteOne(item),
+    /* 开工 = 跑这一条挂着的卡。**同一个 `runTask`**——目录里的 `task.run` 绑的是它，
+     * 模型的 	ask.run 执行的也是它。所以这一枚按钮不需要新动词，也不需要在
+     * 豁免表里占一行；而一个界面按钮与目录指向不同方法，正是同一台机器上出现两个
+     * 「开工」定义的来处。
+     *
+     * 没有卡就是没有卡：按钮在菜单里**列出但禁用**，并把缺的那件事写在右边。 */
+    onStart: () => {
+      const cardId = item.taskId
+      if (cardId === undefined) return
+      void face.controller?.runTask(cardId, 'manual')
+    },
+    running: item.taskId !== undefined && running.get(item.taskId) === true,
     onRemove: () => removeOne(item),
-    detail: narrow ? detail(item) : undefined,
+    /* The detail is built only for the expanded row: opening is the condition, not
+       the band, so both bands read the same place without building 100 details. */
+    detail: openRow === item.id ? detail(item) : undefined,
   }))
 
   /* The page body: three files, one contract. Each page owns its own content and
@@ -721,7 +773,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * failure the batch holding has.
    */
   const keyActions = useMemo<ItemKeyActions>(() => ({
-    quickCapture: () => setCaptureFocus(count => count + 1),
+    quickCapture: () => openLayer('create'),
     moveNext: () => setCursor(current => stepCursor(current, 1)),
     movePrev: () => setCursor(current => stepCursor(current, -1)),
     pick: () => { if (cursor !== undefined) setSelection(current => togglePicked(current, cursor)) },
@@ -797,6 +849,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
        行都带一个空框。于是这一行不再读 holding——读它会让「读者正在多选吗」这件
        事决定一个页面事实，而读者改一次筛选就能改掉它。 */
     picking: prefs.page === 'list',
+    /* The ordering goes down AS ITSELF, not as a 「may I group by day」 boolean the
+       table would have to trust: a table told 「yes」 by a caller who guessed is a
+       table printing 「今天」 above rows from six different days. */
+    sort: prefs.sort,
     renderRows: rows,
   }
   /**
@@ -850,6 +906,43 @@ export function ItemListPanel(props: ItemListPanelProps) {
       onDone={() => setSelection(current => setArmed(current, false))}
     />
   ) : undefined
+  /**
+   * GO SOMEWHERE — the one door into 「which page is this on」.
+   *
+   * Three surfaces need it (the palette's page entries, the rail, and 「跳到
+   * #12」), and each of them used to answer for itself: the palette called
+   * `choose({page})` directly, which is why 「#12 在哪一页」 had no answer
+   * outside a React component and the catalog had to excuse `item.navigate` as
+   * unbuilt. Now the panel asks `planItemNavigation` where to land and only
+   * moves, so the page set and the membership rules are read in one place.
+   */
+  const goTo = useCallback((page?: ItemPageId, ref?: number) => {
+    const plan = planItemNavigation({ items, ...page === undefined ? {} : { page }, ...ref === undefined ? {} : { of: ref } })
+    if (plan.kind === 'refused') {
+      setReceipt({ id: undefined, words: plan.why === 'noSuchItem'
+        ? t('item.pageJump.missing', { ref: String(ref ?? '') })
+        : t('item.pageJump.nothing') })
+      return
+    }
+    if (plan.page !== prefs.page) choose({ page: plan.page })
+    if (plan.ref !== undefined) {
+      const found = items.find(item => item.ref === plan.ref)
+      if (found !== undefined) { setSelected(found.id); setCursor(found.id) }
+    }
+  }, [choose, items, prefs.page])
+
+  /* 「跳到 #N」 — the answers a palette gives when the reader typed a NUMBER.
+     Typed beats hunted: the palette already has a cursor, and a reader who
+     knows the number should never have to scroll to find it. The list is capped
+     so the palette stays a list. */
+  const jumpRows = useCallback((): PaletteAction[] => items
+    .slice(0, 8)
+    .map(item => ({
+      id: `row-${item.id}`,
+      label: `#${item.ref} ${itemTitleOf(item) || t('item.detail.emptyTitle')}`,
+      run: () => { goTo(undefined, item.ref) },
+    })), [items, goTo])
+
   /* THE PALETTE'S ANSWERS, and the page names are here rather than in the
      palette: a page is a PRODUCT CONSTANT the model owns, and a palette that
      listed its own would be a second page rail written in a different place.
@@ -859,7 +952,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     ...ITEM_PAGES.map(page => ({
       id: `page-${page}`,
       label: t(PAGE_LABEL[page]),
-      run: () => choose({ page }),
+      run: () => goTo(page),
     })),
     /* THE BATCH DOOR CAME HERE WITH THE REST. The filter bar used to carry a
        「多选」 button, and taking the bar out to stop the duplication would have
@@ -874,7 +967,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       : []),
     { id: 'filter-clear', label: t('item.filter.clear'), run: () => choose({ search: '' }) },
     { id: 'undo', label: t('item.undo.do'), run: () => { if (undo !== undefined) runUndo() } },
-  ], [undo, runUndo, visibleIds, selection.armed])
+    ...jumpRows(),
+  ], [undo, runUndo, visibleIds, selection.armed, goTo])
 
   const body = prefs.page === 'inbox'
     ? <InboxPage {...pageProps} />
@@ -909,51 +1003,35 @@ export function ItemListPanel(props: ItemListPanelProps) {
  * changes with the clock rather than with the document, so it belongs to the
  * row that says it and not to the page that counts everything else.
  */
-/** Each tile pairs the model's flag with a label that is ONLY a noun. */
-  const STAT_TILES = [
-    { flag: 'behind', label: 'item.stat.behind' },
-    { flag: 'blocked', label: 'item.stat.blocked' },
-    { flag: 'undated', label: 'item.stat.undated' },
-  ] as const
+/* 「要处理」那一条带子连同它的推导一起搬走了。
+ *
+ * 它答的是「我今天该动哪几件」，而这个答案现在**长在左栏的数上**——超期、落后、
+ * 停滞、没日期各占一行，数字与跳进去看到的行数是同一次 filter 的两个结果。
+ *
+ * 一条带子与一个栏位同时回答同一句提问，读者就得先判断「哪一个才是真的」——而
+ * 他判断的依据是数字看起来对不对，那正是最不该拿来当依据的东西。**所以是把带子
+ * 删掉，不是把它留着当摘要。**
+ *
+ * 下面那段推导（四个 flag 各配一个只当名词的标签）原本是给三张统计卡用的，卡也
+ * 一起没有了，所以推导与标签表都跟着走——一个不再被读的值就是死代码，而死代码
+ * 在下一次改动里是最容易被误当成「还在用」的那一种。 */
 
-  const statLines = useMemo(() => STAT_TILES
-    // **三张卡各答各的问题，所以三张都在。** 读 `allTriageLinesOf` 而不是
-    // `triageLinesOf`：后者只给非零的行，而「这一张的答案是零」不是「这一张不存在」。
-    // 从前挑出非零的那几个 tile，在数据源就已经把零扔了，于是「最多画三张」——
-    // **而它看起来完全正常**：数据全在日程上时，三张卡里有一张，画出来的那一张是对的。
-    .flatMap(tile => allTriageLinesOf(items, now)
-      .filter(line => line.id === tile.flag)
-      .map(line => ({
-        id: tile.flag,
-        // The tile's own key, NOT `TRIAGE_SHORT`: that table is the one written
-        // for 「a number inside a sentence」, so half its entries carry `{n}` and
-        // half do not — and borrowing it puts 「落后」 beside 「1 卡住」 on the same
-        // row of three cards, where the number is already drawn 28px to the right.
-        label: tile.label,
-        n: line.count,
-        total: items.length,
-        token: `has:${tile.flag}`,
-      }))), [items, now])
-
-  /** The qualifier tokens the current query already carries, lower-cased. */
-  const queryTokens = useMemo(
-    () => new Set(prefs.search.split(/\s+/).filter(part => part !== '').map(part => part.toLowerCase())),
-    [prefs.search],
-  )
-
-  /** Add a token, or take it off when it is already there. One writer either way. */
-  const toggleToken = useCallback((token: string) => {
-    choose({ search: withFacetToken(prefs.search, token, !queryTokens.has(token.toLowerCase())) })
-  }, [choose, prefs.search, queryTokens])
-
+  /**
+   * HOW MANY ROWS ONE FILTER TOKEN WOULD LEAVE, asked of the same parse the
   /**
    * HOW MANY ROWS ONE FILTER TOKEN WOULD LEAVE, asked of the same parse the
    * table reads. A tile whose number and whose jump disagree is the defect this
    * pair exists to make impossible — and the only way it cannot happen is both
    * sides asking the same question of the same string.
+   *
+   * Measured against an EMPTY query on purpose: it answers 「what would this
+   * button give me if I pressed it」, and pressing it merges it with whatever is
+   * already on. Counting against the live query instead makes the same button
+   * report a different number before and after it is pressed, which is a number
+   * that describes nothing.
    */
   const countOfToken = useCallback((token: string) =>
-    items.filter(item => itemMatches(item, parseItemQuery(withFacetToken('', token, true)), matchCtx)).length,
+    items.filter(item => itemMatches(item, parseItemQuery(token), matchCtx)).length,
   [items, matchCtx])
 
   /** The four faces, built from the model's tables and the document's own tags. */
@@ -970,7 +1048,54 @@ export function ItemListPanel(props: ItemListPanelProps) {
         .map(value => ({ token: value.token, key: value.key, label: value.text })),
     },
   ], [items])
+/** WHAT THE RAIL SHOWS, AND WHERE IT STANDS.
+   *
+   * The groups and every number on them come from ONE derivation over the same
+   * document the list reads, so a count and the jump behind it are one predicate.
+   * The archive rows live in tombstones rather than in the list, so they are read
+   * where they are — which is also why `已删除` can never be counted twice.
+   *
+   * DECLARED DOWN HERE, not up with the other hooks, because it reads three
+   * things three of which are declared later: `matchCtx` (the clock), `choose`
+   * (the view record) and `goTo` (the jump). A derivation that has to be hoisted
+   * above its own inputs to compile is a derivation whose inputs were chosen
+   * wrong. */
+  const railGroups = useMemo(
+    () => itemRailGroupsOf(items, matchCtx, deletedItems),
+    [items, matchCtx, deletedItems],
+  )
+  /** The days a row lands on, as `YYYY-MM-DD`. The calendar's dot answers 「this
+   *  day has something on it」 and nothing more, so it needs the SET, not a count. */
+  const railDays = useMemo(() => {
+    const days = new Set<string>()
+    for (const item of items) {
+      for (const at of [item.startsAfter, item.dueAt, item.hardDueAt]) {
+        if (at !== undefined) days.add(localDayKey(at))
+      }
+    }
+    return [...days]
+  }, [items])
 
+  const enterRail = useCallback((entry: ItemRailEntry) => {
+    setRailEntry(entry.id)
+    /* A SET moves the panel; a PREDICATE narrows the query. Those are two different
+     * things and the entries say which they are, so this branch is the shape of
+     * the answer rather than a guess about the reader's intent. */
+    if (entry.kind === 'collection' || entry.kind === 'place') {
+      if (entry.key === 'inbox') goTo('inbox')
+      else choose({ search: '' })
+      return
+    }
+    /* A PREDICATE, and the query string is the ONLY place it is written: the
+     * search box shows exactly what the rail just did, so the reader can take it
+     * off from either side and neither side can be the stale one. */
+    choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token)) })
+  }, [choose, goTo, prefs.search])
+
+  const pickRailDay = useCallback((day: string) => {
+    const token = `on:${day}`
+    choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token)) })
+  }, [choose, prefs.search])
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       <div className={css.itemRoot}>
@@ -999,6 +1124,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
             different layer that can be open with the box shut. */}
         <ItemCreateDialog
+          now={now}
           open={overlay === 'create'}
           onClose={() => openLayer(undefined)}
           cards={cards.map(card => ({ id: card.id, title: card.title }))}
@@ -1010,100 +1136,97 @@ export function ItemListPanel(props: ItemListPanelProps) {
           }}
         />
 
-        {/* THE SHELL CARD. One card carries the whole page — head, rail, stats,
-            filters, workbench — so 「this is the page」 is one surface rather than
-            five bands of floating boxes, and the card's own hairline is the only
-            border between the page and the panel behind it. */}
+        {/* THE SHELL CARD. One card carries the whole page, so 「this is the page」
+            * is one surface rather than five bands of floating boxes.
+
+            * **AND IT NOW CARRIES NO HEAD.** The title, the count, a second search
+            * box, a second 新建 button and a second 筛选 trigger used to sit here,
+            * immediately above the bar that already does all five — so the panel
+            * had two search boxes, two ways to add a row and two ways to open the
+            * filters, and every one of them wrote the same state. Two controls for
+            * one thing is not a convenience: it is a question the reader has to
+            * answer before they can start, and the two answers are not the same
+            * two controls.
+
+            * The count did not go with them. It moved INTO the bar, next to the
+            * search that changes it — a number about what you are looking at,
+            * beside the thing you look at it with. */}
         <div className={css.itemShell}>
-          <div className={css.itemShellHead}>
-            <div className={css.itemShellHeadMain}>
-              <h1 className={css.itemPageTitle}>{t('itemTab.title')}</h1>
-              <p className={css.itemPageCount}>
-                {filtering
-                  /* THE MATCH SET, not the detail selection. The sentence claims
-                     to be about the FILTER, so it is counted the way the filter
-                     counts — one predicate, the same one the table draws from. */
-                  ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
-                  : t('item.count', { n: String(items.length) })}
-              </p>
-            </div>
-            <div className={css.itemShellHeadTools}>
-              {/* THE SEARCH BOX IS IN THE HEAD, at a fixed measure, because it is
-                  about the WHOLE page rather than about the table under it. One
-                  string, one writer: it is the same `prefs.search` the palette
-                  types into and the same one the filter bar writes into, so
-                  filtering from either place produces the same document state. */}
-              <input
-                className={css.itemSearch}
-                value={freeTextOf(prefs.search)}
-                placeholder={t('item.search')}
-                aria-label={t('item.search.label')}
-                onChange={event => { choose({ search: withFacetToken(freeTextOf(prefs.search), event.target.value, true) }) }}
-              />
-              {/* ＋新建：一枚实心主按钮，和快记框是同一个写入口的两扇门。快记框给已经握着
-                  * 那句话的人，这一枚给还没想到句子的人——两件事，不是一件事的两种
-                  * 样子，所以两扇门，**一条写路径**（两边都走 `captureItemRecord`）。 */}
-              <Button
-                variant="primary"
-                size="sm"
+  <div className={css.itemWorkbench} ref={surfaceRef}>
+    <div className={css.itemListColumn}>
+<div className={css.itemTopBar}>
+            <p className={css.itemTopCount}>
+              {filtering
+                /* THE MATCH SET, not the detail selection. The sentence claims to
+                   * be about the FILTER, so it is counted the way the filter counts
+                   * — one predicate, the same one the list draws from. */
+                ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
+                : t('item.count', { n: String(items.length) })}
+            </p>
+            {/* THE SEARCH BOX IS ALSO THE COMMAND PALETTE'S DOOR.
+              *
+              * 它不再旁边另立一枚「命令」按钮。那一枚是为 ⌘K 找的鼠标入口，可它和
+              * 邻居不一样高（28 对 32）、不一样宽、夹在两个药丸中间——于是它自己成了
+              * 「这是什么」。
+              *
+              * 而 ⌘K 的答案本来就是这一页上唯一能被看见的那部分：**搜索框**。点它开
+              * 面板、打字收窄它，两件事本来就是同一件事的两个阶段。所以入口就是它，
+              * 形状与邻居一致，也不再多一枚控件。 */}
+            <input
+              ref={paletteTrigger}
+              className={css.itemSearch}
+              type="search"
+              value={prefs.search}
+              placeholder={t('item.search.label')}
+              aria-label={t('item.search.label')}
+              aria-expanded={overlay === 'palette'}
+              aria-controls={`${topPanels}-palette`}
+              onClick={() => openLayer(overlay === 'palette' ? undefined : 'palette')}
+              onChange={event => choose({ search: event.target.value })}
+            />
+            <div className={css.itemTopBarTools}>
+              <button
+                type="button"
+                className={css.itemTopBarChip}
+                aria-expanded={sortOpen}
+                aria-controls={`${topPanels}-sort`}
+                onClick={() => openLayer(sortOpen ? undefined : 'sort')}
+              >
+                <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
+                <span className={css.itemTopBarValue}>{t(SORT_LABEL[prefs.sort])}</span>
+              </button>
+              <button
+                type="button"
                 className={css.itemNewButton}
                 onClick={() => openLayer('create')}
               >
-                {t('item.create.title')}
-              </Button>
-              {/* THE ONE MOUSE DOOR INTO THE SEARCH, AND IT SAYS WHAT IT IS.
-                  *
-                  * It used to carry 「⌘K」 on its face, which is a KEY on a LABEL: a
-                  * key says how to press it, not what it does — so a reader without
-                  * a keyboard, or one who simply does not press ⌘K, is looking at a
-                  * glyph with nothing to read. So the face is 「筛选」 and the key
-                  * goes into the tooltip and the accessible name, where a reader who
-                  * already knows it can find it and nobody else has to.
-                  *
-                  * IT IS NOT REMOVED, and that is the rule under it: a control only
-                  * the keyboard can open is a control the phone does not have. */}
-              <button
-                ref={paletteTrigger}
-                type="button"
-                className={css.itemCommandTrigger}
-                aria-label={t('item.commandTrigger.name')}
-                title={t('item.commandTrigger.title')}
-                onClick={() => openLayer('palette')}
-              >
-                <span aria-hidden="true">{t('item.commandTrigger.short')}</span>
+                {/* A DRAWN PLUS, not the `＋` character. A full-width glyph carries
+                    * one em of side bearing on each side of a two-stroke mark, so the
+                    * ink it draws sits visibly off the centre of a perfectly centred
+                    * box — 「上下居中了，左右偏右一点」 is exactly that, and it is a
+                    * property of the character rather than of the layout. */}
+                <svg viewBox="0 0 11 11" width="11" height="11" aria-hidden="true">
+                  <path d="M5.5 1v9M1 5.5h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
+                </svg>
+                {t('item.topbar.create')}
               </button>
             </div>
           </div>
 
-          {/* THE THREE PAGES, each with its own count, and the current one is a
-              rule under the word rather than a pill around it: a pill says
-              「here is a thing」 where an underline says 「this is where I am」. */}
-          <div className={css.itemPageRail} role="tablist" aria-label={t('item.page.rail')}>
-            {ITEM_PAGES.map(page => (
-              <button
-                key={page}
-                type="button"
-                role="tab"
-                aria-selected={prefs.page === page}
-                // The count is INSIDE the accessible name, not beside it: an
-                // `aria-label` replaces the element's own text, so a number
-                // rendered next to the word would be announced to nobody.
-                aria-label={t(PAGE_ARIA[page], { n: String(pageCounts[page]) })}
-                className={css.itemPageTab}
-                onClick={() => choose({ page })}
-              >
-                {t(PAGE_LABEL[page])}
-                <span className={css.itemPageTabCount}>{pageCounts[page]}</span>
-              </button>
-            ))}
-          </div>
-
-          {/* 统计带与筛选条只长在清单页上。它们问的是「在我这几十条里挑哪几条」，
-              而收件装的是还没分流的东西、日程按天读——在那一页上给筛选轨，等于
-              给一个答案还没成形的页面配一把筛子。 */}
-          {prefs.page === 'list' && (
-            <>
-              <ItemStats stats={statLines} on={queryTokens} onToggle={toggleToken} />
+          {/* THE TWO PANELS BELOW THE BAR, not over the list: a filter that dims the
+              rows it filters is a filter that makes the reader check the result
+              * twice. */}
+          {filtersOpen && (
+            <div id={`${topPanels}-filters`} className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+              {/* THE REMOVABLE CHIPS COME FIRST, because they are the *current*
+                  * state of the filter and a reader takes them off before they go
+                  * looking for another one. */}
+              <ItemQueryChips
+                text={prefs.search}
+                tags={items.map(item => item.tags)}
+                onSearch={next => choose({ search: next })}
+                onClearQualifiers={() => choose({ search: freeTextOf(prefs.search) })}
+              />
               <ItemFilters
                 faces={facetFaces}
                 text={prefs.search}
@@ -1115,27 +1238,82 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 onShowDone={setShowDone}
                 countOf={countOfToken}
               />
-            </>
+            </div>
+          )}
+          {sortOpen && (
+            <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
+              {ITEM_SORTS.map(order => (
+                <button
+                  key={order}
+                  type="button"
+                  className={css.itemTopBarChip}
+                  aria-pressed={prefs.sort === order}
+                  onClick={() => { choose({ sort: order }); openLayer(undefined) }}
+                >
+                  {t(SORT_LABEL[order])}
+                </button>
+              ))}
+            </div>
+          )}
+      <div className={css.itemFlow}>
+
+{/* THE TOP BAR IS THREE THINGS, AND THE OTHER FOUR LEFT.
+
+            * 搜索 · 排序 · ＋新建一条. That is the whole strip.
+            *
+            * It used to be five: the title, a page rail (收件 / 清单 / 日程), a
+            * band of three stat cards (落后 / 卡住 / 没日期), a filter strip
+            * (状态 / 日期 / 标签 / 排序 / 隐藏已完成) and an always-on capture box.
+            *
+            * Each of those had somewhere better to be, and the reason is the same
+            * in all four cases: **they were about the DOCUMENT, and this bar is
+            * about the VIEW.** The page became the rail (a place is a place, and a
+            * rail is where places live); the stat cards became the rail's counts,
+            * where the number and the thing it opens stand in one column; the
+            * filters became the same rail, plus one 筛选 button for the reader who
+            * wants them all at once; the capture box became the first line of the
+            * ＋新建一条 sheet, because a box that saves the instant you press Enter
+            * is a box you cannot put a second thought into.
+            *
+            * WHAT IS LEFT SAYS THREE THINGS and no more: 「我在找什么」「我按什么
+            * 排」「我怎么加一条」. Everything a reader can ask about the document
+            * is one click away in the rail, and everything about ONE row is one
+            * click away in that row. */}
+
+          {/* The two panels the two chips open. They are in the SHELL, not in a
+              popover over the list: a filter that dims the rows it is filtering
+              is a filter that makes the reader check the result twice. */}
+          {filtersOpen && (
+            <div id={`${topPanels}-filters`} className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+              <ItemFilters
+                faces={facetFaces}
+                text={prefs.search}
+                onSearch={next => choose({ search: next })}
+                sort={prefs.sort}
+                onSort={next => choose({ sort: next })}
+                tags={items.map(item => item.tags)}
+                showDone={showDone}
+                onShowDone={setShowDone}
+                countOf={countOfToken}
+              />
+            </div>
+          )}
+          {sortOpen && (
+            <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
+              {ITEM_SORTS.map(order => (
+                <button
+                  key={order}
+                  type="button"
+                  className={css.itemTopBarChip}
+                  aria-pressed={prefs.sort === order}
+                  onClick={() => { choose({ sort: order }); openLayer(undefined) }}
+                >
+                  {t(SORT_LABEL[order])}
+                </button>
+              ))}
+            </div>
           )}
 
-          {/* 快记框：这一页唯一常驻的输入。它不占一条自己的轨——它在工作台之上，
-              在表之上，读者的眼睛落在第一条行之前只需要经过头、轨、筛选。 */}
-          <ItemComposer
-            now={now}
-            focusRequest={captureFocus}
-            onSave={input => {
-              // The refusal belongs to the EDITOR, not to the writer: a blank
-              // capture is decided by the shared emptiness rule, and refusing it
-              // here changes nothing AND keeps the words.
-              if (isBlankCapture(input)) return false
-              const made = captureItemRecord(input, Date.now(), newItemId)
-              apply([...items, made.item])
-              return true
-            }}
-          />
-
-          <div className={css.itemWorkbench} ref={surfaceRef}>
-            <div className={css.itemListColumn}>
               {/* Reading in-flight, unreachable and syncing are THREE different
                   facts, and NEITHER hides the list: the local mirror is whole and
                   usable, so covering it would be a worse answer than a banner. */}
@@ -1167,38 +1345,31 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   )}
                 </div>
               )}
-              {body}
+        {body}
+      </div>
             </div>
-            {showDetailPane && (
-              <div className={css.itemDetailPane}>
-                {/* The pane is titled by THE ROW, never by one of the section names
-                    inside it: a section name as a page title says 「here are the
-                    fields」 before the reader knows which row they are looking at.
-                    The TITLE itself is drawn once, inside 「标题与正文」 — a card head
-                    that repeats it prints the same words twice on one screen. */}
-                {picked === undefined
-                  ? <h2 className={css.itemDetailHead}><span className={css.itemDetailHeadTitle}>{t('item.detail.emptyTitle')}</span></h2>
-                  : (
-                    <h2 className={css.itemDetailHead}>
-                      <span className={css.itemDetailHeadTitle}>
-                        {itemRefOf(picked).text ?? t('item.ref.pending')}
-                      </span>
-                      {/* THE WAY OUT, ON THE BAND THAT HAS NO OTHER ONE. A pane the
-                          reader cannot leave is not a pane, it is a trap. */}
-                      <button
-                        type="button"
-                        className={css.itemDetailClose}
-                        aria-label={t('item.detail.close')}
-                        title={t('item.detail.close')}
-                        onClick={() => { setSelected(undefined) }}
-                      >
-                        <span aria-hidden="true">×</span>
-                      </button>
-                    </h2>
-                  )}
-                <div className={css.itemDetailBody}>{detail(picked)}</div>
-              </div>
-            )}
+{/* THE RAIL IS THE NAVIGATION, and the detail rail is gone.
+                *
+                * A pane that only exists when a row is selected was 「rented
+                * land」 by its own empty state — and the thing that replaced it
+                * earns its column every single render, because it answers 「what
+                * is waiting, and what is overdue」 before the reader has scrolled
+                * anywhere. The row's own detail is still one press away: it opens
+                * IN the row, which is where the reader is already looking.
+                *
+                * IT SITS ON THE LEFT, NOT THE RIGHT, because the numbers belong
+                * to the LIST and the list is on the left. A rail of counts on the
+                * far side of the panel makes the reader cross the screen to read
+                * the answer to a question about what is in front of them. */}
+            <ItemRail
+              groups={railGroups}
+              activeId={railEntry}
+              month={railMonth}
+              daysWithRows={railDays}
+              today={localDayKey(now)}
+              onEnter={enterRail}
+              onPickDay={pickRailDay}
+            />
           </div>
         </div>
       </div>

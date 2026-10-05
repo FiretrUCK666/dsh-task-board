@@ -374,6 +374,8 @@ return (
         rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking)}
         empty={nothingToShow}
         noMatch={items.length === 0 ? undefined : nothingToShow}
+        now={props.now}
+        sort={props.sort}
       />
       {archiveLine}
     </>

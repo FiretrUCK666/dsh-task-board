@@ -99,6 +99,28 @@ export interface ItemRecord {
 export const ITEM_STATUSES: readonly ItemStatus[] = ['open', 'blocked', 'done']
 
 /**
+ * Every status a surface may SHOW, in DISPLAY order, which is one more than a
+ * person may choose.
+ *
+ * `ITEM_STATUSES` is the choosable three; `inProgress` is the fourth and it is
+ * DERIVED — it means 「this row hangs off a card that is running right now」, and
+ * it is not a thing anybody sets. So the two lists are not interchangeable, and
+ * a vocabulary built from the choosable three teaches a model three quarters of
+ * the way to the answer it is asking for.
+ *
+ * **This list is the one to read when the question is 「what can this row be
+ * displayed as」. The one above is the one to read when the question is 「what
+ * can a person set」.** Reading either for both is how `status:inprogress` spent
+ * its life parsing correctly and being absent from every word list.
+ *
+ * The order runs 进行中 · 待办 · 受阻 · 已完成: what is moving, then what is
+ * waiting, then what is stuck, then what is over. It used to be a second table in
+ * `item-rows.ts` with the same four values, and a second table with the same
+ * values is a second answer to 「in what order」 waiting to disagree with the first.
+ */
+export const ITEM_STATUS_VIEWS: readonly ItemStatusView[] = ['inProgress', 'open', 'blocked', 'done']
+
+/**
  * The four priority tiers, listed LOW to HIGH — an ENUM order, not a ranking.
  *
  * Read it wherever tiers are LISTED (a dropdown, a filter menu, a `oneOf` the

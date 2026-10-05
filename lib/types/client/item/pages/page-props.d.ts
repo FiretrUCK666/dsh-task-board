@@ -23,6 +23,7 @@
  */
 import type { ReactNode } from 'react';
 import type { ItemRecord } from '../../../core/item.ts';
+import type { ItemSort } from '../../../core/item-sort.ts';
 import type { ItemQuery, ItemMatchContext } from '../../../core/item-view.ts';
 import type { ItemViewPrefs } from '../view-prefs.ts';
 import type { ItemRowLineProps } from '../row-line.tsx';
@@ -77,6 +78,10 @@ export interface ItemPageProps {
      * files and a stylesheet owner to fix a word that was not wrong.
      */
     readonly picking: boolean;
+    /** The ordering the reader chose, so the table knows whether a day heading is a
+     *  true statement about the rows under it. `now` is already here, so the two
+     *  arrive together. */
+    readonly sort: ItemSort;
     /**
      * The batch bar, or nothing.
      *

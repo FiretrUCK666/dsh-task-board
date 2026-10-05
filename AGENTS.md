@@ -462,7 +462,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `access` 拓宽成并集 → `WritableItemKey` 塌成 `never` → `ItemPatch` 变 `{}` → **`{}` 接受任何
   对象字面量** → `{ ref: 3 }` 静默通过。**门禁不是变成一堵墙，是变成一扇敞开的门**，所以那行
   `@ts-expect-error` 棘轮是承重的（退化从此是**构建失败**），且它放在 core 而非 spec，因为 spec
-  要有人记得打开。同族第二实例在 `item-view.ts` 的 `KEY_GAPS`（`Record<ItemSort, …>` 建表）。
+  要有人记得打开。同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`（`Record<ItemSort, …>` 建表）。
   **手写的「我列全了吗」永远该由类型或文件系统回答**；塌掉的具体链路写在 `item-transitions.ts`。
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
   抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`

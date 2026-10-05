@@ -60,14 +60,21 @@
  *     confident nothing.
  */
 export type { ItemPriority, ItemStatus, ItemStatusView } from './item.ts';
+export { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts';
 export { DAY_MS, HARD_SOON_DAYS, datePostureOf, startOfDay } from './item-dates.ts';
 export type { DatePosture, SoftPosture } from './item-dates.ts';
 export { isAgendaItem, isInboxItem } from './item-membership.ts';
 export { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts';
 export { DEFAULT_ITEM_SORT, ITEM_SORTS, recentItemsOf, sortItemsOf } from './item-sort.ts';
 export type { ItemSort } from './item-sort.ts';
-export { EMPTY_ITEM_QUERY, ITEM_FLAGS, isItemQualifierToken, itemMatchContextOf, itemMatches, parseItemQuery, } from './item-query.ts';
-export type { ItemFlag, ItemMatchContext, ItemQuery } from './item-query.ts';
+export { EMPTY_ITEM_QUERY, ITEM_FLAGS, ITEM_FLAG_TESTS, flagProbeOf, isItemQualifierToken, itemHasFlag, itemMatchContextOf, itemMatches, itemQualifierVocabulary, parseItemQuery, PRIORITY_BY_TOKEN, } from './item-query.ts';
+export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts';
+export { itemRailGroupsOf } from './item-rail.ts';
+export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts';
+export { itemPageOf, planItemNavigation } from './item-navigate.ts';
+export type { ItemNavigation, ItemNavigationRefusal } from './item-navigate.ts';
+export { itemAskText, planItemAsk } from './item-ask.ts';
+export type { ItemAskRefusal, ItemAskVerdict } from './item-ask.ts';
 export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './item-rows.ts';
 export type { ItemRef, ItemRowContext, ItemRowView, ItemSlice, ItemSliceOptions } from './item-rows.ts';
 export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-schedule.ts';

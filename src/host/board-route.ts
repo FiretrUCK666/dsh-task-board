@@ -40,10 +40,11 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import { deletedItemsOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
+import { planItemAsk } from '../core/item-ask.ts'
 import { relatedSessionIdsOf } from '../core/task-live.ts'
 import { acquireBoardService, DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
 import { handOver } from './agent/commands.ts'
-import { sessionRunningOf, type SessionPostureSources } from './session-state.ts'
+import { sessionRunningOf, type AgentsFace } from './session-state.ts'
 import { readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
@@ -320,7 +321,18 @@ function parseItemAddressBody(
   return { ok: true, request: { of: id !== undefined ? { kind: 'id', id } : { kind: 'ref', ref: ref as number }, clientId } }
 }
 
-/** Parse the ask body: both fields are required and both are plain scalars. */
+/**
+ * Parse the ask body: the card is named, the row is named, and the row may be
+ * named TWICE because both names are required.
+ *
+ * That is the difference from {@link parseItemAddressBody}, which refuses a body
+ * carrying both `id` and `ref`: there, EITHER name is optional, so both present
+ * is two intents. Here `ref` is required — the model only ever holds a number —
+ * and the panel sends its `id` alongside it as a cross-check. So the body is not
+ * ambiguous, and refusing it would refuse every legitimate caller.
+ *
+ * @returns the request, or `undefined` for a body that does not parse.
+ */
 function parseAskBody(body: unknown): AskRequest | undefined {
   if (typeof body !== 'object' || body === null) return undefined
   const record = body as Record<string, unknown>
@@ -331,7 +343,8 @@ function parseAskBody(body: unknown): AskRequest | undefined {
   // quietly treating it as absent would let a broken caller through the one path
   // that can resolve to the wrong row.
   if (record.id !== undefined && typeof record.id !== 'string') return undefined
-  return { taskId: record.taskId, ref: record.ref, ...(typeof record.id === 'string' && record.id !== '' ? { id: record.id } : {}) }
+  const hasId = typeof record.id === 'string' && record.id !== ''
+  return { taskId: record.taskId, ref: record.ref, ...(hasId ? { id: record.id as string } : {}) }
 }
 
 /** The caller id every commit body must carry. One rule, both documents. */
@@ -792,15 +805,26 @@ function serveEvents(deps: BoardRouteDeps, url: URL, res: ServerResponse): void 
  *
  * THE HAND-OFF ITSELF is `handOver` from the agent surface: one path into a
  * model, shared with the two slash commands.
+ *
+ * **Exported so it can be tested without a storage hub.** This function decides
+ * WHICH CONVERSATION a person's text goes to, and it had no coverage at all: the
+ * route's `deps.ask` seam is replaced in every route test, so the production
+ * wiring at `registerBoardRoute` — which is the only place this body actually
+ * runs — was never executed. That is why a request naming card A with a row of
+ * card B survived: nothing had ever asked the function what it does with two
+ * names that disagree.
+ *
+ * @param ctx - the host context, read for `agents` at call time.
+ * @param service - the two-document face.
+ * @param request - the card and the row, as the parser accepted them.
+ * @returns the receipt naming the session, or a refusal code.
  */
-async function handOneItemToItsCardSession(
+export async function handOneItemToItsCardSession(
   ctx: Context,
   service: DocumentService,
   request: AskRequest,
 ): Promise<AskRouteView> {
   if (!service.available) return { ok: false, why: 'hostStorageMissing' }
-  const card = service.getDoc().tasks.find(task => task.id === request.taskId)
-  if (card === undefined) return { ok: false, why: 'noSuchTask' }
   // BY IDENTITY, or not at all. Addressing by short number here meant that a row
   // the document had not numbered yet — `ref === 0` — matched the FIRST
   // unnumbered row in the document, and that row's text went to the model while
@@ -819,33 +843,31 @@ async function handOneItemToItsCardSession(
     : undefined)
   if (item === undefined) return { ok: false, why: 'noSuchItem' }
 
-  const sources: SessionPostureSources = { agents: () => ctx.get('agents') as never }
-  const linked = relatedSessionIdsOf(card).map(fact => fact.sessionId)
-  if (linked.length === 0) return { ok: false, why: 'taskHasNoSession' }
-
-  let chosen = linked[0] as string
-  for (const sessionId of linked) {
-    if (sessionRunningOf(sources, sessionId).value === true) { chosen = sessionId; break }
+  // EVERY JUDGMENT FROM HERE DOWN IS `planItemAsk`'s. This function is the
+  // seam — it holds the two document lookups and the two host reads, and it has
+  // no opinion of its own. That is what lets the catalog carry `item.ask`: a
+  // judgment buried in a route is a judgment the model is never told about.
+  const card = service.getDoc().tasks.find(task => task.id === request.taskId)
+  const agents = ctx.get('agents') as AgentsFace | undefined
+  const verdict = planItemAsk({
+    item,
+    card,
+    sessions: card === undefined ? [] : relatedSessionIdsOf(card),
+    isRunning: sessionId => sessionRunningOf({ agents: () => ctx.get('agents') as never }, sessionId).value === true,
+    hasAgent: sessionId => agents !== undefined && agents.get(sessionId) !== undefined,
+  })
+  if (!verdict.ok) {
+    // `noCard` is the route's word for it; the core says 「there is no card」 and
+    // the route says which name the reader would recognise.
+    return { ok: false, why: verdict.why === 'noCard' ? 'noSuchTask' : verdict.why }
   }
 
-  const agents = ctx.get('agents') as { get(id: string): { followup(message: unknown): void } | undefined } | undefined
-  const agent = agents?.get(chosen)
-  if (agents === undefined || agent === undefined) return { ok: false, why: 'noLiveAgent' }
-
-  const said = itemPrompt(item)
-  const result = handOver(agent as never, said)
+  const followup = agents?.get(verdict.sessionId)?.followup
+  if (followup === undefined) return { ok: false, why: 'noLiveAgent' }
+  const result = handOver({ followup }, verdict.text)
   return result.kind === 'success'
-    ? { ok: true, sessionId: chosen, said }
+    ? { ok: true, sessionId: verdict.sessionId, said: verdict.text }
     : { ok: false, why: result.text }
-}
-
-/** The one sentence the panel hands over, said in the reader's terms. */
-function itemPrompt(item: ItemRecord): string {
-  const where = item.taskId === undefined ? '（它还没有挂到任何看板卡片上）' : ''
-  const steps = item.steps.length === 0
-    ? ''
-    : `\n它的步骤：${item.steps.map(step => `- [${step.done ? 'x' : ' '}] ${step.text}`).join('\n')}`
-  return `任务清单里有一条「#${item.ref} ${item.title || '（无标题）'}」${where}。请处理它，并告诉我你打算怎么做。${steps}`
 }
 
 /**

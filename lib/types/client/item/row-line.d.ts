@@ -1,58 +1,50 @@
 import type { ItemRowView } from '../../core/item-view.ts';
 export interface ItemRowLineProps {
     readonly view: ItemRowView;
-    /** Whether this row's detail is open in place (the band with no detail card). */
-    readonly expanded: boolean;
-    /** Whether this row is the one the detail card is showing. */
-    readonly selected: boolean;
-    /** Whether the detail lives in the row rather than in the card beside it. */
-    readonly inPlace: boolean;
-    /**
-     * Whether THIS PAGE has a batch surface — which is what puts a pickbox in cell
-     * one, on every row, all the time.
-     *
-     * It used to mean 「the reader is holding several rows」 and the box appeared
-     * only then, which is the same condition stated as a MODE. A mode is something
-     * the reader has to discover before the control exists: on this panel the only
-     * way in was `X`, so the pickbox column was 44px of nothing on every row and the
-     * only multi-select a mouse could reach was 「arm the batch in the palette and
-     * then look for a box that is not there yet」. A page that CAN batch can say so
-     * with a box that is simply there.
-     */
-    readonly picking: boolean;
-    /** Whether THIS row is held. */
-    readonly picked: boolean;
-    /**
-     * Hold or release this row. The flag is the SHIFT the reader pressed, and it is
-     * a parameter rather than something this file reads off the event: 「hold a
-     * range」 is a decision about the DOCUMENT, and the document is not this row's.
-     */
-    readonly onPick: (extend: boolean) => void;
+    /** THE PANEL'S CLOCK, passed in rather than read. Two clocks on one row is a row
+     *  that says 「还早」 and shows last year's date. */
+    readonly now: number;
     readonly panelId: string;
-    readonly onToggle: () => void;
+    readonly expanded: boolean;
+    readonly selected: boolean;
     readonly onSelect: () => void;
-    readonly onAsk: () => void;
-    readonly asking: boolean;
-    /** Write a patch to THIS row — the hand-off the in-place title editor uses. */
+    readonly onToggle: () => void;
+    /** Whether this PAGE batches. The inbox and the agenda answer false, so a row there
+     *  carries no way to be held. */
+    readonly picking: boolean;
+    readonly picked: boolean;
+    /** Hold one row, optionally as a range over what is on screen. */
+    readonly onPick: (extend: boolean) => void;
     readonly onPatch: (patch: {
         readonly title: string;
     }) => void;
-    /** This row's own receipt, drawn under the control that earned it. */
-    readonly receipt?: string;
     readonly menuOpen: boolean;
     readonly onMenuToggle: () => void;
     readonly onMenuClose: () => void;
+    readonly onAsk: () => void;
+    readonly asking: boolean;
+    readonly receipt?: string;
     readonly onMark: (status: 'open' | 'blocked' | 'done') => void;
-    /** Open the checklist editor and put the caret in its field. */
+    /** Open the checklist and put the caret in its field. Three things at once: close
+     *  the menu, select the row, expand it — picking without expanding leaves the
+     *  reader looking at a selected row with no checklist on screen. */
     readonly onSteps: () => void;
     readonly onPromote: () => void;
+    /** 开工 — run the card this row hangs off, through the SAME `runTask` the
+     *  catalog's `task.run` binds. Not `rerunTask`: a row that runs a card one way
+     *  while the model runs it another is two definitions of 「开工」 on one
+     *  installation. */
+    readonly onStart: () => void;
+    /** Whether that card is running, so 「开工」 is not offered twice. */
+    readonly running: boolean;
     readonly onRemove: () => void;
     /** The in-place detail, rendered only when `inPlace` and open. */
+    readonly inPlace: boolean;
     readonly detail?: React.ReactNode;
 }
 /**
- * One row: seven cells, in the order the head names them.
- * @param props - the projection, the panel's state and the hand-offs.
- * @returns the row, its menu and, when it belongs here, its in-place detail.
+ * One row.
+ * @param props - the projection and every hand-off it needs.
+ * @returns the row: a bead, a sentence, its tags and one control.
  */
 export declare function ItemRowLine(props: ItemRowLineProps): import("react").JSX.Element;

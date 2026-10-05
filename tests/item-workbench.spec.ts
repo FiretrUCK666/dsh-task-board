@@ -379,7 +379,7 @@ describe('every handler a row or a detail declares is actually connected', () =>
     // that closes is correct, and the same body under the name `onPromote` is
     // a lie about what the button does.
     const shell = /\{\s*(?:\(\s*\)\s*=>\s*)?set[A-Za-z]+\(\s*undefined\s*\)\s*\}/
-    const dismisses = (name: string): boolean => /Close$|^onCancel/.test(name)
+    const dismisses = (name: string): boolean => /Close|^onCancel/.test(name)
     const offenders: string[] = []
     for (const source of [panelSource, rowSource, detailSource]) {
       const live = code(source)
@@ -735,46 +735,39 @@ describe('a press is a change to the document, not a change to the menu', () => 
    * 取代它的是下面那条：详情轨的头永远不为空，而且只在选中时存在。 */
   it('a row is picked by its identity from the list, and lands on that row', () => {
     // The reachable half of the claim above, and the one a reader actually
-    // exercises: press a row in the table, and the row you pressed is the row
-    // you get. The panel knows the row's uuid; the short number it shows is a
+    // exercises: press a row in the list, and the row pressed is the row
+    // selected. The panel knows the row's uuid; the short number it shows is a
     // NAME to read, never an address.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const row = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
-        .find(node => (node.textContent ?? '').includes('这一条硬期限已经过了整整九天'))
-      expect(row, 'the list drew no row to choose').toBeDefined()
+      const row = panel.surface.querySelector('[data-status]')
+      const title = row?.querySelector('[class*="itemRowText"]')?.textContent ?? ''
+      expect(title.trim(), 'the list drew a row with no title to choose').not.toBe('')
       click(row)
-      const head = [...panel.surface.querySelectorAll('[class*="itemDetailHeadTitle"]')][0]
-      expect(head, 'pressing a row produced no detail head — the column beside the list is not named').toBeDefined()
-      expect((head?.textContent ?? '').trim(), 'the detail head names no row').not.toBe('')
+      const selected = panel.surface.querySelector('[data-selected]')
+      expect(selected, 'pressing a row selected nothing — the press is a gesture with no answer').not.toBeNull()
+      expect(selected?.textContent ?? '', 'pressing a row landed somewhere other than the row pressed').toContain(title.trim())
     } finally {
       panel.dispose()
     }
   })
 
-  it('the detail rail\'s head names the row in it, and there is no such thing as an empty rail', () => {
-    // An empty head with a rule under it is a horizontal line that came from
-    // nowhere: nothing is being separated, and a rule that separates nothing reads
-    // as a rendering fault. That used to be fixed by giving the empty rail a
-    // heading that named the column.
-    //
-    // THE BETTER FIX WAS TO STOP DRAWING IT. The rail is 37% of a wide stage and
-    // is now rendered only when a row is chosen, so the whole state this case was
-    // written against — a column with a head and a rule and no row in it — cannot
-    // be reached. What remains worth pinning is the consequence, which is STRONGER
-    // than the sentence it replaces: the head is never empty, because whenever the
-    // rail exists it exists for a row, and the head says which one.
+  it('detail opens in the row only after expand, and there is no rented pane', () => {
+    // The right-hand pane is gone because it was rented land whenever no row was
+    // chosen. The replacement is deliberate two-step state: a press selects the
+    // row where the reader is looking, and only 「展开详情」 builds the detail.
+    // An expansion that appears before the reader asks is the same rented land
+    // wearing a different class name.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const railHead = (): Element | undefined => [...panel.surface.querySelectorAll('h2')]
-        .filter(head => !head.closest('button'))
-        .find(head => /item[A-Za-z]*Detail[A-Za-z]*Head/.test(head.className))
-      expect(railHead(), 'a fresh panel drew a detail head with no row in it — a rule that separates nothing reads as a broken render').toBeUndefined()
-      const row = panel.surface.querySelector('[class*="itemTableRow"]')
-      click(row)
-      const head = railHead()
-      expect(head, 'a chosen row produced no detail head — the column beside the list is not named').toBeDefined()
-      expect((head?.textContent ?? '').trim(), 'the detail head is an empty box with a rule under it').not.toBe('')
+      expect(panel.surface.querySelector('[class*="itemDetail"]'), 'a fresh panel drew an expansion before anything was asked for').toBeNull()
+      openRowMenu(panel.surface)
+      const entry = findMenuEntry(panel.surface, '展开详情')
+      expect(entry, 'the row menu offers no way to expand the row').not.toBeNull()
+      click(entry)
+      const detail = panel.surface.querySelector('[class*="itemDetail"]')
+      expect(detail, 'expanding a row built nowhere to read it').not.toBeNull()
+      expect((detail?.textContent ?? '').trim(), 'an expanded row drew an empty detail').not.toBe('')
     } finally {
       panel.dispose()
     }
@@ -804,7 +797,7 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
-  it('a tile filters EXACTLY what it counts — the number and the list are one fact', () => {
+  it('a rail row filters EXACTLY what it counts — the number and the list are one fact', () => {
     // THE OVERDUE TILE COUNTED TWO BUCKETS AND FILTERED ONE. `itemInsightOf`
     // counts `hardOverdue || behind`; the tile pressed and filtered
     // `has:hardOverdue`. So a reader pressed a tile reading 「逾期 3」 and got one
@@ -813,41 +806,32 @@ describe('a press is a change to the document, not a change to the menu', () => 
     // reader has no way to tell a wrong number from a wrong filter.
     //
     // The gate is on the SHAPE rather than on the two values: whatever token the
-    // tile writes, the rows that token keeps must be the rows the tile counted.
-    // Asserted by asking the model, so a future tile that counts one bucket and
-    // filters another cannot pass.
-    // THE SUBJECT IS THE STATISTICS BAND'S TILE NOW. The empty-bucket summary is
-    // retired with the groups, and the claim is the same one a reader can still
-    // check: whatever number a tile prints, the rows that tile's filter keeps must
-    // be those rows. The band is the surface's remaining 「a number you can press
-    // to filter」, so the defect this caught has a home rather than losing its only
-    // test.
-    //
-    // The gate is on the SHAPE rather than on the two values: whatever token the
-    // tile writes, the rows that token keeps must be the rows the tile counted.
-    // Asserted by asking the model, so a future tile that counts one bucket and
-    // filters another cannot pass.
+    // rail row writes, the rows that token keeps must be the rows the rail row
+    // counted. The statistics band is gone; its contract moved to the rail rows
+    // that replaced it, and this is the same behavioral shape rather than a
+    // renamed selector.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      // `button[itemStat…]` and not the band: the band is a `div`, so a selector
-      // that only asks for the name finds the container first and clicks an
-      // element with no handler on it — and then reports 「没有接线」 about a tile
-      // that is wired perfectly well.
-      const chip = panel.surface.querySelector('button[class*="itemStat"]')
-      expect(chip, 'no statistics tile is drawn at all, so this gate is asserting nothing — a number with no press behind it is a scoreboard').not.toBeNull()
-      // `[0]`, not `[1]`: the pattern has no capture group, so `[1]` is always
-      // undefined and the whole case reports 「prints no number」 for a tile that
-      // is printing one — a gate that is red for the wrong reason is a gate
-      // somebody relaxes instead of reads.
-      const said = Number(/\d+/.exec(chip?.textContent ?? '')?.[0] ?? Number.NaN)
-      expect(Number.isInteger(said), `the tile prints no number to compare against: ${JSON.stringify(chip?.textContent)}`).toBe(true)
-      const before = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
-      act(() => { chip?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
-      const after = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
-      expect(after, 'pressing the tile did not filter at all').toBeLessThan(before)
-      // The count it prints and the rows it keeps are ONE fact. A tile that says
+      const before = panel.surface.querySelectorAll('[data-status]').length
+      const choice = [...panel.surface.querySelectorAll('button[class*="itemRailRow"]')]
+        .map(node => ({
+          node,
+          kind: node.getAttribute('data-kind') ?? '',
+          said: Number(/\d+/.exec(node.querySelector('[class*="itemRailCount"]')?.textContent ?? '')?.[0] ?? Number.NaN),
+        }))
+        .find(candidate =>
+          (candidate.kind === 'flag' || candidate.kind === 'priority' || candidate.kind === 'status')
+          && Number.isInteger(candidate.said)
+          && candidate.said > 0
+          && candidate.said < before)
+      expect(choice, 'no pressable rail row with a proper-subset count is on screen — the gate is asserting nothing').toBeDefined()
+      if (choice === undefined) return
+      click(choice.node)
+      const after = panel.surface.querySelectorAll('[data-status]').length
+      expect(after, 'pressing the rail row did not filter at all').toBeLessThan(before)
+      // The count it prints and the rows it keeps are ONE fact. A row that says
       // 0 and keeps 2 is the exact defect this case was written for.
-      expect(after, `the tile says ${String(said)} and filtering to it left ${String(after)} rows — the number and the list are two different facts`).toBe(said)
+      expect(after, `the rail row says ${String(choice.said)} and filtering to it left ${String(after)} rows — the number and the list are two different facts`).toBe(choice.said)
     } finally {
       panel.dispose()
     }
@@ -1481,40 +1465,44 @@ describe('a phone is offered every choice a desk is offered', () => {
   })
 })
 
-describe('the row is a grid whose tracks are fixed, because alignment is a promise', () => {
-  it('the identity tracks and the fact line are not measured per row', () => {
-    // WHY THIS IS A GATE AND NOT A PREFERENCE. An `auto` or `max-content`
-    // track is measured per row, and every row on this page is its own grid —
-    // so `#12` pushed the title one character right of where `#4` put it. The
-    // eye reads a ragged left edge as a page nobody set, before it has read a
-    // single word. Fixed tracks are the fix, and they are fixed ONCE on the
-    // root so they cannot drift between rows.
+describe('the row is a grid whose edges do not move, because alignment is a promise', () => {
+  it('the bead, title, tags and menu keep their four places on every band', () => {
+    // WHY THIS IS A GATE AND NOT A PREFERENCE. Every row is its own grid, so a
+    // track measured from that row's own content moves that row's edges: the
+    // tag count used to decide where ⋮ landed, pinned right with one tag and a
+    // couple of hundred pixels in with three. The four-column grid fixes the
+    // places that must not move — bead first, ⋮ last — while the tags column is
+    // allowed to be content-sized because it no longer decides the menu column.
     const css = read('client/item/item.module.css')
-    const gridOf = (name: string): string => new RegExp(`\\.${name}\\s*\\{([\\s\\S]*?)\\n\\}`).exec(css)?.[1] ?? ''
-    const columns = (body: string): string[] => [...body.matchAll(/grid-template-columns\s*:\s*([^;]+)/g)].map(m => (m[1] ?? '').trim())
-    /* 行与表头各一份，**而且必须两份都在**：表头那一行的七条轨是它标注的那些格子的
-     * 轨，两边只要有一边换了数，表头就盖在错的格子上——而这是这个面板唯一一处
-     * 「同一组数写在两个地方」的地方，样式表的注释里也是这么说的。
-     *
-     * 名字跟着结构走：行是 `.itemTableRow`，表头那一行是 `.itemTableHeadRow`。
-     * 曾经的名字（`itemRowMain` / `itemRowMeta`）属于一个「一行 = 身份轨 + 事实
-     * 行」的行，而行现在是七格的一行，两个名字都不存在了。 */
-    for (const body of [gridOf('itemTableRow'), gridOf('itemTableHeadRow')]) {
-      expect(body, 'the row grid rule is not where the file says it is').not.toBe('')
-      for (const value of columns(body)) {
-        // Content-sized tracks are the defect; `minmax(0, 1fr)` is the fix and
-        // is explicitly NOT content-sized even though it ends in `1fr`.
-        expect(value, `a track is measured from its own content (${value}) — every row is its own grid, so the edge moves row by row`)
-          .not.toMatch(/\b(?:auto|max-content|min-content|fit-content)\b(?!\s*;?\s*$)/)
+    const bodies = [...css.matchAll(/\.itemRow\s*\{([^}]*)\}/g)].map(match => match[1] ?? '')
+    expect(bodies.length, 'there is no .itemRow grid rule to hold the row together').toBeGreaterThan(0)
+    const tracksOf = (value: string): string[] =>
+      value.match(/(?:[^\s()]+|\([^()]*\))+/g) ?? []
+    for (const body of bodies) {
+      const columns = [...body.matchAll(/grid-template-columns\s*:\s*([^;]+)/g)].map(match => (match[1] ?? '').trim())
+      expect(columns.length, 'an .itemRow rule states no column tracks — the four places are not declared').toBeGreaterThan(0)
+      for (const value of columns) {
+        const tracks = tracksOf(value)
+        expect(tracks.length, `a row does not have four places (${value}) — the bead, title, tags and menu cannot each stay put`).toBe(4)
+        expect(tracks[0], `the state bead moves (${value}) — the left edge moves row by row`).toBe('10px')
+        expect(tracks[1]?.replace(/\s+/g, ''), `the title has no floor (${value}) — a wide tag row can squeeze it to a few characters`).toContain('minmax(120px,1fr)')
+        expect(['auto', '0'].includes(tracks[2] ?? ''), `the tags track is neither content-sized nor yielded (${value}) — narrow and wide need exactly those two answers`).toBe(true)
+        expect(tracks[3], `the menu is not pinned last (${value}) — ⋮ lands wherever the tags happen to end`).toBe('28px')
       }
     }
   })
 
   it('the probe bites, and a filler track is not reported', () => {
-    const verdicts = (value: string): boolean => /\b(?:auto|max-content|min-content|fit-content)\b/.test(value)
-    expect(verdicts('var(--item-mark-col) var(--item-ref-col) max-content')).toBe(true)
-    expect(verdicts('var(--item-mark-col) var(--item-ref-col) minmax(0, 1fr)')).toBe(false)
-    expect(verdicts('var(--item-meta-date-col) auto minmax(0, 1fr)')).toBe(true)
+    const tracksOf = (value: string): string[] =>
+      value.match(/(?:[^\s()]+|\([^()]*\))+/g) ?? []
+    const fourPlaces = (value: string): boolean => {
+      const tracks = tracksOf(value)
+      return tracks.length === 4 && tracks[0] === '10px' && tracks[3] === '28px'
+    }
+    expect(fourPlaces('10px minmax(120px,1fr) auto 28px')).toBe(true)
+    expect(fourPlaces('10px minmax(120px,1fr) 0 28px')).toBe(true)
+    expect(fourPlaces('10px minmax(120px,1fr) auto'), 'a three-track row passed as the four-place row').toBe(false)
+    expect(fourPlaces('10px minmax(120px,1fr) 96px 28px'), 'a tags column can still be point-sized').toBe(true)
   })
 })
 
@@ -1828,12 +1816,12 @@ describe('the command palette BEHAVES, which a static capture cannot show', () =
       // `itemTableRow` and not `itemRow`: the row is a seven-cell table row now,
       // and `itemRow` as a substring matches nothing — so before and after were
       // both 0 and the comparison reported 「没有变窄」 about a chain that works.
-      const before = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
+      const before = panel.surface.querySelectorAll('[data-status]').length
       open(panel)
       const chip = findByText(panel.surface, '待办')
       expect(chip, 'the palette offers no status value to press').not.toBeNull()
       click(chip)
-      const after = panel.surface.querySelectorAll('[class*="itemTableRow"]').length
+      const after = panel.surface.querySelectorAll('[data-status]').length
       expect(after, 'pressing a chip did not narrow the list — the control is drawn and wired to nothing').toBeLessThan(before)
     } finally {
       panel.dispose()
@@ -1867,7 +1855,7 @@ describe('the detail rail is rented when a row is chosen, and not before', () =>
       try {
         const rail = (): boolean => panel.surface.querySelector('[class*="itemDetailPane"]') !== null
         expect(rail(), `a fresh ${band} panel drew a detail rail before anything was chosen — 37% of the stage saying nothing`).toBe(false)
-        const row = panel.surface.querySelector('[class*="itemTableRow"]')
+        const row = panel.surface.querySelector('[data-status]')
         expect(row, `the ${band} panel drew no row to choose`).not.toBeNull()
         click(row)
         expect(
@@ -2030,13 +2018,13 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
     for (const band of ['wide', 'narrow'] as const) {
       const panel = mountPanel(oneRow({ title: '原来的标题' }), 'list', band)
       try {
-        const row = panel.surface.querySelector('[class*="itemTableRow"]')
-        const title = row?.querySelector('[class*="itemCellTitleText"]')
+        const row = panel.surface.querySelector('[data-status]')
+        const title = row?.querySelector('[class*="itemRowText"]')
         expect(title, `the ${band} band row printed no title to edit`).toBeDefined()
         // 桌上：双击那一格。
-    // 一次 `onClick` 先选中这一行（详情轨因此出现），`dblclick` 再把标题换成字段——
+    // 一次 `onClick` 先选中这一行，`dblclick` 再把标题换成字段——
         act(() => { title?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
-        const field = panel.surface.querySelector('[class*="itemCellTitle"] input') as HTMLInputElement | null
+        const field = panel.surface.querySelector('[class*="itemRowTitle"] input') as HTMLInputElement | null
         expect(field, `pressing the title twice on the ${band} band opened no field — the desktop path is gone`).not.toBeNull()
         if (field !== null) {
           typeInto(field, '改过的标题')
@@ -2066,8 +2054,10 @@ describe('the checklist is a list a reader can change, not a list they can only 
   }
   /** Open one row's detail so the editor is on screen, whatever band we are on. */
   function openDetail(panel: ReturnType<typeof mountPanel>): void {
-    const row = panel.surface.querySelector('[class*="itemTableRow"]')
-    click(row)
+    openRowMenu(panel.surface)
+    const entry = findMenuEntry(panel.surface, '展开详情')
+    expect(entry, 'the row menu offers no way to expand the row').not.toBeNull()
+    click(entry)
   }
   /** The step texts currently in the editor, in the order they are drawn. */
   // 读每一行里的那个 `span`，而不是读 `data-done`：那个属性只在**做完**的时候才
@@ -2188,63 +2178,66 @@ describe('the checklist is a list a reader can change, not a list they can only 
 })
 
 describe('a row is held with the mouse, with shift, and with the keyboard', () => {
-  /** The pickbox of the nth row on screen, in the order the reader sees them. */
-  const pickboxOf = (root: ParentNode, nth = 0): HTMLInputElement | undefined =>
-    [...root.querySelectorAll('[class*="itemCellPick"] input')][nth] as HTMLInputElement | undefined
+  /** The rows on screen, in the order the reader sees them. `data-status` is the
+   *  row's own identity hook: it is on the row root and nowhere else, so a class
+   *  rename cannot turn this helper into a selector for the row's buttons. */
+  const rowEls = (root: ParentNode): Element[] =>
+    [...root.querySelectorAll('[data-status]')]
 
-  /** A tick, with shift if the reader is holding it. */
-  function tick(box: HTMLInputElement, withShift = false): void {
+  /** Hold a row the way a reader does: a modifier press on the row itself. */
+  function hold(row: Element | undefined, withShift = true): void {
+    expect(row, 'there is no row under the pointer — the batch gate is asserting nothing').toBeDefined()
     act(() => {
-      box.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: withShift }))
+      (row as HTMLElement).dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true, shiftKey: withShift }))
     })
   }
 
-  it('the pickbox is on every row of the list page, with no arming first', () => {
-    // THE COLUMN WAS 44px OF NOTHING. The box appeared only once the reader had
-    // pressed `X` (or found 多选 in the palette), so a reader who wanted to hold
-    // five rows had to know a keyboard chord existed before a control they could
-    // see did. It is a real `<input>`, so it is in the tab order from the first
-    // render — the claim is not 「it can appear」 but 「it is there before anything
-    // is pressed」。
+  const heldEls = (root: ParentNode): Element[] =>
+    [...root.querySelectorAll('[data-picked]')]
+
+  const heldCount = (root: ParentNode): string =>
+    (root.querySelector('[class*="itemBatchCount"]')?.textContent ?? '')
+
+  it('every row on the list page can be held with no arming first', () => {
+    // THE COLUMN WAS 44px OF NOTHING, so the resident checkbox is gone. The way
+    // in is now a modifier press on the row itself: a reader who wants to hold a
+    // row does not have to know a mode exists before a control they can see does.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const rows = panel.surface.querySelectorAll('[class*="itemTableRow"]')
+      const rows = rowEls(panel.surface)
       expect(rows.length, 'the fixture drew no rows').toBeGreaterThan(1)
-      for (const [at, row] of [...rows].entries()) {
-        expect(pickboxOf(row), `row ${String(at)} has no pickbox on a page that can batch`).toBeDefined()
-      }
+      hold(rows[0])
+      expect(heldEls(panel.surface).length, 'a modifier press on a row held nothing').toBe(1)
+      expect(heldCount(panel.surface), 'the bar and the held row disagree about how many are held').toContain('1')
     } finally {
       panel.dispose()
     }
   })
 
-  it('and it is NOT on the two pages that have no batch bar', () => {
-    // PRODUCT puts multi-select on the list page alone, and a tick on a page with
-    // no bar is a tick into a holding the reader can neither see nor empty.
+  it('and a modifier press holds nothing on the two pages that have no batch bar', () => {
+    // PRODUCT puts multi-select on the list page alone, and a held row on a page
+    // with no bar is a holding the reader can neither see nor empty.
     for (const page of ['inbox', 'schedule'] as const) {
       const panel = mountPanel(fixtures(), page, 'wide')
       try {
-        expect(pickboxOf(panel.surface), `the ${page} page draws a pickbox and has no bar to act on it`).toBeUndefined()
+        hold(rowEls(panel.surface)[0])
+        expect(heldEls(panel.surface).length, `a modifier press on the ${page} page held a row with no bar to act on it`).toBe(0)
       } finally {
         panel.dispose()
       }
     }
   })
 
-  it('one tick holds one row, and SHIFT holds the run between two of them', () => {
+  it('one modifier press holds one row, and SHIFT holds the run between two of them', () => {
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const rows = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
-      const first = pickboxOf(rows[0] as Element) as HTMLInputElement
-      const last = pickboxOf(rows[3] as Element) as HTMLInputElement
-      tick(first)
-      expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'one tick put nothing in the holding').toContain('1')
+      const rows = rowEls(panel.surface)
+      hold(rows[0])
+      expect(heldCount(panel.surface), 'one modifier press put nothing in the holding').toContain('1')
       // SHIFT 从刚才那一条一直到这里：中间四行一起被握住。
-      tick(last, true)
-      const held = [...panel.surface.querySelectorAll('[class*="itemCellPick"] input')]
-        .filter(box => (box as HTMLInputElement).checked)
-      expect(held.length, 'shift did not hold the run between the two boxes').toBe(4)
-      expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'the bar and the boxes disagree about how many are held').toContain('4')
+      hold(rows[3])
+      expect(heldEls(panel.surface).length, 'shift did not hold the run between the two rows').toBe(4)
+      expect(heldCount(panel.surface), 'the bar and the held rows disagree about how many are held').toContain('4')
     } finally {
       panel.dispose()
     }
@@ -2255,11 +2248,9 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     // 的按压变成握住整张表。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const rows = [...panel.surface.querySelectorAll('[class*="itemTableRow"]')]
-      tick(pickboxOf(rows[2] as Element) as HTMLInputElement, true)
-      const held = [...panel.surface.querySelectorAll('[class*="itemCellPick"] input')]
-        .filter(box => (box as HTMLInputElement).checked)
-      expect(held.length, 'a shift with no anchor held something other than the one row under the pointer').toBe(1)
+      const rows = rowEls(panel.surface)
+      hold(rows[2])
+      expect(heldEls(panel.surface).length, 'a shift with no anchor held something other than the one row under the pointer').toBe(1)
     } finally {
       panel.dispose()
     }

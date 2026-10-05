@@ -19,37 +19,22 @@
  * must be seven on both rows or everything after the first slides — and an empty
  * cell draws nothing.
  */
+import { Fragment } from 'react'
 import type { ItemRowLineProps } from './row-line.tsx'
 import { ItemRowLine } from './row-line.tsx'
+import { itemDayGroupsOf } from './day-groups.ts'
+import type { ItemDayBucket } from './day-groups.ts'
+import type { ItemSort } from '../../core/item-sort.ts'
 import { t } from '../locales.ts'
 import css from './item.module.css'
 
-/**
- * THE COLUMNS, in order, and the two that have no name.
- *
- * `label: undefined` is not an omission: the first cell holds a tick box and the
- * last holds a menu, and naming either one would put a word about a control above
- * a column of data.
- *
- * THE `id` IS ALSO WHAT THE STYLESHEET READS, ON BOTH ROWS. A cell that holds a
- * pill is inset by that pill's own padding and border, so its label has to be
- * inset by the same amount — otherwise the head sits a pill's width to the right
- * of the column it names, which reads as 「this table is misaligned」 rather than
- * as 「two columns are misaligned by one pill each」. The head takes `column.id`
- * and the row writes the SAME word literally, so the two cannot drift apart.
- */
-const COLUMNS: readonly { readonly id: string; readonly label: 'item.table.state' | 'item.table.title' | 'item.table.priority' | 'item.table.due' | 'item.table.tags' | undefined }[] = [
-  { id: 'pick', label: undefined },
-  { id: 'state', label: 'item.table.state' },
-  { id: 'title', label: 'item.table.title' },
-  { id: 'prio', label: 'item.table.priority' },
-  { id: 'due', label: 'item.table.due' },
-  { id: 'tags', label: 'item.table.tags' },
-  { id: 'menu', label: undefined },
-]
-
-/** Which cell each column's content lands in — read by the row, not restated. */
-export const COLUMN_IDS = COLUMNS.map(column => column.id)
+/** The word each bucket is spoken in. Closed over the buckets core can produce. */
+const DAY_WORD: Readonly<Record<ItemDayBucket, 'item.day.today' | 'item.day.yesterday' | 'item.day.beforeYesterday' | 'item.day.earlier'>> = {
+  today: 'item.day.today',
+  yesterday: 'item.day.yesterday',
+  beforeYesterday: 'item.day.beforeYesterday',
+  earlier: 'item.day.earlier',
+}
 
 export interface ItemTableProps {
   readonly rows: readonly ItemRowLineProps[]
@@ -57,6 +42,18 @@ export interface ItemTableProps {
   readonly empty: string
   /** What the table says when the filter is what emptied it. */
   readonly noMatch?: string
+  /**
+   * THE CLOCK, and the ORDERING the reader chose.
+   *
+   * Both are handed in rather than read: a day heading says 「今天」 and that word
+   * is only true against the same clock that decided 「超期 15 天」 on the row under
+   * it, and whether a day heading may appear at all is a question about the
+   * ordering, which this component cannot see. The ordering goes down as itself —
+   * not as a boolean — because the table would then be trusting a caller's memory
+   * of which orders qualify.
+   */
+  readonly now: number
+  readonly sort: ItemSort
 }
 
 /**
@@ -80,15 +77,14 @@ export interface ItemTableProps {
 export function ItemTable(props: ItemTableProps) {
   return (
     <div className={css.itemTable}>
-      <div className={css.itemTableHead}>
-        <div className={css.itemTableHeadRow} role="row">
-          {COLUMNS.map(column => (
-            <span key={column.id} className={css.itemTableHeadCell} data-col={column.id} role="columnheader">
-              {column.label === undefined ? '' : t(column.label)}
-            </span>
-          ))}
-        </div>
-      </div>
+      {/* NO HEAD. There is no table here any more, so there is nothing for a head
+          * to name: the row is a bead, a sentence, its tags and one control, and
+          * 「状态 / 标题 / 优先级 / 截止 / 标签」 named a shape this surface no
+          * longer has. It stayed because the head was rendered from its own
+          * `COLUMNS` list and removing it would have meant touching a component
+          * four other files reach into — which is a cost, not a reason. **A rule
+          * that is kept because removing it is inconvenient is a rule that has
+          * stopped describing the thing it names.** */}
       {props.rows.length === 0
         /* 读不到 与 没有，是两件事；而「被筛选空了」又是第三件，所以这里接的是
            调用方已经分好的那一档，而不是它自己再猜一次。 */
@@ -96,8 +92,26 @@ export function ItemTable(props: ItemTableProps) {
             ? <p className={css.itemListEmpty}>{props.empty}</p>
             : <p className={css.itemNoMatch}>{props.noMatch}</p>)
         : (
-          <div className={css.itemTableBody} role="rowgroup">
-            {props.rows.map(row => <ItemRowLine key={row.view.item.id} {...row} />)}
+          <div className={css.itemTableBody} role="list">
+            {itemDayGroupsOf(props.rows.map(row => row.view.item), props.now, props.sort).map(group => (
+              <Fragment key={group.bucket}>
+                {/* ONE DAY, AND HOW MANY. The heading is `presentation` so it does
+                    * not become a list item — the rows are the list, and a heading
+                    * among them is a heading ABOUT them. */}
+                <div className={css.itemDayHead} role="presentation">
+                  <svg viewBox="0 0 13 13" width="13" height="13" aria-hidden="true">
+                    <rect x="1.5" y="2.6" width="10" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" />
+                    <path d="M1.5 5.6h10M4.2 1.2v2.6M8.8 1.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                  </svg>
+                  <b>{t(DAY_WORD[group.bucket])}</b>
+                  <i>{t('item.day.count', { n: String(group.n) })}</i>
+                </div>
+                {group.rows.map(item => {
+                  const row = props.rows.find(one => one.view.item.id === item.id)
+                  return row === undefined ? null : <ItemRowLine key={item.id} {...row} />
+                })}
+              </Fragment>
+            ))}
           </div>
         )}
     </div>

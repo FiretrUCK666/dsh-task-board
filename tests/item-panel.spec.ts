@@ -23,6 +23,8 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
+import { formatItemDate } from '../src/client/item/model.ts'
+import { ItemRowMenu, type RowMenuAction } from '../src/client/item/row-menu.tsx'
 import {
   NO_SELECTION,
   allPicked,
@@ -80,9 +82,13 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
  * `tests/panel-harness.ts` models the same face for the render spec, and the two
  * are kept in step deliberately rather than by accident.
  */
-function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}) {
+function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[] } = {}) {
   return {
     view: () => items,
+    /** The rows behind a tombstone — the archive the rail's 「已删除」 counts.
+     *  Empty is the honest default, not a stub that hides a missing read: a
+     *  harness where nothing was deleted should draw 「已删除 0」. */
+    archive: () => over.deleted ?? [],
     setItems: () => undefined,
     clientId: () => 'client-under-test',
     hostLostItems: () => over.hostLost === true,
@@ -91,111 +97,112 @@ function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; s
   }
 }
 
-function renderPanel(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean } = {}): string {
+interface PanelBenchOptions {
+  readonly hostLost?: boolean
+  readonly synced?: boolean
+  /** WHICH ROW IS OPEN AT MOUNT. `renderToStaticMarkup` presses nothing, so the
+   *  expanded row is the one state a static render cannot reach by itself — and the
+   *  date axis lives inside it. */
+  readonly openRow?: string
+  /** The clock the fixtures are dated against, so a date read here is about the
+   *  same day the fixture was written for. */
+  readonly now?: number
+}
+
+function renderPanel(items: readonly ItemRecord[], over: PanelBenchOptions = {}): string {
   return renderToStaticMarkup(createElement(ItemListPanel, {
     signal: new AbortController().signal,
     face: { replica: fakeReplica(items, over) as never, controller: undefined },
+    ...(over.now === undefined ? {} : { now: over.now }),
+    ...(over.openRow === undefined ? {} : { openRow: over.openRow }),
   }))
 }
 
-describe('the workbench is a set of pages, and the rail says which', () => {
-  it('offers exactly the three container pages, each with an accessible full name', () => {
-    // The short name is what a 390px rail can hold; the full name is what a
-    // screen reader announces. The rail carrying only short names is how a
-    // reader learns what a page is for by opening it.
+describe('the rail is the map, and the bar above the rows says three things', () => {
+  it('every way into the document is still somewhere, and each one is a row in the rail', () => {
+    // 三个地方都还在，只是**不在同一种轨上**：刚记的与全部是左栏里的两行，
+    // 「按条件看」那一组是同一条栏上的另一组。原来这里数的是页轨上的三个 tab，
+    // 而页轨已经搬进左栏——**三个地方一个都不许消失**，它们只是不再并排站着。
+    //
+    // 「全部」含已完成的：已完成是那一页上的一个开关，不是一个地方，而把它
+    // 叫做「全部没做完的事」等于对读屏工具说这一页装着它其实没有的东西。
     const html = renderPanel([])
-    for (const short of ['收件', '清单', '日程']) expect(html, short).toContain(short)
-    // 「清单」 IS EVERY ROW, FINISHED ONES INCLUDED — 已完成 is a SWITCH on this
-    // page, not another page, so naming it 「全部没做完的事」 told a screen reader
-    // the page holds something it does not. The sentence is the map of the panel,
-    // and a map that omits what is on it is the one kind of map that is worse
-    // than no map.
-    for (const aria of ['刚记下、还没给它结构的条目', '全部条目，含已完成的', '按时间排的事']) {
-      expect(html, aria).toContain(aria)
+    for (const where of ['刚记下的', '全部', '已删除', '按日子看', '按重要程度', '按状态']) {
+      expect(html, `${where} is no longer somewhere the reader can go`).toContain(where)
     }
   })
 
-  it('keeps the surface to six things, and the page rail is one of them', () => {
-    // Low density is not fewer features; it is putting each feature next to the
-    // thing it changes. Batching lives INSIDE the page, beside the rows it acts
-    // on, and so does the archive.
+  it('the bar above the rows says three things, and the page title is not one of them', () => {
+    // 这条断言的形状没变，**清单换了几样**：顶栏从「标题 + 页轨 + 统计带 + 筛选条
+    // + 常驻快记框」变成「计数 · 搜索 · 筛选 · 命令 · 排序 · ＋新建一条」。
     //
-    // FOUR BECAME SIX, and the two that came back are not new work: the search box
-    // returned to the head (it is about the WHOLE page, and a box that costs two
-    // keystrokes before it can filter a page is a box half the readers never find),
-    // and the statistics band came with the filter bar, because a reader choosing
-    // which rows to look at needs the number and the sieve in the same breath.
-    // Both are on the spine, and the claim is still a claim about FURNITURE: six
-    // things above the rows, and everything else inside the page.
-    // A row that is actually behind its plan, so the statistics band has
-    // something to say: a band of three zeros is not drawn at all, and a gate
-    // that asks for it on a document with nothing in it is asking for a thing
-    // that is deliberately absent.
+    // 低密度不是功能变少，是**每样东西挨着它改变的那一样**。收件与全部进了左栏，
+    // 统计卡进了左栏的数里，筛选条进了左栏加一枚按钮，快记文法进了新建面板的第一行。
+    // 留下来的这三样说的是三句不同的话：「我在找什么」「我按什么排」「我怎么加一条」。
     const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY })])
     for (const part of [
-      'itemPageTitle', // 标题
+      'itemTopCount', // 计数：紧挨着搜索框
       'itemSearch', // 搜索
-      'itemPageRail', // 页轨
-      'itemComposerChips', // 快记框
-      'itemStats', // 统计带
-      'itemFilters', // 筛选条
+      'itemTopBarChip', // 筛选与排序
+      'itemNewButton', // ＋新建一条
+      'itemRail', // 左栏
     ]) {
-      expect(html, `${part} is not on the surface — the spine is no longer the six things it claims to be`).toContain(part)
+      expect(html, `${part} is not on the surface — the strip no longer holds what it claims to hold`).toContain(part)
     }
-    // And the six are the six: the archive, the receipts and the batch bar all
-    // live inside the page, below the table, where they act on rows rather than
-    // on the page itself.
-    expect(html, 'the archive entry is on the spine instead of at the foot of the page').not.toContain('itemArchiveSection')
+    // 页标题与页轨都不在了：一个面板的头如果还要回答「我在第几页」，说明那本
+    // 还是一本分页的书；而它现在是一张有导航的表。
+    expect(html, 'a page title survived on a surface with a rail').not.toContain('itemPageTitle')
+    expect(html, 'the page rail survived beside the rail that replaced it').not.toContain('itemPageRail')
+    // 常驻快记框也走了：回车即存的框没法让人犹豫，而快记文法现在在新建面板里。
+    expect(html, 'the always-on capture box came back').not.toContain('itemComposerChips')
   })
 })
 
-describe('the composer can always be found', () => {
-  it('is there when the list is EMPTY — the state a first-time reader meets', () => {
-    const html = renderPanel([])
-    expect(html).toContain('记一条新的，回车即存')
+describe('capturing a row is one door, and it is the sheet it opens', () => {
+  it('the door is on the strip in BOTH states — empty list and a list to read', () => {
+    // 原来的断言钉的是**常驻快记框**在两种状态下都在，因为它会随行滚走。
+    // 它现在不常驻了，而它要去的地方更硬：**快记文法成了新建面板的第一行**，
+    // 所以面板永远有一枚「＋新建一条」，而回车即存的框再也拦不住一个还在想的人。
+    //
+    // 门在两种状态下都在，这条没变——变的是它通向哪里。
+    expect(renderPanel([]), 'a first-time reader has no way to put a row down').toContain('itemNewButton')
+    const withRows = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
+    expect(withRows).toContain('itemNewButton')
+    expect(withRows).toContain('A note')
   })
 
-  it('is still there once there is something to read', () => {
+it('the door is the LAST control on the strip, and the strip never scrolls away', () => {
+    // A door that scrolls away with the rows is a door a reader with thirty things
+    // to put down stops using.
+    //
+    // THE SCROLLER IS NOW `.itemFlow`, and this assertion used to stand in for it
+    // with `.itemWorkbench` — which used to be the element that held the rows AND
+    // scrolled. Splitting them (the bar moved beside the rail, so the column frames
+    // the bar and only the flow below it scrolls) is what made the old proxy wrong:
+    // it was measuring 「the thing that scrolls」 by a name that no longer names it.
+    //
+    // So the test names the scroller. The contract is unchanged and slightly
+    // stronger for it: the door is not merely before the list, it is before the
+    // element that actually takes the rows away with it.
     const html = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
-    expect(html).toContain('记一条新的，回车即存')
-    expect(html).toContain('A note')
+    const bar = html.indexOf('itemNewButton')
+    const scroller = html.indexOf('itemFlow')
+    expect(bar, 'the capture door is not in the render at all').toBeGreaterThan(-1)
+    expect(scroller, 'the scrolling list is not in the render at all').toBeGreaterThan(-1)
+    expect(bar, 'the capture door lives inside the scroller, so a long list takes it away').toBeLessThan(scroller)
   })
 
-  it('sits above the workbench, so a long list cannot carry it out of reach', () => {
-    // The failure this exists to prevent is a capture box that scrolls away with
-    // the rows: a reader with thirty things to put down would have to scroll back
-    // up for every one of them, and would stop putting them down.
-    //
-    // IT IS ASSERTED AGAINST THE WORKBENCH, which is the element that holds the
-    // rows and the only scroller on this surface. An earlier version of this case
-    // asked about a separate `itemScroll` region that no longer exists, and a gate
-    // that names an element the file does not draw is a gate that can only fail:
-    // it was never going to pass and it was not asking about the composer either.
-    const html = renderPanel([item()])
-    const workbenchAt = html.indexOf('itemWorkbench')
-    const composerAt = html.indexOf('itemComposerChips')
-    expect(workbenchAt, 'the workbench is not in the render at all').toBeGreaterThan(-1)
-    expect(composerAt, 'the composer is not in the render at all').toBeGreaterThan(-1)
-    expect(composerAt, 'the composer scrolled away with the list, so a long list carries it out of reach')
-      .toBeLessThan(workbenchAt)
-  })
-
-  it('teaches its syntax by writing it, not by three buttons that mean nothing yet', () => {
-    // A capture syntax nobody can find is a syntax nobody uses, and the reader
-    // falls back to filling in four fields before the thought is safely down. So
-    // the box has always taught it — but it used to teach it with three pressable
-    // SYMBOLS (`#` `!` `@`) that typed the grammar in for you. A newcomer who
-    // tapped `#` got a box full of `#` and learned the glyph, not the sentence:
-    // the only part of the surface you could press, and none of it meaning
-    // anything until you already knew what it meant.
-    //
-    // What teaches a syntax is writing one and watching what was understood, so
-    // the symbols are gone and the chip is the evidence. This case pins the
-    // direction of that change — no symbol buttons — rather than the old claim,
-    // which asserted the very sentence they no longer draw.
+  it('teaches the capture syntax by writing it, not by symbols you have to recognise first', () => {
+    // 一个没人找得到的快记文法就是没人用的快记文法，读者会退回去填四个字段。
+    // 教一个文法的方式是**写一句、看着它被理解成什么**，所以 `#` `!` `@` 三枚
+    // 可按的符号早就没了——一个刚上手的人点 `#`，得到一框 `#`，学到的是一个
+    // 记号而不是一句话，而那是这一页上唯一能按、且要你先知道意思才会动的部分。
     const html = renderPanel([])
-    expect(html, 'the syntax is still taught by buttons you have to recognise before they help').not.toContain('itemComposerExamples')
-    expect(html, 'the box is not there for the reader to write in').toContain('itemComposerChips')
+    expect(html, 'the syntax is taught by buttons you have to recognise before they help').not.toContain('itemComposerExamples')
+    expect(html, 'the capture box came back as something always on screen').not.toContain('itemComposerChips')
+    // 文法本身一个字都没改，它只是搬进了新建面板——所以它仍然得是**这一页写着
+    // 它的那个东西**。这枚门就是那件事的入口。
+    expect(html).toContain('itemNewButton')
   })
 })
 
@@ -228,11 +235,16 @@ describe('a row is legible at rest', () => {
     // it, and both failures read as a green tick on an empty string.
     const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })])
     expect(html, 'the row is not on the page at all — the assertions below would pass on an empty string').toContain('Slipped')
-    // `itemCellDue[^"]*"` and not `itemCellDue"`: the class map hashes every name,
-    // so the word on screen is `itemCellDue_a9e292` and a pattern that insists on
+// `itemRowTail[^"]*"` and not `itemRowTail"`: the class map hashes every name,
+    // so the word on screen is `itemRowTail_a9e292` and a pattern that insists on
     // a closing quote straight after the word matches nothing at all.
-    const cell = /<div class="[^"]*itemCellDue[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
-    expect(cell, 'the date cell states no words at all, so the tone below is being read off nothing').not.toBe('')
+    //
+    // IT WAS A COLUMN, AND IT IS NOW PART OF THE SENTENCE. The reading was its own
+    // cell so that a table could sort it; this is not a table, and a number in its
+    // own box is a number the reader has to go and find. The words and the tone are
+    // the same contract, only spoken from a different place.
+    const cell = /<span class="[^"]*itemRowTail[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    expect(cell, 'the date reading states no words at all, so the tone below is being read off nothing').not.toBe('')
     expect(cell).toContain('落后')
     expect(cell, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')
   })
@@ -243,38 +255,73 @@ describe('a row is legible at rest', () => {
   })
 
   it('keeps a not-yet-startable row out of every day reading', () => {
-    const html = renderPanel([item({ startsAfter: Date.now() + 5 * DAY, title: 'Gated' })])
-    expect(html).toContain('最早')
+    // 该读法在**日期轴**上，而轴在展开区里 —— 而静态渲染不会展开任何一行，所以这个
+    // 断言以前能看见它，是因为那时行上还印着第二个读法。行只印一个读法之后，读法
+    // 住进了它该住的那一栏，断言也得跟着去那一栏。
+    const gated = item({ startsAfter: T0 + 5 * DAY, title: 'Gated' })
+    const html = renderPanel([gated], { openRow: gated.id, now: T0 })
+    expect(html, 'the gate reading is not on screen even with the row open').toContain('最早')
   })
 })
+describe('the hand-off is one menu entry, and the row without a target says why', () => {
+  const ask = (extra: Partial<RowMenuAction> = {}, others: readonly RowMenuAction[] = []): string =>
+    renderToStaticMarkup(createElement(ItemRowMenu, {
+      rowId: 'r-1',
+      trigger: null,
+      panel: null,
+      onClose: () => undefined,
+      actions: [{ key: 'ask', label: '问 AI', onPick: () => undefined, ...extra }, ...others] as readonly RowMenuAction[],
+    }))
 
-describe('the hand-off appears only where there is a target', () => {
-  it('is offered on a row that hangs off a card', () => {
-    const html = renderPanel([item({ taskId: 't-9' })])
-    expect(html).toContain('问 AI')
+  it('is offered when the row hangs off a card', () => {
+    expect(ask()).toContain('问 AI')
+    expect(ask(), 'an available hand-off is drawn as a broken one').not.toContain('aria-disabled')
   })
 
-  it('is on every row, and the one with nothing to hand it to says so', () => {
-    // A button that COMES AND GOES with a fact the interface never states is
-    // worse than a button that is always there and says 「not yet」: a reader
-    // scanning the column sees it on row two and not on row three and starts
-    // hunting for whatever they think they have lost. The condition is real — a
-    // row with no card has no session to ask — so the row SHOWS the condition
-    // rather than hiding the control.
+  it('stays on a row with nothing to hand it to, and says what is missing', () => {
+    // An entry that COMES AND GOES with a fact the interface never states is worse
+    // than one that is always there and says 「not yet」: a reader scanning the menu
+    // sees it on row two and not on row three and starts hunting for whatever they
+    // think they have lost. The condition is real — a row with no card has no
+    // session to ask — so the entry SHOWS the condition rather than hiding it.
     //
-    // BOTH HALVES, because a button that is merely always there is the other
-    // half of the same defect: 「问 AI」 with no reason and no state reads as a
-    // broken one. The disabled flag is the state, and the sentence is the reason.
-    const html = renderPanel([item()])
-    expect(html, 'the hand-off is not on the row at all — the reader cannot see that it exists').toContain('问 AI')
-    const ask = /<button[^>]*itemAsk[^>]*>/.exec(html)?.[0] ?? ''
-    expect(ask, 'the hand-off is not a button').not.toBe('')
-    expect(ask, 'a row with no card still offers a working hand-off — pressing it can only say there is nothing to hand it to').toContain('disabled')
-    // 理由写在这枚按钮自己的可及名称里，不只是悬停提示：触屏没有 hover。
-    expect(ask, 'the disabled hand-off says nothing about what is missing').toMatch(/title="[^"]+"/)
+    // IT IS ASKED HERE, NOT OF THE PANEL'S MARKUP, because the menu is closed at
+    // rest: `renderToStaticMarkup` never presses the `⋯`, so a panel-level
+    // assertion about a menu entry is an assertion about nothing. The row's own
+    // contract is that it HAS one door, and the entry's contract is this.
+    //
+    // BOTH HALVES, because an entry that is merely always there is the other half
+    // of the same defect: 「问 AI」 with no reason and no state reads as a broken
+    // one. `aria-disabled` is the state; the hint is the reason, and it is written
+    // in the TEXT rather than only in a `title`, because touch has no hover.
+    const html = ask({ disabled: true, hint: '这一条还没挂到任何一张卡上，挂上之后就能问它。' })
+    expect(html).toContain('问 AI')
+    expect(html, 'a row with no card still offers a working hand-off — pressing it can only say there is nothing to hand it to').toContain('aria-disabled="true"')
+    expect(html, 'the disabled hand-off does not say what is missing').toContain('还没挂到')
+  })
+
+  it('pressing a disabled entry closes nothing and runs nothing', () => {
+    let picked = 0
+    const html = renderToStaticMarkup(createElement(ItemRowMenu, {
+      rowId: 'r-1',
+      trigger: null,
+      panel: null,
+      onClose: () => undefined,
+      actions: [{ key: 'ask', label: '问 AI', onPick: () => { picked += 1 }, disabled: true }] as readonly RowMenuAction[],
+    }))
+    expect(html).toContain('itemRowMenuItem')
+    expect(picked, 'a disabled entry ran its action').toBe(0)
+  })
+
+  it('the row carries ONE door, and it is the `⋯`', () => {
+    // The row used to carry two controls for 「do something to this」 — a button
+    // that asks, and a `⋯` that opens — at two different distances from each
+    // other. The menu is one door and it lists what this row can be asked to do.
+    const html = renderPanel([item({ taskId: 't-9' })])
+    expect(html).toContain('itemRowDots')
+    expect(html, 'a second affordance came back beside the menu').not.toContain('itemAsk')
   })
 })
-
 describe('empty is two different facts, and they do not look the same', () => {
   /* 「一组空的分桶在还有别的行时仍然留着它的头、它的数、别的什么都没有」这条
    * 断言连同它的对象一起没了，**不是被放宽，是被取消资格**：四个状态分组已经拆掉，
@@ -501,6 +548,22 @@ describe('the panel draws no judgment of its own', () => {
     // A cast silences the checker: a typo compiles, ships, and renders
     // `undefined` at runtime. A closed Record keyed by the union cannot.
     expect(source).not.toMatch(/t\(`item\./)
+  })
+
+it('a date prints its year only when the year is not this year', () => {
+    // 「2026年10月19日」 beside a row whose verdict came from the panel's clock is
+    // noise on every line, all of it repeating what the reader's own calendar
+    // already says. So the year goes — and the rule is checked in BOTH
+    // directions, because a formatter that simply never prints a year gets the
+    // common case right and 「明年十月」 wrong, and a deadline is the one date
+    // nobody may misread.
+    const october19th = (year: number): number => new Date(year, 9, 19).getTime()
+    const today = Date.now()
+    const thisYear = new Date(today).getFullYear()
+    expect(formatItemDate(october19th(thisYear), false, today)).toBe('10月19日')
+    expect(formatItemDate(october19th(thisYear + 1), false, today)).toBe(`${thisYear + 1}年10月19日`)
+    expect(formatItemDate(october19th(thisYear + 1), true, today)).toContain(String(thisYear + 1))
+    expect(formatItemDate(october19th(thisYear), true, today)).not.toContain(String(thisYear))
   })
 
   it('reads inbox membership instead of restating the predicate', () => {

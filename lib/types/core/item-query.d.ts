@@ -23,12 +23,13 @@
  *     empty collection, never a zero or a "none" string standing in for a value
  *     nobody computed — so a surface that forgot to ask cannot paint a confident
  *     nothing.
- *  4. **A COUNT AND ITS JUMP ARE ONE PREDICATE, BY CONSTRUCTION.** Every flag
- *     below is emitted together with the triage line and the filter it opens, so
- *     the number on a tile and the list under it cannot be made to disagree; see
- *     the note inside {@link itemMatches}, which is where that promise is kept.
+ *  4. **A COUNT AND ITS JUMP ARE ONE PREDICATE, BY CONSTRUCTION.** Every flag is
+ *     a named entry in {@link ITEM_FLAG_TESTS}, and anything that COUNTS one
+ *     calls the same function the jump calls — so the number on a tile and the
+ *     list under it cannot be made to disagree.
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts';
+import type { DatePosture } from './item-dates.ts';
 /** Qualifier keys the grammar recognises, mapped onto STABLE field values.
  *
  *  **Exported so the model can be taught this table instead of a copy of it.**
@@ -86,9 +87,19 @@ export declare const ITEM_FLAGS: readonly ItemFlag[];
  * 「I used it wrong」.
  *
  * **DERIVED, NEVER TYPED.** Every entry comes from `ITEM_FLAGS`, `PRIORITY_BY_TOKEN`
- * or `ITEM_STATUSES` — the same tables the parser reads — so adding a flag is one
- * edit here and one edit there, and they cannot disagree because there is only
- * one of each.
+ * or {@link ITEM_STATUS_VIEWS} — the same tables the parser reads — so adding a
+ * flag is one edit here and one edit there, and they cannot disagree because
+ * there is only one of each.
+ *
+ * **AND IT SPELLED OUT `status:inProgress` FOR SIX RELEASES' WORTH.** The
+ * statuses came from `ITEM_STATUSES`, which is the three a person can CHOOSE
+ * (`open` / `blocked` / `done`); `inProgress` is the fourth a person can only be
+ * SHOWN, and it is not in that table because it is derived from a card. The
+ * parser has always accepted `status:inprogress` and `isItemQualifierToken` has
+ * always said yes — but this list, which is what `taskboard_query` teaches the
+ * model, never mentioned it. So the token worked for a reader who guessed it and
+ * was invisible to the model that was told the whole vocabulary. **A vocabulary
+ * that is derived from one of the two halves of a type teaches one half.**
  */
 export declare function itemQualifierVocabulary(): readonly string[];
 /**
@@ -154,6 +165,48 @@ export interface ItemMatchContext {
 }
 /** The default reading context: right now, the default threshold, no board. */
 export declare function itemMatchContextOf(now: number, staleDays?: number, running?: ReadonlyMap<string, boolean>): ItemMatchContext;
+/** What a flag test is given. ONE probe per row, so two flags cannot disagree
+ *  about the same row's date posture — a disagreement that is invisible until a
+ *  rail prints a number the jump does not honour. */
+export interface ItemFlagProbe {
+    readonly item: ItemRecord;
+    readonly posture: DatePosture;
+    readonly stale: number | undefined;
+    readonly ctx: ItemMatchContext;
+}
+/** Build the probe a flag test reads. One posture, one staleness, one clock. */
+export declare function flagProbeOf(item: ItemRecord, ctx: ItemMatchContext): ItemFlagProbe;
+/**
+ * EVERY FLAG, AS A NAMED PREDICATE, IN A TABLE KEYED ON THE UNION.
+ *
+ * These were a nested ternary chain inside {@link itemMatches}, and the chain's
+ * final `else` was the `done` test. Nothing checked that every flag had an arm:
+ * add a flag to {@link ItemFlag} and to {@link ITEM_FLAGS}, forget the arm, and
+ * the row silently filters as 「已完成」 — a compile-clean build and a filter
+ * that lies. That is the same shape {@link ITEM_SORTS} refuses with
+ * `Record<ItemSort, …>` in `item-sort.ts`, and the same one
+ * {@link ITEM_FIELDS} refuses with `as const satisfies Record<…>` in `item.ts`.
+ * Three tables, one reason: a table keyed on the union is a BUILD FAILURE when a
+ * member has no entry, and an `if` chain is a runtime surprise when it does not.
+ *
+ * THE SCOPE LIVES HERE, not in the count. `behind` and `undated` are produced by
+ * the triage lines, and both count only UNFINISHED work (`undated` only rows
+ * that are not bare captures). The flag tests below carry that same scope so a
+ * jump cannot land on more rows than the number promised — a defect that was real
+ * here once, and the reason the scope is written next to the predicate instead of
+ * next to the number that reads it.
+ */
+export declare const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) => boolean>>;
+/**
+ * Does this row pass this flag? The surface form of {@link ITEM_FLAG_TESTS},
+ * for anything that has the row and the context but not a probe yet.
+ *
+ * **This is also how a number is COUNTED.** A rail, a tile or a count line that
+ * wants 「how many rows does this flag hold」 calls this on the same row — so the
+ * number on screen and the list behind it are one predicate by construction,
+ * which is the promise rule 4 of this module makes.
+ */
+export declare function itemHasFlag(item: ItemRecord, flag: ItemFlag, ctx: ItemMatchContext): boolean;
 /**
  * Whether a row satisfies a parsed query.
  *

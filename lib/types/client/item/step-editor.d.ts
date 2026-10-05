@@ -12,6 +12,6 @@ export interface ItemStepsProps {
 /**
  * The checklist.
  * @param props - the row, the focus request and the four hand-offs.
- * @returns the list, then the field that adds to it.
+ * @returns the board, then the field that adds to it.
  */
 export declare function ItemSteps(props: ItemStepsProps): import("react").JSX.Element;

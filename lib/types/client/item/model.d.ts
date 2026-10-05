@@ -54,7 +54,7 @@ export declare function newItemId(): string;
  * @param english - whether the active UI language is English.
  * @returns a short human date.
  */
-export declare function formatItemDate(at: number, english: boolean): string;
+export declare function formatItemDate(at: number, english: boolean, now?: number): string;
 /**
  * Parse a `yyyy-mm-dd` field back into a moment, or `undefined` when blank.
  *
@@ -71,3 +71,14 @@ export declare function formatItemDate(at: number, english: boolean): string;
 export declare function parseItemDate(value: string): number | undefined;
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export declare function toItemDateField(at: number | undefined): string;
+/**
+ * A moment as `yyyy-mm-dd`, in LOCAL time.
+ *
+ * LOCAL, not UTC, and that is the whole comment. The reader's calendar is local:
+ * a row due today is due today on the machine they are sitting at, and a key
+ * built from `toISOString()` puts every row that falls after the evening
+ * cutoff — or anywhere west of Greenwich — on the wrong day. It is the same
+ * reason `startOfDay` is local in core, and the same reason a stored instant is
+ * never printed as a bare date without going through here.
+ */
+export declare function localDayKey(at: number): string;

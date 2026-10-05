@@ -30,6 +30,13 @@ const WHY_WORDS: Readonly<Record<string, TaskBoardKey>> = {
   taskHasNoSession: 'item.why.taskHasNoSession',
   noLiveAgent: 'item.why.noLiveAgent',
   noSuchTask: 'item.why.noSuchTask',
+  /**
+   * The request named one card and a row belonging to another. There is no
+   * reader-facing way to cause this — the panel sends its own row — so it is a
+   * guard against a caller that does not, and the sentence says the truth about
+   * the request rather than blaming the reader for a body they never wrote.
+   */
+  rowBelongsElsewhere: 'item.why.rowBelongsElsewhere',
   // ── the host itself ──
   hostUnavailable: 'item.why.hostUnavailable',
   hostStorageMissing: 'item.why.hostUnavailable',

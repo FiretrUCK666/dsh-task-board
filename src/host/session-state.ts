@@ -103,8 +103,20 @@ function blind(why: string): PostureFact {
  * wiring resolves the service at call time — a service resolved once at
  * startup would be a handle held across the moment the host finishes booting. */
 
+/**
+ * The host's agent registry, narrowed to what this plugin reads off it.
+ *
+ * `followup` is OPTIONAL rather than required because most of the readers here
+ * only read `status` and a test double should not have to invent a hand-off to
+ * satisfy them. It is listed at all because the plugin really does call it — the
+ * two slash commands, the checklist's hand-off and `item.ask` all put a sentence
+ * into a live agent — and the face used to declare only `status`, so every one of
+ * those three call sites had to cast its way past the type. **A face that lies
+ * about what it carries pushes every caller into a cast, and a cast is a place
+ * where a wrong shape goes unremarked.**
+ */
 export interface AgentsFace {
-  get(id: string): { status?: unknown } | undefined
+  get(id: string): { status?: unknown; followup?: (message: unknown) => void } | undefined
 }
 export interface WorkspaceRegistryFace {
   archivedSessionIds?: readonly string[]

@@ -1,56 +1,60 @@
 /**
- * The checklist editor: type a line, take one off, move one up or down.
+ * The checklist, drawn as a BOARD and not as a form.
  *
- * WHY IT IS IN THE DETAIL PANE AND NOT IN THE ROW MENU. The menu is a MENU — a
- * list of things a row can be made to do, one press each, and it closes. An editor
- * is a form: a field to type into, four controls per line, and a caret that has
- * to STAY somewhere while the reader types. Putting a form inside a menu means
- * the menu is either modal over the rows (a dialog, and this surface has none) or
- * a floating box that closes on the first outside click — which is the first
- * keystroke of a half-typed step. So the menu's 「编辑步骤」 OPENS this, and the
- * editing happens where the steps are already drawn and already readable.
+ * ── WHY A BOARD AND NOT A LIST OF CHECKBOXES ─────────────────────────────────
  *
- * WHICH IS ALSO WHY THE HAND-OFF IS A COUNTER AND NOT A REF. The panel owns the
- * row and the detail is drawn in one of two places (in the row on the phone, in
- * the rail on a desk), so a parent reaching into whichever one mounted would be a
- * parent that has to know which. A bumped counter is the same request the capture
- * box already takes, for the same reason: the gesture is 「写点什么」, so that is
- * what the panel asks for.
+ * A checklist is not a list of booleans; it is 「还有多少没做」 and 「下一件是哪
+ * 一件」. A flat list answers neither: at thirty steps the reader scrolls past
+ * twenty-nine finished lines to reach the one they have to do, and at a hundred
+ * steps the panel carries three hundred controls, two hundred of them on rows
+ * nobody is looking at.
  *
- * EVERY CONTROL IS A REAL BUTTON WITH A NAME, not a drag handle. Reordering by
- * dragging is the faster gesture on a desk and it is unavailable to a thumb and
- * to a keyboard, and it is unavailable to a screen reader entirely — so it is not
- * the only way, and here it is not a way at all. Two labelled presses move a line
- * one place each, which every input device already knows how to do.
+ * So the board says both facts once — a bar that is how far along it is, and the
+ * same fact in digits — then **the next step alone**, then what is waiting, then a
+ * fold for what is already done. A hundred steps is a hundred steps of *work*; it
+ * is never a hundred rows of *screen*.
+ *
+ * ── WHY THE COUNT AND THE BAR NEVER DESCRIBE WHAT IS DRAWN ───────────────────
+ *
+ * Both read `item.steps`. What is on screen is a READING of that list rather than a
+ * second list: if the bar were computed from the drawn rows, a folded row would
+ * stop existing, and 「2 / 40」 beside one visible row would be an arithmetic
+ * accident rather than a fact.
+ *
+ * ── WHY EVERY CONTROL IS A NAMED BUTTON ─────────────────────────────────────
+ *
+ * Reordering by dragging is the faster gesture on a desk and it is unavailable to
+ * a thumb, to a keyboard and to a screen reader entirely — so it is not here at
+ * all. Moving and removing live in ONE ⋯ on the step itself, because three always
+ * visible buttons per row is three controls times a hundred rows, and no thumb can
+ * aim at the middle third of a long list of small buttons.
  */
 import { useEffect, useRef, useState } from 'react'
-import type { ItemRecord } from '../../core/item.ts'
+import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
+import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
 
 /**
- * ONE GHOST BUTTON, SPELLED OUT.
+ * HOW MANY WAITING STEPS ARE DRAWN BEFORE THE REST GO BEHIND A LINE.
  *
- * It is the same two classes the board's `Button` would have put on it, and it is
- * written out rather than imported for one reason: **this control's name is the
- * only thing that says which step it acts on**, and `Button` does not forward an
- * `aria-label` — it is accepted in the props and dropped, so the name never reaches
- * the element. Three controls per step, all reading 「往上挪一步」, is a checklist
- * nobody can operate without a mouse to hover with.
- *
- * The classes are the board's own, so this is a composition and not a second
- * variant table: when `Button` grows `aria-label` (one prop, one attribute), this
- * file goes back to `Button` and the surface is unchanged.
- * @param tone - `ghost` for a move, `danger` for the one that takes work away.
- * @returns the class list, and the props every one of these buttons shares.
+ * Six is a reading rather than a measurement: about how many one-sentence steps
+ * fit above the fold on the narrowest board this surface runs on, with the count
+ * and the bar still in sight. It is named because a fold the reader sees on every
+ * row is a fold they learn; a literal typed into the comparison would be the same
+ * number today and an unexplainable one tomorrow.
  */
-function stepButton(tone: 'ghost' | 'danger'): { className: string; type: 'button' } {
-  return {
-    type: 'button',
-    className: `${tone === 'danger' ? boardCss.dangerGhostButton : boardCss.ghostButton} ${boardCss.buttonSm}`,
-  }
+const WAITING_VISIBLE = 6
+
+/** What every drawn step is handed, so the board and the fold share one row. */
+interface RowHands {
+  readonly openMenu: string | undefined
+  readonly onToggleMenu: (stepId: string) => void
+  readonly onToggle: (stepId: string) => void
+  readonly onMove: (stepId: string, by: -1 | 1) => void
+  readonly onRemove: (stepId: string) => void
 }
 
 export interface ItemStepsProps {
@@ -67,12 +71,13 @@ export interface ItemStepsProps {
 /**
  * The checklist.
  * @param props - the row, the focus request and the four hand-offs.
- * @returns the list, then the field that adds to it.
+ * @returns the board, then the field that adds to it.
  */
 export function ItemSteps(props: ItemStepsProps) {
   const [draft, setDraft] = useState('')
+  const [openMenu, setOpenMenu] = useState<string | undefined>(undefined)
   const field = useRef<HTMLInputElement | null>(null)
-  const { steps } = props.item
+  const steps = props.item.steps
 
   // The caret follows the request and NOTHING else, so a re-render caused by the
   // step the reader just added does not yank the caret out of a half-typed second
@@ -90,82 +95,191 @@ export function ItemSteps(props: ItemStepsProps) {
     field.current?.focus()
   }
 
+  const hands: RowHands = {
+    openMenu,
+    // ONE MENU AT A TIME, and it opens on a press rather than staying open: a
+    // hundred steps with a hundred open menus is a wall.
+    onToggleMenu: id => setOpenMenu(current => (current === id ? undefined : id)),
+    onToggle: props.onToggle,
+    onMove: props.onMove,
+    onRemove: props.onRemove,
+  }
+
+  const addField = <StepAdd draft={draft} setDraft={setDraft} onAdd={add} field={field} />
+
+  if (steps.length === 0) {
+    return (
+      <>
+        <p className={css.itemHint}>{t('item.steps.empty')}</p>
+        {addField}
+      </>
+    )
+  }
+
+  const done = steps.filter(step => step.done)
+  const waiting = steps.filter(step => !step.done)
+  const shown = waiting.slice(0, WAITING_VISIBLE)
+  const hidden = waiting.length - shown.length
+  const percent = Math.round((done.length / steps.length) * 100)
+
   return (
     <>
-      {steps.length === 0
-        ? <p className={css.itemHint}>{t('item.steps.empty')}</p>
-        : (
-          <ul className={css.itemStepList}>
-            {steps.map((step, at) => (
-              <li key={step.id} className={css.itemStep}>
-                <div className={css.itemStepMain}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={step.done}
-                      aria-label={step.text}
-                      onChange={() => props.onToggle(step.id)}
-                    />
-                    <span data-done={step.done ? '' : undefined}>{step.text}</span>
-                  </label>
-                </div>
-                {/* 三个控件，顺序是从最常用排到最不常用：去掉在最后，因为它不可撤销，
-                    而读者点错它的次数比点错「挪上去」多得多。
-                    每一个都带着**这一步的名字**——不是「↑」，也不是「往上挪一步」：
-                    一份五步的清单上有十四个这样的控件，只有名字能告诉读者哪一个是
-                    哪一个。 */}
-                <div className={css.itemStepActions}>
-                  <button
-                    {...stepButton('ghost')}
-                    disabled={at === 0}
-                    aria-label={`${t('item.steps.up')}：${step.text}`}
-                    title={`${t('item.steps.up')}：${step.text}`}
-                    onClick={() => props.onMove(step.id, -1)}
-                  >
-                    <span aria-hidden="true">↑</span>
-                  </button>
-                  <button
-                    {...stepButton('ghost')}
-                    disabled={at === steps.length - 1}
-                    aria-label={`${t('item.steps.down')}：${step.text}`}
-                    title={`${t('item.steps.down')}：${step.text}`}
-                    onClick={() => props.onMove(step.id, 1)}
-                  >
-                    <span aria-hidden="true">↓</span>
-                  </button>
-                  <button
-                    {...stepButton('danger')}
-                    aria-label={`${t('item.steps.remove')}：${step.text}`}
-                    title={`${t('item.steps.remove')}：${step.text}`}
-                    onClick={() => props.onRemove(step.id)}
-                  >
-                    <span aria-hidden="true">×</span>
-                  </button>
-                </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      <div className={css.itemStepsAdd}>
-        <input
-          ref={field}
-          className={css.itemInput}
-          value={draft}
-          placeholder={t('item.steps.placeholder')}
-          aria-label={t('item.steps.placeholder')}
-          onChange={event => setDraft(event.target.value)}
-          onKeyDown={event => {
-            // An IME composition owns Enter while it is running: adding there would
-            // file half a word and swallow the keystroke that chose it.
-            if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
-            event.preventDefault()
-            add()
-          }}
-        />
-        <Button variant="ghost" size="sm" onClick={add} disabled={draft.trim() === ''}>
-          {t('item.steps.add')}
-        </Button>
+      <div className={css.itemStepBoard}>
+        <div className={css.itemStepGauges}>
+          {/* The bar's width is the only number on this surface written as a
+              percentage, and it is written here rather than in the stylesheet
+              because it is the only thing on the page that is genuinely
+              continuous. Every other count here is digits. */}
+          <span className={css.itemStepBar} role="img" aria-label={t('item.steps.gauge', { done: String(done.length), total: String(steps.length) })}>
+            <i style={{ inlineSize: `${percent}%` }} />
+          </span>
+          <b className={css.itemStepCount}>{`${done.length} / ${steps.length}`}</b>
+        </div>
+
+        {shown.map((step, at) => (
+          <StepRow key={step.id} step={step} kind={at === 0 ? 'next' : 'todo'} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />
+        ))}
+        {hidden > 0 && <p className={css.itemStepMore}>{t('item.steps.more', { n: String(hidden) })}</p>}
+        {done.length > 0 && <DoneFold steps={done} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />}
       </div>
+      {addField}
     </>
+  )
+}
+
+/** One step: a tick, the words, and a ⋯ that is only ever about THIS step. */
+function StepRow(props: RowHands & {
+  readonly step: ItemStep
+  /** `next` marks the step the reader is supposed to be on. */
+  readonly kind?: 'next' | 'todo'
+  readonly onCloseMenu: () => void
+}) {
+  const { step } = props
+  const open = props.openMenu === step.id
+  const menuId = `item-step-menu-${step.id}`
+  return (
+    <div className={css.itemStepRow} data-kind={props.kind ?? 'todo'}>
+      <Tickbox
+        checked={step.done}
+        label={t('item.steps.tick', { text: step.text })}
+        onToggle={() => props.onToggle(step.id)}
+      />
+      {/* The words are in a box sized to the words. A strike painted on a box
+          that fills the row is the reason a finished step's line used to run
+          past the end of its own sentence and look like it went through
+          something. */}
+      <span className={css.itemStepWords} data-done={step.done ? '' : undefined}>
+        {props.kind === 'next' && <b className={css.itemStepKind}>{t('item.steps.next')}</b>}
+        {step.text}
+      </span>
+      <button
+        type="button"
+        className={css.itemStepMenu}
+        aria-expanded={open}
+        aria-controls={menuId}
+        aria-label={`${t('item.steps.moreMenu')}：${step.text}`}
+        onClick={() => props.onToggleMenu(step.id)}
+      >
+        <svg viewBox="0 0 4 16" width="4" height="16" aria-hidden="true">
+          <circle cx="2" cy="3" r="1.3" fill="currentColor" />
+          <circle cx="2" cy="8" r="1.3" fill="currentColor" />
+          <circle cx="2" cy="13" r="1.3" fill="currentColor" />
+        </svg>
+      </button>
+      {open && (
+        <ul id={menuId} className={css.itemStepMenuList} role="menu" aria-label={step.text}>
+          <li>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${boardCss.ghostButton} ${boardCss.buttonSm}`}
+              onClick={() => { props.onMove(step.id, -1); props.onCloseMenu() }}
+            >
+              {t('item.steps.up')}
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${boardCss.ghostButton} ${boardCss.buttonSm}`}
+              onClick={() => { props.onMove(step.id, 1); props.onCloseMenu() }}
+            >
+              {t('item.steps.down')}
+            </button>
+          </li>
+          <li>
+            <button
+              type="button"
+              role="menuitem"
+              className={`${boardCss.dangerGhostButton} ${boardCss.buttonSm}`}
+              onClick={() => { props.onRemove(step.id); props.onCloseMenu() }}
+            >
+              {t('item.steps.remove')}
+            </button>
+          </li>
+        </ul>
+      )}
+    </div>
+  )
+}
+
+/** The finished steps, behind one line that says how many there are. */
+function DoneFold(props: RowHands & { readonly steps: readonly ItemStep[]; readonly onCloseMenu: () => void }) {
+  const [open, setOpen] = useState(false)
+  const id = 'item-steps-done'
+  return (
+    <div className={css.itemStepDone}>
+      <button
+        type="button"
+        className={css.itemStepFold}
+        aria-expanded={open}
+        aria-controls={id}
+        onClick={() => setOpen(value => !value)}
+      >
+        {t(open ? 'item.steps.doneHide' : 'item.steps.doneShow', { n: String(props.steps.length) })}
+      </button>
+      {open && (
+        <div id={id}>
+          {props.steps.map(step => (
+            <StepRow key={step.id} step={step} kind="todo" {...props} onCloseMenu={props.onCloseMenu} />
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+/** The field that adds a step, and the button that refuses to file an empty one. */
+function StepAdd(props: {
+  readonly draft: string
+  readonly setDraft: (value: string) => void
+  readonly onAdd: () => void
+  /* The ref is passed straight through to `ref=`, so its type is whatever `ref=`
+   takes: the struct itself, not a `RefObject` whose `current` is nullable —
+   `useRef<HTMLInputElement | null>(null)` returns exactly this shape. */
+readonly field: { current: HTMLInputElement | null }
+}) {
+  return (
+    <div className={css.itemStepsAdd}>
+      <input
+        ref={props.field}
+        className={css.itemInput}
+        value={props.draft}
+        placeholder={t('item.steps.placeholder')}
+        aria-label={t('item.steps.placeholder')}
+        onChange={event => props.setDraft(event.target.value)}
+        onKeyDown={event => {
+          // An IME composition owns Enter while it is running: adding there would
+          // file half a word and swallow the keystroke that chose it.
+          if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+          event.preventDefault()
+          props.onAdd()
+        }}
+      />
+      <Button variant="ghost" size="sm" onClick={props.onAdd} disabled={props.draft.trim() === ''}>
+        {t('item.steps.add')}
+      </Button>
+    </div>
   )
 }

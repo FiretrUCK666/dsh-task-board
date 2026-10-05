@@ -229,6 +229,20 @@ export function isFacetOn(query: ItemQuery, facet: ItemFacetId, key: string): bo
 }
 
 /**
+ * Is this exact token already in the query?
+ *
+ * The grammar lower-cases what it stores but the BOX is the reader's, so the
+ * comparison has to fold case without rewriting anything. Three surfaces asked
+ * this question and two of them wrote their own answer inline — which is how the
+ * bar came to disagree with the palette about whether a filter was on, and print
+ * `aria-pressed="true"` beside a chip row that said otherwise.
+ */
+export function isTokenIn(text: string, token: string): boolean {
+  const wanted = token.toLowerCase()
+  return text.split(/\s+/).some(part => part !== '' && part.toLowerCase() === wanted)
+}
+
+/**
  * Add or remove one token, leaving every other character alone.
  *
  * @param text - the search box's contents, exactly as typed.

@@ -29,7 +29,7 @@
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
-import { escapeComposerToken, parseComposerInput, type ComposerToken } from './compose-parse.ts'
+import { escapeComposerToken, parseComposerInput, type ComposerParse, type ComposerToken } from './compose-parse.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
@@ -67,8 +67,27 @@ const RESTORE_MARK = '↩'
 export interface ItemComposerProps {
   /** The writing clock, so a parse resolves `@today` against a fixed now. */
   readonly now: number
-  /** Hand the finished capture over. Returning `false` means it was refused. */
-  readonly onSave: (input: ItemCapture) => boolean
+  /**
+   * Hand the finished capture over. Returning `false` means it was refused.
+   *
+   * OPTIONAL, and it is optional because **the sheet owns the save**: the grammar
+   * is the first line of ＋新建一条, and that panel has its own button and its own
+   * fields. With no `onSave` this draws no 「记下」 at all — a second save button
+   * beside the sheet's own is two ways to write one row, and the reader cannot
+   * tell which of them also carries the fields they just filled in.
+   */
+  readonly onSave?: (input: ItemCapture) => boolean
+  /**
+   * What the box currently understands, handed up on every change.
+   *
+   * THIS IS HOW THE SHEET STAYS TRUE TO ITS CHIPS. The sentence above the field
+   * grid is one sentence, and the grid below is that same sentence read field by
+   * field — so the grid is SEEDED from this parse rather than typed twice. A
+   * reader who writes 「改详情侧栏的地板 !1 @明天 #画廊」 sees the chips, then sees
+   * those same three values sitting in the fields underneath, and can still
+   * overrule any one of them by hand.
+   */
+  readonly onChange?: (parsed: ComposerParse) => void
   /**
    * Put the caret in the box, from outside.
    *
@@ -89,7 +108,7 @@ export interface ItemComposerProps {
  * @param props - the clock and the save hand-off.
  * @returns the box, its live chips and its hint.
  */
-export function ItemComposer({ now, onSave, focusRequest }: ItemComposerProps) {
+export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemComposerProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement | null>(null)
   const parsed = useMemo(() => parseComposerInput(text, now), [text, now])
@@ -108,28 +127,39 @@ export function ItemComposer({ now, onSave, focusRequest }: ItemComposerProps) {
   // to have drift from the one that decides what pressing it does.
   const saveable = !isBlankCapture(parsed)
 
+/**
+   * What the box understands, in the shape a capture is written in.
+   *
+   * ONE ASSEMBLY, READ BY BOTH EXITS. The save path and the sheet's seeding path
+   * used to be two spellings of 「what did I just understand」, and two spellings
+   * is how the chips end up disagreeing with the row they wrote — which is the one
+   * thing a grammar that shows its work exists to prevent. So it is assembled
+   * once per parse and handed to whichever exits are wired.
+   */
+  const capture = useMemo((): ItemCapture => ({
+    title: parsed.title,
+    body: parsed.body,
+    notes: '',
+    // Stated, never defaulted. The provenance is the audit trail's handle and the
+    // field table forbids anyone rewriting it afterwards, so a capture that left
+    // it out would have it guessed on the reader's behalf.
+    origin: 'human',
+    status: 'open',
+    priority: parsed.priority ?? 'normal',
+    steps: parsed.steps,
+    tags: parsed.tags,
+    ...(parsed.startsAfter !== undefined ? { startsAfter: parsed.startsAfter } : {}),
+    ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
+    ...(parsed.hardDueAt !== undefined ? { hardDueAt: parsed.hardDueAt } : {}),
+  }), [parsed])
+
+  useEffect(() => { onChange?.(parsed) }, [onChange, parsed])
+
   const save = useCallback(() => {
     // The parse is the save's only source: what the chips showed is what gets
     // written, so the reader is never surprised by a field they could not see.
-    if (onSave({
-      title: parsed.title,
-      body: parsed.body,
-      notes: '',
-      // Stated, never defaulted. The provenance is the audit trail's handle and
-      // the field table forbids anyone rewriting it afterwards, so a capture box
-      // that left it out would have it guessed on the reader's behalf.
-      origin: 'human',
-      status: 'open',
-      priority: parsed.priority ?? 'normal',
-      steps: parsed.steps,
-      tags: parsed.tags,
-      ...(parsed.startsAfter !== undefined ? { startsAfter: parsed.startsAfter } : {}),
-      ...(parsed.dueAt !== undefined ? { dueAt: parsed.dueAt } : {}),
-      ...(parsed.hardDueAt !== undefined ? { hardDueAt: parsed.hardDueAt } : {}),
-    })) {
-      setText('')
-    }
-  }, [onSave, parsed])
+    if (onSave?.(capture) === true) setText('')
+  }, [onSave, capture])
 
   /**
    * Put one recognised piece back into plain text.
@@ -184,9 +214,17 @@ export function ItemComposer({ now, onSave, focusRequest }: ItemComposerProps) {
           capture surface whose save gesture does not exist under the thumb is
           a capture surface that loses thoughts. It sits on the base band
           beside the input and takes its own line when the row runs out. */}
-      <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
-        {t('item.compose.add')}
-      </Button>
+{/* 「记下」 DRAWS ONLY WHEN THERE IS NO SAVING HAND-OFF ABOVE. The grammar is
+        * the first line of ＋新建一条, and that sheet has its own button and its
+        * own fields — a second 「记下」 beside it is two ways to write one row, and
+        * the reader cannot tell which of them carries the fields they just filled
+        * in. It used to be there for a different reason: 「save gesture under the
+        * thumb on a phone」, and that reason is now the sheet's problem to solve. */}
+      {onSave !== undefined && (
+        <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
+          {t('item.compose.add')}
+        </Button>
+      )}
     </div>
   )
 }

@@ -15,14 +15,15 @@
  * surface — and a layer that floats over another surface is not this surface's
  * layer.
  */
-import type { ItemRecord, ItemPriority, ItemStatus, ItemStep } from '../../core/item.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES } from '../../core/item.ts'
+import { useEffect, useRef, useState } from 'react'
+import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
+import { ITEM_PRIORITIES, itemPriorityRankOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
-import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
-import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
+import { formatItemDate } from './model.ts'
+import { GROUP_LABEL } from './labels.ts'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
@@ -34,19 +35,13 @@ const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin
   import: 'item.origin.import',
 }
 
-/** One labelled field. The label is the control's name, not decoration. */
-function Field(props: { readonly label: string; readonly children: React.ReactNode; readonly wide?: boolean }) {
-  return (
-    <label className={css.itemField} data-wide={props.wide === true ? '' : undefined}>
-      <span className={css.itemFieldLabel}>{props.label}</span>
-      {props.children}
-    </label>
-  )
-}
+/** The four tiers, most important first — the order a row of chips is scanned in. */
+const PRIORITIES_BY_WEIGHT: readonly ItemPriority[] = [...ITEM_PRIORITIES]
+  .sort((a, b) => itemPriorityRankOf(a) - itemPriorityRankOf(b))
 
 export interface ItemDetailProps {
   /**
-   * The row on show AS ITS PROJECTION, or `undefined` before anything is picked.
+   * The row on show AS ITS PROJECTION.
    *
    * The projection and not the record, because the pane asks derived questions —
    * has this row's hard deadline passed — and a derived question answered from
@@ -60,14 +55,47 @@ export interface ItemDetailProps {
    * The model already publishes the answer, on the same projection the row line
    * reads, so the pane and the row cannot answer differently. `item` is still
    * reachable as `view.item` for the fields the pane edits.
+   *
+   * **REQUIRED, NOT OPTIONAL.** This pane used to carry a 「nothing picked yet」
+   * branch behind `view === undefined` — thirty lines, four dictionary keys, a
+   * `recent` prop and the whole 「最近碰过的」 list, none of which any call site could
+   * reach, because the panel only builds this for the row it is already showing.
+   * Making the prop required turns that dead branch into a compile error, which is
+   * the only way a branch nobody exercises ever stops costing anything.
    */
-  readonly view: ItemRowView | undefined
+  readonly view: ItemRowView
+  /**
+   * THE PANEL'S CLOCK, so a date prints the year only when it is not this year —
+   * against the same now that decided whether this row is late. Two clocks on one
+   * row is a row that says 「还早」 and shows last year's date.
+   */
+  readonly now: number
+  /**
+   * ASK THE CARD THIS ROW HANGS OFF.
+   *
+   * It used to be a button on the row beside the ⋮, so a row carried two controls
+   * for 「do something to this」 at two different distances from each other. It is one
+   * of the three things in this row's footer now, and it is LISTED even when there
+   * is no card — an entry that comes and goes with a fact the interface never
+   * states is worse than one that is always there and says 「not yet」.
+   */
+  readonly onAsk: () => void
+  readonly asking: boolean
+  /**
+   * MAKE IT A BOARD CARD, and OPEN A NEW ONE.
+   *
+   * Both live in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
+   * exactly the row that needs a card to be made — and sending the reader to the
+   * board to create one and back is the most expensive way to answer 「它挂在哪」.
+   */
+  readonly onPromote: () => void
+  /** Run the card this row hangs off — the same `runTask` the catalog's `task.run`
+   *  binds, handed in rather than reached for, so this component never learns how a
+   *  run is started and there is no second spelling of the decision here. */
+  readonly onStart: () => void
+  readonly onNewCard: () => void
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
-  /** The most recently touched rows, for the "before you pick" state. `id` travels WITH the
-   *  row: the short number is a name to read, never an address, and picking a
-   *  row by its label is how a list ends up selecting the wrong one. */
-  readonly recent: readonly { readonly id: string; readonly ref: string; readonly title: string }[]
   /**
    * One field write. The patch's shape is the shared writer's, so a field the
    * model ruled derived or forbidden cannot be written from here even by
@@ -95,7 +123,6 @@ export interface ItemDetailProps {
   readonly stepsFocus?: number
   readonly onToggleStep: (stepId: string) => void
   readonly onRemove: () => void
-  readonly onPickRecent: (id: string) => void
 }
 
 /**
@@ -105,225 +132,332 @@ export interface ItemDetailProps {
  */
 export function ItemDetail(props: ItemDetailProps) {
   const { view } = props
-  const item = view?.item
-  if (item === undefined) {
-    return (
-      <div className={css.itemDetailEmpty}>
-        {/* NOT the head's sentence again. The head already says 「还没选中任何一条」
-            — it has to, because an empty box with a bottom border and nothing
-            above it reads as a page that failed to load — and saying it twice in
-            one column is one fact told twice, which is the same reason the count
-            `0` does not get a second sentence under it. What the body adds is
-            the one thing the head cannot say: what to DO about it. */}
-        <p className={css.itemHint}>{t('item.detail.emptyHint')}</p>
-        {/* THE COUNTS ARE NOT HERE, and their absence is the design rather than a
-            gap. The pane stands beside the list on the wide band, so the four
-            figures this used to print here were on screen at the same moment as
-            the four the overview strip prints at the top of that list — the same
-            words, the same numbers, a hand's width apart. The design record settled
-            it long ago: 「同一个数不许在两处各算一次」and 「四个数不在这里」.
-
-            What the pane is for is the fields of ONE row. With nothing selected it
-            has no fields, so its job is to be ready and to point at something: one
-            sentence saying what to do, and the rows that were touched last, which
-            are the shortest possible route back to work. A column answering a
-            second question with a second copy of the first question's numbers is
-            how a workbench turns into a dashboard. */}
-        <h3 className={css.itemEmptyRecentHead}>{t('item.detail.emptyRecent')}</h3>
-        <div className={css.itemEmptyRecent}>
-          {props.recent.length === 0
-            ? <p className={css.itemHint}>{t('item.detail.emptyNone')}</p>
+  const item = view.item
+  const english = isEnglish()
+  const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
+  /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
+  const gated = view.posture.kind === 'gated'
+/**
+   * THE TWO VERDICTS, one per date, read from the model's own projection.
+   *
+   * The row's tail speaks only for the HARD date, because that is the one that
+   * turns a row red. So 截止's own verdict — 「落后 N 天」 — had never been printed
+   * anywhere on this panel, and the date axis showed a bare date where a verdict
+   * belongs. Two readings now, each attached to the date it judges; neither is
+   * borrowed from the other, which is what makes 「超期」 one word meaning one thing.
+   *
+   * **SHORT INSIDE THE AXIS, because the axis already names the date.** The row's
+   * tail has to spell it out — it is the only thing on that line — while the axis
+   * prints 「硬期限」 in the column beside it, so the long form said the same word
+   * twice in one row: 「硬期限 · 硬期限超期 9 天」. Same verdict, two surfaces, two
+   * lengths — and the length is decided by what is already on the line, not by
+   * preference.
+   */
+  const behind = view.soft.overdue && view.soft.days !== undefined
+    ? t('item.dates.behind', { days: String(view.soft.days) })
+    : undefined
+  const over = view.posture.kind === 'hardOverdue' && view.posture.days !== undefined
+    ? t('item.dates.overdue', { days: String(view.posture.days) })
+    : undefined
+  /** 正文很长时那一行「还有 N 行」按下去才展开全部——它自己只收起，不是把内容丢掉。 */
+  const [showAll, setShowAll] = useState(false)
+  /**
+   * **空的正文与空的备注都不画框。**
+   *
+   * 这一条原先是一个五行高的输入框，而这一面板上最常见的一行就是「没有正文」——
+   * 所以最常见的展开区是一块空白，读者读到的第一件事是「这里空了一块」。
+   *
+   * 空的时候只留**一行安静的话**，按下去框才出现，光标已经在里面：读者要的
+   * 「我要写点什么」这一步没有变，少掉的是一个从来没人填过的盒子。
+   *
+   * 两个字段各有一份这个状态，因为它们是两件事——一个空着而另一个开着，是读者
+   * 自己造成的，不是坏了。
+   */
+  const [bodyOpen, setBodyOpen] = useState(false)
+  const [notesOpen, setNotesOpen] = useState(false)
+  const bodyField = useRef<HTMLTextAreaElement | null>(null)
+  const notesField = useRef<HTMLTextAreaElement | null>(null)
+  useEffect(() => {
+    if (bodyOpen) bodyField.current?.focus()
+  }, [bodyOpen])
+  useEffect(() => {
+    if (notesOpen) notesField.current?.focus()
+  }, [notesOpen])
+  /** 新标签在右列就地加：回车就上，而上完就把框清空，因为读者多半还要写下一个。 */
+  const [draftTag, setDraftTag] = useState('')
+  return (
+    <div className={css.itemOpen}>
+      <div className={css.itemOpenMain}>
+        {/* 左边那一列：**正文、步骤、上下文备注**。三块之间是 `--s3` 那一档间距，
+            所以步骤板与备注块不会贴在一起——它们是三段话，不是一个东西的三行。 */}
+        <div className={css.itemOpenText}>
+          {item.body === '' && !bodyOpen
+            ? (
+              <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
+                {t('item.field.bodyAdd')}
+              </button>
+            )
             : (
-              <ul className={css.itemRecentList}>
-                {props.recent.map(row => (
-                  <li key={row.id} className={css.itemRecentRow}>
-                    <button type="button" className={css.itemRecentRowMain} onClick={() => props.onPickRecent(row.id)}>
-                      <span className={css.itemRefChip}>{row.ref}</span>
-                      <span className={css.itemRecentTitle}><span className={css.itemRecentTitleText}>{row.title}</span></span>
-                    </button>
-                  </li>
-                ))}
-              </ul>
+              <div className={css.itemProseWrap}>
+                <textarea
+                  ref={bodyField}
+                  className={css.itemProse}
+                  rows={showAll ? Math.max(5, item.body.split('\n').length) : 5}
+                  value={item.body}
+                  placeholder={t('item.create.body')}
+                  aria-label={t('item.field.body')}
+                  onChange={event => props.onEdit({ body: event.target.value })}
+                />
+                {/* 正文可以很长，而它上面只有那一个输入框——所以超出的部分收在这里，
+                    而不是把整个展开区撑到屏幕之外。40em 是中文一行读得下去的上限，
+                    不是 62ch：`ch` 是「数字 0 的宽度」，而一个中文字比它宽一倍。 */}
+                {item.body.split('\n').length > 5 && (
+                  <button type="button" className={css.itemMore} onClick={() => setShowAll(value => !value)}
+                    aria-expanded={showAll}>
+                    {showAll ? t('item.body.less') : t('item.body.more', { n: String(item.body.split('\n').length - 5) })}
+                  </button>
+                )}
+              </div>
+            )}
+
+          <p className={css.itemOpenCaption}>{t('item.section.steps')}</p>
+          <ItemSteps
+            item={item}
+            focusRequest={props.stepsFocus}
+            onToggle={props.onToggleStep}
+            onAdd={text => write(addStep(item.steps, item.id, text))}
+            onRemove={stepId => write(removeStep(item.steps, stepId))}
+            onMove={(stepId, by) => write(moveStep(item.steps, stepId, by))}
+          />
+
+          {item.notes === '' && !notesOpen
+            ? (
+              <button type="button" className={css.itemWritePrompt} onClick={() => setNotesOpen(true)}>
+                {t('item.field.notesAdd')}
+              </button>
+            )
+            : (
+              <div className={css.itemQuote}>
+                <textarea
+                  ref={notesField}
+                  className={css.itemQuoteBody}
+                  rows={3}
+                  value={item.notes}
+                  placeholder={t('item.field.notesHint')}
+                  aria-label={t('item.field.notes')}
+                  onChange={event => props.onEdit({ notes: event.target.value })}
+                />
+              </div>
             )}
         </div>
-      </div>
-    )
-  }
 
-  const english = isEnglish()
-  /** Hand the whole list back to the one writer, as a fresh array it may keep. */
-  const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
-  return (
-    <>
-      <section className={css.itemSection}>
-        <h3 className={css.itemSectionTitle}>{t('item.section.content')}</h3>
-        <Field label={t('item.field.title')}>
-          <input
-            className={css.itemInput}
-            value={item.title}
-            onChange={event => props.onEdit({ title: event.target.value })}
-          />
-        </Field>
-        <Field label={t('item.field.body')}>
-          <textarea
-            className={css.itemInput}
-            rows={4}
-            value={item.body}
-            onChange={event => props.onEdit({ body: event.target.value })}
-          />
-        </Field>
-        {/* 步骤是这一页唯一「能改顺序」的东西，所以编辑器就长在它本来被读到的
-            地方：勾选框是原来的那一个，去掉与挪动是加在它旁边的三个控件，而
-            「编辑步骤」那一项只是把读者送到这里并把光标放进输入框。
-
-            四条手出边都是**整份清单**，不是四种算术：加减与排序住在 `steps.ts`
-            的纯函数里，而这一层只负责把它们算好的答案交给面板，面板再走同一个
-            共享写入口。清单的算法因此只有一个住处——一份在别处重写的「挪上去」
-            就是一份会跟这里慢慢走偏的顺序。 */}
-        <ItemSteps
-          item={item}
-          focusRequest={props.stepsFocus}
-          onToggle={props.onToggleStep}
-          onAdd={text => write(addStep(item.steps, item.id, text))}
-          onRemove={stepId => write(removeStep(item.steps, stepId))}
-          onMove={(stepId, by) => write(moveStep(item.steps, stepId, by))}
-        />
-      </section>
-
-      <section className={css.itemSection}>
-        <h3 className={css.itemSectionTitle}>{t('item.section.notes')}</h3>
-        <Field label={t('item.field.notes')}>
-          <textarea
-            className={css.itemInput}
-            rows={3}
-            value={item.notes}
-            onChange={event => props.onEdit({ notes: event.target.value })}
-          />
-        </Field>
-      </section>
-
-      <section className={css.itemSection}>
-        <h3 className={css.itemSectionTitle}>{t('item.section.plan')}</h3>
-        {/* A property GRID, not a stack of `flex: 1 1 120px` fields: the same
-            three dates in a 296px pane and an 816px pane need different
-            answers, and the grid reads its own box. */}
-        <div className={css.itemFieldGrid}>
-          <Field label={t('item.field.status')}>
-            <select
-              className={css.itemInput}
-              value={item.status}
-              onChange={event => props.onEdit({ status: event.target.value as ItemStatus })}
-            >
-              {ITEM_STATUSES.map(status => <option key={status} value={status}>{t(STATUS_LABEL[status])}</option>)}
-            </select>
-          </Field>
-          <Field label={t('item.field.priority')}>
-            <select
-              className={css.itemInput}
-              value={item.priority}
-              onChange={event => props.onEdit({ priority: event.target.value as ItemPriority })}
-            >
-              {ITEM_PRIORITIES.map(priority => <option key={priority} value={priority}>{t(PRIORITY_LABEL[priority])}</option>)}
-            </select>
-          </Field>          <Field label={t('item.field.startsAfter')}>
-            <input
-              type="date"
-              className={css.itemInput}
-              value={toItemDateField(item.startsAfter)}
-              onChange={event => props.onEdit({ startsAfter: parseItemDate(event.target.value) })}
-            />
-          </Field>
-          <Field label={t('item.field.dueAt')}>
-            <input
-              type="date"
-              className={css.itemInput}
-              value={toItemDateField(item.dueAt)}
-              onChange={event => props.onEdit({ dueAt: parseItemDate(event.target.value) })}
-            />
-          </Field>
-          {/* Wide, and the reason is the row it terminates. Five fields in a
-              two-column grid is rows of 2 / 2 / 1, and the odd one left a
-              382 × 53px hole at the end of the section a reader scans FOR
-              DATES. The hard deadline is the one date that turns a row red, so
-              giving it the full width says so with the geometry instead of with
-              a sentence — and it fills the row rather than stretching anything
-              else. Named with `data-wide` rather than `:last-child`, because
-              「the last child of the grid」 is a position and this is a field. */}
-          <Field label={t('item.field.hardDueAt')} wide>
-            <input
-              type="date"
-              className={css.itemInput}
-              value={toItemDateField(item.hardDueAt)}
-              onChange={event => props.onEdit({ hardDueAt: parseItemDate(event.target.value) })}
-            />
-          </Field>
-        </div>
-        {/* Said only when the two readings can actually disagree. The control
-            writes the STORED status while the group header shows the derived
-            one, so a row hanging off a running card reads 「进行中」 in the
-            list and 「待办」 here. Without a line saying why, that is a panel
-            contradicting itself; with it, it is a documented distinction. */}
-        {item.taskId !== undefined && item.status === 'open' && (
-          <p className={css.itemHint}>{t('item.status.derived')}</p>
-        )}
-      </section>
-
-      <section className={css.itemSection}>
-        <h3 className={css.itemSectionTitle}>{t('item.section.link')}</h3>
-        <Field label={t('item.field.tags')}>
-          <input
-            className={css.itemInput}
-            value={item.tags.join('、')}
-            placeholder={t('item.field.tagsHint')}
-            onChange={event => props.onEdit({ tags: event.target.value.split(/[、,]/).map(tag => tag.trim()).filter(tag => tag !== '') })}
-          />
-        </Field>
-        {item.tags.length > 0 && (
-          <div className={css.itemTagRow}>
-            {item.tags.map(tag => <span key={tag} className={css.itemTag}>{tag}</span>)}
+        {/* 右列：**一组一行，行与行之间一条发丝线**。不用标题宣布「下面这些是属性」
+            ——组名在左、值在右、中间一条线，这一列读起来就是一张清单。
+            三个日期在那张清单的下面，因为它们不是字段，是**读法**：每一行写着
+            「是什么」和「现在怎么样」，所以它们自己带一句判据。 */}
+        <div className={css.itemOpenSide}>
+          <div className={css.itemOptRow}>
+            <p className={css.itemOptName}>{t('item.field.priority')}</p>
+            <div className={css.itemOpts}>
+              {/* 最重要的在最左。`ITEM_PRIORITIES` 是按「最不重要」声明的（那张表
+                  * 的注释里写着不要照它的顺序渲染），而这里四个芯片并排，读者扫的是
+                  * **从左到右降下来的刻度**：!1 在最左，选中的那一个也在最左。
+                  * 照声明顺序渲染会印出 !4 !3 !2 !1——一条上升的尺子。 */}
+              {PRIORITIES_BY_WEIGHT.map(priority => (
+                <button
+                  key={priority}
+                  type="button"
+                  className={css.itemPrioChip}
+                  data-tone={priority}
+                  data-on={item.priority === priority ? '' : undefined}
+                  aria-pressed={item.priority === priority}
+                  onClick={() => props.onEdit({ priority })}
+                >
+                  !{PRIORITY_DIGIT[priority]}
+                </button>
+              ))}
+            </div>
           </div>
-        )}
-        <Field label={t('item.field.taskId')}>
-          <select
-            className={css.itemInput}
-            value={item.taskId ?? ''}
-            onChange={event => props.onEdit({ taskId: event.target.value === '' ? undefined : event.target.value })}
-          >
-            <option value="">{t('item.field.noCard')}</option>
-            {props.cards.map(card => <option key={card.id} value={card.id}>{card.title}</option>)}
-          </select>
-        </Field>
-        {item.taskId !== undefined && (
-          <p className={css.itemHint}>
-            {props.cards.some(card => card.id === item.taskId)
-              ? t('item.field.linked', { title: props.cards.find(card => card.id === item.taskId)?.title ?? '' })
-              : t('item.field.cardGone')}
-          </p>
-        )}
-      </section>
 
-      <section className={css.itemSection}>
-        <h3 className={css.itemSectionTitle}>{t('item.section.danger')}</h3>
-        <div className={css.itemOriginRow}>
+          <div className={css.itemOptRow}>
+            <p className={css.itemOptName}>{t('item.field.status')}</p>
+            <div className={css.itemOpts}>
+              {(['open', 'blocked', 'done'] as const).map(status => (
+                <button
+                  key={status}
+                  type="button"
+                  className={css.itemOpt}
+                  data-on={item.status === status ? '' : undefined}
+                  aria-pressed={item.status === status}
+                  onClick={() => props.onEdit({ status })}
+                >
+                  {/* 「待办」，不是「标为待办」。这一列的组名已经写着「状态」，所以
+                      每枚按钮只回答「它现在是什么」；而「标为」是**菜单**的动词——菜单项
+                      在动作发生之前，属性表在动作之后。同一张表两处用，于是属性表上一
+                      枚按钮在回答一个读者没有问的问题，而三个「标为…」在 268px 那一列
+                      里排成了 2 + 1。`GROUP_LABEL` 就是状态那一侧的词表。 */}
+                  {t(GROUP_LABEL[status])}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className={css.itemOptRow}>
+            <p className={css.itemOptName}>{t('item.field.tags')}</p>
+            <div className={css.itemOpts}>
+              {item.tags.map(tag => (
+                <button
+                  key={tag}
+                  type="button"
+                  className={css.itemTag}
+                  onClick={() => props.onEdit({ tags: item.tags.filter(one => one !== tag) })}
+                >
+                  #{tag}
+                </button>
+              ))}
+              <input
+                className={css.itemTagAdd}
+                value={draftTag}
+                placeholder={t('item.field.tagsAdd')}
+                aria-label={t('item.field.tagsAdd')}
+                onChange={event => setDraftTag(event.target.value)}
+                onKeyDown={event => {
+                  if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
+                  event.preventDefault()
+                  const tag = draftTag.trim().replace(/^#/, '')
+                  if (tag === '') return
+                  props.onEdit({ tags: [...item.tags, tag] })
+                  setDraftTag('')
+                }}
+              />
+            </div>
+          </div>
+
+{/* 三个日期的读法**各写一句**，不混成一句「逾期了」：最早的只是现在还不能
+              动它；截止是你想要它什么时候好；硬期限是不会顺延的那一个，也是唯一会让
+              这一行变红的那一个。软期限逾期**不是红**——那是关于一个计划的实话。
+              *
+              * **读法跟在它judge的那个日期后面**，不是另起一行、也不是省掉。行上
+              * 那一段读法只说硬期限（唯一会让这一行变红的那一个），所以计划的落后
+              * 在这里才第一次被说出来——而它属于**截止**那一行，不是属于硬期限。 */}
+          <ol className={css.itemDateAxis}>
+            <DateLine
+              label={t('item.field.startsAfter')}
+              reading={gated
+                ? t('item.dates.now')
+                : item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
+              tone={gated ? 'gate' : item.startsAfter === undefined ? 'none' : 'set'}
+            />
+            <DateLine
+              label={t('item.field.dueAt')}
+              reading={item.dueAt === undefined
+                ? t('item.dates.none')
+                : `${formatItemDate(item.dueAt, english, props.now)}${behind === undefined ? '' : ` · ${behind}`}`}
+              tone={view.posture.kind === 'behind' ? 'late' : 'set'}
+            />
+            <DateLine
+              label={t('item.field.hardDueAt')}
+              reading={item.hardDueAt === undefined
+                ? t('item.dates.none')
+                : `${formatItemDate(item.hardDueAt, english, props.now)}${over === undefined ? '' : ` · ${over}`}`}
+              tone={view.posture.kind === 'hardOverdue' ? 'over' : view.posture.kind === 'hardSoon' ? 'soon' : 'set'}
+            />
+          </ol>
+
+          {/* 挂到哪张卡。**「不挂」是一种正当状态**，所以它是一枚按钮而不是一个空框；
+              而「新开一张」也在同一排——挂不上的那一条正是最需要新卡的那一条，把它逼到
+              看板上去另开一次，是这个界面最蠢的一种做法。 */}
+          <div className={css.itemOptRow}>
+            <p className={css.itemOptName}>{t('item.field.taskId')}</p>
+            <div className={css.itemOpts}>
+              <button
+                type="button"
+                className={css.itemOpt}
+                data-on={item.taskId === undefined ? '' : undefined}
+                aria-pressed={item.taskId === undefined}
+                onClick={() => props.onEdit({ taskId: undefined })}
+              >
+                {t('item.field.noCard')}
+              </button>
+              {props.cards.map(card => (
+                <button
+                  key={card.id}
+                  type="button"
+                  className={css.itemOpt}
+                  data-on={item.taskId === card.id ? '' : undefined}
+                  aria-pressed={item.taskId === card.id}
+                  onClick={() => props.onEdit({ taskId: card.id })}
+                >
+                  {card.title}
+                </button>
+              ))}
+              <button type="button" className={css.itemOpt} data-add="" onClick={props.onNewCard}>
+                {t('item.field.newCard')}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* 派生状态与悬空卡片这两句，只在两句可能互相矛盾时才说。 */}
+      {item.taskId !== undefined && item.status === 'open' && (
+        <p className={css.itemHint}>{t('item.status.derived')}</p>
+      )}
+
+      {/* 这一条的动作。**一条横贯两列的发丝线，下面三个动作**。
+       *
+       * 它们原来散在三处（⋯ 菜单里、展开区最后一节里、行上），于是读者要先知道某个
+       * 动作住在哪，才能去按它。合并到这一行之后，两列的读者都落在同一排动作上；而它
+       * 在两列**下面**而不是某一列里——动作作用于这一条，不作用于左半边或右半边。 */}
+      <div className={css.itemOpenAct}>
+        <span className={css.itemOriginRow}>
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
+        </span>
+        <div className={css.itemOpenActions}>
+          {/* THE SAME THREE, IN THE SAME ORDER, as the ⋯ menu — so a reader who
+              * learned one has learned the other. The PRIMARY is 「变成看板卡片」
+              * rather than 「交给模型去做」 because it is the one that works on every
+              * row: a row with no card can still become one, and 「交给模型去做」 on
+              * such a row can only say 「not yet」. The button that is emphasised
+              * should be the one a reader can actually press. */}
+          <Button variant="primary" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={props.onStart}
+            disabled={item.taskId === undefined}
+            title={item.taskId === undefined ? t('item.menu.startNoCard') : undefined}
+          >
+            {t('item.menu.start')}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={item.taskId === undefined || props.asking}>
+            {t('item.ask')}
+          </Button>
+          <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
         </div>
-        <div className={css.itemDangerZone}>
-          <p className={css.itemDangerHint}>{t('item.danger.hint')}</p>
-          {/* ONE PRESS, NO QUESTION. The delete used to replace itself with a
-              second danger button plus a 「cancel」 whose label was borrowed from
-              the clear-filter string — so the way OUT of a delete read as the way
-              out of a search, and a reversible action was made to feel
-              irreversible by a dialog-shaped pause. What replaced it is one press
-              and a receipt carrying one undo, which is also the only shape that
-              can be honest: the receipt has to state the thirty-day window and
-              where the row is found afterwards, because once the undo is spent
-              that archive is the whole of what is left. */}
-          <Button variant="dangerGhost" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-        </div>
-        {item.hardDueAt !== undefined && view?.posture.kind === 'hardOverdue' && (
-          <p className={css.itemHint}>{formatItemDate(item.hardDueAt, english)}</p>
-        )}
-      </section>
-    </>
+      </div>
+    </div>
   )
 }
+
+/**
+ * ONE DATE, AND WHAT IT MEANS: a label, the value, and the verdict.
+ *
+ * Three dates, three SEPARATE verdicts, because a missed WANTED-BY date is a fact
+ * about a plan rather than an alarm — so it reads in neutral ink and says 「落后」,
+ * and only the hard one is red. Collapsing them into one 「逾期了」 is exactly how a
+ * soft deadline quietly becomes a hard one without anybody deciding that.
+ */
+function DateLine(props: { readonly label: string; readonly reading: string; readonly tone: 'gate' | 'none' | 'set' | 'late' | 'soon' | 'over' }) {
+  return (
+    <li data-tone={props.tone}>
+      <i aria-hidden="true" />
+      <b>{props.label}</b>
+      <span>{props.reading}</span>
+    </li>
+  )
+}
+
+/** `!1`..`!4` ↔ the four stored tiers. Derived from the table so re-tiering cannot
+ *  leave a chip printing a tier the grammar no longer means. */
+const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }

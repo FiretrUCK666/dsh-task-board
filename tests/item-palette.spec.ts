@@ -48,7 +48,16 @@ function fieldOf(panel: Mounted): HTMLInputElement {
   return input as HTMLInputElement
 }
 
-/** The names of the rows, in order, as the reader sees them down the left. */
+/** Open the ＋新建一条 sheet, the surface the capture grammar now lives on. */
+function openSheet(panel: Mounted): HTMLElement {
+  const trigger = [...panel.surface.querySelectorAll('button')]
+    .find(node => (node.textContent ?? '').includes(zh['item.topbar.create'] as string))
+  if (trigger === undefined) throw new Error('the panel has no ＋新建一条 door')
+  click(trigger)
+  const sheet = panel.surface.querySelector('[class*="itemCreate"]')
+  if (sheet === null) throw new Error('＋新建一条 opened nothing')
+  return sheet as HTMLElement
+}
 function rowNamesOf(scope: HTMLElement): readonly string[] {
   return [...scope.querySelectorAll('[class*="itemFacetName"]')]
     .map(node => node.textContent ?? '')
@@ -566,11 +575,21 @@ describe('`×` means one thing on this panel: it takes a condition OFF the query
       }
       // AND THE CAPTURE BOX'S OWN CHIP IS NOT ONE OF THEM. Typing a tag there
       // produces the chip that undoes the parser; it must not be a cross.
+// AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
+// AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
+      // into it produces the chip that undoes the parser; it must not be a cross.
+      //
+      // IT IS NO LONGER ON THE SURFACE AT REST, and that is the whole change: the
+      // capture grammar lives in the ＋新建一条 sheet now, so there is no always-on
+      // field to type into — which is why the two controls could collide at all.
+      // The rule still has to hold, so it is checked where the field now lives:
+      // in the sheet, opening it first.
+      openSheet(panel)
       const capture = panel.surface.querySelector('[class*="itemInput"]')
-      expect(capture, 'the capture box has no field, so there is no chip to look at').not.toBeNull()
+      expect(capture, 'the sheet opened and there is still no field — there is no chip to look at').not.toBeNull()
       typeInto(capture, '#画廊 !1')
       const chip = [...panel.surface.querySelectorAll('button')].find(node => node.getAttribute('aria-label')?.includes(zh['item.token.undo'] as string))
-      expect(chip, 'the capture box drew no chip for what it recognised — there is nothing to check').toBeDefined()
+      expect(chip, 'the sheet drew no chip for what it recognised — there is nothing to check').toBeDefined()
       expect(chip?.textContent, 'the chip that puts text back is a cross again — the same glyph, the opposite verb, one inch apart').not.toContain('×')
       expect(chip?.getAttribute('aria-label'), 'the chip that puts text back does not say so').toContain(zh['item.token.undo'] as string)
     } finally {

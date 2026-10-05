@@ -21,6 +21,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import { ITEM_SORTS, type ItemSort } from '../../core/item-view.ts'
+import { freeTextOf, isTokenIn, withFacetToken } from './facets.ts'
 import { SORT_LABEL } from './labels.ts'
 import { ItemQueryChips } from './query-chips.tsx'
 import { t, type TaskBoardKey } from '../locales.ts'
@@ -97,16 +98,29 @@ export function ItemFilters(props: ItemFiltersProps) {
     }
   }, [open])
 
-  const tokenOf = (next: string, token: string): string => {
-    const kept = next.split(/\s+/).filter(part => part !== '' && part.toLowerCase() !== token.toLowerCase())
-    return [...kept, token].join(' ')
-  }
+  /**
+   * A bar button TOGGLES, exactly as a palette option does.
+   *
+   * It used to append. So a reader who picked 「状态 受阻」 from the bar, saw the
+   * list narrow, pressed it again because they wanted it off — and got a second
+   * copy of the same token instead, while `aria-pressed` said 「on」 and the chip
+   * row below said the filter was one thing. Two places wrote the same edit and
+   * only one of them toggled, so the bar and the palette answered one press
+   * differently. One writer now: {@link withFacetToken}, which the palette
+   * already used.
+   */
+  const toggle = (next: string, token: string): string => withFacetToken(next, token, !isTokenIn(next, token))
   const chips = (
     <ItemQueryChips
       text={props.text}
       tags={props.tags}
       onSearch={props.onSearch}
-      onClearQualifiers={() => { props.onSearch(props.text.split(/\s+/).filter(part => part !== '' && !part.includes(':') && !part.startsWith('#') && !part.startsWith('!')).join(' ')) }}
+      /* `freeTextOf` asks the GRAMMAR which tokens are qualifiers, rather than
+         guessing with prefixes. The guess was written for `#tag` and `!1`..`!4`
+         and never learned `p1`..`p4`, the same four tiers spelled the other
+         way — so 「清空筛选」 left every priority in the box and the chip row went
+         on listing them. */
+      onClearQualifiers={() => { props.onSearch(freeTextOf(props.text)) }}
     />
   )
 
@@ -115,7 +129,7 @@ export function ItemFilters(props: ItemFiltersProps) {
       <div className={css.itemFilters} role="group" aria-label={t('item.filters.label')}>
         <span className={css.itemFiltersLabel}>{t('item.filters.label')}</span>
         {props.faces.map(face => {
-          const live = face.values.filter(value => props.text.toLowerCase().split(/\s+/).includes(value.token.toLowerCase()))
+          const live = face.values.filter(value => isTokenIn(props.text, value.token))
           const isOpen = open === face.id
           return (
             <button
@@ -144,10 +158,11 @@ export function ItemFilters(props: ItemFiltersProps) {
         >
           {t('item.sort.label')} · {t(SORT_LABEL[props.sort])}
         </button>
-        {/* 「隐藏已完成」是清单页里常驻可见的一个开关，不藏进任何菜单——做完的事
-            随时能看见，是这个页面和「已完成」那一页之间的全部区别。 */}
+        {/* 「隐藏已完成」的勾选框说的是隐藏，而不是显示：勾上 = 藏起来。状态本身仍叫
+            `showDone`，因为切片要的是「要不要把做完的行算进去」；把标签的极性反过来
+            写，就是让一个有着「隐藏」名字的开关去读「显示」的状态。 */}
         <label className={css.itemHideDone}>
-          <input type="checkbox" checked={props.showDone} onChange={event => props.onShowDone(event.target.checked)} />
+          <input type="checkbox" checked={!props.showDone} onChange={event => props.onShowDone(!event.target.checked)} />
           {t('item.done.show')}
         </label>
       </div>
@@ -176,8 +191,8 @@ export function ItemFilters(props: ItemFiltersProps) {
               key={value.token}
               type="button"
               className={css.itemFilterButton}
-              aria-pressed={props.text.toLowerCase().split(/\s+/).includes(value.token.toLowerCase())}
-              onClick={() => { props.onSearch(tokenOf(props.text, value.token)) }}
+              aria-pressed={isTokenIn(props.text, value.token)}
+              onClick={() => { props.onSearch(toggle(props.text, value.token)) }}
             >
               {value.label}
               <span className={css.itemFilterCount}>{props.countOf(value.token)}</span>

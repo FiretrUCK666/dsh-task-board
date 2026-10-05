@@ -59,3 +59,7 @@ coverage/
 # when the two drift apart.
 # 静态渲染台架的产物：每跑一次出图就冒一个，verify 会因为「根目录有未申报的文件」变红
 tmp-*.html
+
+# Design exploration scratch: screenshots, candidate pages and the comparison page.
+# Never tracked and never packed - they are evidence for one redesign round, not source.
+.design/

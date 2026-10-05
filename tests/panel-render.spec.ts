@@ -41,6 +41,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
+import * as lightningcss from 'lightningcss'
 import { join } from 'node:path'
 import { itemSurfaceSource, PAGES, repoRoot, type Page } from './panel-harness.ts'
 import {
@@ -213,9 +214,10 @@ function givesWay(body: string): boolean {
   return /(?:flex-wrap\s*:\s*wrap|white-space\s*:\s*normal|overflow-x?\s*:\s*(?:auto|scroll))/.test(body)
 }
 
-/** Whether any rule on this surface still draws a vertical rule. */
-function drawsRule(css: string): boolean {
-  return [...css.matchAll(/(?:^|[;{\s])border-inline-start\s*:\s*([^;]+)/g)].some(match => (match[1] ?? '').includes('var(--dsh-tb-border'))
+/** Whether joined rule bodies draw the named hairline separator. */
+function drawsSeparator(text: string, side: 'border-inline-end' | 'border-block-start'): boolean {
+  return [...text.matchAll(new RegExp(`(?:^|[;{\\s])${side}\\s*:\\s*([^;]+)`, 'g'))]
+    .some(match => (match[1] ?? '').includes('var(--item-hair)'))
 }
 
 /**
@@ -335,9 +337,18 @@ describe('the panel renders against the host it will actually run in', () => {
     // A harness that accepts a setting and quietly drops it is worse than one
     // that refuses it: every capture then looks right and proves nothing. This
     // is the check that would have caught the page argument landing nowhere.
-    const inbox = renderPanel(fixtures(), 'wide', 'inbox')
-    const schedule = renderPanel(fixtures(), 'wide', 'schedule')
-    const list = renderPanel(fixtures(), 'wide', 'list')
+    // The gated bucket is pinned to the render clock rather than the fixture
+    // clock: a hard-coded future date eventually becomes the past, and the test
+    // would then ask for a gate section from a document that no longer has one.
+    const now = Date.now()
+    const rows = fixtures().map(item => ({
+      ...item,
+      startsAfter: item.startsAfter === undefined ? item.startsAfter : now + 6 * 86_400_000,
+      dueAt: item.dueAt === undefined ? item.dueAt : now + 60 * 86_400_000,
+    }))
+    const inbox = renderPanel(rows, 'wide', 'inbox')
+    const schedule = renderPanel(rows, 'wide', 'schedule')
+    const list = renderPanel(rows, 'wide', 'list')
     // The inbox is the page that deliberately has no second-level chrome, and
     // the agenda is the only one whose primary form is a day sequence.
     expect(inbox).toContain('收件只放还没分流的想法')
@@ -400,32 +411,23 @@ describe('the panel renders against the host it will actually run in', () => {
   // picture — 2427 passing tests did not notice, because no test ever said the
   // number. **So the number is now said, on the case that makes it a claim at
   // all**: a document where every count is zero.
-  it('the stat band says all three counts, including zero — 「被问到而答案是零」', () => {
-    // `_itemStat_<hash>` and NOT `itemStat\b`: the bundle's names are delimited by
-    // underscores, which are word characters, so a word boundary after `itemStat`
-    // never fires and the count came out 0 for every render — **a checker whose
-    // read is wrong is worse than no checker**, because it looks like evidence.
-    // The trailing underscore also keeps it off `_itemStatLabel_` and `_itemStats_`.
-    const countCards = (html: string): number => (html.match(/_itemStat_[a-z0-9]+/g) ?? []).length
-    // **THE CASE IS 「有行，但三个数全是零」, NOT 「没有行」.** An empty document
-    // replaces the whole workbench with 「还没有事项」, so the band is not on screen
-    // there for a completely different and perfectly good reason — asserting on it
-    // would have been a gate that passes for the wrong thing.
-    //
-    // Rows that are all `done` are the honest construction: they are real rows the
-    // page still lists, and triage counts only unfinished work, so every one of the
-    // three answers is genuinely zero.
-    const allDone = fixtures().map(item => ({ ...item, status: 'done' as const }))
-    const quiet = renderPanel(allDone, 'wide', 'list')
-    expect(countCards(quiet),
-      'the stat band is GONE when every count is zero — 「没有一件卡在你手上」 and 「这条带子不渲染」 are indistinguishable on screen, and only one of them is true')
-      .toBe(3)
-    for (const label of ['落后', '卡住', '没日期']) {
-      expect(quiet, `${label} is not on screen at all, so its zero is never stated`).toContain(label)
+  it('the rail states every count, including zero — 「被问到而答案是零」', () => {
+    // The statistics band is gone; its contract moved to the rail rows that
+    // replaced it. A rail that drops a zero-count row turns the map into a log,
+    // while a rail that keeps the row and its zero keeps「没有一件卡在你手上」
+    // distinguishable from a rail that failed to render.
+    const wordsOf = (html: string): string[] =>
+      [...html.matchAll(/<button[^>]*itemRailRow[^>]*>([\s\S]*?)<\/button>/g)]
+        .map(match => (match[1] ?? '').replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim())
+    for (const html of [renderPanel(fixtures(), 'wide', 'list'), renderPanel(fixtures().map(item => ({ ...item, status: 'done' as const })), 'wide', 'list')]) {
+      const words = wordsOf(html)
+      expect(words.length, 'no rail rows are on screen — the counts have nowhere to live').toBeGreaterThan(0)
+      for (const word of ['超期', '落后的', '停滞的', '没日期的', '还没到日子的', '完成']) {
+        const row = words.find(text => text.includes(word))
+        expect(row, `the rail does not name ${word} at all, so its zero is never stated`).toBeDefined()
+        expect(row ?? '', `the rail names ${word} without a number — a claim with no count is not a count`).toMatch(/\d+/)
+      }
     }
-    // And the band is not decoration either: a document WITH work still says three.
-    expect(countCards(renderPanel(fixtures(), 'wide', 'list')),
-      'the band lost a card on a document that has work in it').toBe(3)
   })
 })
 
@@ -642,8 +644,12 @@ describe('the panel fills the stage it is given', () => {
     // The board carries this exact rule and explains why in a comment at
     // board.module.css:334-338: height:100% plus content-box padding makes the
     // panel taller than its own view, and the overflow lands at the bottom.
-    const root = /\.itemRoot\s*\{[^}]*\}/s.exec(css)?.[0] ?? ''
-    expect(root, 'there is no .itemRoot rule').not.toBe('')
+    // The reset lives in its own selector list now (`.itemRoot, .itemRoot *, …`),
+    // so read every rule that names the root instead of only the first block.
+    const roots = declarationRules(stripCssComments(panelCss()))
+      .filter(rule => rule.selector.split(',').map(part => part.trim()).includes('.itemRoot'))
+    expect(roots.length, 'there is no .itemRoot rule').toBeGreaterThan(0)
+    const root = roots.map(rule => rule.body).join('\n')
     expect(root).toMatch(/box-sizing\s*:\s*border-box/)
     expect(root).toMatch(/(?:block-size|height)\s*:\s*100%/)
     // Both spellings count: the sheet is written in logical properties, and a
@@ -730,7 +736,7 @@ describe('the panel fills the stage it is given', () => {
     const floatSurface = /--item-float\s*:\s*([^;]+)/.exec(css)?.[1]?.trim() ?? ''
     expect(floatSurface, 'the floating surface is the card surface wearing another name, so a popover and the card under it are one surface')
       .not.toBe(surface)
-    for (const card of ['itemShell', 'itemTable', 'itemStat']) {
+    for (const card of ['itemShell', 'itemTable']) {
       const layers = backgroundOf(css, card)
       expect(layers, `.${card} does not paint at all`).not.toEqual([])
       expect(layers, `.${card} is not painted with the one card surface: ${JSON.stringify(layers)}`)
@@ -770,7 +776,7 @@ describe('the panel fills the stage it is given', () => {
     // replaced it is the derivation and the ORDER check above, which read the mix
     // amount instead of a name — and which caught this same file getting the
     // comparison backwards the day it was written.)
-    for (const name of ['itemDangerZone', 'itemRowMenu']) {
+    for (const name of ['itemRowMenu']) {
       const layers = backgroundOf(css, name).filter(value => value.includes('var(--item-float)'))
       expect(layers, `.${name} does not paint with the floating surface: ${JSON.stringify(backgroundOf(css, name))}`).not.toEqual([])
     }
@@ -949,10 +955,10 @@ describe('the container self-query gate reacts', () => {
    * Splice a self-query in front of the FIRST block that asks about `asked`.
    *
    * It matches any block for that name, not one particular breakpoint: the
-   * detail's own container is only ever asked about at 360px, and a helper
-   * that planted at 720px would silently plant nothing and report the gate as
-   * broken — which is how a probe ends up deleted for the crime of the thing
-   * it was checking.
+   * list container is asked about at both 559px and 560px, and a helper
+   * that planted at a breakpoint the sheet no longer uses would silently plant
+   * nothing and report the gate as broken — which is how a probe ends up
+   * deleted for the crime of the thing it was checking.
    */
   function plant(css: string, asked: string, selector: string, body: string): string {
     const pattern = new RegExp(`@container ${asked} \\(min-width:`)
@@ -971,24 +977,23 @@ describe('the container self-query gate reacts', () => {
     expect(caught.some(finding => finding.includes('.itemRoot'))).toBe(true)
   })
 
-  it('catches it through a SECOND declarer of the same container', () => {
-    // The probe plants on a class that DECLARES the container, and which class
-    // that is has to be read out of the sheet rather than written here. A probe
+  it('catches every declarer of the live list container asking about itself', () => {
+    // The probe plants on classes that DECLARE the container, and which classes
+    // those are has to be read out of the sheet rather than written here. A probe
     // that names a class the sheet has since moved the declaration off is worse
     // than no probe: it plants nothing, finds nothing, and reports the gate as
     // broken — and the usual response to that is to delete the gate, which is
     // how a real container defect comes back with nobody watching.
     //
-    // So the declarers are DISCOVERED, all of them, and the probe is planted on
-    // one that is not the first. That is also the stronger case: a map that kept
-    // only the last declarer would let a second one through, which is the defect
-    // wearing a different class name.
+    // The list container is the live one: rows and their narrow/wide bands answer
+    // to `dsh-tb-item-list`. Every declarer is checked, so a second declarer is
+    // covered the day one returns.
     const declarers = [...containerDeclarers(live).entries()]
-      .filter(([, names]) => names.includes('dsh-tb-item-detail'))
+      .filter(([, names]) => names.includes('dsh-tb-item-list'))
       .map(([selector]) => `.${selector}`)
-    expect(declarers.length, 'nothing in the sheet declares dsh-tb-item-detail, so this probe has no subject').toBeGreaterThan(0)
+    expect(declarers.length, 'nothing in the sheet declares dsh-tb-item-list, so this probe has no subject').toBeGreaterThan(0)
     for (const declarer of declarers) {
-      const caught = deadSelfQueries(plant(live, 'dsh-tb-item-detail', declarer, '--probe: 1px;'))
+      const caught = deadSelfQueries(plant(live, 'dsh-tb-item-list', declarer, '--probe: 1px;'))
       expect(caught.some(finding => finding.includes(declarer.slice(1))),
         `the probe planted on ${declarer} did not bite — it is not declaring the container any more, and the gate cannot tell`).toBe(true)
     }
@@ -1005,33 +1010,39 @@ describe('the container self-query gate reacts', () => {
  * made visible. Each gate names the failure it exists to catch; each is paired
  * with a planted bad value so the gate is known to be able to report.
  */
-describe('the detail rail runs the full height of the workbench', () => {
+describe('the rail and in-row detail share one workbench', () => {
   const css = panelCss()
 
-  it('the pane is stretched by its track, so its rule is a rule and not a stub', () => {
-    // The rule between the list and the detail is the only vertical line on the
-    // page, and a line that stops at the bottom of a short detail reads as a
-    // rendering fault rather than as a column. The mechanism that decides this
-    // is the pane's own `align-self`: a grid item stretches by default, and
-    // `align-self: start` — which is what this sheet carried, so that a short
-    // detail would not sit in a 730px box — is exactly what makes the line stop
-    // early. Any correct fix removes it or says `stretch`; the gate accepts
-    // both and nothing else, so it does not dictate how the box is built.
-    const bodies = rulesOf(css, 'itemDetailPane')
-    expect(bodies.length, 'there is no .itemDetailPane rule').toBeGreaterThan(0)
-    for (const body of bodies) {
-      const align = /(?:^|[;{\s])align-self\s*:\s*([^;]+)/.exec(body)?.[1]?.trim()
-      expect(align === undefined || align === 'stretch' || align === 'normal',
-        `.itemDetailPane sets align-self: ${align ?? '?'} — the rule then stops at the content height instead of running the workbench`).toBe(true)
-    }
+  it('the workbench is rail beside list, with no detail-rail track', () => {
+    // The right-hand detail rail is gone: it was rented land whenever no row was
+    // chosen, and keeping its track would keep its empty column. The grid must
+    // therefore name exactly rail and list, with the rail fixed and the list
+    // fluid — one declaration, so the two columns cannot drift apart.
+    const body = rulesOf(css, 'itemWorkbench').join('\n')
+    expect(body, 'there is no .itemWorkbench rule').not.toBe('')
+    expect(body.replace(/\s+/g, ' ')).toMatch(/grid-template-areas:\s*'rail list'/)
+    expect(body.replace(/\s+/g, ' ')).toMatch(/grid-template-columns:\s*240px\s+minmax\(0,\s*1fr\)/)
   })
 
-  it('and the pane still draws its separator, so the stretch is not a blank column', () => {
-    // The other half. A pane that stretches and paints nothing is a wide empty
-    // column, which is the exact thing the `align-self: start` was there to
-    // avoid — so the fix has to be "stretch AND rule", and a gate that only
-    // checked the first would have passed a fix that made it worse.
-    expect(drawsRule(css), 'the detail rail draws no vertical rule at all').toBe(true)
+  it('the detail spans the row it belongs to and starts under a rule', () => {
+    // In-row detail must not become a fourth content column: it spans the row it
+    // expands, sits on its own grid row, and starts under the row's separator.
+    // A detail that does not span reflows the title, tags and menu around it —
+    // exactly the layout jump a reader reports as 「the list moved」.
+    const detail = rulesOf(css, 'itemRow > .itemDetail').join('\n')
+    expect(detail, 'there is no in-row detail placement rule').not.toBe('')
+    expect(detail.replace(/\s+/g, ' ')).toMatch(/grid-column:\s*1\s*\/\s*-1/)
+    expect(detail.replace(/\s+/g, ' ')).toMatch(/grid-row:\s*3/)
+    expect(drawsSeparator(detail, 'border-block-start'), 'the in-row detail has no top separator, so it reads as a continuation of the sentence').toBe(true)
+  })
+
+  it('the rail still draws its separator, so navigation is a column', () => {
+    // The rail replaced the detail pane as the left column. A navigation column
+    // with no separator is a wide empty margin, so the rule that makes it a
+    // column is still checked — on the rail that exists, not the pane that left.
+    const rail = rulesOf(css, 'itemRail').join('\n')
+    expect(rail, 'there is no .itemRail rule').not.toBe('')
+    expect(drawsSeparator(rail, 'border-inline-end'), 'the rail draws no separator, so navigation reads as a margin').toBe(true)
   })
 
   it('the two probes both bite', () => {
@@ -1039,14 +1050,12 @@ describe('the detail rail runs the full height of the workbench', () => {
     // against, so a green here means the DETECTOR works. A control that leaned
     // on the real sheet's current state would pass by accident the day the
     // sheet is fixed, and prove nothing for ever after.
-    const stretched = (text: string): boolean => !rulesOf(text, 'itemDetailPane')
-      .some(body => /(?:^|[;{\s])align-self\s*:\s*(?:start|flex-start|end|self-end)/.test(body))
-    expect(stretched('.itemDetailPane { display: flex; }'), 'a stretched pane was reported as short').toBe(true)
-    expect(stretched('.itemDetailPane { align-self: stretch; }'), 'an explicit stretch was reported as short').toBe(true)
-    expect(stretched('.itemDetailPane { align-self: start; }'), 'the align-self probe did not bite').toBe(false)
-    // Probe two: a stretched pane with no rule is not the fix.
-    expect(drawsRule('.itemDetailPane { border-inline-start: var(--dsh-tb-border-soft); }')).toBe(true)
-    expect(drawsRule('.itemDetailPane { border-inline-start: 0; }'), 'the border probe did not bite — the second half of the gate is vacuous').toBe(false)
+    const areas = (text: string): string => rulesOf(text, 'itemWorkbench').join('\n')
+    expect(areas('.itemWorkbench { grid-template-areas: \'rail list\'; }')).toContain('rail list')
+    expect(areas('.itemWorkbench { grid-template-areas: \'rail detail\'; }')).not.toContain('rail list')
+    const spans = (text: string): string => rulesOf(text, 'itemRow > .itemDetail').join('\n')
+    expect(spans('.itemRow > .itemDetail { grid-column: 1 / -1; }')).toContain('1 / -1')
+    expect(spans('.itemRow > .itemDetail { grid-column: 2 / 3; }')).not.toContain('1 / -1')
   })
 })
 
@@ -2395,7 +2404,45 @@ describe('the render artifact', () => {
     // the one view field deliberately NOT remembered, so a harness cannot open
     // the artifact on a filtered page. The filtered page is proven where it can
     // be — by pressing a facet, in `item-workbench.spec.ts`.
-    writeRenderArtifact(target, empty ? [] : fixtures(), band, page, scheme)
+    // DSH_PANEL_ROW names a row to expand, because the expansion is the one
+    // state a static render cannot reach by itself — and it is the largest thing
+    // on this panel, so 「nobody looked at it」 is not a state it may stay in. It
+    // is its OWN variable: `DSH_PANEL_OPEN` names a layer, and one variable
+    // cannot answer both questions at once.
+    const openRow = process.env.DSH_PANEL_ROW
+    writeRenderArtifact(target, empty ? [] : fixtures(), band, page, scheme, openRow === '' ? undefined : openRow)
     expect(existsSync(target)).toBe(true)
+  })
+})
+
+describe('the stylesheets this panel renders from survive the real transform', () => {
+  const SHEETS = ['item/item.module.css', 'board.module.css']
+
+  const build = (text: string, filename: string) => () => lightningcss.transform({
+    filename,
+    code: Buffer.from(text),
+    minify: false,
+    errorRecovery: false,
+  })
+
+  it('the probe bites, on strings it cannot have been tuned against', () => {
+    // A detector that only ever sees real sources is green for the same reason a
+    // broken one is green: it was never given anything to fail on.
+    const open = String.fromCharCode(47, 42)
+    const shut = String.fromCharCode(42, 47)
+    const eol = String.fromCharCode(10)
+    expect(build('.a { color: red; }', 'p.css'), 'the probe calls a valid sheet broken').not.toThrow()
+    expect(build(open + ' real ' + shut + ' .a { color: red; }', 'p.css'), 'the probe rejects a sheet with a real comment').not.toThrow()
+    // The exact shape that broke this panel: a comment body with no opening.
+    expect(build('.a { color: red; }' + eol + ' * body with no opening', 'p.css'),
+      'the probe cannot see a comment whose opening was eaten').toThrow()
+  })
+
+  it('both sheets transform, so every selector in them can match something', () => {
+    for (const sheet of SHEETS) {
+      const source = readFileSync(join(repoRoot, 'src/client', sheet), 'utf8')
+      expect(build(source, join('src/client', sheet)),
+        sheet + ' is not CSS the build will accept, so every selector in it silently matches nothing').not.toThrow()
+    }
   })
 })

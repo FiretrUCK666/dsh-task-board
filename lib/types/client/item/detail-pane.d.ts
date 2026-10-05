@@ -1,26 +1,9 @@
-/**
- * The detail: the same component, in two places.
- *
- * Level 1 of the two this panel has, and there is no level 3 — a third level
- * inside a column is where a reader loses their place entirely. The wide band
- * puts it in a side pane beside the list; the narrow band puts it in the row.
- * SAME component, SAME five sections, SAME spacing; only the box differs, and
- * neither placement writes its own width. The field grid answers to its own
- * container (`dsh-tb-item-detail`) rather than to the panel, because at 1080px
- * the side pane is 296px wide and at 2380px it is 816px — one answer taken from
- * the surface would be wrong in both.
- *
- * It is never a dialog. `boardBox()` resolves to the FIRST board box, so a
- * layer opened from this panel would anchor itself to the board — a different
- * surface — and a layer that floats over another surface is not this surface's
- * layer.
- */
 import type { ItemStep } from '../../core/item.ts';
 import type { ItemRowView } from '../../core/item-view.ts';
 import type { ItemPatch } from '../../core/item-transitions.ts';
 export interface ItemDetailProps {
     /**
-     * The row on show AS ITS PROJECTION, or `undefined` before anything is picked.
+     * The row on show AS ITS PROJECTION.
      *
      * The projection and not the record, because the pane asks derived questions —
      * has this row's hard deadline passed — and a derived question answered from
@@ -34,19 +17,48 @@ export interface ItemDetailProps {
      * The model already publishes the answer, on the same projection the row line
      * reads, so the pane and the row cannot answer differently. `item` is still
      * reachable as `view.item` for the fields the pane edits.
+     *
+     * **REQUIRED, NOT OPTIONAL.** This pane used to carry a 「nothing picked yet」
+     * branch behind `view === undefined` — thirty lines, four dictionary keys, a
+     * `recent` prop and the whole 「最近碰过的」 list, none of which any call site could
+     * reach, because the panel only builds this for the row it is already showing.
+     * Making the prop required turns that dead branch into a compile error, which is
+     * the only way a branch nobody exercises ever stops costing anything.
      */
-    readonly view: ItemRowView | undefined;
+    readonly view: ItemRowView;
+    /**
+     * THE PANEL'S CLOCK, so a date prints the year only when it is not this year —
+     * against the same now that decided whether this row is late. Two clocks on one
+     * row is a row that says 「还早」 and shows last year's date.
+     */
+    readonly now: number;
+    /**
+     * ASK THE CARD THIS ROW HANGS OFF.
+     *
+     * It used to be a button on the row beside the ⋮, so a row carried two controls
+     * for 「do something to this」 at two different distances from each other. It is one
+     * of the three things in this row's footer now, and it is LISTED even when there
+     * is no card — an entry that comes and goes with a fact the interface never
+     * states is worse than one that is always there and says 「not yet」.
+     */
+    readonly onAsk: () => void;
+    readonly asking: boolean;
+    /**
+     * MAKE IT A BOARD CARD, and OPEN A NEW ONE.
+     *
+     * Both live in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
+     * exactly the row that needs a card to be made — and sending the reader to the
+     * board to create one and back is the most expensive way to answer 「它挂在哪」.
+     */
+    readonly onPromote: () => void;
+    /** Run the card this row hangs off — the same `runTask` the catalog's `task.run`
+     *  binds, handed in rather than reached for, so this component never learns how a
+     *  run is started and there is no second spelling of the decision here. */
+    readonly onStart: () => void;
+    readonly onNewCard: () => void;
     /** The board cards a row may hang off, already titled. */
     readonly cards: readonly {
         readonly id: string;
-        readonly title: string;
-    }[];
-    /** The most recently touched rows, for the "before you pick" state. `id` travels WITH the
-     *  row: the short number is a name to read, never an address, and picking a
-     *  row by its label is how a list ends up selecting the wrong one. */
-    readonly recent: readonly {
-        readonly id: string;
-        readonly ref: string;
         readonly title: string;
     }[];
     /**
@@ -76,7 +88,6 @@ export interface ItemDetailProps {
     readonly stepsFocus?: number;
     readonly onToggleStep: (stepId: string) => void;
     readonly onRemove: () => void;
-    readonly onPickRecent: (id: string) => void;
 }
 /**
  * The detail, or the pane's designed "nothing picked yet" state.
