@@ -290,7 +290,6 @@
   box-shadow: var(--item-card-shadow);
 }
 
-
 /* ── 5. 筛选行 ───────────────────────────────────────────────────────────── */
 
 /* 「筛选：」 + 若干枚 + 排序钮 + 「隐藏已完成」。空的时候整行不渲染。 */
@@ -345,7 +344,6 @@
   background: var(--dsh-tb-hover);
   border-color: var(--item-ink-3);
 }
-
 
 .itemFilterCount {
   font-size: 11px;
@@ -605,7 +603,6 @@
 .itemSearch {
   line-height: 30px;
 }
-
 
 /* 展开的面**在带子底下**，不在浮层里遮着行。一个把结果挡住一半的筛选器，会让
  * 读者把结果检查两遍。 */
@@ -1442,7 +1439,6 @@
   border-color: var(--item-hair);
 }
 
-
 /* ── 菜单里的一行：句子 + 理由 ───────────────────────────────────────────────
  *
  * 一条不能按的菜单项**留在原位**，写成 `aria-disabled` 而不是拿掉：一份长度会
@@ -1607,42 +1603,15 @@
  * 「标签左 / 值右」的行，都属于**一张上下堆叠的字段表**——而新的两列里，右侧
  * 属性表是「组名一行、值一行」而不是两列对齐，所以这些形状不再被任何地方画。 */
 
-
 /* 字段是标签在上、值在下。并排的「标签 + 输入框」是最像后台管理系统的地方：
  * 标签成了输入框左侧的铭牌，读者的视线被迫横着扫一整排。 */
-.itemField {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  min-inline-size: 0;
-}
 
 /* 标签是**名字**，值是**东西**——名字必须比东西安静。
  *
  * 原来标签吃第二档墨而值也吃第二档墨，于是一格表单里两块一样响的字并排站着，读者
  * 要靠位置去分哪块是标签。标签退到第三档墨，值留在第二档：**一格表单只该有一个
  * 东西在说话，而说话的是那个能被改的东西。** */
-.itemFieldLabel {
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  letter-spacing: 0.02em;
-  color: var(--item-ink-3);
-}
 /* 正文 / 字段值：13 / 400 / 第二档墨。 */
-.itemFieldValue {
-  min-inline-size: 0;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  color: var(--item-ink-2);
-  overflow-wrap: anywhere;
-}
-
-.itemFieldValue[data-empty] {
-  color: var(--item-ink-3);
-}
-
 /* ── 步骤板 ──────────────────────────────────────────────────────────────
  *
  * **它是一个板，不是一份表单。** 三个控件乘以一百步就是三百个控件，而读者能
@@ -1892,12 +1861,7 @@
   flex: 1 1 160px;
 }
 
-
 /* ── 10. 页脚 ────────────────────────────────────────────────────────────── */
-
-
-
-
 
 /* ── 11. 浮层 ────────────────────────────────────────────────────────────── */
 
@@ -1937,6 +1901,16 @@
   overflow: hidden;
 }
 
+/* ── 命令面板 ──────────────────────────────────────────────────────────────
+ *
+ * **一个滚动容器。** 盒子自己是 `overflow-y: auto`，而滚动条画在盒子内衬的边上——
+ * 于是它压在最后一行芯片上，看起来像从这一块面板里穿了出去。真正的做法是
+ * **盒子不滚、里面那一列滚**：滚动条贴着内容的右边，而内容自己留出让它的位置。
+ *
+ * 而更根本的一条：**这一屏上有很多组，组内 4px、组间 12px。** 原来组内与组间是
+ * 4px 与 12px 混着写在四个地方，于是一组六个芯片和另一组第一个芯片之间的距离，
+ * 读者分不出那是不是同一组。间距就是分组，而分组是这一块唯一的骨架。
+ */
 .itemCommandPaletteBox {
   display: flex;
   flex-direction: column;
@@ -1944,12 +1918,107 @@
   max-block-size: 62%;
   min-block-size: 0;
   min-inline-size: 0;
-  padding: var(--item-gap);
-  overflow-y: auto;
+  /* 盒子四周留一档内衬：**搜索框是这一块的第一样东西，它贴到边上就成了一个从别处
+   * 伸进来的控件**——而它本来就是这一块的门，不是这一块的客人。
+   *
+   * 那一列自己不再加横向内衬：它要把自己让出来的右边留给滚动条，两处都加会让最右
+   * 那一列的芯片看着比别列窄，而那正是读者最后才注意到、却最先怀疑的地方。 */
+  padding: var(--s2);
+  /* 盒子不滚。它装的是头、一列、以及脚下那句话，而**只有那一列长**。 */
+  overflow: hidden;
   background: var(--item-float);
-  border: var(--item-hair);
+  border: var(--item-hair-strong);
   border-radius: var(--item-radius-card);
   box-shadow: var(--dsh-tb-shadow-3);
+}
+
+/* 搜索框与脚下那句话各自不滚动；中间那一列吃掉所有多出来的高度。 */
+.itemCommandPaletteBox > .itemSearch,
+.itemCommandPaletteBox > .itemQueryChips,
+.itemCommandPaletteBox > .itemKeyHelpNote,
+.itemCommandPaletteBox > .itemKeyHelpNothing {
+  flex: none;
+  margin: 0;
+}
+
+.itemCommandPaletteList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  flex: 1 1 auto;
+  min-block-size: 0;
+  /* THE ONLY SCROLLER. The box does not scroll, so the search field stays put and
+   * the scrollbar belongs to the list of answers rather than to the search box —
+   * a scrollbar crossing the field you are typing in is the worst of both. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  /* 给滚动条让出它自己的位置——否则它压在最后一枚芯片的右边，而读者会以为那一枚
+   * 被切掉了。 */
+  padding-inline-end: var(--s1);
+}
+
+/* 一组：名字与值之间一档空气，组与组之间两档。 */
+.itemCommandPaletteList > .itemFacetRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.itemCommandPaletteList > .itemFacetRow + .itemFacetRow {
+  margin-block-start: var(--s2);
+  padding-block-start: var(--s2);
+  border-block-start: var(--item-hair);
+}
+
+.itemCommandPaletteList .itemFacetValues {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--s1);
+  min-inline-size: 0;
+}
+
+.itemCommandPaletteList .itemFacetValues > * {
+  flex: none;
+}
+
+/* 「跳到哪一行」那一组是**一列**，不是一排：条目有整句标题，并排放六条就成了一堵
+ * 挤在一起的字墙，而竖着排它们各自读得出来。 */
+.itemCommandPaletteList > .itemFacetRow[data-palette-group='rows'] .itemFacetValues {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+
+.itemFacetName {
+  font-size: 11px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+  white-space: nowrap;
+}
+
+.itemFacetChip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  min-block-size: 26px;
+  min-inline-size: 26px;
+  padding: 0 10px;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 16px;
+  max-inline-size: 100%;
+  justify-content: flex-start;
+  text-align: start;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .itemCommandPaletteBox > * {
@@ -2440,98 +2509,196 @@ textarea.itemInput {
  *
  * 内衬用 `--item-card-pad`（24）而不是控件档的 16：弹层是这一页最大的一张纸，它的
  * 内衬要与外壳卡同一个数，而控件档是给一个输入框的。 */
+/* ── 新建面板：一张纸，头与底不动，中间那一块滚 ──────────────────────────
+ *
+ * **只有一块滚动体。** 头与底固定，中间在它们下面滚，于是读者正要按的那个按钮永远
+ * 不是刚刚滚走的那一个。反过来（纸本身 `overflow: hidden`、里面不滚）在手机上会
+ * 把最后两个字段整个切在底栏后面——**一个够不到的字段不是字段。**
+ *
+ * 940 而不是 720：右栏那三行日期要的是「明天 · 10月15日」这种读法，它比一个
+ * `yyyy-mm-dd` 宽得多，而左栏的正文要的是行长。两边都省不了的宽度，所以纸就宽。 */
 .itemCreateDialog {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 260px;
-  align-content: start;
-  gap: var(--item-gap);
-  flex: none;
-  inline-size: min(720px, 100%);
-  max-block-size: 82%;
+  display: flex;
+  flex-direction: column;
+  inline-size: min(940px, 100%);
+  max-block-size: 100%;
   min-inline-size: 0;
-  padding: var(--item-card-pad);
-  overflow-y: auto;
   background: var(--item-float);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-card);
+  border: var(--item-hair-strong);
+  border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
+  overflow: hidden;
 }
 
-/* 左栏：标题一行，正文占剩下的那一块。**正文是这块弹层里唯一需要面积的东西**，
- * 所以它有 `flex: 1`，而标题只有一行高——写一段话的时候标题不该跟着长。 */
+/* 头：**名字 + 一枚关掉的叉**。叉在右边、28 见方、全圆、悬停才有一块底——**它平时
+ * 几乎不在，而它必须在**：一个只能看见一半的关闭控件等于没有关闭控件。 */
+.itemCreateDialogHead {
+  display: flex;
+  align-items: center;
+  gap: var(--s2);
+  flex: none;
+  padding: 16px 22px;
+  border-block-end: var(--item-hair);
+}
+
+/* 15 / 600，与行标题同一档。设计稿这里是 16px，而 **16 不在这一页的字号表上**——
+ * 那张表读的是这张样式表本身（11 / 12 / 13 / 14 / 15 加看板那两个标题）。
+ * 所以稿子的那个数是关于稿子的事实，而不是关于这里的事实。
+ *
+ * **这一行和一行是同一种东西的名字**，所以两处同档；而且弹层不是另一页，它浮在这一页
+ * 上面——一个「因为打开了才存在」的字号，就是读者预测不了的又一层。 */
+.itemCreateDialogTitle {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 24px;
+  color: var(--item-ink-1);
+}
+
+/* THE CROSS IS CENTRED TWICE: the box by `place-items`, and the mark inside the box
+ * by its own viewBox. Drawn as a `×` CHARACTER it sits on the font's baseline
+ * inside a box centred by padding, and the two centring rules disagree by a pixel —
+ * which is why it read as 「偏上」 on a square button. */
+.itemCreateDialogClose {
+  display: grid;
+  place-items: center;
+  margin-inline-start: auto;
+  inline-size: 28px;
+  block-size: 28px;
+  padding: 0;
+  color: var(--item-ink-2);
+  background: none;
+  border: 0;
+  border-radius: var(--item-radius-pill);
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+}
+
+.itemCreateDialogClose:hover {
+  color: var(--item-ink-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemCreateDialogGrid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 292px;
+  gap: var(--s3);
+  flex: 1 1 auto;
+  min-block-size: 0;
+  padding: 20px 22px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* 左栏是三段话：那句话、这句话的正文、以及留给接手的人的那一段。 */
 .itemCreateDialogMain {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--s2);
   min-inline-size: 0;
   min-block-size: 0;
 }
 
-/* 新建面板里「那句话」与「那句话的逐字段读法」之间的那一段。
- *
- * 它们是同一句话的两种看法，所以它们之间不需要额外的标题去说明谁是哪一个——
- * 上面的芯片已经说了文法读懂了什么，下面的字段把同一件事摊开成可改的格子。
- * 这里只做一件事：**让读者一眼看出这一段是被上面那一句带出来的**，靠一段发丝线，
- * 不靠一个标签。标签会变成第四种说法，而这一页不需要。 */
-.itemCreateDialogSeeded {
+/* 右栏是**那句话没有说到的那些字段**，所以它自己有一条边——两边是两种东西，而
+ * 分隔它们的不是又一条发丝线，是这一栏从自己左边开始算的 22px。 */
+.itemCreateDialogSide {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
-  margin-block-start: var(--s3);
-  padding-block-start: var(--s3);
-  border-block-start: var(--item-hair);
+  min-inline-size: 0;
+  padding-inline-start: var(--s3);
+  border-inline-start: var(--item-hair);
+}
+
+.itemCreateDialogField,
+.itemCreateDialogDate {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
   min-inline-size: 0;
 }
 
-.itemCreateDialogTitle,
-.itemCreateDialogBody {
+/* 段名 12 / 第三层墨：它引入的是**控件**，而控件自己更响，所以名字退一档。 */
+.itemCreateDialogLabel {
+  display: block;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+}
+
+/* 标题框：它装的是那一行的名字，所以它和行标题同号（15 / 600）——**同一个问题用
+ * 同一档字**，而不是与页面标题同一档，因为弹层不是页面，它浮在页面上面。 */
+.itemCreateDialogTitleField {
   inline-size: 100%;
   min-inline-size: 0;
+  min-block-size: 34px;
+  padding: 6px 10px;
   font-family: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  line-height: 22px;
   color: var(--item-ink-1);
   background: var(--item-surface);
   border: var(--item-hair);
   border-radius: var(--item-radius-ctl);
   outline: none;
-  transition: border-color var(--dsh-tb-motion);
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-.itemCreateDialogTitle {
-  min-block-size: 34px;
-  padding: 6px 10px;
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
+.itemCreateDialogTitleField:focus,
+.itemCreateDialogBody:focus,
+.itemCreateDialogDateField:focus {
+  border-color: var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 .itemCreateDialogBody {
-  flex: 1 1 auto;
-  min-block-size: 120px;
+  inline-size: 100%;
+  min-inline-size: 0;
   padding: 8px 10px;
+  font-family: inherit;
   font-size: 13px;
   font-weight: 400;
   line-height: 20px;
+  color: var(--item-ink-1);
+  background: var(--item-surface);
+  border: var(--item-hair);
+  border-radius: var(--item-radius-ctl);
+  outline: none;
   resize: vertical;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-/* 右栏：**一列字段**。字段名是 11 / 600 的第三层墨（与段名同档，因为它引入的是
- * 控件而不是内容），控件占满。 */
-.itemCreateDialogFields {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+/* 一个日期框。它接**三种写法**——`2026-10-15`、`明天`、以及文法里的 `@明天`
+ * 解析出来的那一个——而写进去的那一个原样留着：**读者看得到自己写的是什么**，而
+ * 机器读懂了什么写在它的 `title` 里。 */
+.itemCreateDialogDateField {
+  inline-size: 100%;
   min-inline-size: 0;
+  min-block-size: 34px;
+  padding: 6px 10px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 22px;
+  color: var(--item-ink-1);
+  background: var(--item-surface);
+  border: var(--item-hair);
+  border-radius: var(--item-radius-ctl);
+  outline: none;
+  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-/* 底下那两个按钮在**弹层的最下一行通栏**：提交发生在这一行的右侧，而把它甩到右边
- * 会让读者的视线从左边的正文横穿过去——一个只有两个按钮的底栏不需要通栏那么多。 */
-.itemCreateDialogActions {
+/* 底栏：提交在右侧，而两个按钮之间一档 10px。 */
+.itemCreateDialogFoot {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
-  grid-column: 1 / -1;
-  padding-block-start: var(--item-gap);
+  gap: var(--s1);
+  flex: none;
+  padding: 14px 22px;
+  border-block-start: var(--item-hair);
 }
 
 /* 归档抽屉：一个 section + 一个折叠头 + 一张列表，与 `.itemGroup*` **形状相同但名字
@@ -2955,9 +3122,6 @@ textarea.itemInput {
   font-size: 13px;
 }
 
-
-
-
 /* ── 动作行：横贯两列 ───────────────────────────────────────────────────────
  *
  * 它们原来散在三处（⋯ 菜单、展开区最后一节、行上），于是读者要先知道某个动作住在
@@ -3034,11 +3198,6 @@ textarea.itemInput {
   color: var(--item-ink-3);
 }
 
-
-
-
-
-
 /* 归档入口：这一页之外的账。期限写出来而不只是暗示。
  *
  * 这条规则上方原本悬着两行 `.itemStatebarAction:hover` 与
@@ -3110,7 +3269,6 @@ textarea.itemInput {
   gap: 4px;
   min-inline-size: 0;
 }
-
 
 .itemInboxNote {
   display: flex;
@@ -3219,7 +3377,6 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-
 .itemRow > .itemDetail {
   display: flex;
   grid-column: 1 / -1;
@@ -3297,8 +3454,6 @@ textarea.itemInput {
    * 而「问 AI」压在一个字上面是读错内容。 */
   --item-col-menu: 96px;
 }
-
-
 
 /* 基准形状：一条可换行的线。
  *
@@ -3476,7 +3631,6 @@ textarea.itemInput {
     inset-inline: -3px;
   }
 }
-
 
 /* ── 19. 浮层零件：遮罩、键位表、以及共用它的那两样 ───────────────────────────
  *

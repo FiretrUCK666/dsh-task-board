@@ -834,6 +834,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
     surfaceRef,
   })
 
+
+  /**
+   * OPEN THE ARCHIVE FROM THE RAIL.
+   *
+   * 它是一个**信号**而不是一个值：抽屉的开与关住在列表页（那里有它的行、它的恢复与
+   * 它的彻底删除），而左栏只负责「读者想去那里」这一句话。把抽屉抬到面板来会把它的
+   * 三个动作和它的状态一起搬上来，而它们只属于那一页。
+   */
+  const [archiveAsked, setArchiveAsked] = useState(0)
+  const onOpenArchive = useCallback(() => { setArchiveAsked(count => count + 1) }, [])
   const pageProps = {
     items,
     now,
@@ -852,6 +862,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     /* The ordering goes down AS ITSELF, not as a 「may I group by day」 boolean the
        table would have to trust: a table told 「yes」 by a caller who guessed is a
        table printing 「今天」 above rows from six different days. */
+    archiveAsked,
     sort: prefs.sort,
     renderRows: rows,
   }
@@ -1076,21 +1087,30 @@ export function ItemListPanel(props: ItemListPanelProps) {
     return [...days]
   }, [items])
 
+
   const enterRail = useCallback((entry: ItemRailEntry) => {
     setRailEntry(entry.id)
     /* A SET moves the panel; a PREDICATE narrows the query. Those are two different
      * things and the entries say which they are, so this branch is the shape of
      * the answer rather than a guess about the reader's intent. */
     if (entry.kind === 'collection' || entry.kind === 'place') {
-      if (entry.key === 'inbox') goTo('inbox')
-      else choose({ search: '' })
+      if (entry.key === 'inbox') { goTo('inbox'); return }
+      /* 「已删除」是**另一个地方**，不是一次收窄：它是墓碑，而墓碑不在活着的行里。
+       * 所以它清空筛选（一个还留着谓词的抽屉看不懂自己要显示什么）并请列表页把
+       * 归档打开——同一个抽屉，两扇门。
+       *
+       * 原来这一行与「全部」走同一条路，于是左栏上「已删除 3」按下去等于按了
+       * 「全部 12」：**一个印着数目的按钮按下去做了另一件事**，而屏幕上什么都不变，
+       * 读者分不清是自己记错了还是这一行坏了。 */
+      if (entry.key === 'deleted') { choose({ search: '' }); onOpenArchive(); return }
+      choose({ search: '' })
       return
     }
     /* A PREDICATE, and the query string is the ONLY place it is written: the
      * search box shows exactly what the rail just did, so the reader can take it
      * off from either side and neither side can be the stale one. */
     choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token)) })
-  }, [choose, goTo, prefs.search])
+  }, [choose, goTo, onOpenArchive, prefs.search])
 
   const pickRailDay = useCallback((day: string) => {
     const token = `on:${day}`
@@ -1128,6 +1148,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           open={overlay === 'create'}
           onClose={() => openLayer(undefined)}
           cards={cards.map(card => ({ id: card.id, title: card.title }))}
+          onNewCard={() => openLayer('palette')}
           onCreate={input => {
             if (isBlankCapture(input)) return false
             const made = captureItemRecord(input, Date.now(), newItemId)

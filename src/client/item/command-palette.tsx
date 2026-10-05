@@ -427,7 +427,15 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
               onClearQualifiers={() => { props.onText(freeTextOf(props.text)) }}
             />
 
-            <div id={listboxId} role="listbox" aria-label={t('item.palette.answers')}>
+            {/* THE LISTBOX IS ALSO THE PANEL'S ONLY SCROLLER.
+                *
+                * 盒子自己不滚，而这一列滚——于是搜索框停在原处，滚动条属于**答案那一列**
+                * 而不是属于那个正在打字的框。盒子自己滚的时候，那条滚动条画在盒子内衬
+                * 的边上，于是它压着最后一枚芯片，看起来像从这一块面板里穿了出去。
+                * 盒子自己不滚，而这一列滚——于是搜索框停在原处，滚动条属于**答案那一列**
+                * 而不是属于那个正在打字的框。盒子自己滚的时候，那条滚动条画在盒子内衬
+                * 那些东西。 */}
+            <div id={listboxId} className={css.itemCommandPaletteList} role="listbox" aria-label={t('item.palette.answers')}>
               {groups.map(group => (
                 <div key={group.id} className={css.itemFacetRow} data-palette-group={group.id}>
                   <span className={css.itemFacetName}>{t(group.name)}</span>

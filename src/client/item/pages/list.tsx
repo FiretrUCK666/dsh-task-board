@@ -22,7 +22,7 @@
  * the one that matters, and 「unreachable」 must never be drawn as 「empty」: that
  * would tell a reader their deletions are gone when they may be sitting on disk.
  */
-import { useCallback, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { itemSlicesOf } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
@@ -94,6 +94,22 @@ export function ListPage(props: ItemListPageProps) {
     const reply: ArchiveReply = await itemsArchive()
     setArchive(reply.ok ? { kind: 'ready', rows: reply.deleted } : { kind: 'unreadable' })
   }, [])
+
+  /**
+   * THE RAIL'S 「已删除」 OPENS THIS DRAWER.
+   *
+   * 它按下去之前与「全部」完全一样，所以左栏上那一行印着的数字是一个读者按了却
+   * 看不到任何变化的数字——而**看不见变化的按钮比没有按钮更糟**：读者分不清是自己
+   * 记错了还是这一行坏了。
+   *
+   * 所以这是一个**信号**而抽屉的开与关仍住在这里：这里有它的行、它的恢复、它的彻底
+   * 删除，而左栏只负责说一句「读者想去那里」。
+   */
+  useEffect(() => {
+    if (props.archiveAsked === 0) return
+    setArchiveNote(undefined)
+    void openArchive()
+  }, [props.archiveAsked, openArchive])
 
   /**
    * Restore one archived row, ADDRESSED BY ITS IDENTITY.
