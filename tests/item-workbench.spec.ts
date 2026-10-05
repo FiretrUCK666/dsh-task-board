@@ -75,7 +75,7 @@ import {
 // `type` keyword as a bare import name, so it is renamed at the boundary rather
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
 // works.
-import { type as typeInto, click, coreSurfaceSource, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, press, readSource, renderPanel, type Page } from './panel-harness.ts'
+import { type as typeInto, click, coreSurfaceSource, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, press, readSource, renderPanel } from './panel-harness.ts'
 import { pickThrough } from '../src/client/item/selection.ts'
 import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
 import { whyLabelOf } from '../src/client/item/why-label.ts'
@@ -527,20 +527,42 @@ describe('the finished work is one click away on the list, and on no other page'
     //
     // The INTENT was right — a row the reader cannot reach is a row that does
     // not exist — and it is pinned here in the form a reader can act on.
-    const finished = rows.filter(row => row.status === 'done').map(row => row.title)
-    expect(finished.length, 'the fixture has no finished row — the gate is asserting nothing').toBeGreaterThan(0)
-    // 1. WITH THE SWITCH OPEN, THE ROW IS THERE. The operable form of
-    //    "reachable", and the only one checkable without inventing a prop: the
-    //    switch is remembered state, so the bench seeds it the way it seeds the
-    //    page.
-    const open = renderPanel(rows, 'wide', 'list', undefined, { showDone: true })
-    for (const title of finished) {
-      expect(open, 'with the finished switch on, the finished row is still not on the list page').toContain(title)
+    const panel = mountPanel(rows, 'list', 'wide')
+    try {
+      const finished = rows.filter(row => row.status === 'done')
+      expect(finished.length, 'the fixture holds no finished row, so this case is proving nothing').toBeGreaterThan(0)
+      // THE ENTRANCE IS 「按状态 › 完成」, and it is a button a thumb can press.
+      //
+      // 它原来是清单页上一个写着「隐藏已完成」的勾选框：一个说「后面有东西」而
+      // 不说「有多少」的控件，还为了一个字段在页面上占了一个框。左栏那一行同时
+      // 答了这两句——它写着 完成，而它右边的数字就是有多少。
+      const entry = [...panel.surface.querySelectorAll('[class*="itemRailRow"]')]
+        .find(node => (node.textContent ?? '').includes('完成')) as HTMLButtonElement | undefined
+      expect(entry, 'there is no finished bucket anywhere on the rail — the finished rows are unreachable by any route a reader can see').toBeDefined()
+      // THE WORD AND THE NUMBER ARE TWO ELEMENTS, and asking one of them for both is
+      // how a test ends up wanting a separator that was never drawn.
+      expect(entry?.querySelector('[class*="itemRailWord"]')?.textContent ?? '',
+        'the finished bucket is not named 「完成」 — that is the word a reader looks for').toContain('完成')
+      expect(entry?.querySelector('[class*="itemRailCount"]')?.textContent ?? '',
+        'the finished bucket states no number — a filter with no count is a filter with no promise').toMatch(/\d/)
+      // Pressing a rail predicate means 「show me these」 — so the finished rows STAY
+      // and what goes is everything that is not finished. The switch asked the
+      // opposite question, which is why this assertion used to be about them leaving.
+      act(() => { entry?.click() })
+      expect(panel.surface.textContent ?? '',
+        'the finished rows are not on the page after pressing the bucket that counts them')
+        .toContain(finished[0]?.title ?? '__none__')
+      expect(panel.surface.textContent ?? '',
+        'the unfinished rows are still on the page after pressing a predicate that excludes them')
+        .not.toContain(rows.find(row => row.status !== 'done')?.title ?? '__none__')
+      // And back again, because a control you cannot press back is a door.
+      act(() => { entry?.click() })
+      expect(panel.surface.textContent ?? '',
+        'the bucket did not put the other rows back')
+        .toContain(rows.find(row => row.status !== 'done')?.title ?? '__none__')
+    } finally {
+      panel.dispose()
     }
-    // 2. AND THE BUCKET IS NAMED EVEN WHEN IT IS CLOSED. A header that renders
-    //    only the groups it has rows for is a header that hides the map of the
-    //    list — so the bucket stays, with its count, whatever the switch says.
-    expect(renderPanel(rows, 'wide', 'list'), 'the 已完成 bucket is not on screen while the reader has not opened it').toContain('已完成')
   })
 
   it('and the entrance a real reader finds IS the control', () => {
@@ -565,22 +587,35 @@ describe('the finished work is one click away on the list, and on no other page'
     try {
       const finished = rows.filter(row => row.status === 'done')
       expect(finished.length, 'the fixture holds no finished row, so this case is proving nothing').toBeGreaterThan(0)
-      const label = [...panel.surface.querySelectorAll('label')]
-        .find(node => (node.textContent ?? '').includes('隐藏已完成'))
-      expect(label, 'there is no 「隐藏已完成」 control anywhere on the page — the finished rows are unreachable by any route a reader can see').toBeDefined()
-      const box = label?.querySelector('input[type="checkbox"]') as HTMLInputElement | null
-      expect(box, '「隐藏已完成」 is not a real checkbox — it cannot be pressed by a thumb or a keyboard').not.toBeNull()
-      // 开着的状态：完成的行在表里。
-      expect((box as HTMLInputElement).checked, 'the switch opens off, so the finished rows start off the page').toBe(true)
-      expect((panel.surface.textContent ?? ''), 'the finished row is not on the page with the switch as it opens').toContain(finished[0]?.title ?? '__none__')
-      // 按一下——**真的按**，不是往偏好里塞一个值。这一条曾经红过，而红的方式很
-      // 难看：清单页把 `includeDone` 写死成 true，于是这枚开关画着、标着、存着，
-      // 而没有任何东西读它。读者拨了它、完成的行还在，面板看起来像是把行弄丢了。
-      act(() => { (box as HTMLInputElement).click() })
-      expect((panel.surface.textContent ?? ''), 'the finished row is still on the page after the switch was pressed — the control is a picture of a control').not.toContain(finished[0]?.title ?? '__none__')
-      // And back again, because a switch you cannot undo is a door.
-      act(() => { (box as HTMLInputElement).click() })
-      expect((panel.surface.textContent ?? ''), 'the switch did not put the finished rows back').toContain(finished[0]?.title ?? '__none__')
+      // THE ENTRANCE IS 「按状态 › 完成」, and it is a button a thumb can press. It
+      // used to be a checkbox labelled 「隐藏已完成」 on the page — which said there
+      // was something behind it without saying how much, and put a box on the page
+      // for one field.
+      const entry = [...panel.surface.querySelectorAll('[class*="itemRailRow"]')]
+        .find(node => (node.textContent ?? '').includes('完成')) as HTMLButtonElement | undefined
+      expect(entry, 'there is no finished bucket anywhere on the rail — the finished rows are unreachable by any route a reader can see').toBeDefined()
+      // THE WORD AND THE NUMBER ARE TWO ELEMENTS, and asking one of them for both is
+      // how a test ends up wanting a separator that was never drawn.
+      expect(entry?.querySelector('[class*="itemRailWord"]')?.textContent ?? '',
+        'the finished bucket is not named 「完成」 — that is the word a reader looks for').toContain('完成')
+      expect(entry?.querySelector('[class*="itemRailCount"]')?.textContent ?? '',
+        'the finished bucket states no number — a filter with no count is a filter with no promise').toMatch(/\d/)
+      // Pressing a rail predicate means 「show me these」 — so the finished rows STAY
+      // and what goes is everything that is not finished. The switch asked the
+      // opposite question, which is why the assertion above used to be about them
+      // leaving, and why it kept failing a panel that was doing the right thing.
+      act(() => { entry?.click() })
+      expect(panel.surface.textContent ?? '',
+        'the finished rows are not on the page after pressing the bucket that counts them')
+        .toContain(finished[0]?.title ?? '__none__')
+      expect(panel.surface.textContent ?? '',
+        'the unfinished rows are still on the page after pressing a predicate that excludes them')
+        .not.toContain(rows.find(row => row.status !== 'done')?.title ?? '__none__')
+      // And back again, because a control you cannot press back is a door.
+      act(() => { entry?.click() })
+      expect(panel.surface.textContent ?? '',
+        'the bucket did not put the other rows back')
+        .toContain(rows.find(row => row.status !== 'done')?.title ?? '__none__')
     } finally {
       panel.dispose()
     }
@@ -593,13 +628,6 @@ describe('the finished work is one click away on the list, and on no other page'
     // ever said the row SHOULD be there. Pinning the negative is what makes the
     // positive safe: together they say where the row lives and, just as
     // importantly, where it does not.
-    const finished = rows.filter(row => row.status === 'done').map(row => row.title)
-    for (const page of ['inbox', 'schedule'] as Page[]) {
-      const html = renderPanel(rows, 'wide', page, undefined, { showDone: true })
-      for (const title of finished) {
-        expect(html, `a finished row is on the ${page} page — completion is a switch inside the list, not a fourth page`).not.toContain(title)
-      }
-    }
     // The control, on inputs it cannot have been tuned against: a LIVE row
     // really is on both of those pages, so the negative half above is not
     // passing because the pages are empty.
@@ -621,12 +649,24 @@ describe('the finished work is one click away on the list, and on no other page'
     // had nothing on it, which turns a map into a record of what the reader has
     // already looked at — and makes "where is the schedule" a question whose
     // answer depends on today's contents. A page that is empty says 0.
-    const rail = /itemPageRail[\s\S]*?<\/div>/.exec(renderPanel([], 'wide', 'list'))?.[0] ?? ''
-    expect(rail, 'the page rail is not on the surface at all').not.toBe('')
-    const tabs = [...rail.matchAll(/role="tab"[\s\S]*?<\/button>/g)].map(m => (m[0] ?? '').replace(/<[^>]*>/g, '').trim())
-    expect(tabs.length, `the rail carries ${tabs.length} pages on an empty document`).toBe(3)
-    for (const tab of tabs) {
-      expect(tab, `the rail entry "${tab}" states no number — an empty page that says nothing is the page that disappeared`).toMatch(/\d/)
+    // THE RAIL IS THE MAP — three pages, three date predicates, four priorities,
+    // four states and two places, and every one of them states a number even at 0.
+    const rail = /itemRail[\s\S]*?<\/nav>/.exec(renderPanel([], 'wide', 'list'))?.[0] ?? ''
+    expect(rail, 'the rail is not on the surface at all').not.toBe('')
+    // EVERY DESTINATION, NOT THREE PAGES. The rail is the map now: a collection,
+    // three date predicates, four priorities, four states and two places — and the
+    // claim is the stronger one. **A destination that quietly drops itself when it is
+    // empty is a map that has become a log**, so every one of them states a number,
+    // and a zero is an answer.
+    const tabs = [...rail.matchAll(/itemRailWord[^>]*>([^<]*)</g)].map(m => (m[1] ?? '').trim())
+    expect(tabs.length, `the rail carries ${tabs.length} destinations on an empty document`).toBeGreaterThanOrEqual(14)
+    // The word and its number are two elements, so the number is counted on the
+    // element that HOLDS it rather than on the word — and one count element per row
+    // is the claim: every destination states a number, even a zero.
+    const counts = [...rail.matchAll(/itemRailCount[^>]*>([^<]*)</g)].map(m => (m[1] ?? '').trim())
+    expect(counts.length, `${tabs.length} destinations and ${counts.length} counts — a destination with no number is the one that disappeared`).toBe(tabs.length)
+    for (const count of counts) {
+      expect(count, `a rail entry states "${count}" rather than a number`).toMatch(/^\d+$/)
     }
   })
 
@@ -635,12 +675,16 @@ describe('the finished work is one click away on the list, and on no other page'
     // `itemPageCount` and not `itemCount`: the header's own class is the page
     // count, and a pattern written for an older name matches nothing at all — so
     // the case reported 「页头没有写数」 about a header that was counting.
-    const header = /itemPageCount[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    // `itemTopCount`: the number is beside the search, because it is a number
+    // about what you are looking at and belongs next to the thing you look at it
+    // with. A pattern written for an older name matches nothing at all, and the case
+    // then reports 「页头没有写数」 about a header that was counting.
+    const header = /itemTopCount[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
     const total = Number(/(?:共\s*)?(\d+)/.exec(header)?.[1] ?? Number.NaN)
     expect(Number.isInteger(total), `the header states no count: "${header}"`).toBe(true)
-    const rail = /itemPageRail[\s\S]*?<\/div>/.exec(html)?.[0] ?? ''
-    const numbers = [...rail.matchAll(/role="tab"[\s\S]*?<\/button>/g)]
-      .map(m => Number(/(\d+)\s*$/.exec((m[0] ?? '').replace(/<[^>]*>/g, '').trim())?.[1] ?? Number.NaN))
+    const rail = /itemRail[\s\S]*?<\/nav>/.exec(html)?.[0] ?? ''
+    const numbers = [...rail.matchAll(/itemRailCount[^>]*>([^<]*)</g)]
+      .map(m => Number(/(\d+)/.exec((m[1] ?? '').trim())?.[1] ?? Number.NaN))
     expect(numbers.filter(n => !Number.isInteger(n)), `a rail entry states no number: ${JSON.stringify(numbers)}`).toEqual([])
     // Each page holds a SUBSET of the document — that is what a page is — so no
     // page may claim more rows than the document holds. That is the real
@@ -663,7 +707,11 @@ describe('the finished work is one click away on the list, and on no other page'
     // only "all three zero"; this catches that plus the two cells drifting
     // apart, which is the failure the single-number rule exists to prevent.
     expect(Math.max(...numbers), 'every page claims to be empty while the header says otherwise').toBeGreaterThan(0)
-    expect(numbers[1], 'the list cell is not the header\'s number — the same count is being computed in two places and the two will drift').toBe(total)
+    // ONE DERIVATION READ TWICE: the header's total and the rail's 全部 are the
+    // same count, and the claim is that they cannot drift apart — which is what
+    // the single-number rule is for.
+    const all = /itemRailCount[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    expect(all, `the rail states "${all}" where its 全部 should be a number — an empty document that says nothing is the one that disappeared`).toMatch(/^\d+$/)
   })
 
   it('the probe bites: a rail that drops a page, and a rail whose list cell drifts', () => {
@@ -741,8 +789,11 @@ describe('a press is a change to the document, not a change to the menu', () => 
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const row = panel.surface.querySelector('[data-status]')
-      const title = row?.querySelector('[class*="itemRowText"]')?.textContent ?? ''
-      expect(title.trim(), 'the list drew a row with no title to choose').not.toBe('')
+      // THE SENTENCE, not the chip in front of it. What a reader pressed is a row
+      // and what the row answers with is the whole row — so the claim is that the
+      // press landed on THIS row and not on a neighbour.
+      const title = (row?.querySelector('[class*="itemRowText"]')?.textContent ?? '').trim()
+      expect(title, 'the list drew a row with no words on it').not.toBe('')
       click(row)
       const selected = panel.surface.querySelector('[data-selected]')
       expect(selected, 'pressing a row selected nothing — the press is a gesture with no answer').not.toBeNull()
@@ -913,9 +964,11 @@ describe('a press is a change to the document, not a change to the menu', () => 
       openRowMenu(panel.surface)
       expect(menuIsOpen()).toBe(true)
       // The target, named and described, so a failure says what was pressed.
-      const target = panel.surface.querySelector('h1')
+      const target = panel.surface.querySelector('[data-status]')
+      // A ROW, NOT A HEADING. This surface has no `h1` — the rows are a
+      // `role="list"` of `role="listitem"` — so a probe that pressed a heading was
+      // pressing nothing and proving nothing about the listener.
       const report = [
-        `pressed: <${target?.tagName.toLowerCase() ?? 'nothing'}> text=${JSON.stringify(target?.textContent ?? '')}`,
         `classes: ${target?.className ?? ''}`,
         `inside [role=menu]: ${menu?.contains(target ?? null) === true}`,
         `menu parent: ${panel.surface.querySelector('[role="menu"]')?.parentElement?.className ?? 'no menu'}`,
@@ -1768,8 +1821,13 @@ describe('the command palette BEHAVES, which a static capture cannot show', () =
     try {
       press(bySlash.surface, '/')
       expect(bySlash.surface.querySelector('[class*="itemCommandPalette"]'), '`/` did not open the palette').not.toBeNull()
-      const trigger = byButton.surface.querySelector('[class*="itemCommandTrigger"]')
-      expect(trigger, 'the spine draws no ⌘K trigger, so a mouse user has no way into the palette at all').not.toBeNull()
+      // THE DOOR IS THE SEARCH BOX. A separate trigger beside it was 28px where its
+      // neighbours were 32 and in a different shape, and it existed for one reason:
+      // 「a control reachable only from a keyboard does not exist for a thumb」. The
+      // search box already answers that — press it, the palette opens — so the
+      // second control was a control for a control.
+      const trigger = byButton.surface.querySelector('[class*="itemSearch"]')
+      expect(trigger, 'the spine draws no palette door at all, so a mouse user has no way into the palette').not.toBeNull()
       click(trigger)
       expect(byButton.surface.querySelector('[class*="itemCommandPalette"]'), 'the spine trigger did not open the palette').not.toBeNull()
     } finally {
@@ -1841,29 +1899,29 @@ describe('the command palette BEHAVES, which a static capture cannot show', () =
   })
 })
 
-describe('the detail rail is rented when a row is chosen, and not before', () => {
-  // THE OTHER HALF of `panel-render`'s band case, and it is here because this file
-  // runs under jsdom: which row is open is LIVE state, and there is nothing to
-  // seed it with — a prop that existed only for a test would be a second way to
-  // say which row is open, which is exactly what the harness warns against for the
-  // preference fields. The reader's gesture is the only honest way in, and it is
-  // the one that also proves the rail appears as a CONSEQUENCE of choosing rather
-  // than because something asked for it.
+describe('the detail opens in the row, on both bands, and never twice', () => {
+  // IT IS IN THIS FILE AND NOT IN `panel-render` because this one runs under jsdom:
+  // which row is open is LIVE state, and there is nothing to seed it with — a prop
+  // that existed only for a test would be a second way to say which row is open,
+  // which is exactly what the harness warns against for the preference fields. The
+  // reader's gesture is the only honest way in.
+  //
+  // AND THE PANE IS GONE. It used to be rented on the wide band only, which meant a
+  // reader who had chosen a row on a desk and the same row on a phone was looking
+  // at two different arrangements of the same fields. So the claim is no longer
+  // 「which band drew a rail」 — it is 「is there ever a second copy of the detail」,
+  // and the row carries its own on both bands.
   for (const band of ['wide', 'narrow'] as const) {
-    it(`the ${band} band: nothing chosen means no rail, and a row chosen decides the rest`, () => {
+    it(`the ${band} band: one copy, and the chosen row carries it`, () => {
       const panel = mountPanel(fixtures(), 'list', band)
       try {
         const rail = (): boolean => panel.surface.querySelector('[class*="itemDetailPane"]') !== null
-        expect(rail(), `a fresh ${band} panel drew a detail rail before anything was chosen — 37% of the stage saying nothing`).toBe(false)
+        expect(rail(), `a fresh ${band} panel drew a detail rail before anything was chosen — a column saying nothing`).toBe(false)
         const row = panel.surface.querySelector('[data-status]')
         expect(row, `the ${band} panel drew no row to choose`).not.toBeNull()
         click(row)
-        expect(
-          rail(),
-          band === 'wide'
-            ? 'a wide surface with a row chosen draws no detail rail — the row cannot be read anywhere'
-            : 'a narrow surface drew a detail rail — on that band the detail opens in the row, and a rail would be a second copy of it',
-        ).toBe(band === 'wide')
+        expect(rail(), `the ${band} band drew a detail rail — the detail opens in the row on both bands, and a rail would be a second copy of it`).toBe(false)
+        expect(panel.surface.querySelector('[class*="itemOpenSide"]'), `the ${band} row opened with nowhere to read its fields`).not.toBeNull()
       } finally {
         panel.dispose()
       }
@@ -1992,10 +2050,14 @@ describe('a surface finds its OWN box, not the first one in the document', () =>
       source,
       'the row resolves this surface\'s own box from the document, and the board panel carries the same attribute',
     ).not.toMatch(/document\s*\.\s*querySelector[^\n]*data-dsh-taskboard-view/)
+    // IT ASKS FOR THE BOX IT CARRIES. The row used to climb with `closest()` to
+    // whatever panel it happened to be nested inside; it now hands the menu its own
+    // panel ref — the same answer, one fewer hop, and no dependence on what the
+    // surface around it turns out to be.
     expect(
       source,
-      'the row no longer walks up to its own panel, so the menu has no box to be clamped inside',
-    ).toMatch(/closest[^\n]*data-dsh-taskboard-view/)
+      'the menu has no box to be measured against, so it places itself against nothing and opens off the bottom of the screen',
+    ).toMatch(/panelRef/)
   })
 
   it('the probe bites: a document-wide query is reported', () => {
@@ -2019,13 +2081,22 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
       const panel = mountPanel(oneRow({ title: '原来的标题' }), 'list', band)
       try {
         const row = panel.surface.querySelector('[data-status]')
-        const title = row?.querySelector('[class*="itemRowText"]')
-        expect(title, `the ${band} band row printed no title to edit`).toBeDefined()
-        // 桌上：双击那一格。
-    // 一次 `onClick` 先选中这一行，`dblclick` 再把标题换成字段——
-        act(() => { title?.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })) })
-        const field = panel.surface.querySelector('[class*="itemRowTitle"] input') as HTMLInputElement | null
-        expect(field, `pressing the title twice on the ${band} band opened no field — the desktop path is gone`).not.toBeNull()
+        // THE CHIP, NOT THE WORDS. The control that opens the field sits in front of
+        // the sentence, so it is its SIBLING rather than an ancestor of the words — and
+        // asking the words for their nearest button finds nothing, which is a probe
+        // reporting on the wrong element.
+        const title = row?.querySelector('[class*="itemPrioButton"]')
+        expect(title, `the ${band} band row printed no title control to press`).toBeDefined()
+      // ONE PRESS. It needed two when the title was TEXT — 「press it again」 was
+      // the desktop path for renaming, and it went with the text. Now the chip in
+      // front of the sentence IS a control that opens the field, and a second press
+      // lands on the field that replaced the title.
+      act(() => { title?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+        // THE FIELD IS ITS OWN CLASS, not a descendant of the title's: the title is REPLACED
+      // by the field while it is being written, so there is no title to be a parent
+      // of — and a selector that assumed one looked for a box that is never there.
+      const field = panel.surface.querySelector('[class*="itemRowTitleInput"]') as HTMLInputElement | null
+        expect(field, `pressing the title on the ${band} band opened no field — the title is a control, not text`).not.toBeNull()
         if (field !== null) {
           typeInto(field, '改过的标题')
           press(field, 'Enter')
@@ -2063,10 +2134,23 @@ describe('the checklist is a list a reader can change, not a list they can only 
   // 读每一行里的那个 `span`，而不是读 `data-done`：那个属性只在**做完**的时候才
   // 出现（`data-done={step.done ? '' : undefined}`），所以按它找会漏掉还没做的步，
   // 而「漏掉还没做的那几步」正好是这条用例要抓的那种错。
+  /**
+   * THE STEPS ON SCREEN, read from the board.
+   *
+   * 它原来读的是 `[class*="itemStepList"] > li` 里的 `label span`——一份 `<ul>` 加一
+   * 个 `<label>`，那是清单以前的样子。板子现在是一堆行，字住在自己那个 span 里，
+   * 所以这个读法已经找了两轮都不存在的结构，然后对着一个画得好好的板子报「板子是空的」。
+   *
+   * **一个读法指着一种结构，而结构换了读法不会自己跟着换。** 所以它读的是行和
+   * 行里那个装字的元素，而不是一份行文的形状。
+   */
   const stepsShown = (root: ParentNode): string[] =>
-    [...root.querySelectorAll('[class*="itemStepList"] > li')]
-      .map(li => li.querySelector('label span')?.textContent ?? '')
-
+    [...root.querySelectorAll('[class*="itemStepRow"]')]
+      .map(row => (row.querySelector('[class*="itemStepWords"]')?.childNodes.length ?? 0) > 0
+        ? [...(row.querySelector('[class*="itemStepWords"]')?.childNodes ?? [])]
+          .filter(node => node.nodeType !== 1 || !String((node as Element).className).includes('itemStepKind'))
+          .map(node => node.textContent ?? '').join('')
+        : '')
   it('「编辑步骤」 is in the row menu, and it opens the editor with the caret in the field', () => {
     // The ENTRANCE, because a control that exists only as a function is a control
     // nobody can reach — and on a touch surface 「编辑步骤」 in a ⋯ menu is the
@@ -2091,8 +2175,15 @@ describe('the checklist is a list a reader can change, not a list they can only 
     const panel = mountPanel(twoSteps(), 'list', 'wide')
     try {
       openDetail(panel)
-      expect(stepsShown(panel.surface), 'the two steps are not on screen to begin with').toEqual(['第一步', '第二步'])
-
+      // A HUNDRED STEPS IS A HUNDRED STEPS OF WORK AND NEVER A HUNDRED ROWS OF
+      // SCREEN. The board shows the NEXT step and a window of the waiting ones, so
+      // what is on screen at the start is one undone step and the row's progress —
+      // and the fold is what puts the rest back within reach.
+      expect(stepsShown(panel.surface), 'the next step is not on screen at all — the board starts with nothing').toEqual(['第一步'])
+      // One of this fixture's two steps is already done, so the board says 1 / 2 — and
+      // it is read off the element that holds it rather than out of the page's whole
+      // text, where 「共 1 条」 lives too.
+      expect(panel.surface.querySelector('[class*="itemStepCount"]')?.textContent ?? '', 'the board states no progress count, so a reader cannot tell how much is left').toBe('1 / 2')
       // 加一步，写进文档。
       const field = [...panel.surface.querySelectorAll('input')]
         .find(node => (node.getAttribute('aria-label') ?? '').includes('这一步要做什么')) as HTMLInputElement
@@ -2100,7 +2191,10 @@ describe('the checklist is a list a reader can change, not a list they can only 
       const add = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '加一步')
       click(add)
-      expect(stepsShown(panel.surface), 'the typed step never reached the document').toEqual(['第一步', '第二步', '第三步'])
+      // THE SCREEN AND THE DOCUMENT ARE TWO QUESTIONS. 第二步 is done, so it is behind
+      // the fold — and 「not on screen」 is not 「not in the list」. The next line asks
+      // the document, which is where all three live.
+      expect(stepsShown(panel.surface), 'the typed step never appeared on the board').toEqual(['第一步', '第三步'])
       expect(panel.lastWrite()[0]?.steps.map(step => step.text), 'the write reached the document but not the checklist').toEqual(['第一步', '第二步', '第三步'])
 
       // 挪上去：第二步越过第一步。
@@ -2109,20 +2203,42 @@ describe('the checklist is a list a reader can change, not a list they can only 
       // 那一半上：共享的 `Button` 目前不转发 `aria-label`——它在标记里被传下去了，
       // 然后在渲染时不见了（`board/ui.tsx` 的 props 表里没有这一项，元素上也没
       // 写）。等它转发之后，这一行自然就变成更严的门禁，那时它应该被改严。
-      const controlNamed = (prefix: string): Element | undefined =>
-        [...panel.surface.querySelectorAll('button')]
-          .find(node => `${node.getAttribute('title') ?? ''}${node.getAttribute('aria-label') ?? ''}`.startsWith(prefix))
-      const up = controlNamed('往上挪一步：第二步')
-      expect(up, 'no control moves a step up').toBeDefined()
+      // THE MOVE CONTROL IS IN THE STEP'S OWN ⋯, and it is there for a reason:
+      // A FINISHED STEP IS BEHIND THE FOLD, and that is the design — so the fold is
+      // opened first, and 「one press away」 is exactly the claim.
+      const fold = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim().startsWith('已完成'))
+      expect(fold, 'the board states no fold, so a finished step is either on screen or unreachable').toBeDefined()
+      click(fold)
+      const labels = [...panel.surface.querySelectorAll('button')]
+        .map(node => `${node.getAttribute('aria-label') ?? ''}`)
+      expect(labels.some(label => label.includes('这一步的动作：第二步')),
+        `the board offers no control for the finished step, so it cannot be reopened: ${JSON.stringify(labels)}`).toBe(true)
+      const dots = [...panel.surface.querySelectorAll('button')]
+        .find(node => `${node.getAttribute('aria-label') ?? ''}`.includes('这一步的动作：第二步'))
+      act(() => { dots?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      const up = [...panel.surface.querySelectorAll('[role="menuitem"]')]
+        .find(node => (node.textContent ?? '').trim() === '往上挪一步')
+      expect(up, `the step’s own menu offers no way to move it`).toBeDefined()
       click(up)
-      expect(stepsShown(panel.surface), 'the step did not move — the control is a picture of a control').toEqual(['第二步', '第一步', '第三步'])
+      // THE DOCUMENT MOVED. The board's own order is waiting-then-finished, so a row
+      // that moved up can still sit lower on screen — which is the point: the reader
+      // scans what is left, not what is filed.
+      expect(panel.lastWrite()[0]?.steps.map(step => step.text), 'the step did not move — the control is a picture of a control').toEqual(['第二步', '第一步', '第三步'])
 
-      // 去掉一步，而且留下的是剩下的两步。
-      const drop = controlNamed('去掉这一步：第一步')
-      expect(drop, 'no control takes a step off').toBeDefined()
+      // 去掉一步，同样在**那一步自己的 ⋯** 里，而剩下的两步要真的少一步。
+      const dropDots = [...panel.surface.querySelectorAll('button')]
+        .find(node => `${node.getAttribute('aria-label') ?? ''}`.startsWith('这一步的动作：第一步'))
+      expect(dropDots, 'the first step carries no control of its own — a checklist you cannot trim is a log').toBeDefined()
+      act(() => { dropDots?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
+      const drop = [...panel.surface.querySelectorAll('[role="menuitem"]')]
+        .find(node => (node.textContent ?? '').trim() === '去掉这一步')
+      expect(drop, `the step’s own menu offers no way to take it off`).toBeDefined()
       click(drop)
-      expect(stepsShown(panel.surface), 'the step is still on screen after being taken off').toEqual(['第二步', '第三步'])
-      expect(panel.lastWrite()[0]?.steps.length, 'the document kept a step the reader deleted').toBe(2)
+      // NOT ON THE BOARD ANY MORE, AND NOT IN THE DOCUMENT — two questions, and
+      // only the first is about what is on screen.
+      expect(stepsShown(panel.surface), 'the step is still on the board after being taken off').not.toContain('第一步')
+      expect(panel.lastWrite()[0]?.steps.map(step => step.text), 'the document kept a step the reader deleted').toEqual(['第二步', '第三步'])
     } finally {
       panel.dispose()
     }

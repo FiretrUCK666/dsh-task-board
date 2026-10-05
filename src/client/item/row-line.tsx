@@ -235,11 +235,40 @@ export function ItemRowLine(props: ItemRowLineProps) {
     <div
       className={css.itemRow}
       role="listitem"
+
       data-status={view.status}
       data-open={inPlace && expanded ? '' : undefined}
       data-selected={selected ? '' : undefined}
       data-picked={props.picked ? '' : undefined}
-      onClick={() => { props.onSelect(); if (!inPlace) props.onToggle() }}
+      onClick={event => {
+        /* A MODIFIER PRESS HOLDS, AND A PLAIN PRESS SELECTS.
+         *
+         * 多选那一列 44px 的常驻勾选框拿掉之后，进这一格的门就只剩这一个手势：读者
+         * 想「拿着」一行，不该先知道有个模式存在。而它在重写这一行的时候跟着勾选框
+         * 一起没了——于是「不用先进模式就能拿到一行」变成了一个根本不成立的承诺，
+         * 而承诺留在文档里、按钮不在界面上，是最难发现的一种坏。
+         *
+         * **Shift 是范围，⌘ 是这一行。** 两个都叫修饰键，意思却不一样：一个说
+         * 「屏幕上的这几行」，一个说「这一行」。所以两者都要分清，而不是统一成
+         * 「按了就是切换」——那会让 Shift 在没有锚点时把整整一列都拿走。 */
+        if (props.picking && (event.shiftKey || event.metaKey || event.ctrlKey)) {
+          event.stopPropagation()
+          props.onPick(event.shiftKey)
+          return
+        }
+        props.onSelect()
+        /* A PLAIN PRESS ALSO OPENS THE ROW, ON BOTH BANDS.
+         *
+         * 它原来在宽屏**不**展开：那时候宽屏的详情住在右边单独一栏，点一行是「选中」，
+         * 而那一栏是选中之后才租的。侧栏拿掉之后两档都改成在行里展开，而这一行还留着
+         * 「只有窄屏才展开」的旧判断——于是**两档都变成只选中、永远打不开**：一个点
+         * 下去什么都不发生的控件，而读屏工具与键盘同样进不去。
+         *
+         * 「展开」与「收起」是同一件事的两个方向，所以它读 `onToggle`（面板自己知道
+         * 现在是开着还是关着），而不是记一个「第一次点要展开」的旗子——旗子是必须和
+         * UI 状态同步的第二份真相，而第二份真相迟早会不同步。 */
+        props.onToggle()
+      }}
     >
       {/* THE BEAD: a shape, and it is the only thing that says the state. */}
       <span className={css.itemRowLead} aria-hidden="true">{stateMark(view.status)}</span>
@@ -267,6 +296,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * 自己留在上面**。412px 上每一行都成了「一行芯片 + 三行标题」。换成正常的行内
              * 流之后，芯片是段首的一个词、读法是句末的一个短语，文字自己折行。 */
             <h3 className={css.itemRowTitle}>
+              {/* ONE PRESS OPENS THE FIELD. It used to need two — 「press the title
+                  * again」 — because the title was text; now it is a control, and a
+                  * control with a hidden first press is a control that does nothing
+                  * the first time. */}
               <button type="button" className={css.itemPrioButton} onClick={event => { event.stopPropagation(); startEditing() }}>
                 {prioChip(item.priority)}
               </button>
@@ -385,8 +418,33 @@ export function ItemRowLine(props: ItemRowLineProps) {
         />
       )}
 
-      {inPlace && expanded && <div className={css.itemDetail} id={regionId}>{props.detail}</div>}
-      <div ref={panelRef} hidden />
+      {/* THE DETAIL DOES NOT TELL THE ROW IT WAS PRESSED.
+        *
+        * 行本身是一个按钮——点一下就开、再点一下就关——而展开区**长在行里面**。所以
+        * 在展开区里按任何东西（加一步、勾一个步骤、点一个标签、选一个日期）都会冒泡
+        * 到行上，把读者刚打开的那一行当场关掉。
+        *
+        * **一个容器里装了一台机器，而机器的按钮会关掉这台机器。** 展开区自己吃掉这
+        * 一次冒泡：读者在里面按的任何东西都属于那一行，不是一次「收起」。
+        *
+        * 关掉整行的地方仍然是行本身——点在句子、珠子或空白上就是收起，那是有意的。 */}
+      {inPlace && expanded && (
+        <div
+          className={css.itemDetail}
+          id={regionId}
+          onClick={event => event.stopPropagation()}
+          onKeyDown={event => event.stopPropagation()}
+        >
+          {props.detail}
+        </div>
+      )}
+      {/* THE BOX THE MENU IS MEASURED AGAINST, and it says so. The row menu is
+          placed against the nearest element carrying the panel attribute, and this
+          row is no longer INSIDE one — so without it the menu has nothing to clamp
+          inside and opens off the bottom of the screen. It belongs on the panel ref
+          rather than on the row, because the attribute says 「this element IS a
+          panel」 and a row is not one. */}
+      <div ref={panelRef} data-dsh-taskboard-view="" hidden />
     </div>
   )
 }

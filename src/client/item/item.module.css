@@ -915,12 +915,16 @@
   color: var(--item-ink-1);
 }
 
+/* 等宽数字让「10」不跳，而**不许换行**让「10」不至于断成上下两行——一个断行的数
+ * 是两行，读者要把它拼回去才读得出是几件。 */
 .itemRailCount {
   flex: none;
   font-size: 13px;
   font-weight: 400;
+  line-height: 18px;
   color: var(--item-ink-3);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .itemRailWord {
@@ -1050,7 +1054,10 @@
   gap: var(--s1);
   margin: var(--s3) 0 var(--s1);
   padding: 3px 10px 3px 8px;
-  color: var(--dsh-tb-accent);
+  /* 墨，不是 accent：**accent 的预算是留给「关于这份工作的事实」**，而这枚日历图标
+   * 装饰的是一个已经写着「今天」的标签。把它收回来，这一栏就少一处彩色，读者少
+   * 一次要判断「这枚图标是什么意思」。 */
+  color: var(--item-ink-3);
   background: var(--item-fill);
   border-radius: var(--item-radius-pill);
 }
@@ -1187,6 +1194,11 @@
  * 读者没法一个人重新谈。 */
 .itemRowTail {
   display: inline;
+  /* 这一段读法**在自己的槽里截断**，而不是把这一行别的东西挤走：它是句子末尾的
+   * 一个短语，句子放不下时该断在这里。 */
+  max-inline-size: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
   /* 一个日期读法是**一个单位**：它说的是「这件事晚了多久」或者「那天之前别动我」，
    * 拆成「落 / 后 9 天」之后，两半都不再是那句话了——读者看到的是两个
    * 残字，要自己拼回来才读得出意思。窄屏上让它换行，不要让**它自己**断。 */
@@ -1674,11 +1686,14 @@
   overflow: hidden;
 }
 
+/* 墨，不是 accent。它旁边就印着「1 / 3」——**一根彩色进度条是在复述一个就在
+ * 旁边的数**，而这份 accent 的预算留给当前页、选中的行、活着的药丸与调色板里那
+ * 游标这四件事实。 */
 .itemStepBar > i {
   display: block;
   block-size: 100%;
   border-radius: var(--item-radius-pill);
-  background: var(--dsh-tb-accent);
+  background: var(--item-ink-2);
 }
 
 .itemStepCount {
@@ -1712,7 +1727,9 @@
   margin-block-end: 1px;
   font-size: 11px;
   font-weight: 600;
-  color: var(--dsh-tb-accent);
+  /* 墨，不是 accent：这枚「下一条」标的是一个已经用字写着「下一条」的行，而 accent
+   * 的预算留给真正关于这份工作的事实。 */
+  color: var(--item-ink-2);
 }
 
 /* **这个盒子按字的内容定宽，而不是按整条轨定宽。** 划掉的那条线画在盒子上，所以盒子
@@ -1837,9 +1854,11 @@
   transition: border-color var(--dsh-tb-motion), background var(--dsh-tb-motion);
 }
 
+/* 墨，不是 accent：勾好的那一步，行左边那个环已经说了「做完了」。两处都上色，
+ * 是同一件事在两个地方各喊一遍。 */
 .itemTick > input:checked + i {
-  border-color: var(--dsh-tb-accent);
-  background: var(--dsh-tb-accent);
+  border-color: var(--item-ink-2);
+  background: var(--item-ink-2);
 }
 
 /* 勾的四个数：**盒子的内容盒是 14px**（16 减两侧各 1px 描边），所以 5×9 的
@@ -2637,6 +2656,12 @@ textarea.itemInput {
   color: var(--item-ink-1);
 }
 
+/* 11，不是 12：**一个节标题与它引入的字段名同号，于是这一栏里只有墨在分级，
+ * 而墨级分的是「弱一点」，分不出「这是一节」和「这是一项」。设计稿的 `.x-cap` 是
+ * 11、`.f-name` 是 12，同一个意思。 */
+/* 与字段名同号、不同墨。**字号再小一档它就会读成「字段名的标签」**，而它其实是
+ * 一组字段名的铭牌——所以分开它们的是墨级，不是字号。三层墨分三级：值是那件事，
+ * 名字是它的铭牌，这一行是铭牌的铭牌。 */
 .itemOpenCaption {
   margin-block-end: calc(var(--s1) * -1);
   font-size: 12px;
@@ -2690,10 +2715,13 @@ textarea.itemInput {
   border-block-end: var(--item-hair);
 }
 
+/* 名字比它的值响一档，而节标题比名字再轻一档。**三层墨分三级**：值是那件事，名字是
+ * 它的铭牌，节标题是一组铭牌的铭牌。两者都落在最轻的那一档时，这一栏里只有墨在
+ * 分级，而墨级分不出「这是一节」和「这是一项」。 */
 .itemOptName {
   font-size: 12px;
   font-weight: 600;
-  color: var(--item-ink-3);
+  color: var(--item-ink-2);
 }
 
 .itemOpts {
@@ -2902,29 +2930,29 @@ textarea.itemInput {
   background-color: transparent;
 }
 
-/* 唯一会让这一行变红的那一个：珠子更大、外面一圈晕、字加粗。它比邻居大一圈并往左
- * 挪两像素，所以线仍然穿过它的正中 —— 9px 的珠子占 x = 0…9，中线 4.5；13px 的珠子
- * 占 x = −2…11，中线 4.5。`inset-inline-start: -2px` 就是这个算式。 */
+/* 唯一会让这一行变红的那一个，**只改墨**。
+ *
+ * 它原来是**五个信号**：珠子放大到 13px、往左挪两像素、加一圈晕、名字加粗、
+ * 读法也加粗。五个信号抢一句话，而读者看到珠子动了会以为**版面坏了**，而不是
+ * 「这一颗超期了」——**一个语气只能改一种东西，改的就是墨**，因为这一栏的层级
+ * 只有一层，加粗它不是强调，是第二次喊。
+ *
+ * 所以珠子保持 9px、保持在线的正中，只是从空心环变成实心的危险色；字重与另外两行
+ * 一样。危险色已经是墨能发出的最大声。 */
 .itemDateAxis li[data-tone='over'] > i {
-  inset-block-start: 3px;
-  inset-inline-start: -2px;
-  inline-size: 13px;
-  block-size: 13px;
   border-color: var(--dsh-tb-danger);
   background-color: var(--dsh-tb-danger);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--dsh-tb-danger) 18%, transparent);
 }
 
+/* The NAME keeps the label's own ink even when the reading is red: the name is
+ * 「硬期限」 on every row, and a name that changes colour says the field changed. */
 .itemDateAxis li[data-tone='over'] > b {
-  color: var(--dsh-tb-danger);
   font-size: 12px;
-  font-weight: 600;
 }
 
 .itemDateAxis li[data-tone='over'] > span {
   color: var(--dsh-tb-danger);
   font-size: 13px;
-  font-weight: 600;
 }
 
 
@@ -3192,8 +3220,10 @@ textarea.itemInput {
 }
 
 
-.itemDetail {
+.itemRow > .itemDetail {
   display: flex;
+  grid-column: 1 / -1;
+  grid-row: 3;
   /* 展开区是这一行的第四行，不是第四列的下一格 —— 而网格默认按源顺序把它放进第
    * 一列，于是它挤在标题底下而不是横贯整行。没有这一条，上面的发丝线只画在
    * 十像素宽的第一轨上，而读者看到的是「这一行下面有半条线」。 */
