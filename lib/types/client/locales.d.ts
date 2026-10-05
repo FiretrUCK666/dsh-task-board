@@ -767,6 +767,15 @@ export declare const zh: {
     'item.done.show': string;
     'item.menu.rename': string;
     'item.create.title': string;
+    'item.create.close': string;
+    'item.create.grammar': string;
+    'item.create.titlePlaceholder': string;
+    'item.create.bodyPlaceholder': string;
+    'item.create.steps': string;
+    'item.create.stepsPlaceholder': string;
+    'item.create.startsHint': string;
+    'item.create.dueHint': string;
+    'item.create.hardHint': string;
     'item.create.body': string;
     'item.create.blank': string;
     'item.create.refused': string;
