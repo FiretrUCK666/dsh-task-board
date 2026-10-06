@@ -1033,15 +1033,108 @@ describe('the container self-query gate reacts', () => {
 describe('the rail and in-row detail share one workbench', () => {
   const css = panelCss()
 
-  it('the workbench is rail beside list, with no detail-rail track', () => {
+  /* The invariant, as a function rather than as one inline expectation, so it can
+   * be pointed at a PLANTED violation and be seen to report. A gate that has never
+   * been shown to fail is a gate nobody knows the shape of. */
+  const workbenchGridFindings = (cssText: string): string[] => {
+    const findings: string[] = []
+    /* Track counting cannot be `split(' ')`: a track may be `minmax(0, 1fr)` and
+     * that function's own argument contains a space, so a naive split reports two
+     * tracks for a one-track value. Split at top-level whitespace only. */
+    const tracksOf = (value: string): string[] => {
+      const out: string[] = []
+      let depth = 0
+      let current = ''
+      for (const ch of value) {
+        if (ch === '(') depth += 1
+        if (ch === ')') depth -= 1
+        if (/\s/.test(ch) && depth === 0) {
+          if (current !== '') out.push(current)
+          current = ''
+          continue
+        }
+        current += ch
+      }
+      if (current !== '') out.push(current)
+      return out
+    }
+    for (const body of rulesOf(cssText, 'itemWorkbench')) {
+      const flat = body.replace(/\s+/g, ' ')
+      const columns = /grid-template-columns:\s*([^;]+);/.exec(flat)?.[1]
+      const areas = /grid-template-areas:\s*([^;]+);/.exec(flat)?.[1]
+      if (columns === undefined && areas === undefined) continue
+      // HALF A STATEMENT: the other half comes from whatever else matches here.
+      if (columns === undefined || areas === undefined) {
+        findings.push(`a body declares half the pair: ${flat}`)
+        continue
+      }
+      const rows = [...areas.matchAll(/'([^']+)'/g)].map(match => match[1].trim().split(/\s+/))
+      if (rows.length === 0) {
+        findings.push(`a body addresses no area: ${flat}`)
+        continue
+      }
+      const names = [...new Set(rows.flat())].sort()
+      if (names.join(',') !== 'list,rail') findings.push(`a body addresses ${names.join('/')}: ${flat}`)
+      if (rows.some(row => row.length !== rows[0].length)) findings.push(`a body has a ragged area map: ${flat}`)
+      const tracks = tracksOf(columns)
+      if (tracks.length !== rows[0].length) {
+        findings.push(`this body declares ${tracks.length} track(s) but addresses ${rows[0].length}: ${flat}`)
+      }
+    }
+    return findings
+  }
+
+  it('NOTHING may declare the tracks without the areas that address them', () => {
     // The right-hand detail rail is gone: it was rented land whenever no row was
-    // chosen, and keeping its track would keep its empty column. The grid must
-    // therefore name exactly rail and list, with the rail fixed and the list
-    // fluid — one declaration, so the two columns cannot drift apart.
-    const body = rulesOf(css, 'itemWorkbench').join('\n')
-    expect(body, 'there is no .itemWorkbench rule').not.toBe('')
-    expect(body.replace(/\s+/g, ' ')).toMatch(/grid-template-areas:\s*'rail list'/)
-    expect(body.replace(/\s+/g, ' ')).toMatch(/grid-template-columns:\s*240px\s+minmax\(0,\s*1fr\)/)
+    // chosen, and keeping its track would keep its empty column. So the grid must
+    // name exactly rail and list, with the rail fixed and the list fluid.
+    //
+    // ONE DECLARATION, SO THE TWO COLUMNS CANNOT DRIFT APART. Joining every
+    // `.itemWorkbench` body into one string and asking whether two patterns appear
+    // *somewhere* cannot see a band that re-declares one half of the pair: the base
+    // rule satisfies it on its own. Two bands may both match a width, and the one
+    // that wins the columns does not necessarily win the areas — the loser's area
+    // map then places both items in the first track and the second sits empty.
+    //
+    // So the check is PER BODY and it demands BOTH HALVES: a body that addresses
+    // the tracks says how many there are, a body that declares the count says how
+    // they are addressed.
+    expect(workbenchGridFindings(css)).toEqual([])
+  })
+
+  it('and that gate reports a band that changes the tracks and not the areas', () => {
+    // The two ways this goes wrong, as plants: a body stating half the pair, and a
+    // body stating both halves with counts that disagree.
+    const halfOnly = `${css}
+@container dsh-tb-item (min-width: 720px) {
+  .itemWorkbench {
+    grid-template-columns: 260px minmax(0, 1fr);
+  }
+}`
+    const findings = workbenchGridFindings(halfOnly)
+    expect(findings.length, 'the gate cannot report the defect it exists for').toBeGreaterThan(0)
+    expect(findings.join('\n')).toMatch(/half the pair/)
+    const mismatched = `${css}
+@container dsh-tb-item (min-width: 720px) {
+  .itemWorkbench {
+    grid-template-columns: 260px minmax(0, 1fr);
+    grid-template-areas: 'rail' 'list';
+  }
+}`
+    expect(workbenchGridFindings(mismatched).join('\n')).toMatch(/declares 2 track\(s\) but addresses 1/)
+  })
+
+  it('and the rail track is the SAME width in the default rule as it is measured', () => {
+    // A track width no width can reach is the same false lead as a variable
+    // nothing reads: the default rule must state the number the two-column bands
+    // actually render, and no band may restate it, because two restatements are
+    // two chances to disagree.
+    const first = rulesOf(css, 'itemWorkbench')[0].replace(/\s+/g, ' ')
+    expect(first).toMatch(/grid-template-columns:\s*260px\s+minmax\(0,\s*1fr\)/)
+    for (const body of rulesOf(css, 'itemWorkbench').slice(1)) {
+      expect(body.replace(/\s+/g, ' '), 'a band restates the tracks, so two bands can disagree again')
+        .not.toMatch(/grid-template-columns:\s*260px\s+minmax\(0,\s*1fr\)/)
+    }
   })
 
   it('the detail spans the row it belongs to and starts under a rule', () => {

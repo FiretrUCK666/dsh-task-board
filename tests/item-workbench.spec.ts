@@ -2597,6 +2597,41 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     }
   })
 
+  it('pressing into the body of an open row leaves the row exactly as open as it was', () => {
+    // THE DEFECT THIS PINS, reported from the surface: 「展开详情然后点击正文之后，
+    // 那一条一直显示暗色背景，像是被选中了」. Two states paint a fill on a row --
+    // `data-open` (the deep wash) and `data-picked` (the light one, and a held row
+    // has NO tick to explain it, so a fill there reads as 「this row is selected」)
+    // -- and the press that enters a text field must not move either of them.
+    //
+    // The body of an EMPTY row is a BUTTON that swaps itself for the field, so the
+    // press that 「点击正文」 describes is a press on a control inside the detail.
+    // The detail region stops propagation for its own subtree; a child that writes
+    // state and lets the event through would reach the row, whose plain press
+    // selects AND toggles.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const byToken = (root: Element, token: string): HTMLElement | null =>
+        (root.querySelector(`.${token}`) as HTMLElement | null) ??
+        ([...root.querySelectorAll('[class]')].find(node =>
+          [...node.classList].some(c => c.endsWith(`_${token}`))) as HTMLElement | undefined) ??
+        null
+      const row = rowEls(panel.surface)[0]
+      click(row)
+      expect(row.getAttribute('data-open'), 'the row did not open, so the rest of this proves nothing').toBe('')
+      const prompt = byToken(row, 'itemWritePrompt')
+      if (prompt !== null) click(prompt)
+      expect(row.getAttribute('data-open'), 'pressing into the body closed the row').toBe('')
+      expect(row.getAttribute('data-picked'), 'pressing into the body held the row').toBeNull()
+      // And the collapse the reader asks for by pressing the row itself.
+      click(row)
+      expect(row.getAttribute('data-open'), 'the row did not collapse when pressed').toBeNull()
+      expect(row.getAttribute('data-picked'), 'a collapsed row still reads as held').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('one modifier press holds one row, and SHIFT holds the run between two of them', () => {
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
