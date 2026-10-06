@@ -51,7 +51,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react'
 import { ITEM_SORTS, itemRefOf, type ItemQuery, type ItemSort } from '../../core/item-view.ts'
 import { ITEM_PRIORITIES, itemTitleOf, type ItemRecord } from '../../core/item.ts'
-import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken } from './facets.ts'
+import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemQueryChips } from './query-chips.tsx'
 import { PRIORITY_LABEL, SORT_LABEL } from './labels.ts'
 import { ItemKeyHelp } from './key-help.tsx'
@@ -412,7 +412,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
               aria-controls={listboxId}
               aria-autocomplete="list"
               aria-activedescendant={cursor === undefined ? undefined : `${listboxId}-${cursor.id}`}
-              onChange={event => { props.onText(withFacetToken(freeTextOf(props.text), event.target.value, true)) }}
+              onChange={event => { props.onText(withFreeText(props.text, event.target.value)) }}
             />
 
             {/* THE SAME CHIP COMPONENT the spine used, and not a second rendering

@@ -218,8 +218,70 @@ function answerOptions(loose: Loose): HTMLElement[] {
   )] as HTMLElement[]
 }
 
-describe('a modal surface has to offer a way out of it', () => {
-  it('a press on the dimmed mask closes it, because the mask is the only door a touch has', () => {
+describe('typing into the box leaves what the reader typed', () => {
+  /**
+   * THE ONE BUG HERE THAT NO SCREENSHOT CAN SHOW, because the field looked right
+   * in every static render: the box is a CONTROLLED input whose value is
+   * `freeTextOf(text)`, and its `onChange` handed the whole field back as if it
+   * were ONE facet token. Every keystroke therefore appended the field to the
+   * field — type `abc` and the box read `a ab a abc`, while the reader watched
+   * their own word being mangled as the answers emptied out.
+   *
+   * The two halves were each correct on their own; what was missing was the third
+   * function, `withFreeText`, whose contract is 「replace the WORDS and leave the
+   * qualifiers standing」. A test that only asserted 「the field accepts a string」
+   * passes for both the broken and the fixed version, so this one types and then
+   * reads back what a reader would see.
+   */
+  const typeIn = (panel: Mounted, text: string): void => {
+    const field = fieldOf(panel)
+    act(() => {
+      field.value = text
+      field.dispatchEvent(new Event('input', { bubbles: true }))
+    })
+  }
+
+  it('three keystrokes are three characters, not three copies of the field', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      open(panel)
+      typeIn(panel, 'a')
+      expect(fieldOf(panel).value).toBe('a')
+      typeIn(panel, 'ab')
+      expect(fieldOf(panel).value, 'the second keystroke appended the field to itself').toBe('ab')
+      typeIn(panel, 'abc')
+      expect(fieldOf(panel).value, 'typing three letters produced something else entirely').toBe('abc')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('and a qualifier the chips cannot name survives the typing', () => {
+    // The same defect had a second edge: the base handed to the writer was
+    // `freeTextOf(text)`, so every qualifier the chip layer cannot render was
+    // dropped on the first keystroke — the filter came off, the list silently
+    // widened, and nothing had ever drawn the chip that would have said so.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      open(panel)
+      // A qualifier nobody can chip: the grammar reads it, the chip layer cannot
+      // label it, so it only survives if the writer preserves unknown qualifiers.
+      const field = fieldOf(panel)
+      act(() => {
+        field.value = 'has:stale 画廊'
+        field.dispatchEvent(new Event('input', { bubbles: true }))
+      })
+      const after = fieldOf(panel).value
+      expect(after, 'the free text was not what the reader typed').toContain('画廊')
+      expect(parseItemQuery(after).flags.has('stale'),
+        'typing dropped a qualifier the reader had set, so the filter came off with nothing saying so').toBe(true)
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('a modal surface has to offer a way out of it', () => {  it('a press on the dimmed mask closes it, because the mask is the only door a touch has', () => {
     // THE DEFECT. The root element was a full-screen `dialog` carrying not one
     // handler, so a reader who opened the box with a finger and changed their mind
     // had nothing to press: the dimmed area swallowed the tap and the box stayed.
