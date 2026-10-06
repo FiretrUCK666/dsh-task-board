@@ -348,8 +348,29 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [replica])
 
 
+  /**
+   * The rows as the SCREEN has them, for the one handler that writes after it has
+   * awaited something.
+   *
+   * Every other writer here reads and writes inside a single event, so the array
+   * in its closure is the array on screen. Undo cannot: it makes one host round
+   * trip per row and only then writes, and by that time the reader may have typed
+   * into another row. A write built on the array from before the await reverts that
+   * typing, and worse than locally — the reverted row differs from the replica, so
+   * `setItems` claims it, and a claimed row wins the host merge unconditionally,
+   * which pushes the stale value to every other device.
+   *
+   * TWO WRITERS KEEP IT CURRENT, and both are needed. `apply` updates it in the
+   * same tick as the state write, because a reply can resume before React has
+   * committed that write; the effect covers a change to `items` that did not come
+   * through `apply`.
+   */
+  const itemsNow = useRef<readonly ItemRecord[]>(items)
+  useEffect(() => { itemsNow.current = items }, [items])
+
   const apply = useCallback((next: readonly ItemRecord[]) => {
     if (next === items) return
+    itemsNow.current = next
     setItems(next)
     replica?.setItems(next)
   }, [items, replica])
@@ -474,22 +495,31 @@ export function ItemListPanel(props: ItemListPanelProps) {
     if (clientId === undefined) { setReceipt({ id: undefined, words: t('item.undo.refused', { n: String(pending.ids.length) }) }); return }
     setRestoring(pending.ids.length)
     void (async () => {
-      let back = 0
-      let next = items
+      /* COLLECT FIRST, REBASE ONCE. Each row needs its own host round trip, so the
+       * array this writes back must be read AFTER the last reply rather than
+       * captured before the first one: the reader can edit another row while this
+       * awaits, and a write built on the pre-await array would silently revert that
+       * edit — locally, and then on the host too, because the row that changed
+       * would be claimed by this client and a claimed row wins the merge
+       * unconditionally. So the restored rows are collected, and the array they
+       * merge into is the one on screen at the end. */
+      const restored: ItemRecord[] = []
       for (const id of pending.ids) {
         const reply = await itemsRestore({ id }, clientId)
-        if (reply.ok && reply.restored !== undefined) {
-          back += 1
-          next = restoreItemRecord(next, reply.restored)
-        }
+        if (reply.ok && reply.restored !== undefined) restored.push(reply.restored)
       }
-      if (back > 0) apply(next)
+      if (restored.length > 0) {
+        let next = itemsNow.current
+        for (const row of restored) next = restoreItemRecord(next, row)
+        apply(next)
+      }
+      const back = restored.length
       setRestoring(undefined)
       setReceipt({ id: undefined, words: back === pending.ids.length
         ? t('item.undo.done', { n: String(back) })
         : t('item.undo.partial', { back: String(back), total: String(pending.ids.length) }) })
     })()
-  }, [apply, items, replica])
+  }, [apply, replica, itemsNow])
 
   const promoteOne = useCallback((item: ItemRecord) => {
     setMenuRow(undefined)

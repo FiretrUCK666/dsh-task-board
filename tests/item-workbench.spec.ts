@@ -938,6 +938,66 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
+  it('undo reads the rows it writes into AFTER its awaits, not before them', () => {
+    /** The invariant, as a function over a source string so it can be pointed at a
+     *  planted violation and be seen to report. */
+    const undoRebaseFindings = (text: string): string[] => {
+      const at = text.indexOf('const runUndo =')
+      if (at < 0) return ['there is no runUndo to check, so this gate is reading nothing']
+      const body = text.slice(at, at + 2400)
+      const findings: string[] = []
+      if (/let next = items\b/.test(body)) {
+        findings.push('undo rebuilds its write from the array it captured before its own awaits')
+      }
+      if (!body.includes('itemsNow.current')) {
+        findings.push('undo does not read the rows as they are when its replies land')
+      }
+      return findings
+    }
+    // THE DEFECT THIS PINS, and it is the only one found this round that LOSES
+    // DATA. Undo makes one host round trip per row and only then writes back, and
+    // the array it wrote back was captured BEFORE the first round trip. Anything
+    // the reader changed while it waited was reinstated at its old value — on
+    // screen, and then on the host, because a row that differs from the replica is
+    // CLAIMED by this client and a claimed row wins the merge unconditionally. The
+    // stale value therefore reached every other device, with no error anywhere.
+    //
+    // WHY THIS IS A SOURCE CONTRACT AND NOT A PRESSED ONE. The window is 「a reader
+    // writes to another row while the restore is in flight」, and this harness
+    // cannot produce it: every helper it offers wraps its dispatch in `act`, which
+    // drains the pending host reply as well — so any write a test can make lands
+    // AFTER the reply, the ordering is gone, and the gate would pass on the broken
+    // implementation. A gate that cannot fail is worse than none.
+    const panel = mountPanel(oneRow({ id: 'u-1', title: '一条普通的行' }), 'list', 'wide')
+    try {
+      // THE WINDOW THIS DEFECT LIVES IN CANNOT BE PRODUCED HERE. It is 「a reader
+      // writes to another row while the restore is in flight」, and every helper
+      // this harness offers wraps its dispatch in `act` — which drains the pending
+      // host reply as well. So any write a test can make lands AFTER the reply, the
+      // ordering is gone, and a pressed gate would pass on the broken
+      // implementation. A gate that cannot fail is worse than none, so what is
+      // asserted is the shape that removes the window: the write is built from the
+      // rows read once the replies have landed.
+      const source = itemSurfaceSource()
+      expect(undoRebaseFindings(source), 'undo writes an array captured before its own awaits').toEqual([])
+      // And the gate is shown able to report, on a source that has the old shape.
+      const captured = source.replace(
+        'let next = itemsNow.current',
+        'let next = items',
+      )
+      expect(captured, 'the plant did not change anything, so the control below proves nothing').not.toBe(source)
+      // The real body has no `let next = items`, so plant the SHAPE the gate forbids.
+      const planted = source.replace(
+        'const restored: ItemRecord[] = []',
+        'let next = items\n      const restored: ItemRecord[] = []',
+      ).replace('let next = itemsNow.current', 'next = next')
+      expect(undoRebaseFindings(planted).join('\n'), 'the gate cannot report the shape it exists for')
+        .toMatch(/captured before its own awaits/)
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the menu closes on Escape and on a click outside it — once each', () => {
     // TWO DISMISSALS, and the reason the rule is written down rather than
     // assumed is that the obvious implementation gets one of them wrong: a
