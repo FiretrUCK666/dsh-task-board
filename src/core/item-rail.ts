@@ -34,7 +34,7 @@
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts'
-import { derivedStatusOf, isInboxItem } from './item-membership.ts'
+import { derivedStatusOf, isAgendaItem } from './item-membership.ts'
 import { flagProbeOf, ITEM_FLAG_TESTS, type ItemMatchContext } from './item-query.ts'
 import { PRIORITY_BY_TOKEN } from './item-query.ts'
 
@@ -106,7 +106,7 @@ export type ItemRailKey =
   | (typeof RAIL_FLAGS)[number]
   | ItemPriority
   | ItemStatusView
-  | 'inbox'
+  | 'schedule'
   | 'all'
   | 'deleted'
 
@@ -158,19 +158,37 @@ export function itemRailGroupsOf(
     entry(`status:${view}`, 'status', view, `status:${view.toLowerCase()}`, heldBy(item => derivedStatusOf(item, ctx.running) === view)))
 
   return [
+    /* 「全部」 STANDING AT THE TOP, ALONE IN ITS GROUP.
+     *
+     * It is the document itself — the one row with no narrowing in it — so it is
+     * the rail's floor rather than one of its answers, and it sits where the eye
+     * starts. It used to be the third row from the bottom, below three filter
+     * groups, while the top held 「刚记下的」: a row that was a PLACE pretending to be
+     * a predicate. Its membership rule (`isInboxItem`) is read by the query grammar
+     * and the triage strip on their own, so removing the row removed a page and
+     * nothing else. */
     {
-      id: 'inbox',
+      id: 'all',
       word: undefined,
-      entries: [entry('inbox', 'collection', 'inbox', '', heldBy(item => isInboxItem(item)))],
+      entries: [entry('all', 'place', 'all', '', items)],
     },
     { id: 'when', word: 'when', entries: flags },
     { id: 'rank', word: 'rank', entries: priorities },
     { id: 'state', word: 'state', entries: statuses },
+    /* THE BOTTOM GROUP IS THE TWO ROWS THAT CHANGE THE *FORM* RATHER THAN THE
+     * FILTER — 「日程」 reads the same document day by day, 「已删除」 reads the rows
+     * that are no longer in it. Both are a different KIND of thing from the three
+     * groups above, which is what the rule above this group says.
+     *
+     * 「日程」 IS HERE BECAUSE IT HAD NO DOOR AT ALL. It has been a page since the
+     * page set existed and the only way to reach it was the command palette —
+     * 「a control reachable only from a keyboard does not exist for a thumb」, and a
+     * whole PAGE that only the palette can open is that defect one level up. */
     {
       id: 'out',
       word: undefined,
       entries: [
-        entry('all', 'place', 'all', '', items),
+        entry('schedule', 'place', 'schedule', '', heldBy(item => isAgendaItem(item))),
         entry('deleted', 'place', 'deleted', '', deleted),
       ],
     },

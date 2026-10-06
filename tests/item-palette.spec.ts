@@ -126,7 +126,6 @@ function mountLoose(): Loose {
   let setOpen: (next: boolean) => void = () => undefined
 
   const actions: readonly PaletteAction[] = [
-    { id: 'page-inbox', label: zh['item.page.inbox'] as string, run: () => { did.push('go:inbox') } },
     { id: 'page-list', label: zh['item.page.list'] as string, run: () => { did.push('go:list') } },
     { id: 'page-schedule', label: zh['item.page.schedule'] as string, run: () => { did.push('go:schedule') } },
     { id: 'undo', label: zh['item.undo.do'] as string, run: () => { did.push('undo') } },
@@ -581,9 +580,9 @@ describe('one word, one meaning: the rows of this box are distinguishable', () =
       const rowNamed = (name: string): Element | undefined =>
         rows.find(row => row.querySelector('[class*="itemFacetName"]')?.textContent === name)
       expect(rowNamed(zh['item.palette.go'] as string)?.textContent ?? '', 'the 「go」 row does not carry the page names')
-        .toContain(zh['item.page.inbox'] as string)
+        .toContain(zh['item.page.schedule'] as string)
       expect(rowNamed(zh['item.palette.act'] as string)?.textContent ?? '', 'the 「actions」 row carries the page names — the split is a label and nothing else')
-        .not.toContain(zh['item.page.inbox'] as string)
+        .not.toContain(zh['item.page.schedule'] as string)
     } finally {
       loose.dispose()
     }

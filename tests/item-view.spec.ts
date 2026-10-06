@@ -696,11 +696,14 @@ describe('the triage strip', () => {
 })
 
 describe('the page set is a closed constant', () => {
-  it('is exactly three destinations, and the interface cannot add a fourth', () => {
+  it('is exactly two destinations, and the interface cannot add a third', () => {
     // Things' AppleScript manual: predefined, and you may not create a new list.
     // A rail that grows an entry every time the reader asks a question has
-    // turned a map into a log.
-    expect([...ITEM_PAGES]).toEqual(['inbox', 'list', 'schedule'])
+    // turned a map into a log. 收件 was the third and it was never a different
+    // QUESTION — 「还没分流的」 is a predicate over the same document — so it went
+    // back to being one (see `isInboxItem`, still read by the grammar and the
+    // triage strip) and stopped being a page.
+    expect([...ITEM_PAGES]).toEqual(['list', 'schedule'])
   })
 })
 
@@ -716,9 +719,8 @@ describe('the numbers on the rail are facts about the DOCUMENT', () => {
     expect(itemPageCountsOf([finished, unfiled, dated]).list).toBe(3)
   })
 
-  it('the inbox counts what the inbox holds, and the agenda counts what the agenda holds', () => {
+  it('the agenda counts what the agenda holds', () => {
     const counts = itemPageCountsOf([finished, unfiled, dated])
-    expect(counts.inbox, 'a row nobody has filed is not on the inbox rail cell').toBe(1)
     expect(counts.schedule, 'an unfiled capture has no date, so it is not on the agenda — and not in its "no date" tray either').toBe(1)
   })
 
@@ -731,14 +733,19 @@ describe('the numbers on the rail are facts about the DOCUMENT', () => {
     const ctx = { ...itemMatchContextOf(T0), running: new Map<string, boolean>() }
     const onAgenda = scheduleBucketsOf(rows, EMPTY_ITEM_QUERY, ctx, 'due').flatMap(b => b.items.map(i => i.id))
     expect(counts.schedule).toBe(onAgenda.length)
-    expect(counts.inbox).toBe(rows.filter(isInboxItem).length)
+    /* 清单 IS EVERY ROW. 收件 used to be counted here too — as `isInboxItem` — and
+       the predicate is still real (the grammar and the triage strip read it), but
+       it is not a PAGE any more, so there is no rail cell to agree with. What the
+       assertion still has to hold is the one that mattered: the list page counts
+       the whole document, finished rows included. */
+    expect(counts.list).toBe(rows.length)
   })
 
-  it('an empty document reads zero on all three, and does not answer one of them', () => {
-    expect(itemPageCountsOf([])).toEqual({ inbox: 0, list: 0, schedule: 0 })
+  it('an empty document reads zero on both, and does not answer one of them', () => {
+    expect(itemPageCountsOf([])).toEqual({ list: 0, schedule: 0 })
   })
 
-  it('THE MEMBERSHIP, STATED ONCE: a capture is on the inbox and on no agenda at all', () => {
+  it('THE MEMBERSHIP, STATED ONCE: a capture is unfiled, and is on no agenda at all', () => {
     // The two surfaces answered this separately and drifted, so the strip said a
     // fresh capture is not "unscheduled" while the agenda filed it under exactly
     // that. One predicate, two consumers, and the cases below are the two

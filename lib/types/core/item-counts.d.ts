@@ -32,21 +32,23 @@
  */
 import type { ItemRecord, ItemStatusView } from './item.ts';
 /**
- * The panel's three pages, in reading order.
+ * The panel's two pages, in reading order.
  *
- * A page is a QUESTION ("what have I not dealt with yet", "what is on me
- * today", "what have I set down"), not a layout. Layouts are a property of a
- * page, and a surface that grows one page per layout ends up with a navigation
- * strip nobody reads — so the set is closed here, in data, and nothing in the
- * interface may add a fourth.
+ * A page is a QUESTION ("what is on me", "what is on me today"), not a layout.
+ * Layouts are a property of a page, and a surface that grows one page per layout
+ * ends up with a navigation strip nobody reads — so the set is closed here, in
+ * data, and nothing in the interface may add a third.
  *
- * IT LIVES BESIDE {@link itemPageCountsOf} rather than beside the pages
- * themselves, because that function is what makes the set closed in the only way
- * that can be enforced: {@link ItemPageCounts} is a `Record` over these ids, so
- * a fourth page that nobody gives a count for is a build failure rather than a
- * rail cell that reads 0.
+ * 收件 WAS A PAGE AND IS NOT ONE ANY MORE, and the reason is that it was never a
+ * different question: 「还没分流的」 is a PREDICATE over the same document, spelled
+ * `isInboxItem`, and it is still read where a predicate belongs — by the query
+ * grammar (`has:undated` exempts such a row) and by the triage strip. As a page it
+ * needed a membership rule, a count, a layout and a rail row of its own, and its
+ * rail row was its only door: a page whose whole existence is one row is a layout,
+ * not a question. If the question ever needs asking on its own, it comes back as a
+ * FILTER.
  */
-export declare const ITEM_PAGES: readonly ["inbox", "list", "schedule"];
+export declare const ITEM_PAGES: readonly ["list", "schedule"];
 export type ItemPageId = typeof ITEM_PAGES[number];
 /**
  * The three numbers on the page rail, in page order.
@@ -62,11 +64,9 @@ export type ItemPageCounts = Readonly<Record<ItemPageId, number>>;
  * How many rows each page holds.
  *
  * EVERY COUNT IS A JUDGMENT ALREADY MADE ELSEWHERE, and this function adds no
- * new one. The inbox is {@link isInboxItem} — the very predicate the agenda's
- * membership and the triage strip's "no date" line share, so a row cannot be
- * filed on the rail and unfiled in the strip. The agenda is {@link isAgendaItem},
- * which is what the agenda itself fills by, so the number on the rail is the
- * number of rows the page actually holds rather than a second opinion about it.
+ * new one. The agenda is {@link isAgendaItem}, which is what the agenda itself
+ * fills by, so the number on the rail is the number of rows the page actually
+ * holds rather than a second opinion about it.
  *
  * AND THE LIST PAGE COUNTS EVERYTHING, INCLUDING FINISHED WORK. That is not an
  * oversight, it is the product's central promise: completion is a switch inside

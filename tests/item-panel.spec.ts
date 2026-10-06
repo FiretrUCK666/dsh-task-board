@@ -22,6 +22,8 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
+import { ITEM_PAGES, type ItemPageId } from '../src/core/item-view.ts'
+import { zh } from '../src/client/locales.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
 import { formatItemDate } from '../src/client/item/model.ts'
 import { ItemRowMenu, type RowMenuAction } from '../src/client/item/row-menu.tsx'
@@ -119,17 +121,47 @@ function renderPanel(items: readonly ItemRecord[], over: PanelBenchOptions = {})
 }
 
 describe('the rail is the map, and the bar above the rows says three things', () => {
-  it('every way into the document is still somewhere, and each one is a row in the rail', () => {
-    // 三个地方都还在，只是**不在同一种轨上**：刚记的与全部是左栏里的两行，
-    // 「按条件看」那一组是同一条栏上的另一组。原来这里数的是页轨上的三个 tab，
-    // 而页轨已经搬进左栏——**三个地方一个都不许消失**，它们只是不再并排站着。
+  /**
+   * The row that OPENS each page, read from the dictionary the panel reads.
+   *
+   * Not the page's own name, and that difference is the point: the page is called
+   * 清单 while the row that opens it is called 全部, because a row is named for
+   * what it SHOWS rather than for the screen it happens to land on. A copy typed
+   * here would go stale the first time either word changes, and the failure would
+   * read as 「the rail lost a door」 when the rail is fine.
+   */
+  const PAGE_DOOR: Readonly<Record<ItemPageId, string>> = {
+    list: zh['item.rail.all'] as string,
+    schedule: zh['item.page.schedule'] as string,
+  }
+
+  it('every way into the document is a row in the rail, and every page has one', () => {
+    // THE PROMISE IS 「NOTHING IS REACHABLE ONLY BY KEYBOARD」, and it is stronger
+    // than the word list it used to check.
     //
-    // 「全部」含已完成的：已完成是那一页上的一个开关，不是一个地方，而把它
-    // 叫做「全部没做完的事」等于对读屏工具说这一页装着它其实没有的东西。
+    // 收件 was a page whose only door was the rail row 「刚记下的」, so removing the
+    // row removed the page too — right, because the predicate behind it
+    // (`isInboxItem`) is still read by the query grammar and the triage strip, and a
+    // page nothing can reach is dead UI.
+    //
+    // 日程 is the OPPOSITE defect and this is the assertion that would have caught
+    // it: it has always been a page, and its only route was the command palette. A
+    // whole page reachable only from ⌘K is 「a control reachable only from a
+    // keyboard does not exist for a thumb」 one level up.
+    //
+    // So the check is the PAGE SET against the rail, not a list of words: every
+    // page has a row, and the two places that are not pages have one too. Marrying
+    // the two tables is what makes a page added without a door a red test.
     const html = renderPanel([])
-    for (const where of ['刚记下的', '全部', '已删除', '按日子看', '按重要程度', '按状态']) {
+    for (const page of ITEM_PAGES) {
+      expect(html, `the page 「${page}」 has no row in the rail, so only the palette can open it`).toContain(PAGE_DOOR[page])
+    }
+    for (const where of ['全部', '已删除', '按日子看', '按重要程度', '按状态']) {
       expect(html, `${where} is no longer somewhere the reader can go`).toContain(where)
     }
+    // And 收件 is gone from BOTH halves — no row, and no page to reach.
+    expect(html, '收件 is still drawn somewhere').not.toContain('刚记下的')
+    expect(ITEM_PAGES as readonly string[], 'the inbox is still a page, and nothing can open it').not.toContain('inbox')
   })
 
   it('the bar above the rows says three things, and the page title is not one of them', () => {
@@ -570,15 +602,27 @@ it('a date prints its year only when the year is not this year', () => {
     expect(formatItemDate(october19th(thisYear), true, today)).not.toContain(String(thisYear))
   })
 
-  it('reads inbox membership instead of restating the predicate', () => {
+  it('the inbox predicate is declared once and READ, never re-stated', () => {
     // The trap this catches is subtle and was hit once while writing the panel
-    // itself: the inbox rule is ALSO what exempts a row from the triage
-    // strip's "no date" line, so an inline copy in the panel is a second
-    // answer to a question two surfaces already share. Change one and the
-    // panel and the strip disagree about what "unfiled" means, with nothing
-    // red anywhere. Checking for a re-DECLARED function is not enough — the
-    // copy was an inline filter expression, not a function.
-    expect(source).toContain('isInboxItem')
+    // itself: the inbox rule is ALSO what exempts a row from the triage strip's "no
+    // date" line, so an inline copy anywhere is a second answer to a question two
+    // surfaces already share. Change one and the panel and the strip disagree about
+    // what "unfiled" means, with nothing red anywhere. Checking for a re-DECLARED
+    // function is not enough — the copy was an inline filter expression.
+    //
+    // 收件 THE PAGE IS GONE and the PREDICATE IS NOT: it still decides which rows the
+    // triage strip's 「没日子的」 line skips and which rows `has:undated` exempts,
+    // which is exactly where a predicate belongs. So the assertion moved from 「the
+    // panel reads it」 to 「wherever it is used, it is READ」 — declared once, imported
+    // by its readers, and never spelled a second time inline.
     expect(source, 'the panel re-states the inbox predicate inline').not.toMatch(/priority === 'normal'\s*&&\s*item\.tags\.length === 0/)
+    const read = (path: string): string =>
+      readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8')
+    expect(read('src/core/item-membership.ts'), 'the inbox predicate is not declared where it is supposed to live')
+      .toContain('export function isInboxItem')
+    for (const reader of ['src/core/item-triage.ts', 'src/core/item-query.ts']) {
+      expect(read(reader), `${reader} does not read the inbox predicate, so it has its own answer to 「unfiled」`)
+        .toContain('isInboxItem')
+    }
   })
 })

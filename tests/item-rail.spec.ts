@@ -24,6 +24,7 @@ import {
   parseItemQuery,
 } from '../src/core/item-view.ts'
 import type { ItemFlag, ItemFlagProbe, ItemRailEntry } from '../src/core/item-view.ts'
+import { isAgendaItem } from '../src/core/item-membership.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 
 const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
@@ -142,10 +143,20 @@ describe('pressing a rail row lands on exactly the rows it counted', () => {
 })
 
 describe('a set is not a filter, and says so', () => {
-  it('刚记的 carries rows and no token, because the grammar has no word for it', () => {
-    const entry = entryOf('inbox')
-    expect(entry.token).toBe('')
-    expect(entry.rows.length).toBeGreaterThan(0)
+  it('the three place-rows carry rows and no token, because the grammar has no word for them', () => {
+    // A TOKEN IS WHAT MAKES A ROW A FILTER. These three are not filters: they are
+    // the document (全部), the document read day by day (日程), and the rows that
+    // are no longer in it (已删除). Each opens a PLACE, and a place that also wrote
+    // a token would be two answers to one press.
+    for (const id of ['all', 'schedule', 'deleted']) {
+      expect(entryOf(id).token, `the place-row 「${id}」 writes a token, so it is a filter as well as a place`).toBe('')
+    }
+    // 已删除 counts the TOMBSTONES it was handed, not the live document, so its
+    // number is checked against the archive rows rather than against `fixture()` —
+    // see the case below, which is the one that holds that promise.
+    for (const id of ['all', 'schedule']) {
+      expect(entryOf(id).rows.length, `the place-row 「${id}」 carries no rows, so its number is a decoration`).toBeGreaterThan(0)
+    }
   })
 
   it('全部 is the document, unfiltered', () => {
@@ -160,6 +171,18 @@ describe('a set is not a filter, and says so', () => {
     const deleted = groups.flatMap(group => group.entries).find(one => one.id === 'deleted')
     expect(deleted?.n).toBe(dead.length)
     expect(groups.flatMap(group => group.entries).find(one => one.id === 'all')?.n).toBe(items.length)
+  })
+
+  it('日程 counts what the agenda holds, and it is not a filter of it', () => {
+    // The row that was missing a door until now. Its number has to be the agenda's
+    // own membership ({@link isAgendaItem}, the predicate the page fills by) — a
+    // place whose number came from somewhere else is a number the reader presses
+    // and then counts for themselves.
+    const items = fixture()
+    const onAgenda = entryOf('schedule', items)
+    expect(onAgenda.token).toBe('')
+    expect(onAgenda.n).toBe(items.filter(isAgendaItem).length)
+    expect(onAgenda.n, 'the agenda row counts something other than the agenda, so its number cannot be trusted').toBeLessThanOrEqual(items.length)
   })
 })
 

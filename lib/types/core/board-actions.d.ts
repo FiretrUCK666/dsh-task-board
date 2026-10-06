@@ -1111,7 +1111,7 @@ export declare const ACTIONS: {
             readonly page: {
                 readonly about: "要去哪个页面";
                 readonly optional: true;
-                readonly oneOf: readonly ["inbox", "list", "schedule"];
+                readonly oneOf: readonly ["list", "schedule"];
                 readonly default: "不传 = 留在当前页，只聚焦某一条";
             };
             readonly of: {

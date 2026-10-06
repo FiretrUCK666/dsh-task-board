@@ -358,28 +358,24 @@ describe('the panel renders against the host it will actually run in', () => {
       startsAfter: item.startsAfter === undefined ? item.startsAfter : now + 6 * 86_400_000,
       dueAt: item.dueAt === undefined ? item.dueAt : now + 60 * 86_400_000,
     }))
-    const inbox = renderPanel(rows, 'wide', 'inbox')
     const schedule = renderPanel(rows, 'wide', 'schedule')
     const list = renderPanel(rows, 'wide', 'list')
-    // The inbox is the page that deliberately has no second-level chrome, and
-    // the agenda is the only one whose primary form is a day sequence.
-    //
-    // THE INBOX IS PINNED BY ITS MEMBERSHIP, NOT BY A SENTENCE. It used to be
-    // recognised by the paragraph it printed above the table, and that paragraph
-    // is gone — this page no longer explains itself. Copy is the wrong witness
-    // anyway: it changes whenever somebody rewrites a sentence, and a gate that
-    // must be edited on every rewrite is a gate that gets relaxed on one of them.
-    // What the inbox IS is a predicate: `isInboxItem` = open, normal priority, no
-    // tag, no card, no date. So the fixture that satisfies it must be here and the
-    // date-less one that carries a tag — which is therefore NOT a capture — must
-    // not be.
-    expect(inbox).toContain('刚记下的一句')
-    expect(inbox, 'the inbox is showing a row that has been filed, so it is not the inbox').not.toContain('这一条还在做')
-    expect(list, 'the list is hiding a row, so the membership check above proves nothing').toContain('这一条还在做')
+    // The agenda is the page whose primary form is a day sequence; the list is the
+    // page that counts what exists. 收件 was the third and it is gone — it was a
+    // PREDICATE over the same document rather than a different question, so its rail
+    // row was its only door and its own layout was the only thing it added.
     expect(schedule).toContain('没有日期')
     expect(schedule).toContain('还没到开始时间')
-    // And they must be three DIFFERENT documents, not one rendered three times.
-    expect(new Set([inbox, schedule, list]).size).toBe(3)
+    // THE LIST HOLDS EVERY ROW, which is the membership promise that outlived the
+    // page: the bare capture is here, and so is the date-less row that carries a tag
+    // (which is therefore NOT a capture, and was never on the inbox either).
+    expect(list).toContain('刚记下的一句')
+    expect(list).toContain('这一条还在做')
+    // And they must be two DIFFERENT documents, not one rendered twice.
+    expect(new Set([schedule, list]).size).toBe(2)
+    // 收件 is gone from the render as well as from the page set, so a stale reader of
+    // its copy finds nothing — this is what says so out loud.
+    expect(list, 'the removed 收件 page is still drawn').not.toContain('收件只放还没分流的想法')
   })
 
   it('a static render cannot answer the band question, and that is a fact about the bench', () => {

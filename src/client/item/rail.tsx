@@ -53,8 +53,8 @@ import css from './item.module.css'
 /* The closed key set lives in core, beside the tables that build the rail. */
 
 const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
-  inbox: 'item.rail.inbox',
   all: 'item.rail.all',
+  schedule: 'item.page.schedule',
   deleted: 'item.rail.deleted',
   overdue: 'item.rail.overdue',
   stale: 'item.rail.stale',

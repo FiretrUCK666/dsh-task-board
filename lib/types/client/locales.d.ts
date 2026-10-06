@@ -642,7 +642,6 @@ export declare const zh: {
     'item.pageJump.missing': string;
     'item.pageJump.nothing': string;
     'item.rail.label': string;
-    'item.rail.inbox': string;
     'item.rail.all': string;
     'item.rail.deleted': string;
     'item.rail.when': string;
@@ -719,7 +718,6 @@ export declare const zh: {
     'item.field.bodyAdd': string;
     'item.field.status': string;
     'item.field.priority': string;
-    'item.page.inbox': string;
     'item.page.list': string;
     'item.page.schedule': string;
     'item.triage.behind': string;

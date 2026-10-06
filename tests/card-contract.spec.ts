@@ -416,11 +416,27 @@ describe('the column header and the cards under it share ONE text edge', () => {
     const props = readFileSync(fileURLToPath(new URL('../src/client/item/pages/page-props.ts', import.meta.url)), 'utf8')
     expect(props, 'renderRows takes no picking argument, so every page inherits the shared holding')
       .toMatch(/renderRows: \(list: readonly ItemRecord\[\], picking: boolean\)/)
-    for (const [name, call] of [['inbox', /renderRows\(rows,\s*false\)/], ['schedule', /renderRows\(bucket\.items,\s*false\)/]] as const) {
+    for (const [name, call] of [['schedule', /renderRows\(bucket\.items,\s*false\)/]] as const) {
       const page = readFileSync(fileURLToPath(new URL(`../src/client/item/pages/${name}.tsx`, import.meta.url)), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
       expect(call.test(page), `${name}.tsx draws pickboxes although PRODUCT.md gives it no multi-select`)
         .toBe(true)
+    }
+    /* AND THE GATE COVERS EVERY PAGE BY CONSTRUCTION, not by a hand-kept list of
+     * files to check. 收件 used to be the second entry here; it is gone, and the
+     * thing that has to survive its removal is the REASON this loop exists — that a
+     * page cannot inherit the holding by being handed the shared factory. So the
+     * check is `ITEM_PAGES` read off disk against the loop's own names: a page added
+     * tomorrow without an entry here is a red test rather than a page nobody
+     * checked. */
+    const pagesSource = readFileSync(fileURLToPath(new URL('../src/core/item-counts.ts', import.meta.url)), 'utf8')
+    const declared = /export const ITEM_PAGES = \[([^\]]*)\]/.exec(pagesSource)?.[1] ?? ''
+    const pages = [...declared.matchAll(/'([a-z]+)'/g)].map(match => match[1])
+    const batched = ['list']
+    for (const page of pages) {
+      const expected = batched.includes(page)
+      const covered = expected || ['schedule'].includes(page)
+      expect(covered, `the page 「${page}」 is not covered by the pickbox gate, so its rows are unchecked`).toBe(true)
     }
     // And the one page that DOES batch takes the real state, not a constant.
     const list = readFileSync(fileURLToPath(new URL('../src/client/item/pages/list.tsx', import.meta.url)), 'utf8')

@@ -676,7 +676,6 @@ export const zh = {
   'item.pageJump.missing': '清单里没有 #{ref}。',
   'item.pageJump.nothing': '要说去哪一页，或者跳到哪一条。',
   'item.rail.label': '去哪里看',
-  'item.rail.inbox': '刚记下的',
   'item.rail.all': '全部',
   'item.rail.deleted': '已删除',
   'item.rail.when': '按日子看',
@@ -762,7 +761,6 @@ export const zh = {
   'item.field.priority': '优先级',
 
   // 页面轨：轨上只有这三片，派生页不占轨。
-  'item.page.inbox': '收件',
   'item.page.list': '清单',
   'item.page.schedule': '日程',
 
@@ -1607,7 +1605,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.pageJump.missing': 'There is no #{ref} in the list.',
   'item.pageJump.nothing': 'Say which page, or which row.',
   'item.rail.label': 'Where to look',
-  'item.rail.inbox': 'Just captured',
   'item.rail.all': 'Everything',
   'item.rail.deleted': 'Deleted',
   'item.rail.when': 'By date',
@@ -1690,7 +1687,6 @@ export const en: Record<keyof typeof zh, string> = {
 
   // The page rail. Only these three are destinations; a derived view is a page
   // you arrive at, not a tab the rail grows.
-  'item.page.inbox': 'Inbox',
   'item.page.list': 'List',
   'item.page.schedule': 'Agenda',
 

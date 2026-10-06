@@ -24,7 +24,7 @@
  * it consistent — which is the defect this file exists to remove.
  */
 import type { ItemRecord } from './item.ts'
-import { isAgendaItem, isInboxItem } from './item-membership.ts'
+import { isAgendaItem } from './item-membership.ts'
 import { ITEM_PAGES, type ItemPageId } from './item-counts.ts'
 
 export type ItemNavigationRefusal = 'nothingAsked' | 'noSuchItem'
@@ -39,19 +39,22 @@ export type ItemNavigation =
   }
 
 /**
- * Which of the three pages holds this row.
+ * Which page holds this row.
  *
- * 收件 · 清单 · 日程 are nested, not parallel, so the answer has an order: a bare
- * capture goes to 收件 (it has no structure at all), a scheduled live row goes to
- * 日程, and everything else — including every finished row — stays in 清单,
- * because that page counts what EXISTS rather than what is outstanding. Reading
- * it the other way round is how a finished row ends up on a page that does not
- * list finished rows.
+ * 清单 与 日程 are two readings of ONE document, and the answer is which reading a
+ * jump should land in: a row with a date to work from is on 日程 (that page is the
+ * day sequence), and everything else — including a bare capture and every finished
+ * row — stays in 清单, because that page counts what EXISTS rather than what is
+ * outstanding. Reading it the other way round is how a finished row ends up on a
+ * page that does not list finished rows.
+ *
+ * A BARE CAPTURE USED TO GO TO 收件, a page that no longer exists: it was a reading
+ * of the same document with one door (its rail row), and the predicate behind it
+ * lives on in the grammar where a predicate belongs. The row is in 清单 like every
+ * other row, which is also where the reader already is.
  */
 export function itemPageOf(item: ItemRecord): ItemPageId {
-  if (isInboxItem(item)) return 'inbox'
-  if (isAgendaItem(item)) return 'schedule'
-  return 'list'
+  return isAgendaItem(item) ? 'schedule' : 'list'
 }
 
 /**

@@ -81,7 +81,6 @@ import {
 } from './selection.ts'
 import { ItemBatchBar } from './batch-bar.tsx'
 import { whyLabelOf } from './why-label.ts'
-import { InboxPage } from './pages/inbox.tsx'
 import { ListPage } from './pages/list.tsx'
 import { SchedulePage } from './pages/schedule.tsx'
 import { newItemId } from './model.ts'
@@ -92,9 +91,8 @@ import { DEFAULT_VIEW_PREFS, readViewPrefs, writeViewPrefs, type ItemOverlay, ty
 import type { ItemListFace } from './register.tsx'
 import css from './item.module.css'
 
-/** The three page names, as closed keys so no name is ever built by template. */
-const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.inbox' | 'item.page.list' | 'item.page.schedule'>> = {
-  inbox: 'item.page.inbox',
+/** The page names, as closed keys so no name is ever built by template. */
+const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 'item.page.schedule'>> = {
   list: 'item.page.list',
   schedule: 'item.page.schedule',
 }
@@ -1003,22 +1001,24 @@ export function ItemListPanel(props: ItemListPanelProps) {
     ...jumpRows(),
   ], [undo, runUndo, visibleIds, selection.armed, goTo])
 
-  const body = prefs.page === 'inbox'
-    ? <InboxPage {...pageProps} />
-    : prefs.page === 'list'
-      ? <ListPage
-        {...pageProps}
-        clientId={replica?.clientId()}
-        showDone={showDone}
-        onShowDone={setShowDone}
-        batch={batch}
-        armed={selection.armed}
-        onArm={on => setSelection(current => setArmed(current, on))}
-        allPicked={allPicked(selection, visibleIds)}
-        onPickAll={on => setSelection(current => setAllPicked(current, visibleIds, on))}
-        selectable={visibleIds.length > 0}
-      />
-      : <SchedulePage {...pageProps} />
+  /* TWO READINGS OF ONE DOCUMENT, and `ITEM_PAGES` is the closed set of them: 清单
+   * counts what exists, 日程 reads it day by day. A third branch here would need a
+   * third entry in that table, which is what makes 「a page with no count and no
+   * door」 a build failure rather than a blank screen. */
+  const body = prefs.page === 'list'
+    ? <ListPage
+      {...pageProps}
+      clientId={replica?.clientId()}
+      showDone={showDone}
+      onShowDone={setShowDone}
+      batch={batch}
+      armed={selection.armed}
+      onArm={on => setSelection(current => setArmed(current, on))}
+      allPicked={allPicked(selection, visibleIds)}
+      onPickAll={on => setSelection(current => setAllPicked(current, visibleIds, on))}
+      selectable={visibleIds.length > 0}
+    />
+    : <SchedulePage {...pageProps} />
 
   /**
  * THE THREE NUMBERS, each counted where it is filtered.
@@ -1111,32 +1111,43 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
 
   const enterRail = useCallback((entry: ItemRailEntry) => {
-    /* LEAVING THE ARCHIVE IS WHAT EVERY OTHER RAIL ROW MEANS. The drawer is a place
-     * the reader stands in, and pressing any other row is walking out of it — so
-     * the close comes FIRST, before the branch, and no row has to remember it. A
-     * place that stays open behind you is not a place, it is a modal you forgot to
-     * close. */
+    /* EVERY ROW DECLARES A COMPLETE DESTINATION, AND ONE PRESS LANDS IN IT.
+     *
+     * That is the rule this function exists to keep, and it is not how the rail
+     * worked: each row changed PART of the state. 「已删除」 moved the page and
+     * opened the drawer; 「全部」 cleared the filter and moved nothing; the rows that
+     * narrow only wrote a token. So a reader stood in the inbox, pressed 「全部」,
+     * and the screen did not change — the filter was already empty and 「全部」 had
+     * never claimed the page. Press 「已删除」 first and it worked, because THAT row
+     * was the one moving the page. **The press that looked broken was the one that
+     * changed the least, on the row that should be the most definite on the rail.**
+     *
+     * A destination is `{ page, pick, archive }`, always all three, so no row can
+     * leave one of them behind from wherever the reader was standing:
+     *   · 「全部」     the document, unnarrowed
+     *   · 「日程」     the same document read day by day
+     *   · 「已删除」   the rows that are no longer in it
+     *   · a predicate  the document, narrowed by exactly this one row
+     *   · a day        the same, on one day
+     *
+     * EVERY PREDICATE LANDS ON THE LIST PAGE, and the reason is the number printed
+     * beside it. Those numbers count the WHOLE document — that is the promise
+     * `item-rail.ts` makes and `item-query.ts` states as 「a count and its jump are
+     * one predicate」. A predicate that narrowed only the page the reader happened
+     * to be standing on would show fewer rows than the number it had just been
+     * pressed for: the count and the list would be two facts, which is the exact
+     * defect the shared-predicate rule exists to forbid. */
     setArchiveOpen(false)
-    /* A SET moves the panel; a PREDICATE narrows the query. Those are two different
-     * things and the entries say which they are, so this branch is the shape of
-     * the answer rather than a guess about the reader's intent. */
     if (entry.kind === 'collection' || entry.kind === 'place') {
-      if (entry.key === 'inbox') { goTo('inbox'); return }
-      /* 「已删除」是**另一个地方**，不是一次收窄：它是墓碑，而墓碑不在活着的行里。
-       * 所以它清空筛选（一个还留着谓词的抽屉看不懂自己要显示什么）并请归档打开——
-       * 同一个抽屉，两扇门。
-       *
-       * **而它必须先落到那一页上去。** 抽屉长在清单页里，而左栏在三个页面上都渲染：
-       * 站在「日程」或「收件」上按这一行，原来是清掉筛选、点亮这一行、**抽屉不出现**
-       * ——计数器留在 >0，等读者之后切回「清单」时才补上那一下。也就是说这一行上一半
-       * 的路，而「按了却当场看不到结果」与「按了什么都不做」对读者是同一件事。
-       *
-       * 左栏这一列问的是「去哪儿看」，所以「去那儿」本来就在它的职责里：先 `goTo`，
-       * 再请抽屉打开。两条都在同一次事件里发生，于是它们落在同一帧上，读者看到的
-       * 是一次「到了，并且开着」。 */
-      if (entry.key === 'deleted') { goTo('list'); choose({ search: '' }); onOpenArchive(); return }
-      choose({ search: '' })
-      return
+      if (entry.key === 'deleted') {
+        /* 「已删除」是**另一个地方**：它是墓碑，而墓碑不在活着的行里。所以清空筛选
+         * （一个还留着谓词的抽屉看不懂自己要显示什么）并开抽屉。 */
+        goTo('list'); choose({ search: '' }); onOpenArchive(); return
+      }
+      if (entry.key === 'schedule') { goTo('schedule'); choose({ search: '' }); return }
+      /* 「全部」 OWNS THE PAGE, and that is the whole fix. 「全部」 means the whole
+       * document, and the whole document is the list page. */
+      goTo('list'); choose({ search: '' }); return
     }
     /* A PREDICATE, and the query string is the ONLY place it is written: the box
      * and the rail can never be the stale one, because there is only one of them.
@@ -1152,7 +1163,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
      *
      * So a press means 「只看这一个」: turning one on drops its siblings, and
      * pressing the one that is already on takes it off. The group's tokens come
-     * from the rail's own entries, so a group and its members cannot drift apart. */
+     * from the rail's own entries, so a group and its members cannot drift apart.
+     *
+     * AND IT LANDS ON THE LIST PAGE, for the reason given above: the number beside
+     * this row counts the whole document, so the list it opens has to be the whole
+     * document narrowed — not the page the reader was standing on narrowed twice. */
+    goTo('list')
     choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token), railSiblingsOf(entry, railGroups)) })
   }, [choose, goTo, onOpenArchive, prefs.search, railGroups])
 
@@ -1188,7 +1204,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
        what makes it impossible for a SET row to look current while the reader is
        somewhere else. */
     if (archiveOpen) return 'deleted'
-    return prefs.page === 'inbox' ? 'inbox' : undefined
+    if (prefs.page === 'schedule') return 'schedule'
+    /* 「全部」 IS CURRENT WHEN NOTHING ELSE IS. It is the floor of the rail — the
+       document with no narrowing — so it is lit exactly when the reader is on the
+       list page with no predicate and no day. Reading it off the state instead of
+       remembering the press is what makes a highlighted row mean something. */
+    return (prefs.page === 'list' && query.words.length === 0 && query.tags.length === 0
+        && query.priority.length === 0 && query.status.length === 0 && query.flags.size === 0 && query.day === null)
+      ? 'all'
+      : undefined
   }, [archiveOpen, railGroups, prefs.page, prefs.search])
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">

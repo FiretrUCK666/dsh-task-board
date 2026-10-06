@@ -1745,6 +1745,55 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       panel.dispose()
     }
   })
+
+  it('「全部」 OWNS THE PAGE, so pressing it from another page brings the reader back', () => {
+    // THE DEFECT THIS PINS, reported from the surface: 「sometimes pressing 全部 does
+    // nothing at all; press 已删除 first and then 全部 works」.
+    //
+    // The reason was that each rail row changed PART of the state. 已删除 moved the
+    // page and opened the archive; 全部 cleared the filter and moved NOTHING. A
+    // reader standing on 日程 pressed 全部, the filter was already empty, and the
+    // screen did not change — so the row that should be the most definite one on the
+    // rail was the one that appeared broken, and the row that appeared to fix it was
+    // a different row entirely.
+    //
+    // A destination is `{ page, pick, archive }`, all three, always. This asserts the
+    // page half from the one page that is NOT the list.
+    const panel = mountPanel(fixtures(), 'schedule', 'wide')
+    try {
+      const all = railRow(panel.surface, '全部')
+      click(all)
+      // The agenda's own bucket names are what the list page never prints, so their
+      // absence is the page having actually changed rather than a filter moving.
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始时间')
+      expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('日程 has a door, so no page in this panel is reachable only from ⌘K', () => {
+    // 日程 has been a page since the page set existed, and until now its only route
+    // was the command palette. A whole page behind a keyboard-only door is 「a control
+    // reachable only from a keyboard does not exist for a thumb」 one level up.
+    //
+    // The witness is the GATED bucket, so it is seeded with a row that actually lands
+    // in it: the agenda draws a bucket only when it has rows, and an empty one is
+    // invisible rather than empty — asserting on it with the plain fixtures would
+    // have been asserting on a heading the page is right not to draw.
+    const soon = Date.now() + 6 * 86_400_000
+    const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
+    const panel = mountPanel(rows, 'list', 'wide')
+    try {
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始时间')
+      const schedule = railRow(panel.surface, '日程')
+      click(schedule)
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始时间')
+      expect(schedule.getAttribute('aria-current')).toBe('true')
+    } finally {
+      panel.dispose()
+    }
+  })
 })
 
 /**
@@ -2532,10 +2581,12 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     }
   })
 
-  it('and a modifier press holds nothing on the two pages that have no batch bar', () => {
+  it('and a modifier press holds nothing on the page that has no batch bar', () => {
     // PRODUCT puts multi-select on the list page alone, and a held row on a page
-    // with no bar is a holding the reader can neither see nor empty.
-    for (const page of ['inbox', 'schedule'] as const) {
+    // with no bar is a holding the reader can neither see nor empty. 日程 is the one
+    // page left without a batch surface — 收件 was the other, and it is gone with its
+    // rail row, because it was a predicate rather than a page.
+    for (const page of ['schedule'] as const) {
       const panel = mountPanel(fixtures(), page, 'wide')
       try {
         hold(rowEls(panel.surface)[0])

@@ -94,7 +94,7 @@ export interface ItemRailGroup {
  * invariant 1 forbids.
  */
 declare const RAIL_FLAGS: readonly ["overdue", "stale", "undated"];
-export type ItemRailKey = (typeof RAIL_FLAGS)[number] | ItemPriority | ItemStatusView | 'inbox' | 'all' | 'deleted';
+export type ItemRailKey = (typeof RAIL_FLAGS)[number] | ItemPriority | ItemStatusView | 'schedule' | 'all' | 'deleted';
 /**
  * The rail, as it stands for this document at this moment.
  *
