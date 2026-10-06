@@ -35,6 +35,7 @@ import {
   itemRowViewOf,
   itemSlicesOf,
   itemMatchContextOf,
+  isItemQualifierToken,
   parseItemQuery,
   recentItemsOf,
   scheduleBucketOf,
@@ -221,6 +222,43 @@ describe('the query grammar', () => {
     const target = row()
     expect(itemMatches(target, parseItemQuery('status:open'), ctx())).toBe(true)
     expect(itemMatches(target, parseItemQuery('status:待办'), ctx())).toBe(false)
+  })
+
+  it('reads `on:` as ONE day, and reads it in the reader LOCAL calendar', () => {
+    // A CALENDAR CELL IS A LOCAL DAY, so a row due at 23:00 local on the 6th has
+    // to be found by the 6th. Deriving the day from `toISOString()` would file it
+    // under the 7th for every reader east of UTC — a filter that silently hides a
+    // row on the very day the reader can see it on the calendar.
+    const due = new Date(2026, 9, 6, 23, 0, 0).getTime()
+    const target = row({ dueAt: due })
+    expect(parseItemQuery('on:2026-10-06').day).toBe('2026-10-06')
+    expect(itemMatches(target, parseItemQuery('on:2026-10-06'), ctx())).toBe(true)
+    expect(itemMatches(target, parseItemQuery('on:2026-10-07'), ctx())).toBe(false)
+  })
+
+  it('a day is HAS, over all three dates, not one chosen field', () => {
+    // The three dates are three answers to 「when」, and the calendar asks the
+    // question once. Reading only `dueAt` would hide a row on the day its hard
+    // deadline falls, which is the day the reader most needs to see it.
+    const day = new Date(2026, 9, 6, 12, 0, 0).getTime()
+    const query = parseItemQuery('on:2026-10-06')
+    expect(itemMatches(row({ hardDueAt: day }), query, ctx())).toBe(true)
+    expect(itemMatches(row({ startsAfter: day }), query, ctx())).toBe(true)
+    expect(itemMatches(row({ dueAt: day }), query, ctx())).toBe(true)
+  })
+
+  it('a day token is a QUALIFIER, so the box never shows it as the reader words', () => {
+    // The predicate the box and the parser share: if this said no, the raw
+    // `on:2026-10-06` would sit inside the field being typed in with no chip
+    // explaining it — a filter applied with nothing on screen saying so.
+    expect(isItemQualifierToken('on:2026-10-06')).toBe(true)
+    expect(isItemQualifierToken('on:2026-10')).toBe(false)
+    expect(isItemQualifierToken('on:')).toBe(false)
+    expect(parseItemQuery('on:2026-10-06').words).toEqual([])
+    // And TWO of them resolve to one, because the slot holds one day: resolving to
+    // the first would make a hand-edited box disagree with every other single-slot
+    // control on the surface.
+    expect(parseItemQuery('on:2026-10-06 on:2026-10-08').day).toBe('2026-10-08')
   })
 
   it('reads priority digits, and does not infer them from the enum order', () => {

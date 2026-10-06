@@ -29,6 +29,7 @@ import type { BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
+import { watchKeyboardInset } from './board/keyboard-inset.ts'
 import { itemListStage, registerItemList } from './item/register.tsx'
 import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
@@ -250,6 +251,20 @@ export function apply(ctx: ClientContext): void {
     // leave an open tab pinned to the previous bundle forever).
     return freshness.watch()
   }, 'dsh-task-board: bundle freshness probe + watch')
+  // --- the soft keyboard inset ------------------------------------------------
+  //
+  // `--dsh-tb-kb` is ONE variable on the document root, shared by every floating
+  // sheet this plugin draws. It has to be, because the sheets live in different
+  // boxes: the board's dialog stage, the checklist's command palette, the
+  // checklist's new-row sheet. A variable written by whichever panel happened to
+  // be on screen would be absent exactly when the OTHER panel's sheet needed it —
+  // and absent means the keyboard buries the sheet's header with nothing on
+  // screen to say why.
+  //
+  // So it belongs to the plugin, not to a panel: mounted once here, alive for as
+  // long as the plugin is composed, written at the root so it rides an ancestor
+  // of every possible sheet.
+  ctx.effect(() => watchKeyboardInset(document.documentElement), 'dsh-task-board: soft keyboard inset')
   // --- official seats ---------------------------------------------------------
   //
   // The board occupies the shell's CENTRE STAGE as a global panel, and its entry

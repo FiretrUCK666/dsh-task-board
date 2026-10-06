@@ -176,3 +176,29 @@ export function itemRailGroupsOf(
     },
   ]
 }
+
+/**
+ * The other tokens in this entry's group — the ones a press has to REPLACE.
+ *
+ * A rail group is a set of ALTERNATIVES, and that is a property of the rail's own
+ * shape rather than a rule the caller should remember: 「按日子看」 offers three
+ * verdicts about one row's dates, 「按重要程度」 offers the four priorities a row
+ * can have exactly one of, 「按状态」 the four states. So the members of a group
+ * are mutually exclusive by construction, and asking the group for them is the
+ * only way to state that which cannot fall out of date: a token added to the rail
+ * joins its group's exclusion list the day it is added, without anyone
+ * remembering to update a second table.
+ *
+ * Reads the tokens from the entries themselves, so the rail's writer and its
+ * replacement list are the same string rather than two spellings of it.
+ * @param entry - the row that was pressed.
+ * @param groups - the rail, as {@link itemRailGroupsOf} built it.
+ * @returns the sibling tokens, excluding the entry's own and any empty token.
+ */
+export function railSiblingsOf(entry: ItemRailEntry, groups: readonly ItemRailGroup[]): readonly string[] {
+  const group = groups.find(one => one.entries.some(row => row.id === entry.id))
+  if (group === undefined) return []
+  return group.entries
+    .filter(one => one.id !== entry.id && one.token !== '')
+    .map(one => one.token)
+}

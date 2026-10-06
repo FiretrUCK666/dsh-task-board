@@ -118,6 +118,7 @@ export function itemQualifierVocabulary(): readonly string[] {
     ...Object.keys(PRIORITY_BY_TOKEN).sort().map(token => token),
     '!1', '!2', '!3', '!4',
     ...ITEM_FLAGS.map(flag => `has:${flag}`),
+    'on:YYYY-MM-DD',
     '#标签',
   ]
 }
@@ -149,6 +150,7 @@ const ITEM_FLAG_BY_TOKEN: ReadonlyMap<string, ItemFlag> = new Map(ITEM_FLAGS.map
  */
 export function isItemQualifierToken(token: string): boolean {
   const lower = token.toLowerCase()
+  if (DAY_TOKEN.test(lower)) return true
   if (lower.startsWith('status:')) {
     const value = lower.slice('status:'.length)
     return value === 'inprogress' || (ITEM_STATUSES as readonly string[]).includes(value)
@@ -168,12 +170,35 @@ export interface ItemQuery {
   readonly priority: readonly ItemPriority[]
   readonly status: readonly ItemStatusView[]
   readonly flags: ReadonlySet<ItemFlag>
+  /**
+   * ONE DAY, AS `YYYY-MM-DD` — 「只看这一天」.
+   *
+   * A single day rather than a list, because the question a calendar asks is
+   * 「那一天有什么」 and nobody asks it about two days at once: two days is a range
+   * (a different control) or it is a reader who has not finished choosing. Making
+   * it single is also what stops the token from accumulating in the box, which is
+   * what the field was doing when every press added another `on:` and each one
+   * narrowed the list toward zero.
+   */
+  readonly day: string | null
   /** The exact source text, so a surface can echo what was typed. */
   readonly text: string
 }
 
 /** The query that matches everything, and the shape every parse returns. */
-export const EMPTY_ITEM_QUERY: ItemQuery = { words: [], tags: [], priority: [], status: [], flags: new Set(), text: '' }
+export const EMPTY_ITEM_QUERY: ItemQuery = { words: [], tags: [], priority: [], status: [], flags: new Set(), day: null, text: '' }
+
+/**
+ * The one spelling of a day token, so the writer and the reader cannot disagree.
+ * @param day - `YYYY-MM-DD`, as the calendar's own cells carry it.
+ * @returns the token the grammar reads.
+ */
+export function dayTokenOf(day: string): string {
+  return `on:${day}`
+}
+
+/** `YYYY-MM-DD`, and nothing looser: a partial date is not a day. */
+const DAY_TOKEN = /^on:(\d{4}-\d{2}-\d{2})$/
 
 /**
  * Parse a search box's contents into words and qualifiers.
@@ -193,11 +218,21 @@ export function parseItemQuery(text: string): ItemQuery {
   const priority: ItemPriority[] = []
   const status: ItemStatusView[] = []
   const flags = new Set<ItemFlag>()
+  let day: string | null = null
   for (const raw of text.split(/\s+/)) {
     const token = raw.trim()
     if (token === '') continue
     if (token.startsWith('#') && token.length > 1) {
       tags.push(token.slice(1).toLowerCase())
+      continue
+    }
+    /* ONE DAY. `on:2026-10-06`, and the LAST one wins rather than the first: the
+       field is a single-slot filter, so a hand-edited box holding two of them has
+       to resolve to something, and resolving to the most recently written one is
+       the same answer a reader gets from every other single-slot control. */
+    const asDay = DAY_TOKEN.exec(token.toLowerCase())
+    if (asDay !== null) {
+      day = asDay[1] ?? null
       continue
     }
     if (token.startsWith('status:')) {
@@ -245,7 +280,7 @@ export function parseItemQuery(text: string): ItemQuery {
     }
     words.push(token.toLowerCase())
   }
-  return { words, tags, priority, status, flags: new Set(flags), text }
+  return { words, tags, priority, status, flags: new Set(flags), day, text }
 }
 
 /** What a row needs to know about the world for a filter to judge it. */
@@ -362,6 +397,12 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
   if (query.tags.length > 0 && !query.tags.some(tag => item.tags.some(row => row.toLowerCase() === tag))) return false
   if (query.priority.length > 0 && !query.priority.includes(item.priority)) return false
   if (query.status.length > 0 && !query.status.includes(derivedStatusOf(item, ctx.running))) return false
+  /* THE DAY IS READ AGAINST EVERY DATE THE ROW HAS, and 「has」 is the right verb:
+     a row whose day is the 6th because its hard deadline is the 6th belongs on the
+     6th's page whether or not it also has a plan date. The three dates are three
+     answers to 「when」, and a calendar asks the question once — picking one of the
+     three fields to read would hide rows on a day the reader can see them on. */
+  if (query.day !== null && !itemDatesOf(item).includes(query.day)) return false
   if (query.flags.size === 0) return true
   // One probe for the whole row, so two flags cannot read two different postures.
   const probe = flagProbeOf(item, ctx)
@@ -369,4 +410,26 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
     if (!ITEM_FLAG_TESTS[flag](probe)) return false
   }
   return true
+}
+
+/**
+ * Which days this row is ON, as `YYYY-MM-DD`, in the reader's own local calendar.
+ *
+ * Local rather than UTC, and that is the whole reason this is a function: the
+ * calendar's cells are local days, so a row due at 23:00 local on the 6th must be
+ * found by the 6th and not by the 7th. Deriving from `toISOString()` would put it
+ * on the 7th for half the planet.
+ * @param item - the row.
+ * @returns the days it belongs to, in a stable order, without duplicates.
+ */
+export function itemDatesOf(item: ItemRecord): readonly string[] {
+  const days = [item.dueAt, item.hardDueAt, item.startsAfter]
+    .filter((at): at is number => at !== undefined)
+    .map(at => {
+      const when = new Date(at)
+      const month = String(when.getMonth() + 1).padStart(2, '0')
+      const date = String(when.getDate()).padStart(2, '0')
+      return `${when.getFullYear()}-${month}-${date}`
+    })
+  return [...new Set(days)]
 }

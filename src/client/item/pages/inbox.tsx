@@ -27,7 +27,6 @@ import { t } from '../../locales.ts'
 import { useMemo } from 'react'
 import type { ItemPageProps } from './page-props.ts'
 import { ItemTable } from '../item-table.tsx'
-import css from '../item.module.css'
 
 export function InboxPage(props: ItemPageProps) {
   const { items, query, matchCtx } = props
@@ -42,10 +41,17 @@ export function InboxPage(props: ItemPageProps) {
   const nothingToShow = props.filtering ? t('item.noMatch') : t('item.empty')
   return (
     <>
-      <p className={css.itemInboxNote}>{t('item.inbox.note')}</p>
       {/* The same TABLE as the list page, with the pickbox column empty: the inbox
           has no batch surface, so `picking` is `false` and a row must not offer a
-          tick that leads nowhere. */}
+          tick that leads nowhere.
+
+          AND NO SENTENCE ABOVE IT. This page used to open with 「收件只放还没分流的
+          想法。给它一个优先级、一个日期、一个标签或一张卡，它就自己离开了。」 — a
+          paragraph of instructions for a page whose entire content is one unwritten
+          decision. The rail's 「刚记下的」 row is the map and it says the same thing
+          in three characters; a page that explains itself before showing anything
+          makes the reader read instead of look. **这一页不需要说它是什么，它只需要
+          是它。** */}
       <ItemTable
         rows={props.renderRows(rows, false)}
         empty={nothingToShow}

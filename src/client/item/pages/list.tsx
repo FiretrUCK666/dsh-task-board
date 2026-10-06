@@ -102,14 +102,15 @@ export function ListPage(props: ItemListPageProps) {
    * 看不到任何变化的数字——而**看不见变化的按钮比没有按钮更糟**：读者分不清是自己
    * 记错了还是这一行坏了。
    *
-   * 所以这是一个**信号**而抽屉的开与关仍住在这里：这里有它的行、它的恢复、它的彻底
-   * 删除，而左栏只负责说一句「读者想去那里」。
+   * 所以这是一个**值**，而它的所有者是面板：抽屉的行、它的恢复、它的彻底删除仍住在
+   * 这里，但「读者是不是站在归档里」属于整块面板——于是每一页都能开它，每一条左栏的
+   * 路都能关它。开与关是同一件事的两面，分开住在两个地方就必然有一面漏掉。
    */
   useEffect(() => {
-    if (props.archiveAsked === 0) return
+    if (!props.archiveOpen) return
     setArchiveNote(undefined)
     void openArchive()
-  }, [props.archiveAsked, openArchive])
+  }, [props.archiveOpen, openArchive])
 
   /**
    * Restore one archived row, ADDRESSED BY ITS IDENTITY.
@@ -280,36 +281,34 @@ export function ListPage(props: ItemListPageProps) {
    * removed, the window is still stated, and the entry is still a single press
    * below everything else on the page.
    */
-  const archiveLine = archive === undefined
-    ? (
-      /* ITS OWN CLASS, and the reason is spacing rather than naming. This is a
-         footnote about the archive — it is not one more thing needing your
-         attention — and it was wearing `.itemTriageRow`, which is a row in the
-         triage list: that class carries a hairline above itself, the padding of
-         a tappable row, and its own hover. So the page drew a divider under the
-         triage block, gave a sentence 40px of height, and opened the space
-         between two bands to 51px where the rhythm says 12. One class holding
-         two unrelated meanings is how a rhythm stops being a rhythm: the number
-         that is supposed to describe the page was being spent on a footnote. */
-      <p className={css.itemArchiveRow}>
-        <span className={css.itemArchiveNote}>{t('item.archive.window')}</span>
-        <Button
-          variant="ghost"
-          size="sm"
-          className={css.itemArchiveAction}
-          onClick={() => { setArchiveNote(undefined); void openArchive() }}
-        >
-          {t('item.archive.open')}
-        </Button>
-      </p>
-    )
+  /* **页尾那一行没有了：归档的入口是左栏那一行「已删除」。**
+   *
+   * 这一行原来写着「删除后 30 天内可以找回来。」加一枚「看看」，画在整页内容的最下面。
+   * 它和左栏那个「已删除 3」是**同一扇门的第二扇**，而第二扇门比第一扇远：读者要滚到
+   * 页尾才知道有归档这回事，而左栏那个数一直在那儿、还带着条数。
+   *
+   * PRODUCT 里那条「窗口说出来」的承诺仍然成立，只是它说的话改由两处说，而两处都在
+   * 读者正好需要它的时刻：**删掉的那一刻**（就近撤销那条回执上写着 30 天），以及
+   * **进到归档里之后**（抽屉的头行写着同一句）。页尾这一处是第三遍，而它是唯一一处
+   * 读者既不需要、也读不到的位置。
+   *
+   * 一行不再出现的文案，是这一页唯一一种「少一点东西」的干净做法：它没有替换者，
+   * 因为那句话本来就有人说了。 */
+  /* THE DRAWER IS OPEN WHEN THE PANEL SAYS SO — the rows it draws are still this
+   * page's, but 「am I in the archive」 is one fact about the whole surface. It used
+   * to be this page's own `archive` being defined, which is why nothing but the
+   * drawer's own button could close it: a rail row could neither open it on
+   * another page nor close it on this one, because a second copy of 「open」 lived
+   * here and only here. */
+  const archiveLine = !props.archiveOpen || archive === undefined
+    ? undefined
     : (
       <section className={css.itemArchiveSection}>
         <h2 className={css.itemArchiveHead}>
           <button
             type="button"
             className={css.itemArchiveToggle}
-            onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}
+            onClick={() => { setArchiveNote(undefined); props.onCloseArchive() }}
           >
             {t('item.archive.title')}
             {/* A COUNT ONLY WHERE THERE IS ONE TO COUNT. It used to print `0` in
@@ -367,7 +366,7 @@ export function ListPage(props: ItemListPageProps) {
             </ul>
           )}
           <p className={css.itemHint}>{t('item.archive.window')}</p>
-          <Button variant="ghost" size="sm" onClick={() => { setArchive(undefined); setArchiveNote(undefined) }}>
+          <Button variant="ghost" size="sm" onClick={() => { setArchiveNote(undefined); props.onCloseArchive() }}>
             {t('item.archive.close')}
           </Button>
         </div>

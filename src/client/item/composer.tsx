@@ -228,3 +228,41 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
     </div>
   )
 }
+
+/**
+ * ONE LINE OF THE GRAMMAR, SPELLED OUT — what an empty document shows instead of
+ * a paragraph about itself.
+ *
+ * THE PROBLEM IT ANSWERS. An empty surface can say two things: what is missing,
+ * or how to put something there. A sentence can only do the first, and the first
+ * is the one nobody needs — 「还没有事项」 is a fact the reader already has, and a
+ * screen that repeats it in a paragraph is a wall of text that teaches nothing.
+ * Worse, the sentence it replaced had to DESCRIBE the grammar in prose
+ * (「给它一个优先级、一个日期、一个标签或一张卡」), which is the longest possible
+ * way to say what one line can SHOW.
+ *
+ * SO IT SHOWS IT. `#画廊` `!1` `@明天` and a few words, drawn with the same chips
+ * the real line uses — the priority token is literally `.itemPrioChip`, the shape
+ * the reader will meet on a row's title, in the property list, and on the rail.
+ * Nothing here is new vocabulary; it is the vocabulary, arranged once, so that
+ * learning the shape and reading the example are the same act.
+ *
+ * IT IS TEXT, NOT A FIELD. The chips are `<b>` inside a `<p>`: they cannot be
+ * focused, clicked or typed into, so the example cannot impersonate a control
+ * that swallows a press. An example that looks like an input and is not one is
+ * the most expensive kind of decoration — the reader tries it once and learns
+ * that things on this page do not work.
+ * @returns the example line.
+ */
+export function ItemGrammarExample() {
+  /* The reader's own language, spelled the way the box is spelled: the same
+   * sigils, because the sigils are what they have to type. */
+  return (
+    <p className={css.itemGrammarExample}>
+      <b className={css.itemGrammarExampleToken}>#画廊</b>
+      <b className={`${css.itemPrioChip} ${css.itemGrammarExampleToken}`} data-tone="urgent">!1</b>
+      <b className={`${css.itemGrammarExampleToken} ${css.itemGrammarExampleWhen}`}>@明天</b>
+      <span className={css.itemGrammarExampleWords}>{t('item.empty.sample')}</span>
+    </p>
+  )
+}

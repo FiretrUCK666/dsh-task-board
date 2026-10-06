@@ -94,20 +94,32 @@ interface Rule {
  * selector. That is the same class of mistake the container self-query gate
  * documents: a block that merely CONTAINS a rule does not declare what the rule
  * declares.
+ *
+ * COMMENTS COME OUT FIRST, and that is not tidiness — it is what makes any
+ * answer this function gives usable. A sheet in this repository explains its own
+ * rules at length, so a selector named in prose sits in the text next to the rule
+ * that carries it. Without this strip, `declarationRules` merged that prose into
+ * the FOLLOWING rule's selector, and a gate asking "is there a rule of this shape"
+ * answered yes about a rule that does not exist — while the rule it was meant to
+ * find had just been deleted. The reader would then be told to put back the very
+ * thing that was removed. **A checker that cannot tell a rule from a sentence
+ * about it will demand the wrong fix**, which is the whole of hard rule 14; the
+ * remedy here is to read the sheet the way a browser does.
  * @param css - the sheet.
  * @returns one entry per declaration rule, in source order.
  */
 function declarationRules(css: string): Rule[] {
   const out: Rule[] = []
-  for (const match of css.matchAll(/([^{}]+)\{/g)) {
+  const source = css.replace(/\/\*[\s\S]*?\*\//g, '')
+  for (const match of source.matchAll(/([^{}]+)\{/g)) {
     const start = (match.index ?? 0) + match[0].length - 1
     let depth = 0
     let end = start
-    for (; end < css.length; end++) {
-      if (css[end] === '{') depth++
-      else if (css[end] === '}') { depth--; if (depth === 0) break }
+    for (; end < source.length; end++) {
+      if (source[end] === '{') depth++
+      else if (source[end] === '}') { depth--; if (depth === 0) break }
     }
-    const body = css.slice(start + 1, end)
+    const body = source.slice(start + 1, end)
     if (body.includes('{')) continue
     out.push({ selector: (match[1] ?? '').trim().replace(/\s+/g, ' '), body })
   }
@@ -351,7 +363,19 @@ describe('the panel renders against the host it will actually run in', () => {
     const list = renderPanel(rows, 'wide', 'list')
     // The inbox is the page that deliberately has no second-level chrome, and
     // the agenda is the only one whose primary form is a day sequence.
-    expect(inbox).toContain('收件只放还没分流的想法')
+    //
+    // THE INBOX IS PINNED BY ITS MEMBERSHIP, NOT BY A SENTENCE. It used to be
+    // recognised by the paragraph it printed above the table, and that paragraph
+    // is gone — this page no longer explains itself. Copy is the wrong witness
+    // anyway: it changes whenever somebody rewrites a sentence, and a gate that
+    // must be edited on every rewrite is a gate that gets relaxed on one of them.
+    // What the inbox IS is a predicate: `isInboxItem` = open, normal priority, no
+    // tag, no card, no date. So the fixture that satisfies it must be here and the
+    // date-less one that carries a tag — which is therefore NOT a capture — must
+    // not be.
+    expect(inbox).toContain('刚记下的一句')
+    expect(inbox, 'the inbox is showing a row that has been filed, so it is not the inbox').not.toContain('这一条还在做')
+    expect(list, 'the list is hiding a row, so the membership check above proves nothing').toContain('这一条还在做')
     expect(schedule).toContain('没有日期')
     expect(schedule).toContain('还没到开始时间')
     // And they must be three DIFFERENT documents, not one rendered three times.
@@ -1036,18 +1060,35 @@ describe('the rail and in-row detail share one workbench', () => {
     expect(drawsSeparator(detail, 'border-block-start'), 'the in-row detail has no top separator, so it reads as a continuation of the sentence').toBe(true)
   })
 
-  it('the rail still draws its separator, so navigation is a column', () => {
-    // The rail replaced the detail pane as the left column. A navigation column
-    // with no separator is a wide empty margin, so the rule that makes it a
-    // column is still checked — on the rail that exists, not the pane that left.
-    // The rule is on the COLUMN the line separates, not on the column it sits
-    // beside — and it is there for a reason that the wide layout can check but a
-    // screenshot cannot: the top bar belongs to the list column, so a rule on the
-    // RAIL would run through the bar, and a count touching a rule reads as 「this
-    // number belongs to that line」. Same promise, new witness.
+  it('the two regions are separated by air, not by a line', () => {
+    // THE PROMISE, UNCHANGED: the rail reads as a column of navigation rather
+    // than as a wide empty margin, so the two regions have to be separated by
+    // SOMETHING.
+    //
+    // THE MECHANISM THAT USED TO CARRY IT WAS A LINE, and a line was the wrong
+    // instrument for this seam. It was drawn on the list column's leading edge,
+    // which is 1px from the list card's own edge — so it measured **2px** on
+    // screen, heavier than every real separator on the panel, and it cut one
+    // main column into two halves that are not halves: the rail is a direction
+    // and the list is the work, on the same paper. A reader asked what that line
+    // was dividing could not answer.
+    //
+    // So the promise is checked in the two directions that outlive the change:
+    // the gap is real, and the line is gone. A gate that only demanded the line
+    // would have been demanding the thing that read as a mistake.
+    const workbench = rulesOf(css, 'itemWorkbench').join('\n')
+    expect(workbench, 'there is no .itemWorkbench rule').not.toBe('')
+    const gap = /(?:^|[;{\s])column-gap\s*:\s*([^;]+)/.exec(workbench)?.[1]?.trim() ?? ''
+    expect(gap === '' || gap === '0' || gap === '0px',
+      `the two regions are separated by nothing (column-gap: ${gap || 'missing'}), so navigation reads as a margin`).toBe(false)
+
+    // AND THE LINE IS GONE. Both inline sides, because a line moved from one
+    // column's leading edge to the other's trailing edge is the same line.
     const column = rulesOf(css, 'itemListColumn').join('\n')
-    expect(column, 'there is no .itemListColumn rule').not.toBe('')
-    expect(drawsSeparator(column, 'border-inline-start'), 'the navigation column draws no separator, so navigation reads as a margin').toBe(true)
+    expect(drawsSeparator(column, 'border-inline-start'),
+      'the list column draws a line again — it lands 1px from the card\'s own edge and reads as 2px').toBe(false)
+    expect(drawsSeparator(column, 'border-inline-end'),
+      'the list column draws a line on its trailing edge, which is the same line by another name').toBe(false)
   })
 
   it('the two probes both bite', () => {
@@ -1061,6 +1102,18 @@ describe('the rail and in-row detail share one workbench', () => {
     const spans = (text: string): string => rulesOf(text, 'itemRow > .itemDetail').join('\n')
     expect(spans('.itemRow > .itemDetail { grid-column: 1 / -1; }')).toContain('1 / -1')
     expect(spans('.itemRow > .itemDetail { grid-column: 2 / 3; }')).not.toContain('1 / -1')
+    // The gap detector, both ways: a real gap passes and a reset fails.
+    const gapped = (text: string): boolean => {
+      const body = rulesOf(text, 'itemWorkbench').join('\n')
+      const value = /(?:^|[;{\s])column-gap\s*:\s*([^;]+)/.exec(body)?.[1]?.trim() ?? ''
+      return value === '' || value === '0' || value === '0px'
+    }
+    expect(gapped('.itemWorkbench { column-gap: var(--s3); }'), 'the gap probe reported a real gap as absent').toBe(false)
+    expect(gapped('.itemWorkbench { row-gap: 0; column-gap: 0; }')).toBe(true)
+    expect(gapped('.itemWorkbench { display: grid; }'), 'the gap probe cannot see a missing gap').toBe(true)
+    // And the line detector, on the selector that now must NOT carry one.
+    expect(drawsSeparator('.itemListColumn { border-inline-start: var(--item-hair); }', 'border-inline-start')).toBe(true)
+    expect(drawsSeparator('.itemListColumn { border-inline-start: 0; }', 'border-inline-start')).toBe(false)
   })
 })
 
@@ -2070,41 +2123,70 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     ).toBe(0)
   })
 
-  it('nothing in the list track grows along the block axis', () => {
-    // The 660px hole, as a rule rather than as a measurement. A column flex
-    // container hands its direct children `flex-grow: 0` by default, and any
-    // one of them that asks to grow becomes the height of the column: a
-    // one-line sentence then reads as an empty box with a caption. Stating it
-    // once for the track's children is the structural fix, and it covers the
-    // sentence of today and whatever replaces it tomorrow.
+  it('the list track grows in exactly one place, and it is the scroller', () => {
+    // THE RULE THAT WAS HERE DEMANDED A BLANKET CHILD RULE, and the blanket rule
+    // it demanded is what broke the list. It required a `.itemListColumn > *`
+    // selector with `flex: 0` — "no direct child may grow along the block axis" —
+    // and that selector has the SAME specificity as `.itemFlow`'s own
+    // `flex: 1 1 auto` and is written later in the sheet, so it won. The scroller
+    // stopped growing, sized itself to its content instead, overflowed a column
+    // that is `overflow: hidden`, and **the last rows became unreachable with no
+    // scrollbar and nothing on screen to say why.**
     //
-    // READ THE SELECTOR, NOT THE BODY. The universal selector can only appear
-    // in the SELECTOR half of a rule — no spelling puts a `*` inside a
-    // declaration block — so a version of this gate that searched the body
-    // could never match anything, and the fix it demands (write
-    // `.itemListColumn > * { … }`) is exactly the fix it refuses to see. A gate
-    // that reports "no rule here" for a rule that is sitting right there sends
-    // the next author looking anywhere but the right place.
-    const rules = declarationRules(css).filter(rule => /\.itemListColumn\s*>\s*\*/.test(rule.selector))
-    expect(rules.length, 'no rule states how the list track\'s direct children behave — the rule is left to each child, which is how one of them grew').toBeGreaterThan(0)
-    for (const rule of rules) {
-      const grow = /(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1]?.trim() ?? ''
-      // `flex: none` and `flex: 0` are the same promise written two ways, so
-      // both answer the question; `flex: initial` and a missing declaration do
-      // not, and are reported rather than assumed.
-      expect(['0', 'none'], `${rule.selector} grows (flex: ${grow}) — a one-line sentence then becomes the height of the column`).toContain(grow.split(/\s+/)[0] ?? '')
+    // The intent was sound and is kept: no ROW may grow, because a one-line
+    // sentence that becomes the height of the column reads as an empty box with a
+    // caption. What was wrong was the subject — the rule named the track's
+    // children, and the track's children are not all rows; one of them is the
+    // scroller, whose whole job is to take the remaining height.
+    //
+    // Three statements, and each one is a promise a reader can see:
+    const rules = declarationRules(css)
+    const growOf = (rule: Rule): string => (/(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? '').trim().split(/\s+/)[0] ?? ''
+    const grows = (value: string): boolean => /^[1-9]/.test(value)
+    const named = (name: string): Rule[] => rules.filter(rule => new RegExp(`(?:^|[,\\s])${name.replace('.', '\\.')}(?:\\s|,|$|:|\\{)`).test(rule.selector))
+
+    // 1. NO ROw GROWS. This is the 660px hole as a rule rather than a measurement.
+    for (const rule of named('.itemRow')) {
+      expect(grows(growOf(rule)),
+        `${rule.selector} grows (flex: ${growOf(rule)}) — a one-line sentence then becomes the height of the column`).toBe(false)
     }
-    // And the reader is proved both ways, on strings it cannot have been tuned
-    // against, so this cannot pass by finding nothing.
-    const growsOn = (text: string): boolean => declarationRules(text)
-      .filter(rule => /\.itemListColumn\s*>\s*\*/.test(rule.selector))
-      .some(rule => !['0', 'none'].includes((/(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? '').trim().split(/\s+/)[0] ?? ''))
-    expect(growsOn('.itemListColumn > * { flex: none; }')).toBe(false)
-    expect(growsOn('.itemListColumn > * { flex: 0 1 auto; }')).toBe(false)
-    expect(growsOn('.itemListColumn > * { flex: 1 1 auto; }')).toBe(true)
-    // A universal selector that is NOT scoped to the track is a different rule
-    // and must not be mistaken for this one.
-    expect(growsOn('.somethingElse > * { flex: 1 1 auto; }')).toBe(false)
+
+    // 2. THE SCROLLER DOES GROW. The other half, and the half that was missing:
+    //    without it the list is taller than its column and the column clips it.
+    expect(named('.itemFlow').some(rule => grows(growOf(rule))),
+      'no rule lets the list area take the remaining height, so it sizes to its content and the column clips the last rows').toBe(true)
+
+    // 3. NO BLANKET CHILD RULE ON THIS TRACK. Not a style preference: any
+    //    `.itemListColumn > *` rule outranks the children's own declarations by
+    //    source order at equal specificity, so re-adding one silently re-breaks
+    //    statement 2 — and the way it breaks is a clipped list, not a red gate.
+    expect(rules.filter(rule => /\.itemListColumn\s*>\s*\*/.test(rule.selector)),
+      'a blanket `.itemListColumn > *` rule is back — it outranks `.itemFlow`\'s own flex and the list stops scrolling again').toHaveLength(0)
+
+    // And the readings are proved both ways, on strings they cannot have been
+    // tuned against, so this cannot pass by finding nothing.
+    const rowsGrow = (text: string): boolean => declarationRules(text)
+      .filter(rule => /(?:^|[,\s])\.itemRow(?:\s|,|$|:|\{)/.test(rule.selector))
+      .some(rule => grows((/(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? '').trim().split(/\s+/)[0] ?? ''))
+    expect(rowsGrow('.itemRow { flex: 1 1 auto; }'), 'the probe did not bite on a growing row').toBe(true)
+    expect(rowsGrow('.itemRow { flex: 0 1 auto; }')).toBe(false)
+    expect(rowsGrow('.itemRowText { flex: 1 1 auto; }'), 'the probe bit on a rule that is not the row').toBe(false)
+    const flowGrows = (text: string): boolean => declarationRules(text)
+      .filter(rule => /(?:^|[,\s])\.itemFlow(?:\s|,|$|\{)/.test(rule.selector))
+      .some(rule => grows((/(?:^|[;{\s])flex(?:-grow)?\s*:\s*([^;]+)/.exec(rule.body)?.[1] ?? '').trim().split(/\s+/)[0] ?? ''))
+    expect(flowGrows('.itemFlow { flex: 1 1 auto; }')).toBe(true)
+    expect(flowGrows('.itemFlow { flex: none; }'), 'the probe reported a scroller that cannot grow as fine').toBe(false)
+
+    // AND A SENTENCE ABOUT A RULE IS NOT A RULE. Every claim above is answered by
+    // reading the sheet, and this sheet explains itself in prose — so the reader
+    // has to survive a rule being NAMED where it is not written, which is the
+    // shape that made this gate demand the deleted rule back.
+    const blanket = (text: string): number => declarationRules(text)
+      .filter(rule => /\.itemListColumn\s*>\s*\*/.test(rule.selector)).length
+    expect(blanket('/* a .itemListColumn > * rule used to live here */\n.a { flex: none; }'),
+      'a comment naming the blanket selector was reported as the blanket rule').toBe(0)
+    expect(blanket('.itemListColumn > * { flex: none; }'),
+      'the probe cannot see the blanket rule it exists to forbid').toBe(1)
   })
 
   it('a date tone changes the ink and nothing else, so urgency is not also shouting', () => {

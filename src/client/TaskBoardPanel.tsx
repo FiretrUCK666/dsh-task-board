@@ -33,7 +33,6 @@ import type { BoardController } from '../core/controller.ts'
 import type { BundleFreshnessState } from './bundle-freshness.ts'
 import { t } from './locales.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
-import { watchKeyboardInset } from './board/keyboard-inset.ts'
 import css from './board.module.css'
 
 /** Props the shell's `main` slot renderer binds for this panel. */
@@ -68,14 +67,6 @@ export function TaskBoardPanel({ controller, freshness }: TaskBoardPanelProps) {
     controller.openBoard()
     return () => { controller.closeBoard() }
   }, [controller])
-
-  useEffect(() => {
-    // One inset variable for every floating panel: the soft keyboard shrinks the
-    // dialog stage instead of burying its header (see keyboard-inset.ts). Written
-    // at the ROOT — a panel portal lands in the board box, so the variable must
-    // ride an ancestor of EVERY possible portal target.
-    return watchKeyboardInset(document.documentElement)
-  }, [])
 
   return (
     <div className={css.panelStage} data-dsh-taskboard-view="">

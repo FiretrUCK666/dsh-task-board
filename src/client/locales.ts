@@ -636,7 +636,10 @@ export const zh = {
   'item.loading': '正在准备清单…',
   'item.hostLost': '暂时读不到 host 上的清单，正在用本机的副本。',
   'item.syncing': '正在与 host 同步…',
-  'item.empty': '还没有事项。想到什么就记一条，它不必立刻变成一张卡。',
+  'item.empty': '还没有。想到什么就记一条，不必先想清楚优先级，也不必立刻变成一张卡。',
+  /* 那行示范里最后那半句：**读者自己的字**。它必须像一句随手记下的话，
+   * 因为整行示范要读起来像「一次记下一条」本身，而不是像一份说明书。 */
+  'item.empty.sample': '重做详情侧栏的地板',
   'item.count': '共 {n} 条',
   'item.countFiltered': '显示 {shown} / 共 {total} 条',
   'item.ask': '问 AI',
@@ -771,11 +774,16 @@ export const zh = {
   'item.triage.blockedShort': '{n} 卡住',
 
   // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
-  'item.due.behind': '截止落后 {days} 天',
+  //
+  // **裁决类不带日期名，日期类带。** 动词自己说清是哪一个日期：`超期` 说的是硬期限
+  // （只有它不能被单方面改期），`落后` 说的是计划的截止，`还剩` 是硬期限将到。分工
+  // 明确，所以再补一个字段名就是同一句话说两遍——而「最早开始 10月5日」必须带名，
+  // 因为一个光秃秃的日期说不清是谁的。这一条是这一栏唯一的形状规则。
+  'item.due.behind': '落后 {days} 天',
   'item.dates.overdue': '超期 {days} 天',
   'item.dates.behind': '落后 {days} 天',
-  'item.due.overdue': '硬期限超期 {days} 天',
-  'item.due.soon': '硬期限还剩 {days} 天',
+  'item.due.overdue': '超期 {days} 天',
+  'item.due.soon': '还剩 {days} 天',
   'item.due.today': '就是今天',
   'item.due.set': '{when}',
   'item.dates.contradict': '{a} 晚于它该守的 {b}，这一条自己矛盾',
@@ -814,8 +822,6 @@ export const zh = {
 
   // 详情侧栏在「还没选中任何一条」时的内容。
   'item.detail.emptyTitle': '还没选中任何一条',
-
-  'item.inbox.note': '收件只放还没分流的想法。给它一个优先级、一个日期、一个标签或一张卡，它就自己离开了。',
 
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
@@ -926,7 +932,6 @@ export const zh = {
   'item.undo.refused': '没能找回来：这台机器读不到主机。30 天内可以在「已删除」里找。',
   'item.archive.title': '已删除',
   'item.archive.empty': '没有删掉过任何一条。',
-  'item.archive.open': '看看',
   'item.archive.close': '回到清单',
   'item.archive.restore': '找回这一条',
   'item.archive.restoring': '正在找回…',
@@ -1562,7 +1567,10 @@ export const en: Record<keyof typeof zh, string> = {
   'item.loading': 'Preparing the list…',
   'item.hostLost': 'Cannot reach the host copy of the list right now; showing this device’s copy.',
   'item.syncing': 'Syncing with the host…',
-  'item.empty': 'Nothing here yet. Write down whatever comes to mind — it does not have to become a card yet.',
+  'item.empty': 'Nothing yet. Write one down — you do not have to settle its priority or turn it into a card.',
+  // The last half of the sample line: the reader's own words, so the example reads
+  // like one thought being written down rather than like a legend.
+  'item.empty.sample': 'redraw the detail panel floor',
   'item.count': '{n} total',
   'item.countFiltered': 'showing {shown} of {total}',
   'item.ask': 'Ask AI',
@@ -1694,12 +1702,15 @@ export const en: Record<keyof typeof zh, string> = {
   'item.triage.undated': '{n} with no date',
   'item.triage.blockedShort': '{n} blocked',
 
-  // Three dates, three readings. A missed wanted-by date is NOT an alarm: red
-  // belongs to the hard deadline alone, and saying so is the whole point.
-  'item.due.behind': '{days}d behind plan',
+  // Three dates, three readings — and ONE shape: a verdict names itself by its verb
+  // (「超期」/「over」 is the hard deadline, 「落后」/「behind」 the plan's date), while a
+  // bare DATE carries its field's name, because a date on its own does not say whose
+  // it is. A missed wanted-by date is NOT an alarm: red belongs to the hard deadline
+  // alone, and saying so is the whole point.
+  'item.due.behind': '{days}d behind',
   'item.dates.overdue': '{days}d past due',
   'item.dates.behind': '{days}d behind',
-  'item.due.overdue': '{days}d past the hard date',
+  'item.due.overdue': '{days}d over',
   'item.due.soon': '{days}d left',
   'item.due.today': 'today',
   'item.due.set': '{when}',
@@ -1740,8 +1751,6 @@ export const en: Record<keyof typeof zh, string> = {
 
   // What the detail pane holds before any row is picked.
   'item.detail.emptyTitle': 'Nothing picked yet',
-
-  'item.inbox.note': 'The inbox holds thoughts that have not been filed yet. Give one a priority, a date, a tag or a card and it leaves on its own.',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',
@@ -1839,7 +1848,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.undo.refused': 'Could not bring it back: this device cannot reach the host. It is under “Removed” for 30 days.',
   'item.archive.title': 'Removed',
   'item.archive.empty': 'You have not removed anything.',
-  'item.archive.open': 'Look',
   'item.archive.close': 'Back to the list',
   'item.archive.restore': 'Bring this one back',
   'item.archive.restoring': 'Bringing it back…',

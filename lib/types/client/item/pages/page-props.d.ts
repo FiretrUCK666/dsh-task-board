@@ -81,11 +81,16 @@ export interface ItemPageProps {
     /** The ordering the reader chose, so the table knows whether a day heading is a
      *  true statement about the rows under it. `now` is already here, so the two
      *  arrive together. */
-    /** Bumped by the rail’s 「已删除」 row — a SIGNAL, not a value. The drawer’s own
-     *  open state lives on the page that owns its rows, its restore and its erase, and the
-     *  rail only says 「the reader wants to go there」. So a counter, not a boolean: a
-     *  boolean read at mount would be missed by the press that set it. */
-    readonly archiveAsked: number;
+    /** Whether the archive drawer is open, and how it reports being left.
+     *
+     *  A VALUE, not a signal, and it is owned by the panel. It was a counter bumped
+     *  by the rail — which meant the rail could open the drawer only on the one page
+     *  that drew it, and that nothing except the drawer's own button could close it:
+     *  pressing any other rail row left it standing. A place is a place, so 「am I in
+     *  it」 is one boolean the whole panel can read, set and clear. */
+    readonly archiveOpen: boolean;
+    /** Called when the reader leaves the archive by its own control. */
+    readonly onCloseArchive: () => void;
     readonly sort: ItemSort;
     /**
      * The batch bar, or nothing.

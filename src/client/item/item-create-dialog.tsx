@@ -71,6 +71,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const [notes, setNotes] = useState('')
   const [steps, setSteps] = useState('')
   const [priority, setPriority] = useState<ItemPriority>('normal')
+  /* THE THREE STATES A READER MAY CHOOSE, and the fourth is not one of them.
+   * 「进行中」 is DERIVED from the row's card, so it is filterable and not
+   * writable — offering it here would be offering a setting that the next
+   * synchronisation overwrites. */
+  const [status, setStatus] = useState<ItemCapture['status']>('open')
   const [startsAfter, setStartsAfter] = useState('')
   const [dueAt, setDueAt] = useState('')
   const [hardDueAt, setHardDueAt] = useState('')
@@ -81,11 +86,20 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const sheet = useRef<HTMLDivElement | null>(null)
   const titleField = useRef<HTMLInputElement | null>(null)
 
+  /* THE WHOLE FORM GOES BACK TO ITS OPENING STATE, `touched` INCLUDED.
+   *
+   * `touched` is what stops the grammar line from overwriting a field the reader
+   * corrected by hand — and it is per-SHEET, not per-mount: the component stays
+   * mounted while `open` is false. Leaving it out of this reset meant that after
+   * ONE hand-edit in ONE sheet, every later sheet started with that field marked
+   * as touched, so the grammar could never seed it again. The symptom is a form
+   * that stops listening to its own first line, and nothing on screen says why. */
   useEffect(() => {
     if (!props.open) return
-    setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal')
+    setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('open')
     setStartsAfter(''); setDueAt(''); setHardDueAt(''); setTags(''); setTaskId(''); setWords('')
     setParsed(undefined)
+    setTouched(new Set())
     titleField.current?.focus()
   }, [props.open])
 
@@ -121,7 +135,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
       body,
       notes,
       origin: 'human',
-      status: 'open',
+      status,
       priority,
       steps: stepList(),
       tags: tags.split(/[、,，]/).map(one => one.trim()).filter(one => one !== ''),
@@ -177,7 +191,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
           </button>
         </header>
 
-        <div className={css.itemCreateDialogGrid}>
+        <div className={css.itemCreateDialogGrid} data-dsh-tb-scroll="">
           <div className={css.itemCreateDialogMain}>
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.create.grammar')}</span>
@@ -235,11 +249,24 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               <p className={css.itemOptName}>{t('item.field.priority')}</p>
               <div className={css.itemOpts}>
                 {PRIORITIES.map(one => (
+                  /* THE SAME CONTROL AS THE STATUS CHIPS BESIDE IT.
+                   *
+                   * These four used to be `itemPrioChip` — the chip that carries
+                   * LOUDNESS on a row. That class means 「this tier is shouting」,
+                   * so all four of them arrived pre-painted by their own tier and
+                   * the selected one had nowhere left to show it: `data-on` was
+                   * set by the component and read by no rule, so pressing a
+                   * priority changed the form and the screen said nothing.
+                   *
+                   * On the sheet the four are not four volumes — they are ONE
+                   * scale with one answer, which is exactly what `.itemOpt` is:
+                   * the quiet chip whose selection is the fill plus a heavier
+                   * edge. The tier's loudness stays where it belongs, on the row,
+                   * where only the tiers that are actually loud are drawn. */
                   <button
                     key={one}
                     type="button"
-                    className={css.itemPrioChip}
-                    data-tone={one}
+                    className={css.itemOpt}
                     data-on={priority === one ? '' : undefined}
                     aria-pressed={priority === one}
                     title={t(PRIORITY_LABEL[one])}
@@ -259,9 +286,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     key={one}
                     type="button"
                     className={css.itemOpt}
-                    data-on={one === 'open' ? '' : undefined}
-                    aria-pressed={one === 'open'}
-                    onClick={() => { mark('status'); }}
+                    data-on={status === one ? '' : undefined}
+                    aria-pressed={status === one}
+                    onClick={() => { mark('status'); setStatus(one) }}
                   >
                     {t(GROUP_LABEL[one])}
                   </button>

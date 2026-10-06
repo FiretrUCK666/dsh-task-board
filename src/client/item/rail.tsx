@@ -185,7 +185,7 @@ export interface ItemRailProps {
 
 export function ItemRail(props: ItemRailProps) {
   return (
-    <nav className={css.itemRail} aria-label={t('item.rail.label')}>
+    <nav className={css.itemRail} data-dsh-tb-scroll="" aria-label={t('item.rail.label')}>
       <p className={css.itemRailMonth}>{props.month}</p>
       <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} onPick={props.onPickDay} />
       {props.groups.map(group => (

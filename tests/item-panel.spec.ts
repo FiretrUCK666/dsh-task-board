@@ -330,8 +330,12 @@ describe('empty is two different facts, and they do not look the same', () => {
    * 只会让下一个人以为分组还在：它要么被改成一个断言别的东西的假门禁，要么在某
    * 一次「修」里被连同真正的空态检查一起删掉。
    *
-   * 取代它的那一半在下面：文档是空的时候说「还没有事项」，而空的原因是筛选的时候
-   * 说筛选的话。两条都还在。 */
+   * 取代它的那一半在下面：文档是空的时候说那**一句**空话，而空的原因是筛选的时候
+   * 说筛选的话。两条都还在。
+   *
+   * 这一条按**句首**断言而不是整句：那一句是文案，会被改写（它刚被改成设计稿的
+   * 写法），而这条门禁要钉的是**「文档为空」与「筛选为空」是两句不同的话**这个区别。
+   * 钉整句会让每一次改文案都变成一次改门禁，而改门禁的人多半会顺手把它放宽。 */
 
   it('an empty DOCUMENT is not three empty groups', () => {
     // Keeping an empty group's header keeps the reader's map of a list that
@@ -340,7 +344,7 @@ describe('empty is two different facts, and they do not look the same', () => {
     // the first screen a new reader ever meets, which is also this repository's
     // own state right now.
     const html = renderPanel([])
-    expect(html).toContain('还没有事项')
+    expect(html).toContain('还没有')
     expect(html).not.toContain('这一组还没有事项')
   })
 

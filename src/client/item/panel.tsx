@@ -34,11 +34,13 @@ import type { ItemRecord } from '../../core/item.ts'
 import {
   EMPTY_ITEM_QUERY,
   ITEM_PAGES,
+  dayTokenOf,
   itemMatchContextOf,
   itemMatches,
   itemRowViewOf,
   planItemNavigation,
   itemRailGroupsOf,
+  railSiblingsOf,
   ITEM_SORTS,
   parseItemQuery,
   startOfDay,
@@ -60,7 +62,7 @@ import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemDetail } from './detail-pane.tsx'
 import { ItemFilters } from './item-filters.tsx'
 import { ItemCreateDialog } from './item-create-dialog.tsx'
-import { ITEM_FACETS, freeTextOf, isTokenIn, tagFacetValuesOf, withFacetToken } from './facets.ts'
+import { ITEM_FACETS, freeTextOf, isTokenIn, queryChipsOf, tagFacetValuesOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemRail } from './rail.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
 import { SORT_LABEL } from './labels.ts'
@@ -289,11 +291,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * panel that genuinely opened, and nothing after that is a reader's presses.
    */
   const [showDone, setShowDone] = useState(true)
-  /* WHICH RAIL ENTRY THE READER IS STANDING IN. Kept apart from the query
-   * because two of the entries are SETS — 「刚记的」 and 「已删除」 — and a set
-   * writes no token, so deriving 「where am I」 from the query alone would leave
-   * those two unable to ever look selected. */
-  const [railEntry, setRailEntry] = useState<string | undefined>(undefined)
+  /* WHERE THE READER IS STANDS ON THE QUERY, and there is no second copy of it.
+   *
+   * It used to be a `useState` written on every press, for a reason that was
+   * real: two of the rail's entries are SETS — 「刚记的」 and 「已删除」 — and a set
+   * writes no token, so a highlight derived from the query alone would leave those
+   * two unable to look selected. But the cure was worse than the disease. A
+   * remembered highlight can claim a filter that is not on: pressing the same row
+   * twice turned it OFF and left the row marked 「you are here」, and deleting the
+   * text in the box by hand left it marked too — the reader sees 「超期了」
+   * highlighted, with its number, over an unfiltered list.
+   *
+   * The two SETS are `collection`/`place` kinds, and they are the page's own state
+   * (`prefs.page`), so they are derived from THAT. Derived from what is true, in
+   * both halves, rather than remembered from what was pressed. */
   /** The rows behind a tombstone. The list reads the live document, so the archive
    *  is invisible to it — which is the point: a deleted row is gone from every
    *  ordinary view the moment it is deleted. */
@@ -838,12 +849,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /**
    * OPEN THE ARCHIVE FROM THE RAIL.
    *
-   * 它是一个**信号**而不是一个值：抽屉的开与关住在列表页（那里有它的行、它的恢复与
-   * 它的彻底删除），而左栏只负责「读者想去那里」这一句话。把抽屉抬到面板来会把它的
-   * 三个动作和它的状态一起搬上来，而它们只属于那一页。
+   * 它是**搬出来的**：抽屉的行、它的恢复与它的彻底删除仍然住在列表页，但它「开没开」
+   * 这件事属于整块面板。理由是量出来的两处失败：
+   *
+   * 一、左栏在三个页面上都渲染，而抽屉只长在清单页里。站在「日程」上按「已删除」，
+   *     原来是清掉筛选、点亮那一行、**抽屉不出现**——计数器留在 >0，等读者之后切回
+   *     清单时才补上那一下。按下却当场看不到结果，与按了什么都不做，对读者是同一件事。
+   *
+   * 二、开与关只有抽屉自己那枚按钮能改，所以**按左栏别的任何一行都不关它**：读者按
+   *     「全部」，抽屉还开着，屏幕上还是那份删除记录。一个地方被离开时就该消失。
+   *
+   * 状态在面板上，这三件事就都成立了：谁都能关它（每一条左栏的路都关），谁都能开它
+   * （那一行先落到能画出它的页上），而「读者是不是站在那儿」也不必再靠一次按键去记。
    */
-  const [archiveAsked, setArchiveAsked] = useState(0)
-  const onOpenArchive = useCallback(() => { setArchiveAsked(count => count + 1) }, [])
+  const [archiveOpen, setArchiveOpen] = useState(false)
+  const onOpenArchive = useCallback(() => { setArchiveOpen(true) }, [])
+  const closeArchive = useCallback(() => { setArchiveOpen(false) }, [])
   const pageProps = {
     items,
     now,
@@ -862,7 +883,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
     /* The ordering goes down AS ITSELF, not as a 「may I group by day」 boolean the
        table would have to trust: a table told 「yes」 by a caller who guessed is a
        table printing 「今天」 above rows from six different days. */
-    archiveAsked,
+    archiveOpen,
+    onCloseArchive: closeArchive,
     sort: prefs.sort,
     renderRows: rows,
   }
@@ -1089,33 +1111,85 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
 
   const enterRail = useCallback((entry: ItemRailEntry) => {
-    setRailEntry(entry.id)
+    /* LEAVING THE ARCHIVE IS WHAT EVERY OTHER RAIL ROW MEANS. The drawer is a place
+     * the reader stands in, and pressing any other row is walking out of it — so
+     * the close comes FIRST, before the branch, and no row has to remember it. A
+     * place that stays open behind you is not a place, it is a modal you forgot to
+     * close. */
+    setArchiveOpen(false)
     /* A SET moves the panel; a PREDICATE narrows the query. Those are two different
      * things and the entries say which they are, so this branch is the shape of
      * the answer rather than a guess about the reader's intent. */
     if (entry.kind === 'collection' || entry.kind === 'place') {
       if (entry.key === 'inbox') { goTo('inbox'); return }
       /* 「已删除」是**另一个地方**，不是一次收窄：它是墓碑，而墓碑不在活着的行里。
-       * 所以它清空筛选（一个还留着谓词的抽屉看不懂自己要显示什么）并请列表页把
-       * 归档打开——同一个抽屉，两扇门。
+       * 所以它清空筛选（一个还留着谓词的抽屉看不懂自己要显示什么）并请归档打开——
+       * 同一个抽屉，两扇门。
        *
-       * 原来这一行与「全部」走同一条路，于是左栏上「已删除 3」按下去等于按了
-       * 「全部 12」：**一个印着数目的按钮按下去做了另一件事**，而屏幕上什么都不变，
-       * 读者分不清是自己记错了还是这一行坏了。 */
-      if (entry.key === 'deleted') { choose({ search: '' }); onOpenArchive(); return }
+       * **而它必须先落到那一页上去。** 抽屉长在清单页里，而左栏在三个页面上都渲染：
+       * 站在「日程」或「收件」上按这一行，原来是清掉筛选、点亮这一行、**抽屉不出现**
+       * ——计数器留在 >0，等读者之后切回「清单」时才补上那一下。也就是说这一行上一半
+       * 的路，而「按了却当场看不到结果」与「按了什么都不做」对读者是同一件事。
+       *
+       * 左栏这一列问的是「去哪儿看」，所以「去那儿」本来就在它的职责里：先 `goTo`，
+       * 再请抽屉打开。两条都在同一次事件里发生，于是它们落在同一帧上，读者看到的
+       * 是一次「到了，并且开着」。 */
+      if (entry.key === 'deleted') { goTo('list'); choose({ search: '' }); onOpenArchive(); return }
       choose({ search: '' })
       return
     }
-    /* A PREDICATE, and the query string is the ONLY place it is written: the
-     * search box shows exactly what the rail just did, so the reader can take it
-     * off from either side and neither side can be the stale one. */
-    choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token)) })
-  }, [choose, goTo, onOpenArchive, prefs.search])
+    /* A PREDICATE, and the query string is the ONLY place it is written: the box
+     * and the rail can never be the stale one, because there is only one of them.
+     *
+     * AND IT REPLACES ITS OWN GROUP. The rail's rows come in groups whose members
+     * are ALTERNATIVES — a row has exactly one priority and one status, and the
+     * date predicates are verdicts about one row's dates. Adding a second token
+     * from one group is therefore never a narrower question: 优先级 and 状态 are
+     * matched with `includes`, so `p1 p2` is urgent UNION high — pressing a second
+     * priority made MORE rows appear, against the number printed beside it — and
+     * the `has:` flags are ANDed over a single posture, so 「超期了」 then 「没日子
+     * 的」 was constant-false and the list went empty for every document.
+     *
+     * So a press means 「只看这一个」: turning one on drops its siblings, and
+     * pressing the one that is already on takes it off. The group's tokens come
+     * from the rail's own entries, so a group and its members cannot drift apart. */
+    choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token), railSiblingsOf(entry, railGroups)) })
+  }, [choose, goTo, onOpenArchive, prefs.search, railGroups])
 
+  /* ONE DAY AT A TIME, and the calendar's cell is a single-slot filter rather than
+   * a word in the box. Two things were wrong with writing `on:YYYY-MM-DD` as a
+   * token: the grammar had no `on:` arm at all, so pressing any day emptied the
+   * list (the token fell through to a literal substring search no row can match),
+   * and every further press appended another one — a day filter that accumulates
+   * is a filter that narrows to nothing while looking like it is doing something.
+   * Every day token is a sibling of every other, so the newest press replaces. */
   const pickRailDay = useCallback((day: string) => {
-    const token = `on:${day}`
-    choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token)) })
-  }, [choose, prefs.search])
+    const token = dayTokenOf(day)
+    choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token), railDays.map(dayTokenOf)) })
+  }, [choose, prefs.search, railDays])
+
+  /* WHERE THE READER IS, READ OFF THE QUERY. This was `useState`, written on every
+   * press before the toggle was even computed — so pressing the same row twice
+   * turned the filter OFF and left the row marked 「you are here」, and deleting the
+   * text by hand left it marked too. A highlight that is remembered can claim a
+   * filter that is not on; one derived from the query cannot. */
+  const activeRailId = useMemo(() => {
+    const query = parseItemQuery(prefs.search)
+    for (const group of railGroups) {
+      for (const entry of group.entries) {
+        if (entry.kind === 'collection' || entry.kind === 'place') continue
+        if (isTokenIn(prefs.search, entry.token)) return entry.id
+      }
+    }
+    if (query.day !== null) return `day:${query.day}`
+    /* THE TWO SETS ARE THE PAGE. 「刚记的」 is a page and 「已删除」 opens a place,
+       so the row is current exactly when the reader is standing there — read from
+       `prefs.page` and the archive's own state rather than from a press, which is
+       what makes it impossible for a SET row to look current while the reader is
+       somewhere else. */
+    if (archiveOpen) return 'deleted'
+    return prefs.page === 'inbox' ? 'inbox' : undefined
+  }, [archiveOpen, railGroups, prefs.page, prefs.search])
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       <div className={css.itemRoot}>
@@ -1175,6 +1249,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
         <div className={css.itemShell}>
   <div className={css.itemWorkbench} ref={surfaceRef}>
     <div className={css.itemListColumn}>
+{/* THE TOP BAR SAYS THREE THINGS AND NO MORE: 「我在找什么」「我按什么排」
+            * 「我怎么加一条」. 搜索 · 排序 · ＋新建一条 is the whole strip.
+            *
+            * Everything a reader can ask about the DOCUMENT is one click away in
+            * the rail, and everything about ONE row is one click away in that row —
+            * so neither of those belongs in a bar that is only about the VIEW.
+            * 收件/清单/日程 became the rail (a place is a place, and a rail is where
+            * places live); the stat cards became the rail's counts, where a number
+            * and the thing it opens stand in one column; the capture box became the
+            * first line of the ＋新建一条 sheet, because a box that saves the instant
+            * you press Enter is a box you cannot put a second thought into. */}
 <div className={css.itemTopBar}>
             <p className={css.itemTopCount}>
               {filtering
@@ -1193,17 +1278,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
               * 而 ⌘K 的答案本来就是这一页上唯一能被看见的那部分：**搜索框**。点它开
               * 面板、打字收窄它，两件事本来就是同一件事的两个阶段。所以入口就是它，
               * 形状与邻居一致，也不再多一枚控件。 */}
+            {/* THE FIELD HOLDS THE READER'S OWN WORDS. Nothing else.
+              *
+              * It used to hold the whole query — so pressing a rail row put
+              * `status:inprogress status:open` inside the box the reader types in,
+              * and that is a control showing them its own implementation. A filter
+              * is not a word; it is a decision, and a decision belongs in a chip
+              * that can be pointed at and taken off, not in the middle of their
+              * sentence. The chips are directly below this bar, so the state of the
+              * filter is never less visible for having moved out of the field.
+              *
+              * `withFreeText` is what makes the edit correct: it replaces the WORDS
+              * and leaves every qualifier standing, in the position the reader's
+              * first word stood. Writing this as `withFacetToken(base, value, true)`
+              * is the trap — that treats the whole field as ONE token, so each
+              * keystroke appends the field to the field and `abc` becomes
+              * `a ab a abc`. */}
             <input
               ref={paletteTrigger}
               className={css.itemSearch}
               type="search"
-              value={prefs.search}
+              value={freeTextOf(prefs.search)}
               placeholder={t('item.search.label')}
               aria-label={t('item.search.label')}
               aria-expanded={overlay === 'palette'}
               aria-controls={`${topPanels}-palette`}
               onClick={() => openLayer(overlay === 'palette' ? undefined : 'palette')}
-              onChange={event => choose({ search: event.target.value })}
+              onChange={event => choose({ search: withFreeText(prefs.search, event.target.value) })}
             />
             <div className={css.itemTopBarTools}>
               <button
@@ -1234,9 +1335,34 @@ export function ItemListPanel(props: ItemListPanelProps) {
             </div>
           </div>
 
-          {/* THE TWO PANELS BELOW THE BAR, not over the list: a filter that dims the
-              rows it filters is a filter that makes the reader check the result
-              * twice. */}
+          {/* THE CHIP ROW IS THE FILTER'S OWN FACE, and it is ALWAYS HERE — below
+              the bar, above the rows, in the same column the list is in.
+              *
+              * It used to be rendered only inside the command palette and inside an
+              * overlay nothing could open. So with the palette shut there was NO
+              * chip row anywhere on the surface: a reader who pressed 「超期了」 got
+              * `has:overdue` in the box and nothing on screen that named the filter,
+              * said it was on, or offered to take it off. **A filter the reader can
+              * neither see nor remove is a filter they will conclude is a bug** —
+              * and the fix is not to explain it better, it is to draw it.
+              *
+              * Below rather than above, because the box is the door and the chips
+              * are what the door has let in: reading order is what you typed, then
+              * what that means. */}
+          {queryChipsOf(prefs.search, items.map(item => item.tags)).length > 0 && (
+            <div className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+              <ItemQueryChips
+                text={prefs.search}
+                tags={items.map(item => item.tags)}
+                onSearch={next => choose({ search: next })}
+                onClearQualifiers={() => choose({ search: freeTextOf(prefs.search) })}
+              />
+            </div>
+          )}
+
+          {/* The two panels the two chips open. They are in the SHELL, not in a
+              popover over the list: a filter that dims the rows it is filtering
+              is a filter that makes the reader check the result twice. */}
           {filtersOpen && (
             <div id={`${topPanels}-filters`} className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
               {/* THE REMOVABLE CHIPS COME FIRST, because they are the *current*
@@ -1276,64 +1402,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
               ))}
             </div>
           )}
-      <div className={css.itemFlow}>
-
-{/* THE TOP BAR IS THREE THINGS, AND THE OTHER FOUR LEFT.
-
-            * 搜索 · 排序 · ＋新建一条. That is the whole strip.
-            *
-            * It used to be five: the title, a page rail (收件 / 清单 / 日程), a
-            * band of three stat cards (落后 / 卡住 / 没日期), a filter strip
-            * (状态 / 日期 / 标签 / 排序 / 隐藏已完成) and an always-on capture box.
-            *
-            * Each of those had somewhere better to be, and the reason is the same
-            * in all four cases: **they were about the DOCUMENT, and this bar is
-            * about the VIEW.** The page became the rail (a place is a place, and a
-            * rail is where places live); the stat cards became the rail's counts,
-            * where the number and the thing it opens stand in one column; the
-            * filters became the same rail, plus one 筛选 button for the reader who
-            * wants them all at once; the capture box became the first line of the
-            * ＋新建一条 sheet, because a box that saves the instant you press Enter
-            * is a box you cannot put a second thought into.
-            *
-            * WHAT IS LEFT SAYS THREE THINGS and no more: 「我在找什么」「我按什么
-            * 排」「我怎么加一条」. Everything a reader can ask about the document
-            * is one click away in the rail, and everything about ONE row is one
-            * click away in that row. */}
-
-          {/* The two panels the two chips open. They are in the SHELL, not in a
-              popover over the list: a filter that dims the rows it is filtering
-              is a filter that makes the reader check the result twice. */}
-          {filtersOpen && (
-            <div id={`${topPanels}-filters`} className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
-              <ItemFilters
-                faces={facetFaces}
-                text={prefs.search}
-                onSearch={next => choose({ search: next })}
-                sort={prefs.sort}
-                onSort={next => choose({ sort: next })}
-                tags={items.map(item => item.tags)}
-                showDone={showDone}
-                onShowDone={setShowDone}
-                countOf={countOfToken}
-              />
-            </div>
-          )}
-          {sortOpen && (
-            <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
-              {ITEM_SORTS.map(order => (
-                <button
-                  key={order}
-                  type="button"
-                  className={css.itemTopBarChip}
-                  aria-pressed={prefs.sort === order}
-                  onClick={() => { choose({ sort: order }); openLayer(undefined) }}
-                >
-                  {t(SORT_LABEL[order])}
-                </button>
-              ))}
-            </div>
-          )}
+          {/* THE PANELS THE TWO CHIPS OPEN BELONG ABOVE THIS LINE, IN THE COLUMN,
+              AND NOT INSIDE THE SCROLLER.
+              *
+              * `.itemFlow` is the list's scroller. A panel rendered inside it is
+              * drawn as the first thing among the rows: it scrolls away with them,
+              * it sits below the list's own top edge instead of below the bar, and
+              * it inherits the scroller's width rather than the column's. The rule
+              * is the same one the bar follows — a control over the list stands
+              * outside the list — and it is why the panels' markup is a sibling of
+              * `.itemFlow` and never a child of it. */}
+      <div className={css.itemFlow} data-dsh-tb-scroll="">
 
               {/* Reading in-flight, unreachable and syncing are THREE different
                   facts, and NEITHER hides the list: the local mirror is whole and
@@ -1384,7 +1463,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 * the answer to a question about what is in front of them. */}
             <ItemRail
               groups={railGroups}
-              activeId={railEntry}
+              activeId={activeRailId}
               month={railMonth}
               daysWithRows={railDays}
               today={localDayKey(now)}

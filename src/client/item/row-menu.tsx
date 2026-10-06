@@ -63,10 +63,42 @@ export interface ItemRowMenuProps {
 /** The measured size the placement is computed from, until the menu reports its own. */
 const ASSUMED: { readonly width: number; readonly height: number } = { width: 180, height: 160 }
 
+/**
+ * A box, or nothing — and "nothing" includes a box with no AREA.
+ *
+ * A `null` node was the only rejected input, so an element that is present in the
+ * DOM and not rendered (`hidden`, `display: none`, an un-attached node) measured
+ * as `{0,0,0,0}` and was accepted as a real box. Placement then ran honestly on a
+ * box that cannot contain anything: room below is negative, room above is not, so
+ * the menu "opens upward" to a clamped `top` of 0 with a ceiling of exactly 0 —
+ * **a zero-height strip pinned to the window's top-left corner.** Nothing threw
+ * and nothing logged; the only symptom was a menu that did not appear.
+ *
+ * A size of zero is never a real box for a popover: every element it could be
+ * anchored to is something the reader can see, and everything the reader can see
+ * has area. So the guard belongs here, at the one place a rectangle enters this
+ * module, rather than in the arithmetic downstream — `placeRowMenu` is pure and
+ * its inputs have to be boxes.
+ */
 function rectOf(node: HTMLElement | null): Rect | undefined {
   if (node === null) return undefined
   const box = node.getBoundingClientRect()
+  if (box.width === 0 || box.height === 0) return undefined
   return { top: box.top, bottom: box.bottom, left: box.left, right: box.right, width: box.width, height: box.height }
+}
+
+/**
+ * The box the menu may not leave, or the window when the panel cannot be
+ * measured.
+ *
+ * The menu is `position: fixed`, so the window is ALWAYS a valid box for it —
+ * which makes the viewport the honest fallback rather than a guess: it is the
+ * one box that certainly exists and certainly contains the trigger. The panel is
+ * the better box, because the panel is inset and scrolled and its edges are the
+ * ones the reader can reach, so it wins whenever it can be measured.
+ */
+function boxFor(node: HTMLElement | null): Rect | undefined {
+  return rectOf(node) ?? rectOf(document.documentElement)
 }
 
 export function ItemRowMenu(props: ItemRowMenuProps) {
@@ -92,7 +124,7 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
    */
   useLayoutEffect(() => {
     const trigger = rectOf(props.trigger)
-    const panel = rectOf(props.panel)
+    const panel = boxFor(props.panel)
     if (trigger === undefined || panel === undefined) return
     const box = menu.current?.getBoundingClientRect()
     const next = placeRowMenu(trigger, panel, {
@@ -113,7 +145,7 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
   useEffect(() => {
     const onReflow = (): void => {
       const trigger = rectOf(props.trigger)
-      const panel = rectOf(props.panel)
+      const panel = boxFor(props.panel)
       const box = menu.current?.getBoundingClientRect()
       if (trigger === undefined || panel === undefined || box === undefined) return
       setSpot(placeRowMenu(trigger, panel, { width: box.width, height: box.height }))

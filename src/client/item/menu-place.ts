@@ -125,8 +125,23 @@ export function placeRowMenu(trigger: Rect, panel: Rect, menu: MenuSize): MenuSp
   // The ceiling is the room on the side it opened towards, measured from where
   // it actually ended up after clamping — not from the trigger, because
   // clamping may have moved it.
+  //
+  // **IT IS NEVER ZERO.** A ceiling of zero is not a short menu, it is an absent
+  // one: `max-block-size: 0` renders the box with no height at all, so the reader
+  // presses `⋯` and nothing appears anywhere — no error, no empty box, nothing to
+  // explain. That is reachable whenever `room` computes to zero or less, which
+  // happens the moment the panel rectangle cannot contain the menu: the trigger
+  // sits at or below the panel's own bottom edge, so there is no room on either
+  // side and the clamp above has already pinned `top` to the panel's top.
+  //
+  // So a non-positive room falls back to the menu's OWN height. That is the
+  // honest answer rather than a guess: a menu that overflows its box is still
+  // readable and still scrollable, while a menu of no height cannot be used at
+  // all — and between "too big" and "invisible", the one that shows the reader
+  // their options wins.
   const room = placement === 'above' ? top - panel.top : panel.bottom - top
-  const maxBlockSize = clamp(Math.min(menu.height, room), 0, menu.height)
+  const ceiling = room > 0 ? Math.min(menu.height, room) : menu.height
+  const maxBlockSize = Math.max(0, ceiling)
 
   return { placement, top, left, maxBlockSize }
 }

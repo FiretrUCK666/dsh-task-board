@@ -435,7 +435,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
                 * 盒子自己不滚，而这一列滚——于是搜索框停在原处，滚动条属于**答案那一列**
                 * 而不是属于那个正在打字的框。盒子自己滚的时候，那条滚动条画在盒子内衬
                 * 那些东西。 */}
-            <div id={listboxId} className={css.itemCommandPaletteList} role="listbox" aria-label={t('item.palette.answers')}>
+            <div id={listboxId} className={css.itemCommandPaletteList} data-dsh-tb-scroll="" role="listbox" aria-label={t('item.palette.answers')}>
               {groups.map(group => (
                 <div key={group.id} className={css.itemFacetRow} data-palette-group={group.id}>
                   <span className={css.itemFacetName}>{t(group.name)}</span>
@@ -470,21 +470,29 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
                 them, so a reader who did not already know the table learned
                 nothing from it. It is now a thing that opens — from the `?`
                 button, which is also the reason the keyboard is not the only way
-                in. */}
-            <div className={css.itemFacetRow} data-palette-group="foot">
-              <span className={css.itemFacetName} aria-hidden="true" />
-              <div className={css.itemFacetValues}>
-                <span className={css.itemKeyHelpNote}>{t('item.palette.hint')}</span>
-                <button
-                  type="button"
-                  className={`${css.itemFacetChip} ${css.itemKeyHelpTrigger}`}
-                  aria-label={t('item.keys.show')}
-                  title={t('item.keys.show')}
-                  onClick={() => setKeysOpen(true)}
-                >
-                  <span aria-hidden="true">?</span>
-                </button>
-              </div>
+                in.
+
+                AND IT IS NOT A GROUP. It was drawn as a facet row with an EMPTY
+                name cell, borrowing that shape to line the footer up with the
+                groups above it — which is what an empty name cell cannot do: the
+                row's first track still reserved its width, so the sentence was
+                indented by it and sat in the middle of a box whose every other
+                line starts at the left edge. **A sentence about how to use the
+                whole box, pushed right by a label that does not exist, reads as a
+                sentence that does not know where to stand.**
+                The footer's left edge is the BOX's left edge, because that is
+                what it is about. */}
+            <div className={css.itemPaletteFoot}>
+              <p className={css.itemPaletteHint}>{t('item.palette.hint')}</p>
+              <button
+                type="button"
+                className={`${css.itemFacetChip} ${css.itemKeyHelpTrigger}`}
+                aria-label={t('item.keys.show')}
+                title={t('item.keys.show')}
+                onClick={() => setKeysOpen(true)}
+              >
+                <span aria-hidden="true">?</span>
+              </button>
             </div>
           </div>
         </div>

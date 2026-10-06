@@ -22,6 +22,7 @@
 import { Fragment } from 'react'
 import type { ItemRowLineProps } from './row-line.tsx'
 import { ItemRowLine } from './row-line.tsx'
+import { ItemGrammarExample } from './composer.tsx'
 import { itemDayGroupsOf } from './day-groups.ts'
 import type { ItemDayBucket } from './day-groups.ts'
 import type { ItemSort } from '../../core/item-sort.ts'
@@ -87,9 +88,22 @@ export function ItemTable(props: ItemTableProps) {
           * stopped describing the thing it names.** */}
       {props.rows.length === 0
         /* 读不到 与 没有，是两件事；而「被筛选空了」又是第三件，所以这里接的是
-           调用方已经分好的那一档，而不是它自己再猜一次。 */
+           调用方已经分好的那一档，而不是它自己再猜一次。
+
+           AND THE EMPTY ONE CARRIES THE GRAMMAR. 「There is nothing here」 is a fact
+           the reader already has — they are looking at the empty page. What they do
+           not have is the shape of a line, so the empty state shows one, out of the
+           vocabulary this panel already uses everywhere else. `noMatch` does NOT
+           get the example: a reader whose filter emptied the list has rows, has
+           learned the grammar, and needs to be told which of their own settings is
+           hiding them — an example there would be teaching during an interruption. */
         ? (props.noMatch === undefined
-            ? <p className={css.itemListEmpty}>{props.empty}</p>
+            ? (
+              <div className={css.itemListEmpty}>
+                <p className={css.itemListEmptyWords}>{props.empty}</p>
+                <ItemGrammarExample />
+              </div>
+            )
             : <p className={css.itemNoMatch}>{props.noMatch}</p>)
         : (
           <div className={css.itemTableBody} role="list">

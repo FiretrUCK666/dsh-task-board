@@ -1049,7 +1049,28 @@ export function mountPanel(
   const realRect = Element.prototype.getBoundingClientRect
   const realMedia = g.matchMedia
   const realFetch = g.fetch
-  Element.prototype.getBoundingClientRect = function stubbed(): DOMRect { return { ...rect } as DOMRect }
+  /**
+   * ONE BOX FOR EVERY ELEMENT, EXCEPT THE ONES THAT HAVE NONE.
+   *
+   * jsdom lays nothing out, so a stub has to supply the geometry. The first
+   * version supplied the SAME rectangle to every element, which made the stub
+   * unable to tell a rendered box from an unrendered one — and that is precisely
+   * the distinction a placement bug turns on. The row menu was wired to a
+   * `hidden` marker element for a while: `getBoundingClientRect()` on it returned
+   * this stub's 1600x1000, so every gate stayed green while the real browser
+   * returned `{0,0,0,0}` and the menu collapsed to a zero-height strip.
+   *
+   * A browser answers `{0,0,0,0}` for an element inside `[hidden]`, and that is
+   * the only thing this stub now has to reproduce: everything else it still
+   * answers with one box, because everything else is the same kind of lie
+   * (a real box of unknown size) and no gate in this repository reads its
+   * numbers. What gates read is WHICH element was measured, and for that the
+   * zero box is the whole answer.
+   */
+  const notRendered = (element: Element): boolean => element.closest('[hidden]') !== null
+  Element.prototype.getBoundingClientRect = function stubbed(this: Element): DOMRect {
+    return (notRendered(this) ? { ...rect, width: 0, height: 0, right: 0, bottom: 0 } : { ...rect }) as DOMRect
+  }
   g.matchMedia = (query: string) => ({
     matches: band === 'narrow' && /max-width:\s*720px/.test(query),
     media: query,

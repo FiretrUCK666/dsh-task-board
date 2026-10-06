@@ -89,13 +89,14 @@ export {
   itemMatchContextOf,
   itemMatches,
   itemQualifierVocabulary,
+  dayTokenOf,
   parseItemQuery,
   PRIORITY_BY_TOKEN,
 } from './item-query.ts'
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts'
 
 // ── item-rail ──────────────────────────────────────────────────────────────
-export { itemRailGroupsOf } from './item-rail.ts'
+export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts'
 export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts'
 
 // ── item-navigate ──────────────────────────────────────────────────────────

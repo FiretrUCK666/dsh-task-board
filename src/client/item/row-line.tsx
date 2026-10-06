@@ -83,25 +83,53 @@ const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', hi
 type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
 
 /**
- * THE ONE DATE READING THE ROW CARRIES.
+ * THE ONE DATE READING THE ROW CARRIES — AND IT IS ONE SHAPE.
  *
- * One, not two. It used to print the hard deadline's reading at the end of the
- * sentence AND the plan's reading on the line below — two numbers, two words for
- * 「late」, two lines, and a reader has to work out which is about which date.
+ * One reading, not two: it used to print the hard deadline's reading at the end of
+ * the sentence AND the plan's reading on the line below, so a reader had to work
+ * out which number was about which date. The plan's reading is not lost — it is on
+ * the date axis in the expanded row, in the column that already says 「截止」.
+ * **一个事实在一行里说一次，在它自己的那一栏里说一次。**
  *
- * The plan's reading is not lost: it is on the date axis in the expanded row, in the
- * column that already says 「截止」. **一个事实在一行里说一次，在它自己的那一栏里
- * 说一次。**
+ * **THE SHAPE IS `<日期名> · <读法>`, IN EVERY BRANCH.** It was not: three
+ * branches named their date (「硬期限超期 9 天」), two named nothing (「就是今天」,
+ * 「10月16日」), one was a whole sentence about itself, and one printed nothing at
+ * all. A reader looking at a list of them cannot tell whether 「10月16日」 is the
+ * deadline, the wanted-by date or the day the row may start — the one thing the
+ * reading exists to say is the thing it left out. **一个位置的形状只该有一种**；
+ * 一种形状的六个成员看起来才像同一件事的六种情形。
  *
- * And only the HARD date is red, because that is the one a reader cannot
- * re-negotiate alone. Painting a slipped plan red is how a soft deadline quietly
- * becomes a hard one without anybody deciding that.
+ * The name comes from the posture itself rather than from a second guess: each
+ * branch already knows which field it is reading (`datePostureOf`'s own
+ * precedence), so the name is read off that, and a branch that names the wrong
+ * date cannot be written without moving the branch.
+ *
+ * The tone rides the READING, never the name — the name is the row's own field
+ * label and stays in the meta ink. A red field name would make 「硬期限」 itself
+ * alarming on every row that has one.
  * @param view - the row's projection.
  * @param english - whether the reader's language is English.
  * @returns the tone and the words, or nothing when no date says anything yet.
  */
 function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueTone; text: string } | undefined {
   const { posture } = view
+  /* A DATE CARRIES ITS FIELD'S NAME; A VERDICT DOES NOT.
+   *
+   * A bare date says nothing about whose it is — 「10月15日」 could be the deadline,
+   * the wanted-by date or the day the row may start, and that is the one thing the
+   * reading exists to say. So the three date branches name their field.
+   *
+   * A verdict already names itself by its VERB: 「超期」 is the hard deadline (the
+   * only one a reader cannot re-negotiate alone) and 「落后」 is the plan's own date.
+   * Prefixing the field onto a word that already says which date it is gives
+   * 「硬期限 · 超期 9 天」 — one sentence saying one thing twice, which is what the
+   * shape rule in this panel exists to prevent.
+   *
+   * The separator is a SPACE, not a dot: 「最早开始 10月5日」 reads as a phrase, and
+   * the row's meta line already spends the dot on 「#1 · 1/3」. Two separators in one
+   * 13px line is one separator too many. */
+  const about = (field: 'startsAfter' | 'dueAt' | 'hardDueAt', reading: string): string =>
+    `${t(DATE_FIELD_KEY[field])} ${reading}`
   switch (posture.kind) {
     case 'behind':
       return { tone: 'soft-late', text: t('item.due.behind', { days: String(posture.days) }) }
@@ -110,10 +138,16 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
     case 'hardSoon':
       return { tone: 'soon', text: t('item.due.soon', { days: String(posture.days) }) }
     case 'dueToday':
-      return { tone: 'set', text: t('item.due.today') }
+      return { tone: 'set', text: about('dueAt', t('item.due.today')) }
     case 'hardAhead':
+      return { tone: 'set', text: about('hardDueAt', t('item.due.set', { when: formatItemDate(posture.at, english, now) })) }
     case 'upcoming':
-      return { tone: 'set', text: t('item.due.set', { when: formatItemDate(posture.at, english, now) }) }
+      return { tone: 'set', text: about('dueAt', t('item.due.set', { when: formatItemDate(posture.at, english, now) })) }
+    /* A GATE IS A DATE YOU CANNOT CROSS YET, and it used to print NOTHING — so the
+     * one row whose dates explain why it has not started said neither the date nor
+     * that there was one. It is a date like any other: name it, read it. */
+    case 'gated':
+      return { tone: 'set', text: about('startsAfter', t('item.due.set', { when: formatItemDate(posture.startsAfter, english, now) })) }
     case 'contradiction':
       // Said, never repaired and never hidden: a row whose three dates disagree is
       // the one row the reader most needs to see, and a list that swallowed it would
@@ -212,7 +246,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(item.title)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
-  const panelRef = useRef<HTMLDivElement | null>(null)
+  const rowRef = useRef<HTMLDivElement | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
   const regionId = `${panelId}-row-${item.id}-detail`
 
@@ -233,6 +267,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
 
   return (
     <div
+      ref={rowRef}
       className={css.itemRow}
       role="listitem"
 
@@ -361,7 +396,19 @@ export function ItemRowLine(props: ItemRowLineProps) {
         <ItemRowMenu
           rowId={item.id}
           trigger={triggerRef.current}
-          panel={panelRef.current}
+          /* THE BOX THE MENU HAS TO STAY INSIDE, resolved from the row by climbing.
+           *
+           * The menu is `position: fixed`, so its spot is computed from viewport
+           * coordinates — and the box it must not leave is this panel's stage: the
+           * only element here that carries `data-dsh-taskboard-view`, which the
+           * plugin puts on its own subtree (see AGENTS.md, use discipline 1).
+           *
+           * `closest` rather than `document.querySelector`: the checklist and the
+           * board are two panels of the same plugin and both carry that attribute,
+           * so a document-wide lookup opened from here would find whichever one
+           * happens to be first in the document and place the menu against a
+           * different surface. Climbing can only ever find THIS row's own panel. */
+          panel={rowRef.current?.closest('[data-dsh-taskboard-view]') as HTMLElement | null ?? null}
           onClose={onMenuClose}
           actions={[
             /* THE THREE VERBS, IN THE ORDER THE READER MEETS THEM, none repeating
@@ -438,13 +485,6 @@ export function ItemRowLine(props: ItemRowLineProps) {
           {props.detail}
         </div>
       )}
-      {/* THE BOX THE MENU IS MEASURED AGAINST, and it says so. The row menu is
-          placed against the nearest element carrying the panel attribute, and this
-          row is no longer INSIDE one — so without it the menu has nothing to clamp
-          inside and opens off the bottom of the screen. It belongs on the panel ref
-          rather than on the row, because the attribute says 「this element IS a
-          panel」 and a row is not one. */}
-      <div ref={panelRef} data-dsh-taskboard-view="" hidden />
     </div>
   )
 }

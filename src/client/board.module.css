@@ -2510,29 +2510,51 @@
    mechanism again, and this list has already moved twice for no reason. */
 
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel)::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
   display: none;
+}
+
+/* HOW A SECOND PANEL MOUNTS THIS GRAMMAR: with the marker attribute, not with a
+   class. `.sessionContextPanel` and the rest are hashed by CSS Modules **inside
+   the stylesheet that declares them**, so a component that imports a different
+   module cannot name them — the checklist's scroll regions could not join the
+   list above however they were written. An attribute crosses that line because
+   both panels write it themselves, and it is the plugin's own mark on its own
+   subtree (see AGENTS.md, use discipline 1).
+
+   THE MARKER ALSO MEANS SOMETHING THE LIST ABOVE DOES NOT: inset the track at
+   both ends. The regions above own their region's FULL height on purpose, so
+   their bar is flush against the surface edge. A marked region is one whose bar
+   would otherwise run into a ROUNDED corner — the checklist's list sits inside a
+   card with a 20px radius, and a track that reaches both ends reads as a bar
+   punching through the corner at the top and the bottom, which is exactly the
+   「it breaks through the sky」 a reader sees on a phone. One step of inset at
+   each end puts the bar's ends on the straight part of the edge, where they read
+   as a bar that belongs to the rows rather than to the card. */
+[data-dsh-tb-scroll]::-webkit-scrollbar-track {
+  background: transparent;
+  margin-block: 10px;
 }
 
 @keyframes dshTbDialogIn {

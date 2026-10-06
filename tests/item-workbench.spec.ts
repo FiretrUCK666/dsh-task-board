@@ -982,6 +982,37 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
+  it('the menu that opens is a box the reader can see and use', () => {
+    // WHAT THE READER PRESSES AND WHAT THEY GET. The `⋯` control existed, its
+    // handler ran, the menu element mounted, every dismissal gate passed — and
+    // the thing had no height, so the press produced nothing on screen. A gate
+    // that only asks 「is the menu in the DOM」 cannot tell that from a working
+    // menu, which is how this shipped.
+    //
+    // The placement is computed from the trigger and the panel, so the box the
+    // menu is measured against has to be a REAL box. It was a `hidden` marker
+    // element for a while: `getBoundingClientRect()` on it is `{0,0,0,0}` in a
+    // browser, the clamp collapsed, and the ceiling came out as exactly zero.
+    const panel = mountPanel(oneRow({ id: 'mm-1', title: '菜单得看得见' }), 'list', 'wide')
+    try {
+      openRowMenu(panel.surface)
+      const menu = panel.surface.querySelector('[role="menu"]') as HTMLElement | null
+      expect(menu, 'the row menu did not mount at all').not.toBeNull()
+      const ceiling = (menu as HTMLElement).style.maxBlockSize
+      expect(ceiling, 'the menu was given no height ceiling at all, so its placement was never computed')
+        .toMatch(/px$/)
+      expect(Number.parseFloat(ceiling),
+        'the menu opened with a zero-height ceiling — the reader presses ⋯ and nothing appears').toBeGreaterThan(0)
+      // And it is placed against THIS panel: the menu's own box has to sit inside
+      // the stage's, so the anchor cannot be some other element of the page.
+      const stage = panel.surface.closest('[data-dsh-taskboard-view]') ?? panel.surface
+      expect(stage, 'the panel stage does not carry the attribute the menu is measured against').not.toBeNull()
+      expect((menu as HTMLElement).style.insetBlockStart, 'the menu was never given a block position').toMatch(/px$/)
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the cancel button does not borrow another control\'s words', () => {
     // It used to be labelled 「清空搜索」, because the key it reused was the
     // search field's clear button. A control whose label names a DIFFERENT
@@ -1187,7 +1218,7 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
    * quiet behind a module that is not there, and a gate that reports nothing
    * because its subject is absent is the exact thing this file is against.
    */
-  async function kernel(): Promise<((trigger: unknown, panel: unknown, menu: unknown) => { placement: string; top: number; left: number }) | undefined> {
+  async function kernel(): Promise<((trigger: unknown, panel: unknown, menu: unknown) => { placement: string; top: number; left: number; maxBlockSize: number }) | undefined> {
     try {
       const mod = await import('../src/client/item/menu-place.ts') as { placeRowMenu?: unknown }
       return typeof mod.placeRowMenu === 'function' ? mod.placeRowMenu as never : undefined
@@ -1237,6 +1268,50 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
     const top = place({ top: 0, bottom: 40, left: 10, right: 210, width: 200, height: 40 }, PANEL, MENU)
     expect(top.top, 'the menu starts above the panel').toBeGreaterThanOrEqual(PANEL.top)
     expect(top.top + MENU.height, 'the menu ends below the panel').toBeLessThanOrEqual(PANEL.bottom)
+  })
+
+  it('a room of zero is not a short menu, it is no menu', async () => {
+    const place = await kernel()
+    if (place === undefined) return
+    // THE CASE THAT SHIPPED. A panel rectangle that cannot contain the menu —
+    // which is what a box with no area is, and what a `display: none` element
+    // measures as — used to yield `maxBlockSize: 0`. The menu then rendered with
+    // no height whatsoever: the reader pressed `⋯` and nothing appeared, no
+    // error was thrown, and nothing was logged.
+    const boxless = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }
+    const spot = place({ top: 300, bottom: 340, left: 300, right: 500, width: 200, height: 40 }, boxless, MENU)
+    expect(spot.maxBlockSize,
+      'a panel box that cannot hold the menu produced a zero-height ceiling, so the menu is invisible rather than merely clipped').toBeGreaterThan(0)
+
+    // The same rule at the panel's own bottom edge, where the room is exactly
+    // zero rather than absent: the trigger is ON the edge, so neither direction
+    // has a pixel to offer.
+    const onEdge = place({ top: 796, bottom: 800, left: 300, right: 500, width: 200, height: 40 }, PANEL, MENU)
+    expect(onEdge.maxBlockSize, 'a trigger on the panel\'s last pixel produced an invisible menu').toBeGreaterThan(0)
+  })
+
+  it('the probe bites: a kernel that returns the room unchanged is reported', () => {
+    // The control for the case above, written as the kernel that shipped: it
+    // computes `room` and hands back `max(0, room)` with no floor. It answers
+    // every OTHER question in this block correctly, which is exactly why the case
+    // needed a gate of its own.
+    const asShipped = (
+      trigger: { top: number; bottom: number },
+      panel: { top: number; bottom: number },
+      menu: { height: number },
+    ): { maxBlockSize: number } => {
+      const gap = 4
+      const roomBelow = panel.bottom - trigger.bottom - gap
+      const roomAbove = trigger.top - panel.top - gap
+      const placement = roomBelow < menu.height && roomAbove > roomBelow ? 'above' : 'below'
+      const rawTop = placement === 'above' ? trigger.top - gap - menu.height : trigger.bottom + gap
+      const top = Math.max(panel.top, Math.min(rawTop, panel.bottom - menu.height))
+      const room = placement === 'above' ? top - panel.top : panel.bottom - top
+      return { maxBlockSize: Math.min(Math.max(room, 0), menu.height) }
+    }
+    const boxless = { top: 0, bottom: 0 }
+    const zero = asShipped({ top: 300, bottom: 340 }, boxless, MENU)
+    expect(zero.maxBlockSize, 'the degenerate control was reported as fine — the case above proves nothing').toBe(0)
   })
 
   it('the probe bites: a kernel that never flips is reported', () => {
@@ -1566,6 +1641,111 @@ function findByText(root: ParentNode, needle: string): HTMLElement | null {
   }
   return null
 }
+
+describe('the rail picks ONE thing per group, and the number on the row is what you get', () => {
+  /** The rail's own row for a word, found by the class token CSS Modules keeps as a suffix. */
+  const railRow = (surface: HTMLElement, word: string): HTMLElement => {
+    const found = [...surface.querySelectorAll('button')].find(node =>
+      node.className.includes('itemRailRow') && (node.textContent ?? '').includes(word))
+    if (found === undefined) throw new Error(`the rail draws no 「${word}」 row`)
+    return found as HTMLElement
+  }
+  /** The count printed on that row — the promise the list has to keep. */
+  const promised = (row: HTMLElement): number => {
+    const mark = row.querySelector('b')
+    return Number((mark?.textContent ?? '').trim())
+  }
+  /** What the header says is actually on screen — both of its two sentences.
+   *
+   *  The header says 「共 N 条」 with nothing filtered and 「显示 S / 共 N 条」 with
+   *  something filtered, so a reader of only the second form reports 「the header
+   *  states no count」 on the one state where the count is the whole point: after
+   *  the filter comes off. Both forms, or the assertion cannot see the transition
+   *  it exists to check. */
+  const shown = (surface: HTMLElement): number => {
+    const line = [...surface.querySelectorAll('p')].map(node => node.textContent ?? '')
+      .find(text => text.includes('显示') || text.includes('共'))
+    if (line === undefined) throw new Error('the header states no count, so nothing here is checkable')
+    const digits = /显示\s*(\d+)/.exec(line) ?? /共\s*(\d+)/.exec(line)
+    if (digits === null) throw new Error(`the count line reads 「${line}」, which this test cannot read`)
+    return Number(digits[1])
+  }
+  const box = (surface: HTMLElement): HTMLInputElement => {
+    const found = surface.querySelector('input[type="search"]')
+    if (found === null) throw new Error('the top bar draws no search box')
+    return found as HTMLInputElement
+  }
+
+  it('a second press in the same group REPLACES the first, and the list gets no bigger', () => {
+    // THE DEFECT THIS PINS: priority and status are matched with `includes`, so two
+    // tokens from one group meant UNION — pressing 「高」 after 「紧急」 made the list
+    // show MORE rows than the row the reader just pressed, whose own number said
+    // five. A filter that adds rows when you narrow it is the one thing a reader
+    // cannot forgive, because it contradicts the number they are looking at.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const urgent = railRow(panel.surface, '紧急')
+      const high = railRow(panel.surface, '高')
+      click(urgent)
+      expect(shown(panel.surface), 'the list does not match the number on 紧急').toBe(promised(urgent))
+      click(high)
+      expect(shown(panel.surface), 'pressing a second priority did not replace the first — the list is now their union').toBe(promised(high))
+      // And the box holds the reader's words only: the filter is a chip below it,
+      // not a machine token inside the field they type in.
+      expect(box(panel.surface).value, 'a qualifier token is sitting inside the search field').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('two date verdicts do not cancel each other into an empty list', () => {
+    // THE DEFECT THIS PINS IS ARITHMETIC, not taste: the `has:` flags are ANDed
+    // over ONE posture per row, and 「超期了」 needs a date to exist while 「没日子
+    // 的」 means no date exists. Pressing both was constant-false — the list went
+    // empty for every document that has ever existed, with both rows still
+    // printing their own numbers beside it.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const overdue = railRow(panel.surface, '超期了')
+      const undated = railRow(panel.surface, '没日子的')
+      click(overdue)
+      expect(shown(panel.surface)).toBe(promised(overdue))
+      click(undated)
+      expect(shown(panel.surface), 'two date verdicts were ANDed into an impossible question').toBe(promised(undated))
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('pressing a rail row again takes the filter OFF', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const row = railRow(panel.surface, '紧急')
+      click(row)
+      expect(shown(panel.surface)).toBe(promised(row))
+      click(row)
+      expect(shown(panel.surface), 'the same row pressed twice left the filter on').toBe(fixtures().length)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the highlight is derived from the query, so it cannot claim a filter that is off', () => {
+    // A remembered highlight can: it was a `useState` written on every press, so
+    // pressing the same row twice turned the filter off and left the row marked
+    // 「you are here」, and deleting the text by hand left it marked too.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const row = railRow(panel.surface, '超期了')
+      click(row)
+      expect(row.getAttribute('aria-current'), 'the row the reader pressed is not marked current').toBe('true')
+      click(row)
+      expect(row.getAttribute('aria-current'), 'the row is still marked current with its filter off').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
 
 /**
  * The menu entry whose ACCESSIBLE NAME contains `needle`.
@@ -2037,33 +2217,55 @@ describe('a surface finds its OWN box, not the first one in the document', () =>
   /**
    * THE BOARD AND THE LIST SHARE ONE ATTRIBUTE, so "the first in the document"
    * is the wrong question. Both `TaskBoardPanel.tsx` and `item/panel.tsx` mark
-   * their root `[data-dsh-taskboard-view]`, and the row was resolving it with
-   * `document.querySelector`, which answers "whichever came first". While only
-   * one surface is mounted that is the right box by luck; the moment both are in
-   * the tree the menu is clamped to the board's rectangle and placed against a
-   * surface that is not its own — the precise failure its own doc comment exists
-   * to prevent. `useSurfaceNarrow` already resolves the same box with `closest`.
+   * their root `[data-dsh-taskboard-view]`, and a document-wide lookup answers
+   * "whichever came first" — so with both panels in the tree the menu is clamped
+   * to the board's rectangle and placed against a surface that is not its own.
+   * `useSurfaceNarrow` resolves the same box with `closest`, from inside.
+   *
+   * THE CHECK IS TWO-SIDED AND NAMES NO REF. It used to require the source to
+   * contain `panelRef`, which blessed a change that replaced the climb with a
+   * marker element carrying `hidden` — and a `hidden` element has no box, so the
+   * menu was placed against `{0,0,0,0}` and opened at zero height. Every gate
+   * stayed green because **the gate was asserting the shape of the source, not
+   * what the reader gets**. A check that has to name the identifier it expects
+   * will bless whatever that identifier happens to point at.
+   *
+   * So this asks only the question that has a right answer: the row resolves the
+   * box by CLIMBING, and never by a document-wide lookup.
    */
-  it('the row asks for its nearest ancestor rather than the document', () => {
+  it('the row climbs to its own panel rather than searching the document', () => {
     const source = code(read('client/item/row-line.tsx'))
     expect(
       source,
       'the row resolves this surface\'s own box from the document, and the board panel carries the same attribute',
     ).not.toMatch(/document\s*\.\s*querySelector[^\n]*data-dsh-taskboard-view/)
-    // IT ASKS FOR THE BOX IT CARRIES. The row used to climb with `closest()` to
-    // whatever panel it happened to be nested inside; it now hands the menu its own
-    // panel ref — the same answer, one fewer hop, and no dependence on what the
-    // surface around it turns out to be.
     expect(
       source,
-      'the menu has no box to be measured against, so it places itself against nothing and opens off the bottom of the screen',
-    ).toMatch(/panelRef/)
+      'the row no longer climbs to the panel it is nested in, so the menu has no box of its own to be measured against',
+    ).toMatch(/closest\(\s*'\[data-dsh-taskboard-view\]'\s*\)/)
+  })
+
+  it('and what it hands over is a box the reader can see', () => {
+    // THE OUTCOME, not the identifier. `⋯` opens a menu whose ceiling is derived
+    // from the anchor's rectangle; if the anchor has no area the ceiling is zero
+    // and the press produces nothing on screen. Asserting the ceiling is the only
+    // statement here that a reader could also make.
+    const panel = mountPanel(oneRow({ id: 'own-1', title: '这一行有自己的盒子' }), 'list', 'wide')
+    try {
+      openRowMenu(panel.surface)
+      const menu = panel.surface.querySelector('[role="menu"]') as HTMLElement | null
+      expect(menu, 'the row menu did not mount, so there is no box to measure').not.toBeNull()
+      const ceiling = Number.parseFloat((menu as HTMLElement).style.maxBlockSize)
+      expect(ceiling, 'the anchor the menu was measured against has no box — it opened at zero height').toBeGreaterThan(0)
+    } finally {
+      panel.dispose()
+    }
   })
 
   it('the probe bites: a document-wide query is reported', () => {
     const detector = (source: string): boolean => /document\s*\.\s*querySelector[^\n]*data-dsh-taskboard-view/.test(source)
     expect(detector("panel.current = document.querySelector('[data-dsh-taskboard-view]')"), 'the probe did not bite').toBe(true)
-    expect(detector("panel.current = rowRef.current?.closest('[data-dsh-taskboard-view]') ?? null"), 'a correct row is reported as broken').toBe(false)
+    expect(detector("panel = rowRef.current?.closest('[data-dsh-taskboard-view]') ?? null"), 'a correct row is reported as broken').toBe(false)
   })
 })
 
@@ -2438,12 +2640,27 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     for (let round = 0; round < 4; round += 1) await act(async () => { await Promise.resolve() })
   }
 
-  /** Mount, install the host, and open the archive — the order the reader meets. */
+  /**
+   * Mount, install the host, and open the archive — through the ONE entrance.
+   *
+   * THE ENTRANCE IS THE RAIL'S 「已删除」 ROW, and it is the only one: the list
+   * page used to carry a second door at its very foot (「删除后 30 天内可以找回来。」
+   * plus 「看看」), which asked a reader to scroll to the bottom of the page to
+   * discover that an archive exists at all. It is gone, and this helper presses
+   * what is left.
+   *
+   * Pressing it is strictly better evidence than pressing the old one: this entry
+   * goes through the COUNTER SIGNAL (`archiveAsked`) rather than a direct
+   * `openArchive()` call, so a regression in that channel — the one that made the
+   * rail row print a count and then do nothing — now fails these four gates
+   * instead of passing them.
+   */
   async function openArchive(answer: (address: { id?: string }) => unknown): Promise<{ panel: ReturnType<typeof mountPanel>; undo: () => void }> {
     const panel = mountPanel(oneRow({ id: 'live-1', title: '还在的那一条' }), 'list', 'wide')
     const undo = hostThatPurges(answer)
-    const look = findByText(panel.surface, '看看')
-    expect(look, 'the archive has no entrance on the list page').not.toBeNull()
+    const look = [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').includes('已删除'))
+    expect(look, 'the archive has no entrance: the rail draws no 「已删除」 row').not.toBeUndefined()
     click(look)
     await settle()
     return { panel, undo }
@@ -2452,6 +2669,34 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
   /** 每一行旁边的那一枚「彻底删除」。 */
   const purgeButtonOf = (row: Element | null): Element | undefined =>
     [...(row?.querySelectorAll('button') ?? [])].find(node => (node.textContent ?? '').trim() === '彻底删除')
+
+  it('the one entrance lands on the page that owns the drawer, from ANY page', async () => {
+    // THE ENTRANCE IS AN ENTRANCE FROM EVERY PAGE THE RAIL IS DRAWN ON, and the
+    // rail is drawn on three. The drawer, meanwhile, lives inside the list page —
+    // so pressing 「已删除」 while standing on 日程 used to clear the filter, light
+    // the row up, and show NOTHING: the counter stayed above zero and the drawer
+    // appeared later, when the reader happened to go back to 清单.
+    //
+    // 「I pressed it and cannot see the result」 and 「pressing it does nothing」 are
+    // the same event to a reader, so the row has to do both halves of its job in
+    // one press: go to the page that owns the drawer, and ask for the drawer.
+    const panel = mountPanel(oneRow({ id: 'live-1', title: '还在的那一条' }), 'schedule', 'wide')
+    const undo = hostThatPurges(() => ({ available: true, deleted: [ARCHIVED] }))
+    try {
+      const look = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('已删除'))
+      expect(look, 'the rail draws no 「已删除」 row, so there is no entrance to test').not.toBeUndefined()
+      click(look)
+      await settle()
+      // 「回到清单」 exists only inside the open drawer, so its presence is the
+      // drawer's presence — and the page it names is where the reader now is.
+      expect(panel.surface.textContent ?? '',
+        'pressing 已删除 from 日程 did not bring the archive up, so the row did half its job').toContain('回到清单')
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
 
   it('every archived row offers 彻底删除, and the button belongs to that row', async () => {
     const { panel, undo } = await openArchive(() => ({ available: true }))

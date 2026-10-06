@@ -126,11 +126,28 @@ export interface ItemQuery {
     readonly priority: readonly ItemPriority[];
     readonly status: readonly ItemStatusView[];
     readonly flags: ReadonlySet<ItemFlag>;
+    /**
+     * ONE DAY, AS `YYYY-MM-DD` — 「只看这一天」.
+     *
+     * A single day rather than a list, because the question a calendar asks is
+     * 「那一天有什么」 and nobody asks it about two days at once: two days is a range
+     * (a different control) or it is a reader who has not finished choosing. Making
+     * it single is also what stops the token from accumulating in the box, which is
+     * what the field was doing when every press added another `on:` and each one
+     * narrowed the list toward zero.
+     */
+    readonly day: string | null;
     /** The exact source text, so a surface can echo what was typed. */
     readonly text: string;
 }
 /** The query that matches everything, and the shape every parse returns. */
 export declare const EMPTY_ITEM_QUERY: ItemQuery;
+/**
+ * The one spelling of a day token, so the writer and the reader cannot disagree.
+ * @param day - `YYYY-MM-DD`, as the calendar's own cells carry it.
+ * @returns the token the grammar reads.
+ */
+export declare function dayTokenOf(day: string): string;
 /**
  * Parse a search box's contents into words and qualifiers.
  *
@@ -220,3 +237,14 @@ export declare function itemHasFlag(item: ItemRecord, flag: ItemFlag, ctx: ItemM
  * @returns whether it passes.
  */
 export declare function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchContext): boolean;
+/**
+ * Which days this row is ON, as `YYYY-MM-DD`, in the reader's own local calendar.
+ *
+ * Local rather than UTC, and that is the whole reason this is a function: the
+ * calendar's cells are local days, so a row due at 23:00 local on the 6th must be
+ * found by the 6th and not by the 7th. Deriving from `toISOString()` would put it
+ * on the 7th for half the planet.
+ * @param item - the row.
+ * @returns the days it belongs to, in a stable order, without duplicates.
+ */
+export declare function itemDatesOf(item: ItemRecord): readonly string[];

@@ -243,18 +243,65 @@ export function isTokenIn(text: string, token: string): boolean {
 }
 
 /**
- * Add or remove one token, leaving every other character alone.
+ * Add or remove one token, leaving every other character alone — and, when the
+ * caller names its SIBLINGS, replacing them instead of piling up beside them.
+ *
+ * `siblings` is what makes a rail row mean 「只看这一个」 rather than 「再加上这
+ * 一个」. The rail's rows come in groups whose members are alternatives: a row has
+ * exactly one priority and one status, and the date predicates are verdicts about
+ * one row's dates. Two tokens from one group in the box is therefore never a
+ * narrower question — it is either a WIDER one (priority and status are matched
+ * with `includes`, so `p1 p2` is urgent UNION high) or an IMPOSSIBLE one (`has:`
+ * flags are ANDed over a single posture, so `has:overdue has:undated` is
+ * constant-false and the list is empty for any document).
+ *
+ * Turning a token ON therefore drops its siblings; turning one OFF drops only
+ * itself, because a sibling the reader TYPED by hand is theirs and pressing a rail
+ * row must not quietly delete a filter they wrote.
  *
  * @param text - the search box's contents, exactly as typed.
  * @param token - the facet token, e.g. `status:open`.
  * @param on - whether it should end up present.
+ * @param siblings - the other tokens in its group, which it replaces when it goes on.
  * @returns the new text. An absent token and an explicit removal both leave the
  *   reader's other words as they were typed, capitalisation included.
  */
-export function withFacetToken(text: string, token: string, on: boolean): string {
-  const kept = text.split(/\s+/).filter(part => part !== '' && part.toLowerCase() !== token.toLowerCase())
+export function withFacetToken(text: string, token: string, on: boolean, siblings: readonly string[] = []): string {
+  const wanted = token.toLowerCase()
+  const replaced = new Set(on ? siblings.map(one => one.toLowerCase()) : [])
+  const kept = text.split(/\s+/).filter(part =>
+    part !== '' && part.toLowerCase() !== wanted && !replaced.has(part.toLowerCase()))
   if (!on) return kept.join(' ')
   return [...kept, token].join(' ')
+}
+
+/**
+ * The reader's own words, replaced — with every qualifier left standing.
+ *
+ * THIS IS THE MISSING HALF OF `withFacetToken`, and the two are not
+ * interchangeable. A text field bound to `withFacetToken(base, value, true)`
+ * treats the WHOLE field as one token: type a, then b, then c and the box reads
+ * `a ab a abc`, because each keystroke appends the field to the field. The base
+ * has to be the QUALIFIERS only, and the incoming value is the reader's words —
+ * which is exactly this function.
+ *
+ * Position is preserved rather than normalised: the words go back where the first
+ * free word stood, so `#画廊 重做地板 status:open` keeps the reader's order
+ * instead of being rebuilt as `#画廊 status:open 重做地板`. A search box that
+ * reorders itself under the typist is a box they cannot point at.
+ *
+ * @param text - the whole query, exactly as it stands.
+ * @param value - the field's new contents, which are all words.
+ * @returns the new text.
+ */
+export function withFreeText(text: string, value: string): string {
+  const parts = text.split(/\s+/).filter(part => part !== '')
+  const words = value.split(/\s+/).filter(part => part !== '')
+  const firstWord = parts.findIndex(part => !isQualifierToken(part))
+  if (firstWord === -1) return [...parts, ...words].join(' ')
+  const before = parts.slice(0, firstWord).filter(part => isQualifierToken(part))
+  const after = parts.slice(firstWord).filter(part => isQualifierToken(part))
+  return [...before, ...words, ...after].join(' ')
 }
 
 /**

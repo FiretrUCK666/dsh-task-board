@@ -605,6 +605,7 @@ export declare const zh: {
     'item.hostLost': string;
     'item.syncing': string;
     'item.empty': string;
+    'item.empty.sample': string;
     'item.count': string;
     'item.countFiltered': string;
     'item.ask': string;
@@ -761,7 +762,6 @@ export declare const zh: {
     'item.gated.hint': string;
     'item.noDate.hint': string;
     'item.detail.emptyTitle': string;
-    'item.inbox.note': string;
     'item.filter.clear': string;
     'item.filters.label': string;
     'item.done.show': string;
@@ -848,7 +848,6 @@ export declare const zh: {
     'item.undo.refused': string;
     'item.archive.title': string;
     'item.archive.empty': string;
-    'item.archive.open': string;
     'item.archive.close': string;
     'item.archive.restore': string;
     'item.archive.restoring': string;
