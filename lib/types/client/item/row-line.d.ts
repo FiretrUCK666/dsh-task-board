@@ -7,6 +7,11 @@ export interface ItemRowLineProps {
     readonly panelId: string;
     readonly expanded: boolean;
     readonly selected: boolean;
+    /** Whether the keyboard cursor sits on this row. Unlike `selected` (which
+     *  marks the row whose detail is being read), the cursor is where the next
+     *  keystroke will act — and it must be VISIBLE, because every write on this
+     *  panel goes through it. */
+    readonly cursor: boolean;
     readonly onSelect: () => void;
     readonly onToggle: () => void;
     /** Whether this PAGE batches. The inbox and the agenda answer false, so a row there

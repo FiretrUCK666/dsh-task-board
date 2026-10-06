@@ -2023,10 +2023,21 @@ describe('the keyboard flow is one table, and every key in it has something behi
     expect(claimsKey(onThePage), 'the same letter is not claimed on the page itself — the key does nothing anywhere').toBe(true)
   })
 
-  it('a ⌘ chord still works while the reader is typing, because it is not typing', () => {
+  it('a text-editing chord is never stolen from a field the reader is typing in', () => {
+    // `⌘Z` and `⌘⌫` ARE the input's own undo and delete-word. Claiming them
+    // behind the caret means the field loses its native editing shortcuts — the
+    // reader presses ⌘Z to undo typing and instead the panel restores a deleted
+    // row (or does nothing at all), and the keystroke is gone.
+    // `⌘K` and other deliberate chords still work while typing.
     const undo = { key: 'z', metaKey: true, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
-    expect(claimsKey(undo), '⌘Z is swallowed by a text field, so undo cannot be reached from the search box').toBe(true)
-    const plain = { ...undo, metaKey: false }
+    expect(claimsKey(undo), '⌘Z is stolen from a text field: the input loses its own undo').toBe(false)
+    const remove = { key: 'backspace', metaKey: true, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
+    expect(claimsKey(remove), '⌘⌫ is stolen from a text field: the input loses its own delete-word').toBe(false)
+    // A deliberate chord is still ours even while typing.
+    const palette = { key: 'k', metaKey: true, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
+    expect(claimsKey(palette), '⌘K is not claimed while typing, so the palette is unreachable from a field').toBe(true)
+    // And a bare letter is still the field's.
+    const plain = { key: 'z', metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('input') }
     expect(claimsKey(plain), 'a bare `z` in a text field is claimed as undo').toBe(false)
   })
 

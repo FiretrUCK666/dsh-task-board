@@ -84,6 +84,14 @@ export interface KeyBinding {
    * said out loud on the binding rather than inferred.
    */
   readonly typing?: boolean
+  /**
+   * Whether the binding is a TEXT-EDITING gesture that must never be stolen
+   * from a field. `⌘Z` and `⌘⌫` are how a reader undoes typing and deletes a
+   * word; intercepting them behind the caret is the silent loss of the input's
+   * own undo. Unlike `typing`, this is opt-OUT: a chord that IS text editing
+   * must SAY so, and the default is that cmd chords are deliberate gestures.
+   */
+  readonly notWhileTyping?: boolean
   readonly group: KeyGroup
   /** What it does, as a dictionary key — typed, so a typo cannot ship a blank word. */
   readonly what: TaskBoardKey
@@ -161,18 +169,18 @@ export const ITEM_KEYS: readonly KeyBinding[] = [
   { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.prev', action: 'movePrev', when: s => !s.paletteOpen },
   { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.paletteNext', action: 'paletteNext', typing: true, when: s => s.paletteOpen },
   { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.palettePrev', action: 'palettePrev', typing: true, when: s => s.paletteOpen },
-  { keys: 'X', key: 'x', group: 'edit', what: 'item.keys.pick', action: 'pick', when: s => s.focusedId !== undefined },
-  { keys: 'E', key: 'e', group: 'edit', what: 'item.keys.rename', action: 'rename', when: s => s.focusedId !== undefined },
-  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.open', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen },
+  { keys: 'X', key: 'x', group: 'edit', what: 'item.keys.pick', action: 'pick', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: 'E', key: 'e', group: 'edit', what: 'item.keys.rename', action: 'rename', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.open', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen && !s.somethingOpen },
   { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.palettePick', action: 'palettePick', typing: true, when: s => s.paletteOpen },
   { keys: 'Esc', key: 'escape', group: 'surface', what: 'item.keys.close', action: 'close', typing: true },
-  { keys: '1', key: '1', group: 'edit', what: 'item.keys.priorityUrgent', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined },
-  { keys: '2', key: '2', group: 'edit', what: 'item.keys.priorityHigh', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined },
-  { keys: '3', key: '3', group: 'edit', what: 'item.keys.priorityNormal', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined },
-  { keys: '4', key: '4', group: 'edit', what: 'item.keys.priorityLow', action: 'priority', arg: 'low', when: s => s.focusedId !== undefined },
-  { keys: 'D', key: 'd', group: 'edit', what: 'item.keys.dueToday', action: 'dueToday', when: s => s.focusedId !== undefined },
-  { keys: '⌘⌫', key: 'backspace', cmd: true, group: 'write', what: 'item.keys.remove', action: 'remove', when: s => s.focusedId !== undefined },
-  { keys: '⌘Z', key: 'z', cmd: true, group: 'write', what: 'item.keys.undo', action: 'undo' },
+  { keys: '1', key: '1', group: 'edit', what: 'item.keys.priorityUrgent', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '2', key: '2', group: 'edit', what: 'item.keys.priorityHigh', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '3', key: '3', group: 'edit', what: 'item.keys.priorityNormal', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '4', key: '4', group: 'edit', what: 'item.keys.priorityLow', action: 'priority', arg: 'low', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: 'D', key: 'd', group: 'edit', what: 'item.keys.dueToday', action: 'dueToday', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '⌘⌫', key: 'backspace', cmd: true, notWhileTyping: true, group: 'write', what: 'item.keys.remove', action: 'remove', when: s => s.focusedId !== undefined },
+  { keys: '⌘Z', key: 'z', cmd: true, notWhileTyping: true, group: 'write', what: 'item.keys.undo', action: 'undo' },
 ]
 
 /** The handler for one action. Returning nothing is fine; throwing is not. */
@@ -219,7 +227,10 @@ function usable(binding: KeyBinding, event: KeyEventLike): boolean {
   if (binding.key !== event.key.toLowerCase()) return false
   if ((binding.cmd === true) !== isCommand(event)) return false
   if ((binding.shift === true) !== (event.shiftKey === true)) return false
-  if (isTypingTarget(event.target) && binding.cmd !== true && binding.typing !== true) return false
+  if (isTypingTarget(event.target)) {
+    if (binding.notWhileTyping === true) return false
+    if (binding.cmd !== true && binding.typing !== true) return false
+  }
   return true
 }
 

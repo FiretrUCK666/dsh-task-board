@@ -714,6 +714,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     view: itemRowViewOf(item, { now, running }),
     expanded: openRow === item.id,
     selected: selected === item.id,
+    cursor: cursor === item.id,
     picking,
     picked: selection.ids.has(item.id),
     /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
@@ -863,7 +864,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   useItemKeys({
     state: {
       focusedId: cursor,
-      somethingOpen: paletteOpen || menuRow !== undefined || openRow !== undefined,
+      somethingOpen: paletteOpen || menuRow !== undefined || openRow !== undefined || overlay === 'create' || overlay === 'sort',
       // Its OWN field rather than a reading of `somethingOpen`: the arrows mean
       // one thing on the rows and another inside the box, and a menu being open
       // is a third fact that must not hand the box's keys to a row cursor.

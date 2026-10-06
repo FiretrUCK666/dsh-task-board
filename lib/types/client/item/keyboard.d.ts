@@ -77,6 +77,14 @@ export interface KeyBinding {
      * said out loud on the binding rather than inferred.
      */
     readonly typing?: boolean;
+    /**
+     * Whether the binding is a TEXT-EDITING gesture that must never be stolen
+     * from a field. `⌘Z` and `⌘⌫` are how a reader undoes typing and deletes a
+     * word; intercepting them behind the caret is the silent loss of the input's
+     * own undo. Unlike `typing`, this is opt-OUT: a chord that IS text editing
+     * must SAY so, and the default is that cmd chords are deliberate gestures.
+     */
+    readonly notWhileTyping?: boolean;
     readonly group: KeyGroup;
     /** What it does, as a dictionary key — typed, so a typo cannot ship a blank word. */
     readonly what: TaskBoardKey;

@@ -959,11 +959,16 @@ export class ChecklistReplica {
     if (result === undefined || !result.available || result.doc === undefined) {
       // A host that has no second document (or an unreachable one) leaves this
       // replica on the mirror. The board is untouched by that.
+      // LOAD THE MIRROR so the panel can show the reader's rows: an unreachable
+      // host must never draw as 「你一条都没有」 when the mirror holds their notes.
+      const mirror = this.deps.mirror?.load() ?? []
+      if (mirror.length > 0) {
+        this.doc = { revision: 0, items: mirror, tombstones: {}, stamps: {}, nextRef: 0, bornAt: this.now() }
+      }
       this.log('[dsh-task-board] checklist document not served (mirroring locally)')
       return
     }
     this.reachable = true
-    this.doc = result.doc
     const legacy = this.deps.mirror?.load() ?? []
     if (legacy.length > 0) {
       const hostIds = new Map(result.doc.items.map(item => [item.id, item]))
@@ -984,9 +989,15 @@ export class ChecklistReplica {
           this.dirty = [...merged.values()]
           this.backupListener?.(legacy)
         }
-        await this.flush()
       }
     }
+    // ADOPT RATHER THAN ASSIGN: `adopt` saves the mirror and notifies the
+    // listener, so the panel sees the rows the moment they are known. A bare
+    // assignment leaves the listener uninformed and `poll` then asks the host
+    // for the revision it already holds — the host answers "unchanged" and the
+    // panel stays empty until another device writes or the reader refreshes.
+    this.adopt(result.doc)
+    if (this.dirty !== undefined) await this.flush()
   }
 
   /** Whether the host truth is adopted for the checklist. */
@@ -1008,7 +1019,9 @@ export class ChecklistReplica {
    * data, which is worse than the failure it hides.
    */
   hostLostItems(): boolean {
-    return this.reachable && this.doc.items.length === 0 && (this.deps.mirror?.load().length ?? 0) > 0
+    const mirrorSize = this.deps.mirror?.load().length ?? 0
+    if (!this.reachable) return mirrorSize > 0
+    return this.doc.items.length === 0 && mirrorSize > 0
   }
 
   /** The effective local view: baseline overlaid with un-acked rows, with
@@ -1085,6 +1098,10 @@ export class ChecklistReplica {
     }
     this.deleted = [...accrued].map(([id, baseUpdatedAt]) => ({ id, baseUpdatedAt }))
     this.dirty = items
+    // SAVE TO THE MIRROR on every write, not only on ack: a burst interrupted
+    // by a reload or a phone killing the tab must survive, and the mirror is
+    // the only medium that outlives the page.
+    this.deps.mirror?.save(this.view())
     this.scheduleCommit()
   }
 

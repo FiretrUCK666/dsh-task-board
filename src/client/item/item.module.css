@@ -1270,12 +1270,22 @@
  * 游标用字重而不是墨，是因为句子已经在最重那一档墨上（`ink-1`）：**一档墨只能用尽
  * 一次**，再往上没有台阶，而字重还有一个。 */
 .itemRow:hover {
-  background: var(--item-fill);
+  background: var(--dsh-tb-hover);
 }
 
 .itemRow[data-selected] .itemRowTitle {
   font-size: 15px;
   font-weight: 600;
+}
+
+/* THE KEYBOARD CURSOR: where the next keystroke will act. It is NOT the same as
+ * `data-selected` (which marks the row whose detail is being read) — the cursor
+ * is a POSITION, and every write on this panel goes through it, so it must be
+ * visible. A ring, not a fill: fills on this row already carry three other
+ * meanings (hover, open, picked) and a fourth would be unresolvable. */
+.itemRow[data-cursor] {
+  box-shadow: inset 0 0 0 2px var(--dsh-tb-accent);
+  border-radius: var(--item-radius-ctl);
 }
 
 .itemRow[data-open] {
