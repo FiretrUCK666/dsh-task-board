@@ -2693,7 +2693,8 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-/* 门的名字与日子读法同律（它是这一节同样有线的题头），只是它后面跟着一句解释。 */
+/* 门的名字与日子读法同律（它是这一节同样有线的题头），只是它后面跟着一句解释。
+ * 它是**标题**不是控件：光标不该指着不动的东西说「能按」。 */
 .itemGatedFoldHead {
   display: flex;
   align-items: center;
@@ -2713,7 +2714,6 @@ textarea.itemInput {
   background: none;
   border: 0;
   border-block-end: var(--item-hair);
-  cursor: pointer;
 }
 
 .itemGatedFoldList {
