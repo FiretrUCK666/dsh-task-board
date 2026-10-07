@@ -246,6 +246,15 @@
   /* 芯片的底。**读宿主那个，不是自己挑一个层**——板上的安静控件已经因为自己挑了
    * 一层而在换皮肤时与按钮族分了家（`board.module.css` 里有那一次事故的记录），
    * 同一个错在清单这一侧再犯一次就是两次。 */
+  /* The bead hole is a HOLE IN THE LINE, not a window onto it. The axis lives on
+     the OPEN row, whose own fill is a translucent wash — a transparent hole
+     would show the spine passing through the ring, one bead reading 连着上面、
+     另一颗脱了线. So the hole paints the wash's own OPAQUE COMPOSITE (the very
+     colour the ring's box sits on), and the line enters at the ring and leaves
+     at the ring — the draft's 「珠子不透明，压在线上，断成三段」, stated in
+     tokens so it survives every skin's accent. */
+  --item-bead-hole: color-mix(in srgb, var(--item-surface) 88%, var(--dsh-tb-accent));
+
   --item-fill: var(--dsh-tb-chip-fill);
 }
 
@@ -3615,12 +3624,11 @@ textarea.itemInput {
   inline-size: 9px;
   block-size: 9px;
   border-radius: 999px;
-  /* The bead is painted with the surface it sits ON — the open row's own fill —
-   * not with the page's canvas: a white punch on the accent wash read the bead
-   * as a foreign card glued to the row, and at the ring's corners the fill
-   * visibly poked past the ring itself. The row's own tone means the hole and
-   * the wash are ONE surface. */
-  background-color: var(--dsh-tb-open);
+  /* THE HOLE IS A HOLE IN THE LINE: opaque composite of the wash the row wears
+     (see --item-bead-hole above). A transparent hole would draw the spine
+     THROUGH the ring; the draft's own rule is that beads break the line into
+     the three segments the reader reads. */
+  background-color: var(--item-bead-hole);
   border: 2px solid var(--item-ink-3);
 }
 
@@ -3647,7 +3655,8 @@ textarea.itemInput {
 
 .itemDateAxis li[data-tone='gate'] > i,
 .itemDateAxis li[data-tone='none'] > i {
-  background-color: transparent;
+  /* 没定/还没开始的一颗也压得住线：孔 = 线在这里被打断，不是窗口。 */
+  background-color: var(--item-bead-hole);
 }
 
 /* 唯一会让这一行变红的那一个，**只改墨**。
