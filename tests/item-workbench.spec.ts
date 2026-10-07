@@ -2845,6 +2845,39 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     }
   })
 
+  it('a tier in the bar is a press that writes, and the status segments are the same tribe', () => {
+    // The bar's two segment groups answer the same KIND of question — put a
+    // tier on every held row, act once — so they are also the SAME control.
+    // The native dropdown that used to be here was one control this panel's
+    // stylesheet did not draw, and the one page answering 「这一个的档位」 with
+    // chips and 「这一批的档位」 with a platform menu. The press still has to
+    // write, which is what the gates below check on BOTH groups.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      hold(rowEls(panel.surface)[0])
+      const held = heldEls(panel.surface)[0]
+      expect(held, 'nothing was held, so the press has nothing to land on').toBeDefined()
+      const press = (word: string): void => {
+        const chip = [...panel.surface.querySelectorAll('button')]
+          .find(button => (button.textContent ?? '').trim() === word)
+        if (chip === undefined) throw new Error(`the bar does not carry a "${word}"`)
+        act(() => { chip.click() })
+      }
+      press('紧急')
+      // The row's own number is the identity the list prints; the document is
+      // asked through it, and the tier the press named must be what is stored.
+      const ref = Number(/#(\d+)/.exec(held.textContent ?? '')?.[1])
+      expect(Number.isNaN(ref), 'the held row printed no number to be read back by').toBe(false)
+      expect(panel.lastWrite().find(row => row.ref === ref)?.priority, 'the tier press never reached the held row').toBe('urgent')
+      press('标为受阻')
+      expect(panel.lastWrite().find(row => row.ref === ref)?.status, 'the status press never reached the held row').toBe('blocked')
+      // 改了 N 条 comes back as a count of what CHANGED.
+      expect(panel.surface.textContent ?? '', 'the press did not say what changed').toContain('改了 1 条')
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the range is measured over the rows ON SCREEN, not over the document', () => {
     // 读者勾了第一条、滚过两行被筛掉的、Shift 勾第七条，说的是「这两条之间屏幕上
     // 看见的那几条」。按文档算就会悄悄把那两行也算进去，于是批量条说「已选 8 条」
