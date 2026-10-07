@@ -3164,6 +3164,27 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
     }
   })
 
+  it('choosing an existing card hangs the row there, and 不挂 unhands it', () => {
+    // 选择器的两个老手势与新建是同一族：都是「这一条挂在哪」的一次作答，都写文档。
+    // naming 的到来没有动它们——这条钉在这里，族里少一个都不行。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const card = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '画廊第二版')
+      if (card === undefined) throw new Error('the picker does not list the card the fake board holds')
+      click(card)
+      expect(panel.lastWrite()[0]?.taskId, 'the chosen card never reached the document').toBe('task-1')
+      const none = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '不挂')
+      if (none === undefined) throw new Error('the picker dropped its 「不挂」')
+      click(none)
+      expect(panel.lastWrite()[0]?.taskId, '「不挂」 did not clear the link').toBeUndefined()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('Enter with a name makes the card on the board and hangs this row on it', () => {
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
@@ -3309,7 +3330,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (target === undefined || target === '') return
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
-    if (state !== 'card-naming' && state !== 'card-pending') throw new Error(`a mounted state this bench does not know: ${state}`)
+    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     /* The pending pick only exists AFTER the sheet's naming field took a name:
        open the sheet by the door the reader uses (the ＋ button), name, confirm. */
@@ -3318,6 +3339,26 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         .find(node => (node.textContent ?? '').includes('新建一条'))
       if (open === undefined) throw new Error('the top bar carries no way to open the sheet')
       click(open)
+    }
+
+    if (state === 'batch') {
+      // The bar only exists while something is held, so the reader's own holds
+      // put it on screen. One hold is the smallest state that carries the whole
+      // bar; each press settles on its own because the handlers read the state
+      // of the render they were built in.
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        act(() => { press(panel.surface, 'j') })
+        act(() => { press(panel.surface, 'x') })
+        panel.settle()
+        if (panel.surface.querySelector('[class*="itemBatch"]') === null) throw new Error('the batch bar never came up')
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
     }
 
     if (state === 'card-pending') {

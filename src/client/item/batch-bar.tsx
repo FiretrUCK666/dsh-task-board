@@ -28,7 +28,6 @@
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button, Segmented } from '../board/ui.tsx'
-import { PRIORITY_LABEL } from './labels.ts'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
@@ -71,7 +70,7 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
       </div>
       <div className={css.itemBatchActions}>
         <Segmented
-          ariaLabel={t('item.status.open')}
+          ariaLabel={t('item.field.status')}
           value=""
           options={[
             { value: 'open', label: t('item.status.open') },
@@ -80,20 +79,23 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
           ]}
           onChange={next => { if (next !== '') props.onMark(next as ItemStatus) }}
         />
-        <label className={css.itemBatchField}>
-          <span className={css.itemFacetName}>{t('item.batch.priority')}</span>
-          <select
-            className={css.itemInput}
-            value=""
-            aria-label={t('item.batch.priority')}
-            onChange={event => { if (event.target.value !== '') props.onPriority(event.target.value as ItemPriority) }}
-          >
-            <option value="">{t('item.batch.priority')}</option>
-            {(['urgent', 'high', 'normal', 'low'] as const).map(p => (
-              <option key={p} value={p}>{t(PRIORITY_LABEL[p])}</option>
-            ))}
-          </select>
-        </label>
+        {/* THE SAME CONTROL THE STATUS QUESTIONS USE, because it is the same
+            KIND of question: pick one tier out of four, act, and the bar keeps
+            no selected value. A native dropdown was the bar's one control this
+            stylesheet does not draw the shape of — and, worse, the same page
+            answered 「这一个的档位」 with chips and 「这一批的档位」 with a
+            platform menu. */}
+        <Segmented
+          ariaLabel={t('item.batch.priority')}
+          value=""
+          options={[
+            { value: 'urgent', label: t('item.priority.urgent') },
+            { value: 'high', label: t('item.priority.high') },
+            { value: 'normal', label: t('item.priority.normal') },
+            { value: 'low', label: t('item.priority.low') },
+          ]}
+          onChange={next => { if (next !== '') props.onPriority(next as ItemPriority) }}
+        />
         <Button variant="ghost" size="sm" onClick={props.onDueToday}>{t('item.batch.due')}</Button>
         {/* Disabled rather than hidden when nothing in the holding can be asked:
             the control stays where the reader's eye already is, and the sentence

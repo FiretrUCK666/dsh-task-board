@@ -39,8 +39,8 @@ export declare const SORT_LABEL: Readonly<Record<ItemSort, TaskBoardKey>>;
 /**
  * Each priority's word.
  *
- * The row draws it on the pill, the detail's `<select>` lists it, and the batch
- * bar's picker offers it — three consumers, one table, and a tier the model adds
+ * The row draws it on the pill, and the batch bar's (and the palette's) tier
+ * actions read it — every consumer, one table, and a tier the model adds
  * makes this file red and no other.
  */
 export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>>;
@@ -48,13 +48,13 @@ export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>
  * The three marks a reader can PUT a row into, and each one's word.
  *
  * The row menu offers exactly these three, filtered to the ones this row is not
- * already in; the detail's `<select>` offers the same three. Note what is NOT
- * here: `inProgress`. It is a GROUP — a row hanging off a running card reads as
- * 进行中 — and not a state a reader can write, so no control anywhere offers it.
- * That is why this table is over `ItemStatus` (the three) while `GROUP_LABEL`
- * below is over `ItemStatusView` (the four): two vocabularies that share three
- * words, and keeping them apart is what stops one of them growing the other's
- * members.
+ * already in; the batch bar's segmented status offers the same three. Note what
+ * is NOT here: `inProgress`. It is a GROUP — a row hanging off a running card
+ * reads as 进行中 — and not a state a reader can write, so no control anywhere
+ * offers it. That is why this table is over `ItemStatus` (the three) while
+ * `GROUP_LABEL` below is over `ItemStatusView` (the four): two vocabularies
+ * that share three words, and keeping them apart is what stops one of them
+ * growing the other's members.
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
 /**

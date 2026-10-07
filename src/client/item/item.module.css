@@ -3820,13 +3820,6 @@ textarea.itemInput {
  * 只有 4% 黑，再乘一个透明度，两档就是同一档，而一个读不出来的禁用态等于那个条件
  * 没有告诉读者任何事。见 `.itemRowMenuItem[aria-disabled]`。 */
 
-.itemBatchField {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  min-inline-size: 0;
-}
-
 /* 归档的编号是一枚药丸而不是裸字符，因为它「这一行的名字」而不是内容——
  * 裸的 `#15` 与副行里的 `#1 · 1/3` 会长得一样，而它们不是同一件事。 */
 .itemRefChip {
