@@ -218,6 +218,9 @@ export interface ItemRowLineProps {
    *  the box appears the moment there is a mode to show. */
   readonly armed: boolean
   readonly picked: boolean
+  /** The inline-rename lease: `E` SOCKET. Presence = 「enter the title editor
+   *  now」, the number itself never repeats an already-served request. */
+  readonly renameNonce?: number
   /** Hold one row, optionally as a range over what is on screen. */
   readonly onPick: (extend: boolean) => void
   readonly onPatch: (patch: { readonly title: string }) => void
@@ -267,6 +270,15 @@ export function ItemRowLine(props: ItemRowLineProps) {
   // value would file the stale value.
   useEffect(() => { if (!editing) setDraft(item.title) }, [item.title, editing])
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
+  /* E 的租约在这里结账：面板每按一次 E 都把 nonce 涨一格，本行只接自己见过的
+     最高一次——接过的不再重放， нераспредел的留给别的行。 */
+  const servedRename = useRef<number | undefined>(props.renameNonce)
+  useEffect(() => {
+    if (props.renameNonce === undefined) return
+    if (props.renameNonce === servedRename.current) return
+    servedRename.current = props.renameNonce
+    startEditing()
+  }, [props.renameNonce]) // startEditing closes over the current title; the nonce is the change
 
   const startEditing = (): void => { setDraft(item.title); setEditing(true); onMenuClose() }
   const commitTitle = (): void => {

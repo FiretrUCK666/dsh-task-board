@@ -22,6 +22,9 @@ export interface ItemRowLineProps {
      *  the box appears the moment there is a mode to show. */
     readonly armed: boolean;
     readonly picked: boolean;
+    /** The inline-rename lease: `E` SOCKET. Presence = 「enter the title editor
+     *  now」, the number itself never repeats an already-served request. */
+    readonly renameNonce?: number;
     /** Hold one row, optionally as a range over what is on screen. */
     readonly onPick: (extend: boolean) => void;
     readonly onPatch: (patch: {

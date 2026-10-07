@@ -234,6 +234,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
    */
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   /**
+   * THE INLINE-RENAME REQUEST, and why it is a {id, nonce} rather than a flag.
+   *
+   * `E` 真正要做的事是**进入这一行的标题编辑**——与行菜单里那一枚「改标题」是同一
+   * 个手势，走到同一个编辑器。一个租约：读者每按一次 `E` 都要得到一次编辑进场，
+   * 于是 nonce 只会涨；某一行把请求接走之后不再重放（行自己用它见过的 nonce 记
+   * 账），面板也从不主动清它——清空的竞态与重置的竞态都不存在。
+   */
+  const [rename, setRename] = useState<{ readonly id: string; readonly nonce: number }>({ id: '', nonce: 0 })
+  /**
    * The palette's open state STARTS from the view record rather than from `false`.
    *
    * It is a `useState` INITIALISER, so it is read once and everything after that
@@ -723,6 +732,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
     picking,
     armed,
     picked: selection.ids.has(item.id),
+    /* E 走的是这一个租约：只有游标那一行接得到，接到的 nonce 就是请它进场的
+     * 申请编号。 */
+    renameNonce: rename.id === item.id && rename.nonce > 0 ? rename.nonce : undefined,
     /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
        rather than derived: the anchor is 「the last row this reader held with a
        plain press」, which is a fact about what they did, not a fact any row
@@ -762,7 +774,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
     onPatch: (patch: { readonly title: string }) => apply(applyItemPatch(items, item.id, patch, Date.now())),
     menuOpen: menuRow === item.id,
     asking: asking === item.id,
-    onToggle: () => setOpenRow(openRow === item.id ? undefined : item.id),
+    /* A SECOND PRESS ON THE SAME ROW IS 「收起来」，and it takes EVERYTHING with
+     * it: the sheet, the detail selection, and the keyboard cursor ring. If the
+     * ring stayed behind, the collapsed row would still wear a bold rim — a
+     * leftover with no gesture left to answer for. 收起来 = 恢复到没碰过的样子。
+     */
+    onToggle: () => {
+      if (openRow === item.id) {
+        setOpenRow(undefined)
+        if (selected === item.id) setSelected(undefined)
+        setCursor(current => (current === item.id ? undefined : current))
+        return
+      }
+      setOpenRow(item.id)
+    },
     onSelect: () => { setSelected(item.id); setCursor(item.id) },
     onAsk: () => askOne(item),
     receipt: receipt?.id === item.id ? receipt.words : undefined,
@@ -823,7 +848,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     moveNext: () => setCursor(current => stepCursor(current, 1)),
     movePrev: () => setCursor(current => stepCursor(current, -1)),
     pick: () => { if (cursor !== undefined) setSelection(current => togglePicked(current, cursor)) },
-    rename: () => { if (cursor !== undefined) setSelected(cursor) },
+    rename: () => { if (cursor !== undefined) setRename(current => ({ id: cursor, nonce: (current.id === cursor ? current.nonce : 0) + 1 })) },
     open: () => { if (cursor !== undefined) setSelected(cursor) },
     close: () => {
       if (paletteOpen) { openLayer(undefined); return }
@@ -857,7 +882,38 @@ export function ItemListPanel(props: ItemListPanelProps) {
   // closed something else instead. The keyboard flow is the only thing here that
   // runs outside a React event handler, so nothing re-renders it behind the
   // reader's back and nothing complained.
-  }), [apply, cursor, items, menuRow, now, openRow, paletteOpen, removeOne, runUndo, selected, undo])
+  }), [apply, cursor, items, menuRow, now, openRow, paletteOpen, removeOne, rename.nonce, runUndo, selected, undo])
+
+  /**
+   * A PRESS ON THE CARD'S OWN BLANK IS 「我不要这一条了」, and it empties the
+   * surface the way the reader assumes it does: the row collapses, the detail
+   * selection leaves, and the cursor ring (the bold rim a collapsed row used to
+   * keep wearing) goes with them.
+   *
+   * SCOPED TO THE LIST CARD, because the gesture means 「nothing here」 where the
+   * rows live. Clicks on the row itself, its menu and top panels are handled by
+   * their own controls; clicks on the other columns (rail, top bar) and on the
+   * overlays are those controls' business, not a dismissal. The listener runs on
+   * BUBBLE, after every row handler, so a press a row consumed never looks blank.
+   */
+  const dismissRef = useRef({ selected, openRow, cursor })
+  dismissRef.current = { selected, openRow, cursor }
+  useEffect(() => {
+    const onBlank = (event: MouseEvent): void => {
+      const target = event.target
+      if (!(target instanceof Element)) return
+      const card = target.closest('[data-dsh-tb-scroll]')
+      if (card === null) return
+      // 行、菜单、浮层与顶栏的弹出面板都是「有主」的地方：它们自己收自己。
+      if (target.closest('[data-status], [role="menu"], [class*="TopPanel"i], [class*="Palette"i], [class*="CreateDialog"i]') !== null) return
+      const now = dismissRef.current
+      if (now.openRow !== undefined) setOpenRow(undefined)
+      if (now.selected !== undefined) setSelected(undefined)
+      if (now.cursor !== undefined) setCursor(undefined)
+    }
+    document.addEventListener('click', onBlank)
+    return () => { document.removeEventListener('click', onBlank) }
+  }, [])
 
   /** The next cursor position, which CLAMPS rather than wraps. */
   function stepCursor(current: string | undefined, by: number): string | undefined {

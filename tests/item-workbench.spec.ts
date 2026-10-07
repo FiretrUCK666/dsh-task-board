@@ -2041,6 +2041,27 @@ describe('the keyboard flow is one table, and every key in it has something behi
     expect(claimsKey(plain), 'a bare `z` in a text field is claimed as undo').toBe(false)
   })
 
+  it('E enters the inline rename of the row under the cursor; the plain press opens the row instead', () => {
+    // W23, stated as BEHAVIOUR: the map said 「E 改标题」 for two releases while
+    // its handler body was `setSelected` — the same sentence as ↵. Now `E`
+    // delivers the rename lease to the cursor row, the row opens its inline
+    // editor with the caret in it, and ↵ remains the open gesture. A rename
+    // that is also an open is a key that answers two questions with one word.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      press(panel.surface, 'j')
+      press(panel.surface, 'e')
+      const editor = panel.surface.querySelector('[class*="itemRowTitleInput"]') as HTMLInputElement | null
+      expect(editor, 'E did not enter the row\'s title editor — the key still aliases ↵').not.toBeNull()
+      expect(document.activeElement, 'the rename editor did not take the caret when E was pressed').toBe(editor)
+      // And the other act stays its own: the plain press expands (opens),
+      // which is what the row does for ↵ — never the editor.
+      expect(panel.surface.querySelector('[data-open]'), 'E also opened the row, so the two keys still agree').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the digits set priorities in the order a reader already knows them', () => {
     // `!1` is the loudest thing this model can say, so `1` is the loudest here.
     // The table runs the OTHER way from `ITEM_PRIORITIES`, which is bottom-to-top,
@@ -2698,6 +2719,27 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
       click(row)
       expect(row.getAttribute('data-open'), 'the row did not collapse when pressed').toBeNull()
       expect(row.getAttribute('data-picked'), 'a collapsed row still reads as held').toBeNull()
+      expect(row.getAttribute('data-cursor'), 'a collapsed row still wears the cursor rim — 「收起来之后还挂着加粗的边」').toBeNull()
+      expect(panel.surface.querySelector('[data-cursor]'), 'a cursor rim survived a second press on its own row').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('pressing the card\'s own blank collapses the open row and takes the rim with it', () => {
+    // 点击空白 = 「我不要这一条了」。收的不只是纸面：选中、游标圈一起走。
+    // 圈留下的那条「加粗的边」就是读者投诉的原样。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const flow = panel.surface.querySelector('[data-dsh-tb-scroll]') as HTMLElement | null
+      expect(flow, 'the list card has no scroller boundary to test against').not.toBeNull()
+      const row = rowEls(panel.surface)[0]
+      click(row)
+      expect(row.getAttribute('data-open'), 'the row did not open, so the rest of this proves nothing').toBe('')
+      click(flow)
+      expect(row.getAttribute('data-open'), 'a blank press did not collapse the open row').toBeNull()
+      expect(row.getAttribute('data-cursor'), 'a blank press left the rim on the collapsed row').toBeNull()
+      expect(panel.surface.querySelector('[data-cursor]'), 'the rim survived on another row after a blank press').toBeNull()
     } finally {
       panel.dispose()
     }
