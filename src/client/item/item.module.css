@@ -3615,7 +3615,12 @@ textarea.itemInput {
   inline-size: 9px;
   block-size: 9px;
   border-radius: 999px;
-  background-color: var(--item-surface);
+  /* The bead is painted with the surface it sits ON — the open row's own fill —
+   * not with the page's canvas: a white punch on the accent wash read the bead
+   * as a foreign card glued to the row, and at the ring's corners the fill
+   * visibly poked past the ring itself. The row's own tone means the hole and
+   * the wash are ONE surface. */
+  background-color: var(--dsh-tb-open);
   border: 2px solid var(--item-ink-3);
 }
 

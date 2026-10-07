@@ -232,9 +232,17 @@
  * skin that genuinely wants another corner family has a supported door:
  * re-map `--dsh-tb-corner` below, the board's single switch. The root is in the
  * selector list so the token resolves there too; `*[class]` is what every
- * widget the board actually renders matches. */
+ * widget the board actually renders matches.
+ *
+ * `:not([class])` is ALSO in the selector list, and it is not a stylistic
+ * flourish: some of this surface's geometry carries NO class — the date axis's
+ * beads are a bare `<i>`, thrown frames are outlines — and a skin whose global
+ * sheet sets `corner-shape` on everything would land on exactly those, drawing
+ * rings as rounded squares with the fill poking out of the corners. A surface
+ * that declares a corner language protects every element that draws in it. */
 [data-dsh-taskboard-view],
 [data-dsh-taskboard-view] *[class],
+[data-dsh-taskboard-view] :not([class]),
 [data-dsh-taskboard-panel] {
   corner-shape: var(--dsh-tb-corner, round) !important;
 }
