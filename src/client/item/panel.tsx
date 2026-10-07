@@ -52,7 +52,7 @@ import {
    the agent's tool calls, so a field the model ruled derived cannot be written
    here either. `model.ts` keeps only what a browser can do and a document cannot
    — minting an id, and formatting a date. */
-import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch } from '../../core/item-transitions.ts'
+import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch, type ItemPromotionOverrides } from '../../core/item-transitions.ts'
 import { itemTitleOf } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
@@ -530,11 +530,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
     })()
   }, [apply, replica, itemsNow])
 
-  const promoteOne = useCallback((item: ItemRecord) => {
+  /** 把一条升级成看板卡片：写两份文档（先卡、后链接），顺序见 `planItemPromotion`。
+   *
+   * `over` 是「就地建卡」带进去的决定：选择器里那枚「新建卡片」给出名字，并明说
+   * 「再开一张」——已经被链着的那条跳过 alreadyLinked 判定，是它的调用自己声明
+   * 的，不是判定松了。回执编号记在这一条自己的行上，因为读者此刻就在看着它。 */
+  const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides) => {
     setMenuRow(undefined)
     const controller = face.controller
     if (controller === undefined) { setReceipt({ id: item.id, words: t('item.promote.noBoard') }); return }
-    const plan = planItemPromotion(item)
+    const plan = planItemPromotion(item, over)
     if (plan.kind === 'refused') {
       setReceipt({ id: item.id, words: plan.why === 'alreadyLinked'
         ? t('item.promote.already', { title: cards.find(card => card.id === plan.taskId)?.title ?? plan.taskId })
@@ -544,9 +549,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
     const at = Date.now()
     const task = controller.createTask({ ...plan.task, status: 'todo' })
     if (task === undefined) { setReceipt({ id: item.id, words: t('item.promote.refused') }); return }
-    apply(applyItemPatch(items, item.id, { taskId: task.id }, at))
+    /* BASE IS `itemsNow.current`, NOT THE CLOSURE'S `items`. The caller may have
+     * JUST captured the row this hangs (the new-sheet path calls capture first
+     * and then asks for its card), so the closure's array is one write behind —
+     * and a patch computed off the stale array erases the row the same tick
+     * created it. The mirror is updated in the same keystroke as `apply`, so it
+     * is the one base that is never behind. */
+    apply(applyItemPatch(itemsNow.current, item.id, { taskId: task.id }, at))
     setReceipt({ id: item.id, words: t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }) })
-  }, [apply, cards, face.controller, items])
+  }, [apply, cards, face.controller])
 
   /**
    * Apply one patch to every held row, through the SAME writer the row menu uses.
@@ -668,9 +679,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
        * 开区最后一节、行上），读者要先知道某个动作住在哪才能按它；而查出来还意味着这
        * 个组件知道外面有什么全局状态——两件都不是好事。
        *
-       * 「新建一张卡」此刻开的是命令面板而不是直接建卡：新建一张看板卡要选工作区、
-       * 要选会话、可能还要一套运行配置，而**这些决定不该由一个清单行替读者做**。
-       * 所以它把读者送到那个专门做这件事的面，而清单这一边不假装自己能做。 */
+       * 「新建一张卡」在原地完成：选择器把名字递进来，提升照它的计划走。名字由
+       * 读者在选择器里起，不替他决定；「再开一张」由这一枚按钮自己明说，所以已经
+       * 挂着卡的那条也能换到一张新卡去。原来它把读者送去命令面板——那是一块
+       * 搜索与筛选的面，连一张卡都造不出来，而按它的这个人恰恰最需要一张。 */
       now={now}
       onAsk={() => { if (item !== undefined) askOne(item) }}
       asking={item !== undefined && asking === item.id}
@@ -679,7 +691,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         const cardId = item?.taskId
         if (cardId !== undefined) void face.controller?.runTask(cardId, 'manual')
       }}
-      onNewCard={() => openLayer('palette')}
+      onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
          every other field takes. The pane computed the new order with the shared
@@ -1339,17 +1351,25 @@ export function ItemListPanel(props: ItemListPanelProps) {
           onCommands={commands => { paletteCommands.current = commands }}
         />
         {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
-            different layer that can be open with the box shut. */}
+            different layer that can be open with the box shut.
+
+            「新建卡片」的选择器在收下名字之后不再立刻动文档：卡与这条行话一起落，
+            所以它把名字交给「记下一条」，用**同一次提升**（同一句计划、同一次
+            写、同一份回执）把两者接上——按名字先造一张没内容的卡、再把带着
+            话的行挂上去，中间那一次取消就会留下一张名存实亡的空卡。 */}
         <ItemCreateDialog
           now={now}
           open={overlay === 'create'}
           onClose={() => openLayer(undefined)}
           cards={cards.map(card => ({ id: card.id, title: card.title }))}
-          onNewCard={() => openLayer('palette')}
-          onCreate={input => {
+          onCreate={(input, newCard) => {
             if (isBlankCapture(input)) return false
             const made = captureItemRecord(input, Date.now(), newItemId)
             apply([...items, made.item])
+            /* The promotion runs AFTER its own apply, on the SAME tick: its
+               patch base is the mirror, so the row this hangs was just
+               written into it and hangs on the card it named. */
+            if (newCard !== undefined && newCard !== '') promoteOne(made.item, { cardTitle: newCard })
             return true
           }}
         />

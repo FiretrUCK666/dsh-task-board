@@ -837,6 +837,8 @@ export declare const zh: {
     'item.promote.noTitle': string;
     'item.promote.noBoard': string;
     'item.promote.refused': string;
+    'item.cardName.label': string;
+    'item.cardName.empty': string;
     'item.archive.bar': string;
     'item.archive.confirm': string;
     'item.archive.keep': string;

@@ -40,10 +40,6 @@ const PRIORITIES: readonly ItemPriority[] = ['urgent', 'high', 'normal', 'low']
 export interface ItemCreateDialogProps {
   readonly open: boolean
   readonly onClose: () => void
-  /** The finished capture. `false` means it was refused; the words the reader typed
-   *  are still in the fields, because a dialog that throws away half-written work on
-   *  dismissal is a dialog nobody experiments in. */
-  readonly onCreate: (input: ItemCapture) => boolean
   /**
    * THE WRITING CLOCK, so `@明天` in the grammar resolves against a fixed now.
    *
@@ -54,10 +50,17 @@ export interface ItemCreateDialogProps {
   readonly now: number
   /** Cards the row may hang on, by id. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
-  /** The command palette, which is where 「新建一张卡」 goes: a card needs a
-   *  workspace, a session and maybe a run configuration, and **those three decisions
-   *  are not a checklist row's to make.** */
-  readonly onNewCard: () => void
+  /**
+   * ONE TRACK, TWO WRITES. The finished capture, and the second arg is 「挂到一张新卡」:
+   * the strip asked for a name and the reader gave one. It is handed to the SAVE,
+   * not acted on here — the card and the row are born in the same promotion
+   * (one plan, two writes, one receipt), so a sheet that was dismissed halfway
+   * never leaves a half-named empty card on the board. `false` means it was
+   * refused; the words the reader typed are still in the fields, because a
+   * dialog that throws away half-written work on dismissal is a dialog nobody
+   * experiments in.
+   */
+  readonly onCreate: (input: ItemCapture, newCard?: string) => boolean
 }
 
 /**
@@ -81,6 +84,21 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const [hardDueAt, setHardDueAt] = useState('')
   const [tags, setTags] = useState('')
   const [taskId, setTaskId] = useState('')
+  /**
+   * 「挂到一张新卡」：名字收在表单里，卡在记下时才建成。
+   *
+   * 在这里立刻建卡说起来更快，可表单是**正在写的那一句**——半路取消的表单不能
+   * 在看板上留一张名存实亡的空卡。名字先收下，提交那一下再用同一次提升把卡和
+   * 这一行一起落：计划、写、回执，都走的是面板上同一个提升入口。
+   */
+  const [pendingCard, setPendingCard] = useState<string | undefined>(undefined)
+  const [cardNaming, setCardNaming] = useState(false)
+  const [cardDraft, setCardDraft] = useState('')
+  const [cardHint, setCardHint] = useState(false)
+  const cardNameField = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (cardNaming) cardNameField.current?.focus()
+  }, [cardNaming])
   const [parsed, setParsed] = useState<ComposerParse | undefined>(undefined)
   const [words, setWords] = useState('')
   const sheet = useRef<HTMLDivElement | null>(null)
@@ -98,6 +116,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     if (!props.open) return
     setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('open')
     setStartsAfter(''); setDueAt(''); setHardDueAt(''); setTags(''); setTaskId(''); setWords('')
+    setPendingCard(undefined); setCardNaming(false); setCardDraft(''); setCardHint(false)
     setParsed(undefined)
     setTouched(new Set())
     titleField.current?.focus()
@@ -142,13 +161,15 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
       ...(startsAfter.trim() === '' ? {} : { startsAfter: at(startsAfter) }),
       ...(dueAt.trim() === '' ? {} : { dueAt: at(dueAt) }),
       ...(hardDueAt.trim() === '' ? {} : { hardDueAt: at(hardDueAt) }),
+      /* 选一张新卡与选一张已有的卡互斥：两个处理器各清对方的那一份，所以
+         `taskId` 这一份在这里就是全部——挂新卡的那一份由提升自己写。 */
       ...(taskId === '' ? {} : { taskId }),
     }
     // The refusal is decided by the SHARED emptiness rule and it says why, in
     // place: the reader typed a priority and no words, and the sheet must not answer
     // that with a row that has no name.
     if (isBlankCapture(input)) { setWords(t('item.create.blank')); return }
-    if (props.onCreate(input)) props.onClose()
+    if (props.onCreate(input, pendingCard)) props.onClose()
     else setWords(t('item.create.refused'))
   }
 
@@ -351,9 +372,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 <button
                   type="button"
                   className={css.itemOpt}
-                  data-on={taskId === '' ? '' : undefined}
-                  aria-pressed={taskId === ''}
-                  onClick={() => setTaskId('')}
+                  data-on={taskId === '' && pendingCard === undefined ? '' : undefined}
+                  aria-pressed={taskId === '' && pendingCard === undefined}
+                  onClick={() => { setTaskId(''); setPendingCard(undefined) }}
                 >
                   {t('item.field.noCard')}
                 </button>
@@ -362,16 +383,65 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     key={card.id}
                     type="button"
                     className={css.itemOpt}
-                    data-on={taskId === card.id ? '' : undefined}
-                    aria-pressed={taskId === card.id}
-                    onClick={() => setTaskId(card.id)}
+                    data-on={pendingCard === undefined && taskId === card.id ? '' : undefined}
+                    aria-pressed={pendingCard === undefined && taskId === card.id}
+                    onClick={() => { setTaskId(card.id); setPendingCard(undefined) }}
                   >
                     {card.title}
                   </button>
                 ))}
-                <button type="button" className={css.itemOpt} data-add="" onClick={props.onNewCard}>
-                  {t('item.field.newCard')}
-                </button>
+                {cardNaming ? (
+                  <input
+                    ref={cardNameField}
+                    className={css.itemOptNaming}
+                    size={13}
+                    value={cardDraft}
+                    placeholder={t('item.cardName.label')}
+                    aria-label={t('item.cardName.label')}
+                    data-dsh-tb-keys="Enter Escape"
+                    onChange={event => { setCardDraft(event.target.value); setCardHint(false) }}
+                    onKeyDown={event => {
+                      if (event.nativeEvent.isComposing) return
+                      if (event.key === 'Enter') {
+                        event.preventDefault()
+                        const name = cardDraft.trim()
+                        if (name === '') { setCardHint(true); return }
+                        setPendingCard(name)
+                        setTaskId('')
+                        setCardNaming(false)
+                      } else if (event.key === 'Escape') {
+                        event.preventDefault()
+                        event.stopPropagation()
+                        setCardNaming(false)
+                      }
+                    }}
+                    onBlur={() => setCardNaming(false)}
+                  />
+                ) : (
+                  <button
+                    type="button"
+                    className={css.itemOpt}
+                    data-add=""
+                    onClick={() => { setCardNaming(true); setCardDraft(pendingCard ?? '') }}
+                  >
+                    {t('item.field.newCard')}
+                  </button>
+                )}
+                {/* 这是一枚正在「等着记下」的卡：它还不在看板上，但这一条挂哪已经
+                    答完。字形与已选的卡同一档（data-on），因为对读者而言它已经是
+                    答案；名字进来的一下起名框收起，答案留在原地。 */}
+                {!cardNaming && pendingCard !== undefined && (
+                  <button
+                    type="button"
+                    className={css.itemOpt}
+                    data-on=""
+                    aria-pressed
+                    onClick={() => { setPendingCard(undefined); setCardNaming(true); setCardDraft(pendingCard) }}
+                  >
+                    {pendingCard}
+                  </button>
+                )}
+                {cardHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
               </div>
             </div>
           </div>

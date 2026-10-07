@@ -165,8 +165,6 @@ export type ItemKeyHandler = (arg: ItemPriorityChoice | undefined) => void;
 export type ItemKeyActions = Readonly<Record<ItemKeyAction, ItemKeyHandler>>;
 /** The event fields the flow reads. Narrower than `KeyboardEvent` on purpose. */
 export type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>;
-/** Whether a key event is TYPING — the one thing that suspends the flow. */
-export declare function isTypingTarget(target: EventTarget | null): boolean;
 /** Whether the platform's command modifier is held — ⌘ on macOS, Ctrl elsewhere. */
 export declare function isCommand(event: KeyEventLike): boolean;
 /**

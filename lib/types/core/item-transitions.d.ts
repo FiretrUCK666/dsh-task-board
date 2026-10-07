@@ -230,20 +230,31 @@ export type ItemPromotion = {
     readonly kind: 'refused';
     readonly why: 'noTitle';
 };
-/** The two words a caller may supply instead of the row's own. Both optional. */
+/** The words a caller may supply instead of the row's own. All three optional. */
 export interface ItemPromotionOverrides {
     readonly cardTitle?: string;
     readonly cardPrompt?: string;
+    /**
+     * 「这张我要的那张卡还不存在——给我再开一张」，说给计划的第 1 条判定听。
+     *
+     * 不挂卡的那一条按「变成卡片」被拒，是同一条判定在**拦一次失误**：重复提升会
+     * 让第二个名字指不定谁才是来处。而选择器里那枚「新建卡片」是**明知故犯**的一声
+     * 「换一张新的」——同一个词，两件事；不把这份明说递进来，已经在卡上的那条就永远
+     * 说不出口这一句。判定本身不动：拦住的本是没说这句话的调用。 */
+    readonly another?: boolean;
 }
 /**
  * Decide whether one row may become a board card, and say what that card says.
  *
  * FOUR JUDGMENTS, IN THIS ORDER, AND THE ORDER IS THE POINT:
  *
- *  1. **A row already on a card is not promoted again.** Re-promoting would
+ *  1. **A row already on a card is not promoted again — unless the caller said
+ *     `another`.** Re-promoting would
  *     make a SECOND card and leave the row pointing at whichever one was written
  *     last, so the note would appear to belong to two things and the first card
  *     would have lost its origin. This is the state, reported — not performed.
+ *     `another` is the caller's 「我知道，就是要一张新的」: a deliberate act and
+ *     not a repeated press, so the guard stands aside.
  *  2. **A card with no name is refused.** {@link itemTitleOf} has already
  *     borrowed the body's first line for an untitled row, so reaching this branch
  *     means the row has no words at all; a card built out of nothing is a thing

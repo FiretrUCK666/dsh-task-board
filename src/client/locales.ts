@@ -919,6 +919,11 @@ export const zh = {
   'item.promote.noBoard': '看板那边还没准备好。这一条还在清单里，没有丢。',
   'item.promote.refused': '看板没有收下这张新卡。这一条还在清单里，没有丢。',
 
+  // 卡片的就地起名：选择器把「新建卡片」变成一根输入框，两个字都住在这一步。
+  // 一个是标签（它叫什么），一个是空名被记下时那一句话（只有它是占位，名字是内容）。
+  'item.cardName.label': '新卡的名字',
+  'item.cardName.empty': '先给这张卡起一个名字。',
+
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
   // 抽屉自带一张条形栏：一句话说清计时，选中若干行之后，栏换成一句带后果的
@@ -1836,6 +1841,11 @@ export const en: Record<keyof typeof zh, string> = {
   'item.promote.noTitle': 'No title and no body — the card would be a thing with no name. Write it a sentence first.',
   'item.promote.noBoard': 'The board is not ready yet. The row is still here; nothing was lost.',
   'item.promote.refused': 'The board did not take the new card. The row is still here; nothing was lost.',
+
+  // Naming the new card in place: the picker turns 「新建卡片」 into a field, and
+  // both words live at that step.
+  'item.cardName.label': 'Name of the new card',
+  'item.cardName.empty': 'Give the card a name first.',
 
   // The archive. Not a tab on the rail: a page the reader arrives at. The
   // thirty-day window is stated rather than implied, because a restore button

@@ -2,10 +2,6 @@ import type { ItemCapture } from '../../core/item-transitions.ts';
 export interface ItemCreateDialogProps {
     readonly open: boolean;
     readonly onClose: () => void;
-    /** The finished capture. `false` means it was refused; the words the reader typed
-     *  are still in the fields, because a dialog that throws away half-written work on
-     *  dismissal is a dialog nobody experiments in. */
-    readonly onCreate: (input: ItemCapture) => boolean;
     /**
      * THE WRITING CLOCK, so `@明天` in the grammar resolves against a fixed now.
      *
@@ -19,10 +15,17 @@ export interface ItemCreateDialogProps {
         readonly id: string;
         readonly title: string;
     }[];
-    /** The command palette, which is where 「新建一张卡」 goes: a card needs a
-     *  workspace, a session and maybe a run configuration, and **those three decisions
-     *  are not a checklist row's to make.** */
-    readonly onNewCard: () => void;
+    /**
+     * ONE TRACK, TWO WRITES. The finished capture, and the second arg is 「挂到一张新卡」:
+     * the strip asked for a name and the reader gave one. It is handed to the SAVE,
+     * not acted on here — the card and the row are born in the same promotion
+     * (one plan, two writes, one receipt), so a sheet that was dismissed halfway
+     * never leaves a half-named empty card on the board. `false` means it was
+     * refused; the words the reader typed are still in the fields, because a
+     * dialog that throws away half-written work on dismissal is a dialog nobody
+     * experiments in.
+     */
+    readonly onCreate: (input: ItemCapture, newCard?: string) => boolean;
 }
 /**
  * The sheet.

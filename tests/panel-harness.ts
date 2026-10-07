@@ -42,7 +42,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
-import { createTask } from '../src/core/tasks.ts'
+import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
 import { DEFAULT_VIEW_PREFS, ITEM_OVERLAYS, VIEW_PREFS_KEY, type ItemOverlay } from '../src/client/item/view-prefs.ts'
 import type { ItemListFace } from '../src/client/item/register.tsx'
@@ -964,12 +964,18 @@ export interface MountedPanel {
   dispose(): void
 }
 
-/** A fake board face that records what the panel asked of it. */
+/** A fake board face that records what the panel asked of it.
+ *
+ * Tasks minted through `createTask`/`createBoundTask` join the snapshot, for the
+ * SAME reason the real controller's would: a picker that just made a card shows
+ * the card it made, and a fake whose snapshot cannot see its own writes is a
+ * fake that cannot answer that question. */
 export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }]) {
+  const minted: TaskRecord[] = []
   return {
-    getSnapshot: () => ({ tasks: tasks.map(task => ({ ...task, description: task.description ?? '' })) }),
+    getSnapshot: () => ({ tasks: [...tasks.map(task => ({ ...task, description: task.description ?? '' })), ...minted] }),
     liveStateOf: () => 'idle',
-    ...boundRecorder(calls),
+    ...boundRecorder(calls, minted),
   }
 }
 
@@ -998,7 +1004,7 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
  * So the two constructors mint a real record with the real core constructor, and
  * only the genuinely boolean methods answer `true`.
  */
-function boundRecorder(calls: string[]): Record<string, (...args: unknown[]) => unknown> {
+function boundRecorder(calls: string[], minted: TaskRecord[]): Record<string, (...args: unknown[]) => unknown> {
   const mutators = [
     'updateTask', 'deleteTask', 'moveTask', 'runTask',
     'openTask', 'closeTask', 'addComment', 'setSchedule', 'ackTask', 'duplicateTask',
@@ -1007,12 +1013,15 @@ function boundRecorder(calls: string[]): Record<string, (...args: unknown[]) => 
   for (const name of mutators) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); return true }
   // The same entry point the real controller uses, with a fixed clock and id, so
   // the record this hands back is the record the product would have written —
-  // including the fields the caller is entitled to read.
+  // including the fields the caller is entitled to read. The minted record also
+  // joins the snapshot, so the face reads like one that persisted it.
   for (const name of ['createTask', 'createBoundTask']) {
     out[name] = (...args: unknown[]) => {
       calls.push(`${name}(${args.length})`)
       const input = (args[0] ?? {}) as Parameters<typeof createTask>[0]
-      return createTask(input, 1_700_000_000_000, 'task-minted')
+      const task = createTask(input, 1_700_000_000_000, 'task-minted')
+      minted.push(task)
+      return task
     }
   }
   return out

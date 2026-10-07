@@ -44,9 +44,14 @@ export interface ItemDetailProps {
     readonly onAsk: () => void;
     readonly asking: boolean;
     /**
-     * MAKE IT A BOARD CARD, and OPEN A NEW ONE.
+     * MAKE IT A BOARD CARD, NAMED HERE, and hang this row on it.
      *
-     * Both live in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
+     * The picker hands the NAME over and no more: whether the row was already on a
+     * card and what the new card carries (title, description, prompt) is
+     * `planItemPromotion`'s to answer, and the pane knowing it would be a second
+     * verdict table. One string in, the panel does the two writes.
+     *
+     * It lives in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
      * exactly the row that needs a card to be made — and sending the reader to the
      * board to create one and back is the most expensive way to answer 「它挂在哪」.
      */
@@ -55,7 +60,7 @@ export interface ItemDetailProps {
      *  binds, handed in rather than reached for, so this component never learns how a
      *  run is started and there is no second spelling of the decision here. */
     readonly onStart: () => void;
-    readonly onNewCard: () => void;
+    readonly onNewCard: (title: string) => void;
     /** The board cards a row may hang off, already titled. */
     readonly cards: readonly {
         readonly id: string;

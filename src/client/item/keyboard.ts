@@ -201,13 +201,33 @@ export type ItemKeyActions = Readonly<Record<ItemKeyAction, ItemKeyHandler>>
 /** The event fields the flow reads. Narrower than `KeyboardEvent` on purpose. */
 export type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>
 
-/** Whether a key event is TYPING — the one thing that suspends the flow. */
-export function isTypingTarget(target: EventTarget | null): boolean {
+/** Whether a KEY EVENT is TYPING — the one thing that suspends the flow. */
+function isTypingTarget(target: EventTarget | null): boolean {
   const element = target as (HTMLElement & { isContentEditable?: boolean }) | null
   if (element === null || element === undefined) return false
   if (element.isContentEditable === true) return true
   const tag = element.tagName
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+/** The keys ONE FIELD has claimed, said on the field itself.
+ *
+ * A field that answers keys itself — an in-place name that takes `Enter` to
+ * confirm and `Esc` to dismiss — has to say so where the flow reads, because the
+ * flow is a pure function over the event and can see nothing of a pane's state.
+ * The value is the bare keys the field takes, space-separated: those keys are
+ * the FIELD's there, and the flow stands aside. A `⌘` chord on the same key is
+ * still the surface's, because a chord is a deliberate gesture, not typing.
+ *
+ * The attribute marks this panel's own subtree — the same rule every other
+ * `data-` mark in this plugin follows. */
+const EMPTY_KEYS: ReadonlySet<string> = new Set()
+
+function keysClaimedByTarget(target: EventTarget | null): ReadonlySet<string> {
+  const element = target as (Element | null) | undefined
+  const said = element?.getAttribute('data-dsh-tb-keys') ?? undefined
+  if (element === null || element === undefined || said === undefined || said.trim() === '') return EMPTY_KEYS
+  return new Set(said.toLowerCase().split(/\s+/).filter(one => one !== ''))
 }
 
 /** Whether the platform's command modifier is held — ⌘ on macOS, Ctrl elsewhere. */
@@ -227,6 +247,9 @@ function usable(binding: KeyBinding, event: KeyEventLike): boolean {
   if (binding.key !== event.key.toLowerCase()) return false
   if ((binding.cmd === true) !== isCommand(event)) return false
   if ((binding.shift === true) !== (event.shiftKey === true)) return false
+  /* A FIELD'S OWN CLAIM BEATS THE TABLE, for the bare key it named: the flow
+     stands aside on exactly those keys, wherever the field sits. */
+  if (!isCommand(event) && keysClaimedByTarget(event.target).has(binding.key)) return false
   if (isTypingTarget(event.target)) {
     if (binding.notWhileTyping === true) return false
     if (binding.cmd !== true && binding.typing !== true) return false

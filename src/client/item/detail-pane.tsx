@@ -17,7 +17,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
-import { ITEM_PRIORITIES, itemPriorityRankOf } from '../../core/item.ts'
+import { ITEM_PRIORITIES, itemPriorityRankOf, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
@@ -82,9 +82,14 @@ export interface ItemDetailProps {
   readonly onAsk: () => void
   readonly asking: boolean
   /**
-   * MAKE IT A BOARD CARD, and OPEN A NEW ONE.
+   * MAKE IT A BOARD CARD, NAMED HERE, and hang this row on it.
    *
-   * Both live in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
+   * The picker hands the NAME over and no more: whether the row was already on a
+   * card and what the new card carries (title, description, prompt) is
+   * `planItemPromotion`'s to answer, and the pane knowing it would be a second
+   * verdict table. One string in, the panel does the two writes.
+   *
+   * It lives in the same row as 「挂到哪张卡」 because a row that hangs off nothing is
    * exactly the row that needs a card to be made — and sending the reader to the
    * board to create one and back is the most expensive way to answer 「它挂在哪」.
    */
@@ -93,7 +98,7 @@ export interface ItemDetailProps {
    *  binds, handed in rather than reached for, so this component never learns how a
    *  run is started and there is no second spelling of the decision here. */
   readonly onStart: () => void
-  readonly onNewCard: () => void
+  readonly onNewCard: (title: string) => void
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
   /**
@@ -185,6 +190,41 @@ export function ItemDetail(props: ItemDetailProps) {
   }, [notesOpen])
   /** 新标签在右列就地加：回车就上，而上完就把框清空，因为读者多半还要写下一个。 */
   const [draftTag, setDraftTag] = useState('')
+  /**
+   * 「新建卡片」就变成一根起名的输入框，不再是通往别处的门。
+   *
+   * 预填**这一条自己的名字**（借用的规则与提升计划同一处），因为挂不上的那条
+   * 就是名字该长出来的那一条；Esc 与点开别处都收回，不留一个半字。确认只把
+   * 名字交给面板——卡怎么建、文案跟不跟过去，都是 `planItemPromotion` 的
+   * 判定，这一栏不写第二份。
+   */
+  const [cardNaming, setCardNaming] = useState(false)
+  const [cardName, setCardName] = useState('')
+  const [cardNameHint, setCardNameHint] = useState(false)
+  const cardNameField = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (cardNaming) cardNameField.current?.focus()
+  }, [cardNaming])
+  // 行一换，正在写的名字就 belonging到另一条去了——起名是针对某一条的手势。
+  useEffect(() => {
+    setCardNaming(false)
+    setCardNameHint(false)
+  }, [item.id])
+  const openCardNaming = (): void => {
+    setCardName(itemTitleOf(item))
+    setCardNameHint(false)
+    setCardNaming(true)
+  }
+  const shutCardNaming = (): void => {
+    setCardNaming(false)
+    setCardNameHint(false)
+  }
+  const confirmCardNaming = (): void => {
+    const name = cardName.trim()
+    if (name === '') { setCardNameHint(true); return }
+    props.onNewCard(name)
+    shutCardNaming()
+  }
   return (
     <div className={css.itemOpen}>
       <div className={css.itemOpenMain}>
@@ -365,8 +405,8 @@ export function ItemDetail(props: ItemDetailProps) {
           </ol>
 
           {/* 挂到哪张卡。**「不挂」是一种正当状态**，所以它是一枚按钮而不是一个空框；
-              而「新开一张」也在同一排——挂不上的那一条正是最需要新卡的那一条，把它逼到
-              看板上去另开一次，是这个界面最蠢的一种做法。 */}
+              而「新开一张」也在同一排——挂不上的那一条正是最需要新卡的那一条。按下它
+              只是**就地起一个名字**：回车把卡建成并挂上，Esc 与点开别处都收回。 */}
           <div className={css.itemOptRow}>
             <p className={css.itemOptName}>{t('item.field.taskId')}</p>
             <div className={css.itemOpts}>
@@ -391,9 +431,38 @@ export function ItemDetail(props: ItemDetailProps) {
                   {card.title}
                 </button>
               ))}
-              <button type="button" className={css.itemOpt} data-add="" onClick={props.onNewCard}>
-                {t('item.field.newCard')}
-              </button>
+              {cardNaming ? (
+                <input
+                  ref={cardNameField}
+                  className={css.itemOptNaming}
+                  size={13}
+                  value={cardName}
+                  placeholder={t('item.cardName.label')}
+                  aria-label={t('item.cardName.label')}
+                  data-dsh-tb-keys="Enter Escape"
+                  onChange={event => { setCardName(event.target.value); setCardNameHint(false) }}
+                  onKeyDown={event => {
+                    if (event.nativeEvent.isComposing) return
+                    if (event.key === 'Enter') {
+                      event.preventDefault()
+                      confirmCardNaming()
+                    } else if (event.key === 'Escape') {
+                      /* Stopping the escape keeps it a verdict about the FIELD
+                         alone: the key map's own Esc collapses the whole row —
+                         the one answer this field must not borrow. */
+                      event.preventDefault()
+                      event.stopPropagation()
+                      shutCardNaming()
+                    }
+                  }}
+                  onBlur={shutCardNaming}
+                />
+              ) : (
+                <button type="button" className={css.itemOpt} data-add="" onClick={openCardNaming}>
+                  {t('item.field.newCard')}
+                </button>
+              )}
+              {cardNameHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
             </div>
           </div>
         </div>

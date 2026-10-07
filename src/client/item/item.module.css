@@ -3440,6 +3440,7 @@ textarea.itemInput {
 .itemSearch:hover,
 .itemInput:hover,
 .itemTagAdd:hover,
+.itemOptNaming:hover,
 .itemCreateDialogTitleField:hover,
 .itemCreateDialogBody:hover,
 .itemCreateDialogDateField:hover,
@@ -3456,6 +3457,34 @@ textarea.itemInput {
 .itemOpt[data-add] {
   color: var(--item-ink-3);
   border-color: var(--item-hair-strong);
+}
+
+/* 「新建卡片」按下之后不是「去哪」，是**就地起名**：芯片换成一枚同高的输入框。
+ * 形状沿用这一族里输入的档位——同款内衬与描边、焦点落在 focus 令牌上，字号与
+ * 芯片同号。读者换手的地方，形状不许跟着换手。 */
+.itemOptNaming {
+  padding: 3px 9px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--item-ink-2);
+  background: none;
+  border: var(--item-hair-strong);
+  border-radius: var(--item-radius-pill);
+  outline: none;
+}
+
+.itemOptNaming:focus {
+  border-color: var(--dsh-tb-focus-color);
+}
+
+/* 起名被清空后按了回车，那句话就住在本行里：独占一整行，跟在芯片的下一茬。
+ * 它在讲当前的输入（「还没有名字」），不是在讲这一条，所以不进列表的读法线。 */
+.itemOptHint {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--item-ink-3);
 }
 
 /* 「加一个」是一个**会长的**输入框，不是一个定宽的口子。
@@ -4092,7 +4121,8 @@ textarea.itemInput {
   .itemFilterButton,
   .itemSortButton,
   .itemHideDone,
-  .itemPill {
+  .itemPill,
+  .itemOpt {
     position: relative;
   }
 
@@ -4102,7 +4132,8 @@ textarea.itemInput {
   .itemFilterButton::after,
   .itemSortButton::after,
   .itemHideDone::after,
-  .itemPill::after {
+  .itemPill::after,
+  .itemOpt::after {
     content: '';
     position: absolute;
     inset-block: -8px;

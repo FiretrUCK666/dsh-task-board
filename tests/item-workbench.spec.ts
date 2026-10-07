@@ -75,7 +75,9 @@ import {
 // `type` keyword as a bare import name, so it is renamed at the boundary rather
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
 // works.
-import { type as typeInto, click, coreSurfaceSource, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, press, readSource, renderPanel } from './panel-harness.ts'
+import { writeFileSync, mkdirSync } from 'node:fs'
+import { dirname } from 'node:path'
+import { type as typeInto, alignClassNames, click, coreSurfaceSource, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel } from './panel-harness.ts'
 import { pickThrough } from '../src/client/item/selection.ts'
 import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
 import { whyLabelOf } from '../src/client/item/why-label.ts'
@@ -2041,6 +2043,33 @@ describe('the keyboard flow is one table, and every key in it has something behi
     expect(claimsKey(plain), 'a bare `z` in a text field is claimed as undo').toBe(false)
   })
 
+  it('a field that claims its keys keeps them, and the flow stands aside on exactly those', () => {
+    // 卡片的就地起名框：`Enter` 确认、`Esc` 收起，都是这根输入框自己的手势。
+    // 流的表不知道窗格里的状态，所以它按表把 `Esc` 收作了「关上」——起名的
+    // Esc 连着整行详情一起没了。给字段一条「我接这些键」的明说，是让「某根
+    // 输入框自己应答手势」这一类需求在流的一处落地，而不是靠每一处拦。
+    const claimed = document.createElement('input')
+    claimed.setAttribute('data-dsh-tb-keys', 'Enter Escape')
+    const state = { focusedId: 'r-1', somethingOpen: true, paletteOpen: false }
+    const onField = (key: string, over: Record<string, unknown> = {}) =>
+      ({ key, metaKey: false, ctrlKey: false, shiftKey: false, target: claimed, ...over })
+    expect(claimsKey(onField('Escape')), 'a named Escape was still taken by the flow — the naming field lost its own gesture').toBe(false)
+    expect(claimsKey(onField('Enter')), 'a named Enter was still taken by the flow').toBe(false)
+    // The claim is about the BARE key: a deliberate chord stays the surface's.
+    expect(claimsKey(onField('k', { metaKey: true })), 'a claimed field lost ⌘K as well').toBe(true)
+    // And the claim never leaves the field: the same key on the page is still the flow's.
+    expect(claimsKey({ key: 'Escape', metaKey: false, ctrlKey: false, shiftKey: false, target: document.createElement('div') }),
+      'the field\'s claim emptied out of the field').toBe(true)
+    // A value that says nothing claims nothing.
+    const empty = document.createElement('input')
+    empty.setAttribute('data-dsh-tb-keys', '   ')
+    expect(claimsKey({ key: 'Escape', metaKey: false, ctrlKey: false, shiftKey: false, target: empty }), 'an empty claim still swallowed the key').toBe(true)
+    // And dispatch runs nothing for a claimed key — no inert close hides behind it.
+    const ran: string[] = []
+    expect(dispatchKey(onField('Escape'), state, recordOfActions(name => { ran.push(name) })), 'a claimed key was dispatched anyway').toBe(false)
+    expect(ran, 'a claimed key ran something').toEqual([])
+  })
+
   it('E enters the inline rename of the row under the cursor; the plain press opens the row instead', () => {
     // W23, stated as BEHAVIOUR: the map said 「E 改标题」 for two releases while
     // its handler body was `setSelected` — the same sentence as ↵. Now `E`
@@ -2466,13 +2495,7 @@ describe('the checklist is a list a reader can change, not a list they can only 
       ],
     })
   }
-  /** Open one row's detail so the editor is on screen, whatever band we are on. */
-  function openDetail(panel: ReturnType<typeof mountPanel>): void {
-    openRowMenu(panel.surface)
-    const entry = findMenuEntry(panel.surface, '展开详情')
-    expect(entry, 'the row menu offers no way to expand the row').not.toBeNull()
-    click(entry)
-  }
+  /* 「打开详情」这一步的公共入口在文件尾部的 `openRowDetail`，两个 suite 同一步。 */
   /** The step texts currently in the editor, in the order they are drawn. */
   // 读每一行里的那个 `span`，而不是读 `data-done`：那个属性只在**做完**的时候才
   // 出现（`data-done={step.done ? '' : undefined}`），所以按它找会漏掉还没做的步，
@@ -2517,7 +2540,7 @@ describe('the checklist is a list a reader can change, not a list they can only 
   it('a step can be added, taken off, and moved — and the document is what changes', () => {
     const panel = mountPanel(twoSteps(), 'list', 'wide')
     try {
-      openDetail(panel)
+      openRowDetail(panel)
       // A HUNDRED STEPS IS A HUNDRED STEPS OF WORK AND NEVER A HUNDRED ROWS OF
       // SCREEN. The board shows the NEXT step and a window of the waiting ones, so
       // what is on screen at the start is one undone step and the row's progress —
@@ -3061,5 +3084,275 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     // 两个代码，两个句子。合成一个「删除失败」就是让读者去查一个他无从查的按钮。
     expect(whyLabelOf('invalid_argument').words, 'a wrong address is reported as a host that cannot be reached').not.toBe(whyLabelOf('hostUnavailable').words)
     expect(whyLabelOf('hostUnavailable').raw).not.toBe(whyLabelOf('invalid_argument').raw)
+  })
+})
+
+/**
+ * The naming field once the picker offers one, named by its own label.
+ * `?? null` because `find` answers undefined, and the cases below ask null.
+ */
+function namingField(root: ParentNode): HTMLInputElement | null {
+  return [...root.querySelectorAll('input')]
+    .find(node => (node.getAttribute('aria-label') ?? '').includes('新卡的名字')) as HTMLInputElement | null ?? null
+}
+
+/** The chip that asks for a new card, named by its text rather than its class. */
+function newCardChip(root: ParentNode): HTMLButtonElement | null {
+  for (const chip of root.querySelectorAll('button')) {
+    if ((chip.textContent ?? '').trim() === '新建卡片') return chip as HTMLButtonElement
+  }
+  return null
+}
+
+/** Open one row's detail, whatever band — the same steps the checklist suite uses. */
+function openRowDetail(panel: ReturnType<typeof mountPanel>): void {
+  openRowMenu(panel.surface)
+  const entry = findMenuEntry(panel.surface, '展开详情')
+  if (entry === null) throw new Error('the row menu offers no way to expand the row')
+  click(entry)
+}
+
+/** Serialise the LIVE mounted panel into a standalone page `shot-panel.mjs` can
+ *  capture — the DOM after the press that put the state on screen, the sheet on
+ *  disk as the stylesheet, and the value properties written back into attributes
+ *  so a controlled field says what the reader would have seen. */
+function writeMountedPage(panel: ReturnType<typeof mountPanel>, target: string): void {
+  for (const node of panel.surface.querySelectorAll('input, textarea')) {
+    const field = node as HTMLInputElement | HTMLTextAreaElement
+    if (field.getAttribute('value') !== field.value) field.setAttribute('value', field.value)
+  }
+  const document_ = [
+    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1">',
+    '<title>task list panel (mounted)</title>',
+    '<style>', hostTokenCss(), '</style>',
+    '<style>', panelCss(), '</style>',
+    '<style>',
+    'html,body{margin:0;block-size:100%;}',
+    'body{display:flex;flex-direction:column;overflow:hidden;}',
+    '</style></head><body>',
+    panel.host.outerHTML,
+    '</body></html>',
+  ].join('\n')
+  /* The mounted DOM carries the renderer's SCOPED class names, the sheet on
+     disk the friendly ones — the same split the static artifact reconciles
+     before writing. Without it the capture renders completely unstyled, which
+     reads as a CSS failure and is nothing of the kind. */
+  const aligned = alignClassNames(document_, panelCss())
+  mkdirSync(dirname(target), { recursive: true })
+  writeFileSync(target, aligned.html, 'utf8')
+}
+
+describe('「新建卡片」 names the card in place, where the picker stands', () => {
+  it('pressing it turns the chip into the naming field with the row\'s own words in it', () => {
+    // 预填是「借来的标题」：挂不上的那条就是名字该长出来的那条。空场起步是
+    // 让读者从零开始给一条**已经有话**的行再讲一遍同一句话。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const chip = newCardChip(panel.surface)
+      if (chip === null) throw new Error('the card picker does not offer a way to make a card')
+      click(chip)
+      const field = namingField(panel.surface)
+      expect(field, 'pressing the chip turned nothing into a naming field').not.toBeNull()
+      expect(field?.value, 'the field does not carry the row\'s own words to start from').toBe('一条普通的行')
+      panel.settle()
+      expect(panel.calls, 'opening the field itself touched the board').toEqual([])
+      expect(panel.writes.length, 'opening the field itself wrote to the list').toBe(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('Enter with a name makes the card on the board and hangs this row on it', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(newCardChip(panel.surface))
+      const field = namingField(panel.surface)
+      if (field === null) throw new Error('the naming field never appeared')
+      typeInto(field, '画廊随访')
+      press(field, 'Enter')
+      expect(panel.calls, 'the press never asked the board for a card').toContain('createTask(1)')
+      expect(panel.lastWrite()[0]?.taskId, 'the row was never hung on the card that was made').toBe('task-minted')
+      // THE SCREEN ANSWERS TOO: the card the press minted is a chip in the same
+      // strip, and it is the one reading as chosen.
+      panel.settle()
+      const chosen = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '画廊随访')
+      expect(chosen, 'the card the press made is not offered in the picker at all').not.toBeUndefined()
+      expect(chosen?.getAttribute('data-on'), 'a picked card that does not read as picked is a strip that lies').not.toBeNull()
+      // And the naming field is gone: the strip is back to chips only.
+      expect(namingField(panel.surface), 'the field outlived its own answer').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('a cleared name stays in the field, says what is missing, and writes nothing', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(newCardChip(panel.surface))
+      const field = namingField(panel.surface)
+      if (field === null) throw new Error('the naming field never appeared')
+      typeInto(field, '')
+      press(field, 'Enter')
+      panel.settle()
+      expect(namingField(panel.surface), 'an empty name closed the field — a silent refusal is a press that looks broken').not.toBeNull()
+      expect(panel.surface.textContent ?? '', 'nothing said why the press did nothing').toContain('先给这张卡起一个名字')
+      expect(panel.calls, 'an empty name still reached the board').toEqual([])
+      expect(panel.writes.length, 'an empty name still wrote to the list').toBe(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('Escape closes the field and writes nothing', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(newCardChip(panel.surface))
+      const field = namingField(panel.surface)
+      if (field === null) throw new Error('the naming field never appeared')
+      typeInto(field, '画廊随访')
+      press(field, 'Escape')
+      panel.settle()
+      expect(namingField(panel.surface), 'Escape left the field open').toBeNull()
+      expect(newCardChip(panel.surface), 'the chip never came back').not.toBeNull()
+      expect(panel.calls, 'Escape still reached the board').toEqual([])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('a row that is already on a card can be re-pointed at a new card', () => {
+    // 里 alreadyLinked 判定拦的是「重复按提升」；选择器这一下是明说的「换一张新的」，
+    // 所以它必须能落地——否则挂错了卡的那条只能先不挂再建一次。
+    const panel = mountPanel(oneRow({ taskId: 'task-1' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(newCardChip(panel.surface))
+      const field = namingField(panel.surface)
+      if (field === null) throw new Error('the naming field never appeared')
+      typeInto(field, '第二版的画廊')
+      press(field, 'Enter')
+      expect(panel.calls, 'a deliberate card was refused like an accidental one').toContain('createTask(1)')
+      expect(panel.lastWrite()[0]?.taskId, 'the row never moved to the card it named').toBe('task-minted')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the sheet names a new card in its own strip, and saving makes the card and links the row at once', () => {
+    // 一张还没存在的卡不能在一个半路取消的表单里先落子：名字先收在表单里，
+    // 「存下」这一下用同一次提升把卡和行一起带上——看板上不留名存实亡的空卡。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      // 打开表单：顶栏那一枚「＋新建一条」。
+      const open = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('新建一条'))
+      click(open)
+      // 先把这一行写成一句有内容的话——一张只有名字的行不会被存下来。
+      const titleField = [...panel.surface.querySelectorAll('input')]
+        .find(node => node.getAttribute('aria-label') === '标题') as HTMLInputElement | null
+      if (titleField === null) throw new Error('the sheet has no field for the row title')
+      typeInto(titleField, '换一盆花')
+      click(newCardChip(panel.surface))
+      const field = namingField(panel.surface)
+      if (field === null) throw new Error('the sheet offers no naming field for the new card')
+      typeInto(field, '画廊改造')
+      press(field, 'Enter')
+      panel.settle()
+      expect(namingField(panel.surface), 'the field never closed after the name was taken').toBeNull()
+      const chosen = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '画廊改造')
+      // 名字收下之后答案留在原地：一枚选中的卡芯片。
+      expect(chosen?.getAttribute('data-on'), 'the name was taken but the answer did not stay picked').not.toBeNull()
+      expect(panel.calls, 'taking the name itself touched the board — the card belongs to the save').toEqual([])
+      // 存下这一条。
+      const save = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '存下这一条')
+      if (save === undefined) throw new Error('the sheet carries no button to save')
+      click(save)
+      expect(panel.calls, 'the save never asked the board for the card').toContain('createTask(1)')
+      const last = panel.lastWrite()
+      expect(last.length, 'the saved row is not in the document').toBe(2)
+      expect(last[1]?.title, 'the row the reader wrote did not arrive').toBe('换一盆花')
+      expect(last[1]?.taskId, 'the card and the row were not born linked').toBe('task-minted')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('the mounted-page artifact, for the states a static render cannot reach', () => {
+  /**
+   * THE STATES THAT ONLY EXIST AFTER A PRESS.
+   *
+   * The static artifact (`writeRenderArtifact`) photographs markup produced by
+   * `renderToStaticMarkup` — a real render of the real component, and one with
+   * no event handlers, so a React-local state like an opened naming field can
+   * never appear in it. A state whose SOURCE is a press is photographed by
+   * MOUNTING the real panel under jsdom, making the press, and serialising the
+   * live DOM afterwards: the DOM is the product's, the stylesheet is the
+   * product's, and only the layout is left to the browser that looks at it.
+   *
+   * Writing happens ONLY when `DSH_PANEL_HTML` names a path, so the suite stays
+   * a suite: the same env the static artifact reads, one name more:
+   * `DSH_PANEL_MOUNT` — `card-naming` puts the card picker's naming field on
+   * screen, prefilled with the row's own words. `DSH_PANEL_BAND` picks the band
+   * as it does for the static path.
+   */
+  it('writes one when DSH_PANEL_HTML names a path', () => {
+    const target = process.env.DSH_PANEL_HTML
+    if (target === undefined || target === '') return
+    const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
+    const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
+    if (state !== 'card-naming' && state !== 'card-pending') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    /* The pending pick only exists AFTER the sheet's naming field took a name:
+       open the sheet by the door the reader uses (the ＋ button), name, confirm. */
+    const openTheSheet = (panel: ReturnType<typeof mountPanel>): void => {
+      const open = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('新建一条'))
+      if (open === undefined) throw new Error('the top bar carries no way to open the sheet')
+      click(open)
+    }
+
+    if (state === 'card-pending') {
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        openTheSheet(panel)
+        click(newCardChip(panel.surface))
+        const field = namingField(panel.surface)
+        if (field === null) throw new Error('the sheet offers no naming field for the new card')
+        typeInto(field, '画廊改造')
+        press(field, 'Enter')
+        panel.settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+    try {
+      openRowMenu(panel.surface)
+      const entry = findMenuEntry(panel.surface, '展开详情')
+      if (entry === null) throw new Error('the row menu offers no way to expand the row')
+      click(entry)
+      const chip = newCardChip(panel.surface)
+      if (chip === null) throw new Error('the card picker does not offer the naming chip')
+      click(chip)
+      if (namingField(panel.surface) === null) throw new Error('the naming field never opened')
+      panel.settle()
+      writeMountedPage(panel, target)
+    } finally {
+      panel.dispose()
+    }
   })
 })

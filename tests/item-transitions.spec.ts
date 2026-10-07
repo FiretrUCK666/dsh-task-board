@@ -32,6 +32,7 @@ import {
   isBlankCapture,
   isItemListValue,
   mintStepId,
+  planItemPromotion,
   readItemStepList,
   removeItemRecord,
   type ItemCapture,
@@ -286,5 +287,48 @@ describe('the module is pure, because a function that reads the clock is unteste
     // demonstrated: the same input twice is the same output, down to the ids.
     const input: ItemCapture = { title: 't', body: '', notes: '', origin: 'ai', steps: [{ text: 'a', done: false }] }
     expect(captureItemRecord(input, T0, () => 'i-x')).toEqual(captureItemRecord(input, T0, () => 'i-x'))
+  })
+})
+
+describe('the promotion plan says what the card would say, once', () => {
+  it('the three fields come from the row, and an override replaces its one field only', () => {
+    const plan = planItemPromotion(row({ body: '先看一眼现状', notes: '预算要说明' }))
+    if (plan.kind !== 'ready') throw new Error('a titled row plans a card')
+    expect(plan.task.title).toBe('A thing')
+    expect(plan.task.description).toBe('预算要说明')
+    expect(plan.task.prompt).toBe('先看一眼现状')
+    const renamed = planItemPromotion(row({ body: '先看一眼现状', notes: '预算要说明' }), { cardTitle: '画廊改造' })
+    if (renamed.kind !== 'ready') throw new Error('a renamed promotion is ready the same way')
+    expect(renamed.task.title).toBe('画廊改造')
+    // The override is one field and never the other two, because a caller who
+    // renamed the card did not thereby rewrite its prompt.
+    expect(renamed.task.prompt).toBe('先看一眼现状')
+    expect(renamed.task.description).toBe('预算要说明')
+  })
+
+  it('an untitled row borrows the body\'s first line, because the card still needs a name', () => {
+    const plan = planItemPromotion(row({ title: '', body: '拆迁之前\n然后再说', notes: '' }))
+    if (plan.kind !== 'ready') throw new Error('a body-first line is a name')
+    expect(plan.task.title).toBe('拆迁之前')
+  })
+
+  it('a row already on a card is refused, and the card it is on is said back', () => {
+    const plan = planItemPromotion(row({ taskId: 'task-9' }))
+    expect(plan).toEqual({ kind: 'refused', why: 'alreadyLinked', taskId: 'task-9' })
+  })
+
+  it('「another」 is the deliberate press that stands the guard aside', () => {
+    // 选择器里的「新建卡片」是明说的一声「换一张新的」：不是重复按提升，是被换的
+    // 位置。判定不松——没说这句话的调用还是被拦。
+    const plan = planItemPromotion(row({ taskId: 'task-9' }), { another: true })
+    if (plan.kind !== 'ready') throw new Error('a deliberate card lands')
+    expect(plan.task.title).toBe('A thing')
+    // 它借用文案的规则不变：正文照旧从这一条带过去。
+    expect(plan.task.prompt).toBe('')
+  })
+
+  it('「another」 does not make an unnamed card, because a card with no name cannot be made', () => {
+    const plan = planItemPromotion(row({ title: '', body: '', taskId: 'task-9' }), { another: true })
+    expect(plan).toEqual({ kind: 'refused', why: 'noTitle' })
   })
 })
