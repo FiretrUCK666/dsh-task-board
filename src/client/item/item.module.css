@@ -1311,26 +1311,11 @@
  * is a POSITION, and every write on this panel goes through it, so it must be
  * visible. A ring, not a fill: fills on this row already carry three other
  * meanings (hover, open, picked) and a fourth would be unresolvable. */
-/* **键盘站在哪一行，行身上不再画一圈线。** 框上一圈强调色是「加粗的边」在触屏上的
- * 实价：触屏没有 `j/k`，这样的圈在手机上只会读成「这个框被描了边」，而不会有别的
- * 意思。游标的记号缩到**引导位上**（下面那条）——位置还在，线没有了。 */
-.itemRow[data-cursor] .itemRowLead {
-  position: relative;
-}
+/* **键盘游标在行上不画任何印记。** 围着整行的一圈是「加粗的边」，缩到引导位上的
+ * 一圈又会跟状态点错开半格，读起来是一个没有对象的圈——两次都被读者在屏上指出来。
+ * 游标由键盘操作它的那一行自己说明（展开、选中、拿在手里都画在别处），这里刻意
+ * 一个画法都不留：**没有一条规则，就没有一处可以画错。 */
 
-.itemRow[data-cursor] .itemRowLead:not(:has(input, button))::after {
-  content: '';
-  position: absolute;
-  inset-block-start: 3px;
-  inset-inline-start: 3px;
-  inline-size: 16px;
-  block-size: 16px;
-  border: 2px solid var(--dsh-tb-accent);
-  border-radius: 999px;
-  /* 多选那行上的记号是勾选框，按每一颗而不是按游标：框上那圈小的，别把它
-     读成第二层勾选。 */
-  pointer-events: none;
-}
 
 .itemRow[data-open] {
   background: var(--dsh-tb-open);

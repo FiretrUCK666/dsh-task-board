@@ -567,24 +567,22 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     }
     const fills = [
       ['.itemRow:hover', 'hover'],
-      ['.itemRow[data-cursor]', 'cursor'],
       ['.itemRow[data-open]', 'open'],
       ['.itemRow[data-picked]', 'picked'],
     ].map(([selector, name]) => ({ name, value: fillOf(selector) }))
-    // The cursor paints NO background at all — so its entry is simply not in the
-    // fill list any more, which is the claim: the fill ladder stays at three.
-    const painted = fills.filter(f => f.value !== undefined && f.name !== 'cursor')
+    const painted = fills.filter(f => f.value !== undefined)
     for (const fill of painted) {
       expect(fill.value, `${fill.name} paints with a var() it does not own`).toMatch(/^var\(--/)
     }
     const tokens = new Set(painted.map(fill => fill.value))
     expect(tokens.size, `hover, open and picked share a token: ${painted.map(f => f.name + '=' + f.value).join(' | ')}`)
       .toBe(painted.length)
-    // The cursor's own paint: on the lead, as a BORDER and never a fill.
-    const leadAt = sheet.indexOf('.itemRow[data-cursor] .itemRowLead')
-    expect(leadAt, 'the cursor paints nowhere — the keyboard has no mark on screen').toBeGreaterThanOrEqual(0)
-    const leadBlock = sheet.slice(leadAt, sheet.indexOf('}', leadAt))
-    expect(/background:\s*/.test(leadBlock), 'the cursor mark painted a fill — the states share a token again').toBe(false)
+    // THE CURSOR PAINTS NOTHING, not on the row and not on the lead: both a row
+    // ring and a lead ring were shown on a screen and both were named 「加粗的
+    // 红圈」 by the reader, so the state deliberately has no rule at all — that
+    // is what keeps it unpaintable. The gate is the absence: any rule for the
+    // cursor state is a regression that reintroduces a drawn line.
+    expect(sheet.includes('.itemRow[data-cursor]'), 'the keyboard cursor paints somewhere on the row again — a drawn line is back').toBe(false)
   })
 
   it('the reduced-motion block is the LAST thing in the sheet, and that is load-bearing', () => {
