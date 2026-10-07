@@ -1325,6 +1325,10 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
     const edge = place({ top: 300, bottom: 340, left: 960, right: 998, width: 38, height: 40 }, PANEL, MENU)
     expect(edge.left, `the menu hangs ${edge.left + MENU.width - PANEL.right}px outside the panel`).toBeLessThanOrEqual(PANEL.right - MENU.width)
     expect(edge.left, 'the menu was pushed past the panel\'s own leading edge').toBeGreaterThanOrEqual(PANEL.left)
+    // AND IT KEEPS AIR: a menu whose right edge lands ON the panel's edge reads
+    // as a box being cut off at the rim, not as a menu. The reader's own report
+    // was 「粘着浏览器最右边的边缘」, so the gate pins the exact air: 10px.
+    expect(PANEL.right - (edge.left + MENU.width), 'a menu at the rim was allowed to glue to the edge').toBe(10)
     // A trigger at the very top: neither direction has room for the whole
     // menu, and the answer must still be inside the box.
     const top = place({ top: 0, bottom: 40, left: 10, right: 210, width: 200, height: 40 }, PANEL, MENU)
@@ -3363,7 +3367,45 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (target === undefined || target === '') return
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
-    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch') throw new Error(`a mounted state this bench does not know: ${state}`)
+    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'steps-open') {
+      // A finished step's tick only exists behind its own fold, on the row that
+      // CARRIES steps (the fixture's first row has none). The row's OWN ⋯ opens
+      // ITS menu, and 「展开详情」 does the opening the way the reader does.
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const row = [...panel.surface.querySelectorAll('[data-status]')]
+          .find(node => (node.textContent ?? '').includes('整整九天'))
+        if (row === undefined) throw new Error('the step-bearing row is not on screen')
+        const trigger = row.querySelector('[aria-haspopup="menu"]')
+        if (trigger === null) throw new Error('the step-bearing row has no menu control')
+        click(trigger)
+        const entry = findMenuEntry(panel.surface, '展开详情')
+        if (entry === null) throw new Error('the row menu offers no way to expand the row')
+        click(entry)
+        panel.settle()
+        // The fold is its own control; it reads 「已完成 1 条」 while shut, so it
+        // is found by what it IS, not by one of its two sentences.
+        const fold = panel.surface.querySelector('button[class*="itemStepFold"]') as HTMLButtonElement | null
+        if (fold === null) throw new Error('the steps board carries no fold')
+        click(fold)
+        panel.settle()
+        // AND THE NOTES: this state is where the reader edits them, so the
+        // capture shows the field the way a reader sees it.
+        const notes = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('上下文备注'))
+        if (notes === undefined) throw new Error('the detail carries no notes prompt')
+        click(notes)
+        panel.settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     /* The pending pick only exists AFTER the sheet's naming field took a name:
        open the sheet by the door the reader uses (the ＋ button), name, confirm. */

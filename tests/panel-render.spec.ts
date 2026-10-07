@@ -552,6 +552,12 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     // 「four nice colours」, it is 「four distinct custom properties」, and the
     // answer is computed off the sheets rather than by eye: an edit that
     // retargets one state's token onto another's turns this red.
+    //
+    // The CURSOR paints on the LEAD slot now, not on the row: a ring around the
+    // whole row was 「一圈加粗的边」 on a touch screen, where the cursor is
+    // carried only by the row that is open anyway. Its mark is a small ring
+    // around the lead mark — a border, never a fill — and that is what is
+    // asserted here: 状态不变，画法换到引导位上。
     const sheet = bare(itemSheet)
     const fillOf = (selector: string): string | undefined => {
       const at = sheet.indexOf(selector)
@@ -565,17 +571,20 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
       ['.itemRow[data-open]', 'open'],
       ['.itemRow[data-picked]', 'picked'],
     ].map(([selector, name]) => ({ name, value: fillOf(selector) }))
-    // The cursor paints a RING, not a fill — its absence from this list is the
-    // claim, so its hand-off (box-shadow) is the one asserted different: it must
-    // not sneak a background in.
-    expect(fills[1]!.value, 'the keyboard cursor paints a fill — a fill would be a fifth member of the ladder the surface cannot tell apart').toBeUndefined()
-    const painted = fills.filter(f => f.value !== undefined)
+    // The cursor paints NO background at all — so its entry is simply not in the
+    // fill list any more, which is the claim: the fill ladder stays at three.
+    const painted = fills.filter(f => f.value !== undefined && f.name !== 'cursor')
     for (const fill of painted) {
       expect(fill.value, `${fill.name} paints with a var() it does not own`).toMatch(/^var\(--/)
     }
     const tokens = new Set(painted.map(fill => fill.value))
     expect(tokens.size, `hover, open and picked share a token: ${painted.map(f => f.name + '=' + f.value).join(' | ')}`)
       .toBe(painted.length)
+    // The cursor's own paint: on the lead, as a BORDER and never a fill.
+    const leadAt = sheet.indexOf('.itemRow[data-cursor] .itemRowLead')
+    expect(leadAt, 'the cursor paints nowhere — the keyboard has no mark on screen').toBeGreaterThanOrEqual(0)
+    const leadBlock = sheet.slice(leadAt, sheet.indexOf('}', leadAt))
+    expect(/background:\s*/.test(leadBlock), 'the cursor mark painted a fill — the states share a token again').toBe(false)
   })
 
   it('the reduced-motion block is the LAST thing in the sheet, and that is load-bearing', () => {

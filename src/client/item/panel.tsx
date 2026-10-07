@@ -1450,6 +1450,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
               onChange={event => choose({ search: withFreeText(prefs.search, event.target.value) })}
             />
             <div className={css.itemTopBarTools}>
+              {/* 多选有一个**读者不用先知道抽屉里有它**的入口。它原来只住在 ⋯ 菜单
+                  与命令面板的词表里：一个有四十行活要一起改的读者，得先按开某一行
+                  的菜单，才看见这个模式存在——「批量做一件事」这个问题的第一句是
+                  「多选」，它就该站在带上。清单页是批量干活的页，芯片只在那页出现。
+                  再按一次收回，与栏里的「多选做完了」是同一扇门。 */}
+              {prefs.page === 'list' && (
+                <button
+                  type="button"
+                  className={css.itemTopBarChip}
+                  aria-pressed={selection.armed}
+                  disabled={visibleIds.length === 0}
+                  onClick={() => setSelection(current => setArmed(current, !current.armed))}
+                >
+                  {t('item.batch.arm')}
+                </button>
+              )}
               <button
                 type="button"
                 className={css.itemTopBarChip}

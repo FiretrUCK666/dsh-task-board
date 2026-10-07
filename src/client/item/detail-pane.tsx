@@ -277,10 +277,13 @@ export function ItemDetail(props: ItemDetailProps) {
               </button>
             )
             : (
-              <div className={css.itemQuote}>
+              /* 与正文同一个盒：边、底、字号、字色、贴边都在 `.itemProse` 一处——
+               * 备注 once「一条引文」的样式曾经只给这一格，两格之间的差别要靠读者自己
+               * 猜是为什么。它们是同一列里的两个输入，输入就该长得一样。 */
+              <div className={css.itemProseWrap}>
                 <textarea
                   ref={notesField}
-                  className={css.itemQuoteBody}
+                  className={css.itemProse}
                   rows={3}
                   value={item.notes}
                   placeholder={t('item.field.notesHint')}

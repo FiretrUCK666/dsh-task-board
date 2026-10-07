@@ -77,6 +77,15 @@ export interface MenuSize {
 /** The house gap: the same 4px the board's own menus open with. */
 const DEFAULT_GAP = 4
 
+/**
+ * The air a menu keeps from the panel edge it would otherwise glue to. A menu
+ * whose right edge sits on the panel's right edge reads as a box that is being
+ * CUT — the reader cannot tell the panel ends there from the menu ending there.
+ * The same 10px the spacing scale's second step is, so this is a number the
+ * surface already speaks, not a new one.
+ */
+const EDGE_MARGIN = 10
+
 /** Keep a value inside a range. The two branches are ordered, not swapped. */
 function clamp(value: number, low: number, high: number): number {
   if (high < low) return low
@@ -118,9 +127,12 @@ export function placeRowMenu(trigger: Rect, panel: Rect, menu: MenuSize): MenuSp
   const top = clamp(rawTop, panel.top, panel.bottom - menu.height)
 
   // Along the inline axis the menu lines up with the trigger's leading edge,
-  // which is what makes it read as belonging to that ⋯, then it is pushed back
-  // inside the panel rather than allowed to hang off the right edge.
-  const left = clamp(trigger.left, panel.left, panel.right - menu.width)
+  // which is what makes it read as belonging to that ⋯. A ⋯ near the panel's
+  // right edge would otherwise leave the menu's OWN right edge on the panel's
+  // right edge — a menu glued to the rim of the screen — so the edge the menu
+  // would cross pushes it back inside with the room the reader's thumb needs
+  // between the two.
+  const left = clamp(trigger.left, panel.left, panel.right - menu.width - EDGE_MARGIN)
 
   // The ceiling is the room on the side it opened towards, measured from where
   // it actually ended up after clamping — not from the trigger, because

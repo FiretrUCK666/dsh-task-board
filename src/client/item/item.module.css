@@ -628,7 +628,10 @@
   color: var(--item-ink-1);
 }
 
-.itemTopBarChip[aria-expanded='true'] {
+/* 开着的那一枚说它开着：展开的（排序）与按下的（多选）共用这条描边——它们是同一
+ * 个问题「这个模式现在是开的吗」的两问，所以同一形状回答。 */
+.itemTopBarChip[aria-expanded='true'],
+.itemTopBarChip[aria-pressed='true'] {
   border-color: var(--dsh-tb-focus-color);
   color: var(--item-ink-1);
 }
@@ -684,6 +687,11 @@
 @container dsh-tb-item (max-width: 880px) {
   .itemTopBar {
     flex-wrap: wrap;
+    /* 窄档折成两行之后，内容**上下**要气口：搜索那行贴着日程条的下边界、工具那行
+     * 贴着表卡的上边，两处都不再有白的。这一行的上下各一档 --s2，两行之间再一档
+     * ——都是刻度上的数，不是看心情写的。 */
+    padding-block: var(--s2);
+    row-gap: var(--s2);
     padding-inline: var(--item-row-pad);
   }
 
@@ -1303,9 +1311,25 @@
  * is a POSITION, and every write on this panel goes through it, so it must be
  * visible. A ring, not a fill: fills on this row already carry three other
  * meanings (hover, open, picked) and a fourth would be unresolvable. */
-.itemRow[data-cursor] {
-  box-shadow: inset 0 0 0 2px var(--dsh-tb-accent);
-  border-radius: var(--item-radius-ctl);
+/* **键盘站在哪一行，行身上不再画一圈线。** 框上一圈强调色是「加粗的边」在触屏上的
+ * 实价：触屏没有 `j/k`，这样的圈在手机上只会读成「这个框被描了边」，而不会有别的
+ * 意思。游标的记号缩到**引导位上**（下面那条）——位置还在，线没有了。 */
+.itemRow[data-cursor] .itemRowLead {
+  position: relative;
+}
+
+.itemRow[data-cursor] .itemRowLead:not(:has(input, button))::after {
+  content: '';
+  position: absolute;
+  inset-block-start: 3px;
+  inset-inline-start: 3px;
+  inline-size: 16px;
+  block-size: 16px;
+  border: 2px solid var(--dsh-tb-accent);
+  border-radius: 999px;
+  /* 多选那行上的记号是勾选框，按每一颗而不是按游标：框上那圈小的，别把它
+     读成第二层勾选。 */
+  pointer-events: none;
 }
 
 .itemRow[data-open] {
@@ -2027,10 +2051,14 @@
   background: var(--dsh-tb-hover);
 }
 
-/* 这一族小菜单的位置由这一处说，不在每一处重说。 */
+/* 这一族小菜单的位置由这一处说，不在每一处重说。**它是一道会换行的行**：三枚
+ * 药丸在手机上比一行的格子宽（读者的字号再放一档就一定宽出去），不换行的排法
+ * 会把最右那枚挤出板子，压到右列的日期轴上——菜单压到不相干的内容上面，是这一页
+ * 最坏的一种越界。 */
 .itemStepMenuList {
   grid-column: 1 / -1;
   display: flex;
+  flex-wrap: wrap;
   gap: var(--s1);
   margin: var(--s1) 0 0;
   padding: 0;
@@ -2114,14 +2142,16 @@
   background: var(--item-ink-2);
 }
 
-/* 勾的四个数：**盒子的内容盒是 14px**（16 减两侧各 1px 描边），所以 5×9 的
- * L 形在 x 上从 4 开始、在 y 上从 2 开始才是正中。这里写的是「在盒子里」而不是
- * 「在整行里」，所以把它放到别的行宽上也不用重算。 */
+/* 勾居中的两个数：勾的**包围盒**转 42 度之后仍然以 L 盒自己的中心为中心（旋转
+ * 不改包围盒的对称性），所以居中就是**把 L 盒的中心放到盒中心**：内容盒 14×14，
+ * 中心在 (7,7)；L 盒 5×9，中心在自身 (2.5,4.5)，于是落在 (4.5, 2.5)。「L 居中」
+ * 的 4/2 偏半个像素——读者看得出来；一步跳到 6.5 那一版又过了头，两次都在屏上
+ * 被指出来过。两个数都在内容盒里量，勾放别的行宽上不用重算。 */
 .itemTick > input:checked + i::after {
   content: '';
   position: absolute;
-  inset-inline-start: 4px;
-  inset-block-start: 2px;
+  inset-inline-start: 4.5px;
+  inset-block-start: 2.5px;
   inline-size: 5px;
   block-size: 9px;
   border: solid var(--dsh-tb-ink-on-fill);
@@ -3260,13 +3290,13 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-/* 40em，不是 62ch。`ch` 是「数字 0 的宽度」，而一个中文字比它宽一倍，所以按 ch
- * 算出来的上限在中文下短到一行放不下十二个字。上限写在**裁剪盒**上而不是里面那
- * 层，否则里面那层会溢出裁剪盒——而溢出的部分是看不见的。 */
+/* 40em 读起来是一档好行长，**但这一列里的三个框要一样宽**：正文、步骤板、上下文
+ * 备注是同一列里三块「可以写一段」的地方，正文那块原来在 40em 处收口，另两块铺满
+ * 整列——读者看到的不是「三种内容各有聪明的宽度」，是「三个框三个宽」。宽度归列，
+ * 长行归滚动；框跟右列的边界对齐，不再各自为政。 */
 .itemProse {
   display: block;
   inline-size: 100%;
-  max-inline-size: 40em;
   min-block-size: var(--item-write-floor);
   padding: var(--s2);
   font-size: 13px;
@@ -3306,35 +3336,8 @@ textarea.itemInput {
   color: var(--item-ink-3);
 }
 
-/* 引用块左右**都要圆**——它是一条备注的边界，不是一段正文。上下的圆角在竖排里
- * 已经给了上下两条发丝线，所以左右这两个角是那一格唯一的轮廓。 */
-.itemQuote {
-  margin: 0;
-  padding: var(--s2) var(--s2) var(--s2) var(--s3);
-  border-inline-start: var(--item-hair-strong);
-  border-radius: var(--item-radius-ctl);
-  background: var(--item-fill);
-}
-
-.itemQuoteBody {
-  display: block;
-  inline-size: 100%;
-  max-block-size: 168px;
-  min-block-size: var(--item-write-floor);
-  overflow-y: auto;
-  padding: 0;
-  font-size: 13px;
-  line-height: 1.65;
-  color: var(--item-ink-2);
-  background: none;
-  border: 0;
-}
-
-/* 这一格没有描边可改，所以它的悬停由表面说：它坐在「一段引文」那块底色里，指针经过时
- * 抬一档——同一族里「抬一档」就是这一档（与行的悬停、与芯片的悬停同一个令牌）。 */
-.itemQuoteBody:hover {
-  background: var(--dsh-tb-hover);
-}
+/* （引用块一族已并入 `.itemProse`：备注与正文是同一列里的两个输入，两者就该
+ * 长得一样，所以备注用的就是正文那个盒。） */
 
 /* ── 右列 ──────────────────────────────────────────────────────────────────
  *
@@ -3433,10 +3436,7 @@ textarea.itemInput {
 }
 
 /* **输入框的悬停是描边进一档，不是抬表面。** 一个能打字的地方在指针经过时该说
- * 「可以进来」，而抬表面会把它读成一个按钮——两件事在这一页上必须长得不一样。
- *
- * `itemQuoteBody` 不在这一行里：它没有描边（`border: 0`），描边色对它没有形状可改，
- * 所以它另写一条抬表面的——见下面那一节。 */
+ * 「可以进来」，而抬表面会把它读成一个按钮——两件事在这一页上必须长得不一样。 */
 .itemSearch:hover,
 .itemInput:hover,
 .itemTagAdd:hover,
@@ -3580,7 +3580,8 @@ textarea.itemInput {
  *   li        `flex-direction: column` —— 名字一行、读法一行，下面一档空气
  *   i         绝对定位在左上角，9px 的环
  *   ::before  一根 1px 的线，在 x = 4
- *   最后一颗  不画线，因为下面没有珠子
+ *   首行      线从珠子盒顶起画（上面有线头就读成「上面还有一颗」）
+ *   末行      线只画到本珠中线（再往下画就读成「线头缠着一句话」）
  *
  * **珠子与线为什么是那三个数。** 珠子 9px 宽，占住 x = 0…9，它的中线是 4.5；线 1px
  * 宽放在 x = 4，它的中线也是 4.5。**两个数是同一条轴**，所以线穿过珠子的正中。
@@ -3589,8 +3590,8 @@ textarea.itemInput {
  * 本行底部，而下一行的线从它自己那 5px 处才开始——**每个接缝上留一个 5px 的洞**，于是
  * 「一根线」在屏幕上是三根短横，而接缝正是读者最需要它连着的地方（那一段说的就是
  * 「从这一天到那一天」）。洞不在线上，洞在**每一行的起止**上：把线画满整行，珠子
- * （不透明卡面 + 环）自然把它分成三段，而接缝处是真的连着的。第一颗上面不许探出一截
- * 线头，所以第一行的线从珠子中线处起画。
+ * （不透明卡面 + 环）自然把它分成三段，而接缝处是真的连着的。两头各有一条规矩，
+ * 头是「珠子上面不探线」，尾是「最后一颗珠子不悬空」——都写在这两行自己身上。
  *
  * 颜色用**重一档那条**而不是分隔用的那条：分隔线在卡面上是 1.08:1，1px 画出来等于
  * 没画，而这条线是这一栏唯一的结构。
@@ -3636,14 +3637,18 @@ textarea.itemInput {
   background-color: var(--item-ink-3);
 }
 
-/* 第一颗珠子上面不许有线头：它上面没有东西，一段 4.5px 的线头会读成「上面还有一颗，
- * 被切掉了」。从珠子中线处起画，线在珠子底下接上，屏幕上看不出接缝。 */
+/* 第一颗珠子上面不许有线头：它上面没有东西，一段露在环外的线会读成「上面还有一颗，
+ * 被切掉了」。线从珠子的**盒顶**起画——珠子不透明，把它盖住的部分盖住，线在珠子
+ * 底下接上，屏幕上看不出接缝，也看不出任何线头。 */
 .itemDateAxis li:first-child::before {
-  inset-block-start: 4.5px;
+  inset-block-start: 5px;
 }
 
+/* 最后一颗珠子**身旁**要有线：上一行的线在接缝处交过来，最后这一行的线从珠子的
+ * **中线**起就没人接，会读成「线到上一颗就断了，这一颗悬空」。所以最后一行只画
+ * 从接缝到本珠中线的那一小段，珠子同样把多余的部分盖住。 */
 .itemDateAxis li:last-child::before {
-  display: none;
+  inset-block-end: calc(100% - 9.5px);
 }
 
 .itemDateAxis li > i {
@@ -4017,7 +4022,9 @@ textarea.itemInput {
     justify-content: flex-start;
     max-inline-size: none;
     block-size: auto;
-    margin-block-start: 2px;
+    /* 上下的气口都在刻度上：上面 --s1，底下行身上那 10px 已经把芯片和发丝线
+     * 隔开了——原先是 2px 的随手数，那一格在 412 上读成「贴着线」。 */
+    margin-block: var(--s1) 0;
   }
 
   /* 窄屏上标题**必须**能折行。412px 的内容宽里脊点 10 + ⋮ 28 + 两条沟 8 已经拿走
