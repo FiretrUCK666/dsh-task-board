@@ -126,13 +126,16 @@ export function placeRowMenu(trigger: Rect, panel: Rect, menu: MenuSize): MenuSp
   const rawTop = placement === 'above' ? trigger.top - gap - menu.height : trigger.bottom + gap
   const top = clamp(rawTop, panel.top, panel.bottom - menu.height)
 
-  // Along the inline axis the menu lines up with the trigger's leading edge,
-  // which is what makes it read as belonging to that ⋯. A ⋯ near the panel's
-  // right edge would otherwise leave the menu's OWN right edge on the panel's
-  // right edge — a menu glued to the rim of the screen — so the edge the menu
-  // would cross pushes it back inside with the room the reader's thumb needs
-  // between the two.
-  const left = clamp(trigger.left, panel.left, panel.right - menu.width - EDGE_MARGIN)
+  // Along the inline axis the menu's RIGHT EDGE lands on the ⋯'s LEFT EDGE — the
+  // row content column's own right line. The ⋯ is the last thing in the row, so
+  // that line is where the row's readable content ends; a menu hung there stands
+  // on the same line the tags and dates end on instead of being glued to the ⋯'s
+  // own rim (「靠到右边边缘」). A menu whose right edge sat on the trigger's RIGHT
+  // edge (an earlier alignment) read as attached to the button's rim; a menu whose
+  // LEADING edge sat on the trigger's leading edge grew away and ran its right
+  // edge onto the panel's own rim on a phone. The clamp keeps what the rim needs:
+  // the same 10px of air, so a wider room than the menu has slides it back inside.
+  const left = clamp(trigger.left - menu.width, panel.left, panel.right - menu.width - EDGE_MARGIN)
 
   // The ceiling is the room on the side it opened towards, measured from where
   // it actually ended up after clamping — not from the trigger, because

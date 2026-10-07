@@ -634,6 +634,7 @@ export declare const zh: {
     'item.field.newCard': string;
     'item.dates.now': string;
     'item.dates.none': string;
+    'item.dates.bad': string;
     'item.topbar.sort': string;
     'item.topbar.create': string;
     'item.search.remove': string;
@@ -839,6 +840,7 @@ export declare const zh: {
     'item.promote.refused': string;
     'item.cardName.label': string;
     'item.cardName.empty': string;
+    'item.cardLink.note': string;
     'item.archive.bar': string;
     'item.archive.confirm': string;
     'item.archive.keep': string;
@@ -872,6 +874,7 @@ export declare const zh: {
     'item.steps.next': string;
     'item.steps.tick': string;
     'item.steps.more': string;
+    'item.steps.moreHide': string;
     'item.steps.moreMenu': string;
     'item.steps.doneShow': string;
     'item.steps.doneHide': string;

@@ -956,6 +956,8 @@ export interface MountedPanel {
   readonly writes: (readonly ItemRecord[])[]
   /** The controller methods the panel called, as `receiver.method` strings. */
   readonly calls: string[]
+  /** The board cards the panel minted, in mint order — the seeding check reads these. */
+  readonly minted: readonly TaskRecord[]
   /** The last document the panel handed to the replica. */
   lastWrite(): readonly ItemRecord[]
   /** Re-render and flush effects. */
@@ -976,6 +978,9 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
     getSnapshot: () => ({ tasks: [...tasks.map(task => ({ ...task, description: task.description ?? '' })), ...minted] }),
     liveStateOf: () => 'idle',
     ...boundRecorder(calls, minted),
+    /** A READING of what the face has minted so far — the mounted panel exposes
+     *  it so a promote's seeding can be asserted; reading, not holding. */
+    mintedSnapshot: (): readonly TaskRecord[] => [...minted],
   }
 }
 
@@ -1160,7 +1165,19 @@ export function mountPanel(
     baseSetItems(next)
   }
 
-  const settle = (): void => { act(() => { root.render(createElement(ItemListPanel, { signal, face: faceOf(replica, controller) } as never)) }) }
+  const settle = (): void => {
+    act(() => {
+      root.render(createElement(ItemListPanel, {
+        signal,
+        face: faceOf(replica, controller),
+        /* THE BENCH'S CLOCK, the same reason renderPanel hands its own: every
+         * fixture is dated relative to {@link NOW}, so a panel that read the real
+         * `Date.now()` would disagree with its own rows the moment a relative
+         * word like 明天 was parsed into a date. */
+        now: NOW,
+      } as never))
+    })
+  }
   try {
     withPrefs({ page }, () => { settle() })
     // The band is read by an effect, so the first render guessed; re-render once
@@ -1182,6 +1199,11 @@ export function mountPanel(
     surface,
     writes: replica.writes,
     calls,
+    /** The board cards the mounted panel minted, so a promote's SEEDING (the
+     *  card's own words) is checkable on the fake that answered it. A LIVE
+     *  getter, not a snapshot: mints that happen after the mount have to be
+     *  visible to the test that caused them. */
+    get minted(): readonly TaskRecord[] { return controller.mintedSnapshot() },
     lastWrite: () => replica.writes[replica.writes.length - 1] ?? items,
     settle,
     dispose: () => {

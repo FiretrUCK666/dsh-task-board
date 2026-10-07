@@ -124,7 +124,7 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
         </h2>
         <p className={css.itemHint}>{t('item.gated.hint')}</p>
         <div className={css.itemGatedFoldList}>
-          <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} />
+          <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} dayHeads={false} />
         </div>
       </section>
     )
@@ -140,7 +140,7 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
         {bucket.items.length > 0 && <p className={css.itemHint}>{t('item.noDate.hint')}</p>}
         {bucket.items.length > 0 && (
           <div className={css.itemAgendaList}>
-            <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} />
+            <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} dayHeads={false} />
           </div>
         )}
       </section>
@@ -168,7 +168,7 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
       )}
       {bucket.items.length > 0 && (
         <div className={css.itemAgendaList}>
-          <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} />
+          <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} dayHeads={false} />
         </div>
       )}
     </section>

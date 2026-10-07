@@ -48,6 +48,7 @@ import {
   type ItemRailEntry,
   type ItemRowView,
 } from '../../core/item-view.ts'
+import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
    the agent's tool calls, so a field the model ruled derived cannot be written
    here either. `model.ts` keeps only what a browser can do and a document cannot
@@ -60,9 +61,8 @@ import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemDetail } from './detail-pane.tsx'
-import { ItemFilters } from './item-filters.tsx'
 import { ItemCreateDialog } from './item-create-dialog.tsx'
-import { ITEM_FACETS, freeTextOf, isTokenIn, queryChipsOf, tagFacetValuesOf, withFacetToken, withFreeText } from './facets.ts'
+import { freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemRail } from './rail.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
 import { SORT_LABEL } from './labels.ts'
@@ -267,7 +267,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *  function that both reads and writes. */
   const openLayer = (next: ItemOverlay | undefined): void => setOverlay(current => (current === next ? undefined : next))
   const paletteOpen = overlay === 'palette'
-  const filtersOpen = overlay === 'filters'
   const sortOpen = overlay === 'sort'
   const topPanels = useId()
   /**
@@ -747,21 +746,26 @@ export function ItemListPanel(props: ItemListPanelProps) {
     /* E 走的是这一个租约：只有游标那一行接得到，接到的 nonce 就是请它进场的
      * 申请编号。 */
     renameNonce: rename.id === item.id && rename.nonce > 0 ? rename.nonce : undefined,
-    /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
-       rather than derived: the anchor is 「the last row this reader held with a
-       plain press」, which is a fact about what they did, not a fact any row
-       knows. A row cannot work it out, and a module that could would be holding
-       a second opinion about where the reader started.
+     /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
+        rather than derived: the anchor is 「the last row this reader held with a
+        plain press」, which is a fact about what they did, not a fact any row
+        knows. A row cannot work it out, and a module that could would be holding
+        a second opinion about where the reader started.
 
-       AND THE ORDER IS `list` — the list this page handed the table, already
-       sorted — NOT `visibleIds`. Those are two different orders: the page rail
-       counts in document order and the table draws in the reader's chosen one, so
-       a range measured over `visibleIds` picks the rows BETWEEN two ticks on a
-       screen that is not showing them between. The claim is 「这两条之间屏幕上看见的
-       那几条」, and the screen is the sorted list. */
+        THE ORDER ANSWERS TO WHAT THE TABLE DRAWS, not to `visibleIds` (document
+        order): the exact cut is stated on the onPick below. */
     onPick: (extend: boolean) => {
       if (extend && pickAnchor.current !== undefined) {
-        const order = list.map(one => one.id)
+        /* THE ORDER IS WHAT THE TABLE DRAWS. The page hands its own list, already
+           sorted — and the list page then CUTS that list into days (今天/昨天/
+           前天/更早) before drawing, so the run the reader crossed on screen is
+           the day-cut order, not the document's. A range measured over the
+           document's order picks rows the reader never passed between two presses;
+           this is the same cut the table makes, from the same list, with the same
+           clock, so it cannot disagree with what is drawn. */
+        const order = (SORT_GROUPS_BY_DAY[prefs.sort]
+          ? itemDayGroupsOf(list, now, prefs.sort).flatMap(group => group.rows)
+          : list).map(one => one.id)
         setSelection(current => pickThrough(current, order, pickAnchor.current as string, item.id))
         return
       }
@@ -863,7 +867,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
     rename: () => { if (cursor !== undefined) setRename(current => ({ id: cursor, nonce: (current.id === cursor ? current.nonce : 0) + 1 })) },
     open: () => { if (cursor !== undefined) setSelected(cursor) },
     close: () => {
-      if (paletteOpen) { openLayer(undefined); return }
+      // ESC 一次只收一层，从最上层开始：带上的浮层（命令面板/新建/排序）先走，
+      // 然后才是行菜单、展开的行与选中——不然在新建弹层里按 Esc，会先把背后
+      // 展开的那一行收掉，读者眼前的弹层还开着，背后的工作却没了。
+      if (overlay !== undefined) { openLayer(undefined); return }
       if (menuRow !== undefined) { setMenuRow(undefined); return }
       if (openRow !== undefined) { setOpenRow(undefined); return }
       if (selected !== undefined) setSelected(undefined)
@@ -894,7 +901,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   // closed something else instead. The keyboard flow is the only thing here that
   // runs outside a React event handler, so nothing re-renders it behind the
   // reader's back and nothing complained.
-  }), [apply, cursor, items, menuRow, now, openRow, paletteOpen, removeOne, rename.nonce, runUndo, selected, undo])
+  }), [apply, cursor, items, menuRow, now, openRow, overlay, removeOne, rename.nonce, runUndo, selected, undo])
 
   /**
    * A PRESS ON THE CARD'S OWN BLANK IS 「我不要这一条了」, and it empties the
@@ -908,12 +915,19 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * overlays are those controls' business, not a dismissal. The listener runs on
    * BUBBLE, after every row handler, so a press a row consumed never looks blank.
    */
-  const dismissRef = useRef({ selected, openRow, cursor })
-  dismissRef.current = { selected, openRow, cursor }
+  const dismissRef = useRef({ selected, openRow, cursor, overlay })
+  dismissRef.current = { selected, openRow, cursor, overlay }
   useEffect(() => {
     const onBlank = (event: MouseEvent): void => {
       const target = event.target
       if (!(target instanceof Element)) return
+      // 带上的浮层里只有排序面板没有自己的遮罩（面板/新建/键位表的遮罩自己收
+      // 自己）。按在排序面板与开它的顶栏之外，就收它；按在任何一个有自己的遮罩
+      // 的浮层里，归那个浮层管，这里不插手——所以豁免名单里有它们。
+      if (dismissRef.current.overlay !== undefined
+        && target.closest('[class*="TopPanel"i], [class*="TopBar"i], [class*="Palette"i], [class*="CreateDialog"i], [class*="KeyHelp"i]') === null) {
+        openLayer(undefined)
+      }
       const card = target.closest('[data-dsh-tb-scroll]')
       if (card === null) return
       // 行、菜单、浮层与顶栏的弹出面板都是「有主」的地方：它们自己收自己。
@@ -1019,9 +1033,24 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * two are visibly the same computation and not two that happen to agree.
    */
   const matchedCount = visibleIds.length
+  /* THE VALUE ALL HELD ROWS SHARE, when they share one. The Segmented used to be
+   * a permanently blank control: press 「紧急」, the rows changed, and the four
+   * options stayed unlit — the only feedback was a receipt sentence. The mark the
+   * reader expects is the held rows' own common state, read off the document the
+   * same way the rows read it; mixed holdings keep it blank, which is the honest
+   * answer to 「这一批是什么档位」 when they are not all one tier. */
+  const heldItems = items.filter(item => selection.ids.has(item.id))
+  const commonStatus = heldItems.length === 0 || !heldItems.every(one => one.status === heldItems[0]!.status)
+    ? undefined
+    : heldItems[0]!.status
+  const commonPriority = heldItems.length === 0 || !heldItems.every(one => one.priority === heldItems[0]!.priority)
+    ? undefined
+    : heldItems[0]!.priority
   const batch = selectionActive(selection) ? (
     <ItemBatchBar
       count={selectedCount(selection)}
+      commonStatus={commonStatus}
+      commonPriority={commonPriority}
       /* The select-all box counts the screen the rows are drawn on, which is
          `visibleIds` in the order the reader sees — the same set the tickboxes
          cover, so 「全选」 can never hold a row the reader cannot point at. */
@@ -1066,6 +1095,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
         : t('item.pageJump.nothing') })
       return
     }
+    // 跳页就是去那个地方：归档开着时，任何跳页都把它关上——palette 的「清单/
+    // 日程」与「跳到 #N」不能在归档开着时按下毫无可见变化。
+    setArchiveOpen(false)
     if (plan.page !== prefs.page) choose({ page: plan.page })
     if (plan.ref !== undefined) {
       const found = items.find(item => item.ref === plan.ref)
@@ -1174,24 +1206,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * report a different number before and after it is pressed, which is a number
    * that describes nothing.
    */
-  const countOfToken = useCallback((token: string) =>
-    items.filter(item => itemMatches(item, parseItemQuery(token), matchCtx)).length,
-  [items, matchCtx])
-
-  /** The four faces, built from the model's tables and the document's own tags. */
-  const facetFaces = useMemo(() => [
-    ...ITEM_FACETS.filter(facet => facet.id !== 'priority').map(facet => ({
-      id: facet.id,
-      label: facet.label,
-      values: facet.values.map(value => ({ token: value.token, key: value.key, label: t(value.label) })),
-    })),
-    {
-      id: 'tag',
-      label: 'item.facet.tag' as const,
-      values: tagFacetValuesOf(items.map(item => item.tags))
-        .map(value => ({ token: value.token, key: value.key, label: value.text })),
-    },
-  ], [items])
 /** WHAT THE RAIL SHOWS, AND WHERE IT STANDS.
    *
    * The groups and every number on them come from ONE derivation over the same
@@ -1248,6 +1262,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * to be standing on would show fewer rows than the number it had just been
      * pressed for: the count and the list would be two facts, which is the exact
      * defect the shared-predicate rule exists to forbid. */
+    // 站在归档里再按「已删除」= 回去：这一按只关门。其余任何左栏的路都照旧
+    // 先离开归档（下面那行）。
+    if (archiveOpen && entry.kind === 'place' && entry.key === 'deleted') { setArchiveOpen(false); return }
     setArchiveOpen(false)
     if (entry.kind === 'collection' || entry.kind === 'place') {
       if (entry.key === 'deleted') {
@@ -1281,7 +1298,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * document narrowed — not the page the reader was standing on narrowed twice. */
     goTo('list')
     choose({ search: withFacetToken(prefs.search, entry.token, !isTokenIn(prefs.search, entry.token), railSiblingsOf(entry, railGroups)) })
-  }, [choose, goTo, onOpenArchive, prefs.search, railGroups])
+  }, [archiveOpen, choose, goTo, onOpenArchive, prefs.search, railGroups])
 
   /* ONE DAY AT A TIME, and the calendar's cell is a single-slot filter rather than
    * a word in the box. Two things were wrong with writing `on:YYYY-MM-DD` as a
@@ -1402,8 +1419,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
             * places live); the stat cards became the rail's counts, where a number
             * and the thing it opens stand in one column; the capture box became the
             * first line of the ＋新建一条 sheet, because a box that saves the instant
-            * you press Enter is a box you cannot put a second thought into. */}
-<div className={css.itemTopBar}>
+            * you press Enter is a box you cannot put a second thought into.
+            *
+            * 而这一条只属于**活着的清单那一页**：站在归档页里，搜索、排序、新建说的
+            * 都不是眼前那份内容——它们的控件跟着页一起消失，归档页顶上只有它自己的
+            * 头与它自己的行。 */}
+ {!archiveOpen && (
+ <>
+ <div className={css.itemTopBar}>
             <p className={css.itemTopCount}>
               {filtering
                 /* THE MATCH SET, not the detail selection. The sentence claims to
@@ -1456,15 +1479,28 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   「多选」，它就该站在带上。清单页是批量干活的页，芯片只在那页出现。
                   再按一次收回，与栏里的「多选做完了」是同一扇门。 */}
               {prefs.page === 'list' && (
-                <button
-                  type="button"
-                  className={css.itemTopBarChip}
-                  aria-pressed={selection.armed}
-                  disabled={visibleIds.length === 0}
-                  onClick={() => setSelection(current => setArmed(current, !current.armed))}
-                >
-                  {t('item.batch.arm')}
-                </button>
+                <>
+                  <button
+                    type="button"
+                    className={css.itemTopBarChip}
+                    aria-pressed={selection.armed}
+                    disabled={visibleIds.length === 0}
+                    onClick={() => setSelection(current => setArmed(current, !current.armed))}
+                  >
+                    {t('item.batch.arm')}
+                  </button>
+                  {/* 「隐藏已完成」说的是正在进行的动作：按下去 = 藏起来（pressed），
+                      再按 = 拿回来。它的状态机一直是真的（切片读的就是它），缺的
+                      只是这枚够得着的控制——芯片与「多选」同一族、同一个开关形状。 */}
+                  <button
+                    type="button"
+                    className={css.itemTopBarChip}
+                    aria-pressed={!showDone}
+                    onClick={() => setShowDone(current => !current)}
+                  >
+                    {t('item.done.show')}
+                  </button>
+                </>
               )}
               <button
                 type="button"
@@ -1519,33 +1555,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
             </div>
           )}
 
-          {/* The two panels the two chips open. They are in the SHELL, not in a
-              popover over the list: a filter that dims the rows it is filtering
-              is a filter that makes the reader check the result twice. */}
-          {filtersOpen && (
-            <div id={`${topPanels}-filters`} className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
-              {/* THE REMOVABLE CHIPS COME FIRST, because they are the *current*
-                  * state of the filter and a reader takes them off before they go
-                  * looking for another one. */}
-              <ItemQueryChips
-                text={prefs.search}
-                tags={items.map(item => item.tags)}
-                onSearch={next => choose({ search: next })}
-                onClearQualifiers={() => choose({ search: freeTextOf(prefs.search) })}
-              />
-              <ItemFilters
-                faces={facetFaces}
-                text={prefs.search}
-                onSearch={next => choose({ search: next })}
-                sort={prefs.sort}
-                onSort={next => choose({ sort: next })}
-                tags={items.map(item => item.tags)}
-                showDone={showDone}
-                onShowDone={setShowDone}
-                countOf={countOfToken}
-              />
-            </div>
-          )}
+          {/* 排序面板，两枚芯片里唯一需要展开面的一枚。它在壳里，不在浮层上：
+              一条把自己正在筛的行压暗的筛选，读者要检查两遍才敢信。 */}
           {sortOpen && (
             <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
               {ITEM_SORTS.map(order => (
@@ -1561,6 +1572,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               ))}
             </div>
           )}
+ </>)}
           {/* THE PANELS THE TWO CHIPS OPEN BELONG ABOVE THIS LINE, IN THE COLUMN,
               AND NOT INSIDE THE SCROLLER.
               *

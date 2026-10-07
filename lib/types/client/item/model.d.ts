@@ -56,19 +56,26 @@ export declare function newItemId(): string;
  */
 export declare function formatItemDate(at: number, english: boolean, now?: number): string;
 /**
- * Parse a `yyyy-mm-dd` field back into a moment, or `undefined` when blank.
+ * Parse a date field back into a moment, or `undefined` when unreadable.
  *
- * The inputs are date fields, so they speak a day and not a clock. Building the
- * moment in local time is the whole point: a date typed as 28 September must
- * land on 28 September for the person who typed it, whatever timezone the
- * browser happens to be in. `undefined` here is not a failure — it is how a
- * cleared field says 「no promise any more」, and the patch it goes into is a
- * spread, so an explicit `undefined` clears the date while an absent key leaves
- * it alone.
+ * The field speaks a day and not a clock, and it speaks three ways — the same
+ * three the reader has met everywhere else on this surface: `2026-10-15`, the
+ * word form (`明天`/`today`), and the `@`-prefixed word. A field that taught a
+ * reader one spelling in the capture and then refused it in place was a
+ * grammar that changed between two steps of the same edit.
+ *
+ * Building the moment in local time is the whole point: a date typed as 28
+ * September must land on 28 September for the person who typed it, whatever
+ * timezone the browser happens to be in. `undefined` here is not a failure — it
+ * is how a cleared field says 「no promise any more」 (an empty field), and the
+ * patch it goes into is a spread, so an explicit `undefined` clears the date
+ * while an absent key leaves it alone.
  * @param value - the field's value.
+ * @param now - the reading clock; a WORD resolves against it, so a test pins
+ *   `明天` with a fixed clock instead of the machine's today.
  * @returns the moment, or `undefined` for an empty or unparseable field.
  */
-export declare function parseItemDate(value: string): number | undefined;
+export declare function parseItemDate(value: string, now?: number): number | undefined;
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export declare function toItemDateField(at: number | undefined): string;
 /**

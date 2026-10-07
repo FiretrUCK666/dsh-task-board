@@ -7,6 +7,18 @@ export interface ItemTableProps {
     /** What the table says when the filter is what emptied it. */
     readonly noMatch?: string;
     /**
+     * WHETHER THE CARD NAMES ITS DAYS INSIDE, and every caller states its answer.
+     *
+     * The LIST page's heads are about WHEN THE ROW WAS WRITTEN (今天/昨天/前天/更早,
+     * cut by {@link itemDayGroupsOf}); that is a fact the list page exists to say.
+     * The AGENDA already names its day outside the card — section name, then the
+     * date, then this card — so a head in here would say the day twice and, worse,
+     * say a THIRD fact: the card's head buckets by write-day, so a row due today
+     * but written yesterday would carry 「昨天」 inside the agenda's 「今天」 section.
+     * False = the rows are drawn exactly as they were handed over, no regrouping.
+     */
+    readonly dayHeads: boolean;
+    /**
      * THE CLOCK, and the ORDERING the reader chose.
      *
      * Both are handed in rather than read: a day heading says 「今天」 and that word

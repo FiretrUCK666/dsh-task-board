@@ -2459,6 +2459,14 @@ describe('the colour budget is a budget, counted at the token layer', () => {
    */
   const FAMILIES: ReadonlyArray<{ readonly key: string; readonly is: (s: string) => boolean }> = [
     { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) },
+    {
+      key: '日期轴珠',
+      // 日期轴的珠子是**一颗珠子的几个状态**，不是几处用量：挂着硬期限的空心红环
+      // 与已经超了的实心红，读者看到的是同一个位置换了个状态——按名折叠成一档，
+      // 而不是按选择器计两份。匹配只收以 `> i` 收尾的珠子规则，读法行的红
+      // （`> span`）不在族里，它自己算一份。
+      is: s => s.startsWith('.itemDateAxis') && />\s?i$/.test(s),
+    },
   ]
 
   /**

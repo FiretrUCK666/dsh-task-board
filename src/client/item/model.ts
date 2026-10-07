@@ -90,26 +90,51 @@ export function formatItemDate(at: number, english: boolean, now: number = Date.
 }
 
 /**
- * Parse a `yyyy-mm-dd` field back into a moment, or `undefined` when blank.
+ * Parse a date field back into a moment, or `undefined` when unreadable.
  *
- * The inputs are date fields, so they speak a day and not a clock. Building the
- * moment in local time is the whole point: a date typed as 28 September must
- * land on 28 September for the person who typed it, whatever timezone the
- * browser happens to be in. `undefined` here is not a failure — it is how a
- * cleared field says 「no promise any more」, and the patch it goes into is a
- * spread, so an explicit `undefined` clears the date while an absent key leaves
- * it alone.
+ * The field speaks a day and not a clock, and it speaks three ways — the same
+ * three the reader has met everywhere else on this surface: `2026-10-15`, the
+ * word form (`明天`/`today`), and the `@`-prefixed word. A field that taught a
+ * reader one spelling in the capture and then refused it in place was a
+ * grammar that changed between two steps of the same edit.
+ *
+ * Building the moment in local time is the whole point: a date typed as 28
+ * September must land on 28 September for the person who typed it, whatever
+ * timezone the browser happens to be in. `undefined` here is not a failure — it
+ * is how a cleared field says 「no promise any more」 (an empty field), and the
+ * patch it goes into is a spread, so an explicit `undefined` clears the date
+ * while an absent key leaves it alone.
  * @param value - the field's value.
+ * @param now - the reading clock; a WORD resolves against it, so a test pins
+ *   `明天` with a fixed clock instead of the machine's today.
  * @returns the moment, or `undefined` for an empty or unparseable field.
  */
-export function parseItemDate(value: string): number | undefined {
+export function parseItemDate(value: string, now: number = Date.now()): number | undefined {
   const trimmed = value.trim()
   if (trimmed === '') return undefined
+  /* THE WORD FORMS, by offset in days from today's own midnight. Both the
+   * bare word and the `@`-stamped word resolve the same way; the stamp is how
+   * the capture grammar says 「this is a date」, and here it costs nothing to
+   * accept what the reader already typed. */
+  const said = trimmed.replace(/^@/, '').toLowerCase()
+  const offset = WORD_DAYS[said]
+  if (offset !== undefined) {
+    const day = new Date(now)
+    day.setHours(0, 0, 0, 0)
+    day.setDate(day.getDate() + offset)
+    return day.getTime()
+  }
   const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
   if (parts === null) return undefined
   const [year, month, day] = parts.slice(1).map(Number) as [number, number, number]
   const at = new Date(year, month - 1, day).getTime()
   return Number.isFinite(at) ? at : undefined
+}
+
+/** The word forms the field accepts, keyed by their day offset from today. */
+const WORD_DAYS: Readonly<Record<string, number>> = {
+  前天: -2, 昨天: -1, 今天: 0, 明天: 1, 后天: 2,
+  yesterday: -1, today: 0, tomorrow: 1,
 }
 
 /** Render a moment for a `yyyy-mm-dd` date field. */

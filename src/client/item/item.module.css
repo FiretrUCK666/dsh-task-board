@@ -336,124 +336,6 @@
   box-shadow: var(--item-card-shadow);
 }
 
-/* ── 5. 筛选行 ───────────────────────────────────────────────────────────── */
-
-/* 「筛选：」 + 若干枚 + 排序钮 + 「隐藏已完成」。空的时候整行不渲染。 */
-.itemFilters {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  flex: none;
-  min-inline-size: 0;
-}
-
-.itemFiltersLabel {
-  flex: none;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  color: var(--item-ink-3);
-}
-
-/* 筛选钮：描边控件，与药丸分开——它是控件不是读数。高 28（触控地板之上），
- * 半径读控件档。 */
-.itemFilterButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  min-block-size: 28px;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--item-ink-2);
-  background: none;
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-  cursor: pointer;
-  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion);
-}
-
-.itemFilterButton:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--item-ink-1);
-}
-
-/* 已选中的筛选面：加一层墨，不换颜色——换颜色会让「有筛选」这件事比
- * 「筛选是这个」更响。 */
-.itemFilterButton[data-open] {
-  color: var(--item-ink-1);
-  background: var(--dsh-tb-hover);
-  border-color: var(--item-ink-3);
-}
-
-.itemFilterCount {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 1;
-  font-variant-numeric: tabular-nums;
-  color: var(--item-ink-3);
-}
-
-.itemSortButton {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  min-block-size: 28px;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--item-ink-2);
-  background: none;
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-  cursor: pointer;
-  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
-}
-
-.itemSortButton:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--item-ink-1);
-}
-
-/* 「隐藏已完成」是清单页里常驻可见的一个开关，不藏进任何菜单。 */
-.itemHideDone {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex: none;
-  min-block-size: 28px;
-  padding: 0 10px 0 8px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
-  white-space: nowrap;
-  color: var(--item-ink-2);
-  background: none;
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-  cursor: pointer;
-}
-
-.itemHideDone input {
-  inline-size: 14px;
-  block-size: 14px;
-  margin: 0;
-}
-
-.itemHideDone:hover {
-  color: var(--item-ink-1);
-}
-
 /* ── 6. 工作台 = 左栏 + 行流 ────────────────────────────────────────────────
  *
  * 工作台本身**永远不是滚动容器**：左栏不滚（它是导航），行的滚动体是
@@ -776,11 +658,17 @@
  * 只写着 `grid-area` 的规则——一条只为了「还有一个地方可以挂声明」而存在的重复规则，
  * 会让下一个人以为改这里有用。 */
 
+/* 月份是这块日历的**标题**：它站在冻结字阶的大字档上（26/700，这一档的字重就是
+ * 700）——日历的题头与 12px 的日子数字之间要有一整档的主次，15px 的「标题」与
+ * 12px 的数字只差一档灰阶，读者分不出谁是主。对齐对象是下面的七列格子：居中，
+ * 标题与网格互相照见。 */
 .itemRailMonth {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 26px;
+  line-height: 32px;
+  font-weight: 700;
   color: var(--item-ink-1);
-  margin-block-end: var(--s1);
+  text-align: center;
+  margin-block-end: var(--s2);
 }
 
 .itemRailMonthGrid {
@@ -1735,8 +1623,10 @@
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
-  gap: 6px;
-  margin: 0;
+  gap: var(--s1);
+  margin: var(--s1) 0;
+  /* 空日摘要与节名、与日子读法同一条左沿——这页唯一的左沿。 */
+  padding-inline-start: var(--item-agenda-lead);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -1746,7 +1636,7 @@
 .itemEmptyGroup {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--s1);
   white-space: nowrap;
   color: var(--item-ink-3);
 }
@@ -1796,6 +1686,11 @@
   min-inline-size: 0;
   padding: var(--s4) var(--item-card-pad);
   max-inline-size: 56ch;
+  /* 空态站在卡的**中间**，不站在左上角：它是这一屏唯一的内容，一块四周空气
+   * 不对称的空态读起来像坏掉的版面（读者的原话：「左边几乎粘着边缘，上面又有
+   * 很多空隙」）。块居中，块内的字仍左对齐。 */
+  margin-block: auto;
+  margin-inline: auto;
 }
 
 .itemListEmptyWords {
@@ -1870,25 +1765,21 @@
   overflow-wrap: anywhere;
 }
 
+/* 空穿第二档墨而不是第三档：第三档的定义是「淡、可丢弃」，而一个空列是那一屏
+ * 上唯一的内容，它没有可以服从的对象。**空只说没有，不摆补救动作**——一旦给
+ * 空态配上补救动作，用户就会开始问「那它是不是坏了」。孤零零的一句，块与字都
+ * 居中；它站在卡的中间，与左上角的死角无关。 */
 .itemNoMatch {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 8px;
-  flex: none;
-  min-inline-size: 0;
-  padding: 40px var(--item-row-pad);
+  display: block;
+  margin-block: auto;
+  margin-inline: auto;
+  padding: var(--s4) var(--item-card-pad);
   font-size: 13px;
   font-weight: 400;
   line-height: 20px;
+  text-align: center;
   color: var(--item-ink-2);
-}
-
-/* 空穿第二档墨而不是第三档：第三档的定义是「淡、可丢弃」，而一个空列是那一屏
- * 上唯一的内容，它没有可以服从的对象。**空只说没有，不摆补救动作**——一旦给
- * 空态配上补救动作，用户就会开始问「那它是不是坏了」。 */
-.itemNoMatch {
-  color: var(--item-ink-2);
+  min-inline-size: 0;
 }
 
 /* 展开区重新做成**两列**（正文在左、属性表在右、动作横贯下面）之后，这几条
@@ -2036,19 +1927,8 @@
   background: var(--dsh-tb-hover);
 }
 
-/* 这一族小菜单的位置由这一处说，不在每一处重说。**它是一道会换行的行**：三枚
- * 药丸在手机上比一行的格子宽（读者的字号再放一档就一定宽出去），不换行的排法
- * 会把最右那枚挤出板子，压到右列的日期轴上——菜单压到不相干的内容上面，是这一页
- * 最坏的一种越界。 */
-.itemStepMenuList {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--s1);
-  margin: var(--s1) 0 0;
-  padding: 0;
-  list-style: none;
-}
+/* 这些小菜单不再自己长形状：步骤的 ⋯ 打开的是行菜单**同一个组件**（同一族竖排
+ * 板、同一份定位算术），形状只有一处。 */
 
 /* 已完成那一叠：它只是**那道门和门后面的行**，所以它自己没有任何形状——
  * 一个额外的盒子会在板子里面再画一个盒子，而这里要说的是「上面那几行是另算的」。 */
@@ -2056,11 +1936,17 @@
   min-inline-size: 0;
 }
 
-.itemStepMore,
+/* 这两道门共用一个名字与同一条规则：展开/收起都是同一形状（一块悬停浅底 + 一枚
+ * 会转的箭头 + 一句带数的话），区别只有门后是什么。 */
 .itemStepFold {
-  display: block;
+  display: flex;
+  align-items: center;
+  gap: var(--s1);
   inline-size: 100%;
-  padding: 9px 0;
+  /* 左右 14px：记号站进「勾与字之间」那道沟里（16px 勾 + 10px 沟 = 26px，记号
+   * 8px + 4px 沟 → 26 − 12 = 14），句子则正好落在步骤文字那条线上——门里的字
+   * 与门外的字同一条左线，记号占的是本来就留给记号的沟。 */
+  padding: 9px 14px;
   font-family: inherit;
   font-size: 12px;
   font-weight: 400;
@@ -2068,14 +1954,30 @@
   color: var(--item-ink-3);
   background: none;
   border: 0;
-  border-block-start: var(--item-hair);
+  border-radius: var(--item-radius-ctl);
   cursor: pointer;
-  transition: color var(--dsh-tb-motion);
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
 }
 
-.itemStepFold:hover,
-.itemStepMore:hover {
+/* 一道门要说自己是一道门：hover 不只动字色，也给一块同族的浅底——门是控件，
+ * 控件的悬停走这族「抬一档」的令牌（与芯片、与行的属同一档），而不是另立一个。
+ * 上下之间不再画线：门与行之间隔着空气（板内衬 + 各自的上下内衬），一条发丝线
+ * 在圆角元素的顶上两端各往下弯一道弧，读者看到的是一道划痕，不是一次分隔。 */
+.itemStepFold:hover {
   color: var(--item-ink-1);
+  background: var(--dsh-tb-hover);
+}
+
+/* 折叠的箭头跟着状态转：收着的那一句说「可以展开」，箭头指向右；开着一句话
+ * 说「可以收起」，箭头原地转到下——同一个形状，一次旋转，不是两个字形。 */
+.itemStepFoldMark {
+  flex: none;
+  transform: rotate(0deg);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.itemStepFold[aria-expanded='true'] .itemStepFoldMark {
+  transform: rotate(90deg);
 }
 
 /* ── 勾选框：整个面板只有这一个 ──────────────────────────────────────────
@@ -2118,6 +2020,7 @@
   border-radius: 4px;
   background: transparent;
   transition: border-color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+  overflow: hidden;
 }
 
 /* 墨，不是 accent：勾好的那一步，行左边那个环已经说了「做完了」。两处都上色，
@@ -2127,21 +2030,18 @@
   background: var(--item-ink-2);
 }
 
-/* 勾居中的两个数：勾的**包围盒**转 42 度之后仍然以 L 盒自己的中心为中心（旋转
- * 不改包围盒的对称性），所以居中就是**把 L 盒的中心放到盒中心**：内容盒 14×14，
- * 中心在 (7,7)；L 盒 5×9，中心在自身 (2.5,4.5)，于是落在 (4.5, 2.5)。「L 居中」
- * 的 4/2 偏半个像素——读者看得出来；一步跳到 6.5 那一版又过了头，两次都在屏上
- * 被指出来过。两个数都在内容盒里量，勾放别的行宽上不用重算。 */
-.itemTick > input:checked + i::after {
-  content: '';
-  position: absolute;
-  inset-inline-start: 4.5px;
-  inset-block-start: 2.5px;
-  inline-size: 5px;
-  block-size: 9px;
-  border: solid var(--dsh-tb-ink-on-fill);
-  border-width: 0 1.6px 1.6px 0;
-  transform: rotate(42deg);
+/* 勾是一根画出来的线段，居中由构造保证：路径的横竖跨度都以 16px 视图的中线为
+ * 中心。曾经那两个数是手放的，先「偏左」再「偏右」，两次都在屏上被指出来——
+ * 手放的 L 无解，路径有。 */
+.itemTick > i > svg {
+  block-size: 16px;
+  inline-size: 16px;
+  display: none;
+  color: var(--dsh-tb-ink-on-fill);
+}
+
+.itemTick > input:checked + i > svg {
+  display: block;
 }
 
 .itemTick > input:focus-visible + i {
@@ -2739,8 +2639,14 @@ textarea.itemInput {
 /* ── 13. 日程页 ──────────────────────────────────────────────────────────── */
 
 /* 议程优先而不是月历网格：日程页的读者问的是「这周该做什么」，他要的是
- * **按天读**。一个节只有在有行的时候才占一行——空节是排版噪声，整个不画。 */
+ * **按天读**。一个节只有在有行的时候才占一行——空节是排版噪声，整个不画。
+ *
+ * **这页只有一个左沿。** 节名、日子的读法、空日摘要、门与托盘的名字，全都站在
+ * 同一条线上。宽档（行住在卡里）时线上没有缩进——卡缘、节名与日期互相照齐，
+ * 读者的原话是「很多地方应该往左边移动」；窄档行是通栏的，线上给到行文字的位置
+ * （880 断点里那一份）。一个变量，四个读者。 */
 .itemAgenda {
+  --item-agenda-lead: 0px;
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
@@ -2752,30 +2658,31 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
+/* 日子读法是这一节的**题头**：这一页的主声部。墨提到第一档——它在 15/600 的行
+ * 标题之下、在 11px 的节名之上，字阶与墨阶一起给出「天 > 名字 > 行」的梯子；
+ * 线在它下面，标着「这一节的行从这里开始」。 */
 .itemAgendaDayLabel {
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--s2);
   min-inline-size: 0;
   margin: 0;
-  padding-block: 12px 8px;
-  /* 节名与它下面那些行的标题同一条左沿。 */
-  padding-inline-start: var(--item-title-lead);
-  /* 线在节名的**下面**：它标的是「这一节的行从这里开始」，与清单页的组头同一条
-   * 律。画在节名上面等于说「这一节属于上面那个」，那是另一种分节法，而议程读的
-   * 正是天——天是一节的名字，线该在它的下面。 */
+  padding-block: var(--s2) var(--s1);
+  padding-inline-start: var(--item-agenda-lead);
   border-block-end: var(--item-hair);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--item-ink-2);
+  color: var(--item-ink-1);
 }
 
 .itemAgendaList {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding-block-end: 12px;
+  /* 节与节之间是一整档空气（22）：上一张卡的脚与下一节的名之间有了自己的
+   * 一拍，密集的小字不再贴着卡。 */
+  padding-block-end: var(--s3);
 }
 
 /* 「还没到开始时间」是唯一的折叠区：它是一扇还没开的门，把它画成一个日子
@@ -2786,22 +2693,23 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
+/* 门的名字与日子读法同律（它是这一节同样有线的题头），只是它后面跟着一句解释。 */
 .itemGatedFoldHead {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   inline-size: 100%;
   min-block-size: 28px;
   min-inline-size: 0;
   margin: 0;
   padding: 0;
-  padding-inline-start: var(--item-title-lead);
+  padding-inline-start: var(--item-agenda-lead);
   font-family: inherit;
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
   text-align: start;
-  color: var(--item-ink-2);
+  color: var(--item-ink-1);
   background: none;
   border: 0;
   border-block-end: var(--item-hair);
@@ -2812,11 +2720,12 @@ textarea.itemInput {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding-block-start: 8px;
+  padding-block-start: var(--s2);
+  padding-block-end: var(--s3);
 }
 
 /* 「没有日期」是一个有名字的容器，因为看不见自己去了哪里的读者会以为那一行
- * 丢了；它同样遵守「有行才有容器」。 */
+ * 丢了；它同样遵守「有行才有容器」。名字与日子读法同律。 */
 .itemNoDateTray {
   display: flex;
   flex-direction: column;
@@ -2826,16 +2735,16 @@ textarea.itemInput {
 .itemNoDateTrayLabel {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--s2);
   min-inline-size: 0;
   margin: 0;
-  padding-block: 12px 8px;
-  padding-inline-start: var(--item-title-lead);
+  padding-block: var(--s2) var(--s1);
+  padding-inline-start: var(--item-agenda-lead);
   border-block-end: var(--item-hair);
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--item-ink-2);
+  color: var(--item-ink-1);
 }
 
 /* ── 13a. 这一段的类：组件接上了新骨架，样式表还没跟上 ───────────────────────
@@ -3086,38 +2995,72 @@ textarea.itemInput {
   border-block-start: var(--item-hair);
 }
 
-/* 归档抽屉：一个 section + 一个折叠头 + 一张列表，与 `.itemGroup*` **形状相同但名字
- * 不同**。那三个状态分组已经拆掉了，`itemGroup*` 四个字从词表里退场，而这个块的
- * 标题是「已删除」、它下面装的是墓碑，不是任何一个状态。
- *
- * **名字要说它是什么**，否则下一个读代码的人会以为分组还在——而这一轮最大的伤
- * 正是「名字和它实际干的事对不上」（`.itemComposer`、`.itemKeyHelpCreate*` 各一次）。 */
+/* 归档页：一个 section + 一个折叠头 + 一张列表。标题是「已删除」、它下面装的是
+ * 墓碑，不是任何一个状态；页的内衬（四周同一个）由页面自己给，节里不再画线。 */
+.itemArchivePage {
+  display: flex;
+  flex-direction: column;
+  flex: 1 0 auto;
+  min-block-size: 0;
+  min-inline-size: 0;
+  background: var(--item-surface);
+  border: var(--item-hair);
+  border-radius: var(--item-radius-card);
+  box-shadow: var(--item-card-shadow);
+  /* 四周同一个内衬：这一页的题头与句子曾经糊在左上角（横内衬为零、竖内衬 24），
+   * 一边粘一边空，读者的原话是「左边几乎粘着边缘，上面又有很多空隙」。 */
+  padding: var(--item-card-pad) var(--item-inset-x) var(--s3);
+}
+
 .itemArchiveSection {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  flex: 1 1 auto;
   min-inline-size: 0;
-  padding-block-start: var(--item-gap);
-  border-block-start: var(--item-hair);
 }
 
 .itemArchiveHead {
   margin: 0;
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 16px;
-  letter-spacing: 0.02em;
+  line-height: 20px;
+  color: var(--item-ink-1);
+}
+
+/* 归档那一行的数与节标题旁那个数各说各的：节标题旁的数是 11px 的铭牌，归档页
+ * 题头旁的数站在 15px 的标题旁边，同档降一阶是 13。 */
+.itemArchiveCount {
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 20px;
   color: var(--item-ink-3);
 }
 
-/* 归档那一行的数，以及节标题旁那个数：**同一个位置、同一个层级、同一个声音**。
- * 两者都是「一个数说明这一段有多大」，所以它们共用一条声明而不是各写一遍。 */
-.itemArchiveCount,
 .itemSectionCount {
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
   color: var(--item-ink-3);
+}
+
+/* 一条都没有的归档：句子站在页的**中间**，四周都是它自己的空气——空页不是
+ * 左上角的一行小字。 */
+.itemArchiveVoid {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-block-size: 180px;
+  padding: var(--s4) 0;
+}
+
+.itemArchiveVoid > p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 20px;
+  text-align: center;
+  color: var(--item-ink-2);
 }
 .itemArchiveList {
   display: flex;
@@ -3127,6 +3070,8 @@ textarea.itemInput {
   margin: 0;
   padding: 0;
   list-style: none;
+  /* 空的那一页，句子吃满剩下的整块空间；有行的时候它是内容高度，不多占。 */
+  flex: 1 1 auto;
 }
 
 /* The drawer's own bar, and the row list under it, ARE the draft's 「已删除」:
@@ -3185,7 +3130,7 @@ textarea.itemInput {
 
 /* One row, THREE tracks (box / words / way back), the same beats the draft
  * sets: 16px box, then the words, then the action — hairlines between rows, not
- * around them. */
+ * around them. 行内的横衬归页（页自己内衬 inset-x），行里只留竖向的空气。 */
 .itemArchiveRow {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
@@ -3193,7 +3138,7 @@ textarea.itemInput {
   row-gap: 2px;
   align-items: start;
   min-inline-size: 0;
-  padding: 12px var(--item-inset-x);
+  padding: 12px 0;
 }
 
 .itemArchiveRow + .itemArchiveRow {
@@ -3341,7 +3286,9 @@ textarea.itemInput {
   column-gap: var(--s2);
   align-items: center;
   min-block-size: 38px;
-  padding-block: var(--s1);
+  /* 上下各一档 --s2。它原来是 --s1：属性行 4px、日期轴 22px，同一列里两套节奏。
+   * 现在整列是一个拍子：行与行之间都以 10px 呼吸，谁也不比谁空。 */
+  padding-block: var(--s2);
 }
 
 /* **线画在行与行之间，不画在最后一行下面。**
@@ -3354,8 +3301,12 @@ textarea.itemInput {
  * 下一个区块——那是另一件事，该由「区块之间的距离」说，不该由「这一行结束了」说。
  * 分不清这两件事的线，会在最后一个字段被删掉的时候一起消失。
  *
- * 所以用相邻兄弟选择器：线只出现在**两个字段之间**，一个字段的栏里一条线都不画。 */
-.itemOptRow + .itemOptRow {
+ * 所以用相邻兄弟选择器：线只出现在**两个字段之间**，一个字段的栏里一条线都不画。
+ * 日期轴也是这一列里的字段：它与属性行相邻的两处，同一条律的线都该出现——否则
+ * 标签的线在轴那里断掉，一列读起来像换了本子。 */
+.itemOptRow + .itemOptRow,
+.itemOptRow + .itemDateAxis,
+.itemDateAxis + .itemOptRow {
   border-block-start: var(--item-hair);
 }
 
@@ -3371,8 +3322,15 @@ textarea.itemInput {
 .itemOpts {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: var(--s1);
   min-inline-size: 0;
+}
+
+/* 一枚「值」里的东西**不换行地挤在一起**：状态药丸、优先级芯片与卡片芯片都是
+ * 不可压缩的答案。它们各自 `flex: none`，所以换行只能发生在**整个字段之间**，
+ * 而不是发生在一枚药丸的中间。 */
+.itemOpts > * {
+  flex: none;
 }
 
 .itemOpt {
@@ -3413,11 +3371,24 @@ textarea.itemInput {
 .itemKeyHelpTrigger:hover,
 .itemFacetChip:hover,
 .itemTopBarChip:hover,
-.itemFilterButton:hover,
+.itemArchiveToggle:hover,
 .itemRailRow:hover {
   background: var(--item-fill);
   border-color: var(--item-ink-3);
   color: var(--item-ink-1);
+}
+
+/* 按下去的那一拍：触屏没有 hover，按是唯一的反馈；桌面上的按也是同一句
+ * 「真的按了」。按下的一拍用悬停同族的浅底，不再另立一档。 */
+.itemOpt:active,
+.itemTag:active,
+.itemPill:active,
+.itemKeyHelpTrigger:active,
+.itemFacetChip:active,
+.itemTopBarChip:active,
+.itemArchiveToggle:active,
+.itemRailRow:active {
+  background: var(--item-fill);
 }
 
 /* **输入框的悬停是描边进一档，不是抬表面。** 一个能打字的地方在指针经过时该说
@@ -3430,6 +3401,7 @@ textarea.itemInput {
 .itemCreateDialogBody:hover,
 .itemCreateDialogDateField:hover,
 .itemProse:hover,
+.itemDateField:hover,
 .itemRowTitleInput:hover {
   border-color: var(--item-ink-3);
 }
@@ -3470,6 +3442,24 @@ textarea.itemInput {
   font-size: 12px;
   font-weight: 400;
   color: var(--item-ink-3);
+}
+
+/* 这一行族里的两句话都要**独占一整行**，而 `.itemOpts > *` 的 `flex: none` 与它们
+ * 同特异性、且写在后面——必须在这里按更高的特异性把「一整行」拿回来，否则那两
+ * 句各自按内容的自然宽度排成一条长线，在窄的右列里被边裁掉。 */
+.itemOpts > .itemOptHint,
+.itemOpts > .itemOptsFoot {
+  flex: 0 0 100%;
+}
+
+/* 挂卡的那句话真相与它旁边那格同一族，只是它是**一件事实**而不是一个错处：
+ * 第三档墨、独占一整行，跟在芯片的下面；长句换行，不裁。 */
+.itemOptsFoot {
+  margin: 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--item-ink-3);
+  overflow-wrap: anywhere;
 }
 
 /* 「加一个」是一个**会长的**输入框，不是一个定宽的口子。
@@ -3530,20 +3520,6 @@ textarea.itemInput {
   }
 }
 
-/* 一枚「值」里的东西**不换行地挤在一起**：三个状态药丸是三个答案，四个优先级芯片
- * 是同一把尺上的四格。它们各自 `flex: none`，所以换行只能发生在**整个字段之间**，
- * 而不是发生在一枚药丸的中间。 */
-.itemOpts {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  min-inline-size: 0;
-}
-
-.itemOpts > * {
-  flex: none;
-}
-
 /* ── 三个日期：一条竖线上的三颗珠子 ──────────────────────────────────────
  *
  * **一行说三样事：是什么 · 哪天 · 现在怎么样。** 它们原来是两行——名字一行、日期
@@ -3587,9 +3563,9 @@ textarea.itemInput {
 .itemDateAxis {
   list-style: none;
   margin: 0;
-  /* 上面一档空气。这一栏与它上面的属性字段之间**没有线**，所以这个距离是它们之间
-   * 唯一的分界：轴的第一次「最早开始」不该贴在「标签」那一行的下内衬上。 */
-  padding: var(--s2) 0 0;
+  /* 上面不再加一档：属性行自己的下内衬（--s2）已经是那一档空气，轴再加一档
+   * 就变成「标签与第一颗珠子之间隔着两个档」。 */
+  padding: 0;
 }
 
 .itemDateAxis li {
@@ -3598,7 +3574,10 @@ textarea.itemInput {
   flex-direction: column;
   gap: 2px;
   min-inline-size: 0;
-  padding: 0 0 var(--s3) 22px;
+  /* 行与行之间 10px——**与右列其它行同一档**。它原来是 --s3（22px）：三行日期
+   * 各自比属性行多出两倍的空气，读者看到的是同一列里两套节奏。轴自己连成一根
+   * 线这件事不受影响：线跟着行高走，珠子打点。 */
+  padding: 0 0 var(--s2) 22px;
 }
 
 .itemDateAxis li:last-child {
@@ -3692,6 +3671,14 @@ textarea.itemInput {
   background-color: var(--dsh-tb-danger);
 }
 
+/* 硬期限那一颗，**挂着就红**：第三行与第二行的区别读者点名要看得见——空心红环
+ * 说「这里挂着一把不会顺延的期限」，实心红（上面那条）留给「已经超了」。环只有
+ * 描边进危险色，孔与底不换：实与空仍是超与未超的分界。 */
+.itemDateAxis li[data-key='hardDueAt'][data-tone='set'] > i,
+.itemDateAxis li[data-key='hardDueAt'][data-tone='soon'] > i {
+  border-color: var(--dsh-tb-danger);
+}
+
 /* The NAME keeps the label's own ink even when the reading is red: the name is
  * 「硬期限」 on every row, and a name that changes colour says the field changed. */
 .itemDateAxis li[data-tone='over'] > b {
@@ -3701,6 +3688,67 @@ textarea.itemInput {
 .itemDateAxis li[data-tone='over'] > span {
   color: var(--dsh-tb-danger);
   font-size: 13px;
+}
+
+/* 三个读法都是**就地可写的**：读法本身是一枚按钮（悬停出一条可用的线，读者看得
+ * 见「这里按得动」）；点开之后原地换一根同一写法的输入框，与标题、正文、备注
+ * 在这一列里同一个状态机。 */
+.itemDateOpen {
+  display: inline-flex;
+  align-items: baseline;
+  flex: none;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--item-ink-2);
+  background: none;
+  border: 0;
+  border-radius: var(--item-radius-ctl);
+  cursor: pointer;
+  font-variant-numeric: tabular-nums;
+  transition: color var(--dsh-tb-motion);
+}
+
+.itemDateOpen > span {
+  min-inline-size: 0;
+  /* 可点示意是**常驻**的：虚线不等到悬停才出现——触屏上没有悬停，一个只有在
+   * 悬停里才承认自己按得动的控件，在手机上就是一块按不动的东西。虚线用第三档
+   * 墨画，悬停提到第二档；语气行的墨（超期那一行的红）在悬停时**不换**——一个
+   * 短暂的指针不值得让一行换一种态度，所以墨的预算不必为悬停多付一份。 */
+  text-decoration: underline dotted;
+  text-decoration-color: var(--item-ink-3);
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dsh-tb-motion);
+}
+
+.itemDateOpen:hover > span {
+  text-decoration-color: var(--item-ink-2);
+  text-decoration-style: solid;
+}
+
+/* 打开的那一行：一根同写法、内容定宽的输入框（read 行的字与它同高），焦点落在
+ * focus 令牌上——放在行内，不抬升成一块浮层。 */
+.itemDateField {
+  padding: 2px 8px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--item-ink-1);
+  background: none;
+  border: var(--item-hair-strong);
+  border-radius: var(--item-radius-ctl);
+  outline: none;
+}
+
+.itemDateField:focus {
+  border-color: var(--dsh-tb-focus-color);
+}
+
+/* 没读懂的读法说一句为什么，就住在本行下面；同第三档墨 */
+.itemDateBad {
+  margin: 2px 0 0;
+  font-size: 11px;
+  line-height: 16px;
+  color: var(--item-ink-3);
 }
 
 /* ── 动作行：横贯两列 ───────────────────────────────────────────────────────
@@ -3748,12 +3796,14 @@ textarea.itemInput {
   }
 }
 
-/* 议程页的节名：与页轨同一套（名字 + 6px 沟 + 第三层墨的数）。 */
+/* 议程页的节名：与页轨同一套（名字 + 6px 沟 + 第三层墨的数），站在这一页唯一的
+ * 左沿上——与下面的日子读法、与行为内衬同一条线。 */
 .itemAgendaDayHead {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--s1);
   margin: 0;
+  padding-inline-start: var(--item-agenda-lead);
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -3889,13 +3939,6 @@ textarea.itemInput {
 
 /* ── 14. 焦点 ────────────────────────────────────────────────────────────── */
 
-/* 原生勾选框的着色，**一族一处**。清单上所有勾都走 `.itemTick` 自己画的盒子，
- * 这里着色的是仍由平台绘制的那一枚（筛选项）——原生控件的着色本来就是一个视觉
- * 位置，不是每个勾一个。 */
-.itemHideDone input {
-  accent-color: var(--dsh-tb-accent);
-}
-
 /* 焦点环全表一个族。写在这里而不是每一处，是因为两处就够变成两个说法。 */
 .itemRoot :focus-visible {
   outline: 2px solid var(--dsh-tb-accent);
@@ -3988,13 +4031,10 @@ textarea.itemInput {
     padding-inline: var(--item-row-pad);
   }
 
-  /* 窄档里行换了自己的内衬与沟，节名不能继续读宽档公式：公式里每一个量都必须跟
-   * 着同一档走，否则标题左移而节名不动，对齐又悄悄错一位。卡内衬继续从面板档继承，
-   * 行内衬与沟从行档读——三个量各有各的主人，但写在同一处。 */
-  .itemAgendaDayLabel,
-  .itemGatedFoldHead,
-  .itemNoDateTrayLabel {
-    --item-title-lead: calc(var(--item-card-pad) + var(--item-row-pad) + var(--item-row-lead) + var(--s1));
+  /* 窄档里行换了自己的内衬与沟，这一页唯一那条左沿跟着同一档走：变量写在议程的
+   * 根上，读它的四个名字全部一起动，谁也不再比谁多一格。 */
+  .itemAgenda {
+    --item-agenda-lead: calc(var(--item-row-pad) + var(--item-row-lead) + var(--s1));
   }
 
   .itemRow > .itemDetail {
@@ -4090,22 +4130,23 @@ textarea.itemInput {
 }
 /* ── 16. 触屏：只加热区，不改任何视觉几何 ────────────────────────────────── */
 
-/* ── 16. 触屏：只加热区，不改任何视觉几何 ────────────────────────────────── */
-
 /* 加高的是手，不是版面——一个在触屏上变大的按钮，手机就不再是同一件产品的
  * 窄版本了。唯一允许的媒体查询就是这一条。 */
 /* 触屏：只加热区，**不改任何视觉几何**。这是一族，不是逐处补——每处自己写一次
  * `::after`，就会有某一处忘了，于是那一处小到手指点不中。
  *
  * ⋮ 的命中区本来就是 28px 见方（它是一个控制，不是三个字），所以它不在这一族
- * 里：给它再撑 8px 会把两行的间距吃掉，视觉上就变成「行之间粘住了」。 */
+ * 里：给它再撑 8px 会把两行的间距吃掉，视觉上就变成「行之间粘住了」。
+ * 归档页头与「还有 N 行」是同一形状的文字控件，步骤 ⋯ 与月历日格是面板里最小的
+ * 两处命中区——四者都站进这一族。 */
 @media (hover: none) and (pointer: coarse) {
   .itemFacetChip,
   .itemQueryChipRemove,
   .itemQueryClear,
-  .itemFilterButton,
-  .itemSortButton,
-  .itemHideDone,
+  .itemStepMenu,
+  .itemRailDay,
+  .itemArchiveToggle,
+  .itemMore,
   .itemPill,
   .itemOpt {
     position: relative;
@@ -4114,9 +4155,10 @@ textarea.itemInput {
   .itemFacetChip::after,
   .itemQueryChipRemove::after,
   .itemQueryClear::after,
-  .itemFilterButton::after,
-  .itemSortButton::after,
-  .itemHideDone::after,
+  .itemStepMenu::after,
+  .itemRailDay::after,
+  .itemArchiveToggle::after,
+  .itemMore::after,
   .itemPill::after,
   .itemOpt::after {
     content: '';

@@ -49,7 +49,25 @@ export function Tickbox(props: TickboxProps): ReactElement {
         aria-pressed={props.pressed}
         onChange={props.onToggle}
       />
-      <i aria-hidden="true" />
+      {/* THE TICK IS A PATH IN A SQUARE VIEW, and every number in it is
+          symmetric by construction: the segment runs (3.5,8.1) → (6.8,11.4) →
+          (12.5,4.6), whose horizontal span centres on 8 and whose vertical span
+          centres on 8 — the 16px view's own centre. A rotated border relied on
+          four hand-placed numbers, and two rounds of reading 「偏左」 then
+          「偏右」 proved the point: an eyeballed L never has both its optical
+          AND its bounding centres inside the box. A path does. */}
+      <i aria-hidden="true">
+        <svg viewBox="0 0 16 16" width="16" height="16" focusable="false">
+          <path
+            d="M3.5 8.1 L6.8 11.4 L12.5 4.6"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      </i>
     </span>
   )
 }

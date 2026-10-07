@@ -28,6 +28,13 @@
 import type { ItemPriority, ItemStatus } from '../../core/item.ts';
 export interface ItemBatchBarProps {
     readonly count: number;
+    /**
+     * THE VALUE ALL HELD ROWS SHARE, when they share one — the Segmented's own
+     * mark. Undefined = a mixed holding, and the strip stays blank rather than
+     * claiming a tier nobody chose for all of them.
+     */
+    readonly commonStatus: ItemStatus | undefined;
+    readonly commonPriority: ItemPriority | undefined;
     /** Whether every row the reader can see is held — what the select-all box draws. */
     readonly allPicked: boolean;
     /** Hold every visible row, or release them all. `visible`, not 「everything」:

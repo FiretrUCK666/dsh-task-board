@@ -668,6 +668,7 @@ export const zh = {
   'item.field.newCard': '新建卡片',
   'item.dates.now': '现在就能动，没有门',
   'item.dates.none': '没定',
+  'item.dates.bad': '这个读法我没读懂。再试一次：2026-10-15、明天或 @明天。',
   'item.topbar.sort': '排序',
   'item.topbar.create': '新建一条',
   'item.search.remove': '×',
@@ -923,6 +924,7 @@ export const zh = {
   // 一个是标签（它叫什么），一个是空名被记下时那一句话（只有它是占位，名字是内容）。
   'item.cardName.label': '新卡的名字',
   'item.cardName.empty': '先给这张卡起一个名字。',
+  'item.cardLink.note': '挂上一张已有的卡不改它——卡的名字、Prompt 与会话都是它自己的；新卡会把这一条的开头带过去，之后两边各改各。',
 
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
@@ -961,6 +963,7 @@ export const zh = {
   'item.steps.next': '下一条',
   'item.steps.tick': '标为完成：{text}',
   'item.steps.more': '还有 {n} 条没做',
+  'item.steps.moreHide': '收起没做的 {n} 条',
   'item.steps.moreMenu': '这一步的动作',
   'item.steps.doneShow': '已完成 {n} 条',
   'item.steps.doneHide': '收起已完成的 {n} 条',
@@ -1607,6 +1610,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.newCard': 'New card',
   'item.dates.now': 'open now, no gate',
   'item.dates.none': 'not set',
+  'item.dates.bad': 'I could not read that. Try again: 2026-10-15, tomorrow, or @tomorrow.',
   'item.topbar.sort': 'Sort',
   'item.topbar.create': 'New row',
   'item.search.remove': '×',
@@ -1846,6 +1850,7 @@ export const en: Record<keyof typeof zh, string> = {
   // both words live at that step.
   'item.cardName.label': 'Name of the new card',
   'item.cardName.empty': 'Give the card a name first.',
+  'item.cardLink.note': 'Linking keeps a card as it is — its name, prompt and sessions are its own; a new card starts from the words of this row, and the two grow apart after.',
 
   // The archive. Not a tab on the rail: a page the reader arrives at. The
   // thirty-day window is stated rather than implied, because a restore button
@@ -1886,6 +1891,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.steps.next': 'Next',
   'item.steps.tick': 'Mark done: {text}',
   'item.steps.more': '{n} more still to do',
+  'item.steps.moreHide': 'Hide the {n} still to do',
   'item.steps.moreMenu': 'What this step can do',
   'item.steps.doneShow': '{n} done',
   'item.steps.doneHide': 'Hide the {n} done',

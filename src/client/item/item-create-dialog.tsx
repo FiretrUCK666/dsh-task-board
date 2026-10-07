@@ -147,8 +147,10 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const stepList = (): ItemCapture['steps'] =>
     steps.split('\n').map(line => line.trim()).filter(line => line !== '').map(line => ({ text: line }))
 
-  const submit = (): void => {
-    const at = (value: string): number | undefined => parseItemDate(value.trim())
+  /** 「存下这一条」；返回这次到底存没存——文法行那根回车读的就是它，拒绝时
+   *  读者的半句话必须留在框里。 */
+  const submit = (): boolean => {
+    const at = (value: string): number | undefined => parseItemDate(value.trim(), props.now)
     const input: ItemCapture = {
       title: title.trim(),
       body,
@@ -168,9 +170,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     // The refusal is decided by the SHARED emptiness rule and it says why, in
     // place: the reader typed a priority and no words, and the sheet must not answer
     // that with a row that has no name.
-    if (isBlankCapture(input)) { setWords(t('item.create.blank')); return }
-    if (props.onCreate(input, pendingCard)) props.onClose()
+    if (isBlankCapture(input)) { setWords(t('item.create.blank')); return false }
+    const saved = props.onCreate(input, pendingCard)
+    if (saved) props.onClose()
     else setWords(t('item.create.refused'))
+    return saved
   }
 
   if (!props.open) return null
@@ -216,7 +220,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
           <div className={css.itemCreateDialogMain}>
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.create.grammar')}</span>
-              <ItemComposer now={props.now} onChange={setParsed} />
+              <ItemComposer now={props.now} onChange={setParsed} onSave={submit} />
             </label>
             <input
               ref={titleField}
@@ -339,6 +343,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   onKeyDown={event => {
                     if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
                     event.preventDefault()
+                    // 回车把读者敲的写法收拢给他看：逗号并成顿号、去掉空段。芯片是
+                    // 实时读这一行的，回车的活儿是「写法定型」——与详情页同一控件
+                    // 的回车是「加上」，这里的同一根键不该什么反应都没有。
+                    mark('tags')
+                    setTags(tags.split(/[、,，]/).map(one => one.trim()).filter(one => one !== '').join('、'))
                   }}
                 />
               </div>
@@ -442,6 +451,8 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   </button>
                 )}
                 {cardHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
+                {/* 与详情选择器同一句真相：两边只该有一个说法。 */}
+                <p className={css.itemOptsFoot}>{t('item.cardLink.note')}</p>
               </div>
             </div>
           </div>
@@ -477,7 +488,7 @@ function DateField(props: {
   readonly set: (value: string) => void
   readonly now: number
 }) {
-  const at = parseItemDate(props.value.trim())
+  const at = parseItemDate(props.value.trim(), props.now)
   return (
     <label className={css.itemCreateDialogDate}>
       <span className={css.itemCreateDialogLabel}>{props.label}</span>

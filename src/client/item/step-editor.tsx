@@ -33,9 +33,9 @@ import { useEffect, useRef, useState } from 'react'
 import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
+import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
-import boardCss from '../board.module.css'
 
 /**
  * HOW MANY WAITING STEPS ARE DRAWN BEFORE THE REST GO BEHIND A LINE.
@@ -76,6 +76,10 @@ export interface ItemStepsProps {
 export function ItemSteps(props: ItemStepsProps) {
   const [draft, setDraft] = useState('')
   const [openMenu, setOpenMenu] = useState<string | undefined>(undefined)
+  /* THE WAITING FOLD IS A REAL DOOR, not a caption: the steps beyond the visible
+   * six exist only behind it, so a press must be able to open it. Same shape as
+   * the done fold below — one mark that turns, `aria-expanded`, one state. */
+  const [moreOpen, setMoreOpen] = useState(false)
   const field = useRef<HTMLInputElement | null>(null)
   const steps = props.item.steps
 
@@ -118,8 +122,9 @@ export function ItemSteps(props: ItemStepsProps) {
 
   const done = steps.filter(step => step.done)
   const waiting = steps.filter(step => !step.done)
-  const shown = waiting.slice(0, WAITING_VISIBLE)
-  const hidden = waiting.length - shown.length
+  /** How many waiting steps stand behind the fold, whatever the fold's state is. */
+  const beyond = waiting.length > WAITING_VISIBLE ? waiting.length - WAITING_VISIBLE : 0
+  const shown = moreOpen || beyond === 0 ? waiting : waiting.slice(0, WAITING_VISIBLE)
   const percent = Math.round((done.length / steps.length) * 100)
 
   return (
@@ -136,10 +141,25 @@ export function ItemSteps(props: ItemStepsProps) {
           <b className={css.itemStepCount}>{`${done.length} / ${steps.length}`}</b>
         </div>
 
-        {shown.map((step, at) => (
-          <StepRow key={step.id} step={step} kind={at === 0 ? 'next' : 'todo'} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />
-        ))}
-        {hidden > 0 && <p className={css.itemStepMore}>{t('item.steps.more', { n: String(hidden) })}</p>}
+        <div id="item-steps-more">
+          {shown.map((step, at) => (
+            <StepRow key={step.id} step={step} kind={at === 0 ? 'next' : 'todo'} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />
+          ))}
+        </div>
+        {beyond > 0 && (
+          <button
+            type="button"
+            className={css.itemStepFold}
+            aria-expanded={moreOpen}
+            aria-controls="item-steps-more"
+            onClick={() => setMoreOpen(value => !value)}
+          >
+            <svg className={css.itemStepFoldMark} viewBox="0 0 8 8" width="8" height="8" aria-hidden="true">
+              <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            {t(moreOpen ? 'item.steps.moreHide' : 'item.steps.more', { n: String(beyond) })}
+          </button>
+        )}
         {done.length > 0 && <DoneFold steps={done} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />}
       </div>
       {addField}
@@ -156,9 +176,11 @@ function StepRow(props: RowHands & {
 }) {
   const { step } = props
   const open = props.openMenu === step.id
-  const menuId = `item-step-menu-${step.id}`
+  const menuId = `item-menu-${step.id}`
+  const trigger = useRef<HTMLButtonElement | null>(null)
+  const row = useRef<HTMLDivElement | null>(null)
   return (
-    <div className={css.itemStepRow} data-kind={props.kind ?? 'todo'}>
+    <div ref={row} className={css.itemStepRow} data-kind={props.kind ?? 'todo'}>
       <Tickbox
         checked={step.done}
         label={t('item.steps.tick', { text: step.text })}
@@ -173,6 +195,7 @@ function StepRow(props: RowHands & {
         {step.text}
       </span>
       <button
+        ref={trigger}
         type="button"
         className={css.itemStepMenu}
         aria-expanded={open}
@@ -187,38 +210,21 @@ function StepRow(props: RowHands & {
         </svg>
       </button>
       {open && (
-        <ul id={menuId} className={css.itemStepMenuList} role="menu" aria-label={step.text}>
-          <li>
-            <button
-              type="button"
-              role="menuitem"
-              className={`${boardCss.ghostButton} ${boardCss.buttonSm}`}
-              onClick={() => { props.onMove(step.id, -1); props.onCloseMenu() }}
-            >
-              {t('item.steps.up')}
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              role="menuitem"
-              className={`${boardCss.ghostButton} ${boardCss.buttonSm}`}
-              onClick={() => { props.onMove(step.id, 1); props.onCloseMenu() }}
-            >
-              {t('item.steps.down')}
-            </button>
-          </li>
-          <li>
-            <button
-              type="button"
-              role="menuitem"
-              className={`${boardCss.dangerGhostButton} ${boardCss.buttonSm}`}
-              onClick={() => { props.onRemove(step.id); props.onCloseMenu() }}
-            >
-              {t('item.steps.remove')}
-            </button>
-          </li>
-        </ul>
+        /* 与行上那个 ⋯ 不是同一个面板的两次实现，是**同一个面板**：竖排的
+         * 菜单，锚在这枚 ⋯ 上，出格的行宽不归它自己管。《往上挪一步》那三
+         * 枚横排药丸一趟铺满整行宽，看上去是一张表而不是一张菜单——两者的
+         * 差别只有形状，而形状在这块面板上正在变成财力。 */
+        <ItemRowMenu
+          rowId={step.id}
+          trigger={trigger.current}
+          panel={row.current?.closest('[data-dsh-taskboard-view]') as HTMLElement | null ?? null}
+          actions={[
+            { key: 'up', label: t('item.steps.up'), onPick: () => props.onMove(step.id, -1) },
+            { key: 'down', label: t('item.steps.down'), onPick: () => props.onMove(step.id, 1) },
+            { key: 'remove', label: t('item.steps.remove'), onPick: () => props.onRemove(step.id) },
+          ]}
+          onClose={() => { props.onToggleMenu(step.id); props.onCloseMenu() }}
+        />
       )}
     </div>
   )
@@ -237,6 +243,11 @@ function DoneFold(props: RowHands & { readonly steps: readonly ItemStep[]; reado
         aria-controls={id}
         onClick={() => setOpen(value => !value)}
       >
+        {/* THE DISCLOSURE MARK, drawn and turned by the state: the reader sees a
+            control before they read a word, and the turn answers 「还能收吗」。 */}
+        <svg className={css.itemStepFoldMark} viewBox="0 0 8 8" width="8" height="8" aria-hidden="true">
+          <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
         {t(open ? 'item.steps.doneHide' : 'item.steps.doneShow', { n: String(props.steps.length) })}
       </button>
       {open && (

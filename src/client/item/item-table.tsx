@@ -44,6 +44,18 @@ export interface ItemTableProps {
   /** What the table says when the filter is what emptied it. */
   readonly noMatch?: string
   /**
+   * WHETHER THE CARD NAMES ITS DAYS INSIDE, and every caller states its answer.
+   *
+   * The LIST page's heads are about WHEN THE ROW WAS WRITTEN (今天/昨天/前天/更早,
+   * cut by {@link itemDayGroupsOf}); that is a fact the list page exists to say.
+   * The AGENDA already names its day outside the card — section name, then the
+   * date, then this card — so a head in here would say the day twice and, worse,
+   * say a THIRD fact: the card's head buckets by write-day, so a row due today
+   * but written yesterday would carry 「昨天」 inside the agenda's 「今天」 section.
+   * False = the rows are drawn exactly as they were handed over, no regrouping.
+   */
+  readonly dayHeads: boolean
+  /**
    * THE CLOCK, and the ORDERING the reader chose.
    *
    * Both are handed in rather than read: a day heading says 「今天」 and that word
@@ -107,25 +119,27 @@ export function ItemTable(props: ItemTableProps) {
             : <p className={css.itemNoMatch}>{props.noMatch}</p>)
         : (
           <div className={css.itemTableBody} role="list">
-            {itemDayGroupsOf(props.rows.map(row => row.view.item), props.now, props.sort).map(group => (
-              <Fragment key={group.bucket}>
-                {/* ONE DAY, AND HOW MANY. The heading is `presentation` so it does
-                    * not become a list item — the rows are the list, and a heading
-                    * among them is a heading ABOUT them. */}
-                <div className={css.itemDayHead} role="presentation">
-                  <svg viewBox="0 0 13 13" width="13" height="13" aria-hidden="true">
-                    <rect x="1.5" y="2.6" width="10" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" />
-                    <path d="M1.5 5.6h10M4.2 1.2v2.6M8.8 1.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                  </svg>
-                  <b>{t(DAY_WORD[group.bucket])}</b>
-                  <i>{t('item.day.count', { n: String(group.n) })}</i>
-                </div>
-                {group.rows.map(item => {
-                  const row = props.rows.find(one => one.view.item.id === item.id)
-                  return row === undefined ? null : <ItemRowLine key={item.id} {...row} />
-                })}
-              </Fragment>
-            ))}
+            {props.dayHeads
+              ? itemDayGroupsOf(props.rows.map(row => row.view.item), props.now, props.sort).map(group => (
+                <Fragment key={group.bucket}>
+                  {/* ONE DAY, AND HOW MANY. The heading is `presentation` so it does
+                      * not become a list item — the rows are the list, and a heading
+                      * among them is a heading ABOUT them. */}
+                  <div className={css.itemDayHead} role="presentation">
+                    <svg viewBox="0 0 13 13" width="13" height="13" aria-hidden="true">
+                      <rect x="1.5" y="2.6" width="10" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" />
+                      <path d="M1.5 5.6h10M4.2 1.2v2.6M8.8 1.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+                    </svg>
+                    <b>{t(DAY_WORD[group.bucket])}</b>
+                    <i>{t('item.day.count', { n: String(group.n) })}</i>
+                  </div>
+                  {group.rows.map(item => {
+                    const row = props.rows.find(one => one.view.item.id === item.id)
+                    return row === undefined ? null : <ItemRowLine key={item.id} {...row} />
+                  })}
+                </Fragment>
+              ))
+              : props.rows.map(row => <ItemRowLine key={row.view.item.id} {...row} />)}
           </div>
         )}
     </div>

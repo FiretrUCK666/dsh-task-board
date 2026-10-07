@@ -386,7 +386,13 @@ export function ListPage(props: ItemListPageProps) {
               was simply never reached would tell the reader their deletions are
               gone when they may be sitting on the disk. */}
           {archive.kind === 'unreadable' && <p className={css.itemArchiveNote} role="status">{t('item.archive.unreadable')}</p>}
-          {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemArchiveNote}>{t('item.archive.empty')}</p>}
+          {/* AN EMPTY ARCHIVE IS AN EMPTY PAGE, not a note in a corner: the sentence
+              stands centred in the room the page has, the way an empty sheet reads. */}
+          {archive.kind === 'ready' && archive.rows.length === 0 && (
+            <div className={css.itemArchiveVoid}>
+              <p>{t('item.archive.empty')}</p>
+            </div>
+          )}
           {archive.kind === 'ready' && archive.rows.length > 0 && (
             <>
               {/* THE DRAWER'S OWN BAR, and it is a PLACE and not a button row: one
@@ -425,7 +431,7 @@ export function ListPage(props: ItemListPageProps) {
                 {archive.rows.map(row => {
                   const clock = archiveClockOf(row, props.now)
                   return (
-                    <li key={row.id} className={css.itemArchiveRow}>
+                    <li key={row.id} className={css.itemArchiveRow} data-picked={archivePicks.has(row.id) ? '' : undefined}>
                       <Tickbox
                         checked={archivePicks.has(row.id)}
                         label={t('item.batch.hold')}
@@ -462,24 +468,39 @@ export function ListPage(props: ItemListPageProps) {
 
 return (
     <>
-      {/* NO STATE BAR, NO TRIAGE STRIP, NO GROUP HEADS. Each of them was a
-          second place counting something the table already says: the state bar
-          named the filter the filter bar already carries, the triage strip was
-          three of the three tiles the page now wears above the table, and the
-          group heads were a heading per status over a column that already carries
-          the status on every row. One table, one status column, one set of numbers
-          — and a status appears as many times as there are rows in it, which is
-          what makes the filter's count and the table's rows the same fact by
-          construction. */}
-      {props.batch}
-      <ItemTable
-        rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking, props.armed === true)}
-        empty={nothingToShow}
-        noMatch={items.length === 0 ? undefined : nothingToShow}
-        now={props.now}
-        sort={props.sort}
-      />
-      {archiveLine}
+      {/* THE READER IS STANDING IN ONE OF TWO PLACES. 点左栏「已删除」进来之后，
+          这一页**就是归档页**：内容只剩已删除的那些（或空），列表与批量条都不在这
+          里——它们说的话对这一页的行不成立。再点一次同一行（或抽屉头上的「已删
+          除」）回去。两种状态都是完整的页面，不是「一张表下面多了一段」。 */}
+      {props.archiveOpen
+        ? (
+            <div className={css.itemArchivePage}>
+              {archive === undefined && <p className={css.itemArchiveNote} role="status">{t('item.loading')}</p>}
+              {archive !== undefined && archiveLine}
+            </div>
+          )
+        : (
+            <>
+              {/* NO STATE BAR, NO TRIAGE STRIP, NO GROUP HEADS. Each of them was a
+                  second place counting something the table already says: the state bar
+                  named the filter the filter bar already carries, the triage strip was
+                  three of the three tiles the page now wears above the table, and the
+                  group heads were a heading per status over a column that already carries
+                  the status on every row. One table, one status column, one set of numbers
+                  — and a status appears as many times as there are rows in it, which is
+                  what makes the filter's count and the table's rows the same fact by
+                  construction. */}
+              {props.batch}
+              <ItemTable
+                rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking, props.armed === true)}
+                empty={nothingToShow}
+                noMatch={items.length === 0 ? undefined : nothingToShow}
+                now={props.now}
+                sort={props.sort}
+                dayHeads
+              />
+            </>
+          )}
     </>
   )
 }

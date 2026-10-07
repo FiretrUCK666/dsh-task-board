@@ -1320,15 +1320,16 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
   it('never leaves the panel, in either direction', async () => {
     const place = await kernel()
     if (place === undefined) return
-    // A trigger hard against the trailing edge: the menu is wider than the room
-    // to its right, and the clamp has to move it rather than let it hang out.
+    // A trigger hard against the trailing edge: the menu hangs LEFT of the ⋯, on
+    // the content column's own right line — the reader's report was 「再往左移一下，
+    // 卡在哪条线上」, and the line is the ⋯'s left edge.
     const edge = place({ top: 300, bottom: 340, left: 960, right: 998, width: 38, height: 40 }, PANEL, MENU)
-    expect(edge.left, `the menu hangs ${edge.left + MENU.width - PANEL.right}px outside the panel`).toBeLessThanOrEqual(PANEL.right - MENU.width)
+    expect(edge.left + MENU.width, 'the menu did not stand on the content column\'s own right line').toBe(960)
     expect(edge.left, 'the menu was pushed past the panel\'s own leading edge').toBeGreaterThanOrEqual(PANEL.left)
-    // AND IT KEEPS AIR: a menu whose right edge lands ON the panel's edge reads
-    // as a box being cut off at the rim, not as a menu. The reader's own report
-    // was 「粘着浏览器最右边的边缘」, so the gate pins the exact air: 10px.
-    expect(PANEL.right - (edge.left + MENU.width), 'a menu at the rim was allowed to glue to the edge').toBe(10)
+    // A trigger measured OVERHANGING the rim (a rect taken mid-scroll can do it):
+    // the clamp still keeps the same 10px of air, so no menu ever glues to the edge.
+    const over = place({ top: 300, bottom: 340, left: 995, right: 1030, width: 35, height: 40 }, PANEL, MENU)
+    expect(PANEL.right - (over.left + MENU.width), 'a degenerate trigger let the menu glue to the rim').toBe(10)
     // A trigger at the very top: neither direction has room for the whole
     // menu, and the answer must still be inside the box.
     const top = place({ top: 0, bottom: 40, left: 10, right: 210, width: 200, height: 40 }, PANEL, MENU)
@@ -2490,15 +2491,6 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
 })
 
 describe('the checklist is a list a reader can change, not a list they can only tick', () => {
-  /** A row that already carries two steps, so order and removal are both real. */
-  function twoSteps(): ItemRecord[] {
-    return oneRow({
-      steps: [
-        { id: 'r-1.s1', text: '第一步', done: false },
-        { id: 'r-1.s2', text: '第二步', done: true },
-      ],
-    })
-  }
   /* 「打开详情」这一步的公共入口在文件尾部的 `openRowDetail`，两个 suite 同一步。 */
   /** The step texts currently in the editor, in the order they are drawn. */
   // 读每一行里的那个 `span`，而不是读 `data-done`：那个属性只在**做完**的时候才
@@ -2664,12 +2656,6 @@ describe('the checklist is a list a reader can change, not a list they can only 
 })
 
 describe('a row is held with the mouse, with shift, and with the keyboard', () => {
-  /** The rows on screen, in the order the reader sees them. `data-status` is the
-   *  row's own identity hook: it is on the row root and nowhere else, so a class
-   *  rename cannot turn this helper into a selector for the row's buttons. */
-  const rowEls = (root: ParentNode): Element[] =>
-    [...root.querySelectorAll('[data-status]')]
-
   /** Hold a row the way a reader does: a modifier press on the row itself. */
   function hold(row: Element | undefined, withShift = true): void {
     expect(row, 'there is no row under the pointer — the batch gate is asserting nothing').toBeDefined()
@@ -2961,11 +2947,6 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     return () => { globalThis.fetch = real }
   }
 
-  /** Let every already-resolved promise inside the panel land. */
-  const settle = async (): Promise<void> => {
-    for (let round = 0; round < 4; round += 1) await act(async () => { await Promise.resolve() })
-  }
-
   /**
    * Mount, install the host, and open the archive — through the ONE entrance.
    *
@@ -3149,6 +3130,27 @@ function openRowDetail(panel: ReturnType<typeof mountPanel>): void {
   click(entry)
 }
 
+/** A row that already carries two steps, so order and removal are both real. */
+function twoSteps(): ItemRecord[] {
+  return oneRow({
+    steps: [
+      { id: 'r-1.s1', text: '第一步', done: false },
+      { id: 'r-1.s2', text: '第二步', done: true },
+    ],
+  })
+}
+
+/** The rows on screen, in the order the reader sees them. `data-status` is the
+ *  row's own identity hook: it is on the row root and nowhere else, so a class
+ *  rename cannot turn this helper into a selector for the row's buttons. */
+const rowEls = (root: ParentNode): Element[] =>
+  [...root.querySelectorAll('[data-status]')]
+
+/** Let every already-resolved promise inside the panel land. */
+const settle = async (): Promise<void> => {
+  for (let round = 0; round < 4; round += 1) await act(async () => { await Promise.resolve() })
+}
+
 /** Serialise the LIVE mounted panel into a standalone page `shot-panel.mjs` can
  *  capture — the DOM after the press that put the state on screen, the sheet on
  *  disk as the stylesheet, and the value properties written back into attributes
@@ -3217,6 +3219,37 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       if (none === undefined) throw new Error('the picker dropped its 「不挂」')
       click(none)
       expect(panel.lastWrite()[0]?.taskId, '「不挂」 did not clear the link').toBeUndefined()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the card a promotion mints is seeded from the row; hanging an existing card writes the link only', () => {
+    // 挂卡的两句实话，一条钉住：新建的那张卡的名字/执行稿/描述是**播种**——来自
+    // 行自己的词，建完两边各改各；而挂已有卡只写 taskId 一个字段，板的那边一个字
+    // 都没被碰（calls 里除 createTask 外没有别的写法）。
+    const panel = mountPanel(oneRow({ title: '画廊随访', body: '把东墙的灯换掉', notes: '灯座是旧款' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const promote = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '变成看板卡片')
+      if (promote === undefined) throw new Error('the detail carries no promote button')
+      click(promote)
+      panel.settle()
+      const made = panel.minted[0]
+      expect(made, 'the press minted no card').toBeDefined()
+      expect(made?.title, 'the card did not take the row\'s own title as its seed').toBe('画廊随访')
+      expect(made?.prompt, 'the card did not take the row\'s body as its seed').toBe('把东墙的灯换掉')
+      expect(made?.description, 'the card did not take the row\'s notes as its seed').toBe('灯座是旧款')
+      // And hanging an EXISTING card touches nothing on the board — the card's
+      // own words are not this surface's to write.
+      const card = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '画廊第二版')
+      if (card === undefined) throw new Error('the picker does not list the fake board\'s card')
+      click(card)
+      panel.settle()
+      expect(panel.calls.filter(name => !name.startsWith('createTask')), 'hanging an existing card wrote to the board').toEqual([])
+      expect(panel.lastWrite()[0]?.taskId, 'the chosen card never reached the document').toBe('task-1')
     } finally {
       panel.dispose()
     }
@@ -3362,12 +3395,47 @@ describe('the mounted-page artifact, for the states a static render cannot reach
    * screen, prefilled with the row's own words. `DSH_PANEL_BAND` picks the band
    * as it does for the static path.
    */
-  it('writes one when DSH_PANEL_HTML names a path', () => {
+  it('writes one when DSH_PANEL_HTML names a path', async () => {
     const target = process.env.DSH_PANEL_HTML
     if (target === undefined || target === '') return
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
-    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
+      && state !== 'archive' && state !== 'agenda') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'archive') {
+      // The archive is a PAGE of its own now (the reader pressed the rail's row);
+      // with nothing deleted this state is the empty page the reader demanded —
+      // no presses needed: the mount itself answers with the default host's
+      // empty archive.
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const look = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('已删除'))
+        if (look === undefined) throw new Error('the rail carries no 「已删除」')
+        click(look)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'agenda') {
+      const panel = mountPanel(fixtures(), 'schedule', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        panel.settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'steps-open') {
       // A finished step's tick only exists behind its own fold, on the row that
@@ -3467,6 +3535,202 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       if (namingField(panel.surface) === null) throw new Error('the naming field never opened')
       panel.settle()
       writeMountedPage(panel, target)
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('the dates answer a press; the archive is a page; 多选 is on the bar', () => {
+  /** A date line's reading, pressed as the reader presses it. */
+  function openDateLine(root: HTMLElement, name: string): HTMLInputElement | null {
+    const label = [...root.querySelectorAll('[class*="itemDateAxis"] b')]
+      .find(node => (node.textContent ?? '') === name)
+    if (label === undefined) throw new Error(`the axis does not carry a line named ${name}`)
+    const line = label.closest('li') as HTMLElement | null
+    const reading = line?.querySelector('button') as HTMLButtonElement | null
+    if (reading === null) throw new Error(`the line named ${name} carries no reading to press`)
+    click(reading)
+    return line?.querySelector('input') as HTMLInputElement | null
+  }
+
+  it('a date reading opens the same-grammar field, prefilled with the value as it was stored', () => {
+    // The stored date was typed as a WORD once; the field it opens shows the
+    // word back, not a timestamp — the reader edits their own sentence.
+    const panel = mountPanel(oneRow({ dueAt: NOW + DAY }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const field = openDateLine(panel.surface, '截止')
+      expect(field, 'pressing the reading opened no field').not.toBeNull()
+      expect(field?.value, 'the field does not show the stored date in the spelling it was typed in').toBe('2026-09-30')
+      // And a word in, a date out — resolved against the bench's own clock:
+      // 明天 is tomorrow's midnight, local, not a clock offset.
+      typeInto(field!, '明天')
+      press(field!, 'Enter')
+      expect(panel.lastWrite()[0]?.dueAt, 'Enter never wrote a date').toBe(new Date(2026, 8, 30).getTime())
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('an emptied field clears the date, and Esc keeps the stored one', () => {
+    const panel = mountPanel(oneRow({ dueAt: NOW + DAY }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      // The ESC half runs FIRST, on the pristine row: type a change, cancel it —
+      // the stored date survives untouched.
+      const field = openDateLine(panel.surface, '截止')
+      typeInto(field!, '明天')
+      press(field!, 'Escape')
+      panel.settle()
+      expect(panel.lastWrite()[0]?.dueAt, 'Esc wiped the stored date').toBe(NOW + DAY)
+      // Then the clear: an emptied field + Enter removes the promise.
+      const field2 = openDateLine(panel.surface, '截止')
+      typeInto(field2!, '')
+      press(field2!, 'Enter')
+      panel.settle()
+      expect(panel.lastWrite()[0]?.dueAt, 'an emptied field did not clear the promise').toBeUndefined()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('an unreadable reading stays on screen and says why', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const field = openDateLine(panel.surface, '截止')
+      if (field === null) throw new Error('the field never opened')
+      typeInto(field, '下下周三下午')
+      press(field, 'Enter')
+      panel.settle()
+      expect(panel.surface.querySelector('input[class*="itemDateField"]'), 'the unreadable reading closed the field — a press that loses words is a press that lies').not.toBeNull()
+      expect(panel.surface.textContent ?? '', 'nothing said why the press did nothing').toContain('我没读懂')
+      expect(panel.lastWrite()[0]?.dueAt, 'an unreadable reading still wrote a date').toBeUndefined()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('「多选」 on the bar arms the face, and pressing it again disarms', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const chip = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '多选')
+      if (chip === undefined) throw new Error('the bar carries no 多选')
+      click(chip)
+      panel.settle()
+      const rows = rowEls(panel.surface)
+      for (const row of rows) {
+        expect(row.querySelector('input[type=checkbox]'), 'an armed row shows no tickbox').not.toBeNull()
+      }
+      click(chip)
+      panel.settle()
+      for (const row of rows) {
+        expect(row.querySelector('input[type=checkbox]'), 'a box survived the disarm').toBeNull()
+      }
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the rail\'s 「已删除」 shows only deleted rows; nothing deleted is an empty page', async () => {
+    // Standing IN the archive means the live table is not on this page — not
+    // 「the same page with a section appended」。 The reader asked for a place
+    // where only deleted rows exist, and an empty archive is that place with
+    // nothing in it, said in its own sentence.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const look = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('已删除'))
+      if (look === undefined) throw new Error('the rail carries no 「已删除」')
+      click(look)
+      // The archive read is ASYNC (a host round-trip), so a sync flush leaves the
+      // page in its loading state — await the rounds instead.
+      await settle()
+      // THE LIVE TABLE IS GONE from this page.
+      expect(panel.surface.querySelectorAll('[data-status]').length, 'the archive page still draws live rows').toBe(0)
+      expect(panel.surface.textContent ?? '', 'the empty archive said nothing about being empty').toContain('没有删掉过任何一条')
+      // And the top bar is not there either: 搜索/排序/新建 do not describe this page.
+      expect(panel.surface.querySelector('[class*="itemTopBar"]'), 'the archive page kept the live page\'s bar').toBeNull()
+      // Back out through the same door.
+      const back = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('已删除'))
+      click(back)
+      await settle()
+      expect(panel.surface.querySelectorAll('[data-status]').length, 'the live list never came back').toBeGreaterThan(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the fold reads as a control: a mark that turns, a hover that answers', () => {
+    // Both halves are MARKUP facts a static capture can check; the hover face is
+    // a stylesheet fact the colour/token gates already count. What a reader
+    // could not see before the fold was CLICKABLE — the mark is that sentence.
+    const panel = mountPanel(twoSteps(), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const fold = panel.surface.querySelector('button[class*="itemStepFold"]') as HTMLElement | null
+      expect(fold, 'the board carries no fold').not.toBeNull()
+      expect(fold?.querySelector('svg'), 'the fold carries no disclosure mark — it still reads as a sentence').not.toBeNull()
+      expect(fold?.getAttribute('aria-expanded'), 'the fold does not state its own state').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the agenda\'s card does not name the day a third time inside itself', () => {
+    // The section already says its day twice (the name, then the date line); the
+    // card's internal day head was a THIRD fact — and one bucketed by WRITE day,
+    // so a row due today but written yesterday carried 「昨天」 inside 「今天」.
+    const panel = mountPanel(fixtures(), 'schedule', 'wide')
+    try {
+      expect(panel.surface.querySelectorAll('[class*="itemDayHead"]').length,
+        'the agenda card still carries its own day head').toBe(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the rename field answers Escape alone, and the row behind it stays open', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      panel.settle()
+      const title = panel.surface.querySelector('button[class*="itemPrioButton"]') as HTMLButtonElement | null
+      if (title === null) throw new Error('the row carries no title control to press')
+      click(title)
+      panel.settle()
+      const field = panel.surface.querySelector('input[class*="itemRowTitleInput"]') as HTMLInputElement | null
+      expect(field, 'pressing the chip opened no title field').not.toBeNull()
+      press(field!, 'Escape')
+      panel.settle()
+      expect(panel.surface.querySelector('input[class*="itemRowTitleInput"]'), 'Escape did not dismiss the field').toBeNull()
+      // THE ROW BEHIND IT: still expanded — the detail is still on the page.
+      expect(panel.surface.querySelector('[class*="itemDetail"]'), 'Escape collapsed the row behind the field').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('Esc closes the top layer only: the create sheet goes before the row behind it', async () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      panel.settle()
+      const newBtn = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('新建一条'))
+      if (newBtn === undefined) throw new Error('the bar carries no 新建一条')
+      click(newBtn)
+      panel.settle()
+      expect(panel.surface.querySelector('[class*="itemCreateDialog"]'), 'the sheet never opened').not.toBeNull()
+      const sheetField = panel.surface.querySelector('input[class*="itemCreateDialogTitleField"]') as HTMLInputElement | null
+      press(sheetField ?? panel.surface, 'Escape')
+      await settle()
+      expect(panel.surface.querySelector('[class*="itemCreateDialog"]'), 'the sheet did not close on Esc').toBeNull()
+      // THE ROW BEHIND IT: still open.
+      expect(panel.surface.querySelector('[class*="itemDetail"]'), 'Esc collapsed the row behind the sheet').not.toBeNull()
     } finally {
       panel.dispose()
     }

@@ -1,14 +1,11 @@
 /**
- * The detail: the same component, in two places.
+ * The detail: the row's own expanded body, rendered in the row on BOTH bands.
  *
- * Level 1 of the two this panel has, and there is no level 3 — a third level
- * inside a column is where a reader loses their place entirely. The wide band
- * puts it in a side pane beside the list; the narrow band puts it in the row.
- * SAME component, SAME five sections, SAME spacing; only the box differs, and
- * neither placement writes its own width. The field grid answers to its own
- * container (`dsh-tb-item-detail`) rather than to the panel, because at 1080px
- * the side pane is 296px wide and at 2380px it is 816px — one answer taken from
- * the surface would be wrong in both.
+ * There is no separate side pane any more and no third level — the two levels
+ * this panel has are the row and the row opened. The panel renders this
+ * component inside the expanded row (wide and narrow alike; only the columns'
+ * layout differs, and the field grid answers to its own container
+ * `dsh-tb-item-detail` rather than to the panel, so one answer serves both).
  *
  * It is never a dialog. `boardBox()` resolves to the FIRST board box, so a
  * layer opened from this panel would anchor itself to the board — a different
@@ -22,7 +19,7 @@ import type { ItemRowView } from '../../core/item-view.ts'
 import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
-import { formatItemDate } from './model.ts'
+import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
 import { GROUP_LABEL } from './labels.ts'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
@@ -209,6 +206,9 @@ export function ItemDetail(props: ItemDetailProps) {
   useEffect(() => {
     setCardNaming(false)
     setCardNameHint(false)
+    setDateEdit(undefined)
+    setDateDraft('')
+    setDateBad(false)
   }, [item.id])
   const openCardNaming = (): void => {
     setCardName(itemTitleOf(item))
@@ -224,6 +224,62 @@ export function ItemDetail(props: ItemDetailProps) {
     if (name === '') { setCardNameHint(true); return }
     props.onNewCard(name)
     shutCardNaming()
+  }
+
+  /**
+   * 三个日期的就地编辑。一次一行；点开时预填**字段此刻的值**（同一个写法的读法：
+   * `@明天` 进去读到什么写什么），Enter 记下，Esc 收回，空值撤掉那一个日子。
+   * 没读懂的读法不记下也不消失——那一行停在现场，下面说一句为什么。
+   */
+  const [dateEdit, setDateEdit] = useState<ItemDateKey | undefined>(undefined)
+  const [dateDraft, setDateDraft] = useState('')
+  const [dateBad, setDateBad] = useState(false)
+  const [dateAttempt, setDateAttempt] = useState(0)
+  const dateField = useRef<HTMLInputElement | null>(null)
+  useEffect(() => {
+    if (dateEdit === undefined) return
+    if (!dateBad) dateField.current?.focus()
+  }, [dateEdit, dateAttempt, dateBad])
+  /** The focus hinge. Whichever line is open is the only one drawing the input,
+   *  so one shared ref is the whole registry. */
+  const registerDateField = (node: HTMLInputElement | null): void => {
+    dateField.current = node
+  }
+  const openDateEdit = (field: ItemDateKey): void => {
+    setDateEdit(field)
+    // 预填是**记忆里的值**，不是猜的：格式走字段自己的写法（`@明天` 是这么进去的，
+    // 读者改它就像改自己的句子，不是重新猜格式）。
+    setDateDraft(toItemDateField(item[field]))
+    setDateBad(false)
+  }
+  const shutDateEdit = (): void => {
+    setDateEdit(undefined)
+    setDateDraft('')
+    setDateBad(false)
+  }
+  const confirmDateEdit = (): void => {
+    const field = dateEdit
+    if (field === undefined) return
+    const wrote = dateDraft.trim()
+    // 空值 = 撤掉这个日子。撤掉之后的读法就回到「没定」，一句实的说法。
+    if (wrote === '') {
+      props.onEdit({ [field]: undefined } as ItemPatch)
+      shutDateEdit()
+      return
+    }
+    // 没读懂的读法不写：一行没写就丢的词是「写了又丢」。读不懂就留在现场，加一次
+    // 重试计数（同一行的重开也要重新拿过光标）。字面日子以**面板的钟**解，不是
+    // 机器的今天——测试要的是给定的今天。
+    const at = parseItemDate(wrote, props.now)
+    if (at === undefined) {
+      setDateBad(true)
+      setDateAttempt(count => count + 1)
+      return
+    }
+    props.onEdit({ [field]: at } as ItemPatch)
+    // Enter = 记下，然后就该关场——记下这个手势的答案就是关场；值没变的记下会
+    // 被共享写法当成一次不动，回执也不响，场还是要关。
+    shutDateEdit()
   }
   return (
     <div className={css.itemOpen}>
@@ -385,25 +441,57 @@ export function ItemDetail(props: ItemDetailProps) {
               * 在这里才第一次被说出来——而它属于**截止**那一行，不是属于硬期限。 */}
           <ol className={css.itemDateAxis}>
             <DateLine
+              keyName='startsAfter'
               label={t('item.field.startsAfter')}
               reading={gated
                 ? t('item.dates.now')
                 : item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
               tone={gated ? 'gate' : item.startsAfter === undefined ? 'none' : 'set'}
+              field={dateEdit === 'startsAfter'}
+              draft={dateDraft}
+              bad={dateBad}
+              onDraft={setDateDraft}
+              hint={t('item.create.startsHint')}
+              onOpen={() => openDateEdit('startsAfter')}
+              onConfirm={confirmDateEdit}
+              onCancel={shutDateEdit}
+              draftRef={registerDateField}
             />
             <DateLine
+              keyName='dueAt'
               label={t('item.field.dueAt')}
               reading={item.dueAt === undefined
                 ? t('item.dates.none')
                 : `${formatItemDate(item.dueAt, english, props.now)}${behind === undefined ? '' : ` · ${behind}`}`}
               tone={view.posture.kind === 'behind' ? 'late' : 'set'}
+              field={dateEdit === 'dueAt'}
+              draft={dateDraft}
+              bad={dateBad}
+              onDraft={setDateDraft}
+              hint={t('item.create.dueHint')}
+              onOpen={() => openDateEdit('dueAt')}
+              onConfirm={confirmDateEdit}
+              onCancel={shutDateEdit}
+              draftRef={registerDateField}
             />
             <DateLine
+              keyName='hardDueAt'
               label={t('item.field.hardDueAt')}
               reading={item.hardDueAt === undefined
                 ? t('item.dates.none')
                 : `${formatItemDate(item.hardDueAt, english, props.now)}${over === undefined ? '' : ` · ${over}`}`}
-              tone={view.posture.kind === 'hardOverdue' ? 'over' : view.posture.kind === 'hardSoon' ? 'soon' : 'set'}
+              tone={item.hardDueAt === undefined
+                ? 'none'
+                : view.posture.kind === 'hardOverdue' ? 'over' : view.posture.kind === 'hardSoon' ? 'soon' : 'set'}
+              field={dateEdit === 'hardDueAt'}
+              draft={dateDraft}
+              bad={dateBad}
+              onDraft={setDateDraft}
+              hint={t('item.create.hardHint')}
+              onOpen={() => openDateEdit('hardDueAt')}
+              onConfirm={confirmDateEdit}
+              onCancel={shutDateEdit}
+              draftRef={registerDateField}
             />
           </ol>
 
@@ -466,6 +554,10 @@ export function ItemDetail(props: ItemDetailProps) {
                 </button>
               )}
               {cardNameHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
+              {/* 挂卡这件事的一句话真相。读者的担心写在字面上——「卡自己的标题
+                  与 Prompt 会不会被这条覆盖掉」——答案是「不会」，而答案就该在
+                  按得到它的地方：这一行说的是同一件事现在的事实，不是一份解释。 */}
+              <p className={css.itemOptsFoot}>{t('item.cardLink.note')}</p>
             </div>
           </div>
         </div>
@@ -507,6 +599,11 @@ export function ItemDetail(props: ItemDetailProps) {
           </Button>
           <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
         </div>
+        {/* THE REASON STANDS WHERE A THUMB CAN READ IT. It used to live only on the
+            button's `title` — hover-only, so touch never saw why the press did
+            nothing. The menu's own entries carry a hint column for the same fact;
+            here the fact is one sentence under the row, shown only when it applies. */}
+        {item.taskId === undefined && <p className={css.itemHint}>{t('item.menu.startNoCard')}</p>}
       </div>
     </div>
   )
@@ -519,13 +616,71 @@ export function ItemDetail(props: ItemDetailProps) {
  * about a plan rather than an alarm — so it reads in neutral ink and says 「落后」,
  * and only the hard one is red. Collapsing them into one 「逾期了」 is exactly how a
  * soft deadline quietly becomes a hard one without anybody deciding that.
+ *
+ * AND THE READING OPENED AS A FIELD: the same in-place edit every other block of
+ * this column offers — the reader pressed it anywhere; the date pretending to be
+ * read-only while 标题、正文、备注 all answer a press was the last 「按下不动」
+ * on this surface. While editing, the single-line input takes the caret and the
+ * verdicts stay off: a verdict about a date being typed is a verdict about a
+ * value that does not exist yet.
  */
-function DateLine(props: { readonly label: string; readonly reading: string; readonly tone: 'gate' | 'none' | 'set' | 'late' | 'soon' | 'over' }) {
+function DateLine(props: {
+  /** Which of the three dates this line is, said on the li — the hard one's ring
+   *  wears its own ink off that key (see the stylesheet's bead rules). */
+  readonly keyName: 'startsAfter' | 'dueAt' | 'hardDueAt'
+  readonly label: string
+  readonly reading: string
+  readonly tone: 'gate' | 'none' | 'set' | 'late' | 'soon' | 'over'
+  /** `true` while this line's field is open; the input replaces the reading. */
+  readonly field?: boolean
+  readonly draft?: string
+  readonly hint?: string
+  readonly onDraft?: (value: string) => void
+  readonly onOpen?: () => void
+  readonly onConfirm?: () => void
+  readonly onCancel?: () => void
+  /** The focus hinge: whichever line is open holds the caret. */
+  readonly draftRef?: (node: HTMLInputElement | null) => void
+  /** The failed-parse flag, spoken under the axis. */
+  readonly bad?: boolean
+}) {
   return (
-    <li data-tone={props.tone}>
+    <li data-key={props.keyName} data-tone={props.tone}>
       <i aria-hidden="true" />
       <b>{props.label}</b>
-      <span>{props.reading}</span>
+      {props.field
+        ? (
+            <input
+              ref={props.draftRef}
+              className={css.itemDateField}
+              size={11}
+              value={props.draft}
+              placeholder={props.hint}
+              aria-label={props.label}
+              data-dsh-tb-keys="Enter Escape"
+              onChange={event => props.onDraft?.(event.target.value)}
+              onKeyDown={event => {
+                if (event.nativeEvent.isComposing) return
+                if (event.key === 'Enter') {
+                  event.preventDefault()
+                  props.onConfirm?.()
+                } else if (event.key === 'Escape') {
+                  /* Stopping the escape keeps it a verdict about the FIELD alone:
+                     the key map's own Esc collapses the whole row — the one answer
+                     this field must not borrow. */
+                  event.preventDefault()
+                  event.stopPropagation()
+                  props.onCancel?.()
+                }
+              }}
+            />
+          )
+        : (
+            <button type="button" className={css.itemDateOpen} onClick={props.onOpen}>
+              <span>{props.reading}</span>
+            </button>
+          )}
+      {props.field && props.bad === true && <p className={css.itemDateBad}>{t('item.dates.bad')}</p>}
     </li>
   )
 }
@@ -533,3 +688,6 @@ function DateLine(props: { readonly label: string; readonly reading: string; rea
 /** `!1`..`!4` ↔ the four stored tiers. Derived from the table so re-tiering cannot
  *  leave a chip printing a tier the grammar no longer means. */
 const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
+
+/** The three writeable dates, as one closed name for the pane's editor state. */
+type ItemDateKey = 'startsAfter' | 'dueAt' | 'hardDueAt'

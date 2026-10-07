@@ -72,10 +72,12 @@ function stateMark(status: ItemStatusView) {
   }
 }
 
-/** The priority chip, and the only solid pill on this surface. */
+/** The priority chip, and the only solid pill on this surface. The press that
+ *  opens the title editor is the button around it; the chip itself is not a
+ *  control and carries no hint of its own. */
 function prioChip(priority: ItemPriority) {
   return (
-    <i className={css.itemPrioChip} data-tone={priority} title={`${t('item.field.priority')}${t(PRIORITY_LABEL[priority])}`}>
+    <i className={css.itemPrioChip} data-tone={priority}>
       !{PRIORITY_DIGIT[priority]}
     </i>
   )
@@ -357,6 +359,11 @@ export function ItemRowLine(props: ItemRowLineProps) {
               ref={inputRef}
               className={css.itemRowTitleInput}
               value={draft}
+              /* THE FIELD SAYS WHICH KEYS ARE ITS OWN: Enter confirms here, Escape
+               * dismisses here, and the panel's keymap stands aside on both —
+               * otherwise Enter would also re-run 「打开这一条」 and Escape would
+               * also collapse the row, one press acting twice. */
+              data-dsh-tb-keys="Enter Escape"
               onChange={event => setDraft(event.target.value)}
               onBlur={commitTitle}
               onKeyDown={event => {
@@ -377,7 +384,17 @@ export function ItemRowLine(props: ItemRowLineProps) {
                   * again」 — because the title was text; now it is a control, and a
                   * control with a hidden first press is a control that does nothing
                   * the first time. */}
-              <button type="button" className={css.itemPrioButton} onClick={event => { event.stopPropagation(); startEditing() }}>
+              <button
+                type="button"
+                className={css.itemPrioButton}
+                /* THE NAME SAYS WHAT THE PRESS DOES and what the glyph reads: the
+                 * chip opens the title editor (the priority is a word IN the
+                 * title's grammar), so 「优先级：紧急」 alone was a title that lied
+                 * about the action. */
+                aria-label={`${t(PRIORITY_LABEL[item.priority])} · ${t('item.menu.rename')}`}
+                title={`${t(PRIORITY_LABEL[item.priority])} · ${t('item.menu.rename')}`}
+                onClick={event => { event.stopPropagation(); startEditing() }}
+              >
                 {prioChip(item.priority)}
               </button>
               <span className={css.itemRowText}>{item.title}</span>
