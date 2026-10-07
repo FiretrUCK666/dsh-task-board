@@ -28,6 +28,11 @@
 import type { ItemPriority, ItemStatus } from '../../core/item.ts';
 export interface ItemBatchBarProps {
     readonly count: number;
+    /** Whether every row the reader can see is held — what the select-all box draws. */
+    readonly allPicked: boolean;
+    /** Hold every visible row, or release them all. `visible`, not 「everything」:
+     *  the panel computes it, so a box that ticked past the filter is impossible. */
+    readonly onPickAll: (on: boolean) => void;
     /** Apply one patch to every held row. */
     readonly onMark: (status: ItemStatus) => void;
     readonly onPriority: (priority: ItemPriority) => void;

@@ -2731,6 +2731,55 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     }
   })
 
+  it('while the batch is armed every row wears its tickbox, and the bar can tick the whole screen', () => {
+    // THE MODE NEEDS A FACE. The palette's 「多选」 used to arm the mode and show
+    // nothing: the state machine turned over behind an interface that looked
+    // exactly like the un-armed one, and a touch reader — who has no modifier
+    // key at all — had no door into the whole batch surface. Now armed is the
+    // mode whose face is the tickbox: the first hold turns the boxes on
+    // everywhere, and the bar can tick or release every row the reader can see.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      hold(rowEls(panel.surface)[0])
+      const rows = rowEls(panel.surface)
+      expect(rows.length, 'the fixture drew no rows').toBeGreaterThan(1)
+      for (const row of rows) {
+        expect(row.querySelector('input[type=checkbox]'), 'an armed row shows no tickbox, so the mode has no face').not.toBeNull()
+      }
+      // The bar's select-all ticks exactly the screen: every row, then none.
+      const allBox = panel.surface.querySelector('[class*="itemBatchLead"] input[type=checkbox]') as HTMLInputElement
+      expect(allBox, 'the bar has no select-all box, so a full-screen batch is one press per row').not.toBeNull()
+      act(() => { allBox.click() })
+      expect(heldEls(panel.surface).length, 'select-all held fewer rows than the screen shows').toBe(rows.length)
+      expect((panel.surface.querySelector('[class*="itemBatchLead"] input[type=checkbox]') as HTMLInputElement).checked, 'the select-all box does not read as all-held after ticking everything').toBe(true)
+      act(() => { (panel.surface.querySelector('[class*="itemBatchLead"] input[type=checkbox]') as HTMLInputElement).click() })
+      expect(heldEls(panel.surface).length, 'releasing all left rows held').toBe(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('「多选做完了」 is the way out of the mode, and the boxes leave with it', () => {
+    // Leaving the mode is an ACT (setArmed(false) clears the holding), not a
+    // collapse: the reader must be able to stand down without touching the
+    // rows one by one, and an un-armed surface must look un-armed.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      hold(rowEls(panel.surface)[0])
+      expect(rowEls(panel.surface)[0]!.querySelector('input[type=checkbox]'), 'the mode did not turn its face on').not.toBeNull()
+      const done = [...panel.surface.querySelectorAll('button')]
+        .find(button => (button.textContent ?? '').trim() === '多选做完了')
+      expect(done, 'the bar has no way out of the mode').toBeDefined()
+      act(() => { done!.click() })
+      for (const row of rowEls(panel.surface)) {
+        expect(row.querySelector('input[type=checkbox]'), 'a box survived the disarming, so the surface still reads as armed').toBeNull()
+      }
+      expect(panel.surface.querySelector('[class*="itemBatchCount"]'), 'the bar survived its own 「做完了」').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('the range is measured over the rows ON SCREEN, not over the document', () => {
     // 读者勾了第一条、滚过两行被筛掉的、Shift 勾第七条，说的是「这两条之间屏幕上
     // 看见的那几条」。按文档算就会悄悄把那两行也算进去，于是批量条说「已选 8 条」
@@ -2775,19 +2824,37 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
    * THE HOST, as far as this surface is concerned.
    *
    * `answer` decides only the purge route; the archive read answers from the row
-   * above, so the two halves cannot drift apart into a green case.
+   * above — minus the rows a purge in this session has ERASED, because a host
+   * that keeps listing a row it destroyed is not a host, it is a haunted house,
+   * and the re-read the drawer runs after a batch acts on it would resurrect
+   * the very row the reader watched it take away.
    * @param answer - what the host says about the erase.
    * @returns a function that puts the real `fetch` back.
    */
   function hostThatPurges(answer: (address: { id?: string }) => unknown): () => void {
     const real = globalThis.fetch
+    const erased = new Set<string>()
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       const body = JSON.parse(String(init?.body ?? '{}')) as { id?: string }
-      const value = url.includes('/board/items/purge')
-        ? answer(body)
-        : { available: true, deleted: [ARCHIVED] }
-      return new Response(JSON.stringify({ ok: true, value }), { status: 200, headers: { 'content-type': 'application/json' } })
+      if (url.includes('/board/items/purge')) {
+        const verdict = answer(body)
+        // A SELF-CONSISTENT host: whatever the purge answered — erased, a live
+        // name refused, or nothing left to erase — its read stops listing the
+        // row, because a tombstone that survived any of those answers is not a
+        // tombstone the read would return. An answer that CARRIES an envelope
+        // error is a refusal: the read keeps the row (the tombstone is still
+        // there), and the error itself is what the caller sees.
+        if (verdict !== null && typeof verdict === 'object' && 'error' in verdict) {
+          return new Response(JSON.stringify({ ok: false, error: (verdict as { error: unknown }).error }), { status: 200, headers: { 'content-type': 'application/json' } })
+        }
+        erased.add(body.id ?? '')
+        return new Response(JSON.stringify({ ok: true, value: { revision: 9, ...(verdict as Record<string, unknown>) } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response(JSON.stringify({
+        ok: true,
+        value: { available: true, deleted: erased.has(ARCHIVED.id) ? [] : [ARCHIVED] },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     return () => { globalThis.fetch = real }
   }
@@ -2823,9 +2890,16 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     return { panel, undo }
   }
 
-  /** 每一行旁边的那一枚「彻底删除」。 */
-  const purgeButtonOf = (row: Element | null): Element | undefined =>
-    [...(row?.querySelectorAll('button') ?? [])].find(node => (node.textContent ?? '').trim() === '彻底删除')
+  /** 每一行旁边的那一枚勾选框（多选是抽屉自己的脸）。 */
+  const rowElsOf = (surface: ParentNode): Element[] =>
+    [...surface.querySelectorAll('[class*="itemArchiveRow"]:not([class*="itemArchiveRowList"])')]
+
+  const tickboxOf = (row: Element | null): HTMLInputElement | null =>
+    row?.querySelector('input[type=checkbox]') as HTMLInputElement | null
+
+  /** The drawer bar's 确认块：选中若干行之后，栏换成一句带后果的确认。 */
+  const killButton = (surface: ParentNode): Element | undefined =>
+    [...surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '删掉')
 
   it('the one entrance lands on the page that owns the drawer, from ANY page', async () => {
     // THE ENTRANCE IS AN ENTRANCE FROM EVERY PAGE THE RAIL IS DRAWN ON, and the
@@ -2845,31 +2919,34 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
       expect(look, 'the rail draws no 「已删除」 row, so there is no entrance to test').not.toBeUndefined()
       click(look)
       await settle()
-      // 「回到清单」 exists only inside the open drawer, so its presence is the
-      // drawer's presence — and the page it names is where the reader now is.
+      // The drawer's own bar sentence exists only inside the open drawer, so its
+      // presence is the drawer's presence — and the page it names is where the
+      // reader now is.
       expect(panel.surface.textContent ?? '',
-        'pressing 已删除 from 日程 did not bring the archive up, so the row did half its job').toContain('回到清单')
+        'pressing 已删除 from 日程 did not bring the archive up, so the row did half its job').toContain('删掉的行留 30 天')
     } finally {
       panel.dispose()
       undo()
     }
   })
 
-  it('every archived row offers 彻底删除, and the button belongs to that row', async () => {
+  it('every archived row wears its pickbox, and the way back belongs to that row', async () => {
     const { panel, undo } = await openArchive(() => ({ available: true }))
     try {
-      const row = panel.surface.querySelector('[class*="itemRecentRow"]')
+      const row = rowElsOf(panel.surface)[0] ?? null
       expect(row, 'the archive drew no row to hold the deleted one').not.toBeNull()
-      expect(purgeButtonOf(row), 'an archived row offers no way to erase it — 彻底删除 is nowhere').toBeDefined()
+      expect(tickboxOf(row), 'an archived row wears no pickbox — the drawer cannot be picked').not.toBeNull()
+      const back = [...(row?.querySelectorAll('button') ?? [])].find(node => (node.textContent ?? '').trim() === '放回去')
+      expect(back, 'an archived row offers no way to bring it back — the rescue is nowhere').not.toBeUndefined()
     } finally {
       panel.dispose()
       undo()
     }
   })
 
-  it('erasing takes the row off the page and names the thing it erased', async () => {
-    // 回执写的是**被按掉的那一件**，不是「已删除」：读者是按在一行旁边的，而三十天
-    // 之后他唯一能回忆起来的就是那行标题。
+  it('picking a row turns the bar into the one confirmation, and erasing the pick takes the row off the page', async () => {
+    // 回执写的是**数**这件事的总账，不是「已删除」：读者按的是抽屉自己的确认块，
+    // 看到的是这一批的下场。
     const seen: (string | undefined)[] = []
     const { panel, undo } = await openArchive(body => {
       seen.push(body.id)
@@ -2877,31 +2954,43 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     })
     try {
       expect(panel.surface.textContent, 'the archive is not holding the deleted row').toContain('删掉的那一条')
-      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      const box = tickboxOf(rowElsOf(panel.surface)[0] ?? null)
+      expect(box, 'the row carries no pickbox, so the erase cannot be reached').not.toBeNull()
+      act(() => { box!.click() })
+      await settle()
+      // THE BAR BECAME THE CONFIRMATION the moment a row was held — a plain
+      // destroy button that vanishes on press is the control this grammar
+      // refuses.
+      expect(panel.surface.textContent ?? '', 'picking did not surface the consequence').toContain('找不回来')
+      const kill = killButton(panel.surface)
+      expect(kill, 'the confirmation carries no erase').not.toBeUndefined()
+      click(kill)
       await settle()
       expect(seen, 'the press never reached the host').toEqual(['gone-1'])
       // 行离开这一页了。
-      expect(panel.surface.querySelectorAll('[class*="itemRecentRow"]').length, 'the erased row is still on the page').toBe(0)
-      // 而回执说的是它。
-      expect(panel.surface.textContent, 'the receipt does not name the row that was erased').toContain('已清掉')
+      expect(rowElsOf(panel.surface).length, 'the erased row is still on the page').toBe(0)
+      // 而回执说的是这一批。
+      expect(panel.surface.textContent, 'the receipt does not say what was erased').toContain('已彻底删除 1 条')
     } finally {
       panel.dispose()
       undo()
     }
   })
 
-  it('a name that now points at a LIVE row is refused in words, and the row stays', async () => {
-    // 短编号会被重用：清掉 #12 之后，写进本文档的下一行就是 #12。所以一个刚拿过
-    // 的编号可能指着清单里还活着的一条。主机拒绝销毁它，而这一层要说的是**这件
-    // 事**——不是「删除失败」（那读起来像按钮坏了），也不是沉默（那读起来像一次
-    // 成功地毁了别人的东西）。
-    const { panel, undo } = await openArchive(() => ({ available: true, revision: 2, notDeleted: true }))
+  it('a host that refused the erase keeps the row, and the count stays at zero', async () => {
+    // THE HONEST FAILURE KEEPS ITS ROW. A refill/pre-persist refusal (a full
+    // disk, a host that reached but said no) leaves the tombstone on the read —
+    // and the drawer, which re-reads after the batch, still draws it in the
+    // holding it arrived in. Nothing is drained and nothing is hinted as done.
+    const { panel, undo } = await openArchive(() => ({ error: { code: 'persist_failed', message: 'disk said no' } }))
     try {
-      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      act(() => { tickboxOf(rowElsOf(panel.surface)[0] ?? null)!.click() })
+      await settle()
+      click(killButton(panel.surface))
       await settle()
       const said = panel.surface.textContent ?? ''
-      expect(said, 'the reader was not told that the name points at a row that is still on the list').toContain('还活着')
-      expect(said, 'the failure was reported as a broken button rather than as the fact it is').not.toContain('没能彻底删除')
+      expect(said, 'a refusals batched was reported as erased').toContain('一条都没有删掉')
+      expect(rowElsOf(panel.surface).length, 'the refused row was drained from the drawer').toBe(1)
     } finally {
       panel.dispose()
       undo()
@@ -2913,11 +3002,13 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
     // 已经办成的事失败了——而那正是最让人不再按第二次的那种回执。
     const { panel, undo } = await openArchive(() => ({ available: true, revision: 2 }))
     try {
-      click(purgeButtonOf(panel.surface.querySelector('[class*="itemRecentRow"]')))
+      act(() => { tickboxOf(rowElsOf(panel.surface)[0] ?? null)!.click() })
+      await settle()
+      click(killButton(panel.surface))
       await settle()
       const said = panel.surface.textContent ?? ''
-      expect(said, 'the reader was shown a failure for a row that was already gone').not.toContain('没能彻底删除')
-      expect(said, 'nothing at all was said — a silent press is a press that looks broken').not.toContain('正在清掉')
+      expect(said, 'the reader was shown a failure for a row that was already gone').toContain('已彻底删除 1 条')
+      expect(said, 'nothing at all was said — a silent press is a press that looks broken').not.toContain('正在彻底删除')
     } finally {
       panel.dispose()
       undo()

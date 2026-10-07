@@ -30,6 +30,28 @@ import { isItemRecordShape } from '../core/item.ts'
 /** How long to wait before telling the reader the host could not be reached. */
 const ARCHIVE_TIMEOUT_MS = 8_000
 
+/** The retention window, in days — the number the sentences say. */
+const ARCHIVE_WINDOW_DAYS = 30
+
+/** One day, in milliseconds — the unit the clock sentences count in. */
+const DAY_MS = 86_400_000
+
+/**
+ * HOW LONG A TOMBSTONE HAS LEFT, read from the stamp the host keeps.
+ *
+ * The tombstone's deletion instant is a field of the HOST's tombstone map, and
+ * it rides on each row the archive read answers with. A row without one (an
+ * older host, a row the client wrote into a commit) has no clock to read, and
+ * 「读不到就说读不到」 applies: the caller draws the row without the sentence
+ * rather than guessing a date.
+ */
+export function archiveClockOf(row: ItemRecord, now: number): { readonly gone: number; readonly left: number } | undefined {
+  const at = (row as { deletedAt?: unknown }).deletedAt
+  if (typeof at !== 'number' || !Number.isFinite(at) || at <= 0) return undefined
+  const gone = Math.max(0, Math.floor((now - at) / DAY_MS))
+  return { gone, left: Math.max(0, ARCHIVE_WINDOW_DAYS - gone) }
+}
+
 /**
  * The host's answer, narrowed to the two shapes it can actually return.
  *
@@ -150,7 +172,7 @@ export type RestoreAddress = { readonly id: string } | { readonly ref: number }
  * second verb would be two places where 「你给的编号不对」 is written down.
  */
 type ArchivePost =
-  | { readonly ok: true; readonly value: Record<string, unknown> }
+  | { readonly ok: true; readonly value: Record<string, unknown>; readonly revision: number }
   | { readonly ok: false; readonly why: string }
 
 /**
@@ -193,6 +215,12 @@ async function postToArchive(
     if (typeof refused === 'string' && refused !== '') return { ok: false, why: refused }
     const value = envelope?.value
     if (typeof value !== 'object' || value === null) return { ok: false, why: 'malformedAnswer' }
+    // The revision the service decided on rides beside the answer: it is what
+    // lets a replica settle the change locally instead of waiting for a
+    // broadcast (see ChecklistReplica.pruneDeleted). Absent or non-finite means
+    // a caller who does not need it reads `undefined` — never a wrong number.
+    const revision = (value as { revision?: unknown }).revision
+    const decided = typeof revision === 'number' && Number.isFinite(revision) ? revision : -1
     const record = value as { available?: unknown; error?: { code?: unknown } }
     // The host's own refusal code, when it gave one. A wrong address and a host
     // that cannot be reached are different facts and the panel words them
@@ -203,7 +231,7 @@ async function postToArchive(
     // A host serving no documents is a different fact from a host that heard
     // the question and found nothing, and the two need different words.
     if (record.available !== true) return { ok: false, why: 'hostUnavailable' }
-    return { ok: true, value: record }
+    return { ok: true, value: record, revision: decided }
   } catch (error) {
     return { ok: false, why: error instanceof Error ? error.message : String(error) }
   } finally {
@@ -260,7 +288,7 @@ export async function itemsRestore(
  * refusal.
  */
 export type PurgeReply =
-  | { readonly ok: true; readonly erased: ItemRecord | undefined; readonly notDeleted: boolean }
+  | { readonly ok: true; readonly erased: ItemRecord | undefined; readonly notDeleted: boolean; readonly revision: number }
   | { readonly ok: false; readonly why: string }
 
 /**
@@ -285,5 +313,6 @@ export async function itemsPurge(
     ok: true,
     erased: archivedRow(reply.value.erased) ? reply.value.erased : undefined,
     notDeleted: reply.value.notDeleted === true,
+    revision: reply.revision,
   }
 }

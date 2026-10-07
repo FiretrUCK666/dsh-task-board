@@ -706,16 +706,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
      So the flag arrives as an argument and each page says what it accepts. The
      list page passes the real one; the other two pass `false`, which is the same
-     thing the list page passed before anyone could select anything. */
+     thing the list page passed before anyone could select anything.
+
+     THE MODE RIDES WITH IT (`armed`), because the tickbox is armed mode's own
+     face and the agenda has no mode: a page that can batch passes the batch's
+     armed state, a page that cannot passes `false`, and the two arguments travel
+     together so no page can end up with a box and no bar, or a bar and no box. */
   /* AND IT HANDS OVER PROPS, NOT ELEMENTS. The table draws its own rows — the
      head and the body must agree on seven tracks, and a page that wrapped these
      in its own `<ul>` would be a second table without a head. */
-  const rows = (list: readonly ItemRecord[], picking: boolean) => list.map(item => ({
+  const rows = (list: readonly ItemRecord[], picking: boolean, armed: boolean) => list.map(item => ({
     view: itemRowViewOf(item, { now, running }),
     expanded: openRow === item.id,
     selected: selected === item.id,
     cursor: cursor === item.id,
     picking,
+    armed,
     picked: selection.ids.has(item.id),
     /* SHIFT IS A RANGE OVER WHAT IS ON SCREEN, and the anchor is remembered here
        rather than derived: the anchor is 「the last row this reader held with a
@@ -914,6 +920,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
        table printing 「今天」 above rows from six different days. */
     archiveOpen,
     onCloseArchive: closeArchive,
+    onPurged: (id: string, revision: number) => replica?.pruneDeleted(id, revision),
     sort: prefs.sort,
     renderRows: rows,
   }
@@ -947,6 +954,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const batch = selectionActive(selection) ? (
     <ItemBatchBar
       count={selectedCount(selection)}
+      /* The select-all box counts the screen the rows are drawn on, which is
+         `visibleIds` in the order the reader sees — the same set the tickboxes
+         cover, so 「全选」 can never hold a row the reader cannot point at. */
+      allPicked={allPicked(selection, visibleIds)}
+      onPickAll={on => setSelection(current => setAllPicked(current, visibleIds, on))}
       onMark={status => applyToHeld({ status })}
       onPriority={priority => applyToHeld({ priority })}
       onDueToday={() => {

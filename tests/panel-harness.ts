@@ -428,7 +428,7 @@ export function fixtures(): ItemRecord[] {
  * panel hands back. A replica that swallowed the write would make a no-op look
  * like a working button.
  */
-export function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[] } = {}) {
+export function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; pruned?: string[] } = {}) {
   const writes: (readonly ItemRecord[])[] = []
   return {
     writes,
@@ -443,6 +443,12 @@ export function fakeReplica(items: readonly ItemRecord[], over: { hostLost?: boo
     hostLostItems: () => over.hostLost === true,
     isSynced: () => over.synced !== false,
     onRemote: () => () => undefined,
+    /** The mirror of the real replica's local prune: the fake records it so a
+     *  gate can assert 「the purge settled the count in the same turn」 without
+     *  a browser. `pruned` is the recorded ids, named in the fixture options. */
+    pruneDeleted: (id: string, _revision: number): void => {
+      if (over.pruned !== undefined) over.pruned.push(id)
+    },
   }
 }
 
@@ -1104,6 +1110,12 @@ export function mountPanel(
       status: 200,
       headers: { 'content-type': 'application/json' },
     })
+    if (url.includes('/board/items?includeDeleted=1')) {
+      // The archive read answers from the SAME tombstones the restore answers
+      // from: what a delete took away is exactly what the drawered 「已删除」
+      // shows. A fake whose read and whose erase disagree is a hostile fake.
+      return json({ available: true, revision: 9, deleted: [...tombstones.values()] })
+    }
     if (url.includes('/board/items/restore')) {
       const body = JSON.parse(String(init?.body ?? '{}')) as { id?: unknown; ref?: unknown }
       const row = typeof body.id === 'string'
@@ -1112,6 +1124,19 @@ export function mountPanel(
       if (row === undefined) return json({ available: true, restored: null })
       tombstones.delete(row.id)
       return json({ available: true, restored: row })
+    }
+    if (url.includes('/board/items/purge')) {
+      // 「彻底删除」 drops the tombstone too: the row is gone from the read the
+      // next time the drawer re-reads, which is the observable the confirm bar
+      // promises. The revision rides along because a REAL host puts it beside
+      // the answer — the replica prunes on it.
+      const body = JSON.parse(String(init?.body ?? '{}')) as { id?: unknown; ref?: unknown }
+      const row = typeof body.id === 'string'
+        ? tombstones.get(body.id)
+        : [...tombstones.values()].find(one => one.ref === body.ref)
+      if (row === undefined) return json({ available: true, revision: 9, erased: null, notDeleted: true })
+      tombstones.delete(row.id)
+      return json({ available: true, revision: 9, erased: row })
     }
     return json({})
   }) as typeof fetch

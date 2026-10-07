@@ -1212,6 +1212,29 @@ export class ChecklistReplica {
     this.remoteListener?.(this.view(), doc.revision)
   }
 
+  /**
+   * Take ONE tombstone out of the local document, on the authority of a purge
+   * reply.
+   *
+   * WHY THE REPLICA NEEDS THIS AT ALL. A purge is a host service operation: the
+   * host rewrites its document and broadcasts, and this replica converges the
+   * next time its coalesced resync lands — a window in which the rail keeps
+   * counting a row the host already erased. The purge reply itself, though,
+   * carries BOTH facts that settle it — the identity and the revision the host
+   * decided on — so waiting for a broadcast to say what the reply already said
+   * is a second answer to a question that has been answered. This is not a
+   * comp ETE second write path: it is the same document, one tombstone less,
+   * stamped with the revision the host said it reached, and {@link adopt}'s
+   * never-backwards guard still stands.
+   */
+  pruneDeleted(id: string, revision: number): void {
+    if (revision < this.doc.revision) return
+    if (!(id in this.doc.tombstones)) return
+    const tombstones = { ...this.doc.tombstones }
+    delete tombstones[id]
+    this.adopt({ ...this.doc, revision, tombstones })
+  }
+
   private scheduleResync(): void {
     if (this.resyncCancel !== undefined) return
     this.resyncCancel = this.defer(() => {

@@ -221,7 +221,14 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
             className={css.itemRowMenuItem}
             aria-disabled={action.disabled === true || undefined}
             title={action.hint}
-            onClick={() => pick(action)}
+            /* The press must not reach the row the menu sits inside: the row
+               treats a plain press as 「select AND open」, and every menu item
+               that let it through would also flip the row — 改标题 would open
+               the detail, 删除 this 删除这条 would open it and then remove it.
+               The menu's own outside-click listener runs on capture and has
+               already exempted this target, so stopping the bubble here costs
+               the row nothing. */
+            onClick={event => { event.stopPropagation(); pick(action) }}
           >
             <span className={css.itemRowMenuLabel}>{action.label}</span>
             {action.hint !== undefined && <span className={css.itemRowMenuHint}>{action.hint}</span>}

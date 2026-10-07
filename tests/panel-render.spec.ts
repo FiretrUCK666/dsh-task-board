@@ -543,6 +543,41 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
   const bare = (sheet: string): string =>
     sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
+  it('the row can paint four states from four surfaces, and no two of them share a token', () => {
+    // HOVER STUCK, THE STRUCTURAL VERSION. Four facts live on the row — the brief
+    // pointer, the cursor position, the open sheet, the held row — and each
+    // paints the row's own fill. The day two of them share ONE token, the
+    // surface cannot tell 「the pointer left」 from 「the sheet stayed」 — that
+    // is what 「放手之后那行一直是暗的」 was mechanically. So the rule is not
+    // 「four nice colours」, it is 「four distinct custom properties」, and the
+    // answer is computed off the sheets rather than by eye: an edit that
+    // retargets one state's token onto another's turns this red.
+    const sheet = bare(itemSheet)
+    const fillOf = (selector: string): string | undefined => {
+      const at = sheet.indexOf(selector)
+      expect(at, `the row fill ${selector} is not in the stylesheet at all`).toBeGreaterThanOrEqual(0)
+      const block = sheet.slice(at, sheet.indexOf('}', at))
+      return /background:\s*([^;]+)/.exec(block)?.[1]?.trim()
+    }
+    const fills = [
+      ['.itemRow:hover', 'hover'],
+      ['.itemRow[data-cursor]', 'cursor'],
+      ['.itemRow[data-open]', 'open'],
+      ['.itemRow[data-picked]', 'picked'],
+    ].map(([selector, name]) => ({ name, value: fillOf(selector) }))
+    // The cursor paints a RING, not a fill — its absence from this list is the
+    // claim, so its hand-off (box-shadow) is the one asserted different: it must
+    // not sneak a background in.
+    expect(fills[1]!.value, 'the keyboard cursor paints a fill — a fill would be a fifth member of the ladder the surface cannot tell apart').toBeUndefined()
+    const painted = fills.filter(f => f.value !== undefined)
+    for (const fill of painted) {
+      expect(fill.value, `${fill.name} paints with a var() it does not own`).toMatch(/^var\(--/)
+    }
+    const tokens = new Set(painted.map(fill => fill.value))
+    expect(tokens.size, `hover, open and picked share a token: ${painted.map(f => f.name + '=' + f.value).join(' | ')}`)
+      .toBe(painted.length)
+  })
+
   it('the reduced-motion block is the LAST thing in the sheet, and that is load-bearing', () => {
     // POSITION, NOT COSMETICS. The block sat in the middle, and at equal
     // specificity the later declaration wins — so the five selectors it NAMES

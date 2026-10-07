@@ -1,5 +1,18 @@
 import type { ItemRecord } from '../core/item.ts';
 /**
+ * HOW LONG A TOMBSTONE HAS LEFT, read from the stamp the host keeps.
+ *
+ * The tombstone's deletion instant is a field of the HOST's tombstone map, and
+ * it rides on each row the archive read answers with. A row without one (an
+ * older host, a row the client wrote into a commit) has no clock to read, and
+ * 「读不到就说读不到」 applies: the caller draws the row without the sentence
+ * rather than guessing a date.
+ */
+export declare function archiveClockOf(row: ItemRecord, now: number): {
+    readonly gone: number;
+    readonly left: number;
+} | undefined;
+/**
  * The host's answer, narrowed to the two shapes it can actually return.
  *
  * `why` is a code rather than a sentence so the panel owns the wording (it is
@@ -99,6 +112,7 @@ export type PurgeReply = {
     readonly ok: true;
     readonly erased: ItemRecord | undefined;
     readonly notDeleted: boolean;
+    readonly revision: number;
 } | {
     readonly ok: false;
     readonly why: string;

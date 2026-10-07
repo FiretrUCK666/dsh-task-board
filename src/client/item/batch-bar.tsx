@@ -29,10 +29,16 @@ import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button, Segmented } from '../board/ui.tsx'
 import { PRIORITY_LABEL } from './labels.ts'
+import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
 export interface ItemBatchBarProps {
   readonly count: number
+  /** Whether every row the reader can see is held — what the select-all box draws. */
+  readonly allPicked: boolean
+  /** Hold every visible row, or release them all. `visible`, not 「everything」:
+   *  the panel computes it, so a box that ticked past the filter is impossible. */
+  readonly onPickAll: (on: boolean) => void
   /** Apply one patch to every held row. */
   readonly onMark: (status: ItemStatus) => void
   readonly onPriority: (priority: ItemPriority) => void
@@ -50,8 +56,19 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
   return (
     <div className={css.itemBatch} role="group" aria-label={t('item.batch.count', { n })}>
       {/* The count leads, because it is the only number here and every action
-          below it means 「these n」. */}
-      <p className={css.itemBatchCount}>{t('item.batch.count', { n })}</p>
+          below it means 「these n」. The select-all box rides beside it: the same
+          16px box the armed rows wear, ticking exactly the set the bar can act
+          on. An EMPTY screen is 「all held」 vacuously and the panel does not
+          render the bar at all in that case, so the box is only ever drawn where
+          there is something it can reach. */}
+      <div className={css.itemBatchLead}>
+        <Tickbox
+          checked={props.allPicked}
+          label={t('item.batch.all')}
+          onToggle={() => props.onPickAll(!props.allPicked)}
+        />
+        <p className={css.itemBatchCount}>{t('item.batch.count', { n })}</p>
+      </div>
       <div className={css.itemBatchActions}>
         <Segmented
           ariaLabel={t('item.status.open')}

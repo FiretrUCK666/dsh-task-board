@@ -17,6 +17,10 @@ export interface ItemRowLineProps {
     /** Whether this PAGE batches. The inbox and the agenda answer false, so a row there
      *  carries no way to be held. */
     readonly picking: boolean;
+    /** Whether the batch is ARMED — the mode whose face is a tickbox in the lead
+     *  slot. `picking` without `armed` still answers ⌘-click, `X` and the ⋮ entry;
+     *  the box appears the moment there is a mode to show. */
+    readonly armed: boolean;
     readonly picked: boolean;
     /** Hold one row, optionally as a range over what is on screen. */
     readonly onPick: (extend: boolean) => void;

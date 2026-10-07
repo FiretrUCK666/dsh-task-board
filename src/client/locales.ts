@@ -921,6 +921,18 @@ export const zh = {
 
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
+  // 抽屉自带一张条形栏：一句话说清计时，选中若干行之后，栏换成一句带后果的
+  // 确认——不再是一个按下去就消失的按钮。
+  'item.archive.bar': '删掉的行留 30 天，到期自己清走。',
+  'item.archive.confirm': '删掉选中的 {n} 条？找不回来。',
+  'item.archive.keep': '算了',
+  'item.archive.kill': '删掉',
+  'item.archive.days': '{gone} 天前删掉，还剩 {left} 天',
+  'item.archive.destroyed': '已彻底删除 {n} 条，找不回来了。',
+  'item.archive.destroyedPartial': '彻底删除了 {n} 条，{m} 条没能删。',
+  'item.archive.destroyedNone': '一条都没有删掉：{m} 条没能删。',
+  'item.archive.batchRefused': '这台机器读不到主机。一条也没有删。',
+  'item.archive.purgingAll': '正在彻底删除…',
   'item.archive.window': '删除后 30 天内可以找回来。',
   'item.undo.said': '删掉了 {n} 条。',
   'item.undo.working': '正在找回来…',
@@ -930,18 +942,11 @@ export const zh = {
   'item.undo.refused': '没能找回来：这台机器读不到主机。30 天内可以在「已删除」里找。',
   'item.archive.title': '已删除',
   'item.archive.empty': '没有删掉过任何一条。',
-  'item.archive.close': '回到清单',
-  'item.archive.restore': '找回这一条',
+  'item.archive.restore': '放回去',
   'item.archive.restoring': '正在找回…',
   'item.archive.restored': '#{ref} 找回来了。',
   'item.archive.refused': '没能找回 {ref}：{why}。',
   'item.archive.unreadable': '读不到主机上的删除记录。',
-  'item.archive.purge': '彻底删除',
-  'item.archive.purging': '正在清掉…',
-  'item.archive.purged': '已清掉「{title}」，找不回来了。',
-  'item.archive.purgeGone': '{ref} 已经不在归档里了。',
-  'item.archive.purgeLive': '{ref} 现在指的是清单里还活着的一条，没有删它。',
-  'item.archive.purgeRefused': '没能彻底删除 {ref}：{why}。',
   'item.steps.empty': '还没有步骤。',
   'item.steps.add': '加一步',
   'item.steps.placeholder': '这一步要做什么？',
@@ -1835,6 +1840,19 @@ export const en: Record<keyof typeof zh, string> = {
   // The archive. Not a tab on the rail: a page the reader arrives at. The
   // thirty-day window is stated rather than implied, because a restore button
   // that has quietly stopped working is worse than one that never appeared.
+  // The drawer carries its own bar: one sentence about the clock, and — once
+  // rows are picked — that bar becomes a consequence-bearing confirmation
+  // instead of a button that vanishes when pressed.
+  'item.archive.bar': 'Removed rows stay for 30 days, then clear themselves.',
+  'item.archive.confirm': 'Erase the {n} picked rows? They cannot come back.',
+  'item.archive.keep': 'Never mind',
+  'item.archive.kill': 'Erase',
+  'item.archive.days': 'Removed {gone} days ago, {left} days left',
+  'item.archive.destroyed': 'Erased {n} rows for good. They cannot come back.',
+  'item.archive.destroyedPartial': 'Erased {n} rows for good; {m} could not be erased.',
+  'item.archive.destroyedNone': 'Nothing was erased: {m} could not be.',
+  'item.archive.batchRefused': 'This device cannot reach the host. Nothing was erased.',
+  'item.archive.purgingAll': 'Erasing…',
   'item.archive.window': 'You can bring one back for 30 days after removing it.',
   'item.undo.said': 'Removed {n}.',
   'item.undo.working': 'Bringing it back…',
@@ -1844,18 +1862,11 @@ export const en: Record<keyof typeof zh, string> = {
   'item.undo.refused': 'Could not bring it back: this device cannot reach the host. It is under “Removed” for 30 days.',
   'item.archive.title': 'Removed',
   'item.archive.empty': 'You have not removed anything.',
-  'item.archive.close': 'Back to the list',
-  'item.archive.restore': 'Bring this one back',
+  'item.archive.restore': 'Put back',
   'item.archive.restoring': 'Bringing it back…',
   'item.archive.restored': '#{ref} is back.',
   'item.archive.refused': 'Could not bring {ref} back: {why}.',
   'item.archive.unreadable': 'Cannot reach the host record of what you removed.',
-  'item.archive.purge': 'Erase for good',
-  'item.archive.purging': 'Erasing…',
-  'item.archive.purged': 'Erased “{title}”. It cannot come back.',
-  'item.archive.purgeGone': '{ref} was no longer in the archive.',
-  'item.archive.purgeLive': '{ref} now points at a row that is still on the list, so nothing was erased.',
-  'item.archive.purgeRefused': 'Could not erase {ref}: {why}.',
   'item.steps.empty': 'No steps yet.',
   'item.steps.add': 'Add a step',
   'item.steps.placeholder': 'What has this step to do?',

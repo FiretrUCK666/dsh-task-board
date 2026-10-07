@@ -178,6 +178,13 @@
 
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
+  /* The TASK-LIST row's open surface: the same accent family the panel's own
+     identity rides on, one opaque-notched step above the neutral hover wash.
+     Hover and open are two facts with two lifespans on the same row — the
+     hover is a brief pointer, the open is where the reader IS — and two
+     lifespans on one fill colour read as 「hover stuck」, which is the exact
+     report this token exists to answer. */
+  --dsh-tb-open: color-mix(in srgb, var(--dsh-tb-accent) 12%, transparent);
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
   /* The focus halo, derived from the SAME 22% step the attention/selection system
      already uses (see --dsh-tb-attention-alpha below) rather than from a token

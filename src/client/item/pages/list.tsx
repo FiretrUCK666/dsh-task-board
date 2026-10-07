@@ -28,8 +28,8 @@ import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
 import { t } from '../../locales.ts'
-import { itemsArchive, itemsPurge, itemsRestore, type ArchiveReply } from '../../items-archive.ts'
-import { removeItemRecord } from '../../../core/item-transitions.ts'
+import { itemsArchive, itemsPurge, itemsRestore, archiveClockOf, type ArchiveReply } from '../../items-archive.ts'
+import { Tickbox } from '../tickbox.tsx'
 import { whyLabelOf } from '../why-label.ts'
 import { Button } from '../../board/ui.tsx'
 import { ItemTable } from '../item-table.tsx'
@@ -71,11 +71,23 @@ export function ListPage(props: ItemListPageProps) {
    * WHICH ARCHIVED ROW IS BEING ERASED, by identity.
    *
    * `restoring` is a number because the reader sees 「#7 正在找回」 and a number
-   * is what the archive shows next to every row; the erase has no number to
-   * disable against, because a number can be reused between the press and the
-   * answer and disabling `#7` then would grey out somebody else's row.
+   * is what the archive shows next to every row. There is no per-row erase left
+   * for a number to track: the irreversible lives on the drawer's own bar, and
+   * the bar disables the WHOLE act while it is away (below).
    */
-  const [purging, setPurging] = useState<string | undefined>(undefined)
+  /** Whether the batch erase is running: every erase press disables while it is away. */
+  const [purgingAll, setPurgingAll] = useState(false)
+  /**
+   * WHICH ARCHIVED ROWS THE READER IS HOLDING, by identity.
+   *
+   * The archive's multi-select is its own holding and not the list page's: the
+   * two batches act on two different documents (this one holds TOMBSTONES the
+   * client cannot see in `view()`), and sharing one state would let a pick made
+   * in the drawer ride out of it and name nothing on the list above. It clears
+   * whenever the drawer re-opens and whenever a row it names is drained, so a
+   * holding never outlives the rows it names.
+   */
+  const [archivePicks, setArchivePicks] = useState<ReadonlySet<string>>(new Set())
   const [archiveNote, setNote] = useState<{ readonly words: string; readonly raw: string } | undefined>(undefined)
   /** One way to write the note, so 「clear it」 and 「say a code」 cannot disagree. */
   const setArchiveNote = useCallback((note: string | undefined, raw = note ?? '') => {
@@ -109,8 +121,39 @@ export function ListPage(props: ItemListPageProps) {
   useEffect(() => {
     if (!props.archiveOpen) return
     setArchiveNote(undefined)
+    setArchivePicks(new Set())
     void openArchive()
   }, [props.archiveOpen, openArchive])
+
+  /** A drawer whose holding never outlives the rows it names:
+   *  the re-read after any write filters the holding against what is back. */
+  useEffect(() => {
+    if (archive?.kind !== 'ready') return
+    setArchivePicks(current => {
+      const next = new Set([...current].filter(id => archive.rows.some(row => row.id === id)))
+      return next.size === current.size ? current : next
+    })
+  }, [archive])
+
+  /** Hold one archived row, or release it. Pure state: nothing is sent until the
+   *  confirm bar's own button is pressed. */
+  const toggleArchivePick = useCallback((id: string): void => {
+    setArchivePicks(current => {
+      const next = new Set(current)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+
+  /** Hold every row the drawer shows, or none of them. */
+  const pickAllArchive = useCallback((on: boolean): void => {
+    setArchivePicks(current => {
+      if (!on) return current.size === 0 ? current : new Set()
+      if (archive?.kind !== 'ready') return current
+      return new Set(archive.rows.map(row => row.id))
+    })
+  }, [archive])
 
   /**
    * Restore one archived row, ADDRESSED BY ITS IDENTITY.
@@ -152,61 +195,73 @@ export function ListPage(props: ItemListPageProps) {
   }, [openArchive, props.clientId])
 
   /**
-   * 彻底删除 ONE ARCHIVED ROW, and the receipt names the thing it destroyed.
+   * 「彻底删除」 EVERY ROW THE READER HELD, one call per row, one receipt for the
+   * whole act.
    *
-   * THE ROW LEAVES THE ARRAY THROUGH THE SHARED WRITER, `removeItemRecord`, and
-   * that is not a formality: it is the same function the list page's own delete
-   * uses, so 「a row with this id is no longer in this document」 is one statement
-   * in one place rather than a second answer written beside it. A local
-   * `rows.filter(...)` would be the same sentence in a second language, and the
-   * first time the two disagree the archive shows a row that has already been
-   * destroyed — the one failure a purge cannot recover from.
+   * THE LOOP IS THE HOST CONTRACT, not laziness: each erase is a host operation
+   * addressed by identity (see itemsPurge), and there is no batch route to speak
+   * of, so N picks are N calls with the SAME verbs the single-row erase spoke.
+   * The per-row one is gone because the drawer's bar owns the irreversible now:
+   * a row-level button next to every row is one more 「go away」 than this
+   * surface needs, and the confirm bar says the cost BEFORE it instead of
+   * beside it.
    *
-   * THE TWO HOST REFUSES GET TWO SENTENCES, and the second one is the reason this
-   * function exists rather than a confirmation dialog. A short number is
-   * REUSED: erase `#12` and the next row written into this document becomes
-   * `#12`, so a number typed or held from a moment ago can name a row that is
-   * still on the list. The host refuses to destroy it, and the reader has to be
-   * told THAT — not 「删除失败」, which reads as a broken button, and not silence,
-   * which reads as a success that destroyed somebody's live note.
+   * EVERY OUTCOME IS COUNTED, and the receipt says the count: all gone is the
+   * destroyed sentence, a partial is the partial one — never a plain 「done」 that
+   * would swallow refusals. The erase is disabled while it runs, so a double
+   * press is not double destruction.
    */
-  const purgeOne = useCallback(async (row: ItemRecord) => {
-    const label = itemRefOf(row).text ?? '—'
+  const purgePicked = useCallback(async () => {
+    const rows = archive?.kind === 'ready' ? archive.rows.filter(row => archivePicks.has(row.id)) : []
+    if (rows.length === 0) return
     if (props.clientId === undefined) {
       const why = whyLabelOf('hostUnavailable')
-      setArchiveNote(t('item.archive.purgeRefused', { ref: label, why: why.words }), why.raw)
+      setArchiveNote(t('item.archive.batchRefused', { why: why.words }), why.raw)
       return
     }
     setArchiveNote(undefined)
-    setPurging(row.id)
-    const reply = await itemsPurge({ id: row.id }, props.clientId)
-    setPurging(undefined)
-    if (!reply.ok) {
-      const why = whyLabelOf(reply.why)
-      setArchiveNote(t('item.archive.purgeRefused', { ref: label, why: why.words }), why.raw)
-      return
+    setPurgingAll(true)
+    let killed = 0
+    let refused = 0
+    const drained: string[] = []
+    for (const row of rows) {
+      const reply = await itemsPurge({ id: row.id }, props.clientId)
+      // THREE HOST VERDITS, THREE HOLDINGS. 「erased」 or 「nothing left to erase」
+      // both end with the row absent from the archive and the holding: the
+      // reader asked for it to be gone and either answer is it being gone.
+      // 「notDeleted」 is different matter — the SHORT NUMBER was reused and the
+      // host refused to destroy somebody's live note — so that row STAYS in the
+      // drawer, in the holding, counted under 「没能删」. A receipt that folded a
+      // live row into 「已删」 would be the archive lying about the one thing it
+      // exists to be honest about.
+      if (reply.ok && reply.notDeleted !== true) {
+        killed += 1
+        drained.push(row.id)
+        // The host's own revision settles the tombstone locally: the rail's
+        // count stops naming the erased row in the same turn, not at the next
+        // coalesced resync.
+        props.onPurged?.(row.id, reply.revision)
+      } else {
+        refused += 1
+      }
     }
-    // The name points at a live row, so this archive did NOT shrink — and the
-    // archive is re-read rather than patched, because the live row is not ours
-    // to explain here; the receipt is.
-    if (reply.notDeleted) {
-      setArchiveNote(t('item.archive.purgeLive', { ref: label }), 'notDeleted')
-      await openArchive()
-      return
-    }
-    if (reply.erased !== undefined) {
-      setArchive(current => (current?.kind === 'ready'
-        ? { kind: 'ready', rows: removeItemRecord(current.rows, row.id) }
-        : current))
-      setArchiveNote(t('item.archive.purged', { title: itemTitleOf(reply.erased) }), `erased ${row.id}`)
-      return
-    }
-    // Nothing held that name any more. The reader wanted it gone and it is gone,
-    // so this is a receipt and not a refusal — and the archive is re-read because
-    // the row may have been taken by another device rather than by this press.
-    setArchiveNote(t('item.archive.purgeGone', { ref: label }), 'nothingToErase')
+    setPurgingAll(false)
+    setArchivePicks(current => {
+      // HELD ROWS THAT SURVIVED (the refusals) stay held; the released set only
+      // drops the rows that actually left.
+      const next = new Set([...current].filter(id => !drained.includes(id)))
+      return next.size === current.size ? current : next
+    })
+    setArchive(current => (current?.kind === 'ready'
+      ? { kind: 'ready', rows: current.rows.filter(row => !drained.includes(row.id)) }
+      : current))
+    setArchiveNote(killed === 0
+      ? t('item.archive.destroyedNone', { m: String(refused) })
+      : refused === 0
+        ? t('item.archive.destroyed', { n: String(killed) })
+        : t('item.archive.destroyedPartial', { n: String(killed), m: String(refused) }), `erased batch ${killed}/${refused}`)
     await openArchive()
-  }, [openArchive, props.clientId])
+  }, [archive, archivePicks, openArchive, props.clientId, props.onPurged])
 
   /**
    * THE GROUPS, and the empty ones share one line.
@@ -333,42 +388,74 @@ export function ListPage(props: ItemListPageProps) {
           {archive.kind === 'unreadable' && <p className={css.itemArchiveNote} role="status">{t('item.archive.unreadable')}</p>}
           {archive.kind === 'ready' && archive.rows.length === 0 && <p className={css.itemArchiveNote}>{t('item.archive.empty')}</p>}
           {archive.kind === 'ready' && archive.rows.length > 0 && (
-            <ul className={css.itemRecentList}>
-              {archive.rows.map(row => (
-                <li key={row.id} className={css.itemRecentRow}>
-                  <span className={css.itemRefChip}>{itemRefOf(row).text ?? '—'}</span>
-                  <span className={css.itemRecentTitle}><span className={css.itemRecentTitleText}>{itemTitleOf(row)}</span></span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={restoring === row.ref}
-                    onClick={() => { void restoreOne(row) }}
-                  >
-                    {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
-                  </Button>
-                  {/* 彻底删除 IS ON THE ARCHIVED ROW AND NOWHERE ELSE. It is the one
-                      press here with no undo at all, so it sits beside the row it
-                      destroys rather than at the bottom of the drawer: a reader who
-                      has to hunt for it is not being warned, they are being routed
-                      through a maze to the irreversible. And the thirty-day sentence
-                      is directly above it, which is the last thing that should be
-                      said before it. */}
-                  <Button
-                    variant="dangerGhost"
-                    size="sm"
-                    disabled={purging === row.id}
-                    onClick={() => { void purgeOne(row) }}
-                  >
-                    {t(purging === row.id ? 'item.archive.purging' : 'item.archive.purge')}
-                  </Button>
-                </li>
-              ))}
-            </ul>
+            <>
+              {/* THE DRAWER'S OWN BAR, and it is a PLACE and not a button row: one
+                  sentence about the clock always here, and — the moment a row is
+                  held — that place becomes the one consequence-bearing
+                  confirmation in the whole surface. A plain 「删除所有」 button that
+                  vanishes when pressed is a control whose worst press is its
+                  smoothest; the sentence is what says the cost BEFORE it. */}
+              <div className={css.itemArchiveBar}>
+                <p className={css.itemArchiveSay}>{t('item.archive.bar')}</p>
+                {archivePicks.size > 0
+                  ? (
+                      <div className={css.itemArchiveConfirm}>
+                        <span aria-live="polite">{t('item.archive.confirm', { n: String(archivePicks.size) })}</span>
+                        <Button variant="ghost" size="sm" disabled={purgingAll} onClick={() => setArchivePicks(new Set())}>
+                          {t('item.archive.keep')}
+                        </Button>
+                        <Button variant="dangerGhost" size="sm" disabled={purgingAll} onClick={() => { void purgePicked() }}>
+                          {t(purgingAll ? 'item.archive.purgingAll' : 'item.archive.kill')}
+                        </Button>
+                      </div>
+                    )
+                  : (
+                      <div className={css.itemArchiveActs}>
+                        <Button variant="ghost" size="sm" onClick={() => pickAllArchive(true)}>{t('item.batch.all')}</Button>
+                      </div>
+                    )}
+              </div>
+              {/* ONE ROW, THREE TRACKS: the box the hand reaches for, the row's own
+                  words, and the way back. The box leads because what you do in here
+                  is pick a row; the restore button is on EVERY row in every state
+                  (a rescue that needs a mode first is a rescue withheld), and the
+                  meta line names the row's number and — the moment the host sends
+                  the stamp it keeps — how long the row has left. */}
+              <ul className={css.itemArchiveRowList}>
+                {archive.rows.map(row => {
+                  const clock = archiveClockOf(row, props.now)
+                  return (
+                    <li key={row.id} className={css.itemArchiveRow}>
+                      <Tickbox
+                        checked={archivePicks.has(row.id)}
+                        label={t('item.batch.hold')}
+                        onToggle={() => toggleArchivePick(row.id)}
+                      />
+                      <span className={css.itemArchiveCell}>
+                        <span className={css.itemArchiveTitle}><span className={css.itemRecentTitleText}>{itemTitleOf(row)}</span></span>
+                        <span className={css.itemArchiveMeta}>
+                          <span className={css.itemRefChip}>{itemRefOf(row).text ?? '—'}</span>
+                          {/* THE CLOCK SAYS ITSELF ONLY WHEN THE HOST SENT THE STAMP.
+                              A row without a stamp is NOT given a guessed date. */}
+                          {clock !== undefined && (
+                            <span>{t('item.archive.days', { gone: String(clock.gone), left: String(clock.left) })}</span>
+                          )}
+                        </span>
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={restoring === row.ref}
+                        onClick={() => { void restoreOne(row) }}
+                      >
+                        {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
+                      </Button>
+                    </li>
+                  )
+                })}
+              </ul>
+            </>
           )}
-          <p className={css.itemHint}>{t('item.archive.window')}</p>
-          <Button variant="ghost" size="sm" onClick={() => { setArchiveNote(undefined); props.onCloseArchive() }}>
-            {t('item.archive.close')}
-          </Button>
         </div>
       </section>
     )
@@ -386,7 +473,7 @@ return (
           construction. */}
       {props.batch}
       <ItemTable
-        rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking)}
+        rows={props.renderRows(slices.flatMap(slice => slice.items), props.picking, props.armed === true)}
         empty={nothingToShow}
         noMatch={items.length === 0 ? undefined : nothingToShow}
         now={props.now}

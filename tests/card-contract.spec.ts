@@ -410,13 +410,18 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // page and no way to disarm.
     //
     // The gate is on the CHANNEL, not on each page's good behaviour: `renderRows`
-    // must take the picking state as an argument, so a page cannot inherit it by
-    // being handed the same factory. A per-page assertion ("inbox passes false")
-    // would be three assertions that each need remembering; this is one.
+    // must take the picking state AND the armed mode as arguments, so a page
+    // cannot inherit either by being handed the same factory. A per-page
+    // assertion ("inbox passes false") would be three assertions that each need
+    // remembering; this is one. THE MODE TRAVELS WITH THE PAGE FACT, because the
+    // tickbox is armed mode's face: a page that could get `armed` without a batch
+    // bar, or a bar over rows whose boxes absent, would be the same defect in the
+    // opposite direction — so both arguments are pinned on the contract and on
+    // every call the gate knows about.
     const props = readFileSync(fileURLToPath(new URL('../src/client/item/pages/page-props.ts', import.meta.url)), 'utf8')
     expect(props, 'renderRows takes no picking argument, so every page inherits the shared holding')
-      .toMatch(/renderRows: \(list: readonly ItemRecord\[\], picking: boolean\)/)
-    for (const [name, call] of [['schedule', /renderRows\(bucket\.items,\s*false\)/]] as const) {
+      .toMatch(/renderRows: \(list: readonly ItemRecord\[\], picking: boolean, armed: boolean\)/)
+    for (const [name, call] of [['schedule', /renderRows\(bucket\.items,\s*false,\s*false\)/]] as const) {
       const page = readFileSync(fileURLToPath(new URL(`../src/client/item/pages/${name}.tsx`, import.meta.url)), 'utf8')
         .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
       expect(call.test(page), `${name}.tsx draws pickboxes although PRODUCT.md gives it no multi-select`)
@@ -451,8 +456,12 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // call and reports the page as having lost the argument. A gate whose pattern
     // cannot count one level of nesting is a gate that will keep finding defects in
     // the pattern.
+    // THE THIRD ARGUMENT IS THE MODE, and it must be the page's own `armed`
+    // reading — a constant `true` here would put boxes on every list page no
+    // matter what the palette's 「多选」 did, which is the invisible mode all
+    // over again.
     expect(list, 'the list page has a batch bar but does not hand renderRows the real picking state')
-      .toMatch(/renderRows\([\s\S]{0,160}?,\s*props\.picking\s*\)/)
+      .toMatch(/renderRows\([\s\S]{0,160}?,\s*props\.picking,\s*props\.armed === true\s*\)/)
   })
 
   /**

@@ -18,12 +18,15 @@
  *   the sentence says the row, and the reading says what the calendar says — one
  *   fact in one place.
  *
- * ══ WHY MULTI-SELECT IS A MODIFIER AND NOT A COLUMN ════════════════════════
+ * ══ WHY MULTI-SELECT IS A MODE AND NOT A COLUMN ════════════════════════
  *
  * Forty-four pixels of empty box down every row, on every page, to serve a mode a
- * reader has to discover first. Shift- or ⌘-click, or the 「持有」 entry in ⋮ — and
- * the pickbox column is gone rather than hidden, because a control that is invisible
- * until a step happens is a step.
+ * reader has to discover first — that is why there is no standing column. What a
+ * mode owes the reader instead is a FACE once they are in it: while the batch is
+ * armed the lead slot becomes the tickbox (the same 16px box the archive's armed
+ * drawer wears), and ⌘-click, `X` and the ⋮ entry work whether or not the mode is
+ * visibly on. A column that only exists while it has work to do costs the other
+ * twenty rows nothing.
  *
  * ══ WHY THE BEAD IS SHAPES AND NOT A DOT ═══════════════════════════════════
  *
@@ -39,6 +42,7 @@ import { t } from '../locales.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { formatItemDate } from './model.ts'
 import { ItemRowMenu } from './row-menu.tsx'
+import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
 /** How the four states are marked. One shape each, no word on the row. */
@@ -161,7 +165,6 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
           b: t(DATE_FIELD_KEY[posture.conflict.limitField]),
         }),
       }
-    case 'gated':
     case 'none':
       return undefined
   }
@@ -210,6 +213,10 @@ export interface ItemRowLineProps {
   /** Whether this PAGE batches. The inbox and the agenda answer false, so a row there
    *  carries no way to be held. */
   readonly picking: boolean
+  /** Whether the batch is ARMED — the mode whose face is a tickbox in the lead
+   *  slot. `picking` without `armed` still answers ⌘-click, `X` and the ⋮ entry;
+   *  the box appears the moment there is a mode to show. */
+  readonly armed: boolean
   readonly picked: boolean
   /** Hold one row, optionally as a range over what is on screen. */
   readonly onPick: (extend: boolean) => void
@@ -311,8 +318,25 @@ export function ItemRowLine(props: ItemRowLineProps) {
         props.onToggle()
       }}
     >
-      {/* THE BEAD: a shape, and it is the only thing that says the state. */}
-      <span className={css.itemRowLead} aria-hidden="true">{stateMark(view.status)}</span>
+      {/* THE LEAD SLOT: the state bead, or — while the batch is armed — the
+          tickbox that is armed mode's own face. The press must not reach the row
+          underneath it: a box whose press also opens the row is two controls in
+          one, and the reader cannot say which one they pressed. */}
+      <span
+        className={css.itemRowLead}
+        aria-hidden={props.picking && props.armed ? undefined : 'true'}
+        onClick={props.picking && props.armed ? event => event.stopPropagation() : undefined}
+      >
+        {props.picking && props.armed
+          ? (
+              <Tickbox
+                checked={props.picked}
+                label={t(props.picked ? 'item.batch.release' : 'item.batch.hold')}
+                onToggle={() => props.onPick(false)}
+              />
+            )
+          : stateMark(view.status)}
+      </span>
 
       <div className={css.itemRowCell}>
         {editing

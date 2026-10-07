@@ -59,7 +59,7 @@ export interface ItemPageProps {
      *  rather than elements, because the table draws its own rows: the head and the
      *  body must agree on seven tracks, and a page that wrapped rows in its own
      *  `<ul>` would be a second table without a head. */
-    readonly renderRows: (list: readonly ItemRecord[], picking: boolean) => readonly ItemRowLineProps[];
+    readonly renderRows: (list: readonly ItemRecord[], picking: boolean, armed: boolean) => readonly ItemRowLineProps[];
     /**
      * Whether this PAGE has a batch surface, and therefore whether every one of its
      * rows carries a pickbox.
@@ -91,6 +91,11 @@ export interface ItemPageProps {
     readonly archiveOpen: boolean;
     /** Called when the reader leaves the archive by its own control. */
     readonly onCloseArchive: () => void;
+    /** Called when the host says a purge erased (or had already erased) a row, so
+     *  the replica can settle the tombstone locally instead of waiting for a
+     *  broadcast. The revision is the host's own; the replica's never-backwards
+     *  guard decides what to do with it. */
+    readonly onPurged?: (id: string, revision: number) => void;
     readonly sort: ItemSort;
     /**
      * The batch bar, or nothing.
@@ -104,7 +109,9 @@ export interface ItemPageProps {
      * one, which is cheaper and more honest than a page deciding to ignore it.
      */
     readonly batch?: ReactNode;
-    /** Whether the batch is armed, so the filter bar can offer its door. */
+    /** Whether the batch is armed, and the page hands that mode onward with the
+     *  page constant: a page that can batch passes both, a page that cannot passes
+     *  `picking: false` and the mode never reaches its rows. */
     readonly armed?: boolean;
     readonly onArm?: (on: boolean) => void;
     readonly allPicked?: boolean;
