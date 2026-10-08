@@ -147,25 +147,22 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
     )
   }
 
-  /* 一节两行：名字与它的条数，然后是这一天的日期。
+  /* 一节一行：**节名 + 条数 +（日节的）日期读法，站在同一条线上**。曾经是两行——
+   * 一个 `<h2>` 说名字，一个 `<p>` 说日子，各自带一条线——读者读到的是两个题头
+   * 摞在一起，而它们说的是同一天。一行说完，行下没有线（节与节之间靠空气）。
    *
-   * 曾经是一个 `<h2>` 里套一个只装「名字 + 数字」的 `<span>`——那个盒子
-   * 什么都不排版（`.itemGroupToggle` 在这一轮的样式表里已经不存在了），
-   * 而它套着的目的是把两个词并排放进一个能排的盒子里。现在 `<h2>` 自己
-   * 就是那一行，内层盒子去掉，剩下的那一行有了一个自己的名字。
-   *
-   * 日期是**另一行**，因为它是这一节读出来的那句话（`.itemAgendaDayLabel`
-   * 自带那条分隔线与行距），把它塞进 `<h2>` 里会让一条线挂在两样东西
-   * 中间，而它标的是「这一节的行从这里开始」。 */
+   * 左侧那枚 9px 日历记号与清单页日分段药丸里的图标**同一条路径**：同一个「日」
+   * 的画法，学一次就都认得。 */
   return (
     <section className={css.itemAgendaDay}>
       <h2 className={css.itemAgendaDayHead}>
+        <svg viewBox="0 0 13 13" width="9" height="9" aria-hidden="true"><rect x="1.5" y="2.6" width="10" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1"></rect><path d="M1.5 5.6h10M4.2 1.2v2.6M8.8 1.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"></path></svg>
         {t(BUCKET_LABEL[bucket.id as ScheduleBucketId])}
         <span className={css.itemSectionCount}>{bucket.items.length}</span>
+        {bucket.day !== undefined && (
+          <span className={css.itemAgendaDayDate}>· {formatItemDate(bucket.day, english)}</span>
+        )}
       </h2>
-      {bucket.day !== undefined && (
-        <p className={css.itemAgendaDayLabel}>{formatItemDate(bucket.day, english)}</p>
-      )}
       {bucket.items.length > 0 && (
         <div className={css.itemAgendaList}>
           <ItemTable rows={renderRows(bucket.items, false, false)} empty='' now={now} sort={sort} dayHeads={false} />

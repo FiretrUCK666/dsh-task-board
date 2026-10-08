@@ -364,8 +364,8 @@ describe('the panel renders against the host it will actually run in', () => {
     // page that counts what exists. 收件 was the third and it is gone — it was a
     // PREDICATE over the same document rather than a different question, so its rail
     // row was its only door and its own layout was the only thing it added.
-    expect(schedule).toContain('没有日期')
-    expect(schedule).toContain('还没到开始时间')
+    expect(schedule).toContain('没定日子')
+    expect(schedule).toContain('还没到开始的日子')
     // THE LIST HOLDS EVERY ROW, which is the membership promise that outlived the
     // page: the bare capture is here, and so is the date-less row that carries a tag
     // (which is therefore NOT a capture, and was never on the inbox either).
@@ -442,7 +442,7 @@ describe('the panel renders against the host it will actually run in', () => {
     for (const html of [renderPanel(fixtures(), 'wide', 'list'), renderPanel(fixtures().map(item => ({ ...item, status: 'done' as const })), 'wide', 'list')]) {
       const words = wordsOf(html)
       expect(words.length, 'no rail rows are on screen — the counts have nowhere to live').toBeGreaterThan(0)
-      for (const word of ['超期了', '没人动的', '没日子的', '紧急', '待办', '完成']) {
+      for (const word of ['已超期', '迟迟没动', '没定日子', '紧急', '待办', '完成']) {
         const row = words.find(text => text.includes(word))
         expect(row, `the rail does not name ${word} at all, so its zero is never stated`).toBeDefined()
         expect(row ?? '', `the rail names ${word} without a number — a claim with no count is not a count`).toMatch(/\d+/)
@@ -798,20 +798,55 @@ describe('the panel fills the stage it is given', () => {
     const floatSurface = /--item-float\s*:\s*([^;]+)/.exec(css)?.[1]?.trim() ?? ''
     expect(floatSurface, 'the floating surface is the card surface wearing another name, so a popover and the card under it are one surface')
       .not.toBe(surface)
-    for (const card of ['itemShell', 'itemTable']) {
-      const layers = backgroundOf(css, card)
-      expect(layers, `.${card} does not paint at all`).not.toEqual([])
-      expect(layers, `.${card} is not painted with the one card surface: ${JSON.stringify(layers)}`)
-        .toEqual(['var(--item-surface)'])
-      expect(layers.join(' '), `.${card} is partly transparent, so text lands on whatever is behind the panel`).not.toMatch(/transparent/)
-      // **AND IT IS THE SHADOW, not nothing.** In the light theme the host's three
-      // background layers are the SAME colour, so a card with a hairline and no
-      // shadow is a rectangle on a rectangle — which is 「文字粘在左侧边缘上」 seen
-      // from the other side: the card is there, and nothing says it is in front.
-      const shadow = /(?:^|[;{\s])box-shadow\s*:\s*([^;]+)/.exec(rulesOf(css, card).join('\n'))?.[1] ?? ''
-      expect(shadow, `.${card} has no shadow, so in the light theme — where the host's three background layers are the SAME colour — nothing says this card is in front of the page`)
-        .toContain('var(--item-card-shadow)')
+    // THE ROW IS THE CARD NOW, and the two wrappers are skeletons. The list, the
+    // agenda and the rows on them share ONE card part — the board's own law
+    // (canvas may be glass, inner cards may not): the row's BASE rule paints the
+    // opaque card surface and the card's edge, radius and shadow; its states
+    // paint their own four tokens (gated separately above). The old shell card is
+    // gone entirely and the table paints nothing — a second opaque layer over the
+    // row cards is the white wall again, the thing this panel is being cured of.
+    const rowBase = (rulesOf(stripCssComments(css), 'itemRow')[0] ?? '').replace(/\s+/g, ' ')
+    expect(rowBase, 'the row has no base rule — the card is painted by no rule').not.toBe('')
+    expect(rowBase, `.itemRow's base rule does not paint the one card surface: ${rowBase}`)
+      .toContain('background: var(--item-surface)')
+    expect(rowBase, 'the row card is partly transparent, so text lands on whatever is behind the panel')
+      .not.toMatch(/transparent/)
+    // **AND IT IS THE SHADOW, not nothing.** In the light theme the host's three
+    // background layers are the SAME colour, so a card with a hairline and no
+    // shadow is a rectangle on a rectangle — which is 「文字粘在左侧边缘上」 seen
+    // from the other side: the card is there, and nothing says it is in front.
+    const rowShadow = /(?:^|[;{\s])box-shadow\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
+    expect(rowShadow, '.itemRow has no shadow, so in the light theme — where the host\'s three background layers are the SAME colour — nothing says this card is in front of the page')
+      .toBe('var(--item-card-shadow)')
+    // THE EDGE AND THE SHAPE: a card reads as an object — a hairline edge and the
+    // card radius the board's own cards read (a card inside a panel is a THING,
+    // not another panel).
+    const rowBorder = /(?:^|[;{\s])border\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
+    expect(rowBorder, 'the row card has no hairline edge — a card without an edge is a wash, not a card')
+      .toBe('var(--item-hair-strong)')
+    const rowRadius = /(?:^|[;{\s])border-radius\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
+    expect(rowRadius, 'the row card is not on the card radius the board\'s own cards read')
+      .toBe('var(--dsh-tb-radius-md)')
+    for (const skeleton of ['itemShell', 'itemTable']) {
+      const layers = backgroundOf(stripCssComments(css), skeleton)
+      expect(layers, `.${skeleton} paints a face, but the rows are the cards now — a second opaque layer over them is the white wall again`)
+        .toEqual([])
     }
+
+    // AND THE OPEN TINT IS THE OPAQUE COMPOSITE. The open row used to read the
+    // board's `--dsh-tb-open` — translucent IN THE TOKEN — and under a glass skin
+    // the fill washed out to nothing. The claim now: the token composes from the
+    // card surface and the accent, contains no `transparent`, and nothing on this
+    // surface reads the board's token any more.
+    const openTint = /--item-open\s*:\s*([^;]+)/.exec(css)?.[1]?.trim() ?? ''
+    expect(openTint, 'there is no --item-open token — the open row paints nothing or something shared').not.toBe('')
+    expect(openTint, 'the open tint does not compose from the card surface, so a skin cannot be answered for what shows through it')
+      .toMatch(/color-mix\(/)
+    expect(openTint, 'the open tint does not compose from the card surface').toContain('var(--item-surface)')
+    expect(openTint, 'the open tint is translucent in the token itself — the wash that vanishes under a glass skin')
+      .not.toMatch(/transparent/)
+    expect(stripCssComments(css).includes('--dsh-tb-open'),
+      'a rule on this surface still reads the board\'s shared open token — the translucent wash is back').toBe(false)
 
     // AND THE OTHER HALF, which the old rule had no room for: the things that
     // float still have to be opaque. Without this the first half passes by
@@ -1100,7 +1135,11 @@ describe('the rail and in-row detail share one workbench', () => {
       if (current !== '') out.push(current)
       return out
     }
-    for (const body of rulesOf(cssText, 'itemWorkbench')) {
+    // Comments come OFF first: the sheet explains the workbench in prose, and the
+    // prose names the class — a raw-text scan turns the explanation into a fake
+    // first rule (「box-sizing: border-box」), which is exactly the reading that
+    // sends the next author to fix a correct comment.
+    for (const body of rulesOf(stripCssComments(cssText), 'itemWorkbench')) {
       const flat = body.replace(/\s+/g, ' ')
       const columns = /grid-template-columns:\s*([^;]+);/.exec(flat)?.[1]
       const areas = /grid-template-areas:\s*([^;]+);/.exec(flat)?.[1]
@@ -1171,9 +1210,9 @@ describe('the rail and in-row detail share one workbench', () => {
     // nothing reads: the default rule must state the number the two-column bands
     // actually render, and no band may restate it, because two restatements are
     // two chances to disagree.
-    const first = rulesOf(css, 'itemWorkbench')[0].replace(/\s+/g, ' ')
+    const first = rulesOf(stripCssComments(css), 'itemWorkbench')[0].replace(/\s+/g, ' ')
     expect(first).toMatch(/grid-template-columns:\s*260px\s+minmax\(0,\s*1fr\)/)
-    for (const body of rulesOf(css, 'itemWorkbench').slice(1)) {
+    for (const body of rulesOf(stripCssComments(css), 'itemWorkbench').slice(1)) {
       expect(body.replace(/\s+/g, ' '), 'a band restates the tracks, so two bands can disagree again')
         .not.toMatch(/grid-template-columns:\s*260px\s+minmax\(0,\s*1fr\)/)
     }
@@ -1184,7 +1223,7 @@ describe('the rail and in-row detail share one workbench', () => {
     // expands, sits on its own grid row, and starts under the row's separator.
     // A detail that does not span reflows the title, tags and menu around it —
     // exactly the layout jump a reader reports as 「the list moved」.
-    const detail = rulesOf(css, 'itemRow > .itemDetail').join('\n')
+    const detail = rulesOf(stripCssComments(css), 'itemRow > .itemDetail').join('\n')
     expect(detail, 'there is no in-row detail placement rule').not.toBe('')
     expect(detail.replace(/\s+/g, ' ')).toMatch(/grid-column:\s*1\s*\/\s*-1/)
     expect(detail.replace(/\s+/g, ' ')).toMatch(/grid-row:\s*3/)
@@ -1207,7 +1246,7 @@ describe('the rail and in-row detail share one workbench', () => {
     // So the promise is checked in the two directions that outlive the change:
     // the gap is real, and the line is gone. A gate that only demanded the line
     // would have been demanding the thing that read as a mistake.
-    const workbench = rulesOf(css, 'itemWorkbench').join('\n')
+    const workbench = rulesOf(stripCssComments(css), 'itemWorkbench').join('\n')
     expect(workbench, 'there is no .itemWorkbench rule').not.toBe('')
     const gap = /(?:^|[;{\s])column-gap\s*:\s*([^;]+)/.exec(workbench)?.[1]?.trim() ?? ''
     expect(gap === '' || gap === '0' || gap === '0px',
@@ -1215,7 +1254,7 @@ describe('the rail and in-row detail share one workbench', () => {
 
     // AND THE LINE IS GONE. Both inline sides, because a line moved from one
     // column's leading edge to the other's trailing edge is the same line.
-    const column = rulesOf(css, 'itemListColumn').join('\n')
+    const column = rulesOf(stripCssComments(css), 'itemListColumn').join('\n')
     expect(drawsSeparator(column, 'border-inline-start'),
       'the list column draws a line again — it lands 1px from the card\'s own edge and reads as 2px').toBe(false)
     expect(drawsSeparator(column, 'border-inline-end'),

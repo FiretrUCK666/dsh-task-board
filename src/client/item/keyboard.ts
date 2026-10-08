@@ -4,20 +4,17 @@
  * WHY A TABLE AND NOT A SWITCH STATEMENT. A keyboard flow written as a `switch`
  * is a list of key tests scattered through the code that holds the state, so the
  * set of keys is not readable anywhere: the answer to 「what can I do without a
- * mouse」 is assembled out of a dozen places, and the one that is missing is the
- * one nobody notices. Here the whole vocabulary is a value and the help sheet is
- * printed from that same value, so a key the reader can discover is a key the
- * reader can press.
+ * mouse」 is assembled out of a dozen places. Here the whole vocabulary is one
+ * value; the keyboard is a quiet capability, and the map is where it is read.
  *
  * WHY THE TABLE NAMES ACTIONS INSTEAD OF HOLDING THEM. A binding that carried
  * its own callback would have to be built where the state lives, so the table
- * could not be a constant, could not be printed, and could not be checked for
- * keys with nothing behind them. Naming the action instead makes the table DATA
- * and puts one question at the registrar: **does every name in this table have a
- * handler?** A key with no handler is not a shortcut, it is a promise the
- * interface cannot keep — and the only kind of control this repository refuses
- * to ship. The check for that is one line over one array, and it is why the
- * table can be a constant at all.
+ * could not be a constant and could not be checked for keys with nothing behind
+ * them. Naming the action instead makes the table DATA and puts one question at
+ * the registrar: **does every name in this table have a handler?** A key with no
+ * handler is not a shortcut, it is a promise the interface cannot keep — and the
+ * only kind of control this repository refuses to ship. The check for that is
+ * one line over one array, and it is why the table can be a constant at all.
  *
  * WHY THE REGISTRAR OWNS `preventDefault` AND THE SKIP. A handler that forgets
  * either produces two failures that look like nothing happening: the browser
@@ -30,38 +27,28 @@
  * are all `core/item-view.ts` and `core/item-transitions.ts`, read here and by
  * `taskboard_query` alike.
  */
-import type { TaskBoardKey } from '../locales.ts'
 
 /**
  * Every action the flow can name. A name with no handler is a dead key.
  *
- * THE LAST FOUR ARE THE PALETTE'S OWN, and they are here for the same reason the
- * rest are: a key the help sheet prints must be a key the registrar can call.
- * `palettePrev` / `paletteNext` / `palettePick` share their CHORD with the row
- * cursor's `movePrev` / `moveNext` / `open`, and they are told apart by their
- * `when` — so {@link bindingFor} has to prefer a binding that APPLIES rather
- * than taking the first one that matches. That is the difference between a table
- * whose order happens to work and one whose correctness does not depend on where
- * a line was typed.
+ * THE LAST THREE ARE THE PALETTE'S OWN. `palettePrev` / `paletteNext` /
+ * `palettePick` share their CHORD with the row cursor's `movePrev` / `moveNext` /
+ * `open`, and they are told apart by their `when` — so {@link bindingFor} has to
+ * prefer a binding that APPLIES rather than taking the first one that matches.
+ * That is the difference between a table whose order happens to work and one
+ * whose correctness does not depend on where a line was typed.
  */
 export type ItemKeyAction =
   | 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open'
   | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette'
-  | 'keyHelp' | 'palettePrev' | 'paletteNext' | 'palettePick'
+  | 'palettePrev' | 'paletteNext' | 'palettePick'
 
 /** The four tiers, in the order the digits run. */
 export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low'
 
-/**
- * Which group a binding belongs to, so the help sheet is a list and not a wall.
- *
- * The groups exist so the HELP SHEET can print the map rather than restate it.
- */
-export type KeyGroup = 'write' | 'move' | 'edit' | 'surface'
-
-/** ONE BINDING: what is pressed, what it does, and the condition it needs. */
+/** ONE BINDING: what is pressed, and what it names. */
 export interface KeyBinding {
-  /** What the reader presses, in the words the help sheet uses. */
+  /** What the reader presses, in the spelling a person says out loud (`⌘K`, `↵`, `↓`). */
   readonly keys: string
   /** `KeyboardEvent.key`, lower-cased. */
   readonly key: string
@@ -92,9 +79,6 @@ export interface KeyBinding {
    * must SAY so, and the default is that cmd chords are deliberate gestures.
    */
   readonly notWhileTyping?: boolean
-  readonly group: KeyGroup
-  /** What it does, as a dictionary key — typed, so a typo cannot ship a blank word. */
-  readonly what: TaskBoardKey
   /** The action this binding names. */
   readonly action: ItemKeyAction
   /** The argument it carries, when it carries one. */
@@ -149,38 +133,29 @@ export interface KeyState {
  * run it, outside it they move the row and open it. Each pair is separated by
  * `when`, and {@link bindingFor} prefers the binding that applies — so the
  * palette works whether the caret is in its field or on one of its chips.
- *
- * `?` IS A BARE KEY, and that is the whole answer to 「how is a key that you type
- * inside a text field ever a shortcut」. It is not one while the caret is in a
- * field, because a key bound inside a field can never be typed — and the one
- * place the reader would most want it is exactly there. So `?` follows the rule
- * the rest of the table follows (panel has the focus, nothing is being typed),
- * and the palette — which is where the caret always is — carries a `?` button
- * that a finger can reach. Two ways in beats one key that only works sometimes.
  */
 export const ITEM_KEYS: readonly KeyBinding[] = [
-  { keys: 'A', key: 'a', group: 'write', what: 'item.keys.quickCapture', action: 'quickCapture' },
-  { keys: '⌘K', key: 'k', cmd: true, group: 'surface', what: 'item.keys.palette', action: 'palette' },
-  { keys: '/', key: '/', group: 'surface', what: 'item.keys.palette', action: 'palette' },
-  { keys: '?', key: '?', shift: true, group: 'surface', what: 'item.keys.keyHelp', action: 'keyHelp' },
-  { keys: 'J', key: 'j', group: 'move', what: 'item.keys.next', action: 'moveNext', when: s => !s.paletteOpen },
-  { keys: 'K', key: 'k', group: 'move', what: 'item.keys.prev', action: 'movePrev', when: s => !s.paletteOpen },
-  { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.next', action: 'moveNext', when: s => !s.paletteOpen },
-  { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.prev', action: 'movePrev', when: s => !s.paletteOpen },
-  { keys: '↓', key: 'arrowdown', group: 'move', what: 'item.keys.paletteNext', action: 'paletteNext', typing: true, when: s => s.paletteOpen },
-  { keys: '↑', key: 'arrowup', group: 'move', what: 'item.keys.palettePrev', action: 'palettePrev', typing: true, when: s => s.paletteOpen },
-  { keys: 'X', key: 'x', group: 'edit', what: 'item.keys.pick', action: 'pick', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: 'E', key: 'e', group: 'edit', what: 'item.keys.rename', action: 'rename', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.open', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen && !s.somethingOpen },
-  { keys: '↵', key: 'enter', group: 'edit', what: 'item.keys.palettePick', action: 'palettePick', typing: true, when: s => s.paletteOpen },
-  { keys: 'Esc', key: 'escape', group: 'surface', what: 'item.keys.close', action: 'close', typing: true },
-  { keys: '1', key: '1', group: 'edit', what: 'item.keys.priorityUrgent', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '2', key: '2', group: 'edit', what: 'item.keys.priorityHigh', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '3', key: '3', group: 'edit', what: 'item.keys.priorityNormal', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '4', key: '4', group: 'edit', what: 'item.keys.priorityLow', action: 'priority', arg: 'low', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: 'D', key: 'd', group: 'edit', what: 'item.keys.dueToday', action: 'dueToday', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '⌘⌫', key: 'backspace', cmd: true, notWhileTyping: true, group: 'write', what: 'item.keys.remove', action: 'remove', when: s => s.focusedId !== undefined },
-  { keys: '⌘Z', key: 'z', cmd: true, notWhileTyping: true, group: 'write', what: 'item.keys.undo', action: 'undo' },
+  { keys: 'A', key: 'a', action: 'quickCapture' },
+  { keys: '⌘K', key: 'k', cmd: true, action: 'palette' },
+  { keys: '/', key: '/', action: 'palette' },
+  { keys: 'J', key: 'j', action: 'moveNext', when: s => !s.paletteOpen },
+  { keys: 'K', key: 'k', action: 'movePrev', when: s => !s.paletteOpen },
+  { keys: '↓', key: 'arrowdown', action: 'moveNext', when: s => !s.paletteOpen },
+  { keys: '↑', key: 'arrowup', action: 'movePrev', when: s => !s.paletteOpen },
+  { keys: '↓', key: 'arrowdown', action: 'paletteNext', typing: true, when: s => s.paletteOpen },
+  { keys: '↑', key: 'arrowup', action: 'palettePrev', typing: true, when: s => s.paletteOpen },
+  { keys: 'X', key: 'x', action: 'pick', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: 'E', key: 'e', action: 'rename', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '↵', key: 'enter', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen && !s.somethingOpen },
+  { keys: '↵', key: 'enter', action: 'palettePick', typing: true, when: s => s.paletteOpen },
+  { keys: 'Esc', key: 'escape', action: 'close', typing: true },
+  { keys: '1', key: '1', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '2', key: '2', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '3', key: '3', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '4', key: '4', action: 'priority', arg: 'low', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: 'D', key: 'd', action: 'dueToday', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  { keys: '⌘⌫', key: 'backspace', cmd: true, notWhileTyping: true, action: 'remove', when: s => s.focusedId !== undefined },
+  { keys: '⌘Z', key: 'z', cmd: true, notWhileTyping: true, action: 'undo' },
 ]
 
 /** The handler for one action. Returning nothing is fine; throwing is not. */
@@ -290,11 +265,6 @@ export function bindingFor(event: KeyEventLike, state: KeyState): KeyBinding | u
  */
 export function claimsKey(event: KeyEventLike): boolean {
   return ITEM_KEYS.some(binding => usable(binding, event))
-}
-
-/** The bindings of one group, in table order — the help sheet reads this. */
-export function keysInGroup(group: KeyGroup): readonly KeyBinding[] {
-  return ITEM_KEYS.filter(binding => binding.group === group)
 }
 
 /**

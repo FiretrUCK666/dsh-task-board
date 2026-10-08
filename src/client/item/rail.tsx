@@ -180,6 +180,9 @@ export interface ItemRailProps {
   readonly month: string
   readonly daysWithRows: readonly string[]
   readonly today: string
+  /** The day the reader is looking at, read off the query — the calendar's own
+   *  「you are here」 for the cell, distinct from aria-current (the rail row). */
+  readonly activeDay?: string
   readonly onPickDay: (day: string) => void
 }
 
@@ -187,7 +190,13 @@ export function ItemRail(props: ItemRailProps) {
   return (
     <nav className={css.itemRail} data-dsh-tb-scroll="" aria-label={t('item.rail.label')}>
       <p className={css.itemRailMonth}>{props.month}</p>
-      <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} onPick={props.onPickDay} />
+      {/* 月题下的一条带端刻的刻度线：与七列格子同宽，墨色（a scale, not a claim）
+          ——「日历从这里开始」由它说，标题与格子不用再各自居中去找对方。 */}
+      <svg className={css.itemRailScale} viewBox="0 0 240 6" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 5h240" />
+        <path d="M0 1v4M240 1v4" />
+      </svg>
+      <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
       {props.groups.map(group => (
         /* `data-turn` on the ONE group that changes the question rather than
            narrowing the view, because that is the only place a rule earns its
@@ -230,7 +239,7 @@ export function ItemRail(props: ItemRailProps) {
  * no dot at all — the filled pill already is the mark, and two marks on one cell
  * is one too many.
  */
-function MonthGrid(props: { readonly month: string; readonly days: readonly string[]; readonly today: string; readonly onPick: (day: string) => void }) {
+function MonthGrid(props: { readonly month: string; readonly days: readonly string[]; readonly today: string; readonly activeDay?: string; readonly onPick: (day: string) => void }) {
   const [year, month] = props.month.split('-').map(Number)
   if (year === undefined || month === undefined || Number.isNaN(year) || Number.isNaN(month)) return null
   const lead = new Date(year, month - 1, 1).getDay()
@@ -257,6 +266,8 @@ function MonthGrid(props: { readonly month: string; readonly days: readonly stri
             className={css.itemRailDay}
             data-has={held.has(cell.key) ? '' : undefined}
             data-today={cell.key === props.today ? '' : undefined}
+            data-picked={cell.key === props.activeDay ? '' : undefined}
+            aria-pressed={cell.key === props.activeDay}
             /* A day is a NUMBER until something says what pressing it does. So the
              * accessible name carries the verb: without it the grid is thirty-one
              * one-word buttons, and the reader has to guess whether they filter,

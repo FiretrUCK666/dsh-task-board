@@ -149,63 +149,63 @@ Restart `dsh web` afterwards.
   re-deriving it. It is a **second document, not a view over the board**: an item does not
   have to become a card, and when it hangs off one it reads that card's live state. Each
   item has a short number (`#12`) minted by a counter and never writable, one-level steps,
-  four priority tiers, tags, and three INDEPENDENT times.
+  four priority tiers, tags, and three INDEPENDENT times — earliest start, wanted-by, and
+  the **deadline**. Missing a wanted-by date is "behind schedule" in ordinary ink; only the
+  deadline spends the danger colour — a slipped plan and a broken promise are two things,
+  and the interface says so separately.
 
-  It has **pages**, and a page is a different question about your items — not a different
-  way of drawing the same ones:
+  The panel is a **left rail plus one column**, and the rail is the map: the month calendar
+  (tap a day to see just that day), **Overdue / Untouched / No date**, the four priority
+  tiers, the four states, the agenda, and the deleted — **every destination prints its
+  number, including 0**: "asked, and the answer is zero" and "this question does not exist"
+  are two different things. The list groups by day under one pill per day; **a row's state
+  is said by the bead's shape** (**In progress** = filled with a halo, **Blocked** = dashed
+  ring, **Done** = empty ring, **To do** = a solid dot), once per row. Only a missed
+  deadline turns a row red, and that reading is **Past due** — a date that slipped and a
+  promise that was broken are two things, and the interface says so separately. The top bar
+  carries **search · sort · new item** (the list page adds two mode chips: multi-select and
+  hide-finished); the search box is also the door to the `⌘K` palette — click it or press
+  ⌘K, it is the same set of conditions.
 
-  | Page | Answers | On the rail |
-  | --- | --- | --- |
-  | **Inbox** | Just written down, given no structure yet. Give one a priority, a date, a tag or a card and it leaves this page by itself. | how many |
-  | **List** | Every entry you have, as **one table**: tick / state / title / priority / due / tag. The head is sortable — tap a column name to order by it. | how many |
-  | **Agenda** | The part that has a time, laid out by day. Anything whose earliest-start has not arrived is **not scheduled in** — it sits in a "not startable yet" fold that says why. | how many |
+  **The keyboard is a first-class citizen**: 21 bindings (move the cursor, expand,
+  multi-select, set priority and state, delete, undo…). The panel carries no key-map
+  overlay — the bindings live in one table in `keyboard.ts`, every control reports the
+  keys it claims, and Esc closes one layer at a time.
 
-  **All three pages stay on the rail, and an empty one shows 0** — "asked, and the answer is
-  zero" and "this question does not exist" are two different things. In the list table
-  **state is a column** (**To do / In progress / Blocked / Done**), so a state is said once
-  and in one place. Tag, stale, archive and
-  filtered views are not destinations — you click into them and they open.
-  The due column says different things in different weights: **Past due** is the one that
-  turns red, "behind" and "is today" differ only in how dark the ink is, and only the
-  **hard deadline** makes a row genuinely overdue — a date that slipped and a promise that
-  was broken are two things, and the interface says so separately.
-  **Missing a due date is only "behind schedule", and only the hard deadline turns a row
-  red.** English has one word for "dead" and Chinese has three, so the distinction is made
-  in the grammar instead: the three times read **from** (earliest start), **by** (due) and
-  **hard by** (hard deadline). The hard deadline is the only one that may ever be called a
-  deadline; a missed due date is behind schedule.
+  **The detail opens in the row** (both bands, same place — no rented sidebar): title,
+  body and context notes write in place, the three date readings edit in place, and
+  hanging an item on a card happens in a picker right there — "none" is a legitimate
+  state, and "new card" names the card where the picker stands, opening a fresh card from
+  the item's own title and body. The action row answers the item's state: without a card =
+  **make it a board card + remove**; with a card = **run the card** (while it runs the
+  slot says "the model is on it") + **ask this card** + remove.
 
-  **The list page is the only workbench**, because sorting, picking and batching only become
-  questions past a few dozen rows. It opens with **three stat tiles** — **Behind / Blocked / No
-  date** — each of which filters the list to that one thing; they answer 「what needs me now」,
-  not 「how many states are there」. Below them a **filter bar** — state, date, tag. Priority is
-  deliberately not among them: it answers 「set the focused row to this」 rather than 「show me
-  these」, so it lives in the `⌘K` palette. Then the table itself.
-  **Six orderings** (sequence / earliest start / due / hard deadline / priority / title) and
-  **multi-select batching** (state, priority, date, ask AI, delete) live on this page — tick a few
-  rows and the batch bar appears. **The inbox deliberately has no batching**: someone who just
-  typed a line is still looking at the input, and batching answers a different question.
-
-  **Row height is not a switch.** It is a fixed value, because it is a fact settled by touch
-  targets and the type scale rather than a reader's preference. *Density* is the preference — and
-  a switch that moves internal spacing but not row height is worse than none: the reader presses
-  it, sees only the word 「compact」 said differently, and stops believing it.
+  The **agenda** reads by day: overdue / past the wanted day / today / tomorrow / later
+  this week / further out, one heading per section; rows with no date wait in their own
+  tray (they never crowd into today), and rows whose start has not arrived sit behind a
+  fold that says why.
 
   Deleting is a road with three steps: **delete** (one press and one undo, no confirmation
   dialog), **restore**, and **erase for good**. Deleting leaves a tombstone **carrying the row**,
   so an item is **recoverable for 30 days** — unlike cards. Erasing for good takes the *text*
   out and **leaves the stamp**, because that stamp is the only thing stopping a device that was
   asleep for a week from handing its stale copy back and putting the row on screen: without it
-  "erase for good" would be "erase, and you can still undo it". The list page says the window in
-  a line of its own and the entry beside it opens the archive drawer, where every row offers
-  both restore and erase. The capture box
-  takes inline
-  syntax: `#tag`, `!1`–`!4` for priority, `@2026/12/24` for a full date (slashes — a
-  dashed `@2026-12-24` is **not** a date here and stays in the text as words), and a leading
-  `- [ ]` for a step. The parsed result shows as chips **as you type**, and a word that was
-  recognised wrongly turns back into plain text when you click it. What the agent does and
-  what you do are the same implementation — including ticking one step, turning an item
-  into a board card, and restoring a deleted one.
+  "erase for good" would be "erase, and you can still undo it". The archive opens from the
+  rail's "deleted" row, where every row offers both restore and erase. The new-item sheet's
+  first line takes inline syntax: `#tag`, `!1`–`!4` for priority, `@2026/12/24` for a full
+  date (slashes — a dashed `@2026-12-24` is **not** a date here and stays in the text as
+  words), and a leading `- [ ]` for a step. The parsed result shows as chips **as you type**,
+  and a word that was recognised wrongly turns back into plain text when you click it.
+
+  **Multi-select batching**: press the top bar's "multi-select" chip and the batch bar is
+  on screen — with zero selected too, everything but select-all disabled; state, priority,
+  a wanted-by date, ask AI and delete live on the bar. Press the chip again to leave
+  (Esc closes one layer at a time).
+
+  **Row height is not a switch.** It is a fixed value, because it is a fact settled by touch
+  targets and the type scale rather than a reader's preference. *Density* is the preference — and
+  a switch that moves internal spacing but not row height is worse than none: the reader presses
+  it, sees only the word 「compact」 said differently, and stops believing it.
 - **Driving it from a conversation** — Two slash commands (`/task`, `/task-continue`) and
   three tools. The command hands **your own sentence** to the current session's model, which
   can already see the whole conversation, so "write down the three things we just

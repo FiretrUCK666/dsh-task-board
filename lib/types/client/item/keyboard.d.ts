@@ -4,20 +4,17 @@
  * WHY A TABLE AND NOT A SWITCH STATEMENT. A keyboard flow written as a `switch`
  * is a list of key tests scattered through the code that holds the state, so the
  * set of keys is not readable anywhere: the answer to 「what can I do without a
- * mouse」 is assembled out of a dozen places, and the one that is missing is the
- * one nobody notices. Here the whole vocabulary is a value and the help sheet is
- * printed from that same value, so a key the reader can discover is a key the
- * reader can press.
+ * mouse」 is assembled out of a dozen places. Here the whole vocabulary is one
+ * value; the keyboard is a quiet capability, and the map is where it is read.
  *
  * WHY THE TABLE NAMES ACTIONS INSTEAD OF HOLDING THEM. A binding that carried
  * its own callback would have to be built where the state lives, so the table
- * could not be a constant, could not be printed, and could not be checked for
- * keys with nothing behind them. Naming the action instead makes the table DATA
- * and puts one question at the registrar: **does every name in this table have a
- * handler?** A key with no handler is not a shortcut, it is a promise the
- * interface cannot keep — and the only kind of control this repository refuses
- * to ship. The check for that is one line over one array, and it is why the
- * table can be a constant at all.
+ * could not be a constant and could not be checked for keys with nothing behind
+ * them. Naming the action instead makes the table DATA and puts one question at
+ * the registrar: **does every name in this table have a handler?** A key with no
+ * handler is not a shortcut, it is a promise the interface cannot keep — and the
+ * only kind of control this repository refuses to ship. The check for that is
+ * one line over one array, and it is why the table can be a constant at all.
  *
  * WHY THE REGISTRAR OWNS `preventDefault` AND THE SKIP. A handler that forgets
  * either produces two failures that look like nothing happening: the browser
@@ -30,31 +27,22 @@
  * are all `core/item-view.ts` and `core/item-transitions.ts`, read here and by
  * `taskboard_query` alike.
  */
-import type { TaskBoardKey } from '../locales.ts';
 /**
  * Every action the flow can name. A name with no handler is a dead key.
  *
- * THE LAST FOUR ARE THE PALETTE'S OWN, and they are here for the same reason the
- * rest are: a key the help sheet prints must be a key the registrar can call.
- * `palettePrev` / `paletteNext` / `palettePick` share their CHORD with the row
- * cursor's `movePrev` / `moveNext` / `open`, and they are told apart by their
- * `when` — so {@link bindingFor} has to prefer a binding that APPLIES rather
- * than taking the first one that matches. That is the difference between a table
- * whose order happens to work and one whose correctness does not depend on where
- * a line was typed.
+ * THE LAST THREE ARE THE PALETTE'S OWN. `palettePrev` / `paletteNext` /
+ * `palettePick` share their CHORD with the row cursor's `movePrev` / `moveNext` /
+ * `open`, and they are told apart by their `when` — so {@link bindingFor} has to
+ * prefer a binding that APPLIES rather than taking the first one that matches.
+ * That is the difference between a table whose order happens to work and one
+ * whose correctness does not depend on where a line was typed.
  */
-export type ItemKeyAction = 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open' | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette' | 'keyHelp' | 'palettePrev' | 'paletteNext' | 'palettePick';
+export type ItemKeyAction = 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open' | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette' | 'palettePrev' | 'paletteNext' | 'palettePick';
 /** The four tiers, in the order the digits run. */
 export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low';
-/**
- * Which group a binding belongs to, so the help sheet is a list and not a wall.
- *
- * The groups exist so the HELP SHEET can print the map rather than restate it.
- */
-export type KeyGroup = 'write' | 'move' | 'edit' | 'surface';
-/** ONE BINDING: what is pressed, what it does, and the condition it needs. */
+/** ONE BINDING: what is pressed, and what it names. */
 export interface KeyBinding {
-    /** What the reader presses, in the words the help sheet uses. */
+    /** What the reader presses, in the spelling a person says out loud (`⌘K`, `↵`, `↓`). */
     readonly keys: string;
     /** `KeyboardEvent.key`, lower-cased. */
     readonly key: string;
@@ -85,9 +73,6 @@ export interface KeyBinding {
      * must SAY so, and the default is that cmd chords are deliberate gestures.
      */
     readonly notWhileTyping?: boolean;
-    readonly group: KeyGroup;
-    /** What it does, as a dictionary key — typed, so a typo cannot ship a blank word. */
-    readonly what: TaskBoardKey;
     /** The action this binding names. */
     readonly action: ItemKeyAction;
     /** The argument it carries, when it carries one. */
@@ -140,14 +125,6 @@ export interface KeyState {
  * run it, outside it they move the row and open it. Each pair is separated by
  * `when`, and {@link bindingFor} prefers the binding that applies — so the
  * palette works whether the caret is in its field or on one of its chips.
- *
- * `?` IS A BARE KEY, and that is the whole answer to 「how is a key that you type
- * inside a text field ever a shortcut」. It is not one while the caret is in a
- * field, because a key bound inside a field can never be typed — and the one
- * place the reader would most want it is exactly there. So `?` follows the rule
- * the rest of the table follows (panel has the focus, nothing is being typed),
- * and the palette — which is where the caret always is — carries a `?` button
- * that a finger can reach. Two ways in beats one key that only works sometimes.
  */
 export declare const ITEM_KEYS: readonly KeyBinding[];
 /** The handler for one action. Returning nothing is fine; throwing is not. */
@@ -195,8 +172,6 @@ export declare function bindingFor(event: KeyEventLike, state: KeyState): KeyBin
  * chime. Both look like nothing happening, and one of them is.
  */
 export declare function claimsKey(event: KeyEventLike): boolean;
-/** The bindings of one group, in table order — the help sheet reads this. */
-export declare function keysInGroup(group: KeyGroup): readonly KeyBinding[];
 /**
  * RUN ONE KEY EVENT, as a pure function.
  *

@@ -470,33 +470,29 @@ export function ItemRowLine(props: ItemRowLineProps) {
           panel={rowRef.current?.closest('[data-dsh-taskboard-view]') as HTMLElement | null ?? null}
           onClose={onMenuClose}
           actions={[
-            /* THE THREE VERBS, IN THE ORDER THE READER MEETS THEM, none repeating
-             * another.
-             *
-             * 变成看板卡片 first, because it is the one that changes what this row IS
-             * attached to; everything below it only changes what it says. The draft had
-             * 「交给模型去做」 in this slot, and swapping them puts the decision a row
-             * cannot make without you above the one it can.
-             *
-             * LISTED EVEN WHEN IT CANNOT ACT, disabled with the reason — the same
-             * treatment 「问一句」 gets. An entry that comes and goes with a fact the
-             * interface never states is worse than one that is always there and says
-             * 「not yet」. */
-            { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
-            {
-              key: 'start',
-              label: t('item.menu.start'),
-              hint: item.taskId === undefined ? t('item.menu.startNoCard') : undefined,
-              disabled: item.taskId === undefined || props.running,
-              onPick: props.onStart,
-            },
-            {
-              key: 'ask',
-              label: t('item.ask'),
-              hint: item.taskId === undefined ? t('item.ask.noCard') : undefined,
-              disabled: item.taskId === undefined || props.asking,
-              onPick: props.onAsk,
-            },
+            /* THE VERBS ANSWER THIS ROW'S STATE — the same law the detail's
+             * footer row speaks. 「变成看板卡片」 lives where there is nothing to
+             * attach to yet; 「开工」 / 「问这张卡」 live where there is a card to
+             * run and to ask. No disabled judges with hover-only reasons: the
+             * 「不挂」 chip and the primary already state that fact, and an entry
+             * that comes and goes with a fact the interface never states is one
+             * that never needed to exist. While the card runs, the slot says so. */
+            ...(item.taskId === undefined
+              ? [{ key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote }]
+              : [
+                  {
+                    key: 'start',
+                    label: t(props.running ? 'item.menu.running' : 'item.menu.start'),
+                    disabled: props.running === true || undefined,
+                    onPick: props.onStart,
+                  },
+                  {
+                    key: 'ask',
+                    label: t('item.ask.card'),
+                    disabled: props.asking === true || undefined,
+                    onPick: props.onAsk,
+                  },
+                ]),
             // Only where there is something to expand. On a band with a detail card
             // the row toggle is not what opens it, so offering 「expand」 there would
             // name an action the reader cannot take.

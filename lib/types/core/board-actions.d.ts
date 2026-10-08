@@ -913,7 +913,7 @@ export declare const ACTIONS: {
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly hardDueAt: {
-                readonly about: "硬期限";
+                readonly about: "最后期限";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
@@ -982,7 +982,7 @@ export declare const ACTIONS: {
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly hardDueAt: {
-                readonly about: "硬期限";
+                readonly about: "最后期限";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };

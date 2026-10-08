@@ -76,11 +76,6 @@ function pressInside(node: Element): void {
   act(() => { node.dispatchEvent(new MouseEvent('pointerdown', { bubbles: true, cancelable: true })) })
 }
 
-/** The `?` that opens the key sheet. */
-function helpTrigger(scope: HTMLElement): HTMLButtonElement | undefined {
-  return [...scope.querySelectorAll('button')].find(node => node.textContent === '?') as HTMLButtonElement | undefined
-}
-
 // ── The palette on its own ────────────────────────────────────────────────────
 
 /** What the loose harness can do to the box. */
@@ -161,7 +156,6 @@ function mountLoose(): Loose {
     if (name === 'palettePrev') commands?.step(-1)
     else if (name === 'paletteNext') commands?.step(1)
     else if (name === 'palettePick') commands?.pick()
-    else if (name === 'keyHelp') commands?.showKeys()
     else if (name === 'close') { act(() => { setOpen(false) }) }
     else did.push(name)
   }])) as unknown as ItemKeyActions
@@ -446,107 +440,6 @@ function keyNamesIn(text: string): readonly string[] {
   return [...text.matchAll(/↑|↓|↵|Esc/g)]
     .map(match => match[0] === 'Esc' ? 'escape' : match[0] === '↵' ? 'enter' : match[0] === '↑' ? 'arrowup' : 'arrowdown')
 }
-
-describe('the key sheet is printed from the table, not written beside it', () => {
-  it('the `?` opens it, and every key in the table has a word there', () => {
-    // The palette used to END with `A ⌘⌫ ⌘Z`: a line of symbols with no word for
-    // any of them, so a reader who did not already know the table learned nothing
-    // from it. The table is now something you open, and this case is what keeps it
-    // honest — a key added to the map without a word goes red here instead of
-    // shipping another glyph with nothing beside it.
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      open(panel)
-      const trigger = helpTrigger(panel.surface)
-      expect(trigger, 'the palette offers no way to read the keys — a table only the source can find is not a table').toBeDefined()
-      expect(trigger?.getAttribute('aria-label'), 'the `?` is an unlabelled glyph — a symbol a screen reader cannot read is not a door').toBeTruthy()
-      click(trigger)
-      const sheet = panel.surface.querySelector('[class*="itemKeyHelpSheet"]')
-      expect(sheet, 'the `?` did not open the key sheet').not.toBeNull()
-      const words = [...(sheet?.querySelectorAll('[class*="itemKeyHelpWhat"]') ?? [])].map(node => node.textContent ?? '')
-      for (const binding of ITEM_KEYS) {
-        expect(words, `the sheet has no sentence for ${binding.keys} — the table prints a symbol with nothing beside it`).toContain(zh[binding.what] as string)
-      }
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('the sheet is grouped, so it is a list and not a wall of seventeen lines', () => {
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      open(panel)
-      click(helpTrigger(panel.surface))
-      const bands = [...panel.surface.querySelectorAll('[class*="itemKeyHelpBandTitle"]')].map(node => node.textContent ?? '')
-      expect(bands.length, 'the sheet has no groups — the table is one undifferentiated wall').toBeGreaterThan(1)
-      expect(new Set(bands).size, 'a band title is printed twice, so two groups claim one name').toBe(bands.length)
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('the sheet closes on Esc alone, and the palette it was opened from is still there', () => {
-    // Two layers that share one close gesture close TOGETHER, so a reader who
-    // opened the keys over a palette loses the box they were standing in. Only the
-    // topmost layer answers Esc, which is what this case measures.
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      open(panel)
-      click(helpTrigger(panel.surface))
-      const sheet = panel.surface.querySelector('[class*="itemKeyHelpSheet"]')
-      expect(sheet, 'the sheet did not open').not.toBeNull()
-      press(sheet as HTMLElement, 'Escape')
-      expect(panel.surface.querySelector('[class*="itemKeyHelpSheet"]'), 'Esc did not close the sheet').toBeNull()
-      expect(panel.surface.querySelector('[class*="itemCommandPalette"]'), 'Esc on the sheet also closed the palette underneath it').not.toBeNull()
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('the sheet opens with the palette shut, because a key table is not the palette\'s property', () => {
-    // It is its own overlay with its own state, so `?` works on the panel as well
-    // as in the box — and a reader who never opens the palette can still find out
-    // what the keys are.
-    const loose = mountLoose()
-    try {
-      const field = loose.host.querySelector('input') as HTMLInputElement
-      act(() => { field.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true })) })
-      expect(loose.host.querySelector('[class*="itemCommandPalette"]'), 'Escape did not close the box').toBeNull()
-      // The `?` key is routed by the panel's map, so the box is asked through the
-      // same command a caller would call.
-      act(() => {
-        loose.host.dispatchEvent(new KeyboardEvent('keydown', { key: '?', shiftKey: true, bubbles: true, cancelable: true }))
-      })
-      expect(loose.host.querySelector('[class*="itemKeyHelpSheet"]'), 'the sheet cannot be opened without the palette open — the key is a panel key, and the sheet is not the palette\'s').not.toBeNull()
-    } finally {
-      loose.dispose()
-    }
-  })
-
-  it('`?` is a key in the map, and the map can call it', () => {
-    // The key is registered and the closed action record has a handler for it,
-    // which is the arrangement that makes a key impossible to print without a
-    // behaviour behind it.
-    const help = ITEM_KEYS.find(binding => binding.action === 'keyHelp')
-    expect(help, 'the key sheet is a thing you can open and `?` is not in the map').toBeDefined()
-    expect(help?.keys, 'the `?` binding does not say which key it is').toBe('?')
-    expect(help?.shift, '`?` is shift+/ — a binding without shift can never match the key it names').toBe(true)
-    // AND IT IS NOT A COMMAND INSIDE A FIELD. A key bound in a text field can
-    // never be typed, and the place a reader most wants this one is exactly
-    // there — which is why the palette carries a `?` button instead of widening
-    // the exception. The gate says so in both directions: the key must reach the
-    // panel, and it must NOT reach into the search box.
-    const typed = { key: '?', metaKey: false, ctrlKey: false, shiftKey: true, target: document.createElement('input') }
-    const ran: string[] = []
-    const actions = Object.fromEntries(
-      [...new Set(ITEM_KEYS.map(binding => binding.action))].map(name => [name, () => { ran.push(name) }]),
-    ) as unknown as ItemKeyActions
-    dispatchKey(typed, { focusedId: undefined, somethingOpen: true, paletteOpen: true }, actions)
-    expect(ran, '`?` fired from inside a text field — the reader can no longer type a question mark into the search').toEqual([])
-    dispatchKey({ ...typed, target: document.createElement('div') }, { focusedId: undefined, somethingOpen: false, paletteOpen: false }, actions)
-    expect(ran, '`?` does nothing when the panel has the focus, so the sheet has no key at all').toEqual(['keyHelp'])
-  })
-})
 
 describe('one word, one meaning: the rows of this box are distinguishable', () => {
   it('there is no second row called 「优先级」, and the assigning row says what it does to whom', () => {

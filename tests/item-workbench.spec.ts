@@ -35,7 +35,7 @@ import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type
 const knownActions: ReadonlySet<string> = new Set<ItemKeyAction>([
   'quickCapture', 'moveNext', 'movePrev', 'pick', 'rename', 'open',
   'close', 'priority', 'dueToday', 'remove', 'undo', 'palette',
-  'keyHelp', 'palettePrev', 'paletteNext', 'palettePick',
+  'palettePrev', 'paletteNext', 'palettePick',
 ])
 
 /** A handler set that records what it was asked to do, for the reader cases. */
@@ -49,7 +49,6 @@ function recordOfActions(sink: (action: string) => void): ItemKeyActions {
     priority: arg => { sink(`priority:${arg ?? ''}`) },
     dueToday: record('dueToday'), remove: record('remove'), undo: record('undo'),
     palette: record('palette'),
-    keyHelp: record('keyHelp'),
     palettePrev: record('palettePrev'), paletteNext: record('paletteNext'),
     palettePick: record('palettePick'),
   }
@@ -826,6 +825,24 @@ describe('a press is a change to the document, not a change to the menu', () => 
     }
   })
 
+  it('a second press on the same ⋯ closes its menu, and a third opens it again', () => {
+    // 开与关是同一个手势的两个方向：再按一次开它的那个⋯，面板要收回去。外点收
+    // 的监听豁免 ⋯ 本体，开合只由按钮自己的 toggle 读当前状态定——同一次点击
+    // 只剩一个写者，收与开不再取决于两个处理器的先后。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      openRowMenu(panel.surface)
+      expect(panel.surface.querySelector('[role="menu"]'), 'the first press did not open the menu').not.toBeNull()
+      const trigger = panel.surface.querySelector('[aria-haspopup="menu"]')
+      click(trigger)
+      expect(panel.surface.querySelector('[role="menu"]'), 'the second press on the ⋯ did not close its own menu').toBeNull()
+      click(trigger)
+      expect(panel.surface.querySelector('[role="menu"]'), 'the third press did not open the menu again').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('deleting offers the undo right there, on the NARROW band too', () => {
     // The same promise, on the band a phone is actually on.
     //
@@ -1320,11 +1337,15 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
   it('never leaves the panel, in either direction', async () => {
     const place = await kernel()
     if (place === undefined) return
-    // A trigger hard against the trailing edge: the menu hangs LEFT of the ⋯, on
-    // the content column's own right line — the reader's report was 「再往左移一下，
-    // 卡在哪条线上」, and the line is the ⋯'s left edge.
+    // Room on the inline axis: the menu hangs off the ⋯'s own trailing shoulder —
+    // its right edge ON the ⋯'s right edge (「往右上角挪、贴近⋯」), not a whole
+    // button-width away on the content column's own line.
+    const roomy = place({ top: 300, bottom: 340, left: 700, right: 740, width: 40, height: 40 }, PANEL, MENU)
+    expect(roomy.left + MENU.width, 'the menu did not hang off the ⋯\'s own right edge').toBe(740)
+    // A trigger hard against the trailing edge: the rim keeps its 10px of air, so
+    // the menu slides back inside instead of gluing to the panel's edge.
     const edge = place({ top: 300, bottom: 340, left: 960, right: 998, width: 38, height: 40 }, PANEL, MENU)
-    expect(edge.left + MENU.width, 'the menu did not stand on the content column\'s own right line').toBe(960)
+    expect(edge.left + MENU.width, 'the menu glued to the panel\'s rim — the rim keeps its 10px of air').toBe(PANEL.right - 10)
     expect(edge.left, 'the menu was pushed past the panel\'s own leading edge').toBeGreaterThanOrEqual(PANEL.left)
     // A trigger measured OVERHANGING the rim (a rect taken mid-scroll can do it):
     // the clamp still keeps the same 10px of air, so no menu ever glues to the edge.
@@ -1773,8 +1794,8 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     // printing their own numbers beside it.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const overdue = railRow(panel.surface, '超期了')
-      const undated = railRow(panel.surface, '没日子的')
+      const overdue = railRow(panel.surface, '已超期')
+      const undated = railRow(panel.surface, '没定日子')
       click(overdue)
       expect(shown(panel.surface)).toBe(promised(overdue))
       click(undated)
@@ -1803,7 +1824,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     // 「you are here」, and deleting the text by hand left it marked too.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const row = railRow(panel.surface, '超期了')
+      const row = railRow(panel.surface, '已超期')
       click(row)
       expect(row.getAttribute('aria-current'), 'the row the reader pressed is not marked current').toBe('true')
       click(row)
@@ -1832,7 +1853,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       click(all)
       // The agenda's own bucket names are what the list page never prints, so their
       // absence is the page having actually changed rather than a filter moving.
-      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始时间')
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始的日子')
       expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
     } finally {
       panel.dispose()
@@ -1852,10 +1873,10 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始时间')
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始的日子')
       const schedule = railRow(panel.surface, '日程')
       click(schedule)
-      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始时间')
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始的日子')
       expect(schedule.getAttribute('aria-current')).toBe('true')
     } finally {
       panel.dispose()
@@ -2003,9 +2024,9 @@ describe('the keyboard flow is one table, and every key in it has something behi
     expect(shared.length, 'no chord is shared at all — the gate is asserting nothing, and the palette\'s arrows are the case it is for').toBeGreaterThan(0)
     for (const group of shared) {
       const chord = `${group[0]?.cmd === true ? 'cmd+' : ''}${group[0]?.shift === true ? 'shift+' : ''}${group[0]?.key}`
-      const meanings = new Set(group.map(binding => binding.what))
+      const meanings = new Set(group.map(binding => binding.action))
       for (const binding of group) {
-        expect(binding.when, `${chord} is shared with ${[...meanings].join(' and ')}, but "${binding.what}" applies everywhere — so the other meaning is unreachable`).toBeDefined()
+        expect(binding.when, `${chord} is shared with ${[...meanings].join(' and ')}, but "${binding.action}" applies everywhere — so the other meaning is unreachable`).toBeDefined()
       }
     }
     // And the exact pair the palette needs: the arrows and Enter change owner
@@ -2124,6 +2145,20 @@ describe('the keyboard flow is one table, and every key in it has something behi
     expect(ran, 'a key with no row under the cursor patched something anyway').toEqual([])
     dispatchKey(empty, { focusedId: 'r-1', somethingOpen: false, paletteOpen: false }, actions)
     expect(ran, 'the same key with a row under the cursor did nothing — the binding is unreachable').toEqual(['priority:urgent'])
+  })
+
+  it('a key still reaches the page after a blank click, because the focus falling to nothing must not kill the flow', () => {
+    // 点击空白之后焦点落回 body：监听挂在面板根上的时候，从这里起每一条快捷键
+    // 都是哑的——「按了很多功能都没有反应」的原样。监听在 document 上，以
+    // 「目标在本面板子树内，或已落回空处」为守卫，J 仍是下一条，X 仍是握住。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      press(document.body, 'j')
+      press(document.body, 'x')
+      expect(panel.surface.querySelector('[data-picked]'), 'a key pressed at nothing was not heard — the flow died with the focus').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
   })
 
   it('the probe bites: the readers can see a key the table does not have', () => {
@@ -2814,22 +2849,51 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     }
   })
 
-  it('「多选做完了」 is the way out of the mode, and the boxes leave with it', () => {
-    // Leaving the mode is an ACT (setArmed(false) clears the holding), not a
-    // collapse: the reader must be able to stand down without touching the
-    // rows one by one, and an un-armed surface must look un-armed.
+  it('arming alone shows the bar with 「已选 0 条」, and everything but select-all stands disabled', () => {
+    // THE MODE NEEDS A FACE THE MOMENT IT IS ON. A bar that waited for the first
+    // row was a mode with no face: the reader pressed 多选 and nothing told them
+    // it was on. With nothing held, the bar keeps its shape — the count reads
+    // zero, and every write stands disabled because there is nothing to write to.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      hold(rowEls(panel.surface)[0])
+      const chip = [...panel.surface.querySelectorAll('button')]
+        .find(button => (button.textContent ?? '').trim() === '多选')
+      expect(chip, 'the strip carries no 多选 chip').toBeDefined()
+      act(() => { chip!.click() })
+      expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'arming alone drew no bar').toContain('0')
+      const pressed = [...panel.surface.querySelectorAll('[class*="itemBatch"] button, [class*="itemBatch"] [role="radio"]')]
+      for (const control of pressed) {
+        const tick = control.matches('input[type=checkbox]')
+        if (tick) continue
+        expect((control as HTMLButtonElement).disabled, 'a write answered a press with nothing held — it would write to nothing')
+          .toBe(true)
+      }
+      // The first pick lights the bar up: the disabled half leaves.
+      act(() => { hold(rowEls(panel.surface)[0]) })
+      const urgent = [...panel.surface.querySelectorAll('[class*="itemBatch"] [role="radio"]')]
+        .find(one => (one.textContent ?? '').trim() === '紧急') as HTMLButtonElement
+      expect(urgent.disabled, 'a pick did not stand the writes back up').toBe(false)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the 多选 chip is the way out of the mode, and the boxes leave with it', () => {
+    // Leaving the mode is an ACT (setArmed(false) clears the holding), not a
+    // collapse: the reader must be able to stand down without touching the
+    // rows one by one, and an un-armed surface must look un-armed. The chip
+    // that armed the mode is the same door back out — one control, one intent.
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const chip = [...panel.surface.querySelectorAll('button')]
+        .find(button => (button.textContent ?? '').trim() === '多选')
+      act(() => { chip!.click() })
       expect(rowEls(panel.surface)[0]!.querySelector('input[type=checkbox]'), 'the mode did not turn its face on').not.toBeNull()
-      const done = [...panel.surface.querySelectorAll('button')]
-        .find(button => (button.textContent ?? '').trim() === '多选做完了')
-      expect(done, 'the bar has no way out of the mode').toBeDefined()
-      act(() => { done!.click() })
+      act(() => { chip!.click() })
       for (const row of rowEls(panel.surface)) {
         expect(row.querySelector('input[type=checkbox]'), 'a box survived the disarming, so the surface still reads as armed').toBeNull()
       }
-      expect(panel.surface.querySelector('[class*="itemBatchCount"]'), 'the bar survived its own 「做完了」').toBeNull()
+      expect(panel.surface.querySelector('[class*="itemBatchCount"]'), 'the bar survived its own door').toBeNull()
     } finally {
       panel.dispose()
     }
@@ -3129,6 +3193,29 @@ function openRowDetail(panel: ReturnType<typeof mountPanel>): void {
   if (entry === null) throw new Error('the row menu offers no way to expand the row')
   click(entry)
 }
+
+describe('an in-place editor answers a press away from it, and the row stays open', () => {
+  it('the body prompt opens into a block, and a press outside collapses the block with the row still open', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const row = rowEls(panel.surface)[0]!
+      expect(row.getAttribute('data-open'), 'the row did not open').toBe('')
+      const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
+      if (prompt === null) throw new Error('the open row has no body prompt')
+      click(prompt)
+      const field = [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
+      expect(field, 'pressing the prompt turned nothing into a body block').not.toBeNull()
+      // 点开别处 = 焦点走出这一块。文字已随每次键入写进文档，收回只是收场。
+      act(() => { field!.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+      const promptAgain = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
+      expect(promptAgain, 'the body block stayed open after a press outside it').not.toBeNull()
+      expect(row.getAttribute('data-open'), 'the collapse took the open row with it').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
 
 /** A row that already carries two steps, so order and removal are both real. */
 function twoSteps(): ItemRecord[] {

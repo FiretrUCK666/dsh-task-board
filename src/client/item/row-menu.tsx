@@ -189,6 +189,14 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
     const onOutside = (event: MouseEvent): void => {
       const target = event.target
       if (target instanceof Node && menu.current?.contains(target)) return
+      /* THE TRIGGER IS THE MENU'S OTHER HALF, so a press on the ⋯ belongs to the
+       * button's own toggle and to nothing else. Closing here AND toggling there
+       * made one click answer to two handlers whose order nothing guarantees:
+       * the menu could shut and flip straight back open, or shut twice — both
+       * read as 「再按一次⋯，面板不收」。 Exempting the trigger leaves every
+       * press on it exactly ONE writer: the toggle, which reads the state that
+       * is current when the click runs. */
+      if (props.trigger !== null && target instanceof Node && props.trigger.contains(target)) return
       props.onClose()
     }
     document.addEventListener('click', onOutside, true)

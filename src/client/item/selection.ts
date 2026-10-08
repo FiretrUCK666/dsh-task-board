@@ -42,15 +42,6 @@ export function selectedCount(selection: ItemSelection): number {
 }
 
 /**
- * Is the batch doing anything? The bar is drawn for this and not for the rest.
- * @param selection - the reader's holding.
- * @returns whether there is anything to act on.
- */
-export function selectionActive(selection: ItemSelection): boolean {
-  return selection.ids.size > 0
-}
-
-/**
  * Turn the pickboxes on or off.
  *
  * Switching OFF clears: that is the explicit act, and leaving the selection

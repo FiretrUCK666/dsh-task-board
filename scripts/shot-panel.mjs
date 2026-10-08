@@ -32,6 +32,13 @@
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
  *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--label text]
  *        [--css-for "<selector>" [--property padding]]
+ *        [--both]
+ *
+ * `--both` captures TWO shots with one browser launch: the claimed --width and
+ * the narrow 412, both derived from the SAME --out prefix (`shot.png` writes
+ * `shot-wide.png` and `shot-narrow.png`). Hybrid hard rule 11 makes every UI
+ * change answer at both widths, so the loop needs a one-flag way to do that
+ * instead of two runs whose only difference is a typo waiting to happen.
  *
  * `--eval` runs once in the page after load, before the capture, and its
  * console output is printed — which is how the caller clicks into a panel
@@ -58,6 +65,7 @@ function parseArgs(argv) {
     label: '',
     cssFor: '',
     property: 'padding',
+    both: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
@@ -76,9 +84,10 @@ function parseArgs(argv) {
     const wanted = spelled.toLowerCase().replaceAll('-', '')
     const key = Object.keys(out).find(name => name.toLowerCase().replaceAll('-', '') === wanted)
     if (key === 'full') { out.full = true; continue }
+    if (key === 'both') { out.both = true; continue }
     if (key === undefined) {
       console.error(`shot-panel: unknown flag ${flag}`)
-      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property')
+      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both')
       process.exit(2)
     }
     out[key] = argv[i + 1] ?? ''
@@ -355,6 +364,18 @@ try {
   browser = await connect(await readBrowserSocketUrl())
   const version = await browser.send('Browser.getVersion')
 
+  /* THE WIDTHS THIS RUN photographs. `--both` claims the loop's own pair — the
+   * asked band and the narrow 412 — and derives both names from the SAME --out
+   * prefix, so one run covers hybrid rule 11's two-band promise. A name that
+   * does not end in .png is left alone (the extension rule below still applies
+   * per file). */
+  const shots = args.both
+    ? [
+        { width: Number(args.width), out: args.out.replace(/\.png$/i, '-wide.png') },
+        { width: 412, out: args.out.replace(/\.png$/i, '-narrow.png') },
+      ]
+    : [{ width: Number(args.width), out: args.out }]
+
   // Refuse to photograph an empty file. A generated page that was never
   // REGENERATED is an easy mistake — the render test no-ops when its output
   // path is unset, so the previous run's file sits there looking perfectly
@@ -373,6 +394,8 @@ try {
 
   const { targetId } = await browser.send('Target.createTarget', { url: 'about:blank' })
   const { sessionId } = await browser.send('Target.attachToTarget', { targetId, flatten: true })
+
+  for (const shot of shots) {
   console.error(`shot-panel: ${version.product} -> ${args.url}${args.label === '' ? '' : `  [${args.label}]`}`)
 
   await browser.send('Page.enable', {}, sessionId)
@@ -386,11 +409,11 @@ try {
   // what a real phone does). Any page without a meta still gets the old
   // behaviour, so the generated page declares one too.
   await browser.send('Emulation.setDeviceMetricsOverride', {
-    width: Number(args.width),
+    width: shot.width,
     height: Number(args.height),
     deviceScaleFactor: Number(args.scale),
-    mobile: Number(args.width) < 600,
-    ...(Number(args.width) < 600 ? { screenWidth: Number(args.width), screenHeight: Number(args.height) } : {}),
+    mobile: shot.width < 600,
+    ...(shot.width < 600 ? { screenWidth: shot.width, screenHeight: Number(args.height) } : {}),
   }, sessionId)
   await browser.send('Emulation.setEmulatedMedia', {
     features: [{ name: 'prefers-color-scheme', value: args.colorScheme }],
@@ -453,12 +476,14 @@ try {
     await new Promise(done => setTimeout(done, 200))
   }
 
-  const shot = await browser.send('Page.captureScreenshot', {
+  const shotData = await browser.send('Page.captureScreenshot', {
     format: 'png',
     captureBeyondViewport: args.full,
   }, sessionId)
-  writeFileSync(args.out, Buffer.from(shot.data, 'base64'))
-  console.error(`shot-panel: wrote ${args.out} (${Number(args.width)}x${Number(args.height)} @${Number(args.scale)}x, ${args.colorScheme})`)
+  writeFileSync(shot.out, Buffer.from(shotData.data, 'base64'))
+  console.error(`shot-panel: wrote ${shot.out} (${shot.width}x${Number(args.height)} @${Number(args.scale)}x, ${args.colorScheme})`)
+  }
+
   await finish(0)
 } catch (error) {
   console.error(`shot-panel: ${error instanceof Error ? error.message : String(error)}`)

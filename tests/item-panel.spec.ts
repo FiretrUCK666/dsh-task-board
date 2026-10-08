@@ -32,7 +32,6 @@ import {
   allPicked,
   reconcile,
   selectedCount,
-  selectionActive,
   setAllPicked,
   togglePicked,
 } from '../src/client/item/selection.ts'
@@ -156,7 +155,7 @@ describe('the rail is the map, and the bar above the rows says three things', ()
     for (const page of ITEM_PAGES) {
       expect(html, `the page 「${page}」 has no row in the rail, so only the palette can open it`).toContain(PAGE_DOOR[page])
     }
-    for (const where of ['全部', '已删除', '按日子看', '按重要程度', '按状态']) {
+    for (const where of ['全部', '已删除', '按日子', '按重要程度', '按状态']) {
       expect(html, `${where} is no longer somewhere the reader can go`).toContain(where)
     }
     // And 收件 is gone from BOTH halves — no row, and no page to reach.
@@ -520,7 +519,10 @@ describe('a holding may only name rows the reader can point at', () => {
     // row draws are held rows that only a write can still see.
     const after = reconcile(togglePicked(NO_SELECTION, 'a'), [])
     expect(after.ids.size, 'the holding is still carrying a row nothing on screen points at').toBe(0)
-    expect(selectionActive(after), 'an empty holding is still acting as if something were held').toBe(false)
+    // The mode is the READER'S act, not the holding's: rows leaving the screen do
+    // not disarm — the bar keeps its face at 0 (「已选 0 条」), which is how the
+    // reader sees the mode is still on. Turning 多选 off is the explicit act.
+    expect(after.armed, 'rows leaving silently disarmed the mode, so the bar flickered off under the reader').toBe(true)
   })
 
   it('reconciling an unchanged holding hands back the SAME one, so nothing re-renders', () => {

@@ -74,8 +74,10 @@ export interface MenuSize {
   readonly gap?: number
 }
 
-/** The house gap: the same 4px the board's own menus open with. */
-const DEFAULT_GAP = 4
+/** The row menu's own gap: 6px off the ⋯'s edge, so the menu hangs from the
+ *  button it belongs to — near enough to read as its child, far enough that the
+ *  two edges never touch. */
+const DEFAULT_GAP = 6
 
 /**
  * The air a menu keeps from the panel edge it would otherwise glue to. A menu
@@ -126,16 +128,15 @@ export function placeRowMenu(trigger: Rect, panel: Rect, menu: MenuSize): MenuSp
   const rawTop = placement === 'above' ? trigger.top - gap - menu.height : trigger.bottom + gap
   const top = clamp(rawTop, panel.top, panel.bottom - menu.height)
 
-  // Along the inline axis the menu's RIGHT EDGE lands on the ⋯'s LEFT EDGE — the
-  // row content column's own right line. The ⋯ is the last thing in the row, so
-  // that line is where the row's readable content ends; a menu hung there stands
-  // on the same line the tags and dates end on instead of being glued to the ⋯'s
-  // own rim (「靠到右边边缘」). A menu whose right edge sat on the trigger's RIGHT
-  // edge (an earlier alignment) read as attached to the button's rim; a menu whose
-  // LEADING edge sat on the trigger's leading edge grew away and ran its right
-  // edge onto the panel's own rim on a phone. The clamp keeps what the rim needs:
-  // the same 10px of air, so a wider room than the menu has slides it back inside.
-  const left = clamp(trigger.left - menu.width, panel.left, panel.right - menu.width - EDGE_MARGIN)
+  // Along the inline axis the menu's RIGHT EDGE lands on the ⋯'s RIGHT EDGE —
+  // the menu hangs off the button's trailing shoulder (「往右上角挪、贴近⋯」).
+  // Standing on the ⋯'s LEFT edge put a whole button-width of air between the
+  // menu and the thing it belongs to, and the reader read the two as unrelated;
+  // standing on the content column's line made it worse on a phone, where the
+  // menu ran its far edge onto the panel's own rim. The clamp keeps what the rim
+  // needs — the same 10px of air — so a trigger near the panel's edge slides the
+  // menu back inside instead of gluing it to the rim.
+  const left = clamp(trigger.right - menu.width, panel.left, panel.right - menu.width - EDGE_MARGIN)
 
   // The ceiling is the room on the side it opened towards, measured from where
   // it actually ended up after clamping — not from the trigger, because

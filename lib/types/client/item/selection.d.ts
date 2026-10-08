@@ -36,12 +36,6 @@ export declare const NO_SELECTION: ItemSelection;
 /** How many rows are held, which is the only number the batch bar leads with. */
 export declare function selectedCount(selection: ItemSelection): number;
 /**
- * Is the batch doing anything? The bar is drawn for this and not for the rest.
- * @param selection - the reader's holding.
- * @returns whether there is anything to act on.
- */
-export declare function selectionActive(selection: ItemSelection): boolean;
-/**
  * Turn the pickboxes on or off.
  *
  * Switching OFF clears: that is the explicit act, and leaving the selection

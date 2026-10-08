@@ -788,7 +788,7 @@ export const ACTIONS = {
       // `item.update`, which is a third reading of the same three fields.
       startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
       dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
-      hardDueAt: { about: '硬期限', optional: true, default: DATE_GRANULARITY },
+      hardDueAt: { about: '最后期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片（零张或一张）', optional: true },
     },
   },
@@ -817,7 +817,7 @@ export const ACTIONS = {
       // The same field, the same value, for the same reason as `item.create`'s.
       startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
       dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
-      hardDueAt: { about: '硬期限', optional: true, default: DATE_GRANULARITY },
+      hardDueAt: { about: '最后期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片', optional: true },
     },
   },

@@ -298,14 +298,17 @@ export function ColorSwatches({ value, onChange, none = true, custom = true }: {
  * mode (按时间表/完成后接续), rule trigger (按时间表/任务完成后) and the
  * send mode all read/speak alike — one component, one style, zero drift.
  */
-export function Segmented({ options, value, onChange, ariaLabel }: {
+export function Segmented({ options, value, onChange, ariaLabel, disabled }: {
   options: readonly { value: string; label: string; title?: string }[]
   value: string
   onChange: (next: string) => void
   ariaLabel: string
+  /** Stand down the whole group — the shape stays, nothing answers a press.
+   *  A group that vanished instead would make the row jump under the reader. */
+  disabled?: boolean
 }) {
   return (
-    <span className={css.segmentedRow} role="radiogroup" aria-label={ariaLabel}>
+    <span className={css.segmentedRow} role="radiogroup" aria-label={ariaLabel} aria-disabled={disabled === true ? true : undefined}>
       {options.map(option => (
         <button
           key={option.value}
@@ -313,6 +316,7 @@ export function Segmented({ options, value, onChange, ariaLabel }: {
           role="radio"
           aria-checked={value === option.value}
           className={`${css.segmentedButton}${value === option.value ? ` ${css.segmentedActive}` : ''}`}
+          disabled={disabled}
           title={option.title}
           onClick={() => { onChange(option.value) }}
         >

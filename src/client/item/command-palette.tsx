@@ -54,7 +54,6 @@ import { ITEM_PRIORITIES, itemTitleOf, type ItemRecord } from '../../core/item.t
 import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemQueryChips } from './query-chips.tsx'
 import { PRIORITY_LABEL, SORT_LABEL } from './labels.ts'
-import { ItemKeyHelp } from './key-help.tsx'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from './item.module.css'
 
@@ -112,7 +111,7 @@ interface PaletteGroup {
  * The candidate cursor is state HERE — it is derived from this component's own
  * text, this component's own options — so the map cannot compute it and the box
  * cannot be navigated by a table that has never seen a candidate. So the box
- * publishes the four commands and the panel calls them: one direction, no second
+ * publishes the commands and the panel calls them: one direction, no second
  * copy of the candidate list, and no callback that reaches back into this
  * component's state by another name.
  */
@@ -121,8 +120,6 @@ export interface PaletteCommands {
   readonly step: (by: number) => void
   /** Run the candidate under the cursor. */
   readonly pick: () => void
-  /** Open the key help sheet. */
-  readonly showKeys: () => void
 }
 
 export interface ItemCommandPaletteProps {
@@ -188,7 +185,6 @@ function poolOf(groups: readonly PaletteGroup[], typed: string): readonly Palett
 export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   const input = useRef<HTMLInputElement | null>(null)
   const [active, setActive] = useState(0)
-  const [keysOpen, setKeysOpen] = useState(false)
   // The text this cursor was last placed against. A changed query means a
   // different list, so the cursor goes back to its first row rather than staying
   // on a position that now belongs to something else — which is why this is a
@@ -362,7 +358,6 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   const commands = useMemo<PaletteCommands>(() => ({
     step,
     pick,
-    showKeys: () => setKeysOpen(true),
   }), [pick, step])
   useEffect(() => {
     props.onCommands?.(commands)
@@ -377,7 +372,6 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
 
   return (
     <>
-      <ItemKeyHelp open={keysOpen} onClose={() => setKeysOpen(false)} />
       {props.open && (
         <div
           className={css.itemCommandPalette}
@@ -399,7 +393,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
               ref={input}
               className={css.itemSearch}
               value={freeTextOf(props.text)}
-              placeholder={t('item.search')}
+              placeholder={t('item.search.label')}
               aria-label={t('item.search.label')}
               /* THE COMBOBOX SHAPE, because the caret stays in the field: the
                  reader types a word and then picks from what it found, which is
@@ -460,36 +454,17 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
               ))}
             </div>
 
-            {nothing && <p className={css.itemKeyHelpNothing}>{t('item.palette.nothing')}</p>}
+            {nothing && <p className={css.itemPaletteNothing}>{t('item.palette.nothing')}</p>}
 
-            {/* THE FOOTER IS A SENTENCE AND A DOOR, not a wall of symbols. The key
-                table used to be printed here as `A ⌘⌫ ⌘Z`: no word for any of
-                them, so a reader who did not already know the table learned
-                nothing from it. It is now a thing that opens — from the `?`
-                button, which is also the reason the keyboard is not the only way
-                in.
-
-                AND IT IS NOT A GROUP. It was drawn as a facet row with an EMPTY
-                name cell, borrowing that shape to line the footer up with the
-                groups above it — which is what an empty name cell cannot do: the
-                row's first track still reserved its width, so the sentence was
-                indented by it and sat in the middle of a box whose every other
-                line starts at the left edge. **A sentence about how to use the
-                whole box, pushed right by a label that does not exist, reads as a
-                sentence that does not know where to stand.**
-                The footer's left edge is the BOX's left edge, because that is
-                what it is about. */}
+            {/* THE FOOTER IS A SENTENCE. It is not a group: it was once drawn as a
+                facet row with an EMPTY name cell, borrowing that shape to line the
+                footer up with the groups above it — which is what an empty name
+                cell cannot do: the row's first track still reserved its width, so
+                the sentence was indented by it and sat in the middle of a box whose
+                every other line starts at the left edge. The footer's left edge is
+                the BOX's left edge, because that is what it is about. */}
             <div className={css.itemPaletteFoot}>
               <p className={css.itemPaletteHint}>{t('item.palette.hint')}</p>
-              <button
-                type="button"
-                className={`${css.itemFacetChip} ${css.itemKeyHelpTrigger}`}
-                aria-label={t('item.keys.show')}
-                title={t('item.keys.show')}
-                onClick={() => setKeysOpen(true)}
-              >
-                <span aria-hidden="true">?</span>
-              </button>
             </div>
           </div>
         </div>

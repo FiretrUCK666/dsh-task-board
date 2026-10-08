@@ -92,7 +92,7 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
 - 宿主：DeepSeek Harness (DSH) Web GUI，本机运行；一切皆插件，本插件以 cordis 插件形态
   存在。平台与用户名不写死——需要时用 `process.platform`、`os.homedir()` 现场发现。
 - 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则 `os.homedir()` 下的 `.dsh`；
-  激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制全貌」。**生效规则**：host 半区改动
+  激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制」。**生效规则**：host 半区改动
   需重启 `dsh web`；client 半区改动刷新页面即可。
 
 ## 版本管理与发布（必守）
@@ -203,9 +203,9 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
 ### 最低支持版本（只在真不兼容时上移）
 
 跟着 DSH 走的是 `devDependencies`；**上移的是** `peerDependencies` 的 `>=` 值 + README
-「环境要求」那一行，而它**只在真不兼容时上移**（新版本才有的 API，或在旧版上实测加载失败），
-默认不动。**「插件在新版上照常可用」恰恰说明旧下限仍成立**——这时不要动它。上移时**两处一起
-改**，README 那行必须写**具体版本号**。
+「环境要求」那一行，而它**只在真不兼容时上移**（新版本才有的 API，或在旧版上实测加载失败）。
+**「插件在新版上照常可用」恰恰说明旧下限仍成立**——这时不要动它。上移时**两处一起改**，
+README 那行必须写**具体版本号**。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
@@ -255,9 +255,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（看板本身在根 tail；`/items` 是第二份文档；`/lease` `/command` `/events` SSE 子路径） |
 | 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
-| host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；`per-record` 布局下单元名就是目录名，而平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**——这就是数据根叫 `dsh_task_board` 的原因） |
+| host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名） |
-| 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制全貌」） |
+| 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制」） |
 | **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
 | **清单舞台 slot** | `main`，`key: dsh-task-board-items`（与看板同一个座位、不同键） |
 | **侧栏入口 slot** | `sidebar.panellist`，`id` 与各自的 `main` 键**一致**（shell 靠它把行解析到舞台） |
@@ -271,33 +271,20 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 **固定文本**（变动会击穿提示缓存）。能力清单一律走 `taskboard_capabilities` 按需查——
 **清单进提示词就是目录的第二份拷贝，过期清单比没有清单更糟**。
 
-### 启停机制全貌（改任何一处之前先读这段）
+### 启停机制（改任何一处之前先读这段）
 
-装配是**层叠覆盖**：各 bundle 自带的 patch 按 `dsh.profile.bundles` 顺序叠加，然后是 profile 的
-`cordis.patch.yml`，最后是 `--patch`。**后层按 `id` 覆盖前层的同一个 id**。于是有两种关法：
+**「被组合即启用」是结构性质，不是判断逻辑**：插件不注册设置页、不读自己的启用状态，被关掉时
+一行代码都不跑。开与关只有两个层级：**包级**（profile `package.json` 的 `bundles` 增删包名，
+整包一起消失）与**条目级**（profile `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true`，
+删掉那行即恢复）。
 
-| 层级 | 谁在写 | 写什么 | 装配结果 |
-| --- | --- | --- | --- |
-| 包级 | 插件页右上角开关 | `bundles` 增删包名（profile 的 `package.json`） | 整个 bundle 的层不参与装配，包内所有条目一起消失 |
-| 条目级 | 「已安装」列表里那一行的开关 | profile 的 `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true` | 该条目仍在，末尾多一行 `disabled`；删掉那行即恢复启用 |
-
-**行级开关不需要预埋基准行**——`id` 是覆盖键，所以往 patch 里追加一条只带 id 的行就够了。
-反过来，**patch 里没有我们的行是正常状态**：默认启用就是「什么也不写」。
-
-**前提**：那一行必须是**真实装载的** Loader 条目。否则插件管理页的 `listPlugins()` 会给它
-`readOnlyReason: "unaddressable"`，两个开关都锁住——不是本插件的问题，是组合没把这一行装上。
-
-**插件详情页没有「slot 列表开关」这种东西**：那个页面上的「包含的组件 / Components」是**区块标题**，
-枚举的是 bundle 自己 `cordis.patch.yml` 里的 `insert:` 条目行，与 slot 名毫无关系；详情页里真实的
-开关只有两个（右上角「启用 {name}」与每行「启用组件 {name}」），只改 `disabled`/`config` 而不
-`insert` 的覆盖行不出现在那个列表里。**插件不注册设置页、也不读自己的启用状态**：加载器只求值
-激活的行，所以插件被关掉时它一行代码都不会跑——**「被组合即启用」是结构性质，不是判断逻辑**。
-
-`cordis.yml` **不是配置文件**，是 profile 的**空根**（一段注释加 `[]`），由宿主在启动时写成这样；
-`dsh --profile <名字> --dump-config` 渲染的扁平快照是诊断输出，不要把它留在那里。挂载由
-`package.json` 的 `dsh.bundle.patch` 指向包内 `cordis.patch.yml`，安装命令只负责把包登记进
-`bundles`；**三种安装方式（npm / GitHub / 本地 `link:`）在这件事上完全一致，装完不需要任何
-手工步骤**，手写 `cordis.patch.yml` 反而会造成同一个插件出现两条。
+三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键，只带 id 的行就够，patch 里没有我们
+的行是正常状态）；那一行必须是**真实装载的** Loader 条目，否则插件管理页会把两个开关锁成
+`unaddressable`（是组合的问题，不是本插件的）；插件详情页的「包含的组件」是**区块标题**，
+枚举的是 `insert:` 条目行、与 slot 名无关，真实开关只有右上角「启用」与每行「启用组件」两个。
+`cordis.yml` 是 profile 的**空根**不是配置文件；挂载由 `package.json` 的 `dsh.bundle.patch` 指向
+包内 `cordis.patch.yml`，三种安装方式（npm / GitHub / 本地 `link:`）在这件事上完全一致，
+**手写 patch 反而会造成同一个插件出现两条**。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
@@ -453,13 +440,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在
   `src/client/board/`，不在核心层）。
 - **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
-  `access` 列**推导**（`WritableItemKey`），被判 `derived` / `forbidden` 的字段编译期就 patch 不进去。
-  **这层保护有一个失效方向，失效时不报错**：`ITEM_FIELDS` 退回 `Record<…, FieldSpec>` 标注 →
-  `access` 拓宽成并集 → `WritableItemKey` 塌成 `never` → `ItemPatch` 变 `{}` → **`{}` 接受任何
-  对象字面量** → `{ ref: 3 }` 静默通过。**门禁不是变成一堵墙，是变成一扇敞开的门**，所以那行
-  `@ts-expect-error` 棘轮是承重的（退化从此是**构建失败**），且它放在 core 而非 spec，因为 spec
-  要有人记得打开。同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`（`Record<ItemSort, …>` 建表）。
-  **手写的「我列全了吗」永远该由类型或文件系统回答**；塌掉的具体链路写在 `item-transitions.ts`。
+  `access` 列**推导**（`WritableItemKey`）。这层保护有一个失效方向、失效时不报错：标注一放宽，
+  推导就塌成 `never` → `ItemPatch` 变 `{}` → **`{}` 接受任何对象字面量** → 写错的字段静默通过。
+  所以那行 `@ts-expect-error` 棘轮是承重的（退化从此是**构建失败**），且它放在 core 而非 spec，
+  因为 spec 要有人记得打开。同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`。**手写的「我列全了吗」
+  永远该由类型或文件系统回答**；塌掉的具体链路写在 `item-transitions.ts`。
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
   抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
   （点卡片）**绝不动轮次戳**——卡片是摘要不是对话；「第 N 次执行」只在真有编号运行时说。
@@ -541,16 +526,34 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 `lib/` 是**既跟踪又生成**的产物目录，而打包器写的是**带内容哈希**的 chunk 名：内容一变就多一个
 新文件、旧的从不删，于是每次构建都往 npm 里多塞一个没人加载的孤儿。`build` 因此先经
 `scripts/clean-lib.mjs` **清空 `lib/`**（该目录下每个文件都由 `pnpm build` 产生，没有手写文件）。
-
-生效规则：改 host 半区（src/index.ts、src/host/）需重启 `dsh web`；改 client 半区
-刷新页面即可。
+改 host 半区需重启 `dsh web`，改 client 半区刷新页面即可。
 
 **看渲染结果**用 `node scripts/shot-panel.mjs`（开发工具，**不在 `files` 里、不进包**；用法见该
 文件头的 usage 段）。本机没跑 `pnpm run dev:web`，所以闭环是「改 → `pnpm build` → 刷新 → 截图」。
 零依赖：Node 内置 `WebSocket` 直连机器上已有的 Chromium，不碰 `dependencies`。`--eval` 在截图前
-跑一次 JS 并打印返回值，所以「点进某个面板」不用改脚本。`dsh web` 有认证：**先把启动时打印的那个
-带 token 的完整 URL 放进 `DSH_SHOT_URL`**（令牌不进 shell 历史，脚本也从不打印它）；没有就退回去
-读不带 token 的地址，脚本会**明确说被拒了**，不会假装成功、也不会写出一张看起来像排版坏了的图。
+跑一次 JS 并打印返回值，所以「点进某个面板」不用改脚本。`--both` 一次启动连出宽（`--width` 的
+值）与窄（412）两张，名字由 `--out` 派生（`-wide.png` / `-narrow.png`）——双端同治（硬性规范 11）
+因此是一条命令，不是两次容易敲错的手工。`dsh web` 有认证：**先把启动时打印的那个带 token 的
+完整 URL 放进 `DSH_SHOT_URL`**（令牌不进 shell 历史，脚本也从不打印它）；没有就退回去读不带
+token 的地址，脚本会**明确说被拒了**，不会假装成功、也不会写出一张看起来像排版坏了的图。
+
+### 闭环验证与操作规范（每一项改动都要走到的程度）
+
+**不写死路径**：下面说「脚本」时指仓库 `scripts/` 目录与 `package.json` 的 `scripts`，有哪些
+工具**现场读这两个地方发现**——写死名字的清单比没有清单更糟。
+
+- **改了什么 → 当场怎么验。** 界面改动 = 两档截图（宽 1440 / 窄 412）亲眼看过，而不只是「门禁绿了」；
+  门禁（`pnpm verify`）答的是几何与静态纪律，截图答的是这一屏到底成不成。行为改动 = 真实交互走
+  一遍（点击、按键、点外收场），并在 `tests/` 里留下对应的 spec——台架（`tests/panel-harness.ts`
+  与它产出的工件页面）就是「真实交互」与「静态断言」共用的同一台仪器，别再造第二台。
+- **用了哪些脚本/工具。** 截图用 `scripts/shot-panel.mjs`（见上）；页面工件由测试台架按
+  `DSH_PANEL_HTML`（及 `DSH_PANEL_MOUNT`、`DSH_PANEL_BAND`、`DSH_PANEL_PAGE`、`DSH_PANEL_ROW`
+  等环境变量）产出；门禁各有 `pnpm` 入口（build / typecheck / test / verify / smoke / toc）。
+- **数字与判据要说得出由什么量。** 界面上量出来的数（首屏行数、某条边沿的位置）每次改版面前
+  重测一次，测法与读数写进对应文档——一个没有断言的数字会一直「看起来在被遵守」。
+- **收尾口径。** 任何一次改动交付前：`pnpm build`（`lib/` 与产生它的 `src` 同一次提交）→
+  `pnpm typecheck` → `pnpm test` → `pnpm verify` → `pnpm smoke` 全绿；用户可见改动同步 bump 与
+  对应文档（README 随包发出，改一个字都要 bump）。
 
 ## 硬性规范
 
@@ -634,9 +637,8 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   `file-reference-grammar` / `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
-  全线失败时依然全绿——**「假面比现实宽容」和「假面比现实窄」一样危险**：前者让缺陷隐身，
-  后者把正确的实现报成缺陷。
+  全线失败时依然全绿——**假面比现实宽容或比现实窄同样危险**：前者让缺陷隐身，后者把正确实现报成缺陷。
 - **`task-demand.spec.ts` 钉的是「三处同读一个门」**：`gateOf` / `sessionGateOf` /
   `boardDemandOf` 的每条用例都是一处曾经互相矛盾的表面对；**任何把它退回单条车道的改动
   （加回 `comment === undefined` 过滤）都必须让这里变红**。`session-permission.spec.ts` 同理
-  钉住「权限只读活投影、没有本地副本、选择器里没有取消项」。
+  钉住「权限只读活投影、无本地副本、选择器无取消项」。

@@ -181,7 +181,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
 
   return (
     <div
-      className={css.itemKeyHelpMask}
+      className={css.itemOverlayMask}
       onPointerDown={event => { if (event.target === event.currentTarget) props.onClose() }}
     >
       <div

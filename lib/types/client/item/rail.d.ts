@@ -46,6 +46,9 @@ export interface ItemRailProps {
     readonly month: string;
     readonly daysWithRows: readonly string[];
     readonly today: string;
+    /** The day the reader is looking at, read off the query — the calendar's own
+     *  「you are here」 for the cell, distinct from aria-current (the rail row). */
+    readonly activeDay?: string;
     readonly onPickDay: (day: string) => void;
 }
 export declare function ItemRail(props: ItemRailProps): import("react").JSX.Element;

@@ -5,16 +5,20 @@
  * 这张表的判据是八条视觉宪法。读表先读这八条；每一条都能指到下面某条规则，
  * 指不到的写法不许进来。
  *
- *   1. **三个表面台阶，不多不少。** 页面底 `--item-page`（--dsh-tb-bg）、
- *      卡面 `--item-surface`（--dsh-tb-bg-raised）、浮层 `--item-float`
- *      （--dsh-tb-surface-float）。**卡面绝不写 `background: none`、绝不写
- *      transparent、绝不用 `color-mix(... transparent)`**——一张透明的卡会让
- *      壁纸从正文底下透上来，底下那一行字会压在正文上。
- *   2. **线是卡内唯一的内部分隔手段。** 表格行间距 0，靠一条 1px 发丝线分隔；
- *      **卡内不得出现 `box-shadow`**（只有浮层有，且只有一层 --dsh-tb-shadow-3）。
- *   3. **圆角只用三档 + 药丸**：卡 20（--dsh-tb-radius-lg）、控件 10
- *      （--dsh-tb-radius-sm）、药丸 999（--dsh-tb-pill）。**本面板不用
- *      -radius-md(14) 与 -radius-xl(28)**，也不去动看板那两档的定义。
+ *   1. **三个表面台阶，不多不少。** 画布 `.itemRoot` 直读 --dsh-tb-bg（皮肤下
+ *      可以透，顶栏、左栏与空态都站在这层上）、行卡 `--item-surface`
+ *      （--dsh-tb-bg-raised，不透明）、浮层 `--item-float`（--dsh-tb-surface-float）。
+ *      **卡面绝不写 `background: none`、绝不写 transparent、绝不用
+ *      `color-mix(... transparent)`**——一张透明的卡会让壁纸从正文底下透上来，
+ *      底下那一行字会压在正文上。与看板同律：**画布可透、内层卡不透明**。
+ *   2. **行是卡。** 一行 = 不透明 surface + 发丝边（--item-hair-strong）+
+ *      卡圆角（--dsh-tb-radius-md，与看板的卡同档）+ 一层卡影（--item-card-shadow）；
+ *      卡与卡之间用 gap（--s2），**卡内**的分隔才用线。影子只有两档：卡一层
+ *      --item-card-shadow，浮层一层 --dsh-tb-shadow-3。
+ *   3. **圆角按「件」分档**：内层的件（行卡）读 --dsh-tb-radius-md(14)——看板的
+ *      卡就是这一档，一张卡在面板里要读作「一件东西」而不是又一层面板；面板级
+ *      的大卡（归档页、批量条）读 20（--item-radius-card = --dsh-tb-radius-lg）；
+ *      浮层大纸 28（--dsh-tb-radius-xl）；控件 10（--item-radius-ctl）；药丸 999。
  *   4. **字靠字重分四层，不靠字号堆。** 七档字阶，每一档同时声明
  *      `font-size` 与 `font-weight`——只写字重不写字号的规则，字号由它落到的
  *      那个位置决定，字阶表里就会长出没有的组合。
@@ -23,7 +27,8 @@
  *   6. **墨色只有三层**：--item-ink-1（只有标题）/ --item-ink-2（正文）/
  *      --item-ink-3（次行、表头、占位）。**不出现第 4 个不透明颜色**；禁用态
  *      用 opacity 表达，不用新颜色。
- *   7. **表格紧凑但不散**：行高是定值——两行 72px、单行 56px，**行间距 0**。
+ *   7. **表格紧凑但不散**：行高是定值——两行 72px、单行 56px；行与行之间一档
+ *      gap（--s2），行卡自己的边就是分隔，不再画分隔线。
  *   8. **零装饰**：禁 gradient / text-shadow / 装饰性 filter / emoji。悬停只做
  *      「表面抬一个台阶」，过渡读 --dsh-tb-motion（160ms），不做弹跳、不做缩放。
  *
@@ -160,21 +165,22 @@
 
 /* 几何令牌也声明在 `.itemRoot` 上，**和上面的颜色、圆角同一层**。
  *
- * 它们原本在 `.itemShell` 上，理由是一条机制：`.itemRoot` 就是具名容器
+ * 它们原本在外壳卡上，理由是一条机制：`.itemRoot` 就是具名容器
  * `dsh-tb-item`，而下面那些档位是 `@container dsh-tb-item { … }` 写出来的，
  * **让一个容器在自己的容器查询里改自己的令牌，那条查询永远不能命中它自己写的
  * 规则**。这条理由是对的，但它只管**档位覆盖**，管不到**令牌本身**——自定义属性
- * 是往下继承的，声明在哪一层，这一层及其所有后代都读得到；两个浮层是 `.itemShell`
- * 的**兄弟**，不是它的后代。
+ * 是往下继承的，声明在哪一层，这一层及其所有后代都读得到；两个浮层是外壳的
+ * **兄弟**，不是它的后代。
  *
  * 代价是出图才看得见的那一种：调色板与新建弹层拿不到 `--item-inset`、
- * `--item-card-pad`、`--item-title-lead` 这些几何，于是 `padding: 64px var(--item-inset)`
+ * `--item-card-pad` 这些几何，于是 `padding: 64px var(--item-inset)`
  * 整条作废、弹层贴着视口顶边、字段贴着弹层边缘。**颜色在、圆角在、内衬不在**——
  * 一张看起来有模有样、其实少了一层的弹层。
  *
  * 所以分两层写同一件事：**基础令牌在 `.itemRoot`（所有后代都读得到，含两个浮层）**，
- * **档位覆盖在 `.itemShell`（只有它自己和它的后代读，而它们正是要跟着面板宽度变的那
- * 些）**。浮层的尺寸由视口决定——它本来就浮在面板之外，跟着面板的宽度变才是错的。 */
+ * **档位覆盖在 `.itemWorkbench`（外壳退场后它是唯一的宽度跟随者；只有它自己和它的
+ * 后代读，而它们正是要跟着面板宽度变的那些）**。浮层的尺寸由视口决定——它本来就
+ * 浮在面板之外，跟着面板的宽度变才是错的。 */
 /* ── ONE BOX MODEL FOR THE WHOLE SURFACE ─────────────────────────────────────
  *
  * 这张表原来有二十五条 `box-sizing: border-box`，每条贴在一个组件上——也就是
@@ -216,7 +222,7 @@
   --s3: 22px;
   --s4: 32px;
 
-  --item-inset: 24px;      /* 外壳卡离面板边缘 */
+  --item-inset: 24px;      /* 浮层遮罩离面板边缘的空气 */
   --item-card-pad: 24px;   /* 卡内衬 */
   --item-row-pad: 16px;    /* 行内衬 */
   --item-row-h: 72px;      /* 行高定值：标题 + 副行 */
@@ -233,27 +239,36 @@
    * 见到的那一个——`field-sizing: content` 让框随文字长，可是它没有地板（空内容的
    * 自然高度就是一行），于是「随文字长」在文字还没进来的时候把盒子缩成了一条。 */
   --item-write-floor: calc(4 * 20px + 16px + 2px);
-  /* 行自己的左右内衬，与卡内衬**不是同一档**：行铺满整列，它离面板边缘的距离
-   * 就是卡面离面板边缘的距离，所以它读卡那一档，而不是行内衬那一档。 */
-  --item-inset-x: var(--item-card-pad);
-  /* 标题左沿是一个公式，不是四个手量数：卡内衬 + 行内衬 + 脊点轨 + 沟。
-   * 行的内衬、脊点和沟都在别处各说各的时，节名只能靠记住四个数去对齐——而四个数
-   * 里改掉任何一个，对齐就悄悄错一位。行内展开体已经在行里（行的左右内衬它不再
-   * 付一次），所以它只付脊点轨 + 沟。 */
+  /* 行卡的左右内衬，顶栏与日分段药丸读同一个数（它们要跟行的内容站在同一条
+   * 竖线上），所以它**就是**行内衬那一档——行是卡之后，卡的内衬就是行内衬。
+   * 别名随行内衬的档位走（窄 12、宽 16），一处改档，三处同动。 */
+  --item-inset-x: var(--item-row-pad);
+  /* 行内展开体的左沿只付脊点轨 + 沟：它已经在行卡里，行的左右内衬它不再付一次。 */
   --item-row-lead: 10px;
-  --item-title-lead: calc(var(--item-card-pad) + var(--item-inset-x) + var(--item-row-lead) + var(--s2));
   --item-detail-lead: calc(var(--item-row-lead) + var(--s2));
   /* 芯片的底。**读宿主那个，不是自己挑一个层**——板上的安静控件已经因为自己挑了
    * 一层而在换皮肤时与按钮族分了家（`board.module.css` 里有那一次事故的记录），
    * 同一个错在清单这一侧再犯一次就是两次。 */
-  /* The bead hole is a HOLE IN THE LINE, not a window onto it. The axis lives on
-     the OPEN row, whose own fill is a translucent wash — a transparent hole
-     would show the spine passing through the ring, one bead reading 连着上面、
-     另一颗脱了线. So the hole paints the wash's own OPAQUE COMPOSITE (the very
-     colour the ring's box sits on), and the line enters at the ring and leaves
-     at the ring — the draft's 「珠子不透明，压在线上，断成三段」, stated in
-     tokens so it survives every skin's accent. */
-  --item-bead-hole: color-mix(in srgb, var(--item-surface) 88%, var(--dsh-tb-accent));
+  /* **THE OPEN FILL IS OPAQUE — the fix for 「透明皮肤下展开行的暗底消失」。**
+   *
+   * The open row used to read `--dsh-tb-open` = `color-mix(accent 12%, transparent)`
+   * — translucent IN THE TOKEN ITSELF. On the host's own opaque canvas that is
+   * indistinguishable from the intended tint; under a glass skin the canvas is the
+   * wallpaper, so the open row's fill washed out to nothing — the same disease the
+   * board's The Opaque Inner Rule names, on this panel's last translucent inner
+   * surface. The fix is the same move the bead hole already made: compose the tint
+   * from OPAQUE ingredients, so no skin can thin it.
+   *
+   * `88 / 12` is the old 12%-accent wash, restated opaque: over a white card the
+   * two land on the same colour, so the look does not shift while the guarantee
+   * does.
+   *
+   * THE BEAD HOLE READS THIS TOKEN NOW, not a second formula: the hole is a hole
+   * in the axis line ON the open row, so what shows through it must be EXACTLY
+   * the row's own fill — two formulas for one colour is one drift away from the
+   * spine showing through a ring again. */
+  --item-open: color-mix(in srgb, var(--item-surface) 88%, var(--dsh-tb-accent));
+  --item-bead-hole: var(--item-open);
 
   --item-fill: var(--dsh-tb-chip-fill);
 }
@@ -290,11 +305,11 @@
   font-family: inherit;
 }
 
-/* ── 2. 舞台与外壳卡 ─────────────────────────────────────────────────────── */
+/* ── 2. 舞台 ─────────────────────────────────────────────────────────────── */
 
 /* 舞台不画任何背景：它是宿主交给面板的那个盒子，页面底由 `.itemRoot` 画。
  *
- * **它是这一页唯一的定位上下文。** 两个遮罩（命令面板、新建面板与键位表）是
+ * **它是这一页唯一的定位上下文。** 两个遮罩（命令面板与新建面板）是
  * `position: absolute; inset: 0`，于是「居中于面板」这句话有一个落点：`inset: 0`
  * 解析到**这个盒子**的内衬盒，而不是视口。少了这一行，它们解析到初始包含块——
  * 也就是整个浏览器窗口——一个只属于面板的浮层就会浮在侧栏上面。
@@ -312,29 +327,14 @@
   min-block-size: 0;
 }
 
-/* 外壳卡：离边缘 --item-inset，圆角 20，**没有描边**，不透明卡面，内衬 24。
+/* **外壳卡退场了。** 它曾是「离边缘 --item-inset、圆角 20、不透明卡面、内衬 24」的
+ * 一整张卡——现在面板直接坐在画布上（`.itemRoot` 的画布令牌在皮肤下透出去），
+ * 「这一页浮在画布上」这件事由**行卡自己**说：每行一张卡，看板同律。外壳剩下的
+ * 两个职责各归各位：画布空气给 `.itemWorkbench` 的 `padding-inline`，卡面给行。
+ * 顶栏、左栏、空态因此站画布——它们原来是卡的内衬层上的内容，现在是玻璃上的字。
  *
- * **描边被拿掉了，而投影留着。** 两者说同一件事——「这一页浮在画布上」——而它们在
- * 亮色下做的力气不一样：投影读作「浮起来」，描边读作「被框住」。一个面板被框住的
- * 时候，里面每一条线、每一枚芯片的边都变成了「框里又一层框」，读到的是网格而不是
- * 内容。你说的「感觉被不停地框起来」就是这一条。
- *
- * 而亮色下宿主的三层背景相等，所以**投影是唯一分得出前后的东西**；暗色下颜色自己
- * 已经分出一步，投影退化成第二重。理由见令牌层那段注释。 */
-.itemShell {
-  display: flex;
-  flex-direction: column;
-  gap: var(--item-gap);
-  flex: 1 1 auto;
-  min-block-size: 0;
-  min-inline-size: 0;
-  margin-inline: var(--item-inset);
-  padding: var(--item-card-pad);
-  background: var(--item-surface);
-  border: 0;
-  border-radius: var(--item-radius-card);
-  box-shadow: var(--item-card-shadow);
-}
+ * （描边早一步走了：投影读作「浮起来」、描边读作「被框住」，一个面板被框住的时候
+ * 里面每一条线都变成「框里又一层框」——那条理由现在适用于整张外壳。） */
 
 /* ── 6. 工作台 = 左栏 + 行流 ────────────────────────────────────────────────
  *
@@ -367,6 +367,12 @@
   flex: 1 1 auto;
   min-block-size: 0;
   min-inline-size: 0;
+  /* **画布空气在这里，不在每一行上。** 外壳退场之后，这一页的东西离面板边缘的
+   * 距离由工作台自己给出：左栏与列表列各得同一档 10px 的边——与看板「板根自己
+   * 出边」是同一条律（`.board` 的 `padding`）。行卡在列里满宽站立，卡与卡之间
+   * 的 gap 说「这是两张卡」；行卡的内衬（--item-inset-x）只管卡**里面**的字离
+   * 卡边多远，不再兼任页边。 */
+  padding-inline: var(--s2);
 }
 
 /* ── 顶栏：搜索 · 排序 · ＋新建一条 ───────────────────────────────────────────
@@ -384,17 +390,13 @@
   gap: var(--s2);
   flex: none;
   min-block-size: 56px;
-  /* **顶栏的左沿与它下面那些行的左沿是同一条。**
-   *
-   * 这一条原来写着「横向上没有内衬，因为主列已经在卡的内衬里面了」——那句话是对的，
-   * 而它推出的结论是错的：顶栏站在卡的**内容盒**左沿上，而每一行还有自己的
-   * `--item-inset-x`，所以那个数比它下面每一颗珠子**左 24px**。屏幕上是「共 12 条」
-   * 顶在最左边，而它数的那些内容整体往右缩了一格——一个标签和它标的东西对不齐，
-   * 而两者说的是同一件事。
-   *
-   * 对齐的解法是**让顶栏读同一把尺子**，不是让行少一层内衬：行的内衬撑着行的底色与
-   * 圆角，去掉它行就变成通栏的一条带。所以顶栏补上 `--item-inset-x`，与珠子、与日期
-   * 分段那枚药丸落在同一条竖线上。 */
+  /* **顶栏的上下空气是一条律，两档同读。** 宽档它只是 56px 带子里的居中余量
+   * （视觉不变），窄档折成两行时它就是两行上下各一档的气口——原来窄档各写一份、
+   * 宽档没有，同一条带子两档两种说法。 */
+  padding-block: var(--s2);
+  /* **顶栏的左沿与它下面那些行的左沿是同一条。** 它读 `--item-inset-x`，而那个
+   * 别名现在就是行内衬（行是卡之后，卡的内衬即行内衬）——「共 12 条」、日分段
+   * 那枚药丸与每一行的珠子落在同一条竖线上，且随行内衬的档位一起动。 */
   padding-inline: var(--item-inset-x);
 }
 
@@ -410,6 +412,9 @@
   color: var(--item-ink-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  /* 光学居中，同一条律：它在顶栏的 flex 里垂直居中，底部内衬 2px 把字形抬回
+   * 盒心（内衬不改命中区——它本来也没有命中区）。 */
+  padding-block-end: calc(2 * var(--item-optical-lift));
 }
 /* 这一处**只有一个** `.itemSearch`。
  *
@@ -432,7 +437,8 @@
    * 边**的地方。宽度有上限，剩下的空间由顶栏两端自己占——那才是「对齐」。 */
   max-inline-size: 280px;
   block-size: 32px;
-  padding: 0 12px;
+  padding-block: 0 calc(2 * var(--item-optical-lift));
+  padding-inline: 12px;
   font-family: inherit;
   font-size: 13px;
   color: var(--item-ink-1);
@@ -488,7 +494,8 @@
   justify-content: center;
   flex: none;
   block-size: 32px;
-  padding: 0 var(--s2);
+  padding-block: 0 calc(2 * var(--item-optical-lift));
+  padding-inline: var(--s2);
   font-family: inherit;
   font-size: 13px;
   font-weight: 400;
@@ -496,6 +503,10 @@
   white-space: nowrap;
   border-radius: var(--item-radius-pill);
   cursor: pointer;
+  /* **光学居中，与 `.itemPill` 同一条定律。** 量出来的：32px 的盒里 13px 的中文字形
+   * 墨心比盒心低约 1.4px。flex 居中没法只挪匿名的那段文字，所以挪的是**内容盒**：
+   * 底部内衬 2px 把居中点抬回 1px（lift = 内衬的一半），命中区一毫米不动——内衬，
+   * 不是位移。 */
 }
 
 .itemTopBarChip {
@@ -510,12 +521,20 @@
   color: var(--item-ink-1);
 }
 
-/* 开着的那一枚说它开着：展开的（排序）与按下的（多选）共用这条描边——它们是同一
- * 个问题「这个模式现在是开的吗」的两问，所以同一形状回答。 */
+/* 开着的那一枚说它开着：展开的（排序）与按下的（多选/隐藏已完成）是**实墨药丸**
+ * ——ink-1 底 + 落在 fill 上的字。这是这一页最响的一档：读者按下去的模式，在它
+ * 开着的时候不该靠一根描边让人想起。排序那枚里面的两半字色跟着换（label 与 value
+ * 都落在 fill 上）。 */
 .itemTopBarChip[aria-expanded='true'],
 .itemTopBarChip[aria-pressed='true'] {
-  border-color: var(--dsh-tb-focus-color);
-  color: var(--item-ink-1);
+  background: var(--item-ink-1);
+  border-color: var(--item-ink-1);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+.itemTopBarChip[aria-expanded='true'] > .itemTopBarLabel,
+.itemTopBarChip[aria-expanded='true'] > .itemTopBarValue {
+  color: var(--dsw-alias-label-primary-foreground);
 }
 
 /* 排序那一枚是**一枚药丸上的一句话**：前半是问，后半是答，而且**问小答大**。
@@ -551,9 +570,10 @@
 }
 
 /* 搜索框的字落在内容盒顶端，`align-items` 对它无效；`line-height` 等于内容盒高
- * 才是输入框真正的居中手段。 */
+ * （32 减两侧描边、再减光学内衬 2px = 28）才是输入框真正的居中手段——光学内衬
+ * 与药丸族同一条律。 */
 .itemSearch {
-  line-height: 30px;
+  line-height: 28px;
 }
 
 /* 展开的面**在带子底下**，不在浮层里遮着行。一个把结果挡住一半的筛选器，会让
@@ -563,18 +583,16 @@
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s1);
-  padding: 0 var(--item-card-pad) var(--s3);
+  padding: 0 var(--item-inset-x) var(--s3);
 }
 
 @container dsh-tb-item (max-width: 880px) {
   .itemTopBar {
     flex-wrap: wrap;
-    /* 窄档折成两行之后，内容**上下**要气口：搜索那行贴着日程条的下边界、工具那行
-     * 贴着表卡的上边，两处都不再有白的。这一行的上下各一档 --s2，两行之间再一档
-     * ——都是刻度上的数，不是看心情写的。 */
-    padding-block: var(--s2);
+    /* 折行之后两行之间一档气口。上下的空气与左右的对齐都读基础规则里那一条律
+     * （padding-block: --s2、padding-inline: --item-inset-x），这里不再各说一份
+     * ——同一件事的第二份声明，会在下一次改档时悄悄分家。 */
     row-gap: var(--s2);
-    padding-inline: var(--item-row-pad);
   }
 
 .itemSearch {
@@ -611,11 +629,20 @@
 .itemFlow {
   display: flex;
   flex-direction: column;
+  gap: var(--s2);
   flex: 1 1 auto;
   min-block-size: 0;
   overflow-y: auto;
   overflow-x: hidden;
   overscroll-behavior: contain;
+  /* 滚动体的上下空气在这里，不在表骨架上：外壳退场之后，这是第一行内容与顶栏
+   * 之间、最后一行内容与面板下缘之间唯一的一层。它随内容一起滚（上面的空气
+   * 滚走、下面的空气滚到），读起来是「内容从带子下面进场」。
+   *
+   * 子项之间一档 gap：批量条（滚动体里的一张浮层卡）与它下面的第一枚日分段
+   * 药丸之间原来只剩表卡的内衬——内衬搬走后那条缝塌了，批量条的投影直接压在
+   * 药丸上。 */
+  padding-block: var(--item-card-pad);
 }
 
 /* ── 6.1 左栏 ──────────────────────────────────────────────────────────────
@@ -642,7 +669,9 @@
    * 它滚自己那份，列表滚自己那份，两块互不牵动。 */
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: var(--s3) 0;
+  /* 左右各一档 --s2：外壳退场后，左栏在画布上的空气由工作台与栏自己两层给出
+   * ——月题与数字不再贴着玻璃边。 */
+  padding: var(--s3) var(--s2);
 }
 
 /* **左栏与列表之间没有线。** 两栏之间的分界由**空气**说：左栏那一列与列表那一列之间
@@ -660,15 +689,31 @@
 
 /* 月份是这块日历的**标题**：它站在冻结字阶的大字档上（26/700，这一档的字重就是
  * 700）——日历的题头与 12px 的日子数字之间要有一整档的主次，15px 的「标题」与
- * 12px 的数字只差一档灰阶，读者分不出谁是主。对齐对象是下面的七列格子：居中，
- * 标题与网格互相照见。 */
+ * 12px 的数字只差一档灰阶，读者分不出谁是主。左对齐，对齐对象是下面七列格子的
+ * 左缘：标题与网格互相照见的方式是**站在同一条左线上**，不是各自居中——居中的
+ * 月题悬在七个数字上方，谁也不照谁。 */
 .itemRailMonth {
   font-size: 26px;
   line-height: 32px;
   font-weight: 700;
   color: var(--item-ink-1);
-  text-align: center;
-  margin-block-end: var(--s2);
+  text-align: left;
+}
+
+/* 月题下的刻度线：一条细线带两端刻。块高 6，块内线在 5——两个端刻从 1 到 5。
+ * preserveAspectRatio=none 让线随栏宽伸缩，vector-effect 把笔画钉在 1px。 */
+.itemRailScale {
+  display: block;
+  inline-size: 100%;
+  block-size: 6px;
+  margin-block-end: var(--s3);
+  color: var(--item-ink-3);
+}
+
+.itemRailScale path {
+  fill: none;
+  stroke: currentColor;
+  vector-effect: non-scaling-stroke;
 }
 
 .itemRailMonthGrid {
@@ -721,6 +766,19 @@
 
 .itemRailDay:hover {
   background: var(--dsh-tb-hover);
+}
+
+/* 被选中的那天：一枚墨环（inset 1px，环在格子自己的框里，不碰邻格）。墨环与
+ * 「今天」的实药丸双律分明：药丸是日历事实（accent，永远在），环是读者的选择
+ * （墨，按了才有）——一个「这天是今天」，一个「我在看这天」。 */
+.itemRailDay[data-picked] {
+  box-shadow: inset 0 0 0 1px var(--item-ink-1);
+}
+
+.itemRailDay[data-picked] .itemRailDayNum {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--item-ink-1);
 }
 
 /* **今天是那颗药丸，所以今天没有点。** 一格上放两个记号，就是多了一个。而药丸
@@ -928,7 +986,7 @@
     overflow-x: auto;
     overflow-y: hidden;
     scrollbar-width: none;
-    padding: var(--s2) var(--item-card-pad);
+    padding: var(--s2) var(--item-inset-x);
     border-inline-end: 0;
     border-block-end: var(--item-hair);
   }
@@ -955,51 +1013,32 @@
     min-block-size: 30px;
   }
 }
-/* ── 7. 表卡 ─────────────────────────────────────────────────────────────── */
+/* ── 7. 表骨架 ───────────────────────────────────────────────────────────── */
 
-/* 表卡与详情卡是同一种零件：不透明卡面 + 1px 线 + 圆角 20 + 内衬 24。
- * `overflow: clip` 而不是 `hidden`：clip 裁切但不建立滚动容器，所以这张卡**不是**
- * 滚动体——真正的滚动体是它外面的 `.itemFlow`。 */
+/* **表卡退场，留下骨架。** 行自己就是卡（不透明面 + 发丝边 + 卡圆角 + 一层卡影），
+ * 这一层不再画任何面：它只管滚动几何——「长大，但永不收缩」。
+ *
+ * 原来它还是一张卡（不透明面 + 线 + 圆角 20 + 内衬 24），于是清单页、日程页的每一节
+ * 都各自叠出一面白墙，透明皮肤下与画布一起糊成一片；行成卡之后，三页的行是同一个
+ * 零件，这一层退成透明的分组骨架。
+ *
+ * 空气也各归各位：上下空气在 `.itemFlow`（它随内容滚）；横向从来不归这一层——
+ * 行卡的内衬与工作台的画布空气已经把左右说完了。 */
 .itemTable {
   display: flex;
   flex-direction: column;
   /* **长大，但永不收缩。** 两个要求同时成立，而它们各要一样东西：
    *
-   *   `flex-grow: 1`  短列表时卡自己撑满那一列。少了它，卡只有内容那么高，列的余下
-   *                   部分是一片空白——外面是「一个洞」，里面是「一张表，底下还有
-   *                   空位」，后者有边有圆角有投影，读起来是设计。
-   *   `flex-shrink: 0` 长列表时卡**保持内容高度**，于是它比 `.itemFlow` 高，`.itemFlow`
-   *                   的内容真的溢出、`overflow-y: auto` 真的滚起来。
+   *   `flex-grow: 1`  短列表时骨架自己撑满那一列。少了它，列的余下部分悬空，
+   *                   空态下面的空白读不出「这一页到头了」。
+   *   `flex-shrink: 0` 长列表时骨架**保持内容高度**，于是它比 `.itemFlow` 高，
+   *                   `.itemFlow` 的内容真的溢出、`overflow-y: auto` 真的滚起来。
    *
-   * `flex: 1 1 auto` 只满足第一条：可收缩意味着长列表里这张卡被压到滚动体的高度，
-   * 它自己的 `overflow: clip` 把多出来的行吞掉，而**滚动体看到的内容永远刚好装得下，
-   * 于是永远不滚**——读者够不到最后几行，屏幕上没有一处说这件事，滚动条也不出现。
-   * 收缩在这里不是省地方，是**把要滚的那部分藏起来**。 */
+   * `flex: 1 1 auto` 只满足第一条：可收缩意味着长列表里这一层被压到滚动体的高度，
+   * 而收缩会把要滚的那部分藏起来——读者够不到最后几行，屏幕上没有一处说这件事。 */
   flex: 1 0 auto;
   min-block-size: 0;
   min-inline-size: 0;
-  /* **横向内衬为零：这一层和行的那一层是同一件事，留一层就够。**
-   *
-   * 一张卡的左右内衬做的事，是把内容从卡的边上推进来；而每一行自己已经写着
-   * `--item-inset-x`（同一个数）在做同一件事——行的内衬还必须留着，因为它撑着这一行
-   * 的底色与圆角（悬停、展开、选中都在它上面画一块圆角的底色，内衬为零那块底色就变成
-   * 从卡边到卡边的一条通栏带）。
-   *
-   * 两层都留着的时候，屏幕上的结果是**每一边白花了 24px**：412 的面板上，面板边到第一
-   * 颗珠子之间有 8 + 24 + 25 + 24 = 81px，其中 49px 是两层内衬与一条边。而且它同时
-   * 制造了一处**永远对不齐**：顶栏在这一列里、却在卡的**外面**，所以它读卡的内衬读不到
-   * 行的内衬——那个「共 12 条」比它数的那颗珠子左 25px，一个标签和它标的东西差了一格。
-   *
-   * 纵向的内衬留着：行自己的上下内衬是给行内排版用的，卡还需要一层自己的上下空气，
-   * 否则第一行与最后一行会贴着卡的上下边（而那是这张卡「有边」这件事的读法）。 */
-  padding: var(--item-card-pad) 0;
-  background: var(--item-surface);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-card);
-  overflow: clip;
-  /* 亮色下三层背景相等，这道投影是「这张卡浮在外壳卡上」的唯一证据（理由见
-   * 令牌层那段）。浮层那一层用的是更重的 `--dsh-tb-shadow-3`。 */
-  box-shadow: var(--item-card-shadow);
 }
 
 /* ── 表头，连同它解决的问题，一起没了 ────────────────────────────────────────
@@ -1085,10 +1124,14 @@
 .itemTableBody {
   display: flex;
   flex-direction: column;
+  /* 行与行之间一档 gap（--s2）：两张卡之间自己的空气，取代原来画在行下缘的
+   * 发丝线。日分段药丸自己的上下空气（--s3 / --s1）在这一档之上继续存在，
+   * 于是「节与节」仍比「卡与卡」大一一档。 */
+  gap: var(--s2);
   min-inline-size: 0;
 }
 
-/* ── 7.1 一行 = 四列，而第四列就是 ⋮ ────────────────────────────────────────
+/* ── 7.1 一行 = 一张卡，卡里四列，第四列就是 ⋮ ────────────────────────────────
  *
  * 原来是七列表格行，⋮ 在最后一列、紧挨着一列固定宽的勾选框。其中两列（标签与
  * 操作）按内容宽度撑开，于是 ⋮ 停在它们碰巧结束的地方：一条标签的行贴右，三条
@@ -1096,10 +1139,14 @@
  * flex 行里没有任何东西说「我是最后一列」。网格会说，一次，对每一行、每一档宽度
  * 都一样；窄屏要让标签换到第二行时，改的是**标签**那一条声明，⋮ 不动。
  *
- * 一行的底色仍然只有一条：分隔线。没有卡、没有阴影、没有行间距——同一页上，
- * 「线」和「框」是两种东西，用同一种画法的代价就是其中一种彻底看不见。
+ * **行是卡，与看板同律。** 不透明 surface + 一条发丝边（--item-hair-strong，卡是
+ * 一个物件，边是它的沿）+ 卡圆角（--dsh-tb-radius-md，看板的卡就是这一档——一张
+ * 卡在面板里要读作「一件东西」，不是又一层面板）+ 一层卡影（--item-card-shadow：
+ * 亮色下宿主三层背景相等，影是「浮在画布上」的唯一证据；暗色下颜色已经分出一步，
+ * 影是第二重）。行与行之间是 gap 不是线——原来画在行下缘的发丝线退场：两张卡
+ * 之间不需要第三样东西再说一遍「这里分开了」。
  *
- * 圆角写在**基础规则**上而不是写在每一个状态里：行身上会画的底色有几种（展开、
+ * 圆角与边写在**基础规则**上而不是写在每一个状态里：行身上会画的底色有几种（展开、
  * 在你手里），它们必须是**同一个形状**。形状漏写在一处，那一处就在同一行上换一次角
  * ——而漏写不会报错，只会看起来「哪里不太对」。 */
 .itemRow {
@@ -1127,33 +1174,18 @@
    * 那口气加在它身上了。给一列里的每一行加同样的空气，列才读得成一条线。 */
   padding: var(--s2) var(--item-inset-x);
   position: relative;
-  border-radius: var(--item-radius-ctl);
   background: var(--item-surface);
+  border: var(--item-hair-strong);
+  border-radius: var(--dsh-tb-radius-md);
+  box-shadow: var(--item-card-shadow);
   cursor: pointer;
-  transition: background var(--dsh-tb-motion);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
 
-/* **行的分隔线是画出来的，不是行的下边框。**
- *
- * 挂成 `border-block-end` 时，它会跟着上面那一条 `border-radius` 一起弯——1px 的线在
- * 两端各翘起一小段弧，于是「一行结束了」在屏幕上读成「这里有个圆角盒子」，而那个盒子
- * 并不存在。**一条线的形状由它要说的那件事决定**：它分开的是上下两行，所以它必须直。
- *
- * 所以它搬进 `::after`：一个 1px 高、通宽的色块，落在行的下边缘。行的圆角留给底色本身，
- * 两者各管各的，谁也改不了谁的形状。 */
-.itemRow::after {
-  content: '';
-  position: absolute;
-  inset-block-end: 0;
-  inset-inline: 0;
-  block-size: 1px;
-  background-color: var(--item-hair-color);
-}
-
-/* 最后一行底下没有下一行可分开。 */
-.itemRow:last-child::after {
-  display: none;
-}
+/* **分隔线族随表卡一起退场。** 原来行下缘有一条 `::after` 画的 1px 线（它不挂在
+ * `border-block-end` 上，是因为 border 会跟着圆角在两端翘起小弧）——行成卡之后，
+ * 卡与卡之间是 gap，卡自己的边框就是沿；一张卡的下缘不再需要一条线说「我结束了」，
+ * 那是边框的工作，而且它干得比那条画出来的线好。 */
 
 /* ── 一行的四种「在这里」，各自有各自的表达 ────────────────────────────────
  *
@@ -1206,7 +1238,7 @@
 
 
 .itemRow[data-open] {
-  background: var(--dsh-tb-open);
+  background: var(--item-open);
 }
 
 .itemRow[data-picked] {
@@ -1478,6 +1510,7 @@
   font-weight: 600;
   font-style: normal;
   line-height: 1.2;
+  font-variant-numeric: tabular-nums;
   color: var(--item-ink-3);
   background: none;
   border: var(--item-hair);
@@ -1513,6 +1546,15 @@
 .itemPrioChip[data-tone='low'] {
   color: var(--item-ink-3);
   border-color: var(--item-hair);
+}
+
+/* 选中的那枚：描边进墨，外圈再画一枚 2px 墨环——环与芯片之间留 2px 空气，所以
+ * `!1` 的黑实心上环也读得出来。墨，不花 accent：这是「你选了它」的印记，不是关于
+ * 工作的事实。 */
+.itemPrioChip[data-on] {
+  border-color: var(--item-ink-1);
+  outline: 2px solid var(--item-ink-1);
+  outline-offset: 2px;
 }
 
 /* ── 菜单里的一行：句子 + 理由 ───────────────────────────────────────────────
@@ -2142,7 +2184,7 @@
 .itemCommandPaletteBox > .itemSearch,
 .itemCommandPaletteBox > .itemQueryChips,
 .itemCommandPaletteBox > .itemPaletteFoot,
-.itemCommandPaletteBox > .itemKeyHelpNothing {
+.itemCommandPaletteBox > .itemPaletteNothing {
   flex: none;
   margin: 0;
 }
@@ -2649,40 +2691,29 @@ textarea.itemInput {
   --item-agenda-lead: 0px;
   display: flex;
   flex-direction: column;
+  /* 节与节之间是一整档空气（22）：一节的行卡与下一节的题头之间有了自己的一拍，
+   * 空日子摘要也站进同一个拍子里——不再与节头挤成两行头。 */
+  gap: var(--s3);
   min-inline-size: 0;
 }
 
 .itemAgendaDay {
   display: flex;
   flex-direction: column;
+  /* 题头与它的行之间一档 --s2：一行头与第一张卡之间的空气，原来由两行头的
+   * 内衬承担——一行化之后这一拍归节的骨架说。 */
+  gap: var(--s2);
   min-inline-size: 0;
 }
 
-/* 日子读法是这一节的**题头**：这一页的主声部。墨提到第一档——它在 15/600 的行
- * 标题之下、在 11px 的节名之上，字阶与墨阶一起给出「天 > 名字 > 行」的梯子；
- * 线在它下面，标着「这一节的行从这里开始」。 */
-.itemAgendaDayLabel {
-  display: flex;
-  align-items: baseline;
-  gap: var(--s2);
-  min-inline-size: 0;
-  margin: 0;
-  padding-block: var(--s2) var(--s1);
-  padding-inline-start: var(--item-agenda-lead);
-  border-block-end: var(--item-hair);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-  color: var(--item-ink-1);
-}
+/* 日子读法**跟着节名站在同一行里**（日程页的一行节头），它自己的那一行与
+ * 行下的线随两行头一起退场——线在行下，由「节与节之间的空气」与行卡自己的
+ * 边把结构说完。 */
 
 .itemAgendaList {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  /* 节与节之间是一整档空气（22）：上一张卡的脚与下一节的名之间有了自己的
-   * 一拍，密集的小字不再贴着卡。 */
-  padding-block-end: var(--s3);
 }
 
 /* 「还没到开始时间」是唯一的折叠区：它是一扇还没开的门，把它画成一个日子
@@ -2690,6 +2721,7 @@ textarea.itemInput {
 .itemGatedFold {
   display: flex;
   flex-direction: column;
+  gap: var(--s2);
   min-inline-size: 0;
 }
 
@@ -2720,8 +2752,8 @@ textarea.itemInput {
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
-  padding-block-start: var(--s2);
-  padding-block-end: var(--s3);
+  /* 空气归节的骨架（gap）：门内的列表不再自带上下内衬——上下各一档 gap 已由
+   * 节与节之间的拍子给出，两份声明会双倍出气。 */
 }
 
 /* 「没有日期」是一个有名字的容器，因为看不见自己去了哪里的读者会以为那一行
@@ -2729,6 +2761,7 @@ textarea.itemInput {
 .itemNoDateTray {
   display: flex;
   flex-direction: column;
+  gap: var(--s2);
   min-inline-size: 0;
 }
 
@@ -2756,14 +2789,15 @@ textarea.itemInput {
  * 同样。门禁 `verify-design-docs` 逐个点名。
  *
  * 每一族的形状都已经由它旁边那个零件定下来了，所以这里**不发明几何，只把它们接上**：
- * 弹层与键位表共用同一个浮层零件（`.itemKeyHelpMask`），差别只在里面排的是什么。 */
+ * 新建弹层与命令面板是仅有的两个带遮罩的浮层，遮罩是同一个零件（`.itemOverlayMask`），
+ * 差别只在里面排的是什么。 */
 
 /* 新建对话框：**左边一大片写，右边一列属性**，与参考工作台的 New Project 弹层
  * 同一形状——主体是那一段话，属性是那一行的开关，所以两栏的比例是 `1fr / 260px`：
  * 左边拿剩下的，右边只够放字段名和它的值。
  *
  * 内衬用 `--item-card-pad`（24）而不是控件档的 16：弹层是这一页最大的一张纸，它的
- * 内衬要与外壳卡同一个数，而控件档是给一个输入框的。 */
+ * 内衬用页面自己的「卡内衬」那一档，而控件档是给一个输入框的。 */
 /* ── 新建面板：一张纸，头与底不动，中间那一块滚 ──────────────────────────
  *
  * **只有一块滚动体。** 头与底固定，中间在它们下面滚，于是读者正要按的那个按钮永远
@@ -3322,7 +3356,9 @@ textarea.itemInput {
 .itemOpts {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--s1);
+  /* 一档 --s2：选中芯片的外圈墨环（环 2px + 空气 2px）要在这条沟里放得下，
+   * 环不碰邻居的边。 */
+  gap: var(--s2);
   min-inline-size: 0;
 }
 
@@ -3334,6 +3370,14 @@ textarea.itemInput {
 }
 
 .itemOpt {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* **宽度地板 + 表格数字：一枚「值」药丸不管选中与否同宽。** 选中态只换面
+   * 不换宽（下面那枚规则不再抬字重），比例数字走 tabular——`!1` 与 `!2` 一样宽，
+   * 30px 是详情四枚芯片的同一个地板，两处一个词汇。 */
+  min-inline-size: 30px;
+  font-variant-numeric: tabular-nums;
   padding: 3px 9px;
   font-size: 12px;
   font-weight: 400;
@@ -3343,12 +3387,12 @@ textarea.itemInput {
   border-radius: var(--item-radius-pill);
 }
 
+/* 选中只换面：面（fill）与沿（描边进一档墨）说「是你」，字重不再参与——字重一变
+ * 药丸就变宽，同排的四枚在读的时候会跳。 */
 .itemOpt[data-on] {
-  font-size: 12px;
-  font-weight: 600;
   color: var(--item-ink-1);
   background: var(--item-fill);
-  border-color: var(--item-ink-3);
+  border-color: var(--item-ink-1);
 }
 
 /* ── 一个控件对指针的反应，一处说清 ────────────────────────────────────────
@@ -3368,27 +3412,54 @@ textarea.itemInput {
 .itemOpt:hover,
 .itemTag:hover,
 .itemPill:hover,
-.itemKeyHelpTrigger:hover,
+.itemPrioChip:hover,
 .itemFacetChip:hover,
 .itemTopBarChip:hover,
 .itemArchiveToggle:hover,
-.itemRailRow:hover {
+.itemRailRow:hover,
+.itemRailDay:hover {
   background: var(--item-fill);
   border-color: var(--item-ink-3);
   color: var(--item-ink-1);
 }
 
 /* 按下去的那一拍：触屏没有 hover，按是唯一的反馈；桌面上的按也是同一句
- * 「真的按了」。按下的一拍用悬停同族的浅底，不再另立一档。 */
+ * 「真的按了」。按下的一拍用悬停同族的浅底，再加一格收缩——一格，不是弹跳；
+ * 在 reduced-motion 下只慢，不消失。 */
 .itemOpt:active,
 .itemTag:active,
 .itemPill:active,
-.itemKeyHelpTrigger:active,
+.itemPrioChip:active,
 .itemFacetChip:active,
 .itemTopBarChip:active,
+.itemNewButton:active,
 .itemArchiveToggle:active,
-.itemRailRow:active {
+.itemRailRow:active,
+.itemRailDay:active {
   background: var(--item-fill);
+  transform: scale(0.97);
+}
+
+/* 按着的那个模式，hover 与按下都不许把它洗回去：家族的浅底说「你指着它」，
+ * 实墨说「它开着」——两句话撞在一枚芯片上时，实墨必须赢（这两条写在家族之后
+ * 正是为了这个次序）。 */
+.itemTopBarChip[aria-pressed='true']:hover,
+.itemTopBarChip[aria-expanded='true']:hover,
+.itemTopBarChip[aria-pressed='true']:active,
+.itemTopBarChip[aria-expanded='true']:active {
+  background: var(--item-ink-1);
+  border-color: var(--item-ink-1);
+  color: var(--dsw-alias-label-primary-foreground);
+}
+
+/* 就地可写的两处，按下的一拍：写入示意线与提示词各自进一档墨——触屏上按是
+ * 唯一的反馈，这一拍不能缺席。 */
+.itemWritePrompt:active {
+  color: var(--item-ink-1);
+}
+
+.itemDateOpen:active > span {
+  text-decoration-color: var(--item-ink-1);
 }
 
 /* **输入框的悬停是描边进一档，不是抬表面。** 一个能打字的地方在指针经过时该说
@@ -3679,6 +3750,13 @@ textarea.itemInput {
   border-color: var(--dsh-tb-danger);
 }
 
+/* 硬期限没定日子的一颗：**淡红环**——「这一行挂着最后期限」常态可见，不等到它
+ * 有日子或超了才亮。55% 危险色往孔色里合成：环读得出是最后期限的墨，不出满档的
+ * 喊（满红环 = 有日子未超，实心红 = 超了；淡红环只是「这里有一把」）。 */
+.itemDateAxis li[data-key='hardDueAt'][data-tone='none'] > i {
+  border-color: color-mix(in srgb, var(--dsh-tb-danger) 55%, var(--item-bead-hole));
+}
+
 /* The NAME keeps the label's own ink even when the reading is red: the name is
  * 「硬期限」 on every row, and a name that changes colour says the field changed. */
 .itemDateAxis li[data-tone='over'] > b {
@@ -3796,18 +3874,24 @@ textarea.itemInput {
   }
 }
 
-/* 议程页的节名：与页轨同一套（名字 + 6px 沟 + 第三层墨的数），站在这一页唯一的
- * 左沿上——与下面的日子读法、与行为内衬同一条线。 */
+/* 议程页的节头：**一行**——节名（15/600，与行标题同一档字阶）、它的条数（13 的
+ * 铭牌）、日节的日期读法（13 的注脚）。曾经是两行两个题头；一行说完。 */
 .itemAgendaDayHead {
   display: inline-flex;
   align-items: baseline;
   gap: var(--s1);
   margin: 0;
   padding-inline-start: var(--item-agenda-lead);
-  font-size: 11px;
+  font-size: 15px;
   font-weight: 600;
-  line-height: 16px;
-  letter-spacing: 0.02em;
+  line-height: 22px;
+  color: var(--item-ink-1);
+}
+
+.itemAgendaDayDate {
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
   color: var(--item-ink-3);
 }
 
@@ -3963,7 +4047,7 @@ textarea.itemInput {
 /* **这一节把两件事分开，因为它们量的是两个盒子。**
  *
  *   · **面板档（`dsh-tb-item`）** 量的是整个面板：工作台是一列还是两列、
- *     外壳卡离边缘多远、卡内衬多少。判据是面板自己的宽度，720 与 **1081**
+ *     列离面板边缘多远、卡内衬多少。判据是面板自己的宽度，720 与 **1081**
  *     两条线——1081 不是 1080，因为 JS 侧 `useSurfaceNarrow` 读
  *     `width <= 1080` 为窄，两边对同一条界线给两个答案的那一像素叫「接缝」。
  *   · **行的形状（`dsh-tb-item-list`）** 量的是**清单列自己**：一张表在它自己
@@ -3978,18 +4062,8 @@ textarea.itemInput {
  * 所以形状只看行自己有多少像素：装得下六条定值轨 + 标题地板 + 六条沟就走表，
  * 装不下就走一条**可换行的线**。表头跟着形状走——没有列可对齐的表头是噪音。 */
 
-/* 基准档（手机）：面板自己的空气收到最小，表头让位。 */
-.itemShell {
-  /* **`--item-inset` 是「卡离面板边缘」，而它是这一页唯一可以很小的一档。**
-   *
-   * 它原来在三个档里是 16 / 20 / 24，而卡自己的内衬（`--item-card-pad`）是同样的
-   * 16 / 20 / 24——于是每一边的空气是两层相加：宽的 48px、手机 32px。**两层内衬各自
-   * 都合法，合起来就是内容被推到了中间**：412 的面板上，左右各 32px 等于把 15% 的
-   * 宽度花在了「卡的外面」。
-   *
-   * 卡的外面只需要**够放下它自己的投影**（投影是它「浮起来」的唯一证据），8px 足够；
-   * 真正的页面内衬是卡的内衬那一层，只有一层。 */
-  --item-inset: 8px;
+/* 基准档（手机）：面板自己的空气收到最小。 */
+.itemWorkbench {
   --item-card-pad: 16px;
   --item-row-pad: 12px;
   --item-gap: 12px;
@@ -4028,11 +4102,10 @@ textarea.itemInput {
   .itemRow {
     grid-template-columns: 10px minmax(120px, 1fr) 0 28px;
     column-gap: var(--s1);
-    padding-inline: var(--item-row-pad);
   }
-
-  /* 窄档里行换了自己的内衬与沟，这一页唯一那条左沿跟着同一档走：变量写在议程的
-   * 根上，读它的四个名字全部一起动，谁也不再比谁多一格。 */
+  /* 行的内衬不再在窄档重写：基础规则的 `--item-inset-x` 就是行内衬那一档（窄
+   * 12），别名合一后这条重复声明退场。议程那条唯一的左沿跟着行内衬的档走：
+   * 变量写在议程的根上，读它的四个名字全部一起动，谁也不再比谁多一格。 */
   .itemAgenda {
     --item-agenda-lead: calc(var(--item-row-pad) + var(--item-row-lead) + var(--s1));
   }
@@ -4082,8 +4155,8 @@ textarea.itemInput {
    * 就是为这件事准备的。 */
   grid-template-columns: 10px minmax(120px, 1fr) auto 28px;
     column-gap: var(--s2);
-    padding-inline: var(--item-inset-x);
   }
+  /* 内衬也随基础规则（--item-inset-x = 行内衬），这里不再重写一份。 */
 
   .itemRowTags {
     grid-column: 3;
@@ -4103,8 +4176,7 @@ textarea.itemInput {
  * 定值轨：它们是为七列表格行量的，行只剩四列之后没有任何规则读它们——**留着三个
  * 没人读的几何数，就是给下一个读代码的人留三个看起来很权威的假线索。** */
 @container dsh-tb-item (min-width: 720px) {
-  .itemShell {
-    --item-inset: 8px;
+  .itemWorkbench {
     --item-card-pad: 20px;
     --item-row-pad: 16px;
     --item-gap: 16px;
@@ -4122,8 +4194,7 @@ textarea.itemInput {
  * 行只剩四列之后没有任何规则读它们——**留着三个没人读的几何数，就是给下一个读
  * 代码的人留三个看起来很权威的假线索。** */
 @container dsh-tb-item (min-width: 1081px) {
-  .itemShell {
-    --item-inset: 8px;
+  .itemWorkbench {
     --item-card-pad: 24px;
     --item-row-pad: 16px;
   }
@@ -4168,65 +4239,20 @@ textarea.itemInput {
   }
 }
 
-/* ── 19. 浮层零件：遮罩、键位表、以及共用它的那两样 ───────────────────────────
+/* ── 19. 浮层零件：遮罩，以及共用它的浮层 ───────────────────────────────────
  *
- * **这一段原本住在第二张样式表里（`key-help.module.css`），现在并进来了，**
- * 因为那张表的唯一存在理由已经消失：它一半的规则是**新建弹层**的，而弹层在这一轮
- * 改名成了 `itemCreateDialog*` 并落在本表里；另一半是键位表，它和弹层共用**同一块
- * 遮罩**（`.itemKeyHelpMask`）。**一个只装了两样东西、而那两样共用一个零件的
- * 文件，是把「浮层长什么样」这个答案分成两处的最快办法**——本项目的既定风格是
- * 一个表面对一张样式表（看板那张 7801 行是现状），所以正确解法是**合并**，不是
- * 建立什么层级。合并之后也少了一层跨文件的级联顺序依赖，而那正是分层要付的代价。
+ * 新建弹层与命令面板是这块面板仅有的两个带遮罩的浮层。**两个浮层不共用遮罩
+ * 是有理由的**：它们的 z-index 与出现时机不同，合成一个就要给一个遮罩加一个
+ * 「谁先谁后」的参数，而那个参数会变成第三种状态。共用的只有**令牌**，不共用
+ * **盒子**。
  *
- * 遮罩仍然是**这一页唯一一个 `position: fixed` 的全屏层**，而命令面板用的是它
- * 自己的（`--dsh-tb-mask`）。**两个浮层不共用遮罩是有理由的**：它们的 z-index 与
- * 出现时机不同，合成一个就要给一个遮罩加一个「谁先谁后」的参数，而那个参数会
- * 变成第三种状态。共用的只有**令牌**，不共用**盒子**。 */
-
-/**
- * The key help sheet — and the two pieces of the palette that belong to it.
+ * 遮罩用 `absolute` 而不是 `fixed`：它的参照物是 `.itemPanelStage`（它声明了
+ * `position: relative`），所以 `inset: 0` 是**面板**，不是整个浏览器窗口——
+ * `fixed` 会让一个只属于面板的浮层盖到宿主的侧栏上，并把「居中」居中到别处。
  *
- * WHY A SHEET OF ITS OWN. The palette used to print the key table as a line of
- * bare symbols at its foot (`A ⌘⌫ ⌘Z`). A table of shortcuts written only in
- * glyphs is legible to somebody who already knew the table and to nobody else,
- * so it was not a reference — it was decoration that looked like a reference.
- * The glyphs are gone; the table is something a reader opens, and this file is
- * what it looks like when it is open.
- *
- * IT IS A FLOATING SURFACE, SO IT EATS THE OPAQUE LAYER. The rule is the one the
- * whole sheet follows: a surface that CONTAINS the page takes the canvas tokens,
- * a surface that floats ON it takes the opaque inner ones. This one floats, and
- * text has to survive whatever is behind it — including the palette's own dimmed
- * mask, which is what a reader sees when they open it without closing anything.
- *
- * IT REUSES THE PALETTE'S OWN SHAPE, deliberately rather than for economy: the
- * same float, the same hairline, the same radius and the same shadow the command
- * box is made of, because the reader opened one thing and is looking at the other
- * — two boxes of different weights would read as two different kinds of window.
- *
- * THE TWO CLASSES AT THE END ARE THE PALETTE'S, and they are here because they
- * are about what the KEYBOARD is doing rather than about the key table's contents:
- * `itemKeyHelpNote` is the footnote under the box, and `itemKeyHelpTrigger` is
- * the `?` that opens this sheet.
- *
- * No `@media(max-width)`: this surface is laid out by its own content, so the
- * two bands collapse on their own at a narrow width instead of at a breakpoint
- * somebody has to remember.
- */
-
-/* The dimmed area behind the sheet. Same mask, same inset padding, one step above
- * the palette's own mask so the sheet is unambiguously the front layer.
- *
- * `absolute`, like the palette's mask, and for the same reason: the reference
- * point is `.itemPanelStage`, so the sheet is centred on the PANEL. `fixed` at
- * this depth resolves against the initial containing block — the whole browser
- * window — which puts a panel's own sheet over the shell's sidebar and centres
- * it somewhere the reader is not looking.
- *
- * The bottom padding carries the soft-keyboard inset. That variable is written
- * on the document root by the plugin's own watcher, so it is present whenever
- * any panel of this plugin is mounted rather than only while the board is. */
-.itemKeyHelpMask {
+ * 底部的内衬付的是软键盘那一档：那个变量由本插件自己的监视器写在文档根上，
+ * 本插件任何一个面板挂载时它都在。 */
+.itemOverlayMask {
   position: absolute;
   inset: 0;
   z-index: 5;
@@ -4238,153 +4264,15 @@ textarea.itemInput {
   overflow: hidden;
 }
 
-/* The sheet itself: the box, the same one the command palette is made of. */
-.itemKeyHelpSheet {
-  display: flex;
-  flex-direction: column;
-  flex: none;
-  inline-size: min(560px, 100%);
-  max-block-size: 62%;
-  min-block-size: 0;
-  padding: var(--item-gap);
-  overflow-y: auto;
-  background: var(--item-float);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-card);
-  box-shadow: var(--dsh-tb-shadow-3);
-}
-
-.itemKeyHelpSheet:focus {
-  outline: none;
-}
-
-/* A HEAD THAT SAYS WHAT THIS IS, then stops talking. One sentence about where the
- * keys work, and no legend: the table below is its own legend. */
-.itemKeyHelpHead {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 4px var(--item-gap);
-}
-
-.itemKeyHelpTitle {
-  margin: 0;
-  /* **15 / 600，不许 14。** 这一段随并表进来的规则写的是 14px，而 14 不在字阶表上——
-   * 14 夹在 13 与 15 之间，而**相邻两档之间那个差读者看不见**，它买到的只是
-   * 「这张表的字号不在表里」。它落到 15 / 600：**与行标题同一档**，因为两者回答
-   * 的是同一个问题（这是那一块东西的名字），而不是与页面标题（26 / 700）同一档，
-   * 因为浮层不是页面——它浮在页面上面，不该和页面的名字抢。 */
-  font-size: 15px;
-  font-weight: 600;
-  line-height: 22px;
-  color: var(--item-ink-1);
-}
-
-.itemKeyHelpHint {
-  margin: 0;
-  min-inline-size: 0;
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--item-ink-3);
-  overflow-wrap: anywhere;
-}
-
-/* FOUR BANDS, not seventeen lines. The bands are the table's own `KeyGroup`s, so
- * a shortcut added to the map lands in the band it belongs to rather than at the
- * bottom of a list nobody reads. */
-.itemKeyHelpBand {
-  margin-block-start: var(--item-gap);
-}
-
-.itemKeyHelpBandTitle {
-  margin: 0 0 4px;
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-  color: var(--item-ink-3);
-}
-
-.itemKeyHelpList {
-  margin: 0;
-}
-
-/* THE ROW IS TWO TRACKS, AND THE KEY TRACK IS FIXED — so every action in the
- * sheet starts at the same x. A key column sized by its own content would give
- * `#1` a narrower column than `⌘K` and shift every description under it by one
- * character, which is a column of words that does not read as a column. */
-.itemKeyHelpRow {
-  display: grid;
-  grid-template-columns: 6em minmax(0, 1fr);
-  align-items: baseline;
-  gap: 4px var(--item-gap);
-  min-inline-size: 0;
-  padding-block: 2px;
-}
-
-.itemKeyHelpKeys {
-  margin: 0;
-  min-inline-size: 0;
-}
-
-/* The key itself. A quiet keycap: it is the name of a key, so it is set like a
- * control rather than like body text, and it is not a button — pressing it does
- * nothing, so nothing about it should say that it can be pressed. */
-.itemKeyHelpKey {
-  display: inline-block;
-  max-inline-size: 100%;
-  padding: 1px 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-family: inherit;
-  /* **12 / 600，不许 500。** 它原来写的是 500，而字阶表在 12px 上只给 400 与 600：
-   * 500 是「介于两者之间」的那个数，而**介于两者之间的字重读起来就是两者之一**，
-   * 只是哪一个也说不准。键帽是一枚药丸（它有底、有边、有圆角），所以它与
-   * `.itemPill` 同一档。 */
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 18px;
-  color: var(--item-ink-1);
-  background: var(--dsh-tb-hover);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-}
-
-.itemKeyHelpWhat {
-  margin: 0;
-  min-inline-size: 0;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 18px;
-  color: var(--item-ink-2);
-  overflow-wrap: anywhere;
-}
-
-/* ── The two pieces the command palette borrows ───────────────────────────── */
-
-/* THE FOOTNOTE UNDER THE BOX, and the `?` that opens this sheet.
+/* ── 面板的脚注：一句话 ────────────────────────────────────────────────────
  *
- * `margin-inline-start: auto` is what puts the `?` at the far end of the row it
- * shares with the footnote. It is the only positioning in this file, and it is on
- * the one element whose job is to be at the end of a line: at a width where the
- * two no longer fit side by side, the `?` wraps onto its own line and stays at the
- * end of THAT line, which is the same rule at a narrower width instead of a
- * second rule. */
-.itemKeyHelpTrigger {
-  margin-inline-start: auto;
-}
-
-/* ── 面板的脚注：一句话 + 一扇门 ────────────────────────────────────────────
- *
- * **它不是一条分组。** 它原来借 `itemFacetRow` 的形状来和上面那些组对齐——一个名字列
+ * **它不是一条分组。** 它曾经借 `itemFacetRow` 的形状来和上面那些组对齐——一个名字列
  * 加一个值列——而那个名字列是**空的**。空名字不占位这件事不会发生：网格的第一条轨照样
  * 把宽度留下，于是这句话被推进去 80px，悬在一个「每一行都从左沿开始」的盒子的中间。
  * 屏幕上它读起来不像脚注，像一句不知道站哪儿的话（量出来的：盒子内容左沿 x=370，
  * 那句话在 x=451）。
  *
- * 脚注的左沿是**盒子自己的左沿**，因为它说的是这一整块怎么用，不是某一组的值。
- * 门在最右，因为它是这一块唯一的出口。 */
+ * 脚注的左沿是**盒子自己的左沿**，因为它说的是这一整块怎么用，不是某一组的值。 */
 .itemPaletteFoot {
   display: flex;
   align-items: center;
@@ -4402,6 +4290,13 @@ textarea.itemInput {
   overflow-wrap: anywhere;
 }
 
-.itemKeyHelpTrigger {
-  margin-inline-start: auto;
+/* 「没有能选的东西」那一句，与脚注同一族、同一档。 */
+.itemPaletteNothing {
+  margin: 0;
+  min-inline-size: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+  overflow-wrap: anywhere;
 }

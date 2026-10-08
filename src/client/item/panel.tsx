@@ -72,7 +72,6 @@ import {
   allPicked,
   pickThrough,
   reconcile,
-  selectionActive,
   selectedCount,
   setAllPicked,
   setArmed,
@@ -807,7 +806,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     onSelect: () => { setSelected(item.id); setCursor(item.id) },
     onAsk: () => askOne(item),
     receipt: receipt?.id === item.id ? receipt.words : undefined,
-    onMenuToggle: () => setMenuRow(menuRow === item.id ? undefined : item.id),
+    onMenuToggle: () => setMenuRow(current => (current === item.id ? undefined : item.id)),
     onMenuClose: () => setMenuRow(undefined),
     onMark: (status: 'open' | 'blocked' | 'done') => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
     /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、把它展开，然后把
@@ -868,10 +867,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
     open: () => { if (cursor !== undefined) setSelected(cursor) },
     close: () => {
       // ESC 一次只收一层，从最上层开始：带上的浮层（命令面板/新建/排序）先走，
-      // 然后才是行菜单、展开的行与选中——不然在新建弹层里按 Esc，会先把背后
-      // 展开的那一行收掉，读者眼前的弹层还开着，背后的工作却没了。
+      // 然后才是行菜单、多选模式、展开的行与选中——不然在新建弹层里按 Esc，会
+      // 先把背后展开的那一行收掉，读者眼前的弹层还开着，背后的工作却没了。
+      // 多选模式排在行菜单之后：勾选框换掉了整列的引导位，它是行之上的一层。
       if (overlay !== undefined) { openLayer(undefined); return }
       if (menuRow !== undefined) { setMenuRow(undefined); return }
+      if (selection.armed) { setSelection(current => setArmed(current, false)); return }
       if (openRow !== undefined) { setOpenRow(undefined); return }
       if (selected !== undefined) setSelected(undefined)
     },
@@ -883,25 +884,24 @@ export function ItemListPanel(props: ItemListPanelProps) {
     },
     undo: () => { if (undo !== undefined) runUndo() },
     palette: () => openLayer('palette'),
-    /* THE FOUR THAT BELONG TO THE BOX, not to the rows. Each one is a question
+    /* THE THREE THAT BELONG TO THE BOX, not to the rows. Each one is a question
        the panel cannot answer on its own — the candidate cursor is derived from
        the palette's own text and the palette's own options — so the palette
-       publishes four commands and this file keeps them. One direction: the box
+       publishes three commands and this file keeps them. One direction: the box
        fills the ref, the map calls it, and neither reads the other's state. */
-    keyHelp: () => paletteCommands.current?.showKeys(),
     palettePrev: () => paletteCommands.current?.step(-1),
     paletteNext: () => paletteCommands.current?.step(1),
     palettePick: () => paletteCommands.current?.pick(),
   // EVERY VALUE A HANDLER READS IS IN THIS LIST, and that sentence is here
   // because leaving one out is not a lint warning — it is a key that silently
-  // does the wrong thing. `close` reads `paletteOpen`, `menuRow`, `openRow` and
-  // `selected`; with those missing from the dependency list the handlers kept
-  // closing over the values from the render that BUILT them, so `Esc` asked
-  // 「is the palette open?」 about a `false` from before the palette opened and
-  // closed something else instead. The keyboard flow is the only thing here that
-  // runs outside a React event handler, so nothing re-renders it behind the
-  // reader's back and nothing complained.
-  }), [apply, cursor, items, menuRow, now, openRow, overlay, removeOne, rename.nonce, runUndo, selected, undo])
+  // does the wrong thing. `close` reads `overlay`, `menuRow`, `selection.armed`,
+  // `openRow` and `selected`; with those missing from the dependency list the
+  // handlers kept closing over the values from the render that BUILT them, so
+  // `Esc` asked 「is the palette open?」 about a `false` from before the palette
+  // opened and closed something else instead. The keyboard flow is the only
+  // thing here that runs outside a React event handler, so nothing re-renders
+  // it behind the reader's back and nothing complained.
+  }), [apply, cursor, items, menuRow, now, openRow, overlay, removeOne, rename.nonce, runUndo, selection.armed, selected, undo])
 
   /**
    * A PRESS ON THE CARD'S OWN BLANK IS 「我不要这一条了」, and it empties the
@@ -921,11 +921,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
     const onBlank = (event: MouseEvent): void => {
       const target = event.target
       if (!(target instanceof Element)) return
-      // 带上的浮层里只有排序面板没有自己的遮罩（面板/新建/键位表的遮罩自己收
+      // 带上的浮层里只有排序面板没有自己的遮罩（面板/新建的遮罩自己收
       // 自己）。按在排序面板与开它的顶栏之外，就收它；按在任何一个有自己的遮罩
       // 的浮层里，归那个浮层管，这里不插手——所以豁免名单里有它们。
       if (dismissRef.current.overlay !== undefined
-        && target.closest('[class*="TopPanel"i], [class*="TopBar"i], [class*="Palette"i], [class*="CreateDialog"i], [class*="KeyHelp"i]') === null) {
+        && target.closest('[class*="TopPanel"i], [class*="TopBar"i], [class*="Palette"i], [class*="CreateDialog"i]') === null) {
         openLayer(undefined)
       }
       const card = target.closest('[data-dsh-tb-scroll]')
@@ -1046,7 +1046,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const commonPriority = heldItems.length === 0 || !heldItems.every(one => one.priority === heldItems[0]!.priority)
     ? undefined
     : heldItems[0]!.priority
-  const batch = selectionActive(selection) ? (
+  /* THE BAR IS THE MODE'S OWN FACE, and the mode is what draws it — not the
+   * holding. Arming shows the bar with 「已选 0 条」 and every action but the
+   * select-all disabled: a reader who pressed 多选 to see what it does must see
+   * THAT IT IS ON, and a bar that waited for the first row would be a mode with
+   * no face. The bar writes only what it can reach, and with nothing held there
+   * is nothing to reach — which is exactly what the disabled controls say. */
+  const batch = selection.armed ? (
     <ItemBatchBar
       count={selectedCount(selection)}
       commonStatus={commonStatus}
@@ -1074,7 +1080,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
       askable={[...selection.ids].filter(id => items.some(item => item.id === id && item.taskId !== undefined)).length}
       onAsk={askHeld}
       onRemove={removeHeld}
-      onDone={() => setSelection(current => setArmed(current, false))}
     />
   ) : undefined
   /**
@@ -1391,22 +1396,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
           }}
         />
 
-        {/* THE SHELL CARD. One card carries the whole page, so 「this is the page」
-            * is one surface rather than five bands of floating boxes.
-
-            * **AND IT NOW CARRIES NO HEAD.** The title, the count, a second search
-            * box, a second 新建 button and a second 筛选 trigger used to sit here,
-            * immediately above the bar that already does all five — so the panel
-            * had two search boxes, two ways to add a row and two ways to open the
-            * filters, and every one of them wrote the same state. Two controls for
-            * one thing is not a convenience: it is a question the reader has to
-            * answer before they can start, and the two answers are not the same
-            * two controls.
-
-            * The count did not go with them. It moved INTO the bar, next to the
-            * search that changes it — a number about what you are looking at,
-            * beside the thing you look at it with. */}
-        <div className={css.itemShell}>
+  {/* THE SHELL CARD IS GONE, and the ROWS are the cards now: the panel sits
+      * directly on the canvas and each row paints its own card — the board's own
+      * law (画布可透、内层卡不透明), one vocabulary for the list, the agenda and
+      * the rows on them. The shell's face (surface, radius, shadow, edge air)
+      * moved to where it is read: surface to the rows, air to the workbench's own
+      * padding. The head this card once carried left to the bar long before the
+      * face went; the count lives beside the search that changes it. */}
   <div className={css.itemWorkbench} ref={surfaceRef}>
     <div className={css.itemListColumn}>
 {/* THE TOP BAR SAYS THREE THINGS AND NO MORE: 「我在找什么」「我按什么排」
@@ -1638,11 +1634,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
               month={railMonth}
               daysWithRows={railDays}
               today={localDayKey(now)}
+              activeDay={query.day ?? undefined}
               onEnter={enterRail}
               onPickDay={pickRailDay}
             />
           </div>
-        </div>
       </div>
     </div>
   )

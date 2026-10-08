@@ -119,7 +119,7 @@ export declare function ColorSwatches({ value, onChange, none, custom }: {
  * mode (按时间表/完成后接续), rule trigger (按时间表/任务完成后) and the
  * send mode all read/speak alike — one component, one style, zero drift.
  */
-export declare function Segmented({ options, value, onChange, ariaLabel }: {
+export declare function Segmented({ options, value, onChange, ariaLabel, disabled }: {
     options: readonly {
         value: string;
         label: string;
@@ -128,6 +128,9 @@ export declare function Segmented({ options, value, onChange, ariaLabel }: {
     value: string;
     onChange: (next: string) => void;
     ariaLabel: string;
+    /** Stand down the whole group — the shape stays, nothing answers a press.
+     *  A group that vanished instead would make the row jump under the reader. */
+    disabled?: boolean;
 }): import("react").JSX.Element;
 /**
  * The composer's send-mode switch: 排队 (queue — the dispatcher injects the

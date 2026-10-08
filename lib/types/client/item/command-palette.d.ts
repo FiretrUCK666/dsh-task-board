@@ -20,7 +20,7 @@ export interface PaletteAction {
  * The candidate cursor is state HERE — it is derived from this component's own
  * text, this component's own options — so the map cannot compute it and the box
  * cannot be navigated by a table that has never seen a candidate. So the box
- * publishes the four commands and the panel calls them: one direction, no second
+ * publishes the commands and the panel calls them: one direction, no second
  * copy of the candidate list, and no callback that reaches back into this
  * component's state by another name.
  */
@@ -29,8 +29,6 @@ export interface PaletteCommands {
     readonly step: (by: number) => void;
     /** Run the candidate under the cursor. */
     readonly pick: () => void;
-    /** Open the key help sheet. */
-    readonly showKeys: () => void;
 }
 export interface ItemCommandPaletteProps {
     readonly open: boolean;

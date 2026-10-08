@@ -54,11 +54,14 @@ export interface ItemBatchBarProps {
   readonly onAsk: () => void
   /** Put the held rows back where they were, one gesture. */
   readonly onRemove: () => void
-  readonly onDone: () => void
 }
 
 export function ItemBatchBar(props: ItemBatchBarProps) {
   const n = String(props.count)
+  // The mode's own face, not the holding's: the bar is drawn while the reader is
+  // selecting, and with nothing held yet every action but the select-all stands
+  // disabled — the bar keeps its shape, so picking the first row moves no pixel.
+  const idle = props.count === 0
   return (
     <div className={css.itemBatch} role="group" aria-label={t('item.batch.count', { n })}>
       {/* The count leads, because it is the only number here and every action
@@ -78,6 +81,7 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
       <div className={css.itemBatchActions}>
         <Segmented
           ariaLabel={t('item.field.status')}
+          disabled={idle}
           value={props.commonStatus ?? ''}
           options={[
             { value: 'open', label: t('item.status.open') },
@@ -94,6 +98,7 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
             platform menu. */}
         <Segmented
           ariaLabel={t('item.batch.priority')}
+          disabled={idle}
           value={props.commonPriority ?? ''}
           options={[
             { value: 'urgent', label: t('item.priority.urgent') },
@@ -103,15 +108,14 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
           ]}
           onChange={next => { if (next !== '') props.onPriority(next as ItemPriority) }}
         />
-        <Button variant="ghost" size="sm" onClick={props.onDueToday}>{t('item.batch.due')}</Button>
+        <Button variant="ghost" size="sm" disabled={idle} onClick={props.onDueToday}>{t('item.batch.due')}</Button>
         {/* Disabled rather than hidden when nothing in the holding can be asked:
             the control stays where the reader's eye already is, and the sentence
             under the bar is what says why it cannot be pressed. */}
-        <Button variant="ghost" size="sm" disabled={props.askable === 0} onClick={props.onAsk}>
+        <Button variant="ghost" size="sm" disabled={idle || props.askable === 0} onClick={props.onAsk}>
           {t('item.ask')}
         </Button>
-        <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-        <Button variant="ghost" size="sm" onClick={props.onDone}>{t('item.batch.done')}</Button>
+        <Button variant="dangerGhost" size="sm" disabled={idle} onClick={props.onRemove}>{t('item.menu.delete')}</Button>
       </div>
       {props.askable < props.count && (
         <p className={css.itemBatchNote}>{t('item.batch.askOne', { n })}</p>

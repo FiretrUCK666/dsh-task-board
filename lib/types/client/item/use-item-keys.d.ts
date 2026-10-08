@@ -10,7 +10,11 @@ export interface UseItemKeysOptions {
 /**
  * Listen for the item panel's keys, for as long as the component is mounted.
  *
- * @param options - the flow's state, its handlers, and the box to listen on.
+ * The flow answers a keydown when it is aimed at this panel's subtree, or when
+ * it is aimed at nothing (the focus fell back to the body — the state a blank
+ * click leaves). Everything else is someone else's key.
+ *
+ * @param options - the flow's state, its handlers, and the panel's root.
  * @returns nothing; the effect owns the listener and returns the disposer.
  */
 export declare function useItemKeys(options: UseItemKeysOptions): void;

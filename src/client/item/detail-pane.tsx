@@ -136,6 +136,9 @@ export function ItemDetail(props: ItemDetailProps) {
   const { view } = props
   const item = view.item
   const english = isEnglish()
+  /* 挂着的卡正在跑，读的是派生状态自己（进行中 = 卡在跑），不另要一份 running：
+   * 一个事实在投影里只算一次。 */
+  const running = view.status === 'inProgress'
   const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
   /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
   const gated = view.posture.kind === 'gated'
@@ -294,7 +297,17 @@ export function ItemDetail(props: ItemDetailProps) {
               </button>
             )
             : (
-              <div className={css.itemProseWrap}>
+              <div
+                className={css.itemProseWrap}
+                onBlur={event => {
+                  /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
+                   * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
+                   * 块内互相走动（正文与它下面那枚「还有 N 行」）不算点外。
+                   * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
+                  if (event.currentTarget.contains(event.relatedTarget)) return
+                  setBodyOpen(false)
+                }}
+              >
                 <textarea
                   ref={bodyField}
                   className={css.itemProse}
@@ -336,7 +349,14 @@ export function ItemDetail(props: ItemDetailProps) {
               /* 与正文同一个盒：边、底、字号、字色、贴边都在 `.itemProse` 一处——
                * 备注 once「一条引文」的样式曾经只给这一格，两格之间的差别要靠读者自己
                * 猜是为什么。它们是同一列里的两个输入，输入就该长得一样。 */
-              <div className={css.itemProseWrap}>
+              <div
+                className={css.itemProseWrap}
+                onBlur={event => {
+                  /* 与正文块同一律：点开别处收回；块内互走不算点外。 */
+                  if (event.currentTarget.contains(event.relatedTarget)) return
+                  setNotesOpen(false)
+                }}
+              >
                 <textarea
                   ref={notesField}
                   className={css.itemProse}
@@ -578,32 +598,30 @@ export function ItemDetail(props: ItemDetailProps) {
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
         </span>
         <div className={css.itemOpenActions}>
-          {/* THE SAME THREE, IN THE SAME ORDER, as the ⋯ menu — so a reader who
-              * learned one has learned the other. The PRIMARY is 「变成看板卡片」
-              * rather than 「交给模型去做」 because it is the one that works on every
-              * row: a row with no card can still become one, and 「交给模型去做」 on
-              * such a row can only say 「not yet」. The button that is emphasised
-              * should be the one a reader can actually press. */}
-          <Button variant="primary" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={props.onStart}
-            disabled={item.taskId === undefined}
-            title={item.taskId === undefined ? t('item.menu.startNoCard') : undefined}
-          >
-            {t('item.menu.start')}
-          </Button>
-          <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={item.taskId === undefined || props.asking}>
-            {t('item.ask')}
-          </Button>
-          <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
+          {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
+              * law, so a reader who learned one has learned the other. Without a
+              * card the row can only become one (the primary that works on every
+              * row) or go away; start and ask live where there is something to
+              * run and something to ask — no disabled judges saying 「先变成看板
+              * 卡片」, because the 「不挂」 chip and the primary already state
+              * that fact. While the linked card runs, the slot says who is on it. */}
+          {item.taskId === undefined ? (
+            <>
+              <Button variant="primary" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
+              <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="primary" size="sm" onClick={props.onStart} disabled={running}>
+                {t(running ? 'item.menu.running' : 'item.menu.start')}
+              </Button>
+              <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
+                {t('item.ask.card')}
+              </Button>
+              <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
+            </>
+          )}
         </div>
-        {/* THE REASON STANDS WHERE A THUMB CAN READ IT. It used to live only on the
-            button's `title` — hover-only, so touch never saw why the press did
-            nothing. The menu's own entries carry a hint column for the same fact;
-            here the fact is one sentence under the row, shown only when it applies. */}
-        {item.taskId === undefined && <p className={css.itemHint}>{t('item.menu.startNoCard')}</p>}
       </div>
     </div>
   )
@@ -658,6 +676,11 @@ function DateLine(props: {
               placeholder={props.hint}
               aria-label={props.label}
               data-dsh-tb-keys="Enter Escape"
+              onBlur={() => {
+                /* 与起名框同一律：点开别处收回，不留半句没写下的读法。
+                 * Enter 记下、Esc 收回的键由字段自报，blur 只是第三条出路。 */
+                props.onCancel?.()
+              }}
               onChange={event => props.onDraft?.(event.target.value)}
               onKeyDown={event => {
                 if (event.nativeEvent.isComposing) return

@@ -49,6 +49,5 @@ export interface ItemBatchBarProps {
     readonly onAsk: () => void;
     /** Put the held rows back where they were, one gesture. */
     readonly onRemove: () => void;
-    readonly onDone: () => void;
 }
 export declare function ItemBatchBar(props: ItemBatchBarProps): import("react").JSX.Element;

@@ -178,13 +178,11 @@
 
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
-  /* The TASK-LIST row's open surface: the same accent family the panel's own
-     identity rides on, one opaque-notched step above the neutral hover wash.
-     Hover and open are two facts with two lifespans on the same row — the
-     hover is a brief pointer, the open is where the reader IS — and two
-     lifespans on one fill colour read as 「hover stuck」, which is the exact
-     report this token exists to answer. */
-  --dsh-tb-open: color-mix(in srgb, var(--dsh-tb-accent) 12%, transparent);
+  /* The task-list's open surface used to live here as
+     `--dsh-tb-open: color-mix(accent 12%, transparent)`. Its last consumer moved
+     to the item sheet's own opaque `--item-open` (a translucent inner fill is
+     exactly what The Opaque Inner Rule forbids), so the token went with its last
+     reader — a shared token with no consumer is a rule that answers nothing. */
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
   /* The focus halo, derived from the SAME 22% step the attention/selection system
      already uses (see --dsh-tb-attention-alpha below) rather than from a token
@@ -2695,12 +2693,12 @@
 
 .input {
   /* **`box-sizing` 在这里，不是靠全局重置。** 本项目的每一处自己的盒子都显式写它
-   * （`.itemShell` / `.itemTable` / `.itemCellTitle` 都是），因为宿主不提供这个重置，
-   * 而一个表单控件漏了它就会胖出自己全部内衬的两倍。预设弹层的「添加」行是它第一个
-   * 受害者：MEASURED，轨道算出来 205.45 / 246.55 / 56（加两条沟正好等于行宽 524，
-   * **网格自己是对的**），而两个输入框各自量到 229 与 271——**各胖 23.6 与 24.5，
-   * 而 `padding: 0 12px` 的两倍是 24**。两个胖出来的宽度合起来 48px，两条沟只有 16px，
-   * 于是每个控件都往右压进下一个里 16px，「添加」被盖住。
+   * （清单面板在自己的根上整片声明，`.itemCellTitle` 这样的件各自写），因为宿主不
+   * 提供这个重置，而一个表单控件漏了它就会胖出自己全部内衬的两倍。预设弹层的
+   * 「添加」行是它第一个受害者：MEASURED，轨道算出来 205.45 / 246.55 / 56（加两条
+   * 沟正好等于行宽 524，**网格自己是对的**），而两个输入框各自量到 229 与 271——
+   * **各胖 23.6 与 24.5，而 `padding: 0 12px` 的两倍是 24**。两个胖出来的宽度合起来
+   * 48px，两条沟只有 16px，于是每个控件都往右压进下一个里 16px，「添加」被盖住。
    *
    * **补上这一行之后同一把尺子量到 205 / 247 / 56，与轨道分毫不差。** */
   box-sizing: border-box;

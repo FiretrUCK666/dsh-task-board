@@ -772,7 +772,6 @@ export function panelCss(): string {
   const sheets = [
     'src/client/board.module.css',
     'src/client/item/item.module.css',
-    'src/client/item/key-help.module.css',
   ]
   return sheets
     .map(sheet => {
