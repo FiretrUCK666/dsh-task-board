@@ -136,108 +136,45 @@ Restart `dsh web` afterwards.
 
 ## What it does
 
-- **Board** — Five columns: To plan, To do, In progress, Needs review, Done. A card is a
-  summary and a session is the content: opening the card retires its "New" badge, while
-  "Awaiting your decision" only retires when you open *that session* or approve/send it
-  back. Tasks run for real through DSH sessions and land in Needs review when they finish. A
-  card floats to the top of the column it lands in, and a position you dragged by hand is
-  never pushed aside.
-- **Task list** — The second entry in the same sidebar panel list, right under the board:
-  click it and the list takes the whole stage, click it again and you are back in the
-  conversation. It fills the page, follows the sidebar collapsing to an icon rail, and adapts
-  to a phone — the board's own seats, so it behaves like the board rather than
-  re-deriving it. It is a **second document, not a view over the board**: an item does not
-  have to become a card, and when it hangs off one it reads that card's live state. Each
-  item has a short number (`#12`) minted by a counter and never writable, one-level steps,
-  four priority tiers, tags, and three INDEPENDENT times — earliest start, wanted-by, and
-  the **deadline**. Missing a wanted-by date is "behind schedule" in ordinary ink; only the
-  deadline spends the danger colour — a slipped plan and a broken promise are two things,
-  and the interface says so separately.
+### The board
 
-  The panel is a **left rail plus one column**, and the rail is the map: the month calendar
-  (tap a day to see just that day), **Overdue / Untouched / No date**, the four priority
-  tiers, the four states, the agenda, and the deleted — **every destination prints its
-  number, including 0**: "asked, and the answer is zero" and "this question does not exist"
-  are two different things. The list groups by day under one pill per day; **a row's state
-  is said by the bead's shape** (**In progress** = filled with a halo, **Blocked** = dashed
-  ring, **Done** = empty ring, **To do** = a solid dot), once per row. Only a missed
-  deadline turns a row red, and that reading is **Past due** — a date that slipped and a
-  promise that was broken are two things, and the interface says so separately. The top bar
-  carries **search · sort · new item** (the list page adds two mode chips: multi-select and
-  hide-finished); the search box is also the door to the `⌘K` palette — click it or press
-  ⌘K, it is the same set of conditions.
+- Five columns: Backlog / To do / In progress / In Review / Done. Drag a card to another column, or up and down inside one to set the order.
+- Running is real: press "run" in the detail and a DSH session does the work, landing the card in In Review when it finishes. How many times it ran, and whether the last one worked, are on the card.
+- A running card carries a yellow edge; an unread one carries an outer ring.
+- One line at the top of the board: how many are waiting on you, how many need review. Press it to open the notification centre.
+- The notification centre collects everything waiting on you. The activity feed groups what just happened by day.
+- The review page is the full record of one run, with "pass" and "send back" right there.
+- The model asks its questions in the comment thread and you answer on the spot. When it needs your approval, it gives you a way into that conversation.
+- Each card's comments ARE its DSH session. Queue or steer, and drag images and files straight in.
+- Drag a session or a workspace in from the sidebar and you get a card bound to it.
+- Two kinds of automation, each minding its own: schedules that fire on a timetable or chain onto completion, and rules that send a session an instruction on the same triggers.
+- Auto-cruise: one switch in the board header, with a cap on how many run at once and the hours they may run in.
+- Multi-select, then recolour, run or delete the whole selection in one go.
+- Save the detail as a template and pick it when creating; run configurations save as presets, one of them the default.
+- On a phone the columns become a horizontal track, and nothing is missing.
 
-  **The keyboard is a first-class citizen**: 21 bindings (move the cursor, expand,
-  multi-select, set priority and state, delete, undo…). The panel carries no key-map
-  overlay — the bindings live in one table in `keyboard.ts`, every control reports the
-  keys it claims, and Esc closes one layer at a time.
+### The task list
 
-  **The detail opens in the row** (both bands, same place — no rented sidebar): title,
-  body and context notes write in place, the three date readings edit in place, and
-  hanging an item on a card happens in a picker right there — "none" is a legitimate
-  state, and "new card" names the card where the picker stands, opening a fresh card from
-  the item's own title and body. The action row answers the item's state: without a card =
-  **make it a board card + remove**; with a card = **run the card** (while it runs the
-  slot says "the model is on it") + **ask this card** + remove.
+- Press "+ new item" to write one down. The first line takes a whole item in one syntax: `#tag`, `!1` priority, `@tomorrow`, `- [ ]` step. What it recognises shows as you type; a word read wrongly turns back into plain text when you click it.
+- The list stands on its own — an item does not have to become a card. When it hangs off one, it follows that card's state.
+- Three independent times: earliest start, wanted-by, deadline. Only a missed deadline turns a row red, and that reading is **Past due** — a slipped plan and a broken promise are two things.
+- Ticking a step draws a progress bar. Four priority tiers. Tags as you like.
+- Everything that filters is in the left rail: the calendar, overdue, untouched, no date, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
+- A row's state is said by the bead at its head: **In progress** / **To do** / **Blocked** / **Done**, four shapes, once per row.
+- Title, body, notes and dates are edited in the row itself, not in another window.
+- The agenda reads by day: today / tomorrow / later this week / further out. Rows with no date wait in their own tray; rows whose start has not arrived sit behind a fold.
+- Delete has an undo. What you deleted sits under "deleted" at the bottom of the rail, recoverable for 30 days or erased for good.
+- Multi-select, then set state, priority, a date, ask AI or delete the whole selection in one go.
+- Keyboard: `A` new, `J`/`K` move, `X` multi-select, `1`–`4` priority, `E` rename, `⌘Z` undo, `Esc` closes one layer.
 
-  The **agenda** reads by day: overdue / past the wanted day / today / tomorrow / later
-  this week / further out, one heading per section; rows with no date wait in their own
-  tray (they never crowd into today), and rows whose start has not arrived sit behind a
-  fold that says why.
+### Several devices, and the AI doors
 
-  Deleting is a road with three steps: **delete** (one press and one undo, no confirmation
-  dialog), **restore**, and **erase for good**. Deleting leaves a tombstone **carrying the row**,
-  so an item is **recoverable for 30 days** — unlike cards. Erasing for good takes the *text*
-  out and **leaves the stamp**, because that stamp is the only thing stopping a device that was
-  asleep for a week from handing its stale copy back and putting the row on screen: without it
-  "erase for good" would be "erase, and you can still undo it". The archive opens from the
-  rail's "deleted" row, where every row offers both restore and erase. The new-item sheet's
-  first line takes inline syntax: `#tag`, `!1`–`!4` for priority, `@2026/12/24` for a full
-  date (slashes — a dashed `@2026-12-24` is **not** a date here and stays in the text as
-  words), and a leading `- [ ]` for a step. The parsed result shows as chips **as you type**,
-  and a word that was recognised wrongly turns back into plain text when you click it.
-
-  **Multi-select batching**: press the top bar's "multi-select" chip and the batch bar is
-  on screen — with zero selected too, everything but select-all disabled; state, priority,
-  a wanted-by date, ask AI and delete live on the bar. Press the chip again to leave
-  (Esc closes one layer at a time).
-
-  **Row height is not a switch.** It is a fixed value, because it is a fact settled by touch
-  targets and the type scale rather than a reader's preference. *Density* is the preference — and
-  a switch that moves internal spacing but not row height is worse than none: the reader presses
-  it, sees only the word 「compact」 said differently, and stops believing it.
-- **Driving it from a conversation** — Two slash commands (`/task`, `/task-continue`) and
-  three tools. The command hands **your own sentence** to the current session's model, which
-  can already see the whole conversation, so "write down the three things we just
-  discussed" needs nothing relayed. How many items to write, whether to amend one, whether
-  to open a card — the model's own judgement; this plugin fixes no workflow. It looks the
-  capability list up on demand instead of carrying it in its prompt, because a stale
-  capability list is worse than none. A batch runs in
-  order, stops at the first failure, rolls back nothing, reports item by item. Actions the
-  interface locks down are locked down for the agent too, and it says why — marking a card
-  read is the clearest case, because it clears the very gate waiting on you. There is no
-  upload channel for attachments on the model side.
-- **One-click hand-off** — An item that hangs off a card has a button that gives it to the
-  model of the session that card runs in, and tells you which session that was. An item
-  with no card has no button, because it has no target.
-- **Multi-device sync** — The truth lives on the host under `~/.dsh/storages/dsh_task_board/`.
-  The browser is an optimistic copy: it opens instantly, works offline, catches up after.
-  Concurrent edits merge per record and do not depend on device clocks. Scheduled runs,
-  cruise and follow-ups are arbitrated by a host lease, so **only one open GUI executes
-  them**; the foreground device holds the engine seat and takes over when it becomes visible.
-- **Automation** — Task-level cron schedules and follow-on-completion chains; session-level
-  rules that inject either a custom instruction or the task's execution prompt, on a
-  timetable or after every completion. Plus batch auto-cruise with a concurrency cap and
-  time windows, and a parallelism number that caps how many sessions run at once.
-- **Interface** — The layout responds to the board's own width, not the viewport, and shares
-  one code path with the desktop. Drag and reorder within and between columns; drag sessions
-  or workspaces in from the sidebar. Templates for tasks, run configurations saved as
-  presets with a default. A notification centre aggregating what is waiting on you plus
-  unread tasks, and a board-wide activity feed grouped by day. A cancelled run never asks
-  for a decision — cancellation is an abort, and it only shows in the thread and the feed.
+- The data lives on this machine under `~/.dsh/storages/dsh_task_board/`, human-readable. Moving machines is a copy of that directory.
+- Your phone opens the same data. It works offline and catches up when the connection returns.
+- `/task` hands your sentence to the current session's model. `/task-continue` asks it to pick up where it left off.
 
 **What the words on a card mean.**
-The five columns are **Backlog / To Do / In Progress / In Review / Done**. They all read
+The five columns are **Backlog / To do / In progress / In Review / Done**. They all read
 from **one derivation**, so the same card gives the same answer wherever you see it:
 
 | The word you see | What it is saying | When it goes away |
@@ -288,7 +225,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **No sidebar entry after installing.** The host half loads in the server process. Restart `dsh web`; refreshing the page is not enough.
 
-**Upgrading from an older version: the entry and the settings moved.** The board now attaches through DSH's official UI extension points (which is what lets it keep working across interface changes): the entry went from a row at the bottom of the sidebar to a panel icon beside DSH's own Plugins panel, and the plugin's settings went from Settings → Task Board to the plugin's own page (sidebar → Plugins → Installed → Task Board), where the switch now sits together with the plugin itself. Nothing was removed and no task data changed. If you still see the old locations, this client is running an older front-end bundle — refresh the page.
+**Where the entry and the switches are.** The board and the task list are two panel icons in the sidebar, beside DSH's own Plugins panel. The switches live on the plugin's own page: sidebar → Plugins → Installed → Task Board. There the four rows — board, task list, AI surface and host half — each carry one switch; turning a row off unregisters that half. If you see no entry at all, this client is still serving an older front-end bundle — refresh the page.
 
 **The plugin fails to load after a DeepSeek Harness upgrade (the page says "Failed to load plugins").** DSH's internal interfaces change between releases, and the plugin has to follow. Two steps:
 
