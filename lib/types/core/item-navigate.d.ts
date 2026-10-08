@@ -19,8 +19,8 @@
  *
  * ── WHY THE PAGE SET IS NOT AN ARGUMENT ─────────────────────────────────────
  *
- * The three pages are a product constant ({@link ITEM_PAGES}), not a choice this
- * function offers. Naming a fourth page here would create a fourth place to keep
+ * The pages are a product constant ({@link ITEM_PAGES}), not a choice this
+ * function offers. Naming another page here would create another place to keep
  * it consistent — which is the defect this file exists to remove.
  */
 import type { ItemRecord } from './item.ts';
