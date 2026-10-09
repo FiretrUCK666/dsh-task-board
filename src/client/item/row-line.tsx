@@ -514,7 +514,28 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * that comes and goes with a fact the interface never states is one
              * that never needed to exist. While the card runs, the slot says so. */
             ...(cardId === undefined
-              ? [{ key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote }]
+              ? [
+                  /* **没挂卡的行也有「执行」与「问 AI」。** 原来这一支只给「变成看板卡片」，
+                     理由是「run and ask live where there is something to run and to ask」——
+                     而「有没有东西可跑、可问」从来不由有没有卡决定：读者按下它，意思是「这条
+                     我要让 AI 干／我要问它这件事」。两件事在没卡时就地建一张卡（`startOne` /
+                     `askOne` 一处实现），与详情那一排**同一条律**——上面那句注释自己也这么说：
+                     学过一边的人就学会了另一边。 */
+                  {
+                    key: 'start',
+                    label: t(props.running ? 'item.menu.running' : 'item.menu.start'),
+                    hint: props.runnable === false ? t('detail.promptEmpty') : undefined,
+                    disabled: props.running === true || props.runnable === false || undefined,
+                    onPick: props.onStart,
+                  },
+                  {
+                    key: 'ask',
+                    label: t('item.ask'),
+                    disabled: props.asking === true || undefined,
+                    onPick: props.onAsk,
+                  },
+                  { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
+                ]
               : [
                   {
                     key: 'start',
