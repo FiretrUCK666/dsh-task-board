@@ -91,6 +91,9 @@ export const TRIAGE_SHORT: Readonly<Record<ItemFlag, TaskBoardKey>> = {
   undated: 'item.triage.undatedShort',
   hardOverdue: 'item.triage.behindShort',
   overdue: 'item.triage.behindShort',
+  /* `ahead` 不是三要处理那几条之一（它是左栏那一组的「还没到」），所以它读自己的词——
+     把它指去 `item.triage.undated` 会让这一枚在理论上印出「没定日期」，而那是另一件事。 */
+  ahead: 'item.rail.ahead',
   gated: 'item.triage.undatedShort',
   linked: 'item.triage.undatedShort',
   done: 'item.triage.undatedShort',
@@ -135,6 +138,8 @@ export const TRIAGE_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>> = {
   stale: 'item.triage.stale',
   undated: 'item.triage.undated',
   hardOverdue: 'item.triage.behind',
+  // 同 `TRIAGE_SHORT`：`ahead` 有自己的词（左栏那一组读的就是它）。
+  ahead: 'item.rail.ahead',
   gated: 'item.triage.undated',
   linked: 'item.triage.undated',
   done: 'item.triage.undated',

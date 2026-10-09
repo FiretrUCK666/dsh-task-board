@@ -64,7 +64,7 @@ export interface ItemRailEntry {
  *  group name is a word, and a word that reaches the dictionary through a `string`
  *  is a word the dictionary cannot check — the rail's first version printed
  *  「全部」 twice for exactly that reason. */
-export type ItemRailGroupWord = 'when' | 'rank' | 'state'
+export type ItemRailGroupWord = 'when' | 'idle' | 'rank' | 'state'
 
 /** A labelled run of entries. `word` is `undefined` for the two groups that are
  *  entrances and exits rather than categories, so the surface can draw them
@@ -100,10 +100,26 @@ export interface ItemRailGroup {
  * `blocked` is deliberately NOT here either. It is a status, it has a row under
  * 「按状态」, and a set with two identities in one rail is the duplication
  * invariant 1 forbids.
+ *
+ * ── WHY THE ORDER PUTS THE TWO DATE ROWS FIRST, AND WHAT THE GROUP IS CALLED ──
+ *
+ * 读者问过一句「它这个日期的逻辑是什么呢？我有点看不懂」——**因为他把它们当成三个日期
+ * 在读，而其中一个是疏于照看**：`stale` 说的是「多久没人碰」，与另外两行不是同一类问题。
+ * 而剩下两行也没把日期说完：一份**未来到期**的行落在这一组之外，于是「按日子」这四个字
+ * 在屏上并不成立。
+ *
+ * 所以这一组现在是**真的按日子分**：`overdue`（已经过期）· `ahead`（还没到）·
+ * `undated`（没定日期）——一条分过流的行，它的日子在过去、在未来、或者根本没有，落进且只
+ * 落进一格，三个数加得起来（两处例外写在那枚 flag 自己的注释里：刚记下的一句还没到谈日子的
+ * 阶段，三个日期互相矛盾的那一条两边都有日子、另有自己的说法）。`stale` 搬去它自己那一组，
+ * 标题写清它问的是另一件事（见 `idle`）。
  */
-const RAIL_FLAGS = ['overdue', 'stale', 'undated'] as const
+const RAIL_FLAGS = ['overdue', 'ahead', 'undated'] as const
+/** 「多久没人碰」是**另一个问题**，所以是另一组；这一组只有一行，而一行也可以是一组。 */
+const RAIL_IDLE_FLAGS = ['stale'] as const
 export type ItemRailKey =
   | (typeof RAIL_FLAGS)[number]
+  | (typeof RAIL_IDLE_FLAGS)[number]
   | ItemPriority
   | ItemStatusView
   | 'schedule'
@@ -152,6 +168,8 @@ export function itemRailGroupsOf(
 
   const flags = RAIL_FLAGS.map(flag =>
     entry(`flag:${flag}`, 'flag', flag, `has:${flag}`, heldBy(item => ITEM_FLAG_TESTS[flag](probeOf(item)))))
+  const idle = RAIL_IDLE_FLAGS.map(flag =>
+    entry(`flag:${flag}`, 'flag', flag, `has:${flag}`, heldBy(item => ITEM_FLAG_TESTS[flag](probeOf(item)))))
   const priorities = RAIL_PRIORITIES.map(priority =>
     entry(`priority:${priority}`, 'priority', priority, TOKEN_BY_PRIORITY.get(priority) ?? '', heldBy(item => item.priority === priority)))
   const statuses = ITEM_STATUS_VIEWS.map(view =>
@@ -173,6 +191,7 @@ export function itemRailGroupsOf(
       entries: [entry('all', 'place', 'all', '', items)],
     },
     { id: 'when', word: 'when', entries: flags },
+    { id: 'idle', word: 'idle', entries: idle },
     { id: 'rank', word: 'rank', entries: priorities },
     { id: 'state', word: 'state', entries: statuses },
     /* THE BOTTOM GROUP IS THE TWO ROWS THAT CHANGE THE *FORM* RATHER THAN THE

@@ -73,6 +73,24 @@ export type ItemFlag =
   | 'stale'
   /** No date of any kind: not scheduled, not gated. */
   | 'undated'
+  /**
+   * 有日子，而且那个日子**还没到**（今天也算没到）。
+   *
+   * 它存在的理由是读者对左栏那一组的一句问话：「它这个日期的逻辑是什么呢？我有点看不懂。」
+   * 那一组当时是「已超期 · 迟迟没动 · 没定日期」——**三个行里有一个不是日期问题**（多久没人
+   * 碰），而剩下两个也没把日期说完：一份未来到期的行**落在这一组之外**，于是「按日子」这四个
+   * 字在屏上并不成立。
+   *
+   * 有了这一枚，那一组才真的在按日子分：**已经过期 / 还没到 / 没定日期**——一条行里只要
+   * 分过流（不是刚记下的那句），它的日子就必定在过去、在未来、或者根本没有，**落进且只落进
+   * 一格**，三个数加得起来。而「多久没人碰」搬去它自己那一组（`item-rail.ts` 的 `idle`）。
+   *
+   * 两种「不在任何一格」的行，都是**故意的**，且各有各的读者：刚记下的一句（`isInboxItem`）
+   * 还没到能谈日子的阶段；三个日期互相矛盾的那一条（`contradiction`）**两边都有日子**，
+   * 它自己有那句话去说（「最早开始 比 截止 早」），把它们硬塞进「已经过期」会让那个词变成
+   * 一句不完整的话。
+   */
+  | 'ahead'
   /** `startsAfter` is in the future. */
   | 'gated'
   /** Hangs off a board card. */
@@ -80,7 +98,7 @@ export type ItemFlag =
   | 'done'
 
 /** The qualifier keys the grammar accepts, as the STABLE values behind them. */
-export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'gated', 'linked', 'done']
+export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdue', 'stale', 'undated', 'ahead', 'gated', 'linked', 'done']
 
 /**
  * **EVERY token this grammar reads as a qualifier, derived from the tables above.**
@@ -357,9 +375,31 @@ export const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) =
     && (probe.posture.kind === 'hardOverdue' || probe.posture.kind === 'behind'),
   stale: probe => probe.stale !== undefined && probe.stale >= probe.ctx.staleDays,
   undated: probe => isLiveItem(probe.item) && !isInboxItem(probe.item) && probe.posture.kind === 'none',
+  /* **一张穷尽的表，不是一串 `!==`。** 「还没到」是「日子在未来」的那几档，而它们的名单就是
+     `DatePosture` 自己的成员：写成一个闭合的 `Record` 之后，**下一版加一档日子，这里会编译
+     失败**——而一串手写的 `kind !== 'hardOverdue' && kind !== 'behind'` 会安静地把新那一档
+     算进「已经过期」里。 */
+  ahead: probe => isLiveItem(probe.item) && !isInboxItem(probe.item) && AHEAD_POSTURES[probe.posture.kind],
   gated: probe => probe.posture.kind === 'gated',
   linked: probe => probe.item.taskId !== undefined,
   done: probe => probe.item.status === 'done',
+}
+
+/**
+ * 哪几档日子算「还没到」。它是**对 `DatePosture` 的穷尽看法**：三档晚了的（`hardOverdue` /
+ * `behind` / `contradiction`——最后那一档两边都有日子，另有自己的说法）为 `false`，其余为
+ * `true`。加一档新的日子种类时，这份表编译不过，而那就是它存在的全部意义。
+ */
+const AHEAD_POSTURES: Readonly<Record<DatePosture['kind'], boolean>> = {
+  none: false,
+  hardOverdue: false,
+  behind: false,
+  contradiction: false,
+  hardSoon: true,
+  dueToday: true,
+  upcoming: true,
+  hardAhead: true,
+  gated: true,
 }
 
 /**

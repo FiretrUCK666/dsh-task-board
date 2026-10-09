@@ -645,9 +645,11 @@ export declare const zh: {
     'item.rail.all': string;
     'item.rail.deleted': string;
     'item.rail.when': string;
+    'item.rail.idle': string;
     'item.rail.rank': string;
     'item.rail.state': string;
     'item.rail.overdue': string;
+    'item.rail.ahead': string;
     'item.rail.stale': string;
     'item.rail.undated': string;
     'item.rail.priority.urgent': string;

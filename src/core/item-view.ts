@@ -97,7 +97,7 @@ export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './ite
 
 // ── item-rail ──────────────────────────────────────────────────────────────
 export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts'
-export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts'
+export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey, ItemRailKind } from './item-rail.ts'
 
 // ── item-navigate ──────────────────────────────────────────────────────────
 export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts'

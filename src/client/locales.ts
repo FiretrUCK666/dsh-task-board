@@ -679,9 +679,14 @@ export const zh = {
   'item.rail.all': '全部',
   'item.rail.deleted': '已删除',
   'item.rail.when': '按日子',
+  /* **「多久没人碰」是另一个问题，所以它是另一组。** 它原来挤在「按日子」那一组里，而读者
+   * 读那一组时问的是「它这个日期的逻辑是什么呢？我有点看不懂」——三行里有一行不是日期，
+   * 那四个字就不成立。现在那一组只有日子：已经过期 / 还没到 / 没定日期。 */
+  'item.rail.idle': '没人动的',
   'item.rail.rank': '按优先级',
   'item.rail.state': '按状态',
   'item.rail.overdue': '已超期',
+  'item.rail.ahead': '还没到',
   'item.rail.stale': '迟迟没动',
   'item.rail.undated': '没定日期',
   'item.rail.priority.urgent': '紧急',
@@ -1594,9 +1599,11 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.all': 'Everything',
   'item.rail.deleted': 'Deleted',
   'item.rail.when': 'By date',
+  'item.rail.idle': 'Nobody has touched',
   'item.rail.rank': 'By importance',
   'item.rail.state': 'By status',
   'item.rail.overdue': 'Overdue',
+  'item.rail.ahead': 'Not due yet',
   'item.rail.stale': 'Untouched',
   'item.rail.undated': 'No date',
   'item.rail.priority.urgent': 'Urgent',

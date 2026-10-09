@@ -37,7 +37,7 @@
  */
 import { useId } from 'react'
 import type { ItemPriority, ItemStatusView } from '../../core/item.ts'
-import type { ItemRailEntry, ItemRailGroup, ItemRailKey } from '../../core/item-view.ts'
+import type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { STATUS_KEY } from '../board/status.ts'
 import { PriorityMark, StatusMark } from './marks.tsx'
@@ -61,8 +61,9 @@ const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
   schedule: 'item.page.schedule',
   deleted: 'item.rail.deleted',
   overdue: 'item.rail.overdue',
-  stale: 'item.rail.stale',
+  ahead: 'item.rail.ahead',
   undated: 'item.rail.undated',
+  stale: 'item.rail.stale',
   urgent: 'item.rail.priority.urgent',
   high: 'item.rail.priority.high',
   normal: 'item.rail.priority.normal',
@@ -76,8 +77,9 @@ const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
   done: STATUS_KEY.done,
 }
 
-const CAPTION: Readonly<Record<'when' | 'rank' | 'state', TaskBoardKey>> = {
+const CAPTION: Readonly<Record<ItemRailGroupWord, TaskBoardKey>> = {
   when: 'item.rail.when',
+  idle: 'item.rail.idle',
   rank: 'item.rail.rank',
   state: 'item.rail.state',
 }

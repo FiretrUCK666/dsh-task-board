@@ -21,6 +21,7 @@ import {
   itemMatchContextOf,
   itemMatches,
   itemRailGroupsOf,
+  isInboxItem,
   parseItemQuery,
 } from '../src/core/item-view.ts'
 import type { ItemFlag, ItemFlagProbe, ItemRailEntry } from '../src/core/item-view.ts'
@@ -69,6 +70,9 @@ const FIXTURE: readonly ItemRecord[] = [
   row({ id: 'i-neglected', ref: 4, updatedAt: NOW - 40 * DAY, tags: ['x'] }),
   row({ id: 'i-blocked', ref: 5, status: 'todo', tags: ['x'] }),
   row({ id: 'i-gated', ref: 6, startsAfter: NOW + 3 * DAY, tags: ['x'] }),
+  /* 一份**未来到期**的行：读者那句「按日子的逻辑看不懂」的根因就在这里——它改前落在
+     「按日子」那一组的**外面**（既不是已超期，也不是迟迟没动、没定日期）。 */
+  row({ id: 'i-ahead', ref: 10, dueAt: NOW + 6 * DAY, tags: ['x'] }),
   row({ id: 'i-linked', ref: 7, taskId: 'card-1', tags: ['x'] }),
   row({ id: 'i-done', ref: 8, status: 'done', tags: ['x'] }),
   row({ id: 'i-ordinary', ref: 9, tags: ['x'] }),
@@ -81,6 +85,43 @@ function entryOf(id: string, rows: readonly ItemRecord[] = FIXTURE): ItemRailEnt
   if (found === undefined) throw new Error(`no rail entry named ${id}`)
   return found
 }
+
+describe('the date group is a PARTITION, and the neglect question is its own group', () => {
+  /* 读者问过：「它这个日期的逻辑是什么呢？我有点看不懂。」当时那一组是
+     已超期 · 迟迟没动 · 没定日期——三行里有一行不是日期，而且一份**未来到期**的行落在
+     这一组之外，于是「按日子」那四个字在屏上并不成立。现在这一组只有日子，而这三行覆盖
+     一条分过流的行的每一种日子：在过去、在未来、或者根本没有。 */
+  const groups = itemRailGroupsOf(fixture(), CTX)
+  const groupOf = (id: string) => groups.find(group => group.id === id)
+
+  it('「按日子」就是那三行，而「没人动的」在它自己那一组', () => {
+    expect(groupOf('when')?.word).toBe('when')
+    expect(groupOf('when')?.entries.map(one => one.key)).toEqual(['overdue', 'ahead', 'undated'])
+    expect(groupOf('idle')?.word, 'the neglect row is still filed under a caption about dates').toBe('idle')
+    expect(groupOf('idle')?.entries.map(one => one.key)).toEqual(['stale'])
+    expect(groupOf('when')?.entries.some(one => one.key === 'stale'), 'a set with two identities in one rail').toBe(false)
+  })
+
+  it('every row that has been decided about falls in exactly ONE of the three', () => {
+    let checked = 0
+    for (const item of fixture()) {
+      const held = ['overdue', 'ahead', 'undated'].filter(flag => itemHasFlag(item, flag as ItemFlag, CTX))
+      /* 两处**故意的**例外，与那枚 flag 自己的注释同一句话：刚记下的一句（`isInboxItem`）
+         还没到谈日子的阶段；三个日期互相矛盾的那一条两边都有日子、另有自己的说法。 */
+      if (isInboxItem(item) || held.length === 0) continue
+      checked += 1
+      expect(held.length, `${item.id} fell into ${String(held.length)} of the three date rows`).toBe(1)
+    }
+    expect(checked, 'the fixture exercised no row at all — this gate is asserting nothing').toBeGreaterThan(2)
+  })
+
+  it('a row whose date has not arrived is reachable, and it is NOT counted as late', () => {
+    // 「还没到」这一枚的全部理由：一份未来到期的行，改前**一行都不在**。
+    expect(entryOf('flag:ahead').rows.map(one => one.id)).toContain('i-ahead')
+    expect(entryOf('flag:ahead').rows.map(one => one.id)).toContain('i-gated')
+    expect(entryOf('flag:overdue').rows.map(one => one.id), 'a date in the future is being counted as late').not.toContain('i-ahead')
+  })
+})
 
 describe('the registry of flag tests is keyed on the union, so a missing arm is a BUILD failure', () => {
   // @ts-expect-error The registry is `Readonly<Record<ItemFlag, …>>`, so leaving a

@@ -1416,6 +1416,12 @@
      「左右对称，重心落在自己的几何中心上」。图标自己那 1px 的 `margin-inline-start`
      是它的事，不是内衬的。 */
   padding: 3px 10px;
+  /* **它贴着内容，不是一条横杠。** 它是 `inline-flex` 而父级是列向 flex，于是默认被**拉伸**
+   * 到整列宽——量出来是：盒 298..1414（1116px 宽），而里面的图标 · 词 · 数只占 309..378。
+   * 一枚标签坐在一条 1116px 的空横杠最左边，读者说的是「这个里面的所有东西全部居中」——
+   * 而**那件事在这样一个盒里做不到**：一件东西装在一个比自己大得多的盒里，怎么摆都看不出
+   * 居中。所以让它按内容定宽（`align-self: flex-start`），三样东西于是在自己的盒里正中。 */
+  align-self: flex-start;
   /* 墨，不是 accent：**accent 的预算是留给「关于这份工作的事实」**，而这枚日历图标
    * 装饰的是一个已经写着「今天」的标签。把它收回来，这一栏就少一处彩色，读者少
    * 一次要判断「这枚图标是什么意思」。 */
@@ -1427,6 +1433,9 @@
 .itemDayHead > svg {
   flex: none;
   margin-inline-start: 1px;
+  /* 图标与字按**墨**对齐，和记号簇那三枚同一条律：量出来图标墨心 182、词 184.5
+     （设备像素，2x），差 2.5 —— 一格 `translateY` 把它放到同一条线上。 */
+  transform: translateY(1.25px);
 }
 
 .itemDayHead > b {
@@ -4993,7 +5002,15 @@ textarea.itemInput {
 .itemNewButton,
 .itemPill,
 .itemPrioChip,
-.itemRefChip,
-.itemDayHead {
+.itemRefChip {
   padding-block-end: 1px;
+}
+
+/* **`.itemDayHead` 从这一族里出来，带自己的数（4px）。** 它是一枚 flex 药丸，但装的东西
+ * 不一样：这一族装的是拉丁字符与数字，而它装的是**13px 的中文粗体**（「更早」）——量出来
+ * （设备像素，2x）它的墨块在盒里偏下 3（盒心 181、墨心 184），而 3/1 的内衬只补回 1。
+ * 4 与 3 差 1，正是 `(顶 − 底) / 2` 给的那一格：墨往上走 1.5，落在盒心；上下空气于是相等
+ * （各 5.5 CSS px），高度 24——读者说的「好上下高度」就是这两件事。 */
+.itemDayHead {
+  padding-block-end: 4px;
 }
