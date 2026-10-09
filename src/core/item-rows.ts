@@ -132,6 +132,13 @@ export interface ItemSliceOptions {
   readonly ctx: ItemMatchContext & { readonly cards: ReadonlyMap<string, TaskStatus> }
   readonly sort: ItemSort
   /**
+   * 那一列顺序要不要**倒过来读**（读者在排序菜单里按第二下）。
+   *
+   * 它是顺序的一部分，所以与 `sort` 同行进出于这一袋：两个分开传，就是「一个调用点记得、
+   * 另一个忘了」的样子，而屏上表现为「有一个页面不倒」——那种不一致没人会当成缺陷报上来。
+   */
+  readonly desc?: boolean
+  /**
    * Whether finished rows come back as their own group.
    *
    * Off by default, and that is a decision rather than an omission: a finished
@@ -158,7 +165,7 @@ export interface ItemSliceOptions {
  * @returns one run per group, in reading order, empty runs included.
  */
 export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOptions): ItemSlice[] {
-  const { query, ctx, sort, includeDone = false } = options
+  const { query, ctx, sort, desc = false, includeDone = false } = options
   const groups = includeDone ? ITEM_STATUS_ORDER : ITEM_STATUS_ORDER.filter(status => status !== 'done')
   const buckets = new Map<ItemStatusView, ItemRecord[]>(groups.map(status => [status, []]))
   for (const item of items) {
@@ -167,5 +174,5 @@ export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOpt
     if (!itemMatches(item, query, ctx)) continue
     buckets.get(status)?.push(item)
   }
-  return groups.map(status => ({ status, items: sortItemsOf(buckets.get(status) ?? [], sort) }))
+  return groups.map(status => ({ status, items: sortItemsOf(buckets.get(status) ?? [], sort, desc) }))
 }

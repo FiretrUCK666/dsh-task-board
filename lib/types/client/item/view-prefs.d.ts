@@ -43,6 +43,12 @@ export interface ItemViewPrefs {
     /** The one ordering, shared by every page. */
     readonly sort: ItemSort;
     /**
+     * **那一列顺序要不要倒过来读。** 排序菜单里按**当前那一项**第二下就翻过来，芯片上写
+     * 「· 倒过来」——它是一条**关于顺序本身的**设置，所以与 `sort` 同行（换一个排序就归位，
+     * 不然读者选「标题」时会得到一个他上一步选的反向，而那一步说的是另一列）。
+     */
+    readonly sortDesc: boolean;
+    /**
      * `showDone` IS NOT HERE, and the reason is where its control lives: it is the
      * list page's own switch, drawn on that page next to what it filters (the
      * 「隐藏已完成」 chip), so it belongs to the page rather than to the memory of

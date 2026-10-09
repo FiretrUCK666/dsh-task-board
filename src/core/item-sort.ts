@@ -255,9 +255,10 @@ function refSortKeyOf(item: ItemRecord): number {
  *
  * @param rows - the rows to order.
  * @param sort - which rule.
+ * @param desc - 「倒过来」：整条顺序翻过来，而不是逐条键各自反向。
  * @returns the ordered copy.
  */
-export function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort): ItemRecord[] {
+export function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort, desc = false): ItemRecord[] {
   // Hoisted out of the comparator, and the fallback is NOT what keeps the table
   // honest — the table's TYPE is, and that is what turns a forgotten key into a
   // build failure. This covers the one input the type cannot: a string that
@@ -276,6 +277,13 @@ export function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort): ItemRe
     if (a.updatedAt !== b.updatedAt) return b.updatedAt - a.updatedAt
     return a.id < b.id ? -1 : a.id > b.id ? 1 : 0
   })
-  return out
+  /* **「倒过来」是整条顺序翻过来，不是每一条键各自反向。**
+   *
+   * 两件事在屏上不同，而读者按下那个词时想的是前者：逐键反向只把**判据**翻过来，同一档里的
+   * 行还按原样排（于是「优先级 · 倒过来」看起来像「只是把三档调了个头」）；而「倒过来」是
+   * 把读到的这一列**从下往上**读——它字面上就是这件事，也是唯一一种不需要读者再学一套规则的
+   * 读法。（这也让方向只有一处实现：比较器一个字都不用改，改它就得把每一档的语义再想一遍，
+   * 而那正是六个排序里最容易悄悄写错的地方。） */
+  return desc ? out.reverse() : out
 }
 

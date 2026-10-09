@@ -110,6 +110,13 @@ export interface ItemSliceOptions {
     };
     readonly sort: ItemSort;
     /**
+     * 那一列顺序要不要**倒过来读**（读者在排序菜单里按第二下）。
+     *
+     * 它是顺序的一部分，所以与 `sort` 同行进出于这一袋：两个分开传，就是「一个调用点记得、
+     * 另一个忘了」的样子，而屏上表现为「有一个页面不倒」——那种不一致没人会当成缺陷报上来。
+     */
+    readonly desc?: boolean;
+    /**
      * Whether finished rows come back as their own group.
      *
      * Off by default, and that is a decision rather than an omission: a finished

@@ -1681,7 +1681,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     包一层之后：外面居中，里面共用一条基线，两个承诺各归各位。 */}
                 <span className={css.itemTopBarPair}>
                   <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
-                  <span className={css.itemTopBarValue}>{t(SORT_LABEL[prefs.sort])}</span>
+                  <span className={css.itemTopBarValue}>
+                    {t(SORT_LABEL[prefs.sort])}{prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}
+                  </span>
                 </span>
               </button>
               <button
@@ -1731,17 +1733,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
               一条把自己正在筛的行压暗的筛选，读者要检查两遍才敢信。 */}
           {sortOpen && (
             <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
-              {ITEM_SORTS.map(order => (
-                <button
-                  key={order}
-                  type="button"
-                  className={css.itemTopBarChip}
-                  aria-pressed={prefs.sort === order}
-                  onClick={() => { choose({ sort: order }); openLayer(undefined) }}
-                >
-                  {t(SORT_LABEL[order])}
-                </button>
-              ))}
+              {ITEM_SORTS.map(order => {
+                /* **按当前那一项第二下，就是「倒过来」。**
+                 *
+                 * 换一个排序则归位到正序：那一下说的是**另一列**，继承上一列的方向会让读者
+                 * 得到一个他上一步选的反向，而那一步是别人。
+                 *
+                 * 反转时**不收起这一面**：它长在壳里、不压住列表，所以读者能一边按一边看见
+                 * 那一列真的翻过来；换了一列才收起——那是一次选择，选择之后要回到列表。 */
+                const current = prefs.sort === order
+                return (
+                  <button
+                    key={order}
+                    type="button"
+                    className={css.itemTopBarChip}
+                    aria-pressed={current}
+                    onClick={() => {
+                      if (current) choose({ sortDesc: !prefs.sortDesc })
+                      else {
+                        choose({ sort: order, sortDesc: false })
+                        openLayer(undefined)
+                      }
+                    }}
+                  >
+                    {t(SORT_LABEL[order])}{current && prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}
+                  </button>
+                )
+              })}
             </div>
           )}
             </>

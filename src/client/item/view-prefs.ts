@@ -46,6 +46,12 @@ export interface ItemViewPrefs {
   /** The one ordering, shared by every page. */
   readonly sort: ItemSort
   /**
+   * **那一列顺序要不要倒过来读。** 排序菜单里按**当前那一项**第二下就翻过来，芯片上写
+   * 「· 倒过来」——它是一条**关于顺序本身的**设置，所以与 `sort` 同行（换一个排序就归位，
+   * 不然读者选「标题」时会得到一个他上一步选的反向，而那一步说的是另一列）。
+   */
+  readonly sortDesc: boolean
+  /**
    * `showDone` IS NOT HERE, and the reason is where its control lives: it is the
    * list page's own switch, drawn on that page next to what it filters (the
    * 「隐藏已完成」 chip), so it belongs to the page rather than to the memory of
@@ -131,6 +137,7 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   // derivation the document owns, and a second copy of the word "due" in a
   // preference file is a default that starts lying the day the derivation moves.
   sort: DEFAULT_ITEM_SORT,
+  sortDesc: false,
   search: '',
   // Never written, so this is `undefined` on every real read. It is named here
   // rather than left off the object so the shape is one value rather than
@@ -174,6 +181,7 @@ export function readViewPrefs(): ItemViewPrefs {
   return {
     page: isPage(record.page) ? record.page : DEFAULT_VIEW_PREFS.page,
     sort: isSort(record.sort) ? record.sort : DEFAULT_VIEW_PREFS.sort,
+    sortDesc: record.sortDesc === true,
     // `record.showDone`, `record.density` AND `record.collapsed` ARE DELIBERATELY
     // NEVER NAMED HERE, and that is the whole upgrade path for all three: a field
     // is removed by not reading it, so a record written by any build at all parses
@@ -202,6 +210,9 @@ export function writeViewPrefs(prefs: ItemViewPrefs): void {
     window.localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({
       page: prefs.page,
       sort: prefs.sort,
+      /* 方向只在与默认相反时写：`false` 是每一条真实记录都有的那个值，写它只是把默认值抄进
+         存储。读侧对「不是 true 的一切」都读成 false，所以省略与写着 false 完全等价。 */
+      ...(prefs.sortDesc ? { sortDesc: true } : {}),
       // `search` and `overlay` are ABSENT from this object on purpose. Both are
       // part of the view and not part of the memory, and a key that appears here
       // once appears forever: the day somebody adds it to the serialised shape

@@ -52,7 +52,7 @@ function isEmptyDay(bucket: Bucket): boolean {
 export function SchedulePage(props: ItemPageProps) {
   const { items, query, prefs } = props
   const english = isEnglish()
-  const buckets = scheduleBucketsOf(items, query, props.matchCtx, prefs.sort)
+  const buckets = scheduleBucketsOf(items, query, props.matchCtx, prefs.sort, prefs.sortDesc)
 
   /** Runs of empty days, and the real sections, in the order they were read. */
   const blocks: React.ReactNode[] = []

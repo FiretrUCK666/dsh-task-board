@@ -893,6 +893,9 @@ export const zh = {
   // 名字改成它真正做的事，两者从此不可能混。
   'item.sort.label': '排序',
   'item.sort.sequence': '要紧的先',
+  // 那一列顺序倒过来读（按当前那一项第二下）。它不是另一个排序，所以它是一个后缀，
+  // 而不是一个编出来的反义词——「标题 · 倒过来」说的是同一列、另一个方向。
+  'item.sort.desc': '· 倒过来',
   /* 三个日期档**不在这里**：它们读字段自己那一份词（`item.field.*`），一个概念一套词。 */
   'item.sort.priority': '优先级',
   'item.sort.title': '标题',
@@ -1785,6 +1788,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.triage.behindShort': 'Behind',
   'item.sort.label': 'Sort',
   'item.sort.sequence': 'Loudest first',
+  'item.sort.desc': '· reversed',
   /* The three date orders are not here: they read the fields' own words
      (`item.field.*`), because one concept has one vocabulary. */
   'item.sort.priority': 'Priority',

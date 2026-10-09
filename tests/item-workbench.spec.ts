@@ -3452,6 +3452,58 @@ describe('一句话认出来的东西，全部落到各自的框里', () => {
   })
 })
 
+describe('同一列顺序可以倒过来读', () => {
+  /** 顶栏那枚「排序 · X」芯片，按文字找（不按类名）。 */
+  const sortChip = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement => {
+    const chip = [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').trim().startsWith('排序'))
+    if (chip === undefined) throw new Error('the bar carries no sort chip')
+    return chip as HTMLButtonElement
+  }
+
+  /** 排序面板里那一项，按它的词找。 */
+  const sortEntry = (panel: ReturnType<typeof mountPanel>, word: string): HTMLButtonElement => {
+    const entry = [...panel.surface.querySelectorAll('[class*="itemTopPanel"] button')]
+      .find(node => (node.textContent ?? '').trim().startsWith(word))
+    if (entry === undefined) throw new Error(`the sort panel carries no ${word} entry`)
+    return entry as HTMLButtonElement
+  }
+
+  const firstRow = (panel: ReturnType<typeof mountPanel>): string =>
+    (panel.surface.querySelector('[class*="itemRowText"]')?.textContent ?? '').trim()
+
+  it('按当前那一项第二下就翻过来，芯片上说得出方向，换一列则归位', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      expect(sortChip(panel).textContent ?? '', '一个全新的面板不是正序').not.toContain('倒过来')
+
+      click(sortChip(panel))
+      panel.settle()
+      click(sortEntry(panel, '标题'))
+      panel.settle()
+      expect(sortChip(panel).textContent ?? '').toContain('标题')
+      const ascending = firstRow(panel)
+
+      // 第二下：同一个词，说的是**方向**。这一下不收起那一面（它不压住列表），
+      // 所以读者能一边按一边看见那一列真的翻过来。
+      click(sortChip(panel))
+      panel.settle()
+      click(sortEntry(panel, '标题'))
+      panel.settle()
+      expect(sortChip(panel).textContent ?? '', '按第二下没有翻过来').toContain('倒过来')
+      expect(firstRow(panel), '芯片说倒过来了，而列表没有动').not.toBe(ascending)
+
+      // 换一列：那一下说的是另一列，不该继承上一列的方向。**这一下不必再点芯片**——
+      // 反转不收面，所以面板还开着（那正是「一边按一边看见列表翻过来」的意思）。
+      click(sortEntry(panel, '优先级'))
+      panel.settle()
+      expect(sortChip(panel).textContent ?? '', '换了一列却把上一列的方向带了过来').not.toContain('倒过来')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {

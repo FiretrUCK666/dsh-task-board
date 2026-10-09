@@ -74,11 +74,26 @@ describe('what a first-time reader meets', () => {
 describe('a remembered view comes back whole', () => {
   it('round-trips every field it is allowed to keep', () => {
     const store = useWindow()
-    writeViewPrefs({ page: 'schedule', sort: 'priority', search: '' })
+    writeViewPrefs({ page: 'schedule', sort: 'priority', sortDesc: true, search: '' })
     expect(store.setItem).toHaveBeenCalled()
     expect(readViewPrefs()).toEqual({
-      page: 'schedule', sort: 'priority', search: '',
+      page: 'schedule', sort: 'priority', sortDesc: true, search: '',
     })
+  })
+
+  it('the direction is off unless a record says true', () => {
+    // 「正序」是每一条真实记录都有的那个值，所以它与**省略**等价：读侧只认 `true`，
+    // 别的任何东西（false、缺键、一段字符串、一个旧版本写的值）都读成正序。
+    const store = useWindow()
+    writeViewPrefs({ ...DEFAULT_VIEW_PREFS, sortDesc: false })
+    expect(store.setItem.mock.calls[0]?.[1] as string, '默认值不必抄进存储').not.toContain('sortDesc')
+
+    for (const written of [{ page: 'list', sort: 'title' }, { page: 'list', sort: 'title', sortDesc: 'yes' }, { page: 'list', sort: 'title', sortDesc: 1 }]) {
+      store.setItem(VIEW_PREFS_KEY, JSON.stringify(written))
+      expect(readViewPrefs().sortDesc, `${JSON.stringify(written)} 被读成了倒序`).toBe(false)
+    }
+    store.setItem(VIEW_PREFS_KEY, JSON.stringify({ page: 'list', sort: 'title', sortDesc: true }))
+    expect(readViewPrefs().sortDesc).toBe(true)
   })
 
   it('NEVER remembers the search text, in either direction', () => {
@@ -223,7 +238,7 @@ describe('a damaged record repairs instead of throwing', () => {
     // only reason a control for it is possible at all.
     const strict = (raw: string): string => {
       const record = JSON.parse(raw) as Record<string, unknown>
-      const known = new Set(['page', 'sort', 'search'])
+      const known = new Set(['page', 'sort', 'sortDesc', 'search'])
       for (const key of Object.keys(record)) {
         if (!known.has(key)) throw new Error(`unknown preference ${key}`)
       }
@@ -240,6 +255,8 @@ describe('a damaged record repairs instead of throwing', () => {
       'the second retired field is not covered by the probe, so it can be read back by accident').toThrow(/unknown preference collapsed/)
     expect(strict(JSON.stringify({ page: 'list', sort: 'due' })),
       'the probe rejects a record this build actually writes').toBe('list')
+    expect(strict(JSON.stringify({ page: 'list', sort: 'due', sortDesc: true })),
+      'the direction is written by this build, so the probe must know it').toBe('list')
   })
 
   it('does not obey a page id that is not one of the pages', () => {

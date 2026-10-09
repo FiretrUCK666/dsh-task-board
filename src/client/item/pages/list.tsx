@@ -103,7 +103,7 @@ export function ListPage(props: ItemListPageProps) {
   // `includeDone: true` 写死过一次：开关画在筛选条上、标着字、还存着状态，而这一行
   // 是唯一读那个状态的地方，它没读。读者拨了开关、完成的行还在，于是面板看起来
   // 像是把行弄丢了，而不是开关坏在表面。
-  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: props.showDone })
+  const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, desc: prefs.sortDesc, includeDone: props.showDone })
 
   const openArchive = useCallback(async (keepRows = false) => {
     /* A RE-READ MUST NOT BLANK THE PAGE IT IS RE-READING.

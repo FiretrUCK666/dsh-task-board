@@ -104,6 +104,7 @@ export function scheduleBucketsOf(
   query: ItemQuery,
   ctx: ItemMatchContext & { readonly cards: ReadonlyMap<string, TaskStatus> },
   sort: ItemSort,
+  desc = false,
 ): ScheduleBucket[] {
   const filled = new Map<ScheduleBucketId, ItemRecord[]>(SCHEDULE_BUCKETS.map(id => [id, []]))
   for (const item of items) {
@@ -116,7 +117,7 @@ export function scheduleBucketsOf(
   }
   const today = startOfDay(ctx.now)
   return SCHEDULE_BUCKETS.map(id => {
-    const rows = sortItemsOf(filled.get(id) ?? [], sort)
+    const rows = sortItemsOf(filled.get(id) ?? [], sort, desc)
     // The day a bucket stands for is derived from its id rather than from the
     // rows in it, so an EMPTY bucket still knows which day it is — an empty
     // "tomorrow" is a fact about the calendar, and a bucket that only learned

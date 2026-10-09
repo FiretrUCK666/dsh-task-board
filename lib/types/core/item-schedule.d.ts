@@ -62,4 +62,4 @@ export declare function scheduleBucketOf(item: ItemRecord, now: number): Schedul
  */
 export declare function scheduleBucketsOf(items: readonly ItemRecord[], query: ItemQuery, ctx: ItemMatchContext & {
     readonly cards: ReadonlyMap<string, TaskStatus>;
-}, sort: ItemSort): ScheduleBucket[];
+}, sort: ItemSort, desc?: boolean): ScheduleBucket[];

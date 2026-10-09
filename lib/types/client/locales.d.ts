@@ -784,6 +784,7 @@ export declare const zh: {
     'item.triage.behindShort': string;
     'item.sort.label': string;
     'item.sort.sequence': string;
+    'item.sort.desc': string;
     'item.sort.priority': string;
     'item.sort.title': string;
     'item.promote.said': string;

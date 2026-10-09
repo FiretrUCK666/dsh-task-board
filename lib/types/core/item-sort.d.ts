@@ -77,6 +77,7 @@ export declare const DEFAULT_ITEM_SORT: ItemSort;
  *
  * @param rows - the rows to order.
  * @param sort - which rule.
+ * @param desc - 「倒过来」：整条顺序翻过来，而不是逐条键各自反向。
  * @returns the ordered copy.
  */
-export declare function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort): ItemRecord[];
+export declare function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort, desc?: boolean): ItemRecord[];
