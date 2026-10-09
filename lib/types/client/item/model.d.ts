@@ -1,39 +1,4 @@
 /**
- * The browser-only half of the checklist's pure layer: an identity, and the
- * three ways a human reads and writes a date.
- *
- * WHAT IS LEFT HERE, AND WHY IT IS EXACTLY THIS. An edit used to be written
- * here as well as in the model — a field patch, a step toggle, a delete and a
- * capture, each with its own no-op test and its own step-id scheme. That was the
- * second copy this project keeps removing, and the checklist is the second
- * SYNCED document, so a copy is not untidy there: it is two devices disagreeing
- * about which edits happened. All of it now lives in `core/item-transitions.ts`,
- * which the panel, the detail pane and the model's six `item.*` verbs call
- * alike.
- *
- * What cannot move out of a browser is what is left:
- *  - the identity, because `crypto.randomUUID` is a secure-context API and the
- *    document only ever hands out the SHORT number, which a replica must guess
- *    optimistically;
- *  - the date formatting, because the wording is a locale and the input is a
- *    `<input type="date">` — a shape only a browser draws.
- *
- * A ROW-HEIGHT TYPE IS DELIBERATELY NOT HERE, and no density control is offered,
- * because a preference whose effect the reader cannot see is worse than no
- * preference: the control still takes a track in the header, still spends a
- * dictionary word, and still teaches the reader that this row height is
- * something they set — and when they change it and nothing moves, they conclude
- * the panel is broken. A row's block padding is a FLOOR for a coarse pointer,
- * not a tier: 12px is what a finger needs to hit, and it is the same number on a
- * desk, so the honest form of this fact is a constant rather than a setting.
- *
- * NOTHING HERE JUDGES ANYTHING about a row. What a row says, which page it is
- * on, how it groups, what its three dates mean, and what an edit DOES to the
- * document are all core derivations read by the human surface and by
- * `taskboard_query` alike — see `core/item-view.ts` and
- * `core/item-transitions.ts`.
- */
-/**
  * Mint a row identity.
  *
  * `crypto.randomUUID` is a secure-context API and the harness is served from a
@@ -94,6 +59,21 @@ export declare function formatDayKey(key: string, english: boolean, now?: number
  * @returns the moment, or `undefined` for an empty or unparseable field.
  */
 export declare function parseItemDate(value: string, now?: number): number | undefined;
+/**
+ * **一套日期词，两个入口。**
+ *
+ * 读者在哪儿学、在哪儿用，认的都该是同一批写法：固定的近日子（`今天`/`明天`/`前天`…）、
+ * 星期几（`三`/`周三`/`下三`）、`+N`、`2026/10/15`、`10/15`（还没到才算），以及字段里那个
+ * 严格形式 `2026-10-15`。开头可以带 `@`，也可以带那个日子的名字（`@不晚于 10/9`）——
+ * 名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日子。
+ *
+ * 两个入口曾经各认一半：快记认星期几与 `+N`，日期框只认 `2026-10-15` 与「明天」——
+ * 于是读者在快记得学会的写法，在它旁边那个框里被拒，而那两个框说的是同一件事。
+ * @param text - what the reader wrote.
+ * @param now - the reading clock; every word resolves against it.
+ * @returns the local midnight of that day, or `undefined` when the words do not name one.
+ */
+export declare function parseDateExpression(text: string, now: number): number | undefined;
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export declare function toItemDateField(at: number | undefined): string;
 /**

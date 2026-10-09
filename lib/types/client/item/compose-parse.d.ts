@@ -66,8 +66,21 @@ export interface ComposerParse {
     readonly hardDueAt: number | undefined;
     readonly startsAfter: number | undefined;
     readonly tokens: ComposerToken[];
+    /**
+     * 被拒的词：**同一个日子已经写过了**，所以这一个没有生效（也不画成芯片）。
+     *
+     * 它们留在正文里当普通文字，而输入框下面那句话就说清为什么。静默覆盖会更省事，
+     * 但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档——**屏上自相矛盾**，
+     * 而读者唯一的解释是「它随便挑了一个」。
+     */
+    readonly refused: readonly ComposerRefusal[];
     /** The source with every checkbox line removed — what a re-parse should read. */
     readonly source: string;
+}
+/** 一个被拒的词：原样写的那串字，以及它想写的那个日子。 */
+export interface ComposerRefusal {
+    readonly raw: string;
+    readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt';
 }
 /**
  * Read one capture.

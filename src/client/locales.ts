@@ -809,6 +809,8 @@ export const zh = {
   // 快记：边打边把解析结果显示成 chip，误识别的词可点回普通文字。
   'item.compose.title': '改详情侧栏的地板 #画廊 !1 @明天',
   'item.compose.add': '记下',
+  // 同一个日子写了第二遍：那一个不生效，而理由必须说出来（否则读者只会以为它坏了）。
+  'item.compose.refused': '{word} 没生效：{field} 已经写了一个日子。',
   'item.token.tag': '标签',
   'item.token.priority': '优先级',
   'item.token.step': '步骤',
@@ -842,9 +844,12 @@ export const zh = {
   'item.create.bodyPlaceholder': 'Markdown。上面那行不够写，就写在这里。',
   'item.create.steps': '步骤',
   'item.create.stepsPlaceholder': '一行一步',
-  'item.create.startsHint': '早于这天不动',
-  'item.create.dueHint': '你希望它什么时候好',
-  'item.create.hardHint': '到这天必须交，不能再商量',
+  // 三个日期的框里，**占位文字教的是拼写**（这个框认哪几种写法，包括 `@` 那一种），而
+  // 语义由字段名自己说——「不早于 / 希望在 / 不晚于」三个词已经把方向与硬度说清了。
+  // 一句话里（快记）与这三个框里认的是同一批写法，见 `model.ts` 的 `parseDateExpression`。
+  'item.create.startsHint': '@不早于 10/5',
+  'item.create.dueHint': '@希望 10/7',
+  'item.create.hardHint': '@不晚于 10/9',
   'item.create.body': '正文（可留空）',
   'item.create.blank': '写个标题就能记下——正文可以以后再补。',
   'item.create.refused': '没能记下：这一条与已有的重复，或者它还没有名字。',
@@ -1717,6 +1722,7 @@ export const en: Record<keyof typeof zh, string> = {
   // swallowed can be clicked back into plain text.
   'item.compose.title': 'Redo the detail pane #gallery !1 @tomorrow',
   'item.compose.add': 'Save',
+  'item.compose.refused': '{word} did not take: {field} already has a date.',
   'item.token.tag': 'tag',
   'item.token.priority': 'priority',
   'item.token.step': 'step',
@@ -1746,9 +1752,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.create.bodyPlaceholder': 'Markdown. If the line above was not enough, write it here.',
   'item.create.steps': 'Steps',
   'item.create.stepsPlaceholder': 'One step per line',
-  'item.create.startsHint': 'Nothing starts before this day',
-  'item.create.dueHint': 'When you would like it done',
-  'item.create.hardHint': 'Due on this day; no moving it',
+  'item.create.startsHint': '@not before 10/5',
+  'item.create.dueHint': '@wanted by 10/7',
+  'item.create.hardHint': '@deadline 10/9',
   'item.create.body': 'Body (optional)',
   'item.create.blank': 'A title is enough to save it — the body can come later.',
   'item.create.refused': 'Could not save it: it repeats one you already have, or it has no name yet.',

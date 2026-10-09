@@ -1340,14 +1340,21 @@ export function click(element: Element | null | undefined): void {
   })
 }
 
-/** Type into a field the way a reader does, one `input` event per value. */
+/**
+ * Type into a field the way a reader does, one `input` event per value.
+ *
+ * **它认两种字段。** 它原来只会写 `<input>`（用的是 `HTMLInputElement` 原型上的 setter），
+ * 于是这张纸上的三个 `<textarea>`——正文、步骤、备注——**没有任何门禁能往里面打字**。
+ * 一个打不进去字的框，就是一个没人验过的框。React 的值劫持要求走**原型上**的 setter，
+ * 所以原型取自元素自己的那一族，而不是写死的那一个。
+ */
 export function type(field: Element | null | undefined, value: string): void {
   if (field === null || field === undefined) throw new Error('the field to type into is not on screen')
-  const input = field as HTMLInputElement
   act(() => {
-    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value')?.set
-    setter?.call(input, value)
-    input.dispatchEvent(new Event('input', { bubbles: true }))
+    const proto = field instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype
+    const setter = Object.getOwnPropertyDescriptor(proto, 'value')?.set
+    setter?.call(field, value)
+    field.dispatchEvent(new Event('input', { bubbles: true }))
   })
 }
 

@@ -56,6 +56,15 @@ export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
 /**
+ * 三个日子各自的**字段名键**，一处定义两处读（行尾的读法与快记那一句「已经写过了」）：
+ * 一个概念一套词，而抄一份的代价是改一处不报错。
+ */
+export declare const DATE_FIELD_KEY: {
+    readonly startsAfter: "item.field.startsAfter";
+    readonly dueAt: "item.field.dueAt";
+    readonly hardDueAt: "item.field.hardDueAt";
+};
+/**
  * The five columns a row can READ as, and the word for each — **the board's own words**.
  *
  * 它不再是一张自己的词表：`STATUS_KEY`（`board/status.ts`）是看板那一份、按 `TaskStatus`

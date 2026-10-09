@@ -39,10 +39,7 @@ import { PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
  * not a style question — the two differ the moment one of them is asked on a
  * device in another timezone, and nothing anywhere reports it.
  */
-import { startOfDay } from '../../core/item-view.ts'
-
-/** A whole day in milliseconds. */
-const DAY_MS = 86_400_000
+import { parseDateExpression } from './model.ts'
 
 /** What a recognised token became. Drives the chip the box draws. */
 export type ComposerTokenKind = 'tag' | 'priority' | 'due' | 'hard' | 'earliest' | 'step'
@@ -84,8 +81,22 @@ export interface ComposerParse {
   readonly hardDueAt: number | undefined
   readonly startsAfter: number | undefined
   readonly tokens: ComposerToken[]
+  /**
+   * 被拒的词：**同一个日子已经写过了**，所以这一个没有生效（也不画成芯片）。
+   *
+   * 它们留在正文里当普通文字，而输入框下面那句话就说清为什么。静默覆盖会更省事，
+   * 但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档——**屏上自相矛盾**，
+   * 而读者唯一的解释是「它随便挑了一个」。
+   */
+  readonly refused: readonly ComposerRefusal[]
   /** The source with every checkbox line removed — what a re-parse should read. */
   readonly source: string
+}
+
+/** 一个被拒的词：原样写的那串字，以及它想写的那个日子。 */
+export interface ComposerRefusal {
+  readonly raw: string
+  readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt'
 }
 
 /**
@@ -99,7 +110,7 @@ export interface ComposerParse {
 function emptyParse(): ComposerParse {
   return {
     title: '', body: '', steps: [], tags: [], priority: undefined,
-    dueAt: undefined, hardDueAt: undefined, startsAfter: undefined, tokens: [], source: '',
+    dueAt: undefined, hardDueAt: undefined, startsAfter: undefined, tokens: [], refused: [], source: '',
   }
 }
 
@@ -107,63 +118,6 @@ function emptyParse(): ComposerParse {
 const PRIORITY_BY_DIGIT: Readonly<Record<string, ItemPriority>> = Object.fromEntries(
   Object.entries(PRIORITY_DIGIT).map(([priority, digit]) => [digit, priority as ItemPriority]),
 )
-
-/** Weekday words, Monday first, to match `Date.getDay()` after the offset. */
-const WEEKDAYS: Readonly<Record<string, number>> = {
-  '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7,
-}
-
-/** Fixed words for the near days. */
-const NEAR_DAYS: Readonly<Record<string, number>> = {
-  '今天': 0, '今日': 0, '明天': 1, '明日': 1, '后天': 2, '大后天': 3,
-}
-
-/**
- * Resolve a date the writer typed, or refuse.
- *
- * The accepted forms are deliberately few and each one has exactly one reading
- * in the writer's own timezone: fixed near words, a weekday, an explicit
- * `M/D` that is still ahead, an explicit `YYYY/M/D`, and a `+N` day count.
- * Anything else is `undefined`, and an unrecognised date leaves the text alone
- * rather than becoming a row with the wrong day on it.
- * @param word - what followed the `@`.
- * @param now - the reading clock.
- * @returns the instant, or `undefined` when the words do not resolve to one.
- */
-function resolveDateWord(word: string, now: number): number | undefined {
-  if (word === '') return undefined
-  const today = startOfDay(now)
-  if (NEAR_DAYS[word] !== undefined) return today + (NEAR_DAYS[word] as number) * DAY_MS
-  if (word === '下周') return today + 7 * DAY_MS
-  const weekday = WEEKDAYS[word.replace(/^下/, '')]
-  if (weekday !== undefined) {
-    // Strictly forward: a weekday that has already passed this week means the
-    // next one, and saying so is arithmetic rather than a guess. `下X` pins the
-    // following week, which is the one case where "next" is the whole point.
-    const isNextWeek = word.startsWith('下')
-    const current = today
-    const name = new Date(current).getDay() === 0 ? 7 : new Date(current).getDay()
-    let delta = weekday - name
-    if (delta <= 0) delta += 7
-    return current + (isNextWeek ? delta + 7 : delta) * DAY_MS
-  }
-  const relative = /^\+(\d{1,3})$/.exec(word)
-  if (relative !== null) return today + Number(relative[1]) * DAY_MS
-  const full = /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/.exec(word)
-  if (full !== null) {
-    const at = new Date(Number(full[1]), Number(full[2]) - 1, Number(full[3]))
-    return at.getTime()
-  }
-  const short = /^(\d{1,2})[\/-](\d{1,2})$/.exec(word)
-  if (short !== null) {
-    const at = new Date(new Date(now).getFullYear(), Number(short[1]) - 1, Number(short[2]))
-    const stamp = at.getTime()
-    // Past means ambiguous, and ambiguous means untouched. `YYYY/M/D` is
-    // there for the year the reader actually means.
-    return stamp >= today ? stamp : undefined
-  }
-  return undefined
-}
 
 /** A checkbox line: `- [ ] text`, `* [x] text`. The box is optional width. */
 const CHECKBOX = /^(\s*)[-*]\s*\[\s*([ xX]?)\s*\]\s*(.+)$/
@@ -227,6 +181,7 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
   }
 
   const tags: string[] = []
+  const refused: ComposerRefusal[] = []
   const tokens: ComposerToken[] = [...stepTokens]
   let priority: ItemPriority | undefined
   let dueAt: number | undefined
@@ -275,29 +230,42 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
         }
       }
       if (char === '@') {
-        // The date word MAY be preceded by a qualifier and a space — `@硬 9/30`
-        // and `@最早 9/25` are the documented forms, and `\S+` alone stops at
-        // that space, so the qualifier form resolved to an empty word and was
-        // thrown away. The qualifier is optional, so `@明天` still reads whole.
-        const word = /^@((?:硬|最早)?\s*\S+)/.exec(rest.slice(i))?.[1] ?? ''
-        const named = /^(硬|最早)\s*(\S*)/.exec(word)
-        const kind: ComposerTokenKind = named === null ? 'due' : named[1] === '硬' ? 'hard' : 'earliest'
+        /* **三个日子各写各的，一个字段只认一次。**
+         *
+         * 词表与字段名是同一套：裸 `@` 就是「希望在」（最常写的那个），`@不早于` 与
+         * `@不晚于` 各写另外两个。各还有一个单字短写（`@早` / `@晚`）——快记是打字的活儿，
+         * 而那个字就是词的开头，学一次就记得住。
+         *
+         * 同一个字段写了第二次**不静默覆盖**：那串字不变成芯片，这一份解析把它带回
+         * `refused`，由输入框下面一句话说清为什么（见 {@link ComposerRefusal}）。 */
+        const word = /^@((?:不早于|不晚于|希望(?:在)?|早|晚)?\s*\S+)/.exec(rest.slice(i))?.[1] ?? ''
+        const named = /^(不早于|不晚于|希望(?:在)?|早|晚)\s*(\S*)/.exec(word)
+        const qualifier = named?.[1]
+        const kind: ComposerTokenKind = qualifier === '不晚于' || qualifier === '晚'
+          ? 'hard'
+          : qualifier === '不早于' || qualifier === '早' ? 'earliest' : 'due'
         const dateWord = named === null ? word : (named[2] as string)
-        const at0 = resolveDateWord(dateWord, now)
+        const at0 = parseDateExpression(dateWord, now)
         if (at0 !== undefined) {
-          if (kind === 'due') dueAt = at0
-          else if (kind === 'hard') hardDueAt = at0
-          else startsAfter = at0
-          const raw = named === null ? `@${dateWord}` : `@${named[1]} ${dateWord}`
-          tokens.push({
-            start: at,
-            end: at + raw.length,
-            raw,
-            kind,
-            text: undefined,
-            at: at0,
-            done: undefined,
-          })
+          const raw = qualifier === undefined ? `@${dateWord}` : `@${qualifier} ${dateWord}`
+          const field: 'startsAfter' | 'dueAt' | 'hardDueAt' = kind === 'hard' ? 'hardDueAt' : kind === 'earliest' ? 'startsAfter' : 'dueAt'
+          const already = field === 'hardDueAt' ? hardDueAt : field === 'startsAfter' ? startsAfter : dueAt
+          if (already !== undefined) {
+            refused.push({ raw, field })
+          } else {
+            if (field === 'hardDueAt') hardDueAt = at0
+            else if (field === 'startsAfter') startsAfter = at0
+            else dueAt = at0
+            tokens.push({
+              start: at,
+              end: at + raw.length,
+              raw,
+              kind,
+              text: undefined,
+              at: at0,
+              done: undefined,
+            })
+          }
           i += raw.length - 1
           continue
         }
@@ -324,6 +292,7 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
     hardDueAt,
     startsAfter,
     tokens: tokens.sort((a, b) => a.start - b.start),
+    refused,
     source: kept.join('\n'),
   }
 }

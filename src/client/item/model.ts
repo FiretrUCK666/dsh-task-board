@@ -18,8 +18,7 @@
  *  - the date formatting, because the wording is a locale and the input is a
  *    `<input type="date">` — a shape only a browser draws.
  *
- * A ROW-HEIGHT TYPE IS DELIBERATELY NOT HERE, and no density control is offered,
- * because a preference whose effect the reader cannot see is worse than no
+ * A ROW-HEIGHT TYPE IS DELIBERATELY NOT HERE, and no density control is offered, * because a preference whose effect the reader cannot see is worse than no
  * preference: the control still takes a track in the header, still spends a
  * dictionary word, and still teaches the reader that this row height is
  * something they set — and when they change it and nothing moves, they conclude
@@ -33,6 +32,7 @@
  * `taskboard_query` alike — see `core/item-view.ts` and
  * `core/item-transitions.ts`.
  */
+import { DAY_MS, startOfDay } from '../../core/item-view.ts'
 
 /**
  * Mint a row identity.
@@ -134,31 +134,72 @@ export function formatDayKey(key: string, english: boolean, now: number = Date.n
  * @returns the moment, or `undefined` for an empty or unparseable field.
  */
 export function parseItemDate(value: string, now: number = Date.now()): number | undefined {
-  const trimmed = value.trim()
-  if (trimmed === '') return undefined
-  /* THE WORD FORMS, by offset in days from today's own midnight. Both the
-   * bare word and the `@`-stamped word resolve the same way; the stamp is how
-   * the capture grammar says 「this is a date」, and here it costs nothing to
-   * accept what the reader already typed. */
-  const said = trimmed.replace(/^@/, '').toLowerCase()
-  const offset = WORD_DAYS[said]
-  if (offset !== undefined) {
-    const day = new Date(now)
-    day.setHours(0, 0, 0, 0)
-    day.setDate(day.getDate() + offset)
-    return day.getTime()
-  }
-  const parts = /^(\d{4})-(\d{2})-(\d{2})$/.exec(trimmed)
-  if (parts === null) return undefined
-  const [year, month, day] = parts.slice(1).map(Number) as [number, number, number]
-  const at = new Date(year, month - 1, day).getTime()
-  return Number.isFinite(at) ? at : undefined
+  if (value.trim() === '') return undefined
+  return parseDateExpression(value, now)
 }
 
-/** The word forms the field accepts, keyed by their day offset from today. */
-const WORD_DAYS: Readonly<Record<string, number>> = {
-  前天: -2, 昨天: -1, 今天: 0, 明天: 1, 后天: 2,
+/** Weekday words, Monday first, to match `Date.getDay()` after the offset. */
+const WEEKDAYS: Readonly<Record<string, number>> = {
+  '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7,
+}
+
+/** Fixed words for the near days. */
+const NEAR_DAYS: Readonly<Record<string, number>> = {
+  前天: -2, 昨天: -1, 今天: 0, 今日: 0, 明天: 1, 明日: 1, 后天: 2, 大后天: 3,
   yesterday: -1, today: 0, tomorrow: 1,
+}
+
+/**
+ * **一套日期词，两个入口。**
+ *
+ * 读者在哪儿学、在哪儿用，认的都该是同一批写法：固定的近日子（`今天`/`明天`/`前天`…）、
+ * 星期几（`三`/`周三`/`下三`）、`+N`、`2026/10/15`、`10/15`（还没到才算），以及字段里那个
+ * 严格形式 `2026-10-15`。开头可以带 `@`，也可以带那个日子的名字（`@不晚于 10/9`）——
+ * 名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日子。
+ *
+ * 两个入口曾经各认一半：快记认星期几与 `+N`，日期框只认 `2026-10-15` 与「明天」——
+ * 于是读者在快记得学会的写法，在它旁边那个框里被拒，而那两个框说的是同一件事。
+ * @param text - what the reader wrote.
+ * @param now - the reading clock; every word resolves against it.
+ * @returns the local midnight of that day, or `undefined` when the words do not name one.
+ */
+export function parseDateExpression(text: string, now: number): number | undefined {
+  const today = startOfDay(now)
+  const word = text.trim()
+    .replace(/^@/, '')
+    .replace(/^(?:不早于|不晚于|希望(?:在)?|早|晚|not before|wanted by|deadline)\s*/i, '')
+    .toLowerCase()
+  if (word === '') return undefined
+  const offset = NEAR_DAYS[word]
+  if (offset !== undefined) return today + offset * DAY_MS
+  if (word === '下周') return today + 7 * DAY_MS
+  const weekday = WEEKDAYS[word.replace(/^下/, '')]
+  if (weekday !== undefined) {
+    // Strictly forward: a weekday that has already passed this week means the next
+    // one, and saying so is arithmetic rather than a guess. `下X` pins the following
+    // week, which is the one case where "next" is the whole point.
+    const isNextWeek = word.startsWith('下')
+    const named = new Date(today).getDay()
+    let delta = weekday - (named === 0 ? 7 : named)
+    if (delta <= 0) delta += 7
+    return today + (isNextWeek ? delta + 7 : delta) * DAY_MS
+  }
+  const relative = /^\+(\d{1,3})$/.exec(word)
+  if (relative !== null) return today + Number(relative[1]) * DAY_MS
+  const full = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(word)
+  if (full !== null) {
+    const at = new Date(Number(full[1]), Number(full[2]) - 1, Number(full[3]))
+    return Number.isFinite(at.getTime()) ? at.getTime() : undefined
+  }
+  const short = /^(\d{1,2})[/-](\d{1,2})$/.exec(word)
+  if (short !== null) {
+    const at = new Date(new Date(now).getFullYear(), Number(short[1]) - 1, Number(short[2]))
+    const stamp = at.getTime()
+    // Past means ambiguous, and ambiguous means untouched. A year-qualified date is
+    // there for the year the reader actually means.
+    return Number.isFinite(stamp) && stamp >= today ? stamp : undefined
+  }
+  return undefined
 }
 
 /** Render a moment for a `yyyy-mm-dd` date field. */

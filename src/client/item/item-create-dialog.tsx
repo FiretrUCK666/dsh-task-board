@@ -142,12 +142,33 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     if (!touched.has('body')) setBody(parsed.body)
     if (!touched.has('priority') && parsed.priority !== undefined) setPriority(parsed.priority)
     if (!touched.has('tags')) setTags(parsed.tags.join('、'))
+    /* **一句话认出来的东西，全部都要落到各自的框里。**
+     *
+     * 这一条原来只回填其中的一部分：`startsAfter`、`hardDueAt` 与 `- [ ] 步骤` 行被解析出来
+     * 之后**静默丢掉**——读者在一行里写了三个日子，存下去只有一个，而屏上没有任何东西说
+     * 这件事（那正是「认了却没到」这一类缺陷）。`touched` 是同一道闸门：读者手动改过的框
+     * 不会被这一行盖掉，所以「文法回填一次、之后归读者」这条律一个字都没变。 */
+    if (!touched.has('startsAfter') && parsed.startsAfter !== undefined) setStartsAfter(toItemDateField(parsed.startsAfter))
     if (!touched.has('dueAt') && parsed.dueAt !== undefined) setDueAt(toItemDateField(parsed.dueAt))
+    if (!touched.has('hardDueAt') && parsed.hardDueAt !== undefined) setHardDueAt(toItemDateField(parsed.hardDueAt))
+    if (!touched.has('steps') && parsed.steps.length > 0) {
+      // 勾过的步骤写成 `- [x] 一句话`，与快记那一行同一个写法——`stepList` 两种都认，
+      // 所以从那一行带过来的勾在这里不会丢。
+      setSteps(parsed.steps.map(step => (step.done ? `- [x] ${step.text}` : step.text)).join('\n'))
+    }
   }, [parsed, touched])
 
-  /** 「一行一步」 becomes the list, and a blank line is not a step. */
+  /**
+   * 「一行一步」变成清单：**两种写法都认**。
+   *
+   * 光一行就是一步；`- [x] 一句话` 是已经勾上的一步——与快记那一行同一个写法，所以从
+   * 那一行带过来的勾不会在这里丢掉（丢掉一次勾就是一次静默的数据损失）。
+   */
   const stepList = (): ItemCapture['steps'] =>
-    steps.split('\n').map(line => line.trim()).filter(line => line !== '').map(line => ({ text: line }))
+    steps.split('\n').map(line => line.trim()).filter(line => line !== '').map(line => {
+      const box = /^[-*]\s*\[\s*([ xX]?)\s*\]\s*(.+)$/.exec(line)
+      return box === null ? { text: line } : { text: (box[2] as string).trim(), done: (box[1] ?? '').toLowerCase() === 'x' }
+    })
 
   /** 「存下这一条」；返回这次到底存没存——文法行那根回车读的就是它，拒绝时
    *  读者的半句话必须留在框里。 */

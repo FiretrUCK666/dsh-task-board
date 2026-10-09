@@ -41,8 +41,8 @@ import { t, type TaskBoardKey } from '../locales.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { ITEM_STATUSES, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
+import { DATE_FIELD_KEY, GROUP_LABEL } from './labels.ts'
 import { CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
-import { GROUP_LABEL } from './labels.ts'
 import { formatItemDate } from './model.ts'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
@@ -133,13 +133,6 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
       return undefined
   }
 }
-
-/** The three date FIELDS and the sentence each is named by — one map, not three cases. */
-const DATE_FIELD_KEY = {
-  startsAfter: 'item.field.startsAfter',
-  dueAt: 'item.field.dueAt',
-  hardDueAt: 'item.field.hardDueAt',
-} as const satisfies Record<'startsAfter' | 'dueAt' | 'hardDueAt', string>
 
 /** What the meta line says, in the order that reads. */
 function metaLine(view: ItemRowView): string {

@@ -19,6 +19,7 @@ import {
   parseComposerInput,
   type ComposerToken,
 } from '../src/client/item/compose-parse.ts'
+import { parseItemDate } from '../src/client/item/model.ts'
 
 const DAY = 86_400_000
 /** A fixed Tuesday, 10:00 local, so every relative word is arithmetic. */
@@ -150,28 +151,76 @@ describe('dates', () => {
   })
 })
 
-describe('the three dates keep their own names', () => {
-  it('reads 硬 as the hard deadline and NOT as the wanted-by date', () => {
-    const result = parse('@硬 12/24')
+describe('三个日子各写各的，一行里可以写全三个', () => {
+  it('裸 @ 就是「希望在」，不是另外两个', () => {
+    const result = parse('@12/24')
+    expect(result.dueAt).toBe(new Date(2026, 11, 24).getTime())
+    expect(result.hardDueAt).toBeUndefined()
+    expect(result.startsAfter).toBeUndefined()
+  })
+
+  it('@不晚于 写的是最后那条期限，不是希望的那个日子', () => {
+    const result = parse('@不晚于 12/24')
     expect(result.hardDueAt).toBe(new Date(2026, 11, 24).getTime())
     expect(result.dueAt).toBeUndefined()
   })
 
-  it('reads 最早 as the gate and NOT as the wanted-by date', () => {
-    const result = parse('@最早 12/24')
-    expect(result.startsAfter).toBe(new Date(2026, 11, 24).getTime())
-    expect(result.dueAt).toBeUndefined()
+  it('@不早于 写的是那扇门，不是希望的那个日子；单字 @早 / @晚 是同一件事', () => {
+    const gate = parse('@不早于 12/24')
+    expect(gate.startsAfter).toBe(new Date(2026, 11, 24).getTime())
+    expect(gate.dueAt).toBeUndefined()
+    expect(parse('@早 12/24').startsAfter).toBe(gate.startsAfter)
+    expect(parse('@晚 12/24').hardDueAt).toBe(new Date(2026, 11, 24).getTime())
   })
 
-  it('keeps all three apart when a line carries all three', () => {
-    // Every date is in the FUTURE on purpose: a bare `M/D` that has already
-    // passed is refused as ambiguous, so a test that reached for "9/25" in
-    // September would be asserting that the parser gets it wrong.
-    const result = parse('大活儿 @最早 10/25 @12/24 @硬 12/30')
+  it('一行里三个 @ 就三个都到，@希望 与 @希望在 是同一个', () => {
+    // 每一个日子都在未来：已经过去的 `M/D` 会被当成有歧义而拒掉，而这条测试要钉的是
+    // 「三个都在」。
+    const result = parse('大活儿 @不早于 10/25 @12/24 @不晚于 12/30')
     expect(result.startsAfter).toBe(new Date(2026, 9, 25).getTime())
     expect(result.dueAt).toBe(new Date(2026, 11, 24).getTime())
     expect(result.hardDueAt).toBe(new Date(2026, 11, 30).getTime())
     expect(result.title).toBe('大活儿')
+    expect(parse('@希望 12/24').dueAt, '@希望 与 @希望在 读出了两个不同的日子').toBe(parse('@希望在 12/24').dueAt)
+  })
+
+  it('同一个日子写第二遍：那一个不生效，并且带回一句为什么', () => {
+    // 静默覆盖会更省事，但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档——
+    // 屏上自相矛盾，读者唯一的解释是「它随便挑了一个」。
+    const result = parse('@12/24 @12/26')
+    expect(result.dueAt, '后写的那个没有顶掉先写的').toBe(new Date(2026, 11, 24).getTime())
+    expect(result.refused.map(one => one.raw)).toEqual(['@12/26'])
+    expect(result.refused[0]?.field).toBe('dueAt')
+    // 被拒的那一串**没有变成芯片**：芯片列的就是进了文档的那些。
+    expect(result.tokens.filter(token => token.kind === 'due')).toHaveLength(1)
+  })
+
+  it('三个各写一次时没有一句拒绝', () => {
+    expect(parse('@不早于 10/25 @10/26 @不晚于 10/27').refused).toEqual([])
+  })
+})
+
+describe('一套日期词，两个入口', () => {
+  it('一句话里认的写法，三个日期框里认的是同一个时刻', () => {
+    // 两个入口曾经各认一半：快记认星期几与 `+N`，日期框只认 `2026-10-15` 与「明天」——
+    // 读者在一个入口学会的写法，在隔壁那个框里被拒，而那两个框说的是同一件事。
+    // 这一条钉的是「同一串字 → 同一个时刻」，所以它比两边的词表都强。
+    for (const word of ['明天', '@明天', '周三', '2026-10-15', '10/15', '+3']) {
+      const inLine = parse(`干活 @${word.replace(/^@/, '')}`).dueAt
+      expect(parseItemDate(word, T0), `${word} 在两个入口里读出了两个日子`).toBe(inLine)
+    }
+  })
+
+  it('日期框里带着那个日子的名字写，也读得懂——名字在那儿的身份只是读者的说话方式', () => {
+    // 框本来就知道自己是哪个日子，所以「@不晚于 10/15」这个名字在这里只是语气词。
+    expect(parseItemDate('@不晚于 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@不早于 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@希望 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    // 英文那一套词同样认（两份字典是同一份文档的两个语言版本）。
+    expect(parseItemDate('@wanted by 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@deadline 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    // 带名字的那一种在**一行里**落到它自己那个字段上（同一条词的两种用法）。
+    expect(parse('干活 @不晚于 10/15').hardDueAt).toBe(new Date(2026, 9, 15).getTime())
   })
 })
 

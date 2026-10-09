@@ -3355,6 +3355,85 @@ describe('一张卡没了，它就不再是一张卡', () => {
   })
 })
 
+describe('一句话认出来的东西，全部落到各自的框里', () => {
+  /** 打开「新建一条」，在文法那一行里写一句话。 */
+  const writeLine = (panel: ReturnType<typeof mountPanel>, line: string): void => {
+    const open = [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').includes('新建一条'))
+    if (open === undefined) throw new Error('the bar carries no 新建一条')
+    click(open)
+    const box = panel.surface.querySelector('input[class*="itemInput"]') as HTMLInputElement | null
+    if (box === null) throw new Error('the sheet drew no grammar line')
+    typeInto(box, line)
+    panel.settle()
+  }
+
+  const save = (panel: ReturnType<typeof mountPanel>): void => {
+    const button = [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').trim() === '存下这一条')
+    if (button === undefined) throw new Error('the sheet carries no way to save')
+    click(button)
+    panel.settle()
+  }
+
+  it('三个日期各到各的框，存下去三样都在', () => {
+    // 这一条钉的是一次**静默丢失**：这一行能解析出三个日期，而新建纸的保存读的是它自己的
+    // 字段——回填只覆盖了「希望在」那一个，另外两个被解析出来之后直接丢掉，屏上没有任何
+    // 东西说这件事。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      writeLine(panel, '大活儿 @不早于 10/25 @10/26 @不晚于 10/27')
+      const values = [...panel.surface.querySelectorAll('input')].map(node => node.value)
+      expect(values, '「不早于」没有回填到它的框里').toContain('2026-10-25')
+      expect(values, '「希望在」没有回填到它的框里').toContain('2026-10-26')
+      expect(values, '「不晚于」没有回填到它的框里').toContain('2026-10-27')
+
+      save(panel)
+      const rows = panel.lastWrite()
+      const row = rows[rows.length - 1]
+      expect(row?.startsAfter, '存下去的行缺了「不早于」').toBe(new Date(2026, 9, 25).getTime())
+      expect(row?.dueAt, '存下去的行缺了「希望在」').toBe(new Date(2026, 9, 26).getTime())
+      expect(row?.hardDueAt, '存下去的行缺了「不晚于」').toBe(new Date(2026, 9, 27).getTime())
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('步骤框认两种写法：光一行就是一步，`- [x] 一句` 是已经勾上的一步', () => {
+    // 那行文法框是**单行**输入，所以 `- [ ] 步骤` 这种带换行的写法到不了它那里；读者真正
+    // 能让步骤进文档的地方是这张纸上的步骤框。两种写法都认，是因为那一行与这一框说的是
+    // 同一件事：读者在一行里学到的写字方式，在这里不该被拒。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      writeLine(panel, '大活儿')
+      const stepsBox = [...panel.surface.querySelectorAll('textarea')]
+        .find(node => node.getAttribute('aria-label') === '步骤')
+      if (stepsBox === undefined) throw new Error('the sheet drew no steps box')
+      typeInto(stepsBox, '第一步\n- [x] 第二步')
+      panel.settle()
+
+      save(panel)
+      const rows = panel.lastWrite()
+      const row = rows[rows.length - 1]
+      expect(row?.steps.map(step => step.text)).toEqual(['第一步', '第二步'])
+      expect(row?.steps.map(step => step.done), '勾过的那一步在存下去的时候被当成没勾').toEqual([false, true])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('同一行里同一个日子写两遍：那一个不成芯片，并且说一句为什么', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      writeLine(panel, '大活儿 @10/26 @10/28')
+      expect(panel.surface.textContent ?? '', '被拒的那一个没有说一句为什么').toContain('@10/28')
+      expect(panel.surface.textContent ?? '').toContain('已经写了一个日子')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {
@@ -3667,7 +3746,8 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
-      && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
+      && state !== 'compose-three-dates') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
       /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 迟迟没动）。
@@ -3789,6 +3869,30 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         { ...oneRow({ taskId: 'task-gone' })[0] as ItemRecord, id: 'r-2', ref: 2, title: '挂在一张已经被删掉的卡上' },
       ]
       const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide', { cards: ['task-1'] })
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'compose-three-dates') {
+      /* **一行里写三个 `@` 的那一屏。**
+       *
+       * 读者问过「是不是 @ 完一个再 @ 一个，三个都能显示」——答案在屏上：三枚芯片，三个
+       * 日期，各到各的框。同名的第二个 `@` 不成芯片并有一句为什么，这一屏也画出来。 */
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const open = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('新建一条'))
+        if (open === undefined) throw new Error('the bar carries no 新建一条')
+        click(open)
+        const box = panel.surface.querySelector('input[class*="itemInput"]') as HTMLInputElement | null
+        if (box === null) throw new Error('the sheet drew no grammar line')
+        typeInto(box, '大活儿 @不早于 10/25 @10/26 @不晚于 10/27 @10/28')
+        panel.settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
       writeMountedPage(panel, target)
       panel.dispose()
       return

@@ -31,6 +31,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerParse, type ComposerToken } from './compose-parse.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
+import { DATE_FIELD_KEY } from './labels.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
@@ -146,7 +147,9 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
     // field table forbids anyone rewriting it afterwards, so a capture that left
     // it out would have it guessed on the reader's behalf.
     origin: 'human',
-    status: 'open',
+    /* **清单自己能写的两个值之一**，不是「还没有做」的另一个名字：`open` 是这一版之前
+       那个值的名字，写它等于写一个模型里已经不存在的状态。 */
+    status: 'todo',
     priority: parsed.priority ?? 'normal',
     steps: parsed.steps,
     tags: parsed.tags,
@@ -210,6 +213,14 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
           <span className={boardCss.chipBody}>{t(TOKEN_LABEL[token.kind])}</span>
           <span aria-hidden="true">{RESTORE_MARK}</span>
         </button>
+      ))}
+      {/* **被拒的词要说一句为什么。** 同一个日子写了两遍时，那一个不变成芯片——而
+          「我写的东西没变成芯片」需要一句解释，否则读者只会以为它坏了。理由就近住在
+          输入框下面，与详情里「这个读法我没读懂」同一处语位置。 */}
+      {parsed.refused.map(one => (
+        <p key={one.raw} className={css.itemHint} role="status">
+          {t('item.compose.refused', { word: one.raw, field: t(DATE_FIELD_KEY[one.field]) })}
+        </p>
       ))}
       {/* The button is not a convenience, it is the ONLY way to save on a
           phone: Enter in a single-line field is a newline there, and a

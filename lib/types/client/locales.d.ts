@@ -728,6 +728,7 @@ export declare const zh: {
     'item.menu.delete': string;
     'item.compose.title': string;
     'item.compose.add': string;
+    'item.compose.refused': string;
     'item.token.tag': string;
     'item.token.priority': string;
     'item.token.step': string;
