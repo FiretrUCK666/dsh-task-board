@@ -21,6 +21,7 @@ import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, pendingCommentCou
 import { taskUnviewed, taskViewedBaseline } from '../../core/session-display.ts'
 import { boardDemandOf, waitingSessionsOf } from '../../core/task-demand.ts'
 import { t } from '../locales.ts'
+import type { ItemPriority } from '../../core/item.ts'
 import css from '../board.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from './use-narrow.ts'
@@ -171,7 +172,7 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
 }
 
 /** Board component; subscribes to the controller snapshot. */
-export function TaskBoard({ controller, freshness }: { controller: BoardController; freshness?: BundleFreshnessState }) {
+export function TaskBoard({ controller, freshness, mountedOf }: { controller: BoardController; freshness?: BundleFreshnessState; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
   useEffect(
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
@@ -2045,6 +2046,9 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                       onColorPick={color => { controller.setTaskColor(task.id, color) }}
                       dots={dots}
                       overflowDots={overflowDots}
+                      /* 「这张卡上挂着几条清单条目、最急的是哪一档」——装配层算好的读数（见
+                         `TaskBoardPanelProps.mountedOf`）。看板独立使用时它是 `undefined`。 */
+                      mounted={mountedOf?.(task.id)}
                       nextAction={nextAction}
                       dotTitleOf={sessionId => {
                         const title = controller.sessionTitle(sessionId) ?? sessionId

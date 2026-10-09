@@ -8,6 +8,8 @@ import { useState, type CSSProperties } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { cardSourceLabel, taskBindsOf } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
+import type { ItemPriority } from '../../core/item.ts'
+import { PRIORITY_LABEL } from '../item/labels.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
 import { cardLightOf, cardUpdatedAtOf, titleOrUntitled, type CardPrimary, type CardSessionDot, type CardViewModel } from './card-view.ts'
@@ -62,7 +64,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -95,6 +97,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
   dots?: readonly CardSessionDot[]
   /** Overflow session count beyond `dots` (+N). */
   overflowDots?: number
+  /**
+   * 「这张卡上挂着几条清单条目、最急的是哪一档」（装配层算好的读数）。
+   *
+   * 它**不是一个新字段**：看板卡片没有被装上优先级（那件事当年被刻意删掉，且有测试钉着），
+   * 这里显示的是**挂在它上面的清单条目里最急的那一档**——一个读数，不是看板自己的属性。
+   * 缺席＝这张卡没挂条目（看板独立使用时不出现任何清单痕迹）。
+   */
+  mounted?: { readonly count: number; readonly loudest?: ItemPriority }
   /** One quiet next-action sentence (localized by the caller). */
   nextAction?: string
   /** Tooltip for a session dot (session title + state). */
@@ -346,10 +356,26 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
             || task.schedule?.enabled === true
             || view.unviewed
             || view.chaining
+            || mounted !== undefined
           if (!hasAnything) return null
           return (
             <span className={css.cardBadges}>
               {primaryChip}
+              {/* **挂着几条清单条目、最急哪一档。** 词用的是清单那一套（导入，不抄）：这是
+                  关于清单条目的读数，所以它说清单的话；而看板自己的搜索语法一个字都没变
+                  （筛选发生在清单那一侧，按这一格跳过去）。 */}
+              {mounted === undefined ? null : (
+                <Chip
+                  kind={mounted.loudest === undefined ? 'neutral' : 'warn'}
+                  fill={false}
+                  title={t('card.mountedRows', { n: String(mounted.count), tier: '' }).trim()}
+                >
+                  {t('card.mountedRows', {
+                    n: String(mounted.count),
+                    tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),
+                  })}
+                </Chip>
+              )}
               {automationChips}
             </span>
           )

@@ -27,6 +27,7 @@ export declare const zh: {
     'board.organizeRun': string;
     'board.organizeRunTitle': string;
     'board.organizeDelete': string;
+    'card.mountedRows': string;
     'board.deleteSelectedTitle': string;
     'board.deleteSelectedConfirm': string;
     'board.deleteSelectedOk': string;

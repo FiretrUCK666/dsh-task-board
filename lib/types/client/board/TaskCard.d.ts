@@ -1,4 +1,5 @@
 import type { TaskRecord } from '../../core/tasks.ts';
+import type { ItemPriority } from '../../core/item.ts';
 import { type CardPrimary, type CardSessionDot, type CardViewModel } from './card-view.ts';
 /**
  * The primary chip's words — THE label grammar for the card's one loudest
@@ -15,7 +16,7 @@ export declare function settledChipLabel(runs: number): string;
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -48,6 +49,17 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     dots?: readonly CardSessionDot[];
     /** Overflow session count beyond `dots` (+N). */
     overflowDots?: number;
+    /**
+     * 「这张卡上挂着几条清单条目、最急的是哪一档」（装配层算好的读数）。
+     *
+     * 它**不是一个新字段**：看板卡片没有被装上优先级（那件事当年被刻意删掉，且有测试钉着），
+     * 这里显示的是**挂在它上面的清单条目里最急的那一档**——一个读数，不是看板自己的属性。
+     * 缺席＝这张卡没挂条目（看板独立使用时不出现任何清单痕迹）。
+     */
+    mounted?: {
+        readonly count: number;
+        readonly loudest?: ItemPriority;
+    };
     /** One quiet next-action sentence (localized by the caller). */
     nextAction?: string;
     /** Tooltip for a session dot (session title + state). */

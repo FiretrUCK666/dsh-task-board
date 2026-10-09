@@ -28,6 +28,7 @@
  * snapshot and the visible stage can never disagree.
  */
 import type { BoardController } from '../core/controller.ts';
+import type { ItemPriority } from '../core/item.ts';
 import type { BundleFreshnessState } from './bundle-freshness.ts';
 /** Props the shell's `main` slot renderer binds for this panel. */
 export interface TaskBoardPanelProps {
@@ -47,10 +48,24 @@ export interface TaskBoardPanelProps {
      * line (see bundle-freshness.ts).
      */
     freshness?: BundleFreshnessState;
+    /**
+     * **这张卡上挂着几条清单条目、最急的是哪一档。**
+     *
+     * 看板面板自己看不到清单那份文档（两个主舞台面板各读各的），所以这个读数是**装配层**算好
+     * 递进来的——那一层同时握着两份文档，也只有它该知道两边怎么对。缺席时卡片那一格不画
+     * （看板完全可以独立使用：没有清单条目的卡什么都不显示）。
+     *
+     * 它是**显示值**，不是看板从此会读清单的语法：一张卡能怎么被搜、被筛仍然是看板自己的事
+     * （见 `task-search.ts` 的律），按这一格跳过去筛选发生在清单那一侧。
+     */
+    mountedOf?: (cardId: string) => {
+        readonly count: number;
+        readonly loudest?: ItemPriority;
+    } | undefined;
 }
 /**
  * Render the task board as a centre-stage panel.
  * @param props - the injected controller and freshness state.
  * @returns the board surface, or the loading state while the board is not ready.
  */
-export declare function TaskBoardPanel({ controller, freshness }: TaskBoardPanelProps): import("react").JSX.Element;
+export declare function TaskBoardPanel({ controller, freshness, mountedOf }: TaskBoardPanelProps): import("react").JSX.Element;

@@ -28,6 +28,8 @@ export const zh = {
   'board.organizeRun': '批量执行 {m}/{n} 张',
   'board.organizeRunTitle': '执行所有选中的可执行卡片（空 Prompt 的不动；并发上限节流）',
   'board.organizeDelete': '删除',
+  // 卡片上那枚读数：这张卡挂着几条清单条目、最急的是哪一档（`{tier}` 为空时只报条数）。
+  'card.mountedRows': '挂 {n} 条 · 最急：{tier}',
   'board.deleteSelectedTitle': '删除选中的 {n} 张卡片？',
   'board.deleteSelectedConfirm': '删除后任务与执行记录不可恢复；清单里挂到这些卡上的条目会变回「不挂」（条目本身不会删掉）。',
   'board.deleteSelectedOk': '删除 {n} 张卡片',
@@ -1005,6 +1007,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.organizeRun': 'Run {m}/{n} selected',
   'board.organizeRunTitle': 'Run every selected executable card (blank prompts stay put; the concurrency cap throttles)',
   'board.organizeDelete': 'Delete',
+  'card.mountedRows': '{n} checklist rows · loudest: {tier}',
   'board.deleteSelectedTitle': 'Delete {n} selected cards?',
   'board.deleteSelectedConfirm': 'Deleted tasks and their run records cannot be recovered; checklist rows hung on them go back to “not on a card” (the rows themselves are not deleted).',
   'board.deleteSelectedOk': 'Delete {n} cards',

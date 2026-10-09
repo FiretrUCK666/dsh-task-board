@@ -1318,6 +1318,20 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     expect(board, '圆点不再读卡里那份列表，于是数又会与列表对不上')
       .toContain('controller.sessionsOf(task).map(row => row.sessionId)')
   })
+
+  it('卡片上那枚「挂着几条清单条目、最急哪一档」是装配层递进来的读数，不是看板自己的字段', () => {
+    // 看板的优先级字段当年被**刻意删除**（`store.ts` 明写旧记录里读到就丢，且有一条测试钉着
+    // 「看板的搜索词表不许认 priority」）。所以这里给的不是一个字段，而是一个**读数**：装配层
+    // 同时握着两份文档，只有它该知道怎么对；看板独立使用时它是 `undefined`，卡片上不出现任何
+    // 清单痕迹。这一条钉住那条边界：读数从外面进来，看板自己不发明它。
+    const board = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(board, '那张卡不再从外面接这个读数').toContain('mounted={mountedOf?.(task.id)}')
+    const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    expect(card, '读数没有被画出来').toContain("t('card.mountedRows'")
+    expect(card, '词表被抄了一份（优先级那套词只有一处定义）').toContain('PRIORITY_LABEL[')
+    const tasks = readFileSync(fileURLToPath(new URL('../src/core/tasks.ts', import.meta.url)), 'utf8')
+    expect(tasks, '看板的卡片上自己长出了一个优先级字段').not.toMatch(/^\s*priority\??:/m)
+  })
 })
 
 /**

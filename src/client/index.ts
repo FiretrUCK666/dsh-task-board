@@ -31,6 +31,8 @@ import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
 import { itemListStage, registerItemList } from './item/register.tsx'
+import { ITEM_PRIORITIES_BY_WEIGHT } from '../core/item-view.ts'
+import type { ItemPriority } from '../core/item.ts'
 import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
@@ -68,6 +70,8 @@ const GROUP = { id: 'dsh-task-board' } as const
 class TaskBoardStage {
   private controller: BoardController | undefined
   private freshness: BundleFreshnessState | undefined
+  /** 装配层算好的「这张卡挂着几条条目、最急哪一档」（见 `TaskBoardPanelProps.mountedOf`）。 */
+  private mounted: ((cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined) | undefined
 
   /** Publish the live board and its verdict source to the stage. */
   bind(controller: BoardController, freshness: BundleFreshnessState): void {
@@ -75,15 +79,27 @@ class TaskBoardStage {
     this.freshness = freshness
   }
 
+  /**
+   * 把「按卡查挂着哪些清单条目」交给看板那一侧。
+   *
+   * 它由装配层在清单的副本就绪之后接线（那一层同时握着两份文档）：看板面板自己不该知道清单
+   * 那份文档长什么样，两个主舞台面板各读各的数据——这扇门是**别人**的事，与清单→看板那一扇
+   * 同一个形状。
+   */
+  bindMounted(read: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined): void {
+    this.mounted = read
+  }
+
   /** Stop publishing them (the board is being disposed). */
   unbind(): void {
     this.controller = undefined
     this.freshness = undefined
+    this.mounted = undefined
   }
 
   /** Build the face the panel registration injects (read fresh on every render). */
-  inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined } {
-    return { controller: this.controller, freshness: this.freshness }
+  inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined; mountedOf: ((cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined) | undefined } {
+    return { controller: this.controller, freshness: this.freshness, mountedOf: this.mounted }
   }
 }
 
@@ -1289,6 +1305,20 @@ export function apply(ctx: ClientContext): void {
         layout.selectPanel(GROUP.id)
       })
       disposers.push(() => { itemListStage.unbind() })
+      /* **看板那一侧要的那个读数：这张卡挂着几条清单条目、最急的是哪一档。**
+       *
+       * 由装配层算，理由与上面那扇门完全一样：它同时握着两份文档，而看板面板不该知道清单那份
+       * 文档长什么样（两个主舞台面板各读各的）。`ITEM_PRIORITIES_BY_WEIGHT` 是**最急在前**的
+       * 那一张表（清单那一套词里的唯一定义处），所以 `find` 给出的就是最急的一档。
+       * 一条都没挂时返回 `undefined`——卡片那一格不画，看板独立使用时不出现任何清单痕迹。 */
+      const itemsReplica = sync.checklistReplica()
+      stage.bindMounted(cardId => {
+        const rows = itemsReplica.view().filter(row => row.taskId === cardId)
+        if (rows.length === 0) return undefined
+        const loudest = ITEM_PRIORITIES_BY_WEIGHT.find(tier => rows.some(row => row.priority === tier))
+        return loudest === undefined ? { count: rows.length } : { count: rows.length, loudest }
+      })
+      disposers.push(() => { stage.bindMounted(() => undefined) })
     }
     // Host-truth convergence runs in the BACKGROUND: the entry above is
     // already live on the local mirror. When the line allows, the host doc
