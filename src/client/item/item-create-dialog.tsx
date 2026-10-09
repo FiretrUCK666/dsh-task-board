@@ -27,7 +27,7 @@ import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_STATUSES } from '../../core/item.ts'
 import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
-import { PRIORITY_DIGIT as marksDigits } from './marks.tsx'
+import { PriorityMark } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
 import type { ComposerParse } from './compose-parse.ts'
 import { parseItemDate, toItemDateField, formatItemDate } from './model.ts'
@@ -276,30 +276,22 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               <p className={css.itemOptName}>{t('item.field.priority')}</p>
               <div className={css.itemOpts}>
                 {PRIORITIES.map(one => (
-                  /* THE SAME CONTROL AS THE STATUS CHIPS BESIDE IT.
+                  /* **与行上、左栏、展开区是同一枚记号。**
                    *
-                   * These four used to be `itemPrioChip` — the chip that carries
-                   * LOUDNESS on a row. That class means 「this tier is shouting」,
-                   * so all four of them arrived pre-painted by their own tier and
-                   * the selected one had nowhere left to show it: `data-on` was
-                   * set by the component and read by no rule, so pressing a
-                   * priority changed the form and the screen said nothing.
-                   *
-                   * On the sheet the four are not four volumes — they are ONE
-                   * scale with one answer, which is exactly what `.itemOpt` is:
-                   * the quiet chip whose selection is the fill plus a heavier
-                   * edge. The tier's loudness stays where it belongs, on the row,
-                   * where only the tiers that are actually loud are drawn. */
+                   * 读者点过这里：「新建一条里面的也是一样（没有颜色对应）。」它一度被改成
+                   * `.itemOpt`（词族）——那时的顾虑是「四枚记号各带各的重量，选中没地方落脚」。
+                   * 那条顾虑现在由记号自己解决：`PriorityMark` 的 `data-on` 画的是**一圈墨环**，
+                   * 与颜色无关；而颜色本身就是读者要的那件事（四档一眼分得出）。
+                   */
                   <button
                     key={one}
                     type="button"
-                    className={css.itemOpt}
-                    data-on={priority === one ? '' : undefined}
+                    className={css.itemPrioButton}
                     aria-pressed={priority === one}
                     title={t(PRIORITY_LABEL[one])}
                     onClick={() => { mark('priority'); setPriority(one) }}
                   >
-                    !{PRIORITY_DIGIT[one]}
+                    <PriorityMark priority={one} on={priority === one} />
                   </button>
                 ))}
               </div>
@@ -472,11 +464,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     </div>
   )
 }
-
-/** `!1`..`!4` from the model's own table, so a re-tiering cannot leave a chip lying. */
-/** `!1`..`!4`，与详情面板、行上、左栏读的是**同一张表**（`marks.tsx`）——一个数字
- *  在四个文件里各抄一份的日子结束了。 */
-const PRIORITY_DIGIT = marksDigits
 
 /**
  * ONE DATE, AND WHAT IT READS AS.

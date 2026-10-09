@@ -3526,7 +3526,53 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
-      && state !== 'create-sheet' && state !== 'row-body-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'calendar-folded') {
+      /* 日历**折起来**之后的那一屏。
+       *
+       * 加它的理由是被读者点出来的：「展开的情况下显示没问题，可是我再点击一下收回时，
+       * 2026-10 这个内容直接往左移动了一下。」——而这句话只有在**两个状态各出一张图、
+       * 再比月题的位置**时才能被证实或否证。静态渲染永远只有默认那一个状态，所以这一屏
+       * 是这条对齐律唯一的取证方式。 */
+      const panel = mountPanel([...fixtures().slice(0, 2)], 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const fold = [...panel.surface.querySelectorAll('button')]
+          .find(one => (one.getAttribute('aria-label') ?? '') === '按日子看')
+        if (fold === undefined) throw new Error('the rail drew no calendar fold control')
+        click(fold)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'menu-open') {
+      /* ⋮ 菜单开着的那一屏。
+       *
+       * 加它的理由是被读者点出来的：他说菜单里那些字「偏下，完全没有上下居中于按钮」，
+       * 而**这一排从来没有被测台架量过**——静态渲染画不出打开的菜单（`renderToStaticMarkup`
+       * 按不了东西），所以它一直是这一页上唯一没有真浏览器几何的那些控件。 */
+      const items = [...fixtures().slice(0, 2)]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const trigger = [...panel.surface.querySelectorAll('button')]
+          .find(one => (one.getAttribute('aria-label') ?? '') === '这一条能做的事')
+        if (trigger === undefined) throw new Error('the first row drew no ⋮ button')
+        click(trigger)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'row-body-open') {
       /* 展开了这一行、并且**按了「＋ 写点什么」**之后的那一屏。
