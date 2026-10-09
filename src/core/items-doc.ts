@@ -89,6 +89,7 @@ import {
   type MergeTombstone,
 } from './board-merge-core.ts'
 import { parseItems, itemPriorityRankOf, type ItemRecord } from './item.ts'
+import { ALL_STATUSES } from './tasks.ts'
 
 /** What a replica sends per commit: its whole view, the ids its own edits
  *  moved since its baseline (authorship claims), and the deletions it saw. */
@@ -209,9 +210,12 @@ function wantedAt(item: ItemRecord): number {
   return dates.length === 0 ? UNSET_DATE : Math.min(...dates)
 }
 
-/* 两个值，两个秩：完成的排在后面。它曾经是三档（开放/受阻/完成），而中间那一档现在
- * 不存在了——`blocked` 是清单自己造的一个看板没有的状态，见 `item.ts` 的来历。 */
-const STATUS_RANK: Record<ItemRecord['status'], number> = { todo: 0, done: 1 }
+/* 五档的秩就是看板那五栏的次序（**导入，不抄**）：一份文档里同一栏的行排在一起，而
+ * 「完成」落在最后。它曾经是三档（开放/受阻/完成），中间那一档不存在了——`blocked` 是
+ * 清单自己造的一个看板没有的状态，见 `item.ts` 的来历。 */
+const STATUS_RANK: Record<ItemRecord['status'], number> = Object.fromEntries(
+  ALL_STATUSES.map((status, index) => [status, index]),
+) as Record<ItemRecord['status'], number>
 
 /**
  * The short number as an ordering key, with "nobody has numbered me yet" at the

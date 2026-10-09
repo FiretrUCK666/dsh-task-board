@@ -71,6 +71,7 @@
  */
 import type { ItemOriginSource, ItemPriority, ItemRecord, ItemStatus, ItemStep } from './item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_FIELDS, itemInstantOf, itemTagsOf, itemTitleOf, newItem } from './item.ts'
+import { MANUAL_STATUSES, type TaskStatus } from './tasks.ts'
 
 /**
  * The keys a patch may carry, DERIVED from the ruling table instead of being
@@ -314,7 +315,15 @@ export interface ItemPromotionTask {
   /** The card's description: the row's context notes, which is what they are FOR. */
   readonly description: string
   /** The execution prompt: the override, else the row's body. */
+  /** The execution prompt: the override, else the row's body. */
   readonly prompt: string
+  /**
+   * 这张卡出生在哪一栏：**这一条自己现在的状态**（执行器才能给的那两档落到「待办」）。
+   *
+   * 见 `planItemPromotion` 下面那段：写死成 `'todo'` 的那一版让「先标已完成、再挂卡」变成
+   * 两份互相矛盾的数据，而屏上没有一句话解释。
+   */
+  readonly status: TaskStatus
 }
 
 /**
@@ -399,8 +408,99 @@ export function planItemPromotion(item: ItemRecord, over?: ItemPromotionOverride
       title,
       description: item.notes,
       prompt: (over?.cardPrompt ?? item.body).trim(),
+      /* **出生栏就是这一条现在的状态。**
+       *
+       * 它原来是调用点写死的 `'todo'`（`panel.tsx:626` 与 `tools.ts:1626`），完全不看这一条
+       * 当时的真实状态——于是读者把一条标成「已完成」再挂到卡上，卡开在待办，而这一行因为
+       * 自己那张牌（`itemStatusOf` 的 done 压过卡片）仍然显示「已完成」：**两份数据、两个
+       * 说法**，然后他按什么胶囊都不动。
+       *
+       * 出生栏由**这一条自己**决定，与提升计划的另外三个字段同一个理由：它们是这一条自己的
+       * 事实（见上面那段「a caller cannot get them wrong by forgetting one」）。执行器才能给的
+       * 那两档（进行中 / 待审核）在这里落到「待办」——一张没人跑过的新卡说「进行中」是假话，
+       * 而调用点会按 `move` 的理由给回执（见 `applyItemStatus`）。 */
+      status: (MANUAL_STATUSES as readonly string[]).includes(item.status) ? item.status as TaskStatus : 'todo',
     },
   }
+}
+
+/**
+ * **一条链接，两个入口：挂上 / 改状态。**
+ *
+ * ── 为什么必须是 core 里的一对函数 ─────────────────────────────────────────
+ *
+ * `taskId` 这个字段在改动前有**六条互不知道对方的写入路径**（详情那一格点已有卡、提升、
+ * 模型的提升、悬空自我归正、建卡时带链接），而状态有三张面两套接线。同一件事有六个入口，
+ * 就是六套行为——读者看到的是「按了没反应」「两边不一样」这类没法解释的现象。所以：
+ * **挂上、改状态各只有一个入口**，界面与将来的 AI 都走它。
+ *
+ * ── 那条已钉着的规则仍然成立 ───────────────────────────────────────────────
+ *
+ * `itemStatusOf` 的「读者自己按下的完成压过卡片」不动（有测试钉着）。它带来的一件坏事是
+ * 「写了一张牌却收不回来」——所以**每一次改状态都把两边写成同一档**：按已完成 = 标这一行
+ * **并且**把卡移过去；按别的 = 移卡 **并且**把那张牌收回。于是那张牌在屏上不再是陷阱。
+ */
+export interface ItemStatusWrite {
+  /** 写完之后的整份清单。 */
+  readonly rows: ItemRecord[]
+  /** 这一次要移的那张卡；没有卡就不是一次移卡。 */
+  readonly move?: { readonly cardId: string; readonly status: TaskStatus }
+  /** 这一档挂卡时给不了：进行中 / 待审核是执行器的事实。 */
+  readonly refused?: 'executorOnly'
+}
+
+/**
+ * 改一条的状态，或说明为什么改不了。
+ * @param rows - 整份清单。
+ * @param id - 哪一条。
+ * @param status - 目标档（五档之一）。
+ * @param cardId - 这一条挂着的卡（`linkedCardIdOf` 的答案），没挂卡是 `undefined`。
+ * @param now - 写入时钟。
+ */
+export function applyItemStatus(
+  rows: readonly ItemRecord[],
+  id: string,
+  status: TaskStatus,
+  cardId: string | undefined,
+  now: number,
+): ItemStatusWrite {
+  const row = rows.find(candidate => candidate.id === id)
+  if (row === undefined) return { rows: [...rows] }
+  /* 挂着卡时只有三档是人手给的：另两档由执行器落（与看板自己那一排同一个判据
+   * `MANUAL_STATUSES`）。拒绝要带一个码，让调用点有一句话可说——静默无效比拒绝更糟。 */
+  if (cardId !== undefined && !(MANUAL_STATUSES as readonly string[]).includes(status)) {
+    return { rows: [...rows], refused: 'executorOnly' }
+  }
+  // 两边一起写：这一行自己的字段与那张卡的栏从此是同一档。
+  const written = { ...row, status: status as ItemRecord['status'], updatedAt: now }
+  return {
+    rows: rows.map(candidate => (candidate.id === id ? written : candidate)),
+    ...cardId === undefined ? {} : { move: { cardId, status } },
+  }
+}
+
+/**
+ * 把一条挂到一张卡上：**链接与状态一起写**。
+ *
+ * 摘下（`{ taskId: undefined }`）不需要一个函数：这一行保留最后一次与卡同步过的状态，
+ * 那就是它现在的状态（一次普通的补丁）。而挂上必须同时决定「这一行自己那一档是什么」，
+ * 因为挂上之后显示那件事由卡回答——两个字段各写各的，就是这一轮修掉的那类账。
+ * @param rows - 整份清单。
+ * @param id - 哪一条。
+ * @param cardId - 挂到哪张卡。
+ * @param cardStatus - 那张卡此刻在哪一栏（新卡的出生栏见 `planItemPromotion`）。
+ * @param now - 写入时钟。
+ */
+export function mountItemRecord(
+  rows: readonly ItemRecord[],
+  id: string,
+  cardId: string,
+  cardStatus: TaskStatus,
+  now: number,
+): ItemRecord[] {
+  return rows.map(row => (row.id === id
+    ? { ...row, taskId: cardId, status: cardStatus as ItemRecord['status'], updatedAt: now }
+    : row))
 }
 
 /**

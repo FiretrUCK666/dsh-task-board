@@ -43,17 +43,23 @@
 import { ALL_STATUSES, type TaskStatus } from './tasks.ts'
 
 /**
- * THE STORED STATUS: the two the checklist itself owns.
+ * THE STORED STATUS: **五档，与看板那五栏是同一套词。**
  *
- * 一份清单自己能说的话只有两句——「还没做」与「做完了」。其余三栏（待规划 / 进行中 /
- * 待审核）**不是清单的状态，是它挂着的那张卡在哪一栏**：那是看板的字段，清单只读它
- * （见 {@link itemStatusOf}）。把两件事合成一个枚举，就是同一件东西有两个主人。
+ * 一份清单自己能说的话原来只有两句（「还没做」「做完了」），而读者问过一句：**没挂卡的时候
+ * 为什么只有两档能选**。答案不是「清单只配有两档」，而是那两档的定义方式错了：
  *
- * 这一版删掉了 `blocked`（受阻）。读者的话是「受阻肯定不能有了」——而它本来就只在
- * 清单这里存在：看板的五栏里没有它，于是它是这套词汇里唯一一个**两个面板对不上**的
- * 词。老文档里的 `open` / `blocked` 由解析器读成 `todo`，一个字都不丢。
+ *  - **没挂卡时**，这一行的状态就是它自己的事，五档都成立——待规划（还没定要不要做）、
+ *    待办、进行中（我自己正在弄）、待审核（等我复核）、已完成。没有任何别的东西能替它回答。
+ *  - **挂着卡时**，显示这件事由那张卡回答（见 {@link itemStatusOf}），而**这个字段跟着卡
+ *    一起走**（`mountItemRecord` / `applyItemStatus` 每一次写两边一起写）：一个字段可以有
+ *    一个主人，但不该有第二个说法。
+ *
+ * 所以它是**导入**的（{@link ALL_STATUSES}），与 {@link ItemStatusView} 同一张表——加一栏、
+ * 改一个词都只动看板那一处，而这里由类型跟着变。`blocked`（受阻）那一档删掉的原因没变：
+ * 它本来就只在清单这里存在，是唯一一个**两个面板对不上**的词。老文档里的 `open` / `blocked`
+ * 由解析器读成 `todo`，一个字都不丢。
  */
-export type ItemStatus = 'todo' | 'done'
+export type ItemStatus = TaskStatus
 
 /**
  * 一个面可以**显示**的状态：看板的五栏，逐字同一张表。
@@ -120,8 +126,11 @@ export interface ItemRecord {
   updatedAt: number
 }
 
-/** 清单自己能写的两个值，按读者读到的顺序：还没做 · 做完了。 */
-export const ITEM_STATUSES: readonly ItemStatus[] = ['todo', 'done']
+/**
+ * 清单自己能写的五档，就是看板那五栏、也是读者读到的顺序（待规划 → 待办 → 进行中 →
+ * 待审核 → 已完成）。**导入，不抄**：一处定义，两个面板跟着变。
+ */
+export const ITEM_STATUSES: readonly ItemStatus[] = ALL_STATUSES
 
 /**
  * Every status a surface may SHOW: the board's columns, in the board's own order.
@@ -238,7 +247,7 @@ export const ITEM_FIELDS = {
   body: { access: 'writable', why: '正文，Markdown；没进模型的新字段一律写这里' },
   notes: { access: 'writable', why: '给接手的人或模型看的上下文备注，参与展示' },
   steps: { access: 'writable', why: '勾选清单，参与展示；进度由它派生，不另存' },
-  status: { access: 'writable', why: '开放/受阻/完成三选一；「进行中」是派生，不存' },
+  status: { access: 'writable', why: '五档，与看板那五栏同一套词；挂着卡的行改它等于移那张卡' },
   priority: { access: 'writable', why: '四档，参与筛选与排序' },
   tags: { access: 'writable', why: '自由标签，参与筛选' },
   startsAfter: { access: 'writable', why: '不早于，与希望在、不晚于是三件不同的事' },

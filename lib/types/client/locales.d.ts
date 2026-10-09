@@ -670,8 +670,12 @@ export declare const zh: {
     'item.noMatch.day': string;
     'item.steps': string;
     'item.status.todo': string;
+    'item.status.backlog': string;
+    'item.status.running': string;
+    'item.status.review': string;
     'item.status.done': string;
     'item.status.card': string;
+    'item.status.executorOnly': string;
     'item.status.derived': string;
     'item.field.startsAfter': string;
     'item.field.dueAt': string;

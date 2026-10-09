@@ -223,6 +223,8 @@ const INTERNAL = {
   restoreItemRecord: '面板那一次撤销的落盘半步。**与目录里的 `item.restore` 是同一套重打墓碑戳的规则，但寻址键不同、不可互换**：面板刚删掉的行 `ref === 0`、按编号找不到墓碑，所以它传 `id`；模型只说得出编号，所以 `item.restore` 传 `ref`（见 `items-archive.ts` 的两个键）。同一条规则、两个地址，不是一个动作的两种叫法——要合并就得先让两个地址都成立，那是一次合并文法的决定，不是这张表能顺手写的',
   isBlankCapture: '判一条快记是不是空。**判空不是动作**——它不写任何东西，只回答「要不要收下」。与 `isBlankMessage` 同一族：一个空位判断，两条表面各有一个，因为它们问的不是同一件事（消息问「文字空且无图无文件」，快记问「连结构都解析不出来」）',
   mintStepId: '给新加的一步造一个身份。**它不写任何东西**——纯字符串，而且是可复算的（`${itemId}.s${位置}`）；正因为它是可复算的，界面与模型写同一步才会得到同一个 id，而那个 id 才能被 `item.step` 当参数引用。真正的写仍是 `item.step` / `item.update` 那两行。**注意它没有被留在组件里自己造一份**：一份「界面用的 id 形状」加一份「core 的 id 形状」就是同一个答案的第二份拷贝，而两份会漂',
+  applyItemStatus: '一条清单行改状态的**唯一写入口**：没挂卡就写它自己的字段，挂着卡就**同时**移那张卡、并把这一行写成同一档。**它不是第三个动作**——它做的两件事各自已经有目录行（`item.update` 写这一行、`task.move` 移那张卡），开成新动作就是同一个概念两个 id。而分成两个动作正是这一轮修掉的病：只移卡不写这一行，这一行自己那张「已完成」的牌会一直压着卡片（`itemStatusOf` 那条已钉着的规则），读者按什么胶囊都不动、连解释那句也不出现',
+  mountItemRecord: '把一条挂到一张卡上：**链接与状态一起写**。同理不是新动作（链接那一半是 `item.update`、建卡那一半是 `item.promote`），它存在的理由是那两半必须同时发生——分开写就出现「卡在待办、这一行显示已完成」那种两份数据两个说法。它也是八条挂载路径的唯一落点：界面两条（点已有卡、提升）、模型三条（`item.promote`、`item.create` / `item.update` 带 taskId）、建卡时带链接两条、卡被删后的自我归正一条',
   // --- sync and engine plumbing: nobody clicks these --------------------------
   // Called by the sync engine, the scheduler or a timer — never by a person and
   // never by the tool. A future one of these that DID become user-reachable

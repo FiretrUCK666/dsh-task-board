@@ -128,8 +128,10 @@ describe('itemStatusOf', () => {
     expect(itemStatusOf(item({ status: 'todo', taskId: 't-1' }), 'review')).toBe('review')
   })
 
-  it('stores only the two the checklist itself owns, and they are two of the board columns', () => {
-    expect(ITEM_STATUSES).toEqual(['todo', 'done'])
+  it('存下来的五档就是看板那五栏，逐字同一张表（导入，不是抄）', () => {
+    // 读者的原话：「没挂卡的时候为什么只有两档能选？」——答案是那两档的定义方式错了，不是
+    // 清单只配有两条。没挂卡时这一行自己的状态就是它的全部事实，五档都成立。
+    expect(ITEM_STATUSES).toEqual([...ALL_STATUSES])
     for (const status of ITEM_STATUSES) expect(ITEM_STATUS_VIEWS).toContain(status)
   })
 

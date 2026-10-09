@@ -888,7 +888,7 @@ export declare const ACTIONS: {
                 };
             };
             readonly status: {
-                readonly about: "开放 / 受阻 / 完成";
+                readonly about: "五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成";
                 readonly optional: true;
                 readonly oneOf: readonly string[];
             };
@@ -957,7 +957,7 @@ export declare const ACTIONS: {
                 };
             };
             readonly status: {
-                readonly about: "开放 / 受阻 / 完成（「进行中」是派生的，不可写）";
+                readonly about: "五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时，改的是那张卡在哪一栏）";
                 readonly optional: true;
                 readonly oneOf: readonly string[];
             };

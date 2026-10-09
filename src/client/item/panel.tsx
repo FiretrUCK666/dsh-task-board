@@ -57,7 +57,7 @@ import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
    the agent's tool calls, so a field the model ruled derived cannot be written
    here either. `model.ts` keeps only what a browser can do and a document cannot
    — minting an id, and formatting a date. */
-import { applyItemPatch, applyItemStep, captureItemRecord, isBlankCapture, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch, type ItemPromotionOverrides } from '../../core/item-transitions.ts'
+import { applyItemPatch, applyItemStatus, applyItemStep, captureItemRecord, isBlankCapture, mountItemRecord, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch, type ItemPromotionOverrides } from '../../core/item-transitions.ts'
 import { itemTitleOf } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { itemsAsk } from '../board-ask.ts'
@@ -611,6 +611,24 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * `over` 是「就地建卡」带进去的决定：选择器里那枚「新建卡片」给出名字，并明说
    * 「再开一张」——已经被链着的那条跳过 alreadyLinked 判定，是它的调用自己声明
    * 的，不是判定松了。回执编号记在这一条自己的行上，因为读者此刻就在看着它。 */
+  /**
+   * **状态的唯一写入口。**
+   *
+   * 三张面（详情那一排、行 ⋯ 菜单、批量栏）与将来的 AI 都走它，因为「改这一行的状态」在两
+   * 种情形下是两件事：没挂卡就是写它自己的字段；挂着卡就是**移那张卡**——而两边必须同时写，
+   * 否则这一行自己那张「已完成」的牌会一直压着卡片（`itemStatusOf` 的规则），读者按什么
+   * 胶囊都不动，连解释那句也不会出现。收进一个函数之后，那种矛盾在结构上不可能发生。
+   */
+  const writeStatus = useCallback((item: ItemRecord, status: TaskStatus) => {
+    const result = applyItemStatus(itemsNow.current, item.id, status, linkedCardIdOf(item, cardColumns), Date.now())
+    if (result.refused === 'executorOnly') {
+      setReceipt({ id: item.id, words: t('item.status.executorOnly') })
+      return
+    }
+    apply(result.rows)
+    if (result.move !== undefined) face.controller?.moveTask(result.move.cardId, result.move.status)
+  }, [apply, cardColumns, face.controller])
+
   const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides) => {
     setMenuRow(undefined)
     const controller = face.controller
@@ -623,7 +641,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       return
     }
     const at = Date.now()
-    const task = controller.createTask({ ...plan.task, status: 'todo' })
+    const task = controller.createTask({ ...plan.task, status: plan.task.status })
     if (task === undefined) { setReceipt({ id: item.id, words: t('item.promote.refused') }); return }
     /* BASE IS `itemsNow.current`, NOT THE CLOSURE'S `items`. The caller may have
      * JUST captured the row this hangs (the new-sheet path calls capture first
@@ -631,7 +649,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * and a patch computed off the stale array erases the row the same tick
      * created it. The mirror is updated in the same keystroke as `apply`, so it
      * is the one base that is never behind. */
-    apply(applyItemPatch(itemsNow.current, item.id, { taskId: task.id }, at))
+    apply(mountItemRecord(itemsNow.current, item.id, task.id, task.status, at))
     setReceipt({ id: item.id, words: t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }) })
   }, [apply, cards, face.controller])
 
@@ -772,15 +790,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
       }}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
-      /* 挂着卡的那一行改的是**那张卡在哪一栏**，与 ⋯ 菜单里那三项同一个写入口
-         （`task.move`）。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给
-         按钮——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
-      onMoveCard={face.controller === undefined
-        ? undefined
-        : (status: TaskStatus) => {
-          const cardId = linkedCardIdOf(item, cardColumns)
-          if (cardId !== undefined) face.controller?.moveTask(cardId, status)
-        }}
+      /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档
+         ——见 `writeStatus`。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给按钮
+         ——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
+      onMoveCard={face.controller === undefined ? undefined : (status: TaskStatus) => {
+        if (item !== undefined) writeStatus(item, status)
+      }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
          every other field takes. The pane computed the new order with the shared
          pure functions and hands the answer over; this is the only place a step
@@ -898,17 +913,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
     receipt: receipt?.id === item.id ? receipt.words : undefined,
     onMenuToggle: () => setMenuRow(current => (current === item.id ? undefined : item.id)),
     onMenuClose: () => setMenuRow(undefined),
-    onMark: (status: ItemStatus) => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
-    /* 挂卡的行改的是**那张卡在哪一栏**（看板自己的动作），不是这一行的字段：这一行
-       在哪一栏本来就由那张卡回答，写自己的字段会是一个看不见的动作。没有看板可写时
-       传 `undefined`，菜单里那几项就不出现。 */
+    onMark: (status: ItemStatus) => { writeStatus(item, status); setMenuRow(undefined) },
+    /* 挂卡的行改的是**那张卡在哪一栏**（看板自己的动作）**并且**把这一行写成同一档——两条
+       路合成一个入口（`writeStatus`）。没有看板可写时传 `undefined`，菜单里那几项就不出现。 */
     onMoveCard: face.controller === undefined
       ? undefined
       : (status: TaskStatus) => {
-        const cardId = linkedCardIdOf(item, cardColumns)
-        if (cardId === undefined) return
         setMenuRow(undefined)
-        face.controller?.moveTask(cardId, status)
+        writeStatus(item, status)
       },
     /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、把它展开，然后把
          光标交给步骤那一栏。三件事必须一起发生——只选不展开的话，读者看见的是

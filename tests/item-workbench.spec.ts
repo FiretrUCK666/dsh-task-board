@@ -3504,6 +3504,72 @@ describe('同一列顺序可以倒过来读', () => {
   })
 })
 
+describe('挂上卡之后，状态两边一起变（先复现，再修）', () => {
+  /** 详情面板里状态那一排里的某一枚按钮，按它的词找。 */
+  const statusChip = (panel: ReturnType<typeof mountPanel>, word: string): HTMLButtonElement | undefined =>
+    [...panel.surface.querySelectorAll('[class*="itemOpts"] button')]
+      .find(node => (node.textContent ?? '').trim() === word) as HTMLButtonElement | undefined
+
+  const row = (panel: ReturnType<typeof mountPanel>): ItemRecord | undefined => panel.lastWrite()[0]
+
+  it('这一行自己写着「已完成」而卡在待办：按「待办」胶囊要立刻跟着走', () => {
+    // 复现读者的原话：「再选什么待规划待办…他那边那个胶囊也不会有变化」。
+    // `itemStatusOf` 让这一行自己的 done 压过卡片，而挂卡时那一排只给"移卡"的三个动词
+    // ——写完卡，显示照旧是「已完成」，而解释那句的条件是 `done !== done`，也不出现。
+    // 两边的数据于是必须一起写：按别的档 = 移卡 **并且**把那张牌收回去。
+    const panel = mountPanel(oneRow({ status: 'done', taskId: 'task-1' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const chip = statusChip(panel, '移到待办')
+      expect(chip, '状态那一排没有「移到待办」这一枚').toBeDefined()
+      click(chip)
+      panel.settle()
+      expect(row(panel)?.status, '这一行自己的「已完成」没有被收回去，于是显示永远压着卡片').toBe('todo')
+      const shown = panel.surface.querySelector('[class*="itemRowCardChip"]')?.textContent ?? ''
+      expect(shown, '胶囊没有跟着走').toContain('待办')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('按「已完成」：卡移到已完成，这一行自己也写上，两边一致', () => {
+    // 只移卡不写这一行的话，摘下来那一刻它会跳回旧值——那正是"两边各存一份真相"的账。
+    const panel = mountPanel(oneRow({ status: 'todo', taskId: 'task-1' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const chip = statusChip(panel, '移到已完成')
+      expect(chip, '状态那一排没有「移到已完成」这一枚').toBeDefined()
+      click(chip)
+      panel.settle()
+      expect(panel.calls, '没有移那张卡').toContain('moveTask(2)')
+      expect(row(panel)?.status, '这一行自己的字段没有跟着写成已完成').toBe('done')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('挂一条「已完成」的行：卡要开在已完成，不是写死的待办', () => {
+    // 「他那个状态好像就不能正确跳转该有的状态」——第一根就在这里：提升把出生栏写死成
+    // `status: 'todo'`，完全不看这一条当时的真实状态。
+    const panel = mountPanel(oneRow({ status: 'done' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const chip = newCardChip(panel.surface)
+      expect(chip, '「新建卡片」不在这一格上').not.toBeNull()
+      click(chip)
+      const field = namingField(panel.surface)
+      expect(field, '那一格没有变成起名字的输入框').not.toBeNull()
+      typeInto(field, '画廊改造')
+      press(field as HTMLInputElement, 'Enter')
+      panel.settle()
+      const minted = panel.minted[0]
+      expect(minted?.status, '新建的卡没有跟着这一行的状态走').toBe('done')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {

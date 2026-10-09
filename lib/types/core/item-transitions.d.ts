@@ -71,6 +71,7 @@
  */
 import type { ItemOriginSource, ItemRecord, ItemStep } from './item.ts';
 import { ITEM_FIELDS } from './item.ts';
+import { type TaskStatus } from './tasks.ts';
 /**
  * The keys a patch may carry, DERIVED from the ruling table instead of being
  * written out beside it. A second list of "the fields you may patch" is a list
@@ -200,7 +201,15 @@ export interface ItemPromotionTask {
     /** The card's description: the row's context notes, which is what they are FOR. */
     readonly description: string;
     /** The execution prompt: the override, else the row's body. */
+    /** The execution prompt: the override, else the row's body. */
     readonly prompt: string;
+    /**
+     * 这张卡出生在哪一栏：**这一条自己现在的状态**（执行器才能给的那两档落到「待办」）。
+     *
+     * 见 `planItemPromotion` 下面那段：写死成 `'todo'` 的那一版让「先标已完成、再挂卡」变成
+     * 两份互相矛盾的数据，而屏上没有一句话解释。
+     */
+    readonly status: TaskStatus;
 }
 /**
  * What a promotion decided: a card to create, or the reason it will not.
@@ -280,6 +289,55 @@ export interface ItemPromotionOverrides {
  * @returns the card to create, or the reason it will not be created.
  */
 export declare function planItemPromotion(item: ItemRecord, over?: ItemPromotionOverrides): ItemPromotion;
+/**
+ * **一条链接，两个入口：挂上 / 改状态。**
+ *
+ * ── 为什么必须是 core 里的一对函数 ─────────────────────────────────────────
+ *
+ * `taskId` 这个字段在改动前有**六条互不知道对方的写入路径**（详情那一格点已有卡、提升、
+ * 模型的提升、悬空自我归正、建卡时带链接），而状态有三张面两套接线。同一件事有六个入口，
+ * 就是六套行为——读者看到的是「按了没反应」「两边不一样」这类没法解释的现象。所以：
+ * **挂上、改状态各只有一个入口**，界面与将来的 AI 都走它。
+ *
+ * ── 那条已钉着的规则仍然成立 ───────────────────────────────────────────────
+ *
+ * `itemStatusOf` 的「读者自己按下的完成压过卡片」不动（有测试钉着）。它带来的一件坏事是
+ * 「写了一张牌却收不回来」——所以**每一次改状态都把两边写成同一档**：按已完成 = 标这一行
+ * **并且**把卡移过去；按别的 = 移卡 **并且**把那张牌收回。于是那张牌在屏上不再是陷阱。
+ */
+export interface ItemStatusWrite {
+    /** 写完之后的整份清单。 */
+    readonly rows: ItemRecord[];
+    /** 这一次要移的那张卡；没有卡就不是一次移卡。 */
+    readonly move?: {
+        readonly cardId: string;
+        readonly status: TaskStatus;
+    };
+    /** 这一档挂卡时给不了：进行中 / 待审核是执行器的事实。 */
+    readonly refused?: 'executorOnly';
+}
+/**
+ * 改一条的状态，或说明为什么改不了。
+ * @param rows - 整份清单。
+ * @param id - 哪一条。
+ * @param status - 目标档（五档之一）。
+ * @param cardId - 这一条挂着的卡（`linkedCardIdOf` 的答案），没挂卡是 `undefined`。
+ * @param now - 写入时钟。
+ */
+export declare function applyItemStatus(rows: readonly ItemRecord[], id: string, status: TaskStatus, cardId: string | undefined, now: number): ItemStatusWrite;
+/**
+ * 把一条挂到一张卡上：**链接与状态一起写**。
+ *
+ * 摘下（`{ taskId: undefined }`）不需要一个函数：这一行保留最后一次与卡同步过的状态，
+ * 那就是它现在的状态（一次普通的补丁）。而挂上必须同时决定「这一行自己那一档是什么」，
+ * 因为挂上之后显示那件事由卡回答——两个字段各写各的，就是这一轮修掉的那类账。
+ * @param rows - 整份清单。
+ * @param id - 哪一条。
+ * @param cardId - 挂到哪张卡。
+ * @param cardStatus - 那张卡此刻在哪一栏（新卡的出生栏见 `planItemPromotion`）。
+ * @param now - 写入时钟。
+ */
+export declare function mountItemRecord(rows: readonly ItemRecord[], id: string, cardId: string, cardStatus: TaskStatus, now: number): ItemRecord[];
 /**
  * The id a step gets when a writer brought text and no id of its own.
  *

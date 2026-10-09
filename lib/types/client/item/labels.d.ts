@@ -45,14 +45,15 @@ export declare const SORT_LABEL: Readonly<Record<ItemSort, TaskBoardKey>>;
  */
 export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>>;
 /**
- * The three marks a reader can PUT a row into, and each one's word.
+/**
+ * 读者可以把**这一行自己**放进哪几档，以及每一档的词。
  *
- * **两个值了，不是三个**：清单自己能写的只有「还没做 / 做完了」，第三档（受阻）跟着
- * 那一整套词汇一起删掉了（读者的话：「受阻肯定不能有了」——而它本来就是这套词里唯一
- * 一个看板没有的词）。
+ * **五档了，与看板那五栏同一套词。** 它原来只有两个值（还没做 / 做完了），理由是「清单自己
+ * 只说得清这两句」——而读者问过一句：**没挂卡的时候为什么只有两档能选**。第三档「受阻」删掉
+ * 的原因没变（它只在清单这里存在，是唯一一个两个面板对不上的词）；删的不是档数，是那个词。
  *
- * 挂着一张卡的行**不从这里写**：那时读者改的是那张卡在哪一栏（`task.move`），界面
- * 给的是看板自己的动词（`status.move.*`）。所以这张表是「这一行没有卡的时候」的词表。
+ * 挂着一张卡的行**不从这里写**：那时读者改的是那张卡在哪一栏（`task.move`），界面给的是看板
+ * 自己的动词（`status.move.*`）。所以这张表是「这一行没有卡的时候」的词表。
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
 /**

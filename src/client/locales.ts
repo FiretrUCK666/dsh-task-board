@@ -714,12 +714,18 @@ export const zh = {
   'item.noMatch': '没有匹配的结果。清空搜索或换个筛选看看。',
   'item.noMatch.day': '{when} 这天没有事项。换个日子，或去掉那枚「日期」芯片。',
   'item.steps': '{done}/{total}',
-  // 清单自己能写的两个值，正是看板那五栏里的两栏——所以这里的词与 `board.status.*`
-  // 是同一个词，而「标为」是**菜单**的动词（动作之前的话）。第三档（受阻）跟着那一套
-  // 词汇一起删了；挂着卡的行改的是卡在哪一栏，用的是看板自己的动词（`status.move.*`）。
+  // 清单自己能写的**五档**，正是看板那五栏——所以这里的词与 `board.status.*` 是同一批词，
+  // 而「标为」是**菜单**的动词（动作之前的话）。「受阻」那一档跟着那一套词汇一起删了（它
+  // 只在清单这里存在，是唯一一个两个面板对不上的词），删的是那个词，不是档数：没挂卡的行
+  // 五档都是它自己的事实。挂着卡的行改的是卡在哪一栏，用的是看板自己的动词（`status.move.*`）。
   'item.status.todo': '标为待办',
+  'item.status.backlog': '标为待规划',
+  'item.status.running': '标为进行中',
+  'item.status.review': '标为待审核',
   'item.status.done': '标为已完成',
   'item.status.card': '这一行的状态读它挂着的那张卡；要改就移那张卡。',
+  // 挂着卡时那两档由执行器给（与看板自己那一排同一个判据）：一张没人跑过的卡说「进行中」是假话。
+  'item.status.executorOnly': '「进行中」与「待审核」是执行器给的：卡在跑、或跑完等你复核，它自己会到那一栏。',
   'item.status.derived': '这条显示{where}，是因为它挂着的卡在那一栏；它自己存的还是{own}。',
   /* ── 三个日子：一条区间上的三个位置 ─────────────────────────────────────────
    *
@@ -1650,8 +1656,12 @@ export const en: Record<keyof typeof zh, string> = {
   // words are `board.status.*`; a carded row moves its CARD, with the board's verbs
   // (`status.move.*`).
   'item.status.todo': 'Mark to do',
+  'item.status.backlog': 'Mark as planned',
+  'item.status.running': 'Mark as in progress',
+  'item.status.review': 'Mark for review',
   'item.status.done': 'Mark done',
   'item.status.card': 'This row reads its status from the card it hangs on; to change it, move that card.',
+  'item.status.executorOnly': '“In progress” and “For review” come from the executor: the card arrives there when a run starts or finishes.',
   'item.status.derived': 'This row reads {where} because the card it hangs on is in that column; what the row itself stores is {own}.',
   'item.field.startsAfter': 'Not before',
   'item.field.dueAt': 'Wanted by',

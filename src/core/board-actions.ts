@@ -780,7 +780,7 @@ export const ACTIONS = {
         optional: true,
         list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
       },
-      status: { about: '开放 / 受阻 / 完成', optional: true, oneOf: ITEM_STATUS_VALUES },
+      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签', optional: true, list: 'string' },
       // The granularity is a FIELD on all three dates, and in the same words.
@@ -811,7 +811,7 @@ export const ACTIONS = {
         optional: true,
         list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
       },
-      status: { about: '开放 / 受阻 / 完成（「进行中」是派生的，不可写）', optional: true, oneOf: ITEM_STATUS_VALUES },
+      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时，改的是那张卡在哪一栏）', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
       // The same field, the same value, for the same reason as `item.create`'s.
