@@ -696,6 +696,30 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [apply, cards, face.controller])
 
   /**
+   * **「开工」：挂着卡就跑那张卡，没挂卡就就地建卡再跑。**
+   *
+   * 一处实现两个调用点（详情那一枚与行菜单那一枚）：同一句话、同一个判断，两处各写一份的
+   * 代价是它们迟早不一样——而读者看到的是「同一个按钮，在两个地方行为不同」。
+   *
+   * 这一枚原来在没有卡时是一条死路：按钮画得出来、按下去什么都不会发生，而那正是这一页最
+   * 忌讳的控件。读者按下「开工」的意思是「这条我要让 AI 干」，与有没有卡无关——先建卡、
+   * 再回来按一遍是两步做一件事。
+   *
+   * 没挂卡而正文为空时**不建卡**：建出来也是一张跑不起来的卡（看板的门禁读执行 Prompt，
+   * 而它来自正文），所以这里就说清缺什么。
+   */
+  const startOne = useCallback((item: ItemRecord) => {
+    const cardId = linkedCardIdOf(item, cardColumns)
+    if (cardId !== undefined) {
+      void face.controller?.runTask(cardId, 'manual')
+      return
+    }
+    if (item.body.trim() === '') { setReceipt({ id: item.id, words: t('detail.promptEmpty') }); return }
+    const made = promoteOne(item)
+    if (made !== undefined) void face.controller?.runTask(made, 'manual')
+  }, [cardColumns, face.controller, promoteOne])
+
+  /**
    * Apply one patch to every held row, through the SAME writer the row menu uses.
    *
    * It reports how many rows actually CHANGED rather than how many it touched,
@@ -826,10 +850,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
          看得见的那张卡算**（`linkedCardIdOf`），卡被删掉之后它就不是一张卡了。 */
       runnable={runnableOf(cardRunnable, linkedCardIdOf(item, cardColumns))}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
-      onStart={() => {
-        const cardId = linkedCardIdOf(item, cardColumns)
-        if (cardId !== undefined) void face.controller?.runTask(cardId, 'manual')
-      }}
+      onStart={() => { startOne(item) }}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
       /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档
@@ -981,11 +1002,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * 「开工」定义的来处。
      *
      * 没有卡就是没有卡：按钮在菜单里**列出但禁用**，并把缺的那件事写在右边。 */
-    onStart: () => {
-      const cardId = linkedCardIdOf(item, cardColumns)
-      if (cardId === undefined) return
-      void face.controller?.runTask(cardId, 'manual')
-    },
+    onStart: () => { startOne(item) },
     running: runningOf(cardColumns, linkedCardIdOf(item, cardColumns)),
     /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
        一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
