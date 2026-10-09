@@ -1787,7 +1787,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
             <div className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
               <button
                 type="button"
-                className={css.itemChip}
+                className={css.itemQueryChip}
                 onClick={() => { setCardFocus(undefined) }}
               >
                 {t('item.filters.byCard', { title: cards.find(card => card.id === cardFocus.cardId)?.title ?? cardFocus.cardId })}
