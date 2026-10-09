@@ -473,6 +473,21 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const board = useBoardSnapshot(face.controller)
   const cardColumns = useMemo(() => cardsMapOf(board), [board])
   const cardRunnable = useMemo(() => runnableMapOf(board), [board])
+
+  /**
+   * **这一行跑得起来吗。一处判断，两个表面读它**（详情那一排、⋯ 菜单）。
+   *
+   * 挂着卡：由 core 的判据回答（`runnableMapOf` → `taskExecutable`）。
+   * 没挂卡：看它自己的**正文**——因为「执行」对没卡的行做的是"就地建卡再跑"，而执行 Prompt
+   * 来自正文；正文为空时那一枚必须禁用并写明理由，而不是画一枚按了没反应的按钮。
+   *
+   * 写成一处是因为两处各写一份时会分叉：菜单读的是"这张卡能不能跑"（没卡时是 `undefined`，
+   * 于是**不禁用**），详情读的是"正文空不空"——同一个动作，一个地方禁用、另一个地方能按。
+   */
+  const runnableItem = useCallback((item: ItemRecord): boolean => {
+    const cardId = linkedCardIdOf(item, cardColumns)
+    return cardId === undefined ? item.body.trim() !== '' : runnableOf(cardRunnable, cardId) !== false
+  }, [cardColumns, cardRunnable])
   const cards = useMemo(() => cardsOf(board), [board])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
@@ -873,7 +888,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       asking={item !== undefined && asking === item.id}
       /* 跑不跑得起来：同一份判据，同一个来源（见 `runnableMapOf`）。**挂没挂按这一屏
          看得见的那张卡算**（`linkedCardIdOf`），卡被删掉之后它就不是一张卡了。 */
-      runnable={runnableOf(cardRunnable, linkedCardIdOf(item, cardColumns))}
+      runnable={runnableItem(item)}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
       onStart={() => { startOne(item) }}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
@@ -1031,7 +1046,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     running: runningOf(cardColumns, linkedCardIdOf(item, cardColumns)),
     /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
        一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
-    runnable: runnableOf(cardRunnable, linkedCardIdOf(item, cardColumns)),
+    runnable: runnableItem(item),
     /* 跨面板那一扇门：面板只**转发**装配层给的那一个函数，不自己做别的事（见
        `ItemListFace.openCard`：去找看板、去抬舞台都是别人的事）。 */
     onOpenCard: face.openCard,
