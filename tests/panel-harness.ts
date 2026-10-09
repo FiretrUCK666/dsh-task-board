@@ -537,11 +537,19 @@ function withBand<T>(band: Band, body: () => T): T {
   }
 }
 
-/** The face the panel reads, built from the two seams a caller owns. */
-function faceOf(replica: ReturnType<typeof fakeReplica>, controller: unknown): ItemListFace {
+/** The face the panel reads, built from the seams a caller owns.
+ *
+ * `openCard` 缺席时面板把卡芯片画成**一枚读数**（`span`），给了才是门（`button`）——所以
+ * 这条接缝必须是可选的，两种状态都要能装配出来，测试才问得出「缺席时它是不是退回了读数」。 */
+function faceOf(
+  replica: ReturnType<typeof fakeReplica>,
+  controller: unknown,
+  openCard?: (cardId: string) => void,
+): ItemListFace {
   return {
     replica: replica as never,
     controller: controller as never,
+    ...openCard === undefined ? {} : { openCard },
   } as ItemListFace
 }
 
@@ -578,10 +586,18 @@ export function renderPanel(
   /** WHICH ROW IS EXPANDED, for a capture. `renderToStaticMarkup` presses nothing,
    *  so the expansion is the one state a static render cannot reach by itself. */
   openRow?: string,
+  /**
+   * 跨面板那扇门给不给，给的是哪一枚回调。
+   *
+   * 它在这里出现，是为了让**装配层那两种状态都能被拍下来看**：给了门时卡芯片是一枚
+   * `button`（按得动），没给时是一枚 `span`（读数）。这两张图不一样——而「按得动的东西
+   * 看起来要像按得动」这件事只有看一眼才算验过（硬性规范 19：量法之外还要有图）。
+   */
+  openCard?: (cardId: string) => void,
 ): string {
   return withBand(band, () => withPrefs({ page, ...prefs }, () => renderToStaticMarkup(createElement(ItemListPanel, {
     signal: new AbortController().signal,
-    face: faceOf(fakeReplica(items), controller),
+    face: faceOf(fakeReplica(items), controller, openCard),
     /* THE BENCH'S CLOCK, and it is the fixture's own. Without this the panel read
      * the real `Date.now()` while every row was dated relative to {@link NOW}, so a
      * fixture built to be nine days late rendered as fifteen days late — a
@@ -915,13 +931,13 @@ export function cssMembersOf(jsx: string): Map<string, string> {
  * @param page - which page to open.
  * @param scheme - which theme table the host's own tokens resolve against.
  */
-export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light', openRow?: string): void {
+export function writeRenderArtifact(target: string, items: readonly ItemRecord[], band: Band, page: Page, scheme: 'light' | 'dark' = 'light', openRow?: string, openCard?: (cardId: string) => void): void {
   // `DSH_PANEL_OPEN` rides the SAME `prefs` channel as the page, and the
   // environment is read HERE rather than inside the panel, so a capture can ask
   // for the open palette and the product code has no idea a capture exists.
   const overlay = overlayOfEnv()
   const aligned = alignClassNames(
-    renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }, openRow),
+    renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }, openRow, openCard),
     panelCss(),
   )
   // THE HOST'S OWN DARK TABLE, NOT A RECONSTRUCTED ONE. `hostTokenCss()`
@@ -970,6 +986,8 @@ export interface MountedPanel {
   readonly writes: (readonly ItemRecord[])[]
   /** The controller methods the panel called, as `receiver.method` strings. */
   readonly calls: string[]
+  /** 面板通过跨面板那扇门**打开过的卡**，按顺序——`over.openCard` 给了才记得到。 */
+  readonly openedCards: string[]
   /** The board cards the panel minted, in mint order — the seeding check reads these. */
   readonly minted: readonly TaskRecord[]
   /** The last document the panel handed to the replica. */
@@ -1073,7 +1091,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[] } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1082,6 +1100,12 @@ export function mountPanel(
   document.body.appendChild(host)
   const replica = fakeReplica(items, over)
   const calls: string[] = []
+  /* 跨面板那扇门的记录：`over.openCard` 是调用方自己的接缝，这里只**既转发又记下**
+     它被打开过哪张卡——一条断言要能说「按了它，它带着这个 id 走了」。 */
+  const openedCards: string[] = []
+  const openCard = over.openCard === undefined
+    ? undefined
+    : (cardId: string) => { openedCards.push(cardId); over.openCard?.(cardId) }
   const controller = fakeController(calls)
   const root = createRoot(host)
   const signal = new AbortController().signal
@@ -1203,7 +1227,7 @@ export function mountPanel(
     act(() => {
       root.render(createElement(ItemListPanel, {
         signal,
-        face: faceOf(replica, controller),
+        face: faceOf(replica, controller, openCard),
         /* THE BENCH'S CLOCK, the same reason renderPanel hands its own: every
          * fixture is dated relative to {@link NOW}, so a panel that read the real
          * `Date.now()` would disagree with its own rows the moment a relative
@@ -1233,6 +1257,7 @@ export function mountPanel(
     surface,
     writes: replica.writes,
     calls,
+    get openedCards(): string[] { return openedCards },
     /** The board cards the mounted panel minted, so a promote's SEEDING (the
      *  card's own words) is checkable on the fake that answered it. A LIVE
      *  getter, not a snapshot: mints that happen after the mount have to be

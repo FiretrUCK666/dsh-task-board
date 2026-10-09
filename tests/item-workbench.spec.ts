@@ -1476,7 +1476,38 @@ describe('a card that cannot run says why, beside the button', () => {
   })
 })
 
-describe('the summary says what it says, and the numbers do not move under a switch', () => {  it('the grouping drops the finished group under the switch, and only under it', () => {
+describe('the card chip is a door when the wiring gives one, and a reading when it does not', () => {
+  /* 挂卡那一行右边那枚芯片说的是「这一条挂在待审核那张卡上」。读者看到它时的下一个动作
+     十有八九是去看那张卡——所以装配层给了 `openCard` 时它是一枚**门**（`button`），按下
+     去带着那张卡的 id 走；没给时它退回**一枚读数**（`span`），绝不画成一枚按了没反应的按钮。 */
+  const carded = (): ItemRecord[] => oneRow({ taskId: 'task-review' })
+
+  it('按下它，它带着那张卡的 id 走', () => {
+    const opened: string[] = []
+    const panel = mountPanel(carded(), 'list', 'wide', { openCard: id => { opened.push(id) } })
+    try {
+      const chip = panel.surface.querySelector('button[data-door]')
+      expect(chip, 'the chip is not a door even though the wiring gave one').not.toBeNull()
+      click(chip)
+      expect(opened, 'pressing the chip did not hand the card id to the wiring').toEqual(['task-review'])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('没有那扇门时它是一枚读数，不是一枚按不动的按钮', () => {
+    const panel = mountPanel(carded(), 'list', 'wide')
+    try {
+      expect(panel.surface.querySelector('[data-door]'), 'a door with nothing behind it').toBeNull()
+      expect(panel.surface.querySelector('span[class*="itemRowCardChip"]'), 'the chip vanished instead of degrading').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('the summary says what it says, and the numbers do not move under a switch', () => {
+  it('the grouping drops the finished group under the switch, and only under it', () => {
     // 这一条原来问的是 `itemGroupCountsOf`（一份「永远是四组」的封闭计数表）。那个函数
     // 与它数的三个界面东西一起删了——分组头、概览条、页轨今天都不存在，而给死代码写测试
     // 会让死代码看起来被需要。留下来的、仍然有人在读的性质是**分组**那一条：清单页里的
@@ -3546,7 +3577,21 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
-      && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
+      && state !== 'card-door') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'card-door') {
+      /* 卡芯片**是门**的那一屏（装配层把 `openCard` 接上了）。
+       *
+       * 加它的理由：这一枚的形态变了——读数（`span`）与门（`button`）在屏上是两种东西，而
+       * 「按得动的东西看起来要像按得动」只有看一眼才算验过。对照组是同一份 fixture 在没有那扇
+       * 门时的那一屏（默认的静态产物），两张图放一起看，差别应当**只有**这一枚的形态。 */
+      const items = [...fixtures()]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide', { openCard: () => {} })
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'calendar-folded') {
       /* 日历**折起来**之后的那一屏。

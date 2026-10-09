@@ -18,6 +18,18 @@ interface Context {
 export interface ItemListFace {
     readonly replica: ChecklistReplica | undefined;
     readonly controller: BoardController | undefined;
+    /**
+     * **跨面板的那一扇门：把看板舞台打开在那张卡上。**
+     *
+     * 清单不自己去找看板、也不自己按 `selectPanel`——它**问一句**「打开这张卡」，做这件事的
+     * 是装配层（`client/index.ts`：`controller.openTask(id)` 定下选中的卡，再由布局把看板
+     * 舞台抬到前面）。理由与所有接缝一样：清单面板不该知道看板住在哪个座位、更不该知道 shell
+     * 的布局服务长什么样；这两件事都是**别人**的事。
+     *
+     * 缺席（`undefined`）时那张卡芯片**保持是一枚读数**，不画成一枚按不动的按钮——一个按下去
+     * 什么都不会发生的控件比一句没有更糟（见 `item.menu` 那条同一个道理）。
+     */
+    readonly openCard?: (cardId: string) => void;
 }
 /**
  * The holder the background settle publishes into, and the panel reads from.
@@ -38,13 +50,22 @@ export interface ItemListFace {
 export declare class ItemListStage {
     private itemReplica;
     private board;
+    private open;
     private readonly lifetime;
-    /** Publish the two live faces; the signal already exists and is unchanged. */
-    bind(replica: ChecklistReplica | undefined, controller: BoardController | undefined): void;
+    /**
+     * Publish the live faces; the signal already exists and is unchanged.
+     *
+     * `openCard` 是**可选**的第三个面：装配层（`client/index.ts`）知道看板住在哪个座位、
+     * 也知道 shell 的布局服务，而这一层只把它转交给面板（见 `ItemListFace.openCard`）。
+     * 缺席时面板画一枚**读数**而不是一枚按不动的按钮。
+     */
+    bind(replica: ChecklistReplica | undefined, controller: BoardController | undefined, openCard?: (cardId: string) => void): void;
     /** The plugin's own lifetime, for every timer and subscription inside. */
     signal(): AbortSignal;
     replica(): ChecklistReplica | undefined;
     controller(): BoardController | undefined;
+    /** The cross-panel door, when the wiring layer gave one (see {@link bind}). */
+    openCardOf(): ((cardId: string) => void) | undefined;
     /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
     unbind(): void;
 }

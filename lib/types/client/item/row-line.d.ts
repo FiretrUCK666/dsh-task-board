@@ -55,6 +55,12 @@ export interface ItemRowLineProps {
      *  while the model runs it another is two definitions of 「开工」 on one
      *  installation. */
     readonly onStart: () => void;
+    /**
+     * **把看板舞台打开在这一行挂着的那张卡上**，由装配层给（见 `ItemListFace.openCard`）。
+     *
+     * 缺席时卡芯片**退回一枚读数**（不画成一枚按不动的按钮）。
+     */
+    readonly onOpenCard?: (cardId: string) => void;
     /** Whether that card is running, so 「开工」 is not offered twice. */
     readonly running: boolean;
     /**

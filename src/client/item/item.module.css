@@ -1751,8 +1751,13 @@
 }
 
 /* 卡那一枚：一个方框 + **那张卡在哪一栏的词**，颜色就是看板那一栏的颜色（`--dsh-tb-status-*`，
-   与列头那颗点同源）。它不是一个控件——它说的是事实，而事实不该长得像按钮；卡的名字写在
-   `title` 里，因为一行里放不下一个卡名，而**栏**才是这里唯一需要读的那个词。
+   与列头那颗点同源）。卡的名字写在 `title` 里，因为一行里放不下一个卡名，而**栏**才是这里
+   唯一需要读的那个词。
+ *
+ * **它是门的时候（`[data-door]`）就长得像门。** 装配层给了 `openCard` 时这一枚是
+ * `<button>`——按它跳去看板那张卡；没给时它退回 `<span>`，**一枚读数**。两种形态共用上面
+ * 那条规则（同一枚记号），这一条只补按钮自己带来的东西：浏览器默认的边框、底色与字体，
+ * 加一个指尖光标与按钮该有的焦点环。**不加任何别的差别**——它按得动，但它首先还是那枚记号。
  *
  * **颜色读的是行自己那个 `data-status`，芯片不再自报一个。** 一行「读出来是哪一栏」与
  * 「这张卡在哪一栏」是同一个值（`view.status` 就是 `itemStatusOf` 的答案），给芯片再挂一枚
@@ -1770,6 +1775,26 @@
   line-height: 16px;
   background: color-mix(in srgb, currentColor 12%, transparent);
   border-radius: var(--item-radius-pill);
+}
+
+button.itemRowCardChip {
+  appearance: none;
+  font-family: inherit;
+  border: none;
+  cursor: pointer;
+}
+
+button.itemRowCardChip:focus-visible {
+  outline: 2px solid var(--dsh-tb-ring);
+  outline-offset: 1px;
+}
+
+/* 悬停时这一枚**稍微实一点**：它是一枚门，而门要能被人看出来。只动底色，不动尺寸、不动字
+ * ——一行里的东西不因为鼠标路过而挪位置（那是硬性规范 11 的同一条精神）。 */
+@media (hover: hover) {
+  button.itemRowCardChip:hover {
+    background: color-mix(in srgb, currentColor 20%, transparent);
+  }
 }
 
 .itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog); }

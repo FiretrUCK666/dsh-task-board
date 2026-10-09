@@ -949,6 +949,9 @@ export const zh = {
    * 「正在跑」是把状态写成状态：读者要看的是**它现在怎么样**，而不是谁在做它。 */
   'item.menu.start': '执行',
   'item.menu.running': '正在跑',
+  /* 卡芯片那扇门的读屏名：它印的是「待办」这样的**状态词**，而一枚按钮只说「待办」会让
+     读屏用户以为它是个筛选器——所以它说清楚按下去会发生什么。 */
+  'item.row.cardDoor': '到看板打开这张卡（现在在「{where}」）',
 } satisfies Record<string, string>
 
 /** en dictionary, complete against the zh key set. */
@@ -1850,6 +1853,7 @@ export const en: Record<keyof typeof zh, string> = {
   // 见 zh 一侧的说明：与看板用同一个动词，而状态写成状态。
   'item.menu.start': 'Run',
   'item.menu.running': 'Running',
+  'item.row.cardDoor': 'Open this card on the board (it is in {where})',
 }
 
 /** The dictionary key union. */

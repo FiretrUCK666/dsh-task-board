@@ -212,6 +212,12 @@ export interface ItemRowLineProps {
    *  while the model runs it another is two definitions of 「开工」 on one
    *  installation. */
   readonly onStart: () => void
+  /**
+   * **把看板舞台打开在这一行挂着的那张卡上**，由装配层给（见 `ItemListFace.openCard`）。
+   *
+   * 缺席时卡芯片**退回一枚读数**（不画成一枚按不动的按钮）。
+   */
+  readonly onOpenCard?: (cardId: string) => void
   /** Whether that card is running, so 「开工」 is not offered twice. */
   readonly running: boolean
   /**
@@ -415,10 +421,28 @@ export function ItemRowLine(props: ItemRowLineProps) {
           </button>
         )}
         {item.taskId !== undefined && (
-          <span className={css.itemRowCardChip}>
-            <CardMark size="chip" />
-            {t(GROUP_LABEL[view.status])}
-          </span>
+          /* **挂在哪张卡，是一枚门。** 它的样子（方框 + 那一栏的词 + 那一栏的颜色）说的是
+             事实；而它同时也是一条路——按它跳去看板那张卡（`openCard`），因为读者看到
+             「这一条挂在待审核那张卡上」时，下一个动作十有八九是去看那张卡。
+             装配层没给这扇门时（`onOpenCard` 缺席）它**退回一枚读数**（`span`），而不是
+             画一枚按了没反应的按钮。 */
+          props.onOpenCard === undefined ? (
+            <span className={css.itemRowCardChip} data-door={undefined}>
+              <CardMark size="chip" />
+              {t(GROUP_LABEL[view.status])}
+            </span>
+          ) : (
+            <button
+              type="button"
+              className={css.itemRowCardChip}
+              data-door=""
+              aria-label={t('item.row.cardDoor', { where: t(GROUP_LABEL[view.status]) })}
+              onClick={event => { event.stopPropagation(); props.onOpenCard?.(item.taskId as string) }}
+            >
+              <CardMark size="chip" />
+              {t(GROUP_LABEL[view.status])}
+            </button>
+          )
         )}
         {due !== undefined && (
           <span className={css.itemRowDate} data-tone={due.tone}>

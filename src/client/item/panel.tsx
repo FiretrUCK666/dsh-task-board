@@ -891,6 +891,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
     /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
        一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
     runnable: item.taskId === undefined ? undefined : cardRunnable.get(item.taskId) === true,
+    /* 跨面板那一扇门：面板只**转发**装配层给的那一个函数，不自己做别的事（见
+       `ItemListFace.openCard`：去找看板、去抬舞台都是别人的事）。 */
+    onOpenCard: face.openCard,
     onRemove: () => removeOne(item),
     /* The detail is built only for the expanded row: opening is the condition, not
        the band, so both bands read the same place without building 100 details. */

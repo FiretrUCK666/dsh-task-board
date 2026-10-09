@@ -852,6 +852,7 @@ export declare const zh: {
     'item.menu.steps': string;
     'item.menu.start': string;
     'item.menu.running': string;
+    'item.row.cardDoor': string;
 };
 /** en dictionary, complete against the zh key set. */
 export declare const en: Record<keyof typeof zh, string>;

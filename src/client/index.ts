@@ -1270,7 +1270,24 @@ export function apply(ctx: ClientContext): void {
     // they are published together because a list without a replica has nothing
     // to read.
     if (sync !== undefined) {
-      itemListStage.bind(sync.checklistReplica(), controller)
+      /* **跨面板那一扇门在装配层接。** 清单面板不知道看板住在哪个座位、更不知道 shell 的
+         布局服务长什么样；它只问一句「打开这张卡」。这里做两件事，顺序是有意的：先在控制器
+         上**选中那张卡**（`openTask` —— 与看板自己点卡片、与目录里 `task.navigate` 同一个
+         方法），再请布局把看板舞台抬到前面。反过来的话会有一帧「舞台换了但选中的还是上一张
+         卡」的闪烁。 */
+      itemListStage.bind(sync.checklistReplica(), controller, cardId => {
+        controller.openTask(cardId)
+        /* 布局服务**在调用时读**（与 `returnToConversation` 同一条规矩：这条边不需要自己的
+           fiber-inject 边、缺席时只报告）。两半的降级不一样，而且是有意的：控制器那一半
+           **照做**——那张卡确实被选中了，读者自己切到看板就看见它；布局那一半**只报告**，
+           因为「把舞台抬起来」这件事做不到就是做不到，不能假装。 */
+        const layout = ctx.get<ILayoutFace>('layout')
+        if (layout === undefined) {
+          console.warn('[dsh-task-board] cannot bring the board forward: no layout panel capability')
+          return
+        }
+        layout.selectPanel(GROUP.id)
+      })
       disposers.push(() => { itemListStage.unbind() })
     }
     // Host-truth convergence runs in the BACKGROUND: the entry above is
