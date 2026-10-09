@@ -3641,6 +3641,45 @@ describe('从看板跳过来：只看挂着那张卡的条目', () => {
   })
 })
 
+describe('「问 AI」与「执行」同一判据（有没有卡都问得出去）', () => {
+  it('「问 AI」对没挂卡的行也一样：先建一张卡再问', () => {
+    // 与「执行」同一判据：读者问的是**这一条**，与有没有卡无关。这一支原来和「执行」一样
+    // 落进死路——而它的另一半（有卡却被删了）必须继续拒绝，两条一起钉。
+    const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const ask = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '问 AI')
+      expect(ask, '详情里没有「问 AI」那一枚').toBeDefined()
+      click(ask)
+      panel.settle()
+      expect(panel.calls.join(' '), '没挂卡的行问 AI 时没有先建卡').toContain('createTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('有卡却被删了的行：拒绝，不建新卡', () => {
+    // `linkedCardIdOf` 返回 undefined 有两种原因，而答案不同：从来没挂过 → 建一张再问；
+    // 挂过却被删了 → 拒绝（去问一个不存在的会话是错的）。这一条钉住后者的边界，否则
+    // 一次「卡没了」会悄悄变成「又冒出一张新卡」。
+    const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: 'ghost-card' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const ask = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '问 AI')
+      /* **这一枚必须存在，而且必须按得到**：写成 `if (ask !== undefined)` 的话，按钮不见了
+         这条也会绿——那正是「假面比现实宽容」：测试说它测了，其实什么都没测。 */
+      expect(ask, '卡被删掉的行详情里没有「问 AI」那一枚').toBeDefined()
+      click(ask)
+      panel.settle()
+      expect(panel.calls.join(' '), '卡被删了却建了一张新卡').not.toContain('createTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 describe('没挂卡的一条也能交给 AI：按「执行」= 就地建卡并开跑', () => {
   /** 那一枚按文字找（它同时出现在详情与行菜单里，而这里问的是详情那一枚）。 */
   const startButton = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement | undefined =>
