@@ -13,6 +13,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
@@ -1259,5 +1260,27 @@ describe('the prompt section', () => {
     expect(seen).toHaveLength(1)
     expect(seen[0]?.text).toBe(PROMPT_SECTION_TEXT)
     expect(() => dispose()).not.toThrow()
+  })
+})
+
+describe('模型读到的词与界面是同一套（硬性规范 17）', () => {
+  const tools = readFileSync(fileURLToPath(new URL('../src/host/agent/tools.ts', import.meta.url)), 'utf8')
+
+  it('三个日期的名字用界面那一套，而不是三周前那套', () => {
+    /* **这一条是补一个刚暴露出来的洞**：那一行把一条清单打印给模型看时会带上三个日期名，
+       而它们一直是旧词（最早开始 / 截止 / 硬期限）——界面早改成了不早于 / 希望在 / 不晚于。
+       改的时候 2541 个测试全绿，说明**这三个词此前没有任何断言覆盖**；而模型会拿它们回答
+       读者，属于用户可见的那一面。一个概念两个名字，就是这一条要挡住的事。 */
+    for (const word of ['不早于', '希望在', '不晚于']) {
+      expect(tools, `模型读到的日期名缺了「${word}」`).toContain(`'${word}'`)
+    }
+    for (const stale of ['最早开始', '硬期限']) {
+      expect(tools, `模型读到的日期名还有旧词「${stale}」`).not.toContain(`'${stale}'`)
+    }
+  })
+
+  it('the probe bites: the old word is reported', () => {
+    const planted = `${tools}\nconst probe = ['硬期限', 1] as const\n`
+    expect(planted, 'the plant did not bite').toContain("'硬期限'")
   })
 })
