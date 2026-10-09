@@ -4737,3 +4737,37 @@ describe('the calendar is a date filter a reader can read back', () => {
     }
   })
 })
+
+describe('批量那一枚也照同一条律（这一条是它自己发现的问题）', () => {
+  it('选中的没挂卡的行照样问得出去，按钮也不是灰的', () => {
+    // **按代码读不出这个 bug。** 批量那一枚原来由一个数管着（`heldCarded` = 存着卡号的行数），
+    // 而「存着卡号」与「问得出去」是两件事：没挂过卡的行现在也问得出去（会就地建一张），
+    // 它的 taskId 是空的，于是被那个数漏掉——按钮画成灰的，按下去什么都不发生。
+    // 所以这条既断言**按钮不是灰的**，也断言**按下去真的建了卡**。
+    const rows = [
+      { ...(oneRow({ body: '第一件事' })[0] as ItemRecord), id: 'r-1', ref: 1 },
+      { ...(oneRow({ body: '第二件事' })[0] as ItemRecord), id: 'r-2', ref: 2 },
+    ]
+    const panel = mountPanel(rows, 'list', 'wide')
+    try {
+      const armChip = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '多选')
+      expect(armChip, '面板里没有「多选」那一枚').toBeDefined()
+      click(armChip)
+      panel.settle()
+      const allBox = panel.surface.querySelector('[class*="itemBatchLead"] input[type=checkbox]') as HTMLInputElement | null
+      expect(allBox, '多选武装之后没有全选那一格').not.toBeNull()
+      act(() => { allBox?.click() })
+      panel.settle()
+      const ask = [...panel.surface.querySelectorAll('[class*="itemBatch"] button')]
+        .find(node => (node.textContent ?? '').includes('问 AI')) as HTMLButtonElement | undefined
+      expect(ask, '批量那一排里没有「问 AI」').toBeDefined()
+      expect(ask?.disabled, '两行都没挂卡，批量那一枚却是灰的').toBe(false)
+      click(ask)
+      panel.settle()
+      expect(panel.calls.join(' '), '批量里没挂卡的行没有各自建卡').toContain('createTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
