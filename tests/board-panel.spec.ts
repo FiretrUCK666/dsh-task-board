@@ -23,6 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
 import { renderToStaticMarkup } from 'react-dom/server'
+import type { TaskRecord } from '../src/core/tasks.ts'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
 import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
 import { alignClassNames, panelCss, writeStandalonePage } from './panel-harness.ts'
@@ -417,10 +418,13 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     }
   }
 
-  /** A controller that answers every member the board's render reads. */
-  function boardStub(): Record<string, unknown> {
+  /**
+   * A controller that answers every member the board's render reads.
+   * @param tasks - 板上放哪些卡；不传就是空板（其余用例的行为一字不变）。
+   */
+  function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
     const snapshot = () => ({
-      tasks: [],
+      tasks,
       boardOpen: true,
       selectedTaskId: undefined,
       cruise: { enabled: false, limit: 3, schedule: [] },
