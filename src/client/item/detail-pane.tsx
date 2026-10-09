@@ -196,21 +196,33 @@ export function ItemDetail(props: ItemDetailProps) {
          这一行的状态里），只是改不了——而一个按下去什么都不会发生的控件，正是这一页
          要消掉的那类东西。 */
       ? <p className={css.itemOptsFoot}>{t('item.status.card')}</p>
-      : MANUAL_STATUSES.map(status => (
-        <button
-          key={status}
-          type="button"
-          className={css.itemOpt}
-          data-on={view.status === status ? '' : undefined}
-          aria-pressed={view.status === status}
-          /* 已经在那一栏的、以及还在跑的时候，都与看板自己那一排同一个判据：轮次开着
-             时不许换栏，而唯一的判定是那一轮本身（这个投影里的 `running`）。 */
-          disabled={view.status === status || running}
-          onClick={() => props.onMoveCard?.(status)}
-        >
-          {t(`status.move.${status}` as TaskBoardKey)}
-        </button>
-      ))
+      : ITEM_STATUSES.map(status => {
+        /* **五档都在，其中两档是执行器给的。**
+         *
+         * 挂着卡时这一行在哪一栏由卡回答，而人能给的只有三档（`MANUAL_STATUSES`）；另外两档
+         * （进行中 / 待审核）由引擎在轮次开始/结束时落。它们**画出来并写明为什么**，不是藏掉
+         * ——硬性规范 11：触屏没有 hover，承载必要信息的说明必须看得见；而一个"少了两档"的选择
+         * 器会让人以为那两档不存在。 */
+        const movable = (MANUAL_STATUSES as readonly string[]).includes(status)
+        return (
+          <button
+            key={status}
+            type="button"
+            className={css.itemOpt}
+            data-on={view.status === status ? '' : undefined}
+            aria-pressed={view.status === status}
+            disabled={!movable || view.status === status || running}
+            title={movable ? undefined : t('item.status.executorOnly')}
+            onClick={() => props.onMoveCard?.(status)}
+          >
+            {movable ? t(`status.move.${status}` as TaskBoardKey) : t(GROUP_LABEL[status])}
+          </button>
+        )
+      })
+  /** 那两档为什么画着不能按：挂着卡时它们由执行器给（触屏上标题不可达，所以另有一行字）。 */
+  const executorNote = cardId !== undefined && props.onMoveCard !== undefined
+    ? <p className={css.itemOptsFoot}>{t('item.status.executorOnly')}</p>
+    : undefined
   /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
   const gated = view.posture.kind === 'gated'
 /**
@@ -477,6 +489,7 @@ export function ItemDetail(props: ItemDetailProps) {
           <div className={css.itemOptRow}>
             <p className={css.itemOptName}>{t('item.field.status')}</p>
             <div className={css.itemOpts}>{statusChooser}</div>
+            {executorNote}
           </div>
 
           <div className={css.itemOptRow}>

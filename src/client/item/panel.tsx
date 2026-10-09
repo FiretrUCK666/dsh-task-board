@@ -478,10 +478,30 @@ export function ItemListPanel(props: ItemListPanelProps) {
   useEffect(() => {
     if (board === undefined) return
     const rows = itemsNow.current
-    const gone = rows.filter(item => item.taskId !== undefined && !cardColumns.has(item.taskId))
-    if (gone.length === 0) return
     const at = Date.now()
-    apply(gone.reduce((next, item) => applyItemPatch(next, item.id, { taskId: undefined }, at), rows))
+    let next = rows
+    // ① 卡没了 → 链接清掉（见上面那段）。
+    for (const row of rows) {
+      if (row.taskId !== undefined && !cardColumns.has(row.taskId)) {
+        next = applyItemPatch(next, row.id, { taskId: undefined }, at)
+      }
+    }
+    /* ② **卡那一栏变了，这一行自己的字段跟着写。**
+     *
+     * `itemStatusOf` 让显示读那张卡，于是屏上早就跟着变了——而这一行**自己的字段**还停在挂上
+     * 那一刻的值。摘下来（或跨设备读到这一行）时它会跳回旧状态，而排序、收件判据、`has:linked`
+     * 这些读裸字段的地方一直看到的是旧值。屏上读对是一半，文档里是对的**另一半**。
+     *
+     * **唯一的例外是那一张牌**：这一行自己写着 `done` 时不动它——`itemStatusOf` 的覆盖规则本来
+     * 就是单向的（读者自己按下「已完成」压过卡片，见 `item.ts`），所以写穿也单向。读者按下任何
+     * 一档时 `applyItemStatus` 会把两边一起写，那张牌在那时收回。 */
+    for (const row of rows) {
+      if (row.taskId === undefined || row.status === 'done') continue
+      const column = cardColumns.get(row.taskId)
+      if (column === undefined || row.status === column) continue
+      next = applyItemPatch(next, row.id, { status: column }, at)
+    }
+    if (next !== rows) apply(next)
   }, [board, cardColumns, apply, items])
 
   const askOne = useCallback((item: ItemRecord) => {    // Read once: the closure outlives this line, and a property re-proven

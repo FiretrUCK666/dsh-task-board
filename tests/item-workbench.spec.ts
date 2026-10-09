@@ -3568,6 +3568,47 @@ describe('挂上卡之后，状态两边一起变（先复现，再修）', () =
       panel.dispose()
     }
   })
+  it('卡被拖到另一栏：这一行自己的字段跟着写（摘下来不会跳回旧值）', () => {
+    // 屏上早就跟着变了（显示读卡），而这一行自己的字段还停在挂上那一刻——摘下来或跨设备读到
+    // 它时会跳回旧状态，排序、收件判据这些读裸字段的地方也一直看旧值。
+    const panel = mountPanel(oneRow({ status: 'todo', taskId: 'task-1' }), 'list', 'wide')
+    try {
+      panel.board.setTasks([{ id: 'task-1', title: '画廊第二版', status: 'review' }])
+      panel.settle()
+      expect(row(panel)?.status, '卡换了栏，这一行自己的字段没跟着写').toBe('review')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('这一行自己按下的「已完成」不被写穿冲掉（那条规则是单向的）', () => {
+    // `itemStatusOf` 的覆盖规则本来就是单向的：读者自己标了完成，卡片还没跟上时**显示仍是
+    // 已完成**。写穿如果把它抹掉，那张牌就白按了——所以唯一的例外就是它。
+    const panel = mountPanel(oneRow({ status: 'done', taskId: 'task-1' }), 'list', 'wide')
+    try {
+      panel.board.setTasks([{ id: 'task-1', title: '画廊第二版', status: 'running' }])
+      panel.settle()
+      expect(row(panel)?.status, '读者自己那张牌被写穿抹掉了').toBe('done')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('挂上卡之后，状态那一格把执行器给的那两档也画出来（禁用 + 写明为什么）', () => {
+    const panel = mountPanel(oneRow({ taskId: 'task-1' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const words = [...panel.surface.querySelectorAll('[class*="itemOpts"] button')].map(node => (node.textContent ?? '').trim())
+      expect(words, '进行中那一档被藏掉了').toContain('进行中')
+      expect(words, '待审核那一档被藏掉了').toContain('待审核')
+      const disabled = [...panel.surface.querySelectorAll('[class*="itemOpts"] button')]
+        .find(node => (node.textContent ?? '').trim() === '进行中') as HTMLButtonElement | undefined
+      expect(disabled?.disabled, '那一档画成了可以按的').toBe(true)
+      expect(panel.surface.textContent ?? '', '没有一句话说清那两档为什么不能按').toContain('执行器')
+    } finally {
+      panel.dispose()
+    }
+  })
 })
 
 /** The chip that asks for a new card, named by its text rather than its class. */
