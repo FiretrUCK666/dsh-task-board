@@ -64,7 +64,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -105,6 +105,8 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
    * 缺席＝这张卡没挂条目（看板独立使用时不出现任何清单痕迹）。
    */
   mounted?: { readonly count: number; readonly loudest?: ItemPriority }
+  /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目。缺席时它是一枚读数。 */
+  onOpenMounted?: () => void
   /** One quiet next-action sentence (localized by the caller). */
   nextAction?: string
   /** Tooltip for a session dot (session title + state). */
@@ -365,16 +367,31 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                   关于清单条目的读数，所以它说清单的话；而看板自己的搜索语法一个字都没变
                   （筛选发生在清单那一侧，按这一格跳过去）。 */}
               {mounted === undefined ? null : (
-                <Chip
-                  kind={mounted.loudest === undefined ? 'neutral' : 'warn'}
-                  fill={false}
-                  title={t('card.mountedRows', { n: String(mounted.count), tier: '' }).trim()}
-                >
-                  {t('card.mountedRows', {
-                    n: String(mounted.count),
-                    tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),
-                  })}
-                </Chip>
+                /* **有门时它是一扇门，没门时它是一枚读数**——与清单那一侧那张卡芯片同一条规矩
+                   （按下去什么都不会发生的控件比一句没有更糟）。门的另一半在装配层：抬清单舞台
+                   并让那边只显示挂着这张卡的条目。 */
+                onOpenMounted === undefined ? (
+                  <Chip kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
+                    {t('card.mountedRows', {
+                      n: String(mounted.count),
+                      tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),
+                    })}
+                  </Chip>
+                ) : (
+                  <button
+                    type="button"
+                    className={css.cardMountedDoor}
+                    title={t('card.mountedDoor')}
+                    onClick={event => { event.stopPropagation(); onOpenMounted() }}
+                  >
+                    <Chip kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
+                      {t('card.mountedRows', {
+                        n: String(mounted.count),
+                        tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),
+                      })}
+                    </Chip>
+                  </button>
+                )
               )}
               {automationChips}
             </span>

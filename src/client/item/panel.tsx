@@ -197,7 +197,26 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const replica = face.replica
   const lifetime = props.signal
 
-  const [items, setItems] = useState<readonly ItemRecord[]>(() => replica?.view() ?? [])
+  const [allItems, setItems] = useState<readonly ItemRecord[]>(() => replica?.view() ?? [])
+  /* **只看挂着某张卡的条目**（看板那一侧按「挂 N 条」跳过来）。
+   *
+   * 过滤在**这一处**做，因为下游每一件东西——左栏的计数、分组、排序、查询、日历上的点——
+   * 都读同一个 `items`：一处过滤、整页一致。每个表面各过滤一次就是同一个问题有五个答案，
+   * 而它们迟早会互相矛盾（左栏数 12、列表画 3）。请求带 token，所以同一次不会被消费两次，
+   * 也不会漏掉「清掉之后又按一次」。
+   *
+   * 写路径不受影响：写入读的是 `itemsNow`（全量），过滤只影响**显示的那一份**。 */
+  const focusRequest = face.focusRequest
+  const [cardFocus, setCardFocus] = useState<{ readonly token: number; readonly cardId: string } | undefined>(undefined)
+  const seenFocus = useRef(0)
+  useEffect(() => {
+    if (focusRequest === undefined || focusRequest.token === seenFocus.current) return
+    seenFocus.current = focusRequest.token
+    setCardFocus(focusRequest)
+  }, [focusRequest])
+  const items = cardFocus === undefined
+    ? allItems
+    : allItems.filter(row => row.taskId === cardFocus.cardId)
   const [prefs, setPrefs] = useState<ItemViewPrefs>(readViewPrefs)
   /* THE PANEL'S OWN CLOCK, and it is seeded rather than read.
    *
@@ -1758,6 +1777,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 onSearch={next => choose({ search: next })}
                 onClearQualifiers={() => choose({ search: freeTextOf(prefs.search) })}
               />
+            </div>
+          )}
+
+          {/* **「只看挂着这张卡的条目」也是筛选，所以它长在筛选芯片那一排。**
+              它是从看板那一侧跳过来时带上的（见 `ItemListFace.focusRequest`），按它摘掉就回到
+              全量列表——一枚**可摘的芯片**，而不是一个藏在别处、读者找不到也关不掉的过滤器。 */}
+          {cardFocus !== undefined && (
+            <div className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+              <button
+                type="button"
+                className={css.itemChip}
+                onClick={() => { setCardFocus(undefined) }}
+              >
+                {t('item.filters.byCard', { title: cards.find(card => card.id === cardFocus.cardId)?.title ?? cardFocus.cardId })}
+                <span aria-hidden="true"> ×</span>
+              </button>
             </div>
           )}
 

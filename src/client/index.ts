@@ -30,7 +30,7 @@ import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
-import { itemListStage, registerItemList } from './item/register.tsx'
+import { itemListStage, registerItemList, LIST_GROUP } from './item/register.tsx'
 import { ITEM_PRIORITIES_BY_WEIGHT } from '../core/item-view.ts'
 import type { ItemPriority } from '../core/item.ts'
 import { registerToolViews } from './chat/tool-views.tsx'
@@ -72,6 +72,8 @@ class TaskBoardStage {
   private freshness: BundleFreshnessState | undefined
   /** 装配层算好的「这张卡挂着几条条目、最急哪一档」（见 `TaskBoardPanelProps.mountedOf`）。 */
   private mounted: ((cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined) | undefined
+  /** 「跳到清单那边、只看挂着这张卡的条目」（装配层接的两件事，见 `bindOpenRows`）。 */
+  private openRows: ((cardId: string) => void) | undefined
 
   /** Publish the live board and its verdict source to the stage. */
   bind(controller: BoardController, freshness: BundleFreshnessState): void {
@@ -90,16 +92,22 @@ class TaskBoardStage {
     this.mounted = read
   }
 
+  /** 看板那一侧按「挂 N 条」时走的那扇门（与清单→看板那一扇同一个形状）。 */
+  bindOpenRows(open: (cardId: string) => void): void {
+    this.openRows = open
+  }
+
   /** Stop publishing them (the board is being disposed). */
   unbind(): void {
     this.controller = undefined
     this.freshness = undefined
     this.mounted = undefined
+    this.openRows = undefined
   }
 
   /** Build the face the panel registration injects (read fresh on every render). */
-  inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined; mountedOf: ((cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined) | undefined } {
-    return { controller: this.controller, freshness: this.freshness, mountedOf: this.mounted }
+  inject(): { controller: BoardController | undefined; freshness: BundleFreshnessState | undefined; mountedOf: ((cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined) | undefined; onOpenRows: ((cardId: string) => void) | undefined } {
+    return { controller: this.controller, freshness: this.freshness, mountedOf: this.mounted, onOpenRows: this.openRows }
   }
 }
 
@@ -1319,6 +1327,26 @@ export function apply(ctx: ClientContext): void {
         return loudest === undefined ? { count: rows.length } : { count: rows.length, loudest }
       })
       disposers.push(() => { stage.bindMounted(() => undefined) })
+      /* **反过来的那扇门：从卡片跳到清单、只看挂着它的条目。**
+       *
+       * 与清单→看板那一扇同样的顺序与同样的降级：先让清单那边记下「只看这张卡」这一次请求
+       * （计数器信号），再请布局把清单舞台抬到前面。布局缺席时那一半只报告（请求已经记下，
+       * 读者自己切过去就看见），而 `selectPanel` 对一个**没注册**的键会抛（清单面板是被
+       * surface 开关收窄的那一个），所以这里兜住并说清楚，不让一次点击把界面打崩。 */
+      stage.bindOpenRows(cardId => {
+        itemListStage.focusRowsOf(cardId)
+        const layout = ctx.get<ILayoutFace>('layout')
+        if (layout === undefined) {
+          console.warn('[dsh-task-board] cannot bring the checklist forward: no layout panel capability')
+          return
+        }
+        try {
+          layout.selectPanel(LIST_GROUP.id)
+        } catch (error) {
+          console.warn('[dsh-task-board] cannot bring the checklist forward (its panel is not composed)', error)
+        }
+      })
+      disposers.push(() => { stage.bindOpenRows(() => undefined) })
     }
     // Host-truth convergence runs in the BACKGROUND: the entry above is
     // already live on the local mirror. When the line allows, the host doc

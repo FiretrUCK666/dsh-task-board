@@ -201,7 +201,7 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     expect(bootstrap).toContain('stage.bind(controller, freshness)')
     expect(bootstrap).toMatch(/inject\(\):\s*\{[^}]*freshness/)
     const panel = read('../src/client/TaskBoardPanel.tsx')
-    expect(panel).toContain('<TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} />')
+    expect(panel).toContain('<TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} onOpenRows={onOpenRows} />')
     // Watching, not just probing: a restart must reach an already-open page.
     expect(bootstrap).toContain('return freshness.watch()')
   })

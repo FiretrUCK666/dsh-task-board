@@ -30,6 +30,8 @@ export const zh = {
   'board.organizeDelete': '删除',
   // 卡片上那枚读数：这张卡挂着几条清单条目、最急的是哪一档（`{tier}` 为空时只报条数）。
   'card.mountedRows': '挂 {n} 条 · 最急：{tier}',
+  // 那枚读数的读音（它同时是一扇门：跳到清单里只显示挂着这张卡的条目）。
+  'card.mountedDoor': '跳到清单：只看挂着这张卡的条目',
   'board.deleteSelectedTitle': '删除选中的 {n} 张卡片？',
   'board.deleteSelectedConfirm': '删除后任务与执行记录不可恢复；清单里挂到这些卡上的条目会变回「不挂」（条目本身不会删掉）。',
   'board.deleteSelectedOk': '删除 {n} 张卡片',
@@ -847,6 +849,8 @@ export const zh = {
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
   // 给它们起名字就是把一句关于控件的话放在一列数据上面。
   'item.filters.label': '筛选：',
+  // 从看板跳过来时带上的那枚可摘芯片：只看挂着某张卡的条目。
+  'item.filters.byCard': '只看挂着「{title}」的条目',
   'item.done.show': '隐藏已完成',
   'item.menu.rename': '改标题',
   'item.create.title': '新建一条',
@@ -1008,6 +1012,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.organizeRunTitle': 'Run every selected executable card (blank prompts stay put; the concurrency cap throttles)',
   'board.organizeDelete': 'Delete',
   'card.mountedRows': '{n} checklist rows · loudest: {tier}',
+  'card.mountedDoor': 'Open the checklist filtered to this card',
   'board.deleteSelectedTitle': 'Delete {n} selected cards?',
   'board.deleteSelectedConfirm': 'Deleted tasks and their run records cannot be recovered; checklist rows hung on them go back to “not on a card” (the rows themselves are not deleted).',
   'board.deleteSelectedOk': 'Delete {n} cards',
@@ -1764,6 +1769,7 @@ export const en: Record<keyof typeof zh, string> = {
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',
+  'item.filters.byCard': 'Only rows on “{title}”',
   'item.done.show': 'Hide finished',
   'item.menu.rename': 'Edit the title',
   'item.create.title': 'New row',

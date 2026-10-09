@@ -62,10 +62,12 @@ export interface TaskBoardPanelProps {
         readonly count: number;
         readonly loudest?: ItemPriority;
     } | undefined;
+    /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目（装配层接的两件事）。 */
+    onOpenRows?: (cardId: string) => void;
 }
 /**
  * Render the task board as a centre-stage panel.
  * @param props - the injected controller and freshness state.
  * @returns the board surface, or the loading state while the board is not ready.
  */
-export declare function TaskBoardPanel({ controller, freshness, mountedOf }: TaskBoardPanelProps): import("react").JSX.Element;
+export declare function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }: TaskBoardPanelProps): import("react").JSX.Element;

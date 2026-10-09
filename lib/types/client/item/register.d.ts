@@ -30,6 +30,14 @@ export interface ItemListFace {
      * 什么都不会发生的控件比一句没有更糟（见 `item.menu` 那条同一个道理）。
      */
     readonly openCard?: (cardId: string) => void;
+    /**
+     * 看板那一侧递过来的一次「只看挂着这张卡的条目」（带 token，所以同一次请求不会被消费两次）。
+     * 和 `openCard` 同一个方向：清单只**读**这件事，谁去抬舞台、谁去记请求都是别人的事。
+     */
+    readonly focusRequest?: {
+        readonly token: number;
+        readonly cardId: string;
+    };
 }
 /**
  * The holder the background settle publishes into, and the panel reads from.
@@ -51,6 +59,14 @@ export declare class ItemListStage {
     private itemReplica;
     private board;
     private open;
+    /**
+     * **看板那一侧递过来的一次「只看挂着这张卡的条目」请求。**
+     *
+     * 计数器 + 载荷，不是布尔：布尔会漏掉「在同一个状态下的第二次按」（挂载时读到 `true`，
+     * 之后再看还是 `true`，第二次按就没了声音）——与本页归档抽屉那一行同一个形状。
+     */
+    private focus;
+    private focusToken;
     private readonly lifetime;
     /**
      * Publish the live faces; the signal already exists and is unchanged.
@@ -66,6 +82,13 @@ export declare class ItemListStage {
     controller(): BoardController | undefined;
     /** The cross-panel door, when the wiring layer gave one (see {@link bind}). */
     openCardOf(): ((cardId: string) => void) | undefined;
+    /** 装配层（或看板那一侧）请清单只显示挂着这张卡的条目。 */
+    focusRowsOf(cardId: string): void;
+    /** 面板读它：带 token，所以同一个请求不会被消费两次，也不会漏掉第二次。 */
+    focusRequest(): {
+        readonly token: number;
+        readonly cardId: string;
+    } | undefined;
     /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
     unbind(): void;
 }

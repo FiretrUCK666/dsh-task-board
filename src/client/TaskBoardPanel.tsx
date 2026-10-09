@@ -65,6 +65,8 @@ export interface TaskBoardPanelProps {
    * （见 `task-search.ts` 的律），按这一格跳过去筛选发生在清单那一侧。
    */
   mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined
+  /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目（装配层接的两件事）。 */
+  onOpenRows?: (cardId: string) => void
 }
 
 /**
@@ -72,7 +74,7 @@ export interface TaskBoardPanelProps {
  * @param props - the injected controller and freshness state.
  * @returns the board surface, or the loading state while the board is not ready.
  */
-export function TaskBoardPanel({ controller, freshness, mountedOf }: TaskBoardPanelProps) {
+export function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }: TaskBoardPanelProps) {
   useEffect(() => {
     if (controller === undefined) return
     // The stage is showing this panel: that IS the board being open.
@@ -84,7 +86,7 @@ export function TaskBoardPanel({ controller, freshness, mountedOf }: TaskBoardPa
     <div className={css.panelStage} data-dsh-taskboard-view="">
       {controller === undefined
         ? <p className={css.panelLoading} role="status">{t('board.loading')}</p>
-        : <TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} />}
+        : <TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} onOpenRows={onOpenRows} />}
     </div>
   )
 }

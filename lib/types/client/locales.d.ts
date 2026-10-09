@@ -28,6 +28,7 @@ export declare const zh: {
     'board.organizeRunTitle': string;
     'board.organizeDelete': string;
     'card.mountedRows': string;
+    'card.mountedDoor': string;
     'board.deleteSelectedTitle': string;
     'board.deleteSelectedConfirm': string;
     'board.deleteSelectedOk': string;
@@ -752,6 +753,7 @@ export declare const zh: {
     'item.agenda.leftOut': string;
     'item.filter.clear': string;
     'item.filters.label': string;
+    'item.filters.byCard': string;
     'item.done.show': string;
     'item.menu.rename': string;
     'item.create.title': string;

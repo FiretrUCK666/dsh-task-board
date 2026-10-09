@@ -68,6 +68,11 @@ export interface ItemListFace {
    * 什么都不会发生的控件比一句没有更糟（见 `item.menu` 那条同一个道理）。
    */
   readonly openCard?: (cardId: string) => void
+  /**
+   * 看板那一侧递过来的一次「只看挂着这张卡的条目」（带 token，所以同一次请求不会被消费两次）。
+   * 和 `openCard` 同一个方向：清单只**读**这件事，谁去抬舞台、谁去记请求都是别人的事。
+   */
+  readonly focusRequest?: { readonly token: number; readonly cardId: string }
 }
 
 /**
@@ -90,6 +95,14 @@ export class ItemListStage {
   private itemReplica: ChecklistReplica | undefined
   private board: BoardController | undefined
   private open: ((cardId: string) => void) | undefined
+  /**
+   * **看板那一侧递过来的一次「只看挂着这张卡的条目」请求。**
+   *
+   * 计数器 + 载荷，不是布尔：布尔会漏掉「在同一个状态下的第二次按」（挂载时读到 `true`，
+   * 之后再看还是 `true`，第二次按就没了声音）——与本页归档抽屉那一行同一个形状。
+   */
+  private focus: { readonly token: number; readonly cardId: string } | undefined
+  private focusToken = 0
   private readonly lifetime = new AbortController()
 
   /**
@@ -127,12 +140,24 @@ export class ItemListStage {
     return this.open
   }
 
+  /** 装配层（或看板那一侧）请清单只显示挂着这张卡的条目。 */
+  focusRowsOf(cardId: string): void {
+    this.focusToken += 1
+    this.focus = { token: this.focusToken, cardId }
+  }
+
+  /** 面板读它：带 token，所以同一个请求不会被消费两次，也不会漏掉第二次。 */
+  focusRequest(): { readonly token: number; readonly cardId: string } | undefined {
+    return this.focus
+  }
+
   /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
   unbind(): void {
     this.lifetime.abort()
     this.itemReplica = undefined
     this.board = undefined
     this.open = undefined
+    this.focus = undefined
   }
 }
 
@@ -142,10 +167,12 @@ export const itemListStage = new ItemListStage()
 /** Build the face the panel registration injects, read fresh on every render. */
 function readFace(): ItemListFace {
   const openCard = itemListStage.openCardOf()
+  const focus = itemListStage.focusRequest()
   return {
     replica: itemListStage.replica(),
     controller: itemListStage.controller(),
     ...openCard === undefined ? {} : { openCard },
+    ...focus === undefined ? {} : { focusRequest: focus },
   }
 }
 

@@ -1930,6 +1930,18 @@
   border-radius: var(--dsh-tb-pill);
 }
 
+/* **「挂着 N 条清单条目」那枚读数同时是一扇门**（跳到清单、只看挂着这张卡的条目）。
+   它外面包一层按钮，所以按钮自己不许有边框、底色或内衬——那枚芯片的样子全由 `.chip` 说了算，
+   否则同一枚芯片会有两套皮肤，而其中一套只在可点的时候出现。 */
+.cardMountedDoor {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  cursor: pointer;
+}
+
 /* Sessions strip: up to 3 live dots + overflow count. Dots reuse the
    status-dot token family (no new color semantics); the strip wraps, never
    overflows (card overflow hidden is the floor, min-width 0 the chain). */

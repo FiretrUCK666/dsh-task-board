@@ -172,7 +172,7 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
 }
 
 /** Board component; subscribes to the controller snapshot. */
-export function TaskBoard({ controller, freshness, mountedOf }: { controller: BoardController; freshness?: BundleFreshnessState; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined }) {
+export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { controller: BoardController; freshness?: BundleFreshnessState; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined; onOpenRows?: (cardId: string) => void }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
   useEffect(
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
@@ -2049,6 +2049,7 @@ export function TaskBoard({ controller, freshness, mountedOf }: { controller: Bo
                       /* 「这张卡上挂着几条清单条目、最急的是哪一档」——装配层算好的读数（见
                          `TaskBoardPanelProps.mountedOf`）。看板独立使用时它是 `undefined`。 */
                       mounted={mountedOf?.(task.id)}
+                      onOpenMounted={onOpenRows === undefined ? undefined : () => onOpenRows(task.id)}
                       nextAction={nextAction}
                       dotTitleOf={sessionId => {
                         const title = controller.sessionTitle(sessionId) ?? sessionId
