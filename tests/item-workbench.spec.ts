@@ -3659,6 +3659,22 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
     }
   })
 
+  it('行菜单也照同一条律：没挂卡的行也有「执行」与「问 AI」', () => {
+    // 这是同一处判断的第二个表面（详情那排是第一个）。两处各写一份判断的代价，就是它们
+    // 迟早不一样——而这一段代码的注释自己写着「⋯ menu 说同一条律，学过一边的人就学会了
+    // 另一边」。所以两边各有一条断言，缺一边就会出现「同一个动作，在一个地方有、另一个
+    // 地方没有」。
+    const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowMenu(panel.surface)
+      panel.settle()
+      expect(findMenuEntry(panel.surface, '执行'), '行菜单里没有「执行」').not.toBeNull()
+      expect(findMenuEntry(panel.surface, '问 AI'), '行菜单里没有「问 AI」').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('有卡却被删了的行：拒绝，不建新卡', () => {
     // `linkedCardIdOf` 返回 undefined 有两种原因，而答案不同：从来没挂过 → 建一张再问；
     // 挂过却被删了 → 拒绝（去问一个不存在的会话是错的）。这一条钉住后者的边界，否则
