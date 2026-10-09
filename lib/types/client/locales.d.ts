@@ -609,7 +609,6 @@ export declare const zh: {
     'item.count': string;
     'item.countFiltered': string;
     'item.ask': string;
-    'item.ask.card': string;
     'item.ask.said': string;
     'item.ask.refused': string;
     'item.why.noSuchItem': string;

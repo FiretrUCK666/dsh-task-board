@@ -643,7 +643,6 @@ export const zh = {
   'item.count': '共 {n} 条',
   'item.countFiltered': '显示 {shown} / 共 {total} 条',
   'item.ask': '问 AI',
-  'item.ask.card': '问这张卡',
   'item.ask.said': '已经交给 {sessionId} 这个会话的模型，它会接着处理。',
   'item.ask.refused': '没能交给模型：{why}。这条还在清单里，没有丢。',
   'item.why.noSuchItem': '这一条已经不在清单里了',
@@ -936,8 +935,15 @@ export const zh = {
   'item.steps.doneHide': '收起已完成的 {n} 条',
   'item.steps.gauge': '{total} 条里做完了 {done} 条',
   'item.menu.steps': '编辑步骤',
-  'item.menu.start': '开工',
-  'item.menu.running': '模型在做',
+  /* 「开工」→「执行」，「模型在做」→「正在跑」。
+   *
+   * 读者的原话：「开工」是工地上的词，「模型在做」是一句解释而不是一个状态——而看板上
+   * 同一件事写的是「执行」（`README` 与看板详情都用它）。一个动作在两个面板上有两个名字，
+   * 是同一台机器上出现两个动词的来处，所以清单这一侧改读看板那一个词。
+   *
+   * 「正在跑」是把状态写成状态：读者要看的是**它现在怎么样**，而不是谁在做它。 */
+  'item.menu.start': '执行',
+  'item.menu.running': '正在跑',
 } satisfies Record<string, string>
 
 /** en dictionary, complete against the zh key set. */
@@ -1552,7 +1558,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.count': '{n} total',
   'item.countFiltered': 'showing {shown} of {total}',
   'item.ask': 'Ask AI',
-  'item.ask.card': 'Ask this card',
   'item.ask.said': 'Handed to the model in {sessionId}; it takes it from here.',
   'item.ask.refused': 'Could not reach a model: {why}. The item is still here; nothing was lost.',
   'item.why.noSuchItem': 'that row is no longer in the list',
@@ -1835,8 +1840,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.steps.doneHide': 'Hide the {n} done',
   'item.steps.gauge': '{done} of {total} steps done',
   'item.menu.steps': 'Edit the steps',
-  'item.menu.start': 'Run the card',
-  'item.menu.running': 'The model is on it',
+  // 见 zh 一侧的说明：与看板用同一个动词，而状态写成状态。
+  'item.menu.start': 'Run',
+  'item.menu.running': 'Running',
 }
 
 /** The dictionary key union. */

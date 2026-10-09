@@ -79,13 +79,11 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
 - **中文版是权威**，英文版是它的翻译；两份是同一份文档的两个语言版本，改一份必须打开另一份
   一起看，且不要机械对译（两种语言的读者关心的问题不同）。改完要能回答「另一份同步了吗」。
 - **本文是索引，不是副本**：只记别的文档存在、谁是权威、何时同步，不抄内容。
-- **派生内容用工具生成**：两份 README 的目录由 `pnpm toc`（`scripts/sync-toc.mjs`）写在
-  成对标记之间——增删或改名任何二级标题后必须重跑，否则 `pnpm verify` 会红（它内含
-  `--check`）。锚点由工具按 GitHub 算法算，手抄最容易错的是带序号与带 emoji 的标题，
-  写错表现为「点了没反应」且不报错，所以不要手写。
-- **徽章依赖外部服务，不进自动检查**（会因对方抖动误报）：写前先验能显示。
-- `scripts/sync-toc.mjs` 由 `project-forge` skill 提供，为保持**独立自包含**（硬性规范 7）
-  在此留一份副本；升级时以 skill 里那份为准，覆盖过来。
+- **派生内容用工具生成**：两份 README 的目录由 `pnpm toc`（`scripts/sync-toc.mjs`）写在成对标记
+  之间——增删或改名任何二级标题后必须重跑，否则 `pnpm verify` 会红（它内含 `--check`）。锚点不要
+  手写（带序号与带 emoji 的标题最容易错，写错表现为「点了没反应」且不报错）。徽章依赖外部服务，
+  **不进自动检查**（会因对方抖动误报）。`sync-toc.mjs` 由 `project-forge` skill 提供，为保持
+  **独立自包含**（硬性规范 7）在此留一份副本；升级时以 skill 里那份为准覆盖过来。
 
 ## 环境与上下文（以实际环境为准，不依赖固定值）
 
@@ -143,21 +141,13 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
 
 ### 发版（只有用户明确说「发版 / 发出去 / npm publish」才触发）——在日常闭环基础上追加
 
-9. `git tag v<版本>` + `git push origin v<版本>`。**发版的剩余步骤全部由
-   `.github/workflows/release.yml` 完成，agent 不手动执行任何一步**：它重跑全 gate
-   （build / typecheck / test / verify）、校验 tag 与 `package.json` 版本一致、经
-   `scripts/draft-release-notes.mjs` 从提交记录起草中文说明（读上一个标签取区间，
-   正文写 UTF-8 文件、按硬性规范 10 不经 shell）并 `gh release create --notes-file`
-   创建 GitHub Release（用内置 `github.token`；已存在则跳过，幂等）、以 OIDC
-   （npm Trusted Publisher）发布，最后回读 registry 确认该版本真的可见（publish 退出 0
-   不等于已上架）。**正常路径不需要 PAT、不需要本机 npm 登录、不需要 gh CLI、
-   不需要 2FA**：不探测 `GITHUB_TOKEN`、不手动建 Release、不手动 `npm publish`；
-   Release 步失败就重跑工作流（幂等），不转手动脚本。
-10. **Publish 红了先看日志是不是 404 / ENEEDAUTH 类错**：那是 npmjs.com 上 Trusted
-    Publisher 未配置或配错（npm 保存时不校验，错字只在发布时暴露）。以 `release.yml`
-    头注释列的三项为准核对，不要先怀疑代码。确认未配置才退回手动
-    `npm publish --access public`：需要账号 2FA 验证码，**由账号持有人在自己终端执行**
-    （agent 准备好一切并给出确切命令）。
+9. `git tag v<版本>` + `git push origin v<版本>`——**其余步骤全部由 `.github/workflows/release.yml`
+   完成，agent 不手动执行任何一步**（重跑全 gate、校验版本、起草更新说明、建 Release、OIDC 发布、
+   回读 registry）。**正常路径不需要 PAT、本机 npm 登录、gh CLI 或 2FA**；失败就重跑工作流（幂等）。
+   **它到底做什么，读那个文件本身**——流程的第二份拷贝只会在下一次改工作流时变成谎话。
+10. 唯一的例外：**publish 报 404 / ENEEDAUTH 类是 npmjs.com 的 Trusted Publisher 配错**（保存时
+    不校验），不是代码问题；按 `release.yml` 头注释那三项核对，确认没配才退回手动 `npm publish
+    --access public`——需要 2FA 码，**由账号持有人在自己终端执行**。
 
 ### 版本号与不变量
 
@@ -185,20 +175,13 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
 - **npm 的 `latest` dist-tag 不可信**（可能停在很旧的版本）。**不得用 `npm view <pkg> version`
   判断最新**，一律 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
 
-同步动作（发现或执行 DSH 升级后主动做）：
-
-1. 读**实际运行的**版本作为目标：`node -p "require('<dsh 安装目录>/package.json').version"`
-   （安装目录用 `require.resolve` 或 `npm root -g` 现场求）。
-2. 逐个确认该版本存在，再写进 `package.json` 的 `devDependencies`（**只动这里**，不要顺手改
-   `peerDependencies` 与 README 的下限）。
-3. `pnpm install`（pnpm 会自动把新版本补进 `pnpm-workspace.yaml` 的
-   `minimumReleaseAgeExclude`，未过冷静期不加会被拦）。
-4. **迁移破坏性变更**：`pnpm typecheck` + `pnpm test` 必须全绿。跨版本升级常伴随 API 改名或
-   移除，类型报错就是信号——按新契约改写，不要用 `any` 绕过；测试里的官方文法镜像 spec 是
-   逐字镜像，期望值要跟着同步。
-5. 重新构建并**验证可加载**：`lib/index.js` 能在该 DSH 上 import 成功，`lib/client.js` 的注册
-   id 等于包名。
-6. 用户可见改动 → bump patch，走日常闭环。
+同步动作（发现或执行 DSH 升级后主动做）：先读**实际运行的**版本作为目标（`node -p
+"require('<dsh 安装目录>/package.json').version"`，目录用 `require.resolve` 或 `npm root -g` 求），
+逐个确认该版本**存在**，只写进 `package.json` 的 `devDependencies`（**不动** `peerDependencies` 与
+README 的下限），然后 `pnpm install`（pnpm 会自动补 `minimumReleaseAgeExclude`，未过冷静期会被拦）、
+`pnpm typecheck` + `pnpm test` 全绿（跨版本升级常伴随 API 改名，类型报错就是信号——按新契约改写，
+**不要用 `any` 绕过**；逐字镜像官方文法的 spec 期望值要跟着同步）、构建并确认 `lib/index.js` 能
+import、`lib/client.js` 的注册 id 等于包名。用户可见改动 → bump patch，走日常闭环。
 
 ### 最低支持版本（只在真不兼容时上移）
 
@@ -209,13 +192,12 @@ README 那行必须写**具体版本号**。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
-`lib/` 是**既跟踪又生成**的产物目录，CI 会在 Linux 上重建并与提交比对，所以**产物不得依赖
-构建机的绝对路径或行尾**。两条规则由 CI 与 `pnpm verify` 兜住：**绝对路径不得进入产物或用来
-派生标识**（lightningcss 的 CSS Modules 类名前缀取自 `transform()` 的 `filename`，传绝对路径
-会让同一份 CSS 在不同目录编译出不同类名；构建脚本一律传仓库相对路径，见 `shared/tsdown.client.ts`
-的 `portableCssPath()`）；**行尾必须与 `.gitattributes` 一致**（sourcemap 的 `sourcesContent`
-内嵌源码原文，残留 CRLF 会被原样写进 `lib/client.js.map`，修正：`git rm --cached -r . &&
-git reset --hard`）。**自检**：把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同。
+`lib/` 是**既跟踪又生成**的产物目录，CI 会在 Linux 上重建并与提交比对，所以**产物不得依赖构建机的
+绝对路径或行尾**：**绝对路径不得进入产物或用来派生标识**（CSS Modules 的类名前缀取自 `transform()`
+的 `filename`，传绝对路径会让同一份 CSS 在不同目录编译出不同类名——构建脚本一律传仓库相对路径，
+机制见 `shared/tsdown.client.ts` 的 `portableCssPath()`）；**行尾必须与 `.gitattributes` 一致**
+（sourcemap 内嵌源码原文，残留 CRLF 会被原样写进 `lib/client.js.map`）。两条都由 CI 与 `pnpm verify`
+兜住；**自检**是把仓库复制到另一个绝对路径、装依赖、构建，产物应逐字节相同。
 ### 改名的声明处
 
 工具链（`scripts/*.mjs`、npm scripts）都从 `package.json` 读身份，不在代码里重复写名字。
@@ -320,6 +302,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 ### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
 
+**这张表是声明，不是副本**——`verify-host-contracts.mjs` 逐条解析它并与实际安装的 DSH 对照，
+少一行即红。所以它必须留在这里，且与源码里各半区的 `inject` 列表一致。
+
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
 | host | `webServer` | `register` | `@deepseek-ai/dsh-host-webserver` |
@@ -338,9 +323,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 **每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个半区永远不
 激活，什么也注册不出来。所以 `inject` 只列真正用到的（**不**注入 `settings` / `configForms`，
-也**不**注入右栏那个服务）。**留一行没有使用者的服务，和留一个没有使用者的座位是同一种过时。**
-该脚本另带两组反向自测（`--probe-removed` / `--probe-services`）：拿一组**不可能存在**的成员
-与服务名各扫一次，**两次都必须报红**——否则说明检查本身失效了，而不是源码干净。
+也**不**注入右栏那个服务）。该脚本另带两组反向自测（`--probe-removed` / `--probe-services`）：
+拿一组**不可能存在**的成员与服务名各扫一次，**两次都必须报红**——否则说明检查本身失效了。
 
 **两条使用纪律**（比表本身更重要）：
 
@@ -403,8 +387,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   闭合——**加一个没有处理器的键是编译错误**。`⌘K` 面板的鼠标入口**就是那个搜索框**，而它
   **只收窄「跳到哪一条」与「能做什么」、不过滤词表**。
   `facets.ts` 是搜索框的**文本编辑器**、`selection.ts` 是纯状态机，**两者都不持有状态**；
-  `labels.ts` 是封闭标签表的唯一住处，**状态词与动作词分表**（`item.group.*` /
-  `item.status.*`）。`day-groups.ts` 说**哪些排序可以按日分段**，那张表对 `ItemSort` 穷尽。
+  `labels.ts` 只放**清单自己要写的**两个状态词（`item.status.*`）与动作词，而**五栏的词与色
+  从看板那一份导入**（硬性规范 17）。`day-groups.ts` 说**哪些排序可以按日分段**，那张表对
+  `ItemSort` 穷尽。
   `tickbox.tsx` 是这一页**唯一的勾选框**，步骤板与归档共用。挂上卡的事项才给「问 AI」
   （`item-ask.ts`），**回执说是哪一个会话**；**一律不用 Dialog**。`hostLostItems()` 为真时说
   「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder（`itemListStage`）；
@@ -433,7 +418,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
   `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
   （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域
-  拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-triage`/`-counts`/`-query`/`-rows`/`-membership`
+  拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-triage`/`-query`/`-rows`/`-membership`/`-navigate`
   九个模块，**门面 re-export 全部符号**，所以调用点一个都不用改）——界面与模型读同一份** ·
   `board-actions`（动作目录，界面与 AI 的唯一同步面，见硬性规范 12）· `task-transitions`（看板的
   语义层）· **`item-transitions`（清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/
@@ -529,31 +514,14 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 改 host 半区需重启 `dsh web`，改 client 半区刷新页面即可。
 
 **看渲染结果**用 `node scripts/shot-panel.mjs`（开发工具，**不在 `files` 里、不进包**；用法见该
-文件头的 usage 段）。本机没跑 `pnpm run dev:web`，所以闭环是「改 → `pnpm build` → 刷新 → 截图」。
-零依赖：Node 内置 `WebSocket` 直连机器上已有的 Chromium，不碰 `dependencies`。`--eval` 在截图前
-跑一次 JS 并打印返回值，所以「点进某个面板」不用改脚本。`--both` 一次启动连出宽（`--width` 的
-值）与窄（412）两张，名字由 `--out` 派生（`-wide.png` / `-narrow.png`）——双端同治（硬性规范 11）
-因此是一条命令，不是两次容易敲错的手工。`dsh web` 有认证：**先把启动时打印的那个带 token 的
-完整 URL 放进 `DSH_SHOT_URL`**（令牌不进 shell 历史，脚本也从不打印它）；没有就退回去读不带
-token 的地址，脚本会**明确说被拒了**，不会假装成功、也不会写出一张看起来像排版坏了的图。
+文件头的 usage 段，含 `--both` 一命令出宽窄两张与 `DSH_SHOT_URL` 的认证约定——用法只有那一份）。
 
-### 闭环验证与操作规范（每一项改动都要走到的程度）
+### 闭环验证与操作规范
 
-**不写死路径**：下面说「脚本」时指仓库 `scripts/` 目录与 `package.json` 的 `scripts`，有哪些
-工具**现场读这两个地方发现**——写死名字的清单比没有清单更糟。
-
-- **改了什么 → 当场怎么验。** 界面改动 = 两档截图（宽 1440 / 窄 412）亲眼看过，而不只是「门禁绿了」；
-  门禁（`pnpm verify`）答的是几何与静态纪律，截图答的是这一屏到底成不成。行为改动 = 真实交互走
-  一遍（点击、按键、点外收场），并在 `tests/` 里留下对应的 spec——台架（`tests/panel-harness.ts`
-  与它产出的工件页面）就是「真实交互」与「静态断言」共用的同一台仪器，别再造第二台。
-- **用了哪些脚本/工具。** 截图用 `scripts/shot-panel.mjs`（见上）；页面工件由测试台架按
-  `DSH_PANEL_HTML`（及 `DSH_PANEL_MOUNT`、`DSH_PANEL_BAND`、`DSH_PANEL_PAGE`、`DSH_PANEL_ROW`
-  等环境变量）产出；门禁各有 `pnpm` 入口（build / typecheck / test / verify / smoke / toc）。
-- **数字与判据要说得出由什么量。** 界面上量出来的数（首屏行数、某条边沿的位置）每次改版面前
-  重测一次，测法与读数写进对应文档——一个没有断言的数字会一直「看起来在被遵守」。
-- **收尾口径。** 任何一次改动交付前：`pnpm build`（`lib/` 与产生它的 `src` 同一次提交）→
-  `pnpm typecheck` → `pnpm test` → `pnpm verify` → `pnpm smoke` 全绿；用户可见改动同步 bump 与
-  对应文档（README 随包发出，改一个字都要 bump）。
+**界面改动 = 两档截图（宽 1440 / 窄 412）亲眼看过**，不只「门禁绿了」；**行为改动 = 真实交互走
+一遍**（点击、按键、点外收场）并在 `tests/` 里留下 spec——台架（`tests/panel-harness.ts` 与它产出
+的工件页面）就是「真实交互」与「静态断言」共用的同一台仪器。**量法与判据见硬性规范 19**；工具名
+与用法**现场读 `package.json` 的 scripts 与 `scripts/`**，不写死清单。
 
 ## 硬性规范
 
@@ -618,6 +586,27 @@ token 的地址，脚本会**明确说被拒了**，不会假装成功、也不�
     而非**门禁会红**；真发生过子代理在产品样式表里种下故意的违规、被一次 `git add -A` 扫进提交
     推上远端，而已推送的历史不许改写。根因是**两个写者共用一个工作区而互不知情**，所以共享工作区
     里 **`git add -A` 与「在 `src/` 上做临时改动」互相回避**；要种就种在 `tests/` 里。
+17. **一个概念只有一套词汇，别的地方导入，不抄。** 值的枚举、词的对照表、颜色、形状——凡是有
+    「同一件事在两处出现」的地方，只有一处是定义处，其余全部 import。抄一份的代价不是那几行，
+    是**改一处不报错**：读者要「两处颜色一致」时，其中一处不会跟着变，而屏上不会有人说一句话。
+    判据是结构性的：清单的状态读看板那五个（`ITEM_STATUS_VIEWS = ALL_STATUSES`）、清单的五个
+    状态词读看板那五个（`STATUS_KEY`）、清单的五个颜色读 `--dsh-tb-status-*`——三样都是**导入**，
+    所以加一栏、改一个词、换一个颜色都只动看板那一处，而清单这边由类型与门禁跟着变。
+    一个**只有一份拷贝**的 `counts` 模块、一张**抄来的**词表、一个**改名后留下的**旧 token
+    都是同一种债（见下一条）。
+18. **删一个词、一档状态、一个组件，是那次改名的一部分，不是下一件事。** 同一个改动里要一起清干净：
+    孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟
+    真相的 fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来
+    很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键审计与类漂移审计必须是 0，
+    而一条只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
+    **fixture 是仪器**：它必须和宿主一样严（`sessionAvailability` 那件事里，台架允许「绑定一条
+    不存在的会话」，于是那条断言测的是另一件事）——假面比现实宽容或比现实窄同样危险。
+19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
+    它们不由 `tests/` 守，而由 `scripts/shot-panel.mjs` 开真 Chromium 量：`Range.getClientRects()`
+    给字的外框（读者看见的那点墨），`getBoundingClientRect()` 给盒，两者之差就是「偏上/偏下」的
+    那几个像素。**每一个这样的数都写进 `DESIGN.md` 的对应节，并写清它是怎么量的**——一个没有
+    出处、没有量法的数字，会一直「看起来在被遵守」。查一个改动有没有把对齐弄坏，就用同一个探针
+    在改前改后各量一次，而不是重新描述一遍意图。
 
 ## 测试（布局约定）
 

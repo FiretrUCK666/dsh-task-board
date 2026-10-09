@@ -1455,8 +1455,28 @@ describe('a priority is shouted only when it is loud', () => {
   })
 })
 
-describe('the summary says what it says, and the numbers do not move under a switch', () => {
-  it('the grouping drops the finished group under the switch, and only under it', () => {
+describe('a card that cannot run says why, beside the button', () => {
+  /** 一张卡，`prompt` 由调用者给——`taskExecutable` 读的就是它。 */
+  const boardWith = (prompt: string): unknown => ({
+    getSnapshot: () => ({ tasks: [{ id: 't-1', title: '看板上的那张', status: 'todo', prompt, description: '' }] }),
+    liveStateOf: () => 'idle',
+  })
+
+  it('「执行」 is disabled and the reason is ON the page, not in a title', () => {
+    /* 读者报过的那一类缺陷：一枚按下去什么都不会发生的控件。执行门禁（`taskExecutable`）在
+       看板那一侧拦得住，而按这一枚按钮的人是在清单上按的——所以理由必须出现在这里。
+       **不许只挂在 `title` 上**（硬性规范 11③：触屏没有 hover）。 */
+    const rows = oneRow({ taskId: 't-1' })
+    const blocked = renderPanel(rows, 'wide', 'list', boardWith(''), {}, 'r-1')
+    expect(blocked, 'a card with an empty execution prompt can run nothing — the reason is not on the page').toContain('执行 Prompt 为空')
+    expect(blocked, 'the button was left pressable, so the press does nothing and says nothing').toMatch(/disabled/)
+    // 对照：同一条行、同一张卡的 prompt 一填上，按钮就能按、理由就不该再出现。
+    const ready = renderPanel(rows, 'wide', 'list', boardWith('do the thing'), {}, 'r-1')
+    expect(ready, 'the reason is still printed for a card that can run').not.toContain('执行 Prompt 为空')
+  })
+})
+
+describe('the summary says what it says, and the numbers do not move under a switch', () => {  it('the grouping drops the finished group under the switch, and only under it', () => {
     // 这一条原来问的是 `itemGroupCountsOf`（一份「永远是四组」的封闭计数表）。那个函数
     // 与它数的三个界面东西一起删了——分组头、概览条、页轨今天都不存在，而给死代码写测试
     // 会让死代码看起来被需要。留下来的、仍然有人在读的性质是**分组**那一条：清单页里的

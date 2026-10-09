@@ -61,6 +61,13 @@ export interface ItemDetailProps {
      *  binds, handed in rather than reached for, so this component never learns how a
      *  run is started and there is no second spelling of the decision here. */
     readonly onStart: () => void;
+    /**
+     * 这张卡现在跑不跑得起来（`taskExecutable`：执行 Prompt 非空）。
+     *
+     * `undefined` = 这一行没有卡（那是另一句话，由「不挂」那一格说）；`false` = 有卡而它跑不
+     * 起来——那时按钮禁用，**理由写在旁边**。
+     */
+    readonly runnable?: boolean;
     readonly onNewCard: (title: string) => void;
     /** The board cards a row may hang off, already titled. */
     readonly cards: readonly {

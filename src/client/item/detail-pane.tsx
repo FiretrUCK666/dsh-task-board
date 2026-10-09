@@ -97,6 +97,13 @@ export interface ItemDetailProps {
    *  binds, handed in rather than reached for, so this component never learns how a
    *  run is started and there is no second spelling of the decision here. */
   readonly onStart: () => void
+  /**
+   * 这张卡现在跑不跑得起来（`taskExecutable`：执行 Prompt 非空）。
+   *
+   * `undefined` = 这一行没有卡（那是另一句话，由「不挂」那一格说）；`false` = 有卡而它跑不
+   * 起来——那时按钮禁用，**理由写在旁边**。
+   */
+  readonly runnable?: boolean
   readonly onNewCard: (title: string) => void
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
@@ -661,11 +668,16 @@ export function ItemDetail(props: ItemDetailProps) {
             </>
           ) : (
             <>
-              <Button variant="primary" size="sm" onClick={props.onStart} disabled={running}>
+              {/* **跑不起来就说为什么。** 一张执行 Prompt 为空的卡会在看板那一侧被门禁拦下来
+                  （`taskExecutable`，唯一的判据），而按下这一枚按钮的人是在清单上按的——所以
+                  理由必须在这里、就在按钮旁边（硬性规范 11③：理由不许只挂在 `title` 上）。
+                  两个禁用理由各说各的：跑着是这一条现在的状态，跑不起来是这个按钮本身。 */}
+              <Button variant="primary" size="sm" onClick={props.onStart} disabled={running || props.runnable === false}>
                 {t(running ? 'item.menu.running' : 'item.menu.start')}
               </Button>
+              {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
               <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
-                {t('item.ask.card')}
+                {t('item.ask')}
               </Button>
               <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
             </>

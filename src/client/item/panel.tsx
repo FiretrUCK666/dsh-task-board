@@ -49,6 +49,7 @@ import {
   type ItemRowView,
 } from '../../core/item-view.ts'
 import type { TaskStatus } from '../../core/tasks.ts'
+import { taskExecutable } from '../../core/tasks.ts'
 import type { ItemStatus } from '../../core/item.ts'
 import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
@@ -143,6 +144,22 @@ function cardsMapOf(face: ItemListFace): Map<string, TaskStatus> {
   const controller = face.controller
   if (controller === undefined) return map
   for (const task of controller.getSnapshot().tasks) map.set(task.id, task.status)
+  return map
+}
+
+/**
+ * 哪些卡现在**跑得起来**（`taskExecutable`：执行 Prompt 非空），按卡片 id。
+ *
+ * 它存在的理由是「一个按下去什么都不会发生的控件」：清单给挂卡的行一枚「执行」，而一张
+ * Prompt 为空的卡会被看板的执行门禁单点拦下来——拦得对，但**按下去的人是在清单上按的**，
+ * 所以他必须在这一侧就看见理由（`detail.promptEmpty`），而不是按完一片安静。判据本身来自
+ * core（`taskExecutable`），这一层只负责把它带上屏。
+ */
+function runnableMapOf(face: ItemListFace): Map<string, boolean> {
+  const map = new Map<string, boolean>()
+  const controller = face.controller
+  if (controller === undefined) return map
+  for (const task of controller.getSnapshot().tasks) map.set(task.id, taskExecutable(task))
   return map
 }
 
@@ -418,6 +435,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [])
 
   const cardColumns = useMemo(() => cardsMapOf(face), [face.controller, items])
+  const cardRunnable = useMemo(() => runnableMapOf(face), [face.controller, items])
   const cards = useMemo(() => cardsOf(face), [face.controller, items])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
@@ -700,6 +718,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       now={now}
       onAsk={() => { if (item !== undefined) askOne(item) }}
       asking={item !== undefined && asking === item.id}
+      /* 跑不跑得起来：同一份判据，同一个来源（见 `runnableMapOf`）。 */
+      runnable={item.taskId === undefined ? undefined : cardRunnable.get(item.taskId) === true}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
       onStart={() => {
         const cardId = item?.taskId
@@ -868,6 +888,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
       void face.controller?.runTask(cardId, 'manual')
     },
     running: item.taskId !== undefined && cardColumns.get(item.taskId) === 'running',
+    /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
+       一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
+    runnable: item.taskId === undefined ? undefined : cardRunnable.get(item.taskId) === true,
     onRemove: () => removeOne(item),
     /* The detail is built only for the expanded row: opening is the condition, not
        the band, so both bands read the same place without building 100 details. */

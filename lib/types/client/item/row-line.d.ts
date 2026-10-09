@@ -57,6 +57,13 @@ export interface ItemRowLineProps {
     readonly onStart: () => void;
     /** Whether that card is running, so 「开工」 is not offered twice. */
     readonly running: boolean;
+    /**
+     * Whether that card can run at all (`taskExecutable`: 执行 Prompt 非空).
+     *
+     * `undefined` = this row has no card (a different sentence, said by 「不挂」),
+     * `false` = it has one and it cannot run — the menu then says why.
+     */
+    readonly runnable?: boolean;
     readonly onRemove: () => void;
     /** The in-place detail, rendered only when `inPlace` and open. */
     readonly inPlace: boolean;

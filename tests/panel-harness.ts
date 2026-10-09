@@ -567,9 +567,9 @@ export function renderPanel(
   controller: unknown = {
     getSnapshot: () => ({
       tasks: [
-        { id: 'task-1', title: '画廊第二版', status: 'todo', description: '' },
+        { id: 'task-1', title: '画廊第二版', status: 'todo', prompt: 'p', description: '' },
         /* 那一条挂卡的 fixture 行（`fx-carded-review`）靠这张卡才读得出它在哪一栏。 */
-        { id: 'task-review', title: '给画廊换一批挂画', status: 'review', description: '' },
+        { id: 'task-review', title: '给画廊换一批挂画', status: 'review', prompt: 'p', description: '' },
       ],
     }),
     liveStateOf: () => 'idle',
@@ -989,7 +989,16 @@ export interface MountedPanel {
 export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }]) {
   const minted: TaskRecord[] = []
   return {
-    getSnapshot: () => ({ tasks: [...tasks.map(task => ({ ...task, description: task.description ?? '' })), ...minted] }),
+    /* `prompt` 是**必填**的（真实的 `TaskRecord` 每一条都有），而它不是可有可无的装饰：
+     * 「这张卡跑不跑得起来」就是 `taskExecutable` 读它（清单那一侧现在按它禁用「执行」）。
+     * 一台少了这个字段的假面，会让那条判据在测试里抛 `undefined.trim()`——**假面比现实宽容
+     * 或比现实窄同样危险**（硬性规范 18）。 */
+    getSnapshot: () => ({
+      tasks: [
+        ...tasks.map(task => ({ prompt: 'p', status: 'todo', ...task, description: task.description ?? '' })),
+        ...minted,
+      ],
+    }),
     liveStateOf: () => 'idle',
     ...boundRecorder(calls, minted),
     /** A READING of what the face has minted so far — the mounted panel exposes

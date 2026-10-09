@@ -214,6 +214,13 @@ export interface ItemRowLineProps {
   readonly onStart: () => void
   /** Whether that card is running, so 「开工」 is not offered twice. */
   readonly running: boolean
+  /**
+   * Whether that card can run at all (`taskExecutable`: 执行 Prompt 非空).
+   *
+   * `undefined` = this row has no card (a different sentence, said by 「不挂」),
+   * `false` = it has one and it cannot run — the menu then says why.
+   */
+  readonly runnable?: boolean
   readonly onRemove: () => void
   /** The in-place detail, rendered only when `inPlace` and open. */
   readonly inPlace: boolean
@@ -475,12 +482,16 @@ export function ItemRowLine(props: ItemRowLineProps) {
                   {
                     key: 'start',
                     label: t(props.running ? 'item.menu.running' : 'item.menu.start'),
-                    disabled: props.running === true || undefined,
+                    /* **两个禁用理由，各说各的。** 「正在跑」是这一条现在的状态；
+                     * 「Prompt 为空」是它压根跑不起来——后者必须写出理由，否则读者按了一枚
+                     * 灰按钮，而屏上没有任何东西说为什么。 */
+                    hint: props.runnable === false ? t('detail.promptEmpty') : undefined,
+                    disabled: props.running === true || props.runnable === false || undefined,
                     onPick: props.onStart,
                   },
                   {
                     key: 'ask',
-                    label: t('item.ask.card'),
+                    label: t('item.ask'),
                     disabled: props.asking === true || undefined,
                     onPick: props.onAsk,
                   },
