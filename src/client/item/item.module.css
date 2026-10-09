@@ -1644,61 +1644,159 @@
   overflow-wrap: anywhere;
 }
 
-/* 日期读数在**句子里**。它曾经是独立一列，因为表格要按它排序；这里不是表格，
- * 而一个装在自己盒子里的数，是读者要另外去找的数。软期限逾期不是红——那是关于
- * 一个计划的实话，不是紧急事件；只有错过**硬期限**才动用危险色，因为那一个
- * 读者没法一个人重新谈。 */
-.itemRowTail {
-  /* **`inline-block` + `overflow: hidden` 的盒子，基线是它的下边缘——所以它的
-   * `vertical-align` 只能是 `bottom`，不能是 `baseline`。**
-   *
-   * 这是这一行「东西不在一条线上」的**根因**，不是一处微调。CSS 规定：`overflow`
-   * 不是 `visible` 的行内块，其基线取**下外边距边缘**。于是写成 `baseline` 时，
-   * 盒子的下边缘被按到句子的基线上，盒子里的字因此整段抬高——**抬高的量是它自己的
-   * 半行距加下伸部**（13px 的字在 22px 行高里约 3px）。像素量出来的那一行：点
-   * 155.5、日期 156.5、标题 167、药丸 167.5——**读者看到的正是后两者掉下去 6px**。
-   *
-   * `bottom` 把盒子的下边缘对齐**行盒的下边缘**。这里每个盒子都恰好一行高（22px，
-   * 与标题同一个行高），所以盒底对齐之后，盒内的文字落回这一行自己的基线上——改完
-   * 再量：155.5 / 156.5 / 157 / 157.5，四个数在 1.25 CSS px 以内，而三种字号本来
-   * 就该差这一点。
-   *
-   * 而那三条「装不下时自己收尾」的声明**留着**：它是一段句末的短语，长过一行时该在
-   * 自己的槽里截断，而不是画到旁边的标签上面去。 */
-  display: inline-block;
-  vertical-align: bottom;
-  max-inline-size: 100%;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* 一个日期读法是**一个单位**：它说的是「这件事晚了多久」或者「那天之前别动我」，
-   * 拆成「落 / 后 9 天」之后，两半都不再是那句话了——读者看到的是两个
-   * 残字，要自己拼回来才读得出意思。窄屏上让它换行，不要让**它自己**断。 */
-  white-space: nowrap;
+/* **句子末尾的标签与句子之间那一档，就是 `!N` 与句子之间那一档（6px）。**
+ *
+ * 读者的原话是「左右间距要和左边的元素间距保持完全一致，不要单独搞一个间距」，第二次看是
+ * 「这个 tag 根本没对齐好：左边几乎粘着标题了」。量出来两件事：
+ *
+ *   ①**间距是 `-start`，不是 `-end`。** 写成 `-end` 时，芯片的**形**（那个圆角底）正好贴在
+ *      最后一个字上——它自己的 8px 内衬让「字到字」有 9px，于是「看起来粘着」与「量出来有
+ *      9px」同时成立：读者看见的是**形**之间的距离，不是字之间的距离。改成 `-start` 之后，
+ *      形与形之间处处是 6px：`!N` 的芯片 → 句子、句子 → 第一枚标签、标签 → 标签、最后一枚
+ *      标签 → 右边那簇记号，四档同一个数，而那个数就是 `!N` 芯片自己的 `margin-inline-end`。
+ *   ②**纵向差 2.25px**（量过：句子的墨心 268，标签的墨心 270.25）。`middle` 对齐的是**盒子
+ *      的中线**与「基线 + 半个 x-height」，而这两条线在这枚芯片上不重合。所以写一个**量出来
+ *      的长度**：`1px` 把芯片抬到 268（第一次试的 2px 抬过头 1px，二次量过才定下来——这一页
+ *      的规矩是数字由量决定，不由推决定）。
+ */
+.itemRowTitle .itemTag {
   margin-inline-start: 6px;
-  font-size: 13px;
+  vertical-align: 1px;
+}
+
+/* ── 行右边的三枚记号：步数 · 卡 · 日期 ───────────────────────────────────────
+ *
+ * **一簇，不是三列。** 三件事实是同一类东西（这一条现在什么状况的读数，不是句子的一部
+ * 分），所以它们站在同一个簇里、用同一档间距（6px，与 `!N` 和句子之间那一档同一个数），
+ * 并且在宽档**靠右**：读者的眼睛扫完句子往右落，⋮ 在那里，事实也在那里。
+ *
+ * 位置来自读者给的那张参考图：**日期在最右、紧挨着 ⋮**，左边是卡，再左边是步数。
+ *
+ * 三枚各自成一体、不折行（一个读法拆成两行就不再是那句话），而这一簇自己也不折——它是
+ * 一行的读数，不是一段散文。窄档由网架把它整簇让到下一行（见那一档的规则）。 */
+.itemRowMarks {
+  grid-column: 3;
+  grid-row: 1;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  flex: none;
+  min-inline-size: 0;
+  white-space: nowrap;
+}
+
+/* 步数那一枚是**控件**：按下去开步骤那一栏。它长得像一枚读数（一枚图标 + 一个比例），
+   悬停才有一块底——这与 ⋮ 的语法一致：控件说「我在这儿」的方式是给一块可点的面。
+ *
+ * **上下内衬一样高**（1px / 1px）。它原来抄了标签那一族的「上 1 下 2」——那是给**块盒里的
+ * 中文**补半像素的，而这一枚里坐着一枚 12px 的图标与一串数字，两者各自居中的时候，那多出来
+ * 的一像素就变成整整 0.5px 的偏高（量过：整盒中心 266.5，图标与字都在 266）。**一个补偿
+ * 要么是给这一族的，要么不属于它**；这一枚不是药丸族，所以它不领那一笔。 */
+.itemRowSteps {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 1px 6px;
+  font-family: inherit;
+  font-size: 12px;
   font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+  background: none;
+  border: 0;
+  border-radius: var(--item-radius-pill);
+  cursor: pointer;
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
+}
+
+.itemRowSteps:hover {
+  color: var(--item-ink-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemRowSteps svg {
+  flex: none;
+}
+
+/* 卡那一枚：一个方框 + **那张卡在哪一栏的词**，颜色就是看板那一栏的颜色（`--dsh-tb-status-*`，
+   与列头那颗点同源）。它不是一个控件——它说的是事实，而事实不该长得像按钮；卡的名字写在
+   `title` 里，因为一行里放不下一个卡名，而**栏**才是这里唯一需要读的那个词。
+ *
+ * **颜色读的是行自己那个 `data-status`，芯片不再自报一个。** 一行「读出来是哪一栏」与
+ * 「这张卡在哪一栏」是同一个值（`view.status` 就是 `itemStatusOf` 的答案），给芯片再挂一枚
+ * 同名属性等于把同一个事实写两遍——而第二遍会漂。另一条更实际的理由：`[data-status]` 是
+ * 这一页（与测试台架）认「一行」的记号，芯片带上它之后，量行的工具会把芯片也当成一行。 */
+.itemRowCardChip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  /* 与 `.itemRowSteps` 同一条：这一枚里也是一枚图标 + 一串字，所以上下内衬一样高。 */
+  padding: 1px 8px;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  background: color-mix(in srgb, currentColor 12%, transparent);
+  border-radius: var(--item-radius-pill);
+}
+
+.itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog); }
+.itemRow[data-status='todo'] .itemRowCardChip { color: var(--dsh-tb-status-todo); }
+.itemRow[data-status='running'] .itemRowCardChip { color: var(--dsh-tb-status-running); }
+.itemRow[data-status='review'] .itemRowCardChip { color: var(--dsh-tb-status-review); }
+.itemRow[data-status='done'] .itemRowCardChip { color: var(--dsh-tb-status-done); }
+
+/* 日期那一枚：一枚钟表图标 + 那个读数。
+ *
+ * **它从句子末尾搬到这里**，而搬的理由写在它的老位置上：读者看到的句子末尾那对括号里，
+ * 字与标题同号同重，于是「哪半句是标题」要他自己判断。现在它是一枚有图标的读数，紧挨着 ⋮
+ * ——参考图给的位置。
+ *
+ * 语气仍然只改**墨**，不同时改字重（那条理由留在下面：字重属于层级，而层级在这一行里只有
+ * 一层；加粗它不是强调，是第二次喊）。 */
+.itemRowDate {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  /* 它自己是一条**能收能剪**的槽：一簇里三枚并排，日期那一段最长（「最早开始 10月5日」），
+     而一个不能收的槽会把旁边的卡芯片挤出屏幕。图标不参与收缩（它 12px 见方），所以收缩与
+     省略号落在下面那层字上。 */
+  min-inline-size: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
   color: var(--item-ink-3);
 }
 
-.itemRowTail[data-tone='soft-late'],
-.itemRowTail[data-tone='soon'] {
+.itemRowDateText {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.itemRowDate[data-tone='soft-late'],
+.itemRowDate[data-tone='soon'] {
   color: var(--item-ink-2);
 }
 
 /* 「超期」只改**墨**，不同时改字重。
  *
  * 原来这里是红色 + 加粗，于是那一行有两个东西在喊，而读者分不清它在喊「晚了」还是
- * 在喊「最后」。**一个语气只改一种东西，改的就是墨。** 字重属于层级，而层级在这一行
- * 里只有一层——加粗它不是强调，是第二次喊。 */
-.itemRowTail[data-tone='over'] {
+ * 在喊「最后」。**一个语气只改一种东西，改的就是墨。** */
+.itemRowDate[data-tone='over'] {
   color: var(--dsh-tb-danger);
 }
 
-/* 副行：状态 · 编号 · 软期限 · 停滞。13 / 400 / 第三档墨。 */
-/* 副行：**编号 · 步骤比 · 放着几天**，前面可能跟一枚「挂在卡上」的记号。
+/* 副行：**编号 · 放着几天**。12 / 400 / 第三档墨。
  *
- * 它和句子末尾那一段读法隔着一行，所以它们之间没有点号——点号是**同一组事实内部**
- * 的分隔，而这两句是两组。 */
+ * 它曾经是「状态 · 编号 · 软期限 · 停滞」，然后减到「编号 · 步骤比 · 停滞」，现在只剩
+ * 编号与停滞——每减一次都是同一个理由：**一个事实在一行里只出现一遍，而且出现在它该在的
+ * 那个位置**（状态在行首那颗珠子上，步数与日期在右边那簇记号里）。 */
 .itemRowMeta {
   display: flex;
   align-items: center;
@@ -1712,12 +1810,9 @@
   white-space: nowrap;
 }
 
-/* 挂在卡上：一枚方框，和左栏「挂在一张卡上」那枚是同一张图形。它在句子里占了
- * 一个字的位置，却省掉了一整句「挂到画廊第二版」——而这一行的第三列已经写着标签，
- * 一行里放不下卡名。 */
+/* 挂在卡上：一枚方框。它在卡芯片里当图标用（`size="chip"`），颜色跟着芯片那一栏走。 */
 .itemRowCard {
   flex: none;
-  color: var(--item-ink-3);
 }
 
 /* 标签是芯片，不是裸字。裸字是最难被扫出来的一种东西：一个没有边的词，眼睛
@@ -1791,32 +1886,12 @@
   border-block-end-color: var(--item-ink-1);
 }
 
-/* 标签那一列：**换行，不裁**。
- *
- * 定高 22px 加 `overflow: hidden` 是「一行装不下就切掉后面几个」——而那一列是**自动
- * 宽度**的，它装不下只可能是因为它自己被限制了，所以这两个声明合起来是在给自己设一
- * 个必然会撞上的上限。多出来的标签走到第二行，行高一档，字一个不少。 */
-.itemRowTags {
-  grid-column: 3;
-  grid-row: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: flex-end;
-  /* 间距从尺子上来（组内 4、行内 6 原来是两个写死的数）。 */
-  gap: var(--s1) var(--s2);
-  min-inline-size: 0;
-  max-inline-size: 320px;
-}
-
 /* 标签是一枚芯片，而**芯片不会被从中间切开**。
  *
  * 它原来有 `max-inline-size: 110px` 加省略号，于是「#画廊重做」被读成「#标签跳」——
- * 一个读者没有任何办法看全的标签，比没有标签更糟：他不知道后面还有字。
- *
- * 设计稿的做法是让这一组**换行**而不是被裁：标签整体 `flex: none`（一枚芯片不该
- * 被压窄），而那一列 `flex-wrap: wrap`，于是多出来的标签走到第二行，行高一档，
- * 一个字都不少。这是「让位而非压扁」——硬性规范 11 的第一条。
+ * 一个读者没有任何办法看全的标签，比没有标签更糟：他不知道后面还有字。现在它在句子的行内
+ * 流里（`.itemRowTitle` 里面），跟着句子一起换行：**一行装不下的标签走到下一行，一个字
+ * 都不少**——这正是「让位而非压扁」（硬性规范 11 的第一条）。
  *
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
@@ -4672,18 +4747,23 @@ textarea.itemInput {
     --item-detail-lead: calc(var(--item-row-lead) + var(--s1));
   }
 
-  .itemRowTags {
+  /* **这一簇整簇让到第二行，左对齐。**
+   *
+   * 读者的要求是「移动端也要做好适配」，而这一栅在窄档放不进第三列（那一列在这一档是
+   * `0` 宽——⋮ 只留 28px）。让位的方式与标签当年一样：整簇落到句子下面那一行、从行内衬
+   * 起排。**它不在句子里折行**：三枚读数各自是一个单位，拆开就不再是那句话了。 */
+  .itemRowMarks {
     grid-column: 2 / 4;
     grid-row: 2;
     justify-content: flex-start;
-    max-inline-size: none;
-    block-size: auto;
+    flex-wrap: wrap;
+    white-space: normal;
   }
 
-  /* **回执与展开体各让一行。** 标签在这一档占了第二行（`grid-row: 2`），而回执
+  /* **回执与展开体各让一行。** 记号簇在这一档占了第二行（`grid-row: 2`），而回执
    * 原本也在第二行、横贯整行（`grid-column: 1 / -1`）——同一个网格区域里两个格子
-   * 重叠，一行有回执的带标签行会把两段字画在彼此上面。它们各自往下让一行，
-   * 顺序就是读者读到的顺序：句子 → 标签 → 回执 → 展开体。 */
+   * 重叠，一行有回执的行会把两段字画在彼此上面。它们各自往下让一行，
+   * 顺序就是读者读到的顺序：句子 → 记号 → 回执 → 展开体。 */
   .itemRow > .itemHint {
     grid-row: 3;
   }
@@ -4724,13 +4804,6 @@ textarea.itemInput {
     column-gap: var(--s2);
   }
   /* 内衬也随基础规则（--item-inset-x = 行内衬），这里不再重写一份。 */
-
-  .itemRowTags {
-    grid-column: 3;
-    grid-row: 1;
-    justify-content: flex-end;
-    margin-block-start: 0;
-  }
 }
 
 /* 中档：空气回到桌面那一档，**形状不变**。

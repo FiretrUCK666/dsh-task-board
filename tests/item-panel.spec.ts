@@ -266,15 +266,16 @@ describe('a row is legible at rest', () => {
     // it, and both failures read as a green tick on an empty string.
     const html = renderPanel([item({ dueAt: Date.now() - 3 * DAY, title: 'Slipped' })])
     expect(html, 'the row is not on the page at all — the assertions below would pass on an empty string').toContain('Slipped')
-// `itemRowTail[^"]*"` and not `itemRowTail"`: the class map hashes every name,
-    // so the word on screen is `itemRowTail_a9e292` and a pattern that insists on
+// `itemRowDate[^"]*"` and not `itemRowDate"`: the class map hashes every name,
+    // so the word on screen is `itemRowDate_a9e292` and a pattern that insists on
     // a closing quote straight after the word matches nothing at all.
     //
-    // IT WAS A COLUMN, AND IT IS NOW PART OF THE SENTENCE. The reading was its own
-    // cell so that a table could sort it; this is not a table, and a number in its
-    // own box is a number the reader has to go and find. The words and the tone are
-    // the same contract, only spoken from a different place.
-    const cell = /<span class="[^"]*itemRowTail[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    // IT WAS A COLUMN, THEN PART OF THE SENTENCE, AND NOW IT IS A MARK. 那个读法走过
+    // 三个位置：独立一格（表格能按它排序）→ 句末的括号（读者分不出哪半句是标题）→ 行右边
+    // 那簇记号里的一枚（自己的钟表图标、紧挨着 ⋮）。词与语气是同一份契约，只是换了个位置
+    // 说话；而**位置换到哪里，量它的选择器就跟着换到哪里**——一个还在找旧类的断言会在空
+    // 字符串上变绿。
+    const cell = /<span class="[^"]*itemRowDateText[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
     expect(cell, 'the date reading states no words at all, so the tone below is being read off nothing').not.toBe('')
     expect(cell).toContain('落后')
     expect(cell, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')

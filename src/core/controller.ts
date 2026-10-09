@@ -4242,9 +4242,23 @@ export class BoardController {
    * the bound-task reconcile and the '@' reference scoping. The controller
    * only supplies the linked ids (explicit session binds); everything else
    * (binds, execution rounds) is pure task shape.
+   *
+   * **存在性由这一个调用点统一付，而且只在名单就绪之后。** 这个集合的三个来源里，只有
+   * 「工作区的当前成员」那一条在路上自己做过存在性检查；而读者删掉一条会话本体之后，卡片
+   * 外面的会话数（圆点与 `+N`）仍然把它数着——那个数于是比屏上实际存在的会话多。现在三条
+   * 来源共用同一个判据（`sessionAvailability !== 'gone'`：归档与「从这张卡删掉」仍然是
+   * 「存在但不算」，只有会话本体没了才算不存在）。
+   *
+   * **名单没就绪时不过滤**（`sessionsReady`，与本类里每一条「看不见就不下结论」的规矩同源）：
+   * 原生名单还在 pending 的时候，`byId` 是空的，而「还没送到」不是「被删了」——把两者读成
+   * 同一件事，会让每一张卡在启动那一瞬间都丢掉自己的全部相关会话。**看不见 ≠ 不存在。**
    */
   private relatedSessionsOf(task: TaskRecord): Array<{ sessionId: string }> {
-    return relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
+    return relatedSessionIdsOf(
+      task,
+      this.linkedOf(task).map(row => row.sessionId),
+      this.sessionsReady() ? sessionId => this.sessionAvailability(sessionId) !== 'gone' : undefined,
+    )
   }
 
   /** The ids of every session already RELATED to a task (binds, execution

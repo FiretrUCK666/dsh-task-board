@@ -68,16 +68,36 @@ export interface RelatedSessionFact {
  * lingers (the bind survives when a workspace bind is also present). The
  * corollary the add-session picker relies on: a removed session leaves this
  * set, so it becomes re-offerable again (删除 = 可再拖回/再选回).
+ *
+ * ── AND SO IS EXISTENCE, WHICH IS THE SECOND HALF OF THE SAME GATE ──────────
+ *
+ * 读者报过一个数：「卡片外面显示的会话数比实际多」——他删掉了不少会话，而那个数一直比屏上
+ * 的会话多。根因就在这里：这个集合有三个来源，而**只有第三个**（`linkedSessionIds`，由
+ * `linkedSessionIdsOf` 从工作区快照派生）在路上做过存在性检查。另外两条——绑定与轮次——
+ * 只要 id 写进过那张卡，就永远算一条相关会话；会话本体后来被删掉，它们照旧被数进去，
+ * 于是圆点与 `+N` 比屏上实际存在的会话多。
+ *
+ * 所以存在性检查提到**这一个函数里来**，与 `removedSessions` 并列、对每个来源一视同仁：
+ * 一个集合的成员资格只能有一个答案，而「这条会话在不在」是它的一半。
+ * `isPresentOf` 由调用方注入（控制器读 `sessionAvailability`——那里有归档/删除/快照三件事
+ * 合起来的那一个判据）；不传时**不过滤**，因为一个看不见会话表的调用者无权把「我看不见」
+ * 说成「不存在」——这与「读不到」不许画成「空」是同一条规矩。
  * @param task - the task owning the sessions.
  * @param linkedSessionIds - the task's live linked-session ids (the
  *   controller derives them from the workspaces face; undefined = skip).
+ * @param isPresentOf - whether a session still exists, when the caller can tell.
  */
-export function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?: readonly string[]): RelatedSessionFact[] {
+export function relatedSessionIdsOf(
+  task: TaskRecord,
+  linkedSessionIds?: readonly string[],
+  isPresentOf?: (sessionId: string) => boolean,
+): RelatedSessionFact[] {
   const removed = new Set(task.removedSessions ?? [])
   const seen = new Set<string>()
   const out: RelatedSessionFact[] = []
   const push = (sessionId: string | undefined): void => {
     if (sessionId === undefined || sessionId === '' || seen.has(sessionId) || removed.has(sessionId)) return
+    if (isPresentOf !== undefined && !isPresentOf(sessionId)) return
     seen.add(sessionId)
     out.push({ sessionId })
   }
@@ -119,9 +139,11 @@ export function taskLiveStateOf(
   opts: {
     linkedSessionIds?: readonly string[]
     isKnownOf?: (sessionId: string) => boolean
+    /** Whether a related session still EXISTS — see {@link relatedSessionIdsOf}. */
+    isPresentOf?: (sessionId: string) => boolean
   } = {},
 ): TaskLiveState {
-  const sessions = relatedSessionIdsOf(task, opts.linkedSessionIds)
+  const sessions = relatedSessionIdsOf(task, opts.linkedSessionIds, opts.isPresentOf)
   for (const { sessionId } of sessions) {
     const waiting = waitingOf(sessionId)
     if (waiting !== undefined && waiting !== null) return 'waiting'

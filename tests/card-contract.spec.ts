@@ -350,9 +350,9 @@ describe('the column header and the cards under it share ONE text edge', () => {
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     expect(detail, 'the plan is judged on its own, beside the column that names it').toContain('item.dates.behind')
     // AND THE ROW CARRIES ONE READING. Two is how 「超期」 stops meaning one thing:
-    // the tail is the only date reading the row prints, so the plan's slip has
-    // exactly one place to live, and it is not here.
-    const tails = (row.match(/css\.itemRowTail/g) ?? []).length
+    // 那一簇记号里只有一枚日期读法（`due` 只在一处被打印），所以计划的落后只有一个地方
+    // 住，而它不住在标题里。
+    const tails = (row.match(/css\.itemRowDate\b/g) ?? []).length
     expect(tails, `the row prints a date reading in ${tails} places — one word cannot mean two things`).toBe(1)
     // A SLIPPED PLAN IS NEVER PAINTED IN THE HARD TONE. Painting it red is how a
     // soft deadline becomes a hard one without anybody deciding that — and the tone

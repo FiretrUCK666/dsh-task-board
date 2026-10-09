@@ -1371,7 +1371,7 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     // numbers under the sentence. The promise is the same one — a fact that cannot
     // fit is truncated in ITS OWN slot, never by the row's — so it is checked on
     // the slots that exist.
-    const facts = ['itemRowTail', 'itemRowTags', 'itemRowMeta']
+    const facts = ['itemRowMarks', 'itemRowDate', 'itemRowDateText', 'itemRowMeta']
     for (const name of facts) {
       const bodies = rulesOf(css, name)
       expect(bodies.length, `there is no .${name} rule`).toBeGreaterThan(0)
@@ -1467,33 +1467,34 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     //
     // So the claim is the claim it always was — **named token, and wide enough**
     // — and the unit is no longer part of it.
-    // THE READING IS NOT A COLUMN. It sits at the end of the sentence, and the
-    // sentence's track is the one with a floor — so 「a named token, wide enough」
-    // is now a claim about the row's title track rather than about a due column.
-    const track = /grid-template-columns:\s*10px\s+minmax\((\d+)px,\s*1fr\)/.exec(css)?.[1]
-    expect(track, 'the sentence track has no named floor — a wide tag row can squeeze it to a few characters').toBeDefined()
-    // The cell states the size its own width has to hold text at, so a
-    // text-relative track can be resolved here rather than guessed at.
-    const cellSize = Number(/(?:^|[;{\s])font-size\s*:\s*([\d.]+)px/.exec(rulesOf(css, 'itemRowTail').join('\n'))?.[1] ?? 0)
-    expect(cellSize, '.itemCellDue does not declare its own font-size, so a text-relative track on it resolves against a size this file cannot know').toBeGreaterThan(0)
+    // THE READING IS NOT A COLUMN, AND IT IS NO LONGER INSIDE THE SENTENCE EITHER.
+    // 它现在站在行右边那簇记号里（步数 · 卡 · 日期），与 ⋮ 相邻——所以「一个具名且够宽
+    // 的轨道」这句话的对象变了：句子那条轨的地板保护的是**标题**（一条被挤到只剩几个字的
+    // 标题不是标题），而读法自己的宽度由那一簇的轨道**按内容定**（`auto`），于是它永远
+    // 拿得到自己需要的那几十像素，不靠一个写死的数去猜。
+    const track = /grid-template-columns:\s*10px\s+minmax\((\d+)px,\s*1fr\)\s+auto/.exec(css)?.[1]
+    expect(track, 'the sentence track has no named floor — a long reading column can squeeze it to a few characters').toBeDefined()
+    // The row's marks track is CONTENT-SIZED, which is the claim that replaced 「wide enough」:
+    // a fixed px track here would have to be at least the longest reading (110px), and a number
+    // that says that is a number that goes stale the day a language is longer.
+    expect(
+      /grid-template-columns:\s*10px\s+minmax\(\d+px,\s*1fr\)\s+auto\s+28px/.test(css),
+      'the marks track is not content-sized, so the longest date reading can be squeezed by a track measured for something else',
+    ).toBe(true)
+    // The reading states the size its own width has to hold text at, so anything that ever does
+    // measure it resolves against this number rather than guessing.
+    const cellSize = Number(/(?:^|[;{\s])font-size\s*:\s*([\d.]+)px/.exec(rulesOf(css, 'itemRowDate').join('\n'))?.[1] ?? 0)
+    expect(cellSize, '.itemRowDate does not declare its own font-size, so a text-relative track on it resolves against a size this file cannot know').toBeGreaterThan(0)
     const resolved = Number(track)
-    // The sentence's FLOOR is what the reading has to fit into, and the reading is
-    // allowed to end before it runs out — so the floor is checked against the whole
-    // reading rather than against a fraction of it. A floor under the longest
-    // reading means the reading always starts on screen in full; the ellipsis on
-    // the reading itself says what happens to the rest.
+    // AND THE READING ENDS INSIDE ITSELF. Two things have to be true together, and they are the
+    // same promise the old column test made: the sentence's floor is at least the longest reading
+    // (so a reading that lands in the sentence would still start on screen in full), AND the
+    // reading's own text slot declares how it ends (ellipsis), so a reading that cannot fit clips
+    // in its OWN slot rather than pushing the fact beside it.
     expect(resolved, `the sentence's floor is ${resolved}px; a floor below the ${LONGEST_DATE_READING_PX}px the longest reading needs means that reading cannot start on screen at all`).toBeGreaterThanOrEqual(LONGEST_DATE_READING_PX)
-    // AND THE CONSUMERS READ THE TOKEN. There are exactly two consumers — the
-    // head row and the body row — and they must be the SAME track, or a column
-    // that lines up in the head does not line up in the body, which is the one
-    // failure a table cannot have and the one no capture at one width can see.
-    // AND THE READING TRUNCATES RATHER THAN PUSHING. It is one phrase inside a
-    // sentence, so a sentence that cannot fit must end inside the reading, never by
-    // moving the row's other tracks — which is the same promise the old column test
-    // made, asked of the shape that replaced it.
-    const tail = rulesOf(css, 'itemRowTail').join('\n')
-    expect(tail, 'the reading does not declare how it ends when the sentence is full').toMatch(/text-overflow\s*:\s*ellipsis/)
-    expect(tail, 'the reading does not declare a ceiling, so it pushes the row instead of truncating').toMatch(/max-inline-size/)
+    const slot = rulesOf(css, 'itemRowDateText').join('\n')
+    expect(slot, 'the reading does not declare how it ends when its slot is full').toMatch(/text-overflow\s*:\s*ellipsis/)
+    expect(slot, 'the reading does not declare a floor of its own, so it pushes the marks beside it').toMatch(/min-inline-size\s*:\s*0/)
   })
 
   it('the probe bites, and a track that resolves too narrow is reported', () => {

@@ -41,7 +41,8 @@ import { t, type TaskBoardKey } from '../locales.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { ITEM_STATUSES, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
-import { CardMark, PriorityMark, StatusMark } from './marks.tsx'
+import { CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
+import { GROUP_LABEL } from './labels.ts'
 import { formatItemDate } from './model.ts'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
@@ -149,7 +150,8 @@ function metaLine(view: ItemRowView): string {
    * not numbered it, because 「编号待定」 says 「this will have a number」 where a
    * blank cell says 「there is nothing here」. */
   parts.push(view.ref.text ?? t('item.ref.pending'))
-  if (view.progress !== undefined) parts.push(t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) }))
+  /* 步数在这一行里**不再出现**：它搬进了右边那簇记号（自己的图标、自己的名字），而一个事实
+   * 在一行里出现两遍正是这一行上半年删掉「状态」的那个理由。 */
   // Only once it has actually been neglected. A row touched a minute ago answers
   // zero, and printing 「放着 0 天」 on every fresh row turns the one signal that is
   // supposed to be rare into furniture. The threshold is the one the rail's own
@@ -339,12 +341,17 @@ export function ItemRowLine(props: ItemRowLineProps) {
             />
           )
           : (
-            /* THE SENTENCE, AND THE READING AT ITS END.
+            /* THE SENTENCE, WITH ITS OWN MARKS INSIDE IT.
              *
              * 行内排版，不是 flex —— flex 的换行是在**收缩之前**按基准尺寸决定的，于是
              * 芯片 30px 加上整句的 max-content 超过一行宽时，**整句被推到下一行、芯片
              * 自己留在上面**。412px 上每一行都成了「一行芯片 + 三行标题」。换成正常的行内
-             * 流之后，芯片是段首的一个词、读法是句末的一个短语，文字自己折行。 */
+             * 流之后，芯片是段首的一个词、标签是句末的一个词，文字自己折行。
+             *
+             * **标签也在这条流里了。** 它们原来是右边独立的一列，于是「同一个短语的两个
+             * 部分」被排在句子的两头（读者的原话：把标签挪到标题右边，左右间距与左边那些
+             * 元素**完全一致**）。现在它们是句子末尾的词，间距读的是同一档 6px——即
+             * `!N` 与句子之间那一档。 */
             <h3 className={css.itemRowTitle}>
               {/* ONE PRESS OPENS THE FIELD. It used to need two — 「press the title
                   * again」 — because the title was text; now it is a control, and a
@@ -364,32 +371,55 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 {<PriorityMark priority={item.priority} />}
               </button>
               <span className={css.itemRowText}>{item.title}</span>
-              {due !== undefined && (
-                <span className={css.itemRowTail} data-tone={due.tone}>{`（${due.text}）`}</span>
-              )}
+              {item.tags.map(tag => <span key={tag} className={css.itemTag}>{`#${tag}`}</span>)}
             </h3>
           )}
 
-        {/* THE META LINE SAYS THREE THINGS, and it used to say four.
+        {/* THE META LINE SAYS TWO THINGS NOW, and it used to say four.
          *
          * **状态不在这里。** 它原来印着「待办」，而左边那个点已经说了同一件事——一个
          * 事实在一行里出现两遍，读者得先判断哪一遍算数。
          *
-         * 挂着的卡由一枚记号说，不占一个字——那一行已经被四件事实占满了。 */}
-        <p className={css.itemRowMeta}>
-          {item.taskId !== undefined && <CardMark />}
-          {metaLine(view)}
-        </p>
+         * **步数与挂卡也不在这里了。** 它们各自有了图标、各自站进了右边那簇记号里（读者
+         * 的原话：那个 `1-1` 看不懂、太小；那个小方块看不出是什么，还把编号挤开了）。
+         * 副行留下的两样都是「关于这一条自己的账」：编号与放置天数。 */}
+        <p className={css.itemRowMeta}>{metaLine(view)}</p>
       </div>
 
-      {/* TAGS, AS CHIPS, AND ALWAYS VISIBLE. They were bare words in a column, which
-          made the one field a reader scans a list FOR the hardest to find: a word with
-          no edge is a word the eye slides off. */}
-      {item.tags.length > 0 && (
-        <p className={css.itemRowTags}>
-          {item.tags.map(tag => <span key={tag} className={css.itemTag}>#{tag}</span>)}
-        </p>
-      )}
+      {/* ── 行右边的三枚记号：步数 · 卡 · 日期 ──────────────────────────────────
+        *
+        * **它们在同一簇里，是因为它们是同一类事实**：都是「这一条现在什么状况」的读数，
+        * 都不是句子的一部分。位置也来自读者给的那张参考图：**日期在最右边、紧挨着 ⋮**，
+        * 左边是卡，再左边是步数。
+        *
+        * 三枚各有一枚图标，而现在只有「步数」是控件（按下去开步骤那一栏）：卡与日期这两枚
+        * 说的是事实，事实不该长得像按钮。 */}
+      <div className={css.itemRowMarks}>
+        {view.progress !== undefined && (
+          <button
+            type="button"
+            className={css.itemRowSteps}
+            aria-label={t('item.menu.steps')}
+            title={t('item.menu.steps')}
+            onClick={event => { event.stopPropagation(); props.onSteps() }}
+          >
+            <StepsMark />
+            {t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}
+          </button>
+        )}
+        {item.taskId !== undefined && (
+          <span className={css.itemRowCardChip}>
+            <CardMark size="chip" />
+            {t(GROUP_LABEL[view.status])}
+          </span>
+        )}
+        {due !== undefined && (
+          <span className={css.itemRowDate} data-tone={due.tone}>
+            <ClockMark />
+            <span className={css.itemRowDateText}>{due.text}</span>
+          </span>
+        )}
+      </div>
 
       <button
         ref={triggerRef}

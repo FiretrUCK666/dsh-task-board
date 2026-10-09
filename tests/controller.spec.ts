@@ -595,6 +595,12 @@ describe('task mutations', () => {
   it('relatedSessionIdSet covers binds and execution rounds', () => {
     const { controller, sessions } = makeController()
     sessions.runningById['s-run'] = false
+    /* **这两条会话得真的存在**，否则这条断言测的是另一件事：相关会话集合现在按存在性过滤
+       （读者报过「卡片外面的会话数比实际多」——被删掉的那些会话一直算在里面），而台架默认的
+       名单里没有 `s-bind` / `s-run` 这两个 id。让它们存在（`setRunning` 就是这台假面「名单里
+       有这么一条会话」的说法）之后，测的还是原来那句话：绑定与轮次都在集合里。 */
+    sessions.setRunning('s-bind', false)
+    sessions.setRunning('s-run', false)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
     controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-bind' }])
     // Give the task an execution round (pure task shape).
@@ -604,6 +610,26 @@ describe('task mutations', () => {
     }
     const set = controller.relatedSessionIdSet(withExtras)
     expect([...set].sort()).toEqual(['s-bind', 's-run'])
+  })
+
+  it('a session the reader deleted natively leaves the related set, so the card stops counting it', () => {
+    /* 读者报过的数：「卡片外面显示的会话数比实际多」——他删掉了不少会话，而那个数一直比屏上
+       存在的会话多。根因在这个集合的三个来源里：只有「工作区当前成员」那一条做过存在性检查，
+       绑定与轮次只要写进过这张卡就永远算一条相关会话。这条测试钉的就是那条律——**会话本体没了，
+       它就不再是这一条的相关会话**（圆点与 `+N` 因此跟着少一个）。
+       
+       而「名单还没送到」不是「被删了」：名单 pending 时不过滤（见 `relatedSessionsOf`），
+       否则每一张卡在启动那一瞬间都会丢掉自己的全部相关会话。 */
+    const { controller, sessions } = makeController()
+    sessions.setRunning('s-dead', false)
+    const created = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.addTaskSources(created.id, [{ kind: 'session', sessionId: 's-dead' }])
+    // 台账里的记录是不可变的：写完再读一次才是带上那次绑定的那一条。
+    const task = controller.getSnapshot().tasks.find(candidate => candidate.id === created.id)!
+    expect([...controller.relatedSessionIdSet(task)].sort()).toEqual(['s-dead'])
+    // The reader deletes that session in the app: its row leaves the list.
+    sessions.forget('s-dead')
+    expect([...controller.relatedSessionIdSet(task)], 'a deleted session is still being counted as related').toEqual([])
   })
 
   it('notifies subscribers when the waiting signal changes (the question face, not the list)', () => {
@@ -2194,9 +2220,11 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
 
 describe('referenceSessionOf (官方 @ 菜单的目标会话解析)', () => {
   it('resolves the task own related session first (execution → linked)', () => {
-    const { controller } = makeController()
+    const { controller, sessions } = makeController()
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    // A bound session makes it the task's own related session.
+    /* 绑定指向的会话必须在名单里（相关会话集合按存在性过滤——被删掉的会话不算这一条的）：
+       台架默认名单里没有 `bound-1`，所以先让它存在，测的才是「先解析这一条自己的会话」。 */
+    sessions.setRunning('bound-1', false)
     controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 'bound-1' }])
     expect(controller.referenceSessionOf(task.id)).toBe('bound-1')
   })
