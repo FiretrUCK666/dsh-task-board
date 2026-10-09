@@ -950,18 +950,16 @@ export function buildApi(ctx: ClientContext): ApiFace {
     events: {
       mux: () => ({
         async *[Symbol.asyncIterator]() {
-          // The host question channel moved off the legacy live stream in
-          // 0.1.5; the plugin's question tracker falls back to the
-          // controller-level pending map. The iterator HANGS instead of
-          // ending so the tracker's reconnect loop never spins (a closed
-          // stream would be read as a dead carrier and retried every second).
-          console.warn('[dsh-task-board] live question stream unavailable on dsh 0.1.5: question live-stream disabled')
+          // 这个宿主没有把问题通道挂在旧的那条 live stream 上，所以插件的问题跟踪器改用控制器
+          // 那一层的 pending 映射。迭代器**挂着不结束**，这样跟踪器的重连循环不会空转（一条
+          // 关闭的流会被读成死载体，于是每秒重试一次）。
+          console.warn('[dsh-task-board] live question stream unavailable on this host: question live-stream disabled')
           await new Promise<void>(() => {})
         },
       }),
     },
     respond: async () => {
-      console.warn('[dsh-task-board] question answer path unavailable on dsh 0.1.5: answers go through the native session')
+      console.warn('[dsh-task-board] question answer path unavailable on this host: answers go through the native session')
       return { accepted: false }
     },
   }

@@ -260,13 +260,12 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 整包一起消失）与**条目级**（profile `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true`，
 删掉那行即恢复）。
 
-三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键，只带 id 的行就够，patch 里没有我们
-的行是正常状态）；那一行必须是**真实装载的** Loader 条目，否则插件管理页会把两个开关锁成
-`unaddressable`（是组合的问题，不是本插件的）；插件详情页的「包含的组件」是**区块标题**，
-枚举的是 `insert:` 条目行、与 slot 名无关，真实开关只有右上角「启用」与每行「启用组件」两个。
-`cordis.yml` 是 profile 的**空根**不是配置文件；挂载由 `package.json` 的 `dsh.bundle.patch` 指向
-包内 `cordis.patch.yml`，三种安装方式（npm / GitHub / 本地 `link:`）在这件事上完全一致，
-**手写 patch 反而会造成同一个插件出现两条**。
+三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键，只带 id 的行就够）；那一行必须是
+**真实装载的** Loader 条目，否则插件管理页会把两个开关锁成 `unaddressable`（是组合的问题，不是
+本插件的）；插件详情页的「包含的组件」是**区块标题**，枚举的是 `insert:` 条目行、与 slot 名无关，
+真实开关只有右上角「启用」与每行「启用组件」两个。`cordis.yml` 是 profile 的**空根**不是配置文件；
+挂载由 `package.json` 的 `dsh.bundle.patch` 指向包内 `cordis.patch.yml`，三种安装方式在这件事上完全
+一致，**手写 patch 反而会造成同一个插件出现两条**。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
@@ -474,8 +473,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `{ currentValue: string }`**，候选项来自**另一个** `permissionPresets` 目录
   （`catalog.listPermissions()`）——索要一个 `options` 数组，就把好好的值判成「读不到」。
   **活值读不到就说读不到**（`review.permissionUnreadable`），绝不拿「默认」顶替（「默认」本身
-  就是一句关于会话状态的话）；目录里没有的当前值**照原样显示**，不许悄悄改写成列表里第一项。
-  **实时选择器里不得有「取消设置」项**（`/permission` 没这个动作，选了等于没选）。
+  就是一句关于会话状态的话）；目录里没有的当前值**照原样显示**。**实时选择器里不得有「取消
+  设置」项**（`/permission` 没这个动作，选了等于没选）。
 - **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
   "or undefined without a retained generation"）。所以凡是**拥有**一段工作的一次运行、一次续跑、
   一次新建会话配置，一律经 `execution.sessions.hold` 借到**结算为止**（`platform.sessionHoldFactory`
@@ -518,10 +517,19 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 
 ### 闭环验证与操作规范
 
-**界面改动 = 两档截图（宽 1440 / 窄 412）亲眼看过**，不只「门禁绿了」；**行为改动 = 真实交互走
-一遍**（点击、按键、点外收场）并在 `tests/` 里留下 spec——台架（`tests/panel-harness.ts` 与它产出
-的工件页面）就是「真实交互」与「静态断言」共用的同一台仪器。**量法与判据见硬性规范 19**；工具名
-与用法**现场读 `package.json` 的 scripts 与 `scripts/`**，不写死清单。
+**通则：改完必看——凡改动会影响「看到的东西」或「能做的事」，改完必须亲眼看过、亲手点过才算
+完成。** 「我改完了」不等于「它好了」；门禁全绿只证明规则没被破坏，不证明它在屏上是对的。做法是
+一个循环，不是一步：**改一处 → 看一次 → 有问题就改 → 再看**，直到真的没问题为止；一次改动牵连
+到的别处，也要各看一遍。
+
+- **界面改动 = 两档截图（宽 1440 / 窄 412）亲眼看过**，不只「门禁绿了」。
+- **行为改动 = 真实交互走一遍**（点击、按键、滚动、点外收场、边界情况），并在 `tests/` 里留下 spec
+  ——台架（`tests/panel-harness.ts` 与它产出的工件页面）就是「真实交互」与「静态断言」共用的同一台
+  仪器。
+- **没有现成的看/点手段时，把这一步造出来**：起预览、渲染一帧、导出快照、调一次接口都算；
+  「没法看」不是跳过这一步的理由。
+- **量法与判据见硬性规范 19**；工具名与用法**现场读 `package.json` 的 scripts 与 `scripts/`**，
+  不写死清单。
 
 ## 硬性规范
 
@@ -613,17 +621,14 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
 - **一个 src 模块一个 spec，契约按表面/域分组**，清单以 `tests/` 目录为准。**新增逻辑即配测试**
   ——测试是契约不是附件；不要随手加文件，先归入对应域的现有 spec。
 - **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约全状态机
-  （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听，首租前 proto 为 undefined）；
-  `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实
-  `http.Server` + 真实 SSE，覆盖 fake 测不到的链路（四种租约应答必带 proto + bootedAt）；
-  `controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是会话选择器
-  名单的**唯一**规则处（子代理/空白槽/归档的排除、工作区归属账本、未分组尾组，官方
-  `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞回归用例（跨栏落地不得读卡片
-  自己那条外来键当守卫）；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` /
-  `review-page`，**清单**的 CSS 布局契约**全在 `panel-render.spec.ts`**（经 `panel-harness.ts`
-  台架，`card-contract` 另有五条打清单的源文本契约）；看渲染结果用
-  `DSH_PANEL_HTML=<path> pnpm test` 出页面、再 `node scripts/shot-panel.mjs` 截图；
-  `file-reference-grammar` / `session-mention` 是官方包逐字镜像（打包门禁禁跨插件值导入）。
+  （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听）；`board-service` 带 **LeaseState
+  唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实 `http.Server` + 真实 SSE，覆盖 fake
+  测不到的链路；`controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是
+  会话选择器名单的**唯一**规则处（官方 `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞
+  回归用例；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` / `review-page`，
+  **清单**的全在 `panel-render.spec.ts`；看渲染结果用 `DSH_PANEL_HTML=<path> pnpm test` 出页面、
+  再 `node scripts/shot-panel.mjs` 截图；`file-reference-grammar` / `session-mention` 是官方包
+  逐字镜像（打包门禁禁跨插件值导入）。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
   全线失败时依然全绿——**假面比现实宽容或比现实窄同样危险**：前者让缺陷隐身，后者把正确实现报成缺陷。
