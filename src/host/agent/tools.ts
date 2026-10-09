@@ -1836,7 +1836,9 @@ function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   // The dates are printed as the raw stamp AND the local day, because the reader
   // of this line is a model that has been told the unit is a day — so a bare
   // 13-digit number is the one thing that would make it guess.
-  for (const [label, at] of [['最早开始', row.startsAfter], ['截止', row.dueAt], ['硬期限', row.hardDueAt]] as const) {
+  // 三个日子的**词与界面同一套**（不早于 / 希望在 / 不晚于）：这一行是模型读给自己听的，
+  // 而它答给读者的那句话里会带上这些词——一个词两套写法，读者看到的是两个名字指同一件事。
+  for (const [label, at] of [['不早于', row.startsAfter], ['希望在', row.dueAt], ['不晚于', row.hardDueAt]] as const) {
     if (at !== undefined) lines.push(`  ${label}：${at}（${localDayOf(at)}）`)
   }
   if (row.taskId !== undefined && row.taskId !== '') lines.push(`  关联卡片：${row.taskId}`)
