@@ -523,6 +523,19 @@ export function ItemListPanel(props: ItemListPanelProps) {
     if (next !== rows) apply(next)
   }, [board, cardColumns, apply, items])
 
+  /**
+   * **这一行问得出去吗。** 一处判断，三个表面都读它（详情那一排、⋯ 菜单、批量那一枚）。
+   *
+   * 没挂过卡的行问得出去（会就地建一张再问）；挂着卡的也问得出去。**只有一种拒绝**：挂过卡、
+   * 而那张卡已经不在这块板上了——去问一个不存在的会话是错的。
+   *
+   * 写成一处是因为它原来有三份：三处各写一份判断的代价，不是那几行代码，是**改一处不报错**
+   * ——今天没有卡的行在详情里问得出去、在批量里却被拦下，屏上不会有人说一句话。
+   */
+  function askableItem(item: ItemRecord): boolean {
+    return linkedCardIdOf(item, cardColumns) !== undefined || item.taskId === undefined
+  }
+
   const askOne = useCallback((item: ItemRecord) => {
     /* **「从来没挂过卡」与「有卡但卡被删了」是两件事，答案也不同**：
      *
@@ -536,7 +549,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * 不看得见。 */
     let taskId = linkedCardIdOf(item, cardColumns)
     if (taskId === undefined) {
-      if (item.taskId !== undefined) return
+      if (!askableItem(item)) return
       taskId = promoteOne(item)
       if (taskId === undefined) return
     }
@@ -764,11 +777,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
     apply(next)
   }, [apply, items, selection.ids])
 
-  /** Hand the held rows that HAVE a card to their sessions, and say if some did not. */
+  /** Hand the held rows that CAN be asked to their sessions, and say if some could not. */
   const askHeld = useCallback(() => {
     let askable = 0
     for (const item of items) {
-      if (!selection.ids.has(item.id) || linkedCardIdOf(item, cardColumns) === undefined) continue
+      /* 与单行那一条**同一处判断**（`askableItem`）：没挂卡的行也算问得出去——批量那一枚
+         原来按「必须挂卡」数，于是同一批行在批量里被拦下、在详情里却问得出去。 */
+      if (!selection.ids.has(item.id) || !askableItem(item)) continue
       askable += 1
       askOne(item)
     }
