@@ -3666,6 +3666,23 @@ describe('没挂卡的一条也能交给 AI：按「执行」= 就地建卡并�
     }
   })
 
+  it('按完之后这一行真的挂上了那张新卡：文档里 links、屏上有芯片', () => {
+    // 一次动作两件事（建卡 + 开跑）之后，这一行还不是「挂着卡」的话，屏上就会出现一张没人认领
+    // 的卡：文档里 `taskId` 没写、行尾没有芯片、状态照旧读它自己那两个值。这一条把那个缺口钉住。
+    const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(startButton(panel))
+      panel.settle()
+      expect(panel.lastWrite()[0]?.taskId, '文档里没有把这一行挂到新卡上').toBe('task-minted')
+      const chip = panel.surface.querySelector('[class*="itemRowCardChip"]')
+      expect(chip, '行尾那枚卡芯片没有出现').not.toBeNull()
+      expect(chip?.textContent ?? '', '芯片没有说那张卡在哪一栏').toContain('待办')
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('正文为空：**不建卡**（建出来也是一张跑不起来的卡）', () => {
     // 看板的执行门禁读的是「执行 Prompt」，而它来自这一条的正文——所以正文为空时建出来的卡
     // 一跑就停。这里钉住：宁可不建，也不留一张假卡。
