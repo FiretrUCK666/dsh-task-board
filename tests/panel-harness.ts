@@ -947,6 +947,21 @@ export function writeRenderArtifact(target: string, items: readonly ItemRecord[]
     renderPanel(items, band, page, undefined, overlay === undefined ? {} : { overlay }, openRow, openCard),
     panelCss(),
   )
+  writeStandalonePage(target, aligned.html, aligned.css, scheme, 'task list panel')
+}
+
+/**
+ * 把一段**已经渲染好的**标记包成一页能截图的东西。
+ *
+ * **它存在的理由是第二块面板。** 原来「页面装配」与「渲染清单面板」焊在同一个函数里，所以
+ * 看板那一侧用不了 —— 而看板从来没有一条链路能把自己的卡片画出来看（它的验证全在 jsdom 与
+ * CSS 契约里）。拆出来之后，两块面板共用同一份装配：宿主真实暗色表、移动端 viewport、
+ * 外壳给的那个确定高度的盒子，一处定义两处用，而不是各写一份、迟早各自漂。
+ *
+ * `css` 是**已经对齐过类名**的那一份（`alignClassNames` 的产物）：调用方负责渲染与对齐，
+ * 这里只负责包成一页。
+ */
+export function writeStandalonePage(target: string, markup: string, css: string, scheme: 'light' | 'dark' = 'light', title = 'panel'): void {
   // THE HOST'S OWN DARK TABLE, NOT A RECONSTRUCTED ONE. `hostTokenCss()`
   // concatenates every stylesheet the theme bundle ships, and the dark table in
   // it is selected by `body[data-ds-dark-theme]` — so putting the attribute on
@@ -963,9 +978,9 @@ export function writeRenderArtifact(target: string, items: readonly ItemRecord[]
     // a 980px desktop, every container query lands in the wrong band, and the
     // reader draws conclusions from it.
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<title>task list panel</title>',
+    `<title>${title}</title>`,
     '<style>', hostTokenCss(), '</style>',
-    '<style>', aligned.css, '</style>',
+    '<style>', css, '</style>',
     '<style>',
     // The shell hands the panel a definite height through a centred column.
     // Reproducing THAT is the point: the bug report's screenshots are a panel
@@ -974,7 +989,7 @@ export function writeRenderArtifact(target: string, items: readonly ItemRecord[]
     'html,body{margin:0;block-size:100%;}',
     'body{display:flex;flex-direction:column;overflow:hidden;}',
     `</style></head><body${bodyAttributes}>`,
-    aligned.html,
+    markup,
     '</body></html>',
   ].join('\n')
   mkdirSync(dirname(target), { recursive: true })
