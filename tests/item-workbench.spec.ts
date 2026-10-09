@@ -3611,6 +3611,36 @@ describe('挂上卡之后，状态两边一起变（先复现，再修）', () =
   })
 })
 
+describe('从看板跳过来：只看挂着那张卡的条目', () => {
+  it('请求到了，列表只剩挂着那张卡的几条，而且有一枚摘得掉的芯片', () => {
+    // 看板卡片上那枚「挂 N 条」按下去走的就是这一步：装配层记下一个带 token 的请求 + 抬清单舞台。
+    // 过滤只发生在清单面板这一处（下游左栏计数/分组/查询都读同一个 items），否则同一份列表会有
+    // 五个答案；而它必须长成一枚**看得见、摘得掉**的芯片——跳过来的人要能知道自己在一个筛选里。
+    const rows = [
+      { ...(oneRow({ taskId: 'task-1' })[0] as ItemRecord), id: 'r-1', ref: 1, title: '挂着那张卡的一条' },
+      { ...(oneRow({})[0] as ItemRecord), id: 'r-2', ref: 2, title: '没有挂卡的一条' },
+      { ...(oneRow({ taskId: 'task-2' })[0] as ItemRecord), id: 'r-3', ref: 3, title: '挂在另一张卡的一条' },
+    ]
+    const panel = mountPanel(rows, 'list', 'wide', { cards: ['task-1', 'task-2'], focus: { token: 1, cardId: 'task-1' } })
+    try {
+      const text = panel.surface.textContent ?? ''
+      expect(text, '没有过滤：别的条目还在').not.toContain('没有挂卡的一条')
+      expect(text, '没有过滤：挂在另一张卡上的条目还在').not.toContain('挂在另一张卡的一条')
+      expect(text, '该显示的条目没显示').toContain('挂着那张卡的一条')
+
+      // 摘掉它 → 回到全量。
+      const chip = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('只看挂着'))
+      expect(chip, '没有那枚可摘的芯片，读者会以为自己只剩这几条').toBeDefined()
+      click(chip)
+      panel.settle()
+      expect(panel.surface.textContent ?? '', '摘掉之后没有回到全量').toContain('没有挂卡的一条')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {

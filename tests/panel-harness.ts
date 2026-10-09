@@ -545,11 +545,13 @@ function faceOf(
   replica: ReturnType<typeof fakeReplica>,
   controller: unknown,
   openCard?: (cardId: string) => void,
+  focusRequest?: { readonly token: number; readonly cardId: string },
 ): ItemListFace {
   return {
     replica: replica as never,
     controller: controller as never,
     ...openCard === undefined ? {} : { openCard },
+    ...focusRequest === undefined ? {} : { focusRequest },
   } as ItemListFace
 }
 
@@ -1145,7 +1147,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[] } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; focus?: { readonly token: number; readonly cardId: string } } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1281,7 +1283,7 @@ export function mountPanel(
     act(() => {
       root.render(createElement(ItemListPanel, {
         signal,
-        face: faceOf(replica, controller, openCard),
+        face: faceOf(replica, controller, openCard, over.focus),
         /* THE BENCH'S CLOCK, the same reason renderPanel hands its own: every
          * fixture is dated relative to {@link NOW}, so a panel that read the real
          * `Date.now()` would disagree with its own rows the moment a relative
