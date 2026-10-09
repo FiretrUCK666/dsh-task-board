@@ -1932,7 +1932,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       click(all)
       // The agenda's own bucket names are what the list page never prints, so their
       // absence is the page having actually changed rather than a filter moving.
-      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始')
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('不早于还没到')
       expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
     } finally {
       panel.dispose()
@@ -1952,10 +1952,10 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始')
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('不早于还没到')
       const schedule = railRow(panel.surface, '日程')
       click(schedule)
-      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始')
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('不早于还没到')
       expect(schedule.getAttribute('aria-current')).toBe('true')
     } finally {
       panel.dispose()
@@ -3989,16 +3989,18 @@ describe('the mounted-page artifact, for the states a static render cannot reach
 })
 
 describe('the dates answer a press; the archive is a page; 多选 is on the bar', () => {
-  /** A date line's reading, pressed as the reader presses it. */
-  function openDateLine(root: HTMLElement, name: string): HTMLInputElement | null {
-    const label = [...root.querySelectorAll('[class*="itemDateAxis"] b')]
-      .find(node => (node.textContent ?? '') === name)
-    if (label === undefined) throw new Error(`the axis does not carry a line named ${name}`)
-    const line = label.closest('li') as HTMLElement | null
-    const reading = line?.querySelector('button') as HTMLButtonElement | null
-    if (reading === null) throw new Error(`the line named ${name} carries no reading to press`)
+  /** A date line's reading, pressed as the reader presses it — **addressed by the field it
+   *  is about** (`data-key`), not by the word printed above it. A gate that finds its line
+   *  by a display word goes red the day that word changes, and its failure then reads
+   *  「the axis does not carry a line named …」 — which points at the axis rather than at
+   *  the word that moved. */
+  function openDateLine(root: HTMLElement, key: 'startsAfter' | 'dueAt' | 'hardDueAt'): HTMLInputElement | null {
+    const line = root.querySelector(`[class*="itemDateAxis"] li[data-key="${key}"]`)
+    if (line === null) throw new Error(`the axis does not carry the ${key} line`)
+    const reading = line.querySelector('button') as HTMLButtonElement | null
+    if (reading === null) throw new Error(`the ${key} line carries no reading to press`)
     click(reading)
-    return line?.querySelector('input') as HTMLInputElement | null
+    return line.querySelector('input') as HTMLInputElement | null
   }
 
   it('a date reading opens the same-grammar field, prefilled with the value as it was stored', () => {
@@ -4007,7 +4009,7 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
     const panel = mountPanel(oneRow({ dueAt: NOW + DAY }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const field = openDateLine(panel.surface, '截止')
+      const field = openDateLine(panel.surface, 'dueAt')
       expect(field, 'pressing the reading opened no field').not.toBeNull()
       expect(field?.value, 'the field does not show the stored date in the spelling it was typed in').toBe('2026-09-30')
       // And a word in, a date out — resolved against the bench's own clock:
@@ -4026,13 +4028,13 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
       openRowDetail(panel)
       // The ESC half runs FIRST, on the pristine row: type a change, cancel it —
       // the stored date survives untouched.
-      const field = openDateLine(panel.surface, '截止')
+      const field = openDateLine(panel.surface, 'dueAt')
       typeInto(field!, '明天')
       press(field!, 'Escape')
       panel.settle()
       expect(panel.lastWrite()[0]?.dueAt, 'Esc wiped the stored date').toBe(NOW + DAY)
       // Then the clear: an emptied field + Enter removes the promise.
-      const field2 = openDateLine(panel.surface, '截止')
+      const field2 = openDateLine(panel.surface, 'dueAt')
       typeInto(field2!, '')
       press(field2!, 'Enter')
       panel.settle()
@@ -4046,7 +4048,7 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const field = openDateLine(panel.surface, '截止')
+      const field = openDateLine(panel.surface, 'dueAt')
       if (field === null) throw new Error('the field never opened')
       typeInto(field, '下下周三下午')
       press(field, 'Enter')

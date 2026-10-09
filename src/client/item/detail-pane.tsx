@@ -216,17 +216,14 @@ export function ItemDetail(props: ItemDetailProps) {
    * THE TWO VERDICTS, one per date, read from the model's own projection.
    *
    * The row's tail speaks only for the HARD date, because that is the one that
-   * turns a row red. So 截止's own verdict — 「落后 N 天」 — had never been printed
+   * turns a row red. So 希望在's own verdict — 「落后 N 天」 — had never been printed
    * anywhere on this panel, and the date axis showed a bare date where a verdict
    * belongs. Two readings now, each attached to the date it judges; neither is
    * borrowed from the other, which is what makes 「超期」 one word meaning one thing.
    *
-   * **SHORT INSIDE THE AXIS, because the axis already names the date.** The row's
-   * tail has to spell it out — it is the only thing on that line — while the axis
-   * prints 「硬期限」 in the column beside it, so the long form said the same word
-   * twice in one row: 「硬期限 · 硬期限超期 9 天」. Same verdict, two surfaces, two
-   * lengths — and the length is decided by what is already on the line, not by
-   * preference.
+   * **轴里与行尾读同一对词。** 两处都只说裁决本身（「超期 N 天」/「落后 N 天」），因为
+   * 两处都已经把它judge的那个日子说在旁边的列里（轴里是行首那个词，行尾是那一段的开头）
+   * ——把日期名再拼进来就是同一句话说两遍。
    */
   const behind = view.soft.overdue && view.soft.days !== undefined
     ? t('item.dates.behind', { days: String(view.soft.days) })
@@ -513,19 +510,20 @@ export function ItemDetail(props: ItemDetailProps) {
           </div>
 
 {/* 三个日期的读法**各写一句**，不混成一句「逾期了」：最早的只是现在还不能
-              动它；截止是你想要它什么时候好；硬期限是不会顺延的那一个，也是唯一会让
+              动它；希望在是你想要它什么时候好；不晚于是不会顺延的那一个，也是唯一会让
               这一行变红的那一个。软期限逾期**不是红**——那是关于一个计划的实话。
               *
               * **读法跟在它judge的那个日期后面**，不是另起一行、也不是省掉。行上
-              * 那一段读法只说硬期限（唯一会让这一行变红的那一个），所以计划的落后
-              * 在这里才第一次被说出来——而它属于**截止**那一行，不是属于硬期限。 */}
+              * 那一段读法只说不晚于（唯一会让这一行变红的那一个），所以计划的落后
+              * 在这里才第一次被说出来——而它属于**希望在**那一行，不是属于不晚于。 */}
           <ol className={css.itemDateAxis}>
             <DateLine
               keyName='startsAfter'
               label={t('item.field.startsAfter')}
-              reading={gated
-                ? t('item.dates.now')
-                : item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
+              /* **门关着的时候必须显示那个日子。** 读者最需要知道的就是「哪天开」，而这条
+                 线原来在门关着时印「现在就能动，没有门」——既是反话（那时正是不能动），
+                 又把那个日子藏了起来。珠子的 `gate` 语气已经说了它是一扇门，读法不必再说。 */
+              reading={item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
               tone={gated ? 'gate' : item.startsAfter === undefined ? 'none' : 'set'}
               field={dateEdit === 'startsAfter'}
               draft={dateDraft}

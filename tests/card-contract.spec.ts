@@ -213,7 +213,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
 
   it('a chip on a card is an object, not a run-on word in a sentence', () => {
     // MEASURED: a card carrying four chips rendered as one sentence — 「3会话 验收通过
-    // 硬期限9/30」 — because every card chip is `fill={false}` (plain 12/500 text,
+    // 不晚于9/30」 — because every card chip is `fill={false}` (plain 12/500 text,
     // deliberately, so the primary line does not have to shout over a row of
     // pills) AND `.cardBadges` uses the same 8px as the meta row above it. Plain
     // text with no edge, at one rhythm with everything else, is a paragraph.
@@ -370,9 +370,9 @@ describe('the column header and the cards under it share ONE text edge', () => {
 
   it('a contradiction names the two fields that DISAGREE, not a fixed pair', () => {
     // MEASURED: `itemDateConflict` reports three possible pairs, and the row's
-    // contradiction sentence named 「最早开始 / 截止」 for all of them. So a row
-    // whose 截止 sat past its 硬期限 read
-    // 「最早开始晚于它该守的截止」 — it named a field that was never in conflict
+    // contradiction sentence named 「不早于 / 希望在」 for all of them. So a row
+    // whose 希望在 sat past its 不晚于 read
+    // 「不早于晚于它该守的希望在」 — it named a field that was never in conflict
     // and pointed at the one that was as though it were the bound.
     //
     // `DESIGN.md` requires the sentence to name the two that actually disagree,

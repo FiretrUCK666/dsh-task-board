@@ -786,8 +786,8 @@ export const ACTIONS = {
       // The granularity is a FIELD on all three dates, and in the same words.
       // It used to be 「毫秒时间戳」 in `about` here and nothing at all in
       // `item.update`, which is a third reading of the same three fields.
-      startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
-      dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
+      startsAfter: { about: '不早于', optional: true, default: DATE_GRANULARITY },
+      dueAt: { about: '希望在', optional: true, default: DATE_GRANULARITY },
       hardDueAt: { about: '最后期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片（零张或一张）', optional: true },
     },
@@ -815,8 +815,8 @@ export const ACTIONS = {
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
       // The same field, the same value, for the same reason as `item.create`'s.
-      startsAfter: { about: '最早开始', optional: true, default: DATE_GRANULARITY },
-      dueAt: { about: '截止', optional: true, default: DATE_GRANULARITY },
+      startsAfter: { about: '不早于', optional: true, default: DATE_GRANULARITY },
+      dueAt: { about: '希望在', optional: true, default: DATE_GRANULARITY },
       hardDueAt: { about: '最后期限', optional: true, default: DATE_GRANULARITY },
       taskId: { about: '关联的看板卡片', optional: true },
     },

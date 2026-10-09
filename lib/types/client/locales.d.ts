@@ -631,7 +631,6 @@ export declare const zh: {
     'item.section.steps': string;
     'item.field.tagsAdd': string;
     'item.field.newCard': string;
-    'item.dates.now': string;
     'item.dates.none': string;
     'item.dates.bad': string;
     'item.topbar.sort': string;
@@ -713,10 +712,8 @@ export declare const zh: {
     'item.field.priority': string;
     'item.page.list': string;
     'item.page.schedule': string;
-    'item.due.behind': string;
     'item.dates.overdue': string;
     'item.dates.behind': string;
-    'item.due.overdue': string;
     'item.due.soon': string;
     'item.due.today': string;
     'item.due.set': string;
@@ -733,9 +730,6 @@ export declare const zh: {
     'item.compose.add': string;
     'item.token.tag': string;
     'item.token.priority': string;
-    'item.token.due': string;
-    'item.token.hard': string;
-    'item.token.earliest': string;
     'item.token.step': string;
     'item.token.undo': string;
     'item.bucket.hardOverdue': string;
@@ -788,9 +782,6 @@ export declare const zh: {
     'item.triage.behindShort': string;
     'item.sort.label': string;
     'item.sort.sequence': string;
-    'item.sort.starts': string;
-    'item.sort.due': string;
-    'item.sort.hard': string;
     'item.sort.priority': string;
     'item.sort.title': string;
     'item.promote.said': string;

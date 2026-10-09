@@ -56,11 +56,11 @@ type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
  * One reading, not two: it used to print the hard deadline's reading at the end of
  * the sentence AND the plan's reading on the line below, so a reader had to work
  * out which number was about which date. The plan's reading is not lost — it is on
- * the date axis in the expanded row, in the column that already says 「截止」.
+ * the date axis in the expanded row, in the column that already says 「希望在」.
  * **一个事实在一行里说一次，在它自己的那一栏里说一次。**
  *
  * **THE SHAPE IS `<日期名> · <读法>`, IN EVERY BRANCH.** It was not: three
- * branches named their date (「硬期限超期 9 天」), two named nothing (「就是今天」,
+ * branches named their date (「不晚于超期 9 天」), two named nothing (「就是今天」,
  * 「10月16日」), one was a whole sentence about itself, and one printed nothing at
  * all. A reader looking at a list of them cannot tell whether 「10月16日」 is the
  * deadline, the wanted-by date or the day the row may start — the one thing the
@@ -73,7 +73,7 @@ type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
  * date cannot be written without moving the branch.
  *
  * The tone rides the READING, never the name — the name is the row's own field
- * label and stays in the meta ink. A red field name would make 「硬期限」 itself
+ * label and stays in the meta ink. A red field name would make 「不晚于」 itself
  * alarming on every row that has one.
  * @param view - the row's projection.
  * @param english - whether the reader's language is English.
@@ -90,19 +90,19 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
    * A verdict already names itself by its VERB: 「超期」 is the hard deadline (the
    * only one a reader cannot re-negotiate alone) and 「落后」 is the plan's own date.
    * Prefixing the field onto a word that already says which date it is gives
-   * 「硬期限 · 超期 9 天」 — one sentence saying one thing twice, which is what the
+   * 「不晚于 · 超期 9 天」 — one sentence saying one thing twice, which is what the
    * shape rule in this panel exists to prevent.
    *
-   * The separator is a SPACE, not a dot: 「最早开始 10月5日」 reads as a phrase, and
+   * The separator is a SPACE, not a dot: 「不早于 10月5日」 reads as a phrase, and
    * the row's meta line already spends the dot on 「#1 · 1/3」. Two separators in one
    * 13px line is one separator too many. */
   const about = (field: 'startsAfter' | 'dueAt' | 'hardDueAt', reading: string): string =>
     `${t(DATE_FIELD_KEY[field])} ${reading}`
   switch (posture.kind) {
     case 'behind':
-      return { tone: 'soft-late', text: t('item.due.behind', { days: String(posture.days) }) }
+      return { tone: 'soft-late', text: t('item.dates.behind', { days: String(posture.days) }) }
     case 'hardOverdue':
-      return { tone: 'over', text: t('item.due.overdue', { days: String(posture.days) }) }
+      return { tone: 'over', text: t('item.dates.overdue', { days: String(posture.days) }) }
     case 'hardSoon':
       return { tone: 'soon', text: t('item.due.soon', { days: String(posture.days) }) }
     case 'dueToday':

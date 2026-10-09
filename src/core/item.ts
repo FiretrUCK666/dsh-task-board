@@ -21,7 +21,7 @@
  *    (`#12`). It is minted by a monotonic counter ON THE DOCUMENT and is never
  *    writable, so a replica cannot renumber the list under the user's feet — and
  *    no UUID ever has to leave the host to be named in a sentence.
- *  - The three times are three fields, never one. 最早开始 / 截止 / 硬期限 are
+ *  - The three times are three fields, never one. 不早于 / 希望在 / 不晚于 are
  *    different promises; collapsing them is how a soft deadline turns into a
  *    missed one.
  *
@@ -107,11 +107,11 @@ export interface ItemRecord {
   status: ItemStatus
   priority: ItemPriority
   tags: string[]
-  /** 最早开始 — the earliest moment this may be started. */
+  /** 不早于 — the earliest moment this may be started. */
   startsAfter: number | undefined
-  /** 截止 — when it is wanted. */
+  /** 希望在 — when it is wanted. */
   dueAt: number | undefined
-  /** 硬期限 — the one that does not move. */
+  /** 不晚于 — the one that does not move. */
   hardDueAt: number | undefined
   /** The board card this item belongs to, if any (zero or one, never many). */
   taskId: string | undefined
@@ -241,9 +241,9 @@ export const ITEM_FIELDS = {
   status: { access: 'writable', why: '开放/受阻/完成三选一；「进行中」是派生，不存' },
   priority: { access: 'writable', why: '四档，参与筛选与排序' },
   tags: { access: 'writable', why: '自由标签，参与筛选' },
-  startsAfter: { access: 'writable', why: '最早开始，与截止、硬期限是三件不同的事' },
-  dueAt: { access: 'writable', why: '截止时间，与硬期限语义不同，不挤成一列' },
-  hardDueAt: { access: 'writable', why: '硬期限，唯一不会顺延的那个' },
+  startsAfter: { access: 'writable', why: '不早于，与希望在、不晚于是三件不同的事' },
+  dueAt: { access: 'writable', why: '希望的日子，与不晚于语义不同，不挤成一列' },
+  hardDueAt: { access: 'writable', why: '不晚于，唯一不会顺延的那个' },
   taskId: { access: 'writable', why: '关联看板卡片，零张或一张；只存链接，不存第二份判断' },
   origin: { access: 'forbidden', why: '来源标记是出事时的追溯凭据，出生后不可改写' },
   createdAt: { access: 'derived', why: '出生时刻，只有文档写' },
@@ -307,12 +307,11 @@ export interface ItemDateConflict {
   readonly limit: number
   /**
    * WHICH FIELD the limit is. A conflict is a PAIR, and a sentence that names one
-   * of the two fields cannot be assembled from half of it: the surface used to
-   * hard-code 「最早开始 … 截止」 for all three possible pairs, so a row whose
-   * 截止 sat past its 硬期限 read 「最早开始晚于它该守的截止」 — naming a field
-   * that was never in conflict and pointing at the one that was as if it were the
-   * bound. `DESIGN.md` requires the sentence to name the two fields that actually
-   * disagree, and that is only possible if both are carried.
+   * of the two cannot be assembled from half of it — a sentence written for one
+   * pair and reused for the other two names a field that was never in conflict,
+   * while pointing at the one that was as if it were the bound. The rule is that
+   * the sentence names the two fields that actually disagree, and that is only
+   * possible if both are carried.
    */
   readonly limitField: 'startsAfter' | 'dueAt' | 'hardDueAt'
 }

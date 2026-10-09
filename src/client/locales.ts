@@ -667,7 +667,6 @@ export const zh = {
   'item.section.steps': '步骤',
   'item.field.tagsAdd': '加一个',
   'item.field.newCard': '新建卡片',
-  'item.dates.now': '现在就能动，没有门',
   'item.dates.none': '没定',
   'item.dates.bad': '这个读法我没读懂。再试一次：2026-10-15、明天或 @明天。',
   'item.topbar.sort': '排序',
@@ -708,7 +707,7 @@ export const zh = {
   'item.batch.hold': '选中这一条',
   'item.batch.release': '放开这一条',
   'item.batch.priority': '优先级',
-  'item.batch.due': '设截止',
+  'item.batch.due': '设希望在',
   'item.batch.said': '改了 {n} 条。',
   'item.batch.saidNone': '这 {n} 条已经是这样了，什么都没改。',
   'item.batch.askOne': '这 {n} 条里只有挂上卡的那几条能问 AI。',
@@ -722,9 +721,19 @@ export const zh = {
   'item.status.done': '标为已完成',
   'item.status.card': '这一行的状态读它挂着的那张卡；要改就移那张卡。',
   'item.status.derived': '这条显示{where}，是因为它挂着的卡在那一栏；它自己存的还是{own}。',
-  'item.field.startsAfter': '最早开始',
-  'item.field.dueAt': '截止',
-  'item.field.hardDueAt': '最后期限',
+  /* ── 三个日子：一条区间上的三个位置 ─────────────────────────────────────────
+   *
+   * 名字自己说出**方向与硬度**，所以三者不可能被读混：`不早于` 是一扇门（早于这天不动），
+   * `希望在` 是一个愿望（滑了只是计划变了），`不晚于` 是一条不能顺延的上限（只有它会变红）。
+   *
+   * 它们原来是「不早于 / 希望在 / 最后期限」——**中文里「希望在」与「最后期限」是一个意思**，
+   * 所以读者问「这两个是不是重复了」。英文那边一直分得清（Not before / Wanted by /
+   * Deadline），出问题的只有中文的词。
+   *
+   * 字段名（`startsAfter` / `dueAt` / `hardDueAt`）与排序 id 不动：词是这一份的事。 */
+  'item.field.startsAfter': '不早于',
+  'item.field.dueAt': '希望在',
+  'item.field.hardDueAt': '不晚于',
   'item.field.tags': '标签',
   'item.field.tagsHint': '用顿号或逗号分开',
   'item.field.taskId': '看板卡片',
@@ -766,20 +775,24 @@ export const zh = {
   'item.page.list': '清单',
   'item.page.schedule': '日程',
 
-  // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
+  // 三个日期三种视觉。软期限逾期不是红；红只属于不晚于。
   //
-  // **裁决类不带日期名，日期类带。** 动词自己说清是哪一个日期：`超期` 说的是硬期限
-  // （只有它不能被单方面改期），`落后` 说的是计划的截止，`还剩` 是硬期限将到。分工
-  // 明确，所以再补一个字段名就是同一句话说两遍——而「最早开始 10月5日」必须带名，
+  // **裁决类不带日期名，日期类带。** 动词自己说清是哪一个承诺：`超期` 说的是不晚于
+  // （只有它不能被单方面改期），`落后` 说的是希望的那个日子，`还剩` 是不晚于将到。分工
+  // 明确，所以再补一个字段名就是同一句话说两遍——而「不早于 10月5日」必须带名，
   // 因为一个光秃秃的日期说不清是谁的。这一条是这一栏唯一的形状规则。
-  'item.due.behind': '落后 {days} 天',
+  //
+  // **行尾与详情轴读同一对键。** 它们曾经各有一份（`item.due.*` 与 `item.dates.*`），
+  // 中文一字不差而英文已经漂了（`over` vs `past due`）——同一句话的两份拷贝，改一份
+  // 不会碰到另一份。
   'item.dates.overdue': '超期 {days} 天',
   'item.dates.behind': '落后 {days} 天',
-  'item.due.overdue': '超期 {days} 天',
   'item.due.soon': '还剩 {days} 天',
   'item.due.today': '就是今天',
   'item.due.set': '{when}',
-  'item.dates.contradict': '{a} 晚于它该守的 {b}，这一条自己矛盾',
+  // 三个日子的**名字**（`不早于 / 希望在 / 不晚于`）本身就说得出方向与硬度，所以这句话
+  // 只需要说出「哪两个对不上」。三对日期各一句，句子的主语就是那一个词。
+  'item.dates.contradict': '{a} 的日子落在 {b} 后面，这一条自己矛盾',
   'item.ref.pending': '编号待定',
   // 一行还没有名字（只在正文里写了字、或者只挂了标签）。它与「编号待定」同一族：
   // 一件还没被命名的事，而不是一句关于选中状态的话。
@@ -798,22 +811,21 @@ export const zh = {
   'item.compose.add': '记下',
   'item.token.tag': '标签',
   'item.token.priority': '优先级',
-  'item.token.due': '截止',
-  'item.token.hard': '最后期限',
-  'item.token.earliest': '最早开始',
   'item.token.step': '步骤',
   'item.token.undo': '还原成普通文字',
 
-  // 议程的桶。
-  'item.bucket.hardOverdue': '已超期',
-  'item.bucket.behind': '落后',
+  // 议程的桶。**三节的名字与字段同一套词**：左栏那一枚「已超期」是 `has:overdue`
+  // （不晚于**或**希望已经过了），而这三节各说一件更具体的事，所以名字也说具体的那句，
+  // 不与左栏共用同一个词——同一个词在两处选不同的行，是这一页最贵的一种自相矛盾。
+  'item.bucket.hardOverdue': '不晚于已过',
+  'item.bucket.behind': '希望在已过',
   'item.bucket.today': '今天',
   'item.bucket.tomorrow': '明天',
   'item.bucket.week': '本周稍后',
   'item.bucket.later': '以后',
   'item.bucket.undated': '没定日期',
-  'item.bucket.gated': '还没到开始',
-  'item.gated.hint': '这些行的「最早开始」还没到。到了那天它们自己会进日程。',
+  'item.bucket.gated': '不早于还没到',
+  'item.gated.hint': '这些行的「不早于」还没到。到了那天它们自己会进日程。',
   'item.noDate.hint': '这些行没有日期，所以不占任何一天。',
   'item.agenda.leftOut': '另有 {done} 条已完成、{inbox} 条还在收件里，不在这份日程上。',
 
@@ -830,7 +842,7 @@ export const zh = {
   'item.create.bodyPlaceholder': 'Markdown。上面那行不够写，就写在这里。',
   'item.create.steps': '步骤',
   'item.create.stepsPlaceholder': '一行一步',
-  'item.create.startsHint': '现在就能动，没有门',
+  'item.create.startsHint': '早于这天不动',
   'item.create.dueHint': '你希望它什么时候好',
   'item.create.hardHint': '到这天必须交，不能再商量',
   'item.create.body': '正文（可留空）',
@@ -864,14 +876,17 @@ export const zh = {
   'item.due.overdueShort': '超期',
   // 「一句话里夹一个数」的短词：`has:behind` 那枚芯片读它。
   'item.triage.behindShort': '落后',
-  // 七档排序，全部是名词而不是「按……」的动词短语：它们要能并排进一条
-  // 分段药丸里当七个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
-  // 七个动作，读者会当成七个可以分别按的钮。
+  // 六档排序，全部是名词或一段事实，而不是「按……」的动词短语：它们要能并排进一条
+  // 分段药丸里当六个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
+  // 六个动作，读者会当成六个可以分别按的钮。
+  //
+  // **「顺序」是名字说错了的那一档。** 它其实是「未完成在前 → 越急越前 → 最近的那个日子
+  // → 越早写下越前 → 编号」（`compareItemOrder`）——这份文档自己推荐的一种读法，不是
+  // 「写下的先后」。读者只看得见「顺序」两个字，于是它与「标题」的区别没人猜得出来。
+  // 名字改成它真正做的事，两者从此不可能混。
   'item.sort.label': '排序',
-  'item.sort.sequence': '顺序',
-  'item.sort.starts': '最早开始',
-  'item.sort.due': '截止',
-  'item.sort.hard': '最后期限',
+  'item.sort.sequence': '要紧的先',
+  /* 三个日期档**不在这里**：它们读字段自己那一份词（`item.field.*`），一个概念一套词。 */
   'item.sort.priority': '优先级',
   'item.sort.title': '标题',
 
@@ -1583,7 +1598,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.section.steps': 'Steps',
   'item.field.tagsAdd': 'Add one',
   'item.field.newCard': 'New card',
-  'item.dates.now': 'open now, no gate',
   'item.dates.none': 'not set',
   'item.dates.bad': 'I could not read that. Try again: 2026-10-15, tomorrow, or @tomorrow.',
   'item.topbar.sort': 'Sort',
@@ -1675,18 +1689,18 @@ export const en: Record<keyof typeof zh, string> = {
   'item.page.schedule': 'Agenda',
 
   // Three dates, three readings — and ONE shape: a verdict names itself by its verb
-  // (「超期」/「over」 is the hard deadline, 「落后」/「behind」 the plan's date), while a
-  // bare DATE carries its field's name, because a date on its own does not say whose
-  // it is. A missed wanted-by date is NOT an alarm: red belongs to the hard deadline
-  // alone, and saying so is the whole point.
-  'item.due.behind': '{days}d behind',
+  // (「Past due」 is the deadline, 「behind」 the date you wanted), while a bare DATE
+  // carries its field's name, because a date on its own does not say whose it is. A
+  // missed wanted-by date is NOT an alarm: red belongs to the hard deadline alone.
+  //
+  // The row's tail and the detail's axis read the SAME pair. They used to have one
+  // each (`item.due.*` and `item.dates.*`): identical in zh, already drifted in en.
   'item.dates.overdue': '{days}d past due',
   'item.dates.behind': '{days}d behind',
-  'item.due.overdue': '{days}d over',
   'item.due.soon': '{days}d left',
   'item.due.today': 'today',
   'item.due.set': '{when}',
-  'item.dates.contradict': '{a} is later than the {b} it has to keep, so this row contradicts itself',
+  'item.dates.contradict': '{a} falls after {b}, so this row contradicts itself',
   'item.ref.pending': 'number pending',
   // A row with no words of its own yet (a body with no title, or a tag on its own).
   'item.row.untitled': 'no name yet',
@@ -1705,22 +1719,19 @@ export const en: Record<keyof typeof zh, string> = {
   'item.compose.add': 'Save',
   'item.token.tag': 'tag',
   'item.token.priority': 'priority',
-  'item.token.due': 'wanted by',
-  'item.token.hard': 'deadline',
-  'item.token.earliest': 'not before',
   'item.token.step': 'step',
   'item.token.undo': 'turn back into plain text',
 
   // The agenda's buckets.
-  'item.bucket.hardOverdue': 'Overdue',
-  'item.bucket.behind': 'Behind',
+  'item.bucket.hardOverdue': 'Past the deadline',
+  'item.bucket.behind': 'Past the date you wanted',
   'item.bucket.today': 'Today',
   'item.bucket.tomorrow': 'Tomorrow',
   'item.bucket.week': 'Later this week',
   'item.bucket.later': 'Further out',
   'item.bucket.undated': 'No date',
-  'item.bucket.gated': 'Not startable yet',
-  'item.gated.hint': 'Their earliest start has not arrived. Each comes in on the day it opens.',
+  'item.bucket.gated': 'Not open yet',
+  'item.gated.hint': 'Their “not before” date has not arrived. Each comes in on the day it opens.',
   'item.noDate.hint': 'These rows have no date, so they take up no day.',
   'item.agenda.leftOut': '{done} finished and {inbox} still in the inbox are not on this agenda.',
 
@@ -1735,7 +1746,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.create.bodyPlaceholder': 'Markdown. If the line above was not enough, write it here.',
   'item.create.steps': 'Steps',
   'item.create.stepsPlaceholder': 'One step per line',
-  'item.create.startsHint': 'You can start on it now',
+  'item.create.startsHint': 'Nothing starts before this day',
   'item.create.dueHint': 'When you would like it done',
   'item.create.hardHint': 'Due on this day; no moving it',
   'item.create.body': 'Body (optional)',
@@ -1763,11 +1774,10 @@ export const en: Record<keyof typeof zh, string> = {
   'item.due.overdueShort': 'Past due',
   // The short form used where a count sits inside a sentence: the `has:behind` chip.
   'item.triage.behindShort': 'Behind',
-  'item.sort.label': 'Order',
-  'item.sort.sequence': 'Sequence',
-  'item.sort.starts': 'Not before',
-  'item.sort.due': 'Wanted by',
-  'item.sort.hard': 'Deadline',
+  'item.sort.label': 'Sort',
+  'item.sort.sequence': 'Loudest first',
+  /* The three date orders are not here: they read the fields' own words
+     (`item.field.*`), because one concept has one vocabulary. */
   'item.sort.priority': 'Priority',
   'item.sort.title': 'Title',
 

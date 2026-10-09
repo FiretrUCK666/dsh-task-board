@@ -365,7 +365,7 @@ describe('the panel renders against the host it will actually run in', () => {
     // PREDICATE over the same document rather than a different question, so its rail
     // row was its only door and its own layout was the only thing it added.
     expect(schedule).toContain('没定日期')
-    expect(schedule).toContain('还没到开始')
+    expect(schedule).toContain('不早于还没到')
     /* **日程少列了几行，它就说少在哪。** 读者的原话：「3 条里只看见 2 条」。两个
      * 排除都有理由（已完成是历史；刚记下、还没被读第二遍的一条属于收件），但理由不
      * 在屏幕上，屏幕上剩下的只有「少了一条」——而少了一条和丢了一条，读者分不出来。
@@ -1632,7 +1632,7 @@ describe('the triage sentence is a sentence, not filler', () => {
   })
 
   it('an odd field in a two-column grid is named, so the last row is not half empty', () => {
-    // 计划与期限 seats 状态|优先级 / 最早开始|截止 / 硬期限 — five into two, which
+    // 计划与期限 seats 状态|优先级 / 不早于|希望在 / 不晚于 — five into two, which
     // measured as a 382 × 53px hole at the end of the section a reader scans FOR
     // DATES. The fix names the field (`data-wide`) rather than reaching for
     // `:last-child`, because 「the last child of the grid」 is a position and the
@@ -2559,7 +2559,7 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) },
     {
       key: '日期轴珠',
-      // 日期轴的珠子是**一颗珠子的几个状态**，不是几处用量：挂着硬期限的空心红环
+      // 日期轴的珠子是**一颗珠子的几个状态**，不是几处用量：挂着不晚于的空心红环
       // 与已经超了的实心红，读者看到的是同一个位置换了个状态——按名折叠成一档，
       // 而不是按选择器计两份。匹配只收以 `> i` 收尾的珠子规则，读法行的红
       // （`> span`）不在族里，它自己算一份。
@@ -2684,7 +2684,7 @@ describe('the colour budget is a budget, counted at the token layer', () => {
       '--dsh-tb-accent': { decoration: 5, affordance: 2, total: 7 },
       '--dsh-tb-attention': { decoration: 2, affordance: 0, total: 2 },
       // 红色从 3 到 4，同样只有一条新的：优先级「紧急」那一枚实心芯片。红在这一面上
-      // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的硬期限）
+      // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的不晚于）
       // 与「别让它错」（最响的那一档优先级）。两条老位置（读法与珠子）算一档，是
       // `FAMILIES` 里那句「一颗珠子的几个状态不是几处用量」。
       '--dsh-tb-danger': { decoration: 4, affordance: 0, total: 4 },

@@ -89,7 +89,7 @@ function dueSortKeyOf(item: ItemRecord): number {
 }
 
 /**
- * 最早开始 — the gate, soonest first, and a row with no gate at the END, by the
+ * 不早于 — the gate, soonest first, and a row with no gate at the END, by the
  * same law as {@link UNSET_DATE}.
  */
 function startsSortKeyOf(item: ItemRecord): number {
@@ -97,7 +97,7 @@ function startsSortKeyOf(item: ItemRecord): number {
 }
 
 /**
- * 硬期限 — the one date that does not move, soonest first, and a row with none
+ * 不晚于 — the one date that does not move, soonest first, and a row with none
  * at the END, for the same reason {@link startsSortKeyOf} puts it there.
  */
 function hardSortKeyOf(item: ItemRecord): number {

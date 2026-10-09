@@ -538,7 +538,7 @@ function stepDoneOf(entry: unknown): boolean {
  *
  * Everything the writer DECIDED, and nothing the document derives: no number, no
  * provenance stamp, no birth instant. The three date fields are three
- * independent promises (最早开始 / 截止 / 硬期限) and stay three keys here for
+ * independent promises (不早于 / 希望在 / 不晚于) and stay three keys here for
  * the same reason they are three columns — collapsing them is how a soft
  * deadline turns into a missed one.
  *

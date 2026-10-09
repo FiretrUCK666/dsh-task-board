@@ -94,8 +94,8 @@ const CAPTION: Readonly<Record<ItemRailGroupWord, TaskBoardKey>> = {
  * predicate is a different *shape of claim* about the calendar, so each gets a
  * different shape:
  *
- *   硬期限过了  一枚实心的环 —— 唯一会让这一行变红的那一个
- *   截止过了    一个圈 + 一根往下走的指针 —— 落后于一个计划，而不是坏了
+ *   不晚于过了  一枚实心的环 —— 唯一会让这一行变红的那一个
+ *   希望在过了    一个圈 + 一根往下走的指针 —— 落后于一个计划，而不是坏了
  *   停滞的      一段虚线的弧 —— 很久没有人碰
  *   没日期的    一根平线 —— 什么都没有
  *   还没到日子的 一扇关着的门 —— 有一个日子，只是还没到

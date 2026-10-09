@@ -72,7 +72,7 @@ export declare function togglePicked(selection: ItemSelection, id: string): Item
  *
  * It is also not the same as the *filtered* set in document order, which is what
  * the select-all box counts: the page sorts what it draws, so the third row on
- * screen is not the third row of the document under any order but 「按截止」.
+ * screen is not the third row of the document under any order but 「按希望在」.
  *
  * A MISSING ANCHOR IS NOT A RANGE, it is one row. Shift with nothing held has
  * nowhere to measure from, and guessing an anchor is how a press that looked like

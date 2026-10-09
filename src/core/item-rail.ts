@@ -89,8 +89,8 @@ export interface ItemRailGroup {
  * offers whole.
  *
  * So it shows the whole. Which date is late is still said, in the two places that
- * can say it without ambiguity: the row's own tail names the date
- * （「硬期限超期 15 天」/「截止落后 18 天」, never both as 「超期」), and the detail's
+ * can say it without ambiguity: the row's own tail prints the verdict on its own
+ * （「超期 15 天」 is the hard one, 「落后 18 天」 the wish), and the detail's
  * date axis prints all three dates with their own readings.
  *
  * `gated` is gone for a different reason: it means 「还没到能动的日子」, which is

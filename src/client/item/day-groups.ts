@@ -25,7 +25,7 @@ export const ITEM_DAY_BUCKETS: readonly ItemDayBucket[] = ['today', 'yesterday',
  *
  * Only 「顺序」 is about WHEN THE ROW WAS WRITTEN, so only 「顺序」 may carry a
  * heading about when it was written. The other five are about the row's own dates
- * or its fields — a list sorted by 截止, cut into 「今天 / 昨天」, would print 「今天」
+ * or its fields — a list sorted by 希望在, cut into 「今天 / 昨天」, would print 「今天」
  * above rows the reader deliberately sorted by deadline, and the heading would be
  * naming something they just chose not to look at.
  *

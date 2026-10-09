@@ -30,18 +30,20 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerParse, type ComposerToken } from './compose-parse.ts'
-import { t } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
 import boardCss from '../board.module.css'
 
 /** What one recognised piece is called, in the reader's language. */
-const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], 'item.token.tag' | 'item.token.priority' | 'item.token.due' | 'item.token.hard' | 'item.token.earliest' | 'item.token.step'>> = {
+/** 三种日期各读**字段自己那一份词**（`item.field.*`）：屏上说的与框里写的是同一套，
+ *  一个概念只有一套词——它们曾经是三个自己的键，于是改字段名时快记的芯片不会跟着动。 */
+const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], TaskBoardKey>> = {
   tag: 'item.token.tag',
   priority: 'item.token.priority',
-  due: 'item.token.due',
-  hard: 'item.token.hard',
-  earliest: 'item.token.earliest',
+  due: 'item.field.dueAt',
+  hard: 'item.field.hardDueAt',
+  earliest: 'item.field.startsAfter',
   step: 'item.token.step',
 }
 

@@ -903,12 +903,12 @@ export declare const ACTIONS: {
                 readonly list: "string";
             };
             readonly startsAfter: {
-                readonly about: "最早开始";
+                readonly about: "不早于";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly dueAt: {
-                readonly about: "截止";
+                readonly about: "希望在";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
@@ -972,12 +972,12 @@ export declare const ACTIONS: {
                 readonly list: "string";
             };
             readonly startsAfter: {
-                readonly about: "最早开始";
+                readonly about: "不早于";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };
             readonly dueAt: {
-                readonly about: "截止";
+                readonly about: "希望在";
                 readonly optional: true;
                 readonly default: "毫秒时间戳，但它标的是一「天」：给本地零点，别给「现在」。界面日期框交出来的就是本地零点，读取也按本地整天边界判断，所以 UTC 正午会在界面上显示成前一天。";
             };

@@ -5,8 +5,8 @@
  * WHY THIS IS ITS OWN MODULE. The checklist's other derivations are about rows
  * (what they are called, which page they sit on, how they group); these three
  * fields are about PROMISES, and they are the only place in the product where
- * two fields that look alike mean different things. 截止 slipping is a plan that
- * moved; 硬期限 slipping is a commitment somebody else is waiting on. Rendering
+ * two fields that look alike mean different things. 希望在 slipping is a plan that
+ * moved; 不晚于 slipping is a commitment somebody else is waiting on. Rendering
  * both as the same red is the defect every mainstream task app is criticised
  * for, and once a reader sees that, the only rational move they have is to stop
  * setting dates at all. So the vocabulary for that distinction is stated once,

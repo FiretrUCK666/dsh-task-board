@@ -1185,7 +1185,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       onMark={status => applyToHeld({ status })}
       onPriority={priority => applyToHeld({ priority })}
       onDueToday={() => {
-        // 「设截止」 means TODAY, stated as a day: a bare timestamp in a field
+        // 「设希望在」 means TODAY, stated as a day: a bare timestamp in a field
         // nobody opened is a number they cannot check, and the one gesture the
         // name promises is the one they can undo by reading it back.
         //
