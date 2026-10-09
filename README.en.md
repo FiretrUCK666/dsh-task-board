@@ -159,7 +159,7 @@ Restart `dsh web` afterwards.
 - The list stands on its own — an item does not have to become a card. Once it hangs off one, the state it shows is wherever that card sits.
 - Three independent times: earliest start, wanted-by, deadline. Only a missed deadline turns a row red, and that reading is **Past due** — a slipped plan and a broken promise are two things.
 - Ticking a step draws a progress bar. Four priority tiers. Tags as you like.
-- Everything that filters is in the left rail: the calendar, by date (overdue / not due yet / no date), untouched, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
+- Everything that filters is in the left rail: the calendar, by date (overdue / not due yet / no date), by time untouched, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
 - The calendar at the top of the rail moves month by month, comes back to today, and folds into a single line. Picking a day shows that day alone and leaves a **removable date chip** under the search box, so an empty list still says why it is empty.
 - The state column uses **the board's own words and the board's own colours**: Backlog / To do / In progress / In Review / Done. The row itself stores only two values (not done, done), and once a card is attached it reads that card's column; the bead at the row's head says which of the two it is, and its colour says which column. **That state chip is pressable**: it takes you to the board and opens the card the row hangs off.
 - Title, body, notes and dates are edited in the row itself, not in another window.

@@ -679,10 +679,13 @@ export const zh = {
   'item.rail.all': '全部',
   'item.rail.deleted': '已删除',
   'item.rail.when': '按日子',
-  /* **「多久没人碰」是另一个问题，所以它是另一组。** 它原来挤在「按日子」那一组里，而读者
-   * 读那一组时问的是「它这个日期的逻辑是什么呢？我有点看不懂」——三行里有一行不是日期，
-   * 那四个字就不成立。现在那一组只有日子：已经过期 / 还没到 / 没定日期。 */
-  'item.rail.idle': '没人动的',
+  /* **「多久没人碰」是另一个问题，所以它是另一组，而标题要说清它按什么问。**
+   *
+   * 这一组的其他标题都是**维度**：按日子 · 按优先级 · 按状态。它原来叫「没人动的」——
+   * 一个我自己造的词，读者的第一个反应是「没人动是什么意思」，而**一个要人问它什么意思的
+   * 标题就是没写清楚**。现在它与兄弟同构，直接说它按什么分：**这一行有多久没被改过**
+   * （门槛 14 天、上限 90 天，已完成与还没到开始时间的各自豁免——见 `item-stale.ts`）。 */
+  'item.rail.idle': '按多久没动',
   'item.rail.rank': '按优先级',
   'item.rail.state': '按状态',
   'item.rail.overdue': '已超期',
@@ -1602,7 +1605,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.all': 'Everything',
   'item.rail.deleted': 'Deleted',
   'item.rail.when': 'By date',
-  'item.rail.idle': 'Nobody has touched',
+  'item.rail.idle': 'By time untouched',
   'item.rail.rank': 'By importance',
   'item.rail.state': 'By status',
   'item.rail.overdue': 'Overdue',
