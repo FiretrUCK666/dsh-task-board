@@ -660,6 +660,10 @@ export declare const zh: {
     'item.rail.status.blocked': string;
     'item.rail.status.done': string;
     'item.rail.pickDay': string;
+    'item.rail.calendar.label': string;
+    'item.rail.month.prev': string;
+    'item.rail.month.next': string;
+    'item.rail.today': string;
     'item.batch.arm': string;
     'item.batch.count': string;
     'item.batch.all': string;
@@ -671,6 +675,7 @@ export declare const zh: {
     'item.batch.saidNone': string;
     'item.batch.askOne': string;
     'item.noMatch': string;
+    'item.noMatch.day': string;
     'item.steps': string;
     'item.group.inProgress': string;
     'item.group.open': string;
@@ -758,6 +763,7 @@ export declare const zh: {
     'item.bucket.gated': string;
     'item.gated.hint': string;
     'item.noDate.hint': string;
+    'item.agenda.leftOut': string;
     'item.detail.emptyTitle': string;
     'item.filter.clear': string;
     'item.filters.label': string;
@@ -831,6 +837,7 @@ export declare const zh: {
     'item.undo.partial': string;
     'item.undo.refused': string;
     'item.archive.title': string;
+    'item.archive.back': string;
     'item.archive.empty': string;
     'item.archive.restore': string;
     'item.archive.restoring': string;

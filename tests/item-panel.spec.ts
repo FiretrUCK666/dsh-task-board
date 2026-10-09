@@ -155,7 +155,7 @@ describe('the rail is the map, and the bar above the rows says three things', ()
     for (const page of ITEM_PAGES) {
       expect(html, `the page 「${page}」 has no row in the rail, so only the palette can open it`).toContain(PAGE_DOOR[page])
     }
-    for (const where of ['全部', '已删除', '按日子', '按重要程度', '按状态']) {
+    for (const where of ['全部', '已删除', '按日子', '按优先级', '按状态']) {
       expect(html, `${where} is no longer somewhere the reader can go`).toContain(where)
     }
     // And 收件 is gone from BOTH halves — no row, and no page to reach.
@@ -375,7 +375,11 @@ describe('empty is two different facts, and they do not look the same', () => {
     // the first screen a new reader ever meets, which is also this repository's
     // own state right now.
     const html = renderPanel([])
-    expect(html).toContain('还没有')
+    // 按**字典里的那一句**断言，不按某个词：这一条要钉的是「文档为空」与「筛选为空」
+    // 是两句不同的话，而空态那句话本身是文案，会被改写。抄一个字进去，每次改文案都
+    // 变成一次改门禁，而改门禁的人多半会顺手把它放宽（这个文件已经在另一处因为同样
+    // 的理由改成读 `zh[...]`）。
+    expect(html).toContain(zh['item.empty'])
     expect(html).not.toContain('这一组还没有事项')
   })
 

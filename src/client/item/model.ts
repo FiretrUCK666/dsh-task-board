@@ -90,6 +90,30 @@ export function formatItemDate(at: number, english: boolean, now: number = Date.
 }
 
 /**
+ * A `YYYY-MM-DD` key as the reader's own words — `9月29日` / `Sep 29`.
+ *
+ * WHY THE KEY IS NOT PRINTED. The raw form is storage's spelling of a day: it is
+ * fixed-width, it sorts, and it is the right thing to put in a query token. It is
+ * the wrong thing to put in front of a reader — the chip that says which day the
+ * list is filtered to is the one place the filter is stated in words rather than
+ * in the grammar, and `on:2026-09-29` there would be the same defect as printing
+ * `has:hardOverdue` beside a facet.
+ *
+ * It goes through the SAME formatter every other date on this surface uses, so a
+ * day reads the same whether it is on a row, in the detail, or in the chip row.
+ * @param key - a local day key, `YYYY-MM-DD`.
+ * @param english - whether the active UI language is English.
+ * @param now - the reading clock, for the same-year rule.
+ * @returns the day as a reader says it.
+ */
+export function formatDayKey(key: string, english: boolean, now: number = Date.now()): string {
+  const [year, month, day] = key.split('-').map(Number)
+  if (year === undefined || month === undefined || day === undefined
+    || Number.isNaN(year) || Number.isNaN(month) || Number.isNaN(day)) return key
+  return formatItemDate(new Date(year, month - 1, day).getTime(), english, now)
+}
+
+/**
  * Parse a date field back into a moment, or `undefined` when unreadable.
  *
  * The field speaks a day and not a clock, and it speaks three ways — the same

@@ -160,9 +160,10 @@ Restart `dsh web` afterwards.
 - Three independent times: earliest start, wanted-by, deadline. Only a missed deadline turns a row red, and that reading is **Past due** — a slipped plan and a broken promise are two things.
 - Ticking a step draws a progress bar. Four priority tiers. Tags as you like.
 - Everything that filters is in the left rail: the calendar, overdue, untouched, no date, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
+- The calendar at the top of the rail moves month by month, comes back to today, and folds into a single line. Picking a day shows that day alone and leaves a **removable date chip** under the search box, so an empty list still says why it is empty.
 - A row's state is said by the bead at its head: **In progress** / **To do** / **Blocked** / **Done**, four shapes, once per row.
 - Title, body, notes and dates are edited in the row itself, not in another window.
-- The agenda reads by day: today / tomorrow / later this week / further out. Rows with no date wait in their own tray; rows whose start has not arrived sit behind a fold.
+- The agenda reads by day: overdue / behind / today / tomorrow / later this week / further out. Rows with no date and rows whose start has not arrived each wait in their own place, and the rows that are deliberately NOT on this agenda — finished work, and unfiled captures — are named in one line at the foot of the page, so the numbers add up.
 - Delete has an undo. What you deleted sits under "deleted" at the bottom of the rail, recoverable for 30 days or erased for good.
 - Multi-select, then set state, priority, a date, ask AI or delete the whole selection in one go.
 - Keyboard: `A` new, `J`/`K` move, `X` multi-select, `1`–`4` priority, `E` rename, `⌘Z` undo, `Esc` closes one layer.

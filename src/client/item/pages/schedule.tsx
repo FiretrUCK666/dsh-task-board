@@ -27,6 +27,7 @@
  * Collapsing hides nothing: every day's name and its own zero are still on the
  * line, in order, and still readable.
  */
+import { isAgendaItem, itemMatches } from '../../../core/item-view.ts'
 import { scheduleBucketsOf, type ScheduleBucketId } from '../../../core/item-view.ts'
 import type { ItemSort } from '../../../core/item-sort.ts'
 import { t, isEnglish } from '../../locales.ts'
@@ -70,7 +71,27 @@ export function SchedulePage(props: ItemPageProps) {
   }
   flush()
 
-  return <div className={css.itemAgenda}>{blocks}</div>
+  /* **这份日程没有列出全部行，所以它说清楚差在哪。**
+   *
+   * 「3 条里只看见 2 条」是读者报上来的原话。两个排除都是有理由的（已完成是历史；
+   * 刚记下、还没被读第二遍的一条属于收件，不属于任何一天），可**理由不在屏幕上**，
+   * 于是屏幕上剩下的只有「少了一条」——而少了一条和丢了一条，在读者眼里是同一件事。
+   * `isAgendaItem` 是那条判据，这里按它自己的两个子句数数，不另写一套条件。 */
+  const live = items.filter(item => itemMatches(item, query, props.matchCtx))
+  const leftOut = live.filter(item => !isAgendaItem(item))
+  const done = leftOut.filter(item => item.status === 'done').length
+  const inbox = leftOut.length - done
+
+  return (
+    <div className={css.itemAgenda}>
+      {blocks}
+      {leftOut.length > 0 && (
+        <p className={css.itemAgendaLeftOut}>
+          {t('item.agenda.leftOut', { done: String(done), inbox: String(inbox) })}
+        </p>
+      )}
+    </div>
+  )
 }
 
 /**
@@ -92,6 +113,16 @@ function EmptyDays({ days }: { readonly days: readonly Bucket[] }): React.ReactN
           </span>
         </span>
       ))}
+      {/* **一行摘要与下面的节之间要有一条界。** 读者在截图里点名过这一处：那行
+          「今天 0 · 明天 0 · 本周稍后 0」与它下面第一个真的节之间只有空气，于是它
+          读起来像下一个节的题头而不是上一段的收尾。一条发丝线就够——它说的是
+          「上面那段到此为止」，而这正是空日摘要唯一需要说的话。
+          画成 SVG 而不是 `border-block-end`：这条线两侧都有端刻（和本表其它分隔线
+          同一支笔画），而边框画不出端刻。 */}
+      <svg className={css.itemEmptyGroupsRule} viewBox="0 0 240 5" preserveAspectRatio="none" aria-hidden="true">
+        <path d="M0 2.5h240" />
+        <path d="M0 0.5v4M240 0.5v4" />
+      </svg>
     </p>
   )
 }

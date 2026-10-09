@@ -364,8 +364,14 @@ describe('the panel renders against the host it will actually run in', () => {
     // page that counts what exists. 收件 was the third and it is gone — it was a
     // PREDICATE over the same document rather than a different question, so its rail
     // row was its only door and its own layout was the only thing it added.
-    expect(schedule).toContain('没定日子')
-    expect(schedule).toContain('还没到开始的日子')
+    expect(schedule).toContain('没定日期')
+    expect(schedule).toContain('还没到开始')
+    /* **日程少列了几行，它就说少在哪。** 读者的原话：「3 条里只看见 2 条」。两个
+     * 排除都有理由（已完成是历史；刚记下、还没被读第二遍的一条属于收件），但理由不
+     * 在屏幕上，屏幕上剩下的只有「少了一条」——而少了一条和丢了一条，读者分不出来。
+     * 这一行按 `isAgendaItem` 自己的两个子句数数，所以它和列表里的行是同一次推导。 */
+    expect(schedule, 'the agenda lists fewer rows than the document and says nothing about it')
+      .toMatch(/另有 \d+ 条已完成、\d+ 条还在收件里/)
     // THE LIST HOLDS EVERY ROW, which is the membership promise that outlived the
     // page: the bare capture is here, and so is the date-less row that carries a tag
     // (which is therefore NOT a capture, and was never on the inbox either).
@@ -442,7 +448,7 @@ describe('the panel renders against the host it will actually run in', () => {
     for (const html of [renderPanel(fixtures(), 'wide', 'list'), renderPanel(fixtures().map(item => ({ ...item, status: 'done' as const })), 'wide', 'list')]) {
       const words = wordsOf(html)
       expect(words.length, 'no rail rows are on screen — the counts have nowhere to live').toBeGreaterThan(0)
-      for (const word of ['已超期', '迟迟没动', '没定日子', '紧急', '待办', '完成']) {
+      for (const word of ['已超期', '迟迟没动', '没定日期', '紧急', '待办', '完成']) {
         const row = words.find(text => text.includes(word))
         expect(row, `the rail does not name ${word} at all, so its zero is never stated`).toBeDefined()
         expect(row ?? '', `the rail names ${word} without a number — a claim with no count is not a count`).toMatch(/\d+/)

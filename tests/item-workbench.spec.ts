@@ -28,7 +28,7 @@
 import { describe, expect, it } from 'vitest'
 import { act } from 'react'
 import type { ItemRecord } from '../src/core/item.ts'
-import { freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
+import { dayTokensIn, freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
 import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type ItemKeyActions } from '../src/client/item/keyboard.ts'
 
 /** The action names the registrar can call, read off the closed action union. */
@@ -1795,7 +1795,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const overdue = railRow(panel.surface, '已超期')
-      const undated = railRow(panel.surface, '没定日子')
+      const undated = railRow(panel.surface, '没定日期')
       click(overdue)
       expect(shown(panel.surface)).toBe(promised(overdue))
       click(undated)
@@ -1853,7 +1853,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       click(all)
       // The agenda's own bucket names are what the list page never prints, so their
       // absence is the page having actually changed rather than a filter moving.
-      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始的日子')
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没到开始')
       expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
     } finally {
       panel.dispose()
@@ -1873,10 +1873,10 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始的日子')
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没到开始')
       const schedule = railRow(panel.surface, '日程')
       click(schedule)
-      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始的日子')
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没到开始')
       expect(schedule.getAttribute('aria-current')).toBe('true')
     } finally {
       panel.dispose()
@@ -2986,9 +2986,20 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
   function hostThatPurges(answer: (address: { id?: string }) => unknown): () => void {
     const real = globalThis.fetch
     const erased = new Set<string>()
+    const rescued = new Set<string>()
     globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
       const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
       const body = JSON.parse(String(init?.body ?? '{}')) as { id?: string }
+      if (url.includes('/board/items/restore')) {
+        /* THE OTHER HOST OPERATION, answered by the same fake: a restore is a route
+         * this device calls directly, so the fake has to answer it here or the test
+         * would be reading the bench's own host instead. */
+        rescued.add(body.id ?? '')
+        return new Response(JSON.stringify({
+          ok: true,
+          value: { available: true, revision: 11, restored: ARCHIVED },
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
       if (url.includes('/board/items/purge')) {
         const verdict = answer(body)
         // A SELF-CONSISTENT host: whatever the purge answered — erased, a live
@@ -3005,7 +3016,10 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
       }
       return new Response(JSON.stringify({
         ok: true,
-        value: { available: true, deleted: erased.has(ARCHIVED.id) ? [] : [ARCHIVED] },
+        value: {
+          available: true,
+          deleted: erased.has(ARCHIVED.id) || rescued.has(ARCHIVED.id) ? [] : [ARCHIVED],
+        },
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     }) as typeof fetch
     return () => { globalThis.fetch = real }
@@ -3071,6 +3085,39 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
       // reader now is.
       expect(panel.surface.textContent ?? '',
         'pressing 已删除 from 日程 did not bring the archive up, so the row did half its job').toContain('删掉的行留 30 天')
+    } finally {
+      panel.dispose()
+      undo()
+    }
+  })
+
+  it('putting a row back lands it in the LIVE list in the same tick, not on the next poll', async () => {
+    /* THE DEFECT THIS EXISTS FOR, as the reader met it: press 「放回去」, the receipt
+     * says the row is back, close the drawer — and the row is NOT in the list. The
+     * host had written it (the receipt is honest), but the announcement never came
+     * back to this device: a restore is a host operation this panel called straight
+     * at the route, and this client drops its OWN commit frames by design (`own
+     * commits arrive via the response`). The row therefore waited for the next poll
+     * — measured at up to thirty seconds — and the reader's words for that were
+     * 「点了没反应，各种不显示、没刷新」.
+     *
+     * So the claim is exact: after the press, the row is in the live list with no
+     * poll, no reopen and no reload. */
+    const { panel, undo } = await openArchive(() => ({ available: true }))
+    try {
+      const back = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '放回去')
+      expect(back, 'the archived row offers no way back').not.toBeUndefined()
+      click(back)
+      await settle()
+      expect(panel.surface.textContent ?? '', 'the receipt never said the row came back').toContain('找回来了')
+      // Back out through the same door, and look at the LIVE list.
+      const look = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('已删除'))
+      click(look)
+      await settle()
+      expect(panel.surface.textContent ?? '',
+        'the rescued row is not in the live list — it is waiting for the next poll').toContain('删掉的那一条')
     } finally {
       panel.dispose()
       undo()
@@ -3738,8 +3785,13 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
       // THE LIVE TABLE IS GONE from this page.
       expect(panel.surface.querySelectorAll('[data-status]').length, 'the archive page still draws live rows').toBe(0)
       expect(panel.surface.textContent ?? '', 'the empty archive said nothing about being empty').toContain('没有删掉过任何一条')
-      // And the top bar is not there either: 搜索/排序/新建 do not describe this page.
-      expect(panel.surface.querySelector('[class*="itemTopBar"]'), 'the archive page kept the live page\'s bar').toBeNull()
+      /* 活清单那条带子上的东西一件都不在这一页：搜索框（它也是命令面板的门）、
+         排序、＋新建一条。**这条断言按控件点名，不按带子点名**——归档页现在有
+         它自己的一条同高带子（题头 + 回去的路），那是修「页面顶上跳 56px」的办法；
+         而「搜索 / 排序 / 新建说的不是眼前这份内容」这条理由一个字都没改。 */
+      expect(panel.surface.querySelector('[class*="itemSearch"]'), 'the archive page kept the live page\'s search box').toBeNull()
+      expect(panel.surface.textContent ?? '', 'the archive page offers a way to create a row').not.toContain('新建一条')
+      expect(panel.surface.querySelector('[class*="itemArchiveTopBar"]'), 'the archive page has no bar of its own, so the page top jumps when the drawer opens').not.toBeNull()
       // Back out through the same door.
       const back = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').includes('已删除'))
@@ -3818,6 +3870,108 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
       expect(panel.surface.querySelector('[class*="itemCreateDialog"]'), 'the sheet did not close on Esc').toBeNull()
       // THE ROW BEHIND IT: still open.
       expect(panel.surface.querySelector('[class*="itemDetail"]'), 'Esc collapsed the row behind the sheet').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+/* ── 日历：一块看得懂、按得动的日历 ─────────────────────────────────────────
+ *
+ * 这一段是读者点名的三件事，一件一条：
+ *   1. 「点回 9 号什么都不显示」——按过的日子必须**留下痕迹**（一枚可摘的芯片），
+ *      空列表必须说得出为什么空；
+ *   2. 「点一个日子，再点另一个」——第二个必须**换掉**第一个，哪怕第一个那天没有行
+ *      （老代码的「同族」取的是「有行的那些天」，于是没有行的那天留下的 `on:` 谁也
+ *      没顶掉它）；
+ *   3. 「像个毛坯房」——周首行、翻月、回到今天，三样都在，且**两档都有**。 */
+describe('the calendar is a date filter a reader can read back', () => {
+  /** 找到日历里写着这一天的格子。 */
+  const dayCell = (surface: ParentNode, day: number): Element => {
+    const cell = [...surface.querySelectorAll('button[class*="itemRailDay"]')]
+      .find(node => (node.textContent ?? '').trim() === String(day))
+    if (cell === undefined) throw new Error(`the calendar draws no cell for day ${String(day)}`)
+    return cell
+  }
+
+  /** 芯片行里那些**念得出的**字（去掉 × 与「清掉筛选」）。 */
+  const chipWords = (surface: ParentNode): string[] =>
+    [...surface.querySelectorAll('[class*="itemQueryChipLabel"]')].map(node => (node.textContent ?? '').trim())
+
+  it('a pressed day leaves a chip that names it, and taking the chip off un-filters the list', async () => {
+    // 读者问的是「为什么空」，而答案必须**在屏幕上**：一枚写着那一天、能按掉的
+    // 芯片。老版只有格子里一圈 26px 的墨环，窄档连格子都没有。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const before = panel.surface.querySelectorAll('[data-status]').length
+      click(dayCell(panel.surface, 12))
+      await settle()
+      const chips = chipWords(panel.surface)
+      expect(chips.some(word => word.includes('12日')), `no chip names the day: ${chips.join(' / ')}`).toBe(true)
+      expect(chips.join(' '), 'the chip printed the grammar instead of the day').not.toContain('on:')
+      // 同一天再按一次 = 摘掉它，列表回到原来的行数。
+      click(dayCell(panel.surface, 12))
+      await settle()
+      expect(panel.surface.querySelectorAll('[data-status]').length).toBe(before)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('pressing a second day REPLACES the first, even when the first day holds nothing', async () => {
+    // 这是「点回 9 号什么都不显示」的另一半：一个**没有行**的日子按下去也必须
+    // 是一次完整的筛选（列表为空、芯片在），而它必须能被下一个日子顶掉。老代码
+    // 的同族集合是「有行的那些天」，于是空日子的 token 永远留在串里——读者按了
+    // 三个日子，串里有三个 `on:`，屏幕上只有一个芯片。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      click(dayCell(panel.surface, 4))
+      await settle()
+      click(dayCell(panel.surface, 12))
+      await settle()
+      const days = chipWords(panel.surface).filter(word => word.includes('日'))
+      expect(days.length, `two days are in the query at once: ${days.join(' / ')}`).toBe(1)
+      expect(days[0]).toContain('12日')
+      expect(panel.surface.querySelectorAll('[data-status]').length, 'a day with nothing on it must show nothing, not everything').toBe(0)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('the probe bites: a day with no rows can never be a sibling of the day you press', () => {
+    // 老代码的病灶，写成算术：同族集合取的是 `railDays` —— **有行的那些天**。
+    // 于是一个没有行的日子（读者完全合理地会去问「那天有什么」）按下去之后，
+    // 它留下的 `on:` 谁也顶不掉：下一个日子要顶掉的是「有行的那些天」，而它不在
+    // 那份名单里。两个 `on:` 同时生效，屏幕上只有一个芯片，读者看到的是一份
+    // 谁也说不出为什么的清单。
+    const emptyDay = '2026-10-04'
+    const daysWithRows = ['2026-10-12']
+    expect(daysWithRows.map(day => `on:${day}`), 'the old sibling list DOES contain the empty day — this case is asserting nothing')
+      .not.toContain(`on:${emptyDay}`)
+    expect(dayTokensIn(`on:${emptyDay}`), 'the token in the box is not read back, so it can never be replaced')
+      .toContain(`on:${emptyDay}`)
+  })
+
+  it('the month can be moved, today can be returned to, and the week says which column is which', async () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const title = (): string => (panel.surface.querySelector('[class*="itemRailMonth"]')?.textContent ?? '').trim()
+      const start = title()
+      expect(start, 'the calendar draws no month title').toMatch(/^\d{4}-\d{2}$/)
+      // 周首行：七天，一天一个名字。
+      const weekdays = [...panel.surface.querySelectorAll('[class*="itemRailWeekday"]')].map(node => (node.textContent ?? '').trim())
+      expect(weekdays, `the calendar has no weekday row: ${weekdays.join('')}`).toEqual(['日', '一', '二', '三', '四', '五', '六'])
+      const next = panel.surface.querySelector('button[aria-label="下一个月"]')
+      expect(next, 'the calendar cannot be moved forward').not.toBeNull()
+      click(next)
+      expect(title(), 'pressing 下一个月 did not move the month').not.toBe(start)
+      // 离今天远了，所以「回到今天」出现了——这是它唯一该出现的时候。
+      const back = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '回到今天')
+      expect(back, 'looking at another month offers no way back to today').not.toBeUndefined()
+      click(back)
+      expect(title()).toBe(start)
+      expect([...panel.surface.querySelectorAll('button')].some(node => (node.textContent ?? '').trim() === '回到今天'),
+        '「回到今天」 is still offered while the reader IS on today').toBe(false)
     } finally {
       panel.dispose()
     }

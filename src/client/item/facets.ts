@@ -157,6 +157,17 @@ export interface QueryChip {
   readonly facet: TaskBoardKey
   readonly value: TaskBoardKey | null
   readonly tag: string | null
+  /**
+   * A DAY, as the key the grammar stores (`YYYY-MM-DD`), for a chip that stands
+   * for one calendar cell.
+   *
+   * IT IS ITS OWN FIELD AND NOT A `tag`. A tag is the reader's own word and is
+   * printed back the way they spelled it; a day is a key that has to go through
+   * the date formatter, because `on:2026-09-29` in front of a reader is the
+   * implementation of the filter, not the filter. Two facts with two spellings
+   * are two fields.
+   */
+  readonly day: string | null
   readonly token: string
 }
 
@@ -185,10 +196,22 @@ export function queryChipsOf(text: string, tags: readonly (readonly string[])[] 
   }
   const present = new Set(text.split(/\s+/).filter(part => part !== '').map(part => part.toLowerCase()))
   const chips: QueryChip[] = []
+  /* THE DAY FILTER IS A CHIP LIKE ANY OTHER, and it took a while to get here.
+   *
+   *  A day was the one filter that could be ON with nothing on screen saying so:
+   *  the calendar's own cell wears a ring, but a ring in a 26px square is a weak
+   *  way to say 「your list is narrowed to one day」 — and on the band where the
+   *  calendar is folded there was no ring at all. A reader pressed the 8th, saw an
+   *  empty list, pressed the 9th, saw an empty list, and had no way to read back
+   *  what they had asked for. It is a chip now, because every other filter is. */
+  for (const token of dayTokensIn(text)) {
+    const day = token.slice(3)
+    chips.push({ facet: 'item.facet.date', value: null, tag: null, day, token })
+  }
   for (const facet of ITEM_FACETS) {
     for (const value of facet.values) {
       if (!present.has(value.token.toLowerCase())) continue
-      chips.push({ facet: facet.label, value: value.label, tag: null, token: value.token })
+      chips.push({ facet: facet.label, value: value.label, tag: null, day: null, token: value.token })
     }
   }
   // A tag the reader typed by hand and that this document does not hold is still
@@ -197,16 +220,29 @@ export function queryChipsOf(text: string, tags: readonly (readonly string[])[] 
   for (const spelled of byTag.values()) {
     const token = `#${spelled}`
     if (!present.has(token.toLowerCase())) continue
-    chips.push({ facet: 'item.facet.tag', value: null, tag: spelled, token })
+    chips.push({ facet: 'item.facet.tag', value: null, tag: spelled, day: null, token })
   }
   for (const part of text.split(/\s+/)) {
     const lower = part.toLowerCase()
     if (lower === '' || !lower.startsWith('#') || lower.length < 2) continue
     if (byTag.has(lower)) continue
     if (chips.some(chip => chip.token.toLowerCase() === lower)) continue
-    chips.push({ facet: 'item.facet.tag', value: null, tag: part.slice(1), token: part })
+    chips.push({ facet: 'item.facet.tag', value: null, tag: part.slice(1), day: null, token: part })
   }
   return chips
+}
+
+/**
+ * Every `on:` day token in the box, exactly as written.
+ *
+ * The one reader of the day grammar on this side of the wall, and it exists
+ * because the day predicate needs BOTH halves of the same set: the chips that
+ * show the filter, and the sibling list that makes a new press replace the old
+ * one. Two spellings of `on:` in two files is how one of them ends up matching
+ * `on:2026-9-3` and the other not.
+ */
+export function dayTokensIn(text: string): string[] {
+  return text.split(/\s+/).filter(part => /^on:\d{4}-\d{2}-\d{2}$/i.test(part))
 }
 
 /**

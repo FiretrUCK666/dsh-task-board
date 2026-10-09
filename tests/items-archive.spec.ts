@@ -48,7 +48,7 @@ function answering(status: number, value: unknown): typeof fetch {
 
 describe('reading the archive', () => {
   it('returns the rows the host is holding', async () => {
-    const reply = await itemsArchive(answering(200, { ok: true, value: { available: true, revision: 9, deleted: [row()] } }))
+    const reply = await itemsArchive(undefined, answering(200, { ok: true, value: { available: true, revision: 9, deleted: [row()] } }))
     expect(reply.ok).toBe(true)
     expect(reply.ok && reply.deleted.map(item => item.ref)).toEqual([4])
   })
@@ -59,14 +59,28 @@ describe('reading the archive', () => {
       asked = String(url)
       return { ok: true, status: 200, json: async () => ({ ok: true, value: { deleted: [] } }) }
     }) as unknown as typeof fetch
-    await itemsArchive(fetchImpl)
+    await itemsArchive(undefined, fetchImpl)
     expect(asked).toContain('includeDeleted=1')
+  })
+
+  it('carries this device id, so a reader sitting in the archive keeps their seat', async () => {
+    // The read used to go out with no clientId at all, while every other call on
+    // this prefix carries one. The host renews the tab's engine lease on that id,
+    // so the one reader most likely to sit still — somebody browsing thirty days
+    // of their own deletions — was the one whose tab could be mistaken for gone.
+    let asked = ''
+    const fetchImpl = (async (url: string) => {
+      asked = String(url)
+      return { ok: true, status: 200, json: async () => ({ ok: true, value: { deleted: [] } }) }
+    }) as unknown as typeof fetch
+    await itemsArchive('tab-abc', fetchImpl)
+    expect(asked).toContain('clientId=tab-abc')
   })
 
   it('drops one unreadable row instead of failing the whole read', async () => {
     // The archive is where a reader rescues ONE thing; a single malformed row
     // must not cost them the other twenty-nine.
-    const reply = await itemsArchive(answering(200, {
+    const reply = await itemsArchive(undefined, answering(200, {
       ok: true,
       value: { deleted: [row(), { id: '', ref: 'x' }, null, row({ id: 'i-b', ref: 5 })] },
     }))
@@ -77,17 +91,17 @@ describe('reading the archive', () => {
     // The failure this prevents: a host that does not know about `deleted`
     // answers with a perfectly valid view, and reading that as "you have
     // removed nothing" tells the reader their deletions are gone.
-    const reply = await itemsArchive(answering(200, { ok: true, value: { available: true, revision: 9, doc: {} } }))
+    const reply = await itemsArchive(undefined, answering(200, { ok: true, value: { available: true, revision: 9, doc: {} } }))
     expect(reply).toEqual({ ok: false, why: 'unrecognisedAnswer' })
   })
 
   it('names the network when the host cannot be reached', async () => {
-    const reply = await itemsArchive(((async () => { throw new Error('denied') }) as unknown) as typeof fetch)
+    const reply = await itemsArchive(undefined, ((async () => { throw new Error('denied') }) as unknown) as typeof fetch)
     expect(reply).toEqual({ ok: false, why: 'denied' })
   })
 
   it('names the status when the host refuses', async () => {
-    expect(await itemsArchive(answering(503, {}))).toEqual({ ok: false, why: 'hostRefused 503' })
+    expect(await itemsArchive(undefined, answering(503, {}))).toEqual({ ok: false, why: 'hostRefused 503' })
   })
 })
 
@@ -131,8 +145,13 @@ describe('putting one back', () => {
     // The whole point. `ok: true` with nothing in it means 「没有墓碑压着这个编号」,
     // and a panel that closes the archive on that is telling the reader their row
     // is back when it is not.
+    //
+    // The revision rides along even here, and that is deliberate: it is the host's
+    // document revision, not a claim about the row. A caller that settles locally
+    // reads `restored`; a caller that only wants to know how far the document has
+    // moved reads `revision`, and both answers arrive from one round trip.
     const reply = await itemsRestore({ ref: 99 }, 'tab-abc', answering(200, { ok: true, value: { available: true, revision: 10 } }))
-    expect(reply).toEqual({ ok: true, restored: undefined })
+    expect(reply).toEqual({ ok: true, restored: undefined, revision: 10 })
   })
 
   it('tells "host has no documents" apart from "nothing holds that number"', async () => {

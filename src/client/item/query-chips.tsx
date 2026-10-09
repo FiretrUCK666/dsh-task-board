@@ -22,8 +22,9 @@
  * the filter is stated in the language it is written in rather than in the
  * tokens it is written with.
  */
-import { t } from '../locales.ts'
+import { t, isEnglish } from '../locales.ts'
 import { queryChipsOf, withFacetToken, type QueryChip } from './facets.ts'
+import { formatDayKey } from './model.ts'
 import css from './item.module.css'
 
 export interface ItemQueryChipsProps {
@@ -54,6 +55,7 @@ export interface ItemQueryChipsProps {
  */
 function chipLabel(chip: QueryChip): string {
   const facet = t(chip.facet)
+  if (chip.day !== null) return `${facet}：${formatDayKey(chip.day, isEnglish())}`
   if (chip.tag !== null) return `${facet}：${chip.tag}`
   if (chip.value === null) return facet
   return `${facet}：${t(chip.value)}`

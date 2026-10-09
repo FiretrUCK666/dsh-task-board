@@ -31,15 +31,30 @@ export type ArchiveReply = {
  * A malformed row is DROPPED rather than failing the whole read: the archive is
  * a place to rescue one thing, and a single unreadable row must not cost the
  * reader the other twenty-nine.
+ * @param clientId - this device's id, which every call on this prefix carries:
+ *   the host renews this tab's engine lease on it, so a reader who sits in the
+ *   archive for a while is not mistaken for a tab that went away. It rides the
+ *   query string because this is a read and the route reads it there.
  * @param fetchImpl - injected for tests.
  * @returns the rows, or a refusal that names the network rather than showing an
  *   archive that looks empty because the host was never reached.
  */
-export declare function itemsArchive(fetchImpl?: typeof fetch): Promise<ArchiveReply>;
+export declare function itemsArchive(clientId: string | undefined, fetchImpl?: typeof fetch): Promise<ArchiveReply>;
 /** What a restore says back. `restored` absent means the row did NOT come back. */
 export type RestoreReply = {
     readonly ok: true;
     readonly restored: ItemRecord | undefined;
+    /**
+     * The host's revision after the restore, or `-1` when it did not say.
+     *
+     * IT RIDES ALONG FOR THE SAME REASON THE PURGE'S DOES: a restore is a host
+     * operation that this device asked for, and this device's own commit frame is
+     * dropped by its own client (`own commits arrive via the response` — and a
+     * restore IS a response). Without a way to settle locally, the row the reader
+     * just brought back stays invisible in the live list until the next poll —
+     * measured at up to 30 seconds, which the reader reports as 「点了没反应」.
+     */
+    readonly revision: number;
 } | {
     readonly ok: false;
     readonly why: string;

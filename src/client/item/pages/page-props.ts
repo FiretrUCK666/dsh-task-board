@@ -102,6 +102,17 @@ export interface ItemPageProps {
    *  broadcast. The revision is the host's own; the replica's never-backwards
    *  guard decides what to do with it. */
   readonly onPurged?: (id: string, revision: number) => void
+  /**
+   * Called when the host says a RESTORE brought a row back, so the live list can
+   * hold it in this tick instead of waiting for the next poll.
+   *
+   * The mirror image of {@link onPurged}, and it exists for the same measurement
+   * taken from the other side: a restore is a host operation the panel asked for
+   * directly, so this device's own commit frame never comes back through the
+   * replica — the row would reappear in the list up to thirty seconds later,
+   * which a reader reports as the button not working.
+   */
+  readonly onRestored?: (row: ItemRecord) => void
   readonly sort: ItemSort
   /**
    * The batch bar, or nothing.

@@ -97,6 +97,17 @@ export interface QueryChip {
     readonly facet: TaskBoardKey;
     readonly value: TaskBoardKey | null;
     readonly tag: string | null;
+    /**
+     * A DAY, as the key the grammar stores (`YYYY-MM-DD`), for a chip that stands
+     * for one calendar cell.
+     *
+     * IT IS ITS OWN FIELD AND NOT A `tag`. A tag is the reader's own word and is
+     * printed back the way they spelled it; a day is a key that has to go through
+     * the date formatter, because `on:2026-09-29` in front of a reader is the
+     * implementation of the filter, not the filter. Two facts with two spellings
+     * are two fields.
+     */
+    readonly day: string | null;
     readonly token: string;
 }
 /**
@@ -115,6 +126,16 @@ export interface QueryChip {
  * @returns one chip per recognised qualifier, in reading order.
  */
 export declare function queryChipsOf(text: string, tags?: readonly (readonly string[])[]): QueryChip[];
+/**
+ * Every `on:` day token in the box, exactly as written.
+ *
+ * The one reader of the day grammar on this side of the wall, and it exists
+ * because the day predicate needs BOTH halves of the same set: the chips that
+ * show the filter, and the sibling list that makes a new press replace the old
+ * one. Two spellings of `on:` in two files is how one of them ends up matching
+ * `on:2026-9-3` and the other not.
+ */
+export declare function dayTokensIn(text: string): string[];
 /**
  * Whether a facet's value is currently in the query.
  *

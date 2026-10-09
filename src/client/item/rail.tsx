@@ -35,6 +35,7 @@
  * They act on ONE row, not on a view. A rail is a map of where you can go, and
  * putting a row action on it would make the map claim to be something it is not.
  */
+import { useId } from 'react'
 import type { ItemRailEntry, ItemRailGroup, ItemRailKey } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from './item.module.css'
@@ -183,20 +184,97 @@ export interface ItemRailProps {
   /** The day the reader is looking at, read off the query — the calendar's own
    *  「you are here」 for the cell, distinct from aria-current (the rail row). */
   readonly activeDay?: string
+  /** Whether the month grid is unfolded. The reader's own choice, defaulted by
+   *  the band (see `ItemRail`): a fold is one of the six moves rule 11 allows,
+   *  while `display: none` — what the phone used to get — is not. */
+  readonly calendarOpen: boolean
+  readonly onToggleCalendar: () => void
+  /** Move the shown month by ±1. Two buttons rather than a text field: a month is
+   *  a place you step through, and nobody types 「2026-09」 to get there. */
+  readonly onShiftMonth: (by: -1 | 1) => void
+  /** Back to the month that holds today, and off whatever day was picked. */
+  readonly onToday: () => void
   readonly onPickDay: (day: string) => void
 }
 
 export function ItemRail(props: ItemRailProps) {
+  /* **说得清状态，也要说得清管的是哪一块。** `aria-expanded` 单独出现只宣布了
+   * 「我是开着的」，没说「我开的是什么」——读屏读到的是一个状态和一块随后出现的、
+   * 它不认识的区域。`useId` 而不是手写字符串：这个面板可以在同一页里出现两次
+   * （看板与清单各一个舞台），手写的 id 会在第二份里撞车，而撞车之后 `aria-controls`
+   * 指向的是**另一份的那块日历**。 */
+  const calendarId = useId()
   return (
-    <nav className={css.itemRail} data-dsh-tb-scroll="" aria-label={t('item.rail.label')}>
-      <p className={css.itemRailMonth}>{props.month}</p>
-      {/* 月题下的一条带端刻的刻度线：与七列格子同宽，墨色（a scale, not a claim）
-          ——「日历从这里开始」由它说，标题与格子不用再各自居中去找对方。 */}
-      <svg className={css.itemRailScale} viewBox="0 0 240 6" preserveAspectRatio="none" aria-hidden="true">
-        <path d="M0 5h240" />
-        <path d="M0 1v4M240 1v4" />
-      </svg>
-      <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
+    <nav className={css.itemRail} data-dsh-tb-scroll="" data-calendar={props.calendarOpen ? '' : undefined} aria-label={t('item.rail.label')}>
+      {/* ── 日历 ─────────────────────────────────────────────────────────────
+        *
+        * **它是一枚可以折的日历，不是一行裸数字。** 老版只有「一个月题 + 七列
+        * 数字」：没有星期几、不能翻月、今天之外没有任何可对照的东西，读者的原话是
+        * 「像个毛坯房」。而它在窄档还被整块 `display: none` 掉——**手机上并没有
+        * 「另一种看日子」的办法**，那等于把一项能力只发给桌面端（硬性规范 11）。
+        *
+        * 现在的形状：一行题（月份 + 翻月 + 折叠），折起来是一枚芯片、展开是一整幅
+        * 月历（周首行 + 日格 + 今天）。折起来是**读者自己的选择**，不是宽度替他做的
+        * ——窄档默认折起（那一条横带里放不下一幅月历），宽档默认展开。 */}
+      <div className={css.itemRailCalendar}>
+        <div className={css.itemRailCalendarHead}>
+          <button
+            type="button"
+            className={css.itemRailCalendarFold}
+            aria-expanded={props.calendarOpen}
+            aria-controls={calendarId}
+            aria-label={t('item.rail.calendar.label')}
+            onClick={props.onToggleCalendar}
+          >
+            <span className={css.itemRailMonth}>{props.month}</span>
+            {/* 记号在**右边**：它在左边时，月题整体右移那 14px，于是标题的左沿与
+                七列网格的左沿差着一格——而「月题对准格子左缘」正是这一处读者点名
+                要的那条对齐。记号本身说的是「这块能折」，它站在标题末尾一样说得清。 */}
+            <svg className={css.itemRailCalendarMark} viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+              <path d="M3 1.5 7 5l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </div>
+        {/* **正文永远在 DOM 里，折起来是 `hidden` 而不是按宽度裁掉。**
+          *
+          * 这是硬性规范 11 的分界线：**宽度不许决定一个控件在不在**（老版就是
+          * `display: none` 掉整块日历，于是手机上没有任何按日子看的入口），而读者
+          * 自己按一下折起来是允许的六种让位之一——展开它的那枚控件一直在、带着
+          * 名字、`aria-expanded` 说得出当前状态。`hidden` 而不是 `display: none`
+          * 写在样式表里：折起来的按钮不该还能被 Tab 走到。 */}
+        <div className={css.itemRailCalendarBody} id={calendarId} hidden={!props.calendarOpen}>
+          <span className={css.itemRailMonthNav}>
+            <button
+              type="button"
+              className={css.itemRailNavBtn}
+              aria-label={t('item.rail.month.prev')}
+              onClick={() => props.onShiftMonth(-1)}
+            >
+              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                <path d="M6.5 1.5 2.5 5l4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+            <button
+              type="button"
+              className={css.itemRailNavBtn}
+              aria-label={t('item.rail.month.next')}
+              onClick={() => props.onShiftMonth(1)}
+            >
+              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
+                <path d="M3.5 1.5 7.5 5l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </button>
+          </span>
+          <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
+          {/* 「回到今天」只在**真的离今天远了**的时候出现：它说的是「你在别处」，
+              而一个永远都在的控件说的话没有人在听。 */}
+          {(props.month !== props.today.slice(0, 7) || props.activeDay !== undefined) && (
+            <button type="button" className={css.itemRailToday} onClick={props.onToday}>
+              {t('item.rail.today')}
+            </button>
+          )}
+        </div>
+      </div>
       {props.groups.map(group => (
         /* `data-turn` on the ONE group that changes the question rather than
            narrowing the view, because that is the only place a rule earns its
@@ -238,7 +316,15 @@ export function ItemRail(props: ItemRailProps) {
  * a quantity, and a quantity here is a number nobody can act on. And today gets
  * no dot at all — the filled pill already is the mark, and two marks on one cell
  * is one too many.
+ *
+ * THE WEEK STARTS ON SUNDAY, and that is a fact about the calendar rather than a
+ * preference: `getDay()` counts from Sunday, the leading blanks are computed from
+ * it, and the month's own layout has always followed it. The weekday row above the
+ * cells says so out loud, which is what the reader was missing — the columns were
+ * already in this order, nobody could tell.
  */
+const WEEKDAYS: readonly string[] = ['日', '一', '二', '三', '四', '五', '六']
+
 function MonthGrid(props: { readonly month: string; readonly days: readonly string[]; readonly today: string; readonly activeDay?: string; readonly onPick: (day: string) => void }) {
   const [year, month] = props.month.split('-').map(Number)
   if (year === undefined || month === undefined || Number.isNaN(year) || Number.isNaN(month)) return null
@@ -257,6 +343,16 @@ function MonthGrid(props: { readonly month: string; readonly days: readonly stri
   while (cells.length % 7 !== 0) cells.push(null)
   return (
     <div className={css.itemRailMonthGrid} role="group">
+      {/* **一周七天先报名。** 没有这一行，七列数字是一堆按列排好的数：读者数不出
+          哪一列是周一，而「这一格是星期几」正是他扫月历时唯一在问的问题。它同时
+          给这块日历一条**可见的左沿**——月题、周首行与日格从此站在同一条竖线上
+          （原来只有日格，而数字是从第四列才开始有的，于是月题看起来「往左偏了」）。
+          读屏不需要它：每个日格的 accessible name 已经带着日期。 */}
+      {WEEKDAYS.map((word, at) => (
+        <span key={word} className={css.itemRailWeekday} aria-hidden="true" data-weekend={at === 0 || at === 6 ? '' : undefined}>
+          {word}
+        </span>
+      ))}
       {cells.map((cell, at) => cell === null
         ? <span key={`blank-${at}`} className={css.itemRailDayBlank} aria-hidden="true" />
         : (

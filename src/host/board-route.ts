@@ -659,11 +659,22 @@ export function createBoardHandler(
         return
       }
       deps.noteActivity(ask2.request.clientId)
-      const restored = await deps.restoreItem(ask2.request.of, ask2.request.clientId)
-      json(res, {
-        ok: true as const,
-        value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
-      })
+      /* A PERSIST FAILURE IS A REFUSAL, not a hang — the same clause the two
+         commit tails carry, and it was missing here for the same reason it was
+         missing there: the restore goes through `commitItems`, which rejects when
+         the medium will not take the write, and a rejection with no catch leaves
+         this request with NO response at all. The client then waits out its own
+         eight-second abort with the drawer's button reading 「正在找回」, which is
+         the one shape a reader cannot distinguish from a hang. */
+      try {
+        const restored = await deps.restoreItem(ask2.request.of, ask2.request.clientId)
+        json(res, {
+          ok: true as const,
+          value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
+        })
+      } catch (error) {
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+      }
       return
     }
 

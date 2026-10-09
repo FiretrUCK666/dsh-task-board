@@ -62,7 +62,7 @@ import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
 import { ItemDetail } from './detail-pane.tsx'
 import { ItemCreateDialog } from './item-create-dialog.tsx'
-import { freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withFreeText } from './facets.ts'
+import { dayTokensIn, freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemRail } from './rail.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
 import { SORT_LABEL } from './labels.ts'
@@ -310,12 +310,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * The two SETS are `collection`/`place` kinds, and they are the page's own state
    * (`prefs.page`), so they are derived from THAT. Derived from what is true, in
    * both halves, rather than remembered from what was pressed. */
-  /** The rows behind a tombstone. The list reads the live document, so the archive
-   *  is invisible to it — which is the point: a deleted row is gone from every
-   *  ordinary view the moment it is deleted. */
-  const deletedItems = useMemo(
+  /* The rows behind a tombstone, read in the SAME place and the same tick as the
+   *  live document — one subscription, one `read()`, two derived facts.
+   *
+   *  It used to be a `useMemo(… [replica, items])` reading `replica.archive()` on
+   *  its own, and that dependency named the wrong source twice over: the tombstones
+   *  live in the replica's DOCUMENT, so a restore that changed the tombstones but
+   *  not the live array left the rail's 「已删除」 at its old number — the reader saw a
+   *  count that had stopped being true, and the only thing that eventually moved it
+   *  was the next unrelated re-render. A number derived from a document is only
+   *  honest if it is read when that document is read. */
+  const [deletedItems, setDeletedItems] = useState<readonly ItemRecord[]>(
     () => (replica === undefined ? [] : replica.archive()),
-    [replica, items],
   )
   const railMonth = useMemo(() => localDayKey(now).slice(0, 7), [now])
   /**
@@ -343,11 +349,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
     return () => { stop(); lifetime.removeEventListener('abort', stop) }
   }, [lifetime])
 
-  // The replica is the only source of the list; a rebuild shows up here.
+  // The replica is the only source of the list; a rebuild shows up here. The
+  // archive's own rows are read in the same place, from the same document: one
+  // subscription, one read, so the rail's count and the list can never be one
+  // revision apart.
   useEffect(() => {
-    if (replica === undefined) { setItems([]); return }
+    if (replica === undefined) { setItems([]); setDeletedItems([]); return }
     const read = (): void => {
       setItems(replica.view())
+      setDeletedItems(replica.archive())
       seeded.current = true
     }
     read()
@@ -1003,6 +1013,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
     archiveOpen,
     onCloseArchive: closeArchive,
     onPurged: (id: string, revision: number) => replica?.pruneDeleted(id, revision),
+    /* THE ONE WRITE THE ARCHIVE OWES THE LIVE LIST, and it is the same write the
+     * undo already makes: put the row the host just brought back into the live
+     * document, in this tick, through `apply`.
+     *
+     * WHY IT IS NEEDED AT ALL. A restore is a HOST operation addressed straight at
+     * the route — it does not travel through this replica — and the host's commit
+     * frame for it is dropped by our own client on purpose (`own commits arrive via
+     * the response`). So without this call the row the reader just rescued is
+     * missing from the list they are looking at until the next poll, which is up to
+     * thirty seconds. The reader's words for that: 「点了没反应」. */
+    onRestored: (row: ItemRecord) => apply(restoreItemRecord(itemsNow.current, row)),
     sort: prefs.sort,
     renderRows: rows,
   }
@@ -1311,11 +1332,54 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * list (the token fell through to a literal substring search no row can match),
    * and every further press appended another one — a day filter that accumulates
    * is a filter that narrows to nothing while looking like it is doing something.
-   * Every day token is a sibling of every other, so the newest press replaces. */
+   * Every day token is a sibling of every other, so the newest press replaces.
+   *
+   * **THE SIBLINGS ARE THE TOKENS IN THE BOX, not the days that happen to hold
+   * rows.** They used to be `railDays` — every day some row lands on — and that is
+   * a different set from the one the rule is about: press a day with nothing on it
+   * (perfectly legal: the calendar lets a reader ask 「what is on the 8th」 and the
+   * answer is 「nothing」), then press the 9th, and the 8th's token is still there
+   * because no row carries it. Two `on:` tokens in one box is a filter where the
+   * one the reader last pressed silently wins and the stale one is invisible in
+   * everything except the text of the query. */
   const pickRailDay = useCallback((day: string) => {
     const token = dayTokenOf(day)
-    choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token), railDays.map(dayTokenOf)) })
-  }, [choose, prefs.search, railDays])
+    choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token), dayTokensIn(prefs.search)) })
+  }, [choose, prefs.search])
+  /* THE MONTH THE CALENDAR SHOWS IS A PLACE THE READER WENT, and it starts where
+   * today is. It used to be derived from the clock on every render
+   * (`localDayKey(now).slice(0,7)`), which is the same fact as 「you can never look
+   * at another month」: the arrows had nothing to write to. */
+  const [seenMonth, setSeenMonth] = useState<string | undefined>(undefined)
+  useEffect(() => {
+    if (seenMonth === undefined) setSeenMonth(railMonth)
+  }, [railMonth, seenMonth])
+  const shownMonth = seenMonth ?? railMonth
+  const shiftMonth = useCallback((by: -1 | 1) => {
+    setSeenMonth(current => {
+      const [year, month] = (current ?? railMonth).split('-').map(Number)
+      if (year === undefined || month === undefined) return railMonth
+      // Through a Date rather than by hand, so December → January carries the year.
+      const next = new Date(year, month - 1 + by, 1)
+      return `${next.getFullYear()}-${String(next.getMonth() + 1).padStart(2, '0')}`
+    })
+  }, [railMonth])
+  /* 「今天」 DOES TWO THINGS AND THEY ARE ONE THING: put the calendar back on the
+   * month that holds today, and take the day filter off. A reader who presses it
+   * while looking at another month AND another day means 「where I am」, and both
+   * halves are that. */
+  const backToToday = useCallback(() => {
+    setSeenMonth(railMonth)
+    choose({ search: withFacetToken(prefs.search, dayTokenOf(localDayKey(now)), false, dayTokensIn(prefs.search)) })
+  }, [choose, now, prefs.search, railMonth])
+
+  /* FOLDED ON A NARROW SURFACE, UNFOLDED ON A WIDE ONE — until the reader says
+   * otherwise, and then their choice stands for the session. `narrow` is the
+   * surface's own measurement, and the fold is what replaced the old
+   * `display: none` (rule 11 allows 折叠; hiding a control at a width does not). */
+  const [calendarChoice, setCalendarChoice] = useState<boolean | undefined>(undefined)
+  const calendarOpen = calendarChoice ?? !narrow
+  const toggleCalendar = useCallback(() => { setCalendarChoice(current => !(current ?? !narrow)) }, [narrow])
 
   /* WHERE THE READER IS, READ OFF THE QUERY. This was `useState`, written on every
    * press before the toggle was even computed — so pressing the same row twice
@@ -1405,32 +1469,42 @@ export function ItemListPanel(props: ItemListPanelProps) {
       * face went; the count lives beside the search that changes it. */}
   <div className={css.itemWorkbench} ref={surfaceRef}>
     <div className={css.itemListColumn}>
-{/* THE TOP BAR SAYS THREE THINGS AND NO MORE: 「我在找什么」「我按什么排」
-            * 「我怎么加一条」. 搜索 · 排序 · ＋新建一条 is the whole strip.
+{/* ── 两条带子，同一个高度，位置一个像素都不动。 ─────────────────────────────
             *
-            * Everything a reader can ask about the DOCUMENT is one click away in
-            * the rail, and everything about ONE row is one click away in that row —
-            * so neither of those belongs in a bar that is only about the VIEW.
-            * 收件/清单/日程 became the rail (a place is a place, and a rail is where
-            * places live); the stat cards became the rail's counts, where a number
-            * and the thing it opens stand in one column; the capture box became the
-            * first line of the ＋新建一条 sheet, because a box that saves the instant
-            * you press Enter is a box you cannot put a second thought into.
+            * 活清单那一页的带子只说三件事：「我在找什么」「我按什么排」「我怎么加
+            * 一条」——搜索 · 排序 · ＋新建一条。关于**这份文档**的一切问题都在左栏，
+            * 关于**这一条**的一切都在那一行里，所以两样都不属于一条只讲视图的带子。
             *
-            * 而这一条只属于**活着的清单那一页**：站在归档页里，搜索、排序、新建说的
-            * 都不是眼前那份内容——它们的控件跟着页一起消失，归档页顶上只有它自己的
-            * 头与它自己的行。 */}
- {!archiveOpen && (
- <>
- <div className={css.itemTopBar}>
-            <p className={css.itemTopCount}>
-              {filtering
-                /* THE MATCH SET, not the detail selection. The sentence claims to
-                   * be about the FILTER, so it is counted the way the filter counts
-                   * — one predicate, the same one the list draws from. */
-                ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
-                : t('item.count', { n: String(items.length) })}
-            </p>
+            * **而归档页原来把整条带子卸载掉**（`{!archiveOpen && …}`），于是页面顶上
+            * 的内容**往上跳 56px**——读者的原话是「上面的东西弹了下来」。「搜索 / 排序 /
+            * 新建这一页不成立」这条理由仍然成立，所以换的不是「有没有带子」，而是
+            * **带子里放什么**：归档页放它自己的题头（名字 + 条数 + 回去的路）。两条带子
+            * 共用 `--item-control-h` 与 `--item-inset-x`，所以同高不是两次巧合。 */}
+        {archiveOpen
+          ? (
+              <div className={css.itemArchiveTopBar}>
+                <h2 className={css.itemArchiveHead}>
+                  <button type="button" className={css.itemArchiveToggle} onClick={closeArchive}>
+                    {t('item.archive.title')}
+                    <span className={css.itemArchiveCount}>{deletedItems.length}</span>
+                  </button>
+                </h2>
+                <button type="button" className={css.itemTopBarChip} onClick={closeArchive}>
+                  {t('item.archive.back')}
+                </button>
+              </div>
+            )
+          : (
+            <>
+              <div className={css.itemTopBar}>
+                <p className={css.itemTopCount}>
+                  {filtering
+                    /* THE MATCH SET, not the detail selection. The sentence claims to
+                       * be about the FILTER, so it is counted the way the filter counts
+                       * — one predicate, the same one the list draws from. */
+                    ? t('item.countFiltered', { shown: String(matchedCount), total: String(items.length) })
+                    : t('item.count', { n: String(items.length) })}
+                </p>
             {/* THE SEARCH BOX IS ALSO THE COMMAND PALETTE'S DOOR.
               *
               * 它不再旁边另立一枚「命令」按钮。那一枚是为 ⌘K 找的鼠标入口，可它和
@@ -1505,8 +1579,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 aria-controls={`${topPanels}-sort`}
                 onClick={() => openLayer(sortOpen ? undefined : 'sort')}
               >
-                <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
-                <span className={css.itemTopBarValue}>{t(SORT_LABEL[prefs.sort])}</span>
+                {/* 一问一答，**包成一件东西**：这一枚药丸里装的是「排序 · 顺序」这一
+                    个短语，所以它居中的是**这一个短语**，而短语内部的两半按基线对齐。
+                    两半直接当药丸的子项、药丸又用 `align-items: baseline` 时，基线那
+                    一组会被按到药丸的**顶**上（flex 的基线组从交叉轴起点开始摆），于是
+                    这一枚的字比旁边三枚高约 8px——读者的话是「排序顺序的按钮有问题」。
+                    包一层之后：外面居中，里面共用一条基线，两个承诺各归各位。 */}
+                <span className={css.itemTopBarPair}>
+                  <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
+                  <span className={css.itemTopBarValue}>{t(SORT_LABEL[prefs.sort])}</span>
+                </span>
               </button>
               <button
                 type="button"
@@ -1568,7 +1650,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
               ))}
             </div>
           )}
- </>)}
+            </>
+          )}
           {/* THE PANELS THE TWO CHIPS OPEN BELONG ABOVE THIS LINE, IN THE COLUMN,
               AND NOT INSIDE THE SCROLLER.
               *
@@ -1631,10 +1714,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
             <ItemRail
               groups={railGroups}
               activeId={activeRailId}
-              month={railMonth}
+              month={shownMonth}
               daysWithRows={railDays}
               today={localDayKey(now)}
               activeDay={query.day ?? undefined}
+              calendarOpen={calendarOpen}
+              onToggleCalendar={toggleCalendar}
+              onShiftMonth={shiftMonth}
+              onToday={backToToday}
               onEnter={enterRail}
               onPickDay={pickRailDay}
             />

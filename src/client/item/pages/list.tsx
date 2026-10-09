@@ -27,7 +27,8 @@ import { itemSlicesOf } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
-import { t } from '../../locales.ts'
+import { t, isEnglish } from '../../locales.ts'
+import { formatDayKey } from '../model.ts'
 import { itemsArchive, itemsPurge, itemsRestore, archiveClockOf, type ArchiveReply } from '../../items-archive.ts'
 import { Tickbox } from '../tickbox.tsx'
 import { whyLabelOf } from '../why-label.ts'
@@ -66,7 +67,10 @@ type ArchiveState =
 export function ListPage(props: ItemListPageProps) {
   const { items, query, prefs } = props
   const [archive, setArchive] = useState<ArchiveState>(undefined)
-  const [restoring, setRestoring] = useState<number | undefined>(undefined)
+  const [restoring, setRestoring] = useState<string | undefined>(undefined)
+  /** A re-read of the archive that is NOT the first one: the rows stay on screen
+   *  while the host is asked again (see `openArchive`). */
+  const [refreshing, setRefreshing] = useState(false)
   /**
    * WHICH ARCHIVED ROW IS BEING ERASED, by identity.
    *
@@ -101,11 +105,22 @@ export function ListPage(props: ItemListPageProps) {
   // 像是把行弄丢了，而不是开关坏在表面。
   const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, includeDone: props.showDone })
 
-  const openArchive = useCallback(async () => {
-    setArchive({ kind: 'loading' })
-    const reply: ArchiveReply = await itemsArchive()
+  const openArchive = useCallback(async (keepRows = false) => {
+    /* A RE-READ MUST NOT BLANK THE PAGE IT IS RE-READING.
+     *
+     * 恢复成功之后抽屉要重读一次（那一行不该还在列表里），而重读原来走的是
+     * `{ kind: 'loading' }`——它把行整列换成一行字，于是**一次按键里页面塌两次**：
+     * 恢复成功 → 抽屉先塌成「正在准备清单…」再把行长回来。读者的原话是「点了放回去
+     * 页面弹了一下」。
+     *
+     * 所以重读分两种：第一次进来是 loading（真的还没有内容），已有内容时的重读只
+     * 是 refreshing——行留在原处，顶上一句话说明它在重新核对。 */
+    if (keepRows) setRefreshing(true)
+    else setArchive({ kind: 'loading' })
+    const reply: ArchiveReply = await itemsArchive(props.clientId)
     setArchive(reply.ok ? { kind: 'ready', rows: reply.deleted } : { kind: 'unreadable' })
-  }, [])
+    setRefreshing(false)
+  }, [props.clientId])
 
   /**
    * THE RAIL'S 「已删除」 OPENS THIS DRAWER.
@@ -181,7 +196,12 @@ export function ListPage(props: ItemListPageProps) {
       return
     }
     setArchiveNote(undefined)
-    setRestoring(item.ref)
+    /* KEYED BY IDENTITY, NOT BY NUMBER. The short number is 0 on every row the
+     * document has not numbered yet, so a drawer holding two of them disabled the
+     * WRONG button: press one, and both read 「正在找回」 while either release
+     * cleared the other's. An id exists for every row, which is the same reason
+     * this call addresses the row by it. */
+    setRestoring(item.id)
     const reply = await itemsRestore({ id: item.id }, props.clientId)
     setRestoring(undefined)
     // A CODE, said as a sentence. The raw one is what the host and the transport
@@ -191,8 +211,18 @@ export function ListPage(props: ItemListPageProps) {
     setArchiveNote(reply.ok && reply.restored !== undefined
       ? t('item.archive.restored', { ref: label })
       : t('item.archive.refused', { ref: label, why: why.words }), why.raw)
-    if (reply.ok) await openArchive()
-  }, [openArchive, props.clientId])
+    if (reply.ok) {
+      /* THE ROW GOES BACK INTO THE LIVE LIST NOW, not on the next poll.
+       *
+       * The host has already written it (that is what the reply means), but a
+       * restore is a host operation this device asked for directly, so this
+       * device's own commit frame is dropped by its own client — the live list
+       * would not show the row again for up to thirty seconds. The panel's
+       * `onRestored` is the same write the undo already makes. */
+      if (reply.restored !== undefined) props.onRestored?.(reply.restored)
+      await openArchive(true)
+    }
+  }, [openArchive, props.clientId, props.onRestored])
 
   /**
    * 「彻底删除」 EVERY ROW THE READER HELD, one call per row, one receipt for the
@@ -311,7 +341,15 @@ export function ListPage(props: ItemListPageProps) {
    * already holding a word says 「没有匹配的结果。清空搜索或换个筛选看看。」, which
    * invites a reader to clear a search that was never what emptied the page.
    */
-  const nothingToShow = items.length === 0 ? t('item.empty') : t('item.noMatch')
+  const nothingToShow = items.length === 0
+    ? t('item.empty')
+    /* **被一个日子筛空，就要说那个日子。** 「没有匹配的结果」在读者按了一个具体
+     * 的日子之后是一句没用的话：他刚刚点的是 9 号，屏幕上该出现的是「9 号没有
+     * 东西」——**一句话里带着他刚按下的那个选择**，而不是一句关于筛选的通用提示。
+     * 而「换个日子」这四个字也是真的可做：日历就在旁边。 */
+    : query.day !== null
+      ? t('item.noMatch.day', { when: formatDayKey(query.day, isEnglish(), props.now) })
+      : t('item.noMatch')
 
   /**
    * THE ARCHIVE LINE, and it is the LAST thing on the page.
@@ -403,6 +441,7 @@ export function ListPage(props: ItemListPageProps) {
                   smoothest; the sentence is what says the cost BEFORE it. */}
               <div className={css.itemArchiveBar}>
                 <p className={css.itemArchiveSay}>{t('item.archive.bar')}</p>
+                {refreshing && <p className={css.itemArchiveNote} role="status">{t('item.loading')}</p>}
                 {archivePicks.size > 0
                   ? (
                       <div className={css.itemArchiveConfirm}>
@@ -451,10 +490,10 @@ export function ListPage(props: ItemListPageProps) {
                       <Button
                         variant="ghost"
                         size="sm"
-                        disabled={restoring === row.ref}
+                        disabled={restoring === row.id}
                         onClick={() => { void restoreOne(row) }}
                       >
-                        {t(restoring === row.ref ? 'item.archive.restoring' : 'item.archive.restore')}
+                        {t(restoring === row.id ? 'item.archive.restoring' : 'item.archive.restore')}
                       </Button>
                     </li>
                   )
