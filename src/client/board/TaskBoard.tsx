@@ -1994,7 +1994,14 @@ export function TaskBoard({ controller, freshness }: { controller: BoardControll
                   // answer (this session's turn or a running subagent descendant
                   // — the same derivation the card's light and the session rows
                   // read).
-                  const relatedIds = [...controller.relatedSessionIdSet(task)]
+                  /* **圆点数的是「这张卡你能看见的会话」，与卡里那份列表同一个集合。**
+                   *
+                   * 它原来读 `relatedSessionIdSet`（绑定 + 轮次 + 工作区成员，只排除原生删掉的），
+                   * 而**已归档、已隐藏的会话仍然被数着**——卡里的列表却按 `taskSessionsOf` 把它们
+                   * 都去掉了。于是读者看到的是一件自相矛盾的事：「卡片外面的会话数比里面实际的多」。
+                   * 一个集合只能有一个答案，而这个问题问的是**显示**：看得见几条就数几条。
+                   * 「在不在工作」是另一个问题（`liveStateOf` 那条腿），它读的是工作集合。 */
+                  const relatedIds = controller.sessionsOf(task).map(row => row.sessionId)
                   const dotStateOf = (sessionId: string): 'waiting' | 'running' | 'unread' | 'idle' =>
                     cardSessionDotStateOf(task, sessionId, {
                       pendingInteractionOf: id => controller.pendingInteractionOf(id),

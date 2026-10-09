@@ -170,6 +170,10 @@ describe('drop dispatch (the gap the preview promises is the gap the drop takes)
         if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
         if (key === 'linkedOf') return () => []
         if (key === 'relatedSessionIdSet') return () => new Set<string>()
+        /* 圆点与卡里那份列表读的是**同一个** `sessionsOf`（一个集合一个答案）。这台假面原来只
+           有 `relatedSessionIdSet`，于是台架比现实窄——真实控制器的两个方法都在，而窄的假面会把
+           正确实现报成缺陷（硬性规范 18）。 */
+        if (key === 'sessionsOf') return () => [] as Array<{ sessionId: string }>
         if (key === 'liveStateOf') return () => 'idle'
         if (key === 'sessionActiveOf') return () => false
         if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined

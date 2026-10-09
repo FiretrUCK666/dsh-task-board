@@ -1309,6 +1309,14 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     // the (+N) glyph reads.
     expect(board).toContain('relatedIds.slice(0, 3)')
     expect(board).toContain('t(\'card.dotUnread\')')
+    /* **圆点的集合就是卡里那份列表的集合。**
+     *
+     * 读者的原话：「卡片里面实际已经删掉或隐藏、或者归档了一些会话…那个 Session 的数量跟里面又没
+     * 对齐」。根因是这一行读 `relatedSessionIdSet`（把那两类都算着），而卡里的列表按
+     * `taskSessionsOf` 把它们都去掉了。这条钉住「数 == 列表」的来处：两个问题各读自己的集合，
+     * 但「看得见几条」这一个只有一个答案。 */
+    expect(board, '圆点不再读卡里那份列表，于是数又会与列表对不上')
+      .toContain('controller.sessionsOf(task).map(row => row.sessionId)')
   })
 })
 
