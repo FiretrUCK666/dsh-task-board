@@ -397,7 +397,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     ]
   }
 
-  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined): void {
+  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = 'light'): void {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
         controller: boardStub(boardFixture()) as unknown as BoardController,
@@ -405,7 +405,10 @@ describe('stale-bundle status line (rendered through the panel)', () => {
       } as never)),
       panelCss(),
     )
-    writeStandalonePage(target, aligned.html, aligned.css, 'light', 'task board')
+    /* 深色档与清单那一侧**同一个办法**：`scheme` 是参数，不是环境变量。上一版我给它加了一个
+       `DSH_PANEL_SCHEME`，而清单那边的工件从来不认这个变量——同一个能力两套开关，就是这一页
+       反复在消的那种债（硬性规范 17）。 */
+    writeStandalonePage(target, aligned.html, aligned.css, scheme, 'task board')
   }
 
   it('writes the board page when DSH_PANEL_HTML names a path', () => {
