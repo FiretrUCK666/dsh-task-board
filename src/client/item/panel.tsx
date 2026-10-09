@@ -668,7 +668,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     if (result.move !== undefined) face.controller?.moveTask(result.move.cardId, result.move.status)
   }, [apply, cardColumns, face.controller])
 
-  const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides) => {
+  const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides): string | undefined => {
     setMenuRow(undefined)
     const controller = face.controller
     if (controller === undefined) { setReceipt({ id: item.id, words: t('item.promote.noBoard') }); return }
@@ -677,11 +677,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
       setReceipt({ id: item.id, words: plan.why === 'alreadyLinked'
         ? t('item.promote.already', { title: cards.find(card => card.id === plan.taskId)?.title ?? plan.taskId })
         : t('item.promote.noTitle') })
-      return
+      return undefined
     }
     const at = Date.now()
     const task = controller.createTask({ ...plan.task, status: plan.task.status })
-    if (task === undefined) { setReceipt({ id: item.id, words: t('item.promote.refused') }); return }
+    if (task === undefined) { setReceipt({ id: item.id, words: t('item.promote.refused') }); return undefined }
     /* BASE IS `itemsNow.current`, NOT THE CLOSURE'S `items`. The caller may have
      * JUST captured the row this hangs (the new-sheet path calls capture first
      * and then asks for its card), so the closure's array is one write behind —
@@ -690,6 +690,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * is the one base that is never behind. */
     apply(mountItemRecord(itemsNow.current, item.id, task.id, task.status, at))
     setReceipt({ id: item.id, words: t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }) })
+    /* **把新卡的 id 交回给调用者**：提升之后紧接着要做的下一件事（「交给 AI」= 建卡 + 立刻开工）
+       需要一个句柄，而它是这一次调用的产物——让调用者去猜 id 就是同一件事的第二个答案。 */
+    return task.id
   }, [apply, cards, face.controller])
 
   /**
