@@ -27,7 +27,7 @@ import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_STATUSES } from '../../core/item.ts'
 import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
-import { PriorityMark } from './marks.tsx'
+import { CrossMark, PriorityMark } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
 import type { ComposerParse } from './compose-parse.ts'
 import { parseItemDate, toItemDateField, formatItemDate } from './model.ts'
@@ -202,19 +202,16 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
       >
         <header className={css.itemCreateDialogHead}>
           <h2 className={css.itemCreateDialogTitle}>{t('item.create.title')}</h2>
-          {/* THE CROSS IS CENTRED TWICE, ONCE IN THE BOX AND ONCE IN THE GLYPH. A
-              × drawn as a character sits on the font's own baseline inside a box
-              centred by padding, and the two centring rules disagree by a pixel or
-              two — which is why it read as 「偏上」 while the box itself was square. */}
+          {/* THE CROSS IS ONE SHAPE, DRAWN ONCE — see `marks.tsx` 的 `CrossMark`：同一枚记号
+              原来在这里与筛选芯片那枚各画一遍（那两处的注释写着同一句教训：× 当字符会坐在字体
+              基线上，框居中了、字没居中）。现在两处读同一个元件，尺寸是属性。 */}
           <button
             type="button"
             className={css.itemCreateDialogClose}
             aria-label={t('item.create.close')}
             onClick={props.onClose}
           >
-            <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
-              <path d="M2.6 2.6l6.8 6.8M9.4 2.6l-6.8 6.8" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-            </svg>
+            <CrossMark size={14} />
           </button>
         </header>
 

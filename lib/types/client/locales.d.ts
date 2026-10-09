@@ -636,7 +636,6 @@ export declare const zh: {
     'item.dates.bad': string;
     'item.topbar.sort': string;
     'item.topbar.create': string;
-    'item.search.remove': string;
     'item.search.removeFacet': string;
     'item.search.clearQualifiers': string;
     'item.pageJump.missing': string;

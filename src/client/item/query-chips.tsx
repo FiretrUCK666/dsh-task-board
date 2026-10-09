@@ -25,6 +25,7 @@
 import { t, isEnglish } from '../locales.ts'
 import { queryChipsOf, withFacetToken, type QueryChip } from './facets.ts'
 import { formatDayKey } from './model.ts'
+import { CrossMark } from './marks.tsx'
 import css from './item.module.css'
 
 export interface ItemQueryChipsProps {
@@ -75,7 +76,7 @@ export function ItemQueryChips(props: ItemQueryChipsProps) {
             aria-label={t('item.search.removeFacet', { what: chipLabel(chip) })}
             onClick={() => { props.onSearch(withFacetToken(props.text, chip.token, false)) }}
           >
-            {t('item.search.remove')}
+            <CrossMark />
           </button>
         </span>
       ))}
