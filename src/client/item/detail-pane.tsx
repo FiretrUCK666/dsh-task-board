@@ -685,10 +685,10 @@ export function ItemDetail(props: ItemDetailProps) {
                   只是没卡时它做的是**就地建卡再开跑**（`startOne` 一处实现）。
                   正文为空时**禁用并写明理由**（硬性规范 11③：理由不许只挂在 `title` 上），
                   因为那一张卡建出来也跑不起来——执行 Prompt 来自正文。 */}
-              <Button variant="primary" size="sm" onClick={props.onStart} disabled={item.body.trim() === ''}>
+              <Button variant="primary" size="sm" onClick={props.onStart} disabled={props.runnable === false}>
                 {t('item.menu.start')}
               </Button>
-              {item.body.trim() === '' && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
+              {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
               {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
                   只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
               <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
