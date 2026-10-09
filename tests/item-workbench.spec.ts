@@ -2708,7 +2708,7 @@ describe('the checklist is a list a reader can change, not a list they can only 
       expect(dropDots, 'the first step carries no control of its own — a checklist you cannot trim is a log').toBeDefined()
       act(() => { dropDots?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
       const drop = [...panel.surface.querySelectorAll('[role="menuitem"]')]
-        .find(node => (node.textContent ?? '').trim() === '去掉这一步')
+        .find(node => (node.textContent ?? '').trim() === '删除')
       expect(drop, `the step’s own menu offers no way to take it off`).toBeDefined()
       click(drop)
       // NOT ON THE BOARD ANY MORE, AND NOT IN THE DOCUMENT — two questions, and
@@ -3139,7 +3139,7 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
 
   /** The drawer bar's 确认块：选中若干行之后，栏换成一句带后果的确认。 */
   const killButton = (surface: ParentNode): Element | undefined =>
-    [...surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '删掉')
+    [...surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '彻底删除')
 
   it('the one entrance lands on the page that owns the drawer, from ANY page', async () => {
     // THE ENTRANCE IS AN ENTRANCE FROM EVERY PAGE THE RAIL IS DRAWN ON, and the
