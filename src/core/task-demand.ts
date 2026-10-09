@@ -174,10 +174,17 @@ export function waitingSessionsOf(
   task: TaskRecord,
   pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
   linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
+  /**
+   * 一条会话**还在不在**（能看才给，看不见就给 `undefined`）。
+   *
+   * 「等你处理」只能挂在还存在的会话上——一条已经被删除的会话若仍被数进来，卡片会一直停在
+   * 等你处理，而读者点进去什么也没有。**看不见 ≠ 不存在**：给不出判决时传 `undefined`。
+   */
+  isPresentOf: ((sessionId: string) => boolean) | undefined = undefined,
 ): WaitingSession[] {
   const out: WaitingSession[] = []
   const seen = new Set<string>()
-  for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) {
+  for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task), isPresentOf)) {
     if (seen.has(sessionId)) continue
     const waitingKind = pendingOf(sessionId)
     if (waitingKind === undefined) continue
@@ -224,11 +231,13 @@ export function boardDemandOf(
   tasks: readonly TaskRecord[],
   pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
   linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
+  /** 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`。 */
+  isPresentOf: ((sessionId: string) => boolean) | undefined = undefined,
 ): BoardDemand {
   let waiting = 0
   let review = 0
   for (const task of tasks) {
-    waiting += waitingSessionsOf(task, pendingOf, linkedIdsOf).length
+    waiting += waitingSessionsOf(task, pendingOf, linkedIdsOf, isPresentOf).length
     if (gateOf(task).state === 'unseen') review += 1
   }
   return { total: waiting + review, waiting, review }

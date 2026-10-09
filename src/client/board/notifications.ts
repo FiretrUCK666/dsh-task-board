@@ -212,7 +212,9 @@ export function notificationsExOf(
     })
   }
   for (const task of tasks) {
-    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) push(task, sessionId)
+    // 最后那个 `undefined` 是**明确写出的判决**：这一份推导只拿到 `linkedIdsOf`，判不了原生
+    // 名单的可用性，所以它不判存在性（参数必填，正是为了让这句话写在每一处调用上）。
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task), undefined)) push(task, sessionId)
   }
   // Arrival clock first (a wait that fires late in a long turn is NEW news),
   // round clock as the fallback, row key as the metadata-orthogonal tiebreak —
@@ -239,7 +241,7 @@ export function notificationsExOf(
   const emitted = new Set<string>()
   for (const task of tasks) {
     if (task.status !== 'review') continue
-    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task))) {
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIdsOf(task), undefined)) {
       const key = `${task.id}|${sessionId}`
       if (emitted.has(key)) continue
       const gate = sessionGateOf(task, sessionId)

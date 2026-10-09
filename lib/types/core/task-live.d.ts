@@ -81,9 +81,13 @@ export interface RelatedSessionFact {
  * @param task - the task owning the sessions.
  * @param linkedSessionIds - the task's live linked-session ids (the
  *   controller derives them from the workspaces face; undefined = skip).
- * @param isPresentOf - whether a session still exists, when the caller can tell.
+ * @param isPresentOf - whether a session still EXISTS, when the caller can tell.
+ *   **必填，而且可以显式是 `undefined`。** 它原来是第三个可选参数，而可选参数的代价是「忘掉它
+ *   不会有任何声音」：`board-events` 与 `task-demand` 两处就没传，于是一条**已经被删除**的会话
+ *   仍然能让卡片停在「等你处理」——屏上没有任何东西说这件事。写成必填之后，每一个调用点都必须
+ *   **写出它的判决**（能看就说能看，看不见就写 `undefined`），而「看不见」仍然不等于「不存在」。
  */
-export declare function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds?: readonly string[], isPresentOf?: (sessionId: string) => boolean): RelatedSessionFact[];
+export declare function relatedSessionIdsOf(task: TaskRecord, linkedSessionIds: readonly string[] | undefined, isPresentOf: ((sessionId: string) => boolean) | undefined): RelatedSessionFact[];
 /**
  * The one live-state derivation:
  * - waiting — any related session is pending on the user (approval /

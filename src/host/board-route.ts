@@ -863,7 +863,8 @@ export async function handOneItemToItsCardSession(
   const verdict = planItemAsk({
     item,
     card,
-    sessions: card === undefined ? [] : relatedSessionIdsOf(card),
+    sessions: card === undefined ? [] : relatedSessionIdsOf(card, undefined, undefined),
+    // 同上：这一处判不了原生名单的可用性，所以明确写出「不判存在性」；`planItemAsk` 另有闸门。
     isRunning: sessionId => sessionRunningOf({ agents: () => ctx.get('agents') as never }, sessionId).value === true,
     hasAgent: sessionId => agents !== undefined && agents.get(sessionId) !== undefined,
   })

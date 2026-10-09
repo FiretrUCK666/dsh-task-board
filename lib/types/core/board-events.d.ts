@@ -63,6 +63,14 @@ export interface BoardEventContext {
     /** Live linked-session ids per task (bound workspace members). When absent,
      *  waiting falls back to binds + execution rounds (legacy). */
     linkedIdsOf?: (task: TaskRecord) => readonly string[];
+    /**
+     * 一条会话**还在不在**（能看才给，看不见就给 `undefined`）。
+     *
+     * 「等你处理」这件事只能挂在还存在的会话上：一条已经被删除的会话若仍被数进来，卡片会一直
+     * 停在等你处理，而读者点进去什么也没有。**看不见 ≠ 不存在**，所以给不出判决时传
+     * `undefined`（那时不过滤，与「读不到不画成空」同一条规矩）。
+     */
+    isPresentOf?: (sessionId: string) => boolean;
 }
 /**
  * Collect every moment of every task, newest first (no cap — callers slice).

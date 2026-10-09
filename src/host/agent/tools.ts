@@ -1651,7 +1651,10 @@ function applyOne(
       const verdict = planItemAsk({
         item: found,
         card,
-        sessions: card === undefined ? [] : relatedSessionIdsOf(card),
+        sessions: card === undefined ? [] : relatedSessionIdsOf(card, undefined, undefined),
+        // 上面那两个 `undefined` 是**明确写出的判决**：宿主这一处看不到原生名单的可用性，所以
+        // 它不判存在性（`relatedSessionIdsOf` 的那个参数是必填的，正是为了让每个调用点把话说出来）。
+        // 这一条路另有闸门：`planItemAsk` 会检查选中的那条会话还有没有活着的 agent。
         isRunning: sessionId => sessionRunningOf(deps.sources, sessionId).value === true,
         hasAgent: sessionId => agents.get(sessionId) !== undefined,
       })
@@ -1751,7 +1754,9 @@ function applyOne(
  * what to do with that rather than this module guessing.
  */
 function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveState {
-  const sessions = relatedSessionIdsOf(task).map(fact => fact.sessionId)
+  // 两个 `undefined` 是明确写出的判决：这一层按**轮次台账**回答在不在跑，判不了原生名单的
+  // 可用性，所以不判存在性（参数必填就是为了让这句话写在每个调用点上）。
+  const sessions = relatedSessionIdsOf(task, undefined, undefined).map(fact => fact.sessionId)
   if (sessions.length === 0) return 'idle'
   const seen = sessions.map(id => sessionRunningOf(sources, id).value)
   if (seen.some(value => value === true)) return 'running'

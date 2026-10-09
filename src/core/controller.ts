@@ -1887,7 +1887,10 @@ export class BoardController {
     // The session must be a related session of THIS task (a run session,
     // a bound session, or a linked workspace member) — renaming through a
     // task the session does not belong to would be a confusing surface.
-    const related = relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId))
+    /* 这一处**不判存在性**，是有意的：它问的是「这条会话**属于**这张卡吗」（归属），不是
+       「它还在不在」（显示）。一条原生命中已不在名单里的会话，只要这张卡的台账上有它，改名就
+       仍然成立——`undefined` 把这句话写在这里，而不是让它悄悄取决于某个默认值。 */
+    const related = relatedSessionIdsOf(task, this.linkedOf(task).map(row => row.sessionId), undefined)
     if (!related.some(entry => entry.sessionId === sessionId)) {
       return { ok: false, error: 'session does not belong to this task' }
     }
@@ -4237,6 +4240,23 @@ export class BoardController {
   }
 
   /**
+   * **一条会话还算不算这一张卡的**——这一个判据只有一处，所有问它的地方都读这里。
+   *
+   * 它存在的理由是一次真实的读者报告：删掉或归档了一些会话之后，卡片上的会话数比里面实际的
+   * 多，而「等你处理」也会为一条已经不存在的会话一直亮着。根因是同一个问题有六处各自回答，
+   * 其中几处**忘了回答存在性**（`relatedSessionIdsOf` 的那个参数曾经是可选的，忘掉它不会有任何
+   * 声音）。现在判决收成一个具名方法，那个参数也变成必填。
+   *
+   * 三态：`'visible'` 算；`'archived'` 与 `'removed'` 不算（收起来的对话不再是这张卡的业务——
+   * 与「规则不向归档会话投递」同一条规矩）；`'gone'` 不算，因为它已经不存在。名单还没就绪时
+   * 返回 `undefined`——**看不见 ≠ 不存在**，那时不过滤，也不假装没有。
+   */
+  sessionPresentOf(): ((sessionId: string) => boolean) | undefined {
+    if (!this.sessionsReady()) return undefined
+    return sessionId => this.sessionAvailability(sessionId) === 'visible'
+  }
+
+  /**
    * Every related session of a task (de-duplicated) — THE one
    * derivation from task-live.ts, consumed by the external-activity scanner,
    * the bound-task reconcile and the '@' reference scoping. The controller
@@ -4257,7 +4277,7 @@ export class BoardController {
     return relatedSessionIdsOf(
       task,
       this.linkedOf(task).map(row => row.sessionId),
-      this.sessionsReady() ? sessionId => this.sessionAvailability(sessionId) !== 'gone' : undefined,
+      this.sessionPresentOf(),
     )
   }
 

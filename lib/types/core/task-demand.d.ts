@@ -114,7 +114,14 @@ export interface WaitingSession {
  * bound, with or without a board round behind it. That difference is exactly
  * why the bell used to ring for a question the card itself never mentioned.
  */
-export declare function waitingSessionsOf(task: TaskRecord, pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[]): WaitingSession[];
+export declare function waitingSessionsOf(task: TaskRecord, pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[], 
+/**
+ * 一条会话**还在不在**（能看才给，看不见就给 `undefined`）。
+ *
+ * 「等你处理」只能挂在还存在的会话上——一条已经被删除的会话若仍被数进来，卡片会一直停在
+ * 等你处理，而读者点进去什么也没有。**看不见 ≠ 不存在**：给不出判决时传 `undefined`。
+ */
+isPresentOf?: ((sessionId: string) => boolean) | undefined): WaitingSession[];
 /** What the board owes the user, as one number for the whole surface. */
 export interface BoardDemand {
     /** Total items awaiting a human: waiting conversations + cards in the gate. */
@@ -131,4 +138,6 @@ export interface BoardDemand {
  * chip on the card and the row in the drawer are the same set by construction,
  * and looking at a card moves all three together.
  */
-export declare function boardDemandOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[]): BoardDemand;
+export declare function boardDemandOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[], 
+/** 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`。 */
+isPresentOf?: ((sessionId: string) => boolean) | undefined): BoardDemand;

@@ -1965,6 +1965,19 @@ export declare class BoardController {
      */
     private conclusiveLiveState;
     /**
+     * **一条会话还算不算这一张卡的**——这一个判据只有一处，所有问它的地方都读这里。
+     *
+     * 它存在的理由是一次真实的读者报告：删掉或归档了一些会话之后，卡片上的会话数比里面实际的
+     * 多，而「等你处理」也会为一条已经不存在的会话一直亮着。根因是同一个问题有六处各自回答，
+     * 其中几处**忘了回答存在性**（`relatedSessionIdsOf` 的那个参数曾经是可选的，忘掉它不会有任何
+     * 声音）。现在判决收成一个具名方法，那个参数也变成必填。
+     *
+     * 三态：`'visible'` 算；`'archived'` 与 `'removed'` 不算（收起来的对话不再是这张卡的业务——
+     * 与「规则不向归档会话投递」同一条规矩）；`'gone'` 不算，因为它已经不存在。名单还没就绪时
+     * 返回 `undefined`——**看不见 ≠ 不存在**，那时不过滤，也不假装没有。
+     */
+    sessionPresentOf(): ((sessionId: string) => boolean) | undefined;
+    /**
      * Every related session of a task (de-duplicated) — THE one
      * derivation from task-live.ts, consumed by the external-activity scanner,
      * the bound-task reconcile and the '@' reference scoping. The controller

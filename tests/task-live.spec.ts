@@ -49,7 +49,7 @@ describe('relatedSessionIdsOf', () => {
     const task = taskWith(
       [{ sessionId: 'a' }, { sessionId: 'b' }, { sessionId: 'a' }],
     )
-    expect(relatedSessionIdsOf(task)).toEqual([
+    expect(relatedSessionIdsOf(task, undefined, undefined)).toEqual([
       { sessionId: 'a' },
       { sessionId: 'b' },
     ])
@@ -60,7 +60,7 @@ describe('relatedSessionIdsOf', () => {
       ...taskWith([{ sessionId: 'run' }]),
       binds: [{ kind: 'session' as const, sessionId: 'bound' }],
     }
-    expect(relatedSessionIdsOf(task)).toEqual([
+    expect(relatedSessionIdsOf(task, undefined, undefined)).toEqual([
       { sessionId: 'bound' },
       { sessionId: 'run' },
     ])
@@ -75,7 +75,7 @@ describe('relatedSessionIdsOf', () => {
       binds: [{ kind: 'session' as const, sessionId: 'bound' }, { kind: 'workspace' as const, workspaceId: 'w' }],
       removedSessions: ['bound', 'link-1'],
     }
-    expect(relatedSessionIdsOf(task, ['link-1', 'link-2'])).toEqual([
+    expect(relatedSessionIdsOf(task, ['link-1', 'link-2'], undefined)).toEqual([
       { sessionId: 'run' },
       { sessionId: 'link-2' },
     ])
@@ -83,11 +83,23 @@ describe('relatedSessionIdsOf', () => {
 
   it('appends the injected linked ids (workspace members) after the rounds, de-duplicated', () => {
     const task = taskWith([{ sessionId: 'run' }])
-    expect(relatedSessionIdsOf(task, ['link-1', 'run', 'link-2'])).toEqual([
+    expect(relatedSessionIdsOf(task, ['link-1', 'run', 'link-2'], undefined)).toEqual([
       { sessionId: 'run' },
       { sessionId: 'link-1' },
       { sessionId: 'link-2' },
     ])
+  })
+
+  it('存在性判决对每个来源一视同仁，而且必须由调用点写出来', () => {
+    // 读者的报告：「删掉或归档了一些会话之后，卡片上的会话数比里面实际的多」，而「等你处理」
+    // 也会为一条已经不存在的会话一直亮着。根因是同一个问题有六处各自回答、几处**忘了回答**——
+    // 所以第三个参数从可选变成必填：忘掉它不再编译得过，而「看不见」仍然可以显式写成 `undefined`
+    // （那时不过滤：看不见 ≠ 不存在）。
+    const task = taskWith([{ sessionId: 'run' }])
+    const present = (id: string): boolean => id !== 'run'
+    expect(relatedSessionIdsOf(task, undefined, present), '不在了的会话仍被算作相关').toEqual([])
+    expect(relatedSessionIdsOf(task, undefined, undefined), '「看不见」被当成了「不存在」').toEqual([{ sessionId: 'run' }])
+    expect(relatedSessionIdsOf(task, ['link-1'], present)).toEqual([{ sessionId: 'link-1' }])
   })
 })
 
