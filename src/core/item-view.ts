@@ -100,8 +100,8 @@ export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts'
 export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts'
 
 // ── item-navigate ──────────────────────────────────────────────────────────
-export { itemPageOf, planItemNavigation } from './item-navigate.ts'
-export type { ItemNavigation, ItemNavigationRefusal } from './item-navigate.ts'
+export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts'
+export type { ItemNavigation, ItemNavigationRefusal, ItemPageId } from './item-navigate.ts'
 
 // ── item-ask ───────────────────────────────────────────────────────────────
 export { itemAskText, planItemAsk } from './item-ask.ts'
@@ -119,6 +119,3 @@ export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts'
 export { triageLinesOf, allTriageLinesOf } from './item-triage.ts'
 export type { TriageLine, TriageSeverity } from './item-triage.ts'
 
-// ── item-counts ────────────────────────────────────────────────────────────
-export { ITEM_PAGES, itemGroupCountsOf, itemInsightOf, itemPageCountsOf } from './item-counts.ts'
-export type { ItemInsight, ItemPageCounts, ItemPageId } from './item-counts.ts'

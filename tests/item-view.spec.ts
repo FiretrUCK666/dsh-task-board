@@ -27,10 +27,7 @@ import {
   datePostureOf,
   isAgendaItem,
   isInboxItem,
-  itemGroupCountsOf,
-  itemInsightOf,
   itemMatches,
-  itemPageCountsOf,
   itemRefOf,
   itemRowViewOf,
   itemSlicesOf,
@@ -47,6 +44,7 @@ import {
 } from '../src/core/item-view.ts'
 import { itemDateConflict, isItemRecordShape } from '../src/core/item.ts'
 import { compareItemOrder } from '../src/core/items-doc.ts'
+import type { TaskStatus } from '../src/core/tasks.ts'
 
 const T0 = new Date(2026, 8, 29, 10, 0, 0).getTime()
 const DAY = 86_400_000
@@ -59,7 +57,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -73,8 +71,8 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
   }
 }
 
-/** The context a page judges rows against: a fixed clock, nothing running. */
-const ctx = () => ({ ...itemMatchContextOf(T0), running: new Map<string, boolean>() })
+/** The context a page judges rows against: a fixed clock, no board in front of it. */
+const ctx = () => ({ ...itemMatchContextOf(T0), cards: new Map<string, TaskStatus>() })
 
 describe('the row names itself', () => {
   it('speaks the document-minted number', () => {
@@ -114,7 +112,7 @@ describe('the three dates are three different promises', () => {
   it('reports both dates on a row that carries both', () => {
     // The hard date decides the VERDICT; the soft one is still readable, so a
     // row never says half of what the reader set.
-    const view = itemRowViewOf(row({ dueAt: T0 - 3 * DAY, hardDueAt: T0 - 1 * DAY }), { now: T0, running: new Map() })
+    const view = itemRowViewOf(row({ dueAt: T0 - 3 * DAY, hardDueAt: T0 - 1 * DAY }), { now: T0, cards: new Map() })
     expect(view.posture.kind).toBe('hardOverdue')
     expect(view.soft.overdue).toBe(true)
   })
@@ -157,8 +155,14 @@ describe('neglect has exemptions, and a ceiling', () => {
     expect(staleDaysOf(row({ startsAfter: T0 + DAY, updatedAt: T0 - 90 * DAY }), T0)).toBeUndefined()
   })
 
-  it('exempts a blocked row — it CANNOT be touched either', () => {
-    expect(staleDaysOf(row({ status: 'blocked', updatedAt: T0 - 90 * DAY }), T0)).toBeUndefined()
+  it('exempts a row whose start has not arrived — it CANNOT be touched either', () => {
+    expect(staleDaysOf(row({ status: 'todo', startsAfter: T0 + 3 * DAY, updatedAt: T0 - 90 * DAY }), T0)).toBeUndefined()
+  })
+
+  it('does NOT exempt a row merely because it is not done', () => {
+    /* 「受阻」给过第二条豁免，而那一档没有了。留下来的这一条是**日期**给的：一行还没到
+       能动的日子，责怪它不动是错的；而一行只是「还没做」——不，那正是这一列要说的事。 */
+    expect(staleDaysOf(row({ status: 'todo', updatedAt: T0 - 20 * DAY }), T0)).toBe(20)
   })
 
   it('stops reporting past the ceiling, so the signal cannot become a guilt engine', () => {
@@ -219,9 +223,17 @@ describe('the query grammar', () => {
   it('reads a status by its ENUM value and never by its display word', () => {
     // A filter written against a label stops matching the moment the label is
     // reworded; one written against the value survives every rename.
+    //
+    // **值也是看板的值**（`ALL_STATUSES`），词是它自己的（`board.status.*`）——两者不
+    // 同源，所以 `status:todo` 与 `status:待办` 的差别不是一个翻译问题：前者是这一行现在
+    // 在哪一栏，后者只会被当成一个普通词去正文里找。
     const target = row()
-    expect(itemMatches(target, parseItemQuery('status:open'), ctx())).toBe(true)
+    expect(itemMatches(target, parseItemQuery('status:todo'), ctx())).toBe(true)
     expect(itemMatches(target, parseItemQuery('status:待办'), ctx())).toBe(false)
+    // 而看板那五栏每一个词都认：挂卡的行走在哪一栏由那张卡回答，所以要能按它筛。
+    const running = { ...ctx(), cards: new Map<string, TaskStatus>([['t-1', 'review']]) }
+    expect(itemMatches(row({ taskId: 't-1' }), parseItemQuery('status:review'), running)).toBe(true)
+    expect(itemMatches(row({ taskId: 't-1' }), parseItemQuery('status:todo'), running)).toBe(false)
   })
 
   it('reads `on:` as ONE day, and reads it in the reader LOCAL calendar', () => {
@@ -313,8 +325,8 @@ describe('the query grammar', () => {
 
 describe('grouping and ordering', () => {
   const rows = [
-    row({ id: 'a', ref: 1, status: 'open', title: 'one' }),
-    row({ id: 'b', ref: 2, status: 'blocked', title: 'two' }),
+    row({ id: 'a', ref: 1, status: 'todo', title: 'one' }),
+    row({ id: 'b', ref: 2, status: 'todo', title: 'two' }),
     row({ id: 'c', ref: 3, status: 'done', title: 'three' }),
   ]
 
@@ -406,11 +418,11 @@ describe('the orderings, one case each on the question they exist to answer', ()
     // The case is built so the five document keys are all live, so a reader
     // cannot tell which pair moved.
     const rows = [
-      row({ id: '1', status: 'open', priority: 'low', ref: 9, createdAt: T0 + 4 * DAY, dueAt: T0 + 4 * DAY }),
+      row({ id: '1', status: 'todo', priority: 'low', ref: 9, createdAt: T0 + 4 * DAY, dueAt: T0 + 4 * DAY }),
       row({ id: '2', status: 'done', priority: 'urgent', ref: 1, createdAt: T0 }),
-      row({ id: '3', status: 'blocked', priority: 'high', ref: 5, createdAt: T0 + 2 * DAY, dueAt: T0 - DAY }),
-      row({ id: '4', status: 'open', priority: 'urgent', ref: 3, createdAt: T0 + DAY, dueAt: T0 + DAY }),
-      row({ id: '5', status: 'open', priority: 'low', ref: 7, createdAt: T0 + 3 * DAY, dueAt: T0 + 3 * DAY }),
+      row({ id: '3', status: 'todo', priority: 'high', ref: 5, createdAt: T0 + 2 * DAY, dueAt: T0 - DAY }),
+      row({ id: '4', status: 'todo', priority: 'urgent', ref: 3, createdAt: T0 + DAY, dueAt: T0 + DAY }),
+      row({ id: '5', status: 'todo', priority: 'low', ref: 7, createdAt: T0 + 3 * DAY, dueAt: T0 + 3 * DAY }),
     ]
     const ordered = sortItemsOf(rows, 'sequence')
     for (const a of rows) {
@@ -684,10 +696,14 @@ describe('the triage strip', () => {
 
   it('every line carries the rows it counted, so the jump shows the same set', () => {
     const behind = row({ id: 'b', dueAt: T0 - DAY })
-    const blocked = row({ id: 'c', status: 'blocked' })
-    const lines = triageLinesOf([behind, blocked], T0)
+    const stale = row({ id: 'c', updatedAt: T0 - 30 * DAY })
+    const lines = triageLinesOf([behind, stale], T0)
     expect(lines.find(l => l.id === 'behind')?.items.map(i => i.id)).toEqual(['b'])
-    expect(lines.find(l => l.id === 'blocked')?.items.map(i => i.id)).toEqual(['c'])
+    expect(lines.find(l => l.id === 'stale')?.items.map(i => i.id)).toEqual(['c'])
+    /* 「受阻」那一行删掉了：它数的是一行自己标的那个状态，而那个状态本来就只有清单有
+       ——看板五栏里没有它。剩下三行数的都是**日期与疏于照看**，而那是这一页上唯一能替
+       读者说「还不能动」的东西。 */
+    expect(lines.map(l => l.id)).not.toContain('blocked')
   })
 
   it('never nags about finished work', () => {
@@ -707,42 +723,21 @@ describe('the page set is a closed constant', () => {
   })
 })
 
-describe('the numbers on the rail are facts about the DOCUMENT', () => {
+/* 这一节原来钉的是「每一页各有多少行」（`itemPageCountsOf`，三种页面各一个数）。
+ * 页轨那三个数今天由**左栏自己**数它那几行（`itemRailGroupsOf` 的每个条目就是它自己那组
+ * 行数），所以那条契约住在 `item-rail.spec.ts`：一个数只有与它下面那份清单同一个谓词
+ * 算出来才成立，而这里那份「页面计数」已经没有任何界面在读。 */
+
+describe('the derived status is read, never re-decided outside item-view', () => {
   const finished = row({ id: 'f', status: 'done' })
   const unfiled = row({ id: 'u' })
   const dated = row({ id: 'd', dueAt: T0 + DAY })
 
-  it('the list page counts everything, finished work included', () => {
-    // Completion is a switch INSIDE the list, never a fourth page. A rail that
-    // quietly stopped counting the rows a reader finished would be a second,
-    // invisible 「已完成」 page.
-    expect(itemPageCountsOf([finished, unfiled, dated]).list).toBe(3)
-  })
-
-  it('the agenda counts what the agenda holds', () => {
-    const counts = itemPageCountsOf([finished, unfiled, dated])
-    expect(counts.schedule, 'an unfiled capture has no date, so it is not on the agenda — and not in its "no date" tray either').toBe(1)
-  })
-
-  it('and the rail agrees with the pages it counts', () => {
-    // The failure this exists for is a SECOND opinion: the rail is a map of
-    // the document, so its number has to be the number of rows the page
-    // actually holds rather than a re-derivation that can drift.
-    const rows = [finished, unfiled, dated, row({ id: 'x', status: 'blocked' })]
-    const counts = itemPageCountsOf(rows)
-    const ctx = { ...itemMatchContextOf(T0), running: new Map<string, boolean>() }
+  it('the agenda holds exactly the rows the agenda predicate admits', () => {
+    const rows = [finished, unfiled, dated, row({ id: 'x', status: 'todo' })]
+    const ctx = { ...itemMatchContextOf(T0), cards: new Map<string, TaskStatus>() }
     const onAgenda = scheduleBucketsOf(rows, EMPTY_ITEM_QUERY, ctx, 'due').flatMap(b => b.items.map(i => i.id))
-    expect(counts.schedule).toBe(onAgenda.length)
-    /* 清单 IS EVERY ROW. 收件 used to be counted here too — as `isInboxItem` — and
-       the predicate is still real (the grammar and the triage strip read it), but
-       it is not a PAGE any more, so there is no rail cell to agree with. What the
-       assertion still has to hold is the one that mattered: the list page counts
-       the whole document, finished rows included. */
-    expect(counts.list).toBe(rows.length)
-  })
-
-  it('an empty document reads zero on both, and does not answer one of them', () => {
-    expect(itemPageCountsOf([])).toEqual({ list: 0, schedule: 0 })
+    expect(onAgenda, 'an unfiled capture has no date, so it is on no agenda day').toEqual(['d'])
   })
 
   it('THE MEMBERSHIP, STATED ONCE: a capture is unfiled, and is on no agenda at all', () => {
@@ -780,115 +775,12 @@ describe('the numbers on the rail are facts about the DOCUMENT', () => {
   })
 })
 
-describe('the four group counts are four, whatever the rows happen to be', () => {
-  it('always returns every key, all four, even for an empty document', () => {
-    // A header that renders only the groups it has rows for is a header that
-    // hides the map of the list, and a pane's empty state that counts
-    // differently from the header above it is the same defect in a second
-    // place. The shape being a closed Record is the model's way of saying that
-    // no surface may drop one.
-    expect(Object.keys(itemGroupCountsOf([], new Map())).sort()).toEqual([...ITEM_STATUS_ORDER].sort())
-    expect(itemGroupCountsOf([], new Map())).toEqual({ inProgress: 0, open: 0, blocked: 0, done: 0 })
-  })
-
-  it('a row hanging off a running card counts as 进行中, and off an idle one as 待办', () => {
-    const linked = row({ id: 'l', taskId: 'card-1' })
-    expect(itemGroupCountsOf([linked], new Map([['card-1', true]]))).toEqual({ inProgress: 1, open: 0, blocked: 0, done: 0 })
-    expect(itemGroupCountsOf([linked], new Map([['card-1', false]]))).toEqual({ inProgress: 0, open: 1, blocked: 0, done: 0 })
-  })
-
-  it('a caller with no board in front of it is told nothing is running, rather than being guessed at', () => {
-    // A query answer and a dry run pass an empty map. That must make 进行中
-    // zero — a row that is quietly running must not be counted as 待办, and must
-    // never be counted as 进行中 on a host that cannot see the session.
-    const linked = row({ id: 'l', taskId: 'card-1' })
-    expect(itemGroupCountsOf([linked], new Map()).inProgress).toBe(0)
-  })
-
-  it('the four add up to the document, so the header and the buckets cannot disagree', () => {
-    const rows = [
-      row({ id: 'a' }), row({ id: 'b', status: 'blocked' }), row({ id: 'c', status: 'done' }),
-      row({ id: 'd', taskId: 'card-1' }),
-    ]
-    const counts = itemGroupCountsOf(rows, new Map([['card-1', true]]))
-    expect(Object.values(counts).reduce((sum, n) => sum + n, 0)).toBe(rows.length)
-  })
-})
-
-describe('the overview answers two questions, and its numbers cannot add up to a lie', () => {
-  const live = row({ id: 'a' })
-  const late = row({ id: 'b', dueAt: T0 - 2 * DAY })
-  const finished = row({ id: 'f', status: 'done', dueAt: T0 - 30 * DAY })
-
-  it('the denominator is what is left to do, and a list with nothing left has no share to give', () => {
-    expect(itemInsightOf([live, late, finished], T0).total).toBe(2)
-    expect(itemInsightOf([], T0)).toEqual({ total: 0, overdue: 0 })
-  })
-
-  it('逾期 means the two late buckets and nothing else, so a gated row is nagged about by neither', () => {
-    // A gated row is waiting on a date the reader set; saying it is overdue
-    // nags about work that cannot be done today.
-    const gated = row({ id: 'g', startsAfter: T0 + 9 * DAY, dueAt: T0 + 20 * DAY })
-    expect(itemInsightOf([gated], T0)).toEqual({ total: 1, overdue: 0 })
-    expect(itemInsightOf([live, late], T0)).toEqual({ total: 2, overdue: 1 })
-  })
-
-  it('it counts a MISSED HARD deadline too, not only a slipped plan', () => {
-    expect(itemInsightOf([row({ id: 'h', hardDueAt: T0 - DAY })], T0)).toEqual({ total: 1, overdue: 1 })
-  })
-
-  it('finished work is in neither number, so 逾期 is a subset of total and the pair cannot disagree', () => {
-    // The retired strip printed five tiles over one denominator, and four of them
-    // were a CROSS-CUT of the group counts rather than a decomposition of the
-    // total — so the tiles could never have summed to the number printed under
-    // them, and no screenshot can show that. The shape that survives is the one
-    // where the arithmetic is checkable by eye: both numbers count live rows,
-    // and late rows are a subset of live rows by construction.
-    const rows = [live, late, finished, row({ id: 'd', hardDueAt: T0 - 3 * DAY })]
-    const insight = itemInsightOf(rows, T0)
-    expect(insight.total).toBe(3)
-    expect(insight.overdue).toBe(2)
-    expect(insight.overdue, 'a subset larger than its set is the cross-cut defect in its purest form').toBeLessThanOrEqual(insight.total)
-    // And the four group heads still add up to the whole document, which is the
-    // other place a reader can check the numbers they are shown.
-    const counts = itemGroupCountsOf(rows, new Map())
-    expect(Object.values(counts).reduce((sum, n) => sum + n, 0)).toBe(rows.length)
-    expect(counts.done).toBe(1)
-  })
-
-  it('the model\'s query and the overview count the same overdue rows', () => {
-    // One predicate, two readers: the tile's number and the filter it writes are
-    // `has:overdue`, and that flag is judged with the same scope the count uses.
-    const rows = [live, late, row({ id: 'h', hardDueAt: T0 - DAY }), finished, row({ id: 'u', startsAfter: T0 + 9 * DAY })]
-    const read = { ...itemMatchContextOf(T0), running: new Map<string, boolean>() }
-    const jumped = rows.filter(item => itemMatches(item, parseItemQuery('has:overdue'), read))
-    expect(jumped.map(item => item.id).sort()).toEqual(['b', 'h'])
-    expect(jumped).toHaveLength(itemInsightOf(rows, T0).overdue)
-  })
-
-  it('THE PROBE BITES: a cross-cut is not a decomposition, and no test can see that', () => {
-    // The failure this whole block exists for, restated as a shape. Five tiles
-    // over one denominator read as a decomposition, and each of them is
-    // individually true — which is exactly why nothing catches it. Only the sum
-    // is wrong, and only a reader mentally adding five numbers would notice, which
-    // is not a thing a person does with a glance.
-    const total = 5
-    const groupHeads = [2, 1, 1, 1]
-    const crossCut = [2, 3, 3, 3]
-    const tiles = [...groupHeads, ...crossCut]
-    expect(tiles.every(n => n >= 0 && n <= total), 'each tile is individually true — that is what makes the shape dangerous').toBe(true)
-    expect(groupHeads.reduce((sum, n) => sum + n, 0), 'the four group heads DO decompose the document').toBe(total)
-    expect(tiles.reduce((sum, n) => sum + n, 0), 'and the five tiles cannot, so the caption underneath them was a lie').not.toBe(total)
-    // The surviving pair has no such pretence: it is a SUBSET relation, which is
-    // a shape a test can assert, rather than a sum nobody can.
-    expect(crossCut[0], 'overdue is a subset of the live rows, never larger than them').toBeLessThanOrEqual(total)
-  })
-
-  it('the retained pair is exactly the pair with no other home', () => {
-    // 未完成 is the rail's `list` cell minus the finished rows and 逾期 is the
-    // agenda's two late buckets. Nothing else the strip used to print is still
-    // asked for anywhere, so nothing else is computed on every render.
-    const insight = itemInsightOf([live, late, finished], T0) as unknown as Record<string, unknown>
-    expect(Object.keys(insight).sort()).toEqual(['overdue', 'total'])
-  })
-})
+/* 这一节原来还钉着三个计数函数（`itemGroupCountsOf` / `itemInsightOf` /
+ * `itemPageCountsOf`）：四组计数、两个概览数、每页一个数。**它们今天一个读者都没有**
+ * ——分组头、概览条、页轨都在界面收掉那些东西时一起走了，留下的只有「定义在、
+ * re-export 在、屏上一个数都不读」。给死代码写测试不是契约，是让死代码看起来被需要，
+ * 所以函数与用例一起删。
+ *
+ * 那几段推理里仍然成立的两条搬去了 `DESIGN.md`：**概览不许把「交叠」画成「分解」**
+ * （逾期是未完成里的一个子集，两张卡永远加不出底下的总数），以及**一个数必须与它下面
+ * 那份清单同一个谓词算出来**。左栏的每一组数字今天仍然是它自己那几行数的行数。 */

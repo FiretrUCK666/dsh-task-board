@@ -18,6 +18,7 @@
 import type { ItemRecord } from './item.ts';
 import { type ItemSort } from './item-sort.ts';
 import { type ItemMatchContext, type ItemQuery } from './item-query.ts';
+import type { TaskStatus } from './tasks.ts';
 /**
  * The agenda's buckets, in the order they read.
  *
@@ -60,5 +61,5 @@ export declare function scheduleBucketOf(item: ItemRecord, now: number): Schedul
  * @returns one entry per bucket, empty buckets included.
  */
 export declare function scheduleBucketsOf(items: readonly ItemRecord[], query: ItemQuery, ctx: ItemMatchContext & {
-    readonly running: ReadonlyMap<string, boolean>;
+    readonly cards: ReadonlyMap<string, TaskStatus>;
 }, sort: ItemSort): ScheduleBucket[];

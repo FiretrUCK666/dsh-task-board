@@ -1,5 +1,6 @@
 import type { ItemStep } from '../../core/item.ts';
 import type { ItemRowView } from '../../core/item-view.ts';
+import { type TaskStatus } from '../../core/tasks.ts';
 import type { ItemPatch } from '../../core/item-transitions.ts';
 export interface ItemDetailProps {
     /**
@@ -72,6 +73,14 @@ export interface ItemDetailProps {
      * accident: the type is derived from the same verdict table the writer uses.
      */
     readonly onEdit: (edit: ItemPatch) => void;
+    /**
+     * Move the card this row hangs off to another column.
+     *
+     * 挂着卡的行，状态**不属于它自己**：它在哪一栏是那张卡的事实，所以这一格的写入口是
+     * 看板的动作（`task.move`），不是清单的补丁。`undefined` 表示这一屏没有看板可写——
+     * 那时按钮不画（一个按下去什么都不会发生的控件，比一个不在的控件糟）。
+     */
+    readonly onMoveCard?: (status: TaskStatus) => void;
     /**
      * Write the WHOLE checklist back, through the panel's one writer.
      *

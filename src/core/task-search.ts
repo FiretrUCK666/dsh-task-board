@@ -23,27 +23,27 @@
  * grammar for callers that already have an `ItemRecord`.
  */
 import type { ItemRecord } from './item.ts'
+import type { TaskStatus } from './tasks.ts'
 import { itemMatchContextOf, itemMatches, parseItemQuery, type ItemMatchContext } from './item-view.ts'
 
 /**
  * The reading clock a checklist filter is judged against.
  *
- * `running` is the board's live state keyed by card id, and the host's query
- * passes it for one reason: `status:inProgress` is a filter the interface offers
- * and the model must be able to reproduce, row for row. A host that hands over no
- * live state does not get a wrong answer for that one status — it gets an empty
- * one, which is the honest shape of "I cannot see whether it is running".
+ * `cards` 是看板的栏（按卡片 id），宿主查询时把它交进来只有一个理由：挂卡的行走在
+ * 哪一栏读的是那张卡，而界面能筛的每一个 `status:` 词，模型都必须能一行一行地复现。
+ * 不交这张表的宿主不会得到错的答案——它得到的是那些行**自己的**两个值，而那正是
+ * 「我看不见那张卡」的诚实形状（不是猜一栏，也不是把它们算成待办）。
  *
  * @param now - the reading clock.
  * @param staleDays - the neglect threshold.
- * @param running - the board's live state, when the caller has one.
+ * @param cards - the board's columns, when the caller has one.
  */
 export function itemSearchContext(
   now: number,
   staleDays?: number,
-  running?: ReadonlyMap<string, boolean>,
+  cards?: ReadonlyMap<string, TaskStatus>,
 ): ItemMatchContext {
-  return itemMatchContextOf(now, staleDays, running)
+  return itemMatchContextOf(now, staleDays, cards)
 }
 
 /**
@@ -57,7 +57,7 @@ export function itemSearchContext(
  * The qualifiers are the model's own ENUM VALUES, never its display words, and
  * that is structural rather than cosmetic: a filter saved against a label
  * silently stops matching the moment the label is reworded, so the grammar
- * parses `status:open` and never `status:待办`.
+ * parses `status:todo` and never `status:待办`.
  *
  * @param item - the row.
  * @param query - what is in the search box.

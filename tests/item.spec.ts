@@ -13,6 +13,7 @@ import {
   ITEM_FIELDS,
   ITEM_PRIORITIES,
   ITEM_STATUSES,
+  ITEM_STATUS_VIEWS,
   itemProgressOf,
   itemStatusOf,
   itemTitleOf,
@@ -21,6 +22,7 @@ import {
   type ItemRecord,
   type ItemStatus,
 } from '../src/core/item.ts'
+import { ALL_STATUSES } from '../src/core/tasks.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -33,7 +35,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: 'the body',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -108,23 +110,31 @@ describe('itemProgressOf', () => {
 })
 
 describe('itemStatusOf', () => {
-  it('derives 进行中 from the LINKED card, never from the row itself', () => {
+  it('reads a mounted row as wherever its card is — the whole column, not just 「在跑」', () => {
     const linked = item({ taskId: 't-1' })
-    expect(itemStatusOf(linked, true)).toBe('inProgress')
-    expect(itemStatusOf(linked, false)).toBe('open')
+    expect(itemStatusOf(linked, 'running')).toBe('running')
+    expect(itemStatusOf(linked, 'review')).toBe('review')
+    expect(itemStatusOf(linked, 'backlog')).toBe('backlog')
   })
 
-  it('never says 进行中 for a row with no card, however the card reads', () => {
-    expect(itemStatusOf(item(), true)).toBe('open')
+  it('falls back to the row itself when the board cannot be read', () => {
+    // 看不见看板时它说的是自己的字段——不猜一栏，也不把「看不见」画成「进行中」。
+    expect(itemStatusOf(item({ taskId: 't-1' }), undefined)).toBe('todo')
   })
 
   it('lets a settled row win over the card (a done item is done while its card reruns)', () => {
-    expect(itemStatusOf(item({ status: 'done', taskId: 't-1' }), true)).toBe('done')
-    expect(itemStatusOf(item({ status: 'blocked', taskId: 't-1' }), true)).toBe('blocked')
+    expect(itemStatusOf(item({ status: 'done', taskId: 't-1' }), 'running')).toBe('done')
+    // 而这一行自己写的「还没做」**不**压过卡片的栏：挂上卡之后它在哪一栏是卡的事实。
+    expect(itemStatusOf(item({ status: 'todo', taskId: 't-1' }), 'review')).toBe('review')
   })
 
-  it('stores only the three settled statuses — 进行中 is not one of them', () => {
-    expect(ITEM_STATUSES).toEqual(['open', 'blocked', 'done'])
+  it('stores only the two the checklist itself owns, and they are two of the board columns', () => {
+    expect(ITEM_STATUSES).toEqual(['todo', 'done'])
+    for (const status of ITEM_STATUSES) expect(ITEM_STATUS_VIEWS).toContain(status)
+  })
+
+  it('shows every column the board has, in the board order — one vocabulary, imported', () => {
+    expect(ITEM_STATUS_VIEWS).toEqual([...ALL_STATUSES])
   })
 })
 
@@ -151,7 +161,7 @@ describe('parseItems', () => {
     body: 'B',
     notes: 'N',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     origin: { source: 'human', at: T0 },
@@ -182,15 +192,20 @@ describe('parseItems', () => {
     expect(parseItems(text, counter()).map(row => row.id)).toEqual(['ok'])
   })
 
-  it('repairs an unknown status or priority into the neutral tier, never dropping the row', () => {
-    const [row] = parseItems(raw({ status: 'inProgress', priority: 'urgent-ish' }), counter())
-    expect(row.status).toBe('open')
-    expect(row.priority).toBe('normal')
+  it('reads an old or unknown status as 「还没做」, never dropping the row', () => {
+    /* 两个**老值**都要读成「还没做」：`open` 是这一版之前的名字，`blocked` 是这一版删掉的
+       那一档（受阻的行还在清单里，只是它现在说「还没做」）。未知值与下一版的词落在这里，
+       理由同一条：行是读者写下的东西，枚举是我们的事。 */
+    for (const legacy of ['inProgress', 'open', 'blocked', 'whatever']) {
+      const [row] = parseItems(raw({ status: legacy, priority: 'urgent-ish' }), counter())
+      expect(row.status, `「${legacy}」 should read as 还没做`).toBe('todo')
+      expect(row.priority).toBe('normal')
+    }
   })
 
   it('keeps a status and priority the model does know', () => {
-    const [row] = parseItems(raw({ status: 'blocked', priority: 'urgent' }), counter())
-    expect(row.status).toBe('blocked')
+    const [row] = parseItems(raw({ status: 'done', priority: 'urgent' }), counter())
+    expect(row.status).toBe('done')
     expect(row.priority).toBe('urgent')
     expect(ITEM_PRIORITIES).toEqual(['low', 'normal', 'high', 'urgent'])
   })
@@ -274,7 +289,7 @@ describe('parseItems', () => {
       const [row] = parseItems(raw({ origin: { source, at: T0 } }), counter())
       expect(row.origin.source).toBe(source)
     }
-    const [row] = parseItems(raw({ status: 'open' as ItemStatus, origin: undefined }), counter())
+    const [row] = parseItems(raw({ status: 'todo' as ItemStatus, origin: undefined }), counter())
     expect(row).toBeUndefined()
   })
 })

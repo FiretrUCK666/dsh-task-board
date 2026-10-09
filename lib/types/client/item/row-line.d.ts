@@ -1,4 +1,6 @@
 import type { ItemRowView } from '../../core/item-view.ts';
+import { type TaskStatus } from '../../core/tasks.ts';
+import { type ItemStatus } from '../../core/item.ts';
 export interface ItemRowLineProps {
     readonly view: ItemRowView;
     /** THE PANEL'S CLOCK, passed in rather than read. Two clocks on one row is a row
@@ -36,7 +38,13 @@ export interface ItemRowLineProps {
     readonly onAsk: () => void;
     readonly asking: boolean;
     readonly receipt?: string;
-    readonly onMark: (status: 'open' | 'blocked' | 'done') => void;
+    /** Write this row's OWN status field — only offered while it has no card. */
+    readonly onMark: (status: ItemStatus) => void;
+    /**
+     * Move the card this row hangs off. `undefined` when there is no board to write,
+     * in which case the menu's status entries are absent rather than dead.
+     */
+    readonly onMoveCard?: (status: TaskStatus) => void;
     /** Open the checklist and put the caret in its field. Three things at once: close
      *  the menu, select the row, expand it — picking without expanding leaves the
      *  reader looking at a selected row with no checklist on screen. */

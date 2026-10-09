@@ -25,6 +25,7 @@ import type { ReactNode } from 'react';
 import type { ItemRecord } from '../../../core/item.ts';
 import type { ItemSort } from '../../../core/item-sort.ts';
 import type { ItemQuery, ItemMatchContext } from '../../../core/item-view.ts';
+import type { TaskStatus } from '../../../core/tasks.ts';
 import type { ItemViewPrefs } from '../view-prefs.ts';
 import type { ItemRowLineProps } from '../row-line.tsx';
 /** What every page body receives. */
@@ -33,8 +34,8 @@ export interface ItemPageProps {
     readonly items: readonly ItemRecord[];
     /** The reading clock, passed down so two rows cannot disagree about a day. */
     readonly now: number;
-    /** Card id → whether that card is running, right now. */
-    readonly running: ReadonlyMap<string, boolean>;
+    /** 看板的栏，按卡片 id 索引——挂卡的行在哪一栏由它回答。 */
+    readonly cards: ReadonlyMap<string, TaskStatus>;
     /** The parsed search box. The ONLY filter on this surface. */
     readonly query: ItemQuery;
     /**
@@ -48,7 +49,7 @@ export interface ItemPageProps {
      * the same morning.
      */
     readonly matchCtx: ItemMatchContext & {
-        readonly running: ReadonlyMap<string, boolean>;
+        readonly cards: ReadonlyMap<string, TaskStatus>;
     };
     /** The view preferences, and the one way to change them. */
     readonly prefs: ItemViewPrefs;

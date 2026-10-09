@@ -37,7 +37,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
-import { t } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
+import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
+import { ITEM_STATUSES, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { CardMark, PriorityMark, StatusMark } from './marks.tsx'
 import { formatItemDate } from './model.ts'
@@ -191,7 +193,13 @@ export interface ItemRowLineProps {
   readonly onAsk: () => void
   readonly asking: boolean
   readonly receipt?: string
-  readonly onMark: (status: 'open' | 'blocked' | 'done') => void
+  /** Write this row's OWN status field — only offered while it has no card. */
+  readonly onMark: (status: ItemStatus) => void
+  /**
+   * Move the card this row hangs off. `undefined` when there is no board to write,
+   * in which case the menu's status entries are absent rather than dead.
+   */
+  readonly onMoveCard?: (status: TaskStatus) => void
   /** Open the checklist and put the caret in its field. Three things at once: close
    *  the menu, select the row, expand it — picking without expanding leaves the
    *  reader looking at a selected row with no checklist on screen. */
@@ -455,13 +463,23 @@ export function ItemRowLine(props: ItemRowLineProps) {
               : []),
             { key: 'steps', label: t('item.menu.steps'), onPick: props.onSteps },
             { key: 'rename', label: t('item.menu.rename'), onPick: startEditing },
-            /* ONLY THE STATES THIS ROW IS NOT IN. Offering 「标为待办」 on a row that is
-             * already 待办 is a button that cannot do anything. The comparison is
-             * against the STORED status, not the derived one — 「进行中」 is not a
-             * state a reader can put a row into, so it is never offered. */
-            ...(['open', 'blocked', 'done'] as const)
-              .filter(mark => mark !== item.status)
-              .map(mark => ({ key: mark, label: t(STATUS_LABEL[mark]), onPick: () => props.onMark(mark) })),
+            /* **挂卡的行不在这里改状态，改的是那张卡。** 菜单项是看板自己的动词
+             * （`status.move.*`），与看板详情里那一排同一个写法、同一个判据（已经在那一栏
+             * 的不给、跑着的时候不给）。没有卡的行就是清单自己的两个值。
+             *
+             * 只有「这一行现在不在的那个状态」会被列出：给一条已经是待办的行再列一枚
+             * 「标为待办」是一个做不了任何事的按钮。挂卡那一支不筛——与看板一样，三个动作
+             * 常驻、当前那个禁用，因为**一个长度随隐形事实变化的菜单，是没人学得会的菜单**。 */
+            ...(item.taskId === undefined
+              ? ITEM_STATUSES
+                .filter(mark => mark !== item.status)
+                .map(mark => ({ key: mark, label: t(STATUS_LABEL[mark]), onPick: () => props.onMark(mark) }))
+              : MANUAL_STATUSES.map(mark => ({
+                key: mark,
+                label: t(`status.move.${mark}` as TaskBoardKey),
+                disabled: props.view.status === mark || props.running === true || undefined,
+                onPick: () => props.onMoveCard?.(mark),
+              }))),
             /* HOLDING ONE ROW WITHOUT A MODIFIER, because the pickbox that used to do
              * this was a column on every row for one checkbox. The entry says which
              * state it is in, because a menu whose labels flip is a menu nobody can

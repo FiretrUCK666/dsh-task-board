@@ -46,7 +46,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -289,15 +289,18 @@ describe('the authorship fingerprint', () => {
 
 describe('the order is a pure function of the document', () => {
   it('puts finished rows last, then urgency, then the nearest date, then age', () => {
+    /* **两个存储档，不是三个。** 这一条原来把一行标着「受阻」排在完成之前——那一档已经
+       没有了（清单自己只存还没做 / 做完了，其余三栏是看板的事实）。秩表也跟着从三档变
+       两档，所以这一条现在钉的是「做完的永远在最后」这一条律本身。 */
     const rows = [
       row({ id: 'done', ref: 1, status: 'done', priority: 'urgent' }),
       row({ id: 'low', ref: 2, priority: 'low' }),
       row({ id: 'far', ref: 3, priority: 'normal', dueAt: T0 + 900 }),
       row({ id: 'soon', ref: 4, priority: 'normal', dueAt: T0 + 10 }),
       row({ id: 'urgent', ref: 5, priority: 'urgent' }),
-      row({ id: 'blocked', ref: 6, status: 'blocked' }),
+      row({ id: 'todo', ref: 6, status: 'todo' }),
     ]
-    expect(sortItems(rows).map(item => item.id)).toEqual(['urgent', 'soon', 'far', 'low', 'blocked', 'done'])
+    expect(sortItems(rows).map(item => item.id)).toEqual(['urgent', 'soon', 'far', 'todo', 'low', 'done'])
   })
 
   it('is total, so an unset date never makes the comparison meaningless', () => {

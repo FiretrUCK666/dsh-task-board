@@ -20,6 +20,7 @@ import type { ItemRecord, ItemStatusView } from './item.ts';
 import { type DatePosture, type SoftPosture } from './item-dates.ts';
 import { type ItemSort } from './item-sort.ts';
 import { type ItemMatchContext, type ItemQuery } from './item-query.ts';
+import type { TaskStatus } from './tasks.ts';
 /** The short number a row is called by, or the unnumbered placeholder. */
 export interface ItemRef {
     /** `#12`, or `undefined` while the document has not numbered it yet. */
@@ -49,7 +50,7 @@ export interface ItemRowView {
     readonly ref: ItemRef;
     /** Never blank: an untitled row borrows its body's first line. */
     readonly title: string;
-    /** The derived status, in-progress included (a linked running card). */
+    /** 这一行现在站在哪一栏（挂卡读卡、没卡读自己，见 `itemStatusOf`）。 */
     readonly status: ItemStatusView;
     /** The one date verdict. `undefined` when the row has no steps. */
     readonly progress: {
@@ -67,8 +68,8 @@ export interface ItemRowView {
 /** The reading context one row is projected against. */
 export interface ItemRowContext {
     readonly now: number;
-    /** Whether the linked board card is running, keyed by card id. */
-    readonly running: ReadonlyMap<string, boolean>;
+    /** 看板的栏，按卡片 id 索引——一条挂了卡的行在哪一栏由它回答。 */
+    readonly cards: ReadonlyMap<string, TaskStatus>;
 }
 /**
  * Build one row's view.
@@ -105,7 +106,7 @@ export declare const ITEM_STATUS_ORDER: readonly ItemStatusView[];
 export interface ItemSliceOptions {
     readonly query: ItemQuery;
     readonly ctx: ItemMatchContext & {
-        readonly running: ReadonlyMap<string, boolean>;
+        readonly cards: ReadonlyMap<string, TaskStatus>;
     };
     readonly sort: ItemSort;
     /**

@@ -20,6 +20,7 @@ import { DAY_MS, datePostureOf, startOfDay } from './item-dates.ts'
 import { isAgendaItem } from './item-membership.ts'
 import { sortItemsOf, type ItemSort } from './item-sort.ts'
 import { itemMatches, type ItemMatchContext, type ItemQuery } from './item-query.ts'
+import type { TaskStatus } from './tasks.ts'
 
 /**
  * The agenda's buckets, in the order they read.
@@ -101,7 +102,7 @@ export function scheduleBucketOf(item: ItemRecord, now: number): ScheduleBucketI
 export function scheduleBucketsOf(
   items: readonly ItemRecord[],
   query: ItemQuery,
-  ctx: ItemMatchContext & { readonly running: ReadonlyMap<string, boolean> },
+  ctx: ItemMatchContext & { readonly cards: ReadonlyMap<string, TaskStatus> },
   sort: ItemSort,
 ): ScheduleBucket[] {
   const filled = new Map<ScheduleBucketId, ItemRecord[]>(SCHEDULE_BUCKETS.map(id => [id, []]))

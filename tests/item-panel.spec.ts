@@ -49,7 +49,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,

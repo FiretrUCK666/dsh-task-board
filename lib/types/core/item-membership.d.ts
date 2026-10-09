@@ -26,6 +26,7 @@
  * counts is a facet that sends the reader to an empty group.
  */
 import type { ItemRecord, ItemStatusView } from './item.ts';
+import type { TaskStatus } from './tasks.ts';
 /** Whether a row belongs on a working page at all. Finished work is history. */
 export declare function isLiveItem(item: ItemRecord): boolean;
 /**
@@ -64,17 +65,17 @@ export declare function isInboxItem(item: ItemRecord): boolean;
  */
 export declare function isAgendaItem(item: ItemRecord): boolean;
 /**
- * The row's DERIVED status, from the board's live state — the ONE place a row is
- * asked whether it is 进行中.
+ * The row's status AS A SURFACE SHOWS IT — the ONE place that question is answered.
  *
- * Every surface that shows or filters a status goes through here: the row
- * projection, the group counts, the group fill and the query.
+ * **A row that hangs off a card is wherever that card is**; a row with no card (or
+ * one this machine cannot see) is its own two values. Every surface that shows or
+ * filters a status goes through here: the row projection, the rail's counts and
+ * its rows, the group counts, the query, and the model's own query answer.
  *
  * @param item - the row.
- * @param running - the board's live state keyed by card id, or `undefined` when
- *   the caller has no board. A row whose card is not in the map is not running;
- *   a card this host cannot see is `false` here, which is why the live verdict
- *   itself is `unknown` upstream and never arrives as a guess.
- * @returns the stored status, or the derived 进行中.
+ * @param cards - 看板的栏，按卡片 id 索引；`undefined` 表示这个调用者手上没有看板
+ *   （一次干跑、一台看不见引擎的宿主）。那时一条挂了卡的行读的是**它自己**的两个值
+ *   ——它不猜一栏自己看不见的东西，也不把「看不见」说成「待办」。
+ * @returns 那一行现在站在哪一栏。
  */
-export declare function derivedStatusOf(item: ItemRecord, running: ReadonlyMap<string, boolean> | undefined): ItemStatusView;
+export declare function derivedStatusOf(item: ItemRecord, cards: ReadonlyMap<string, TaskStatus> | undefined): ItemStatusView;

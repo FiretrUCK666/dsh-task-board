@@ -36,7 +36,9 @@
  * core already speaks.
  */
 import { isItemQualifierToken, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
+import { ITEM_STATUS_VIEWS } from '../../core/item.ts'
 import type { ItemPriority } from '../../core/item.ts'
+import { STATUS_KEY } from '../board/status.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
 /** The four faces a filter row offers. */
@@ -70,12 +72,14 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
   {
     id: 'status',
     label: 'item.facet.status',
-    values: [
-      { token: 'status:inProgress', key: 'inProgress', label: 'item.group.inProgress' },
-      { token: 'status:open', key: 'open', label: 'item.group.open' },
-      { token: 'status:blocked', key: 'blocked', label: 'item.group.blocked' },
-      { token: 'status:done', key: 'done', label: 'item.group.done' },
-    ],
+    /* **五栏，就是看板那五栏**，词也取自看板那一份（`STATUS_KEY`）：挂卡的行走在
+     * 哪一栏由那张卡回答，没挂卡的行走在清单自己的两个值上。表是派生的（
+     * `ITEM_STATUS_VIEWS`），所以加一栏时这一屏不会漏。 */
+    values: ITEM_STATUS_VIEWS.map(view => ({
+      token: `status:${view}`,
+      key: view,
+      label: STATUS_KEY[view],
+    })),
   },
   {
     id: 'priority',
@@ -128,7 +132,7 @@ function isQualifierToken(token: string): boolean {
  *
  * THIS IS THE WHOLE POINT OF THE FUNCTION, so it is worth being explicit about
  * what it buys. The query is ONE string, and it stays one string: the model reads
- * the same grammar, and a reader who wants it can still type `status:open` into
+ * the same grammar, and a reader who wants it can still type `status:todo` into
  * the box. What changes is only how the page SHOWS it. Before this, every facet
  * press printed its own implementation into a field labelled 「搜索标题、正文、
  * 备注与标签」, so a control showed the reader its source code; now the box holds
@@ -246,8 +250,13 @@ export function dayTokensIn(text: string): string[] {
 }
 
 /**
- * The status facet's values, keyed the way the model names a group. */
-const STATUS_KEYS: ReadonlySet<string> = new Set(['inProgress', 'open', 'blocked', 'done'])
+ * The status facet's values, keyed the way the model names a group.
+ *
+ * **派生，不是抄的**：它原来是四个硬编码字符串（`inProgress`/`open`/`blocked`/`done`）,
+ * 而 `ITEM_STATUS_VIEWS` 就是那张表——加一栏时这里漏一份不会报错，只会让新那一栏的
+ * 芯片**按下去不亮**（查询里有它、判断里没有它）。
+ */
+const STATUS_KEYS: ReadonlySet<string> = new Set<string>(ITEM_STATUS_VIEWS)
 
 /**
  * Whether a facet's value is currently in the query.

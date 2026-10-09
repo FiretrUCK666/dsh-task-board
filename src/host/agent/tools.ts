@@ -388,20 +388,20 @@ function taskDetailRow(task: TaskRecord): TaskDetail {
  * status is the DERIVED one, read through the very function the panel reads, so
  * a query answer and the row on screen cannot disagree about the same row.
  */
-function itemRow(item: ItemRecord, running?: ReadonlyMap<string, boolean>): ItemRow {
+function itemRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>): ItemRow {
   return {
     ref: `#${item.ref}`,
     id: item.id,
     title: itemTitleOf(item),
-    status: derivedStatusOf(item, running),
+    status: derivedStatusOf(item, cards),
     storedStatus: item.status,
     taskId: item.taskId,
   }
 }
 
 /** The same row with everything a reader typed, for `detail: 'full'`. */
-function itemDetailRow(item: ItemRecord, running?: ReadonlyMap<string, boolean>): ItemDetail {
-  const read = itemRow(item, running)
+function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>): ItemDetail {
+  const read = itemRow(item, cards)
   return {
     ...read,
     body: item.body,
@@ -1060,7 +1060,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       // different statuses for the same row.
       changed: {
         tasks: changedTasks.map(taskRow),
-        items: changedItems.map(row => itemRow(row, runningMapOf(deps.sources, doc.tasks))),
+        items: changedItems.map(row => itemRow(row, cardsMapOf(doc.tasks))),
       },
     }),
   }
@@ -1760,22 +1760,21 @@ function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveS
 }
 
 /**
- * The board's live state keyed by card id — the shape every checklist derivation
- * that needs 进行中 asks for.
+ * 看板的栏，按卡片 id 索引 —— 每一个需要「这一行现在在哪一栏」的清单推导都问它。
  *
- * The panel builds the same map from the controller's own `liveStateOf`, and the
- * two are the same map: one derivation, read from whichever side is asking. A
- * card this host cannot see is `false` rather than absent, and absent is what
- * would make a running row read as 待办.
+ * **读的是卡片自己那一栏（`TaskRecord.status`），不再是活性判决。** 旧版这里算的是
+ * `livenessOf(...) === 'running'`，理由是那时「进行中」由卡片的活性派生；现在一条行在
+ * 哪一栏就是卡片所处的栏，而那是卡片自己的字段——于是宿主与面板读**同一个字段**
+ * （面板读 `controller.getSnapshot().tasks[].status`），不再各自算一次「在不在跑」。
+ * 那一版还有一个隐性分叉：面板读 `liveStateOf`、宿主读 `livenessOf`——同名的两件事。
  *
- * @param sources - the live host faces.
  * @param tasks - the cards to read, which is the whole board ledger.
- * @returns card id → whether that card is running right now.
+ * @returns card id → 那一栏。
  */
-function runningMapOf(sources: SessionPostureSources, tasks: readonly TaskRecord[]): Map<string, boolean> {
-  const running = new Map<string, boolean>()
-  for (const task of tasks) running.set(task.id, livenessOf(sources, task) === 'running')
-  return running
+function cardsMapOf(tasks: readonly TaskRecord[]): Map<string, TaskStatus> {
+  const cards = new Map<string, TaskStatus>()
+  for (const task of tasks) cards.set(task.id, task.status)
+  return cards
 }
 
 /** The sentence a caller shows when steps had to be given ids. */
@@ -2127,25 +2126,21 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   // same clock is handed to every row, so one answer cannot disagree with
   // itself about what "stale" or "overdue" means.
   //
-  // The live state goes in with it, and that is not an optimisation: 进行中 is
-  // DERIVED, so without it `status:inProgress` is a filter the interface offers
-  // and this query cannot reproduce — the model would be told "nothing is
-  // running" about a row that is. The map is read through the board's own
-  // derivation (`livenessOf` → `sessionRunningOf`), the same one the card's border
-  // and breathing read, and a session this host cannot see is NOT counted as
-  // running: `unknown` is a real answer, never a guess in the other direction.
-  const itemCtx = itemSearchContext(deps.now(), undefined, runningMapOf(deps.sources, doc.tasks))
-  const running = itemCtx.running
+  // 看板的栏跟着一起进去，而这不是优化：一条挂卡的行「在哪一栏」由那张卡回答，不带上
+  // 它，`status:` 就成了界面给得出、这个查询复现不了的筛子——模型会被告知某一行是
+  // 待办，而它在待审核。表读的是**卡片自己那一栏**，与面板读的是同一个字段。
+  const itemCtx = itemSearchContext(deps.now(), undefined, cardsMapOf(doc.tasks))
+  const cards = itemCtx.cards
   const matchedItems = items.items
     .filter(item => matchItemQuery(item, filter, itemCtx))
     .slice(0, limit)
   // The SAME map the filter was judged with is handed to the projection, so the
   // rows a filter returned and the status printed on them come from one read of
-  // the board's live state. A row that matched `status:inProgress` because a card
-  // is running cannot come back labelled `open`, which is the whole point.
+  // the board — a row that matched `status:review` cannot come back labelled
+  // `todo`, which is the whole point.
   const itemRows = full
-    ? matchedItems.map(item => itemDetailRow(item, running))
-    : matchedItems.map(item => itemRow(item, running))
+    ? matchedItems.map(item => itemDetailRow(item, cards))
+    : matchedItems.map(item => itemRow(item, cards))
   // Truncation is reported for BOTH lists, not just the cards: the number the
   // caller is given is "how many rows came back", and the two lists are capped
   // by the same `limit`, so a full board of cards could otherwise hide an

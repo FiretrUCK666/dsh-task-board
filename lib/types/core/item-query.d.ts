@@ -29,6 +29,7 @@
  *     list under it cannot be made to disagree.
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts';
+import type { TaskStatus } from './tasks.ts';
 import type { DatePosture } from './item-dates.ts';
 /** Qualifier keys the grammar recognises, mapped onto STABLE field values.
  *
@@ -66,8 +67,6 @@ export type ItemFlag =
  | 'undated'
 /** `startsAfter` is in the future. */
  | 'gated'
-/** The reader marked it blocked on something. */
- | 'blocked'
 /** Hangs off a board card. */
  | 'linked' | 'done';
 /** The qualifier keys the grammar accepts, as the STABLE values behind them. */
@@ -91,15 +90,12 @@ export declare const ITEM_FLAGS: readonly ItemFlag[];
  * flag is one edit here and one edit there, and they cannot disagree because
  * there is only one of each.
  *
- * **AND IT SPELLED OUT `status:inProgress` FOR SIX RELEASES' WORTH.** The
- * statuses came from `ITEM_STATUSES`, which is the three a person can CHOOSE
- * (`open` / `blocked` / `done`); `inProgress` is the fourth a person can only be
- * SHOWN, and it is not in that table because it is derived from a card. The
- * parser has always accepted `status:inprogress` and `isItemQualifierToken` has
- * always said yes — but this list, which is what `taskboard_query` teaches the
- * model, never mentioned it. So the token worked for a reader who guessed it and
- * was invisible to the model that was told the whole vocabulary. **A vocabulary
- * that is derived from one of the two halves of a type teaches one half.**
+ * **AND IT SPELLED OUT ONE HALF OF ITS OWN TYPE FOR SIX RELEASES' WORTH.** 那些
+ * `status:` 词原来取自 `ITEM_STATUSES`（人能选的那几个），而**派生的那一个**（当时叫
+ * `inProgress`）不在那张表里，于是解析器一直收它、`isItemQualifierToken` 一直答 yes，
+ * 而教给模型的这一份词表从来没有它。现在两个表都取自看板那五栏的同一个来源
+ * （{@link ITEM_STATUS_VIEWS} = `ALL_STATUSES`），所以「能被显示的全部」与「被教出去的
+ * 全部」是同一句话——`status:` 后面能出现的词就是那五个，一个不多、一个不少。
  */
 export declare function itemQualifierVocabulary(): readonly string[];
 /**
@@ -167,21 +163,24 @@ export interface ItemMatchContext {
     /** Untouched days past which a row counts as neglected. */
     readonly staleDays: number;
     /**
-     * The board's live state, keyed by card id — the input the DERIVED status
-     * needs, and the reason 进行中 is filterable at all.
+     * **看板的栏，按卡片 id 索引** —— 一条行「现在在哪一栏」的那张输入。
+     *
+     * 它原来叫 `running`，装的是 `boolean`（那张卡在不在跑）；现在装的是 `TaskStatus`
+     * （那张卡在哪一栏），因为清单自己的状态只剩两个值，而其余三栏只有看板知道。名字
+     * 跟着事实改：一个叫 `running` 的字段装着「待审核」，下一个人会以为那是笔误。
      *
      * Optional rather than required, and the absence is a real answer rather than
      * a gap: a caller with no board in front of it (a dry run, a host that cannot
-     * see the engine) passes nothing, 进行中 then matches nothing, and a row that
-     * is quietly running is never reported as 待办. What that caller must not do
-     * is guess "not running" and filter the running rows into 待办, which is what
-     * hard-coding `false` did — `status:inProgress` was a documented filter that
-     * silently matched nothing, in the search box AND in the model's query.
+     * see the engine) passes nothing, and then a mounted row reads its OWN two
+     * values — it does not pretend to know a column it cannot see. What that caller
+     * must not do is guess a column, which is what hard-coding `false` did:
+     * `status:inProgress` was a documented filter that silently matched nothing, in
+     * the search box AND in the model's query.
      */
-    readonly running?: ReadonlyMap<string, boolean>;
+    readonly cards?: ReadonlyMap<string, TaskStatus>;
 }
 /** The default reading context: right now, the default threshold, no board. */
-export declare function itemMatchContextOf(now: number, staleDays?: number, running?: ReadonlyMap<string, boolean>): ItemMatchContext;
+export declare function itemMatchContextOf(now: number, staleDays?: number, cards?: ReadonlyMap<string, TaskStatus>): ItemMatchContext;
 /** What a flag test is given. ONE probe per row, so two flags cannot disagree
  *  about the same row's date posture — a disagreement that is invisible until a
  *  rail prints a number the jump does not honour. */

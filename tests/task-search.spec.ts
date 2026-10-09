@@ -25,7 +25,7 @@ import {
   QUALIFIER_KEYS,
 } from '../src/core/task-search.ts'
 import { itemMatches, parseItemQuery } from '../src/core/item-view.ts'
-import { ITEM_STATUSES, type ItemRecord } from '../src/core/item.ts'
+import { ITEM_STATUS_VIEWS, type ItemRecord } from '../src/core/item.ts'
 
 const task = {
   title: '给猫画一幅画',
@@ -262,7 +262,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '水彩风格，暖色',
     notes: '等猫不在家的时候换',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'high',
     tags: ['画廊'],
     startsAfter: undefined,
@@ -297,9 +297,9 @@ describe('the checklist grammar is delegated, never restated', () => {
       '猫 不存在的东西',
       '#画廊',
       '#别处',
-      'status:open',
-      'status:blocked',
+      'status:todo',
       'status:done',
+      'status:review',
       'status:inprogress',
       'p1',
       'p4',
@@ -307,15 +307,15 @@ describe('the checklist grammar is delegated, never restated', () => {
       'has:undated',
       'has:linked',
       'has:hardOverdue',
-      'status:open #画廊',
-      'status:open 猫 不存在的东西',
+      'status:todo #画廊',
+      'status:todo 猫 不存在的东西',
       'notes:xyz',
-      '猫 status:blocked',
+      '猫 status:done',
     ]
     const rows = [
       item(),
       item({ id: 'i-2', priority: 'urgent', tags: [], dueAt: now - DAY, updatedAt: now - 20 * DAY }),
-      item({ id: 'i-3', status: 'blocked', startsAfter: now + DAY }),
+      item({ id: 'i-3', status: 'todo', startsAfter: now + DAY }),
       item({ id: 'i-4', status: 'done', hardDueAt: now - 2 * DAY, taskId: 't-1' }),
     ]
     for (const query of queries) {
@@ -346,16 +346,21 @@ describe('a qualifier is answered by the model\'s own keys, never by its words',
   const now = T0 + 30 * DAY
   const ctx = itemSearchContext(now)
 
-  it('accepts every status the model stores, and the derived one', () => {
-    for (const status of ITEM_STATUSES) {
+  it('accepts every status a row can be shown as — the board\'s five, verbatim', () => {
+    /* **词表只有一个来源**：`ITEM_STATUS_VIEWS` 就是 `ALL_STATUSES`（看板那五栏），所以
+       「界面给得出的筛子」与「模型学得到的词」是同一句话。这一条原来钉着一处**两个半区**的
+       缺陷：解析器收 `status:inprogress`（驼峰），而教给模型的词表里没有它——一个能用、
+       而模型查不到的词。现在两边都取同一张表，并且那个拼法本身不再是值：`inprogress`
+       是一个没人认的词，落回字面搜索。 */
+    for (const status of ITEM_STATUS_VIEWS) {
       expect(parseItemQuery(`status:${status}`).status, status).toEqual([status])
     }
-    expect(parseItemQuery('status:inprogress').status).toEqual(['inProgress'])
-    // And a status the model does not store is not a status, in either
-    // direction: 进行中 is derived from a running card, so it is accepted as a
-    // word, while a state nobody defined is refused.
-    expect(parseItemQuery('status:running').status).toEqual([])
-    expect(parseItemQuery('status:running').words).toEqual(['status:running'])
+    expect(parseItemQuery('status:inprogress').status).toEqual([])
+    expect(parseItemQuery('status:inprogress').words).toEqual(['status:inprogress'])
+    // 一个没人定义的状态不是状态，落回字面搜索——一个词被当成键而它其实是别的意思，
+    // 正是这一条要挡的。
+    expect(parseItemQuery('status:blocked').status).toEqual([])
+    expect(parseItemQuery('status:blocked').words).toEqual(['status:blocked'])
   })
 
   it('accepts every priority the model stores', () => {
@@ -376,14 +381,14 @@ describe('a qualifier is answered by the model\'s own keys, never by its words',
     // The load-bearing rule, and the reason for it: a filter saved against a
     // label stops matching the moment the label is reworded, and nobody finds
     // out — the search box just quietly returns less. So the grammar parses
-    // `status:open` and NEVER `status:待办`; a display word is not a key, so it
+    // `status:todo` and NEVER `status:待办`; a display word is not a key, so it
     // falls through to a literal term and matches nothing, which is the honest
     // answer rather than a silent reinterpretation of the reader's words.
     const parsed = parseItemQuery('status:待办')
     expect(parsed.status).toEqual([])
     expect(parsed.words).toEqual(['status:待办'])
     expect(matchItemQuery(item(), 'status:待办', ctx)).toBe(false)
-    expect(matchItemQuery(item(), 'status:open', ctx)).toBe(true)
+    expect(matchItemQuery(item(), 'status:todo', ctx)).toBe(true)
   })
 
   it('keeps the two vocabularies disjoint, so neither can answer for the other', () => {

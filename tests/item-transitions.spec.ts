@@ -49,7 +49,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -187,9 +187,9 @@ describe('the capture box and the model mint a row the same way', () => {
   it('an unknown status or priority lands in the neutral tier, never in the document', () => {
     // The parser leaves an unrecognised tier undefined, and undefined is not a
     // value the model may store: it means "the writer did not say", which for a
-    // fresh row is the neutral tier.
+    // fresh row is 还没做.
     const { item } = captureItemRecord({ ...base, status: 'nonsense' as ItemStatus, priority: 'louder' as never }, T0, () => 'i-new')
-    expect(item.status).toBe('open')
+    expect(item.status).toBe('todo')
     expect(item.priority).toBe('normal')
   })
 

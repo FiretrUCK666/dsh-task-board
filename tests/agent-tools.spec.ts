@@ -172,7 +172,7 @@ function richItem(): ItemRecord {
   return {
     id: 'i-rich', ref: 7, title: 'A note', body: 'the body', notes: 'the notes',
     steps: [{ id: 's1', text: 'one', done: false }, { id: 's2', text: 'two', done: true }],
-    status: 'open', priority: 'high', tags: ['gallery', 'later'],
+    status: 'todo', priority: 'high', tags: ['gallery', 'later'],
     startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
     origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
   }
@@ -223,22 +223,20 @@ describe('the read tool answers what it says it answers', () => {
     expect(await queryText({}, box)).not.toContain('正文：')
   })
 
-  it('says a derived status, not the stored one — so a filter and a row agree', async () => {
-    // THE SECOND READ DEFECT. `itemRow` reported the STORED status while
-    // `status:inProgress` filters the DERIVED one, so a row hanging off a
-    // running card was filtered into 「进行中」 and came back printed 「待办」,
-    // with nothing in the answer saying those are different questions. A model
-    // that has just asked 「what is running」 must not be told the answer is empty.
+  it('says the READ column, not the stored one — so a filter and a row agree', async () => {
+    /* THE SECOND READ DEFECT, restated for the one-vocabulary law. `itemRow` used to report
+       the STORED status while the filter answered a DERIVED one, so a row hanging off a
+       running card was filtered into 「进行中」 and came back printed 「待办」.
+
+       现在**只有一个词表**：一条挂卡的行走在哪一栏，读的就是那张卡的 `status`；清单自己
+       存的两个值只是「它没有卡的时候」的答案。所以这一条钉同一件事的两个方向：①一张在
+       `running` 栏的卡，它的行读出来就是 `running`，按 `status:running` 筛得到它；
+       ②完整投影里的 `storedStatus` 仍然说得出这一行**自己**存的那一档（`todo`）——两个
+       答案不互相顶替。 */
     const box = face()
     const running = face()
-    // TWO things have to be true, and the second is the one that is easy to get
-    // wrong: the card has to EXIST in the ledger, and it has to own a SESSION
-    // that is working. A card's liveness is read through the sessions hanging on
-    // it — `relatedSessionIdsOf` → `sessionRunningOf` — so a card with no binds
-    // is idle no matter what it is called. (A `taskId` pointing at a card that is
-    // not there is likewise 待办: the honest answer for an unresolvable link.)
     running.seed({ ...emptyBoardDoc(NOW), tasks: [{
-      ...card('live'), id: 'card-live', binds: [{ kind: 'session', sessionId: 's-live' }],
+      ...card('live'), id: 'card-live', status: 'running',
     }] })
     running.seedItems(applyItemsCommit(running.items, {
       clientId: 'test', items: [{ ...richItem(), taskId: 'card-live' }], deleted: [],
@@ -246,17 +244,23 @@ describe('the read tool answers what it says it answers', () => {
     const tool = createTaskboardTools({ ...deps(running), sources: runningSources({ 's-live': 'running' }) })
       .find(candidate => candidate.name === 'taskboard_query')
     if (tool === undefined) throw new Error('no taskboard_query')
-    const answer = await tool.execute!({ filter: 'status:inProgress' }, undefined as never) as { items: { status: string }[] }
-    expect(answer.items).toHaveLength(1)
-    expect(answer.items[0]?.status, 'a row that matched 进行中 came back saying 待办').toBe('inProgress')
+    const answer = await tool.execute!({ filter: 'status:running' }, undefined as never) as { items: { status: string }[] }
+    expect(answer.items, 'a row standing in 进行中 was not returned by status:running').toHaveLength(1)
+    expect(answer.items[0]?.status, 'a row standing in 进行中 came back saying something else').toBe('running')
     // And the stored tier is still reachable, under its own name.
-    const detailed = await tool.execute!({ detail: 'full', filter: 'status:inProgress' }, undefined as never) as { items: { storedStatus: string; taskId?: string }[] }
-    expect(detailed.items[0]?.storedStatus).toBe('open')
+    const detailed = await tool.execute!({ detail: 'full', filter: 'status:running' }, undefined as never) as { items: { storedStatus: string; taskId?: string }[] }
+    expect(detailed.items[0]?.storedStatus).toBe('todo')
     expect(detailed.items[0]?.taskId).toBe('card-live')
-    // The control: with nothing running the same filter matches nothing, rather
-    // than reporting the row as 待办.
-    const idle = await query({ filter: 'status:inProgress' }, box)
+    // The control: a host with no board answers with the row's OWN two values — the honest
+    // shape of 「看不见那张卡」, never a guess at a column and never an empty lie. (The same
+    // row is seeded here WITHOUT its card, so this is a real answer and not an empty document
+    // saying nothing.)
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [{ ...richItem(), taskId: 'card-live' }], deleted: [],
+    }, NOW))
+    const idle = await query({ filter: 'status:running' }, box)
     expect(idle.items).toEqual([])
+    expect((await query({ filter: 'status:todo' }, box)).items, 'a mounted row was not read as 待办 on a host that cannot see the board').toHaveLength(1)
   })
 
   it('truncation is reported for BOTH lists, so a short answer is never read as a whole one', async () => {
@@ -600,7 +604,7 @@ describe('the checklist verbs a person can reach and a model now shares', () => 
     const board = face()
     const base = {
       id: 'i-1', ref: 1, title: '一条', body: '正文', notes: '', steps: [],
-      status: 'open', priority: 'normal', tags: [], startsAfter: undefined,
+      status: 'todo', priority: 'normal', tags: [], startsAfter: undefined,
       dueAt: undefined, hardDueAt: undefined, taskId: undefined,
       origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
       ...patch,
@@ -1138,7 +1142,7 @@ describe('a model asks a question about a row, through the same plan the panel u
         body: '',
         notes: '',
         steps: [{ id: 'i-1.s1', text: '在真机上量', done: false }],
-        status: 'open',
+        status: 'todo',
         priority: 'normal',
         tags: [],
         startsAfter: undefined,

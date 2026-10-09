@@ -71,8 +71,8 @@ export { EMPTY_ITEM_QUERY, ITEM_FLAGS, ITEM_FLAG_TESTS, flagProbeOf, isItemQuali
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts';
 export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts';
 export type { ItemRailEntry, ItemRailGroup, ItemRailKey, ItemRailKind } from './item-rail.ts';
-export { itemPageOf, planItemNavigation } from './item-navigate.ts';
-export type { ItemNavigation, ItemNavigationRefusal } from './item-navigate.ts';
+export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts';
+export type { ItemNavigation, ItemNavigationRefusal, ItemPageId } from './item-navigate.ts';
 export { itemAskText, planItemAsk } from './item-ask.ts';
 export type { ItemAskRefusal, ItemAskVerdict } from './item-ask.ts';
 export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './item-rows.ts';
@@ -81,5 +81,3 @@ export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-sc
 export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts';
 export { triageLinesOf, allTriageLinesOf } from './item-triage.ts';
 export type { TriageLine, TriageSeverity } from './item-triage.ts';
-export { ITEM_PAGES, itemGroupCountsOf, itemInsightOf, itemPageCountsOf } from './item-counts.ts';
-export type { ItemInsight, ItemPageCounts, ItemPageId } from './item-counts.ts';

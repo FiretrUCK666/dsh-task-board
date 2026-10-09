@@ -93,7 +93,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -245,7 +245,10 @@ describe('board route over a real HTTP server', () => {
       clientId: 'committer',
       items: [
         row({ id: 'i-a', ref: 1, title: '第一条', priority: 'high' }),
-        row({ id: 'i-b', ref: 2, title: '第二条', status: 'blocked', tags: ['x'] }),
+        // 这一条是这份 fixture 里**唯一的另一档状态**：顺序律第一关就是状态秩，而清单自己
+        // 只有两档（还没做 / 做完了），所以这一行必须是后者——否则下面那条断言只是在重复
+        // 它本来要测的那条律。
+        row({ id: 'i-b', ref: 2, title: '第二条', status: 'done', tags: ['x'] }),
         row({ id: 'i-c', ref: 3, title: '第三条', steps: [{ id: 's-1', text: '做', done: true }] }),
       ],
     }))

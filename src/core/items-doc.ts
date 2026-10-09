@@ -209,7 +209,9 @@ function wantedAt(item: ItemRecord): number {
   return dates.length === 0 ? UNSET_DATE : Math.min(...dates)
 }
 
-const STATUS_RANK: Record<ItemRecord['status'], number> = { open: 0, blocked: 1, done: 2 }
+/* 两个值，两个秩：完成的排在后面。它曾经是三档（开放/受阻/完成），而中间那一档现在
+ * 不存在了——`blocked` 是清单自己造的一个看板没有的状态，见 `item.ts` 的来历。 */
+const STATUS_RANK: Record<ItemRecord['status'], number> = { todo: 0, done: 1 }
 
 /**
  * The short number as an ordering key, with "nobody has numbered me yet" at the

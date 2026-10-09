@@ -5,13 +5,16 @@
  * WHY THE EXEMPTIONS ARE THE POINT, and why this is its own file. A staleness
  * signal is the cheapest thing in a checklist to build and the easiest thing in
  * the product to get wrong, because the naive version — "days since the last
- * change" — counts two kinds of row that CANNOT have been touched at all: one
- * whose `startsAfter` has not arrived, and one the reader marked `blocked`. It
- * points at rows the reader gated on purpose, and the first time that happens the
- * reader switches the whole thing off — which loses the genuinely neglected work
- * along with it. So the question this module asks is "how long has this been
- * waiting to be touched AND been touchable", and a row failing the second half
- * simply has no answer.
+ * change" — counts the row that CANNOT have been touched at all: one whose
+ * `startsAfter` has not arrived. It points at rows the reader gated on purpose,
+ * and the first time that happens the reader switches the whole thing off — which
+ * loses the genuinely neglected work along with it. So the question this module
+ * asks is "how long has this been waiting to be touched AND been touchable", and
+ * a row failing the second half simply has no answer.
+ *
+ * （旧的第二条豁免是「读者标了受阻」；那一档已经不存在了——见 `item.ts` 里状态的
+ * 来历。留下的这一条是**日期**给的，而日期是这一页上唯一能替读者说「还不能动」的
+ * 东西。）
  *
  * The ceiling is the same promise from the other side. A staleness signal with no
  * ceiling turns into a guilt generator: past a certain age a row is not neglected

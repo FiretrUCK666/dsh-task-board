@@ -76,7 +76,6 @@ export function allTriageLinesOf(items: readonly ItemRecord[], now: number, stal
   // would nag about something the reader already did.
   const live = items.filter(isLiveItem)
   const behind = live.filter(item => datePostureOf(item, now).kind === 'behind')
-  const blocked = live.filter(item => item.status === 'blocked')
   const stale = staleItemsOf(live, now, staleDays)
   // "No date" exempts a row that is still a bare capture, for the same reason
   // neglect does: a thought the reader wrote a minute ago has not failed to be
@@ -91,7 +90,6 @@ export function allTriageLinesOf(items: readonly ItemRecord[], now: number, stal
   return [
     { id: 'behind', count: behind.length, severity: 'warn', items: behind, worstDays: worstOf(behind, now) },
     { id: 'stale', count: stale.length, severity: 'warn', items: stale, worstDays: worstOf(stale, now) },
-    { id: 'blocked', count: blocked.length, severity: 'warn', items: blocked, worstDays: worstOf(blocked, now) },
     { id: 'undated', count: undated.length, severity: 'muted', items: undated, worstDays: undefined },
   ]
 }

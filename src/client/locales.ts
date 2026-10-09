@@ -689,10 +689,8 @@ export const zh = {
   'item.rail.priority.high': '高',
   'item.rail.priority.normal': '普通',
   'item.rail.priority.low': '低',
-  'item.rail.status.inProgress': '进行中',
-  'item.rail.status.open': '待办',
-  'item.rail.status.blocked': '受阻',
-  'item.rail.status.done': '完成',
+  // 这一组的词直接读看板那五个（`board.status.*`，见 `rail.tsx` 的 WORD 表）——两张
+  // 表说同一件事的那一天起，「按状态」这一列就会有一个词不跟着改。
   'item.rail.pickDay': '只看这一天',
   'item.rail.calendar.label': '按日子看',
   'item.rail.month.prev': '上一个月',
@@ -711,19 +709,13 @@ export const zh = {
   'item.noMatch': '没有匹配的结果。清空搜索或换个筛选看看。',
   'item.noMatch.day': '{when} 这天没有事项。换个日子，或去掉那枚「日期」芯片。',
   'item.steps': '{done}/{total}',
-  'item.group.inProgress': '进行中',
-  'item.group.open': '待办',
-  'item.group.blocked': '受阻',
-  'item.group.done': '已完成',
-  // The STORED status, as the row menu writes it. Two vocabularies on purpose:
-  // `item.group.*` names the column a row sits in, `item.status.*` names the
-  // value written to the document. They read as the same word because they are
-  // — but they are not the same key, and a filter written against one of them
-  // must not silently start matching the other.
-  'item.status.open': '标为待办',
-  'item.status.blocked': '标为受阻',
+  // 清单自己能写的两个值，正是看板那五栏里的两栏——所以这里的词与 `board.status.*`
+  // 是同一个词，而「标为」是**菜单**的动词（动作之前的话）。第三档（受阻）跟着那一套
+  // 词汇一起删了；挂着卡的行改的是卡在哪一栏，用的是看板自己的动词（`status.move.*`）。
+  'item.status.todo': '标为待办',
   'item.status.done': '标为已完成',
-  'item.status.derived': '这条显示进行中，是因为它挂着的卡正在跑；它自己存的还是待办。',
+  'item.status.card': '这一行的状态读它挂着的那张卡；要改就移那张卡。',
+  'item.status.derived': '这条显示{where}，是因为它挂着的卡在那一栏；它自己存的还是{own}。',
   'item.field.startsAfter': '最早开始',
   'item.field.dueAt': '截止',
   'item.field.hardDueAt': '最后期限',
@@ -771,9 +763,7 @@ export const zh = {
   // 要处理：每条一句话加一个按钮。没有按钮的数字不上面板。
   'item.triage.behind': '{n} 项过了想要的日子',
   'item.triage.stale': '{n} 项放着 {days} 天没动',
-  'item.triage.blocked': '{n} 项卡住了',
   'item.triage.undated': '{n} 项没定日期',
-  'item.triage.blockedShort': '{n} 卡住',
 
   // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
   //
@@ -1608,10 +1598,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.priority.high': 'High',
   'item.rail.priority.normal': 'Normal',
   'item.rail.priority.low': 'Low',
-  'item.rail.status.inProgress': 'Running',
-  'item.rail.status.open': 'To do',
-  'item.rail.status.blocked': 'Blocked',
-  'item.rail.status.done': 'Done',
   'item.rail.pickDay': 'Show only this day',
   'item.rail.calendar.label': 'By date',
   'item.rail.month.prev': 'Previous month',
@@ -1630,15 +1616,13 @@ export const en: Record<keyof typeof zh, string> = {
   'item.noMatch': 'Nothing matches. Clear the search or pick another filter.',
   'item.noMatch.day': 'Nothing on {when}. Pick another day, or take the date chip off.',
   'item.steps': '{done}/{total}',
-  'item.group.inProgress': 'In progress',
-  'item.group.open': 'To do',
-  'item.group.blocked': 'Blocked',
-  'item.group.done': 'Done',
-  // The stored status, as the row menu writes it — see the zh note.
-  'item.status.open': 'Mark to do',
-  'item.status.blocked': 'Mark blocked',
+  // The two the checklist itself writes — both are columns of the board's five, so the
+  // words are `board.status.*`; a carded row moves its CARD, with the board's verbs
+  // (`status.move.*`).
+  'item.status.todo': 'Mark to do',
   'item.status.done': 'Mark done',
-  'item.status.derived': 'This row shows “In progress” because the card it hangs on is running; what the row itself stores is still “To do”.',
+  'item.status.card': 'This row reads its status from the card it hangs on; to change it, move that card.',
+  'item.status.derived': 'This row reads {where} because the card it hangs on is in that column; what the row itself stores is {own}.',
   'item.field.startsAfter': 'Not before',
   'item.field.dueAt': 'Wanted by',
   'item.field.hardDueAt': 'Deadline',
@@ -1688,9 +1672,7 @@ export const en: Record<keyof typeof zh, string> = {
   // button is a scoreboard, not a to-do.
   'item.triage.behind': '{n} past the day you wanted them by',
   'item.triage.stale': '{n} untouched for {days} days',
-  'item.triage.blocked': '{n} blocked',
   'item.triage.undated': '{n} with no date',
-  'item.triage.blockedShort': '{n} blocked',
 
   // Three dates, three readings — and ONE shape: a verdict names itself by its verb
   // (「超期」/「over」 is the hard deadline, 「落后」/「behind」 the plan's date), while a

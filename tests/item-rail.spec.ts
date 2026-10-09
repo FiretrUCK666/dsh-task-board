@@ -26,10 +26,11 @@ import {
 import type { ItemFlag, ItemFlagProbe, ItemRailEntry } from '../src/core/item-view.ts'
 import { isAgendaItem } from '../src/core/item-membership.ts'
 import type { ItemRecord } from '../src/core/item.ts'
+import type { TaskStatus } from '../src/core/tasks.ts'
 
 const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
 const DAY = 86_400_000
-const CTX = { ...itemMatchContextOf(NOW), running: new Map<string, boolean>() }
+const CTX = { ...itemMatchContextOf(NOW), cards: new Map<string, TaskStatus>() }
 
 /**
  * One row per condition the rail asks about, so every group has something in it
@@ -47,7 +48,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -66,7 +67,7 @@ const FIXTURE: readonly ItemRecord[] = [
   row({ id: 'i-hard-late', ref: 2, priority: 'urgent', hardDueAt: NOW - 2 * DAY, tags: ['x'] }),
   row({ id: 'i-soft-late', ref: 3, dueAt: NOW - 3 * DAY, tags: ['x'] }),
   row({ id: 'i-neglected', ref: 4, updatedAt: NOW - 40 * DAY, tags: ['x'] }),
-  row({ id: 'i-blocked', ref: 5, status: 'blocked', tags: ['x'] }),
+  row({ id: 'i-blocked', ref: 5, status: 'todo', tags: ['x'] }),
   row({ id: 'i-gated', ref: 6, startsAfter: NOW + 3 * DAY, tags: ['x'] }),
   row({ id: 'i-linked', ref: 7, taskId: 'card-1', tags: ['x'] }),
   row({ id: 'i-done', ref: 8, status: 'done', tags: ['x'] }),
@@ -187,15 +188,18 @@ describe('a set is not a filter, and says so', () => {
 })
 
 describe('no set has two identities in one rail', () => {
-  it('受阻 is a STATUS, so it appears once and only under 按状态', () => {
+  it('每一条状态行都是看板那一栏，而且只出现一次', () => {
     const groups = itemRailGroupsOf(fixture(), CTX)
     const every = groups.flatMap(group => group.entries.map(entry => ({ group: group.id, entry })))
-    const blockedRows = fixture().filter(item => item.status === 'blocked').map(item => item.id)
-    if (blockedRows.length === 0) return
-
-    const asStatus = every.filter(one => one.entry.kind === 'status' && one.entry.key === 'blocked')
-    expect(asStatus, '受阻 lost its status row').toHaveLength(1)
-    const asFlag = every.filter(one => one.entry.kind === 'flag' && ['blocked', 'done'].includes(one.entry.key))
+    // 五栏（看板那五个）都是**状态**行：一条挂卡的行在哪一栏由那张卡回答，所以这一组
+    // 里每一行的 key 就是看板的栏名，而且每一栏只出现一次。
+    for (const view of ITEM_STATUS_VIEWS) {
+      const rows = every.filter(one => one.entry.kind === 'status' && one.entry.key === view)
+      expect(rows, `${view} lost its status row`).toHaveLength(1)
+    }
+    /* 而「已完成」**不许**再以一种「条件」的身份出现：同一个集合在一栏里有两个身份，
+     * 读者就会数出两个数。 */
+    const asFlag = every.filter(one => one.entry.kind === 'flag' && ['done'].includes(one.entry.key))
     expect(asFlag, 'a status also appears as a condition, which is two identities for one set of rows').toEqual([])
   })
 

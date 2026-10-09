@@ -39,6 +39,7 @@ import { useId } from 'react'
 import type { ItemPriority, ItemStatusView } from '../../core/item.ts'
 import type { ItemRailEntry, ItemRailGroup, ItemRailKey } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
+import { STATUS_KEY } from '../board/status.ts'
 import { PriorityMark, StatusMark } from './marks.tsx'
 import css from './item.module.css'
 
@@ -66,10 +67,13 @@ const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
   high: 'item.rail.priority.high',
   normal: 'item.rail.priority.normal',
   low: 'item.rail.priority.low',
-  inProgress: 'item.rail.status.inProgress',
-  open: 'item.rail.status.open',
-  blocked: 'item.rail.status.blocked',
-  done: 'item.rail.status.done',
+  /* **五栏的词是看板那一份**（`STATUS_KEY`），不是这里的第二张表：同一个「进行中」在
+   * 两个面板上必须是同一个词，而一张抄过来的表会在下一次改词时留下一个角落。 */
+  backlog: STATUS_KEY.backlog,
+  todo: STATUS_KEY.todo,
+  running: STATUS_KEY.running,
+  review: STATUS_KEY.review,
+  done: STATUS_KEY.done,
 }
 
 const CAPTION: Readonly<Record<'when' | 'rank' | 'state', TaskBoardKey>> = {

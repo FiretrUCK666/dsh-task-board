@@ -47,14 +47,12 @@ export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>
 /**
  * The three marks a reader can PUT a row into, and each one's word.
  *
- * The row menu offers exactly these three, filtered to the ones this row is not
- * already in; the batch bar's segmented status offers the same three. Note what
- * is NOT here: `inProgress`. It is a GROUP — a row hanging off a running card
- * reads as 进行中 — and not a state a reader can write, so no control anywhere
- * offers it. That is why this table is over `ItemStatus` (the three) while
- * `GROUP_LABEL` below is over `ItemStatusView` (the four): two vocabularies
- * that share three words, and keeping them apart is what stops one of them
- * growing the other's members.
+ * **两个值了，不是三个**：清单自己能写的只有「还没做 / 做完了」，第三档（受阻）跟着
+ * 那一整套词汇一起删掉了（读者的话：「受阻肯定不能有了」——而它本来就是这套词里唯一
+ * 一个看板没有的词）。
+ *
+ * 挂着一张卡的行**不从这里写**：那时读者改的是那张卡在哪一栏（`task.move`），界面
+ * 给的是看板自己的动词（`status.move.*`）。所以这张表是「这一行没有卡的时候」的词表。
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
 /**
@@ -68,7 +66,14 @@ export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
  * wrote, through the same writer.
  */
 export declare const TRIAGE_SHORT: Readonly<Record<ItemFlag, TaskBoardKey>>;
-/** The four groups a row sorts into, and the word for each. */
+/**
+ * The five columns a row can READ as, and the word for each — **the board's own words**.
+ *
+ * 它不再是一张自己的词表：`STATUS_KEY`（`board/status.ts`）是看板那一份、按 `TaskStatus`
+ * 闭合的表，这里直接引用它。于是「进行中」在清单与看板上是同一个词、同一份定义——
+ * 加一栏或改一个词只动看板那一处，而清单这边因为类型是同一个联合，**编译期**就会跟着
+ * 变。
+ */
 export declare const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>>;
 /** The agenda's buckets and the word for each. */
 export declare const BUCKET_LABEL: Readonly<Record<ScheduleBucketId, TaskBoardKey>>;

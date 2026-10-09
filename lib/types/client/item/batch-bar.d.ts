@@ -47,6 +47,14 @@ export interface ItemBatchBarProps {
     /** How many of the held rows can be handed to a session, and a way to do it. */
     readonly askable: number;
     readonly onAsk: () => void;
+    /**
+     * How many of the held rows hang off a board card.
+     *
+     * Non-zero disables the status segments and prints the reason: such a row's status
+     * is its card's column, so writing the row's own field would change nothing the
+     * reader can see — a control whose press silently does nothing.
+     */
+    readonly carded: number;
     /** Put the held rows back where they were, one gesture. */
     readonly onRemove: () => void;
 }

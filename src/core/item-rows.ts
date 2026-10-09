@@ -24,6 +24,7 @@ import { staleDaysOf } from './item-stale.ts'
 import { sortItemsOf, type ItemSort } from './item-sort.ts'
 import { derivedStatusOf } from './item-membership.ts'
 import { itemMatches, type ItemMatchContext, type ItemQuery } from './item-query.ts'
+import type { TaskStatus } from './tasks.ts'
 
 /** The short number a row is called by, or the unnumbered placeholder. */
 export interface ItemRef {
@@ -59,7 +60,7 @@ export interface ItemRowView {
   readonly ref: ItemRef
   /** Never blank: an untitled row borrows its body's first line. */
   readonly title: string
-  /** The derived status, in-progress included (a linked running card). */
+  /** 这一行现在站在哪一栏（挂卡读卡、没卡读自己，见 `itemStatusOf`）。 */
   readonly status: ItemStatusView
   /** The one date verdict. `undefined` when the row has no steps. */
   readonly progress: { readonly done: number; readonly total: number; readonly ratio: number } | undefined
@@ -74,8 +75,8 @@ export interface ItemRowView {
 /** The reading context one row is projected against. */
 export interface ItemRowContext {
   readonly now: number
-  /** Whether the linked board card is running, keyed by card id. */
-  readonly running: ReadonlyMap<string, boolean>
+  /** 看板的栏，按卡片 id 索引——一条挂了卡的行在哪一栏由它回答。 */
+  readonly cards: ReadonlyMap<string, TaskStatus>
 }
 
 /**
@@ -94,7 +95,7 @@ export function itemRowViewOf(item: ItemRecord, ctx: ItemRowContext): ItemRowVie
     item,
     ref: itemRefOf(item),
     title: itemTitleOf(item),
-    status: derivedStatusOf(item, ctx.running),
+    status: derivedStatusOf(item, ctx.cards),
     progress: itemProgressOf(item),
     posture: datePostureOf(item, ctx.now),
     soft,
@@ -127,7 +128,7 @@ export const ITEM_STATUS_ORDER: readonly ItemStatusView[] = ITEM_STATUS_VIEWS
 /** What one grouping pass needs to know. One bag, so the order stays stable. */
 export interface ItemSliceOptions {
   readonly query: ItemQuery
-  readonly ctx: ItemMatchContext & { readonly running: ReadonlyMap<string, boolean> }
+  readonly ctx: ItemMatchContext & { readonly cards: ReadonlyMap<string, TaskStatus> }
   readonly sort: ItemSort
   /**
    * Whether finished rows come back as their own group.
@@ -160,7 +161,7 @@ export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOpt
   const groups = includeDone ? ITEM_STATUS_ORDER : ITEM_STATUS_ORDER.filter(status => status !== 'done')
   const buckets = new Map<ItemStatusView, ItemRecord[]>(groups.map(status => [status, []]))
   for (const item of items) {
-    const status = derivedStatusOf(item, ctx.running)
+    const status = derivedStatusOf(item, ctx.cards)
     if (!buckets.has(status)) continue
     if (!itemMatches(item, query, ctx)) continue
     buckets.get(status)?.push(item)

@@ -257,7 +257,7 @@ export function fixtures(): ItemRecord[] {
     body: '',
     notes: '',
     steps: [],
-    status: 'open' as const,
+    status: 'todo' as const,
     priority: 'normal' as const,
     tags: [] as string[],
     startsAfter: undefined,
@@ -313,7 +313,7 @@ export function fixtures(): ItemRecord[] {
       id: 'fx-live-undated',
       ref: 92,
       title: '这一条还在做，但一个日期都没有——它才是「没日期」要说的事',
-      status: 'open',
+      status: 'todo',
       tags: ['待排期'],
       origin: { source: 'human' as const, at: NOW - 5 * DAY },
       createdAt: NOW - 5 * DAY,
@@ -324,7 +324,7 @@ export function fixtures(): ItemRecord[] {
       id: 'fx-hard-overdue',
       ref: 1,
       title: '这一条硬期限已经过了整整九天，是最长的一条，用来逼出换行与截断',
-      status: 'open',
+      status: 'todo',
       priority: 'urgent',
       hardDueAt: NOW - 9 * DAY,
       dueAt: NOW - 12 * DAY,
@@ -353,10 +353,16 @@ export function fixtures(): ItemRecord[] {
     },
     {
       ...base,
-      id: 'fx-blocked',
+      /* **挂着卡的那一行。** 它原来是「受阻」那一档的样本，而清单自己只剩两个值；现在它
+         承担的是这一版最要紧的一种组合：**一条挂着卡、而那张卡在「待审核」的行**。它同时
+         压住三件事——状态读的是那张卡（不是这一行存的 `todo`）、行首那颗珠子用看板那一栏的
+         颜色、以及「这一行在哪一栏」与「它自己存什么」两句话不一致时界面怎么说。
+         卡片的台账由台架的 `controller` 假面提供（见 `renderPanel` / `mountPanel`）。 */
+      id: 'fx-carded-review',
       ref: 4,
-      title: '这一条卡住了，在等一个还没回来的答复',
-      status: 'blocked',
+      title: '这一条挂着卡，卡在待审核那一栏',
+      status: 'todo',
+      taskId: 'task-review',
       priority: 'normal',
     },
     {
@@ -558,7 +564,16 @@ export function renderPanel(
   items: readonly ItemRecord[],
   band: Band = 'wide',
   page: Page = 'list',
-  controller: unknown = { getSnapshot: () => ({ tasks: [{ id: 'task-1', title: '画廊第二版', description: '' }] }), liveStateOf: () => 'idle' },
+  controller: unknown = {
+    getSnapshot: () => ({
+      tasks: [
+        { id: 'task-1', title: '画廊第二版', status: 'todo', description: '' },
+        /* 那一条挂卡的 fixture 行（`fx-carded-review`）靠这张卡才读得出它在哪一栏。 */
+        { id: 'task-review', title: '给画廊换一批挂画', status: 'review', description: '' },
+      ],
+    }),
+    liveStateOf: () => 'idle',
+  },
   prefs: Record<string, unknown> = {},
   /** WHICH ROW IS EXPANDED, for a capture. `renderToStaticMarkup` presses nothing,
    *  so the expansion is the one state a static render cannot reach by itself. */

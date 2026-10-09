@@ -32,11 +32,36 @@
  * (the list sorts itself), no `statusHistory` (nothing reads it) and no
  * `viewedAt` (the checklist is scanned, not watched — the board's unread
  * reminder has no business here).
+ *
+ * ── STATUS IS READ FROM THE BOARD, NOT RE-DECIDED HERE ──────────────────────
+ *
+ * 这一版把状态的**来源**搬了：清单自己只存两个值（还没做 / 做完了），而「一条工作现在
+ * 在哪一栏」读看板的卡（{@link itemStatusOf}）。所以这一份文件从看板那里导入两个东西
+ * ——`TaskStatus` 与 `ALL_STATUSES`——而不是把它们抄一遍。抄一遍的代价不是重复十二行，
+ * 是**加一栏时清单不会跟着加**，而屏上不会有人说一句话。
  */
-/** The stored status. 进行中 is NOT here: it is derived (see {@link itemStatusOf}). */
-export type ItemStatus = 'open' | 'blocked' | 'done';
-/** The status a surface may DISPLAY — the stored one, or the derived 进行中. */
-export type ItemStatusView = ItemStatus | 'inProgress';
+import { type TaskStatus } from './tasks.ts';
+/**
+ * THE STORED STATUS: the two the checklist itself owns.
+ *
+ * 一份清单自己能说的话只有两句——「还没做」与「做完了」。其余三栏（待规划 / 进行中 /
+ * 待审核）**不是清单的状态，是它挂着的那张卡在哪一栏**：那是看板的字段，清单只读它
+ * （见 {@link itemStatusOf}）。把两件事合成一个枚举，就是同一件东西有两个主人。
+ *
+ * 这一版删掉了 `blocked`（受阻）。读者的话是「受阻肯定不能有了」——而它本来就只在
+ * 清单这里存在：看板的五栏里没有它，于是它是这套词汇里唯一一个**两个面板对不上**的
+ * 词。老文档里的 `open` / `blocked` 由解析器读成 `todo`，一个字都不丢。
+ */
+export type ItemStatus = 'todo' | 'done';
+/**
+ * 一个面可以**显示**的状态：看板的五栏，逐字同一张表。
+ *
+ * 它不再是「存的加上一个派生的」那种并集，而是**导入**看板自己的类型——于是清单与
+ * 看板对「一条工作现在在哪儿」只有一份定义，加一栏、改一个词、换一个颜色都只动一处。
+ * 这一条也是读者那句「那些点就等于变成 5 个状态吧」的答案：是五个，而它们就是看板
+ * 的五个。
+ */
+export type ItemStatusView = TaskStatus;
 /** The four priority tiers, lowest first (the list sorts on this). */
 export type ItemPriority = 'low' | 'normal' | 'high' | 'urgent';
 /** Who wrote this row, and when. Kept so a bad row can be traced to its author. */
@@ -87,27 +112,19 @@ export interface ItemRecord {
     createdAt: number;
     updatedAt: number;
 }
-/** The closed status enum, in display order (进行中 is derived, never listed). */
+/** 清单自己能写的两个值，按读者读到的顺序：还没做 · 做完了。 */
 export declare const ITEM_STATUSES: readonly ItemStatus[];
 /**
- * Every status a surface may SHOW, in DISPLAY order, which is one more than a
- * person may choose.
+ * Every status a surface may SHOW: the board's columns, in the board's own order.
  *
- * `ITEM_STATUSES` is the choosable three; `inProgress` is the fourth and it is
- * DERIVED — it means 「this row hangs off a card that is running right now」, and
- * it is not a thing anybody sets. So the two lists are not interchangeable, and
- * a vocabulary built from the choosable three teaches a model three quarters of
- * the way to the answer it is asking for.
+ * **它是导入的，不是抄的**——`ALL_STATUSES` 是看板那五个 ids 的唯一定义处，
+ * 所以「清单加了一栏而看板没有」这句话在类型上就不成立。两个列表仍不是同一个问题：
+ * 上面那个回答「人能写什么」，这一个回答「能显示成什么」，而它们的关系正是看板自己的
+ * `MANUAL_STATUSES ⊆ ALL_STATUSES`：**清单能写的两个，是看板允许人手拖的那三栏里的
+ * 两个**（待规划那一档由清单的「刚记下的」那件事表达，见 `isInboxItem`）。
  *
- * **This list is the one to read when the question is 「what can this row be
- * displayed as」. The one above is the one to read when the question is 「what
- * can a person set」.** Reading either for both is how `status:inprogress` spent
- * its life parsing correctly and being absent from every word list.
- *
- * The order runs 进行中 · 待办 · 受阻 · 已完成: what is moving, then what is
- * waiting, then what is stuck, then what is over. It used to be a second table in
- * `item-rows.ts` with the same four values, and a second table with the same
- * values is a second answer to 「in what order」 waiting to disagree with the first.
+ * 顺序也是看板的顺序：待规划 · 待办 · 进行中 · 待审核 · 已完成。左栏那一组、查询
+ * 语法里 `status:` 的词表、以及模型学到的词表全部从这一份派生。
  */
 export declare const ITEM_STATUS_VIEWS: readonly ItemStatusView[];
 /**
@@ -239,15 +256,24 @@ export interface ItemProgress {
 /** The derived progress. NO steps means no progress — never a 0% bar. */
 export declare function itemProgressOf(item: ItemRecord): ItemProgress | undefined;
 /**
- * The one status derivation. 进行中 is not stored: it is whatever the LINKED
- * card is doing, read from the card's own live state — a second derivation
- * would be a second opinion, and the same card would then show two different
- * things in two places. A row with no card is never 进行中.
+ * The one status derivation: **a row that hangs off a card is wherever that card is.**
  *
- * @param linkedRunning - the linked card's live state (a card with no open run
- *  passes false). The caller reads it; this function never guesses it.
+ * `itemStatusOf` 的旧版只把「在跑」这一件事读给卡片（其余时间信自己存的那个
+ * `open`）。现在读的是**整栏**——因为清单自己不拥有那五栏里的三栏，而一件工作在哪
+ * 一栏是看板的事实。这不是新增一条判断，是原来那条判断的推广：注释早就写着
+ * 「an item never decides for itself whether its card is running」，而「在跑」只是
+ * 「在哪一栏」的一个取值。
+ *
+ * **读者自己按下的「完成了」压过卡片。** 这一条是旧版的行为（有测试钉着：一张卡重跑
+ * 起来的时候，刚被读者勾掉的那一行仍然是完成），而它现在仍然成立：一次显式的勾选是
+ * 读者对**这一行**说的话，不该被卡片的另一次运行悄悄改掉。
+ *
+ * @param item - the row.
+ * @param cardStatus - 它挂着的那张卡此刻在哪一栏；没有卡、或这台机器看不见看板时是
+ *   `undefined`，那时这一行说的是它自己的字段（不猜，也不假装看得到）。
+ * @returns the column this row stands in.
  */
-export declare function itemStatusOf(item: ItemRecord, linkedRunning: boolean): ItemStatusView;
+export declare function itemStatusOf(item: ItemRecord, cardStatus?: TaskStatus): ItemStatusView;
 /** The title a surface shows: the row's own, else the body's first line. */
 export declare function itemTitleOf(item: ItemRecord): string;
 /** Which pair of the three dates is out of order, and by how much. */

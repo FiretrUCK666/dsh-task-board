@@ -71,7 +71,7 @@ export declare const ITEM_FACETS: readonly {
  *
  * THIS IS THE WHOLE POINT OF THE FUNCTION, so it is worth being explicit about
  * what it buys. The query is ONE string, and it stays one string: the model reads
- * the same grammar, and a reader who wants it can still type `status:open` into
+ * the same grammar, and a reader who wants it can still type `status:todo` into
  * the box. What changes is only how the page SHOWS it. Before this, every facet
  * press printed its own implementation into a field labelled 「搜索标题、正文、
  * 备注与标签」, so a control showed the reader its source code; now the box holds

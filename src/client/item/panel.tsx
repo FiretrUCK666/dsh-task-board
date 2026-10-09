@@ -48,6 +48,8 @@ import {
   type ItemRailEntry,
   type ItemRowView,
 } from '../../core/item-view.ts'
+import type { TaskStatus } from '../../core/tasks.ts'
+import type { ItemStatus } from '../../core/item.ts'
 import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
    the agent's tool calls, so a field the model ruled derived cannot be written
@@ -129,14 +131,18 @@ export interface ItemListPanelProps {
   readonly now?: number
 }
 
-/** Whether a board card is running, keyed by card id. */
-function runningMapOf(face: ItemListFace): Map<string, boolean> {
-  const map = new Map<string, boolean>()
+/**
+ * **看板的栏，按卡片 id 索引。** 它原来只回答「那张卡在不在跑」（`boolean`），而清单
+ * 的状态现在读整栏：一条挂卡的行走在哪一栏，是看板的事实，清单只读。名字跟着事实改。
+ *
+ * 读的是快照里的 `status`（卡片自己那一栏），不再是 `liveStateOf` 的活性判决——那是
+ * 另一件事（它在不在工作），而「在哪一栏」就是 `status`。
+ */
+function cardsMapOf(face: ItemListFace): Map<string, TaskStatus> {
+  const map = new Map<string, TaskStatus>()
   const controller = face.controller
   if (controller === undefined) return map
-  for (const task of controller.getSnapshot().tasks) {
-    map.set(task.id, controller.liveStateOf(task.id) === 'running')
-  }
+  for (const task of controller.getSnapshot().tasks) map.set(task.id, task.status)
   return map
 }
 
@@ -411,10 +417,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
     })
   }, [])
 
-  const running = useMemo(() => runningMapOf(face), [face.controller, items])
+  const cardColumns = useMemo(() => cardsMapOf(face), [face.controller, items])
   const cards = useMemo(() => cardsOf(face), [face.controller, items])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
-  const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), running }), [now, running])
+  const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
   const lostHost = replica?.hostLostItems() === true
   const filtering = prefs.search.trim() !== ''
 
@@ -674,7 +680,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      out of `itemSlicesOf`, which meant the breakdown silently lost the finished
      group whenever the finished switch was off —a summary whose denominator
      answered to a control nobody could see. */
-  const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, running })
+  const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, cards: cardColumns })
 
   /* THE DETAIL IS BUILT FOR ONE ROW, and that row is the one it was asked about.
    * The prop is required rather than optional, so a caller cannot reach a
@@ -701,6 +707,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
       }}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
+      /* 挂着卡的那一行改的是**那张卡在哪一栏**，与 ⋯ 菜单里那三项同一个写入口
+         （`task.move`）。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给
+         按钮——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
+      onMoveCard={face.controller === undefined
+        ? undefined
+        : (status: TaskStatus) => {
+          const cardId = item.taskId
+          if (cardId !== undefined) face.controller?.moveTask(cardId, status)
+        }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
          every other field takes. The pane computed the new order with the shared
          pure functions and hands the answer over; this is the only place a step
@@ -745,7 +760,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      head and the body must agree on seven tracks, and a page that wrapped these
      in its own `<ul>` would be a second table without a head. */
   const rows = (list: readonly ItemRecord[], picking: boolean, armed: boolean) => list.map(item => ({
-    view: itemRowViewOf(item, { now, running }),
+    view: itemRowViewOf(item, { now, cards: cardColumns }),
     expanded: openRow === item.id,
     selected: selected === item.id,
     cursor: cursor === item.id,
@@ -818,7 +833,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
     receipt: receipt?.id === item.id ? receipt.words : undefined,
     onMenuToggle: () => setMenuRow(current => (current === item.id ? undefined : item.id)),
     onMenuClose: () => setMenuRow(undefined),
-    onMark: (status: 'open' | 'blocked' | 'done') => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
+    onMark: (status: ItemStatus) => { apply(applyItemPatch(items, item.id, { status }, Date.now())); setMenuRow(undefined) },
+    /* 挂卡的行改的是**那张卡在哪一栏**（看板自己的动作），不是这一行的字段：这一行
+       在哪一栏本来就由那张卡回答，写自己的字段会是一个看不见的动作。没有看板可写时
+       传 `undefined`，菜单里那几项就不出现。 */
+    onMoveCard: face.controller === undefined
+      ? undefined
+      : (status: TaskStatus) => {
+        const cardId = item.taskId
+        if (cardId === undefined) return
+        setMenuRow(undefined)
+        face.controller?.moveTask(cardId, status)
+      },
     /* 「编辑步骤」是三件事合一件：关掉菜单、把这一行选上、把它展开，然后把
          光标交给步骤那一栏。三件事必须一起发生——只选不展开的话，读者看见的是
          一行被选中，而步骤编辑器仍然不在屏幕上。 */
@@ -841,7 +867,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       if (cardId === undefined) return
       void face.controller?.runTask(cardId, 'manual')
     },
-    running: item.taskId !== undefined && running.get(item.taskId) === true,
+    running: item.taskId !== undefined && cardColumns.get(item.taskId) === 'running',
     onRemove: () => removeOne(item),
     /* The detail is built only for the expanded row: opening is the condition, not
        the band, so both bands read the same place without building 100 details. */
@@ -995,7 +1021,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const pageProps = {
     items,
     now,
-    running,
+    cards: cardColumns,
     query,
     matchCtx,
     prefs,
@@ -1067,6 +1093,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const commonPriority = heldItems.length === 0 || !heldItems.every(one => one.priority === heldItems[0]!.priority)
     ? undefined
     : heldItems[0]!.priority
+  /* 这一批里有几条挂着卡——**一个谓词，两个问题**（能不能问 AI / 它的状态是不是那张卡
+     说了算），而它们今天恰好是同一批行。所以算一次、给两个名字，不写两遍。 */
+  const heldCarded = heldItems.filter(one => one.taskId !== undefined).length
   /* THE BAR IS THE MODE'S OWN FACE, and the mode is what draws it — not the
    * holding. Arming shows the bar with 「已选 0 条」 and every action but the
    * select-all disabled: a reader who pressed 多选 to see what it does must see
@@ -1098,7 +1127,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
         // the same offset, which is the moment two devices disagree about a date.
         applyToHeld({ dueAt: startOfDay(now) })
       }}
-      askable={[...selection.ids].filter(id => items.some(item => item.id === id && item.taskId !== undefined)).length}
+      askable={heldCarded}
+      carded={heldCarded}
       onAsk={askHeld}
       onRemove={removeHeld}
     />

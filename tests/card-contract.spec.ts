@@ -434,7 +434,11 @@ describe('the column header and the cards under it share ONE text edge', () => {
      * check is `ITEM_PAGES` read off disk against the loop's own names: a page added
      * tomorrow without an entry here is a red test rather than a page nobody
      * checked. */
-    const pagesSource = readFileSync(fileURLToPath(new URL('../src/core/item-counts.ts', import.meta.url)), 'utf8')
+    /* **页码表跟着它关心的那个判断走**：`ITEM_PAGES` 现在住在 `item-navigate.ts`，
+     * 因为一份只剩一张常量表的 `counts` 文件（三个计数函数都没有读者之后）是给下一个
+     * 读代码的人留的假线索。门禁读的仍然是从磁盘上读出来的那一张表，不是一个手抄的
+     * 名字清单——加一页而这里没跟上，仍然是一条红测试。 */
+    const pagesSource = readFileSync(fileURLToPath(new URL('../src/core/item-navigate.ts', import.meta.url)), 'utf8')
     const declared = /export const ITEM_PAGES = \[([^\]]*)\]/.exec(pagesSource)?.[1] ?? ''
     const pages = [...declared.matchAll(/'([a-z]+)'/g)].map(match => match[1])
     const batched = ['list']
@@ -556,11 +560,16 @@ describe('the column header and the cards under it share ONE text edge', () => {
     }
     // One entry per UI noun a reader is told to go and find. Each is the string
     // the interface actually prints, taken from the locale table.
+    //
+    // **状态那五个词住在看板那一张表里**（`board.status.*`，`board/status.ts` 的
+    // `STATUS_KEY`）：清单那一栏与看板是同一套词，所以这里读的是同一个来源。原来这里读
+    // `item.group.*`——两张表说同一件事，而两张表就是两个会分家的答案。
     const CLAIMED: ReadonlyArray<{ key: string; zh: string; en: string }> = [
-      { key: 'item.group.inProgress', zh: '进行中', en: 'In progress' },
-      { key: 'item.group.open', zh: '待办', en: 'To do' },
-      { key: 'item.group.blocked', zh: '受阻', en: 'Blocked' },
-      { key: 'item.group.done', zh: '已完成', en: 'Done' },
+      { key: 'board.status.backlog', zh: '待规划', en: 'Backlog' },
+      { key: 'board.status.todo', zh: '待办', en: 'To do' },
+      { key: 'board.status.running', zh: '进行中', en: 'In progress' },
+      { key: 'board.status.review', zh: '待审核', en: 'In Review' },
+      { key: 'board.status.done', zh: '已完成', en: 'Done' },
       { key: 'item.due.overdueShort', zh: '超期', en: 'Past due' },
     ]
     for (const entry of CLAIMED) {

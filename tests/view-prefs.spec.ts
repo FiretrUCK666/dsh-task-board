@@ -75,10 +75,10 @@ describe('what a first-time reader meets', () => {
 describe('a remembered view comes back whole', () => {
   it('round-trips every field it is allowed to keep', () => {
     const store = useWindow()
-    writeViewPrefs({ page: 'schedule', sort: 'priority', collapsed: ['blocked'], search: '' })
+    writeViewPrefs({ page: 'schedule', sort: 'priority', collapsed: ['review'], search: '' })
     expect(store.setItem).toHaveBeenCalled()
     expect(readViewPrefs()).toEqual({
-      page: 'schedule', sort: 'priority', collapsed: ['blocked'], search: '',
+      page: 'schedule', sort: 'priority', collapsed: ['review'], search: '',
     })
   })
 
@@ -242,12 +242,15 @@ describe('a damaged record repairs instead of throwing', () => {
   })
 
   it('drops collapsed groups it does not recognise, and folds duplicates', () => {
-    useWindow({ raw: JSON.stringify({ collapsed: ['blocked', 'nonsense', 'blocked', 'done'] }) })
-    expect(readViewPrefs().collapsed).toEqual(['blocked', 'done'])
+    useWindow({ raw: JSON.stringify({ collapsed: ['review', 'nonsense', 'review', 'done', 'blocked'] }) })
+    // `review` 是看板的栏（现在也是清单的状态那一组的成员），`nonsense` 与 `blocked` 不是
+    // ——后者是这一版删掉的那一档，所以一个老设备上存着的值读出来就被丢掉，而不是让
+    // 一段折叠状态指向一个不存在的组。
+    expect(readViewPrefs().collapsed).toEqual(['review', 'done'])
   })
 
   it('reads a non-array collapsed as nothing folded', () => {
-    useWindow({ raw: JSON.stringify({ collapsed: 'blocked' }) })
+    useWindow({ raw: JSON.stringify({ collapsed: 'review' }) })
     expect(readViewPrefs().collapsed).toEqual([])
   })
 
@@ -279,19 +282,19 @@ describe('a browser with storage switched off is a supported way to run', () => 
 
 describe('folding a group', () => {
   it('adds a group that is open and removes one that is folded', () => {
-    expect(toggleCollapsed([], 'blocked')).toEqual(['blocked'])
-    expect(toggleCollapsed(['blocked'], 'blocked')).toEqual([])
+    expect(toggleCollapsed([], 'review')).toEqual(['review'])
+    expect(toggleCollapsed(['review'], 'review')).toEqual([])
   })
 
   it('leaves the array it was handed alone', () => {
     // The caller holds this set in state; mutating it in place would make the
     // "did anything change" question unanswerable to React.
     const before = ['done'] as const
-    toggleCollapsed([...before], 'open')
+    toggleCollapsed([...before], 'todo')
     expect(before).toEqual(['done'])
   })
 
   it('leaves the other groups where they were', () => {
-    expect(toggleCollapsed(['done', 'blocked'], 'open')).toEqual(['done', 'blocked', 'open'])
+    expect(toggleCollapsed(['done', 'review'], 'todo')).toEqual(['done', 'review', 'todo'])
   })
 })

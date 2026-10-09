@@ -57,7 +57,7 @@ import {
   EMPTY_ITEM_QUERY,
   ITEM_SORTS,
   ITEM_STATUS_ORDER,
-  itemGroupCountsOf,
+  itemHasFlag,
   itemMatches,
   itemMatchContextOf,
   itemRowViewOf,
@@ -70,6 +70,7 @@ import {
   type ItemFlag,
   type ItemQuery,
 } from '../src/core/item-view.ts'
+import type { TaskStatus } from '../src/core/tasks.ts'
 // `type` is the harness's 「type into a field」 helper and it collides with the
 // `type` keyword as a bare import name, so it is renamed at the boundary rather
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
@@ -190,7 +191,7 @@ function oneRow(patch: Partial<ItemRecord>): ItemRecord[] {
     body: '',
     notes: '',
     steps: [],
-    status: 'open',
+    status: 'todo',
     priority: 'normal',
     tags: [],
     startsAfter: undefined,
@@ -1427,7 +1428,7 @@ describe('a priority is shouted only when it is loud', () => {
     // same file the model's query reads, because "which rows are urgent" must
     // not have a second answer on this surface.
     const verdictOf = (priority: string): unknown => {
-      const view = itemRowViewOf(oneRow({ priority: priority as never })[0] as ItemRecord, { now: NOW, running: new Map() })
+      const view = itemRowViewOf(oneRow({ priority: priority as never })[0] as ItemRecord, { now: NOW, cards: new Map() })
       const loud = Object.entries(view).find(([key]) => /loud/i.test(key))
       expect(loud, `the row projection has no loudness verdict for priority — the row has to decide for itself, which is the second answer`).toBeDefined()
       return loud?.[1]
@@ -1454,68 +1455,54 @@ describe('a priority is shouted only when it is loud', () => {
   })
 })
 
-describe('the summary says four things, and they do not move under a switch', () => {
-  it('the four counts are four, and they do not move under a view switch', () => {
-    // THE DENOMINATOR WAS THE BUG, and the first version of this gate committed
-    // a second one while trying to catch it.
-    //
-    // It asked `itemSlicesOf(…, includeDone)` to return the same four numbers
-    // either way. `itemSlicesOf` is the GROUPING FOR DISPLAY, and it is supposed
-    // to drop the finished group entirely when the switch is off — that is how
-    // 「完成是清单页里的一个开关，不是另一页」 is implemented. So the function
-    // CANNOT have the property the gate demanded, and no amount of fixing the
-    // panel would have satisfied it: the gate was asking the wrong function for
-    // a property that function must not have.
-    //
-    // The function that answers this is `itemGroupCountsOf`, whose own contract
-    // is "ALWAYS all four": it is a closed `Record` over the four derived
-    // statuses, so a surface may not drop one, and it takes no switch at all.
-    // Asking THAT one is both correct and stronger — the property is in its type
-    // rather than in a promise.
+describe('the summary says what it says, and the numbers do not move under a switch', () => {
+  it('the grouping drops the finished group under the switch, and only under it', () => {
+    // 这一条原来问的是 `itemGroupCountsOf`（一份「永远是四组」的封闭计数表）。那个函数
+    // 与它数的三个界面东西一起删了——分组头、概览条、页轨今天都不存在，而给死代码写测试
+    // 会让死代码看起来被需要。留下来的、仍然有人在读的性质是**分组**那一条：清单页里的
+    // 「已完成」是一个开关，所以关掉它时那一组必须真的不出现。
     const rows = fixtures()
-    const counts = itemGroupCountsOf(rows, new Map())
-    expect(Object.keys(counts).sort(), 'the four counts are not four, so a surface may hide a bucket by not reading one').toEqual([...ITEM_STATUS_ORDER].sort())
-    // And the four add up to the document: a tile that is a summary of a list
-    // whose buckets do not cover the list is a summary of part of it.
-    expect(Object.values(counts).reduce((sum, n) => sum + n, 0), 'the four counts do not cover the document').toBe(rows.length)
-    // The control: the same question asked of the grouping function, which
-    // answers it the other way on purpose. It is here so the next reader can see
-    // that the two functions are not interchangeable, and which one a summary
-    // is allowed to read.
     const fromSlices = (includeDone: boolean): number[] => itemSlicesOf(rows, {
       query: EMPTY_ITEM_QUERY,
-      ctx: { ...itemMatchContextOf(NOW), running: new Map() },
+      ctx: { ...itemMatchContextOf(NOW), cards: new Map() },
       sort: 'due',
       includeDone,
     }).map(slice => slice.items.length)
     expect(fromSlices(false).length, 'the grouping stopped dropping the finished group — the switch does nothing, so it is not a switch').toBe(ITEM_STATUS_ORDER.length - 1)
     expect(fromSlices(true).length).toBe(ITEM_STATUS_ORDER.length)
+    // 而两组数字加起来就是这份文档的全部行数：一份「分组」若不是覆盖，它就不是分组。
+    expect(fromSlices(true).reduce((sum, n) => sum + n, 0), 'the groups do not cover the document').toBe(rows.length)
   })
 
-  it('the band shows three, and the three are the three you have to act on today', () => {
-    // THREE, NOT FOUR, and the fourth is not missing — it is 停滞, and it is the
-    // one number on this surface that is not a question.
-    //
-    // 「落后」「卡住」「没日期」 each answer a question a reader opens the list
-    // with, and each is answered by FILTERING, so each one is a door. 「放置 31
-    // 天」 answers none of them: a row nobody has touched in a month is not
-    // something to do *today*, it is something to have noticed once, and it is
-    // already on the row that says it. Putting it in the band would make the band
-    // a fourth number the reader has to read rather than press, which is exactly
-    // the furniture this band replaced.
-    //
-    // So the test is on the three, by name. The four status names are NOT here:
-    // the status is a column now, and a status per group head was a second place
-    // counting what the table already counts.
+  it('the band shows the doors a reader can actually open', () => {
+    // 「落后」与「没日期」各回答一个读者带着的问题，各由一次筛选回答，所以各是一扇门。
+    // 「受阻」曾经是第三扇——那一档没有了（它在看板五栏里从来就不存在），于是那一格也
+    // 跟着走；「放置 N 天」不在这一排：一行一个月没人碰不是「今天要做的事」，它是**一行的
+    // 事实**，而那一行自己已经写着它了。把停滞放进这一排，会让这一排多出一个只能读、
+    // 不能按的数字——而那正是这一排取代掉的那种家具。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const surface = panel.surface.textContent ?? ''
-      for (const label of ['落后', '卡住', '没日期']) {
-        expect(surface, `the statistics tile for ${label} is missing`).toContain(label)
+      for (const label of ['落后', '没日期']) {
+        expect(surface, `the tile for ${label} is missing`).toContain(label)
       }
+      expect(surface, '受阻 is back in the band — it is not a column the board has').not.toContain('卡住')
       expect(surface, 'the staleness count is back in the band — it is a row fact, not a question about today').not.toContain('放置')
     } finally {
       panel.dispose()
+    }
+  })
+
+  it('the retained numbers are door-shaped: each is a filter the reader can press', () => {
+    // 一条门必须写得出来：它数的那些行，就是它按下去筛出来的那些行。这一条是三行里
+    // 每一行的契约（`triageLinesOf` 的每一个 id 同时就是一个 `ItemFlag`），而它不是
+    // 形状断言，是**同一谓词**断言。
+    const rows = fixtures()
+    const lines = triageLinesOf(rows, NOW)
+    const ctx = { ...itemMatchContextOf(NOW), cards: new Map<string, TaskStatus>() }
+    for (const line of lines) {
+      const jumped = rows.filter(item => itemHasFlag(item, line.id, ctx))
+      expect(jumped.map(item => item.id).sort(), `${line.id} counts rows its own filter does not open`).toEqual(line.items.map(item => item.id).sort())
     }
   })
 
@@ -1528,12 +1515,15 @@ describe('the summary says four things, and they do not move under a switch', ()
       JSON.stringify(compute(true)) === JSON.stringify(compute(false))
     expect(stable(includeDone => includeDone ? [1, 2, 3, 4] : [1, 2, 3]), 'a switch-following denominator was accepted').toBe(false)
     expect(stable(() => [1, 2, 3, 4]), 'a switch-independent denominator was reported').toBe(true)
-    // And the real question, asked of the function a summary is allowed to
-    // read. It takes no switch, so "the same either way" is not a property being
-    // tested here — it is a property of the SIGNATURE, which is why the check
-    // above can be about the shape rather than about two runs.
-    const counts = itemGroupCountsOf(fixtures(), new Map())
-    expect(Object.keys(counts).length, 'the counts function lost a key — a surface may now hide a bucket').toBe(ITEM_STATUS_ORDER.length)
+    // 真问题问的是**分组**：开关关掉时那一组真的不见了，打开时又回来。这一条与上面那一节
+    // 是同一个判据，写在这里是为了让「检测器两种答案都出得来」有据可依。
+    const groups = (includeDone: boolean): number[] => itemSlicesOf(fixtures(), {
+      query: EMPTY_ITEM_QUERY,
+      ctx: { ...itemMatchContextOf(NOW), cards: new Map() },
+      sort: 'due',
+      includeDone,
+    }).map(slice => slice.items.length)
+    expect(stable(groups), 'a switch-following denominator was accepted — the grouping ignores the finished switch').toBe(false)
   })
 })
 
@@ -1548,7 +1538,7 @@ describe('the inbox is one membership, and the agenda reads it from there', () =
     const rows = fixtures()
     const unfiled = rows.filter(isInboxItem)
     expect(unfiled.length, 'the fixture has no unfiled capture — the gate is asserting nothing').toBeGreaterThan(0)
-    const buckets = scheduleBucketsOf(rows, EMPTY_ITEM_QUERY, { ...itemMatchContextOf(NOW), running: new Map() }, 'due')
+    const buckets = scheduleBucketsOf(rows, EMPTY_ITEM_QUERY, { ...itemMatchContextOf(NOW), cards: new Map() }, 'due')
     const onAgenda = buckets.flatMap(bucket => bucket.items.map(row => row.id))
     for (const row of unfiled) {
       expect(onAgenda, `an unfiled capture (${row.id}) is on the agenda, in a bucket it was never put in`).not.toContain(row.id)
@@ -2340,15 +2330,15 @@ describe('the facet editor never rewrites what the reader typed', () => {
     // line, so a run of spaces collapsing to one is invisible to the reader,
     // while capitalisation is the thing they typed on purpose.
     const typed = 'Gallery Work notes'
-    expect(withFacetToken(typed, 'status:open', true), 'a press lost or rewrote the reader\'s own words').toBe('Gallery Work notes status:open')
-    expect(withFacetToken(withFacetToken(typed, 'status:open', true), 'status:open', false)).toBe(typed)
+    expect(withFacetToken(typed, 'status:todo', true), 'a press lost or rewrote the reader\'s own words').toBe('Gallery Work notes status:todo')
+    expect(withFacetToken(withFacetToken(typed, 'status:todo', true), 'status:todo', false)).toBe(typed)
   })
 
   it('the box holds the words, and the qualifiers are not in it', () => {
     // What the reader TYPING, and nothing else. If a press prints
-    // `status:open` into a field labelled 「搜索标题、正文、备注与标签」, the control
+    // `status:todo` into a field labelled 「搜索标题、正文、备注与标签」, the control
     // is showing the reader its own source code.
-    expect(freeTextOf('status:open #work Gallery')).toBe('Gallery')
+    expect(freeTextOf('status:todo #work Gallery')).toBe('Gallery')
     expect(freeTextOf('  '), 'an empty box came back with something in it').toBe('')
     expect(freeTextOf('Gallery'), 'a plain phrase lost words').toBe('Gallery')
   })
@@ -2374,10 +2364,10 @@ describe('the facet editor never rewrites what the reader typed', () => {
   it('chips are in FACET order, not in the order the text happens to sit in', () => {
     // A chip row that reorders as the reader types is a row nobody can learn, and
     // the reader's own words may be in any order at all.
-    const a = queryChipsOf('p1 status:open Gallery', [])
-    const b = queryChipsOf('Gallery status:open p1', [])
+    const a = queryChipsOf('p1 status:todo Gallery', [])
+    const b = queryChipsOf('Gallery status:todo p1', [])
     expect(a.map(chip => chip.token), 'the chips came back in a different order for the same filter').toEqual(b.map(chip => chip.token))
-    expect(a.map(chip => chip.token)).toEqual(['status:open', 'p1'])
+    expect(a.map(chip => chip.token)).toEqual(['status:todo', 'p1'])
   })
 
   it('a tag chip shows the spelling the reader spelled it with', () => {
@@ -2413,11 +2403,11 @@ describe('the facet editor never rewrites what the reader typed', () => {
       [...text.toLowerCase().split(/\s+/).filter(part => part !== token), token].join(' ')
     const typed = 'Gallery Work'
     expect(
-      wordsSurvived(typed, withFacetToken(typed, 'status:open', true)),
+      wordsSurvived(typed, withFacetToken(typed, 'status:todo', true)),
       'the detector reports the real editor as a rewriter — this probe proves nothing',
     ).toBe(true)
     expect(
-      wordsSurvived(typed, reSerialising(typed, 'status:open')),
+      wordsSurvived(typed, reSerialising(typed, 'status:todo')),
       'a re-serialising editor passed as a faithful one',
     ).toBe(false)
   })
@@ -2923,8 +2913,8 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
       const ref = Number(/#(\d+)/.exec(held.textContent ?? '')?.[1])
       expect(Number.isNaN(ref), 'the held row printed no number to be read back by').toBe(false)
       expect(panel.lastWrite().find(row => row.ref === ref)?.priority, 'the tier press never reached the held row').toBe('urgent')
-      press('标为受阻')
-      expect(panel.lastWrite().find(row => row.ref === ref)?.status, 'the status press never reached the held row').toBe('blocked')
+      press('标为已完成')
+      expect(panel.lastWrite().find(row => row.ref === ref)?.status, 'the status press never reached the held row').toBe('done')
       // 改了 N 条 comes back as a count of what CHANGED.
       expect(panel.surface.textContent ?? '', 'the press did not say what changed').toContain('改了 1 条')
     } finally {
@@ -2967,7 +2957,7 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
   /** The one row the fake host is holding, and the whole of its record. */
   const ARCHIVED: ItemRecord = {
     id: 'gone-1', ref: 7, title: '删掉的那一条', body: '', notes: '', steps: [],
-    status: 'open', priority: 'normal', tags: [],
+    status: 'todo', priority: 'normal', tags: [],
     startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
     origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
   }
@@ -3589,7 +3579,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     /** 抽屉里有三行的样子——读者的屏上出现的正是这个状态，而它此前无法被拍下来。 */
     const tombstoneRows = (): readonly ItemRecord[] => [1, 2, 3].map(n => ({
       id: `gone-${String(n)}`, ref: 100 + n, title: `删掉的那一条 ${String(n)}`, body: '', notes: '', steps: [],
-      status: 'open' as const, priority: 'normal' as const, tags: [],
+      status: 'todo' as const, priority: 'normal' as const, tags: [],
       startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
       origin: { source: 'human' as const, at: Date.now() }, createdAt: Date.now(), updatedAt: Date.now(),
     }))

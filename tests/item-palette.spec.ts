@@ -520,17 +520,14 @@ describe('`×` means one thing on this panel: it takes a condition OFF the query
     try {
       // A qualifier is set, so the chip that removes it is on screen.
       open(panel)
-      typeInto(fieldOf(panel), 'status:open')
+      typeInto(fieldOf(panel), 'status:todo')
       const crosses = [...panel.surface.querySelectorAll('button')].filter(node => node.textContent === '×')
       expect(crosses.length, 'no `×` was rendered, so this case is reading nothing — set a qualifier first').toBeGreaterThan(0)
       for (const node of crosses) {
         expect(node.getAttribute('aria-label') ?? '', 'a `×` is on screen with no name, so nothing says what it removes')
           .toMatch(/^(去掉|移除)/)
       }
-      // AND THE CAPTURE BOX'S OWN CHIP IS NOT ONE OF THEM. Typing a tag there
-      // produces the chip that undoes the parser; it must not be a cross.
-// AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
-// AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
+      // AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
       // into it produces the chip that undoes the parser; it must not be a cross.
       //
       // IT IS NO LONGER ON THE SURFACE AT REST, and that is the whole change: the
@@ -569,11 +566,11 @@ describe('the qualifier chip says the filter, not the kind', () => {
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       open(panel)
-      typeInto(fieldOf(panel), '#画廊 status:open')
+      typeInto(fieldOf(panel), '#画廊 status:todo')
       const labels = [...panel.surface.querySelectorAll('[class*="itemQueryChipLabel"]')].map(node => node.textContent ?? '')
       expect(labels, 'no qualifier chip was drawn for a qualifier that is on the query — the filter is applied with nothing saying so').not.toEqual([])
       expect(labels, 'the tag chip names the kind but not the tag').toContain(`${zh['item.facet.tag']}：画廊`)
-      expect(labels, 'the status chip names the kind but not the status').toContain(`${zh['item.facet.status']}：${zh['item.group.open']}`)
+      expect(labels, 'the status chip names the kind but not the status').toContain(`${zh['item.facet.status']}：${zh['board.status.todo']}`)
       for (const label of labels) {
         expect(label, `a chip reads 「${label}」 — a chip with no value cannot be read back, so it cannot be taken off`).toContain('：')
       }

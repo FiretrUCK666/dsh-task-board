@@ -24,7 +24,8 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
-import type { ItemPriority } from '../../core/item.ts'
+import type { ItemPriority, ItemStatus } from '../../core/item.ts'
+import { ITEM_STATUSES } from '../../core/item.ts'
 import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
 import { PRIORITY_DIGIT as marksDigits } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
@@ -79,7 +80,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
    * 「进行中」 is DERIVED from the row's card, so it is filterable and not
    * writable — offering it here would be offering a setting that the next
    * synchronisation overwrites. */
-  const [status, setStatus] = useState<ItemCapture['status']>('open')
+  const [status, setStatus] = useState<ItemStatus>('todo')
   const [startsAfter, setStartsAfter] = useState('')
   const [dueAt, setDueAt] = useState('')
   const [hardDueAt, setHardDueAt] = useState('')
@@ -115,7 +116,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
    * that stops listening to its own first line, and nothing on screen says why. */
   useEffect(() => {
     if (!props.open) return
-    setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('open')
+    setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('todo')
     setStartsAfter(''); setDueAt(''); setHardDueAt(''); setTags(''); setTaskId(''); setWords('')
     setPendingCard(undefined); setCardNaming(false); setCardDraft(''); setCardHint(false)
     setParsed(undefined)
@@ -307,7 +308,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
             <div className={css.itemOptRow}>
               <p className={css.itemOptName}>{t('item.field.status')}</p>
               <div className={css.itemOpts}>
-                {(['open', 'blocked', 'done'] as const).map(one => (
+                {/* 新建的一行**还没有卡**，所以这里是清单自己能写的两个值——派生的那张表
+                    是 `ITEM_STATUSES`，不是一张抄下来的字面量数组。 */}
+                {ITEM_STATUSES.map(one => (
                   <button
                     key={one}
                     type="button"

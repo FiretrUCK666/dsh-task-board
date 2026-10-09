@@ -14,9 +14,10 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
-import { ITEM_PRIORITIES, itemPriorityRankOf, itemTitleOf } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemPriorityRankOf, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
-import { isEnglish, t } from '../locales.ts'
+import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
+import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
@@ -106,6 +107,14 @@ export interface ItemDetailProps {
    */
   readonly onEdit: (edit: ItemPatch) => void
   /**
+   * Move the card this row hangs off to another column.
+   *
+   * 挂着卡的行，状态**不属于它自己**：它在哪一栏是那张卡的事实，所以这一格的写入口是
+   * 看板的动作（`task.move`），不是清单的补丁。`undefined` 表示这一屏没有看板可写——
+   * 那时按钮不画（一个按下去什么都不会发生的控件，比一个不在的控件糟）。
+   */
+  readonly onMoveCard?: (status: TaskStatus) => void
+  /**
    * Write the WHOLE checklist back, through the panel's one writer.
    *
    * A list rather than four verbs, and the reason is that the step list is
@@ -137,10 +146,58 @@ export function ItemDetail(props: ItemDetailProps) {
   const { view } = props
   const item = view.item
   const english = isEnglish()
-  /* 挂着的卡正在跑，读的是派生状态自己（进行中 = 卡在跑），不另要一份 running：
+  /* 挂着的卡正在跑，读的是派生状态自己（进行中 = 卡在那一栏），不另要一份 running：
    * 一个事实在投影里只算一次。 */
-  const running = view.status === 'inProgress'
+  const running = view.status === 'running'
   const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
+
+  /**
+   * 状态那一格的三个可能，写在这里而不是写在 JSX 里嵌套三层三元。
+   *
+   * **两个值，不是三个**（受阻跟着那一套词汇一起删了），而它们的词是看板那五栏里的两个
+   * （`GROUP_LABEL` = 看板自己的 `STATUS_KEY`）：同一个「待办」在两个面板上只能是同一个
+   * 词。没有卡的行写的是**它自己**的字段；挂着卡的行写不了——它在哪一栏是那张卡的事实，
+   * 所以那一列给的是看板自己的动词（`status.move.*`），按下去移的是那张卡。**这就是读者
+   * 那句「清单和看板要完全互通，但也可以独立不挂载」在这一格上的形状**：独立时它有自己的
+   * 两个状态，挂上时它是卡片的镜子。
+   */
+  const statusChooser = item.taskId === undefined
+    ? ITEM_STATUSES.map(status => (
+      <button
+        key={status}
+        type="button"
+        className={css.itemOpt}
+        data-on={item.status === status ? '' : undefined}
+        aria-pressed={item.status === status}
+        onClick={() => props.onEdit({ status })}
+      >
+        {/* 「待办」，不是「标为待办」。这一列的组名已经写着「状态」，所以每枚按钮只回答
+            「它现在是什么」；而「标为」是**菜单**的动词——菜单项在动作发生之前，属性表在
+            动作之后。同一张表两处用，于是属性表上一枚按钮在回答一个读者没有问的问题，
+            而三个「标为…」在 268px 那一列里排成了 2 + 1。 */}
+        {t(GROUP_LABEL[status])}
+      </button>
+    ))
+    : props.onMoveCard === undefined
+      /* 没有看板可写时**不给按钮**：这一行在哪一栏照旧读得到（那颗珠子、左栏那一行、
+         这一行的状态里），只是改不了——而一个按下去什么都不会发生的控件，正是这一页
+         要消掉的那类东西。 */
+      ? <p className={css.itemOptsFoot}>{t('item.status.card')}</p>
+      : MANUAL_STATUSES.map(status => (
+        <button
+          key={status}
+          type="button"
+          className={css.itemOpt}
+          data-on={view.status === status ? '' : undefined}
+          aria-pressed={view.status === status}
+          /* 已经在那一栏的、以及还在跑的时候，都与看板自己那一排同一个判据：轮次开着
+             时不许换栏，而唯一的判定是那一轮本身（这个投影里的 `running`）。 */
+          disabled={view.status === status || running}
+          onClick={() => props.onMoveCard?.(status)}
+        >
+          {t(`status.move.${status}` as TaskBoardKey)}
+        </button>
+      ))
   /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
   const gated = view.posture.kind === 'gated'
 /**
@@ -408,25 +465,7 @@ export function ItemDetail(props: ItemDetailProps) {
 
           <div className={css.itemOptRow}>
             <p className={css.itemOptName}>{t('item.field.status')}</p>
-            <div className={css.itemOpts}>
-              {(['open', 'blocked', 'done'] as const).map(status => (
-                <button
-                  key={status}
-                  type="button"
-                  className={css.itemOpt}
-                  data-on={item.status === status ? '' : undefined}
-                  aria-pressed={item.status === status}
-                  onClick={() => props.onEdit({ status })}
-                >
-                  {/* 「待办」，不是「标为待办」。这一列的组名已经写着「状态」，所以
-                      每枚按钮只回答「它现在是什么」；而「标为」是**菜单**的动词——菜单项
-                      在动作发生之前，属性表在动作之后。同一张表两处用，于是属性表上一
-                      枚按钮在回答一个读者没有问的问题，而三个「标为…」在 268px 那一列
-                      里排成了 2 + 1。`GROUP_LABEL` 就是状态那一侧的词表。 */}
-                  {t(GROUP_LABEL[status])}
-                </button>
-              ))}
-            </div>
+            <div className={css.itemOpts}>{statusChooser}</div>
           </div>
 
           <div className={css.itemOptRow}>
@@ -591,9 +630,10 @@ export function ItemDetail(props: ItemDetailProps) {
         </div>
       </div>
 
-      {/* 派生状态与悬空卡片这两句，只在两句可能互相矛盾时才说。 */}
-      {item.taskId !== undefined && item.status === 'open' && (
-        <p className={css.itemHint}>{t('item.status.derived')}</p>
+      {/* 一句话说清「它的状态是谁说了算」——只在**两个来源真的不同**时才说：
+          挂着卡、而这一行自己存的不是它现在显示的那一栏。 */}
+      {item.taskId !== undefined && item.status !== view.status && (
+        <p className={css.itemHint}>{t('item.status.derived', { where: t(GROUP_LABEL[view.status]), own: t(GROUP_LABEL[item.status]) })}</p>
       )}
 
       {/* 这一条的动作。**一条横贯两列的发丝线，下面三个动作**。

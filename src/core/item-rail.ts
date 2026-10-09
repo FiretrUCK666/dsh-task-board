@@ -155,7 +155,7 @@ export function itemRailGroupsOf(
   const priorities = RAIL_PRIORITIES.map(priority =>
     entry(`priority:${priority}`, 'priority', priority, TOKEN_BY_PRIORITY.get(priority) ?? '', heldBy(item => item.priority === priority)))
   const statuses = ITEM_STATUS_VIEWS.map(view =>
-    entry(`status:${view}`, 'status', view, `status:${view.toLowerCase()}`, heldBy(item => derivedStatusOf(item, ctx.running) === view)))
+    entry(`status:${view}`, 'status', view, `status:${view.toLowerCase()}`, heldBy(item => derivedStatusOf(item, ctx.cards) === view)))
 
   return [
     /* 「全部」 STANDING AT THE TOP, ALONE IN ITS GROUP.

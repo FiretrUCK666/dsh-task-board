@@ -654,9 +654,12 @@ export function captureItemRecord(input: ItemCapture, now: number, mintId: () =>
   }
 }
 
-/** The stored status, with the neutral tier for anything outside the enum. */
+/** The stored status, with 「还没做」 for anything outside the enum.
+ *
+ *  两个老值都落在这里：`open` 是「还没做」的旧名，`blocked` 是这一版删掉的那一档。写
+ *  进来的东西读不懂时落回 `todo` 而不是丢掉整条修改——值是我们的事，行是读者的。 */
 function itemStatusTierOf(raw: unknown): ItemStatus {
-  return ITEM_STATUSES.includes(raw as ItemStatus) ? raw as ItemStatus : 'open'
+  return ITEM_STATUSES.includes(raw as ItemStatus) ? raw as ItemStatus : 'todo'
 }
 
 /** The stored priority, with the neutral tier for anything outside the enum. */

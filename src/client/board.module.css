@@ -155,6 +155,23 @@
   --dsh-tb-attention: var(--dsw-alias-state-warn-primary);
   --dsh-tb-success: var(--dsw-alias-state-success-primary);
   --dsh-tb-danger: var(--dsw-alias-state-error-primary);
+  /* ── 五栏的颜色：**只有这一份** ──────────────────────────────────────────────
+   *
+   * 看板列头那颗点、清单行首那颗珠子、任何以后画「这一条在哪一栏」的地方，都读这五个
+   * 名字。读者要求的是「按状态那些点的颜色，完全参考任务看板那边的颜色」——而那一句话
+   * 能成立的条件只有一个：**颜色不是抄过来的，是同一个令牌**。
+   *
+   * 这几条原来只写在 `.statusDot[data-status='…']` 里，并且直接读 `--dsw-*`（越过别名
+   * 层）。别名层正是为「换肤时两个面板一起动」存在的，所以搬进来：一处声明，两处消费，
+   * 而且有一条断言在「谁又抄了一份」时变红（`tests/panel-render.spec.ts`）。
+   *
+   * `running` 与 `review` 用的是 warn 的两档——看板早就这么画了，清单从它那里继承，
+   * 不另挑颜色。 */
+  --dsh-tb-status-backlog: var(--dsw-alias-label-tertiary);
+  --dsh-tb-status-todo: var(--dsw-alias-state-business-primary);
+  --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
+  --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
+  --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
   /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
@@ -1424,11 +1441,14 @@
   transform: translateY(-0.5px);
 }
 
-.statusDot[data-status='backlog'] { background: var(--dsw-alias-label-tertiary); }
-.statusDot[data-status='todo'] { background: var(--dsw-alias-state-business-primary); }
-.statusDot[data-status='running'] { background: var(--dsw-alias-state-warn-primary); }
-.statusDot[data-status='review'] { background: var(--dsw-alias-state-warn-secondary); }
-.statusDot[data-status='done'] { background: var(--dsw-alias-state-success-primary); }
+/* 五栏的颜色读别名层那五个名字（声明在根属性块里，一处）。这一处曾经直接写 `--dsw-*`
+   五条——那时它是唯一的消费者，而现在清单那一侧也要用同一套，于是「唯一」变成了
+   「一份拷贝」，而拷贝会漂。 */
+.statusDot[data-status='backlog'] { background: var(--dsh-tb-status-backlog); }
+.statusDot[data-status='todo'] { background: var(--dsh-tb-status-todo); }
+.statusDot[data-status='running'] { background: var(--dsh-tb-status-running); }
+.statusDot[data-status='review'] { background: var(--dsh-tb-status-review); }
+.statusDot[data-status='done'] { background: var(--dsh-tb-status-done); }
 
 .cards {
   position: relative;

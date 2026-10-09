@@ -655,10 +655,6 @@ export declare const zh: {
     'item.rail.priority.high': string;
     'item.rail.priority.normal': string;
     'item.rail.priority.low': string;
-    'item.rail.status.inProgress': string;
-    'item.rail.status.open': string;
-    'item.rail.status.blocked': string;
-    'item.rail.status.done': string;
     'item.rail.pickDay': string;
     'item.rail.calendar.label': string;
     'item.rail.month.prev': string;
@@ -677,13 +673,9 @@ export declare const zh: {
     'item.noMatch': string;
     'item.noMatch.day': string;
     'item.steps': string;
-    'item.group.inProgress': string;
-    'item.group.open': string;
-    'item.group.blocked': string;
-    'item.group.done': string;
-    'item.status.open': string;
-    'item.status.blocked': string;
+    'item.status.todo': string;
     'item.status.done': string;
+    'item.status.card': string;
     'item.status.derived': string;
     'item.field.startsAfter': string;
     'item.field.dueAt': string;
@@ -726,9 +718,7 @@ export declare const zh: {
     'item.page.schedule': string;
     'item.triage.behind': string;
     'item.triage.stale': string;
-    'item.triage.blocked': string;
     'item.triage.undated': string;
-    'item.triage.blockedShort': string;
     'item.due.behind': string;
     'item.dates.overdue': string;
     'item.dates.behind': string;
