@@ -22,8 +22,10 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
+import { renderToStaticMarkup } from 'react-dom/server'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
 import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
+import { alignClassNames, panelCss, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
 import { BUNDLED_VERSION } from '../src/client/update-source.ts'
@@ -367,6 +369,37 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
  */
 describe('stale-bundle status line (rendered through the panel)', () => {
   /** The two browser APIs the mounted board touches that jsdom lacks. */
+  /**
+   * **看板那一侧的工件：到这一版为止，看板从来没有一条链路能把自己的卡片画出来看。**
+   *
+   * 清单那一侧早就有了（`writeRenderArtifact`），而看板的验证全在 jsdom 的结构断言与 CSS 契约
+   * 里——「卡片上那枚读数长什么样」「窄档会不会折行」这类问题，过去只能靠读代码回答。它与清单
+   * 共用**同一台页面装配**（`writeStandalonePage`：宿主真实暗色表、移动端 viewport、外壳给的
+   * 确定高度盒子）与同一份样式（`panelCss()` 里本来就含 `board.module.css`），所以两块面板的
+   * 截图是可比的——不是两套各写一遍的装置。
+   *
+   * 静态渲染（`renderToStaticMarkup`）就够：看板的列与卡片都是**从快照算出来的**，不依赖
+   * effect，因此不需要 DOM、也不需要 `installBrowserFakes`。
+   */
+  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined): void {
+    const aligned = alignClassNames(
+      renderToStaticMarkup(createElement(TaskBoardPanel, {
+        controller: boardStub() as unknown as BoardController,
+        ...mountedOf === undefined ? {} : { mountedOf },
+      } as never)),
+      panelCss(),
+    )
+    writeStandalonePage(target, aligned.html, aligned.css, 'light', 'task board')
+  }
+
+  it('writes the board page when DSH_PANEL_HTML names a path', () => {
+    const target = process.env.DSH_PANEL_HTML
+    if (target === undefined || target === '') return
+    /* 一张挂着三条清单条目的卡（最急的一档是紧急）与一张光卡：那一枚读数与「没有条目就不画」
+       的两种情况，一屏里都看得到。 */
+    writeBoardArtifact(target, cardId => (cardId === 'task-1' ? { count: 3, loudest: 'urgent' } : undefined))
+  })
+
   function installBrowserFakes(): void {
     const g = globalThis as unknown as Record<string, unknown>
     g.ResizeObserver = g.ResizeObserver ?? class {
