@@ -3535,7 +3535,43 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
-      && state !== 'archive' && state !== 'agenda') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    /** 抽屉里有三行的样子——读者的屏上出现的正是这个状态，而它此前无法被拍下来。 */
+    const tombstoneRows = (): readonly ItemRecord[] => [1, 2, 3].map(n => ({
+      id: `gone-${String(n)}`, ref: 100 + n, title: `删掉的那一条 ${String(n)}`, body: '', notes: '', steps: [],
+      status: 'open' as const, priority: 'normal' as const, tags: [],
+      startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
+      origin: { source: 'human' as const, at: Date.now() }, createdAt: Date.now(), updatedAt: Date.now(),
+    }))
+
+    if (state === 'archive-rows' || state === 'archive-restored') {
+      /* 抽屉里有行、以及「按了放回去一条之后」的那一屏。读者的原话是：按完放回去，
+       * 那些行会往下弹——这个状态存在的唯一目的就是让那一跳**看得见**（同一支仪器
+       * 出两张图，量同一批盒子的位置）。 */
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide', { deleted: tombstoneRows() })
+      try {
+        const look = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('已删除'))
+        if (look === undefined) throw new Error('the rail carries no 「已删除」')
+        click(look)
+        await settle()
+        if (state === 'archive-restored') {
+          const back = [...panel.surface.querySelectorAll('button')]
+            .find(node => (node.textContent ?? '').trim() === '放回去')
+          if (back === undefined) throw new Error('the drawer holds no row to put back')
+          click(back)
+          await settle()
+          await settle()
+        }
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'archive') {
       // The archive is a PAGE of its own now (the reader pressed the rail's row);
@@ -3970,8 +4006,12 @@ describe('the calendar is a date filter a reader can read back', () => {
       expect(back, 'looking at another month offers no way back to today').not.toBeUndefined()
       click(back)
       expect(title()).toBe(start)
-      expect([...panel.surface.querySelectorAll('button')].some(node => (node.textContent ?? '').trim() === '回到今天'),
-        '「回到今天」 is still offered while the reader IS on today').toBe(false)
+      // **无路可回时它变灰，不消失。** 原本它是在按下的那一刻自己消失的（条件不再
+      // 成立）——读者看到的是一个控件在他手指底下不见了，而屏上别处没有任何东西说明
+      // 刚才发生了什么。控件可以变灰，不能在按下的那一刻消失。
+      const home = (): HTMLButtonElement | null => panel.surface.querySelector('button[class*="itemRailToday"]')
+      expect(home(), '「回到今天」 left the DOM instead of going quiet').not.toBeNull()
+      expect(home()?.disabled, '「回到今天」 is still live while the reader IS on today').toBe(true)
     } finally {
       panel.dispose()
     }

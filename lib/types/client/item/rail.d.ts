@@ -22,6 +22,11 @@ export interface ItemRailProps {
     readonly onShiftMonth: (by: -1 | 1) => void;
     /** Back to the month that holds today, and off whatever day was picked. */
     readonly onToday: () => void;
+    /** Whether there is anything to return FROM — a month that is not today's, or a
+     *  day that is picked. It greys the control rather than removing it: a control
+     *  that vanishes the instant it is pressed reads as 「it broke」, and the reader
+     *  gets no chance to see that the press worked. */
+    readonly canReturnToToday: boolean;
     readonly onPickDay: (day: string) => void;
 }
 export declare function ItemRail(props: ItemRailProps): import("react").JSX.Element;

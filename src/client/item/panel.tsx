@@ -1722,6 +1722,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               onToggleCalendar={toggleCalendar}
               onShiftMonth={shiftMonth}
               onToday={backToToday}
+              canReturnToToday={shownMonth !== railMonth || query.day !== null}
               onEnter={enterRail}
               onPickDay={pickRailDay}
             />

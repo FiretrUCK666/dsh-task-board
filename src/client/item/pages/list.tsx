@@ -396,24 +396,17 @@ export function ListPage(props: ItemListPageProps) {
   const archiveLine = !props.archiveOpen || archive === undefined
     ? undefined
     : (
-      <section className={css.itemArchiveSection}>
-        <h2 className={css.itemArchiveHead}>
-          <button
-            type="button"
-            className={css.itemArchiveToggle}
-            onClick={() => { setArchiveNote(undefined); props.onCloseArchive() }}
-          >
-            {t('item.archive.title')}
-            {/* A COUNT ONLY WHERE THERE IS ONE TO COUNT. It used to print `0` in
-                every state but `ready`, so an archive the host could not be reached
-                for showed the same number as an archive that is genuinely empty —
-                and the sentence under it says the opposite of what the number
-                implies. The whole reason this block is a page of its own is that
-                「读不到」 must never be drawn as 「空」; the number was undoing that in
-                the corner nobody looks at. */}
-            {archive.kind === 'ready' && <span className={css.itemArchiveCount}>{archive.rows.length}</span>}
-          </button>
-        </h2>
+      /* **区域也要有自己的名字。** 可见的题头搬上顶栏之后，这一块在语义上仍然是一个
+       * 「已删除」的区域——一个没有名字的 `<section>` 在读屏里不成为一个 landmark，
+       * 于是「我在哪一块里」就没有答案了。可见的题头只留一处，名字仍然在。 */
+      <section className={css.itemArchiveSection} aria-label={t('item.archive.title')}>
+        {/* **这一页的题头与「回清单」在顶栏上，不在这里。**
+            *
+            * 它原来是这一个 `<h2>` 里的一枚按钮（「已删除 3」，按一下关抽屉）。顶栏
+            * 换成归档自己的题头之后，同一句话就出现在了两处——**同一件事只在一处
+            * 出现**，而且那两处长得还不一样（一个是 26px 的月题旁边的药丸，一个是抽屉
+            * 里的 15px 标题）。抽屉从它自己的工具条开始：那句话说的是 30 天的期限，
+            * 是这一页第一件要说的事。 */}
         <div className={css.itemArchiveList}>
           {/* The SENTENCE is what the reader reads; the raw code is the `title`, so
               the host's own vocabulary is one hover away for whoever has to

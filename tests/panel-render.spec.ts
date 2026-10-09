@@ -455,6 +455,37 @@ describe('the panel renders against the host it will actually run in', () => {
       }
     }
   })
+
+  it('today keeps its fill under the pointer, because a calendar fact is not a hover state', () => {
+    // THE DEFECT THIS EXISTS FOR, as the reader reported it: 「点击今天那个蓝色的
+    // 地方，它会变白色…按钮上的数字就看不到了」. Two rules named `.itemRailDay:hover`
+    // — one beside the cell's own block, one in the interaction family further down —
+    // and the family's came later at equal specificity, so it won: the fill went to a
+    // light surface while the number stayed white, and the number vanished on the
+    // very cell the reader was pressing.
+    //
+    // The claim is 「the today cell's fill survives hover」, and the only shape that
+    // keeps it true after the next hover rule is written is the one that names the
+    // exception where the hover is declared — so that is what this reads.
+    // **先剥注释再匹配**（硬性规范 14）：样式表里那段讲这次修改的散文本身就写着
+    // `.itemRailDay:hover`，不剥注释的话，第一版门禁会把**正确的注释**报成违规——
+    // 于是正确的修法变成改注释躲开扫描，而不是改实现。
+    const sheet = panelCss().replace(/\/\*[\s\S]*?\*\//g, '')
+    const hoverRules = [...sheet.matchAll(/\.itemRailDay[^{}]*\{[^}]*\}/g)]
+      .map(match => ({ sel: /\.itemRailDay[^{}]*/.exec(match[0])?.[0] ?? '', body: match[0] }))
+      .filter(rule => rule.sel.includes(':hover'))
+    expect(hoverRules.length, 'no `.itemRailDay:hover` rule is in the sheet — this gate is reading nothing').toBeGreaterThan(0)
+    const washes = hoverRules.filter(rule => /background\s*:/.test(rule.body))
+    expect(washes.length, 'no hover rule repaints a day cell, so 「today keeps its fill」 is vacuously true').toBeGreaterThan(0)
+    for (const rule of washes) {
+      expect(rule.sel, `「${rule.sel}」 repaints a day cell on hover without excluding today — that is how the blue pill turned white under the reader's finger`).toContain(':not([data-today])')
+    }
+    // And both facts are drawn when they hold at once: today's own fill, and a ring
+    // that belongs to today rather than cancelling it.
+    expect(sheet, 'today has no fill of its own to keep').toMatch(/\.itemRailDay\[data-today\]\s*\{[^}]*background/)
+    expect(sheet, 'a picked today wears the plain ink ring, which cancels the very fact that it is today')
+      .toMatch(/\.itemRailDay\[data-today\]\[data-picked\]/)
+  })
 })
 
 /**

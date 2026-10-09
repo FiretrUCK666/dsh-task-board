@@ -880,24 +880,35 @@
   opacity: 0.72;
 }
 
-/* 「回到今天」只在真的离今天远了的时候出现（见 `ItemRail`），所以它是这一栏里
-   唯一一枚带底色的安静按钮——它出现的时候，读者正需要它。 */
+/* 「回到今天」站在 `‹ ›` 中间，跟着它们一起是一枚**小控件**，不是一格日子：它和
+   翻月按钮同高、同排版，只是宽一点、写着字。无路可回时**变灰，不消失**（见
+   `ItemRail` 的 `canReturnToToday`）。 */
 .itemRailToday {
-  align-self: flex-start;
-  margin-block-start: var(--s2);
-  padding: 3px 8px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  block-size: 24px;
+  padding: 0 var(--s2);
   font-family: inherit;
   font-size: 11px;
   font-weight: 600;
   color: var(--item-ink-2);
-  background: var(--item-fill);
-  border: var(--item-hair-strong);
-  border-radius: var(--item-radius-pill);
+  background: none;
+  border: 0;
+  border-radius: var(--item-radius-ctl);
   cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
 }
 
-.itemRailToday:hover {
+.itemRailToday:hover:not(:disabled) {
   color: var(--item-ink-1);
+  background: var(--dsh-tb-hover);
+}
+
+.itemRailToday:disabled {
+  color: var(--item-ink-3);
+  opacity: 0.5;
+  cursor: default;
 }
 
 /* 月份是这块日历的**标题**：它站在冻结字阶的大字档上（26/700，这一档的字重就是
@@ -963,9 +974,10 @@
   color: var(--item-ink-1);
 }
 
-.itemRailDay:hover {
-  background: var(--dsh-tb-hover);
-}
+/* 这一条曾经是 `.itemRailDay:hover`，而文件后半段那族悬停规则里还有一条同名、更靠后、
+ 底色还不同的（`.itemRailDay:hover { background: var(--item-fill) }`）——于是这一条
+  从来没生效过，一次也没有。**同一个类名写两遍，就是给级联一次机会让两处说的是两回事。**
+  删掉它：悬停只有一处，就在那一族里，并且带着 `:not([data-today])`。 */
 
 /* 被选中的那天：一枚墨环（inset 1px，环在格子自己的框里，不碰邻格）。墨环与
  * 「今天」的实药丸双律分明：药丸是日历事实（accent，永远在），环是读者的选择
@@ -996,6 +1008,15 @@
 
 .itemRailDay[data-today] .itemRailDayDot {
   display: none;
+}
+
+/* **「今天」+「我在看这天」两件事同时成立时，两样都要看得见。**
+ *
+ * 环原先一律是墨的：蓝底上再压一圈墨，读者看到的是「这颗蓝的被圈住了」而不是
+ * 「今天被选中了」——而蓝底是日历事实，它不该被圈没了。所以今天那一格换白环：
+ * 蓝在外、白环在内，两个事实各说各的，谁也不吃掉谁。 */
+.itemRailDay[data-today][data-picked] {
+  box-shadow: inset 0 0 0 2px var(--dsw-alias-label-primary-foreground);
 }
 
 /* ── 分组：节标题承担分隔，线只在两处 ───────────────────────────────────
@@ -3303,22 +3324,26 @@ textarea.itemInput {
   border-block-start: var(--item-hair);
 }
 
-/* 归档页：一个 section + 一个折叠头 + 一张列表。标题是「已删除」、它下面装的是
- * 墓碑，不是任何一个状态；页的内衬（四周同一个）由页面自己给，节里不再画线。 */
+/* 归档页：一个 section + 一条工具条 + 一张列表。标题是「已删除」、它下面装的是
+ * 墓碑，不是任何一个状态。
+ *
+ * **它是**页面层**，所以它吃画布，不画卡。** 这里原本给自己画了一整张卡：不透明面
+ * （`--item-surface`）+ 描边 + 卡圆角 + 卡影，而那三个令牌属于**内层表面**——于是换上
+ * 第三方皮肤（画布与内层不同色）时，这一页变成一大块与旁边两页不同色的面板，读者的话
+ * 是「它的背景和其他页面对不上，观感很奇怪」。日程页与清单页的页面层都是空的：日程
+ * 只有节题头与行卡，清单只有行卡，地面都是画布。归档与它们同层。
+ *
+ * 行的分界仍是行自己的发丝线（`.itemArchiveRow + .itemArchiveRow`）——**结构由行说，
+ * 不由页说**。 */
 .itemArchivePage {
   display: flex;
   flex-direction: column;
   flex: 1 0 auto;
   min-block-size: 0;
   min-inline-size: 0;
-  background: var(--item-surface);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-card);
-  box-shadow: var(--item-card-shadow);
-  /* 四周同一个内衬：这一页的题头与句子曾经糊在左上角（横内衬为零、竖内衬 24），
-   * 一边粘一边空，读者的原话是「左边几乎粘着边缘，上面又有很多空隙」。
-   * 右沿与其它条带同读 `--item-inset-x-end`（滚动体的右缘空气那一档）。 */
-  padding: var(--item-card-pad) var(--item-inset-x-end) var(--s3);
+  /* 左沿与列表里的行卡同一条线（行的发丝线从那里开始），右沿与其它条带同读
+   * `--item-inset-x-end`；上下各一档：题头不再糊在左上角。 */
+  padding: var(--s1) var(--item-inset-x-end) var(--s3) var(--item-inset-x);
 }
 
 .itemArchiveSection {
@@ -3692,7 +3717,12 @@ textarea.itemInput {
 .itemTopBarChip:hover,
 .itemArchiveToggle:hover,
 .itemRailRow:hover,
-.itemRailDay:hover {
+/* **今天那一格除外**：它是日历事实，不是一枚跟着指针变的芯片。这一族写在文件的
+ * 后半段，与 `.itemRailDay[data-today]` 同特异度却更靠后，所以不加这个 `:not()` 的
+ * 话，悬停（= 点它的那一瞬）会把蓝底换成浅底，而底上的数字还是白的——读者看到的是
+ * 「点一下今天，蓝色没了，数字也没了」。双律分明里的「药丸永远在」要靠这一条兜住，
+ * 不能只靠上面那句注释。 */
+.itemRailDay:not([data-today]):hover {
   background: var(--item-fill);
   border-color: var(--item-ink-3);
   color: var(--item-ink-1);
@@ -3710,7 +3740,7 @@ textarea.itemInput {
 .itemNewButton:active,
 .itemArchiveToggle:active,
 .itemRailRow:active,
-.itemRailDay:active {
+.itemRailDay:not([data-today]):active {
   background: var(--item-fill);
   transform: scale(0.97);
 }
@@ -4189,9 +4219,15 @@ textarea.itemInput {
 }
 
 /* 归档几行状态：读中 / 读不到 / 一条都没有 / 一次找回的结果。**同一档墨、同一个字号**，
- * 因为它们说的是同一件事的四种读法，而四种读法不该长得像四样东西。 */
+ * 因为它们说的是同一件事的四种读法，而四种读法不该长得像四样东西。
+ *
+ * **它是一行状态，不是一个会占满空位的盒子。** 这里原来写着 `flex: 1 1 auto`，而抽屉
+ * 的正文是一条列向 flex：这一行于是**吃掉全部空位**，把下面的工具条与所有行整块顶到底部。
+ * 读者按「放回去」的那一下正好会多出这一行（回执），于是那一按看起来像是把整份清单
+ * 弹到了页底——量出来：工具条从 y=137 掉到 y=701，行的第一行从 177 掉到 741。
+ * **空位的归属**是那条空态的（`.itemArchiveVoid` 自己 `flex: 1 1 auto` + 居中），
+ * 一行字没有理由去抢它。 */
 .itemArchiveNote {
-  flex: 1 1 auto;
   min-inline-size: 0;
   font-size: 11px;
   font-weight: 400;

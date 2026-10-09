@@ -194,6 +194,11 @@ export interface ItemRailProps {
   readonly onShiftMonth: (by: -1 | 1) => void
   /** Back to the month that holds today, and off whatever day was picked. */
   readonly onToday: () => void
+  /** Whether there is anything to return FROM — a month that is not today's, or a
+   *  day that is picked. It greys the control rather than removing it: a control
+   *  that vanishes the instant it is pressed reads as 「it broke」, and the reader
+   *  gets no chance to see that the press worked. */
+  readonly canReturnToToday: boolean
   readonly onPickDay: (day: string) => void
 }
 
@@ -243,6 +248,14 @@ export function ItemRail(props: ItemRailProps) {
           * 名字、`aria-expanded` 说得出当前状态。`hidden` 而不是 `display: none`
           * 写在样式表里：折起来的按钮不该还能被 Tab 走到。 */}
         <div className={css.itemRailCalendarBody} id={calendarId} hidden={!props.calendarOpen}>
+          {/* **翻月与「今天」是同一条导航行。**
+            *
+            * 「回到今天」原本站在月历**下面**，而且只在「离今天远了」的时候才出现——
+            * 于是它按下去的一瞬间自己就消失了（条件不再成立），读者看到的是一个控件
+            * 在他手指底下不见了，而屏幕别处没有任何东西说明刚才发生了什么。控件可以
+            * 变灰，不能在按下的那一刻消失。
+            *
+            * 放在 `‹ ›` 中间也是日历的常识：左右是「挪一格」，中间是「回今天」。 */}
           <span className={css.itemRailMonthNav}>
             <button
               type="button"
@@ -256,6 +269,14 @@ export function ItemRail(props: ItemRailProps) {
             </button>
             <button
               type="button"
+              className={css.itemRailToday}
+              disabled={!props.canReturnToToday}
+              onClick={props.onToday}
+            >
+              {t('item.rail.today')}
+            </button>
+            <button
+              type="button"
               className={css.itemRailNavBtn}
               aria-label={t('item.rail.month.next')}
               onClick={() => props.onShiftMonth(1)}
@@ -266,13 +287,6 @@ export function ItemRail(props: ItemRailProps) {
             </button>
           </span>
           <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
-          {/* 「回到今天」只在**真的离今天远了**的时候出现：它说的是「你在别处」，
-              而一个永远都在的控件说的话没有人在听。 */}
-          {(props.month !== props.today.slice(0, 7) || props.activeDay !== undefined) && (
-            <button type="button" className={css.itemRailToday} onClick={props.onToday}>
-              {t('item.rail.today')}
-            </button>
-          )}
         </div>
       </div>
       {props.groups.map(group => (

@@ -30,7 +30,7 @@
  * usage:
  *   node scripts/shot-panel.mjs --out shot.png [--url http://127.0.0.1:3080]
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
- *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--label text]
+ *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--eval-file <path>] [--label text]
  *        [--css-for "<selector>" [--property padding]]
  *        [--both]
  *
@@ -42,7 +42,9 @@
  *
  * `--eval` runs once in the page after load, before the capture, and its
  * console output is printed — which is how the caller clicks into a panel
- * without this script needing to know anything about the panel.
+ * without this script needing to know anything about the panel. `--eval-file`
+ * takes the same script from a path instead of from the command line, so the
+ * code never travels through a shell (see the note at the call site).
  */
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -62,6 +64,7 @@ function parseArgs(argv) {
     colorScheme: 'light',
     full: false,
     eval: '',
+    evalFile: '',
     label: '',
     cssFor: '',
     property: 'padding',
@@ -424,9 +427,19 @@ try {
   await Promise.race([loaded, new Promise(done => setTimeout(done, 30000))])
   await new Promise(done => setTimeout(done, Number(args.wait)))
 
-  if (args.eval !== '') {
+  /* `--eval-file` READS THE SCRIPT FROM A FILE, and it exists because the other
+   * spelling of the same thing is a trap: 一段要量的 JS 从 shell 传进来，先要过引号与
+   * 转义，而 PowerShell 上更要过 `Out-File` 的编码——那会**静默**加上 BOM 并把行尾
+   * 改成 CRLF（硬性规范 10 点名的头两种），于是 `pnpm verify` 的编码审计读到几个
+   * 探针文件，而报的是「文件编码坏了」而不是「你在用 shell 传代码」。
+   *
+   * 所以内容一律走文件：文件由文件工具写（LF、无 BOM），脚本只收路径。 */
+  const evalSource = args.evalFile !== ''
+    ? readFileSync(args.evalFile, 'utf8').replace(/^\uFEFF/, '')
+    : args.eval
+  if (evalSource !== '') {
     const result = await browser.send('Runtime.evaluate', {
-      expression: args.eval,
+      expression: evalSource,
       awaitPromise: true,
       returnByValue: true,
     }, sessionId)

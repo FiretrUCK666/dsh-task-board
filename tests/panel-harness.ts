@@ -1049,7 +1049,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[] } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1113,6 +1113,17 @@ export function mountPanel(
    * answering from that set is the same relationship the real document has.
    */
   const tombstones = new Map<string, ItemRecord>()
+  /* A MOUNT MAY START WITH TOMBSTONES ALREADY IN THE DRAWER.
+   *
+   * The fake fills this map itself as the panel deletes rows, which is how the
+   * archive is reached in every behavioural test — but that path needs a reader
+   * to delete something first, and a PHOTOGRAPH of the drawer therefore could
+   * only ever show it empty. An empty drawer is the one state where 「the rows
+   * stay where they are when one comes back」 cannot be seen at all, so the
+   * artifact was structurally unable to answer the question the reader asked.
+   * Seeding is the smallest change that lets the same instrument photograph the
+   * drawer with rows in it. */
+  for (const row of over.deleted ?? []) tombstones.set(row.id, row)
   g.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url
     // The REAL host answers in an ENVELOPE: `{ ok, value }`, and the client
