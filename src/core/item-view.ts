@@ -96,7 +96,7 @@ export {
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts'
 
 // ── item-rail ──────────────────────────────────────────────────────────────
-export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts'
+export { itemRailGroupsOf, railSiblingsOf, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS } from './item-rail.ts'
 export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey, ItemRailKind } from './item-rail.ts'
 
 // ── item-navigate ──────────────────────────────────────────────────────────

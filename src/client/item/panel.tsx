@@ -1441,31 +1441,39 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * press before the toggle was even computed — so pressing the same row twice
    * turned the filter OFF and left the row marked 「you are here」, and deleting the
    * text by hand left it marked too. A highlight that is remembered can claim a
-   * filter that is not on; one derived from the query cannot. */
-  const activeRailId = useMemo(() => {
+   * filter that is not on; one derived from the query cannot.
+   *
+   * **它是一组，不是一个。** 筛子是**叠加**的：按「已超期」再按「紧急」，两个筛子同时开着、
+   * 列表按两条一起筛。而这一支原来在遇到**第一个**匹配的行时就 `return`——于是三枚芯片亮着、
+   * 左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。凡是叠加上去的状态，显示的
+   * 那一侧就必须是集合（硬性规范 17 的同一条道理：一个事实只有一种说法，而这里的说法是
+   * 「哪些筛子开着」）。 */
+  const activeRailIds = useMemo(() => {
     const query = parseItemQuery(prefs.search)
+    const on = new Set<string>()
     for (const group of railGroups) {
       for (const entry of group.entries) {
         if (entry.kind === 'collection' || entry.kind === 'place') continue
-        if (isTokenIn(prefs.search, entry.token)) return entry.id
+        if (isTokenIn(prefs.search, entry.token)) on.add(entry.id)
       }
     }
-    if (query.day !== null) return `day:${query.day}`
+    if (query.day !== null) on.add(`day:${query.day}`)
     /* THE TWO SETS ARE THE PAGE. 「刚记的」 is a page and 「已删除」 opens a place,
        so the row is current exactly when the reader is standing there — read from
        `prefs.page` and the archive's own state rather than from a press, which is
        what makes it impossible for a SET row to look current while the reader is
        somewhere else. */
-    if (archiveOpen) return 'deleted'
-    if (prefs.page === 'schedule') return 'schedule'
+    if (archiveOpen) on.add('deleted')
+    if (prefs.page === 'schedule') on.add('schedule')
     /* 「全部」 IS CURRENT WHEN NOTHING ELSE IS. It is the floor of the rail — the
        document with no narrowing — so it is lit exactly when the reader is on the
        list page with no predicate and no day. Reading it off the state instead of
        remembering the press is what makes a highlighted row mean something. */
-    return (prefs.page === 'list' && query.words.length === 0 && query.tags.length === 0
-        && query.priority.length === 0 && query.status.length === 0 && query.flags.size === 0 && query.day === null)
-      ? 'all'
-      : undefined
+    if (on.size === 0 && prefs.page === 'list' && query.words.length === 0 && query.tags.length === 0
+        && query.priority.length === 0 && query.status.length === 0 && query.flags.size === 0 && query.day === null) {
+      on.add('all')
+    }
+    return on
   }, [archiveOpen, railGroups, prefs.page, prefs.search])
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
@@ -1769,7 +1777,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 * the answer to a question about what is in front of them. */}
             <ItemRail
               groups={railGroups}
-              activeId={activeRailId}
+              activeIds={activeRailIds}
               month={shownMonth}
               daysWithRows={railDays}
               today={localDayKey(now)}

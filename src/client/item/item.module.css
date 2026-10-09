@@ -1204,12 +1204,19 @@
 }
 
 /* 选中：**一块底 + 一档字重 + 那个词自己变深**。没有侧边条——一根两像素的竖条是
- * 生成式界面最认得的一件家具，而这一页上已经有别的东西在用它。 */
+ * 生成式界面最认得的一件家具，而这一页上已经有别的东西在用它。
+ *
+ * **底色从墨里推，不用 `--item-fill`。** 它原来是 `--item-fill`，而在亮色主题下那个令牌
+ * 算出来就是 `rgb(255, 255, 255)`——量与看的两次结论都是「这一块在纯白底上根本看不见」，
+ * 读者只在带壁纸的皮肤上见过它（那里的白块才显形）。**一档颜色只在某一种主题下才存在，
+ * 那它就不是颜色，是运气**（这一条在优先级那四档上已经付过一次账）。所以这里与卡芯片同一条
+ * 配方：`currentColor` 的一个比例——本行的墨是 `--item-ink-1`，所以亮色主题下是浅灰、
+ * 暗色主题下是浅白，两边都与背景相反。 */
 .itemRailRow[aria-current='true'] {
   color: var(--item-ink-1);
   font-size: 13px;
   font-weight: 600;
-  background: var(--item-fill);
+  background: color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .itemRailRow[aria-current='true'] .itemRailCount {
@@ -3115,6 +3122,16 @@ textarea.itemInput {
   inline-size: 20px;
   block-size: 20px;
   padding: 0;
+  /* **那个叉要真的落在自己的盒正中。** 它原来只有 `line-height: 1`，盒子是 20×20，而一个
+   * 13px 的「×」按基线排在一个 20px 的盒子里——**上、下、左三面都不居中**，读者一眼就看出来
+   * 「它右边那个叉没居中好，感觉有点偏」。
+   *
+   * 居中要两轴都做：`align-items` 管上下、`justify-content` 管左右。做了之后仍然要**量**——
+   * 字形自己的墨不在行盒正中（同 `.itemRowSteps` 那条注解），所以这一族的数在下面那条规则里
+   * 按墨量出来写。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   font-family: inherit;
   font-size: 13px;
   font-weight: 400;
@@ -3124,6 +3141,13 @@ textarea.itemInput {
   border: 0;
   border-radius: var(--item-radius-ctl);
   cursor: pointer;
+  /* **墨心，不是盒心。** 上了两轴居中之后重量了一次（3x 截图，`shots/ink.mjs`）：四个叉的墨
+   * 都在 202..217 设备像素、墨心 209.5，而盒心在 204——**偏下 5.5 设备像素（1.83 CSS px）**。
+   * 26px 见方里偏近 2px 是看得见的，读者说的「偏」就是它。
+   *
+   * 这一族的规矩与别处同一条：**非对称内衬每 2px 换 1px 上移**，所以要上移 1.83 就得补
+   * 2 × 1.83 ≈ 3.66。盒高是定死的 20px（`block-size`），所以这一衬只挪内容、不改尺寸。 */
+  padding-block-end: 3.66px;
 }
 
 .itemQueryClear {

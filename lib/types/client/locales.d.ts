@@ -652,6 +652,7 @@ export declare const zh: {
     'item.rail.ahead': string;
     'item.rail.stale': string;
     'item.rail.undated': string;
+    'item.flag.linked': string;
     'item.rail.priority.urgent': string;
     'item.rail.priority.high': string;
     'item.rail.priority.normal': string;
@@ -790,8 +791,8 @@ export declare const zh: {
     'item.facet.priority': string;
     'item.facet.tag': string;
     'item.facet.date': string;
+    'item.facet.flag': string;
     'item.due.overdueShort': string;
-    'item.due.undated': string;
     'item.triage.behindShort': string;
     'item.triage.staleShort': string;
     'item.triage.undatedShort': string;

@@ -117,6 +117,19 @@ export interface ItemRailGroup {
 const RAIL_FLAGS = ['overdue', 'ahead', 'undated'] as const
 /** 「多久没人碰」是**另一个问题**，所以是另一组；这一组只有一行，而一行也可以是一组。 */
 const RAIL_IDLE_FLAGS = ['stale'] as const
+
+/**
+ * **「左栏能按下哪几个筛子」的唯一出处，导出是因为它还有第二个读者。**
+ *
+ * 搜索框下面那些芯片（`facets.ts` 的日期那一栏）必须画得出左栏按下的**每一个**筛子。它们原来
+ * 是**两份手写的表**：左栏写 `has:overdue / ahead / undated / stale`，芯片那一栏写的是
+ * `has:hardOverdue / behind / undated / gated`。两套词汇只有「没定日期」重合——于是读者按
+ * 「已超期」「还没到」「迟迟没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
+ * 东西说得出它开着，也点不掉它。这正是硬性规范 17 说的那笔债：同一件事有两处写法，而错的
+ * 那一处永远不会报错。
+ */
+export const ITEM_RAIL_DATE_FLAGS = RAIL_FLAGS
+export const ITEM_RAIL_IDLE_FLAGS = RAIL_IDLE_FLAGS
 export type ItemRailKey =
   | (typeof RAIL_FLAGS)[number]
   | (typeof RAIL_IDLE_FLAGS)[number]

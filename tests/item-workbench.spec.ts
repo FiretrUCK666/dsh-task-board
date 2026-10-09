@@ -64,6 +64,8 @@ import {
   itemSlicesOf,
   isInboxItem,
   ITEM_FLAGS,
+  ITEM_RAIL_DATE_FLAGS,
+  ITEM_RAIL_IDLE_FLAGS,
   parseItemQuery,
   scheduleBucketsOf,
   triageLinesOf,
@@ -85,6 +87,11 @@ import type { ItemStep } from '../src/core/item.ts'
 
 // A fixed clock, so every date-derived claim is reproducible.
 const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime()
+
+/** 这一枚 flag 的芯片该读哪一栏名——日期那一栏的菜单里有它，就归日期。 */
+function hasFlagFacet(flag: ItemFlag): boolean {
+  return (ITEM_RAIL_DATE_FLAGS as readonly string[]).includes(flag) || (ITEM_RAIL_IDLE_FLAGS as readonly string[]).includes(flag)
+}
 const DAY = 86_400_000
 
 /**
@@ -1500,6 +1507,61 @@ describe('the card chip is a door when the wiring gives one, and a reading when 
     try {
       expect(panel.surface.querySelector('[data-door]'), 'a door with nothing behind it').toBeNull()
       expect(panel.surface.querySelector('span[class*="itemRowCardChip"]'), 'the chip vanished instead of degrading').not.toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('every filter the rail can press is a chip you can see and remove', () => {
+  /* 读者报过的那一类缺陷（两处根因、同一句话）：「点击『已超期』和『还没到』，左边都显示选中
+     了，但下面没有出现对应的胶囊」。左栏按下的是 `has:overdue / ahead / undated / stale`，
+     而芯片那张手写的表里写的是 `has:hardOverdue / behind / undated / gated`——**两套词汇只有
+     一枚重合**，于是另外三个筛子开着：列表筛了，屏上没有任何东西说得出它开着，也点不掉它。 */
+  it('the rail writes only tokens the chips know, so nothing filters invisibly', () => {
+    for (const flag of [...ITEM_RAIL_DATE_FLAGS, ...ITEM_RAIL_IDLE_FLAGS]) {
+      const chips = queryChipsOf(`has:${flag}`)
+      expect(chips.map(chip => chip.token), `has:${flag} filters the list with nothing on screen saying so`).toEqual([`has:${flag}`])
+      expect(chips[0]?.value, `has:${flag} got a chip with no word on it`).not.toBeNull()
+    }
+  })
+
+  it('a flag OUTSIDE the menu is still a chip — hand-typed or written by the model', () => {
+    // `has:linked`/`has:done` 永远不在日期那一栏的菜单里，但读者可以手打、模型也会写。
+    for (const flag of ITEM_FLAGS) {
+      const chips = queryChipsOf(`has:${flag}`)
+      expect(chips.length, `has:${flag} is a filter with no chip`).toBe(1)
+      expect(chips[0]?.facet, `has:${flag} is described by a family that does not own it`).toBe(
+        hasFlagFacet(flag) ? 'item.facet.date' : 'item.facet.flag',
+      )
+    }
+  })
+})
+
+describe('the rail marks EVERY filter that is on, not just the first', () => {
+  /* 筛子是叠加的：按「已超期」再按「紧急」，两条一起筛。而左栏原来在遇到第一个匹配的行时就
+     停下——三枚芯片亮着、左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。
+   *
+   * **查询只能从搜索框里写进去**（`readViewPrefs` 故意不恢复搜索文本，那是刻意的产品行为），
+   * 所以这一条是**真实交互**：挂载、往框里打字、数一共几行亮着。 */
+  it('three filters on means three rows marked, and clearing them leaves 「全部」', async () => {
+    const panel = mountPanel([...fixtures()], 'list', 'wide')
+    try {
+      const box = panel.surface.querySelector('input[type="search"], input[type="text"]')
+      if (box === null) throw new Error('the bar drew no search box')
+      typeInto(box, 'has:overdue p1 status:done')
+      await settle()
+      const marked = [...panel.surface.querySelectorAll('[aria-current="true"]')]
+      expect(marked.length, 'the rail marked one row for three filters').toBe(3)
+      // 对照：按「全清」（产品自己的清空路径），读者回到「全部」——它是这条轨的地板，
+      // 不是三个里赢的那一个。
+      const clear = [...panel.surface.querySelectorAll('button')].find(one => (one.textContent ?? '') === '全清')
+      if (clear === undefined) throw new Error('three chips on screen but no 「全清」 button')
+      click(clear)
+      await settle()
+      const after = [...panel.surface.querySelectorAll('[aria-current="true"]')]
+      expect(after.length, 'clearing the query did not land the reader back on 「全部」').toBe(1)
+      expect(after[0]?.textContent ?? '', 'the lit row after clearing is not 「全部」').toContain('全部')
     } finally {
       panel.dispose()
     }
@@ -3578,7 +3640,29 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
-      && state !== 'card-door') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-door' && state !== 'chips-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'chips-open') {
+      /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 迟迟没动）。
+       *
+       * 加它的理由：芯片的几何一直没有被真浏览器量过，而读者刚点出来的缺陷正是几何——
+       * 「它右边那个叉没有居中好，感觉有点偏」。同时这一屏也把「按下的每一个筛子都有芯片」
+       * 这件事**画出来**：左栏按得动的四枚，芯片里一枚都不许少。 */
+      const items = [...fixtures()]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const box = panel.surface.querySelector('input[type="search"], input[type="text"]')
+        if (box === null) throw new Error('the bar drew no search box')
+        typeInto(box, 'status:done p4 has:undated has:overdue')
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'card-door') {
       /* 卡芯片**是门**的那一屏（装配层把 `openCard` 接上了）。

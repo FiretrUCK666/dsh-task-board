@@ -35,10 +35,11 @@
  * file is a text editor with a vocabulary, and the vocabulary is the grammar
  * core already speaks.
  */
-import { isItemQualifierToken, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
+import { isItemQualifierToken, ITEM_FLAGS, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
 import { ITEM_STATUS_VIEWS } from '../../core/item.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { STATUS_KEY } from '../board/status.ts'
+import { FLAG_LABEL } from './labels.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
 /** The four faces a filter row offers. */
@@ -94,12 +95,18 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
   {
     id: 'date',
     label: 'item.facet.date',
-    values: [
-      { token: 'has:hardOverdue', key: 'hardOverdue', label: 'item.due.overdueShort' },
-      { token: 'has:behind', key: 'behind', label: 'item.triage.behindShort' },
-      { token: 'has:undated', key: 'undated', label: 'item.due.undated' },
-      { token: 'has:gated', key: 'gated', label: 'item.bucket.gated' },
-    ],
+    /* **日期那一栏的取值 = 左栏能按下的那几个筛子**，不是另写一份。
+     *
+     * 这一栏原来手写着 `has:hardOverdue / has:behind / has:undated / has:gated`，而左栏
+     * （读者真正按的地方）写的是 `has:overdue / has:ahead / has:undated / has:stale`。
+     * 两套词汇只有「没定日期」重合——于是读者按「已超期」「还没到」「迟迟没动」：
+     * **列表筛了，芯片一个都不出现**（读的就是这份表），筛子开着却没有东西说得出它、也点不掉
+     * 它。现在两边读同一份（`ITEM_RAIL_*_FLAGS`），加一个筛子只动左栏那一处。 */
+    values: [...ITEM_RAIL_DATE_FLAGS, ...ITEM_RAIL_IDLE_FLAGS].map(flag => ({
+      token: `has:${flag}`,
+      key: flag,
+      label: FLAG_LABEL[flag],
+    })),
   },
 ]
 
@@ -217,6 +224,21 @@ export function queryChipsOf(text: string, tags: readonly (readonly string[])[] 
       if (!present.has(value.token.toLowerCase())) continue
       chips.push({ facet: facet.label, value: value.label, tag: null, day: null, token: value.token })
     }
+  }
+  /* **语法认得的每一枚 flag 都要有芯片，哪怕它不在任何一栏的菜单里。**
+   *
+   * 读者可以在框里手打 `has:gated`，模型也会写它（`taskboard_query` 的筛选词表就是这张表推
+   * 出来的），而它不在日期那一栏的菜单里——于是它曾经是一个**开了却无法看见、无法点掉的筛子**：
+   * 列表被筛过，屏上没有任何东西说得出为什么。这一页最不能有的东西就是它（本函数的注释里写着
+   * 同一句话：一个手打的限定词仍然是筛子，悄悄藏起来是最坏的一种错）。
+   *
+   * 名字取自 `FLAG_LABEL`（闭合成 `ItemFlag` 的一份表，每一枚写自己的词），栏名用「筛选」而不是
+   * 「日期」——`has:linked`、`has:done` 不是日期问题，把它们印成「日期：挂了卡」就是一句假话。 */
+  for (const flag of ITEM_FLAGS) {
+    const token = `has:${flag}`
+    if (!present.has(token.toLowerCase())) continue
+    if (chips.some(chip => chip.token.toLowerCase() === token.toLowerCase())) continue
+    chips.push({ facet: 'item.facet.flag', value: FLAG_LABEL[flag], tag: null, day: null, token })
   }
   // A tag the reader typed by hand and that this document does not hold is still
   // a filter on screen, so it gets a chip too — with the spelling THEY used,

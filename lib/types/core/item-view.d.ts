@@ -69,7 +69,7 @@ export { DEFAULT_ITEM_SORT, ITEM_SORTS, recentItemsOf, sortItemsOf } from './ite
 export type { ItemSort } from './item-sort.ts';
 export { EMPTY_ITEM_QUERY, ITEM_FLAGS, ITEM_FLAG_TESTS, flagProbeOf, isItemQualifierToken, itemHasFlag, itemMatchContextOf, itemMatches, itemQualifierVocabulary, dayTokenOf, parseItemQuery, PRIORITY_BY_TOKEN, } from './item-query.ts';
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts';
-export { itemRailGroupsOf, railSiblingsOf } from './item-rail.ts';
+export { itemRailGroupsOf, railSiblingsOf, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS } from './item-rail.ts';
 export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey, ItemRailKind } from './item-rail.ts';
 export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts';
 export type { ItemNavigation, ItemNavigationRefusal, ItemPageId } from './item-navigate.ts';

@@ -692,6 +692,8 @@ export const zh = {
   'item.rail.ahead': '还没到',
   'item.rail.stale': '迟迟没动',
   'item.rail.undated': '没定日期',
+  /* `has:linked` 那一枚芯片的词：它说的是「这一行挂着一张卡」。 */
+  'item.flag.linked': '挂了卡',
   'item.rail.priority.urgent': '紧急',
   'item.rail.priority.high': '高',
   'item.rail.priority.normal': '普通',
@@ -867,8 +869,10 @@ export const zh = {
   'item.facet.priority': '优先级',
   'item.facet.tag': '标签',
   'item.facet.date': '日期',
+  /* 不在日期那一栏菜单里的 flag（`has:linked`、`has:done`、手打的 `has:gated`……）的那枚芯片
+   * 读这一栏名——把它们印成「日期：」就是一句假话。 */
+  'item.facet.flag': '筛选',
   'item.due.overdueShort': '超期',
-  'item.due.undated': '没定日期',
   'item.triage.behindShort': '落后',
   'item.triage.staleShort': '{n} 没动',
   'item.triage.undatedShort': '{n} 没日期',
@@ -1612,6 +1616,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.ahead': 'Not due yet',
   'item.rail.stale': 'Untouched',
   'item.rail.undated': 'No date',
+  'item.flag.linked': 'On a card',
   'item.rail.priority.urgent': 'Urgent',
   'item.rail.priority.high': 'High',
   'item.rail.priority.normal': 'Normal',
@@ -1778,8 +1783,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.facet.priority': 'Priority',
   'item.facet.tag': 'Tags',
   'item.facet.date': 'Date',
+  'item.facet.flag': 'Filter',
   'item.due.overdueShort': 'Past due',
-  'item.due.undated': 'No date',
   'item.triage.behindShort': 'Behind',
   'item.triage.staleShort': '{n} untouched',
   'item.triage.undatedShort': '{n} undated',

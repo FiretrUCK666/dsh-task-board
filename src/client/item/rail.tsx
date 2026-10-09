@@ -158,8 +158,14 @@ export interface ItemRailProps {
   readonly groups: readonly ItemRailGroup[]
   /** Go to a row, a page, or 「wherever this entry points」. */
   readonly onEnter: (entry: ItemRailEntry) => void
-  /** The entry the reader is standing in, if any. */
-  readonly activeId: string | undefined
+  /**
+   * **读者正站在哪些行上**，从查询里读出来的**一组**。
+   *
+   * 筛子是叠加的（「已超期」+「紧急」可以同时开着），所以这一侧必须是集合：它原来是一个
+   * `string | undefined`，取第一个匹配的行就停——三枚芯片亮着而左栏只有一行有底色，读者看到
+   * 的是「我按了三个，它只认一个」。
+   */
+  readonly activeIds: ReadonlySet<string>
   /** The month being shown, and the days that hold rows. */
   readonly month: string
   readonly daysWithRows: readonly string[]
@@ -284,7 +290,7 @@ export function ItemRail(props: ItemRailProps) {
               type="button"
               className={css.itemRailRow}
               data-kind={entry.kind}
-              aria-current={props.activeId === entry.id ? 'true' : undefined}
+              aria-current={props.activeIds.has(entry.id) ? 'true' : undefined}
               onClick={() => props.onEnter(entry)}
             >
               <span className={css.itemRailMark}>{markOf(entry)}</span>

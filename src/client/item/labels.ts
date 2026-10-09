@@ -145,3 +145,25 @@ export const TRIAGE_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>> = {
   done: 'item.triage.undated',
   overdue: 'item.triage.behind',
 }
+
+/**
+ * **每一枚 flag 自己的词**，闭合成 `ItemFlag`——`has:` 芯片与左栏那一组都读这一份。
+ *
+ * 它是 `TRIAGE_SHORT`/`TRIAGE_LABEL` 的第三代：那两张表是**三要处理那一条线**用的（一行一句
+ * 话），所以它们把 `linked`/`done` 这类「不是日期问题的 flag」都折到最近的日期句子上——那对
+ * 一条句子是对的，对**一枚芯片**就是错的（「挂了卡」被印成「没日期」）。
+ *
+ * 芯片要的是**这一枚筛子叫什么**，所以这张表不许折：每一枚自己那一格写自己的词，加一枚新 flag
+ * 就编译不过。左栏的行也读它（同一个筛子在两处必须同一个词——硬性规范 17）。
+ */
+export const FLAG_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>> = {
+  overdue: 'item.rail.overdue',
+  ahead: 'item.rail.ahead',
+  undated: 'item.rail.undated',
+  stale: 'item.rail.stale',
+  hardOverdue: 'item.due.overdueShort',
+  behind: 'item.triage.behindShort',
+  gated: 'item.bucket.gated',
+  linked: 'item.flag.linked',
+  done: STATUS_KEY.done,
+}

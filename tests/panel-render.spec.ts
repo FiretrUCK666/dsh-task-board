@@ -2306,15 +2306,28 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       // washes on purpose: the hover one is the reader’s pointer and the standing
       // one is where they are. What would be wrong is a card surface here, which
       // would make twenty rows look like twenty things lying on top of the list.
+      //
+      // **「薄洗」是一条性质，不是两个名字。** 这一条原来是 `var(--item-fill)` 与
+      // `var(--dsh-tb-hover)` 的白名单——而「可以透过去」这件事的真实判据是**值里让它透**：
+      // 知名的两个洗令牌，或者任何带 `transparent` 的配方（`color-mix(in srgb, currentColor
+      // 12%, transparent)` 就是读者那次「白底上看不见」之后选中的那一条：它按墨推色，任何主
+      // 题都与背景相反）。白名单会逼着一个正确的实现去迁就它（硬性规范 14），而按性质判就
+      // 不会：卡片面（`--item-float`、`--item-card`）没有 `transparent`，照样被拦下来。
       const fills = body.match(/(?:^|[;{\s])background(?:-color)?\s*:\s*([^;]+)/)?.[1]?.trim() ?? ''
-      expect(['var(--item-fill)', 'var(--dsh-tb-hover)'],
+      const isWash = ['var(--item-fill)', 'var(--dsh-tb-hover)'].includes(fills) || /\btransparent\b/.test(fills)
+      expect(isWash,
         `a rail row paints "${fills}" rather than a wash, so it reads as something lying on top of the list`)
-        .toContain(fills)
+        .toBe(true)
       const radii = body.match(/(?:^|[;{\s])border-radius\s*:\s*([^;]+)/)?.[1]?.trim() ?? ''
       expect(radii === '' || radii === 'var(--item-radius-ctl)',
         `a rail row uses "${radii}" rather than the control radius, so it does not match the other controls in the column`)
         .toBe(true)
     }
+    /* 判据会咬人的证明（硬性规范 16 的同一条精神：一条读什么都通过的检查等于没有检查）。
+       这张面令牌是一张卡片面，它没有 `transparent`，也不在白名单里——所以它必须被拒。 */
+    const SURFACE_IS_NOT_A_WASH = 'var(--item-float)'
+    expect(['var(--item-fill)', 'var(--dsh-tb-hover)'].includes(SURFACE_IS_NOT_A_WASH)
+      || /\btransparent\b/.test(SURFACE_IS_NOT_A_WASH), 'the wash reader no longer refuses a card surface').toBe(false)
     // The reader is proved on the four shapes it has to tell apart, so a future
     // edit to the pattern cannot quietly turn it into one that matches nothing.
     const BORDER = /(?:^|[;{\s])border(?:-[a-z]+)?\s*:\s*(?!\s*(?:0|none)\b)/
