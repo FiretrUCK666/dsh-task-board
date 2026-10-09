@@ -421,18 +421,21 @@ export function ItemRowLine(props: ItemRowLineProps) {
             {t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}
           </button>
         )}
-        {cardId !== undefined && (
-          /* **挂在哪张卡，是一枚门。** 它的样子（方框 + 那一栏的词 + 那一栏的颜色）说的是
-             事实；而它同时也是一条路——按它跳去看板那张卡（`openCard`），因为读者看到
-             「这一条挂在待审核那张卡上」时，下一个动作十有八九是去看那张卡。
-             装配层没给这扇门时（`onOpenCard` 缺席）它**退回一枚读数**（`span`），而不是
-             画一枚按了没反应的按钮。 */
-          props.onOpenCard === undefined ? (
-            <span className={css.itemRowCardChip} data-door={undefined}>
-              <CardMark size="chip" />
-              {t(GROUP_LABEL[view.status])}
-            </span>
-          ) : (
+        {/* **状态那一枚胶囊，每一行都在。**
+         *
+         * 它原来只在**挂着卡**的行上画，于是「待办 / 已完成」这两个词在没有卡的行上哪儿都不
+         * 出现——而左边那颗珠子是**形状**：五个栏三个形状，形状说不出你站在哪一栏。读者的话
+         * 是「不管怎么变它的状态，只要不挂上卡，标题右边是不会显示那些胶囊的，感觉很难区分
+         * 出来」。
+         *
+         * 所以：**词一律在**（它读的是 `view.status`，那已经是「这条工作现在在哪儿」的唯一
+         * 答案）；卡片有没有只决定两件事——那枚卡记号画不画，以及它是**一扇门**还是一枚读数
+         * （按它跳去看板那张卡；没有卡就没有可跳的地方）。
+         *
+         * 装配层没给这扇门时（`onOpenCard` 缺席）它同样退回读数，而不是画一枚按了没反应的
+         * 按钮。 */}
+        {cardId !== undefined && props.onOpenCard !== undefined
+          ? (
             <button
               type="button"
               className={css.itemRowCardChip}
@@ -444,7 +447,16 @@ export function ItemRowLine(props: ItemRowLineProps) {
               {t(GROUP_LABEL[view.status])}
             </button>
           )
-        )}
+          : (
+            <span
+              className={css.itemRowCardChip}
+              data-door={undefined}
+              aria-label={t('item.row.status', { where: t(GROUP_LABEL[view.status]) })}
+            >
+              {cardId !== undefined && <CardMark size="chip" />}
+              {t(GROUP_LABEL[view.status])}
+            </span>
+          )}
         {due !== undefined && (
           <span className={css.itemRowDate} data-tone={due.tone}>
             <ClockMark />

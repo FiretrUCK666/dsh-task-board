@@ -720,6 +720,7 @@ export declare const zh: {
     'item.dates.contradict': string;
     'item.ref.pending': string;
     'item.row.untitled': string;
+    'item.row.status': string;
     'item.stale': string;
     'item.menu.more': string;
     'item.menu.expand': string;

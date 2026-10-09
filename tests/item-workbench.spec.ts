@@ -3313,15 +3313,33 @@ describe('一张卡没了，它就不再是一张卡', () => {
   const chipOf = (panel: ReturnType<typeof mountPanel>): Element | null =>
     panel.surface.querySelector('[class*="itemRowCardChip"]')
 
-  it('删掉卡之后：芯片消失，展开区读「不挂」', () => {
+  it('删掉卡之后：它不再是门，状态照旧看得见，展开区读「不挂」', () => {
+    // 两件事一起变：**门**没了（没有卡可跳），而**状态那个词**必须在（读者要能看出这一行现在
+    // 站在哪一栏——没挂卡的行正是最容易「看不出状态」的那一种）。
     const panel = mountPanel(hung(), 'list', 'wide')
     try {
       expect(chipOf(panel), '这一行本来就没画成挂着卡的样子').not.toBeNull()
       panel.board.setTasks([])
       panel.settle()
-      expect(chipOf(panel), '卡删掉了，芯片还挂着').toBeNull()
+      const after = chipOf(panel)
+      expect(after, '状态那一枚胶囊跟着卡一起消失了').not.toBeNull()
+      expect(after?.getAttribute('data-door'), '卡没了，它还是一扇门').toBeNull()
+      expect(after?.textContent ?? '', '卡没了之后那一枚不说话了').toContain('待办')
       openRowDetail(panel)
       expect(panel.surface.textContent ?? '', '展开区没有说回「不挂」').toContain('不挂')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('没挂卡的行同样看得见状态那个词', () => {
+    // 读者的原话：「不管怎么变它的状态，只要不挂上卡，标题右边是不会显示那些胶囊的，
+    // 感觉很难区分出来。」珠子是形状，形状说不出五栏里的哪一栏，所以词每一行都在。
+    const panel = mountPanel(oneRow({ status: 'done' }), 'list', 'wide')
+    try {
+      const chip = chipOf(panel)
+      expect(chip?.textContent ?? '', '没挂卡的行看不见它的状态').toContain('已完成')
+      expect(chip?.getAttribute('data-door'), '没有卡却画成了一扇门').toBeNull()
     } finally {
       panel.dispose()
     }

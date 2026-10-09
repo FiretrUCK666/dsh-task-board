@@ -49,6 +49,7 @@ import {
   backgroundOf,
   cssMembersOf,
   declaredOf,
+  lastDeclaredOf,
   dswNamesReferenced,
   fixtures,
   hostTokens,
@@ -2897,5 +2898,25 @@ describe('the stylesheets this panel renders from survive the real transform', (
       expect(build(source, join('src/client', sheet)),
         sheet + ' is not CSS the build will accept, so every selector in it silently matches nothing').not.toThrow()
     }
+  })
+})
+
+describe('行尾那一簇记号与标题共一条线', () => {
+  const css = panelCss()
+
+  it('簇高就是标题的行高，不是它自己内容的高度', () => {
+    // 行的网格是 `align-items: start`，于是这一簇的盒顶与标题的盒顶齐平；而它里面最高的一件
+    // 只有 18px（那三枚胶囊：步骤 / 状态 / 日期）——**量出来的是这一簇的墨心 272，而标题、
+    // 珠子与 ⋮ 都是 274**。读者看到的正是「标题右边那些东西比标题高一点点」。
+    // 钉法就是让两者声明同一个数；改一个而不改另一个，这一条就红。
+    expect(lastDeclaredOf(css, 'itemRowMarks', 'block-size'), '行尾那一簇的高度不再与标题的行高同一个数，于是它们不再共线')
+      .toBe(lastDeclaredOf(css, 'itemRowTitle', 'line-height'))
+  })
+
+  it('the probe bites: a cluster sized by its content is reported', () => {
+    // 高度改回按内容算时两个数就不同了——那正是这一条要报的那件事。
+    const planted = `${css}\n.itemRowMarks {\n  block-size: auto;\n}\n`
+    expect(lastDeclaredOf(planted, 'itemRowMarks', 'block-size'), 'the plant did not bite')
+      .not.toBe(lastDeclaredOf(planted, 'itemRowTitle', 'line-height'))
   })
 })

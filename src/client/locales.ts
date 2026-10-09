@@ -797,6 +797,8 @@ export const zh = {
   // 一行还没有名字（只在正文里写了字、或者只挂了标签）。它与「编号待定」同一族：
   // 一件还没被命名的事，而不是一句关于选中状态的话。
   'item.row.untitled': '还没名字',
+  // 状态那一枚胶囊的读音（挂卡的行走的是「看板卡片：那一栏」那把门）。
+  'item.row.status': '状态：{where}',
   'item.stale': '放着 {days} 天',
 
   // 行尾菜单。
@@ -1709,6 +1711,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.ref.pending': 'number pending',
   // A row with no words of its own yet (a body with no title, or a tag on its own).
   'item.row.untitled': 'no name yet',
+  'item.row.status': 'Status: {where}',
   'item.stale': 'untouched {days}d',
 
   // The row-end menu.

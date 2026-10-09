@@ -863,17 +863,22 @@ export function stripCssComments(css: string): string {
  * @returns one body per matching rule, in source order.
  */
 export function rulesOf(css: string, name: string): string[] {
+  /* **注释先剥掉。** 不剥的话，一段写着「见 `.itemRowTitle` 的 22px」的注释会被读成一条规则
+   * ——从那个词一直吃到**下一条规则**的 `{`，于是那一条的声明挂在了这个类名下。量出来的
+   * 症状是：一个类明明只有一处 `line-height: 22px`，而门禁读到的是隔壁的 16px，指向一个
+   * 根本不存在的问题（硬性规范 14：让实现变得不如以前的检查，先怀疑检查的读法）。 */
+  const source = stripCssComments(css)
   const out: string[] = []
   const open = new RegExp(`\\.${name}(?![\\w-])[^\\{;]*\\{`, 'g')
-  for (const match of css.matchAll(open)) {
+  for (const match of source.matchAll(open)) {
     const start = (match.index ?? 0) + match[0].length - 1
     let depth = 0
     let end = start
-    for (; end < css.length; end++) {
-      if (css[end] === '{') depth++
-      else if (css[end] === '}') { depth--; if (depth === 0) break }
+    for (; end < source.length; end++) {
+      if (source[end] === '{') depth++
+      else if (source[end] === '}') { depth--; if (depth === 0) break }
     }
-    out.push(css.slice(start + 1, end))
+    out.push(source.slice(start + 1, end))
   }
   return out
 }
