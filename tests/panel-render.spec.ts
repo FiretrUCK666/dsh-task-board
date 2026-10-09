@@ -2901,6 +2901,24 @@ describe('the stylesheets this panel renders from survive the real transform', (
   })
 })
 
+describe('标签框按内容定宽', () => {
+  const css = panelCss()
+
+  it('宽度由里面那把尺子给，不由 input 自己的默认值给', () => {
+    // 量过：空着时**框 54px、尺子 54px**（一模一样），而改之前是 100px——`<input>` 的固有宽度
+    // 由 `size` 决定、默认二十个字符，那就是这段死空的来处（读者：「它这个空的地方也太长了，
+    // 字却挤在左边」）。三条声明缺一条，这把尺子就不成立。
+    expect(lastDeclaredOf(css, 'itemTagAddField', 'display'), '那一格不再是网格，两样东西就不在同一格里').toBe('inline-grid')
+    expect(lastDeclaredOf(css, 'itemTagAddMirror', 'inline-size'), '尺子不再按内容取宽').toBe('max-content')
+    expect(lastDeclaredOf(css, 'itemTagAdd', 'inline-size'), '输入框不再跟着那一格走，于是它按自己的默认字符数定宽').toBe('100%')
+  })
+
+  it('the probe bites: a field sized by the input default is reported', () => {
+    const planted = `${css}\n.itemTagAdd {\n  inline-size: auto;\n}\n`
+    expect(lastDeclaredOf(planted, 'itemTagAdd', 'inline-size'), 'the plant did not bite').not.toBe('100%')
+  })
+})
+
 describe('行尾那一簇记号与标题共一条线', () => {
   const css = panelCss()
 

@@ -4277,7 +4277,8 @@ textarea.itemInput {
  * 猜出来的像素数：那段说明有几个字，控件就该有多宽——**一根写死的轨道装不下它要装
  * 的东西时，溢出不回灌，只会被切掉**。 */
 .itemTagAdd {
-  inline-size: auto;
+  inline-size: 100%;
+  min-inline-size: 0;
   padding: 3px 8px;
   font-size: 12px;
   color: var(--item-ink-2);
@@ -4285,6 +4286,26 @@ textarea.itemInput {
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
   outline: none;
+}
+
+/* **这一格由里面那两样东西里更宽的那一样定宽**：输入框（`inline-size: 100%`，跟着格子）与
+ * 那把看不见的尺子（`max-content` = 读者现在看见的那串字）。于是空着时它是占位说明的宽，
+ * 打字时它跟着那串字长——不再是一个与内容无关的二十字符盒子。
+ *
+ * 上限是这一行的宽：一个很长的标签会先在框里横向滚动，而不是把整行撑破。 */
+.itemTagAddField {
+  display: inline-grid;
+  max-inline-size: 100%;
+}
+
+.itemTagAddField > * {
+  grid-area: 1 / 1;
+}
+
+.itemTagAddMirror {
+  visibility: hidden;
+  inline-size: max-content;
+  white-space: pre;
 }
 
 .itemTagAdd:focus {

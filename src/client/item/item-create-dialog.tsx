@@ -34,6 +34,7 @@ import { parseItemDate, toItemDateField, formatItemDate } from './model.ts'
 import { isEnglish } from '../locales.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
+import { TagField } from './tag-field.tsx'
 import css from './item.module.css'
 
 /** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
@@ -348,12 +349,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     #{one}
                   </button>
                 ))}
-                <input
-                  className={css.itemTagAdd}
+                <TagField
                   value={tags}
                   placeholder={t('item.field.tagsHint')}
-                  aria-label={`${t('item.field.tags')}：${t('item.field.tagsHint')}`}
-                  onChange={event => { mark('tags'); setTags(event.target.value) }}
+                  ariaLabel={`${t('item.field.tags')}：${t('item.field.tagsHint')}`}
+                  onChange={value => { mark('tags'); setTags(value) }}
                   onKeyDown={event => {
                     if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
                     event.preventDefault()

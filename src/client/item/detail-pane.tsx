@@ -26,6 +26,7 @@ import { PriorityMark } from './marks.tsx'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
+import { TagField } from './tag-field.tsx'
 import css from './item.module.css'
 
 const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
@@ -491,12 +492,11 @@ export function ItemDetail(props: ItemDetailProps) {
                   #{tag}
                 </button>
               ))}
-              <input
-                className={css.itemTagAdd}
+              <TagField
                 value={draftTag}
                 placeholder={t('item.field.tagsAdd')}
-                aria-label={t('item.field.tagsAdd')}
-                onChange={event => setDraftTag(event.target.value)}
+                ariaLabel={t('item.field.tagsAdd')}
+                onChange={setDraftTag}
                 onKeyDown={event => {
                   if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
                   event.preventDefault()
