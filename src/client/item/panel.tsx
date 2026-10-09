@@ -1261,7 +1261,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
     : heldItems[0]!.priority
   /* 这一批里有几条挂着卡——**一个谓词，两个问题**（能不能问 AI / 它的状态是不是那张卡
      说了算），而它们今天恰好是同一批行。所以算一次、给两个名字，不写两遍。 */
+  /* **两个问题，两个数。** 原来同一个 `heldCarded` 既当「问得出去的行数」，又当「挂卡的行
+     走卡片那一套」的门槛——而这是两件事：没挂过卡的行现在也问得出去（会就地建一张），它的
+     `taskId` 是空的，于是被那个数漏掉，批量那一枚就成了灰的——按下去什么都不发生，而屏上
+     不会有人说一句话。一个数回答两个问题的坏处正是这个：两件事里有一件变了，另一个跟着错。 */
   const heldCarded = heldItems.filter(one => one.taskId !== undefined).length
+  const askableHeld = heldItems.filter(one => askableItem(one)).length
   /* THE BAR IS THE MODE'S OWN FACE, and the mode is what draws it — not the
    * holding. Arming shows the bar with 「已选 0 条」 and every action but the
    * select-all disabled: a reader who pressed 多选 to see what it does must see
@@ -1293,7 +1298,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         // the same offset, which is the moment two devices disagree about a date.
         applyToHeld({ dueAt: startOfDay(now) })
       }}
-      askable={heldCarded}
+      askable={askableHeld}
       carded={heldCarded}
       onAsk={askHeld}
       onRemove={removeHeld}
