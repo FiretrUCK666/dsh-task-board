@@ -404,7 +404,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     ]
   }
 
-  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = 'light'): void {
+  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = 'light'): string {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
         controller: boardStub(boardFixture()) as unknown as BoardController,
@@ -416,6 +416,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
        `DSH_PANEL_SCHEME`，而清单那边的工件从来不认这个变量——同一个能力两套开关，就是这一页
        反复在消的那种债（硬性规范 17）。 */
     writeStandalonePage(target, aligned.html, aligned.css, scheme, 'task board')
+    return aligned.html
   }
 
   it('writes the board page when DSH_PANEL_HTML names a path', () => {
@@ -423,7 +424,14 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     if (target === undefined || target === '') return
     /* 一张挂着三条清单条目的卡（最急的一档是紧急）与一张光卡：那一枚读数与「没有条目就不画」
        的两种情况，一屏里都看得到。 */
-    writeBoardArtifact(target, cardId => (cardId === 'task-1' ? { count: 3, loudest: 'urgent' } : undefined))
+    const markup = writeBoardArtifact(target, cardId => (cardId === 'task-1' ? { count: 3, loudest: 'urgent' } : undefined))
+    /* **工件要能证明自己画对了。** 这台假 controller 若少一个成员（真发生过：卡片的圆点读
+       `sessionsOf`，而它没有），渲染要么直接抛、要么**安静地少画一点**——后者最危险：截出来
+       是一张看起来很好、实际缺东西的图，而读图的人会照它下结论。所以这里断言它画出了该画的
+       那几样，任何一个没了就红。 */
+    for (const must of ['画廊第二版', '光卡：没有挂任何清单条目', '挂 3 条 · 最急：紧急', '规划', '待办', '进行', '审核', '完成']) {
+      expect(markup, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
+    }
   })
 
   function installBrowserFakes(): void {
