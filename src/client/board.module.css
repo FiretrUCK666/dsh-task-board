@@ -2201,6 +2201,17 @@
      0 14px lands the two-character label near a 2:1 aspect like the reference
      board; height and radius stay on the shared rhythm, untouched. */
   padding: 0 14px;
+  /* **一像素的底内衬：把字的光学中心抬回盒子的中线。**
+   *
+   * 定高 + `align-items: center` 之下，居中由**行盒**算，而一个 13px 的中文行盒里，
+   * 墨的中心并不在行盒的中心——它比几何中心低约半像素到一像素，读者看到的是「文字
+   * 看着偏低」。底内衬加 1px，内容盒的下沿收进去一像素，居中的内容于是上移半像素
+   * （定高盒上是半个、随内容定高的盒上是一整个），落回光学中线。
+   *
+   * 这一条与清单面板那一族药丸是同一条律（`item.module.css` 末尾那一族，那里**逐像素
+   * 量过**：加之前四个控件的墨心偏 1px，加之后为 0）。看板这一侧没有对应的量法
+   * （看板没有面板那样的渲染工件），所以这里跟着同一条律走，**不宣称量过**。 */
+  padding-block-end: 1px;
   font-size: 13px;
   font-weight: 500;
   line-height: 1;

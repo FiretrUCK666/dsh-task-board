@@ -3535,7 +3535,28 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
-      && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
+      && state !== 'create-sheet') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'create-sheet') {
+      /* 「新建一条」那张纸。它与详情面板装同一批字段（三个日期、正文/步骤/备注、选卡、
+       * 标签），所以两者的两列几何必须量得出同一个数——这块状态就是为了把两边放进
+       * 同一支仪器里比。 */
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const open = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('新建一条'))
+        if (open === undefined) throw new Error('the bar carries no 新建一条')
+        click(open)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     /** 抽屉里有三行的样子——读者的屏上出现的正是这个状态，而它此前无法被拍下来。 */
     const tombstoneRows = (): readonly ItemRecord[] => [1, 2, 3].map(n => ({

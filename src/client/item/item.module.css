@@ -249,6 +249,10 @@
    * 56px——读者的原话是「上面的东西弹了下来」。两条带子两条规则、各写一个 56，
    * 就是同一个跳动等下一次改档时回来。 */
   --item-topbar-h: 56px;
+  /* **字段区的两列。** 详情面板与「新建一条」那张纸装同一批字段，所以它们的右列宽与
+   * 列间沟必须是同两个数（见 `.itemOpenMain` / `.itemCreateDialogGrid`）。 */
+  --item-field-side: 292px;
+  --item-field-gap: var(--s3);
   /* **行卡的左右内衬别名声明在 `.itemWorkbench` 上，不在这里。**
    *
    * 它曾经声明在 `.itemRoot`：一个自定义属性的值在**声明它的那个元素**上就被替换
@@ -3165,7 +3169,9 @@ textarea.itemInput {
 
 .itemCreateDialogGrid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 292px;
+  /* 与详情面板同一对令牌（见 `.itemOpenMain`）：同一批字段，同一副骨架。 */
+  grid-template-columns: minmax(0, 1fr) var(--item-field-side);
+  column-gap: var(--item-field-gap);
   /* **每一行按内容定高，不按剩余空间定高。**
    *
    * 这张网格的高度是确定的（它是那张纸里唯一会滚的那一块），而 `auto` 行在高度确定的
@@ -3179,7 +3185,11 @@ textarea.itemInput {
    * `max-content` 把行高交回给内容，多出来的部分让**这块网格自己滚**（它本来就是
    * 那个滚动体），而不是被压缩。 */
   grid-auto-rows: max-content;
-  gap: var(--s3);
+  /* 两个方向分开写：列间沟是**与详情面板共用的那个决定**（`--item-field-gap`），行间沟是
+   * 这一张纸自己的（窄档右栏落到下面时才用得上）。写成 `gap` 会把两者绑成一个数，
+   * 于是「列间沟与详情一致」这句话在纸上就不成立了。 */
+  row-gap: var(--s3);
+  column-gap: var(--item-field-gap);
   flex: 1 1 auto;
   min-block-size: 0;
   padding: 20px 22px;
@@ -3533,12 +3543,31 @@ textarea.itemInput {
   padding: var(--s3) var(--s3) var(--s3) var(--s3);
 }
 
+/* **字段区的两列几何：一个宽、一条沟，两处读同一对令牌。**
+ *
+ * 详情面板与「新建一条」那张纸装的是**同一批字段**（三个日期、正文/步骤/备注、选卡、
+ * 标签），而这些字段组件本来就是共用的——可它们下面那层两列网格是各自写的：一处
+ * `268px` + `--s4`，另一处 `292px` + `--s3`。于是**同一个组件在两处一个挤、一个松**，
+ * 读者的原话是「详情里选卡那一片挤得不对，而新建那条看起来又是另一个东西」。宽度与沟
+ * 是同一个决定，收在这里：改一次，两处一起动。 */
 .itemOpenMain {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 268px;
-  column-gap: var(--s4);
+  grid-template-columns: minmax(0, 1fr) var(--item-field-side);
+  column-gap: var(--item-field-gap);
   align-items: start;
   min-inline-size: 0;
+}
+
+/* 右栏是**那句话没有说到的那些字段**，所以它自己有一条边——两边是两种东西。详情面板
+ * 原来没有这条边（靠空气分），而「新建一条」有；同一批字段在两处长得不一样，统一到有边
+ * 的那一种：一条发丝线加一档内衬，比一道 22px 的沟说得清楚。 */
+.itemOpenSide {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s2);
+  min-inline-size: 0;
+  padding-inline-start: var(--s3);
+  border-inline-start: var(--item-hair);
 }
 
 /* 左边那一列：正文 → 步骤 → 上下文备注。三段之间是 `--s3` 那一档间距，所以步骤
