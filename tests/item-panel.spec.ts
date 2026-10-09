@@ -445,6 +445,35 @@ describe('the list is a main-stage panel, in the same shape as the board', () =>
   })
 })
 
+describe('两扇门都接在装配层（这一层此前一条测试都没有）', () => {
+  const bootstrap = readFileSync(
+    fileURLToPath(new URL('../src/client/index.ts', import.meta.url)),
+    'utf8',
+  )
+
+  it('清单 → 看板：先选中那张卡，再抬看板舞台', () => {
+    // 顺序是有意的：反过来的话会有一帧「舞台换了但选中的还是上一张卡」的闪烁。
+    const selectAt = bootstrap.indexOf('controller.openTask(cardId)')
+    const raiseAt = bootstrap.indexOf('layout.selectPanel(GROUP.id)')
+    expect(selectAt, '清单→看板那扇门不见了').toBeGreaterThan(-1)
+    expect(raiseAt, '看板舞台没有被抬起来').toBeGreaterThan(-1)
+    expect(selectAt, '先抬舞台再选卡，会闪一帧上一张卡').toBeLessThan(raiseAt)
+  })
+
+  it('看板 → 清单：先记下「只看挂着这张卡」的请求，再抬清单舞台，并且兜住没被组合的情况', () => {
+    // 记请求与抬舞台是两件事，缺一件就是半个功能：只记不抬 → 读者按了没反应；
+    // 只抬不记 → 到了清单却看见全量。
+    const focusAt = bootstrap.indexOf('itemListStage.focusRowsOf(cardId)')
+    const raiseAt = bootstrap.indexOf('layout.selectPanel(LIST_GROUP.id)')
+    expect(focusAt, '看板→清单那扇门没有记下请求').toBeGreaterThan(-1)
+    expect(raiseAt, '清单舞台没有被抬起来').toBeGreaterThan(-1)
+    expect(focusAt, '先抬舞台再记请求，会闪一帧全量列表').toBeLessThan(raiseAt)
+    // 清单面板是被 surface 开关收窄的那一个：对没注册的键 `selectPanel` 会抛，
+    // 所以这扇门必须兜住——一次点击不该把界面打崩。
+    expect(bootstrap, '这扇门没有兜住「清单面板没被组合」').toContain('cannot bring the checklist forward')
+  })
+})
+
 describe('the tool card reads the producer, not a memory of it', () => {
   // THE POINT. "A field I cannot read is not drawn" is right for a missing
   // OPTIONAL thing and a disaster for a TYPO: the card comes out empty with no
