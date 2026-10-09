@@ -241,6 +241,9 @@ export interface ItemRowLineProps {
 export function ItemRowLine(props: ItemRowLineProps) {
   const { view, expanded, selected, inPlace, panelId, menuOpen, onMenuToggle, onMenuClose } = props
   const item = view.item
+  /* 卡片的 id 取成一个 const：守卫里的收窄进不了回调（`onClick` 是另一个函数作用域），
+     而 `view.cardId` 是一个属性访问——TS 不会相信它在闭包里还窄着。 */
+  const cardId = view.cardId
   const english = t('item.field.title') === 'Title'
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(item.title)
@@ -425,7 +428,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
             {t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}
           </button>
         )}
-        {item.taskId !== undefined && (
+        {cardId !== undefined && (
           /* **挂在哪张卡，是一枚门。** 它的样子（方框 + 那一栏的词 + 那一栏的颜色）说的是
              事实；而它同时也是一条路——按它跳去看板那张卡（`openCard`），因为读者看到
              「这一条挂在待审核那张卡上」时，下一个动作十有八九是去看那张卡。
@@ -442,7 +445,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
               className={css.itemRowCardChip}
               data-door=""
               aria-label={t('item.row.cardDoor', { where: t(GROUP_LABEL[view.status]) })}
-              onClick={event => { event.stopPropagation(); props.onOpenCard?.(item.taskId as string) }}
+              onClick={event => { event.stopPropagation(); props.onOpenCard?.(cardId) }}
             >
               <CardMark size="chip" />
               {t(GROUP_LABEL[view.status])}
@@ -505,7 +508,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * 「不挂」 chip and the primary already state that fact, and an entry
              * that comes and goes with a fact the interface never states is one
              * that never needed to exist. While the card runs, the slot says so. */
-            ...(item.taskId === undefined
+            ...(cardId === undefined
               ? [{ key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote }]
               : [
                   {
@@ -540,7 +543,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * 只有「这一行现在不在的那个状态」会被列出：给一条已经是待办的行再列一枚
              * 「标为待办」是一个做不了任何事的按钮。挂卡那一支不筛——与看板一样，三个动作
              * 常驻、当前那个禁用，因为**一个长度随隐形事实变化的菜单，是没人学得会的菜单**。 */
-            ...(item.taskId === undefined
+            ...(cardId === undefined
               ? ITEM_STATUSES
                 .filter(mark => mark !== item.status)
                 .map(mark => ({ key: mark, label: t(STATUS_LABEL[mark]), onPick: () => props.onMark(mark) }))

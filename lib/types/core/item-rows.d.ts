@@ -50,6 +50,13 @@ export interface ItemRowView {
     readonly ref: ItemRef;
     /** Never blank: an untitled row borrows its body's first line. */
     readonly title: string;
+    /**
+     * **它挂着的那张卡，按这一屏看得见的事实算**（`linkedCardIdOf`）。
+     *
+     * 不是 `item.taskId`：那是「文档里写着什么」，而屏上要回答的是「现在挂着没有」。卡被
+     * 删掉之后两者不同——而看板上的删除是不可逆的，所以那正是读者最需要看对的一刻。
+     */
+    readonly cardId: string | undefined;
     /** 这一行现在站在哪一栏（挂卡读卡、没卡读自己，见 `itemStatusOf`）。 */
     readonly status: ItemStatusView;
     /** The one date verdict. `undefined` when the row has no steps. */

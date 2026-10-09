@@ -990,6 +990,14 @@ export interface MountedPanel {
   readonly openedCards: string[]
   /** The board cards the panel minted, in mint order — the seeding check reads these. */
   readonly minted: readonly TaskRecord[]
+  /**
+   * 台架侧那只手：**换掉板上的卡并通知订阅者**（真实的 `controller.subscribe` 就是这样
+   * 一根线）。卡被删、被拖到另一栏、被改名都是这一个动作，所以「清单面板会不会跟着看板
+   * 重画」这件事有了取证方式。
+   */
+  readonly board: {
+    setTasks(next: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[]): void
+  }
   /** The last document the panel handed to the replica. */
   lastWrite(): readonly ItemRecord[]
   /** Re-render and flush effects. */
@@ -998,14 +1006,37 @@ export interface MountedPanel {
   dispose(): void
 }
 
-/** A fake board face that records what the panel asked of it.
- *
+/** A fake board face that records what the panel asked of it. *
  * Tasks minted through `createTask`/`createBoundTask` join the snapshot, for the
  * SAME reason the real controller's would: a picker that just made a card shows
  * the card it made, and a fake whose snapshot cannot see its own writes is a
  * fake that cannot answer that question. */
+/**
+ * 板上要有**夹具挂着的每一张卡**。
+ *
+ * 真实板子上那些 id 都在，而一台只认识 `task-1` 的假面会让 `task-review` 读成「卡被删了」
+ * ——于是「悬空链接」这条判据会在测试里指向一张其实存在的卡，**把正确实现报成缺陷**
+ * （硬性规范 18：假面比现实窄，和比现实宽容一样危险）。所以名单从夹具里长出来，
+ * 而不是手写第二遍；`over.cards` 只用来**故意**少给一张（那正是「卡被删了」那一屏）。
+ */
+function cardsFor(items: readonly ItemRecord[], only?: readonly string[]): { id: string; title: string }[] {
+  const linked = items.map(item => item.taskId).filter((id): id is string => id !== undefined)
+  const ids = only ?? ['task-1', ...linked]
+  const titles: Readonly<Record<string, string>> = { 'task-1': '画廊第二版' }
+  return [...new Set(ids)].map(id => ({ id, title: titles[id] ?? `看板上的 ${id}` }))
+}
+
 export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }]) {
   const minted: TaskRecord[] = []
+  let rows: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[] = tasks
+  /**
+   * 订阅者名单：**真实 controller 的 `subscribe` 就是这样一根线**，而它缺席时
+   * 「看板改了，清单会不会跟着重画」在台架上根本没有答案——那正是清单面板曾经漏掉的
+   * 那半件事（三张映射的 memo 键里没有看板，也没有订阅）。一台少了 `subscribe` 的假面
+   * 会让整份 suite 在「面板根本不听看板」时依然全绿，所以它必须在场。
+   */
+  const listeners = new Set<() => void>()
+  const notify = (): void => { for (const listener of [...listeners]) listener() }
   return {
     /* `prompt` 是**必填**的（真实的 `TaskRecord` 每一条都有），而它不是可有可无的装饰：
      * 「这张卡跑不跑得起来」就是 `taskExecutable` 读它（清单那一侧现在按它禁用「执行」）。
@@ -1013,15 +1044,29 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
      * 或比现实窄同样危险**（硬性规范 18）。 */
     getSnapshot: () => ({
       tasks: [
-        ...tasks.map(task => ({ prompt: 'p', status: 'todo', ...task, description: task.description ?? '' })),
+        ...rows.map(task => ({ prompt: 'p', status: 'todo', ...task, description: task.description ?? '' })),
         ...minted,
       ],
     }),
     liveStateOf: () => 'idle',
-    ...boundRecorder(calls, minted),
+    subscribe: (listener: () => void): (() => void) => {
+      listeners.add(listener)
+      return () => { listeners.delete(listener) }
+    },
+    ...boundRecorder(calls, minted, notify),
     /** A READING of what the face has minted so far — the mounted panel exposes
      *  it so a promote's seeding can be asserted; reading, not holding. */
     mintedSnapshot: (): readonly TaskRecord[] => [...minted],
+    /**
+     * 台架侧的一只手：**换掉板上的卡，然后照真实 controller 那样喊一声**。
+     *
+     * 卡被删掉、被拖到另一栏、被改名，都是这一个动作。清单面板要「看着看板活着」，
+     * 而这条线就是那条契约唯一的取证方式。
+     */
+    setTasks: (next: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[]): void => {
+      rows = next
+      notify()
+    },
   }
 }
 
@@ -1050,13 +1095,16 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
  * So the two constructors mint a real record with the real core constructor, and
  * only the genuinely boolean methods answer `true`.
  */
-function boundRecorder(calls: string[], minted: TaskRecord[]): Record<string, (...args: unknown[]) => unknown> {
+function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void): Record<string, (...args: unknown[]) => unknown> {
   const mutators = [
     'updateTask', 'deleteTask', 'moveTask', 'runTask',
     'openTask', 'closeTask', 'addComment', 'setSchedule', 'ackTask', 'duplicateTask',
   ]
   const out: Record<string, (...args: unknown[]) => unknown> = {}
-  for (const name of mutators) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); return true }
+  // 每一次写入之后**都要喊一声**：真实 controller 的 `persistAndNotify` 就是这么做的，
+  // 而一个只改内部数组、不通知订阅者的假面会让「清单面板跟着看板活着」那件事在测试里
+  // 永远看不到——它正是这一轮修掉的那半个缺陷。
+  for (const name of mutators) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); notify(); return true }
   // The same entry point the real controller uses, with a fixed clock and id, so
   // the record this hands back is the record the product would have written —
   // including the fields the caller is entitled to read. The minted record also
@@ -1067,6 +1115,7 @@ function boundRecorder(calls: string[], minted: TaskRecord[]): Record<string, (.
       const input = (args[0] ?? {}) as Parameters<typeof createTask>[0]
       const task = createTask(input, 1_700_000_000_000, 'task-minted')
       minted.push(task)
+      notify()
       return task
     }
   }
@@ -1091,7 +1140,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[] } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1106,7 +1155,7 @@ export function mountPanel(
   const openCard = over.openCard === undefined
     ? undefined
     : (cardId: string) => { openedCards.push(cardId); over.openCard?.(cardId) }
-  const controller = fakeController(calls)
+  const controller = fakeController(calls, cardsFor(items, over.cards))
   const root = createRoot(host)
   const signal = new AbortController().signal
 
@@ -1263,6 +1312,7 @@ export function mountPanel(
      *  getter, not a snapshot: mints that happen after the mount have to be
      *  visible to the test that caused them. */
     get minted(): readonly TaskRecord[] { return controller.mintedSnapshot() },
+    board: { setTasks: next => { act(() => { controller.setTasks(next) }) } },
     lastWrite: () => replica.writes[replica.writes.length - 1] ?? items,
     settle,
     dispose: () => {

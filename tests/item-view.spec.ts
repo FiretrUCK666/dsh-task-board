@@ -25,6 +25,7 @@ import {
   ITEM_STATUS_ORDER,
   SCHEDULE_BUCKETS,
   datePostureOf,
+  derivedStatusOf,
   isAgendaItem,
   isInboxItem,
   itemMatches,
@@ -33,6 +34,7 @@ import {
   itemSlicesOf,
   itemMatchContextOf,
   isItemQualifierToken,
+  linkedCardIdOf,
   parseItemQuery,
   scheduleBucketOf,
   scheduleBucketsOf,
@@ -569,6 +571,30 @@ describe('the ordering set is CLOSED, and 顺序 is the only default', () => {
     expect(DEFAULT_ITEM_SORT).toBe('sequence')
     expect(ITEM_SORTS).toContain(DEFAULT_ITEM_SORT)
     expect(ITEM_SORTS[0], 'the offered order and the default are two facts that must not drift apart').toBe(DEFAULT_ITEM_SORT)
+  })
+})
+
+describe('a card that is gone stops being a card', () => {
+  const hung = (taskId: string | undefined): ItemRecord => row({ taskId })
+
+  it('three answers, and they are three different sentences on screen', () => {
+    // ① 没挂过；② 挂着而这张卡在这儿；③ **卡没了**（看板的删除不可逆）；④ 这台机器看不见看板。
+    // `cards.get` 把 ③ 与 ④ 都读成 `undefined`，于是屏上只有一句话可说——而它们该说的话不同。
+    const board = new Map<string, TaskStatus>([['card-1', 'todo']])
+    expect(linkedCardIdOf(hung(undefined), board)).toBeUndefined()
+    expect(linkedCardIdOf(hung('card-1'), board)).toBe('card-1')
+    expect(linkedCardIdOf(hung('card-gone'), board), 'a deleted card still reads as a card').toBeUndefined()
+    // ④ 「看不见看板」不是「没有卡」：id 原样交回，屏上照旧说这一条挂着东西。
+    expect(linkedCardIdOf(hung('card-1'), undefined), '「读不到」被画成了「没有」').toBe('card-1')
+    expect(linkedCardIdOf(hung('card-gone'), undefined)).toBe('card-gone')
+  })
+
+  it('and the status follows the same verdict', () => {
+    const board = new Map<string, TaskStatus>([['card-1', 'review']])
+    expect(derivedStatusOf(hung('card-1'), board)).toBe('review')
+    // 卡没了 → 退回这一行自己存的那两个值（不是「猜一栏」）。
+    expect(derivedStatusOf(hung('card-gone'), board)).toBe('todo')
+    expect(derivedStatusOf(hung('card-1'), undefined)).toBe('todo')
   })
 })
 

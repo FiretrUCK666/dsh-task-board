@@ -38,6 +38,7 @@ import {
   itemMatchContextOf,
   itemMatches,
   itemRowViewOf,
+  linkedCardIdOf,
   planItemNavigation,
   itemRailGroupsOf,
   railSiblingsOf,
@@ -63,6 +64,7 @@ import { itemsAsk } from '../board-ask.ts'
 import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
+import { useBoardSnapshot, type BoardSnapshot } from '../board/use-board-snapshot.ts'
 import { ItemDetail } from './detail-pane.tsx'
 import { ItemCreateDialog } from './item-create-dialog.tsx'
 import { dayTokensIn, freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withFreeText } from './facets.ts'
@@ -138,12 +140,14 @@ export interface ItemListPanelProps {
  *
  * 读的是快照里的 `status`（卡片自己那一栏），不再是 `liveStateOf` 的活性判决——那是
  * 另一件事（它在不在工作），而「在哪一栏」就是 `status`。
+ *
+ * **它读的是订阅到的那一份快照**（见 `useBoardSnapshot`）：这三张映射曾经按
+ * `[face.controller, items]` memo，两者都不随看板变，于是卡拖到另一栏、卡被删掉，
+ * 清单这一屏都不会重画。
  */
-function cardsMapOf(face: ItemListFace): Map<string, TaskStatus> {
+function cardsMapOf(board: BoardSnapshot | undefined): Map<string, TaskStatus> {
   const map = new Map<string, TaskStatus>()
-  const controller = face.controller
-  if (controller === undefined) return map
-  for (const task of controller.getSnapshot().tasks) map.set(task.id, task.status)
+  for (const task of board?.tasks ?? []) map.set(task.id, task.status)
   return map
 }
 
@@ -155,19 +159,32 @@ function cardsMapOf(face: ItemListFace): Map<string, TaskStatus> {
  * 所以他必须在这一侧就看见理由（`detail.promptEmpty`），而不是按完一片安静。判据本身来自
  * core（`taskExecutable`），这一层只负责把它带上屏。
  */
-function runnableMapOf(face: ItemListFace): Map<string, boolean> {
+function runnableMapOf(board: BoardSnapshot | undefined): Map<string, boolean> {
   const map = new Map<string, boolean>()
-  const controller = face.controller
-  if (controller === undefined) return map
-  for (const task of controller.getSnapshot().tasks) map.set(task.id, taskExecutable(task))
+  for (const task of board?.tasks ?? []) map.set(task.id, taskExecutable(task))
   return map
 }
 
 /** Cards a row may hang off, already titled. Never assembled here. */
-function cardsOf(face: ItemListFace): { id: string; title: string }[] {
-  return (face.controller?.getSnapshot().tasks ?? [])
+function cardsOf(board: BoardSnapshot | undefined): { id: string; title: string }[] {
+  return (board?.tasks ?? [])
     .map(task => ({ id: task.id, title: task.title.trim() === '' ? task.description.trim().slice(0, 40) : task.title.trim() }))
     .filter(card => card.title !== '')
+}
+
+/** Whether the card this row hangs off can be run at all.
+ *
+ *  `undefined` = **这一条没有卡可跑**（没挂、或挂着的那张已经不在了）——那时按钮问的
+ *  就不是「能不能跑」而是「还没有卡」，理由由「不挂」那一格去说。`false` = 有卡而它跑
+ *  不起来（执行 Prompt 为空），理由写在按钮旁边。两个答案不能合流：合流的那一版对着
+ *  一张**已经不存在的卡**印「先填写执行 Prompt」，把读者指去改一个不存在的东西。 */
+function runnableOf(map: ReadonlyMap<string, boolean>, cardId: string | undefined): boolean | undefined {
+  return cardId === undefined ? undefined : map.get(cardId) === true
+}
+
+/** Whether that card is in the 进行中 column right now. Same two answers, same reason. */
+function runningOf(map: ReadonlyMap<string, TaskStatus>, cardId: string | undefined): boolean {
+  return cardId !== undefined && map.get(cardId) === 'running'
 }
 
 /**
@@ -434,18 +451,45 @@ export function ItemListPanel(props: ItemListPanelProps) {
     })
   }, [])
 
-  const cardColumns = useMemo(() => cardsMapOf(face), [face.controller, items])
-  const cardRunnable = useMemo(() => runnableMapOf(face), [face.controller, items])
-  const cards = useMemo(() => cardsOf(face), [face.controller, items])
+  const board = useBoardSnapshot(face.controller)
+  const cardColumns = useMemo(() => cardsMapOf(board), [board])
+  const cardRunnable = useMemo(() => runnableMapOf(board), [board])
+  const cards = useMemo(() => cardsOf(board), [board])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
   const lostHost = replica?.hostLostItems() === true
   const filtering = prefs.search.trim() !== ''
 
+  /**
+   * **悬空链接在文档里也要归正。**
+   *
+   * 看板的删除是**不可逆**的，所以一个指向已删卡片的 `taskId` 再也不会指向什么——而
+   * `isInboxItem`、`has:linked`、提升门禁与展开区那一格读的都是这个裸字段。屏上读对是
+   * 一件事（那是 `linkedCardIdOf` 的活），文档里是对的另是**另一件**，两件都要：不然
+   * 「这一条还挂着卡」会在左栏的计数、搜索与模型的答复里继续成立。
+   *
+   * **只在看得见看板时动手。** `controller` 缺席时没有「卡没了」这个结论，只有「看不见」
+   * ——那时清掉链接，是按一次瞎猜删掉读者的挂载关系。
+   *
+   * **不会误伤刚挂上的链接**：提升是「先建卡、后写链接」两步，而控制器在 `createTask`
+   * 里就同步通知了订阅者——所以这一效果看到的那一帧里，新卡已经在快照里（台架那条
+   * `createTask` 曾经不喊这一声，于是它把正确实现报成了缺陷；假面已按真实控制器补齐）。
+   */
+  useEffect(() => {
+    if (board === undefined) return
+    const rows = itemsNow.current
+    const gone = rows.filter(item => item.taskId !== undefined && !cardColumns.has(item.taskId))
+    if (gone.length === 0) return
+    const at = Date.now()
+    apply(gone.reduce((next, item) => applyItemPatch(next, item.id, { taskId: undefined }, at), rows))
+  }, [board, cardColumns, apply, items])
+
   const askOne = useCallback((item: ItemRecord) => {    // Read once: the closure outlives this line, and a property re-proven
     // inside an async callback is a narrowing that stops holding when the
-    // reader renames the row mid-flight.
-    const taskId = item.taskId
+    // reader renames the row mid-flight. It is the card THIS SCREEN can see, so a
+    // row whose card was deleted refuses here rather than asking a session that
+    // is not there.
+    const taskId = linkedCardIdOf(item, cardColumns)
     if (taskId === undefined) return
     setAsking(item.id)
     void (async () => {
@@ -630,7 +674,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const askHeld = useCallback(() => {
     let askable = 0
     for (const item of items) {
-      if (!selection.ids.has(item.id) || item.taskId === undefined) continue
+      if (!selection.ids.has(item.id) || linkedCardIdOf(item, cardColumns) === undefined) continue
       askable += 1
       askOne(item)
     }
@@ -718,11 +762,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
       now={now}
       onAsk={() => { if (item !== undefined) askOne(item) }}
       asking={item !== undefined && asking === item.id}
-      /* 跑不跑得起来：同一份判据，同一个来源（见 `runnableMapOf`）。 */
-      runnable={item.taskId === undefined ? undefined : cardRunnable.get(item.taskId) === true}
+      /* 跑不跑得起来：同一份判据，同一个来源（见 `runnableMapOf`）。**挂没挂按这一屏
+         看得见的那张卡算**（`linkedCardIdOf`），卡被删掉之后它就不是一张卡了。 */
+      runnable={runnableOf(cardRunnable, linkedCardIdOf(item, cardColumns))}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
       onStart={() => {
-        const cardId = item?.taskId
+        const cardId = linkedCardIdOf(item, cardColumns)
         if (cardId !== undefined) void face.controller?.runTask(cardId, 'manual')
       }}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
@@ -733,7 +778,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       onMoveCard={face.controller === undefined
         ? undefined
         : (status: TaskStatus) => {
-          const cardId = item.taskId
+          const cardId = linkedCardIdOf(item, cardColumns)
           if (cardId !== undefined) face.controller?.moveTask(cardId, status)
         }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
@@ -860,7 +905,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     onMoveCard: face.controller === undefined
       ? undefined
       : (status: TaskStatus) => {
-        const cardId = item.taskId
+        const cardId = linkedCardIdOf(item, cardColumns)
         if (cardId === undefined) return
         setMenuRow(undefined)
         face.controller?.moveTask(cardId, status)
@@ -883,14 +928,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
      *
      * 没有卡就是没有卡：按钮在菜单里**列出但禁用**，并把缺的那件事写在右边。 */
     onStart: () => {
-      const cardId = item.taskId
+      const cardId = linkedCardIdOf(item, cardColumns)
       if (cardId === undefined) return
       void face.controller?.runTask(cardId, 'manual')
     },
-    running: item.taskId !== undefined && cardColumns.get(item.taskId) === 'running',
+    running: runningOf(cardColumns, linkedCardIdOf(item, cardColumns)),
     /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
        一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
-    runnable: item.taskId === undefined ? undefined : cardRunnable.get(item.taskId) === true,
+    runnable: runnableOf(cardRunnable, linkedCardIdOf(item, cardColumns)),
     /* 跨面板那一扇门：面板只**转发**装配层给的那一个函数，不自己做别的事（见
        `ItemListFace.openCard`：去找看板、去抬舞台都是别人的事）。 */
     onOpenCard: face.openCard,

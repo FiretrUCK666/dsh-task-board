@@ -3304,6 +3304,57 @@ function namingField(root: ParentNode): HTMLInputElement | null {
     .find(node => (node.getAttribute('aria-label') ?? '').includes('新卡的名字')) as HTMLInputElement | null ?? null
 }
 
+describe('一张卡没了，它就不再是一张卡', () => {
+  /** 一行挂在 `task-1` 上，而板上真有这张卡（台架按夹具把卡片名单长出来）。 */
+  const hung = (): readonly ItemRecord[] => oneRow({ taskId: 'task-1' })
+
+  /** 那一行右边那枚**卡芯片**（按类名，不按 `data-door`：台架这一档没有接 `openCard`，
+   *  于是它是一枚读数而不是一扇门——两种形态都该在，测的是它在不在）。 */
+  const chipOf = (panel: ReturnType<typeof mountPanel>): Element | null =>
+    panel.surface.querySelector('[class*="itemRowCardChip"]')
+
+  it('删掉卡之后：芯片消失，展开区读「不挂」', () => {
+    const panel = mountPanel(hung(), 'list', 'wide')
+    try {
+      expect(chipOf(panel), '这一行本来就没画成挂着卡的样子').not.toBeNull()
+      panel.board.setTasks([])
+      panel.settle()
+      expect(chipOf(panel), '卡删掉了，芯片还挂着').toBeNull()
+      openRowDetail(panel)
+      expect(panel.surface.textContent ?? '', '展开区没有说回「不挂」').toContain('不挂')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('并且文档里那条死链接被清掉（走的是同一个写入漏斗）', () => {
+    // 屏上读对是一半，文档里是对的**另一半**：不然 `has:linked`、左栏的计数与模型的
+    // 答复会继续把这一条算作「挂着卡」。
+    const panel = mountPanel(hung(), 'list', 'wide')
+    try {
+      panel.board.setTasks([])
+      panel.settle()
+      expect(panel.lastWrite()[0]?.taskId, '文档里还留着一条指向已删卡片的链接').toBeUndefined()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('卡被拖到另一栏，清单这一行当场跟着换', () => {
+    // 三张映射按 `[face.controller, items]` memo 的那一版在这里必红：两者都不随看板变，
+    // 于是这一行会停在「待办」。
+    const panel = mountPanel(hung(), 'list', 'wide')
+    try {
+      expect(panel.surface.querySelector('[data-status]')?.getAttribute('data-status')).toBe('todo')
+      panel.board.setTasks([{ id: 'task-1', title: '画廊第二版', status: 'running' }])
+      panel.settle()
+      expect(panel.surface.querySelector('[data-status]')?.getAttribute('data-status'), '看板改了栏，清单这一行没跟着').toBe('running')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {
@@ -3616,7 +3667,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
-      && state !== 'card-door' && state !== 'chips-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
       /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 迟迟没动）。
@@ -3722,6 +3773,22 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         panel.dispose()
         throw error
       }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'dangling-card') {
+      /* **一张卡被删掉之后那一屏。**
+       *
+       * 对照法：同一张纸上两行——一行挂在板上真有的那张卡上（芯片在），一行挂在一张
+       * **已经被删掉**的卡上（芯片不在，且它读自己的两个值）。两行放一起，差别应当只在
+       * 那一枚芯片上，而这正是「卡没了就不再是一张卡」唯一看得见的形态。 */
+      const items = [
+        { ...oneRow({ taskId: 'task-1' })[0] as ItemRecord, id: 'r-1', ref: 1, title: '挂在还活着的那张卡上' },
+        { ...oneRow({ taskId: 'task-gone' })[0] as ItemRecord, id: 'r-2', ref: 2, title: '挂在一张已经被删掉的卡上' },
+      ]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide', { cards: ['task-1'] })
       writeMountedPage(panel, target)
       panel.dispose()
       return

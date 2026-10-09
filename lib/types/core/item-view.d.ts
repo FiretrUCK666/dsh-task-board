@@ -64,7 +64,7 @@ export type { ItemPriority, ItemStatus, ItemStatusView } from './item.ts';
 export { ITEM_PRIORITIES, ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts';
 export { DAY_MS, HARD_SOON_DAYS, datePostureOf, startOfDay } from './item-dates.ts';
 export type { DatePosture, SoftPosture } from './item-dates.ts';
-export { isAgendaItem, isInboxItem } from './item-membership.ts';
+export { derivedStatusOf, isAgendaItem, isInboxItem, linkedCardIdOf } from './item-membership.ts';
 export { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts';
 export { DEFAULT_ITEM_SORT, ITEM_SORTS, sortItemsOf } from './item-sort.ts';
 export type { ItemSort } from './item-sort.ts';

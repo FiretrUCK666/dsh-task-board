@@ -65,6 +65,32 @@ export declare function isInboxItem(item: ItemRecord): boolean;
  */
 export declare function isAgendaItem(item: ItemRecord): boolean;
 /**
+ * THE CARD THIS ROW HANGS OFF, **as this screen can see it**.
+ *
+ * One question, one answer, three readers — the row's card chip, the pane's picker
+ * and the `has:linked` filter — and they used to each spell it `item.taskId !==
+ * undefined`, which is a different question. The three answers it has to keep apart:
+ *
+ *   `cards === undefined`  **this machine cannot see the board at all.** The id is
+ *                          handed back untouched: turning 「I cannot see it」 into
+ *                          「there is nothing there」 is half of the same lie the
+ *                          rest of this file exists to refuse.
+ *   `cards.has(id)`        the card is here — hand the id back.
+ *   otherwise              **the card is gone** (the board's delete is final), so
+ *                          there is nothing to hang off.
+ *
+ * WHY `get` IS NOT ENOUGH, and this is the defect it was: `cards.get(id)` answers
+ * `undefined` both for 「no such key」 and for 「no map at all」, so a row whose card
+ * had been deleted read exactly like a row that never had one — the chip stayed,
+ * the column fell back to the row's own two values, and the reader's only clue was
+ * that a press did nothing.
+ *
+ * @param item - the row.
+ * @param cards - 看板的栏，按卡片 id 索引；`undefined` 表示这个调用者手上没有看板。
+ * @returns the card's id, or `undefined` when there is no card to hang off.
+ */
+export declare function linkedCardIdOf(item: ItemRecord, cards: ReadonlyMap<string, TaskStatus> | undefined): string | undefined;
+/**
  * The row's status AS A SURFACE SHOWS IT — the ONE place that question is answered.
  *
  * **A row that hangs off a card is wherever that card is**; a row with no card (or

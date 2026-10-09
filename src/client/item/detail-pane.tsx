@@ -154,6 +154,9 @@ export interface ItemDetailProps {
 export function ItemDetail(props: ItemDetailProps) {
   const { view } = props
   const item = view.item
+  /* **这一屏看得见的那张卡**，不是文档里写着的那个 id：卡被删掉之后两者不同，而这
+     正是读者最需要看对的一刻。展开区里凡是「挂没挂」的判断都读它。 */
+  const cardId = view.cardId
   const english = isEnglish()
   /* 挂着的卡正在跑，读的是派生状态自己（进行中 = 卡在那一栏），不另要一份 running：
    * 一个事实在投影里只算一次。 */
@@ -170,7 +173,7 @@ export function ItemDetail(props: ItemDetailProps) {
    * 那句「清单和看板要完全互通，但也可以独立不挂载」在这一格上的形状**：独立时它有自己的
    * 两个状态，挂上时它是卡片的镜子。
    */
-  const statusChooser = item.taskId === undefined
+  const statusChooser = cardId === undefined
     ? ITEM_STATUSES.map(status => (
       <button
         key={status}
@@ -581,8 +584,8 @@ export function ItemDetail(props: ItemDetailProps) {
               <button
                 type="button"
                 className={css.itemOpt}
-                data-on={item.taskId === undefined ? '' : undefined}
-                aria-pressed={item.taskId === undefined}
+                data-on={cardId === undefined ? '' : undefined}
+                aria-pressed={cardId === undefined}
                 onClick={() => props.onEdit({ taskId: undefined })}
               >
                 {t('item.field.noCard')}
@@ -592,8 +595,8 @@ export function ItemDetail(props: ItemDetailProps) {
                   key={card.id}
                   type="button"
                   className={css.itemOpt}
-                  data-on={item.taskId === card.id ? '' : undefined}
-                  aria-pressed={item.taskId === card.id}
+                  data-on={cardId === card.id ? '' : undefined}
+                  aria-pressed={cardId === card.id}
                   onClick={() => props.onEdit({ taskId: card.id })}
                 >
                   {card.title}
@@ -642,7 +645,7 @@ export function ItemDetail(props: ItemDetailProps) {
 
       {/* 一句话说清「它的状态是谁说了算」——只在**两个来源真的不同**时才说：
           挂着卡、而这一行自己存的不是它现在显示的那一栏。 */}
-      {item.taskId !== undefined && item.status !== view.status && (
+      {cardId !== undefined && item.status !== view.status && (
         <p className={css.itemHint}>{t('item.status.derived', { where: t(GROUP_LABEL[view.status]), own: t(GROUP_LABEL[item.status]) })}</p>
       )}
 
@@ -663,7 +666,7 @@ export function ItemDetail(props: ItemDetailProps) {
               * run and something to ask — no disabled judges saying 「先变成看板
               * 卡片」, because the 「不挂」 chip and the primary already state
               * that fact. While the linked card runs, the slot says who is on it. */}
-          {item.taskId === undefined ? (
+          {cardId === undefined ? (
             <>
               <Button variant="primary" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
               <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
