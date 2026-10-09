@@ -279,38 +279,3 @@ export function sortItemsOf(rows: readonly ItemRecord[], sort: ItemSort): ItemRe
   return out
 }
 
-/**
- * The N rows the reader touched most recently — the one answer to "what have I
- * been working on", for the detail pane's jump list.
- *
- * WHY IT LIVES HERE AND NOT IN THE PANEL. It was an inline
- * `[...items].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 5)` written in a
- * component, which made the panel a FIFTH ordering judge in a product whose whole
- * argument is that the derivation layer is the only judge. Worse, that inline
- * sort was a two-key comparator, not a total one: two rows edited in the same
- * millisecond compared equal, `Array.prototype.sort` left their order to arrival,
- * and the jump list came out in a different order on a phone than on a laptop.
- * Same defect as every other partial order here, found in the one place the
- * derivation layer could not see.
- *
- * MEMBERSHIP IS NOT DECIDED HERE, and that is deliberate: "recent" is about
- * change, not about which page a row belongs on, so this does not exempt
- * finished rows or unfiled captures. A caller that wants a narrower set filters
- * it first, and the filter it uses is the shared membership predicate rather than
- * a list written here.
- *
- * @param items - every row in the document.
- * @param howMany - how many to return. Non-positive means none, not "all".
- * @returns the most recently changed rows, newest first.
- */
-export function recentItemsOf(items: readonly ItemRecord[], howMany: number): ItemRecord[] {
-  if (howMany <= 0) return []
-  // A copy, and the same tie-break tail the orderings use: the freshness stamp is
-  // NOT unique (two edits in the same millisecond is ordinary on a phone), so
-  // without the tail this list would be partial and would differ per device.
-  return [...items]
-    .sort((a, b) => b.updatedAt - a.updatedAt
-      || refSortKeyOf(a) - refSortKeyOf(b)
-      || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))
-    .slice(0, howMany)
-}

@@ -693,10 +693,6 @@ export const zh = {
   'item.rail.undated': '没定日期',
   /* `has:linked` 那一枚芯片的词：它说的是「这一行挂着一张卡」。 */
   'item.flag.linked': '挂了卡',
-  'item.rail.priority.urgent': '紧急',
-  'item.rail.priority.high': '高',
-  'item.rail.priority.normal': '普通',
-  'item.rail.priority.low': '低',
   // 这一组的词直接读看板那五个（`board.status.*`，见 `rail.tsx` 的 WORD 表）——两张
   // 表说同一件事的那一天起，「按状态」这一列就会有一个词不跟着改。
   'item.rail.pickDay': '只看这一天',
@@ -768,11 +764,6 @@ export const zh = {
   'item.page.list': '清单',
   'item.page.schedule': '日程',
 
-  // 要处理：每条一句话加一个按钮。没有按钮的数字不上面板。
-  'item.triage.behind': '{n} 项过了想要的日子',
-  'item.triage.stale': '{n} 项放着 {days} 天没动',
-  'item.triage.undated': '{n} 项没定日期',
-
   // 三个日期三种视觉。软期限逾期不是红；红只属于硬期限。
   //
   // **裁决类不带日期名，日期类带。** 动词自己说清是哪一个日期：`超期` 说的是硬期限
@@ -788,6 +779,9 @@ export const zh = {
   'item.due.set': '{when}',
   'item.dates.contradict': '{a} 晚于它该守的 {b}，这一条自己矛盾',
   'item.ref.pending': '编号待定',
+  // 一行还没有名字（只在正文里写了字、或者只挂了标签）。它与「编号待定」同一族：
+  // 一件还没被命名的事，而不是一句关于选中状态的话。
+  'item.row.untitled': '还没名字',
   'item.stale': '放着 {days} 天',
 
   // 行尾菜单。
@@ -821,16 +815,10 @@ export const zh = {
   'item.noDate.hint': '这些行没有日期，所以不占任何一天。',
   'item.agenda.leftOut': '另有 {done} 条已完成、{inbox} 条还在收件里，不在这份日程上。',
 
-  // 详情侧栏在「还没选中任何一条」时的内容。
-  'item.detail.emptyTitle': '还没选中任何一条',
-
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
   // 给它们起名字就是把一句关于控件的话放在一列数据上面。
   'item.filters.label': '筛选：',
-  // 统计卡上的三个标签：**只有名词，不带数**。数由卡上那个 28px 的数字说，
-  // 而 `item.triage.*Short` 那张表是给「一句话里夹一个数」用的，两种写法混在
-  // 一起会让同一张卡上出现「落后」和「1 卡住」并排——一半自己带数一半不带。
   'item.done.show': '隐藏已完成',
   'item.menu.rename': '改标题',
   'item.create.title': '新建一条',
@@ -872,9 +860,8 @@ export const zh = {
    * 读这一栏名——把它们印成「日期：」就是一句假话。 */
   'item.facet.flag': '筛选',
   'item.due.overdueShort': '超期',
+  // 「一句话里夹一个数」的短词：`has:behind` 那枚芯片读它。
   'item.triage.behindShort': '落后',
-  'item.triage.staleShort': '{n} 没动',
-  'item.triage.undatedShort': '{n} 没日期',
   // 七档排序，全部是名词而不是「按……」的动词短语：它们要能并排进一条
   // 分段药丸里当七个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
   // 七个动作，读者会当成七个可以分别按的钮。
@@ -1615,10 +1602,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.stale': 'Untouched',
   'item.rail.undated': 'No date',
   'item.flag.linked': 'On a card',
-  'item.rail.priority.urgent': 'Urgent',
-  'item.rail.priority.high': 'High',
-  'item.rail.priority.normal': 'Normal',
-  'item.rail.priority.low': 'Low',
   'item.rail.pickDay': 'Show only this day',
   'item.rail.calendar.label': 'By date',
   'item.rail.month.prev': 'Previous month',
@@ -1689,12 +1672,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.page.list': 'List',
   'item.page.schedule': 'Agenda',
 
-  // What needs a decision. One sentence and one button each — a number with no
-  // button is a scoreboard, not a to-do.
-  'item.triage.behind': '{n} past the day you wanted them by',
-  'item.triage.stale': '{n} untouched for {days} days',
-  'item.triage.undated': '{n} with no date',
-
   // Three dates, three readings — and ONE shape: a verdict names itself by its verb
   // (「超期」/「over」 is the hard deadline, 「落后」/「behind」 the plan's date), while a
   // bare DATE carries its field's name, because a date on its own does not say whose
@@ -1709,6 +1686,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.due.set': '{when}',
   'item.dates.contradict': '{a} is later than the {b} it has to keep, so this row contradicts itself',
   'item.ref.pending': 'number pending',
+  // A row with no words of its own yet (a body with no title, or a tag on its own).
+  'item.row.untitled': 'no name yet',
   'item.stale': 'untouched {days}d',
 
   // The row-end menu.
@@ -1742,9 +1721,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.gated.hint': 'Their earliest start has not arrived. Each comes in on the day it opens.',
   'item.noDate.hint': 'These rows have no date, so they take up no day.',
   'item.agenda.leftOut': '{done} finished and {inbox} still in the inbox are not on this agenda.',
-
-  // What the detail pane holds before any row is picked.
-  'item.detail.emptyTitle': 'Nothing picked yet',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',
@@ -1783,9 +1759,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.facet.date': 'Date',
   'item.facet.flag': 'Filter',
   'item.due.overdueShort': 'Past due',
+  // The short form used where a count sits inside a sentence: the `has:behind` chip.
   'item.triage.behindShort': 'Behind',
-  'item.triage.staleShort': '{n} untouched',
-  'item.triage.undatedShort': '{n} undated',
   'item.sort.label': 'Order',
   'item.sort.sequence': 'Sequence',
   'item.sort.starts': 'Not before',

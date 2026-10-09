@@ -25,12 +25,13 @@
  * the token is `''` for the ones that are not filters — which is a fact about
  * the entry rather than a special case at three call sites.
  *
- * The five flags the rail does NOT give a row (`overdue`, `blocked`, `linked`,
- * `done`, and `hardOverdue` in the group) stay reachable through the search box
- * and the palette. That is a choice, so it is written down: 受阻 and 已完成 are
- * STATUSES and they have a row under 「按状态」; a row in two groups is two
- * identities for one set of rows, which is the exact duplication invariant 1
- * forbids. `overdue` is the union of two rows that are each already here.
+ * The flags the rail does NOT give a row (`hardOverdue`, `behind`, `linked`, `done`)
+ * stay reachable through the search box and the palette. That is a choice, so it is
+ * written down: `hardOverdue` and `behind` are the two halves of `overdue`, which
+ * IS here as a row — a row in two groups is two identities for one set of rows,
+ * which is the exact duplication invariant 1 forbids; 已完成 is a STATUS and it has
+ * a row under 「按状态」; and `linked` is a fact about a row that its own chip
+ * already states.
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts';
 import { type ItemMatchContext } from './item-query.ts';
@@ -87,11 +88,8 @@ export interface ItemRailGroup {
  * `gated` is gone for a different reason: it means 「还没到能动的日子」, which is
  * **good news**, and a rail is read when something is wrong. It has a page of its
  * own (日程) and a token (`has:gated`) — a state nobody can reach from here is a
- * state the rail should not be carrying.
- *
- * `blocked` is deliberately NOT here either. It is a status, it has a row under
- * 「按状态」, and a set with two identities in one rail is the duplication
- * invariant 1 forbids.
+ * state the rail should not be carrying. `ahead` is the row that DOES answer
+ * 「还没到」, and it is about every date a row owns rather than about one field.
  *
  * ── WHY THE ORDER PUTS THE TWO DATE ROWS FIRST, AND WHAT THE GROUP IS CALLED ──
  *
@@ -138,7 +136,7 @@ export declare function itemRailGroupsOf(items: readonly ItemRecord[], ctx: Item
  * A rail group is a set of ALTERNATIVES, and that is a property of the rail's own
  * shape rather than a rule the caller should remember: 「按日子看」 offers three
  * verdicts about one row's dates, 「按重要程度」 offers the four priorities a row
- * can have exactly one of, 「按状态」 the four states. So the members of a group
+ * can have exactly one of, 「按状态」 the five the board has. So the members of a group
  * are mutually exclusive by construction, and asking the group for them is the
  * only way to state that which cannot fall out of date: a token added to the rail
  * joins its group's exclusion list the day it is added, without anyone

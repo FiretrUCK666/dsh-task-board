@@ -27,6 +27,7 @@
  * are all `core/item-view.ts` and `core/item-transitions.ts`, read here and by
  * `taskboard_query` alike.
  */
+import { ITEM_PRIORITIES_BY_WEIGHT, PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
 
 /**
  * Every action the flow can name. A name with no handler is a dead key.
@@ -42,9 +43,6 @@ export type ItemKeyAction =
   | 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open'
   | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette'
   | 'palettePrev' | 'paletteNext' | 'palettePick'
-
-/** The four tiers, in the order the digits run. */
-export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low'
 
 /** ONE BINDING: what is pressed, and what it names. */
 export interface KeyBinding {
@@ -82,7 +80,7 @@ export interface KeyBinding {
   /** The action this binding names. */
   readonly action: ItemKeyAction
   /** The argument it carries, when it carries one. */
-  readonly arg?: ItemPriorityChoice
+  readonly arg?: ItemPriority
   /**
    * Whether the binding applies at all right now.
    *
@@ -149,17 +147,22 @@ export const ITEM_KEYS: readonly KeyBinding[] = [
   { keys: '↵', key: 'enter', action: 'open', typing: true, when: s => s.focusedId !== undefined && !s.paletteOpen && !s.somethingOpen },
   { keys: '↵', key: 'enter', action: 'palettePick', typing: true, when: s => s.paletteOpen },
   { keys: 'Esc', key: 'escape', action: 'close', typing: true },
-  { keys: '1', key: '1', action: 'priority', arg: 'urgent', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '2', key: '2', action: 'priority', arg: 'high', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '3', key: '3', action: 'priority', arg: 'normal', when: s => s.focusedId !== undefined && !s.somethingOpen },
-  { keys: '4', key: '4', action: 'priority', arg: 'low', when: s => s.focusedId !== undefined && !s.somethingOpen },
+  /* 1–4 就是 `!N` 那一把阶梯本身，读的是 core 里唯一那张数字表：行上的记号、快记的
+     `!1`、以及这一张映射，是同一套拼写的三个读者。 */
+  ...ITEM_PRIORITIES_BY_WEIGHT.map(priority => ({
+    keys: PRIORITY_DIGIT[priority],
+    key: PRIORITY_DIGIT[priority],
+    action: 'priority' as const,
+    arg: priority,
+    when: (state: KeyState) => state.focusedId !== undefined && !state.somethingOpen,
+  })),
   { keys: 'D', key: 'd', action: 'dueToday', when: s => s.focusedId !== undefined && !s.somethingOpen },
   { keys: '⌘⌫', key: 'backspace', cmd: true, notWhileTyping: true, action: 'remove', when: s => s.focusedId !== undefined },
   { keys: '⌘Z', key: 'z', cmd: true, notWhileTyping: true, action: 'undo' },
 ]
 
 /** The handler for one action. Returning nothing is fine; throwing is not. */
-export type ItemKeyHandler = (arg: ItemPriorityChoice | undefined) => void
+export type ItemKeyHandler = (arg: ItemPriority | undefined) => void
 
 /**
  * EVERY ACTION, as a CLOSED record.

@@ -26,11 +26,13 @@ import { ItemGrammarExample } from './composer.tsx'
 import { itemDayGroupsOf } from './day-groups.ts'
 import type { ItemDayBucket } from './day-groups.ts'
 import type { ItemSort } from '../../core/item-sort.ts'
-import { t } from '../locales.ts'
+import { t, type TaskBoardKey } from '../locales.ts'
 import css from './item.module.css'
 
-/** The word each bucket is spoken in. Closed over the buckets core can produce. */
-const DAY_WORD: Readonly<Record<ItemDayBucket, 'item.day.today' | 'item.day.yesterday' | 'item.day.beforeYesterday' | 'item.day.earlier'>> = {
+/** The word each bucket is spoken in. Closed over the buckets core can produce, and
+ *  typed as the dictionary's own key type rather than as the four strings written
+ *  out a second time below. */
+const DAY_WORD: Readonly<Record<ItemDayBucket, TaskBoardKey>> = {
   today: 'item.day.today',
   yesterday: 'item.day.yesterday',
   beforeYesterday: 'item.day.beforeYesterday',

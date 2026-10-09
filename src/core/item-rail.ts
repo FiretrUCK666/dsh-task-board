@@ -25,18 +25,19 @@
  * the token is `''` for the ones that are not filters — which is a fact about
  * the entry rather than a special case at three call sites.
  *
- * The five flags the rail does NOT give a row (`overdue`, `blocked`, `linked`,
- * `done`, and `hardOverdue` in the group) stay reachable through the search box
- * and the palette. That is a choice, so it is written down: 受阻 and 已完成 are
- * STATUSES and they have a row under 「按状态」; a row in two groups is two
- * identities for one set of rows, which is the exact duplication invariant 1
- * forbids. `overdue` is the union of two rows that are each already here.
+ * The flags the rail does NOT give a row (`hardOverdue`, `behind`, `linked`, `done`)
+ * stay reachable through the search box and the palette. That is a choice, so it is
+ * written down: `hardOverdue` and `behind` are the two halves of `overdue`, which
+ * IS here as a row — a row in two groups is two identities for one set of rows,
+ * which is the exact duplication invariant 1 forbids; 已完成 is a STATUS and it has
+ * a row under 「按状态」; and `linked` is a fact about a row that its own chip
+ * already states.
  */
 import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts'
-import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts'
+import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUS_VIEWS } from './item.ts'
 import { derivedStatusOf, isAgendaItem } from './item-membership.ts'
 import { flagProbeOf, ITEM_FLAG_TESTS, type ItemMatchContext } from './item-query.ts'
-import { PRIORITY_BY_TOKEN } from './item-query.ts'
+import { TOKEN_BY_PRIORITY } from './item-query.ts'
 
 /** What KIND of question an entry asks. Drives its shape and its affordance,
  *  and it is the only thing a surface may branch on — never `n`, never `token`. */
@@ -95,11 +96,8 @@ export interface ItemRailGroup {
  * `gated` is gone for a different reason: it means 「还没到能动的日子」, which is
  * **good news**, and a rail is read when something is wrong. It has a page of its
  * own (日程) and a token (`has:gated`) — a state nobody can reach from here is a
- * state the rail should not be carrying.
- *
- * `blocked` is deliberately NOT here either. It is a status, it has a row under
- * 「按状态」, and a set with two identities in one rail is the duplication
- * invariant 1 forbids.
+ * state the rail should not be carrying. `ahead` is the row that DOES answer
+ * 「还没到」, and it is about every date a row owns rather than about one field.
  *
  * ── WHY THE ORDER PUTS THE TWO DATE ROWS FIRST, AND WHAT THE GROUP IS CALLED ──
  *
@@ -139,19 +137,6 @@ export type ItemRailKey =
   | 'all'
   | 'deleted'
 
-/** `urgent` first. Derived from the model's own rank, because the enum order in
- *  `ITEM_PRIORITIES` is an ENUM order and sorting on it put 紧急 LAST — the
- *  defect `item-sort.ts` records having already paid for once. */
-const RAIL_PRIORITIES: readonly ItemPriority[] = [...ITEM_PRIORITIES]
-  .sort((a, b) => itemPriorityRankOf(a) - itemPriorityRankOf(b))
-
-/** `p1` for urgent, and so on. The inverse of the model's own table rather than
- *  a second one written out, so a re-tiered priority cannot leave the token
- *  pointing at the old tier. */
-const TOKEN_BY_PRIORITY: ReadonlyMap<ItemPriority, string> = new Map(
-  Object.entries(PRIORITY_BY_TOKEN).map(([token, priority]) => [priority, token]),
-)
-
 function entry(
   id: string,
   kind: ItemRailKind,
@@ -183,7 +168,7 @@ export function itemRailGroupsOf(
     entry(`flag:${flag}`, 'flag', flag, `has:${flag}`, heldBy(item => ITEM_FLAG_TESTS[flag](probeOf(item)))))
   const idle = RAIL_IDLE_FLAGS.map(flag =>
     entry(`flag:${flag}`, 'flag', flag, `has:${flag}`, heldBy(item => ITEM_FLAG_TESTS[flag](probeOf(item)))))
-  const priorities = RAIL_PRIORITIES.map(priority =>
+  const priorities = ITEM_PRIORITIES_BY_WEIGHT.map(priority =>
     entry(`priority:${priority}`, 'priority', priority, TOKEN_BY_PRIORITY.get(priority) ?? '', heldBy(item => item.priority === priority)))
   const statuses = ITEM_STATUS_VIEWS.map(view =>
     entry(`status:${view}`, 'status', view, `status:${view.toLowerCase()}`, heldBy(item => derivedStatusOf(item, ctx.cards) === view)))
@@ -196,8 +181,7 @@ export function itemRailGroupsOf(
      * starts. It used to be the third row from the bottom, below three filter
      * groups, while the top held 「刚记下的」: a row that was a PLACE pretending to be
      * a predicate. Its membership rule (`isInboxItem`) is read by the query grammar
-     * and the triage strip on their own, so removing the row removed a page and
-     * nothing else. */
+     * on its own, so removing the row removed a page and nothing else. */
     {
       id: 'all',
       word: undefined,
@@ -233,7 +217,7 @@ export function itemRailGroupsOf(
  * A rail group is a set of ALTERNATIVES, and that is a property of the rail's own
  * shape rather than a rule the caller should remember: 「按日子看」 offers three
  * verdicts about one row's dates, 「按重要程度」 offers the four priorities a row
- * can have exactly one of, 「按状态」 the four states. So the members of a group
+ * can have exactly one of, 「按状态」 the five the board has. So the members of a group
  * are mutually exclusive by construction, and asking the group for them is the
  * only way to state that which cannot fall out of date: a token added to the rail
  * joins its group's exclusion list the day it is added, without anyone

@@ -41,6 +41,20 @@ import type { DatePosture } from './item-dates.ts';
  */
 export declare const PRIORITY_BY_TOKEN: Readonly<Record<string, ItemPriority>>;
 /**
+ * The tier behind each `!N` — **derived from the table above**, so the two spellings
+ * of one ladder cannot drift. It is the single source the row's mark, the keyboard's
+ * `1`–`4` and the capture grammar's `!N` all read: three hand-written digit tables
+ * used to exist beside it, each one edit away from disagreeing with the others.
+ */
+export declare const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>>;
+/**
+ * The token that writes each tier — the inverse of the table above, derived rather
+ * than retyped. Two callers (the rail's filter rows and the search box's facet) ask
+ * 「what do I put in the box for this tier」, and an inverse written by hand is the
+ * classic place for a re-tiered priority to keep pointing at the old number.
+ */
+export declare const TOKEN_BY_PRIORITY: ReadonlyMap<ItemPriority, string>;
+/**
  * A row-level test the query can name.
  *
  * Each one is a fact about the row that a reader can also see on it. A test
@@ -231,16 +245,6 @@ export declare function flagProbeOf(item: ItemRecord, ctx: ItemMatchContext): It
  * next to the number that reads it.
  */
 export declare const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) => boolean>>;
-/**
- * Does this row pass this flag? The surface form of {@link ITEM_FLAG_TESTS},
- * for anything that has the row and the context but not a probe yet.
- *
- * **This is also how a number is COUNTED.** A rail, a tile or a count line that
- * wants 「how many rows does this flag hold」 calls this on the same row — so the
- * number on screen and the list behind it are one predicate by construction,
- * which is the promise rule 4 of this module makes.
- */
-export declare function itemHasFlag(item: ItemRecord, flag: ItemFlag, ctx: ItemMatchContext): boolean;
 /**
  * Whether a row satisfies a parsed query.
  *

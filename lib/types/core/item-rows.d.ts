@@ -62,8 +62,6 @@ export interface ItemRowView {
     readonly soft: SoftPosture;
     /** Untouched days, or `undefined` when the row is exempt or too old. */
     readonly staleDays: number | undefined;
-    /** Whether the row should be given a priority chip at all. */
-    readonly priorityLoud: boolean;
 }
 /** The reading context one row is projected against. */
 export interface ItemRowContext {
@@ -87,11 +85,6 @@ export interface ItemSlice {
     /** The STATUS the run holds; a row is in exactly one run per render. */
     readonly status: ItemStatusView;
     readonly items: readonly ItemRecord[];
-    /** Step arithmetic for the run, or `undefined` when it has no steps at all. */
-    readonly progress: {
-        readonly done: number;
-        readonly total: number;
-    } | undefined;
 }
 /** The four groups, in the order they read top to bottom.
  *

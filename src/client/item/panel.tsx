@@ -99,10 +99,10 @@ const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 'item.page.sche
   schedule: 'item.page.schedule',
 }
 /* Every closed table moved to `labels.ts`, which is now the one place they live:
-   priority, status, group, bucket, triage and the orderings. It is deliberately
+   priority, status, group, bucket and the orderings. It is deliberately
    NOT kept here as a second copy: a closed `Record` over `ItemSort` that no
-   component renders is seven words nothing can click, and the day the model adds
-   an eighth tier there would be two tables — one of them wrong, and the compiler
+   component renders is a row of words nothing can click, and the day the model adds
+   a tier there would be two tables — one of them wrong, and the compiler
    perfectly happy about both. A table belongs to whoever renders it, and there
    is now exactly one such place. */
 
@@ -1052,7 +1052,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
     matchCtx,
     prefs,
     choose,
-    narrow,
     filtering,
     /* 「这一页能不能多选」是**页面**的常量，不是读者的模式。收件装的是还没分流的
        东西、日程按天读，PRODUCT 说这两页根本没有多选面；清单页有，于是它的每一
@@ -1195,7 +1194,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     .slice(0, 8)
     .map(item => ({
       id: `row-${item.id}`,
-      label: `#${item.ref} ${itemTitleOf(item) || t('item.detail.emptyTitle')}`,
+      label: `#${item.ref} ${itemTitleOf(item) || t('item.row.untitled')}`,
       run: () => { goTo(undefined, item.ref) },
     })), [items, goTo])
 
@@ -1274,20 +1273,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
  * 一起没有了，所以推导与标签表都跟着走——一个不再被读的值就是死代码，而死代码
  * 在下一次改动里是最容易被误当成「还在用」的那一种。 */
 
-  /**
-   * HOW MANY ROWS ONE FILTER TOKEN WOULD LEAVE, asked of the same parse the
-  /**
-   * HOW MANY ROWS ONE FILTER TOKEN WOULD LEAVE, asked of the same parse the
-   * table reads. A tile whose number and whose jump disagree is the defect this
-   * pair exists to make impossible — and the only way it cannot happen is both
-   * sides asking the same question of the same string.
-   *
-   * Measured against an EMPTY query on purpose: it answers 「what would this
-   * button give me if I pressed it」, and pressing it merges it with whatever is
-   * already on. Counting against the live query instead makes the same button
-   * report a different number before and after it is pressed, which is a number
-   * that describes nothing.
-   */
 /** WHAT THE RAIL SHOWS, AND WHERE IT STANDS.
    *
    * The groups and every number on them come from ONE derivation over the same

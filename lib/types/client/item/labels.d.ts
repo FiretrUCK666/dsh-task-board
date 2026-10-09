@@ -56,17 +56,6 @@ export declare const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>
  */
 export declare const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>>;
 /**
- * The triage lines' SHORT words, for the one-line form.
- *
- * A separate table rather than a truncation of the long sentences, because the
- * long ones are sentences with a consequence — 「1 项过了想要的日子」 tells a reader
- * what HAPPENED, and 「落后」 alone is a label with no claim. On the one line there
- * is no room for the sentence, so the short form is deliberately a LABEL: it
- * names the line and its count, and it writes the same filter the long sentence
- * wrote, through the same writer.
- */
-export declare const TRIAGE_SHORT: Readonly<Record<ItemFlag, TaskBoardKey>>;
-/**
  * The five columns a row can READ as, and the word for each — **the board's own words**.
  *
  * 它不再是一张自己的词表：`STATUS_KEY`（`board/status.ts`）是看板那一份、按 `TaskStatus`
@@ -78,26 +67,9 @@ export declare const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>>
 /** The agenda's buckets and the word for each. */
 export declare const BUCKET_LABEL: Readonly<Record<ScheduleBucketId, TaskBoardKey>>;
 /**
- * The triage sentences, and the word for each line.
- *
- * Three flags share a word with a line that has no entry of its own, and that
- * is a deliberate collapse rather than a missing key: `triageLinesOf` emits four
- * ids, and a table keyed over the whole flag set still has to say something
- * about the rest. The right something is the nearest honest line, not a blank —
- * and now that the table is closed, saying it is a choice the compiler asks for
- * instead of a `?? 'item.triage.undated'` that used to be reached by no code
- * path at all and would have rendered a date sentence for a flag that is not
- * about dates.
- */
-export declare const TRIAGE_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>>;
-/**
  * **每一枚 flag 自己的词**，闭合成 `ItemFlag`——`has:` 芯片与左栏那一组都读这一份。
  *
- * 它是 `TRIAGE_SHORT`/`TRIAGE_LABEL` 的第三代：那两张表是**三要处理那一条线**用的（一行一句
- * 话），所以它们把 `linked`/`done` 这类「不是日期问题的 flag」都折到最近的日期句子上——那对
- * 一条句子是对的，对**一枚芯片**就是错的（「挂了卡」被印成「没日期」）。
- *
- * 芯片要的是**这一枚筛子叫什么**，所以这张表不许折：每一枚自己那一格写自己的词，加一枚新 flag
- * 就编译不过。左栏的行也读它（同一个筛子在两处必须同一个词——硬性规范 17）。
+ * 一枚筛子要的是**这一枚筛子叫什么**，所以这张表不许折：每一枚自己那一格写自己的词，
+ * 加一枚新 flag 就编译不过。左栏的行也读它（同一个筛子在两处必须同一个词——硬性规范 17）。
  */
 export declare const FLAG_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>>;

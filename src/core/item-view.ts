@@ -13,14 +13,15 @@
  *   item-dates       三个日期是什么意思      the three promises, and the one verdict
  *   item-membership  这一条在不在场          which set a row is in, and its real status
  *   item-stale       多久没动                neglect, with the exemptions that make it usable
- *   item-sort        谁排在前面              the orderings, and the recent-rows list
+ *   item-sort        谁排在前面              the orderings
  *   item-query       能问什么                the grammar, and the one matcher
  *   item-rows        一行长什么样            the row projection, and the four runs
  *   item-schedule    日程在哪一格            the agenda's eight buckets
- *   item-triage      有哪些要处理            the sentences, each with the list it opens
- *   item-counts      那些数字                the rail, the group heads, the one cross-cut
+ *   item-rail        去哪看、各有几条         the rail's groups, and every count on them
+ *   item-navigate    按了会去哪              the pages, and the plans that reach them
+ *   item-ask         能问谁                  handing one row to the card it hangs off
  *
- * THE DEPENDENCY EDGES RUN ONE WAY (dates and membership at the bottom, counts at
+ * THE DEPENDENCY EDGES RUN ONE WAY (dates and membership at the bottom, the rail at
  * the top) and the only edge leaving the layer at all is `item-sort`'s 顺序 key,
  * which reads the DOCUMENT's own comparator rather than restating it. That is
  * deliberate and it is the load-bearing comment in `item-sort.ts`: the checklist
@@ -30,8 +31,8 @@
  * WHY A FACADE AND NOT NEW IMPORT PATHS. The panel, the workbench tests, the
  * catalog and `task-search.ts` all import `item-view.ts`, and they should keep
  * doing it: an internal reorganization is not a reason for two dozen call sites
- * to change at once, and a reader who has to know nine modules to answer "how
- * does a row read" has learned a worse map than the one they had. Nothing below
+ * to change at once, and a reader who has to know every module below to answer
+ * "how does a row read" has learned a worse map than the one they had. Nothing below
  * this file is private in the type-system sense — the sub-modules are imported
  * directly where a module genuinely needs one answer (and only then) — but a
  * SURFACE imports this file, and the list below is the whole of what a surface
@@ -62,7 +63,7 @@
 
 // ── the vocabulary the models own, re-exported so one import reads it ────────
 export type { ItemPriority, ItemStatus, ItemStatusView } from './item.ts'
-export { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts'
+export { ITEM_PRIORITIES, ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, ITEM_STATUS_VIEWS, itemPriorityRankOf } from './item.ts'
 
 // ── item-dates ─────────────────────────────────────────────────────────────
 export { DAY_MS, HARD_SOON_DAYS, datePostureOf, startOfDay } from './item-dates.ts'
@@ -75,7 +76,7 @@ export { isAgendaItem, isInboxItem } from './item-membership.ts'
 export { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts'
 
 // ── item-sort ──────────────────────────────────────────────────────────────
-export { DEFAULT_ITEM_SORT, ITEM_SORTS, recentItemsOf, sortItemsOf } from './item-sort.ts'
+export { DEFAULT_ITEM_SORT, ITEM_SORTS, sortItemsOf } from './item-sort.ts'
 export type { ItemSort } from './item-sort.ts'
 
 // ── item-query ─────────────────────────────────────────────────────────────
@@ -85,13 +86,14 @@ export {
   ITEM_FLAG_TESTS,
   flagProbeOf,
   isItemQualifierToken,
-  itemHasFlag,
   itemMatchContextOf,
   itemMatches,
   itemQualifierVocabulary,
   dayTokenOf,
   parseItemQuery,
   PRIORITY_BY_TOKEN,
+  PRIORITY_DIGIT,
+  TOKEN_BY_PRIORITY,
 } from './item-query.ts'
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts'
 
@@ -114,8 +116,4 @@ export type { ItemRef, ItemRowContext, ItemRowView, ItemSlice, ItemSliceOptions 
 // ── item-schedule ──────────────────────────────────────────────────────────
 export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-schedule.ts'
 export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts'
-
-// ── item-triage ────────────────────────────────────────────────────────────
-export { triageLinesOf, allTriageLinesOf } from './item-triage.ts'
-export type { TriageLine, TriageSeverity } from './item-triage.ts'
 

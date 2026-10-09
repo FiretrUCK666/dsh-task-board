@@ -27,6 +27,7 @@
  * are all `core/item-view.ts` and `core/item-transitions.ts`, read here and by
  * `taskboard_query` alike.
  */
+import { type ItemPriority } from '../../core/item-view.ts';
 /**
  * Every action the flow can name. A name with no handler is a dead key.
  *
@@ -38,8 +39,6 @@
  * whose correctness does not depend on where a line was typed.
  */
 export type ItemKeyAction = 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open' | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette' | 'palettePrev' | 'paletteNext' | 'palettePick';
-/** The four tiers, in the order the digits run. */
-export type ItemPriorityChoice = 'urgent' | 'high' | 'normal' | 'low';
 /** ONE BINDING: what is pressed, and what it names. */
 export interface KeyBinding {
     /** What the reader presses, in the spelling a person says out loud (`⌘K`, `↵`, `↓`). */
@@ -76,7 +75,7 @@ export interface KeyBinding {
     /** The action this binding names. */
     readonly action: ItemKeyAction;
     /** The argument it carries, when it carries one. */
-    readonly arg?: ItemPriorityChoice;
+    readonly arg?: ItemPriority;
     /**
      * Whether the binding applies at all right now.
      *
@@ -128,7 +127,7 @@ export interface KeyState {
  */
 export declare const ITEM_KEYS: readonly KeyBinding[];
 /** The handler for one action. Returning nothing is fine; throwing is not. */
-export type ItemKeyHandler = (arg: ItemPriorityChoice | undefined) => void;
+export type ItemKeyHandler = (arg: ItemPriority | undefined) => void;
 /**
  * EVERY ACTION, as a CLOSED record.
  *

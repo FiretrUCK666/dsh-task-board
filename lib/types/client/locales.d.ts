@@ -652,10 +652,6 @@ export declare const zh: {
     'item.rail.stale': string;
     'item.rail.undated': string;
     'item.flag.linked': string;
-    'item.rail.priority.urgent': string;
-    'item.rail.priority.high': string;
-    'item.rail.priority.normal': string;
-    'item.rail.priority.low': string;
     'item.rail.pickDay': string;
     'item.rail.calendar.label': string;
     'item.rail.month.prev': string;
@@ -717,9 +713,6 @@ export declare const zh: {
     'item.field.priority': string;
     'item.page.list': string;
     'item.page.schedule': string;
-    'item.triage.behind': string;
-    'item.triage.stale': string;
-    'item.triage.undated': string;
     'item.due.behind': string;
     'item.dates.overdue': string;
     'item.dates.behind': string;
@@ -729,6 +722,7 @@ export declare const zh: {
     'item.due.set': string;
     'item.dates.contradict': string;
     'item.ref.pending': string;
+    'item.row.untitled': string;
     'item.stale': string;
     'item.menu.more': string;
     'item.menu.expand': string;
@@ -755,7 +749,6 @@ export declare const zh: {
     'item.gated.hint': string;
     'item.noDate.hint': string;
     'item.agenda.leftOut': string;
-    'item.detail.emptyTitle': string;
     'item.filter.clear': string;
     'item.filters.label': string;
     'item.done.show': string;
@@ -793,8 +786,6 @@ export declare const zh: {
     'item.facet.flag': string;
     'item.due.overdueShort': string;
     'item.triage.behindShort': string;
-    'item.triage.staleShort': string;
-    'item.triage.undatedShort': string;
     'item.sort.label': string;
     'item.sort.sequence': string;
     'item.sort.starts': string;

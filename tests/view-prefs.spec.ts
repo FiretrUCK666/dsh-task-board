@@ -13,7 +13,6 @@ import {
   DEFAULT_VIEW_PREFS,
   VIEW_PREFS_KEY,
   readViewPrefs,
-  toggleCollapsed,
   writeViewPrefs,
 } from '../src/client/item/view-prefs.ts'
 
@@ -75,10 +74,10 @@ describe('what a first-time reader meets', () => {
 describe('a remembered view comes back whole', () => {
   it('round-trips every field it is allowed to keep', () => {
     const store = useWindow()
-    writeViewPrefs({ page: 'schedule', sort: 'priority', collapsed: ['review'], search: '' })
+    writeViewPrefs({ page: 'schedule', sort: 'priority', search: '' })
     expect(store.setItem).toHaveBeenCalled()
     expect(readViewPrefs()).toEqual({
-      page: 'schedule', sort: 'priority', collapsed: ['review'], search: '',
+      page: 'schedule', sort: 'priority', search: '',
     })
   })
 
@@ -201,20 +200,20 @@ describe('a damaged record repairs instead of throwing', () => {
     useWindow({ raw: JSON.stringify({ page: 'list', sort: 'due', density: 'comfy', showDone: true, collapsed: [], search: '#kept' }) })
     expect(readViewPrefs()).toEqual({ ...DEFAULT_VIEW_PREFS, page: 'list', sort: 'due' })
     expect(DEFAULT_VIEW_PREFS, 'the row-height setting is still a field with a default rather than gone').not.toHaveProperty('density')
-    // THE SAME UPGRADE, THE SECOND TIME, and this is the one that bites. `showDone`
+    // THE SAME UPGRADE, TWICE MORE, and these are the two that bite. `showDone`
     // was 「这一页不要已完成的行」 at PAGE level, written by a control on the
-    // retired overview strip. Once the strip went, the field left behind was not
-    // a capability but a switch nobody could reach — a device that had stored
-    // `showDone: false` could never turn it back on, because the only thing that
-    // wrote it no longer existed.
+    // retired overview strip; the intent survives as the list page's own
+    // 「隐藏已完成」 switch, which is drawn beside what it filters and is therefore
+    // not a field in this record. `collapsed` was per-group memory for folds that
+    // no longer exist.
     //
-    // The INTENT is not lost: the group's own fold carries it, with a visible
-    // control, a drawn arrow and per-group memory. What is lost is the second,
-    // invisible copy. **One intent, one control** — and a preference whose control
-    // is gone is not a setting, it is a trap with the handle filed off.
+    // THREE RETIRED FIELDS, ONE RULE: a record written by any build at all parses
+    // to this shape, because **a field is removed by not reading it**. Naming one
+    // — even to default it — is what turns a retired setting back into a live one,
+    // and a preference whose control is gone is not a setting, it is a trap with
+    // the handle filed off.
     expect(DEFAULT_VIEW_PREFS, 'the finished-work switch is still a field with a default rather than gone').not.toHaveProperty('showDone')
-    // And the way to say it now is the fold, which is a per-group set.
-    expect(toggleCollapsed([], 'done'), 'the finished group has no way to be put away now that the page switch is gone').toEqual(['done'])
+    expect(DEFAULT_VIEW_PREFS, 'the folded-groups set is still a field rather than gone').not.toHaveProperty('collapsed')
   })
 
   it('the probe bites: a stale key that DID break the read would be reported', () => {
@@ -224,7 +223,7 @@ describe('a damaged record repairs instead of throwing', () => {
     // only reason a control for it is possible at all.
     const strict = (raw: string): string => {
       const record = JSON.parse(raw) as Record<string, unknown>
-      const known = new Set(['page', 'sort', 'collapsed', 'search'])
+      const known = new Set(['page', 'sort', 'search'])
       for (const key of Object.keys(record)) {
         if (!known.has(key)) throw new Error(`unknown preference ${key}`)
       }
@@ -232,26 +231,15 @@ describe('a damaged record repairs instead of throwing', () => {
     }
     expect(() => strict(JSON.stringify({ page: 'list', density: 'comfy' })),
       'a stale key did not break the read — this probe proves nothing').toThrow(/unknown preference density/)
-    // TWO retired fields now, and the probe has to know about BOTH: the second is
-    // exactly the one a copy of the first fix would have left out of `known`, and
-    // then `showDone` would be quietly readable again.
+    // EVERY retired field has to be in this list, and each one is exactly the field
+    // a copy of the previous fix would have left out of `known` — after which it
+    // would be quietly readable again.
     expect(() => strict(JSON.stringify({ page: 'list', showDone: false })),
-      'the second retired field is not covered by the probe, so it can be read back by accident').toThrow(/unknown preference showDone/)
-    expect(strict(JSON.stringify({ page: 'list', sort: 'due', collapsed: ['done'] })),
+      'a retired field is not covered by the probe, so it can be read back by accident').toThrow(/unknown preference showDone/)
+    expect(() => strict(JSON.stringify({ page: 'list', collapsed: ['done'] })),
+      'the second retired field is not covered by the probe, so it can be read back by accident').toThrow(/unknown preference collapsed/)
+    expect(strict(JSON.stringify({ page: 'list', sort: 'due' })),
       'the probe rejects a record this build actually writes').toBe('list')
-  })
-
-  it('drops collapsed groups it does not recognise, and folds duplicates', () => {
-    useWindow({ raw: JSON.stringify({ collapsed: ['review', 'nonsense', 'review', 'done', 'blocked'] }) })
-    // `review` 是看板的栏（现在也是清单的状态那一组的成员），`nonsense` 与 `blocked` 不是
-    // ——后者是这一版删掉的那一档，所以一个老设备上存着的值读出来就被丢掉，而不是让
-    // 一段折叠状态指向一个不存在的组。
-    expect(readViewPrefs().collapsed).toEqual(['review', 'done'])
-  })
-
-  it('reads a non-array collapsed as nothing folded', () => {
-    useWindow({ raw: JSON.stringify({ collapsed: 'review' }) })
-    expect(readViewPrefs().collapsed).toEqual([])
   })
 
   it('does not obey a page id that is not one of the pages', () => {
@@ -277,24 +265,5 @@ describe('a browser with storage switched off is a supported way to run', () => 
     const store = useWindow({ throwOnSet: true })
     expect(() => writeViewPrefs(DEFAULT_VIEW_PREFS)).not.toThrow()
     expect(store.setItem).toHaveBeenCalled()
-  })
-})
-
-describe('folding a group', () => {
-  it('adds a group that is open and removes one that is folded', () => {
-    expect(toggleCollapsed([], 'review')).toEqual(['review'])
-    expect(toggleCollapsed(['review'], 'review')).toEqual([])
-  })
-
-  it('leaves the array it was handed alone', () => {
-    // The caller holds this set in state; mutating it in place would make the
-    // "did anything change" question unanswerable to React.
-    const before = ['done'] as const
-    toggleCollapsed([...before], 'todo')
-    expect(before).toEqual(['done'])
-  })
-
-  it('leaves the other groups where they were', () => {
-    expect(toggleCollapsed(['done', 'review'], 'todo')).toEqual(['done', 'review', 'todo'])
   })
 })

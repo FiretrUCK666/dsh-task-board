@@ -3,7 +3,7 @@
  *
  * WHY THIS FILE IS ITS OWN CONTRACT. `core/item-view.ts` is where the query
  * grammar, the page membership, the date verdicts, the staleness exemptions
- * and the triage sentences live — and the human surface and the model BOTH read
+ * and the rail's groups live — and the human surface and the model BOTH read
  * it. A file that two surfaces depend on and no test pins is the most dangerous
  * kind of green: it looks finished, and it is the one place a change can quietly
  * make the search box and the model's query disagree.
@@ -34,13 +34,11 @@ import {
   itemMatchContextOf,
   isItemQualifierToken,
   parseItemQuery,
-  recentItemsOf,
   scheduleBucketOf,
   scheduleBucketsOf,
   sortItemsOf,
   startOfDay,
   staleDaysOf,
-  triageLinesOf,
 } from '../src/core/item-view.ts'
 import { itemDateConflict, isItemRecordShape } from '../src/core/item.ts'
 import { compareItemOrder } from '../src/core/items-doc.ts'
@@ -338,12 +336,11 @@ describe('grouping and ordering', () => {
     expect(slices.every(s => s.items.length > 0)).toBe(false)
   })
 
-  it('hides the finished group until it is asked for, and reports progress only with steps', () => {
+  it('hides the finished group until it is asked for', () => {
     const withoutDone = itemSlicesOf(rows, { query: EMPTY_ITEM_QUERY, ctx: ctx(), sort: 'due' })
     expect(withoutDone.some(s => s.status === 'done')).toBe(false)
     const withDone = itemSlicesOf(rows, { query: EMPTY_ITEM_QUERY, ctx: ctx(), sort: 'due', includeDone: true })
     expect(withDone.find(s => s.status === 'done')?.items).toHaveLength(1)
-    expect(withDone.every(s => s.progress === undefined)).toBe(true)
   })
 
   it('is order-independent, so two devices holding one document agree', () => {
@@ -575,56 +572,6 @@ describe('the ordering set is CLOSED, and 顺序 is the only default', () => {
   })
 })
 
-describe('the recent-rows list is a derivation, not a component', () => {
-  it('answers "what have I been working on", newest first', () => {
-    const rows = [
-      row({ id: 'old', ref: 1, updatedAt: T0 - 5 * DAY }),
-      row({ id: 'new', ref: 2, updatedAt: T0 - 1 * DAY }),
-      row({ id: 'mid', ref: 3, updatedAt: T0 - 3 * DAY }),
-    ]
-    expect(recentItemsOf(rows, 2).map(r => r.id)).toEqual(['new', 'mid'])
-    expect(recentItemsOf(rows, 99).map(r => r.id)).toEqual(['new', 'mid', 'old'])
-    // Fewer than asked for is a real answer, not a gap to be filled.
-    expect(recentItemsOf(rows.slice(0, 1), 5)).toHaveLength(1)
-    expect(recentItemsOf(rows, 0)).toEqual([])
-  })
-
-  it('does NOT decide membership: this is about change, not about pages', () => {
-    // Finished work is still the most recently changed thing a reader did, and an
-    // unfiled capture is still a thought they just had. Exempting either here
-    // would make this a second membership judgment living in the sort module, and
-    // the one membership predicate is `isAgendaItem` / `isInboxItem`.
-    const rows = [row({ id: 'done', status: 'done', updatedAt: T0 }), row({ id: 'fresh', ref: 2, updatedAt: T0 - DAY })]
-    expect(recentItemsOf(rows, 5).map(r => r.id)).toEqual(['done', 'fresh'])
-  })
-
-  it('is a TOTAL order even when two rows changed in the same millisecond', () => {
-    // THE DEFECT THIS EXISTS FOR. It was an inline
-    // `[...items].sort((a, b) => b.updatedAt - a.updatedAt)` in a component: a
-    // two-key comparator, so two rows edited in the same millisecond compared
-    // EQUAL, `Array.prototype.sort` left their order to arrival, and the jump
-    // list came out in a different order on a phone than on a laptop. Same defect
-    // as every partial order in this layer, in the one place the layer could not
-    // see.
-    const tied = [
-      row({ id: 'b', ref: 2, updatedAt: T0 }),
-      row({ id: 'a', ref: 1, updatedAt: T0 }),
-      row({ id: 'c', ref: 3, updatedAt: T0 }),
-    ]
-    const forward = recentItemsOf(tied, 3).map(r => r.id)
-    const backward = recentItemsOf([...tied].reverse(), 3).map(r => r.id)
-    expect(forward).toEqual(['a', 'b', 'c'])
-    expect(backward, 'the recent list depends on the order the rows happened to arrive in').toEqual(forward)
-  })
-
-  it('never mutates what it was handed', () => {
-    const rows = [row({ id: 'b', ref: 2, updatedAt: T0 - DAY }), row({ id: 'a', ref: 1, updatedAt: T0 })]
-    const before = [...rows]
-    recentItemsOf(rows, 5)
-    expect(rows.map(r => r.id)).toEqual(before.map(r => r.id))
-  })
-})
-
 describe('today is one local midnight, written down once', () => {
   it('`startOfDay` is the local day boundary, not a UTC slice', () => {
     // The bare `toISOString().slice(0, 10)` is the classic version of this and it
@@ -686,28 +633,18 @@ describe('the agenda', () => {
   })
 })
 
-describe('the triage strip', () => {
-  it('emits a line only when it has something to say', () => {
-    // A strip listing four zeros is four rows of chrome saying nothing, and the
-    // reader learns to skip it.
-    expect(triageLinesOf([row()], T0)).toEqual([])
-    expect(triageLinesOf([], T0)).toEqual([])
-  })
-
-  it('every line carries the rows it counted, so the jump shows the same set', () => {
-    const behind = row({ id: 'b', dueAt: T0 - DAY })
-    const stale = row({ id: 'c', updatedAt: T0 - 30 * DAY })
-    const lines = triageLinesOf([behind, stale], T0)
-    expect(lines.find(l => l.id === 'behind')?.items.map(i => i.id)).toEqual(['b'])
-    expect(lines.find(l => l.id === 'stale')?.items.map(i => i.id)).toEqual(['c'])
-    /* 「受阻」那一行删掉了：它数的是一行自己标的那个状态，而那个状态本来就只有清单有
-       ——看板五栏里没有它。剩下三行数的都是**日期与疏于照看**，而那是这一页上唯一能替
-       读者说「还不能动」的东西。 */
-    expect(lines.map(l => l.id)).not.toContain('blocked')
-  })
-
+describe('the flag registry carries the scope, not the surface that reads it', () => {
   it('never nags about finished work', () => {
-    expect(triageLinesOf([row({ status: 'done', dueAt: T0 - 30 * DAY })], T0)).toEqual([])
+    // 「落后」是关于还没做完的一件事的话：做完了，迟到就是过去的事。这条范围写在
+    // flag 的判据里（`isLiveItem`），所以左栏那一枚数与它跳进去的行数同一个答案。
+    expect(itemMatches(row({ status: 'done', dueAt: T0 - 30 * DAY }), parseItemQuery('has:behind'), ctx())).toBe(false)
+  })
+
+  it('a bare capture is not 「没定日期」', () => {
+    // 一分钟前刚记下的一句还没有被读第二遍，说它「没定日期」是催一个读者还没做的决定。
+    // 一旦给它任何结构（一个标签就够），它就进入这条判据。
+    expect(itemMatches(row(), parseItemQuery('has:undated'), ctx())).toBe(false)
+    expect(itemMatches(row({ tags: ['画廊'] }), parseItemQuery('has:undated'), ctx())).toBe(true)
   })
 })
 

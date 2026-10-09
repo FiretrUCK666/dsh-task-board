@@ -19,17 +19,14 @@
  * 选中由 `data-on` 说。两者不共用元件是有理由的：一枚记号自己带着它的重量（实心／
  * 洗底／素底／无底），而一排选择器里的四枚必须长得一样，否则「选中」就没有地方落脚
  * ——`item-create-dialog.tsx` 里那段注释记着这次塌方。所以这里只有记号，选择器在
- * 各自的位置上，两者共用的是**同一张数字表**（下面这一份 `PRIORITY_DIGIT`）。
+ * 各自的位置上，两者共用的是**同一张数字表**（core 的 `PRIORITY_DIGIT`，由 `p1..p4`
+ * 那张 token 表派生——它同时也是键盘的 `1`–`4` 与快记的 `!N` 读的那一张）。
  *
  * 图形的另一半理由写在 `row-line.tsx` 的头部：状态用形状、优先级用字，因为数字是
  * 读者真的会说出口的东西，而自己发明的记号要单独学一遍。
  */
-import type { ItemPriority, ItemStatusView } from '../../core/item-view.ts'
+import { PRIORITY_DIGIT, type ItemPriority, type ItemStatusView } from '../../core/item-view.ts'
 import css from './item.module.css'
-
-/** `!1`..`!4`，**唯一一张表**。 从模型那一侧的排序表派生过关系，但数字本身是这一面
- *  的排版决定，所以它住在这里；四个曾经的副本都读这一份。 */
-export const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
 
 /**
  * 一枚优先级记号。`size` 只有两档，两档都是**同一个芯片**：

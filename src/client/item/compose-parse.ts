@@ -28,7 +28,7 @@
  * A parser that cannot be argued with is worse than no parser, because the
  * reader's only remaining option is to stop writing in the box at all.
  */
-import type { ItemPriority } from '../../core/item.ts'
+import { PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
 /**
  * THE DAY BOUNDARY IS THE MODEL'S, and this file used to carry its own copy.
  *
@@ -103,10 +103,10 @@ function emptyParse(): ComposerParse {
   }
 }
 
-/** `!1`..`!4` read the way every task tool numbers them: 1 is the loudest. */
-const PRIORITY_BY_DIGIT: Readonly<Record<string, ItemPriority>> = {
-  '1': 'urgent', '2': 'high', '3': 'normal', '4': 'low',
-}
+/** `!1`..`!4`，**core 那张数字表的逆表**：一行只在写下去的时候需要这个方向。 */
+const PRIORITY_BY_DIGIT: Readonly<Record<string, ItemPriority>> = Object.fromEntries(
+  Object.entries(PRIORITY_DIGIT).map(([priority, digit]) => [digit, priority as ItemPriority]),
+)
 
 /** Weekday words, Monday first, to match `Date.getDay()` after the offset. */
 const WEEKDAYS: Readonly<Record<string, number>> = {
@@ -197,7 +197,16 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
     if (box !== null) {
       const caption = (box[3] as string).trim()
       if (caption !== '') {
-        const lead = (box[1] as string).length + line.indexOf(caption)
+        /* **一个 token 的范围就是它自己的那串字。** 步骤这一枚的 `raw` 是整行（去掉缩进），
+         * 所以 `start` 必须是**行首**（第一个 `-` 的位置），不是标题的位置：
+         *  · 曾经写成 `box[1].length + line.indexOf(caption)`——缩进算了两遍，而 `indexOf`
+         *    找到的是那串字的**第一次**出现，不一定是标题（`- [ ] -` 就能骗到它）；
+         *  · 而撤回（`escapeComposerToken`）正是在这个偏移上插一个反斜杠，所以一个错数
+         *    会把反斜杠插进读者自己的句子里；
+         *  · 更要紧的是语义：插在标题前面，这一行**仍然是**一个勾选项（正则照样匹配），
+         *    于是「撤回」按了等于没按。插在行首的 `-` 前面，它才真的变回普通文字。
+         * `line.length - line.trimStart().length` 就是缩进的长度，精确且不必再写第二个正则。 */
+        const lead = line.length - line.trimStart().length
         const ticked = (box[2] as string).toLowerCase() === 'x'
         steps.push({ text: caption, done: ticked })
         stepTokens.push({

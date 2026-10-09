@@ -17,7 +17,7 @@ import {
   ITEM_FLAGS,
   ITEM_FLAG_TESTS,
   ITEM_STATUS_VIEWS,
-  itemHasFlag,
+  flagProbeOf,
   itemMatchContextOf,
   itemMatches,
   itemRailGroupsOf,
@@ -105,7 +105,7 @@ describe('the date group is a PARTITION, and the neglect question is its own gro
   it('every row that has been decided about falls in exactly ONE of the three', () => {
     let checked = 0
     for (const item of fixture()) {
-      const held = ['overdue', 'ahead', 'undated'].filter(flag => itemHasFlag(item, flag as ItemFlag, CTX))
+      const held = ['overdue', 'ahead', 'undated'].filter(flag => ITEM_FLAG_TESTS[flag as ItemFlag](flagProbeOf(item, CTX)))
       /* 两处**故意的**例外，与那枚 flag 自己的注释同一句话：刚记下的一句（`isInboxItem`）
          还没到谈日子的阶段；三个日期互相矛盾的那一条两边都有日子、另有自己的说法。 */
       if (isInboxItem(item) || held.length === 0) continue
@@ -162,9 +162,9 @@ describe('pressing a rail row lands on exactly the rows it counted', () => {
   it('every flag entry agrees with the grammar, row for row', () => {
     const items = fixture()
     for (const flag of ITEM_FLAGS) {
-      const byPredicate = items.filter(item => itemHasFlag(item, flag, CTX))
+      const byPredicate = items.filter(item => ITEM_FLAG_TESTS[flag](flagProbeOf(item, CTX)))
       const byGrammar = items.filter(item => itemMatches(item, parseItemQuery(`has:${flag}`), CTX))
-      expect(byGrammar.map(item => item.id), `has:${flag} and itemHasFlag disagree`).toEqual(byPredicate.map(item => item.id))
+      expect(byGrammar.map(item => item.id), `has:${flag} and its own flag test disagree`).toEqual(byPredicate.map(item => item.id))
     }
   })
 

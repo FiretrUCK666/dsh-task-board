@@ -611,23 +611,23 @@ it('a date prints its year only when the year is not this year', () => {
 
   it('the inbox predicate is declared once and READ, never re-stated', () => {
     // The trap this catches is subtle and was hit once while writing the panel
-    // itself: the inbox rule is ALSO what exempts a row from the triage strip's "no
-    // date" line, so an inline copy anywhere is a second answer to a question two
-    // surfaces already share. Change one and the panel and the strip disagree about
-    // what "unfiled" means, with nothing red anywhere. Checking for a re-DECLARED
-    // function is not enough — the copy was an inline filter expression.
+    // itself: the inbox rule is ALSO what exempts a row from the 「没定日期」
+    // filter, so an inline copy anywhere is a second answer to a question two
+    // surfaces already share. Change one and the rail and the grammar disagree
+    // about what "unfiled" means, with nothing red anywhere. Checking for a
+    // re-DECLARED function is not enough — the copy was an inline filter
+    // expression.
     //
-    // 收件 THE PAGE IS GONE and the PREDICATE IS NOT: it still decides which rows the
-    // triage strip's 「没日子的」 line skips and which rows `has:undated` exempts,
-    // which is exactly where a predicate belongs. So the assertion moved from 「the
-    // panel reads it」 to 「wherever it is used, it is READ」 — declared once, imported
-    // by its readers, and never spelled a second time inline.
+    // 收件 THE PAGE IS GONE and the PREDICATE IS NOT: it still decides which rows
+    // `has:undated` exempts and which rows the agenda leaves alone, which is
+    // exactly where a predicate belongs. So the assertion is 「wherever it is used,
+    // it is READ」 — declared once, imported by its readers, never spelled inline.
     expect(source, 'the panel re-states the inbox predicate inline').not.toMatch(/priority === 'normal'\s*&&\s*item\.tags\.length === 0/)
     const read = (path: string): string =>
       readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8')
     expect(read('src/core/item-membership.ts'), 'the inbox predicate is not declared where it is supposed to live')
       .toContain('export function isInboxItem')
-    for (const reader of ['src/core/item-triage.ts', 'src/core/item-query.ts']) {
+    for (const reader of ['src/core/item-query.ts']) {
       expect(read(reader), `${reader} does not read the inbox predicate, so it has its own answer to 「unfiled」`)
         .toContain('isInboxItem')
     }

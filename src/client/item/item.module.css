@@ -1799,10 +1799,11 @@ button.itemRowCardChip {
   cursor: pointer;
 }
 
-button.itemRowCardChip:focus-visible {
-  outline: 2px solid var(--dsh-tb-ring);
-  outline-offset: 1px;
-}
+/* **这一枚的焦点环不再自己画一遍。** 这里原来写着
+ * `outline: 2px solid var(--dsh-tb-ring)`——而那个令牌是一条**影**（`0 0 0 2px accent`），
+ * 塞进 outline 简写整条声明作废，于是这枚芯片的键盘焦点环**根本不存在**。全表的
+ * `:focus-visible` 是 `.itemRoot :focus-visible { outline: none; box-shadow: var(--dsh-tb-ring) }`
+ * 一处管的，这一枚本来就领得到——删掉这条重复的、坏的声明，环就回来了。 */
 
 /* 悬停时这一枚**稍微实一点**：它是一枚门，而门要能被人看出来。只动底色，不动尺寸、不动字
  * ——一行里的东西不因为鼠标路过而挪位置（那是硬性规范 11 的同一条精神）。 */

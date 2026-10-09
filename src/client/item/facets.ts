@@ -38,8 +38,9 @@
 import { isItemQualifierToken, ITEM_FLAGS, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
 import { ITEM_STATUS_VIEWS } from '../../core/item.ts'
 import type { ItemPriority } from '../../core/item.ts'
+import { ITEM_PRIORITIES_BY_WEIGHT, TOKEN_BY_PRIORITY } from '../../core/item-view.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { FLAG_LABEL } from './labels.ts'
+import { FLAG_LABEL, PRIORITY_LABEL } from './labels.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
 /** The four faces a filter row offers. */
@@ -85,12 +86,14 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
   {
     id: 'priority',
     label: 'item.facet.priority',
-    values: [
-      { token: 'p1', key: 'urgent', label: 'item.priority.urgent' },
-      { token: 'p2', key: 'high', label: 'item.priority.high' },
-      { token: 'p3', key: 'normal', label: 'item.priority.normal' },
-      { token: 'p4', key: 'low', label: 'item.priority.low' },
-    ],
+    /* 四档的**顺序、token、词**全部派生：顺序是模型的重量序，token 是 `p1..p4` 那张表
+     * 的逆表，词是 `PRIORITY_LABEL`。这一栏曾经是同一张派生表里唯一手写的一格——
+     * 手写的代价不是难看，是**改一处不报错**：重新分档之后这一栏会继续写着旧号码。 */
+    values: ITEM_PRIORITIES_BY_WEIGHT.map(priority => ({
+      token: TOKEN_BY_PRIORITY.get(priority) ?? '',
+      key: priority,
+      label: PRIORITY_LABEL[priority],
+    })),
   },
   {
     id: 'date',

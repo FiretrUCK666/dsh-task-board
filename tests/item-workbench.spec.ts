@@ -57,10 +57,8 @@ import {
   EMPTY_ITEM_QUERY,
   ITEM_SORTS,
   ITEM_STATUS_ORDER,
-  itemHasFlag,
   itemMatches,
   itemMatchContextOf,
-  itemRowViewOf,
   itemSlicesOf,
   isInboxItem,
   ITEM_FLAGS,
@@ -68,11 +66,9 @@ import {
   ITEM_RAIL_IDLE_FLAGS,
   parseItemQuery,
   scheduleBucketsOf,
-  triageLinesOf,
   type ItemFlag,
   type ItemQuery,
 } from '../src/core/item-view.ts'
-import type { TaskStatus } from '../src/core/tasks.ts'
 // `type` is the harness's 「type into a field」 helper and it collides with the
 // `type` keyword as a bare import name, so it is renamed at the boundary rather
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
@@ -156,6 +152,29 @@ function clientSources(): string[] {
 
 /** The same surface as one string, for a claim made across it. */
 const surfaceSource = itemSurfaceSource()
+
+describe('the priority ladder is spelled in exactly one place', () => {
+  it('no client file writes the four tiers out again', () => {
+    // 四档曾经在八个文件里各写一遍（`marks.tsx`、`keyboard.ts`、`compose-parse.ts`、
+    // `facets.ts`、`batch-bar.tsx`、`item-create-dialog.tsx`、`detail-pane.tsx`、
+    // `rail.tsx`），而 core 里两张对的那一份没人读。抄一份的代价不是那几行，是
+    // **改一处不报错**：重新分档之后总有一个角落继续指着旧号码，而屏上不会有人说一句话。
+    // 这一条查的就是那件事本身：客户端里不许再出现排在一行上的两个档位字面量。
+    const tier = '(?:urgent|high|normal|low)'
+    const pair = new RegExp(`'${tier}'[^\\n]*'${tier}'`)
+    for (const source of clientSources()) {
+      const live = code(source)
+      expect(pair.test(live), 'a client file lists the four tiers again — they belong to core/item.ts').toBe(false)
+    }
+  })
+
+  it('and the one table it reads is the model’s own', () => {
+    // 正方向：那张表必须真的从模型派生（顺序 = 重量序），而不是另一份手写数组。
+    // 客户端那一圈里没有 core，所以这一条读的是 core 自己的文件。
+    expect(code(read('core/item.ts')), 'the weight order is no longer derived from the rank table')
+      .toMatch(/ITEM_PRIORITIES_BY_WEIGHT[\s\S]{0,160}itemPriorityRankOf/)
+  })
+})
 
 const panelSource = surfaceSource
 /** The command palette's own source, for claims about the box it now holds. */
@@ -267,10 +286,21 @@ describe('a gate that reads one file knows whether the file is there', () => {
 
 describe('every remembered preference is one the reader can change', () => {
   const prefsBody = /(?:export\s+)?interface\s+ItemViewPrefs\s*\{([\s\S]*?)\n\}/.exec(prefsSource)?.[1] ?? ''
-  const fields = [...prefsBody.matchAll(/\breadonly\s+(\w+)\s*:/g)].map(match => match[1] as string)
+  /**
+   * EVERY FIELD, MINUS THE ONES THAT ARE NEVER WRITTEN — BY NAME, not by the shape
+   * of their line. `overlay` is written by the render bench and by nothing else
+   * (its own note says so and says why), so a scan that included it would demand a
+   * control that must not exist; the exclusion is therefore a list a reader can
+   * check, rather than a `\??` in a regular expression that happens to skip it.
+   */
+  const neverWritten = new Set(['overlay'])
+  const fields = [...prefsBody.matchAll(/\breadonly\s+(\w+)\s*\??\s*:/g)]
+    .map(match => match[1] as string)
+    .filter(field => !neverWritten.has(field))
 
   it('the field list is not empty, or this file is asserting nothing', () => {
-    expect(fields.length, 'the gate read no preference fields — the interface shape changed and the gate is now vacuous').toBeGreaterThan(3)
+    expect(fields, 'the gate read no preference fields — the interface shape changed and the gate is now vacuous').toContain('page')
+    expect(fields.length).toBeGreaterThan(2)
   })
 
   for (const field of fields) {
@@ -424,21 +454,16 @@ describe('what the reader can click and what the reader can type are one grammar
   }
 
   it('every flag the interface offers round-trips through the search box', () => {
-    // THE ROUND TRIP, in the direction a reader travels. The triage strip hands
-    // the reader a sentence and a button; the button writes a query; the query
-    // has to select the rows the sentence described. If the two spellings are
-    // not the same vocabulary, the button produces a filter that silently
-    // matches nothing — a documented filter that cannot be diagnosed by the
-    // person who used it, which is the one failure a filter box cannot recover
-    // from.
-    const lines = triageLinesOf(rows, NOW)
-    expect(lines.length, 'no triage line to click — the gate is asserting nothing').toBeGreaterThan(0)
-    for (const line of lines) {
-      const parsed = parseItemQuery(`has:${line.id}`)
-      expect([...parsed.flags], `has:${line.id} does not parse back to the flag the sentence names`).toEqual([line.id])
-      // And it selects the rows the sentence counted, not some other set.
-      const counted = line.count
-      expect(selectedBy(parsed).length, `has:${line.id} selects a different number of rows than the sentence promises (${counted})`).toBe(counted)
+    // THE ROUND TRIP, in the direction a reader travels: every flag the chips and
+    // the rail can turn on must be a word the grammar reads back as that same
+    // flag. Two spellings of one vocabulary is how a control writes a filter that
+    // silently matches nothing while looking like it worked — the one failure a
+    // filter box cannot recover from for the person who used it.
+    expect(ITEM_FLAGS.length, 'no flag to check — the gate is asserting nothing').toBeGreaterThan(0)
+    for (const flag of ITEM_FLAGS) {
+      const parsed = parseItemQuery(`has:${flag}`)
+      expect([...parsed.flags], `has:${flag} does not parse back to the flag it names`).toEqual([flag])
+      expect(parsed.words, `has:${flag} is being read as a plain word`).toEqual([])
     }
   })
 
@@ -1426,28 +1451,11 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
   })
 })
 
-describe('a priority is shouted only when it is loud', () => {
-  it('the loudness verdict comes from the shared projection, and the row obeys it', () => {
-    // A priority mark on every row is furniture: the reader learns to read past
-    // it, and the one row that is genuinely urgent arrives in the same ink as
-    // the forty that are merely filed. So the mark appears when the projection
-    // says the tier is loud, and the projection is `core/item-view.ts`'s — the
-    // same file the model's query reads, because "which rows are urgent" must
-    // not have a second answer on this surface.
-    const verdictOf = (priority: string): unknown => {
-      const view = itemRowViewOf(oneRow({ priority: priority as never })[0] as ItemRecord, { now: NOW, cards: new Map() })
-      const loud = Object.entries(view).find(([key]) => /loud/i.test(key))
-      expect(loud, `the row projection has no loudness verdict for priority — the row has to decide for itself, which is the second answer`).toBeDefined()
-      return loud?.[1]
-    }
-    expect(verdictOf('urgent'), 'the top tier is not loud').toBe(true)
-    expect(verdictOf('normal'), 'the neutral tier is loud, so every row carries a mark').toBe(false)
-  })
-
-  it('and the mark is a difference the two rows really have, not noise', () => {
-    // The discriminator. Two rows identical except for their tier must render
+describe('a row wears its own tier', () => {
+  it('two rows identical except for their tier do not render the same', () => {
+    // THE DISCRIMINATOR. Two rows identical except for their tier must render
     // differently, and two rows identical INCLUDING their tier must render
-    // identically — otherwise the comparison above would be finding the
+    // identically — otherwise a comparison like this one would be finding the
     // difference between two different titles and calling it a priority mark.
     const loud = renderPanel(oneRow({ priority: 'urgent' }), 'wide', 'list')
     const quiet = renderPanel(oneRow({ priority: 'normal' }), 'wide', 'list')
@@ -1585,38 +1593,6 @@ describe('the summary says what it says, and the numbers do not move under a swi
     expect(fromSlices(true).length).toBe(ITEM_STATUS_ORDER.length)
     // 而两组数字加起来就是这份文档的全部行数：一份「分组」若不是覆盖，它就不是分组。
     expect(fromSlices(true).reduce((sum, n) => sum + n, 0), 'the groups do not cover the document').toBe(rows.length)
-  })
-
-  it('the band shows the doors a reader can actually open', () => {
-    // 「落后」与「没日期」各回答一个读者带着的问题，各由一次筛选回答，所以各是一扇门。
-    // 「受阻」曾经是第三扇——那一档没有了（它在看板五栏里从来就不存在），于是那一格也
-    // 跟着走；「放置 N 天」不在这一排：一行一个月没人碰不是「今天要做的事」，它是**一行的
-    // 事实**，而那一行自己已经写着它了。把停滞放进这一排，会让这一排多出一个只能读、
-    // 不能按的数字——而那正是这一排取代掉的那种家具。
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      const surface = panel.surface.textContent ?? ''
-      for (const label of ['落后', '没日期']) {
-        expect(surface, `the tile for ${label} is missing`).toContain(label)
-      }
-      expect(surface, '受阻 is back in the band — it is not a column the board has').not.toContain('卡住')
-      expect(surface, 'the staleness count is back in the band — it is a row fact, not a question about today').not.toContain('放置')
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('the retained numbers are door-shaped: each is a filter the reader can press', () => {
-    // 一条门必须写得出来：它数的那些行，就是它按下去筛出来的那些行。这一条是三行里
-    // 每一行的契约（`triageLinesOf` 的每一个 id 同时就是一个 `ItemFlag`），而它不是
-    // 形状断言，是**同一谓词**断言。
-    const rows = fixtures()
-    const lines = triageLinesOf(rows, NOW)
-    const ctx = { ...itemMatchContextOf(NOW), cards: new Map<string, TaskStatus>() }
-    for (const line of lines) {
-      const jumped = rows.filter(item => itemHasFlag(item, line.id, ctx))
-      expect(jumped.map(item => item.id).sort(), `${line.id} counts rows its own filter does not open`).toEqual(line.items.map(item => item.id).sort())
-    }
   })
 
   it('the probe bites: a denominator that reads the switch is reported, one that does not is not', () => {

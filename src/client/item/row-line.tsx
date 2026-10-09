@@ -383,7 +383,12 @@ export function ItemRowLine(props: ItemRowLineProps) {
               >
                 {<PriorityMark priority={item.priority} />}
               </button>
-              <span className={css.itemRowText}>{item.title}</span>
+              {/* THE SENTENCE IS THE VIEW'S TITLE, not the stored field. A row
+                  written from a body alone (「正文（可留空）」 is an honest way to
+                  save) has no `title` of its own, and printing the raw field drew
+                  a row with nothing in it — the derivation that borrows the body's
+                  first line existed and had no reader. It has one now. */} 
+              <span className={css.itemRowText}>{view.title}</span>
               {item.tags.map(tag => <span key={tag} className={css.itemTag}>{`#${tag}`}</span>)}
             </h3>
           )}

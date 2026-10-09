@@ -60,8 +60,6 @@ export interface ItemPageProps {
   /** The view preferences, and the one way to change them. */
   readonly prefs: ItemViewPrefs
   readonly choose: (next: Partial<ItemViewPrefs>) => void
-  /** Whether the detail lives in the row (narrow) or in the rail (wide). */
-  readonly narrow: boolean
   /** The one row renderer, shared by all three pages — and it hands over PROPS
    *  rather than elements, because the table draws its own rows: the head and the
    *  body must agree on seven tracks, and a page that wrapped rows in its own

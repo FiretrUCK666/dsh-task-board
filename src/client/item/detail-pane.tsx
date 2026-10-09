@@ -14,7 +14,7 @@
  */
 import { useEffect, useRef, useState } from 'react'
 import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemPriorityRankOf, itemTitleOf } from '../../core/item.ts'
+import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
@@ -34,9 +34,11 @@ const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin
   import: 'item.origin.import',
 }
 
-/** The four tiers, most important first — the order a row of chips is scanned in. */
-const PRIORITIES_BY_WEIGHT: readonly ItemPriority[] = [...ITEM_PRIORITIES]
-  .sort((a, b) => itemPriorityRankOf(a) - itemPriorityRankOf(b))
+/** The four tiers, most important first — the order a row of chips is scanned in.
+ *  The order is the MODEL's ({@link ITEM_PRIORITIES_BY_WEIGHT}), not a second sort
+ *  written here: the rail, the batch bar, the create sheet and this row all offer
+ *  the four tiers, and four sorts of one scale is three chances to disagree. */
+const PRIORITIES_BY_WEIGHT: readonly ItemPriority[] = ITEM_PRIORITIES_BY_WEIGHT
 
 export interface ItemDetailProps {
   /**

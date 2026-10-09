@@ -28,7 +28,7 @@
  * A parser that cannot be argued with is worse than no parser, because the
  * reader's only remaining option is to stop writing in the box at all.
  */
-import type { ItemPriority } from '../../core/item.ts';
+import { type ItemPriority } from '../../core/item-view.ts';
 /** What a recognised token became. Drives the chip the box draws. */
 export type ComposerTokenKind = 'tag' | 'priority' | 'due' | 'hard' | 'earliest' | 'step';
 /** One recognised piece of the source, with the range it occupies. */

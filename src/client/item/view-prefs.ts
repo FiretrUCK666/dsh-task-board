@@ -28,7 +28,7 @@
  * to the same shape. That is the whole migration: a field is removed by not
  * reading it.
  */
-import { DEFAULT_ITEM_SORT, ITEM_SORTS, ITEM_STATUS_ORDER, type ItemPageId, type ItemSort, type ItemStatusView } from '../../core/item-view.ts'
+import { DEFAULT_ITEM_SORT, ITEM_SORTS, type ItemPageId, type ItemSort } from '../../core/item-view.ts'
 import { ITEM_PAGES } from '../../core/item-view.ts'
 
 /**
@@ -46,30 +46,12 @@ export interface ItemViewPrefs {
   /** The one ordering, shared by every page. */
   readonly sort: ItemSort
   /**
-   * NO `showDone` FIELD, and the reason is the general rule rather than a
-   * preference for tidiness: **one intent, one control.**
-   *
-   * 「这一页不要已完成的行」 is already carried by the GROUP'S OWN FOLD — it has a
-   * visible control, a drawn arrow, and per-group memory in `collapsed`, and a
-   * reader never has to know it exists in order to use it. `showDone` was the same
-   * sentence said a second time at page level, written by a control that lived on
-   * a strip the reader only saw when the strip was there.
-   *
-   * The strip is retired, so what `showDone` left behind is not a capability but
-   * a switch nobody can reach: a device that stored `showDone: false` could never
-   * turn it back on, because the only thing that wrote it no longer exists.
-   * **A preference whose control is gone is not a setting; it is a trap with the
-   * handle filed off.** Note that it is not redundant for every reader — the flag
-   * set has no 「not done」, so before this change only `showDone` could express
-   * the intent. That is the argument FOR keeping a control, not an argument for
-   * keeping a second one: the fold already expresses it, better.
-   *
-   * The upgrade path is the one the row-height switch took, and the rule is the
-   * general one: **a field is removed by not reading it**, so a record written by
-   * any build at all parses to the same shape.
+   * `showDone` IS NOT HERE, and the reason is where its control lives: it is the
+   * list page's own switch, drawn on that page next to what it filters (the
+   * 「隐藏已完成」 chip), so it belongs to the page rather than to the memory of
+   * which page was open. This record answers 「which view was on screen」; that
+   * switch is part of drawing the view.
    */
-  /** Which groups the reader had folded away. */
-  readonly collapsed: readonly ItemStatusView[]
   /** The unformatted search text, for the session. Never persisted. */
   readonly search: string
   /**
@@ -149,7 +131,6 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   // derivation the document owns, and a second copy of the word "due" in a
   // preference file is a default that starts lying the day the derivation moves.
   sort: DEFAULT_ITEM_SORT,
-  collapsed: [],
   search: '',
   // Never written, so this is `undefined` on every real read. It is named here
   // rather than left off the object so the shape is one value rather than
@@ -165,10 +146,6 @@ function isPage(value: unknown): value is ItemPageId {
 
 function isSort(value: unknown): value is ItemSort {
   return typeof value === 'string' && (ITEM_SORTS as readonly string[]).includes(value)
-}
-
-function isGroup(value: unknown): value is ItemStatusView {
-  return typeof value === 'string' && (ITEM_STATUS_ORDER as readonly string[]).includes(value)
 }
 
 /**
@@ -194,17 +171,15 @@ export function readViewPrefs(): ItemViewPrefs {
   }
   if (typeof parsed !== 'object' || parsed === null) return DEFAULT_VIEW_PREFS
   const record = parsed as Record<string, unknown>
-  const collapsed = Array.isArray(record.collapsed) ? record.collapsed.filter(isGroup) : []
   return {
     page: isPage(record.page) ? record.page : DEFAULT_VIEW_PREFS.page,
     sort: isSort(record.sort) ? record.sort : DEFAULT_VIEW_PREFS.sort,
-    // `record.showDone` and `record.density` ARE DELIBERATELY NEVER NAMED HERE,
-    // and that is the whole upgrade path for both: a field is removed by not
-    // reading it, so a record written by any build at all parses to this shape.
-    // Naming them — even to default them — is what turns a retired setting back
-    // into a live one, because a default with a reader is a setting whose control
-    // somebody will eventually be asked to rebuild.
-    collapsed: [...new Set(collapsed)],
+    // `record.showDone`, `record.density` AND `record.collapsed` ARE DELIBERATELY
+    // NEVER NAMED HERE, and that is the whole upgrade path for all three: a field
+    // is removed by not reading it, so a record written by any build at all parses
+    // to this shape. Naming them — even to default them — is what turns a retired
+    // setting back into a live one, because a default with a reader is a setting
+    // whose control somebody will eventually be asked to rebuild.
     // Never restored: see the module header.
     search: '',
     // READ, AND ONLY A NAME IN THE TABLE ABOVE. The key is never written by this
@@ -227,7 +202,6 @@ export function writeViewPrefs(prefs: ItemViewPrefs): void {
     window.localStorage.setItem(VIEW_PREFS_KEY, JSON.stringify({
       page: prefs.page,
       sort: prefs.sort,
-      collapsed: prefs.collapsed,
       // `search` and `overlay` are ABSENT from this object on purpose. Both are
       // part of the view and not part of the memory, and a key that appears here
       // once appears forever: the day somebody adds it to the serialised shape
@@ -239,17 +213,4 @@ export function writeViewPrefs(prefs: ItemViewPrefs): void {
     // No storage, or no room for it. The panel works exactly the same; only
     // the memory of the choice is lost, and that is not worth a message.
   }
-}
-
-/**
- * Fold one group away or back, returning the new set.
- *
- * A pure helper so the caller never writes the set it was handed, which is how
- * a toggle ends up mutating the state two renders ago.
- * @param collapsed - the folded groups.
- * @param group - the group being toggled.
- * @returns the new set.
- */
-export function toggleCollapsed(collapsed: readonly ItemStatusView[], group: ItemStatusView): ItemStatusView[] {
-  return collapsed.includes(group) ? collapsed.filter(g => g !== group) : [...collapsed, group]
 }

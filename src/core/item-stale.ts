@@ -53,27 +53,3 @@ export function staleDaysOf(item: ItemRecord, now: number): number | undefined {
   return days
 }
 
-/**
- * The rows a reader has stopped moving, oldest first.
- *
- * Exported for the triage strip alone, which is the one surface that lists them
- * rather than asking about a single row — and it is the same predicate
- * {@link staleDaysOf} gives, so the count on the line and the list it opens
- * cannot be two different answers.
- * @param items - every row in the document.
- * @param now - the reading clock.
- * @param thresholdDays - how many untouched days count; below the default is the reader's choice.
- * @returns the neglected rows ordered by how long they have sat, **nearest the
- *   threshold first** — the row that only just crossed it leads, the longest-
- *   neglected is last. The count is what consumers read; the order is the
- *   reading order for a list, so it climbs from "just became stale" to "has sat
- *   the longest".
- */
-export function staleItemsOf(items: readonly ItemRecord[], now: number, thresholdDays: number = DEFAULT_STALE_DAYS): ItemRecord[] {
-  const out: ItemRecord[] = []
-  for (const item of items) {
-    const days = staleDaysOf(item, now)
-    if (days !== undefined && days >= thresholdDays) out.push(item)
-  }
-  return out.sort((a, b) => (staleDaysOf(a, now) ?? 0) - (staleDaysOf(b, now) ?? 0))
-}

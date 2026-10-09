@@ -40,6 +40,7 @@ import type { ItemPriority, ItemStatusView } from '../../core/item.ts'
 import type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { STATUS_KEY } from '../board/status.ts'
+import { PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark, StatusMark } from './marks.tsx'
 import css from './item.module.css'
 
@@ -64,12 +65,13 @@ const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
   ahead: 'item.rail.ahead',
   undated: 'item.rail.undated',
   stale: 'item.rail.stale',
-  urgent: 'item.rail.priority.urgent',
-  high: 'item.rail.priority.high',
-  normal: 'item.rail.priority.normal',
-  low: 'item.rail.priority.low',
-  /* **五栏的词是看板那一份**（`STATUS_KEY`），不是这里的第二张表：同一个「进行中」在
-   * 两个面板上必须是同一个词，而一张抄过来的表会在下一次改词时留下一个角落。 */
+  /* **四档优先级、五栏状态都是别处那一份**，不是这里的第二张表：`PRIORITY_LABEL` 是
+   * 四档的词（展开区、批量条、新建纸同读），`STATUS_KEY` 是看板那五栏的词。同一枚筛子
+   * 在两个面板上必须是同一个词，而一张抄过来的表会在下一次改词时留下一个角落。 */
+  urgent: PRIORITY_LABEL.urgent,
+  high: PRIORITY_LABEL.high,
+  normal: PRIORITY_LABEL.normal,
+  low: PRIORITY_LABEL.low,
   backlog: STATUS_KEY.backlog,
   todo: STATUS_KEY.todo,
   running: STATUS_KEY.running,

@@ -26,10 +26,10 @@
  * keeps the action catalogue the only description of what can be done.
  */
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
-import { ITEM_STATUSES } from '../../core/item.ts'
+import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button, Segmented } from '../board/ui.tsx'
-import { STATUS_LABEL } from './labels.ts'
+import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
@@ -110,12 +110,8 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
           ariaLabel={t('item.batch.priority')}
           disabled={idle}
           value={props.commonPriority ?? ''}
-          options={[
-            { value: 'urgent', label: t('item.priority.urgent') },
-            { value: 'high', label: t('item.priority.high') },
-            { value: 'normal', label: t('item.priority.normal') },
-            { value: 'low', label: t('item.priority.low') },
-          ]}
+          /* 四档的顺序与词都派生（与左栏、展开区、新建纸同一份），不再手写四行。 */
+          options={ITEM_PRIORITIES_BY_WEIGHT.map(priority => ({ value: priority, label: t(PRIORITY_LABEL[priority]) }))}
           onChange={next => { if (next !== '') props.onPriority(next as ItemPriority) }}
         />
         <Button variant="ghost" size="sm" disabled={idle} onClick={props.onDueToday}>{t('item.batch.due')}</Button>

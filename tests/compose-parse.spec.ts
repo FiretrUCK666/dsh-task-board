@@ -257,6 +257,22 @@ describe('token ranges point back at the source', () => {
     expect(text.slice(token.start, token.end)).toBe('#标签')
   })
 
+  it('a step line names its own characters, indent and all', () => {
+    // A step token's `raw` is the whole line, so its range has to start at the
+    // line's own first character. It used to start at the caption, with the indent
+    // counted twice — and because the escape hatch splices at that offset, undoing
+    // a step put the backslash INSIDE the sentence and left the line a checkbox, so
+    // 「撤回」 looked like it did nothing.
+    const text = '  - [ ] 写周报'
+    const token = parse(text).tokens[0] as ComposerToken
+    expect(text.slice(token.start, token.end), 'the step token does not name its own line').toBe(token.raw)
+    const released = escapeComposerToken(text, token)
+    expect(released).toBe('  \\- [ ] 写周报')
+    const after = parse(released)
+    expect(after.steps, 'the step survived its own undo').toEqual([])
+    expect(after.title, 'undo dropped the reader’s words').toContain('写周报')
+  })
+
   it('reports tokens in reading order', () => {
     const kinds = parse('#一个 !2 @明天').tokens.map(token => token.kind)
     expect(kinds).toEqual(['tag', 'priority', 'due'])

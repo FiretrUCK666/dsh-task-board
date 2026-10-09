@@ -25,7 +25,7 @@ import { useEffect, useRef, useState } from 'react'
 import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
-import { ITEM_STATUSES } from '../../core/item.ts'
+import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES } from '../../core/item.ts'
 import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
 import { CrossMark, PriorityMark } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
@@ -36,8 +36,8 @@ import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import css from './item.module.css'
 
-/** The three priorities a reader can put in by tapping, in the order a scale reads. */
-const PRIORITIES: readonly ItemPriority[] = ['urgent', 'high', 'normal', 'low']
+/** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
+const PRIORITIES: readonly ItemPriority[] = ITEM_PRIORITIES_BY_WEIGHT
 
 export interface ItemCreateDialogProps {
   readonly open: boolean

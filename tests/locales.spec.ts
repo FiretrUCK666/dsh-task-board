@@ -29,6 +29,7 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { zh } from '../src/client/locales.ts'
+import { MANUAL_STATUSES } from '../src/core/tasks.ts'
 
 const clientRoot = fileURLToPath(new URL('../src/client', import.meta.url))
 
@@ -155,5 +156,22 @@ describe('locale dictionaries have no rot', () => {
       .map(template => template.slice(0, template.indexOf('${')))
       .filter(prefix => !keys.some(key => key.startsWith(prefix)))
     expect(dead, 'template prefixes that produce a raw key at runtime').toEqual([])
+  })
+
+  it('the column verbs cover every column a reader may drag a card into', () => {
+    // 上面那条只要求模板前缀能解析到**至少一个**真键。`t(\`status.move.${status}\`)`
+    // （展开区那一排与行菜单各一处）是客户端唯一的模板键，于是看板加第四个人手可拖的栏时，
+    // 屏上会印出 `undefined` 而没有东西会红。这一条把那张小词表钉在**模型**上：
+    // `MANUAL_STATUSES` 的每一个成员都必须有自己的动词。
+    const named = new Set(keys)
+    const missing = MANUAL_STATUSES.filter(status => !named.has(`status.move.${status}`))
+    expect(missing, 'a column a human may drag a card into has no verb — the button would render undefined').toEqual([])
+  })
+
+  it('and that scan can fail too', () => {
+    // 同一件事的自测：拿一份多出一栏的名单去问，它必须报出来。
+    const named = new Set(keys)
+    const missing = [...MANUAL_STATUSES, 'aColumnNobodyHas'].filter(status => !named.has(`status.move.${status}`))
+    expect(missing).toEqual(['aColumnNobodyHas'])
   })
 })

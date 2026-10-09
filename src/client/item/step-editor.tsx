@@ -29,7 +29,7 @@
  * visible buttons per row is three controls times a hundred rows, and no thumb can
  * aim at the middle third of a long list of small buttons.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
@@ -81,6 +81,12 @@ export function ItemSteps(props: ItemStepsProps) {
    * the done fold below — one mark that turns, `aria-expanded`, one state. */
   const [moreOpen, setMoreOpen] = useState(false)
   const field = useRef<HTMLInputElement | null>(null)
+  /* **THE TWO FOLDS NEED THEIR OWN IDS.** They were written as `item-steps-more` /
+   * `item-steps-done`, which is a fixed string — and this panel can be mounted twice
+   * in one page (the board and the checklist are two stages of the same plugin), so
+   * the second copy's `aria-controls` pointed at the first copy's list. `useId` is
+   * what the rail already uses for the same reason. */
+  const moreId = useId()
   const steps = props.item.steps
 
   // The caret follows the request and NOTHING else, so a re-render caused by the
@@ -141,7 +147,7 @@ export function ItemSteps(props: ItemStepsProps) {
           <b className={css.itemStepCount}>{`${done.length} / ${steps.length}`}</b>
         </div>
 
-        <div id="item-steps-more">
+        <div id={moreId}>
           {shown.map((step, at) => (
             <StepRow key={step.id} step={step} kind={at === 0 ? 'next' : 'todo'} {...hands} onCloseMenu={() => setOpenMenu(undefined)} />
           ))}
@@ -151,7 +157,7 @@ export function ItemSteps(props: ItemStepsProps) {
             type="button"
             className={css.itemStepFold}
             aria-expanded={moreOpen}
-            aria-controls="item-steps-more"
+            aria-controls={moreId}
             onClick={() => setMoreOpen(value => !value)}
           >
             <svg className={css.itemStepFoldMark} viewBox="0 0 8 8" width="8" height="8" aria-hidden="true">
@@ -233,7 +239,8 @@ function StepRow(props: RowHands & {
 /** The finished steps, behind one line that says how many there are. */
 function DoneFold(props: RowHands & { readonly steps: readonly ItemStep[]; readonly onCloseMenu: () => void }) {
   const [open, setOpen] = useState(false)
-  const id = 'item-steps-done'
+  /* Per-instance, for the reason the waiting fold's id is: two panels, one page. */
+  const id = useId()
   return (
     <div className={css.itemStepDone}>
       <button

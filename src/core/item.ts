@@ -179,6 +179,19 @@ export function itemPriorityRankOf(priority: ItemPriority): number {
 }
 
 /**
+ * The four tiers in the order a READER meets them: 紧急 first.
+ *
+ * Derived from {@link itemPriorityRankOf} rather than written out, because a list
+ * of four names typed in a second place is a list that keeps the old order the day
+ * the scale changes — and the surfaces that list tiers (the rail, the batch bar,
+ * the create sheet, the detail's four chips) would then disagree about which end is
+ * which. Anywhere tiers are OFFERED, this is the order; anywhere they are merely
+ * enumerated, {@link ITEM_PRIORITIES} is.
+ */
+export const ITEM_PRIORITIES_BY_WEIGHT: readonly ItemPriority[] = [...ITEM_PRIORITIES]
+  .sort((a, b) => itemPriorityRankOf(a) - itemPriorityRankOf(b))
+
+/**
  * A verdict on one field: may an action write it, and if not, why not. The
  * three answers mean three different things, and the difference is the whole
  * point of the table:

@@ -68,8 +68,6 @@ export interface ItemRowView {
   readonly soft: SoftPosture
   /** Untouched days, or `undefined` when the row is exempt or too old. */
   readonly staleDays: number | undefined
-  /** Whether the row should be given a priority chip at all. */
-  readonly priorityLoud: boolean
 }
 
 /** The reading context one row is projected against. */
@@ -100,9 +98,6 @@ export function itemRowViewOf(item: ItemRecord, ctx: ItemRowContext): ItemRowVie
     posture: datePostureOf(item, ctx.now),
     soft,
     staleDays: staleDaysOf(item, ctx.now),
-    // The default tier stays quiet: a chip on every row is a chip nobody reads,
-    // and the reader who cares about priority is the one who filters on it.
-    priorityLoud: item.priority !== 'normal',
   }
 }
 
@@ -111,8 +106,6 @@ export interface ItemSlice {
   /** The STATUS the run holds; a row is in exactly one run per render. */
   readonly status: ItemStatusView
   readonly items: readonly ItemRecord[]
-  /** Step arithmetic for the run, or `undefined` when it has no steps at all. */
-  readonly progress: { readonly done: number; readonly total: number } | undefined
 }
 
 /** The four groups, in the order they read top to bottom.
@@ -166,16 +159,5 @@ export function itemSlicesOf(items: readonly ItemRecord[], options: ItemSliceOpt
     if (!itemMatches(item, query, ctx)) continue
     buckets.get(status)?.push(item)
   }
-  return groups.map(status => {
-    const rows = sortItemsOf(buckets.get(status) ?? [], sort)
-    let done = 0
-    let total = 0
-    for (const row of rows) {
-      for (const step of row.steps) {
-        total += 1
-        if (step.done) done += 1
-      }
-    }
-    return { status, items: rows, progress: total === 0 ? undefined : { done, total } }
-  })
+  return groups.map(status => ({ status, items: sortItemsOf(buckets.get(status) ?? [], sort) }))
 }

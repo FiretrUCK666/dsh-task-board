@@ -34,13 +34,11 @@ import type { ItemRecord } from './item.ts';
  *
  * 收件 WAS A PAGE AND IS NOT ONE ANY MORE: 「还没分流的」 is a PREDICATE over the same
  * document (`isInboxItem`), still read where a predicate belongs — by the query
- * grammar and by the rail. A page whose whole existence is one rail row is a
- * layout, not a question.
+ * grammar (`has:undated`'s exemption) and by the rail, through `isAgendaItem`.
+ * A page whose whole existence is one rail row is a layout, not a question.
  *
- * **它住在这里，不在一份叫 `item-counts` 的文件里。** 那张表原来与三个计数函数同住，
- * 而三个计数函数在界面收掉分组头之后就没有读者了（那次清理是真的：定义在、re-export
- * 在、屏上一个数都不读）。**页码表与「跳到哪一页」是同一件事**，所以它跟着这个判断走；
- * 一份只剩一张常量表的 `counts` 文件，是给下一个读代码的人留一个假线索。
+ * **页码表与「跳到哪一页」是同一件事**，所以两者同住一处：一份只剩一张常量表、
+ * 而读它的人按自己的顺序再写一遍的判断，是给下一个读代码的人留一个假线索。
  */
 export declare const ITEM_PAGES: readonly ["list", "schedule"];
 export type ItemPageId = typeof ITEM_PAGES[number];
