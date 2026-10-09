@@ -26,6 +26,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { TaskRecord } from '../src/core/tasks.ts'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
 import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
+import { createTask } from '../src/core/tasks.ts'
 import { alignClassNames, panelCss, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
@@ -382,10 +383,24 @@ describe('stale-bundle status line (rendered through the panel)', () => {
    * 静态渲染（`renderToStaticMarkup`）就够：看板的列与卡片都是**从快照算出来的**，不依赖
    * effect，因此不需要 DOM、也不需要 `installBrowserFakes`。
    */
+  /**
+   * 工件里的两张卡：一张挂着三条清单条目（最急是紧急），一张光卡——那枚读数的「有」与
+   * 「没有」两种情形一屏看全。用 core 的真构造器建（`NewTaskInput` 里 `description` 是
+   * **必填**，上一版少写了它才抛 `trim of undefined`）：手写对象会随字段增加静默变成一个
+   * 「看起来很像真卡的东西」（硬性规范 18）。
+   */
+  function boardFixture(): TaskRecord[] {
+    const at = 1_700_000_000_000
+    return [
+      createTask({ title: '画廊第二版', description: '', prompt: '把画廊的第二版做出来', status: 'todo' }, at, 'task-1'),
+      createTask({ title: '光卡：没有挂任何清单条目', description: '', prompt: '随便什么', status: 'backlog' }, at, 'task-2'),
+    ]
+  }
+
   function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined): void {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
-        controller: boardStub() as unknown as BoardController,
+        controller: boardStub(boardFixture()) as unknown as BoardController,
         ...mountedOf === undefined ? {} : { mountedOf },
       } as never)),
       panelCss(),
@@ -438,6 +453,10 @@ describe('stale-bundle status line (rendered through the panel)', () => {
         if (key === 'getSnapshot') return snapshot
         if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
         if (key === 'linkedOf') return () => []
+        /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。这台假面原来
+           没有这一个成员，于是「空板」渲染得出来、「有卡片」的渲染一读就 `undefined.map` 崩——
+           假面比现实窄，正好在需要它的那一刻暴露（硬性规范 18）。 */
+        if (key === 'sessionsOf') return () => []
         if (key === 'relatedSessionIdSet') return () => new Set<string>()
         if (key === 'liveStateOf') return () => 'idle'
         if (key === 'sessionActiveOf') return () => false
