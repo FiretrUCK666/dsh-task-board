@@ -3954,7 +3954,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
-      && state !== 'compose-three-dates') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
       /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 迟迟没动）。
@@ -4076,6 +4076,22 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         { ...oneRow({ taskId: 'task-gone' })[0] as ItemRecord, id: 'r-2', ref: 2, title: '挂在一张已经被删掉的卡上' },
       ]
       const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide', { cards: ['task-1'] })
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'card-focus') {
+      /* **从看板跳过来的那一屏。**
+       *
+       * 装配层记下一个带 token 的请求之后，清单只显示挂着那张卡的条目，并且顶上多一枚可摘的
+       * 筛选芯片。这一屏要看的正是那枚芯片：它与旁边那排筛选芯片**同一个样子**（同一个类），
+       * 而且是看得见、摘得掉的——而不是一个藏在别处、读者找不到也关不掉的过滤器。 */
+      const items = [
+        { ...oneRow({ taskId: 'task-1' })[0] as ItemRecord, id: 'r-1', ref: 1, title: '挂着那张卡的一条' },
+        { ...oneRow({ taskId: 'task-1' })[0] as ItemRecord, id: 'r-2', ref: 2, title: '也挂着那张卡的一条' },
+      ]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide', { cards: ['task-1'], focus: { token: 1, cardId: 'task-1' } })
       writeMountedPage(panel, target)
       panel.dispose()
       return

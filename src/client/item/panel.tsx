@@ -1791,7 +1791,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 onClick={() => { setCardFocus(undefined) }}
               >
                 {t('item.filters.byCard', { title: cards.find(card => card.id === cardFocus.cardId)?.title ?? cardFocus.cardId })}
-                <span aria-hidden="true"> ×</span>
+                <span className={css.itemQueryChipRemove} aria-hidden="true">×</span>
               </button>
             </div>
           )}
