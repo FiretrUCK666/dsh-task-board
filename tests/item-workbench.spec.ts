@@ -3536,7 +3536,35 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
-      && state !== 'create-sheet') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'create-sheet' && state !== 'row-body-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'row-body-open') {
+      /* 展开了这一行、并且**按了「＋ 写点什么」**之后的那一屏。
+       *
+       * 读者的原话是两句：按了正文之后那一行「暗色的背景直接消失」，而且框的四个角
+       * 「像缺了一块」。两句话说的都不是属性——`data-open` 在 jsdom 里量过，它一直在
+       * （见「pressing into the body of an open row…」那条）——所以能被看见的只有
+       * **同一份 DOM 在真浏览器里画成什么**。这就是那个状态：这一步结束时的活 DOM，
+       * 加真样式表，交给浏览器。 */
+      const items = [...fixtures().slice(0, 2)]
+      const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
+        if (row === undefined) throw new Error('the list page drew no row to open')
+        click(row)
+        await settle()
+        const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
+        if (prompt === undefined) throw new Error('the open row carries no 正文 prompt')
+        click(prompt)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'create-sheet') {
       /* 「新建一条」那张纸。它与详情面板装同一批字段（三个日期、正文/步骤/备注、选卡、

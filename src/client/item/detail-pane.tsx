@@ -20,7 +20,8 @@ import { isEnglish, t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
 import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
-import { GROUP_LABEL } from './labels.ts'
+import { GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
+import { PRIORITY_DIGIT } from './marks.tsx'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
@@ -378,18 +379,25 @@ export function ItemDetail(props: ItemDetailProps) {
           <div className={css.itemOptRow}>
             <p className={css.itemOptName}>{t('item.field.priority')}</p>
             <div className={css.itemOpts}>
-              {/* 最重要的在最左。`ITEM_PRIORITIES` 是按「最不重要」声明的（那张表
-                  * 的注释里写着不要照它的顺序渲染），而这里四个芯片并排，读者扫的是
-                  * **从左到右降下来的刻度**：!1 在最左，选中的那一个也在最左。
-                  * 照声明顺序渲染会印出 !4 !3 !2 !1——一条上升的尺子。 */}
+              {/* **这一排是「选一档」，与它下面那一排（状态）、与右边那一排（标签）
+                  是同一种控件；「新建一条」那张纸上的同一排也是它。**
+                   *
+                   * 它原来是四枚 `.itemPrioChip`——那是**记号**的类，一枚记号自己带着
+                   * 它的重量（实心／洗底／素底／无底），于是四枚并排时就成了一排音量不同
+                   * 的芯片，而「选中了哪一档」没有地方落脚。同一批字段在「新建一条」上
+                   * 早就换成了这一族（那里的注释记着这次塌方），详情这边漏在后面。
+                   *
+                   * 记号回到它该在的地方：行上、左栏。刻度仍然是**最重要的在最左**
+                   * ——`ITEM_PRIORITIES` 是按「最不重要」声明的（那张表的注释里写着不要
+                   * 照它的顺序渲染），照声明顺序渲染会印出一条上升的尺子。 */}
               {PRIORITIES_BY_WEIGHT.map(priority => (
                 <button
                   key={priority}
                   type="button"
-                  className={css.itemPrioChip}
-                  data-tone={priority}
+                  className={css.itemOpt}
                   data-on={item.priority === priority ? '' : undefined}
                   aria-pressed={item.priority === priority}
+                  title={t(PRIORITY_LABEL[priority])}
                   onClick={() => props.onEdit({ priority })}
                 >
                   !{PRIORITY_DIGIT[priority]}
@@ -707,10 +715,6 @@ function DateLine(props: {
     </li>
   )
 }
-
-/** `!1`..`!4` ↔ the four stored tiers. Derived from the table so re-tiering cannot
- *  leave a chip printing a tier the grammar no longer means. */
-const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
 
 /** The three writeable dates, as one closed name for the pane's editor state. */
 type ItemDateKey = 'startsAfter' | 'dueAt' | 'hardDueAt'

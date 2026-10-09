@@ -596,11 +596,19 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     // around the lead mark — a border, never a fill — and that is what is
     // asserted here: 状态不变，画法换到引导位上。
     const sheet = bare(itemSheet)
+    /* **按「这一条规则说的是哪个状态」找规则，不按字面找。**
+     *
+     * 原来这里是 `indexOf('.itemRow:hover')` 之类的字面查找，而三条底色的先后现在
+     * **写在选择器里**（`:not([data-open]):not([data-picked]):hover`）——那不是
+     * 「换了个写法」，那是把「谁压谁」从源顺序搬到选择器里，正是这条断言本来要守的
+     * 那件事的加强版。所以查找也改成读语义：先把 `:not(…)` 摘掉，再按状态记号找。
+     * 一个按字面认选择的检查器，会逼着人把选择器写回脆弱的那一版来迁就它
+     * （硬性规范 14）。 */
+    const owned = (selector: string): string => selector.replace(/:not\([^)]*\)/g, '').trim()
     const fillOf = (selector: string): string | undefined => {
-      const at = sheet.indexOf(selector)
-      expect(at, `the row fill ${selector} is not in the stylesheet at all`).toBeGreaterThanOrEqual(0)
-      const block = sheet.slice(at, sheet.indexOf('}', at))
-      return /background:\s*([^;]+)/.exec(block)?.[1]?.trim()
+      const block = declarationRules(sheet).find(rule => owned(rule.selector) === selector)
+      expect(block, `the row fill ${selector} is not in the stylesheet at all`).toBeDefined()
+      return /background:\s*([^;]+)/.exec(block?.body ?? '')?.[1]?.trim()
     }
     const fills = [
       ['.itemRow:hover', 'hover'],
@@ -2568,9 +2576,24 @@ describe('the colour budget is a budget, counted at the token layer', () => {
    * the worst way to use accent.
    */
   const AFFORDANCES: ReadonlyArray<{ readonly key: string; readonly is: (s: string) => boolean }> = [
-    { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) },
+    { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) || /--dsh-tb-ring/.test(s) },
     { key: '原生控件的色调', is: s => /(?:^|[;{\s])(?:accent-color|appearance)\s*:/.test(s) },
   ]
+  /**
+   * **一种墨的每一种写法都要被看见，否则计数器报的是一个数字，而那个数字看起来像
+   * 一个答案。** 焦点环现在画在 `--dsh-tb-ring` 上（accent 的一族影，理由写在
+   * `board.module.css`：`outline` 不跟着 `corner-shape` 走，超椭圆族下环与边会在每个
+   * 角上分叉）。环从「一个属性里的 var()」换成「一个令牌」之后，只认
+   * `var(--dsh-tb-accent)` 的读法会**少看见一个位置**——而「少看见」正是这条断言存在
+   * 的原因：它的注释里记着上一次，十七个 focus outline、一处 `color-mix`、一处
+   * `accent-color` 全部隐形，三个没登记的位置顶替了三个登记过的，数字刚好落在上限上。
+   *
+   * 所以这里接受一组拼写。令牌自己的**声明**仍然不算位置（按本族已有的规则：只存
+   * 不画的声明不是位置）。
+   */
+  const SPELLINGS: Readonly<Record<string, readonly string[]>> = {
+    '--dsh-tb-accent': ['--dsh-tb-accent', '--dsh-tb-ring'],
+  }
   function splitPositions(token: string): { readonly decoration: readonly string[]; readonly affordance: readonly string[] } {
     const seen = (where: 'decoration' | 'affordance', name: string): void => {
       const key = `${where}:${name}`
@@ -2581,16 +2604,17 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     const buckets = new Map<string, 'decoration' | 'affordance'>()
     const decoration: string[] = []
     const affordance: string[] = []
+    const spellings = SPELLINGS[token] ?? [token]
     for (const rule of declarationRules(css)) {
-      if (!paintsToken(rule.body, token)) continue
+      if (!spellings.some(one => paintsToken(rule.body, one))) continue
       const family = FAMILIES.find(entry => entry.is(rule.selector))
       const name = family === undefined ? rule.selector : family.key
       // BOTH HALVES OF THE RULE ARE OFFERED TO THE MATCHER, and that is not sloppiness:
-    // 「a state selector names the ring」 but 「a native control's tint is named by
-    // the property that draws it」, and a matcher that only ever saw the selector
-    // would score every `accent-color` as a decoration — which is the exact
-    // inversion this split exists to prevent.
-    const affordanceFamily = AFFORDANCES.find(entry => entry.is(rule.selector) || entry.is(rule.body))
+      // 「a state selector names the ring」 but 「a native control's tint is named by
+      // the property that draws it」, and a matcher that only ever saw the selector
+      // would score every `accent-color` as a decoration — which is the exact
+      // inversion this split exists to prevent.
+      const affordanceFamily = AFFORDANCES.find(entry => entry.is(rule.selector) || entry.is(rule.body))
       seen(affordanceFamily === undefined ? 'decoration' : 'affordance', name)
     }
     return { decoration, affordance }
@@ -2636,10 +2660,20 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     // figure above is still four and still means four things the product is
     // saying. Their allowance is small and their total is checked, so moving the
     // page's own marks into the affordance column is not a way to buy headroom.
+    // SEVEN ACCENT POSITIONS BECAME FIVE, and the fifth is deliberate: 优先级「高」
+    // 那一枚芯片穿的就是 accent（读者点名要的一档颜色）。它是一处**产品在说话**的
+    // 位置——「这一条比普通那两档更值得看一眼」——与「当前页 / 选中行 / 正在跑 / 光标的
+    // 位置」同类，而不再是「重复一遍旁边的数字」那一种。四条老位置一条没变，总数因此
+    // 从 6 到 7；两个 affordance（焦点环、原生控件的色调）仍旧各算一档。
+    // 五条装饰位置与那一条新的，都写在 `DESIGN.md` 的颜色节里。
     const budget: Readonly<Record<string, { readonly decoration: number; readonly affordance: number; readonly total: number }>> = {
-      '--dsh-tb-accent': { decoration: 4, affordance: 2, total: 6 },
+      '--dsh-tb-accent': { decoration: 5, affordance: 2, total: 7 },
       '--dsh-tb-attention': { decoration: 2, affordance: 0, total: 2 },
-      '--dsh-tb-danger': { decoration: 3, affordance: 0, total: 3 },
+      // 红色从 3 到 4，同样只有一条新的：优先级「紧急」那一枚实心芯片。红在这一面上
+      // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的硬期限）
+      // 与「别让它错」（最响的那一档优先级）。两条老位置（读法与珠子）算一档，是
+      // `FAMILIES` 里那句「一颗珠子的几个状态不是几处用量」。
+      '--dsh-tb-danger': { decoration: 4, affordance: 0, total: 4 },
     }
     for (const [token, limit] of Object.entries(budget)) {
       const { decoration, affordance } = splitPositions(token)

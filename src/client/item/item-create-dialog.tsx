@@ -26,6 +26,7 @@ import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
+import { PRIORITY_DIGIT as marksDigits } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
 import type { ComposerParse } from './compose-parse.ts'
 import { parseItemDate, toItemDateField, formatItemDate } from './model.ts'
@@ -470,7 +471,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
 }
 
 /** `!1`..`!4` from the model's own table, so a re-tiering cannot leave a chip lying. */
-const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
+/** `!1`..`!4`，与详情面板、行上、左栏读的是**同一张表**（`marks.tsx`）——一个数字
+ *  在四个文件里各抄一份的日子结束了。 */
+const PRIORITY_DIGIT = marksDigits
 
 /**
  * ONE DATE, AND WHAT IT READS AS.

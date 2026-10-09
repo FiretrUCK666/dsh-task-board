@@ -36,8 +36,10 @@
  * putting a row action on it would make the map claim to be something it is not.
  */
 import { useId } from 'react'
+import type { ItemPriority, ItemStatusView } from '../../core/item.ts'
 import type { ItemRailEntry, ItemRailGroup, ItemRailKey } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
+import { PriorityMark, StatusMark } from './marks.tsx'
 import css from './item.module.css'
 
 /** The word each stable key is spoken in. A filter written against a display
@@ -96,26 +98,16 @@ const CAPTION: Readonly<Record<'when' | 'rank' | 'state', TaskBoardKey>> = {
  */
 function markOf(entry: ItemRailEntry) {
   switch (entry.kind) {
-    // The priority rows wear the SAME CHIP the title wears: one shape in three
-    // places, learned once.
+    // The priority rows wear the SAME chip the title wears, one size smaller — the
+    // same component, so a colour changed for the row cannot leave this column behind.
     case 'priority':
-      return <i className={css.itemRailChip} data-tone={entry.key}>!{priorityDigitOf(entry.key)}</i>
+      return <PriorityMark priority={entry.key as ItemPriority} size="rail" />
     case 'flag':
       return flagMarkOf(entry.key)
     case 'status':
-      // The four marks are the SAME four the row's own lead dot wears, at the same
-      // sizes — so the rail and the list are one vocabulary, and a reader who has
-      // learned the dot has already learned the rail.
-      if (entry.key === 'done') {
-        return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
-      }
-      if (entry.key === 'blocked') {
-        return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="5 2.4" /></svg>
-      }
-      if (entry.key === 'inProgress') {
-        return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="4" fill="var(--dsh-tb-accent)" /><circle cx="5" cy="5" r="7" fill="none" stroke="var(--dsh-tb-accent)" strokeOpacity="0.28" strokeWidth="1" /></svg>
-      }
-      return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="2.5" fill="currentColor" /></svg>
+      // The same marks the row's own lead dot wears, from the same function — the
+      // rail and the list are one vocabulary by construction, not by a comment.
+      return <StatusMark status={entry.key as ItemStatusView} />
     case 'collection':
       /* 「刚记下的」是这一栏里唯一一个**不带条件**的入口，所以它戴一枚还没写上的
        * 加号——而「加一个」在别处是往清单里加一行。词、记号、位置三样说的是同一件
@@ -154,21 +146,6 @@ function flagMarkOf(key: ItemRailKey) {
   return key === 'overdue'
     ? <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="currentColor" /></svg>
     : <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="2.6" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
-}
-
-function priorityDigitOf(key: ItemRailKey): string {
-  switch (key) {
-    case 'urgent':
-      return '1'
-    case 'high':
-      return '2'
-    case 'normal':
-      return '3'
-    case 'low':
-      return '4'
-    default:
-      return ''
-  }
 }
 
 export interface ItemRailProps {

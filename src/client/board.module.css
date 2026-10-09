@@ -157,6 +157,26 @@
   --dsh-tb-danger: var(--dsw-alias-state-error-primary);
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
+  /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
+   *
+   * `outline` 由浏览器按 `border-radius` 画，**不读 `corner-shape`**；而元素的底与边
+   * 读它。本插件的 `--dsh-tb-corner` 是明说的换肤入口，皮肤一旦换成超椭圆族，**全表
+   * 每一个焦点环都会与它自己那条边在每个角上分叉**——两条线之间露出一块白，读者
+   * 报的原话是「线框的四个边角像缺了一块」。
+   *
+   * 这不是猜的：一支把四种组合并排画出来的探针（round/squircle × outline/shadow）
+   * 量到圆族下两者同形，超椭圆族下只有 `box-shadow` 跟着角走。
+   *
+   * 所以环是一族影，写成一个令牌，元素自己的影写在它后面：
+   * `box-shadow: var(--dsh-tb-ring), …自己的影…`。被强行色模式（forced-colors）抹掉
+   * 影的时候由一条 `@media (forced-colors: active)` 把 outline 放回来——那里
+   * 浏览器自己会接管颜色，两条路径都是「看得见」。
+   *
+   * **环贴着盒沿（没有 offset）。** 原来那 `outline-offset: 2px` 的 2px 空气，在影这一
+   * 族里画不出来：影是不透明的，一层「空气」要么得知道背后是什么颜色，要么就得再加
+   * 一个伪元素。少那 2px 换来的是「环与边永远同形」，这笔账划得来；环也因此更紧、
+   * 更像一条边，而不是一枚飘在盒子外面的圈。 */
+  --dsh-tb-ring: 0 0 0 2px var(--dsh-tb-accent);
 
   /* THE text colour for text sitting ON a light-hued fill.
      The state fills have fixed hues that do not follow the theme (warn, success

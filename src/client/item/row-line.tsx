@@ -28,63 +28,22 @@
  * visibly on. A column that only exists while it has work to do costs the other
  * twenty rows nothing.
  *
- * ══ WHY THE BEAD IS SHAPES AND NOT A DOT ═══════════════════════════════════
+ * ══ WHY THE MARK IS A SHAPE AND NOT A WORD ═════════════════════════════════
  *
- * Four states, and the word is not on the row any more. So the shape has to carry it:
- * a filled dot is 待办, a dot inside a halo is 进行中, a broken ring is 受阻, an empty
- * ring is 完成. Readable with the colour taken away — which is what a row that has to
- * be scanned fast needs to be.
+ * Four states, and the word is not on the row any more, so the shape has to carry it.
+ * 那一颗珠子与左栏那一列是**同一个函数画出来的**（`marks.tsx`）——读者学会了这一颗
+ * 就已经学会了那一栏，而这句话从注释变成了结构。
  */
 import { useEffect, useRef, useState } from 'react'
-import type { ItemPriority, ItemRowView, ItemStatusView } from '../../core/item-view.ts'
+import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
 import { t } from '../locales.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
+import { CardMark, PriorityMark, StatusMark } from './marks.tsx'
 import { formatItemDate } from './model.ts'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
-
-/** How the four states are marked. One shape each, no word on the row. */
-function stateMark(status: ItemStatusView) {
-  switch (status) {
-    case 'inProgress':
-      return (
-        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-          <circle cx="5" cy="5" r="4" fill="var(--dsh-tb-accent)" />
-          <circle cx="5" cy="5" r="7" fill="none" stroke="var(--dsh-tb-accent)" strokeOpacity="0.28" strokeWidth="1" />
-        </svg>
-      )
-    case 'blocked':
-      return (
-        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-          <circle cx="5" cy="5" r="3.4" fill="none" stroke="currentColor" strokeWidth="1.6" strokeDasharray="5 2.4" />
-        </svg>
-      )
-    case 'done':
-      return (
-        <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-          <circle cx="5" cy="5" r="3" fill="none" stroke="currentColor" strokeWidth="1" />
-        </svg>
-      )
-    default:
-      return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="2.5" fill="currentColor" /></svg>
-  }
-}
-
-/** The priority chip, and the only solid pill on this surface. The press that
- *  opens the title editor is the button around it; the chip itself is not a
- *  control and carries no hint of its own. */
-function prioChip(priority: ItemPriority) {
-  return (
-    <i className={css.itemPrioChip} data-tone={priority}>
-      !{PRIORITY_DIGIT[priority]}
-    </i>
-  )
-}
-
-/** `!1`..`!4` from the model's own table, so a re-tiering cannot leave a chip lying. */
-const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = { urgent: '1', high: '2', normal: '3', low: '4' }
 
 type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
 
@@ -349,9 +308,8 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 onToggle={() => props.onPick(false)}
               />
             )
-          : stateMark(view.status)}
+          : <StatusMark status={view.status} />}
       </span>
-
       <div className={css.itemRowCell}>
         {editing
           ? (
@@ -395,7 +353,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 title={`${t(PRIORITY_LABEL[item.priority])} · ${t('item.menu.rename')}`}
                 onClick={event => { event.stopPropagation(); startEditing() }}
               >
-                {prioChip(item.priority)}
+                {<PriorityMark priority={item.priority} />}
               </button>
               <span className={css.itemRowText}>{item.title}</span>
               {due !== undefined && (
@@ -411,11 +369,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
          *
          * 挂着的卡由一枚记号说，不占一个字——那一行已经被四件事实占满了。 */}
         <p className={css.itemRowMeta}>
-          {item.taskId !== undefined && (
-            <svg className={css.itemRowCard} viewBox="0 0 9 9" width="9" height="9" aria-hidden="true">
-              <rect x="1" y="1" width="7" height="7" rx="2" fill="none" stroke="currentColor" strokeWidth="1" />
-            </svg>
-          )}
+          {item.taskId !== undefined && <CardMark />}
           {metaLine(view)}
         </p>
       </div>

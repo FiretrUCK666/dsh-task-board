@@ -117,11 +117,13 @@ function EmptyDays({ days }: { readonly days: readonly Bucket[] }): React.ReactN
           「今天 0 · 明天 0 · 本周稍后 0」与它下面第一个真的节之间只有空气，于是它
           读起来像下一个节的题头而不是上一段的收尾。一条发丝线就够——它说的是
           「上面那段到此为止」，而这正是空日摘要唯一需要说的话。
-          画成 SVG 而不是 `border-block-end`：这条线两侧都有端刻（和本表其它分隔线
-          同一支笔画），而边框画不出端刻。 */}
+          画成 SVG 而不是 `border-block-end`：`preserveAspectRatio="none"` 让它铺满
+          这一列而不必去猜宽度。
+          **两端原来还各有一根 4px 的端刻，读者点名要删。** 那句「和本表其它分隔线
+          同一支笔画」本来就不成立——全仓只有这一处画过端刻——而它落在这条**横贯整列**
+          的线上时，两根竖线读起来是「这条线画到了边上」，不是「一段到此为止」。 */}
       <svg className={css.itemEmptyGroupsRule} viewBox="0 0 240 5" preserveAspectRatio="none" aria-hidden="true">
         <path d="M0 2.5h240" />
-        <path d="M0 0.5v4M240 0.5v4" />
       </svg>
     </p>
   )
