@@ -689,6 +689,9 @@ export function ItemDetail(props: ItemDetailProps) {
                 {t('item.menu.start')}
               </Button>
               {item.body.trim() === '' && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
+              {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
+                  只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
+              <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
               <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
               <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
             </>

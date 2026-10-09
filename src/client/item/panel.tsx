@@ -523,13 +523,23 @@ export function ItemListPanel(props: ItemListPanelProps) {
     if (next !== rows) apply(next)
   }, [board, cardColumns, apply, items])
 
-  const askOne = useCallback((item: ItemRecord) => {    // Read once: the closure outlives this line, and a property re-proven
-    // inside an async callback is a narrowing that stops holding when the
-    // reader renames the row mid-flight. It is the card THIS SCREEN can see, so a
-    // row whose card was deleted refuses here rather than asking a session that
-    // is not there.
-    const taskId = linkedCardIdOf(item, cardColumns)
-    if (taskId === undefined) return
+  const askOne = useCallback((item: ItemRecord) => {
+    /* **「从来没挂过卡」与「有卡但卡被删了」是两件事，答案也不同**：
+     *
+     *   · 从来没挂过 → **就地建一张再问**（与详情里「执行」同一套：一件动作两件事，读者不必
+     *     先建卡、再回来按一遍）；
+     *   · 有卡却被删了 → **拒绝**，因为去问一个不存在的会话是错的（这一支是下面那段注释说的
+     *     情形，它必须留着）。
+     *
+     * 原来两种情况都落进同一个 `return`，于是一行"没挂卡"的按下去什么都没有——正是这一页最
+     * 忌讳的控件。区分它们的判据是 `item.taskId`（这一行**存着的**那个），不是这一屏看得见
+     * 不看得见。 */
+    let taskId = linkedCardIdOf(item, cardColumns)
+    if (taskId === undefined) {
+      if (item.taskId !== undefined) return
+      taskId = promoteOne(item)
+      if (taskId === undefined) return
+    }
     setAsking(item.id)
     void (async () => {
       try {
