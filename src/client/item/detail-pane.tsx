@@ -679,7 +679,17 @@ export function ItemDetail(props: ItemDetailProps) {
               * that fact. While the linked card runs, the slot says who is on it. */}
           {cardId === undefined ? (
             <>
-              <Button variant="primary" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
+              {/* **没挂卡的一条也能交给 AI。** 这里原来只给「变成看板卡片」与删除，理由是
+                  「没有卡的行只能变成一张卡」——而读者按下「执行」时想的是「这条我要让 AI 干」，
+                  与有没有卡无关：先建卡、再回来按一遍是两步做一件事。所以这一枚对两种行都在，
+                  只是没卡时它做的是**就地建卡再开跑**（`startOne` 一处实现）。
+                  正文为空时**禁用并写明理由**（硬性规范 11③：理由不许只挂在 `title` 上），
+                  因为那一张卡建出来也跑不起来——执行 Prompt 来自正文。 */}
+              <Button variant="primary" size="sm" onClick={props.onStart} disabled={item.body.trim() === ''}>
+                {t('item.menu.start')}
+              </Button>
+              {item.body.trim() === '' && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
+              <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
               <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
             </>
           ) : (

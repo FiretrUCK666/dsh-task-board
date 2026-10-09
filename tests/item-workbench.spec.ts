@@ -3641,6 +3641,48 @@ describe('从看板跳过来：只看挂着那张卡的条目', () => {
   })
 })
 
+describe('没挂卡的一条也能交给 AI：按「执行」= 就地建卡并开跑', () => {
+  /** 那一枚按文字找（它同时出现在详情与行菜单里，而这里问的是详情那一枚）。 */
+  const startButton = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement | undefined =>
+    [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').trim() === '执行') as HTMLButtonElement | undefined
+
+  it('按下去：板上多了一张卡，而且它开跑了', () => {
+    // 读者按下这一枚的意思是「这条我要让 AI 干」，与有没有卡无关。它原来在没有卡时是一条
+    // **死路**（按钮画得出来、按下去什么都不会发生）——这一条钉住「一件动作两件事」：先建卡，
+    // 再让那张卡开跑。
+    const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const button = startButton(panel)
+      expect(button, '详情里没有「执行」那一枚').toBeDefined()
+      click(button)
+      panel.settle()
+      const calls = panel.calls.join(' ')
+      expect(calls, '没有建卡').toContain('createTask(')
+      expect(calls, '建了卡却没有开跑').toContain('runTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('正文为空：**不建卡**（建出来也是一张跑不起来的卡）', () => {
+    // 看板的执行门禁读的是「执行 Prompt」，而它来自这一条的正文——所以正文为空时建出来的卡
+    // 一跑就停。这里钉住：宁可不建，也不留一张假卡。
+    const panel = mountPanel(oneRow({ taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const button = startButton(panel)
+      expect(button, '详情里没有「执行」那一枚').toBeDefined()
+      click(button)
+      panel.settle()
+      expect(panel.calls.join(' '), '正文为空却建了一张跑不起来的卡').not.toContain('createTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
 /** The chip that asks for a new card, named by its text rather than its class. */
 function newCardChip(root: ParentNode): HTMLButtonElement | null {
   for (const chip of root.querySelectorAll('button')) {
