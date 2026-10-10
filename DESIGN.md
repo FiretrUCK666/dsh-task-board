@@ -1124,6 +1124,17 @@ flex，于是被**拉伸**到整列宽——量出来盒 298..1414（1116px）�
 居中——**字符待在字体给的位置上，「勾偏左」会在字体栈一换就回来；路径是可以断言的**。
 触屏只加热区不改几何。
 
+#### 详情那一排：装不下就换行，理由整行占位
+
+**判据**：`.itemOpenActions` 是**会换行**的一排（`flex-wrap` ✓），而它里面那句「为什么这一枚是灰的」（`.itemOptsFoot` ✓）**整行占位**（`flex-basis: 100%`）并且**有自己的地板宽度**（`min-inline-size: 12ch`）。
+
+**为什么单独写下来**：这一排曾经在窄档把理由压成「**一个字一列**」——`执行 / Prom / pt 为 / 空：/ 先填 / 写执…`。那正是硬性规范 11 第①条点名的形状：**容器装不下时让位，不是把内容压窄**。触发它的是两个新按钮：一排不换行的 flex 里，没有地板的那一段会被挤到接近零宽。
+
+**量法与证据**（这是它唯一能被看见的方式）：**jsdom 看不见这件事**——2553 个测试全绿的时候屏上是坏的。要看的是一张窄档截图：
+`DSH_PANEL_HTML=… DSH_PANEL_MOUNT=row-body-open DSH_PANEL_BAND=narrow pnpm vitest run tests/item-workbench.spec.ts -t "writes one when"` 出页面，再 `node scripts/shot-panel.mjs --url … --width 412 --height 1500 --scale 2` 出图。修前是「一个字一列」，修后是**整句一行**在按钮下方——两张图都在 `.design/shots/`（开发产物，不进包）。
+
+**同类判据的通用形状**：**一排 flex 里，凡是"句子"就要有地板宽度与整行占位；凡是"控件"才可以被压缩到自己的最小尺寸。** 判断一个容器会不会压扁内容，看它有没有换行、以及里面的文字有没有 `min-inline-size`。
+
 #### 窄档里每个可点目标的实测尺寸（412）
 
 **量法**：`.design/shots/probe-tap.mjs`，经 `scripts/shot-panel.mjs` 开真 Chromium、在
