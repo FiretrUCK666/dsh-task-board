@@ -4704,6 +4704,15 @@ textarea.itemInput {
   white-space: normal;
 }
 
+/* ……回执也一样：它是一枚**胶囊**，可它装的那句话可能很长（一条卡的名字就写在里面）。
+ * 上面那条「一律不缩」会让它顶出卡片右缘——量过：412 宽、那句话三十多个字时被切掉，
+ * 而**切掉的字读者永远读不回来**。胶囊里的字换行不好看，溢出比不好看糟。 */
+.itemOpenActions > .itemHint {
+  flex: 0 1 auto;
+  min-inline-size: min(12ch, 100%);
+  overflow-wrap: anywhere;
+}
+
 .itemOpenAct .itemOriginRow {
   font-size: 12px;
 }

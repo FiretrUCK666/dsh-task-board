@@ -130,7 +130,7 @@ export interface ItemDetailProps {
    * 看板的动作（`task.move`），不是清单的补丁。`undefined` 表示这一屏没有看板可写——
    * 那时按钮不画（一个按下去什么都不会发生的控件，比一个不在的控件糟）。
    */
-  readonly onMoveCard?: (status: TaskStatus) => void
+  readonly onMoveCard?: (status: TaskStatus) => string | undefined
   /**
    * Write the WHOLE checklist back, through the panel's one writer.
    *
@@ -172,6 +172,23 @@ export function ItemDetail(props: ItemDetailProps) {
   const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
 
   /**
+   * **按不动的那两枚按下去要说的话，落在它们自己脚下。**
+   *
+   * 一句话：灰芯片按下去要有一句回话（硬性规范 11③：触屏没有 hover，说明必须可点可达）。
+   * 而它**不能**走底排那条回执——回执是一枚**胶囊**，它不缩（`.itemOpenActions > *`），
+   * 而「『进行中』与『待审核』是执行器给的……」有三十多个字，手机上会顶出卡片右缘（量过：
+   * 412 宽的那一屏里那一行被切掉了）。何况这句话讲的正是上面那一排芯片，那就该出现在
+   * 那一排的下面——`.itemOptHint` 是这一页已有的「当前这个控件的一句说明」那一格
+   * （挂卡起名那一处用的就是它）。
+   *
+   * **写下这句话的不是这里**：`writeStatus` 是唯一判据，它把「要说的话」交回来，谁按的谁显示。
+   * 判据一处，出口一处。
+   */
+  const [refusedNote, setRefusedNote] = useState<string | undefined>(undefined)
+  /* 档位一换，那句话就该走——它说的是「刚才那一下为什么没成」。 */
+  useEffect(() => { setRefusedNote(undefined) }, [view.status])
+
+  /**
    * 状态那一格的三个可能，写在这里而不是写在 JSX 里嵌套三层三元。
    *
    * **两个值，不是三个**（受阻跟着那一套词汇一起删了），而它们的词是看板那五栏里的两个
@@ -207,29 +224,37 @@ export function ItemDetail(props: ItemDetailProps) {
         /* **五档都在，其中两档是执行器给的。**
          *
          * 挂着卡时这一行在哪一栏由卡回答，而人能给的只有三档（`MANUAL_STATUSES`）；另外两档
-         * （进行中 / 待审核）由引擎在轮次开始/结束时落。它们**画出来并写明为什么**，不是藏掉
-         * ——硬性规范 11：触屏没有 hover，承载必要信息的说明必须看得见；而一个"少了两档"的选择
-         * 器会让人以为那两档不存在。 */
+         * （进行中 / 待审核）由引擎在轮次开始/结束时落。它们**画出来**，不是藏掉——一个"少了两
+         * 档"的选择器会让人以为那两档不存在。
+         *
+         * **而"为什么按不动"不再常驻在下面一行里。** 那句话曾经写在这一格的下方，理由是「触屏
+         * 没有 hover，说明必须看得见」——它确实看得见，代价是这一列最长的一段常驻在一个属性行
+         * 里：这一行因此比别的属性行高一倍，而它自己也正好是最容易被挤坏的那一段（读者为它报过
+         * 两次缺陷）。
+         *
+         * 所以改成**灰的芯片自己回答**：`aria-disabled` 而不是 `disabled`——样子一样灰（
+         * `.itemRoot :disabled, [aria-disabled='true']` 是同一档 opacity），鼠标停上去有 `title`，
+         * 按下去 `writeStatus` 用回执把那句话说出来。键盘与触屏都够得着（硬性规范 11③），而
+         * **属性表里不再有第二个声音**。唯一真禁用的一枚是"已经是这一档"：它自己就是那个值，
+         * 没有什么要解释的。 */
         const movable = (MANUAL_STATUSES as readonly string[]).includes(status)
+        const here = view.status === status
         return (
           <button
             key={status}
             type="button"
             className={css.itemOpt}
-            data-on={view.status === status ? '' : undefined}
-            aria-pressed={view.status === status}
-            disabled={!movable || view.status === status || running}
+            data-on={here ? '' : undefined}
+            aria-pressed={here}
+            aria-disabled={!movable || running ? 'true' : undefined}
+            disabled={here || undefined}
             title={movable ? undefined : t('item.status.executorOnly')}
-            onClick={() => props.onMoveCard?.(status)}
+            onClick={() => setRefusedNote(props.onMoveCard?.(status))}
           >
             {movable ? t(`status.move.${status}` as TaskBoardKey) : t(GROUP_LABEL[status])}
           </button>
         )
       })
-  /** 那两档为什么画着不能按：挂着卡时它们由执行器给（触屏上标题不可达，所以另有一行字）。 */
-  const executorNote = cardId !== undefined && props.onMoveCard !== undefined
-    ? <p className={css.itemOptsFoot}>{t('item.status.executorOnly')}</p>
-    : undefined
   /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
   const gated = view.posture.kind === 'gated'
 /**
@@ -495,8 +520,10 @@ export function ItemDetail(props: ItemDetailProps) {
 
           <div className={css.itemOptRow}>
             <p className={css.itemOptName}>{t('item.field.status')}</p>
-            <div className={css.itemOpts}>{statusChooser}</div>
-            {executorNote}
+            <div className={css.itemOpts}>
+              {statusChooser}
+              {refusedNote !== undefined && <p className={css.itemOptHint} role="status">{refusedNote}</p>}
+            </div>
           </div>
 
           <div className={css.itemOptRow}>

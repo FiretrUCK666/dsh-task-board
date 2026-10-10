@@ -3594,17 +3594,38 @@ describe('挂上卡之后，状态两边一起变（先复现，再修）', () =
     }
   })
 
-  it('挂上卡之后，状态那一格把执行器给的那两档也画出来（禁用 + 写明为什么）', () => {
+  it('挂上卡之后，状态那一格把执行器给的那两档也画出来——灰着，按下去会说话', () => {
+    /* **理由不再常驻在属性表里，而是"问它才说"。**
+     *
+     * 这句话原来写在这一格下面，理由是「触屏没有 hover，说明必须看得见」。它确实看得见，代价是
+     * 这一列最长的一段常驻在一个属性行里——那一行比别的属性行高一倍，而它自己也正好是最容易被
+     * 挤坏的那一段（读者为它报过两次）。所以改成两半都要：**停上去有 `title`，按下去有回执**；
+     * 后者才是"可点可达"那一半（硬性规范 11③）。
+     *
+     * 这也是 `aria-disabled` 而不是 `disabled` 的理由：真 `disabled` 的元素收不到 hover、也进不了
+     * 键盘流，于是"按下去会说话"根本无从谈起。两者在屏上是同一档灰（`.itemRoot :disabled,
+     * [aria-disabled='true']`）。 */
     const panel = mountPanel(oneRow({ taskId: 'task-1' }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const words = [...panel.surface.querySelectorAll('[class*="itemOpts"] button')].map(node => (node.textContent ?? '').trim())
+      const chips = (): Element[] => [...panel.surface.querySelectorAll('[class*="itemOpts"] button')]
+      const words = chips().map(node => (node.textContent ?? '').trim())
       expect(words, '进行中那一档被藏掉了').toContain('进行中')
       expect(words, '待审核那一档被藏掉了').toContain('待审核')
-      const disabled = [...panel.surface.querySelectorAll('[class*="itemOpts"] button')]
-        .find(node => (node.textContent ?? '').trim() === '进行中') as HTMLButtonElement | undefined
-      expect(disabled?.disabled, '那一档画成了可以按的').toBe(true)
-      expect(panel.surface.textContent ?? '', '没有一句话说清那两档为什么不能按').toContain('执行器')
+      const chip = chips().find(node => (node.textContent ?? '').trim() === '进行中') as HTMLButtonElement | undefined
+      expect(chip?.getAttribute('aria-disabled'), '那一档画成了可以按的').toBe('true')
+      expect(chip?.disabled, '真 disabled 的芯片收不到 hover，也收不到按键').toBe(false)
+      expect(chip?.getAttribute('title') ?? '', '鼠标停在上面看不到为什么').toContain('执行器')
+      expect(panel.surface.textContent ?? '', '还没问，那句话就常驻在属性表里了').not.toContain('执行器')
+      click(chip as HTMLButtonElement)
+      panel.settle()
+      const statusRow = chip?.closest('[class*="itemOptRow"]')
+      const answer = statusRow?.querySelector('[class*="itemOptHint"]')
+      expect(answer?.textContent ?? '', '按了那枚灰芯片，它什么都没说').toContain('执行器')
+      // **而且它落在芯片自己那一行里**：底排那枚回执是**胶囊**，不缩，而这句有三十多个字
+      // ——量过，412 宽的那一屏里它会顶出卡片右缘、被切掉。
+      expect(panel.surface.querySelector('[class*="itemOpenActions"] [class*="itemHint"]'),
+        '这句话被塞进了底排那枚装不下它的胶囊').toBeNull()
     } finally {
       panel.dispose()
     }
@@ -4068,7 +4089,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
-      && state !== 'carded-detail'
+      && state !== 'carded-detail' && state !== 'carded-chip-answer'
       && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
@@ -4142,6 +4163,32 @@ describe('the mounted-page artifact, for the states a static render cannot reach
           .find(one => (one.getAttribute('aria-label') ?? '') === '这一条能做的事')
         if (trigger === undefined) throw new Error('the first row drew no ⋮ button')
         click(trigger)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'carded-chip-answer') {
+      /* **按了一枚灰芯片之后的那一屏。**
+       *
+       * 状态那一格里两枚灰芯片现在**能按**（`aria-disabled`），按下去的理由走回执——而
+       * 「一句话落在哪里、读者看不看得见」只有真画出来才知道。静态渲染按不了东西，所以这个
+       * 交互得由这一屏取证。 */
+      const panel = mountPanel(oneRow({ id: 'cd-1', ref: 1, title: '挂着卡的一行', taskId: 'task-1' }), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
+        if (row === undefined) throw new Error('the list page drew no row to open')
+        click(row)
+        await settle()
+        const chip = [...panel.surface.querySelectorAll('[class*="itemOpts"] button')]
+          .find(node => (node.textContent ?? '').trim() === '进行中')
+        if (chip === undefined) throw new Error('the state row drew no 进行中 chip')
+        click(chip)
         await settle()
       } catch (error) {
         panel.dispose()

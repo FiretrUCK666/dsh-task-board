@@ -696,14 +696,24 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 否则这一行自己那张「已完成」的牌会一直压着卡片（`itemStatusOf` 的规则），读者按什么
    * 胶囊都不动，连解释那句也不会出现。收进一个函数之后，那种矛盾在结构上不可能发生。
    */
-  const writeStatus = useCallback((item: ItemRecord, status: TaskStatus) => {
-    const result = applyItemStatus(itemsNow.current, item.id, status, linkedCardIdOf(item, cardColumns), Date.now())
-    if (result.refused === 'executorOnly') {
-      setReceipt({ id: item.id, words: t('item.status.executorOnly') })
-      return
-    }
+  const writeStatus = useCallback((item: ItemRecord, status: TaskStatus): string | undefined => {
+    const cardId = linkedCardIdOf(item, cardColumns)
+    /* **跑着的时候也要说得出话。**
+     *
+     * 状态那一排里有两枚灰芯片是**能按**的（`aria-disabled`，按下去要有一句回话），而
+     * "这一轮还在跑"与"这一档是执行器给的"是两件事。次序定死：跑着是这一条**现在**的状态，
+     * 它比"能不能给这一档"更靠前——卡在跑的时候去改它的栏，看板那边本来也会拒。
+     *
+     * **判据在这里，出口在调用点。** 它把「要说的话」**交回去**（没有话说就是 `undefined`），
+     * 由按它的那一处决定放在哪里：状态那一排的芯片放在芯片脚下（一句话讲的正是那一排），
+     * 菜单那一路的项本来就按不动这两档，所以它不需要出口。给回执在这里等于把一句三十多字的
+     * 话塞进一枚不缩的胶囊——412 宽上会顶出卡片右缘。 */
+    if (runningOf(cardColumns, cardId) === true) return t('detail.moveBlockedBusy')
+    const result = applyItemStatus(itemsNow.current, item.id, status, cardId, Date.now())
+    if (result.refused === 'executorOnly') return t('item.status.executorOnly')
     apply(result.rows)
     if (result.move !== undefined) face.controller?.moveTask(result.move.cardId, result.move.status)
+    return undefined
   }, [apply, cardColumns, face.controller])
 
   const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides): string | undefined => {
@@ -899,7 +909,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
          ——见 `writeStatus`。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给按钮
          ——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
       onMoveCard={face.controller === undefined ? undefined : (status: TaskStatus) => {
-        if (item !== undefined) writeStatus(item, status)
+        if (item === undefined) return undefined
+        return writeStatus(item, status)
       }}
       /* THE CHECKLIST IS WRITTEN AS A WHOLE LIST, ONCE, THROUGH THE SAME PATCH
          every other field takes. The pane computed the new order with the shared

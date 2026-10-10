@@ -1,26 +1,25 @@
-// Measures the right column's footnote in the state row — before and after the
-// fix — in one run. `grid-column: auto` is exactly the pre-fix placement (the
-// item falls into the first free cell, which is the 64px name track), so the
-// "before" number is taken from the same page and the same font as the "after".
+// Measures the detail's right column, row by row: how tall each property row is
+// and whether it carries a footnote.
+//
+// It used to measure the 状态 row's footnote, and it also produced the "before"
+// number for it by putting the item back into the name track (`grid-column:
+// auto`) — that fix is in, and the sentence no longer lives in the column at
+// all. What is worth measuring changed with it: the reason the footnote was a
+// defect is that it made ONE row twice as tall as its neighbours, and that is a
+// number about the whole column, not about the sentence.
+//
+// The last expression IS the answer: shot-panel evaluates this file and returns
+// its completion value, so nothing here may end in `console.log`.
 ;(() => {
-  const el = document.querySelector('.itemOptRow > .itemOptsFoot')
-  if (el === null) return JSON.stringify({ missing: true })
-  const box = (node) => {
-    const r = node.getBoundingClientRect()
-    return { w: Math.round(r.width), h: Math.round(r.height) }
-  }
-  const after = box(el)
-  const before = (() => {
-    const kept = el.style.gridColumn
-    el.style.gridColumn = 'auto'
-    const r = box(el)
-    el.style.gridColumn = kept
-    return r
-  })()
-  return JSON.stringify({
-    viewport: window.innerWidth,
-    row: box(el.parentElement),
-    before,
-    after,
+  const round = (value) => Math.round(value * 10) / 10
+  const rows = [...document.querySelectorAll('.itemOptRow')].map(row => {
+    const label = row.querySelector('.itemOptName')
+    const note = row.querySelector('.itemOptsFoot')
+    return {
+      label: (label?.textContent ?? '?').trim(),
+      h: round(row.getBoundingClientRect().height),
+      note: note === null ? null : round(note.getBoundingClientRect().height),
+    }
   })
+  return JSON.stringify({ viewport: window.innerWidth, rows })
 })()

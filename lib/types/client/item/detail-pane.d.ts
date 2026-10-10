@@ -94,7 +94,7 @@ export interface ItemDetailProps {
      * 看板的动作（`task.move`），不是清单的补丁。`undefined` 表示这一屏没有看板可写——
      * 那时按钮不画（一个按下去什么都不会发生的控件，比一个不在的控件糟）。
      */
-    readonly onMoveCard?: (status: TaskStatus) => void;
+    readonly onMoveCard?: (status: TaskStatus) => string | undefined;
     /**
      * Write the WHOLE checklist back, through the panel's one writer.
      *
