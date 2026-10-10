@@ -4771,3 +4771,22 @@ describe('批量那一枚也照同一条律（这一条是它自己发现的问�
     }
   })
 })
+
+describe('点标题就地改名字（使用者选的那条路）', () => {
+  it('按标题打开编辑框，而且这一下不会同时选中这一行', () => {
+    // 标题原来是纯文本，按它会**冒泡给整行**——那是「选中这一行」。做成控件之后必须在
+    // 自己这一下把它挡住，否则一次点击会同时改名与选中：两个动作撞在一起，而读者只按了一下。
+    const panel = mountPanel(oneRow({ title: '画廊第二版' }), 'list', 'wide')
+    try {
+      const title = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '画廊第二版')
+      expect(title, '标题不是一个可点的控件——按它改不了名字').toBeDefined()
+      click(title)
+      panel.settle()
+      expect(panel.surface.querySelector('[class*="itemRowTitleInput"]'), '按了标题却没有出现编辑框').not.toBeNull()
+      expect(panel.surface.querySelector('[data-status][data-selected]'), '按标题把这一行也选中了').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
