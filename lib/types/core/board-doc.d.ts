@@ -41,7 +41,8 @@ export type BoardCommand = {
     type: 'run';
     taskId: string;
     trigger: 'manual' | 'schedule' | 'chain';
-    clientId: string;
+    clientId: string; /** The first message of the run, when the caller has one (the checklist hands a row's own words to a card whose prompt may say something else — see `controller.runTask`). Absent = the card's own prompt, which is every other launch. */
+    kickoff?: string;
 } | {
     type: 'comment';
     taskId: string;

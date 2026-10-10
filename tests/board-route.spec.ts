@@ -168,9 +168,6 @@ function fakeDeps() {
     noteActivity: clientId => activities.push(clientId),
     noteStreamOpen: () => undefined,
     noteDisconnect: clientId => disconnects.push(clientId),
-    // This double is about the DOCUMENT protocol, so the hand-off answers
-    // "not wired here" rather than pretending a model was reached.
-    ask: async () => ({ ok: false as const, why: 'notWiredInThisDouble' }),
     submitCommand: command => {
       commands.push(command)
       return { queued: !lease.held }

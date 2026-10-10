@@ -109,7 +109,6 @@ import { planItemAsk } from '../../core/item-ask.ts'
 // THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
 // panel's hand-off route. A second copy of these four lines is a second thing to
 // keep in step, and the first time they drifted nobody would have found out.
-import { handOver } from './commands.ts'
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts'
 import { sessionRunningOf } from '../session-state.ts'
 import { relatedSessionIdsOf, type TaskLiveState } from '../../core/task-live.ts'
@@ -699,7 +698,17 @@ function buildRelay(
     case 'run': {
       const found = card()
       if (found === undefined) return missingCard
-      return { command: { type: 'run', taskId: found.id, trigger: 'manual', clientId }, title: found.title }
+      // The FIRST MESSAGE, when the caller brought one: the checklist hands a row
+      // of its own to a card whose prompt may say something else entirely, and the
+      // run reads this instead. Absent = the card's own prompt, unchanged.
+      const kickoff = String(payload.kickoff ?? '').trim()
+      return {
+        command: {
+          type: 'run', taskId: found.id, trigger: 'manual', clientId,
+          ...kickoff === '' ? {} : { kickoff },
+        },
+        title: found.title,
+      }
     }
     case 'comment': {
       const found = card()
@@ -820,20 +829,24 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       failed = true
       continue
     }
-    if (next.relay === true) {
-      // WHICH CARRIER carries this action is CATALOG state (`spec.relay`).
-      // Which action maps to which payload is the catalog's business, NOT this
-      // file's: there is no "if the action is task.comment" here, only "build
-      // what `relay` asks for and hand it to `command.type`". A host that knew
-      // the action names would own a second copy of that mapping, and the two
-      // copies drift the first time the catalog moves a carrier.
-      const relay = (spec as { relay?: RelayKind }).relay
+    if (next.relay === true || next.carrier !== undefined) {
+      /* WHICH CARRIER IS TWO CASES, and they differ in KIND rather than in style.
+       *
+       *  · `carrier` — the OP says which, because the carrier is a fact about the
+       *    DATA (item.ask starts a card that has no conversation and speaks into
+       *    one that has). The catalog has one `relay` per action and cannot
+       *    express a carrier that depends on the state of the card.
+       *  · `relay: true` — the CATALOG says which (`spec.relay`): for these the
+       *    carrier is a fact about the ACTION, so the catalog's field is its one
+       *    home and this file must not keep a second copy of the mapping. */
+      const relay = next.carrier?.kind ?? (spec as { relay?: RelayKind }).relay
+      const carried = next.carrier?.payload ?? payload
       if (relay === undefined) {
         raw.push({ op: step.op, ok: false, detail: `「${id}」在目录里没有 relay 派发，所以这里明确拒绝——转发它会跑错东西。` })
         failed = true
         continue
       }
-      const built = buildRelay(relay, payload, doc)
+      const built = buildRelay(relay, carried, doc)
       if (typeof built === 'string') {
         raw.push({ op: step.op, ok: false, detail: built })
         failed = true
@@ -1118,7 +1131,7 @@ function applyOne(
   payload: Record<string, unknown>,
   deps: ToolDeps,
   now: number,
-): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string; relay?: true; purge?: string } | string {
+): { doc: BoardDoc; items: ItemsDoc; task?: TaskRecord; item?: ItemRecord; unchanged?: true; note?: string; relay?: true; carrier?: { kind: RelayKind; payload: Record<string, unknown> }; purge?: string } | string {
   const edited = (task: TaskRecord): TaskRecord => ({ ...task, updatedAt: now })
   const findTask = (): TaskRecord | undefined => doc.tasks.find(task => task.id === payload.of || task.title === payload.of)
   const findItem = (): ItemRecord | undefined => {
@@ -1640,43 +1653,38 @@ function applyOne(
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
       // THE SAME PLAN THE PANEL'S BUTTON CALLS. Which conversation a row's words
-      // go to is one judgment, and the model asking the same question the person
-      // asked must reach the same answer — or the row behaves differently
-      // depending on who typed, which is the one thing a shared action cannot be.
+      // go to, and whether this is 开始 or 继续, is one judgment — the model asking
+      // the same question the person asked must reach the same answer, or the row
+      // behaves differently depending on who typed, which is the one thing a
+      // shared action cannot be.
       const card = found.taskId === undefined
         ? undefined
         : doc.tasks.find(task => task.id === found.taskId)
-      const agents = deps.sources.agents?.()
-      if (agents === undefined) return '这台机器上没有会话的模型通道，问不了这一条。'
       const verdict = planItemAsk({
         item: found,
         card,
         sessions: card === undefined ? [] : relatedSessionIdsOf(card, undefined, undefined),
         // 上面那两个 `undefined` 是**明确写出的判决**：宿主这一处看不到原生名单的可用性，所以
         // 它不判存在性（`relatedSessionIdsOf` 的那个参数是必填的，正是为了让每个调用点把话说出来）。
-        // 这一条路另有闸门：`planItemAsk` 会检查选中的那条会话还有没有活着的 agent。
         isRunning: sessionId => sessionRunningOf(deps.sources, sessionId).value === true,
-        hasAgent: sessionId => agents.get(sessionId) !== undefined,
       })
-      if (!verdict.ok) {
+      if (verdict.kind === 'refused') {
         // The refusals say what to DO, not only what is wrong: a model that is
         // told 「no card」 and nothing else will try again the same way.
-        if (verdict.why === 'noCard') return '这一条没有挂在任何看板卡片上，没有会话可以说话。先用 item.promote 把它变成一张卡。'
-        if (verdict.why === 'taskHasNoSession') return '这一条挂着的那张卡还没有会话可以说话。'
-        if (verdict.why === 'rowBelongsElsewhere') return '这一条挂的不是那张卡，别替它挑一张。'
-        return '那张卡挂着的会话现在不在跑。'
+        if (verdict.why === 'noCard') return '这一条没有挂在任何看板卡片上。先用 item.promote 把它变成一张卡——那张卡就是它的对话。'
+        return '这一条挂的不是那张卡，别替它挑一张。'
       }
-      const followup = agents.get(verdict.sessionId)?.followup
-      if (followup === undefined) return '那张卡挂着的会话现在不在跑。'
-      const result = handOver({ followup }, verdict.text)
-      if (result.kind !== 'success') return result.text
-      // NOT `unchanged`. That flag means 「you asked for something the document
-      // already was」, and its receipt says exactly that — so an `item.ask`
-      // marked with it read 「这一条已经是这样了，没有改动」 immediately followed
-      // by 「已经问过 s-1 这个会话」, which is a sentence arguing with itself. A
-      // question writes no document and still HAPPENED, so it is reported as a
-      // landed op carrying a note, not as a no-op.
-      return { doc, items, item: found, note: `已经问过 ${verdict.sessionId} 这个会话，没有改动清单。` }
+      /* THE CARRIER IS THE ANSWER, and it is this op that knows it rather than the
+       * catalog: whether the row starts a run or speaks into a conversation is a
+       * fact about the card, and the catalog has one `relay` per action, not one
+       * per state. Both carriers are the engine's ordinary work — the same doors
+       * the panel's own press reaches through the controller — so a model and a
+       * person asking the same question get the same behaviour, which is the only
+       * reason this action shares `planItemAsk` with the button at all. */
+      const titled = card?.id ?? ''
+      return verdict.kind === 'start'
+        ? { doc, items, item: found, carrier: { kind: 'run', payload: { of: titled, kickoff: verdict.text } } }
+        : { doc, items, item: found, carrier: { kind: 'comment', payload: { of: titled, session: verdict.sessionId, text: verdict.text } } }
     }
     case 'item.purge': {
       // ADDRESSED BY ITS SHORT NUMBER, the same name `item.restore` takes: it is

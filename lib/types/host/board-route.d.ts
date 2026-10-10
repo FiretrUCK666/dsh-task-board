@@ -18,9 +18,6 @@
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
- *   POST /api/<ns>/board/ask        → {taskId, ref} → hand one item to that
- *                                     card's session model (the same funnel
- *                                     `/task` uses)
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
@@ -39,7 +36,7 @@ import type { Context } from '@deepseek-ai/cordis';
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts';
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
-import { DocumentService, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
+import { type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
 /** The commit body size cap: the whole ledger travels per commit. */
 export declare const BOARD_BODY_LIMIT_BYTES: number;
 /** The SSE keep-alive cadence (below common proxy idle timeouts). */
@@ -125,15 +122,6 @@ export interface BoardRouteDeps {
         queued: boolean;
     };
     /**
-     * Hand one checklist item to the model of the session that card runs in.
-     *
-     * NOT a new path to the model: it is the same `agent.followup` the `/task`
-     * command uses, so "hand this sentence to a model" stays one fact with one
-     * implementation. What is new here is only the TARGET — the panel shows no
-     * conversation, so the session has to come from the card the item hangs off.
-     */
-    ask(request: AskRequest): Promise<AskRouteView>;
-    /**
      * Bring one deleted checklist row back, by whichever name the caller holds.
      *
      * A SERVICE operation and not a client commit: a tombstone is stamped one
@@ -160,32 +148,6 @@ export interface BoardRouteDeps {
     purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>;
     subscribe(listener: (event: BoardEvent) => void): () => void;
 }
-/** What the panel sends: which card's session, and which item in it. */
-export interface AskRequest {
-    /** The card the item hangs off — it decides WHICH session is talked to. */
-    readonly taskId: string;
-    /**
-     * The item's identity, which is how it is ADDRESSED.
-     *
-     * The panel always sends it. The model cannot — it holds a number — so `ref`
-     * below is still accepted, and `id` is optional rather than required: the one
-     * thing that must never happen is a request naming several rows resolving to one
-     * of them by accident, and an absent id falls through to a number that has to be
-     * a REAL number for the same reason.
-     */
-    readonly id?: string;
-    /** The item's short number, as the panel already shows it. `0` is 「not numbered yet」. */
-    readonly ref: number;
-}
-/** The hand-off's outcome, said in words the panel can render as-is. */
-export type AskRouteView = {
-    readonly ok: true;
-    readonly sessionId: string;
-    readonly said: string;
-} | {
-    readonly ok: false;
-    readonly why: string;
-};
 /**
  * WHICH ROW an operation on a DELETED row names. Two NAMED addresses, never one
  * falling back to the other.
@@ -263,38 +225,6 @@ export declare function parseBoardCommit(body: unknown): BoardCommit | undefined
 export declare function parseItemsCommit(body: unknown): ItemsCommit | undefined;
 /** The pure request processor (one prefix route, dispatched by path tail). */
 export declare function createBoardHandler(deps: BoardRouteDeps, base: string): (req: IncomingMessage, res: ServerResponse) => Promise<void>;
-/**
- * Hand one checklist item to the model of the session its card runs in.
- *
- * WHY THE CARD DECIDES THE TARGET. The panel is a main-stage page, so no
- * conversation is on screen while it is open — there is no "current session" to
- * send anything to. The card is what the item hangs off, and the card already
- * knows its sessions, so the target is a fact the document already holds rather
- * than a picker the reader has to answer.
- *
- * WHICH SESSION WHEN THERE ARE SEVERAL: one that is actually running. A card can
- * hold several sessions, and "the one doing work right now" is the only choice
- * that matches what the reader means by "ask the AI about this". When none is
- * running the FIRST bound session is used, and the receipt names it either way —
- * a hand-off that cannot be told apart afterwards is not a receipt.
- *
- * THE HAND-OFF ITSELF is `handOver` from the agent surface: one path into a
- * model, shared with the two slash commands.
- *
- * **Exported so it can be tested without a storage hub.** This function decides
- * WHICH CONVERSATION a person's text goes to, and it had no coverage at all: the
- * route's `deps.ask` seam is replaced in every route test, so the production
- * wiring at `registerBoardRoute` — which is the only place this body actually
- * runs — was never executed. That is why a request naming card A with a row of
- * card B survived: nothing had ever asked the function what it does with two
- * names that disagree.
- *
- * @param ctx - the host context, read for `agents` at call time.
- * @param service - the two-document face.
- * @param request - the card and the row, as the parser accepted them.
- * @returns the receipt naming the session, or a refusal code.
- */
-export declare function handOneItemToItsCardSession(ctx: Context, service: DocumentService, request: AskRequest): Promise<AskRouteView>;
 /**
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,

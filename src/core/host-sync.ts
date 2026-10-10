@@ -525,11 +525,28 @@ export class BoardSyncClient {
     this.scheduleCommit()
   }
 
-  /** Relay one user-initiated launch to the engine (non-engine replicas). */
-  requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain'): void {
+  /** Relay one user-initiated launch to the engine (non-engine replicas). The
+   *  kickoff rides along when the caller has one: the engine performs the SAME
+   *  `runTask` this replica would have, so a relayed run and a local one are one
+   *  behaviour rather than two. */
+  requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain', kickoff?: string): void {
     void this.deps.transport
-      .command(this.clientId, { type: 'run', taskId, trigger, clientId: this.clientId })
+      .command(this.clientId, {
+        type: 'run', taskId, trigger, clientId: this.clientId,
+        ...kickoff !== undefined && kickoff.trim() !== '' ? { kickoff } : {},
+      })
       .catch(error => this.log('[dsh-task-board] launch relay failed', error))
+  }
+
+  /** Relay one message into a conversation a card already has (non-engine
+   *  replicas' 「问 AI」 on a card that is already talking). Same carrier shape as
+   *  the launch relay and for the same reason: only the engine may write the
+   *  round and send it, so the request travels rather than the fact being
+   *  written twice. */
+  requestComment(taskId: string, sessionId: string, text: string): void {
+    void this.deps.transport
+      .command(this.clientId, { type: 'comment', taskId, sessionId, text, clientId: this.clientId })
+      .catch(error => this.log('[dsh-task-board] comment relay failed', error))
   }
 
   // --- listeners (one each; the wiring owns fan-out) ----------------------------

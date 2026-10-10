@@ -6152,3 +6152,111 @@ async function launchRound(controller: BoardController, taskId: string, stub: St
   await controller.runTask(taskId)
   return stub.runCalls[stub.runCalls.length - 1]?.executionId ?? ''
 }
+
+describe('「问 AI」：开始还是继续由卡自己说，界面只说「交给它」', () => {
+  /** 一张卡，绑了一条会话（绑几条、绑哪几条由调用者给；一条都不给就是一张普通的卡）。 */
+  function cardWith(sessionIds: readonly string[]): ReturnType<typeof makeController> & { taskId: string } {
+    const made = makeController()
+    const sessions = made.sessions
+    for (const id of sessionIds) sessions.setRunning(id, false)
+    const input = { title: '一张卡', description: '', prompt: '卡自己的执行 Prompt' }
+    // `createBoundTask` 对空绑定集回 undefined（「这些是这张卡的来源」——一个空集没有意思），
+    // 所以「没有会话的卡」走的是普通那一条出生门。
+    const task = sessionIds.length === 0
+      ? made.controller.createTask(input)
+      : made.controller.createBoundTask(sessionIds.map(sessionId => ({ kind: 'session' as const, sessionId })), input)
+    return { ...made, taskId: task?.id ?? '' }
+  }
+
+  it('卡已经有会话：**接着说**——一条评论轮立刻发出去，卡的栏位跟着走', async () => {
+    const { controller, stub, taskId } = cardWith(['s-1'])
+    const outcome = await controller.askCard(taskId, '这一条的内容')
+    expect(outcome).toEqual({ kind: 'continued', sessionId: 's-1' })
+    // THE LANE, not just the answer: a comment round sent NOW (never left for the
+    // dispatcher — a person pressed a button whose whole promise is 「交给它」),
+    // with the row's own words, and no new run at all.
+    expect(stub.commentCalls).toHaveLength(1)
+    expect(stub.commentCalls[0]?.sessionId).toBe('s-1')
+    expect(stub.commentCalls[0]?.text).toBe('这一条的内容')
+    expect(stub.runCalls).toHaveLength(0)
+    expect(controller.getSnapshot().tasks[0]?.status).toBe('running')
+  })
+
+  it('卡一条会话都没有：**开一轮**，而这一轮的第一句话是这一条', async () => {
+    const { controller, stub, taskId } = cardWith([])
+    const outcome = await controller.askCard(taskId, '这一条的内容')
+    expect(outcome).toEqual({ kind: 'started' })
+    expect(stub.runCalls).toHaveLength(1)
+    // THE KICKOFF RIDES AS THE RUN'S PROMPT OVERRIDE: the card's own prompt is
+    // the card's, and a note handed to it is the first MESSAGE of that run.
+    expect(stub.runCalls[0]?.options?.prompt).toBe('这一条的内容')
+    expect(controller.getSnapshot().tasks[0]?.prompt, '卡自己的执行 Prompt 被这一条覆盖了').toBe('卡自己的执行 Prompt')
+  })
+
+  it('卡正在开场、会话还没定下来：说「它正忙」，而不是静默地什么都不做', async () => {
+    /* 一轮已经开出来、但会话还没绑上（`connectSession` 是异步的）。这一刻卡里没有可以接下去
+     * 的会话，也不能再开一轮——两个出口都关着，而那是一个**有时限的状态**（毫秒级）。它必须
+     * 有自己的名字，否则读者按下去只看到一枚按钮什么都没发生。 */
+    const { controller, taskId } = cardWith([])
+    void controller.runTask(taskId)
+    await flush()
+    expect(await controller.askCard(taskId, '这一条的内容')).toEqual({ kind: 'refused', why: 'busy' })
+  })
+
+  it('空的一句话：拒绝，不发出去', async () => {
+    const { controller, stub, taskId } = cardWith(['s-1'])
+    expect(await controller.askCard(taskId, '   ')).toEqual({ kind: 'refused', why: 'empty' })
+    expect(stub.commentCalls).toHaveLength(0)
+    expect(stub.runCalls).toHaveLength(0)
+  })
+
+  it('卡不在了：拒绝，而且不碰任何会话', async () => {
+    const { controller, stub } = cardWith(['s-1'])
+    expect(await controller.askCard('ghost', '这一条的内容')).toEqual({ kind: 'refused', why: 'unknownTask' })
+    expect(stub.commentCalls).toHaveLength(0)
+  })
+
+  it('转发过来的那一条：会话不属于这张卡就拒绝', async () => {
+    // 中继命名了会话，而它在路上可能已经离开这张卡（换卡、被删）。把那句话送进一条已经不属于
+    // 这张卡的对话，等于替读者开了一条他没要的车道。
+    const { controller, stub, taskId } = cardWith(['s-1'])
+    expect(controller.askCardSession(taskId, 's-other', '这一条的内容')).toBe(false)
+    expect(stub.commentCalls).toHaveLength(0)
+    expect(controller.askCardSession(taskId, 's-1', '这一条的内容')).toBe(true)
+    expect(stub.commentCalls).toHaveLength(1)
+  })
+
+  it('不是引擎的那一台：把两条路各自转发出去，自己一个字都不写', async () => {
+    /* 多设备下只有拿到席位的那一台能驱动引擎，所以「问 AI」的两条路都要能转发。它与
+     * `runTask` 的非引擎分支同一条律：**请求出去、事实由引擎写**，于是两台同时开着板子也
+     * 不会各发一遍。 */
+    const launches: string[] = []
+    const comments: string[] = []
+    const made = makeController(new StubExec(), {
+      requestLaunch: (taskId, _trigger, kickoff) => { launches.push(`${taskId}:${kickoff ?? ''}`) },
+      requestComment: (taskId, sessionId, text) => { comments.push(`${taskId}:${sessionId}:${text}`) },
+    })
+    made.sessions.setRunning('s-1', false)
+    const withSession = made.controller.createBoundTask([{ kind: 'session', sessionId: 's-1' }], { title: '有会话的卡', description: '', prompt: 'p' })
+    const bare = made.controller.createTask({ title: '没会话的卡', description: '', prompt: 'p' })
+    made.controller.setEngine(false)
+
+    expect(await made.controller.askCard(withSession?.id ?? '', '接着做')).toEqual({ kind: 'continued', sessionId: 's-1' })
+    expect(comments).toEqual([`${withSession?.id}:s-1:接着做`])
+    expect(await made.controller.askCard(bare?.id ?? '', '开始做')).toEqual({ kind: 'started' })
+    expect(launches).toEqual([`${bare?.id}:开始做`])
+    // Nothing was written here: the engine writes it, and this replica hears about
+    // it over the same stream every other change arrives on.
+    expect(made.controller.getSnapshot().tasks.find(task => task.id === withSession?.id)?.executions).toEqual([])
+  })
+
+  it('runTask 没有 kickoff 时，一切照旧——不传就是原来的那个调用', async () => {
+    // **同一个门，两种调用方式。** 这一条钉住「多出来的那个参数不会改变原来那条路」：
+    // 一个 runTask 的自动路径（定时、链、巡航）都不带 kickoff，而它们必须与改动前逐字相同。
+    const { controller, stub } = cardWith([])
+    const taskId = controller.getSnapshot().tasks[0]?.id ?? ''
+    await controller.runTask(taskId)
+    expect(stub.runCalls).toHaveLength(1)
+    expect(stub.runCalls[0]?.options, '没有 kickoff 却传了一个运行选项').toBeUndefined()
+  })
+})

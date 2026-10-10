@@ -50,26 +50,14 @@ export interface ItemRowLineProps {
      *  reader looking at a selected row with no checklist on screen. */
     readonly onSteps: () => void;
     readonly onPromote: () => void;
-    /** 开工 — run the card this row hangs off, through the SAME `runTask` the
-     *  catalog's `task.run` binds. Not `rerunTask`: a row that runs a card one way
-     *  while the model runs it another is two definitions of 「开工」 on one
-     *  installation. */
-    readonly onStart: () => void;
     /**
      * **把看板舞台打开在这一行挂着的那张卡上**，由装配层给（见 `ItemListFace.openCard`）。
      *
      * 缺席时卡芯片**退回一枚读数**（不画成一枚按不动的按钮）。
      */
     readonly onOpenCard?: (cardId: string) => void;
-    /** Whether that card is running, so 「开工」 is not offered twice. */
+    /** 那张卡现在是不是在跑。状态那一组读它：跑着的时候改栏位会被拒。 */
     readonly running: boolean;
-    /**
-     * Whether that card can run at all (`taskExecutable`: 执行 Prompt 非空).
-     *
-     * `undefined` = this row has no card (a different sentence, said by 「不挂」),
-     * `false` = it has one and it cannot run — the menu then says why.
-     */
-    readonly runnable?: boolean;
     readonly onRemove: () => void;
     /** The in-place detail, rendered only when `inPlace` and open. */
     readonly inPlace: boolean;

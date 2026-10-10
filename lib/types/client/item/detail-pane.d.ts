@@ -1,3 +1,18 @@
+/**
+ * The detail: the row's own expanded body, rendered in the row on BOTH bands.
+ *
+ * There is no separate side pane any more and no third level — the two levels
+ * this panel has are the row and the row opened. The panel renders this
+ * component inside the expanded row (wide and narrow alike; only the columns'
+ * layout differs, and the field grid answers to its own container
+ * `dsh-tb-item-detail` rather than to the panel, so one answer serves both).
+ *
+ * It is never a dialog. `boardBox()` resolves to the FIRST board box, so a
+ * layer opened from this panel would anchor itself to the board — a different
+ * surface — and a layer that floats over another surface is not this surface's
+ * layer.
+ */
+import { type ReactNode } from 'react';
 import type { ItemStep } from '../../core/item.ts';
 import type { ItemRowView } from '../../core/item-view.ts';
 import { type TaskStatus } from '../../core/tasks.ts';
@@ -34,15 +49,17 @@ export interface ItemDetailProps {
      */
     readonly now: number;
     /**
-     * ASK THE CARD THIS ROW HANGS OFF.
+     * **把这一条交给 AI——这一屏唯一通向模型的那一按。**
      *
-     * It used to be a button on the row beside the ⋮, so a row carried two controls
-     * for 「do something to this」 at two different distances from each other. It is one
-     * of the three things in this row's footer now, and it is LISTED even when there
-     * is no card — an entry that comes and goes with a fact the interface never
-     * states is worse than one that is always there and says 「not yet」.
+     * 它曾经是行上 ⋮ 旁边的一枚按钮，一行上于是有两枚「对这条做点什么」的控件，彼此还隔着
+     * 一段距离；现在它是这一条底部那一排里的一件（与「变成看板卡片」「删除这条」同排）。
+     *
+     * **两种行都在**：没挂卡的行会就地建一张再问，挂着卡的问它那条对话。所以这一排里既没有
+     * 「执行」这一枚，也没有「跑不跑得起来」那个开关——送出去的是这一条自己的内容，不是卡上
+     * 的执行 Prompt，一张 Prompt 为空的卡照样问得出去。
      */
     readonly onAsk: () => void;
+    /** 那一次已经发出去、还没回来（按钮在这一刻禁用，免得连按两次）。 */
     readonly asking: boolean;
     /**
      * MAKE IT A BOARD CARD, NAMED HERE, and hang this row on it.
@@ -57,17 +74,14 @@ export interface ItemDetailProps {
      * board to create one and back is the most expensive way to answer 「它挂在哪」.
      */
     readonly onPromote: () => void;
-    /** Run the card this row hangs off — the same `runTask` the catalog's `task.run`
-     *  binds, handed in rather than reached for, so this component never learns how a
-     *  run is started and there is no second spelling of the decision here. */
-    readonly onStart: () => void;
     /**
-     * 这张卡现在跑不跑得起来（`taskExecutable`：执行 Prompt 非空）。
+     * 这张卡跑起来时用的那份运行配置（工作区 / Agent / 模型 / 思考程度 / 权限）。
      *
-     * `undefined` = 这一行没有卡（那是另一句话，由「不挂」那一格说）；`false` = 有卡而它跑不
-     * 起来——那时按钮禁用，**理由写在旁边**。
+     * **它是看板那一块的同一个组件**（`RunConfigFields`），由面板装配好了递进来——于是这一
+     * 组件仍然只知道「有一块东西要画在我这里」，不知道看板、控制器或预设存储长什么样。没有卡
+     * 就没有这一块：没有卡就没有运行配置可配，那句话由「不挂」那一格说。
      */
-    readonly runnable?: boolean;
+    readonly runConfig?: ReactNode;
     /**
      * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
      *

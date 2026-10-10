@@ -19,7 +19,7 @@
  *   item-schedule    日程在哪一格            the agenda's eight buckets
  *   item-rail        去哪看、各有几条         the rail's groups, and every count on them
  *   item-navigate    按了会去哪              the pages, and the plans that reach them
- *   item-ask         能问谁                  handing one row to the card it hangs off
+ *   item-ask         交给谁、说什么           handing one row to the card it hangs off
  *
  * THE DEPENDENCY EDGES RUN ONE WAY (dates and membership at the bottom, the rail at
  * the top) and the only edge leaving the layer at all is `item-sort`'s 顺序 key,
@@ -106,8 +106,8 @@ export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts'
 export type { ItemNavigation, ItemNavigationRefusal, ItemPageId } from './item-navigate.ts'
 
 // ── item-ask ───────────────────────────────────────────────────────────────
-export { itemAskText, planItemAsk } from './item-ask.ts'
-export type { ItemAskRefusal, ItemAskVerdict } from './item-ask.ts'
+export { askTargetOf, itemContextText, planItemAsk } from './item-ask.ts'
+export type { ItemAskInput, ItemAskPlan, ItemAskRefusal, ItemAskTarget } from './item-ask.ts'
 
 // ── item-rows ──────────────────────────────────────────────────────────────
 export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './item-rows.ts'

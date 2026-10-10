@@ -156,14 +156,15 @@ Restart `dsh web` afterwards.
 ### The task list
 
 - Press "+ new item" to write one down. The first line takes a whole item in one syntax: `#tag`, `!1` priority, `@tomorrow`, `- [ ]` step. What it recognises shows as you type; a word read wrongly turns back into plain text when you click it.
-- The list stands on its own — an item does not have to become a card. Once it hangs off one, the state it shows is wherever that card sits — but **your own "Done" outranks the card**: a finished thing does not turn back into unfinished work because the card is still running. **Either way you can hand the row to the AI without making a card first**: Run creates the card in place and starts it, Ask does the same before asking. With no body there is nothing to run, so the button goes quiet and says why.
+- The list stands on its own — an item does not have to become a card. Once it hangs off one, the state it shows is wherever that card sits — but **your own "Done" outranks the card**: a finished thing does not turn back into unfinished work because the card is still running.
+- **"Ask AI" is the only press on this page that hands a row to a model, and it works on a row with no card**: if the card already has a conversation this is **said into it**, and if it has none this **opens a run** — the card decides which, so you never have to. What travels is the row itself (title, tags, body, steps, notes), not the card's run prompt, so a card whose own prompt is blank does not block it. A row with no card gets one first (composed from your **default run-config preset**) and is handed over at once.
 - The card on the board carries "**N rows · loudest: X**"; pressing it opens the checklist filtered to that card (a filter chip you can see and remove).
 - Three independent times: earliest start, wanted-by, deadline. Only a missed deadline turns a row red, and that reading is **Past due** — a slipped plan and a broken promise are two things.
 - Ticking a step draws a progress bar. Four priority tiers. Tags as you like.
 - Everything that filters is in the left rail: the calendar, by date (overdue / not due yet / no date), by time untouched, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
 - The calendar at the top of the rail moves month by month, comes back to today, and folds into a single line. Picking a day shows that day alone and leaves a **removable date chip** under the search box, so an empty list still says why it is empty.
 - The state column uses **the board's own words and the board's own colours**: Backlog / To do / In progress / In Review / Done. The row keeps its own one of those five, and once a card is attached it reads that card's column unless you marked the row done yourself; the bead at the row's head says which state it is, and its colour says which column. **That state chip is pressable**: it takes you to the board and opens the card the row hangs off.
-- Title, body, notes and dates are edited in the row itself, not in another window.
+- Title, body, notes and dates are edited in the row itself, not in another window; a row that hangs off a card also edits **that card's** run configuration in place (workspace / agent / model / effort / permission) — the same setting the board edits, not a second copy.
 - The agenda reads by day: overdue / behind / today / tomorrow / later this week / further out. Rows with no date and rows whose start has not arrived each wait in their own place, and the rows that are deliberately NOT on this agenda — finished work, and unfiled captures — are named in one line at the foot of the page, so the numbers add up.
 - Delete has an undo. What you deleted sits under "deleted" at the bottom of the rail, recoverable for 30 days or erased for good.
 - Multi-select, then set state, priority, a date, ask AI or delete the whole selection in one go.
@@ -271,7 +272,7 @@ row in the sidebar to go back to it, or "back to conversation" to leave either p
 | Plugin id | `dsh-task-board` |
 | npm package | `@firetruck666/dsh-task-board` |
 | Permission preset route | `/api/dsh-task-board/permissions` |
-| Board data route | `/api/dsh-task-board/board` (`/items`, `/surfaces`, `/ask`, `/lease`, `/command`, `/events`) |
+| Board data route | `/api/dsh-task-board/board` (`/items`, `/surfaces`, `/lease`, `/command`, `/events`) |
 | Other host routes | `/api/dsh-task-board/session-state`, `/update`, `/client-report` |
 | Host storage unit | `dsh_task_board` (one file per data kind under `documents/`) |
 | Board stage slot | `main` (`key: dsh-task-board`) |

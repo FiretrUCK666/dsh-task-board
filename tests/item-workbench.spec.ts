@@ -1470,24 +1470,40 @@ describe('a row wears its own tier', () => {
   })
 })
 
-describe('a card that cannot run says why, beside the button', () => {
+describe('一张跑不起来的卡，照样问得出去——送出去的是这一条自己的内容', () => {
   /** 一张卡，`prompt` 由调用者给——`taskExecutable` 读的就是它。 */
   const boardWith = (prompt: string): unknown => ({
     getSnapshot: () => ({ tasks: [{ id: 't-1', title: '看板上的那张', status: 'todo', prompt, description: '' }] }),
     liveStateOf: () => 'idle',
   })
 
-  it('「执行」 is disabled and the reason is ON the page, not in a title', () => {
-    /* 读者报过的那一类缺陷：一枚按下去什么都不会发生的控件。执行门禁（`taskExecutable`）在
-       看板那一侧拦得住，而按这一枚按钮的人是在清单上按的——所以理由必须出现在这里。
-       **不许只挂在 `title` 上**（硬性规范 11③：触屏没有 hover）。 */
+  it('执行 Prompt 为空的卡：这一枚不灰，而且按下去真的交给了它', () => {
+    /* **这一条是那条旧断言的**反面**，而反过来是对的。**
+     *
+     * 原来这里钉的是「一张执行 Prompt 为空的卡，『执行』必须灰着并把理由印在屏上」——那条
+     * 断言在「执行」按卡的 Prompt 跑的时候是对的。现在跑起来送出去的是**这一条自己的内容**
+     * （`itemContextText`：标题、标签、正文、步骤、备注），卡的 Prompt 一个字都不发，所以
+     * 「卡的 Prompt 为空」根本不是这一按能不能按的理由。留着那句禁用理由，读者会看到一枚
+     * 灰按钮加一句关于**另一个字段**的说明。
+     *
+     * 对照也留着：两档都要能按、都要走到那扇门（`askCard`）——一个「灰着但没理由」和
+     * 「亮着却什么都不做」都不会让这条红。 */
     const rows = oneRow({ taskId: 't-1' })
-    const blocked = renderPanel(rows, 'wide', 'list', boardWith(''), {}, 'r-1')
-    expect(blocked, 'a card with an empty execution prompt can run nothing — the reason is not on the page').toContain('执行 Prompt 取自正文')
-    expect(blocked, 'the button was left pressable, so the press does nothing and says nothing').toMatch(/disabled/)
-    // 对照：同一条行、同一张卡的 prompt 一填上，按钮就能按、理由就不该再出现。
-    const ready = renderPanel(rows, 'wide', 'list', boardWith('do the thing'), {}, 'r-1')
-    expect(ready, 'the reason is still printed for a card that can run').not.toContain('执行 Prompt 取自正文')
+    for (const prompt of ['', 'do the thing']) {
+      const panel = mountPanel(rows, 'list', 'wide', boardWith(prompt) as never)
+      try {
+        openRowDetail(panel)
+        const ask = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
+        expect(ask, `Prompt 为「${prompt}」时详情里没有「问 AI」那一枚`).toBeDefined()
+        expect(ask?.disabled, `Prompt 为「${prompt}」时「问 AI」是灰的`).toBe(false)
+        click(ask)
+        panel.settle()
+        expect(panel.calls.join(' '), `Prompt 为「${prompt}」时没有走到那扇门`).toContain('askCard(')
+      } finally {
+        panel.dispose()
+      }
+    }
   })
 })
 
@@ -3750,17 +3766,21 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
     }
   })
 
-  it('行菜单也照同一条律：没挂卡的行也有「执行」与「问 AI」', () => {
+  it('行菜单也照同一条律：没挂卡的行也有「问 AI」，而且不再有第二个「交给 AI」', () => {
     // 这是同一处判断的第二个表面（详情那排是第一个）。两处各写一份判断的代价，就是它们
     // 迟早不一样——而这一段代码的注释自己写着「⋯ menu 说同一条律，学过一边的人就学会了
     // 另一边」。所以两边各有一条断言，缺一边就会出现「同一个动作，在一个地方有、另一个
     // 地方没有」。
+    //
+    // **而「执行」必须不在**：它原来和「问 AI」并排，两枚都叫「交给 AI」，读者要猜的是
+    // 哪一个现在会动。这一条钉住它没有回来。
     const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: undefined }), 'list', 'wide')
     try {
       openRowMenu(panel.surface)
       panel.settle()
-      expect(findMenuEntry(panel.surface, '执行'), '行菜单里没有「执行」').not.toBeNull()
       expect(findMenuEntry(panel.surface, '问 AI'), '行菜单里没有「问 AI」').not.toBeNull()
+      expect(findMenuEntry(panel.surface, '变成看板卡片'), '行菜单里没有「变成看板卡片」').not.toBeNull()
+      expect(findMenuEntry(panel.surface, '执行'), '行菜单里又出现了第二个「交给 AI」').toBeNull()
     } finally {
       panel.dispose()
     }
@@ -3787,38 +3807,38 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
   })
 })
 
-describe('没挂卡的一条也能交给 AI：按「执行」= 就地建卡并开跑', () => {
+describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并立刻交给它', () => {
   /** 那一枚按文字找（它同时出现在详情与行菜单里，而这里问的是详情那一枚）。 */
-  const startButton = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement | undefined =>
+  const askButton = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement | undefined =>
     [...panel.surface.querySelectorAll('button')]
-      .find(node => (node.textContent ?? '').trim() === '执行') as HTMLButtonElement | undefined
+      .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
 
-  it('按下去：板上多了一张卡，而且它开跑了', () => {
-    // 读者按下这一枚的意思是「这条我要让 AI 干」，与有没有卡无关。它原来在没有卡时是一条
-    // **死路**（按钮画得出来、按下去什么都不会发生）——这一条钉住「一件动作两件事」：先建卡，
-    // 再让那张卡开跑。
+  it('按下去：板上多了一张卡，而且那一按走到了那扇门', () => {
+    // 读者按下这一枚的意思是「这条我要交给 AI」，与有没有卡无关。「先建卡、再回来按一遍」是
+    // 两步做一件事——这一条钉住「一件动作两件事」：先建卡，再让那扇门决定开始还是继续。
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const button = startButton(panel)
-      expect(button, '详情里没有「执行」那一枚').toBeDefined()
+      const button = askButton(panel)
+      expect(button, '详情里没有「问 AI」那一枚').toBeDefined()
       click(button)
       panel.settle()
       const calls = panel.calls.join(' ')
       expect(calls, '没有建卡').toContain('createTask(')
-      expect(calls, '建了卡却没有开跑').toContain('runTask(')
+      expect(calls, '建了卡却没有交给它').toContain('askCard(')
     } finally {
       panel.dispose()
     }
   })
 
   it('按完之后这一行真的挂上了那张新卡：文档里 links、屏上有芯片', () => {
-    // 一次动作两件事（建卡 + 开跑）之后，这一行还不是「挂着卡」的话，屏上就会出现一张没人认领
-    // 的卡：文档里 `taskId` 没写、行尾没有芯片、状态照旧读它自己那两个值。这一条把那个缺口钉住。
+    // 一次动作两件事（建卡 + 交给它）之后，这一行还不是「挂着卡」的话，屏上就会出现一张没人
+    // 认领的卡：文档里 `taskId` 没写、行尾没有芯片、状态照旧读它自己那两个值。这一条把那个
+    // 缺口钉住。
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(startButton(panel))
+      click(askButton(panel))
       panel.settle()
       expect(panel.lastWrite()[0]?.taskId, '文档里没有把这一行挂到新卡上').toBe('task-minted')
       const chip = panel.surface.querySelector('[class*="itemRowCardChip"]')
@@ -3829,17 +3849,53 @@ describe('没挂卡的一条也能交给 AI：按「执行」= 就地建卡并�
     }
   })
 
-  it('正文为空：**不建卡**（建出来也是一张跑不起来的卡）', () => {
-    // 看板的执行门禁读的是「执行 Prompt」，而它来自这一条的正文——所以正文为空时建出来的卡
-    // 一跑就停。这里钉住：宁可不建，也不留一张假卡。
-    const panel = mountPanel(oneRow({ taskId: undefined }), 'list', 'wide')
+  it('新卡带着默认运行配置出生——与看板「＋新建」是同一条路', () => {
+    /* 一张从清单里长出来的卡，原来一项运行配置都不带：于是「问 AI」跑起来用的是部署默认，而
+     * 看板「＋新建」出来的一张卡用的是**默认预设**（工作区 / Agent / 模型 / 思考程度 / 权限）。
+     * 读者做的是同一件事，两台机器给的却不是同一件事。
+     *
+     * 这一条钉住的是**那条链**：清单读的是 `runPresetStore` 里那个默认预设，与看板同一个
+     * 存储、同一条回退（没设过、被删了、坏了都落到「部署默认」）。 */
+    const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const button = startButton(panel)
-      expect(button, '详情里没有「执行」那一枚').toBeDefined()
-      click(button)
+      click(askButton(panel))
       panel.settle()
-      expect(panel.calls.join(' '), '正文为空却建了一张跑不起来的卡').not.toContain('createTask(')
+      // 默认预设是空的（台架的存储里没有预设），所以这一条钉的是**它去读了那一个存储**：
+      // 少了这一次读，卡的配置就永远只是部署默认，「换成我的默认」这句话在清单里不成立。
+      expect(panel.calls.join(' '), '建卡时没有去读默认运行预设').toContain('runPresetStore(')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('正文为空但有标题的一条：照样建卡并交给它——送出去的本来就是这一条自己', () => {
+    /* **这一条是旧断言的反面，而反过来是对的。**
+     *
+     * 原来钉的是「正文为空 → 不建卡」，理由是「建出来也是一张跑不起来的卡」——那句话在
+     * 「执行」按卡上的执行 Prompt 跑的时候成立。现在的运行 Prompt 是这一条自己（标题 + 标签 +
+     * 正文 + 步骤 + 备注）：正文空、标题在，就**有**话可说，所以卡建得出来、也跑得起来。
+     * 真正的门在下面那一条：**连标题都没有**才拒绝。 */
+    const panel = mountPanel(oneRow({ body: '', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(askButton(panel))
+      panel.settle()
+      expect(panel.calls.join(' '), '标题在、正文空，却不肯建卡').toContain('createTask(')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('连标题都没有的一条：拒绝，一张卡都不建', () => {
+    // `planItemPromotion` 的 `noTitle`：卡出生时是空的、没有名字，而这一条也没有一个字给它。
+    // 拒绝句本来就在（`item.promote.noTitle`），这里钉住「问 AI」也走那扇门，不另开一条路。
+    const panel = mountPanel(oneRow({ title: '', body: '', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(askButton(panel))
+      panel.settle()
+      expect(panel.calls.join(' '), '一条没有字的行却建了一张没有名字的卡').not.toContain('createTask(')
     } finally {
       panel.dispose()
     }
@@ -3998,12 +4054,17 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       expect(made?.description, 'the card did not take the row\'s notes as its seed').toBe('灯座是旧款')
       // And hanging an EXISTING card touches nothing on the board — the card's
       // own words are not this surface's to write.
+      //
+      // **断言问的是「板被写了吗」，所以它数的是板上的产物，不是调用日志。** 日志里混着
+      // **读**（`runPresetStore` 就是一条：详情那一块运行配置要读默认预设，而读一次不改变
+      // 任何东西），按「除了 createTask 之外都算写」去数，会把一次读报成一次写。
+      const before = panel.minted.length
       const card = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '画廊第二版')
       if (card === undefined) throw new Error('the picker does not list the fake board\'s card')
       click(card)
       panel.settle()
-      expect(panel.calls.filter(name => !name.startsWith('createTask')), 'hanging an existing card wrote to the board').toEqual([])
+      expect(panel.minted.length, 'hanging an existing card minted a card').toBe(before)
       expect(panel.lastWrite()[0]?.taskId, 'the chosen card never reached the document').toBe('task-1')
     } finally {
       panel.dispose()

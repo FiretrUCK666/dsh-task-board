@@ -200,26 +200,14 @@ export interface ItemRowLineProps {
    *  reader looking at a selected row with no checklist on screen. */
   readonly onSteps: () => void
   readonly onPromote: () => void
-  /** 开工 — run the card this row hangs off, through the SAME `runTask` the
-   *  catalog's `task.run` binds. Not `rerunTask`: a row that runs a card one way
-   *  while the model runs it another is two definitions of 「开工」 on one
-   *  installation. */
-  readonly onStart: () => void
   /**
    * **把看板舞台打开在这一行挂着的那张卡上**，由装配层给（见 `ItemListFace.openCard`）。
    *
    * 缺席时卡芯片**退回一枚读数**（不画成一枚按不动的按钮）。
    */
   readonly onOpenCard?: (cardId: string) => void
-  /** Whether that card is running, so 「开工」 is not offered twice. */
+  /** 那张卡现在是不是在跑。状态那一组读它：跑着的时候改栏位会被拒。 */
   readonly running: boolean
-  /**
-   * Whether that card can run at all (`taskExecutable`: 执行 Prompt 非空).
-   *
-   * `undefined` = this row has no card (a different sentence, said by 「不挂」),
-   * `false` = it has one and it cannot run — the menu then says why.
-   */
-  readonly runnable?: boolean
   readonly onRemove: () => void
   /** The in-place detail, rendered only when `inPlace` and open. */
   readonly inPlace: boolean
@@ -518,28 +506,20 @@ export function ItemRowLine(props: ItemRowLineProps) {
           panel={rowRef.current?.closest('[data-dsh-taskboard-view]') as HTMLElement | null ?? null}
           onClose={onMenuClose}
           actions={[
-            /* THE VERBS ANSWER THIS ROW'S STATE — the same law the detail's
-             * footer row speaks. 「变成看板卡片」 lives where there is nothing to
-             * attach to yet; 「开工」 / 「问这张卡」 live where there is a card to
-             * run and to ask. No disabled judges with hover-only reasons: the
-             * 「不挂」 chip and the primary already state that fact, and an entry
-             * that comes and goes with a fact the interface never states is one
-             * that never needed to exist. While the card runs, the slot says so. */
+            /* THE VERBS ANSWER THIS ROW'S STATE — the same law the detail's footer
+             * row speaks. 「变成看板卡片」 lives where there is nothing to attach to
+             * yet; 「问 AI」 lives on EVERY row, because it means 「把这一条交给它」
+             * whatever the row's state is. No disabled judges with hover-only
+             * reasons: the 「不挂」 chip already states that fact, and an entry that
+             * comes and goes with a fact the interface never states is one that
+             * never needed to exist. */
             ...(cardId === undefined
               ? [
-                  /* **没挂卡的行也有「执行」与「问 AI」。** 原来这一支只给「变成看板卡片」，
+                  /* **没挂卡的行也有「问 AI」。** 原来这一支只给「变成看板卡片」，
                      理由是「run and ask live where there is something to run and to ask」——
-                     而「有没有东西可跑、可问」从来不由有没有卡决定：读者按下它，意思是「这条
-                     我要让 AI 干／我要问它这件事」。两件事在没卡时就地建一张卡（`startOne` /
-                     `askOne` 一处实现），与详情那一排**同一条律**——上面那句注释自己也这么说：
-                     学过一边的人就学会了另一边。 */
-                  {
-                    key: 'start',
-                    label: t(props.running ? 'item.menu.running' : 'item.menu.start'),
-                    hint: props.runnable === false ? t('detail.promptEmpty') : undefined,
-                    disabled: props.running === true || props.runnable === false || undefined,
-                    onPick: props.onStart,
-                  },
+                     而「有没有东西可问」从来不由有没有卡决定：读者按下它，意思是「这一条我要交给
+                     AI」，没卡时就地建一张再问（`askOne` 一处实现），与详情那一排**同一条律**
+                     ——上面那句注释自己也这么说：学过一边的人就学会了另一边。 */
                   {
                     key: 'ask',
                     label: t('item.ask'),
@@ -549,16 +529,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
                   { key: 'promote', label: t('item.menu.promote'), onPick: props.onPromote },
                 ]
               : [
-                  {
-                    key: 'start',
-                    label: t(props.running ? 'item.menu.running' : 'item.menu.start'),
-                    /* **两个禁用理由，各说各的。** 「正在跑」是这一条现在的状态；
-                     * 「Prompt 为空」是它压根跑不起来——后者必须写出理由，否则读者按了一枚
-                     * 灰按钮，而屏上没有任何东西说为什么。 */
-                    hint: props.runnable === false ? t('detail.promptEmpty') : undefined,
-                    disabled: props.running === true || props.runnable === false || undefined,
-                    onPick: props.onStart,
-                  },
+                  /* 挂着卡的那一支只有「问 AI」：它在**这张卡**上开始做，或者接着说——哪一条由卡
+                   自己决定（`askTargetOf` 读的是「这张卡有没有一条能接下去的对话」）。这一枚原来是
+                   「开工」：一个只做其中一半、另一半由旁边那一枚做的动词，而两枚都叫「交给 AI」，
+                   读者要猜的是哪一个现在会动。 */
                   {
                     key: 'ask',
                     label: t('item.ask'),

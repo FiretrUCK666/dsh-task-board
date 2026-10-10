@@ -143,6 +143,13 @@ const ACTION_METHODS = {
   'session.navigate': ['openSession'],
   'preset.create': ['saveTemplate'],
   'preset.delete': ['deleteTemplate'],
+  // 「问 AI」 on a checklist row. TWO methods for ONE action, and they differ by
+  // WHO decided the lane: `askCard` is the press itself (it reads the card and
+  // picks 开始 or 继续), and `askCardSession` is the same action ARRIVING from
+  // another replica — the lane was already decided there, so the engine performs
+  // exactly what was named rather than deciding again. Listing only the first
+  // would report the relayed half as a method the model was never told about.
+  'item.ask': ['askCard', 'askCardSession'],
 }
 
 /**

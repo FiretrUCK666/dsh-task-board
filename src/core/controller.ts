@@ -22,6 +22,7 @@ import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as ti
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage, type SessionActivityIndex } from './session-activity.ts'
 import type { LineageRow } from './session-lineage.ts'
 import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { askTargetOf } from './item-ask.ts'
 import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { withTaskColor } from './colors.ts'
 import { LocalStoragePresetStore } from './presets.ts'
@@ -596,7 +597,17 @@ export interface ControllerDeps {
    * double launch). Absent = this controller never leaves the engine seat
    * (the single-browser/localStorage mode).
    */
-  requestLaunch?: (taskId: string, trigger: RunTrigger) => void
+  requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string) => void
+  /**
+   * Relay one message INTO a conversation a card already has (a non-engine
+   * replica's 「问 AI」 on a card that is already talking): the host forwards it
+   * to the lease holder, which records the round and sends it. The twin of
+   * {@link requestLaunch} and the same law — one engine drives every document —
+   * because a continuation is work in a session this replica may hold no
+   * reference to. Absent = this controller never leaves the engine seat (the
+   * single-browser/localStorage mode).
+   */
+  requestComment?: (taskId: string, sessionId: string, text: string) => void
   /** Force one seat re-read from the host (the engine-note dialog's
    *  「重新检查」): the wiring calls the sync client's lease renewal, whose
    *  seat announcement then flows back through setHostProto/setEngine.
@@ -670,6 +681,20 @@ export function selectedTaskOf(snapshot: ControllerSnapshot): TaskRecord | undef
  * (run-after-completion hand-off).
  */
 export type RunTrigger = 'manual' | 'schedule' | 'chain'
+
+/**
+ * How one 「问 AI」 press ended (see {@link BoardController.askCard}).
+ *
+ * The two successes are named apart because they are different facts about the
+ * card — 「开了一轮」与「接着说了一句」 — and the receipt has to say which one, or
+ * a reader cannot tell whether they just started something or added to something
+ * already running. The refusals are codes rather than sentences for the usual
+ * reason: the words belong to the surface, and this layer has no dictionary.
+ */
+export type AskCardOutcome =
+  | { readonly kind: 'started' }
+  | { readonly kind: 'continued'; readonly sessionId: string }
+  | { readonly kind: 'refused'; readonly why: 'unknownTask' | 'empty' | 'busy' | 'unavailable' }
 
 /**
  * Why a session is (not) on a surface — see {@link BoardController.sessionAvailability}.
@@ -2503,13 +2528,26 @@ export class BoardController {
    * reads the supplemented record, so no launch path can run a card with an
    * empty head (its title names the fresh session).
    */
-  private launchTask(task: TaskRecord): void {
+  private launchTask(task: TaskRecord, kickoff?: string): void {
     const launch = this.supplementedTask(task)
     const { task: next, execution } = startExecution(launch, this.now(), this.uuid())
     this.land(task.id, next, this.now())
     this.persistAndNotify()
     this.activeExecutionIds.add(execution.id)
-    void this.deps.exec.run(next, execution, (event) => { this.handleExecutionEvent(event) })
+    /* THE KICKOFF RIDES AS THE RUN'S PROMPT OVERRIDE, so the card's own prompt is
+     * left exactly as the reader wrote it: a note handed to a card is the FIRST
+     * MESSAGE of that run, not a rewrite of the card. That is the same relationship
+     * every later message in the conversation has to the card (a comment is a
+     * message, the prompt is the standing one), which is why no new field and no
+     * new state appears anywhere — `RunOptions.prompt` already means exactly this.
+     * Absent (every automatic path, and every manual run from the board), the run
+     * reads the card's prompt and nothing about this line changes. */
+    void this.deps.exec.run(
+      next,
+      execution,
+      (event) => { this.handleExecutionEvent(event) },
+      kickoff === undefined || kickoff.trim() === '' ? undefined : { prompt: kickoff },
+    )
   }
 
   /**
@@ -2552,15 +2590,25 @@ export class BoardController {
    * A manual run is not a prerequisite for an armed rule: arming activates
    * the schedule at once (see setSchedule), so auto triggers drive the task
    * on their own — this door merely reports whether THIS launch was accepted.
+   *
+   * THE THIRD ARGUMENT IS THE CHECKLIST'S, AND IT CHANGES NOTHING BY BEING
+   * ABSENT. `kickoff` is the text of the row a reader handed to this card
+   * (`itemContextText`): it becomes the run's first message instead of the card's
+   * own prompt (see {@link launchTask}), and a card whose prompt is blank is
+   * therefore runnable — there is something to send. Every other caller passes
+   * nothing, so every other gate, threshold and outcome here is unchanged.
    */
-  async runTask(id: string, trigger: RunTrigger = 'manual'): Promise<boolean> {
+  async runTask(id: string, trigger: RunTrigger = 'manual', kickoff?: string): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
     // NOTHING can execute an empty prompt — manual, quick-run, re-run,
     // drag-rerun, schedule fire, cruise pickup and chain hand-off all funnel
     // through here (the one launch door); a blank-prompt task stays inert
-    // until a real prompt is written.
-    if (!taskExecutable(task)) return false
+    // until a real prompt is written. A KICKOFF IS THAT REAL PROMPT for this
+    // one launch: the row's own text is what goes out, so gating on the card's
+    // field would refuse a run that has plenty to say.
+    const carried = kickoff !== undefined && kickoff.trim() !== ''
+    if (!taskExecutable(task) && !carried) return false
     // Only a genuinely open run blocks a new one: a pending comment round
     // (task not running) must never block the Run button or a drag-rerun.
     if (hasOpenRun(task)) return false
@@ -2570,12 +2618,12 @@ export class BoardController {
     // run is "accepted" — the engine's ledger write will surface it here.
     if (!this.engine) {
       if (this.deps.requestLaunch === undefined) return false
-      this.deps.requestLaunch(id, trigger)
+      this.deps.requestLaunch(id, trigger, kickoff)
       return true
     }
     // The 缺则补 supplement applies at the ONE launch door (launchTask).
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
-      this.launchTask(task)
+      this.launchTask(task, kickoff)
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
@@ -2783,6 +2831,115 @@ export class BoardController {
       this.persistAndNotify()
       return result
     })
+  }
+
+  /**
+   * **「问 AI」：把这一条交给这张卡——开始做，或者接着说。**
+   *
+   * ONE DOOR FOR THE WHOLE GESTURE, because the two lanes are one decision
+   * ({@link askTargetOf}) and a caller that had to pick between them would be a
+   * second place where 「开始还是继续」 is answered. The lane it takes changes the
+   * card's column through the ordinary machinery and nothing else:
+   *
+   *   · `start` — a real run ({@link runTask}) with this text as its first
+   *     message: the card goes 进行中 while the conversation works and lands in
+   *     待审核 when it ends, exactly as the board's own Run button does it.
+   *   · `continue` — a comment round sent NOW into the conversation this card
+   *     already has ({@link commentNow}): the same status walk, the same lane
+   *     every other message in that conversation uses.
+   *
+   * WHY THE CONTINUATION IS NOT LEFT TO THE DISPATCHER. A user comment waits for
+   * the cruise (see `nextEligible`), which is right for a message typed into a
+   * conversation that happens to hang off a card — it must not start work nobody
+   * asked for. This is different in kind: a person pressed a button whose whole
+   * promise is 「问 AI」, and a queued-but-unsent note would be a control whose
+   * only visible effect is a sentence. Manual means now, the same law
+   * {@link runTask} follows for a manual run.
+   *
+   * @param taskId - the card the row hangs off.
+   * @param text - the row's own words ({@link itemContextText}).
+   * @returns which lane ran, or why neither could.
+   */
+  async askCard(taskId: string, text: string): Promise<AskCardOutcome> {
+    const trimmed = text.trim()
+    if (trimmed === '') return { kind: 'refused', why: 'empty' }
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return { kind: 'refused', why: 'unknownTask' }
+    const target = askTargetOf(this.relatedSessionsOf(task), sessionId => this.sessionActiveOf(sessionId))
+    if (target.kind === 'continue') {
+      const sessionId = target.sessionId
+      if (!this.engine) {
+        if (this.deps.requestComment === undefined) return { kind: 'refused', why: 'unavailable' }
+        this.deps.requestComment(taskId, sessionId, trimmed)
+        return { kind: 'continued', sessionId }
+      }
+      return this.askCardSession(taskId, sessionId, trimmed)
+        ? { kind: 'continued', sessionId }
+        : { kind: 'refused', why: 'unavailable' }
+    }
+    /* A CARD THAT IS ALREADY OPENING A LANE: the run is in flight and has not
+     * resolved its session yet, so the card has nothing to continue into and
+     * cannot start a second run either. Naming it here rather than letting
+     * `runTask` answer a bare `false` is the difference between 「它刚开跑，会话还
+     * 没定下来」 and a button that did nothing. This lasts milliseconds. */
+    if (hasOpenRun(task)) return { kind: 'refused', why: 'busy' }
+    return await this.runTask(taskId, 'manual', trimmed)
+      ? { kind: 'started' }
+      : { kind: 'refused', why: 'unavailable' }
+  }
+
+  /**
+   * The second half of {@link askCard}: say this text into the conversation the
+   * CALLER named. It exists apart because the lane travels — a non-engine replica
+   * derives it, a relay carries the id, and the engine performs exactly what was
+   * named: re-deriving on arrival would let the receipt name one conversation
+   * while the message landed in another (the two reads happen milliseconds and
+   * one turn apart).
+   *
+   * The session must still be one of this card's: a stale relay names a
+   * conversation that has left the card, and saying the row into it would be
+   * opening a lane nobody asked for.
+   * @returns whether the round was recorded and sent.
+   */
+  askCardSession(taskId: string, sessionId: string, text: string): boolean {
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return false
+    if (!this.relatedSessionsOf(task).some(row => row.sessionId === sessionId)) return false
+    if (isBlankMessage(text, undefined, undefined)) return false
+    this.commentNow(taskId, sessionId, text)
+    return true
+  }
+
+  /**
+   * Record one comment round against an existing conversation and send it NOW —
+   * the manual twin of `submitComment`, sharing everything with it except the
+   * waiter.
+   *
+   * A comment the dispatcher injects and a comment sent from here are the same
+   * round through the same hand-off ({@link launchComment}), so the card's
+   * column, the round's record and the settlement watch cannot differ by which
+   * door a message came through. Every other guard is the comment family's:
+   * a completed card is revived rather than dead-ended, and a leading '/' routes
+   * through the command registry (a rule instruction's grammar).
+   */
+  private commentNow(taskId: string, sessionId: string, text: string): void {
+    if (isBlankMessage(text, undefined, undefined)) return
+    const task = this.tasks.find(candidate => candidate.id === taskId)
+    if (task === undefined) return
+    if (task.status === 'done') this.reviveTaskIfDone(taskId)
+    const latest = this.tasks.find(candidate => candidate.id === taskId) ?? task
+    const round = newCommentRound({
+      id: this.uuid(),
+      now: this.now(),
+      text: text.trim(),
+      command: text.trimStart().startsWith('/'),
+      sessionId,
+    })
+    // Through the landing funnel, like every other round: this is the one place
+    // round records enter the ledger, so the session list reads "this
+    // conversation just started working" on the same pass.
+    this.land(taskId, { ...latest, updatedAt: this.now(), executions: [...latest.executions, round] }, this.now())
+    this.launchComment(this.tasks.find(candidate => candidate.id === taskId) ?? latest, round, 'queue')
   }
 
   /**

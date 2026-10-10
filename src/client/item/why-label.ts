@@ -6,7 +6,7 @@
  * wording, and the wording has to be translated — and the panel was then
  * interpolating the code straight into a Chinese sentence. A reader whose host
  * was briefly unreachable was told, in the middle of an otherwise Chinese
- * paragraph, 「没能找回 #9: malformedAnswer」 or 「没能交给模型：noLiveAgent」. That
+ * paragraph, 「没能找回 #9: malformedAnswer」 or 「没能交给模型：hostRefused 500」. That
  * is the host's internal vocabulary printed where the reader is, and it is worse
  * than useless: `malformedAnswer` says the answer was broken when the host had in
  * fact said 「这个编号不对」, so the reader is sent to look for the wrong problem.
@@ -27,8 +27,6 @@ const WHY_WORDS: Readonly<Record<string, TaskBoardKey>> = {
   noSuchItem: 'item.why.noSuchItem',
   gone: 'item.why.gone',
   // ── the hand-off path ──
-  taskHasNoSession: 'item.why.taskHasNoSession',
-  noLiveAgent: 'item.why.noLiveAgent',
   noSuchTask: 'item.why.noSuchTask',
   /**
    * The request named one card and a row belonging to another. There is no

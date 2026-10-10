@@ -29,7 +29,7 @@
  *    draws, and its only decisions are which page is open and which row is
  *    selected.
  */
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { ItemRecord, ItemStatusView } from '../../core/item.ts'
 import { itemStatusOf } from '../../core/item.ts'
 import {
@@ -50,8 +50,8 @@ import {
   type ItemRailEntry,
   type ItemRowView,
 } from '../../core/item-view.ts'
-import type { TaskStatus } from '../../core/tasks.ts'
-import { taskExecutable } from '../../core/tasks.ts'
+import type { TaskStatus, TaskRecord } from '../../core/tasks.ts'
+import type { AskCardOutcome, BoardController } from '../../core/controller.ts'
 import type { ItemStatus } from '../../core/item.ts'
 import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
 /* The write semantics are the model's, not this panel's: the same pure functions
@@ -59,9 +59,11 @@ import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
    here either. `model.ts` keeps only what a browser can do and a document cannot
    — minting an id, and formatting a date. */
 import { applyItemPatch, applyItemStatus, applyItemStep, captureItemRecord, isBlankCapture, mountItemRecord, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch, type ItemPromotionOverrides } from '../../core/item-transitions.ts'
+import { itemContextText } from '../../core/item-view.ts'
 import { itemTitleOf } from '../../core/item.ts'
+import { defaultRunPresetOf, RUN_CONFIG_KEYS, type RunConfigPresetConfig } from '../../core/run-presets.ts'
+import { RunConfigFields } from '../board/RunConfigFields.tsx'
 import { t } from '../locales.ts'
-import { itemsAsk } from '../board-ask.ts'
 import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
@@ -152,20 +154,6 @@ function cardsMapOf(board: BoardSnapshot | undefined): Map<string, TaskStatus> {
   return map
 }
 
-/**
- * 哪些卡现在**跑得起来**（`taskExecutable`：执行 Prompt 非空），按卡片 id。
- *
- * 它存在的理由是「一个按下去什么都不会发生的控件」：清单给挂卡的行一枚「执行」，而一张
- * Prompt 为空的卡会被看板的执行门禁单点拦下来——拦得对，但**按下去的人是在清单上按的**，
- * 所以他必须在这一侧就看见理由（`detail.promptEmpty`），而不是按完一片安静。判据本身来自
- * core（`taskExecutable`），这一层只负责把它带上屏。
- */
-function runnableMapOf(board: BoardSnapshot | undefined): Map<string, boolean> {
-  const map = new Map<string, boolean>()
-  for (const task of board?.tasks ?? []) map.set(task.id, taskExecutable(task))
-  return map
-}
-
 /** Cards a row may hang off, already titled. Never assembled here. */
 function cardsOf(board: BoardSnapshot | undefined): { id: string; title: string }[] {
   return (board?.tasks ?? [])
@@ -173,19 +161,67 @@ function cardsOf(board: BoardSnapshot | undefined): { id: string; title: string 
     .filter(card => card.title !== '')
 }
 
-/** Whether the card this row hangs off can be run at all.
- *
- *  `undefined` = **这一条没有卡可跑**（没挂、或挂着的那张已经不在了）——那时按钮问的
- *  就不是「能不能跑」而是「还没有卡」，理由由「不挂」那一格去说。`false` = 有卡而它跑
- *  不起来（执行 Prompt 为空），理由写在按钮旁边。两个答案不能合流：合流的那一版对着
- *  一张**已经不存在的卡**印「先填写执行 Prompt」，把读者指去改一个不存在的东西。 */
-function runnableOf(map: ReadonlyMap<string, boolean>, cardId: string | undefined): boolean | undefined {
-  return cardId === undefined ? undefined : map.get(cardId) === true
-}
-
-/** Whether that card is in the 进行中 column right now. Same two answers, same reason. */
+/** Whether that card is in the 进行中 column right now. */
 function runningOf(map: ReadonlyMap<string, TaskStatus>, cardId: string | undefined): boolean {
   return cardId !== undefined && map.get(cardId) === 'running'
+}
+
+/**
+ * 「问 AI」到底做了什么，一句话——**两条路各说各的**。
+ *
+ * 这是界面在这一按下唯一要负责的判断：门那边（`askCard`）给的是个**码**，词在这一侧
+ * （它要翻译，也只有它知道读者刚看见的是什么）。两句成功的话必须分开说：「开了一轮」与
+ * 「接着说了一句」是两件不同的事，一句「已经交给 AI」会让读者分不清他刚才是启动了什么、
+ * 还是往一件已经在跑的事里添了一句。
+ */
+function askSaidOf(outcome: AskCardOutcome): string {
+  if (outcome.kind === 'started') return t('item.ask.started')
+  if (outcome.kind === 'continued') return t('item.ask.said', { sessionId: outcome.sessionId })
+  return t('item.ask.refused', { why: t(ASK_WHY_LABEL[outcome.why]) })
+}
+
+/** The refusal codes the ask door answers with, as dictionary keys. */
+const ASK_WHY_LABEL: Readonly<Record<'unknownTask' | 'empty' | 'busy' | 'unavailable', Parameters<typeof t>[0]>> = {
+  unknownTask: 'item.ask.why.unknownTask',
+  empty: 'item.ask.why.empty',
+  busy: 'item.ask.why.busy',
+  unavailable: 'item.ask.why.unavailable',
+}
+
+/**
+ * 新卡出生时带着的运行配置：**默认预设里真的填了的那几个字段**。
+ *
+ * 空字符串与缺席是同一种「没选」——`draftToNewInput` 在「＋新建一条」那条路上也是这么读的，
+ * 而两条路必须一样：一个存着 `workspaceId: ''` 的卡，与一张没存这个字段的卡，在运行层是
+ * 两件不同的事（空字符串会被当成一个真的工作区 id 去查）。
+ *
+ * 六个键从 {@link RUN_CONFIG_KEYS} 取，不在这里再抄一遍：抄一份的代价是加第七个字段时
+ * 这里不报错，而屏上不会有人说一句话。
+ */
+function bornRunConfigOf(controller: BoardController): RunConfigPresetConfig {
+  const config = defaultRunPresetOf(controller.runPresetStore().load()).config
+  const born: RunConfigPresetConfig = {}
+  for (const key of RUN_CONFIG_KEYS) {
+    const value = config[key]
+    if (value !== undefined && value !== '') born[key] = value
+  }
+  return born
+}
+
+/**
+ * 一张卡**现在**的运行配置，同样六个键——**空与缺席是同一件事**（见上）。
+ *
+ * 读的是卡上的字段而不是默认预设：读者改过一次之后，屏上显示与下一次跑用的必须是同一份，
+ * 否则「我刚换成这个模型」与「它还是用上一个」会同时成立。
+ */
+function runConfigOf(task: TaskRecord | undefined): RunConfigPresetConfig {
+  const current: RunConfigPresetConfig = {}
+  if (task === undefined) return current
+  for (const key of RUN_CONFIG_KEYS) {
+    const value = task[key]
+    if (typeof value === 'string' && value !== '') current[key] = value
+  }
+  return current
 }
 
 /**
@@ -473,22 +509,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
   const board = useBoardSnapshot(face.controller)
   const cardColumns = useMemo(() => cardsMapOf(board), [board])
-  const cardRunnable = useMemo(() => runnableMapOf(board), [board])
-
-  /**
-   * **这一行跑得起来吗。一处判断，两个表面读它**（详情那一排、⋯ 菜单）。
-   *
-   * 挂着卡：由 core 的判据回答（`runnableMapOf` → `taskExecutable`）。
-   * 没挂卡：看它自己的**正文**——因为「执行」对没卡的行做的是"就地建卡再跑"，而执行 Prompt
-   * 来自正文；正文为空时那一枚必须禁用并写明理由，而不是画一枚按了没反应的按钮。
-   *
-   * 写成一处是因为两处各写一份时会分叉：菜单读的是"这张卡能不能跑"（没卡时是 `undefined`，
-   * 于是**不禁用**），详情读的是"正文空不空"——同一个动作，一个地方禁用、另一个地方能按。
-   */
-  const runnableItem = useCallback((item: ItemRecord): boolean => {
-    const cardId = linkedCardIdOf(item, cardColumns)
-    return cardId === undefined ? item.body.trim() !== '' : runnableOf(cardRunnable, cardId) !== false
-  }, [cardColumns, cardRunnable])
   const cards = useMemo(() => cardsOf(board), [board])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
@@ -551,53 +571,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
   function askableItem(item: ItemRecord): boolean {
     return linkedCardIdOf(item, cardColumns) !== undefined || item.taskId === undefined
   }
-
-  const askOne = useCallback((item: ItemRecord) => {
-    /* **「从来没挂过卡」与「有卡但卡被删了」是两件事，答案也不同**：
-     *
-     *   · 从来没挂过 → **就地建一张再问**（与详情里「执行」同一套：一件动作两件事，读者不必
-     *     先建卡、再回来按一遍）；
-     *   · 有卡却被删了 → **拒绝**，因为去问一个不存在的会话是错的（这一支是下面那段注释说的
-     *     情形，它必须留着）。
-     *
-     * 原来两种情况都落进同一个 `return`，于是一行"没挂卡"的按下去什么都没有——正是这一页最
-     * 忌讳的控件。区分它们的判据是 `item.taskId`（这一行**存着的**那个），不是这一屏看得见
-     * 不看得见。 */
-    let taskId = linkedCardIdOf(item, cardColumns)
-    if (taskId === undefined) {
-      if (!askableItem(item)) return
-      taskId = promoteOne(item)
-      if (taskId === undefined) return
-    }
-    setAsking(item.id)
-    void (async () => {
-      try {
-        // The row's IDENTITY, not its number. A row the document has not numbered
-        // yet carries `ref === 0`, and the host resolving a request by number
-        // would answer with the first unnumbered row in the document — handing a
-        // different note to the model while this reader watches their own row go
-        // into the box. The number travels too, because it is what the receipt
-        // shows, but the id is what addresses.
-        const body = await itemsAsk({ taskId, id: item.id, ref: item.ref })
-        // The receipt carries the ROW, so it is drawn under the button that earned
-        // it rather than at the top of a card the reader has already scrolled past.
-        setReceipt({ id: item.id, words: body.ok
-          ? t('item.ask.said', { sessionId: body.sessionId })
-          // A SENTENCE, not the host's vocabulary. `board-ask.ts` answers with a
-          // code on purpose — the host decides the fact, the panel owns the words,
-          // and the words have to be translated — and the panel was then printing
-          // the code into a Chinese sentence, so the most common failure a reader
-          // meets (the host being briefly unreachable) read 「没能交给模型：
-          // noLiveAgent」. A thrown network error was worse: an English
-          // `AbortError: The operation was aborted.` after the 8s timeout.
-          : t('item.ask.refused', { why: whyLabelOf(body.why).words }) })
-      } catch (error) {
-        setReceipt({ id: item.id, words: t('item.ask.refused', { why: whyLabelOf(error instanceof Error ? error.message : String(error)).words }) })
-      } finally {
-        setAsking(undefined)
-      }
-    })()
-  }, [])
 
   /**
    * Turn one row into a board card —THE ONLY ACTION HERE THAT WRITES TWO
@@ -729,7 +702,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
       return undefined
     }
     const at = Date.now()
-    const task = controller.createTask({ ...plan.task, status: plan.task.status })
+    /* **新卡带着默认运行配置出生。**
+     *
+     * 「这条要谁来做」是看板那一套（工作区 / Agent / 模型 / 思考程度 / 权限），而清单这边
+     * 建出来的卡原来一项都不带——于是「问 AI」跑起来用的是部署默认，与看板「＋新建」出来的
+     * 一张卡不是同一件事，虽然读者做的是同一件事。这里读**同一份默认预设链**
+     * （`defaultRunPresetOf`：没设过、被删了、坏了都落到「部署默认」），所以清单与看板建出来
+     * 的卡从一开始就一样；读者随后在看板或这一条的详情里改它，改的还是同一张卡上的同一组字段。 */
+    const task = controller.createTask({ ...plan.task, ...bornRunConfigOf(controller), status: plan.task.status })
     if (task === undefined) { setReceipt({ id: item.id, words: t('item.promote.refused') }); return undefined }
     /* BASE IS `itemsNow.current`, NOT THE CLOSURE'S `items`. The caller may have
      * JUST captured the row this hangs (the new-sheet path calls capture first
@@ -739,33 +719,47 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * is the one base that is never behind. */
     apply(mountItemRecord(itemsNow.current, item.id, task.id, task.status, at))
     setReceipt({ id: item.id, words: t('item.promote.said', { title: task.title.trim() === '' ? plan.task.title : task.title.trim() }) })
-    /* **把新卡的 id 交回给调用者**：提升之后紧接着要做的下一件事（「交给 AI」= 建卡 + 立刻开工）
+    /* **把新卡的 id 交回给调用者**：提升之后紧接着要做的下一件事（「问 AI」= 建卡 + 立刻交给它）
        需要一个句柄，而它是这一次调用的产物——让调用者去猜 id 就是同一件事的第二个答案。 */
     return task.id
   }, [apply, cards, face.controller])
 
   /**
-   * **「开工」：挂着卡就跑那张卡，没挂卡就就地建卡再跑。**
+   * **「问 AI」：把这一条交给它的卡——开始做，或者接着说。**
    *
-   * 一处实现两个调用点（详情那一枚与行菜单那一枚）：同一句话、同一个判断，两处各写一份的
-   * 代价是它们迟早不一样——而读者看到的是「同一个按钮，在两个地方行为不同」。
+   * 一处实现三个表面（详情那一排、⋯ 菜单、批量那一枚），而「开始还是继续」不由它们决定：
+   * 那是卡自己的事实（`askTargetOf`），控制器读它、按它选一条路。界面这一层只做三件事：
    *
-   * 这一枚原来在没有卡时是一条死路：按钮画得出来、按下去什么都不会发生，而那正是这一页最
-   * 忌讳的控件。读者按下「开工」的意思是「这条我要让 AI 干」，与有没有卡无关——先建卡、
-   * 再回来按一遍是两步做一件事。
+   *  1. 没挂卡就**先建一张**（`promoteOne`）——「先建卡、再回来按一遍」是两步做一件事；
+   *  2. 把这一条自己的话交给那扇门（`itemContextText`，与模型读的是同一个写处）；
+   *  3. 把回执写成一句**它到底做了什么**的话。
    *
-   * 没挂卡而正文为空时**不建卡**：建出来也是一张跑不起来的卡（看板的门禁读执行 Prompt，
-   * 而它来自正文），所以这里就说清缺什么。
-   */
-  const startOne = useCallback((item: ItemRecord) => {
-    const cardId = linkedCardIdOf(item, cardColumns)
-    if (cardId !== undefined) {
-      void face.controller?.runTask(cardId, 'manual')
-      return
+   * 没有卡、卡被删了、正文为空这些分支都不在这里：前两种由 `askableItem` 与提升计划回答
+   * （它们各自有话说），最后一种根本不是问题——送出去的是这一条自己的内容，不是卡上的
+   * 执行 Prompt，所以一张 Prompt 为空的卡照样问得出去。 */
+  const askOne = useCallback((item: ItemRecord) => {
+    const controller = face.controller
+    /* 没有看板就没有会话可说话——与「变成看板卡片」同一句拒绝：两件事要的是同一张板。 */
+    if (controller === undefined) { setReceipt({ id: item.id, words: t('item.promote.noBoard') }); return }
+    let cardId = linkedCardIdOf(item, cardColumns)
+    if (cardId === undefined) {
+      if (!askableItem(item)) return
+      cardId = promoteOne(item)
+      if (cardId === undefined) return
     }
-    if (item.body.trim() === '') { setReceipt({ id: item.id, words: t('detail.promptEmpty') }); return }
-    const made = promoteOne(item)
-    if (made !== undefined) void face.controller?.runTask(made, 'manual')
+    setAsking(item.id)
+    void (async () => {
+      try {
+        /* 这一条自己的话在这里成型，**只成型一次**：控制器拿它去开一轮、或者送进那条已经在
+         * 说话的会话，两条路收到的是同一段字。 */
+        const outcome = await controller.askCard(cardId, itemContextText(item))
+        setReceipt({ id: item.id, words: askSaidOf(outcome) })
+      } catch (error) {
+        setReceipt({ id: item.id, words: t('item.ask.refused', { why: whyLabelOf(error instanceof Error ? error.message : String(error)).words }) })
+      } finally {
+        setAsking(undefined)
+      }
+    })()
   }, [cardColumns, face.controller, promoteOne])
 
   /**
@@ -916,6 +910,28 @@ export function ItemListPanel(props: ItemListPanelProps) {
      answered to a control nobody could see. */
   const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, cards: cardColumns })
 
+  /**
+   * 那一块运行配置，装配好递进详情里——**或者 `undefined`**（这一条没有卡）。
+   *
+   * 它在这一层装配而不是在详情里，理由与「五个动作传进去而不是查出来」同一条：详情那一格
+   * 组件不该知道看板控制器、预设存储、`updateTask` 长什么样。这一层本来就有它们。
+   *
+   * 写的是**那张卡**（`updateTask`，看板自己的门），不是这一行——所以两边改的是同一处，
+   * 不可能出现两份配置。
+   */
+  const runConfigSlotOf = (item: ItemRecord): ReactNode => {
+    const controller = face.controller
+    const cardId = linkedCardIdOf(item, cardColumns)
+    if (controller === undefined || cardId === undefined) return undefined
+    return (
+      <RunConfigFields
+        value={runConfigOf(board?.tasks.find(task => task.id === cardId))}
+        onChange={next => { controller.updateTask(cardId, { ...next }) }}
+        controller={controller}
+      />
+    )
+  }
+
   /* THE DETAIL IS BUILT FOR ONE ROW, and that row is the one it was asked about.
    * The prop is required rather than optional, so a caller cannot reach a
    * 「nothing picked yet」 branch that no reader can get to. */
@@ -934,11 +950,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       now={now}
       onAsk={() => { if (item !== undefined) askOne(item) }}
       asking={item !== undefined && asking === item.id}
-      /* 跑不跑得起来：同一份判据，同一个来源（见 `runnableMapOf`）。**挂没挂按这一屏
-         看得见的那张卡算**（`linkedCardIdOf`），卡被删掉之后它就不是一张卡了。 */
-      runnable={runnableItem(item)}
+      runConfig={runConfigSlotOf(item)}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
-      onStart={() => { startOne(item) }}
       /* 回执跟着这一行走：它显示在这一行的底排里（与按钮同一条线），而不是散在行的网格上。 */
       receipt={receipt?.id === item.id ? receipt.words : undefined}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
@@ -1087,17 +1100,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       setStepsFocus(count => count + 1)
     },
     onPromote: () => promoteOne(item),
-    /* 开工 = 跑这一条挂着的卡。**同一个 `runTask`**——目录里的 `task.run` 绑的是它，
-     * 模型的 	ask.run 执行的也是它。所以这一枚按钮不需要新动词，也不需要在
-     * 豁免表里占一行；而一个界面按钮与目录指向不同方法，正是同一台机器上出现两个
-     * 「开工」定义的来处。
-     *
-     * 没有卡就是没有卡：按钮在菜单里**列出但禁用**，并把缺的那件事写在右边。 */
-    onStart: () => { startOne(item) },
+    /* 那张卡现在跑不跑：状态那一组读它（跑着的时候改栏位会被看板拒掉）。 */
     running: runningOf(cardColumns, linkedCardIdOf(item, cardColumns)),
-    /* 跑不跑得起来由 core 的判据回答（见 `runnableMapOf`）；没有卡时 `undefined`——那时这
-       一枚按钮问的就不是「这张卡能不能跑」，而是「还没有卡」，理由由「不挂」那一格去说。 */
-    runnable: runnableItem(item),
     /* 跨面板那一扇门：面板只**转发**装配层给的那一个函数，不自己做别的事（见
        `ItemListFace.openCard`：去找看板、去抬舞台都是别人的事）。 */
     onOpenCard: face.openCard,

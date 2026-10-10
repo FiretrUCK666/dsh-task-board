@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import { BoardSyncClient, ChecklistReplica, SyncedCruiseStore, SyncedItemsStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
-import { emptyBoardDoc, applyCommit, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
+import { emptyBoardDoc, applyCommit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
 import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import { parseItems, type ItemRecord } from '../src/core/item.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
@@ -67,6 +67,20 @@ function fakeTimers() {
   }
 }
 
+/**
+ * One relayed command, as a string a test can read: which carrier, and what it
+ * carried. Written once so both halves of a test (what went out, what arrived)
+ * spell a command the same way.
+ */
+function commandKey(command: BoardCommand): string {
+  if (command.type === 'run') {
+    return `run:${command.taskId}:${command.trigger}${command.kickoff === undefined ? '' : `:${command.kickoff}`}`
+  }
+  if (command.type === 'comment') return `comment:${command.taskId}:${command.sessionId}:${command.text}`
+  if (command.type === 'session.rename') return `session.rename:${command.sessionId}:${command.title}`
+  return `session.create:${command.taskId}`
+}
+
 /** A controllable fake transport: tests queue responses and read calls. */
 function fakeTransport() {
   const calls = {
@@ -102,10 +116,12 @@ function fakeTransport() {
         : leaseHeld ? { held: false, holder: 'other', expiresAt: T0 + 99999 } : { held: true, holder: clientId, expiresAt: T0 + 99999 }
       return { ...base, ...(leaseProto !== undefined ? { proto: leaseProto } : {}) }
     },
-    // `command` is a discriminated union: only the `run` variant carries a
-    // taskId, so the reader narrows instead of pretending every carrier is a
-    // run. These cases all exercise runs, which is what the relay used to be.
-    command: async (_clientId, command) => { calls.command.push(command.type === 'run' ? command.taskId : command.type) },
+    // `command` is a discriminated union, so the reader narrows instead of
+    // pretending every carrier is a run. Each carrier is recorded AS ITSELF —
+    // which carrier was chosen, and what it carried — because that choice is what
+    // 「问 AI」 turns on (a run carries a first message, a message carries a
+    // session and words), and a log that flattened them would answer neither.
+    command: async (_clientId, command) => { calls.command.push(commandKey(command)) },
     openStream: (_clientId, handlers) => {
       streamHandler = handlers
       return () => { streamHandler = undefined }
@@ -592,12 +608,32 @@ describe('BoardSyncClient lease loop', () => {
   })
 })
 
-describe('BoardSyncClient requestLaunch + dispose', () => {
+describe('BoardSyncClient requestLaunch + requestComment + dispose', () => {
   it('relays a launch command', async () => {
     const { client, t } = makeClient()
     await client.start()
     client.requestLaunch('t-9', 'manual')
-    expect(t.calls.command).toEqual(['t-9'])
+    expect(t.calls.command).toEqual(['run:t-9:manual'])
+  })
+
+  it('转发一次启动时 kickoff 一起走；不该有的时候一个字都不多加', async () => {
+    /* 「问 AI」在别的副本上按下去时，那一轮的第一句话必须跟着请求一起走——落在那台机器上
+     * 才是「这一条的内容」，不落在那里就是卡自己的执行 Prompt，两件事在屏上看不出区别。 */
+    const { client, t } = makeClient()
+    await client.start()
+    client.requestLaunch('t-9', 'manual', '这一条的内容')
+    expect(t.calls.command).toEqual(['run:t-9:manual:这一条的内容'])
+    client.requestLaunch('t-9', 'schedule')
+    expect(t.calls.command.at(-1)).toBe('run:t-9:schedule')
+  })
+
+  it('把一句话送进已有的会话：走的是 comment 那条载荷，会话与话都在上面', async () => {
+    // 同一条律的另一半：开始的走 run，接着说的走 comment（它带上**哪一条会话**与**说什么**）。
+    // 两条载荷分开是这一整个动作能对的原因——一条被当成另一条用，就会多开一轮或丢掉那句话。
+    const { client, t } = makeClient()
+    await client.start()
+    client.requestComment('t-9', 's-1', '接着说')
+    expect(t.calls.command).toEqual(['comment:t-9:s-1:接着说'])
   })
 
   it('dispose releases the lease and stops the loops', async () => {

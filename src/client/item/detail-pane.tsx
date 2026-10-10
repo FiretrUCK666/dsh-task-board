@@ -12,7 +12,7 @@
  * surface — and a layer that floats over another surface is not this surface's
  * layer.
  */
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
@@ -73,15 +73,17 @@ export interface ItemDetailProps {
    */
   readonly now: number
   /**
-   * ASK THE CARD THIS ROW HANGS OFF.
+   * **把这一条交给 AI——这一屏唯一通向模型的那一按。**
    *
-   * It used to be a button on the row beside the ⋮, so a row carried two controls
-   * for 「do something to this」 at two different distances from each other. It is one
-   * of the three things in this row's footer now, and it is LISTED even when there
-   * is no card — an entry that comes and goes with a fact the interface never
-   * states is worse than one that is always there and says 「not yet」.
+   * 它曾经是行上 ⋮ 旁边的一枚按钮，一行上于是有两枚「对这条做点什么」的控件，彼此还隔着
+   * 一段距离；现在它是这一条底部那一排里的一件（与「变成看板卡片」「删除这条」同排）。
+   *
+   * **两种行都在**：没挂卡的行会就地建一张再问，挂着卡的问它那条对话。所以这一排里既没有
+   * 「执行」这一枚，也没有「跑不跑得起来」那个开关——送出去的是这一条自己的内容，不是卡上
+   * 的执行 Prompt，一张 Prompt 为空的卡照样问得出去。
    */
   readonly onAsk: () => void
+  /** 那一次已经发出去、还没回来（按钮在这一刻禁用，免得连按两次）。 */
   readonly asking: boolean
   /**
    * MAKE IT A BOARD CARD, NAMED HERE, and hang this row on it.
@@ -96,17 +98,14 @@ export interface ItemDetailProps {
    * board to create one and back is the most expensive way to answer 「它挂在哪」.
    */
   readonly onPromote: () => void
-  /** Run the card this row hangs off — the same `runTask` the catalog's `task.run`
-   *  binds, handed in rather than reached for, so this component never learns how a
-   *  run is started and there is no second spelling of the decision here. */
-  readonly onStart: () => void
   /**
-   * 这张卡现在跑不跑得起来（`taskExecutable`：执行 Prompt 非空）。
+   * 这张卡跑起来时用的那份运行配置（工作区 / Agent / 模型 / 思考程度 / 权限）。
    *
-   * `undefined` = 这一行没有卡（那是另一句话，由「不挂」那一格说）；`false` = 有卡而它跑不
-   * 起来——那时按钮禁用，**理由写在旁边**。
+   * **它是看板那一块的同一个组件**（`RunConfigFields`），由面板装配好了递进来——于是这一
+   * 组件仍然只知道「有一块东西要画在我这里」，不知道看板、控制器或预设存储长什么样。没有卡
+   * 就没有这一块：没有卡就没有运行配置可配，那句话由「不挂」那一格说。
    */
-  readonly runnable?: boolean
+  readonly runConfig?: ReactNode
   /**
    * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
    *
@@ -694,7 +693,16 @@ export function ItemDetail(props: ItemDetailProps) {
         <p className={css.itemHint}>{t('item.status.derived', { where: t(GROUP_LABEL[view.status]), own: t(GROUP_LABEL[item.status]) })}</p>
       )}
 
-      {/* 这一条的动作。**一条横贯两列的发丝线，下面三个动作**。
+      {/* **这张卡跑起来时用的那几个人。** 它是看板那一块的同一个组件（`RunConfigFields`），
+          由面板装配好递进来，所以这一屏与看板改的是同一张卡上的同一组字段——不是第二份配置。
+          位置就在「问 AI」上面：按它的那个人最可能先要改的就是这里（换个人做、换个模型做），
+          而把他送去再看板再回来，与「先建卡再回来按一遍」是同一种浪费。
+          没有卡就没有这一块：没有卡就没有运行配置可配。 */}
+      {props.runConfig !== undefined && (
+        <div className={css.itemRunConfig}>{props.runConfig}</div>
+      )}
+
+      {/* 这一条的动作。**一条横贯两列的发丝线，下面那一排动作**。
        *
        * 它们原来散在三处（⋯ 菜单里、展开区最后一节里、行上），于是读者要先知道某个
        * 动作住在哪，才能去按它。合并到这一行之后，两列的读者都落在同一排动作上；而它
@@ -711,51 +719,22 @@ export function ItemDetail(props: ItemDetailProps) {
             永不省略号），按钮整排跟着下移一行。所以按钮**必须是一个单位**——见下面那个盒子。 */}
         <div className={css.itemOpenActions}>
           {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
-          {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
-          {/* **按钮是一排，不是一串各自能换行的东西。**
+          {/* 这一按会走哪条路，写在按钮旁边：正在跑 = 这张卡已经有对话了，这一句会接着说进去。
+              读者有权在按之前知道它；**它不能只挂在 `title=` 上**（触屏没有 hover，硬性规范 11③）。 */}
+          {running && <p className={css.itemOptsFoot}>{t('item.ask.continues')}</p>}          {/* **按钮是一排，不是一串各自能换行的东西。**
               这一层曾经不存在，四个按钮直接挂在上面那个会换行的容器里；于是窄一点的时候
               `删除这条` 自己掉到第二行，四个按钮被拆成「三 + 一」两堆——正是读者最不想要的那
               种排版。换行的判定是逐个元素的，所以「它们永远在一起」只能靠结构说，不能靠宽度猜。 */}
           <div className={css.itemOpenBtns}>
             {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
-                * law, so a reader who learned one has learned the other. Without a
-                * card the row can only become one (the primary that works on every
-                * row) or go away; start and ask live where there is something to
-                * run and something to ask — no disabled judges saying 「先变成看板
-                * 卡片」, because the 「不挂」 chip and the primary already state
-                * that fact. While the linked card runs, the slot says who is on it. */}
-            {cardId === undefined ? (
-              <>
-                {/* **没挂卡的一条也能交给 AI。** 这里原来只给「变成看板卡片」与删除，理由是
-                    「没有卡的行只能变成一张卡」——而读者按下「执行」时想的是「这条我要让 AI 干」，
-                    与有没有卡无关：先建卡、再回来按一遍是两步做一件事。所以这一枚对两种行都在，
-                    只是没卡时它做的是**就地建卡再开跑**（`startOne` 一处实现）。
-                    正文为空时**禁用并写明理由**（硬性规范 11③：理由不许只挂在 `title` 上），
-                    因为那一张卡建出来也跑不起来——执行 Prompt 来自正文。 */}
-                <Button variant="primary" size="sm" onClick={props.onStart} disabled={props.runnable === false}>
-                  {t('item.menu.start')}
-                </Button>
-                {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
-                    只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
-                <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
-                <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
-                <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-              </>
-            ) : (
-              <>
-                {/* **跑不起来就说为什么。** 一张执行 Prompt 为空的卡会在看板那一侧被门禁拦下来
-                    （`taskExecutable`，唯一的判据），而按下这一枚按钮的人是在清单上按的——所以
-                    理由必须在这里、就在按钮旁边（硬性规范 11③：理由不许只挂在 `title` 上）。
-                    两个禁用理由各说各的：跑着是这一条现在的状态，跑不起来是这个按钮本身。 */}
-                <Button variant="primary" size="sm" onClick={props.onStart} disabled={running || props.runnable === false}>
-                  {t(running ? 'item.menu.running' : 'item.menu.start')}
-                </Button>
-                <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
-                  {t('item.ask')}
-                </Button>
-                <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-              </>
-            )}
+                * law, so a reader who learned one has learned the other. 「变成看板卡片」
+                * lives where there is nothing to attach to yet; 「问 AI」 lives on every
+                * row, because it means 「把这一条交给它」 whatever the row's state is —
+                * with no card it makes one first (`askOne`). No disabled judges saying
+                * 「先变成看板卡片」, because the 「不挂」 chip already states that fact. */}
+            <Button variant="primary" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
+            {cardId === undefined && <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>}
+            <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
           </div>
         </div>
       </div>

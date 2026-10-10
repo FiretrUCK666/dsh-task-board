@@ -18,9 +18,6 @@
  *   POST /api/<ns>/board/lease      → {clientId, ttlMs?, release?} → lease state
  *   POST /api/<ns>/board/command    → relay one user launch to the engine
  *   GET  /api/<ns>/board/surfaces   → which of this plugin's rows are on
- *   POST /api/<ns>/board/ask        → {taskId, ref} → hand one item to that
- *                                     card's session model (the same funnel
- *                                     `/task` uses)
  *   GET  /api/<ns>/board/events     → SSE: commit / lease / command frames
  *
  * ONE route file, ONE envelope discipline, ONE CSRF guard: every POST tail
@@ -40,11 +37,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import { deletedItemsOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
-import { planItemAsk } from '../core/item-ask.ts'
-import { relatedSessionIdsOf } from '../core/task-live.ts'
-import { acquireBoardService, DocumentService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
-import { handOver } from './agent/commands.ts'
-import { sessionRunningOf, type AgentsFace } from './session-state.ts'
+import { acquireBoardService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
 import { readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
@@ -146,15 +139,6 @@ export interface BoardRouteDeps {
   noteDisconnect(clientId: string | undefined): void
   submitCommand(command: BoardCommand): { queued: boolean }
   /**
-   * Hand one checklist item to the model of the session that card runs in.
-   *
-   * NOT a new path to the model: it is the same `agent.followup` the `/task`
-   * command uses, so "hand this sentence to a model" stays one fact with one
-   * implementation. What is new here is only the TARGET — the panel shows no
-   * conversation, so the session has to come from the card the item hangs off.
-   */
-  ask(request: AskRequest): Promise<AskRouteView>
-  /**
    * Bring one deleted checklist row back, by whichever name the caller holds.
    *
    * A SERVICE operation and not a client commit: a tombstone is stamped one
@@ -181,29 +165,6 @@ export interface BoardRouteDeps {
   purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>
   subscribe(listener: (event: BoardEvent) => void): () => void
 }
-
-/** What the panel sends: which card's session, and which item in it. */
-export interface AskRequest {
-  /** The card the item hangs off — it decides WHICH session is talked to. */
-  readonly taskId: string
-  /**
-   * The item's identity, which is how it is ADDRESSED.
-   *
-   * The panel always sends it. The model cannot — it holds a number — so `ref`
-   * below is still accepted, and `id` is optional rather than required: the one
-   * thing that must never happen is a request naming several rows resolving to one
-   * of them by accident, and an absent id falls through to a number that has to be
-   * a REAL number for the same reason.
-   */
-  readonly id?: string
-  /** The item's short number, as the panel already shows it. `0` is 「not numbered yet」. */
-  readonly ref: number
-}
-
-/** The hand-off's outcome, said in words the panel can render as-is. */
-export type AskRouteView =
-  | { readonly ok: true; readonly sessionId: string; readonly said: string }
-  | { readonly ok: false; readonly why: string }
 
 /**
  * WHICH ROW an operation on a DELETED row names. Two NAMED addresses, never one
@@ -319,32 +280,6 @@ function parseItemAddressBody(
     return { ok: false, why: `${what} needs to be told which row: id or ref, and one of them` }
   }
   return { ok: true, request: { of: id !== undefined ? { kind: 'id', id } : { kind: 'ref', ref: ref as number }, clientId } }
-}
-
-/**
- * Parse the ask body: the card is named, the row is named, and the row may be
- * named TWICE because both names are required.
- *
- * That is the difference from {@link parseItemAddressBody}, which refuses a body
- * carrying both `id` and `ref`: there, EITHER name is optional, so both present
- * is two intents. Here `ref` is required — the model only ever holds a number —
- * and the panel sends its `id` alongside it as a cross-check. So the body is not
- * ambiguous, and refusing it would refuse every legitimate caller.
- *
- * @returns the request, or `undefined` for a body that does not parse.
- */
-function parseAskBody(body: unknown): AskRequest | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
-  const record = body as Record<string, unknown>
-  if (typeof record.taskId !== 'string' || record.taskId === '') return undefined
-  if (typeof record.ref !== 'number' || !Number.isFinite(record.ref)) return undefined
-  // An absent or empty id is not an error here — the model never has one — but an
-  // id of the wrong TYPE is a malformed request rather than an absent one, and
-  // quietly treating it as absent would let a broken caller through the one path
-  // that can resolve to the wrong row.
-  if (record.id !== undefined && typeof record.id !== 'string') return undefined
-  const hasId = typeof record.id === 'string' && record.id !== ''
-  return { taskId: record.taskId, ref: record.ref, ...(hasId ? { id: record.id as string } : {}) }
 }
 
 /** The caller id every commit body must carry. One rule, both documents. */
@@ -715,21 +650,6 @@ export function createBoardHandler(
       return
     }
 
-    if (tail === '/ask') {
-      // The panel's one-click hand-off. It goes through the SAME funnel the
-      // `/task` command uses — `agent.followup` on a real UserMessage — because
-      // "hand this sentence to a model" must be one fact with one path: a
-      // second way to say it is a second thing to keep in step, and the first
-      // time they drifted nobody would have found out.
-      const ask = parseAskBody(payload)
-      if (ask === undefined) {
-        json(res, MALFORMED)
-        return
-      }
-      json(res, { ok: true as const, value: await deps.ask(ask) satisfies AskRouteView })
-      return
-    }
-
     if (tail === '/lease') {
       const parsed = parseLeaseBody(payload)
       if (parsed === undefined) {
@@ -800,89 +720,6 @@ function serveEvents(deps: BoardRouteDeps, url: URL, res: ServerResponse): void 
 }
 
 /**
- * Hand one checklist item to the model of the session its card runs in.
- *
- * WHY THE CARD DECIDES THE TARGET. The panel is a main-stage page, so no
- * conversation is on screen while it is open — there is no "current session" to
- * send anything to. The card is what the item hangs off, and the card already
- * knows its sessions, so the target is a fact the document already holds rather
- * than a picker the reader has to answer.
- *
- * WHICH SESSION WHEN THERE ARE SEVERAL: one that is actually running. A card can
- * hold several sessions, and "the one doing work right now" is the only choice
- * that matches what the reader means by "ask the AI about this". When none is
- * running the FIRST bound session is used, and the receipt names it either way —
- * a hand-off that cannot be told apart afterwards is not a receipt.
- *
- * THE HAND-OFF ITSELF is `handOver` from the agent surface: one path into a
- * model, shared with the two slash commands.
- *
- * **Exported so it can be tested without a storage hub.** This function decides
- * WHICH CONVERSATION a person's text goes to, and it had no coverage at all: the
- * route's `deps.ask` seam is replaced in every route test, so the production
- * wiring at `registerBoardRoute` — which is the only place this body actually
- * runs — was never executed. That is why a request naming card A with a row of
- * card B survived: nothing had ever asked the function what it does with two
- * names that disagree.
- *
- * @param ctx - the host context, read for `agents` at call time.
- * @param service - the two-document face.
- * @param request - the card and the row, as the parser accepted them.
- * @returns the receipt naming the session, or a refusal code.
- */
-export async function handOneItemToItsCardSession(
-  ctx: Context,
-  service: DocumentService,
-  request: AskRequest,
-): Promise<AskRouteView> {
-  if (!service.available) return { ok: false, why: 'hostStorageMissing' }
-  // BY IDENTITY, or not at all. Addressing by short number here meant that a row
-  // the document had not numbered yet — `ref === 0` — matched the FIRST
-  // unnumbered row in the document, and that row's text went to the model while
-  // the reader watched their own row go into the box. A name that can be shared
-  // by several rows cannot be used to pick one of them.
-  //
-  // The number is still accepted, because the model only ever holds a number. It
-  // is accepted only when it is a real one: zero is the document's 「not numbered
-  // yet」 sentinel, so a request carrying it is refused instead of being resolved
-  // to whichever row happens to sit first. The panel always sends the id.
-  const byId = request.id !== undefined && request.id !== ''
-    ? service.getItemsDoc().items.find(entry => entry.id === request.id)
-    : undefined
-  const item = byId ?? (request.ref > 0
-    ? service.getItemsDoc().items.find(entry => entry.ref === request.ref)
-    : undefined)
-  if (item === undefined) return { ok: false, why: 'noSuchItem' }
-
-  // EVERY JUDGMENT FROM HERE DOWN IS `planItemAsk`'s. This function is the
-  // seam — it holds the two document lookups and the two host reads, and it has
-  // no opinion of its own. That is what lets the catalog carry `item.ask`: a
-  // judgment buried in a route is a judgment the model is never told about.
-  const card = service.getDoc().tasks.find(task => task.id === request.taskId)
-  const agents = ctx.get('agents') as AgentsFace | undefined
-  const verdict = planItemAsk({
-    item,
-    card,
-    sessions: card === undefined ? [] : relatedSessionIdsOf(card, undefined, undefined),
-    // 同上：这一处判不了原生名单的可用性，所以明确写出「不判存在性」；`planItemAsk` 另有闸门。
-    isRunning: sessionId => sessionRunningOf({ agents: () => ctx.get('agents') as never }, sessionId).value === true,
-    hasAgent: sessionId => agents !== undefined && agents.get(sessionId) !== undefined,
-  })
-  if (!verdict.ok) {
-    // `noCard` is the route's word for it; the core says 「there is no card」 and
-    // the route says which name the reader would recognise.
-    return { ok: false, why: verdict.why === 'noCard' ? 'noSuchTask' : verdict.why }
-  }
-
-  const followup = agents?.get(verdict.sessionId)?.followup
-  if (followup === undefined) return { ok: false, why: 'noLiveAgent' }
-  const result = handOver({ followup }, verdict.text)
-  return result.kind === 'success'
-    ? { ok: true, sessionId: verdict.sessionId, said: verdict.text }
-    : { ok: false, why: result.text }
-}
-
-/**
  * Register the board route (prefix) and own the service lifecycle: open the
  * persistence unit through the platform storage hub, serve once initialized,
  * dispose the unit on unload.
@@ -920,7 +757,6 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
     noteStreamOpen: clientId => service.noteStreamOpen(clientId),
     noteDisconnect: clientId => service.noteDisconnect(clientId),
     submitCommand: command => service.submitCommand(command),
-    ask: request => handOneItemToItsCardSession(ctx, service, request),
     subscribe: listener => service.subscribe(listener),
   }
   const path = `/api/${ns}/board`

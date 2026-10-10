@@ -583,7 +583,17 @@ export interface ControllerDeps {
      * double launch). Absent = this controller never leaves the engine seat
      * (the single-browser/localStorage mode).
      */
-    requestLaunch?: (taskId: string, trigger: RunTrigger) => void;
+    requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string) => void;
+    /**
+     * Relay one message INTO a conversation a card already has (a non-engine
+     * replica's 「问 AI」 on a card that is already talking): the host forwards it
+     * to the lease holder, which records the round and sends it. The twin of
+     * {@link requestLaunch} and the same law — one engine drives every document —
+     * because a continuation is work in a session this replica may hold no
+     * reference to. Absent = this controller never leaves the engine seat (the
+     * single-browser/localStorage mode).
+     */
+    requestComment?: (taskId: string, sessionId: string, text: string) => void;
     /** Force one seat re-read from the host (the engine-note dialog's
      *  「重新检查」): the wiring calls the sync client's lease renewal, whose
      *  seat announcement then flows back through setHostProto/setEngine.
@@ -659,6 +669,24 @@ export declare function selectedTaskOf(snapshot: ControllerSnapshot): TaskRecord
  * (run-after-completion hand-off).
  */
 export type RunTrigger = 'manual' | 'schedule' | 'chain';
+/**
+ * How one 「问 AI」 press ended (see {@link BoardController.askCard}).
+ *
+ * The two successes are named apart because they are different facts about the
+ * card — 「开了一轮」与「接着说了一句」 — and the receipt has to say which one, or
+ * a reader cannot tell whether they just started something or added to something
+ * already running. The refusals are codes rather than sentences for the usual
+ * reason: the words belong to the surface, and this layer has no dictionary.
+ */
+export type AskCardOutcome = {
+    readonly kind: 'started';
+} | {
+    readonly kind: 'continued';
+    readonly sessionId: string;
+} | {
+    readonly kind: 'refused';
+    readonly why: 'unknownTask' | 'empty' | 'busy' | 'unavailable';
+};
 /**
  * Why a session is (not) on a surface — see {@link BoardController.sessionAvailability}.
  * `'visible'` is the normal case; the other three name the cause so a blocked
@@ -1395,8 +1423,15 @@ export declare class BoardController {
      * A manual run is not a prerequisite for an armed rule: arming activates
      * the schedule at once (see setSchedule), so auto triggers drive the task
      * on their own — this door merely reports whether THIS launch was accepted.
+     *
+     * THE THIRD ARGUMENT IS THE CHECKLIST'S, AND IT CHANGES NOTHING BY BEING
+     * ABSENT. `kickoff` is the text of the row a reader handed to this card
+     * (`itemContextText`): it becomes the run's first message instead of the card's
+     * own prompt (see {@link launchTask}), and a card whose prompt is blank is
+     * therefore runnable — there is something to send. Every other caller passes
+     * nothing, so every other gate, threshold and outcome here is unchanged.
      */
-    runTask(id: string, trigger?: RunTrigger): Promise<boolean>;
+    runTask(id: string, trigger?: RunTrigger, kickoff?: string): Promise<boolean>;
     /**
      * Continue an armed chain schedule after a settle: persist the incremented
      * counter (disarming after the final budgeted run) and start the next run.
@@ -1479,6 +1514,61 @@ export declare class BoardController {
         ok: false;
         error: string;
     }>;
+    /**
+     * **「问 AI」：把这一条交给这张卡——开始做，或者接着说。**
+     *
+     * ONE DOOR FOR THE WHOLE GESTURE, because the two lanes are one decision
+     * ({@link askTargetOf}) and a caller that had to pick between them would be a
+     * second place where 「开始还是继续」 is answered. The lane it takes changes the
+     * card's column through the ordinary machinery and nothing else:
+     *
+     *   · `start` — a real run ({@link runTask}) with this text as its first
+     *     message: the card goes 进行中 while the conversation works and lands in
+     *     待审核 when it ends, exactly as the board's own Run button does it.
+     *   · `continue` — a comment round sent NOW into the conversation this card
+     *     already has ({@link commentNow}): the same status walk, the same lane
+     *     every other message in that conversation uses.
+     *
+     * WHY THE CONTINUATION IS NOT LEFT TO THE DISPATCHER. A user comment waits for
+     * the cruise (see `nextEligible`), which is right for a message typed into a
+     * conversation that happens to hang off a card — it must not start work nobody
+     * asked for. This is different in kind: a person pressed a button whose whole
+     * promise is 「问 AI」, and a queued-but-unsent note would be a control whose
+     * only visible effect is a sentence. Manual means now, the same law
+     * {@link runTask} follows for a manual run.
+     *
+     * @param taskId - the card the row hangs off.
+     * @param text - the row's own words ({@link itemContextText}).
+     * @returns which lane ran, or why neither could.
+     */
+    askCard(taskId: string, text: string): Promise<AskCardOutcome>;
+    /**
+     * The second half of {@link askCard}: say this text into the conversation the
+     * CALLER named. It exists apart because the lane travels — a non-engine replica
+     * derives it, a relay carries the id, and the engine performs exactly what was
+     * named: re-deriving on arrival would let the receipt name one conversation
+     * while the message landed in another (the two reads happen milliseconds and
+     * one turn apart).
+     *
+     * The session must still be one of this card's: a stale relay names a
+     * conversation that has left the card, and saying the row into it would be
+     * opening a lane nobody asked for.
+     * @returns whether the round was recorded and sent.
+     */
+    askCardSession(taskId: string, sessionId: string, text: string): boolean;
+    /**
+     * Record one comment round against an existing conversation and send it NOW —
+     * the manual twin of `submitComment`, sharing everything with it except the
+     * waiter.
+     *
+     * A comment the dispatcher injects and a comment sent from here are the same
+     * round through the same hand-off ({@link launchComment}), so the card's
+     * column, the round's record and the settlement watch cannot differ by which
+     * door a message came through. Every other guard is the comment family's:
+     * a completed card is revived rather than dead-ended, and a leading '/' routes
+     * through the command registry (a rule instruction's grammar).
+     */
+    private commentNow;
     /**
      * Related-session labels of a task (the composer's @ mention, the session
      * rule's session picker): the task's sessions, each with a native title

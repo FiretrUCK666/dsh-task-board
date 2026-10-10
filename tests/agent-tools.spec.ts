@@ -16,7 +16,7 @@ import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
-import { emptyBoardDoc, applyCommit, type BoardDoc } from '../src/core/board-doc.ts'
+import { emptyBoardDoc, applyCommit, type BoardCommand, type BoardDoc } from '../src/core/board-doc.ts'
 import { emptyItemsDoc, applyItemsCommit, deletedItemsOf, purgeItemTombstone, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
@@ -1159,30 +1159,40 @@ describe('a model asks a question about a row, through the same plan the panel u
     }, NOW)
   }
 
-  /** One card holding one session, and one row hanging off it. */
-  function linked(said: string[], running: Record<string, 'running' | 'idle'> = { 's-1': 'idle' }) {
+  /** One card holding one session, and one row hanging off it — plus the relay
+   *  the action now rides, so a test can read WHICH carrier it chose and what it
+   *  carried. */
+  function linked(running: Record<string, 'running' | 'idle'> = { 's-1': 'idle' }) {
     const board = face()
+    const relayed: BoardCommand[] = []
+    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
     board.seed({
       ...emptyBoardDoc(NOW),
       tasks: [{ ...card('挂着的卡'), binds: [{ kind: 'session', sessionId: 's-1' }] }],
     })
     board.seedItems(oneItem({ taskId: 't-挂着的卡' }))
-    return { board, said, run: () => deps(board, runningSources(running, said)) }
+    return { board, relayed, run: () => deps(board, runningSources(running, [])) }
   }
 
-  it('hands the row to that card session, with its steps, and writes nothing', async () => {
-    const said: string[] = []
-    const { board, run } = linked(said)
+  it('说进那张卡已有的会话，带着这一条的步骤，而且不改任何文档', async () => {
+    const { board, relayed, run } = linked()
     const before = board.getItemsDoc().items[0]
     const out = await runBatch(run(), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
     expect(out.ok).toBe(true)
-    expect(said, 'nothing was said').toHaveLength(1)
-    expect(said[0]).toContain('s-1')
-    expect(said[0]).toContain('量一遍地板')
-    expect(said[0]).toContain('在真机上量')
+    // THE CARRIER IS THE ANSWER: a card that already has a conversation gets a
+    // MESSAGE into it, never a second run — the whole point of one action with two
+    // lanes is that the model asking reaches the same lane the button does.
+    expect(relayed).toHaveLength(1)
+    const command = relayed[0]
+    expect(command?.type).toBe('comment')
+    if (command?.type !== 'comment') return
+    expect(command.sessionId).toBe('s-1')
+    expect(command.text).toContain('量一遍地板')
+    expect(command.text).toContain('在真机上量')
     // A question is not a write. Reporting it as a change would make every
     // 「问一句」 look like an edit of the document.
     expect(board.getItemsDoc().items[0]).toBe(before)
+    expect(board.commits).toBe(0)
   })
 
   it('says what to DO when the row has no card, rather than only what is wrong', async () => {
@@ -1196,44 +1206,57 @@ describe('a model asks a question about a row, through the same plan the panel u
   })
 
   it('refuses a number that names no row, and names the number back', async () => {
-    const said: string[] = []
-    const { run } = linked(said)
+    const { run } = linked()
     const out = await runBatch(run(), { ops: [{ op: 'item.ask', payload: { of: 99 } }] })
     expect(out.ok).toBe(false)
     expect(out.reports[0]?.detail).toContain('#99')
   })
 
-  it('says so when the card has no session to talk to', async () => {
+  it('一条会话都没有的卡：开一轮，而且这一轮的第一句话是这一条自己的内容', async () => {
+    // THE INVERSION THIS FILE WAS REWRITTEN FOR. 「没有会话」 used to be a refusal —
+    // 而它真正说的是「没有可以接下去的东西」，那正是**开始**的定义。A model told
+    // 「没有会话可以说话」 on a fresh card had no way to get the row's words into
+    // that card at all.
     const board = face()
+    const relayed: BoardCommand[] = []
+    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('空的卡')] })
     board.seedItems(oneItem({ taskId: 't-空的卡' }))
-    const out = await runBatch(deps(board), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
-    expect(out.ok).toBe(false)
-    expect(out.reports[0]?.detail).toContain('会话')
+    const out = await runBatch(deps(board, runningSources({}, [])), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(true)
+    const command = relayed[0]
+    expect(command?.type).toBe('run')
+    if (command?.type !== 'run') return
+    expect(command.taskId).toBe('t-空的卡')
+    // The card's own prompt is 「p」 and stays so: what goes out is the ROW.
+    expect(command.kickoff).toContain('量一遍地板')
   })
 
   it('prefers the RUNNING session when the card has several', async () => {
-    const said: string[] = []
     const board = face()
+    const relayed: BoardCommand[] = []
+    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
     board.seed({
       ...emptyBoardDoc(NOW),
       tasks: [{ ...card('多会话的卡'), binds: [{ kind: 'session', sessionId: 's-idle' }, { kind: 'session', sessionId: 's-busy' }] }],
     })
     board.seedItems(oneItem({ taskId: 't-多会话的卡' }))
-    const out = await runBatch(deps(board, runningSources({ 's-idle': 'idle', 's-busy': 'running' }, said)), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
-    expect(out.ok).toBe(true)
+    await runBatch(deps(board, runningSources({ 's-idle': 'idle', 's-busy': 'running' }, [])), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    const command = relayed[0]
+    expect(command?.type).toBe('comment')
+    if (command?.type !== 'comment') return
     // 「the one doing work right now」 is the only choice that matches what a
     // reader means by asking; taking the first bound one would send the question
     // to a conversation that finished an hour ago.
-    expect(said[0]?.startsWith('s-busy:')).toBe(true)
+    expect(command.sessionId).toBe('s-busy')
   })
 
   it('the catalog carries it, so a model is told it exists', () => {
     expect(ACTIONS['item.ask']).toBeDefined()
     expect(ACTIONS['item.ask']?.surface).toBe('ui+ai')
     expect(TOOL_ACTION_IDS).toContain('item.ask')
-    // The summary has to distinguish a question from work, or a model that wants
-    // the job done will use this and think it started.
+    // The summary has to say that 「没有卡」 is answered by making one, or a model
+    // that wants the row to move will stop at the refusal.
     expect(ACTIONS['item.ask']?.summary).toContain('item.promote')
   })
 })
@@ -1297,10 +1320,14 @@ describe('模型读到的词与界面是同一套（硬性规范 17）', () => {
     expect(tools, '没有把「存储状态」印给模型').toContain('存储状态')
   })
 
-  it('三种拒答各说各的，而且第一档给出下一步', () => {
+  it('两种拒答各说各的，而且第一种给出下一步', () => {
     /* 模型把这几句读给读者听，也会照着它们决定下一步。含糊的一句「不行」的代价是：它自己编一个
-       理由，或者干脆再试一遍同一件事——所以每一档都得有名字，而"能怎么办"要说出来。 */
-    for (const words of ['这一条没有挂在任何看板卡片上', '还没有会话可以说话', '别替它挑一张']) {
+       理由，或者干脆再试一遍同一件事——所以每一档都得有名字，而"能怎么办"要说出来。
+
+       **两档，不是三档。**「还没有会话可以说话」这一档没有了，因为它从来不是一种拒绝：没有会话
+       的卡是**开一轮**，那条路现在通着（见 `item.ask` 的 carrier）。剩下的两档是这一条与它的
+       链接本身的关系，与卡的状态无关。 */
+    for (const words of ['这一条没有挂在任何看板卡片上', '别替它挑一张']) {
       expect(tools, `拒答句缺了「${words}」这一档`).toContain(words)
     }
     expect(tools, '拒答只说不行、不说下一步').toContain('item.promote')

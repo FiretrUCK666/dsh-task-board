@@ -1141,6 +1141,29 @@ function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void
       return task
     }
   }
+  /* **「问 AI」那一扇门，以及它要读的那两个东西。**
+   *
+   * 三者都是真实 controller 上的公开方法，而清单面板现在每建一张卡都要读默认运行预设
+   * （`runPresetStore`）、每按一次「问 AI」都要过那两个门。少了它们，台架比现实窄，
+   * 而窄的假面**会把正确的实现报成缺陷**——这一条正是被它报出来的（硬性规范 18）：
+   * 面板抛 `controller.runPresetStore is not a function`，看起来像代码错了。
+   *
+   * 回答取舍：`askCard` 回 `started`，因为这个假面的快照里一张卡都没有会话，而「没有会话」
+   * 正是 `start` 那一档的定义；想测「继续」那一档的用例自己换掉这个方法。 */
+  out.askCard = (...args: unknown[]) => {
+    calls.push(`askCard(${args.length})`)
+    notify()
+    return Promise.resolve({ kind: 'started' as const })
+  }
+  out.askCardSession = (...args: unknown[]) => { calls.push(`askCardSession(${args.length})`); notify(); return true }
+  out.runPresetStore = () => {
+    calls.push('runPresetStore(0)')
+    return { load: () => ({ presets: [] }), save: () => undefined, clear: () => undefined }
+  }
+  /* 运行配置那几个下拉的目录来源。`undefined` 在真实 controller 上是一个**答案**而不是缺席：
+   * 部署没有接那个目录时 `runCatalog()` 就回 undefined，而 `RunConfigEditor` 为这一档专门
+   * 写了一段（「这是关于部署的事实，不是读失败」）。测试台架没有部署，所以这就是该给的那一档。 */
+  out.runCatalog = () => undefined
   return out
 }
 

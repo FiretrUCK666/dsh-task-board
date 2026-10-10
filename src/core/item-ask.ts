@@ -10,40 +10,49 @@
  * function was in neither list. So 「界面有的动作 AI 没有」 was not an oversight to
  * fix; it was a structural consequence of where the judgment sat.
  *
- * Here it is a pure function over three facts the route already has, so the
- * catalog can name it, the coverage gate can bind it, and a test can pin every
- * branch without a storage hub or a socket.
+ * Here it is a pure function over facts the caller already has, so the catalog
+ * can name it, the coverage gate can bind it, and a test can pin every branch
+ * without a storage hub or a socket.
  *
- * ── THE THREE ANSWERS, AND WHY THERE ARE THREE ─────────────────────────────
+ * ── ONE ACTION, TWO LANES ───────────────────────────────────────────────────
  *
- * 1. WHICH CARD. Given by the caller — the route looks it up — because that is a
- *    document question. What this function checks is that the row AGREES with
- *    it. The two lookups were independent and nothing compared them, so a request
- *    naming card A with a row of card B delivered B's text into A's
- *    conversation: a wrong answer inside a session a reader will trust, with no
- *    screen anywhere saying so.
+ * 「问 AI」 means one thing to the reader — 「把这一条交给它」 — and the card it
+ * hangs off is in one of two situations:
  *
- * 2. WHICH SESSION. One that is actually running, else the first bound one. A
- *    card can hold several sessions, and 「the one doing work right now」 is the
- *    only choice that matches what a reader means by asking about this.
+ *   · **有一条对话** → the row's words are said INTO that conversation, and the
+ *     card walks 进行中 → 待审核 through the same machinery every other message
+ *     in that conversation uses ({@link askTargetOf} says `continue`).
+ *   · **一条都没有** → there is nothing to continue, so this is a genuine 开始:
+ *     a run opens the card's first conversation ({@link askTargetOf} says `start`).
  *
- * 3. WHAT IT IS TOLD. The row, in full, with a note about its card — and the note
- *    distinguishes 「never linked」 from 「its card is gone」, which the old
- *    sentence did not: it tested for `undefined`, so a DANGLING link read exactly
- *    like no link at all, and the model was told the second thing.
+ * The two lanes are NOT two actions, and they used to look like two because the
+ * panel had a separate 「执行」 button that only ever did the second one while
+ * refusing whenever the first applied. A reader who pressed the wrong one got a
+ * dead control and no sentence explaining why. Which lane this is, is a fact
+ * about the card — never a choice the reader has to make correctly.
+ *
+ * ── WHAT THE TWO LANES AGREE ON ─────────────────────────────────────────────
+ *
+ * The text. {@link itemContextText} is the single composer, so a row handed to a
+ * fresh run and the same row handed to a running conversation say the same thing
+ * about themselves — only the lane differs. And because the text is composed from
+ * the ROW rather than from the card's own prompt, a card made by the board and a
+ * card made from this very row receive it identically.
  */
-import type { ItemRecord } from './item.ts'
+import { itemTagsOf, type ItemRecord, type ItemStep } from './item.ts'
 import type { RelatedSessionFact } from './task-live.ts'
 import type { TaskRecord } from './tasks.ts'
 
-/** Why there is nothing to hand over to. A CODE, never a sentence — the panel
- *  owns the wording and the dictionary translates it. */
+/** Why the row cannot be handed over at all. A CODE, never a sentence — the
+ *  panel owns the wording and the dictionary translates it. */
 export type ItemAskRefusal =
+  /** The row points at a card that is no longer on the board. */
   | 'noCard'
+  /** The request named a card and a row that do not belong to each other. */
   | 'rowBelongsElsewhere'
-  | 'taskHasNoSession'
-  | 'noLiveAgent'
 
+/** What the caller must know to decide the lane. Everything here is a fact the
+ *  caller already holds; this module asks the host nothing. */
 export interface ItemAskInput {
   /** The row, already resolved from the request. */
   readonly item: ItemRecord
@@ -51,55 +60,110 @@ export interface ItemAskInput {
   readonly card: TaskRecord | undefined
   /** The card's related sessions, de-duplicated by the model. */
   readonly sessions: readonly RelatedSessionFact[]
-  /** Is that session running right now? The HOST answers this; this core never
-   *  asks the host anything, so a test drives it with a plain function. */
+  /** Is that session working right now? The CALLER answers this, so a test can
+   *  drive it with a plain function and the two halves can each read their own
+   *  live source. */
   readonly isRunning: (sessionId: string) => boolean
-  /** Is there a live agent on that session at all? Same reason. */
-  readonly hasAgent: (sessionId: string) => boolean
 }
 
-export type ItemAskVerdict =
-  | { readonly ok: false; readonly why: ItemAskRefusal }
-  | { readonly ok: true; readonly sessionId: string; readonly text: string }
+/** Which lane the press takes. */
+export type ItemAskTarget =
+  | { readonly kind: 'start' }
+  | { readonly kind: 'continue'; readonly sessionId: string }
+
+/** The whole hand-off: the lane, and the words. */
+export type ItemAskPlan =
+  | { readonly kind: 'refused'; readonly why: ItemAskRefusal }
+  | { readonly kind: 'start'; readonly text: string }
+  | { readonly kind: 'continue'; readonly sessionId: string; readonly text: string }
 
 /**
- * The one sentence a row is handed over as.
+ * 开始还是继续——**这一张卡有没有一条能接下去的对话**。
  *
- * It carries the row's own words, its checklist with the ticks as they are, and
- * the card's — or the reason there is no card to name. A model handed 「这条属于
- * 看板卡片 X」 can open it; a model handed a dangling link told as 「它还没有挂到
- * 任何看板卡片上」 will go looking for a card that was never there.
+ * A card that has run before ALWAYS has one: its rounds hold their session ids
+ * forever, so 「继续」 survives the conversation being archived or deleted from
+ * the card's own view (the round is still a fact about where the work happened,
+ * and saying the note into a conversation that is still there is exactly right).
+ * A card with none is a card that has never run — often the one this very press
+ * just created out of the row.
+ *
+ * WHICH SESSION WHEN THERE ARE SEVERAL: one that is working. A card may hold
+ * several conversations, and 「the one doing work right now」 is the only choice
+ * that matches what a reader means by asking about this. When none is working the
+ * FIRST related session is used — the card's own order, binds first, which is
+ * 「这张卡的那条对话」 when nobody is speaking. The receipt names whichever it
+ * was: a hand-off that cannot be told apart afterwards is not a receipt.
  */
-export function itemAskText(item: ItemRecord, card: TaskRecord | undefined): string {
-  const where = card === undefined
-    ? '（它没有挂到任何还存在的看板卡片上）'
-    : ''
-  const steps = item.steps.length === 0
-    ? ''
-    : `\n它的步骤：${item.steps.map(step => `- [${step.done ? 'x' : ' '}] ${step.text}`).join('\n')}`
-  return `任务清单里有一条「#${item.ref} ${item.title || '（无标题）'}」${where}。请处理它，并告诉我你打算怎么做。${steps}`
+export function askTargetOf(
+  sessions: readonly RelatedSessionFact[],
+  isRunning: (sessionId: string) => boolean,
+): ItemAskTarget {
+  const chosen = sessions.find(session => isRunning(session.sessionId)) ?? sessions[0]
+  return chosen === undefined ? { kind: 'start' } : { kind: 'continue', sessionId: chosen.sessionId }
+}
+
+/**
+ * 这一条自己是什么——**交给模型的那段话只有这一个写处**。
+ *
+ * IT CARRIES THE ROW, NOT THE CARD. The card already reached the model twice: as
+ * the run's own prompt when it started a conversation, and as the description on
+ * every launch after. Repeating it here would push the row's actual content down
+ * the message for the sake of a title the conversation already knows.
+ *
+ * THE FIVE FIELDS ARE THE ROW'S OWN, in the order a person would say them: what it
+ * is called, how it is filed, what it says, what is left to do, and what whoever
+ * picks it up needs to know. An empty one is OMITTED rather than sent as a blank
+ * label — a list of empty headings reads as a form somebody forgot to fill, and a
+ * model that sees 「标签：」 learns nothing except that there are no tags.
+ *
+ * A ROW WITH NO NUMBER YET SAYS SO. `ref === 0` means the document has not
+ * numbered it, and printing 「#0」 would put a number on the screen that the
+ * reader's own list does not show — and that no other row can be told apart from.
+ */
+export function itemContextText(item: ItemRecord): string {
+  const where = item.ref > 0 ? `#${item.ref}` : '一条刚记下、还没有编号的条目'
+  const lines: string[] = [`任务清单里的一条（${where}）：`]
+  /* THE FIELD, NOT THE READING. `itemTitleOf` borrows the body's first line for
+   * an untitled row, which is right for a screen (a row with no name still has
+   * to be called something) and wrong here: the borrowed line would arrive twice
+   * — once as 「标题」 and again inside the body — and the model would be told the
+   * row has a title it does not have. */
+  if (item.title.trim() !== '') lines.push(`标题：${item.title.trim()}`)
+  const tags = itemTagsOf(item.tags)
+  if (tags.length > 0) lines.push(`标签：${tags.join('、')}`)
+  if (item.body.trim() !== '') lines.push('正文：', item.body.trim())
+  const steps = stepLinesOf(item.steps)
+  if (steps !== '') lines.push('步骤：', steps)
+  if (item.notes.trim() !== '') lines.push('上下文备注：', item.notes.trim())
+  lines.push('', '请处理它，并告诉我你打算怎么做。')
+  return lines.join('\n')
+}
+
+/** The checklist as it stands, one ticked box per line — the model sees what is
+ *  done and what is not, which is half of what a step list is FOR. */
+function stepLinesOf(steps: readonly ItemStep[]): string {
+  return steps.map(step => `- [${step.done ? 'x' : ' '}] ${step.text}`).join('\n')
 }
 
 /**
  * Decide the hand-off, or refuse it.
  *
- * The refusals are ordered the way the facts arrive, so the one a reader is most
- * likely to hit — a card that is gone — is reached before anything is read off
- * a session.
+ * THE REFUSALS ARE ABOUT THE ROW AND ITS LINK, never about the card's readiness:
+ * whether the card can be run is the launch door's judgment (`taskExecutable` in
+ * the controller, `runTask`'s own gate), and duplicating it here is how the panel
+ * and the board came to disagree about which cards are runnable. What this
+ * function refuses is a row with nowhere to go — a link whose card is gone — and
+ * a request that names two things that do not belong together (the panel always
+ * sends its own row, so this refuses only a body that does not describe one
+ * thing, which is exactly what it should refuse).
  */
-export function planItemAsk(input: ItemAskInput): ItemAskVerdict {
-  const { item, card, sessions, isRunning, hasAgent } = input
-  if (card === undefined) return { ok: false, why: 'noCard' }
-  // The row must belong to the card that was named. The panel always sends its
-  // own row, so this refuses only a body that does not describe one thing —
-  // which is exactly what it should refuse.
-  if (item.taskId !== card.id) return { ok: false, why: 'rowBelongsElsewhere' }
-  if (sessions.length === 0) return { ok: false, why: 'taskHasNoSession' }
-
-  const running = sessions.find(session => isRunning(session.sessionId))
-  const chosen = running?.sessionId ?? sessions[0]?.sessionId
-  if (chosen === undefined) return { ok: false, why: 'taskHasNoSession' }
-  if (!hasAgent(chosen)) return { ok: false, why: 'noLiveAgent' }
-
-  return { ok: true, sessionId: chosen, text: itemAskText(item, card) }
+export function planItemAsk(input: ItemAskInput): ItemAskPlan {
+  const { item, card, sessions, isRunning } = input
+  if (card === undefined) return { kind: 'refused', why: 'noCard' }
+  if (item.taskId !== card.id) return { kind: 'refused', why: 'rowBelongsElsewhere' }
+  const target = askTargetOf(sessions, isRunning)
+  const text = itemContextText(item)
+  return target.kind === 'start'
+    ? { kind: 'start', text }
+    : { kind: 'continue', sessionId: target.sessionId, text }
 }

@@ -649,12 +649,23 @@ export const zh = {
   'item.count': '共 {n} 条',
   'item.countFiltered': '显示 {shown} / 共 {total} 条',
   'item.ask': '问 AI',
+  /* 两句话，两件不同的事：**它开了新的一轮**，或者**它接着说进了那条会话**。
+   *
+   * 一句「已经交给 AI」会让读者分不清他刚才是启动了什么，还是往一件已经在跑的事里添了一句——
+   * 而这两件事在屏上的后果完全不同（一张卡从待办进到进行中，与一条已经在跑的对话多了一句）。 */
+  'item.ask.started': '已经开跑了：它在看板上进了「进行中」。',
   'item.ask.said': '已经交给 {sessionId} 这个会话的模型，它会接着处理。',
   'item.ask.refused': '没能交给模型：{why}。这条还在清单里，没有丢。',
+  /* 按之前就知道这一按会走哪条路（正在跑 = 这张卡已经有对话了）。它不是一句解释，
+     是那一按的事实，所以写在按钮旁边而不是挂在 `title` 上（触屏没有 hover）。 */
+  'item.ask.continues': '它正在跑——这一条会接着说进那条会话。',
+  /* 门那边给的是码，词在这一侧（要翻译，也只有它知道读者刚看见的是什么）。 */
+  'item.ask.why.unknownTask': '那张卡已经不在了',
+  'item.ask.why.empty': '这一条没有内容可发',
+  'item.ask.why.busy': '这张卡正在开场，它的会话还没定下来，等它出声再问',
+  'item.ask.why.unavailable': '这台设备驱不了引擎，也没接上中继，换个窗口再问',
   'item.why.noSuchItem': '这一条已经不在清单里了',
   'item.why.gone': '它已经不在归档里了',
-  'item.why.taskHasNoSession': '那张卡还没有会话可以说话',
-  'item.why.noLiveAgent': '那张卡挂着的会话现在不在跑',
   'item.why.noSuchTask': '它挂的那张卡已经不在板上了',
   'item.why.rowBelongsElsewhere': '这一条挂的不是刚才那张卡',
   'item.why.hostUnavailable': '这台机器读不到主机',
@@ -975,15 +986,6 @@ export const zh = {
   'item.steps.doneHide': '收起已完成的 {n} 条',
   'item.steps.gauge': '{total} 条里做完了 {done} 条',
   'item.menu.steps': '编辑步骤',
-  /* 「开工」→「执行」，「模型在做」→「正在跑」。
-   *
-   * 读者的原话：「开工」是工地上的词，「模型在做」是一句解释而不是一个状态——而看板上
-   * 同一件事写的是「执行」（`README` 与看板详情都用它）。一个动作在两个面板上有两个名字，
-   * 是同一台机器上出现两个动词的来处，所以清单这一侧改读看板那一个词。
-   *
-   * 「正在跑」是把状态写成状态：读者要看的是**它现在怎么样**，而不是谁在做它。 */
-  'item.menu.start': '执行',
-  'item.menu.running': '正在跑',
   /* 卡芯片那扇门的读屏名：它印的是「待办」这样的**状态词**，而一枚按钮只说「待办」会让
      读屏用户以为它是个筛选器——所以它说清楚按下去会发生什么。 */
   'item.row.cardDoor': '到看板打开这张卡（现在在「{where}」）',
@@ -1603,12 +1605,18 @@ export const en: Record<keyof typeof zh, string> = {
   'item.count': '{n} total',
   'item.countFiltered': 'showing {shown} of {total}',
   'item.ask': 'Ask AI',
+  // Two sentences for two different things: a new run opened, or a message added
+  // to the conversation this card already had.
+  'item.ask.started': 'Started: the card moved to “In progress” on the board.',
   'item.ask.said': 'Handed to the model in {sessionId}; it takes it from here.',
   'item.ask.refused': 'Could not reach a model: {why}. The item is still here; nothing was lost.',
+  'item.ask.continues': 'It is running, so this will be said into that conversation.',
+  'item.ask.why.unknownTask': 'that card is gone',
+  'item.ask.why.empty': 'this row has nothing to send',
+  'item.ask.why.busy': 'the card is just starting and has not resolved a conversation yet; ask again once it speaks',
+  'item.ask.why.unavailable': 'this device cannot drive the engine and is not relaying; try another window',
   'item.why.noSuchItem': 'that row is no longer in the list',
   'item.why.gone': 'it is no longer in the archive',
-  'item.why.taskHasNoSession': 'that card has no session to talk to yet',
-  'item.why.noLiveAgent': 'the session on that card is not running',
   'item.why.noSuchTask': 'the card it hangs off is no longer on the board',
   'item.why.rowBelongsElsewhere': 'that row does not hang off the card that was named',
   'item.why.hostUnavailable': 'this device cannot reach the host',
@@ -1879,9 +1887,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.steps.doneHide': 'Hide the {n} done',
   'item.steps.gauge': '{done} of {total} steps done',
   'item.menu.steps': 'Edit the steps',
-  // 见 zh 一侧的说明：与看板用同一个动词，而状态写成状态。
-  'item.menu.start': 'Run',
-  'item.menu.running': 'Running',
   'item.row.cardDoor': 'Open this card on the board (it is in {where})',
 }
 

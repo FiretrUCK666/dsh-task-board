@@ -611,12 +611,16 @@ export declare const zh: {
     'item.count': string;
     'item.countFiltered': string;
     'item.ask': string;
+    'item.ask.started': string;
     'item.ask.said': string;
     'item.ask.refused': string;
+    'item.ask.continues': string;
+    'item.ask.why.unknownTask': string;
+    'item.ask.why.empty': string;
+    'item.ask.why.busy': string;
+    'item.ask.why.unavailable': string;
     'item.why.noSuchItem': string;
     'item.why.gone': string;
-    'item.why.taskHasNoSession': string;
-    'item.why.noLiveAgent': string;
     'item.why.noSuchTask': string;
     'item.why.rowBelongsElsewhere': string;
     'item.why.hostUnavailable': string;
@@ -843,8 +847,6 @@ export declare const zh: {
     'item.steps.doneHide': string;
     'item.steps.gauge': string;
     'item.menu.steps': string;
-    'item.menu.start': string;
-    'item.menu.running': string;
     'item.row.cardDoor': string;
 };
 /** en dictionary, complete against the zh key set. */

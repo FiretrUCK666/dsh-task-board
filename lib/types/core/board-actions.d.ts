@@ -133,6 +133,13 @@ export interface ActionShape {
      * action with NO `relay` cannot be relayed at all, whatever its lane. That
      * covers both "the engine does this itself" and "this writes a document
      * instead" — and it is the one thing a host must refuse rather than guess.
+     *
+     * AND THERE IS A THIRD CASE, which is why `lane` is still read beside this
+     * field: `item.ask` rides `run` on a card with no conversation and `comment` on
+     * a card that has one, so its carrier is a fact about the DATA rather than about
+     * the action. No single name can be written here without being wrong half the
+     * time, so the op decides it and `lane: 'engine'` is what says a carrier is
+     * needed at all. Every other action names its one carrier.
      */
     readonly relay?: 'run' | 'comment' | 'session.create' | 'session.rename';
     /** Set when the action has meaning beyond its field writes, so the UI and the
@@ -1055,16 +1062,16 @@ export declare const ACTIONS: {
     readonly 'item.ask': {
         readonly verb: "speak";
         readonly domain: "item";
-        readonly lane: "document";
+        readonly lane: "engine";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
         readonly semanticOf: "planItemAsk";
-        readonly summary: "把一条清单条目交给模型，问它关于这一条的事并让它回话。只会送到这一条自己挂着的那张卡的会话上：优先送正在跑的那个，没有就送第一个。这一条不是执行——不会开一轮、不会动看板上的栏位，只是把这个条目（连同它的步骤）作为一句话送进一个会话。想让它真的去做，用 item.promote 先变成卡，再在卡上开工。";
+        readonly summary: "把一条清单条目交给它的看板卡片——卡已经有对话就说进那条对话，没有就开一轮，而这一轮的第一句话就是这一条（标题、标签、正文、步骤、上下文备注）。没挂卡的条目先要用 item.promote 变成一张卡：那张卡就是它的对话。这不是「只问一句」——它按卡的现状走，所以和界面上的「问 AI」是同一件事。";
         readonly params: {
             readonly of: {
-                readonly about: "要问的条目编号：填那个数字本身（12），不要带 # 号";
-                readonly appliesWhen: "这一条必须已经挂在一张看板卡片上：没有卡的条目没有会话可以说话，会被拒。";
+                readonly about: "要交给 AI 的条目编号：填那个数字本身（12），不要带 # 号";
+                readonly appliesWhen: "这一条必须已经挂在一张看板卡片上。没有卡的条目会被拒，先用 item.promote 变成卡。";
             };
         };
     };

@@ -904,7 +904,11 @@ export function apply(ctx: ClientContext): void {
       // A non-engine replica relays a user-initiated launch to the lease
       // holder (the host forwards it over the SSE command frame). Pre-sync
       // this replica is its own engine, so the relay is never used.
-      requestLaunch: (taskId, trigger) => { if (sync.isSynced()) sync.requestLaunch(taskId, trigger) },
+      requestLaunch: (taskId, trigger, kickoff) => { if (sync.isSynced()) sync.requestLaunch(taskId, trigger, kickoff) },
+      // The twin relay: a message INTO a conversation the card already has. It
+      // travels for the same reason a launch does — only the seat holder may
+      // write the round and send it, so many open boards never send twice.
+      requestComment: (taskId, sessionId, text) => { if (sync.isSynced()) sync.requestComment(taskId, sessionId, text) },
       // The engine-note dialog's 「重新检查」: renew the lease NOW (the sync
       // client's seat announcement then re-mirrors hostProto into the
       // controller), so a user who just restarted the host sees the banner
@@ -1230,15 +1234,19 @@ export function apply(ctx: ClientContext): void {
       controller.setHostBoot(sync.hostBootTime())
       controller.setEngine(held)
     })
-    // A relayed command: the replica holding the seat performs it. ONLY the
-    // `run` carrier maps onto a controller call here — `taskId` and `trigger`
-    // exist on that variant alone, and the others (a comment, creating a
-    // session, renaming one) are the engine's work, not a board run. Narrowing
-    // is the honest read: reading those fields off the union would claim every
-    // carrier is a run.
+    // A relayed command: the replica holding the seat performs it. The two
+    // carriers that name a card map onto the controller's own doors — a launch
+    // (with whatever first message the requester brought) and a message into a
+    // conversation the card already has. The remaining two (creating a session,
+    // renaming one) are the engine's work, not a board run.
     sync.onCommand(command => {
-      if (command.type !== 'run') return
-      void controller.runTask(command.taskId, command.trigger)
+      if (command.type === 'run') {
+        void controller.runTask(command.taskId, command.trigger, command.kickoff)
+        return
+      }
+      if (command.type === 'comment') {
+        controller.askCardSession(command.taskId, command.sessionId, command.text)
+      }
     })
 
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through
