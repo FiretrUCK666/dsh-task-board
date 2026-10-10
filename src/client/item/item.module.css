@@ -4638,12 +4638,27 @@ textarea.itemInput {
 
 .itemOpenActions {
   display: flex;
-  /* **装不下就让位，不压扁。** 这一排原来不换行，于是按钮一多，旁边那句理由就被挤成
-     「一个字一列」——正是硬性规范 11 点名的压扁。 */
-  flex-wrap: wrap;
+  /* **一条线，永不换行。** 三件东西（回执 · 解释 · 按钮）同排；换行就会把它拆回「三段堆叠」
+     ——读者给的三张不同宽度的截图里，最不想要的就是那个。装不下时让步的是中间那句解释。 */
+  flex-wrap: nowrap;
   align-items: center;
   gap: var(--s1);
   margin-inline-start: auto;
+}
+
+/* 一律不缩…… */
+.itemOpenActions > * {
+  flex: 0 0 auto;
+}
+
+/* ……**只有中间那句解释让步**：它是元信息，不够宽时用省略号（元信息可省略号），
+   而说明文字永远不会被压成一列、也不会把按钮挤到第二排（硬性规范 11）。 */
+.itemOpenActions > .itemOptsFoot {
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .itemOpenAct .itemOriginRow {

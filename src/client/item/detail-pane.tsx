@@ -107,6 +107,13 @@ export interface ItemDetailProps {
    * 起来——那时按钮禁用，**理由写在旁边**。
    */
   readonly runnable?: boolean
+  /**
+   * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
+   *
+   * **它必须与按钮同排**：回执原来挂在**行**的网格上、按钮挂在详情卡片里，两个容器各摆各的
+   * ——宽的时候碰巧是一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。
+   */
+  readonly receipt?: string
   readonly onNewCard: (title: string) => void
   /** The board cards a row may hang off, already titled. */
   readonly cards: readonly { readonly id: string; readonly title: string }[]
@@ -669,12 +676,15 @@ export function ItemDetail(props: ItemDetailProps) {
         <span className={css.itemOriginRow}>
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
         </span>
-        {/* **理由在按钮上方自成一行，按钮永远是一条右对齐的横排。**
-            读者对比过两种状态：没有理由时是一排（他喜欢的样子），有理由时原来变成三段堆叠——
-            同一个面板两种排版，只因为一句解释在不在。所以理由从那一排里搬出来，放在它上面；
-            而「装不下就换行」的规矩仍然留着（按钮多了会自己换行，不压扁任何东西）。 */}
-        {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
+        {/* **一条线：回执 · 解释 · 按钮。**
+            三件东西原来各有各的家——回执挂在**行**的网格上、解释与按钮挂在详情卡片里——宽的时候
+            碰巧挤成一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。搬进
+            同一个容器之后，形状与宽度无关。
+            各有各的伸缩：回执与按钮**不伸缩**（永远在两端），**让步的只有中间那句解释**——它是
+            元信息，不够宽时用省略号；说明文字永远不会被压成一列（硬性规范 11）。 */}
         <div className={css.itemOpenActions}>
+          {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
+          {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
           {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
               * law, so a reader who learned one has learned the other. Without a
               * card the row can only become one (the primary that works on every

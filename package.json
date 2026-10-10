@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Two main-stage panels for the DSH web GUI: a multi-column kanban board with real execution through DSH sessions, schedules, session rules and auto-cruise automation, plus a task-list workbench whose rows are themselves cards on one canvas, with a navigation rail, inline detail, a capture grammar, a command palette and a full keyboard flow. Truth lives on the host and syncs to every device over SSE (the browser is an offline-first copy). Standalone plugin, no DSH source changes.",
-  "version": "0.9.41",
+  "version": "0.9.42",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",

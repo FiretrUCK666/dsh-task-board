@@ -68,6 +68,13 @@ export interface ItemDetailProps {
      * 起来——那时按钮禁用，**理由写在旁边**。
      */
     readonly runnable?: boolean;
+    /**
+     * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
+     *
+     * **它必须与按钮同排**：回执原来挂在**行**的网格上、按钮挂在详情卡片里，两个容器各摆各的
+     * ——宽的时候碰巧是一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。
+     */
+    readonly receipt?: string;
     readonly onNewCard: (title: string) => void;
     /** The board cards a row may hang off, already titled. */
     readonly cards: readonly {

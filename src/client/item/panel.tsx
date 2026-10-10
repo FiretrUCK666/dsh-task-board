@@ -891,6 +891,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
       runnable={runnableItem(item)}
       onPromote={() => { if (item !== undefined) promoteOne(item) }}
       onStart={() => { startOne(item) }}
+      /* 回执跟着这一行走：它显示在这一行的底排里（与按钮同一条线），而不是散在行的网格上。 */
+      receipt={receipt?.id === item.id ? receipt.words : undefined}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
       /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档

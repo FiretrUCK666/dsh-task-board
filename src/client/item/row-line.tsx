@@ -497,7 +497,9 @@ export function ItemRowLine(props: ItemRowLineProps) {
         </svg>
       </button>
 
-      {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
+      {/* 回执：**详情展开时它由详情那一排画**（与按钮同一条线）；只有这一行是收着的时候才由
+          这里画。两个地方各画一次，屏上就会出现两枚一模一样的胶囊。 */}
+      {props.receipt !== undefined && !(inPlace && expanded) && <p className={css.itemHint} role="status">{props.receipt}</p>}
 
       {menuOpen && (
         <ItemRowMenu
