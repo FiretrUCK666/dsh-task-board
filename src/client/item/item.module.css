@@ -1691,6 +1691,20 @@
   overflow-wrap: anywhere;
 }
 
+/* **标题现在是一个控件**（按它就地改名字），而它必须长得与纯文本那一版**一模一样**：
+   把它做成按钮不许带来按钮的皮（底色、描边、内衬、居中、系统字体）。`cursor: text` 是这一处
+   唯一该有的提示——它读起来是"这段字可以编辑"，而不是"这里有个按钮"。 */
+button.itemRowText {
+  appearance: none;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: start;
+  cursor: text;
+}
+
 /* **句子末尾的标签与句子之间那一档，就是 `!N` 与句子之间那一档（6px）。**
  *
  * 读者的原话是「左右间距要和左边的元素间距保持完全一致，不要单独搞一个间距」，第二次看是

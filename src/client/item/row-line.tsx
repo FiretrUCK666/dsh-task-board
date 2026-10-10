@@ -384,7 +384,19 @@ export function ItemRowLine(props: ItemRowLineProps) {
                   save) has no `title` of its own, and printing the raw field drew
                   a row with nothing in it — the derivation that borrows the body's
                   first line existed and had no reader. It has one now. */} 
-              <span className={css.itemRowText}>{view.title}</span>
+                {/* **标题就是改名字的入口**（使用者选的那条路：点标题即改名）。
+                    它原来是纯文本，按下去会**冒泡给整行**——那是「选中这一行」。所以这一枚
+                    必须 `stopPropagation`：否则一次点击同时改名与选中，两个动作撞在一起。
+                    可达名读作「改名：<标题>」，不是把标题当按钮名——后者会让读屏的人以为
+                    按下去是"打开"。 */}
+                <button
+                  type="button"
+                  className={css.itemRowText}
+                  aria-label={`${t('item.menu.rename')}：${view.title}`}
+                  onClick={event => { event.stopPropagation(); startEditing() }}
+                >
+                  {view.title}
+                </button>
               {item.tags.map(tag => <span key={tag} className={css.itemTag}>{`#${tag}`}</span>)}
             </h3>
           )}
