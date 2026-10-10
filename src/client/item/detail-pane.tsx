@@ -669,6 +669,11 @@ export function ItemDetail(props: ItemDetailProps) {
         <span className={css.itemOriginRow}>
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
         </span>
+        {/* **理由在按钮上方自成一行，按钮永远是一条右对齐的横排。**
+            读者对比过两种状态：没有理由时是一排（他喜欢的样子），有理由时原来变成三段堆叠——
+            同一个面板两种排版，只因为一句解释在不在。所以理由从那一排里搬出来，放在它上面；
+            而「装不下就换行」的规矩仍然留着（按钮多了会自己换行，不压扁任何东西）。 */}
+        {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
         <div className={css.itemOpenActions}>
           {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
               * law, so a reader who learned one has learned the other. Without a
@@ -688,7 +693,6 @@ export function ItemDetail(props: ItemDetailProps) {
               <Button variant="primary" size="sm" onClick={props.onStart} disabled={props.runnable === false}>
                 {t('item.menu.start')}
               </Button>
-              {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
               {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
                   只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
               <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
@@ -704,7 +708,6 @@ export function ItemDetail(props: ItemDetailProps) {
               <Button variant="primary" size="sm" onClick={props.onStart} disabled={running || props.runnable === false}>
                 {t(running ? 'item.menu.running' : 'item.menu.start')}
               </Button>
-              {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
               <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
                 {t('item.ask')}
               </Button>

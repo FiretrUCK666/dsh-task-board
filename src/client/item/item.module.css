@@ -4639,17 +4639,11 @@ textarea.itemInput {
 .itemOpenActions {
   display: flex;
   /* **装不下就让位，不压扁。** 这一排原来不换行，于是按钮一多，旁边那句理由就被挤成
-     「一个字一列」（0.9.38 的窄档截图里就是那样）——正是硬性规范 11 点名的压扁。 */
+     「一个字一列」——正是硬性规范 11 点名的压扁。 */
   flex-wrap: wrap;
   align-items: center;
   gap: var(--s1);
   margin-inline-start: auto;
-}
-
-/* **理由是句子，不是按钮**：它整行占位，并有自己的地板宽度。 */
-.itemOpenActions .itemOptsFoot {
-  flex-basis: 100%;
-  min-inline-size: 12ch;
 }
 
 .itemOpenAct .itemOriginRow {
@@ -4712,6 +4706,14 @@ textarea.itemInput {
   font-weight: 400;
   line-height: 16px;
   color: var(--item-ink-3);
+  /* **回执在白底与彩底上都要看得见。** 它原来没有自己的皮，于是白卡片上根本认不出是一枚回执
+     （读者原话：「图一白色背景下你记的这个东西的胶囊根本看不到，在图二才能看得到」——图二是
+     被选中的蓝底卡片）。补一圈描边 + 让它**贴着字**，两种底上都立得住；`justify-self: start`
+     是必须的：它是网格里跨整行的一项，不这样写描边会拉成一条通栏的长框。 */
+  padding: 1px var(--s2);
+  border: 1px solid var(--dsw-alias-border-l1);
+  border-radius: var(--dsh-tb-pill);
+  justify-self: start;
 }
 
 /* 归档几行状态：读中 / 读不到 / 一条都没有 / 一次找回的结果。**同一档墨、同一个字号**，
