@@ -2576,7 +2576,7 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
         // the sentence, so it is its SIBLING rather than an ancestor of the words — and
         // asking the words for their nearest button finds nothing, which is a probe
         // reporting on the wrong element.
-        const title = row?.querySelector('[class*="itemPrioButton"]')
+        const title = row?.querySelector('button[class*="itemRowText"]')
         expect(title, `the ${band} band row printed no title control to press`).toBeDefined()
       // ONE PRESS. It needed two when the title was TEXT — 「press it again」 was
       // the desktop path for renaming, and it went with the text. Now the chip in
@@ -4593,7 +4593,7 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
     try {
       openRowDetail(panel)
       panel.settle()
-      const title = panel.surface.querySelector('button[class*="itemPrioButton"]') as HTMLButtonElement | null
+      const title = panel.surface.querySelector('button[class*="itemRowText"]') as HTMLButtonElement | null
       if (title === null) throw new Error('the row carries no title control to press')
       click(title)
       panel.settle()

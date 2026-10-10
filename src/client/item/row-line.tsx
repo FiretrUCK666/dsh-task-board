@@ -362,23 +362,21 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * 元素**完全一致**）。现在它们是句子末尾的词，间距读的是同一档 6px——即
              * `!N` 与句子之间那一档。 */
             <h3 className={css.itemRowTitle}>
-              {/* ONE PRESS OPENS THE FIELD. It used to need two — 「press the title
-                  * again」 — because the title was text; now it is a control, and a
-                  * control with a hidden first press is a control that does nothing
-                  * the first time. */}
-              <button
-                type="button"
+              {/* **优先级是一枚读数，不是一个动作。**
+               *
+               * 它原来兼作「打开标题编辑」的入口，理由是「标题还是一段纯文本，所以要有东西一下
+               * 打得开它」——可达名因此写着「紧急 · 改名」。现在**标题自己就是那个入口**（使用者
+               * 选的那条路，见右边那一枚），所以这一枚退回成它本来的样子：一枚记号。
+               *
+               * 产品文档里把「优先级同时是一个动作」记成一条**违反**，这里把它合上：让一枚读数
+               * 去承担动作是错的——读者看见的是「紧急」，而它按下去做的事叫"改名"。 */}
+              <span
                 className={css.itemPrioButton}
-                /* THE NAME SAYS WHAT THE PRESS DOES and what the glyph reads: the
-                 * chip opens the title editor (the priority is a word IN the
-                 * title's grammar), so 「优先级：紧急」 alone was a title that lied
-                 * about the action. */
-                aria-label={`${t(PRIORITY_LABEL[item.priority])} · ${t('item.menu.rename')}`}
-                title={`${t(PRIORITY_LABEL[item.priority])} · ${t('item.menu.rename')}`}
-                onClick={event => { event.stopPropagation(); startEditing() }}
+                aria-label={t(PRIORITY_LABEL[item.priority])}
+                title={t(PRIORITY_LABEL[item.priority])}
               >
-                {<PriorityMark priority={item.priority} />}
-              </button>
+                <PriorityMark priority={item.priority} />
+              </span>
               {/* THE SENTENCE IS THE VIEW'S TITLE, not the stored field. A row
                   written from a body alone (「正文（可留空）」 is an honest way to
                   save) has no `title` of its own, and printing the raw field drew
