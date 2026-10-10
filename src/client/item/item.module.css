@@ -4624,9 +4624,18 @@ textarea.itemInput {
 
 .itemOpenActions {
   display: flex;
+  /* **装不下就让位，不压扁。** 这一排原来不换行，于是按钮一多，旁边那句理由就被挤成
+     「一个字一列」（0.9.38 的窄档截图里就是那样）——正是硬性规范 11 点名的压扁。 */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s1);
   margin-inline-start: auto;
+}
+
+/* **理由是句子，不是按钮**：它整行占位，并有自己的地板宽度。 */
+.itemOpenActions .itemOptsFoot {
+  flex-basis: 100%;
+  min-inline-size: 12ch;
 }
 
 .itemOpenAct .itemOriginRow {
