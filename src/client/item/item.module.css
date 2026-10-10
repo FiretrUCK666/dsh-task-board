@@ -4087,6 +4087,21 @@ textarea.itemInput {
   border-block-start: var(--item-hair);
 }
 
+/* **一句脚注横跨整行，不落进名字那条轨。**
+ *
+ * `.itemOptRow` 是两列网格（名字 64px + 值 1fr）。脚注是这一行的**第三个**孩子，于是它被
+ * 自动排进下一行的**第一格**——那条 64px 的轨。读者报的「一个字一列」就是它：一句
+ * 「『进行中』与『待审核』是执行器给的……」在那儿排成了六七个字高的一根柱子。
+ *
+ * 窄档把这一行收成一列（下面那条 `@container`），于是同一句话在那里是好的——**这个缺陷
+ * 只有宽档画得出来**，这也是它一次次从眼皮底下走过去的原因。
+ *
+ * 修的是**它落在哪条轨**，不是它的宽度：早先给这个类加过 `min-inline-size` 当地板，那条
+ * 规矩被同一个容器里更高特异性的 `min-inline-size: 0` 压了回去，而真正错的从来不是宽度。 */
+.itemOptRow > .itemOptsFoot {
+  grid-column: 1 / -1;
+}
+
 /* 名字比它的值响一档，而节标题比名字再轻一档。**三层墨分三级**：值是那件事，名字是
  * 它的铭牌，节标题是一组铭牌的铭牌。两者都落在最轻的那一档时，这一栏里只有墨在
  * 分级，而墨级分不出「这是一节」和「这是一项」。 */
@@ -4285,19 +4300,6 @@ textarea.itemInput {
 .itemOpts > .itemOptHint,
 .itemOpts > .itemOptsFoot {
   flex: 0 0 100%;
-}
-
-/* **一句脚注永远读得通，不管它的爹是谁。**
- *
- * 上面那条「独占一整行」的规矩挂在**父类的名字**上，于是同一句脚注换到另一个容器里就没有它——
- * 状态选择器那一处的爹不是 `.itemOpts`，那句「『进行中』与『待审核』是执行器给的……」被旁边
- * 一排按钮挤成「一个字一列」。脚注的身份是它自己，不是它爹的。
- *
- * 这里用的是**地板**（`min-inline-size`）而不是 `flex`：地板与 `flex: none` 不冲突，所以它不会
- * 被别处更高特异性的简写悄悄压回去——那种"改了、屏上没变"的情形正是这一页反复吃亏的地方。 */
-.itemOptHint,
-.itemOptsFoot {
-  min-inline-size: 18ch;
 }
 
 /* 挂卡的那句话真相与它旁边那格同一族，只是它是**一件事实**而不是一个错处：
@@ -4651,9 +4653,16 @@ textarea.itemInput {
 
 .itemOpenActions {
   display: flex;
-  /* **一条线，永不换行。** 三件东西（回执 · 解释 · 按钮）同排；换行就会把它拆回「三段堆叠」
-     ——读者给的三张不同宽度的截图里，最不想要的就是那个。装不下时让步的是中间那句解释。 */
-  flex-wrap: nowrap;
+  /* **一条线；装不下时让步的是那一整条线，不是其中那句话。**
+   *
+   * 三件东西（回执 · 解释 · 一排按钮）同排。允许换行，而换行只有一种走法：那句解释
+   * 自己挪到一整行上去（它是这里的第一个子项，所以「装不下」时先被挤走的必然是按钮，
+   * 而按钮是一整排、`flex: 0 0 auto`，于是它们整排落到第二行）——回执在这个盒子外面，
+   * 谁都不会被拆成第三堆。
+   *
+   * 上一版写的是 `nowrap` 加省略号，理由是「元信息可省略号」。那句解释不是元信息：
+   * 它是**旁边那个按不动的按钮的理由**，而窄屏上被裁成「执行…」的理由不成其为理由。 */
+  flex-wrap: wrap;
   align-items: center;
   gap: var(--s1);
   margin-inline-start: auto;
@@ -4664,14 +4673,29 @@ textarea.itemInput {
   flex: 0 0 auto;
 }
 
-/* ……**只有中间那句解释让步**：它是元信息，不够宽时用省略号（元信息可省略号），
-   而说明文字永远不会被压成一列、也不会把按钮挤到第二排（硬性规范 11）。 */
+/* ……而一排按钮是**一个**单位：换行时它们整排走。
+ *
+ * 这一层是承重的：上面那个容器会换行，而换行的判定是**逐个元素**的，所以四个按钮直接
+ * 挂在那里时，`删除这条` 会自己掉到第二行，四个按钮被拆成「三 + 一」两堆——读者给的
+ * 截图里最不想要的就是那个。一个盒子把它们绑成一个不可分割的单位，宽窄就都拆不开。 */
+.itemOpenBtns {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: var(--s1);
+}
+
+/* ……除了那句解释，它可以**换行**（说明文字永不省略号），地板是 `min(22ch, 100%)`。
+ *
+ * 地板必须写成 `min(…, 100%)` 而不是一个裸的 `22ch`：裸地板在容器本身比它还窄时会
+ * 把盒子撑出去（溢出不回灌，只会被切掉）。而它写在这条规则里、不是写在 `.itemOptsFoot`
+ * 那个类上，是因为**地板属于「这个容器里的这个角色」**——同一个类在状态选择器里是
+ * 另一件事（独占一整行）。曾经把它写在类上，结果被这条 `.itemOpenActions > .itemOptsFoot`
+ * 的 `min-inline-size: 0` 按特异性压了回去：地板在，但轮不到它说话。 */
 .itemOpenActions > .itemOptsFoot {
   flex: 0 1 auto;
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  min-inline-size: min(22ch, 100%);
+  white-space: normal;
 }
 
 .itemOpenAct .itemOriginRow {
@@ -4684,16 +4708,6 @@ textarea.itemInput {
   .itemOpenMain {
     grid-template-columns: minmax(0, 1fr);
     row-gap: var(--s3);
-  }
-
-  .itemOpenAct {
-    flex-direction: column;
-    align-items: flex-end;
-  }
-
-  .itemOpenActions {
-    inline-size: 100%;
-    justify-content: flex-end;
   }
 }
 

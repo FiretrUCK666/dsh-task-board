@@ -1483,11 +1483,11 @@ describe('a card that cannot run says why, beside the button', () => {
        **不许只挂在 `title` 上**（硬性规范 11③：触屏没有 hover）。 */
     const rows = oneRow({ taskId: 't-1' })
     const blocked = renderPanel(rows, 'wide', 'list', boardWith(''), {}, 'r-1')
-    expect(blocked, 'a card with an empty execution prompt can run nothing — the reason is not on the page').toContain('执行 Prompt 为空')
+    expect(blocked, 'a card with an empty execution prompt can run nothing — the reason is not on the page').toContain('执行 Prompt 取自正文')
     expect(blocked, 'the button was left pressable, so the press does nothing and says nothing').toMatch(/disabled/)
     // 对照：同一条行、同一张卡的 prompt 一填上，按钮就能按、理由就不该再出现。
     const ready = renderPanel(rows, 'wide', 'list', boardWith('do the thing'), {}, 'r-1')
-    expect(ready, 'the reason is still printed for a card that can run').not.toContain('执行 Prompt 为空')
+    expect(ready, 'the reason is still printed for a card that can run').not.toContain('执行 Prompt 取自正文')
   })
 })
 
@@ -4068,6 +4068,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
       && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
+      && state !== 'carded-detail'
       && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
@@ -4141,6 +4142,28 @@ describe('the mounted-page artifact, for the states a static render cannot reach
           .find(one => (one.getAttribute('aria-label') ?? '') === '这一条能做的事')
         if (trigger === undefined) throw new Error('the first row drew no ⋮ button')
         click(trigger)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'carded-detail') {
+      /* **挂着卡的那一行的详情。**
+       *
+       * 状态选择器下面那句话（「『进行中』与『待审核』是执行器给的……」）只在这一屏上存在：
+       * 它要一条**挂着卡**的行，上面那些状态用的都是没挂卡的行。加它的理由就是读者报过的
+       * 那件事——那句话被旁边一排按钮挤成「一个字一列」——而那一处的宽度只有真浏览器给得出
+       * （硬性规范 19）。 */
+      const panel = mountPanel(oneRow({ id: 'cd-1', ref: 1, title: '挂着卡的一行', taskId: 'task-1' }), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
+        if (row === undefined) throw new Error('the list page drew no row to open')
+        click(row)
         await settle()
       } catch (error) {
         panel.dispose()

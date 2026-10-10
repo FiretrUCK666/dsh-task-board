@@ -676,54 +676,60 @@ export function ItemDetail(props: ItemDetailProps) {
         <span className={css.itemOriginRow}>
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
         </span>
-        {/* **一条线：回执 · 解释 · 按钮。**
+        {/* **一条线：回执 · 解释 · 一排按钮。**
             三件东西原来各有各的家——回执挂在**行**的网格上、解释与按钮挂在详情卡片里——宽的时候
             碰巧挤成一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。搬进
             同一个容器之后，形状与宽度无关。
-            各有各的伸缩：回执与按钮**不伸缩**（永远在两端），**让步的只有中间那句解释**——它是
-            元信息，不够宽时用省略号；说明文字永远不会被压成一列（硬性规范 11）。 */}
+            装不下时让步的是**那一整条线**：那句解释挪到自己的一整行上去（它是说明文字，换行、
+            永不省略号），按钮整排跟着下移一行。所以按钮**必须是一个单位**——见下面那个盒子。 */}
         <div className={css.itemOpenActions}>
           {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
           {props.runnable === false && <p className={css.itemOptsFoot}>{t('detail.promptEmpty')}</p>}
-          {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
-              * law, so a reader who learned one has learned the other. Without a
-              * card the row can only become one (the primary that works on every
-              * row) or go away; start and ask live where there is something to
-              * run and something to ask — no disabled judges saying 「先变成看板
-              * 卡片」, because the 「不挂」 chip and the primary already state
-              * that fact. While the linked card runs, the slot says who is on it. */}
-          {cardId === undefined ? (
-            <>
-              {/* **没挂卡的一条也能交给 AI。** 这里原来只给「变成看板卡片」与删除，理由是
-                  「没有卡的行只能变成一张卡」——而读者按下「执行」时想的是「这条我要让 AI 干」，
-                  与有没有卡无关：先建卡、再回来按一遍是两步做一件事。所以这一枚对两种行都在，
-                  只是没卡时它做的是**就地建卡再开跑**（`startOne` 一处实现）。
-                  正文为空时**禁用并写明理由**（硬性规范 11③：理由不许只挂在 `title` 上），
-                  因为那一张卡建出来也跑不起来——执行 Prompt 来自正文。 */}
-              <Button variant="primary" size="sm" onClick={props.onStart} disabled={props.runnable === false}>
-                {t('item.menu.start')}
-              </Button>
-              {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
-                  只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
-              <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
-              <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
-              <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-            </>
-          ) : (
-            <>
-              {/* **跑不起来就说为什么。** 一张执行 Prompt 为空的卡会在看板那一侧被门禁拦下来
-                  （`taskExecutable`，唯一的判据），而按下这一枚按钮的人是在清单上按的——所以
-                  理由必须在这里、就在按钮旁边（硬性规范 11③：理由不许只挂在 `title` 上）。
-                  两个禁用理由各说各的：跑着是这一条现在的状态，跑不起来是这个按钮本身。 */}
-              <Button variant="primary" size="sm" onClick={props.onStart} disabled={running || props.runnable === false}>
-                {t(running ? 'item.menu.running' : 'item.menu.start')}
-              </Button>
-              <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
-                {t('item.ask')}
-              </Button>
-              <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
-            </>
-          )}
+          {/* **按钮是一排，不是一串各自能换行的东西。**
+              这一层曾经不存在，四个按钮直接挂在上面那个会换行的容器里；于是窄一点的时候
+              `删除这条` 自己掉到第二行，四个按钮被拆成「三 + 一」两堆——正是读者最不想要的那
+              种排版。换行的判定是逐个元素的，所以「它们永远在一起」只能靠结构说，不能靠宽度猜。 */}
+          <div className={css.itemOpenBtns}>
+            {/* THE ACTIONS ANSWER THIS ROW'S STATE, and the ⋯ menu speaks the same
+                * law, so a reader who learned one has learned the other. Without a
+                * card the row can only become one (the primary that works on every
+                * row) or go away; start and ask live where there is something to
+                * run and something to ask — no disabled judges saying 「先变成看板
+                * 卡片」, because the 「不挂」 chip and the primary already state
+                * that fact. While the linked card runs, the slot says who is on it. */}
+            {cardId === undefined ? (
+              <>
+                {/* **没挂卡的一条也能交给 AI。** 这里原来只给「变成看板卡片」与删除，理由是
+                    「没有卡的行只能变成一张卡」——而读者按下「执行」时想的是「这条我要让 AI 干」，
+                    与有没有卡无关：先建卡、再回来按一遍是两步做一件事。所以这一枚对两种行都在，
+                    只是没卡时它做的是**就地建卡再开跑**（`startOne` 一处实现）。
+                    正文为空时**禁用并写明理由**（硬性规范 11③：理由不许只挂在 `title` 上），
+                    因为那一张卡建出来也跑不起来——执行 Prompt 来自正文。 */}
+                <Button variant="primary" size="sm" onClick={props.onStart} disabled={props.runnable === false}>
+                  {t('item.menu.start')}
+                </Button>
+                {/* 「问 AI」与「执行」同一判据：没挂卡时它也在这儿（`askOne` 会先建卡再问），
+                    只有「有卡却被删了」那种行才拒绝——去问一个不存在的会话是错的。 */}
+                <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>{t('item.ask')}</Button>
+                <Button variant="ghost" size="sm" onClick={props.onPromote}>{t('item.menu.promote')}</Button>
+                <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
+              </>
+            ) : (
+              <>
+                {/* **跑不起来就说为什么。** 一张执行 Prompt 为空的卡会在看板那一侧被门禁拦下来
+                    （`taskExecutable`，唯一的判据），而按下这一枚按钮的人是在清单上按的——所以
+                    理由必须在这里、就在按钮旁边（硬性规范 11③：理由不许只挂在 `title` 上）。
+                    两个禁用理由各说各的：跑着是这一条现在的状态，跑不起来是这个按钮本身。 */}
+                <Button variant="primary" size="sm" onClick={props.onStart} disabled={running || props.runnable === false}>
+                  {t(running ? 'item.menu.running' : 'item.menu.start')}
+                </Button>
+                <Button variant="ghost" size="sm" onClick={props.onAsk} disabled={props.asking}>
+                  {t('item.ask')}
+                </Button>
+                <Button variant="dangerGhost" size="sm" onClick={props.onRemove}>{t('item.menu.delete')}</Button>
+              </>
+            )}
+          </div>
         </div>
       </div>
     </div>
