@@ -1090,6 +1090,26 @@ describe('the checklist replica', () => {
     expect(offline.load().map(row => row.id)).toEqual(['i-x'])
   })
 
+  it('一行刚记下就带着宿主给的号到达读者，不用刷新页面', async () => {
+    /* 读者报过的那件事：新记下的一行一直读「编号待定」，刷新之后才有号。
+     *
+     * 编号是**宿主**编的（`assignItemRefs` 跑在 `applyItemsCommit` 里），所以提交被应答之前，
+     * 读者手里那一行只能是 0。而这台复制的 `view()` 把**本地那一层摆在已采纳文档的前面**，
+     * 于是「把号交给读者」只可能发生在清掉那一层之后——这条用例钉的就是那个次序：应答到达时，
+     * **最后发布出去的那一屏**必须已经带着号。（修前它发布的是本地那一层，随后一声不响。） */
+    const { client, timers } = dualClient()
+    await client.start()
+    const replica = client.checklistReplica()
+    const frames: ItemRecord[][] = []
+    replica.onRemote(rows => { frames.push([...rows]) })
+    // 读者按下「新建一条」：本地那一行还没有号（`ref === 0` 就是「还没编号」）。
+    new SyncedItemsStore(replica).save([{ ...item('i-new', '刚记下的一句'), ref: 0 }])
+    await timers.advance(300)
+    const shown = frames.at(-1) ?? []
+    expect(shown.map(row => row.id)).toEqual(['i-new'])
+    expect(shown[0].ref, 'the host numbered this row and the reader was never told').toBeGreaterThan(0)
+  })
+
   it('says the host lost the checklist instead of rendering an empty list as yours', async () => {
     const local: ItemRecord[] = [item('i-a', 'A')]
     // The damage arrives AFTER a healthy boot, so the union probe is long past

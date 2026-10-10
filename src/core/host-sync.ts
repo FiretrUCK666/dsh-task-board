@@ -705,7 +705,10 @@ export class BoardSyncClient {
     }
     this.commitAttempts = 0
     this.log(`[dsh-task-board] commit acked revision=${result.doc.revision}`)
-    this.adopt(result.doc)
+    // THE OPTIMISTIC LAYER IS CLEARED **BEFORE** THE DOCUMENT IS ADOPTED, and
+    // the publish comes after both: `view()` puts the layer in front, so this
+    // order is the difference between the reader being shown the host's version
+    // of what they just wrote and being shown their own copy of it forever.
     if (snapshot.tasks !== undefined && this.dirty.tasks === snapshot.tasks) delete this.dirty.tasks
     if (snapshot.cruise !== undefined && this.dirty.cruise === snapshot.cruise) delete this.dirty.cruise
     if (snapshot.schedulePresets !== undefined && this.dirty.schedulePresets === snapshot.schedulePresets) delete this.dirty.schedulePresets
@@ -717,6 +720,8 @@ export class BoardSyncClient {
       this.claims.clear()
       this.deleted = []
     }
+    this.adopt(result.doc)
+    this.publish()
     const refire = this.refire
     this.refire = false
     if (refire || this.dirty.tasks !== undefined || this.dirty.cruise !== undefined
@@ -725,12 +730,32 @@ export class BoardSyncClient {
     }
   }
 
-  /** Adopt an authoritative document (never backwards) and notify the replica. */
-  private adopt(doc: BoardDoc): void {
-    if (doc.revision < this.baseline.revision) return
-    if (doc === this.baseline) return
+  /** Adopt an authoritative document, never backwards.
+   *
+   *  IT PUBLISHES NOTHING BY ITSELF. The view has TWO inputs — this baseline and
+   *  this tab's own optimistic layer — so "the document moved" is only one of
+   *  the two reasons a reader can see something new. See {@link publish}.
+   *  @returns whether the baseline moved. */
+  private adopt(doc: BoardDoc): boolean {
+    if (doc.revision < this.baseline.revision) return false
+    if (doc === this.baseline) return false
     this.baseline = doc
-    this.remoteListener?.(this.view(), doc.revision)
+    return true
+  }
+
+  /** Hand the reader the current view.
+   *
+   *  WHY THE NOTIFY LIVES HERE AND NOT INSIDE {@link adopt}. {@link view} lays
+   *  this tab's optimistic layer IN FRONT of the baseline, so **clearing that
+   *  layer changes what the reader sees even when the document has not moved**.
+   *  Publishing from inside `adopt` — which is what this used to do — handed the
+   *  reader the view with the optimistic rows still in front and then said
+   *  nothing more, so whatever the host had just decided about those rows was
+   *  never drawn. On the checklist that is visible in the worst way: `ref` is
+   *  assigned host-side, so a row that had just come back from the host kept
+   *  reading 「编号待定」 until the reader reloaded the page. */
+  private publish(): void {
+    this.remoteListener?.(this.view(), this.baseline.revision)
   }
 
   /** Coalesced resync after a remote-change frame. */
@@ -781,7 +806,7 @@ export class BoardSyncClient {
     // wake a parked writer; quiet idling never overrides self-heal).
     this.probeParked()
     if (!result.available || result.unchanged || result.doc === undefined) return
-    this.adopt(result.doc)
+    if (this.adopt(result.doc)) this.publish()
   }
 
   /** Renew (or take) the engine lease; publish SEAT changes (held AND the
@@ -991,12 +1016,13 @@ export class ChecklistReplica {
         }
       }
     }
-    // ADOPT RATHER THAN ASSIGN: `adopt` saves the mirror and notifies the
-    // listener, so the panel sees the rows the moment they are known. A bare
-    // assignment leaves the listener uninformed and `poll` then asks the host
-    // for the revision it already holds — the host answers "unchanged" and the
-    // panel stays empty until another device writes or the reader refreshes.
+    // ADOPT AND PUBLISH RATHER THAN ASSIGN: the reader sees the rows the moment
+    // they are known, and the mirror is saved with them. A bare assignment
+    // leaves the listener uninformed and `poll` then asks the host for the
+    // revision it already holds — the host answers "unchanged" and the panel
+    // stays empty until another device writes or the reader refreshes.
     this.adopt(result.doc)
+    this.publish()
     if (this.dirty !== undefined) await this.flush()
   }
 
@@ -1190,7 +1216,9 @@ export class ChecklistReplica {
     }
     this.commitAttempts = 0
     this.reachable = true
-    this.adopt(result.doc)
+    // CLEARED BEFORE THE DOCUMENT IS ADOPTED, and published after both — the
+    // order is what makes the host's version of this row (including the number
+    // it just gave it) reach the reader. See `publish`.
     // Cleared ONLY when this replica's own rows came back clean. Nothing about
     // the board's state can reach in here.
     if (snapshot !== undefined && this.dirty === snapshot) this.dirty = undefined
@@ -1198,18 +1226,29 @@ export class ChecklistReplica {
       this.claims.clear()
       this.deleted = []
     }
+    this.adopt(result.doc)
+    this.publish()
     const refire = this.refire
     this.refire = false
     if (refire || this.dirty !== undefined) this.scheduleCommit()
   }
 
-  /** Adopt an authoritative checklist (never backwards) and notify the replica. */
-  private adopt(doc: ItemsDoc): void {
-    if (doc.revision < this.doc.revision) return
-    if (doc === this.doc) return
+  /** Adopt an authoritative checklist, never backwards.
+   *
+   *  IT PUBLISHES NOTHING BY ITSELF — {@link publish} owns the notify, and its
+   *  reasons are the same on both documents (see the board's copy above).
+   *  @returns whether the document moved. */
+  private adopt(doc: ItemsDoc): boolean {
+    if (doc.revision < this.doc.revision) return false
+    if (doc === this.doc) return false
     this.doc = doc
+    return true
+  }
+
+  /** Hand the reader the current rows, and keep the offline mirror warm. */
+  private publish(): void {
     this.deps.mirror?.save(this.view())
-    this.remoteListener?.(this.view(), doc.revision)
+    this.remoteListener?.(this.view(), this.doc.revision)
   }
 
   /**
@@ -1232,7 +1271,7 @@ export class ChecklistReplica {
     if (!(id in this.doc.tombstones)) return
     const tombstones = { ...this.doc.tombstones }
     delete tombstones[id]
-    this.adopt({ ...this.doc, revision, tombstones })
+    if (this.adopt({ ...this.doc, revision, tombstones })) this.publish()
   }
 
   private scheduleResync(): void {
@@ -1252,7 +1291,7 @@ export class ChecklistReplica {
       return
     }
     if (!result.available || result.unchanged || result.doc === undefined) return
-    this.adopt(result.doc)
+    if (this.adopt(result.doc)) this.publish()
   }
 
   private async fetchDoc(since: number | undefined): Promise<ItemsSyncFetchResult | undefined> {

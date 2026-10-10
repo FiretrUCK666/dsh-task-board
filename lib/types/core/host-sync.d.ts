@@ -239,8 +239,25 @@ export declare class BoardSyncClient {
     private scheduleCommit;
     /** Send the current dirty view (one in flight at a time, trailing refire). */
     flush(): Promise<void>;
-    /** Adopt an authoritative document (never backwards) and notify the replica. */
+    /** Adopt an authoritative document, never backwards.
+     *
+     *  IT PUBLISHES NOTHING BY ITSELF. The view has TWO inputs — this baseline and
+     *  this tab's own optimistic layer — so "the document moved" is only one of
+     *  the two reasons a reader can see something new. See {@link publish}.
+     *  @returns whether the baseline moved. */
     private adopt;
+    /** Hand the reader the current view.
+     *
+     *  WHY THE NOTIFY LIVES HERE AND NOT INSIDE {@link adopt}. {@link view} lays
+     *  this tab's optimistic layer IN FRONT of the baseline, so **clearing that
+     *  layer changes what the reader sees even when the document has not moved**.
+     *  Publishing from inside `adopt` — which is what this used to do — handed the
+     *  reader the view with the optimistic rows still in front and then said
+     *  nothing more, so whatever the host had just decided about those rows was
+     *  never drawn. On the checklist that is visible in the worst way: `ref` is
+     *  assigned host-side, so a row that had just come back from the host kept
+     *  reading 「编号待定」 until the reader reloaded the page. */
+    private publish;
     /** Coalesced resync after a remote-change frame. */
     private scheduleResync;
     /** Self-heal a parked writer: when a read proves the host reachable again
@@ -378,8 +395,14 @@ export declare class ChecklistReplica {
     private scheduleCommit;
     /** Send the current dirty view (one in flight at a time, trailing refire). */
     flush(): Promise<void>;
-    /** Adopt an authoritative checklist (never backwards) and notify the replica. */
+    /** Adopt an authoritative checklist, never backwards.
+     *
+     *  IT PUBLISHES NOTHING BY ITSELF — {@link publish} owns the notify, and its
+     *  reasons are the same on both documents (see the board's copy above).
+     *  @returns whether the document moved. */
     private adopt;
+    /** Hand the reader the current rows, and keep the offline mirror warm. */
+    private publish;
     /**
      * Take ONE tombstone out of the local document, on the authority of a purge
      * reply.
