@@ -2572,10 +2572,10 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
       const panel = mountPanel(oneRow({ title: '原来的标题' }), 'list', band)
       try {
         const row = panel.surface.querySelector('[data-status]')
-        // THE CHIP, NOT THE WORDS. The control that opens the field sits in front of
-        // the sentence, so it is its SIBLING rather than an ancestor of the words — and
-        // asking the words for their nearest button finds nothing, which is a probe
-        // reporting on the wrong element.
+        // **THE WORDS THEMSELVES.** 打开字段的控件原来坐在句子**前面**（那枚优先级芯片），
+        // 因为句子那时只是文字——那时问「文字最近的按钮」会找不到东西，是探针问错了元素。
+        // 现在句子自己就是那个控件（标题即入口），所以问它。拇指那一路（行菜单的「改标题」）
+        // 仍然在，两处按法走同一个 `onPatch`：这不是两处实现，是一个手势的两种按法。
         const title = row?.querySelector('button[class*="itemRowText"]')
         expect(title, `the ${band} band row printed no title control to press`).toBeDefined()
       // ONE PRESS. It needed two when the title was TEXT — 「press it again」 was
