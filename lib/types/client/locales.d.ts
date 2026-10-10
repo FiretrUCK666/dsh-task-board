@@ -667,6 +667,7 @@ export declare const zh: {
     'item.batch.due': string;
     'item.batch.said': string;
     'item.batch.saidNone': string;
+    'item.batch.refused': string;
     'item.batch.askOne': string;
     'item.noMatch': string;
     'item.noMatch.day': string;

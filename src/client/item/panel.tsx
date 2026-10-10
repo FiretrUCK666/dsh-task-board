@@ -30,7 +30,8 @@
  *    selected.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
-import type { ItemRecord } from '../../core/item.ts'
+import type { ItemRecord, ItemStatusView } from '../../core/item.ts'
+import { itemStatusOf } from '../../core/item.ts'
 import {
   EMPTY_ITEM_QUERY,
   ITEM_PAGES,
@@ -792,6 +793,43 @@ export function ItemListPanel(props: ItemListPanelProps) {
       : t('item.batch.saidNone', { n: String(selection.ids.size) }) })
   }, [apply, items, selection.ids])
 
+  /**
+   * **批量改状态：逐行走单行那一扇门。**
+   *
+   * 状态是**两份文档都有**的一件事：这一行自己的字段，与那张卡在哪一栏。单行走 `writeStatus`
+   * （写行、移卡、被拒时给出一句话），批量必须走**同一个入口**——它原来直接 `applyItemPatch`，
+   * 于是：
+   *
+   *   · 批量标「已完成」→ 行说完成了、卡还留在原来那一栏。而下面 reconcile 那一支对 `done`
+   *     是**刻意跳过**的（读者自己按下的完成压过卡片），所以这个分歧是**永久的**。
+   *   · 批量标别的档 → reconcile 把卡的栏写回来，读者按的那一下**静默回退**，而成回执上还
+   *     写着「改了 N 条」。
+   *
+   * 「已经是这一档的不算」用**投影**判断（`itemStatusOf`），与那一枚芯片自己的 `disabled`
+   * 是同一条判据——两处各写一份的话，同一条行会在单行里是灰的、在批量里被算成「改了一条」。
+   */
+  const markHeld = useCallback((status: TaskStatus) => {
+    let moved = 0
+    let refused = 0
+    let why: string | undefined
+    for (const id of selection.ids) {
+      const item = itemsNow.current.find(row => row.id === id)
+      if (item === undefined) continue
+      const cardId = linkedCardIdOf(item, cardColumns)
+      if (itemStatusOf(item, cardId === undefined ? undefined : cardColumns.get(cardId)) === status) continue
+      const said = writeStatus(item, status)
+      if (said === undefined) moved += 1
+      else { refused += 1; why ??= said }
+    }
+    /* 一句话说完整批：改了几条、几条没动、以及没动的那一条为什么。**被拒不是失败**——它是
+       这一条行的事实（卡在跑、或者那一档由执行器给），所以它跟「改了 N 条」一起说。 */
+    setReceipt({ id: undefined, words: moved === 0 && refused === 0
+      ? t('item.batch.saidNone', { n: String(selection.ids.size) })
+      : refused === 0
+        ? t('item.batch.said', { n: String(moved) })
+        : t('item.batch.refused', { n: String(moved), blocked: String(refused), why: why ?? '' }) })
+  }, [cardColumns, selection.ids, writeStatus])
+
   /** Delete every held row as ONE act, so one undo puts the whole batch back. */
   const removeHeld = useCallback(() => {
     const ids = [...selection.ids]
@@ -1281,9 +1319,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * same way the rows read it; mixed holdings keep it blank, which is the honest
    * answer to 「这一批是什么档位」 when they are not all one tier. */
   const heldItems = items.filter(item => selection.ids.has(item.id))
-  const commonStatus = heldItems.length === 0 || !heldItems.every(one => one.status === heldItems[0]!.status)
+  /* **读投影，不读裸字段。** 挂着卡的行「现在是什么档」由卡回答（`itemStatusOf`），而这一行
+     自己的字段可能还停在挂上那一刻——批量那一枚如果读裸字段，它会显示一个读者在屏上从没
+     见过的值。优先级没有这个问题：它是这一行自己的字段，看板那边根本没有它。 */
+  const shownStatusOf = (item: ItemRecord): ItemStatusView => {
+    const cardId = linkedCardIdOf(item, cardColumns)
+    return itemStatusOf(item, cardId === undefined ? undefined : cardColumns.get(cardId))
+  }
+  const commonStatus = heldItems.length === 0 || !heldItems.every(one => shownStatusOf(one) === shownStatusOf(heldItems[0]!))
     ? undefined
-    : heldItems[0]!.status
+    : shownStatusOf(heldItems[0]!)
   const commonPriority = heldItems.length === 0 || !heldItems.every(one => one.priority === heldItems[0]!.priority)
     ? undefined
     : heldItems[0]!.priority
@@ -1311,7 +1356,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
          cover, so 「全选」 can never hold a row the reader cannot point at. */
       allPicked={allPicked(selection, visibleIds)}
       onPickAll={on => setSelection(current => setAllPicked(current, visibleIds, on))}
-      onMark={status => applyToHeld({ status })}
+      onMark={status => markHeld(status)}
       onPriority={priority => applyToHeld({ priority })}
       onDueToday={() => {
         // 「设希望在」 means TODAY, stated as a day: a bare timestamp in a field

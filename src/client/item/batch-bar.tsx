@@ -29,7 +29,7 @@ import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES } from '../../core/item.ts'
 import { t } from '../locales.ts'
 import { Button, Segmented } from '../board/ui.tsx'
-import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
+import { GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
@@ -93,11 +93,17 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
           ariaLabel={t('item.field.status')}
           disabled={idle || props.carded > 0}
           value={props.commonStatus ?? ''}
-          /* 两个值，与清单自己能写的两个一致（`ITEM_STATUSES`）。**挂卡的行走在哪一栏
+          /* 五档，与清单自己能写的五档一致（`ITEM_STATUSES`）。**挂卡的行走在哪一栏
              读的是那张卡**，所以这批里只要有一条挂着卡，这一枚就禁用并在下面说明理由：
              按下去改的是一个看不见的字段（那一行的显示由卡决定），而「按了、看起来
-             成功了、屏上什么都没变」是这一屏最不该有的一种结果。 */
-          options={ITEM_STATUSES.map(status => ({ value: status, label: t(STATUS_LABEL[status]) }))}
+             成功了、屏上什么都没变」是这一屏最不该有的一种结果。
+             */
+          /* **词用名词表，不用「标为…」。** 这一枚的 `value` 是这一批**现在是什么**（一个
+             读数），所以它的选项也必须是名词——不然被点亮的那一枚会读成「标为待办（已完成）」，
+             一个把自己说成命令的读数。而「标为…」是**菜单**的动词（菜单项在动作发生之前，
+             属性表在动作之后）：那一张表留给 `row-menu.tsx`。同一批五档在清单里只有一个
+             写法，与详情那一排没挂卡时用的**同一张表**（`GROUP_LABEL`）。 */
+          options={ITEM_STATUSES.map(status => ({ value: status, label: t(GROUP_LABEL[status]) }))}
           onChange={next => { if (next !== '') props.onMark(next as ItemStatus) }}
         />
         {/* THE SAME CONTROL THE STATUS QUESTIONS USE, because it is the same

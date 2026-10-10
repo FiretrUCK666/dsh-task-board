@@ -1690,11 +1690,72 @@ describe('a batch is one write through the shared semantics, not a loop over the
     expect(reachesShared, `the panel never calls the shared write layer (${shared.join(', ')}) — every write it makes is its own`).toBe(true)
   })
 
-  it('the probe bites: a client-side rebuild is reported', () => {
-    const shared = ['applyItemPatch', 'applyItemStep', 'removeItemRecord']
-    const readsShared = (live: string): boolean => shared.some(name => new RegExp(`\\b${name}\\s*\\(`).test(live))
-    expect(readsShared('const next = rows.map(row => ({ ...row, status }))'), 'a client rebuild was accepted as a shared write').toBe(false)
-    expect(readsShared('const next = applyItemPatch(rows, id, { status }, now)')).toBe(true)
+  /* ── 上面两条只说得清**结构**（「调了共享层的某函数」），说不清**行为**。批量改状态正是
+   * 容易钻这个空子的地方：状态是两份文档共有的一件事（这一行自己的字段 + 那张卡在哪一栏），
+   * 而 `applyItemPatch` 只写前者。所以下面两条不扫源码，它们按真的按：
+   *
+   *   · 一批全是没挂卡的行时，批量改状态写行，而且**一次移卡都不该有**（没有卡可移）；
+   *   · 只要握着**一条**挂卡的行，那一组就整组禁用——因为按下去改的是一个看不见的字段
+   *     （挂卡的行显示的是那张卡），而「按了、看起来成功了、屏上什么都没变」是这一屏最不该
+   *     有的一种结果。
+   *
+   * **第二条就是「行与卡不会各说一套」的全部保证**，所以它要有自己的用例：这条闸门一旦被
+   * 放宽，批量就会写下永久分歧（已经完成那一档，reconcile 是刻意跳过的）。 */
+  const armAndPickAll = (panel: ReturnType<typeof mountPanel>): void => {
+    const arm = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '多选')
+    if (arm === undefined) throw new Error('the bar carries no 多选')
+    click(arm)
+    panel.settle()
+    const all = panel.surface.querySelector('[class*="itemBatchLead"] input[type=checkbox]') as HTMLInputElement | null
+    if (all === null) throw new Error('arming drew no select-all box')
+    act(() => { all.click() })
+    panel.settle()
+  }
+  /** 批量条里**状态**那一组（按可达名找，不按位置——优先级那一组也是 radiogroup）。 */
+  const batchGroup = (panel: ReturnType<typeof mountPanel>, label: string): Element | null =>
+    panel.surface.querySelector(`[class*="itemBatch"] [role="radiogroup"][aria-label="${label}"]`)
+
+  it('一批全是没挂卡的行：行改了，而且一次移卡都没有', () => {
+    const rows = [
+      { ...(oneRow({})[0] as ItemRecord), id: 'b-1', ref: 1, title: '第一条没挂卡' },
+      { ...(oneRow({})[0] as ItemRecord), id: 'b-2', ref: 2, title: '第二条没挂卡' },
+    ]
+    const panel = mountPanel(rows, 'list', 'wide')
+    try {
+      armAndPickAll(panel)
+      const done = [...(batchGroup(panel, '状态')?.querySelectorAll('[role="radio"]') ?? [])]
+        .find(node => (node.textContent ?? '').trim() === '已完成') as HTMLButtonElement | undefined
+      expect(done, '批量条里没有「已完成」这一档').toBeDefined()
+      expect(done?.disabled, '没挂卡的一批，状态那一档却是灰的').toBe(false)
+      click(done)
+      panel.settle()
+      expect(panel.lastWrite().map(row => row.status), '批量没有把这一批写成已完成').toEqual(['done', 'done'])
+      expect(panel.calls.join(' '), '没有卡却去移卡了').not.toContain('moveTask')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('握着一条挂卡的行，那一组就整组不给按', () => {
+    const rows = [
+      { ...(oneRow({ taskId: 'task-1' })[0] as ItemRecord), id: 'b-1', ref: 1, title: '挂着卡的一条' },
+      { ...(oneRow({})[0] as ItemRecord), id: 'b-2', ref: 2, title: '没挂卡的一条' },
+    ]
+    const panel = mountPanel(rows, 'list', 'wide', { cards: ['task-1'] })
+    try {
+      armAndPickAll(panel)
+      const group = batchGroup(panel, '状态')
+      expect(group, '批量条里没有状态那一组').not.toBeNull()
+      const radios = [...(group?.querySelectorAll('[role="radio"]') ?? [])] as HTMLButtonElement[]
+      expect(radios.length, '状态那一组里一枚都没有').toBeGreaterThan(0)
+      expect(radios.every(one => one.disabled), '这一批里有挂卡的行，状态那一组却按得动——按下去改的是一个看不见的字段').toBe(true)
+      // 对照组：优先级是**这一行自己的字段**（看板那边根本没有它），所以它照样按得动。
+      const prio = [...(batchGroup(panel, '优先级')?.querySelectorAll('[role="radio"]') ?? [])] as HTMLButtonElement[]
+      expect(prio.length, '优先级那一组里一枚都没有').toBeGreaterThan(0)
+      expect(prio.every(one => one.disabled), '优先级是这一行自己的字段，却跟着一起被禁了').toBe(false)
+    } finally {
+      panel.dispose()
+    }
   })
 })
 
@@ -3002,7 +3063,16 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
       const ref = Number(/#(\d+)/.exec(held.textContent ?? '')?.[1])
       expect(Number.isNaN(ref), 'the held row printed no number to be read back by').toBe(false)
       expect(panel.lastWrite().find(row => row.ref === ref)?.priority, 'the tier press never reached the held row').toBe('urgent')
-      press('标为已完成')
+      /* **状态那一组按名词读，不按「标为…」读。** 这一枚的 `value` 是这一批现在是什么（一个
+         读数），所以选项也是名词——不然被点亮的那一枚会读成「标为已完成（已完成）」，一个把
+         自己说成命令的读数。而「标为…」是**菜单**的动词，那一张表在 `row-menu.tsx` 里。
+         顺便按**组名**找它，而不是在整屏按钮里按文字碰运气：同一个词在别处出现时，按文字找
+         就会按到别的控件上。 */
+      const statusGroup = panel.surface.querySelector('[class*="itemBatch"] [role="radiogroup"][aria-label="状态"]')
+      const doneChip = [...(statusGroup?.querySelectorAll('[role="radio"]') ?? [])]
+        .find(node => (node.textContent ?? '').trim() === '已完成') as HTMLButtonElement | undefined
+      if (doneChip === undefined) throw new Error('the bar carries no 已完成')
+      act(() => { doneChip.click() })
       expect(panel.lastWrite().find(row => row.ref === ref)?.status, 'the status press never reached the held row').toBe('done')
       // 改了 N 条 comes back as a count of what CHANGED.
       expect(panel.surface.textContent ?? '', 'the press did not say what changed').toContain('改了 1 条')
