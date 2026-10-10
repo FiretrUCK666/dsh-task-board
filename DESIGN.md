@@ -1134,7 +1134,7 @@ flex，于是被**拉伸**到整列宽——量出来盒 298..1414（1116px）�
 在这处按面板宽度决定竖排，而这一排的宽度由卡片给，不由面板给，两把尺子量同一件事必然
 有一档对不上。
 
-**量法**（硬性规范 19）：`.design/probe-foot.js` 交给 `shot-panel --eval-file`，在真 Chromium
+**量法**（硬性规范 19）：`scripts/probe-item-footer.js` 交给 `shot-panel --eval-file`，在真 Chromium
 里读 `.itemOpenAct` / `.itemOpenActions` / `.itemOptsFoot` / `.itemOpenBtns` 的
 `getBoundingClientRect()` 与计算样式。下面每个数都出自它（那一句理由 174px、按钮排 271px）：
 
@@ -1174,7 +1174,7 @@ flex，于是被**拉伸**到整列宽——量出来盒 298..1414（1116px）�
 **量法与证据**：`DSH_PANEL_HTML=… DSH_PANEL_MOUNT=carded-detail DSH_PANEL_BAND=wide pnpm
 vitest run tests/item-workbench.spec.ts -t "writes one when"` 出页面，再
 `node scripts/shot-panel.mjs --url … --width 1340 --height 2400 --scale 1 --eval-file
-.design/probe-state.js` 出数与图。修前 **64×144**（落进名字轨，144px 高的一根柱），修后
+scripts/probe-item-note.js` 出数与图。修前 **64×144**（落进名字轨，144px 高的一根柱），修后
 **269×32**（这一行的整宽，两行）。这一屏必须用**挂着卡**的行：没挂卡的行根本画不出那句话，
 而此前所有截图用的都是没挂卡的 fixture——**仪器够不到的状态，等于没有验过**。
 
