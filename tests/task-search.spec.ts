@@ -330,11 +330,10 @@ describe('the checklist grammar is delegated, never restated', () => {
   it('parses and matches through ONE grammar when called in either order', () => {
     // Order independence: composing by hand and composing through the door must
     // not differ, or "the panel" and "the model" stop being the same question.
-    // This used to also assert that `parseItemSearch` agreed with
-    // `parseItemQuery` — it was `parseItemQuery` under a second name, forwarded
-    // so a surface could read the clauses. Nothing in the tree called it, and a
-    // re-export is not a convenience: it is a second name for one function, and
-    // names are what drift.
+    // Asserting that `parseItemSearch` agrees with `parseItemQuery` asserts nothing:
+    // it is `parseItemQuery` under a second name, forwarded so a surface could read
+    // the clauses. Nothing in the tree calls it, and a re-export is not a
+    // convenience — it is a second name for one function, and names are what drift.
     const row = item({ dueAt: now - DAY })
     expect(matchItemQuery(row, 'has:behind', ctx)).toBe(true)
     expect(itemMatches(row, parseItemQuery('has:behind'), ctx)).toBe(true)
@@ -348,10 +347,9 @@ describe('a qualifier is answered by the model\'s own keys, never by its words',
 
   it('accepts every status a row can be shown as — the board\'s five, verbatim', () => {
     /* **词表只有一个来源**：`ITEM_STATUS_VIEWS` 就是 `ALL_STATUSES`（看板那五栏），所以
-       「界面给得出的筛子」与「模型学得到的词」是同一句话。这一条原来钉着一处**两个半区**的
-       缺陷：解析器收 `status:inprogress`（驼峰），而教给模型的词表里没有它——一个能用、
-       而模型查不到的词。现在两边都取同一张表，并且那个拼法本身不再是值：`inprogress`
-       是一个没人认的词，落回字面搜索。 */
+       「界面给得出的筛子」与「模型学得到的词」是同一句话。两边取同一张表，而那个拼法
+       本身不是词表里的值：`inprogress` 是一个没人认的词，落回字面搜索——解析器收它而
+       模型查不到它，就是「一个能用、而模型学不到的筛子」。 */
     for (const status of ITEM_STATUS_VIEWS) {
       expect(parseItemQuery(`status:${status}`).status, status).toEqual([status])
     }

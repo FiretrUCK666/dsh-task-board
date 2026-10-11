@@ -198,18 +198,17 @@ function fakeDeps() {
 
 describe('a write the medium refuses is a REFUSAL, not a hang', () => {
   /**
-   * THE CONTRACT THAT HAD ZERO COVERAGE.
+   * THE HANDLER'S CATCH IS LOAD-BEARING.
    *
-   * The service used to swallow a persist failure, so the route never saw one —
-   * and when the service was fixed to reject, this handler had no catch beyond
-   * `new URL()`, so the rejection left the request with NO response at all: no
-   * status, no envelope, a socket that closed. The client then reported a
-   * transport failure for what is a server-side refusal, and a reader's note
-   * looked like a network problem rather than a full disk.
+   * The service REJECTS a persist failure. Without a catch beyond `new URL()`
+   * the rejection leaves the request with NO response at all — no status, no
+   * envelope, a socket that closes — and the client then reports a transport
+   * failure for what is a server-side refusal: a reader's note looks like a
+   * network problem rather than a full disk.
    *
-   * Both tails now answer this prefix's own convention — a 200 carrying
-   * `{ok:false,error:{code:'persist_failed'}}` — and this is the only thing that
-   * makes those branches live rather than decorative.
+   * This prefix's own convention — a 200 carrying
+   * `{ok:false,error:{code:'persist_failed'}}` — is what makes that branch live
+   * rather than decorative, and it is the only thing the assertions below read.
    */
   const commit = {
     clientId: 'c',

@@ -9,12 +9,12 @@
  *   action line:   [动作…]  ……  [时间]
  *
  * The action line puts the BUTTONS FIRST and the time last, with the row
- * carrying the gap between them. The time used to lead the cluster inside its
- * own reserved slot, which parked the buttons a whole slot to the right of
- * where the identity line starts and opened a hole under the task name — so
- * the row's own left edge was not where its controls were. Trailing the time is
- * what puts the actions back on the row's left edge and the stamp on its right,
- * at every width, with no extra markup and no width special case.
+ * carrying the gap between them. Leading the cluster with the time inside its
+ * own reserved slot parks the buttons a whole slot to the right of where the
+ * identity line starts and opens a hole under the task name — the row's own
+ * left edge is not where its controls are. Trailing the time puts the actions
+ * on the row's left edge and the stamp on its right, at every width, with no
+ * extra markup and no width special case.
  *
  * The optional slots are structural, not stylistic: the notification drawer
  * is FLAT (one row per session) and passes both titles inline; the activity

@@ -74,14 +74,14 @@ export interface ItemTableProps {
 /**
  * The table.
  *
- * ONE HEAD, ONE TABLE, AND NO BRANCH ABOVE EITHER. The head used to be written
- * twice — once inside the empty branch and once inside the filled one — and the
- * two copies had already drifted: only the filled one declared `role="row"` and
- * `role="columnheader"`, so a table with rows in it was an accessible table and
- * the same table with none in it was a pile of `<div>`s. A reader who filtered
- * a list down to nothing lost the row semantics of the very header that was
- * still on screen, and no test said anything, because the two branches were two
- * literals and a literal cannot disagree with itself loudly enough to be caught.
+ * ONE HEAD, ONE TABLE, AND NO BRANCH ABOVE EITHER. A head written twice — once
+ * inside the empty branch and once inside the filled one — is two copies that
+ * drift: only the filled one declares `role="row"` and `role="columnheader"`, so
+ * a table with rows in it is an accessible table and the same table with none in
+ * it is a pile of `<div>`s. A reader who filters a list down to nothing loses
+ * the row semantics of the very header that is still on screen, and no test says
+ * anything, because two branches are two literals and a literal cannot disagree
+ * with itself loudly enough to be caught.
  *
  * The fix is not 「remember to keep them equal」. It is that there is only one
  * head and one card, and the only question the component asks is WHICH OF THE
@@ -92,14 +92,13 @@ export interface ItemTableProps {
 export function ItemTable(props: ItemTableProps) {
   return (
     <div className={css.itemTable}>
-      {/* NO HEAD. There is no table here any more, so there is nothing for a head
+      {/* NO HEAD. There is no table here, so there is nothing for a head
           * to name: the row is a bead, a sentence, its tags and one control, and
-          * 「状态 / 标题 / 优先级 / 希望在 / 标签」 named a shape this surface no
-          * longer has. It stayed because the head was rendered from its own
-          * `COLUMNS` list and removing it would have meant touching a component
-          * four other files reach into — which is a cost, not a reason. **A rule
-          * that is kept because removing it is inconvenient is a rule that has
-          * stopped describing the thing it names.** */}
+          * 「状态 / 标题 / 优先级 / 希望在 / 标签」 names a shape this surface does not
+          * have. A head rendered from its own `COLUMNS` list would mean touching a
+          * component four other files reach into — a cost, not a reason to keep it.
+          * **A rule that is kept because removing it is inconvenient is a rule that
+          * has stopped describing the thing it names.** */}
       {props.rows.length === 0
         /* 读不到 与 没有，是两件事；而「被筛选空了」又是第三件，所以这里接的是
            调用方已经分好的那一档，而不是它自己再猜一次。

@@ -3,14 +3,13 @@
  *
  * WHY THEY ARE TOGETHER AND STAND ALONE. Every page, every group and every count
  * in the checklist is a set, and the sets overlap: a row can be unfinished and
- * unfiled at once, or filed and scheduled at once. The predicates that decide
- * each set used to be scattered through the file that happened to need them, and
- * a predicate copied to the place that needed it is a second answer to a
- * question the product has already answered once. The concrete instance: a bare
- * capture landed in the agenda's 「没有日期」 bucket while the triage strip
- * exempted exactly those rows from its own 「没有日期」 line — two surfaces, one
- * question, two answers, and the second one wrong. A thought the reader wrote a
- * minute ago has not failed to be scheduled; it has not been READ twice yet.
+ * unfiled at once, or filed and scheduled at once. A predicate scattered into
+ * whichever file happens to need it is a second answer to a question the product
+ * has already answered once — a bare capture then lands in the agenda's
+ * 「没有日期」 bucket while the triage strip exempts exactly those rows from its
+ * own 「没有日期」 line: two surfaces, one question, two answers, and the second
+ * one wrong. A thought the reader wrote a minute ago has not failed to be
+ * scheduled; it has not been READ twice yet.
  *
  * So membership is decided here, once, and the query grammar, the agenda, the
  * triage strip and the rail counts all read it. That is also why this module
@@ -83,8 +82,8 @@ export function isAgendaItem(item: ItemRecord): boolean {
  * THE CARD THIS ROW HANGS OFF, **as this screen can see it**.
  *
  * One question, one answer, three readers — the row's card chip, the pane's picker
- * and the `has:linked` filter — and they used to each spell it `item.taskId !==
- * undefined`, which is a different question. The three answers it has to keep apart:
+ * and the `has:linked` filter — where spelling it `item.taskId !== undefined`
+ * answers a different question. The three answers it has to keep apart:
  *
  *   `cards === undefined`  **this machine cannot see the board at all.** The id is
  *                          handed back untouched: turning 「I cannot see it」 into
@@ -94,11 +93,11 @@ export function isAgendaItem(item: ItemRecord): boolean {
  *   otherwise              **the card is gone** (the board's delete is final), so
  *                          there is nothing to hang off.
  *
- * WHY `get` IS NOT ENOUGH, and this is the defect it was: `cards.get(id)` answers
- * `undefined` both for 「no such key」 and for 「no map at all」, so a row whose card
- * had been deleted read exactly like a row that never had one — the chip stayed,
- * the column fell back to the row's own two values, and the reader's only clue was
- * that a press did nothing.
+ * WHY `get` IS NOT ENOUGH: `cards.get(id)` answers `undefined` both for
+ * 「no such key」 and for 「no map at all」, so a row whose card is deleted reads
+ * exactly like a row that never had one — the chip stays, the column falls back to
+ * the row's own two values, and the reader's only clue is that a press does
+ * nothing.
  *
  * @param item - the row.
  * @param cards - 看板的栏，按卡片 id 索引；`undefined` 表示这个调用者手上没有看板。

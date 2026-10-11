@@ -309,10 +309,10 @@ describe('board route over a real HTTP server', () => {
     await reopened.close()
   })
 
-  // The two ways a document used to vanish, reproduced on a real medium: a tree
-  // whose marker is gone, and a tree holding only the checklist. Asking "is
-  // THIS document there" dropped one in each; asking "has this tree ever been
-  // written" cannot, because the marker is a record like any other.
+  // The two ways a document vanishes, reproduced on a real medium: a tree whose
+  // marker is gone, and a tree holding only the checklist. Asking "is THIS
+  // document there" drops one in each; asking "has this tree ever been written"
+  // cannot, because the marker is a record like any other.
   it('restores a tree whose marker is missing — with only the checklist, and with both documents', async () => {
     const home = mkdtempSync(join(tmpdir(), 'dsh-board-nometa-'))
     try {
@@ -395,10 +395,10 @@ describe('board route over a real HTTP server', () => {
     // The GRANTED answer is the one every implementation remembered to fill…
     expect(first.proto).toBe(2)
     expect(typeof first.bootedAt).toBe('number')
-    // …and the REJECTED answer is the one that used to be hand-built as
-    // `{ held, holder, expiresAt }`, silently dropping `proto`. Every
-    // non-engine device then read "host is old" from a CURRENT host and the
-    // 「服务端未重启」 banner stood forever, restart or not. The rejected
+    // …and the REJECTED answer must not be the hand-built form
+    // `{ held, holder, expiresAt }`, which silently drops `proto`. Every
+    // non-engine device then reads "host is old" from a CURRENT host and the
+    // 「服务端未重启」 banner stands forever, restart or not. The rejected
     // answer must carry the exact same evidence as the granted one.
     const second = await leasePost({ clientId: 'b' })
     expect(second.held).toBe(false)

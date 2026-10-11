@@ -562,14 +562,14 @@ export declare function newExternalRound(options: {
  * Whether a user-authored message carries NOTHING to deliver.
  *
  * THE one blank-message rule for every send path (queued comment, session
- * comment, rule comment, direct steer). It used to be written per path as
- * `trimmed === ''`, which quietly rejected an ATTACHMENT-ONLY message — the
- * composer accepted it (`text === '' && images.length === 0 && files.length === 0`
- * is the gate that lets it through) and the controller then returned
- * `undefined`, so the draft was restored and the user saw nothing happen at
- * all. Only the direct-steer path had it right, which is exactly how one rule
- * living in four places drifts: the picture-with-no-words case worked on one
- * surface and silently failed on the others.
+ * comment, rule comment, direct steer). Written per path as
+ * `trimmed === ''`, it quietly rejects an ATTACHMENT-ONLY message — the
+ * composer accepts it (`text === '' && images.length === 0 && files.length === 0`
+ * is the gate that lets it through) and the controller then returns
+ * `undefined`, so the draft is restored and the user sees nothing happen at
+ * all. One rule living in four places drifts: the picture-with-no-words case
+ * works on one surface and silently fails on the others, and only the direct
+ * steer path is right.
  *
  * Attachments are content: text alone is not the whole message.
  * @param text - raw (untrimmed) message text.
@@ -716,10 +716,9 @@ export declare function openRoundsOf(task: TaskRecord): ExecutionRecord[];
 export declare function sessionIsBusy(task: TaskRecord, sessionId: string): boolean;
 /**
  * Whether the task is EXECUTING right now. There is deliberately no second
- * spelling of this: the display used to read `executing` and the gates read
- * `hasOpenRun`, with a comment claiming they were a "display / gate" split —
- * but both were the same predicate over the same set, so the split existed
- * only in the prose. ONE judgment, one name, and the card's light cannot
+ * spelling of this: a display reading `executing` and gates reading
+ * `hasOpenRun` are the same predicate over the same set, so the split would
+ * exist only in the prose. ONE judgment, one name, and the card's light cannot
  * disagree with the run guard because there is nothing to disagree with.
  */
 export declare function hasOpenRun(task: TaskRecord): boolean;

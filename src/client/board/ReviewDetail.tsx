@@ -154,15 +154,15 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             </Button>
           )}
           {/* THE review decision, on the surface that exists to make it. This page
-              is where a finished run is judged, and it used to offer only 刷新 and
-              查看会话 — no approve, no send-back. The one 通过 button in the product
-              lived inside the notification drawer, and the same act appeared in the
-              task detail as 「移到已完成」 under generic move-column vocabulary, so the
-              product's most frequent decision had three names and no home.
+              is where a finished run is judged, so 通过 and 打回 belong here beside
+              刷新 and 查看会话. Elsewhere the act is scattered: the one 通过 button in
+              the product sits inside the notification drawer, and the task detail
+              calls the same act 「移到已完成」 under generic move-column vocabulary —
+              the product's most frequent decision with three names and no home.
               Both actions route to the controller's existing doors (approveTask /
-              moveTask), so there is still ONE implementation of each; only the
-              surface is new. Labels come from the copy the board already teaches
-              (「通过或打回」), so the description and the action finally agree.
+              moveTask), so there is ONE implementation of each — these buttons are a
+              way in, not a second one. Labels come from the copy the board already
+              teaches (「通过或打回」), so the description and the action agree.
               Kept in the header slot beside the other two: same size, same row, no
               new chrome. */}
           {current.status === 'review' && (

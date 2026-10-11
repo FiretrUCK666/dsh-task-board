@@ -31,13 +31,11 @@ export const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey> = {
   done: 'board.statusShort.done',
 }
 
-/* `COLUMN_HINT_KEY` used to live here: one pull-policy sentence per column
-   (「进行中：一次只做少量，完工才拉新」…). It was removed with its two consumers —
-   the column heading's tooltip and the empty-column line — because the board states
-   what a column IS through its name, its count and the cards in it, and the extra
-   sentences were explanation layered onto a surface the user reads by scanning.
-   The five `board.columnHint.*` locale entries went with it; if the sentences ever
-   come back, they need a visible home, not a `title`. */
+/* No per-column hint sentences here. One pull-policy sentence per column
+   (「进行中：一次只做少量，完工才拉新」…) is explanation layered onto a surface the
+   user reads by scanning: the board states what a column IS through its name, its
+   count and the cards in it. Such a sentence needs a visible home, not a `title`
+   on the column heading or the empty-column line. */
 
 /**
  * Paused-rule explanation keyed by the pausing status: ONE map read by both

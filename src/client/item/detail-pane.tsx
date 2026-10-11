@@ -60,11 +60,11 @@ export interface ItemDetailProps {
    * reads, so the pane and the row cannot answer differently. `item` is still
    * reachable as `view.item` for the fields the pane edits.
    *
-   * **REQUIRED, NOT OPTIONAL.** This pane used to carry a 「nothing picked yet」
-   * branch behind `view === undefined` — thirty lines, four dictionary keys, a
-   * `recent` prop and the whole 「最近碰过的」 list, none of which any call site could
-   * reach, because the panel only builds this for the row it is already showing.
-   * Making the prop required turns that dead branch into a compile error, which is
+   * **REQUIRED, NOT OPTIONAL.** A 「nothing picked yet」
+   * branch behind `view === undefined` would be thirty lines, four dictionary keys, a
+   * `recent` prop and the whole 「最近碰过的」 list, none of which any call site can
+   * reach — the panel only builds this for the row it is already showing.
+   * A required prop turns that dead branch into a compile error, which is
    * the only way a branch nobody exercises ever stops costing anything.
    */
   readonly view: ItemRowView
@@ -77,8 +77,8 @@ export interface ItemDetailProps {
   /**
    * **把这一条交给 AI——这一屏唯一通向模型的那一按。**
    *
-   * 它曾经是行上 ⋮ 旁边的一枚按钮，一行上于是有两枚「对这条做点什么」的控件，彼此还隔着
-   * 一段距离；现在它是这一条底部那一排里的一件（与「变成看板卡片」「删除这条」同排）。
+   * 它**必须和这一条底部那一排在一起**（与「变成看板卡片」「删除这条」同排）：
+   * 行上 ⋮ 旁边再站一枚，一行上就有两枚「对这条做点什么」的控件，彼此还隔着一段距离。
    *
    * **两种行都在**：没挂卡的行会就地建一张再问，挂着卡的问它那条对话。所以这一排里既没有
    * 「执行」这一枚，也没有「跑不跑得起来」那个开关——送出去的是这一条自己的内容，不是卡上
@@ -111,8 +111,8 @@ export interface ItemDetailProps {
   /**
    * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
    *
-   * **它必须与按钮同排**：回执原来挂在**行**的网格上、按钮挂在详情卡片里，两个容器各摆各的
-   * ——宽的时候碰巧是一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。
+   * **它必须与按钮同排**：回执挂在**行**的网格上、按钮挂在详情卡片里的话，两个容器各摆各的
+   * ——宽的时候碰巧是一条线，一窄就各回各家（三张不同宽度的截图，同一处三种排版）。
    */
   readonly receipt?: string
   readonly onNewCard: (title: string) => void
@@ -234,15 +234,15 @@ export function ItemDetail(props: ItemDetailProps) {
          * （进行中 / 待审核）由引擎在轮次开始/结束时落。它们**画出来**，不是藏掉——一个"少了两
          * 档"的选择器会让人以为那两档不存在。
          *
-         * **而"为什么按不动"不再常驻在下面一行里。** 那句话曾经写在这一格的下方，理由是「触屏
-         * 没有 hover，说明必须看得见」——它确实看得见，代价是这一列最长的一段常驻在一个属性行
-         * 里：这一行因此比别的属性行高一倍，而它自己也正好是最容易被挤坏的那一段（读者为它报过
-         * 两次缺陷）。
+         * **而"为什么按不动"不常驻在下面一行里。** 「触屏没有 hover，说明必须看得见」这条约束
+         * 是真的，但它不能整句常驻在那一格的下方：这一列最长的一段压在一个属性行上，这一行因此
+         * 比别的属性行高一倍，而它自己也正好是最容易被挤坏的那一段——两次缺陷都出在
+         * 这一段上。
          *
-         * 所以改成**灰的芯片自己回答**：`aria-disabled` 而不是 `disabled`——样子一样灰（
+         * 所以那句话由**灰的芯片自己回答**：`aria-disabled` 而不是 `disabled`——样子一样灰（
          * `.itemRoot :disabled, [aria-disabled='true']` 是同一档 opacity），鼠标停上去有 `title`，
          * 按下去 `writeStatus` 用回执把那句话说出来。键盘与触屏都够得着（硬性规范 11③），而
-         * **属性表里不再有第二个声音**。唯一真禁用的一枚是"已经是这一档"：它自己就是那个值，
+         * **属性表里没有第二个声音**。唯一真禁用的一枚是"已经是这一档"：它自己就是那个值，
          * 没有什么要解释的。 */
         const movable = (MANUAL_STATUSES as readonly string[]).includes(status)
         const here = view.status === status
@@ -286,8 +286,8 @@ export function ItemDetail(props: ItemDetailProps) {
   /**
    * **空的正文与空的备注都不画框。**
    *
-   * 这一条原先是一个五行高的输入框，而这一面板上最常见的一行就是「没有正文」——
-   * 所以最常见的展开区是一块空白，读者读到的第一件事是「这里空了一块」。
+   * 画一个五行高的输入框的话——而这一面板上最常见的一行就是「没有正文」——最常见的展开区
+   * 就是一块空白，读者读到的第一件事是「这里空了一块」。
    *
    * 空的时候只留**一行安静的话**，按下去框才出现，光标已经在里面：读者要的
    * 「我要写点什么」这一步没有变，少掉的是一个从来没人填过的盒子。
@@ -303,7 +303,7 @@ export function ItemDetail(props: ItemDetailProps) {
   /** 新标签在右列就地加：回车就上，而上完就把框清空，因为读者多半还要写下一个。 */
   const [draftTag, setDraftTag] = useState('')
   /**
-   * 「新建卡片」就变成一根起名的输入框，不再是通往别处的门。
+   * 「新建卡片」就地变成一根起名的输入框，不是通往别处的门。
    *
    * 预填**这一条自己的名字**（借用的规则与提升计划同一处），因为挂不上的那条
    * 就是名字该长出来的那一条；Esc 与点开别处都收回，不留一个半字。确认只把
@@ -422,9 +422,9 @@ export function ItemDetail(props: ItemDetailProps) {
                 }}
               >
                 {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
-                     （整个下沿都是抓条），超出就在框内滚动。原来那枚「还有 N 行」
-                     ——以及它按下去才展开的那件事——随高度一起走了：一个自己会滚的
-                     框不需要第二个说法来回答「剩下的在哪」。 */}
+                     （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
+                     一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
+                     也不必再按一下才展开。 */}
                 <ProseField
                   value={item.body}
                   onChange={body => props.onEdit({ body })}
@@ -455,9 +455,9 @@ export function ItemDetail(props: ItemDetailProps) {
             )
             : (
               /* 与正文**同一个元件**（`ProseField`）：边、底、字号、字色、地板与那条
-               * 抓条都在一个地方。备注 once「一条引文」的样式曾经只给这一格，两格之间
+               * 抓条都在一个地方——它们**不许各写一份**：只给这一格的样式，会让两格之间
                * 的差别要靠读者自己猜是为什么。它们是同一列里的两个输入，输入就该长得
-               * 一样——而且从今天起，它们是同一个东西，不是两处长得像的东西。 */
+               * 一样——而且是同一个东西，不是两处长得像的东西。 */
               <div
                 className={css.itemProseWrap}
                 onBlur={event => {
@@ -489,12 +489,12 @@ export function ItemDetail(props: ItemDetailProps) {
             <div className={css.itemOpts}>
               {/* **这一排就是行上那四枚记号本身，不是另一套长得像的按钮。**
                *
-               * 读者点过这里：「展开任务清单里的优先级按钮没有颜色对应。」——它原来印的
-               * 是四个字 `!1 !2 !3 !4`，颜色在行上有、在左栏有，到了展开区就没有了；而
-               * 同一个读者要的「全部复用同一个组件」，说的就是这件事。
+               * **颜色不许有第二个来源**：这一排印成 `!1 !2 !3 !4` 那四个字，颜色在行上有、
+               * 在左栏有，到了展开区就没有了——**同一件东西只有一个来源**，也就是
+               * 「全部复用同一个组件」说的那件事。
                *
-               * 它一度从记号改成 `.itemOpt`（词族），理由是「四枚记号各带各的重量，选中
-               * 没地方落脚」。那条顾虑现在由记号自己解决：`PriorityMark` 的 `data-on` 画的是
+               * **选中不许靠颜色**：`.itemOpt`（词族）那一套过不了这一关——四枚记号各带各的
+               * 重量，选中没地方落脚。这一条由记号自己解决：`PriorityMark` 的 `data-on` 画的是
                * **一圈墨环**（不是颜色——颜色的预算留给「这一档有多重」），所以四枚颜色不同
                * 而选中照样一眼看得见。
                *
@@ -565,7 +565,7 @@ export function ItemDetail(props: ItemDetailProps) {
               keyName='startsAfter'
               label={t('item.field.startsAfter')}
               /* **门关着的时候必须显示那个日子。** 读者最需要知道的就是「哪天开」，而这条
-                 线原来在门关着时印「现在就能动，没有门」——既是反话（那时正是不能动），
+                 线**不许**在门关着时印「现在就能动，没有门」——既是反话（那时正是不能动），
                  又把那个日子藏了起来。珠子的 `gate` 语气已经说了它是一扇门，读法不必再说。 */
               reading={item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
               tone={gated ? 'gate' : item.startsAfter === undefined ? 'none' : 'set'}
@@ -705,17 +705,17 @@ export function ItemDetail(props: ItemDetailProps) {
 
       {/* 这一条的动作。**一条横贯两列的发丝线，下面那一排动作**。
        *
-       * 它们原来散在三处（⋯ 菜单里、展开区最后一节里、行上），于是读者要先知道某个
-       * 动作住在哪，才能去按它。合并到这一行之后，两列的读者都落在同一排动作上；而它
+       * 它们散在三处（⋯ 菜单里、展开区最后一节里、行上）的话，读者要先知道某个
+       * 动作住在哪，才能去按它。都在这一行里，两列的读者就落在同一排动作上；而它
        * 在两列**下面**而不是某一列里——动作作用于这一条，不作用于左半边或右半边。 */}
       <div className={css.itemOpenAct}>
         <span className={css.itemOriginRow}>
           <Chip kind={item.origin.source === 'ai' ? 'warn' : 'muted'}>{t(ORIGIN_LABEL[item.origin.source])}</Chip>
         </span>
         {/* **一条线：回执 · 解释 · 一排按钮。**
-            三件东西原来各有各的家——回执挂在**行**的网格上、解释与按钮挂在详情卡片里——宽的时候
-            碰巧挤成一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。搬进
-            同一个容器之后，形状与宽度无关。
+            三件东西必须住在**同一个容器**里——回执挂在**行**的网格上、解释与按钮挂在详情卡片里的
+            话，宽的时候碰巧挤成一条线，一窄就各回各家（三张不同宽度的截图，同一处三种排版）。
+            在同一个容器里，形状与宽度无关。
             装不下时让步的是**那一整条线**：那句解释挪到自己的一整行上去（它是说明文字，换行、
             永不省略号），按钮整排跟着下移一行。所以按钮**必须是一个单位**——见下面那个盒子。 */}
         <div className={css.itemOpenActions}>
@@ -723,7 +723,7 @@ export function ItemDetail(props: ItemDetailProps) {
           {/* 这一按会走哪条路，写在按钮旁边：正在跑 = 这张卡已经有对话了，这一句会接着说进去。
               读者有权在按之前知道它；**它不能只挂在 `title=` 上**（触屏没有 hover，硬性规范 11③）。 */}
           {running && <p className={css.itemOptsFoot}>{t('item.ask.continues')}</p>}          {/* **按钮是一排，不是一串各自能换行的东西。**
-              这一层曾经不存在，四个按钮直接挂在上面那个会换行的容器里；于是窄一点的时候
+              四个按钮直接挂在上面那个会换行的容器里的话，窄一点的时候
               `删除这条` 自己掉到第二行，四个按钮被拆成「三 + 一」两堆——正是读者最不想要的那
               种排版。换行的判定是逐个元素的，所以「它们永远在一起」只能靠结构说，不能靠宽度猜。 */}
           <div className={css.itemOpenBtns}>

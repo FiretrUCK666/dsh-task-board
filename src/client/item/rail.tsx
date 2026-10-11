@@ -3,11 +3,11 @@
  *
  * ── WHY EVERY NUMBER ON IT IS A ROW COUNT AND NOT A LITERAL ─────────────────
  *
- * The first version of this was a table of words with numbers written into it,
- * and it was wrong in a way nothing on screen could report: the number was a
- * fixture value and the row beside it was a filter, so 「落后的 2」 and 「点进去
- * 看到几行」 were two facts that agreed only while nobody edited the data. That is
- * the exact defect PRODUCT's first invariant forbids, committed by the very
+ * A table of words with numbers written into it is wrong in a way nothing on
+ * screen can report: the number is a
+ * fixture value and the row beside it is a filter, so 「落后的 2」 and 「点进去
+ * 看到几行」 are two facts that agree only while nobody edits the data — the
+ * exact defect PRODUCT's first invariant forbids, committed by the very
  * component meant to satisfy it.
  *
  * So the rows come FROM `itemRailGroupsOf` — each entry carries the rows it
@@ -48,10 +48,11 @@ import css from './item.module.css'
  *  name matches nothing the moment that name is reworded, so the core hands over
  *  keys and the dictionary owns the words.
  *
- *  **NO FALLBACK, AND THAT IS THE POINT.** This table used to be read with
- *  `?? 'item.rail.all'`, so a key it did not know printed 「全部」 — next to its own
- *  real count, which is the one thing on this surface a reader cannot check. The
- *  rail showed 「全部 0」 and 「全部 12」 on one screen at once. A fallback on a
+ *  **NO FALLBACK, AND THAT IS THE POINT.** Read with
+ *  `?? 'item.rail.all'`, this table prints 「全部」 for a key it does not know —
+ *  next to that entry's own
+ *  real count, which is the one thing on this surface a reader cannot check: the
+ *  rail shows 「全部 0」 and 「全部 12」 on one screen at once. A fallback on a
  *  WORD TABLE is not robustness; it is a way to say something false without
  *  noticing. So the key set is closed over what the core can actually produce,
  *  and a new flag is a `tsc` error naming this file and nothing else. */
@@ -163,8 +164,8 @@ export interface ItemRailProps {
   /**
    * **读者正站在哪些行上**，从查询里读出来的**一组**。
    *
-   * 筛子是叠加的（「已超期」+「紧急」可以同时开着），所以这一侧必须是集合：它原来是一个
-   * `string | undefined`，取第一个匹配的行就停——三枚芯片亮着而左栏只有一行有底色，读者看到
+   * 筛子是叠加的（「已超期」+「紧急」可以同时开着），所以这一侧必须是集合：取第一个匹配的
+   * 行就停（`string | undefined`）——三枚芯片亮着而左栏只有一行有底色，读者看到
    * 的是「我按了三个，它只认一个」。
    */
   readonly activeIds: ReadonlySet<string>
@@ -177,7 +178,7 @@ export interface ItemRailProps {
   readonly activeDay?: string
   /** Whether the month grid is unfolded. The reader's own choice, defaulted by
    *  the band (see `ItemRail`): a fold is one of the six moves rule 11 allows,
-   *  while `display: none` — what the phone used to get — is not. */
+   *  while `display: none` is not. */
   readonly calendarOpen: boolean
   readonly onToggleCalendar: () => void
   /** Move the shown month by ±1. Two buttons rather than a text field: a month is
@@ -204,12 +205,12 @@ export function ItemRail(props: ItemRailProps) {
     <nav className={css.itemRail} data-dsh-tb-scroll="" data-calendar={props.calendarOpen ? '' : undefined} aria-label={t('item.rail.label')}>
       {/* ── 日历 ─────────────────────────────────────────────────────────────
         *
-        * **它是一枚可以折的日历，不是一行裸数字。** 老版只有「一个月题 + 七列
-        * 数字」：没有星期几、不能翻月、今天之外没有任何可对照的东西，读者的原话是
-        * 「像个毛坯房」。而它在窄档还被整块 `display: none` 掉——**手机上并没有
-        * 「另一种看日子」的办法**，那等于把一项能力只发给桌面端（硬性规范 11）。
+        * **它是一枚可以折的日历，不是一行裸数字。** 一行裸数字（一个月题 + 七列
+        * 数字）说不出三件事：没有星期几、不能翻月、今天之外没有任何可对照的东西——
+        * 那就是一个毛坯房。**它也不许在窄档被整块 `display: none` 掉**：手机上并没有
+        * 「另一种看日子」的办法，那等于把一项能力只发给桌面端（硬性规范 11）。
         *
-        * 现在的形状：一行题（月份 + 翻月 + 折叠），折起来是一枚芯片、展开是一整幅
+        * 形状是一行题（月份 + 翻月 + 折叠），折起来是一枚芯片、展开是一整幅
         * 月历（周首行 + 日格 + 今天）。折起来是**读者自己的选择**，不是宽度替他做的
         * ——窄档默认折起（那一条横带里放不下一幅月历），宽档默认展开。 */}
       <div className={css.itemRailCalendar}>
@@ -233,16 +234,16 @@ export function ItemRail(props: ItemRailProps) {
         </div>
         {/* **正文永远在 DOM 里，折起来是 `hidden` 而不是按宽度裁掉。**
           *
-          * 这是硬性规范 11 的分界线：**宽度不许决定一个控件在不在**（老版就是
-          * `display: none` 掉整块日历，于是手机上没有任何按日子看的入口），而读者
+          * 这是硬性规范 11 的分界线：**宽度不许决定一个控件在不在**（`display: none`
+          * 掉整块日历就是反例：手机上没有任何按日子看的入口），而读者
           * 自己按一下折起来是允许的六种让位之一——展开它的那枚控件一直在、带着
           * 名字、`aria-expanded` 说得出当前状态。`hidden` 而不是 `display: none`
           * 写在样式表里：折起来的按钮不该还能被 Tab 走到。 */}
         <div className={css.itemRailCalendarBody} id={calendarId} hidden={!props.calendarOpen}>
           {/* **翻月与「今天」是同一条导航行。**
             *
-            * 「回到今天」原本站在月历**下面**，而且只在「离今天远了」的时候才出现——
-            * 于是它按下去的一瞬间自己就消失了（条件不再成立），读者看到的是一个控件
+            * **「回到今天」不许在按下的那一刻消失。** 只在「离今天远了」的时候才出现的话，
+            * 它按下去的一瞬间条件就不再成立、控件自己消失了——读者看到的是一个控件
             * 在他手指底下不见了，而屏幕别处没有任何东西说明刚才发生了什么。控件可以
             * 变灰，不能在按下的那一刻消失。
             *
@@ -351,7 +352,7 @@ function MonthGrid(props: { readonly month: string; readonly days: readonly stri
       {/* **一周七天先报名。** 没有这一行，七列数字是一堆按列排好的数：读者数不出
           哪一列是周一，而「这一格是星期几」正是他扫月历时唯一在问的问题。它同时
           给这块日历一条**可见的左沿**——月题、周首行与日格从此站在同一条竖线上
-          （原来只有日格，而数字是从第四列才开始有的，于是月题看起来「往左偏了」）。
+          （只有日格而没有它的话，数字是从第四列才开始有的，于是月题看起来「往左偏了」）。
           读屏不需要它：每个日格的 accessible name 已经带着日期。 */}
       {WEEKDAYS.map((word, at) => (
         <span key={word} className={css.itemRailWeekday} aria-hidden="true" data-weekend={at === 0 || at === 6 ? '' : undefined}>

@@ -219,7 +219,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
 
   // THE FOCUS COMES BACK, and only on the way out. Unmounting is not closing:
   // a reader who navigated away from the panel has nothing to give the focus to,
-  // and reaching for a button that is no longer on the page would be worse than
+  // and reaching for a button that is not on the page would be worse than
   // doing nothing.
   const closedBy = useRef(props.open)
   useEffect(() => {
@@ -264,7 +264,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
         })),
       })
     }
-    // THE ROW THAT ASSIGNS a priority, and the row that FILTERS by one used to
+    // THE ROW THAT ASSIGNS a priority and the row that FILTERS by one must not
     // carry the same two words. This one says what it does to WHOM, which is the
     // half the reader cannot see: it writes the row the cursor is on.
     if (props.onPriority !== undefined) {
@@ -367,7 +367,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   // Typing narrows the ANSWERS and leaves the vocabulary standing, so the one
   // sentence about an empty box has to be about the answers: the facets are on
   // screen either way, and 「没有匹配的东西」 over a screen showing twelve chips is
-  // the sentence that never used to be true and always looked broken.
+  // a sentence that is not true and reads as broken.
   const nothing = typed !== '' && groups.every(group => group.kind === 'words' || group.options.length === 0)
 
   return (
@@ -410,10 +410,10 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
             />
 
             {/* THE SAME CHIP COMPONENT the spine used, and not a second rendering
-                of it. The palette was written with these chips INLINED, which left
-                `query-chips.tsx` imported by nobody while both copies answered the
-                same question — the day 「take a qualifier off」 gains a behaviour,
-                one of the two would have it and the other would not. */}
+                of it. Chips inlined here are a second answer to the same question,
+                with `query-chips.tsx` imported by nobody — and the day
+                「take a qualifier off」 gains a behaviour, one of the two has it and
+                the other does not. */}
             <ItemQueryChips
               text={props.text}
               tags={props.tags}
@@ -456,13 +456,13 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
 
             {nothing && <p className={css.itemPaletteNothing}>{t('item.palette.nothing')}</p>}
 
-            {/* THE FOOTER IS A SENTENCE. It is not a group: it was once drawn as a
-                facet row with an EMPTY name cell, borrowing that shape to line the
-                footer up with the groups above it — which is what an empty name
-                cell cannot do: the row's first track still reserved its width, so
-                the sentence was indented by it and sat in the middle of a box whose
-                every other line starts at the left edge. The footer's left edge is
-                the BOX's left edge, because that is what it is about. */}
+            {/* THE FOOTER IS A SENTENCE. It is not a group: drawing it as a facet
+                row with an EMPTY name cell, to line the footer up with the groups
+                above it, is what an empty name cell cannot do — the row's first
+                track still reserves its width, so the sentence is indented by it and
+                sits in the middle of a box whose every other line starts at the left
+                edge. The footer's left edge is the BOX's left edge, because that is
+                what it is about. */}
             <div className={css.itemPaletteFoot}>
               <p className={css.itemPaletteHint}>{t('item.palette.hint')}</p>
             </div>

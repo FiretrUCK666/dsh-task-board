@@ -170,8 +170,8 @@ describe('drop dispatch (the gap the preview promises is the gap the drop takes)
         if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
         if (key === 'linkedOf') return () => []
         if (key === 'relatedSessionIdSet') return () => new Set<string>()
-        /* 圆点与卡里那份列表读的是**同一个** `sessionsOf`（一个集合一个答案）。这台假面原来只
-           有 `relatedSessionIdSet`，于是台架比现实窄——真实控制器的两个方法都在，而窄的假面会把
+        /* 圆点与卡里那份列表读的是**同一个** `sessionsOf`（一个集合一个答案）。只有
+           `relatedSessionIdSet` 的假面比现实窄——真实控制器的两个方法都在，而窄的假面会把
            正确实现报成缺陷（硬性规范 18）。 */
         if (key === 'sessionsOf') return () => [] as Array<{ sessionId: string }>
         if (key === 'liveStateOf') return () => 'idle'
@@ -269,9 +269,9 @@ describe('drop dispatch (the gap the preview promises is the gap the drop takes)
 
   it('a CROSS-column drop inserts at the previewed gap, not the column tail', async () => {
     // The reported defect: x (待办) dropped on h's upper half in 待规划 — the
-    // indicator promises the gap above h, so the move must name h. The drop
-    // path used to re-read the transient gap ref AFTER clearing it, so the
-    // position was always lost and the card fell to the tail.
+    // indicator promises the gap above h, so the move must name h. Re-reading the
+    // transient gap ref AFTER clearing it loses the position, and the card falls to
+    // the column tail instead.
     const { moves, targetStatus } = await dragOnto(
       [card('x', 'todo', 0), card('g', 'backlog', 0), card('h', 'backlog', 1)],
       'x',

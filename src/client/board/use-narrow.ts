@@ -16,9 +16,7 @@
  * the shell sidebar open has a viewport that says "wide" while the board or
  * panel is already stacked, and a default that follows the viewport then
  * disagrees with the geometry the user is looking at. All shape switches
- * must use `useSurfaceNarrow`; the viewport-proxy export was removed once
- * zero importers remained — this note stays so future callers pick the
- * surface signal instead of re-adding a viewport one.
+ * must use `useSurfaceNarrow`, never a viewport proxy.
  */
 import { useEffect, useRef, useState } from 'react'
 

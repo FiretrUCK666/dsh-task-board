@@ -114,7 +114,7 @@ export const MAX_COMMENT_FILES = 5
 /**
  * PURE decision for one candidate file (unit-tested): the intake route.
  * Images route to the canvas lane; EVERYTHING else routes to the file lane
- * (upload-then-receipt) — a non-image is never a "type rejection" anymore.
+ * (upload-then-receipt) — a non-image is never a "type rejection".
  * A pre-compression image may exceed maxBytes and still be fine (the
  * re-encode shrinks it), so size only rejects a PASSTHROUGH (gif) or the
  * final encoded result — never a re-encode candidate up front.

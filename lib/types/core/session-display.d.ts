@@ -48,9 +48,9 @@ export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRec
 /**
  * The live state of a LINKED session on one task — the same derivation
  * {@link sessionDisplay} uses, addressed by session id. Two entry points into
- * ONE body on purpose: they used to be separate implementations with different
- * round sets, and the narrower one always won for a session that was both run
- * and bound, so the row reported an outcome that had already been superseded.
+ * ONE body on purpose: separate implementations with different round sets make
+ * the narrower one win for a session that is both run and bound, so the row
+ * reports an outcome that has already been superseded.
  */
 export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean): SessionDisplay;
 /**

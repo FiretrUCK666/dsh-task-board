@@ -202,8 +202,8 @@ describe('三个日子各写各的，一行里可以写全三个', () => {
 
 describe('一套日期词，两个入口', () => {
   it('一句话里认的写法，三个日期框里认的是同一个时刻', () => {
-    // 两个入口曾经各认一半：快记认星期几与 `+N`，日期框只认 `2026-10-15` 与「明天」——
-    // 读者在一个入口学会的写法，在隔壁那个框里被拒，而那两个框说的是同一件事。
+    // 两个入口认同一套写法：快记认星期几与 `+N`，日期框也认它们——读者在一个入口学
+    // 会的写法，不该在隔壁那个框里被拒，因为那两个框说的是同一件事。
     // 这一条钉的是「同一串字 → 同一个时刻」，所以它比两边的词表都强。
     for (const word of ['明天', '@明天', '周三', '2026-10-15', '10/15', '+3']) {
       const inLine = parse(`干活 @${word.replace(/^@/, '')}`).dueAt
@@ -308,10 +308,10 @@ describe('token ranges point back at the source', () => {
 
   it('a step line names its own characters, indent and all', () => {
     // A step token's `raw` is the whole line, so its range has to start at the
-    // line's own first character. It used to start at the caption, with the indent
-    // counted twice — and because the escape hatch splices at that offset, undoing
-    // a step put the backslash INSIDE the sentence and left the line a checkbox, so
-    // 「撤回」 looked like it did nothing.
+    // line's own first character. Starting at the caption counts the indent twice —
+    // and because the escape hatch splices at that offset, undoing a step puts the
+    // backslash INSIDE the sentence and leaves the line a checkbox, so 「撤回」 looks
+    // like it did nothing.
     const text = '  - [ ] 写周报'
     const token = parse(text).tokens[0] as ComposerToken
     expect(text.slice(token.start, token.end), 'the step token does not name its own line').toBe(token.raw)

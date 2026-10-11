@@ -81,13 +81,13 @@ function expectRule(name: string): string {
   return block
 }
 
-describe('the column header and the cards under it share ONE text edge', () => {  // MEASURED, NOT ASSUMED. Before this contract, one board column showed body
-  // text at four left edges: status dot 37, column title 51, card title 38,
-  // coloured-card title 53, workspace name 49. The column's own NAME was 13px
-  // right of the cards sitting under it, which is what 「没对齐」 looks like
-  // when you cannot name the number.
+describe('the column header and the cards under it share ONE text edge', () => {  // MEASURED, NOT ASSUMED. This contract exists because one board column can show
+  // body text at four left edges — status dot 37, column title 51, card title 38,
+  // coloured-card title 53, workspace name 49 — which puts the column's own NAME 13px
+  // right of the cards sitting under it. That is what 「没对齐」 looks like when you
+  // cannot name the number.
   //
-  // The cause was not the padding — `.columnHeader`'s box already EQUALS the
+  // The cause is not the padding — `.columnHeader`'s box already EQUALS the
   // cards' content box (cards 8px inset + card 12px padding). It was the 8px
   // status dot sitting INSIDE that box as a flex child, pushing the title out
   // by 8 + the gap. So the invariant is not 「the paddings match」, which was
@@ -223,19 +223,19 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // hairline, which is the quietest edge the design system has.
     const rule = ruleFor('.cardBadges .chip')
     expect(rule, 'card chips have no edge again, so a multi-chip card reads as one sentence').not.toBe('')
-    // THE CLAIM, NOT THE SPELLING. This used to read
-    // `border: var(--dsh-tb-border-soft)`, which pins ONE way of writing a
-    // hairline rather than the hairline itself — and this same file has already
-    // ruled that move out twice (see the colour mark and the workspace dot
-    // below, where the mechanism is explicitly left free). What has to hold is
-    // that the chip draws an edge that is not zero.
+    // THE CLAIM, NOT THE SPELLING. Pinning `border: var(--dsh-tb-border-soft)`
+    // would pin ONE way of writing a hairline rather than the hairline itself — and
+    // this same file rules that move out twice (see the colour mark and the
+    // workspace dot below, where the mechanism is explicitly left free). What has to
+    // hold is that the chip draws an edge that is not zero.
     expect(rule, 'the chip declares no border, so the two words of a chip row touch').toMatch(/(?:^|[;\s])border(?:-[a-z-]+)?\s*:\s*(?!0\b|none\b)/)
     // Padding is what makes it read as an edge the chip owns rather than a rule
     // floating between two words. It is a TOKEN now, and the reason is below.
     expect(rule, 'the chip has a border but no bearing, so the edge touches the text')
       .toMatch(/(?:^|[;\s])padding(?:-inline)?\s*:\s*0\s+var\(--card-badge-pad\)/)
 
-    // THE COMPENSATION, and this is the half the old assertion could not see.
+    // THE COMPENSATION, and this is the half an assertion on the chip alone cannot
+    // see.
     // A chip's own bearing plus its hairline pushes its TEXT right of the meta
     // row directly above it, which spends no bearing of its own — MEASURED: the
     // 待你决断 / 新留言 row sat 7px right of 「更新于 …」 on the same card, so the
@@ -256,7 +256,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
     expect(rule, 'the chip spends a border width the row does not give back').toContain('border: var(--card-badge-hair) solid')
     expect(rule, 'the chip spends a bearing the row does not give back').toContain('padding: 0 var(--card-badge-pad)')
     // **AND THE ROW IS NOT SHIFTED — zero offset, in EITHER direction.** Two
-    // mistakes look like one problem here and both were made in this file:
+    // mistakes look like one problem here and both must be avoided:
     //
     //   1. no offset at all → the chips' TEXT sits one bearing right of 「更新于」,
     //      which reads as 「这一行往右偏了」;
@@ -291,12 +291,12 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // leads text must not be what decides where the text starts. All three are
     // checked here rather than in three places, because it is ONE rule and the
     // failure repeats.
-    // THE INVARIANT IS NOT THE MECHANISM. This used to read
-    // `expect(mark).toMatch(/position:\s*absolute/)`, which pinned the spell rather
-    // than the claim — and the spell is what cost the vertical alignment: a mark
-    // out of flow takes its top from the static position rather than from the line
-    // of the words beside it, so the workspace dot floated half a pixel above the
-    // session name and the row read as two things at two heights.
+    // THE INVARIANT IS NOT THE MECHANISM. `expect(mark).toMatch(/position:\s*absolute/)`
+    // pins the spell rather than the claim — and this spell is what costs the
+    // vertical alignment: a mark out of flow takes its top from the static position
+    // rather than from the line of the words beside it, so a workspace dot floats
+    // half a pixel above the session name and the row reads as two things at two
+    // heights.
     //
     // The claim is one sentence and it survives every mechanism tried so far: **a
     // mark is not content, and a mark that leads text must not be what decides
@@ -428,9 +428,8 @@ describe('the column header and the cards under it share ONE text edge', () => {
         .toBe(true)
     }
     /* AND THE GATE COVERS EVERY PAGE BY CONSTRUCTION, not by a hand-kept list of
-     * files to check. 收件 used to be the second entry here; it is gone, and the
-     * thing that has to survive its removal is the REASON this loop exists — that a
-     * page cannot inherit the holding by being handed the shared factory. So the
+     * files to check. The thing the loop exists for is that a page cannot inherit
+     * the holding by being handed the shared factory. So the
      * check is `ITEM_PAGES` read off disk against the loop's own names: a page added
      * tomorrow without an entry here is a red test rather than a page nobody
      * checked. */
@@ -562,8 +561,8 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // the interface actually prints, taken from the locale table.
     //
     // **状态那五个词住在看板那一张表里**（`board.status.*`，`board/status.ts` 的
-    // `STATUS_KEY`）：清单那一栏与看板是同一套词，所以这里读的是同一个来源。原来这里读
-    // `item.group.*`——两张表说同一件事，而两张表就是两个会分家的答案。
+    // `STATUS_KEY`）：清单那一栏与看板是同一套词，所以这里读的是同一个来源。读
+    // `item.group.*` 就是两张表说同一件事，而两张表就是两个会分家的答案。
     const CLAIMED: ReadonlyArray<{ key: string; zh: string; en: string }> = [
       { key: 'board.status.backlog', zh: '待规划', en: 'Backlog' },
       { key: 'board.status.todo', zh: '待办', en: 'To do' },
@@ -799,13 +798,12 @@ describe('card no-breakout CSS contract', () => {
 
 describe('design-system contracts: pill geometry + compact rhythm', () => {
   /**
-   * WHY (the 「改了好多次都没弄回来」 family): pills used to drift to a fixed
-   * px radius one member at a time (columnTab compact override,
-   * interactionOption, attachChip, …) and each fix only repaired the instance
-   * on the current screenshot. The single truth is the --dsh-tb-pill /
-   * --dsh-tb-button-radius token pair; this block fails the build the moment
-   * any pill stops consuming it, so the family can never drift piecemeal
-   * again. Shapes that are NOT pills (cards/panels/inputs on the sm/md/lg/xl
+   * WHY (the 「改了好多次都没弄回来」 family): pills drift to a fixed px radius one
+   * member at a time (columnTab compact override, interactionOption, attachChip, …)
+   * and each fix repairs only the instance on the current screenshot. The single
+   * truth is the --dsh-tb-pill / --dsh-tb-button-radius token pair; this block fails
+   * the build the moment any pill stops consuming it, so the family cannot drift
+   * piecemeal again. Shapes that are NOT pills (cards/panels/inputs on the sm/md/lg/xl
    * ladder, dots, code, meter, the native bubble/sidebar benchmarks) are
    * intentionally absent — see the px allowlist below.
    */
@@ -933,12 +931,12 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
   })
 
   it('an invisible control cannot receive a tap, and the unread light outranks in-flight work', () => {
-    // Two hazards that no visual review catches, both previously live:
+    // Two hazards that no visual review catches, and both are live shapes:
     //
     // 1. `.cardQuickRun` rests at `opacity: 0` and is revealed by hover. Opacity
     //    does NOT disable hit-testing, so on a touch device — which has no hover —
-    //    a tap in the card's top-right corner was delivered to that span, fired
-    //    `onQuickRun`, and started a real DSH agent session while showing nothing.
+    //    a tap in the card's top-right corner lands on that span, fires
+    //    `onQuickRun`, and starts a real DSH agent session while showing nothing.
     //    An invisible control must decline the pointer until it is revealed.
     const quickRun = expectRule('cardQuickRun')
     expect(quickRun, 'the hidden quick-run must decline pointer events').toContain('pointer-events: none')
@@ -1061,13 +1059,14 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
   })
 
   it('the badge row ranks its primary first, and never gates the row on automation', () => {
-    // Two structural facts about the card's chip row, both previously wrong in ways
-    // no visual review surfaces:
+    // Two structural facts about the card's chip row, each a way the row can
+    // contradict the model with no visual review surfacing it:
     //
     // 1. ORDER. `cardViewModelOf` computes a priority (waiting > running
-    //    > queued > failed > review > idle) and the render used to emit that winner
-    //    LAST, behind every automation badge — the row's reading order contradicted
-    //    the view model's own ranking, on the surface whose whole job is a scan.
+    //    > queued > failed > review > idle) and the render must emit that winner
+    //    FIRST, not last behind every automation badge — emitting it last makes the
+    //    row's reading order contradict the view model's own ranking, on the surface
+    //    whose whole job is a scan.
     const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
     const primaryAt = card.indexOf('{primaryChip}')
     const autoAt = card.indexOf('{automationChips}')
@@ -1075,13 +1074,13 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(autoAt, 'the row must render the automation chips').toBeGreaterThan(-1)
     expect(primaryAt, 'the primary chip must come before the automation chips').toBeLessThan(autoAt)
 
-    // 2. THE GATE. The row was wrapped in `schedule?.enabled === true || latest !==
-    //    undefined`, which is FALSE for a card that has never run and has no
-    //    schedule — precisely the shape of "somebody just made this card and the
-    //    agent is asking a question". The view model reported `primary: waiting`
-    //    while the gate hid the whole row, so the one signal asking the user to act
-    //    was unrenderable exactly when it mattered. Each chip carries its own
-    //    condition, so the row must not reintroduce a shared one.
+    // 2. THE GATE. A shared gate `schedule?.enabled === true || latest !==
+    //    undefined` is FALSE for a card that has never run and has no schedule —
+    //    precisely the shape of "somebody just made this card and the agent is asking
+    //    a question". The view model reports `primary: waiting` while the gate hides
+    //    the whole row, so the one signal asking the user to act is unrenderable
+    //    exactly when it matters. Each chip carries its own condition, so the row must
+    //    not carry a shared one.
     expect(card, 'the badge row must not be gated on automation/execution again')
       .not.toContain('{(task.schedule?.enabled === true || latest !== undefined) && (')
     expect(card).toContain('if (!hasAnything) return null')
@@ -1095,12 +1094,12 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
 
   it('a fact painted as geometry is also stated in words', () => {
     // The session dots encode "who is working on this card, and how many" as colour
-    // and position, and the overflow is a `+N` glyph. Both used to sit inside an
-    // `aria-hidden` container whose only text lived in a `title` on a non-focusable
-    // span — unreachable by keyboard, unread by a screen reader, so the fact was
+    // and position, and the overflow is a `+N` glyph. Both must NOT sit inside an
+    // `aria-hidden` container whose only text lives in a `title` on a non-focusable
+    // span — unreachable by keyboard, unread by a screen reader, so the fact is
     // available only to sighted hovering users. Hard rule 11③ forbids exactly that
-    // (「触屏没有 hover——承载必要信息的说明不能只挂 title=」), and the bell was fixed
-    // for the same reason one round earlier; this is its second instance.
+    // (「触屏没有 hover——承载必要信息的说明不能只挂 title=」), and the bell is the same
+    // defect one round earlier; this is its second instance.
     const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
     const strip = card.slice(card.indexOf('css.cardSessions'), card.indexOf('css.cardSessions') + 1600)
     expect(strip, 'the strip must carry a text alternative').toContain('css.visuallyHidden')
@@ -1194,10 +1193,11 @@ describe('card chip label composition', () => {
   })
 
   it('the chip is the model\'s primary, not a second chain beside it', () => {
-    // The card used to rank its chips in the component while the view model
-    // ranked `primary` separately, so the model's own winner never reached the
-    // screen (a queued card showed no primary; a failed one named itself twice).
-    // The render now reads `view.primary` and the next-action line reads the
+    // The chip is the model's primary. Ranking the chips inside the component while
+    // the view model ranks `primary` separately is a second chain beside the model's
+    // own, and the model's winner then never reaches the screen (a queued card shows
+    // no primary; a failed one names itself twice).
+    // The render reads `view.primary` and the next-action line reads the
     // same value — one ranking, two renderings of it.
     const card = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
     const view = readFileSync(fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url)), 'utf8')
@@ -1383,7 +1383,8 @@ describe('session picker contract', () => {
 
   it('the list is the CORE derivation, never a flattened catalog re-filtered in the view', () => {
     expect(picker).toContain('controller.offerableSessionGroups(exclude)')
-    // The old implementation's two defects, frozen so they cannot come back.
+    // The two shapes this must never take again, frozen so they cannot come back:
+    // a flattened catalog re-filtered in the view, and a hard cap on the list.
     expect(picker).not.toContain('referenceSessionCatalog')
     expect(picker).not.toMatch(/\.slice\(0,\s*\d+\)/)
   })

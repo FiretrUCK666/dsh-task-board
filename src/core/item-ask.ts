@@ -3,12 +3,12 @@
  *
  * ── WHY THIS IS A CORE FUNCTION AND NOT A ROUTE ─────────────────────────────
  *
- * The decision — which conversation, and what it is told — lived entirely inside
- * the HTTP route, which meant two things at once: it had no test, and it was not
- * in the catalog. The panel could press 「问 AI」 and the model could not, because
- * `verify-action-coverage` reads what the CATALOG carries and the route's private
- * function was in neither list. So 「界面有的动作 AI 没有」 was not an oversight to
- * fix; it was a structural consequence of where the judgment sat.
+ * The decision — which conversation, and what it is told — inside the HTTP route
+ * means two things at once: it has no test, and it is not in the catalog. The
+ * panel can press 「问 AI」 while the model cannot, because
+ * `verify-action-coverage` reads what the CATALOG carries and a route's private
+ * function is in neither list. So 「界面有的动作 AI 没有」 is not an oversight to
+ * fix; it is a structural consequence of where the judgment sits.
  *
  * Here it is a pure function over facts the caller already has, so the catalog
  * can name it, the coverage gate can bind it, and a test can pin every branch
@@ -25,11 +25,11 @@
  *   · **一条都没有** → there is nothing to continue, so this is a genuine 开始:
  *     a run opens the card's first conversation ({@link askTargetOf} says `start`).
  *
- * The two lanes are NOT two actions, and they used to look like two because the
- * panel had a separate 「执行」 button that only ever did the second one while
- * refusing whenever the first applied. A reader who pressed the wrong one got a
- * dead control and no sentence explaining why. Which lane this is, is a fact
- * about the card — never a choice the reader has to make correctly.
+ * The two lanes are NOT two actions, and a separate 「执行」 button is what two
+ * actions looks like: it only ever does the second one while refusing whenever
+ * the first applies, so a reader who presses the wrong one gets a dead control
+ * and no sentence explaining why. Which lane this is, is a fact about the card —
+ * never a choice the reader has to make correctly.
  *
  * ── WHAT THE TWO LANES AGREE ON ─────────────────────────────────────────────
  *

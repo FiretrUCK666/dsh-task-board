@@ -46,7 +46,7 @@
  * WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. A collision leaves no gap (13
  * and 14, dense). A CLAIM that reintroduces a number another row now holds does:
  * the number that row vacated is not reissued, so the list ends up with a hole
- * where it used to be. That is the deliberate trade — a gap is invisible in a
+ * where that number was. That is the deliberate trade — a gap is invisible in a
  * checklist, while the alternative (a number changing under a person who just
  * read it out loud) is a lie told to their face. The kernel is what makes the
  * vacated number unreachable: the claim is taken whole, number included, and by
@@ -211,8 +211,8 @@ function wantedAt(item: ItemRecord): number {
 }
 
 /* 五档的秩就是看板那五栏的次序（**导入，不抄**）：一份文档里同一栏的行排在一起，而
- * 「完成」落在最后。它曾经是三档（开放/受阻/完成），中间那一档不存在了——`blocked` 是
- * 清单自己造的一个看板没有的状态，见 `item.ts` 的来历。 */
+ * 「完成」落在最后。中间那一档不属于看板五栏——`blocked` 是清单自己造的一个看板没有的
+ * 状态，见 `item.ts`。 */
 const STATUS_RANK: Record<ItemRecord['status'], number> = Object.fromEntries(
   ALL_STATUSES.map((status, index) => [status, index]),
 ) as Record<ItemRecord['status'], number>

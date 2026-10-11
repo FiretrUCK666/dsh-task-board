@@ -87,8 +87,8 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
     id: 'priority',
     label: 'item.facet.priority',
     /* 四档的**顺序、token、词**全部派生：顺序是模型的重量序，token 是 `p1..p4` 那张表
-     * 的逆表，词是 `PRIORITY_LABEL`。这一栏曾经是同一张派生表里唯一手写的一格——
-     * 手写的代价不是难看，是**改一处不报错**：重新分档之后这一栏会继续写着旧号码。 */
+     * 的逆表，词是 `PRIORITY_LABEL`。**这一栏不许手写**：手写的代价不是难看，是**改一处不报错**
+     * ——重新分档之后它会继续写着旧号码。 */
     values: ITEM_PRIORITIES_BY_WEIGHT.map(priority => ({
       token: TOKEN_BY_PRIORITY.get(priority) ?? '',
       key: priority,
@@ -100,11 +100,10 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
     label: 'item.facet.date',
     /* **日期那一栏的取值 = 左栏能按下的那几个筛子**，不是另写一份。
      *
-     * 这一栏原来手写着 `has:hardOverdue / has:behind / has:undated / has:gated`，而左栏
-     * （读者真正按的地方）写的是 `has:overdue / has:ahead / has:undated / has:stale`。
-     * 两套词汇只有「没定日期」重合——于是读者按「已超期」「还没到」「迟迟没动」：
-     * **列表筛了，芯片一个都不出现**（读的就是这份表），筛子开着却没有东西说得出它、也点不掉
-     * 它。现在两边读同一份（`ITEM_RAIL_*_FLAGS`），加一个筛子只动左栏那一处。 */
+     * 各写一份的话，两套词汇可能只有「没定日期」重合——读者按「已超期」「还没到」，
+     * 「迟迟没动」，而**列表筛了、芯片一个都不出现**（读的就是这份表）：筛子开着却没有
+     * 东西说得出它、也点不掉它。所以两边读同一份（`ITEM_RAIL_*_FLAGS`），加一个筛子
+     * 只动左栏那一处。 */
     values: [...ITEM_RAIL_DATE_FLAGS, ...ITEM_RAIL_IDLE_FLAGS].map(flag => ({
       token: `has:${flag}`,
       key: flag,
@@ -231,7 +230,7 @@ export function queryChipsOf(text: string, tags: readonly (readonly string[])[] 
   /* **语法认得的每一枚 flag 都要有芯片，哪怕它不在任何一栏的菜单里。**
    *
    * 读者可以在框里手打 `has:gated`，模型也会写它（`taskboard_query` 的筛选词表就是这张表推
-   * 出来的），而它不在日期那一栏的菜单里——于是它曾经是一个**开了却无法看见、无法点掉的筛子**：
+   * 出来的），而它不在日期那一栏的菜单里——那就是一个**开了却无法看见、无法点掉的筛子**：
    * 列表被筛过，屏上没有任何东西说得出为什么。这一页最不能有的东西就是它（本函数的注释里写着
    * 同一句话：一个手打的限定词仍然是筛子，悄悄藏起来是最坏的一种错）。
    *
@@ -277,8 +276,8 @@ export function dayTokensIn(text: string): string[] {
 /**
  * The status facet's values, keyed the way the model names a group.
  *
- * **派生，不是抄的**：它原来是四个硬编码字符串（`inProgress`/`open`/`blocked`/`done`）,
- * 而 `ITEM_STATUS_VIEWS` 就是那张表——加一栏时这里漏一份不会报错，只会让新那一栏的
+ * **派生，不是抄的**：硬编码一串字符串（`inProgress`/`open`/`blocked`/`done`）的话，
+ * `ITEM_STATUS_VIEWS` 加一栏时这里漏一份不会报错，只会让新那一栏的
  * 芯片**按下去不亮**（查询里有它、判断里没有它）。
  */
 const STATUS_KEYS: ReadonlySet<string> = new Set<string>(ITEM_STATUS_VIEWS)

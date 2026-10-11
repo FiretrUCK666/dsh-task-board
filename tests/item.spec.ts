@@ -195,8 +195,8 @@ describe('parseItems', () => {
   })
 
   it('reads an old or unknown status as 「还没做」, never dropping the row', () => {
-    /* 两个**老值**都要读成「还没做」：`open` 是这一版之前的名字，`blocked` 是这一版删掉的
-       那一档（受阻的行还在清单里，只是它现在说「还没做」）。未知值与下一版的词落在这里，
+    /* 两个**老值**都要读成「还没做」：`open` 与 `blocked` 都不在这张表里，
+       受阻的行还在清单里，只是它现在说「还没做」。未知值与下一版的词落在这里，
        理由同一条：行是读者写下的东西，枚举是我们的事。 */
     for (const legacy of ['inProgress', 'open', 'blocked', 'whatever']) {
       const [row] = parseItems(raw({ status: legacy, priority: 'urgent-ish' }), counter())

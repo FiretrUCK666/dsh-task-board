@@ -53,18 +53,19 @@ type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
 /**
  * THE ONE DATE READING THE ROW CARRIES — AND IT IS ONE SHAPE.
  *
- * One reading, not two: it used to print the hard deadline's reading at the end of
- * the sentence AND the plan's reading on the line below, so a reader had to work
- * out which number was about which date. The plan's reading is not lost — it is on
+ * One reading, not two: printing the hard deadline's reading at the end of
+ * the sentence AND the plan's reading on the line below makes the reader work
+ * out which number is about which date. The plan's reading is not lost — it is on
  * the date axis in the expanded row, in the column that already says 「希望在」.
  * **一个事实在一行里说一次，在它自己的那一栏里说一次。**
  *
- * **THE SHAPE IS `<日期名> · <读法>`, IN EVERY BRANCH.** It was not: three
- * branches named their date (「不晚于超期 9 天」), two named nothing (「就是今天」,
- * 「10月16日」), one was a whole sentence about itself, and one printed nothing at
- * all. A reader looking at a list of them cannot tell whether 「10月16日」 is the
- * deadline, the wanted-by date or the day the row may start — the one thing the
- * reading exists to say is the thing it left out. **一个位置的形状只该有一种**；
+ * **THE SHAPE IS `<日期名> · <读法>`, IN EVERY BRANCH.** Any other shape says
+ * less than the reading exists to say: a branch naming nothing (「就是今天」,
+ * 「10月16日」) leaves the reader unable to tell whether 「10月16日」 is the
+ * deadline, the wanted-by date or the day the row may start. Three branches naming
+ * their date (「不晚于超期 9 天」), one that is a whole sentence about itself and one
+ * that prints nothing at all are the same defect in other directions.
+ * **一个位置的形状只该有一种**；
  * 一种形状的六个成员看起来才像同一件事的六种情形。
  *
  * The name comes from the posture itself rather than from a second guess: each
@@ -111,8 +112,8 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
       return { tone: 'set', text: about('hardDueAt', t('item.due.set', { when: formatItemDate(posture.at, english, now) })) }
     case 'upcoming':
       return { tone: 'set', text: about('dueAt', t('item.due.set', { when: formatItemDate(posture.at, english, now) })) }
-    /* A GATE IS A DATE YOU CANNOT CROSS YET, and it used to print NOTHING — so the
-     * one row whose dates explain why it has not started said neither the date nor
+    /* A GATE IS A DATE YOU CANNOT CROSS YET: printing NOTHING here would leave the
+     * one row whose dates explain why it has not started saying neither the date nor
      * that there was one. It is a date like any other: name it, read it. */
     case 'gated':
       return { tone: 'set', text: about('startsAfter', t('item.due.set', { when: formatItemDate(posture.startsAfter, english, now) })) }
@@ -143,8 +144,8 @@ function metaLine(view: ItemRowView): string {
    * not numbered it, because 「编号待定」 says 「this will have a number」 where a
    * blank cell says 「there is nothing here」. */
   parts.push(view.ref.text ?? t('item.ref.pending'))
-  /* 步数在这一行里**不再出现**：它搬进了右边那簇记号（自己的图标、自己的名字），而一个事实
-   * 在一行里出现两遍正是这一行上半年删掉「状态」的那个理由。 */
+  /* 步数不在这条副行里：它在右边那簇记号里（自己的图标、自己的名字），而一个事实在一行里
+   * 出现两遍，读者得先判断哪一遍算数——副行只留「关于这一条自己的账」就是这个理由。 */
   // Only once it has actually been neglected. A row touched a minute ago answers
   // zero, and printing 「放着 0 天」 on every fresh row turns the one signal that is
   // supposed to be rare into furniture. The threshold is the one the rail's own
@@ -239,7 +240,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
   useEffect(() => { if (!editing) setDraft(item.title) }, [item.title, editing])
   useEffect(() => { if (editing) inputRef.current?.focus() }, [editing])
   /* E 的租约在这里结账：面板每按一次 E 都把 nonce 涨一格，本行只接自己见过的
-     最高一次——接过的不再重放， нераспредел的留给别的行。 */
+     最高一次——接过的不再重放，没接过的留给别的行。 */
   const servedRename = useRef<number | undefined>(props.renameNonce)
   useEffect(() => {
     if (props.renameNonce === undefined) return
@@ -271,10 +272,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
       onClick={event => {
         /* A MODIFIER PRESS HOLDS, AND A PLAIN PRESS SELECTS.
          *
-         * 多选那一列 44px 的常驻勾选框拿掉之后，进这一格的门就只剩这一个手势：读者
-         * 想「拿着」一行，不该先知道有个模式存在。而它在重写这一行的时候跟着勾选框
-         * 一起没了——于是「不用先进模式就能拿到一行」变成了一个根本不成立的承诺，
-         * 而承诺留在文档里、按钮不在界面上，是最难发现的一种坏。
+         * **修饰键按下的门只剩这一个手势**（多选那一列的 44px 常驻勾选框不在这里）：
+         * 读者想「拿着」一行，不该先知道有个模式存在——所以这一格必须接住它。一个
+         * 「不用先进模式就能拿到一行」的承诺，若只写在文档里而界面上没有对应的按钮，
+         * 就是最难发现的一种坏。
          *
          * **Shift 是范围，⌘ 是这一行。** 两个都叫修饰键，意思却不一样：一个说
          * 「屏幕上的这几行」，一个说「这一行」。所以两者都要分清，而不是统一成
@@ -287,10 +288,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
         props.onSelect()
         /* A PLAIN PRESS ALSO OPENS THE ROW, ON BOTH BANDS.
          *
-         * 它原来在宽屏**不**展开：那时候宽屏的详情住在右边单独一栏，点一行是「选中」，
-         * 而那一栏是选中之后才租的。侧栏拿掉之后两档都改成在行里展开，而这一行还留着
-         * 「只有窄屏才展开」的旧判断——于是**两档都变成只选中、永远打不开**：一个点
-         * 下去什么都不发生的控件，而读屏工具与键盘同样进不去。
+         * 它**必须两档都行**：宽屏的详情若住在右边单独一栏、那一栏又只有选中之后才租得到，
+         * 点一行就只是「选中」，打开要点第二下。**只选中、永远打不开**的控件是一个点
+         * 下去什么都不发生的控件，而读屏工具与键盘同样进不去——展不展开与屏幕多宽
+         * 无关。
          *
          * 「展开」与「收起」是同一件事的两个方向，所以它读 `onToggle`（面板自己知道
          * 现在是开着还是关着），而不是记一个「第一次点要展开」的旗子——旗子是必须和
@@ -342,19 +343,19 @@ export function ItemRowLine(props: ItemRowLineProps) {
              *
              * 行内排版，不是 flex —— flex 的换行是在**收缩之前**按基准尺寸决定的，于是
              * 芯片 30px 加上整句的 max-content 超过一行宽时，**整句被推到下一行、芯片
-             * 自己留在上面**。412px 上每一行都成了「一行芯片 + 三行标题」。换成正常的行内
-             * 流之后，芯片是段首的一个词、标签是句末的一个词，文字自己折行。
+             * 自己留在上面**。412px 上每一行都成了「一行芯片 + 三行标题」。**行内流**里，
+             * 芯片是段首的一个词、标签是句末的一个词，文字自己折行。
              *
-             * **标签也在这条流里了。** 它们原来是右边独立的一列，于是「同一个短语的两个
-             * 部分」被排在句子的两头（读者的原话：把标签挪到标题右边，左右间距与左边那些
-             * 元素**完全一致**）。现在它们是句子末尾的词，间距读的是同一档 6px——即
+             * **标签也在这条流里。** 它们若是右边独立的一列，「同一个短语的两个部分」就被
+             * 排在句子的两头——要求是左右间距与左边那些元素**完全一致**（把标签挪到标题
+             * 右边）。它们是句子末尾的词，间距读的是同一档 6px——即
              * `!N` 与句子之间那一档。 */
             <h3 className={css.itemRowTitle}>
               {/* **优先级是一枚读数，不是一个动作。**
                *
-               * 它原来兼作「打开标题编辑」的入口，理由是「标题还是一段纯文本，所以要有东西一下
-               * 打得开它」——可达名因此写着「紧急 · 改名」。现在**标题自己就是那个入口**（使用者
-               * 选的那条路，见右边那一枚），所以这一枚退回成它本来的样子：一枚记号。
+               * **它不兼作「打开标题编辑」的入口**：可达名会因此写着「紧急 · 改名」，读者读到
+               * 的是两件事。**标题自己就是那个入口**（使用者
+               * 选的那条路，见右边那一枚），所以这一枚就是一枚记号。
                *
                * 产品文档里把「优先级同时是一个动作」记成一条**违反**，这里把它合上：让一枚读数
                * 去承担动作是错的——读者看见的是「紧急」，而它按下去做的事叫"改名"。 */}
@@ -371,7 +372,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
                   a row with nothing in it — the derivation that borrows the body's
                   first line existed and had no reader. It has one now. */} 
                 {/* **标题就是改名字的入口**（使用者选的那条路：点标题即改名）。
-                    它原来是纯文本，按下去会**冒泡给整行**——那是「选中这一行」。所以这一枚
+                    它若是纯文本、按下去**冒泡给整行**，那次点击就是「选中这一行」。所以这一枚
                     必须 `stopPropagation`：否则一次点击同时改名与选中，两个动作撞在一起。
                     可达名读作「改名：<标题>」，不是把标题当按钮名——后者会让读屏的人以为
                     按下去是"打开"。 */}
@@ -387,13 +388,13 @@ export function ItemRowLine(props: ItemRowLineProps) {
             </h3>
           )}
 
-        {/* THE META LINE SAYS TWO THINGS NOW, and it used to say four.
+        {/* THE META LINE CARRIES TWO THINGS, and it must not say a third.
          *
-         * **状态不在这里。** 它原来印着「待办」，而左边那个点已经说了同一件事——一个
+         * **状态不在这里。** 印成「待办」的话，左边那个点已经说了同一件事——一个
          * 事实在一行里出现两遍，读者得先判断哪一遍算数。
          *
-         * **步数与挂卡也不在这里了。** 它们各自有了图标、各自站进了右边那簇记号里（读者
-         * 的原话：那个 `1-1` 看不懂、太小；那个小方块看不出是什么，还把编号挤开了）。
+         * **步数与挂卡也不在这里。** 它们各自有图标、各自站在右边那簇记号里（那个
+         * `1-1` 看不懂、太小；那个小方块看不出是什么，还把编号挤开了）。
          * 副行留下的两样都是「关于这一条自己的账」：编号与放置天数。 */}
         <p className={css.itemRowMeta}>{metaLine(view)}</p>
       </div>
@@ -404,7 +405,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
         * 都不是句子的一部分。位置也来自读者给的那张参考图：**日期在最右边、紧挨着 ⋮**，
         * 左边是卡，再左边是步数。
         *
-        * 三枚各有一枚图标，而现在只有「步数」是控件（按下去开步骤那一栏）：卡与日期这两枚
+        * 三枚各有一枚图标，而其中只有「步数」是控件（按下去开步骤那一栏）：卡与日期这两枚
         * 说的是事实，事实不该长得像按钮。 */}
       <div className={css.itemRowMarks}>
         {view.progress !== undefined && (
@@ -421,10 +422,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
         )}
         {/* **状态那一枚胶囊，每一行都在。**
          *
-         * 它原来只在**挂着卡**的行上画，于是「待办 / 已完成」这两个词在没有卡的行上哪儿都不
-         * 出现——而左边那颗珠子是**形状**：五个栏三个形状，形状说不出你站在哪一栏。读者的话
-         * 是「不管怎么变它的状态，只要不挂上卡，标题右边是不会显示那些胶囊的，感觉很难区分
-         * 出来」。
+         * **它每一行都在**：只在**挂着卡**的行上画的话，「待办 / 已完成」这两个词在没有卡的
+         * 行上哪儿都不出现——左边那颗珠子是**形状**：五个栏三个形状，形状说不出你站在哪一
+         * 栏，而词说得出。挂不挂卡与「这条工作现在在哪儿」是两笔账，前者不该决定后者
+         * 得出口。
          *
          * 所以：**词一律在**（它读的是 `view.status`，那已经是「这条工作现在在哪儿」的唯一
          * 答案）；卡片有没有只决定两件事——那枚卡记号画不画，以及它是**一扇门**还是一枚读数
@@ -515,11 +516,11 @@ export function ItemRowLine(props: ItemRowLineProps) {
              * never needed to exist. */
             ...(cardId === undefined
               ? [
-                  /* **没挂卡的行也有「问 AI」。** 原来这一支只给「变成看板卡片」，
-                     理由是「run and ask live where there is something to run and to ask」——
-                     而「有没有东西可问」从来不由有没有卡决定：读者按下它，意思是「这一条我要交给
-                     AI」，没卡时就地建一张再问（`askOne` 一处实现），与详情那一排**同一条律**
-                     ——上面那句注释自己也这么说：学过一边的人就学会了另一边。 */
+                  /* **没挂卡的行也有「问 AI」。** 这一支不只给「变成看板卡片」：
+                     「run and ask live where there is something to run and to ask」这条判据
+                     在这里不成立——「有没有东西可问」从来不由有没有卡决定：读者按下它，意思是
+                     「这一条我要交给 AI」，没卡时就地建一张再问（`askOne` 一处实现），与详情那
+                     一排**同一条律**——上面那句注释自己也这么说：学过一边的人就学会了另一边。 */
                   {
                     key: 'ask',
                     label: t('item.ask'),
@@ -530,8 +531,8 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 ]
               : [
                   /* 挂着卡的那一支只有「问 AI」：它在**这张卡**上开始做，或者接着说——哪一条由卡
-                   自己决定（`askTargetOf` 读的是「这张卡有没有一条能接下去的对话」）。这一枚原来是
-                   「开工」：一个只做其中一半、另一半由旁边那一枚做的动词，而两枚都叫「交给 AI」，
+                   自己决定（`askTargetOf` 读的是「这张卡有没有一条能接下去的对话」）。**不能有第二枚
+                   动词**：一个只做其中一半、另一半由旁边那一枚做的动词，与它都叫「交给 AI」，
                    读者要猜的是哪一个现在会动。 */
                   {
                     key: 'ask',
@@ -565,8 +566,8 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 disabled: props.view.status === mark || props.running === true || undefined,
                 onPick: () => props.onMoveCard?.(mark),
               }))),
-            /* HOLDING ONE ROW WITHOUT A MODIFIER, because the pickbox that used to do
-             * this was a column on every row for one checkbox. The entry says which
+            /* HOLDING ONE ROW WITHOUT A MODIFIER: a pickbox column on every row for
+             * one checkbox is too much surface for one gesture. The entry says which
              * state it is in, because a menu whose labels flip is a menu nobody can
              * learn. */
             ...(props.picking

@@ -8,10 +8,10 @@
  * runs. `slots.inject` silently no-ops for an undeclared slot, a removed member
  * throws only at the moment a user clicks it, and a missing service leaves the
  * plugin's fiber waiting forever — so a half can compile, typecheck and gate
- * green while contributing nothing at runtime. The board did exactly that: the
- * host half called a member the installed service no longer carried, `apply`
- * threw before registering a single route or prompt section, and this check
- * stayed green because its contract table named no host service at all.
+ * green while contributing nothing at runtime. The shape that failure takes: the
+ * host half calls a member the installed service no longer carries, `apply`
+ * throws before registering a single route or prompt section, and this check
+ * stays green because its contract table names no host service at all.
  *
  * What this proves, and what it deliberately does not:
  *

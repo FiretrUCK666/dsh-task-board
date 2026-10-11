@@ -206,12 +206,12 @@ describe('promoteToColumnTop', () => {
   })
 
   it('a cross-column landing never reads its OWN key as the guard (the collision case)', () => {
-    // The regression this exists for: a card that sat at the TOP of 待办
-    // (key 0) lands in a column that already has a key-0 card. The old guard
-    // asked "is the moved card's own key 0?" — it always was, because the key
-    // belongs to the column it just LEFT — so it early-returned, nothing
-    // shifted, and the two key-0 cards rendered in ledger order. The card
-    // looked like it never floated to the top.
+    // The shape this exists for: a card that sat at the TOP of 待办
+    // (key 0) lands in a column that already has a key-0 card. A guard that
+    // asks "is the moved card's own key 0?" always says yes, because the key
+    // belongs to the column it just LEFT — so it early-returns, nothing
+    // shifts, and the two key-0 cards render in ledger order. The card
+    // then looks like it never floated to the top.
     const [a] = column(['a'])
     const b = createTask({ title: 'b', description: '', prompt: '' }, NOW, 'b', 0)
     const out = promoteToColumnTop([a, b], 'a', 'todo', NOW + 1)
@@ -743,19 +743,19 @@ describe('resolveCardDrop', () => {
     const { task } = startExecution(sampleTask(), NOW, 'e1')
     expect(resolveCardDrop(task, 'done')).toEqual({ kind: 'reject', reason: 'busy' })
     expect(resolveCardDrop(task, 'review')).toEqual({ kind: 'reject', reason: 'busy' })
-    // Leaving 进行中 to backlog/todo used to be allowed — it silently orphaned
-    // the open round (no surface settles a parked card's plain run), which
-    // then held a slot and swallowed the session's future native turns.
+    // Leaving 进行中 to backlog/todo silently orphans the open round (no surface
+    // settles a parked card's plain run), which then holds a slot and swallows
+    // the session's future native turns.
     expect(resolveCardDrop(task, 'backlog')).toEqual({ kind: 'reject', reason: 'busy' })
     expect(resolveCardDrop(task, 'todo')).toEqual({ kind: 'reject', reason: 'busy' })
   })
 
   it('refuses the move when the open round is NOT the last record (several sessions on one card)', () => {
-    // The single-lane assumption lived here: the guard tested the LAST row.
-    // With per-session lanes the newest row is often a conversation that
-    // already finished while an older one still runs — dragging then orphaned
-    // the live round (it held a slot and swallowed its session's native turns
-    // until the watchdog released it three minutes later).
+    // The guard must test EVERY open round, not the last row. With per-session
+    // lanes the newest row is often a conversation that has already finished
+    // while an older one still runs — dragging then orphans the live round (it
+    // holds a slot and swallows its session's native turns until the watchdog
+    // releases it three minutes later).
     const { task } = startExecution(sampleTask(), NOW, 'e1')
     const withLaterSettled: TaskRecord = {
       ...task,

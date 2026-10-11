@@ -2,19 +2,18 @@
  * The task-list panel's own contract: what it renders, and what it must never
  * render.
  *
- * WHAT MOVED AND WHY, because a rewritten test that quietly changes the claims
- * is worse than no test. The old file pinned FOUR COLUMNS BESIDE EACH OTHER,
- * a search row above a filter row, and a five-section detail that only ever
- * opened in place. Those three claims described a 300px right-edge drawer, and
- * the panel is a full-stage workbench, so they could not survive the move. What
- * replaced them is pinned here, and the geometry itself is pinned as arithmetic
- * in `panel-render.spec.ts` rather than as a picture.
+ * WHAT THIS FILE PINS, because a test that quietly changes its claims is worse than
+ * no test. The claims here are the panel's own: the rail is the only way into the
+ * document and every page has a row in it, the composer is reachable in every state,
+ * an empty group keeps its header, the ledger sentinel never reaches the screen, the
+ * hand-off appears only where there is a target, the degraded states are told apart,
+ * and the two official seats stay exactly as they are. The GEOMETRY is not pinned
+ * here — it is arithmetic in `panel-render.spec.ts` rather than a picture.
  *
- * WHAT IS CARRIED OVER UNCHANGED, because none of it was ever about the old
- * layout: the composer is reachable in every state, an empty group keeps its
- * header, the ledger sentinel never reaches the screen, the hand-off appears
- * only where there is a target, the degraded states are told apart, and the two
- * official seats stay exactly as they were.
+ * Not pinned here, and deliberately: four columns beside each other, a search row
+ * above a filter row, and a five-section detail that only opens in place. Those
+ * describe a 300px right-edge drawer, and this panel is a full-stage workbench, so
+ * none of them can hold.
  */
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
@@ -67,11 +66,11 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
  * A replica stand-in.
  *
  * IT ANSWERS EVERY MEMBER OF THE SURFACE THE PANEL READS, not "just enough to
- * get a green tick". It used to stand for `ChecklistReplica` with five members
- * and the panel then grew a sixth read — this device's id, which every host
- * write on the checklist prefix carries — so the fake was NARROWER than the
- * thing it stands in for and eighteen cases in this file began throwing
- * `clientId is not a function` at a panel that was correct.
+ * get a green tick". Standing for `ChecklistReplica` with five members while the
+ * panel reads a sixth — this device's id, which every host
+ * write on the checklist prefix carries — makes the fake NARROWER than the
+ * thing it stands in for, and eighteen cases in this file throw
+ * `clientId is not a function` at a panel that is correct.
  *
  * The narrow fake is the same hazard as the permissive one, pointed the other
  * way: a stand-in that is smaller than reality turns a legitimate call into a
@@ -136,15 +135,15 @@ describe('the rail is the map, and the bar above the rows says three things', ()
 
   it('every way into the document is a row in the rail, and every page has one', () => {
     // THE PROMISE IS 「NOTHING IS REACHABLE ONLY BY KEYBOARD」, and it is stronger
-    // than the word list it used to check.
+    // than checking the word list alone.
     //
     // 收件 was a page whose only door was the rail row 「刚记下的」, so removing the
     // row removed the page too — right, because the predicate behind it
     // (`isInboxItem`) is still read by the query grammar and the triage strip, and a
     // page nothing can reach is dead UI.
     //
-    // 日程 is the OPPOSITE defect and this is the assertion that would have caught
-    // it: it has always been a page, and its only route was the command palette. A
+    // 日程 is the OPPOSITE defect and this is the assertion that catches it: it is a
+    // page, and its only route is the command palette. A
     // whole page reachable only from ⌘K is 「a control reachable only from a
     // keyboard does not exist for a thumb」 one level up.
     //
@@ -191,9 +190,9 @@ describe('the rail is the map, and the bar above the rows says three things', ()
 
 describe('capturing a row is one door, and it is the sheet it opens', () => {
   it('the door is on the strip in BOTH states — empty list and a list to read', () => {
-    // 原来的断言钉的是**常驻快记框**在两种状态下都在，因为它会随行滚走。
-    // 它现在不常驻了，而它要去的地方更硬：**快记文法成了新建面板的第一行**，
-    // 所以面板永远有一枚「＋新建一条」，而回车即存的框再也拦不住一个还在想的人。
+    // 这一条钉的是**门在两种状态下都在**（空清单与有得读的清单），而它的落点比这更要紧：
+    // **快记文法住在新建面板的第一行**，所以面板永远有一枚「＋新建一条」，而回车即存的
+    // 框再也拦不住一个还在想的人。
     //
     // 门在两种状态下都在，这条没变——变的是它通向哪里。
     expect(renderPanel([]), 'a first-time reader has no way to put a row down').toContain('itemNewButton')
@@ -206,15 +205,12 @@ it('the door is the LAST control on the strip, and the strip never scrolls away'
     // A door that scrolls away with the rows is a door a reader with thirty things
     // to put down stops using.
     //
-    // THE SCROLLER IS NOW `.itemFlow`, and this assertion used to stand in for it
-    // with `.itemWorkbench` — which used to be the element that held the rows AND
-    // scrolled. Splitting them (the bar moved beside the rail, so the column frames
-    // the bar and only the flow below it scrolls) is what made the old proxy wrong:
-    // it was measuring 「the thing that scrolls」 by a name that no longer names it.
-    //
-    // So the test names the scroller. The contract is unchanged and slightly
-    // stronger for it: the door is not merely before the list, it is before the
-    // element that actually takes the rows away with it.
+    // THE SCROLLER IS `.itemFlow`, named as itself: `.itemWorkbench` frames the bar and
+    // only the flow below it takes the rows away, so a proxy that measured 「the thing
+    // that scrolls」 by a name that does not name it would answer about the wrong box.
+    // Naming the scroller makes the contract slightly stronger than the proxy was:
+    // the door is not merely before the list, it is before the element that actually
+    // takes the rows away with it.
     const html = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
     const bar = html.indexOf('itemNewButton')
     const scroller = html.indexOf('itemFlow')
@@ -270,11 +266,14 @@ describe('a row is legible at rest', () => {
     // so the word on screen is `itemRowDate_a9e292` and a pattern that insists on
     // a closing quote straight after the word matches nothing at all.
     //
-    // IT WAS A COLUMN, THEN PART OF THE SENTENCE, AND NOW IT IS A MARK. 那个读法走过
-    // 三个位置：独立一格（表格能按它排序）→ 句末的括号（读者分不出哪半句是标题）→ 行右边
-    // 那簇记号里的一枚（自己的钟表图标、紧挨着 ⋮）。词与语气是同一份契约，只是换了个位置
-    // 说话；而**位置换到哪里，量它的选择器就跟着换到哪里**——一个还在找旧类的断言会在空
-    // 字符串上变绿。
+    // IT IS A MARK IN THE ROW'S OWN MARKS, and the selector follows it there. That
+    // reading has three homes to choose from — a column of its own (which the table
+    // could sort by), a bracket at the end of the sentence (where a reader cannot say
+    // which half is the title), and a mark in the cluster at the row's right edge
+    // (its own clock icon, right beside ⋮). Words and tone are one contract and only
+    // the position changes; **wherever the position goes, the selector that measures
+    // it goes with it** — an assertion still looking for the former class turns green
+    // on an empty string.
     const cell = /<span class="[^"]*itemRowDateText[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
     expect(cell, 'the date reading states no words at all, so the tone below is being read off nothing').not.toBe('')
     expect(cell).toContain('落后')
@@ -287,9 +286,9 @@ describe('a row is legible at rest', () => {
   })
 
   it('keeps a not-yet-startable row out of every day reading', () => {
-    // 该读法在**日期轴**上，而轴在展开区里 —— 而静态渲染不会展开任何一行，所以这个
-    // 断言以前能看见它，是因为那时行上还印着第二个读法。行只印一个读法之后，读法
-    // 住进了它该住的那一栏，断言也得跟着去那一栏。
+    // 该读法在**日期轴**上，而轴在展开区里 —— 而静态渲染不会展开任何一行，所以
+    // 这里要看的正是展开之后：行只印一个读法，而它住的那一栏是详情，所以断言跟着它
+    // 去那一栏。
     const gated = item({ startsAfter: T0 + 5 * DAY, title: 'Gated' })
     const html = renderPanel([gated], { openRow: gated.id, now: T0 })
     expect(html, 'the gate reading is not on screen even with the row open').toContain('不早于')
@@ -346,27 +345,26 @@ describe('the hand-off is one menu entry, and the row without a target says why'
   })
 
   it('the row carries ONE door, and it is the `⋯`', () => {
-    // The row used to carry two controls for 「do something to this」 — a button
-    // that asks, and a `⋯` that opens — at two different distances from each
-    // other. The menu is one door and it lists what this row can be asked to do.
+    // ONE door: the menu is what lists everything this row can be asked to do, and a
+    // second control for the same question is the second distance a reader has to
+    // learn to reach the same answer.
     const html = renderPanel([item({ taskId: 't-9' })])
     expect(html).toContain('itemRowDots')
     expect(html, 'a second affordance came back beside the menu').not.toContain('itemAsk')
   })
 })
 describe('empty is two different facts, and they do not look the same', () => {
-  /* 「一组空的分桶在还有别的行时仍然留着它的头、它的数、别的什么都没有」这条
-   * 断言连同它的对象一起没了，**不是被放宽，是被取消资格**：四个状态分组已经拆掉，
-   * 状态变成表里的一列。于是「空的一组」在这个面板上不是一个存在的东西——没有
-   * 组头可以留，也没有组数可以相加。留着一条断言一个已经不存在的东西的门禁，
-   * 只会让下一个人以为分组还在：它要么被改成一个断言别的东西的假门禁，要么在某
-   * 一次「修」里被连同真正的空态检查一起删掉。
+  /* 「一组空的分桶在还有别的行时仍然留着它的头、它的数、别的什么都没有」这条断言没有对象
+   * 了，**不是被放宽，是被取消资格**：状态是表里的一列，四个状态分组已经拆掉。于是
+   * 「空的一组」在这个面板上不是一个存在的东西——没有组头可以留，也没有组数可以相加。
+   * 一条断言一个不存在的东西的门禁只会让下一个人以为分组还在：它要么被改成一个断言别
+   * 的东西的假门禁，要么在某一次「修」里被连同真正的空态检查一起删掉。
    *
-   * 取代它的那一半在下面：文档是空的时候说那**一句**空话，而空的原因是筛选的时候
-   * 说筛选的话。两条都还在。
+   * 取代它的那一半是这里的两条：文档是空的时候说那**一句**空话，而空的原因是筛选的
+   * 时候说筛选的话。两条都还在。
    *
-   * 这一条按**句首**断言而不是整句：那一句是文案，会被改写（它刚被改成设计稿的
-   * 写法），而这条门禁要钉的是**「文档为空」与「筛选为空」是两句不同的话**这个区别。
+   * 这一条按**句首**断言而不是整句：那一句是文案，会被改写，而这条门禁要钉的是
+   * **「文档为空」与「筛选为空」是两句不同的话**这个区别。
    * 钉整句会让每一次改文案都变成一次改门禁，而改门禁的人多半会顺手把它放宽。 */
 
   it('an empty DOCUMENT is not three empty groups', () => {
@@ -378,8 +376,8 @@ describe('empty is two different facts, and they do not look the same', () => {
     const html = renderPanel([])
     // 按**字典里的那一句**断言，不按某个词：这一条要钉的是「文档为空」与「筛选为空」
     // 是两句不同的话，而空态那句话本身是文案，会被改写。抄一个字进去，每次改文案都
-    // 变成一次改门禁，而改门禁的人多半会顺手把它放宽（这个文件已经在另一处因为同样
-    // 的理由改成读 `zh[...]`）。
+    // 变成一次改门禁，而改门禁的人多半会顺手把它放宽——读 `zh[...]` 是唯一挡得住这条
+    // 路的写法。
     expect(html).toContain(zh['item.empty'])
     expect(html).not.toContain('这一组还没有事项')
   })

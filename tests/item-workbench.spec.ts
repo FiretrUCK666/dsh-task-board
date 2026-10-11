@@ -156,9 +156,7 @@ const surfaceSource = itemSurfaceSource()
 
 describe('the priority ladder is spelled in exactly one place', () => {
   it('no client file writes the four tiers out again', () => {
-    // 四档曾经在八个文件里各写一遍（`marks.tsx`、`keyboard.ts`、`compose-parse.ts`、
-    // `facets.ts`、`batch-bar.tsx`、`item-create-dialog.tsx`、`detail-pane.tsx`、
-    // `rail.tsx`），而 core 里两张对的那一份没人读。抄一份的代价不是那几行，是
+    // 四档只该有一份，而且只能是 core 里那两张表那一份。抄一份的代价不是那几行，是
     // **改一处不报错**：重新分档之后总有一个角落继续指着旧号码，而屏上不会有人说一句话。
     // 这一条查的就是那件事本身：客户端里不许再出现排在一行上的两个档位字面量。
     const tier = '(?:urgent|high|normal|low)'
@@ -369,13 +367,13 @@ describe('every handler a row or a detail declares is actually connected', () =>
     expect(detailHandlers.length, 'no on* props were read from ItemDetailProps').toBeGreaterThan(3)
   })
 
-  /* `ItemRowLine` 不再有一条这样扫 JSX 的门禁，**因为它扫的那件事已经不存在了**。
+  /* `ItemRowLine` 没有一条扫 JSX 的门禁，**因为它要扫的那件事不存在**。
    *
-   * 旧的门禁在面板的源码里找 `<ItemRowLine onXxx=…>`，然后要求 `ItemRowLineProps`
-   * 声明的每一个 handler 都在那上面出现。行现在不是这样被交出去的：面板把一个
-   * **对象字面量**交给 `renderRows`，表格再把它展开成行。于是 `<ItemRowLine` 这个
-   * 元素在面板源码里根本不存在，扫描永远读到空字符串，而断言永远红——它不是发现了
-   * 一个缺口，它是问了一个不存在的东西。
+   * 那样一条门禁会在面板的源码里找 `<ItemRowLine onXxx=…>`，然后要求
+   * `ItemRowLineProps` 声明的每一个 handler 都在那上面出现。行不是这样被交出去的：
+   * 面板把一个**对象字面量**交给 `renderRows`，表格再把它展开成行。于是
+   * `<ItemRowLine` 这个元素在面板源码里根本不存在，扫描永远读到空字符串，而断言
+   * 永远红——它不是发现了一个缺口，它是问了一个不存在的东西。
    *
    * 那缺口的另一半由类型系统守着，而且守得更紧：`ItemRowLineProps` 的十一个 handler
    * 全是必填，缺一个就是构建失败（`tsc --noEmit` 绿就是证据）。一个必填属性既不能被
@@ -387,16 +385,16 @@ describe('every handler a row or a detail declares is actually connected', () =>
    * 个真的问题。 */
   it('the panel passes every ItemDetail handler', () => {
     const element = elementMarkup(panelSource, 'ItemDetail')
-    expect(element, 'ItemDetail is not rendered by the panel any more — this gate is reading a component nobody mounts').not.toBe('')
+    expect(element, 'ItemDetail is not rendered by the panel — this gate is reading a component nobody mounts').not.toBe('')
     const missing = detailHandlers.filter(handler => !new RegExp(`\\b${handler}\\s*=`).test(element))
     expect(missing, `ItemDetail declares ${missing.join(', ')} and the panel passes nothing for it — the control exists and is wired to nothing`).toEqual([])
   })
 
   it('the row is handed a COMPLETE props object, and the compiler is what says so', () => {
-    // The half that replaced the deleted scan, stated as the thing that is now
-    // load-bearing: the factory builds one object literal per row and the props
-    // type is all-required, so a handler that stops being wired is a build
-    // failure rather than a runtime shrug. This case exists so the NEXT reader
+    // The half that lets the row go without its own JSX scan, stated as the
+    // thing that is load-bearing: the factory builds one object literal per row
+    // and the props type is all-required, so a handler that stops being wired is
+    // a build failure rather than a runtime shrug. This case exists so the NEXT reader
     // finds the claim and the proof in the same place — and so that a future
     // change which makes one of them optional has something to notice.
     const factory = /const rows = \(list[\s\S]*?list\.map\(item => \(\{([\s\S]*?)\n  \}\)\)/.exec(panelSource)?.[1] ?? ''
@@ -515,20 +513,20 @@ describe('what the reader can click and what the reader can type are one grammar
     // the grammar cannot parse is a button that filters nothing. Both are
     // caught by comparing the two sets, and neither is caught by reading one.
     const labelled = new Set([...code(panelSource).matchAll(/'item\.triage\.(\w+)'/g)].map(m => m[1] as string))
-    // THE MODEL'S OWN LIST, not a copy of it. This gate used to spell the flags
-    // out by hand and cast the array, which is the one move that makes an
-    // incomplete list compile: `overdue` was added to the grammar and this gate
-    // kept passing, because the cast agreed with the shorter copy. A gate that
+    // THE MODEL'S OWN LIST, not a copy of it. Spelling the flags out by hand and
+    // casting the array is the one move that makes an incomplete list compile,
+    // because the cast agrees with the shorter copy: `overdue` can go into the
+    // grammar while a gate that spells the flags out keeps passing. A gate that
     // polices a vocabulary must READ the vocabulary, or it is a second, stale
     // answer to 「有哪些旗标」 — the exact failure its own name claims to catch.
     //
-    // AND THE CLAIM IS NOW THE TRUE ONE. It used to demand a TRIAGE SENTENCE for
-    // every flag, which was never true: `ITEM_FLAGS` is the FILTER vocabulary, and
-    // only the flags the triage derivation can actually emit need a line. `overdue`
-    // is the overview tile's filter and has no sentence, so demanding one would
-    // have put a fiction in the table to satisfy a check. What is checked is the
-    // real shape: every flag IS a flag the grammar parses, and every flag the
-    // derivation can emit HAS a line.
+    // AND THE CLAIM IS THE TRUE ONE. The gate must not demand a TRIAGE SENTENCE
+    // for every flag: `ITEM_FLAGS` is the FILTER vocabulary, and only the flags
+    // the triage derivation can actually emit need a line. `overdue` is the
+    // overview tile's filter and has no sentence, so demanding one would put a
+    // fiction in the table to satisfy a check. What is checked is the real shape:
+    // every flag IS a flag the grammar parses, and every flag the derivation can
+    // emit HAS a line.
     const flags = new Set<ItemFlag>(ITEM_FLAGS)
     const unparseable = [...flags].filter(flag => parseItemQuery(`has:${flag}`).flags.size !== 1)
     expect(unparseable,
@@ -549,28 +547,18 @@ describe('the finished work is one click away on the list, and on no other page'
   it('with the switch open the row is there, and the bucket is named even when it is closed', () => {
     // THE CLAIM, STATED THE WAY THE PRODUCT SETTLED IT.
     //
-    // The first version of this gate said the finished row must appear on all
-    // three pages. It does not, and it must not: `isInboxItem` excludes `done`
-    // (the inbox holds what nobody has filed yet), `isAgendaItem` is "unfinished
-    // and not inbox" (an agenda is what is left to do), and PRODUCT.md puts it in
-    // one line — 「完成是清单页里的一个开关，不是另一页」. So the gate was asking
-    // for something the product has already ruled out, and the only two ways to
-    // satisfy it were to change a core predicate or to draw a row the model says
-    // is not on that page. The second is worse than the defect: a surface that
-    // shows a row the model does not is the other half of the "two answers to
-    // one question" family this whole refactor is about.
-    //
-    // The INTENT was right — a row the reader cannot reach is a row that does
-    // not exist — and it is pinned here in the form a reader can act on.
+    // The rail row is the claim, and it keeps the part of the intent a reader can
+    // act on: a row the reader cannot reach is a row that does not exist. So the
+    // finished rows must be reachable by a route a reader can find, and that route
+    // states the number as well as the word.
     const panel = mountPanel(rows, 'list', 'wide')
     try {
       const finished = rows.filter(row => row.status === 'done')
       expect(finished.length, 'the fixture holds no finished row, so this case is proving nothing').toBeGreaterThan(0)
       // THE ENTRANCE IS 「按状态 › 完成」, and it is a button a thumb can press.
       //
-      // 它原来是清单页上一个写着「隐藏已完成」的勾选框：一个说「后面有东西」而
-      // 不说「有多少」的控件，还为了一个字段在页面上占了一个框。左栏那一行同时
-      // 答了这两句——它写着 完成，而它右边的数字就是有多少。
+      // 一个勾选框只能说出「后面有东西」，说不出「有多少」；左栏那一行两句
+      // 一起答——它写着 完成，而它右边的数字就是有多少。
       const entry = [...panel.surface.querySelectorAll('[class*="itemRailRow"]')]
         .find(node => (node.textContent ?? '').includes('完成')) as HTMLButtonElement | undefined
       expect(entry, 'there is no finished bucket anywhere on the rail — the finished rows are unreachable by any route a reader can see').toBeDefined()
@@ -581,8 +569,8 @@ describe('the finished work is one click away on the list, and on no other page'
       expect(entry?.querySelector('[class*="itemRailCount"]')?.textContent ?? '',
         'the finished bucket states no number — a filter with no count is a filter with no promise').toMatch(/\d/)
       // Pressing a rail predicate means 「show me these」 — so the finished rows STAY
-      // and what goes is everything that is not finished. The switch asked the
-      // opposite question, which is why this assertion used to be about them leaving.
+      // and what goes is everything that is not finished. The switch asks the
+      // opposite question, so the assertion is about them staying.
       act(() => { entry?.click() })
       expect(panel.surface.textContent ?? '',
         'the finished rows are not on the page after pressing the bucket that counts them')
@@ -607,13 +595,14 @@ describe('the finished work is one click away on the list, and on no other page'
     // about a preference, and a preference nobody can reach is the defect this
     // whole refactor started from.
     //
-    // THE ENTRANCE IS THE 「隐藏已完成」 SWITCH IN THE FILTER BAR, and the claim
-    // moved with the structure rather than being deleted. It used to be a tile on
-    // the overview strip, then the finished group's own fold; both are gone with
-    // the groups, because a fold over a group that no longer exists is a control
-    // for a question the page no longer has. What is left is a switch that says
-    // the sentence in the reader's own words, sitting on the bar beside every
-    // other filter — and **one intent, one control** is the whole of the claim.
+    // THE ENTRANCE IS THE 「隐藏已完成」 SWITCH IN THE FILTER BAR, and the gate has
+    // to press it rather than seed the preference it writes: a fold is the wrong
+    // instrument for this claim (a fold is a control for a question about a group,
+    // and this page has no groups), and what is left is a switch that states the
+    // sentence in the reader's own words, sitting on the bar beside every other
+    // filter — but a switch nobody can press is the same defect as no switch at
+    // all. So the claim is the press, and **one intent, one control** is the whole
+    // of it.
     //
     // So it is pressed. Not seeded: seeding a preference proves the panel READS
     // it, and the defect this case was written for is a panel that reads a setting
@@ -622,10 +611,9 @@ describe('the finished work is one click away on the list, and on no other page'
     try {
       const finished = rows.filter(row => row.status === 'done')
       expect(finished.length, 'the fixture holds no finished row, so this case is proving nothing').toBeGreaterThan(0)
-      // THE ENTRANCE IS 「按状态 › 完成」, and it is a button a thumb can press. It
-      // used to be a checkbox labelled 「隐藏已完成」 on the page — which said there
-      // was something behind it without saying how much, and put a box on the page
-      // for one field.
+      // THE ENTRANCE IS 「按状态 › 完成」, and it is a button a thumb can press. A
+      // checkbox saying 「隐藏已完成」 states that there is something behind it
+      // without stating how much, and puts a box on the page for one field.
       const entry = [...panel.surface.querySelectorAll('[class*="itemRailRow"]')]
         .find(node => (node.textContent ?? '').includes('完成')) as HTMLButtonElement | undefined
       expect(entry, 'there is no finished bucket anywhere on the rail — the finished rows are unreachable by any route a reader can see').toBeDefined()
@@ -636,9 +624,9 @@ describe('the finished work is one click away on the list, and on no other page'
       expect(entry?.querySelector('[class*="itemRailCount"]')?.textContent ?? '',
         'the finished bucket states no number — a filter with no count is a filter with no promise').toMatch(/\d/)
       // Pressing a rail predicate means 「show me these」 — so the finished rows STAY
-      // and what goes is everything that is not finished. The switch asked the
-      // opposite question, which is why the assertion above used to be about them
-      // leaving, and why it kept failing a panel that was doing the right thing.
+      // and what goes is everything that is not finished. The switch asks the
+      // opposite question — the opposite of a predicate that means 「show me
+      // these」 — which is why the assertion above is about them staying.
       act(() => { entry?.click() })
       expect(panel.surface.textContent ?? '',
         'the finished rows are not on the page after pressing the bucket that counts them')
@@ -680,10 +668,10 @@ describe('the finished work is one click away on the list, and on no other page'
   })
 
   it('the rail carries all three pages always, each with a number', () => {
-    // THE RAIL IS A MAP, NOT A LOG. It used to drop a page the moment that page
-    // had nothing on it, which turns a map into a record of what the reader has
-    // already looked at — and makes "where is the schedule" a question whose
-    // answer depends on today's contents. A page that is empty says 0.
+    // THE RAIL IS A MAP, NOT A LOG. Dropping a page the moment that page has
+    // nothing on it turns a map into a record of what the reader has already
+    // looked at — and makes "where is the schedule" a question whose answer
+    // depends on today's contents. A page that is empty says 0.
     // THE RAIL IS THE MAP — three pages, three date predicates, four priorities,
     // four states and two places, and every one of them states a number even at 0.
     const rail = /itemRail[\s\S]*?<\/nav>/.exec(renderPanel([], 'wide', 'list'))?.[0] ?? ''
@@ -726,21 +714,20 @@ describe('the finished work is one click away on the list, and on no other page'
     // invariant and it is unchanged.
     for (const n of numbers) expect(n, `a rail entry claims ${n} rows out of a document holding ${total}`).toBeLessThanOrEqual(total)
     //
-    // AND THE LIST CELL IS THE HEADER. The first version of this line was
-    // `toBeLessThan(total)` — "no page may claim everything" — which reads as
-    // if a page holding the whole document were a fault. It is not: the list
-    // page holds every row including the finished ones, so its number IS the
-    // document's number, and PRODUCT.md fixes that as the product's decision
-    // twice over: 「同一个数不许在两处各算一次。页头写的总数就是 M」 and 「页头总数
-    // 是 M 的另一种读法」. A gate that made the correct value red was a gate
-    // about a number the product has already settled, and the cheapest way to
-    // satisfy it would have been to make one of the two lie.
+    // AND THE LIST CELL IS THE HEADER. `toBeLessThan(total)` — "no page may claim
+    // everything" — reads as if a page holding the whole document were a fault. It
+    // is not: the list page holds every row including the finished ones, so its
+    // number IS the document's number, and PRODUCT.md fixes that as the product's
+    // decision twice over: 「同一个数不许在两处各算一次。页头写的总数就是 M」 and
+    // 「页头总数是 M 的另一种读法」. A gate that makes the correct value red is a
+    // gate about a number the product has already settled, and the cheapest way to
+    // satisfy it would be to make one of the two lie.
     //
-    // So the intent is now stated as the intent was: the rail is not claiming
-    // an empty document, AND the list cell is the same M the header prints.
-    // Which is a STRONGER pair than the one it replaces — the old line caught
-    // only "all three zero"; this catches that plus the two cells drifting
-    // apart, which is the failure the single-number rule exists to prevent.
+    // So the assertion is the intent itself: the rail is not claiming an empty
+    // document, AND the list cell is the same M the header prints. That is the
+    // stronger of the two — the weaker reading only catches "all three zero",
+    // while this catches that plus the two cells drifting apart, which is the
+    // failure the single-number rule exists to prevent.
     expect(Math.max(...numbers), 'every page claims to be empty while the header says otherwise').toBeGreaterThan(0)
     // ONE DERIVATION READ TWICE: the header's total and the rail's 全部 are the
     // same count, and the claim is that they cannot drift apart — which is what
@@ -803,12 +790,11 @@ describe('a press is a change to the document, not a change to the menu', () => 
   /* 「「最近动过」里的某一行是按身份选中的，并落到那一行」这一条删掉了，**因为它
    * 的对象已经不在这个界面上了**。
    *
-   * 原来的诊断是「`<ul>` 现在是 `class="undefined"`，所以找不到」——那一半是真的
-   * （那一行的类名确实死过），但它不是找不到的原因。真正的原因是：宽档上详情轨
-   * 只在**选中了某一行之后**才渲染（`showDetailPane = !narrow && picked !==
-   * undefined`），窄档上详情长在行里、而行一定是有 id 的。两条路上
-   * `ItemDetail` 收到的 `view` 都永远有值，所以它那整个「还没选中」的分支——一句
-   * 提示加一个「最近动过」——在这个面板上一次都画不出来。
+   * 它要读的那个「最近动过」画不出来，原因与类名无关：宽档上详情轨只在**选中了
+   * 某一行之后**才渲染（`showDetailPane = !narrow && picked !== undefined`），
+   * 窄档上详情长在行里、而行一定是有 id 的。两条路上 `ItemDetail` 收到的 `view`
+   * 都永远有值，所以它那整个「还没选中」的分支——一句提示加一个「最近动过」——
+   * 在这个面板上一次都画不出来。
    *
    * 也就是说：这不是一条过期断言，是一段**死代码**。留着断言等于把死代码钉成
    * 设计；删掉断言而不报告，等于让下一个人继续以为「最近动过」是个入口。代码本身
@@ -866,7 +852,11 @@ describe('a press is a change to the document, not a change to the menu', () => 
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       openRowMenu(panel.surface)
-      expect(panel.surface.querySelector('[role="menu"]'), 'the first press did not open the menu').not.toBeNull()
+      const menu = panel.surface.querySelector('[role="menu"]')
+      expect(menu, 'the first press did not open the menu').not.toBeNull()
+      // 菜单自己会滚（条目多、板又矮时），而它是一张圆角卡：没挂文法就会画出一根
+      // 通到圆角里的平台滚动条——同一个标记，与写入框同一条理由。
+      expect(menu?.hasAttribute('data-dsh-tb-scroll'), '菜单没挂上共用滚动条文法').toBe(true)
       const trigger = panel.surface.querySelector('[aria-haspopup="menu"]')
       click(trigger)
       expect(panel.surface.querySelector('[role="menu"]'), 'the second press on the ⋯ did not close its own menu').toBeNull()
@@ -1127,10 +1117,10 @@ describe('a press is a change to the document, not a change to the menu', () => 
   })
 
   it('the cancel button does not borrow another control\'s words', () => {
-    // It used to be labelled 「清空搜索」, because the key it reused was the
-    // search field's clear button. A control whose label names a DIFFERENT
-    // action is a reader pressing something they did not agree to — and the
-    // worst case is the destructive one, where "cancel" reads as "clear".
+    // It is labelled 「取消」 rather than 「清空搜索」, because a label borrowed from
+    // the search field's clear button names a DIFFERENT action — a reader pressing
+    // something they did not agree to, and the worst case is the destructive one,
+    // where "cancel" reads as "clear".
     expect(code(detailSource)).not.toMatch(/onCancelRemove[^>]*t\('item\.state\.clearFilter'\)/)
     expect(detailSource, 'the delete confirmation borrows the search field\'s cancel label').not.toContain("t('item.state.clearFilter')")
   })
@@ -1165,11 +1155,10 @@ describe('the search box does not print the grammar', () => {
   const panel = code(read('client/item/panel.tsx'))
 
   it('the field is bound to the free-text half, not to the whole query', () => {
-    // THE FIELD IS IN THE PALETTE NOW, and the claim did not move with the markup
-    // so much as acquire a second address. It used to be read off `panel.tsx`; it
-    // is the same binding in `command-palette.tsx`, against the same one string.
-    // The wiring changed and the claim did not — which is the point of stating
-    // what a claim IS rather than which file it was typed into.
+    // THE FIELD IS IN THE PALETTE, and the claim acquired a second address rather
+    // than moving: it is the same binding in `command-palette.tsx`, against the
+    // same one string. That is the point of stating what a claim IS rather than
+    // which file it was typed into.
     // Located by the anchor and cut at the tag's own end, rather than by a regex with
     // a character window in it. The window was the whole reason this gate broke:
     // a field that grows one ARIA attribute stops being found, and the failure is
@@ -1256,16 +1245,15 @@ describe('the search box does not print the grammar', () => {
 
 describe('the ordering is ONE control, and the narrow band only wraps it', () => {
   /**
-   * IT WAS TWO COMPONENTS, AND THE CONTAINER QUERY DECIDED WHICH ONE YOU GOT.
+   * THE ONE CONTROL IS THE CLAIM, AND A CONTAINER QUERY MUST NOT PICK BETWEEN TWO.
    *
-   * A `<select>` at the base band, a segmented row from 720, one hidden and one
-   * shown. That is the move rule 11 bans outright — a second component for the
-   * narrow band — and it bought nothing: the shared segmented row already WRAPS,
-   * so seven named orders on a 342px line is two lines, and a second line is one
-   * of the six answers the rule allows. What it actually cost is that the same
-   * setting had two different names and two different affordances depending on
-   * the width of the window, and that a reader who learned one had to learn the
-   * other.
+   * A `<select>` at the base band and a segmented row from 720, one hidden and one
+   * shown, is the move rule 11 bans outright — a second component for the narrow
+   * band — and it buys nothing: the segmented row already WRAPS, so seven named
+   * orders on a 342px line is two lines, and a second line is one of the six
+   * answers the rule allows. What it costs is that the same setting would have two
+   * names and two affordances depending on the width of the window, and a reader
+   * who learned one would have to learn the other.
    *
    * The gate is on the RENDER, not on the stylesheet, because the defect was never
    * a declaration — both controls were perfectly well declared. It was that only
@@ -1274,12 +1262,11 @@ describe('the ordering is ONE control, and the narrow band only wraps it', () =>
   const bar = code(read('client/item/command-palette.tsx'))
 
   it('the palette offers ONE ordering control, and no band decides otherwise', () => {
-    // THE SUBJECT MOVED, THE CLAIM DID NOT. The ordering used to live on the
-    // filter bar, which had a `<select>` at the base band and a segmented row
-    // from 720 — the same setting with two components and two names, which is
-    // the shape rule 11 bans outright. The bar is retired; the six orders are in
-    // the command palette now, and the state bar carries only a trigger that
-    // NAMES the current one.
+    // THE CLAIM LIVES WHERE THE ORDERS LIVE. One chooser, no second spelling, and
+    // every order reachable; a `<select>` at one band and a segmented row at
+    // another is the same setting with two components and two names, which is the
+    // shape rule 11 bans outright. The six orders are in the command palette now,
+    // and the state bar carries only a trigger that NAMES the current one.
     //
     // So the claim is checked where the orders are now: exactly one chooser, no
     // second spelling, and every order reachable. What is deliberately NOT
@@ -1395,11 +1382,11 @@ describe('the row menu is placed by arithmetic, not by hope', () => {
   it('a room of zero is not a short menu, it is no menu', async () => {
     const place = await kernel()
     if (place === undefined) return
-    // THE CASE THAT SHIPPED. A panel rectangle that cannot contain the menu —
+    // THE CASE THIS EXISTS FOR. A panel rectangle that cannot contain the menu —
     // which is what a box with no area is, and what a `display: none` element
-    // measures as — used to yield `maxBlockSize: 0`. The menu then rendered with
-    // no height whatsoever: the reader pressed `⋯` and nothing appeared, no
-    // error was thrown, and nothing was logged.
+    // measures as — yields `maxBlockSize: 0`. The menu then renders with
+    // no height whatsoever: the reader presses `⋯` and nothing appears, no
+    // error is thrown, and nothing is logged.
     const boxless = { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 }
     const spot = place({ top: 300, bottom: 340, left: 300, right: 500, width: 200, height: 40 }, boxless, MENU)
     expect(spot.maxBlockSize,
@@ -1479,12 +1466,11 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
   })
 
   it('执行 Prompt 为空的卡：这一枚不灰，而且按下去真的交给了它', () => {
-    /* **这一条是那条旧断言的**反面**，而反过来是对的。**
+    /* **这一条钉的是「卡的 Prompt 为空」不是这一按的门。**
      *
-     * 原来这里钉的是「一张执行 Prompt 为空的卡，『执行』必须灰着并把理由印在屏上」——那条
-     * 断言在「执行」按卡的 Prompt 跑的时候是对的。现在跑起来送出去的是**这一条自己的内容**
-     * （`itemContextText`：标题、标签、正文、步骤、备注），卡的 Prompt 一个字都不发，所以
-     * 「卡的 Prompt 为空」根本不是这一按能不能按的理由。留着那句禁用理由，读者会看到一枚
+     * 卡上的执行 Prompt 与这一按送出去的东西是两件事：送出去的是**这一条自己的内容**
+     * （`itemContextText`：标题、标签、正文、步骤、备注），卡的 Prompt 一个字都不发，
+     * 所以它空着不是这一按能不能按的理由。把空的 Prompt 当成禁用理由，读者会看到一枚
      * 灰按钮加一句关于**另一个字段**的说明。
      *
      * 对照也留着：两档都要能按、都要走到那扇门（`askCard`）——一个「灰着但没理由」和
@@ -1564,8 +1550,8 @@ describe('every filter the rail can press is a chip you can see and remove', () 
 })
 
 describe('the rail marks EVERY filter that is on, not just the first', () => {
-  /* 筛子是叠加的：按「已超期」再按「紧急」，两条一起筛。而左栏原来在遇到第一个匹配的行时就
-     停下——三枚芯片亮着、左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。
+  /* 筛子是叠加的：按「已超期」再按「紧急」，两条一起筛。左栏要标的是**开着的每一个
+     筛子**，有一枚开着却不亮，读者看到的就是「我按了三个，它只认一个」。
    *
    * **查询只能从搜索框里写进去**（`readViewPrefs` 故意不恢复搜索文本，那是刻意的产品行为），
    * 所以这一条是**真实交互**：挂载、往框里打字、数一共几行亮着。 */
@@ -1595,10 +1581,9 @@ describe('the rail marks EVERY filter that is on, not just the first', () => {
 
 describe('the summary says what it says, and the numbers do not move under a switch', () => {
   it('the grouping drops the finished group under the switch, and only under it', () => {
-    // 这一条原来问的是 `itemGroupCountsOf`（一份「永远是四组」的封闭计数表）。那个函数
-    // 与它数的三个界面东西一起删了——分组头、概览条、页轨今天都不存在，而给死代码写测试
-    // 会让死代码看起来被需要。留下来的、仍然有人在读的性质是**分组**那一条：清单页里的
-    // 「已完成」是一个开关，所以关掉它时那一组必须真的不出现。
+    // 一份闭合计数表（「永远是四组」那种）与它数的三个界面东西一起删了——分组头、概览条、
+    // 页轨今天都不存在，而给死代码写测试会让死代码看起来被需要。这里仍然有人在读的性质
+    // 是**分组**那一条：清单页里的「已完成」是一个开关，所以关掉它时那一组必须真的不出现。
     const rows = fixtures()
     const fromSlices = (includeDone: boolean): number[] => itemSlicesOf(rows, {
       query: EMPTY_ITEM_QUERY,
@@ -1663,11 +1648,11 @@ describe('the inbox is one membership, and the agenda reads it from there', () =
     // named predicate two consumers read cannot drift from itself the way two
     // inlined copies can. Scanning the call sites instead would forbid the
     // indirection and buy nothing.
-    // THE WHOLE SHARED LAYER, not one file of it. The two predicates were
-    // re-exported out of `item-view.ts` into their own module, and a gate wired
-    // to the old path answered 「the inbox predicate is gone from the shared
-    // module」 — which was false, the export was still there, and the reader of
-    // that sentence would have gone hunting for a deleted function instead of a
+    // THE WHOLE SHARED LAYER, not one file of it. The two predicates live in their
+    // own module re-exported out of `item-view.ts`, and a gate wired to one path
+    // reports 「the inbox predicate is gone from the shared module」 — which is
+    // false when the export is merely in the other file, and sends the reader of
+    // that sentence hunting for a deleted function instead of a
     // moved one. The claim is about where the ANSWER lives (the shared layer)
     // and never about which file holds it today.
     const source = coreSurfaceSource()
@@ -1842,7 +1827,7 @@ describe('the row is a grid whose edges do not move, because alignment is a prom
   it('the bead, title, tags and menu keep their four places on every band', () => {
     // WHY THIS IS A GATE AND NOT A PREFERENCE. Every row is its own grid, so a
     // track measured from that row's own content moves that row's edges: the
-    // tag count used to decide where ⋮ landed, pinned right with one tag and a
+    // tag count decides where ⋮ lands: pinned right with one tag and a
     // couple of hundred pixels in with three. The four-column grid fixes the
     // places that must not move — bead first, ⋮ last — while the tags column is
     // allowed to be content-sized because it no longer decides the menu column.
@@ -2166,11 +2151,11 @@ describe('the keyboard flow is one table, and every key in it has something behi
     // binding that APPLIES rather than the first that matches. So a chord bound
     // twice with two different meanings must have both halves gated: one binding
     // that always applies and one that never applies would leave the gated one
-    // unreachable, which is the same defect the old first-match rule had.
+    // unreachable, which is the same defect the first-match rule has.
     //
-    // It used to be asserted as 「no chord is bound twice at all」, which was true
-    // until the palette took the arrows — and the rule it was really stating
-    // (a reader must never find a key that does something else) is now checked
+    // 「no chord is bound twice at all」 is the wrong spelling of the rule, because
+    // it forbids the palette's arrows — and the rule it is really stating
+    // (a reader must never find a key that does something else) is checked
     // directly, on both halves, further down this block.
     const byChord = new Map<string, typeof ITEM_KEYS[number][]>()
     for (const binding of ITEM_KEYS) {
@@ -2453,11 +2438,10 @@ describe('the detail opens in the row, on both bands, and never twice', () => {
   // which is exactly what the harness warns against for the preference fields. The
   // reader's gesture is the only honest way in.
   //
-  // AND THE PANE IS GONE. It used to be rented on the wide band only, which meant a
-  // reader who had chosen a row on a desk and the same row on a phone was looking
-  // at two different arrangements of the same fields. So the claim is no longer
-  // 「which band drew a rail」 — it is 「is there ever a second copy of the detail」,
-  // and the row carries its own on both bands.
+  // AND THE PANE IS GONE, because a rail on one band only means the same row on a
+  // desk and on a phone are two different arrangements of the same fields. The
+  // claim is therefore not 「which band drew a rail」 but 「is there ever a second
+  // copy of the detail」, and the row carries its own on both bands.
   for (const band of ['wide', 'narrow'] as const) {
     it(`the ${band} band: one copy, and the chosen row carries it`, () => {
       const panel = mountPanel(fixtures(), 'list', band)
@@ -2589,13 +2573,13 @@ describe('a surface finds its OWN box, not the first one in the document', () =>
    * to the board's rectangle and placed against a surface that is not its own.
    * `useSurfaceNarrow` resolves the same box with `closest`, from inside.
    *
-   * THE CHECK IS TWO-SIDED AND NAMES NO REF. It used to require the source to
-   * contain `panelRef`, which blessed a change that replaced the climb with a
-   * marker element carrying `hidden` — and a `hidden` element has no box, so the
-   * menu was placed against `{0,0,0,0}` and opened at zero height. Every gate
-   * stayed green because **the gate was asserting the shape of the source, not
-   * what the reader gets**. A check that has to name the identifier it expects
-   * will bless whatever that identifier happens to point at.
+   * THE CHECK IS TWO-SIDED AND NAMES NO REF. Requiring the source to contain
+   * `panelRef` blesses a change that replaces the climb with a marker element
+   * carrying `hidden` — and a `hidden` element has no box, so the menu is placed
+   * against `{0,0,0,0}` and opens at zero height. Every gate stays green because
+   * **the gate is asserting the shape of the source, not what the reader gets**.
+   * A check that has to name the identifier it expects blesses whatever that
+   * identifier happens to point at.
    *
    * So this asks only the question that has a right answer: the row resolves the
    * box by CLIMBING, and never by a document-wide lookup.
@@ -2650,16 +2634,16 @@ describe('a title is edited where it is printed, and on a thumb too', () => {
       const panel = mountPanel(oneRow({ title: '原来的标题' }), 'list', band)
       try {
         const row = panel.surface.querySelector('[data-status]')
-        // **THE WORDS THEMSELVES.** 打开字段的控件原来坐在句子**前面**（那枚优先级芯片），
-        // 因为句子那时只是文字——那时问「文字最近的按钮」会找不到东西，是探针问错了元素。
-        // 现在句子自己就是那个控件（标题即入口），所以问它。拇指那一路（行菜单的「改标题」）
-        // 仍然在，两处按法走同一个 `onPatch`：这不是两处实现，是一个手势的两种按法。
+        // **THE WORDS THEMSELVES.** 句子自己就是打开字段的那个控件（标题即入口），
+        // 所以探针问的是它；问「文字最近的按钮」会找错元素——那样问找到的是别的盒子，
+        // 报出来的也不是这一句。拇指那一路（行菜单的「改标题」）同样在，两处按法走同一个
+        // `onPatch`：这不是两处实现，是一个手势的两种按法。
         const title = row?.querySelector('button[class*="itemRowText"]')
         expect(title, `the ${band} band row printed no title control to press`).toBeDefined()
-      // ONE PRESS. It needed two when the title was TEXT — 「press it again」 was
-      // the desktop path for renaming, and it went with the text. Now the chip in
-      // front of the sentence IS a control that opens the field, and a second press
-      // lands on the field that replaced the title.
+      // ONE PRESS. The chip in front of the sentence IS a control that opens the
+      // field, and a second press lands on the field that replaced the title —
+      // which is why one press is what this gate makes: a gate that pressed twice
+      // would be reading a field it never asked for.
       act(() => { title?.dispatchEvent(new MouseEvent('click', { bubbles: true })) })
         // THE FIELD IS ITS OWN CLASS, not a descendant of the title's: the title is REPLACED
       // by the field while it is being written, so there is no title to be a parent
@@ -2691,9 +2675,9 @@ describe('the checklist is a list a reader can change, not a list they can only 
   /**
    * THE STEPS ON SCREEN, read from the board.
    *
-   * 它原来读的是 `[class*="itemStepList"] > li` 里的 `label span`——一份 `<ul>` 加一
-   * 个 `<label>`，那是清单以前的样子。板子现在是一堆行，字住在自己那个 span 里，
-   * 所以这个读法已经找了两轮都不存在的结构，然后对着一个画得好好的板子报「板子是空的」。
+   * 板子上字住在每一行的 `itemStepWords` 里，`[class*="itemStepList"] > li` 里的
+   * `label span` 是另一份行文形状、这里一个都找不到，对着一个画得好好的板子会报
+   * 「板子是空的」。
    *
    * **一个读法指着一种结构，而结构换了读法不会自己跟着换。** 所以它读的是行和
    * 行里那个装字的元素，而不是一份行文的形状。
@@ -2832,7 +2816,7 @@ describe('the checklist is a list a reader can change, not a list they can only 
     const base: ItemStep[] = [{ id: 'a.s1', text: '一', done: false }, { id: 'a.s2', text: '二', done: false }]
     /* 探针比的是**配对**，不是 id 的列表。
      *
-     * 重新编号的那一份，id 列表和原来一模一样——因为它按位置把整张表重编了一遍，
+     * 重新编号的那一份，id 列表一模一样——因为它按位置把整张表重编了一遍，
      * 于是 `a.s1` 还在列表的第一个位置上，只是挂在**另一句话**下面。真正要守住的是
      * 「一个 id 永远指着同一句话」：步骤是被 id 指名的（`item.step` 拿它当参数，
      * 模型会把它念回来），所以重编之后的清单会让模型问到一个意思已经变了的东西。
@@ -2979,12 +2963,12 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
   })
 
   it('while the batch is armed every row wears its tickbox, and the bar can tick the whole screen', () => {
-    // THE MODE NEEDS A FACE. The palette's 「多选」 used to arm the mode and show
-    // nothing: the state machine turned over behind an interface that looked
-    // exactly like the un-armed one, and a touch reader — who has no modifier
-    // key at all — had no door into the whole batch surface. Now armed is the
-    // mode whose face is the tickbox: the first hold turns the boxes on
-    // everywhere, and the bar can tick or release every row the reader can see.
+    // THE MODE NEEDS A FACE. Arming from the palette's 「多选」 and showing nothing
+    // turns the state machine over behind an interface that looks exactly like the
+    // un-armed one, and a touch reader — who has no modifier key at all — has no
+    // door into the whole batch surface. Armed is the mode whose face is the
+    // tickbox: the first hold turns the boxes on everywhere, and the bar can tick
+    // or release every row the reader can see.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       hold(rowEls(panel.surface)[0])
@@ -3059,10 +3043,10 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
   it('a tier in the bar is a press that writes, and the status segments are the same tribe', () => {
     // The bar's two segment groups answer the same KIND of question — put a
     // tier on every held row, act once — so they are also the SAME control.
-    // The native dropdown that used to be here was one control this panel's
-    // stylesheet did not draw, and the one page answering 「这一个的档位」 with
-    // chips and 「这一批的档位」 with a platform menu. The press still has to
-    // write, which is what the gates below check on BOTH groups.
+    // A native dropdown is one control this panel's stylesheet does not draw,
+    // and it would be the one page answering 「这一个的档位」 with chips and
+    // 「这一批的档位」 with a platform menu. The press still has to write, which
+    // is what the gates below check on BOTH groups.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       hold(rowEls(panel.surface)[0])
@@ -3194,17 +3178,15 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
   /**
    * Mount, install the host, and open the archive — through the ONE entrance.
    *
-   * THE ENTRANCE IS THE RAIL'S 「已删除」 ROW, and it is the only one: the list
-   * page used to carry a second door at its very foot (「删除后 30 天内可以找回来。」
-   * plus 「看看」), which asked a reader to scroll to the bottom of the page to
-   * discover that an archive exists at all. It is gone, and this helper presses
-   * what is left.
+   * THE ENTRANCE IS THE RAIL'S 「已删除」 ROW, and it is the only one: a second door
+   * at the list page's very foot (「删除后 30 天内可以找回来。」 plus 「看看」) would
+   * ask a reader to scroll to the bottom of the page to discover that an archive
+   * exists at all. This helper presses the one door.
    *
-   * Pressing it is strictly better evidence than pressing the old one: this entry
-   * goes through the COUNTER SIGNAL (`archiveAsked`) rather than a direct
-   * `openArchive()` call, so a regression in that channel — the one that made the
-   * rail row print a count and then do nothing — now fails these four gates
-   * instead of passing them.
+   * Pressing it is the stronger evidence: this entry goes through the COUNTER
+   * SIGNAL (`archiveAsked`) rather than a direct `openArchive()` call, so a
+   * regression in that channel — the one that makes the rail row print a count and
+   * then do nothing — fails these four gates instead of passing them.
    */
   async function openArchive(answer: (address: { id?: string }) => unknown): Promise<{ panel: ReturnType<typeof mountPanel>; undo: () => void }> {
     const panel = mountPanel(oneRow({ id: 'live-1', title: '还在的那一条' }), 'list', 'wide')
@@ -3231,9 +3213,9 @@ describe('the archive is the reader\'s account, and erasing is the last thing in
   it('the one entrance lands on the page that owns the drawer, from ANY page', async () => {
     // THE ENTRANCE IS AN ENTRANCE FROM EVERY PAGE THE RAIL IS DRAWN ON, and the
     // rail is drawn on three. The drawer, meanwhile, lives inside the list page —
-    // so pressing 「已删除」 while standing on 日程 used to clear the filter, light
-    // the row up, and show NOTHING: the counter stayed above zero and the drawer
-    // appeared later, when the reader happened to go back to 清单.
+    // so pressing 「已删除」 while standing on 日程 would clear the filter, light
+    // the row up, and show NOTHING: the counter stays above zero and the drawer
+    // appears later, when the reader happens to go back to 清单.
     //
     // 「I pressed it and cannot see the result」 and 「pressing it does nothing」 are
     // the same event to a reader, so the row has to do both halves of its job in
@@ -3682,12 +3664,12 @@ describe('挂上卡之后，状态两边一起变（先复现，再修）', () =
   })
 
   it('挂上卡之后，状态那一格把执行器给的那两档也画出来——灰着，按下去会说话', () => {
-    /* **理由不再常驻在属性表里，而是"问它才说"。**
+    /* **理由不常驻在属性表里，而是"问它才说"。**
      *
-     * 这句话原来写在这一格下面，理由是「触屏没有 hover，说明必须看得见」。它确实看得见，代价是
-     * 这一列最长的一段常驻在一个属性行里——那一行比别的属性行高一倍，而它自己也正好是最容易被
-     * 挤坏的那一段（读者为它报过两次）。所以改成两半都要：**停上去有 `title`，按下去有回执**；
-     * 后者才是"可点可达"那一半（硬性规范 11③）。
+     * 那句理由常驻在这一格下面确实看得见，代价是这一列最长的一段占着一个属性行——
+     * 那一行比别的属性行高一倍，而它自己也正好是最容易被挤坏的那一段（读者为它报过
+     * 两次）。所以两半都要：**停上去有 `title`，按下去有回执**；后者才是"可点可达"
+     * 那一半（硬性规范 11③）。
      *
      * 这也是 `aria-disabled` 而不是 `disabled` 的理由：真 `disabled` 的元素收不到 hover、也进不了
      * 键盘流，于是"按下去会说话"根本无从谈起。两者在屏上是同一档灰（`.itemRoot :disabled,
@@ -3703,7 +3685,7 @@ describe('挂上卡之后，状态两边一起变（先复现，再修）', () =
       expect(chip?.getAttribute('aria-disabled'), '那一档画成了可以按的').toBe('true')
       expect(chip?.disabled, '真 disabled 的芯片收不到 hover，也收不到按键').toBe(false)
       expect(chip?.getAttribute('title') ?? '', '鼠标停在上面看不到为什么').toContain('执行器')
-      expect(panel.surface.textContent ?? '', '还没问，那句话就常驻在属性表里了').not.toContain('执行器')
+      expect(panel.surface.textContent ?? '', '还没问，那句理由就常驻在这一格下面了').not.toContain('执行器')
       click(chip as HTMLButtonElement)
       panel.settle()
       const statusRow = chip?.closest('[class*="itemOptRow"]')
@@ -3751,8 +3733,8 @@ describe('从看板跳过来：只看挂着那张卡的条目', () => {
 
 describe('「问 AI」与「执行」同一判据（有没有卡都问得出去）', () => {
   it('「问 AI」对没挂卡的行也一样：先建一张卡再问', () => {
-    // 与「执行」同一判据：读者问的是**这一条**，与有没有卡无关。这一支原来和「执行」一样
-    // 落进死路——而它的另一半（有卡却被删了）必须继续拒绝，两条一起钉。
+    // 与「执行」同一判据：读者问的是**这一条**，与有没有卡无关。没挂卡的行落进死路
+    // 就是这一枚没有出口——而它的另一半（有卡却被删了）必须继续拒绝，两条一起钉。
     const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
@@ -3773,7 +3755,7 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
     // 另一边」。所以两边各有一条断言，缺一边就会出现「同一个动作，在一个地方有、另一个
     // 地方没有」。
     //
-    // **而「执行」必须不在**：它原来和「问 AI」并排，两枚都叫「交给 AI」，读者要猜的是
+    // **而「执行」必须不在**：它与「问 AI」并排会让两枚都叫「交给 AI」，读者要猜的是
     // 哪一个现在会动。这一条钉住它没有回来。
     const panel = mountPanel(oneRow({ body: '这件事交给你', taskId: undefined }), 'list', 'wide')
     try {
@@ -3851,9 +3833,9 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
   })
 
   it('新卡带着默认运行配置出生——与看板「＋新建」是同一条路', () => {
-    /* 一张从清单里长出来的卡，原来一项运行配置都不带：于是「问 AI」跑起来用的是部署默认，而
-     * 看板「＋新建」出来的一张卡用的是**默认预设**（工作区 / Agent / 模型 / 思考程度 / 权限）。
-     * 读者做的是同一件事，两台机器给的却不是同一件事。
+    /* 一张从清单里长出来的卡要带着**默认预设**出生（工作区 / Agent / 模型 / 思考程度 /
+     * 权限），与看板「＋新建」出来的一张卡走同一条路：一项运行配置都不带的卡会按部署默认跑，
+     * 于是读者做的是同一件事，两台机器给的却不是同一件事。
      *
      * 这一条钉住的是**那条链**：清单读的是 `runPresetStore` 里那个默认预设，与看板同一个
      * 存储、同一条回退（没设过、被删了、坏了都落到「部署默认」）。 */
@@ -3871,12 +3853,11 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
   })
 
   it('正文为空但有标题的一条：照样建卡并交给它——送出去的本来就是这一条自己', () => {
-    /* **这一条是旧断言的反面，而反过来是对的。**
+    /* **这一条钉的是「正文为空」不是建卡的门。**
      *
-     * 原来钉的是「正文为空 → 不建卡」，理由是「建出来也是一张跑不起来的卡」——那句话在
-     * 「执行」按卡上的执行 Prompt 跑的时候成立。现在的运行 Prompt 是这一条自己（标题 + 标签 +
-     * 正文 + 步骤 + 备注）：正文空、标题在，就**有**话可说，所以卡建得出来、也跑得起来。
-     * 真正的门在下面那一条：**连标题都没有**才拒绝。 */
+     * 运行 Prompt 就是这一条自己（标题 + 标签 + 正文 + 步骤 + 备注）：正文空、标题在，
+     * 就**有**话可说，所以卡建得出来、也跑得起来——「建出来也是一张跑不起来的卡」这句话
+     * 在正文为空时并不成立。真正的门在下面那一条：**连标题都没有**才拒绝。 */
     const panel = mountPanel(oneRow({ body: '', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
@@ -4891,8 +4872,7 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
  *   1. 「点回 9 号什么都不显示」——按过的日子必须**留下痕迹**（一枚可摘的芯片），
  *      空列表必须说得出为什么空；
  *   2. 「点一个日子，再点另一个」——第二个必须**换掉**第一个，哪怕第一个那天没有行
- *      （老代码的「同族」取的是「有行的那些天」，于是没有行的那天留下的 `on:` 谁也
- *      没顶掉它）；
+ *      （「同族」若取「有行的那些天」，没有行的那天留下的 `on:` 谁也顶不掉它）；
  *   3. 「像个毛坯房」——周首行、翻月、回到今天，三样都在，且**两档都有**。 */
 describe('the calendar is a date filter a reader can read back', () => {
   /** 找到日历里写着这一天的格子。 */
@@ -4909,7 +4889,7 @@ describe('the calendar is a date filter a reader can read back', () => {
 
   it('a pressed day leaves a chip that names it, and taking the chip off un-filters the list', async () => {
     // 读者问的是「为什么空」，而答案必须**在屏幕上**：一枚写着那一天、能按掉的
-    // 芯片。老版只有格子里一圈 26px 的墨环，窄档连格子都没有。
+    // 芯片。只有格子里一圈 26px 的墨环，窄档连格子都没有。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       const before = panel.surface.querySelectorAll('[data-status]').length
@@ -4929,8 +4909,8 @@ describe('the calendar is a date filter a reader can read back', () => {
 
   it('pressing a second day REPLACES the first, even when the first day holds nothing', async () => {
     // 这是「点回 9 号什么都不显示」的另一半：一个**没有行**的日子按下去也必须
-    // 是一次完整的筛选（列表为空、芯片在），而它必须能被下一个日子顶掉。老代码
-    // 的同族集合是「有行的那些天」，于是空日子的 token 永远留在串里——读者按了
+    // 是一次完整的筛选（列表为空、芯片在），而它必须能被下一个日子顶掉。同族集合
+    // 若取「有行的那些天」，空日子的 token 永远留在串里——读者按了
     // 三个日子，串里有三个 `on:`，屏幕上只有一个芯片。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
@@ -4948,7 +4928,7 @@ describe('the calendar is a date filter a reader can read back', () => {
   })
 
   it('the probe bites: a day with no rows can never be a sibling of the day you press', () => {
-    // 老代码的病灶，写成算术：同族集合取的是 `railDays` —— **有行的那些天**。
+    // 这条律写成算术：同族集合必须取 `railDays` —— **有行的那些天**。
     // 于是一个没有行的日子（读者完全合理地会去问「那天有什么」）按下去之后，
     // 它留下的 `on:` 谁也顶不掉：下一个日子要顶掉的是「有行的那些天」，而它不在
     // 那份名单里。两个 `on:` 同时生效，屏幕上只有一个芯片，读者看到的是一份
@@ -4979,9 +4959,9 @@ describe('the calendar is a date filter a reader can read back', () => {
       expect(back, 'looking at another month offers no way back to today').not.toBeUndefined()
       click(back)
       expect(title()).toBe(start)
-      // **无路可回时它变灰，不消失。** 原本它是在按下的那一刻自己消失的（条件不再
-      // 成立）——读者看到的是一个控件在他手指底下不见了，而屏上别处没有任何东西说明
-      // 刚才发生了什么。控件可以变灰，不能在按下的那一刻消失。
+      // **无路可回时它变灰，不消失。** 按下那一刻自己消失的控件，读者看到的是
+      // 一个控件在他手指底下不见了，而屏上别处没有任何东西说明刚才发生了什么。
+      // 控件可以变灰，不能在按下的那一刻消失。
       const home = (): HTMLButtonElement | null => panel.surface.querySelector('button[class*="itemRailToday"]')
       expect(home(), '「回到今天」 left the DOM instead of going quiet').not.toBeNull()
       expect(home()?.disabled, '「回到今天」 is still live while the reader IS on today').toBe(true)
@@ -4993,8 +4973,8 @@ describe('the calendar is a date filter a reader can read back', () => {
 
 describe('批量那一枚也照同一条律（这一条是它自己发现的问题）', () => {
   it('选中的没挂卡的行照样问得出去，按钮也不是灰的', () => {
-    // **按代码读不出这个 bug。** 批量那一枚原来由一个数管着（`heldCarded` = 存着卡号的行数），
-    // 而「存着卡号」与「问得出去」是两件事：没挂过卡的行现在也问得出去（会就地建一张），
+    // **按代码读不出这个 bug。** 批量那一枚若由一个数管着（`heldCarded` = 存着卡号的行数），
+    // 「存着卡号」与「问得出去」就是两件事：没挂过卡的行也问得出去（会就地建一张），
     // 它的 taskId 是空的，于是被那个数漏掉——按钮画成灰的，按下去什么都不发生。
     // 所以这条既断言**按钮不是灰的**，也断言**按下去真的建了卡**。
     const rows = [
@@ -5027,7 +5007,7 @@ describe('批量那一枚也照同一条律（这一条是它自己发现的问�
 
 describe('点标题就地改名字（使用者选的那条路）', () => {
   it('按标题打开编辑框，而且这一下不会同时选中这一行', () => {
-    // 标题原来是纯文本，按它会**冒泡给整行**——那是「选中这一行」。做成控件之后必须在
+    // 标题自己就是一枚控件，而它按下的那一下会**冒泡给整行**——那是「选中这一行」。所以它必须在
     // 自己这一下把它挡住，否则一次点击会同时改名与选中：两个动作撞在一起，而读者只按了一下。
     const panel = mountPanel(oneRow({ title: '画廊第二版' }), 'list', 'wide')
     try {
@@ -5061,6 +5041,22 @@ describe('写入框：高度是读者的，整条下沿都能拉', () => {
     if (box === null) throw new Error('the writing box has no box of its own')
     return { field: field as HTMLTextAreaElement, grip, box }
   }
+
+  it('写入框挂在共用的滚动条文法上', () => {
+    // 这一条挡的是一类**只在某个盒子里才看得见**的缺陷，而且它在 jsdom 里没有形状：
+    // 条目那一侧自绘滚动条的文法只有一份，住在 `board.module.css`；清单的模块名不到
+    // 它（CSS Modules 把类名哈希了），所以一个滚动区要加入它只有一条路——自己带上
+    // `data-dsh-tb-scroll`。少了这个标记，框里画的是平台那一根：顶端是方的、通到圆角
+    // 里去，读者看到的正是「它像要突破上边缘」。这一条因此钉标记本身，而那一根条子
+    // 长什么样由 `--scrollbars` 的截图量（见 DESIGN.md 的写入框一节）。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const { field } = openBody(panel)
+      expect(field.hasAttribute('data-dsh-tb-scroll'), '写入框没挂上文法，读者看到的是一根通到圆角里的平台滚动条').toBe(true)
+    } finally {
+      panel.dispose()
+    }
+  })
 
   it('抓条自报它是什么、接哪几个键', () => {
     // 一根抓条必须**看得见**（画着的握痕，常驻）并且**够得着**（Tab 序 + 自报的键）——

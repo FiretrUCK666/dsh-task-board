@@ -56,11 +56,11 @@ import { cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitl
 /**
  * The activity feed's chip: success greens, failure reds, everything else quiet.
  *
- * The outcome wins wherever the event carries one, on EVERY lane. The four
- * lanes below used to name only the ACTION (留言 / 外部对话 / 直发) and drop the
- * result `board-events` had already carried, so a comment round that failed and
- * a comment round that succeeded produced the same line — and neither matched
- * the word the same round wore in the card's chip or the thread.
+ * The outcome wins wherever the event carries one, on EVERY lane: naming only
+ * the ACTION (留言 / 外部对话 / 直发) and dropping the result `board-events` already
+ * carries makes a failing and a succeeding comment round produce the same line
+ * — and neither matches the word the same round wears in the card's chip or
+ * the thread.
  */
 function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'error' | 'muted'; label: string } {
   if (item.result === 'succeeded') return { kind: 'success', label: t('board.activitySucceeded') }
@@ -675,10 +675,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     return t('board.cruiseStatusOff')
   })()
   const [dragOver, setDragOver] = useState<TaskStatus | undefined>(undefined)
-  // A refused drop carries WHY, not just where. `resolveCardDrop` already computed
-  // a reason and the UI used to throw it away, leaving a 180ms border flash on the
-  // column that said "no" without ever saying why — while the reason was right
-  // there in the decision. Keeping it lets the board state the cause in words.
+  // A refused drop carries WHY, not just where. A UI that discards the reason
+  // `resolveCardDrop` already computed leaves a 180ms border flash on the column
+  // that says "no" without saying why — while the reason is right there in the
+  // decision. Keeping it lets the board state the cause in words.
   const [dragReject, setDragReject] = useState<{ status: TaskStatus; reason: 'busy' } | undefined>(undefined)
   // The id of the card being dragged and the insertion gap it would land at —
   // a gap now also recalls WHICH column it was computed for, so a cross-column
@@ -760,7 +760,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // Column-identity anchoring: whenever the board box changes width (the
   // shell sidebar opening/closing, a rotation, a split-screen drag), the track
   // is re-aimed at the SAME COLUMN's left edge. Pixels are never the truth,
-  // so the board can no longer "shift a little to the right" once per toggle —
+  // so the board cannot "shift a little to the right" once per toggle —
   // the cumulative drift class is closed by one observer (with its disposer).
   useEffect(() => {
     const root = columnsRef.current
@@ -825,10 +825,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Board-relative dialog centering was previously a viewport-offset hack
-  // (--dsh-tb-board-offset shifted dialogs by half the sidebar width, which
-  // broke under any ancestor transform/filter and drifted on resize). Dialogs
-  // are now absolutely positioned inside the board's own box and centered by
+  // Board-relative dialog centering must not be a viewport-offset hack
+  // (--dsh-tb-board-offset shifts dialogs by half the sidebar width, which
+  // breaks under any ancestor transform/filter and drifts on resize). Dialogs
+  // are absolutely positioned inside the board's own box and centered by
   // flex — no measurement, no offset variable, no layout drift (see
   // .modalBackdrop/.modal/.detail/.review).
   /** Classify a drag as a sidebar drag (own MIME, else native text/plain). */
@@ -886,13 +886,13 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // time; in organize mode every click toggles; otherwise it opens the detail.
   //
   // A card whose session is suspended on a human says 「点开前往会话」 — so the click
-  // has to LAND on that conversation. It used to open the plain detail, whose session
-  // rail is closed, leaving the user to find the session row themselves: the sentence
-  // promised a one-click path that did not exist, and the thing that needed them was
-  // two taps deeper than the label said. The session is resolved through the SAME
+  // has to LAND on that conversation. Opening the plain detail does not: its session
+  // rail is closed, so the user has to find the session row themselves — the sentence
+  // promises a one-click path that does not exist, and the thing that needs them is
+  // two taps deeper than the label says. The session is resolved through the SAME
   // judgment the card uses to decide it is waiting (`pendingInteractionOf` over the
   // card's pending lanes), so the promise and the action cannot drift; with nothing
-  // waiting this is a plain open, exactly as before.
+  // waiting this is a plain open.
   const cardClick = (id: string, event?: React.MouseEvent): void => {
     if (organizing || event?.ctrlKey === true || event?.metaKey === true) {
       toggleCard(id)
@@ -1175,17 +1175,17 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           {(() => {
             // Flow pulse: cycle p85 and weekly throughput, measured over a 28-day
             // window (THROUGHPUT_WINDOW_MS) — LIFETIME statistics, not a statement
-            // about right now, which is why they are no longer merged into the one
+            // about right now, which is why they are NOT merged into the one
             // sentence that reports running/queued. Mixing an instant fact with a
             // four-week average in a single 12px run makes the reader unable to tell
             // which numbers describe the present.
             //
-            // They also used to render unconditionally whenever the ledger had
-            // samples, on a quiet board with nothing happening — against the project's
-            // own 「只在真有事时说话」 discipline (running/queued/skipped are all
-            // gated that way). Now they appear only while something is QUEUED, which
-            // is the one moment they answer a question the user is actually asking:
-            // "how fast does this board clear work, and is adding more wise?"
+            // They render only while something is QUEUED: on a quiet board with
+            // nothing happening they would be noise, against the project's own
+            // 「只在真有事时说话」 discipline (running/queued/skipped are all gated that
+            // way). Queued is the one moment they answer a question the user is
+            // actually asking: "how fast does this board clear work, and is adding
+            // more wise?"
             const flow = flowSummaryOf(snapshot.tasks, Date.now())
             const flowParts = [
               ...flow.samples > 0 && flow.p85Days !== undefined
@@ -1420,8 +1420,8 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             )}
           </div>
           {/* 新建任务：板上唯一的主行动（primary），永远坐在导航行的最右端——
-              它从筛选行搬来，那一行因此只剩「筛选任务」一条整幅白长条（用户
-              原话），不再是一条行里塞一个孤零零的按钮。 */}
+              筛选行因此只剩「筛选任务」一条整幅白长条（用户原话），不是
+              一条行里塞一个孤零零的按钮。 */}
           <Button
             variant="primary"
             className={css.boardNewTask}
@@ -1463,8 +1463,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                 recolour / delete together), because 「整理」 alone reads as
                 housekeeping while this is in fact the gateway to the board's most
                 distinctive capability — pushing several cards into real agent
-                sessions at once. It was also the only control in this cluster with
-                no explanation at all, while both neighbours carried one. */}
+                sessions at once. */}
             <Button
               variant="ghost"
               title={t('board.organizeTitle')}
@@ -1886,29 +1885,25 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               }}
               onDrop={handleDrop(column.status)}
             >
-              {/* **不是一个 `<header>`，而且这件事是被迫也是自正的。**
+              {/* **不是一个 `<header>`。**
                 *
                 * MEASURED: the host ships `div[class*="_centerCol"] header { padding:
                 * 4px 16px 2px 16px !important }`, and this column sits inside that
-                * container — so the shell's `!important` beat our own padding (their
-                * selector is (0,1,2), ours was (0,1,0)), the left inset collapsed
+                * container — so the shell's `!important` beats our own padding (their
+                * selector is (0,1,2), ours is (0,1,0)): the left inset collapses
                 * from 37px to the shell's 16px, and the status dot — absolutely
-                * positioned into the 21px rail the cards leave — landed **on the
+                * positioned into the 21px rail the cards leave — lands **on the
                 * first character of the column's name**. On a phone that is not
-                * cosmetic: the title is `text-overflow: ellipsis`, so the shell was
+                * cosmetic: the title is `text-overflow: ellipsis`, so the shell is
                 * shortening the column's name.
                 *
-                * Every token on this element was correct and every `calc()` resolved
-                * (1 + 8 + 28 = 37) — the defect was never arithmetic. **Ten rounds of
-                * measuring the wrong thing** came from a hand-written style scanner
-                * that was itself wrong four separate times; Chrome's own
-                * `CSS.getMatchedStylesForNode` named the shell rule in one call.
-                *
-                * And the tag was wrong anyway: a `<header>` is a **landmark** only
-                * outside a sectioning element, and this one lives inside the column
-                * `<section>` — so it never was one. A `div` with the same class says
+                * The arithmetic is not the defect: every token on this element is
+                * correct and every `calc()` resolves (1 + 8 + 28 = 37). The tag is
+                * what is wrong — a `<header>` is a **landmark** only outside a
+                * sectioning element, and this one lives inside the column
+                * `<section>`, so it is not one. A `div` with the same class says
                 * the same thing, stays out of the shell's selector, and drops a
-                * landmark that was never real. */}
+                * landmark that is not real. */}
               <div className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                 <h3 className={css.columnTitle} title={t(STATUS_KEY[column.status])}>
@@ -1973,9 +1968,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   )
                   // The tooltip names each blocked conversation by what it is:
                   // a numbered run when the conversation carried one, otherwise
-                  // the conversation itself. It used to fall through to a
-                  // branch that printed 「第 0 次执行」 for every session whose
-                  // first waiting round was a comment.
+                  // the conversation itself — never 「第 0 次执行」, which is what a
+                  // session whose first waiting round is a comment prints when it
+                  // falls through to the run branch.
                   const pendingTitle = waitingSessions.length === 0
                     ? ''
                     : waitingSessions.map(item => item.executionId !== undefined
@@ -1997,9 +1992,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   // read).
                   /* **圆点数的是「这张卡你能看见的会话」，与卡里那份列表同一个集合。**
                    *
-                   * 它原来读 `relatedSessionIdSet`（绑定 + 轮次 + 工作区成员，只排除原生删掉的），
-                   * 而**已归档、已隐藏的会话仍然被数着**——卡里的列表却按 `taskSessionsOf` 把它们
-                   * 都去掉了。于是读者看到的是一件自相矛盾的事：「卡片外面的会话数比里面实际的多」。
+                   * 不许读 `relatedSessionIdSet`（绑定 + 轮次 + 工作区成员，只排除原生删掉的），
+                   * 因为那样**已归档、已隐藏的会话会被数着**，卡里的列表却按 `taskSessionsOf`
+                   * 把它们都去掉了。于是读者看到的是一件自相矛盾的事：「卡片外面的会话数比里面实际的多」。
                    * 一个集合只能有一个答案，而这个问题问的是**显示**：看得见几条就数几条。
                    * 「在不在工作」是另一个问题（`liveStateOf` 那条腿），它读的是工作集合。 */
                   const relatedIds = controller.sessionsOf(task).map(row => row.sessionId)
@@ -2066,9 +2061,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                 })}
                 {tasks.length === 0 && (
                   /* One word for every empty column, in every situation (no tasks yet /
-                     filtered to nothing / this column happens to be empty). It used to branch
-                     into three sentences plus, on first run, a mechanic hint and per-column
-                     semantics — explanation where the user asked for a statement. 「暂无任务」 is
+                     filtered to nothing / this column happens to be empty). Branching into
+                     three sentences plus, on first run, a mechanic hint and per-column
+                     semantics is explanation where the user asked for a statement. 「暂无任务」 is
                      the whole message; the columns, their names and their counts are already on
                      screen. */
                   <div className={css.columnEmpty} role="status">{t('board.empty')}</div>

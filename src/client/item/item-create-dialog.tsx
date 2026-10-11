@@ -174,8 +174,8 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     if (!touched.has('tags')) setTags(parsed.tags.join('、'))
     /* **一句话认出来的东西，全部都要落到各自的框里。**
      *
-     * 这一条原来只回填其中的一部分：`startsAfter`、`hardDueAt` 与 `- [ ] 步骤` 行被解析出来
-     * 之后**静默丢掉**——读者在一行里写了三个日子，存下去只有一个，而屏上没有任何东西说
+     * 解析出来的东西**不许静默丢掉**：`startsAfter`、`hardDueAt` 与 `- [ ] 步骤` 行漏掉
+     * 任何一部分，读者在一行里写了三个日子、存下去就只有一个，而屏上没有任何东西说
      * 这件事（那正是「认了却没到」这一类缺陷）。`touched` 是同一道闸门：读者手动改过的框
      * 不会被这一行盖掉，所以「文法回填一次、之后归读者」这条律一个字都没变。 */
     if (!touched.has('startsAfter') && parsed.startsAfter !== undefined) setStartsAfter(toItemDateField(parsed.startsAfter))
@@ -278,8 +278,8 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
         <header className={css.itemCreateDialogHead}>
           <h2 className={css.itemCreateDialogTitle}>{t('item.create.title')}</h2>
           {/* THE CROSS IS ONE SHAPE, DRAWN ONCE — see `marks.tsx` 的 `CrossMark`：同一枚记号
-              原来在这里与筛选芯片那枚各画一遍（那两处的注释写着同一句教训：× 当字符会坐在字体
-              基线上，框居中了、字没居中）。现在两处读同一个元件，尺寸是属性。 */}
+              只画一遍：这里与筛选芯片读同一个元件，尺寸是属性——「× 当字符会坐在字体基线上，
+              框居中了、字没居中」这条教训因此只有一处。 */}
           <button
             type="button"
             className={css.itemCreateDialogClose}
@@ -356,10 +356,10 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 {PRIORITIES.map(one => (
                   /* **与行上、左栏、展开区是同一枚记号。**
                    *
-                   * 读者点过这里：「新建一条里面的也是一样（没有颜色对应）。」它一度被改成
-                   * `.itemOpt`（词族）——那时的顾虑是「四枚记号各带各的重量，选中没地方落脚」。
-                   * 那条顾虑现在由记号自己解决：`PriorityMark` 的 `data-on` 画的是**一圈墨环**，
-                   * 与颜色无关；而颜色本身就是读者要的那件事（四档一眼分得出）。
+                   * **颜色是读者要的那件事**（四档一眼分得出），所以这一排不许退成
+                   * `.itemOpt`（词族）——那套的理由是「四枚记号各带各的重量，选中没地方落脚」，
+                   * 而这一条由记号自己解决：`PriorityMark` 的 `data-on` 画的是**一圈墨环**，
+                   * 与颜色无关。
                    */
                   <button
                     key={one}

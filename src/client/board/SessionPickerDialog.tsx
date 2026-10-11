@@ -194,9 +194,9 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
                 onClick={() => { onToggleSession(session.sessionId) }}
               >
                 <Icon name={on ? 'check' : 'link'} className={css.sessionRowIcon} />
-                {/* The tooltip carries the TITLE, not the id. It used to be
-    `title={session.sessionId}` on a label that is already truncated with an
-    ellipsis — so the one thing a reader could reach to see the full name was
+                {/* The tooltip carries the TITLE, not the id. `title={session.sessionId}`
+    on a label that is already truncated with an
+    ellipsis makes the one thing a reader can reach to see the full name
     the opaque identifier it came from, which is strictly less use than no
     tooltip. An id helps nobody choose a session, and a tooltip that appears to
     answer the ellipsis while answering something else is worse than one that

@@ -3,13 +3,11 @@
  *
  * ── WHY THIS IS A CORE FUNCTION AND NOT A PANEL CALLBACK ────────────────────
  *
- * `item.navigate` was the catalog's one `NOT_YET-BUILT` entry, and its own
- * reason said what was missing: 「切页与聚焦都是面板自己的局部 state…要接上就是
- * 给清单面板加一个具名的 `goTo(page?, ref?)`」. That advice was half right, and
- * following it literally would have left the judgment in the panel — where the
- * coverage gate cannot see it, the model cannot reach it, and the answer to
- * 「#12 在哪一页」 exists in a React component instead of next to the predicates
- * that decide which page a row belongs to.
+ * Page and focus ARE the panel's own local state, and that half stays there: what
+ * a callback cannot carry is the judgment, which would be left where the coverage
+ * gate cannot see it, the model cannot reach it, and the answer to 「#12 在哪一页」
+ * exists in a React component instead of next to the predicates that decide which
+ * page a row belongs to.
  *
  * So the panel gets the mechanism and core keeps the judgment: **which page
  * holds this row is a fact about the document**, already answered by
@@ -32,8 +30,8 @@ import type { ItemRecord } from './item.ts';
  * ends up with a navigation strip nobody reads — so the set is closed here, in
  * data, and nothing in the interface may add a third.
  *
- * 收件 WAS A PAGE AND IS NOT ONE ANY MORE: 「还没分流的」 is a PREDICATE over the same
- * document (`isInboxItem`), still read where a predicate belongs — by the query
+ * 收件 IS NOT A PAGE: 「还没分流的」 is a PREDICATE over the same
+ * document (`isInboxItem`), read where a predicate belongs — by the query
  * grammar (`has:undated`'s exemption) and by the rail, through `isAgendaItem`.
  * A page whose whole existence is one rail row is a layout, not a question.
  *
@@ -62,10 +60,10 @@ export type ItemNavigation = {
  * outstanding. Reading it the other way round is how a finished row ends up on a
  * page that does not list finished rows.
  *
- * A BARE CAPTURE USED TO GO TO 收件, a page that no longer exists: it was a reading
- * of the same document with one door (its rail row), and the predicate behind it
- * lives on in the grammar where a predicate belongs. The row is in 清单 like every
- * other row, which is also where the reader already is.
+ * A BARE CAPTURE STAYS IN 清单, like every other row: 收件 is not a page — it is a
+ * reading of the same document with one door (its rail row) — and the predicate
+ * behind it lives in the grammar where a predicate belongs. 清单 is also where the
+ * reader already is.
  */
 export declare function itemPageOf(item: ItemRecord): ItemPageId;
 /**

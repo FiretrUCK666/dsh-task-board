@@ -583,7 +583,7 @@ describe('BoardSyncClient lease loop', () => {
 
   it('the protocol is UNKNOWN (not "stale") until the first lease answers', async () => {
     // "No evidence yet" must never read as "old host" — a failed first probe
-    // used to flash a false 「服务端未重启」 banner.
+    // would flash a false 「服务端未重启」 banner.
     const { client } = makeClient()
     expect(client.hostProtoVersion()).toBeUndefined()
   })

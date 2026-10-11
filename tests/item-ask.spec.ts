@@ -7,19 +7,19 @@
  * the words are (a model told the wrong thing answers the wrong question, and the
  * reader blames the model).
  *
- * ── THE CLAIM THIS FILE WAS REWRITTEN FOR ────────────────────────────────────
+ * ── THE CLAIM THIS FILE PINS ─────────────────────────────────────────────────
  *
- * 「没有会话」 used to be a REFUSAL — asking a card that had never run answered
- * `taskHasNoSession`, and the panel had a second button (「执行」) for the case
- * where there was nothing to continue into. So a reader who pressed the wrong one
- * of two buttons that both meant 「交给 AI」 got a dead control, and the row's
- * other two lanes (a fresh run, a message into a live conversation) were decided
- * in two places that could disagree.
+ * 「没有会话」 is NOT A REFUSAL — asking a card that has never run answers
+ * `taskHasNoSession` only if the lane is read as a failure, and a second button
+ * (「执行」) for the case where there is nothing to continue into puts two buttons
+ * on the row that both mean 「交给 AI」. A reader who presses the wrong one of
+ * those gets a dead control, and the row's other two lanes (a fresh run, a
+ * message into a live conversation) get decided in two places that can disagree.
  *
- * Now it is ONE decision with two lanes: a card with a conversation gets the words
+ * It is ONE decision with two lanes: a card with a conversation gets the words
  * said into it, a card without one gets a run. `start` is a lane, not a failure —
- * which is the assertion below that would have been the opposite of the true one
- * in the previous shape.
+ * which is why the assertion below would be the opposite of the true one if this
+ * were read as a refusal.
  */
 import { describe, expect, it } from 'vitest'
 import { askTargetOf, itemContextText, planItemAsk } from '../src/core/item-ask.ts'

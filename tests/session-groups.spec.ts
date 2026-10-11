@@ -1,9 +1,9 @@
 /**
  * 会话选择器的名单规则（core/session-groups.ts）。
  *
- * 这份名单曾经是「把全量会话目录摊平，再在两个界面各过滤一次」，于是两处各漏
- * 一半：卡片那边过滤了归档，看板那边没过滤；两边都把子代理会话和空白槽端给了
- * 用户。规则住进核心层之后，这里逐条钉住它——**每条闸门一个用例**，因为每一
+ * 这份名单的规则由 core 一个人持有，而不是「把全量会话目录摊平、再在两个界面各过滤一次」——
+ * 那种摊平会让两处各漏一半：卡片那边过滤归档而看板那边不过滤，两边都把子代理会话和空白槽端
+ * 给用户。规则住在核心层之后，这里逐条钉住它——**每条闸门一个用例**，因为每一
  * 条都有明确的出处（shell 的 `sessionVisible` / registry 的归属账本），不是
  * 某个会话的特例。
  */
@@ -175,9 +175,9 @@ describe('offerableSessionGroups', () => {
   })
 
   it('derives nothing from a clock: the same snapshots always give the same list', () => {
-    // The claim is about the CLOCK, so the instrument has to be one. It used to
-    // read `expect(NOW).toBeGreaterThan(0)` on a literal declared in THIS file
-    // — which proved the literal is positive and observed nothing at all.
+    // The claim is about the CLOCK, so the instrument has to be one. Reading
+    // `expect(NOW).toBeGreaterThan(0)` on a literal declared in THIS file proves the
+    // literal is positive and observes nothing at all.
     //
     // Two readings make it falsifiable:
     //  1. run the derivation against a clock that has MOVED, and require the

@@ -83,7 +83,7 @@ describe('a remembered view comes back whole', () => {
 
   it('the direction is off unless a record says true', () => {
     // 「正序」是每一条真实记录都有的那个值，所以它与**省略**等价：读侧只认 `true`，
-    // 别的任何东西（false、缺键、一段字符串、一个旧版本写的值）都读成正序。
+    // 别的任何东西（false、缺键、一段字符串、一个类型不对的值）都读成正序。
     const store = useWindow()
     writeViewPrefs({ ...DEFAULT_VIEW_PREFS, sortDesc: false })
     expect(store.setItem.mock.calls[0]?.[1] as string, '默认值不必抄进存储').not.toContain('sortDesc')
@@ -165,19 +165,18 @@ describe('a damaged record repairs instead of throwing', () => {
   }
 
   it('a boolean the record never mentions gets the DEFAULT, not the other boolean', () => {
-    // `showDone` used to be read as `record.showDone === true`, which agrees with
-    // the default only while the default IS false. So a record written before a
-    // boolean's default flipped — and every damaged record — switched it OFF
-    // behind the reader's back, and the 已完成 group disappeared with no way to
-    // tell whether it was empty or filtered. The gate is written against the
-    // DEFAULT rather than against a literal so it survives the next flip.
+    // `showDone` read as `record.showDone === true` agrees with the default only
+    // while the default IS false. So a record written before a boolean's default
+    // flipped — and every damaged record — switches it OFF behind the reader's back,
+    // and the 已完成 group disappears with no way to tell whether it was empty or
+    // filtered. The gate is written against the DEFAULT rather than against a
+    // literal so it survives the next flip.
     //
-    // `showDone` has since been RETIRED, so this case now pins the rule on the
-    // one boolean that is left (`showDone` was the only one, and it is gone) — and
-    // what it pins is the SHAPE of the rule, not the field: a boolean the reader
-    // never mentioned falls back to the page's own default, and a boolean the
-    // reader did say is obeyed either way round. Written against
-    // `DEFAULT_VIEW_PREFS` so it survives the next field being added.
+    // `showDone` has since been RETIRED, so this case pins the rule on the
+    // booleans that are left — and what it pins is the SHAPE of the rule, not the
+    // field: a boolean the reader never mentioned falls back to the page's own
+    // default, and a boolean the reader did say is obeyed either way round. Written
+    // against `DEFAULT_VIEW_PREFS` so it survives the next field being added.
     useWindow({ raw: JSON.stringify({ sort: 'due' }) })
     expect(readViewPrefs().page, 'a record that said nothing about the page did not get the default').toBe(DEFAULT_VIEW_PREFS.page)
     useWindow({ raw: JSON.stringify({ page: 'list' }) })

@@ -320,8 +320,9 @@ export interface ItemPromotionTask {
   /**
    * 这张卡出生在哪一栏：**这一条自己现在的状态**（执行器才能给的那两档落到「待办」）。
    *
-   * 见 `planItemPromotion` 下面那段：写死成 `'todo'` 的那一版让「先标已完成、再挂卡」变成
-   * 两份互相矛盾的数据，而屏上没有一句话解释。
+   * 不许写死 `'todo'`：它不看这一条当时的真实状态，于是「先标已完成、再挂卡」就变成
+   * 两份互相矛盾的数据，而屏上没有一句话解释。真正会产卡的那一处（`planItemPromotion`）
+   * 也照这一条读。
    */
   readonly status: TaskStatus
 }
@@ -410,10 +411,9 @@ export function planItemPromotion(item: ItemRecord, over?: ItemPromotionOverride
       prompt: (over?.cardPrompt ?? item.body).trim(),
       /* **出生栏就是这一条现在的状态。**
        *
-       * 它原来是调用点写死的 `'todo'`（`panel.tsx:626` 与 `tools.ts:1626`），完全不看这一条
-       * 当时的真实状态——于是读者把一条标成「已完成」再挂到卡上，卡开在待办，而这一行因为
-       * 自己那张牌（`itemStatusOf` 的 done 压过卡片）仍然显示「已完成」：**两份数据、两个
-       * 说法**，然后他按什么胶囊都不动。
+       * 不许写死 `'todo'`——那不看这一条当时的真实状态，于是把一条标成「已完成」再挂到
+       * 卡上，卡开在待办，而这一行因为自己那张牌（`itemStatusOf` 的 done 压过卡片）仍然
+       * 显示「已完成」：**两份数据、两个说法**，然后按什么胶囊都不动。
        *
        * 出生栏由**这一条自己**决定，与提升计划的另外三个字段同一个理由：它们是这一条自己的
        * 事实（见上面那段「a caller cannot get them wrong by forgetting one」）。执行器才能给的
@@ -429,16 +429,17 @@ export function planItemPromotion(item: ItemRecord, over?: ItemPromotionOverride
  *
  * ── 为什么必须是 core 里的一对函数 ─────────────────────────────────────────
  *
- * `taskId` 这个字段在改动前有**六条互不知道对方的写入路径**（详情那一格点已有卡、提升、
- * 模型的提升、悬空自我归正、建卡时带链接），而状态有三张面两套接线。同一件事有六个入口，
+ * `taskId` 这个字段**不许有六条互不知道对方的写入路径**（详情那一格点已有卡、提升、
+ * 模型的提升、悬空自我归正、建卡时带链接），状态也不许有三张面两套接线。同一件事有六个入口，
  * 就是六套行为——读者看到的是「按了没反应」「两边不一样」这类没法解释的现象。所以：
  * **挂上、改状态各只有一个入口**，界面与将来的 AI 都走它。
  *
  * ── 那条已钉着的规则仍然成立 ───────────────────────────────────────────────
  *
- * `itemStatusOf` 的「读者自己按下的完成压过卡片」不动（有测试钉着）。它带来的一件坏事是
- * 「写了一张牌却收不回来」——所以**每一次改状态都把两边写成同一档**：按已完成 = 标这一行
- * **并且**把卡移过去；按别的 = 移卡 **并且**把那张牌收回。于是那张牌在屏上不再是陷阱。
+ * `itemStatusOf` 的「读者自己按下的完成压过卡片」不动（有测试钉着：一张卡重跑起来的时候，
+ * 刚被读者勾掉的那一行仍然是完成）。它带来的一件坏事是「写了一张牌却收不回来」——所以
+ * **每一次改状态都把两边写成同一档**：按已完成 = 标这一行
+ * **并且**把卡移过去；按别的 = 移卡 **并且**把那张牌收回。于是那张牌在屏上不是陷阱。
  */
 export interface ItemStatusWrite {
   /** 写完之后的整份清单。 */
@@ -702,10 +703,10 @@ export interface ItemCaptured {
  * Mint a row from what a writer decided — the ONE constructor both writers go
  * through.
  *
- * A row used to be built twice, once per surface, and that is how two halves of
+ * Built twice — once per surface — is how two halves of
  * one document drift into disagreeing about what a freshly written row looks
- * like: the capture box minted its own step ids and stamped `human`, the tool
- * minted different ones and stamped `ai`. So both come through here, and the
+ * like: the capture box mints its own step ids and stamps `human`, the tool
+ * mints different ones and stamps `ai`. So both come through here, and the
  * fields that must always agree — the trimmed text, the step ids, the neutral
  * fallbacks, both ends of the stamp — always do.
  *
@@ -756,7 +757,7 @@ export function captureItemRecord(input: ItemCapture, now: number, mintId: () =>
 
 /** The stored status, with 「还没做」 for anything outside the enum.
  *
- *  两个老值都落在这里：`open` 是「还没做」的旧名，`blocked` 是这一版删掉的那一档。写
+ *  两个老值都落在这里：`open` 与 `blocked`（后者是清单自己造的一个看板五栏里没有的状态）。写
  *  进来的东西读不懂时落回 `todo` 而不是丢掉整条修改——值是我们的事，行是读者的。 */
 function itemStatusTierOf(raw: unknown): ItemStatus {
   return ITEM_STATUSES.includes(raw as ItemStatus) ? raw as ItemStatus : 'todo'

@@ -40,13 +40,13 @@ import { compareItemOrder } from './items-doc.ts'
  * ordering a page never needs a round trip and two devices holding one document
  * can never order it differently.
  *
- * 出生时刻 WAS A SEVENTH MEMBER AND IS NOT ANY MORE, because for a reader it was
- * not a different question from 顺序 — both answer "which of these is mine and in
- * what order did they arrive", one read from the document's own comparator and
- * one read from `createdAt` — and two menu entries that produce near-identical
- * lists is one entry too many. Removing it is also a removal of the only
- * comparator that subtracted a raw document field, which is why its NaN case is
- * documented below.
+ * 出生时刻 IS NOT A MEMBER, and the reason is the reader's: it is not a different
+ * question from 顺序 — both answer "which of these is mine and in what order did
+ * they arrive", one read from the document's own comparator and one read from
+ * `createdAt` — and two menu entries that produce near-identical lists is one
+ * entry too many. Restoring it would also restore the only key that subtracts a
+ * raw document field, which is why the NaN case is documented below rather than
+ * assumed.
  */
 export type ItemSort = 'sequence' | 'starts' | 'due' | 'hard' | 'priority' | 'title'
 
@@ -107,13 +107,12 @@ function hardSortKeyOf(item: ItemRecord): number {
 /**
  * The four tiers as ONE number, read from the model — never re-ranked here.
  *
- * This used to be `ITEM_PRIORITIES.indexOf(item.priority)`, and that was wrong in
- * the most user-visible way a sort can be: the enum is declared lowest-first
- * because that is how the tiers are named in a dropdown, so the index put 紧急
- * LAST while 顺序 — which reads the model's rank — put it FIRST. Switching the
- * sort on one page therefore moved the reader's most urgent row from the top to
- * the bottom, and the comment above that function claimed the two scales were
- * one. They were two rulers pointing opposite ways.
+ * `ITEM_PRIORITIES.indexOf(item.priority)` is the wrong ruler, in the most
+ * user-visible way a sort can be: the enum is declared lowest-first because that
+ * is how the tiers are named in a dropdown, so the index puts 紧急 LAST while
+ * 顺序 — which reads the model's rank — puts it FIRST. Switching the sort on one
+ * page then moves the reader's most urgent row from the top to the bottom: two
+ * rulers pointing opposite ways.
  *
  * {@link itemPriorityRankOf} is the one ruler, and it lives in the model because
  * that is what owns what a priority IS; the document's order and this ordering
@@ -148,12 +147,11 @@ function compareTitles(a: string, b: string): number {
 
 /**
  * ONE ROW PER ORDERING, keyed by the union — so the table cannot fall behind the
- * set. This replaced an `if` chain, and the chain had a defect that only the
- * table removes: its last line was a shared exit that served 「title」 (which has
- * no numeric key) AND any ordering somebody added without a key, and the comment
- * above that line explained only `title`. So the missing branch would arrive
- * wearing a comment that said it was deliberate — a defect coming back in
- * borrowed clothes. Here there is no such exit: `title` is a row like any other,
+ * set. An `if` chain with a shared exit as its last line serves 「title」 (which
+ * has no numeric key) AND any ordering somebody adds without a key, and a comment
+ * above that line explaining only `title` lets the missing branch arrive wearing a
+ * comment that said it was deliberate — a defect coming back in borrowed clothes.
+ * Here there is no such exit: `title` is a row like any other,
  * and a new member of {@link ItemSort} that nobody wrote a key for is a BUILD
  * FAILURE (`Property 'brandNew' is missing in type …`) rather than a quiet
  * fallback.

@@ -13,7 +13,7 @@
  * and is clipped by its `overflow:hidden` — the "new-task run-config is dead /
  * size-limited / cut off" regression. A caller opts OUT only with an explicit
  * `portal={false}` when it is already a top-level board overlay (none today);
- * forgetting `portal` can no longer reintroduce the bug.
+ * forgetting `portal` cannot reintroduce the bug.
  *
  * ESC closes the dialog — through the SHARED Escape stack (escape-stack.ts),
  * so a nested overlay (a confirm over a manager) closes ONE layer per press,

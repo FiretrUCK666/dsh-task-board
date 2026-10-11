@@ -52,12 +52,12 @@ export interface KeyBinding {
     /**
      * Whether the binding is a COMMAND even inside a text field.
      *
-     * THIS IS THE RULE, STATED PER KEY, because the rule used to live inside one
-     * boolean: `usable()` skipped every bare key while the reader was typing
-     * except the two keys (`Esc`, `↵`) someone had remembered to spell out. Two
-     * keys written inside a condition is a list that lives apart from the table,
-     * so the next command that belongs there has to be found before it can be
-     * added. Here the exception travels with the binding.
+     * THIS IS THE RULE, STATED PER KEY, because a rule inside one boolean is a rule
+     * apart from the table: `usable()` skips every bare key while the reader is
+     * typing except the two keys (`Esc`, `↵`) written into it by hand. Two keys
+     * written inside a condition is a list that lives apart from the table, so the
+     * next command that belongs there has to be found before it can be added. Here
+     * the exception travels with the binding.
      *
      * It is opt-IN for the same reason the skip is opt-out: a key that applies
      * while the reader is typing is a key that can never be typed, so it has to be
@@ -148,10 +148,10 @@ export declare function isCommand(event: KeyEventLike): boolean;
  *
  * TWO QUESTIONS, NOT ONE. Which bindings a chord REACHES is a property of the
  * table; which of them APPLIES is a property of the surface. Returning the first
- * match — the whole of what this used to do — made the table's ORDER the thing
- * that decided behaviour, which is invisible in review and breaks the day a line
- * is moved: the palette's `↵` sits below the row's `↵`, and the row's wins the
- * moment the caret is not in the palette's field.
+ * match alone makes the table's ORDER the thing that decides behaviour, which is
+ * invisible in review and breaks the day a line is moved: the palette's `↵` sits
+ * below the row's `↵`, and the row's wins the moment the caret is not in the
+ * palette's field.
  *
  * So the applicable binding wins, and the first match is still returned when none
  * of them applies, because a key that is bound but inert must be swallowed.

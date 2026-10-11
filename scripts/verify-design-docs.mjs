@@ -1,6 +1,6 @@
 /**
- * Design-doc check: DESIGN.md and its sidecar record DSH token values, and nothing
- * used to notice when the shell's tokens moved out from under them.
+ * Design-doc check: DESIGN.md and its sidecar record DSH token values. This is
+ * what notices when the shell's tokens move out from under them.
  *
  * What this proves, and what it deliberately does not:
  *
@@ -30,13 +30,12 @@ const notes = []
 /**
  * Every stylesheet the client half owns, discovered rather than listed.
  *
- * These checks used to name their sheets (`board.module.css`, and later
- * `settings-card.module.css`), and a list of files is a list that goes stale
- * the moment a surface gets its own stylesheet: the new sheet is then checked by
- * nothing at all, and it is exactly the new sheet whose class names nobody has
- * reviewed against the design system. Walking the tree means the next one is
- * covered the day it is created, which is the only version of "keep this list
- * current" that survives contact with a deadline.
+ * A named list of sheets goes stale the moment a surface gets its own
+ * stylesheet: the new sheet is then checked by nothing at all, and it is exactly
+ * the new sheet whose class names nobody has reviewed against the design system.
+ * Walking the tree means the next one is covered the day it is created, which is
+ * the only version of "keep this list current" that survives contact with a
+ * deadline.
  *
  * `*.module.css` is the build's own convention (one hashed class scope per
  * sheet), so the walk keys on it rather than on a filename.
@@ -319,11 +318,10 @@ for (const [label, text] of DOC_FILES) {
     }
     // THE ALIAS LAYER IS INHERITED BY ELEMENTS, NOT BY STYLESHEETS.
     //
-    // This used to read "a sheet that never mentions
-    // [data-dsh-taskboard-view] cannot see the board's aliases", and report
-    // every alias in it. That inference was true while there was one
-    // stylesheet, because that sheet both declared the layer and used it — and
-    // it is false the moment a surface gets a sheet of its own. A sheet defines
+    // "A sheet that never mentions [data-dsh-taskboard-view] cannot see the
+    // board's aliases" is FALSE, and believing it reports every alias in such a
+    // sheet. It holds only while one stylesheet both declares the layer and uses
+    // it. A sheet defines
     // RULES; those rules apply to whatever elements carry their classes, and
     // the elements are what carry the scope attribute. `item.module.css` never
     // names `data-dsh-taskboard-view` and does not need to: its root element
@@ -454,14 +452,14 @@ if (sidecar !== null) {
   for (const f of tsxFiles) {
     const text = readFileSync(f, 'utf8')
     // Every LOCAL NAME this file binds to a stylesheet module, whatever it is
-    // called. The scan used to look for the literal `css.` and nothing else,
-    // which quietly assumed every module in the client half is imported under
-    // one name. A surface with its OWN stylesheet cannot also be `css`, so it
-    // imports the shared one under a second name — and every one of its uses
-    // became invisible here, reported as "defined but unreferenced" for a rule
-    // that is very much in use. The names are resolved from the imports rather
-    // than assumed, so a second (or fifth) stylesheet is read correctly instead
-    // of needing the checker rewritten again.
+    // called. Looking for the literal `css.` and nothing else quietly assumes
+    // every module in the client half is imported under one name — but a surface
+    // with its OWN stylesheet cannot also be `css`, so it imports the shared one
+    // under a second name, and every one of its uses goes invisible here,
+    // reported as "defined but unreferenced" for a rule that is very much in
+    // use. The names are resolved from the imports rather than assumed, so a
+    // second (or fifth) stylesheet is read correctly instead of needing the
+    // checker rewritten again.
     const bound = new Set()
     for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"][^'"]+\.module\.css['"]/g)) {
       bound.add(m[1])

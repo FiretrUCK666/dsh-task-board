@@ -229,12 +229,11 @@ describe('PendingMirror', () => {
   })
 
   it('reads the session-status envelope, not a bare interaction map', () => {
-    // The drift pin: the host used to publish a bare `Map<sessionId, carrier>`
-    // under `pendingInteractions`. That field was REMOVED and replaced by the
-    // per-session status map, and the board's mirror silently went blind (it
-    // read a member that no longer existed). This asserts the envelope the
-    // mirror actually consumes, so re-introducing the old shape fails here
-    // instead of on a user's screen.
+    // The drift pin: the mirror reads the per-session status envelope, and a bare
+    // `Map<sessionId, carrier>` under `pendingInteractions` is the shape that
+    // makes it go blind — the member does not exist, and nothing on the screen
+    // says so. This asserts the envelope the mirror actually consumes, so
+    // re-introducing the old shape fails here instead of on a user's screen.
     const ui = new FakeUiSession()
     const [, entry] = live('question:1', 's-1', '一')
     ui.snapshot = new Map([['s-1', entry]])

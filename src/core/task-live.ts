@@ -71,10 +71,10 @@ export interface RelatedSessionFact {
  *
  * ── AND SO IS EXISTENCE, WHICH IS THE SECOND HALF OF THE SAME GATE ──────────
  *
- * 读者报过一个数：「卡片外面显示的会话数比实际多」——他删掉了不少会话，而那个数一直比屏上
- * 的会话多。根因就在这里：这个集合有三个来源，而**只有第三个**（`linkedSessionIds`，由
+ * 一个读者数得出来的偏差：**卡片外面显示的会话数比实际多**——他删掉了不少会话，而那个数
+ * 一直比屏上的会话多。根因就在这里：这个集合有三个来源，而**只有第三个**（`linkedSessionIds`，由
  * `linkedSessionIdsOf` 从工作区快照派生）在路上做过存在性检查。另外两条——绑定与轮次——
- * 只要 id 写进过那张卡，就永远算一条相关会话；会话本体后来被删掉，它们照旧被数进去，
+ * 只要 id 写进过那张卡，就永远算一条相关会话；会话本体被删掉，它们照旧被数进去，
  * 于是圆点与 `+N` 比屏上实际存在的会话多。
  *
  * 所以存在性检查提到**这一个函数里来**，与 `removedSessions` 并列、对每个来源一视同仁：
@@ -86,10 +86,10 @@ export interface RelatedSessionFact {
  * @param linkedSessionIds - the task's live linked-session ids (the
  *   controller derives them from the workspaces face; undefined = skip).
  * @param isPresentOf - whether a session still EXISTS, when the caller can tell.
- *   **必填，而且可以显式是 `undefined`。** 它原来是第三个可选参数，而可选参数的代价是「忘掉它
- *   不会有任何声音」：`board-events` 与 `task-demand` 两处就没传，于是一条**已经被删除**的会话
- *   仍然能让卡片停在「等你处理」——屏上没有任何东西说这件事。写成必填之后，每一个调用点都必须
- *   **写出它的判决**（能看就说能看，看不见就写 `undefined`），而「看不见」仍然不等于「不存在」。
+ *   **必填，而且可以显式是 `undefined`。** 它必填：做成可选参数，忘掉它不会有任何声音——
+ *   一处不传，一条**已经被删除**的会话就仍然能让卡片停在「等你处理」，而屏上没有任何东西
+ *   说这件事。必填之下，每一个调用点都必须**写出它的判决**（能看就说能看，看不见就写
+ *   `undefined`），而「看不见」仍然不等于「不存在」。
  */
 export function relatedSessionIdsOf(
   task: TaskRecord,

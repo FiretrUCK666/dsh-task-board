@@ -81,11 +81,11 @@ export function ItemSteps(props: ItemStepsProps) {
    * the done fold below — one mark that turns, `aria-expanded`, one state. */
   const [moreOpen, setMoreOpen] = useState(false)
   const field = useRef<HTMLInputElement | null>(null)
-  /* **THE TWO FOLDS NEED THEIR OWN IDS.** They were written as `item-steps-more` /
-   * `item-steps-done`, which is a fixed string — and this panel can be mounted twice
-   * in one page (the board and the checklist are two stages of the same plugin), so
-   * the second copy's `aria-controls` pointed at the first copy's list. `useId` is
-   * what the rail already uses for the same reason. */
+  /* **THE TWO FOLDS NEED THEIR OWN IDS.** A fixed string like `item-steps-more` /
+   * `item-steps-done` breaks the moment this panel is mounted twice in one page
+   * (the board and the checklist are two stages of the same plugin): the second
+   * copy's `aria-controls` points at the first copy's list. `useId` is what the
+   * rail already uses for the same reason. */
   const moreId = useId()
   const steps = props.item.steps
 
@@ -193,9 +193,8 @@ function StepRow(props: RowHands & {
         onToggle={() => props.onToggle(step.id)}
       />
       {/* The words are in a box sized to the words. A strike painted on a box
-          that fills the row is the reason a finished step's line used to run
-          past the end of its own sentence and look like it went through
-          something. */}
+          that fills the row runs past the end of the sentence and looks like it
+          went through something. */}
       <span className={css.itemStepWords} data-done={step.done ? '' : undefined}>
         {props.kind === 'next' && <b className={css.itemStepKind}>{t('item.steps.next')}</b>}
         {step.text}

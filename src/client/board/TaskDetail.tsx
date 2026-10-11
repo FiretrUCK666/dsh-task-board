@@ -112,9 +112,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
         unviewed={sessionUnviewedOf(task, sessionId)}
         /* THE chip derivation — ONE vocabulary with the linked rows AND the
            review page: a settled conversation reads 成功 / 失败, the same pair
-           the review page shows for the very same round. It used to read 已完成
-           here and 成功 there, so one state had two words depending on which
-           door the user came through. */
+           the review page shows for the very same round. Two words for one state
+           — 已完成 here and 成功 there — make the reading depend on which door the
+           user came through. */
         chip={sessionStateChip(session.state, session.waitingKind, 'detail.result.succeeded', 'detail.result.cancelled')}
         leading={
           <span className={css.sessionRowLeading} title={row.title}>
@@ -306,8 +306,8 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // so live record updates (e.g. an execution settling) never clobber it.
   const [draft, setDraft] = useState<TaskDraft | undefined>(undefined)
   const [editError, setEditError] = useState<string | undefined>(undefined)
-  // A refused launch, named inline instead of swallowed: the run button used to
-  // close the sheet before firing, so "nothing ran" and "it ran" looked the same.
+  // A refused launch, named inline instead of swallowed: a run button that closes
+  // the sheet before firing makes "nothing ran" and "it ran" look the same.
   const [runError, setRunError] = useState<string | undefined>(undefined)
   // True while the current edit was restored from the persisted draft store:
   // the user switched away mid-edit and came back to their own text — a quiet
@@ -566,13 +566,12 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
    *  it) — updateTask only rejects an unknown task. */
   const saveEdit = (): void => {
     if (draft === undefined) return
-    // A REFUSAL IS AN ANSWER, and the state that would have carried it existed
-    // and was never given a value: `setEditError` was called with `undefined` at
-    // four places and with a message at none, so the error line below it was
-    // unreachable. Which means a rejected 保存 returned in silence, the editor
-    // kept the draft, the reader pressed 保存 again — and if the task had been
-    // deleted on another device in the meantime, the edit they had just typed
-    // could never be saved and nothing would ever have said so.
+    // A REFUSAL IS AN ANSWER: without it the state that carries the refusal never
+    // gets a value — `setEditError` called with `undefined` and never with a
+    // message makes the error line below unreachable. Which means a rejected 保存
+    // returns in silence, the editor keeps the draft, the reader presses 保存
+    // again — and if the task is deleted on another device in the meantime, the
+    // edit they just typed can never be saved and nothing says so.
     if (!controller.updateTask(current.id, draftToUpdatePatch(draft))) {
       setEditError(t('detail.editSaveFailed'))
       return

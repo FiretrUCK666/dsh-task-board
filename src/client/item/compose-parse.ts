@@ -30,7 +30,7 @@
  */
 import { PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
 /**
- * THE DAY BOUNDARY IS THE MODEL'S, and this file used to carry its own copy.
+ * THE DAY BOUNDARY IS THE MODEL'S: this file keeps no copy of its own.
  *
  * `@今天`, `@明天` and a bare `@9/30` all resolve against 「which day is it」, and
  * that question is answered once, in `core`, because the answer has to agree
@@ -153,7 +153,7 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
       if (caption !== '') {
         /* **一个 token 的范围就是它自己的那串字。** 步骤这一枚的 `raw` 是整行（去掉缩进），
          * 所以 `start` 必须是**行首**（第一个 `-` 的位置），不是标题的位置：
-         *  · 曾经写成 `box[1].length + line.indexOf(caption)`——缩进算了两遍，而 `indexOf`
+         *  · 写成 `box[1].length + line.indexOf(caption)` 是错的——缩进算了两遍，而 `indexOf`
          *    找到的是那串字的**第一次**出现，不一定是标题（`- [ ] -` 就能骗到它）；
          *  · 而撤回（`escapeComposerToken`）正是在这个偏移上插一个反斜杠，所以一个错数
          *    会把反斜杠插进读者自己的句子里；

@@ -32,16 +32,16 @@ export function RunConfigEditor({ value, onChange, controller }: {
   /**
    * THREE STATES PER CATALOG, not one empty list.
    *
-   * `presets` and `groups` started as `[]` and stayed `[]` whether the catalog was
-   * still loading, had failed, or genuinely held nothing — so the form drew the
-   * model select with a single 「默认」 and the reader had no way to tell 「there is
-   * one model and it is the default」 from 「I could not read the catalog」. On the
-   * surface where a task is committed to a model, a workspace and a permission,
-   * that is the wrong thing to be unable to distinguish.
+   * `[]` cannot distinguish a catalog that is still loading, one that failed, and
+   * one that genuinely holds nothing — so the form draws the model select with a
+   * single 「默认」 and the reader cannot tell 「there is one model and it is the
+   * default」 from 「I could not read the catalog」. On the surface where a task is
+   * committed to a model, a workspace and a permission, that is the wrong thing
+   * to be unable to distinguish.
    *
-   * A REJECTION WAS SWALLOWED, which is worse: the `Promise.all` result was
-   * `void`ed with no `catch` and no log, so a failure left the form in the same
-   * "empty" state as success — permanently, and silently.
+   * A SWALLOWED REJECTION is worse: a `Promise.all` result `void`ed with no
+   * `catch` and no log leaves the form in the same "empty" state as success —
+   * permanently, and silently.
    *
    * So: `pending` while in flight, `failed` when the read settles badly, and only
    * then is an empty list an answer about the deployment.
@@ -85,9 +85,9 @@ export function RunConfigEditor({ value, onChange, controller }: {
    *
    * A `<select>` whose `value` matches no `<option>` displays the FIRST option
    * while holding the stored one. So a task whose model, workspace, preset or
-   * permission this deployment no longer advertises opened a form that said
-   * 「默认」 about a setting that was not the default — and the reader's next save
-   * wrote that lie back. Every one of the five selectors here had it.
+   * permission this deployment does not advertise gets a form that says
+   * 「默认」 about a setting that is not the default — and the reader's next save
+   * writes that lie back. All five selectors here have it.
    *
    * The project's own rule already covers this shape and names the forbidden
    * behaviour: a current value the catalogue does not have is shown AS IT IS and

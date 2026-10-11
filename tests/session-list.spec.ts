@@ -105,10 +105,10 @@ describe('taskSessionsOf (统一会话列表)', () => {
   })
 
   it('a session NOT in the arrangement floats by the work it did on this card', () => {
-    // The trap this pins: a row's key used to be the host's `updatedAt` for a
-    // linked conversation, so a bound session you had just chatted with — whose
-    // turn the board observed onto this very card — sorted as if nothing had
-    // happened, and stayed buried under the arranged rows. The key is now the
+    // The trap this pins: a row keyed on the host's `updatedAt` for a linked
+    // conversation sorts a bound session you have just chatted with — whose turn
+    // the board observed onto this very card — as if nothing had happened, and
+    // buries it under the arranged rows. The key is the
     // session's own activity on this card, whichever source is newer.
     const task = { ...withOneRun(), sessionsOrder: ['s-1'] } // arranged: s-1 only
     const observed = { ...task, executions: [...task.executions, newExternalRound({

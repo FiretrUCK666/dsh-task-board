@@ -21,7 +21,7 @@
  * panel.
  *
  * AND A FIELD THAT NO LONGER EXISTS IS NOT MIGRATED, IT IS IGNORED. `density`
- * was one: a record written by an older build still carries the key, and
+ * is one: a record written by an older build still carries the key, and
  * reading it must not throw, must not be resurrected by a default, and must not
  * have to be explicitly deleted before this module can parse its own output. The
  * reader below simply never names it, so a record from any build at all parses
@@ -104,12 +104,12 @@ export interface ItemViewPrefs {
  * question, so a state added here and forgotten there is a state nobody can
  * photograph and nobody notices is missing. One declaration, imported by both.
  *
- * AND A CONSTANT IS ALSO A PROMISE, which is the half that bites. This list used
- * to name five states and the panel could open TWO of them: `palette` and
+ * AND A CONSTANT IS ALSO A PROMISE, which is the half that bites. Naming a state
+ * in this list is a promise that the surface can OPEN it: `palette` and
  * `create`. The key sheet is a `useState` inside the palette that opens it, the
  * archive is a section at the foot of the list page, and the batch bar is a
  * function of the holding rather than a state at all. A bench asked for
- * `DSH_PANEL_OPEN=keys` therefore photographed an ordinary panel and called it the
+ * `DSH_PANEL_OPEN=keys` therefore photographs an ordinary panel and calls it the
  * key sheet — a capture that cannot be evidence is worse than no capture, because
  * the next reader believes it.
  *

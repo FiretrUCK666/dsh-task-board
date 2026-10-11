@@ -9,12 +9,12 @@
  * A card can be worked on through five lanes — a plain run, a saved comment
  * injected into a session, an externally-observed native turn, a direct steer,
  * a session-rule instruction — and ALL FIVE land it in 待审核 (`settleColumnOf`
- * reads `hasCompletedWork`, which has always been lane-complete). But the
- * display layer used to ask the question through `plainRunsOf`, whose filter is
- * `comment === undefined` and therefore sees exactly ONE of them. So a card
- * whose work came from a comment / native turn / steer / rule sat visibly in
- * the review column while showing no 待你决断, no failure word, and counting
- * zero in the header — with the bell still demanding a decision for it.
+ * reads `hasCompletedWork`, which has always been lane-complete). But asking the
+ * question through `plainRunsOf`, whose filter is `comment === undefined`, sees
+ * exactly ONE of them: a card whose work came from a comment / native turn /
+ * steer / rule sits visibly in the review column while showing no 待你决断, no
+ * failure word, and counting zero in the header — with the bell still demanding
+ * a decision for it.
  *
  * Three rules this module states once, for everyone:
  *
@@ -168,7 +168,7 @@ export interface WaitingSession {
  * The round list is a subset — a session dragged in from the workspace, or
  * pulled in by a 会话建卡, is responsible for this card from the moment it is
  * bound, with or without a board round behind it. That difference is exactly
- * why the bell used to ring for a question the card itself never mentioned.
+ * why the round list rings the bell for a question the card never mentioned.
  */
 export function waitingSessionsOf(
   task: TaskRecord,

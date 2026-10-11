@@ -32,13 +32,13 @@ import type { ItemRecord } from './item.ts';
  * ordering a page never needs a round trip and two devices holding one document
  * can never order it differently.
  *
- * 出生时刻 WAS A SEVENTH MEMBER AND IS NOT ANY MORE, because for a reader it was
- * not a different question from 顺序 — both answer "which of these is mine and in
- * what order did they arrive", one read from the document's own comparator and
- * one read from `createdAt` — and two menu entries that produce near-identical
- * lists is one entry too many. Removing it is also a removal of the only
- * comparator that subtracted a raw document field, which is why its NaN case is
- * documented below.
+ * 出生时刻 IS NOT A MEMBER, and the reason is the reader's: it is not a different
+ * question from 顺序 — both answer "which of these is mine and in what order did
+ * they arrive", one read from the document's own comparator and one read from
+ * `createdAt` — and two menu entries that produce near-identical lists is one
+ * entry too many. Restoring it would also restore the only key that subtracts a
+ * raw document field, which is why the NaN case is documented below rather than
+ * assumed.
  */
 export type ItemSort = 'sequence' | 'starts' | 'due' | 'hard' | 'priority' | 'title';
 /** The orderings, in the order the surface offers them — the first is the default. */

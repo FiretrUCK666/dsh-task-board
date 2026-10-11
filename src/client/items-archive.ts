@@ -66,26 +66,25 @@ export type ArchiveReply =
  * Whether an answer is a row — asked ONCE, by the model, which is the only layer
  * that knows what a row is.
  *
- * This file used to carry a private guard of its own, and it was a weakened copy
- * of the model's: the same question — 「is this payload a row」 — with two answers
- * in two layers, neither able to see the other. The copy checked five fields and
- * let through a row with no `notes`, no `tags` and a non-finite `updatedAt`. The
- * model's asks for finite stamps for a reason written down inside it: a `NaN`
- * comparator makes `Array.prototype.sort` treat a pair as EQUAL, so the order
- * quietly becomes arrival order and two devices holding one document render two
- * different lists, with nothing anywhere red.
+ * A private guard here is a weakened copy of the model's: the same question —
+ * 「is this payload a row」 — with two answers in two layers, neither able to see
+ * the other. A copy that hand-checks five fields lets through a row with no
+ * `notes`, no `tags` and a non-finite `updatedAt`. The model's asks for finite
+ * stamps for a reason written down inside it: a `NaN` comparator makes
+ * `Array.prototype.sort` treat a pair as EQUAL, so the order quietly becomes
+ * arrival order and two devices holding one document render two different
+ * lists, with nothing anywhere red.
  *
- * The file lives OUTSIDE `src/client/item/`, which is the other half of why the
- * copy survived: the panel's own 「this surface does not judge」 gate never read
- * this file, so the rule that would have caught it was pointed somewhere the
- * code was not.
+ * The file lives OUTSIDE `src/client/item/`, which is the other half of the
+ * exposure: the panel's own 「this surface does not judge」 gate never reads this
+ * file, so a rule that would catch the copy is pointed somewhere the code is not.
  *
  * THE ONE THING THAT IS STILL LOCAL is the narrowing, and it is narrowing rather
  * than judgment: the model's guard reports `RawItem`, which is deliberately not
  * exported, so somebody has to say 「and that is a row this panel renders」. The
  * question is not re-asked here — `isItemRecordShape` has already answered it,
  * and this body cannot answer anything else. What is forbidden is growing that
- * body into a second opinion, which is what it used to be.
+ * body into a second opinion.
  */
 function archivedRow(value: unknown): value is ItemRecord {
   return isItemRecordShape(value)

@@ -1,7 +1,7 @@
 /**
  * `task-demand.ts` — 「这张卡欠人什么」. THE contract for the human gate.
  *
- * Every case here is a disagreement the board used to have with itself, written
+ * Every case here is a disagreement the board can have with itself, written
  * as the one answer instead:
  *
  *  - the review half is a CONJUNCTION (finished ∧ in 待审核 ∧ not looked at), so
@@ -133,7 +133,7 @@ describe('gateOf — the card owes a decision only while all three hold', () => 
     expect(gateOf(card({ status: 'review' })).state).toBe('none')
   })
 
-  it('a comment-only card is UNSEEN — the lane used to be invisible to the chip', () => {
+  it('a comment-only card is UNSEEN — the chip must see this lane', () => {
     expect(gateOf(commentFinished('s-1')).state).toBe('unseen')
   })
 
@@ -195,8 +195,8 @@ describe('waitingSessionsOf — the RELATED set, not "sessions with a round here
     const run = runFinished('s-1')
     const pending = (): 'question' => 'question'
     expect(waitingSessionsOf(run, pending)[0]?.executionId).toBe('e1')
-    // Never a fabricated index: the old walk passed a comment round's id into
-    // the run sequence and the tooltip printed 「第 0 次执行」.
+    // Never a fabricated index: a comment round's id must not enter the run
+    // sequence, where the tooltip would print 「第 0 次执行」.
     const commentCard = card({ status: 'running', executions: [newCommentRound({ id: 'c1', now: NOW, text: 'x', sessionId: 's-9' })] })
     expect(waitingSessionsOf(commentCard, pending)[0]).toEqual({ sessionId: 's-9', waitingKind: 'question' })
   })
@@ -214,9 +214,9 @@ describe('boardDemandOf — the header line, counting the SAME gate', () => {
   })
 
   it('counts a finished unlooked-at card, whatever lane produced it', () => {
-    // The plain-run lane first (the only case the old count could see)…
+    // The plain-run lane first (the only one a count over plain runs sees)…
     expect(boardDemandOf([runFinished('s-1')], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
-    // …and then the four it could not, which is the whole point.
+    // …and then the four it cannot, which is the whole point.
     expect(boardDemandOf([commentFinished('s-1')], () => undefined)).toEqual({ total: 1, waiting: 0, review: 1 })
   })
 

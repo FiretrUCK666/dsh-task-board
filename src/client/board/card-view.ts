@@ -4,18 +4,17 @@
  *
  * WHY THIS FILE IS THE WHOLE ANSWER
  *
- * The card used to have TWO priority chains: `cardViewModelOf` ranked
- * waiting > running > queued > failed > review > idle, and the component then
- * rendered a DIFFERENT one (running → pending → awaiting-decision → run
- * count). The model's own primary word therefore never reached the screen: a
- * queued card showed no primary at all, and a failed one showed 待你决断 on one
- * line and 失败待决策 on the next. And the component re-derived four more facts
- * of its own (the run list, the last result, the chain/paused words) from
- * `plainRunsOf`, which cannot see a comment, an observed native turn, a direct
- * steer or a rule instruction — the four lanes a card is actually worked on
- * through.
+ * TWO priority chains is one too many. `cardViewModelOf` ranks
+ * waiting > running > queued > failed > review > idle; a component that renders
+ * a DIFFERENT one (running → pending → awaiting-decision → run count) never
+ * lets the model's own primary word reach the screen — a queued card shows no
+ * primary at all, and a failed one shows 待你决断 on one line and 失败待决策 on the
+ * next. And a component that re-derives four more facts of its own (the run
+ * list, the last result, the chain/paused words) from `plainRunsOf` cannot see
+ * a comment, an observed native turn, a direct steer or a rule instruction —
+ * the four lanes a card is actually worked on through.
  *
- * So the rule now: `primary` below is the chip. Everything the card shows is a
+ * So the rule: `primary` below is the chip. Everything the card shows is a
  * field computed here from the card's OWN facts, and the component renders
  * fields. There is no second chain to drift, and no lane the model cannot see.
  */

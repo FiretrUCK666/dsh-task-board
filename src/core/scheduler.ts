@@ -200,8 +200,8 @@ export class SchedulerService {
         //   · any lane still working → nothing to recover yet (re-attempt next
         //     tick; a merely-SAVED comment must never block recovery forever);
         //   · the card's last PLAIN run failed/cancelled → 失败不续 (reading
-        //     the last row used to relaunch a failed chain every minute, and
-        //     an open-but-not-newest round used to slip through).
+        //     the last row relaunches a failed chain every minute, and lets an
+        //     open-but-not-newest round slip through).
         if (hasOpenRun(task)) continue
         const runs = plainRunsOf(task)
         const lastRun = runs[runs.length - 1]

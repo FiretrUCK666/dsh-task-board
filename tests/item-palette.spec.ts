@@ -521,8 +521,8 @@ describe('`×` means one thing on this panel: it takes a condition OFF the query
       // A qualifier is set, so the chip that removes it is on screen.
       open(panel)
       typeInto(fieldOf(panel), 'status:todo')
-      /* **叉按名字找，不按字符找。** 它现在是一枚画出来的记号（`CrossMark`，`data-mark="cross"`）
-         ——按字符找的那一版只在它还是个「×」字的时候有效，而它不再是字了（理由与字形有关：
+      /* **叉按名字找，不按字符找。** 它是一枚画出来的记号（`CrossMark`，`data-mark="cross"`）
+         ——按字符找的读法只对「×」这个字有效，而它不是字（理由与字形有关：
          一个字的墨落在哪几行上由字体决定，换台设备就换一个符号）。按名字找的律仍然咬得住：
          **这一页上每一枚叉，都必须落在一个「删掉 / 关掉」含义的控件里。** */
       const crosses = [...panel.surface.querySelectorAll('[data-mark="cross"]')]
@@ -536,11 +536,11 @@ describe('`×` means one thing on this panel: it takes a condition OFF the query
       // AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
       // into it produces the chip that undoes the parser; it must not be a cross.
       //
-      // IT IS NO LONGER ON THE SURFACE AT REST, and that is the whole change: the
-      // capture grammar lives in the ＋新建一条 sheet now, so there is no always-on
-      // field to type into — which is why the two controls could collide at all.
-      // The rule still has to hold, so it is checked where the field now lives:
-      // in the sheet, opening it first.
+      // That field is not on the surface at REST — the capture grammar lives in
+      // the ＋新建一条 sheet, so there is no always-on field to type into, and a
+      // gate that looked for one at rest would be reading nothing. The rule still
+      // has to hold, so it is checked where the field lives: in the sheet, opening
+      // it first.
       openSheet(panel)
       const capture = panel.surface.querySelector('[class*="itemInput"]')
       expect(capture, 'the sheet opened and there is still no field — there is no chip to look at').not.toBeNull()

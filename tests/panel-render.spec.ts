@@ -65,7 +65,7 @@ import {
 } from './panel-harness.ts'
 
 /**
- * THE CANVAS / INNER SPLIT, restated for the two cases the old rule merged.
+ * THE CANVAS / INNER SPLIT, stated for the two cases a single rule merges.
  *
  * The board already answers this, and it is the authority: `.board` AND
  * `.column` are both `var(--dsh-tb-bg)`, because a column is a plate that HOLDS
@@ -73,13 +73,13 @@ import {
  * a menu, a field, the danger zone — takes an opaque layer, because text has to
  * survive whatever is behind it.
  *
- * This list used to be a single rule with the opposite sense: the root took the
- * canvas and NOTHING inside it was allowed to. That read fine in the file and
- * rendered as a flat plate with a translucent border, because the list card and
- * the five overview tiles were painted with opaque layer tokens and covered the
- * glass one level down — while the board beside it kept working. **The lesson is
- * the split itself**: 「canvas or inner」 is not a property of a token, it is a
- * property of whether the box holds the content or floats over it.
+ * One rule with the opposite sense is the tempting shortcut: the root takes the
+ * canvas and NOTHING inside it may. That reads fine in the file and renders as a
+ * flat plate with a translucent border, because the list card and the five
+ * overview tiles are painted with opaque layer tokens and cover the glass one
+ * level down — while the board beside it keeps working. **The lesson is the split
+ * itself**: 「canvas or inner」 is not a property of a token, it is a property of
+ * whether the box holds the content or floats over it.
  */
 
 /** One declaration-only rule, with the selector that introduced it. */
@@ -301,27 +301,27 @@ describe('the panel renders against the host it will actually run in', () => {
   })
 
   it('keeps zero list rules inside the board stylesheet', () => {
-    // 74 rules were appended there under a heading that still read "right-hand
-    // page". A separate sheet is the structural half of that fix: after it,
-    // nothing about the list can be edited from the board's file by accident.
+    // The separation is the structural half: 74 list rules appended to the
+    // board's sheet, under a heading that still reads "right-hand page", is what
+    // it prevents — with a sheet of its own, nothing about the list can be edited
+    // from the board's file by accident.
     //
     // The harness has to have read SOMETHING for the sweep below to mean
-    // anything — and the reading used to be proved by
-    // `css.includes('src/client/board.module.css')`, which is true because
-    // `panelCss()` writes that path into the string as a BANNER COMMENT whether
-    // or not the file exists. It is a decoration answering an assertion about the
-    // source, so it is gone; what is left is the part that can actually fail: the
+    // anything. `css.includes('src/client/board.module.css')` cannot prove that,
+    // because `panelCss()` writes that path into the string as a BANNER COMMENT
+    // whether or not the file exists: it is a decoration answering an assertion
+    // about the source. What is left is the part that can actually fail: the
     // list's own rules are in the concatenation at all.
     expect(/\.item[A-Z]/.test(css), 'the harness read no list rules at all, so the sweep of board.module.css below is over an empty claim').toBe(true)
     const boardOnly = readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8')
     const leftover = [...boardOnly.matchAll(/^\.item[A-Z][A-Za-z]*\s*\{/gm)].map(m => m[0])
     expect(leftover, `these list rules are still in board.module.css: ${leftover.join(', ')}`).toEqual([])
-    // The assertion that is left CAN fail, and this is the state it used to
-    // stand in for: `panelCss()` writes each sheet's path into the string as a
-    // banner comment, so on a concatenation carrying two banners and no rules
-    // the old conjunction still held. Nothing is being asserted about that
-    // string now — and this line exists so the next reader does not put the
-    // banner check back.
+    // The assertion that is left CAN fail, and this is the state it stands in
+    // for: `panelCss()` writes each sheet's path into the string as a banner
+    // comment, so on a concatenation carrying two banners and no rules the banner
+    // check alone still holds. Nothing is asserted about that string as a claim
+    // now — this line is a pin, so the next reader does not put the banner check
+    // back.
     expect(
       /\.item[A-Z]/.test('/* src/client/board.module.css */\n/* src/client/item/item.module.css */\n'),
       'this assertion cannot tell a panel with list rules from one without, so it will pass on an empty read',
@@ -383,36 +383,33 @@ describe('the panel renders against the host it will actually run in', () => {
     // And they must be two DIFFERENT documents, not one rendered twice.
     expect(new Set([schedule, list]).size).toBe(2)
     // 收件 is gone from the render as well as from the page set, so a stale reader of
-    // its copy finds nothing — this is what says so out loud.
+    // its copy finds nothing — and this assertion is what says so out loud.
     expect(list, 'the removed 收件 page is still drawn').not.toContain('收件只放还没分流的想法')
   })
 
   it('a static render cannot answer the band question, and that is a fact about the bench', () => {
-    // **THIS ASSERTION USED TO ASK 「两档渲染出来的标记一样吗」, and it had stopped
-    // being able to fail for a reason worth recording.**
+    // **「两档渲染出来的标记一样吗」 IS THE WRONG QUESTION FOR A STATIC RENDER, and
+    // it cannot fail for a reason worth recording.**
     //
-    // It answered "yes, they differ" by comparing two strings. The band is read by
+    // It answers "yes, they differ" by comparing two strings. The band is read by
     // `useSurfaceNarrow`, whose value is the FIRST slot the hook can hold — and
-    // everything that *acts* on the band now lives behind an effect or a
-    // selection: the wide band's detail rail needs a chosen row, the narrow band's
-    // in-row detail needs an expanded one. `renderToStaticMarkup` renders neither,
-    // so the two renders came out **byte-identical** — verified by hashing a
-    // before-and-after pair taken before any of this round's changes.
+    // everything that *acts* on the band lives behind an effect or a selection:
+    // the wide band's detail rail needs a chosen row, the narrow band's in-row
+    // detail needs an expanded one. `renderToStaticMarkup` renders neither, so the
+    // two renders come out **byte-identical**, and the comparison is vacuous while
+    // still reading like a check. The same shape as the 「探针没咬住」 failures
+    // elsewhere in this file, one level up: not a probe that cannot bite, but a
+    // probe with nothing left to bite on.
     //
-    // So the assertion was not failing on a defect; it was failing because it had
-    // quietly become vacuous while still reading like a check. The same shape as the
-    // 「探针没咬住」 failures elsewhere in this file, one level up: not a probe that
-    // cannot bite, but a probe with nothing left to bite on.
+    // **WHERE THAT CLAIM LIVES.** The part worth keeping — 「a wide surface has
+    // somewhere to put the row you are reading, and a narrow one does not」 — needs
+    // a real mount, because both halves of it are about state that only exists
+    // after an interaction. It lives in `item-workbench.spec.ts` under jsdom.
     //
-    // **WHERE THE CLAIM WENT.** The part that is worth keeping — 「a wide surface
-    // has somewhere to put the row you are reading, and a narrow one does not」 —
-    // needs a real mount, because both halves of it are about state that only
-    // exists after an interaction. It lives in `item-workbench.spec.ts` under jsdom.
-    //
-    // **WHAT REPLACES IT HERE.** The fact a static render CAN see, and the one that
-    // actually breaks when the wiring breaks: the harness hands the panel a band and
-    // the panel must carry it into the root. That is asserted by the band tests
-    // below, and it is the half that a typo in the hook would take out.
+    // **WHAT A STATIC RENDER CAN SEE INSTEAD.** The fact that actually breaks when
+    // the wiring breaks: the harness hands the panel a band and the panel must
+    // carry it into the root. That is asserted by the band tests below, and it is
+    // the half a typo in the hook would take out.
     const wide = renderPanel(fixtures(), 'wide')
     const narrow = renderPanel(fixtures(), 'narrow')
     expect(wide.length, 'a static render produced nothing at all — the bench is broken, not the band').toBeGreaterThan(0)
@@ -428,18 +425,18 @@ describe('the panel renders against the host it will actually run in', () => {
 
   // A CLAIM ABOUT HOW MANY OF SOMETHING ARE ON SCREEN HAS TO BE COUNTED.
   //
-  // This one was wrong for two rounds and nothing was red. 「三张统计卡」is a claim
-  // about a COUNT, and it was true on the fixtures (all three numbers non-zero, so
-  // three cards render) while being false on a real document — `triageLinesOf`
-  // drops the zero lines, `flatMap` drops the tiles that have none, and the band
-  // that looked like three cards was 「最多画三张」. Removing a second filter on the
-  // receiving side changed nothing, because the zeros were already gone before
-  // they arrived, and **a defect defended twice looks defended once**.
+  // This one can be wrong while nothing is red. 「三张统计卡」is a claim about a
+  // COUNT, and it is true on the fixtures (all three numbers non-zero, so three
+  // cards render) while false on a real document — `triageLinesOf` drops the zero
+  // lines, `flatMap` drops the tiles that have none, and the band that looks like
+  // three cards is 「最多画三张」. Removing a second filter on the receiving side
+  // changes nothing, because the zeros are already gone before they arrive, and
+  // **a defect defended twice looks defended once**.
   //
-  // It was caught by opening the live panel at 412px and counting the cards in the
-  // picture — 2427 passing tests did not notice, because no test ever said the
-  // number. **So the number is now said, on the case that makes it a claim at
-  // all**: a document where every count is zero.
+  // Nothing in this suite notices, which is exactly the hazard: no test ever says
+  // the number. The number is measured instead by opening the live panel at 412px
+  // and counting the cards in the picture. **So the number is said here, on the
+  // case that makes it a claim at all**: a document where every count is zero.
   it('the rail states every count, including zero — 「被问到而答案是零」', () => {
     // The statistics band is gone; its contract moved to the rail rows that
     // replaced it. A rail that drops a zero-count row turns the map into a log,
@@ -470,8 +467,8 @@ describe('the panel renders against the host it will actually run in', () => {
     // The claim is 「the today cell's fill survives hover」, and the only shape that
     // keeps it true after the next hover rule is written is the one that names the
     // exception where the hover is declared — so that is what this reads.
-    // **先剥注释再匹配**（硬性规范 14）：样式表里那段讲这次修改的散文本身就写着
-    // `.itemRailDay:hover`，不剥注释的话，第一版门禁会把**正确的注释**报成违规——
+    // **先剥注释再匹配**（硬性规范 14）：样式表里那段讲这条规则的散文本身就写着
+    // `.itemRailDay:hover`，不剥注释的话，门禁会把**正确的注释**报成违规——
     // 于是正确的修法变成改注释躲开扫描，而不是改实现。
     const sheet = panelCss().replace(/\/\*[\s\S]*?\*\//g, '')
     const hoverRules = [...sheet.matchAll(/\.itemRailDay[^{}]*\{[^}]*\}/g)]
@@ -514,10 +511,10 @@ function cssPanelRoot(): string {
 /**
  * THE GEOMETRY CONTRACTS.
  *
- * These are the claims that the screenshots in the bug report contradict, and
- * they are written as arithmetic on the source rather than as a picture,
- * because a picture has to be believed. Each one states the failure it exists
- * to catch, in the same shape: the rule, then the reason it was ever broken.
+ * These are the claims a screenshot cannot settle, so they are arithmetic on the
+ * source rather than a picture, because a picture has to be believed. Each one
+ * states the failure it exists to catch, in the same shape: the rule, then the
+ * reason the rule is a rule.
  */
 /**
  * Could this selector match the standalone triage sentence?
@@ -533,11 +530,11 @@ function cssPanelRoot(): string {
  * pattern is a guess: it would classify `.itemScroll > .itemTriageText` as
  * inapplicable and quietly re-open the very hole this exists to close.
  *
- * **THE CLASS IS A PARAMETER.** It used to be the literal `itemTriageText` inside
- * this function body, which is the worst shape a helper can have: the sentence
- * moved — into the table, as a prop — and the helper went on filtering for a class
- * that nothing renders, so every rule was discarded and the gate reported 「there is
- * no rule」 about a rule three lines above it. A helper that names its subject can
+ * **THE CLASS IS A PARAMETER.** Writing the literal `itemTriageText` inside this
+ * function body is the worst shape a helper can have: the sentence is a prop of
+ * the table now, and a hard-coded class goes on filtering for a class nothing
+ * renders, so every rule is discarded and the gate reports 「there is no rule」
+ * about a rule three lines above it. A helper that hard-codes its subject can
  * only ever be right about one subject.
  * @param selector - the selector the sheet wrote.
  * @param className - the class the standalone element actually carries.
@@ -559,22 +556,22 @@ function canMatchStandalone(selector: string, className: string): boolean {
 
 describe('reduced motion is honoured by the TOKEN, not by a list of names', () => {
   /**
-   * THE OLD GATE COULD NOT FAIL, AND IT FORBADE THE FIX.
+   * A GATE THAT NAMES SELECTORS BY HAND CANNOT FAIL, AND IT FORBIDS THE FIX.
    *
-   * It asserted that a handful of named selectors were absent from a
-   * hand-written kill list. So a brand-new 400ms infinite marquee kept it green,
-   * and it had no way to see that three selectors the list NAMED sat later in the
-   * file at equal specificity and therefore still animated. Worst of all, one of
-   * its assertions demanded `.spinner { animation-duration: 1.4s }` LITERALLY —
-   * so routing the durations through the token, which is the actual fix, turned
-   * the gate red. A gate that red-lines the correct implementation is worse than
-   * no gate.
+   * Asserting that a handful of named selectors are absent from a hand-written
+   * kill list leaves a brand-new 400ms infinite marquee green, and it has no way
+   * to see three selectors the list NAMES sitting later in the file at equal
+   * specificity and therefore still animating. Worst of all, an assertion
+   * demanding `.spinner { animation-duration: 1.4s }` LITERALLY red-lines the
+   * correct implementation, because routing the durations through the token is
+   * the fix. A gate that red-lines the correct implementation is worse than no
+   * gate.
    *
-   * So this one computes instead of grepping. The policy is now a single token
-   * going to zero, and this asserts the thing that policy depends on: **every
-   * transition on the list panel reads that token.** A tenth of them spelled their
-   * own duration, which is exactly why the whole sheet moved under reduced
-   * motion — there was no block here to catch it and no token to reach through.
+   * So this one computes instead of grepping. The policy is a single token going
+   * to zero, and this asserts the thing that policy depends on: **every transition
+   * on the list panel reads that token.** A tenth of them spelling their own
+   * duration is exactly why the whole sheet moves under reduced motion when there
+   * is no block here to catch it and no token to reach through.
    */
   const itemSheet = readFileSync(new URL('../src/client/item/item.module.css', import.meta.url), 'utf8')
   const boardSheet = readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')
@@ -601,12 +598,11 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     const sheet = bare(itemSheet)
     /* **按「这一条规则说的是哪个状态」找规则，不按字面找。**
      *
-     * 原来这里是 `indexOf('.itemRow:hover')` 之类的字面查找，而三条底色的先后现在
-     * **写在选择器里**（`:not([data-open]):not([data-picked]):hover`）——那不是
-     * 「换了个写法」，那是把「谁压谁」从源顺序搬到选择器里，正是这条断言本来要守的
-     * 那件事的加强版。所以查找也改成读语义：先把 `:not(…)` 摘掉，再按状态记号找。
-     * 一个按字面认选择的检查器，会逼着人把选择器写回脆弱的那一版来迁就它
-     * （硬性规范 14）。 */
+     * 这里按「这一条规则说的是哪个状态」找，不按字面找：三条底色的先后**写在选择器里**
+     * （`:not([data-open]):not([data-picked]):hover`）——那不是「换了个写法」，那是把
+     * 「谁压谁」从源顺序搬到选择器里，正是这条断言本来要守的那件事的加强版。所以查找
+     * 也读语义：先把 `:not(…)` 摘掉，再按状态记号找。一个按字面认选择的检查器，会逼着
+     * 人把选择器写回脆弱的那一版来迁就它（硬性规范 14）。 */
     const owned = (selector: string): string => selector.replace(/:not\([^)]*\)/g, '').trim()
     const fillOf = (selector: string): string | undefined => {
       const block = declarationRules(sheet).find(rule => owned(rule.selector) === selector)
@@ -709,18 +705,19 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
   })
 
   it('and no transition on the board spells one either, except the ones the block silences', () => {
-    // The board had two — both 120ms, both on a hover tint — and they are silenced
-    // in the block rather than tokenised, because they were written before the
-    // token existed. This pins that list so it cannot grow: a NEW literal has to
-    // be either tokenised or silenced for its OWN selector, and both are
-    // decisions someone makes on purpose.
+    // The board carries exactly two, both 120ms, both on a hover tint; they are
+    // silenced in the block rather than tokenised, because they predate the token.
+    // This pins that list so it cannot grow: a NEW literal has to be either
+    // tokenised or silenced for its OWN selector, and both are decisions someone
+    // makes on purpose.
     //
-    // It used to ask `match[0].includes('reviewMessageText')`, and `match[0]` is
-    // the matched FRAGMENT — `{ transition: <value>` — which is the DECLARATION
-    // and never the selector. So `isNamed` was false for every literal, the
-    // second half of the condition (`named.test(boardSheet)`, true as long as the
-    // block names ONE selector at all) carried the assertion by itself, and the
-    // loop was three identical `expect(true)` — a boolean agreeing with itself.
+    // Asking `match[0].includes('reviewMessageText')` cannot make that decision,
+    // because `match[0]` is the matched FRAGMENT — `{ transition: <value>` — which
+    // is the DECLARATION and never the selector. So `isNamed` would be false for
+    // every literal, the second half of the condition (`named.test(boardSheet)`,
+    // true as long as the block names ONE selector at all) would carry the
+    // assertion by itself, and the loop would be three identical `expect(true)` —
+    // a boolean agreeing with itself.
     const unowned = unownedBoardTransitions(boardSheet)
     expect(
       unowned,
@@ -770,20 +767,20 @@ describe('the panel fills the stage it is given', () => {
   })
 
   it('paints the CANVAS on the root AND on the plates that hold the content', () => {
-    // THIS TEST USED TO SAY THE OPPOSITE, and that is worth recording because the
-    // reversal is the finding.
+    // THE CLAIM IS THE OPPOSITE OF THE OBVIOUS INDUCEMENT, and the reversal is the
+    // finding.
     //
-    // It asserted that the root took the canvas token and that NOTHING INSIDE it
-    // did. That is a coherent-looking rule, and it was wrong in the way that
-    // only the reader could see: the root was glass, and then the list card, the
-    // five overview tiles and both sticky heads were painted with an OPAQUE layer
-    // token, which covered the glass again one level down. The result reads as a
-    // flat plate with a translucent border around it — the one thing a glass skin
-    // cannot recover from — while the board, whose columns take the SAME canvas
-    // token, kept working the whole time.
+    // The obvious rule is that the root takes the canvas token and NOTHING INSIDE
+    // it may. That is coherent-looking, and it is wrong in the way that only the
+    // reader can see: the root is glass, and then the list card, the five overview
+    // tiles and both sticky heads are painted with an OPAQUE layer token, which
+    // covers the glass again one level down. The result reads as a flat plate with
+    // a translucent border around it — the one thing a glass skin cannot recover
+    // from — while the board, whose columns take the SAME canvas token, keeps
+    // working throughout.
     //
-    // The corrected rule is the board's own, and it splits the two cases the old
-    // rule had merged:
+    // The rule here is the board's own, and it splits the two cases that single
+    // rule merges:
     //   - a plate that HOLDS CONTENT takes the canvas, because it is the same
     //     surface as the app's base and translucency has to compose through it;
     //   - a thing that FLOATS (a menu, a field, the danger zone) takes an opaque
@@ -801,21 +798,21 @@ describe('the panel fills the stage it is given', () => {
     const boardBackground = /background\s*:\s*([^;]+)/.exec(boardRoot)?.[1]?.trim() ?? ''
     expect(background.trim(), 'the two stage roots have drifted apart').toBe(boardBackground)
 
-    // THE CARDS, NAMED — and the rule they are held to CHANGED, because the rule
-    // was answering a question this panel no longer has.
+    // THE CARDS, NAMED — and the rule they are held to is the one that answers the
+    // question this panel actually has.
     //
-    // It used to say a plate that HOLDS CONTENT takes the canvas token, on the
+    // Saying that a plate which HOLDS CONTENT takes the canvas token, on the
     // reasoning that the panel root is glass and translucency has to compose
-    // through it. But the root above now paints the canvas token ITSELF, so
-    // there is no glass left inside the panel for a card to compose with — and a
-    // card painted exactly the canvas is a card a reader cannot find, which is
-    // what 「文字都粘在左侧边缘上」 looks like when the whole surface is one flat
-    // plane.
+    // through it, no longer answers anything: the root above paints the canvas
+    // token ITSELF, so there is no glass left inside the panel for a card to
+    // compose with — and a card painted exactly the canvas is a card a reader
+    // cannot find, which is what 「文字都粘在左侧边缘上」 looks like when the whole
+    // surface is one flat plane.
     //
-    // THE CLAIM NOW IS THE THREE STEPS, in order and no more than three: the
-    // page is the canvas, a CARD IS EXACTLY ONE STEP ABOVE IT, and a floating
-    // surface is the step above that. One step is checkable; 「however far above
-    // it happens to land」 is not.
+    // THE CLAIM IS THE THREE STEPS, in order and no more than three: the page is
+    // the canvas, a CARD IS EXACTLY ONE STEP ABOVE IT, and a floating surface is
+    // the step above that. One step is checkable; 「however far above it happens to
+    // land」 is not.
     const surface = /--item-surface\s*:\s*([^;]+)/.exec(css)?.[1]?.trim() ?? ''
     expect(surface, 'the card surface is not a named token — it is a colour written at each point of use').not.toBe('')
 // THE CARD IS OPAQUE, **AND IT CARRIES A SHADOW** — and the second half is the
@@ -828,14 +825,14 @@ describe('the panel fills the stage it is given', () => {
     // colour says nothing at all, and the shadow is the entire reason a reader sees
     // one card in front of another.
     //
-    // **THIS GATE USED TO DEMAND THE OPPOSITE.** It required the card surface to be
-    // a `color-mix` derived from ink and rejected `--dsh-tb-bg-raised`. That
-    // derivation is wrong, and the measurement says why: ink is black in light and
-    // white in dark, so mixing toward ink RAISES a card in the dark theme and
-    // **SINKS it in the light one** — measured there as 7 levels darker than the
-    // page, which reads as a groove. A rule that is right in one theme and inverts
-    // in the other is not a rule; it is a coin flip that happens to land well most
-    // of the time on the machine you built it on.
+    // **THE OBVIOUS DERIVATION IS THE WRONG ONE.** Deriving the card surface as a
+    // `color-mix` from ink and rejecting `--dsh-tb-bg-raised` is the induction the
+    // measurement refutes: ink is black in light and white in dark, so mixing
+    // toward ink RAISES a card in the dark theme and **SINKS it in the light one**
+    // — measured there as 7 levels darker than the page, which reads as a groove.
+    // A rule that is right in one theme and inverts in the other is not a rule; it
+    // is a coin flip that happens to land well most of the time on the machine you
+    // built it on.
     //
     // So the claim is the one that survives both: **opaque surface, plus a shadow.**
     expect(surface, 'the card surface is a raw ink mix — it raises a card in the dark theme and SINKS it in the light one, so in one of the two it reads as a groove')
@@ -850,9 +847,10 @@ describe('the panel fills the stage it is given', () => {
     // agenda and the rows on them share ONE card part — the board's own law
     // (canvas may be glass, inner cards may not): the row's BASE rule paints the
     // opaque card surface and the card's edge, radius and shadow; its states
-    // paint their own four tokens (gated separately above). The old shell card is
-    // gone entirely and the table paints nothing — a second opaque layer over the
-    // row cards is the white wall again, the thing this panel is being cured of.
+    // paint their own four tokens (gated separately above). A shell card around
+    // the row paints a second opaque layer over the row cards — the white wall
+    // again, the thing this panel is being cured of — so the shell is gone and the
+    // table paints nothing.
     const rowBase = (rulesOf(stripCssComments(css), 'itemRow')[0] ?? '').replace(/\s+/g, ' ')
     expect(rowBase, 'the row has no base rule — the card is painted by no rule').not.toBe('')
     expect(rowBase, `.itemRow's base rule does not paint the one card surface: ${rowBase}`)
@@ -881,11 +879,11 @@ describe('the panel fills the stage it is given', () => {
         .toEqual([])
     }
 
-    // AND THE OPEN TINT IS THE OPAQUE COMPOSITE. The open row used to read the
-    // board's `--dsh-tb-open` — translucent IN THE TOKEN — and under a glass skin
-    // the fill washed out to nothing. The claim now: the token composes from the
-    // card surface and the accent, contains no `transparent`, and nothing on this
-    // surface reads the board's token any more.
+    // AND THE OPEN TINT IS THE OPAQUE COMPOSITE. Reading the board's
+    // `--dsh-tb-open` — translucent IN THE TOKEN — washes the fill out to nothing
+    // under a glass skin. The claim: the token composes from the card surface and
+    // the accent, contains no `transparent`, and nothing on this surface reads the
+    // board's token.
     const openTint = /--item-open\s*:\s*([^;]+)/.exec(css)?.[1]?.trim() ?? ''
     expect(openTint, 'there is no --item-open token — the open row paints nothing or something shared').not.toBe('')
     expect(openTint, 'the open tint does not compose from the card surface, so a skin cannot be answered for what shows through it')
@@ -896,31 +894,29 @@ describe('the panel fills the stage it is given', () => {
     expect(stripCssComments(css).includes('--dsh-tb-open'),
       'a rule on this surface still reads the board\'s shared open token — the translucent wash is back').toBe(false)
 
-    // AND THE OTHER HALF, which the old rule had no room for: the things that
-    // float still have to be opaque. Without this the first half passes by
-    // painting everything the canvas, and a menu over the wallpaper becomes
-    // unreadable — the rule would have been satisfied by a surface nobody can read.
+    // AND THE OTHER HALF, which a single canvas/inner rule has no room for: the
+    // things that float still have to be opaque. Without this the first half passes
+    // by painting everything the canvas, and a menu over the wallpaper becomes
+    // unreadable — the rule would be satisfied by a surface nobody can read.
     //
-    // THE MENU'S TOKEN MOVED, AND THE CLAIM GREW. It used to be
-    // `--dsh-tb-surface-menu`, which resolves to the host's
-    // `--dsw-specific-menu`; the default skin gives that `#f8f9fa94` — **58%
-    // alpha** — and this menu sits over every row's text, so a translucent plate
-    // is text over text. The panel's own alpha is the SKIN's business; a floating
-    // surface's is not.
+    // THE TOKEN MUST BE CHOSEN AND MEASURED. Reading `--dsh-tb-surface-menu`, which
+    // resolves to the host's `--dsw-specific-menu`, gives the default skin's
+    // `#f8f9fa94` — **58% alpha** — and this menu sits over every row's text, so a
+    // translucent plate is text over text. The panel's own alpha is the SKIN's
+    // business; a floating surface's is not.
     //
-    // **SO THE CHECK IS NO LONGER 「WHICH TOKEN」.** It is now 「which token, AND
-    // does the colour it resolves to actually resolve to something opaque」 — the
-    // old form would pass on a token whose value is 58% opaque, and did. The alpha
+    // **SO THE CHECK IS NOT 「WHICH TOKEN」.** It is 「which token, AND does the
+    // colour it resolves to actually resolve to something opaque」 — a check on the
+    // name alone passes on a token whose value is 58% opaque, and does. The alpha
     // reader below is the part that is new: it takes a resolved `#rrggbbaa` and
     // asks whether the last two digits are `ff`.
-    // (The assertion that used to live here — 「the floating step is `--item-float`
-    // resolving to one of the host's own surface tokens」 — is GONE, and its
-    // removal is the finding rather than a cleanup. It demanded exactly the thing
-    // the measurement above refutes: the host's three surface tokens resolve to one
-    // colour, so 「a float is one of them」 is a float painted in the page. What
-    // replaced it is the derivation and the ORDER check above, which read the mix
-    // amount instead of a name — and which caught this same file getting the
-    // comparison backwards the day it was written.)
+    // (「the floating step is `--item-float` resolving to one of the host's own
+    // surface tokens」 is NOT asserted here, and that absence is the finding rather
+    // than a cleanup: it demands exactly the thing the measurement above refutes —
+    // the host's three surface tokens resolve to one colour, so 「a float is one of
+    // them」 is a float painted in the page. What stands in its place is the
+    // derivation and the ORDER check above, which read the mix amount instead of a
+    // name.)
     for (const name of ['itemRowMenu']) {
       const layers = backgroundOf(css, name).filter(value => value.includes('var(--item-float)'))
       expect(layers, `.${name} does not paint with the floating surface: ${JSON.stringify(backgroundOf(css, name))}`).not.toEqual([])
@@ -1214,9 +1210,10 @@ describe('the rail and in-row detail share one workbench', () => {
   }
 
   it('NOTHING may declare the tracks without the areas that address them', () => {
-    // The right-hand detail rail is gone: it was rented land whenever no row was
-    // chosen, and keeping its track would keep its empty column. So the grid must
-    // name exactly rail and list, with the rail fixed and the list fluid.
+    // The right-hand detail rail is not on this surface: renting land for a column
+    // that holds nothing whenever no row is chosen is exactly what the grid must
+    // not do. So the grid names exactly rail and list, with the rail fixed and the
+    // list fluid.
     //
     // ONE DECLARATION, SO THE TWO COLUMNS CANNOT DRIFT APART. Joining every
     // `.itemWorkbench` body into one string and asking whether two patterns appear
@@ -1283,13 +1280,12 @@ describe('the rail and in-row detail share one workbench', () => {
     // than as a wide empty margin, so the two regions have to be separated by
     // SOMETHING.
     //
-    // THE MECHANISM THAT USED TO CARRY IT WAS A LINE, and a line was the wrong
-    // instrument for this seam. It was drawn on the list column's leading edge,
-    // which is 1px from the list card's own edge — so it measured **2px** on
-    // screen, heavier than every real separator on the panel, and it cut one
-    // main column into two halves that are not halves: the rail is a direction
-    // and the list is the work, on the same paper. A reader asked what that line
-    // was dividing could not answer.
+    // THE MECHANISM IS AIR, NOT A LINE. A line is the wrong instrument for this
+    // seam: drawn on the list column's leading edge, which is 1px from the list
+    // card's own edge, it measures **2px** on screen — heavier than every real
+    // separator on the panel — and it cuts one main column into two halves that are
+    // not halves: the rail is a direction and the list is the work, on the same
+    // paper. A reader asked what that line was dividing cannot answer.
     //
     // So the promise is checked in the two directions that outlive the change:
     // the gap is real, and the line is gone. A gate that only demanded the line
@@ -1363,35 +1359,34 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     // track, sizing it to content, or letting the text clip satisfies it, and
     // the fixtures carry the combination (a gated row that also has a step
     // count) so the artifact shows it either way.
-    // THE READINGS THAT CANNOT FIT, in the shape the table has now. It used to be
-    // `.itemDue` / `.itemStartsAfter` / `.itemSteps` — three facts sharing one
-    // truncated line under a row's title. The table gives each one its own cell,
-    // so the same three readings are checked in the cells that carry them, and a
-    // NEW reading added to a cell without a floor is reported by name rather than
-    // counted away.
-    // NOT CELLS. The three truncated cells under a title are three text slots now:
-    // the reading at the end of the sentence, the tags beside the menu, and the
-    // numbers under the sentence. The promise is the same one — a fact that cannot
-    // fit is truncated in ITS OWN slot, never by the row's — so it is checked on
-    // the slots that exist.
+    // THE READINGS THAT CANNOT FIT are not `.itemDue` / `.itemStartsAfter` /
+    // `.itemSteps` — three facts sharing one truncated line under a row's title.
+    // The table gives each one its own cell, so the three readings are checked in
+    // the cells that carry them, and a NEW reading added to a cell without a floor
+    // is reported by name rather than counted away.
+    // NOT CELLS. The three truncated cells under a title are three text slots: the
+    // reading at the end of the sentence, the tags beside the menu, and the numbers
+    // under the sentence. The promise is one — a fact that cannot fit is truncated
+    // in ITS OWN slot, never by the row's — so it is checked on the slots that
+    // exist.
     const facts = ['itemRowMarks', 'itemRowDate', 'itemRowDateText', 'itemRowMeta']
     for (const name of facts) {
       const bodies = rulesOf(css, name)
       expect(bodies.length, `there is no .${name} rule`).toBeGreaterThan(0)
-      // THE UNION OF THE RULES, NOT EACH ONE. This used to demand that EVERY
-      // block naming the class carry the shrink and the clip, which is a reading
-      // of CSS that does not exist: declarations CASCADE, so a rule that adds
-      // only `font-variant-numeric` to a class does not take the shrink away
-      // from the rule beside it. The three readings now share one block through
-      // `:is()` — the right way to say 「these three have one floor」 — and a
-      // second block that tunes a number no longer counts as a second floor.
+      // THE UNION OF THE RULES, NOT EACH ONE. Demanding that EVERY block naming the
+      // class carry the shrink and the clip is a reading of CSS that does not exist:
+      // declarations CASCADE, so a rule that adds only `font-variant-numeric` to a
+      // class does not take the shrink away from the rule beside it. The three
+      // readings share one block through `:is()` — the right way to say 「these three
+      // have one floor」 — and a second block that tunes a number is not a second
+      // floor.
       //
-      // The claim is still exactly as strong: if NO rule naming the class shrinks
-      // it, or none of them clips it, the reading is still unbounded. What it no
-      // longer does is report a correct stylesheet as broken, which is the
-      // failure mode this repository keeps warning about — a gate that pushes the
-      // implementation into a worse shape gets loosened, and the defect it was
-      // built for comes back with it.
+      // The claim is exactly as strong: if NO rule naming the class shrinks it, or
+      // none of them clips it, the reading is still unbounded. What it must not do
+      // is report a correct stylesheet as broken, which is the failure mode this
+      // repository keeps warning about — a gate that pushes the implementation into
+      // a worse shape gets loosened, and the defect it was built for comes back
+      // with it.
       const all = bodies.join('\n')
       // EITHER SPELLING OF 「it can end」: a grid item shrinks with
       // `min-inline-size: 0`, an inline phrase ends with a ceiling and an
@@ -1401,10 +1396,10 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
         /(?:^|[;{\s])min-inline-size\s*:\s*0/.test(all) || /max-inline-size/.test(all),
         `.${name} neither shrinks nor has a ceiling, so a long reading pushes the next track instead of truncating`,
       ).toBe(true)
-      // A TAG ENDS BY WRAPPING. It used to be one clipped row in a fixed-height
-      // column, and a tag cut in half is a tag nobody can read back — so a long row
-      // of them takes a second line and the row grows. Clipping is still accepted
-      // for the other two slots, which are inline phrases inside a sentence.
+      // A TAG ENDS BY WRAPPING. Cutting a tag in half in a fixed-height column is a
+      // tag nobody can read back — so a long row of them takes a second line and the
+      // row grows. Clipping is still accepted for the other two slots, which are
+      // inline phrases inside a sentence.
       expect(
         /flex-wrap\s*:\s*wrap/.test(all)
           || /overflow\s*:\s*hidden/.test(all)
@@ -1459,18 +1454,18 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     // is fine, and the artifact is what confirms the reader still sees the whole
     // date.
     //
-    // **BOTH UNITS ARE ACCEPTED, AND THAT IS THE FIX.** This used to reject a
-    // device-pinned track outright on the reasoning that only a text-relative
-    // unit can be resolved against the text it has to hold. But the date cell is
-    // a TABLE CELL now, and a table's column width is not a font measurement —
-    // it is a track in a grid, and the whole point of a grid track is that it
-    // does not move when the type does. A px track here is MORE resolvable than
-    // an `em` one, because `em` here resolves against a font-size declared
-    // somewhere else in the sheet and the reader has to go and find it.
+    // **BOTH UNITS ARE ACCEPTED, AND THAT IS THE FIX.** Rejecting a device-pinned
+    // track outright on the reasoning that only a text-relative unit can be resolved
+    // against the text it has to hold cannot stand: the date cell is a TABLE CELL, and
+    // a table's column width is not a font measurement — it is a track in a grid, and
+    // the whole point of a grid track is that it does not move when the type does. A
+    // px track here is MORE resolvable than an `em` one, because `em` resolves against
+    // a font-size declared somewhere else in the sheet and the reader has to go and
+    // find it.
     //
-    // So the claim is the claim it always was — **named token, and wide enough**
-    // — and the unit is no longer part of it.
-    // THE READING IS NOT A COLUMN, AND IT IS NO LONGER INSIDE THE SENTENCE EITHER.
+    // So the claim is the claim it always was — **named token, and wide enough** — and
+    // the unit is not part of it.
+    // THE READING IS NOT A COLUMN, AND IT IS NOT INSIDE THE SENTENCE EITHER.
     // 它现在站在行右边那簇记号里（步数 · 卡 · 日期），与 ⋮ 相邻——所以「一个具名且够宽
     // 的轨道」这句话的对象变了：句子那条轨的地板保护的是**标题**（一条被挤到只剩几个字的
     // 标题不是标题），而读法自己的宽度由那一簇的轨道**按内容定**（`auto`），于是它永远
@@ -1490,7 +1485,7 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     expect(cellSize, '.itemRowDate does not declare its own font-size, so a text-relative track on it resolves against a size this file cannot know').toBeGreaterThan(0)
     const resolved = Number(track)
     // AND THE READING ENDS INSIDE ITSELF. Two things have to be true together, and they are the
-    // same promise the old column test made: the sentence's floor is at least the longest reading
+    // same promise the sentence's own floor makes: the sentence's floor is at least the longest reading
     // (so a reading that lands in the sentence would still start on screen in full), AND the
     // reading's own text slot declares how it ends (ellipsis), so a reading that cannot fit clips
     // in its OWN slot rather than pushing the fact beside it.
@@ -1516,9 +1511,9 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     expect(resolvesWideEnough('11ch', 13), 'a `ch` track was accepted — `ch` is the width of a digit, not of a CJK glyph').toBe(false)
     expect(resolvesWideEnough('10em', 13), '10em at 13px is 130px, which clears the longest reading').toBe(true)
     expect(resolvesWideEnough('8em', 13), '8em at 13px is 104px and does not clear it — the floor is a floor, not an equality').toBe(false)
-    // THE NEW SHAPE, exercised: a device-pinned track is accepted now, and only
-    // because it clears the floor. Two of these are the same defect the old rule
-    // used to catch by unit instead of by measurement.
+    // THE SHAPE, exercised: a device-pinned track is accepted, and only because it
+    // clears the floor. A rule that judged by unit instead of by measurement gets
+    // both of these wrong.
     expect(resolvesWideEnough('112px', 13), 'a fixed 112px column was rejected, but it clears the longest reading').toBe(true)
     expect(resolvesWideEnough('96px', 13), 'a 96px column was accepted although the longest reading needs 110px').toBe(false)
     // The size is part of the relation, so the same track at a smaller row
@@ -1580,13 +1575,13 @@ describe('the triage sentence is a sentence, not filler', () => {
         .find(v => v !== undefined)
       return body === undefined ? NaN : Number(body)
     }
-    // THE READER RESOLVES THE ALIAS, and that is the whole finding. It used to
-    // look for a LITERAL `--dsh-tb-text-N` inside the rule, so the moment the
-    // sheet gave its three ink steps names of their own the reader stopped
-    // finding anything and answered `-1` — which is the same value it answers
-    // when it has not looked. **A gate that cannot tell 「not found」 from
-    // 「found nothing there」 reports a correct stylesheet as broken**, and the
-    // only way to make it green is to delete the names.
+    // THE READER RESOLVES THE ALIAS, and that is the whole finding. Looking for a
+    // LITERAL `--dsh-tb-text-N` inside the rule fails the moment the sheet gives its
+    // three ink steps names of their own: the reader finds nothing and answers `-1`,
+    // which is the same value it answers when it has not looked. **A gate that
+    // cannot tell 「not found」 from 「found nothing there」 reports a correct
+    // stylesheet as broken**, and the only way to make it green is to delete the
+    // names.
     //
     // So both spellings mean the same step. Three ink layers with names is the
     // feature, not the defect: the ladder is the panel's own, and the host's
@@ -1672,12 +1667,12 @@ describe('the triage sentence is a sentence, not filler', () => {
     // one-line sentence is stretched to fill 660px of a list column and the
     // reader sees a void with a caption at the top of it.
     //
-    // THE CLASS IS READ OFF THE MARKUP, NOT NAMED HERE — and the markup moved.
-    // The sentence used to be an inline `<p>{t('item.triage.nothing')}</p>` in the
-    // page; it is now a PROP handed to the table (`empty={nothingToShow}`), because
-    // the table is what knows whether it is drawing rows or an empty state. So the
-    // gate looks for **the box the table puts that sentence in**, which is the only
-    // place a standalone sentence can now live.
+    // THE CLASS IS READ OFF THE MARKUP, NOT NAMED HERE — and the markup is the
+    // TABLE's. The sentence is a PROP handed to the table
+    // (`empty={nothingToShow}`), not an inline `<p>{t('item.triage.nothing')}</p>`
+    // in the page, because the table is what knows whether it is drawing rows or an
+    // empty state. So the gate looks for **the box the table puts that sentence
+    // in**, which is the only place a standalone sentence can live.
     expect(panelSource, 'the page hands the table no empty-state sentence, so a list that needs nothing tells the reader nothing')
       .toMatch(/empty=\{[^}]*nothingToShow|noMatch=\{/)
     const standalone = /<[a-z]+ className=\{css\.([A-Za-z]\w*)\}>\s*\{props\.(?:empty|noMatch)\}/.exec(panelSource)
@@ -1705,20 +1700,12 @@ describe('the triage sentence is a sentence, not filler', () => {
   })
 
   it('the probe bites: a planted grow is reported, and the ROW rule is not mistaken for it', () => {
-    // THE PLANT IS AIMED AT THE CLASS THE MARKUP NAMES, and not at a name typed
-    // in here. It used to plant into `.itemTriageText`, which meant the probe
-    // only kept biting while the sentence kept that name — the day the sentence
-    // moved to another class, the plant went into a rule nothing renders and
-    // the probe reported 「did not bite」 about a gate that was fine. A probe that
-    // has to be re-aimed by hand every time a class is renamed is a probe
-    // measuring itself.
-    //
     // THE PLANT IS AIMED AT THE CLASS THE MARKUP NAMES, never at a name typed in
-    // here. It used to plant into `.itemTriageText`, which meant the probe only
-    // kept biting while the sentence kept that name; the day the sentence moved
-    // into the table as a prop, the plant went into a rule nothing renders and the
-    // probe reported 「did not bite」 about a gate that was fine. **A probe that has
-    // to be re-aimed by hand after every rename is a probe measuring itself.**
+    // here. Planting into `.itemTriageText` keeps the probe biting only while the
+    // sentence keeps that name: the day the sentence moves into the table as a prop,
+    // the plant lands in a rule nothing renders and the probe reports 「did not bite」
+    // about a gate that is fine. **A probe that has to be re-aimed by hand after
+    // every rename is a probe measuring itself.**
     const standalone = /<[a-z]+ className=\{css\.([A-Za-z]\w*)\}>\s*\{props\.(?:empty|noMatch)\}/.exec(panelSource)
       ?? /className=\{css\.(itemListEmpty|itemNoMatch)\}/.exec(panelSource)
     expect(standalone, 'the standalone sentence is gone from the panel markup, so there is nothing to plant into').not.toBeNull()
@@ -1873,8 +1860,9 @@ describe('a phone gets the same surface, only narrower', () => {
     expect(shared.length, 'the shared segmented control has no rule — the gate is reading a control that does not exist').toBeGreaterThan(0)
     // The classes this surface puts on a segmented control, discovered from the
     // markup rather than named here, so a rename moves the gate with the code.
-    // It used to read `filter-bar.tsx`, which is retired: the filter faces and the
-    // orders are in the command palette, and the batch door is an action in it.
+    // It has to read the palette, not `filter-bar.tsx`, which is retired: the filter
+    // faces and the orders are in the command palette, and the batch door is an
+    // action in it.
     const panel = readFileSync(new URL('../src/client/item/panel.tsx', import.meta.url), 'utf8')
     const palette = readFileSync(new URL('../src/client/item/command-palette.tsx', import.meta.url), 'utf8')
     const members = [...cssMembersOf(panel).keys(), ...cssMembersOf(palette).keys()]
@@ -1915,28 +1903,27 @@ describe('a status is stated once, and it is a column rather than a heading', ()
     .replace(/\/\*[\s\S]*?\*\//g, '')
 
   it('the list page draws no bucket and no bucket summary, so a status cannot be stated twice', () => {
-    // THE DEFECT THIS REPLACES, in one sentence: the status used to be a GROUP —
-    // a heading with a fold arrow and a count — and the same status was ALSO the
-    // row's own mark, and ALSO the name on the 「进行中 0 · 受阻 0 · 已完成 0」
-    // summary of the buckets that happened to be empty. One fact, three places,
-    // and a reader could not tell which of the three was telling the truth
-    // about the list in front of them.
+    // THE DEFECT THIS GATE EXISTS FOR, in one sentence: a status as a GROUP — a
+    // heading with a fold arrow and a count — is ALSO the row's own mark, and ALSO
+    // the name on the 「进行中 0 · 受阻 0 · 已完成 0」 summary of the buckets that
+    // happen to be empty. One fact, three places, and a reader cannot tell which of
+    // the three is telling the truth about the list in front of them.
     //
-    // So the status became a COLUMN, and the rule is now the simple one: there is
-    // exactly one place on the page that says what a row's state is, and it is
-    // the cell. The gate is a negative on the MARKUP rather than a count on the
-    // stylesheet, because 「the group is back」 is a fact about what gets rendered,
-    // and a stylesheet can hold a rule for a class nothing renders — which is how
-    // the previous version of this gate went green over a page it could not see.
-    // The status buckets are gone, and the claim is stated the way the page now says
+    // So the status is a COLUMN, and the rule is the simple one: there is exactly
+    // one place on the page that says what a row's state is, and it is the cell.
+    // The gate is a negative on the MARKUP rather than a count on the stylesheet,
+    // because 「the group is back」 is a fact about what gets rendered, and a
+    // stylesheet can hold a rule for a class nothing renders — which is how a count
+    // on the stylesheet can sit green over a page it cannot see.
+    // The status buckets are gone, and the claim is stated the way the page says
     // it: the table is handed ONE flattened list, and the only section left on the
     // page is the archive's — which is a heading for the ARCHIVE, not for a
     // status, and a reader who opens 「已删除」 is answering a different question.
     //
-    // The earlier form of this gate banned `itemGroupHead` outright, which also
-    // banned the archive's heading — and a gate that cannot tell the two apart
-    // pushes the next author to delete the archive's heading too, which is the
-    // shape of a check that has stopped being about its claim.
+    // Banning `itemGroupHead` outright would ban the archive's heading too — and a
+    // gate that cannot tell the two apart pushes the next author to delete the
+    // archive's heading as well, which is the shape of a check that has stopped
+    // being about its claim.
     expect(listPage, 'the list page does not hand the table one flat list, so the status buckets are back as sections')
       .toMatch(/flatMap\([^)]*slice[^)]*\.items/)
     const sections = [...listPage.matchAll(/<section\b[^>]*>/g)].length
@@ -2022,12 +2009,12 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // heading that silently fell back to body weight is the exact failure the
     // table exists to prevent.
     //
-    // THE SCALE CHANGED SHAPE, NOT LENGTH. It used to be six NEIGHBOURING
-    // sizes (11/12/13/14/15/16), and 14 sitting between 13 and 15 is exactly
-    // the near-miss the paragraph above is about: a reader cannot see a step that
-    // small, so six numbers bought two or three visible levels.
+    // THE SCALE SEPARATES BY STEP, NOT BY COUNT. Six NEIGHBOURING sizes
+    // (11/12/13/14/15/16) put 14 between 13 and 15 — exactly the near-miss the
+    // paragraph above is about: a reader cannot see a step that small, so six
+    // numbers buy two or three visible levels.
     //
-    // The panel's constitution now says 「字靠字重分四层，不靠字号堆」 — the levels
+    // The panel's constitution says 「字靠字重分四层，不靠字号堆」 — the levels
     // separate by WEIGHT and by how much ink is left in them, and the sizes that
     // survive are the ones far enough apart to be read on their own. So: two big
     // numbers at 700, one title at 600, one body line at 400, and the two small
@@ -2063,18 +2050,17 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
   })
 
   it('every heading in this sheet declares its own margin and size, because nothing resets the UA ones', () => {
-    // THE FAILURE NOBODY COULD SEE, and it was a heading louder than the page.
+    // THE FAILURE NOBODY CAN SEE: a heading louder than the page.
     //
     // This sheet has NO `h1`–`h6` reset. `board.module.css` resets `p` and
     // nothing else, so a `<h2>` in this panel arrives carrying the user agent's
     // `font-size: 1.5em; font-weight: bold; margin: .83em 0` — 19.5px to 24px of
-    // BOLD, against a 16px page title. The detail pane's own heading was the
-    // loudest type in the column, which is the one thing a column's heading is
-    // not allowed to be, and every other assertion in this file was green
-    // throughout: the type-scale check reads DECLARED sizes and this heading
-    // declared none, so the scale had nothing to say about it, and a 19.5px
-    // inherited size is not a "size outside the scale" — it is the absence of a
-    // declaration.
+    // BOLD, against a 16px page title. A heading like that is the loudest type in
+    // the column, which is the one thing a column's heading is not allowed to be,
+    // and every other assertion in this file is green about it: the type-scale check
+    // reads DECLARED sizes and this heading declares none, so the scale has nothing
+    // to say — and a 19.5px inherited size is not a "size outside the scale", it is
+    // the absence of a declaration.
     //
     // So the claim is about the DECLARATION, not the computed value: a heading
     // that says its own `margin: 0` and its own `font-size` is a heading this
@@ -2189,7 +2175,8 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
 
   it('a box that declares an inline-size container is never content-sized on the inline axis', () => {
     // THE WORST FAILURE IN THIS FILE'S FAMILY, and it is worth writing the whole
-    // argument out because every existing assertion passed while it was live.
+    // argument out, because no assertion about the markup or the sheet's colours
+    // can see it.
     //
     // A box that declares `container-type: inline-size` gets inline-size
     // containment, which makes its inline size INDEPENDENT of its contents. So the
@@ -2200,22 +2187,22 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // computes to ZERO WIDTH, and everything inside it lays out in zero width and
     // paints nothing.
     //
-    // That is exactly what happened to `.itemDetailInner`: the pane drew its head
-    // and its rule and then eight hundred pixels of nothing, while the markup was
-    // present, `flex` was a sensible value, every computed colour was right, and
-    // all 2248 assertions in the suite were green. **Nothing that reads a
-    // stylesheet or a markup string can see a box that is the right height and
-    // the wrong width** — so the check has to be about the DECLARATION, and the
-    // probe has to plant exactly the pair of declarations that caused it.
+    // That is the shape of the failure at `.itemDetailPane`: it can read its width
+    // from neither its contents nor the track, so it computes to zero — and it
+    // draws its head and its rule and then eight hundred pixels of nothing, while
+    // the markup is present, `flex` is a sensible value, every computed colour is
+    // right, and every assertion in the suite is green. **Nothing that reads a
+    // stylesheet or a markup string can see a box that is the right height and the
+    // wrong width** — so the check has to be about the DECLARATION, and the probe
+    // has to plant exactly the pair of declarations that causes it.
     const CONTENT_SIZED_IN_INLINE_AXIS = /align-self\s*:\s*(?:start|flex-start)/
     // The same guard the triage loop below carries: an absent subject iterates
     // zero times, and the box that computes to zero width is exactly the one a
-    // renamed selector would hide.
-    // The box was RENAMED, not removed: `.itemDetailInner` became `.itemDetailPane`
-    // when the detail stopped being a wrapper around a card and became the card.
+    // renamed selector hides.
     // **The claim is about the box that carries the detail's container, not about a
-    // name** — and pinning the old name would make this gate pass on a sheet with no
-    // such rule at all, which is the failure it exists to catch: a container with no
+    // name.** A name would be wrong in both directions: `.itemDetailPane` is the box
+    // today, and pinning `.itemDetailInner` passes this gate on a sheet with no such
+    // rule at all — which is the failure it exists to catch: a container with no
     // width computes to zero and the pane paints nothing, and no capture shows it.
     const inner = rulesOf(css, 'itemOpenMain').filter(body => /grid-template-columns/.test(body))
     expect(inner, 'no rule lays the detail out — its width would come from neither its contents nor a track, and it would paint nothing').not.toEqual([])
@@ -2279,12 +2266,12 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // AND THE CARD ITSELF IS THE ACTION — not a pill inside it. The top band is
     // three cards and every one of them is a filter, so a reader aims at the CARD.
     // A pill drawn inside would say 「this part is the button」 and put a second
-    // target under the first one, which is the arrangement the old strip had: a
-    // sentence with four buttons beside it, none of them bigger than the sentence
-    // they were about.
-    // THE CARD IS THE RAIL ROW. The three numbers that stood above the list are
-    // counts in the rail, beside the things they count — so what must not be a pill
-    // inside a button is the rail row's mark: a reader aims at the ROW.
+    // target under the first one, which is the arrangement a strip of a sentence
+    // with four buttons beside it has, none of them bigger than the sentence they
+    // are about.
+    // THE CARD IS THE RAIL ROW. The three numbers the reader counts are the rail's
+    // own counts, beside the things they count — so what must not be a pill inside a
+    // button is the rail row's mark: a reader aims at the ROW.
     const cards = rulesOf(css, 'itemRailRow')
     expect(cards, 'there is no .itemRailRow rule — the row below is checking nothing').not.toEqual([])
     // ONLY THE RULES THAT DECLARE A FILL. A state block that tunes a number
@@ -2310,11 +2297,11 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       // one is where they are. What would be wrong is a card surface here, which
       // would make twenty rows look like twenty things lying on top of the list.
       //
-      // **「薄洗」是一条性质，不是两个名字。** 这一条原来是 `var(--item-fill)` 与
-      // `var(--dsh-tb-hover)` 的白名单——而「可以透过去」这件事的真实判据是**值里让它透**：
-      // 知名的两个洗令牌，或者任何带 `transparent` 的配方（`color-mix(in srgb, currentColor
-      // 12%, transparent)` 就是读者那次「白底上看不见」之后选中的那一条：它按墨推色，任何主
-      // 题都与背景相反）。白名单会逼着一个正确的实现去迁就它（硬性规范 14），而按性质判就
+      // **「薄洗」是一条性质，不是两个名字。** 白名单里的两个洗令牌只是这条性质的
+      // 两个名字；真实判据是**值里让它透**：知名的两个洗令牌，或者任何带 `transparent`
+      // 的配方（`color-mix(in srgb, currentColor 12%, transparent)` 就属于这一类——
+      // 它按墨推色，任何主题都与背景相反，那也正是读者那次「白底上看不见」之后选中的
+      // 那一条）。白名单会逼着一个正确的实现去迁就它（硬性规范 14），而按性质判就
       // 不会：卡片面（`--item-float`、`--item-card`）没有 `transparent`，照样被拦下来。
       const fills = body.match(/(?:^|[;{\s])background(?:-color)?\s*:\s*([^;]+)/)?.[1]?.trim() ?? ''
       const isWash = ['var(--item-fill)', 'var(--dsh-tb-hover)'].includes(fills) || /\btransparent\b/.test(fills)
@@ -2428,13 +2415,12 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // is late — and the page would carry two competing signals, one of them
     // about scheduling.
     //
-    // THE SELECTOR HALF, OR NOTHING. It used to read `rulesOf(css, 'itemDue')`
-    // and filter the BODIES for `[data-tone`, and a body never contains its own
-    // selector — so the filter matched nothing, the loop never ran, and the
-    // gate asserted that an empty array has no extra properties in it. The tone
-    // rules are named by their selector (`.itemRowMeta [data-tone='over']`),
-    // which is precisely the half `rulesOf` throws away and
-    // `declarationRules` keeps.
+    // THE SELECTOR HALF, OR NOTHING. Reading `rulesOf(css, 'itemDue')` and filtering
+    // the BODIES for `[data-tone` cannot work: a body never contains its own
+    // selector, so the filter matches nothing, the loop never runs, and the gate
+    // asserts that an empty array has no extra properties in it. The tone rules are
+    // named by their selector (`.itemRowMeta [data-tone='over']`), which is precisely
+    // the half `rulesOf` throws away and `declarationRules` keeps.
     const TONE = /\[data-tone[^\]]*\]/
     // COMMENTS OFF, and the reason is this sheet's own prose: the note above the
     // ink rules says in words that `[data-tone]` selects the reading, and a
@@ -2539,20 +2525,12 @@ describe('the colour budget is a budget, counted at the token layer', () => {
    * counting one would make the budget unreachable for a correct sheet.
    */
   /**
-   * VISUALLY ONE THING IS ONE POSITION. A budget is a claim about what a reader
-   * SEES, and a reader sees one focus ring, not eighteen — so the states that
-   * draw the same mark for the same reason are collapsed by name. The list is
-   * short ON PURPOSE: a family nobody named is counted per selector, which is the
-   * strict reading, so a new focus-like state costs its full price rather than
-   * quietly reinterpreting the rule in its own favour.
-   */
-  /**
    * VISUALLY ONE THING IS ONE POSITION — **a position, not a selector**, and that
-   * is the second half of what used to be wrong here. Counting selectors made the
-   * keyboard focus ring cost eighteen positions: one ring, drawn on eighteen
-   * controls. A budget is a claim about what a reader SEES, and a reader sees one
-   * ring. So the states that draw the same mark for the same reason are collapsed
-   * by name here, and everything else stands on its own selector.
+   * is the half a selector count cannot see. Counting selectors makes the keyboard
+   * focus ring cost eighteen positions: one ring, drawn on eighteen controls. A
+   * budget is a claim about what a reader SEES, and a reader sees one ring. So the
+   * states that draw the same mark for the same reason are collapsed by name here,
+   * and everything else stands on its own selector.
    *
    * The list is short ON PURPOSE: a family nobody named is counted per selector,
    * which is the strict reading — so a new focus-like state costs its full price
@@ -2602,8 +2580,9 @@ describe('the colour budget is a budget, counted at the token layer', () => {
    * `board.module.css`：`outline` 不跟着 `corner-shape` 走，超椭圆族下环与边会在每个
    * 角上分叉）。环从「一个属性里的 var()」换成「一个令牌」之后，只认
    * `var(--dsh-tb-accent)` 的读法会**少看见一个位置**——而「少看见」正是这条断言存在
-   * 的原因：它的注释里记着上一次，十七个 focus outline、一处 `color-mix`、一处
-   * `accent-color` 全部隐形，三个没登记的位置顶替了三个登记过的，数字刚好落在上限上。
+   * 的原因：环改用令牌之后，十七个 focus outline、一处 `color-mix`、一处
+   * `accent-color` 会一起隐形，于是三个没登记的位置顶替三个登记过的，数字刚好落在
+   * 上限上、看起来像个答案。
    *
    * 所以这里接受一组拼写。令牌自己的**声明**仍然不算位置（按本族已有的规则：只存
    * 不画的声明不是位置）。
@@ -2642,53 +2621,41 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     // not a signal any more; it is the colour of the product, and the one row
     // that is genuinely urgent arrives in the same ink as the chrome.
     //
-    // THE READER BELOW SEES EVERY SPELLING, and that is the whole point of this
-    // rewrite. It used to match only a BARE `var(--token)` on
-    // color/background/border*color, which is one of the four ways this sheet
-    // spends a semantic ink — so the count came out at 5 and passed while the
-    // sheet carried 7 real positions: seventeen focus OUTLINES, a `color-mix()`
-    // wash, and an `accent-color` were all invisible to it, and three unlisted
-    // things stood in for three listed ones and landed on exactly the limit. **A
+    // THE READER BELOW SEES EVERY SPELLING, and that is the whole point of it: this
+    // sheet spends a semantic ink in four ways, and a reader that matches only a BARE
+    // `var(--token)` reads one of them. **A
     // counter that cannot see a spelling reports a number, and the number looks
-    // like an answer.** Each spelling below was proved to still move or paint
-    // when the old reader was green.
-    // SEVEN, and every one of them is named in `DESIGN.md`. It said five while
-    // the sheet carried seven, and the old counter agreed with the record by
-    // coincidence: it could not see `outline` (eighteen focus rings), `color-mix`
-    // or `accent-color`, so three unlisted things stood in for three listed ones
-    // and landed on the number. **A counter that cannot see a spelling reports a
-    // number, and the number looks like an answer.**
+    // like an answer.** Each spelling below is proved to move or paint.
+    // SEVEN, and every one of them is named in `DESIGN.md`. A counter that saw only
+    // some of the spellings would agree with that record BY COINCIDENCE: miss
+    // `outline` (eighteen focus rings), `color-mix` or `accent-color`, and three
+    // unlisted things stand in for three listed ones and land on the number. That
+    // is the trap this gate is for.
     //
     // The two focus families are counted apart on purpose: the field's focus is a
     // border AND a ring, every other control's is a ring only, so they are two
     // drawings of one idea rather than one drawing. Collapsing them would make the
     // number smaller than the page, which is the same lie in the other direction.
     //
-    // SEVEN ACCENT POSITIONS BECAME FOUR, and what went is the meters: five on the
-    // overview strip and four on the group heads, nine in all, every one of them a
-    // 2px bar restating a number printed beside it. Accent is the ink with the
-    // fewest jobs left on this surface — the current page, the selected row, the
-    // live pill, the cursor in a palette — and four is what remains once nothing
-    // else spends it restating itself. **The number did not move**, and that is
-    // the point: the design changed shape, not volume.
+    // FIVE DECORATION POSITIONS, and every one of them is the product speaking:
+    // the current page, the selected row, the live pill, the cursor in a palette,
+    // and 优先级「高」那一枚穿 accent 的芯片（读者点名要的一档颜色），与「重复一遍
+    // 旁边的数字」那一种不同类。一条 2px 的量条重述旁边已经印着的数，是同一句话的
+    // 第二次，不是一处位置——**这个数字说的是有多少件事在说话**，不是有多少处着色。
     //
     // The two affordances on top of it (the focus ring, the native checkbox tint)
-    // are counted in their own column rather than added to these four, so the
-    // figure above is still four and still means four things the product is
+    // are counted in their own column rather than added to these five, so the
+    // figure above is still five and still means five things the product is
     // saying. Their allowance is small and their total is checked, so moving the
     // page's own marks into the affordance column is not a way to buy headroom.
-    // SEVEN ACCENT POSITIONS BECAME FIVE, and the fifth is deliberate: 优先级「高」
-    // 那一枚芯片穿的就是 accent（读者点名要的一档颜色）。它是一处**产品在说话**的
-    // 位置——「这一条比普通那两档更值得看一眼」——与「当前页 / 选中行 / 正在跑 / 光标的
-    // 位置」同类，而不再是「重复一遍旁边的数字」那一种。四条老位置一条没变，总数因此
-    // 从 6 到 7；两个 affordance（焦点环、原生控件的色调）仍旧各算一档。
-    // 五条装饰位置与那一条新的，都写在 `DESIGN.md` 的颜色节里。
+    // 两个 affordance（焦点环、原生控件的色调）仍旧各算一档，所以总数是 7。
+    // 五条装饰位置都写在 `DESIGN.md` 的颜色节里。
     const budget: Readonly<Record<string, { readonly decoration: number; readonly affordance: number; readonly total: number }>> = {
       '--dsh-tb-accent': { decoration: 5, affordance: 2, total: 7 },
       '--dsh-tb-attention': { decoration: 2, affordance: 0, total: 2 },
-      // 红色从 3 到 4，同样只有一条新的：优先级「紧急」那一枚实心芯片。红在这一面上
+      // 危险色四处，其中一处是优先级「紧急」那一枚实心芯片。红在这一面上
       // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的不晚于）
-      // 与「别让它错」（最响的那一档优先级）。两条老位置（读法与珠子）算一档，是
+      // 与「别让它错」（最响的那一档优先级）。读法与珠子算一档，是
       // `FAMILIES` 里那句「一颗珠子的几个状态不是几处用量」。
       '--dsh-tb-danger': { decoration: 4, affordance: 0, total: 4 },
     }
@@ -2840,10 +2807,10 @@ describe('the render artifact', () => {
     const target = process.env.DSH_PANEL_HTML
     if (target === undefined || target === '') return
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
-    // Every page, and the harness used to render ONE of them: a surface with
-    // two thirds of itself never looked at is a surface half-changed. The page
-    // is the other half of the band switch, and the agenda — whose primary form
-    // is a day-sequence rather than a grouped list — is the one that differs
+    // Every page, and rendering ONE of them is what the harness must not do: a
+    // surface with two thirds of itself never looked at is a surface half-changed.
+    // The page is the other half of the band switch, and the agenda — whose primary
+    // form is a day-sequence rather than a grouped list — is the one that differs
     // most from the default, so it is the one most worth being able to see.
     const asked = process.env.DSH_PANEL_PAGE
     const page: Page = asked === 'inbox' || asked === 'schedule' ? asked : 'list'

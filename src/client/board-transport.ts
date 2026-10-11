@@ -78,9 +78,9 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
             signal,
           })
           // An HTTP error page is not an ack: name it (413/502 from a proxy
-          // on a big board POST used to dissolve into a JSON parse throw and
-          // read as a "transport hiccup" — the phone's toggle then died
-          // silently and refresh reverted it).
+          // on a big board POST otherwise dissolves into a JSON parse throw and
+          // reads as a "transport hiccup" — the phone's toggle then dies
+          // silently and refresh reverts it).
           if (!response.ok) return undefined
           const envelope = await response.json() as BoardEnvelope
           return envelope.ok ? envelope.value : undefined

@@ -5,11 +5,10 @@
  * invariant 1 (「数与跳必须共用一个谓词」): that a number on a rail row IS the
  * length of the rows it holds, and that pressing it lands on exactly those rows.
  *
- * The second one is the one that was silently broken. The rail used to be a
- * table of words with numbers in it; the jump behind each number was a filter
- * that happened to be spelled the same way. Nothing tied the two, so they agreed
- * only while nobody edited the data — and every gate in the repo was green the
- * whole time.
+ * The second one is the one that breaks silently. A rail can be a table of words
+ * with numbers in it while the jump behind each number is a filter that happens
+ * to be spelled the same way; nothing then ties the two, so they agree only while
+ * nobody edits the data — and every gate in the repo stays green the whole time.
  */
 import { describe, expect, it } from 'vitest'
 import {

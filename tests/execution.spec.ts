@@ -112,12 +112,12 @@ function makeEnv(overrides: {
   drivers.set('s-1', makeDriver())
   if (overrides.blankSummary !== false) summaries.set('s-1', { running: false, blank: true })
   /**
-   * Retention, modelled the way the HOST behaves rather than the way the old
-   * fake did: a driver exists only for a generation somebody currently
-   * retains, so `binding` (the peek) answers undefined for a session nobody
-   * holds. The old fake handed out a driver from a plain map lookup, which is
-   * why the whole suite stayed green while every real run died at
-   * "session is not ready". `held` records the borrows in flight.
+   * Retention, modelled the way the HOST behaves: a driver exists only for a
+   * generation somebody currently retains, so `binding` (the peek) answers
+   * undefined for a session nobody holds. A fake that hands out a driver from
+   * a plain map lookup instead keeps this suite green while every real run
+   * dies at "session is not ready" — which is exactly what this fixture is
+   * here to prevent. `held` records the borrows in flight.
    */
   const held = new Set<string>()
   const env: ExecutionEnvironment = {
@@ -479,9 +479,9 @@ describe('ExecutionService.run', () => {
 
   it('settles failed with the host\'s reason when the session cannot be borrowed', async () => {
     // The host refuses the retain (closed controller / unresolvable target).
-    // The run must report it — the old shape of this case ("binding answers
-    // undefined") is not a thing a run can hit any more, and pretending
-    // otherwise is what let every real run die silently at this step.
+    // The run must report it: the refusal arrives through `hold`, never as
+    // `binding` answering undefined, and treating those as one thing is what
+    // lets a real run die silently at this step.
     const env: ExecutionEnvironment = {
       sessions: {
         list: { getSnapshot: () => ({ phase: 'ready', byId: { 's-1': { running: false, blank: true } } }), subscribe: () => () => {} },

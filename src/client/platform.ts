@@ -415,11 +415,11 @@ export interface SessionListSummary {
 
 /** The session-list snapshot `ctx.sessions.list` exposes.
  *
- *  NO `current` MEMBER. The host used to carry the selection here; it moved to
- *  the view layer (the workspace browser owns it and persists it), so the list
- *  is pure catalog. Declaring it would promise a field the host never sends —
- *  every read would silently yield `undefined`, which is exactly how the old
- *  board lost its "the user switched sessions" signal.
+ *  NO `current` MEMBER. Selection belongs to the view layer (the workspace
+ *  browser owns it and persists it), so the list is pure catalog. Declaring it
+ *  would promise a field the host never sends — every read would silently yield
+ *  `undefined`, which is exactly how a board loses its "the user switched
+ *  sessions" signal.
  */
 export interface SessionListState {
   ids: readonly SessionId[]
@@ -487,13 +487,13 @@ export interface SessionReferenceFace {
 
 /** The narrow `ctx.sessions` service face this plugin reads.
  *
- *  NAVIGATION IS DELIBERATELY ABSENT. The host used to expose `open(id)` /
- *  `current` here; the current contract states "navigation belongs to view
- *  owners" and removed both, so this plugin navigates through the layout
- *  service instead (see `buildApi`'s `sessions.open` adapter, which routes to
- *  `ctx.layout.selectPanel`). Reading a removed member would fail at runtime
- *  with nothing but a `TypeError` on the first click, so a face that never
- *  declares one is the structural guard.
+ *  NAVIGATION IS DELIBERATELY ABSENT. The host exposes no `open(id)` /
+ *  `current` here; the contract states "navigation belongs to view owners", so
+ *  this plugin navigates through the layout service instead (see `buildApi`'s
+ *  `sessions.open` adapter, which routes to `ctx.layout.selectPanel`). A member
+ *  the host does not serve would fail at runtime with nothing but a `TypeError`
+ *  on the first click, so a face that never declares one is the structural
+ *  guard.
  *
  *  `binding` IS the trap this face has to keep honest: the host resolves it
  *  only for a generation someone currently retains ("or undefined without a
@@ -506,8 +506,8 @@ export interface ISessionsFace {
   /**
    * Retain a generation: the host starts the shared initial open and hands
    * back a reference the caller releases. The documented order is create →
-   * retain → borrow, and skipping the middle step is why a board-created
-   * session used to resolve no driver at all.
+   * retain → borrow, and skipping the middle step is how a board-created
+   * session resolves no driver at all.
    */
   retain(id: SessionId, options: { source: SessionReferenceSource; signal?: AbortSignal }): SessionReferenceFace
   /**

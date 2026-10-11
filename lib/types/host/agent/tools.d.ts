@@ -158,11 +158,12 @@ export declare function enumeratedFilters(): readonly string[];
  *  point, not a nicety.
  *
  *  `taskboard_query`'s `filter` string is parsed by `matchItemQuery` for the item
- *  list AND by the board's own search. It used to describe only the board's keys,
- *  so the model was taught board keys (`has:*`, `is:*`) that the list silently
- *  treats as free words — a query that returns nothing and reports no error —
- *  while everything the list actually speaks (`status:`, `p1`–`p4`, `!1`–`!4`,
- *  `has:`, `#标签`) was never mentioned at all. **A vocabulary taught by half is
+ *  list AND by the board's own search, so the description has to cover both.
+ *  Describe only the board's keys and the model is taught board keys (`has:*`,
+ *  `is:*`) that the list silently treats as free words — a query that returns
+ *  nothing and reports no error — while everything the list actually speaks
+ *  (`status:`, `p1`–`p4`, `!1`–`!4`, `has:`, `#标签`) goes unmentioned.
+ *  **A vocabulary taught by half is
  *  worse than none**: the model cannot tell 「no match」 from 「I used it wrong」.
  *
  *  Both halves are DERIVED from the registry that parses them, so a flag added to
@@ -186,7 +187,7 @@ interface ItemRow {
      * The DERIVED status — what the reader sees, and what `status:inProgress`
      * filters on.
      *
-     * It used to be the STORED one, which is the same defect as a facet counting
+     * Printing the STORED one is the same defect as a facet counting
      * by a different predicate than the list under it: a row hanging off a running
      * card filters into `status:inProgress` and then comes back printed as `open`,
      * with nothing in the answer saying the two are different questions. A model
@@ -217,12 +218,13 @@ export interface OpReport {
      *
      * `item.promote` is the one: it creates a card AND links the row. The two
      * commits are separate, so a medium that takes the first and refuses the
-     * second leaves the document in a half state — and the receipt used to say
-     * 「没写进去」 about the whole op, which is how a reader learns that this tool's
-     * failure sentences do not mean what they say. It is also what the catalog's
-     * comment on that action used to CLAIM `applyOne` did, and did not.
+     * second leaves the document in a half state — and a receipt saying
+     * 「没写进去」 about the whole op is how a reader learns that this tool's
+     * failure sentences do not mean what they say. A two-document action cannot
+     * be reported by a subject-less 「已生效」.
      *
-     * Absent on a refusal and on a no-op, because those moved nothing.
+     * One document moved is the ordinary case and stays implicit; only an op that
+     * moved two has to name them.
      */
     readonly documents?: readonly ActionDocument[];
     /** What happened, or what to change. Never a bare error code. */

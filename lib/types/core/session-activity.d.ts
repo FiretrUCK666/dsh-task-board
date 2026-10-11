@@ -12,8 +12,8 @@
  *   as the fast path on hosts that still serve it;
  * - the CATCH-UP backstop here: a STATE rule on every reconcile pass — a
  *   related session that is running RIGHT NOW with no board-owned round for
- *   this run period fires an external round. "Running now" covers the cases
- *   the old edge (flip) rule silently missed: a session already running when
+ *   this run period fires an external round. "Running now" covers the cases a
+ *   bare edge (flip) rule silently misses: a session already running when
  *   the page loaded (the "行显示进行中、卡片不过列" gap), a session born
  *   running at its first message, and frames lost while the tab was frozen.
  *
@@ -158,8 +158,8 @@ export type SessionActivity = 'own' | 'descendant' | 'idle' | 'unknown';
  */
 export declare function sessionActivityOf(sessionId: string, rows: Readonly<Record<string, LineageRow | undefined>>, rollup: LineageIndex, ready?: boolean): SessionActivity;
 /**
- * Whether a session counts as working right now — THE boolean every surface
- * that used to read the bare `running` flag wants (the card's session dots,
+ * Whether a session counts as working right now — THE boolean for every surface
+ * that would otherwise read the bare `running` flag (the card's session dots,
  * the session rows' glow, the detail/review state chips, the card's live leg).
  * `unknown` is false: "no verdict" must never be rendered as working; the
  * leave-running side reads the three-valued form instead.

@@ -14,11 +14,11 @@
  * shown as a chip as it is typed, and clicking one puts the characters back.
  * A parser that can be wrong without a way to undo it is worse than no parser.
  *
- * THE CHIPS TEACH BY BEING WRITTEN, NOT BY AN EXPLANATION. This box used to end
- * with three pressable symbols — `#` `!` `@` — that typed the grammar in for the
- * reader. They were the only part of the surface a newcomer could press, and
- * none of them meant anything until you already knew what they meant: a reader who
- * tapped `#` and got a box full of `#` learns the glyph, not the sentence. What
+ * THE CHIPS TEACH BY BEING WRITTEN, NOT BY AN EXPLANATION. Three pressable
+ * symbols — `#` `!` `@` — that type the grammar in for the reader are the only
+ * part of the surface a newcomer can press, and
+ * none of them mean anything until you already know what they mean: a reader who
+ * taps `#` and gets a box full of `#` learns the glyph, not the sentence. What
  * teaches a syntax is writing one, and this box shows what it understood while
  * you write it — which is also the only evidence a first-time reader gets that
  * the syntax exists at all.
@@ -38,7 +38,7 @@ import boardCss from '../board.module.css'
 
 /** What one recognised piece is called, in the reader's language. */
 /** 三种日期各读**字段自己那一份词**（`item.field.*`）：屏上说的与框里写的是同一套，
- *  一个概念只有一套词——它们曾经是三个自己的键，于是改字段名时快记的芯片不会跟着动。 */
+ *  一个概念只有一套词——它只有一个来源：三个键各存一份，改字段名时快记的芯片不会跟着动。 */
 const TOKEN_LABEL: Readonly<Record<ComposerToken['kind'], TaskBoardKey>> = {
   tag: 'item.token.tag',
   priority: 'item.token.priority',
@@ -133,9 +133,9 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
 /**
    * What the box understands, in the shape a capture is written in.
    *
-   * ONE ASSEMBLY, READ BY BOTH EXITS. The save path and the sheet's seeding path
-   * used to be two spellings of 「what did I just understand」, and two spellings
-   * is how the chips end up disagreeing with the row they wrote — which is the one
+   * ONE ASSEMBLY, READ BY BOTH EXITS. Two spellings of 「what did I just
+   * understand」 — one in the save path, one in the sheet's seeding path — is how
+   * the chips end up disagreeing with the row they wrote: the one
    * thing a grammar that shows its work exists to prevent. So it is assembled
    * once per parse and handed to whichever exits are wired.
    */
@@ -180,10 +180,10 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
 
   return (
     /* NO WRAPPER, and the reason is that a box which lays nothing out does not
-     * need a name. The composer used to sit in a `div` of its own, and the only
-     * thing that div did was exist — the chips row below it is the layout, and
-     * the parent's grid is what puts the box under the filter bar. A class on the
-     * outer box was a promise of styling that never arrived, and a promise nobody
+     * need a name. A `div` of its own would exist and do nothing — the chips row
+     * below it is the layout, and the parent's grid is what puts the box under the
+     * filter bar. A class on the
+     * outer box is a promise of styling that may never arrive, and a promise nobody
      * keeps is a rule nobody dares delete. */
     <div className={css.itemComposerChips}>
       <input
@@ -231,8 +231,8 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
         * the first line of ＋新建一条, and that sheet has its own button and its
         * own fields — a second 「记下」 beside it is two ways to write one row, and
         * the reader cannot tell which of them carries the fields they just filled
-        * in. It used to be there for a different reason: 「save gesture under the
-        * thumb on a phone」, and that reason is now the sheet's problem to solve. */}
+        * in. 「save gesture under the
+        * thumb on a phone」 is that sheet's problem to solve, not a second button's. */}
       {onSave !== undefined && (
         <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
           {t('item.compose.add')}

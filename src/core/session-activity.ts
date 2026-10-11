@@ -12,8 +12,8 @@
  *   as the fast path on hosts that still serve it;
  * - the CATCH-UP backstop here: a STATE rule on every reconcile pass — a
  *   related session that is running RIGHT NOW with no board-owned round for
- *   this run period fires an external round. "Running now" covers the cases
- *   the old edge (flip) rule silently missed: a session already running when
+ *   this run period fires an external round. "Running now" covers the cases a
+ *   bare edge (flip) rule silently misses: a session already running when
  *   the page loaded (the "行显示进行中、卡片不过列" gap), a session born
  *   running at its first message, and frames lost while the tab was frozen.
  *
@@ -236,15 +236,15 @@ export const EXTERNAL_SETTLE_GRACE_MS = 90_000
 
 // --- session activity: THE one "is this session still working?" derivation ----
 //
-// The board used to answer that question in three places — the column
+// One question, and three places is three answers — the column
 // (`runningJustificationOf`'s live leg), the card's light (`executing(task)`),
-// and every session row's own `running` read — and the three answers disagreed
-// in exactly the states the user hit: a session whose own turn stopped while
-// the subagent it summoned kept working (official sidebar: still working), and
-// a card parked in 进行中 by its column or its armed schedule with no open
-// round (yellow border, no breath). One derivation answers it now, and every
-// surface reads THAT: `own` (this session's turn) ∨ `descendant` (an
-// uninterrupted subagent-origin chain below it is running) ⇒ active.
+// and every session row's own `running` read disagree in exactly the states the
+// user hits: a session whose own turn stopped while the subagent it summoned
+// keeps working (official sidebar: still working), and a card parked in 进行中
+// by its column or its armed schedule with no open round (yellow border, no
+// breath). So one derivation answers it, and every surface reads THAT: `own`
+// (this session's turn) ∨ `descendant` (an uninterrupted subagent-origin chain
+// below it is running) ⇒ active.
 
 /**
  * One session's activity answer — the complete truth, so a caller can never
@@ -288,8 +288,8 @@ export function sessionActivityOf(
 }
 
 /**
- * Whether a session counts as working right now — THE boolean every surface
- * that used to read the bare `running` flag wants (the card's session dots,
+ * Whether a session counts as working right now — THE boolean for every surface
+ * that would otherwise read the bare `running` flag (the card's session dots,
  * the session rows' glow, the detail/review state chips, the card's live leg).
  * `unknown` is false: "no verdict" must never be rendered as working; the
  * leave-running side reads the three-valued form instead.

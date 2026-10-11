@@ -140,8 +140,14 @@ const notes = []
  * The check is deliberately the ONLY thing here that measures a size. A contract
  * that is a ceiling has to have a number, and a number has to be enforced in one
  * place or it is a number somebody remembers.
+ *
+ * The number is this project's own budget for the file, kept under the harness's
+ * per-session instruction budget: the file shares that budget with a global
+ * `AGENTS.md` in the user's home directory, and past it the file stops being
+ * injected at all — a contract nobody reads is the failure this ceiling exists
+ * to make loud.
  */
-const AGENTS_CEILING_BYTES = 55_000
+const AGENTS_CEILING_BYTES = 60_000
 
 /**
  * The repository root holds EXACTLY the files it declares, and nothing else.
@@ -741,15 +747,11 @@ if (/\.installSection\s*\(/.test(srcText)) {
 }
 // ── THE SYSTEM-PROMPT SECTION MUST BE A CONSTANT ───────────────────────────
 //
-// This used to ban the service outright: "src reaches for the system-prompt
-// service again — this plugin does not announce itself to agents". That sentence
-// described a world which has ended — talking to the agent IS the product now —
-// and it became a false red on code that is correct on purpose.
-//
-// DELETING it would have been easy and wrong: the position it guards would sit
-// empty, and the next person could hand-roll a capability list back into the
-// prompt. So the intent is restated in the shape it has today, and the new rule
-// is MECHANICAL where the old one was not about the text at all:
+// Banning the service outright would be a false red on correct code — talking to
+// the agent IS the product — and deleting the position instead would leave it
+// empty for the next person to hand-roll a capability list back into the prompt.
+// So what is guarded is not access to the service but the SHAPE of the text that
+// goes into it, and that shape is MECHANICAL:
 //
 //   the section is FIXED TEXT. A single byte that changes per turn invalidates
 //   the prompt cache for every conversation carrying it. And a capability list

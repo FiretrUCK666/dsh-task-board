@@ -554,7 +554,7 @@ describe('board header and navigator legibility', () => {
     expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
     // The board frame is height:100% plus padding: without border-box it runs
     // ~30px taller than its view and the in-flow thumb bar lands in the
-    // overflowed strip (「底部被截断」); the pinned bar used to hide this.
+    // overflowed strip (「底部被截断」); a pinned bar would hide this.
     expect(ruleOf('board')).toMatch(/box-sizing:\s*border-box/)
     // The bleed tokens live on the compact board rule and feed its padding.
     expect(compact).toMatch(/--dsh-tb-dock-x:\s*12px/)
@@ -686,14 +686,14 @@ describe('alignment grammar (the OCD contract)', () => {
   })
 
   it('the compact tool row is deterministic: modes above, the filter owns the line below it (贴状态列)', () => {
-    // The filter field used to share the tool row and get crushed to one
-    // glyph ("筛"); a width floor only hides the structure problem. Compact
+    // A filter field sharing the tool row gets crushed to one glyph ("筛"); a
+    // width floor only hides the structure problem. Compact
     // fixes the SHAPE by REORDERING the two lines (user decision): 整理/自动化
-    // take the FIRST line left-aligned (the cluster shrank after the
-    // relocation — right-aligning two pills voids the left two-thirds), the
+    // take the FIRST line left-aligned, because right-aligning two pills voids
+    // the left two-thirds, and the
     // search takes a full-width line BELOW it — so the long filter strip
-    // sits directly above the five status columns. 新建任务 no longer lives
-    // here at all (it moved to the nav row).
+    // sits directly above the five status columns. The grid areas are the whole
+    // answer to where 新建任务 is: it has no area here, so it is not on this row.
     const tools = ruleIn(compact, '.boardRowTools')
     expect(tools).toMatch(/display:\s*grid/)
     expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"[\s\S]*"tabs"/)
@@ -807,9 +807,9 @@ describe('alignment grammar (the OCD contract)', () => {
   })
 
   it('a control beside a text line is centered by a DERIVED offset, not a hand-tuned px', () => {
-    // The session toolbar used to carry `margin-top: 3px` — the magnitude of
-    // the right formula with the WRONG sign, leaving the 24px pill 6px below
-    // the 18px line's center.
+    // A hand-tuned `margin-top: 3px` here is the right formula's magnitude with
+    // the WRONG sign, leaving the 24px pill 6px below the 18px line's center,
+    // so the offset is DERIVED.
     const row = ruleOf('sessionHintRow')
     expect(row).toMatch(/margin:\s*0/)
     expect(source).toMatch(/\.sessionHintRow \.sessionToolbarActions\s*\{[^}]*margin-top:\s*calc\(\(var\(--dsh-tb-hint-line\)\s*-\s*var\(--dsh-tb-button-h-sm\)\)\s*\/\s*2\)/)
@@ -917,8 +917,8 @@ describe('button geometry (one base for every variant)', () => {
     // chip language, no second hollow variant:
     const ghost = ruleOf('ghostButton')
     expect(ghost).not.toMatch(/background:\s*transparent/)
-    // ONE fill for the whole quiet family, and it is the NATIVE input surface:
-    // the hand-picked layer token this used to carry is an opaque colour the
+    // ONE fill for the whole quiet family, and it is the NATIVE input surface: a
+    // hand-picked layer token would be an opaque colour the
     // shell never remaps, which is exactly why 整理/自动化/动态/检查更新 drifted
     // away from 筛选任务 under a skin (「跟其他按钮都不一样」).
     expect(ghost).toMatch(/background:\s*var\(--dsh-tb-chip-fill\)/)
@@ -1300,9 +1300,9 @@ describe('reduced-motion functional exemption', () => {
   })
 
   it('the entrance grammar is ONE keyframes, joined — never a second family', () => {
-    // Entrance drift used to mint a new keyframes per surface (fade-up here,
-    // dialog-in there, a staggered row entrance somewhere else): three names
-    // for one idea, each with its own timing, stacking into a stagger of
+    // A family of entrance animations minted one keyframes per surface (fade-up
+    // here, dialog-in there, a staggered row entrance somewhere else) is three
+    // names for one idea, each with its own timing, stacking into a stagger of
     // staggers. One family means: the board owns `dshTbBoardIn`, the overlay
     // family owns `dshTbDialogIn` (scale = depth, a different meaning), and a
     // pure fade owns `dshTbFadeIn`. Nothing else animates a mount.
@@ -1373,16 +1373,16 @@ describe('template library wiring', () => {
     // The board meets the shell edge-to-edge: separation is a hairline, not
     // air (padding alone never reads as separation against the shell head).
     // Padding rides the dock-bleed tokens for the SIDES, and the top is a
-    // literal so it can equal them. The two bands used to disagree about which
-    // was larger: wide was 14 top against 16 sides, compact 14 top against 12
-    // sides — so the SAME relationship had the OPPOSITE sign in the two bands,
-    // and nothing in the suite compared them. The compact top is now 12, which
+    // literal so it can equal them. The two bands must not disagree about which
+    // is larger: wide is 14 top against 16 sides, compact 12 top against 12
+    // sides — the SAME relationship with the OPPOSITE sign in the two bands is
+    // what nothing in the suite would compare. The compact top is 12, which
     // makes the narrow board square (12/12) and leaves the wide band's 14/16
-    // exactly as it was; a phone and a desktop no longer disagree about what
+    // exactly as it is; a phone and a desktop do not disagree about what
     // 「the edge is wider than the top」 means.
     //
-    // The top literal changed, NOT `--dsh-tb-dock-x`: the thumb bar spends that
-    // same token on its negative margins, so moving the token would have moved
+    // That top stays a literal rather than `--dsh-tb-dock-x`: the thumb bar
+    // spends the same token on its negative margins, so moving the token moves
     // the dock too. The gate below pins the relationship, not the numbers.
     expect(ruleIn(compact, '.board')).toMatch(/padding:\s*12px var\(--dsh-tb-dock-x\)/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
@@ -1390,9 +1390,9 @@ describe('template library wiring', () => {
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
     // rhythm). The inline start is COMPUTED from the column's own three numbers
     // — hairline + the cards' gutter + the card's mark rail — so the column name
-    // cannot be notched right of every card title under it. The two numbers that
-    // used to be written here (20, then 28) each dropped one of those three and
-    // put the name 1px, then 8px, off the cards' line; writing it as the sum is
+    // cannot be notched right of every card title under it. A literal stands in
+    // for the sum at its peril: 20 and 28 each drop one of those three and put
+    // the name 1px, then 8px, off the cards' line, so writing it as the sum is
     // the only spelling that cannot.
     expect(ruleIn(compact, '.columnHeader')).toMatch(/padding:\s*12px 20px 12px calc\(var\(--column-frame\)/)
   })
@@ -1444,9 +1444,9 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(board).toContain('time={formatTime(note.at)}')
     expect(board).toContain('time={formatTime(item.at)}')
     // The action line's own left edge is the row's left edge: the buttons
-    // lead and the stamp trails, with the row carrying the gap. The stamp
-    // used to LEAD the cluster inside its reserved slot, which pushed the
-    // buttons a whole slot right and opened a hole under the task name.
+    // lead and the stamp trails, with the row carrying the gap. A stamp that
+    // LEADS the cluster inside its reserved slot pushes the buttons a whole
+    // slot right and opens a hole under the task name.
     const line = feedRowSource.slice(actionsAt)
     expect(line.indexOf('css.notifyActionCluster')).toBeLessThan(line.indexOf('css.notifyMeta'))
     expect(ruleOf('notifyActions')).toMatch(/justify-content:\s*space-between/)

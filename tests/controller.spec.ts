@@ -493,7 +493,7 @@ describe('task mutations', () => {
     //
     //  - an IMPORT of a helper the shared module now owns, and
     //  - a local DEFINITION — a law inlined under its own name, which carries
-    //    no `import` token whatsoever and used to sail straight through.
+    //    no `import` token whatsoever and sails straight through an import check.
     //
     // The law list is DERIVED from task-transitions.ts rather than typed here,
     // so it is completable: a new law joins the gate the day it is written,
@@ -595,10 +595,10 @@ describe('task mutations', () => {
   it('relatedSessionIdSet covers binds and execution rounds', () => {
     const { controller, sessions } = makeController()
     sessions.runningById['s-run'] = false
-    /* **这两条会话得真的存在**，否则这条断言测的是另一件事：相关会话集合现在按存在性过滤
+    /* **这两条会话得真的存在**，否则这条断言测的是另一件事：相关会话集合按存在性过滤
        （读者报过「卡片外面的会话数比实际多」——被删掉的那些会话一直算在里面），而台架默认的
        名单里没有 `s-bind` / `s-run` 这两个 id。让它们存在（`setRunning` 就是这台假面「名单里
-       有这么一条会话」的说法）之后，测的还是原来那句话：绑定与轮次都在集合里。 */
+       有这么一条会话」的说法）之后，测的才是那句话本身：绑定与轮次都在集合里。 */
     sessions.setRunning('s-bind', false)
     sessions.setRunning('s-run', false)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
@@ -668,8 +668,8 @@ describe('task mutations', () => {
     // Fresh creates promote to the top, so the column renders [c, b, a].
     // Dropping c "before a" names the gap between b and a (c excluded, the
     // list reads [b, a]) — the card lands there, exactly where a gap-bar
-    // drawn at a's upper edge promises. (Splicing raw array order used to
-    // snap it back to the top, contradicting the indicator.)
+    // drawn at a's upper edge promises. (Splicing raw array order instead
+    // snaps it back to the top, contradicting the indicator.)
     controller.moveTask(c.id, 'todo', a.id)
     expect(keyed()).toEqual({ [b.id]: 0, [c.id]: 1, [a.id]: 2 })
     // Dropping c at the very top (before b) keeps it first.
@@ -1290,7 +1290,7 @@ describe('run loop', () => {
   it('a list that has NOT ARRIVED yet testifies about nothing (phase pending)', async () => {
     // The same law one step earlier: while the list is still loading its byId is
     // empty, so every liveness leg reads false. A reconcile pass landing in that
-    // window used to cancel the round, drop the card out of 进行中 and leave it
+    // window cancels the round, drops the card out of 进行中 and leaves it
     // there — the exact "session is working, card is not 进行中" report.
     //
     // The pass has to actually RUN while the list is pending for this to test
@@ -2908,8 +2908,8 @@ describe('linked sessions & bind', () => {
     const bound = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(bound.binds).toEqual([{ kind: 'workspace', workspaceId: 'w-a' }])
     // …but the folder's conversations are NOT rows: neither the existing
-    // session nor one opened later ever appears (the old live-derivation was
-    // the "主界面新建会话突然进卡片" bug).
+    // session nor one opened later ever appears — deriving rows from the folder live
+    // is the "主界面新建会话突然进卡片" bug.
     expect(controller.sessionsOf(bound).map(row => row.sessionId)).toEqual([])
     wss.items = [{ id: 'w-a', title: '项目A', sessionIds: ['s-1', 's-2'] }]
     sessions.runningById['s-2'] = false
@@ -3270,9 +3270,10 @@ describe('linked sessions & bind', () => {
     controller.addTaskSources(task.id, [{ kind: 'session', sessionId: 's-2' }])
     controller.hideTaskSession(task.id, 's-1')
     expect(controller.removeTaskSession(task.id, 's-1')).toBe(true)
-    // Re-dragging the SAME folder is a pure no-op now: the bind exists and a
-    // folder carries no restorable membership (the old same-source re-add
-    // restored members — membership is no longer derived at all).
+    // Re-dragging the SAME folder is a pure no-op: the bind exists and a
+    // folder carries no restorable membership, because membership is not derived at
+    // all — restoring members on a same-source re-add is that derivation coming back
+    // through the side door.
     expect(controller.addTaskSources(task.id, [{ kind: 'workspace', workspaceId: 'w-a' }])).toBe(false)
     const current = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current).map(row => row.sessionId)).not.toContain('s-1')
@@ -3458,8 +3459,9 @@ describe('native-activity sync (两端同步)', () => {
     store.save([{ ...seeded, status: 'review', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: NOW + 1, result: 'failed', error: undefined }] }])
     const sessions = new FakeSessions()
     // The native session is ALREADY running when the board's first scan
-    // happens: the old edge rule only baselined it (the row showed 进行中
-    // while the card never moved — the reported bug). The state rule records
+    // happens: an edge rule that only baselines the running session leaves the row
+    // showing 进行中 while the card never moves — the reported bug. The state rule
+    // records
     // the live turn and drives the card.
     sessions.setRunning('s-1', true)
     const controller = new BoardController({
@@ -3499,10 +3501,11 @@ describe('native-activity sync (两端同步)', () => {
   })
 
   it('a lane veto that lifts mid-turn does not eat the running period (coverage never consumes)', async () => {
-    // The "card never lights" root: the detector used to consume the run
-    // period on a lane veto, so when the veto lifted (the blocking round
-    // settled) with the session STILL working the same turn, no second edge
-    // ever came. Coverage vetoes must not consume — only board-owned turns
+    // The "card never lights" root: a detector that consumes the run
+    // period on a lane veto never sees a second edge, so when the veto lifts (the
+    // blocking round
+    // settles) with the session STILL working the same turn, nothing lights the card.
+    // Coverage vetoes must not consume — only board-owned turns
     // (identity) do.
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
@@ -4658,10 +4661,10 @@ describe('session automation rules (给会话定时发指令)', () => {
   it('a session gets AT MOST ONE rule: a second rule is rejected outright — one definition, edited, never a stack', () => {
     const { controller } = ruleHarness(['s-a', 's-b'], {})
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
-    // The claim is "the ORIGINAL snapshot was never mutated", and it used to be
-    // read as `expect(task.rules ?? []).toHaveLength(0)` — which is
+    // The claim is "the ORIGINAL snapshot was never mutated", and
+    // `expect(task.rules ?? []).toHaveLength(0)` is
     // `expect([])`: `createTask` writes no `rules` at all, so the assertion
-    // stayed green even if the field were written, wiped, or anything else.
+    // stays green even if the field is written, wiped, or anything else.
     // The claim is about the OBJECT the caller still holds, so it is checked
     // against the object: a copy frozen at birth must still equal it, and the
     // ledger must hold a DIFFERENT object afterwards (replace, never edit).
@@ -4722,7 +4725,7 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(queued?.direct).toBeUndefined()
     // The scheduled instruction is automation: it rides the own lane and is
     // never left waiting for the board cruise ("定时发指令却没有任何反应" 的
-    // 根因就是旧版把排队规则轮当作普通留言、巡航一关就永远等)。
+    // 根因就是把排队规则轮当作普通留言——巡航一关就永远等)。
     expect(queued?.injectedAt).toBe(NOW)
     expect(stub.commentCalls.map(call => call.text)).toEqual(['hello'])
     expect(row.rules?.[0].lastAt).toBe(NOW + 120_000)
@@ -4897,9 +4900,9 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(row.rules![0].enabled).toBe(true)
     // SKIP AND ROLL, exactly like the task-level scheduler: while the card is
     // shelved the appointment is never caught up, it is skipped and rolled to
-    // the following match. (It used to HOLD the stale slot here while the task
-    // schedule rolled — two answers to one question, and the row then showed a
-    // due instant permanently in the past.)
+    // the following match — holding the stale slot while the task
+    // schedule rolled would be two answers to one question, and the row would show a
+    // due instant permanently in the past.
     expect(row.rules![0].nextAt!).toBeGreaterThan(rule.nextAt!)
     expect(row.rules![0].lastAt).toBeUndefined()
     // Moving the task back to a drivable column resumes the rule.
@@ -5164,9 +5167,10 @@ describe('session automation rules (给会话定时发指令)', () => {
   })
 
   it('a noise external round that is NOT the last record is cancelled on the short grace', async () => {
-    // The 90s noise cancel used to look only at the last row; with lanes, a
+    // A 90s noise cancel that reads only the last row is the wrong
+    // instrument with lanes: a
     // later saved/comment row hides the noisy external round and the card
-    // stayed 进行中 until the 3-minute delivery watchdog.
+    // stays 进行中 until the 3-minute delivery watchdog.
     const stub = new StubExec()
     stub.reconcileResult = undefined // no turn evidence
     const store = new InMemoryTaskStore()
@@ -5807,7 +5811,7 @@ describe('session activity: subagent descendants keep the card live', () => {
     // …and then the subagent the parent summoned starts working: the list
     // notification drives `driveLiveStates`, whose activity answer is the
     // descendant — the card joins 进行中 with no open round at all (the state
-    // that used to leave a 进行中 card with no breath).
+    // a 进行中 card must not be left without: no round, no breath).
     sessions.setSubagent('C', 'P', true)
     await flush()
     await flush()
@@ -5873,9 +5877,10 @@ function taskWithBind(bind: NonNullable<TaskRecord['bind']>): TaskRecord {
  * 换栏落地：引擎动作导致的换栏一律落到目标栏最上方，按发生时间，最新在上。
  *
  * 这组用例钉的是「闭环」而不是某个函数：任务跑完 → 卡片顶到最上面 → 一眼看见
- * 是哪一张。它从前是坏的，而且坏法不止一种——一次跨栏落地因为拿「卡片自己那
- * 条来自上一栏的键」当守卫而整体空转；恢复结算、插话完成、伪外源轮撤销这三
- * 条落地路径压根不调用提升。所以每条路径各有一个用例，少一条就退回原样。
+ * 是哪一张。让这个闭环坏掉的方式不止一种——跨栏落地若拿「卡片自己那
+ * 条来自上一栏的键」当守卫，整条提升就空转；恢复结算、插话完成、伪外源轮撤销这三
+ * 条落地路径各写各的、绕开提升，那一栏里的位置就是碰运气。所以每条路径各有一个用例，
+ * 而三条共用同一处提升。
  */
 describe('landing order (a card that changes column floats to the top of the column it landed in)', () => {
   /** 渲染顺序（本栏自上而下）：键排序，键相同保持台账顺序，与渲染层一致。 */
@@ -5886,7 +5891,7 @@ describe('landing order (a card that changes column floats to the top of the col
       .map(task => task.id)
 
   it('a card that was at the TOP of 进行中 still lands ABOVE the cards already in 待审核', async () => {
-    // The collision that defeated the old guard: the newcomer's key is 0 —
+    // The collision that defeats a guard reading the card's OWN key: the newcomer's key is 0 —
     // it was the top of the column it is LEAVING — and 待审核 already has a
     // key-0 card. Reading its own key as "already on top" skipped the whole
     // promotion, and the two key-0 cards then rendered in ledger order.
@@ -5906,8 +5911,9 @@ describe('landing order (a card that changes column floats to the top of the col
   })
 
   it('a RECONCILED settle (found after a reload, a missed list flip, a cold session) floats too', async () => {
-    // The path that used to write the settled record and nothing else — the
-    // card landed in 待审核 at whatever key it carried out of 进行中.
+    // The path that writes the settled record and must float the card with it —
+    // otherwise the
+    // card lands in 待审核 at whatever key it carried out of 进行中.
     const stub = new StubExec()
     const store = new InMemoryTaskStore()
     const seated = { ...seedTask(store, { id: 'seated' }), status: 'review' as const, order: 0 }
@@ -6054,8 +6060,8 @@ describe('landing order (a card that changes column floats to the top of the col
  * 会话列的顶格：卡片那条「最新发生的在最上」律在会话上的对偶。
  *
  * 这组用例钉的是同一个漏斗（`land`）上的另一半：会话**开始工作**或**结束工作**
- * 时顶到会话列最上方。它从前完全没有触发器——`sessionsOrder` 一旦被拖拽写满
- * 就永久冻结，而没拖过的卡又拿「代表轮次的开始时间」当排序键，于是正在跑的会
+ * 时顶到会话列最上方。缺掉这个触发器就是两种冻结：`sessionsOrder` 一旦被拖拽写满
+ * 就永久停在那里，而没拖过的卡又会拿「代表轮次的开始时间」当排序键，于是正在跑的会
  * 话排在刚结束的后面。每条触发路径各有用例：运行开始 / 运行结束 / 评论注入 /
  * 旁听到的原生对话 / 直发插话，以及一条「标已读不许重排」的反向用例。
  */
@@ -6251,8 +6257,9 @@ describe('「问 AI」：开始还是继续由卡自己说，界面只说「交�
   })
 
   it('runTask 没有 kickoff 时，一切照旧——不传就是原来的那个调用', async () => {
-    // **同一个门，两种调用方式。** 这一条钉住「多出来的那个参数不会改变原来那条路」：
-    // 一个 runTask 的自动路径（定时、链、巡航）都不带 kickoff，而它们必须与改动前逐字相同。
+    // **同一个门，两种调用方式。** 这一条钉住「多出来的那个参数不会改变不带它的那条路」：
+    // 一个 runTask 的自动路径（定时、链、巡航）都不带 kickoff，而它们必须与无 kickoff 的
+    // 调用逐字相同。
     const { controller, stub } = cardWith([])
     const taskId = controller.getSnapshot().tasks[0]?.id ?? ''
     await controller.runTask(taskId)

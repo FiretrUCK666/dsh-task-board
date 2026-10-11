@@ -6,7 +6,7 @@
  * The load-bearing cases are the LANE ones: a card worked on through a comment,
  * an observed native turn, a direct steer or a session rule must reach the same
  * verdicts as one that ran, because every one of those lanes lands a card in
- * 待审核 and the plain-run filter used to be the only thing the chip read.
+ * 待审核 and the chip must count all of them rather than only plain runs.
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -55,12 +55,12 @@ describe('cardViewModelOf', () => {
   })
 
   it('an OPEN round lights the card, whether or not a session reports running', () => {
-    // The reported defect: a card sitting in 进行中 with the yellow border and no
-    // pulse. Its only unfinished round was an EXTERNALLY observed turn, so no
-    // session reported `running` — the light used to be driven by exactly that
-    // native flag, while the chip and the border were driven by the open round.
-    // Two judgments, one card, opposite answers. The light now follows the state
-    // the card DISPLAYS, so an open round lights it with or without that flag.
+    // The trap: a card sitting in 进行中 with the yellow border and no pulse. Its
+    // only unfinished round is an EXTERNALLY observed turn, so no session reports
+    // `running` — driving the light by exactly that native flag puts the chip and
+    // the border (both driven by the open round) at opposite answers on one card.
+    // The light follows the state the card DISPLAYS, so an open round lights it
+    // with or without that flag.
     const open = { id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined, external: true }
     const card = { ...task(), status: 'running' as const, executions: [open] }
     const view = cardViewModelOf(card, {})
@@ -83,8 +83,8 @@ describe('cardViewModelOf', () => {
   })
 
   it('every way a card reaches the 进行中 column breathes (the light table, one row per fact)', () => {
-    // The three reachable holders of the column, all of which used to be able
-    // to sit there with the border on and no animation: an open round, a
+    // The four reachable holders of the column, any of which can otherwise sit
+    // there with the border on and no animation: an open round, a
     // direct steer settled at birth (its session is the only signal), and a
     // chain/budget gap between automatic runs — plus the activity leg a
     // running subagent descendant creates. The light reads the COLUMN, so all
@@ -129,7 +129,8 @@ describe('cardViewModelOf', () => {
 
   it('THE GATE: finished work, every lane, until the user has looked at it', () => {
     // Each lane lands a card in 待审核, so each must raise the card's voice.
-    // The chip used to read `plainRunsOf`, which sees only the first of these.
+    // The chip must count every lane, not `plainRunsOf`, which sees only the
+    // first of these.
     const finished: Array<[string, TaskRecord]> = [
       ['a plain run', {
         ...task(), status: 'review' as const,

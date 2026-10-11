@@ -90,10 +90,10 @@ export interface SessionPosture {
  * only read `status` and a test double should not have to invent a hand-off to
  * satisfy them. It is listed at all because the plugin really does call it — the
  * two slash commands, the checklist's hand-off and `item.ask` all put a sentence
- * into a live agent — and the face used to declare only `status`, so every one of
- * those three call sites had to cast its way past the type. **A face that lies
- * about what it carries pushes every caller into a cast, and a cast is a place
- * where a wrong shape goes unremarked.**
+ * into a live agent — and a face declaring only `status` pushes every one of
+ * those three call sites into a cast past the type. **A face that lies about what
+ * it carries pushes every caller into a cast, and a cast is a place where a wrong
+ * shape goes unremarked.**
  */
 export interface AgentsFace {
     get(id: string): {

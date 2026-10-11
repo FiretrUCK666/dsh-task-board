@@ -230,12 +230,12 @@ export function notificationsExOf(
   //
   // The row's EXISTENCE and its WORD both come from `sessionGateOf` — the one
   // per-session gate the card's own 待你决断 chip and the header's 待审核
-  // count read. Before, existence walked every settled round while the word
-  // came from the plain-run lane alone, so a card whose work arrived as a
-  // comment produced a row that said 待审核 for a failure nothing on the card
-  // could see, and a cancelled run produced a row that said 已取消 while the
-  // card said 待你决断 and the header said 待审核 1 张 — three answers for one
-  // card. Cancelled rounds no longer produce rows at all: a cancel is an abort,
+  // count read. Existence that walks every settled round while the word comes
+  // from the plain-run lane alone makes a card whose work arrived as a comment
+  // produce a row that says 待审核 for a failure nothing on the card can see,
+  // and a cancelled run produce a row that says 已取消 while the card says
+  // 待你决断 and the header says 待审核 1 张 — three answers for one card.
+  // Cancelled rounds produce no row at all: a cancel is an abort,
   // not something a person has to rule on, so the drawer has no word for it.
   const review: NotificationItem[] = []
   const emitted = new Set<string>()

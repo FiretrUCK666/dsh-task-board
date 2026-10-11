@@ -24,15 +24,15 @@ export type SessionChipShape = {
 export declare function waitingKeyOf(kind: PendingInteractionKind): TaskBoardKey;
 /**
  * Why a session cannot be acted on, as ONE sentence — the shared read of
- * `controller.sessionAvailability` for every surface that used to say
- * 「该会话已不可用」 and nothing else.
+ * `controller.sessionAvailability` for every surface, so that no surface
+ * answers with a bare 「该会话已不可用」.
  *
- * It exists because archiving stopped meaning "gone" once DSH shipped the
- * archive-restore page: an archived session is RECOVERABLE (设置 → 已归档会话 →
- * 取消归档) and returns to every surface at once, since all of them derive from
- * the one registry-global set. A deleted-from-this-card session is recoverable
- * too (drag it back). Only a session with no native summary left is honestly
- * unavailable. `undefined` = nothing to explain; the session is available.
+ * It exists because archiving does not mean "gone": an archived session is
+ * RECOVERABLE (设置 → 已归档会话 → 取消归档) and returns to every surface at once,
+ * since all of them derive from the one registry-global set. A session deleted
+ * from this card is recoverable too (drag it back). Only a session with no native
+ * summary left is honestly unavailable. `undefined` = nothing to explain; the
+ * session is available.
  */
 export declare function sessionUnavailableReasonOf(availability: 'visible' | 'archived' | 'removed' | 'gone'): string | undefined;
 /**

@@ -95,19 +95,19 @@ describe('the two commands', () => {
   })
 
   it('a blank /task ANSWERS with the usage line — and does not paint a failure', async () => {
-    // This test used to PIN `kind: 'error'`, which is what the client paints
-    // RED. So the most likely first move in a brand-new session — type `/task`
-    // and press enter to see what it does — put a red card on the screen carrying
-    // a perfectly good sentence of help. Nothing had failed; the colour said it
-    // had, and a reader is told the command is broken.
+    // `kind: 'error'` is what the client paints RED. So the most likely first
+    // move in a brand-new session — type `/task` and press enter to see what it
+    // does — must not put a red card on the screen carrying a perfectly good
+    // sentence of help. Nothing has failed; a red card would say it had, and the
+    // reader would be told the command is broken.
     //
     // The host's own contract is what makes this more than a shade: 「a
     // thrown/aborted handler settles as `kind: 'error'`」. So `error` means the
     // command FAILED, and a usage hint is not a failure — it is the command doing
     // the one thing it can do with no argument.
     //
-    // The words are unchanged, so nothing that reads the sentence is affected; only
-    // the kind, and that is the whole point.
+    // Nothing that reads the sentence is affected: only the kind differs, and
+    // that is the whole point.
     const box = agent()
     const result = await invoke(0, box, '   ')
     expect(result.kind, 'a blank /task is answered, not failed — the reader is not shown red for asking').toBe('success')

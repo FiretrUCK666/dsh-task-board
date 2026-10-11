@@ -7,27 +7,26 @@
  *
  * The fallback chain is the whole point: the built-in 部署默认 preset is an
  * EMPTY config (every field follows the deployment's native defaults) and is
- * never deletable. A missing or dangling defaultId — never created any
- * preset, deleted the preset that was the default, corrupt storage — always
- * resolves to 部署默认 (the previous behavior), so there is no broken state
- * and no migration: the old default IS the deployment default.
+ * never deletable. A missing or dangling defaultId — never created any preset,
+ * deleted the preset that was the default, corrupt storage — always resolves
+ * to 部署默认, so there is no broken state and no migration: the 部署默认 preset
+ * IS the deployment default.
  */
 
 /**
  * The run-config fields, as ONE list.
  *
  * This list was written out seven times across the repository, and two of those
- * copies were `as const` loops — the shape that compiles forever. So a seventh run
- * field was added to the card and to this interface, and both write paths went on
- * ignoring it with nothing red anywhere: the detail pane's editor, the model's
- * `task.update`, and the model's preset reader. The failure it produced is the
- * worst shape a write can take — **the model was told 「已生效」 about a field that
- * had not changed** — and no gate could see it, because each copy was a complete,
- * valid list of the keys that copy knew about.
+ * copies were `as const` loops — the shape that compiles forever. A seventh run
+ * field added to the card and to this interface, and ignored by both write
+ * paths — the detail pane's editor, the model's `task.update`, and the model's
+ * preset reader — produces the worst shape a write can take: **the model is
+ * told 「已生效」 about a field that has not changed**, and no gate can see it,
+ * because each copy is a complete, valid list of the keys that copy knows about.
  *
  * So the list lives here, once, and the interface is DERIVED from it. That turns
  * the silent case into a build failure: a loop over the wrong list, or a field
- * added to the interface by hand, no longer type-checks, because there is now one
+ * added to the interface by hand, does not type-check, because there is one
  * answer and the others are expressions over it rather than fresh literals.
  *
  * `color` is deliberately NOT here. It is a run-adjacent field the model can set,

@@ -83,9 +83,9 @@ describe('review rows (one per settled session of each unviewed review task)', (
     const rows = notificationsExOf([reviewed], () => undefined, id => id)
     expect(rows).toHaveLength(1)
     expect(rows[0]).toMatchObject({ taskId: 'r', kind: 'review', result: 'failed' })
-    // Opening the CARD moves only the task-level baseline — the row gate is
-    // the SESSION's own round clock, so the row survives (「点开卡片整卡通知
-    // 消失」 was exactly the task-level gate this replaced).
+    // Opening the CARD moves only the task-level baseline — the row's own gate is
+    // the SESSION's round clock, so that row survives. A gate read off the
+    // task-level baseline is how 「点开卡片整卡通知消失」 happens.
     expect(notificationsExOf([reviewed], () => undefined, id => id)).toHaveLength(1)
     // Acknowledging the SESSION (what the panel/review-page/notification-open
     // /标已读 funnels write) is what retires its row.
@@ -134,9 +134,9 @@ describe('review rows (one per settled session of each unviewed review task)', (
   })
 
   it('EVERY settled session of a review task gets its own row (the drawer states each lane)', () => {
-    // The old grammar emitted ONE row per task, naming only the newest run's
-    // session — two lanes finishing in different states collapsed into one
-    // line and the drawer could not say which conversation did what.
+    // ONE row per TASK would name only the newest run's session: two lanes
+    // finishing in different states collapse into one line and the drawer cannot
+    // say which conversation did what.
     const two = {
       ...task('r', NOW, { status: 'review' as const }),
       executions: [
@@ -447,9 +447,10 @@ describe('waiting moment clock (round activity, never task.updatedAt)', () => {
  * The review tier is THE human gate, per conversation, and it is read from
  * `task-demand.sessionGateOf` — the same derivation the card's 待你决断 chip
  * and the header's 待审核 count read. These cases pin that agreement, because
- * the two used to be separate questions with separate answers: a row existed
- * for any settled round while its WORD came from the plain-run lane, and the
- * card's chip came from a THIRD question (the plain-run lane again).
+ * three answers read from three different questions is how a row, its WORD and
+ * the card's chip end up disagreeing: a row for any settled round, a word out of
+ * the plain-run lane, and a chip out of a THIRD question (the plain-run lane
+ * again).
  */
 describe('review rows (the gate, per conversation, every lane)', () => {
   /** A settled comment round in `s-1` — the lane `plainRunsOf` cannot see. */

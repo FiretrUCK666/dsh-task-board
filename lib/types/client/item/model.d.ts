@@ -66,10 +66,10 @@ export declare function parseItemDate(value: string, now?: number): number | und
  * facts into a single `undefined`: **no promise at all** (an empty field) and
  * **I could not read this**. Every surface that WRITES a date needs those two
  * apart, because one of them is a legitimate answer and the other must never be
- * dropped quietly. The new-row sheet used to call `parseItemDate` directly and
- * spread the result into the capture, so a date it could not read became
- * `{ dueAt: undefined }` — the row was saved, the day the reader had typed was
- * gone, and nothing on screen said a word about it. That is a silent data loss,
+ * dropped quietly. A new-row sheet that calls `parseItemDate` directly and spreads
+ * the result into the capture turns a date it cannot read into
+ * `{ dueAt: undefined }` — the row is saved, the day the reader typed is
+ * gone, and nothing on screen says a word about it. That is a silent data loss,
  * and it is the difference between a refusal and an omission.
  *
  * So both readers of a date draft — the detail's in-place field and the sheet's
@@ -98,8 +98,8 @@ export declare function readDateDraft(text: string, now: number): DateDraft;
  * 严格形式 `2026-10-15`。开头可以带 `@`，也可以带那个日子的名字（`@不晚于 10/9`）——
  * 名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日子。
  *
- * 两个入口曾经各认一半：快记认星期几与 `+N`，日期框只认 `2026-10-15` 与「明天」——
- * 于是读者在快记得学会的写法，在它旁边那个框里被拒，而那两个框说的是同一件事。
+ * **两个入口认同一批写法**：各认一半的话（快记认星期几与 `+N`，日期框只认 `2026-10-15` 与
+ * 「明天」），读者在快记得学会的写法，在它旁边那个框里会被拒——而那两个框说的是同一件事。
  * @param text - what the reader wrote.
  * @param now - the reading clock; every word resolves against it.
  * @returns the local midnight of that day, or `undefined` when the words do not name one.

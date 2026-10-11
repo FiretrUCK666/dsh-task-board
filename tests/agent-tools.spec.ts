@@ -225,9 +225,10 @@ describe('the read tool answers what it says it answers', () => {
   })
 
   it('says the READ column, not the stored one — so a filter and a row agree', async () => {
-    /* THE SECOND READ DEFECT, restated for the one-vocabulary law. `itemRow` used to report
-       the STORED status while the filter answered a DERIVED one, so a row hanging off a
-       running card was filtered into 「进行中」 and came back printed 「待办」.
+    /* THE SECOND READ DEFECT, restated for the one-vocabulary law. Reporting the STORED
+       status while the filter answers a DERIVED one puts a row hanging off a running
+       card in two places at once: filtered into 「进行中」 and printed 「待办」. The two
+       readings must be the same word.
 
        现在**只有一个词表**：一条挂卡的行走在哪一栏，读的就是那张卡的 `status`；清单自己
        存的两个值只是「它没有卡的时候」的答案。所以这一条钉同一件事的两个方向：①一张在
@@ -288,8 +289,8 @@ describe('a two-document action says which documents it moved', () => {
   })
 
   it('names the half that landed when the second commit is refused', async () => {
-    // The case the old sentence got wrong: the board commit succeeded, the
-    // items commit threw, and the report said 「没写进去」 about the WHOLE op —
+    // The case the whole-op sentence gets wrong: the board commit succeeded, the
+    // items commit threw, and the report says 「没写进去」 about the WHOLE op —
     // which is how a reader learns that this tool's failure sentences do not
     // mean what they say, and is left looking at a card that really exists.
     const base = face()
@@ -473,14 +474,13 @@ describe('the op enum is generated, and the tool is what the model sees', () => 
   })
 
   it('teaches the model EVERY vocabulary both registries parse, not one of them', () => {
-    // **THIS USED TO BE A SELF-PROVING ASSERTION.** It compared the tool's
-    // description against `QUALIFIER_KEYS` — which is what GENERATES that
-    // description — so it could only ever say 「描述与它自己的来源一致」. And it
-    // was green while the model was being taught a vocabulary that was half
-    // wrong: `taskboard_query`'s filter string is parsed by `matchItemQuery` for
-    // the item list too, so the board-only keys it taught (`has:*`, `is:*`) fell
-    // through there as **free words and matched nothing, silently**, while
-    // everything the list speaks was never mentioned.
+    // **COMPARING THE DESCRIPTION AGAINST `QUALIFIER_KEYS` IS SELF-PROVING**: those
+    // keys are what GENERATES that description, so the comparison can only ever say
+    // 「描述与它自己的来源一致」. It sits green while the model is taught a vocabulary
+    // that is half wrong: `taskboard_query`'s filter string is parsed by
+    // `matchItemQuery` for the item list too, so a board-only key it teaches (`has:*`,
+    // `is:*`) falls through there as **a free word that matches nothing, silently**,
+    // while everything the list speaks goes unmentioned.
     //
     // **THE CLAIM IS ABOUT THE PARSER, NOT ABOUT THE DESCRIPTION.** For every
     // token the ITEM grammar reads as a qualifier, the tool must name it; and
@@ -498,7 +498,7 @@ describe('the op enum is generated, and the tool is what the model sees', () => 
     for (const key of QUALIFIER_KEYS) {
       expect(said, `the board's own key \`${key}\` disappeared from the description`).toContain(key)
     }
-    // THE OTHER HALF, which the old assertion got right and this one keeps: the
+    // THE OTHER HALF, which keeps its force: the
     // description must also offer the VALUES, or the model knows the key and
     // still has to guess what goes after the colon. A free-text key (`ws:`)
     // contributes no values, and that is the registry's own answer rather than an
@@ -538,11 +538,12 @@ describe('the batch laws', () => {
   })
 
   it('a write the host DECLINED is not reported as 已生效', async () => {
-    // The receipt used to be decided from the tool's own DRAFT, never from what
-    // `board.commit()` returned — and the merge discards a write whose stamp
-    // another device already passed. So the op reported 「已生效」 about a write
-    // that had not happened, listed the row under 受影响的, and the model's next
-    // turn was built on it. The fake here is the ONLY one that can produce it:
+    // The receipt must be decided from what
+    // `board.commit()` returned, never from the tool's own DRAFT — and the merge
+    // discards a write whose stamp
+    // another device already passed. Deciding it from the draft reports 「已生效」 about a write
+    // that did not happen, lists the row under 受影响的, and the model's next
+    // turn is built on it. The fake here is the ONLY one that can produce it:
     // every other case has a single document, so a draft and a host answer are
     // trivially the same and the discard is unreachable.
     const board = face()
@@ -1213,9 +1214,9 @@ describe('a model asks a question about a row, through the same plan the panel u
   })
 
   it('一条会话都没有的卡：开一轮，而且这一轮的第一句话是这一条自己的内容', async () => {
-    // THE INVERSION THIS FILE WAS REWRITTEN FOR. 「没有会话」 used to be a refusal —
-    // 而它真正说的是「没有可以接下去的东西」，那正是**开始**的定义。A model told
-    // 「没有会话可以说话」 on a fresh card had no way to get the row's words into
+    // THE INVERSION THIS FILE IS BUILT ON. 「没有会话」 is not a refusal —
+    // 它真正说的是「没有可以接下去的东西」，那正是**开始**的定义。A model told
+    // 「没有会话可以说话」 on a fresh card has no way to get the row's words into
     // that card at all.
     const board = face()
     const relayed: BoardCommand[] = []
@@ -1290,10 +1291,9 @@ describe('模型读到的词与界面是同一套（硬性规范 17）', () => {
   const tools = readFileSync(fileURLToPath(new URL('../src/host/agent/tools.ts', import.meta.url)), 'utf8')
 
   it('三个日期的名字用界面那一套，而不是三周前那套', () => {
-    /* **这一条是补一个刚暴露出来的洞**：那一行把一条清单打印给模型看时会带上三个日期名，
-       而它们一直是旧词（最早开始 / 截止 / 硬期限）——界面早改成了不早于 / 希望在 / 不晚于。
-       改的时候 2541 个测试全绿，说明**这三个词此前没有任何断言覆盖**；而模型会拿它们回答
-       读者，属于用户可见的那一面。一个概念两个名字，就是这一条要挡住的事。 */
+    /* **这一条守的是这一行打印给模型的那三个日期名**：它把一条清单打印给模型看时会带上
+       这三个名字，而模型会拿它们回答读者，属于用户可见的那一面。名字与界面同一套——不早于 /
+       希望在 / 不晚于；一个概念两个名字，就是这一条要挡住的事。 */
     for (const word of ['不早于', '希望在', '不晚于']) {
       expect(tools, `模型读到的日期名缺了「${word}」`).toContain(`'${word}'`)
     }

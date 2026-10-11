@@ -97,13 +97,12 @@ jobs:
       # 无上一标签的首版也能起草（全量提交），不会交英文白卷。
       #
       # THE NOTES GO TO `$RUNNER_TEMP`, NOT TO THE REPOSITORY ROOT, and that is the
-      # whole reason this step does not break the next one. The notes used to be
-      # written to `notes.md` in the checkout, and `npm publish` runs
+      # whole reason this step does not break the next one: `npm publish` runs
       # `prepublishOnly` → `pnpm verify` → `verify-standalone.mjs`, which ENUMERATES
-      # the root and refuses a file the project does not declare. So the step wrote
-      # the file and the very next step refused to publish because of it: v0.8.8's
-      # publish died on `the repository root carries files it does not declare:
-      # notes.md` after every real gate had already passed.
+      # the root and refuses a file the project does not declare, so a notes file
+      # written into the checkout kills the publish on
+      # `the repository root carries files it does not declare: notes.md` — after
+      # every real gate has already passed.
       #
       # The fix is HERE and not in the allow-list. That check's own comment says why
       # — 「the allow-list is the project's own declaration files, not a pattern: a

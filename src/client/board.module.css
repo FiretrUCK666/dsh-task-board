@@ -109,7 +109,7 @@
 
   /* Button family: every clickable button is FULLY round (pill), at every
      height (28px default, 24px sm, 34px preset rows, 44px touch floor). A
-     fixed px radius (the old 22px) only covers one height and reads as
+     fixed px radius only covers one height and reads as
      「方形圆弧」 beside 999px pills (search/cruise/columnTab) — the token
      below is the single truth so future buttons cannot drift. Cards/panels/
      inputs keep the sm/md/lg/xl ladder and are NOT pills. */
@@ -121,7 +121,7 @@
   --dsh-tb-button-h-sm: 24px;
 
   /* ONE content line per surface, declared once and consumed by every member
-     of that surface. Rail segments used to each write their own 14px, and one
+     of that surface. Rail segments each writing their own 14px is how one
      of them wrote it TWICE (the 「上下文与运行配置」 row sat 28px while the
      comments sat 14px — the misalignment the user pointed at). A member may
      reference the token, never re-type the number. */
@@ -161,8 +161,9 @@
    * 名字。读者要求的是「按状态那些点的颜色，完全参考任务看板那边的颜色」——而那一句话
    * 能成立的条件只有一个：**颜色不是抄过来的，是同一个令牌**。
    *
-   * 这几条原来只写在 `.statusDot[data-status='…']` 里，并且直接读 `--dsw-*`（越过别名
-   * 层）。别名层正是为「换肤时两个面板一起动」存在的，所以搬进来：一处声明，两处消费，
+   * 这几条读的全是**别名层**那五个名字，不许直接写 `--dsw-*` 越过它：那五个名字声明在
+   * 根属性块里，一处、一份，而两个面板都要消费。写成两处就是**一份拷贝**，换肤时两个
+   * 面板各有各的颜色，而屏上不会有人说一句话。
    * 而且有一条断言在「谁又抄了一份」时变红（`tests/panel-render.spec.ts`）。
    *
    * `running` 与 `review` 用的是 warn 的两档——看板早就这么画了，清单从它那里继承，
@@ -189,9 +190,9 @@
    * 影的时候由一条 `@media (forced-colors: active)` 把 outline 放回来——那里
    * 浏览器自己会接管颜色，两条路径都是「看得见」。
    *
-   * **环贴着盒沿（没有 offset）。** 原来那 `outline-offset: 2px` 的 2px 空气，在影这一
+   * **环贴着盒沿（没有 offset）。** 那 2px 空气，在影这一
    * 族里画不出来：影是不透明的，一层「空气」要么得知道背后是什么颜色，要么就得再加
-   * 一个伪元素。少那 2px 换来的是「环与边永远同形」，这笔账划得来；环也因此更紧、
+   * 一个伪元素。贴着盒沿是这一族的成立条件，换来的是「环与边永远同形」；环也因此更紧、
    * 更像一条边，而不是一枚飘在盒子外面的圈。 */
   --dsh-tb-ring: 0 0 0 2px var(--dsh-tb-accent);
 
@@ -215,11 +216,10 @@
 
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
-  /* The task-list's open surface used to live here as
-     `--dsh-tb-open: color-mix(accent 12%, transparent)`. Its last consumer moved
-     to the item sheet's own opaque `--item-open` (a translucent inner fill is
-     exactly what The Opaque Inner Rule forbids), so the token went with its last
-     reader — a shared token with no consumer is a rule that answers nothing. */
+  /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
+     translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
+     shared token carries it: a shared token with no consumer is a rule that
+     answers nothing. */
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
   /* The focus halo, derived from the SAME 22% step the attention/selection system
      already uses (see --dsh-tb-attention-alpha below) rather than from a token
@@ -404,7 +404,7 @@
   /* Border-box is load-bearing, not cosmetic: height:100% plus padding under
      content-box makes the board ~30px taller than its view, and the in-flow
      thumb bar lands exactly in that overflowed strip and reads as 「底部被截
-     断」 (the pinned bar used to hide this; the notifyRow rule documents the
+     断」 (the notifyRow rule documents the
      same class). With border-box the bar sits fully inside, both widths. */
   box-sizing: border-box;
   min-width: 0;
@@ -610,10 +610,10 @@
   font: inherit;
 }
 /* The action line: buttons on the row's LEFT edge, the stamp on its RIGHT, and
-   the row itself carries the gap. The stamp used to LEAD the cluster inside its
-   reserved slot, which pushed the buttons a whole slot to the right and opened
-   a hole under the task name — the row's own left edge was not where its
-   controls were. `width: 100%` + `space-between` is the whole fix, at every
+   the row itself carries the gap. A stamp that LEADS the cluster inside its
+   reserved slot pushes the buttons a whole slot to the right and opens
+   a hole under the task name — the row's own left edge stops being where its
+   controls are. `width: 100%` + `space-between` is the whole fix, at every
    width, with no width special case. */
 .notifyActions {
   display: flex;
@@ -670,8 +670,8 @@
    after: the task and the conversation that produced the row read as one
    unit, and the status sits next to the actions it explains. All three
    SHRINK only (no grow): the slack belongs to the gap before the action
-   cluster, never inside the task title — a short title used to stretch and
-   shove the whole row right (「你好 ……………… 会话 状态」). Both titles
+   cluster, never inside the task title — a short title that stretches
+   shoves the whole row right (「你好 ……………… 会话 状态」). Both titles
    ellipsize at their own floors (never to slivers — see the notifyMain
    floor); the status chip never shrinks. */
 .notifyTask {
@@ -1425,12 +1425,8 @@
 
 /* **这一格不进文档流，由上面那条 `.columnHeader > .statusDot` 定位。**
  *
- * 我一度在这里补一份 `position: absolute`，理由是「这条规则没有 position，所以点压在
- * 列名上」——**那个理由是假的**：`position` 在那条**后代选择器**上，而它更具体，所以
- * 本来就赢。补上来的是一条更靠左的竞争规则（9px vs 原来的 21px）与一份多余的
- * margin——**一个被更具体的规则完全压住的声明，看起来像修好了，而它什么也没改。**
- * 「注释说的和规则写的对不上」是真的，但**结论跳了一步**：注释里那句话对应的
- * 规则不在这个块里。 */
+ * 别在这里补一条 `position`：`position` 在 `.columnHeader > .statusDot` 那条**后代选择器**
+ * 上，而它更具体，本来就赢——补上来的只会是一条被完全压住、什么也没改的竞争规则。 */
 .statusDot {
   width: 8px;
   height: 8px;
@@ -1441,9 +1437,9 @@
   transform: translateY(-0.5px);
 }
 
-/* 五栏的颜色读别名层那五个名字（声明在根属性块里，一处）。这一处曾经直接写 `--dsw-*`
-   五条——那时它是唯一的消费者，而现在清单那一侧也要用同一套，于是「唯一」变成了
-   「一份拷贝」，而拷贝会漂。 */
+/* 五栏的颜色读别名层那五个名字（声明在根属性块里，一处）。
+   直接写 `--dsw-*` 五条会让这里成为别名层之外的第二份声明：清单那一侧也要用同一套，
+   一份声明被写成两处就是「一份拷贝」，而拷贝会漂。 */
 .statusDot[data-status='backlog'] { background: var(--dsh-tb-status-backlog); }
 .statusDot[data-status='todo'] { background: var(--dsh-tb-status-todo); }
 .statusDot[data-status='running'] { background: var(--dsh-tb-status-running); }
@@ -1697,19 +1693,19 @@
 }
 
 /* THE two card lights, split by MEANING — two states, two forms.
-   Both used to be `animation: dshTbBreathRing` at the same 2.6s timing and the
-   same colour, so "a run finished and you have not looked" and "work is in
-   flight" were one identical light. The project's own tables (AGENTS.md's breath
+   One `animation: dshTbBreathRing` at one timing and one colour makes "a run
+   finished and you have not looked" and "work is in flight" one identical
+   light. The project's own tables (AGENTS.md's breath
    table, DESIGN.md's 「只在形态上区分（外环 / 内晕 / 实心点）」) describe several
-   variants; the card implemented one.
+   variants, and the card's job is to implement more than one.
 
-   Now: unread wears the OUTER RING at full strength — it is the only state asking
+   unread wears the OUTER RING at full strength — it is the only state asking
    you to LOOK, and it is the message that must never be silenced. In-flight work
    wears the INSET HALO at the soft alpha step PLUS a soft outer edge: you need
    not do anything about it, so it must not outrank the card that does — but an
-   inset-only pulse had no presence at the card's rim next to the static
-   full-strength yellow border, and 「进行中的卡边缘不呼吸」 survived two
-   judgment fixes that were all correct. Intensity still differs (soft edge vs
+   inset-only pulse has no presence at the card's rim next to the static
+   full-strength yellow border, which is 「进行中的卡边缘不呼吸」. Intensity
+   differs (soft edge vs
    full ring) and the halo alone carries the inset; the hue stays the single
    attention colour.
 
@@ -1723,9 +1719,8 @@
    Reduced motion needs no rule here: the block further down redefines
    `--dsh-tb-breath` / `-spread` / `-halo` (5s, 2px, 8px), so both lights survive
    slower and gentler — which is this project's rule for state indicators (they
-   are messages, so they are never `animation: none`). An earlier version of this
-   comment promised "a quiet static ring" for reduced motion; no such rule exists
-   and never did. */
+   are messages, so they are never `animation: none`). There is no "quiet static
+   ring" for reduced motion, and no rule that would produce one. */
 .card[data-light='ring'] {
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
@@ -1896,11 +1891,11 @@
   gap: 8px;
   flex-wrap: wrap;
   min-width: 0;
-  /* **这一行不做任何补偿。** 它曾经把整行往左拉了「药丸内衬 + 描边」那么多，让
-   * 药丸里的**字**和上面的「更新于」齐平——字是齐了，可药丸的**盒子**凸到了内容左沿
-   * 之外，看上去像从卡片里探出来一块。**有描边的东西，读者对齐的是它的边界，不是
-   * 边界里的字**：药丸的盒子左沿 = 内容的左沿 = 「更新于」的字左沿，三者同在一条
-   * 线上，而盒子里的字靠它自己的内衬往里让，那是药丸的内部，不是这一行的对齐问题。
+  /* **这一行不做任何补偿。** 往左拉「药丸内衬 + 描边」那么多，药丸里的**字**是和上面的
+   * 「更新于」齐平了，可药丸的**盒子**凸到了内容左沿之外，看上去像从卡片里探出来一块。
+   * **有描边的东西，读者对齐的是它的边界，不是边界里的字**：药丸的盒子左沿 = 内容的
+   * 左沿 = 「更新于」的字左沿，三者同在一条线上，而盒子里的字靠它自己的内衬往里让，
+   * 那是药丸的内部，不是这一行的对齐问题。
    *
    * 所以那一行与上一行共用同一条左沿，**零偏移**——这也是这一段唯一要钉住的事，
    * 因为两种错法看起来是同一个问题的两面。 */
@@ -2961,7 +2956,7 @@ textarea.input {
   width: min(640px, 100%);
   /* NO container here on purpose: making this box a container would resolve
      the composer textarea's own `height: 100%` against it instead of against
-     the auto-height flex item that used to size it, which changes the detail
+     the auto-height flex item that sizes it, which changes the detail
      panel's input geometry. The detail stack therefore keeps the base
      card cap (see .interactionCard). */
 }
@@ -3857,7 +3852,7 @@ textarea.input {
    must not vertical-center the buttons against the whole paragraph — the
    「按钮浮在多行中间」 review finding).
    NO margin of its own: this is a LAYOUT row, and the UA's 1em paragraph
-   margin used to add an invisible 16px above AND below it — that is the whole
+   margin adds an invisible 16px above AND below it — that is the whole
    「会话 3 下面一大片空、按钮不贴着会话列表」 gap (22px + 29px of dead air). */
 .sessionHintRow {
   display: flex;
@@ -3869,8 +3864,8 @@ textarea.input {
 
 /* Optical centering, DERIVED: the button's center must land on the hint's
    first-line center, so the offset is (line box − button height) ÷ 2 —
-   negative, because the taller member has to climb. It used to be a hand-typed
-   +3px (the magnitude of that same formula with the wrong sign), which put
+   negative, because the taller member has to climb. The hand-typed
+   +3px is the magnitude of that same formula with the wrong sign: it puts
    the 24px pill 6px BELOW the 18px line's center instead of on it. */
 .sessionHintRow .sessionToolbarActions {
   margin-top: calc((var(--dsh-tb-hint-line) - var(--dsh-tb-button-h-sm)) / 2);
@@ -3996,7 +3991,7 @@ textarea.input {
   font-size: 12px;
   font-weight: 500;
   /* Dark ink, not `foreground`: the amber fill is light in BOTH themes, so the
-     label must be dark in both. Measured 2.15:1 before, 8.80:1 after — the
+     label must be dark in both. Measured 8.80:1, against 2.15:1 for light ink: the
      worst pairing in the whole stylesheet. See --dsh-tb-ink-on-fill. */
   color: var(--dsh-tb-ink-on-fill);
   background: var(--dsw-alias-state-warn-primary);
@@ -4342,7 +4337,7 @@ textarea.input {
   display: flex;
   flex-direction: column;
   /* 4px grid: the row's own lines (identity → instruction → trigger →
-     actions) are one rhythm. It used to be 3px with a 2px add-on below, two
+     actions) are one rhythm. 3px with a 2px add-on below is two
      off-grid values that read as "these gaps are all slightly different". */
   gap: 4px;
   padding: 8px 10px;
@@ -4737,9 +4732,9 @@ button.interactionOption:focus-visible,
   border-color: var(--dsw-alias-state-business-primary);
 }
 
-/* The one control that used to sit below the board's own focus grammar: it killed
-   the UA ring and replaced it with a 1px border-colour change (1.26:1 → 4.23:1),
-   which clears the 3:1 non-text threshold but is the only focus cue here that is
+/* The one control OUTSIDE the board's own focus grammar: killing
+   the UA ring and replacing it with a 1px border-colour change (1.26:1 → 4.23:1)
+   clears the 3:1 non-text threshold but is the only focus cue here that is
    not the 2px outline every sibling carries — and a colour-only shift is
    invisible to anyone who cannot distinguish it. Same grammar as `.cruiseMore`. */
 .cruiseLimit:focus-visible {
@@ -4868,7 +4863,7 @@ button.interactionOption:focus-visible,
    an implicit full-width row BELOW the whole head row (grid-column: 1 / -1),
    capped + internally scrolled. Expanding pushes the body down; nothing ever
    paints over anything, so there is no z-index, no isolation and no anchor
-   math left here. Closed, the wrap is the context cell exactly as before. */
+   math left here. Closed, the wrap is the context cell, unchanged. */
 .reviewHeaderContext[data-open] {
   display: contents;
 }
@@ -4942,8 +4937,8 @@ button.interactionOption:focus-visible,
   /* THE region's own scroll, declared at BOTH tiers. On a wide rail it is the
      last resort (a fully-rendered config that even a zero-height comments
      region cannot absorb); on a phone it is the folds block's normal scroll.
-     The rail itself no longer scrolls (see `.reviewRail`): a scrollport that
-     contains the composer is how the send box used to be pushed out of reach,
+     The rail itself does not scroll (see `.reviewRail`): a scrollport that
+     contains the composer is how the send box gets pushed out of reach,
      and a `display: contents` rail cannot scroll at all — a declared-but-dead
      scroller is a lie `resolveScroller` could walk into. */
   overflow-y: auto;
@@ -4997,9 +4992,9 @@ button.interactionOption:focus-visible,
 .sessionRailHead > .detailSection {
   min-width: 0;
   /* The head's ONE inset (the rail's content line). The fold row and the
-     config body are both inside it, so neither may add another — the head row
-     used to carry this 14px AND a 14px margin on the button, landing 28px in
-     while the comments sat at 14px (「上下文与运行配置往右移了一点」). */
+     config body are both inside it, so neither may add another — this 14px AND
+     a 14px margin on the button lands 28px in
+     while the comments sit at 14px (「上下文与运行配置往右移了一点」). */
   padding-inline: var(--dsh-tb-rail-inset);
 }
 
@@ -5242,8 +5237,8 @@ button.interactionOption:focus-visible,
 /* Context meter strip: the native occupancy figure + colored composition bar,
    always visible below the conversation (see context-meter.ts for the math).
    NO internal top border/padding: the rail's own 12px rhythm separates it
-   from the state row above — the segment gaps read uniformly (no more
-   "状态行 与 上下文已用 之间偏宽"). */
+   from the state row above — the segment gaps read uniformly, and an internal top border is what buys 「
+   状态行 与 上下文已用 之间偏宽」. */
 .reviewContextMeter {
   display: flex;
   flex-direction: column;
@@ -5782,7 +5777,7 @@ button.interactionOption:focus-visible,
      the card's bottom = the footer) — never clipped, always reachable.
      `min()` needs BOTH halves valid, and its 100% half still caps the card to
      its box whenever the box is roomier than 290px, so the wide-rail and
-     stacked tiers behave exactly as before; never a viewport unit here — the
+     stacked tiers keep their geometry; never a viewport unit here — the
      board box is not the viewport (see the .modalBackdrop note). */
   max-height: max(290px, min(320px, 100%));
   overflow: hidden;
@@ -6289,8 +6284,8 @@ span.interactionOptions {
   display: flex;
   align-items: center;
   gap: 6px;
-  /* ONE line that scrolls sideways, never wraps: a wrapped second line is what
-     used to collide with the send row under the keyboard. One line keeps the
+  /* ONE line that scrolls sideways, never wraps: a wrapped second line
+     collides with the send row under the keyboard. One line keeps the
      composer compact so the send row stays visible; every chip (and its remove
      button) stays reachable by scrolling. */
   flex-wrap: nowrap;
@@ -7063,9 +7058,9 @@ span.interactionOptions {
     padding: 12px var(--dsh-tb-dock-x) calc(var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
     /* 10, and it STAYS 10 — this is the BETWEEN-group gap, and it is the number
        the within-group gap has to be smaller than. See `.boardHeader` below:
-       a phone used to have 10 between every pair of rows, including the two
-       that bound a band, so 「诉求行 / 导航行 / 工具行」 had no visible grouping
-       at all and the whole header read as one undifferentiated stack. */
+       10 between every pair of rows, including the two
+       that bound a band, leaves 「诉求行 / 导航行 / 工具行」 with no visible grouping
+       at all and the whole header reading as one undifferentiated stack. */
     gap: 10px;
   }
 
@@ -7462,17 +7457,18 @@ span.interactionOptions {
 
   /* The status chip reads on the ROW'S content edge — the same x as the
      leading mark, the workspace pill and the meta line (「工作区和未运行要和
-     标题左边那个符号对齐」). It used to carry a 19px indent that aligned it
-     with the TITLE, which left three different left edges in one row. */
+     标题左边那个符号对齐」). A 19px indent aligning it
+     with the TITLE instead would leave three different left edges in one row. */
   .sessionRowTop .sessionRowChip {
     justify-self: start;
     padding-left: 0;
   }
 
   /* The identity slot is a NAMED GRID whose single flexible track is declared
-     (`identity`), so the block can never land anywhere else. The compact grid
-     used to be `12px minmax(0,1fr)` with AUTO-PLACED children: a row without
-     an unread marker had the identity as its only child, which auto-placed
+     (`identity`), so the block can never land anywhere else. An ad-hoc
+     grid of `12px minmax(0,1fr)` with AUTO-PLACED children is what fails here:
+     a row without
+     an unread marker has the identity as its only child, which auto-places
      into the FIXED 12px marker track — a 0px name column, a title of one
      character and a workspace pill of zero width (the reported
      「标题、工作区都直接不显示」). The marker is an overlay badge now, so the
@@ -7518,7 +7514,7 @@ span.interactionOptions {
   /* The workspace pill takes the identity's SECOND line at content width,
      starting on the row's content edge (it spans both tracks, so it reads
      under the MARK, not under the title) — one x for mark, pill, chip and
-     meta. It used to sit in the title's column, which is why the row looked
+     meta. Sitting in the title's column is what makes the row look
      like a staircase. */
   .sessionRowLeading .sessionRowWorkspace {
     grid-area: workspace;
@@ -7759,20 +7755,20 @@ span.interactionOptions {
   cursor: pointer;
 }
 /* --- reduced motion: ONE TOKEN, not a list of names ----------------------------
-   Everything below used to be a hand-written list of every selector that happens
-   to carry a transition or an animation. That is the wrong instrument, and it was
-   failing in four separate ways at once: a selector the list forgot (the whole
-   list panel, which has no block here at all), a selector the list named but a
-   LATER rule out-specified (`.reviewMessage`, `.reviewContext`, `.reviewComment`
-   all sit after this block at equal specificity, so their entrance played), a
-   pseudo-element the list could not reach (`.sessionRow::after`), and a member
+   A hand-written list of every selector that happens
+   to carry a transition or an animation is the wrong instrument, and it fails in
+   four separate ways at once: a selector the list forgets (the whole
+   list panel, which has no block here at all), a selector the list names but a
+   LATER rule out-specifies (`.reviewMessage`, `.reviewContext`, `.reviewComment`
+   all sit after this block at equal specificity, so their entrance plays), a
+   pseudo-element the list cannot reach (`.sessionRow::after`), and a member
    dropped from a selector list (`.dangerGhostButton` inside a four-name list,
    `.detail` inside a three-name one — class names are whole tokens, so naming a
    prefix never covers the longer one).
 
    Meanwhile 40 of the 42 transitions already read ONE token, `--dsh-tb-motion`.
-   So the policy is now written where the durations come from: the token goes to
-   zero, and every transition that was reading it stops moving. The names below
+   So the policy is written where the durations come from: the token goes to
+   zero, and every transition that reads it stops moving. The names below
    are kept ONLY for the handful that do not read it — the ones spelling a literal
    duration, and the ones carrying an animation rather than a transition.
 
@@ -7781,12 +7777,12 @@ span.interactionOptions {
    LIVES HERE.
 
    **POSITION IS NOT COSMETIC. THIS BLOCK IS THE LAST THING IN THE FILE ON
-   PURPOSE.** It sat in the middle, and at equal specificity the later rule wins —
-   so the five selectors it NAMES (`.reviewMessage`, `.reviewContext`,
-   `.reviewComment`, and the two `120ms` colour tints) were all declared *after* it
-   and all kept animating. A reader with motion sensitivity got the full
-   fade-up anyway. The split was exactly source order: everything declared before
-   the old position stopped, everything after survived.
+   PURPOSE.** In the middle, at equal specificity the later rule wins — so the five
+   selectors it NAMES (`.reviewMessage`, `.reviewContext`, `.reviewComment`, and
+   the two `120ms` colour tints) are declared *after* it and keep animating, and
+   a reader with motion sensitivity gets the full fade-up anyway. The split is
+   exactly source order: everything declared before it stops, everything after
+   survives.
 
    Which makes this a trap with a sign on it: **moving it back into the middle,
    "where the other overrides live", silently re-breaks the five.** The token
@@ -7845,8 +7841,8 @@ span.interactionOptions {
      travels is motion, and the state it reports is also in the group's expanded
      attribute. The turn becomes a step, which is the reduced-motion translation of
      the same fact rather than its absence. */
-  /* `.itemGroupChevron` 原来在这一档被静音成 0s——它是清单页四个分组那个折叠箭头，
-   * 而分组已经拆掉了，箭头跟着没有消费者。这条留着的形状是**一条永不生效的
+  /* `.itemGroupChevron` 在这一档被静音成 0s——它是清单页四个分组那个折叠箭头，
+   * 而分组已经拆掉了，箭头跟着没有消费者。留着的是**一条永不生效的
    * 规则在等着它的类名回来**：没人能从截图上看出它，可它会让下一个人以为折叠
    * 箭头还在某处活着，所以连同它上面那段解释一并拿掉。 */
 

@@ -67,8 +67,8 @@ export function isTaskRecord(value: unknown): value is TaskRecord {
 /** Normalize an unknown persisted status back into the closed status union. */
 function normalizeStatus(status: unknown): TaskStatus {
   if (isTaskStatus(status)) return status
-  // The 'failed' column was removed in favor of the human 'review' gate:
-  // legacy failed tasks land in review so their outcome is inspected.
+  // Legacy 'failed' lands in review so its outcome is inspected:
+  // a persisted failed task keeps showing what happened to it.
   if (status === 'failed') return 'review'
   return 'todo'
 }
@@ -239,7 +239,7 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     else delete (task as { sessionsOrder?: unknown }).sessionsOrder
     // The per-card accent color is a forward-compatible optional field:
     // validate it loosely (old data keeps working untouched). The legacy tag
-    // ids field is dropped silently — tags were removed, color only remains.
+    // ids field is dropped silently — color only remains.
     delete (task as { tags?: unknown }).tags
     // Due dates are removed from the product: old persisted rows drop the
     // field on read (no migration — absent is the only state).

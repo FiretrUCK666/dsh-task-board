@@ -10,9 +10,6 @@
  * JavaScript file under `lib` — every orphan goes out to npm inside the
  * tarball, where it is loaded by nothing and read by no one.
  *
- * It is not a hypothetical: two orphans had already accumulated here, one of
- * them shipped in a published version.
- *
  * (Note for the next reader: a glob written inside one of these block comments
  * closes it. `lib/` followed by a star and a slash is a comment terminator, and
  * the file then fails to parse on line one of the comment.)

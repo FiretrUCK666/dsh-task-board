@@ -3,13 +3,13 @@
  * panel, its entry is the shell's own panel row, and NOTHING in the plugin
  * guesses shell DOM or shell class names to get there.
  *
- * Why this is a test and not just a comment: the board used to mount itself by
- * hunting for `[data-pane="conversation"]` and appending a React root into the
- * shell's own grid item. The host removed that attribute; the fallback
- * (`[class*="centerCol"]`) matched a CSS-Module hash that changes whenever the
- * shell rebuilds. The board silently stopped appearing, nothing threw, and every
- * automated check stayed green. These assertions pin the STRUCTURE that replaced
- * it, and refuse the old approach by name.
+ * Why this is a test and not just a comment. A shell attribute
+ * (`[data-pane="conversation"]`) and a CSS-Module class hash (`[class*="centerCol"]`)
+ * are the two things a plugin may NOT build its seat on: the first the host can
+ * remove, the second changes whenever the shell rebuilds. Mounting on either means
+ * the board silently stops appearing, nothing throws, and every automated check
+ * stays green. These assertions pin the STRUCTURE that replaces that approach, and
+ * refuse it by name.
  *
  * The entry's TOGGLE (click the open board's row to leave) is also pinned here
  * as a real mounted behavior — it runs under jsdom, so the file declares that
@@ -372,10 +372,10 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
 describe('stale-bundle status line (rendered through the panel)', () => {
   /** The two browser APIs the mounted board touches that jsdom lacks. */
   /**
-   * **看板那一侧的工件：到这一版为止，看板从来没有一条链路能把自己的卡片画出来看。**
+   * **看板那一侧的工件：这是看板唯一一条能把自己的卡片画出来看的链路。**
    *
-   * 清单那一侧早就有了（`writeRenderArtifact`），而看板的验证全在 jsdom 的结构断言与 CSS 契约
-   * 里——「卡片上那枚读数长什么样」「窄档会不会折行」这类问题，过去只能靠读代码回答。它与清单
+   * 清单那一侧是 `writeRenderArtifact`，而看板的验证全在 jsdom 的结构断言与 CSS 契约
+   * 里——「卡片上那枚读数长什么样」「窄档会不会折行」这类问题，只读代码回答不了。它与清单
    * 共用**同一台页面装配**（`writeStandalonePage`：宿主真实暗色表、移动端 viewport、外壳给的
    * 确定高度盒子）与同一份样式（`panelCss()` 里本来就含 `board.module.css`），所以两块面板的
    * 截图是可比的——不是两套各写一遍的装置。
@@ -393,7 +393,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
   /**
    * 工件里的两张卡：一张挂着三条清单条目（最急是紧急），一张光卡——那枚读数的「有」与
    * 「没有」两种情形一屏看全。用 core 的真构造器建（`NewTaskInput` 里 `description` 是
-   * **必填**，上一版少写了它才抛 `trim of undefined`）：手写对象会随字段增加静默变成一个
+   * **必填**，手写的对象少写一个字段不会报错，只会在运行时抛 `trim of undefined`）：手写对象会随字段增加静默变成一个
    * 「看起来很像真卡的东西」（硬性规范 18）。
    */
   function boardFixture(): TaskRecord[] {
@@ -412,9 +412,8 @@ describe('stale-bundle status line (rendered through the panel)', () => {
       } as never)),
       panelCss(),
     )
-    /* 深色档与清单那一侧**同一个办法**：`scheme` 是参数，不是环境变量。上一版我给它加了一个
-       `DSH_PANEL_SCHEME`，而清单那边的工件从来不认这个变量——同一个能力两套开关，就是这一页
-       反复在消的那种债（硬性规范 17）。 */
+    /* 深色档与清单那一侧**同一个办法**：`scheme` 是参数，不是环境变量。再加一个
+       `DSH_PANEL_SCHEME` 就是同一个能力两套开关，正是这一页反复在消的那种债（硬性规范 17）。 */
     writeStandalonePage(target, aligned.html, aligned.css, scheme, 'task board')
     return aligned.html
   }
@@ -471,9 +470,9 @@ describe('stale-bundle status line (rendered through the panel)', () => {
         if (key === 'getSnapshot') return snapshot
         if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
         if (key === 'linkedOf') return () => []
-        /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。这台假面原来
-           没有这一个成员，于是「空板」渲染得出来、「有卡片」的渲染一读就 `undefined.map` 崩——
-           假面比现实窄，正好在需要它的那一刻暴露（硬性规范 18）。 */
+        /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。少了这一个
+           成员，假面就比现实窄：「空板」渲染得出来，「有卡片」的渲染一读就 `undefined.map` 崩
+           ——正好在需要它的那一刻暴露（硬性规范 18）。 */
         if (key === 'sessionsOf') return () => []
         if (key === 'relatedSessionIdSet') return () => new Set<string>()
         if (key === 'liveStateOf') return () => 'idle'

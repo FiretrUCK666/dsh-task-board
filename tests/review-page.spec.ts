@@ -61,8 +61,8 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     // landing on the card's bottom = the footer), never clipped. Still never
     // a viewport unit: the card lives inside a panel sized against the BOARD
     // box, so `40vh` measured a different box than the one that has to hold
-    // it (and the mobile contract bans viewport units board-wide — the two
-    // tests used to disagree about this line).
+    // it (and the mobile contract bans viewport units board-wide — so the two
+    // tests must agree about this line).
     expect(card).toMatch(/max-height:\s*max\(290px,\s*min\(320px,\s*100%\)/)
     expect(card).not.toMatch(/\d+(vh|dvh|vw)\b/)
     expect(card).toContain('overflow: hidden')
@@ -79,7 +79,7 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   it('the rail clips horizontally; the FOLDS block owns the only scroll', () => {
     // Horizontal: nothing spills past and covers other UI. Vertical: the rail
     // does NOT scroll — a scrollport that contains the composer is exactly how
-    // the send box used to be pushed out of reach, and a `display: contents`
+    // the send box gets pushed out of reach, and a `display: contents`
     // rail cannot scroll at all (a declared-but-dead scroller is a lie the
     // follow logic could walk into). The folds block owns the last resort.
     expect(ruleOf('reviewRail')).toContain('overflow: hidden')
@@ -99,19 +99,19 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   })
 
   it('a refused send SAYS SO, and its reason is not masked by an older one', () => {
-    // FOURTH INSTANCE of the same shape, and the sharpest one: the comment that
-    // states the rule — 「a refusal must speak; restoring the draft silently is
-    // how 点了没反应 happens」 — sat six lines BELOW the branch that violated it.
-    // The codebase already knew. The steer branch restored the draft and returned,
-    // so a reader whose words reappeared in the box saw nothing at all.
+    // The mechanism this pins: the steer branch must not restore the draft and
+    // return, because a reader whose words reappear in the box sees nothing at
+    // all — 「a refusal must speak; restoring the draft silently is how
+    // 点了没反应 happens」.
     const code = readFileSync(fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     // The old shape specifically: a one-line `then` that restores and stops.
     expect(code, 'the steer refusal still restores the draft silently, so the reader sees nothing happen')
       .not.toMatch(/void sent\.then\([^)]*=>\s*\{[^}]*if \(!ok\) restore\(\)/)
-    // And the new one, asserted positively — a `not.toMatch` alone would also be
-    // satisfied by the branch simply not existing, which is a passing test that
-    // has stopped checking anything.
+    // The other half asserted positively, because a `not.toMatch` alone is also
+    // satisfied by the branch simply not existing — a passing test that has
+    // stopped checking anything. The two halves together are what makes this a
+    // check rather than a green light.
     expect(code, 'the steer refusal restores the draft but never says why')
       .toMatch(/if \(ok\) return[\s\S]{0,160}restore\(\)\s*\n\s*setSendError\(t\('review\.sendNotSent'\)\)/)
     expect(code, 'the send failure is masked by an older attachment error, so the reason shown is the wrong one')
@@ -123,18 +123,18 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   })
 
   it('the session-rule switch refuses VISIBLY, and stays dis-armable', () => {
-    // 「按了没反应」 IS the owner's standing complaint, and this switch was a live
-    // instance of it. `toggleSessionRule` returns void and declines in two real
-    // cases — the dead-arm law and an unparseable cron — so the switch used to
-    // accept the press and spring back with nothing said. The task-level schedule
-    // switch, in the same file, reports the identical fact as `disabled` plus one
-    // line: two switches, one fact, one honest and one silent.
+    // 「按了没反应」 IS the owner's standing complaint, and this switch is a live
+    // instance of it: `toggleSessionRule` returns void and declines in two real
+    // cases — the dead-arm law and an unparseable cron — so a switch that accepts
+    // the press and springs back with nothing said is exactly the complaint. The
+    // task-level schedule switch, in the same file, reports the identical fact as
+    // `disabled` plus one line: two switches, one fact, so both must be honest.
     //
     // So the row is DISABLED WITH A STATED REASON rather than left live. The
     // condition is the controller's own: arming is blocked, but turning a dead arm
     // OFF never is — so the gate must be absent while the rule is on, or a rule
-    // could never be disarmed and the fix would have introduced a worse dead
-    // control than the one it removed.
+    // could never be disarmed and the gate would be a worse dead control than the
+    // one it replaces.
     const code = readFileSync(fileURLToPath(new URL('../src/client/board/automation-ui.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     expect(code, 'the rule switch disables with no reason attached, so the reader is not told why')
@@ -150,8 +150,9 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
   })
 
   it('a form that replaces its own trigger moves focus into itself', () => {
-    // THREE SURFACES HAVE THIS SHAPE, and the first two were found by an audit
-    // rather than by a test — which is how a class of defect stays invisible.
+    // THREE SURFACES HAVE THIS SHAPE, so the gate belongs on the MECHANISM rather
+    // than on each call site: three call sites checked three times is the
+    // arrangement that lets the fourth one ship.
     //
     // A form that opens by REPLACING its trigger unmounts that trigger, so focus
     // falls to `document.body`. In a dialog that is worse than cosmetic: the Tab
@@ -186,10 +187,11 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     }
     expect(card).toContain("t('review.interactionAbandon')")
     expect(card).toMatch(/t\(minimized \? 'review\.interactionExpand' : 'review\.interactionCollapse'\)/)
-    // The dismiss-all press ASKS FIRST, and the reason it is worth a gate is
-    // that this spec used to PIN THE OPPOSITE. It asserted the head's grammar
-    // with `toContain`, which a confirmation does not disturb — so the un-guarded
-    // button was the contract, and adding the question read as a regression.
+    // The dismiss-all press must ASK FIRST, and the reason it is worth a gate is
+    // that this assertion's shape cannot see the question: the head's grammar is
+    // checked with `toContain`, which a confirmation does not disturb — so reading
+    // the un-guarded button as the contract would make adding the question look
+    // like a regression.
     //
     // Abandoning is not 「hide a card」: it settles the host call as CANCELLED and
     // the agent proceeds WITHOUT the answers, and the answers already given are
@@ -385,10 +387,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
   })
 
   it('the narrow panel is a THREE-ROW grid: capped folds / conversation / composer', () => {
-    // The structural end of the截断 family. The old stacked form was a flex
-    // chain sharing a height: the config head was `flex: none` (it never
-    // yields), the comments collapsed toward zero to absorb the pressure, and
-    // the composer — the LAST item in the rail's scroll content — ended up
+    // The structural end of the截断 family. A flex
+    // chain sharing a height lets the config head be `flex: none` (it never
+    // yields) while the comments collapse toward zero to absorb the pressure,
+    // and the composer — the LAST item in the rail's scroll content — ends up
     // below the fold, unreachable. A grid with a capped top row and the
     // composer as its OWN row makes that outcome unrepresentable.
     const block = stacked()
@@ -465,7 +467,7 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // is a 648px board floor).
     const boardSized = containerBlock('@container dsh-tb (max-width: 648px) {')
     expect(boardSized).toMatch(/\.review\s*\{[^}]*width:\s*calc\(100% - 16px\)/)
-    // The old board-anchored 600px review block is gone.
+    // The board-anchored 600px review block must stay gone.
     expect(cssSource).not.toMatch(/@container dsh-tb \(max-width: 600px\) \{/)
   })
 
@@ -491,9 +493,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
   })
 
   it('the header context expansion is an in-flow dock row at BOTH widths (never an overlay)', () => {
-    // The 「会话上下文穿模」 root fix: the expanded panel used to be an
-    // absolutely anchored popover painting OVER the transcript, the run
-    // config and the comments on both widths. Now the open wrap dissolves
+    // The 「会话上下文穿模」 root fix, structurally: an absolutely anchored
+    // popover for the expanded panel paints OVER the transcript, the run
+    // config and the comments on both widths, so the panel has to stay in flow.
+    // The open wrap dissolves
     // (display:contents) and the panel joins the header grid as an implicit
     // full-width row BELOW the whole head row — expanding pushes the body
     // down, so overlap is unrepresentable. Capped + internally scrolled at

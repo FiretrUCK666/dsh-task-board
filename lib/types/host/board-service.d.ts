@@ -63,11 +63,11 @@ export declare const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor;
 /** What opening the unit produced.
  *
  *  `documents` is the WHOLE declared table, by document name — not a list of
- *  documents this function knows about. Naming a document here is how that
- *  document used to be dropped: a tree holding `items.json` but no `meta.json`
- *  used to answer with the board alone, and the checklist was gone. So the
- *  value is what the medium holds and the caller picks its own document out of
- *  it; the next document needs a constant, not a change here. */
+ *  documents this function knows about. A list of known names is how a document
+ *  gets dropped: a tree holding `items.json` but no `meta.json` answers with the
+ *  board alone, and the checklist is gone. So the value is what the medium holds
+ *  and the caller picks its own document out of it; the next document needs a
+ *  constant, not a change here. */
 export interface OpenedDocuments {
     /** The live document-tree handle; every later write goes through it. */
     readonly unit: KvUnitLike;
@@ -313,10 +313,9 @@ export declare class DocumentService {
      *  THE one construction site of a LeaseState: every lease answer the route
      *  can ever send (granted / renewing / rejected / released) is derived from
      *  this object, so no branch can ship a seat view that forgets `proto` or
-     *  `bootedAt`. A missing `proto` read as "old host", which made the
-     *  "服务端未重启" banner stand forever on every non-engine device — the
-     *  rejected branch used to hand-build `{ held, holder, expiresAt }` and
-     *  nothing else. */
+     *  `bootedAt`. A missing `proto` reads as "old host", which makes the
+     *  "服务端未重启" banner stand forever on every non-engine device: hand-building
+     *  `{ held, holder, expiresAt }` and nothing else is how that happens. */
     leaseState(now?: number): LeaseState;
     /** An SSE connection for `clientId` opened (route layer, stream accepted). */
     noteStreamOpen(clientId: string | undefined): void;

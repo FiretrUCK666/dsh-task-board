@@ -63,18 +63,18 @@ export interface ItemPageProps {
      * Whether this PAGE has a batch surface, and therefore whether every one of its
      * rows carries a pickbox.
      *
-     * A PAGE FACT AND NOT A MODE, and the name is older than the meaning. It used to
-     * carry 「the reader is holding several rows」, which made the control's existence
-     * depend on a step the reader had to discover first: the pickbox column was 44px
-     * of nothing across the whole list, and the only way in was `X`. PRODUCT puts
-     * multi-select on the list page alone, so the question is 「which page am I on」 —
-     * one answer per page rather than one per moment.
+     * A PAGE FACT AND NOT A MODE. The flag asks which page the reader is on, never
+     * whether the reader is holding several rows: the second makes the control's
+     * existence depend on a step the reader has to discover first — the pickbox
+     * column is 44px of nothing across the whole list, and the only way in is `X`.
+     * PRODUCT puts multi-select on the list page alone, so the question is 「which
+     * page am I on」 — one answer per page rather than one per moment.
      *
      * THE NAME STAYS `picking`, because that is the word the pages and the shared
      * contract already speak — `renderRows(list, picking)`, read literally by the
      * source gate in `card-contract.spec.ts` — and 「can this row be picked」 is what
-     * the flag has always meant. Renaming it would have moved one word through four
-     * files and a stylesheet owner to fix a word that was not wrong.
+     * the flag has always meant. Renaming it would move one word through four files
+     * and a stylesheet owner to fix a word that was not wrong.
      */
     readonly picking: boolean;
     /** The ordering the reader chose, so the table knows whether a day heading is a

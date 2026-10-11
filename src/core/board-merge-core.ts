@@ -55,7 +55,7 @@ export interface MergeRow {
  *  `row` is the DELETED ROW'S OWN TEXT, present only for documents that asked
  *  for it through {@link MergeRowOps.retainDeleted}. It exists so a deletion
  *  can be undone, and it is OPTIONAL in the strict sense: a tombstone without
- *  one suppresses exactly as before and simply has nothing to give back. Old
+ *  one suppresses the payload and simply has nothing to give back. Old
  *  files therefore need no migration, and a document that never opts in never
  *  pays for the storage — which is the whole reason this is an opt-in rather
  *  than the kernel's standing behaviour (a board card carries a prompt and
@@ -193,7 +193,7 @@ export interface MergeRowOps<Row extends MergeRow> {
  *   delete was computed against; deleting an id the host never had is a no-op
  *   and leaves any existing tombstone alone. What the tombstone KEEPS is the
  *   document's call (see {@link MergeRowOps.retainDeleted}); a document that
- *   does not opt in gets a bare stamp, exactly as before.
+ *   does not opt in gets a bare stamp.
  * - pruning: tombstones past their TTL (and the stamps of rows long gone).
  *   Anything a tombstone carried goes with it, so a document that keeps deleted
  *   text keeps it for exactly as long as the tombstone survives and no longer.

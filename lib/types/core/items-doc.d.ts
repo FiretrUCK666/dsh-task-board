@@ -46,7 +46,7 @@
  * WHAT THIS COSTS, STATED RATHER THAN DISCOVERED. A collision leaves no gap (13
  * and 14, dense). A CLAIM that reintroduces a number another row now holds does:
  * the number that row vacated is not reissued, so the list ends up with a hole
- * where it used to be. That is the deliberate trade — a gap is invisible in a
+ * where that number was. That is the deliberate trade — a gap is invisible in a
  * checklist, while the alternative (a number changing under a person who just
  * read it out loud) is a lie told to their face. The kernel is what makes the
  * vacated number unreachable: the claim is taken whole, number included, and by

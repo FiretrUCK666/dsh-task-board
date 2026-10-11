@@ -292,11 +292,12 @@ export function enumeratedFilters(): readonly string[] {
  *  point, not a nicety.
  *
  *  `taskboard_query`'s `filter` string is parsed by `matchItemQuery` for the item
- *  list AND by the board's own search. It used to describe only the board's keys,
- *  so the model was taught board keys (`has:*`, `is:*`) that the list silently
- *  treats as free words — a query that returns nothing and reports no error —
- *  while everything the list actually speaks (`status:`, `p1`–`p4`, `!1`–`!4`,
- *  `has:`, `#标签`) was never mentioned at all. **A vocabulary taught by half is
+ *  list AND by the board's own search, so the description has to cover both.
+ *  Describe only the board's keys and the model is taught board keys (`has:*`,
+ *  `is:*`) that the list silently treats as free words — a query that returns
+ *  nothing and reports no error — while everything the list actually speaks
+ *  (`status:`, `p1`–`p4`, `!1`–`!4`, `has:`, `#标签`) goes unmentioned.
+ *  **A vocabulary taught by half is
  *  worse than none**: the model cannot tell 「no match」 from 「I used it wrong」.
  *
  *  Both halves are DERIVED from the registry that parses them, so a flag added to
@@ -338,7 +339,7 @@ interface ItemRow {
    * The DERIVED status — what the reader sees, and what `status:inProgress`
    * filters on.
    *
-   * It used to be the STORED one, which is the same defect as a facet counting
+   * Printing the STORED one is the same defect as a facet counting
    * by a different predicate than the list under it: a row hanging off a running
    * card filters into `status:inProgress` and then comes back printed as `open`,
    * with nothing in the answer saying the two are different questions. A model
@@ -497,12 +498,13 @@ export interface OpReport {
    *
    * `item.promote` is the one: it creates a card AND links the row. The two
    * commits are separate, so a medium that takes the first and refuses the
-   * second leaves the document in a half state — and the receipt used to say
-   * 「没写进去」 about the whole op, which is how a reader learns that this tool's
-   * failure sentences do not mean what they say. It is also what the catalog's
-   * comment on that action used to CLAIM `applyOne` did, and did not.
+   * second leaves the document in a half state — and a receipt saying
+   * 「没写进去」 about the whole op is how a reader learns that this tool's
+   * failure sentences do not mean what they say. A two-document action cannot
+   * be reported by a subject-less 「已生效」.
    *
-   * Absent on a refusal and on a no-op, because those moved nothing.
+   * One document moved is the ordinary case and stays implicit; only an op that
+   * moved two has to name them.
    */
   readonly documents?: readonly ActionDocument[]
   /** What happened, or what to change. Never a bare error code. */
@@ -513,10 +515,10 @@ export interface OpReport {
 export function refuseOp(id: string): { ok: false; detail: string } {
   const spec = ACTIONS[id as ActionId]
   if (spec === undefined) {
-    // The COUNT is read from the table, never typed. It used to say 「十二个」while
-    // `BOARD_VERBS` had thirteen, so every refusal told the model a number the
-    // list under it contradicted — and a model that trusts a count it can check
-    // will check it, find the mismatch, and stop trusting the rest of the line.
+    // The COUNT is read from the table, never typed. A typed number disagrees
+    // with `BOARD_VERBS` the moment a verb is added, and every refusal then tells
+    // the model a count the list under it contradicts — and a model that checks
+    // the count finds the mismatch and stops trusting the rest of the line.
     return { ok: false, detail: `没有 ${id} 这个动作。可用动作见 taskboard_capabilities，动词只有这 ${BOARD_VERBS.length} 个：${BOARD_VERBS.join(' / ')}` }
   }
   if (spec.surface === 'ui') {
@@ -939,9 +941,10 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     //
     // The merge discards a write whose stamp another device already passed: a
     // delete carrying a `baseUpdatedAt` that is now older than the host row, a
-    // section stamp older than a section written in the meantime. The op used to
-    // report 「已生效」 about the discarded write, list the row under 受影响的, and
-    // the model's next turn was built on a fact that had not happened. Deciding
+    // section stamp older than a section written in the meantime. A receipt
+    // built from the draft reports 「已生效」 about the discarded write, lists the
+    // row under 受影响的, and builds the model's next turn on a fact that did not
+    // happen. Deciding
     // the receipt from the returned document is the only arrangement in which
     // 「已生效」 means the medium holds it.
     // THREE OUTCOMES, NOT TWO, and collapsing two of them is how this lied.
@@ -1024,10 +1027,9 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       ...(task === undefined ? {} : { title: task.title }),
       ...(item === undefined ? {} : { ref: `#${item.ref}`, title: itemTitleOf(item) }),
       ...(moved.length === 0 ? {} : { documents: moved }),
-      // A one-document op keeps the subject-less sentence it always used, so
-      // every receipt that was honest stays byte-identical. The two-document
-      // form is the only one that had to change, and it is the only one that
-      // was previously lying.
+      // A one-document op keeps the subject-less sentence, so it needs no
+      // document list. The two-document form is the only one that has to name
+      // them, because it is the only one that can leave half a state.
       detail: `${declined
         ? '这一条没有改成——另一台设备刚改过它，这次没写进去。'
         : noop ? '这一条已经是这样了，没有改动。' : landedWord(request.dry_run === true, moved)}${next.note ?? ''}`,
@@ -1463,8 +1465,8 @@ function applyOne(
         applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
       }
       // AN UPDATE THAT CHANGES NOTHING IS NOT AN UPDATE. The `semantic` actions
-      // already report `unchanged` rather than burning a revision; this one did
-      // not, so 「改成了它本来的样子」 came back as a success that cost a write.
+      // already report `unchanged` rather than burning a revision; this one must
+      // too, or 「改成了它本来的样子」 comes back as a success that cost a write.
       if (Object.entries(applied).every(([key, value]) => found[key as keyof TaskRecord] === value)) {
         return { doc, items, task: found, unchanged: true }
       }
@@ -1775,11 +1777,10 @@ function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveS
 /**
  * 看板的栏，按卡片 id 索引 —— 每一个需要「这一行现在在哪一栏」的清单推导都问它。
  *
- * **读的是卡片自己那一栏（`TaskRecord.status`），不再是活性判决。** 旧版这里算的是
- * `livenessOf(...) === 'running'`，理由是那时「进行中」由卡片的活性派生；现在一条行在
- * 哪一栏就是卡片所处的栏，而那是卡片自己的字段——于是宿主与面板读**同一个字段**
- * （面板读 `controller.getSnapshot().tasks[].status`），不再各自算一次「在不在跑」。
- * 那一版还有一个隐性分叉：面板读 `liveStateOf`、宿主读 `livenessOf`——同名的两件事。
+ * **读的是卡片自己那一栏（`TaskRecord.status`），不是活性判决。** 一条行在哪一栏就是卡片
+ * 所处的栏，那是卡片自己的字段——于是宿主与面板读**同一个字段**（面板读
+ * `controller.getSnapshot().tasks[].status`），不各自算一次「在不在跑」。各自算就是两个名字
+ * 同一件事（面板读 `liveStateOf`、宿主读 `livenessOf`），而两个名字迟早会给出两个答案。
  *
  * @param tasks - the cards to read, which is the whole board ledger.
  * @returns card id → 那一栏。
@@ -1882,11 +1883,11 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
   /**
    * The envelope's published shape is DERIVED from the spec's own shape field.
    *
-   * It used to be `type: 'boolean'` for every entry, which is how
+   * A `type: 'boolean'` for every entry is how
    * `idempotencyKey` — a string, read as a string, stored in a `Map<string, …>`
-   * — came out of this schema as a boolean. A model that obeyed it sent `true`,
-   * the reader's `typeof === 'string'` guard yielded `''`, and the whole
-   * retry-safety feature did nothing while the schema claimed it was in force.
+   * — comes out of this schema as a boolean. A model that obeys it sends `true`,
+   * the reader's `typeof === 'string'` guard yields `''`, and the whole
+   * retry-safety feature does nothing while the schema claims it is in force.
    *
    * Reading `spec.boolean` instead means the shape is stated once, in the
    * catalog, and a parameter that changes kind cannot be published as the wrong
@@ -1944,11 +1945,11 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
     parameters: {
       type: 'object',
       properties: {
-        // **THE VALUES GO IN TOO, AND THAT HALF WAS MISSING AS WELL.** The description
-        // named `has:` but never said `has:auto` was one of its values — so the model
-        // knew the key existed and still had to guess what goes after the colon,
-        // which is the same silence as not knowing the key at all. Both halves now
-        // come from the registries, so neither can go stale on its own.
+        // **THE VALUES GO IN TOO.** Naming `has:` without saying `has:auto` is one of
+        // its values leaves the model knowing the key exists and still guessing what
+        // goes after the colon, which is the same silence as not knowing the key at
+        // all. Both halves come from the registries, so neither can go stale on its
+        // own.
         filter: {
           type: 'string',
           description: `${filterHelp().syntax}。可用的筛选：${filterHelp().keys.join(' ')}。可用的取值：${filterHelp().values.join(' ')}`,
@@ -1957,8 +1958,8 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
           type: 'string',
           enum: ['brief', 'full'],
           // The description is the whole contract for this parameter, so it states
-          // what each value RETURNS rather than gesturing at "more". It used to
-          // say 「full 连正文一起回」 while no branch anywhere read it.
+          // what each value RETURNS rather than gesturing at "more": a phrase like
+          // 「full 连正文一起回」 describes a value that no branch has to read.
           description: 'brief 只回编号、标题与状态；full 连正文、备注、步骤、标签、进度与三个日期一起回。full 的体积大得多，请配合 limit 用——清单条目的状态是「派生」的：挂在正在跑的卡上的行读作 inProgress（存的那一档在 storedStatus 里）。',
         },
         limit: { type: 'number', description: '最多回多少行（默认 20，上限 100）。AI 侧查询在服务端就截断，不会把整份清单塞进上下文。' },
@@ -2094,9 +2095,9 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   /* `detail` USED TO BE A LIE, and it was the worst kind of lie this tool can
      tell: the parameter was declared, described in prose as 「full 连正文一起回」,
      destructured here — and then never read by a single branch below. Every row
-     came back with its title and its status whatever the caller asked for, so a
-     model that asked for the contents of a note and was handed a title had no
-     way to tell that it had been given the wrong answer; it just believed it.
+     comes back with its title and its status whatever the caller asked for, so a
+     model that asks for the contents of a note and is handed a title has no way
+     to tell that it has been given the wrong answer; it just believes it.
 
      So it is read here, and it decides the PROJECTION, not the wording: `full`
      is the whole written row and `brief` is the name. Both are the model's
@@ -2107,13 +2108,13 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   const items = board.getItemsDoc()
   const filter = (request.filter ?? '').trim()
   /* The CARDS run the board's own grammar, the same one the board's search box
-   * runs — and it did not. This half was a whole-string `includes` against the
-   * title, while `filterHelp()` advertised `has:auto` / `is:unread` / `ws:` as
-   * usable values, so a model that sent one got back the cards whose TITLE
-   * happened to contain those characters and a zero everywhere else. The
-   * checklist half below has been on its real grammar all along; these two lines
-   * were the reason a filter could be 「does nothing」 for half the document and
-   * work on the other half.
+   * runs. A whole-string `includes` against the
+   * title, while `filterHelp()` advertises `has:auto` / `is:unread` / `ws:` as
+   * usable values, returns the cards whose TITLE
+   * happens to contain those characters and a zero everywhere else. The
+   * checklist half below runs its real grammar, so a filter that
+   * 「does nothing」 for half the document and works on the other half is what
+   * the asymmetry buys.
    *
    * The facets are the ones the board itself supplies, from the same core
    * functions its own components read (`hasLiveAutomation`, `taskUnviewed`), so
@@ -2134,9 +2135,9 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
     .slice(0, limit)
   const rows = full ? tasks.map(taskDetailRow) : tasks.map(taskRow)
   // The checklist is matched by the SAME grammar the search box a person types
-  // into uses, reached through the one door that leads to it. This used to be a
-  // second haystack assembled here, and two search boxes that agree today and
-  // disagree after the next change is exactly the defect nobody reports until
+  // into uses, reached through the one door that leads to it. A
+  // second haystack assembled here gives two search boxes that agree today and
+  // disagree after the next change — exactly the defect nobody reports until
   // someone says a filter "does nothing". The context is built ONCE and the
   // same clock is handed to every row, so one answer cannot disagree with
   // itself about what "stale" or "overdue" means.

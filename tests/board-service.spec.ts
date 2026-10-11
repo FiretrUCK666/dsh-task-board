@@ -234,19 +234,18 @@ describe('DocumentService commit', () => {
   })
 
   it('REFUSES the write when the medium will not take it, and does not move the revision', async () => {
-    // THIS TEST USED TO ASSERT THE OPPOSITE, and that is why the defect survived.
+    // THIS TEST ASSERTS THE OPPOSITE OF THE OBVIOUS INDUCEMENT, and that is why it
+    // exists. 「keeps serving from memory when the persist throws」 is a tempting
+    // contract and it is the bug: it pins memory that moved for a write the medium
+    // never took. Publishing `this.doc = next` and advancing the revision BEFORE
+    // `putRecord` (then catching the failure and continuing) turns a full disk into
+    // a resolved promise, a revision that has moved, and a `200 ok:true` from the
+    // route; because every later `?since=N` short-circuits on that revision, no
+    // replica ever asks for the write again, and after a restart the write is gone
+    // with the ledger claiming a revision the medium has never seen.
     //
-    // It was named 「keeps serving from memory when the persist throws」 and it
-    // asserted that the row was there afterwards — which pinned the bug as the
-    // contract. The service published `this.doc = next` and advanced the revision
-    // BEFORE `putRecord`, then caught the failure and continued. So a full disk
-    // produced a resolved promise, a revision that had moved, and a `200 ok:true`
-    // from the route; because every later `?since=N` short-circuits on that
-    // revision, no replica ever asked for the write again, and after a restart it
-    // was gone with the ledger claiming a revision the medium had never seen.
-    //
-    // The trade the old comment named — 「the next commit persists both」 — only
-    // holds if a later commit arrives. If none does, the gap is permanent, and
+    // The tempting trade — 「the next commit persists both」 — only holds if a later
+    // commit arrives. If none does, the gap is permanent, and
     // 「serve a revision the medium has never seen」 is a lost write wearing the
     // costume of a latency trade.
     const unit = new FakeUnit()
@@ -330,8 +329,9 @@ describe('DocumentService lease', () => {
   })
 
   it('leaseState is the ONLY place a LeaseState literal is built (one construction site)', () => {
-    // A second construction site is how the bug was born; the ban is mechanical
-    // so nobody can re-introduce a partial seat answer "just this once".
+    // A second construction site breaks the guarantee that one place answers for
+    // the seat: the ban is mechanical so nobody can re-introduce a partial seat
+    // answer "just this once".
     // Comments come off first (hard rule 14): a sentence ABOUT a literal must
     // never answer for the literal itself.
     const source = stripComments(readFileSync(fileURLToPath(new URL('../src/host/board-service.ts', import.meta.url)), 'utf8'))
@@ -340,9 +340,8 @@ describe('DocumentService lease', () => {
     // The ONE rejection branch, pinned by its exact shape rather than by a
     // count of "at least one": any spread of the authoritative view IS that
     // branch, and it must be the authoritative view with only the caller-
-    // relative `held` flipped. `toBeGreaterThan(0)` accepted a second spread
-    // anywhere in the file, and an unrelated `{ ...current` would have
-    // satisfied it forever.
+    // relative `held` flipped. `toBeGreaterThan(0)` passes on a second spread
+    // anywhere in the file, so an unrelated `{ ...current` satisfies it forever.
     const rejections = source.match(/\{\s*\.\.\.current\s*,\s*held:\s*false\s*\}/g) ?? []
     expect(
       rejections,
@@ -389,8 +388,8 @@ describe('DocumentService lease', () => {
     expect(service.leaseState().held).toBe(true)
     expect(service.acquireLease('b').held).toBe(false)
     // A FROZEN tab touches nothing: past the stream-alive bound the half-open
-    // socket stops proving liveness, and a visible device takes the seat (the
-    // zombie-holder starvation this used to cause forever).
+    // socket stops proving liveness, and a visible device takes the seat — the
+    // seat is not held forever by a holder that has stopped answering.
     clock.t += STREAM_ALIVE_MAX_MS + 1
     expect(service.leaseState().held).toBe(false)
     expect(service.acquireLease('b', undefined, true).held).toBe(true)
@@ -450,12 +449,11 @@ describe('DocumentService lease', () => {
 
 describe('DocumentService command relay', () => {
   it('broadcasts to a live engine immediately', async () => {
-    // 「A LIVE ENGINE」 HAS TO MEAN A LIVE ENGINE. This case used to acquire the
-    // lease and nothing else, so the holder had ZERO streams — which is the GHOST
-    // state — and it asserted that the command broadcast anyway. That assertion
-    // pinned the defect: a seat is not a listener, and a replica that took the
-    // seat and went away (a closed tab, a hibernated machine) kept every launch
-    // from being delivered to anyone while the caller was told it had been sent.
+    // 「A LIVE ENGINE」 HAS TO MEAN A LIVE ENGINE: a seat alone is not a listener.
+    // The holder here takes the lease AND opens a stream, because a holder with
+    // zero streams is the GHOST state — a replica that took the seat and went
+    // away (a closed tab, a hibernated machine) must not keep every launch from
+    // being delivered to anyone while the caller is told it was sent.
     const { service } = makeService(new FakeUnit())
     await service.init()
     service.acquireLease('a')
@@ -745,9 +743,9 @@ describe('DocumentService checklist (the second document)', () => {
   })
 
   it('a checklist write reaches another device, and a no-op one does not', async () => {
-    // THE POINT OF THE FRAME. A note written on one device used to be durable
-    // and durable-before-ack and still invisible everywhere else, so the write
-    // was real and its consequences were not. The contract is two-sided: a
+    // THE POINT OF THE FRAME. A note written on one device must be durable and
+    // durable-before-ack and still VISIBLE everywhere else; a write that is real
+    // while its consequences are not is the defect. The contract is two-sided: a
     // real change announces exactly once, naming its own document, and a
     // commit that changed nothing announces nothing at all — an announcement
     // with no change behind it would wake every device to re-fetch a document

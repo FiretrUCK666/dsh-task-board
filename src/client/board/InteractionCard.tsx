@@ -140,7 +140,7 @@ function QuestionFlow({ question, sessionId, controller }: {
   // stale frame of the previous request's answers).
   //
   // Initialised from the draft store, which is what makes a half-completed
-  // answer survive the exits that used to destroy it: Escape, a backdrop tap,
+  // answer survive the exits that would otherwise destroy it: Escape, a backdrop tap,
   // a reload, or a re-published carrier. The key is the host's rpcId, replayed
   // identically for as long as the ask() is open, so the same card comes back
   // with the same answers. A new request mints a new rpcId and starts clean.
@@ -178,9 +178,9 @@ function QuestionFlow({ question, sessionId, controller }: {
   }
 
   // Persist every answer as it is made. This is the whole durability story for
-  // the product's highest-stakes interaction: the exits that used to discard a
+  // the product's highest-stakes interaction: the exits that discard a
   // half-completed batch (Escape, an accidental backdrop tap, a reload, a
-  // re-published carrier) now merely hide it, and coming back restores it.
+  // re-published carrier) merely hide it, and coming back restores it.
   // Keyed by rpcId, so it can never leak into a different request.
   useEffect(() => {
     if (progress.key !== question.rpcId) return
@@ -326,12 +326,12 @@ function QuestionFlow({ question, sessionId, controller }: {
     event.preventDefault()
     // ARROWS MOVE THE CURSOR. THEY DO NOT ANSWER.
     //
-    // This used to call `choose(target.label)` on a single-select, so ArrowDown on
-    // a five-option question both selected the option under the cursor AND
-    // auto-advanced to question 2 — and the focus call then reached for a button
-    // that was no longer mounted. On the one surface where the reader is
-    // committing an answer on the agent's behalf, browsing the options destroyed
-    // the answer being read, and nothing on screen said a choice had been made.
+    // Calling `choose(target.label)` on a single-select makes ArrowDown on a
+    // five-option question both select the option under the cursor AND
+    // auto-advance to question 2 — and the focus call then reaches for a button
+    // that is no longer mounted. On the one surface where the reader is
+    // committing an answer on the agent's behalf, browsing the options destroys
+    // the answer being read, and nothing on screen says a choice has been made.
     //
     // Selection stays where a selection belongs: click, Enter, Space. The arrows
     // are a cursor, and a cursor that commits is a cursor that edits.
@@ -364,10 +364,10 @@ function QuestionFlow({ question, sessionId, controller }: {
             disabled={disabled}
             onClick={() => { setMinimized(value => !value) }}
           >
-            {/* The arrow turns around. It used to render `chevronDown` expanded and
-                `arrowDown` collapsed — two glyphs half a unit apart, both pointing
-                down, so the icon said "down" either way and only `aria-expanded`
-                carried the state (to screen readers alone). */}
+            {/* The arrow turns around. Expanding to `chevronDown` and collapsing to
+                `arrowDown` is two glyphs half a unit apart, both pointing down — the
+                icon says "down" either way, and only `aria-expanded` carries the
+                state (to screen readers alone). */}
             <Icon name={minimized ? 'chevronDown' : 'arrowUp'} />
           </button>
           <button
@@ -599,11 +599,11 @@ function AnswerField({ variant, value, placeholder, disabled, focusOnMount, onCh
  * request, keep discussing), 拒绝 and 确认执行. The approve label is the intent's
  * own, never inferred from option order.
  *
- * This card used to carry a fourth affordance, an amendment field whose text turned
- * a refusal into "revise with feedback". It was removed for parity: the hosted plan
- * card offers no such input, and a board card that invents an extra decision is not
- * the same card. `planDecisionAnswers` still accepts an amendment (the host API
- * supports revise-with-feedback), so restoring it is a UI change, not a new
+ * This card carries no fourth affordance: an amendment field whose text turned a
+ * refusal into "revise with feedback" would break parity — the hosted plan card
+ * offers no such input, and a board card that invents an extra decision is not the
+ * same card. `planDecisionAnswers` still accepts an amendment (the host API
+ * supports revise-with-feedback), so adding one is a UI change, not a new
  * capability — and `''` here is deliberate rather than an oversight.
  */
 function PlanReviewCard({ question, item, sessionId, controller }: {
@@ -688,8 +688,8 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
             {question.questions.map((item, index) => (
               /* Two different jobs, two class names. This element is the question
                  BLOCK (chip + text + detail + options stacked); the span inside is
-                 the question TEXT, which owns the typography. They used to share
-                 `.interactionQuestion`, so the same class was a layout container in
+                 the question TEXT, which owns the typography. Sharing
+                 `.interactionQuestion` makes the same class a layout container in
                  one place and a text style in the other — the kind of overload that
                  reads as a bug and invites a wrong "fix". */
               <span key={item.id} className={css.interactionQuestionBlock}>

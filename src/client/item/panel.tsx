@@ -138,13 +138,13 @@ export interface ItemListPanelProps {
 }
 
 /**
- * **看板的栏，按卡片 id 索引。** 它原来只回答「那张卡在不在跑」（`boolean`），而清单
- * 的状态现在读整栏：一条挂卡的行走在哪一栏，是看板的事实，清单只读。名字跟着事实改。
+ * **看板的栏，按卡片 id 索引。** 清单的状态读的就是这一栏——一条挂卡的行走在哪一栏，是看板
+ * 的事实，清单只读。所以这里给的是整栏，而不是「那张卡在不在跑」；名字说的就是这件事。
  *
- * 读的是快照里的 `status`（卡片自己那一栏），不再是 `liveStateOf` 的活性判决——那是
+ * 读的是快照里的 `status`（卡片自己那一栏），不是 `liveStateOf` 的活性判决——那是
  * 另一件事（它在不在工作），而「在哪一栏」就是 `status`。
  *
- * **它读的是订阅到的那一份快照**（见 `useBoardSnapshot`）：这三张映射曾经按
+ * **它读的是订阅到的那一份快照**（见 `useBoardSnapshot`）：这三张映射不能按
  * `[face.controller, items]` memo，两者都不随看板变，于是卡拖到另一栏、卡被删掉，
  * 清单这一屏都不会重画。
  */
@@ -379,10 +379,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /* THE ELEMENT THE FOCUS GOES BACK TO when the palette closes — and it is the SEARCH
    BOX.
    *
-   * 它原来是一枚单独的「命令」按钮，就站在搜索框旁边：邻居 32px 而它 28px、形状也不
-   * 一样、夹在两枚药丸中间——于是它自己变成了「这是什么」。而它存在的唯一理由是
-   * 「一个只能键盘打开的控件等于没有」。**搜索框已经回答了那一条**（点它开面板、
-   * 打字收窄它，本就是同一件事的两个阶段），所以入口就是搜索框，不再有第二枚控件。 */
+   * **这里站不下第二枚控件**：邻居 32px 而它 28px、形状也不一样、夹在两枚药丸中间——
+   * 它就变成了「这是什么」。而入口存在的唯一理由是「一个只能键盘打开的控件等于没有」。
+   * **搜索框已经回答了那一条**（点它开面板、打字收窄它，本就是同一件事的两个阶段），
+   * 所以入口就是搜索框，没有第二枚控件。 */
   const paletteTrigger = useRef<HTMLInputElement | null>(null)
   /**
    * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
@@ -394,13 +394,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [showDone, setShowDone] = useState(true)
   /* WHERE THE READER IS STANDS ON THE QUERY, and there is no second copy of it.
    *
-   * It used to be a `useState` written on every press, for a reason that was
+   * A `useState` written on every press looks necessary, for a reason that is
    * real: two of the rail's entries are SETS — 「刚记的」 and 「已删除」 — and a set
    * writes no token, so a highlight derived from the query alone would leave those
-   * two unable to look selected. But the cure was worse than the disease. A
+   * two unable to look selected. But the cure is worse than the disease. A
    * remembered highlight can claim a filter that is not on: pressing the same row
-   * twice turned it OFF and left the row marked 「you are here」, and deleting the
-   * text in the box by hand left it marked too — the reader sees 「超期了」
+   * twice turns it OFF and leaves the row marked 「you are here」, and deleting the
+   * text in the box by hand leaves it marked too — the reader sees 「超期了」
    * highlighted, with its number, over an unfiltered list.
    *
    * The two SETS are `collection`/`place` kinds, and they are the page's own state
@@ -409,12 +409,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /* The rows behind a tombstone, read in the SAME place and the same tick as the
    *  live document — one subscription, one `read()`, two derived facts.
    *
-   *  It used to be a `useMemo(… [replica, items])` reading `replica.archive()` on
-   *  its own, and that dependency named the wrong source twice over: the tombstones
-   *  live in the replica's DOCUMENT, so a restore that changed the tombstones but
-   *  not the live array left the rail's 「已删除」 at its old number — the reader saw a
-   *  count that had stopped being true, and the only thing that eventually moved it
-   *  was the next unrelated re-render. A number derived from a document is only
+   *  A `useMemo(… [replica, items])` reading `replica.archive()` on
+   *  its own names the wrong source twice over: the tombstones
+   *  live in the replica's DOCUMENT, so a restore that changes the tombstones but
+   *  not the live array leaves the rail's 「已删除」 at its old number — the reader sees a
+   *  count that has stopped being true, and the only thing that eventually moves it
+   *  is the next unrelated re-render. A number derived from a document is only
    *  honest if it is read when that document is read. */
   const [deletedItems, setDeletedItems] = useState<readonly ItemRecord[]>(
     () => (replica === undefined ? [] : replica.archive()),
@@ -528,7 +528,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *
    * **不会误伤刚挂上的链接**：提升是「先建卡、后写链接」两步，而控制器在 `createTask`
    * 里就同步通知了订阅者——所以这一效果看到的那一帧里，新卡已经在快照里（台架那条
-   * `createTask` 曾经不喊这一声，于是它把正确实现报成了缺陷；假面已按真实控制器补齐）。
+   * `createTask` 必须喊这一声，否则它把正确实现报成缺陷——假面与真实控制器同严）。
    */
   useEffect(() => {
     if (board === undefined) return
@@ -565,7 +565,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 没挂过卡的行问得出去（会就地建一张再问）；挂着卡的也问得出去。**只有一种拒绝**：挂过卡、
    * 而那张卡已经不在这块板上了——去问一个不存在的会话是错的。
    *
-   * 写成一处是因为它原来有三份：三处各写一份判断的代价，不是那几行代码，是**改一处不报错**
+   * 写成一处是因为**判断只许有一份**：三处各写一份判断的代价，不是那几行代码，是**改一处不报错**
    * ——今天没有卡的行在详情里问得出去、在批量里却被拦下，屏上不会有人说一句话。
    */
   function askableItem(item: ItemRecord): boolean {
@@ -704,8 +704,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
     const at = Date.now()
     /* **新卡带着默认运行配置出生。**
      *
-     * 「这条要谁来做」是看板那一套（工作区 / Agent / 模型 / 思考程度 / 权限），而清单这边
-     * 建出来的卡原来一项都不带——于是「问 AI」跑起来用的是部署默认，与看板「＋新建」出来的
+     * 「这条要谁来做」是看板那一套（工作区 / Agent / 模型 / 思考程度 / 权限），清单这边
+     * 建出来的卡必须带上同一套——不然「问 AI」跑起来用的是部署默认，与看板「＋新建」出来的
      * 一张卡不是同一件事，虽然读者做的是同一件事。这里读**同一份默认预设链**
      * （`defaultRunPresetOf`：没设过、被删了、坏了都落到「部署默认」），所以清单与看板建出来
      * 的卡从一开始就一样；读者随后在看板或这一条的详情里改它，改的还是同一张卡上的同一组字段。 */
@@ -791,8 +791,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * **批量改状态：逐行走单行那一扇门。**
    *
    * 状态是**两份文档都有**的一件事：这一行自己的字段，与那张卡在哪一栏。单行走 `writeStatus`
-   * （写行、移卡、被拒时给出一句话），批量必须走**同一个入口**——它原来直接 `applyItemPatch`，
-   * 于是：
+   * （写行、移卡、被拒时给出一句话），批量必须走**同一个入口**；绕开它直接 `applyItemPatch`
+   * 就是这两件事：
    *
    *   · 批量标「已完成」→ 行说完成了、卡还留在原来那一栏。而下面 reconcile 那一支对 `done`
    *     是**刻意跳过**的（读者自己按下的完成压过卡片），所以这个分歧是**永久的**。
@@ -838,8 +838,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const askHeld = useCallback(() => {
     let askable = 0
     for (const item of items) {
-      /* 与单行那一条**同一处判断**（`askableItem`）：没挂卡的行也算问得出去——批量那一枚
-         原来按「必须挂卡」数，于是同一批行在批量里被拦下、在详情里却问得出去。 */
+      /* 与单行那一条**同一处判断**（`askableItem`）：没挂卡的行也算问得出去——按「必须挂卡」
+         数，同一批行就会在批量里被拦下、在详情里却问得出去。 */
       if (!selection.ids.has(item.id) || !askableItem(item)) continue
       askable += 1
       askOne(item)
@@ -904,9 +904,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
      count that moved when the reader typed would be a count about the search
      wearing the name of a count about their work. The group breakdown is the
      map's own decomposition and is ALWAYS four tiers, so the numbers the reader
-     can add up are exactly the ones the document holds. It used to be sliced
-     out of `itemSlicesOf`, which meant the breakdown silently lost the finished
-     group whenever the finished switch was off —a summary whose denominator
+     can add up are exactly the ones the document holds. Sliced out of
+     `itemSlicesOf` it would silently lose the finished
+     group whenever the finished switch is off —a summary whose denominator
      answered to a control nobody could see. */
   const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, cards: cardColumns })
 
@@ -939,13 +939,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
     <ItemDetail
       view={viewOf(item)}
       cards={cards}
-/* 这一条自己的五个动作，**传进去而不是查出来**。它们原来散在三处（⋯ 菜单、展
-       * 开区最后一节、行上），读者要先知道某个动作住在哪才能按它；而查出来还意味着这
+/* 这一条自己的五个动作，**传进去而不是查出来**。散在三处（⋯ 菜单、展开
+       * 区最后一节、行上）的话，读者要先知道某个动作住在哪才能按它；而查出来还意味着这
        * 个组件知道外面有什么全局状态——两件都不是好事。
        *
        * 「新建一张卡」在原地完成：选择器把名字递进来，提升照它的计划走。名字由
        * 读者在选择器里起，不替他决定；「再开一张」由这一枚按钮自己明说，所以已经
-       * 挂着卡的那条也能换到一张新卡去。原来它把读者送去命令面板——那是一块
+       * 挂着卡的那条也能换到一张新卡去。**它不能把读者送去命令面板**——那是一块
        * 搜索与筛选的面，连一张卡都造不出来，而按它的这个人恰恰最需要一张。 */
       now={now}
       onAsk={() => { if (item !== undefined) askOne(item) }}
@@ -991,12 +991,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /* ROWS, AS A FACTORY, and whether the page can batch is a PARAMETER — because
      the pickbox must not follow the rows to pages that have no batch surface.
 
-     The batch BAR is only handed to the list page, and the panel's comment here
-     claimed the omission of multi-select on the other two pages was "enforced by
-     not handing them the slot". It was not: `picking` was read from the shared
-     holding inside this factory, so the factory handed every page a picking
-     state. Arm on 清单, switch to 日程, and the agenda's rows carried pickboxes
-     that ticked rows into a holding with **no bar on the page and no way to
+     The batch BAR is only handed to the list page, and handing over the slot is
+     not what keeps multi-select off the other two pages:
+     a `picking` read from the shared
+     holding inside this factory hands every page a picking
+     state. Arm on 清单, switch to 日程, and the agenda's rows carry pickboxes
+     that tick rows into a holding with **no bar on the page and no way to
      disarm**. PRODUCT.md says the inbox and the agenda have no multi-select at
      all, and per AGENTS.md PRODUCT wins: **the code is what changes.**
 
@@ -1048,11 +1048,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
       pickAnchor.current = item.id
       setSelection(current => togglePicked(current, item.id))
     },
-    /* THE DETAIL OPENS IN PLACE ON EVERY BAND. It used to open in a right-hand
-     * pane on the wide one and in the row on the narrow one, so there were two
-     * places to look for the same fields — and when the pane went, the wide band
-     * was left with nowhere at all. One place, on every band: the row the reader
-     * pressed, which is where their eyes already are. */
+    /* THE DETAIL OPENS IN PLACE ON EVERY BAND. A right-hand pane on the wide band
+     * and the row on the narrow one is two places to look for the same fields —
+     * and with the pane gone, the wide band has nowhere at all. One
+     * place, on every band: the row the reader pressed, which is where their eyes
+     * already are. */
     inPlace: true,
     /* THE PANEL'S CLOCK GOES WITH THE ROW, so the date the row PRINTS is judged
        by the same now that decided whether it is late. Two clocks on one row is a
@@ -1184,8 +1184,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /**
    * A PRESS ON THE CARD'S OWN BLANK IS 「我不要这一条了」, and it empties the
    * surface the way the reader assumes it does: the row collapses, the detail
-   * selection leaves, and the cursor ring (the bold rim a collapsed row used to
-   * keep wearing) goes with them.
+   * selection leaves, and the cursor ring (the bold rim a collapsed row would
+   * otherwise keep wearing) goes with them.
    *
    * SCOPED TO THE LIST CARD, because the gesture means 「nothing here」 where the
    * rows live. Clicks on the row itself, its menu and top panels are handled by
@@ -1244,12 +1244,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /**
    * OPEN THE ARCHIVE FROM THE RAIL.
    *
-   * 它是**搬出来的**：抽屉的行、它的恢复与它的彻底删除仍然住在列表页，但它「开没开」
-   * 这件事属于整块面板。理由是量出来的两处失败：
+   * **「开没开」这件事属于整块面板**，而抽屉的行、它的恢复与它的彻底删除住在列表页。
+   * 理由是两处失败：
    *
-   * 一、左栏在三个页面上都渲染，而抽屉只长在清单页里。站在「日程」上按「已删除」，
-   *     原来是清掉筛选、点亮那一行、**抽屉不出现**——计数器留在 >0，等读者之后切回
-   *     清单时才补上那一下。按下却当场看不到结果，与按了什么都不做，对读者是同一件事。
+   * 一、左栏在三个页面上都渲染，而抽屉只长在清单页里。开与关若由那一页说了算，站在「日程」
+   *     上按「已删除」就是清掉筛选、点亮那一行、**抽屉不出现**——计数器留在 >0，等读者之后
+   *     切回清单时才补上那一下。按下却当场看不到结果，与按了什么都不做，对读者是同一件事。
    *
    * 二、开与关只有抽屉自己那枚按钮能改，所以**按左栏别的任何一行都不关它**：读者按
    *     「全部」，抽屉还开着，屏幕上还是那份删除记录。一个地方被离开时就该消失。
@@ -1271,7 +1271,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     filtering,
     /* 「这一页能不能多选」是**页面**的常量，不是读者的模式。收件装的是还没分流的
        东西、日程按天读，PRODUCT 说这两页根本没有多选面；清单页有，于是它的每一
-       行都带一个空框。于是这一行不再读 holding——读它会让「读者正在多选吗」这件
+       行都带一个空框。所以这一行**不读 holding**——读它会让「读者正在多选吗」这件
        事决定一个页面事实，而读者改一次筛选就能改掉它。 */
     picking: prefs.page === 'list',
     /* The ordering goes down AS ITSELF, not as a 「may I group by day」 boolean the
@@ -1301,11 +1301,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * page batches」 is enforced — by not handing them the slot, rather than by
    * each of them deciding to ignore one it was given.
    *
-   * AND THE SLOT WAS NOT THE ONLY CHANNEL. `renderRows` used to read the shared
-   * holding itself, so the pickbox followed the rows onto the other two pages
-   * while the bar did not: arm on the list, switch to the agenda, and there were
-   * checkboxes ticking into a holding with no bar and no way to disarm. So the
-   * picking state now arrives as an ARGUMENT — `picking` on the page props — and
+   * AND THE SLOT IS NOT THE ONLY CHANNEL. A `renderRows` that read the shared
+   * holding itself would carry the pickbox onto the other two pages while the bar
+   * did not: arm on the list, switch to the agenda, and there are checkboxes
+   * ticking into a holding with no bar and no way to disarm. So the
+   * picking state arrives as an ARGUMENT — `picking` on the page props — and
    * the two pages that have no batch surface pass `false`. **Not handing the slot
    * enforces the bar; passing the state enforces the pickbox. Both, or neither.**
    */
@@ -1321,9 +1321,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * two are visibly the same computation and not two that happen to agree.
    */
   const matchedCount = visibleIds.length
-  /* THE VALUE ALL HELD ROWS SHARE, when they share one. The Segmented used to be
-   * a permanently blank control: press 「紧急」, the rows changed, and the four
-   * options stayed unlit — the only feedback was a receipt sentence. The mark the
+  /* THE VALUE ALL HELD ROWS SHARE, when they share one. A Segmented that reads
+   * anything but the rows is a permanently blank control: press 「紧急」, the rows
+   * change, and the four options stay unlit — the only feedback is a receipt
+   * sentence. The mark the
    * reader expects is the held rows' own common state, read off the document the
    * same way the rows read it; mixed holdings keep it blank, which is the honest
    * answer to 「这一批是什么档位」 when they are not all one tier. */
@@ -1341,10 +1342,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const commonPriority = heldItems.length === 0 || !heldItems.every(one => one.priority === heldItems[0]!.priority)
     ? undefined
     : heldItems[0]!.priority
-  /* 这一批里有几条挂着卡——**一个谓词，两个问题**（能不能问 AI / 它的状态是不是那张卡
-     说了算），而它们今天恰好是同一批行。所以算一次、给两个名字，不写两遍。 */
-  /* **两个问题，两个数。** 原来同一个 `heldCarded` 既当「问得出去的行数」，又当「挂卡的行
-     走卡片那一套」的门槛——而这是两件事：没挂过卡的行现在也问得出去（会就地建一张），它的
+  /* **两个问题，两个数。** 同一个 `heldCarded` 不能既当「问得出去的行数」，又当「挂卡的行
+     走卡片那一套」的门槛——这是两件事：没挂过卡的行也问得出去（会就地建一张），它的
      `taskId` 是空的，于是被那个数漏掉，批量那一枚就成了灰的——按下去什么都不发生，而屏上
      不会有人说一句话。一个数回答两个问题的坏处正是这个：两件事里有一件变了，另一个跟着错。 */
   const heldCarded = heldItems.filter(one => one.taskId !== undefined).length
@@ -1390,11 +1389,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * GO SOMEWHERE — the one door into 「which page is this on」.
    *
    * Three surfaces need it (the palette's page entries, the rail, and 「跳到
-   * #12」), and each of them used to answer for itself: the palette called
-   * `choose({page})` directly, which is why 「#12 在哪一页」 had no answer
-   * outside a React component and the catalog had to excuse `item.navigate` as
-   * unbuilt. Now the panel asks `planItemNavigation` where to land and only
-   * moves, so the page set and the membership rules are read in one place.
+   * #12」), and each of them answering for itself is how the palette ends up
+   * calling `choose({page})` directly — which leaves 「#12 在哪一页」 with no
+   * answer outside a React component, and the catalog excusing `item.navigate` as
+   * unbuilt. So the panel asks `planItemNavigation` where to land and only
+   * moves, and the page set and the membership rules are read in one place.
    */
   const goTo = useCallback((page?: ItemPageId, ref?: number) => {
     const plan = planItemNavigation({ items, ...page === undefined ? {} : { page }, ...ref === undefined ? {} : { of: ref } })
@@ -1437,9 +1436,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
       label: t(PAGE_LABEL[page]),
       run: () => goTo(page),
     })),
-    /* THE BATCH DOOR CAME HERE WITH THE REST. The filter bar used to carry a
-       「多选」 button, and taking the bar out to stop the duplication would have
-       left a keyboard-only path into the whole batch surface — the same defect as
+    /* THE BATCH DOOR BELONGS HERE WITH THE REST. This is the mouse path into the
+       batch surface: the filter bar carries no 「多选」 button (it would be the
+       second copy), so without this door the whole surface would be
+       keyboard-only — the same defect as
        a palette only the keyboard can open, one level worse, because a batch is a
        way of doing forty things rather than one. `X` on a row still picks; these
        are the two things a reader asks for that are not about a single row. */
@@ -1488,18 +1488,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
  * changes with the clock rather than with the document, so it belongs to the
  * row that says it and not to the page that counts everything else.
  */
-/* 「要处理」那一条带子连同它的推导一起搬走了。
+/* 「要处理」那一条带子不在这里。
  *
- * 它答的是「我今天该动哪几件」，而这个答案现在**长在左栏的数上**——超期、落后、
+ * 它答的是「我今天该动哪几件」，而这个答案**长在左栏的数上**——超期、落后、
  * 停滞、没日期各占一行，数字与跳进去看到的行数是同一次 filter 的两个结果。
  *
  * 一条带子与一个栏位同时回答同一句提问，读者就得先判断「哪一个才是真的」——而
- * 他判断的依据是数字看起来对不对，那正是最不该拿来当依据的东西。**所以是把带子
- * 删掉，不是把它留着当摘要。**
+ * 他判断的依据是数字看起来对不对，那正是最不该拿来当依据的东西。**所以带子不
+ * 在这里，也不留一条当摘要。**
  *
- * 下面那段推导（四个 flag 各配一个只当名词的标签）原本是给三张统计卡用的，卡也
- * 一起没有了，所以推导与标签表都跟着走——一个不再被读的值就是死代码，而死代码
- * 在下一次改动里是最容易被误当成「还在用」的那一种。 */
+ * 四个 flag 各配一个只当名词的标签那段推导同样不在这里：它只服务于三张统计卡，
+ * 而**一个没人读的值就是死代码**——死代码在下一次改动里是最容易被误当成
+ * 「还在用」的那一种。 */
 
 /** WHAT THE RAIL SHOWS, AND WHERE IT STANDS.
    *
@@ -1604,7 +1604,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * Every day token is a sibling of every other, so the newest press replaces.
    *
    * **THE SIBLINGS ARE THE TOKENS IN THE BOX, not the days that happen to hold
-   * rows.** They used to be `railDays` — every day some row lands on — and that is
+   * rows.** `railDays` — every day some row lands on — is
    * a different set from the one the rule is about: press a day with nothing on it
    * (perfectly legal: the calendar lets a reader ask 「what is on the 8th」 and the
    * answer is 「nothing」), then press the 9th, and the 8th's token is still there
@@ -1616,9 +1616,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
     choose({ search: withFacetToken(prefs.search, token, !isTokenIn(prefs.search, token), dayTokensIn(prefs.search)) })
   }, [choose, prefs.search])
   /* THE MONTH THE CALENDAR SHOWS IS A PLACE THE READER WENT, and it starts where
-   * today is. It used to be derived from the clock on every render
-   * (`localDayKey(now).slice(0,7)`), which is the same fact as 「you can never look
-   * at another month」: the arrows had nothing to write to. */
+   * today is. Derived from the clock on every render
+   * (`localDayKey(now).slice(0,7)`) it is the same fact as 「you can never look
+   * at another month」: the arrows have nothing to write to. */
   const [seenMonth, setSeenMonth] = useState<string | undefined>(undefined)
   useEffect(() => {
     if (seenMonth === undefined) setSeenMonth(railMonth)
@@ -1657,7 +1657,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * filter that is not on; one derived from the query cannot.
    *
    * **它是一组，不是一个。** 筛子是**叠加**的：按「已超期」再按「紧急」，两个筛子同时开着、
-   * 列表按两条一起筛。而这一支原来在遇到**第一个**匹配的行时就 `return`——于是三枚芯片亮着、
+   * 列表按两条一起筛。而这一支若在遇到**第一个**匹配的行时就 `return`，就是三枚芯片亮着、
    * 左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。凡是叠加上去的状态，显示的
    * 那一侧就必须是集合（硬性规范 17 的同一条道理：一个事实只有一种说法，而这里的说法是
    * 「哪些筛子开着」）。 */
@@ -1716,7 +1716,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
             different layer that can be open with the box shut.
 
-            「新建卡片」的选择器在收下名字之后不再立刻动文档：卡与这条行话一起落，
+            「新建卡片」的选择器在收下名字之后**不立刻动文档**：卡与这条行话一起落，
             所以它把名字交给「记下一条」，用**同一次提升**（同一句计划、同一次
             写、同一份回执）把两者接上——按名字先造一张没内容的卡、再把带着
             话的行挂上去，中间那一次取消就会留下一张名存实亡的空卡。 */}
@@ -1755,11 +1755,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
             * 一条」——搜索 · 排序 · ＋新建一条。关于**这份文档**的一切问题都在左栏，
             * 关于**这一条**的一切都在那一行里，所以两样都不属于一条只讲视图的带子。
             *
-            * **而归档页原来把整条带子卸载掉**（`{!archiveOpen && …}`），于是页面顶上
-            * 的内容**往上跳 56px**——读者的原话是「上面的东西弹了下来」。「搜索 / 排序 /
-            * 新建这一页不成立」这条理由仍然成立，所以换的不是「有没有带子」，而是
-            * **带子里放什么**：归档页放它自己的题头（名字 + 条数 + 回去的路）。两条带子
-            * 共用 `--item-control-h` 与 `--item-inset-x`，所以同高不是两次巧合。 */}
+            * **而归档页不能把整条带子卸载掉**（`{!archiveOpen && …}`）：页面顶上的
+            * 内容会**往上跳 56px**。「搜索 / 排序 / 新建这一页不成立」这条理由成立，
+            * 但归档页仍要有带子，只是**带子里放什么**不同：归档页放它自己的题头
+            * （名字 + 条数 + 回去的路）。两条带子共用 `--item-control-h` 与 `--item-inset-x`，
+            * 所以同高不是两次巧合。 */}
         {archiveOpen
           ? (
               <div className={css.itemArchiveTopBar}>
@@ -1787,16 +1787,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 </p>
             {/* THE SEARCH BOX IS ALSO THE COMMAND PALETTE'S DOOR.
               *
-              * 它不再旁边另立一枚「命令」按钮。那一枚是为 ⌘K 找的鼠标入口，可它和
+              * **这里站不下第二枚控件**：一枚为 ⌘K 找的鼠标入口，和
               * 邻居不一样高（28 对 32）、不一样宽、夹在两个药丸中间——于是它自己成了
               * 「这是什么」。
               *
               * 而 ⌘K 的答案本来就是这一页上唯一能被看见的那部分：**搜索框**。点它开
               * 面板、打字收窄它，两件事本来就是同一件事的两个阶段。所以入口就是它，
-              * 形状与邻居一致，也不再多一枚控件。 */}
+              * 形状与邻居一致，没有第二枚控件。 */}
             {/* THE FIELD HOLDS THE READER'S OWN WORDS. Nothing else.
               *
-              * It used to hold the whole query — so pressing a rail row put
+              * Holding the whole query would put
               * `status:inprogress status:open` inside the box the reader types in,
               * and that is a control showing them its own implementation. A filter
               * is not a word; it is a decision, and a decision belongs in a chip
@@ -1823,8 +1823,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
               onChange={event => choose({ search: withFreeText(prefs.search, event.target.value) })}
             />
             <div className={css.itemTopBarTools}>
-              {/* 多选有一个**读者不用先知道抽屉里有它**的入口。它原来只住在 ⋯ 菜单
-                  与命令面板的词表里：一个有四十行活要一起改的读者，得先按开某一行
+              {/* 多选有一个**读者不用先知道抽屉里有它**的入口。只住在 ⋯ 菜单
+                  与命令面板的词表里的话：一个有四十行活要一起改的读者，得先按开某一行
                   的菜单，才看见这个模式存在——「批量做一件事」这个问题的第一句是
                   「多选」，它就该站在带上。清单页是批量干活的页，芯片只在那页出现。
                   再按一次收回，与栏里的「多选做完了」是同一扇门。 */}
@@ -1863,8 +1863,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     个短语，所以它居中的是**这一个短语**，而短语内部的两半按基线对齐。
                     两半直接当药丸的子项、药丸又用 `align-items: baseline` 时，基线那
                     一组会被按到药丸的**顶**上（flex 的基线组从交叉轴起点开始摆），于是
-                    这一枚的字比旁边三枚高约 8px——读者的话是「排序顺序的按钮有问题」。
-                    包一层之后：外面居中，里面共用一条基线，两个承诺各归各位。 */}
+                    这一枚的字比旁边三枚高约 8px。
+                    包一层：外面居中，里面共用一条基线，两个承诺各归各位。 */}
                 <span className={css.itemTopBarPair}>
                   <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
                   <span className={css.itemTopBarValue}>
@@ -1893,11 +1893,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
           {/* THE CHIP ROW IS THE FILTER'S OWN FACE, and it is ALWAYS HERE — below
               the bar, above the rows, in the same column the list is in.
               *
-              * It used to be rendered only inside the command palette and inside an
-              * overlay nothing could open. So with the palette shut there was NO
-              * chip row anywhere on the surface: a reader who pressed 「超期了」 got
-              * `has:overdue` in the box and nothing on screen that named the filter,
-              * said it was on, or offered to take it off. **A filter the reader can
+              * Rendered only inside the command palette — or inside an overlay
+              * nothing can open — with the palette shut there is NO
+              * chip row anywhere on the surface: a reader who presses 「超期了」 gets
+              * `has:overdue` in the box and nothing on screen that names the filter,
+              * says it is on, or offers to take it off. **A filter the reader can
               * neither see nor remove is a filter they will conclude is a bug** —
               * and the fix is not to explain it better, it is to draw it.
               *

@@ -6,8 +6,8 @@ export interface ItemRailProps {
     /**
      * **读者正站在哪些行上**，从查询里读出来的**一组**。
      *
-     * 筛子是叠加的（「已超期」+「紧急」可以同时开着），所以这一侧必须是集合：它原来是一个
-     * `string | undefined`，取第一个匹配的行就停——三枚芯片亮着而左栏只有一行有底色，读者看到
+     * 筛子是叠加的（「已超期」+「紧急」可以同时开着），所以这一侧必须是集合：取第一个匹配的
+     * 行就停（`string | undefined`）——三枚芯片亮着而左栏只有一行有底色，读者看到
      * 的是「我按了三个，它只认一个」。
      */
     readonly activeIds: ReadonlySet<string>;
@@ -20,7 +20,7 @@ export interface ItemRailProps {
     readonly activeDay?: string;
     /** Whether the month grid is unfolded. The reader's own choice, defaulted by
      *  the band (see `ItemRail`): a fold is one of the six moves rule 11 allows,
-     *  while `display: none` — what the phone used to get — is not. */
+     *  while `display: none` is not. */
     readonly calendarOpen: boolean;
     readonly onToggleCalendar: () => void;
     /** Move the shown month by ±1. Two buttons rather than a text field: a month is

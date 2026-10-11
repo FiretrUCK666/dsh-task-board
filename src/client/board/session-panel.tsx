@@ -441,13 +441,13 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
    * selector displays. `undefined` = not read yet, `null` = the host does not
    * serve it.
    *
-   * This used to be two sources: the `permissions` block riding a history page
+   * TWO sources can only disagree: the `permissions` block riding a history page
    * (a snapshot of past EVENTS — and `/permission` never opens a turn, so that
-   * copy stayed frozen at whatever it said before the user changed anything)
-   * plus a component-local optimistic `chosen` that died on remount, arbitrated
-   * by an effect that read a projection value of '' as "no information". That
-   * is how a panel showed 「默认」 over a session the user had just set. There is
-   * now ONE value, from ONE read, and the panel says so when it cannot read it.
+   * copy is frozen at whatever it said before the user changed anything) plus a
+   * component-local optimistic `chosen` that dies on remount, arbitrated by an
+   * effect that reads a projection value of '' as "no information" — and that is
+   * how a panel shows 「默认」 over a session the user has just set. So: ONE value,
+   * from ONE read, and the panel says so when it cannot read it.
    *
    * The CHOICES are a separate fact and come from where the host keeps them —
    * the permission-preset catalog — exactly as the harness's own selector joins
@@ -728,13 +728,13 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
   reloadKey?: unknown
 }) {
   // Without a session there is nothing to show (the caller keeps its rail
-  // empty, exactly like the pre-refactor gating on sessionId).
+  // empty, exactly like the gating on sessionId).
   if (sessionId === undefined) return null
   // The permission switcher is NOT mapped from these projections: it reads the
   // session's live `permissions` projection itself (see SessionConfigEditor).
   // A per-session setting is a current fact, and the history-page copy of it
-  // never refreshes — the panel used to sit on that frozen copy and show
-  // 「默认」 over a session the user had just re-permissioned.
+  // never refreshes — sitting on that frozen copy shows 「默认」 over a session
+  // the user has just re-permissioned.
   return (
     <>
       <ContextMeterPanel projections={projections} usage={sumUsage(lines ?? [])} />
@@ -833,8 +833,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
     /* Remount signal: folding the comments unmounts .commentsScroll; the fold
        state flips back on re-expand, so the observer + follow effects re-bind
-       to the NEW element (a fold→expand loop used to lose bottom-follow and
-       the 滑到最新 button — the review caught it). */
+       to the NEW element — without it, a fold→expand loop loses bottom-follow
+       and the 滑到最新 button. */
     commentsOpen || awaiting,
   )
   // OPEN / NEW ASK = LATEST — one grammar at every width: opening the fold
@@ -1057,10 +1057,10 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         ? onSteerFiles(text, attachedImages, attachedFiles)
         : attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
       // A REFUSAL MUST SPEAK, and this branch is why that sentence exists six
-      // lines below: the draft used to come back silently, and a reader whose
-      // words reappear in the box sees NOTHING AT ALL — which is the whole
-      // 「按了没反应」 this comment was written to prevent, six lines further
-      // down and one branch away.
+      // lines below: a draft that comes back silently leaves a reader whose
+      // words reappear in the box seeing NOTHING AT ALL — which is the whole
+      // 「按了没反应」 this rule exists to prevent, six lines further down and one
+      // branch away.
       setSendError(undefined)
       void sent.then(ok => {
         if (ok) return
@@ -1117,12 +1117,12 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         onRemoveFile={id => { setFiles(attachedFiles.filter(file => file.id !== id)) }}
         busy={attachments.busy}
         busyLabel={busyLabel}
-        // SEND FAILURE FIRST. It used to sit behind `attachments.error`, so an
-        // upload error left over from a moment ago would mask the reason a send
-        // was refused — and the two answer different questions: one is 「the file
-        // did not go up」, the other is 「your words did not go out」. The newest
-        // thing that went wrong is the one the reader is looking at, so the
-        // refusal leads and the older upload problem waits its turn.
+        // SEND FAILURE FIRST. Sitting behind `attachments.error` would let an
+        // upload error left over from a moment ago mask the reason a send was
+        // refused — and the two answer different questions: one is 「the file did
+        // not go up」, the other is 「your words did not go out」. The newest thing
+        // that went wrong is the one the reader is looking at, so the refusal
+        // leads and the older upload problem waits its turn.
         error={sendError ?? attachments.error ?? draftNotice}
       />
       <div className={css.reviewComposerRow}>

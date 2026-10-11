@@ -297,9 +297,9 @@ describe('the query grammar', () => {
   })
 
   it('is ONE grammar, and the model\'s own door into it is the same function', () => {
-    // There used to be a second entry point here — `itemMatchesText(item, text,
-    // now)` — for "a caller that filters a set in one pass". Nothing in the tree
-    // called it: `task-search.ts`'s `matchItemQuery` and the panel both parse
+    // There is no second entry point here — `itemMatchesText(item, text, now)` — for
+    // "a caller that filters a set in one pass", and nothing in the tree wants one:
+    // `task-search.ts`'s `matchItemQuery` and the panel both parse
     // once and walk the rows, which is what the doc comment on that function
     // recommends. Two same-named-nearby functions differing only in whether the
     // first argument is a string is the easiest drift to introduce and the
@@ -619,9 +619,8 @@ describe('today is one local midnight, written down once', () => {
   })
 
   it('the bucket boundary agrees with it, which is what it was factored out for', () => {
-    // The agenda used to carry its own copy of this function; the capture box
-    // carried a third. One boundary, and the test that would have caught a
-    // second copy disagreeing with the first.
+    // One boundary, so a second copy of this function cannot disagree with it about
+    // which day a row belongs to — which is what it was factored out for.
     const dstDay = new Date(2026, 2, 8, 0, 30, 0).getTime()
     expect(scheduleBucketOf(row({ dueAt: dstDay + 3600_000 }), dstDay + 3600_000)).toBe('today')
     expect(startOfDay(dstDay + 3600_000)).toBe(startOfDay(dstDay))
@@ -678,18 +677,17 @@ describe('the page set is a closed constant', () => {
   it('is exactly two destinations, and the interface cannot add a third', () => {
     // Things' AppleScript manual: predefined, and you may not create a new list.
     // A rail that grows an entry every time the reader asks a question has
-    // turned a map into a log. 收件 was the third and it was never a different
-    // QUESTION — 「还没分流的」 is a predicate over the same document — so it went
-    // back to being one (see `isInboxItem`, still read by the grammar and the
-    // triage strip) and stopped being a page.
+    // turned a map into a log. 收件是第三个，而它从来不是另一个**问题**——
+    // 「还没分流的」是同一份文档上的一个谓词——所以它退回成一个（见
+    // `isInboxItem`，文法与分诊条仍然读它），不再是**一页**。
     expect([...ITEM_PAGES]).toEqual(['list', 'schedule'])
   })
 })
 
-/* 这一节原来钉的是「每一页各有多少行」（`itemPageCountsOf`，三种页面各一个数）。
- * 页轨那三个数今天由**左栏自己**数它那几行（`itemRailGroupsOf` 的每个条目就是它自己那组
- * 行数），所以那条契约住在 `item-rail.spec.ts`：一个数只有与它下面那份清单同一个谓词
- * 算出来才成立，而这里那份「页面计数」已经没有任何界面在读。 */
+/* 这一节不钉「每一页各有多少行」（`itemPageCountsOf` 那种页面计数）：页轨那三个数今天由
+ * **左栏自己**数它那几行（`itemRailGroupsOf` 的每个条目就是它自己那组行数），
+ * 那份契约住在 `item-rail.spec.ts`：一个数只有与它下面那份清单同一个谓词
+ * 算出来才成立，而「页面计数」今天没有任何界面在读。 */
 
 describe('the derived status is read, never re-decided outside item-view', () => {
   const finished = row({ id: 'f', status: 'done' })
@@ -738,11 +736,10 @@ describe('the derived status is read, never re-decided outside item-view', () =>
   })
 })
 
-/* 这一节原来还钉着三个计数函数（`itemGroupCountsOf` / `itemInsightOf` /
- * `itemPageCountsOf`）：四组计数、两个概览数、每页一个数。**它们今天一个读者都没有**
- * ——分组头、概览条、页轨都在界面收掉那些东西时一起走了，留下的只有「定义在、
- * re-export 在、屏上一个数都不读」。给死代码写测试不是契约，是让死代码看起来被需要，
- * 所以函数与用例一起删。
+/* 这一节不与三个计数函数（`itemGroupCountsOf` / `itemInsightOf` / `itemPageCountsOf`：
+ * 四组计数、两个概览数、每页一个数）发生关系：**它们今天一个读者都没有**——分组头、
+ * 概览条、页轨都在界面收掉那些东西时一起走了，留下的只有「定义在、re-export 在、屏上
+ * 一个数都不读」。给死代码写测试不是契约，是让死代码看起来被需要，所以函数与用例一起删。
  *
  * 那几段推理里仍然成立的两条搬去了 `DESIGN.md`：**概览不许把「交叠」画成「分解」**
  * （逾期是未完成里的一个子集，两张卡永远加不出底下的总数），以及**一个数必须与它下面

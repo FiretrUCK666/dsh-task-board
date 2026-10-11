@@ -260,12 +260,12 @@ export declare class BoardSyncClient {
      *  WHY THE NOTIFY LIVES HERE AND NOT INSIDE {@link adopt}. {@link view} lays
      *  this tab's optimistic layer IN FRONT of the baseline, so **clearing that
      *  layer changes what the reader sees even when the document has not moved**.
-     *  Publishing from inside `adopt` — which is what this used to do — handed the
-     *  reader the view with the optimistic rows still in front and then said
-     *  nothing more, so whatever the host had just decided about those rows was
-     *  never drawn. On the checklist that is visible in the worst way: `ref` is
-     *  assigned host-side, so a row that had just come back from the host kept
-     *  reading 「编号待定」 until the reader reloaded the page. */
+     *  Publishing from inside `adopt` hands the reader the view with the optimistic
+     *  rows still in front and then says nothing more, so whatever the host has
+     *  just decided about those rows is never drawn. On the checklist that is the
+     *  worst way to see it: `ref` is assigned host-side, so a row that has just
+     *  come back from the host keeps reading 「编号待定」 until the reader reloads
+     *  the page. */
     private publish;
     /** Coalesced resync after a remote-change frame. */
     private scheduleResync;

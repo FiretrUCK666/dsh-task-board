@@ -353,11 +353,11 @@ export function fixtures(): ItemRecord[] {
     },
     {
       ...base,
-      /* **挂着卡的那一行。** 它原来是「受阻」那一档的样本，而清单自己只剩两个值；现在它
-         承担的是这一版最要紧的一种组合：**一条挂着卡、而那张卡在「待审核」的行**。它同时
-         压住三件事——状态读的是那张卡（不是这一行存的 `todo`）、行首那颗珠子用看板那一栏的
-         颜色、以及「这一行在哪一栏」与「它自己存什么」两句话不一致时界面怎么说。
-         卡片的台账由台架的 `controller` 假面提供（见 `renderPanel` / `mountPanel`）。 */
+      /* **挂着卡的那一行。** 它承担的是这一版最要紧的一种组合：**一条挂着卡、而那张卡
+         在「待审核」的行**。它同时压住三件事——状态读的是那张卡（不是这一行存的 `todo`）、
+         行首那颗珠子用看板那一栏的颜色、以及「这一行在哪一栏」与「它自己存什么」两句话
+         不一致时界面怎么说。卡片的台账由台架的 `controller` 假面提供（见 `renderPanel` /
+         `mountPanel`）。 */
       id: 'fx-carded-review',
       ref: 4,
       title: '这一条挂着卡，卡在待审核那一栏',
@@ -620,12 +620,11 @@ export function renderPanel(
  * 「which view is on screen」, so a capture sets it there and gets the same reader
  * a reader would.
  *
- * **THE SET OF STATES IS IMPORTED, NOT TYPED HERE.** It used to compare against
- * the literal `'palette'`, so every layer added after that one was unreachable:
- * `DSH_PANEL_OPEN=create` silently produced an ordinary panel, and the capture
- * looked like a CSS failure when nothing had failed. **A gate that cannot see
- * which states exist is a gate that answers 「no」 for every state it has not
- * heard of**, and that reads exactly like a working gate.
+ * **THE SET OF STATES IS IMPORTED, NOT TYPED HERE.** Comparing against the literal
+ * `'palette'` makes every other layer unreachable: `DSH_PANEL_OPEN=create` silently
+ * produces an ordinary panel, and the capture looks like a CSS failure when nothing
+ * failed. **A gate that cannot see which states exist is a gate that answers 「no」
+ * for every state it has not heard of**, and that reads exactly like a working gate.
  *
  * So the names come from the product module that owns them. Add a layer there and
  * it is photographable the same day; miss it here and this function says so
@@ -653,12 +652,12 @@ export function overlayOfEnv(): ItemOverlay | undefined {
 /**
  * THE ROW A CAPTURE EXPANDS, read from `DSH_PANEL_ROW`.
  *
- * ONE VARIABLE PER MEANING. `DSH_PANEL_OPEN` used to answer two questions at once
+ * ONE VARIABLE PER MEANING. `DSH_PANEL_OPEN` answers two questions at once
  * — 「哪一层开着」 for `overlayOfEnv` and 「哪一行展开」 for the render bench — and a
- * variable with two meanings can only ever hold one of them. So asking for an
- * expanded row threw 「names no layer」, and asking for a layer left the expansion
- * closed: **the largest thing on this panel could not be photographed at all**, in
- * a bench whose own comment says that state must not go unlooked-at.
+ * variable with two meanings can only ever hold one of them. Asking for an expanded
+ * row then throws 「names no layer」, and asking for a layer leaves the expansion
+ * closed: **the largest thing on this panel cannot be photographed at all**, in a
+ * bench whose own comment says that state must not go unlooked-at.
  *
  * The row is named by its `id` rather than by its title or its short number: a
  * fixture whose wording changes would otherwise silently photograph whichever row
@@ -823,9 +822,9 @@ export function itemSheet(): string {
  * Every `--dsw-*` name the given CSS actually USES, with comments removed.
  *
  * Comments come off FIRST, and that is the whole point of this function.
- * board.module.css:164 explains in prose why a token was removed, and the
- * explanation quotes the old `var(--dsw-...)` call. A scanner that matches
- * inside comments reports a token that no rule uses — and the cheapest way to
+ * board.module.css:164 explains in prose that a token must not be written as
+ * `--dsw-*`, and the explanation QUOTES such a call. A scanner that matches inside
+ * comments reports a token that no rule uses — and the cheapest way to
  * silence that is to reword the comment, which destroys the note and fixes
  * nothing. Stripping first is the only reading that keeps a correct
  * implementation from having to become a worse one.
@@ -953,9 +952,8 @@ export function writeRenderArtifact(target: string, items: readonly ItemRecord[]
 /**
  * 把一段**已经渲染好的**标记包成一页能截图的东西。
  *
- * **它存在的理由是第二块面板。** 原来「页面装配」与「渲染清单面板」焊在同一个函数里，所以
- * 看板那一侧用不了 —— 而看板从来没有一条链路能把自己的卡片画出来看（它的验证全在 jsdom 与
- * CSS 契约里）。拆出来之后，两块面板共用同一份装配：宿主真实暗色表、移动端 viewport、
+ * **它存在的理由是第二块面板。** 「页面装配」在这里、不焊在「渲染清单面板」那一个函数上，
+ * 所以两块面板共用同一份装配：宿主真实暗色表、移动端 viewport、
  * 外壳给的那个确定高度的盒子，一处定义两处用，而不是各写一份、迟早各自漂。
  *
  * `css` 是**已经对齐过类名**的那一份（`alignClassNames` 的产物）：调用方负责渲染与对齐，
@@ -1053,8 +1051,8 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
   let rows: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[] = tasks
   /**
    * 订阅者名单：**真实 controller 的 `subscribe` 就是这样一根线**，而它缺席时
-   * 「看板改了，清单会不会跟着重画」在台架上根本没有答案——那正是清单面板曾经漏掉的
-   * 那半件事（三张映射的 memo 键里没有看板，也没有订阅）。一台少了 `subscribe` 的假面
+   * 「看板改了，清单会不会跟着重画」在台架上根本没有答案——那半件事（三张映射的 memo
+   * 键里没有看板，也没有订阅）就是这条线要盖住的。一台少了 `subscribe` 的假面
    * 会让整份 suite 在「面板根本不听看板」时依然全绿，所以它必须在场。
    */
   const listeners = new Set<() => void>()
@@ -1104,15 +1102,14 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
  * A board face that RECORDS what it was asked to do, and answers with the shapes
  * the real controller answers with.
  *
- * The return value used to be `true` for every method, which is a fake NARROWER
- * than reality in the worst direction: the real `createTask` hands back a whole
- * `TaskRecord`, and the panel reads `task.title` off the answer. A `true` made
- * that read `undefined`, `.trim()` threw, and the throw escaped as an UNHANDLED
- * ERROR — which does not fail a test, it fails the RUN. The suite printed
- * `2265 passed` and still exited 1, and a green-looking line is exactly what let
- * that sit unfixed through several rounds. The same rule the project states for
- * the execution fake applies here: **a fake that is narrower than reality turns
- * correct code into a reported defect.**
+ * Answering `true` for every method is a fake NARROWER than reality in the worst
+ * direction: the real `createTask` hands back a whole `TaskRecord`, and the panel
+ * reads `task.title` off the answer. A `true` makes that read `undefined`,
+ * `.trim()` throws, and the throw escapes as an UNHANDLED ERROR — which does not
+ * fail a test, it fails the RUN. The suite prints `2265 passed` and still exits 1,
+ * and a green-looking line is exactly what lets that sit unfixed. The same rule the
+ * project states for the execution fake applies here: **a fake that is narrower than
+ * reality turns correct code into a reported defect.**
  *
  * So the two constructors mint a real record with the real core constructor, and
  * only the genuinely boolean methods answer `true`.
@@ -1125,7 +1122,7 @@ function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void
   const out: Record<string, (...args: unknown[]) => unknown> = {}
   // 每一次写入之后**都要喊一声**：真实 controller 的 `persistAndNotify` 就是这么做的，
   // 而一个只改内部数组、不通知订阅者的假面会让「清单面板跟着看板活着」那件事在测试里
-  // 永远看不到——它正是这一轮修掉的那半个缺陷。
+  // 永远看不到——那正是同一类缺陷里最隐蔽的一半。
   for (const name of mutators) out[name] = (...args: unknown[]) => { calls.push(`${name}(${args.length})`); notify(); return true }
   // The same entry point the real controller uses, with a fixed clock and id, so
   // the record this hands back is the record the product would have written —
@@ -1242,11 +1239,11 @@ export function mountPanel(
    * The one fake, and the rule it follows: **it answers what the real host
    * answers, or it is a narrower thing than reality.**
    *
-   * It used to answer `{}` to everything, which is not a neutral stub — it is a
-   * host that refuses. `itemsRestore` reads `available` and the row, and a body
-   * with neither is a refusal, so a perfectly correct undo came back as
-   * `ok: false, why: 'malformedAnswer'` and the gate reported 「the undo does
-   * nothing」 about code that was fine. That is the narrow-fake hazard pointed at
+   * Answering `{}` to everything is not a neutral stub — it is a host that refuses.
+   * `itemsRestore` reads `available` and the row, and a body with neither is a
+   * refusal, so a perfectly correct undo comes back as
+   * `ok: false, why: 'malformedAnswer'` and the gate reports 「the undo does
+   * nothing」 about code that is fine. That is the narrow-fake hazard pointed at
    * the implementation rather than away from it: the suite reports a defect that
    * is not in the code, and the reader of the report cannot tell the difference.
    *
@@ -1447,8 +1444,8 @@ export function click(element: Element | null | undefined): void {
 /**
  * Type into a field the way a reader does, one `input` event per value.
  *
- * **它认两种字段。** 它原来只会写 `<input>`（用的是 `HTMLInputElement` 原型上的 setter），
- * 于是这张纸上的三个 `<textarea>`——正文、步骤、备注——**没有任何门禁能往里面打字**。
+ * **它认两种字段。** 只写 `<input>`（用的是 `HTMLInputElement` 原型上的 setter）会漏掉
+ * 这张纸上的三个 `<textarea>`——正文、步骤、备注——于是它们**没有任何门禁能往里面打字**。
  * 一个打不进去字的框，就是一个没人验过的框。React 的值劫持要求走**原型上**的 setter，
  * 所以原型取自元素自己的那一族，而不是写死的那一个。
  */

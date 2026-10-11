@@ -34,14 +34,14 @@ export interface ItemTableProps {
 /**
  * The table.
  *
- * ONE HEAD, ONE TABLE, AND NO BRANCH ABOVE EITHER. The head used to be written
- * twice — once inside the empty branch and once inside the filled one — and the
- * two copies had already drifted: only the filled one declared `role="row"` and
- * `role="columnheader"`, so a table with rows in it was an accessible table and
- * the same table with none in it was a pile of `<div>`s. A reader who filtered
- * a list down to nothing lost the row semantics of the very header that was
- * still on screen, and no test said anything, because the two branches were two
- * literals and a literal cannot disagree with itself loudly enough to be caught.
+ * ONE HEAD, ONE TABLE, AND NO BRANCH ABOVE EITHER. A head written twice — once
+ * inside the empty branch and once inside the filled one — is two copies that
+ * drift: only the filled one declares `role="row"` and `role="columnheader"`, so
+ * a table with rows in it is an accessible table and the same table with none in
+ * it is a pile of `<div>`s. A reader who filters a list down to nothing loses
+ * the row semantics of the very header that is still on screen, and no test says
+ * anything, because two branches are two literals and a literal cannot disagree
+ * with itself loudly enough to be caught.
  *
  * The fix is not 「remember to keep them equal」. It is that there is only one
  * head and one card, and the only question the component asks is WHICH OF THE

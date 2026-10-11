@@ -35,7 +35,7 @@
  *
  * ── STATUS IS READ FROM THE BOARD, NOT RE-DECIDED HERE ──────────────────────
  *
- * 这一版把状态的**来源**搬了：清单自己只存两个值（还没做 / 做完了），而「一条工作现在
+ * 状态的**来源**在别处：清单自己只存两个值（还没做 / 做完了），而「一条工作现在
  * 在哪一栏」读看板的卡（{@link itemStatusOf}）。所以这一份文件从看板那里导入两个东西
  * ——`TaskStatus` 与 `ALL_STATUSES`——而不是把它们抄一遍。抄一遍的代价不是重复十二行，
  * 是**加一栏时清单不会跟着加**，而屏上不会有人说一句话。
@@ -44,8 +44,8 @@ import { type TaskStatus } from './tasks.ts';
 /**
  * THE STORED STATUS: **五档，与看板那五栏是同一套词。**
  *
- * 一份清单自己能说的话原来只有两句（「还没做」「做完了」），而读者问过一句：**没挂卡的时候
- * 为什么只有两档能选**。答案不是「清单只配有两档」，而是那两档的定义方式错了：
+ * 一份清单自己能说的话不止两句：**没挂卡的时候五档都成立**，而「为什么只有两档能选」
+ * 的答案不是「清单只配有两档」，而是那两档的定义方式错了：
  *
  *  - **没挂卡时**，这一行的状态就是它自己的事，五档都成立——待规划（还没定要不要做）、
  *    待办、进行中（我自己正在弄）、待审核（等我复核）、已完成。没有任何别的东西能替它回答。
@@ -54,7 +54,7 @@ import { type TaskStatus } from './tasks.ts';
  *    一个主人，但不该有第二个说法。
  *
  * 所以它是**导入**的（{@link ALL_STATUSES}），与 {@link ItemStatusView} 同一张表——加一栏、
- * 改一个词都只动看板那一处，而这里由类型跟着变。`blocked`（受阻）那一档删掉的原因没变：
+ * 改一个词都只动看板那一处，而这里由类型跟着变。`blocked`（受阻）不在那五档里的原因：
  * 它本来就只在清单这里存在，是唯一一个**两个面板对不上**的词。老文档里的 `open` / `blocked`
  * 由解析器读成 `todo`，一个字都不丢。
  */
@@ -62,7 +62,7 @@ export type ItemStatus = TaskStatus;
 /**
  * 一个面可以**显示**的状态：看板的五栏，逐字同一张表。
  *
- * 它不再是「存的加上一个派生的」那种并集，而是**导入**看板自己的类型——于是清单与
+ * 它**导入**看板自己的类型，而不是「存的加上一个派生的」那种并集——于是清单与
  * 看板对「一条工作现在在哪儿」只有一份定义，加一栏、改一个词、换一个颜色都只动一处。
  * 这一条也是读者那句「那些点就等于变成 5 个状态吧」的答案：是五个，而它们就是看板
  * 的五个。
@@ -278,15 +278,13 @@ export declare function itemProgressOf(item: ItemRecord): ItemProgress | undefin
 /**
  * The one status derivation: **a row that hangs off a card is wherever that card is.**
  *
- * `itemStatusOf` 的旧版只把「在跑」这一件事读给卡片（其余时间信自己存的那个
- * `open`）。现在读的是**整栏**——因为清单自己不拥有那五栏里的三栏，而一件工作在哪
- * 一栏是看板的事实。这不是新增一条判断，是原来那条判断的推广：注释早就写着
- * 「an item never decides for itself whether its card is running」，而「在跑」只是
- * 「在哪一栏」的一个取值。
+ * 它必读**整栏**，不是只读「在跑」：清单自己不拥有那五栏里的三栏，而一件工作在哪
+ * 一栏是看板的事实。把「在跑」单拎出来判也不成立——它只是「在哪一栏」的一个取值，
+ * 而注释早就写着「an item never decides for itself whether its card is running」。
  *
- * **读者自己按下的「完成了」压过卡片。** 这一条是旧版的行为（有测试钉着：一张卡重跑
- * 起来的时候，刚被读者勾掉的那一行仍然是完成），而它现在仍然成立：一次显式的勾选是
- * 读者对**这一行**说的话，不该被卡片的另一次运行悄悄改掉。
+ * **读者自己按下的「完成了」压过卡片。** 一次显式的勾选是读者对**这一行**说的话，
+ * 不该被卡片的另一次运行悄悄改掉——一张卡重跑起来的时候，刚被勾掉的那一行仍然是完成
+ * （有测试钉着；这一条是那条整栏规则唯一的例外，而它必须留着）。
  *
  * @param item - the row.
  * @param cardStatus - 它挂着的那张卡此刻在哪一栏；没有卡、或这台机器看不见看板时是
@@ -348,8 +346,8 @@ export interface NewItemInput {
 /**
  * Mint a row, ready for the document to accept.
  *
- * ONE CONSTRUCTOR FOR BOTH WRITERS. A row used to be built twice — once by the
- * interface, once by the model — and that is how two halves of one document
+ * ONE CONSTRUCTOR FOR BOTH WRITERS. Built twice — once by the
+ * interface, once by the model — is how two halves of one document
  * drift into disagreeing about what a freshly written row looks like. Both go
  * through this, so the fields that must always agree always do.
  *

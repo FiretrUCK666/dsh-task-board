@@ -32,7 +32,7 @@ export declare function ruleDraftKey(taskId: string, ruleId: string): string;
  *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per
  *  open `ask()` and REPLAYS it with every requested frame, so the key survives
  *  a re-render, a remount and a page reload — which is exactly the window in
- *  which a half-completed answer used to be destroyed. A genuinely new request
+ *  which a half-completed answer is otherwise destroyed. A genuinely new request
  *  mints a new rpcId and therefore starts clean, so the isolation the component
  *  already got from `key={rpcId}` is preserved.
  */

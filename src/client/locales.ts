@@ -697,10 +697,10 @@ export const zh = {
   'item.rail.when': '按日子',
   /* **「多久没人碰」是另一个问题，所以它是另一组，而标题要说清它按什么问。**
    *
-   * 这一组的其他标题都是**维度**：按日子 · 按优先级 · 按状态。它原来叫「没人动的」——
-   * 一个我自己造的词，读者的第一个反应是「没人动是什么意思」，而**一个要人问它什么意思的
-   * 标题就是没写清楚**。现在它与兄弟同构，直接说它按什么分：**这一行有多久没被改过**
-   * （门槛 14 天、上限 90 天，已完成与还没到开始时间的各自豁免——见 `item-stale.ts`）。 */
+   * 这一组的其他标题都是**维度**：按日子 · 按优先级 · 按状态。所以这一格也必须与兄弟同构：
+   * 直接说它按什么分——**这一行有多久没被改过**（门槛 14 天、上限 90 天，已完成与还没到
+   * 开始时间的各自豁免——见 `item-stale.ts`）。**一个要人问它什么意思的标题就是没写清楚**：
+   * 所以标题不许是自造的比喻。 */
   'item.rail.idle': '按多久没动',
   'item.rail.rank': '按优先级',
   'item.rail.state': '按状态',
@@ -749,8 +749,8 @@ export const zh = {
    * 名字自己说出**方向与硬度**，所以三者不可能被读混：`不早于` 是一扇门（早于这天不动），
    * `希望在` 是一个愿望（滑了只是计划变了），`不晚于` 是一条不能顺延的上限（只有它会变红）。
    *
-   * 它们原来是「不早于 / 希望在 / 最后期限」——**中文里「希望在」与「最后期限」是一个意思**，
-   * 所以读者问「这两个是不是重复了」。英文那边一直分得清（Not before / Wanted by /
+   * **中文里「希望在」与「最后期限」是一个意思**——两个词说同一件事，读者就要问
+   * 「这两个是不是重复了」。英文那边分得清（Not before / Wanted by /
    * Deadline），出问题的只有中文的词。
    *
    * 字段名（`startsAfter` / `dueAt` / `hardDueAt`）与排序 id 不动：词是这一份的事。 */
@@ -788,8 +788,8 @@ export const zh = {
   'item.field.title': '标题',
   'item.field.body': '正文',
   'item.field.notes': '上下文备注',
-  // **说清「谁会读、为什么」**：读者对原来那句的反馈是「看不懂」——「模型也会读到」没有说
-  // 什么时候、为什么读。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemAskText`）。
+  // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
+  // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemAskText`）。
   'item.field.notesHint': '这一条的来龙去脉：接手的人先看它；把这一条交给 AI 时也会带上',
   'item.field.notesAdd': '＋ 上下文备注',
   'item.field.bodyAdd': '＋ 写点什么',
@@ -807,8 +807,8 @@ export const zh = {
   // 明确，所以再补一个字段名就是同一句话说两遍——而「不早于 10月5日」必须带名，
   // 因为一个光秃秃的日期说不清是谁的。这一条是这一栏唯一的形状规则。
   //
-  // **行尾与详情轴读同一对键。** 它们曾经各有一份（`item.due.*` 与 `item.dates.*`），
-  // 中文一字不差而英文已经漂了（`over` vs `past due`）——同一句话的两份拷贝，改一份
+  // **行尾与详情轴读同一对键。** 各有一份（`item.due.*` 与 `item.dates.*`）的话，
+  // 中文一字不差而英文会漂（`over` vs `past due`）——同一句话的两份拷贝，改一份
   // 不会碰到另一份。
   'item.dates.overdue': '超期 {days} 天',
   'item.dates.behind': '落后 {days} 天',
@@ -917,10 +917,10 @@ export const zh = {
   // 分段药丸里当六个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
   // 六个动作，读者会当成六个可以分别按的钮。
   //
-  // **「顺序」是名字说错了的那一档。** 它其实是「未完成在前 → 越急越前 → 最近的那个日子
+  // **这一档的名字必须说出它真正做的事。** 它其实是「未完成在前 → 越急越前 → 最近的那个日子
   // → 越早写下越前 → 编号」（`compareItemOrder`）——这份文档自己推荐的一种读法，不是
-  // 「写下的先后」。读者只看得见「顺序」两个字，于是它与「标题」的区别没人猜得出来。
-  // 名字改成它真正做的事，两者从此不可能混。
+  // 「写下的先后」。读者只看得见名字，所以叫「顺序」的话，它与「标题」的区别没人猜得出来；
+  // 名字说对了，两者从此不可能混。
   'item.sort.label': '排序',
   'item.sort.sequence': '要紧的先',
   // 那一列顺序倒过来读（按当前那一项第二下）。它不是另一个排序，所以它是一个后缀，
@@ -949,7 +949,7 @@ export const zh = {
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
   // 抽屉自带一张条形栏：一句话说清计时，选中若干行之后，栏换成一句带后果的
-  // 确认——不再是一个按下去就消失的按钮。
+  // 确认——而不是一个按下去就消失的按钮。
   'item.archive.bar': '删掉的行留 30 天，到期自己清走。',
   'item.archive.confirm': '删掉选中的 {n} 条？找不回来。',
   'item.archive.keep': '算了',
@@ -1736,8 +1736,8 @@ export const en: Record<keyof typeof zh, string> = {
   // carries its field's name, because a date on its own does not say whose it is. A
   // missed wanted-by date is NOT an alarm: red belongs to the hard deadline alone.
   //
-  // The row's tail and the detail's axis read the SAME pair. They used to have one
-  // each (`item.due.*` and `item.dates.*`): identical in zh, already drifted in en.
+  // The row's tail and the detail's axis read the SAME keys. A set each — one for
+  // the row, one for the axis — is identical in zh and drifts in en.
   'item.dates.overdue': '{days}d past due',
   'item.dates.behind': '{days}d behind',
   'item.due.soon': '{days}d left',

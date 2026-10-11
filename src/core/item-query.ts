@@ -39,9 +39,9 @@ import { derivedStatusOf, isInboxItem, isLiveItem } from './item-membership.ts'
 /** Qualifier keys the grammar recognises, mapped onto STABLE field values.
  *
  *  **Exported so the model can be taught this table instead of a copy of it.**
- *  It used to be private, which is why `taskboard_query`'s filter help could only
- *  report the BOARD's keys: the item vocabulary had no reader outside this file,
- *  so anything that wanted to describe it had to retype it — and a retyped list is
+ *  A private table leaves `taskboard_query`'s filter help able to report only
+ *  the BOARD's keys: the item vocabulary then has no reader outside this file,
+ *  so anything that wants to describe it has to retype it — and a retyped list is
  *  a list that goes stale silently.
  */
 export const PRIORITY_BY_TOKEN: Readonly<Record<string, ItemPriority>> = {
@@ -52,7 +52,7 @@ export const PRIORITY_BY_TOKEN: Readonly<Record<string, ItemPriority>> = {
  * The tier behind each `!N` — **derived from the table above**, so the two spellings
  * of one ladder cannot drift. It is the single source the row's mark, the keyboard's
  * `1`–`4` and the capture grammar's `!N` all read: three hand-written digit tables
- * used to exist beside it, each one edit away from disagreeing with the others.
+ * beside it would each be one edit away from disagreeing with the others.
  */
 export const PRIORITY_DIGIT: Readonly<Record<ItemPriority, string>> = Object.fromEntries(
   Object.entries(PRIORITY_BY_TOKEN).map(([token, priority]) => [priority, token.slice(1)]),
@@ -101,9 +101,10 @@ export type ItemFlag =
    * 碰），而剩下两个也没把日期说完：一份未来到期的行**落在这一组之外**，于是「按日子」这四个
    * 字在屏上并不成立。
    *
-   * 有了这一枚，那一组才真的在按日子分：**已经过期 / 还没到 / 没定日期**——一条行里只要
+   * 有了这一枚，这一组才真的在按日子分：**已经过期 / 还没到 / 没定日期**——一条行里只要
    * 分过流（不是刚记下的那句），它的日子就必定在过去、在未来、或者根本没有，**落进且只落进
-   * 一格**，三个数加得起来。而「多久没人碰」搬去它自己那一组（`item-rail.ts` 的 `idle`）。
+   * 一格**，三个数加得起来。而这一组装的是日期本身那件事的行，所以「多久没人碰」在它自己
+   * 那一组里（`item-rail.ts` 的 `idle`）。
    *
    * 两种「不在任何一格」的行，都是**故意的**，且各有各的读者：刚记下的一句（`isInboxItem`）
    * 还没到能谈日子的阶段；三个日期互相矛盾的那一条（`contradiction`）**两边都有日子**，
@@ -139,9 +140,9 @@ export const ITEM_FLAGS: readonly ItemFlag[] = ['hardOverdue', 'behind', 'overdu
  * flag is one edit here and one edit there, and they cannot disagree because
  * there is only one of each.
  *
- * **AND IT SPELLED OUT ONE HALF OF ITS OWN TYPE FOR SIX RELEASES' WORTH.** 那些
- * `status:` 词原来取自 `ITEM_STATUSES`（人能选的那几个），而**派生的那一个**（当时叫
- * `inProgress`）不在那张表里，于是解析器一直收它、`isItemQualifierToken` 一直答 yes，
+ * **AND IT SPELLED OUT ONE HALF OF ITS OWN TYPE.** 那些 `status:` 词只取自
+ * `ITEM_STATUSES`（人能选的那几个），而**派生的那一个**（当时叫 `inProgress`）不在那张表里，
+ * 于是解析器一直收它、`isItemQualifierToken` 一直答 yes，
  * 而教给模型的这一份词表从来没有它。现在两个表都取自看板那五栏的同一个来源
  * （{@link ITEM_STATUS_VIEWS} = `ALL_STATUSES`），所以「能被显示的全部」与「被教出去的
  * 全部」是同一句话——`status:` 后面能出现的词就是那五个，一个不多、一个不少。
@@ -170,10 +171,10 @@ const ITEM_FLAG_BY_TOKEN: ReadonlyMap<string, ItemFlag> = new Map(ITEM_FLAGS.map
  * Is this token one the GRAMMAR speaks — a filter, rather than the reader's word?
  *
  * Exported so the search box can ask the SAME question the parser answers,
- * instead of keeping its own list of the qualifiers. It used to: the box built a
- * set from the three fixed facets, so a flag the grammar knew and the facets did
- * not (there have been several) was classified as a free word — the raw
- * `has:stale` appeared inside the field the reader was typing in, and NO CHIP WAS
+ * instead of keeping its own list of the qualifiers. A box that keeps one — a
+ * set built from the three fixed facets — classifies a flag the grammar knows and
+ * the facets do not as a free word: the raw
+ * `has:stale` appears inside the field the reader was typing in, and NO CHIP IS
  * DRAWN, which is a filter applied with nothing on screen saying what applied it.
  *
  * One predicate, asked in both places, is the only arrangement in which 「the box
@@ -324,9 +325,8 @@ export interface ItemMatchContext {
   /**
    * **看板的栏，按卡片 id 索引** —— 一条行「现在在哪一栏」的那张输入。
    *
-   * 它原来叫 `running`，装的是 `boolean`（那张卡在不在跑）；现在装的是 `TaskStatus`
-   * （那张卡在哪一栏），因为清单自己的状态只剩两个值，而其余三栏只有看板知道。名字
-   * 跟着事实改：一个叫 `running` 的字段装着「待审核」，下一个人会以为那是笔误。
+   * 它必须装 `TaskStatus`（那张卡在哪一栏），因为清单自己的状态只剩两个值，而其余三栏只有
+   * 看板知道。名字跟着事实：一个叫 `running` 的字段装着「待审核」，下一个人会以为那是笔误。
    *
    * Optional rather than required, and the absence is a real answer rather than
    * a gap: a caller with no board in front of it (a dry run, a host that cannot

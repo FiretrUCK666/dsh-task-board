@@ -179,13 +179,13 @@ export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arro
 
 const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5',
   chevronDown: 'M3 6 8 11 13 6',
-  /* The up twin of `chevronDown`, mirrored about y = 8. Needed because the
-     collapse control used two VISUALLY IDENTICAL downward glyphs for opposite
-     states (`chevronDown` and `arrowDown` differ by half a unit of y): the icon
-     said "down" whether the card was open or closed, so the arrow carried no
-     state at all while `aria-expanded` carried it correctly for screen readers
-     only. A disclosure triangle that never turns around is a missed affordance,
-     not a style choice. */
+  /* The up twin of `chevronDown`, mirrored about y = 8. Needed because two
+     VISUALLY IDENTICAL downward glyphs for opposite states (`chevronDown` and
+     `arrowDown` differ by half a unit of y) make the icon say "down" whether the
+     card is open or closed: the arrow carries no state at all while
+     `aria-expanded` carries it correctly for screen readers only. A disclosure
+     triangle that never turns around is a missed affordance, not a style
+     choice. */
   arrowUp: 'M3 9.5 8 4.5 13 9.5',
   close: 'M4 4 12 12M12 4 4 12',
   arrowRight: 'M4 8h8M9 4l4 4-4 4',
@@ -261,8 +261,8 @@ export function ColorSwatches({ value, onChange, none = true, custom = true }: {
       ))}
       {custom && (
         /* The native custom-color dot: NOT a paint of the current value
-           (that read as a plain white circle next to 「移除颜色」 when no
-           custom color was picked — two white dots). The wrap carries the
+           (that reads as a plain white circle next to 「移除颜色」 when no
+           custom color is picked — two white dots). The wrap carries the
            look: the picked custom color when one IS active, a conic rainbow
            affordance when not; the native input sits on top invisibly
            (still opens the picker / stays keyboard-focusable). */

@@ -50,10 +50,10 @@ export interface ParamSpec {
      * THE VALUE SHAPES, FIVE OF THEM, DELIBERATELY NOT ONE.
      *
      * One "allowed values" field that could hold an enum, a boolean and a range
-     * would be the exact shape that invites the mistake this table already made
-     * once: declaring something stricter than the truth and handing a model a
-     * confidently wrong answer. Each shape gets its own field so none can be read
-     * as another — a boolean can no longer be spelled as two strings.
+     * would be the exact shape that invites the mistake: declaring something
+     * stricter than the truth and handing a model a confidently wrong answer. Each
+     * shape gets its own field so none can be read as another — a boolean can no
+     * longer be spelled as two strings.
      */
     /** A closed set of STRING values. Never a boolean, never a number. */
     readonly oneOf?: readonly string[];
@@ -1155,11 +1155,11 @@ export type ItemActionId = Extract<ActionId, `item.${string}`>;
 /**
  * The ledger of catalogued actions with no core binding.
  *
- * **EMPTY, and that is the point.** It used to hold one row —
- * `item.navigate` — with a reason saying the judgment lived in the panel's local
- * state and no gate could see it. The judgment 「#12 在哪一页」 now lives in
- * `item-navigate.ts` next to the two predicates that decide it, so the row has a
- * function to bind to and this ledger has nothing left to excuse.
+ * **EMPTY, and that is the point.** A row here would mean the judgment lives in
+ * the panel's local state, where no gate can see it. The judgment 「#12 在哪一页」
+ * lives in `item-navigate.ts` next to the two predicates that decide it, so every
+ * catalogued action binds to a function and this ledger has nothing left to
+ * excuse.
  *
  * The type is still here and still enforced: `BoundItemActionId` excludes it, so
  * a new item action is a BUILD FAILURE until it is either bound or written here
@@ -1191,10 +1191,9 @@ export declare const NOT_YET_BUILT: Partial<Record<ActionId, string>>;
  * time somebody adds an action, and nothing about the old list looks wrong when
  * it does.
  *
- * Written as `Record<ItemActionId, …>` the very first compile of this table
- * failed on `item.navigate` — the one action in the catalog nobody has ever
- * built. That is the gate working: a new checklist action now fails the build
- * until it is either bound or reasoned about, and neither can happen quietly.
+ * Written as `Record<ItemActionId, …>` the type is the gate: a new checklist
+ * action fails the build until it is either bound or reasoned about, and neither
+ * can happen quietly.
  *
  * `ItemActionId` is derived by PREFIX rather than listed, so a new domain in the
  * catalog does not have to be added here to keep this table honest.

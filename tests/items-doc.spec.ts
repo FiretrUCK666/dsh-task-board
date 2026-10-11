@@ -289,9 +289,8 @@ describe('the authorship fingerprint', () => {
 
 describe('the order is a pure function of the document', () => {
   it('puts finished rows last, then urgency, then the nearest date, then age', () => {
-    /* **两个存储档，不是三个。** 这一条原来把一行标着「受阻」排在完成之前——那一档已经
-       没有了（清单自己只存还没做 / 做完了，其余三栏是看板的事实）。秩表也跟着从三档变
-       两档，所以这一条现在钉的是「做完的永远在最后」这一条律本身。 */
+    /* **两个存储档，不是三个。** 清单自己只存还没做 / 做完了（其余三栏是看板的事实），
+       所以秩表是两档，而这一条钉的是「做完的永远在最后」这一条律本身。 */
     const rows = [
       row({ id: 'done', ref: 1, status: 'done', priority: 'urgent' }),
       row({ id: 'low', ref: 2, priority: 'low' }),
@@ -621,7 +620,7 @@ describe('purging takes the text out and leaves the delete standing', () => {
     expect(stale.items.map(item => item.id)).toEqual(['i-live'])
     expect(stale.tombstones['i-a']).toBeDefined()
     expect(deletedItemsOf(stale).map(item => item.id)).toEqual(['i-b'])
-    // And a restore asked for by the number the row used to carry has nothing to
+    // And a restore asked for by the number a purged row carried has nothing to
     // answer with — which is why a purge is irreversible and a delete is not.
     expect(restoredItemOf(stale, 'i-a', T0 + 40)).toBeUndefined()
   })

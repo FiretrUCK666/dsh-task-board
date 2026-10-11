@@ -37,13 +37,12 @@ export interface RowMenuAction {
   /**
    * SHOWN BUT NOT TAKEN, and the reason beside it.
    *
-   * A menu entry used to be a sentence. It became a button — which is the right
-   * control — and that change opened the question of what an unavailable one
-   * looks like, and the answer is NOT to leave it out: a list whose length changes
-   * with a fact the reader cannot see is a list nobody can learn. So the entry
-   * stays, it is `aria-disabled` rather than absent, and the hint names the fact
-   * that is missing. **The reader is never left to work out whether the entry
-   * is broken or their row is.**
+   * A menu entry is a button, and a button raises the question of what an
+   * unavailable one looks like — and the answer is NOT to leave it out: a list
+   * whose length changes with a fact the reader cannot see is a list nobody can
+   * learn. So the entry stays, it is `aria-disabled` rather than absent, and the
+   * hint names the fact that is missing. **The reader is never left to work out
+   * whether the entry is broken or their row is.**
    */
   readonly disabled?: boolean
   readonly hint?: string
@@ -66,13 +65,13 @@ const ASSUMED: { readonly width: number; readonly height: number } = { width: 18
 /**
  * A box, or nothing — and "nothing" includes a box with no AREA.
  *
- * A `null` node was the only rejected input, so an element that is present in the
- * DOM and not rendered (`hidden`, `display: none`, an un-attached node) measured
- * as `{0,0,0,0}` and was accepted as a real box. Placement then ran honestly on a
+ * A `null` node is not the only input to reject: an element that is present in the
+ * DOM and not rendered (`hidden`, `display: none`, an un-attached node) measures
+ * as `{0,0,0,0}` and is accepted as a real box. Placement then runs honestly on a
  * box that cannot contain anything: room below is negative, room above is not, so
  * the menu "opens upward" to a clamped `top` of 0 with a ceiling of exactly 0 —
- * **a zero-height strip pinned to the window's top-left corner.** Nothing threw
- * and nothing logged; the only symptom was a menu that did not appear.
+ * **a zero-height strip pinned to the window's top-left corner.** Nothing throws
+ * and nothing logs; the only symptom is a menu that does not appear.
  *
  * A size of zero is never a real box for a popover: every element it could be
  * anchored to is something the reader can see, and everything the reader can see
@@ -208,6 +207,7 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
         ref={menu}
         id={`item-menu-${props.rowId}`}
         className={css.itemRowMenu}
+        data-dsh-tb-scroll=""
         role="menu"
         aria-label={t('item.menu.more')}
         tabIndex={-1}

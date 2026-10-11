@@ -79,10 +79,10 @@ export interface ItemRailGroup {
 /**
  * THE THREE THINGS THE CALENDAR SAYS, and only three.
  *
- * It used to be five — `hardOverdue` and `behind` separately, plus `stale`,
- * `undated` and `gated` — and the two lateness entries were the defect: two rows,
- * two numbers, two words that both said 「晚了」, and a reader who could not tell
- * from the rail which date each one was about. **The grammar already has the
+ * Five would mean `hardOverdue` and `behind` separately, plus `stale`,
+ * `undated` and `gated` — and the two lateness entries are the defect: two rows,
+ * two numbers, two words that both say 「晚了」, and a reader who cannot tell
+ * from the rail which date each one is about. **The grammar already has the
  * answer as one predicate**: `has:overdue` is `hardOverdue ∨ behind`, it is
  * already in {@link ITEM_FLAG_TESTS}, already taught to the model, already
  * covered. The rail was showing the two halves of a thing the query language
@@ -119,9 +119,9 @@ const RAIL_IDLE_FLAGS = ['stale'] as const
 /**
  * **「左栏能按下哪几个筛子」的唯一出处，导出是因为它还有第二个读者。**
  *
- * 搜索框下面那些芯片（`facets.ts` 的日期那一栏）必须画得出左栏按下的**每一个**筛子。它们原来
- * 是**两份手写的表**：左栏写 `has:overdue / ahead / undated / stale`，芯片那一栏写的是
- * `has:hardOverdue / behind / undated / gated`。两套词汇只有「没定日期」重合——于是读者按
+ * 搜索框下面那些芯片（`facets.ts` 的日期那一栏）必须画得出左栏按下的**每一个**筛子。左栏
+ * 按的是 `has:overdue / ahead / undated / stale`，芯片那一栏如果自己写一套
+ * `has:hardOverdue / behind / undated / gated`，两套词汇就只有「没定日期」重合——于是读者按
  * 「已超期」「还没到」「迟迟没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
  * 东西说得出它开着，也点不掉它。这正是硬性规范 17 说的那笔债：同一件事有两处写法，而错的
  * 那一处永远不会报错。
@@ -178,10 +178,11 @@ export function itemRailGroupsOf(
      *
      * It is the document itself — the one row with no narrowing in it — so it is
      * the rail's floor rather than one of its answers, and it sits where the eye
-     * starts. It used to be the third row from the bottom, below three filter
-     * groups, while the top held 「刚记下的」: a row that was a PLACE pretending to be
-     * a predicate. Its membership rule (`isInboxItem`) is read by the query grammar
-     * on its own, so removing the row removed a page and nothing else. */
+     * starts. Anywhere lower it stands among three filter
+     * groups — below rows that narrow, while its own row narrows nothing — and a
+     * reader meets it as just another predicate. Its membership rule
+     * (`isInboxItem`) is read by the query grammar on its own, so the row costs
+     * the rail nothing to print. */
     {
       id: 'all',
       word: undefined,

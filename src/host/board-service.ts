@@ -127,11 +127,11 @@ export const LEGACY_UNIT_DESCRIPTOR: BoardUnitDescriptor = {
 /** What opening the unit produced.
  *
  *  `documents` is the WHOLE declared table, by document name — not a list of
- *  documents this function knows about. Naming a document here is how that
- *  document used to be dropped: a tree holding `items.json` but no `meta.json`
- *  used to answer with the board alone, and the checklist was gone. So the
- *  value is what the medium holds and the caller picks its own document out of
- *  it; the next document needs a constant, not a change here. */
+ *  documents this function knows about. A list of known names is how a document
+ *  gets dropped: a tree holding `items.json` but no `meta.json` answers with the
+ *  board alone, and the checklist is gone. So the value is what the medium holds
+ *  and the caller picks its own document out of it; the next document needs a
+ *  constant, not a change here. */
 export interface OpenedDocuments {
   /** The live document-tree handle; every later write goes through it. */
   readonly unit: KvUnitLike
@@ -396,24 +396,21 @@ export class DocumentService {
       if (next === this.doc) return this.doc
       /* PERSIST FIRST, PUBLISH SECOND, AND DO NOT SWALLOW THE FAILURE.
        *
-       * The order was the opposite of what the comment above this method claimed,
-       * and that claim is the whole defect. `this.doc = next` ran BEFORE
-       * `putRecord`, so the in-memory revision advanced on every write; the put
-       * was then wrapped in a catch that logged and continued. A full disk
-       * therefore produced: a resolved promise, a revision that had moved, a
-       * `200 {ok:true}` from the route, and — because every later `?since=N`
-       * short-circuits on that revision — no replica ever asked for the write
-       * again. Restart, and it was gone, with the ledger claiming a revision that
-       * had never existed on the medium.
+       * The order IS the contract. Advancing `this.doc` BEFORE `putRecord`
+       * advances the revision in memory on every write, and a put wrapped in a
+       * catch that logs and continues turns a full disk into: a resolved promise,
+       * a revision that has moved, a `200 {ok:true}` from the route, and —
+       * because every later `?since=N` short-circuits on that revision — no
+       * replica ever asking for the write again. A restart then loses it, with
+       * the ledger claiming a revision the medium has never seen.
        *
-       * The trade the old comment named ("the next commit persists both") only
-       * holds if a later commit arrives. If none does, the gap is permanent, and
-       * 「serving a revision the medium has never seen」 is a lost write wearing the
-       * costume of a latency trade. So the put now happens before anything
-       * observable moves, and a failure REJECTS: memory keeps the last good
-       * document, the revision does not advance, the caller is not told it
-       * landed, and the next commit — or the next restart — still sees a
-       * consistent truth.
+       * A "the next commit persists both" trade only holds if a later commit
+       * arrives. If none does, the gap is permanent, and 「serving a revision the
+       * medium has never seen」 is a lost write wearing the costume of a latency
+       * trade. So the put happens before anything observable moves, and a failure
+       * REJECTS: memory keeps the last good document, the revision does not
+       * advance, the caller is not told it landed, and the next commit — or the
+       * next restart — still sees a consistent truth.
        *
        * The caller is the route, which turns a rejection into this prefix's own
        * `BoardRouteFail` — a 200 carrying `{ok:false,error:{code:'persist_failed'}}`,
@@ -648,10 +645,9 @@ export class DocumentService {
    *  THE one construction site of a LeaseState: every lease answer the route
    *  can ever send (granted / renewing / rejected / released) is derived from
    *  this object, so no branch can ship a seat view that forgets `proto` or
-   *  `bootedAt`. A missing `proto` read as "old host", which made the
-   *  "服务端未重启" banner stand forever on every non-engine device — the
-   *  rejected branch used to hand-build `{ held, holder, expiresAt }` and
-   *  nothing else. */
+   *  `bootedAt`. A missing `proto` reads as "old host", which makes the
+   *  "服务端未重启" banner stand forever on every non-engine device: hand-building
+   *  `{ held, holder, expiresAt }` and nothing else is how that happens. */
   leaseState(now = this.now()): LeaseState {
     if (this.lease === undefined) {
       return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }

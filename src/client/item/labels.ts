@@ -1,12 +1,12 @@
 /**
  * Every vocabulary the list names, in one place, as CLOSED tables.
  *
- * WHY ONE FILE. Four files used to declare the same handful of words: the row
- * and the detail pane each had a `PRIORITY_LABEL`, the row's `MARK_LABEL` and
- * the detail's `STATUS_LABEL` were the same three keys under two names, the
- * batch bar and the page props each had a priority table, and the overview
- * strip had a `TILE_ORDER` that was a second copy of the model's own status
- * order. That is eight answers to four questions, and the failure mode is not a
+ * WHY ONE FILE. Spread across four files, the same handful of words becomes
+ * eight answers to four questions: the row and the detail pane each with a
+ * `PRIORITY_LABEL`, the row's `MARK_LABEL` and the detail's `STATUS_LABEL` being
+ * the same three keys under two names, the batch bar and the page props each with
+ * a priority table, and the overview strip with its own `TILE_ORDER` — a second
+ * copy of the model's own status order. The failure mode is not a
  * compile error — it is a word that quietly drifts, or renders `undefined`,
  * while the panel goes on looking finished.
  *
@@ -14,10 +14,10 @@
  * type: `Readonly<Record<ItemPriority, TaskBoardKey>>` cannot be satisfied by a
  * table that is missing a tier, so the day the model grows one, `tsc` names
  * this file and nothing else. A `Record<string, …>` satisfies nothing — it
- * accepts every key and guarantees none — which is why the old tables that
- * needed a `?? 'fallback'` were not merely untidy: the fallback was there
- * precisely because the table could not be trusted to be complete, and it
- * rendered a word that was true of no flag at all.
+ * accepts every key and guarantees none — which is why a table that needs a
+ * `?? 'fallback'` is not merely untidy: the fallback is there
+ * precisely because the table cannot be trusted to be complete, and it
+ * renders a word that is true of no flag at all.
  *
  * WHAT IS DELIBERATELY NOT HERE: any judgment. A table maps a value the model
  * already decided to a word for it. Which rows match a filter, which page a row
@@ -63,12 +63,12 @@ export const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>> = {
 }
 
 /**
-/**
  * 读者可以把**这一行自己**放进哪几档，以及每一档的词。
  *
- * **五档了，与看板那五栏同一套词。** 它原来只有两个值（还没做 / 做完了），理由是「清单自己
- * 只说得清这两句」——而读者问过一句：**没挂卡的时候为什么只有两档能选**。第三档「受阻」删掉
- * 的原因没变（它只在清单这里存在，是唯一一个两个面板对不上的词）；删的不是档数，是那个词。
+ * **五档，与看板那五栏同一套词。** 档数不由清单自己定：只说得清「还没做 / 做完了」两句，
+ * 读者就要问**没挂卡的时候为什么只有两档能选**——而一张卡能落在哪几栏，就是这一行能选的
+ * 那几档。「受阻」不在这里：它是唯一一个两个面板对不上的词（看板没有这一档）——少掉的是
+ * 那个词，不是那一档。
  *
  * 挂着一张卡的行**不从这里写**：那时读者改的是那张卡在哪一栏（`task.move`），界面给的是看板
  * 自己的动词（`status.move.*`）。所以这张表是「这一行没有卡的时候」的词表。
@@ -94,7 +94,7 @@ export const DATE_FIELD_KEY = {
 /**
  * The five columns a row can READ as, and the word for each — **the board's own words**.
  *
- * 它不再是一张自己的词表：`STATUS_KEY`（`board/status.ts`）是看板那一份、按 `TaskStatus`
+ * 它**不是**一张自己的词表：`STATUS_KEY`（`board/status.ts`）是看板那一份、按 `TaskStatus`
  * 闭合的表，这里直接引用它。于是「进行中」在清单与看板上是同一个词、同一份定义——
  * 加一栏或改一个词只动看板那一处，而清单这边因为类型是同一个联合，**编译期**就会跟着
  * 变。

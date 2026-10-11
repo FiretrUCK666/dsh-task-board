@@ -271,8 +271,8 @@ export function apply(ctx: ClientContext): void {
   ctx.effect(() => {
     void freshness.probe()
     // Keep watching: an open page must notice a host that restarted behind it
-    // (a boot-only probe runs once, which is exactly why a restart used to
-    // leave an open tab pinned to the previous bundle forever).
+    // (a boot-only probe runs once, which is exactly how a restart leaves an
+    // open tab pinned to the previous bundle forever).
     return freshness.watch()
   }, 'dsh-task-board: bundle freshness probe + watch')
   // --- the soft keyboard inset ------------------------------------------------

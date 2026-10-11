@@ -15,11 +15,10 @@
  * prefix, or the bare-string keys derivations return (`waitingKeyOf`,
  * `noteStatusShapeOf`, `STATUS_KEY` and friends).
  *
- * THE DICTIONARY IS NOT A READER OF ITSELF. The scan used to walk every file
- * under `src/client`, which includes `locales.ts` — so every key was found
- * quoted in its own definition and the check was green no matter how much had
- * rotted. It reported nothing at all: eight dead keys sat in the dictionary
- * for months behind a passing test. A check that cannot fail is worse than no
+ * THE DICTIONARY IS NOT A READER OF ITSELF. Walking every file under `src/client`
+ * includes `locales.ts`, so every key is found quoted in its own definition and
+ * the check goes green no matter how much has rotted, reporting nothing, while
+ * dead keys sit in the dictionary. A check that cannot fail is worse than no
  * check, because it is read as evidence; so the dictionary is excluded here,
  * and {@link theOrphanScanCanFail} proves the exclusion did not turn the check
  * into "always red" either.
@@ -124,12 +123,12 @@ describe('locale dictionaries have no rot', () => {
     const reader = ["t('probe.read')"]
     expect(orphansIn(reader, dictionary)).toEqual(['probe.unread'])
 
-    // AND THE OLD BUG, reproduced exactly. The reader set used to include the
-    // dictionary file itself, so every key was found quoted in its own
-    // definition and the check went quiet no matter what had rotted — which is
-    // how thirteen dead keys sat behind a green test. Adding the definitions
-    // back must silence the scan; that is the proof the exclusion is doing the
-    // work rather than the check simply being green.
+    // AND THE SELF-READING CASE, reproduced exactly. A reader set that includes
+    // the dictionary file itself finds every key quoted in its own definition and
+    // goes quiet no matter what has rotted — which is how dead keys sit behind a
+    // green test. Adding the definitions back must silence the scan; that is the
+    // proof the exclusion is doing the work rather than the check simply being
+    // green.
     const selfReading = [...dictionary].map(key => `'${key}'`)
     expect(orphansIn([...reader, ...selfReading], dictionary)).toEqual([])
   })

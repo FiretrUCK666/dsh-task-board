@@ -930,8 +930,8 @@ export declare class BoardController {
      *
      * - `'archived'` — the session exists but sits in the registry-global archive
      *   set: it is RECOVERABLE (设置 → 已归档会话 → 取消归档) and comes back to
-     *   every surface at once, because every surface derives from that set. Saying
-     *   「已不可用」 here was wrong the moment DSH shipped unarchive.
+     *   every surface at once, because every surface derives from that set. Calling
+     *   it 「已不可用」 is wrong while unarchive exists.
      * - `'removed'` — the user deleted this session FROM THIS CARD (hidden-tray
      *   删除): a tombstone in `removedSessions`. The conversation is fine; it is
      *   intentionally not part of this task until dragged back in.
@@ -1127,7 +1127,7 @@ export declare class BoardController {
      * is persisted as the manual order, so sessions that arrive later keep
      * landing at the TOP (the default newest-activity rule) until the user drags
      * them too. A USER-INTENT write: it bumps `updatedAt` like any edit (a
-     * record carrying a new order but the old stamp used to lose the sync
+     * record carrying a new order but an unchanged stamp loses the sync
      * merge — the two-device order drift this closes). @returns true when the
      * order changed.
      */
@@ -1477,11 +1477,11 @@ export declare class BoardController {
      * Promote the task and start a fresh round, reporting whether the launch was
      * actually accepted — the same answer `runTask` gives.
      *
-     * The return value is load-bearing: the detail sheet used to close BEFORE
-     * firing, so a refused launch (empty prompt, or a round already open) looked
-     * exactly like a successful one — the sheet vanished, nothing ran, and the
-     * board said nothing. Callers that want the old fire-and-forget shape can
-     * still ignore it; the UI keeps the sheet open and names the reason.
+     * The return value is load-bearing: closing the sheet BEFORE the launch
+     * lands makes a refused one (empty prompt, or a round already open) look
+     * exactly like a successful one — the sheet is gone, nothing ran, and the
+     * board said nothing. The UI keeps the sheet open and names the reason;
+     * a caller with nothing to say about a refusal may still ignore the answer.
      */
     rerunTask(id: string): Promise<boolean>;
     /** Whether the runtime offers the direct-message channel (the linked
@@ -1678,8 +1678,8 @@ export declare class BoardController {
      *
      * 归档是「可恢复的隐藏」：往一个收起来的对话里发消息，等于把它从原生侧边栏
      * 的视角里**复活**，而用户明确把它收走了。三条触发路径（cron 心跳 / 任务完成
-     * 后 / 完成后继续）必须共用这一道闸——曾经只有心跳守了，另外两条不守，于是
-     * 「完成后」规则能把消息塞进已归档的对话。缺席或归档的会话一律不送达。
+     * 后 / 完成后继续）必须共用这一道闸——哪一条自己判断，它就能把消息塞进已归档的
+     * 对话。缺席或归档的会话一律不送达。
      * @param byId - 会话列表快照（调用方一次读出，逐条复用）。
      */
     private ruleDeliverable;
@@ -1695,8 +1695,8 @@ export declare class BoardController {
      * 同律）。停用、暂停（列）、阻断（空 Prompt）三条各走各的：停用没有档期可言；
      * 暂停与阻断都是**跳过并把档期前滚**——到点的档期被跳过、滚到下一个匹配，
      * 恢复后从下一个匹配继续，**绝不补发**——与任务级排期 `scheduler.ts` 的同一
-     * 分支逐条对齐。曾经这里自己又写了一遍「内容为空 = 阻断」，两处的处理还**正好
-     * 相反**（阻断前滚、暂停不前滚），于是暂停中的规则永远挂着一个早已到点的档期，
+     * 分支逐条对齐。这一条不许自己再写一遍「内容为空 = 阻断」：两处各写一份，处理
+     * 正好会**相反**（阻断前滚、暂停不前滚），于是暂停中的规则永远挂着一个早已到点的档期，
      * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
      * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
      */
@@ -1896,14 +1896,12 @@ export declare class BoardController {
     /**
      * Session-list change: reconcile running tasks and re-render consumers.
      *
-     * The board CLOSE decision is no longer here. It used to watch the host's
-     * `current` selection and decide "the user walked away" versus "the board
-     * picked this itself" (a one-shot marker), with a wait exemption on top.
-     * The host removed that field — selection is view state — and the board's
-     * own presence moved to the centre-stage panel, so what closes the board is
-     * the stage switching to the Conversation panel. Deleting the chain removed
-     * three pieces of coupled state (`lastCurrent`, `boardPick`, the DOM click
-     * probe) that only existed to reconstruct one fact the view layer now owns.
+     * The board CLOSE decision is NOT here. Selection is view state — the
+     * board's own presence is the centre-stage panel — so what closes the board
+     * is the stage switching to the Conversation panel, and that is the view
+     * layer's own fact to own. Reconstructing it here would take three pieces of
+     * coupled state (a `current` copy, a board-pick marker, a DOM click probe)
+     * that only exist to re-derive one fact the view layer already holds.
      */
     private onSessionsChanged;
     /** Execution ids launched on this page; they settle via their live watch, never list reconciliation. */
@@ -1958,8 +1956,9 @@ export declare class BoardController {
      *  reached the agent (a lost inject, a session that vanished mid-flight).
      *  Left open it would hold a concurrency slot AND swallow every future
      *  native turn of that session (hasOpenRoundOn gates external recording),
-     *  which is why 「行亮进行中、卡片永远不动」 used to recur forever. The
-     *  watchdog releases it as cancelled, and external detection re-arms. */
+     *  which is the whole of 「行亮进行中、卡片永远不动」: it recurs for as long
+     *  as the round is left open. The watchdog releases it as cancelled, and
+     *  external detection re-arms. */
     private static readonly OPEN_ROUND_WATCHDOG_MS;
     /**
      * The watchdog verdict for one open round: a synthetic `cancelled` settle
@@ -2034,9 +2033,10 @@ export declare class BoardController {
     private activity;
     /** Whether one session is genuinely working right now — this session's own
      *  turn OR a running subagent descendant (the official sidebar's semantics).
-     *  THE query every surface that used to read the bare `running` flag calls:
-     *  the card's session dots, the linked rows, the session list rows, the
-     *  detail and review state chips. It deliberately does NOT drive the round
+     *  THE query every surface that draws liveness calls — the card's session
+     *  dots, the linked rows, the session list rows, the detail and review state
+     *  chips — rather than the bare `running` flag, which answers a narrower
+     *  question. It deliberately does NOT drive the round
      *  watchdogs, the settle paths or the external-turn detector — those ask
      *  "did MY turn finish?" and must keep reading `byId[id].running` verbatim
      *  (see the byId declaration and session-activity.ts). */
@@ -2057,12 +2057,12 @@ export declare class BoardController {
     /**
      * **一条会话还算不算这一张卡的**——这一个判据只有一处，所有问它的地方都读这里。
      *
-     * 它存在的理由是一次真实的读者报告：删掉或归档了一些会话之后，卡片上的会话数比里面实际的
-     * 多，而「等你处理」也会为一条已经不存在的会话一直亮着。根因是同一个问题有六处各自回答，
-     * 其中几处**忘了回答存在性**（`relatedSessionIdsOf` 的那个参数曾经是可选的，忘掉它不会有任何
-     * 声音）。现在判决收成一个具名方法，那个参数也变成必填。
+     * 同一个问题不许有六处各自回答：那几处**忘了回答存在性**的时候，卡片上的会话数会比里面
+     * 实际的多，而「等你处理」也会为一条已经不存在的会话一直亮着。所以判决收成这一个具名
+     * 方法，而 `relatedSessionIdsOf` 的那个参数必填——忘掉它不会有任何声音，写成必填则是
+     * 编译错误。
      *
-     * 三态：`'visible'` 算；`'archived'` 与 `'removed'` 不算（收起来的对话不再是这张卡的业务——
+     * 三态：`'visible'` 算；`'archived'` 与 `'removed'` 不算（收起来的对话不是这张卡的业务——
      * 与「规则不向归档会话投递」同一条规矩）；`'gone'` 不算，因为它已经不存在。名单还没就绪时
      * 返回 `undefined`——**看不见 ≠ 不存在**，那时不过滤，也不假装没有。
      */
@@ -2076,7 +2076,7 @@ export declare class BoardController {
      *
      * **存在性由这一个调用点统一付，而且只在名单就绪之后。** 这个集合的三个来源里，只有
      * 「工作区的当前成员」那一条在路上自己做过存在性检查；而读者删掉一条会话本体之后，卡片
-     * 外面的会话数（圆点与 `+N`）仍然把它数着——那个数于是比屏上实际存在的会话多。现在三条
+     * 外面的会话数（圆点与 `+N`）仍然把它数着——那个数于是比屏上实际存在的会话多。三条
      * 来源共用同一个判据（`sessionAvailability !== 'gone'`：归档与「从这张卡删掉」仍然是
      * 「存在但不算」，只有会话本体没了才算不存在）。
      *

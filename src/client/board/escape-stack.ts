@@ -5,7 +5,7 @@
  * the new-task modal; the review page over the task detail). A per-overlay
  * `document` keydown listener can never express "only the top one closes":
  * `stopPropagation` does not stop ANOTHER listener on the SAME node, so one
- * Escape used to pop the whole stack at once. This module keeps a single
+ * Escape pops the whole stack at once. This module keeps a single
  * LIFO stack of open overlays and routes ONE shared keydown listener to the
  * TOP overlay only — every overlay registers through this hook and the family
  * gets correct, drift-free Escape behavior from exactly one place.

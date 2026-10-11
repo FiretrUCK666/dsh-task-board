@@ -197,7 +197,7 @@ const INTERNAL = {
   pendingInteractionOf: '会话上挂着的交互（审批 / 计划确认 / 提问）。**读它不是动作，作答才是**——作答是人的动作，在下面「决定不给模型」那一组里',
   questionPendingOf: '这条会话待作答的问题。读可以，作答与取消同样在下面「决定不给模型」那一组',
   relatedSessionIdSet: '与这张卡相关的会话集合（绑定 + 有轮次 + 工作区当前成员，减去已删除）',
-  sessionPresentOf: '一条会话**还算不算这一张卡的**（存在性判决）。**它是读**：不改任何文档，只回答一个三态问题——名单没就绪时给 `undefined`（看不见 ≠ 不存在）。它存在的理由是同一个问题曾经有六处各自回答、其中几处忘了回答；现在判决只写在这里，`relatedSessionIdsOf` 的那个参数也变成必填，于是每个调用点都必须把话说出来。**注意它与「归属」不是同一个问题**：`renameTaskSession` 问的是「这条会话属于这张卡吗」，所以它有意不判存在性',
+  sessionPresentOf: '一条会话**还算不算这一张卡的**（存在性判决）。**它是读**：不改任何文档，只回答一个三态问题——名单没就绪时给 `undefined`（看不见 ≠ 不存在）。它存在的理由是同一个问题各写一份、其中几处会忘了回答：判决只写在这里，`relatedSessionIdsOf` 的那个参数因此是必填的，于是每个调用点都必须把话说出来。**注意它与「归属」不是同一个问题**：`renameTaskSession` 问的是「这条会话属于这张卡吗」，所以它有意不判存在性',
   externalKindOf: '这条 id 是不是从侧栏拖进来的外源（外源的标题可以不在卡里）',
   boundSourceTitleOf: '绑定的来源（会话或工作区）显示成什么标题',
   offerableSessionGroups: '还能加进这张卡的会话，按工作区分组（已归档的已排除）',
@@ -595,19 +595,16 @@ function methodBindings(ids, bindings) {
  * There are two correct ways to write that decision and BOTH are accepted,
  * because a gate that red on one correct implementation is a gate that gets
  * switched off:
- *   - an `if (spec.lane === 'engine') { … }` branch that gates per action (the
- *     shape the host used first), or
+ *   - an `if (spec.lane === 'engine') { … }` branch that gates per action, or
  *   - a shared body that reads the action's CARRIER out of the catalog and
- *     refuses when the catalog has none — the shape it moved to, where every
- *     carrier shares one body because "what does this action do" is a question
- *     only the catalog can answer.
+ *     refuses when the catalog has none — every carrier shares one body, because
+ *     "what does this action do" is a question only the catalog can answer.
  *
- * The slice is BRACE-MATCHED, not cut at a phrase. It used to stop at the next
- * `lane === 'document'`, which was correct until the branches stopped being
- * written that way: the boundary phrase vanished, the slice ran to a character
- * cap, and it swept in an unrelated switch further down the file. A heuristic
- * boundary does not fail loudly when the code moves — it starts measuring the
- * wrong thing, which is worse.
+ * The slice is BRACE-MATCHED, not cut at a phrase. A phrase boundary stops
+ * working the moment the branches are written differently: the phrase vanishes,
+ * the slice runs to a character cap, and it sweeps in an unrelated switch
+ * further down the file. A heuristic boundary does not fail loudly when the code
+ * moves — it starts measuring the wrong thing, which is worse.
  */
 function relayDecisionRegion(toolsSource) {
   const braceMatched = from => {

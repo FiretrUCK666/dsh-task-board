@@ -3,12 +3,12 @@
  * body. Every judgment about a row is made in one of the modules below; this
  * file exists so that a surface has ONE import to write and ONE name to learn.
  *
- * WHY THE LAYERING EXISTS, and what each module is for. The layer used to be one
- * 1,400-line file, which is a size at which a change stops being reviewable: a
- * date-posture fix and a triage-line fix landed in the same file, so neither
- * could be read without reading the other, and "did the other half move too" was
- * a question nobody could answer cheaply. The split is by QUESTION, not by size,
- * and the boundaries are the questions:
+ * WHY THE LAYERING EXISTS, and what each module is for. One file holding the whole
+ * layer is a size at which a change stops being reviewable: a date-posture fix
+ * and a triage-line fix land in the same file, so neither can be read without
+ * reading the other, and "did the other half move too" is a question nobody
+ * answers cheaply. The split is by QUESTION, not by size, and the boundaries are
+ * the questions:
  *
  *   item-dates       三个日期是什么意思      the three promises, and the one verdict
  *   item-membership  这一条在不在场          which set a row is in, and its real status

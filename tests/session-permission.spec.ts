@@ -19,7 +19,7 @@
  *  3. THE PHANTOM OPTION. 「默认（会话默认权限）」 carried the value `''`, and
  *     applying `''` was a no-op, so choosing it silently did nothing. A session
  *     always HAS a permission and `/permission` has no "unset" verb, so the
- *     option was removed from the live select rather than fixed.
+ *     live select offers no such option at all.
  */
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
@@ -41,7 +41,7 @@ describe('the permission row reads ONE live source', () => {
     expect(panel).not.toMatch(/setChosen/)
     // No "the projection disagrees with my local copy, so drop mine" effect.
     expect(panel).not.toMatch(/permissionValue !== chosen/)
-    // And the rail head no longer maps a per-session setting out of the
+    // And the rail head does not map a per-session setting out of the
     // page-scoped projections.
     expect(panel).not.toContain('livePermission')
   })

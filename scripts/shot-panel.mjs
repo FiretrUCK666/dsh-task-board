@@ -32,7 +32,7 @@
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
  *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--eval-file <path>] [--label text]
  *        [--css-for "<selector>" [--property padding]]
- *        [--both]
+ *        [--both] [--scrollbars]
  *
  * `--both` captures TWO shots with one browser launch: the claimed --width and
  * the narrow 412, both derived from the SAME --out prefix (`shot.png` writes
@@ -69,28 +69,27 @@ function parseArgs(argv) {
     cssFor: '',
     property: 'padding',
     both: false,
+    scrollbars: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
     const spelled = flag.replace(/^--/, '')
     // Flags are spelled KEBAB-case everywhere they are written down — the usage
-    // block above, and AGENTS.md. The parser used to compare the raw spelling
-    // against camelCase keys, so it rejected `--color-scheme` (the documented
-    // form) and then printed `--color-scheme` in the list of flags it accepts.
-    // A tool whose error message contradicts its own parser is worse than one
-    // that is merely strict, so both spellings are accepted.
+    // block above, and AGENTS.md. Both spellings are accepted, because a tool
+    // whose error message contradicts its own parser is worse than one that is
+    // merely strict.
     //
-    // The comparison drops hyphens on BOTH sides, because lowercasing alone is
-    // not enough: `colorScheme` lowercases to `colorscheme` and `color-scheme`
-    // to `color-scheme`, which are different strings — the first version of
-    // this fix accepted neither spelling and looked like it worked.
+    // The comparison drops hyphens on BOTH sides: lowercasing alone is not
+    // enough, because `colorScheme` lowercases to `colorscheme` and
+    // `color-scheme` to `color-scheme`, which are different strings.
     const wanted = spelled.toLowerCase().replaceAll('-', '')
     const key = Object.keys(out).find(name => name.toLowerCase().replaceAll('-', '') === wanted)
     if (key === 'full') { out.full = true; continue }
     if (key === 'both') { out.both = true; continue }
+    if (key === 'scrollbars') { out.scrollbars = true; continue }
     if (key === undefined) {
       console.error(`shot-panel: unknown flag ${flag}`)
-      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both')
+      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both --scrollbars')
       process.exit(2)
     }
     out[key] = argv[i + 1] ?? ''
@@ -260,7 +259,13 @@ child = spawn(browserPath, [
   '--no-first-run',
   '--no-default-browser-check',
   '--disable-gpu',
-  '--hide-scrollbars',
+  /* Scrollbars are hidden by default: a scroll region's bar is a platform
+   * overlay whose width would pollute every geometry this tool measures (and in
+   * a `--full` page shot it is pure noise). `--scrollbars` keeps them, because a
+   * styled bar is a thing a reader SEES: the shared grammar's track inset, the
+   * theme's thumb colour and the arrow-button suppression are only visible with
+   * the platform's own bars turned back on. */
+  ...(args.scrollbars ? [] : ['--hide-scrollbars']),
   '--force-color-profile=srgb',
   '--disable-features=Translate,MediaRouter,OptimizationHints',
 ], { stdio: 'ignore' })

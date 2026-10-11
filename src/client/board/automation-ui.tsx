@@ -267,8 +267,8 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
           /* DISABLED WITH A REASON, not a switch that springs back.
              `toggleSessionRule` refuses two real cases — the dead-arm law (the
              card cannot run this rule at all) and an unparseable cron — and it
-             returns void, so both used to be a switch the reader could press and
-             that did nothing, with nothing said. A control that visibly refuses
+             returns void, so neither refusal can come back as a message: the
+             switch has to say it itself. A control that visibly refuses
              is an answer; one that springs back silently is the 「按了没反应」 the
              owner keeps reporting.
 

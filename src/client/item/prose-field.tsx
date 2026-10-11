@@ -25,8 +25,8 @@
  *
  * No `rows` attribute and no auto-grow: a box whose height is a function of its
  * content cannot also be a box the reader sized. No `::-webkit-resizer` rules
- * either — `resize` is `none` now, and a rule hiding a platform affordance that
- * no longer exists describes a browser rather than this page.
+ * either — `resize` is `none` now, and a rule hiding a platform affordance this
+ * box never draws describes a browser rather than this page.
  *
  * The one number a keyboard needs — one line — is read from the box's own
  * computed `line-height`; when there is no layout at all (jsdom, where every spec
@@ -201,9 +201,15 @@ export function ProseField(props: ProseFieldProps) {
 
   return (
     <div className={css.itemProseBox} style={style}>
+      {/* `data-dsh-tb-scroll` mounts the shared scroll grammar (mechanism and the
+          reason its track is inset at both ends: board.module.css, 「HOW A SECOND
+          PANEL MOUNTS THIS GRAMMAR」). Unmounted, this box drew the raw platform
+          bar — a full-height track whose ends run into the rounded corner, which
+          reads as a bar breaking through the top edge. */}
       <textarea
         ref={field}
         className={css.itemProse}
+        data-dsh-tb-scroll=""
         value={props.value}
         placeholder={props.placeholder}
         aria-label={props.ariaLabel}

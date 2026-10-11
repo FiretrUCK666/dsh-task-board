@@ -19,10 +19,10 @@
  * 400px of a 1100px screen while holding no rows at all.**
  *
  * An empty day is a blank square on the map, and a blank square still takes up
- * room. PRODUCT has said this for a while（「空节整个不画」/「压成一行摘要」）and it
- * WAS implemented — for the list page's four status groups. The agenda's days go
- * through different code, so the same rule was held on one page and lost on
- * another. **One rule, two implementations, one of them forgotten.**
+ * room. PRODUCT says 「空节整个不画」/「压成一行摘要」, and the list page's four status
+ * groups do it — the agenda's days go through different code, so the same rule
+ * can be held on one page and lost on another. **One rule, two implementations,
+ * one of them forgotten.**
  *
  * Collapsing hides nothing: every day's name and its own zero are still on the
  * line, in order, and still readable.
@@ -113,14 +113,14 @@ function EmptyDays({ days }: { readonly days: readonly Bucket[] }): React.ReactN
           </span>
         </span>
       ))}
-      {/* **一行摘要与下面的节之间要有一条界。** 读者在截图里点名过这一处：那行
+      {/* **一行摘要与下面的节之间要有一条界。** 没有它，那行
           「今天 0 · 明天 0 · 本周稍后 0」与它下面第一个真的节之间只有空气，于是它
           读起来像下一个节的题头而不是上一段的收尾。一条发丝线就够——它说的是
           「上面那段到此为止」，而这正是空日摘要唯一需要说的话。
           画成 SVG 而不是 `border-block-end`：`preserveAspectRatio="none"` 让它铺满
           这一列而不必去猜宽度。
-          **两端原来还各有一根 4px 的端刻，读者点名要删。** 那句「和本表其它分隔线
-          同一支笔画」本来就不成立——全仓只有这一处画过端刻——而它落在这条**横贯整列**
+          **两端不许有端刻**（4px 的两根竖线）：那句「和本表其它分隔线
+          同一支笔画」不成立——全仓只有这一处会画端刻——而它落在这条**横贯整列**
           的线上时，两根竖线读起来是「这条线画到了边上」，不是「一段到此为止」。 */}
       <svg className={css.itemEmptyGroupsRule} viewBox="0 0 240 5" preserveAspectRatio="none" aria-hidden="true">
         <path d="M0 2.5h240" />
@@ -180,8 +180,8 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
     )
   }
 
-  /* 一节一行：**节名 + 条数 +（日节的）日期读法，站在同一条线上**。曾经是两行——
-   * 一个 `<h2>` 说名字，一个 `<p>` 说日子，各自带一条线——读者读到的是两个题头
+  /* 一节一行：**节名 + 条数 +（日节的）日期读法，站在同一条线上**。两行的话（
+   * 一个 `<h2>` 说名字，一个 `<p>` 说日子，各自带一条线），读者读到的是两个题头
    * 摞在一起，而它们说的是同一天。一行说完，行下没有线（节与节之间靠空气）。
    *
    * 左侧那枚 9px 日历记号与清单页日分段药丸里的图标**同一条路径**：同一个「日」

@@ -6,11 +6,11 @@
  * raw form can still type it. What this file changes is only the page's way of
  * SHOWING that string: the box holds the words the reader typed, and every
  * qualifier beside it stands as a chip that says 「状态：进行中」 with a way to take
- * it off. Before, pressing a facet wrote its own implementation into a field
- * labelled 「搜索标题、正文、备注与标签」, so a control printed the reader its source
- * code — `status:inProgress`, `has:hardOverdue`, `p1` — and that is the single
- * largest reason the page read as machine-made. **A control that shows the reader
- * how it is implemented is not finished.**
+ * it off. A facet that wrote its own implementation into the field labelled
+ * 「搜索标题、正文、备注与标签」 would print the reader source code —
+ * `status:inProgress`, `has:hardOverdue`, `p1` — and that is the single largest
+ * reason a page reads as machine-made. **A control that shows the reader how it
+ * is implemented is not finished.**
  *
  * WHY IT IS NOT A SECOND STATE. The chips are DERIVED from the box's text by one
  * function, and removing one is the same byte-for-byte operation adding one was.

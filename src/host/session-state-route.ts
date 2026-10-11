@@ -2,12 +2,11 @@
  * Session-state bridge (host): exposes the native per-session PLAN mode,
  * active GOAL and live SUBAGENTS to the board's comment surfaces.
  * This is the narrow read-only bridge — it deliberately DOES NOT carry a
- * command catalog (the command directory was removed from the board): only
- * live session state that the surfaces display. We never hardcode plan/goal/
- * subagent shapes; we READ the harness's own services (planMode / goals /
- * subagents) through thin structural faces, so official changes flow in
- * automatically. Any missing/throwing face degrades to that block being
- * absent — never an error surface.
+ * command catalog: only live session state that the surfaces display. We never
+ * hardcode plan/goal/subagent shapes; we READ the harness's own services
+ * (planMode / goals / subagents) through thin structural faces, so official
+ * changes flow in automatically. Any missing/throwing face degrades to that
+ * block being absent — never an error surface.
  *
  * NATIVE SHAPES (verified against the deployment's own type definitions):
  * - goal: `goals.get(agent)` → GoalView `{ objective, phase:

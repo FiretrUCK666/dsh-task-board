@@ -116,7 +116,7 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
           ariaLabel={t('item.batch.priority')}
           disabled={idle}
           value={props.commonPriority ?? ''}
-          /* 四档的顺序与词都派生（与左栏、展开区、新建纸同一份），不再手写四行。 */
+          /* 四档的顺序与词都派生（与左栏、展开区、新建纸同一份），所以这四行不在这里手写。 */
           options={ITEM_PRIORITIES_BY_WEIGHT.map(priority => ({ value: priority, label: t(PRIORITY_LABEL[priority]) }))}
           onChange={next => { if (next !== '') props.onPriority(next as ItemPriority) }}
         />

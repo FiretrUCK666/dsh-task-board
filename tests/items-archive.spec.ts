@@ -64,10 +64,10 @@ describe('reading the archive', () => {
   })
 
   it('carries this device id, so a reader sitting in the archive keeps their seat', async () => {
-    // The read used to go out with no clientId at all, while every other call on
-    // this prefix carries one. The host renews the tab's engine lease on that id,
-    // so the one reader most likely to sit still — somebody browsing thirty days
-    // of their own deletions — was the one whose tab could be mistaken for gone.
+    // This read carries this device id, exactly as every other call on this
+    // prefix does. The host renews the tab's engine lease on that id, so without
+    // it the one reader most likely to sit still — somebody browsing thirty days
+    // of their own deletions — is the one whose tab gets mistaken for gone.
     let asked = ''
     const fetchImpl = (async (url: string) => {
       asked = String(url)

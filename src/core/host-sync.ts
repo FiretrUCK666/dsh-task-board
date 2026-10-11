@@ -316,8 +316,8 @@ export class BoardSyncClient {
       const tasksIdentical = legacyView.tasks.length === this.baseline.tasks.length
         && legacyView.tasks.every(task => hostIds.get(task.id)?.updatedAt === task.updatedAt)
       // Sections are single-valued: any local non-default that differs from
-      // the host is a divergence worth backing up (the old probe only looked
-      // at tasks, so a late device's edited cruise/presets vanished silently).
+      // the host is a divergence worth backing up (a probe reading only tasks
+      // lets a late device's edited cruise/presets vanish silently).
       const hostView = boardViewOf(this.baseline)
       const sectionsIdentical = JSON.stringify({
         cruise: legacyView.cruise,
@@ -765,12 +765,12 @@ export class BoardSyncClient {
    *  WHY THE NOTIFY LIVES HERE AND NOT INSIDE {@link adopt}. {@link view} lays
    *  this tab's optimistic layer IN FRONT of the baseline, so **clearing that
    *  layer changes what the reader sees even when the document has not moved**.
-   *  Publishing from inside `adopt` — which is what this used to do — handed the
-   *  reader the view with the optimistic rows still in front and then said
-   *  nothing more, so whatever the host had just decided about those rows was
-   *  never drawn. On the checklist that is visible in the worst way: `ref` is
-   *  assigned host-side, so a row that had just come back from the host kept
-   *  reading 「编号待定」 until the reader reloaded the page. */
+   *  Publishing from inside `adopt` hands the reader the view with the optimistic
+   *  rows still in front and then says nothing more, so whatever the host has
+   *  just decided about those rows is never drawn. On the checklist that is the
+   *  worst way to see it: `ref` is assigned host-side, so a row that has just
+   *  come back from the host keeps reading 「编号待定」 until the reader reloads
+   *  the page. */
   private publish(): void {
     this.remoteListener?.(this.view(), this.baseline.revision)
   }
@@ -844,7 +844,7 @@ export class BoardSyncClient {
     const bootedAt = typeof state.bootedAt === 'number' && Number.isFinite(state.bootedAt) ? state.bootedAt : undefined
     // Announce on ANY half of the seat moving: who holds it, the host's
     // protocol, or which host process is answering. Notifying only on a held
-    // change is how a restarted host stayed "stale" on every viewer until a
+    // change leaves a restarted host reading "stale" on every viewer until a
     // manual refresh — the protocol moved, nobody was told.
     const changed = this.engine !== state.held || this.hostLeaseProto !== proto || this.hostBoot !== bootedAt
     this.hostLeaseProto = proto

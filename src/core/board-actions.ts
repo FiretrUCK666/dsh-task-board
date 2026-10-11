@@ -122,10 +122,10 @@ export interface ParamSpec {
    * THE VALUE SHAPES, FIVE OF THEM, DELIBERATELY NOT ONE.
    *
    * One "allowed values" field that could hold an enum, a boolean and a range
-   * would be the exact shape that invites the mistake this table already made
-   * once: declaring something stricter than the truth and handing a model a
-   * confidently wrong answer. Each shape gets its own field so none can be read
-   * as another — a boolean can no longer be spelled as two strings.
+   * would be the exact shape that invites the mistake: declaring something
+   * stricter than the truth and handing a model a confidently wrong answer. Each
+   * shape gets its own field so none can be read as another — a boolean can no
+   * longer be spelled as two strings.
    */
 
   /** A closed set of STRING values. Never a boolean, never a number. */
@@ -791,8 +791,8 @@ export const ACTIONS = {
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签', optional: true, list: 'string' },
       // The granularity is a FIELD on all three dates, and in the same words.
-      // It used to be 「毫秒时间戳」 in `about` here and nothing at all in
-      // `item.update`, which is a third reading of the same three fields.
+      // Prose in one `about` and silence in the other is a third reading of the
+      // same three fields.
       startsAfter: { about: '不早于', optional: true, default: DATE_GRANULARITY },
       dueAt: { about: '希望在', optional: true, default: DATE_GRANULARITY },
       hardDueAt: { about: '最后期限', optional: true, default: DATE_GRANULARITY },
@@ -866,18 +866,17 @@ export const ACTIONS = {
   'item.promote': {
     // THE ONE ACTION THAT WRITES TWO DOCUMENTS, so the receipt names both rather
     // than saying a subject-less 「已生效」 — see `OpReport.documents` on the tool
-    // side, which is where the half-landed case is actually said out loud. The
-    // comment here used to point at `applyOne` for that sentence; `applyOne`
-    // never said it, which is a promise in a comment that nothing keeps.
+    // side, which is where the half-landed case is actually said out loud. A
+    // comment pointing at a function that never says it is a promise nothing
+    // keeps.
     //
     // It carries `semantic` for the same reason the other four checklist writes
-    // do, and it was MISSING it: the panel's 转成卡片 button and this tool both
-    // call `planItemPromotion`, so the judgment 「这一条能不能变成卡」 was already
-    // decided in one function — while the catalog said the action had no shared
-    // semantics, which is precisely the state in which somebody grows a second
-    // judgment beside it and the two disagree. The binding is recorded in
-    // {@link ITEM_HANDLERS}, and `actionCatalogFindings` holds the two to each
-    // other so they cannot drift.
+    // do: the panel's 转成卡片 button and this tool both call
+    // `planItemPromotion`, so the judgment 「这一条能不能变成卡」 is decided in one
+    // function — and a catalog entry declaring no shared semantics is precisely
+    // the state in which somebody grows a second judgment beside it and the two
+    // disagree. The binding is recorded in {@link ITEM_HANDLERS}, and
+    // `actionCatalogFindings` holds the two to each other so they cannot drift.
     verb: 'create',
     domain: 'item',
     lane: 'document',
@@ -894,20 +893,20 @@ export const ACTIONS = {
   },
 
   'item.ask': {
-    // THE ONE THE PANEL HAD AND THE CATALOG DID NOT. The panel's 「问一句」
-    // button called a private route function, so `verify-action-coverage` — which
-    // reads what the CATALOG carries — could not see it, and a model had no way
-    // to ask a question about a row it had just read. 「界面有的动作 AI 没有」
-    // was not an oversight; it is what happens when a judgment lives in a route
-    // instead of in a function the catalog can name. It lives in
-    // `src/core/item-ask.ts` now, both callers go through it, and it is here.
+    // A JUDGMENT IN A ROUTE IS ONE THE GATE CANNOT SEE. The panel's 「问一句」
+    // button calling a private route function leaves `verify-action-coverage` —
+    // which reads what the CATALOG carries — blind to it, and the model with no
+    // way to ask a question about a row it has just read. 「界面有的动作 AI 没有」
+    // is not an oversight; it is what happens when a judgment lives in a route
+    // instead of in a function the catalog can name. The judgment lives in
+    // `src/core/item-ask.ts`, both callers go through it, and the action is here.
     verb: 'speak',
     domain: 'item',
     // `engine`, because the effect IS the live host's work: a run, or a message
-    // into a conversation. It was called `document` while the action could only
-    // hand a sentence to an already-running agent — and that name was the shape of
-    // the trouble: 「这一条不是执行」 was in the summary, and a reader who wanted
-    // the row DONE had a second button for it.
+    // into a conversation. Calling that `document` — a sentence handed to an
+    // already-running agent — is the shape of the trouble: 「这一条不是执行」 is
+    // then in the summary, and a reader who wants the row DONE has a second
+    // button for it.
     lane: 'engine',
     danger: 'reversible',
     surface: 'ui+ai',
@@ -987,12 +986,11 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui',
-    // `semantic` for the same reason every other checklist row carries it, and
-    // the binding check caught this one missing while it was NOT_YET_BUILT: the
-    // panel had 「go to a page」 and 「focus a row」 as two pieces of local state
-    // with no named function behind them, so 「#12 belongs to which page」 was a
-    // question only a React component could answer. It is in `item-navigate.ts`
-    // now, next to the two predicates that decide it.
+    // `semantic` for the same reason every other checklist row carries it: the
+    // panel's 「go to a page」 and 「focus a row」 are two pieces of local state,
+    // and with no named function behind them 「#12 belongs to which page」 is a
+    // question only a React component can answer. The judgment lives in
+    // `item-navigate.ts`, next to the two predicates that decide it.
     semantic: true,
     semanticOf: 'planItemNavigation',
     summary: '把清单面板切到某个页面，或者聚焦到某一条。只给编号就跳到那一行所在的那一页；两样都给就照给的来。只有界面能调：模型不替人翻界面。',
@@ -1069,11 +1067,11 @@ const NOT_YET_BUILT_MARKER = 'NOT-YET-BUILT: '
 /**
  * The ledger of catalogued actions with no core binding.
  *
- * **EMPTY, and that is the point.** It used to hold one row —
- * `item.navigate` — with a reason saying the judgment lived in the panel's local
- * state and no gate could see it. The judgment 「#12 在哪一页」 now lives in
- * `item-navigate.ts` next to the two predicates that decide it, so the row has a
- * function to bind to and this ledger has nothing left to excuse.
+ * **EMPTY, and that is the point.** A row here would mean the judgment lives in
+ * the panel's local state, where no gate can see it. The judgment 「#12 在哪一页」
+ * lives in `item-navigate.ts` next to the two predicates that decide it, so every
+ * catalogued action binds to a function and this ledger has nothing left to
+ * excuse.
  *
  * The type is still here and still enforced: `BoundItemActionId` excludes it, so
  * a new item action is a BUILD FAILURE until it is either bound or written here
@@ -1109,10 +1107,9 @@ type BoundItemActionId = Exclude<ItemActionId, keyof typeof NOT_YET_BUILT>
  * time somebody adds an action, and nothing about the old list looks wrong when
  * it does.
  *
- * Written as `Record<ItemActionId, …>` the very first compile of this table
- * failed on `item.navigate` — the one action in the catalog nobody has ever
- * built. That is the gate working: a new checklist action now fails the build
- * until it is either bound or reasoned about, and neither can happen quietly.
+ * Written as `Record<ItemActionId, …>` the type is the gate: a new checklist
+ * action fails the build until it is either bound or reasoned about, and neither
+ * can happen quietly.
  *
  * `ItemActionId` is derived by PREFIX rather than listed, so a new domain in the
  * catalog does not have to be added here to keep this table honest.
@@ -1131,9 +1128,8 @@ export const ITEM_HANDLERS = {
   'item.ask': itemAsk.planItemAsk,
   // The jump is a DOCUMENT question — 「#12 在哪一页」 is answered by the same
   // `isInboxItem` / `isAgendaItem` that decide membership everywhere else — and
-  // the panel only moves once this has answered it. Binding it the other way
-  // round would have left the only place that knows the page set inside a
-  // component, which is where this row lived for as long as it was unbuilt.
+  // the panel only moves once this has answered it. Bound the other way round,
+  // the only place that knows the page set is inside a component.
   'item.navigate': itemNavigate.planItemNavigation,
   // The restore half is `items-doc`'s, not `item-transitions`' — it is the same
   // re-stamp-above-the-tombstone rule the panel's undo goes through, and it
@@ -1201,12 +1197,12 @@ export const EXECUTE_ENVELOPE_PARAMS: Readonly<Record<string, ParamSpec>> = {
   /**
    * NOT a boolean, and the fact that it is a string is stated by its ABSENCE of
    * `boolean` — which is why the renderer below has to read the shape field
-   * rather than assume one. It used to publish as `type: 'boolean'` because the
-   * whole envelope was stamped with that type, so a model obeying the published
-   * schema sent `true`; the reader guards on `typeof === 'string'`, the key came
-   * out empty, and the retry-safety promise did nothing at all while the schema
-   * said it was in force. **A promise published in the wrong shape is worse than
-   * no promise, because the caller is told it is protected.**
+   * rather than assume one. Publish a shape the reader does not guard for and
+   * the promise is broken in silence: a model obeying the schema sends `true`,
+   * the reader's `typeof === 'string'` guard comes out empty, and the
+   * retry-safety promise does nothing at all while the schema says it is in
+   * force. **A promise published in the wrong shape is worse than no promise,
+   * because the caller is told it is protected.**
    */
   idempotencyKey: { about: '幂等键：同一个键重试不会重复执行、不会重复烧钱；自己编一个稳定字符串，重试时原样再发一遍', optional: true },
 }
@@ -1246,10 +1242,10 @@ export interface CatalogChecks {
  * of `semantic` in the first place.
  *
  * BOTH transition modules AND the document grammar, because the checklist is the
- * second synced document and its write path used to be a SECOND COPY of the same
- * semantics: a panel that edits a row through its own function and a model that
- * edits it through the tool can compute two different documents, which is the one
- * failure two devices cannot detect between them.
+ * second synced document and a write path that is a SECOND COPY of the same
+ * semantics makes two documents: a panel that edits a row through its own
+ * function and a model that edits it through the tool can compute two different
+ * ones, which is the one failure two devices cannot detect between them.
  *
  * The document grammar is in this list because `restoredItemOf` lives there: the
  * restore re-stamp belongs to the merge grammar (the tombstone it has to outrank

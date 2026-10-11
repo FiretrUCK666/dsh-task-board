@@ -11,9 +11,8 @@
  * went will assume it was lost.
  *
  * THE DAY BOUNDARY IS {@link startOfDay}, shared with the capture box and with
- * every other day in the product. It used to be written out here as well, which
- * is how a local-midnight rule ends up with two copies that are right until one
- * of them is edited.
+ * every other day in the product. A local-midnight rule written out in two places
+ * is right until one of them is edited.
  */
 import type { ItemRecord } from './item.ts';
 import { type ItemSort } from './item-sort.ts';

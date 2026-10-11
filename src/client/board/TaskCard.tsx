@@ -143,7 +143,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
       draggable
       onClick={onClick}
       onKeyDown={event => {
-        // Keyboard parity for the one interaction that used to be mouse-only.
+        // Keyboard parity for the one interaction that would otherwise be mouse-only.
         // `[` / `]` step the card one column along the SAME COLUMNS order the
         // board renders, and the caller runs them through `resolveCardDrop` — so
         // a key move can never take a path a drag could not refuse. Modifier
@@ -238,12 +238,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
       </span>
       {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
       {/* The next-action line sits directly under the content, BEFORE the meta
-          block. It is the card's verb — "what do I do about this" — and it used to
-          be the last child: smallest type, last in reading order, and the first
-          thing to be truncated (it was `nowrap` with an ellipsis, and every one of
-          its sentences is long enough to truncate on a narrow card). Position,
-          size and truncation all told the same wrong story about the least
-          decorative line on the card. */}
+          block. It is the card's verb — "what do I do about this" — so it cannot be
+          the last child: smallest type, last in reading order, and the first thing
+          to be truncated (`nowrap` with an ellipsis, and every one of its sentences
+          is long enough to truncate on a narrow card). Position, size and
+          truncation all tell the same wrong story about the least decorative line
+          on the card. */}
       {nextAction !== undefined && nextAction !== '' && (
         <span className={css.cardNext}>{nextAction}</span>
       )}
@@ -269,14 +269,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         </span>
         {/* Row 2: the card's chips, straight off the view model.
             (1) The PRIMARY chip IS `view.primary` — the same value the
-            next-action line above reads. The model and the render used to be
-            TWO chains, which is why a queued card showed no primary at all and
-            a failed one named itself twice on one card.
+            next-action line above reads. Two chains instead of one show a queued
+            card with no primary at all and a failed one naming itself twice on
+            one card.
             (2) The row renders whenever there is ANYTHING to say. Each chip
             below already carries its own condition, so the row needs no gate
-            of its own — a gate here once hid the whole row for a card whose
-            session was asking a question, i.e. exactly when the one signal
-            that asks the user to act was unrenderable. */}
+            of its own — a gate here would hide the whole row for a card whose
+            session is asking a question, i.e. exactly when the one signal
+            that asks the user to act is unrenderable. */}
         {(() => {
           const primary = view.primary
           const primaryChip = primary.kind === 'waiting' ? (
@@ -342,12 +342,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                 </Chip>
               )}
               {view.unviewed && (
-                /* Two different facts used to render identically: "a run settled and
-                   you have not looked" and "only a comment arrived". Only the first
-                   means a round is finished and the card may be ready to move; the
-                   second means somebody said something. Stating the count only when a
-                   run is behind it keeps the number meaningful — a bare new-comment
-                   label is the comment-only case. */
+                /* Two different facts, and they must not render identically: "a run
+                   settled and you have not looked" and "only a comment arrived". Only
+                   the first means a round is finished and the card may be ready to
+                   move; the second means somebody said something. Stating the count
+                   only when a run is behind it keeps the number meaningful — a bare
+                   new-comment label is the comment-only case. */
                 <Chip kind="warn" fill={false} title={t(view.unviewedRunCount > 0 ? 'card.newContentTitle' : 'card.newCommentTitle')}>
                   {view.unviewedRunCount > 0 ? `${t('card.newContent')} ${view.unviewedRunCount}` : t('card.newComment')}
                 </Chip>
@@ -399,12 +399,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         })()}
       </span>
       {/* Sessions strip: who is working on this card, and how many. The dots are a
-          pure-visual encoding (colour + position carry the state), and their content
-          used to live only in a `title` on a non-focusable span inside an
-          `aria-hidden` container — so "which of my sessions is working, and how
-          many are there" was a fact only sighted hovering users could get. Now the
-          strip keeps the dots decorative and states the same thing in words for
-          assistive tech, exactly as the notification bell does. */}
+          pure-visual encoding (colour + position carry the state), and a `title` on a
+          non-focusable span inside an `aria-hidden` container makes "which of my
+          sessions is working, and how many are there" a fact only sighted hovering
+          users can get. So the strip keeps the dots decorative and states the same
+          thing in words for assistive tech, exactly as the notification bell does. */}
       {dots !== undefined && dots.length > 0 && (
         <span className={css.cardSessions}>
           {dots.map(dot => (

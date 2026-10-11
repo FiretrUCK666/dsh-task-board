@@ -47,9 +47,10 @@ export interface ItemListPageProps extends ItemPageProps {
    * IT IS HERE AND NOT ON THE SHARED BUNDLE because the switch belongs to THIS
    * page and to no other: the agenda is a sequence of days and the inbox holds
    * rows nobody has filed, so 「隐藏已完成」 on either of them is a question with
-   * no answer. It used to be drawn on the filter bar and wired to a `useState`
-   * that NOTHING read — the slice was cut with a hard-coded `includeDone: true` —
-   * so the control said one thing and the list did the other, which is worse than
+   * no answer. And it has to be READ: a control on the filter bar wired to a
+   * `useState` that nothing reads, with the slice cut by a hard-coded
+   * `includeDone: true`, says one thing while the list does the other — which is
+   * worse than
    * having no control: the reader unticks it, the finished rows stay, and the
    * natural conclusion is that the panel has lost the rows rather than that the
    * switch is a picture of a switch.
@@ -98,20 +99,20 @@ export function ListPage(props: ItemListPageProps) {
     setNote(note === undefined ? undefined : { words: note, raw })
   }, [])
 
-  // 已完成是一个开关，不是另一层。四个分组拆掉之后，这一页和「已完成」那一页之间
-  // 的全部区别就是这一枚勾选框——而它必须真的切到切出来的清单上。
-  // `includeDone: true` 写死过一次：开关画在筛选条上、标着字、还存着状态，而这一行
-  // 是唯一读那个状态的地方，它没读。读者拨了开关、完成的行还在，于是面板看起来
-  // 像是把行弄丢了，而不是开关坏在表面。
+  // 已完成是一个开关，不是另一层：这一页和「已完成」那一页之间的全部区别就是这一枚
+  // 勾选框——而它必须真的切到切出来的清单上。
+  // 这一行是**唯一读那个状态的地方**，所以它必须读：`includeDone: true` 写死在这里的话，
+  // 开关画在筛选条上、标着字、还存着状态，拨了它完成的行却还在——面板看起来像是把行
+  // 弄丢了，而不是开关坏在表面。
   const slices = itemSlicesOf(items, { query, ctx: props.matchCtx, sort: prefs.sort, desc: prefs.sortDesc, includeDone: props.showDone })
 
   const openArchive = useCallback(async (keepRows = false) => {
     /* A RE-READ MUST NOT BLANK THE PAGE IT IS RE-READING.
      *
-     * 恢复成功之后抽屉要重读一次（那一行不该还在列表里），而重读原来走的是
+     * 恢复成功之后抽屉要重读一次（那一行不该还在列表里），而重读**不许走**
      * `{ kind: 'loading' }`——它把行整列换成一行字，于是**一次按键里页面塌两次**：
-     * 恢复成功 → 抽屉先塌成「正在准备清单…」再把行长回来。读者的原话是「点了放回去
-     * 页面弹了一下」。
+     * 恢复成功 → 抽屉先塌成「正在准备清单…」再把行长回来（读者看到的是「点了放回去
+     * 页面弹了一下」）。
      *
      * 所以重读分两种：第一次进来是 loading（真的还没有内容），已有内容时的重读只
      * 是 refreshing——行留在原处，顶上一句话说明它在重新核对。 */
@@ -173,11 +174,11 @@ export function ListPage(props: ItemListPageProps) {
   /**
    * Restore one archived row, ADDRESSED BY ITS IDENTITY.
    *
-   * It used to address by short number, and that made a row deleted before the
+   * Addressing by short number makes a row deleted before the
    * document numbered it impossible to get back: the archive holds whole rows, a
    * row written seconds ago carries no number yet, the host refuses a number of
-   * zero as a name, and the button was permanently dead on exactly the rows a
-   * reader is most likely to want back. The receipt also printed `#0` — the
+   * zero as a name, and the button is permanently dead on exactly the rows a
+   * reader is most likely to want back. The receipt would also print `#0` — the
    * sentinel `itemRefOf` exists to keep off the screen.
    *
    * So the archive uses the name it is HOLDING. The short number stays the model's
@@ -187,7 +188,7 @@ export function ListPage(props: ItemListPageProps) {
    */
   const restoreOne = useCallback(async (item: ItemRecord) => {
     // The label carries its own `#`, which is why the sentence does not add one:
-    // it used to, and a row numbered 9 read 「没能找回 ##9」. One place decides
+    // adding one reads 「没能找回 ##9」 on a row numbered 9. One place decides
     // how a row is written, and that place is `itemRefOf`.
     const label = itemRefOf(item).text ?? '—'
     if (props.clientId === undefined) {
@@ -374,39 +375,36 @@ export function ListPage(props: ItemListPageProps) {
    * removed, the window is still stated, and the entry is still a single press
    * below everything else on the page.
    */
-  /* **页尾那一行没有了：归档的入口是左栏那一行「已删除」。**
+  /* **归档的入口只有左栏那一行「已删除」。**
    *
-   * 这一行原来写着「删除后 30 天内可以找回来。」加一枚「看看」，画在整页内容的最下面。
-   * 它和左栏那个「已删除 3」是**同一扇门的第二扇**，而第二扇门比第一扇远：读者要滚到
-   * 页尾才知道有归档这回事，而左栏那个数一直在那儿、还带着条数。
+   * 页尾再写一行（「删除后 30 天内可以找回来。」加一枚「看看」）就是**同一扇门的第二扇**，
+   * 而第二扇门比第一扇远：读者要滚到页尾才知道有归档这回事，而左栏那个数一直在那儿、
+   * 还带着条数。
    *
-   * PRODUCT 里那条「窗口说出来」的承诺仍然成立，只是它说的话改由两处说，而两处都在
-   * 读者正好需要它的时刻：**删掉的那一刻**（就近撤销那条回执上写着 30 天），以及
-   * **进到归档里之后**（抽屉的头行写着同一句）。页尾这一处是第三遍，而它是唯一一处
-   * 读者既不需要、也读不到的位置。
+   * PRODUCT 里那条「窗口说出来」的承诺由两处说，而两处都在读者正好需要它的时刻：
+   * **删掉的那一刻**（就近撤销那条回执上写着 30 天），以及**进到归档里之后**（抽屉的头行
+   * 写着同一句）。页尾那一处是第三遍，而它是唯一一处读者既不需要、也读不到的位置。
    *
-   * 一行不再出现的文案，是这一页唯一一种「少一点东西」的干净做法：它没有替换者，
-   * 因为那句话本来就有人说了。 */
+   * **少掉一行文案是干净的**：它没有替换者，因为那句话本来就有人说了。 */
   /* THE DRAWER IS OPEN WHEN THE PANEL SAYS SO — the rows it draws are still this
-   * page's, but 「am I in the archive」 is one fact about the whole surface. It used
-   * to be this page's own `archive` being defined, which is why nothing but the
-   * drawer's own button could close it: a rail row could neither open it on
-   * another page nor close it on this one, because a second copy of 「open」 lived
-   * here and only here. */
+   * page's, but 「am I in the archive」 is one fact about the whole surface. Kept
+   * here instead, nothing but the drawer's own button could close it: a rail row
+   * could neither open it on another page nor close it on this one, because a
+   * second copy of 「open」 would live here and only here. */
   const archiveLine = !props.archiveOpen || archive === undefined
     ? undefined
     : (
-      /* **区域也要有自己的名字。** 可见的题头搬上顶栏之后，这一块在语义上仍然是一个
+      /* **区域也要有自己的名字。** 可见的题头在顶栏上，而这一块在语义上仍然是一个
        * 「已删除」的区域——一个没有名字的 `<section>` 在读屏里不成为一个 landmark，
        * 于是「我在哪一块里」就没有答案了。可见的题头只留一处，名字仍然在。 */
       <section className={css.itemArchiveSection} aria-label={t('item.archive.title')}>
         {/* **这一页的题头与「回清单」在顶栏上，不在这里。**
             *
-            * 它原来是这一个 `<h2>` 里的一枚按钮（「已删除 3」，按一下关抽屉）。顶栏
-            * 换成归档自己的题头之后，同一句话就出现在了两处——**同一件事只在一处
-            * 出现**，而且那两处长得还不一样（一个是 26px 的月题旁边的药丸，一个是抽屉
-            * 里的 15px 标题）。抽屉从它自己的工具条开始：那句话说的是 30 天的期限，
-            * 是这一页第一件要说的事。 */}
+            * 在这里再放一枚按钮（「已删除 3」，按一下关抽屉），同一句话就出现在两处——
+            * **同一件事只在一处出现**，而且那两处长得还不一样（一个是 26px 的月题旁边的
+            * 药丸，一个是抽屉里的 15px 标题）。抽屉从它自己的工具条开始：那句话说的是
+            * 30 天的期限，是这一页第一件要说的事。而题头与「回清单」都在顶栏上，
+            * 这一块就没有第二个题头可读。 */}
         <div className={css.itemArchiveList}>
           {/* The SENTENCE is what the reader reads; the raw code is the `title`, so
               the host's own vocabulary is one hover away for whoever has to

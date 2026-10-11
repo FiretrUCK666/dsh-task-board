@@ -34,11 +34,11 @@ export interface ItemDetailProps {
      * reads, so the pane and the row cannot answer differently. `item` is still
      * reachable as `view.item` for the fields the pane edits.
      *
-     * **REQUIRED, NOT OPTIONAL.** This pane used to carry a 「nothing picked yet」
-     * branch behind `view === undefined` — thirty lines, four dictionary keys, a
-     * `recent` prop and the whole 「最近碰过的」 list, none of which any call site could
-     * reach, because the panel only builds this for the row it is already showing.
-     * Making the prop required turns that dead branch into a compile error, which is
+     * **REQUIRED, NOT OPTIONAL.** A 「nothing picked yet」
+     * branch behind `view === undefined` would be thirty lines, four dictionary keys, a
+     * `recent` prop and the whole 「最近碰过的」 list, none of which any call site can
+     * reach — the panel only builds this for the row it is already showing.
+     * A required prop turns that dead branch into a compile error, which is
      * the only way a branch nobody exercises ever stops costing anything.
      */
     readonly view: ItemRowView;
@@ -51,8 +51,8 @@ export interface ItemDetailProps {
     /**
      * **把这一条交给 AI——这一屏唯一通向模型的那一按。**
      *
-     * 它曾经是行上 ⋮ 旁边的一枚按钮，一行上于是有两枚「对这条做点什么」的控件，彼此还隔着
-     * 一段距离；现在它是这一条底部那一排里的一件（与「变成看板卡片」「删除这条」同排）。
+     * 它**必须和这一条底部那一排在一起**（与「变成看板卡片」「删除这条」同排）：
+     * 行上 ⋮ 旁边再站一枚，一行上就有两枚「对这条做点什么」的控件，彼此还隔着一段距离。
      *
      * **两种行都在**：没挂卡的行会就地建一张再问，挂着卡的问它那条对话。所以这一排里既没有
      * 「执行」这一枚，也没有「跑不跑得起来」那个开关——送出去的是这一条自己的内容，不是卡上
@@ -85,8 +85,8 @@ export interface ItemDetailProps {
     /**
      * 这一行刚做完那件事的回执（「你记的」「变成看板卡片了」……）。
      *
-     * **它必须与按钮同排**：回执原来挂在**行**的网格上、按钮挂在详情卡片里，两个容器各摆各的
-     * ——宽的时候碰巧是一条线，一窄就各回各家（读者给过三张不同宽度的截图，同一处三种排版）。
+     * **它必须与按钮同排**：回执挂在**行**的网格上、按钮挂在详情卡片里的话，两个容器各摆各的
+     * ——宽的时候碰巧是一条线，一窄就各回各家（三张不同宽度的截图，同一处三种排版）。
      */
     readonly receipt?: string;
     readonly onNewCard: (title: string) => void;
