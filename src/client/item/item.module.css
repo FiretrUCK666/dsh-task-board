@@ -230,17 +230,23 @@
   --item-card-pad: 24px;   /* 卡内衬 */
   --item-row-pad: 16px;    /* 行内衬 */
   --item-gap: 16px;        /* 卡与卡的间距 */
-  /* **每一个「写一段话」的框的地板，一个数。**
+  /* **每一个「写一段话」的框：它多高，以及它最高到哪，两个数。**
    *
-   * 它管着五处：新建面板的正文、步骤、上下文备注，展开区的正文与备注。它们说的是
-   * 同一件事——「这里可以写一段」——所以它们该一样高；而它们原来是 84px 与 60px 两个
-   * 数，于是同一件事在两个表面上长得不一样，读者要重新判断一次「这个框能写多少」。
+   * 它们管着**五处**——展开区的正文与备注、新建面板的正文、步骤、上下文备注——因为那
+   * 五处是同一个控件（`prose-field.tsx`），不是一个样子像它的东西。
    *
-   * 四行 20px 的行高，加 8px 上下的内衬与 1px 的边：一个读得出是「一块可以写的地方」
-   * 而不是「一条输入框」的高度。它对**空**的框也成立，因为一个空的框才是读者第一次
-   * 见到的那一个——`field-sizing: content` 让框随文字长，可是它没有地板（空内容的
-   * 自然高度就是一行），于是「随文字长」在文字还没进来的时候把盒子缩成了一条。 */
+   * 地板：四行 20px 的行高，加 8px 上下的内衬与 1px 的边。一个读得出是「一块可以写的
+   * 地方」的高度，而不是「一条输入框」的高度；它对**空**的框也成立，因为一个空的框才是
+   * 读者第一次见到的那一个。
+   *
+   * 天花板：24 行。框是读者自己拉的（整个下沿都能抓），而**没有天花板的可拉伸控件**在
+   * 一个滚动体里意味着一件事——把它拉到比屏幕还高，然后那个框的底部再也够不着，包括
+   * 它自己那条抓条。24 行在 1440 与 412 两档都装得下，并且比这一页任何一段正文都长。
+   *
+   * 两个数都只声明在这里：`prose-field.tsx` 的拖拽范围是**从元素上读回来的**
+   * `min-block-size` / `max-block-size`，所以手势与版面不可能各说一个数。 */
   --item-write-floor: calc(4 * 20px + 16px + 2px);
+  --item-write-ceil: calc(24 * 20px + 16px + 2px);
   /* **控件高一族一个数。** 顶栏的四枚（三枚药丸 + 新建）、排序面板的芯片、搜索框
    * 都读它——它们并排站在同一条带子上，两个高度就是两次对齐。 */
   --item-control-h: 32px;
@@ -1642,7 +1648,17 @@
 
 
 .itemRow[data-open]:not([data-picked]) {
-  background: var(--item-open);
+  /* **展开态那一层底色有一条退路。**
+   *
+   * 它读的是一个**合成出来的**令牌（`--item-open` = 面 80% + accent 20%），而合成出来的
+   * 东西有一个别的令牌没有的失效方向：链条里任何一个成分解析不出来，整条声明就作废，
+   * 而 `background` 作废的默认值是**透明**——这一行于是变成一块没有底的洞（`transparent`
+   * 不是「没有颜色」，是「你说不出它是什么颜色」）。退路让最坏情况变成「一张正常的白卡」：
+   * 读者看到的是「展开态那点强调色没了」，而不是「这一行破了」。
+   *
+   * 这一条不是猜：读者为「点了正文之后暗色的背景直接消失」报过两次，而两次的现场都指向
+   * 同一个方向——**一层底色不该有一个会变成透明的失效模式**。 */
+  background: var(--item-open, var(--item-surface));
 }
 
 .itemRow[data-picked] {
@@ -3127,32 +3143,18 @@ button.itemRowCardChip {
    `border` 整个重写一遍——后写的赢，于是主行动是这一族里唯一没有那 2px 底部内衬的
    一枚，一排在四枚控件、三种几何。同名的第二条规则删掉，不是把两处改成一样。 */
 
-/* ── 这一页的文本域没有拖拽角，一处说清 ────────────────────────────────────
+/* ── 这一页只有一个写入框，它自己的规则在 `.itemProse` 一处 ──────────────────
  *
- * 三件事，一条规则里说完：
+ * 这里原来有一族 `textarea` 通则（`resize: none` + `field-sizing: content`），
+ * 以及后面第二份同选择器、同特异度的 `resize: vertical`——**后者赢，而前者留下的
+ * `field-sizing` 继续生效**：于是框既能被拖（拖拽区只有右下角那个角，还被下面那条
+ * `::-webkit-resizer` 藏掉了样子）又随文字长，两件互相矛盾的事同时管着同一个高度。
+ * 读者看到的就是那两句话：「必须拉住右下角那个角才可以」和「打多了它会不停地自动把框
+ * 往下拉」。
  *
- * 1. **没有拖拽角。** 右下角那个斜纹是浏览器画的，它不表示任何这一页的意思，却和
- *    这一页每一个输入框的圆角、描边、内衬（全部由这份样式表决定）长得完全不一样
- *    ——它是**这一页上唯一一个由平台决定形状的东西**，而清单的整体感就是从这种地方
- *    开始漏的。
- * 2. **不许手工拖高。** 这一页的编辑器都住在一个自己会滚的盒子（那张纸、展开区），
- *    于是手工拖高会和那个滚动体抢同一件事：读者把正文框拖到 600px，纸只显示 300px，
- *    多出来的 300px 是**滚不到的内容**——一个能拖、拖了看不见的控件。
- * 3. **它随文字长。** `field-sizing: content` 把高度交回给内容，所以「写多了要拖一下」
- *    这个需求根本不存在；盒子长、滚动体滚，两件事各做各的。
- *
- * 选择器**必须落在 `.itemRoot` 之下**：`textarea { … }` 这样的裸元素选择器在 CSS
- * Modules 里不会被加哈希，它会去改宿主页面上每一个文本域——那是这个插件唯一不许碰的
- * 东西（自打的属性只用来标记自己的子树）。`.itemRoot` 有哈希，所以这条只在这一页里
- * 生效，而且**将来新增的文本域自动在规则里**，不靠谁记得补一行。 */
-.itemRoot textarea {
-  resize: none;
-  field-sizing: content;
-}
-
-.itemRoot textarea::-webkit-resizer {
-  display: none;
-}
+ * 那两条通则一起删掉，不是把两处改成一样——**它们描述的是浏览器，不是这一页**。
+ * 现在高度归 `prose-field.tsx`（一个组件、五处使用），`min`/`max` 在它自己的规则里，
+ * 而 `pnpm verify` 的类漂移审计会指出任何一处还在读旧名字的地方。 */
 
 .itemInput::placeholder,
 .itemSearch::placeholder {
@@ -3682,49 +3684,17 @@ textarea.itemInput {
   transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-.itemCreateDialogTitleField:focus,
-.itemCreateDialogBody:focus,
-.itemCreateDialogDateField:focus {
+.itemCreateDialogTitleField:focus {
   border-color: var(--dsh-tb-focus-color);
   box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
-.itemCreateDialogBody {
+/* 日期那一格里的框：**形状与行为都来自 `.itemDateField`**（详情里那一根，见
+ * `date-field.tsx`），这一条只说这一栏自己的宽度——那一栏是竖排的一张纸，框铺满它。 */
+.itemCreateDialogDate .itemDateField {
   inline-size: 100%;
-  min-inline-size: 0;
-  min-block-size: var(--item-write-floor);
-  padding: 8px 10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  color: var(--item-ink-1);
-  background: var(--item-surface);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-  outline: none;
-  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
-/* 一个日期框。它接**三种写法**——`2026-10-15`、`明天`、以及文法里的 `@明天`
- * 解析出来的那一个——而写进去的那一个原样留着：**读者看得到自己写的是什么**，而
- * 机器读懂了什么写在它的 `title` 里。 */
-.itemCreateDialogDateField {
-  inline-size: 100%;
-  min-inline-size: 0;
-  min-block-size: 34px;
-  padding: 6px 10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 22px;
-  color: var(--item-ink-1);
-  background: var(--item-surface);
-  border: var(--item-hair);
-  border-radius: var(--item-radius-ctl);
-  outline: none;
-  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
 
 /* 底栏：提交在右侧，而两个按钮之间一档 10px。 */
 .itemCreateDialogFoot {
@@ -3990,51 +3960,98 @@ textarea.itemInput {
  * 备注是同一列里三块「可以写一段」的地方，正文那块原来在 40em 处收口，另两块铺满
  * 整列——读者看到的不是「三种内容各有聪明的宽度」，是「三个框三个宽」。宽度归列，
  * 长行归滚动；框跟右列的边界对齐，不再各自为政。 */
-/* **写字的框都能纵向拉伸，而且不带那个角标。**
+/* ── 写入框：一个盒子、一根抓条、一个高度 ────────────────────────────────────
  *
- * 读者原话：「不要那个角标，直接抓着拉伸就行」——原生的 `resize: vertical` 会在右下角画一个
- * 三点抓手，那是浏览器给所有 textarea 画的样子，不是这一页的记号。所以两件事一起做：允许纵向
- * 拉伸，同时把那个抓手藏掉（`::-webkit-resizer` 只影响画出来的样子，拖拽区域仍然在）。
+ * 五处「写一段话」的地方是**同一个控件**（`prose-field.tsx`），所以这里只有一套几何：
+ * `.itemProseBox` 是盒子，`.itemProse` 是里面的文本域，`.itemProseGrip` 是**横贯整个
+ * 下沿**的抓条。
  *
- * **按结构选，不按类名选**：这一页的写字框有五处（正文、上下文备注、新建纸的三处），将来还有
- * 第六处——一条 `textarea` 通则覆盖全部，不用逐个类名去点，也就不会有"新加的那个忘了加"。
- * 只纵向：横向拉伸会把这一列的宽度搞乱，而宽度是版面的事。 */
-.itemRoot textarea {
-  resize: vertical;
-}
-
-.itemRoot textarea::-webkit-resizer {
-  display: none;
+ * **高度是读者的，不是内容的。** 它原来同时被两件事管着（`field-sizing: content`
+ * 让它随每一次键入自己长高，原生 `resize` 让读者去抓一个只在右下角生效的角），于是
+ * 「打多了它会自动往下拉」与「必须抓住那个角」是同一个矛盾的两句话。现在高度只由
+ * `--item-prose-h` 给出（读者拖出来的那个数），上下限在下面两个令牌里，超出就**框内
+ * 滚动**。
+ *
+ * **抓条是画出来的，而且铺满整个下沿。** 读者原话是「必须拉住右下角那个角才可以」
+ * ——一个看不见的抓条与没有抓条，对读者是同一件事。
+ *
+ * `--s2` 在这里同时是三件事的同一格：上内衬、抓条站的那一条带、抓条自己的高度。它们
+ * 本来就是同一个决定（「下沿留出一档空气」），写成一个数就不会有哪一个先动。 */
+.itemProseBox {
+  position: relative;
+  min-inline-size: 0;
 }
 
 .itemProse {
   display: block;
   inline-size: 100%;
+  /* 读者拖出来的高度 → 没拖过时那地板；再高也高不过天花板（`--item-write-ceil`）。 */
+  block-size: var(--item-prose-h, var(--item-write-floor));
   min-block-size: var(--item-write-floor);
+  max-block-size: var(--item-write-ceil);
   padding: var(--s2);
+  /* 下沿多留一格，正好是抓条站的那一条带：最后一行字与它之间于是永远有空气。 */
+  padding-block-end: calc(2 * var(--s2));
   font-size: 13px;
   line-height: 1.65;
   color: var(--item-ink-1);
   background: none;
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-ctl);
+  /* 高度的两种平台写法都不在这里：原生拖拽关掉、随内容长关掉，超出由这一条接管。 */
+  resize: none;
+  overflow: auto;
+  outline: none;
 }
 
-.itemMore {
-  align-self: flex-start;
-  margin-block-start: var(--s1);
-  padding: 0;
-  border: 0;
-  background: none;
-  font-size: 12px;
-  color: var(--item-ink-3);
-  text-decoration: underline;
-  text-underline-offset: 3px;
+/* 抓条**压在框内下沿之上**（`inset-block-end: 0` 是盒子的内沿），所以拉它不会把盒子
+ * 推高一格；`touch-action: none` 是触屏上这条手势的全部实现——少了它，手指划下来滚的
+ * 是面板。 */
+.itemProseGrip {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  block-size: var(--s2);
+  cursor: ns-resize;
+  touch-action: none;
 }
 
-.itemMore:hover {
-  color: var(--item-ink-1);
+.itemProseGrip > span {
+  inline-size: 28px;
+  block-size: 2px;
+  border-radius: var(--item-radius-pill);
+  background: var(--item-ink-3);
+  opacity: 0.5;
+  transition: opacity var(--dsh-tb-motion), background-color var(--dsh-tb-motion);
 }
+
+/* 指着它、或正拉着它：握痕**进一档墨**，不是换一种颜色。
+ *
+ * 这正是这一页每一枚安静控件的做法（`.itemWritePrompt` / `.itemQueryClear` / … 悬停都是
+ * `--item-ink-1`），而强调色在这里是**预算之外**的：它在这一面上只剩五个位置（当前页、
+ * 选中行、正在跑、命令面板里的游标、优先级「高」），每一处都是「产品在说一句话」。
+ * 一条抓条不是在说话，它是一枚控件的边缘——`tests/panel-render.spec.ts` 的预算断言就是
+ * 为这件事写的。 */
+.itemProseGrip:hover > span,
+.itemProseGrip:active > span {
+  background: var(--item-ink-1);
+  opacity: 1;
+}
+
+
+/* 抓条在触屏上**只往上长命中区**。它下面没有属于它的地方（再往下就是下一个块），而它
+ * 上面那 8px 正是它自己的内衬——最后一行字不会落在那里。于是**几何一个像素没动**
+ * （硬性规范 11：只加热区），手指够得着的那一条却从 10px 变成 18px。 */
+.itemProseGrip::after {
+  content: '';
+  position: absolute;
+  inset-block: -8px 0;
+  inset-inline: 0;
+}
+
 
 /* 11，不是 12：**一个节标题与它引入的字段名同号，于是这一栏里只有墨在分级，
  * 而墨级分的是「弱一点」，分不出「这是一节」和「这是一项」。设计稿的 `.x-cap` 是
@@ -4254,8 +4271,6 @@ textarea.itemInput {
 .itemTagAdd:hover,
 .itemOptNaming:hover,
 .itemCreateDialogTitleField:hover,
-.itemCreateDialogBody:hover,
-.itemCreateDialogDateField:hover,
 .itemProse:hover,
 .itemDateField:hover,
 .itemRowTitleInput:hover {
@@ -5135,8 +5150,8 @@ textarea.itemInput {
  *
  * ⋮ 的命中区本来就是 28px 见方（它是一个控制，不是三个字），所以它不在这一族
  * 里：给它再撑 8px 会把两行的间距吃掉，视觉上就变成「行之间粘住了」。
- * 归档页头与「还有 N 行」是同一形状的文字控件，步骤 ⋯ 与月历日格是面板里最小的
- * 两处命中区——四者都站进这一族。 */
+ * 归档页头是这一族里唯一的文字控件，步骤 ⋯ 与月历日格是面板里最小的两处命中区
+ * ——三者都站进这一族。 */
 @media (hover: none) and (pointer: coarse) {
   .itemFacetChip,
   .itemQueryChipRemove,
@@ -5144,7 +5159,6 @@ textarea.itemInput {
   .itemStepMenu,
   .itemRailDay,
   .itemArchiveToggle,
-  .itemMore,
   .itemPill,
   .itemOpt {
     position: relative;
@@ -5156,7 +5170,6 @@ textarea.itemInput {
   .itemStepMenu::after,
   .itemRailDay::after,
   .itemArchiveToggle::after,
-  .itemMore::after,
   .itemPill::after,
   .itemOpt::after {
     content: '';

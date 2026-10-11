@@ -956,6 +956,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
       receipt={receipt?.id === item.id ? receipt.words : undefined}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
       onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
+      /* **写作框那个数走视图偏好，不走这一条的字段。** 它是读者「习惯写多大一块」，
+         同一台设备上五个写作框共用一个值，所以它进 `view-prefs`（与行高、排序同类），
+         而不是进文档——两台设备对一块写字的地方多大有不同意见，不是数据冲突。 */
+      proseHeight={prefs.proseHeight}
+      onProseHeight={px => choose({ proseHeight: px })}
       /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档
          ——见 `writeStatus`。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给按钮
          ——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
@@ -1720,6 +1725,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
           open={overlay === 'create'}
           onClose={() => openLayer(undefined)}
           cards={cards.map(card => ({ id: card.id, title: card.title }))}
+          /* 同一份偏好、同一个数：这张纸上的写作框与展开区那五个是同一个控件。 */
+          proseHeight={prefs.proseHeight}
+          onProseHeight={px => choose({ proseHeight: px })}
           onCreate={(input, newCard) => {
             if (isBlankCapture(input)) return false
             const made = captureItemRecord(input, Date.now(), newItemId)

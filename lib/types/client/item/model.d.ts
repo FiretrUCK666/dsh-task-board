@@ -60,6 +60,37 @@ export declare function formatDayKey(key: string, english: boolean, now?: number
  */
 export declare function parseItemDate(value: string, now?: number): number | undefined;
 /**
+ * WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`.
+ *
+ * `parseItemDate` answers 「which moment is this」, and it folds two different
+ * facts into a single `undefined`: **no promise at all** (an empty field) and
+ * **I could not read this**. Every surface that WRITES a date needs those two
+ * apart, because one of them is a legitimate answer and the other must never be
+ * dropped quietly. The new-row sheet used to call `parseItemDate` directly and
+ * spread the result into the capture, so a date it could not read became
+ * `{ dueAt: undefined }` — the row was saved, the day the reader had typed was
+ * gone, and nothing on screen said a word about it. That is a silent data loss,
+ * and it is the difference between a refusal and an omission.
+ *
+ * So both readers of a date draft — the detail's in-place field and the sheet's
+ * field — ask THIS function instead of each deciding what `undefined` means.
+ * One verdict table, two consumers: 「读不懂就不写，并且当场说」 is then a
+ * property of the vocabulary rather than a habit each surface has to remember.
+ * @param text - what the reader has typed so far.
+ * @param now - the reading clock; a WORD resolves against it.
+ * @returns empty, unreadable, or the moment it named.
+ */
+export type DateDraft = {
+    readonly kind: 'empty';
+} | {
+    readonly kind: 'bad';
+} | {
+    readonly kind: 'at';
+    readonly at: number;
+};
+/** Read a date field's draft. See {@link DateDraft} for why this is not `parseItemDate`. */
+export declare function readDateDraft(text: string, now: number): DateDraft;
+/**
  * **一套日期词，两个入口。**
  *
  * 读者在哪儿学、在哪儿用，认的都该是同一批写法：固定的近日子（`今天`/`明天`/`前天`…）、

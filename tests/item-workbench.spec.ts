@@ -75,10 +75,11 @@ import {
 // works.
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { type as typeInto, alignClassNames, click, coreSurfaceSource, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel } from './panel-harness.ts'
+import { type as typeInto, alignClassNames, click, coreSurfaceSource, drag, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel } from './panel-harness.ts'
 import { pickThrough } from '../src/client/item/selection.ts'
 import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
 import { whyLabelOf } from '../src/client/item/why-label.ts'
+import { VIEW_PREFS_KEY, readViewPrefs } from '../src/client/item/view-prefs.ts'
 import type { ItemStep } from '../src/core/item.ts'
 
 // A fixed clock, so every date-derived claim is reproducible.
@@ -4218,7 +4219,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
     if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
       && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
-      && state !== 'create-sheet' && state !== 'row-body-open' && state !== 'menu-open' && state !== 'calendar-folded'
+      && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
       && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
@@ -4370,6 +4371,57 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
         if (prompt === undefined) throw new Error('the open row carries no 正文 prompt')
         click(prompt)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'prose-dragged') {
+      /* **读者把写作框拉高之后的那一屏**：一个拉过的尺寸（400）加一段比它长的正文。
+       *
+       * 这一屏要回答的两件事，静态渲染一件也答不了：框**真的停在那个高度**（而不是继续
+       * 随文字长），以及多出来的字去了**框内**滚动而不是把这一行撑高。两者都要一个视图
+       * 偏好（读者拉过）和一段真的溢出，所以它是一屏按下之后的样子。 */
+      const long = Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 行：这一段比框长，它该在框里滚。`).join('\n')
+      const rows = [{ ...(oneRow({})[0] as ItemRecord), id: 'r-1', ref: 1, body: long }]
+      const panel = mountPanel(rows, 'list', band === 'narrow' ? 'narrow' : 'wide', { proseHeight: 400 })
+      try {
+        const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
+        if (row === undefined) throw new Error('the list page drew no row to open')
+        click(row)
+        await settle()
+        if (row.querySelector('textarea') === null) throw new Error('the open row drew no writing box')
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'create-date-bad') {
+      /* **一个读不懂的日子按下「存下这一条」之后的那一屏。**
+       *
+       * 读者问的是「详情栏读错了会提醒，为什么新建一条里面不是这样」。这一屏是那件事的
+       * 答卷：那句话挂在那一个框底下（与详情同一行字），而这一张纸的底部另有一句说「为什么
+       * 没存下」——按钮在底部、纸会滚，只把原因留在看不见的地方等于没说。 */
+      const panel = mountPanel(fixtures().slice(0, 1), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
+        click(open)
+        const title = [...panel.surface.querySelectorAll('input')].find(node => node.getAttribute('aria-label') === '标题')
+        typeInto(title, '读不懂的日子')
+        const due = [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith('希望在'))
+        if (due === undefined) throw new Error('the sheet has no field for 希望在')
+        typeInto(due, '下个月中旬')
+        const save = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '存下这一条')
+        click(save)
         await settle()
       } catch (error) {
         panel.dispose()
@@ -4986,6 +5038,150 @@ describe('点标题就地改名字（使用者选的那条路）', () => {
       panel.settle()
       expect(panel.surface.querySelector('[class*="itemRowTitleInput"]'), '按了标题却没有出现编辑框').not.toBeNull()
       expect(panel.surface.querySelector('[data-status][data-selected]'), '按标题把这一行也选中了').toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('写入框：高度是读者的，整条下沿都能拉', () => {
+  /** 打开这一行的正文框，把它那三样东西一起交出来。 */
+  const openBody = (panel: ReturnType<typeof mountPanel>): { readonly field: HTMLTextAreaElement; readonly grip: Element; readonly box: HTMLElement } => {
+    openRowDetail(panel)
+    const row = rowEls(panel.surface)[0]
+    if (row === undefined) throw new Error('the list page drew no row to open')
+    const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
+    if (prompt === undefined) throw new Error('the open row has no body prompt')
+    click(prompt)
+    const field = [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
+    if (field === undefined) throw new Error('pressing the prompt turned nothing into a body block')
+    const grip = row.querySelector('[role="separator"]')
+    if (grip === null) throw new Error('the writing box drew no grip to drag')
+    const box = field.parentElement
+    if (box === null) throw new Error('the writing box has no box of its own')
+    return { field: field as HTMLTextAreaElement, grip, box }
+  }
+
+  it('抓条自报它是什么、接哪几个键', () => {
+    // 一根抓条必须**看得见**（画着的握痕，常驻）并且**够得着**（Tab 序 + 自报的键）——
+    // 两样都不能只在悬停里成立：触屏没有 hover（硬性规范 11③）。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const { grip } = openBody(panel)
+      expect(grip.getAttribute('role')).toBe('separator')
+      expect(grip.getAttribute('aria-orientation')).toBe('horizontal')
+      expect(grip.getAttribute('aria-label')).toBe('写作框的高度')
+      expect(grip.getAttribute('data-dsh-tb-keys'), '抓条不声明自己的键，面板的键位表就会把它按成「往下一行」')
+        .toBe('ArrowUp ArrowDown')
+      expect(grip.getAttribute('tabindex'), '抓条进不了 Tab 序，键盘就够不着它').toBe('0')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('拉多远就是多高，而且这个数落进视图偏好', () => {
+    // **基准不是 jsdom 量出来的高度。** 台架先把这个面板放进「读者已经拉过一次」的视图
+    // 状态里（240），于是这一格的起点是产品自己那个数，而这次手势是「在它上面加了 120」
+    // ——jsdom 没有布局，一个从 `getBoundingClientRect()` 起算的断言在这里读到的是 0，
+    // 那是仪器的问题，不是产品的问题。
+    const panel = mountPanel(oneRow({}), 'list', 'wide', { proseHeight: 240 })
+    try {
+      const { grip, box } = openBody(panel)
+      expect(box.style.getPropertyValue('--item-prose-h'), '记住的高度没有画到框上').toBe('240px')
+      drag(grip, 300, 420, [350, 400])
+      expect(box.style.getPropertyValue('--item-prose-h'), '拖了 120px，框却不是 360px').toBe('360px')
+      expect(readViewPrefs().proseHeight, '拉出来的高度没有落进视图偏好——下一次开还是老尺寸，那条抓条看起来就是坏的')
+        .toBe(360)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('按一下没动：什么都不写，因为那不是读者选的尺寸', () => {
+    /* 这一格从「没人拉过」开始。面板把偏好**直接写进存储**，而台架守着的只是挂载那一段
+       ——上一次手势的写入落在守卫之外，会留到这里，于是「这次写没写」就量不出来了。 */
+    window.localStorage.removeItem(VIEW_PREFS_KEY)
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const { grip, box } = openBody(panel)
+      drag(grip, 200, 200)
+      expect(readViewPrefs().proseHeight, '按了一下抓条，就把版面的起始高度写成了读者的偏好').toBeUndefined()
+      expect(box.style.getPropertyValue('--item-prose-h'), '没动的拖拽也给框写了一个高度').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('新建那条那张纸上的三个框，是同一个尺寸', () => {
+    // 五个写入框是**同一个控件**，所以尺寸也是一个：它是这台设备上「我习惯写多大一块」，
+    // 不是某一条的字段，也不是某一个表面的字段。
+    const panel = mountPanel(oneRow({}), 'list', 'wide', { proseHeight: 300 })
+    try {
+      const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
+      click(open)
+      const boxes = [...panel.surface.querySelectorAll('textarea')].map(field => field.parentElement)
+      expect(boxes.length, '那张纸上不是三个写作框').toBe(3)
+      for (const box of boxes) {
+        expect(box?.style.getPropertyValue('--item-prose-h'), '同一张纸上的框各有各的尺寸').toBe('300px')
+      }
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+describe('新建一条：读不懂的日子不存下这一条，而是当场说', () => {
+  /** 打开那张纸，写下标题，返回「存下这一条」那一枚。 */
+  const openSheet = (panel: ReturnType<typeof mountPanel>, title: string): HTMLButtonElement => {
+    const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
+    click(open)
+    const field = [...panel.surface.querySelectorAll('input')].find(node => node.getAttribute('aria-label') === '标题')
+    if (field === undefined) throw new Error('the sheet has no field for the row title')
+    typeInto(field, title)
+    const save = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '存下这一条')
+    if (save === undefined) throw new Error('the sheet carries no button to save')
+    return save as HTMLButtonElement
+  }
+  const dateField = (panel: ReturnType<typeof mountPanel>, label: string): Element | undefined =>
+    [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith(label))
+
+  it('一个读不懂的日子：条目不落进文档，那句话说在字段下面', () => {
+    // 这一条钉的是一次**静默的数据损失**：从前 `parseItemDate` 的 `undefined` 被直接铺进
+    // capture，于是读者写的「下个月中旬」变成 `{ dueAt: undefined }`——条目照建、日子没了、
+    // 屏上没有一个字。展开区那一栏一直在拒绝（读不懂就不写、并且说一句），同一句话在这张
+    // 纸上过去什么也不做。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const save = openSheet(panel, '读不懂的日子')
+      const due = dateField(panel, '希望在')
+      if (due === undefined) throw new Error('the sheet has no field for 希望在')
+      typeInto(due, '下个月中旬')
+      const before = panel.lastWrite().length
+      click(save)
+      expect(panel.lastWrite().length, '读不懂的日子被丢掉，而条目照存').toBe(before)
+      expect(panel.surface.textContent, '没有说那个日子读不懂').toContain('这个读法我没读懂')
+      expect(panel.surface.textContent, '按钮在底部、纸会滚——原因只说在看不见的地方，等于没说')
+        .toContain('有一个日期的写法我没读懂')
+      const stillOpen = [...panel.surface.querySelectorAll('button')].some(node => (node.textContent ?? '').trim() === '存下这一条')
+      expect(stillOpen, '拒绝了，却把读者写了一半的东西收走了').toBe(true)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('同一个框，写对了就存得下，而且那个日子进了文档', () => {
+    // 这是上一条的对照：同一条路径、同一个字段，换一个读得懂的写法。少了它，上一条红的
+    // 时候没人分得清「判定坏了」与「这张纸根本存不下东西」。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const save = openSheet(panel, '明天要做的事')
+      const due = dateField(panel, '希望在')
+      if (due === undefined) throw new Error('the sheet has no field for 希望在')
+      typeInto(due, '明天')
+      click(save)
+      const written = panel.lastWrite()
+      expect(written[written.length - 1]?.title, '存下来的不是读者写的那一条').toBe('明天要做的事')
+      expect(written[written.length - 1]?.dueAt, '读得懂的日子没有跟着条目走').toBe(new Date(2026, 8, 30).getTime())
     } finally {
       panel.dispose()
     }

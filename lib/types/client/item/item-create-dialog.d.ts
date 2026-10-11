@@ -26,6 +26,14 @@ export interface ItemCreateDialogProps {
      * experiments in.
      */
     readonly onCreate: (input: ItemCapture, newCard?: string) => boolean;
+    /**
+     * **写作框那个数，与详情里那五个是一份。**
+     *
+     * 它是视图偏好（同一台设备上一个尺寸），所以从面板下来、拖完原路回去；这张纸与
+     * 展开区共用同一个控件，也就共用同一个尺寸——不然「同一个东西」会在这两处差一截。
+     */
+    readonly proseHeight?: number;
+    readonly onProseHeight?: (px: number) => void;
 }
 /**
  * The sheet.

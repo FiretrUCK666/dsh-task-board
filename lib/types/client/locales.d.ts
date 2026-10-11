@@ -627,18 +627,17 @@ export declare const zh: {
     'item.why.malformedAnswer': string;
     'item.why.unknown': string;
     'item.search.label': string;
-    'item.body.more': string;
     'item.day.today': string;
     'item.day.yesterday': string;
     'item.day.beforeYesterday': string;
     'item.day.earlier': string;
     'item.day.count': string;
-    'item.body.less': string;
     'item.section.steps': string;
     'item.field.tagsAdd': string;
     'item.field.newCard': string;
     'item.dates.none': string;
     'item.dates.bad': string;
+    'item.field.resize': string;
     'item.topbar.sort': string;
     'item.topbar.create': string;
     'item.search.removeFacet': string;
@@ -773,6 +772,7 @@ export declare const zh: {
     'item.create.hardHint': string;
     'item.create.body': string;
     'item.create.blank': string;
+    'item.create.dateBad': string;
     'item.create.refused': string;
     'item.create.cancel': string;
     'item.create.submit': string;

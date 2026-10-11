@@ -1185,7 +1185,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; focus?: { readonly token: number; readonly cardId: string } } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; proseHeight?: number; focus?: { readonly token: number; readonly cardId: string } } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1331,7 +1331,12 @@ export function mountPanel(
     })
   }
   try {
-    withPrefs({ page }, () => { settle() })
+    /* THE VIEW STATE THE MOUNT IS PLACED IN, in the record the product itself
+     * writes. A test that wants a box the reader has already dragged says so
+     * here rather than writing storage behind the bench's back: the bench owns
+     * this record for the length of the mount and puts the previous one back, so
+     * a write from outside is one it is entitled to overwrite. */
+    withPrefs({ page, ...(over.proseHeight === undefined ? {} : { proseHeight: over.proseHeight }) }, () => { settle() })
     // The band is read by an effect, so the first render guessed; re-render once
     // now that the measurement answers.
     settle()
@@ -1368,6 +1373,60 @@ export function mountPanel(
       g.fetch = realFetch
     },
   }
+}
+
+/**
+ * POINTER CAPTURE, PROVIDED BY THE BENCH BECAUSE THE BENCH IS WHAT LACKS IT.
+ *
+ * The writing box's grip captures the pointer for the length of a drag, so the
+ * box keeps following a hand that has moved outside the 10px band. jsdom does
+ * not implement the Pointer Events capture methods at all, so without this the
+ * first `pointerdown` on the grip would throw inside the product and every gate
+ * below would be reporting the bench's gap rather than the panel's behaviour.
+ *
+ * The stub is as STRICT AS IT CAN HONESTLY BE, and it is worth saying what it
+ * cannot do: capture's meaning is "keep sending me this pointer's events even
+ * when it is over another element", and a jsdom drag never moves the pointer off
+ * the element in the first place, so there is no behaviour here to be faithful
+ * about. What it must not do is pretend the call succeeded somewhere it
+ * matters — so `hasPointerCapture` answers `false`, which is what makes the
+ * release path take its guarded branch, exactly as it would on a browser with
+ * no capture support.
+ */
+if (typeof Element !== 'undefined' && !('setPointerCapture' in Element.prototype)) {
+  for (const [name, value] of [['setPointerCapture', () => undefined], ['releasePointerCapture', () => undefined], ['hasPointerCapture', () => false]] as const) {
+    Object.defineProperty(Element.prototype, name, { value, configurable: true, writable: true })
+  }
+}
+
+/**
+ * Drag a control with the pointer: down, one or more moves, up.
+ *
+ * Only `clientY` is exercised because the grip resizes along the block axis
+ * only — `resize: vertical` was never about width, and the box's width belongs
+ * to the column it sits in.
+ *
+ * The events are `MouseEvent`s NAMED as pointer events, which is what React's
+ * delegation listens for: `onPointerDown` and friends are driven by the native
+ * `pointerdown`/`pointermove`/`pointerup` names, and every field the grip reads
+ * (`clientY`) is on a mouse event. What is NOT here is a real pointer: `pointerId`
+ * is absent, which is why the capture stub above exists.
+ * @param element - the grip.
+ * @param from - where the pointer goes down.
+ * @param to - where it lifts, after passing through every stop in `stops`.
+ * @param stops - intermediate positions, for a drag that changes its mind.
+ */
+export function drag(element: Element | null | undefined, from: number, to: number, stops: readonly number[] = []): void {
+  if (element === null || element === undefined) throw new Error('the control to drag is not on screen')
+  const at = (type: string, clientY: number): void => {
+    act(() => {
+      element.dispatchEvent(new MouseEvent(type, { bubbles: true, cancelable: true, clientY }))
+    })
+  }
+  at('pointerdown', from)
+  for (const stop of stops) at('pointermove', stop)
+  at('pointermove', to)
+  at('pointerup', to)
 }
 
 /**

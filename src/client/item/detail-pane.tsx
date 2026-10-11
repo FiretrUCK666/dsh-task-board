@@ -20,7 +20,9 @@ import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { Chip } from '../board/Chip.tsx'
-import { formatItemDate, parseItemDate, toItemDateField } from './model.ts'
+import { DateField } from './date-field.tsx'
+import { ProseField } from './prose-field.tsx'
+import { formatItemDate, readDateDraft, toItemDateField } from './model.ts'
 import { GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark } from './marks.tsx'
 import { ItemSteps } from './step-editor.tsx'
@@ -150,6 +152,12 @@ export interface ItemDetailProps {
    */
   readonly stepsFocus?: number
   readonly onToggleStep: (stepId: string) => void
+  /**
+   * **读者的写作框多高。** 它是**视图偏好**而不是这一条的字段（同一台设备上五个
+   * 写作框共用一个数），所以它从面板下来、拖完再原路回去——这一屏不知道它住在哪儿。
+   */
+  readonly proseHeight?: number
+  readonly onProseHeight?: (px: number) => void
   readonly onRemove: () => void
 }
 
@@ -275,8 +283,6 @@ export function ItemDetail(props: ItemDetailProps) {
   const over = view.posture.kind === 'hardOverdue' && view.posture.days !== undefined
     ? t('item.dates.overdue', { days: String(view.posture.days) })
     : undefined
-  /** 正文很长时那一行「还有 N 行」按下去才展开全部——它自己只收起，不是把内容丢掉。 */
-  const [showAll, setShowAll] = useState(false)
   /**
    * **空的正文与空的备注都不画框。**
    *
@@ -288,17 +294,12 @@ export function ItemDetail(props: ItemDetailProps) {
    *
    * 两个字段各有一份这个状态，因为它们是两件事——一个空着而另一个开着，是读者
    * 自己造成的，不是坏了。
+   *
+   * **光标由框自己拿**（`ProseField` 的 `takeCaret`）：它就在那一刻挂上，所以「出现
+   * 就聚焦」不需要两个 `useEffect` 和两个 ref 在这一屏上各记一遍。
    */
   const [bodyOpen, setBodyOpen] = useState(false)
   const [notesOpen, setNotesOpen] = useState(false)
-  const bodyField = useRef<HTMLTextAreaElement | null>(null)
-  const notesField = useRef<HTMLTextAreaElement | null>(null)
-  useEffect(() => {
-    if (bodyOpen) bodyField.current?.focus()
-  }, [bodyOpen])
-  useEffect(() => {
-    if (notesOpen) notesField.current?.focus()
-  }, [notesOpen])
   /** 新标签在右列就地加：回车就上，而上完就把框清空，因为读者多半还要写下一个。 */
   const [draftTag, setDraftTag] = useState('')
   /**
@@ -374,23 +375,24 @@ export function ItemDetail(props: ItemDetailProps) {
   const confirmDateEdit = (): void => {
     const field = dateEdit
     if (field === undefined) return
-    const wrote = dateDraft.trim()
-    // 空值 = 撤掉这个日子。撤掉之后的读法就回到「没定」，一句实的说法。
-    if (wrote === '') {
+    /* **三态，不是两态。** `parseItemDate` 把「没写」与「读不懂」折成同一个
+       `undefined`，而这两件事在这里的答案是相反的：空着是撤掉这个日子（一句实的说法），
+       读不懂是**一个字都不许写**——一行没写就丢的词是「写了又丢」。判定与新建那条那张
+       纸共用 `readDateDraft`，所以同一个词在两处得到同一个答案。字面日子以**面板的钟**
+       解，不是机器的今天：测试要的是给定的今天。 */
+    const draft = readDateDraft(dateDraft, props.now)
+    if (draft.kind === 'empty') {
       props.onEdit({ [field]: undefined } as ItemPatch)
       shutDateEdit()
       return
     }
-    // 没读懂的读法不写：一行没写就丢的词是「写了又丢」。读不懂就留在现场，加一次
-    // 重试计数（同一行的重开也要重新拿过光标）。字面日子以**面板的钟**解，不是
-    // 机器的今天——测试要的是给定的今天。
-    const at = parseItemDate(wrote, props.now)
-    if (at === undefined) {
+    if (draft.kind === 'bad') {
+      // 读不懂就留在现场，加一次重试计数（同一行的重开也要重新拿过光标）。
       setDateBad(true)
       setDateAttempt(count => count + 1)
       return
     }
-    props.onEdit({ [field]: at } as ItemPatch)
+    props.onEdit({ [field]: draft.at } as ItemPatch)
     // Enter = 记下，然后就该关场——记下这个手势的答案就是关场；值没变的记下会
     // 被共享写法当成一次不动，回执也不响，场还是要关。
     shutDateEdit()
@@ -413,30 +415,25 @@ export function ItemDetail(props: ItemDetailProps) {
                 onBlur={event => {
                   /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
                    * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
-                   * 块内互相走动（正文与它下面那枚「还有 N 行」）不算点外。
+                   * 块内互相走动（正文与它下面那条抓条）不算点外。
                    * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
                   if (event.currentTarget.contains(event.relatedTarget)) return
                   setBodyOpen(false)
                 }}
               >
-                <textarea
-                  ref={bodyField}
-                  className={css.itemProse}
-                  rows={showAll ? Math.max(5, item.body.split('\n').length) : 5}
+                {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
+                     （整个下沿都是抓条），超出就在框内滚动。原来那枚「还有 N 行」
+                     ——以及它按下去才展开的那件事——随高度一起走了：一个自己会滚的
+                     框不需要第二个说法来回答「剩下的在哪」。 */}
+                <ProseField
                   value={item.body}
+                  onChange={body => props.onEdit({ body })}
                   placeholder={t('item.create.body')}
-                  aria-label={t('item.field.body')}
-                  onChange={event => props.onEdit({ body: event.target.value })}
+                  ariaLabel={t('item.field.body')}
+                  height={props.proseHeight}
+                  onHeight={props.onProseHeight}
+                  takeCaret
                 />
-                {/* 正文可以很长，而它上面只有那一个输入框——所以超出的部分收在这里，
-                    而不是把整个展开区撑到屏幕之外。40em 是中文一行读得下去的上限，
-                    不是 62ch：`ch` 是「数字 0 的宽度」，而一个中文字比它宽一倍。 */}
-                {item.body.split('\n').length > 5 && (
-                  <button type="button" className={css.itemMore} onClick={() => setShowAll(value => !value)}
-                    aria-expanded={showAll}>
-                    {showAll ? t('item.body.less') : t('item.body.more', { n: String(item.body.split('\n').length - 5) })}
-                  </button>
-                )}
               </div>
             )}
 
@@ -457,9 +454,10 @@ export function ItemDetail(props: ItemDetailProps) {
               </button>
             )
             : (
-              /* 与正文同一个盒：边、底、字号、字色、贴边都在 `.itemProse` 一处——
-               * 备注 once「一条引文」的样式曾经只给这一格，两格之间的差别要靠读者自己
-               * 猜是为什么。它们是同一列里的两个输入，输入就该长得一样。 */
+              /* 与正文**同一个元件**（`ProseField`）：边、底、字号、字色、地板与那条
+               * 抓条都在一个地方。备注 once「一条引文」的样式曾经只给这一格，两格之间
+               * 的差别要靠读者自己猜是为什么。它们是同一列里的两个输入，输入就该长得
+               * 一样——而且从今天起，它们是同一个东西，不是两处长得像的东西。 */
               <div
                 className={css.itemProseWrap}
                 onBlur={event => {
@@ -468,14 +466,14 @@ export function ItemDetail(props: ItemDetailProps) {
                   setNotesOpen(false)
                 }}
               >
-                <textarea
-                  ref={notesField}
-                  className={css.itemProse}
-                  rows={3}
+                <ProseField
                   value={item.notes}
+                  onChange={notes => props.onEdit({ notes })}
                   placeholder={t('item.field.notesHint')}
-                  aria-label={t('item.field.notes')}
-                  onChange={event => props.onEdit({ notes: event.target.value })}
+                  ariaLabel={t('item.field.notes')}
+                  height={props.proseHeight}
+                  onHeight={props.onProseHeight}
+                  takeCaret
                 />
               </div>
             )}
@@ -574,6 +572,7 @@ export function ItemDetail(props: ItemDetailProps) {
               field={dateEdit === 'startsAfter'}
               draft={dateDraft}
               bad={dateBad}
+              now={props.now}
               onDraft={setDateDraft}
               hint={t('item.create.startsHint')}
               onOpen={() => openDateEdit('startsAfter')}
@@ -591,6 +590,7 @@ export function ItemDetail(props: ItemDetailProps) {
               field={dateEdit === 'dueAt'}
               draft={dateDraft}
               bad={dateBad}
+              now={props.now}
               onDraft={setDateDraft}
               hint={t('item.create.dueHint')}
               onOpen={() => openDateEdit('dueAt')}
@@ -610,6 +610,7 @@ export function ItemDetail(props: ItemDetailProps) {
               field={dateEdit === 'hardDueAt'}
               draft={dateDraft}
               bad={dateBad}
+              now={props.now}
               onDraft={setDateDraft}
               hint={t('item.create.hardHint')}
               onOpen={() => openDateEdit('hardDueAt')}
@@ -768,49 +769,38 @@ function DateLine(props: {
   readonly field?: boolean
   readonly draft?: string
   readonly hint?: string
+  /** **这一屏的钟。** 字段读一个词（`明天`）要按面板的今天解，不是机器的今天。 */
+  readonly now: number
   readonly onDraft?: (value: string) => void
   readonly onOpen?: () => void
   readonly onConfirm?: () => void
   readonly onCancel?: () => void
   /** The focus hinge: whichever line is open holds the caret. */
   readonly draftRef?: (node: HTMLInputElement | null) => void
-  /** The failed-parse flag, spoken under the axis. */
+  /** 刚试过记下一个读不懂的读法——那句话由 `DateField` 说，说在同一个地方。 */
   readonly bad?: boolean
 }) {
   return (
     <li data-key={props.keyName} data-tone={props.tone}>
       <i aria-hidden="true" />
       <b>{props.label}</b>
+      {/* **这一格是共用元件，不是一根长得像它的输入框。** 读得懂就读出那个日子、读不懂
+          就原地拒绝（`date-field.tsx`），而「新建一条」那张纸上用的是同一个元件——同一个
+          词在两处被同一个判定读，就不会有一处把它悄悄丢掉。 */}
       {props.field
         ? (
-            <input
-              ref={props.draftRef}
-              className={css.itemDateField}
-              size={11}
-              value={props.draft}
-              placeholder={props.hint}
-              aria-label={props.label}
-              data-dsh-tb-keys="Enter Escape"
-              onBlur={() => {
-                /* 与起名框同一律：点开别处收回，不留半句没写下的读法。
-                 * Enter 记下、Esc 收回的键由字段自报，blur 只是第三条出路。 */
-                props.onCancel?.()
-              }}
-              onChange={event => props.onDraft?.(event.target.value)}
-              onKeyDown={event => {
-                if (event.nativeEvent.isComposing) return
-                if (event.key === 'Enter') {
-                  event.preventDefault()
-                  props.onConfirm?.()
-                } else if (event.key === 'Escape') {
-                  /* Stopping the escape keeps it a verdict about the FIELD alone:
-                     the key map's own Esc collapses the whole row — the one answer
-                     this field must not borrow. */
-                  event.preventDefault()
-                  event.stopPropagation()
-                  props.onCancel?.()
-                }
-              }}
+            <DateField
+              value={props.draft ?? ''}
+              onChange={value => props.onDraft?.(value)}
+              hint={props.hint ?? ''}
+              ariaLabel={props.label}
+              now={props.now}
+              bad={props.bad}
+              onEnter={props.onConfirm}
+              /* 与起名框同一律：点开别处收回，不留半句没写下的读法。Enter 记下、
+                 Esc 收回的键由字段自报，blur 只是第三条出路。 */
+              onDismiss={props.onCancel}
+              focusRef={props.draftRef}
             />
           )
         : (
@@ -818,7 +808,6 @@ function DateLine(props: {
               <span>{props.reading}</span>
             </button>
           )}
-      {props.field && props.bad === true && <p className={css.itemDateBad}>{t('item.dates.bad')}</p>}
     </li>
   )
 }

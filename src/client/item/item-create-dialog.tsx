@@ -30,8 +30,9 @@ import { PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
 import { CrossMark, PriorityMark } from './marks.tsx'
 import { ItemComposer } from './composer.tsx'
 import type { ComposerParse } from './compose-parse.ts'
-import { parseItemDate, toItemDateField, formatItemDate } from './model.ts'
-import { isEnglish } from '../locales.ts'
+import { readDateDraft, toItemDateField } from './model.ts'
+import { DateField } from './date-field.tsx'
+import { ProseField } from './prose-field.tsx'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { TagField } from './tag-field.tsx'
@@ -39,6 +40,14 @@ import css from './item.module.css'
 
 /** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
 const PRIORITIES: readonly ItemPriority[] = ITEM_PRIORITIES_BY_WEIGHT
+
+/**
+ * 三个日子，**按这张纸画它们的顺序**。
+ *
+ * 它是一次声明而不是三处各写一遍：拒绝之后要说的那句「第一个读不懂的那一格」，其中的
+ * 「第一个」是读者眼睛先到的那个——在三个地方各排一次序，就是三个不同的「第一个」。
+ */
+const DATE_FIELDS = ['startsAfter', 'dueAt', 'hardDueAt'] as const
 
 export interface ItemCreateDialogProps {
   readonly open: boolean
@@ -64,6 +73,14 @@ export interface ItemCreateDialogProps {
    * experiments in.
    */
   readonly onCreate: (input: ItemCapture, newCard?: string) => boolean
+  /**
+   * **写作框那个数，与详情里那五个是一份。**
+   *
+   * 它是视图偏好（同一台设备上一个尺寸），所以从面板下来、拖完原路回去；这张纸与
+   * 展开区共用同一个控件，也就共用同一个尺寸——不然「同一个东西」会在这两处差一截。
+   */
+  readonly proseHeight?: number
+  readonly onProseHeight?: (px: number) => void
 }
 
 /**
@@ -77,14 +94,28 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const [notes, setNotes] = useState('')
   const [steps, setSteps] = useState('')
   const [priority, setPriority] = useState<ItemPriority>('normal')
-  /* THE THREE STATES A READER MAY CHOOSE, and the fourth is not one of them.
-   * 「进行中」 is DERIVED from the row's card, so it is filterable and not
-   * writable — offering it here would be offering a setting that the next
-   * synchronisation overwrites. */
+  /* **五档都在，与展开区那一格是同一张表。**
+   *
+   * 这一段注释原来写着「三个值，第四个不是」——而代码给的是 `ITEM_STATUSES`（五个），
+   * 展开区没挂卡时给的也是五个：注释与代码、两个界面三处不一致，而**只有一个是错的**。
+   * 错的是注释：这一格写的是条目**自己**的状态字段，而它自己的字段就是五档
+   * （`MANUAL_STATUSES` 管的是「人能按的」，不是「字段能取的」）。改注释，不改行为。 */
   const [status, setStatus] = useState<ItemStatus>('todo')
   const [startsAfter, setStartsAfter] = useState('')
   const [dueAt, setDueAt] = useState('')
   const [hardDueAt, setHardDueAt] = useState('')
+  /**
+   * **读不懂的日子一个也不许悄悄丢掉。**
+   *
+   * 这一张纸原来把 `parseItemDate` 的 `undefined` 直接铺进 capture：读者写的「明天」
+   * 只要机器没读懂，就变成 `{ dueAt: undefined }`——条目照建、日子没了、屏上没有一个字
+   * 解释。详情那一栏当场拒绝（读不懂就不写、并且说一句），而同一句话在这里过去什么也
+   * 不做。现在两处读同一个判定（`readDateDraft`）、说同一行字（`DateField`），这一份
+   * 状态只管一件事：**哪几个框正在说那句话**。
+   */
+  const [badDates, setBadDates] = useState<ReadonlySet<string>>(new Set())
+  /** 三个日期框的焦点把手：拒绝之后光标要落在**第一个**读不懂的那一格里。 */
+  const dateFields = useRef<Record<string, HTMLInputElement | null>>({})
   const [tags, setTags] = useState('')
   const [taskId, setTaskId] = useState('')
   /**
@@ -119,6 +150,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     if (!props.open) return
     setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('todo')
     setStartsAfter(''); setDueAt(''); setHardDueAt(''); setTags(''); setTaskId(''); setWords('')
+    setBadDates(new Set())
     setPendingCard(undefined); setCardNaming(false); setCardDraft(''); setCardHint(false)
     setParsed(undefined)
     setTouched(new Set())
@@ -174,7 +206,31 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   /** 「存下这一条」；返回这次到底存没存——文法行那根回车读的就是它，拒绝时
    *  读者的半句话必须留在框里。 */
   const submit = (): boolean => {
-    const at = (value: string): number | undefined => parseItemDate(value.trim(), props.now)
+    /* **先把三个日子读一遍，读不懂就不存。**
+     *
+     * 这一句就是那个静默数据损失的收口：从前 `parseItemDate` 的 `undefined` 被直接
+     * 铺进 capture，于是「明天」只要没读懂，条目就带着**没有日期**的字段落进文档，
+     * 而读者以为它记下了。判定与展开区那一栏是同一个（`readDateDraft`），说法也是
+     * 同一行（`DateField`）；这里多做的一件事只是**把光标送到第一个读不懂的那一格**，
+     * 因为这一张纸会滚，而按钮在底部——把原因留在看不见的地方等于没说。 */
+    const drafts = {
+      startsAfter: readDateDraft(startsAfter, props.now),
+      dueAt: readDateDraft(dueAt, props.now),
+      hardDueAt: readDateDraft(hardDueAt, props.now),
+    }
+    const wrong = DATE_FIELDS.filter(key => drafts[key].kind === 'bad')
+    if (wrong.length > 0) {
+      setBadDates(new Set(wrong))
+      setWords(t('item.create.dateBad'))
+      dateFields.current[wrong[0] as string]?.focus()
+      return false
+    }
+    /** 一个日子进 capture 的形状：空着就一个字都不提，读懂了就带上——**读不懂的到不了
+     *  这里**（上面已经拒绝并返回了）。 */
+    const dated = (key: keyof typeof drafts): Partial<ItemCapture> => {
+      const draft = drafts[key]
+      return draft.kind === 'at' ? { [key]: draft.at } : {}
+    }
     const input: ItemCapture = {
       title: title.trim(),
       body,
@@ -184,9 +240,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
       priority,
       steps: stepList(),
       tags: tags.split(/[、,，]/).map(one => one.trim()).filter(one => one !== ''),
-      ...(startsAfter.trim() === '' ? {} : { startsAfter: at(startsAfter) }),
-      ...(dueAt.trim() === '' ? {} : { dueAt: at(dueAt) }),
-      ...(hardDueAt.trim() === '' ? {} : { hardDueAt: at(hardDueAt) }),
+      ...dated('startsAfter'),
+      ...dated('dueAt'),
+      ...dated('hardDueAt'),
       /* 选一张新卡与选一张已有的卡互斥：两个处理器各清对方的那一份，所以
          `taskId` 这一份在这里就是全部——挂新卡的那一份由提升自己写。 */
       ...(taskId === '' ? {} : { taskId }),
@@ -255,37 +311,43 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
 
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.field.body')}</span>
-              <textarea
-                className={css.itemCreateDialogBody}
-                rows={5}
+              {/* 与展开区那一栏是**同一个写入框**（`prose-field.tsx`）：同一个地板、同一个
+                  高度、同一条横贯下沿的抓条、同一个数（读者拉过的那个）。这一张纸只是把
+                  它画成竖排的一张表单，而不是另一个长得像它的盒子。 */}
+              <ProseField
                 value={body}
+                onChange={value => { mark('body'); setBody(value) }}
                 placeholder={t('item.create.bodyPlaceholder')}
-                aria-label={t('item.field.body')}
-                onChange={event => { mark('body'); setBody(event.target.value) }}
+                ariaLabel={t('item.field.body')}
+                height={props.proseHeight}
+                onHeight={props.onProseHeight}
               />
             </label>
 
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.create.steps')}</span>
-              <textarea
-                className={css.itemCreateDialogBody}
-                rows={3}
+              {/* 步骤在这里是**写下一串**（一行一步），不是展开区那张可以勾、可以挪的清单
+                  ——那是同一件事的两个时刻：还没有这一条的时候，没有东西可以勾。变的是读法，
+                  写字的那个盒子是同一个。 */}
+              <ProseField
                 value={steps}
+                onChange={value => { mark('steps'); setSteps(value) }}
                 placeholder={t('item.create.stepsPlaceholder')}
-                aria-label={t('item.create.steps')}
-                onChange={event => { mark('steps'); setSteps(event.target.value) }}
+                ariaLabel={t('item.create.steps')}
+                height={props.proseHeight}
+                onHeight={props.onProseHeight}
               />
             </label>
 
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.field.notes')}</span>
-              <textarea
-                className={css.itemCreateDialogBody}
-                rows={2}
+              <ProseField
                 value={notes}
+                onChange={value => { mark('notes'); setNotes(value) }}
                 placeholder={t('item.field.notesHint')}
-                aria-label={t('item.field.notes')}
-                onChange={event => { mark('notes'); setNotes(event.target.value) }}
+                ariaLabel={t('item.field.notes')}
+                height={props.proseHeight}
+                onHeight={props.onProseHeight}
               />
             </label>
           </div>
@@ -367,27 +429,48 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               </div>
             </div>
 
-            <DateField
-              label={t('item.field.startsAfter')}
-              hint={t('item.create.startsHint')}
-              value={startsAfter}
-              set={value => { mark('startsAfter'); setStartsAfter(value) }}
-              now={props.now}
-            />
-            <DateField
-              label={t('item.field.dueAt')}
-              hint={t('item.create.dueHint')}
-              value={dueAt}
-              set={value => { mark('dueAt'); setDueAt(value) }}
-              now={props.now}
-            />
-            <DateField
-              label={t('item.field.hardDueAt')}
-              hint={t('item.create.hardHint')}
-              value={hardDueAt}
-              set={value => { mark('hardDueAt'); setHardDueAt(value) }}
-              now={props.now}
-            />
+            {/* **三个日期：共用元件、共用判定、共用那句话。**
+                这一格的框、它下面那行读数、以及读不懂时那句拒绝，与展开区那一栏是同一个
+                `DateField`——差别只在布局（这一栏是竖排的一张纸），而布局不属于字段。 */}
+            <label className={css.itemCreateDialogDate}>
+              <span className={css.itemCreateDialogLabel}>{t('item.field.startsAfter')}</span>
+              <DateField
+                value={startsAfter}
+                onChange={value => { mark('startsAfter'); setStartsAfter(value); setBadDates(current => new Set([...current].filter(key => key !== 'startsAfter'))) }}
+                hint={t('item.create.startsHint')}
+                ariaLabel={`${t('item.field.startsAfter')}：${t('item.create.startsHint')}`}
+                now={props.now}
+                bad={badDates.has('startsAfter')}
+                onEnter={submit}
+                focusRef={node => { dateFields.current.startsAfter = node }}
+              />
+            </label>
+            <label className={css.itemCreateDialogDate}>
+              <span className={css.itemCreateDialogLabel}>{t('item.field.dueAt')}</span>
+              <DateField
+                value={dueAt}
+                onChange={value => { mark('dueAt'); setDueAt(value); setBadDates(current => new Set([...current].filter(key => key !== 'dueAt'))) }}
+                hint={t('item.create.dueHint')}
+                ariaLabel={`${t('item.field.dueAt')}：${t('item.create.dueHint')}`}
+                now={props.now}
+                bad={badDates.has('dueAt')}
+                onEnter={submit}
+                focusRef={node => { dateFields.current.dueAt = node }}
+              />
+            </label>
+            <label className={css.itemCreateDialogDate}>
+              <span className={css.itemCreateDialogLabel}>{t('item.field.hardDueAt')}</span>
+              <DateField
+                value={hardDueAt}
+                onChange={value => { mark('hardDueAt'); setHardDueAt(value); setBadDates(current => new Set([...current].filter(key => key !== 'hardDueAt'))) }}
+                hint={t('item.create.hardHint')}
+                ariaLabel={`${t('item.field.hardDueAt')}：${t('item.create.hardHint')}`}
+                now={props.now}
+                bad={badDates.has('hardDueAt')}
+                onEnter={submit}
+                focusRef={node => { dateFields.current.hardDueAt = node }}
+              />
+            </label>
 
             <div className={css.itemOptRow}>
               <p className={css.itemOptName}>{t('item.field.taskId')}</p>
@@ -480,38 +563,5 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
         </footer>
       </div>
     </div>
-  )
-}
-
-/**
- * ONE DATE, AND WHAT IT READS AS.
- *
- * A date is typed in one spelling and shown in another: 「明天」 goes in, 「明天 ·
- * 10月15日」 comes back, so a reader can see whether the machine understood the word
- * they used. **The reading is not a label above the field — it is the field's own
- * value rendered**, because a second line saying something about the first one is a
- * second thing that can be wrong.
- */
-function DateField(props: {
-  readonly label: string
-  readonly hint: string
-  readonly value: string
-  readonly set: (value: string) => void
-  readonly now: number
-}) {
-  const at = parseItemDate(props.value.trim(), props.now)
-  return (
-    <label className={css.itemCreateDialogDate}>
-      <span className={css.itemCreateDialogLabel}>{props.label}</span>
-      <input
-        className={css.itemCreateDialogDateField}
-        value={props.value}
-        placeholder={props.hint}
-        aria-label={`${props.label}：${props.hint}`}
-        onChange={event => props.set(event.target.value)}
-        data-set={at === undefined ? undefined : toItemDateField(at)}
-        title={at === undefined ? undefined : formatItemDate(at, isEnglish(), props.now)}
-      />
-    </label>
   )
 }

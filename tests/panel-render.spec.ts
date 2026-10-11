@@ -55,7 +55,9 @@ import {
   hostTokens,
   itemSheet,
   itemSheetPath,
+  itemSurfaceFiles,
   panelCss,
+  readSource,
   renderPanel,
   rulesOf,
   stripCssComments,
@@ -2936,5 +2938,104 @@ describe('行尾那一簇记号与标题共一条线', () => {
     const planted = `${css}\n.itemRowMarks {\n  block-size: auto;\n}\n`
     expect(lastDeclaredOf(planted, 'itemRowMarks', 'block-size'), 'the plant did not bite')
       .not.toBe(lastDeclaredOf(planted, 'itemRowTitle', 'line-height'))
+  })
+})
+
+/**
+ * **一个东西只有一个实现，而这一节是它的守门人。**
+ *
+ * 读者报的是「感觉到处都在各搞一套」：写入框有过两个实现（`.itemProse` 与
+ * `.itemCreateDialogBody`），日期框也有过两个——一个当场拒绝读不懂的写法，另一个
+ * 把它**默默丢掉**。把它们改成一样，只在今天成立；**只留下一个，才是明天也成立**。
+ *
+ * 所以这一节问的不是「两处像不像」，而是**第二处还在不在**，而且问的都是结构与文件，
+ * 不是这一版的样子：一条 `<textarea>` 的所有权、高度的两个数的出处在哪、那句拒绝由谁
+ * 说出口。任何一条红都指向「又一个实现长出来了」，而不是「某个数字变了」。
+ */
+describe('写入框与日期框：一处实现，一处拒绝', () => {
+  /* 这一节只说**清单这一张表**（`itemSheet()`）。看板那张表里还有它自己的文本域（卡片
+   * 提示词，按设计随内容长、到上限为止），那是另一个表面上的另一个控件；把两张表合在
+   * 一起问，只会让这一节对着一张不属于它的纸下结论。 */
+  const css = stripCssComments(itemSheet())
+  /**
+   * 按**整条选择器**取一个声明，而不是按类名包含。
+   *
+   * `rulesOf(css, 'itemProseGrip')` 会把 `.itemProseGrip > span` 一起收进来（它是抓条上
+   * 那根画出来的握痕），于是「抓条多高」读到的会是 2px——那是握痕的高度，不是抓条的。
+   * 一个把两个盒子混起来的读数比没有读数更坏：它给出一个看起来对的数字。
+   */
+  const boxOf = (selector: string): string =>
+    declarationRules(css).find(rule => rule.selector.trim() === selector)?.body ?? ''
+  const sizeIn = (selector: string, property: string): string | undefined =>
+    new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;]+)`).exec(boxOf(selector))?.[1]?.trim()
+  /**
+   * 先剥注释再匹配。一条**提到** `<textarea>` 的注释不是一个实现，而一个会把注释
+   * 当成实现的扫描器，唯一的绿色修法是去改那句注释（硬性规范 14）。
+   */
+  const code = (text: string): string =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+
+  it('写入框只有一处：`<textarea>` 只住在 prose-field.tsx', () => {
+    const owners = itemSurfaceFiles().filter(file => /<textarea[\s/>]/.test(code(file.source))).map(file => file.path)
+    expect(owners, `自己写文本域的文件：${owners.join('、') || '（一个都没有）'}——写入框是 prose-field.tsx 一个元件，五处都该用它`)
+      .toEqual(['prose-field.tsx'])
+  })
+
+  it('the probe bites: a second textarea is reported', () => {
+    // 这条断言的全部价值在于「第二个实现长出来时会红」。种一个进去，看它红不红。
+    const planted = [
+      { path: 'prose-field.tsx', source: '<textarea ref={field} />' },
+      { path: 'detail-pane.tsx', source: '<textarea className={css.itemProse} />' },
+    ]
+    expect(planted.filter(file => /<textarea[\s/>]/.test(code(file.source))).map(file => file.path),
+      'the plant did not bite').toEqual(['prose-field.tsx', 'detail-pane.tsx'])
+  })
+
+  it('高度归版面：三个令牌在样式表里，JS 里没有第二个数', () => {
+    expect(sizeIn('.itemProse', 'block-size'), '写入框的高度不再由读者拖出来的那个数给出')
+      .toBe('var(--item-prose-h, var(--item-write-floor))')
+    expect(sizeIn('.itemProse', 'min-block-size'), '地板不再是那一个令牌').toBe('var(--item-write-floor)')
+    expect(sizeIn('.itemProse', 'max-block-size'), '天花板不再是那一个令牌').toBe('var(--item-write-ceil)')
+    const drag = code(readSource('client/item/prose-field.tsx'))
+    expect(drag, 'prose-field.tsx 读不到了').not.toBe('')
+    for (const name of ['--item-write-floor', '--item-write-ceil']) {
+      expect(drag.includes(name), `拖拽的夹取范围把 ${name} 抄进了 JS——版面与手势会各说一个数`).toBe(false)
+    }
+    for (const property of ['min-block-size', 'max-block-size']) {
+      expect(drag.includes(property), `拖拽没有从布局里读回 ${property}，于是它按自己记着的数夹`).toBe(true)
+    }
+  })
+
+  it('平台那两种定高写法都不在了，抓条压在它自己那一条空气里', () => {
+    expect(css.includes('field-sizing'), '又有 `field-sizing`：框会随每一次键入自己长高，而高度是读者的').toBe(false)
+    expect(css.includes('::-webkit-resizer'), '又在给一个不存在的原生抓手化妆').toBe(false)
+    /* 读**声明**，不写一条带前瞻的正则：`resize\s*:\s*(?!none)` 会被回溯放过——`\s*`
+       可以只吃零个空白，于是前瞻去看那个空格，正好「不是 none」。数出来的值不会骗人。 */
+    const resizes = declarationRules(css)
+      .flatMap(rule => [...rule.body.matchAll(/(?:^|[;{\s])resize\s*:\s*([^;]+)/g)].map(hit => (hit[1] as string).trim()))
+    expect(resizes.filter(value => value !== 'none'), `还有能被原生拖拽的文本域：${resizes.join('、')}——拖拽区是那条抓条，整条下沿`)
+      .toEqual([])
+    // 抓条站在框内下沿之上，而它站的那一格由框自己的下衬让出来：抓条一档空气、
+    // 内衬两档，所以最后一行字永远不会落在它底下。
+    expect(sizeIn('.itemProseGrip', 'block-size'), '抓条的高度不再是那一档空气').toBe('var(--s2)')
+    expect(sizeIn('.itemProse', 'padding-block-end'), '框下沿不再为抓条留两格空气，最后一行字会被它盖住')
+      .toBe('calc(2 * var(--s2))')
+  })
+
+  it('一个日期框：两个界面都导入它，谁也不自己读日期', () => {
+    for (const file of ['client/item/detail-pane.tsx', 'client/item/item-create-dialog.tsx']) {
+      const source = code(readSource(file))
+      expect(source, `${file} 读不到了`).not.toBe('')
+      expect(source, `${file} 没有用那个共用的写入框`).toContain("from './prose-field.tsx'")
+      expect(source, `${file} 没有用那个共用的日期框`).toContain("from './date-field.tsx'")
+      expect(source, `${file} 自己读日期了：判定必须是 readDateDraft，拒绝由 DateField 说`)
+        .not.toMatch(/\bparseItemDate\s*\(/)
+    }
+  })
+
+  it('那句话只有一处说出口', () => {
+    const sayers = itemSurfaceFiles().filter(file => code(file.source).includes("'item.dates.bad'")).map(file => file.path)
+    expect(sayers, `说「这个读法我没读懂」的文件：${sayers.join('、') || '（一个都没有）'}——同一句拒绝只该有一个出口`)
+      .toEqual(['date-field.tsx'])
   })
 })

@@ -129,6 +129,12 @@ export interface ItemDetailProps {
      */
     readonly stepsFocus?: number;
     readonly onToggleStep: (stepId: string) => void;
+    /**
+     * **读者的写作框多高。** 它是**视图偏好**而不是这一条的字段（同一台设备上五个
+     * 写作框共用一个数），所以它从面板下来、拖完再原路回去——这一屏不知道它住在哪儿。
+     */
+    readonly proseHeight?: number;
+    readonly onProseHeight?: (px: number) => void;
     readonly onRemove: () => void;
 }
 /**
