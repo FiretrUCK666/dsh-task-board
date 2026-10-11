@@ -231,7 +231,7 @@
     }
   }
 
-  const heads = all('.itemAgendaHead, .itemDayHead, .itemGroupHead').map(el => ({ name: nameOf(el), ...familyOf(el) }))
+  const heads = all('.itemGroupHead').map(el => ({ name: nameOf(el), ...familyOf(el) }))
   const railRows = all('.itemRailRow').slice(0, 6).map(el => ({ name: nameOf(el), ...familyOf(el) }))
 
   /* ── 三、日历的日格 ─────────────────────────────────────────────────────────

@@ -50,10 +50,15 @@
     }
   }
 
-  const heads = all('[class*="itemAgendaHead"]')
-  const notes = all('[class*="itemAgendaNote"]')
+  /* **选择器读的是现行的名字。** 日程页曾经有 `.itemAgendaHead` / `.itemAgendaNote` /
+     `.itemAgendaLeftOut` 三个类，它们都随「两个页面一枚组头」那一次改动删掉了——一个指着
+     已删类名的探针会返回空数组，而那看起来和「量出来是 0」一模一样。
+     现在：组头是 `.itemGroupHead`（两个页面共用）、说明是 `.itemNote`（平时 `display: none`，
+     所以这里量不到它的墨——那正是它该有的样子）、页尾那件事并进了安静行（`.itemEmptyGroups`）。 */
+  const heads = all('[class*="itemGroupHead"]')
+  const notes = all('[class*="itemNote"]')
   const empty = one('[class*="itemEmptyGroups"]')
-  const footer = one('[class*="itemAgendaLeftOut"]')
+  const footer = one('[class*="itemEmptyGroups"]')
   const row = one('[class*="itemRow"]')
   const root = one('[class*="itemAgenda"]')
 

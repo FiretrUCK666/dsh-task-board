@@ -4844,8 +4844,8 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
     // so a row due today but written yesterday carried 「昨天」 inside 「今天」.
     const panel = mountPanel(fixtures(), 'schedule', 'wide')
     try {
-      expect(panel.surface.querySelectorAll('[class*="itemDayHead"]').length,
-        'the agenda card still carries its own day head').toBe(0)
+      expect(panel.surface.querySelectorAll('[class*="itemGroupHead"][data-size="segment"]').length,
+        'the agenda card still carries its own day segment head').toBe(0)
     } finally {
       panel.dispose()
     }
