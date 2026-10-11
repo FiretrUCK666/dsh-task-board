@@ -5146,10 +5146,10 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
     [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith(label))
 
   it('一个读不懂的日子：条目不落进文档，那句话说在字段下面', () => {
-    // 这一条钉的是一次**静默的数据损失**：从前 `parseItemDate` 的 `undefined` 被直接铺进
-    // capture，于是读者写的「下个月中旬」变成 `{ dueAt: undefined }`——条目照建、日子没了、
-    // 屏上没有一个字。展开区那一栏一直在拒绝（读不懂就不写、并且说一句），同一句话在这张
-    // 纸上过去什么也不做。
+    // 这一条钉的是一次**静默的数据损失**：`parseItemDate` 的 `undefined` 一旦被铺进
+    // capture，读者写的「下个月中旬」就变成 `{ dueAt: undefined }`——条目照建、日子没了、
+    // 屏上没有一个字。展开区那一栏的规矩是「读不懂就不写、并且说一句」，这张纸读同一个
+    // 判定、说同一句话。
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const save = openSheet(panel, '读不懂的日子')

@@ -96,10 +96,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const [priority, setPriority] = useState<ItemPriority>('normal')
   /* **五档都在，与展开区那一格是同一张表。**
    *
-   * 这一段注释原来写着「三个值，第四个不是」——而代码给的是 `ITEM_STATUSES`（五个），
-   * 展开区没挂卡时给的也是五个：注释与代码、两个界面三处不一致，而**只有一个是错的**。
-   * 错的是注释：这一格写的是条目**自己**的状态字段，而它自己的字段就是五档
-   * （`MANUAL_STATUSES` 管的是「人能按的」，不是「字段能取的」）。改注释，不改行为。 */
+   * 这一格写的是条目**自己**的状态字段，而它自己的字段就是五档（`ITEM_STATUSES`）；
+   * `MANUAL_STATUSES` 管的是「人能按的」，不是「字段能取的」。两张表不是同一张，而两处
+   * 界面读的是同一张。 */
   const [status, setStatus] = useState<ItemStatus>('todo')
   const [startsAfter, setStartsAfter] = useState('')
   const [dueAt, setDueAt] = useState('')
@@ -107,11 +106,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   /**
    * **读不懂的日子一个也不许悄悄丢掉。**
    *
-   * 这一张纸原来把 `parseItemDate` 的 `undefined` 直接铺进 capture：读者写的「明天」
-   * 只要机器没读懂，就变成 `{ dueAt: undefined }`——条目照建、日子没了、屏上没有一个字
-   * 解释。详情那一栏当场拒绝（读不懂就不写、并且说一句），而同一句话在这里过去什么也
-   * 不做。现在两处读同一个判定（`readDateDraft`）、说同一行字（`DateField`），这一份
-   * 状态只管一件事：**哪几个框正在说那句话**。
+   * `parseItemDate` 的 `undefined` 一旦被铺进 capture，读者写的「明天」没被读懂时就变成
+   * `{ dueAt: undefined }`——条目照建、日子没了、屏上没有一个字解释。所以两处读同一个
+   * 判定（`readDateDraft`）、说同一行字（`DateField`），而这一份状态只管一件事：**哪几个框正在说那句话**。
    */
   const [badDates, setBadDates] = useState<ReadonlySet<string>>(new Set())
   /** 三个日期框的焦点把手：拒绝之后光标要落在**第一个**读不懂的那一格里。 */
@@ -208,11 +205,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const submit = (): boolean => {
     /* **先把三个日子读一遍，读不懂就不存。**
      *
-     * 这一句就是那个静默数据损失的收口：从前 `parseItemDate` 的 `undefined` 被直接
-     * 铺进 capture，于是「明天」只要没读懂，条目就带着**没有日期**的字段落进文档，
-     * 而读者以为它记下了。判定与展开区那一栏是同一个（`readDateDraft`），说法也是
-     * 同一行（`DateField`）；这里多做的一件事只是**把光标送到第一个读不懂的那一格**，
-     * 因为这一张纸会滚，而按钮在底部——把原因留在看不见的地方等于没说。 */
+     * `parseItemDate` 的 `undefined` 一旦被铺进 capture，「明天」没读懂时条目就会带着
+     * **没有日期**的字段落进文档，而读者以为它记下了。判定与展开区那一栏是同一个
+     * （`readDateDraft`），说法也是同一行（`DateField`）；这里多做的一件事只是**把光标
+     * 送到第一个读不懂的那一格**，因为这一张纸会滚，而按钮在底部——把原因留在看不见的
+     * 地方等于没说。 */
     const drafts = {
       startsAfter: readDateDraft(startsAfter, props.now),
       dueAt: readDateDraft(dueAt, props.now),

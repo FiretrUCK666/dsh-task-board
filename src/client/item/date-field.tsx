@@ -4,17 +4,15 @@
  *
  * ── WHY IT IS SHARED ─────────────────────────────────────────────────────────
  *
- * The detail and the new-row sheet both let a reader type a date, and they had
- * grown two different contracts for it. The detail's field refused an unreadable
- * word in place: the box stayed open and a line under it said why. The sheet's
- * field took the same word and DROPPED IT — `parseItemDate` returned `undefined`,
- * the capture spread that `undefined` into the record, and the row was saved
- * without the day the reader had typed. Nothing on screen said a word. The same
- * word, two surfaces, one of them losing it silently: that is not a styling
- * difference, and aligning the two by hand would leave the next field free to
- * pick either habit.
+ * The detail and the new-row sheet both let a reader type a date, and both must
+ * answer the same word the same way. An unreadable one is REFUSED in place: the
+ * box stays open and a line under it says why. Nothing may be dropped quietly —
+ * a word the machine could not read must never become a row saved without the day
+ * the reader typed, because nobody would ever hear about it. One word, two
+ * surfaces, one contract: that is not a styling question, and aligning the two by
+ * hand would leave the next field free to pick either habit.
  *
- * So the field is now one component with one contract:
+ * So the field is one component with one contract:
  *
  *  - **The reading is printed**, and it is derived here from `readDateDraft` —
  *    the same function the sheet's save asks. 「明天」 in, 「10月15日」 out, so a

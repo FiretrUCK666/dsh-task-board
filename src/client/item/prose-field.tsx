@@ -4,28 +4,22 @@
  * ── WHY THIS FILE EXISTS ─────────────────────────────────────────────────────
  *
  * This panel writes prose in five places: the detail's 正文 和 上下文备注, and
- * the new-row sheet's 正文 和 步骤 和 上下文备注. They had drifted into two
- * implementations — `.itemProse` and `.itemCreateDialogBody` — with two sets of
- * heights, two resize behaviours and two scroll behaviours, so a reader who
- * learned one of them had learned nothing about the other, and a change made to
- * one was invisible in the other. That is what 「各搞一套」 looks like in a
- * codebase, and the cure is not to align them this once: it is to leave exactly
- * one of them. `tests/panel-render.spec.ts` asserts that no `<textarea>` exists
- * anywhere else under `src/client/item/`, so the second one cannot come back.
+ * the new-row sheet's 正文 和 步骤 和 上下文备注. They are ONE control, because a
+ * reader who learns how to write in one of them has learned all five — and
+ * because a change made to one is otherwise invisible in the others. That is what
+ * 「各搞一套」 looks like in a codebase. `tests/panel-render.spec.ts` asserts
+ * that no `<textarea>` exists anywhere else under `src/client/item/`, so a
+ * second one cannot appear.
  *
  * ── THE HEIGHT BELONGS TO THE READER ─────────────────────────────────────────
  *
- * The box used to carry `field-sizing: content` (so it grew by itself on every
- * keystroke) AND the browser's own `resize: vertical` (whose grip sits in the
- * bottom-right CORNER — which this stylesheet then hid, leaving a drag zone
- * nobody could see). So it grew while you typed, and the only way to make it
- * taller on purpose was to find a corner that was not drawn.
- *
- * Now: the height is FIXED, the text scrolls inside, and the drag zone is the
- * WHOLE BOTTOM EDGE — a real, drawn, always-visible band. The floor and the
- * ceiling are the stylesheet's `min-block-size` / `max-block-size` and they are
- * READ BACK off the element rather than repeated here, so the gesture cannot
- * disagree with the layout it is changing.
+ * The height is FIXED, the text scrolls inside, and the drag zone is the WHOLE
+ * BOTTOM EDGE — a real, drawn, always-visible band. Nothing about the content
+ * decides it: `field-sizing` and the browser's own `resize` are both off, because
+ * a box whose height is a function of its content cannot also be a box the reader
+ * sized. The floor and the ceiling are the stylesheet's `min-block-size` /
+ * `max-block-size` and they are READ BACK off the element rather than repeated
+ * here, so the gesture cannot disagree with the layout it is changing.
  *
  * ── WHAT IS DELIBERATELY NOT HERE ────────────────────────────────────────────
  *
