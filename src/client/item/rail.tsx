@@ -16,16 +16,17 @@
  *
  * ── WHY THE GROUPS ARE GROUPS AND NOT ONE LIST ──────────────────────────────
  *
- * A single column of grey words makes a reader treat a COLLECTION, two
- * PREDICATES and a STATUS as siblings, and they are not:
+ * A single column of grey words would present the THREE SETS, the date
+ * predicates, and a STATUS as siblings, and they are not:
  *
- *   刚记的   一个集合——「我刚记下、还没给它任何结构的」。它是入口，也是唯一
- *            一个不带条件的入口。
- *   按条件看 四个关于**时间**的谓词。日历欠了、停了、没有日期、日期未到。归成一组
- *            是因为读者扫这一组时问的是同一句：日历在跟我说什么。
+ *   全部      这份文档本身——唯一一行不收窄任何东西的。它是这一栏的地板，
+ *             所以它站在最上面、自己一组。
+ *   按条件看  四个关于**时间**的谓词。日期过了、日期没到、没有日期、停了多久没动。归成
+ *             一组是因为读者扫这一组时问的是同一句：日历在跟我说什么。
  *   按重要程度 四档优先级。它们是**刻度**不是条件——所以它们是另一组。
- *   按状态   四个状态。它们是**字段的投影**，不是收窄。
- *   全部 / 已删除 两个地方，不是筛选。
+ *   按状态    五个状态。它们是**字段的投影**，不是收窄。
+ *   日程 / 已删除 换的是**形态**不是筛子：一个把同一份文档按天读，一个读的是已经
+ *             不在这份文档里的那些行。
  *
  * **受阻只出现在「按状态」里，不在「按条件看」里。** 一批行在一个栏里有两个身份，
  * 就是不变量 1 禁止的那种重复：两个数、两份真相，而且两边都会对，直到某天不一样。
@@ -41,7 +42,7 @@ import type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } fro
 import { t, type TaskBoardKey } from '../locales.ts'
 import { STATUS_KEY } from '../board/status.ts'
 import { PRIORITY_LABEL } from './labels.ts'
-import { PriorityMark, StatusMark } from './marks.tsx'
+import { GroupMark, ChevronMark, PriorityMark, StatusMark, type ItemMarkId } from './marks.tsx'
 import css from './item.module.css'
 
 /** The word each stable key is spoken in. A filter written against a display
@@ -90,71 +91,45 @@ const CAPTION: Readonly<Record<ItemRailGroupWord, TaskBoardKey>> = {
 /**
  * ONE MARK PER ENTRY, so the rail is readable with the ink taken away.
  *
- * Five predicates that all wore the same arc is the same defect as five words with
- * one number: the mark looked like it was carrying information and was not. Each
- * predicate is a different *shape of claim* about the calendar, so each gets a
- * different shape:
+ * ── 形状住在一处，**哪一件事戴哪一枚住在这里** ────────────────────────────────
+ *
+ * 形状本身在 `marks.tsx`（一处画，处处用）；下面这张表说哪一枚筛子戴哪一枚，按
+ * `ItemRailKey` 闭合——加一枚筛子就编译不过，而新那一枚戴着什么必须在这里说清楚。
+ * 一枚记号在一个表面上只该说一件事，而这里的几枚各说各的：
  *
  *   截止过了   一枚实心的环 —— 唯一会让这一行变红的那一个
- *   计划过了     一个圈 + 一根往下走的指针 —— 落后于一个计划，而不是坏了
- *   停滞的      一段虚线的弧 —— 很久没有人碰
- *   没日期的    一根平线 —— 什么都没有
- *   日期未到的  一扇关着的门 —— 有一个日期，只是还没到
- *
- * The four statuses are three shapes and a gap, for the same reason: 待办 is an
- * empty circle because it is the resting state, 受阻 is a broken one because it is
- * a thread waiting on something, and 完成 is a closed one because it is finished.
+ *   日期已过   同一枚实心环——它问的是「有没有哪个日子过了」（硬期限或计划），
+ *              真正是哪一个由行尾那句判决说出来
+ *   放着没动   一段弧：很久没有人碰
+ *   没定日期   一根平线：什么都没有
+ *   日期未到   一扇关着的门：有一个日期，只是还没到
+ *   全部 / 日程 / 已删除   平线 / 日历 / 一顶盖子（「去别的地方」）
  */
+const GLYPH_OF: Readonly<Record<Exclude<ItemRailKey, ItemPriority | ItemStatusView>, ItemMarkId>> = {
+  all: 'line',
+  schedule: 'calendar',
+  deleted: 'lid',
+  overdue: 'ring-full',
+  ahead: 'door',
+  undated: 'line',
+  stale: 'arc',
+}
+
 function markOf(entry: ItemRailEntry) {
   switch (entry.kind) {
     // The priority rows wear the SAME chip the title wears, one size smaller — the
     // same component, so a colour changed for the row cannot leave this column behind.
     case 'priority':
       return <PriorityMark priority={entry.key as ItemPriority} size="rail" />
-    case 'flag':
-      return flagMarkOf(entry.key)
     case 'status':
       // The same marks the row's own lead dot wears, from the same function — the
       // rail and the list are one vocabulary by construction, not by a comment.
       return <StatusMark status={entry.key as ItemStatusView} />
-    case 'collection':
-      /* 「刚记下的」是这一栏里唯一一个**不带条件**的入口，所以它戴一枚还没写上的
-       * 加号——而「加一个」在别处是往清单里加一行。词、记号、位置三样说的是同一件
-       * 事，而弧线留给「停滞的」。 */
-      return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M5 2v6M2 5h6" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
-    case 'place':
-      // 「已删除」是唯一一处读者会去、而不是去收窄的地方，所以它戴一顶盖子，
-      // 不戴一条横线——横线是「缩小」，盖子是「别的地方」。
-      return entry.key === 'deleted'
-        ? <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M1.4 2.6h7.2M3.8 2.6V1.3h2.4v1.3M2.3 2.6l.5 6.1h4.4l.5-6.1" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" /></svg>
-        : <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M2 5h6" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg>
     default:
-      return <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><path d="M1.6 8.4a3.4 3.4 0 0 1 6.8 0" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg>
+      /* 其余每一枚都在表里：平线（全部）· 日历（日程）· 盖子（已删除）·
+         实心环（日期已过）· 门（日期未到）· 平线（没定日期）· 弧（放着没动）。 */
+      return <GroupMark mark={GLYPH_OF[entry.key as Exclude<ItemRailKey, ItemPriority | ItemStatusView>]} size={11} />
   }
-}
-
-/**
- * THE THREE DATE PREDICATES, ONE SHAPE.
- *
- * Five marks is one too many: at ten pixels a ring, a dashed arc, a ring with a
- * needle and a lidded box are four **textures**, and a column of textures reads as
- * noise rather than as a list. A mark can only carry one fact at this size, and
- * the fact worth carrying is 「this row is about a date」 — the word says which
- * date.
- *
- * So the shape is one ring, and the difference between 「超期了」and the two that
- * are not a problem is **filled against hollow** — which is the one distinction
- * that survives at ten pixels and in a dark theme.
- *
- * It was a STROKE WIDTH first, and it did not survive: 1px against 1.8px on a
- * ten-pixel circle is a difference of texture, and a column of textures reads as
- * noise. Fill against hollow is a difference of **ink**, which is the only thing
- * a reader can pick out of a list without stopping.
- */
-function flagMarkOf(key: ItemRailKey) {
-  return key === 'overdue'
-    ? <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="currentColor" /></svg>
-    : <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true"><circle cx="5" cy="5" r="2.6" fill="none" stroke="currentColor" strokeWidth="1" /></svg>
 }
 
 export interface ItemRailProps {
@@ -226,10 +201,12 @@ export function ItemRail(props: ItemRailProps) {
             <span className={css.itemRailMonth}>{props.month}</span>
             {/* 记号在**右边**：它在左边时，月题整体右移那 14px，于是标题的左沿与
                 七列网格的左沿差着一格——而「月题对准格子左缘」正是这一处读者点名
-                要的那条对齐。记号本身说的是「这块能折」，它站在标题末尾一样说得清。 */}
-            <svg className={css.itemRailCalendarMark} viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-              <path d="M3 1.5 7 5l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+                要的那条对齐。记号本身说的是「这块能折」，它站在标题末尾一样说得清。
+                方向由元件给（`dir`），不靠一条 `rotate` 挂在这个态上：旋转挂在哪个
+                态，取决于基础字形朝哪边——那是一句必须和声明放在一起的理由。 */}
+            <span className={css.itemRailCalendarMark}>
+              <ChevronMark dir={props.calendarOpen ? 'down' : 'right'} size={12} />
+            </span>
           </button>
         </div>
         {/* **正文永远在 DOM 里，折起来是 `hidden` 而不是按宽度裁掉。**
@@ -240,24 +217,27 @@ export function ItemRail(props: ItemRailProps) {
           * 名字、`aria-expanded` 说得出当前状态。`hidden` 而不是 `display: none`
           * 写在样式表里：折起来的按钮不该还能被 Tab 走到。 */}
         <div className={css.itemRailCalendarBody} id={calendarId} hidden={!props.calendarOpen}>
-          {/* **翻月与「今天」是同一条导航行。**
+          {/* **翻月与「今天」是同一条导航行，而它是「一枚控件、三个格子」。**
             *
             * **「回到今天」不许在按下的那一刻消失。** 只在「离今天远了」的时候才出现的话，
             * 它按下去的一瞬间条件就不再成立、控件自己消失了——读者看到的是一个控件
             * 在他手指底下不见了，而屏幕别处没有任何东西说明刚才发生了什么。控件可以
             * 变灰，不能在按下的那一刻消失。
             *
-            * 放在 `‹ ›` 中间也是日历的常识：左右是「挪一格」，中间是「回今天」。 */}
-          <span className={css.itemRailMonthNav}>
+            * 放在 `‹ ›` 中间也是日历的常识：左右是「挪一格」，中间是「回今天」。
+            *
+            * **三格共用一个盒**（一条发丝边、没有格与格之间的分隔线），于是「居中、
+            * 对称」是结构性质而不是三个数凑出来的：两边的格子一样宽、一样高，中间那一格
+            * 包住自己的字，三格的墨心各自落在自己的盒心上（`ChevronMark` 的墨绕中心对称）。
+            * 语义不借分段控件那一套：那是**取值**（radiogroup），这三枚是**动作**。 */}
+          <span className={css.itemRailMonthNav} role="group" aria-label={t('item.rail.monthNav')}>
             <button
               type="button"
               className={css.itemRailNavBtn}
               aria-label={t('item.rail.month.prev')}
               onClick={() => props.onShiftMonth(-1)}
             >
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-                <path d="M6.5 1.5 2.5 5l4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <ChevronMark dir="left" size={15} />
             </button>
             <button
               type="button"
@@ -273,9 +253,7 @@ export function ItemRail(props: ItemRailProps) {
               aria-label={t('item.rail.month.next')}
               onClick={() => props.onShiftMonth(1)}
             >
-              <svg viewBox="0 0 10 10" width="10" height="10" aria-hidden="true">
-                <path d="M3.5 1.5 7.5 5l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <ChevronMark dir="right" size={15} />
             </button>
           </span>
           <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
@@ -297,8 +275,13 @@ export function ItemRail(props: ItemRailProps) {
               onClick={() => props.onEnter(entry)}
             >
               <span className={css.itemRailMark}>{markOf(entry)}</span>
-              <span className={css.itemRailWord}>{t(WORD[entry.key])}</span>
-              <b className={css.itemRailCount}>{entry.n}</b>
+              {/* 词与数是**一个盒子里的两块字**：盒子按基线对齐（中文与拉丁的字体度量
+                  不同，按盒子居中会让两串字的基线差着将近一个像素），而那一族的光学补偿
+                  挂在这个盒子上。 */}
+              <span className={css.itemRailText}>
+                <span className={css.itemRailWord}>{t(WORD[entry.key])}</span>
+                <b className={css.itemRailCount}>{entry.n}</b>
+              </span>
             </button>
           ))}
         </div>

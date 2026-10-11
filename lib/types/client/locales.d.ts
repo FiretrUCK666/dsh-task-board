@@ -662,6 +662,7 @@ export declare const zh: {
     'item.rail.calendar.label': string;
     'item.rail.month.prev': string;
     'item.rail.month.next': string;
+    'item.rail.monthNav': string;
     'item.rail.today': string;
     'item.batch.arm': string;
     'item.batch.count': string;
@@ -761,7 +762,10 @@ export declare const zh: {
     'item.bucket.gated': string;
     'item.gated.hint': string;
     'item.noDate.hint': string;
-    'item.agenda.leftOut': string;
+    'item.group.why': string;
+    'item.agenda.quietWhy': string;
+    'item.agenda.inbox': string;
+    'item.agenda.quietNote': string;
     'item.filter.clear': string;
     'item.filters.label': string;
     'item.filters.byCard': string;
@@ -813,6 +817,7 @@ export declare const zh: {
     'item.cardName.label': string;
     'item.cardName.empty': string;
     'item.cardLink.note': string;
+    'item.cardLink.why': string;
     'item.archive.bar': string;
     'item.archive.confirm': string;
     'item.archive.keep': string;

@@ -26,7 +26,160 @@
  * 读者真的会说出口的东西，而自己发明的记号要单独学一遍。
  */
 import { PRIORITY_DIGIT, type ItemPriority, type ItemStatusView } from '../../core/item-view.ts'
+import type { ScheduleBucketId } from '../../core/item-view.ts'
 import css from './item.module.css'
+
+/**
+ * 一枚小记号叫什么，以及它画成什么样——**一处画，处处用**。
+ *
+ * ── 为什么记号要有名字 ────────────────────────────────────────────────────────
+ *
+ * 左栏那些行、日程页那些节头、清单页那些日分段，说的是同一批事实：**这一行的日期
+ * 过去了 / 还没到 / 根本没有**。它们以前各自内联一段 `<svg><path …/></svg>`——同一件事
+ * 在三处画了三遍，于是「没定日期」在左栏是一枚空心环、在日程页是另一枚空心环、
+ * 在清单页是一枚日历。**三处各画一遍的代价不是那几行路径**，是改一处不报错：
+ * 读者说「这几个记号要一样」时，其中一处不会跟着变，而屏上不会有人说一句话。
+ *
+ * 所以形状在这里各画一次、各自有名字，**哪一件事戴哪一枚由各页的闭合表给**
+ * （日程页是 `MARK_OF_BUCKET`，左栏是 `rail.tsx` 里那张 `MARK_OF`）——加一个桶、
+ * 加一枚筛子都是编译错误，而两个表面读的是同一批形状。
+ *
+ * ── 墨围绕 viewBox 的正中对称 ────────────────────────────────────────────────
+ *
+ * 与 {@link CrossMark} 同一条律，理由也在那里：一个图形的墨若不在自己盒子的正中，
+ * flex 居中把它放到盒心时墨心就偏着，而那是一个**任何字体、任何缩放都一样的**偏差，
+ * 只能靠改路径修。所以下面每一枚的墨都是绕 (5,5) 或 (6.5,6.5) 对称的。
+ */
+export type ItemMarkId = 'ring-full' | 'ring-open' | 'door' | 'line' | 'arc' | 'calendar' | 'lid'
+
+/**
+ * 日程页的每个桶戴哪一枚记号。
+ *
+ * **它闭合成 `ScheduleBucketId`**：加一个桶就编译不过，而这张表是那一枚的唯一定义处。
+ * 语义各归各位：截止过了是那枚实心环（唯一会让行变红的那一个）、计划过了是一扇开着的
+ * 环（晚了，但只是计划）、没定日期是一根平线（什么都没有）、还没开始是一扇关着的门
+ * （日期在，只是还没到）、按天分的那几节是日历（**它就是「这一节是一天」**）。
+ */
+export const MARK_OF_BUCKET: Readonly<Record<ScheduleBucketId, ItemMarkId>> = {
+  hardOverdue: 'ring-full',
+  behind: 'ring-open',
+  today: 'calendar',
+  tomorrow: 'calendar',
+  week: 'calendar',
+  later: 'calendar',
+  undated: 'line',
+  gated: 'door',
+}
+
+/**
+ * 一枚节头 / 一行的记号。
+ *
+ * **尺寸是属性，不是第二个元件**（与 `PriorityMark` 的 `row | rail` 同律）：左栏那些行
+ * 是 10px（那一列窄，词已经写着它是什么），节头是 12px（它旁边是 13–15px 的字）。
+ * @param props - 哪一枚，多大。
+ * @returns 那枚图形；它按不动，按得动的那个盒子由调用点包在外面。
+ */
+export function GroupMark(props: { readonly mark: ItemMarkId; readonly size?: number }): React.ReactElement {
+  const px = props.size ?? 10
+  switch (props.mark) {
+    case 'ring-full':
+      return <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true"><circle cx="5" cy="5" r="3.6" fill="currentColor" /></svg>
+    case 'ring-open':
+      return <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true"><circle cx="5" cy="5" r="2.9" fill="none" stroke="currentColor" strokeWidth="1.1" /></svg>
+    case 'line':
+      return <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true"><path d="M1.6 5h6.8" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" /></svg>
+    case 'door':
+      return (
+        <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true">
+          <rect x="3" y="1.8" width="4" height="6.4" rx="1" fill="none" stroke="currentColor" strokeWidth="1.1" />
+          <circle cx="6" cy="5" r="0.55" fill="currentColor" />
+        </svg>
+      )
+    case 'arc':
+      /* 一段弧：很久没有人碰。**墨心在 5**：弧的下弦在 y 6.65、半径 3.3，
+         笔画 1.3 的一半外扩之后墨跨 2.7..7.3。 */
+      return <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true"><path d="M1.7 6.65a3.3 3.3 0 0 1 6.6 0" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" /></svg>
+    case 'lid':
+      /* 一顶盖子：「别的地方」，不是「缩小」。左栏那一行是读者会**去**的地方，
+         而一根横线说的是收窄。墨跨 y 0.4..9.6（盖子压在 y 2.2、身子到 y 9），
+         于是它与这一族其余几枚一样，墨心落在盒心上。 */
+      return (
+        <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true">
+          <path d="M1.2 2.2h7.6M3.8 2.2V1h2.4v1.2M2.4 2.2l.5 6.8h4.2l.5-6.8" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      )
+    default:
+      /* 日历：一个矩形身子 + 一条横线 + 两根提手。**它也在 10 单位的盒里**，
+         于是它与上面四枚同一个 `size` 就同一个大小——一个用 13 单位画的图形混在
+         这一族里，读者看到的是六枚记号里有五枚偏小。
+         墨同样是绕 (5,5) 对称的：身子按描边各外扩 0.45，提手伸到 y 1.1（墨顶 0.65），
+         于是墨跨 0.65..9.45，中心 5.05。 */
+      return (
+        <svg viewBox="0 0 10 10" width={px} height={px} aria-hidden="true">
+          <rect x="1.1" y="2" width="7.8" height="7" rx="1.6" fill="none" stroke="currentColor" strokeWidth="0.9" />
+          <path d="M1.1 4.4h7.8M3.3 1.1v2.2M6.7 1.1v2.2" fill="none" stroke="currentColor" strokeWidth="0.9" strokeLinecap="round" />
+        </svg>
+      )
+  }
+}
+
+/**
+ * 一枚箭头：**折起来、上一个月、下一个月，三个方向是同一枚记号。**
+ *
+ * 三个方向各内联一条 `<path>` 的时候，读者看到的是三个大小与笔画各不相同的钩子
+ * （这一轮报上来的原话是「把左右两边的符号变得更窄，导致各种不对称」）。所以路径只有
+ * 一条，另外两个方向由**两个不改变墨与盒心关系的变换**给出：
+ *
+ *   左  绕中心**镜像**（`translate(12 0) scale(-1 1)`）——镜像之后墨框与右边那枚逐字相同，
+ *       所以「两枚箭头一样大」是结构性质，而不是两个数凑出来的一样。
+ *   下  绕中心**旋转** 90°——只有这一处用到，而它仍然以 (6,6) 为心。
+ *
+ * 路径本身也是按这个中心画的：墨跨 x 4.25..7.75、y 2.6..9.4，中心 (6,6)。
+ * @param props - 朝哪边，多大（`size` 是盒子的边长）。
+ * @returns 那枚箭头。
+ */
+export function ChevronMark(props: { readonly dir?: 'left' | 'right' | 'down'; readonly size?: number }): React.ReactElement {
+  const px = props.size ?? 12
+  const turn = props.dir === 'left'
+    ? 'translate(12 0) scale(-1 1)'
+    : props.dir === 'down' ? 'rotate(90 6 6)' : undefined
+  return (
+    <svg viewBox="0 0 12 12" width={px} height={px} aria-hidden="true">
+      <path
+        d="M4.25 2.6 7.75 6l-3.5 3.4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        {...(turn === undefined ? {} : { transform: turn })}
+      />
+    </svg>
+  )
+}
+
+/**
+ * 一个圆里一个信息点：**「这里有一句话」的入口。**
+ *
+ * 一段解释常驻在节头下面，页面读起来就是一面文字墙；把它收起来又要有一个**看得见**
+ * 的入口（触屏没有悬停，必要的信息不许只挂在 `title=` 上）。所以它就是那个入口：
+ * 一枚画出来的记号，包在一个真按钮里，按钮按得动、Tab 走得到、`aria-expanded` 说得清
+ * 现在开着没有。**画出来而不是打一个「?」**：一个字的墨落在哪几行上是字体决定的
+ * （见 `CrossMark` 那段），而一个圆圈加一个点的墨心由路径定。
+ * @param props - 记号多大。
+ * @returns 那枚图形；按钮由调用点包在外面。
+ */
+export function InfoMark(props: { readonly size?: number } = {}): React.ReactElement {
+  const px = props.size ?? 14
+  return (
+    <svg viewBox="0 0 14 14" width={px} height={px} aria-hidden="true">
+      <circle cx="7" cy="7" r="5.7" fill="none" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="7" cy="4.3" r="0.85" fill="currentColor" />
+      <path d="M7 6.8v3.3" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+    </svg>
+  )
+}
+
 
 /**
  * 一枚优先级记号。`size` 只有两档，两档都是**同一个芯片**：

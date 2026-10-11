@@ -18,9 +18,9 @@
  *
  * ── WHY AN ENTRY CARRIES A PREDICATE AND NOT ONLY A TOKEN ───────────────────
  *
- * Three of the entries here — 刚记的, 全部, 已删除 — are SETS, not filters, and a
- * set has no token in the query grammar. Forcing them into one would mean either
- * inventing a `has:inbox` flag the model then learns to type, or giving them a
+ * Three of the entries here — 全部, 日程, 已删除 — are PLACES, not filters, and a
+ * place has no token in the query grammar. Forcing them into one would mean either
+ * inventing a `has:` flag the model then learns to type, or giving them a
  * token that means something else to the reader. So an entry carries both, and
  * the token is `''` for the ones that are not filters — which is a fact about
  * the entry rather than a special case at three call sites.
@@ -37,7 +37,7 @@ import type { ItemPriority, ItemRecord, ItemStatusView } from './item.ts';
 import { type ItemMatchContext } from './item-query.ts';
 /** What KIND of question an entry asks. Drives its shape and its affordance,
  *  and it is the only thing a surface may branch on — never `n`, never `token`. */
-export type ItemRailKind = 'collection' | 'flag' | 'priority' | 'status' | 'place';
+export type ItemRailKind = 'flag' | 'priority' | 'status' | 'place';
 /** One row in the rail. */
 export interface ItemRailEntry {
     /** Stable, keyed off nothing a reader sees. Two entries never share one. */

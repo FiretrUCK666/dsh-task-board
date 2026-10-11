@@ -1,28 +1,32 @@
 /**
- * The table: a head that names its columns and a body that fills them.
+ * The list's own body: a run of row cards, and between them the day the next run
+ * was written on.
  *
- * WHY THE HEAD IS A SEPARATE FILE AND NOT A THIRD ARGUMENT. The head row and the
- * body row declare the SAME seven tracks, and they declare them in two different
- * rules in the stylesheet. Nothing checks that they still agree — the only thing
- * that can is a reader looking at a column whose label has drifted off the data
- * under it. So the seven names live HERE, as one list, and both rows are drawn
- * from it: a column cannot be added to the body without a name, and a name cannot
- * exist without a column.
+ * ── WHAT THIS FILE IS, AND WHAT IT IS NOT ────────────────────────────────────
  *
- * WHY THE HEAD IS STICKY. The reader scrolls a list of forty rows and needs to
- * know what 「落后 3 天」 was counting in; a head that scrolls away is a head that
- * answers the question once. It sticks to the top of the list's own scroller, so
- * it travels with the rows and with nothing else.
+ * It is NOT a table, and the file's name is the last thing left of one. There is
+ * no head row and no column: a row is a bead, a sentence, its tags and one
+ * control, and a head naming 「状态 / 标题 / 优先级 / 计划 / 标签」 would name a
+ * shape this surface does not have. The rows carry their own status, their own
+ * dates and their own priority marks; a header above them would be a second place
+ * saying what each row already says.
  *
- * WHY THERE IS NO PICKBOX COLUMN HEADER. 「勾选」 over a column of tick boxes is a
- * label about a control, not about the data. The cell is still there — the tracks
- * must be seven on both rows or everything after the first slides — and an empty
- * cell draws nothing.
+ * What is left of the old shape is the CONTAINER: one flex column that grows but
+ * never shrinks (the scroller's own geometry — see the stylesheet), and the one
+ * branch that matters, which is which of the two bodies to draw: rows, or the
+ * sentence standing in for them when there are none.
+ *
+ * ── AND THE DAY HEAD BETWEEN TWO RUNS IS ONE COMPONENT, NOT A MARKUP ─────────
+ *
+ * It is `GroupHead` — the same head the agenda's sections wear. Two inline
+ * versions of 「a mark + a word + a count」 is how the same defect came out looking
+ * different on two pages.
  */
 import { Fragment } from 'react'
 import type { ItemRowLineProps } from './row-line.tsx'
 import { ItemRowLine } from './row-line.tsx'
 import { ItemGrammarExample } from './composer.tsx'
+import { GroupHead } from './group-head.tsx'
 import { itemDayGroupsOf } from './day-groups.ts'
 import type { ItemDayBucket } from './day-groups.ts'
 import type { ItemSort } from '../../core/item-sort.ts'
@@ -126,14 +130,12 @@ export function ItemTable(props: ItemTableProps) {
                   {/* ONE DAY, AND HOW MANY. The heading is `presentation` so it does
                       * not become a list item — the rows are the list, and a heading
                       * among them is a heading ABOUT them. */}
-                  <div className={css.itemDayHead} role="presentation">
-                    <svg viewBox="0 0 13 13" width="13" height="13" aria-hidden="true">
-                      <rect x="1.5" y="2.6" width="10" height="9" rx="2" fill="none" stroke="currentColor" strokeWidth="1.1" />
-                      <path d="M1.5 5.6h10M4.2 1.2v2.6M8.8 1.2v2.6" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-                    </svg>
-                    <b>{t(DAY_WORD[group.bucket])}</b>
-                    <i>{t('item.day.count', { n: String(group.n) })}</i>
-                  </div>
+                  <GroupHead
+                    as="presentation"
+                    mark="calendar"
+                    word={t(DAY_WORD[group.bucket])}
+                    count={t('item.day.count', { n: String(group.n) })}
+                  />
                   {group.rows.map(item => {
                     const row = props.rows.find(one => one.view.item.id === item.id)
                     return row === undefined ? null : <ItemRowLine key={item.id} {...row} />

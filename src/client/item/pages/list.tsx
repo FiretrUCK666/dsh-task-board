@@ -27,8 +27,8 @@ import { itemSlicesOf } from '../../../core/item-view.ts'
 import type { ItemRecord } from '../../../core/item.ts'
 import { itemRefOf } from '../../../core/item-view.ts'
 import { itemTitleOf } from '../../../core/item.ts'
-import { t, isEnglish } from '../../locales.ts'
-import { formatDayKey } from '../model.ts'
+import { t } from '../../locales.ts'
+import { nothingToShowOf } from './nothing-to-show.ts'
 import { itemsArchive, itemsPurge, itemsRestore, archiveClockOf, type ArchiveReply } from '../../items-archive.ts'
 import { Tickbox } from '../tickbox.tsx'
 import { whyLabelOf } from '../why-label.ts'
@@ -342,15 +342,9 @@ export function ListPage(props: ItemListPageProps) {
    * already holding a word says 「没有匹配的结果。清空搜索或换个筛选看看。」, which
    * invites a reader to clear a search that was never what emptied the page.
    */
-  const nothingToShow = items.length === 0
-    ? t('item.empty')
-    /* **被一个日期筛空，就要说那个日期。** 「没有匹配的结果」在读者按了一个具体
-     * 的日期之后是一句没用的话：他刚刚点的是 9 号，屏幕上该出现的是「9 号没有
-     * 东西」——**一句话里带着他刚按下的那个选择**，而不是一句关于筛选的通用提示。
-     * 而「换个日期」这四个字也是真的可做：日历就在旁边。 */
-    : query.day !== null
-      ? t('item.noMatch.day', { when: formatDayKey(query.day, isEnglish(), props.now) })
-      : t('item.noMatch')
+  /* 空的三种说法归 `nothingToShowOf` 一处：日程页对同一份文档问的是同一个问题，
+     答案抄一份就会在某一天变成两句不一样的话。 */
+  const nothingToShow = nothingToShowOf(items, query, props.now)
 
   /**
    * THE ARCHIVE LINE, and it is the LAST thing on the page.

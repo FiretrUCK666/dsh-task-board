@@ -726,6 +726,7 @@ export const zh = {
   'item.rail.calendar.label': '按日期看',
   'item.rail.month.prev': '上一个月',
   'item.rail.month.next': '下一个月',
+  'item.rail.monthNav': '翻月与回到今天',
   'item.rail.today': '回到今天',
   'item.batch.arm': '多选',
   'item.batch.count': '已选 {n} 条',
@@ -819,7 +820,7 @@ export const zh = {
   'item.field.notes': '上下文备注',
   // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
   // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemAskText`）。
-  'item.field.notesHint': '这一条的来龙去脉：接手的人先看它；把这一条交给 AI 时也会带上',
+  'item.field.notesHint': '这一条从哪来、要做什么；交给 AI 时会一起带上',
   'item.field.notesAdd': '＋ 上下文备注',
   'item.field.bodyAdd': '＋ 写点什么',
   'item.field.status': '状态',
@@ -881,9 +882,13 @@ export const zh = {
    * 的合集，所以它说的话比这两节都宽——同一个词在两处选不同的行，是这一页最贵的自相矛盾。）
    *
    * 另外两节回答的是别的问题，名字也就说别的事：「没定日期」是一个盘子，「还没开始」是一扇
-   * 还没开的门。 */
-  'item.bucket.hardOverdue': '已经超期',
-  'item.bucket.behind': '已经落后',
+   * 还没开的门。
+   *
+   * **两个晚了的节名各自带着字段自己的词**（截止 / 计划），因为读者在行尾读到的就是那两个
+   * 词——「已经超期」与「已经落后」是一对看不出差别的孪生词，读者要问「超期是什么意思」，
+   * 而答案本来就写在字段名上。 */
+  'item.bucket.hardOverdue': '截止已过',
+  'item.bucket.behind': '计划已过',
   'item.bucket.today': '今天',
   'item.bucket.tomorrow': '明天',
   'item.bucket.week': '一周内',
@@ -891,11 +896,15 @@ export const zh = {
   'item.bucket.undated': '没定日期',
   'item.bucket.gated': '还没开始',
   /* 两句话各回答**两个问题**，顺序也照读者的问法：「它们为什么不在上面」+「它们什么时候会来」。
-   * 上一版说的是抽象名词（「还没到」「不占任何一天」），读者读到的是一句关于逻辑的话，
-   * 不是一句关于他自己那几条的话。 */
-  'item.gated.hint': '这几条要等到开始那天；到了那天，它们会自己排到按天的节里。',
-  'item.noDate.hint': '这几条没写日期，所以排不进任何一天。写上一个，它就会排到那一天。',
-  'item.agenda.leftOut': '另外还有 {done} 条已完成的、{inbox} 条刚记下还没整理的，不排日程。',
+   * 它们平时不在屏上——挂在自己那一节的 `InfoMark` 后面（见 `pages/schedule.tsx`）。 */
+  'item.gated.hint': '还没到开始那天。到了那天，它们会自己排到按天的那一节里。',
+  'item.noDate.hint': '没写日期，就排不进任何一天。写上一个，它就会排到那天。',
+  // 「这一节为什么在这里 / 这一行为什么这么算」：按需出现的那句话的入口（可达名）。
+  'item.group.why': '这一节为什么在这里',
+  'item.agenda.quietWhy': '这一行说的是什么',
+  // 安静行的两个词：一行里的名字都必须自己说得清自己是什么。
+  'item.agenda.inbox': '刚记下',
+  'item.agenda.quietNote': '哪几天是空的，以及有几条被留下。已完成的不再排日程；刚记下、还没整理的还没进任何一天。',
 
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
@@ -924,7 +933,7 @@ export const zh = {
   'item.create.dateBad': '有一个日期的写法我没读懂，就在那一个框下面。',
   // 三个日期的框上面那句「都不是必填」：读者问的第一个问题就是「三个是不是重复了、能不能只写一个」，
   // 而这一句就是那个答案。三个日期自相矛盾时，同一处换成那句话（同一处只说一件事）。
-  'item.create.datesAny': '三个都可以留空；只写一个也算数。',
+  'item.create.datesAny': '三个都可以留空，只写一个也算数。',
   'item.create.refused': '没能记下：这一条与已有的重复，或者它还没有名字。',
   'item.create.cancel': '取消',
   'item.create.submit': '存下这一条',
@@ -985,7 +994,8 @@ export const zh = {
   // 一个是标签（它叫什么），一个是空名被记下时那一句话（只有它是占位，名字是内容）。
   'item.cardName.label': '新卡的名字',
   'item.cardName.empty': '先给这张卡起一个名字。',
-  'item.cardLink.note': '挂已有的卡：只把这条挂上去，卡里的内容一样都不动。新建卡片：拿这条的标题和正文开一张新卡。挂上以后，两边各改各的。',
+  'item.cardLink.note': '挂已有的卡，卡里的内容不动；新建卡片，拿这里的标题和正文开一张。挂上以后两边各改各的。',
+  'item.cardLink.why': '挂卡会动到什么',
 
   // 归档：不是页面轨上的一格，是点进去才出现的一整个页面。删除留 30 天，
   // 找不回来的时候读者必须知道期限，而不是发现「恢复」按钮不见了。
@@ -1703,6 +1713,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.rail.calendar.label': 'By date',
   'item.rail.month.prev': 'Previous month',
   'item.rail.month.next': 'Next month',
+  'item.rail.monthNav': 'Months and today',
   'item.rail.today': 'Back to today',
   'item.batch.arm': 'Select',
   'item.batch.count': '{n} selected',
@@ -1767,7 +1778,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.bodyHint': 'Markdown; write as many lines as you need.',
   'item.field.body': 'Body',
   'item.field.notes': 'Context notes',
-  'item.field.notesHint': 'What this row is really about: whoever picks it up reads it first, and it travels with the row when you hand it to the AI',
+  'item.field.notesHint': 'Where this row came from and what it is for; it travels with the row when you hand it to the AI',
   'item.field.notesAdd': '＋ Context notes',
   'item.field.bodyAdd': '＋ Write something',
   'item.field.status': 'Status',
@@ -1815,11 +1826,12 @@ export const en: Record<keyof typeof zh, string> = {
   'item.token.step': 'step',
   'item.token.undo': 'turn back into plain text',
 
-  // The agenda's buckets.
-  // The agenda's sections. Their names are the row tail's own words — a row reads
-  // 「9d past due」 / 「3d behind」, so a section reads 「Past due」 / 「Behind」.
-  'item.bucket.hardOverdue': 'Past due',
-  'item.bucket.behind': 'Behind',
+  // The agenda's sections. Their names carry the FIELD's own word — a row's tail
+  // reads 「deadline 9 Oct」 / 「target 7 Oct」, so a section reads 「Past the deadline」 /
+  // 「Past the target」. 「Past due」 and 「Behind」 were twins a reader could not tell
+  // apart, and the answer to 「what does past due mean」 was already in the field name.
+  'item.bucket.hardOverdue': 'Past the deadline',
+  'item.bucket.behind': 'Past the target',
   'item.bucket.today': 'Today',
   'item.bucket.tomorrow': 'Tomorrow',
   'item.bucket.week': 'Within a week',
@@ -1828,7 +1840,10 @@ export const en: Record<keyof typeof zh, string> = {
   'item.bucket.gated': 'Not started yet',
   'item.gated.hint': 'Their start day has not come. They sit here until then, and move into a day section on the day.',
   'item.noDate.hint': 'Nobody gave these a date, so no day can hold them. Give one a date and it lands on that day.',
-  'item.agenda.leftOut': '{done} finished and {inbox} just noted and not yet sorted are not on this agenda.',
+  'item.group.why': 'Why this section is here',
+  'item.agenda.quietWhy': 'What this line says',
+  'item.agenda.inbox': 'just noted',
+  'item.agenda.quietNote': 'Which days are empty, and how many rows were left out. Finished rows are off the agenda; rows just noted are not on a day yet.',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',
@@ -1846,7 +1861,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.hardDueHint': '@deadline 10/9',
   'item.create.blank': 'A title is enough to save it — the body can come later.',
   'item.create.dateBad': 'One of these dates could not be read — the field below it says so.',
-  'item.create.datesAny': 'All three may be left empty; one on its own counts.',
+  'item.create.datesAny': 'All three may be left empty, and one on its own counts.',
   'item.create.refused': 'Could not save it: it repeats one you already have, or it has no name yet.',
   'item.create.cancel': 'Cancel',
   'item.create.submit': 'Save this row',
@@ -1892,7 +1907,8 @@ export const en: Record<keyof typeof zh, string> = {
   // both words live at that step.
   'item.cardName.label': 'Name of the new card',
   'item.cardName.empty': 'Give the card a name first.',
-  'item.cardLink.note': 'Link an existing card: the row goes onto it; nothing inside the card changes. New card: the row\'s own title and body open a fresh card. Once linked, the two sides keep their own names.',
+  'item.cardLink.note': 'Link an existing card and nothing inside it changes; make a new one and this row\'s title and body open it. Once linked, the two sides keep their own names.',
+  'item.cardLink.why': 'What linking a card does',
 
   // The archive. Not a tab on the rail: a page the reader arrives at. The
   // thirty-day window is stated rather than implied, because a restore button

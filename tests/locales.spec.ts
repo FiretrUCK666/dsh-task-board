@@ -27,7 +27,7 @@ import { describe, expect, it } from 'vitest'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { zh } from '../src/client/locales.ts'
+import { zh, en } from '../src/client/locales.ts'
 import { MANUAL_STATUSES } from '../src/core/tasks.ts'
 
 const clientRoot = fileURLToPath(new URL('../src/client', import.meta.url))
@@ -165,6 +165,18 @@ describe('locale dictionaries have no rot', () => {
     const named = new Set(keys)
     const missing = MANUAL_STATUSES.filter(status => !named.has(`status.move.${status}`))
     expect(missing, 'a column a human may drag a card into has no verb — the button would render undefined').toEqual([])
+  })
+
+  it('两个晚了的节名各自带着字段自己的词，中英两档都是', () => {
+    /* 「已经超期 / 已经落后」曾是一对看不出差别的孪生词（读者问过「已经超期是什么意思」），
+       而答案本来就写在字段名上。现在节名说的是**哪一个日期**过了，用的就是那个字段自己的
+       词——这条闸门钉的是「两处说的是同一件事」：改字段名而节名不跟，它会红。 */
+    const pairs = [['item.bucket.hardOverdue', 'item.field.hardDueAt'], ['item.bucket.behind', 'item.field.dueAt']] as const
+    for (const [bucket, field] of pairs) {
+      expect(zh[bucket], `${bucket} 的中文里没有字段自己的词（${field}）`).toContain(zh[field])
+      expect(en[bucket]?.toLowerCase(), `${bucket} 的英文里没有字段自己的词（${field}）`)
+        .toContain(en[field]?.toLowerCase())
+    }
   })
 
   it('and that scan can fail too', () => {

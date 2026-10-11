@@ -402,17 +402,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
   /* WHERE THE READER IS STANDS ON THE QUERY, and there is no second copy of it.
    *
    * A `useState` written on every press looks necessary, for a reason that is
-   * real: two of the rail's entries are SETS — 「刚记的」 and 「已删除」 — and a set
+   * real: three of the rail's entries are PLACES — 全部、日程、已删除 — and a place
    * writes no token, so a highlight derived from the query alone would leave those
-   * two unable to look selected. But the cure is worse than the disease. A
+   * three unable to look selected. But the cure is worse than the disease. A
    * remembered highlight can claim a filter that is not on: pressing the same row
    * twice turns it OFF and leaves the row marked 「you are here」, and deleting the
    * text in the box by hand leaves it marked too — the reader sees 「超期了」
    * highlighted, with its number, over an unfiltered list.
    *
-   * The two SETS are `collection`/`place` kinds, and they are the page's own state
-   * (`prefs.page`), so they are derived from THAT. Derived from what is true, in
-   * both halves, rather than remembered from what was pressed. */
+   * 这三个地方名字写在 `place` 那一类里，而它们各自是页面自己的状态（`prefs.page`
+   * 与归档抽屉），所以从**那些**状态派生。两半都从「现在是什么」派生，而不是从
+   * 「刚才按了什么」记下来。 */
   /* The rows behind a tombstone, read in the SAME place and the same tick as the
    *  live document — one subscription, one `read()`, two derived facts.
    *
@@ -1566,7 +1566,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     // 先离开归档（下面那行）。
     if (archiveOpen && entry.kind === 'place' && entry.key === 'deleted') { setArchiveOpen(false); return }
     setArchiveOpen(false)
-    if (entry.kind === 'collection' || entry.kind === 'place') {
+    if (entry.kind === 'place') {
       if (entry.key === 'deleted') {
         /* 「已删除」是**另一个地方**：它是墓碑，而墓碑不在活着的行里。所以清空筛选
          * （一个还留着谓词的抽屉看不懂自己要显示什么）并开抽屉。 */
@@ -1671,16 +1671,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
     const on = new Set<string>()
     for (const group of railGroups) {
       for (const entry of group.entries) {
-        if (entry.kind === 'collection' || entry.kind === 'place') continue
+        if (entry.kind === 'place') continue
         if (isTokenIn(prefs.search, entry.token)) on.add(entry.id)
       }
     }
     if (query.day !== null) on.add(`day:${query.day}`)
-    /* THE TWO SETS ARE THE PAGE. 「刚记的」 is a page and 「已删除」 opens a place,
-       so the row is current exactly when the reader is standing there — read from
-       `prefs.page` and the archive's own state rather than from a press, which is
-       what makes it impossible for a SET row to look current while the reader is
-       somewhere else. */
+    /* THE THREE PLACES ARE THE PAGE. 日程 是一个页面、已删除 开的是一个地方、
+       全部 是「什么都没收窄」——三行各自**现在**是不是当前，都从状态读（`prefs.page`、
+       归档抽屉、以及有没有别的谓词开着），而不是从刚才按了什么记下来：记下来的高亮会在
+       读者已经离开之后仍然亮着。 */
     if (archiveOpen) on.add('deleted')
     if (prefs.page === 'schedule') on.add('schedule')
     /* 「全部」 IS CURRENT WHEN NOTHING ELSE IS. It is the floor of the rail — the

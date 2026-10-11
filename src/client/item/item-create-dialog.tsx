@@ -27,8 +27,9 @@ import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemDateConflict } from '../../core/item.ts'
 import { DATE_FIELD_KEY, DATE_GLOSS_KEY, DATE_HINT_KEY, PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
-import { CrossMark, PriorityMark } from './marks.tsx'
+import { CrossMark, PriorityMark, InfoMark } from './marks.tsx'
 import { ItemComposer, ItemGrammarLegend } from './composer.tsx'
+import { useNote } from './group-head.tsx'
 import type { ComposerParse } from './compose-parse.ts'
 import type { DateDraft } from './model.ts'
 import { readDateDraft, toItemDateField } from './model.ts'
@@ -138,6 +139,8 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   }, [cardNaming])
   const [parsed, setParsed] = useState<ComposerParse | undefined>(undefined)
   const [words, setWords] = useState('')
+  /** 「挂卡会动到什么」那一句的把手——按需出现，理由在下面那一行旁边。 */
+  const cardNote = useNote(t('item.cardLink.why'))
   const sheet = useRef<HTMLDivElement | null>(null)
   const titleField = useRef<HTMLInputElement | null>(null)
 
@@ -501,8 +504,24 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 : t('item.dates.contradict', { a: t(DATE_FIELD_KEY[conflict.field]), b: t(DATE_FIELD_KEY[conflict.limitField]) })}
             </p>
 
-            <div className={css.itemOptRow}>
-              <p className={css.itemOptName}>{t('item.field.taskId')}</p>
+            {/* **三个日期的关系与两扇门的关系，都按需说。**
+                这一格一句常驻的解释有五行，而它回答的是读者**问出来之后**才有的问题
+                （「挂卡会动到什么」）——所以它挂在自己那一行上的一枚 `InfoMark` 后面：
+                指着字段名偷看一句，按下或聚焦真开（触屏只有这一条路）。 */}
+            <div className={css.itemOptRow} data-note={cardNote.open ? '' : undefined}>
+              <p className={css.itemOptName} data-note-hover="">
+                {t('item.field.taskId')}
+                <button
+                  type="button"
+                  className={css.itemGroupWhy}
+                  aria-expanded={cardNote.open}
+                  aria-controls={cardNote.id}
+                  aria-label={t('item.cardLink.why')}
+                  onClick={cardNote.onToggle}
+                >
+                  <InfoMark size={14} />
+                </button>
+              </p>
               <div className={css.itemOpts}>
                 <button
                   type="button"
@@ -577,8 +596,8 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   </button>
                 )}
                 {cardHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
-                {/* 与详情选择器同一句真相：两边只该有一个说法。 */}
-                <p className={css.itemOptsFoot}>{t('item.cardLink.note')}</p>
+                {/* 与详情选择器同一句真相：两边只该有一个说法，而说法只有一处。 */}
+                <p className={css.itemNote} id={cardNote.id}>{t('item.cardLink.note')}</p>
               </div>
             </div>
           </div>

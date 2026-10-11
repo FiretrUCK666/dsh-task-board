@@ -372,9 +372,26 @@ describe('the panel renders against the host it will actually run in', () => {
     /* **日程少列了几行，它就说少在哪。** 读者的原话：「3 条里只看见 2 条」。两个
      * 排除都有理由（已完成是历史；刚记下、还没被读第二遍的一条属于收件），但理由不
      * 在屏幕上，屏幕上剩下的只有「少了一条」——而少了一条和丢了一条，读者分不出来。
-     * 这一行按 `isAgendaItem` 自己的两个子句数数，所以它和列表里的行是同一次推导。 */
+     * 这一行按 `isAgendaItem` 自己的两个子句数数，所以它和列表里的行是同一次推导。
+     *
+     * **而它是安静行里的两个名字加两个数**（不是页尾的一段话）：零行的节、已完成、
+     * 刚记下，说的都是「没排在这一页上」这同一件事，所以它们共用一行，而为什么落在
+     * 这一行自己的 `InfoMark` 后面。 */
     expect(schedule, 'the agenda lists fewer rows than the document and says nothing about it')
-      .toMatch(/另外还有 \d+ 条已完成的、\d+ 条刚记下还没整理的/)
+      .toMatch(/已完成<\/span><i[^>]*>(\d+)<\/i>/)
+    expect(schedule, 'the agenda lists fewer rows than the document and says nothing about it')
+      .toMatch(/刚记下<\/span><i[^>]*>(\d+)<\/i>/)
+    /* **零行的节不占一节，而那个 0 仍然写出来。** 「截止已过 0」曾经是一枚独立药丸加一条
+     * 说明，而它下面一行都没有——一个没有内容的节，读者读到的是一句关于空的话。现在零行的
+     * 节是安静行里的一个名字加一个 0：零仍然被说到，但它不再占一节的地方。
+     *
+     * 读的是**节头里**那些条数（`<h2>` 里的一枚），不是全页的：安静行里那几个 0 本来就该在。 */
+    const heads = [...schedule.matchAll(/<h2 class="[^"]*itemGroupHead[^"]*"[\s\S]*?<\/h2>/g)].map(m => m[0])
+    expect(heads.length, '日程页一个节头都没有，这条闸门在空转').toBeGreaterThan(0)
+    const headCounts = heads.flatMap(head => [...head.matchAll(/itemGroupCount[^"]*">(\d+)</g)].map(m => Number(m[1])))
+    expect(headCounts.length, '有节头没有说自己的条数').toBe(heads.length)
+    expect(headCounts.filter(n => n === 0), '零行的节仍然占着一节——它该只是安静行里的一个 0').toEqual([])
+    expect(schedule, '安静行没有把 0 写出来：零也被藏掉了').toMatch(/itemEmptyGroup[\s\S]{0,400}itemGroupCount[^"]*">0</)
     // THE LIST HOLDS EVERY ROW, which is the membership promise that outlived the
     // page: the bare capture is here, and so is the date-less row that carries a tag
     // (which is therefore NOT a capture, and was never on the inbox either).
@@ -1966,7 +1983,10 @@ describe('a status is stated once, and it is a column rather than a heading', ()
     // Judged by DECLARATION, never by looking at a capture: at the width the
     // captures are taken a 4% tint can fall below the visible threshold, so
     // 「I could not see it in the PNG」 is not a fact about the code.
-    const head = rulesOf(css, 'itemDayHead').join('\n')
+    //
+    // **两页一枚**：这一枚与日程页的节头是同一个元件（`GroupHead`），所以判据落在
+    // `.itemGroupHead` 上——两处各写一条，就是同一个形状有两个判据。
+    const head = rulesOf(css, 'itemGroupHead').join('\n')
     expect(head, 'the day header is not in the sheet at all').not.toBe('')
     const draws = /(?:^|[;{\s])border-block-end\s*:\s*([^;]+)/.exec(head)?.[1]?.trim() ?? ''
     expect(['0', 'none'], `the day header draws a rule ("${draws}") around a shape that already has a ground`).not.toContain(draws)
@@ -1979,26 +1999,105 @@ describe('a status is stated once, and it is a column rather than a heading', ()
     // to nothing is not a ground. Both halves matter — a reader that only looks for
     // the tint reports a header whose background is `transparent` as fine.
     const hasGround = (text: string): boolean => {
-      const body = rulesOf(text, 'itemDayHead').join('\n')
+      const body = rulesOf(text, 'itemGroupHead').join('\n')
       const value = /(?:^|[;{\s])background(?:-color)?\s*:\s*([^;]+)/.exec(body)?.[1]?.trim() ?? ''
       return value !== '' && !['0', 'none', 'transparent'].includes(value)
     }
-    expect(hasGround('.itemDayHead { background: transparent; }'),
+    expect(hasGround('.itemGroupHead { background: transparent; }'),
       'a ground set to nothing was counted as a ground, so the gate cannot see the defect it exists for').toBe(false)
-    expect(hasGround('.itemDayHead { padding-block-end: 8px; }'),
+    expect(hasGround('.itemGroupHead { padding-block-end: 8px; }'),
       'a header with only air around it was accepted').toBe(false)
-    expect(hasGround('.itemDayHead { background: var(--item-fill); }'),
+    expect(hasGround('.itemGroupHead { background: var(--item-fill); }'),
       'a real ground was not seen — the reader has stopped biting').toBe(true)
   })
 })
 
+
+describe('一行里的记号与字：一族一个补偿，几块字共享一条基线', () => {
+  const css = stripCssComments(itemSheet())
+
+  it('两个页面共用一枚组头，没有第二份内联实现', () => {
+    /* 「一枚记号 + 一个词 + 一个数」曾经在两处各写了一遍（清单页的日分段与日程页的节头）——
+       同一个毛病因此在两个页面上长得不一样，而修一处不修另一处。现在两处都读那一枚元件，
+       这条闸门看的是**两边都导入了它、而且都没有再内联一份标记**。 */
+    const pages = ['src/client/item/pages/schedule.tsx', 'src/client/item/item-table.tsx']
+    for (const path of pages) {
+      const source = readFileSync(join(repoRoot, path), 'utf8')
+      expect(source, `${path} 没有导入那一枚组头`).toContain('group-head.tsx')
+      // 一份内联的组头：一个图形后面跟着 `<b>` 与 `<i>`。
+      const inline = /<svg[\s\S]{0,300}<b>[\s\S]{0,160}<i/.test(source)
+      expect(inline, `${path} 里又内联了一份「记号 + 词 + 数」`).toBe(false)
+    }
+    // 而这把尺子咬得动：把同一段标记喂给它，它必须报。
+    const planted = '<div className={css.itemDayHead}><svg viewBox="0 0 13 13" width="13"></svg><b>{word}</b><i>{n}</i></div>'
+    expect(/<svg[\s\S]{0,300}<b>[\s\S]{0,160}<i/.test(planted), '内联的组头被放过了').toBe(true)
+  })
+
+  it('光学补偿只有一个出口，而那个数只在令牌层声明一次', () => {
+    /* **这一族付过的账。** 同一个毛病（中文的墨在它自己的行盒里低半格）在这张表里曾经有
+       四套做法：逐个子元素垫 `translateY`、一族底衬 + 给某一档单开 3px 与 4px、
+       `align-items: baseline` 与 `center` 各来一处。结果不是「某一处差半像素」，是
+       **同一排控件里三种垂直位置**，而屏上没有任何一处说明为什么。
+       现在的机制只有一个：一条规则读一个令牌。这条闸门数的是出口数。 */
+    const lifts = [...css.matchAll(/padding-block-end\s*:\s*var\(--item-ink-lift\)/g)].length
+    expect(lifts, '光学补偿出现在不止一处——这一族又长出了第二个答案').toBe(1)
+    expect(declaredOf(css, 'itemRoot', '--item-ink-lift').length,
+      '那个数没有在令牌层声明，于是所有读它的规则都静默失效（computed 为空、声明被丢掉）').toBe(1)
+  })
+
+  it('而这把尺子咬得动：多一处补偿、少一处声明，它都报', () => {
+    const reads = (text: string): number => [...text.matchAll(/padding-block-end\s*:\s*var\(--item-ink-lift\)/g)].length
+    expect(reads('.itemPill { padding-block-end: var(--item-ink-lift); }')).toBe(1)
+    expect(reads('.itemA { padding-block-end: var(--item-ink-lift); }\n.itemB { padding-block-end: var(--item-ink-lift); }')).toBe(2)
+    expect(declaredOf('.itemRoot { --item-ink-lift: 1px; }', 'itemRoot', '--item-ink-lift')).toHaveLength(1)
+    expect(declaredOf('.itemRoot { color: red; }', 'itemRoot', '--item-ink-lift')).toHaveLength(0)
+  })
+
+  it('一族里没有人再给自己垫位移', () => {
+    /* 位移（`transform`）只改**画**的位置，不改版面——而版面才是量得出的那一层：
+       `Range.getClientRects()` 报的是排版位置，于是「量出来是 0」与「看着偏半格」可以同时
+       成立（这一轮就是这么发现的：位移那一版量出来是 0，屏幕上却一个像素没动）。这一族
+       曾经靠 `translateY` 逐处补——那是一个数说不了那一族的时候。
+       **范围就是那一族**（读 `--item-ink-lift` 的那条规则里的选择器）：行上那簇记号
+       （步数 / 卡 / 日期）是**另一族**，它们旁边那段字不属于这一族，所以它们自己那一格
+       位移不在这条闸门里管——一条管得过宽的规则会逼着人改对的东西来迁就它。 */
+    const lift = declarationRules(css).find(rule => /var\(--item-ink-lift\)/.test(rule.body))
+    expect(lift, '那条一族规则不见了').not.toBeUndefined()
+    const members = (lift?.selector ?? '').split(',').map(one => one.trim().replace(/^\./, '')).filter(one => one !== '')
+    expect(members.length, '那一族里一个成员都没有，这条闸门在空转').toBeGreaterThan(4)
+    for (const name of members) {
+      expect(rulesOf(css, name).join('\n'), `.${name} 自己垫了位移——这一族又有了第二个答案`)
+        .not.toMatch(/translateY/)
+    }
+  })
+
+  it('几块字装在一个按基线对齐的盒子里', () => {
+    /* 一枚药丸里常常有两种字（中文的词、拉丁的数字），两套字体度量不同：容器按**盒子**
+       居中时，两串字的基线差着将近一个像素——读者报的「『1 条』没有跟『今天』对齐」就是它。
+       按基线对齐把这件事变成构造性质：换字体、换字号都一样。 */
+    for (const name of ['itemGroupText', 'itemRailText', 'itemEmptyGroup']) {
+      expect(rulesOf(css, name).join('\n'), `.${name} 没有按基线对齐，它里面几块字的基线要靠运气`)
+        .toMatch(/align-items:\s*baseline/)
+    }
+  })
+
+  it('说明平时不显示，而揭示它的只有两个钩子', () => {
+    // 三句话常驻在屏上就是一面文字墙；而收起来必须有一个**看得见**的入口（触屏没有悬停，
+    // 必要的信息不许只挂在 `title=` 上）。所以平时 `display: none`，开着由两个属性钩子说：
+    // `data-note`（按下/聚焦，真开）与 `data-note-hover`（指着那件东西时偷看）。
+    expect(rulesOf(css, 'itemNote').join('\n'), '.itemNote 平时是显示着的——文字墙又回来了')
+      .toMatch(/display:\s*none/)
+    const reveals = [...css.matchAll(/\[data-note(?:-hover)?\][^{]*\{[^}]*display:\s*block/g)].length
+    expect(reveals, '揭示说明的钩子不止两个（或者一个都没有）——多一个就是多一套副路径').toBe(2)
+  })
+})
 
 describe('the type scale is a scale, and not a pile of near-identical sizes', () => {
   const css = panelCss()
   /* **每一块内容的名字，一处定义、两条判据读**：这条是「它声明了自己的 margin 与字号
      吗」，下面那条探针是「这份读者咬不咬得动」。名单各写一份，就是探针在测另一个名字
      ——而它会永远绿。 */
-  const HEADINGS = ['itemAgendaHead'] as const
+  const HEADINGS = ['itemGroupHead'] as const
 
   it('the panel uses a closed set of sizes, and each size carries only its own weights', () => {
     // NEAR-MISSING SIZES ARE THE THING. A 12px label against a 13px body and a
@@ -2156,19 +2255,19 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       }
       return { headings: [...headings], unanchoredWeights: [...unanchoredWeights] }
     }
-    /* 种在 `tests/` 里的是**同一份名单**上的名字，而不是另抄一份：名单换名字（上一版那
-       两个类合并成 `.itemAgendaHead`）而这里不改，探针就变成了「一个不可能匹配的名字」，
+    /* 种在 `tests/` 里的是**同一份名单**上的名字，而不是另抄一份：名单换了名字而这里
+       不改，探针就变成了「一个不可能匹配的名字」，
        于是它永远咬不动——而那正是这一条自测存在的理由。 */
     const planted = reads([
-      '.itemAgendaHead { font-size: 14px; font-weight: 600; }',
-      '.itemAgendaHead { font-weight: 600; margin: 8px 0; }',
-      '.itemAgendaHead { font-weight: 600; }',
+      '.itemGroupHead { font-size: 14px; font-weight: 600; }',
+      '.itemGroupHead { font-weight: 600; margin: 8px 0; }',
+      '.itemGroupHead { font-weight: 600; }',
       '.itemTopBarLabel { font-weight: 500; }',
       '.itemRailCaption { font-size: 12px; margin: 4px 0; }',
       '.itemRecentRowMain { font-family: inherit; font-weight: 400; }',
     ].join('\n'))
     expect(planted.headings, 'the probe did not bite — a heading inheriting the UA is invisible to this reader').toEqual([
-      '.itemAgendaHead',
+      '.itemGroupHead',
     ])
     // `.itemRecentRowMain` is in the plant ON PURPOSE: it is a `<button>` writing
     // 400 to undo the platform's own weight, which renders identically to saying
@@ -2176,8 +2275,8 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // whole content is 「nothing», and that size would then be a second copy of
     // one declared elsewhere.
     expect(planted.unanchoredWeights, 'the probe did not bite — a weight that invents a tone is invisible to this reader')
-      .toEqual(['.itemAgendaHead', '.itemTopBarLabel'])
-    const clean = reads('.itemAgendaHead { margin: 0; font-size: 14px; font-weight: 600; }')
+      .toEqual(['.itemGroupHead', '.itemTopBarLabel'])
+    const clean = reads('.itemGroupHead { margin: 0; font-size: 14px; font-weight: 600; }')
     expect(clean.headings, 'the reader reports a correct heading as broken — its gate would get deleted, and the defect would come back with it').toEqual([])
     expect(clean.unanchoredWeights, 'the reader reports a correctly anchored weight as broken').toEqual([])
   })
