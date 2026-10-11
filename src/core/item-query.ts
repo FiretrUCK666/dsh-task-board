@@ -77,7 +77,7 @@ export const TOKEN_BY_PRIORITY: ReadonlyMap<ItemPriority, string> = new Map(
 export type ItemFlag =
   /** A hard deadline has passed. */
   | 'hardOverdue'
-  /** A wanted-by date has passed and nothing was done about it. */
+  /** A plan date has passed and nothing was done about it. */
   | 'behind'
   /**
    * EITHER kind of lateness.
@@ -97,18 +97,18 @@ export type ItemFlag =
    * 有日子，而且那个日子**还没到**（今天也算没到）。
    *
    * 它存在的理由是读者对左栏那一组的一句问话：「它这个日期的逻辑是什么呢？我有点看不懂。」
-   * 那一组当时是「已超期 · 迟迟没动 · 没定日期」——**三个行里有一个不是日期问题**（多久没人
+   * 那一组当时是「日子已过 · 放着没动 · 没定日期」——**三个行里有一个不是日期问题**（多久没人
    * 碰），而剩下两个也没把日期说完：一份未来到期的行**落在这一组之外**，于是「按日子」这四个
    * 字在屏上并不成立。
    *
-   * 有了这一枚，这一组才真的在按日子分：**已经过期 / 还没到 / 没定日期**——一条行里只要
+   * 有了这一枚，这一组才真的在按日子分：**已经过期 / 日子未到 / 没定日期**——一条行里只要
    * 分过流（不是刚记下的那句），它的日子就必定在过去、在未来、或者根本没有，**落进且只落进
    * 一格**，三个数加得起来。而这一组装的是日期本身那件事的行，所以「多久没人碰」在它自己
    * 那一组里（`item-rail.ts` 的 `idle`）。
    *
    * 两种「不在任何一格」的行，都是**故意的**，且各有各的读者：刚记下的一句（`isInboxItem`）
    * 还没到能谈日子的阶段；三个日期互相矛盾的那一条（`contradiction`）**两边都有日子**，
-   * 它自己有那句话去说（「不早于的日子落在希望在后面」），把它们硬塞进「已经过期」会让那个
+   * 它自己有那句话去说（「开始的日子落在计划后面」），把它们硬塞进「已经过期」会让那个
    * 词变成一句不完整的话。
    */
   | 'ahead'
@@ -395,7 +395,7 @@ export const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) =
     && (probe.posture.kind === 'hardOverdue' || probe.posture.kind === 'behind'),
   stale: probe => probe.stale !== undefined && probe.stale >= probe.ctx.staleDays,
   undated: probe => isLiveItem(probe.item) && !isInboxItem(probe.item) && probe.posture.kind === 'none',
-  /* **一张穷尽的表，不是一串 `!==`。** 「还没到」是「日子在未来」的那几档，而它们的名单就是
+  /* **一张穷尽的表，不是一串 `!==`。** 「日子未到」是「日子在未来」的那几档，而它们的名单就是
      `DatePosture` 自己的成员：写成一个闭合的 `Record` 之后，**下一版加一档日子，这里会编译
      失败**——而一串手写的 `kind !== 'hardOverdue' && kind !== 'behind'` 会安静地把新那一档
      算进「已经过期」里。 */
@@ -406,7 +406,7 @@ export const ITEM_FLAG_TESTS: Readonly<Record<ItemFlag, (probe: ItemFlagProbe) =
 }
 
 /**
- * 哪几档日子算「还没到」。它是**对 `DatePosture` 的穷尽看法**：三档晚了的（`hardOverdue` /
+ * 哪几档日子算「日子未到」。它是**对 `DatePosture` 的穷尽看法**：三档晚了的（`hardOverdue` /
  * `behind` / `contradiction`——最后那一档两边都有日子，另有自己的说法）为 `false`，其余为
  * `true`。加一档新的日子种类时，这份表编译不过，而那就是它存在的全部意义。
  */

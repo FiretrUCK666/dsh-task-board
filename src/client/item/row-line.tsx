@@ -56,14 +56,14 @@ type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
  * One reading, not two: printing the hard deadline's reading at the end of
  * the sentence AND the plan's reading on the line below makes the reader work
  * out which number is about which date. The plan's reading is not lost — it is on
- * the date axis in the expanded row, in the column that already says 「希望在」.
+ * the date axis in the expanded row, in the column that already says 「计划」.
  * **一个事实在一行里说一次，在它自己的那一栏里说一次。**
  *
  * **THE SHAPE IS `<日期名> · <读法>`, IN EVERY BRANCH.** Any other shape says
  * less than the reading exists to say: a branch naming nothing (「就是今天」,
  * 「10月16日」) leaves the reader unable to tell whether 「10月16日」 is the
- * deadline, the wanted-by date or the day the row may start. Three branches naming
- * their date (「不晚于超期 9 天」), one that is a whole sentence about itself and one
+ * deadline, the plan date or the start date. Three branches naming
+ * their date (「截止超期 9 天」), one that is a whole sentence about itself and one
  * that prints nothing at all are the same defect in other directions.
  * **一个位置的形状只该有一种**；
  * 一种形状的六个成员看起来才像同一件事的六种情形。
@@ -74,7 +74,7 @@ type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
  * date cannot be written without moving the branch.
  *
  * The tone rides the READING, never the name — the name is the row's own field
- * label and stays in the meta ink. A red field name would make 「不晚于」 itself
+ * label and stays in the meta ink. A red field name would make 「截止」 itself
  * alarming on every row that has one.
  * @param view - the row's projection.
  * @param english - whether the reader's language is English.
@@ -85,16 +85,16 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
   /* A DATE CARRIES ITS FIELD'S NAME; A VERDICT DOES NOT.
    *
    * A bare date says nothing about whose it is — 「10月15日」 could be the deadline,
-   * the wanted-by date or the day the row may start, and that is the one thing the
+   * the plan date or the start date, and that is the one thing the
    * reading exists to say. So the three date branches name their field.
    *
    * A verdict already names itself by its VERB: 「超期」 is the hard deadline (the
    * only one a reader cannot re-negotiate alone) and 「落后」 is the plan's own date.
    * Prefixing the field onto a word that already says which date it is gives
-   * 「不晚于 · 超期 9 天」 — one sentence saying one thing twice, which is what the
+   * 「截止 · 超期 9 天」 — one sentence saying one thing twice, which is what the
    * shape rule in this panel exists to prevent.
    *
-   * The separator is a SPACE, not a dot: 「不早于 10月5日」 reads as a phrase, and
+   * The separator is a SPACE, not a dot: 「开始 10月5日」 reads as a phrase, and
    * the row's meta line already spends the dot on 「#1 · 1/3」. Two separators in one
    * 13px line is one separator too many. */
   const about = (field: 'startsAfter' | 'dueAt' | 'hardDueAt', reading: string): string =>

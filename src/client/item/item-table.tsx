@@ -94,7 +94,7 @@ export function ItemTable(props: ItemTableProps) {
     <div className={css.itemTable}>
       {/* NO HEAD. There is no table here, so there is nothing for a head
           * to name: the row is a bead, a sentence, its tags and one control, and
-          * 「状态 / 标题 / 优先级 / 希望在 / 标签」 names a shape this surface does not
+          * 「状态 / 标题 / 优先级 / 计划 / 标签」 names a shape this surface does not
           * have. A head rendered from its own `COLUMNS` list would mean touching a
           * component four other files reach into — a cost, not a reason to keep it.
           * **A rule that is kept because removing it is inconvenient is a rule that

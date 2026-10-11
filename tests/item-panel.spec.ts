@@ -291,7 +291,7 @@ describe('a row is legible at rest', () => {
     // 去那一栏。
     const gated = item({ startsAfter: T0 + 5 * DAY, title: 'Gated' })
     const html = renderPanel([gated], { openRow: gated.id, now: T0 })
-    expect(html, 'the gate reading is not on screen even with the row open').toContain('不早于')
+    expect(html, 'the gate reading is not on screen even with the row open').toContain('开始')
   })
 })
 describe('the hand-off is one menu entry, and the row without a target says why', () => {

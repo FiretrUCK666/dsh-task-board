@@ -5,8 +5,8 @@
  * WHY THIS IS ITS OWN MODULE. The checklist's other derivations are about rows
  * (what they are called, which page they sit on, how they group); these three
  * fields are about PROMISES, and they are the only place in the product where
- * two fields that look alike mean different things. 希望在 slipping is a plan that
- * moved; 不晚于 slipping is a commitment somebody else is waiting on. Rendering
+ * two fields that look alike mean different things. A slipped 计划 is a plan that
+ * moved; a slipped 截止 is a commitment somebody else is waiting on. Rendering
  * both as the same red is the defect every mainstream task app is criticised
  * for, and once a reader sees that, the only rational move they have is to stop
  * setting dates at all. So the vocabulary for that distinction is stated once,
@@ -38,8 +38,8 @@ export declare const HARD_SOON_DAYS = 7;
  */
 export type DatePosture = 
 /**
- * The three dates cannot all be true: a start date after the wanted-by date,
- * or a wanted-by date after the hard deadline.
+ * The three dates cannot all be true: a start date after the plan date (计划),
+ * or a plan date after the deadline.
  *
  * This branch comes FIRST, before every other verdict, because a row that
  * contradicts itself has no honest "how late is it" answer and picking one
@@ -80,18 +80,18 @@ export type DatePosture =
     readonly at: number;
     readonly days: number;
 }
-/** The wanted-by date is today. */
+/** The plan date is today. */
  | {
     readonly kind: 'dueToday';
     readonly at: number;
 }
-/** The wanted-by date passed: behind plan, which is not the same as overdue. */
+/** The plan date passed: behind plan, which is not the same as overdue. */
  | {
     readonly kind: 'behind';
     readonly at: number;
     readonly days: number;
 }
-/** The wanted-by date is ahead. */
+/** The plan date is ahead. */
  | {
     readonly kind: 'upcoming';
     readonly at: number;
@@ -128,7 +128,7 @@ export declare function sameLocalDay(a: number, b: number): boolean;
 /**
  * The soft date, read apart from the verdict.
  *
- * Kept separate because a row with a hard deadline AND a wanted-by date is the
+ * Kept separate because a row with a hard deadline AND a plan date is the
  * normal shape for real work, and collapsing the two into one chip is what
  * makes the row say only half of what the reader set.
  * @param item - the row.

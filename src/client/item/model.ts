@@ -200,7 +200,7 @@ export function parseDateExpression(text: string, now: number): number | undefin
   const today = startOfDay(now)
   const word = text.trim()
     .replace(/^@/, '')
-    .replace(/^(?:不早于|不晚于|希望(?:在)?|早|晚|not before|wanted by|deadline)\s*/i, '')
+    .replace(/^(?:开始|计划|截止|早|晚|starts?|target|deadline)\s*/i, '')
     .toLowerCase()
   if (word === '') return undefined
   const offset = NEAR_DAYS[word]

@@ -82,14 +82,14 @@ export interface ItemRailGroup {
  *
  * So it shows the whole. Which date is late is still said, in the two places that
  * can say it without ambiguity: the row's own tail prints the verdict on its own
- * （「超期 15 天」 is the hard one, 「落后 18 天」 the wish), and the detail's
+ * （「超期 15 天」 is the hard one, 「落后 18 天」 the plan), and the detail's
  * date axis prints all three dates with their own readings.
  *
- * `gated` is gone for a different reason: it means 「还没到能动的日子」, which is
+ * `gated` is gone for a different reason: it means 「日子未到，还动不了」, which is
  * **good news**, and a rail is read when something is wrong. It has a page of its
  * own (日程) and a token (`has:gated`) — a state nobody can reach from here is a
  * state the rail should not be carrying. `ahead` is the row that DOES answer
- * 「还没到」, and it is about every date a row owns rather than about one field.
+ * 「日子未到」, and it is about every date a row owns rather than about one field.
  *
  * ── WHY THE ORDER PUTS THE TWO DATE ROWS FIRST, AND WHAT THE GROUP IS CALLED ──
  *
@@ -98,7 +98,7 @@ export interface ItemRailGroup {
  * 而剩下两行也没把日期说完：一份**未来到期**的行落在这一组之外，于是「按日子」这四个字
  * 在屏上并不成立。
  *
- * 所以这一组现在是**真的按日子分**：`overdue`（已经过期）· `ahead`（还没到）·
+ * 所以这一组现在是**真的按日子分**：`overdue`（已经过期）· `ahead`（日子未到）·
  * `undated`（没定日期）——一条分过流的行，它的日子在过去、在未来、或者根本没有，落进且只
  * 落进一格，三个数加得起来（两处例外写在那枚 flag 自己的注释里：刚记下的一句还没到谈日子的
  * 阶段，三个日期互相矛盾的那一条两边都有日子、另有自己的说法）。`stale` 搬去它自己那一组，
@@ -113,7 +113,7 @@ declare const RAIL_IDLE_FLAGS: readonly ["stale"];
  * 搜索框下面那些芯片（`facets.ts` 的日期那一栏）必须画得出左栏按下的**每一个**筛子。左栏
  * 按的是 `has:overdue / ahead / undated / stale`，芯片那一栏如果自己写一套
  * `has:hardOverdue / behind / undated / gated`，两套词汇就只有「没定日期」重合——于是读者按
- * 「已超期」「还没到」「迟迟没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
+ * 「日子已过」「日子未到」「放着没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
  * 东西说得出它开着，也点不掉它。这正是硬性规范 17 说的那笔债：同一件事有两处写法，而错的
  * 那一处永远不会报错。
  */

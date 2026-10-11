@@ -21,7 +21,7 @@
  *    (`#12`). It is minted by a monotonic counter ON THE DOCUMENT and is never
  *    writable, so a replica cannot renumber the list under the user's feet — and
  *    no UUID ever has to leave the host to be named in a sentence.
- *  - The three times are three fields, never one. 不早于 / 希望在 / 不晚于 are
+ *  - The three times are three fields, never one. 开始 / 计划 / 截止 are
  *    different promises; collapsing them is how a soft deadline turns into a
  *    missed one.
  *
@@ -106,11 +106,11 @@ export interface ItemRecord {
     status: ItemStatus;
     priority: ItemPriority;
     tags: string[];
-    /** 不早于 — the earliest moment this may be started. */
+    /** 开始 — the earliest moment this may be started. */
     startsAfter: number | undefined;
-    /** 希望在 — when it is wanted. */
+    /** 计划 — when it is planned for. */
     dueAt: number | undefined;
-    /** 不晚于 — the one that does not move. */
+    /** 截止 — the one that does not move. */
     hardDueAt: number | undefined;
     /** The board card this item belongs to, if any (zero or one, never many). */
     taskId: string | undefined;
@@ -239,15 +239,15 @@ export declare const ITEM_FIELDS: {
     };
     readonly startsAfter: {
         readonly access: "writable";
-        readonly why: "不早于，与希望在、不晚于是三件不同的事";
+        readonly why: "开始，与计划、截止是三件不同的事";
     };
     readonly dueAt: {
         readonly access: "writable";
-        readonly why: "希望的日子，与不晚于语义不同，不挤成一列";
+        readonly why: "计划的日子，与截止语义不同，不挤成一列";
     };
     readonly hardDueAt: {
         readonly access: "writable";
-        readonly why: "不晚于，唯一不会顺延的那个";
+        readonly why: "截止，唯一不会顺延的那个";
     };
     readonly taskId: {
         readonly access: "writable";
@@ -315,7 +315,7 @@ export interface ItemDateConflict {
  * The three dates, checked against each other.
  *
  * The order is not a convention: `startsAfter` is when the work may begin, so a
- * start date after the wanted-by date is a promise the row cannot keep, and
+ * start date after the plan date is a promise the row cannot keep, and
  * `hardDueAt` is the one date that does not move, so a softer date past it is a
  * promise the reader has already broken. A row holding an impossible pair
  * renders as a schedule that cannot be believed, and nothing about it looks

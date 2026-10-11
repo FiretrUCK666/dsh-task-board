@@ -1367,7 +1367,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       onMark={status => markHeld(status)}
       onPriority={priority => applyToHeld({ priority })}
       onDueToday={() => {
-        // 「设希望在」 means TODAY, stated as a day: a bare timestamp in a field
+        // 「排在今天」 means TODAY, stated as a day: a bare timestamp in a field
         // nobody opened is a number they cannot check, and the one gesture the
         // name promises is the one they can undo by reading it back.
         //
@@ -1656,7 +1656,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * text by hand left it marked too. A highlight that is remembered can claim a
    * filter that is not on; one derived from the query cannot.
    *
-   * **它是一组，不是一个。** 筛子是**叠加**的：按「已超期」再按「紧急」，两个筛子同时开着、
+   * **它是一组，不是一个。** 筛子是**叠加**的：按「日子已过」再按「紧急」，两个筛子同时开着、
    * 列表按两条一起筛。而这一支若在遇到**第一个**匹配的行时就 `return`，就是三枚芯片亮着、
    * 左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。凡是叠加上去的状态，显示的
    * 那一侧就必须是集合（硬性规范 17 的同一条道理：一个事实只有一种说法，而这里的说法是

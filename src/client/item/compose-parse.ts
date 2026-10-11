@@ -232,18 +232,18 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
       if (char === '@') {
         /* **三个日子各写各的，一个字段只认一次。**
          *
-         * 词表与字段名是同一套：裸 `@` 就是「希望在」（最常写的那个），`@不早于` 与
-         * `@不晚于` 各写另外两个。各还有一个单字短写（`@早` / `@晚`）——快记是打字的活儿，
+         * 词表与字段名是同一套：裸 `@` 就是「计划」（最常写的那个），`@开始` 与
+         * `@截止` 各写另外两个。各还有一个单字短写（`@早` / `@晚`）——快记是打字的活儿，
          * 而那个字就是词的开头，学一次就记得住。
          *
          * 同一个字段写了第二次**不静默覆盖**：那串字不变成芯片，这一份解析把它带回
          * `refused`，由输入框下面一句话说清为什么（见 {@link ComposerRefusal}）。 */
-        const word = /^@((?:不早于|不晚于|希望(?:在)?|早|晚)?\s*\S+)/.exec(rest.slice(i))?.[1] ?? ''
-        const named = /^(不早于|不晚于|希望(?:在)?|早|晚)\s*(\S*)/.exec(word)
+        const word = /^@((?:开始|计划|截止|早|晚)?\s*\S+)/.exec(rest.slice(i))?.[1] ?? ''
+        const named = /^(开始|计划|截止|早|晚)\s*(\S*)/.exec(word)
         const qualifier = named?.[1]
-        const kind: ComposerTokenKind = qualifier === '不晚于' || qualifier === '晚'
+        const kind: ComposerTokenKind = qualifier === '截止' || qualifier === '晚'
           ? 'hard'
-          : qualifier === '不早于' || qualifier === '早' ? 'earliest' : 'due'
+          : qualifier === '开始' || qualifier === '早' ? 'earliest' : 'due'
         const dateWord = named === null ? word : (named[2] as string)
         const at0 = parseDateExpression(dateWord, now)
         if (at0 !== undefined) {

@@ -1525,7 +1525,7 @@ describe('the card chip is a door when the wiring gives one, and a reading when 
 })
 
 describe('every filter the rail can press is a chip you can see and remove', () => {
-  /* 读者报过的那一类缺陷（两处根因、同一句话）：「点击『已超期』和『还没到』，左边都显示选中
+  /* 读者报过的那一类缺陷（两处根因、同一句话）：「点击『日子已过』和『日子未到』，左边都显示选中
      了，但下面没有出现对应的胶囊」。左栏按下的是 `has:overdue / ahead / undated / stale`，
      而芯片那张手写的表里写的是 `has:hardOverdue / behind / undated / gated`——**两套词汇只有
      一枚重合**，于是另外三个筛子开着：列表筛了，屏上没有任何东西说得出它开着，也点不掉它。 */
@@ -1550,7 +1550,7 @@ describe('every filter the rail can press is a chip you can see and remove', () 
 })
 
 describe('the rail marks EVERY filter that is on, not just the first', () => {
-  /* 筛子是叠加的：按「已超期」再按「紧急」，两条一起筛。左栏要标的是**开着的每一个
+  /* 筛子是叠加的：按「日子已过」再按「紧急」，两条一起筛。左栏要标的是**开着的每一个
      筛子**，有一枚开着却不亮，读者看到的就是「我按了三个，它只认一个」。
    *
    * **查询只能从搜索框里写进去**（`readViewPrefs` 故意不恢复搜索文本，那是刻意的产品行为），
@@ -1936,7 +1936,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     // printing their own numbers beside it.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const overdue = railRow(panel.surface, '已超期')
+      const overdue = railRow(panel.surface, '日子已过')
       const undated = railRow(panel.surface, '没定日期')
       click(overdue)
       expect(shown(panel.surface)).toBe(promised(overdue))
@@ -1966,7 +1966,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     // 「you are here」, and deleting the text by hand left it marked too.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const row = railRow(panel.surface, '已超期')
+      const row = railRow(panel.surface, '日子已过')
       click(row)
       expect(row.getAttribute('aria-current'), 'the row the reader pressed is not marked current').toBe('true')
       click(row)
@@ -1995,7 +1995,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       click(all)
       // The agenda's own bucket names are what the list page never prints, so their
       // absence is the page having actually changed rather than a filter moving.
-      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('不早于还没到')
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('开始未到')
       expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
     } finally {
       panel.dispose()
@@ -2015,10 +2015,10 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('不早于还没到')
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('开始未到')
       const schedule = railRow(panel.surface, '日程')
       click(schedule)
-      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('不早于还没到')
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('开始未到')
       expect(schedule.getAttribute('aria-current')).toBe('true')
     } finally {
       panel.dispose()
@@ -3465,22 +3465,22 @@ describe('一句话认出来的东西，全部落到各自的框里', () => {
 
   it('三个日期各到各的框，存下去三样都在', () => {
     // 这一条钉的是一次**静默丢失**：这一行能解析出三个日期，而新建纸的保存读的是它自己的
-    // 字段——回填只覆盖了「希望在」那一个，另外两个被解析出来之后直接丢掉，屏上没有任何
+    // 字段——回填只覆盖了「计划」那一个，另外两个被解析出来之后直接丢掉，屏上没有任何
     // 东西说这件事。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      writeLine(panel, '大活儿 @不早于 10/25 @10/26 @不晚于 10/27')
+      writeLine(panel, '大活儿 @开始 10/25 @10/26 @截止 10/27')
       const values = [...panel.surface.querySelectorAll('input')].map(node => node.value)
-      expect(values, '「不早于」没有回填到它的框里').toContain('2026-10-25')
-      expect(values, '「希望在」没有回填到它的框里').toContain('2026-10-26')
-      expect(values, '「不晚于」没有回填到它的框里').toContain('2026-10-27')
+      expect(values, '「开始」没有回填到它的框里').toContain('2026-10-25')
+      expect(values, '「计划」没有回填到它的框里').toContain('2026-10-26')
+      expect(values, '「截止」没有回填到它的框里').toContain('2026-10-27')
 
       save(panel)
       const rows = panel.lastWrite()
       const row = rows[rows.length - 1]
-      expect(row?.startsAfter, '存下去的行缺了「不早于」').toBe(new Date(2026, 9, 25).getTime())
-      expect(row?.dueAt, '存下去的行缺了「希望在」').toBe(new Date(2026, 9, 26).getTime())
-      expect(row?.hardDueAt, '存下去的行缺了「不晚于」').toBe(new Date(2026, 9, 27).getTime())
+      expect(row?.startsAfter, '存下去的行缺了「开始」').toBe(new Date(2026, 9, 25).getTime())
+      expect(row?.dueAt, '存下去的行缺了「计划」').toBe(new Date(2026, 9, 26).getTime())
+      expect(row?.hardDueAt, '存下去的行缺了「截止」').toBe(new Date(2026, 9, 27).getTime())
     } finally {
       panel.dispose()
     }
@@ -4206,7 +4206,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
-      /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 迟迟没动）。
+      /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 放着没动）。
        *
        * 加它的理由：芯片的几何一直没有被真浏览器量过，而读者刚点出来的缺陷正是几何——
        * 「它右边那个叉没有居中好，感觉有点偏」。同时这一屏也把「按下的每一个筛子都有芯片」
@@ -4398,8 +4398,8 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         click(open)
         const title = [...panel.surface.querySelectorAll('input')].find(node => node.getAttribute('aria-label') === '标题')
         typeInto(title, '读不懂的日子')
-        const due = [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith('希望在'))
-        if (due === undefined) throw new Error('the sheet has no field for 希望在')
+        const due = [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith('计划'))
+        if (due === undefined) throw new Error('the sheet has no field for 计划')
         typeInto(due, '下个月中旬')
         const save = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '存下这一条')
         click(save)
@@ -4458,7 +4458,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         click(open)
         const box = panel.surface.querySelector('input[class*="itemInput"]') as HTMLInputElement | null
         if (box === null) throw new Error('the sheet drew no grammar line')
-        typeInto(box, '大活儿 @不早于 10/25 @10/26 @不晚于 10/27 @10/28')
+        typeInto(box, '大活儿 @开始 10/25 @10/26 @截止 10/27 @10/28')
         panel.settle()
       } catch (error) {
         panel.dispose()
@@ -5149,8 +5149,8 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const save = openSheet(panel, '读不懂的日子')
-      const due = dateField(panel, '希望在')
-      if (due === undefined) throw new Error('the sheet has no field for 希望在')
+      const due = dateField(panel, '计划')
+      if (due === undefined) throw new Error('the sheet has no field for 计划')
       typeInto(due, '下个月中旬')
       const before = panel.lastWrite().length
       click(save)
@@ -5171,8 +5171,8 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const save = openSheet(panel, '明天要做的事')
-      const due = dateField(panel, '希望在')
-      if (due === undefined) throw new Error('the sheet has no field for 希望在')
+      const due = dateField(panel, '计划')
+      if (due === undefined) throw new Error('the sheet has no field for 计划')
       typeInto(due, '明天')
       click(save)
       const written = panel.lastWrite()

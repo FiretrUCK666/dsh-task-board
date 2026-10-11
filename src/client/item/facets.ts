@@ -100,8 +100,8 @@ export const ITEM_FACETS: readonly { readonly id: ItemFacetId; readonly label: T
     label: 'item.facet.date',
     /* **日期那一栏的取值 = 左栏能按下的那几个筛子**，不是另写一份。
      *
-     * 各写一份的话，两套词汇可能只有「没定日期」重合——读者按「已超期」「还没到」，
-     * 「迟迟没动」，而**列表筛了、芯片一个都不出现**（读的就是这份表）：筛子开着却没有
+     * 各写一份的话，两套词汇可能只有「没定日期」重合——读者按「日子已过」「日子未到」，
+     * 「放着没动」，而**列表筛了、芯片一个都不出现**（读的就是这份表）：筛子开着却没有
      * 东西说得出它、也点不掉它。所以两边读同一份（`ITEM_RAIL_*_FLAGS`），加一个筛子
      * 只动左栏那一处。 */
     values: [...ITEM_RAIL_DATE_FLAGS, ...ITEM_RAIL_IDLE_FLAGS].map(flag => ({

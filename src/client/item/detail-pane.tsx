@@ -262,13 +262,13 @@ export function ItemDetail(props: ItemDetailProps) {
           </button>
         )
       })
-  /** 「这一条还没到能动的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
+  /** 「这一条还没到开始的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
   const gated = view.posture.kind === 'gated'
 /**
    * THE TWO VERDICTS, one per date, read from the model's own projection.
    *
    * The row's tail speaks only for the HARD date, because that is the one that
-   * turns a row red. So 希望在's own verdict — 「落后 N 天」 — had never been printed
+   * turns a row red. So 计划's own verdict — 「落后 N 天」 — had never been printed
    * anywhere on this panel, and the date axis showed a bare date where a verdict
    * belongs. Two readings now, each attached to the date it judges; neither is
    * borrowed from the other, which is what makes 「超期」 one word meaning one thing.
@@ -554,12 +554,12 @@ export function ItemDetail(props: ItemDetailProps) {
           </div>
 
 {/* 三个日期的读法**各写一句**，不混成一句「逾期了」：最早的只是现在还不能
-              动它；希望在是你想要它什么时候好；不晚于是不会顺延的那一个，也是唯一会让
+              动它；计划是你想要它什么时候好；截止是不会顺延的那一个，也是唯一会让
               这一行变红的那一个。软期限逾期**不是红**——那是关于一个计划的实话。
               *
               * **读法跟在它judge的那个日期后面**，不是另起一行、也不是省掉。行上
-              * 那一段读法只说不晚于（唯一会让这一行变红的那一个），所以计划的落后
-              * 在这里才第一次被说出来——而它属于**希望在**那一行，不是属于不晚于。 */}
+              * 那一段读法只说截止（唯一会让这一行变红的那一个），所以计划的落后
+              * 在这里才第一次被说出来——而它属于**计划**那一行，不是属于截止。 */}
           <ol className={css.itemDateAxis}>
             <DateLine
               keyName='startsAfter'
@@ -746,7 +746,7 @@ export function ItemDetail(props: ItemDetailProps) {
 /**
  * ONE DATE, AND WHAT IT MEANS: a label, the value, and the verdict.
  *
- * Three dates, three SEPARATE verdicts, because a missed WANTED-BY date is a fact
+ * Three dates, three SEPARATE verdicts, because a missed PLAN date is a fact
  * about a plan rather than an alarm — so it reads in neutral ink and says 「落后」,
  * and only the hard one is red. Collapsing them into one 「逾期了」 is exactly how a
  * soft deadline quietly becomes a hard one without anybody deciding that.

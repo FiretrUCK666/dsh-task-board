@@ -152,36 +152,36 @@ describe('dates', () => {
 })
 
 describe('三个日子各写各的，一行里可以写全三个', () => {
-  it('裸 @ 就是「希望在」，不是另外两个', () => {
+  it('裸 @ 就是「计划」，不是另外两个', () => {
     const result = parse('@12/24')
     expect(result.dueAt).toBe(new Date(2026, 11, 24).getTime())
     expect(result.hardDueAt).toBeUndefined()
     expect(result.startsAfter).toBeUndefined()
   })
 
-  it('@不晚于 写的是最后那条期限，不是希望的那个日子', () => {
-    const result = parse('@不晚于 12/24')
+  it('@截止 写的是最后那条期限，不是计划的那个日子', () => {
+    const result = parse('@截止 12/24')
     expect(result.hardDueAt).toBe(new Date(2026, 11, 24).getTime())
     expect(result.dueAt).toBeUndefined()
   })
 
-  it('@不早于 写的是那扇门，不是希望的那个日子；单字 @早 / @晚 是同一件事', () => {
-    const gate = parse('@不早于 12/24')
+  it('@开始 写的是那扇门，不是计划的那个日子；单字 @早 / @晚 是同一件事', () => {
+    const gate = parse('@开始 12/24')
     expect(gate.startsAfter).toBe(new Date(2026, 11, 24).getTime())
     expect(gate.dueAt).toBeUndefined()
     expect(parse('@早 12/24').startsAfter).toBe(gate.startsAfter)
     expect(parse('@晚 12/24').hardDueAt).toBe(new Date(2026, 11, 24).getTime())
   })
 
-  it('一行里三个 @ 就三个都到，@希望 与 @希望在 是同一个', () => {
+  it('一行里三个 @ 就三个都到，裸 @ 与 @计划 是同一个', () => {
     // 每一个日子都在未来：已经过去的 `M/D` 会被当成有歧义而拒掉，而这条测试要钉的是
     // 「三个都在」。
-    const result = parse('大活儿 @不早于 10/25 @12/24 @不晚于 12/30')
+    const result = parse('大活儿 @开始 10/25 @12/24 @截止 12/30')
     expect(result.startsAfter).toBe(new Date(2026, 9, 25).getTime())
     expect(result.dueAt).toBe(new Date(2026, 11, 24).getTime())
     expect(result.hardDueAt).toBe(new Date(2026, 11, 30).getTime())
     expect(result.title).toBe('大活儿')
-    expect(parse('@希望 12/24').dueAt, '@希望 与 @希望在 读出了两个不同的日子').toBe(parse('@希望在 12/24').dueAt)
+    expect(parse('@12/24').dueAt, '裸 @ 与 @计划 读出了两个不同的日子').toBe(parse('@计划 12/24').dueAt)
   })
 
   it('同一个日子写第二遍：那一个不生效，并且带回一句为什么', () => {
@@ -196,7 +196,7 @@ describe('三个日子各写各的，一行里可以写全三个', () => {
   })
 
   it('三个各写一次时没有一句拒绝', () => {
-    expect(parse('@不早于 10/25 @10/26 @不晚于 10/27').refused).toEqual([])
+    expect(parse('@开始 10/25 @10/26 @截止 10/27').refused).toEqual([])
   })
 })
 
@@ -212,15 +212,15 @@ describe('一套日期词，两个入口', () => {
   })
 
   it('日期框里带着那个日子的名字写，也读得懂——名字在那儿的身份只是读者的说话方式', () => {
-    // 框本来就知道自己是哪个日子，所以「@不晚于 10/15」这个名字在这里只是语气词。
-    expect(parseItemDate('@不晚于 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
-    expect(parseItemDate('@不早于 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
-    expect(parseItemDate('@希望 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    // 框本来就知道自己是哪个日子，所以「@截止 10/15」这个名字在这里只是语气词。
+    expect(parseItemDate('@截止 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@开始 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@计划 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
     // 英文那一套词同样认（两份字典是同一份文档的两个语言版本）。
-    expect(parseItemDate('@wanted by 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
+    expect(parseItemDate('@target 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
     expect(parseItemDate('@deadline 10/15', T0)).toBe(new Date(2026, 9, 15).getTime())
     // 带名字的那一种在**一行里**落到它自己那个字段上（同一条词的两种用法）。
-    expect(parse('干活 @不晚于 10/15').hardDueAt).toBe(new Date(2026, 9, 15).getTime())
+    expect(parse('干活 @截止 10/15').hardDueAt).toBe(new Date(2026, 9, 15).getTime())
   })
 })
 
