@@ -127,7 +127,7 @@ export function StepsMark(): React.ReactElement {
  *
  * 读者从参考图里学到的形状就是它：日期挨着 ⋮、左边有一枚图标，而不是跟在标题后面加一对
  * 括号（括号里的字与句子同号同重，读者分不出哪半句是标题）。图标说的是**这一串字是时间**，
- * 而 `data-tone` 说的是那个时间现在什么口气（超期红、落后黄、日子未到浅墨）。
+ * 而 `data-tone` 说的是那个时间现在什么口气（超期红、落后黄、日期未到浅墨）。
  * @returns 一枚 12px 的钟表图标。
  */
 export function ClockMark(): React.ReactElement {

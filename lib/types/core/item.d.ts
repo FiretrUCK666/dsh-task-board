@@ -89,6 +89,15 @@ export interface ItemStep {
     text: string;
     done: boolean;
 }
+/**
+ * The three date fields, BY NAME — the union a caller writes when it means 「哪几个日期」.
+ *
+ * 一处定义。三个字段名在界面、模型、动作目录里各被写了一遍（九处），而它们说的是同一件
+ * 事：`开始 / 计划 / 截止` 这三个日期在哪一条行上都有，它们的**名字**属于这份文档的形状，
+ * 不属于哪一个界面。收拢成一处之后，「第几个日期」这类改动的落点是这个类型，而不是九个
+ * 各写一遍的联合。
+ */
+export type ItemDateKey = 'startsAfter' | 'dueAt' | 'hardDueAt';
 /** One checklist row. */
 export interface ItemRecord {
     /** Stable identity (uuid). Never shown, never writable, never spoken. */
@@ -243,7 +252,7 @@ export declare const ITEM_FIELDS: {
     };
     readonly dueAt: {
         readonly access: "writable";
-        readonly why: "计划的日子，与截止语义不同，不挤成一列";
+        readonly why: "计划的日期，与截止语义不同，不挤成一列";
     };
     readonly hardDueAt: {
         readonly access: "writable";
@@ -297,7 +306,7 @@ export declare function itemTitleOf(item: ItemRecord): string;
 /** Which pair of the three dates is out of order, and by how much. */
 export interface ItemDateConflict {
     /** The field that must not be later than its neighbour. */
-    readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt';
+    readonly field: ItemDateKey;
     readonly value: number;
     /** The date it may not exceed. */
     readonly limit: number;
@@ -309,7 +318,7 @@ export interface ItemDateConflict {
      * the sentence names the two fields that actually disagree, and that is only
      * possible if both are carried.
      */
-    readonly limitField: 'startsAfter' | 'dueAt' | 'hardDueAt';
+    readonly limitField: ItemDateKey;
 }
 /**
  * The three dates, checked against each other.
@@ -325,10 +334,14 @@ export interface ItemDateConflict {
  * two would leave the reader's words changed with no note that they were, and a
  * quietly edited date is worse than an obviously broken one — so the write path
  * refuses and the surface says why.
- * @param item - the row.
+ *
+ * **它要的只是那三个日期，所以它就只要那三个。** 参数收窄成三个字段之后，还没有成为一条
+ * 行的地方（新建条那张纸上正被读者填的三个框）也能问同一个问题——而「这一组自相矛盾吗」
+ * 只该有一个答案。收一条整记录的写法会逼着调用点自己拼一条假记录。
+ * @param item - the three dates, from wherever they are.
  * @returns the first violated pair, or `undefined` when the three agree.
  */
-export declare function itemDateConflict(item: ItemRecord): ItemDateConflict | undefined;
+export declare function itemDateConflict(item: Pick<ItemRecord, ItemDateKey>): ItemDateConflict | undefined;
 /** What a caller supplies to mint a row: everything the caller decided. */
 export interface NewItemInput {
     readonly title: string;

@@ -39,7 +39,7 @@ import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
-import { ITEM_STATUSES, type ItemStatus } from '../../core/item.ts'
+import { ITEM_STATUSES, type ItemDateKey, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { DATE_FIELD_KEY, GROUP_LABEL } from './labels.ts'
 import { CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
@@ -97,7 +97,7 @@ function dueLine(view: ItemRowView, english: boolean, now: number): { tone: DueT
    * The separator is a SPACE, not a dot: 「开始 10月5日」 reads as a phrase, and
    * the row's meta line already spends the dot on 「#1 · 1/3」. Two separators in one
    * 13px line is one separator too many. */
-  const about = (field: 'startsAfter' | 'dueAt' | 'hardDueAt', reading: string): string =>
+  const about = (field: ItemDateKey, reading: string): string =>
     `${t(DATE_FIELD_KEY[field])} ${reading}`
   switch (posture.kind) {
     case 'behind':

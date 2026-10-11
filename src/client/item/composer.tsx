@@ -30,6 +30,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { isBlankCapture, type ItemCapture } from '../../core/item-transitions.ts'
 import { escapeComposerToken, parseComposerInput, type ComposerParse, type ComposerToken } from './compose-parse.ts'
+import { dateBadWords } from './date-field.tsx'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { DATE_FIELD_KEY } from './labels.ts'
 import { Button } from '../board/ui.tsx'
@@ -73,13 +74,21 @@ export interface ItemComposerProps {
   /**
    * Hand the finished capture over. Returning `false` means it was refused.
    *
-   * OPTIONAL, and it is optional because **the sheet owns the save**: the grammar
-   * is the first line of ＋新建一条, and that panel has its own button and its own
-   * fields. With no `onSave` this draws no 「记下」 at all — a second save button
-   * beside the sheet's own is two ways to write one row, and the reader cannot
-   * tell which of them also carries the fields they just filled in.
+   * 回车与「记下」都走它。它**必须有**：一个回车什么都不做的写入框，是把「快」这件事
+   * 留给读者自己猜。
    */
   readonly onSave?: (input: ItemCapture) => boolean
+  /**
+   * **这一行画不画自己那一枚保存按钮。**
+   *
+   * `'row'`（默认）：画。没有别的地方能存的时候，「记下」就是这一行的一部分——而且它是
+   * 手机上唯一存得下的那一下（单行输入框里回车是换行）。
+   *
+   * `'surface'`：不画。这一行只是某个表面的第一行，而那个表面在自己的位置上有一个保存
+   * 动词（新建纸的纸尾那一枚「存下这一条」）。**一张纸上两个保存控件，读者猜不出哪一个
+   * 带着他刚在右边填的那些字段**——所以这是一次二选一，而不是两个并列的开关。
+   */
+  readonly saveOwnedBy?: 'row' | 'surface'
   /**
    * What the box currently understands, handed up on every change.
    *
@@ -111,7 +120,7 @@ export interface ItemComposerProps {
  * @param props - the clock and the save hand-off.
  * @returns the box, its live chips and its hint.
  */
-export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemComposerProps) {
+export function ItemComposer({ now, onSave, onChange, focusRequest, saveOwnedBy = 'row' }: ItemComposerProps) {
   const [text, setText] = useState('')
   const input = useRef<HTMLInputElement | null>(null)
   const parsed = useMemo(() => parseComposerInput(text, now), [text, now])
@@ -214,31 +223,63 @@ export function ItemComposer({ now, onSave, onChange, focusRequest }: ItemCompos
           <span aria-hidden="true">{RESTORE_MARK}</span>
         </button>
       ))}
-      {/* **被拒的词要说一句为什么。** 同一个日子写了两遍时，那一个不变成芯片——而
-          「我写的东西没变成芯片」需要一句解释，否则读者只会以为它坏了。理由就近住在
-          输入框下面，与详情里「这个读法我没读懂」同一处语位置。 */}
+      {/* **没变成芯片的那些词要说一句为什么。** 两种：同一个日期写了两遍（那一个不生效），
+          以及这一串读不懂（`@13/45`、`@截止 下个月`）——后者的说法与日期框里那一句
+          **同一处拼出来**（`dateBadWords`），所以「读不懂」在这两处长得一样。
+          理由就近住在输入框下面，与详情里那三个日期框同一处位置。 */}
       {parsed.refused.map(one => (
-        <p key={one.raw} className={css.itemHint} role="status">
-          {t('item.compose.refused', { word: one.raw, field: t(DATE_FIELD_KEY[one.field]) })}
+        <p key={`${one.reason}-${one.raw}`} className={css.itemHint} role="status">
+          {one.reason === 'duplicate'
+            ? t('item.compose.refused', { word: one.raw, field: t(DATE_FIELD_KEY[one.field]) })
+            : dateBadWords(one.reason, one.raw)}
         </p>
       ))}
-      {/* The button is not a convenience, it is the ONLY way to save on a
-          phone: Enter in a single-line field is a newline there, and a
-          capture surface whose save gesture does not exist under the thumb is
-          a capture surface that loses thoughts. It sits on the base band
-          beside the input and takes its own line when the row runs out. */}
-{/* 「记下」 DRAWS ONLY WHEN THERE IS NO SAVING HAND-OFF ABOVE. The grammar is
-        * the first line of ＋新建一条, and that sheet has its own button and its
-        * own fields — a second 「记下」 beside it is two ways to write one row, and
-        * the reader cannot tell which of them carries the fields they just filled
-        * in. 「save gesture under the
-        * thumb on a phone」 is that sheet's problem to solve, not a second button's. */}
-      {onSave !== undefined && (
+      {/* **「记下」画出来，当且仅当这一行自己负责保存。**
+        *
+        * 它不是一个方便，它是**触屏上唯一存得下的那一下**（单行输入框里回车是换行）。
+        * 而这一行是新建纸的第一行时，那一张纸的保存动词在纸尾——同一张纸上两个保存控件，
+        * 读者猜不出哪一个带着他刚在右边填的那些字段，所以那一种由 `saveOwnedBy` 说清。 */}
+      {onSave !== undefined && saveOwnedBy !== 'surface' && (
         <Button variant="primary" size="sm" className={css.itemComposerSave} onClick={save} disabled={!saveable}>
           {t('item.compose.add')}
         </Button>
       )}
     </div>
+  )
+}
+
+/**
+ * **三个记号各自叫什么** —— 一行图例，不是一段散文。
+ *
+ * 它是读者对着那行占位（`… #画廊 !1 @明天`）会问出的那个问题：「井号后面那个 tag 是什么」。
+ * {@link ItemGrammarExample} 教的是**句子长什么样**（一个真的例子），这一行教的是**每个
+ * 记号是什么意思**——两行回答两个问题，谁也替不了谁。
+ *
+ * 词从**已有的两张表**里读（`TOKEN_LABEL` 与 `DATE_FIELD_KEY`）：一个概念只有一套词，
+ * 而这张图例不新造一个。
+ * @returns 那一行图例。
+ */
+export function ItemGrammarLegend() {
+  return (
+    <p className={css.itemGrammarLegend}>
+      {/* 标签那一格多一句「可写多个」：**这是读者问过的第一个问题**（「怎么变成多个 tag」），
+          而它不能挂在共用的那个词上——`item.token.tag` 同时是芯片的可达名，那里多一句话，
+          读屏读到的就成了语法说明。 */}
+      <span className={css.itemGrammarLegendItem}>
+        <b className={css.itemGrammarLegendSigil}>#</b>
+        {t('item.grammar.tagMany')}
+      </span>
+      <span className={css.itemGrammarLegendItem}>
+        <b className={css.itemGrammarLegendSigil}>!</b>
+        {t(TOKEN_LABEL.priority)}
+      </span>
+      <span className={css.itemGrammarLegendItem}>
+        <b className={css.itemGrammarLegendSigil}>@</b>
+        {/* 三个日期**各写一个**，所以这里把它们并列写出来：这就是「@ 怎么落到开始 /
+            计划 / 截止里」那一句话，而它用的还是字段自己那三个词。 */}
+        {[DATE_FIELD_KEY.startsAfter, DATE_FIELD_KEY.dueAt, DATE_FIELD_KEY.hardDueAt].map(key => t(key)).join(' / ')}
+      </span>
+    </p>
   )
 }
 

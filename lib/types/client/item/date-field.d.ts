@@ -1,3 +1,11 @@
+import { type DateBadReason } from './model.ts';
+/**
+ * 一个读不懂的日期，说给人听的那句话。
+ * @param reason - 哪一种读不懂（三种的改法不同，见 `DateBadReason`）。
+ * @param word - 读者写的那串字，原样带进句子里。
+ * @returns 那一句。
+ */
+export declare function dateBadWords(reason: DateBadReason, word: string): string;
 /** What one date field needs. Nothing about where it is drawn. */
 export interface DateFieldProps {
     /** The text the reader has typed. The field is CONTROLLED: the draft is the

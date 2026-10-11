@@ -344,10 +344,10 @@ export function ListPage(props: ItemListPageProps) {
    */
   const nothingToShow = items.length === 0
     ? t('item.empty')
-    /* **被一个日子筛空，就要说那个日子。** 「没有匹配的结果」在读者按了一个具体
-     * 的日子之后是一句没用的话：他刚刚点的是 9 号，屏幕上该出现的是「9 号没有
+    /* **被一个日期筛空，就要说那个日期。** 「没有匹配的结果」在读者按了一个具体
+     * 的日期之后是一句没用的话：他刚刚点的是 9 号，屏幕上该出现的是「9 号没有
      * 东西」——**一句话里带着他刚按下的那个选择**，而不是一句关于筛选的通用提示。
-     * 而「换个日子」这四个字也是真的可做：日历就在旁边。 */
+     * 而「换个日期」这四个字也是真的可做：日历就在旁边。 */
     : query.day !== null
       ? t('item.noMatch.day', { when: formatDayKey(query.day, isEnglish(), props.now) })
       : t('item.noMatch')

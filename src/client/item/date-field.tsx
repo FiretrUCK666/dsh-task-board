@@ -36,9 +36,32 @@
  * key its reader uses to leave the sheet.
  */
 import { type KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { formatItemDate, readDateDraft } from './model.ts'
-import { isEnglish, t } from '../locales.ts'
+import { formatItemDate, readDateDraft, type DateBadReason } from './model.ts'
+import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import css from './item.module.css'
+
+/**
+ * 三种拒绝各自的句子。**这是它们唯一的出口。**
+ *
+ * 「一个读不懂的日期怎么讲给人听」只该有一个答案：日期框在自己下面说，快记在输入框下面
+ * 说（读者在那里写的是 `@13/45` 这种一行里的写法）。两处各拼一次，就是同一句话的两个
+ * 版本，而其中一句会在某次改词里先过期——这一页已经有过一次「同一个词选不同的行」。
+ */
+const DATE_BAD_KEY: Readonly<Record<DateBadReason, TaskBoardKey>> = {
+  unreadable: 'item.dates.bad.unreadable',
+  past: 'item.dates.bad.past',
+  impossible: 'item.dates.bad.impossible',
+}
+
+/**
+ * 一个读不懂的日期，说给人听的那句话。
+ * @param reason - 哪一种读不懂（三种的改法不同，见 `DateBadReason`）。
+ * @param word - 读者写的那串字，原样带进句子里。
+ * @returns 那一句。
+ */
+export function dateBadWords(reason: DateBadReason, word: string): string {
+  return t(DATE_BAD_KEY[reason], { word })
+}
 
 /** What one date field needs. Nothing about where it is drawn. */
 export interface DateFieldProps {
@@ -78,7 +101,12 @@ export interface DateFieldProps {
 export function DateField(props: DateFieldProps) {
   const draft = readDateDraft(props.value, props.now)
   const reading = draft.kind === 'at' ? formatItemDate(draft.at, isEnglish(), props.now) : ''
-  const line = props.bad === true ? t('item.dates.bad') : reading
+  /* 拒绝是**对一次尝试**的判断，所以由调用方说（`bad`）；说的是哪一句由**哪一种不懂**
+   * 决定。而读者把字改对的那一刻，这一行立刻变成读出来的那个日期——一句已经不成立的
+   * 拒绝比没有拒绝更糟。 */
+  const line = props.bad === true && draft.kind === 'bad'
+    ? dateBadWords(draft.reason, props.value.trim())
+    : reading
   const dismiss = props.onDismiss
 
   const onKeyDown = (event: ReactKeyboardEvent<HTMLInputElement>): void => {

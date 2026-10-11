@@ -6,13 +6,21 @@ export interface ItemComposerProps {
     /**
      * Hand the finished capture over. Returning `false` means it was refused.
      *
-     * OPTIONAL, and it is optional because **the sheet owns the save**: the grammar
-     * is the first line of ＋新建一条, and that panel has its own button and its own
-     * fields. With no `onSave` this draws no 「记下」 at all — a second save button
-     * beside the sheet's own is two ways to write one row, and the reader cannot
-     * tell which of them also carries the fields they just filled in.
+     * 回车与「记下」都走它。它**必须有**：一个回车什么都不做的写入框，是把「快」这件事
+     * 留给读者自己猜。
      */
     readonly onSave?: (input: ItemCapture) => boolean;
+    /**
+     * **这一行画不画自己那一枚保存按钮。**
+     *
+     * `'row'`（默认）：画。没有别的地方能存的时候，「记下」就是这一行的一部分——而且它是
+     * 手机上唯一存得下的那一下（单行输入框里回车是换行）。
+     *
+     * `'surface'`：不画。这一行只是某个表面的第一行，而那个表面在自己的位置上有一个保存
+     * 动词（新建纸的纸尾那一枚「存下这一条」）。**一张纸上两个保存控件，读者猜不出哪一个
+     * 带着他刚在右边填的那些字段**——所以这是一次二选一，而不是两个并列的开关。
+     */
+    readonly saveOwnedBy?: 'row' | 'surface';
     /**
      * What the box currently understands, handed up on every change.
      *
@@ -43,7 +51,19 @@ export interface ItemComposerProps {
  * @param props - the clock and the save hand-off.
  * @returns the box, its live chips and its hint.
  */
-export declare function ItemComposer({ now, onSave, onChange, focusRequest }: ItemComposerProps): import("react").JSX.Element;
+export declare function ItemComposer({ now, onSave, onChange, focusRequest, saveOwnedBy }: ItemComposerProps): import("react").JSX.Element;
+/**
+ * **三个记号各自叫什么** —— 一行图例，不是一段散文。
+ *
+ * 它是读者对着那行占位（`… #画廊 !1 @明天`）会问出的那个问题：「井号后面那个 tag 是什么」。
+ * {@link ItemGrammarExample} 教的是**句子长什么样**（一个真的例子），这一行教的是**每个
+ * 记号是什么意思**——两行回答两个问题，谁也替不了谁。
+ *
+ * 词从**已有的两张表**里读（`TOKEN_LABEL` 与 `DATE_FIELD_KEY`）：一个概念只有一套词，
+ * 而这张图例不新造一个。
+ * @returns 那一行图例。
+ */
+export declare function ItemGrammarLegend(): import("react").JSX.Element;
 /**
  * ONE LINE OF THE GRAMMAR, SPELLED OUT — what an empty document shows instead of
  * a paragraph about itself.

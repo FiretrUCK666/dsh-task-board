@@ -29,6 +29,18 @@
  * reader's only remaining option is to stop writing in the box at all.
  */
 import { type ItemPriority } from '../../core/item-view.ts';
+import type { ItemDateKey } from '../../core/item.ts';
+/**
+ * THE DAY BOUNDARY IS THE MODEL'S: this file keeps no copy of its own.
+ *
+ * `@今天`, `@明天` and a bare `@9/30` all resolve against 「which day is it」, and
+ * that question is answered once, in `core`, because the answer has to agree
+ * across every surface: the capture box writing a date, the three date readings
+ * on a row, and the agenda deciding which day a row belongs to. Two copies is
+ * not a style question — the two differ the moment one of them is asked on a
+ * device in another timezone, and nothing anywhere reports it.
+ */
+import { type DateBadReason } from './model.ts';
 /** What a recognised token became. Drives the chip the box draws. */
 export type ComposerTokenKind = 'tag' | 'priority' | 'due' | 'hard' | 'earliest' | 'step';
 /** One recognised piece of the source, with the range it occupies. */
@@ -67,20 +79,24 @@ export interface ComposerParse {
     readonly startsAfter: number | undefined;
     readonly tokens: ComposerToken[];
     /**
-     * 被拒的词：**同一个日子已经写过了**，所以这一个没有生效（也不画成芯片）。
+     * 被拒的词：**这一个没有生效**，而读者写的那些字**一个都没丢**。
      *
-     * 它们留在正文里当普通文字，而输入框下面那句话就说清为什么。静默覆盖会更省事，
-     * 但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档——**屏上自相矛盾**，
-     * 而读者唯一的解释是「它随便挑了一个」。
+     * 两种被拒：同一个日期已经写过了（`duplicate`），以及这一串读不懂（其余三种，见
+     * `DateBadReason`）。两者都是「没有变成芯片、留在句子里、下面说一句为什么」——
+     * 静默覆盖会更省事，但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档
+     * （**屏上自相矛盾**，读者唯一的解释是「它随便挑了一个」）；静默丢掉更糟：读者看不见
+     * 那个词，就以为它生效了，而**一条记错了日期的待办比一条没有日期的待办更危险**。
      */
     readonly refused: readonly ComposerRefusal[];
     /** The source with every checkbox line removed — what a re-parse should read. */
     readonly source: string;
 }
-/** 一个被拒的词：原样写的那串字，以及它想写的那个日子。 */
+/** 一个被拒的词：原样写的那串字、它想写的那个日期，以及它为什么没生效。 */
 export interface ComposerRefusal {
     readonly raw: string;
-    readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt';
+    readonly field: ItemDateKey;
+    /** 读不懂的那三种直接来自日期那一门语言；`duplicate` 是这一行自己的规矩。 */
+    readonly reason: DateBadReason | 'duplicate';
 }
 /**
  * Read one capture.

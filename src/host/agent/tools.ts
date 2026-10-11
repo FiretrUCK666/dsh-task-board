@@ -103,7 +103,7 @@ import {
   readItemStepList,
   removeItemRecord,
 } from '../../core/item-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateKey, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
 import { derivedStatusOf } from '../../core/item-membership.ts'
 import { planItemAsk } from '../../core/item-ask.ts'
 // THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
@@ -1541,7 +1541,7 @@ function applyOne(
       }
       // 三时间互不覆盖：没传的沿用，传了空（null 或空串）的是删承诺，传了数字的是新承诺，
       // 传了别的形状的是没说清，沿用旧的不动它。
-      const nextInstant = (field: 'startsAfter' | 'dueAt' | 'hardDueAt'): number | undefined => {
+      const nextInstant = (field: ItemDateKey): number | undefined => {
         const raw = payload[field]
         if (raw === undefined) return found[field]
         if (raw === null || raw === '') return undefined
@@ -1637,8 +1637,10 @@ function applyOne(
       // an untouched note, which is indistinguishable from "not promoted yet".
       // The other order would leave the note pointing at a card that does not
       // exist — a state the interface would have to render as a defect.
-      // The column is `createTask`'s own default ('todo'), not a decision here.
-      const task = createTask({ ...plan.task, status: 'todo' }, now, deps.uuid())
+      // 出生栏是**提升计划自己算出来的那一个**（这一条现在的状态，见 `planItemPromotion`）
+      // ——这里不再写一遍 `status`：写上就等于把那条推导丢掉，于是同一条行由模型提升与由
+      // 面板提升会产出两张落在不同栏的卡，而 `createTask` 自己的默认值本来就已经是「待办」。
+      const task = createTask(plan.task, now, deps.uuid())
       // The link is a field write on the checklist row, so it goes through the
       // same shared writer as every other one — which is also what keeps this op
       // from appending a SECOND copy of the row instead of editing the one that
@@ -1845,7 +1847,7 @@ function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   // The dates are printed as the raw stamp AND the local day, because the reader
   // of this line is a model that has been told the unit is a day — so a bare
   // 13-digit number is the one thing that would make it guess.
-  // 三个日子的**词与界面、与动作目录同一套**（开始 / 计划 / 截止）：这一行是模型读给自己
+  // 三个日期的**词与界面、与动作目录同一套**（开始 / 计划 / 截止）：这一行是模型读给自己
   // 听的，而它答给读者的那句话里会带上这些词——一个词两套写法，读者看到的是两个名字指同一件事。
   for (const [label, at] of [['开始', row.startsAfter], ['计划', row.dueAt], ['截止', row.hardDueAt]] as const) {
     if (at !== undefined) lines.push(`  ${label}：${at}（${localDayOf(at)}）`)

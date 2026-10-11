@@ -161,7 +161,7 @@ describe('neglect has exemptions, and a ceiling', () => {
 
   it('does NOT exempt a row merely because it is not done', () => {
     /* 「受阻」给过第二条豁免，而那一档没有了。留下来的这一条是**日期**给的：一行还没到
-       能动的日子，责怪它不动是错的；而一行只是「还没做」——不，那正是这一列要说的事。 */
+       能动的日期，责怪它不动是错的；而一行只是「还没做」——不，那正是这一列要说的事。 */
     expect(staleDaysOf(row({ status: 'todo', updatedAt: T0 - 20 * DAY }), T0)).toBe(20)
   })
 

@@ -1,3 +1,4 @@
+import type { ItemDateKey } from '../../core/item.ts';
 /**
  * Mint a row identity.
  *
@@ -80,10 +81,34 @@ export declare function parseItemDate(value: string, now?: number): number | und
  * @param now - the reading clock; a WORD resolves against it.
  * @returns empty, unreadable, or the moment it named.
  */
+/**
+ * 读不懂的三种原因。**三件事，三种改法**——所以它们不是同一句话。
+ *
+ * `parseItemDate` 把所有读不出来的字都折成一个 `undefined`（它回答的是「这是哪一刻」），
+ * 而一处**拒绝**要回答的是「接下来改什么」：换一种写法、把年份补上、还是核对月份与日期。
+ * 一句话盖住三种情况，就是把三种改法说成一种。
+ */
+export type DateBadReason = 
+/** 这串字不在这门语言里。改法：换一种写法。 */
+'unreadable'
+/** 有日期没年份，而那个日期今年已经过去了。改法：把年份写上。 */
+ | 'past'
+/** 日历上没有这一天。改法：核对月份与日期。 */
+ | 'impossible';
+/** 一次读日期的结果：读到了那一刻，或者读不懂并说得出是哪一种不懂。 */
+export type DateReading = {
+    readonly kind: 'at';
+    readonly at: number;
+} | {
+    readonly kind: 'bad';
+    readonly reason: DateBadReason;
+};
+/** WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`. */
 export type DateDraft = {
     readonly kind: 'empty';
 } | {
     readonly kind: 'bad';
+    readonly reason: DateBadReason;
 } | {
     readonly kind: 'at';
     readonly at: number;
@@ -91,20 +116,52 @@ export type DateDraft = {
 /** Read a date field's draft. See {@link DateDraft} for why this is not `parseItemDate`. */
 export declare function readDateDraft(text: string, now: number): DateDraft;
 /**
- * **一套日期词，两个入口。**
+ * **一套日期词，一处定义。**
  *
- * 读者在哪儿学、在哪儿用，认的都该是同一批写法：固定的近日子（`今天`/`明天`/`前天`…）、
- * 星期几（`三`/`周三`/`下三`）、`+N`、`2026/10/15`、`10/15`（还没到才算），以及字段里那个
- * 严格形式 `2026-10-15`。开头可以带 `@`，也可以带那个日子的名字（`@截止 10/9`）——
- * 名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日子。
+ * 读者在哪儿学、在哪儿用，认的都该是同一批写法：邻近的那几天（`今天`/`明天`/`前天`…）、
+ * 星期几（`三`/`周三`/`下三`）、`+N`、以及**日历上的那一天**——`2026-10-15`、`2026/10/15`、
+ * `2026年10月15日`、`10月15日`、`10/15`。开头可以带 `@`，也可以带那个日期的名字
+ * （`@截止 10/9`）——名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日期。
  *
- * **两个入口认同一批写法**：各认一半的话（快记认星期几与 `+N`，日期框只认 `2026-10-15` 与
- * 「明天」），读者在快记得学会的写法，在它旁边那个框里会被拒——而那两个框说的是同一件事。
+ * ── 为什么日历那几种写法必须都认 ──────────────────────────────────────────────
+ *
+ * 因为**这一页自己就是这么印的**：行尾、详情、日程节头印的是 `10月15日`。印得出来、
+ * 读不回来，就是读者照着屏上的样子打一遍，然后被告知「这个读法我没读懂」——
+ * 而这门语言里最不该拒的就是自家印的那一种。所以「印出来的读得回来」是一条性质，
+ * 由 `.spec.ts` 里那个从 `formatItemDate` 生成的用例守着，而不是靠这里多列一行。
+ *
+ * ── 三种拒绝，三种改法 ────────────────────────────────────────────────────────
+ *
+ * 「日历上没有这一天」与「这串字不认识」是两件事：前者 `new Date(2026, 12, 45)` 会
+ * **悄悄滚**到 2027-02-14，于是读者的「12 月 45 日」变成二月里的一天（`impossible`）；
+ * 后者是换一种写法（`unreadable`）。而写着日期却没写年份、那个日期今年已经过去了，
+ * 是第三件：今年 / 明年两个意思都成立，猜一个就是**把一天挪一年**（`past`，
+ * `PRODUCT.md` 把这条歧义钉成了拒绝——补上年份即可）。三种各有一句话，见
+ * `date-field.tsx`。
  * @param text - what the reader wrote.
  * @param now - the reading clock; every word resolves against it.
- * @returns the local midnight of that day, or `undefined` when the words do not name one.
+ * @returns the local midnight of that day, or which of the three refusals it is.
  */
-export declare function parseDateExpression(text: string, now: number): number | undefined;
+export declare function readDateExpression(text: string, now: number): DateReading;
+/**
+ * 三个日期的**名字表**：一处定义，三个读者（字段那一侧的剥离、一行那一侧的解析、
+ * 名字本身的意思）。`早` / `晚` 是打字的活儿留下的单字短写，与 `开始` / `截止` 同义。
+ */
+export declare const DATE_NAME_FIELD: Readonly<Record<string, ItemDateKey>>;
+/**
+ * **这串字看起来是在写一个日期吗。**
+ *
+ * 快记里的一串字读不懂时要不要出声，判据就是它：`@13/45`、`@下个月`、`@截止 下个月` 是在
+ * 写日期，读不懂必须说；而 `@每周`、`@张三`、`@晚餐的菜单`、`@日本料理` 里的 `@` 只是一个
+ * 符号，说了就是噪声——而一句会被读者学会忽略的提示，等于没有提示。
+ *
+ * 判据只读**形状**，不读意思：数字、单个星期字、以及那几个只有日期会用的词头。写成
+ * 「含 `月` 或 `日` 二字」是不行的——`月光曲` 与 `日本料理` 会因此开始报错，而这条判据的
+ * 全部价值就在于它不乱说话。
+ * @param word - `@` 后面那些字（名字已经剥掉）。
+ * @returns 是否像在写一个日期。
+ */
+export declare function looksLikeDate(word: string): boolean;
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export declare function toItemDateField(at: number | undefined): string;
 /**

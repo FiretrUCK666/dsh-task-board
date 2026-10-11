@@ -251,9 +251,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
     seenFocus.current = focusRequest.token
     setCardFocus(focusRequest)
   }, [focusRequest])
+  /* **看板在跳转之前就先读一次**，因为下面那条收窄要问的是**同一个问题**：「这一条挂着
+     的卡」是哪一张——而那个问题的答案只有一处（`linkedCardIdOf`：卡在，链接才算数；这台
+     机器看不到看板时它把每一条链接都当成活的）。写成裸字段 `row.taskId === id` 是**第二个
+     判据**：卡被删之后列表会为一条死链接继续收窄，而同一行在卡片那一格、`has:linked` 与
+     左栏计数里都已经不算挂着卡了——同一屏上两个说法。 */
+  const board = useBoardSnapshot(face.controller)
+  const cardColumns = useMemo(() => cardsMapOf(board), [board])
   const items = cardFocus === undefined
     ? allItems
-    : allItems.filter(row => row.taskId === cardFocus.cardId)
+    : allItems.filter(row => linkedCardIdOf(row, cardColumns) === cardFocus.cardId)
   const [prefs, setPrefs] = useState<ItemViewPrefs>(readViewPrefs)
   /* THE PANEL'S OWN CLOCK, and it is seeded rather than read.
    *
@@ -507,8 +514,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
     })
   }, [])
 
-  const board = useBoardSnapshot(face.controller)
-  const cardColumns = useMemo(() => cardsMapOf(board), [board])
   const cards = useMemo(() => cardsOf(board), [board])
   const query = useMemo(() => (prefs.search.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(prefs.search)), [prefs.search])
   const matchCtx = useMemo(() => ({ ...itemMatchContextOf(now), cards: cardColumns }), [now, cardColumns])
@@ -1581,7 +1586,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
      * from one group is therefore never a narrower question: 优先级 and 状态 are
      * matched with `includes`, so `p1 p2` is urgent UNION high — pressing a second
      * priority made MORE rows appear, against the number printed beside it — and
-     * the `has:` flags are ANDed over a single posture, so 「超期了」 then 「没日子
+     * the `has:` flags are ANDed over a single posture, so 「超期了」 then 「没日期
      * 的」 was constant-false and the list went empty for every document.
      *
      * So a press means 「只看这一个」: turning one on drops its siblings, and
@@ -1656,7 +1661,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * text by hand left it marked too. A highlight that is remembered can claim a
    * filter that is not on; one derived from the query cannot.
    *
-   * **它是一组，不是一个。** 筛子是**叠加**的：按「日子已过」再按「紧急」，两个筛子同时开着、
+   * **它是一组，不是一个。** 筛子是**叠加**的：按「日期已过」再按「紧急」，两个筛子同时开着、
    * 列表按两条一起筛。而这一支若在遇到**第一个**匹配的行时就 `return`，就是三枚芯片亮着、
    * 左栏只有一行有底色，读者看到的是「我按了三个，它只认一个」。凡是叠加上去的状态，显示的
    * 那一侧就必须是集合（硬性规范 17 的同一条道理：一个事实只有一种说法，而这里的说法是

@@ -368,13 +368,13 @@ describe('the panel renders against the host it will actually run in', () => {
     // PREDICATE over the same document rather than a different question, so its rail
     // row was its only door and its own layout was the only thing it added.
     expect(schedule).toContain('没定日期')
-    expect(schedule).toContain('开始未到')
+    expect(schedule).toContain('还没开始')
     /* **日程少列了几行，它就说少在哪。** 读者的原话：「3 条里只看见 2 条」。两个
      * 排除都有理由（已完成是历史；刚记下、还没被读第二遍的一条属于收件），但理由不
      * 在屏幕上，屏幕上剩下的只有「少了一条」——而少了一条和丢了一条，读者分不出来。
      * 这一行按 `isAgendaItem` 自己的两个子句数数，所以它和列表里的行是同一次推导。 */
     expect(schedule, 'the agenda lists fewer rows than the document and says nothing about it')
-      .toMatch(/另有 \d+ 条已完成、\d+ 条还在收件里/)
+      .toMatch(/另外还有 \d+ 条已完成的、\d+ 条刚记下还没整理的/)
     // THE LIST HOLDS EVERY ROW, which is the membership promise that outlived the
     // page: the bare capture is here, and so is the date-less row that carries a tag
     // (which is therefore NOT a capture, and was never on the inbox either).
@@ -448,7 +448,7 @@ describe('the panel renders against the host it will actually run in', () => {
     for (const html of [renderPanel(fixtures(), 'wide', 'list'), renderPanel(fixtures().map(item => ({ ...item, status: 'done' as const })), 'wide', 'list')]) {
       const words = wordsOf(html)
       expect(words.length, 'no rail rows are on screen — the counts have nowhere to live').toBeGreaterThan(0)
-      for (const word of ['日子已过', '放着没动', '没定日期', '紧急', '待办', '完成']) {
+      for (const word of ['日期已过', '放着没动', '没定日期', '紧急', '待办', '完成']) {
         const row = words.find(text => text.includes(word))
         expect(row, `the rail does not name ${word} at all, so its zero is never stated`).toBeDefined()
         expect(row ?? '', `the rail names ${word} without a number — a claim with no count is not a count`).toMatch(/\d+/)
@@ -1995,6 +1995,10 @@ describe('a status is stated once, and it is a column rather than a heading', ()
 
 describe('the type scale is a scale, and not a pile of near-identical sizes', () => {
   const css = panelCss()
+  /* **每一块内容的名字，一处定义、两条判据读**：这条是「它声明了自己的 margin 与字号
+     吗」，下面那条探针是「这份读者咬不咬得动」。名单各写一份，就是探针在测另一个名字
+     ——而它会永远绿。 */
+  const HEADINGS = ['itemAgendaHead'] as const
 
   it('the panel uses a closed set of sizes, and each size carries only its own weights', () => {
     // NEAR-MISSING SIZES ARE THE THING. A 12px label against a 13px body and a
@@ -2068,9 +2072,11 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // UA's `.83em` is a margin nobody chose, and it is the reason an empty
     // heading with a bottom border reads as a page that failed to finish loading.
     // TWO, NOT THREE. `.itemDetailHead` went with the five sections the detail used
-    // to have; what names a group of rows now is a section CAPTION, and the two
-    // headings that remain are the agenda's fold and its undated tray.
-    const HEADINGS = ['itemGatedFoldHead', 'itemNoDateTrayLabel'] as const
+    // to have; what names a group of rows now is a section CAPTION.
+    // **而议程那一页现在只有一种节头。** 上一版有三种（日节 15/600 无底线、门与托盘
+    // 13/600 带发丝线、说明是一枚 11px 的回执胶囊），读者读到的不是「几种节」，是同一页
+    // 上几个不一样的东西。所以名单从两个名字收成一个 `.itemAgendaHead`——判据本身没变：
+    // 一个 `<h2>` 不声明自己的 margin 与字号，就是 UA 在排版它。
     const rules = declarationRules(stripCssComments(itemSheet()))
     for (const name of HEADINGS) {
       const rule = rules.find(entry => entry.selector === `.${name}`)
@@ -2139,7 +2145,7 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       const headings = new Set<string>()
       const unanchoredWeights = new Set<string>()
       for (const rule of declarationRules(source)) {
-        const isHeading = ['itemGatedFoldHead', 'itemNoDateTrayLabel'].includes(rule.selector.replace(/^\./, ''))
+        const isHeading = HEADINGS.includes(rule.selector.replace(/^\./, '') as typeof HEADINGS[number])
         if (isHeading && (!/(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule.body) || !/(?:^|[;{\s])font-size\s*:/.test(rule.body))) {
           headings.add(rule.selector)
         }
@@ -2150,16 +2156,19 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       }
       return { headings: [...headings], unanchoredWeights: [...unanchoredWeights] }
     }
+    /* 种在 `tests/` 里的是**同一份名单**上的名字，而不是另抄一份：名单换名字（上一版那
+       两个类合并成 `.itemAgendaHead`）而这里不改，探针就变成了「一个不可能匹配的名字」，
+       于是它永远咬不动——而那正是这一条自测存在的理由。 */
     const planted = reads([
-      '.itemGatedFoldHead { font-size: 14px; font-weight: 600; }',
-      '.itemGatedFoldHead { font-weight: 600; margin: 8px 0; }',
-      '.itemNoDateTrayLabel { font-weight: 600; }',
+      '.itemAgendaHead { font-size: 14px; font-weight: 600; }',
+      '.itemAgendaHead { font-weight: 600; margin: 8px 0; }',
+      '.itemAgendaHead { font-weight: 600; }',
       '.itemTopBarLabel { font-weight: 500; }',
       '.itemRailCaption { font-size: 12px; margin: 4px 0; }',
       '.itemRecentRowMain { font-family: inherit; font-weight: 400; }',
     ].join('\n'))
     expect(planted.headings, 'the probe did not bite — a heading inheriting the UA is invisible to this reader').toEqual([
-      '.itemGatedFoldHead', '.itemNoDateTrayLabel',
+      '.itemAgendaHead',
     ])
     // `.itemRecentRowMain` is in the plant ON PURPOSE: it is a `<button>` writing
     // 400 to undo the platform's own weight, which renders identically to saying
@@ -2167,8 +2176,8 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // whole content is 「nothing», and that size would then be a second copy of
     // one declared elsewhere.
     expect(planted.unanchoredWeights, 'the probe did not bite — a weight that invents a tone is invisible to this reader')
-      .toEqual(['.itemGatedFoldHead', '.itemNoDateTrayLabel', '.itemTopBarLabel'])
-    const clean = reads('.itemGatedFoldHead { margin: 0; font-size: 14px; font-weight: 600; }')
+      .toEqual(['.itemAgendaHead', '.itemTopBarLabel'])
+    const clean = reads('.itemAgendaHead { margin: 0; font-size: 14px; font-weight: 600; }')
     expect(clean.headings, 'the reader reports a correct heading as broken — its gate would get deleted, and the defect would come back with it').toEqual([])
     expect(clean.unanchoredWeights, 'the reader reports a correctly anchored weight as broken').toEqual([])
   })
@@ -2653,11 +2662,17 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     const budget: Readonly<Record<string, { readonly decoration: number; readonly affordance: number; readonly total: number }>> = {
       '--dsh-tb-accent': { decoration: 5, affordance: 2, total: 7 },
       '--dsh-tb-attention': { decoration: 2, affordance: 0, total: 2 },
-      // 危险色四处，其中一处是优先级「紧急」那一枚实心芯片。红在这一面上
-      // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的截止）
-      // 与「别让它错」（最响的那一档优先级）。读法与珠子算一档，是
-      // `FAMILIES` 里那句「一颗珠子的几个状态不是几处用量」。
-      '--dsh-tb-danger': { decoration: 4, affordance: 0, total: 4 },
+      // 危险色五处，其中一处是优先级「紧急」那一枚实心芯片。红在这一面上
+      // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的截止 /
+      // 新建那张纸上三个日期互相矛盾时那一句）与「别让它错」（最响的那一档优先级）。
+      // 读法与珠子算一档，是 `FAMILIES` 里那句「一颗珠子的几个状态不是几处用量」。
+      //
+      // **第五处（新建纸那一句）是挣来的，不是顺手加的。** 它是**同一句判词**在另一张
+      // 地面上的出口：读者正在写那三个日期，而那三个日期互相矛盾——这一屏上唯一一件
+      // 「已经错了」的事。写成灰的会让它混进那一段注解里，而读者就要带着一组不可能的
+      // 日期按「存下这一条」——之后再在行尾读到同一句话，那时已经晚了。它只在真的矛盾
+      // 时出现（`data-warn`），所以它不是一层常驻的红，是一次被触发的判词。
+      '--dsh-tb-danger': { decoration: 5, affordance: 0, total: 5 },
     }
     for (const [token, limit] of Object.entries(budget)) {
       const { decoration, affordance } = splitPositions(token)
@@ -3000,9 +3015,36 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
     }
   })
 
-  it('那句话只有一处说出口', () => {
-    const sayers = itemSurfaceFiles().filter(file => code(file.source).includes("'item.dates.bad'")).map(file => file.path)
-    expect(sayers, `说「这个读法我没读懂」的文件：${sayers.join('、') || '（一个都没有）'}——同一句拒绝只该有一个出口`)
+  it('那句话只有一处拼出来，别处都是问它', () => {
+    /* **判据变了，因为结构变了**：拒绝从一句话变成三句（不认识的写法 / 今年已经过了 /
+       日历上没有这一天——三种改法），而它们仍然只该有一个出口。所以现在钉两件事：
+       句子的键只许出现在 `date-field.tsx`，而**拼句子的那个函数**由别处调用。 */
+    const spellers = itemSurfaceFiles().filter(file => code(file.source).includes('item.dates.bad.')).map(file => file.path)
+    expect(spellers, `拼「这个读法我没读懂」的文件：${spellers.join('、') || '（一个都没有）'}——同一句拒绝只该有一个出口`)
       .toEqual(['date-field.tsx'])
+    const askers = itemSurfaceFiles().filter(file => code(file.source).includes('dateBadWords(')).map(file => file.path)
+    expect(askers.sort(), `问那句话的文件：${askers.join('、')}——日期框与快记都该问同一个地方`)
+      .toEqual(['composer.tsx', 'date-field.tsx'])
+  })
+
+  it('一张纸上只有一个保存控件，而它是那个表面的', () => {
+    /* **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 所以「画不画自己那一枚」
+       是一个二选一（`saveOwnedBy`），而新建那张纸选的是「保存动词归这个表面」——
+       它的纸尾那一枚「存下这一条」。 */
+    const composer = readSource('client/item/composer.tsx')
+    expect(code(composer), '这一行自己画按钮的那个开关不再是一个二选一')
+      .toMatch(/saveOwnedBy\?:\s*'row'\s*\|\s*'surface'/)
+    const sheet = code(readSource('client/item/item-create-dialog.tsx'))
+    expect(sheet, '新建那张纸没有交出保存动词，于是它同时有两个保存控件')
+      .toContain('saveOwnedBy="surface"')
+    expect(sheet, '新建那张纸自己不再有保存动词了').toContain("t('item.create.submit')")
+  })
+
+  it('同一个字段的词只有一份：那张纸的词不许被别处读走', () => {
+    /* 「正文（可留空）」那一句本来是照新建纸的排版写的，却被详情那一栏拿去当了占位——
+       于是同一句在地面上说不通的话，出现在两个地方。字段的词归 `item.field.*`，
+       那张纸自己的词（它的标题、它的按钮、它的段名）归 `item.create.*`。 */
+    const readers = itemSurfaceFiles().filter(file => code(file.source).includes('item.create.')).map(file => file.path)
+    expect(readers, `读新建那张纸的词的文件：${readers.join('、')}`).toEqual(['item-create-dialog.tsx'])
   })
 })

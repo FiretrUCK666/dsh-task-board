@@ -154,7 +154,7 @@ describe('the rail is the map, and the bar above the rows says three things', ()
     for (const page of ITEM_PAGES) {
       expect(html, `the page 「${page}」 has no row in the rail, so only the palette can open it`).toContain(PAGE_DOOR[page])
     }
-    for (const where of ['全部', '已删除', '按日子', '按优先级', '按状态']) {
+    for (const where of ['全部', '已删除', '按日期', '按优先级', '按状态']) {
       expect(html, `${where} is no longer somewhere the reader can go`).toContain(where)
     }
     // And 收件 is gone from BOTH halves — no row, and no page to reach.

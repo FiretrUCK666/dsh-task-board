@@ -1525,7 +1525,7 @@ describe('the card chip is a door when the wiring gives one, and a reading when 
 })
 
 describe('every filter the rail can press is a chip you can see and remove', () => {
-  /* 读者报过的那一类缺陷（两处根因、同一句话）：「点击『日子已过』和『日子未到』，左边都显示选中
+  /* 读者报过的那一类缺陷（两处根因、同一句话）：「点击『日期已过』和『日期未到』，左边都显示选中
      了，但下面没有出现对应的胶囊」。左栏按下的是 `has:overdue / ahead / undated / stale`，
      而芯片那张手写的表里写的是 `has:hardOverdue / behind / undated / gated`——**两套词汇只有
      一枚重合**，于是另外三个筛子开着：列表筛了，屏上没有任何东西说得出它开着，也点不掉它。 */
@@ -1550,7 +1550,7 @@ describe('every filter the rail can press is a chip you can see and remove', () 
 })
 
 describe('the rail marks EVERY filter that is on, not just the first', () => {
-  /* 筛子是叠加的：按「日子已过」再按「紧急」，两条一起筛。左栏要标的是**开着的每一个
+  /* 筛子是叠加的：按「日期已过」再按「紧急」，两条一起筛。左栏要标的是**开着的每一个
      筛子**，有一枚开着却不亮，读者看到的就是「我按了三个，它只认一个」。
    *
    * **查询只能从搜索框里写进去**（`readViewPrefs` 故意不恢复搜索文本，那是刻意的产品行为），
@@ -1930,13 +1930,13 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
 
   it('two date verdicts do not cancel each other into an empty list', () => {
     // THE DEFECT THIS PINS IS ARITHMETIC, not taste: the `has:` flags are ANDed
-    // over ONE posture per row, and 「超期了」 needs a date to exist while 「没日子
+    // over ONE posture per row, and 「超期了」 needs a date to exist while 「没日期
     // 的」 means no date exists. Pressing both was constant-false — the list went
     // empty for every document that has ever existed, with both rows still
     // printing their own numbers beside it.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const overdue = railRow(panel.surface, '日子已过')
+      const overdue = railRow(panel.surface, '日期已过')
       const undated = railRow(panel.surface, '没定日期')
       click(overdue)
       expect(shown(panel.surface)).toBe(promised(overdue))
@@ -1966,7 +1966,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     // 「you are here」, and deleting the text by hand left it marked too.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const row = railRow(panel.surface, '日子已过')
+      const row = railRow(panel.surface, '日期已过')
       click(row)
       expect(row.getAttribute('aria-current'), 'the row the reader pressed is not marked current').toBe('true')
       click(row)
@@ -1995,7 +1995,7 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
       click(all)
       // The agenda's own bucket names are what the list page never prints, so their
       // absence is the page having actually changed rather than a filter moving.
-      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('开始未到')
+      expect(panel.surface.textContent ?? '', 'pressing 全部 left the reader on the agenda page').not.toContain('还没开始')
       expect(all.getAttribute('aria-current'), 'the reader is on the document and no row says so').toBe('true')
     } finally {
       panel.dispose()
@@ -2015,10 +2015,10 @@ describe('the rail picks ONE thing per group, and the number on the row is what 
     const rows = fixtures().map(item => ({ ...item, startsAfter: soon }))
     const panel = mountPanel(rows, 'list', 'wide')
     try {
-      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('开始未到')
+      expect(panel.surface.textContent ?? '', 'the list page is drawing the agenda bucket already, so the door below proves nothing').not.toContain('还没开始')
       const schedule = railRow(panel.surface, '日程')
       click(schedule)
-      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('开始未到')
+      expect(panel.surface.textContent ?? '', 'the 日程 row did not open the agenda').toContain('还没开始')
       expect(schedule.getAttribute('aria-current')).toBe('true')
     } finally {
       panel.dispose()
@@ -3509,12 +3509,41 @@ describe('一句话认出来的东西，全部落到各自的框里', () => {
     }
   })
 
-  it('同一行里同一个日子写两遍：那一个不成芯片，并且说一句为什么', () => {
+  it('同一行里同一个日期写两遍：那一个不成芯片，并且说一句为什么', () => {
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       writeLine(panel, '大活儿 @10/26 @10/28')
       expect(panel.surface.textContent ?? '', '被拒的那一个没有说一句为什么').toContain('@10/28')
-      expect(panel.surface.textContent ?? '').toContain('已经写了一个日子')
+      expect(panel.surface.textContent ?? '').toContain('已经有一个日期了')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('同一行里写出一个读不懂的日期：当场说，而且那句话点出读者写的那一串', () => {
+    // 改动前这一串是**静默**落回普通正文的：没有芯片、没有一句话、条目照建——
+    // 而读者以为那个日期记下了。现在它出声。（「字没丢」由下面那条存下去之后钉。）
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      writeLine(panel, '大活儿 @13/45')
+      const shown = panel.surface.textContent ?? ''
+      expect(shown, '读不懂的那一串没有说一句为什么').toContain('不是一天')
+      expect(shown, '那句话没有点出读者写的那串字').toContain('@13/45')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('读不懂的那一串留在句子里，也留在存下来的标题里', () => {
+    // 「写了又丢」比「没写」更贵：词从屏上消失而条目照存，读者就以为它生效了，
+    // 而**一条记错日期的待办比一条没有日期的待办更危险**。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      writeLine(panel, '大活儿 @13/45')
+      save(panel)
+      const written = panel.lastWrite()
+      expect(written[written.length - 1]?.title, '读者写的字被吃掉了').toBe('大活儿 @13/45')
+      expect(written[written.length - 1]?.dueAt, '读不懂的那一串不该变成一个日期').toBeUndefined()
     } finally {
       panel.dispose()
     }
@@ -4250,7 +4279,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       const panel = mountPanel([...fixtures().slice(0, 2)], 'list', band === 'narrow' ? 'narrow' : 'wide')
       try {
         const fold = [...panel.surface.querySelectorAll('button')]
-          .find(one => (one.getAttribute('aria-label') ?? '') === '按日子看')
+          .find(one => (one.getAttribute('aria-label') ?? '') === '按日期看')
         if (fold === undefined) throw new Error('the rail drew no calendar fold control')
         click(fold)
         await settle()
@@ -4387,7 +4416,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     }
 
     if (state === 'create-date-bad') {
-      /* **一个读不懂的日子按下「存下这一条」之后的那一屏。**
+      /* **一个读不懂的日期按下「存下这一条」之后的那一屏。**
        *
        * 读者问的是「详情栏读错了会提醒，为什么新建一条里面不是这样」。这一屏是那件事的
        * 答卷：那句话挂在那一个框底下（与详情同一行字），而这一张纸的底部另有一句说「为什么
@@ -4397,7 +4426,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
         click(open)
         const title = [...panel.surface.querySelectorAll('input')].find(node => node.getAttribute('aria-label') === '标题')
-        typeInto(title, '读不懂的日子')
+        typeInto(title, '读不懂的日期')
         const due = [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith('计划'))
         if (due === undefined) throw new Error('the sheet has no field for 计划')
         typeInto(due, '下个月中旬')
@@ -4869,9 +4898,9 @@ describe('the dates answer a press; the archive is a page; 多选 is on the bar'
 /* ── 日历：一块看得懂、按得动的日历 ─────────────────────────────────────────
  *
  * 这一段是读者点名的三件事，一件一条：
- *   1. 「点回 9 号什么都不显示」——按过的日子必须**留下痕迹**（一枚可摘的芯片），
+ *   1. 「点回 9 号什么都不显示」——按过的日期必须**留下痕迹**（一枚可摘的芯片），
  *      空列表必须说得出为什么空；
- *   2. 「点一个日子，再点另一个」——第二个必须**换掉**第一个，哪怕第一个那天没有行
+ *   2. 「点一个日期，再点另一个」——第二个必须**换掉**第一个，哪怕第一个那天没有行
  *      （「同族」若取「有行的那些天」，没有行的那天留下的 `on:` 谁也顶不掉它）；
  *   3. 「像个毛坯房」——周首行、翻月、回到今天，三样都在，且**两档都有**。 */
 describe('the calendar is a date filter a reader can read back', () => {
@@ -4908,10 +4937,10 @@ describe('the calendar is a date filter a reader can read back', () => {
   })
 
   it('pressing a second day REPLACES the first, even when the first day holds nothing', async () => {
-    // 这是「点回 9 号什么都不显示」的另一半：一个**没有行**的日子按下去也必须
-    // 是一次完整的筛选（列表为空、芯片在），而它必须能被下一个日子顶掉。同族集合
-    // 若取「有行的那些天」，空日子的 token 永远留在串里——读者按了
-    // 三个日子，串里有三个 `on:`，屏幕上只有一个芯片。
+    // 这是「点回 9 号什么都不显示」的另一半：一个**没有行**的日期按下去也必须
+    // 是一次完整的筛选（列表为空、芯片在），而它必须能被下一个日期顶掉。同族集合
+    // 若取「有行的那些天」，空日期的 token 永远留在串里——读者按了
+    // 三个日期，串里有三个 `on:`，屏幕上只有一个芯片。
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
       click(dayCell(panel.surface, 4))
@@ -4929,8 +4958,8 @@ describe('the calendar is a date filter a reader can read back', () => {
 
   it('the probe bites: a day with no rows can never be a sibling of the day you press', () => {
     // 这条律写成算术：同族集合必须取 `railDays` —— **有行的那些天**。
-    // 于是一个没有行的日子（读者完全合理地会去问「那天有什么」）按下去之后，
-    // 它留下的 `on:` 谁也顶不掉：下一个日子要顶掉的是「有行的那些天」，而它不在
+    // 于是一个没有行的日期（读者完全合理地会去问「那天有什么」）按下去之后，
+    // 它留下的 `on:` 谁也顶不掉：下一个日期要顶掉的是「有行的那些天」，而它不在
     // 那份名单里。两个 `on:` 同时生效，屏幕上只有一个芯片，读者看到的是一份
     // 谁也说不出为什么的清单。
     const emptyDay = '2026-10-04'
@@ -5126,7 +5155,7 @@ describe('写入框：高度是读者的，整条下沿都能拉', () => {
   })
 })
 
-describe('新建一条：读不懂的日子不存下这一条，而是当场说', () => {
+describe('新建一条：读不懂的日期不存下这一条，而是当场说', () => {
   /** 打开那张纸，写下标题，返回「存下这一条」那一枚。 */
   const openSheet = (panel: ReturnType<typeof mountPanel>, title: string): HTMLButtonElement => {
     const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
@@ -5141,21 +5170,21 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
   const dateField = (panel: ReturnType<typeof mountPanel>, label: string): Element | undefined =>
     [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith(label))
 
-  it('一个读不懂的日子：条目不落进文档，那句话说在字段下面', () => {
+  it('一个读不懂的日期：条目不落进文档，那句话说在字段下面', () => {
     // 这一条钉的是一次**静默的数据损失**：`parseItemDate` 的 `undefined` 一旦被铺进
-    // capture，读者写的「下个月中旬」就变成 `{ dueAt: undefined }`——条目照建、日子没了、
+    // capture，读者写的「下个月中旬」就变成 `{ dueAt: undefined }`——条目照建、日期没了、
     // 屏上没有一个字。展开区那一栏的规矩是「读不懂就不写、并且说一句」，这张纸读同一个
     // 判定、说同一句话。
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
-      const save = openSheet(panel, '读不懂的日子')
+      const save = openSheet(panel, '读不懂的日期')
       const due = dateField(panel, '计划')
       if (due === undefined) throw new Error('the sheet has no field for 计划')
       typeInto(due, '下个月中旬')
       const before = panel.lastWrite().length
       click(save)
-      expect(panel.lastWrite().length, '读不懂的日子被丢掉，而条目照存').toBe(before)
-      expect(panel.surface.textContent, '没有说那个日子读不懂').toContain('这个读法我没读懂')
+      expect(panel.lastWrite().length, '读不懂的日期被丢掉，而条目照存').toBe(before)
+      expect(panel.surface.textContent, '没有说那个日期读不懂').toContain('这个读法我没读懂')
       expect(panel.surface.textContent, '按钮在底部、纸会滚——原因只说在看不见的地方，等于没说')
         .toContain('有一个日期的写法我没读懂')
       const stillOpen = [...panel.surface.querySelectorAll('button')].some(node => (node.textContent ?? '').trim() === '存下这一条')
@@ -5165,7 +5194,7 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
     }
   })
 
-  it('同一个框，写对了就存得下，而且那个日子进了文档', () => {
+  it('同一个框，写对了就存得下，而且那个日期进了文档', () => {
     // 这是上一条的对照：同一条路径、同一个字段，换一个读得懂的写法。少了它，上一条红的
     // 时候没人分得清「判定坏了」与「这张纸根本存不下东西」。
     const panel = mountPanel(oneRow({}), 'list', 'wide')
@@ -5177,7 +5206,105 @@ describe('新建一条：读不懂的日子不存下这一条，而是当场说'
       click(save)
       const written = panel.lastWrite()
       expect(written[written.length - 1]?.title, '存下来的不是读者写的那一条').toBe('明天要做的事')
-      expect(written[written.length - 1]?.dueAt, '读得懂的日子没有跟着条目走').toBe(new Date(2026, 8, 30).getTime())
+      expect(written[written.length - 1]?.dueAt, '读得懂的日期没有跟着条目走').toBe(new Date(2026, 8, 30).getTime())
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('三种读不懂各有各的说法：不存在的日期、今年已经过了的日期、不认识的写法', () => {    // 三种是**三件事、三种改法**：核对月份与日期 / 把年份补上 / 换一种写法。一句话盖住
+    // 三种，读者照着做还是错。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const save = openSheet(panel, '三种读不懂')
+      const due = dateField(panel, '计划')
+      if (due === undefined) throw new Error('the sheet has no field for 计划')
+      const shown = (): string => panel.surface.textContent ?? ''
+      typeInto(due, '2026-02-30')
+      click(save)
+      expect(shown(), '日历上没有的那一天没被指出来').toContain('不是一天')
+      typeInto(due, '9/10')
+      click(save)
+      expect(shown(), '今年已经过去的那一天没被指出来').toContain('已经过去的一天')
+      typeInto(due, '10月32日')
+      click(save)
+      expect(shown(), '日历上不存在的写法该说「不是一天」，而不是「没读懂」').toContain('不是一天')
+      typeInto(due, '下个月中旬')
+      click(save)
+      expect(shown(), '读不懂的写法没被指出来').toContain('这个读法我没读懂')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('这一张纸上只有一处能存下它', () => {
+    // **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 保存动词归这张纸
+    // （纸尾那一枚），而文法行只交出回车（见 `saveOwnedBy`）。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openSheet(panel, '只留一个保存动词')
+      const saves = [...panel.surface.querySelectorAll('button')]
+        .map(node => (node.textContent ?? '').trim())
+        .filter(word => word === '存下这一条' || word === '记下')
+      expect(saves, `这张纸上的保存动词：${saves.join('、')}`).toEqual(['存下这一条'])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('三个记号各自叫什么，就写在读者打字的那一行下面', () => {
+    // 读者对着占位里那串 `… #画廊 !1 @明天` 问出的第一个问题是「井号后面那个 tag 是什么」。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openSheet(panel, '图例')
+      const legend = panel.surface.querySelector('[class*="itemGrammarLegend"]')
+      if (legend === null) throw new Error('the sheet drew no legend for the three sigils')
+      const shown = legend.textContent ?? ''
+      for (const word of ['标签', '优先级', '开始', '计划', '截止']) {
+        expect(shown, `图例里没有说清「${word}」`).toContain(word)
+      }
+      for (const sigil of ['#', '!', '@']) {
+        expect(shown, `图例里没有那个记号「${sigil}」`).toContain(sigil)
+      }
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('三个日期各说得出自己管什么，而且只写一个也算数', () => {
+    // 「这三个是不是重复了、能不能只写一个」是读者问的第一个问题，答案就在字段名旁边那句
+    // 注解与下面那一行里——不在别处。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openSheet(panel, '三个日期的分工')
+      const shown = panel.surface.textContent ?? ''
+      for (const gloss of ['早于这天不动', '想做完的那天', '不能顺延的那天']) {
+        expect(shown, `字段名旁没有说「${gloss}」`).toContain(gloss)
+      }
+      expect(shown, '没有说清「只写一个也算数」').toContain('只写一个也算数')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('三个日期互相矛盾：当场说一句，而这一条照样存得下', () => {
+    // **拦住这一下**会把读者卡在一个他还没想好的顺序里（先改哪一个都错），所以这条路
+    // 是「说出来、照样存」——落进文档之后行尾会说同一句话（`itemDateConflict` 一个判定）。
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const save = openSheet(panel, '自己矛盾的一条')
+      const starts = dateField(panel, '开始')
+      const hard = dateField(panel, '截止')
+      if (starts === undefined || hard === undefined) throw new Error('the sheet has no field for 开始 / 截止')
+      typeInto(starts, '10/9')
+      typeInto(hard, '10/5')
+      expect(panel.surface.textContent, '这一组自己矛盾，却一个字都没说').toContain('自相矛盾')
+      const before = panel.lastWrite().length
+      click(save)
+      const written = panel.lastWrite()
+      expect(written.length, '矛盾的那一条被拦住了，而它该存下').toBe(before + 1)
+      expect(written[written.length - 1]?.startsAfter).toBe(new Date(2026, 9, 9).getTime())
+      expect(written[written.length - 1]?.hardDueAt).toBe(new Date(2026, 9, 5).getTime())
     } finally {
       panel.dispose()
     }

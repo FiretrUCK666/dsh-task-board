@@ -3,8 +3,8 @@
  *
  * WHY ONE FILE. Spread across four files, the same handful of words becomes
  * eight answers to four questions: the row and the detail pane each with a
- * `PRIORITY_LABEL`, the row's `MARK_LABEL` and the detail's `STATUS_LABEL` being
- * the same three keys under two names, the batch bar and the page props each with
+ * `PRIORITY_LABEL`, the row's menu and the property column each with its own
+ * status wording (动词形与名词形，见下), the batch bar and the page props each with
  * a priority table, and the overview strip with its own `TILE_ORDER` — a second
  * copy of the model's own status order. The failure mode is not a
  * compile error — it is a word that quietly drifts, or renders `undefined`,
@@ -24,7 +24,7 @@
  * is on and what a date means are all `core/item-view.ts`, read by this surface
  * and by `taskboard_query` alike.
  */
-import type { ItemPriority, ItemStatus } from '../../core/item.ts'
+import type { ItemDateKey, ItemPriority, ItemStatus } from '../../core/item.ts'
 import type { ItemFlag, ItemSort, ItemStatusView, ScheduleBucketId } from '../../core/item-view.ts'
 import { STATUS_KEY } from '../board/status.ts'
 import type { TaskBoardKey } from '../locales.ts'
@@ -63,15 +63,17 @@ export const PRIORITY_LABEL: Readonly<Record<ItemPriority, TaskBoardKey>> = {
 }
 
 /**
- * 读者可以把**这一行自己**放进哪几档，以及每一档的词。
+ * 这一行的⋮菜单里那几枚**动作**的词——「标为待办」而不是「待办」。
  *
  * **五档，与看板那五栏同一套词。** 档数不由清单自己定：只说得清「还没做 / 做完了」两句，
  * 读者就要问**没挂卡的时候为什么只有两档能选**——而一张卡能落在哪几栏，就是这一行能选的
  * 那几档。「受阻」不在这里：它是唯一一个两个面板对不上的词（看板没有这一档）——少掉的是
  * 那个词，不是那一档。
  *
- * 挂着一张卡的行**不从这里写**：那时读者改的是那张卡在哪一栏（`task.move`），界面给的是看板
- * 自己的动词（`status.move.*`）。所以这张表是「这一行没有卡的时候」的词表。
+ * **与 `GROUP_LABEL` 分工是词形，不是场合**：菜单项站在动作**之前**，所以说「标为…」；属性
+ * 表站在动作**之后**，所以只说「这一行现在是什么」（`GROUP_LABEL`）。挂着一张卡的行也按
+ * 这条菜单写——`applyItemStatus` 一处把这一行与那张卡一起写（人能给的只有三档，另两档由
+ * 执行器给）。
  */
 export const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>> = {
   backlog: 'item.status.backlog',
@@ -82,14 +84,39 @@ export const STATUS_LABEL: Readonly<Record<ItemStatus, TaskBoardKey>> = {
 }
 
 /**
- * 三个日子各自的**字段名键**，一处定义两处读（行尾的读法与快记那一句「已经写过了」）：
+ * 三个日期各自的**字段名键**，一处定义两处读（行尾的读法与快记那一句「已经写过了」）：
  * 一个概念一套词，而抄一份的代价是改一处不报错。
  */
 export const DATE_FIELD_KEY = {
   startsAfter: 'item.field.startsAfter',
   dueAt: 'item.field.dueAt',
   hardDueAt: 'item.field.hardDueAt',
-} as const satisfies Readonly<Record<'startsAfter' | 'dueAt' | 'hardDueAt', TaskBoardKey>>
+} as const satisfies Readonly<Record<ItemDateKey, TaskBoardKey>>
+
+/**
+ * 每个字段名旁边那一句**注解**的键——「这个字段是干什么的」。
+ *
+ * 与 `DATE_FIELD_KEY` 并排定义，因为它们是同一件事的两半：名字说「我是谁」，注解说
+ * 「我管什么」。两个表面（新建那张纸的字段名旁、详情里点开那一行时）读的是同一份，
+ * 所以「计划」与「截止」的分别不可能只在一处被说清。
+ */
+export const DATE_GLOSS_KEY = {
+  startsAfter: 'item.field.startsAfter.gloss',
+  dueAt: 'item.field.dueAt.gloss',
+  hardDueAt: 'item.field.hardDueAt.gloss',
+} as const satisfies Readonly<Record<ItemDateKey, TaskBoardKey>>
+
+/**
+ * 每个日期框里那行**占位**的键：它教的是**拼写**（这个框认哪几种写法，包括 `@` 那一种）。
+ *
+ * 三份键住在这里而不是某一张纸里：它说的是字段自己认什么，而**两个表面都在写同一个字段**
+ * ——详情那一栏点开是它，新建那张纸的三个框也是它。抄到其中一处，另一处就会先过期。
+ */
+export const DATE_HINT_KEY = {
+  startsAfter: 'item.field.startsHint',
+  dueAt: 'item.field.dueHint',
+  hardDueAt: 'item.field.hardDueHint',
+} as const satisfies Readonly<Record<ItemDateKey, TaskBoardKey>>
 
 /**
  * The five columns a row can READ as, and the word for each — **the board's own words**.

@@ -29,6 +29,7 @@
  * reader's only remaining option is to stop writing in the box at all.
  */
 import { PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
+import type { ItemDateKey } from '../../core/item.ts'
 /**
  * THE DAY BOUNDARY IS THE MODEL'S: this file keeps no copy of its own.
  *
@@ -39,7 +40,7 @@ import { PRIORITY_DIGIT, type ItemPriority } from '../../core/item-view.ts'
  * not a style question — the two differ the moment one of them is asked on a
  * device in another timezone, and nothing anywhere reports it.
  */
-import { parseDateExpression } from './model.ts'
+import { DATE_NAME_FIELD, looksLikeDate, readDateExpression, type DateBadReason } from './model.ts'
 
 /** What a recognised token became. Drives the chip the box draws. */
 export type ComposerTokenKind = 'tag' | 'priority' | 'due' | 'hard' | 'earliest' | 'step'
@@ -82,21 +83,25 @@ export interface ComposerParse {
   readonly startsAfter: number | undefined
   readonly tokens: ComposerToken[]
   /**
-   * 被拒的词：**同一个日子已经写过了**，所以这一个没有生效（也不画成芯片）。
+   * 被拒的词：**这一个没有生效**，而读者写的那些字**一个都没丢**。
    *
-   * 它们留在正文里当普通文字，而输入框下面那句话就说清为什么。静默覆盖会更省事，
-   * 但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档——**屏上自相矛盾**，
-   * 而读者唯一的解释是「它随便挑了一个」。
+   * 两种被拒：同一个日期已经写过了（`duplicate`），以及这一串读不懂（其余三种，见
+   * `DateBadReason`）。两者都是「没有变成芯片、留在句子里、下面说一句为什么」——
+   * 静默覆盖会更省事，但那样屏上会出现两枚都写着日期的芯片而只有后一个进了文档
+   * （**屏上自相矛盾**，读者唯一的解释是「它随便挑了一个」）；静默丢掉更糟：读者看不见
+   * 那个词，就以为它生效了，而**一条记错了日期的待办比一条没有日期的待办更危险**。
    */
   readonly refused: readonly ComposerRefusal[]
   /** The source with every checkbox line removed — what a re-parse should read. */
   readonly source: string
 }
 
-/** 一个被拒的词：原样写的那串字，以及它想写的那个日子。 */
+/** 一个被拒的词：原样写的那串字、它想写的那个日期，以及它为什么没生效。 */
 export interface ComposerRefusal {
   readonly raw: string
-  readonly field: 'startsAfter' | 'dueAt' | 'hardDueAt'
+  readonly field: ItemDateKey
+  /** 读不懂的那三种直接来自日期那一门语言；`duplicate` 是这一行自己的规矩。 */
+  readonly reason: DateBadReason | 'duplicate'
 }
 
 /**
@@ -121,6 +126,21 @@ const PRIORITY_BY_DIGIT: Readonly<Record<string, ItemPriority>> = Object.fromEnt
 
 /** A checkbox line: `- [ ] text`, `* [x] text`. The box is optional width. */
 const CHECKBOX = /^(\s*)[-*]\s*\[\s*([ xX]?)\s*\]\s*(.+)$/
+
+/**
+ * 名字在 `@` 后面那一段里的两种识别式，**从那张唯一的名字表长出来**（`DATE_NAME_FIELD`）：
+ * **拉丁词要一个界**——`@target 10/15` 里 `target` 后面必须真的是空白，否则 `@startline`
+ * 会被读成「开始 + line」；汉字不要，因为 `@截止10/15` 是中文里自然的写法。
+ */
+const NAME_ALTERNATION = Object.keys(DATE_NAME_FIELD)
+  .map(name => (/^[\x00-\x7f]+$/.test(name) ? `${name}(?=\\s)` : name))
+  .join('|')
+
+/** `@` 后面那一段：可选的名字，加上一个非空白串。 */
+const TOKEN_AT_HEAD = new RegExp(`^@((?:${NAME_ALTERNATION})?\\s*\\S+)`)
+
+/** 把 `@` 后面那一段切成「名字」与「名字管着的那些字」。 */
+const NAME_AT_HEAD = new RegExp(`^(${NAME_ALTERNATION})\\s*(\\S*)`, 'i')
 
 /** One surviving line, with where it started in the WHOLE source. */
 interface SourceLine {
@@ -230,45 +250,62 @@ export function parseComposerInput(text: string, now: number): ComposerParse {
         }
       }
       if (char === '@') {
-        /* **三个日子各写各的，一个字段只认一次。**
+        /* **三个日期各写各的，一个字段只认一次。**
          *
-         * 词表与字段名是同一套：裸 `@` 就是「计划」（最常写的那个），`@开始` 与
-         * `@截止` 各写另外两个。各还有一个单字短写（`@早` / `@晚`）——快记是打字的活儿，
-         * 而那个字就是词的开头，学一次就记得住。
+         * 名字表只有一份（`model.ts` 的 `DATE_NAME_FIELD`）：裸 `@` 就是「计划」（最常写的
+         * 那个），`@开始` 与 `@截止` 各写另外两个，各还有一个单字短写（`@早` / `@晚`）——
+         * 快记是打字的活儿，而那个字就是词的开头，学一次就记得住。
          *
-         * 同一个字段写了第二次**不静默覆盖**：那串字不变成芯片，这一份解析把它带回
-         * `refused`，由输入框下面一句话说清为什么（见 {@link ComposerRefusal}）。 */
-        const word = /^@((?:开始|计划|截止|早|晚)?\s*\S+)/.exec(rest.slice(i))?.[1] ?? ''
-        const named = /^(开始|计划|截止|早|晚)\s*(\S*)/.exec(word)
-        const qualifier = named?.[1]
-        const kind: ComposerTokenKind = qualifier === '截止' || qualifier === '晚'
-          ? 'hard'
-          : qualifier === '开始' || qualifier === '早' ? 'earliest' : 'due'
+         * 两种「不生效」，说同一句话的两个理由（见 {@link ComposerRefusal}）：同一个字段
+         * 写了第二次，以及这一串读不懂（`DateBadReason`）。两种都**留住读者写的字**。 */
+        const word = TOKEN_AT_HEAD.exec(rest.slice(i))?.[1] ?? ''
+        const named = NAME_AT_HEAD.exec(word)
+        const qualifier = named?.[1]?.toLowerCase()
+        /* 名字在词里的身份只是「读者说话的方式」，落到哪个字段由那张表说了算——
+         * `@deadline 10/15` 与 `@截止 10/15` 是同一件事。 */
+        const field: ItemDateKey = qualifier === undefined ? 'dueAt' : DATE_NAME_FIELD[qualifier] as ItemDateKey
+        const kind: ComposerTokenKind = field === 'hardDueAt' ? 'hard' : field === 'startsAfter' ? 'earliest' : 'due'
         const dateWord = named === null ? word : (named[2] as string)
-        const at0 = parseDateExpression(dateWord, now)
-        if (at0 !== undefined) {
-          const raw = qualifier === undefined ? `@${dateWord}` : `@${qualifier} ${dateWord}`
-          const field: 'startsAfter' | 'dueAt' | 'hardDueAt' = kind === 'hard' ? 'hardDueAt' : kind === 'earliest' ? 'startsAfter' : 'dueAt'
+        /* 原样那一段：**读者写的字**，不是重新拼出来的形状。多一个空格、少一个空格，
+         * 撤回（`escapeComposerToken`）与「留在句子里」都按它算。 */
+        const raw = rest.slice(i, i + 1 + word.length)
+        const reading = readDateExpression(dateWord, now)
+        if (reading.kind === 'at') {
           const already = field === 'hardDueAt' ? hardDueAt : field === 'startsAfter' ? startsAfter : dueAt
-          if (already !== undefined) {
-            refused.push({ raw, field })
-          } else {
-            if (field === 'hardDueAt') hardDueAt = at0
-            else if (field === 'startsAfter') startsAfter = at0
-            else dueAt = at0
+          if (already === undefined) {
+            if (field === 'hardDueAt') hardDueAt = reading.at
+            else if (field === 'startsAfter') startsAfter = reading.at
+            else dueAt = reading.at
             tokens.push({
               start: at,
               end: at + raw.length,
               raw,
               kind,
               text: undefined,
-              at: at0,
+              at: reading.at,
               done: undefined,
             })
+            // 生效的那一串被读进了字段，所以它不再是句子的一部分。
+            i += raw.length - 1
+            continue
           }
-          i += raw.length - 1
+          refused.push({ raw, field, reason: 'duplicate' })
+        } else if (qualifier !== undefined && qualifier.length > 1 || looksLikeDate(dateWord)) {
+          /* **读不懂就说，而字一个都不丢。** 判据只有一条：这串字是在写日期吗（见
+           * `looksLikeDate`）——`@每周`、`@张三` 不是，所以它们安静地留在句子里。 */
+          refused.push({ raw, field, reason: reading.reason })
+        } else {
+          // Not a date attempt at all: this `@` is an ordinary character and the
+          // words after it are ordinary text. Fall through to the plain-append
+          // below rather than skipping them — a `#` further along the line is
+          // still a tag.
+          out += char
           continue
         }
+        // 被拒的那一串**留在读者的句子里**（与「没写」不同：写了又丢是最贵的一种）。
+        out += raw
+        i += raw.length - 1
+        continue
       }
       out += char
     }

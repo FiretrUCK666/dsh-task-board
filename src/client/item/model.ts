@@ -33,6 +33,7 @@
  * `core/item-transitions.ts`.
  */
 import { DAY_MS, startOfDay } from '../../core/item-view.ts'
+import type { ItemDateKey } from '../../core/item.ts'
 
 /**
  * Mint a row identity.
@@ -134,8 +135,8 @@ export function formatDayKey(key: string, english: boolean, now: number = Date.n
  * @returns the moment, or `undefined` for an empty or unparseable field.
  */
 export function parseItemDate(value: string, now: number = Date.now()): number | undefined {
-  if (value.trim() === '') return undefined
-  return parseDateExpression(value, now)
+  const reading = readDateExpression(value, now)
+  return reading.kind === 'at' ? reading.at : undefined
 }
 
 /**
@@ -159,16 +160,36 @@ export function parseItemDate(value: string, now: number = Date.now()): number |
  * @param now - the reading clock; a WORD resolves against it.
  * @returns empty, unreadable, or the moment it named.
  */
+/**
+ * 读不懂的三种原因。**三件事，三种改法**——所以它们不是同一句话。
+ *
+ * `parseItemDate` 把所有读不出来的字都折成一个 `undefined`（它回答的是「这是哪一刻」），
+ * 而一处**拒绝**要回答的是「接下来改什么」：换一种写法、把年份补上、还是核对月份与日期。
+ * 一句话盖住三种情况，就是把三种改法说成一种。
+ */
+export type DateBadReason =
+  /** 这串字不在这门语言里。改法：换一种写法。 */
+  | 'unreadable'
+  /** 有日期没年份，而那个日期今年已经过去了。改法：把年份写上。 */
+  | 'past'
+  /** 日历上没有这一天。改法：核对月份与日期。 */
+  | 'impossible'
+
+/** 一次读日期的结果：读到了那一刻，或者读不懂并说得出是哪一种不懂。 */
+export type DateReading =
+  | { readonly kind: 'at'; readonly at: number }
+  | { readonly kind: 'bad'; readonly reason: DateBadReason }
+
+/** WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`. */
 export type DateDraft =
   | { readonly kind: 'empty' }
-  | { readonly kind: 'bad' }
+  | { readonly kind: 'bad'; readonly reason: DateBadReason }
   | { readonly kind: 'at'; readonly at: number }
 
 /** Read a date field's draft. See {@link DateDraft} for why this is not `parseItemDate`. */
 export function readDateDraft(text: string, now: number): DateDraft {
   if (text.trim() === '') return { kind: 'empty' }
-  const at = parseItemDate(text, now)
-  return at === undefined ? { kind: 'bad' } : { kind: 'at', at }
+  return readDateExpression(text, now)
 }
 
 /** Weekday words, Monday first, to match `Date.getDay()` after the offset. */
@@ -183,29 +204,42 @@ const NEAR_DAYS: Readonly<Record<string, number>> = {
 }
 
 /**
- * **一套日期词，两个入口。**
+ * **一套日期词，一处定义。**
  *
- * 读者在哪儿学、在哪儿用，认的都该是同一批写法：固定的近日子（`今天`/`明天`/`前天`…）、
- * 星期几（`三`/`周三`/`下三`）、`+N`、`2026/10/15`、`10/15`（还没到才算），以及字段里那个
- * 严格形式 `2026-10-15`。开头可以带 `@`，也可以带那个日子的名字（`@截止 10/9`）——
- * 名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日子。
+ * 读者在哪儿学、在哪儿用，认的都该是同一批写法：邻近的那几天（`今天`/`明天`/`前天`…）、
+ * 星期几（`三`/`周三`/`下三`）、`+N`、以及**日历上的那一天**——`2026-10-15`、`2026/10/15`、
+ * `2026年10月15日`、`10月15日`、`10/15`。开头可以带 `@`，也可以带那个日期的名字
+ * （`@截止 10/9`）——名字在这里只是**读者说话的方式**：这个框本来就知道自己是哪个日期。
  *
- * **两个入口认同一批写法**：各认一半的话（快记认星期几与 `+N`，日期框只认 `2026-10-15` 与
- * 「明天」），读者在快记得学会的写法，在它旁边那个框里会被拒——而那两个框说的是同一件事。
+ * ── 为什么日历那几种写法必须都认 ──────────────────────────────────────────────
+ *
+ * 因为**这一页自己就是这么印的**：行尾、详情、日程节头印的是 `10月15日`。印得出来、
+ * 读不回来，就是读者照着屏上的样子打一遍，然后被告知「这个读法我没读懂」——
+ * 而这门语言里最不该拒的就是自家印的那一种。所以「印出来的读得回来」是一条性质，
+ * 由 `.spec.ts` 里那个从 `formatItemDate` 生成的用例守着，而不是靠这里多列一行。
+ *
+ * ── 三种拒绝，三种改法 ────────────────────────────────────────────────────────
+ *
+ * 「日历上没有这一天」与「这串字不认识」是两件事：前者 `new Date(2026, 12, 45)` 会
+ * **悄悄滚**到 2027-02-14，于是读者的「12 月 45 日」变成二月里的一天（`impossible`）；
+ * 后者是换一种写法（`unreadable`）。而写着日期却没写年份、那个日期今年已经过去了，
+ * 是第三件：今年 / 明年两个意思都成立，猜一个就是**把一天挪一年**（`past`，
+ * `PRODUCT.md` 把这条歧义钉成了拒绝——补上年份即可）。三种各有一句话，见
+ * `date-field.tsx`。
  * @param text - what the reader wrote.
  * @param now - the reading clock; every word resolves against it.
- * @returns the local midnight of that day, or `undefined` when the words do not name one.
+ * @returns the local midnight of that day, or which of the three refusals it is.
  */
-export function parseDateExpression(text: string, now: number): number | undefined {
+export function readDateExpression(text: string, now: number): DateReading {
   const today = startOfDay(now)
   const word = text.trim()
     .replace(/^@/, '')
-    .replace(/^(?:开始|计划|截止|早|晚|starts?|target|deadline)\s*/i, '')
+    .replace(DATE_NAME_STRIP, '')
     .toLowerCase()
-  if (word === '') return undefined
+  if (word === '') return { kind: 'bad', reason: 'unreadable' }
   const offset = NEAR_DAYS[word]
-  if (offset !== undefined) return today + offset * DAY_MS
-  if (word === '下周') return today + 7 * DAY_MS
+  if (offset !== undefined) return { kind: 'at', at: today + offset * DAY_MS }
+  if (word === '下周') return { kind: 'at', at: today + 7 * DAY_MS }
   const weekday = WEEKDAYS[word.replace(/^下/, '')]
   if (weekday !== undefined) {
     // Strictly forward: a weekday that has already passed this week means the next
@@ -215,24 +249,113 @@ export function parseDateExpression(text: string, now: number): number | undefin
     const named = new Date(today).getDay()
     let delta = weekday - (named === 0 ? 7 : named)
     if (delta <= 0) delta += 7
-    return today + (isNextWeek ? delta + 7 : delta) * DAY_MS
+    return { kind: 'at', at: today + (isNextWeek ? delta + 7 : delta) * DAY_MS }
   }
   const relative = /^\+(\d{1,3})$/.exec(word)
-  if (relative !== null) return today + Number(relative[1]) * DAY_MS
-  const full = /^(\d{4})[/-](\d{1,2})[/-](\d{1,2})$/.exec(word)
-  if (full !== null) {
-    const at = new Date(Number(full[1]), Number(full[2]) - 1, Number(full[3]))
-    return Number.isFinite(at.getTime()) ? at.getTime() : undefined
+  if (relative !== null) return { kind: 'at', at: today + Number(relative[1]) * DAY_MS }
+  const day = readCalendarDay(word)
+  if (day === undefined) return { kind: 'bad', reason: 'unreadable' }
+  return momentOf(day, now)
+}
+
+/**
+ * 三个日期的**名字表**：一处定义，三个读者（字段那一侧的剥离、一行那一侧的解析、
+ * 名字本身的意思）。`早` / `晚` 是打字的活儿留下的单字短写，与 `开始` / `截止` 同义。
+ */
+export const DATE_NAME_FIELD: Readonly<Record<string, ItemDateKey>> = {
+  开始: 'startsAfter', 早: 'startsAfter',
+  计划: 'dueAt',
+  截止: 'hardDueAt', 晚: 'hardDueAt',
+  start: 'startsAfter', starts: 'startsAfter',
+  target: 'dueAt',
+  deadline: 'hardDueAt',
+}
+
+/** 那张表的剥离式：`@截止 10/9` 里的名字在这里只是读者的说话方式。 */
+const DATE_NAME_STRIP = new RegExp(`^(?:${Object.keys(DATE_NAME_FIELD).join('|')})\\s*`, 'i')
+
+/** 印出来的英文月份（`formatItemDate` 的 `en-US` 那一半），三个字母。 */
+const MONTH_NAMES: Readonly<Record<string, number>> = {
+  jan: 1, feb: 2, mar: 3, apr: 4, may: 5, jun: 6,
+  jul: 7, aug: 8, sep: 9, oct: 10, nov: 11, dec: 12,
+}
+
+/** 一个日历上的日期：哪一年（读者没写就是 `undefined`）、哪个月、哪一天。 */
+interface CalendarDay {
+  readonly year: number | undefined
+  readonly month: number
+  readonly day: number
+}
+
+/**
+ * 读一个**日历上的日期**，中文与英文两套写法。
+ *
+ * 这里只管「读者写出了哪三个数」，不管那一天存不存在、也不管它过去了没有——
+ * 那是 {@link momentOf} 的事。分开是因为「写法没读懂」与「这一天不成立」是两种拒绝。
+ * @param word - 已经去掉 `@`、名字与大小写的那些字。
+ * @returns 三个数，或者 `undefined`（这串字不是日历写法）。
+ */
+function readCalendarDay(word: string): CalendarDay | undefined {
+  const yearFirst = /^(\d{4})(?:年|[-/])(\d{1,2})(?:月|[-/])(\d{1,2})日?$/.exec(word)
+  if (yearFirst !== null) {
+    return { year: Number(yearFirst[1]), month: Number(yearFirst[2]), day: Number(yearFirst[3]) }
   }
-  const short = /^(\d{1,2})[/-](\d{1,2})$/.exec(word)
-  if (short !== null) {
-    const at = new Date(new Date(now).getFullYear(), Number(short[1]) - 1, Number(short[2]))
-    const stamp = at.getTime()
-    // Past means ambiguous, and ambiguous means untouched. A year-qualified date is
-    // there for the year the reader actually means.
-    return Number.isFinite(stamp) && stamp >= today ? stamp : undefined
+  const monthDay = /^(\d{1,2})月(\d{1,2})日?$/.exec(word)
+  if (monthDay !== null) return { year: undefined, month: Number(monthDay[1]), day: Number(monthDay[2]) }
+  const numeric = /^(\d{1,2})[-/](\d{1,2})$/.exec(word)
+  if (numeric !== null) return { year: undefined, month: Number(numeric[1]), day: Number(numeric[2]) }
+  const english = /^([a-z]{3})\.?\s+(\d{1,2})(?:,\s*(\d{4}))?$/.exec(word)
+  if (english !== null) {
+    const month = MONTH_NAMES[english[1] as string]
+    if (month === undefined) return undefined
+    return { year: english[3] === undefined ? undefined : Number(english[3]), month, day: Number(english[2]) }
   }
   return undefined
+}
+
+/**
+ * 三个数 → 那一刻，或者两种拒绝之一。
+ *
+ * **回读比对是这件事的全部实质**：`new Date(2026, 12, 45)` 是一个合法的 `Date`
+ * （它滚到 2027-02-14），所以「构造成功」不证明那一天存在——把它读回来，三个数与
+ * 写进去的对不上，就说明日历上没有这一天。没有这一步，读者的笔误会被静默改写成
+ * 另一个日期，而屏上没有一个字说这件事。
+ * @param day - 读者写下的三个数。
+ * @param now - 读钟：年份没写时用它的那一年。
+ * @returns 那一刻，或者 `impossible` / `past`。
+ */
+function momentOf(day: CalendarDay, now: number): DateReading {
+  const year = day.year ?? new Date(now).getFullYear()
+  const at = new Date(year, day.month - 1, day.day)
+  if (at.getFullYear() !== year || at.getMonth() !== day.month - 1 || at.getDate() !== day.day) {
+    return { kind: 'bad', reason: 'impossible' }
+  }
+  const stamp = at.getTime()
+  /* 没写年份 + 已经过去 = 今年与明年都成立。猜一个就是把一天挪一年，所以拒；带上年份
+   * 就能精确说清（`momentOf` 的 `day.year` 一给，这一天就不再歧义）。 */
+  if (day.year === undefined && stamp < startOfDay(now)) return { kind: 'bad', reason: 'past' }
+  return { kind: 'at', at: stamp }
+}
+
+/**
+ * **这串字看起来是在写一个日期吗。**
+ *
+ * 快记里的一串字读不懂时要不要出声，判据就是它：`@13/45`、`@下个月`、`@截止 下个月` 是在
+ * 写日期，读不懂必须说；而 `@每周`、`@张三`、`@晚餐的菜单`、`@日本料理` 里的 `@` 只是一个
+ * 符号，说了就是噪声——而一句会被读者学会忽略的提示，等于没有提示。
+ *
+ * 判据只读**形状**，不读意思：数字、单个星期字、以及那几个只有日期会用的词头。写成
+ * 「含 `月` 或 `日` 二字」是不行的——`月光曲` 与 `日本料理` 会因此开始报错，而这条判据的
+ * 全部价值就在于它不乱说话。
+ * @param word - `@` 后面那些字（名字已经剥掉）。
+ * @returns 是否像在写一个日期。
+ */
+export function looksLikeDate(word: string): boolean {
+  const text = word.trim()
+  if (text === '') return false
+  if (/\d/.test(text)) return true
+  if (/^(?:下|周)?[一二三四五六日天]$/.test(text)) return true
+  return /^(?:今天|今日|明天|明日|昨天|前天|后天|大后天|下周|下个月|这个月|下月|本月|月底|月初|周末|今年|明年|去年)/.test(text)
 }
 
 /** Render a moment for a `yyyy-mm-dd` date field. */

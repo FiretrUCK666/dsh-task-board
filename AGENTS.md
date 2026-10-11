@@ -441,13 +441,19 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   挂载时读到的布尔会漏掉按它的那一下）。恢复是 host 操作而不是客户端提交
   （`items-archive.ts`）。**寻址键两个、各具名、互不为兜底**：界面撤销传 `id`（刚记下的行
   `ref === 0`），模型的 `item.restore` 传 `ref`。**恢复没回来就说没回来**。
-### 设计系统层（**成文契约全在 `DESIGN.md`**；此处只留改代码前必须先知道的三件事）
+### 设计系统层（**成文契约全在 `DESIGN.md`**；此处只留改代码前必须先知道的四件事）
 
 - **令牌**：只消费 `--dsw-*`（CSS 禁 hex/rgb，verify 审计）。**画布层吃画布令牌、内层表面才吃
   不透明层令牌**（The Opaque Inner Rule）——把画布当内层画，宿主的玻璃皮肤就一点也透不进来。
   尺寸按板盒百分比算（**禁 vw/vh**）；`Dialog` 默认 portal 到板盒，Escape 只在一处管。
 - **圆角与形状是两条轴**：`corner-shape` 在根层**一次**声明（全表一处也不许补），`--dsh-tb-corner`
   是换肤的唯一开关。**「圆变方」从来不是半径的问题**，改半径永远修不好它。
+- **`<p>` 上的 margin 在本面板里一律无效。** 清单样式表开头那条 UA 重置是
+  `:where(.itemRoot) p { margin: 0 }`，它的 specificity 是 **(0,1,1)——赢过每一条类名规则**，
+  于是任何写在 `<p>` 上的 `margin` 在真页面上都算 0（声明在、computed 是 0，**不报错也不警告**；
+  量法见 `DESIGN.md` 的清单节）。所以这一页里：要读的字用 **padding** 让位，要让**形**（药丸的底）
+  也让位就得换个元素（`<div>` / `<h2>`）。这不是风格问题——一个写在 `<p>` 上的 `margin-inline-start`
+  会让一整列左沿对不齐，而屏幕上没有任何一处说明为什么。
 - **判据一律不落在界面上**：行轨定值、字阶、颜色预算、三种日期的四种读法、窄屏逐控件结论，全部
   成文在 `DESIGN.md` 的对应节，并且多数各带一条机械断言。**改界面前先读那一节，别从代码反推。**
   响应式**禁 `@media(max-width)`**（JS 侧唯一开关是 `useSurfaceNarrow`）；触屏**只加热区不改几何**；
@@ -669,7 +675,10 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   测不到的链路；`controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是
   会话选择器名单的**唯一**规则处（官方 `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞
   回归用例；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` / `review-page`，
-  **清单**的全在 `panel-render.spec.ts`；看渲染结果用 `DSH_PANEL_HTML=<path> pnpm test` 出页面、
+  **清单**的全在 `panel-render.spec.ts`；`item-board-linkage.spec.ts` 钉**两个面板之间**的一致性
+  （挂卡行的状态是派生的、改状态只经一处、提升成卡的出生栏、日程按截止那天摆、`has:linked` 与
+  字段读法同一答案、模型那一侧的写走同一套清单语义）——它的共同点是「任何一边单独看都是对的」，
+  所以它不测一个表面，测的是两处必须说同一句话；看渲染结果用 `DSH_PANEL_HTML=<path> pnpm test` 出页面、
   再 `node scripts/shot-panel.mjs` 截图；`file-reference-grammar` / `session-mention` 是官方包
   逐字镜像（打包门禁禁跨插件值导入）。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的

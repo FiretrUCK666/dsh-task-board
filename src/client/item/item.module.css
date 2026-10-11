@@ -818,9 +818,21 @@
  * 两个左沿本来就不是同一条。
  *
  * 折叠不是装饰：窄档那条横带里放不下一幅月历，而整块 `display: none` 会让手机上
- * **没有**任何按日子看的入口（硬性规范 11 禁止靠藏掉控件省地方）。折起来是读者
+ * **没有**任何按日期看的入口（硬性规范 11 禁止靠藏掉控件省地方）。折起来是读者
  * 自己的选择，展开的控件一直在。 */
 .itemRailCalendar {
+  /* **这一块的两个数，各有各的出处，而且只写在这里。**
+   *
+   * `--item-calendar-lead`：月题的墨比左栏其它行多让出来的一档（月题自己那一行的左内衬）
+   * ——翻月那一行与日格左右两沿都从它算起。折控的内衬与方格的位置**读同一个数**：
+   * 上一版这两处各写一遍，于是「月题一改、方格就要重算」成了每次都要记得的手工活。
+   *
+   * `--item-calendar-digit`：一位数在 12px 下的**半墨宽**（约 5px）。它是方格左移的第二个
+   * 加数：格子里的数字是居中的，所以「第一列数字的墨」落在列心左边这半个字宽上，而要让
+   * 它对上月题的墨，就得把这半个字宽补回来。两位数的半墨宽约 6px，取中间的 5。
+   * 量法：`Range.getClientRects()` 读第一天数字那点墨的左右沿，与月题第一笔的左右沿比。 */
+  --item-calendar-lead: calc(var(--s1) * 2);
+  --item-calendar-digit: 5px;
   display: flex;
   flex-direction: column;
   min-inline-size: 0;
@@ -862,7 +874,7 @@
    *
    * 18 也正好是第一列日格的墨带中心（网格宽 240，`W/14 ≈ 17.1`），所以月题、周首行、记号列与
    * 组名四样同一条线。 */
-  padding: 2px var(--s1) 2px calc(var(--s1) * 2);
+  padding: 2px var(--s1) 2px var(--item-calendar-lead);
   font-family: inherit;
   text-align: start;
   background: none;
@@ -890,11 +902,16 @@
   transform: rotate(90deg);
 }
 
+/* 翻月与「今天」是**一组**：三枚控件（`‹` · 回到今天 · `›`）作为一组居中站在这一块
+ * 的中轴上。上一版把中间那一枚拉满整行（两头各贴一枚 24px 的箭头），于是它成了这一行
+ * 的底，而两个箭头成了它的两端——三样东西读起来是一个横条加两个装饰。 */
 .itemRailMonthNav {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--s1);
-  flex: none;
+  inline-size: 100%;
+  min-inline-size: 0;
 }
 
 .itemRailNavBtn {
@@ -951,24 +968,27 @@
   opacity: 0.72;
 }
 
-/* 「回到今天」站在 `‹ ›` 中间，跟着它们一起是一枚**小控件**，不是一格日子：它和
-   翻月按钮同高、同排版，只是宽一点、写着字。无路可回时**变灰，不消失**（见
-   `ItemRail` 的 `canReturnToToday`）。
+/* **「回到今天」是三枚控件中间那一枚，而它包住自己的字。**
  *
- * **它吃掉这一行的空位，而且字号与本栏其它小件同档。**
+ * 它站在 `‹ ›` 之间，跟着它们一起是一组**小控件**，不是一格日期：同高、同排版，只是
+ * 写着字。无路可回时**变灰，不消失**（见 `ItemRail` 的 `canReturnToToday`）。
  *
- * 按文字宽时它一个人飘在中间、两边各空出一大块（`‹ ›` 各自 24px 贴在这条带子的两端）；
- * 而 11px 是本表根本没有的一档（本栏的词是 13px、日期与周首行是 12px），一个不在
- * 尺子上的字号读起来就是「这里的东西比别处小一号」。
+ * ── 为什么它不再被拉伸成一整条 ────────────────────────────────────────────────
  *
- * 所以它 `flex: 1 1 auto`：三枚控件连成一条**控制带**，左端右端各有归宿，中间的
- * 空位归它自己（悬停时那片空也一起亮，读者看到的是一个按钮而不是两段缝），而字号
- * 取 12px 那一档。 */
+ * 上一版让它 `flex: 1 1 auto`，理由是「按文字宽时它一个人飘在中间、两边各空出一大块」。
+ * 可那个解法把控件变成了**一整条空胶囊**：读者看到的是一枚跟自己那四个字毫无关系的
+ * 长条，悬停时那片空也一起亮——按下去的地方比字大出十倍，而这不是一个更大的命中面，
+ * 是一个说不清自己在哪的按钮。
+ *
+ * 所以现在是第三种形状，也是这一族里唯一说得通的那种：**三枚连成一组、整组居中**
+ * （`.itemRailMonthNav` 那一行管居中），而中间那一枚**包住自己的字**（左右各一档 `--s3`
+ * 的内衬）。没有东西飘着——`‹` 与 `›` 就在它旁边一档空气的地方，读者一眼看出它们是
+ * 一组。 */
 .itemRailToday {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-inline-size: 0;
   block-size: 24px;
   padding: 0 var(--s2);
@@ -995,7 +1015,7 @@
 }
 
 /* 月份是这块日历的**标题**：它站在冻结字阶的大字档上（26/700，这一档的字重就是
- * 700）——日历的题头与 12px 的日子数字之间要有一整档的主次，15px 的「标题」与
+ * 700）——日历的题头与 12px 的日期数字之间要有一整档的主次，15px 的「标题」与
  * 12px 的数字只差一档灰阶，读者分不出谁是主。
  *
  * ── 它往右让半列：对齐的是**墨**，不是盒子 ─────────────────────────────────
@@ -1016,7 +1036,7 @@
  * 整块往左跳一档**，与它下面「全部」那一行的左沿又对不上。
  *
  * 移动的是**被对齐的那一方**，而不是「负责对齐的那一方」：月题是这一节的题，它站在左栏
- * 自己的内衬线上（与「全部」「按日子」同一条），而下面的七列网格自己让出半列去够它。
+ * 自己的内衬线上（与「全部」「按日期」同一条），而下面的七列网格自己让出半列去够它。
  * 网格折起来时整张都不在，所以折与不折，月题一个像素都不动。 */
 .itemRailMonth {
   font-size: 26px;
@@ -1034,13 +1054,17 @@
 .itemRailMonthGrid {
   display: grid;
   grid-template-columns: repeat(7, 1fr);
-  /* **半列让位（见上面那一段）：整张网格左移半列 + 5px，第一列数字的墨就落到月题的墨上。**
+  /* **半列让位，两个加数各有名字。**
    *
-   * 那个 +5 是给**一位数**的墨宽留的（一列里数字居中，一位数的墨左沿在列心左边约 3px、
-   * 两位数约 6px，取中间那 5px）。而 `+13` 是**月题那一行自己**的让位：月题现在与左栏的
-   * 记号列、组名同一条线（18px，量过四样同线），网格于是跟着多走那 8px，两处仍然对齐。
-   * 两个数各自是量出来的，不互相推。 */
-  margin-inline-start: calc(-100% / 14 + 13px);
+   * 读网格的**盒**左沿是错的判据：格子里的数字是居中的，所以要对齐的是**第一列数字的墨**
+   * 与月题第一笔的墨。那件事由两个加数说清：
+   *  · `-100% / 14` = 半列（第一列的列心）；`100%` 解析的是包含块（这张网格的宽），
+   *    所以七档宽度下同一个算式都成立，没有一个写死的列宽；
+   *  · 再加回 `--item-calendar-lead`（月题自己多让的那一档）与 `--item-calendar-digit`
+   *    （一位数的半墨宽）。
+   * 两个都是量出来的数、都在 `.itemRailCalendar` 上声明了出处，而上一版把它们合成
+   * 一个 `13px`——于是「月题一改，方格就要重算」这件事没有任何地方提醒过。 */
+  margin-inline-start: calc(-100% / 14 + var(--item-calendar-lead) + var(--item-calendar-digit));
   /* 一周与下一周之间是一根发丝线，线属于**周**不属于格子——所以它是周自己的
    * 下边框，而格子自己不画任何边界。 */
   row-gap: 0;
@@ -1079,7 +1103,7 @@
   font-variant-numeric: tabular-nums;
 }
 
-/* 有行的日子，一颗点。一颗，不是「有几条就点几个」——三颗挤在 27px 的格子里是
+/* 有行的日期，一颗点。一颗，不是「有几条就点几个」——三颗挤在 27px 的格子里是
  * 一个数量，而这里的数量读者用不上：他要知道的是**这天有事**，不是这天有几件。 */
 .itemRailDayDot {
   position: absolute;
@@ -1115,10 +1139,13 @@
 }
 
 /* **今天是那颗药丸，所以今天没有点。** 一格上放两个记号，就是多了一个。而药丸
- * 只在今天画——它不是「被选中」，它是一个日历事实，所以它不跟着悬停变。 */
+ * 只在今天画——它不是「被选中」，它是一个日历事实，所以它不跟着悬停变。
+ *
+ * **它与「被选中」共用同一格几何。** 上一版今天是缩进 2/3px、矮到 22px 的小盒子，而
+ * 被选中是 26px 整格上的一圈墨环——同一个方格里两种大小，读者看到的是「这一格怎么比
+ * 旁边小一圈」。现在两个状态都是那 26px 的整格、同一个圆角，差别只在**墨与底**：
+ * 今天有底（日历事实），被选有环（读者的选择）。 */
 .itemRailDay[data-today] {
-  margin: 2px 3px;
-  block-size: 22px;
   background: var(--dsh-tb-accent);
 }
 
@@ -1299,7 +1326,7 @@
   }
 
   /* **日历不许被藏掉。** 在这里 `display: none`，手机上就没有任何
-   * 「按日子看」的入口——一项能力只发给桌面端，正是硬性规范 11 禁止的那种省地方。
+   * 「按日期看」的入口——一项能力只发给桌面端，正是硬性规范 11 禁止的那种省地方。
    * 折起来是一枚芯片（和左栏别的行并排站在横带里），展开则**占满一整行**
    * ——横带因此换行，而不是把一幅月历压在 30px 高的细条里。 */
   .itemRailCalendar {
@@ -2257,66 +2284,60 @@ button.itemRowCardChip {
  * 而不是一行小字灰——而「删掉的东西还会有
  * 第二个使用者」这件事没有写在任何地方。
  *
- * 一行摘要的样子是**小字、第三层墨、名字与数之间 6px 的沟**：它回答「哪几天是空的」，
- * 而答案是轻的。写重了就变成一条与上面标题同量级的内容，而它下面一行任务都没有。 */
+ * ── 它现在是一枚药丸，不再是一行 11px 的小字 ─────────────────────────────────
+ *
+ * **它说的是「哪几天是空的」，而那是关于这份日程的一件事**——与节头同一个量级，只是
+ * 一句话缩成了四个名字加四个 0。上一版把它画成 11px 的第三层墨加一条 5px 的 SVG 界，
+ * 而那两样都压在没有底的画布上：小字读不清，那条 0.5 透明度的线在照片上根本看不见
+ * ——**一条看不见的线不是在说话**。所以它拿节头那一枚药丸（同一个 `--item-fill`、
+ * 同一个圆角），字号退一档到 13，名字与自己的 0 之间一档空气。
+ *
+ * 一行摘要的样子是**轻的**：它回答的是「哪几天没有事」，而那个答案不该与有行的节头
+ * 抢目光——所以它比 `.itemAgendaHead` 矮一档、名字不是粗体。写重了就变成一条与节头
+ * 同量级的内容，而它下面一行任务都没有。 */
 .itemEmptyGroups {
   display: flex;
   flex-wrap: wrap;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s1);
-  margin: var(--s1) 0;
-  /* 空日摘要与节名、与日子读法同一条左沿——这页唯一的左沿。 */
-  padding-inline-start: var(--item-agenda-lead);
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
-  color: var(--item-ink-3);
+  align-self: flex-start;
+  margin: 0;
+  margin-inline-start: var(--item-agenda-lead);
+  padding: 2px 10px;
+  border-radius: var(--item-radius-pill);
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 20px;
+  color: var(--item-ink-2);
+  background: var(--item-fill);
 }
 
 .itemEmptyGroup {
   display: inline-flex;
   align-items: baseline;
-  gap: var(--s1);
+  gap: 6px;
   white-space: nowrap;
-  color: var(--item-ink-3);
 }
 
-.itemEmptyGroupCount {
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--item-ink-3);
-}
-
+/* 名字与它自己的 0 之间那一档：`6px` 是这一族（行上「标签到标签」）已经在用的那个数，
+   而它是**一条沟**，不是一次分隔。 */
 .itemEmptyGroupSep {
   color: var(--item-ink-3);
 }
 
-/* 空日摘要与它下面第一个节之间的那条界。宽度撑满内容列（摘要自己是 flex 行，
-   这一条是它的最后一个子项）。**一条横线，两端没有端刻**——理由在 `schedule.tsx`
-   那一处。 */
-.itemEmptyGroupsRule {
-  flex: 1 0 100%;
-  block-size: 5px;
-  margin-block-start: var(--s2);
-  color: var(--item-ink-3);
-  opacity: 0.5;
-}
-
-.itemEmptyGroupsRule path {
-  fill: none;
-  stroke: currentColor;
-  vector-effect: non-scaling-stroke;
-}
-
-/* **日程没有列出全部行，所以它说清楚差在哪。** 小字、最浅一层墨，且只在这份
-   日程真的少了几行的时候出现（见 `SchedulePage`）。它站在整份日程的最后：读者
-   数完上面的行、心里冒出「不是还有一条吗」的那一刻，答案就在他手边。 */
+/* **日程没有列出全部行，所以它说清楚差在哪。** 12px 的第二层墨（不是 11px 的第三层：
+   这一句是这一页唯一在解释「少了什么」的话，而它同样压在画布上），且只在这份日程真的
+   少了几行的时候出现（见 `SchedulePage`）。它站在整份日程的最后：读者数完上面的行、
+   心里冒出「不是还有一条吗」的那一刻，答案就在他手边。 */
 .itemAgendaLeftOut {
   margin: var(--s3) 0 0;
+  /* 同 `.itemAgendaNote`：`<p>` 上的 margin 被 UA 重置压住，所以左沿用 padding
+     （这一行没有底，两者在屏幕上一模一样）。 */
   padding-inline-start: var(--item-agenda-lead);
-  font-size: 11px;
-  line-height: 16px;
-  color: var(--item-ink-3);
+  max-inline-size: 46ch;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--item-ink-2);
 }
 
 /* ── 8. 空态 ─────────────────────────────────────────────────────────────── */
@@ -2436,6 +2457,52 @@ button.itemRowCardChip {
   min-inline-size: 0;
   color: var(--item-ink-2);
   overflow-wrap: anywhere;
+}
+
+/* ── 三个记号各自叫什么（新建纸的第一行下面） ──────────────────────────────────
+ *
+ * 示范那一行（`.itemGrammarExample`）回答「句子长什么样」，这一行回答「每个记号是什么
+ * 意思」：`#` 标签、`!` 优先级、`@` 开始 / 计划 / 截止。两个问题，两行，谁也替不了谁。
+ *
+ * **记号画成真的芯片，名字退到第三层墨。** 记号是读者要往框里打的那个字符，它得看得见；
+ * 名字是它的意思，读一遍就够。两条同一条左沿，横向按 `--s3` 分开——它们不是一句话里的
+ * 三个词，是三件事，所以用组间距而不是词间距排。
+ *
+ * 尺寸比真芯片矮 6px：这一行是**注解**，不该跟真的控件抢目光（真的那枚 24px，在行上、
+ * 在属性表里）。 */
+.itemGrammarLegend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--s1) var(--s3);
+  margin: 0;
+  min-inline-size: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+}
+
+.itemGrammarLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s1);
+  min-inline-size: 0;
+}
+
+.itemGrammarLegendSigil {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 18px;
+  block-size: 18px;
+  padding-inline: 5px;
+  border-radius: var(--item-radius-ctl);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--item-ink-2);
+  background: var(--item-fill);
 }
 
 /* 空穿第二档墨而不是第三档：第三档的定义是「淡、可丢弃」，而一个空列是那一屏
@@ -3312,16 +3379,22 @@ textarea.itemInput {
 /* 议程优先而不是月历网格：日程页的读者问的是「这周该做什么」，他要的是
  * **按天读**。一个节只有在有行的时候才占一行——空节是排版噪声，整个不画。
  *
- * **这页只有一个左沿。** 节名、日子的读法、空日摘要、门与托盘的名字，全都站在
+ * **这页只有一个左沿。** 节名、日期的读法、空日摘要、门与托盘的名字，全都站在
  * 同一条线上。宽档（行住在卡里）时线上没有缩进——卡缘、节名与日期互相照齐；
  * 窄档行是通栏的，线上给到行文字的位置
  * （880 断点里那一份）。一个变量，四个读者。 */
 .itemAgenda {
-  --item-agenda-lead: 0px;
+  /* **这一页的唯一一条左沿**，而且是量出来的那一条：节头（一枚药丸）、它下面的说明、
+   空日摘要、页尾那句，四样都从这里起排——而 `--item-row-pad` 正是**行卡内容盒**的左沿
+   （行卡自己在 `--item-flow-air` 上，卡里再让一档内衬）。于是日程页的节头、清单页的
+   日分段药丸、两个页面的顶栏文字、以及每一行里的第一个字，站在同一条竖线上：一屏四条
+   竖线互相不认，是这一族付过账的缺陷（见 `DESIGN.md` 的框架律）。
+   它跟着档位走，因为 `--item-row-pad` 本身就跟着档位走——这里不再写第二份。 */
+  --item-agenda-lead: var(--item-row-pad);
   display: flex;
   flex-direction: column;
   /* 节与节之间是一整档空气（22）：一节的行卡与下一节的题头之间有了自己的一拍，
-   * 空日子摘要也站进同一个拍子里——不再与节头挤成两行头。 */
+   * 空日期摘要也站进同一个拍子里——不再与节头挤成两行头。 */
   gap: var(--s3);
   min-inline-size: 0;
 }
@@ -3335,7 +3408,7 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-/* 日子读法**跟着节名站在同一行里**（日程页的一行节头），它不单独占一行，行下
+/* 日期读法**跟着节名站在同一行里**（日程页的一行节头），它不单独占一行，行下
  * 也不画线——结构由「节与节之间的空气」与行卡自己的边说完。 */
 
 .itemAgendaList {
@@ -3344,36 +3417,13 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-/* 「开始未到」是唯一的折叠区：它是一扇还没开的门，把它画成一个日子
+/* 「开始未到」是唯一的折叠区：它是一扇还没开的门，把它画成一个日期
  * 就是骗人。空了就整节不出现——一个没有行的门不是一扇看得见的门。 */
 .itemGatedFold {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   min-inline-size: 0;
-}
-
-/* 门的名字与日子读法同律（它是这一节同样有线的题头），只是它后面跟着一句解释。
- * 它是**标题**不是控件：光标不该指着不动的东西说「能按」。 */
-.itemGatedFoldHead {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  inline-size: 100%;
-  min-block-size: 28px;
-  min-inline-size: 0;
-  margin: 0;
-  padding: 0;
-  padding-inline-start: var(--item-agenda-lead);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-  text-align: start;
-  color: var(--item-ink-1);
-  background: none;
-  border: 0;
-  border-block-end: var(--item-hair);
 }
 
 .itemGatedFoldList {
@@ -3385,27 +3435,12 @@ textarea.itemInput {
 }
 
 /* 「没有日期」是一个有名字的容器，因为看不见自己去了哪里的读者会以为那一行
- * 丢了；它同样遵守「有行才有容器」。名字与日子读法同律。 */
+ * 丢了；它同样遵守「有行才有容器」。 */
 .itemNoDateTray {
   display: flex;
   flex-direction: column;
   gap: var(--s2);
   min-inline-size: 0;
-}
-
-.itemNoDateTrayLabel {
-  display: flex;
-  align-items: center;
-  gap: var(--s2);
-  min-inline-size: 0;
-  margin: 0;
-  padding-block: var(--s2) var(--s1);
-  padding-inline-start: var(--item-agenda-lead);
-  border-block-end: var(--item-hair);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 20px;
-  color: var(--item-ink-1);
 }
 
 /* ── 13a. 这一段的类：由组件那一侧定形状，样式表把它们接上 ───────────────────
@@ -3607,6 +3642,35 @@ textarea.itemInput {
   color: var(--item-ink-3);
 }
 
+/* **字段名旁边那一小句：这个字段是干什么的。**
+ *
+ * 三个词（开始 / 计划 / 截止）各自说得出「我是哪一头」，却说不出「我和另外两个什么关系」
+ * ——而读者真正要回答的就是那个问题。所以注解与字段名同排、再轻一档（同色、不加粗，靠
+ * 一档空气分开），读起来是「开始：早于这天不动」。
+ *
+ * 它出现在**读者正在写这个字段的地方**（新建纸的字段名旁、详情里点开那一行时），
+ * 而不是塞进一段说明文：话要说在它管用的那一刻。 */
+.itemFieldGloss {
+  margin-inline-start: 8px;
+  font-weight: 400;
+  color: var(--item-ink-3);
+}
+
+/* 三个日期下面那一句：平时说「都可以留空、只写一个也算数」，矛盾时换成那句判词。
+   `data-warn` 那一档用**朗读以外的第二层信息**（颜色）说它是提醒，字重不变——
+   同一格里两种语气，靠色不靠字号，换行了也不会看起来像另一个东西。 */
+.itemCreateDialogNote {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 16px;
+  color: var(--item-ink-3);
+}
+
+.itemCreateDialogNote[data-warn] {
+  color: var(--dsh-tb-danger);
+}
+
 /* 标题框：它装的是那一行的名字，所以它和行标题同号（15 / 600）——**同一个问题用
  * 同一档字**，而不是与页面标题同一档，因为弹层不是页面，它浮在页面上面。 */
 .itemCreateDialogTitleField {
@@ -3693,13 +3757,6 @@ textarea.itemInput {
   font-size: 13px;
   font-weight: 600;
   line-height: 20px;
-  color: var(--item-ink-3);
-}
-
-.itemSectionCount {
-  font-size: 11px;
-  font-weight: 600;
-  line-height: 16px;
   color: var(--item-ink-3);
 }
 
@@ -4516,9 +4573,9 @@ textarea.itemInput {
   border-color: var(--dsh-tb-danger);
 }
 
-/* 硬期限没定日子的一颗：**淡红环**——「这一行挂着最后期限」常态可见，不等到它
- * 有日子或超了才亮。55% 危险色往孔色里合成：环读得出是最后期限的墨，不出满档的
- * 喊（满红环 = 有日子未超，实心红 = 超了；淡红环只是「这里有一把」）。 */
+/* 硬期限没定日期的一颗：**淡红环**——「这一行挂着最后期限」常态可见，不等到它
+ * 有日期或超了才亮。55% 危险色往孔色里合成：环读得出是最后期限的墨，不出满档的
+ * 喊（满红环 = 有日期未超，实心红 = 超了；淡红环只是「这里有一把」）。 */
 .itemDateAxis li[data-key='hardDueAt'][data-tone='none'] > i {
   border-color: color-mix(in srgb, var(--dsh-tb-danger) 55%, var(--item-bead-hole));
 }
@@ -4700,25 +4757,85 @@ textarea.itemInput {
   }
 }
 
-/* 议程页的节头：**一行**——节名（15/600，与行标题同一档字阶）、它的条数（13 的
- * 铭牌）、日节的日期读法（13 的注脚）。两行两个题头会把同一句话说两遍；一行说完。 */
-.itemAgendaDayHead {
+/* ── 议程页的节头：一枚药丸，一页只有这一种 ─────────────────────────────────────
+ *
+ * **一行说完**：节名（15/600，与行标题同一档字阶）、它的条数（13 的铭牌）、以及日节的
+ * 日期读法（13 的注脚）。两行两个题头会把同一句话说两遍。
+ *
+ * **三种节共用一个形状**（一天、一扇还没开的门、一个没日期的盘子）：上一版给它们画了
+ * 三种样子（15 无底线 / 13 带发丝线），而读者读到的不是「几种节」，是同一页上几个不
+ * 一样的东西。药丸的词汇与清单页日分段那枚**同源**（同一个 `--item-fill`、同一个药丸
+ * 圆角），只是这一页说的是「节」，那一页说的是「分段」。
+ *
+ * **它按内容定宽**（`align-self: flex-start`）：父级是列向 flex，不写这一条就被拉伸到
+ * 整列宽，而一枚标签坐在一条一千多像素的空横杠最左边，读起来像「里面的东西全部居中」
+ * ——那件事在这样一个盒里做不到（这是清单页日分段那一条付过的账）。
+ *
+ * **上边距是 0**：节与节之间的空气归 `.itemAgenda` 那一档 gap，节名自己不再加一份
+ * ——两处各写一份就是双倍的空气。 */
+.itemAgendaHead {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: var(--s1);
+  align-self: flex-start;
   margin: 0;
-  padding-inline-start: var(--item-agenda-lead);
+  margin-inline-start: var(--item-agenda-lead);
+  padding: 3px 10px;
+  border-radius: var(--item-radius-pill);
   font-size: 15px;
   font-weight: 600;
   line-height: 22px;
   color: var(--item-ink-1);
+  background: var(--item-fill);
 }
 
-.itemAgendaDayDate {
+/* 记号与字的**墨**对齐（同清单页日分段那一条：`align-items: center` 居中的是盒子，
+   而 12/13px 的字在 22px 行盒里墨心偏下）：一个数说这一族。 */
+.itemAgendaHead > svg {
+  flex: none;
+  margin-inline-start: 1px;
+  transform: translateY(0.75px);
+}
+
+/* 条数：13 的铭牌，第三层墨。`<i>` 是斜体，而这里要的是正体数字——`font-style: normal`
+   是这一格的**内容**的一部分，不是排版偏好。 */
+.itemAgendaCount {
+  font-style: normal;
   font-size: 13px;
   font-weight: 400;
-  line-height: 20px;
   color: var(--item-ink-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.itemAgendaWhen {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--item-ink-3);
+}
+
+/* 说明：**一行字，不是一枚胶囊**。
+ *
+ * 11px 的 `.itemHint` 是一枚**回执**（描边 + 药丸底，说的是「刚才那一按的结果」），
+ * 而这里要说的是「这几条为什么在这里」——一段解释被画成一枚回执，读者读到的是「一个
+ * 状态」而不是「一句话」。所以它是 12px 的第二层墨、没有盒子、限宽成一句读得下去的话。
+ *
+ * 限宽用 `ch`：46 个字符是**中文一个舒适的行长**（清单页空态那一块量到 56ch 是拉丁字
+ * 的下限），超过就换行——一段横贯整列的解释，读者的眼睛会找不到下一行的开头。 */
+.itemAgendaNote {
+  /* **让出左沿的是 `padding` 而不是 `margin`，原因在本表开头那条 UA 重置里**：
+     `:where(.itemRoot) p { margin: 0 }` 的 specificity 是 (0,1,1)，赢过每一条类名规则
+     ——于是 `<p>` 上的任何 margin 在真页面上都算 0（量过：声明在、computed 是 0）。
+     这一行字没有底，所以两处写法在屏幕上完全一样；而有底的药丸只能用 margin（padding
+     会把底也一起推出去），于是那两枚是 `div` 与 `<h2>`。**一个原因，两处写法，原因就在
+     这一行旁边**——上一版把这条律写在了 `.itemRowMarks` 的注释里，而这一页的三处左沿
+     没有读到它。 */
+  padding-inline-start: var(--item-agenda-lead);
+  margin: 0;
+  max-inline-size: 46ch;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--item-ink-2);
 }
 
 /* ── 13b. 骨架里没有新名字、但面板上仍然存在的那些零件 ───────────────────── */
@@ -4975,11 +5092,8 @@ textarea.itemInput {
     row-gap: var(--s1);
   }
   /* 行的内衬不在这里重写：基础规则的 `--item-inset-x` 就是行内衬那一档（窄
-   * 12）。议程那条唯一的左沿跟着行内衬的档走：
-   * 变量写在议程的根上，读它的四个名字全部一起动，谁也不比谁多一格。 */
-  .itemAgenda {
-    --item-agenda-lead: calc(var(--item-row-pad) + var(--item-row-lead) + var(--s1));
-  }
+   * 12）。议程那条唯一的左沿也**不在这里重写**——它读的是 `--item-row-pad`，而那个数
+   * 自己跟着档位走（见 `.itemWorkbench`）：在这里再写一份，就是把同一个数抄成两个。 */
 
   .itemRow > .itemDetail {
     --item-detail-lead: calc(var(--item-row-lead) + var(--s1));

@@ -93,23 +93,23 @@ export interface ItemRailGroup {
  * （「超期 15 天」 is the hard one, 「落后 18 天」 the plan), and the detail's
  * date axis prints all three dates with their own readings.
  *
- * `gated` is gone for a different reason: it means 「日子未到，还动不了」, which is
+ * `gated` is gone for a different reason: it means 「日期未到，还动不了」, which is
  * **good news**, and a rail is read when something is wrong. It has a page of its
  * own (日程) and a token (`has:gated`) — a state nobody can reach from here is a
  * state the rail should not be carrying. `ahead` is the row that DOES answer
- * 「日子未到」, and it is about every date a row owns rather than about one field.
+ * 「日期未到」, and it is about every date a row owns rather than about one field.
  *
  * ── WHY THE ORDER PUTS THE TWO DATE ROWS FIRST, AND WHAT THE GROUP IS CALLED ──
  *
  * 读者问过一句「它这个日期的逻辑是什么呢？我有点看不懂」——**因为他把它们当成三个日期
  * 在读，而其中一个是疏于照看**：`stale` 说的是「多久没人碰」，与另外两行不是同一类问题。
- * 而剩下两行也没把日期说完：一份**未来到期**的行落在这一组之外，于是「按日子」这四个字
+ * 而剩下两行也没把日期说完：一份**未来到期**的行落在这一组之外，于是「按日期」这四个字
  * 在屏上并不成立。
  *
- * 所以这一组现在是**真的按日子分**：`overdue`（已经过期）· `ahead`（日子未到）·
- * `undated`（没定日期）——一条分过流的行，它的日子在过去、在未来、或者根本没有，落进且只
- * 落进一格，三个数加得起来（两处例外写在那枚 flag 自己的注释里：刚记下的一句还没到谈日子的
- * 阶段，三个日期互相矛盾的那一条两边都有日子、另有自己的说法）。`stale` 搬去它自己那一组，
+ * 所以这一组现在是**真的按日期分**：`overdue`（已经过期）· `ahead`（日期未到）·
+ * `undated`（没定日期）——一条分过流的行，它的日期在过去、在未来、或者根本没有，落进且只
+ * 落进一格，三个数加得起来（两处例外写在那枚 flag 自己的注释里：刚记下的一句还没到谈日期的
+ * 阶段，三个日期互相矛盾的那一条两边都有日期、另有自己的说法）。`stale` 搬去它自己那一组，
  * 标题写清它问的是另一件事（见 `idle`）。
  */
 const RAIL_FLAGS = ['overdue', 'ahead', 'undated'] as const
@@ -122,7 +122,7 @@ const RAIL_IDLE_FLAGS = ['stale'] as const
  * 搜索框下面那些芯片（`facets.ts` 的日期那一栏）必须画得出左栏按下的**每一个**筛子。左栏
  * 按的是 `has:overdue / ahead / undated / stale`，芯片那一栏如果自己写一套
  * `has:hardOverdue / behind / undated / gated`，两套词汇就只有「没定日期」重合——于是读者按
- * 「日子已过」「日子未到」「放着没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
+ * 「日期已过」「日期未到」「放着没动」，**列表筛了，芯片一个都不出现**：筛子开着，而屏上没有任何
  * 东西说得出它开着，也点不掉它。这正是硬性规范 17 说的那笔债：同一件事有两处写法，而错的
  * 那一处永远不会报错。
  */
@@ -216,7 +216,7 @@ export function itemRailGroupsOf(
  * The other tokens in this entry's group — the ones a press has to REPLACE.
  *
  * A rail group is a set of ALTERNATIVES, and that is a property of the rail's own
- * shape rather than a rule the caller should remember: 「按日子看」 offers three
+ * shape rather than a rule the caller should remember: 「按日期看」 offers three
  * verdicts about one row's dates, 「按重要程度」 offers the four priorities a row
  * can have exactly one of, 「按状态」 the five the board has. So the members of a group
  * are mutually exclusive by construction, and asking the group for them is the

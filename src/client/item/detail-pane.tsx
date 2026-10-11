@@ -13,7 +13,7 @@
  * layer.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
+import type { ItemDateKey, ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
@@ -23,12 +23,12 @@ import { Chip } from '../board/Chip.tsx'
 import { DateField } from './date-field.tsx'
 import { ProseField } from './prose-field.tsx'
 import { formatItemDate, readDateDraft, toItemDateField } from './model.ts'
-import { GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
+import { DATE_GLOSS_KEY, DATE_HINT_KEY, GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark } from './marks.tsx'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
-import { TagField } from './tag-field.tsx'
+import { TagField, tagName } from './tag-field.tsx'
 import css from './item.module.css'
 
 const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
@@ -262,7 +262,7 @@ export function ItemDetail(props: ItemDetailProps) {
           </button>
         )
       })
-  /** 「这一条还没到开始的日子」——三个日期读法里唯一一种不是「有一个日子」的。 */
+  /** 「这一条还没到开始的日期」——三个日期读法里唯一一种不是「有一个日期」的。 */
   const gated = view.posture.kind === 'gated'
 /**
    * THE TWO VERDICTS, one per date, read from the model's own projection.
@@ -274,7 +274,7 @@ export function ItemDetail(props: ItemDetailProps) {
    * borrowed from the other, which is what makes 「超期」 one word meaning one thing.
    *
    * **轴里与行尾读同一对词。** 两处都只说裁决本身（「超期 N 天」/「落后 N 天」），因为
-   * 两处都已经把它judge的那个日子说在旁边的列里（轴里是行首那个词，行尾是那一段的开头）
+   * 两处都已经把它judge的那个日期说在旁边的列里（轴里是行首那个词，行尾是那一段的开头）
    * ——把日期名再拼进来就是同一句话说两遍。
    */
   const behind = view.soft.overdue && view.soft.days !== undefined
@@ -343,7 +343,7 @@ export function ItemDetail(props: ItemDetailProps) {
 
   /**
    * 三个日期的就地编辑。一次一行；点开时预填**字段此刻的值**（同一个写法的读法：
-   * `@明天` 进去读到什么写什么），Enter 记下，Esc 收回，空值撤掉那一个日子。
+   * `@明天` 进去读到什么写什么），Enter 记下，Esc 收回，空值撤掉那一个日期。
    * 没读懂的读法不记下也不消失——那一行停在现场，下面说一句为什么。
    */
   const [dateEdit, setDateEdit] = useState<ItemDateKey | undefined>(undefined)
@@ -376,9 +376,9 @@ export function ItemDetail(props: ItemDetailProps) {
     const field = dateEdit
     if (field === undefined) return
     /* **三态，不是两态。** `parseItemDate` 把「没写」与「读不懂」折成同一个
-       `undefined`，而这两件事在这里的答案是相反的：空着是撤掉这个日子（一句实的说法），
+       `undefined`，而这两件事在这里的答案是相反的：空着是撤掉这个日期（一句实的说法），
        读不懂是**一个字都不许写**——一行没写就丢的词是「写了又丢」。判定与新建那条那张
-       纸共用 `readDateDraft`，所以同一个词在两处得到同一个答案。字面日子以**面板的钟**
+       纸共用 `readDateDraft`，所以同一个词在两处得到同一个答案。字面日期以**面板的钟**
        解，不是机器的今天：测试要的是给定的今天。 */
     const draft = readDateDraft(dateDraft, props.now)
     if (draft.kind === 'empty') {
@@ -428,7 +428,7 @@ export function ItemDetail(props: ItemDetailProps) {
                 <ProseField
                   value={item.body}
                   onChange={body => props.onEdit({ body })}
-                  placeholder={t('item.create.body')}
+                  placeholder={t('item.field.bodyHint')}
                   ariaLabel={t('item.field.body')}
                   height={props.proseHeight}
                   onHeight={props.onProseHeight}
@@ -544,7 +544,7 @@ export function ItemDetail(props: ItemDetailProps) {
                 onKeyDown={event => {
                   if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
                   event.preventDefault()
-                  const tag = draftTag.trim().replace(/^#/, '')
+                  const tag = tagName(draftTag)
                   if (tag === '') return
                   props.onEdit({ tags: [...item.tags, tag] })
                   setDraftTag('')
@@ -564,9 +564,9 @@ export function ItemDetail(props: ItemDetailProps) {
             <DateLine
               keyName='startsAfter'
               label={t('item.field.startsAfter')}
-              /* **门关着的时候必须显示那个日子。** 读者最需要知道的就是「哪天开」，而这条
+              /* **门关着的时候必须显示那个日期。** 读者最需要知道的就是「哪天开」，而这条
                  线**不许**在门关着时印「现在就能动，没有门」——既是反话（那时正是不能动），
-                 又把那个日子藏了起来。珠子的 `gate` 语气已经说了它是一扇门，读法不必再说。 */
+                 又把那个日期藏了起来。珠子的 `gate` 语气已经说了它是一扇门，读法不必再说。 */
               reading={item.startsAfter === undefined ? t('item.dates.none') : formatItemDate(item.startsAfter, english, props.now)}
               tone={gated ? 'gate' : item.startsAfter === undefined ? 'none' : 'set'}
               field={dateEdit === 'startsAfter'}
@@ -574,7 +574,6 @@ export function ItemDetail(props: ItemDetailProps) {
               bad={dateBad}
               now={props.now}
               onDraft={setDateDraft}
-              hint={t('item.create.startsHint')}
               onOpen={() => openDateEdit('startsAfter')}
               onConfirm={confirmDateEdit}
               onCancel={shutDateEdit}
@@ -592,7 +591,6 @@ export function ItemDetail(props: ItemDetailProps) {
               bad={dateBad}
               now={props.now}
               onDraft={setDateDraft}
-              hint={t('item.create.dueHint')}
               onOpen={() => openDateEdit('dueAt')}
               onConfirm={confirmDateEdit}
               onCancel={shutDateEdit}
@@ -612,7 +610,6 @@ export function ItemDetail(props: ItemDetailProps) {
               bad={dateBad}
               now={props.now}
               onDraft={setDateDraft}
-              hint={t('item.create.hardHint')}
               onOpen={() => openDateEdit('hardDueAt')}
               onConfirm={confirmDateEdit}
               onCancel={shutDateEdit}
@@ -761,14 +758,13 @@ export function ItemDetail(props: ItemDetailProps) {
 function DateLine(props: {
   /** Which of the three dates this line is, said on the li — the hard one's ring
    *  wears its own ink off that key (see the stylesheet's bead rules). */
-  readonly keyName: 'startsAfter' | 'dueAt' | 'hardDueAt'
+  readonly keyName: ItemDateKey
   readonly label: string
   readonly reading: string
   readonly tone: 'gate' | 'none' | 'set' | 'late' | 'soon' | 'over'
   /** `true` while this line's field is open; the input replaces the reading. */
   readonly field?: boolean
   readonly draft?: string
-  readonly hint?: string
   /** **这一屏的钟。** 字段读一个词（`明天`）要按面板的今天解，不是机器的今天。 */
   readonly now: number
   readonly onDraft?: (value: string) => void
@@ -784,15 +780,21 @@ function DateLine(props: {
     <li data-key={props.keyName} data-tone={props.tone}>
       <i aria-hidden="true" />
       <b>{props.label}</b>
-      {/* **这一格是共用元件，不是一根长得像它的输入框。** 读得懂就读出那个日子、读不懂
+      {/* **注解只在读者正写这一格的时候出现。** 它说的是「这个字段管什么」——那是读者
+          按下这一行、准备写一个日期时的问题；读的时候（三个读数各说各的日期）不需要它，
+          三个注解永远挂在那里只会把一列读数变成一列解释。
+          词与新建那张纸**同一份**（`DATE_GLOSS_KEY`）：同一句话不该有两个版本。 */}
+      {props.field === true && <span className={css.itemFieldGloss}>{t(DATE_GLOSS_KEY[props.keyName])}</span>}
+      {/* **这一格是共用元件，不是一根长得像它的输入框。** 读得懂就读出那个日期、读不懂
           就原地拒绝（`date-field.tsx`），而「新建一条」那张纸上用的是同一个元件——同一个
-          词在两处被同一个判定读，就不会有一处把它悄悄丢掉。 */}
+          词在两处被同一个判定读，就不会有一处把它悄悄丢掉。占位也是字段自己那一份
+          （`DATE_HINT_KEY`），不是那张纸的。 */}
       {props.field
         ? (
             <DateField
               value={props.draft ?? ''}
               onChange={value => props.onDraft?.(value)}
-              hint={props.hint ?? ''}
+              hint={t(DATE_HINT_KEY[props.keyName])}
               ariaLabel={props.label}
               now={props.now}
               bad={props.bad}
@@ -811,6 +813,3 @@ function DateLine(props: {
     </li>
   )
 }
-
-/** The three writeable dates, as one closed name for the pane's editor state. */
-type ItemDateKey = 'startsAfter' | 'dueAt' | 'hardDueAt'

@@ -381,7 +381,9 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // pass as soon as one pair reads right, which is the state this was in.
     const item = readFileSync(fileURLToPath(new URL('../src/core/item.ts', import.meta.url)), 'utf8')
     expect(item, 'the conflict reports the offending field but not the one it is bounded by')
-      .toMatch(/readonly limitField: 'startsAfter' \| 'dueAt' \| 'hardDueAt'/)
+      .toMatch(/readonly limitField: ItemDateKey/)
+    expect(item, 'the offending field is not the same closed name as the bound')
+      .toMatch(/readonly field: ItemDateKey/)
     // All THREE pairs must carry it — a `limitField` on only one of them is the
     // same defect one row narrower.
     for (const [of, by] of [['startsAfter', 'dueAt'], ['dueAt', 'hardDueAt'], ['startsAfter', 'hardDueAt']] as const) {

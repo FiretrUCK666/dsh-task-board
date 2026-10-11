@@ -636,7 +636,9 @@ export declare const zh: {
     'item.field.tagsAdd': string;
     'item.field.newCard': string;
     'item.dates.none': string;
-    'item.dates.bad': string;
+    'item.dates.bad.unreadable': string;
+    'item.dates.bad.past': string;
+    'item.dates.bad.impossible': string;
     'item.field.resize': string;
     'item.topbar.sort': string;
     'item.topbar.create': string;
@@ -686,6 +688,9 @@ export declare const zh: {
     'item.field.startsAfter': string;
     'item.field.dueAt': string;
     'item.field.hardDueAt': string;
+    'item.field.startsAfter.gloss': string;
+    'item.field.dueAt.gloss': string;
+    'item.field.hardDueAt.gloss': string;
     'item.field.tags': string;
     'item.field.tagsHint': string;
     'item.field.taskId': string;
@@ -714,6 +719,7 @@ export declare const zh: {
     'item.origin.import': string;
     'item.field.title': string;
     'item.field.body': string;
+    'item.field.bodyHint': string;
     'item.field.notes': string;
     'item.field.notesHint': string;
     'item.field.notesAdd': string;
@@ -741,6 +747,7 @@ export declare const zh: {
     'item.compose.add': string;
     'item.compose.refused': string;
     'item.token.tag': string;
+    'item.grammar.tagMany': string;
     'item.token.priority': string;
     'item.token.step': string;
     'item.token.undo': string;
@@ -764,15 +771,14 @@ export declare const zh: {
     'item.create.close': string;
     'item.create.grammar': string;
     'item.create.titlePlaceholder': string;
-    'item.create.bodyPlaceholder': string;
     'item.create.steps': string;
     'item.create.stepsPlaceholder': string;
-    'item.create.startsHint': string;
-    'item.create.dueHint': string;
-    'item.create.hardHint': string;
-    'item.create.body': string;
+    'item.field.startsHint': string;
+    'item.field.dueHint': string;
+    'item.field.hardDueHint': string;
     'item.create.blank': string;
     'item.create.dateBad': string;
+    'item.create.datesAny': string;
     'item.create.refused': string;
     'item.create.cancel': string;
     'item.create.submit': string;

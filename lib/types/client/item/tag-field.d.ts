@@ -18,6 +18,16 @@
  * 的两处出现，各写一份的代价是改一处不报错。
  */
 import type { KeyboardEvent } from 'react';
+/**
+ * 一个标签的**名字**：读者写在框里的那个词，前面的 `#` 是记号，不是名字的一部分。
+ *
+ * 两处调用（详情里「加一个」、新建纸里整行标签）共用它。各剥一次的话，一处剥一处不剥，
+ * 同一串字在一处成为标签 `画廊`、在另一处成为 `#画廊`——而**两处都画成 `#画廊`**，
+ * 于是读者看不出它们已经不是同一个标签了。
+ * @param text - 框里的那串字。
+ * @returns 标签名（空串就是那一格没写东西）。
+ */
+export declare function tagName(text: string): string;
 /** 那个框，以及它的尺子。 */
 export declare function TagField(props: {
     /** 现在显示的字（空串时显示 `placeholder`）。 */

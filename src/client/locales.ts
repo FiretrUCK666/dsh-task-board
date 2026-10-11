@@ -681,7 +681,17 @@ export const zh = {
   'item.field.tagsAdd': '加一个',
   'item.field.newCard': '新建卡片',
   'item.dates.none': '没定',
-  'item.dates.bad': '这个读法我没读懂。再试一次：2026-10-15、明天或 @明天。',
+  /* ── 三种读不懂，三种改法 ────────────────────────────────────────────────────
+   *
+   * 「这串字不认识」是换一种写法；「写着日期没写年份而那天已经过去」是把年份补上；
+   * 「日历上没有这一天」是核对月份与日期。一句话盖住三种，就是把三种改法说成一种——
+   * 读者照着那句话做，还是错。
+   *
+   * 三句都点出**他自己写的那串字**（`{word}`）：一屏上可能同时有三个日期框，不点名
+   * 的那一句等于让他自己找是哪一格。写法例子里那个具体日期与旧版一致，它教的是**形状**。 */
+  'item.dates.bad.unreadable': '这个读法我没读懂：{word}。再试一次：2026-10-15、明天、周三或 +3。',
+  'item.dates.bad.past': '{word} 是今年已经过去的一天。要说清哪一年，就把年份一起写上（比如 2026-09-10 或 2027-09-10）。',
+  'item.dates.bad.impossible': '{word} 不是一天。月份是 1–12，日期要按当月来算。',
   // 写作框下沿那根抓条的可达名。它是一条 `separator`，上下箭头各挪一行——名字说它
   // 是什么，而它接哪几个键由 `data-dsh-tb-keys` 自己申报（触屏没有 hover，硬性规范 11③）。
   'item.field.resize': '写作框的高度',
@@ -694,18 +704,18 @@ export const zh = {
   'item.rail.label': '去哪里看',
   'item.rail.all': '全部',
   'item.rail.deleted': '已删除',
-  'item.rail.when': '按日子',
+  'item.rail.when': '按日期',
   /* **「多久没人碰」是另一个问题，所以它是另一组，而标题要说清它按什么问。**
    *
-   * 这一组的其他标题都是**维度**：按日子 · 按优先级 · 按状态。所以这一格也必须与兄弟同构：
+   * 这一组的其他标题都是**维度**：按日期 · 按优先级 · 按状态。所以这一格也必须与兄弟同构：
    * 直接说它按什么分——**这一行有多久没被改过**（门槛 14 天、上限 90 天，已完成与还没到
    * 开始时间的各自豁免——见 `item-stale.ts`）。**一个要人问它什么意思的标题就是没写清楚**：
    * 所以标题不许是自造的比喻。 */
   'item.rail.idle': '按多久没动',
   'item.rail.rank': '按优先级',
   'item.rail.state': '按状态',
-  'item.rail.overdue': '日子已过',
-  'item.rail.ahead': '日子未到',
+  'item.rail.overdue': '日期已过',
+  'item.rail.ahead': '日期未到',
   'item.rail.stale': '放着没动',
   'item.rail.undated': '没定日期',
   /* `has:linked` 那一枚芯片的词：它说的是「这一行挂着一张卡」。 */
@@ -713,7 +723,7 @@ export const zh = {
   // 这一组的词直接读看板那五个（`board.status.*`，见 `rail.tsx` 的 WORD 表）——两张
   // 表说同一件事的那一天起，「按状态」这一列就会有一个词不跟着改。
   'item.rail.pickDay': '只看这一天',
-  'item.rail.calendar.label': '按日子看',
+  'item.rail.calendar.label': '按日期看',
   'item.rail.month.prev': '上一个月',
   'item.rail.month.next': '下一个月',
   'item.rail.today': '回到今天',
@@ -730,7 +740,7 @@ export const zh = {
   'item.batch.refused': '改了 {n} 条；{blocked} 条没动——{why}',
   'item.batch.askOne': '这 {n} 条里只有挂上卡的那几条能问 AI。',
   'item.noMatch': '没有匹配的结果。清空搜索或换个筛选看看。',
-  'item.noMatch.day': '{when} 这天没有事项。换个日子，或去掉那枚「日期」芯片。',
+  'item.noMatch.day': '{when} 这天没有事项。换个日期，或去掉那枚「日期」芯片。',
   'item.steps': '{done}/{total}',
   // 清单自己能写的**五档**，正是看板那五栏——所以这里的词与 `board.status.*` 是同一批词，
   // 而「标为」是**菜单**的动词（动作之前的话）。「受阻」那一档跟着那一套词汇一起删了（它
@@ -745,7 +755,7 @@ export const zh = {
   // 挂着卡时那两档由执行器给（与看板自己那一排同一个判据）：一张没人跑过的卡说「进行中」是假话。
   'item.status.executorOnly': '「进行中」与「待审核」是执行器给的：卡在跑、或跑完等你复核，它自己会到那一栏。',
   'item.status.derived': '这条显示{where}，是因为它挂着的卡在那一栏；它自己存的还是{own}。',
-  /* ── 三个日子：一条区间上的三个位置 ─────────────────────────────────────────
+  /* ── 三个日期：一条区间上的三个位置 ─────────────────────────────────────────
    *
    * 三个词各自说清**它是哪一头**，而且没有一个是否定式：`开始` 是一扇门（早于这天不动），
    * `计划` 是一个打算（滑了只是计划变了，黄），`截止` 是一条不能顺延的上限（只有它会变红）。
@@ -763,6 +773,15 @@ export const zh = {
   'item.field.startsAfter': '开始',
   'item.field.dueAt': '计划',
   'item.field.hardDueAt': '截止',
+  /* 每个字段名旁边那一小句：**这个字段是干什么的**。
+   *
+   * 三个词说得出「我是哪一头」，但说不出「我和另外两个什么关系」——而读者真正要回答的
+   * 就是那个问题（「这三个是不是重复了」）。所以三句并列写，读起来是一组对照：一扇门、
+   * 一个打算、一条不许顺延的上限。它们出现在**读者正在写这个字段的地方**（新建那张纸的
+   * 字段名旁、详情里点开那一行时），而不是塞进一段说明文。 */
+  'item.field.startsAfter.gloss': '早于这天不动',
+  'item.field.dueAt.gloss': '想做完的那天',
+  'item.field.hardDueAt.gloss': '不能顺延的那天',
   'item.field.tags': '标签',
   'item.field.tagsHint': '用顿号或逗号分开',
   'item.field.taskId': '看板卡片',
@@ -793,6 +812,10 @@ export const zh = {
   'item.origin.import': '导入的',
   'item.field.title': '标题',
   'item.field.body': '正文',
+  // **同一个字段的占位只有一句**：详情那一栏与新建那张纸写的是同一个字段，各写一句就会
+  // 有一句先过期——而上一版那句是照着新建纸的排版写的（「上面那行不够写」），搬进详情
+  // 就成了一句在那张地面上说不通的话。
+  'item.field.bodyHint': 'Markdown；写多少行都行。',
   'item.field.notes': '上下文备注',
   // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
   // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemAskText`）。
@@ -809,7 +832,7 @@ export const zh = {
   // 三个日期三种视觉。计划逾期不是红；红只属于截止。
   //
   // **裁决类不带日期名，日期类带。** 动词自己说清是哪一个承诺：`超期` 说的是截止
-  // （只有它不能被单方面改期），`落后` 说的是计划的那个日子，`还剩` 是截止将到。分工
+  // （只有它不能被单方面改期），`落后` 说的是计划的那个日期，`还剩` 是截止将到。分工
   // 明确，所以再补一个字段名就是同一句话说两遍——而「开始 10月5日」必须带名，
   // 因为一个光秃秃的日期说不清是谁的。这一条是这一栏唯一的形状规则。
   //
@@ -821,9 +844,9 @@ export const zh = {
   'item.due.soon': '还剩 {days} 天',
   'item.due.today': '就是今天',
   'item.due.set': '{when}',
-  // 三个日子的**名字**（`开始 / 计划 / 截止`）本身就说得出它是哪一头，所以这句话
+  // 三个日期的**名字**（`开始 / 计划 / 截止`）本身就说得出它是哪一头，所以这句话
   // 只需要说出「哪两个对不上」。三对日期各一句，句子的主语就是那一个词。
-  'item.dates.contradict': '{a}的日子落在{b}后面，这一条自己矛盾',
+  'item.dates.contradict': '{a}排在{b}后面——这一条的日期自相矛盾',
   'item.ref.pending': '编号待定',
   // 一行还没有名字（只在正文里写了字、或者只挂了标签）。它与「编号待定」同一族：
   // 一件还没被命名的事，而不是一句关于选中状态的话。
@@ -842,27 +865,37 @@ export const zh = {
   // 快记：边打边把解析结果显示成 chip，误识别的词可点回普通文字。
   'item.compose.title': '改详情侧栏的地板 #画廊 !1 @明天',
   'item.compose.add': '记下',
-  // 同一个日子写了第二遍：那一个不生效，而理由必须说出来（否则读者只会以为它坏了）。
-  'item.compose.refused': '{word} 没生效：{field}已经写了一个日子。',
+  // 同一个日期写了第二遍：那一个不生效，而理由必须说出来（否则读者只会以为它坏了）。
+  'item.compose.refused': '{word} 没生效：{field}已经有一个日期了。',
   'item.token.tag': '标签',
+  // 图例里那一格自己的一句话：标签是这一行里唯一「可以来好几个」的东西（`!` 只有一个、
+  // `@` 三个日期各一个），而读者问的第一个问题正是「怎么变成多个 tag」。
+  'item.grammar.tagMany': '标签（可写多个）',
   'item.token.priority': '优先级',
   'item.token.step': '步骤',
   'item.token.undo': '还原成普通文字',
 
-  // 议程的桶。**三节的名字与字段同一套词**：左栏那一枚「日子已过」是 `has:overdue`
-  // （截止**或**计划已经过了），而这三节各说一件更具体的事，所以名字也说具体的那句，
-  // 不与左栏共用同一个词——同一个词在两处选不同的行，是这一页最贵的一种自相矛盾。
-  'item.bucket.hardOverdue': '截止已过',
-  'item.bucket.behind': '计划已过',
+  /* 议程的分节。**节名与行尾那一族词是同一套**：行尾说「超期 9 天」「落后 3 天」，所以
+   * 节名说「已经超期」「已经落后」——读者在行上学会的那两个词，在节头这里原样出现。
+   * （左栏那一枚「日期已过」**不是**这两个词中的任何一个：它是「截止过了 **或** 计划落后」
+   * 的合集，所以它说的话比这两节都宽——同一个词在两处选不同的行，是这一页最贵的自相矛盾。）
+   *
+   * 另外两节回答的是别的问题，名字也就说别的事：「没定日期」是一个盘子，「还没开始」是一扇
+   * 还没开的门。 */
+  'item.bucket.hardOverdue': '已经超期',
+  'item.bucket.behind': '已经落后',
   'item.bucket.today': '今天',
   'item.bucket.tomorrow': '明天',
-  'item.bucket.week': '本周稍后',
+  'item.bucket.week': '一周内',
   'item.bucket.later': '以后',
   'item.bucket.undated': '没定日期',
-  'item.bucket.gated': '开始未到',
-  'item.gated.hint': '这些行的「开始」还没到。到了那天它们自己会进日程。',
-  'item.noDate.hint': '这些行没有日期，所以不占任何一天。',
-  'item.agenda.leftOut': '另有 {done} 条已完成、{inbox} 条还在收件里，不在这份日程上。',
+  'item.bucket.gated': '还没开始',
+  /* 两句话各回答**两个问题**，顺序也照读者的问法：「它们为什么不在上面」+「它们什么时候会来」。
+   * 上一版说的是抽象名词（「还没到」「不占任何一天」），读者读到的是一句关于逻辑的话，
+   * 不是一句关于他自己那几条的话。 */
+  'item.gated.hint': '这几条要等到开始那天；到了那天，它们会自己排到按天的节里。',
+  'item.noDate.hint': '这几条没写日期，所以排不进任何一天。写上一个，它就会排到那一天。',
+  'item.agenda.leftOut': '另外还有 {done} 条已完成的、{inbox} 条刚记下还没整理的，不排日程。',
 
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
@@ -876,20 +909,22 @@ export const zh = {
   'item.create.close': '关掉',
   'item.create.grammar': '写一句，剩下的自动填',
   'item.create.titlePlaceholder': '一句话也行——它就是标题',
-  'item.create.bodyPlaceholder': 'Markdown。上面那行不够写，就写在这里。',
   'item.create.steps': '步骤',
   'item.create.stepsPlaceholder': '一行一步',
   // 三个日期的框里，**占位文字教的是拼写**（这个框认哪几种写法，包括 `@` 那一种），而
-  // 语义由字段名自己说——「开始 / 计划 / 截止」三个词已经把它是哪一头说清了。
-  // 一句话里（快记）与这三个框里认的是同一批写法，见 `model.ts` 的 `parseDateExpression`。
-  'item.create.startsHint': '@开始 10/5',
-  'item.create.dueHint': '@计划 10/7',
-  'item.create.hardHint': '@截止 10/9',
-  'item.create.body': '正文（可留空）',
+  // 语义由字段名自己说——「开始 / 计划 / 截止」三个词已经把它是哪一头说清了，旁边那句
+  // 注解（`item.field.*.gloss`）说它与另外两个的关系。
+  // 一句话里（快记）与这三个框里认的是同一批写法，见 `model.ts` 的 `readDateExpression`。
+  'item.field.startsHint': '@开始 10/5',
+  'item.field.dueHint': '@计划 10/7',
+  'item.field.hardDueHint': '@截止 10/9',
   'item.create.blank': '写个标题就能记下——正文可以以后再补。',
   // 三个日期里有一个读不懂时，这一张纸在底部说的那一句：框下面那句说的是「哪里」，
   // 这一句说的是「为什么没存下」——按钮在底部，而这一张纸会滚。
   'item.create.dateBad': '有一个日期的写法我没读懂，就在那一个框下面。',
+  // 三个日期的框上面那句「都不是必填」：读者问的第一个问题就是「三个是不是重复了、能不能只写一个」，
+  // 而这一句就是那个答案。三个日期自相矛盾时，同一处换成那句话（同一处只说一件事）。
+  'item.create.datesAny': '三个都可以留空；只写一个也算数。',
   'item.create.refused': '没能记下：这一条与已有的重复，或者它还没有名字。',
   'item.create.cancel': '取消',
   'item.create.submit': '存下这一条',
@@ -923,7 +958,7 @@ export const zh = {
   // 分段药丸里当六个并列的档位读，而「按日期 / 按最近改动」那样写出来的是
   // 六个动作，读者会当成六个可以分别按的钮。
   //
-  // **这一档的名字必须说出它真正做的事。** 它其实是「未完成在前 → 越急越前 → 最近的那个日子
+  // **这一档的名字必须说出它真正做的事。** 它其实是「未完成在前 → 越急越前 → 最近的那个日期
   // → 越早写下越前 → 编号」（`compareItemOrder`）——这份文档自己推荐的一种读法，不是
   // 「写下的先后」。读者只看得见名字，所以叫「顺序」的话，它与「标题」的区别没人猜得出来；
   // 名字说对了，两者从此不可能混。
@@ -1642,7 +1677,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.tagsAdd': 'Add one',
   'item.field.newCard': 'New card',
   'item.dates.none': 'not set',
-  'item.dates.bad': 'I could not read that. Try again: 2026-10-15, tomorrow, or @tomorrow.',
+  'item.dates.bad.unreadable': 'I could not read this one: {word}. Try 2026-10-15, tomorrow, Wed or +3.',
+  'item.dates.bad.past': '{word} has already passed this year. To say which year, write it in (2026-09-10 or 2027-09-10).',
+  'item.dates.bad.impossible': '{word} is not a day. Months run 1-12, and the day has to exist in that month.',
   'item.field.resize': 'Writing box height',
   'item.topbar.sort': 'Sort',
   'item.topbar.create': 'New row',
@@ -1695,6 +1732,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.startsAfter': 'Starts',
   'item.field.dueAt': 'Target',
   'item.field.hardDueAt': 'Deadline',
+  'item.field.startsAfter.gloss': 'not before this day',
+  'item.field.dueAt.gloss': 'the day you mean to finish',
+  'item.field.hardDueAt.gloss': 'the day that cannot slip',
   'item.field.tags': 'Tags',
   'item.field.tagsHint': 'Separate with 、 or a comma',
   'item.field.taskId': 'Card',
@@ -1724,6 +1764,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.origin.ai': 'Written by the model',
   'item.origin.import': 'Imported',
   'item.field.title': 'Title',
+  'item.field.bodyHint': 'Markdown; write as many lines as you need.',
   'item.field.body': 'Body',
   'item.field.notes': 'Context notes',
   'item.field.notesHint': 'What this row is really about: whoever picks it up reads it first, and it travels with the row when you hand it to the AI',
@@ -1769,22 +1810,25 @@ export const en: Record<keyof typeof zh, string> = {
   'item.compose.add': 'Save',
   'item.compose.refused': '{word} did not take: {field} already has a date.',
   'item.token.tag': 'tag',
+  'item.grammar.tagMany': 'tags (as many as you like)',
   'item.token.priority': 'priority',
   'item.token.step': 'step',
   'item.token.undo': 'turn back into plain text',
 
   // The agenda's buckets.
-  'item.bucket.hardOverdue': 'Past the deadline',
-  'item.bucket.behind': 'Past the target',
+  // The agenda's sections. Their names are the row tail's own words — a row reads
+  // 「9d past due」 / 「3d behind」, so a section reads 「Past due」 / 「Behind」.
+  'item.bucket.hardOverdue': 'Past due',
+  'item.bucket.behind': 'Behind',
   'item.bucket.today': 'Today',
   'item.bucket.tomorrow': 'Tomorrow',
-  'item.bucket.week': 'Later this week',
+  'item.bucket.week': 'Within a week',
   'item.bucket.later': 'Further out',
   'item.bucket.undated': 'No date',
-  'item.bucket.gated': 'Starts later',
-  'item.gated.hint': 'Their start date has not arrived. Each comes in on the day it opens.',
-  'item.noDate.hint': 'These rows have no date, so they take up no day.',
-  'item.agenda.leftOut': '{done} finished and {inbox} still in the inbox are not on this agenda.',
+  'item.bucket.gated': 'Not started yet',
+  'item.gated.hint': 'Their start day has not come. They sit here until then, and move into a day section on the day.',
+  'item.noDate.hint': 'Nobody gave these a date, so no day can hold them. Give one a date and it lands on that day.',
+  'item.agenda.leftOut': '{done} finished and {inbox} just noted and not yet sorted are not on this agenda.',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',
@@ -1795,15 +1839,14 @@ export const en: Record<keyof typeof zh, string> = {
   'item.create.close': 'Close',
   'item.create.grammar': 'Write a sentence; the rest fills itself in',
   'item.create.titlePlaceholder': 'A sentence is enough — it is the title',
-  'item.create.bodyPlaceholder': 'Markdown. If the line above was not enough, write it here.',
   'item.create.steps': 'Steps',
   'item.create.stepsPlaceholder': 'One step per line',
-  'item.create.startsHint': '@start 10/5',
-  'item.create.dueHint': '@target 10/7',
-  'item.create.hardHint': '@deadline 10/9',
-  'item.create.body': 'Body (optional)',
+  'item.field.startsHint': '@start 10/5',
+  'item.field.dueHint': '@target 10/7',
+  'item.field.hardDueHint': '@deadline 10/9',
   'item.create.blank': 'A title is enough to save it — the body can come later.',
   'item.create.dateBad': 'One of these dates could not be read — the field below it says so.',
+  'item.create.datesAny': 'All three may be left empty; one on its own counts.',
   'item.create.refused': 'Could not save it: it repeats one you already have, or it has no name yet.',
   'item.create.cancel': 'Cancel',
   'item.create.submit': 'Save this row',
