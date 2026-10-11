@@ -39,8 +39,8 @@ import type { TaskBoardKey } from '../locales.ts'
  */
 export const SORT_LABEL: Readonly<Record<ItemSort, TaskBoardKey>> = {
   sequence: 'item.sort.sequence',
-  /* 三个日期档读**字段自己那一份词**：排序菜单里写「不晚于」而字段叫别的名字，
-   *  就是同一件事有两个说法——而两个说法里总有一个会先过期。 */
+  /* 三个日期档读**字段自己那一份词**：排序菜单另写一套、而字段的名字是另一套，
+   *  就是同一件事有两个说法——而两套里总有一套会先过期。 */
   starts: 'item.field.startsAfter',
   due: 'item.field.dueAt',
   hard: 'item.field.hardDueAt',
