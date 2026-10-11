@@ -63,6 +63,16 @@ export interface SchedulerDeps {
      */
     cruiseTick?: (now: number) => void;
     /**
+     * Optional settlement floor (the controller's tickReconcile): evaluated on
+     * every tick, whether or not anything is armed. Every other reconcile pass
+     * is triggered by a SIGNAL — a session-list notification, an activity wake,
+     * a page load, taking the engine seat — and the rescues all live inside the
+     * pass, so a signal that never arrives takes them with it. This is the one
+     * trigger that does not depend on a signal arriving; the whole argument is
+     * at the duty itself (the controller's tickReconcile).
+     */
+    reconcileTick?: () => void;
+    /**
      * Optional session-rule heartbeat (the controller's tickSessionRules):
      * evaluated on every tick so a rule whose due instant passed sends its
      * preset instruction to the target session.

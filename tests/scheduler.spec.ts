@@ -261,6 +261,22 @@ describe('SchedulerService.tick', () => {
     expect(h.runs).toEqual(['t-a'])
   })
 
+  it('drives the settlement floor on every tick, with nothing armed', async () => {
+    // The floor is a clock, not a signal: a card can be stranded with no
+    // schedule left to fire (a disabled rule, a page that lost the completion
+    // flip), so the pass has to be reached on an empty board too.
+    let ticks = 0
+    const h = makeHarness({ reconcileTick: () => { ticks += 1 } })
+    h.setReady(false)
+    await h.scheduler.tick()
+    expect(ticks).toBe(0) // a not-ready tick is a no-op as a whole
+    h.setReady(true)
+    await h.scheduler.tick()
+    await h.scheduler.tick()
+    expect(ticks).toBe(2)
+    expect(h.runs).toEqual([]) // nothing armed: the floor fired no run
+  })
+
   it('stops triggering after dispose', async () => {
     const h = makeHarness()
     h.setTasks([scheduledTask('a', '* * * * *', at(2026, 1, 1, 10, 0, 0))])

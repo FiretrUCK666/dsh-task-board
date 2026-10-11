@@ -1145,6 +1145,33 @@ describe('run loop', () => {
     expect(controller.getSnapshot().tasks[0].status).toBe('todo')
   })
 
+  it('settles the same orphan on the clock, with no session-list change at all', async () => {
+    // Every trigger but the clock is a SIGNAL, and a signal that never arrives
+    // (a cold headless execution session whose completion flip is missed) used
+    // to leave the round open and the card in 进行中 until something unrelated
+    // moved the list.
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const task = seedTask(store, { id: 'task-a' })
+    store.save([{ ...task, status: 'running', executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }] }])
+    const sessions = new FakeSessions()
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    stub.reconcileResult = undefined
+    controller.start()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('running')
+    // The run is over, and the list will never say so: only the clock is left.
+    stub.reconcileResult = { kind: 'settled', taskId: 'task-a', executionId: 'e1', outcome: 'succeeded' }
+    controller.tickReconcile()
+    await flush()
+    await flush()
+    expect(controller.getSnapshot().tasks[0].status).toBe('review')
+    expect(store.load()[0].executions[0].result).toBe('succeeded')
+  })
+
   it('coalesces a burst of session-list changes into one reconcile pass', async () => {
     let reconcileCalls = 0
     const stub = {

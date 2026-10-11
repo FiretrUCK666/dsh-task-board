@@ -102,6 +102,16 @@ export interface SchedulerDeps {
    */
   cruiseTick?: (now: number) => void
   /**
+   * Optional settlement floor (the controller's tickReconcile): evaluated on
+   * every tick, whether or not anything is armed. Every other reconcile pass
+   * is triggered by a SIGNAL — a session-list notification, an activity wake,
+   * a page load, taking the engine seat — and the rescues all live inside the
+   * pass, so a signal that never arrives takes them with it. This is the one
+   * trigger that does not depend on a signal arriving; the whole argument is
+   * at the duty itself (the controller's tickReconcile).
+   */
+  reconcileTick?: () => void
+  /**
    * Optional session-rule heartbeat (the controller's tickSessionRules):
    * evaluated on every tick so a rule whose due instant passed sends its
    * preset instruction to the target session.
@@ -175,6 +185,11 @@ export class SchedulerService {
     this.lastTickAt = now
     // Cruise windows flip on/off at their boundaries on this same heartbeat.
     this.deps.cruiseTick?.(now)
+    // The settlement floor rides the same heartbeat: one pass scheduled per
+    // tick whatever the signals did. Not awaited — it only queues the pass
+    // (single-flight + debounce, the same entry a list change uses) and a
+    // history read must never stall the clock that fires the next run.
+    this.deps.reconcileTick?.()
     for (const task of this.deps.tasks()) {
       const schedule = task.schedule
       if (schedule === undefined || !schedule.enabled) continue

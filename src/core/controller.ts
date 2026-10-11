@@ -3625,6 +3625,32 @@ export class BoardController {
     this.notify()
   }
 
+  /**
+   * The settlement floor (the scheduler's minute heartbeat, wired in
+   * src/client/index.ts): one reconcile pass per tick, whether or not
+   * anything is armed.
+   *
+   * Every OTHER trigger is a signal — a session-list notification, an
+   * activity wake, a page load, taking the engine seat — and the rescues all
+   * live INSIDE the pass: the active-run fallback, the round watchdog, the
+   * orphan sweep. A signal that never arrives therefore takes every one of
+   * them with it, and the deadlines they enforce stop being deadlines: a
+   * completion whose list flip was missed (a headless execution session that
+   * stays cold) leaves its round open, and the card in 进行中, for as long as
+   * the signal stays missing. The clock is the trigger that cannot be missed:
+   * at most one period late, never "until something else happens".
+   *
+   * Not a second judging path: it enters through the same single-flight,
+   * debounced {@link scheduleReconcile} as every signal, so a tick landing
+   * during a burst coalesces into the pass that was already queued. Cheap
+   * when there is nothing to settle — the exec service reads no history while
+   * the list reports the session running, and nothing is written unless a
+   * judgment actually changed.
+   */
+  tickReconcile(): void {
+    this.scheduleReconcile()
+  }
+
   private handleExecutionEvent(event: ExecutionEvent): void {
     // Late events (a run settling after the board unmounted/disposed) must
     // never mutate the closed controller — no state writes after teardown.

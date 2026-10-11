@@ -1274,6 +1274,9 @@ export function apply(ctx: ClientContext): void {
       // Cruise scheduled windows flip on/off at their boundaries on the same
       // heartbeat as task schedules.
       cruiseTick: now => controller.tickCruise(now),
+      // The settlement floor: a reconcile pass per minute whatever the signals
+      // did, so a missed list flip cannot strand a card in 进行中.
+      reconcileTick: () => controller.tickReconcile(),
       // Session automation rules fire their due instructions (cron) on the
       // same heartbeat.
       sessionRulesTick: now => controller.tickSessionRules(now),
