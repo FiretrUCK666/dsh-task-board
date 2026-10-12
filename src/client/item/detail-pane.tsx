@@ -433,55 +433,61 @@ export function ItemDetail(props: ItemDetailProps) {
         {/* 左边那一列：**正文、步骤、上下文备注**。三块之间是 `--s3` 那一档间距，
             所以步骤板与备注块不会贴在一起——它们是三段话，不是一个东西的三行。 */}
         <div className={css.itemOpenText}>
-          {item.body === '' && !bodyOpen
-            ? (
-              <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
-                {t('item.field.bodyAdd')}
-              </button>
-            )
-            : (
-              <div
-                className={css.itemProseWrap}
-                onBlur={event => {
-                  /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
-                   * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
-                   * 块内互相走动（正文与它下面那条抓条）不算点外。
-                   * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
-                  if (event.currentTarget.contains(event.relatedTarget)) return
-                  setBodyOpen(false)
-                }}
-              >
-                {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
-                     （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
-                     一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
-                     也不必再按一下才展开。 */}
-                <ProseField
-                  value={item.body}
-                  onChange={body => props.onEdit({ body })}
-                  placeholder={t('item.field.bodyHint')}
-                  ariaLabel={t('item.field.body')}
-                  height={props.proseHeight}
-                  onHeight={props.onProseHeight}
-                  takeCaret
-                />
-              </div>
-            )}
+          {/* **正文那一段是一个字段**：写入框（或那句「＋ 写点什么」）与它带的附件包在
+              一起，所以它们之间是「一个字段内部」的距离（`--item-field-gap`），而不是
+              字段与字段之间的那一档。包起来之前附件条是这一列的直接子级，于是它同时吃到
+              父级的 22 与自己的 4（量到 26），而新建那张纸里同一段距离是 6——同一件事两个数。
+              拖拽落点也铺在这一格上：**整段正文都收文件**，不是只有那个 24px 的「＋」。 */}
+          <div className={css.itemBodyField} {...attach.dropProps}>
+            {item.body === '' && !bodyOpen
+              ? (
+                <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
+                  {t('item.field.bodyAdd')}
+                </button>
+              )
+              : (
+                <div
+                  className={css.itemProseWrap}
+                  onBlur={event => {
+                    /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
+                     * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
+                     * 块内互相走动（正文与它下面那条抓条）不算点外。
+                     * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
+                    if (event.currentTarget.contains(event.relatedTarget)) return
+                    setBodyOpen(false)
+                  }}
+                >
+                  {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
+                       （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
+                      一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
+                      也不必再按一下才展开。 */}
+                  <ProseField
+                    value={item.body}
+                    onChange={body => props.onEdit({ body })}
+                    placeholder={t('item.field.bodyHint')}
+                    ariaLabel={t('item.field.body')}
+                    height={props.proseHeight}
+                    onHeight={props.onProseHeight}
+                    takeCaret
+                  />
+                </div>
+              )}
 
-          {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
-              那个手势**：一行正文还空着也可能先挂上一张图。拖进来的文件落在这一条上
-              （`dropProps` 铺在这一格），与卡片那边同一个手感。 */}
-          <div className={css.itemAttachRow} {...attach.dropProps}>
-            <AttachmentStrip
-              attachments={attach.attachments}
-              onAdd={attach.addFiles}
-              onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
-              busy={attach.busy}
-              busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
-              error={attach.error}
-              /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
-                 已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
-              hint={cardId === undefined ? t('item.attach.hint') : undefined}
-            />
+            {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
+                那个手势**：一行正文还空着也可能先挂上一张图。 */}
+            <div className={css.itemAttachRow}>
+              <AttachmentStrip
+                attachments={attach.attachments}
+                onAdd={attach.addFiles}
+                onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
+                busy={attach.busy}
+                busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
+                error={attach.error}
+                /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
+                   已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
+                hint={cardId === undefined ? t('item.attach.hint') : undefined}
+              />
+            </div>
           </div>
 
           <p className={css.itemOpenCaption}>{t('item.section.steps')}</p>

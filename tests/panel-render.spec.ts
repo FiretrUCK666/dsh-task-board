@@ -597,6 +597,39 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
   const bare = (sheet: string): string =>
     sheet.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 
+  it('a field holds its own parts at ONE distance, and the strip does not pay for it twice', () => {
+    /* 一个字段里面（字段名 / 写入框 / 它带的附件）只有一个数，而字段与字段之间是另一个数。
+       这条断言守的是**被算过两遍的那个间隔**：附件条曾经是那一列的直接子级，于是同时吃到
+       父级的 22 与自己的 4——量到 26，而新建那张纸里同一段距离是 6（硬性规范 19 的探针：
+       `.design/attach-gap-probe.js`）。
+       
+       判据抽成函数，因为**一条从不失败的检查与没有检查是一回事**：下面拿一份故意写坏的
+       样式表喂同一个函数，它必须报出来。 */
+    const findings = (css: string): string[] => {
+      const rules = declarationRules(bare(css))
+      const bodyOf = (selector: string): string | undefined => rules.find(rule => rule.selector === selector)?.body
+      const out: string[] = []
+      const field = bodyOf('.itemBodyField')
+      if (field === undefined) out.push('.itemBodyField 没了')
+      else if (!field.includes('gap: var(--item-field-inner-gap)')) out.push('字段盒没有吃「字段里面的空气」那一个数')
+      const strip = bodyOf('.itemAttachRow')
+      if (strip === undefined) out.push('.itemAttachRow 没了')
+      else if (/padding-block-start/.test(strip)) out.push('附件条又给自己加了一档内衬——间隔会被算两遍')
+      const tokens = rules.find(rule => rule.body.includes('--item-field-inner-gap:'))?.body ?? ''
+      if (!/--item-field-inner-gap:\s*6px/.test(tokens)) out.push('「字段里面」那个数没有声明（或不是 6px）')
+      if (!/--item-field-gap:\s*var\(--s3\)/.test(tokens)) out.push('「字段之间」与「字段里面」被判成了同一个数')
+      return out
+    }
+    expect(findings(itemSheet), '这一页的字段间距不再是一个数').toEqual([])
+    // 探针自己会红：同一个函数喂三份写坏的样式表，三份都必须报出来。
+    // （A 按**选择器锚定**再改：那同一个数在别处还有一个消费者，按字面替换会改到别人身上，
+    //   而这条检查本来只该看`.itemBodyField`——一次没咬住，就是探针指错了地方。）
+    const poisonedField = itemSheet.replace(/(\.itemBodyField \{[^}]*?)gap: var\(--item-field-inner-gap\)/, '$1gap: 6px')
+    expect(findings(poisonedField), 'A 探针没有咬住「字段盒自己写死一个数」').not.toEqual([])
+    expect(findings(itemSheet.replace(/\.itemAttachRow \{/, '.itemAttachRow {\n  padding-block-start: 4px;')), 'B 探针没有咬住「附件条又加内衬」').not.toEqual([])
+    expect(findings(itemSheet.replace('--item-field-inner-gap: 6px', '--item-field-inner-gap: var(--s3)')), 'C 探针没有咬住「两个数被并成一个」').not.toEqual([])
+  })
+
   it('the row can paint four states from four surfaces, and no two of them share a token', () => {
     // HOVER STUCK, THE STRUCTURAL VERSION. Four facts live on the row — the brief
     // pointer, the cursor position, the open sheet, the held row — and each

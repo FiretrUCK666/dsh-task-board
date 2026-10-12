@@ -270,6 +270,17 @@
    * 列间沟必须是同两个数（见 `.itemOpenMain` / `.itemCreateDialogGrid`）。 */
   --item-field-side: 292px;
   --item-field-gap: var(--s3);
+  /* **一个字段内部的空气：6px，与「字段与字段之间」不是同一个数。**
+   *
+   * 上面那个 `--item-field-gap` 是**字段区的两列之间**（22）；这一个在**一个字段里面**：
+   * 字段名 / 写入框 / 它带的附件是同一件事的三段，彼此只隔一档。两个名字必须分开，
+   * 因为它们是两件事——曾经把附件条写成列的直接子级，于是它同时吃到父级的 22 与自己的 4
+   * （量到 26），而新建那张纸里同一段距离是 6：同一个字段两个数，屏上看就是「离得太远」。
+   *
+   * 一处声明、两处消费：新建那张纸的每一格（`.itemCreateDialogField`）与展开区正文那一块
+   * （`.itemBodyField`）。看板那两个表单（`.field` / `.autoField`）在另一张表里各写着同一个
+   * 6px——它们是另一个模块，那里的数归那里。 */
+  --item-field-inner-gap: 6px;
   /* **行卡的左右内衬别名声明在 `.itemWorkbench` 上，不在这里。**
    *
    * 一个自定义属性的值在**声明它的那个元素**上就被替换完，然后作为替换后的结果往下
@@ -3678,7 +3689,7 @@ textarea.itemInput {
 .itemCreateDialogDate {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--item-field-inner-gap);
   min-inline-size: 0;
 }
 
@@ -4010,10 +4021,25 @@ textarea.itemInput {
  *
  * 拖拽落点在这一格上（`dropProps` 铺的就是它），所以它自己要有内衬：一个贴着边线的
  * 高亮环会让「文件要落在哪」看起来像落在纸上没画出来的地方。 */
+/* **正文那一段：写入框（或那句「＋ 写点什么」）与它带的附件，是同一个字段。**
+ *
+ * 所以它们之间的空气是 `--item-field-gap`（6px，与新建那张纸的每一格同一个数），而
+ * 字段与字段之间才是父级的 `--s3`（22px）。附件条此前是这一列的直接子级，于是它同时吃到
+ * 父级的 22 与自己的 4——**同一个间隔算了两遍**，量到 26（硬性规范 19 的探针：
+ * `.design/attach-gap-probe.js`）。包一层之后，屏上只剩一个数。
+ *
+ * 拖拽落点在这一格上（`dropProps` 铺的就是它）：**整段正文都是「文件放这儿」**，
+ * 包括写入框本身——只让 24px 的「＋」收文件，等于让读者去瞄准一个点。 */
+.itemBodyField {
+  display: flex;
+  flex-direction: column;
+  gap: var(--item-field-inner-gap);
+  min-inline-size: 0;
+}
+
 .itemAttachRow {
   display: flex;
   min-inline-size: 0;
-  padding-block-start: var(--s1);
 }
 
 /* 40em 读起来是一档好行长，**但这一列里的三个框要一样宽**：正文、步骤板、上下文
