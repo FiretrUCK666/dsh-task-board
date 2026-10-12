@@ -25,6 +25,7 @@
  * identities. There is no batch-only field and no batch-only rule, which is what
  * keeps the action catalogue the only description of what can be done.
  */
+import type { ReactNode } from 'react';
 import type { ItemPriority, ItemStatus } from '../../core/item.ts';
 export interface ItemBatchBarProps {
     readonly count: number;
@@ -57,5 +58,7 @@ export interface ItemBatchBarProps {
     readonly carded: number;
     /** Put the held rows back where they were, one gesture. */
     readonly onRemove: () => void;
+    /** 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。 */
+    readonly configSlot?: ReactNode;
 }
 export declare function ItemBatchBar(props: ItemBatchBarProps): import("react").JSX.Element;

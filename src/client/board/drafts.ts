@@ -42,6 +42,20 @@ export function ruleDraftKey(taskId: string, ruleId: string): string {
   return `rule:${taskId}:${ruleId}`
 }
 
+/**
+ * The checklist's ask-configuration draft key (a RunConfigPresetConfig, JSON).
+ *
+ * One per ROW (`ask:<itemId>`) plus one for a batch (`ask:batch`, `undefined`),
+ * because that is the granularity of the decision being made: a reader who picks
+ * a workspace for one row has not picked it for the rows they select tomorrow
+ * morning. It is a DRAFT and not a document field on purpose — the run
+ * configuration belongs to the thing that runs (the card), and a checklist row
+ * may be worked on across workspaces and sessions (PRODUCT.md).
+ */
+export function askConfigDraftKey(itemId: string | undefined): string {
+  return itemId === undefined ? 'ask:batch' : `ask:${itemId}`
+}
+
 /** Answer-form draft key for one open question carrier.
  *
  *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per

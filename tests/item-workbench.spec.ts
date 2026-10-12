@@ -29,6 +29,7 @@ import { describe, expect, it } from 'vitest'
 import { act } from 'react'
 import type { ItemRecord } from '../src/core/item.ts'
 import { dayTokensIn, freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
+import { DRAFT_STORAGE_KEY, askConfigDraftKey } from '../src/client/board/drafts.ts'
 import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type ItemKeyActions } from '../src/client/item/keyboard.ts'
 
 /** The action names the registrar can call, read off the closed action union. */
@@ -1485,7 +1486,7 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
           .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
         expect(ask, `Prompt 为「${prompt}」时详情里没有「问 AI」那一枚`).toBeDefined()
         expect(ask?.disabled, `Prompt 为「${prompt}」时「问 AI」是灰的`).toBe(false)
-        askThrough(panel)
+        pressAsk(panel)
         expect(panel.calls.join(' '), `Prompt 为「${prompt}」时没有走到那扇门`).toContain('askCard(')
       } finally {
         panel.dispose()
@@ -1509,7 +1510,7 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
       const ask = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
       if (ask === undefined) throw new Error('详情里没有「问 AI」那一枚')
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '按下去时那两个附件没有跟着走').toContain('+2')
     } finally {
       panel.dispose()
@@ -3025,13 +3026,22 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
       expect(chip, 'the strip carries no 多选 chip').toBeDefined()
       act(() => { chip!.click() })
       expect((panel.surface.querySelector('[class*="itemBatchCount"]')?.textContent ?? ''), 'arming alone drew no bar').toContain('0')
-      const pressed = [...panel.surface.querySelectorAll('[class*="itemBatch"] button, [class*="itemBatch"] [role="radio"]')]
+      /* **写的那一排**：`itemBatchActions` 里的每一枚都是写入（状态 / 档位 / 今天 / 问 AI /
+         删除），一条都没选时它们全都站着不动。 */
+      const pressed = [...panel.surface.querySelectorAll('[class*="itemBatchActions"] button, [class*="itemBatchActions"] [role="radio"]')]
       for (const control of pressed) {
         const tick = control.matches('input[type=checkbox]')
         if (tick) continue
         expect((control as HTMLButtonElement).disabled, 'a write answered a press with nothing held — it would write to nothing')
           .toBe(true)
       }
+      /* **运行配置那一块是例外，而且必须是例外。** 它改的是「这一批要用的那份配置」——一条
+         设备本地草稿，不是板上任何一条数据（写入发生在「问 AI」那一刻）。把它也算进「写」，
+         就会逼着读者先选行、再看配置，而**先看得见配置再决定交给谁**正是这一块要修的那件事。 */
+      const configHead = [...panel.surface.querySelectorAll('[class*="itemBatch"] button')]
+        .find(button => (button.textContent ?? '').includes('运行配置'))
+      expect(configHead, '批量条里没有「运行配置」那一块').toBeDefined()
+      expect((configHead as HTMLButtonElement).disabled, '没选行时就把配置禁掉了——它是草稿，不是写').toBe(false)
       // The first pick lights the bar up: the disabled half leaves.
       act(() => { hold(rowEls(panel.surface)[0]) })
       const urgent = [...panel.surface.querySelectorAll('[class*="itemBatch"] [role="radio"]')]
@@ -3686,7 +3696,7 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
       const ask = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '问 AI')
       expect(ask, '详情里没有「问 AI」那一枚').toBeDefined()
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '没挂卡的行问 AI 时没有先建卡').toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3725,7 +3735,7 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
       /* **这一枚必须存在，而且必须按得到**：写成 `if (ask !== undefined)` 的话，按钮不见了
          这条也会绿——那正是「假面比现实宽容」：测试说它测了，其实什么都没测。 */
       expect(ask, '卡被删掉的行详情里没有「问 AI」那一枚').toBeDefined()
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '卡被删了却建了一张新卡').not.toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3746,7 +3756,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     try {
       openRowDetail(panel)
       expect(askButton(panel), '详情里没有「问 AI」那一枚').toBeDefined()
-      askThrough(panel)
+      pressAsk(panel)
       const calls = panel.calls.join(' ')
       expect(calls, '没有建卡').toContain('createTask(')
       expect(calls, '建了卡却没有交给它').toContain('askCard(')
@@ -3755,28 +3765,32 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     }
   })
 
-  it('按「问 AI」不立刻开跑：先开那张纸，配置看过、按了「交给它」才建卡发出去', () => {
-    /* **这一条钉的是「什么时候开跑」。** 早先按下去就建卡并立刻开跑，用的是部署默认或读者
-       设过的默认预设——而读者从头到尾没有机会看一眼「它要用哪个工作区、哪个模型、什么权限」。
-       一份要花真实算力的工作不该在没点头的时候启动，所以第一按只开纸。 */
+  it('配置在按之前就在屏上，按下去跑的就是它——不是一道只在按下去时出现的门', () => {
+    /* **这一条钉的是「什么时候看见配置」。**
+     *
+     * 早先按「问 AI」当场就建卡开跑，用的是部署默认或读者设过的默认预设——读者从头到尾没有
+     * 机会看一眼「它要用哪个工作区、哪个模型、什么权限」。后来改成按下去先弹一张纸；而**一张
+     * 只在按下去那一刻出现的纸**把「设置」和「动作的门」混成了一件事：配置本该是读者随时看得见、
+     * 随时改得动的一份，而不是一次必须点头的确认。
+     *
+     * 现在配置是详情右栏里**常驻的一块**：没挂卡时说清这一份会跟到哪儿去，按下去跑的就是屏上
+     * 这一份（与看板卡片上那枚「执行」同一条律）。 */
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(askButton(panel))
-      panel.settle()
-      /* 那一按只许有**读**（读默认预设把纸预填好），不许有写：建卡与交给它是第二按的事。
-         （`calls` 里记的是读与写两种，所以这里断言的是**没有那两个动作**，不是「什么都没发生」。） */
-      expect(panel.calls.join(' '), '第一按就建卡开跑了——配置还没被看过').not.toContain('createTask(')
-      expect(panel.calls.join(' '), '第一按就交给它了').not.toContain('askCard(')
+      // 按之前：那一块在，摘要说「默认预设」，并且说清这一份会跟着新卡走。
+      const head = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('运行配置'))
+      expect(head, '详情右栏里没有「运行配置」那一块').toBeDefined()
+      expect(head?.textContent ?? '', '那一块没有说这一份是什么').toContain('默认预设')
+      expect(panel.surface.textContent, '那一块没有说这一份会跟到哪儿去').toContain('还没挂卡')
+      // 按下去：一按就建卡并交给它，而屏上不会再冒出一张要点头的纸。
+      pressAsk(panel)
+      expect(panel.calls.join(' '), '按下去没有建卡').toContain('createTask(')
+      expect(panel.calls.join(' '), '建了卡却没有交给它').toContain('askCard(')
       const submit = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '交给它')
-      expect(submit, '按下去只开了一张没有「交给它」的纸').toBeDefined()
-      // 纸里那五个值**预填过**（是「默认…」而不是空白）：默认是一条路，不是一个空下拉。
-      expect(panel.surface.textContent, '那张纸里没有 Agent 那一格').toContain('Agent')
-      click(submit)
-      panel.settle()
-      expect(panel.calls.join(' '), '按了「交给它」却没有建卡').toContain('createTask(')
-      expect(panel.calls.join(' '), '建了卡却没有交给它').toContain('askCard(')
+      expect(submit, '按下去又开了一张要点头的纸——配置不该是一道门').toBeUndefined()
     } finally {
       panel.dispose()
     }
@@ -3789,7 +3803,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.lastWrite()[0]?.taskId, '文档里没有把这一行挂到新卡上').toBe('task-minted')
       const chip = panel.surface.querySelector('[class*="itemRowCardChip"]')
       expect(chip, '行尾那枚卡芯片没有出现').not.toBeNull()
@@ -3809,12 +3823,111 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      askThrough(panel)
+      pressAsk(panel)
       // 默认预设是空的（台架的存储里没有预设），所以这一条钉的是**它去读了那一个存储**：
       // 少了这一次读，卡的配置就永远只是部署默认，「换成我的默认」这句话在清单里不成立。
       expect(panel.calls.join(' '), '建卡时没有去读默认运行预设').toContain('runPresetStore(')
     } finally {
       panel.dispose()
+    }
+  })
+
+  it('没挂卡时那一块读的是这一次要用的那份草稿：它跟着新卡出生，卡一出生草稿清槽', () => {
+    /* **这一条钉的是「配置住哪儿」。** 清单**不存**运行配置——它属于会跑起来的东西（卡），而
+       清单一行可能跨工作区、跨会话。所以没挂卡的行用的是一份**设备本地草稿**（`drafts.ts` 的
+       `ask:<id>`），它只活到「这一按」为止：卡带着它出生，然后清槽。
+       不清的后果不是难看：下一次「问 AI」会拿着一份上一轮留下的配置，而屏上那一句「还没挂卡：
+       交给它时会用它开一张卡」会说一句关于将来的假话。 */
+    const item = oneRow({ id: 'draft-1', body: '把这件事做了', taskId: undefined })[0] as ItemRecord
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
+      [askConfigDraftKey('draft-1')]: JSON.stringify({ workspaceId: 'ws-2' }),
+    }))
+    const panel = mountPanel([item], 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      // 1. 那一块读的是草稿：摘要从「默认预设」变成「已自定义 1 项」。
+      const head = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('运行配置'))
+      expect(head, '详情右栏里没有「运行配置」那一块').toBeDefined()
+      expect(head?.textContent ?? '', '那一块没有读那一条自己的草稿').toContain('已自定义 1 项')
+      // 2. 按下去：卡带着草稿里那份配置出生。
+      pressAsk(panel)
+      expect(panel.minted[0]?.workspaceId, '新建的卡没有带上那一条的草稿配置').toBe('ws-2')
+      // 3. 卡一出生，那一份草稿清槽。
+      const left = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as Record<string, string>
+      expect(left[askConfigDraftKey('draft-1')], '卡都出生了，那一份草稿还留着').toBeUndefined()
+    } finally {
+      panel.dispose()
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    }
+  })
+
+  it('「改」就地放出那五个下拉，「保存」把这一份存给这一次（清单不写板上任何字段）', () => {
+    /* **这一条钉的是那条路走得通**：折叠头 -> 五行只读 -> 「改」 -> 五个下拉 -> 「保存」。
+       没挂卡时「保存」写的是**这一次要用的那份草稿**（设备本地），不是板上任何一条数据——
+       运行配置属于会跑起来的东西（卡），清单只借它一次。 */
+    const panel = mountPanel(oneRow({ id: 'edit-1', body: '把这件事做了', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const find = (text: string): HTMLButtonElement | undefined =>
+        [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === text) as HTMLButtonElement | undefined
+      const head = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('运行配置'))
+      expect(head, '详情右栏里没有「运行配置」那一块').toBeDefined()
+      click(head!)
+      panel.settle()
+      expect(panel.surface.querySelectorAll('select').length, '展开之后只有只读的五行，不该有下拉').toBe(0)
+      const change = find('改')
+      expect(change, '那一块展开了却没有「改」').toBeDefined()
+      click(change!)
+      panel.settle()
+      /* 台架没有部署目录（`runCatalog()` 回 undefined），所以那几个依赖目录的下拉**本来
+         就不该画**（`RunConfigEditor` 为这一档写了「这是关于部署的事实」）。四枚是不带目录
+         也能画的那几枚。 */
+      expect(panel.surface.querySelectorAll('select').length, '「改」没有把那几个下拉放出来').toBeGreaterThanOrEqual(4)
+      const save = find('保存')
+      expect(save, '那五个下拉下面没有「保存」').toBeDefined()
+      click(save!)
+      panel.settle()
+      expect(panel.surface.querySelectorAll('select').length, '「保存」之后那五个下拉还开着').toBe(0)
+      const left = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as Record<string, string>
+      expect(left[askConfigDraftKey('edit-1')], '「保存」没有把这一份存给这一次').toBeDefined()
+      expect(boardWrites(panel), '清单把运行配置写到板上了——那是卡的事').toEqual([])
+    } finally {
+      panel.dispose()
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    }
+  })
+
+  it('批量那一条里也有同一块，改的是这一批要用的那一份', () => {
+    /* 批量条是一个手势作用在很多行的地方，所以**同一块**也要在那里出现（同一个组件、同一份
+       草稿逻辑，键是 `ask:batch`）：配置不该只在选中之后、按下之后才出现。 */
+    const items = oneRow({ id: 'batch-1', body: '第一件', taskId: undefined })
+    const panel = mountPanel(items, 'list', 'wide')
+    try {
+      const chip = [...panel.surface.querySelectorAll('button')].find(button => (button.textContent ?? '').trim() === '多选')
+      expect(chip, '顶栏没有「多选」那一枚').toBeDefined()
+      click(chip!)
+      panel.settle()
+      const head = [...panel.surface.querySelectorAll('[class*="itemBatch"] button')]
+        .find(node => (node.textContent ?? '').includes('运行配置'))
+      expect(head, '批量条里没有「运行配置」那一块').toBeDefined()
+      const bar = panel.surface.querySelector('[class*="itemBatch"]') as HTMLElement
+      click(head!)
+      panel.settle()
+      const change = [...bar.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '改')
+      expect(change, '批量条那一块展开了却没有「改」').toBeDefined()
+      click(change!)
+      panel.settle()
+      const save = [...bar.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '保存')
+      expect(save, '批量条那五个下拉下面没有「保存」').toBeDefined()
+      click(save!)
+      panel.settle()
+      const left = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as Record<string, string>
+      expect(left[askConfigDraftKey(undefined)], '批量那一份没有存到 `ask:batch` 上').toBeDefined()
+    } finally {
+      panel.dispose()
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
     }
   })
 
@@ -3827,7 +3940,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '标题在、正文空，却不肯建卡').toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3840,7 +3953,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ title: '', body: '', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '一条没有字的行却建了一张没有名字的卡').not.toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3865,22 +3978,29 @@ function openRowDetail(panel: ReturnType<typeof mountPanel>): void {
 }
 
 /**
- * 「问 AI」是**两步**：先开那张纸（运行配置预填好），按「交给它」才真的发出去。
+ * 「问 AI」是**一按**：按下去就跑，跑的是屏上那一份配置（详情右栏那一块一直在）。
  *
- * 一处写下来，因为「按哪两下才算问过 AI」是这一整批用例共同的步骤——每个用例各写一遍，
+ * 一处写下来，因为「按哪一下才算问过 AI」是这一整批用例共同的步骤——每个用例各写一遍，
  * 改一次交互就要改十几处，而漏掉的那一处会以「没走到那扇门」的样子报出来，指的却是别处。
  */
-function askThrough(panel: ReturnType<typeof mountPanel>): void {
+function pressAsk(panel: ReturnType<typeof mountPanel>): void {
   const ask = [...panel.surface.querySelectorAll('button')]
     .find(node => (node.textContent ?? '').trim() === '问 AI')
   if (ask === undefined) throw new Error('这一屏上没有「问 AI」')
   click(ask)
   panel.settle()
-  const submit = [...panel.surface.querySelectorAll('button')]
-    .find(node => (node.textContent ?? '').trim() === '交给它')
-  if (submit === undefined) throw new Error('那张纸上没有「交给它」——这一按停在半路')
-  click(submit)
-  panel.settle()
+}
+
+/**
+ * 板上的**写入**（读不算）。
+ *
+ * `panel.calls` 记的是读与写两种，而「开了这一格，板上什么都没写」才是那几条用例要问的事。
+ * 把读也算进来，一次正确的读就会让它误报——那正是「一个不看上下文的检查器逼着人改对的东西」
+ * （硬性规范 14）。
+ */
+function boardWrites(panel: ReturnType<typeof mountPanel>): string[] {
+  return panel.calls.filter(call =>
+    /^(createTask|createBoundTask|updateTask|deleteTask|moveTask|runTask|openTask|closeTask|addComment|setSchedule|ackTask|duplicateTask|askCard|askCardSession)\(/.test(call))
 }
 
 describe('an in-place editor answers a press away from it, and the row stays open', () => {
@@ -3972,7 +4092,7 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       expect(field, 'pressing the chip turned nothing into a naming field').not.toBeNull()
       expect(field?.value, 'the field does not carry the row\'s own words to start from').toBe('一条普通的行')
       panel.settle()
-      expect(panel.calls, 'opening the field itself touched the board').toEqual([])
+      expect(boardWrites(panel), 'opening the field itself wrote to the board').toEqual([])
       expect(panel.writes.length, 'opening the field itself wrote to the list').toBe(0)
     } finally {
       panel.dispose()
@@ -4080,7 +4200,7 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       panel.settle()
       expect(namingField(panel.surface), 'an empty name closed the field — a silent refusal is a press that looks broken').not.toBeNull()
       expect(panel.surface.textContent ?? '', 'nothing said why the press did nothing').toContain('先给这张卡起一个名字')
-      expect(panel.calls, 'an empty name still reached the board').toEqual([])
+      expect(boardWrites(panel), 'an empty name still wrote to the board').toEqual([])
       expect(panel.writes.length, 'an empty name still wrote to the list').toBe(0)
     } finally {
       panel.dispose()
@@ -4099,7 +4219,7 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       panel.settle()
       expect(namingField(panel.surface), 'Escape left the field open').toBeNull()
       expect(newCardChip(panel.surface), 'the chip never came back').not.toBeNull()
-      expect(panel.calls, 'Escape still reached the board').toEqual([])
+      expect(boardWrites(panel), 'Escape still wrote to the board').toEqual([])
     } finally {
       panel.dispose()
     }
@@ -4148,7 +4268,7 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
         .find(node => (node.textContent ?? '').trim() === '画廊改造')
       // 名字收下之后答案留在原地：一枚选中的卡芯片。
       expect(chosen?.getAttribute('data-on'), 'the name was taken but the answer did not stay picked').not.toBeNull()
-      expect(panel.calls, 'taking the name itself touched the board — the card belongs to the save').toEqual([])
+      expect(boardWrites(panel), 'taking the name itself wrote to the board — the card belongs to the save').toEqual([])
       // 存下这一条。
       const save = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '存下这一条')
@@ -4193,20 +4313,36 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'card-focus' && state !== 'ask-sheet') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-focus' && state !== 'config-open') throw new Error(`a mounted state this bench does not know: ${state}`)
 
-    if (state === 'ask-sheet') {
-      /* **「问 AI」的第一站**：那张纸开在配置上，读者点头才开跑。
+    if (state === 'config-open') {
+      /* **运行配置那一块：没挂卡的一行，展开、并且就地改。**
        *
-       * 加它的理由：这一条交互改的是「什么时候开跑」，而那件事只有看图才判得出来——纸里
-       * 五个值预填成什么、那句「要送出去的是什么」在不在、两栏的宽窄对不对。 */
-      const panel = mountPanel(oneRow({ taskId: 't-1' }), 'list', band === 'narrow' ? 'narrow' : 'wide')
+       * 加它的理由：这一条交互改的是「配置什么时候看得见」——配置不再是按下去才冒出来的一道门，
+       * 而是详情右栏里**常驻的一块**：折叠头上一句摘要、展开是看板那五行、再点「改」是那五个
+       * 下拉。三档的形状只有看图才判得出来：摘要在窄档会不会被挤成一列、五行与下拉铺多宽、
+       * 那句「还没挂卡：…」落在哪儿。
+       *
+       * **没挂卡这一档是重点**：这时它写的是一份设备本地草稿（`ask:<id>`），而挂着卡的行写的是
+       * 那张卡——同一个位置上写的是两件不同的事，所以两张屏各要一张图（挂卡的看
+       * `carded-detail`）。 */
+      const panel = mountPanel(
+        oneRow({ id: 'cfg-1', ref: 1, title: '还没挂卡的一行', body: '把这件事做了', taskId: undefined }),
+        'list',
+        band === 'narrow' ? 'narrow' : 'wide',
+      )
       try {
         openRowDetail(panel)
-        const ask = [...panel.surface.querySelectorAll('button')]
-          .find(node => (node.textContent ?? '').trim() === '问 AI')
-        if (ask === undefined) throw new Error('详情里没有「问 AI」那一枚')
-        askThrough(panel)
+        const head = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('运行配置'))
+        if (head === undefined) throw new Error('详情右栏里没有「运行配置」那一块')
+        click(head)
+        await settle()
+        const change = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').trim() === '改')
+        if (change === undefined) throw new Error('那一块展开了却没有「改」')
+        click(change)
+        await settle()
       } catch (error) {
         panel.dispose()
         throw error
@@ -4988,7 +5124,7 @@ describe('批量那一枚也照同一条律（这一条是它自己发现的问�
         .find(node => (node.textContent ?? '').includes('问 AI')) as HTMLButtonElement | undefined
       expect(ask, '批量那一排里没有「问 AI」').toBeDefined()
       expect(ask?.disabled, '两行都没挂卡，批量那一枚却是灰的').toBe(false)
-      askThrough(panel)
+      pressAsk(panel)
       expect(panel.calls.join(' '), '批量里没挂卡的行没有各自建卡').toContain('createTask(')
     } finally {
       panel.dispose()

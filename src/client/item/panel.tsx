@@ -62,10 +62,11 @@ import { applyItemPatch, applyItemStatus, applyItemStep, captureItemRecord, isBl
 import { itemContextText } from '../../core/item-view.ts'
 import { attachmentsOf } from '../../core/attachment.ts'
 import { itemTitleOf } from '../../core/item.ts'
-import { defaultRunPresetOf, RUN_CONFIG_KEYS, type RunConfigPresetConfig } from '../../core/run-presets.ts'
+import { defaultRunPresetOf, RUN_CONFIG_KEYS, normalizeRunConfig, pinnedConfigCount, sameRunConfig, type RunConfigPresetConfig } from '../../core/run-presets.ts'
 
 import { t } from '../locales.ts'
-import { AskSheet } from './ask-sheet.tsx'
+import { askConfigDraftKey, draftStore } from '../board/drafts.ts'
+import { RunConfigBlock } from './run-config-block.tsx'
 import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
 import { useSurfaceNarrow } from '../board/use-narrow.ts'
@@ -311,14 +312,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [restoring, setRestoring] = useState<number | undefined>(undefined)
   const [asking, setAsking] = useState<string | undefined>(undefined)
   /**
-   * 「交给 AI」那张纸现在说的是哪一条、以及它带的是哪个动词。
+   * 「这一次要交给它的那一份」运行配置——**每条一行（批量一条）的设备本地草稿**。
    *
-   * 两个入口共用一张纸（`ask-sheet.tsx`）：」问 AI」按下去先开它（`verb: 'ask'`），详情右栏
-   * 那一行「运行配置」的「改」也开它（`verb: 'save'`）。纸里那几个值**存在这一层**而不是纸里：
-   * 它是「读者这一次要用的那份配置」，提交时才落到卡上——纸关掉就没了，与草稿同一条律。
+   * 为什么不进文档：运行配置属于**会跑起来的东西**（那是卡的事），而清单一行可能跨工作区、
+   * 跨会话——把它存成行的字段就是第二份真相（清单字段冻结那条也挡着）。它只活到「这一按」
+   * 为止：卡一出生配置就长在卡上，草稿清槽（`clearAskConfig`）。
+   *
+   * 状态里那份缓存只是**为了重渲染**（localStorage 不会让 React 重画）：写入两边都写，
+   * 读的时候先看缓存、再看存储、最后回落到默认预设链。
    */
-  const [ask, setAsk] = useState<{ readonly ids: readonly string[]; readonly verb: 'ask' | 'save' } | undefined>(undefined)
-  const [draftConfig, setDraftConfig] = useState<RunConfigPresetConfig>({})
+  const [askDrafts, setAskDrafts] = useState<Readonly<Record<string, RunConfigPresetConfig>>>({})
   /**
    * A receipt, and WHERE it belongs.
    *
@@ -720,18 +723,71 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [apply, cardColumns, face.controller])
 
   /**
-   * 这一条现在要用什么跑：**有卡就读卡上的，没卡就走默认预设链**。
+   * 这一条现在挂着的卡用什么跑（没有卡就是 `undefined`——**空与缺席是同一件事**）。
    *
-   * 一处答案，两个读者：那张纸打开时拿它预填，详情右栏那一行摘要也读它。分行写两遍的话，
-   * 打开纸的那一刻与行上写着的那一刻会各说一套——而它们是同一个问题。
+   * 它是**卡上的那份配置**的读法：挂着卡的行显示它、改它（`updateTask`），没挂卡的行读的是
+   * 下面那份草稿。两者不并存，所以屏上永远只有一份「运行配置」。
    */
-  const configOfRow = useCallback((item: ItemRecord): RunConfigPresetConfig => {
-    const controller = face.controller
+  const cardConfigOfRow = useCallback((item: ItemRecord): RunConfigPresetConfig | undefined => {
     const cardId = linkedCardIdOf(item, cardColumns)
-    const card = cardId === undefined ? undefined : board?.tasks.find(task => task.id === cardId)
-    if (controller !== undefined && cardId !== undefined) return runConfigOf(card)
-    return controller === undefined ? {} : bornRunConfigOf(controller)
+    if (face.controller === undefined || cardId === undefined) return undefined
+    return runConfigOf(board?.tasks.find(task => task.id === cardId))
   }, [board, cardColumns, face.controller])
+
+  /**
+   * 「这一次要交给它的那一份」：**设备本地草稿**（`drafts.ts`），没有草稿就走默认预设链。
+   *
+   * 见 `askDrafts` 那一段：它不进文档，卡一出生就清槽。
+   */
+  const askConfigOf = useCallback((itemId: string | undefined): RunConfigPresetConfig => {
+    const key = askConfigDraftKey(itemId)
+    const cached = askDrafts[key]
+    if (cached !== undefined) return cached
+    const stored = draftStore.get(key)
+    if (stored !== undefined) {
+      try {
+        return normalizeRunConfig(JSON.parse(stored) as unknown)
+      } catch {
+        // 读不懂就丢掉它——留着它，屏上会一直显示一份谁也说不出来源的配置。
+        draftStore.clear(key)
+      }
+    }
+    return face.controller === undefined ? {} : bornRunConfigOf(face.controller)
+  }, [askDrafts, face.controller])
+
+  /** 存下这一份草稿（存储 + 状态，两处一起——见 `askDrafts` 那一段）。 */
+  const saveAskConfig = useCallback((itemId: string | undefined, next: RunConfigPresetConfig): void => {
+    const key = askConfigDraftKey(itemId)
+    draftStore.set(key, JSON.stringify(next))
+    setAskDrafts(current => ({ ...current, [key]: next }))
+  }, [])
+
+  /** 这一份草稿的使命结束了（卡已经带着它出生）。 */
+  const clearAskConfig = useCallback((itemId: string | undefined): void => {
+    const key = askConfigDraftKey(itemId)
+    draftStore.clear(key)
+    setAskDrafts(current => {
+      if (current[key] === undefined) return current
+      const next = { ...current }
+      delete next[key]
+      return next
+    })
+  }, [])
+
+  /** 折叠头上那一句：「一项都没指定」用调用点给的那个词，否则说指定了几项。 */
+  const configSummary = (config: RunConfigPresetConfig, none: string): string => {
+    const pinned = pinnedConfigCount(config)
+    return pinned === 0 ? none : t('detail.runConfigCustom', { n: String(pinned) })
+  }
+
+  /**
+   * 工作区那一行显示成什么名字：运行目录里有就照它的标题（与那五个下拉同一份来源），没有就照
+   * id 写——「读不到就照原样显示」，不拿一个编出来的名字顶替。
+   */
+  const workspaceTitleOf = useCallback((workspaceId: string): string => {
+    const catalog = face.controller?.runCatalog()
+    return catalog?.listWorkspaces().find(row => row.id === workspaceId)?.title ?? workspaceId
+  }, [face.controller])
 
   const promoteOne = useCallback((item: ItemRecord, over?: ItemPromotionOverrides, config?: RunConfigPresetConfig): string | undefined => {
     setMenuRow(undefined)
@@ -788,9 +844,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * （它们各自有话说），最后一种根本不是问题——送出去的是这一条自己的内容，不是卡上的
    * 执行 Prompt，所以一张 Prompt 为空的卡照样问得出去。
    *
-   * **它现在不在按下去的那一刻开跑**：先开那张小纸（`askSheet`），读者看一眼要用什么跑、
-   * 按了「交给它」才走这里。理由在 `ask-sheet.tsx` 的头注释里——一份要花真实算力的工作
-   * 不该在读者没点头时按默认值启动。 */
+   * **它按下去就跑，跑的就是屏上那一份配置。** 配置不是按下去那一刻才出现的一道门：它在详情
+   * 右栏那一块里一直看得见、也一直改得动（没挂卡时改的是这一次要用的草稿）——与看板卡片上那枚
+   * 「执行」同一条律。一份要花真实算力的工作不该在读者看不见配置的情况下按默认值启动，而
+   * **看不见**与**没点头**是两件事：配置一直在屏上，这个手势就不再是默认值启动。 */
   const runAsk = useCallback((item: ItemRecord, config: RunConfigPresetConfig) => {
     const controller = face.controller
     /* 没有看板就没有会话可说话——与「变成看板卡片」同一句拒绝：两件事要的是同一张板。 */
@@ -802,8 +859,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
          卡上的配置不是读者选的——两件事一起做只有一个说法。 */
       cardId = promoteOne(item, undefined, config)
       if (cardId === undefined) return
-    } else {
-      // 已经挂卡的：读者在这一按里改的配置写进**那张卡**（与详情那一格同一处）。
+      /* 配置已经长在那张卡上，这一份草稿的使命结束了。不清的话，它会在下一次「问 AI」时
+         冒充「这一次要用的那一份」——一句关于将来的假话。 */
+      clearAskConfig(item.id)
+    } else if (!sameRunConfig(config, cardConfigOfRow(item) ?? {})) {
+      /* 已经挂卡的：配置写进**那张卡**（与看板同一处设置）。**一样的不算一次写入**：一次什么
+         都没改的写入也会推一个 revision、走一轮同步，而屏上什么都没变。 */
       controller.updateTask(cardId, { ...config })
     }
     setAsking(item.id)
@@ -820,22 +881,21 @@ export function ItemListPanel(props: ItemListPanelProps) {
         setAsking(undefined)
       }
     })()
-  }, [cardColumns, face.controller, promoteOne])
+  }, [cardColumns, cardConfigOfRow, clearAskConfig, face.controller, promoteOne])
 
   /**
-   * 「问 AI」的第一半：**先把那张纸打开**，配置预填好，读者点头才走 `runAsk`。
+   * 「问 AI」：**按下去就跑**（`runAsk`），跑的是屏上那一份配置。
    *
-   * 没挂卡的那一条同样要过这一关——那正是这条交互错得最明显的地方（它会当场建卡并开跑）。
-   * 一条连卡都建不出来的行（`askableItem` 为假）在这里就拦下，与从前同一句回执。
+   * 挂着卡的行用它卡上的那份；没挂卡的行用它「这一次要用的那份」（设备本地草稿，没有草稿就是
+   * 默认预设链）。一条连卡都建不出来的行（`askableItem` 为假）在这里就拦下，与从前同一句回执。
    */
   const askOne = useCallback((item: ItemRecord) => {
     const controller = face.controller
     if (controller === undefined) { setReceipt({ id: item.id, words: t('item.promote.noBoard') }); return }
-    if (linkedCardIdOf(item, cardColumns) === undefined && !askableItem(item)) return
-    setDraftConfig(configOfRow(item))
-    setAsk({ ids: [item.id], verb: 'ask' })
-    openLayer('ask')
-  }, [cardColumns, face.controller, configOfRow, openLayer])
+    const cardId = linkedCardIdOf(item, cardColumns)
+    if (cardId === undefined && !askableItem(item)) return
+    runAsk(item, cardId === undefined ? askConfigOf(item.id) : cardConfigOfRow(item) ?? {})
+  }, [askConfigOf, cardColumns, cardConfigOfRow, face.controller, runAsk])
 
   /**
    * Apply one patch to every held row, through the SAME writer the row menu uses.
@@ -913,18 +973,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const askHeld = useCallback(() => {
     /* 与单行那一条**同一处判断**（`askableItem`）：没挂卡的行也算问得出去——按「必须挂卡」
        数，同一批行就会在批量里被拦下、在详情里却问得出去。
-       一批走的是**同一张纸**（不是每行一张）：读者选一次配置，新建的卡都带着它出生；已经有卡
-       的各自留着卡上的那份。 */
+       一批用**同一份草稿**（批量那一格里的那份）：新建的卡都带着它出生，**已经有卡的各自留着
+       卡上的那份**——读者改的是「这一批要用的那一份」，不是别人的卡。 */
     const ids = items.filter(item => selection.ids.has(item.id) && askableItem(item)).map(item => item.id)
     // NO RECEIPT WHEN EVERY ASK LANDED. Each row that went through prints its own
     // receipt under its own button, so a batch receipt on top of them would say
     // the same thing twice — and the top one is the one that costs the reader
     // nothing, because it is the furthest from the rows it is about.
     if (ids.length === 0) { setReceipt({ id: undefined, words: t('item.batch.askOne', { n: String(selection.ids.size) }) }); return }
-    setDraftConfig(face.controller === undefined ? {} : bornRunConfigOf(face.controller))
-    setAsk({ ids, verb: 'ask' })
-    openLayer('ask')
-  }, [face.controller, items, openLayer, selection.ids])
+    const batch = askConfigOf(undefined)
+    for (const id of ids) {
+      const row = itemsNow.current.find(candidate => candidate.id === id)
+      if (row === undefined) continue
+      const cardId = linkedCardIdOf(row, cardColumns)
+      runAsk(row, cardId === undefined ? batch : cardConfigOfRow(row) ?? {})
+    }
+  }, [askConfigOf, cardColumns, cardConfigOfRow, items, itemsNow, runAsk, selection.ids])
 
   if (replica === undefined) {
     return (
@@ -985,74 +1049,46 @@ export function ItemListPanel(props: ItemListPanelProps) {
      answered to a control nobody could see. */
   const viewOf = (item: ItemRecord): ItemRowView => itemRowViewOf(item, { now, cards: cardColumns })
 
-  /** 关掉那张纸（层与「它在说哪一条」一起清，免得下一次打开带着上一条的动词）。 */
-  const closeAsk = useCallback((): void => {
-    openLayer(undefined)
-    setAsk(undefined)
-  }, [openLayer])
-
-  /** 详情右栏那一行的「改」：同一张纸，动词是「存下」。 */
-  const openConfig = useCallback((item: ItemRecord) => {
-    setDraftConfig(configOfRow(item))
-    setAsk({ ids: [item.id], verb: 'save' })
-    openLayer('ask')
-  }, [configOfRow, openLayer])
-
-  /** 这一条自己的话要送出去什么（一行，读者按之前读得到）。 */
-  const askWhatOf = (rows: readonly ItemRecord[]): string => {
-    if (rows.length > 1) return t('item.ask.whatMany', { n: String(rows.length) })
-    const count = rows.reduce((sum, row) => sum + attachmentsOf(row).length, 0)
-    return count === 0 ? t('item.ask.what') : t('item.ask.whatAttached', { n: String(count) })
-  }
-
-  /** 那一张纸的主按钮：`ask` 走完整的三步（建卡 / 写配置 / 发出去），`save` 只写配置。 */
-  const submitAsk = useCallback((): void => {
-    if (ask === undefined) return
-    const rows = ask.ids
-      .map(id => itemsNow.current.find(row => row.id === id))
-      .filter((row): row is ItemRecord => row !== undefined)
-    const config = draftConfig
-    const verb = ask.verb
-    closeAsk()
-    if (rows.length === 0) return
-    if (verb === 'ask') {
-      /* 一批就是**一条一条地问**，用的是同一份读者刚选的配置：新建的卡都带着它出生，
-         已经有卡的各自留着卡上的那份（读者改的是"这一批要用的那份"，不是别人的卡）。 */
-      for (const row of rows) runAsk(row, config)
-      return
-    }
-    const item = rows[0]
-    const cardId = item === undefined ? undefined : linkedCardIdOf(item, cardColumns)
-    if (cardId !== undefined && face.controller !== undefined) face.controller.updateTask(cardId, { ...config })
-  }, [ask, cardColumns, closeAsk, draftConfig, face.controller, runAsk])
-
   /**
-   * 那一行运行配置，装配好递进详情里——**或者 `undefined`**（这一条没有卡）。
+   * 详情右栏那一块「运行配置」，装配好递进详情里——**两种情况下都在**。
    *
    * 它在这一层装配而不是在详情里，理由与「五个动作传进去而不是查出来」同一条：详情那一格
    * 组件不该知道看板控制器、预设存储、`updateTask` 长什么样。这一层本来就有它们。
    *
-   * **它不再把五个下拉常驻在那一列**：那五枚加起来是一整块屏幕，而它们绝大多数时候是空的
-   * （用默认）。所以这一格缩成**一行**——这一条现在用什么跑（钉住了几项 / 走默认）——「改」
-   * 开那张纸改（与「问 AI」同一张，另一个动词）。写的是**那张卡**（`updateTask`，看板自己的
-   * 门），不是这一行；所以两边改的是同一处，不可能出现两份配置。
+   * **挂着卡**：显示那张卡的配置（与看板同一处设置），「改」写回那张卡（`updateTask`）——
+   * 两边改的是同一处，不可能出现两份配置。
+   * **没挂卡**：显示「这一次要交给它的那一份」——**设备本地草稿**（见 `askDrafts` 那一段），
+   * 并说清它会跟到哪儿去：卡一出生配置就长在卡上，之后在卡上改。
+   *
+   * 五枚下拉不再常驻（它们加起来是一整块屏，而绝大多数时候是空的）：折叠头上一句摘要，展开
+   * 才是那五行只读，再点「改」才是那五个下拉——读法用看板那一份、写法也用看板那一份。
    */
   const runConfigSlotOf = (item: ItemRecord): ReactNode => {
     const controller = face.controller
+    if (controller === undefined) return undefined
+    const card = cardConfigOfRow(item)
+    if (card === undefined) {
+      const config = askConfigOf(item.id)
+      return (
+        <RunConfigBlock
+          config={config}
+          summary={configSummary(config, t('item.ask.configDefault'))}
+          note={t('item.ask.configNote')}
+          controller={controller}
+          workspaceTitleOf={workspaceTitleOf}
+          onSave={next => { saveAskConfig(item.id, next) }}
+        />
+      )
+    }
     const cardId = linkedCardIdOf(item, cardColumns)
-    if (controller === undefined || cardId === undefined) return undefined
-    const config = runConfigOf(board?.tasks.find(task => task.id === cardId))
-    const pinned = RUN_CONFIG_KEYS.filter(key => config[key] !== undefined && config[key] !== '').length
     return (
-      <div className={css.itemOptRow}>
-        <p className={css.itemOptName}>{t('item.ask.configRow')}</p>
-        <div className={css.itemOpts}>
-          <span className={css.detailHint}>
-            {pinned === 0 ? t('item.ask.configDefault') : t('item.ask.configPinned', { n: String(pinned) })}
-          </span>
-          <Button size="sm" onClick={() => { openConfig(item) }}>{t('item.ask.configChange')}</Button>
-        </div>
-      </div>
+      <RunConfigBlock
+        config={card}
+        summary={configSummary(card, t('detail.runConfigDefault'))}
+        controller={controller}
+        workspaceTitleOf={workspaceTitleOf}
+        onSave={next => { if (cardId !== undefined) controller.updateTask(cardId, { ...next }) }}
+      />
     )
   }
 
@@ -1508,6 +1544,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
       askable={askableHeld}
       carded={heldCarded}
       onAsk={askHeld}
+      /* 批量那条「交给 AI」用的配置块：**与详情右栏同一个组件**，喂的是批量草稿
+         （`ask:batch`）。已经有卡的各自留着自己的那份，所以这里只说新建的卡会带着它。 */
+      configSlot={face.controller === undefined ? undefined : (
+        <RunConfigBlock
+          config={askConfigOf(undefined)}
+          summary={configSummary(askConfigOf(undefined), t('item.ask.configDefault'))}
+          note={t('item.ask.configNote')}
+          controller={face.controller}
+          workspaceTitleOf={workspaceTitleOf}
+          onSave={next => { saveAskConfig(undefined, next) }}
+        />
+      )}
       onRemove={removeHeld}
     />
   ) : undefined
@@ -1865,23 +1913,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
             return true
           }}
         />
-
-        {/* 「交给 AI」那张纸：**它是这条路的第一站**，不是跑起来之后的一个对话框。
-            「问 AI」按下去先开它（动词 `ask`），详情右栏那一行的「改」也开它（动词 `save`）
-            ——一张纸两个动词，见 `ask-sheet.tsx`。 */}
-        {ask !== undefined && face.controller !== undefined && (
-          <AskSheet
-            open={overlay === 'ask'}
-            onClose={closeAsk}
-            verb={ask.verb}
-            summary={askWhatOf(ask.ids.map(id => itemsNow.current.find(row => row.id === id)).filter((row): row is ItemRecord => row !== undefined))}
-            config={draftConfig}
-            onConfig={setDraftConfig}
-            controller={face.controller}
-            busy={asking !== undefined}
-            onSubmit={submitAsk}
-          />
-        )}
 
   {/* THE SHELL CARD IS GONE, and the ROWS are the cards now: the panel sits
       * directly on the canvas and each row paints its own card — the board's own

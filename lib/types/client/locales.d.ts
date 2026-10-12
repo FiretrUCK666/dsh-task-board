@@ -633,17 +633,10 @@ export declare const zh: {
     'item.count': string;
     'item.countFiltered': string;
     'item.ask': string;
-    'item.ask.sheetTitle': string;
-    'item.ask.configTitle': string;
-    'item.ask.submit': string;
-    'item.ask.saveConfig': string;
-    'item.ask.what': string;
-    'item.ask.whatAttached': string;
-    'item.ask.whatMany': string;
     'item.ask.configRow': string;
     'item.ask.configChange': string;
     'item.ask.configDefault': string;
-    'item.ask.configPinned': string;
+    'item.ask.configNote': string;
     'item.ask.started': string;
     'item.ask.said': string;
     'item.ask.refused': string;

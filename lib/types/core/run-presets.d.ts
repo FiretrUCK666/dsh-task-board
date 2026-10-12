@@ -66,6 +66,16 @@ export interface RunPresetStore {
     /** Drop the persisted document. */
     clear(): void;
 }
+/**
+ * Keep only the known config keys with string values.
+ *
+ * It is also the reader for a config that arrives from OUTSIDE the document (a
+ * device-local ask draft read back from localStorage): a shape that has drifted
+ * must come back as a smaller config, never as a broken one.
+ * @param value - anything claiming to be a run config.
+ * @returns the known keys with string values; `{}` when nothing survives.
+ */
+export declare function normalizeRunConfig(value: unknown): RunConfigPresetConfig;
 /** Normalize a raw row list: valid custom presets only, duplicates dropped. */
 export declare function normalizeRunPresets(value: unknown): RunConfigPreset[];
 /** Normalize a whole persisted document (corrupt → built-in only). */
@@ -74,6 +84,21 @@ export declare function normalizeRunPresetDocument(value: unknown): RunPresetsDo
 export declare function mergedRunPresets(doc: RunPresetsDocument): RunConfigPreset[];
 /** Find a preset by id (built-in or custom); undefined when it does not exist. */
 export declare function findRunPreset(doc: RunPresetsDocument, id: string): RunConfigPreset | undefined;
+/**
+ * Whether two run configurations are the same setting.
+ *
+ * ABSENT AND EMPTY ARE THE SAME THING here (both mean "use the default"), which
+ * is the law the rows and the selectors already follow: `''` is what an
+ * unselected `<select>` hands back, so counting it as a difference would make a
+ * no-op write look like a change — and a write that changes nothing still costs
+ * a document revision and a sync round.
+ * @param a - one configuration.
+ * @param b - the other.
+ * @returns true when every known key carries the same value.
+ */
+export declare function sameRunConfig(a: RunConfigPresetConfig, b: RunConfigPresetConfig): boolean;
+/** How many fields of a configuration are actually pinned (a row count, not a write). */
+export declare function pinnedConfigCount(config: RunConfigPresetConfig): number;
 /** THE default resolution: a valid defaultId (that exists) wins; anything
  *  else — never set, dangling, deleted — falls back to 部署默认. */
 export declare function defaultRunPresetOf(doc: RunPresetsDocument): RunConfigPreset;

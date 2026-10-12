@@ -9,10 +9,10 @@ import type { BoardController } from '../../core/controller.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes, sessionUnviewedOf } from '../../core/session-display.ts'
-import { permissionLabel } from '../permission-label.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
+import { RunConfigRows } from './RunConfigRows.tsx'
 import { useEscapeStack } from './escape-stack.ts'
 import { useDialogFocus } from './dialog-focus.ts'
 import { Chip, type ChipKind } from './Chip.tsx'
@@ -693,45 +693,10 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 open={configOpen}
                 onToggle={() => { setConfigOpen(!configOpen) }}
               >
-                {/* The five rows always render: an unset field means "use the
-                    deployment default", shown as 默认 — a dragged-in or fresh
-                    card reads complete instead of silently missing rows. */}
-                <dl className={css.configGrid}>
-                  <div className={css.configRow}>
-                    <dt className={css.configLabel}>{t('new.workspace')}</dt>
-                    <dd className={css.configValue}>
-                      {current.workspaceId !== undefined
-                        ? workspaceTitleOf(current.workspaceId)
-                        : t('new.workspaceDefault')}
-                    </dd>
-                  </div>
-                  <div className={css.configRow}>
-                    <dt className={css.configLabel}>{t('new.agentPreset')}</dt>
-                    <dd className={css.configValue}>
-                      {current.agentPreset !== undefined ? current.agentPreset : t('new.agentPresetDefault')}
-                    </dd>
-                  </div>
-                  <div className={css.configRow}>
-                    <dt className={css.configLabel}>{t('new.model')}</dt>
-                    <dd className={css.configValue}>
-                      {current.provider !== undefined && current.model !== undefined
-                        ? `${current.provider} / ${current.model}`
-                        : t('new.modelDefault')}
-                    </dd>
-                  </div>
-                  <div className={css.configRow}>
-                    <dt className={css.configLabel}>{t('new.effort')}</dt>
-                    <dd className={css.configValue}>
-                      {current.reasoningEffort !== undefined ? current.reasoningEffort : t('new.effortDefault')}
-                    </dd>
-                  </div>
-                  <div className={css.configRow}>
-                    <dt className={css.configLabel}>{t('new.permission')}</dt>
-                    <dd className={css.configValue}>
-                      {current.permission !== undefined ? permissionLabel(current.permission) : t('new.permissionDefault')}
-                    </dd>
-                  </div>
-                </dl>
+                {/* 五行是**共享组件**（`RunConfigRows`）：清单那一块读同一张卡的同一份
+                    配置，所以两处必须是同一个组件、同一套词、同一个次序——不是两处长得像
+                    的东西。 */}
+                <RunConfigRows config={current} workspaceTitleOf={workspaceTitleOf} />
               </Disclosure>
             </>
           )}

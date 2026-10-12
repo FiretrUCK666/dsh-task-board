@@ -6,6 +6,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DRAFT_STORAGE_KEY,
+  askConfigDraftKey,
   commentDraftKey,
   editDraftKey,
   newSessionDraftKey,
@@ -42,6 +43,10 @@ describe('draft key construction', () => {
     // its saved instruction is the truth (hence the literal 'new' key usage).
     expect(newSessionDraftKey('t-1')).toBe('newsession:t-1')
     expect(ruleDraftKey('t-1', 'new')).toBe('rule:t-1:new')
+    // 清单那一条「问 AI」要用的配置：一行一把键，批量一把（`undefined` = 这一批）。
+    // 粒度就是那次决定的粒度——读者给某一行挑的工作区，不是他明天早上要选的那几行的。
+    expect(askConfigDraftKey('r-1')).toBe('ask:r-1')
+    expect(askConfigDraftKey(undefined)).toBe('ask:batch')
     expect(DRAFT_STORAGE_KEY).toBe('dsh.taskBoard.drafts.v1')
   })
 })

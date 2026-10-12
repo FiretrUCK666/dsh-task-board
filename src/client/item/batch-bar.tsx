@@ -25,6 +25,7 @@
  * identities. There is no batch-only field and no batch-only rule, which is what
  * keeps the action catalogue the only description of what can be done.
  */
+import type { ReactNode } from 'react'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES } from '../../core/item.ts'
 import { t } from '../locales.ts'
@@ -64,6 +65,8 @@ export interface ItemBatchBarProps {
   readonly carded: number
   /** Put the held rows back where they were, one gesture. */
   readonly onRemove: () => void
+  /** 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。 */
+  readonly configSlot?: ReactNode
 }
 
 export function ItemBatchBar(props: ItemBatchBarProps) {
@@ -129,6 +132,10 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
         </Button>
         <Button variant="dangerGhost" size="sm" disabled={idle} onClick={props.onRemove}>{t('item.menu.delete')}</Button>
       </div>
+      {/* 这一批「交给 AI」要用的那份运行配置——**与详情右栏那一块是同一个组件**：新建的卡都
+          带着它出生，已经有卡的各自留着卡上的那份。批量条是一个手势作用在很多行的地方，所以
+          这里也必须看得见、改得动，而不是按下之后才冒出来。 */}
+      {props.configSlot}
       {props.askable < props.count && (
         <p className={css.itemBatchNote}>{t('item.batch.askOne', { n })}</p>
       )}

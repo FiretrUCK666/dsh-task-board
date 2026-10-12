@@ -121,14 +121,17 @@ export interface ItemViewPrefs {
 /**
  * THE OPENABLE STATES, and the list is what the strip above it has to earn.
  *
- * `palette`, `create` and `ask` are surfaces of their own. `sort` is not: it is a
+ * `palette` and `create` are surfaces of their own. `sort` is not: it is a
  * **panel inside the strip** — it takes the same space the bar already owns and
  * it pushes nothing around, so a reader who opens it and closes it is exactly
  * where they were. Putting it in this union is what lets the bench and the
  * keyboard reach it by the same name the UI does, instead of the UI growing a
  * second, private way of saying 「打开排序」.
+ *
+ * **运行配置不在这个名单里**，而且这正是它该有的样子：它不是一层（没有浮层可开），
+ * 而是详情右栏那一块**常驻**的面——配置一直在屏上，`改` 就在它里面原地展开。
  */
-export const ITEM_OVERLAYS = ['palette', 'create', 'sort', 'ask'] as const
+export const ITEM_OVERLAYS = ['palette', 'create', 'sort'] as const
 
 /** One of the openable states. */
 export type ItemOverlay = typeof ITEM_OVERLAYS[number]

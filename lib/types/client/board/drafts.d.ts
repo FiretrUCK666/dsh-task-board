@@ -27,6 +27,17 @@ export declare const NEW_TASK_DRAFT_KEY = "new";
 export declare function newSessionDraftKey(taskId: string): string;
 /** Session-rule form draft key (the instruction text) for one task + rule. */
 export declare function ruleDraftKey(taskId: string, ruleId: string): string;
+/**
+ * The checklist's ask-configuration draft key (a RunConfigPresetConfig, JSON).
+ *
+ * One per ROW (`ask:<itemId>`) plus one for a batch (`ask:batch`, `undefined`),
+ * because that is the granularity of the decision being made: a reader who picks
+ * a workspace for one row has not picked it for the rows they select tomorrow
+ * morning. It is a DRAFT and not a document field on purpose — the run
+ * configuration belongs to the thing that runs (the card), and a checklist row
+ * may be worked on across workspaces and sessions (PRODUCT.md).
+ */
+export declare function askConfigDraftKey(itemId: string | undefined): string;
 /** Answer-form draft key for one open question carrier.
  *
  *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per

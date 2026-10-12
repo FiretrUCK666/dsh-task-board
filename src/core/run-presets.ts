@@ -90,8 +90,16 @@ function isPresetShape(value: unknown): value is RunConfigPreset {
   return typeof row.config === 'object' && row.config !== null
 }
 
-/** Keep only the known config keys with string values. */
-function cleanConfig(value: unknown): RunConfigPresetConfig {
+/**
+ * Keep only the known config keys with string values.
+ *
+ * It is also the reader for a config that arrives from OUTSIDE the document (a
+ * device-local ask draft read back from localStorage): a shape that has drifted
+ * must come back as a smaller config, never as a broken one.
+ * @param value - anything claiming to be a run config.
+ * @returns the known keys with string values; `{}` when nothing survives.
+ */
+export function normalizeRunConfig(value: unknown): RunConfigPresetConfig {
   if (typeof value !== 'object' || value === null) return {}
   const source = value as Record<string, unknown>
   const cleaned: RunConfigPresetConfig = {}
@@ -111,7 +119,7 @@ export function normalizeRunPresets(value: unknown): RunConfigPreset[] {
     if (!isPresetShape(entry)) continue
     if (seen.has(entry.id)) continue
     seen.add(entry.id)
-    rows.push({ id: entry.id, name: entry.name, config: cleanConfig(entry.config) })
+    rows.push({ id: entry.id, name: entry.name, config: normalizeRunConfig(entry.config) })
   }
   return rows
 }
@@ -133,6 +141,27 @@ export function mergedRunPresets(doc: RunPresetsDocument): RunConfigPreset[] {
 /** Find a preset by id (built-in or custom); undefined when it does not exist. */
 export function findRunPreset(doc: RunPresetsDocument, id: string): RunConfigPreset | undefined {
   return mergedRunPresets(doc).find(preset => preset.id === id)
+}
+
+/**
+ * Whether two run configurations are the same setting.
+ *
+ * ABSENT AND EMPTY ARE THE SAME THING here (both mean "use the default"), which
+ * is the law the rows and the selectors already follow: `''` is what an
+ * unselected `<select>` hands back, so counting it as a difference would make a
+ * no-op write look like a change — and a write that changes nothing still costs
+ * a document revision and a sync round.
+ * @param a - one configuration.
+ * @param b - the other.
+ * @returns true when every known key carries the same value.
+ */
+export function sameRunConfig(a: RunConfigPresetConfig, b: RunConfigPresetConfig): boolean {
+  return RUN_CONFIG_KEYS.every(key => (a[key] ?? '') === (b[key] ?? ''))
+}
+
+/** How many fields of a configuration are actually pinned (a row count, not a write). */
+export function pinnedConfigCount(config: RunConfigPresetConfig): number {
+  return RUN_CONFIG_KEYS.filter(key => config[key] !== undefined && config[key] !== '').length
 }
 
 /** THE default resolution: a valid defaultId (that exists) wins; anything
