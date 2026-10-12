@@ -1,18 +1,20 @@
 /**
  * Update-check grammar (src/core/update-check.ts): install-mode
- * classification, numeric version comparison, per-mode update commands, and
- * the local-checkout behind test. Pure logic — no platform seam.
+ * classification, numeric version comparison, the plan that updates a copy
+ * (and who applies it), and the local-checkout behind test. Pure logic — no
+ * platform seam.
  */
 import { describe, expect, it } from 'vitest'
 import {
   classifyInstallSpec,
+  commandLineOf,
   compareVersions,
   githubSpecOfRepositoryUrl,
   isGitBehind,
   isNewerVersion,
   parseVersionParts,
   shortSha,
-  updateActionsFor,
+  updatePlanFor,
 } from '../src/core/update-check.ts'
 
 describe('classifyInstallSpec', () => {
@@ -72,33 +74,84 @@ describe('githubSpecOfRepositoryUrl', () => {
   })
 })
 
-describe('updateActionsFor', () => {
+describe('updatePlanFor', () => {
   const pkg = '@firetruck666/dsh-task-board'
   const spec = 'github:FiretrUCK666/dsh-task-board'
+  const base = {
+    packageName: pkg,
+    githubSpec: spec,
+    profile: 'web',
+    appManaged: false,
+    canInstall: true,
+  }
+
+  it('npm installs re-add the package at latest, through the profile that carries them', () => {
+    const plan = updatePlanFor({ ...base, mode: 'npm' })
+    expect(plan.apply).toBe('package')
+    expect(plan.packageSpec).toBe(`${pkg}@latest`)
+    expect(plan.profile).toBe('web')
+    expect(commandLineOf(plan.steps)).toBe(`dsh plugin --profile web add ${pkg}@latest`)
+  })
+
+  it('github installs re-add the repository spec', () => {
+    const plan = updatePlanFor({ ...base, mode: 'github' })
+    expect(plan.apply).toBe('package')
+    expect(plan.packageSpec).toBe(spec)
+    expect(commandLineOf(plan.steps)).toBe(`dsh plugin --profile web add ${spec}`)
+  })
 
   it('local checkouts pull and rebuild in place', () => {
-    expect(updateActionsFor('local', pkg, spec)).toEqual([
-      { kind: 'local', command: 'git pull && pnpm build' },
-    ])
+    const plan = updatePlanFor({ ...base, mode: 'local' })
+    expect(plan.apply).toBe('checkout')
+    expect(commandLineOf(plan.steps)).toBe('git pull --ff-only && pnpm run build')
   })
 
-  it('npm installs re-add at latest', () => {
-    expect(updateActionsFor('npm', pkg, spec)).toEqual([
-      { kind: 'npm', command: `dsh plugin --profile web add ${pkg}@latest` },
-    ])
+  it('the checkout supplies its own refresh steps when the host read them', () => {
+    const steps = [{ command: 'yarn', args: ['run', 'build'] }]
+    expect(updatePlanFor({ ...base, mode: 'local', checkoutSteps: steps }).steps).toEqual(steps)
   })
 
-  it('github installs re-add the spec', () => {
-    expect(updateActionsFor('github', pkg, spec)).toEqual([
-      { kind: 'github', command: `dsh plugin --profile web add ${spec}` },
-    ])
+  it('a packaged application gets no terminal command: its CLI refuses that profile', () => {
+    const plan = updatePlanFor({ ...base, mode: 'npm', appManaged: true })
+    expect(plan.apply).toBe('package')
+    expect(plan.steps).toEqual([])
   })
 
-  it('unknown shows both remote commands rather than guessing', () => {
-    expect(updateActionsFor('unknown', pkg, spec)).toHaveLength(2)
-    expect(updateActionsFor('unknown', pkg, undefined)).toEqual([
-      { kind: 'npm', command: `dsh plugin --profile web add ${pkg}@latest` },
-    ])
+  it('an unreadable profile name yields no command rather than an invalid one', () => {
+    const plan = updatePlanFor({
+      mode: 'npm',
+      packageName: pkg,
+      githubSpec: spec,
+      appManaged: false,
+      canInstall: true,
+    })
+    expect(plan.steps).toEqual([])
+    expect(plan.profile).toBeUndefined()
+  })
+
+  it('a host without the installation service keeps the command and applies nothing', () => {
+    const plan = updatePlanFor({ ...base, mode: 'npm', canInstall: false })
+    expect(plan.apply).toBe('none')
+    expect(commandLineOf(plan.steps)).toBe(`dsh plugin --profile web add ${pkg}@latest`)
+  })
+
+  it('an unreadable install mode gets no plan at all (never a guessed command)', () => {
+    const plan = updatePlanFor({ ...base, mode: 'unknown' })
+    expect(plan.apply).toBe('none')
+    expect(plan.packageSpec).toBeUndefined()
+    expect(plan.steps).toEqual([])
+  })
+
+  it('a source install with no repository to re-add gets no plan', () => {
+    const plan = updatePlanFor({
+      mode: 'github',
+      packageName: pkg,
+      profile: 'web',
+      appManaged: false,
+      canInstall: true,
+    })
+    expect(plan.apply).toBe('none')
+    expect(plan.steps).toEqual([])
   })
 })
 

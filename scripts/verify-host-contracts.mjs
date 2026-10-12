@@ -104,6 +104,31 @@ if (dsh === null) {
 
 const packagesDir = join(dsh, 'node_modules', '@deepseek-ai')
 
+/** The installation's own package name, read live from its manifest. */
+const ownPackage = (() => {
+  try {
+    return JSON.parse(readFileSync(join(dsh, 'package.json'), 'utf8')).name ?? ''
+  } catch {
+    return ''
+  }
+})()
+
+/**
+ * Where one named package's files live.
+ *
+ * Two roots, because the installation is not a dependency of itself: the
+ * launcher's own code sits in the install root (`<dsh>/lib`) while every other
+ * package sits under the install's `node_modules/@deepseek-ai`. Without the
+ * first root a contract row about a launcher-provided service reports "no
+ * installed package provides it" — the plugin would be told its true
+ * dependency does not exist, and the row could only ever be written as prose.
+ * @param pkg - the import specifier (`@scope/name`).
+ * @returns the package's own directory.
+ */
+function packageDirOf(pkg) {
+  return pkg === ownPackage ? dsh : join(packagesDir, pkg.replace(/^@[a-z0-9-]+\//, ''))
+}
+
 /**
  * Cached file text: the member, slot and service checks read the same install
  * files, and a package body is large enough that reading it once per check would
@@ -288,11 +313,10 @@ function packageTextFiles(pkgDir) {
 
 for (const { pkg, member } of members) {
   // The table names packages by their IMPORT specifier (`@deepseek-ai/x`), while
-  // `packagesDir` is already the scope directory — so the scope prefix is dropped
-  // before joining, never passed through (that would look for
-  // `@deepseek-ai/@deepseek-ai/x`).
-  const pkgDir = join(packagesDir, pkg.replace(/^@[a-z0-9-]+\//, ''))
-  if (!existsSync(pkgDir)) {
+  // the install's own package sits in another root — `packageDirOf` owns that
+  // mapping so no caller joins a specifier onto a directory by hand.
+  const pkgDir = packageDirOf(pkg)
+  if (!existsSync(join(pkgDir, 'package.json'))) {
     failures.push(`package "${pkg}" is not installed under ${packagesDir}`)
     continue
   }
@@ -312,10 +336,8 @@ for (const { pkg, member } of members) {
 /** Service name -> the packages declaring it as a cordis provider. */
 function providerIndex() {
   const index = new Map()
-  for (const entry of existsSync(packagesDir) ? readdirSync(packagesDir, { withFileTypes: true }) : []) {
-    if (!entry.isDirectory()) continue
-    const pkg = `@deepseek-ai/${entry.name}`
-    for (const file of packageTextFiles(join(packagesDir, entry.name))) {
+  const attribute = (pkg, files) => {
+    for (const file of files) {
       const text = textOf(file)
       // `super(ctx, "name")` (a Service subclass) and `provide("name")` are the
       // two shapes cordis registers a service name with.
@@ -325,6 +347,11 @@ function providerIndex() {
       }
     }
   }
+  for (const entry of existsSync(packagesDir) ? readdirSync(packagesDir, { withFileTypes: true }) : []) {
+    if (!entry.isDirectory()) continue
+    attribute(`@deepseek-ai/${entry.name}`, packageTextFiles(join(packagesDir, entry.name)))
+  }
+  attribute(ownPackage, packageTextFiles(dsh))
   return index
 }
 
@@ -337,8 +364,8 @@ function serviceFailures(rows) {
   const providers = providerIndex()
   const found = []
   for (const { half, name, member, pkg } of rows) {
-    const pkgDir = join(packagesDir, pkg.replace(/^@[a-z0-9-]+\//, ''))
-    if (!existsSync(pkgDir)) {
+    const pkgDir = packageDirOf(pkg)
+    if (!existsSync(join(pkgDir, 'package.json'))) {
       found.push(`${half} half: the package the table names for service "${name}" is not installed (${pkg})`)
       continue
     }
@@ -428,7 +455,7 @@ if (args.has('--probe-services')) {
 
 notes.push(`host: ${dsh}`)
 notes.push(`slots declared by host: ${declared.size} (${typedSlots.size} typed contract entries, ${runtimeSlots.size} runtime children tables)`)
-notes.push(`contracts declared by plugin: ${slots.length} slots, ${members.length} members, ${services.length} injected services, ${absent.length} removed-member rules`)
+notes.push(`contracts declared by plugin: ${slots.length} slots, ${members.length} members, ${services.length} service rows, ${absent.length} removed-member rules`)
 
 if (failures.length > 0) {
   console.error('verify-host-contracts FAIL')

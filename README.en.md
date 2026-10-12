@@ -40,7 +40,7 @@ This plugin runs in the web GUI only.
 
 ## Install
 
-Pick one. All three commands run in your own terminal.
+Pick one. All three commands run in your own terminal. **The desktop app needs no command**: add the same package name on its Plugins page — that application manages its own profile.
 
 ### From npm
 
@@ -118,21 +118,38 @@ A restart is required here too. Your task data is not deleted.
 
 ## Updating
 
-Easiest: the board header's right toolbar has a permanent Check for updates button. One click compares the running version against the latest; when an update exists it shows the matching update command for your install method — copy it and run it in your own terminal.
+Easiest: the board header's right toolbar has a permanent Check for updates button. One click compares the running version against the latest, and opens the update dialog when an update exists.
 
-With the plugin marketplace installed, press Update on the Installed tab. Otherwise re-run an install command:
+The dialog's Update now button knows what to do because it reads the install source of **the copy that is running**: the install method and the profile it belongs to both come from that profile's own manifest — so a local checkout on the web profile and an npm install inside the desktop app each describe themselves, on the same machine, with nothing guessed.
+
+| Installed via | What Update now does |
+| --- | --- |
+| npm | reinstalls this package at the latest published version |
+| GitHub | reinstalls at the current commit on `main` |
+| a local checkout | `git pull --ff-only` in the repository, then rebuilds `lib/` with the package manager that repository declares |
+| the desktop app | handed to the app, which owns that profile |
+
+When it finishes, a change that can hot-load takes effect at once; when a restart is needed instead, the dialog says so. Your task data is never touched.
+
+The dialog also shows the equivalent terminal command, with your own profile name in it. You can run it yourself (`<profile>` is yours, usually `web`):
 
 ```sh
-dsh plugin --profile web add @firetruck666/dsh-task-board@latest
+dsh plugin --profile <profile> add @firetruck666/dsh-task-board@latest
 ```
-
-Or, if you installed from the GitHub source, point the same command at the repository — the latest commit on the default branch is what gets installed:
 
 ```sh
-dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
+dsh plugin --profile <profile> add github:FiretrUCK666/dsh-task-board
 ```
 
-Restart `dsh web` afterwards.
+For a local checkout:
+
+```sh
+git pull --ff-only && pnpm run build
+```
+
+With the plugin marketplace installed you can also press Update on its Installed tab.
+
+**Desktop app**: the plugin lives in that application's own profile, and the app owns it — a terminal `dsh plugin --profile desktop` is refused. Use Update now in the dialog, or add the package again on the app's Plugins page, then fully quit and reopen the app.
 
 ## What it does
 

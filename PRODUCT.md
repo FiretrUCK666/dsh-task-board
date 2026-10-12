@@ -49,8 +49,11 @@ DSH Web 界面上的任务看板插件：侧边栏入口 + 五列看板（待规
 
 ## Operating Context
 
-- **载体**：DSH Web GUI 的插件（cordis 插件，host + client 双半区）。安装方式为
-  npm 包 / GitHub / 本地目录三种，都经 `dsh plugin --profile web add`。
+- **载体**：DSH Web GUI 的插件（cordis 插件，host + client 双半区）。安装来源为
+  npm 包 / GitHub / 本地目录三种，都装进**某一个 profile**——命令行上是
+  `dsh plugin --profile <profile> add`，桌面端在应用的「插件」页里添加同一个包名
+  （那个 profile 由应用自己托管）。宿主在 Web 端与桌面端都成立，同一个插件可以同时
+  装在两处的不同 profile 里，各是各的版本。
 - **设备**：桌面与手机浏览器，同一部署。跨 origin、跨设备经 SSE 实时同步；
   窄屏自动进入紧凑布局（参照板自身宽度 680px，不是窗口宽度，也不是 `@media(max-width)`）。
 - **语言**：界面文案为 **zh-first 字典 + 英文回退**，按 document language 选择。

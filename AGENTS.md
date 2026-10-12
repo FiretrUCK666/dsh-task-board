@@ -368,6 +368,16 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 也**不**注入右栏那个服务）。该脚本另带两组反向自测（`--probe-removed` / `--probe-services`）：
 拿一组**不可能存在**的成员与服务名各扫一次，**两次都必须报红**——否则说明检查本身失效了。
 
+### 插件按名读的宿主服务（**不进 `inject`**：缺席即降级）
+
+`ctx.get(<名>)` 直接读、不声明——读不到时那个动作不出现，插件照常加载（写进 `inject` 反而会在
+缺它的部署里永远等下去）。核对方式与上表相同。
+
+| 半区 | 服务名 | 读取的成员 | 提供包 |
+| --- | --- | --- | --- |
+| host | `profileContext` | `dir` | `@deepseek-ai/dsh` |
+| host | `pluginManager` | `installBundle` | `@deepseek-ai/dsh-plugin-manager` |
+
 **两条使用纪律**（比表本身更重要）：
 
 1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方 slot；
@@ -655,15 +665,15 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
     孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟
     真相的 fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来
     很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键审计与类漂移审计必须是 0，
-    而一条只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
-    **fixture 是仪器**：它必须和宿主一样严（`sessionAvailability` 那件事里，台架允许「绑定一条
-    不存在的会话」，于是那条断言测的是另一件事）——假面比现实宽容或比现实窄同样危险。
+    而一条只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。**fixture 与
+    宿主一样严**（判据见「测试」一节）。
 19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们不由 `tests/` 守，而由 `scripts/shot-panel.mjs` 开真 Chromium 量：`Range.getClientRects()`
-    给字的外框（读者看见的那点墨），`getBoundingClientRect()` 给盒，两者之差就是「偏上/偏下」的
-    那几个像素。**每一个这样的数都写进 `DESIGN.md` 的对应节，并写清它是怎么量的**——一个没有
-    出处、没有量法的数字，会一直「看起来在被遵守」。查一个改动有没有把对齐弄坏，就用同一个探针
-    在改前改后各量一次，而不是重新描述一遍意图。
+    它们不由 `tests/` 守，而由 `scripts/shot-panel.mjs` 开真 Chromium 量。**读者看见的那点墨不是
+    `Range` 给的**：`Range.getClientRects()` 报的是**行盒**（上下对称，半像素的偏移读出来正好是
+    0），字的墨要靠 `ctx.measureText()` 的 `actualBoundingBoxAscent/Descent`；`getBoundingClientRect()`
+    给盒，两者之差才是「偏上/偏下」。**每一个这样的数都写进 `DESIGN.md` 的对应节，并写清它是怎么
+    量的**——一个没有出处、没有量法的数字，会一直「看起来在被遵守」。查对齐有没有坏，用同一个
+    探针在改前改后各量一次。
 
 ## 测试（布局约定）
 
@@ -673,15 +683,12 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的按加载器协议执�
   （席位 `(held, proto, bootedAt)` 任一半变化都要触发监听）；`board-service` 带 **LeaseState
   唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实 `http.Server` + 真实 SSE，覆盖 fake
   测不到的链路；`controller` 是唯一大文件（端到端，共享 harness 不拆分）；`session-groups` 是
-  会话选择器名单的**唯一**规则处（官方 `sessionVisible` 逐字镜像），`tasks` 带换栏落地的碰撞
+  会话选择器名单的**唯一**规则处（官方 `sessionVisible` 逐字镜像）；`tasks` 带换栏落地的碰撞
   回归用例；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` / `review-page`，
-  **清单**的全在 `panel-render.spec.ts`（含「一族一个补偿」「几块字共享一条基线」「两页一枚组头」
-  三组）与 `locales.spec.ts`（节名必须带着它那个字段自己的词）；`item-board-linkage.spec.ts` 钉**两个面板之间**的一致性
-  （挂卡行的状态是派生的、改状态只经一处、提升成卡的出生栏、日程按截止那天摆、`has:linked` 与
-  字段读法同一答案、模型那一侧的写走同一套清单语义）——它的共同点是「任何一边单独看都是对的」，
-  所以它不测一个表面，测的是两处必须说同一句话；看渲染结果用 `DSH_PANEL_HTML=<path> pnpm test` 出页面、
-  再 `node scripts/shot-panel.mjs` 截图；`file-reference-grammar` / `session-mention` 是官方包
-  逐字镜像（打包门禁禁跨插件值导入）。
+  **清单**的全在 `panel-render.spec.ts` 与 `locales.spec.ts`；`item-board-linkage.spec.ts` 钉**两个
+  面板之间**的一致性——它不测一个表面，测的是两处必须说同一句话；`file-reference-grammar` /
+  `session-mention` 是官方包逐字镜像。看渲染结果：`DSH_PANEL_HTML=<path> pnpm test` 出页面，
+  再 `node scripts/shot-panel.mjs` 截图。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的
   会话返回驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上
   全线失败时依然全绿——**假面比现实宽容或比现实窄同样危险**：前者让缺陷隐身，后者把正确实现报成缺陷。

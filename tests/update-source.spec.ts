@@ -1,11 +1,12 @@
 /**
  * Browser update-source readers (src/client/update-source.ts): the host view
- * passes through shape-guarded, the npm packument yields latest + publish
- * instant, and every failure — HTTP error, hang, malformed body, old host
- * without the route — degrades to `undefined` (inline retry, never a crash).
+ * passes through shape-guarded, an apply answer parses into its outcome, the
+ * npm packument yields latest + publish instant, and every failure — HTTP
+ * error, hang, malformed body, old host without the route — degrades to
+ * `undefined` (inline retry, never a crash).
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { fetchNpmLatest, fetchUpdateSource } from '../src/client/update-source.ts'
+import { applyUpdate, fetchNpmLatest, fetchUpdateSource } from '../src/client/update-source.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -26,6 +27,20 @@ function hangFetch(): void {
   }))
 }
 
+/** The plan the host serves for one install mode. */
+function planOf(mode: 'npm' | 'github' | 'local' | 'unknown'): Record<string, unknown> {
+  return {
+    mode,
+    profile: 'web',
+    appManaged: false,
+    ...(mode === 'npm' ? { packageSpec: '@firetruck666/dsh-task-board@latest' } : {}),
+    apply: mode === 'npm' ? 'package' : mode === 'local' ? 'checkout' : 'none',
+    steps: mode === 'npm'
+      ? [{ command: 'dsh', args: ['plugin', '--profile', 'web', 'add', '@firetruck666/dsh-task-board@latest'] }]
+      : [],
+  }
+}
+
 describe('fetchUpdateSource', () => {
   it('passes a well-formed host view through', async () => {
     answerJson({
@@ -35,7 +50,10 @@ describe('fetchUpdateSource', () => {
         version: '0.2.81',
         spec: 'link:/repo',
         mode: 'local',
+        profile: 'web',
+        appManaged: false,
         githubSpec: 'github:FiretrUCK666/dsh-task-board',
+        plan: planOf('local'),
         git: { head: 'aaa', remoteHead: 'bbb', dirty: true },
       },
     })
@@ -44,7 +62,16 @@ describe('fetchUpdateSource', () => {
       version: '0.2.81',
       spec: 'link:/repo',
       mode: 'local',
+      profile: 'web',
+      appManaged: false,
       githubSpec: 'github:FiretrUCK666/dsh-task-board',
+      plan: {
+        mode: 'local',
+        profile: 'web',
+        appManaged: false,
+        apply: 'checkout',
+        steps: [],
+      },
       git: { head: 'aaa', remoteHead: 'bbb', dirty: true },
     })
   })
@@ -58,11 +85,54 @@ describe('fetchUpdateSource', () => {
     expect(await fetchUpdateSource(1_000)).toBeUndefined()
   })
 
+  it('a view without a plan this bundle understands is dropped whole', async () => {
+    answerJson({
+      ok: true,
+      value: {
+        packageName: '@firetruck666/dsh-task-board',
+        version: '0.2.81',
+        mode: 'npm',
+        plan: { mode: 'npm', apply: 'something-new', steps: [] },
+      },
+    })
+    expect(await fetchUpdateSource(1_000)).toBeUndefined()
+  })
+
   it('a hanging host resolves undefined within the timeout', async () => {
     hangFetch()
     const started = Date.now()
     expect(await fetchUpdateSource(30)).toBeUndefined()
     expect(Date.now() - started).toBeLessThan(5_000)
+  })
+})
+
+describe('applyUpdate', () => {
+  it('POSTs to the update route and carries no installation target of its own', async () => {
+    const calls: Array<{ url: string; init?: RequestInit }> = []
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      calls.push({ url: String(url), ...(init !== undefined ? { init } : {}) })
+      return new Response(JSON.stringify({
+        ok: true,
+        value: { ok: true, outcome: 'applied', version: '0.9.60' },
+      }), { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+    expect(await applyUpdate(1_000)).toEqual({ ok: true, outcome: 'applied', version: '0.9.60' })
+    expect(calls).toHaveLength(1)
+    expect(calls[0]?.url).toContain('api/dsh-task-board/update')
+    expect(calls[0]?.init?.method).toBe('POST')
+    expect(calls[0]?.init?.body).toBeUndefined()
+  })
+
+  it('keeps a refusal and its reason', async () => {
+    answerJson({ ok: true, value: { ok: false, error: 'dirty', output: 'git: exit 1' } })
+    expect(await applyUpdate(1_000)).toEqual({ ok: false, error: 'dirty', output: 'git: exit 1' })
+  })
+
+  it('malformed answers and hangs degrade to undefined', async () => {
+    answerJson({ ok: true, value: { application: 'applied' } })
+    expect(await applyUpdate(1_000)).toBeUndefined()
+    hangFetch()
+    expect(await applyUpdate(30)).toBeUndefined()
   })
 })
 

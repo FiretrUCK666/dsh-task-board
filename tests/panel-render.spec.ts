@@ -2071,24 +2071,57 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     }
   })
 
+  /* 下面两条读法各写**一处**、被两个断言读：一次读真表（契约），一次读种了病的
+     表（证明这契约破得掉）。读法内联在断言里，就只能永远同意自己。 */
+  /** 这个类**最终**是按基线对齐的吗——读最后一条声明，不是「曾经写过」。 */
+  const alignsOnBaseline = (text: string, name: string): boolean =>
+    lastDeclaredOf(text, name, 'align-items') === 'baseline'
+  /** `.itemNote` 的揭示钩子数——**读结构，不读钩子叫什么名字**：凡是选择器指着它、
+      又把 `display` 打开的规则，就是一个入口（第三个入口换了名字也一样数得进来）。 */
+  const noteReveals = (text: string): number =>
+    declarationRules(text).filter(rule =>
+      /\.itemNote(?![\w-])/.test(rule.selector) && /display:\s*block/.test(rule.body)).length
+  /** `.itemNote` 平时收着吗：它的规则里有一条 `display: none`。默认值是**基础规则**
+      说的那一个，所以这里读的是「有没有这样一条」，不是「最后一条是什么」。 */
+  const noteHidden = (text: string): boolean => /display:\s*none/.test(rulesOf(text, 'itemNote').join('\n'))
+
   it('几块字装在一个按基线对齐的盒子里', () => {
     /* 一枚药丸里常常有两种字（中文的词、拉丁的数字），两套字体度量不同：容器按**盒子**
        居中时，两串字的基线差着将近一个像素——读者报的「『1 条』没有跟『今天』对齐」就是它。
        按基线对齐把这件事变成构造性质：换字体、换字号都一样。 */
     for (const name of ['itemGroupText', 'itemRailText', 'itemEmptyGroup']) {
-      expect(rulesOf(css, name).join('\n'), `.${name} 没有按基线对齐，它里面几块字的基线要靠运气`)
-        .toMatch(/align-items:\s*baseline/)
+      expect(alignsOnBaseline(css, name), `.${name} 没有按基线对齐，它里面几块字的基线要靠运气`)
+        .toBe(true)
     }
+  })
+
+  it('而这把尺子咬得动：把其中一处的对齐改掉，它就报', () => {
+    // 种在真表后面的一条同名规则——浏览器就是这么读的（后写的赢），所以读法也这么读。
+    const planted = `${css}\n.itemEmptyGroup {\n  align-items: center;\n}\n`
+    expect(alignsOnBaseline(planted, 'itemEmptyGroup'), 'the plant did not bite — 后写的规则没有改变读数').toBe(false)
+    // 反向对照：同一张表里另外两处不受影响，说明报的不是「谁都不对齐」。
+    expect(alignsOnBaseline(planted, 'itemGroupText')).toBe(true)
+    expect(alignsOnBaseline(planted, 'itemRailText')).toBe(true)
+    expect(alignsOnBaseline(css, 'itemEmptyGroup'), '真表里那一处也被读成没对齐——尺子量错了地方').toBe(true)
   })
 
   it('说明平时不显示，而揭示它的只有两个钩子', () => {
     // 三句话常驻在屏上就是一面文字墙；而收起来必须有一个**看得见**的入口（触屏没有悬停，
     // 必要的信息不许只挂在 `title=` 上）。所以平时 `display: none`，开着由两个属性钩子说：
     // `data-note`（按下/聚焦，真开）与 `data-note-hover`（指着那件东西时偷看）。
-    expect(rulesOf(css, 'itemNote').join('\n'), '.itemNote 平时是显示着的——文字墙又回来了')
-      .toMatch(/display:\s*none/)
-    const reveals = [...css.matchAll(/\[data-note(?:-hover)?\][^{]*\{[^}]*display:\s*block/g)].length
-    expect(reveals, '揭示说明的钩子不止两个（或者一个都没有）——多一个就是多一套副路径').toBe(2)
+    expect(noteHidden(css), '.itemNote 平时是显示着的——文字墙又回来了').toBe(true)
+    expect(noteReveals(css), '揭示说明的钩子不止两个（或者一个都没有）——多一个就是多一套副路径').toBe(2)
+  })
+
+  it('而这把尺子也咬得动：第三个钩子、或者没钩子，它都报', () => {
+    // 第三个入口可以叫任何名字：读法看的是"谁把它打开"，不是钩子叫什么。
+    expect(noteReveals(`${css}\n[data-note-elsewhere] .itemNote {\n  display: block;\n}\n`),
+      'the plant did not bite — 多出来的入口没有被数进去').toBe(3)
+    expect(noteReveals('.itemNote { display: none; }'),
+      'the plant did not bite — 一个入口都没有时它也报 2，说明它数的不是入口').toBe(0)
+    expect(noteHidden('.itemNote { display: block; }'),
+      'the plant did not bite — 常驻显示的说明被读成了收着的').toBe(false)
+    expect(noteHidden(css), '真表里那份说明也读成没收起来——尺子量错了地方').toBe(true)
   })
 })
 

@@ -4193,6 +4193,25 @@ textarea.input {
   color: var(--dsw-alias-label-tertiary);
 }
 
+/* The tail of a failed update command's output: what the command said is the
+   reason, and the last lines are where it says it. Same "code frame" as the
+   prompt block (monospace + markdown code surface + hairline), and no scroll
+   of its own — a dialog owns exactly ONE scroll body (.modalScroll), and a
+   nested bar would be the second. */
+.updateOutput {
+  margin: 0;
+  padding: 10px 12px;
+  font-size: 12px;
+  line-height: 1.5;
+  font-family: var(--dsw-font-markdown-code-block-small);
+  color: var(--dsh-tb-text-1);
+  background: var(--dsw-alias-markdown-code-block);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}
+
 /* --- automation overview panel (board header "自动化") ----------------------
    A unified surface for both driving kinds: task-level schedule (cron /
    chain) and session-level rules. Overview grammar only — task-level editing

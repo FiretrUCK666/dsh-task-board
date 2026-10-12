@@ -38,7 +38,7 @@ DeepSeek Harness 的任务看板插件。它在 Web 界面的侧边栏加一个�
 
 ## 安装
 
-三种方式，选一种。三条命令都在你自己的终端里执行。
+三种方式，选一种。三条命令都在你自己的终端里执行。**桌面端（DSH 桌面应用）不用敲命令**：在它的「插件」页里添加同一个包名即可——那个 profile 由应用自己管理。
 
 ### 从 npm 安装
 
@@ -121,21 +121,38 @@ dsh plugin --profile web remove @firetruck666/dsh-task-board
 
 ## 更新
 
-最直接：看板 Header 右侧工具栏里有常驻的「检查更新」按钮，点一下即对比当前版本与最新版。有新版时它会给出你这种安装方式对应的更新命令，复制后在自己的终端里执行。
+看板 Header 右侧工具栏里有常驻的「检查更新」按钮，点一下即对比当前版本与最新版；有新版时它开一个「版本更新」对话框。
 
-装了插件市场的话，在「已安装」标签页里点「更新」。也可以直接重新执行一次安装命令：
+对话框里的「一键更新」知道自己该做什么，因为它读的是**你正在运行的那一份**的安装来源：安装方式与所属 profile 都从那一份所在的 profile 清单里读出来——所以同一台机器上 Web 端装的是本地开发、桌面端装的是 npm，两边各说各的，不会互相认错。
+
+| 安装方式 | 「一键更新」做什么 |
+| --- | --- |
+| 从 npm 安装 | 按 npm 上的最新版本重装这一个包 |
+| 从 GitHub 安装 | 按仓库 `main` 的当前提交重装 |
+| 本地开发安装 | 在仓库目录里 `git pull --ff-only`，再按仓库自己声明的包管理器重建 `lib/` |
+| 桌面端里装的 | 交给桌面端做（它的 profile 只能由它自己管理） |
+
+更新完：能热载入的就地生效，需要重启的对话框会说明。**任务数据任何时候都不受影响。**
+
+对话框里同时给出等价的终端命令，命令里的 profile 名就是你的那一份。命令也可以手动执行（把 `<profile>` 换成你自己的，一般是 `web`）：
 
 ```sh
-dsh plugin --profile web add @firetruck666/dsh-task-board@latest
+dsh plugin --profile <profile> add @firetruck666/dsh-task-board@latest
 ```
-
-或者：
 
 ```sh
-dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
+dsh plugin --profile <profile> add github:FiretrUCK666/dsh-task-board
 ```
 
-更新后同样要重启 `dsh web`。
+本地开发安装则是：
+
+```sh
+git pull --ff-only && pnpm run build
+```
+
+装了插件市场的话，也可以在它的「已安装」标签页里点「更新」。
+
+**桌面端**：插件装在那个应用自己的 profile 里，而那个 profile 由应用托管——终端里的 `dsh plugin --profile desktop` 会被拒。在对话框里按「一键更新」，或在应用的「插件」页里重新添加，然后完全退出应用再打开。
 
 ## 主要能力
 

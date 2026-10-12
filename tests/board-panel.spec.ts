@@ -16,7 +16,7 @@
  * environment.
  */
 // @vitest-environment jsdom
-import { describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -364,13 +364,99 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
 })
 
 /**
+ * The two browser APIs the mounted board touches that jsdom lacks.
+ *
+ * Module scope on purpose: two describes mount the real panel (the stale-bundle
+ * line and the update dialog), and a second copy of these fakes is how one of
+ * them would quietly stop matching the other.
+ */
+function installBrowserFakes(): void {
+  const g = globalThis as unknown as Record<string, unknown>
+  g.ResizeObserver = g.ResizeObserver ?? class {
+    observe(): void {}
+    unobserve(): void {}
+    disconnect(): void {}
+  }
+  if (typeof window.matchMedia !== 'function') {
+    const w = window as unknown as Record<string, unknown>
+    w.matchMedia = (query: string) => ({
+      matches: false, media: query, onchange: null,
+      addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
+      dispatchEvent() { return false },
+    })
+  }
+}
+
+/**
+ * A controller that answers every member the board's render reads.
+ * @param tasks - 板上放哪些卡；不传就是空板（其余用例的行为一字不变）。
+ */
+function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
+  const snapshot = () => ({
+    tasks,
+    boardOpen: true,
+    selectedTaskId: undefined,
+    cruise: { enabled: false, limit: 3, schedule: [] },
+    stats: { running: 0, queued: 0 },
+    skips: { overlap: 0, missed: 0 },
+    heartbeat: { lastOkAt: 0 },
+    engine: { held: true, synced: false, hostProto: 2, bootedAt: undefined },
+  })
+  return new Proxy({} as Record<string, unknown>, {
+    get(_target, key) {
+      if (key === 'getSnapshot') return snapshot
+      if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
+      if (key === 'linkedOf') return () => []
+      /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。少了这一个
+         成员，假面就比现实窄：「空板」渲染得出来，「有卡片」的渲染一读就 `undefined.map` 崩
+         ——正好在需要它的那一刻暴露（硬性规范 18）。 */
+      if (key === 'sessionsOf') return () => []
+      if (key === 'relatedSessionIdSet') return () => new Set<string>()
+      if (key === 'liveStateOf') return () => 'idle'
+      if (key === 'sessionActiveOf') return () => false
+      if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
+      if (key === 'sessionTitle') return () => undefined
+      if (key === 'boundSourceTitleOf') return () => ''
+      if (key === 'runCatalog') return () => undefined
+      if (key === 'externalKindOf') return () => undefined
+      if (key === 'canRecheckSeat') return () => false
+      if (key === 'ts') return () => 0
+      return () => undefined
+    },
+  })
+}
+
+/** Mount the real panel (effects and all) and return its host element. */
+async function mountBoard(props: {
+  controller?: BoardController
+  freshness?: BundleFreshnessState
+}): Promise<{ host: HTMLElement; unmount: () => void }> {
+  installBrowserFakes()
+  const host = document.createElement('div')
+  document.body.appendChild(host)
+  const root = createRoot(host)
+  await act(async () => {
+    root.render(createElement(TaskBoardPanel, {
+      controller: (props.controller ?? boardStub()) as unknown as BoardController,
+      ...props.freshness === undefined ? {} : { freshness: props.freshness },
+    } as never))
+  })
+  return {
+    host,
+    unmount: () => {
+      act(() => { root.unmount() })
+      host.remove()
+    },
+  }
+}
+
+/**
  * The stale verdict, rendered: what the user actually sees when the page runs
  * an older bundle than the host serves. Mounted through the real panel, so the
  * chain `inject face -> TaskBoardPanel props -> status line` is exercised
  * rather than asserted about.
  */
 describe('stale-bundle status line (rendered through the panel)', () => {
-  /** The two browser APIs the mounted board touches that jsdom lacks. */
   /**
    * **看板那一侧的工件：这是看板唯一一条能把自己的卡片画出来看的链路。**
    *
@@ -433,86 +519,6 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     }
   })
 
-  function installBrowserFakes(): void {
-    const g = globalThis as unknown as Record<string, unknown>
-    g.ResizeObserver = g.ResizeObserver ?? class {
-      observe(): void {}
-      unobserve(): void {}
-      disconnect(): void {}
-    }
-    if (typeof window.matchMedia !== 'function') {
-      const w = window as unknown as Record<string, unknown>
-      w.matchMedia = (query: string) => ({
-        matches: false, media: query, onchange: null,
-        addListener() {}, removeListener() {}, addEventListener() {}, removeEventListener() {},
-        dispatchEvent() { return false },
-      })
-    }
-  }
-
-  /**
-   * A controller that answers every member the board's render reads.
-   * @param tasks - 板上放哪些卡；不传就是空板（其余用例的行为一字不变）。
-   */
-  function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
-    const snapshot = () => ({
-      tasks,
-      boardOpen: true,
-      selectedTaskId: undefined,
-      cruise: { enabled: false, limit: 3, schedule: [] },
-      stats: { running: 0, queued: 0 },
-      skips: { overlap: 0, missed: 0 },
-      heartbeat: { lastOkAt: 0 },
-      engine: { held: true, synced: false, hostProto: 2, bootedAt: undefined },
-    })
-    return new Proxy({} as Record<string, unknown>, {
-      get(_target, key) {
-        if (key === 'getSnapshot') return snapshot
-        if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
-        if (key === 'linkedOf') return () => []
-        /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。少了这一个
-           成员，假面就比现实窄：「空板」渲染得出来，「有卡片」的渲染一读就 `undefined.map` 崩
-           ——正好在需要它的那一刻暴露（硬性规范 18）。 */
-        if (key === 'sessionsOf') return () => []
-        if (key === 'relatedSessionIdSet') return () => new Set<string>()
-        if (key === 'liveStateOf') return () => 'idle'
-        if (key === 'sessionActiveOf') return () => false
-        if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
-        if (key === 'sessionTitle') return () => undefined
-        if (key === 'boundSourceTitleOf') return () => ''
-        if (key === 'runCatalog') return () => undefined
-        if (key === 'externalKindOf') return () => undefined
-        if (key === 'canRecheckSeat') return () => false
-        if (key === 'ts') return () => 0
-        return () => undefined
-      },
-    })
-  }
-
-  /** Mount the panel with one freshness source and return its host element. */
-  async function mountPanel(freshness: BundleFreshnessState): Promise<{
-    host: HTMLElement
-    unmount: () => void
-  }> {
-    installBrowserFakes()
-    const host = document.createElement('div')
-    document.body.appendChild(host)
-    const root = createRoot(host)
-    await act(async () => {
-      root.render(createElement(TaskBoardPanel, {
-        controller: boardStub() as unknown as BoardController,
-        freshness,
-      }))
-    })
-    return {
-      host,
-      unmount: () => {
-        act(() => { root.unmount() })
-        host.remove()
-      },
-    }
-  }
-
   it('states the mismatch in a real, tappable status button', async () => {
     const freshness = new BundleFreshnessState({
       bundled: '1.0.0',
@@ -521,7 +527,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
       storage: undefined,
     })
     await freshness.probe()
-    const { host, unmount } = await mountPanel(freshness)
+    const { host, unmount } = await mountBoard({ freshness })
     const warn = host.querySelector('[data-warn="true"]')
     expect(warn, 'the page-old verdict must render as the warn status button').not.toBeNull()
     expect(warn!.tagName).toBe('BUTTON')
@@ -541,13 +547,191 @@ describe('stale-bundle status line (rendered through the panel)', () => {
       storage: undefined,
     })
     await freshness.probe()
-    const { host, unmount } = await mountPanel(freshness)
+    const { host, unmount } = await mountBoard({ freshness })
     expect(host.querySelector('[data-warn="true"]')).toBeNull()
     hostVersion = '99.0.0'
     await act(async () => { await freshness.probe() })
     const warn = host.querySelector('[data-warn="true"]')
     expect(warn, 'the late verdict must reach the mounted board').not.toBeNull()
     expect(warn!.textContent).toContain(t('board.bundleStale', { c: BUNDLED_VERSION, s: '99.0.0' }))
+    unmount()
+  })
+})
+
+/**
+ * 检查更新的对话框，按真交互走一遍：按钮 → 检查 → 对话框 → 一键更新 → 结果。
+ *
+ * 为什么值得单独一条：这个对话框的每一行字都出自**host 报的那一份安装**，而
+ * 「host 报错了 profile」正是它出过的那次事故——桌面端装着 npm 版（`^0.8.26`），
+ * 却被按 web profile 的 `link:` 报成「本地开发」并给出一条会失败的命令。所以这里
+ * 断言的是**屏上的字**，不是 host 的返回值：返回值对了而屏上照旧文写，它就该红。
+ */
+describe('the update dialog, driven through the header button', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  /** One host view: an npm install inside the desktop application's profile. */
+  function viewOf(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      packageName: '@firetruck666/dsh-task-board',
+      version: '0.8.26',
+      spec: '^0.8.26',
+      mode: 'npm',
+      profile: 'desktop',
+      appManaged: false,
+      githubSpec: 'github:FiretrUCK666/dsh-task-board',
+      plan: {
+        mode: 'npm',
+        profile: 'desktop',
+        appManaged: false,
+        packageSpec: '@firetruck666/dsh-task-board@latest',
+        apply: 'package',
+        steps: [{
+          command: 'dsh',
+          args: ['plugin', '--profile', 'desktop', 'add', '@firetruck666/dsh-task-board@latest'],
+        }],
+      },
+      ...overrides,
+    }
+  }
+
+  /** Answer the update route's requests, and count the applies it was asked for. */
+  function stubUpdateFetch(answers: {
+    view: () => unknown
+    apply?: unknown
+  }): { posts: number } {
+    const counter = { posts: 0 }
+    vi.stubGlobal('fetch', async (url: unknown, init?: RequestInit) => {
+      const href = String(url)
+      const answer = (payload: unknown): Response => new Response(JSON.stringify(payload), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      })
+      if (href.includes('registry.npmjs.org')) {
+        return answer({
+          'dist-tags': { latest: '0.9.60' },
+          time: { '0.9.60': '2026-10-12T00:00:00.000Z' },
+        })
+      }
+      /* 板子自己的请求（租约、文档）与这条链路无关，而这个 stub 不该假装它们成了：
+         一次真的答复会把租约当成拿到手，于是这个用例在测另一件事（硬性规范 18）。 */
+      if (!href.includes('api/dsh-task-board/update')) {
+        return answer({ ok: false, error: { code: 'stub', message: 'not stubbed' } })
+      }
+      if (init?.method === 'POST') {
+        counter.posts += 1
+        return answer({ ok: true, value: answers.apply })
+      }
+      return answer({ ok: true, value: answers.view() })
+    })
+    return counter
+  }
+
+  /** Click the one button whose label is exactly this text. */
+  async function clickLabel(host: HTMLElement, label: string): Promise<void> {
+    const buttons = [...host.querySelectorAll('button')]
+    const button = buttons.find(one => one.textContent?.trim() === label)
+    expect(
+      button,
+      `屏上没有「${label}」这个按钮。屏幕上是：[${buttons.map(one => one.textContent?.trim()).join(' | ')}]`,
+    ).not.toBeUndefined()
+    await act(async () => { button?.click() })
+  }
+
+  /** The update dialog as it is on screen. */
+  function dialogIn(host: HTMLElement): HTMLElement {
+    const dialog = host.querySelector('[role="dialog"]')
+    expect(dialog, '更新对话框没有出现').not.toBeNull()
+    return dialog as HTMLElement
+  }
+
+  it('states the install method and profile of the copy that is running', async () => {
+    stubUpdateFetch({ view: () => viewOf() })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain(t('board.update.mode.npm'))
+    expect(dialog.textContent, '对话框没有说这份安装属于哪个 profile').toContain('desktop')
+    expect(dialog.textContent).toContain('0.8.26')
+    expect(dialog.textContent).toContain(t('board.update.newVersion', { v: '0.9.60' }))
+    // The equivalent terminal line names THIS profile, not a profile written into the bundle.
+    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    expect(dialog.textContent).toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('says what a packaged application can do instead, and offers no impossible command', async () => {
+    // The app's own profile is owned by the app: its CLI refuses it, so a
+    // terminal line here would be a command that cannot work.
+    stubUpdateFetch({
+      view: () => viewOf({ appManaged: true, plan: { ...viewOf().plan as object, appManaged: true, steps: [] } }),
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain(t('board.update.appManaged'))
+    expect(dialog.textContent).not.toContain('dsh plugin --profile')
+    expect(dialog.textContent).toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('applies the plan and reports what happened, in this copy’s words', async () => {
+    let applied = false
+    const counter = stubUpdateFetch({
+      view: () => viewOf(applied ? { version: '0.9.60' } : {}),
+      apply: { ok: true, outcome: 'restart-required', version: '0.9.60' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    const dialog = dialogIn(host)
+    expect(counter.posts, '按下更新没有发过一次申请').toBe(1)
+    expect(dialog.textContent).toContain(t('board.update.restartRequired', { v: '0.9.60' }))
+    // Once it is done there is nothing left to press: the action is gone, closing stays.
+    expect(dialog.textContent).not.toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('a refused update states the reason, shows the output, and keeps the manual line', async () => {
+    stubUpdateFetch({
+      view: () => viewOf(),
+      apply: { ok: false, error: 'failed', output: 'ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/x: Not Found' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain(t('board.update.applyFailed'))
+    expect(dialog.textContent).toContain(t('board.update.reason.failed'))
+    expect(dialog.textContent).toContain('ERR_PNPM_FETCH_404')
+    // A failure never removes the way out.
+    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    unmount()
+  })
+
+  it('writes the dialog page when DSH_PANEL_HTML names a path', async () => {
+    const target = process.env.DSH_PANEL_HTML
+    if (target === undefined || target === '') return
+    /* 这张工件要能证明自己画对了什么：把失败态开在屏上，因为失败态才是这个对话框里
+       元素最多的一档（结果行 + 原因 + 输出块 + 命令 + 重启说明）。缺任何一样，读图的
+       人会照一张「看起来很好、其实少了东西」的图下结论。 */
+    stubUpdateFetch({
+      view: () => viewOf(),
+      apply: { ok: false, error: 'failed', output: 'ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/@firetruck666/dsh-task-board: Not Found' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    const aligned = alignClassNames(host.innerHTML, panelCss())
+    writeStandalonePage(target, aligned.html, aligned.css, 'light', 'update dialog')
+    for (const must of [
+      t('board.update.title'),
+      t('board.update.mode.npm'),
+      t('board.update.applyFailed'),
+      'ERR_PNPM_FETCH_404',
+      'dsh plugin --profile desktop add',
+    ]) {
+      expect(host.innerHTML, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
+    }
     unmount()
   })
 })

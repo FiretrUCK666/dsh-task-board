@@ -42,8 +42,8 @@ import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
-import { isGitBehind, isNewerVersion, shortSha, updateActionsFor, type UpdateInstallMode } from '../../core/update-check.ts'
-import { BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateSourceView } from '../update-source.ts'
+import { commandLineOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
+import { applyUpdate, BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -93,11 +93,34 @@ function updateModeLabel(mode: UpdateInstallMode): string {
   return t('board.update.mode.unknown')
 }
 
-/** The one-line hint above one copyable update command. */
-function updateHintOf(kind: 'npm' | 'github' | 'local'): string {
-  if (kind === 'npm') return t('board.update.hint.npm')
-  if (kind === 'github') return t('board.update.hint.github')
-  return t('board.update.hint.local')
+/**
+ * The one-line hint above the copyable update command. Only the three modes
+ * whose update is a terminal command have one; an unreadable mode carries no
+ * command at all, and a hint for it would explain nothing.
+ */
+function updateCommandHintOf(mode: UpdateInstallMode): string | undefined {
+  if (mode === 'npm') return t('board.update.hint.npm')
+  if (mode === 'github') return t('board.update.hint.github')
+  if (mode === 'local') return t('board.update.hint.local')
+  return undefined
+}
+
+/** Why an update could not be applied, in the reader's words. */
+function updateReasonOf(error: NonNullable<UpdateApplyResult['error']>): string {
+  if (error === 'dirty') return t('board.update.reason.dirty')
+  if (error === 'tool-missing') return t('board.update.reason.toolMissing')
+  if (error === 'timeout') return t('board.update.reason.timeout')
+  if (error === 'unavailable') return t('board.update.reason.unavailable')
+  if (error === 'unsupported') return t('board.update.reason.unsupported')
+  return t('board.update.reason.failed')
+}
+
+/** What one applied update did, in one sentence. */
+function updateOutcomeOf(result: UpdateApplyResult): string {
+  const v = result.version ?? t('board.update.versionUnknown')
+  if (result.outcome === 'applied') return t('board.update.applied', { v })
+  if (result.outcome === 'rebuilt') return t('board.update.rebuilt', { v })
+  return t('board.update.restartRequired', { v })
 }
 
 /**
@@ -443,15 +466,17 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // The engine-seat note the header chip opens (touch has no hover, so the
   // explanation must be a real, reachable surface — not a `title`).
   const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
-  // 常驻检查更新（Header 模式组的 ghost 按钮，点一下即查）：host 安装来源与
-  // npm 最新版并行读取，有新版（npm 版号或本地 git 落后）即开结果 Dialog；
-  // 更新永远是可复制命令 + 重启说明，绝不在运行中就地改写。
+  // 常驻检查更新（Header 模式组的 ghost 按钮，点一下即查）：host 按"正在运行
+  // 的那一份"给出安装来源与更新计划，npm 最新版并行读取；有新版即开结果 Dialog。
+  // 更新本身是 Dialog 里的一按，由 host 应用——页面只说"更新"，不说"装什么"。
   const [updatePhase, setUpdatePhase] = useState<'idle' | 'checking' | 'latest' | 'available' | 'failed'>('idle')
   const [updateSource, setUpdateSource] = useState<UpdateSourceView | undefined>(undefined)
   const [updateLatest, setUpdateLatest] = useState<NpmLatest | undefined>(undefined)
   const [showUpdate, setShowUpdate] = useState(false)
-  const [updateCopiedAt, setUpdateCopiedAt] = useState<number | undefined>(undefined)
-  const [updateCopyFailedAt, setUpdateCopyFailedAt] = useState<number | undefined>(undefined)
+  const [updateCopied, setUpdateCopied] = useState(false)
+  const [updateCopyFailed, setUpdateCopyFailed] = useState(false)
+  // 应用阶段与结果：running 时按钮不可再按，done/failed 各出一条结果行。
+  const [updateApply, setUpdateApply] = useState<{ phase: 'idle' | 'running' | 'done' | 'failed'; result?: UpdateApplyResult }>({ phase: 'idle' })
   const updateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => {
     if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
@@ -488,15 +513,15 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     })()
   }
 
-  /** 复制一条更新命令（与详情页复制同一闪现文法，best-effort 不抛）。 */
-  const copyUpdateCommand = (index: number, command: string): void => {
+  /** 复制那条更新命令（与详情页复制同一闪现文法，best-effort 不抛）。 */
+  const copyUpdateCommand = (command: string): void => {
     const flash = (ok: boolean): void => {
-      setUpdateCopiedAt(ok ? index : undefined)
-      setUpdateCopyFailedAt(ok ? undefined : index)
+      setUpdateCopied(ok)
+      setUpdateCopyFailed(!ok)
       if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
       updateTimer.current = setTimeout(() => {
-        setUpdateCopiedAt(undefined)
-        setUpdateCopyFailedAt(undefined)
+        setUpdateCopied(false)
+        setUpdateCopyFailed(false)
       }, 1500)
     }
     void navigator.clipboard?.writeText(command).then(
@@ -505,12 +530,53 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     )
   }
 
+  /**
+   * 按下「一键更新」：host 应用它自己推导出的计划，随后无论成败都重读一次来源。
+   * 读回这一步是必需的——一次 live 重载可能让答复回不来，而"host 报的版本变了"
+   * 本身就证明更新成了；少了它，页面会把一次成功的更新报成失败。
+   */
+  const runUpdate = (): void => {
+    if (updateApply.phase === 'running') return
+    const before = updateSource?.version ?? BUNDLED_VERSION
+    setUpdateApply({ phase: 'running' })
+    void (async () => {
+      const result = await applyUpdate()
+      const source = await fetchUpdateSource()
+      if (source !== undefined) setUpdateSource(source)
+      const landed = source !== undefined && source.version !== before
+      if (result?.ok === true) {
+        setUpdateApply({ phase: 'done', result })
+      } else if (landed) {
+        setUpdateApply({ phase: 'done', result: { ok: true, outcome: 'applied', version: source.version } })
+      } else {
+        setUpdateApply({ phase: 'failed', ...(result !== undefined ? { result } : {}) })
+      }
+      if (result?.ok === true || landed) {
+        // 更新成了：按钮的读数收回常驻态（有新版 → 已是最新），并把最新版重读一次。
+        setUpdatePhase('latest')
+        if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
+        updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
+        const latest = await fetchNpmLatest(source?.packageName ?? BUNDLED_PACKAGE_NAME)
+        setUpdateLatest(latest ?? undefined)
+      }
+    })()
+  }
+
   // The dialog's derived readings (one funnel — the button label below and
   // the dialog body read the same three values, never recompute apart).
   const updateCurrent = updateSource?.version ?? BUNDLED_VERSION
   const updateNpmNewer = updateLatest !== undefined && isNewerVersion(updateLatest.version, updateCurrent)
   const updateGit = updateSource?.mode === 'local' ? updateSource.git : undefined
   const updateGitBehind = updateGit !== undefined && isGitBehind(updateGit)
+  const updatePlan = updateSource?.plan
+  const updateCommand = updatePlan !== undefined && updatePlan.steps.length > 0
+    ? commandLineOf(updatePlan.steps)
+    : undefined
+  const updateCommandHint = updateSource !== undefined ? updateCommandHintOf(updateSource.mode) : undefined
+  const updateBlocked = updatePlan?.apply === 'checkout' && updateGit?.dirty === true
+  const updateRunning = updateApply.phase === 'running'
+  const updateDone = updateApply.phase === 'done'
+  const updateCanApply = updatePlan !== undefined && updatePlan.apply !== 'none' && !updateDone
   const updatePublishedMs = updateLatest?.publishedAt !== undefined
     ? Date.parse(updateLatest.publishedAt)
     : Number.NaN
@@ -1727,9 +1793,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           </Dialog>
         )}
         {/* 检查更新的结果：与引擎说明同一 Dialog 家族（正文走 modalScroll，
-            动作钉 modalFooter）。更新永远是可复制命令 + 重启说明——Dialog 里
-            没有"一键升级"按钮：在运行中改写 profile 会把正在服务的 DSH 搞崩。 */}
-        {showUpdate && updatePhase === 'available' && (
+            动作钉 modalFooter）。更新由 host 应用——按钮只说「更新」，装什么由
+            host 按"正在运行的那一份"自己推导（页面不传任何安装目标）。那行命令
+            是同一件事的手动等价做法：host 应用不了时它就是唯一出路。 */}
+        {showUpdate && (
           <Dialog
             label={t('board.update.title')}
             title={t('board.update.title')}
@@ -1740,6 +1807,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               <p className={css.detailText}>{t('board.update.current', { v: updateCurrent })}</p>
               {updateSource !== undefined && (
                 <p className={css.detailHint}>{t('board.update.source', { mode: updateModeLabel(updateSource.mode) })}</p>
+              )}
+              {updateSource?.profile !== undefined && (
+                <p className={css.detailHint}>{t('board.update.profile', { name: updateSource.profile })}</p>
               )}
               {updateNpmNewer && updateLatest !== undefined && (
                 <p className={css.detailText}>{t('board.update.newVersion', { v: updateLatest.version })}</p>
@@ -1760,35 +1830,64 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {updateGit !== undefined && updateGit.dirty && (
                 <p className={css.detailHint}>{t('board.update.gitDirty')}</p>
               )}
-              {updateActionsFor(
-                updateSource?.mode ?? 'unknown',
-                updateSource?.packageName ?? BUNDLED_PACKAGE_NAME,
-                updateSource?.githubSpec,
-              ).map((action, index) => {
-                const copied = updateCopiedAt === index
-                const failed = updateCopyFailedAt === index
-                return (
-                  <div key={action.kind}>
-                    <p className={css.detailHint}>{updateHintOf(action.kind)}</p>
-                    <p className={css.detailText}>
-                      <code>{action.command}</code>
-                      {' '}
-                      <Button
-                        size="sm"
-                        title={copied ? t('detail.copied') : failed ? t('detail.copyFailed') : t('board.update.copy')}
-                        aria-label={t('board.update.copy')}
-                        onClick={() => { copyUpdateCommand(index, action.command) }}
-                      >
-                        {copied ? t('detail.copied') : failed ? t('detail.copyFailed') : t('board.update.copy')}
-                      </Button>
-                    </p>
-                  </div>
-                )
-              })}
+              {/* 结果：成一条、败一条加原因，再加上 host 捕到的末尾输出。失败不
+                  吞掉出路——下面那行命令就是同一件事的手动版本。 */}
+              {updateApply.phase === 'done' && updateApply.result !== undefined && (
+                <p className={css.detailText} role="status" aria-live="polite">
+                  {updateOutcomeOf(updateApply.result)}
+                </p>
+              )}
+              {updateApply.phase === 'failed' && (
+                <p className={css.detailText} role="status" aria-live="polite">
+                  {t('board.update.applyFailed')}
+                </p>
+              )}
+              {updateApply.phase === 'failed' && updateApply.result?.error !== undefined && (
+                <p className={css.detailHint}>{updateReasonOf(updateApply.result.error)}</p>
+              )}
+              {updateApply.phase === 'failed' && updateApply.result?.output !== undefined && (
+                <pre className={css.updateOutput}>{updateApply.result.output}</pre>
+              )}
+              {updateCommand !== undefined && updateCommandHint !== undefined && (
+                <div>
+                  <p className={css.detailHint}>{updateCommandHint}</p>
+                  <p className={css.detailText}>
+                    <code>{updateCommand}</code>
+                    {' '}
+                    <Button
+                      size="sm"
+                      title={updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
+                      aria-label={t('board.update.copy')}
+                      onClick={() => { copyUpdateCommand(updateCommand) }}
+                    >
+                      {updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
+                    </Button>
+                  </p>
+                </div>
+              )}
+              {updateSource?.appManaged === true && updateCommand === undefined && (
+                <p className={css.detailHint}>{t('board.update.appManaged')}</p>
+              )}
+              {updateSource !== undefined && updatePlan?.apply === 'none' && updateCommand === undefined && !updateSource.appManaged && (
+                <p className={css.detailHint}>{t('board.update.unreadable')}</p>
+              )}
               <p className={css.detailHint}>{t('board.update.restart')}</p>
             </div>
             <footer className={css.modalFooter}>
-              <Button variant="primary" onClick={() => { setShowUpdate(false) }}>
+              {updateCanApply && (
+                <Button
+                  variant="primary"
+                  disabled={updateRunning || updateBlocked === true}
+                  onClick={() => { runUpdate() }}
+                >
+                  {updateRunning ? t('board.update.applying') : t('board.update.apply')}
+                </Button>
+              )}
+              <Button
+                variant={updateCanApply ? undefined : 'primary'}
+                disabled={updateRunning}
+                onClick={() => { setShowUpdate(false) }}
+              >
                 {t('detail.close')}
               </Button>
             </footer>
