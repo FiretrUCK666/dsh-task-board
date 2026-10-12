@@ -663,10 +663,7 @@ export const zh = {
   'item.loading': '正在准备清单…',
   'item.hostLost': '暂时读不到 host 上的清单，正在用本机的副本。',
   'item.syncing': '正在与 host 同步…',
-  'item.empty': '想到什么就记一条，像这样：',
-  /* 那行示范里最后那半句：**读者自己的字**。它必须像一句随手记下的话，
-   * 因为整行示范要读起来像「一次记下一条」本身，而不是像一份说明书。 */
-  'item.empty.sample': '重做详情侧栏的地板',
+  'item.empty': '想到什么就记一条——按上面那枚「新建一条」。',
   'item.count': '共 {n} 条',
   'item.countFiltered': '显示 {shown} / 共 {total} 条',
   'item.ask': '问 AI',
@@ -787,7 +784,7 @@ export const zh = {
    * 日期（见 `item-dates.ts` 的模块注释）。
    *
    * 所以两条禁令：**不许换回否定式**（`不早于` / `不晚于`）——同一个词要在行尾、排序菜单、
-   * 快记令牌、议程分节四处当同一个名字用，而「不晚于 · 超期 9 天」是一句话里两个否定，读者
+   * 议程分节三处当同一个名字用，而「不晚于 · 超期 9 天」是一句话里两个否定，读者
    * 得停下来解析它；**不许把 `计划` 叫成 `截止`**——那是另一个字段的名字，而它恰好是唯一
    * 不会顺延的那一个。
    *
@@ -889,19 +886,6 @@ export const zh = {
   'item.menu.promote': '变成看板卡片',
   'item.menu.delete': '删除这条',
 
-  // 快记：边打边把解析结果显示成 chip，误识别的词可点回普通文字。
-  'item.compose.title': '改详情侧栏的地板 #画廊 !1 @明天',
-  'item.compose.add': '记下',
-  // 同一个日期写了第二遍：那一个不生效，而理由必须说出来（否则读者只会以为它坏了）。
-  'item.compose.refused': '{word} 没生效：{field}已经有一个日期了。',
-  'item.token.tag': '标签',
-  // 图例里那一格自己的一句话：标签是这一行里唯一「可以来好几个」的东西（`!` 只有一个、
-  // `@` 三个日期各一个），而读者问的第一个问题正是「怎么变成多个 tag」。
-  'item.grammar.tagMany': '标签（可写多个）',
-  'item.token.priority': '优先级',
-  'item.token.step': '步骤',
-  'item.token.undo': '还原成普通文字',
-
   /* 议程的分节。**节名与行尾那一族词是同一套**：行尾说「超期 9 天」「落后 3 天」，所以
    * 节名说「已经超期」「已经落后」——读者在行上学会的那两个词，在节头这里原样出现。
    * （左栏那一枚「日期已过」**不是**这两个词中的任何一个：它是「截止过了 **或** 计划落后」
@@ -942,14 +926,14 @@ export const zh = {
   'item.menu.rename': '改标题',
   'item.create.title': '新建一条',
   'item.create.close': '关掉',
-  'item.create.grammar': '写一句，剩下的自动填',
   'item.create.titlePlaceholder': '一句话也行——它就是标题',
   'item.create.steps': '步骤',
   'item.create.stepsPlaceholder': '一行一步',
   // 三个日期的框里，**占位文字教的是拼写**（这个框认哪几种写法，包括 `@` 那一种），而
   // 语义由字段名自己说——「开始 / 计划 / 截止」三个词已经把它是哪一头说清了，旁边那句
   // 注解（`item.field.*.gloss`）说它与另外两个的关系。
-  // 一句话里（快记）与这三个框里认的是同一批写法，见 `model.ts` 的 `readDateExpression`。
+  // 这三个框认的是 `model.ts` 的 `readDateExpression` 那一种写法（与展开区那三条日期线
+  // 同一个判定、同一个元件）。
   'item.field.startsHint': '@开始 10/5',
   'item.field.dueHint': '@计划 10/7',
   'item.field.hardDueHint': '@截止 10/9',
@@ -1698,9 +1682,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.hostLost': 'Cannot reach the host copy of the list right now; showing this device’s copy.',
   'item.syncing': 'Syncing with the host…',
   'item.empty': 'Write one down — it looks like this:',
-  // The last half of the sample line: the reader's own words, so the example reads
-  // like one thought being written down rather than like a legend.
-  'item.empty.sample': 'redraw the detail panel floor',
   'item.count': '{n} total',
   'item.countFiltered': 'showing {shown} of {total}',
   'item.ask': 'Ask AI',
@@ -1861,17 +1842,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.menu.promote': 'Make it a board card',
   'item.menu.delete': 'Remove',
 
-  // Quick capture. The parsed result is shown as it is typed, and any word it
-  // swallowed can be clicked back into plain text.
-  'item.compose.title': 'Redo the detail pane #gallery !1 @tomorrow',
-  'item.compose.add': 'Save',
-  'item.compose.refused': '{word} did not take: {field} already has a date.',
-  'item.token.tag': 'tag',
-  'item.grammar.tagMany': 'tags (as many as you like)',
-  'item.token.priority': 'priority',
-  'item.token.step': 'step',
-  'item.token.undo': 'turn back into plain text',
-
   // The agenda's sections. Their names carry the FIELD's own word — a row's tail
   // reads 「deadline 9 Oct」 / 「target 7 Oct」, so a section reads 「Past the deadline」 /
   // 「Past the target」. 「Past due」 and 「Behind」 were twins a reader could not tell
@@ -1898,7 +1868,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.menu.rename': 'Edit the title',
   'item.create.title': 'New row',
   'item.create.close': 'Close',
-  'item.create.grammar': 'Write a sentence; the rest fills itself in',
   'item.create.titlePlaceholder': 'A sentence is enough — it is the title',
   'item.create.steps': 'Steps',
   'item.create.stepsPlaceholder': 'One step per line',

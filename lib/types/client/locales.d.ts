@@ -625,7 +625,6 @@ export declare const zh: {
     'item.hostLost': string;
     'item.syncing': string;
     'item.empty': string;
-    'item.empty.sample': string;
     'item.count': string;
     'item.countFiltered': string;
     'item.ask': string;
@@ -764,14 +763,6 @@ export declare const zh: {
     'item.menu.collapse': string;
     'item.menu.promote': string;
     'item.menu.delete': string;
-    'item.compose.title': string;
-    'item.compose.add': string;
-    'item.compose.refused': string;
-    'item.token.tag': string;
-    'item.grammar.tagMany': string;
-    'item.token.priority': string;
-    'item.token.step': string;
-    'item.token.undo': string;
     'item.bucket.hardOverdue': string;
     'item.bucket.behind': string;
     'item.bucket.today': string;
@@ -793,7 +784,6 @@ export declare const zh: {
     'item.menu.rename': string;
     'item.create.title': string;
     'item.create.close': string;
-    'item.create.grammar': string;
     'item.create.titlePlaceholder': string;
     'item.create.steps': string;
     'item.create.stepsPlaceholder': string;

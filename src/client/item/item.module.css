@@ -2314,52 +2314,6 @@ button.itemRowCardChip {
   color: var(--item-ink-3);
 }
 
-/* ── 7.2 药丸 ─────────────────────────────────────────────────────────────────
- *
- * 药丸仍然是药丸：全圆、贴着字走、描边用重一档那条线。它只活在属性表和命令
- * 面板里——行上没有状态药丸与优先级药丸两列。 */
-
-.itemPill {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  block-size: 24px;
-  padding: 0 var(--item-pill-pad);
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  /* 垂直位置由 `align-items: center` 一处决定，与顶栏那一族同一条律：逐枚控件各垫
-     一像素，是一排控件里文字高低不齐的来源。 */
-  color: var(--item-ink-2);
-  background: none;
-  border: var(--item-hair-strong);
-  border-radius: var(--item-radius-pill);
-}
-
-/* 进行中：实心强调色。**实心上用什么文字色不在这张表里发明**——那是宿主品牌填充
- * 的答案，`board.module.css` 的按钮族已经量过它：填充在明暗两套主题里都是深墨，
- * 所以 `--dsw-alias-label-primary-foreground` 才是对的。 */
-.itemPill[data-kind='running'] {
-  color: var(--dsw-alias-label-primary-foreground);
-  background: var(--dsh-tb-accent);
-  border-color: var(--dsh-tb-accent);
-}
-
-/* 受阻：描边 + 注意力色。受阻是一句要说出口的话，不是一次警报。 */
-.itemPill[data-kind='blocked'] {
-  color: var(--dsh-tb-attention);
-}
-
-/* 已完成：描边 + 第三档墨。完成是「颜色收起来了」，不是「没有颜色」。 */
-.itemPill[data-kind='done'] {
-  color: var(--item-ink-3);
-}
-
 /* ── 7.9 零行的一行摘要 ───────────────────────────────────────────────────
  *
  * **这套类必须留在这里，即使这一刻没有组件引用它们。** 一个类被删之后又被重新用上，
@@ -2487,104 +2441,6 @@ button.itemRowCardChip {
    * 回头看一眼，代价是最多移动一个词——正是这里需要的；`balance` 会把每一行都拉平，
    * 而一段正文的行长本来就该不齐。 */
   text-wrap: pretty;
-}
-
-/* ── 那行示范：**它是字，不是输入框** ──────────────────────────────────────
- *
- * 芯片是 `<p>` 里的 `<b>`，不能被聚焦、不能被点、打不进字。一个长得像输入框却
- * 不是输入框的示范，是装饰里最贵的一种：读者会试一次，然后学会「这一页上的东西
- * 按不动」。
- *
- * 记号照抄读者要打的那几个（`#` / `!` / `@`），因为记号正是他要打的东西；而
- * `!1` 用的是**行上那一枚** `.itemPrioChip`（`data-tone` 定形状），所以读者在
- * 这里学会的形状，在标题前、在属性表里、在左栏上都是同一个。 */
-.itemGrammarExample {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--s1);
-  margin: 0;
-  min-inline-size: 0;
-  /* 与它示范的那个输入框**同一个字号、同一个行高**（`.itemInput` 是 13px/1.6）：
-   * 示范的价值在于「你要写的东西长这样」，所以它必须与真的那个一样大。 */
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1.6;
-  color: var(--item-ink);
-}
-
-.itemGrammarExampleToken {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  block-size: 24px;
-  padding-inline: 8px;
-  border-radius: var(--item-radius-ctl);
-  font-size: 13px;
-  font-weight: 600;
-  line-height: 1.2;
-  color: var(--item-ink-2);
-  background: var(--item-fill);
-  border: var(--item-hair-strong);
-}
-
-/* 日期那一枚比别的安静一档：`@明天` 是三个记号里唯一「什么时候」的那一个，
- * 而示范里最该被先读到的是**位置**（`#`）与**轻重**（`!`）。 */
-.itemGrammarExampleWhen {
-  color: var(--item-ink-2);
-  font-weight: 400;
-}
-
-.itemGrammarExampleWords {
-  min-inline-size: 0;
-  color: var(--item-ink-2);
-  overflow-wrap: anywhere;
-}
-
-/* ── 三个记号各自叫什么（新建纸的第一行下面） ──────────────────────────────────
- *
- * 示范那一行（`.itemGrammarExample`）回答「句子长什么样」，这一行回答「每个记号是什么
- * 意思」：`#` 标签、`!` 优先级、`@` 开始 / 计划 / 截止。两个问题，两行，谁也替不了谁。
- *
- * **记号画成真的芯片，名字退到第三层墨。** 记号是读者要往框里打的那个字符，它得看得见；
- * 名字是它的意思，读一遍就够。两条同一条左沿，横向按 `--s3` 分开——它们不是一句话里的
- * 三个词，是三件事，所以用组间距而不是词间距排。
- *
- * 尺寸比真芯片矮 6px：这一行是**注解**，不该跟真的控件抢目光（真的那枚 24px，在行上、
- * 在属性表里）。 */
-.itemGrammarLegend {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: var(--s1) var(--s3);
-  margin: 0;
-  min-inline-size: 0;
-  font-size: 12px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--item-ink-3);
-}
-
-.itemGrammarLegendItem {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--s1);
-  min-inline-size: 0;
-}
-
-.itemGrammarLegendSigil {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-inline-size: 18px;
-  block-size: 18px;
-  padding-inline: 5px;
-  border-radius: var(--item-radius-ctl);
-  font-size: 12px;
-  font-weight: 600;
-  line-height: 1;
-  color: var(--item-ink-2);
-  background: var(--item-fill);
 }
 
 /* 空穿第二档墨而不是第三档：第三档的定义是「淡、可丢弃」，而一个空列是那一屏
@@ -3415,47 +3271,6 @@ textarea.itemInput {
   outline-offset: -2px;
 }
 
-/* 快记框：清单唯一的常驻输入面。输入、解析出来的 token 与「记下」**共处同一个盒子**，
- * 所以排版写在 `.itemComposerChips` 上——`.itemComposer` 只有一个孩子，
- * 在它上面排版等于排了一个什么也没有的盒子。 */
-/* **按钮在 `.itemComposerChips` 里面，不在 `.itemComposer` 这一层。** 两列配比写在
- * `.itemComposer` 上会整条失效：那个盒子只有**一个**孩子
- * （`.itemComposerChips`），于是「记下」不受那条规则管——出图上它掉在第二行、
- * 贴在左边，而每一次改动都看着像生效了（`getComputedStyle` 确实回 `display: grid`，
- * 改的是另一个盒子）。
- *
- * 所以规则写在它真正所在的那一层：输入框与「记下」同一行、按钮在右端。 */
-.itemComposerChips {
-  display: flex;
-  /* **`nowrap`，不是 `wrap`。** 换行是 `flex-wrap: wrap` 在基础尺寸超过行宽时才发生，
-   * 而输入框那一格会增长，于是「记下」被挤到第二行——出图上它孤零零挂在左边，
-   * 快记框看着就只是一个输入框，而不是「在这里写一条就能存」。
-   * 不换行时增长的那一格与不变的那一格分的是**同一行的剩余空间**，按钮永远在自己
-   * 那一端。 */
-  flex-wrap: nowrap;
-  align-items: center;
-  gap: 8px;
-  min-inline-size: 0;
-}
-
-/* 输入框是唯一会让位的那一格：它先缩，缩到 `min-inline-size: 0` 就停，而「记下」在
- * 任何宽度下都还在。**它不缩到 0**——一格宽度为零的输入框等于没有输入框。 */
-.itemComposerChips > .itemInput {
-  flex: 1 1 auto;
-  min-inline-size: 140px;
-}
-
-.itemComposerSave {
-  flex: 0 0 auto;
-}
-
-/* **一旦解析出了 token 就允许换行**，而每一枚 token 自己占一格——它们是**回显**，
- * 不是这一行的控件。窄屏上让它们换行，而不是把输入框和「记下」挤掉
- * （硬性规范 11：容器装不下时让位，不是压扁）。 */
-.itemComposerChips:has(> .itemPill) {
-  flex-wrap: wrap;
-}
-
 /* ── 13. 日程页 ──────────────────────────────────────────────────────────── */
 
 /* 议程优先而不是月历网格：日程页的读者问的是「这周该做什么」，他要的是
@@ -3639,6 +3454,23 @@ textarea.itemInput {
   gap: var(--s2);
   min-inline-size: 0;
   min-block-size: 0;
+}
+
+/* **两栏的第一个名字在同一条线上。**
+ *
+ * 右栏每一行上下各付一档 `--s2`（10px）——那是**行与行之间的呼吸**，也是那一行自己的
+ * 内衬，而它由 `.itemOptRow` 一处定；左栏的字段没有这一档（名字直接顶在盒子上沿）。
+ * 于是两栏的盒子顶都在 146，两个名字却在 146 与 159（量过，`.design/sheet-align-probe.js`）
+ * ——13px 的错位，一眼就看得出来是两栏没对齐。
+ *
+ * 对齐付在**左栏**：给这一列一档上内衬，右栏那一行的内衬与行距**一个字都没动**（动它会
+ * 改掉那一列自己的拍子：量过，首行少付 10px 会让头两行的间距从 65 变成 68，而第三行还是
+ * 66——为对齐两栏，先在栏内造出一次不一致，不划算）。
+ *
+ * 余下 3px 不追：那是右栏那一行的控件（芯片 22）比字（16）高出来的那一半，
+ * `align-items: center` 是**那一行内部**的律。一个有来源的 3px 比一个没有来源的对齐值好。 */
+.itemCreateDialogMain {
+  padding-block-start: var(--s2);
 }
 
 /* 右栏是**那句话没有说到的那些字段**，所以它自己有一条边——两边是两种东西，而
@@ -4303,7 +4135,6 @@ textarea.itemInput {
  * 自己那一节再写一句 `:hover`（照那种写法，这一族会散成 17 份）。 */
 .itemOpt:hover,
 .itemTag:hover,
-.itemPill:hover,
 .itemPrioChip:hover,
 .itemFacetChip:hover,
 .itemTopBarChip:hover,
@@ -4325,7 +4156,6 @@ textarea.itemInput {
  * 在 reduced-motion 下只慢，不消失。 */
 .itemOpt:active,
 .itemTag:active,
-.itemPill:active,
 .itemPrioChip:active,
 .itemFacetChip:active,
 .itemTopBarChip:active,
@@ -5293,7 +5123,6 @@ textarea.itemInput {
   .itemStepMenu,
   .itemRailDay,
   .itemArchiveToggle,
-  .itemPill,
   .itemOpt {
     position: relative;
   }
@@ -5304,7 +5133,6 @@ textarea.itemInput {
   .itemStepMenu::after,
   .itemRailDay::after,
   .itemArchiveToggle::after,
-  .itemPill::after,
   .itemOpt::after {
     content: '';
     position: absolute;
@@ -5432,7 +5260,6 @@ textarea.itemInput {
  * **墨心**与盒心 ≤ 0.25px。 */
 .itemTopBarChip,
 .itemNewButton,
-.itemPill,
 .itemPrioChip,
 .itemRefChip,
 .itemTag,

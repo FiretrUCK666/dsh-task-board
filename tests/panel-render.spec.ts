@@ -3188,21 +3188,18 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
     expect(spellers, `拼「这个读法我没读懂」的文件：${spellers.join('、') || '（一个都没有）'}——同一句拒绝只该有一个出口`)
       .toEqual(['date-field.tsx'])
     const askers = itemSurfaceFiles().filter(file => code(file.source).includes('dateBadWords(')).map(file => file.path)
-    expect(askers.sort(), `问那句话的文件：${askers.join('、')}——日期框与快记都该问同一个地方`)
-      .toEqual(['composer.tsx', 'date-field.tsx'])
+    expect(askers.sort(), `问那句话的文件：${askers.join('、')}——那三句拒绝只有这一个出口`)
+      .toEqual(['date-field.tsx'])
   })
 
   it('一张纸上只有一个保存控件，而它是那个表面的', () => {
-    /* **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 所以「画不画自己那一枚」
-       是一个二选一（`saveOwnedBy`），而新建那张纸选的是「保存动词归这个表面」——
-       它的纸尾那一枚「存下这一条」。 */
-    const composer = readSource('client/item/composer.tsx')
-    expect(code(composer), '这一行自己画按钮的那个开关不再是一个二选一')
-      .toMatch(/saveOwnedBy\?:\s*'row'\s*\|\s*'surface'/)
+    /* **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 所以这条钉的是「那张纸上
+       到底有几枚保存动词」：只剩纸尾那一枚，而它的词是这张纸自己的。 */
     const sheet = code(readSource('client/item/item-create-dialog.tsx'))
-    expect(sheet, '新建那张纸没有交出保存动词，于是它同时有两个保存控件')
-      .toContain('saveOwnedBy="surface"')
     expect(sheet, '新建那张纸自己不再有保存动词了').toContain("t('item.create.submit')")
+    // 全表扫一遍：`item.create.submit` 只许出现在这张纸上，别处再画一枚就是第二个保存控件。
+    const drawers = itemSurfaceFiles().filter(file => code(file.source).includes('item.create.submit')).map(file => file.path)
+    expect(drawers, `画保存动词的文件：${drawers.join('、')}——同一张纸上只该有一处`).toEqual(['item-create-dialog.tsx'])
   })
 
   it('同一个字段的词只有一份：那张纸的词不许被别处读走', () => {

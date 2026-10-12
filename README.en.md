@@ -172,7 +172,7 @@ With the plugin marketplace installed you can also press Update on its Installed
 
 ### The task list
 
-- Press "+ new item" to write one down. The first line takes a whole item in one syntax: `#tag`, `!1` priority, `@tomorrow`, `- [ ]` step. What it recognises shows as you type; a word read wrongly turns back into plain text when you click it.
+- Press "+ new item" to write one down: **the title comes first**, then body, steps and context notes (the body also takes images and files). The left column is what you write, the right column is what you decide — priority, state, tags, the three dates, and which card it hangs off.
 - The list stands on its own — an item does not have to become a card. Once it hangs off one, the state it shows is wherever that card sits — but **your own "Done" outranks the card**: a finished thing does not turn back into unfinished work because the card is still running.
 - **"Ask AI" is the only press on this page that hands a row to a model, and it works on a row with no card**: if the card already has a conversation this is **said into it**, and if it has none this **opens a run** — the card decides which, so you never have to. What travels is the row itself (title, tags, body, steps, notes, **and the images and files its body carries**), not the card's run prompt, so a card whose own prompt is blank does not block it. A row with no card gets one first (composed from your **default run-config preset**) and is handed over at once.
 - The card on the board carries "**N rows · loudest: X**"; pressing it opens the checklist filtered to that card (a filter chip you can see and remove).

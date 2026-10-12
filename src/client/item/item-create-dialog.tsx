@@ -1,18 +1,10 @@
 /**
- * The new-row sheet: one sentence at the top, and everything it did not say below.
+ * The new-row sheet: the fields, in the order a reader thinks of them.
  *
  * ── WHY IT LOOKS LIKE THIS ───────────────────────────────────────────────────
  *
- * The sheet has ONE door and it is the first line. That line is the capture
- * grammar — `#画廊 !1 @明天` — and it fills six fields at once, which is why it is
- * the loudest input on the sheet and why everything below it is a field rather
- * than a form: **the reader who already has the sentence types it once; the reader
- * who does not fills the fields**, and neither has to learn the other's way.
- *
- * So the left column is three paragraphs — the sentence, the body, the notes — and
- * the right column is the flat list of everything the sentence did not say. Not a
- * form with a title field at the top and six more below: a title field duplicates
- * the sentence, and a reader who typed both has to decide which one is the truth.
+ * 标题在最上面（一行字就够），下面是**三段可以写很长的话**：正文、步骤、上下文备注；
+ * 右列是那张平的清单——优先级、状态、标签、三个日期、挂到哪张卡。
  *
  * ── WHY THERE IS EXACTLY ONE SCROLLER ────────────────────────────────────────
  *
@@ -28,11 +20,9 @@ import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemDateConflict } from '../../core/item.ts'
 import { DATE_FIELD_KEY, DATE_GLOSS_KEY, DATE_HINT_KEY, PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
 import { CrossMark, PriorityMark, InfoMark } from './marks.tsx'
-import { ItemComposer, ItemGrammarLegend } from './composer.tsx'
 import { useNote } from './group-head.tsx'
-import type { ComposerParse } from './compose-parse.ts'
 import type { DateDraft } from './model.ts'
-import { readDateDraft, toItemDateField } from './model.ts'
+import { readDateDraft } from './model.ts'
 import { DateField } from './date-field.tsx'
 import { ProseField } from './prose-field.tsx'
 import { t } from '../locales.ts'
@@ -145,7 +135,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   useEffect(() => {
     if (cardNaming) cardNameField.current?.focus()
   }, [cardNaming])
-  const [parsed, setParsed] = useState<ComposerParse | undefined>(undefined)
   const [words, setWords] = useState('')
   /**
    * 正文那一段的附件，**与展开区那一栏是同一个账本**（同一个钩子、同一组上限、同一句话）。
@@ -165,69 +154,25 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const sheet = useRef<HTMLDivElement | null>(null)
   const titleField = useRef<HTMLInputElement | null>(null)
 
-  /* THE WHOLE FORM GOES BACK TO ITS OPENING STATE, `touched` INCLUDED.
+  /* THE WHOLE FORM GOES BACK TO ITS OPENING STATE.
    *
-   * `touched` is what stops the grammar line from overwriting a field the reader
-   * corrected by hand — and it is per-SHEET, not per-mount: the component stays
-   * mounted while `open` is false. Leaving it out of this reset meant that after
-   * ONE hand-edit in ONE sheet, every later sheet started with that field marked
-   * as touched, so the grammar could never seed it again. The symptom is a form
-   * that stops listening to its own first line, and nothing on screen says why. */
+   * It is per-SHEET, not per-mount: the component stays mounted while `open` is
+   * false, so a field left over from the last sheet would greet the next reader as
+   * their own words. */
   useEffect(() => {
     if (!props.open) return
     setTitle(''); setBody(''); setNotes(''); setSteps(''); setPriority('normal'); setStatus('todo')
     setDates(NO_DATES); setTags(''); setTaskId(''); setWords('')
     setBadDates(new Set())
     setPendingCard(undefined); setCardNaming(false); setCardDraft(''); setCardHint(false)
-    setParsed(undefined)
-    setTouched(new Set())
     clearAttachments([])
     titleField.current?.focus()
   }, [props.open, clearAttachments])
 
-  /**
-   * THE GRAMMAR FILLS THE FORM, ONCE PER KEYSTROKE, AND ONLY WHERE THE READER
-   * HAS NOT LOOKED YET.
+  /** 「一行一步」变成清单：**两种写法都认**。
    *
-   * Seeding on every keystroke is right because it is the only moment the two sides
-   * are guaranteed to agree: the reader is looking at the sentence they are typing.
-   * Seeding once on 「open」 would leave the form describing nothing, and re-seeding
-   * on 「submit」 would overwrite the fields the reader corrected by hand — which is
-   * the one thing this form is for.
-   */
-  const [touched, setTouched] = useState<ReadonlySet<string>>(new Set())
-  const mark = (field: string): void => setTouched(current => new Set(current).add(field))
-  useEffect(() => {
-    if (parsed === undefined) return
-    if (!touched.has('title')) setTitle(parsed.title)
-    if (!touched.has('body')) setBody(parsed.body)
-    if (!touched.has('priority') && parsed.priority !== undefined) setPriority(parsed.priority)
-    if (!touched.has('tags')) setTags(parsed.tags.join('、'))
-    /* **一句话认出来的东西，全部都要落到各自的框里。**
-     *
-     * 解析出来的东西**不许静默丢掉**：`startsAfter`、`hardDueAt` 与 `- [ ] 步骤` 行漏掉
-     * 任何一部分，读者在一行里写了三个日期、存下去就只有一个，而屏上没有任何东西说
-     * 这件事（那正是「认了却没到」这一类缺陷）。`touched` 是同一道闸门：读者手动改过的框
-     * 不会被这一行盖掉，所以「文法回填一次、之后归读者」这条律一个字都没变。 */
-    for (const key of DATE_FIELDS) {
-      if (touched.has(key)) continue
-      const at = parsed[key]
-      if (at === undefined) continue
-      setDates(current => ({ ...current, [key]: toItemDateField(at) }))
-    }
-    if (!touched.has('steps') && parsed.steps.length > 0) {
-      // 勾过的步骤写成 `- [x] 一句话`，与快记那一行同一个写法——`stepList` 两种都认，
-      // 所以从那一行带过来的勾在这里不会丢。
-      setSteps(parsed.steps.map(step => (step.done ? `- [x] ${step.text}` : step.text)).join('\n'))
-    }
-  }, [parsed, touched])
-
-  /**
-   * 「一行一步」变成清单：**两种写法都认**。
-   *
-   * 光一行就是一步；`- [x] 一句话` 是已经勾上的一步——与快记那一行同一个写法，所以从
-   * 那一行带过来的勾不会在这里丢掉（丢掉一次勾就是一次静默的数据损失）。
-   */
+   * 光一行就是一步；`- [x] 一句话` 是已经勾上的一步——那个记号是这一格的写法，
+   * 不是「快记一行」的遗留（那一行整条已经删掉了）。 */
   const stepList = (): ItemCapture['steps'] =>
     steps.split('\n').map(line => line.trim()).filter(line => line !== '').map(line => {
       const box = /^[-*]\s*\[\s*([ xX]?)\s*\]\s*(.+)$/.exec(line)
@@ -347,24 +292,20 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
 
         <div className={css.itemCreateDialogGrid} data-dsh-tb-scroll="">
           <div className={css.itemCreateDialogMain}>
+            {/* **标题是这张纸的第一格**，与右列第一格（优先级）同一条线：两列从同一处开始，
+                读者一眼看到的是「左边写什么、右边定什么」。 */}
             <label className={css.itemCreateDialogField}>
-              <span className={css.itemCreateDialogLabel}>{t('item.create.grammar')}</span>
-              {/* **这一行只交出回车，不画「记下」。** 这张纸的保存动词在纸尾那一枚
-                  「存下这一条」上：同一张纸上两个保存控件，读者猜不出哪一个带着他刚在右边
-                  填的那些字段（见 `saveOwnedBy`）。 */}
-              <ItemComposer now={props.now} onChange={setParsed} onSave={submit} saveOwnedBy="surface" />
-              {/* 三个记号各自叫什么，就写在读者正打字的那一行下面。 */}
-              <ItemGrammarLegend />
+              <span className={css.itemCreateDialogLabel}>{t('item.field.title')}</span>
+              <input
+                ref={titleField}
+                className={css.itemCreateDialogTitleField}
+                value={title}
+                placeholder={t('item.create.titlePlaceholder')}
+                aria-label={t('item.field.title')}
+                onChange={event => { setTitle(event.target.value) }}
+                onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit() } }}
+              />
             </label>
-            <input
-              ref={titleField}
-              className={css.itemCreateDialogTitleField}
-              value={title}
-              placeholder={t('item.create.titlePlaceholder')}
-              aria-label={t('item.field.title')}
-              onChange={event => { mark('title'); setTitle(event.target.value) }}
-              onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit() } }}
-            />
 
             {/* **正文这一段有两个控件**（写字的框、挂附件的条），所以外面这一格是 `<div>`
                 而不是 `<label>`：一个 label 只能认一个控件，而它会把条上每一枚按钮的点击都
@@ -378,7 +319,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     它画成竖排的一张表单，而不是另一个长得像它的盒子。 */}
                 <ProseField
                   value={body}
-                  onChange={value => { mark('body'); setBody(value) }}
+                  onChange={setBody}
                   placeholder={t('item.field.bodyHint')}
                   ariaLabel={t('item.field.body')}
                   height={props.proseHeight}
@@ -404,7 +345,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   写字的那个盒子是同一个。 */}
               <ProseField
                 value={steps}
-                onChange={value => { mark('steps'); setSteps(value) }}
+                onChange={setSteps}
                 placeholder={t('item.create.stepsPlaceholder')}
                 ariaLabel={t('item.create.steps')}
                 height={props.proseHeight}
@@ -416,7 +357,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               <span className={css.itemCreateDialogLabel}>{t('item.field.notes')}</span>
               <ProseField
                 value={notes}
-                onChange={value => { mark('notes'); setNotes(value) }}
+                onChange={setNotes}
                 placeholder={t('item.field.notesHint')}
                 ariaLabel={t('item.field.notes')}
                 height={props.proseHeight}
@@ -443,7 +384,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     className={css.itemPrioButton}
                     aria-pressed={priority === one}
                     title={t(PRIORITY_LABEL[one])}
-                    onClick={() => { mark('priority'); setPriority(one) }}
+                    onClick={() => { setPriority(one) }}
                   >
                     <PriorityMark priority={one} on={priority === one} />
                   </button>
@@ -463,7 +404,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     className={css.itemOpt}
                     data-on={status === one ? '' : undefined}
                     aria-pressed={status === one}
-                    onClick={() => { mark('status'); setStatus(one) }}
+                    onClick={() => { setStatus(one) }}
                   >
                     {t(GROUP_LABEL[one])}
                   </button>
@@ -479,7 +420,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     key={one}
                     type="button"
                     className={css.itemTag}
-                    onClick={() => { mark('tags'); setTags(tagList().filter(x => x !== one).join('、')) }}
+                    onClick={() => { setTags(tagList().filter(x => x !== one).join('、')) }}
                   >
                     #{one}
                   </button>
@@ -488,14 +429,13 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   value={tags}
                   placeholder={t('item.field.tagsHint')}
                   ariaLabel={`${t('item.field.tags')}：${t('item.field.tagsHint')}`}
-                  onChange={value => { mark('tags'); setTags(value) }}
+                  onChange={setTags}
                   onKeyDown={event => {
                     if (event.key !== 'Enter' || event.nativeEvent.isComposing) return
                     event.preventDefault()
                     // 回车把读者敲的写法收拢给他看：逗号并成顿号、去掉空段、`#` 去掉。
                     // 芯片是实时读这一行的，回车的活儿是「写法定型」——与详情页同一控件
                     // 的回车是「加上」，这里的同一根键不该什么反应都没有。
-                    mark('tags')
                     setTags(tagList().join('、'))
                   }}
                 />
@@ -515,7 +455,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 <DateField
                   value={dates[key]}
                   onChange={value => {
-                    mark(key)
                     setDates(current => ({ ...current, [key]: value }))
                     setBadDates(current => new Set([...current].filter(one => one !== key)))
                   }}

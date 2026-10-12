@@ -25,7 +25,6 @@
 import { Fragment } from 'react'
 import type { ItemRowLineProps } from './row-line.tsx'
 import { ItemRowLine } from './row-line.tsx'
-import { ItemGrammarExample } from './composer.tsx'
 import { GroupHead } from './group-head.tsx'
 import { itemDayGroupsOf } from './day-groups.ts'
 import type { ItemDayBucket } from './day-groups.ts'
@@ -107,20 +106,11 @@ export function ItemTable(props: ItemTableProps) {
         /* 读不到 与 没有，是两件事；而「被筛选空了」又是第三件，所以这里接的是
            调用方已经分好的那一档，而不是它自己再猜一次。
 
-           AND THE EMPTY ONE CARRIES THE GRAMMAR. 「There is nothing here」 is a fact
-           the reader already has — they are looking at the empty page. What they do
-           not have is the shape of a line, so the empty state shows one, out of the
-           vocabulary this panel already uses everywhere else. `noMatch` does NOT
-           get the example: a reader whose filter emptied the list has rows, has
-           learned the grammar, and needs to be told which of their own settings is
-           hiding them — an example there would be teaching during an interruption. */
+           THE EMPTY ONE POINTS AT THE DOOR AND NOTHING ELSE. 「这里什么都没有」是读者
+           已经有的事实（他正看着空页），所以这句话只说**下一步按哪儿**——那句
+           `nothingToShowOf` 里已经带着那枚按钮的词，屏上再教一遍写法就是第二种说法了。 */
         ? (props.noMatch === undefined
-            ? (
-              <div className={css.itemListEmpty}>
-                <p className={css.itemListEmptyWords}>{props.empty}</p>
-                <ItemGrammarExample />
-              </div>
-            )
+            ? <p className={css.itemListEmptyWords}>{props.empty}</p>
             : <p className={css.itemNoMatch}>{props.noMatch}</p>)
         : (
           <div className={css.itemTableBody} role="list">

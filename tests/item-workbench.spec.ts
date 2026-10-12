@@ -3467,113 +3467,6 @@ describe('一张卡没了，它就不再是一张卡', () => {
   })
 })
 
-describe('一句话认出来的东西，全部落到各自的框里', () => {
-  /** 打开「新建一条」，在文法那一行里写一句话。 */
-  const writeLine = (panel: ReturnType<typeof mountPanel>, line: string): void => {
-    const open = [...panel.surface.querySelectorAll('button')]
-      .find(node => (node.textContent ?? '').includes('新建一条'))
-    if (open === undefined) throw new Error('the bar carries no 新建一条')
-    click(open)
-    const box = panel.surface.querySelector('input[class*="itemInput"]') as HTMLInputElement | null
-    if (box === null) throw new Error('the sheet drew no grammar line')
-    typeInto(box, line)
-    panel.settle()
-  }
-
-  const save = (panel: ReturnType<typeof mountPanel>): void => {
-    const button = [...panel.surface.querySelectorAll('button')]
-      .find(node => (node.textContent ?? '').trim() === '存下这一条')
-    if (button === undefined) throw new Error('the sheet carries no way to save')
-    click(button)
-    panel.settle()
-  }
-
-  it('三个日期各到各的框，存下去三样都在', () => {
-    // 这一条钉的是一次**静默丢失**：这一行能解析出三个日期，而新建纸的保存读的是它自己的
-    // 字段——回填只覆盖了「计划」那一个，另外两个被解析出来之后直接丢掉，屏上没有任何
-    // 东西说这件事。
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      writeLine(panel, '大活儿 @开始 10/25 @10/26 @截止 10/27')
-      const values = [...panel.surface.querySelectorAll('input')].map(node => node.value)
-      expect(values, '「开始」没有回填到它的框里').toContain('2026-10-25')
-      expect(values, '「计划」没有回填到它的框里').toContain('2026-10-26')
-      expect(values, '「截止」没有回填到它的框里').toContain('2026-10-27')
-
-      save(panel)
-      const rows = panel.lastWrite()
-      const row = rows[rows.length - 1]
-      expect(row?.startsAfter, '存下去的行缺了「开始」').toBe(new Date(2026, 9, 25).getTime())
-      expect(row?.dueAt, '存下去的行缺了「计划」').toBe(new Date(2026, 9, 26).getTime())
-      expect(row?.hardDueAt, '存下去的行缺了「截止」').toBe(new Date(2026, 9, 27).getTime())
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('步骤框认两种写法：光一行就是一步，`- [x] 一句` 是已经勾上的一步', () => {
-    // 那行文法框是**单行**输入，所以 `- [ ] 步骤` 这种带换行的写法到不了它那里；读者真正
-    // 能让步骤进文档的地方是这张纸上的步骤框。两种写法都认，是因为那一行与这一框说的是
-    // 同一件事：读者在一行里学到的写字方式，在这里不该被拒。
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      writeLine(panel, '大活儿')
-      const stepsBox = [...panel.surface.querySelectorAll('textarea')]
-        .find(node => node.getAttribute('aria-label') === '步骤')
-      if (stepsBox === undefined) throw new Error('the sheet drew no steps box')
-      typeInto(stepsBox, '第一步\n- [x] 第二步')
-      panel.settle()
-
-      save(panel)
-      const rows = panel.lastWrite()
-      const row = rows[rows.length - 1]
-      expect(row?.steps.map(step => step.text)).toEqual(['第一步', '第二步'])
-      expect(row?.steps.map(step => step.done), '勾过的那一步在存下去的时候被当成没勾').toEqual([false, true])
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('同一行里同一个日期写两遍：那一个不成芯片，并且说一句为什么', () => {
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      writeLine(panel, '大活儿 @10/26 @10/28')
-      expect(panel.surface.textContent ?? '', '被拒的那一个没有说一句为什么').toContain('@10/28')
-      expect(panel.surface.textContent ?? '').toContain('已经有一个日期了')
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('同一行里写出一个读不懂的日期：当场说，而且那句话点出读者写的那一串', () => {
-    // 改动前这一串是**静默**落回普通正文的：没有芯片、没有一句话、条目照建——
-    // 而读者以为那个日期记下了。现在它出声。（「字没丢」由下面那条存下去之后钉。）
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      writeLine(panel, '大活儿 @13/45')
-      const shown = panel.surface.textContent ?? ''
-      expect(shown, '读不懂的那一串没有说一句为什么').toContain('不是一天')
-      expect(shown, '那句话没有点出读者写的那串字').toContain('@13/45')
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('读不懂的那一串留在句子里，也留在存下来的标题里', () => {
-    // 「写了又丢」比「没写」更贵：词从屏上消失而条目照存，读者就以为它生效了，
-    // 而**一条记错日期的待办比一条没有日期的待办更危险**。
-    const panel = mountPanel(fixtures(), 'list', 'wide')
-    try {
-      writeLine(panel, '大活儿 @13/45')
-      save(panel)
-      const written = panel.lastWrite()
-      expect(written[written.length - 1]?.title, '读者写的字被吃掉了').toBe('大活儿 @13/45')
-      expect(written[written.length - 1]?.dueAt, '读不懂的那一串不该变成一个日期').toBeUndefined()
-    } finally {
-      panel.dispose()
-    }
-  })
-})
 
 describe('同一列顺序可以倒过来读', () => {
   /** 顶栏那枚「排序 · X」芯片，按文字找（不按类名）。 */
@@ -4264,7 +4157,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'compose-three-dates' && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
 
     if (state === 'chips-open') {
       /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 放着没动）。
@@ -4506,29 +4399,6 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       return
     }
 
-    if (state === 'compose-three-dates') {
-      /* **一行里写三个 `@` 的那一屏。**
-       *
-       * 读者问过「是不是 @ 完一个再 @ 一个，三个都能显示」——答案在屏上：三枚芯片，三个
-       * 日期，各到各的框。同名的第二个 `@` 不成芯片并有一句为什么，这一屏也画出来。 */
-      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
-      try {
-        const open = [...panel.surface.querySelectorAll('button')]
-          .find(node => (node.textContent ?? '').includes('新建一条'))
-        if (open === undefined) throw new Error('the bar carries no 新建一条')
-        click(open)
-        const box = panel.surface.querySelector('input[class*="itemInput"]') as HTMLInputElement | null
-        if (box === null) throw new Error('the sheet drew no grammar line')
-        typeInto(box, '大活儿 @开始 10/25 @10/26 @截止 10/27 @10/28')
-        panel.settle()
-      } catch (error) {
-        panel.dispose()
-        throw error
-      }
-      writeMountedPage(panel, target)
-      panel.dispose()
-      return
-    }
 
     if (state === 'create-sheet') {
       /* 「新建一条」那张纸。它与详情面板装同一批字段（三个日期、正文/步骤/备注、选卡、
@@ -5270,8 +5140,8 @@ describe('新建一条：读不懂的日期不存下这一条，而是当场说'
   })
 
   it('这一张纸上只有一处能存下它', () => {
-    // **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 保存动词归这张纸
-    // （纸尾那一枚），而文法行只交出回车（见 `saveOwnedBy`）。
+    // **两个保存控件就是读者猜不出哪一个带着他刚填的字段。** 这张纸自己那一枚
+    // （「存下这一条」，在纸尾）是唯一的一个。
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       openSheet(panel, '只留一个保存动词')
@@ -5279,25 +5149,6 @@ describe('新建一条：读不懂的日期不存下这一条，而是当场说'
         .map(node => (node.textContent ?? '').trim())
         .filter(word => word === '存下这一条' || word === '记下')
       expect(saves, `这张纸上的保存动词：${saves.join('、')}`).toEqual(['存下这一条'])
-    } finally {
-      panel.dispose()
-    }
-  })
-
-  it('三个记号各自叫什么，就写在读者打字的那一行下面', () => {
-    // 读者对着占位里那串 `… #画廊 !1 @明天` 问出的第一个问题是「井号后面那个 tag 是什么」。
-    const panel = mountPanel(oneRow({}), 'list', 'wide')
-    try {
-      openSheet(panel, '图例')
-      const legend = panel.surface.querySelector('[class*="itemGrammarLegend"]')
-      if (legend === null) throw new Error('the sheet drew no legend for the three sigils')
-      const shown = legend.textContent ?? ''
-      for (const word of ['标签', '优先级', '开始', '计划', '截止']) {
-        expect(shown, `图例里没有说清「${word}」`).toContain(word)
-      }
-      for (const sigil of ['#', '!', '@']) {
-        expect(shown, `图例里没有那个记号「${sigil}」`).toContain(sigil)
-      }
     } finally {
       panel.dispose()
     }

@@ -27,7 +27,7 @@ import { createRoot, type Root } from 'react-dom/client'
 import { claimsKey, dispatchKey, ITEM_KEYS, type ItemKeyActions } from '../src/client/item/keyboard.ts'
 import { EMPTY_ITEM_QUERY, parseItemQuery } from '../src/core/item-view.ts'
 import { ItemCommandPalette, type PaletteAction, type PaletteCommands } from '../src/client/item/command-palette.tsx'
-import { click, fixtures, mountPanel, press, type as typeInto } from './panel-harness.ts'
+import { fixtures, mountPanel, press, type as typeInto } from './panel-harness.ts'
 import { zh } from '../src/client/locales.ts'
 
 /** What the harness hands back: a mounted panel and the way to take it down. */
@@ -48,16 +48,6 @@ function fieldOf(panel: Mounted): HTMLInputElement {
   return input as HTMLInputElement
 }
 
-/** Open the ＋新建一条 sheet, the surface the capture grammar now lives on. */
-function openSheet(panel: Mounted): HTMLElement {
-  const trigger = [...panel.surface.querySelectorAll('button')]
-    .find(node => (node.textContent ?? '').includes(zh['item.topbar.create'] as string))
-  if (trigger === undefined) throw new Error('the panel has no ＋新建一条 door')
-  click(trigger)
-  const sheet = panel.surface.querySelector('[class*="itemCreate"]')
-  if (sheet === null) throw new Error('＋新建一条 opened nothing')
-  return sheet as HTMLElement
-}
 function rowNamesOf(scope: HTMLElement): readonly string[] {
   return [...scope.querySelectorAll('[class*="itemFacetName"]')]
     .map(node => node.textContent ?? '')
@@ -533,22 +523,6 @@ describe('`×` means one thing on this panel: it takes a condition OFF the query
         expect(node.getAttribute('aria-label') ?? '', 'a cross is on screen with no name, so nothing says what it removes')
           .toMatch(/^(去掉|移除|关掉|关闭)/)
       }
-      // AND THE ONE FIELD THAT PUTS TEXT BACK IS NOT ONE OF THEM. Typing a tag
-      // into it produces the chip that undoes the parser; it must not be a cross.
-      //
-      // That field is not on the surface at REST — the capture grammar lives in
-      // the ＋新建一条 sheet, so there is no always-on field to type into, and a
-      // gate that looked for one at rest would be reading nothing. The rule still
-      // has to hold, so it is checked where the field lives: in the sheet, opening
-      // it first.
-      openSheet(panel)
-      const capture = panel.surface.querySelector('[class*="itemInput"]')
-      expect(capture, 'the sheet opened and there is still no field — there is no chip to look at').not.toBeNull()
-      typeInto(capture, '#画廊 !1')
-      const chip = [...panel.surface.querySelectorAll('button')].find(node => node.getAttribute('aria-label')?.includes(zh['item.token.undo'] as string))
-      expect(chip, 'the sheet drew no chip for what it recognised — there is nothing to check').toBeDefined()
-      expect(chip?.textContent, 'the chip that puts text back is a cross again — the same glyph, the opposite verb, one inch apart').not.toContain('×')
-      expect(chip?.getAttribute('aria-label'), 'the chip that puts text back does not say so').toContain(zh['item.token.undo'] as string)
     } finally {
       panel.dispose()
     }
