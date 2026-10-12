@@ -322,7 +322,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     task => controller.linkedOf(task).map(row => row.sessionId),
     {
       questionOf: sessionId => controller.questionPendingOf(sessionId),
-      answerInPlace: controller.questionAnswerInPlace,
+      answerableOf: sessionId => controller.questionAnswerableOf(sessionId),
     },
     note => arrivalOf(arrivalSeen, note),
     // eslint-disable-next-line react-hooks/exhaustive-deps

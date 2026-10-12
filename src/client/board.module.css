@@ -4619,7 +4619,6 @@ textarea.input {
 .attachRemove:focus-visible,
 .sessionContextHead:focus-visible,
 .tagCustomColor:focus-visible,
-button.interactionOption:focus-visible,
 .tagSwatch:focus-visible {
   outline: 2px solid var(--dsw-alias-state-business-primary);
   outline-offset: 2px;
@@ -6009,33 +6008,47 @@ button.interactionOption:focus-visible,
   gap: 2px;
   min-width: 0;
 }
-/* Read-only shell options are PLAIN TEXT (never clickable): they stay inline
-   chips so the read-only card reads as a description, not as a menu the user
-   will try to press. */
-span.interactionOptions {
-  flex-direction: row;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-/* The option's shape: the pill belongs to the READ-ONLY shell's chips (plain
-   text — never clickable). The interactive menu row is its own class, so the
-   pill geometry contract keeps one meaning. `width` stays auto (content) with
-   the max-width floor so a long label can never pierce the card. */
-.interactionOption {
-  display: inline-flex;
-  width: auto;
-  max-width: 100%;
-  min-height: 0;
-  padding: 4px 10px;
-  font: inherit;
+/* The read-only card's QUOTATION of what the session offers. It is the same row
+   the answerable card draws (label + description, both readable — a `title=` is
+   not a description on a touch screen), inside `li`s instead of buttons, hung on
+   a hairline so the block reads as quoted speech rather than as a menu.
+
+   It used to be pills on a wrapping chip row, and a pill is a promise: readers
+   pressed it and nothing happened, because nothing could — that is the
+   「点了没反应」 report, and the fix is the shape, not a handler. */
+.interactionOfferedLead {
+  margin: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-float);
-  border: 1px solid var(--dsw-alias-border-l2);
-  border-radius: var(--dsh-tb-pill);
-  box-sizing: border-box;
-  overflow-wrap: anywhere;
-  cursor: default;
+  line-height: 18px;
+  color: var(--dsh-tb-text-3);
+}
+.interactionOffered {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0;
+  padding: 0 0 0 10px;
+  list-style: none;
+  min-width: 0;
+  border-left: 2px solid var(--dsw-alias-border-l2);
+}
+.interactionOffered > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  min-width: 0;
+  padding: 2px 0;
+}
+
+/* WHY the read-only card will not answer this one: one line above its single
+   action. Without it the reader cannot tell a board that is broken from a host
+   that owns the call. */
+.interactionReadOnlyWhy {
+  margin: 0;
+  padding: 8px 12px 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-3);
 }
 
 /* One clickable choice: a full-width menu row (native grammar) — a wrapping
@@ -6341,6 +6354,18 @@ span.interactionOptions {
      desktop showed the 「plan 卡也出横条」 horizontal scrollbar while the
      phone's overlay bar hid the same overflow. */
   overflow-wrap: break-word;
+}
+
+/* The plan card's decision rows: the same vertical menu the question card's
+   options are (one row per decision, label + description), with the card's own
+   12px inset — that card's options live inside a padded body, these do not. */
+.interactionPlanActions {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: none;
+  min-width: 0;
+  padding: 8px 12px 0;
 }
 
 /* The read-only shell's single action row (one navigate affordance). Same

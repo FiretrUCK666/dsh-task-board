@@ -87,12 +87,11 @@ export type PlanDecision = 'approve' | 'decline';
 export type PendingInteractionKind = 'approval' | 'plan-review' | 'question';
 /** The controller's thin question surface (implemented by the official mirror
  *  or the legacy tracker; absent when the host wire is unavailable — surfaces
- *  then hide the card). On 0.1.5 the mirror IS able to answer in place
- *  (`answerInPlace` is true while the official snapshot publishes an
- *  interactive carrier): it settles the very request the native composer
- *  holds, without registering a second answerer. A snapshot entry that
- *  carries data but no action keeps `answerInPlace` false and the card
- *  degrades to navigate-to-answer. */
+ *  then hide the card). On 0.1.5 the mirror IS able to answer in place (while
+ *  the official snapshot publishes an interactive carrier): it settles the very
+ *  request the native composer holds, without registering a second answerer. A
+ *  snapshot entry that carries data but no action keeps the card on its
+ *  navigate-to-answer branch. */
 export interface QuestionRpcFace {
     /** The pending wire question for one session (newest wins), if any. */
     pendingOf(sessionId: string | undefined): WireQuestion | undefined;
@@ -106,8 +105,13 @@ export interface QuestionRpcFace {
      * board honestly shows no waiting state.
      */
     waitingKindOf?(sessionId: string | undefined): PendingInteractionKind | undefined;
-    /** Whether the board answers in place (false = navigate to answer). */
-    readonly answerInPlace?: boolean;
+    /** Whether the board can settle THIS session's pending carrier in place
+     *  (false = the card navigates to the session instead). **Per session, never
+     *  per board**: one answerable carrier says nothing about another session's
+     *  — a board-wide reading is how a card that cannot answer gets drawn as one
+     *  that can, and the reader's click lands on nothing. Omitted = no such
+     *  observation at all, so the card degrades to navigate-to-answer. */
+    canAnswerOf?(sessionId: string | undefined): boolean;
     /** Deliver the whole answer batch; false = refused, stale or unavailable
      *  (the card stays open and shows the reason — never a silent close). */
     answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;

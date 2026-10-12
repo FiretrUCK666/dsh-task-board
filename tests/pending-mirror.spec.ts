@@ -3,9 +3,11 @@
  * newest-wins WireQuestions, approvals never render, and — while an entry
  * carries the native carrier's own `answer`/`cancel` — the face settles THAT
  * request in place (never a second answerer, never a stale object). A
- * display-only entry (or no uiSession at all) reports `answerInPlace` false so
- * the card degrades to navigate-to-answer. Drives the face with a
- * hand-controlled fake uiSession (snapshot + listener set), no real host.
+ * display-only entry (or no uiSession at all) reports `canAnswerOf` false FOR
+ * THAT SESSION so the card degrades to navigate-to-answer — and an answerable
+ * carrier in one session never makes another session's card answerable. Drives
+ * the face with a hand-controlled fake uiSession (snapshot + listener set), no
+ * real host.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { PendingMirror } from '../src/client/board/pending-mirror.ts'
@@ -104,7 +106,8 @@ describe('PendingMirror', () => {
     const mirror = new PendingMirror(ui)
     expect(mirror.pendingOf('s-run')).toBeUndefined()
     expect(mirror.pendingOf('s-idle')).toBeUndefined()
-    expect(mirror.answerInPlace).toBe(false)
+    expect(mirror.canAnswerOf('s-run')).toBe(false)
+    expect(mirror.canAnswerOf(undefined)).toBe(false)
   })
 
   it('waitingKindOf reads the SIGNAL from the status envelope — all three kinds, unknown reads as none', () => {
@@ -134,7 +137,7 @@ describe('PendingMirror', () => {
     const mirror = new PendingMirror(undefined)
     expect(mirror.waitingKindOf('s-1')).toBeUndefined()
     expect(mirror.pendingOf('s-1')).toBeUndefined()
-    expect(mirror.answerInPlace).toBe(false)
+    expect(mirror.canAnswerOf('s-1')).toBe(false)
   })
 
   it('never renders approval carriers', () => {
@@ -144,7 +147,7 @@ describe('PendingMirror', () => {
     ])
     const mirror = new PendingMirror(ui)
     expect(mirror.pendingOf('s-1')).toBeUndefined()
-    expect(mirror.answerInPlace).toBe(false)
+    expect(mirror.canAnswerOf('s-1')).toBe(false)
   })
 
   it('renders a detail-carried plan review (empty question line, plan in detail)', () => {
@@ -181,7 +184,7 @@ describe('PendingMirror', () => {
     const [, entry] = live('question:1', 's-1', '一')
     ui.snapshot = new Map([['s-1', status(entry)]])
     const mirror = new PendingMirror(ui)
-    expect(mirror.answerInPlace).toBe(true)
+    expect(mirror.canAnswerOf('s-1')).toBe(true)
     const answers = [{ id: 'q-1', selected: ['好'] }]
     await expect(mirror.answer('question:1', 's-1', answers)).resolves.toBe(true)
     // The ONE answerer: the request's own method, with the native answer shape.
@@ -214,9 +217,31 @@ describe('PendingMirror', () => {
     const ui = new FakeUiSession()
     ui.snapshot = new Map([['s-1', status(question('question:1', 's-1', '一')[1])]])
     const mirror = new PendingMirror(ui)
-    expect(mirror.answerInPlace).toBe(false)
+    expect(mirror.canAnswerOf('s-1')).toBe(false)
     await expect(mirror.answer('question:1', 's-1', [])).resolves.toBe(false)
     await expect(mirror.cancel('question:1')).resolves.toBe(false)
+  })
+
+  it('answers per SESSION: an interactive carrier never makes another session answerable', async () => {
+    /* The defect this pins: the face used to scan EVERY entry and report
+       「answerable」 when ANY carrier was interactive. A card then drew the
+       answerable menu for a session whose own carrier was display-only — the
+       reader pressed an option and the settle was refused, with nothing on the
+       screen explaining why (「按钮点了没反应」). The question is about THIS
+       card's carrier, so it is asked with THIS card's session. */
+    const ui = new FakeUiSession()
+    const [, liveEntry] = live('question:1', 's-live', '一')
+    ui.snapshot = new Map([
+      ['s-live', status(liveEntry)],
+      ['s-plain', status(question('question:2', 's-plain', '二')[1])],
+    ])
+    const mirror = new PendingMirror(ui)
+    expect(mirror.canAnswerOf('s-live')).toBe(true)
+    expect(mirror.canAnswerOf('s-plain')).toBe(false)
+    // The settle follows the same per-session answer, so the display-only
+    // session is refused here rather than drawn as answerable and failing later.
+    await expect(mirror.answer('question:1', 's-live', [])).resolves.toBe(true)
+    await expect(mirror.answer('question:2', 's-plain', [])).resolves.toBe(false)
   })
 
   it('reports a refused settle as false (the card keeps itself open)', async () => {
@@ -247,7 +272,7 @@ describe('PendingMirror', () => {
   it('degrades to empty without a uiSession face', async () => {
     const mirror = new PendingMirror(undefined)
     expect(mirror.pendingOf('s-1')).toBeUndefined()
-    expect(mirror.answerInPlace).toBe(false)
+    expect(mirror.canAnswerOf('s-1')).toBe(false)
     let calls = 0
     const dispose = mirror.subscribe(() => { calls += 1 })
     dispose()

@@ -30,10 +30,12 @@
  * the read-only shell (kind + one navigate affordance); the waiting banner
  * stays available there, so a proven wait never reaches the UI as silence.
  */
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import {
+  approveLabelOf,
   answerBatchOf,
+  declineLabelOf,
   planDecisionAnswers,
   planQuestionOf,
   type QuestionDraft,
@@ -79,6 +81,45 @@ function freshDrafts(questions: readonly WireQuestionItem[]): QuestionDraft[] {
   return questions.map(() => ({ selected: [] }))
 }
 
+/**
+ * ONE row's inside — the leading marker plus the label / 推荐 badge / description
+ * line. The shape exists ONCE because three hosts draw it:
+ *
+ *   · the answerable question card wraps it in a `button` (radio / checkbox
+ *     semantics, numbered or checked);
+ *   · the plan card wraps it in a `button` (commit-on-click, no selection);
+ *   · the read-only card wraps it in an `li` — a QUOTATION, deliberately not
+ *     pressable.
+ *
+ * Rows are a vertical menu at every width (native grammar): a wrapping chip row
+ * made a two-line option and a one-word option read as the same thing. The
+ * read-only card used to draw its options as pills on that wrapping row — and a
+ * pill is a promise: readers pressed it and nothing happened, because nothing
+ * could. Same row, three wrappers, and the wrapper is the only thing that says
+ * whether it can be pressed.
+ */
+function DecisionRowInside({ marker, label, badge, description }: {
+  readonly marker: ReactNode
+  readonly label: ReactNode
+  readonly badge?: ReactNode
+  readonly description?: string | undefined
+}) {
+  return (
+    <>
+      {marker}
+      <span className={css.interactionOptionCopy}>
+        <span className={css.interactionOptionLine}>
+          <span className={css.interactionOptionLabel}>{label}</span>
+          {badge}
+          {description !== undefined && (
+            <span className={css.interactionOptionDescription}>{description}</span>
+          )}
+        </span>
+      </span>
+    </>
+  )
+}
+
 /** The interaction card (see module doc). Renders nothing while idle. */
 export function InteractionCard({ question, shellWaiting, sessionId, controller }: {
   /** Parsed wire content; absent with `shellWaiting` = proven wait, unknown body. */
@@ -95,7 +136,7 @@ export function InteractionCard({ question, shellWaiting, sessionId, controller 
   // kind, one line saying the body is unreadable, and the one navigate action
   // (the native session always has the whole story). Same chrome as the
   // content card, so the rail geometry can never diverge between the two.
-  if (shellWaiting !== undefined && (question === undefined || !controller.questionAnswerInPlace)) {
+  if (shellWaiting !== undefined && (question === undefined || !controller.questionAnswerableOf(sessionId))) {
     return (
       <div className={css.interactionCard} data-plan={shellWaiting === 'plan-review' ? 'true' : undefined}>
         <div className={css.interactionCardBody}>
@@ -115,7 +156,7 @@ export function InteractionCard({ question, shellWaiting, sessionId, controller 
   // answer/cancel, or a host with no uiSession): the read-only card is the
   // honest surface — the whole batch, no submit path that could race the
   // native answerer.
-  if (!controller.questionAnswerInPlace) {
+  if (!controller.questionAnswerableOf(sessionId)) {
     return <MirrorQuestionCard question={question} sessionId={sessionId} controller={controller} />
   }
   const planQuestion = question.isPlanReview ? planQuestionOf(question) : undefined
@@ -438,23 +479,29 @@ function QuestionFlow({ question, sessionId, controller }: {
                   >
                     {item?.multiSelect === true
                       ? (
-                        <span
-                          className={`${css.interactionCheck}${selected ? ` ${css.interactionCheckOn}` : ''}`}
-                          aria-hidden="true"
-                        >
-                          {selected && <Icon name="check" />}
-                        </span>
+                        <DecisionRowInside
+                          marker={(
+                            <span
+                              className={`${css.interactionCheck}${selected ? ` ${css.interactionCheckOn}` : ''}`}
+                              aria-hidden="true"
+                            >
+                              {selected && <Icon name="check" />}
+                            </span>
+                          )}
+                          label={display.label}
+                          description={option.description}
+                        />
                       )
-                      : <span className={css.interactionOptionNumber} aria-hidden="true">{optionIndex + 1}</span>}
-                    <span className={css.interactionOptionCopy}>
-                      <span className={css.interactionOptionLine}>
-                        <span className={css.interactionOptionLabel}>{display.label}</span>
-                        {display.recommended && <span className={css.interactionBadge}>{t('review.interactionRecommended')}</span>}
-                        {option.description !== undefined && (
-                          <span className={css.interactionOptionDescription}>{option.description}</span>
-                        )}
-                      </span>
-                    </span>
+                      : (
+                        <DecisionRowInside
+                          marker={<span className={css.interactionOptionNumber} aria-hidden="true">{optionIndex + 1}</span>}
+                          label={display.label}
+                          badge={display.recommended
+                            ? <span className={css.interactionBadge}>{t('review.interactionRecommended')}</span>
+                            : undefined}
+                          description={option.description}
+                        />
+                      )}
                   </button>
                 )
               })}
@@ -596,8 +643,13 @@ function AnswerField({ variant, value, placeholder, disabled, focusOnMount, onCh
 /**
  * The plan under review: the plan body (Markdown, its own scroll region) with the
  * three decisions the hosted plan card itself offers — 去聊天里说 (dismiss the
- * request, keep discussing), 拒绝 and 确认执行. The approve label is the intent's
- * own, never inferred from option order.
+ * request, keep discussing), 拒绝 and 确认执行 — drawn as the SAME rows the
+ * question card's options use. An option list is a vertical menu at every width,
+ * and a decision that reads as one line of a menu is a decision the reader can
+ * find; beside each decision sits the asker's own description of that option when
+ * it wrote one, so the row says what leaving plan mode means in its words.
+ *
+ * The approve label is the intent's own, never inferred from option order.
  *
  * This card carries no fourth affordance: an amendment field whose text turned a
  * refusal into "revise with feedback" would break parity — the hosted plan card
@@ -617,6 +669,10 @@ function PlanReviewCard({ question, item, sessionId, controller }: {
   const [error, setError] = useState<string | undefined>(undefined)
   const approve = useMemo(() => planDecisionAnswers(item, 'approve', ''), [item])
   const decline = useMemo(() => planDecisionAnswers(item, 'decline', ''), [item])
+  // The asker's own words for its two options, when it wrote any: the approve
+  // option is the intent's label, the decline one is the first non-approve.
+  const approveNote = item.options?.find(option => option.label === approveLabelOf(item))?.description
+  const declineNote = item.options?.find(option => option.label === declineLabelOf(item))?.description
 
   const send = (answers: ReturnType<typeof planDecisionAnswers>): void => {
     setBusy(true)
@@ -644,26 +700,91 @@ function PlanReviewCard({ question, item, sessionId, controller }: {
       <div className={css.interactionPlanBody}>
         <Markdown text={plan} />
       </div>
+      <div className={css.interactionPlanActions} role="group" aria-label={item.question}>
+        <button
+          type="button"
+          className={css.interactionOptionButton}
+          disabled={busy}
+          onClick={() => { send(approve) }}
+        >
+          <DecisionRowInside
+            marker={<span className={css.interactionOptionNumber} aria-hidden="true">1</span>}
+            label={t('review.planConfirm')}
+            description={approveNote ?? t('review.planApproveNote')}
+          />
+        </button>
+        <button
+          type="button"
+          className={css.interactionOptionButton}
+          disabled={busy}
+          onClick={() => { send(decline) }}
+        >
+          <DecisionRowInside
+            marker={<span className={css.interactionOptionNumber} aria-hidden="true">2</span>}
+            label={t('review.planDecline')}
+            description={declineNote ?? t('review.planDeclineNote')}
+          />
+        </button>
+        <button
+          type="button"
+          className={css.interactionOptionButton}
+          disabled={busy}
+          onClick={discuss}
+        >
+          <DecisionRowInside
+            marker={<span className={css.interactionOptionNumber} aria-hidden="true"><Icon name="pencil" /></span>}
+            label={t('review.interactionDiscuss')}
+            description={t('review.planDiscussNote')}
+          />
+        </button>
+      </div>
       <div className={css.interactionFooter}>
         <div className={css.interactionFeedback} role="status">{error ?? ''}</div>
-        <div className={css.interactionFooterActions}>
-          <Button variant="ghost" disabled={busy} onClick={discuss}>{t('review.interactionDiscuss')}</Button>
-          <Button variant="ghost" disabled={busy} onClick={() => { send(decline) }}>{t('review.planDecline')}</Button>
-          <Button variant="primary" disabled={busy} onClick={() => { send(approve) }}>{t('review.planConfirm')}</Button>
-        </div>
       </div>
     </section>
   )
 }
 
 /**
+ * What the session offers, QUOTED — the read-only card's half of the row
+ * vocabulary. It draws the SAME row the answerable card draws (label and
+ * description, both readable: a `title=` is not a description, because a touch
+ * screen cannot show one) inside `li`s instead of `button`s.
+ *
+ * The options are the asker's own words and are quoted verbatim, exactly as the
+ * native decision card prints them: this card cannot settle the request, so
+ * nothing here may look pressable — a pill that does nothing is worse than no
+ * pill, and that is the bug this replaced.
+ */
+function OfferedDecisions({ item }: { item: WireQuestionItem }) {
+  const options = item.options ?? []
+  if (options.length === 0) return null
+  return (
+    <>
+      <p className={css.interactionOfferedLead}>{t('review.interactionOffered')}</p>
+      <ul className={css.interactionOffered}>
+        {options.map((option, index) => (
+          <li key={`${option.label}-${String(index)}`}>
+            <DecisionRowInside
+              marker={<span className={css.interactionOptionNumber} aria-hidden="true">{index + 1}</span>}
+              label={option.label}
+              description={option.description}
+            />
+          </li>
+        ))}
+      </ul>
+    </>
+  )
+}
+
+/**
  * The read-only card for a carrier the board cannot settle (a snapshot entry
  * without its own answer/cancel, or no uiSession at all): the full batch —
- * every question, its detail, its options as plain text, never as clickable
- * answers — with ONE action: navigate to the native session, where the
- * official composer owns the call. Same chrome as the interactive card, so
- * the rail geometry never diverges between hosts. (A proven wait with no
- * readable body is the shell, rendered by the caller.)
+ * every question, its detail, its options QUOTED (never as clickable answers) —
+ * with ONE action: navigate to the native session, where the official composer
+ * owns the call. Same chrome as the interactive card, so the rail geometry never
+ * diverges between hosts. (A proven wait with no readable body is the shell,
+ * rendered by the caller.)
  */
 function MirrorQuestionCard({ question, sessionId, controller }: {
   question: WireQuestion
@@ -691,6 +812,10 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
                 <Markdown text={planQuestion.detail} />
               </div>
             )}
+            {/* The decisions themselves are NOT here: a plan is long and this
+                body scrolls, so they are pinned below it (see the plan-card
+                branch) — the reader must never have to scroll a plan to find out
+                what the session is waiting on. */}
           </>
         ) : (
           <>
@@ -717,24 +842,24 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
                     <Markdown text={item.detail} />
                   </div>
                 )}
-                {(item.options ?? []).length > 0 && (
-                  <span className={css.interactionOptions}>
-                    {(item.options ?? []).map(option => (
-                      <span
-                        key={option.label}
-                        className={css.interactionOption}
-                        title={option.description}
-                      >
-                        {option.label}
-                      </span>
-                    ))}
-                  </span>
-                )}
+                {(item.options ?? []).length > 0 && <OfferedDecisions item={item} />}
               </span>
             ))}
           </>
         )}
       </div>
+      {/* The plan's decisions, quoted and PINNED under the scrolling plan — the
+          same place the answerable card's decision rows sit, so the two cards
+          read as one surface whether or not this host takes answers here. */}
+      {planQuestion !== undefined && (
+        <div className={css.interactionPlanActions}>
+          <OfferedDecisions item={planQuestion} />
+        </div>
+      )}
+      {/* WHY this card offers no answer of its own — one line, next to the one
+          action it does have. Without it the reader is left guessing whether the
+          board is broken or the host simply owns the call. */}
+      <p className={css.interactionReadOnlyWhy}>{t('review.interactionReadOnlyWhy')}</p>
       <span className={css.interactionActions}>
         <Button variant="primary" onClick={goAnswer}>{t('review.interactionGoAnswer')}</Button>
       </span>

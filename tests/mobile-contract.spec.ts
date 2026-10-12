@@ -642,13 +642,16 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(ruleOf('interactionBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*8px 12px/)
     expect(ruleOf('interactionCardBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*0 12px/)
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
-    // Two option grammars, deliberately distinct: the read-only shell's chips
-    // are plain text (no pointer cursor, no hover lift, no focus ring), while
-    // the interactive menu row is its own class with its own hover.
-    expect(source).toMatch(/^\.interactionOption\s*\{/m)
+    // Two option grammars, deliberately distinct: the read-only card QUOTES the
+    // options in `li` rows (no pointer cursor, no hover lift, no focus ring),
+    // while the interactive menu row is a button with its own hover. The label
+    // pill (`.interactionOption`) is gone for good — it looked pressable and was
+    // not, which is the 「approve / keep planning 点了没反应」 report.
+    expect(source).toMatch(/^\.interactionOffered\s*\{/m)
     expect(source).toMatch(/\.interactionOptionButton:hover:not\(:disabled\)/)
-    expect(source).not.toMatch(/[^.:\w]interactionOption:hover/)
-    expect(source).not.toMatch(/[^\w.]interactionOption:focus-visible/)
+    expect(source).not.toMatch(/\.interactionOffered[^,{]*:hover/)
+    expect(source).not.toMatch(/\.interactionOffered[^,{]*:focus-visible/)
+    expect(source, '那条「看着能按、其实按不动」的胶囊不许回来').not.toMatch(/^\.interactionOption\s*\{/m)
   })
 
   it('the interactive question card stays fully operable on a phone', () => {
@@ -1002,7 +1005,6 @@ describe('button geometry (one base for every variant)', () => {
       'notifyBadge',
       'segmentedButton',
       'timeFieldCalendar',
-      'interactionOption',
       'attachAdd',
       'attachChip',
     ]) {
@@ -1589,9 +1591,11 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // Question body rows: chrome stays inside width:100%.
     expect(ruleOf('interactionOptionButton')).toMatch(/box-sizing:\s*border-box/)
     expect(ruleOf('interactionCustomRow')).toMatch(/box-sizing:\s*border-box/)
-    // The read-only shell's chips wrap their labels inside their own box.
-    expect(ruleOf('interactionOption')).toMatch(/max-width:\s*100%/)
-    expect(ruleOf('interactionOption')).toMatch(/overflow-wrap:\s*anywhere/)
+    // The read-only card's quoted rows keep their labels and descriptions inside
+    // the card: a flex column with a min-width floor, and a label line that
+    // breaks anywhere (an unbreakable path cannot pierce the rail).
+    expect(ruleOf('interactionOffered')).toMatch(/min-width:\s*0/)
+    expect(ruleOf('interactionOptionLabel')).toMatch(/overflow-wrap:\s*anywhere/)
     // Both card scrollers ride the ONE scrollbar grammar (their bars look
     // like every other bar on the board — thin and themed, not the system
     // default that outed the desktop-only bug).

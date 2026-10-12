@@ -495,6 +495,11 @@ export declare const zh: {
     'review.planAwaiting': string;
     'review.planConfirm': string;
     'review.planDecline': string;
+    'review.planApproveNote': string;
+    'review.planDeclineNote': string;
+    'review.planDiscussNote': string;
+    'review.interactionOffered': string;
+    'review.interactionReadOnlyWhy': string;
     'review.questionIndex': string;
     'review.interactionTypePlaceholder': string;
     'review.interactionNext': string;

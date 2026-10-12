@@ -888,13 +888,21 @@ export declare class BoardController {
     questionPendingOf(sessionId: string | undefined): WireQuestion | undefined;
     /** Subscribe to pending-question changes across sessions. */
     subscribeQuestions(listener: () => void): () => void;
-    /** Whether the board can answer a pending question in place. True while the
-     *  official snapshot carries an interactive carrier (the native
+    /** Whether the board can settle THIS session's pending question in place.
+     *  True while that session's official carrier is interactive (the native
      *  `PendingQuestion` exposes `answer`/`cancel`; settling through it resolves
      *  the ONE host waterfall call — nothing new is registered, so first answer
      *  still wins). False for a display-only snapshot entry or a host with no
-     *  uiSession: the card degrades to its navigate-to-answer shell. */
-    get questionAnswerInPlace(): boolean;
+     *  uiSession: that card takes its navigate-to-answer branch.
+     *
+     *  **Per session, deliberately.** The question is "can THIS card be settled
+     *  from here", and the answer belongs to the carrier that card shows — a
+     *  board-wide reading would let one answerable session draw every other
+     *  session's card as answerable, and nothing on screen would say why the
+     *  click did nothing.
+     * @param sessionId - the session whose card is asking.
+     */
+    questionAnswerableOf(sessionId: string | undefined): boolean;
     /** Deliver one answer batch to the suspended ask. True = accepted; false =
      *  refused or stale — the card keeps itself open and reports the reason. */
     answerQuestion(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;

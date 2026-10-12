@@ -790,7 +790,9 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     } as unknown as BoardController
   }
 
-  /** 一份计划：标题、清单、任务勾选与表格各一个，好一眼看出渲染器有没有干活。 */
+  /** 一份计划：标题、清单、任务勾选与表格各一个，好一眼看出渲染器有没有干活。
+   *  两个选项与它们的说明照宿主真实的计划题给——`dsh-plan-mode` 写的就是
+   *  Approve / Keep planning 这一对，说明由提问方自己写。 */
   function planQuestion(): WireQuestion {
     return {
       rpcId: 'rpc-plan-1',
@@ -800,6 +802,10 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         id: 'plan',
         question: '这份计划可以开工吗？',
         intent: { kind: 'plan-review', approve: '确认' },
+        options: [
+          { label: '确认', description: '离开计划模式，从下一步开始照着它做' },
+          { label: '再改改', description: '不批准：改完再拿回来' },
+        ],
         detail: [
           '## 计划：换掉东墙的灯',
           '',
@@ -825,16 +831,28 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     let markup = ''
     const must: string[] = []
     try {
-      if (asked === 'plan-card') {
+      if (asked === 'plan-card' || asked === 'plan-card-live') {
+        /* 两张：**只读那一支**（这台机器的宿主不提供就地作答：选项是引用行 + 那扇门）与
+           **能就地答那一支**（三行真动作）。它们此前只有结构断言，而「一横一横还是胶囊」
+           正是结构断断言不了的那一半。 */
+        const answerable = asked === 'plan-card-live'
         markup = renderToStaticMarkup(createElement(InteractionCard, {
           question: planQuestion(),
           shellWaiting: undefined,
           sessionId: 's-1',
-          controller: { questionAnswerInPlace: false, openSession: () => undefined } as never,
+          controller: {
+            questionAnswerableOf: () => answerable,
+            openSession: () => undefined,
+            answerQuestion: async () => true,
+            cancelQuestion: async () => true,
+          } as never,
         } as never))
         /* **这一张图要能证明渲染器真的渲染了。** 计划正文此前是 `<span>` 里的裸文本，所以这里
            读的是**元素**：标题、清单、编号清单、表格各自到位，记号本身不再出现在屏上。 */
         must.push('换掉东墙的灯', '先看现场', '断电')
+        must.push(...answerable
+          ? [t('review.planConfirm'), t('review.planDecline'), t('review.interactionDiscuss')]
+          : [t('review.interactionOffered'), t('review.interactionReadOnlyWhy'), t('review.interactionGoAnswer')])
         for (const element of ['<h3', '<ul', '<ol', '<table']) {
           expect(markup, `计划正文里没有 ${element}——它又被当成纯文本画了`).toContain(element)
         }
@@ -859,7 +877,7 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         must.push('灯位.png', '看一眼这面墙', '含 1 张图片')
         root.unmount()
       } else {
-        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card)`)
+        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live)`)
       }
       const aligned = alignClassNames(markup, panelCss())
       writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')
@@ -870,5 +888,100 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     } finally {
       document.body.removeChild(host)
     }
+  })
+})
+
+/**
+ * 交互卡的两支：**能就地答的那一支，每一行都是真按钮**（按一次真的把那一批答案送出去）；
+ * **答不了的那一支，一个能按的东西都不许有**——它只引用会话给的选项，并说出为什么。
+ *
+ * 这一节钉的是用户报的那两件事：「approve / keep planning 点了没反应」，以及「排版从一横一横
+ * 变成胶囊」。两个根因各有各的落点：判据按**会话**算（别的会话能答，不许把这条会话的卡也画成
+ * 能答）由 `pending-mirror.spec.ts` 钉；这里钉的是卡本身——能答的时候它画什么、不能答的时候
+ * 它画什么。
+ */
+describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
+  /** 一张只用到这几个成员的面：判据、两条结算路、那扇门。 */
+  function face(canAnswer: boolean, answerQuestion = vi.fn(async () => true)): {
+    controller: BoardController
+    answerQuestion: typeof answerQuestion
+    cancelQuestion: ReturnType<typeof vi.fn>
+  } {
+    const cancelQuestion = vi.fn(async () => true)
+    return {
+      controller: {
+        questionAnswerableOf: () => canAnswer,
+        answerQuestion,
+        cancelQuestion,
+        openSession: vi.fn(),
+      } as unknown as BoardController,
+      answerQuestion,
+      cancelQuestion,
+    }
+  }
+
+  /** 宿主真实的计划题：两个选项 + 提问方自己写的说明。 */
+  function plan(): WireQuestion {
+    return {
+      rpcId: 'rpc-plan-1',
+      sessionId: 's-1',
+      isPlanReview: true,
+      questions: [{
+        id: 'plan',
+        question: '这份计划可以开工吗？',
+        intent: { kind: 'plan-review', approve: '确认' },
+        options: [
+          { label: '确认', description: '离开计划模式，从下一步开始照着它做' },
+          { label: '再改改', description: '不批准：改完再拿回来' },
+        ],
+        detail: '## 计划：换掉东墙的灯',
+      }],
+    }
+  }
+
+  it('answers in place: every decision is a real row, and one click sends the verbatim label', async () => {
+    const { controller, answerQuestion } = face(true)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => {
+        root.render(createElement(InteractionCard, {
+          question: plan(),
+          shellWaiting: undefined,
+          sessionId: 's-1',
+          controller,
+        } as never))
+      })
+      const rows = [...host.querySelectorAll('button')]
+      expect(rows.length, '计划卡的动作不是三行按钮——读者按不到').toBe(3)
+      expect(rows.map(row => row.textContent ?? '').join('|')).toContain(t('review.interactionDiscuss'))
+      const approveRow = rows.find(row => (row.textContent ?? '').includes(t('review.planConfirm')))
+      expect(approveRow, '没有「确认执行」那一行').toBeDefined()
+      await act(async () => { approveRow?.click() })
+      /* **载荷里是提问方自己那个标签**（逐字），不是我们的词：答案必须带原标签才算数，
+         而屏上写的是我们的话——两件事各归各的，正是这张卡最容易接错的一根线。 */
+      expect(answerQuestion).toHaveBeenCalledTimes(1)
+      expect(answerQuestion).toHaveBeenCalledWith('rpc-plan-1', 's-1', [{ id: 'plan', selected: ['确认'] }])
+    } finally {
+      await act(async () => { root.unmount() })
+      document.body.removeChild(host)
+    }
+  })
+
+  it('cannot answer here: the card quotes the options and nothing in it looks pressable', () => {
+    const markup = renderToStaticMarkup(createElement(InteractionCard, {
+      question: plan(),
+      shellWaiting: undefined,
+      sessionId: 's-1',
+      controller: face(false).controller,
+    } as never))
+    // 只有那扇门是一枚按钮；会话给的选项是引用行（`li`），不是胶囊。
+    expect((markup.match(/<button/g) ?? []).length, '只读卡里出现了能按的东西').toBe(1)
+    expect(markup).toContain(t('review.interactionGoAnswer'))
+    expect(markup).toContain(t('review.interactionOffered'))
+    expect(markup).toContain(t('review.interactionReadOnlyWhy'))
+    // 说明读得见（不再塞进 `title=`）：触屏没有 hover，说明不能只挂在 title 上。
+    expect(markup).toContain('离开计划模式，从下一步开始照着它做')
   })
 })

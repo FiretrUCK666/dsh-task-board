@@ -214,6 +214,7 @@ const INTERNAL = {
   loadImage: '读一张图片的字节。读可以，**上传没有模型通道**（见下面「决定不给模型」那一组）',
   attachmentsAvailable: '这个 host 有没有附件库。它只回答「能不能」，**真的收下字节那一下是上传**（见下面「决定不给模型」那一组）',
   canRecheckSeat: '现在能不能重查更新席位。它只回答「能不能」，**真的去查那一下是人的动作**（见下面「决定不给模型」那一组）',
+  questionAnswerableOf: '这一条会话的待答问题能不能在板内就地结算。它只回答「能不能」，**作答本身是人的动作**（见下面「决定不给模型」那一组）。**按会话问**：答案属于那张卡自己的载体，全表算一次就会把答不了的卡画成能答',
   // --- subscriptions and lifecycle: wiring, not verbs -------------------------
   // Held by an effect, torn down with it. Nothing here is something a person or a
   // model can ask for; they return an unsubscribe function and that IS the work.

@@ -143,8 +143,10 @@ export interface WaitingContentFace {
     questions: readonly { question: string; detail?: string; intent?: { kind: string } }[]
     isPlanReview: boolean
   } | undefined
-  /** Whether the board can settle a carrier in place right now. */
-  answerInPlace?: boolean
+  /** Whether the board can settle ONE session's carrier in place right now —
+   *  asked per session, because an answerable carrier elsewhere says nothing
+   *  about the row being drawn. */
+  answerableOf?: (sessionId: string | undefined) => boolean
 }
 
 /**
@@ -198,7 +200,7 @@ export function notificationsExOf(
       ? content.questionOf?.(sessionId)
       : undefined
     const body = waitingBodyOf(question)
-    const answerable = body !== undefined && waitingKind !== 'approval' && content.answerInPlace === true
+    const answerable = body !== undefined && waitingKind !== 'approval' && content.answerableOf?.(sessionId) === true
     waiting.push({
       taskId: task.id,
       taskTitle: task.title,

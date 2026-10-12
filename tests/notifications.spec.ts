@@ -344,12 +344,12 @@ describe('waiting body (signal + content + affordance, one derivation)', () => {
       id === 's-1' ? 'question' : undefined
     // Readable carrier + interactive host = content row with 去回答.
     const content = notificationsExOf(tasks, pending, id => id, () => [],
-      { questionOf: () => questionBatch, answerInPlace: true })
+      { questionOf: () => questionBatch, answerableOf: () => true })
     expect(content[0].excerpt).toBe('要继续吗？')
     expect(content[0].answerable).toBe(true)
     // Same carrier, display-only host = content WITHOUT the affordance.
     const degraded = notificationsExOf(tasks, pending, id => id, () => [],
-      { questionOf: () => questionBatch, answerInPlace: false })
+      { questionOf: () => questionBatch, answerableOf: () => false })
     expect(degraded[0].excerpt).toBe('要继续吗？')
     expect(degraded[0].answerable).toBeUndefined()
     // No carrier at all = shell (no excerpt, no affordance).
@@ -363,7 +363,7 @@ describe('waiting body (signal + content + affordance, one derivation)', () => {
       executions: [{ id: 'e1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }],
     })]
     const rows = notificationsExOf(tasks, () => 'plan-review' as const, id => id, () => [],
-      { questionOf: () => planBatch, answerInPlace: true })
+      { questionOf: () => planBatch, answerableOf: () => true })
     expect(rows[0].excerpt).toBe(waitingExcerptOf('## 计划 1. 先做 A 2. 再做 B'))
     expect(rows[0].answerable).toBe(true)
   })

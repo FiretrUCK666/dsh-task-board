@@ -117,8 +117,10 @@ export interface WaitingContentFace {
         }[];
         isPlanReview: boolean;
     } | undefined;
-    /** Whether the board can settle a carrier in place right now. */
-    answerInPlace?: boolean;
+    /** Whether the board can settle ONE session's carrier in place right now —
+     *  asked per session, because an answerable carrier elsewhere says nothing
+     *  about the row being drawn. */
+    answerableOf?: (sessionId: string | undefined) => boolean;
 }
 /**
  * THE notification center's rows: waiting conversations first (newest arrival

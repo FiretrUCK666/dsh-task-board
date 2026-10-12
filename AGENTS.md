@@ -553,8 +553,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   **前滚到下一个匹配**，且**不盖 `lastAt`**：那个戳记的是「真的发出去过」，跳过不是发送。
 - **车道 = 会话**：`isOpenRound` 唯一判定；预算数轮；卡片离进行中唯一判定 `leaveRunningTargetOf`
   （open/live/schedule 三腿），不另起特判。
-- **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 自带 `answer`/`cancel` 时就卡作答（身份守卫：
-  身份不符即拒，失败留卡报错）；数据型 carrier 才降级跳回原生；**board 永不注册 waterfall**。
+- **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 带 `answer`/`cancel` 时就卡作答（身份不符即拒，
+  失败留卡报错）——**能不能就地答按会话判**；数据型的降级跳回原生；**board 永不注册 waterfall**。
 - **自动化与巡航**：任务 `schedule` 与会话 `rules` 正交；on-complete 永续（`done` 硬停）；每会话至多
   一条规则；巡航 `enabled` 主权。
 - **草稿**：`drafts.ts` 设备本地；未提交回来、提交清槽；五键；评论 v1 信封。

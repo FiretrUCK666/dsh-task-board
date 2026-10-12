@@ -146,16 +146,19 @@ export class PendingMirror implements QuestionRpcFace {
   }
 
   /**
-   * Whether ANY live interaction can be settled from here. Read fresh by the
-   * card on every render: a data-only snapshot entry (no `answer`/`cancel`)
-   * keeps the read-only navigate shell, so "can answer" is never claimed for
-   * a carrier that cannot.
+   * Whether THIS session's live interaction can be settled from here. Read
+   * fresh by the card on every render: a data-only snapshot entry (no
+   * `answer`/`cancel`) keeps that card on its read-only navigate shell, so
+   * "can answer" is never claimed for a carrier that cannot — and never
+   * claimed for one session because a DIFFERENT session's carrier is
+   * interactive (the board reads this once per card, with that card's
+   * session).
+   * @param sessionId - the session whose card is asking.
    */
-  get answerInPlace(): boolean {
-    for (const entry of this.entries.values()) {
-      if (canAnswer(entry.carrier)) return true
-    }
-    return false
+  canAnswerOf(sessionId: string | undefined): boolean {
+    if (sessionId === undefined) return false
+    const entry = this.entries.get(sessionId)
+    return entry !== undefined && canAnswer(entry.carrier)
   }
 
   subscribe(listener: () => void): () => void {

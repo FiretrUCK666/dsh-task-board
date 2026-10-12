@@ -801,7 +801,7 @@ describe('card no-breakout CSS contract', () => {
 describe('design-system contracts: pill geometry + compact rhythm', () => {
   /**
    * WHY (the 「改了好多次都没弄回来」 family): pills drift to a fixed px radius one
-   * member at a time (columnTab compact override, interactionOption, attachChip, …)
+   * member at a time (columnTab compact override, attachChip, …)
    * and each fix repairs only the instance on the current screenshot. The single
    * truth is the --dsh-tb-pill / --dsh-tb-button-radius token pair; this block fails
    * the build the moment any pill stops consuming it, so the family cannot drift
@@ -823,7 +823,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       'columnCount', 'chipFill', 'feedFilter', 'feedSearch', 'feedAction',
       'segmentedButton', 'iconButton', 'buttonSm', 'notifyBadge',
       'cardQuickRun', 'promptCopy', 'reviewJumpLatest', 'attachAdd',
-      'attachChip', 'interactionOption', 'timeFieldCalendar', 'switchTrack',
+      'attachChip', 'timeFieldCalendar', 'switchTrack',
     ]) {
       expect(expectRule(name), `.${name} must stay a true pill`).toContain('var(--dsh-tb-pill)')
     }

@@ -654,7 +654,23 @@ active 去长占。
   永远推不走确认按钮与输入框。
 - **宽度契约（每层装得下）**：`width:100%` 必须配 `box-sizing: border-box`（padding/边框是
   盒自带的行头，不是额外宽度——全表扫描有契约测试，这族 bug 出现即红）；文本包装器一律带
-  断词（`interactionPlanBody: break-word`、shell 选项胶囊 `anywhere` + `max-width:100%`）。
+  断词（`interactionPlanBody: break-word`、选项标签 `anywhere`、只读引用行 `min-width:0`）。
+- **行的形状只有一处**（`DecisionRowInside`）：题卡的选项行、计划卡的决断行、只读卡的引用行
+  是**同一行**（记号槽 + 标签 + 说明），差别只在外面那层壳——`button`（能按）还是 `li`（引用）。
+  **能按与不能按的区别必须由壳说，不许由形状说**：只读那一支此前把选项画成胶囊，读者按下去
+  什么也没发生（「approve / keep planning 点了没反应」），而它本来只是一句说明。
+- **答不了的那一支要说出为什么**：一行 `interactionReadOnlyWhy` 挨着它唯一那扇门
+  （`去会话回答`），否则读者分不清「板坏了」与「这台机器的宿主自己owns作答」。
+- **判据按会话算，不按全表**（`questionAnswerableOf(sessionId)` → `PendingMirror.canAnswerOf`）：
+  「这条会话的载体能不能结算」是那张卡自己的事实；全表扫一次会把答不了的卡画成能答，
+  而屏幕上不会有人解释为什么点了没反应。
+- **决断钉在滚动区外面**：计划卡的决断行（`interactionPlanActions`）与只读卡的引用行都在
+  `interactionPlanBody` / `interactionCardBody` 之外——计划是长的，读者不该为了看清「它在等
+  什么」把计划滚到底。
+- **载荷与屏上是两件事**：行上写我们的话（确认执行 / 拒绝 / 去聊天里说），送出去的是**提问方
+  自己那个标签**（`planDecisionAnswers` 取 `intent.approve` 与第一个非 approve 选项，逐字）。
+  量法：`tests/board-panel.spec.ts` 真点一次并断言载荷；工件 `plan-card`（只读支）与
+  `plan-card-live`（能答支），两档各一张。
 - **规范陷阱记录在案**：写 `overflow-y: auto` 的滚动体，按 CSS 规范另一轴自动变 `auto`——
   任何漏装下的子元素都会变成一根横条。这就是「电脑端提问/plan 出横条、手机悬浮滚动条隐身」
   的完整机制；两根滚动体都在统一美化滚动条名单里，横竖条同形态。
