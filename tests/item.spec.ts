@@ -23,6 +23,7 @@ import {
   type ItemStatus,
 } from '../src/core/item.ts'
 import { ALL_STATUSES } from '../src/core/tasks.ts'
+import { attachmentsOf } from '../src/core/attachment.ts'
 
 const T0 = 1_700_000_000_000
 
@@ -185,6 +186,20 @@ describe('parseItems', () => {
     expect(row.attachments).toEqual([
       { attachmentId: 'att-ok', name: '灯位.png', bytes: 2048, mediaType: 'image/png', width: 800, height: 600 },
     ])
+  })
+
+  it('a stored reference survives the round trip through the send path, field for field', () => {
+    /* 环回等式：文档里那一份 ref，与发送路径读到的那一份，必须是同一个东西。
+       这条钉的是「ref 是官方的值」——上传应答带着尺寸，文档存着它，发送时读回来，
+       三处之间谁都不许按自己认得的那几个键重拼一份。少一个字段的代价不是少一行信息：
+       官方读回时拿字节去对这份引用，对不上就报损坏，而图片本身是好的。 */
+    const stored = { attachmentId: 'att-img', name: 'IMG_20261013_012519.jpg', bytes: 2048, mediaType: 'image/jpeg', width: 1600, height: 1200 }
+    const [row] = parseItems(raw({ attachments: [stored] }), counter())
+    expect(row.attachments).toEqual([stored])
+    expect(attachmentsOf(row)).toEqual([stored])
+    // 文件那一份没有尺寸，也没有多余的键：环回等式两边都要一字不差。
+    const file = { attachmentId: 'att-doc', name: 'notes.pdf', bytes: 11 }
+    expect(attachmentsOf({ attachments: [file] })).toEqual([file])
   })
 
   it('starts empty on absent, unparseable and non-array input', () => {

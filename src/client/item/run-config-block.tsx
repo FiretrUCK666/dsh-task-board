@@ -66,33 +66,35 @@ export function RunConfigBlock(props: RunConfigBlockProps) {
   return (
     <div className={css.itemRunConfigHead} data-note={headed && note.open ? '' : undefined}>
       {/* **按钮不装按钮**：`Disclosure` 的头本身就是 `<button>`，所以 ⓘ 站在它旁边，两者由这一
-       * 行承载。`data-note-hover` 挂在这一行上——读者指着的是「运行配置」这一行。 */}
+       * 行承载。`data-note-hover` 挂在这一行上——读者指着的是「运行配置」这一行。
+       *
+       * **这一行不套盒子。** 包一层盒子时，ⓘ 的同行就是那一整块（头 + 展开的正文）——展开
+       * 之后它会被摆到正文中间去。所以头那一行与折叠体各自是这一行里的一格（样式表那条网格
+       * 规则），中间只隔着 `Disclosure` 自己那两层不画的盒子。 */}
       <div className={css.itemRunConfigHeadRow} data-note-hover="">
-        <div className={css.itemRunConfigHeadText}>
-          <Disclosure
-            title={t('item.ask.configRow')}
-            summary={props.summary}
-            open={open}
-            onToggle={() => { setOpen(!open) }}
-          >
-            <RunConfigRows config={props.config} workspaceTitleOf={props.workspaceTitleOf} />
-            {editing
-              ? (
-                <div className={css.itemRunConfigEdit}>
-                  <RunConfigFields value={draft} onChange={setDraft} controller={props.controller} />
-                  <div className={css.itemRunConfigAct}>
-                    <Button size="sm" onClick={() => { setEditing(false) }}>{t('detail.cancel')}</Button>
-                    <Button size="sm" variant="primary" onClick={commit}>{t('detail.save')}</Button>
-                  </div>
-                </div>
-              )
-              : (
+        <Disclosure
+          title={t('item.ask.configRow')}
+          summary={props.summary}
+          open={open}
+          onToggle={() => { setOpen(!open) }}
+        >
+          <RunConfigRows config={props.config} workspaceTitleOf={props.workspaceTitleOf} />
+          {editing
+            ? (
+              <div className={css.itemRunConfigEdit}>
+                <RunConfigFields value={draft} onChange={setDraft} controller={props.controller} />
                 <div className={css.itemRunConfigAct}>
-                  <Button size="sm" onClick={startEdit}>{t('item.ask.configChange')}</Button>
+                  <Button size="sm" onClick={() => { setEditing(false) }}>{t('detail.cancel')}</Button>
+                  <Button size="sm" variant="primary" onClick={commit}>{t('detail.save')}</Button>
                 </div>
-              )}
-          </Disclosure>
-        </div>
+              </div>
+            )
+            : (
+              <div className={css.itemRunConfigAct}>
+                <Button size="sm" onClick={startEdit}>{t('item.ask.configChange')}</Button>
+              </div>
+            )}
+        </Disclosure>
         {headed && <NoteEntry note={note} />}
       </div>
       {/* 只在还没挂卡时说：那时这一份会被新卡带走；已经挂着卡时说了就是第二句关于卡的话。 */}

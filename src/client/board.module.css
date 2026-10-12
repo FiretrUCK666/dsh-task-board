@@ -6337,15 +6337,40 @@ textarea.input {
   background: var(--dsh-tb-attention);
   border-radius: 50%;
 }
+/* THE PLAN'S BODY OWNS ITS OWN FLOOR AND CEILING — that is what keeps a plan
+   readable when the card is squeezed. The card's cap (`.interactionCard`'s
+   `max-height`) is spent by the chrome first: the strip, the decision rows and
+   the footer are all `flex: none`, so the body is what pays — measured on the
+   bench's plan card, a 322px card leaves the body 131px for a 228px plan (the
+   plan's first six lines, then a scrollbar), and the reported card is that state
+   with one more decision row under it.
+
+   The floor is COMPUTED FROM THIS PARAGRAPH'S OWN LINE BOX — `font-size ×
+   line-height`, both declared once as tokens right here, so a font or size change
+   moves the floor with the text instead of leaving a number behind. The ceiling
+   is the sheet's 320px reading ceiling, read HERE because this is the box that
+   scrolls: a long plan still scrolls inside its own region and never pushes the
+   decision rows out of the card. */
 .interactionPlanBody {
+  --plan-body-ink: 13px;
+  --plan-body-lead: 1.5;
+  --plan-body-line: calc(var(--plan-body-ink) * var(--plan-body-lead));
+  --plan-body-pad-block: 10px;
+  /* At least this many lines of the plan are visible before anything scrolls. */
+  --plan-body-floor-lines: 3;
+  --plan-body-ceiling: 320px;
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
+  /* **地板**：若干行 + 上下内衬。决断那几行钉在下面，而正文不再替它们让位——
+     卡装不下时让位的是**整张卡**（见 `.interactionCard:has(> .interactionPlanBody)`），
+     由外层那个滚动区滚。 */
+  min-block-size: calc(var(--plan-body-floor-lines) * var(--plan-body-line) + 2 * var(--plan-body-pad-block));
+  max-block-size: var(--plan-body-ceiling);
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 10px 12px;
-  font-size: 13px;
-  line-height: 1.5;
+  padding: var(--plan-body-pad-block) 12px;
+  font-size: var(--plan-body-ink);
+  line-height: var(--plan-body-lead);
   /* THE containment every other content wrapper in this sheet already has
      (`.interactionDetail`, `.reviewCommentText`): a plan is Markdown full of
      unbreakable tokens (paths, URLs, flags), and WITHOUT this they cannot
@@ -6354,6 +6379,17 @@ textarea.input {
      desktop showed the 「plan 卡也出横条」 horizontal scrollbar while the
      phone's overlay bar hid the same overflow. */
   overflow-wrap: break-word;
+}
+
+/* The plan card does NOT cap itself: its ceiling belongs to the body that
+   scrolls (above), because a cap on the card cannot tell how much of it the
+   pinned chrome will take. So the card is as tall as strip + body + decisions +
+   footer, and a box too short for that is absorbed by the region that scrolls
+   (`.commentsScroll` — 「滑到最新」 already lands on the card's bottom) instead
+   of being paid for by the plan. The read-only plan card keeps the shared cap:
+   its body is `.interactionCardBody`, so it is not this one. */
+.interactionCard:has(> .interactionPlanBody) {
+  max-height: none;
 }
 
 /* The plan card's decision rows: the same vertical menu the question card's

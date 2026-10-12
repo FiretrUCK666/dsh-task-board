@@ -29,11 +29,31 @@ interface FileRefLike {
     name: string;
     bytes: number;
 }
-/** The durable image reference the harness hands back (structural). */
-interface ImageRefLike extends FileRefLike {
+/**
+ * The durable image reference the harness hands back (structural) — a MIRROR of
+ * the official declaration, field for field.
+ *
+ * It is written out in full rather than extending {@link FileRefLike}, because
+ * the two official references are not the same shape with additions: an image
+ * reference makes its display name OPTIONAL (the bytes are addressed by digest,
+ * the name is decoration) while a file reference requires one (the name is part
+ * of the object's path). A mirror is only useful if it says what the harness
+ * says — `scripts/verify-host-contracts.mjs` reads this declaration out of the
+ * source and reddens the moment the two drift apart, in either direction.
+ */
+interface ImageRefLike {
+    attachmentId: string;
+    /** Present when the image was submitted with a name — optional, as the harness declares it. */
+    name?: string;
+    bytes: number;
     mediaType: string;
     width: number;
     height: number;
+    /** Present only when normalization reduced the image (carried, never read here). */
+    originalDimensions?: {
+        width: number;
+        height: number;
+    };
 }
 /**
  * The attachment store, read BY NAME and structurally: this plugin never

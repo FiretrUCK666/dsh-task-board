@@ -4,7 +4,7 @@
  * Framework-free (no cordis, no runtime imports) so the state machine is
  * unit-testable in isolation.
  */
-import type { AttachmentRef, PromptAttachment } from './attachment.ts';
+import { type AttachmentRef, type PromptAttachment } from './attachment.ts';
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'review' | 'done';
 /**
@@ -237,6 +237,12 @@ export interface TaskFile {
  * THE one splitter: every record-creating path (comment, direct send, rule
  * round, external observation) uses it, so no path can silently keep half of
  * what it was handed.
+ *
+ * The durable lane copies NOTHING field by field: the ref is the official
+ * value and a record carries it whole ({@link wholeRefOf}). A record is a
+ * snapshot a later round sends from, so a field dropped here is a field the
+ * send path can never put back — the reader's own picture would come back
+ * unreadable, and nothing between here and the store would say so.
  * @param incoming - the attachments a caller passed (see `core/attachment`).
  * @returns the two lanes to store.
  */

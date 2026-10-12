@@ -20,6 +20,11 @@
  * - It proves the pending-question carrier probe still names the methods that
  *   carrier declares (its own section below), because that read is structural and
  *   a rename there fails silently.
+ * - It proves the plugin's structural mirror of the ATTACHMENT STORE is still a
+ *   mirror: the reference fields and the store members our host route declares
+ *   are compared, field by field and signature by signature, against the
+ *   installed declarations — the one boundary that has already cost readers
+ *   their pictures (see that section).
  * - It is a PRESENCE check, not a behavior audit. Green means "nothing the plugin
  *   names has gone missing", never "the interface still behaves the same".
  * - It never edits code. A failure names the exact contract and what to do.
@@ -31,10 +36,12 @@
  * usage: node scripts/verify-host-contracts.mjs [plugin-dir]
  *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-removed
  *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-services
+ *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-attachment-face
  */
-import { readFileSync, existsSync, readdirSync } from 'node:fs'
+import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, writeFileSync, rmSync } from 'node:fs'
 import { resolve, join, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { tmpdir } from 'node:os'
 
 const root = resolve(process.argv[2] ?? '.')
 const args = new Set(process.argv.slice(2).filter(arg => arg.startsWith('--')))
@@ -169,9 +176,18 @@ const absent = []
   }
   for (const line of agents.slice(section).split('\n')) {
     // `| host | \`service\` | \`member\` | \`@pkg\` |` — the injected-service rows.
-    const service = /^\|\s*(host|client)\s*\|\s*`([a-zA-Z][a-zA-Z0-9.]*)`\s*\|\s*`([^`]+)`\s*\|\s*`(@[a-z0-9/-]+)`\s*\|\s*$/.exec(line)
+    // The member cell holds EVERY member the half reads through that service, one
+    // backticked name each: reading only the first would leave the rest of the cell
+    // unchecked, and a cell whose names cannot be read at all is a row this check
+    // is blind to — so an unreadable cell is reported, never skipped.
+    const service = /^\|\s*(host|client)\s*\|\s*`([a-zA-Z][a-zA-Z0-9.]*)`\s*\|\s*([^|]+?)\s*\|\s*`(@[a-z0-9/-]+)`\s*\|\s*$/.exec(line)
     if (service !== null) {
-      services.push({ half: service[1], name: service[2], member: service[3], pkg: service[4] })
+      const named = [...service[3].matchAll(/`([^`]+)`/g)].map(match => match[1])
+      if (named.length === 0) {
+        console.error(`verify-host-contracts FAIL: the service row for \`${service[2]}\` names no readable member: ${line.trim()}`)
+        process.exit(1)
+      }
+      for (const member of named) services.push({ half: service[1], name: service[2], member, pkg: service[4] })
       continue
     }
     // `| \`slot\` | usage |` — the first cell is the slot name. A slot name may be
@@ -514,6 +530,462 @@ function shownPath(file) {
   }
 }
 
+// --- the attachment store face ------------------------------------------------
+// The plugin reads the harness's attachment store BY NAME and STRUCTURALLY (see
+// src/host/attachment-route.ts): it never imports the implementing package, so
+// nothing at build time notices when the official reference grows a field, loses
+// one, or when a member changes shape. That silence has already been paid for: a
+// reader's own picture travelled to the store without the intrinsic size the
+// store verifies a read-back against, and came back as "corrupt".
+//
+// So both sides are read as SOURCE and compared, with no import and no type
+// checker:
+//
+//   our side   — `FileRefLike` / `ImageRefLike` / the store face in
+//                src/host/attachment-route.ts;
+//   their side — the reference vocabulary and the abstract store from the
+//                installed `@deepseek-ai/dsh-attachment` (`lib/types/**`), and
+//                the concrete provider's own overrides from
+//                `@deepseek-ai/dsh-attachment-local`.
+//
+// THE TWO COMPARISONS ARE NOT THE SAME SHAPE, on purpose. A reference is ONE
+// VALUE the plugin hands around, so the field sets must agree EXACTLY: a field
+// the harness adds and our mirror does not name is a field we would drop on the
+// way to the store, and a field our mirror invents is one we would read out of
+// nothing. The store's MEMBERS are a surface we call only part of, so our face
+// must be a subset — a method that vanished is a finding, a method we simply do
+// not call is not.
+
+const ATTACHMENT_PACKAGE = '@deepseek-ai/dsh-attachment'
+const ATTACHMENT_PROVIDER_PACKAGE = '@deepseek-ai/dsh-attachment-local'
+const ATTACHMENT_FACE_FILE = join(root, 'src', 'host', 'attachment-route.ts')
+
+/** The name of our structural store face, and of the official classes it mirrors. */
+const OUR_STORE_FACE = 'AttachmentStoreLike'
+const OFFICIAL_ABSTRACT_STORE = 'AttachmentStore'
+const OFFICIAL_CONCRETE_STORE = 'LocalAttachmentStore'
+
+/**
+ * Our structural reference interfaces, each paired with the official declaration
+ * it mirrors. This pairing is the one thing the check cannot derive: the names
+ * live in two packages that never import each other.
+ */
+const REF_PAIRS = [
+  { ours: 'FileRefLike', official: 'FileAttachmentRef' },
+  { ours: 'ImageRefLike', official: 'ImageAttachmentRef' },
+]
+
+/** Comment characters blanked to spaces, newlines kept (line numbers stay valid). */
+function blankComments(text) {
+  return text
+    .replace(/\/\*[\s\S]*?\*\//g, match => match.replace(/[^\n]/g, ' '))
+    .replace(/\/\/[^\n]*/g, match => ' '.repeat(match.length))
+}
+
+/** The source line of one offset inside a declaration body. */
+function lineInBody(body, offset, declarationLine) {
+  return declarationLine + body.slice(0, offset).split('\n').length - 1
+}
+
+/**
+ * The top-level members of a declaration body, in source order: object fields
+ * (`name?: T`) and methods (`name(a, b?): T`), each with the line it starts on.
+ * Members are separated by `;` or a line break at nesting depth zero, so a
+ * multi-line object type stays ONE member.
+ * @param body - the declaration's body text (between its braces).
+ * @param declarationLine - the line the opening brace sits on.
+ * @returns the members, or an empty array when the body holds none.
+ */
+function memberListOf(body, declarationLine) {
+  const cleaned = blankComments(body)
+  const segments = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < cleaned.length; i++) {
+    const character = cleaned[i]
+    if ('{([<'.includes(character)) depth += 1
+    else if ('})]>'.includes(character)) depth = Math.max(0, depth - 1)
+    else if (depth === 0 && (character === ';' || character === '\n')) {
+      segments.push([start, i])
+      start = i + 1
+    }
+  }
+  segments.push([start, cleaned.length])
+
+  const members = []
+  for (const [from, to] of segments) {
+    const text = cleaned.slice(from, to)
+    const member = text.trim()
+    if (member === '') continue
+    const offset = from + (text.length - text.trimStart().length)
+    const line = lineInBody(body, offset, declarationLine)
+    const method = /^(?:(?:static|abstract|public|private|protected|readonly|declare|async)\s+)*([A-Za-z_$][\w$]*)\s*(?:<[^<>]*>)?\s*\(([\s\S]*)\)\s*:\s*([\s\S]*)$/.exec(member)
+    if (method !== null) {
+      if (method[1] === 'constructor') continue
+      members.push({
+        name: method[1], kind: 'method', line,
+        params: parametersOf(method[2]),
+        returnType: method[3].trim().replace(/\s+/g, ' '),
+      })
+      continue
+    }
+    // A field may carry the same modifiers (`abstract readonly imageLimits: T`).
+    const field = /^(?:(?:static|abstract|public|private|protected|readonly|declare)\s+)*([A-Za-z_$][\w$]*)\s*(\?)?\s*:\s*([\s\S]*)$/.exec(member)
+    if (field === null) continue
+    members.push({ name: field[1], kind: 'field', optional: field[2] === '?', type: field[3].trim().replace(/\s+/g, ' '), line })
+  }
+  return members
+}
+
+/** One method's parameter list: parameter names, optionality and type text. */
+function parametersOf(text) {
+  const parameters = []
+  let depth = 0
+  let start = 0
+  const parts = []
+  for (let i = 0; i < text.length; i++) {
+    const character = text[i]
+    if ('{([<'.includes(character)) depth += 1
+    else if ('})]>'.includes(character)) depth = Math.max(0, depth - 1)
+    else if (depth === 0 && character === ',') {
+      parts.push(text.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(text.slice(start))
+  for (const part of parts) {
+    const parameter = part.trim()
+    if (parameter === '') continue
+    const dot = parameter.indexOf(':')
+    const head = dot === -1 ? parameter : parameter.slice(0, dot)
+    parameters.push({ optional: head.includes('?'), type: (dot === -1 ? '' : parameter.slice(dot + 1)).trim().replace(/\s+/g, ' ') })
+  }
+  return parameters
+}
+
+/**
+ * Every type alias one set of declaration files declares, for resolving a named
+ * type to the category of value it really is (`AttachmentId` is a branded
+ * `string`; `ImageMediaType` is a union of string literals).
+ */
+function aliasIndex(files) {
+  const aliases = new Map()
+  for (const file of files) {
+    const text = textOf(file)
+    for (const match of text.matchAll(/^\s*(?:export\s+)?type\s+([A-Za-z_$][\w$]*)\s*=\s*([^;\n]*)/gm)) {
+      if (!aliases.has(match[1])) aliases.set(match[1], match[2].trim())
+    }
+  }
+  return aliases
+}
+
+/**
+ * The wire category of one type expression: what a value of that type IS, not
+ * how the type is spelled. Named types resolve through the package's own aliases
+ * and through a single-argument wrapper (whose category is its argument's), so a
+ * brand and a literal union both read as the string they are on the wire.
+ * @param typeText - the type as written.
+ * @param aliases - the declaring package's type aliases.
+ * @returns a stable category string.
+ */
+function categoryOf(typeText, aliases, depth = 0) {
+  const text = typeText.trim().replace(/^readonly\s+/, '')
+  if (text === '') return 'unknown'
+  if (depth > 8) return `opaque:${text}`
+  if (text === 'string') return 'string'
+  if (text === 'number') return 'number'
+  if (text === 'boolean') return 'boolean'
+  if (/^'(?:[^'\\]|\\.)*'$/.test(text) || /^"(?:[^"\\]|\\.)*"$/.test(text)) return 'string'
+  if (/^-?\d+(?:\.\d+)?$/.test(text)) return 'number'
+  if (text.startsWith('{')) return 'object'
+  if (/\[\]$/.test(text)) return 'array'
+  if (text.includes('=>')) return 'function'
+  const union = splitTopLevel(text, '|')
+  if (union.length > 1) {
+    const categories = new Set(union.map(part => categoryOf(part, aliases, depth + 1)))
+    return categories.size === 1 ? [...categories][0] : `union(${[...categories].sort().join('|')})`
+  }
+  const named = /^([A-Za-z_$][\w$]*)\s*(?:<([\s\S]*)>)?$/.exec(text)
+  if (named === null) return `opaque:${text}`
+  const [, name, argument] = named
+  if (aliases.has(name)) return categoryOf(aliases.get(name), aliases, depth + 1)
+  if (argument !== undefined) return categoryOf(argument, aliases, depth + 1)
+  return `opaque:${name}`
+}
+
+/** Split a type expression on one separator at nesting depth zero. */
+function splitTopLevel(text, separator) {
+  const parts = []
+  let depth = 0
+  let start = 0
+  for (let i = 0; i < text.length; i++) {
+    const character = text[i]
+    if ('{([<'.includes(character)) depth += 1
+    else if ('})]>'.includes(character)) depth = Math.max(0, depth - 1)
+    else if (depth === 0 && character === separator) {
+      parts.push(text.slice(start, i))
+      start = i + 1
+    }
+  }
+  parts.push(text.slice(start))
+  return parts.map(part => part.trim()).filter(part => part !== '')
+}
+
+/** Whether a declaration's body really holds the members the comparison needs. */
+function isUsable(members) {
+  return members.length > 0
+}
+
+/**
+ * The names one declaration inherits from (`extends` / `implements`), read from
+ * its header. A mirror that extends another mirror carries those fields too, and
+ * comparing only the body would report every inherited field as missing.
+ */
+function extendedNamesOf(text, keyword, name) {
+  const match = new RegExp(`\\b${keyword}\\s+${name}\\b([^{;]*)\\{`).exec(text)
+  if (match === null) return []
+  const clause = /\b(?:extends|implements)\s+([^{]*)$/.exec(match[1])
+  if (clause === null) return []
+  return clause[1]
+    .split(',')
+    .map(part => part.trim().replace(/<[\s\S]*$/, '').trim())
+    .filter(part => /^[A-Za-z_$][\w$]*$/.test(part))
+}
+
+/**
+ * One named declaration, read out of a set of files by source: where it is, and
+ * its members (its own, plus everything it inherits from a declaration in the
+ * same set). A declaration the reader cannot find is NOT an empty result the
+ * caller may pass over — it means this check can no longer see the contract.
+ * @param files - the files to search, in order.
+ * @param keyword - `interface` or `class`.
+ * @param name - the declared name.
+ * @param seen - the names already visited (inheritance cycles, self-reference).
+ * @param depth - how far down the inheritance chain this read already is.
+ */
+function readDeclaration(files, keyword, name, seen = new Set(), depth = 0) {
+  if (depth > 4 || seen.has(name)) return undefined
+  seen.add(name)
+  for (const file of files) {
+    const text = textOf(file)
+    const declaration = declarationBody(text, keyword, name)
+    if (declaration === undefined) continue
+    const inherited = []
+    for (const parent of extendedNamesOf(text, keyword, name)) {
+      const declarationOfParent = readDeclaration(files, keyword, parent, seen, depth + 1)
+      if (declarationOfParent !== undefined) inherited.push(...declarationOfParent.members)
+    }
+    return { file, line: declaration.line, members: [...inherited, ...memberListOf(declaration.body, declaration.line)] }
+  }
+  return undefined
+}
+
+/**
+ * The official attachment face as installed: the reference vocabulary and the
+ * store the plugin actually calls.
+ *
+ * The provider class is read with the base package's files BEHIND it, so the
+ * one mechanism that resolves a declaration's inherited members also carries the
+ * `extends AttachmentStore` across the package boundary — a method the provider
+ * does not override is found where it is really declared, and the line a finding
+ * prints is the line a reader would open.
+ * @param baseDir - the `@deepseek-ai/dsh-attachment` directory, or null.
+ * @param providerDir - the `@deepseek-ai/dsh-attachment-local` directory, or null.
+ */
+function readAttachmentFace(baseDir, providerDir) {
+  const baseFiles = baseDir === null ? [] : packageTextFiles(baseDir).filter(file => file.endsWith('.d.ts'))
+  const providerFiles = providerDir === null ? [] : packageTextFiles(providerDir).filter(file => file.endsWith('.d.ts'))
+  const refs = new Map()
+  for (const pair of REF_PAIRS) refs.set(pair.ours, readDeclaration(baseFiles, 'interface', pair.official))
+  return {
+    refs,
+    store: readDeclaration([...providerFiles, ...baseFiles], 'class', OFFICIAL_CONCRETE_STORE)
+      ?? readDeclaration(baseFiles, 'class', OFFICIAL_ABSTRACT_STORE),
+    aliases: aliasIndex([...baseFiles, ...providerFiles]),
+  }
+}
+
+/** Which of a set of names one type text mentions. */
+function namesIn(text, names) {
+  return new Set(names.filter(name => new RegExp(`\\b${name}\\b`).test(text)))
+}
+
+/** One finding for a reference whose field sets disagree. */
+function refFieldFindings(ours, official, side, aliases) {
+  const findings = []
+  const ourByName = new Map(ours.members.map(member => [member.name, member]))
+  const officialByName = new Map(official.members.map(member => [member.name, member]))
+  for (const member of ours.members) {
+    const counterpart = officialByName.get(member.name)
+    const where = `${shownPath(ATTACHMENT_FACE_FILE)}:${member.line}`
+    const there = `${shownPath(official.file)}:${counterpart === undefined ? official.line : counterpart.line}`
+    if (counterpart === undefined) {
+      findings.push(
+        `our ${side} mirror declares "${member.name}" (${where}), which the installed `
+        + `${side} declaration does not have (${there}; it declares ${[...officialByName.keys()].join(', ')}) — `
+        + 'the plugin would read a field the harness never writes',
+      )
+      continue
+    }
+    if ((member.optional === true) !== (counterpart.optional === true)) {
+      findings.push(
+        `"${member.name}" of ${side} is ${member.optional === true ? 'optional' : 'required'} in ${where} but `
+        + `${counterpart.optional === true ? 'optional' : 'required'} in the installed declaration (${there})`,
+      )
+    }
+    const ourCategory = categoryOf(member.type, aliases)
+    const officialCategory = categoryOf(counterpart.type, aliases)
+    if (ourCategory !== officialCategory) {
+      findings.push(
+        `"${member.name}" of ${side} holds a ${ourCategory} in ${where} but a ${officialCategory} in the installed `
+        + `declaration (${there}: ${counterpart.type}) — a reference field whose value changed shape cannot be `
+        + 'forwarded unchanged',
+      )
+    }
+  }
+  for (const member of official.members) {
+    if (ourByName.has(member.name)) continue
+    findings.push(
+      `the installed ${side} declaration declares "${member.name}" (${shownPath(official.file)}:${member.line}) and our `
+      + `mirror (${shownPath(ours.file)}:${ours.line}) does not — a field the plugin does not name is a field it drops `
+      + 'on the way to the store, and the store refuses what it cannot verify',
+    )
+  }
+  return findings
+}
+
+/** One finding for a store member our face calls and the installed store lacks. */
+function storeMemberFindings(ourMember, official, aliases) {
+  const where = `${shownPath(ATTACHMENT_FACE_FILE)}:${ourMember.line}`
+  const counterpart = official.members.find(member => member.name === ourMember.name)
+  if (counterpart === undefined) {
+    return [
+      `our ${OUR_STORE_FACE} declares "${ourMember.name}" (${where}), which the installed store does not — it declares `
+      + `${official.members.filter(member => member.kind === 'method').map(member => member.name).join(', ')}`,
+    ]
+  }
+  if (counterpart.kind !== ourMember.kind) {
+    return [`"${ourMember.name}" is a ${ourMember.kind} in ${where} but a ${counterpart.kind} in the installed store`]
+  }
+  if (ourMember.kind !== 'method') return []
+  const findings = []
+  const there = `${shownPath(official.file)}:${counterpart.line}`
+  if (ourMember.params.length !== counterpart.params.length) {
+    findings.push(
+      `"${ourMember.name}" takes ${ourMember.params.length} parameter(s) in ${where} and `
+      + `${counterpart.params.length} in the installed declaration (${there})`,
+    )
+  } else {
+    for (const [index, parameter] of ourMember.params.entries()) {
+      if ((parameter.optional === true) === (counterpart.params[index].optional === true)) continue
+      findings.push(
+        `parameter ${index + 1} of "${ourMember.name}" is ${parameter.optional === true ? 'optional' : 'required'} in `
+        + `${where} and ${counterpart.params[index].optional === true ? 'optional' : 'required'} in the installed `
+        + `declaration (${there})`,
+      )
+    }
+  }
+  // A method's reference-typed positions must speak about the SAME reference we
+  // mirror: a rename on either side would otherwise compare a face with itself.
+  const ourNames = namesIn(`${ourMember.params.map(parameter => parameter.type).join(' ')} ${ourMember.returnType}`, REF_PAIRS.map(pair => pair.ours))
+  const officialNames = namesIn(`${counterpart.params.map(parameter => parameter.type).join(' ')} ${counterpart.returnType}`, REF_PAIRS.map(pair => pair.official))
+  const mapped = new Set(REF_PAIRS.filter(pair => officialNames.has(pair.official)).map(pair => pair.ours))
+  if ([...ourNames].sort().join(',') !== [...mapped].sort().join(',')) {
+    findings.push(
+      `"${ourMember.name}" speaks about ${[...ourNames].join(', ') || 'no mirrored reference'} in ${where} but about `
+      + `${[...officialNames].join(', ') || 'no reference'} in the installed declaration (${there}) — the mirror and the `
+      + 'method have drifted apart',
+    )
+  }
+  return findings
+}
+
+/**
+ * Everything wrong with the plugin's attachment face against one installed one
+ * (empty = the mirror still holds). Split out so the self-test below can run the
+ * SAME code path on declarations that cannot be correct and require it to be red.
+ * @param ourRefs - our reference interfaces by mirror name.
+ * @param ourStore - our store face.
+ * @param official - the face `readAttachmentFace` read.
+ * @returns the findings, and what was read (for the OK line).
+ */
+function attachmentFaceFailures(ourRefs, ourStore, official) {
+  const findings = []
+  const read = []
+  for (const pair of REF_PAIRS) {
+    const ours = ourRefs.get(pair.ours)
+    const theirs = official.refs.get(pair.ours)
+    if (ours === undefined || !isUsable(ours.members)) {
+      findings.push(
+        `the plugin's ${pair.ours} declaration could not be read out of ${shownPath(ATTACHMENT_FACE_FILE)} — this check `
+        + 'can no longer compare anything (a renamed mirror belongs in this script)',
+      )
+      continue
+    }
+    if (theirs === undefined || !isUsable(theirs.members)) {
+      findings.push(
+        `the installed ${ATTACHMENT_PACKAGE} declares no readable ${pair.official} — this check can no longer see the `
+        + 'reference contract (re-read it and update this script)',
+      )
+      continue
+    }
+    read.push(`${pair.ours}=${ours.members.length} fields vs ${pair.official}=${theirs.members.length}`)
+    findings.push(...refFieldFindings(ours, theirs, pair.official, official.aliases))
+  }
+
+  if (ourStore === undefined || !isUsable(ourStore.members)) {
+    findings.push(
+      `the plugin's ${OUR_STORE_FACE} could not be read out of ${shownPath(ATTACHMENT_FACE_FILE)} — this check can no `
+      + 'longer compare anything (a renamed interface belongs in this script)',
+    )
+    return { findings, read }
+  }
+  if (official.store === undefined || !isUsable(official.store.members)) {
+    findings.push(
+      `the installed ${ATTACHMENT_PACKAGE} declares no readable store class — this check can no longer see the store `
+      + 'contract (re-read it and update this script)',
+    )
+    return { findings, read }
+  }
+  for (const member of ourStore.members) findings.push(...storeMemberFindings(member, official.store, official.aliases))
+  read.push(
+    `store="${(official.store.file.startsWith(packagesDir) ? official.store.file.slice(packagesDir.length + 1) : official.store.file)}" `
+    + `with ${String(official.store.members.filter(member => member.kind === 'method').length)} methods; our face declares `
+    + `${String(ourStore.members.filter(member => member.kind === 'method').length)} methods `
+    + `(${ourStore.members.filter(member => member.kind === 'method').map(member => member.name).join(', ')}) `
+    + `and ${String(ourStore.members.filter(member => member.kind === 'field').length)} property `
+    + `(${ourStore.members.filter(member => member.kind === 'field').map(member => member.name).join(', ')})`,
+  )
+  return { findings, read }
+}
+
+/** Our own face, read from the plugin's source (never imported). */
+function readOurAttachmentFace() {
+  const files = existsSync(ATTACHMENT_FACE_FILE) ? [ATTACHMENT_FACE_FILE] : []
+  const refs = new Map()
+  for (const pair of REF_PAIRS) refs.set(pair.ours, readDeclaration(files, 'interface', pair.ours))
+  return { refs, store: readDeclaration(files, 'interface', OUR_STORE_FACE) }
+}
+
+{
+  const baseDir = packageDirOf(ATTACHMENT_PACKAGE)
+  const providerDir = packageDirOf(ATTACHMENT_PROVIDER_PACKAGE)
+  const baseInstalled = existsSync(join(baseDir, 'package.json'))
+  const providerInstalled = existsSync(join(providerDir, 'package.json'))
+  if (!baseInstalled) {
+    // A host without the vocabulary package is degraded, not broken: this plugin
+    // would fail to attach anything there, and saying so is not the same as
+    // calling the plugin wrong.
+    notes.push(`attachment store face: NOT VERIFIED (${ATTACHMENT_PACKAGE} is not installed here)`)
+  } else {
+    if (!providerInstalled) notes.push(`attachment store face: the installed ${ATTACHMENT_PROVIDER_PACKAGE} is absent; only the abstract store was read`)
+    const ours = readOurAttachmentFace()
+    const outcome = attachmentFaceFailures(ours.refs, ours.store, readAttachmentFace(baseDir, providerInstalled ? providerDir : null))
+    failures.push(...outcome.findings)
+    if (outcome.findings.length === 0) notes.push(`attachment store face OK: ${outcome.read.join('; ')}`)
+  }
+}
+
 // The removal half: the plugin's source must not read members the host dropped.
 // With no removed-member rows left this loop is inert, so it can no longer be
 // observed by looking at a normal run — `--probe-removed` (below) is how it is
@@ -578,6 +1050,115 @@ if (args.has('--probe-services')) {
     process.exit(1)
   }
   console.log(`verify-host-contracts service self-test OK: the check reacts (${findings.length} findings for a service name and a member that cannot exist)`)
+  process.exit(0)
+}
+
+// `--probe-attachment-face` mutates the INSTALLED declarations in every way the
+// mirror section exists to notice, writes each mutation OUTSIDE this repository
+// (a temp directory laid out like a package), and requires a finding for each.
+// The comparison is the same code path a normal run uses; only the input is a
+// file that cannot be right. A green run here would mean the section compares
+// nothing.
+if (args.has('--probe-attachment-face')) {
+  const baseDir = packageDirOf(ATTACHMENT_PACKAGE)
+  const providerDir = packageDirOf(ATTACHMENT_PROVIDER_PACKAGE)
+  if (!existsSync(join(baseDir, 'package.json'))) {
+    console.error(`verify-host-contracts FAIL: the attachment-face self-test cannot run — ${ATTACHMENT_PACKAGE} is not installed here, so there is nothing to mutate`)
+    process.exit(1)
+  }
+  const refFiles = packageTextFiles(baseDir).filter(file => file.endsWith('.d.ts'))
+  const refSource = (() => {
+    const file = refFiles.find(candidate => declarationBody(textOf(candidate), 'interface', REF_PAIRS[1].official) !== undefined)
+    return file === undefined ? undefined : { file, text: textOf(file) }
+  })()
+  // The store class the plugin's face is compared against when the scratch
+  // package has no provider of its own: the contract every provider extends.
+  const storeSource = (() => {
+    const file = refFiles.find(candidate => declarationBody(textOf(candidate), 'class', OFFICIAL_ABSTRACT_STORE) !== undefined)
+    return file === undefined ? undefined : { file, text: textOf(file) }
+  })()
+  if (refSource === undefined || storeSource === undefined) {
+    console.error('verify-host-contracts FAIL: the attachment-face self-test cannot run — the installed declarations it mutates were not found (re-read them and update this script)')
+    process.exit(1)
+  }
+
+  /** Rewrite one declaration body inside a file's text (self-test only). */
+  const withBody = (text, keyword, name, edit) => {
+    const match = new RegExp(`\\b${keyword}\\s+${name}\\b[^{;]*\\{`).exec(text)
+    if (match === null) return undefined
+    const open = match.index + match[0].length - 1
+    const body = objectBody(text, open)
+    if (body === undefined) return undefined
+    const edited = edit(body)
+    return edited === body ? undefined : text.slice(0, open + 1) + edited + text.slice(open + 1 + body.length)
+  }
+
+  // Each probe mutates ONE side of the face and leaves the other as installed,
+  // so the finding it must produce cannot come from a scratch file that is wrong
+  // in some other way as well.
+  const probes = [
+    {
+      what: 'a reference field the mirror does not name',
+      target: 'ref', declaration: REF_PAIRS[1].official, keyword: 'interface',
+      edit: body => body.replace(/(\n\s*)height: number;/, '$1'),
+      expect: 'height',
+    },
+    {
+      what: 'a reference field the mirror would have to drop',
+      target: 'ref', declaration: REF_PAIRS[0].official, keyword: 'interface',
+      edit: body => `${body}\n    inventedField?: string;`,
+      expect: 'inventedField',
+    },
+    {
+      what: 'a reference field whose value changed shape',
+      target: 'ref', declaration: REF_PAIRS[0].official, keyword: 'interface',
+      edit: body => body.replace(/\bbytes: number;/, 'bytes: string;'),
+      expect: 'bytes',
+    },
+    {
+      what: 'a store method the plugin calls that moved away',
+      target: 'store', declaration: OFFICIAL_ABSTRACT_STORE, keyword: 'class',
+      edit: body => body.replace(/\breadFileStream\b/, 'readFileStreamRelocated'),
+      expect: 'readFileStream',
+    },
+  ]
+
+  const scratch = mkdtempSync(join(tmpdir(), 'dsh-tb-face-'))
+  const misses = []
+  try {
+    for (const [index, probe] of probes.entries()) {
+      const source = probe.target === 'ref' ? refSource : storeSource
+      const edited = withBody(source.text, probe.keyword, probe.declaration, probe.edit)
+      if (edited === undefined) {
+        misses.push(`${probe.what}: the mutation could not be applied to the installed declaration (${shownPath(source.file)})`)
+        continue
+      }
+      // One scratch package per mutation, laid out like the real one, so the
+      // reading path under test is the same one a normal run uses.
+      const packageRoot = join(scratch, `probe-${String(index)}`)
+      mkdirSync(join(packageRoot, 'lib', 'types'), { recursive: true })
+      writeFileSync(
+        join(packageRoot, 'lib', 'types', 'probe.d.ts'),
+        `${probe.target === 'ref' ? edited : refSource.text}\n${probe.target === 'store' ? edited : storeSource.text}`,
+        'utf8',
+      )
+      const ours = readOurAttachmentFace()
+      const outcome = attachmentFaceFailures(ours.refs, ours.store, readAttachmentFace(packageRoot, null))
+      const seen = outcome.findings.some(finding => finding.includes(probe.expect))
+      if (!seen) {
+        misses.push(`${probe.what}: expected a finding naming "${probe.expect}", got ${outcome.findings.length === 0 ? 'none' : outcome.findings.map(finding => `"${finding}"`).join(' | ')}`)
+      }
+    }
+  } finally {
+    rmSync(scratch, { recursive: true, force: true })
+  }
+
+  if (misses.length > 0) {
+    console.error('verify-host-contracts FAIL: the attachment-face comparison missed a declaration that cannot be right — the check is blind')
+    for (const miss of misses) console.error(`  - ${miss}`)
+    process.exit(1)
+  }
+  console.log(`verify-host-contracts attachment-face self-test OK: ${probes.length} mutated declarations outside the repository, each one named by a finding`)
   process.exit(0)
 }
 

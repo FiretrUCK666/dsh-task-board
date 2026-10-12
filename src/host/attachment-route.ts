@@ -41,11 +41,28 @@ interface FileRefLike {
   bytes: number
 }
 
-/** The durable image reference the harness hands back (structural). */
-interface ImageRefLike extends FileRefLike {
+/**
+ * The durable image reference the harness hands back (structural) — a MIRROR of
+ * the official declaration, field for field.
+ *
+ * It is written out in full rather than extending {@link FileRefLike}, because
+ * the two official references are not the same shape with additions: an image
+ * reference makes its display name OPTIONAL (the bytes are addressed by digest,
+ * the name is decoration) while a file reference requires one (the name is part
+ * of the object's path). A mirror is only useful if it says what the harness
+ * says — `scripts/verify-host-contracts.mjs` reads this declaration out of the
+ * source and reddens the moment the two drift apart, in either direction.
+ */
+interface ImageRefLike {
+  attachmentId: string
+  /** Present when the image was submitted with a name — optional, as the harness declares it. */
+  name?: string
+  bytes: number
   mediaType: string
   width: number
   height: number
+  /** Present only when normalization reduced the image (carried, never read here). */
+  originalDimensions?: { width: number; height: number }
 }
 
 /**
@@ -124,7 +141,12 @@ async function admit(
         ok: true,
         ref: {
           attachmentId: saved.attachmentId,
-          name: saved.name === '' ? input.name : saved.name,
+          // The store may hand back no display name at all — its own sanitizing
+          // empties one out — and an image reference is allowed to go without
+          // one. A DOCUMENT row is not: it is read by name, so the name the
+          // caller declared is the one stored, never an undefined that the
+          // document grammar would drop the whole row for.
+          name: typeof saved.name === 'string' && saved.name !== '' ? saved.name : input.name,
           bytes: saved.bytes,
           mediaType: saved.mediaType,
           width: saved.width,
@@ -143,21 +165,37 @@ async function admit(
   }
 }
 
-/** Read one stored attachment back as base64 (images) or exact bytes (files). */
+/**
+ * Read one stored attachment back as base64 (images) or exact bytes (files).
+ *
+ * The reference goes to the store WHOLE (see `core/attachment`): the store's
+ * image read verifies the bytes against the reference's own media type, byte
+ * length and intrinsic size, so a field this route failed to forward would make
+ * a perfectly good attachment unreadable — and the store would report it as
+ * corruption, which is a sentence about the STORE that the reader cannot act on.
+ *
+ * An image reference that carries no intrinsic size cannot be verified at all,
+ * and that is a fact about THIS record, not about the bytes: it is answered
+ * before the store is called, because every other answer it could get here would
+ * be a lie about corruption.
+ * @param store - the attachment store.
+ * @param ref - the reference a document holds.
+ * @returns the bytes as base64, or the reason it could not be read.
+ */
 async function readStored(
   store: AttachmentStoreLike,
   ref: AttachmentRef,
 ): Promise<{ ok: true; value: { name: string; mediaType?: string; bytes: number; data: string } } | { ok: false; code: string; message: string }> {
   try {
     if (ref.mediaType !== undefined) {
-      const stored = await store.readImage({
-        attachmentId: ref.attachmentId,
-        name: ref.name,
-        bytes: ref.bytes,
-        mediaType: ref.mediaType,
-        width: ref.width ?? 0,
-        height: ref.height ?? 0,
-      })
+      if (typeof ref.width !== 'number' || typeof ref.height !== 'number') {
+        return {
+          ok: false,
+          code: 'incomplete-ref',
+          message: '这一份附件是旧版本上传的，缺它的尺寸信息——重新拖一次就能发',
+        }
+      }
+      const stored = await store.readImage(ref as AttachmentRef & ImageRefLike)
       return {
         ok: true,
         value: { name: ref.name, mediaType: stored.ref.mediaType, bytes: stored.data.length, data: base64Of(stored.data) },
@@ -165,7 +203,7 @@ async function readStored(
     }
     const chunks: Uint8Array[] = []
     let total = 0
-    for await (const chunk of store.readFileStream({ attachmentId: ref.attachmentId, name: ref.name, bytes: ref.bytes })) {
+    for await (const chunk of store.readFileStream(ref)) {
       total += chunk.length
       if (total > MAX_READ_BYTES) return { ok: false, code: 'oversize', message: 'the stored file is larger than this route returns' }
       chunks.push(chunk)
@@ -182,7 +220,14 @@ function messageOf(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
 }
 
-/** Whether a value names a stored attachment. */
+/**
+ * Whether a value names a stored attachment: the three fields every age of a
+ * reference has, and nothing more. This is the gate that says "this is a
+ * reference at all" — NOT a field table, and not a claim that the reference is
+ * complete. Which fields a read needs is decided where the read happens (the
+ * image lane checks its own size fields), so adding a requirement here would
+ * turn every lane-specific refusal into one shapeless "not a reference".
+ */
 function isRefLike(value: unknown): value is AttachmentRef {
   if (typeof value !== 'object' || value === null) return false
   const ref = value as Record<string, unknown>

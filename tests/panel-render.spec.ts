@@ -2201,9 +2201,9 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(alignsOnBaseline(css, 'itemEmptyGroup'), '真表里那一处也被读成没对齐——尺子量错了地方').toBe(true)
   })
 
-  /* 这一族之外还有一处读同一个数：运行配置那一行的行盒归 `Disclosure`（`<button>` 里装不了
-     按钮，所以 ⓘ 站在它旁边），那半格只能算在记号这一侧——读法与读法之间的分界由这条读法说
-     清楚，两种读法都出现时不许互相认成对方。 */
+  /* 这一族之外还有读同一个数的规则——而**这一轮它一处也不许有**：ⓘ 那一侧只许由父级居中，
+     不许自己算半个字的高差。读法与读法之间的分界由这条读法说清楚：按「谁读了那个令牌」读，
+     而不是按「谁长得像一族」。 */
   const liftConsumers = (text: string): string[] =>
     declarationRules(text)
       .filter(rule => rule.body.includes('var(--item-ink-lift)'))
@@ -2211,28 +2211,63 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
 
   it('四个消费点读同一条律：装字的盒子进名单，装记号的不进', () => {
     /* 四个位置各有一行「一枚 ⓘ + 一串字」（组头、安静行、属性表的字段名、运行配置的头行），
-       而那一行里**装字的那一枚盒子**读同一个补偿——三个位置已经各有它自己那一枚（组头的
-       `.itemGroupText`、字段名的 `.itemOptNameText`），记号那一枚（`.itemGroupWhy`）**不读**：
-       记号绕 viewBox 中心对称，flex 居中把盒心放到位时墨心已经在位。 */
+       而那一行里**装字的那一枚盒子**读同一个补偿——组头有 `.itemGroupText`、字段名有
+       `.itemOptNameText`，运行配置那一行头里那两枚字（`Disclosure` 的标题与摘要）由
+       `.itemRunConfigHeadRow > section > button > span` 认领；记号那一枚
+       （`.itemGroupWhy`）**不读**：记号绕 viewBox 中心对称，父级居中把盒心放到位时墨心已经在位。 */
     const members = inkLiftMembers(css)
     for (const name of ['itemGroupText', 'itemOptNameText']) {
       expect(members, `.${name} 直接装字、旁边又站着一枚 ⓘ，却没进补偿名单`)
         .toContain(name)
     }
+    expect(members.some(one => one.includes('itemRunConfigHeadRow') && one.includes('span')),
+      '运行配置那一行头里那两枚装字的盒子不在补偿名单上——它们的半个像素没人补').toBe(true)
     expect(members, '.itemGroupWhy 是装记号的那一枚盒子——跟着抬半格，记号会比它旁边那串字高半个像素')
       .not.toContain('itemGroupWhy')
     // 咬得动：把记号那一枚种成族成员，它必须被读出来。
     expect(inkLiftMembers('.itemGroupWhy { padding-block-end: var(--item-ink-lift); }'),
       'the plant did not bite — 种进去的记号那一枚没有被读成族成员').toContain('itemGroupWhy')
-    /* **记号那一侧只许运行配置那一行读这个数**，而且读的是**同一枚令牌**：那一行的行盒不归
-       这一侧（`Disclosure` 的头是一枚 `<button>`，按钮里装不了按钮），所以那半格只能由记号
-       自己让出来。别处若也这么读，就是「记号比它旁边的字高半格」这类缺陷的第二个出处。 */
+    /* **记号那一侧一处也不读那个数。** ⓘ 的位置只能由「它和那一行字共处一格、由父级居中」给：
+       一个算出来的 `margin-block-start` 需要知道**那一行**的行盒，而那个数不归记号这一侧
+       （`1lh` 取的是记号自己的行盒，与头那一行不是同一个数——真面板上量到过 1px 的偏上）。 */
     expect(liftConsumers(css).filter(one => one.includes('itemGroupWhy')),
-      '除了运行配置那一行，还有第二处把那一枚补偿算在记号一侧')
-      .toEqual(['.itemRunConfigHeadRow > .itemGroupWhy'])
-    expect(declaredOf(css, 'itemRunConfigHeadRow', 'margin-block-start')
-      .some(one => one.includes('var(--item-ink-lift)')),
-    '运行配置那一行的 ⓘ 不再读那一枚补偿，于是它会把半个字的高差留在自己身上').toBe(true)
+      '还有一处把那一枚补偿算在记号一侧——记号又开始自己算半个字的高差了').toEqual([])
+    expect(css, '表里又出现了 `1lh` 算术：行盒归谁不归谁，是这一族唯一的那个数')
+      .not.toContain('1lh')
+  })
+
+  it('运行配置那一行：头那一行与 ⓘ 同在一格行里，折叠体在下一行', () => {
+    /* **这一行付过的账。** 头与折叠体焊在同一个 `Disclosure` 里，所以「一枚 ⓘ 站在头那一行末尾」
+       要靠盒树说：行是网格（`align-items: center`），中间那两层盒子不画（`display: contents`），
+       于是按钮与折叠体各自是一格，而 ⓘ 与头那一行同在**第 1 行**。改回一条普通行时，交叉轴尺寸
+       由那一整块给，展开之后 ⓘ 会落到正文中间去（量过：233.5px）。 */
+    /* 一条**选择器逐字相等**的规则体：`rulesOf` 读的是前缀，`.itemRunConfigHeadRow` 也会匹配到
+       它那几条后代规则（`> section` / `> .itemGroupWhy`），于是「那一行自己声明了什么」会被
+       最后一条后代规则答掉。 */
+    const ownRule = (selector: string): string =>
+      declarationRules(css)
+        .filter(rule => rule.selector.split(',').map(one => one.trim()).includes(selector))
+        .map(rule => rule.body).join('\n')
+    const headRow = ownRule('.itemRunConfigHeadRow')
+    expect(headRow, '它是空的：这一行自己没有任何声明').not.toBe('')
+    expect(/display:\s*grid/.test(headRow), '那一行不再是网格——ⓘ 与它左边那串字不再共处一格行').toBe(true)
+    expect(/align-items:\s*center/.test(headRow), '那一行不再按中线对齐，记号得自己算位置').toBe(true)
+    expect(/grid-template-columns:/.test(headRow), '那一行没有两列：折叠体与 ⓘ 抢同一格').toBe(true)
+    expect(/row-gap:/.test(headRow), '头那一行与折叠体之间没有那一档空气了').toBe(true)
+    // 中间那两层盒子不画，否则按钮与折叠体落不到各自的格子里。
+    expect(ownRule('.itemRunConfigHeadRow > section'), '那一层 `<section>` 又被画出来了：网格里只剩它一格')
+      .toMatch(/display:\s*contents/)
+    expect(ownRule('.itemRunConfigHeadRow > .itemGroupWhy'), 'ⓘ 不在头那一行那一格')
+      .toMatch(/grid-area:\s*1\s*\/\s*2/)
+    /* **那一行不许再套一层盒子。** 包一层再把它 `display: contents` 掉，与不包是同一条律的两种写法；
+       而这一行只剩一条：DOM 就是网格的子项（组件那边读的是这一条）。注释先剥掉再匹配（规范 14）：
+       一句**提到**那个类名的说明不是一个实现。 */
+    const strip = (text: string): string =>
+      text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(strip(readSource('client/item/run-config-block.tsx')),
+      '那一行又套上了一层盒子——头那一行与折叠体落不到各自的格子里')
+      .not.toContain('itemRunConfigHeadText')
+    expect(css, '样式表里还留着那一层盒子的类（孤儿类）').not.toContain('itemRunConfigHeadText')
   })
 
   it('说明小字的行长按物理行长给：`ch` 不是中文的尺子', () => {

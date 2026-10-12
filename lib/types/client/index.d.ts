@@ -8,7 +8,50 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
-import type { ClientContext } from './platform.ts';
+import type { ApiFace, ClientContext } from './platform.ts';
+import type { AttachmentRef, PromptAttachment } from '../core/attachment.ts';
+/** What the plugin's own attachment door publishes (see {@link createAttachmentBridge}). */
+export interface AttachmentBridge {
+    /** Admit picked bytes into the official store; the durable ref comes back. */
+    admitAttachment(input: {
+        name: string;
+        data: string;
+        mediaType?: string;
+    }): Promise<{
+        ok: true;
+        ref: AttachmentRef;
+    } | {
+        ok: false;
+        error: string;
+    }>;
+    /** Deliver one round of text + attachments into a session. */
+    sendComment(sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly PromptAttachment[]): Promise<{
+        ok: true;
+    } | {
+        ok: false;
+        error: string;
+    }>;
+}
+/**
+ * The plugin's own attachment door: admit bytes into the harness's attachment
+ * store, read them back when a message is actually sent, and materialize the
+ * official prompt parts from them.
+ *
+ * WHY IT IS ITS OWN FACTORY. The three steps are one contract — what is admitted
+ * is a durable reference, what is read back is that same reference, and what is
+ * sent is the bytes it names — and it is the only place in the client half where
+ * a reference crosses the wire. Read together, the whole lane can be checked
+ * (`tests/composer-attachments.spec.ts` drives it through this entry).
+ *
+ * A CHECKLIST ROW HAS NO SESSION, which is why the durable store is used at all:
+ * the official `fileUploads` face mints a receipt for one Agent, and a document
+ * needs a reference that outlives every session. The bytes still live where the
+ * harness already keeps them; this plugin creates no directory and no second
+ * copy.
+ * @param api - the domain API face (the official prompt send and file staging).
+ * @returns the two doors the wiring publishes.
+ */
+export declare function createAttachmentBridge(api: ApiFace): AttachmentBridge;
 /**
  * Required services (fiber inject waiting — the runtime must be up first).
  *

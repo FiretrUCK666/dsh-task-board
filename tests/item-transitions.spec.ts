@@ -25,6 +25,8 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord, ItemStatus } from '../src/core/item.ts'
+import { attachmentsOf } from '../src/core/attachment.ts'
+import { attachmentLanesOf } from '../src/core/tasks.ts'
 import {
   applyItemPatch,
   applyItemStep,
@@ -350,6 +352,22 @@ describe('the promotion plan says what the card would say, once', () => {
     const plan = planItemPromotion(row({ body: '看一眼' }))
     if (plan.kind !== 'ready') throw new Error('a titled row plans a card')
     expect(plan.task.attachments).toEqual([])
+  })
+
+  it('一张图从这一条走到卡上再走回发送路径：环回等式，逐字段', () => {
+    /* 附件是**官方的值**：这一条存的是什么，卡上就是什么，发送路径读到的还是什么。
+       中途任何一处按自己认得的几个键重拼一份，丢掉的字段不会在这里报错——它会在官方读回
+       那一刻变成「损坏」，而字节本身好好的。所以两边都要一字不差：提升计划里那一份、
+       记录落进台账时那一份（`attachmentLanesOf`：所有写记录的路径共用它）。 */
+    const stored = { attachmentId: 'att-img', name: 'IMG_20261013_012519.jpg', bytes: 2048, mediaType: 'image/jpeg', width: 1600, height: 1200 }
+    const plan = planItemPromotion(row({ body: '看这张', attachments: [stored] }))
+    if (plan.kind !== 'ready') throw new Error('a titled row plans a card')
+    expect(plan.task.attachments).toEqual([stored])
+    expect(attachmentsOf(plan.task)).toEqual([stored])
+
+    // 同一份东西落进一轮记录（评论、直发、规则轮都走这一个分流器）之后，仍是同一份。
+    expect(attachmentLanesOf([stored]).attachments).toEqual([stored])
+    expect(attachmentsOf({ attachments: attachmentLanesOf([stored]).attachments })).toEqual([stored])
   })
 })
 

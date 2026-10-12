@@ -34,6 +34,9 @@
  *        [--css-for "<selector>" [--property padding]]
  *        [--both] [--scrollbars]
  *
+ *   DSH_SHOT_URL=<the whole URL, token included>   used in place of --url
+ *   DSH_SHOT_BROWSER=<path to a Chromium>          used in place of discovery
+ *
  * `--both` captures TWO shots with one browser launch: the claimed --width and
  * the narrow 412, both derived from the SAME --out prefix (`shot.png` writes
  * `shot-wide.png` and `shot-narrow.png`). Hybrid hard rule 11 makes every UI
@@ -45,6 +48,14 @@
  * without this script needing to know anything about the panel. `--eval-file`
  * takes the same script from a path instead of from the command line, so the
  * code never travels through a shell (see the note at the call site).
+ *
+ * WHICH URL TO PASS. `--url` takes the WHOLE URL `dsh web` prints, launch token
+ * and all, and so does `DSH_SHOT_URL` — the better door for a token, because a
+ * command line reaches the shell history and every transcript that echoes it.
+ * Such a URL works as it stands: the pre-flight replays the exchange that URL
+ * starts (a 303 carrying `Set-Cookie`, the cookie then opening the app) with its
+ * own cookie jar, since `fetch` has none, and the browser afterwards opens the
+ * same URL the way any browser would.
  */
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -174,16 +185,29 @@ const browserPath = findBrowser()
 if (browserPath === undefined) giveUp()
 
 /**
+ * Cookies the pre-flight collected from the server's own `Set-Cookie` headers.
+ *
+ * They exist because `fetch` has no cookie jar and a browser does. A `dsh web`
+ * launch URL opens with an exchange — `GET /?token=...` answers 303 plus a
+ * `Set-Cookie`, and only that cookie opens the app — so `redirect: 'follow'`
+ * lands on `/` carrying nothing, reads the auth wall, and reports a VALID token
+ * as a refused one. Replaying the exchange by hand is what the browser does for
+ * itself; the probe does it because it has to answer before the browser starts.
+ */
+const launchCookies = new Map()
+
+/**
  * Whether this URL is the harness's own auth wall rather than the app.
  *
  * Probed BEFORE the browser is launched, on purpose. The other order looks
  * harmless and is not: it burns a browser launch to discover the answer, writes
  * a 9KB text page that reads like a broken render, and only then throws it
- * away — so the failure arrives looking exactly like a layout bug. And the
- * probe's own socket is the last async handle in the process, so deciding
- * while it is still open means leaving through `process.exit` with a handle
- * mid-teardown, which aborts on a platform assertion and turns an honest exit
- * code into a mystery crash code. Deciding first avoids both.
+ * away — so the failure arrives looking exactly like a layout bug.
+ *
+ * The redirects are followed HERE rather than by `fetch`, one hop at a time, so
+ * the cookie each hop sets can be sent with the next request. Following them is
+ * the whole point: the wall is what the LAST response says, and the last
+ * response of a launch URL is the app's own.
  */
 async function wasAuthWall(url) {
   // Only an http(s) URL can be behind a login. A `file://` render is a local
@@ -191,10 +215,35 @@ async function wasAuthWall(url) {
   // reason that has nothing to do with authentication.
   if (!/^https?:\/\//i.test(url)) return false
   try {
-    const response = await fetch(url, { redirect: 'follow' })
-    if (response.status === 401) return true
-    const body = await response.text()
-    return body.includes('dsh web authentication required')
+    /* One hop is what this handshake takes; the cap is here so a server that
+       redirects in a circle cannot spin this loop forever. A chain that never
+       lands is not this wall — the browser gets to say what that URL is. */
+    const MAX_HOPS = 5
+    let target = url
+    for (let hop = 0; hop < MAX_HOPS; hop += 1) {
+      const cookie = [...launchCookies].map(([name, value]) => `${name}=${value}`).join('; ')
+      const response = await fetch(target, {
+        redirect: 'manual',
+        ...(cookie === '' ? {} : { headers: { cookie } }),
+      })
+      for (const header of response.headers.getSetCookie()) {
+        // Only the pair before the first `;`: the attributes belong to the
+        // browser's own rules, which are not this loop's business.
+        const pair = header.split(';')[0] ?? ''
+        const at = pair.indexOf('=')
+        if (at > 0) launchCookies.set(pair.slice(0, at).trim(), pair.slice(at + 1).trim())
+      }
+      if (response.status >= 300 && response.status < 400) {
+        const location = response.headers.get('location')
+        if (location === null) return false
+        target = new URL(location, target).href
+        continue
+      }
+      if (response.status === 401) return true
+      const body = await response.text()
+      return body.includes('dsh web authentication required')
+    }
+    return false
   } catch {
     // A server that is not answering is a different fact; the browser launch
     // and the resulting error message are the honest report for that one.
@@ -208,7 +257,17 @@ if (await wasAuthWall(args.url)) {
   console.error('  dsh web mints a per-process launch token and prints it in the URL it shows at startup.')
   console.error('  Pass that whole URL, or put it in DSH_SHOT_URL so it stays out of shell history:')
   console.error('    $env:DSH_SHOT_URL = "http://127.0.0.1:3080/?token=..."')
-  process.exit(6)
+  /* LEAVE BY DRAINING, NOT BY `process.exit`.
+   *
+   * The probe's own connection is still being torn down at this instant, and
+   * leaving the process during that teardown aborts on a platform assertion
+   * (Windows: `Assertion failed: !(handle->flags & UV_HANDLE_CLOSING)`, and a
+   * crash code where the 6 belongs) — the same class of hazard `shutdown()`
+   * below exists to avoid. Setting the code and leaving the module pending hands
+   * the ending to Node: with nothing else on the loop, the process ends by
+   * itself and the code above is what the caller sees. */
+  process.exitCode = 6
+  await new Promise(() => {})
 }
 
 /** A private profile dir, removed on every exit path including failure. */

@@ -4714,16 +4714,15 @@ textarea.itemInput {
  * **为什么外面还有一层盒子。** `Disclosure` 的头本身就是一枚 `<button>`，而按钮里装不了
  * 按钮——所以 ⓘ 站在它旁边，两者由这一行承载；那句按需出现的说明挂在这一行下面。
  *
- * **为什么按上沿对齐，不按中线。** 这一行里除了头还有**会长的东西**：展开之后
- * `Disclosure` 那一块下面接出五行与那几个下拉，几百像素高。按中线对齐时，整行的交叉轴尺寸
- * 就是那一整块的高度，ⓘ 会被摆到正文的中间去（量过：同一个探针在展开态读到 233.5px 的偏
- * 差）。按上沿对齐时，头永远在这一行的顶上，ⓘ 也跟着它不动。
+ * **为什么这一行是网格、而不是一条普通的行。** 头与它的折叠体焊在同一个 `<section>` 里
+ * （头是那枚按钮，展开之后下面接出五行与那几个下拉，几百像素高）。一条 `align-items: center`
+ * 的普通行里，交叉轴尺寸由那一整块给，于是 ⓘ 会被摆到正文的中间去（量过：展开态偏 233.5px）；
+ * 而按上沿对齐时，它要自己算出「头那一行的行盒比我这枚 20px 的盒子矮多少」——那个数**不归
+ * 这一行**（行盒是 `Disclosure` 的字给的，两处各算一次就会各说一套）。
  *
- * **而 ⓘ 的盒子（20）比头那一行的行盒（16）高**，所以它要自己让出那一格：它是一枚绕
- * viewBox 中心对称的记号，居中在自己的盒里就到位了，剩下的是**把那个盒心放到头那一行的
- * 墨线上**——半个字的高差由 `1lh` 那一项给，另半个是这一族那枚补偿的另一半（本表末尾那一族
- * 规则：字低半格 ⇒ 墨线在行盒心下面半格）。这一处是全表唯一一个「行盒不归自己」的消费点：
- * 头那一行的盒是 `Disclosure` 的，所以这半格算在记号这一侧。 */
+ * 所以这一行是**两列的网格**：第 1 行是头那一行（按钮一格、ⓘ 一格），折叠体横贯第 2 行。
+ * 要让按钮与折叠体各自成为一格，中间那两层盒子在这里**不画**（`display: contents`——
+ * `<section>` 只是一个没有 role、没有可达名的容器）。 */
 .itemRunConfigHead {
   display: flex;
   flex-direction: column;
@@ -4732,27 +4731,45 @@ textarea.itemInput {
 }
 
 .itemRunConfigHeadRow {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--s1);
+  display: grid;
+  grid-template-columns: minmax(0, max-content) max-content;
+  justify-content: start;
+  align-items: center;
+  column-gap: var(--s1);
+  /* 头那一行与它的折叠体之间一档 —— 与这一块自己的节奏同一个数（`.itemRunConfigHead`
+     的头→说明也是这一档）。 */
+  row-gap: var(--s2);
   min-inline-size: 0;
 }
 
-/* 那一块在行里要能缩：摘要自带省略号，而一个没有 `min-inline-size: 0` 的 flex 子项
-   会按内容定宽，把那句省略号连同这一行一起顶出卡片。 */
-.itemRunConfigHeadText {
+/* 那一层盒子在这里不画：它是 `Disclosure` 自己那一层 `<section>`（头 + 折叠体住在一起），
+   而网格要的是这两件东西各自一格。`display: contents` 只改**盒树**，选择器仍然按 DOM 写
+   （所以下面几条是 `> section > button`，不是 `> button`）。 */
+.itemRunConfigHeadRow > section {
+  display: contents;
+}
+
+/* 头那一行的按钮：第 1 行第 1 格。它要能缩——摘要自带省略号，而一个没有
+   `min-inline-size: 0` 的格子会按内容定宽，把那句省略号连同这一行一起顶出卡片。 */
+.itemRunConfigHeadRow > section > button {
+  grid-area: 1 / 1;
   min-inline-size: 0;
 }
 
+/* 折叠体：第 2 行横贯两列（那五行的宽度由它自己算，与头那一行无关）。 */
+.itemRunConfigHeadRow > section > div {
+  grid-column: 1 / -1;
+  min-inline-size: 0;
+}
+
+/* ⓘ：头那一行的末尾，与那一行同在第 1 格行里，由这一行居中——
+ *
+ *   它的盒心落在第 1 行第 2 格的中心；而**这一格的中心就是那一行字的墨心**：字那一侧由
+ *   表末那条族规则补上半格（`…Title` / `…Summary` 才是直接装字的盒子——按钮里还站着一个
+ *   雪佛龙记号，把按钮整体抬半格会连记号一起抬）。两个中心于是由构造对齐：字号、行距、
+ *   字体换了都一样，**这一行没有第二个数**。 */
 .itemRunConfigHeadRow > .itemGroupWhy {
-  align-self: flex-start;
-  /* 与头部那串字同档，于是 `1lh` 就是那一行的行盒。 */
-  font-size: 12px;
-  line-height: normal;
-  /* 两项：把盒心放到头那一行的**行盒心**上（`1lh` 比这枚 20px 的盒子矮多少，就让出多少），
-     再往下半个补偿——因为字的墨心比它自己的行盒心低半个（那一族那枚数就是这个意思，
-     这里读的是它的另一半）。 */
-  margin-block-start: calc((1lh - 20px) / 2 + var(--item-ink-lift) / 2);
+  grid-area: 1 / 2;
 }
 
 /* 就地展开的那五个下拉：与那五行之间留一档，右侧的下拉自己铺满整列。 */
@@ -5420,7 +5437,12 @@ textarea.itemInput {
  *     安静行的一格）——不挂在外面的药丸上，因为药丸同时还装着记号，整体抬半格会连记号
  *     一起抬，而记号本来就居中；
  *   · 属性表的字段名（`.itemOptNameText`）：同一个理由的第三种形状——那一行里也站着一枚 ⓘ，
- *     而「字段名」这三个字本来是一段裸文本，连一个能垫的盒子都没有。
+ *     而「字段名」这三个字本来是一段裸文本，连一个能垫的盒子都没有；
+ *   · 运行配置那一行的头（`.itemRunConfigHeadRow > section > button > span`）：第四个消费点，
+ *     同一件事的第四种形状——那两个盒子（`Disclosure` 的标题与摘要）本来由**按钮**居中，而
+ *     按钮里还站着一个雪佛龙记号：要抬的是**装字的这两枚**，不是那个按钮（连记号一起抬，
+ *     记号就高半格）。它们由按钮居中、按钮那一行由网格居中，于是两个中心由构造重合——
+ *     这一处**没有任何算出来的数**（行盒不归记号那一侧，记号也不替字让位）。
  *
  * **用内衬，不用位移。** 位移（`transform`）只改**画**的位置：它在版面上不占地方，而
  * 版面才是量得出的那一层——`Range.getClientRects()` 报的是排版位置，于是「量出来是 0」
@@ -5462,6 +5484,7 @@ textarea.itemInput {
 .itemRailToday,
 .itemRailDayNum,
 .itemGroupText,
-.itemOptNameText {
+.itemOptNameText,
+.itemRunConfigHeadRow > section > button > span {
   padding-block-end: var(--item-ink-lift);
 }

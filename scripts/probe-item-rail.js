@@ -16,29 +16,84 @@
 // 图形（SVG）走第三条路：`getBoundingClientRect()` 对 SVG 子元素给的是**几何包围盒**，
 // 再按 `stroke-width` 的一半外扩就是描边的墨（描边有一半画在几何外侧）。
 //
+// ── 它在哪一页上跑 ────────────────────────────────────────────────────────────
+//
+// **工件与真面板各量一次，两份读数都要。** 工件是台架静态渲染的那一页（`DSH_PANEL_HTML`
+// 写出来的），真面板是正在跑的那一个实例。两处的**类名不一样**：构建给每个类加了哈希前缀
+// （`[hash]_[local]`），工件里是光的。所以这里的元素一律**按类名整词取**（见 `byClass`），
+// 而不是按选择器——一个写着 `.itemGroupHead` 的探针在真面板上一个元素都找不到，而「找不到」
+// 与「这一页没有它」在报告里长得一样。
+//
 // The last expression IS the answer: shot-panel evaluates this file and returns
 // its completion value, so nothing here may end in `console.log`.
 ;((() => {
+  /* ── 怎么找到一件东西：按**类名整词**，不按选择器 ────────────────────────────
+   *
+   * 真面板里的类名带着那一份哈希前缀（构建是 `[hash]_[local]`），台架工件里是光的。
+   * 于是「按选择器找」在真面板上**一个都找不到**，而找不到与「这一页没有它」在报告里
+   * 长得一样——每一段都会安安静静地报空，看起来像一次干净的量。
+   *
+   * 所以取元素只有这一条路：类名整词相等，或者 `_` 之后相等（前缀只在这里被抹掉）。
+   * `.itemX` 形式的字符串照样能传进来（`all` / `one` 会把它们翻成类名），
+   * 于是调用点不必逐个改写。**这一份探针自己注入的每一样东西也走这条路**：
+   * 一句写在 `<style>` 里的 `.itemNote { … }` 在真面板上与在工件上是两回事，
+   * 而它不生效的样子（说明没显形、A/B 一个数都没改）与「改前本来就长这样」一样。 */
+  const byClass = (name) => [...document.querySelectorAll('*')]
+    .filter(el => [...el.classList].some(one => one === name || one.endsWith(`_${name}`)))
+  const all = (selector) => selector.split(',').flatMap(part => {
+    const named = /^\.([A-Za-z][\w-]*)$/.exec(part.trim())
+    return named === null ? [...document.querySelectorAll(part.trim())] : byClass(named[1])
+  })
+  const one = (selector) => all(selector)[0] ?? null
+  /** 同一件事，从一个子树里找（`host.querySelector('.itemX')` 的那一半）。 */
+  const pick = (root, selector) => {
+    if (root === null) return null
+    const named = /^\.([A-Za-z][\w-]*)$/.exec(selector.trim())
+    if (named === null) return root.querySelector(selector)
+    const name = named[1]
+    return [...root.querySelectorAll('*')]
+      .find(el => [...el.classList].some(one => one === name || one.endsWith(`_${name}`))) ?? null
+  }
+  /** 给元素打个记号，好让注入的声明**不靠类名**找到它（属性选择器两处都认）。 */
+  const mark = (el, value) => { if (el !== null) el.setAttribute('data-r2-old', value) }
+
   /* ── 改前/改后同页 A/B ───────────────────────────────────────────────────────
    *
    * 判据要的是**同一个页面上的两个读数**：换一张工件页去量「改前」，量到的差异里混着
    * 内容与版面的变化，分不出哪一条是哪一条。所以 `#before` 这个 hash 把这一轮涉及的
    * 几条声明**改回旧值**（只这几条，别的一律不动），同一个探针于是给出两个数。
    *
-   * 这几条与 `DESIGN.md` 里那张表逐条对应；改表就要改这里，不然两个数说的不是一件事。
+   * 这几条与 `DESIGN.md` 里那张表说的必须是一件事：动这一处就动那张表，不然两个数不是
+   * 同一件事的两个读数。
+   *
+   * **运行配置那一行是这一轮改的**：改前它是一条 flex 行，记号自己算那半格
+   * （`margin-block-start` 里那两项：`1lh` 是**记号自己**的行盒，而头那一行的行盒不归它），
+   * 装字的盒子也不读补偿。改后那一行是网格、记号由父级居中、字那一侧读补偿——
+   * 于是这一行没有第二个数。下面四条把那一版拼回来（DOM 不变，只改盒树与声明）。
    *
    * **组头那一枚不在名单上，而且这是对的**：它这一轮没有动（`.itemGroupText` 早就在那一族的
    * 名单里），把它一起改回去量到的会是「另一张表」，而不是「改前的这一张」。所以它在两个
    * 模式下都读 0——那正是这一轮其余三处的对照组。 */
   if (location.hash === '#before') {
+    for (const el of all('.itemEmptyGroups')) mark(el, 'quietGroups')
+    for (const el of all('.itemOptNameText')) mark(el, 'optNameText')
+    for (const el of all('.itemNote')) mark(el, 'note')
+    for (const el of all('.itemQuiet')) mark(el, 'quiet')
+    for (const el of all('.itemRoot')) mark(el, 'root')
+    const row = one('.itemRunConfigHeadRow')
+    mark(row, 'headRow')
+    mark(pick(row, '.itemGroupWhy'), 'headWhy')
     const back = document.createElement('style')
     back.textContent = [
-      '.itemEmptyGroups { line-height: 20px !important; }',
-      '.itemOptNameText { padding-block-end: 0 !important; }',
-      '.itemRunConfigHeadRow > .itemGroupWhy { margin-block-start: calc((1lh - 20px) / 2) !important; }',
-      '.itemNote { max-inline-size: 46ch !important; }',
-      '.itemQuiet { gap: 0 !important; }',
-      '.itemRoot { --item-write-floor: calc(4 * 20px + 16px + 2px) !important; --item-write-ceil: calc(24 * 20px + 16px + 2px) !important; }',
+      '[data-r2-old=\'quietGroups\'] { line-height: 20px !important; }',
+      '[data-r2-old=\'optNameText\'] { padding-block-end: 0 !important; }',
+      '[data-r2-old=\'headRow\'] { display: flex !important; align-items: flex-start !important; gap: 4px !important; }',
+      '[data-r2-old=\'headRow\'] > section { display: block !important; }',
+      '[data-r2-old=\'headRow\'] > section > button > span { padding-block-end: 0 !important; }',
+      '[data-r2-old=\'headWhy\'] { grid-area: auto !important; align-self: flex-start !important; font-size: 12px !important; line-height: normal !important; margin-block-start: calc((1lh - 20px) / 2 + var(--item-ink-lift) / 2) !important; }',
+      '[data-r2-old=\'note\'] { max-inline-size: 46ch !important; }',
+      '[data-r2-old=\'quiet\'] { gap: 0 !important; }',
+      '[data-r2-old=\'root\'] { --item-write-floor: calc(4 * 20px + 16px + 2px) !important; --item-write-ceil: calc(24 * 20px + 16px + 2px) !important; }',
     ].join('\n')
     document.head.appendChild(back)
   }
@@ -161,9 +216,6 @@
     return el.className.toString().split(' ')[0] ?? el.tagName.toLowerCase()
   }
 
-  const all = (sel) => [...document.querySelectorAll(sel)]
-  const one = (sel) => document.querySelector(sel)
-
   /* ── 一、日历那一行的三枚控件 ────────────────────────────────────────────────
    *
    * 判据三条：三格的墨心各在自己盒心（纵向 ≤ 0.5）、三格的墨心互相对齐（≤ 0.5）、
@@ -261,10 +313,13 @@
   /* ── 三、日历的日格 ─────────────────────────────────────────────────────────
    *
    * 一格数字是这一族里唯一「定高、内容自己居中」的那一种成员（26px 的格子），所以它
-   * 的补偿算术与别的成员不是同一条——它必须被单独量。 */
+   * 的补偿算术与别的成员不是同一条——它必须被单独量。
+   *
+   * **数字那一枚走 `pick`，不走选择器**：这一段量的是父子两件东西，而 `pick` 是
+   * 「从一个子树里按类名整词取」的那一条路（理由见文件头上 `byClass` 那一段）。 */
   const dayCells = all('.itemRailDay').slice(0, 4).map(el => {
-    const num = el.querySelector('.itemRailDayNum')
-    return { cell: offsetOf(el), num: offsetOf(num) }
+    const num = pick(el, '.itemRailDayNum')
+    return { cell: offsetOf(el), num: num === null ? null : offsetOf(num) }
   })
 
   /* ── 四、安静行与空摘要 ───────────────────────────────────────────────────── */
@@ -302,7 +357,7 @@
     }))
   /* 这一族的补偿读的是根上那个令牌：令牌不在（挂载页没有 `.itemRoot`），`var()` 就整条
      失效、底衬回落到 shorthand 那一档——量出来的数会**看着正常**，而屏上根本不是那样。 */
-  const rootEl = document.querySelector('.itemRoot')
+  const rootEl = one('.itemRoot')
   const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--item-ink-lift').trim()
 
   /* ── 六、那一枚 ⓘ 与它同行的那串字 ──────────────────────────────────────────
@@ -414,7 +469,7 @@
   ]
   const markSites = SITE_SELECTORS.map(([selector, label]) => {
     const rows = all(selector).map(host => {
-      const mark = host.querySelector('.itemGroupWhy')
+      const mark = pick(host, '.itemGroupWhy')
       const markBox = boxOf(mark)
       const markInk = strokeInk(mark)
       const runs = runsOn(host, markBox)
@@ -452,9 +507,10 @@
    *               这个词的物理含义，判据就是「限宽 ≥ 这一句」。
    *   `lines`     它**真的**排了几行（`Range.getClientRects()` 一行一个矩形）。
    *   `maxInline` 限宽本身（computed），以及它与 `naturalW + padding` 的差。 */
-  const revealNotes = document.createElement('style')
-  revealNotes.textContent = '.itemNote { display: block !important; }'
-  document.head.appendChild(revealNotes)
+  /* **显形写在元素上，不写在一条 `.itemNote { … }` 规则里**：那条规则在真面板上按的是
+     一个带哈希前缀的类名，于是它什么也不做——而「说明没显形」读出来是零尺寸的盒子，
+     与「这一段没有说明」长得一样。 */
+  for (const note of all('.itemNote')) note.style.setProperty('display', 'block', 'important')
 
   const canvasOf = (el) => {
     const style = getComputedStyle(el)
@@ -493,18 +549,25 @@
    *
    * 「安静行那行字离上面的空隙」与「节头下面那句说明离上面的空隙」是不是同一个数——这是
    * 骨架的问题，不是那句话的问题。所以两处各量一次**药丸下沿到说明上沿**的距离（说明这时
-   * 已经显形），并报出两处用的 gap。 */
-  const airOf = (container, head) => all(container).map(host => {
-    const headBox = boxOf(host.querySelector(head))
-    const noteBox = boxOf(host.querySelector('.itemNote'))
-    if (headBox === null || noteBox === null) return null
-    return {
-      air: round(noteBox.t - headBox.b),
-      gap: getComputedStyle(host).rowGap,
-      headBottom: headBox.b,
-      noteTop: noteBox.t,
-    }
-  }).filter(one => one !== null)
+   * 已经显形），并报出两处用的 gap。
+   *
+   * 两处各自报出**这一页有几件这样的骨架**（`hosts`）与**其中几件读得出那一段距离**
+   * （`pairs`）：日程页之外没有 `.itemAgendaBlock`，那是「这一页没有它」，不是「两处不等」。 */
+  const airOf = (container, head) => {
+    const hosts = all(container)
+    const pairs = hosts.map(host => {
+      const headBox = boxOf(pick(host, head))
+      const noteBox = boxOf(pick(host, '.itemNote'))
+      if (headBox === null || noteBox === null) return null
+      return {
+        air: round(noteBox.t - headBox.b),
+        gap: getComputedStyle(host).rowGap,
+        headBottom: headBox.b,
+        noteTop: noteBox.t,
+      }
+    }).filter(one => one !== null)
+    return { hosts: hosts.length, pairs }
+  }
   const gaps = {
     section: airOf('.itemAgendaBlock', '.itemGroupHead'),
     quiet: airOf('.itemQuiet', '.itemEmptyGroups'),
@@ -566,6 +629,23 @@
     const numbers = list.filter(v => v !== null).map(v => Math.abs(v))
     return numbers.length === 0 ? null : round(Math.max(...numbers))
   }
+  /* ── 一条判据的**三态** ──────────────────────────────────────────────────────
+   *
+   * `false` 与「我没量」在报告里长得一样（规范 15）：非日程页上没有节头那一族骨架，
+   * 没有写作框的工件上也没有那一栏——那两处都不是「不成立」，是**这一页没有那件东西**。
+   * 所以每一条这样的判据报一个词，而不是一个是非：
+   *
+   *   `'pass'` / `'fail'`  量到了，成立与否
+   *   `'no-reading'`       东西在，但读不出数
+   *   `'not-here'`         这一页没有那件东西（不适用）
+   *
+   * 数与词同时给出：词回答「量没量到」，数回答「差多少」。
+   * @param present - 这一页有几件那样的东西。
+   * @param readable - 其中几件读得出数。
+   * @param holds - 读出来的那些成立吗。
+   */
+  const stateOf = (present, readable, holds) =>
+    present === 0 ? 'not-here' : readable === 0 ? 'no-reading' : holds ? 'pass' : 'fail'
 
   const pass = {
     trioInkCentre: orders.every(c => withinTol(c.offY)),
@@ -579,7 +659,11 @@
     rowsBaselineRead: worst(railRows.map(r => r.baselineSpread)),
     rowsOptical: railRows.every(r => r.textInkOffY === null || withinTol(r.textInkOffY)),
     rowsWorst: worst(railRows.map(r => r.textInkOffY)),
-    cellsOptical: dayCells.every(c => c.num.ink !== null && withinTol(c.num.offY)),
+    /* **日格先要「量到了」才算数。** 取数字那一枚取不到时 `offY` 是 null，而一条
+       `every` 里「没量到」与「居中了」长得一样——`withinTol` 把缺读数算作不通过，
+       所以判据是「四格都读得出数、且都在容差里」，`cellsRead` 把读到几格打出来。 */
+    cellsOptical: dayCells.length > 0 && dayCells.every(c => c.num !== null && withinTol(c.num.offY)),
+    cellsRead: dayCells.filter(c => c.num !== null && c.num.ink !== null).length,
     liftToken,
     pillsOptical: rootEl !== null && pills.length > 0 && pills.every(p => within(p.offY, 0.5)),
     pillsWorst: worst(pills.map(p => p.offY)),
@@ -619,13 +703,21 @@
     notesOneLine: notes.length > 0 && notes.every(one => one.lines === 1 || (one.boxW ?? 0) < one.neededInline),
     noteWidest: notes.reduce((most, one) => (one.neededInline > most ? one.neededInline : most), 0),
     /* 骨架：两处「药丸下沿 → 说明上沿」必须是同一个数（安静行与节头）。 */
-    gapSection: gaps.section.length === 0 ? null : gaps.section[0].air,
-    gapQuiet: gaps.quiet.length === 0 ? null : gaps.quiet[0].air,
-    gapSame: gaps.section.length > 0 && gaps.quiet.length > 0 && gaps.section[0].air === gaps.quiet[0].air,
+    gapSection: gaps.section.pairs.length === 0 ? null : gaps.section.pairs[0].air,
+    gapQuiet: gaps.quiet.pairs.length === 0 ? null : gaps.quiet.pairs[0].air,
+    gapHosts: [gaps.section.hosts, gaps.quiet.hosts],
+    gapSame: gaps.section.hosts === 0 || gaps.quiet.hosts === 0
+      ? 'not-here'
+      : gaps.section.pairs.length === 0 || gaps.quiet.pairs.length === 0
+        ? 'no-reading'
+        : gaps.section.pairs[0].air === gaps.quiet.pairs[0].air ? 'pass' : 'fail',
     /* 写作框：地板装得下四行、第五行开始滚。 */
+    proseBoxes: prose.length,
     proseFloors: prose.map(one => one.lines),
-    proseFourFits: prose.length > 0 && prose.every(one => one.four.fits),
-    proseFiveScrolls: prose.length > 0 && prose.every(one => !one.five.fits),
+    proseFourFits: stateOf(prose.length, prose.filter(one => one.four.clientH > 0).length,
+      prose.length > 0 && prose.every(one => one.four.fits)),
+    proseFiveScrolls: stateOf(prose.length, prose.filter(one => one.five.clientH > 0).length,
+      prose.length > 0 && prose.every(one => !one.five.fits)),
   }
 
   return JSON.stringify({

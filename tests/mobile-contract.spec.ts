@@ -1623,4 +1623,39 @@ describe('content-box family + interaction-card containment (the desktop truncat
     expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
     expect(source).toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
   })
+
+  it('a plan card body keeps a floor computed from its own line box, and the card yields', () => {
+    /* THE REPORTED 「正文只有一条缝」. Its root is the CARD's `max-height`: the
+       decision rows pinned under the body spend that cap first, and the body gets
+       the remainder — measured on the bench's plan card, 131px of a 322px card for
+       a 228px plan, and the reported card is that state with one more decision row
+       under it. So the body carries its own floor, and the floor is computed from
+       THIS rule's own line box (`font-size × line-height`), because a literal pixel
+       would stop following the text the day the type scale moves. The ceiling moves
+       onto the body too (a long plan still scrolls inside it), and the CARD yields:
+       a box too short for chrome + floor is absorbed by the region that scrolls,
+       never by the plan. Rule text is read with its comments removed (硬性规范 14). */
+    const body = withoutComments(ruleOf('interactionPlanBody'))
+    const floor = /min-block-size:\s*([^;]+)/.exec(body)?.[1]?.trim() ?? ''
+    expect(floor, 'the plan body has no floor — three decision rows squeeze it back into a sliver').not.toBe('')
+    expect(floor, 'the floor is a pixel literal: it stops following this paragraph the day the type scale moves')
+      .not.toMatch(/\d+(?:\.\d+)?px/)
+    expect(floor, 'the floor is not computed from the line box (`--plan-body-line`)').toContain('var(--plan-body-line)')
+    // The line box's TWO numbers live in one place, and the paragraph reads them.
+    expect(body, 'the line box is no longer font-size × line-height in one declaration')
+      .toMatch(/--plan-body-line:\s*calc\(\s*var\(--plan-body-ink\)\s*\*\s*var\(--plan-body-lead\)\s*\)/)
+    expect(body, 'the paragraph stopped reading the size token it computed its floor from')
+      .toMatch(/font-size:\s*var\(--plan-body-ink\)/)
+    expect(body, 'the paragraph stopped reading the leading token it computed its floor from')
+      .toMatch(/line-height:\s*var\(--plan-body-lead\)/)
+    expect(body, 'a long plan no longer scrolls inside its own region').toMatch(/max-block-size:\s*var\(--plan-body-ceiling\)/)
+    // The pinned rows stay pinned, and the card is the thing that gives way.
+    expect(ruleOf('interactionPlanActions'), 'the decision rows stopped being pinned under the body').toMatch(/flex:\s*none/)
+    expect(source, 'the plan card still caps itself: its cap cannot know how much the pinned rows will take')
+      .toMatch(/\.interactionCard:has\(>\s*\.interactionPlanBody\)\s*\{[^}]*max-height:\s*none/)
+    // 咬得动：写回一个像素数的地板，这条读法必须报。
+    expect(/\d+(?:\.\d+)?px/.test('min-block-size: 78.5px'), 'the plant did not bite').toBe(true)
+    expect(/min-block-size:\s*([^;]+)/.exec('min-block-size: calc(3 * var(--plan-body-line));')?.[1], 'the plant did not bite')
+      .toContain('var(--plan-body-line)')
+  })
 })

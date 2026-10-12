@@ -20,7 +20,30 @@
  * document is a write nobody asked for).
  * @module dsh-task-board/core/attachment
  */
-/** One durable attachment as a document carries it (bytes live in the store). */
+/**
+ * One durable attachment as a document carries it (bytes live in the store).
+ *
+ * ── THE REF IS THE OFFICIAL VALUE, AND ITS FIELD TABLE IS NOT OURS TO COPY ───
+ *
+ * Everywhere a ref travels — into a document, out through the host route, into
+ * the store call, across a relay — it travels WHOLE. The only edit any of those
+ * places may make is dropping the two keys that belong to this plugin's own
+ * older shapes (`data`, `receiptId`), written as `const { data, receiptId,
+ * ...rest } = ref`. An enumerated "keep these keys" list is what broke the image
+ * lane: the official image ref carries `width`/`height` beside the three keys a
+ * file ref has, several hand-copied tables kept only the keys their author knew,
+ * and the store's read-back check compares all four — so a picture a reader had
+ * just attached arrived at the store as an incomplete reference and was refused
+ * as corrupt. A field the harness adds tomorrow must ride every one of those
+ * places with no edit here; a list cannot promise that, and neither can a
+ * compiler, because the whole boundary is structural (read by name, never
+ * imported).
+ *
+ * WHERE LISTING IS STILL REQUIRED: {@link normalizeAttachmentRefs} ingests
+ * untrusted persisted data into this model, so it names exactly what a document
+ * may hold — a spread there would let an arbitrary key into a document. That is
+ * a boundary filter, not a transport.
+ */
 export interface AttachmentRef {
     /** Content-addressed id in the official attachment store. */
     attachmentId: string;
@@ -40,12 +63,20 @@ export interface AttachmentRef {
  * `data` (temporary bytes, self-contained) or `receiptId` (a per-Agent stage
  * that dies with its session). The materializer picks the first available
  * source and reports honestly when a source is gone.
+ *
+ * The display fields are optional because both shapes carry them optionally —
+ * a file ref has no media type, an older image ref has no intrinsic size — and
+ * a materializer that demanded them would refuse references that are perfectly
+ * readable. They are carried, never required (see {@link AttachmentRef}).
  */
 export interface PromptAttachment {
     name: string;
     bytes: number;
     /** Images only — the wire part's media type. */
     mediaType?: string;
+    /** Images only — intrinsic size, carried so the read-back can prove identity. */
+    width?: number;
+    height?: number;
     /** Durable source: read the bytes back from the official store. */
     attachmentId?: string;
     /** Legacy source: the temporary-bytes part this record was born with. */
@@ -53,9 +84,32 @@ export interface PromptAttachment {
     /** Legacy source: a staged receipt, valid only for its own session. */
     receiptId?: string;
 }
+/**
+ * The two keys this plugin's OWN older shapes fill, and the whole extent of what
+ * may be removed from a REF on its way anywhere ({@link AttachmentRef}). They are
+ * sources, not ref fields: a ref that somehow carries one must not have its bytes
+ * taken from it, and neither key has any meaning on another machine. An
+ * envelope's own local key (a composer chip's `id`) is a different matter — it
+ * was never part of the reference ({@link wholeRefOf} only ever removes these).
+ */
+export type OwnSourceKeys = 'data' | 'receiptId';
+/**
+ * One ref as it travels: the whole value, minus this plugin's own two source
+ * keys. THE one place that edit is written — every lane that moves a ref (the
+ * send path, the relay, a record's own attachment table, the read-back request)
+ * goes through it, so no two lanes can disagree about what an attachment is, and
+ * none of them can silently drop a field the harness added.
+ * @param ref - a durable ref, or this plugin's own prompt-attachment shape.
+ * @returns the same value with `data` / `receiptId` removed.
+ */
+export declare function wholeRefOf<T extends {
+    name: string;
+    bytes: number;
+} & Partial<Record<OwnSourceKeys, unknown>>>(ref: T): Omit<T, OwnSourceKeys>;
 /** The record fields {@link attachmentsOf} reads (all three ages). */
 export interface AttachmentCarrier {
-    attachments?: AttachmentRef[];
+    /** Read-only on purpose: every real carrier (a task, a round, a checklist row) holds its table as a readonly field, and this view never writes one. */
+    attachments?: readonly AttachmentRef[];
     /** Legacy: base64 temporary bytes persisted by an older revision. */
     promptImages?: readonly {
         mediaType?: string;
@@ -87,6 +141,12 @@ export declare function normalizeAttachmentRefs(raw: unknown): AttachmentRef[] |
  * 所以两端各自缺席时才相等。
  *
  * 一处定义：清单那条 patch 的「按值比」与会话规则那条 patch 的「按值比」是同一个问题。
+ *
+ * ── 这不是传输用的字段表 ─────────────────────────────────────────────────────
+ *
+ * 三项是**「同一份字节还是不是那一份」**的判据，不是「送出去要带哪几个键」。谁要送一份 ref
+ * 出去，整份带走（{@link wholeRefOf}）——照着这三项去拼一份传输用的对象，会把
+ * `mediaType` / `width` / `height` 连同官方将来补的任何字段一起丢掉，而这里一个字都不会报。
  * @param a - 左表。
  * @param b - 右表。
  * @returns 两份表是否逐条相同。

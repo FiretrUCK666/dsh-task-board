@@ -19,7 +19,7 @@
  * reason, and whatever did land stays in the ledger.
  */
 import { useCallback, useRef, useState } from 'react'
-import type { AttachmentRef } from '../../core/attachment.ts'
+import { normalizeAttachmentRefs, wholeRefOf, type AttachmentRef } from '../../core/attachment.ts'
 import { t } from '../locales.ts'
 import {
   encodeImageFile, intakeDecision, MAX_COMMENT_FILES, MAX_UPLOAD_BYTES, readFileBase64,
@@ -53,16 +53,26 @@ export function chipsOf(refs: readonly AttachmentRef[]): DraftAttachment[] {
   return refs.map((ref, at) => ({ ...ref, id: chipKeyOf(ref, at) }))
 }
 
-/** 芯片表写回文档的那一份：本地键不是记录的一部分，出这一层就丢掉。 */
+/**
+ * One chip as the record and the draft hold it: the ref WHOLE, without the local
+ * key this ledger put on it.
+ *
+ * Two things leave a chip, and only two: its own envelope key (`id`, which
+ * `chipKeyOf` minted for React and which no document ever reads) and the two
+ * source keys of this plugin's older shapes (`wholeRefOf`). Nothing else may be
+ * named here — a chip is built from the admission response, so every field the
+ * store put on the reference is what a document is read by, and the picture a
+ * list dropped would fail its identity check at send time with nobody able to
+ * say why.
+ */
+function storedRefOf(chip: DraftAttachment): AttachmentRef {
+  const { id, ...ref } = chip
+  return wholeRefOf(ref)
+}
+
+/** 芯片表写回文档的那一份（`chipKeyOf` 的反方向）。 */
 export function refsOf(chips: readonly DraftAttachment[]): AttachmentRef[] {
-  return chips.map(chip => ({
-    attachmentId: chip.attachmentId,
-    name: chip.name,
-    bytes: chip.bytes,
-    ...(chip.mediaType !== undefined ? { mediaType: chip.mediaType } : {}),
-    ...(chip.width !== undefined ? { width: chip.width } : {}),
-    ...(chip.height !== undefined ? { height: chip.height } : {}),
-  }))
+  return chips.map(chip => storedRefOf(chip))
 }
 
 /** Image-lane or file-lane for one picked file (pure routing, no I/O). */
@@ -110,12 +120,10 @@ export function encodeCommentDraft(
   return JSON.stringify({
     v: 2,
     text,
-    attachments: attachments.map(attachment => ({
-      attachmentId: attachment.attachmentId,
-      name: attachment.name,
-      bytes: attachment.bytes,
-      ...attachment.mediaType !== undefined ? { mediaType: attachment.mediaType } : {},
-    })),
+    // The envelope's own key is dropped; the ref goes whole (see `storedRefOf`).
+    // A draft is what a reader comes back to, and a picture restored without its
+    // intrinsic size reads back as an incomplete reference.
+    attachments: attachments.map(chip => storedRefOf(chip)),
   })
 }
 
@@ -123,6 +131,12 @@ export function encodeCommentDraft(
  * Decode a stored comment draft (pure, tested): the v2 ref envelope, the v1
  * envelope this revision replaced (text + inline image bytes, re-admitted on
  * restore), legacy raw text (pre-attachment drafts), or corrupt → empty.
+ *
+ * A v2 row is read through {@link normalizeAttachmentRefs} — the ONE ref
+ * grammar this plugin has, the same one a document is ingested with. A second
+ * reader here (an id/name/bytes check of its own) is how a restored picture came
+ * back without the fields the store verifies its identity with: the two readers
+ * agreed on three keys and disagreed about everything else.
  */
 export function decodeCommentDraft(raw: string | undefined): CommentDraftSnapshot {
   const empty: CommentDraftSnapshot = { text: '', attachments: [], legacyImages: [] }
@@ -133,24 +147,15 @@ export function decodeCommentDraft(raw: string | undefined): CommentDraftSnapsho
     const record = parsed as Record<string, unknown>
     const text = typeof record.text === 'string' ? record.text : ''
     if (record.v === 2) {
-      const attachments: DraftAttachment[] = []
-      if (Array.isArray(record.attachments)) {
-        record.attachments.forEach((row, index) => {
-          if (typeof row !== 'object' || row === null) return
-          const candidate = row as Record<string, unknown>
-          if (typeof candidate.attachmentId !== 'string' || candidate.attachmentId === '') return
-          if (typeof candidate.name !== 'string') return
-          if (typeof candidate.bytes !== 'number' || !Number.isFinite(candidate.bytes)) return
-          attachments.push({
-            id: `restored-${index}-${candidate.attachmentId.slice(0, 8)}`,
-            attachmentId: candidate.attachmentId,
-            name: candidate.name,
-            bytes: candidate.bytes,
-            ...typeof candidate.mediaType === 'string' ? { mediaType: candidate.mediaType } : {},
-          })
-        })
+      const refs = normalizeAttachmentRefs(record.attachments) ?? []
+      return {
+        text,
+        attachments: refs.map((ref, index) => ({
+          ...ref,
+          id: `restored-${index}-${ref.attachmentId.slice(0, 8)}`,
+        })),
+        legacyImages: [],
       }
-      return { text, attachments, legacyImages: [] }
     }
     if (record.v !== 1) return { ...empty, text: raw }
     const legacyImages: EncodedImage[] = []

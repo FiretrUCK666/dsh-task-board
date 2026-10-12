@@ -1,4 +1,4 @@
-import type { AttachmentRef } from '../../core/attachment.ts';
+import { type AttachmentRef } from '../../core/attachment.ts';
 import { type EncodedImage, type ImageBudget, type ImageRejectReason } from './attach.ts';
 /** One admitted attachment in a composer ledger: a durable ref plus the local
  *  key the strip needs for its chips. */
@@ -27,7 +27,7 @@ export type AttachmentAdmitter = (input: {
 export declare function chipKeyOf(ref: AttachmentRef, at: number): string;
 /** 文档里那一份读成芯片表（`refsOf` 是反方向，两个方向只有这一对）。 */
 export declare function chipsOf(refs: readonly AttachmentRef[]): DraftAttachment[];
-/** 芯片表写回文档的那一份：本地键不是记录的一部分，出这一层就丢掉。 */
+/** 芯片表写回文档的那一份（`chipKeyOf` 的反方向）。 */
 export declare function refsOf(chips: readonly DraftAttachment[]): AttachmentRef[];
 /** The in-flight intake kind (what the busy line must name). */
 export type IntakeBusyKind = 'image' | 'file' | 'mixed';
@@ -57,6 +57,12 @@ export declare function encodeCommentDraft(text: string, attachments: readonly D
  * Decode a stored comment draft (pure, tested): the v2 ref envelope, the v1
  * envelope this revision replaced (text + inline image bytes, re-admitted on
  * restore), legacy raw text (pre-attachment drafts), or corrupt → empty.
+ *
+ * A v2 row is read through {@link normalizeAttachmentRefs} — the ONE ref
+ * grammar this plugin has, the same one a document is ingested with. A second
+ * reader here (an id/name/bytes check of its own) is how a restored picture came
+ * back without the fields the store verifies its identity with: the two readers
+ * agreed on three keys and disagreed about everything else.
  */
 export declare function decodeCommentDraft(raw: string | undefined): CommentDraftSnapshot;
 /** Whether a picked batch contains any non-image (a re-add clears stale notices). */

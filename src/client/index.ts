@@ -221,6 +221,210 @@ function isRefLike(value: unknown): boolean {
     && typeof ref.bytes === 'number'
 }
 
+/**
+ * What one attachment read hands back: the bytes as base64 plus the store's own
+ * reading of the media type — or WHY it could not be read, carried verbatim from
+ * the host (or from the store through it). The reason is the whole point: the
+ * store knows whether this reference is incomplete, refused or missing, and a
+ * caller that flattened every failure into one sentence would make three
+ * different situations look identical on screen.
+ */
+type AttachmentReadOutcome =
+  | { ok: true; data: string; mediaType?: string }
+  | { ok: false; code: string; message: string }
+
+/** What the plugin's own attachment door publishes (see {@link createAttachmentBridge}). */
+export interface AttachmentBridge {
+  /** Admit picked bytes into the official store; the durable ref comes back. */
+  admitAttachment(input: { name: string; data: string; mediaType?: string }): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }>
+  /** Deliver one round of text + attachments into a session. */
+  sendComment(
+    sessionId: string,
+    text: string,
+    mode?: 'queue' | 'steer',
+    attachments?: readonly PromptAttachment[],
+  ): Promise<{ ok: true } | { ok: false; error: string }>
+}
+
+/**
+ * The plugin's own attachment door: admit bytes into the harness's attachment
+ * store, read them back when a message is actually sent, and materialize the
+ * official prompt parts from them.
+ *
+ * WHY IT IS ITS OWN FACTORY. The three steps are one contract — what is admitted
+ * is a durable reference, what is read back is that same reference, and what is
+ * sent is the bytes it names — and it is the only place in the client half where
+ * a reference crosses the wire. Read together, the whole lane can be checked
+ * (`tests/composer-attachments.spec.ts` drives it through this entry).
+ *
+ * A CHECKLIST ROW HAS NO SESSION, which is why the durable store is used at all:
+ * the official `fileUploads` face mints a receipt for one Agent, and a document
+ * needs a reference that outlives every session. The bytes still live where the
+ * harness already keeps them; this plugin creates no directory and no second
+ * copy.
+ * @param api - the domain API face (the official prompt send and file staging).
+ * @returns the two doors the wiring publishes.
+ */
+export function createAttachmentBridge(api: ApiFace): AttachmentBridge {
+  const admitAttachment = async (
+    input: { name: string; data: string; mediaType?: string },
+  ): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }> => {
+    const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments'), 120_000, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify(input),
+    })
+    const envelope = body as { ok?: unknown; value?: unknown; error?: { message?: unknown } } | undefined
+    if (envelope?.ok === true && isRefLike(envelope.value)) return { ok: true as const, ref: envelope.value as AttachmentRef }
+    const message = typeof envelope?.error?.message === 'string' ? envelope.error.message : 'the attachment store refused it'
+    return { ok: false as const, error: message }
+  }
+  /** Reads already answered this page, by attachment id (see `readAttachment`). */
+  const attachmentReads = new Map<string, Promise<AttachmentReadOutcome>>()
+  /**
+   * Read one stored attachment back, ONCE per attachment id while it succeeds.
+   *
+   * A FAILED READ IS NOT REMEMBERED. One message can name the same attachment
+   * twice and a retry follows a refusal, so the read is shared — but a failure
+   * cached here would outlive its cause (a store that was briefly unreadable, a
+   * host that had not started its store yet) and pin that attachment as
+   * unreadable for the rest of the page's life, with a retry that silently
+   * reuses the old answer.
+   */
+  const readAttachment = (ref: PromptAttachment): Promise<AttachmentReadOutcome> => {
+    if (ref.attachmentId === undefined) {
+      return Promise.resolve({
+        ok: false,
+        code: 'no-source',
+        message: '这一条附件既没有库里的引用，也没有随它带的字节——它的来源已经不在了',
+      })
+    }
+    const key = ref.attachmentId
+    const cached = attachmentReads.get(key)
+    if (cached !== undefined) return cached
+    const pending = (async (): Promise<AttachmentReadOutcome> => {
+      // THE WHOLE REFERENCE GOES ON THE WIRE. `data` / `receiptId` are this
+      // plugin's own two sources, and neither belongs in a read request; every
+      // other field — including ones this bundle has never heard of — is what
+      // the host hands the store, and the store proves the bytes against it
+      // (see core/attachment).
+      const { data, receiptId, ...stored } = ref
+      const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments/read'), 120_000, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ ref: stored }),
+      })
+      const envelope = body as {
+        ok?: unknown
+        value?: { data?: unknown; mediaType?: unknown }
+        error?: { code?: unknown; message?: unknown }
+      } | undefined
+      if (envelope?.ok === true && typeof envelope.value?.data === 'string') {
+        return {
+          ok: true,
+          data: envelope.value.data,
+          ...typeof envelope.value.mediaType === 'string' ? { mediaType: envelope.value.mediaType } : {},
+        }
+      }
+      // The host's own words, and the host's own code when it gave one. A host
+      // that never answered (the route is gone, the body was too large for it,
+      // the socket died) has said nothing, and this is where that is admitted
+      // instead of being dressed up as a store verdict.
+      if (typeof envelope?.error?.message === 'string') {
+        return {
+          ok: false,
+          code: typeof envelope.error.code === 'string' ? envelope.error.code : 'unreadable',
+          message: envelope.error.message,
+        }
+      }
+      return { ok: false, code: 'no-answer', message: '附件读取没有应答——主机没答上来' }
+    })()
+    attachmentReads.set(key, pending)
+    void pending.then(outcome => {
+      if (!outcome.ok) attachmentReads.delete(key)
+    })
+    return pending
+  }
+  // Comment continuations, rule rounds and a run's own prompt all leave
+  // through here: what the record carries travels as refs (or as the two
+  // legacy shapes an older document still holds), and this is the ONE place
+  // that materializes the official prompt parts from them. A ref whose bytes
+  // cannot be read, or a legacy receipt that died with its session, is
+  // REPORTED BY NAME — never silently dropped from the message.
+  const sendComment = async (
+    sessionId: string,
+    text: string,
+    mode: 'queue' | 'steer' = 'queue',
+    attachments: readonly PromptAttachment[] = [],
+  ): Promise<{ ok: true } | { ok: false; error: string }> => {
+    const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string; receiptId?: string }> =
+      text.trim() !== ''
+        ? [{ type: 'text', text }]
+        : []
+    for (const attachment of attachments) {
+      const label = attachment.name === '' ? 'attachment' : attachment.name
+      if (attachment.mediaType !== undefined) {
+        // Image lane: the wire part carries the bytes; read them from the
+        // store when this record holds a ref, or use them directly when the
+        // document still carries the older temporary-bytes shape.
+        const bytes = attachment.data !== undefined
+          ? { ok: true as const, data: attachment.data }
+          : await readAttachment(attachment)
+        if (!bytes.ok) return { ok: false as const, error: readFailureText(bytes) }
+        content.push({
+          type: 'image',
+          mediaType: bytes.mediaType ?? attachment.mediaType,
+          data: bytes.data,
+          ...attachment.name !== '' ? { name: attachment.name } : {},
+        })
+        continue
+      }
+      // File lane: the wire part is an opaque receipt for THIS session, so
+      // the exact bytes go up through the official upload face first. A
+      // legacy receipt is used as-is and fails loudly when its session is
+      // gone.
+      if (attachment.receiptId !== undefined) {
+        content.push({ type: 'file', receiptId: attachment.receiptId })
+        continue
+      }
+      const bytes = await readAttachment(attachment)
+      if (!bytes.ok) return { ok: false as const, error: readFailureText(bytes) }
+      const staged = await api.fileUploads.upload({
+        sessionId: sessionId as SessionId,
+        data: bytes.data,
+        ...attachment.name === '' ? {} : { name: attachment.name },
+      })
+      if (!staged.result.ok) {
+        return { ok: false as const, error: `attachment rejected: ${label} (${staged.result.error.code}: ${staged.result.error.message})` }
+      }
+      content.push({ type: 'file', receiptId: staged.result.value.receiptId })
+    }
+    if (content.length === 0) return { ok: false as const, error: 'empty message' }
+    const response = await api.sessions.prompt({
+      sessionId: sessionId as SessionId,
+      // The OFFICIAL prompt disposition: queue injects in order; steer
+      // interrupts the current turn now (the composer's 插话 — a steer is
+      // only a steer when the wire says so).
+      mode,
+      content: content as never,
+    })
+    return response.result.ok
+      ? { ok: true as const }
+      : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
+  }
+  return { admitAttachment, sendComment }
+}
+
+/**
+ * What a reader is told when one attachment cannot be read back: the store's own
+ * code and its own sentence. The code is what makes the two situations
+ * distinguishable at a glance (an incomplete old reference is re-pickable, a
+ * store that refused is not), and the sentence is the part that can be acted on.
+ */
+function readFailureText(outcome: { code: string; message: string }): string {
+  return `附件读不回来：${outcome.code} — ${outcome.message}`
+}
+
 function commandsOf(ctx: ClientContext): RemoteCommandsFace | undefined {  const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
     ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
   if (commands === undefined) {
@@ -470,120 +674,10 @@ export function apply(ctx: ClientContext): void {
     // the host performs the durable admission itself, exactly like the
     // native composer does. There is deliberately no board-side attachment
     // bridge: the wire only accepts these shapes.
-    // One door to the plugin's own attachment routes: admit bytes (they land in
-    // the harness's attachment store) and read them back when a message is
-    // actually sent. A checklist row has no session, so the official
-    // `fileUploads` face — which mints a receipt for one Agent — could not serve
-    // it; the durable store speaks in content-addressed ids instead, which is
-    // what a synced document can carry and what any later sender can read.
-    const admitAttachment = async (
-      input: { name: string; data: string; mediaType?: string },
-    ): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }> => {
-      const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments'), 120_000, {
-        method: 'POST',
-        headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(input),
-      })
-      const envelope = body as { ok?: unknown; value?: unknown; error?: { message?: unknown } } | undefined
-      if (envelope?.ok === true && isRefLike(envelope.value)) return { ok: true as const, ref: envelope.value as AttachmentRef }
-      const message = typeof envelope?.error?.message === 'string' ? envelope.error.message : 'the attachment store refused it'
-      return { ok: false as const, error: message }
-    }
-    /** Read one stored attachment back as base64 (cached per id). */
-    const attachmentReads = new Map<string, Promise<{ data: string; mediaType?: string } | undefined>>()
-    const readAttachment = (ref: PromptAttachment): Promise<{ data: string; mediaType?: string } | undefined> => {
-      if (ref.attachmentId === undefined) return Promise.resolve(undefined)
-      const key = ref.attachmentId
-      const cached = attachmentReads.get(key)
-      if (cached !== undefined) return cached
-      const pending = (async (): Promise<{ data: string; mediaType?: string } | undefined> => {
-        const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments/read'), 120_000, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ ref: {
-            attachmentId: ref.attachmentId,
-            name: ref.name,
-            bytes: ref.bytes,
-            ...ref.mediaType !== undefined ? { mediaType: ref.mediaType } : {},
-          } }),
-        })
-        const envelope = body as { ok?: unknown; value?: { data?: unknown; mediaType?: unknown } } | undefined
-        if (envelope?.ok !== true || typeof envelope.value?.data !== 'string') return undefined
-        return {
-          data: envelope.value.data,
-          ...typeof envelope.value.mediaType === 'string' ? { mediaType: envelope.value.mediaType } : {},
-        }
-      })()
-      attachmentReads.set(key, pending)
-      return pending
-    }
-    // Comment continuations, rule rounds and a run's own prompt all leave
-    // through here: what the record carries travels as refs (or as the two
-    // legacy shapes an older document still holds), and this is the ONE place
-    // that materializes the official prompt parts from them. A ref whose bytes
-    // cannot be read, or a legacy receipt that died with its session, is
-    // REPORTED BY NAME — never silently dropped from the message.
-    const sendComment = async (
-      sessionId: string,
-      text: string,
-      mode: 'queue' | 'steer' = 'queue',
-      attachments: readonly PromptAttachment[] = [],
-    ): Promise<{ ok: true } | { ok: false; error: string }> => {
-      const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string; receiptId?: string }> =
-        text.trim() !== ''
-          ? [{ type: 'text', text }]
-          : []
-      for (const attachment of attachments) {
-        const label = attachment.name === '' ? 'attachment' : attachment.name
-        if (attachment.mediaType !== undefined) {
-          // Image lane: the wire part carries the bytes; read them from the
-          // store when this record holds a ref, or use them directly when the
-          // document still carries the older temporary-bytes shape.
-          const bytes = attachment.data !== undefined
-            ? { data: attachment.data, mediaType: attachment.mediaType }
-            : await readAttachment(attachment)
-          if (bytes === undefined) return { ok: false as const, error: `attachment unavailable: ${label} could not be read back from the store` }
-          content.push({
-            type: 'image',
-            mediaType: bytes.mediaType ?? attachment.mediaType,
-            data: bytes.data,
-            ...attachment.name !== '' ? { name: attachment.name } : {},
-          })
-          continue
-        }
-        // File lane: the wire part is an opaque receipt for THIS session, so
-        // the exact bytes go up through the official upload face first. A
-        // legacy receipt is used as-is and fails loudly when its session is
-        // gone.
-        if (attachment.receiptId !== undefined) {
-          content.push({ type: 'file', receiptId: attachment.receiptId })
-          continue
-        }
-        const bytes = await readAttachment(attachment)
-        if (bytes === undefined) return { ok: false as const, error: `attachment unavailable: ${label} could not be read back from the store` }
-        const staged = await api.fileUploads.upload({
-          sessionId: sessionId as SessionId,
-          data: bytes.data,
-          ...attachment.name === '' ? {} : { name: attachment.name },
-        })
-        if (!staged.result.ok) {
-          return { ok: false as const, error: `attachment rejected: ${label} (${staged.result.error.code}: ${staged.result.error.message})` }
-        }
-        content.push({ type: 'file', receiptId: staged.result.value.receiptId })
-      }
-      if (content.length === 0) return { ok: false as const, error: 'empty message' }
-      const response = await api.sessions.prompt({
-        sessionId: sessionId as SessionId,
-        // The OFFICIAL prompt disposition: queue injects in order; steer
-        // interrupts the current turn now (the composer's 插话 — a steer is
-        // only a steer when the wire says so).
-        mode,
-        content: content as never,
-      })
-      return response.result.ok
-        ? { ok: true as const }
-        : { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
-    }
+    // The plugin's OWN attachment door (admit into the harness's store, read the
+    // reference back when a message is actually sent) — one factory, because
+    // those two steps are one contract and the reference is what carries it.
+    const { admitAttachment, sendComment } = createAttachmentBridge(api)
     // Slash-command lines execute through the native command registry — the
     // same RPC the composer's '/' submissions use. The plain prompt path
     // would deliver the line to the model as text, which is exactly the
