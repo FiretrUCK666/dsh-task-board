@@ -280,6 +280,48 @@ describe('模型那一侧的写走的是清单自己的语义层', () => {
   })
 })
 
+describe('一条链接、两扇门、两份文档', () => {
+  /* 这一组钉的是**模型本身**（`PRODUCT.md` 那八条里能被机器读到的三条），不是某一个面板的
+     行为——其余五条已经被别处钉着（见文件头那份「已经被别处钉住的」清单），这里不钉第二遍。 */
+  const source = (path: string): string => readFileSync(fileURLToPath(new URL(`../${path}`, import.meta.url)), 'utf8')
+
+  it('两份文档、两个真相：两个文档名，一个单元，一段服务', () => {
+    const service = source('src/host/board-service.ts')
+    expect(service, '看板那份文档的名字改了').toContain("BOARD_DOCUMENT = 'board'")
+    expect(service, '清单那份文档的名字改了').toContain("ITEMS_DOCUMENT = 'items'")
+    // 两个名字来自同一个单元声明（加一种数据 = 在表里加一个名字），不是两套服务、两份真相。
+    expect(service, '两份文档不再由同一处声明').toContain('BOARD_UNIT_TABLE')
+  })
+
+  it('一条链接只有一个方向：行存卡 id，卡不存它的条目', () => {
+    // 行那一侧：`taskId` 是模型里唯一指向卡的那一项。
+    expect(source('src/core/item.ts'), '那一行不再存它挂着的卡').toContain('taskId: string | undefined')
+    /* 卡那一侧：`TaskRecord` 里没有任何一个「条目」字段——反向的「这张卡挂着几条」是**过滤**
+       出来的读数。卡上真长出第二份名单的那一天，这一条会红。 */
+    const task = createTask({ title: '一张卡', description: '', prompt: '' }, NOW, 'task-1')
+    const named = (value: object): string[] => Object.keys(value).filter(key => /item|row|checklist/i.test(key))
+    expect(named(task),
+      '卡上出现了第二份名单——反向读数必须由装配层拿屏上那批行过滤出来').toEqual([])
+    // 咬得动：给同一张卡安上一个「条目名单」，这段读法必须报出来。
+    expect(named({ ...task, rows: ['i-1'] }), '卡上多出来的名单被放过了').toEqual(['rows'])
+    // 而过滤那一处读的就是行上那个链接：同一批行，一个答案。
+    const rows = [row({ id: 'a', taskId: 'task-1' }), row({ id: 'b', taskId: 'task-2' }), row({ id: 'c' })]
+    const board = cards(['task-1', 'todo'], ['task-2', 'todo'])
+    expect(rows.filter(one => linkedCardIdOf(one, board) === 'task-1').map(one => one.id),
+      '「这张卡挂着哪几条」不是从行上那个链接过滤出来的').toEqual(['a'])
+  })
+
+  it('一边删掉，另一边不跟着消失：卡没了，那一行还在，只是不再挂着卡', () => {
+    const hanging = row({ taskId: 'task-1' })
+    expect(linkedCardIdOf(hanging, cards(['task-1', 'review'])), '卡在，链接却不算数').toBe('task-1')
+    expect(linkedCardIdOf(hanging, cards()), '卡没了，这一行却还挂着一张不存在的卡').toBeUndefined()
+    /* 行自己带着它的内容：删卡不动它一个字——行是**这件事**（内容、日期、标签都在它身上），
+       卡是**做它的一次安排**（在哪一栏、谁在做、跑到哪一步）。 */
+    expect(hanging.title).toBe('画廊随访')
+    expect(hanging.body).toBe('把东墙的灯换掉')
+  })
+})
+
 /** 一份按真实合并文法读写的文档面，形状与 `agent-tools.spec.ts` 的假面相同。
  *
  *  `purgeItem` 也走**真的** `purgeItemTombstone`：这一档是那条纪律（假面必须和宿主
