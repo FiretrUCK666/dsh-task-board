@@ -58,7 +58,13 @@ export interface ItemBatchBarProps {
     readonly carded: number;
     /** Put the held rows back where they were, one gesture. */
     readonly onRemove: () => void;
-    /** 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。 */
-    readonly configSlot?: ReactNode;
+    /**
+     * 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。
+     *
+     * **是个 thunk，不是一块现成的元素**：这一条只在真的画出来的时候才需要它——把装配写在
+     * 调用点的 JSX 里，每次渲染都会求值（包括没多选、条子根本不在屏上的时候），而那一次求值
+     * 会去读预设存储。
+     */
+    readonly configSlot?: () => ReactNode;
 }
 export declare function ItemBatchBar(props: ItemBatchBarProps): import("react").JSX.Element;

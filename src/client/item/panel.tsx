@@ -65,7 +65,7 @@ import { itemTitleOf } from '../../core/item.ts'
 import { defaultRunPresetOf, RUN_CONFIG_KEYS, normalizeRunConfig, pinnedConfigCount, sameRunConfig, type RunConfigPresetConfig } from '../../core/run-presets.ts'
 
 import { t } from '../locales.ts'
-import { askConfigDraftKey, draftStore } from '../board/drafts.ts'
+import { askConfigDraftKey, CAPTURE_CARD_CONFIG_KEY, draftStore } from '../board/drafts.ts'
 import { RunConfigBlock } from './run-config-block.tsx'
 import { itemsRestore } from '../items-archive.ts'
 import { Button } from '../board/ui.tsx'
@@ -312,11 +312,14 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const [restoring, setRestoring] = useState<number | undefined>(undefined)
   const [asking, setAsking] = useState<string | undefined>(undefined)
   /**
-   * 「这一次要交给它的那一份」运行配置——**每条一行（批量一条）的设备本地草稿**。
+   * 「这一次要用的那一份」运行配置——**设备本地草稿**，三个槽共用一段读法。
+   *
+   * 三个槽是：一行一个（`ask:<id>`）、一批一个（`ask:batch`）、新建那条纸一个
+   * （`capture:card`，见 `drafts.ts` 的键表）。
    *
    * 为什么不进文档：运行配置属于**会跑起来的东西**（那是卡的事），而清单一行可能跨工作区、
-   * 跨会话——把它存成行的字段就是第二份真相（清单字段冻结那条也挡着）。它只活到「这一按」
-   * 为止：卡一出生配置就长在卡上，草稿清槽（`clearAskConfig`）。
+   * 跨会话——把它存成行的字段就是第二份真相（清单字段冻结那条也挡着）。它只活到「卡出生」
+   * 为止：卡一出生配置就长在卡上，草稿清槽（`clearConfigDraft`）。
    *
    * 状态里那份缓存只是**为了重渲染**（localStorage 不会让 React 重画）：写入两边都写，
    * 读的时候先看缓存、再看存储、最后回落到默认预设链。
@@ -739,8 +742,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *
    * 见 `askDrafts` 那一段：它不进文档，卡一出生就清槽。
    */
-  const askConfigOf = useCallback((itemId: string | undefined): RunConfigPresetConfig => {
-    const key = askConfigDraftKey(itemId)
+  const configDraftOf = useCallback((key: string): RunConfigPresetConfig => {
     const cached = askDrafts[key]
     if (cached !== undefined) return cached
     const stored = draftStore.get(key)
@@ -756,15 +758,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [askDrafts, face.controller])
 
   /** 存下这一份草稿（存储 + 状态，两处一起——见 `askDrafts` 那一段）。 */
-  const saveAskConfig = useCallback((itemId: string | undefined, next: RunConfigPresetConfig): void => {
-    const key = askConfigDraftKey(itemId)
+  const saveConfigDraft = useCallback((key: string, next: RunConfigPresetConfig): void => {
     draftStore.set(key, JSON.stringify(next))
     setAskDrafts(current => ({ ...current, [key]: next }))
   }, [])
 
   /** 这一份草稿的使命结束了（卡已经带着它出生）。 */
-  const clearAskConfig = useCallback((itemId: string | undefined): void => {
-    const key = askConfigDraftKey(itemId)
+  const clearConfigDraft = useCallback((key: string): void => {
     draftStore.clear(key)
     setAskDrafts(current => {
       if (current[key] === undefined) return current
@@ -773,6 +773,10 @@ export function ItemListPanel(props: ItemListPanelProps) {
       return next
     })
   }, [])
+
+  /** 一行那一个槽（`ask:<id>`，批量是 `ask:batch`）。 */
+  const askConfigOf = useCallback((itemId: string | undefined): RunConfigPresetConfig =>
+    configDraftOf(askConfigDraftKey(itemId)), [configDraftOf])
 
   /** 折叠头上那一句：「一项都没指定」用调用点给的那个词，否则说指定了几项。 */
   const configSummary = (config: RunConfigPresetConfig, none: string): string => {
@@ -861,7 +865,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
       if (cardId === undefined) return
       /* 配置已经长在那张卡上，这一份草稿的使命结束了。不清的话，它会在下一次「问 AI」时
          冒充「这一次要用的那一份」——一句关于将来的假话。 */
-      clearAskConfig(item.id)
+      clearConfigDraft(askConfigDraftKey(item.id))
     } else if (!sameRunConfig(config, cardConfigOfRow(item) ?? {})) {
       /* 已经挂卡的：配置写进**那张卡**（与看板同一处设置）。**一样的不算一次写入**：一次什么
          都没改的写入也会推一个 revision、走一轮同步，而屏上什么都没变。 */
@@ -881,7 +885,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         setAsking(undefined)
       }
     })()
-  }, [cardColumns, cardConfigOfRow, clearAskConfig, face.controller, promoteOne])
+  }, [cardColumns, cardConfigOfRow, clearConfigDraft, face.controller, promoteOne])
 
   /**
    * 「问 AI」：**按下去就跑**（`runAsk`），跑的是屏上那一份配置。
@@ -1076,7 +1080,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           note={t('item.ask.configNote')}
           controller={controller}
           workspaceTitleOf={workspaceTitleOf}
-          onSave={next => { saveAskConfig(item.id, next) }}
+          onSave={next => { saveConfigDraft(askConfigDraftKey(item.id), next) }}
         />
       )
     }
@@ -1545,15 +1549,16 @@ export function ItemListPanel(props: ItemListPanelProps) {
       carded={heldCarded}
       onAsk={askHeld}
       /* 批量那条「交给 AI」用的配置块：**与详情右栏同一个组件**，喂的是批量草稿
-         （`ask:batch`）。已经有卡的各自留着自己的那份，所以这里只说新建的卡会带着它。 */
-      configSlot={face.controller === undefined ? undefined : (
+         （`ask:batch`）。已经有卡的各自留着自己的那份，所以这里只说新建的卡会带着它。
+         同样是个 thunk：那一块只在条子真的画出来时才装配。 */
+      configSlot={face.controller === undefined ? undefined : () => (
         <RunConfigBlock
           config={askConfigOf(undefined)}
           summary={configSummary(askConfigOf(undefined), t('item.ask.configDefault'))}
           note={t('item.ask.configNote')}
-          controller={face.controller}
+          controller={face.controller as BoardController}
           workspaceTitleOf={workspaceTitleOf}
-          onSave={next => { saveAskConfig(undefined, next) }}
+          onSave={next => { saveConfigDraft(askConfigDraftKey(undefined), next) }}
         />
       )}
       onRemove={removeHeld}
@@ -1902,6 +1907,23 @@ export function ItemListPanel(props: ItemListPanelProps) {
           proseHeight={prefs.proseHeight}
           onProseHeight={px => choose({ proseHeight: px })}
           admit={admitAttachment}
+          /* 这张纸的「新建卡片」那一档：**卡是在这里诞生的，它带着什么出生就该让读者看见**。
+             用的是同一块（`RunConfigBlock`）、同一段读法（`configDraftOf`）、同一处清槽
+             （卡一出生）——与行上「问 AI」那条路是同一个机制，不是第二套。
+             另两档不给：不挂 = 没有卡、也没有东西要跑；挂已有卡 = 那张卡本来就有自己的一份，
+             而这张纸的律是「卡里的内容不动」（在这一张纸上改别人的卡是第二扇门）。
+             **是个 thunk**：那一块只在读者真的选了「新建卡片」时才装配——常驻组件里写
+             `expr && <X/>`，表达式每次渲染都会求值，关着的时候也去读一次预设存储。 */
+          cardConfigSlot={face.controller === undefined ? undefined : () => (
+            <RunConfigBlock
+              config={configDraftOf(CAPTURE_CARD_CONFIG_KEY)}
+              summary={configSummary(configDraftOf(CAPTURE_CARD_CONFIG_KEY), t('item.ask.configDefault'))}
+              note={t('item.cardLink.configNote')}
+              controller={face.controller as BoardController}
+              workspaceTitleOf={workspaceTitleOf}
+              onSave={next => { saveConfigDraft(CAPTURE_CARD_CONFIG_KEY, next) }}
+            />
+          )}
           onCreate={(input, newCard) => {
             if (isBlankCapture(input)) return false
             const made = captureItemRecord(input, Date.now(), newItemId)
@@ -1909,7 +1931,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
             /* The promotion runs AFTER its own apply, on the SAME tick: its
                patch base is the mirror, so the row this hangs was just
                written into it and hangs on the card it named. */
-            if (newCard !== undefined && newCard !== '') promoteOne(made.item, { cardTitle: newCard })
+            if (newCard !== undefined && newCard !== '') {
+              /* 那张卡带着**读者在这张纸上看见的那一份**出生（默认预设链，或他改过的那份），
+                 然后这一槽清掉——它只活到卡出生为止，与行上那一条同一个律。 */
+              promoteOne(made.item, { cardTitle: newCard }, configDraftOf(CAPTURE_CARD_CONFIG_KEY))
+              clearConfigDraft(CAPTURE_CARD_CONFIG_KEY)
+            }
             return true
           }}
         />

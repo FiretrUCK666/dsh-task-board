@@ -678,6 +678,8 @@ export const zh = {
   'item.ask.configChange': '改',
   'item.ask.configDefault': '默认预设',
   'item.ask.configNote': '还没挂卡：交给它时会用它开一张卡，这份配置就长在那张卡上，之后在卡上改。',
+  /* 新建那条纸上「新建卡片」那一档的同一句话：**卡出生时带着它**，而不是「交给它」时才用。 */
+  'item.cardLink.configNote': '这张卡会带着这一份出生；它还不跑，之后在卡上或这一行的详情里改。',
   /* 两句话，两件不同的事：**它开了新的一轮**，或者**它接着说进了那条会话**。
    *
    * 一句「已经交给 AI」会让读者分不清他刚才是启动了什么，还是往一件已经在跑的事里添了一句——
@@ -1707,6 +1709,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.ask.configChange': 'Change',
   'item.ask.configDefault': 'Default preset',
   'item.ask.configNote': 'No card yet: handing it over opens one with this configuration, and the card keeps it — change it there afterwards.',
+  'item.cardLink.configNote': 'The card this opens is born with this configuration; nothing runs yet, so change it later on the card or in this row\'s detail.',
   // Two sentences for two different things: a new run opened, or a message added
   // to the conversation this card already had.
   'item.ask.started': 'Started: the card moved to “In progress” on the board.',

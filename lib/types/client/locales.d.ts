@@ -637,6 +637,7 @@ export declare const zh: {
     'item.ask.configChange': string;
     'item.ask.configDefault': string;
     'item.ask.configNote': string;
+    'item.cardLink.configNote': string;
     'item.ask.started': string;
     'item.ask.said': string;
     'item.ask.refused': string;

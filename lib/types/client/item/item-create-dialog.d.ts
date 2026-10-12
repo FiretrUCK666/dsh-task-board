@@ -1,3 +1,19 @@
+/**
+ * The new-row sheet: the fields, in the order a reader thinks of them.
+ *
+ * ── WHY IT LOOKS LIKE THIS ───────────────────────────────────────────────────
+ *
+ * 标题在最上面（一行字就够），下面是**三段可以写很长的话**：正文、步骤、上下文备注；
+ * 右列是那张平的清单——优先级、状态、标签、三个日期、挂到哪张卡。
+ *
+ * ── WHY THERE IS EXACTLY ONE SCROLLER ────────────────────────────────────────
+ *
+ * The head and the footer stay put and the grid scrolls under them, so the button a
+ * reader is about to press is never the thing that scrolled away. With `overflow:
+ * hidden` on the sheet and no scroller inside, the last two fields were simply cut
+ * off behind the footer on a phone — **a field you cannot reach is not a field.**
+ */
+import type { ReactNode } from 'react';
 import type { ItemCapture } from '../../core/item-transitions.ts';
 import { type AttachmentAdmitter } from '../board/composer-attachments.ts';
 export interface ItemCreateDialogProps {
@@ -40,6 +56,18 @@ export interface ItemCreateDialogProps {
      * 没有它（没接上看板、宿主没接上附件库）时，「＋」照样在，点它会明说收不了。
      */
     readonly admit?: AttachmentAdmitter;
+    /**
+     * 「新建卡片」那一档的运行配置——**由面板装配好递进来**（与批量条那一块同一个形状）：
+     * 这一格组件不该知道看板控制器、预设存储长什么样，而那一块要读目录与预设库才有五行可写。
+     *
+     * **只在「新建卡片」那一档画它。** 另两档没有它的位置，理由各一句：不挂 = 没有卡、也没有
+     * 东西要跑（读者真要跑的时候，那一行自己那份草稿就在行上）；挂已有卡 = 那张卡本来就有自己
+     * 的一份，而这张纸的律是「卡里的内容不动」。
+     *
+     * **是个 thunk，不是一块现成的元素**：那一块的装配要读目录与预设库，而这张纸是常驻组件
+     * ——写成 `expr && <X/>` 的话，读者还没开纸、还没选那一档，表达式就已经求值过一次了。
+     */
+    readonly cardConfigSlot?: () => ReactNode;
 }
 /**
  * The sheet.

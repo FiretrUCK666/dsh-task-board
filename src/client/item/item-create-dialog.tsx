@@ -13,6 +13,7 @@
  * hidden` on the sheet and no scroller inside, the last two fields were simply cut
  * off behind the footer on a phone — **a field you cannot reach is not a field.**
  */
+import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
@@ -88,6 +89,18 @@ export interface ItemCreateDialogProps {
    * 没有它（没接上看板、宿主没接上附件库）时，「＋」照样在，点它会明说收不了。
    */
   readonly admit?: AttachmentAdmitter
+  /**
+   * 「新建卡片」那一档的运行配置——**由面板装配好递进来**（与批量条那一块同一个形状）：
+   * 这一格组件不该知道看板控制器、预设存储长什么样，而那一块要读目录与预设库才有五行可写。
+   *
+   * **只在「新建卡片」那一档画它。** 另两档没有它的位置，理由各一句：不挂 = 没有卡、也没有
+   * 东西要跑（读者真要跑的时候，那一行自己那份草稿就在行上）；挂已有卡 = 那张卡本来就有自己
+   * 的一份，而这张纸的律是「卡里的内容不动」。
+   *
+   * **是个 thunk，不是一块现成的元素**：那一块的装配要读目录与预设库，而这张纸是常驻组件
+   * ——写成 `expr && <X/>` 的话，读者还没开纸、还没选那一档，表达式就已经求值过一次了。
+   */
+  readonly cardConfigSlot?: () => ReactNode
 }
 
 /**
@@ -574,6 +587,10 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   </button>
                 )}
                 {cardHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
+                {/* **卡是在这里诞生的**：选了「新建卡片」之后，那张卡带着什么跑就该让读者看见
+                    （折叠头上一句摘要，展开是那五行，再点「改」是那几个下拉）。它在纸上的位置
+                    与「不挂 / 已有卡」无关——那两档不画它，见 props 上那一段。 */}
+                {pendingCard !== undefined && pendingCard !== '' && props.cardConfigSlot?.()}
                 {/* 与详情选择器同一句真相：两边只该有一个说法，而说法只有一处。 */}
                 <p className={css.itemNote} id={cardNote.id}>{t('item.cardLink.note')}</p>
               </div>

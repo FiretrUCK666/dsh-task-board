@@ -445,8 +445,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `tickbox.tsx` 是这一页**唯一的勾选框**，步骤板与归档共用；**「问 AI」是唯一通向模型的一按**
   （`item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**（`askTargetOf`）；**配置不是
   一道门**——「运行配置」常驻在详情右栏（`run-config-block.tsx` 读用 `RunConfigRows`、写用
-  `RunConfigFields`），按下去跑的就是屏上那一份：挂卡的读那张卡，没挂卡的读 `drafts.ts` 的
-  `ask:<id>` 草稿（卡一出生就清槽）。
+  `RunConfigFields`），按下去跑的就是屏上那一份：挂卡的读那张卡，其余读 `drafts.ts` 的草稿槽
+  （`ask:<id>` / `ask:batch` / 新建那条纸的 `capture:card`），卡一出生就清槽。
   **一律不用 Dialog**。`hostLostItems()` 为真时说
   「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder（`itemListStage`）；
   `surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。**归档是一个抽屉、

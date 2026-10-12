@@ -56,6 +56,17 @@ export function askConfigDraftKey(itemId: string | undefined): string {
   return itemId === undefined ? 'ask:batch' : `ask:${itemId}`
 }
 
+/**
+ * The capture sheet's slot: the configuration the card it is about to open will carry.
+ *
+ * It is the third of the same three slots (`ask:<id>` / `ask:batch` / this one), and it
+ * exists for the same reason as the other two: the card does not exist yet, so the
+ * settings that will run belong to a surface that has no document field to hold them.
+ * Kept across dismissals (a setting, unlike the half-written words around it) and
+ * cleared once the card is born with it.
+ */
+export const CAPTURE_CARD_CONFIG_KEY = 'capture:card'
+
 /** Answer-form draft key for one open question carrier.
  *
  *  Keyed by `rpcId` alone, and that is the point: the host mints one rpcId per

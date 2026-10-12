@@ -29,7 +29,7 @@ import { describe, expect, it } from 'vitest'
 import { act } from 'react'
 import type { ItemRecord } from '../src/core/item.ts'
 import { dayTokensIn, freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
-import { DRAFT_STORAGE_KEY, askConfigDraftKey } from '../src/client/board/drafts.ts'
+import { DRAFT_STORAGE_KEY, CAPTURE_CARD_CONFIG_KEY, askConfigDraftKey } from '../src/client/board/drafts.ts'
 import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type ItemKeyActions } from '../src/client/item/keyboard.ts'
 
 /** The action names the registrar can call, read off the closed action union. */
@@ -4078,6 +4078,92 @@ function writeMountedPage(panel: ReturnType<typeof mountPanel>, target: string):
   writeFileSync(target, aligned.html, 'utf8')
 }
 
+describe('新建一条那张纸：卡是在这里诞生的，所以它带着什么跑要先看得见', () => {
+  /* **读者的操作逻辑把这一格分成三件事**，而它们不是同一件事：
+   *
+   * - **不挂**：没有卡，也没有东西要跑。真要跑的时候，那一行自己那份草稿就在行上
+   *   （详情右栏那一块）——这张纸上再画一份，是给一个还不存在的对象写设置。
+   * - **挂已有卡**：那张卡本来就有自己的一份，而这张纸的律是「卡里的内容不动」；在这一张纸上
+   *   改别人的卡，是同一件事的第二扇门。
+   * - **新建卡片**：**卡正是在这里诞生的**。所以它带着什么跑，必须在按「存下这一条」之前看得见
+   *   ——与看板「＋新建」那张纸、与行上「问 AI」用的是同一块（`RunConfigBlock`）。
+   */
+  const openCaptureSheet = (panel: ReturnType<typeof mountPanel>): void => {
+    const open = [...panel.surface.querySelectorAll('button')]
+      .find(node => (node.textContent ?? '').includes('新建一条'))
+    if (open === undefined) throw new Error('顶栏没有「＋新建一条」')
+    click(open)
+    panel.settle()
+  }
+  const sheetOf = (panel: ReturnType<typeof mountPanel>): HTMLElement => {
+    const found = panel.surface.querySelector('[class*="itemCreateDialog"]') as HTMLElement | null
+    if (found === null) throw new Error('那张纸没有开')
+    return found
+  }
+  const configHead = (panel: ReturnType<typeof mountPanel>): HTMLButtonElement | undefined =>
+    [...sheetOf(panel).querySelectorAll('button')].find(node => (node.textContent ?? '').includes('运行配置')) as HTMLButtonElement | undefined
+  const sheetButton = (panel: ReturnType<typeof mountPanel>, text: string): HTMLButtonElement | undefined =>
+    [...sheetOf(panel).querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === text) as HTMLButtonElement | undefined
+
+  it('三档里只有「新建卡片」那一档画它，另两档一个字都没有', () => {
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      openCaptureSheet(panel)
+      expect(configHead(panel), '「不挂」那一档就画出了运行配置').toBeUndefined()
+      const existing = sheetButton(panel, '画廊第二版')
+      expect(existing, '那张纸没有列出板上的卡').toBeDefined()
+      click(existing!)
+      panel.settle()
+      expect(configHead(panel), '「挂已有卡」那一档画出了运行配置——那是同一件事的第二扇门').toBeUndefined()
+      const fresh = sheetButton(panel, '新建卡片')
+      expect(fresh, '那张纸上没有「新建卡片」').toBeDefined()
+      click(fresh!)
+      panel.settle()
+      const field = sheetOf(panel).querySelector('input[class*="itemOptNaming"]') as HTMLInputElement | null
+      expect(field, '按了「新建卡片」却没有起名框').not.toBeNull()
+      typeInto(field!, '新开的一张卡')
+      press(field, 'Enter')
+      panel.settle()
+      expect(configHead(panel), '「新建卡片」那一档没有运行配置').toBeDefined()
+      expect(configHead(panel)?.textContent ?? '', '那一块没有说这一份是什么').toContain('默认预设')
+      expect(sheetOf(panel).textContent, '那一块没有说这一份会跟到哪儿去').toContain('这张卡会带着这一份出生')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('改过的那一份跟着新卡出生，而卡一出生那一槽就清了', () => {
+    /* 「这一份」是设备本地草稿（`capture:card`）：**它只活到卡出生为止**。不清的后果不是难看
+       ——下一次开这张纸会拿着一份上一轮留下的配置，而纸上那句「这张卡会带着这一份出生」会说
+       一句关于将来的假话。 */
+    localStorage.setItem(DRAFT_STORAGE_KEY, JSON.stringify({
+      [CAPTURE_CARD_CONFIG_KEY]: JSON.stringify({ workspaceId: 'ws-2' }),
+    }))
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      openCaptureSheet(panel)
+      click(sheetButton(panel, '新建卡片')!)
+      panel.settle()
+      const field = sheetOf(panel).querySelector('input[class*="itemOptNaming"]') as HTMLInputElement
+      typeInto(field, '新开的一张卡')
+      press(field, 'Enter')
+      panel.settle()
+      expect(configHead(panel)?.textContent ?? '', '那一块没有读那一份槽').toContain('已自定义 1 项')
+      const title = sheetOf(panel).querySelector('input[aria-label="标题"]') as HTMLInputElement
+      typeInto(title, '一条要开卡的')
+      panel.settle()
+      click(sheetButton(panel, '存下这一条')!)
+      panel.settle()
+      expect(panel.minted[0]?.workspaceId, '新建的那张卡没有带上纸上那一份').toBe('ws-2')
+      const left = JSON.parse(localStorage.getItem(DRAFT_STORAGE_KEY) ?? '{}') as Record<string, string>
+      expect(left[CAPTURE_CARD_CONFIG_KEY], '卡都出生了，那一槽还留着').toBeUndefined()
+    } finally {
+      panel.dispose()
+      localStorage.removeItem(DRAFT_STORAGE_KEY)
+    }
+  })
+})
+
 describe('「新建卡片」 names the card in place, where the picker stands', () => {
   it('pressing it turns the chip into the naming field with the row\'s own words in it', () => {
     // 预填是「借来的标题」：挂不上的那条就是名字该长出来的那条。空场起步是
@@ -4313,7 +4399,48 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'card-focus' && state !== 'config-open') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-focus' && state !== 'config-open' && state !== 'capture-card') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'capture-card') {
+      /* **新建那条纸上的「新建卡片」那一档**：卡正是在这里诞生的，所以它带着什么跑要先看得见。
+       *
+       * 加它的理由：这一格在三档里是唯一带运行配置的一档，而「唯一」这件事只有看图才判得出
+       * ——折叠头那一行在纸的两列里落在哪、摘要会不会被挤掉、展开后那五行与下拉在窄档是什么
+       * 形状（与详情右栏那一块必须一样，因为是同一块）。 */
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const open = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('新建一条'))
+        if (open === undefined) throw new Error('顶栏没有「＋新建一条」')
+        click(open)
+        await settle()
+        const sheet = panel.surface.querySelector('[class*="itemCreateDialog"]')
+        if (sheet === null) throw new Error('那张纸没有开')
+        const fresh = [...sheet.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').trim() === '新建卡片')
+        if (fresh === undefined) throw new Error('那张纸上没有「新建卡片」')
+        click(fresh)
+        await settle()
+        const naming = sheet.querySelector('input[class*="itemOptNaming"]') as HTMLInputElement | null
+        if (naming === null) throw new Error('按了「新建卡片」却没有起名框')
+        typeInto(naming, '新开的一张卡')
+        press(naming, 'Enter')
+        await settle()
+        /* 展开那一块（折叠头那一行已经拍过一张了）：**要点开才看得见它在这一列里的形状**
+           ——五行与下拉落在纸的右列里会不会挤、窄档是不是与详情那一块同一个形状。 */
+        const head = [...sheet.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').includes('运行配置'))
+        if (head === undefined) throw new Error('选了「新建卡片」却没有那一块')
+        click(head)
+        await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'config-open') {
       /* **运行配置那一块：没挂卡的一行，展开、并且就地改。**

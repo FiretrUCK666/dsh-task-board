@@ -65,8 +65,14 @@ export interface ItemBatchBarProps {
   readonly carded: number
   /** Put the held rows back where they were, one gesture. */
   readonly onRemove: () => void
-  /** 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。 */
-  readonly configSlot?: ReactNode
+  /**
+   * 这一批「交给 AI」要用的那份运行配置（与详情那一块同一个组件，由面板装配好递进来）。
+   *
+   * **是个 thunk，不是一块现成的元素**：这一条只在真的画出来的时候才需要它——把装配写在
+   * 调用点的 JSX 里，每次渲染都会求值（包括没多选、条子根本不在屏上的时候），而那一次求值
+   * 会去读预设存储。
+   */
+  readonly configSlot?: () => ReactNode
 }
 
 export function ItemBatchBar(props: ItemBatchBarProps) {
@@ -135,7 +141,7 @@ export function ItemBatchBar(props: ItemBatchBarProps) {
       {/* 这一批「交给 AI」要用的那份运行配置——**与详情右栏那一块是同一个组件**：新建的卡都
           带着它出生，已经有卡的各自留着卡上的那份。批量条是一个手势作用在很多行的地方，所以
           这里也必须看得见、改得动，而不是按下之后才冒出来。 */}
-      {props.configSlot}
+      {props.configSlot?.()}
       {props.askable < props.count && (
         <p className={css.itemBatchNote}>{t('item.batch.askOne', { n })}</p>
       )}
