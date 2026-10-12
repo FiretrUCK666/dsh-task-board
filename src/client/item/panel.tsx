@@ -1396,7 +1396,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
   useItemKeys({
     state: {
       focusedId: cursor,
-      somethingOpen: paletteOpen || menuRow !== undefined || openRow !== undefined || overlay === 'create' || overlay === 'sort',
+      /* 占着键盘的层：一个菜单、一张展开的行、或者**任何一个浮层**。浮层那一路不逐个
+         点名 id——`overlay !== undefined` 对新增的浮层自动成立，而点名的写法
+         （`overlay === 'create' || overlay === 'sort'`）漏掉一个 id 就是一个洞，漏的那一刻
+         屏幕上不会有任何东西报错。`paletteOpen` 另有一份读数给调色板自己的绑定用。 */
+      somethingOpen: overlay !== undefined || menuRow !== undefined || openRow !== undefined,
       // Its OWN field rather than a reading of `somethingOpen`: the arrows mean
       // one thing on the rows and another inside the box, and a menu being open
       // is a third fact that must not hand the box's keys to a row cursor.

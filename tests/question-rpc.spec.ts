@@ -8,7 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   answerBatchOf, approveLabelOf, declineLabelOf, isDetailOnlyPlanItem, normalizeWireQuestion, pendingQuestionOf,
-  planDecisionAnswers, planQuestionOf, reduceQuestionFrames, wireQuestionsOf,
+  planApproveAnswers, planDeclineAnswers, planQuestionOf, reduceQuestionFrames, wireQuestionsOf,
   type WireQuestion,
 } from '../src/core/question-rpc.ts'
 
@@ -146,18 +146,42 @@ describe('plan review grammar', () => {
   })
   const item = planQuestionOf(plan)!
 
-  it('names the approve and decline labels from the intent', () => {
+  it('names the labels from the intent, never from the option order', () => {
     expect(approveLabelOf(item)).toBe('批准')
     expect(declineLabelOf(item)).toBe('修改')
+    // The approve label is the ASKER's own option, so a plan whose alternative is
+    // listed first still approves with the right label — reading `options[0]`
+    // answered the opposite option, silently, and that is the defect this pins.
+    const reordered = planQuestionOf(wireQuestion({
+      isPlanReview: true,
+      questions: [{ ...plan.questions[0], options: [{ label: '修改' }, { label: '批准' }] }],
+    }))!
+    expect(planApproveAnswers(reordered)).toEqual([{ id: 'plan', selected: ['批准'] }])
+    expect(planDeclineAnswers(reordered)).toEqual([{ id: 'plan', selected: ['修改'] }])
   })
 
-  it('approve selects the approve label; decline selects the other label', () => {
-    expect(planDecisionAnswers(item, 'approve', '')).toEqual([{ id: 'plan', selected: ['批准'] }])
-    expect(planDecisionAnswers(item, 'decline', '')).toEqual([{ id: 'plan', selected: ['修改'] }])
+  it('has no approve label without the intent (the generic flow owns that question)', () => {
+    // No intent = not a plan review: there is nothing to infer the label from, and
+    // guessing one approves whatever the asker happened to list first.
+    expect(approveLabelOf({ id: 'x', question: 'Q', options: [{ label: 'A' }, { label: 'B' }] })).toBeUndefined()
+    expect(declineLabelOf({ id: 'x', question: 'Q', options: [{ label: 'A' }] })).toBeUndefined()
+    expect(approveLabelOf(undefined)).toBeUndefined()
+  })
+
+  it('decline answers with the asker own other option, and is absent when it offered none', () => {
+    expect(planApproveAnswers(item)).toEqual([{ id: 'plan', selected: ['批准'] }])
+    expect(planDeclineAnswers(item)).toEqual([{ id: 'plan', selected: ['修改'] }])
+    const single = planQuestionOf(wireQuestion({
+      isPlanReview: true,
+      questions: [{ ...plan.questions[0], options: [{ label: '批准' }] }],
+    }))!
+    // No other option = no refusal to send. An empty `selected` is a SKIP of the
+    // whole question, which is a different answer from "refuse this plan".
+    expect(planDeclineAnswers(single)).toBeUndefined()
   })
 
   it('decline with an amendment is a custom-only revise-with-feedback answer', () => {
-    expect(planDecisionAnswers(item, 'decline', '  请补充预算  '))
+    expect(planDeclineAnswers(item, '  请补充预算  '))
       .toEqual([{ id: 'plan', selected: [], custom: '请补充预算' }])
   })
 })

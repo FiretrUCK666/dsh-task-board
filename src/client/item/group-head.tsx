@@ -31,6 +31,13 @@
  * `InfoMark` 包在真按钮里，悬停、聚焦、按下都能把它叫出来，`aria-expanded` 与
  * `aria-controls` 说清它开没开、说的是哪一句。触屏没有悬停，所以入口必须是一枚控件
  * ——必要的信息不许只挂在 `title=` 上。
+ *
+ * ── 那枚入口只有一份 ─────────────────────────────────────────────────────────
+ *
+ * 它是一枚**真按钮**（可达名、`aria-expanded`、`aria-controls`），所以它比一枚记号多出四行；
+ * 而它现在有五个消费点（两页的组头、日程页的安静行、属性表的字段名、运行配置那一行的头）。
+ * 抄四行的那五个副本里，第一个先过期的一定是 `aria-controls` 指到的那一句——所以按钮本身
+ * 是 {@link NoteEntry}，一处渲染。装它的盒子还是各个消费点自己的（`.itemGroupWhy`）。
  */
 import { useId, useState } from 'react'
 import { GroupMark, InfoMark, type ItemMarkId } from './marks.tsx'
@@ -61,6 +68,32 @@ export function useNote(label: string): GroupNoteHandle {
   const id = useId()
   const [open, setOpen] = useState(false)
   return { id, open, onToggle: () => setOpen(current => !current), label }
+}
+
+/**
+ * 那句解释的入口：一枚 `InfoMark` 包在真按钮里。
+ *
+ * **它按得动，而它旁边那块按不动**——所以按钮、可达名与两个 ARIA 属性是承重的，不是装饰
+ * （硬性规范 11③：触屏没有悬停，承载必要信息的说明不能只挂 `title=`）。
+ *
+ * 尺寸由调用点给，因为记号要跟它所在那一行的字阶同档：一节的头（15）比属性表里的一格（12）
+ * 大一号。**记号的边长是这一族唯一的自由度**——着色、命中区、对齐都由 `.itemGroupWhy` 说。
+ * @param props - 哪一句的把手，记号多大。
+ * @returns 那枚按钮。
+ */
+export function NoteEntry(props: { readonly note: GroupNoteHandle; readonly size?: number }): React.ReactElement {
+  return (
+    <button
+      type="button"
+      className={css.itemGroupWhy}
+      aria-expanded={props.note.open}
+      aria-controls={props.note.id}
+      aria-label={props.note.label}
+      onClick={props.note.onToggle}
+    >
+      <InfoMark size={props.size ?? 14} />
+    </button>
+  )
 }
 
 export interface GroupHeadProps {
@@ -102,18 +135,7 @@ export function GroupHead(props: GroupHeadProps): React.ReactElement {
         <i className={css.itemGroupCount}>{props.count}</i>
         {props.when !== undefined && <span>· {props.when}</span>}
       </span>
-      {props.note !== undefined && (
-        <button
-          type="button"
-          className={css.itemGroupWhy}
-          aria-expanded={props.note.open}
-          aria-controls={props.note.id}
-          aria-label={props.note.label}
-          onClick={props.note.onToggle}
-        >
-          <InfoMark size={size === 'section' ? 15 : 14} />
-        </button>
-      )}
+      {props.note !== undefined && <NoteEntry note={props.note} size={size === 'section' ? 15 : 14} />}
     </>
   )
   const shared = {

@@ -66,8 +66,13 @@ export type QuestionFrameIn =
   | { type: 'question/requested'; rpcId: string; sessionId: string; questions: unknown }
   | { type: 'question/resolved'; questionRpcId: string }
 
-/** Plan-review decision a UI can send (see planDecisionAnswers). */
-export type PlanDecision = 'approve' | 'decline'
+/**
+ * One plan-review question: a question item whose intent declares it IS a plan
+ * awaiting confirmation, and names the label that means "approve". The intent is
+ * the ONLY authority for that label — inferring it from option order answers the
+ * other option the moment the asker reorders its list.
+ */
+export type PlanReviewItem = WireQuestionItem & { intent: { kind: 'plan-review'; approve: string } }
 
 /**
  * The waiting kind of one session — the `kind` discriminator the official
@@ -111,7 +116,10 @@ export interface QuestionRpcFace {
   /** Deliver the whole answer batch; false = refused, stale or unavailable
    *  (the card stays open and shows the reason — never a silent close). */
   answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>
-  /** Reject the whole ask (the host resolves the tool call as cancelled). */
+  /** Hand the whole ask back to its owner (the official carrier's `dismiss()`,
+   *  whose own two-state contract decides what that means — see
+   *  `pending-mirror.ts`). We keep the name `cancel` because this verb is about
+   *  the ASK, not about the host method behind it. */
   cancel(rpcId: string): Promise<boolean>
 }
 
@@ -229,45 +237,53 @@ export function pendingQuestionOf(
 }
 
 /** The plan-review question of a batch, when the batch IS a plan review. */
-export function planQuestionOf(question: WireQuestion): WireQuestionItem | undefined {
-  return question.questions.find(item => item.intent?.kind === 'plan-review')
+export function planQuestionOf(question: WireQuestion): PlanReviewItem | undefined {
+  return question.questions.find((item): item is PlanReviewItem => item.intent?.kind === 'plan-review')
 }
 
-/** The approve label of a plan-review question (the intent names it). */
+/**
+ * The approve label of a plan-review question — the intent names it, and nothing
+ * else may stand in for it: a label read off `options[0]` approves whatever the
+ * asker happened to list first, which is the opposite answer the moment the order
+ * changes (and `undefined` here is honest: a question with no intent is not a plan
+ * review, so the generic flow, not this card, owns it).
+ */
 export function approveLabelOf(item: WireQuestionItem | undefined): string | undefined {
   if (item?.intent?.kind === 'plan-review') return item.intent.approve
-  return item?.options?.[0]?.label
+  return undefined
 }
 
-/** The decline label of a plan-review question (first non-approve option). */
+/** The decline label of a plan-review question (the asker's own other option). */
 export function declineLabelOf(item: WireQuestionItem | undefined): string | undefined {
-  const approve = item?.intent?.approve
+  const approve = approveLabelOf(item)
   if (approve === undefined) return undefined
   return item?.options?.find(option => option.label !== approve)?.label
 }
 
 /**
- * The answer batch for a plan-review decision.
- * - approve: select the intent's approve label;
- * - decline without amendments: select the first non-approve option;
- * - decline with amendments: revise-with-feedback — a custom-only answer
- *   (host validation forbids a single-select option alongside custom text).
+ * The answer batch that approves a plan review: the asker's OWN approve label,
+ * carried verbatim (the host matches the label, not a meaning of ours).
  */
-export function planDecisionAnswers(
-  item: WireQuestionItem,
-  decision: PlanDecision,
-  amend: string,
-): QuestionAnswerEntry[] {
+export function planApproveAnswers(item: PlanReviewItem): QuestionAnswerEntry[] {
+  return [{ id: item.id, selected: [item.intent.approve] }]
+}
+
+/**
+ * The answer batch for the asker's own non-approve option — an ordinary single
+ * choice, in the asker's words. `undefined` = the asker offered no other option,
+ * so there is no such decision to send (the official `PlanReview.decline` is
+ * absent for the same reason) and the card draws no row for it. An empty
+ * `selected` is NOT a substitute: the host reads it as a SKIP of the whole
+ * question, which is not a decision this card may take for the reader.
+ *
+ * `amend` is the host's revise-with-feedback path, and it is a custom-only answer
+ * because host validation forbids a single-select option alongside custom text.
+ */
+export function planDeclineAnswers(item: PlanReviewItem, amend = ''): QuestionAnswerEntry[] | undefined {
   const trimmed = amend.trim()
-  if (decision === 'decline' && trimmed !== '') {
-    return [{ id: item.id, selected: [], custom: trimmed }]
-  }
-  if (decision === 'approve') {
-    const label = approveLabelOf(item)
-    return label !== undefined ? [{ id: item.id, selected: [label] }] : [{ id: item.id, selected: [] }]
-  }
+  if (trimmed !== '') return [{ id: item.id, selected: [], custom: trimmed }]
   const label = declineLabelOf(item)
-  return label !== undefined ? [{ id: item.id, selected: [label] }] : [{ id: item.id, selected: [] }]
+  return label === undefined ? undefined : [{ id: item.id, selected: [label] }]
 }
 
 /**

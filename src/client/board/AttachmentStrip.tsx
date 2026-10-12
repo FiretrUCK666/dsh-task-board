@@ -54,15 +54,17 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
   busyLabel?: string
   /** The last rejection, said out loud (never a silent drop). */
   error?: string
-  /** One quiet line under the chips (what this surface's attachments mean). */
+  /** One quiet sentence about what this surface's attachments mean — beside the
+   * chips when the row can spare the width, on its own line when it cannot. */
   hint?: string
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className={css.attachStrip}>
       {/* 芯片、取件按钮与那个藏起来的框**同一条横滚行**：它们是同一件事（这一条带了哪几个
-          文件），而句子（正在传 / 收不了 / 这条附件是什么）在下面各自占一行——把句子塞进
-          这一行，窄屏上它会缩成一个字一行的竖条（见 `.attachRow` 的注释）。 */}
+          文件）。句子（正在传 / 收不了 / 这条附件是什么）跟着这一行走，但各自带着**宽度
+          地板**（`.attachHint` 的 `min-inline-size`）——装得下就同排，装不下就整句换到
+          下一行；被压成一个字一行的竖条是这条街上前一版的样子（见 `.attachRow` 的注释）。 */}
       <div className={css.attachRow}>
         <button
           type="button"

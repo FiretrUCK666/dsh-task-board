@@ -1138,18 +1138,26 @@ describe('composer under the soft keyboard (no row overlap)', () => {
     const guard = blockFrom(line => line.trim() === '.reviewComposer > * {')
     expect(guard).toMatch(/flex:\s*none/)
   })
-  it('the attachment strip keeps its chips on one scrollable line, and its sentences off it', () => {
+  it('the attachment strip keeps its chips on one scrollable line, and its sentences out of it', () => {
     // 芯片那一行是**一条横滚行**：换行的芯片与键盘上方的发送行打架，所以它不折行、横向滚。
-    // 断言读 `attachRow`——那是**真正装芯片的那个盒子**（`.attachStrip` 是竖排的列）。
+    // 断言读 `attachRow`——那是**真正装芯片的那个盒子**。
     const row = ruleOf('attachRow')
     expect(row).toMatch(/flex-wrap:\s*nowrap/)
     expect(row).toMatch(/overflow-x:\s*auto/)
-    /* 而**句子不许和芯片同排**。这一条是量出来的：412 上，「随这一条保存；变成卡片时一起过去」
-       与两枚芯片、「＋」同排时，被压成**一个字一行**的竖条（`flex-shrink` 的默认值 1 加上
-       中文的换行机会），读者看到的是十一行单字。句子是整句读的，所以它自己占一行。 */
+    /* 而**句子与芯片同排是可以的，被压成一根竖条不可以**。这一条是量出来的：412 上，
+       「随这一条保存；变成卡片时一起过去」与两枚芯片、「＋」同排时，被压成**一个字一行**
+       的竖条（`flex-shrink` 的默认值 1 加上中文的换行机会），读者看到的是十一行单字。
+       所以这里钉的是**让位的机制**，不是某一种排版：整条可换行（装不下就整句落到下一行），
+       芯片那一行吃掉余下的空位，而句子带一条**宽度地板**——地板是那个竖条唯一的挡板，
+       少了它，`flex-shrink` 的默认值 1 就会把句子重新压回去。 */
     const strip = ruleOf('attachStrip')
-    expect(strip, '句子的那一列不再是竖排的').toMatch(/flex-direction:\s*column/)
+    expect(strip, '句子与芯片排不进一行时无处可去——这一条不是可换行的行').toMatch(/flex-wrap:\s*wrap/)
     expect(strip, '滚动的那个盒子回到了整条 strip 上——句子又会被拉进那条横滚行').not.toMatch(/overflow-x/)
+    /* 地板是这一条唯一承重的那半：`min-inline-size` 不是装饰，它挡的正是上面那个竖条。
+       `flex-grow` 归谁、句子落在左端还是右端是**排版的自由**，这里不钉——钉住它会让下一个人
+       为了改一个观感而被迫删掉一条关于缺陷的门禁。 */
+    const hint = ruleOf('attachHint')
+    expect(hint, '那句说明没有宽度地板——它又会被压成一个字一行的竖条').toMatch(/min-inline-size:\s*min\(/)
     // 结构那一半：那两个句子必须是 `.attachStrip` 的**直接子级**，不在 `.attachRow` 里。
     const tsx = readFileSync(fileURLToPath(new URL('../src/client/board/AttachmentStrip.tsx', import.meta.url)), 'utf8')
     const rowBlock = /<div className=\{css\.attachRow\}>([\s\S]*?)\n {6}<\/div>/.exec(tsx)?.[1] ?? ''

@@ -678,6 +678,8 @@ export const zh = {
   'item.ask.configChange': '改',
   'item.ask.configDefault': '默认预设',
   'item.ask.configNote': '还没挂卡：交给它时会用它开一张卡，这份配置就长在那张卡上，之后在卡上改。',
+  /* 那句话的入口（可达名）：它要说清叫出来的是**哪一句**，而不是「按钮」。 */
+  'item.ask.configWhy': '这一份配置会跟到哪儿去',
   /* 新建那条纸上「新建卡片」那一档的同一句话：**卡出生时带着它**，而不是「交给它」时才用。 */
   'item.cardLink.configNote': '这张卡会带着这一份出生；它还不跑，之后在卡上或这一行的详情里改。',
   /* 两句话，两件不同的事：**它开了新的一轮**，或者**它接着说进了那条会话**。
@@ -922,6 +924,11 @@ export const zh = {
    * 它们平时不在屏上——挂在自己那一节的 `InfoMark` 后面（见 `pages/schedule.tsx`）。 */
   'item.gated.hint': '还没到开始那天。到了那天，它们会自己排到按天的那一节里。',
   'item.noDate.hint': '没写日期，就排不进任何一天。写上一个，它就会排到那天。',
+  /* **两个晚了的节也要说自己为什么在这里**，与上面两句同一副口吻：先说这是什么事实，
+   * 再说它接下来会怎样。名字只说得出「哪一个日期过去了」，说得出「那意味着什么」的是这两句
+   * ——一个已经过了的日子不会自己变好，而这一点屏幕上没有第二处会讲。 */
+  'item.bucket.hardOverdueWhy': '硬期限已经过了。它们不会自己走开——改一个日期，或者把它做完。',
+  'item.bucket.behindWhy': '计划的那天过了，活还没完。它们不会自己好起来——改一个日期，或者把它做完。',
   // 「这一节为什么在这里 / 这一行为什么这么算」：按需出现的那句话的入口（可达名）。
   'item.group.why': '这一节为什么在这里',
   'item.agenda.quietWhy': '这一行说的是什么',
@@ -1708,6 +1715,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.ask.configRow': 'Run config',
   'item.ask.configChange': 'Change',
   'item.ask.configDefault': 'Default preset',
+  'item.ask.configWhy': 'Where this configuration goes',
   'item.ask.configNote': 'No card yet: handing it over opens one with this configuration, and the card keeps it — change it there afterwards.',
   'item.cardLink.configNote': 'The card this opens is born with this configuration; nothing runs yet, so change it later on the card or in this row\'s detail.',
   // Two sentences for two different things: a new run opened, or a message added
@@ -1881,6 +1889,8 @@ export const en: Record<keyof typeof zh, string> = {
   'item.bucket.gated': 'Not started yet',
   'item.gated.hint': 'Their start day has not come. They sit here until then, and move into a day section on the day.',
   'item.noDate.hint': 'Nobody gave these a date, so no day can hold them. Give one a date and it lands on that day.',
+  'item.bucket.hardOverdueWhy': 'The deadline has passed. They will not clear themselves: change the date, or finish the work.',
+  'item.bucket.behindWhy': 'The day these were planned for has passed and the work is not done. They will not fix themselves: change the date, or finish the work.',
   'item.group.why': 'Why this section is here',
   'item.agenda.quietWhy': 'What this line says',
   'item.agenda.inbox': 'just noted',

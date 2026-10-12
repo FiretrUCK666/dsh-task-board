@@ -19,6 +19,7 @@ export declare function AttachmentStrip({ attachments, onAdd, onRemove, busy, bu
     busyLabel?: string;
     /** The last rejection, said out loud (never a silent drop). */
     error?: string;
-    /** One quiet line under the chips (what this surface's attachments mean). */
+    /** One quiet sentence about what this surface's attachments mean — beside the
+     * chips when the row can spare the width, on its own line when it cannot. */
     hint?: string;
 }): import("react").JSX.Element;

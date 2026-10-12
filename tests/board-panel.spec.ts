@@ -822,6 +822,16 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     }
   }
 
+  /** 同一份计划，只是提问方**没有给第二个选项**——官方 `PlanReview.decline`
+   *  对这种情况就是缺席，于是可作答的那张卡只有两行。 */
+  function planOnlyApprove(): WireQuestion {
+    const question = planQuestion()
+    return {
+      ...question,
+      questions: [{ ...question.questions[0]!, options: [question.questions[0]!.options![0]!] }],
+    }
+  }
+
   it('writes the page when DSH_BOARD_SHOT names one, and it carries what it must', async () => {
     const target = process.env.DSH_PANEL_HTML
     const asked = process.env.DSH_BOARD_SHOT
@@ -831,13 +841,15 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     let markup = ''
     const must: string[] = []
     try {
-      if (asked === 'plan-card' || asked === 'plan-card-live') {
-        /* 两张：**只读那一支**（这台机器的宿主不提供就地作答：选项是引用行 + 那扇门）与
-           **能就地答那一支**（三行真动作）。它们此前只有结构断言，而「一横一横还是胶囊」
-           正是结构断断言不了的那一半。 */
-        const answerable = asked === 'plan-card-live'
+      if (asked === 'plan-card' || asked === 'plan-card-live' || asked === 'plan-card-single') {
+        /* 三张：**只读那一支**（这台机器的宿主不提供就地作答：选项是引用行 + 那扇门）、
+           **能就地答那一支**（三行真动作），以及**提问方没给第二个选项那一支**（两行：
+           「拒绝」没有可发的标签，就不该画成一个按不动的行）。它们此前只有结构断言，
+           而「一横一横还是胶囊」正是结构断言不了的那一半。 */
+        const single = asked === 'plan-card-single'
+        const answerable = asked !== 'plan-card'
         markup = renderToStaticMarkup(createElement(InteractionCard, {
-          question: planQuestion(),
+          question: single ? planOnlyApprove() : planQuestion(),
           shellWaiting: undefined,
           sessionId: 's-1',
           controller: {
@@ -851,8 +863,13 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
            读的是**元素**：标题、清单、编号清单、表格各自到位，记号本身不再出现在屏上。 */
         must.push('换掉东墙的灯', '先看现场', '断电')
         must.push(...answerable
-          ? [t('review.planConfirm'), t('review.planDecline'), t('review.interactionDiscuss')]
+          ? single
+            ? [t('review.planConfirm'), t('review.interactionDiscuss')]
+            : [t('review.planConfirm'), t('review.planDecline'), t('review.interactionDiscuss')]
           : [t('review.interactionOffered'), t('review.interactionReadOnlyWhy'), t('review.interactionGoAnswer')])
+        if (single) {
+          expect(markup, '没有可拒的选项，却画了「拒绝」那一行').not.toContain(t('review.planDecline'))
+        }
         for (const element of ['<h3', '<ul', '<ol', '<table']) {
           expect(markup, `计划正文里没有 ${element}——它又被当成纯文本画了`).toContain(element)
         }
@@ -877,7 +894,7 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         must.push('灯位.png', '看一眼这面墙', '含 1 张图片')
         root.unmount()
       } else {
-        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live)`)
+        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single)`)
       }
       const aligned = alignClassNames(markup, panelCss())
       writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')
@@ -920,7 +937,8 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
     }
   }
 
-  /** 宿主真实的计划题：两个选项 + 提问方自己写的说明。 */
+  /** 宿主真实的计划题：两个选项 + 提问方自己写的说明。**批准项故意排在第二位**——
+   *  一眼就能看出答案读的是 `intent.approve`，还是「第一个选项」。 */
   function plan(): WireQuestion {
     return {
       rpcId: 'rpc-plan-1',
@@ -931,8 +949,8 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
         question: '这份计划可以开工吗？',
         intent: { kind: 'plan-review', approve: '确认' },
         options: [
-          { label: '确认', description: '离开计划模式，从下一步开始照着它做' },
           { label: '再改改', description: '不批准：改完再拿回来' },
+          { label: '确认', description: '离开计划模式，从下一步开始照着它做' },
         ],
         detail: '## 计划：换掉东墙的灯',
       }],
@@ -940,7 +958,7 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
   }
 
   it('answers in place: every decision is a real row, and one click sends the verbatim label', async () => {
-    const { controller, answerQuestion } = face(true)
+    const { controller, answerQuestion, cancelQuestion } = face(true)
     const host = document.createElement('div')
     document.body.appendChild(host)
     const root = createRoot(host)
@@ -960,13 +978,42 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
       expect(approveRow, '没有「确认执行」那一行').toBeDefined()
       await act(async () => { approveRow?.click() })
       /* **载荷里是提问方自己那个标签**（逐字），不是我们的词：答案必须带原标签才算数，
-         而屏上写的是我们的话——两件事各归各的，正是这张卡最容易接错的一根线。 */
+         而屏上写的是我们的话——两件事各归各的，正是这张卡最容易接错的一根线。
+         批准项排在第二位，所以这里同时钉住「标签来自 intent，不是第一个选项」。 */
       expect(answerQuestion).toHaveBeenCalledTimes(1)
       expect(answerQuestion).toHaveBeenCalledWith('rpc-plan-1', 's-1', [{ id: 'plan', selected: ['确认'] }])
+      // 「拒绝」是提问方自己另一个选项的一次普通作答，同样是逐字原标签。
+      const declineRow = rows.find(row => (row.textContent ?? '').includes(t('review.planDecline')))
+      expect(declineRow, '没有「拒绝」那一行').toBeDefined()
+      await act(async () => { declineRow?.click() })
+      expect(answerQuestion).toHaveBeenNthCalledWith(2, 'rpc-plan-1', 's-1', [{ id: 'plan', selected: ['再改改'] }])
+      // 「去聊天里说」把这一次确认交回会话：走载体的 dismiss，不占答案通道。
+      const discussRow = rows.find(row => (row.textContent ?? '').includes(t('review.interactionDiscuss')))
+      await act(async () => { discussRow?.click() })
+      expect(cancelQuestion).toHaveBeenCalledWith('rpc-plan-1')
+      expect(answerQuestion).toHaveBeenCalledTimes(2)
     } finally {
       await act(async () => { root.unmount() })
       document.body.removeChild(host)
     }
+  })
+
+  it('a plan whose asker offered no alternative has no refusal row (never an empty selection)', () => {
+    // 官方把「另一个选项」建模成可选的（`PlanReview.decline` 缺席即没有），
+    // 所以没有可拒的东西时就**不画那一行**——发一个空选择是按「跳过整道题」被读的，
+    // 那是另一个答案。
+    const single = plan()
+    single.questions = [{ ...single.questions[0]!, options: [{ label: '确认' }] }]
+    const markup = renderToStaticMarkup(createElement(InteractionCard, {
+      question: single,
+      shellWaiting: undefined,
+      sessionId: 's-1',
+      controller: face(true).controller,
+    } as never))
+    expect((markup.match(/<button/g) ?? []).length, '没有可拒的选项，却多画了一行').toBe(2)
+    expect(markup).not.toContain(t('review.planDecline'))
+    expect(markup).toContain(t('review.planConfirm'))
+    expect(markup).toContain(t('review.interactionDiscuss'))
   })
 
   it('cannot answer here: the card quotes the options and nothing in it looks pressable', () => {

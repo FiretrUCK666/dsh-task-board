@@ -19,6 +19,30 @@
 // The last expression IS the answer: shot-panel evaluates this file and returns
 // its completion value, so nothing here may end in `console.log`.
 ;((() => {
+  /* ── 改前/改后同页 A/B ───────────────────────────────────────────────────────
+   *
+   * 判据要的是**同一个页面上的两个读数**：换一张工件页去量「改前」，量到的差异里混着
+   * 内容与版面的变化，分不出哪一条是哪一条。所以 `#before` 这个 hash 把这一轮涉及的
+   * 几条声明**改回旧值**（只这几条，别的一律不动），同一个探针于是给出两个数。
+   *
+   * 这几条与 `DESIGN.md` 里那张表逐条对应；改表就要改这里，不然两个数说的不是一件事。
+   *
+   * **组头那一枚不在名单上，而且这是对的**：它这一轮没有动（`.itemGroupText` 早就在那一族的
+   * 名单里），把它一起改回去量到的会是「另一张表」，而不是「改前的这一张」。所以它在两个
+   * 模式下都读 0——那正是这一轮其余三处的对照组。 */
+  if (location.hash === '#before') {
+    const back = document.createElement('style')
+    back.textContent = [
+      '.itemEmptyGroups { line-height: 20px !important; }',
+      '.itemOptNameText { padding-block-end: 0 !important; }',
+      '.itemRunConfigHeadRow > .itemGroupWhy { margin-block-start: calc((1lh - 20px) / 2) !important; }',
+      '.itemNote { max-inline-size: 46ch !important; }',
+      '.itemQuiet { gap: 0 !important; }',
+      '.itemRoot { --item-write-floor: calc(4 * 20px + 16px + 2px) !important; --item-write-ceil: calc(24 * 20px + 16px + 2px) !important; }',
+    ].join('\n')
+    document.head.appendChild(back)
+  }
+
   const round = (value) => Math.round(value * 10) / 10
 
   /** 一行文字的**墨**：上沿、下沿、左右沿与**基线**，全部由字体自己的度量算出来。 */
@@ -281,6 +305,248 @@
   const rootEl = document.querySelector('.itemRoot')
   const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--item-ink-lift').trim()
 
+  /* ── 六、那一枚 ⓘ 与它同行的那串字 ──────────────────────────────────────────
+   *
+   * 一枚「这里有一句话」的入口（`.itemGroupWhy`）站在**一串字的旁边**，而它们共享一条线。
+   * 这条线**不是盒子给的**：记号绕 viewBox 中心对称，居中在自己的盒里时墨心已经在位；而字
+   * 的墨心与它自己的盒心差半个像素（`--item-ink-lift` 治的就是这半个）。所以「它们对齐了
+   * 没有」问的是**记号的墨心与那串字的墨心差多少**（`markVsText`），以及记号自己居中了没有
+   * （`markOffY`）——两个都由墨算出来，跟上面几段同一套量法。
+   *
+   * **取「同行那串字」的办法**：把这一枚记号所在子树里**每一条文字节点**各自量出来，取墨带
+   * 与记号盒子纵向相交的那些。按元素取不行——一段裸文本（属性表的字段名曾经就是）没有元素
+   * 可以框住它，而「量不到」与「对齐了」在报告里长得一模一样。
+   *
+   * 判据：`markVsText` 与 `markOffY` 都 ≤ 0.25（两号字的成员按既有的 0.5），四个消费点
+   * （组头、安静行、属性表字段名、运行配置的头行）用同一条。 */
+  const textRuns = (host) => {
+    if (host === null) return []
+    const walker = document.createTreeWalker(host, NodeFilter.SHOW_TEXT)
+    const runs = []
+    let canvas = null
+    let ctx = null
+    let node = walker.nextNode()
+    while (node !== null) {
+      const text = node.nodeValue ?? ''
+      const parent = node.parentElement
+      if (text.trim() !== '' && parent !== null && parent.closest('[aria-hidden="true"]') === null) {
+        const style = getComputedStyle(parent)
+        const range = document.createRange()
+        range.selectNodeContents(node)
+        const line = [...range.getClientRects()].find(r => r.width > 0 && r.height > 0)
+        if (line !== undefined) {
+          if (ctx === null) {
+            canvas = document.createElement('canvas')
+            ctx = canvas.getContext('2d')
+          }
+          ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+          const metrics = ctx.measureText(text)
+          const ascent = metrics.fontBoundingBoxAscent
+          const descent = metrics.fontBoundingBoxDescent
+          if (Number.isFinite(ascent) && Number.isFinite(descent)) {
+            const baseline = line.top + (line.height - (ascent + descent)) / 2 + ascent
+            runs.push({
+              t: baseline - metrics.actualBoundingBoxAscent,
+              b: baseline + metrics.actualBoundingBoxDescent,
+              baseline: round(baseline),
+              size: style.fontSize,
+              /* 这一块字是谁——「哪一块偏了」要说得出来是哪一块，只有一串数时说不出来。 */
+              sample: text.trim().slice(0, 8),
+            })
+          }
+        }
+      }
+      node = walker.nextNode()
+    }
+    return runs
+  }
+
+  const noteSites = all('.itemGroupWhy').map(mark => {
+    const host = mark.parentElement
+    const markBox = boxOf(mark)
+    const markInk = strokeInk(mark)
+    const onLine = markBox === null
+      ? []
+      : textRuns(host).filter(run => run.b > markBox.t && run.t < markBox.b)
+    return {
+      /* 谁的行上：容器那一枚盒子自己的名字，读的人据此知道是四个消费点里的哪一个。 */
+      host: nameOf(host),
+      mark: boxOf(mark),
+      markInk,
+      markOffY: markInk === null || markBox === null ? null : round(cy(markInk) - cy(markBox)),
+      runs: onLine.length,
+      sizes: [...new Set(onLine.map(run => run.size))].join('+'),
+      textInk: onLine.length === 0 ? null : {
+        t: round(Math.min(...onLine.map(run => run.t))),
+        b: round(Math.max(...onLine.map(run => run.b))),
+      },
+      /* 记号的墨心与那串字的墨心差多少——这一族的判据。 */
+      markVsText: markInk === null || onLine.length === 0
+        ? null
+        : round(cy(markInk) - (Math.min(...onLine.map(run => run.t)) + Math.max(...onLine.map(run => run.b))) / 2),
+      /* 那串字里有几块（两号字时是两块），它们的基线互差多少——只报数，不当判据（理由同
+         `pass.headsBaselineRead`：基线是算出来的，对回退字体与粗体不准）。 */
+      baselineSpread: onLine.length < 2 ? null : round(
+        Math.max(...onLine.map(run => run.baseline)) - Math.min(...onLine.map(run => run.baseline)),
+      ),
+    }
+  })
+
+  /* ── 七、四个消费点：那一枚 ⓘ 与它**左边那串字** ────────────────────────────
+   *
+   * 四个消费点（组头、安静行、属性表字段名、运行配置的头行）各是一行：**一枚记号 + 一串字**。
+   * 上一段按 `.itemGroupWhy` 逐个量，报的是「记号 vs 这一行里所有与它纵向相交的字」的并集；
+   * 并集只看**最外两点**，于是两块字里较矮的那一块会被较高的盖住（组头里 15px 的词与 13px 的
+   * 数就是这样）。所以这一段**再按每一块字各自报一次**：`perRun` 是记号墨心与那一块字墨心
+   * 的差，一块一个数。判据落在并集上（那是读者读到的整行），`perRun` 留给人看是哪一块偏了。
+   *
+   * **并集也不是「一行」的同义词**：一行里若有换行（窄档），并集会跨两行、中心落在两行之间
+   * ——那种读数没有意义，所以这里按记号盒子的纵向区间取，并在 `runs` 里报出取到几块。 */
+  const runsOn = (host, markBox) => {
+    if (host === null || markBox === null) return []
+    return textRuns(host).filter(run => run.b > markBox.t && run.t < markBox.b)
+  }
+  const SITE_SELECTORS = [
+    ['.itemGroupHead', '组头'],
+    ['.itemEmptyGroups', '安静行'],
+    ['.itemOptName', '属性表字段名'],
+    ['.itemRunConfigHeadRow', '运行配置的头行'],
+  ]
+  const markSites = SITE_SELECTORS.map(([selector, label]) => {
+    const rows = all(selector).map(host => {
+      const mark = host.querySelector('.itemGroupWhy')
+      const markBox = boxOf(mark)
+      const markInk = strokeInk(mark)
+      const runs = runsOn(host, markBox)
+      const union = runs.length === 0 ? null : {
+        t: Math.min(...runs.map(run => run.t)),
+        b: Math.max(...runs.map(run => run.b)),
+      }
+      return {
+        markOffY: markInk === null || markBox === null ? null : round(cy(markInk) - cy(markBox)),
+        markVsText: markInk === null || union === null ? null : round(cy(markInk) - (union.t + union.b) / 2),
+        runs: runs.length,
+        sizes: [...new Set(runs.map(run => run.size))].join('+'),
+        /* 一块字一个数：记号墨心 − 那一块字墨心。并集里看不见的那半在这里看得见——
+           同一行里几块字的差**不是版面偏了**，几块字的**墨形状**本来就不同（中文的墨跨基线
+           两侧、拉丁数字的墨坐在基线上方）。所以这一栏是给人看的，判据落在并集上。 */
+        perRun: markInk === null ? [] : runs.map(run => ({
+          text: run.sample.slice(0, 4),
+          size: run.size,
+          delta: round(cy(markInk) - (run.t + run.b) / 2),
+        })),
+        baselineSpread: runs.length < 2 ? null : round(
+          Math.max(...runs.map(run => run.baseline)) - Math.min(...runs.map(run => run.baseline)),
+        ),
+      }
+    })
+    return { selector, label, rows: rows.length, sites: rows }
+  })
+
+  /* ── 八、说明小字：一句话一行读完没有 ────────────────────────────────────────
+   *
+   * `.itemNote` 平时收着，所以先让它们**全部显形**再量（量完不还原：这一段之后没有别的量法
+   * 依赖它收着）。三件事一起报：
+   *
+   *   `naturalW`  这句话**单行**要多少像素（canvas 按它自己的字体量字宽的和）——它是「行长」
+   *               这个词的物理含义，判据就是「限宽 ≥ 这一句」。
+   *   `lines`     它**真的**排了几行（`Range.getClientRects()` 一行一个矩形）。
+   *   `maxInline` 限宽本身（computed），以及它与 `naturalW + padding` 的差。 */
+  const revealNotes = document.createElement('style')
+  revealNotes.textContent = '.itemNote { display: block !important; }'
+  document.head.appendChild(revealNotes)
+
+  const canvasOf = (el) => {
+    const style = getComputedStyle(el)
+    const ctx = document.createElement('canvas').getContext('2d')
+    ctx.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`
+    return ctx
+  }
+  const lineBoxesOf = (el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    return [...range.getClientRects()].filter(rect => rect.width > 0 && rect.height > 0)
+  }
+  const noteOf = (el) => {
+    const style = getComputedStyle(el)
+    const box = boxOf(el)
+    const text = el.textContent ?? ''
+    const natural = round(canvasOf(el).measureText(text).width)
+    const pad = round(parseFloat(style.paddingInlineStart) + parseFloat(style.paddingInlineEnd))
+    return {
+      where: nameOf(el.parentElement),
+      text: text.slice(0, 12),
+      chars: [...text].length,
+      fontSize: style.fontSize,
+      maxInline: style.maxInlineSize,
+      boxW: box === null ? null : box.w,
+      lines: lineBoxesOf(el).length,
+      naturalW: natural,
+      /* 一句话一行读完要的那条限宽：字数 × 字号 + 两边的行内衬。 */
+      neededInline: round(natural + pad),
+      naturalEm: round(natural / parseFloat(style.fontSize)),
+    }
+  }
+  const notes = all('.itemNote').map(noteOf)
+
+  /* ── 九、骨架的间距：药丸下沿 → 说明上沿 ─────────────────────────────────────
+   *
+   * 「安静行那行字离上面的空隙」与「节头下面那句说明离上面的空隙」是不是同一个数——这是
+   * 骨架的问题，不是那句话的问题。所以两处各量一次**药丸下沿到说明上沿**的距离（说明这时
+   * 已经显形），并报出两处用的 gap。 */
+  const airOf = (container, head) => all(container).map(host => {
+    const headBox = boxOf(host.querySelector(head))
+    const noteBox = boxOf(host.querySelector('.itemNote'))
+    if (headBox === null || noteBox === null) return null
+    return {
+      air: round(noteBox.t - headBox.b),
+      gap: getComputedStyle(host).rowGap,
+      headBottom: headBox.b,
+      noteTop: noteBox.t,
+    }
+  }).filter(one => one !== null)
+  const gaps = {
+    section: airOf('.itemAgendaBlock', '.itemGroupHead'),
+    quiet: airOf('.itemQuiet', '.itemEmptyGroups'),
+  }
+
+  /* ── 十、写作框的地板：那四行是真的吗 ───────────────────────────────────────
+   *
+   * 地板/天花板写的是「几行 × 行盒 + 内衬 + 两条边」——而**行盒是字体的**（`13px × 1.65`），
+   * 不是 20。所以这里既不读令牌、也不信注释，只做两件事：
+   *
+   *   算术   `clientHeight`（内容盒 + 内衬）减掉内衬、再除以真实行盒 = **装得下几行**。
+   *   实测   往框里塞 N 行字，看 `scrollHeight` 与 `clientHeight` 是不是相等——相等就是
+   *          **不滚**，也就意味着那 N 行真的装得下。N 取 4（地板声称的那一档）与 5
+   *          （多一行就该滚，否则地板不是地板、只是「比四行高」）。
+   *
+   * 塞字改的是 `value`（工件页是静态渲染，没有 React 接管），量完原样还回去。 */
+  const fillLines = (el, count) => {
+    const before = el.value
+    el.value = Array.from({ length: count }, (_, at) => `第 ${at + 1} 行的样子`).join('\n')
+    const out = { lines: count, clientH: el.clientHeight, scrollH: el.scrollHeight }
+    el.value = before
+    return { ...out, fits: out.scrollH <= out.clientH }
+  }
+  const proseOf = (el) => {
+    const style = getComputedStyle(el)
+    const line = parseFloat(style.lineHeight)
+    const padBlock = parseFloat(style.paddingBlockStart) + parseFloat(style.paddingBlockEnd)
+    return {
+      minBlock: style.minBlockSize,
+      maxBlock: style.maxBlockSize,
+      fontSize: style.fontSize,
+      lineHeight: style.lineHeight,
+      padBlock,
+      border: parseFloat(style.borderBlockStartWidth) + parseFloat(style.borderBlockEndWidth),
+      /* 装得下几行：内容盒 ÷ 行盒。地板声称四行，这个数就该是 4。 */
+      lines: round((el.clientHeight - padBlock) / line),
+      four: fillLines(el, 4),
+      five: fillLines(el, 5),
+    }
+  }
+  const prose = all('.itemProse').slice(0, 3).map(proseOf)
+
   /* ── 判据 ───────────────────────────────────────────────────────────────────
    *
    * **0.25 而不是 0.5。** 0.5px 是「设备像素的一半」：在 2× 屏上它是一整颗像素，读者
@@ -322,7 +588,59 @@
        样式表，看不见它。同一个类在 `<button>` 与 `<span>` 上量出来还不一样（标签那一族量到过
        0 与 1），所以这一条只能是**量**出来的判据。 */
     pillsFootOnly: pills.length > 0 && pills.every(p => p.padTop === '0px'),
+    /* 那一枚 ⓘ：两个数都要在容差里——它自己居中了没有，以及它跟同行那串字的墨心差多少。
+       页面上没有 ⓘ 时这一条**不算通过**（`false`），因为「量不到」与「对齐了」不能同形。 */
+    notesCentred: noteSites.length > 0 && noteSites.every(s => withinTol(s.markOffY)),
+    notesVsText: noteSites.length > 0 && noteSites.every(s => within(s.markVsText, 0.5)),
+    notesWorst: worst(noteSites.map(s => s.markVsText)),
+    notesSites: noteSites.length,
+    /* 四个消费点各一次：记号自己居中（≤0.25），并集与它差 ≤0.5（两号字的成员按 0.5）。
+       **一处都没有的消费点不算不通过**：四个点分住两个页面（属性表与运行配置在展开的行里、
+       组头与安静行在日程页），一页上量不到另一页的那几个是**这一页没有它**，不是它偏了。
+       所以判据落在「这一页上量到的那些点」，而 `sitesOnPage` 把量到几个打出来——一个都没
+       量到的页面会因此露出来（`siteRows` 是 0）。 */
+    siteRows: markSites.reduce((total, one) => total + one.rows, 0),
+    sitesOnPage: markSites.filter(one => one.rows > 0).length,
+    /* **只判真有那一枚 ⓘ 的行。** 一个字段名旁边没有记号（优先级 / 标签 / 日期那几格），
+       `markOffY` 量出来是 `null`——那是「这里没有它」，不是「它偏了」。不滤掉的话这两条判据
+       在**任何一页上都永远是 false**，而一条永远说「不」的判据与一条永远说「是」的一样没有
+       信息。`markRows` 把这一页真的量到几个点打出来。 */
+    markRows: markSites.flatMap(one => one.sites).filter(s => s.markOffY !== null).length,
+    sitesCentred: markSites.flatMap(one => one.sites)
+      .filter(s => s.markOffY !== null).every(s => withinTol(s.markOffY)),
+    sitesVsText: markSites.flatMap(one => one.sites)
+      .filter(s => s.markVsText !== null).every(s => within(s.markVsText, 0.5)),
+    sitesWorst: worst(markSites.flatMap(one => one.sites.map(s => s.markVsText))),
+    /* **「一行读完」问的是「装得下的地方装下了没有」。** 一句话在 183px 的属性表值那一格里排成
+       三行不是缺陷——它要 516px，而那一格只有 183；缺陷是**装得下却折了行**（那说明挡它的是
+       别的东西：内衬、限宽、或者一个更窄的祖先）。所以判据是「`boxW` 够它要的宽时，
+       `lines` 必须是 1」，而 `noteWidest` 报出这一页最长那一句要多少。 */
+    noteRows: notes.length,
+    notesOneLine: notes.length > 0 && notes.every(one => one.lines === 1 || (one.boxW ?? 0) < one.neededInline),
+    noteWidest: notes.reduce((most, one) => (one.neededInline > most ? one.neededInline : most), 0),
+    /* 骨架：两处「药丸下沿 → 说明上沿」必须是同一个数（安静行与节头）。 */
+    gapSection: gaps.section.length === 0 ? null : gaps.section[0].air,
+    gapQuiet: gaps.quiet.length === 0 ? null : gaps.quiet[0].air,
+    gapSame: gaps.section.length > 0 && gaps.quiet.length > 0 && gaps.section[0].air === gaps.quiet[0].air,
+    /* 写作框：地板装得下四行、第五行开始滚。 */
+    proseFloors: prose.map(one => one.lines),
+    proseFourFits: prose.length > 0 && prose.every(one => one.four.fits),
+    proseFiveScrolls: prose.length > 0 && prose.every(one => !one.five.fits),
   }
 
-  return JSON.stringify({ viewport: window.innerWidth, trio, heads, railRows, dayCells, quiet, pills, pass })
+  return JSON.stringify({
+    viewport: window.innerWidth,
+    trio,
+    heads,
+    railRows,
+    dayCells,
+    quiet,
+    pills,
+    notes: noteSites,
+    markSites,
+    notesText: notes,
+    gaps,
+    prose,
+    pass,
+  })
 })())

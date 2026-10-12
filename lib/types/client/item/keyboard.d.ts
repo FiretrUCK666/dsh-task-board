@@ -90,7 +90,14 @@ export interface KeyBinding {
 export interface KeyState {
     /** The row the cursor is on, or `undefined` before one is chosen. */
     readonly focusedId: string | undefined;
-    /** Whether anything at all is open — a menu, a row's detail, the palette. */
+    /**
+     * 有没有一层东西**占着键盘**——一个菜单、一张展开的行、一个浮层（命令面板 / 新建 /
+     * 排序）。
+     *
+     * 它不只是「屏幕上还有别的东西」：这一层开着的时候，读者按的那些键是**给这一层**的。
+     * 所以它同时是 {@link LAYER_TRANSPARENT} 那条规则的输入——两个事实一个名字，因为它们
+     * 本来就是同一件事。
+     */
     readonly somethingOpen: boolean;
     /**
      * Whether the COMMAND PALETTE is the thing that is open.
@@ -178,6 +185,9 @@ export declare function claimsKey(event: KeyEventLike): boolean;
  * only evidence is that pressing a key on a rendered page did something cannot
  * be checked for the keys it gets WRONG, and a keyboard flow with a wrong key is
  * invisible to its reader too.
+ *
+ * 事件仍然是**我们的**（照着这条路的规矩：认了的键一律吞掉，哪怕它什么都不做），
+ * 但占着键盘的那一层开着时，只有 {@link LAYER_TRANSPARENT} 那几枚真的动手。
  * @returns whether the event was ours and should not travel further.
  */
 export declare function dispatchKey(event: KeyEventLike, state: KeyState, actions: ItemKeyActions): boolean;

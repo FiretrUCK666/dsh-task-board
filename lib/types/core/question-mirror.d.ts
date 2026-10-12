@@ -6,7 +6,7 @@
  * composer). The official read-only projection is the uiSession session-status
  * snapshot, whose per-session `pendingInteraction` field carries the live
  * request, and each interaction carries its session, kind and full question
- * batch — AND, on the shipped host, the carrier's own `answer`/`cancel` (the
+ * batch — AND, on the shipped host, the carrier's own `answer`/`dismiss` (the
  * native `PendingQuestion`). The board subscribes to that snapshot for DISPLAY
  * and, when the carrier exposes those actions, settles the request through the
  * very object it received: same claim, no second answerer, so the two surfaces
@@ -15,27 +15,15 @@
  *
  * Framework-free and DOM-free, so the rules unit-test in isolation (the live
  * subscription and the action calls live in the client adapter).
+ *
+ * The ITEM grammar is the wire model's (`question-rpc.ts`: normalization, the
+ * intent marker, the plan-body law) — imported, never re-implemented here, so
+ * both paths read one question shape. What this module adds is the SNAPSHOT
+ * grammar: which carriers render, how the batch is keyed, and the waiting kind.
  */
+import { type WireQuestionItem } from './question-rpc.ts';
 /** The three waiting kinds the native session rows surface. */
 export type MirrorWaitingKind = 'approval' | 'plan-review' | 'question';
-/** One normalized question item (unknown shapes trimmed to the wire contract). */
-export interface MirrorQuestionItem {
-    /** Stable caller-provided question id. */
-    id: string;
-    /** The question to display. */
-    question: string;
-    /** Optional supporting detail (kept out of option labels). */
-    detail?: string;
-    /** Optional short heading/group label. */
-    header?: string;
-    /** Optional choices a capable UI can render as a menu. */
-    options?: readonly {
-        label: string;
-        description?: string;
-    }[];
-    /** Whether more than one option may be selected (defaults to single). */
-    multiSelect?: boolean;
-}
 /** One pending question batch on the official mirror, keyed for display. */
 export interface MirrorQuestion {
     /** The mirror render identity (the official carrier key). */
@@ -43,7 +31,7 @@ export interface MirrorQuestion {
     /** The session the question was asked in. */
     sessionId: string;
     /** The whole question batch (one ask, many questions). */
-    questions: readonly MirrorQuestionItem[];
+    questions: readonly WireQuestionItem[];
     /** True when the batch IS a plan review (single intent-tagged question). */
     isPlanReview: boolean;
 }
@@ -73,20 +61,20 @@ export interface MirrorInteractionLike {
 /** The structural slice of the official pending snapshot. */
 export type MirrorSnapshotLike = ReadonlyMap<string, MirrorInteractionLike>;
 /**
- * Normalize one mirror question item; drop anything malformed. Same grammar
- * as the historical wire model (question-rpc.ts): the question text is
- * mandatory — EXCEPT a detail-carried plan review (see isDetailOnlyPlanItem),
- * whose body lives in `detail` by official contract.
- */
-export declare function normalizeMirrorQuestion(value: unknown): MirrorQuestionItem | undefined;
-/** Normalize a whole mirror question list; undefined when nothing is usable. */
-export declare function mirrorQuestionsOf(value: unknown): MirrorQuestionItem[] | undefined;
-/**
  * Whether an official mirror interaction is a question the board renders:
  * the carrier kind is `question` or `plan-review` (never `approval` — the
  * approval card belongs to the native surface).
  */
 export declare function isMirrorQuestionKind(kind: unknown): boolean;
+/**
+ * Whether a batch IS a plan review: the carrier's kind says so, or one of its
+ * questions declares the plan-review intent. The intent leg is what makes the
+ * reading independent of the host's kind derivation — an intent-tagged question
+ * is a plan awaiting confirmation wherever it arrives, and both readers of the
+ * snapshot (the display batch here, the answering projection in
+ * `pending-mirror.ts`) decide it HERE.
+ */
+export declare function isPlanReviewBatch(kind: unknown, questions: readonly WireQuestionItem[]): boolean;
 /**
  * Normalize one official mirror interaction into the board's display model;
  * undefined when it is not a renderable question batch (approval carriers,

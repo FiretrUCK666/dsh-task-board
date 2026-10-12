@@ -72,8 +72,18 @@ export type QuestionFrameIn = {
     type: 'question/resolved';
     questionRpcId: string;
 };
-/** Plan-review decision a UI can send (see planDecisionAnswers). */
-export type PlanDecision = 'approve' | 'decline';
+/**
+ * One plan-review question: a question item whose intent declares it IS a plan
+ * awaiting confirmation, and names the label that means "approve". The intent is
+ * the ONLY authority for that label — inferring it from option order answers the
+ * other option the moment the asker reorders its list.
+ */
+export type PlanReviewItem = WireQuestionItem & {
+    intent: {
+        kind: 'plan-review';
+        approve: string;
+    };
+};
 /**
  * The waiting kind of one session — the `kind` discriminator the official
  * session-status snapshot publishes on a session's `pendingInteraction`:
@@ -115,7 +125,10 @@ export interface QuestionRpcFace {
     /** Deliver the whole answer batch; false = refused, stale or unavailable
      *  (the card stays open and shows the reason — never a silent close). */
     answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
-    /** Reject the whole ask (the host resolves the tool call as cancelled). */
+    /** Hand the whole ask back to its owner (the official carrier's `dismiss()`,
+     *  whose own two-state contract decides what that means — see
+     *  `pending-mirror.ts`). We keep the name `cancel` because this verb is about
+     *  the ASK, not about the host method behind it. */
     cancel(rpcId: string): Promise<boolean>;
 }
 /** Whether a raw item is a plan review whose body lives in `detail` alone:
@@ -133,19 +146,34 @@ export declare function reduceQuestionFrames(pending: ReadonlyMap<string, WireQu
 /** The pending wire question for one session (newest wins), when any. */
 export declare function pendingQuestionOf(pending: ReadonlyMap<string, WireQuestion>, sessionId: string | undefined): WireQuestion | undefined;
 /** The plan-review question of a batch, when the batch IS a plan review. */
-export declare function planQuestionOf(question: WireQuestion): WireQuestionItem | undefined;
-/** The approve label of a plan-review question (the intent names it). */
+export declare function planQuestionOf(question: WireQuestion): PlanReviewItem | undefined;
+/**
+ * The approve label of a plan-review question — the intent names it, and nothing
+ * else may stand in for it: a label read off `options[0]` approves whatever the
+ * asker happened to list first, which is the opposite answer the moment the order
+ * changes (and `undefined` here is honest: a question with no intent is not a plan
+ * review, so the generic flow, not this card, owns it).
+ */
 export declare function approveLabelOf(item: WireQuestionItem | undefined): string | undefined;
-/** The decline label of a plan-review question (first non-approve option). */
+/** The decline label of a plan-review question (the asker's own other option). */
 export declare function declineLabelOf(item: WireQuestionItem | undefined): string | undefined;
 /**
- * The answer batch for a plan-review decision.
- * - approve: select the intent's approve label;
- * - decline without amendments: select the first non-approve option;
- * - decline with amendments: revise-with-feedback — a custom-only answer
- *   (host validation forbids a single-select option alongside custom text).
+ * The answer batch that approves a plan review: the asker's OWN approve label,
+ * carried verbatim (the host matches the label, not a meaning of ours).
  */
-export declare function planDecisionAnswers(item: WireQuestionItem, decision: PlanDecision, amend: string): QuestionAnswerEntry[];
+export declare function planApproveAnswers(item: PlanReviewItem): QuestionAnswerEntry[];
+/**
+ * The answer batch for the asker's own non-approve option — an ordinary single
+ * choice, in the asker's words. `undefined` = the asker offered no other option,
+ * so there is no such decision to send (the official `PlanReview.decline` is
+ * absent for the same reason) and the card draws no row for it. An empty
+ * `selected` is NOT a substitute: the host reads it as a SKIP of the whole
+ * question, which is not a decision this card may take for the reader.
+ *
+ * `amend` is the host's revise-with-feedback path, and it is a custom-only answer
+ * because host validation forbids a single-select option alongside custom text.
+ */
+export declare function planDeclineAnswers(item: PlanReviewItem, amend?: string): QuestionAnswerEntry[] | undefined;
 /**
  * The whole answer batch from per-question drafts: one entry per question,
  * in batch order, ids matching the requested frame (a skipped question is an

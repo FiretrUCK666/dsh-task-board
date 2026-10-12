@@ -26,8 +26,11 @@
  */
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { act } from 'react'
+import { act, createElement } from 'react'
+import { renderToStaticMarkup } from 'react-dom/server'
 import type { ItemRecord } from '../src/core/item.ts'
+import { TaskForm } from '../src/client/board/TaskForm.tsx'
+import { draftFromTask } from '../src/client/board/task-draft.ts'
 import { dayTokensIn, freeTextOf, queryChipsOf, tagFacetValuesOf, withFacetToken } from '../src/client/item/facets.ts'
 import { DRAFT_STORAGE_KEY, CAPTURE_CARD_CONFIG_KEY, askConfigDraftKey } from '../src/client/board/drafts.ts'
 import { ITEM_KEYS, bindingFor, claimsKey, dispatchKey, type ItemKeyAction, type ItemKeyActions } from '../src/client/item/keyboard.ts'
@@ -76,7 +79,7 @@ import {
 // works.
 import { writeFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { type as typeInto, alignClassNames, click, coreSurfaceSource, drag, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel } from './panel-harness.ts'
+import { type as typeInto, alignClassNames, click, coreSurfaceSource, drag, fakeController, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel, writeStandalonePage } from './panel-harness.ts'
 import { pickThrough } from '../src/client/item/selection.ts'
 import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
 import { whyLabelOf } from '../src/client/item/why-label.ts'
@@ -4003,6 +4006,110 @@ function boardWrites(panel: ReturnType<typeof mountPanel>): string[] {
     /^(createTask|createBoundTask|updateTask|deleteTask|moveTask|runTask|openTask|closeTask|addComment|setSchedule|ackTask|duplicateTask|askCard|askCardSession)\(/.test(call))
 }
 
+describe('展开区左列：三段各有一个段名，两句说明按需才出现', () => {
+  /* **这一列里两件事的判据是同一个：凡是读者要问的，都该有一处按得到。**
+   *
+   * 三段话里两个输入长得一模一样（它们本来就是同一个元件），所以「哪一段是正文、哪一段是
+   * 上下文备注」不能靠读者猜——三段各有一个段名。而两句解释（挂卡会动到什么、这一份配置会
+   * 跟到哪儿去）是**问出来之后**才有用的话：它们平时不在屏上，入口是字段名/头行旁边那一枚
+   * 真按钮（可达名说的是它叫出来的那一句）。 */
+
+  /** 左列里的段名，按屏上顺序读。 */
+  const captionsOf = (surface: HTMLElement): string[] =>
+    [...surface.querySelectorAll('[class*="itemOpenText"] [class*="itemOpenCaption"]')]
+      .map(node => (node.textContent ?? '').trim())
+
+  /** 一枚按需说明的入口：它按得动，而且是**哪一句**从可达名上说清的。 */
+  const noteEntry = (surface: HTMLElement, label: string): HTMLButtonElement => {
+    const found = [...surface.querySelectorAll('button')]
+      .find(node => node.getAttribute('aria-label') === label) as HTMLButtonElement | undefined
+    if (found === undefined) throw new Error(`屏上没有「${label}」那一枚入口`)
+    return found
+  }
+
+  /** 那枚入口 `aria-controls` 指着的那一句。 */
+  const noteOf = (surface: HTMLElement, entry: HTMLButtonElement): HTMLElement | null => {
+    const id = entry.getAttribute('aria-controls')
+    return id === null ? null : surface.querySelector(`[id="${id}"]`)
+  }
+
+  /** 「平时收着，按一下才出现」——两个表面问的是同一件事，所以只有一处写。 */
+  const expectCollected = (surface: HTMLElement, label: string, sentence: string): void => {
+    const entry = noteEntry(surface, label)
+    const note = noteOf(surface, entry)
+    expect(note, `「${label}」那枚入口的 aria-controls 没有指着任何一句话`).not.toBeNull()
+    expect(note?.textContent ?? '', `「${label}」那枚入口指着的是另外一句话`).toContain(sentence)
+    /* **平时的两半**：状态说它没开，揭示钩子（`data-note`，`item.module.css` 里唯一让
+       `.itemNote` 从 `display: none` 变出来的一半）不在屏上。少了任何一半，那句话都是一段
+       常驻的说明，而这正是它被收起来的原因。 */
+    expect(entry.getAttribute('aria-expanded'), '入口一上来就说自己开着').toBe('false')
+    expect(entry.closest('[data-note]'), '那句话的揭示钩子平时就挂着——它根本不是按需的').toBeNull()
+    click(entry)
+    expect(entry.getAttribute('aria-expanded'), '按了那枚入口，它没有说自己开着').toBe('true')
+    expect(entry.closest('[data-note]'), '按了那枚入口，揭示钩子没有挂上').not.toBeNull()
+    expect(noteOf(surface, entry), '开着的时候 aria-controls 换了对象').toBe(note)
+  }
+
+  it('正文 / 步骤 / 上下文备注：三段各自有一个段名', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      expect(captionsOf(panel.surface), '左列不是三段各有一个段名').toEqual(['正文', '步骤', '上下文备注'])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('窄档上是同样三个段名——那一列不因为窄就少说一个', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'narrow')
+    try {
+      openRowDetail(panel)
+      expect(captionsOf(panel.surface), '窄档上少了一个段名').toEqual(['正文', '步骤', '上下文备注'])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('「挂卡会动到什么」平时不在屏上，按那枚入口才出现', () => {
+    const panel = mountPanel(oneRow({ taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      expectCollected(panel.surface, '挂卡会动到什么', '挂已有的卡，卡里的内容不动')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('「这一份配置会跟到哪儿去」同理，而它只在还没挂卡时说', () => {
+    /* 挂上卡之后这一句就是**第二句关于卡的话**：配置长在那张卡上，卡有自己的地方说这件事。
+       所以两档各挂一次——有入口的是没挂卡那一档。 */
+    const bare = mountPanel(oneRow({ taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(bare)
+      expectCollected(bare.surface, '这一份配置会跟到哪儿去', '还没挂卡：交给它时会用它开一张卡')
+    } finally {
+      bare.dispose()
+    }
+    const carded = mountPanel(oneRow({ taskId: 'task-1' }), 'list', 'wide')
+    try {
+      openRowDetail(carded)
+      const head = [...carded.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').includes('运行配置'))
+      expect(head, '挂着卡的行没有「运行配置」那一块').toBeDefined()
+      expect(noteEntryOrNull(carded.surface, '这一份配置会跟到哪儿去'),
+        '挂着卡的行还挂着那句话——卡有自己的地方说这件事').toBeNull()
+    } finally {
+      carded.dispose()
+    }
+  })
+
+  /** 同一枚入口，但缺席是**一个答案**而不是一次抛错（挂着卡时它本来就不该在）。 */
+  function noteEntryOrNull(surface: HTMLElement, label: string): HTMLButtonElement | null {
+    return ([...surface.querySelectorAll('button')]
+      .find(node => node.getAttribute('aria-label') === label) as HTMLButtonElement | undefined) ?? null
+  }
+})
+
 describe('an in-place editor answers a press away from it, and the row stays open', () => {
   it('the body prompt opens into a block, and a press outside collapses the block with the row still open', () => {
     const panel = mountPanel(oneRow({}), 'list', 'wide')
@@ -4399,7 +4506,35 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'card-focus' && state !== 'config-open' && state !== 'capture-card') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-focus' && state !== 'config-open' && state !== 'capture-card' && state !== 'prompt-form') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'prompt-form') {
+      /* **卡片执行 Prompt 那一格。**
+       *
+       * 五处用同一条附件条的地方里，只有这一处一直**没有工件**——它的宿主是看板那张表单
+       * （`TaskForm`），不在清单这一页上。而附件条是共用的元件，所以「那句说明在宽窄两档
+       * 各自落在哪」在这一处也必须答得出来，不能因为它住在另一个面板就免检。
+       *
+       * 静态渲染够用：这一格要看的是一件**排版**的事，而排版不吃事件。 */
+      const draft = draftFromTask({
+        id: 'task-1',
+        title: '画廊第二版',
+        description: '',
+        prompt: '看一眼这面墙，然后告诉我灯该换哪种',
+        status: 'todo',
+        attachments: [
+          { attachmentId: 'att-fixture-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' },
+          { attachmentId: 'att-fixture-note', name: '灯座型号.txt', bytes: 320 },
+        ],
+      } as never)
+      const aligned = alignClassNames(renderToStaticMarkup(createElement(TaskForm, {
+        draft,
+        onChange: () => undefined,
+        controller: fakeController([]),
+      } as never)), panelCss())
+      writeStandalonePage(target, aligned.html, aligned.css, 'light', 'task form')
+      return
+    }
 
     if (state === 'capture-card') {
       /* **新建那条纸上的「新建卡片」那一档**：卡正是在这里诞生的，所以它带着什么跑要先看得见。

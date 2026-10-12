@@ -96,7 +96,14 @@ export interface KeyBinding {
 export interface KeyState {
   /** The row the cursor is on, or `undefined` before one is chosen. */
   readonly focusedId: string | undefined
-  /** Whether anything at all is open — a menu, a row's detail, the palette. */
+  /**
+   * 有没有一层东西**占着键盘**——一个菜单、一张展开的行、一个浮层（命令面板 / 新建 /
+   * 排序）。
+   *
+   * 它不只是「屏幕上还有别的东西」：这一层开着的时候，读者按的那些键是**给这一层**的。
+   * 所以它同时是 {@link LAYER_TRANSPARENT} 那条规则的输入——两个事实一个名字，因为它们
+   * 本来就是同一件事。
+   */
   readonly somethingOpen: boolean
   /**
    * Whether the COMMAND PALETTE is the thing that is open.
@@ -133,6 +140,8 @@ export interface KeyState {
  * palette works whether the caret is in its field or on one of its chips.
  */
 export const ITEM_KEYS: readonly KeyBinding[] = [
+  /* **它自己没有 `when`，而这是对的**：这枚键不该在占着键盘的那一层里生效，由
+     {@link LAYER_TRANSPARENT} 那一条规则说——不在这里再写一遍「除了……之外」。 */
   { keys: 'A', key: 'a', action: 'quickCapture' },
   { keys: '⌘K', key: 'k', cmd: true, action: 'palette' },
   { keys: '/', key: '/', action: 'palette' },
@@ -160,6 +169,30 @@ export const ITEM_KEYS: readonly KeyBinding[] = [
   { keys: '⌘⌫', key: 'backspace', cmd: true, notWhileTyping: true, action: 'remove', when: s => s.focusedId !== undefined },
   { keys: '⌘Z', key: 'z', cmd: true, notWhileTyping: true, action: 'undo' },
 ]
+
+/**
+ * 占着键盘的那一层（见 {@link KeyState.somethingOpen}）**唯一放行**的几枚动作。
+ *
+ * 其余每一枚都是**对列表**的动作，而列表此刻不是读者在按的那一层。这一条规则以前是
+ * 每个绑定自己写一句 `when: s => !s.somethingOpen`，而 `quickCapture` 漏了那一句：
+ * 纸开着、焦点又恰好不在输入框里（起名框按回车收起后焦点落回 `<body>`，或焦点在某枚
+ * 芯片上）时，读者接着敲的那个 `a` 就把**他自己正开着的那张纸**关掉了——因为
+ * `openLayer` 是开关。一条漏写的 `when` 与「浮层占不占键盘」是同一个问题的两种写法，
+ * 所以收成一条规则：新增一枚动作时不必再记得写那一句，**漏写的那一枚也会被挡住**。
+ *
+ * 三枚调色板动作在里面，因为它是**那一层自己的**键：`↑↓` 与 `↵` 在面板里是「挪候选 /
+ * 跑它」，在列表上是「挪光标 / 打开这一行」——两层各有一个名字，而
+ * {@link bindingFor} 靠各自的 `when` 挑出适用的一枚。**那些 `when` 不许因为这条规则而
+ * 删掉**：它们的作用是让「适用的那一枚」赢，而不是「挡住不适用的那一枚」。
+ *
+ * **而 `⌘` 和弦不算在里面**（判据在 {@link dispatchKey}）：一条带命令修饰键的和弦是
+ * **故意的动作**，它属于这一面，不属于当前那一层——与 {@link usable} 里「裸键算打字、
+ * 和弦不算」是同一条界线。所以纸开着时 `⌘K` 照旧开得动调色板（那是它唯一的键盘入口），
+ * 而裸键 `/` 不动：后者在一个开着纸、焦点又落在某枚芯片上的读者手里，会把他的纸换掉。
+ */
+const LAYER_TRANSPARENT: ReadonlySet<ItemKeyAction> = new Set<ItemKeyAction>([
+  'close', 'palettePrev', 'paletteNext', 'palettePick',
+])
 
 /** The handler for one action. Returning nothing is fine; throwing is not. */
 export type ItemKeyHandler = (arg: ItemPriority | undefined) => void
@@ -277,12 +310,17 @@ export function claimsKey(event: KeyEventLike): boolean {
  * only evidence is that pressing a key on a rendered page did something cannot
  * be checked for the keys it gets WRONG, and a keyboard flow with a wrong key is
  * invisible to its reader too.
+ *
+ * 事件仍然是**我们的**（照着这条路的规矩：认了的键一律吞掉，哪怕它什么都不做），
+ * 但占着键盘的那一层开着时，只有 {@link LAYER_TRANSPARENT} 那几枚真的动手。
  * @returns whether the event was ours and should not travel further.
  */
 export function dispatchKey(event: KeyEventLike, state: KeyState, actions: ItemKeyActions): boolean {
   const binding = bindingFor(event, state)
   if (binding === undefined) return false
   if (binding.when !== undefined && !binding.when(state)) return true
+  /* 占着键盘的那一层：**裸键**归它，和弦归这一面（见 {@link LAYER_TRANSPARENT}）。 */
+  if (state.somethingOpen && !isCommand(event) && !LAYER_TRANSPARENT.has(binding.action)) return true
   actions[binding.action](binding.arg)
   return true
 }

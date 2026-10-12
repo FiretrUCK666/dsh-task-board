@@ -24,7 +24,7 @@
 import { describe, expect, it } from 'vitest'
 import { act, createElement, useState } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { claimsKey, dispatchKey, ITEM_KEYS, type ItemKeyActions } from '../src/client/item/keyboard.ts'
+import { claimsKey, dispatchKey, ITEM_KEYS, type ItemKeyActions, type KeyState } from '../src/client/item/keyboard.ts'
 import { EMPTY_ITEM_QUERY, parseItemQuery } from '../src/core/item-view.ts'
 import { ItemCommandPalette, type PaletteAction, type PaletteCommands } from '../src/client/item/command-palette.tsx'
 import { fixtures, mountPanel, press, type as typeInto } from './panel-harness.ts'
@@ -557,5 +557,87 @@ describe('the qualifier chip says the filter, not the kind', () => {
     } finally {
       panel.dispose()
     }
+  })
+})
+
+/**
+ * 占着键盘的那一层：**只有它自己的键与 Esc 活着**。
+ *
+ * 报上来的那一条：新建那张纸开着、焦点又恰好不在输入框里（起名框按回车收起后焦点落回
+ * `<body>`，或焦点在某枚芯片上）时，读者接着敲的那个 `a` 把他自己正开着的那张纸关掉了
+ * ——因为 `quickCapture` 走的是 `openLayer`，而它是**开关**。根因不是那一枚键，是
+ * 「一层东西占着键盘」这件事以前由每枚绑定自己写一句 `when` 表达，而它漏了一句。
+ *
+ * 这个文件是它的家：调色板就是那一层里唯一**必须继续活着**的几枚键，所以「它的三枚还在、
+ * 列表的那些不在了」是同一个判断的两半。
+ */
+describe('占着键盘的那一层只放行它自己的键', () => {
+  const eventOf = (binding: (typeof ITEM_KEYS)[number]): Parameters<typeof dispatchKey>[0] => ({
+    key: binding.key,
+    metaKey: binding.cmd === true,
+    ctrlKey: false,
+    shiftKey: binding.shift === true,
+    target: document.createElement('div'),
+  })
+
+  /** 一整份动作表，每一枚只记下自己跑过。 */
+  const spies = (): { readonly ran: string[]; readonly actions: ItemKeyActions } => {
+    const ran: string[] = []
+    const actions = Object.fromEntries(
+      [...new Set(ITEM_KEYS.map(binding => binding.action))].map(name => [name, () => { ran.push(name) }]),
+    ) as unknown as ItemKeyActions
+    return { ran, actions }
+  }
+
+  /** 一张浮层开着（新建那张纸就是这个状态：`overlay !== undefined`）。 */
+  const LAYER: KeyState = { focusedId: 'r-1', somethingOpen: true, paletteOpen: false }
+  /** 调色板是**那一层自己**：占着键盘，而它的三枚键是它的。 */
+  const PALETTE: KeyState = { focusedId: 'r-1', somethingOpen: true, paletteOpen: true }
+  /** 没有层：就是读列表的那个状态（焦点落在 `<body>` 上也算——这正是当初那条豁免的由来）。 */
+  const BARE: KeyState = { focusedId: 'r-1', somethingOpen: false, paletteOpen: false }
+
+  it('浮层开着时按 A 不许动手，而这个键仍然被认领', () => {
+    const { ran, actions } = spies()
+    const swallowed = dispatchKey(eventOf({ keys: 'A', key: 'a', action: 'quickCapture' }), LAYER, actions)
+    expect(ran, '读者接着敲的那个 a 跑到列表上去了：它会把他自己正开着的那张纸关掉').toEqual([])
+    expect(swallowed, '这一枚既没执行也没被认领——那就漏给浏览器了').toBe(true)
+  })
+
+  it('整张表一起判：放行名单之外的裸键，一枚都不许动手；和弦照旧属于这一面', () => {
+    /* 放行名单就是 `keyboard.ts` 的 `LAYER_TRANSPARENT`（Esc 一次只收一层，所以它必须活着；
+       调色板的三枚是那一层自己的键，而它们都是**裸键**）。这张断言按**整张表**跑，所以将来
+       新加一枚动作时，忘了这件事的那一枚会被挡住而不是静默生效——**漏写的方向是安全的**。
+       带 `⌘` 的和弦不在其中：一条和弦是故意的动作，它属于这一面（`⌘K` 是调色板唯一的键盘
+       入口，纸开着时也必须走得通）。 */
+    const allowed = new Set(['close', 'palettePrev', 'paletteNext', 'palettePick'])
+    let checked = 0
+    for (const binding of ITEM_KEYS) {
+      if (allowed.has(binding.action) || binding.cmd === true) continue
+      const { ran, actions } = spies()
+      dispatchKey(eventOf(binding), LAYER, actions)
+      checked += 1
+      expect(ran, `${binding.keys}（${binding.action}）在浮层开着时动了手`).toEqual([])
+    }
+    expect(checked, '这条断言一枚键都没检到，那它证明不了什么').toBeGreaterThan(8)
+    /* 放行的那四枚**反过来**必须真的活着，否则这条规则就变成了「浮层里什么都按不动」。 */
+    const close = spies()
+    dispatchKey(eventOf({ keys: 'Esc', key: 'escape', action: 'close' }), LAYER, close.actions)
+    expect(close.ran, '浮层开着时 Esc 不工作了：一次只收一层的那条路断了').toEqual(['close'])
+    const own = new Set<string>(['palettePrev', 'paletteNext', 'palettePick'])
+    for (const binding of ITEM_KEYS.filter(one => own.has(one.action))) {
+      const { ran, actions } = spies()
+      dispatchKey(eventOf(binding), PALETTE, actions)
+      expect(ran, `${binding.keys} 在调色板里不动了——那是它自己那一层的键`).toEqual([binding.action])
+    }
+    /* 和弦那一半：`⌘K` 在浮层开着时照旧开得动调色板。 */
+    const chord = spies()
+    dispatchKey(eventOf({ keys: '⌘K', key: 'k', cmd: true, action: 'palette' }), LAYER, chord.actions)
+    expect(chord.ran, '⌘K 被浮层挡住了——那是调色板唯一的键盘入口').toEqual(['palette'])
+  })
+
+  it('没有层的时候，A 照旧开得动（这条规则不是把键按死）', () => {
+    const { ran, actions } = spies()
+    dispatchKey(eventOf({ keys: 'A', key: 'a', action: 'quickCapture' }), BARE, actions)
+    expect(ran, '浮层关着时 A 也不动了——那这条规则就成了「新的一条永远开不出来」').toEqual(['quickCapture'])
   })
 })

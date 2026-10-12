@@ -21,6 +21,7 @@ import { t } from '../locales.ts'
 import { Button, Disclosure } from '../board/ui.tsx'
 import { RunConfigFields } from '../board/RunConfigFields.tsx'
 import { RunConfigRows } from '../board/RunConfigRows.tsx'
+import { NoteEntry, useNote } from './group-head.tsx'
 import css from './item.module.css'
 
 export interface RunConfigBlockProps {
@@ -57,33 +58,45 @@ export function RunConfigBlock(props: RunConfigBlockProps) {
     props.onSave(draft)
     setEditing(false)
   }
+  /* **那句话的入口站在头行的末尾**，不常驻在块底下：它说的是这一份配置的命运，而命运不是读者
+   * 每次看这一块都要读的一行字——它是读者**问出来之后**才有用的话（「还没挂卡，那我改的这一份
+   * 算谁的」）。入口是一枚真按钮，所以触屏够得着（硬性规范 11③）。 */
+  const note = useNote(t('item.ask.configWhy'))
+  const headed = props.note !== undefined
   return (
-    <>
-      <Disclosure
-        title={t('item.ask.configRow')}
-        summary={props.summary}
-        open={open}
-        onToggle={() => { setOpen(!open) }}
-      >
-        <RunConfigRows config={props.config} workspaceTitleOf={props.workspaceTitleOf} />
-        {editing
-          ? (
-            <div className={css.itemRunConfigEdit}>
-              <RunConfigFields value={draft} onChange={setDraft} controller={props.controller} />
-              <div className={css.itemRunConfigAct}>
-                <Button size="sm" onClick={() => { setEditing(false) }}>{t('detail.cancel')}</Button>
-                <Button size="sm" variant="primary" onClick={commit}>{t('detail.save')}</Button>
-              </div>
-            </div>
-          )
-          : (
-            <div className={css.itemRunConfigAct}>
-              <Button size="sm" onClick={startEdit}>{t('item.ask.configChange')}</Button>
-            </div>
-          )}
-      </Disclosure>
+    <div className={css.itemRunConfigHead} data-note={headed && note.open ? '' : undefined}>
+      {/* **按钮不装按钮**：`Disclosure` 的头本身就是 `<button>`，所以 ⓘ 站在它旁边，两者由这一
+       * 行承载。`data-note-hover` 挂在这一行上——读者指着的是「运行配置」这一行。 */}
+      <div className={css.itemRunConfigHeadRow} data-note-hover="">
+        <div className={css.itemRunConfigHeadText}>
+          <Disclosure
+            title={t('item.ask.configRow')}
+            summary={props.summary}
+            open={open}
+            onToggle={() => { setOpen(!open) }}
+          >
+            <RunConfigRows config={props.config} workspaceTitleOf={props.workspaceTitleOf} />
+            {editing
+              ? (
+                <div className={css.itemRunConfigEdit}>
+                  <RunConfigFields value={draft} onChange={setDraft} controller={props.controller} />
+                  <div className={css.itemRunConfigAct}>
+                    <Button size="sm" onClick={() => { setEditing(false) }}>{t('detail.cancel')}</Button>
+                    <Button size="sm" variant="primary" onClick={commit}>{t('detail.save')}</Button>
+                  </div>
+                </div>
+              )
+              : (
+                <div className={css.itemRunConfigAct}>
+                  <Button size="sm" onClick={startEdit}>{t('item.ask.configChange')}</Button>
+                </div>
+              )}
+          </Disclosure>
+        </div>
+        {headed && <NoteEntry note={note} />}
+      </div>
       {/* 只在还没挂卡时说：那时这一份会被新卡带走；已经挂着卡时说了就是第二句关于卡的话。 */}
-      {props.note !== undefined && <p className={css.itemOptsFoot}>{props.note}</p>}
-    </>
+      {headed && <p className={css.itemNote} id={note.id}>{props.note}</p>}
+    </div>
   )
 }

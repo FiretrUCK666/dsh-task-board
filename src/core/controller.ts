@@ -1111,7 +1111,7 @@ export class BoardController {
 
   /** Whether the board can settle THIS session's pending question in place.
    *  True while that session's official carrier is interactive (the native
-   *  `PendingQuestion` exposes `answer`/`cancel`; settling through it resolves
+   *  `PendingQuestion` exposes `answer`/`dismiss`; settling through it resolves
    *  the ONE host waterfall call — nothing new is registered, so first answer
    *  still wins). False for a display-only snapshot entry or a host with no
    *  uiSession: that card takes its navigate-to-answer branch.
@@ -1133,7 +1133,10 @@ export class BoardController {
     return this.deps.questionRpc?.answer(rpcId, sessionId, answers) ?? Promise.resolve(false)
   }
 
-  /** Reject the whole ask (the model sees ASK_CANCELLED and continues). */
+  /** Hand the whole ask back to its owner (the official carrier's `dismiss()`).
+   *  What that does depends on the card, and both halves are the host's: an ask
+   *  the Host NAMED (a tool call) only puts its composer seat away — the request
+   *  stands and its row reopens it — while an unnamed ask ends as ASK_CANCELLED. */
   cancelQuestion(rpcId: string): Promise<boolean> {
     return this.deps.questionRpc?.cancel(rpcId) ?? Promise.resolve(false)
   }

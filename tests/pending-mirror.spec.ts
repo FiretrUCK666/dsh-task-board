@@ -1,36 +1,55 @@
 /**
  * PendingMirror contract: the official snapshot projects into per-session
  * newest-wins WireQuestions, approvals never render, and — while an entry
- * carries the native carrier's own `answer`/`cancel` — the face settles THAT
+ * carries the native carrier's own `answer`/`dismiss` — the face settles THAT
  * request in place (never a second answerer, never a stale object). A
  * display-only entry (or no uiSession at all) reports `canAnswerOf` false FOR
  * THAT SESSION so the card degrades to navigate-to-answer — and an answerable
  * carrier in one session never makes another session's card answerable. Drives
  * the face with a hand-controlled fake uiSession (snapshot + listener set), no
  * real host.
+ *
+ * The carrier's SHAPE is the contract this file pins hardest: the names, the
+ * payload envelope, and the near-miss shape (`cancel` instead of `dismiss`) that
+ * makes the whole card read-only on a real host while every test still passes.
  */
 import { describe, expect, it, vi } from 'vitest'
 import { PendingMirror } from '../src/client/board/pending-mirror.ts'
+import { planApproveAnswers, planQuestionOf } from '../src/core/question-rpc.ts'
+
+/** One question as the official batch carries it. */
+interface FakeQuestion {
+  id: string
+  question: string
+  detail?: string
+  options?: { label: string }[]
+  intent?: { kind: string; approve: string }
+}
 
 /** One live interactive carrier, shaped like the native `PendingQuestion`. */
 interface FakeCarrier {
   sessionId: string
   kind: string
   key: string
-  questions: { id: string; question: string }[]
+  questions: FakeQuestion[]
+  channel: 'waterfall' | 'rpc' | 'none'
   answer: ReturnType<typeof vi.fn>
-  cancel: ReturnType<typeof vi.fn>
+  dismiss: ReturnType<typeof vi.fn>
+  snapshot: ReturnType<typeof vi.fn>
 }
 
 function carrier(sessionId: string, text: string, kind = 'question'): FakeCarrier {
-  return {
+  const entry: FakeCarrier = {
     sessionId,
     kind,
     key: '',
     questions: [{ id: 'q-1', question: text }],
+    channel: 'waterfall',
     answer: vi.fn(async (_answer: unknown) => undefined),
-    cancel: vi.fn(async () => undefined),
+    dismiss: vi.fn(async () => undefined),
+    snapshot: vi.fn(() => ({ channel: entry.channel })),
   }
+  return entry
 }
 
 /** One interactive carrier under its own key (the snapshot pair). */
@@ -190,8 +209,76 @@ describe('PendingMirror', () => {
     // The ONE answerer: the request's own method, with the native answer shape.
     expect(entry.answer).toHaveBeenCalledTimes(1)
     expect(entry.answer).toHaveBeenCalledWith({ answers })
+    /* A live waterfall settles through the carrier alone: the composer seat stays
+       put (the card leaves with the next snapshot), so nothing else is called. */
+    expect(entry.dismiss).not.toHaveBeenCalled()
     await expect(mirror.cancel('question:1')).resolves.toBe(true)
-    expect(entry.cancel).toHaveBeenCalledTimes(1)
+    expect(entry.dismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('answers with the asker own approve label (never the option order) and in the host envelope', async () => {
+    /* The whole in-place path, end to end minus the DOM: the intent rides the
+       projection, the plan grammar turns it into the asker's own label, and the
+       carrier receives `{ answers: [...] }` — the shape the host validates. */
+    const ui = new FakeUiSession()
+    const [, entry] = live('question:9', 's-1', 'Approve this plan?', 'plan-review')
+    entry.questions = [{
+      id: 'plan-review',
+      question: 'Approve this plan and leave plan mode?',
+      detail: '# 计划',
+      // The approve option is SECOND on purpose: an answer read off the option
+      // order would send 'Keep planning' here.
+      options: [{ label: 'Keep planning' }, { label: 'Approve' }],
+      intent: { kind: 'plan-review', approve: 'Approve' },
+    }]
+    ui.snapshot = new Map([['s-1', status(entry)]])
+    const mirror = new PendingMirror(ui)
+    const item = planQuestionOf(mirror.pendingOf('s-1')!)!
+    await expect(mirror.answer('question:9', 's-1', planApproveAnswers(item))).resolves.toBe(true)
+    expect(entry.answer).toHaveBeenCalledWith({ answers: [{ id: 'plan-review', selected: ['Approve'] }] })
+  })
+
+  it('releases the composer seat only on the Remote channel, and never fails the answer for it', async () => {
+    /* A question the host already CONTINUED answers through the Remote path and
+       the answered card still holds the composer seat; the official plan panel
+       releases it with a second call. A released-but-unreleased seat is a visible
+       bug (a dead card over the composer), while a failed release happens AFTER
+       the answer was delivered — so it reports, and the answer still counts. */
+    const ui = new FakeUiSession()
+    const [, remote] = live('question:1', 's-1', '一')
+    remote.channel = 'rpc'
+    remote.dismiss.mockRejectedValueOnce(new Error('already gone'))
+    ui.snapshot = new Map([['s-1', status(remote)]])
+    const mirror = new PendingMirror(ui)
+    await expect(mirror.answer('question:1', 's-1', [])).resolves.toBe(true)
+    expect(remote.dismiss).toHaveBeenCalledTimes(1)
+  })
+
+  it('refuses to promise a verb the carrier does not have', async () => {
+    /* THE DRIFT RATCHET. The real defect: the board probed for `answer` +
+       `cancel`, while the shipped carrier declares `answer` + `dismiss` — so
+       `canAnswerOf` was false on every real host, every card fell to the read-only
+       shell, and the dismissal call would have thrown on the reader's click.
+       A carrier missing EITHER method is not answerable here. */
+    const cancelsOnly = {
+      key: 'question:1', kind: 'question', sessionId: 's-1',
+      questions: [{ id: 'q-1', question: '一' }],
+      answer: vi.fn(async () => undefined),
+      cancel: vi.fn(async () => undefined),
+    }
+    const dismissesOnly = {
+      key: 'question:2', kind: 'question', sessionId: 's-1',
+      questions: [{ id: 'q-2', question: '二' }],
+      dismiss: vi.fn(async () => undefined),
+    }
+    const ui = new FakeUiSession()
+    ui.snapshot = new Map([['s-1', status(cancelsOnly)]])
+    expect(new PendingMirror(ui).canAnswerOf('s-1')).toBe(false)
+    ui.snapshot = new Map([['s-2', status({ ...dismissesOnly, sessionId: 's-2' })]])
+    const mirror = new PendingMirror(ui)
+    expect(mirror.canAnswerOf('s-2')).toBe(false)
+    await expect(mirror.answer('question:2', 's-2', [])).resolves.toBe(false)
+    await expect(mirror.cancel('question:2')).resolves.toBe(false)
   })
 
   it('refuses a stale identity instead of settling something else', async () => {
@@ -205,7 +292,7 @@ describe('PendingMirror', () => {
     await expect(mirror.answer('question:1', 's-1', [])).resolves.toBe(false)
     await expect(mirror.cancel('question:1')).resolves.toBe(false)
     expect(first.answer).not.toHaveBeenCalled()
-    expect(first.cancel).not.toHaveBeenCalled()
+    expect(first.dismiss).not.toHaveBeenCalled()
     // The live one still answers.
     await expect(mirror.answer('question:2', 's-1', [])).resolves.toBe(true)
     // A settled request is gone: nothing left to settle.

@@ -20,8 +20,8 @@ import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemDateConflict } from '../../core/item.ts'
 import { DATE_FIELD_KEY, DATE_GLOSS_KEY, DATE_HINT_KEY, PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
-import { CrossMark, PriorityMark, InfoMark } from './marks.tsx'
-import { useNote } from './group-head.tsx'
+import { CrossMark, PriorityMark } from './marks.tsx'
+import { NoteEntry, useNote } from './group-head.tsx'
 import type { DateDraft } from './model.ts'
 import { readDateDraft } from './model.ts'
 import { DateField } from './date-field.tsx'
@@ -501,17 +501,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 指着字段名偷看一句，按下或聚焦真开（触屏只有这一条路）。 */}
             <div className={css.itemOptRow} data-note={cardNote.open ? '' : undefined}>
               <p className={css.itemOptName} data-note-hover="">
-                {t('item.field.taskId')}
-                <button
-                  type="button"
-                  className={css.itemGroupWhy}
-                  aria-expanded={cardNote.open}
-                  aria-controls={cardNote.id}
-                  aria-label={t('item.cardLink.why')}
-                  onClick={cardNote.onToggle}
-                >
-                  <InfoMark size={14} />
-                </button>
+                {/* **字段名自己是一枚盒子**（`.itemOptNameText`）：它与那枚 ⓘ 同一条线，而同一
+                    条线上「字」与「记号」的分别就是这一族唯一的补偿——记号居中在自己的盒里，
+                    字读 `--item-ink-lift`（见 `item.module.css` 表末那一族规则）。 */}
+                <span className={css.itemOptNameText}>{t('item.field.taskId')}</span>
+                <NoteEntry note={cardNote} />
               </p>
               <div className={css.itemOpts}>
                 <button

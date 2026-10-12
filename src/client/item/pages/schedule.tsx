@@ -40,9 +40,9 @@ import type { ItemSort } from '../../../core/item-sort.ts'
 import { t, isEnglish } from '../../locales.ts'
 import { STATUS_KEY } from '../../board/status.ts'
 import { formatItemDate } from '../model.ts'
-import { BUCKET_LABEL } from '../labels.ts'
-import { MARK_OF_BUCKET, InfoMark } from '../marks.tsx'
-import { GroupHead, useNote } from '../group-head.tsx'
+import { BUCKET_EXPLAIN, BUCKET_LABEL } from '../labels.ts'
+import { MARK_OF_BUCKET } from '../marks.tsx'
+import { GroupHead, NoteEntry, useNote } from '../group-head.tsx'
 import type { ItemPageProps } from './page-props.ts'
 import { nothingToShowOf } from './nothing-to-show.ts'
 import { ItemTable } from '../item-table.tsx'
@@ -90,9 +90,11 @@ function AgendaSection({ bucket, english, renderRows, now, sort }: {
 }): React.ReactNode {
   const note = useNote(t('item.group.why'))
   const word = t(BUCKET_LABEL[bucket.id as ScheduleBucketId])
-  /* 只有这两节有话说：它们不在按天的序列里，读者会问「为什么」。按天的节不需要解释
-     ——它的名字就是那一天。 */
-  const explain = bucket.id === 'gated' ? t('item.gated.hint') : bucket.id === 'undated' ? t('item.noDate.hint') : undefined
+  /* **这一节有没有话说，由那张穷尽的表回答**（`labels.ts` 的 `BUCKET_EXPLAIN`）：按天的那几节
+     的名字就是那一天，所以它们的答案是 `undefined`——那不是「忘了写」，是写下来的「没有」。
+     这里原来是一个三元，于是两个晚了的节既没有解释也没有 ⓘ，而屏上少一样东西不会有人报。 */
+  const explainKey = BUCKET_EXPLAIN[bucket.id as ScheduleBucketId]
+  const explain = explainKey === undefined ? undefined : t(explainKey)
 
   return (
     <Block
@@ -141,16 +143,7 @@ function QuietLine({ entries, noteText, label }: {
             <i className={css.itemGroupCount}>{entry.count}</i>
           </span>
         ))}
-        <button
-          type="button"
-          className={css.itemGroupWhy}
-          aria-expanded={note.open}
-          aria-controls={note.id}
-          aria-label={note.label}
-          onClick={note.onToggle}
-        >
-          <InfoMark size={14} />
-        </button>
+        <NoteEntry note={note} />
       </div>
       <p className={css.itemNote} id={note.id}>{noteText}</p>
     </div>

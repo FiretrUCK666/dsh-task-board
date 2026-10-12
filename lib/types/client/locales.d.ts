@@ -637,6 +637,7 @@ export declare const zh: {
     'item.ask.configChange': string;
     'item.ask.configDefault': string;
     'item.ask.configNote': string;
+    'item.ask.configWhy': string;
     'item.cardLink.configNote': string;
     'item.ask.started': string;
     'item.ask.said': string;
@@ -783,6 +784,8 @@ export declare const zh: {
     'item.bucket.gated': string;
     'item.gated.hint': string;
     'item.noDate.hint': string;
+    'item.bucket.hardOverdueWhy': string;
+    'item.bucket.behindWhy': string;
     'item.group.why': string;
     'item.agenda.quietWhy': string;
     'item.agenda.inbox': string;

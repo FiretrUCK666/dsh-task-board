@@ -17,6 +17,9 @@
  *
  * - It proves the plugin's declared dependencies still have a counterpart in the
  *   running host, and that the plugin does not reach for members the host dropped.
+ * - It proves the pending-question carrier probe still names the methods that
+ *   carrier declares (its own section below), because that read is structural and
+ *   a rename there fails silently.
  * - It is a PRESENCE check, not a behavior audit. Green means "nothing the plugin
  *   names has gone missing", never "the interface still behaves the same".
  * - It never edits code. A failure names the exact contract and what to do.
@@ -383,6 +386,133 @@ function serviceFailures(rows) {
 }
 
 failures.push(...serviceFailures(services))
+
+// --- the pending-question carrier's action names ------------------------------
+// The board answers a pending question IN PLACE through the object the official
+// uiSession session-status snapshot carries, and it reads that object
+// STRUCTURALLY — by method name, across a package boundary no compiler checks.
+// The read therefore has no build-time link to the host, and its failure mode is
+// silence: a renamed method leaves `canAnswerOf` false on every real host (each
+// card falls back to the read-only shell and nothing says why), and turns the
+// dismissal into a TypeError at the moment a reader presses it.
+//
+// So the two names are read from BOTH sides and compared: the methods the probe
+// requires (`MirrorCarrierActions`) against the methods the INSTALLED carrier
+// declares in its own type declaration. Both sides are read as source, so the
+// check works without importing either package.
+
+/** The 1-based line of one character offset. */
+function lineOf(text, index) {
+  return text.slice(0, index).split('\n').length
+}
+
+/**
+ * The body of a `class X {` / `interface X {` declaration and the line it starts
+ * on. Brace-matched, skipping comments and strings — the same reader the slot scan
+ * uses, which is why a declaration can be read out of a file this script cannot
+ * import (the browser bundle and its `.d.ts`).
+ * @param text - the file's text.
+ * @param keyword - `class` or `interface`.
+ * @param name - the declared name.
+ * @returns the body and its line, or undefined when the declaration is absent.
+ */
+function declarationBody(text, keyword, name) {
+  const pattern = new RegExp(`\\b${keyword}\\s+${name}\\b[^{;]*\\{`)
+  const match = pattern.exec(text)
+  if (match === null) return undefined
+  const open = match.index + match[0].length - 1
+  const body = objectBody(text, open)
+  return body === undefined ? undefined : { body, line: lineOf(text, open) }
+}
+
+/**
+ * The method names declared at the top level of a class or interface body, each
+ * with its line and whether the declaration was optional (`name?()`). Comment
+ * lines are skipped: a name mentioned in prose is not a declaration.
+ */
+function declaredMethods(body, bodyLine) {
+  const methods = []
+  for (const [offset, line] of body.split('\n').entries()) {
+    if (/^\s*[*/]/.test(line)) continue
+    const match = /^\s+(?:static\s+)?([A-Za-z_$][\w$]*)(\?)?\s*\(/.exec(line)
+    if (match === null || match[1] === 'constructor') continue
+    methods.push({ name: match[1], line: bodyLine + offset, optional: match[2] === '?' })
+  }
+  return methods
+}
+
+const CARRIER_PACKAGE = '@deepseek-ai/dsh-client-ui-user-questions'
+
+/**
+ * The method surface the installed pending-question carrier declares, read from
+ * the package's own type declaration: the carrier is the type the host publishes
+ * for the `question` domain in the Session pending-interaction map, so the NAME
+ * is read rather than assumed.
+ * @param pkgDir - the installed package directory.
+ * @returns the carrier name, where it is declared, and its methods; undefined
+ * when this package declares no such carrier (reported by the caller).
+ */
+function officialCarrier(pkgDir) {
+  for (const file of packageTextFiles(pkgDir).filter(candidate => candidate.endsWith('.d.ts'))) {
+    const text = textOf(file)
+    const map = declarationBody(text, 'interface', 'SessionPendingInteractionMap')
+    const name = map === undefined ? undefined : /^\s*question\s*:\s*([A-Za-z_$][\w$]*)/m.exec(map.body)?.[1]
+    if (name === undefined) continue
+    const carrier = declarationBody(text, 'class', name)
+    if (carrier === undefined) continue
+    return { name, file, line: carrier.line, methods: declaredMethods(carrier.body, carrier.line) }
+  }
+  return undefined
+}
+
+/** A path as a finding should print it: DSH packages by name, ours from the root. */
+function shownPath(file) {
+  if (file.startsWith(packagesDir)) return file.slice(packagesDir.length + 1)
+  if (file.startsWith(root)) return file.slice(root.length + 1)
+  return file
+}
+
+{
+  const carrierPkgDir = packageDirOf(CARRIER_PACKAGE)
+  const probeFile = join(root, 'src', 'client', 'board', 'pending-mirror.ts')
+  const probeText = existsSync(probeFile) ? readFileSync(probeFile, 'utf8') : ''
+  const probe = declarationBody(probeText, 'interface', 'MirrorCarrierActions')
+  // Optional members are read but not required: the probe degrades when the host
+  // does not carry them, so demanding them would red-flag a working host.
+  const required = probe === undefined ? [] : declaredMethods(probe.body, probe.line).filter(method => !method.optional)
+  if (required.length === 0) {
+    failures.push(`the carrier probe declares no required method (${shownPath(probeFile)}) — this check can no longer compare anything`)
+  } else if (!existsSync(join(carrierPkgDir, 'package.json'))) {
+    // The plugin never imports this package (it reads the snapshot structurally),
+    // so a host that ships no question UI is degraded, not broken: unverified, and
+    // said out loud rather than passed over.
+    notes.push(`pending-question carrier: NOT VERIFIED (${CARRIER_PACKAGE} is not installed here)`)
+  } else {
+    const carrier = officialCarrier(carrierPkgDir)
+    if (carrier === undefined) {
+      failures.push(
+        `the installed ${CARRIER_PACKAGE} declares no pending-interaction carrier this check can read `
+        + `(no SessionPendingInteractionMap entry for "question" with its class in the same type file) — `
+        + `re-read the carrier contract and update ${shownPath(probeFile)} and this check`,
+      )
+    } else {
+      for (const method of required) {
+        if (carrier.methods.some(declared => declared.name === method.name)) continue
+        failures.push(
+          `the official carrier "${carrier.name}" (${shownPath(carrier.file)}:${carrier.line}) declares no `
+          + `"${method.name}" — it declares ${carrier.methods.map(declared => declared.name).join(', ')}; `
+          + `${shownPath(probeFile)}:${method.line} settles the request through "${method.name}", so in-place `
+          + 'answering would degrade to the read-only card and the dismissal would throw on the reader\'s click',
+        )
+      }
+      notes.push(
+        `pending-question carrier ${carrier.name} (${shownPath(carrier.file)}:${carrier.line}) declares `
+        + `${carrier.methods.map(declared => declared.name).join(', ')}; the probe requires `
+        + required.map(method => method.name).join(', '),
+      )
+    }
+  }
+}
 
 // The removal half: the plugin's source must not read members the host dropped.
 // With no removed-member rows left this loop is inert, so it can no longer be

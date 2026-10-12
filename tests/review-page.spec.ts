@@ -265,7 +265,7 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(code).toMatch(/<Markdown text=\{plan\} \/>/)
   })
 
-  it('the plan card keeps the native three decisions (approve / decline / discuss)', () => {
+  it('the plan card keeps the native decisions (approve / decline / discuss)', () => {
     const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
     const card = readFileSync(cardPath, 'utf8')
     const plan = card.slice(card.indexOf('function PlanReviewCard'))
@@ -274,9 +274,14 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(plan).toContain("t('review.planConfirm')")
     expect(plan).toContain("t('review.planDecline')")
     expect(plan).toContain("t('review.interactionDiscuss')")
-    // The decision is the intent's own label, never inferred from order.
-    expect(plan).toContain("planDecisionAnswers(item, 'approve', '')")
-    expect(plan).toContain("planDecisionAnswers(item, 'decline', '')")
+    // 那一次「同意」用的是**提问方自己命名的批准标签**（`intent.approve`），
+    // 「拒绝」用的是提问方自己另一个选项——两处都不是按选项顺序猜的。
+    expect(plan, '「同意」不再读提问方自己那个标签').toContain('planApproveAnswers(item)')
+    expect(plan, '「拒绝」不再读提问方自己另一个选项').toContain('planDeclineAnswers(item)')
+    // 没有可拒的选项时那一行不该存在，而答案里也绝不许出现空选择（那是「跳过整道题」）。
+    expect(plan, '计划卡的答案里出现了空选择').not.toMatch(/selected:\s*\[\s*\]/)
+    // 「去聊天里说」把这一次确认交回会话（载体的 dismiss），不是发一个空答案。
+    expect(plan).toContain('cancelQuestion(question.rpcId)')
   })
 
   it('the comments region and the composer stay inside the rail content box', () => {

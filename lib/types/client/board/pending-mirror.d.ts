@@ -7,11 +7,11 @@
  * read) and, while an entry is live, it holds the carrier object that entry
  * carries.
  *
- * That carried object IS the native `PendingQuestion`: its `answer(answer)`
- * and `cancel()` settle the very waterfall invocation the native composer
- * would settle (verified against the shipped plugin: the carrier exposes
- * `sessionId / kind / key / questions` plus those two methods, and the
- * client-side listener's return value resolves the host call). Answering
+ * That carried object IS the native `PendingQuestion`: its `answer(answer)` and
+ * `dismiss()` settle the very waterfall invocation the native composer would
+ * settle (verified against the shipped plugin: the carrier exposes
+ * `sessionId / kind / key / questions` plus those methods and `snapshot()`, and
+ * the client-side listener's return value resolves the host call). Answering
  * through it is therefore NOT a competing answerer — nothing new is
  * registered, the same claim is settled once, and the other surface's card
  * drops with the next snapshot notification. In-place answering is offered
@@ -27,19 +27,23 @@
  * here and everything downstream still speaks the carrier vocabulary it
  * always spoke. A future envelope change lands in that function alone.
  */
-import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts';
+import { type PendingInteractionKind, type QuestionAnswerEntry, type QuestionRpcFace, type WireQuestion } from '../../core/question-rpc.ts';
 import { type MirrorSnapshotLike } from '../../core/question-mirror.ts';
 /**
  * The action half of an official carrier, when the entry has one. Read
  * structurally (never `instanceof` across the plugin boundary): the shipped
- * native `PendingQuestion` exposes both, a snapshot entry that does not is
- * display-only and degrades to the navigate shell.
+ * native `PendingQuestion` declares `answer(answer)` and `dismiss()`, and its
+ * `snapshot()` names the channel an answer went through.
  */
 export interface MirrorCarrierActions {
     answer(answer: {
         answers: readonly QuestionAnswerEntry[];
     }): Promise<unknown> | unknown;
-    cancel(): Promise<unknown> | unknown;
+    dismiss(): Promise<unknown> | unknown;
+    /** The carrier's own state read; `channel` is `waterfall` / `rpc` / `none`. */
+    snapshot?(): {
+        channel?: unknown;
+    };
 }
 /** The structural slice of the official uiSession face this mirror reads. */
 export interface UiSessionMirrorFace {
@@ -75,7 +79,7 @@ export declare class PendingMirror implements QuestionRpcFace {
     /**
      * Whether THIS session's live interaction can be settled from here. Read
      * fresh by the card on every render: a data-only snapshot entry (no
-     * `answer`/`cancel`) keeps that card on its read-only navigate shell, so
+     * `answer`/`dismiss`) keeps that card on its read-only navigate shell, so
      * "can answer" is never claimed for a carrier that cannot — and never
      * claimed for one session because a DIFFERENT session's carrier is
      * interactive (the board reads this once per card, with that card's
@@ -93,7 +97,15 @@ export declare class PendingMirror implements QuestionRpcFace {
      * card keeps itself open and reports it.
      */
     answer(rpcId: string, sessionId: string, answers: readonly QuestionAnswerEntry[]): Promise<boolean>;
-    /** Reject the whole ask (the tool call settles as cancelled, like the native ×). */
+    /**
+     * Hand the whole ask back to its owner: the official carrier's `dismiss()`.
+     * OUR name stays `cancel` because the face's verb is about the ask, not about
+     * the host method — and because what that method means is the carrier's own
+     * two-state contract: a card keyed by a tool call only leaves the composer
+     * seat (`hide`; the request stands, its countdown keeps running, and the tool
+     * call row reopens it), while a card the host never named ends its request as
+     * `ASK_CANCELLED`, because nothing could bring it back.
+     */
     cancel(rpcId: string): Promise<boolean>;
 }
 export type { MirrorSnapshotLike };

@@ -2068,9 +2068,16 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
 
   /* 「族名单」与「块向内衬」两条读法各写**一处**：一条读真表（契约），一条读种出来的病表
      （证明它咬得动）。两次都在断言里内联同一段正则，就只能永远同意自己。 */
-  /** 那条唯一的补偿规则里的**族名单**（选择器列表）。 */
+  /** 那条唯一的补偿规则里的**族名单**（选择器列表）。
+   *
+   * **读的是「谁声明了那一格」，不是「谁的规则体里出现过那个令牌」。** 这一族之外还有一个
+   * 读那个数的规则（运行配置头行里那枚 ⓘ 的垂直位置：它要落到那一行的**墨线**上，而墨线在
+   * 行盒心下面半个补偿——那里读的是同一个数的另一半，写在 `margin-block-start` 里）。按
+   * 「出现过」读的时候，那一行会被认成这一族唯一的成员：成员数 1，两条闸门双双空转，
+   * 而空转与全绿在报告里长得一模一样。**一个判据只许读结构**，而这里的结构是那一格
+   * （属性 + 令牌），不是令牌的名字在文件里出现过几次。 */
   const inkLiftMembers = (text: string): string[] => {
-    const lift = declarationRules(text).find(rule => /var\(--item-ink-lift\)/.test(rule.body))
+    const lift = declarationRules(text).find(rule => /padding-block-end\s*:\s*var\(--item-ink-lift\)/.test(rule.body))
     if (lift === undefined) return []
     return lift.selector.split(',').map(one => one.trim().replace(/^\./, '')).filter(one => one !== '')
   }
@@ -2100,6 +2107,12 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(lifts, '光学补偿出现在不止一处——这一族又长出了第二个答案').toBe(1)
     expect(declaredOf(css, 'itemRoot', '--item-ink-lift').length,
       '那个数没有在令牌层声明，于是所有读它的规则都静默失效（computed 为空、声明被丢掉）').toBe(1)
+    /* **咬得动第二半：同一个令牌在别的属性里出现，不算这一族的第二个出口。**
+       运行配置那一行真的这么读（记号的垂直位置），而它必须**不**被认成族成员——
+       认错了的后果是族名单只剩它一个：两条闸门从此空转，而报告里一切正常。 */
+    expect(inkLiftMembers(`${css}\n.itemElsewhere { margin-block-start: calc(var(--item-ink-lift) / 2); }`).length,
+      '一个借那个数算别的位置的规则，被认成了这一族的名单')
+      .toBe(inkLiftMembers(css).length)
   })
 
   it('而这把尺子咬得动：多一处补偿、少一处声明，它都报', () => {
@@ -2186,6 +2199,57 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(alignsOnBaseline(planted, 'itemGroupText')).toBe(true)
     expect(alignsOnBaseline(planted, 'itemRailText')).toBe(true)
     expect(alignsOnBaseline(css, 'itemEmptyGroup'), '真表里那一处也被读成没对齐——尺子量错了地方').toBe(true)
+  })
+
+  /* 这一族之外还有一处读同一个数：运行配置那一行的行盒归 `Disclosure`（`<button>` 里装不了
+     按钮，所以 ⓘ 站在它旁边），那半格只能算在记号这一侧——读法与读法之间的分界由这条读法说
+     清楚，两种读法都出现时不许互相认成对方。 */
+  const liftConsumers = (text: string): string[] =>
+    declarationRules(text)
+      .filter(rule => rule.body.includes('var(--item-ink-lift)'))
+      .flatMap(rule => rule.selector.split(',').map(one => one.trim()))
+
+  it('四个消费点读同一条律：装字的盒子进名单，装记号的不进', () => {
+    /* 四个位置各有一行「一枚 ⓘ + 一串字」（组头、安静行、属性表的字段名、运行配置的头行），
+       而那一行里**装字的那一枚盒子**读同一个补偿——三个位置已经各有它自己那一枚（组头的
+       `.itemGroupText`、字段名的 `.itemOptNameText`），记号那一枚（`.itemGroupWhy`）**不读**：
+       记号绕 viewBox 中心对称，flex 居中把盒心放到位时墨心已经在位。 */
+    const members = inkLiftMembers(css)
+    for (const name of ['itemGroupText', 'itemOptNameText']) {
+      expect(members, `.${name} 直接装字、旁边又站着一枚 ⓘ，却没进补偿名单`)
+        .toContain(name)
+    }
+    expect(members, '.itemGroupWhy 是装记号的那一枚盒子——跟着抬半格，记号会比它旁边那串字高半个像素')
+      .not.toContain('itemGroupWhy')
+    // 咬得动：把记号那一枚种成族成员，它必须被读出来。
+    expect(inkLiftMembers('.itemGroupWhy { padding-block-end: var(--item-ink-lift); }'),
+      'the plant did not bite — 种进去的记号那一枚没有被读成族成员').toContain('itemGroupWhy')
+    /* **记号那一侧只许运行配置那一行读这个数**，而且读的是**同一枚令牌**：那一行的行盒不归
+       这一侧（`Disclosure` 的头是一枚 `<button>`，按钮里装不了按钮），所以那半格只能由记号
+       自己让出来。别处若也这么读，就是「记号比它旁边的字高半格」这类缺陷的第二个出处。 */
+    expect(liftConsumers(css).filter(one => one.includes('itemGroupWhy')),
+      '除了运行配置那一行，还有第二处把那一枚补偿算在记号一侧')
+      .toEqual(['.itemRunConfigHeadRow > .itemGroupWhy'])
+    expect(declaredOf(css, 'itemRunConfigHeadRow', 'margin-block-start')
+      .some(one => one.includes('var(--item-ink-lift)')),
+    '运行配置那一行的 ⓘ 不再读那一枚补偿，于是它会把半个字的高差留在自己身上').toBe(true)
+  })
+
+  it('说明小字的行长按物理行长给：`ch` 不是中文的尺子', () => {
+    /* **`ch` 量的是「0」的宽度，不是汉字的宽度。** 在 12px 下 `46ch` 只有 297.56px——约 23 个
+       汉字，而这一页最长的那几句有 43 个字（量出来的单行宽 516px，加上让出左沿的 16px 是
+       532px）：必然折两行，而右边留一大片空。所以限宽读一枚**声明在令牌层**的行长，单位是
+       `em`（中文一个字一个 em），那个数说的才是「一行放得下几个字」。 */
+    const limit = lastDeclaredOf(css, 'itemNote', 'max-inline-size')
+    expect(limit, '说明的限宽不再是那一枚令牌——下一个改的人会在两个数之间挑一个')
+      .toBe('var(--item-note-measure)')
+    const declared = declaredOf(css, 'itemRoot', '--item-note-measure')
+    expect(declared, '那一枚行长没有在令牌层声明一次——读它的规则会整条失效').toHaveLength(1)
+    expect(declared[0], '行长又写成字符数了：`ch` / `ex` 量的是「0」和「x」的宽，不是汉字的宽')
+      .toMatch(/^\d+(?:\.\d+)?em$/)
+    // 咬得动：写回 `ch` 的那一版必须被读出来。
+    expect(lastDeclaredOf(`${css}\n.itemNote { max-inline-size: 46ch; }`, 'itemNote', 'max-inline-size'))
+      .toBe('46ch')
   })
 
   it('说明平时不显示，而揭示它的只有两个钩子', () => {
@@ -3203,6 +3267,34 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
     }
   })
 
+  it('地板与天花板按真实行盒算：四行就是四行', () => {
+    /* **两个数写在一处、行盒写在另一处，就是它们对不上的原因。** 地板与天花板写的都是「几行」，
+       而一个「行」是**字**给的：字号 13 × 行距 1.65 = 21.45px。这两条曾经按 20px 算，
+       于是「地板 = 四行」只有 3.07 行——读者写满四行，框右边就冒出一条滚动条，而那条滚动条
+       比设计早来一行。所以字号与行距各自成令牌，行盒由它们算出来，四条声明读同一枚数。
+       **量法**（硬性规范 19）在 `scripts/probe-item-rail.js` 的第十段：`(clientHeight − 内衬) ÷
+       行盒` 报「装得下几行」，再往框里塞四行看 `scrollHeight === clientHeight`。 */
+    expect(sizeIn('.itemProse', 'font-size'), '写入框的字号不再来自令牌——行盒就没有出处了')
+      .toBe('var(--item-write-size)')
+    expect(sizeIn('.itemProse', 'line-height'), '写入框的行距不再来自令牌').toBe('var(--item-write-leading)')
+    const line = declaredOf(css, 'itemRoot', '--item-write-line')
+    expect(line, '行盒没有在令牌层声明一次').toHaveLength(1)
+    expect(line[0], '行盒不是那两枚令牌算出来的——写死一个数就是第二个数')
+      .toBe('calc(var(--item-write-size) * var(--item-write-leading))')
+    const floor = declaredOf(css, 'itemRoot', '--item-write-floor')
+    const ceil = declaredOf(css, 'itemRoot', '--item-write-ceil')
+    expect(floor.length, '地板没有声明').toBe(1)
+    expect(ceil.length, '天花板没有声明').toBe(1)
+    expect(floor[0], '地板不是按那一枚行盒算出来的：它又会比设计早一行或者晚一行')
+      .toContain('4 * var(--item-write-line)')
+    expect(ceil[0], '天花板不是按那一枚行盒算出来的').toContain('24 * var(--item-write-line)')
+    // 咬得动：按 20px 行盒写回去的那一版必须被读出来（那就是这一轮修掉的那一版）。
+    const planted = `${css}\n.itemRoot { --item-write-floor: calc(4 * 20px + 16px + 2px); }`
+    expect(declaredOf(planted, 'itemRoot', '--item-write-floor').at(-1) ?? '',
+      'the plant did not bite — 按 20px 算的那一版被读成了「从行盒算出来」')
+      .not.toContain('var(--item-write-line)')
+  })
+
   it('高度只由这一处给：没有 field-sizing，没有原生拖拽，抓条压在自己那一条空气里', () => {
     expect(css.includes('field-sizing'), '有 `field-sizing`：框会随每一次键入自己长高，而高度是读者的').toBe(false)
     expect(css.includes('::-webkit-resizer'), '在给一个不存在的原生抓手化妆').toBe(false)
@@ -3258,5 +3350,161 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
        那张纸自己的词（它的标题、它的按钮、它的段名）归 `item.create.*`。 */
     const readers = itemSurfaceFiles().filter(file => code(file.source).includes('item.create.')).map(file => file.path)
     expect(readers, `读新建那张纸的词的文件：${readers.join('、')}`).toEqual(['item-create-dialog.tsx'])
+  })
+})
+
+/**
+ * 这一轮的统一：**同一件事被写了两遍**的那一类病。
+ *
+ * 七处缺陷是同一个形状——一句话、一个数、一副骨架在四个地方各抄了一份，于是改一处不报错，
+ * 而屏上「同一件事在两个位置上长得不一样」。所以这一节的每条断言问的都是**出口数**：
+ * 那枚入口有几处渲染、那个数有几处声明、那副骨架有几处写、那句常驻的话还剩几个使用者。
+ * 每一条都配一个「咬得动」的对照——一条不能失败的检查比没有检查更坏。
+ */
+describe('说明小字：一处机制、一处数字、一副骨架', () => {
+  const css = panelCss()
+  /** 只读清单那一张表：看板那张表里的同族规则是另一个表面上的另一件事。 */
+  const sheet = stripCssComments(itemSheet())
+  /** JS/TS 注释剥掉：散文里提到一个类名不算一次使用（硬性规范 14）。 */
+  const code = (text: string): string =>
+    text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+  /**
+   * 哪些文件自己渲染了一枚「这里有一句话」的按钮。
+   *
+   * 读的是**两样一起**：那一族的类名（`.itemGroupWhy`）与 `aria-controls`。只读
+   * `aria-controls` 会把这一页上另外几枚折叠头一起收进来（命令面板、左栏、行末的 ⋯ 各有
+   * 自己的 `aria-expanded`/`aria-controls`，那是对的），于是这条闸门会永远红着——而一条
+   * 永远红的闸门与一条永远绿的一样，读的人最终都不再看它。
+   * @param files - 清单半区的源文件。
+   * @returns 自己渲染那枚按钮的文件名。
+   */
+  const inlineNoteButtons = (files: readonly { readonly path: string; readonly source: string }[]): string[] =>
+    files
+      .filter(file => {
+        const text = code(file.source)
+        return text.includes('css.itemGroupWhy') && /aria-controls=\{/.test(text)
+      })
+      .map(file => file.path)
+
+  it('那枚 ⓘ 只有一处渲染：十二行只留一份', () => {
+    /* 它是一枚**真按钮**：可达名、`aria-expanded`、`aria-controls` 三样都在，所以它比一枚记号
+       多出四行。抄成五个副本之后，第一个先过期的一定是 `aria-controls` 指到的那一句——而指错了
+       的按钮在屏幕上与对的那一枚长得一模一样，读屏读到的却是别人的话。 */
+    const owners = inlineNoteButtons(itemSurfaceFiles())
+    expect(owners, `内联那枚按钮的文件：${owners.join('、') || '（一个都没有）'}——那 12 行只许有一份（group-head.tsx 的 NoteEntry）`)
+      .toEqual(['group-head.tsx'])
+  })
+
+  it('咬得动：第二个副本会长出来，而读法会报', () => {
+    const planted = [
+      { path: 'group-head.tsx', source: '<button className={css.itemGroupWhy} aria-expanded={note.open} aria-controls={note.id} />' },
+      { path: 'detail-pane.tsx', source: '<button className={css.itemGroupWhy} aria-expanded={cardNote.open} aria-controls={cardNote.id} />' },
+    ]
+    expect(inlineNoteButtons(planted), 'the plant did not bite').toEqual(['group-head.tsx', 'detail-pane.tsx'])
+    /* **另一半对照：别处的 `aria-controls` 不算这一族。** 命令面板、左栏、行末的 ⋯ 各有自己的
+       折叠头（`aria-expanded` + `aria-controls` 是对的），把它们的开合读成这一族的副本，这条
+       闸门就会永远红着——那正是「一个不看上下文的检查器」（硬性规范 14）。 */
+    expect(inlineNoteButtons([{ path: 'rail.tsx', source: '<button aria-expanded={open} aria-controls={id} />' }]),
+      '别处的折叠头被当成了这一族的一份').toEqual([])
+  })
+
+  it('五个消费点都经那一枚入口（四个位置 + 组头自己）', () => {
+    /* 入口只有一处渲染（上一条），这一条钉的是**谁在用**：位置漏一个，那一处就会自己长回一份
+       内联的按钮——而它长回来的样子正是上面那条闸门要报的那一种。 */
+    for (const file of [
+      'client/item/group-head.tsx',
+      'client/item/pages/schedule.tsx',
+      'client/item/item-create-dialog.tsx',
+      'client/item/detail-pane.tsx',
+      'client/item/run-config-block.tsx',
+    ]) {
+      const source = code(readSource(file))
+      expect(source, `${file} 读不到了`).not.toBe('')
+      expect(source, `${file} 没有用那枚共用的入口`).toMatch(/<NoteEntry\b|NoteEntry note=/)
+    }
+  })
+
+  it('常驻的那两句事实还在，而它们只有两句', () => {
+    /* **够得上按需的收进 ⓘ，够不上的原样留下**——这条闸门钉的是那个决定没有被下一次改动悄悄抹平：
+       现在还剩两处常驻（没有看板可写时状态那一格的那句事实、以及「它正在跑」那句路线说明），
+       它们都不是「为什么是这样」，而是**这一格/这一按的答案本身**。 */
+    const users = itemSurfaceFiles()
+      .flatMap(file => [...code(file.source).matchAll(/css\.itemOptsFoot/g)].map(() => file.path))
+    expect(users.length, `常驻脚注的使用者：${users.join('、')}——收进 ⓘ 的是解释，留下的是事实`)
+      .toBe(2)
+    expect(code(readSource('client/item/detail-pane.tsx')), '那两句事实之一不见了')
+      .toContain("t('item.status.card')")
+    expect(code(readSource('client/item/detail-pane.tsx')), '那两句事实之一不见了')
+      .toContain("t('item.ask.continues')")
+  })
+
+  it('说明小字的限宽是一个数，而且按**物理行长**给', () => {
+    /* `ch` 是「这一档字号下 0 的宽度」，中文一个字有它近两倍宽：`46ch` 在 12px 下只有
+       297.56px，约 23 个汉字，而这一页最长的那一句有 **43** 个字（量出来单行 516px，
+       加上让出左沿的一档是 532px）——必然折两行、右边留一大片空。
+       `em` 才是中文的尺子（一个字一个 em）。 */
+    expect(declaredOf(css, 'itemRoot', '--item-note-measure'), '限宽没有在令牌层声明一次')
+      .toHaveLength(1)
+    expect(lastDeclaredOf(css, 'itemNote', 'max-inline-size'), '说明不再读那枚令牌')
+      .toBe('var(--item-note-measure)')
+    expect((lastDeclaredOf(css, 'itemRoot', '--item-note-measure') ?? '').endsWith('em'),
+      '限宽不是按字（em）给的——按 ch 给就是把行长说成「多少个 0」').toBe(true)
+    // 咬得动：按 `ch` 写回去的那一版必须被读出来——读法是同一个 `lastDeclaredOf`。
+    expect(lastDeclaredOf(`${css}\n.itemNote { max-inline-size: 46ch; }`, 'itemNote', 'max-inline-size'),
+      'the plant did not bite — 按 ch 写回去的那一版没有被读出来').toBe('46ch')
+  })
+
+  it('安静行与节头是同一副骨架：头 / 说明 / 内容之间同一档', () => {
+    /* 安静行是**零行的节**，不是另一种节。它此前是一个没有 gap 的列，于是那句话说在药丸下沿上，
+       而节头下面同样那句话隔着一档——同一个零件（`.itemNote`）在两处两个距离。 */
+    const quiet = lastDeclaredOf(css, 'itemQuiet', 'gap')
+    expect(quiet, '安静行没有 gap——它那句说明会贴在药丸上').toBeDefined()
+    expect(quiet, '安静行与节头的骨架不是同一档').toBe(lastDeclaredOf(css, 'itemAgendaBlock', 'gap'))
+    expect(quiet).toBe('var(--s2)')
+    // 咬得动：把 gap 拿掉的那一版（这一轮修掉的那一版）读出来是 undefined。
+    expect(lastDeclaredOf(panelCss().replace(/\.itemQuiet \{[^}]*\}/, '.itemQuiet { display: flex; }'), 'itemQuiet', 'gap'))
+      .toBeUndefined()
+  })
+
+  it('展开区三段：两个间距是两个数，段名三个都在', () => {
+    /* 「段名与它引入的内容」比「段与段」近一档——名字属于它下面那一段。曾经只有一个 `--s3`，
+       而「近一档」是拿 `.itemOpenCaption` 的 `margin-block-end: calc(var(--s1) * -1)` 凑的：
+       那一句**从来没生效过**（`<p>` 上的 margin 在本面板里一律无效），所以两个数一直是一个数。 */
+    expect(lastDeclaredOf(css, 'itemOpenText', 'gap'), '三段之间不再读那个令牌')
+      .toBe('var(--item-open-section-gap)')
+    expect(lastDeclaredOf(css, 'itemOpenSection', 'gap'), '段名与它引入的内容之间不再读那个令牌')
+      .toBe('var(--item-open-caption-gap)')
+    expect(declaredOf(css, 'itemRoot', '--item-open-section-gap')).toHaveLength(1)
+    expect(declaredOf(css, 'itemRoot', '--item-open-caption-gap')).toHaveLength(1)
+    // 段名自己不再带外边距：那一条是无效的那一条（`<p>` + UA 重置 specificity (0,1,1)）。
+    expect(declaredOf(css, 'itemOpenCaption', 'margin-block-end'),
+      '段名的外边距又写回来了——它在本面板里算 0，于是第三个「看起来在被遵守」的数').toEqual([])
+    // 三段各有一个段名：正文 / 步骤 / 上下文备注。
+    const detail = code(readSource('client/item/detail-pane.tsx'))
+    expect([...detail.matchAll(/itemOpenCaption/g)].length, '左列不是三段各有段名').toBe(3)
+  })
+
+  it('附件条：芯片一行、句子带地板，而那一行不许长大', () => {
+    /* 句子与芯片**同排**，装不下就整句换行；那一行**不长大**——长大了它就把句子推到整行的
+       最右边（量到过：736 宽的一格里装了 24px 的「＋」，而句子落在离它 440px 的右端），
+       而句子是来解释左边那几样东西的。 */
+    expect(lastDeclaredOf(css, 'attachStrip', 'flex-wrap'), '附件条不再换行：句子只能挤在芯片旁边').toBe('wrap')
+    expect(lastDeclaredOf(css, 'attachRow', 'flex'), '那一行要么被压扁、要么把句子推到最右边').toBe('0 1 auto')
+    expect(lastDeclaredOf(css, 'attachRow', 'min-inline-size'), '芯片那一行没有地板，会被压成零宽').toBe('0')
+    expect(lastDeclaredOf(css, 'attachHint', 'min-inline-size'),
+      '句子没有宽度地板——窄一点它就是一根一个字一行的竖条（412 上真的量到过十一行单字）')
+      .toBe('min(22em, 100%)')
+  })
+
+  it('属性表的字段名自己是一枚盒子：补偿只能落在直接装字的盒子里', () => {
+    /* 那一行里也站着一枚 ⓘ，而「字段名」这三个字本来是一段**裸文本**——连一个能垫的盒子都没有，
+       于是它的墨心比这一行的盒心低半个像素（量过：改前 −0.5）。成员加进表末那一族名单，
+       而它自己的规则里不写补偿（成员自带块向内衬会被族规则整条替换掉）。 */
+    const family = declarationRules(sheet)
+      .filter(rule => /padding-block-end\s*:\s*var\(--item-ink-lift\)/.test(rule.body))
+    expect(family.length, '那一族不是一条规则').toBe(1)
+    expect(family[0]?.selector, '字段名那枚盒子不在那一族的名单上——它的半个像素没人补').toContain('.itemOptNameText')
+    expect(code(readSource('client/item/item-create-dialog.tsx')), '字段名又变回了裸文本')
+      .toContain('css.itemOptNameText')
   })
 })

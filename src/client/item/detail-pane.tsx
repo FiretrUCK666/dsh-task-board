@@ -25,6 +25,7 @@ import { ProseField } from './prose-field.tsx'
 import { formatItemDate, readDateDraft, toItemDateField } from './model.ts'
 import { DATE_GLOSS_KEY, DATE_HINT_KEY, GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark } from './marks.tsx'
+import { NoteEntry, useNote } from './group-head.tsx'
 import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
@@ -344,6 +345,9 @@ export function ItemDetail(props: ItemDetailProps) {
   const [cardName, setCardName] = useState('')
   const [cardNameHint, setCardNameHint] = useState(false)
   const cardNameField = useRef<HTMLInputElement | null>(null)
+  /* 「挂卡会动到什么」那句话的把手：它与新建那张纸问的是**同一个问题**，所以可达名读同一个键
+     （`item.cardLink.why`），两个表面上的那枚入口说的是同一句话。 */
+  const cardNote = useNote(t('item.cardLink.why'))
   useEffect(() => {
     if (cardNaming) cardNameField.current?.focus()
   }, [cardNaming])
@@ -430,106 +434,117 @@ export function ItemDetail(props: ItemDetailProps) {
   return (
     <div className={css.itemOpen}>
       <div className={css.itemOpenMain}>
-        {/* 左边那一列：**正文、步骤、上下文备注**。三块之间是 `--s3` 那一档间距，
-            所以步骤板与备注块不会贴在一起——它们是三段话，不是一个东西的三行。 */}
+        {/* 左边那一列：**正文、步骤、上下文备注——三段，每段有自己的段名**。
+            段名不是装饰：读者在这一列里看到两段话，而「哪一段是正文、哪一段是备注」是他
+            首先要分清的事；少了段名，两段输入长得一模一样（它们本来就是同一个元件）。
+            **两个间距是两个决定**（见 `--item-open-caption-gap` / `--item-open-section-gap`）：
+            「段名与它引入的内容」比「段与段」近——名字属于它下面那一段，不属于上面那一段。 */}
         <div className={css.itemOpenText}>
-          {/* **正文那一段是一个字段**：写入框（或那句「＋ 写点什么」）与它带的附件包在
-              一起，所以它们之间是「一个字段内部」的距离（`--item-field-gap`），而不是
-              字段与字段之间的那一档。包起来之前附件条是这一列的直接子级，于是它同时吃到
-              父级的 22 与自己的 4（量到 26），而新建那张纸里同一段距离是 6——同一件事两个数。
-              拖拽落点也铺在这一格上：**整段正文都收文件**，不是只有那个 24px 的「＋」。 */}
-          <div className={css.itemBodyField} {...attach.dropProps}>
-            {item.body === '' && !bodyOpen
+          <section className={css.itemOpenSection}>
+            <p className={css.itemOpenCaption}>{t('item.field.body')}</p>
+            {/* **正文那一段是一个字段**：写入框（或那句「＋ 写点什么」）与它带的附件包在
+                一起，所以它们之间是「一个字段内部」的距离（`--item-field-inner-gap`），而不是
+                字段与字段之间的那一档。包起来之前附件条是这一列的直接子级，于是它同时吃到
+                父级的 22 与自己的 4（量到 26），而新建那张纸里同一段距离是 6——同一件事两个数。
+                拖拽落点也铺在这一格上：**整段正文都收文件**，不是只有那个 24px 的「＋」。 */}
+            <div className={css.itemBodyField} {...attach.dropProps}>
+              {item.body === '' && !bodyOpen
+                ? (
+                  <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
+                    {t('item.field.bodyAdd')}
+                  </button>
+                )
+                : (
+                  <div
+                    className={css.itemProseWrap}
+                    onBlur={event => {
+                      /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
+                       * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
+                       * 块内互相走动（正文与它下面那条抓条）不算点外。
+                       * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
+                      if (event.currentTarget.contains(event.relatedTarget)) return
+                      setBodyOpen(false)
+                    }}
+                  >
+                    {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
+                         （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
+                        一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
+                        也不必再按一下才展开。 */}
+                    <ProseField
+                      value={item.body}
+                      onChange={body => props.onEdit({ body })}
+                      placeholder={t('item.field.bodyHint')}
+                      ariaLabel={t('item.field.body')}
+                      height={props.proseHeight}
+                      onHeight={props.onProseHeight}
+                      takeCaret
+                    />
+                  </div>
+                )}
+
+              {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
+                  那个手势**：一行正文还空着也可能先挂上一张图。 */}
+              <div className={css.itemAttachRow}>
+                <AttachmentStrip
+                  attachments={attach.attachments}
+                  onAdd={attach.addFiles}
+                  onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
+                  busy={attach.busy}
+                  busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
+                  error={attach.error}
+                  /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
+                     已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
+                  hint={cardId === undefined ? t('item.attach.hint') : undefined}
+                />
+              </div>
+            </div>
+          </section>
+
+          <section className={css.itemOpenSection}>
+            <p className={css.itemOpenCaption}>{t('item.section.steps')}</p>
+            <ItemSteps
+              item={item}
+              focusRequest={props.stepsFocus}
+              onToggle={props.onToggleStep}
+              onAdd={text => write(addStep(item.steps, item.id, text))}
+              onRemove={stepId => write(removeStep(item.steps, stepId))}
+              onMove={(stepId, by) => write(moveStep(item.steps, stepId, by))}
+            />
+          </section>
+
+          <section className={css.itemOpenSection}>
+            <p className={css.itemOpenCaption}>{t('item.field.notes')}</p>
+            {item.notes === '' && !notesOpen
               ? (
-                <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
-                  {t('item.field.bodyAdd')}
+                <button type="button" className={css.itemWritePrompt} onClick={() => setNotesOpen(true)}>
+                  {t('item.field.notesAdd')}
                 </button>
               )
               : (
+                /* 与正文**同一个元件**（`ProseField`）：边、底、字号、字色、地板与那条
+                 * 抓条都在一个地方——它们**不许各写一份**：只给这一格的样式，会让两格之间
+                 * 的差别要靠读者自己猜是为什么。它们是同一列里的两个输入，输入就该长得
+                 * 一样——而且是同一个东西，不是两处长得像的东西。 */
                 <div
                   className={css.itemProseWrap}
                   onBlur={event => {
-                    /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
-                     * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
-                     * 块内互相走动（正文与它下面那条抓条）不算点外。
-                     * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
+                    /* 与正文块同一律：点开别处收回；块内互走不算点外。 */
                     if (event.currentTarget.contains(event.relatedTarget)) return
-                    setBodyOpen(false)
+                    setNotesOpen(false)
                   }}
                 >
-                  {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
-                       （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
-                      一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
-                      也不必再按一下才展开。 */}
                   <ProseField
-                    value={item.body}
-                    onChange={body => props.onEdit({ body })}
-                    placeholder={t('item.field.bodyHint')}
-                    ariaLabel={t('item.field.body')}
+                    value={item.notes}
+                    onChange={notes => props.onEdit({ notes })}
+                    placeholder={t('item.field.notesHint')}
+                    ariaLabel={t('item.field.notes')}
                     height={props.proseHeight}
                     onHeight={props.onProseHeight}
                     takeCaret
                   />
                 </div>
               )}
-
-            {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
-                那个手势**：一行正文还空着也可能先挂上一张图。 */}
-            <div className={css.itemAttachRow}>
-              <AttachmentStrip
-                attachments={attach.attachments}
-                onAdd={attach.addFiles}
-                onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
-                busy={attach.busy}
-                busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
-                error={attach.error}
-                /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
-                   已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
-                hint={cardId === undefined ? t('item.attach.hint') : undefined}
-              />
-            </div>
-          </div>
-
-          <p className={css.itemOpenCaption}>{t('item.section.steps')}</p>
-          <ItemSteps
-            item={item}
-            focusRequest={props.stepsFocus}
-            onToggle={props.onToggleStep}
-            onAdd={text => write(addStep(item.steps, item.id, text))}
-            onRemove={stepId => write(removeStep(item.steps, stepId))}
-            onMove={(stepId, by) => write(moveStep(item.steps, stepId, by))}
-          />
-
-          {item.notes === '' && !notesOpen
-            ? (
-              <button type="button" className={css.itemWritePrompt} onClick={() => setNotesOpen(true)}>
-                {t('item.field.notesAdd')}
-              </button>
-            )
-            : (
-              /* 与正文**同一个元件**（`ProseField`）：边、底、字号、字色、地板与那条
-               * 抓条都在一个地方——它们**不许各写一份**：只给这一格的样式，会让两格之间
-               * 的差别要靠读者自己猜是为什么。它们是同一列里的两个输入，输入就该长得
-               * 一样——而且是同一个东西，不是两处长得像的东西。 */
-              <div
-                className={css.itemProseWrap}
-                onBlur={event => {
-                  /* 与正文块同一律：点开别处收回；块内互走不算点外。 */
-                  if (event.currentTarget.contains(event.relatedTarget)) return
-                  setNotesOpen(false)
-                }}
-              >
-                <ProseField
-                  value={item.notes}
-                  onChange={notes => props.onEdit({ notes })}
-                  placeholder={t('item.field.notesHint')}
-                  ariaLabel={t('item.field.notes')}
-                  height={props.proseHeight}
-                  onHeight={props.onProseHeight}
-                  takeCaret
-                />
-              </div>
-            )}
+          </section>
         </div>
 
         {/* 右列：**一组一行，行与行之间一条发丝线**。不用标题宣布「下面这些是属性」
@@ -673,8 +688,14 @@ export function ItemDetail(props: ItemDetailProps) {
           {/* 挂到哪张卡。**「不挂」是一种正当状态**，所以它是一枚按钮而不是一个空框；
               而「新开一张」也在同一排——挂不上的那一条正是最需要新卡的那一条。按下它
               只是**就地起一个名字**：回车把卡建成并挂上，Esc 与点开别处都收回。 */}
-          <div className={css.itemOptRow}>
-            <p className={css.itemOptName}>{t('item.field.taskId')}</p>
+          <div className={css.itemOptRow} data-note={cardNote.open ? '' : undefined}>
+            <p className={css.itemOptName} data-note-hover="">
+              {/* **与新建那张纸上的同一格逐字同形**（`item-create-dialog.tsx`）：两边说的是
+                  同一件事（挂已有的卡 vs 新建一张），所以那句话、那枚入口与「字段名 + 记号」
+                  这一行的排法都只有一副——照结构抄，不是照代码抄。 */}
+              <span className={css.itemOptNameText}>{t('item.field.taskId')}</span>
+              <NoteEntry note={cardNote} />
+            </p>
             <div className={css.itemOpts}>
               <button
                 type="button"
@@ -731,8 +752,10 @@ export function ItemDetail(props: ItemDetailProps) {
               {cardNameHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}
               {/* 挂卡这件事的一句话真相。读者的担心写在字面上——「卡自己的标题
                   与 Prompt 会不会被这条覆盖掉」——答案是「不会」，而答案就该在
-                  按得到它的地方：这一行说的是同一件事现在的事实，不是一份解释。 */}
-              <p className={css.itemOptsFoot}>{t('item.cardLink.note')}</p>
+                  按得到它的地方：这一行说的是同一件事现在的事实，不是一份解释。
+                  **它就是那一句按需出现的说明**（与新建那张纸同一个位置、同一句话、同一枚入口）：
+                  常驻在属性表里，它就变成这一列最长的一段压在一个字段名上。 */}
+              <p className={css.itemNote} id={cardNote.id}>{t('item.cardLink.note')}</p>
             </div>
           </div>
         </div>

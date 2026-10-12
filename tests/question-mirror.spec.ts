@@ -1,58 +1,29 @@
 /**
- * Official pending-interaction mirror: the 0.1.5 question read model.
+ * Official pending-interaction mirror: the question read model.
  *
  * The waterfall is a claim chain (first answer wins, never a broadcast), so
  * the board never registers its own listener. This spec pins the read-only
- * projection instead: normalize + per-session newest-wins + waiting-kind
- * derivation, all pure over the official `pendingInteractions` snapshot.
+ * projection instead: per-session newest-wins + the waiting-kind derivation,
+ * all pure over the official session-status snapshot. The ITEM grammar is the
+ * wire model's, so its own cases live in `question-rpc.spec.ts` — this file
+ * pins only what the snapshot layer adds.
  */
 import { describe, expect, it } from 'vitest'
 import {
   awaitingOf,
   isMirrorQuestionKind,
+  isPlanReviewBatch,
   mirrorQuestionOf,
-  mirrorQuestionsOf,
   mirrorWaitingOf,
-  normalizeMirrorQuestion,
   pendingMirrorOf,
 } from '../src/core/question-mirror.ts'
 
-describe('normalizeMirrorQuestion', () => {
-  it('keeps the full item shape and trims malformed rows', () => {
-    expect(normalizeMirrorQuestion({
-      id: 'q-1', question: '继续？', detail: 'plan body', header: 'h',
-      options: [{ label: '好', description: 'd' }, { label: '否' }],
-      multiSelect: true,
-    })).toEqual({
-      id: 'q-1', question: '继续？', detail: 'plan body', header: 'h',
-      options: [{ label: '好', description: 'd' }, { label: '否' }],
-      multiSelect: true,
-    })
-    expect(normalizeMirrorQuestion({ question: '' })).toBeUndefined()
-    expect(normalizeMirrorQuestion({ options: [] })).toBeUndefined()
-    expect(normalizeMirrorQuestion(null)).toBeUndefined()
-  })
-
-  it('falls back to the question text as the id', () => {
-    expect(normalizeMirrorQuestion({ question: '继续？' })?.id).toBe('继续？')
-  })
-
-  it('accepts a detail-carried plan without question text (official planReviewOf needs none)', () => {
-    const item = normalizeMirrorQuestion({
-      question: '', detail: '# 计划正文', intent: { kind: 'plan-review', approve: '好' },
-    })
-    expect(item?.detail).toBe('# 计划正文')
-    expect(item?.question).toBe('')
-    // Anything else text-less stays dropped.
-    expect(normalizeMirrorQuestion({ question: '', detail: 'x' })).toBeUndefined()
-    expect(mirrorQuestionsOf([{ question: '', detail: '# 计划正文', intent: { kind: 'plan-review', approve: '好' } }])).toHaveLength(1)
-  })
-})
-
-describe('mirrorQuestionsOf', () => {
-  it('returns undefined when nothing is usable', () => {
-    expect(mirrorQuestionsOf(undefined)).toBeUndefined()
-    expect(mirrorQuestionsOf([{ question: '' }])).toBeUndefined()
+describe('isPlanReviewBatch', () => {
+  it('reads the plan-review intent off the items, whatever the carrier kind says', () => {
+    const tagged = [{ id: 'plan', question: '', detail: '# 计划', intent: { kind: 'plan-review' as const, approve: '好' } }]
+    expect(isPlanReviewBatch('question', tagged)).toBe(true)
+    expect(isPlanReviewBatch('plan-review', [{ id: 'q', question: '继续？' }])).toBe(true)
+    expect(isPlanReviewBatch('question', [{ id: 'q', question: '继续？' }])).toBe(false)
   })
 })
 
@@ -76,6 +47,23 @@ describe('mirrorQuestionOf', () => {
     expect(mirrorQuestionOf('s-1', 'question:1', batch()))?.toMatchObject({
       key: 'question:1', sessionId: 's-1', isPlanReview: false,
     })
+  })
+
+  it('carries the intent through, so the card can answer with the asker own label', () => {
+    /* The approve label is the ONLY thing that may answer a plan review, and the
+       official host publishes it on the question item. A projection that drops it
+       leaves the answering card with nothing but option ORDER to guess from — and
+       a plan whose asker listed its alternative first gets approved the wrong way
+       round, silently. */
+    const mirror = mirrorQuestionOf('s-1', 'question:9', batch({
+      questions: [{
+        id: 'plan-review', question: '', detail: '# 计划',
+        options: [{ label: 'Keep planning' }, { label: 'Approve' }],
+        intent: { kind: 'plan-review', approve: 'Approve' },
+      }],
+    }))
+    expect(mirror?.isPlanReview).toBe(true)
+    expect(mirror?.questions[0]?.intent).toEqual({ kind: 'plan-review', approve: 'Approve' })
   })
 
   it('drops approval carriers, foreign sessions and empty batches', () => {

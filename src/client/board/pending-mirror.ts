@@ -7,11 +7,11 @@
  * read) and, while an entry is live, it holds the carrier object that entry
  * carries.
  *
- * That carried object IS the native `PendingQuestion`: its `answer(answer)`
- * and `cancel()` settle the very waterfall invocation the native composer
- * would settle (verified against the shipped plugin: the carrier exposes
- * `sessionId / kind / key / questions` plus those two methods, and the
- * client-side listener's return value resolves the host call). Answering
+ * That carried object IS the native `PendingQuestion`: its `answer(answer)` and
+ * `dismiss()` settle the very waterfall invocation the native composer would
+ * settle (verified against the shipped plugin: the carrier exposes
+ * `sessionId / kind / key / questions` plus those methods and `snapshot()`, and
+ * the client-side listener's return value resolves the host call). Answering
  * through it is therefore NOT a competing answerer — nothing new is
  * registered, the same claim is settled once, and the other surface's card
  * drops with the next snapshot notification. In-place answering is offered
@@ -27,9 +27,15 @@
  * here and everything downstream still speaks the carrier vocabulary it
  * always spoke. A future envelope change lands in that function alone.
  */
-import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from '../../core/question-rpc.ts'
 import {
-  mirrorQuestionsOf,
+  wireQuestionsOf,
+  type PendingInteractionKind,
+  type QuestionAnswerEntry,
+  type QuestionRpcFace,
+  type WireQuestion,
+} from '../../core/question-rpc.ts'
+import {
+  isPlanReviewBatch,
   mirrorWaitingOf,
   type MirrorInteractionLike,
   type MirrorSnapshotLike,
@@ -38,12 +44,14 @@ import {
 /**
  * The action half of an official carrier, when the entry has one. Read
  * structurally (never `instanceof` across the plugin boundary): the shipped
- * native `PendingQuestion` exposes both, a snapshot entry that does not is
- * display-only and degrades to the navigate shell.
+ * native `PendingQuestion` declares `answer(answer)` and `dismiss()`, and its
+ * `snapshot()` names the channel an answer went through.
  */
 export interface MirrorCarrierActions {
   answer(answer: { answers: readonly QuestionAnswerEntry[] }): Promise<unknown> | unknown
-  cancel(): Promise<unknown> | unknown
+  dismiss(): Promise<unknown> | unknown
+  /** The carrier's own state read; `channel` is `waterfall` / `rpc` / `none`. */
+  snapshot?(): { channel?: unknown }
 }
 
 /** One live entry: the display projection plus the carrier that answers it. */
@@ -85,11 +93,17 @@ function pendingOnly(snapshot: ReadonlyMap<string, unknown> | undefined): Readon
   return next
 }
 
-/** Whether a snapshot entry can settle its own pending request. */
+/**
+ * Whether a snapshot entry can settle its own pending request. BOTH methods are
+ * required, and that is deliberate: a carrier that could answer but not dismiss
+ * would draw an answering menu whose dismissal throws on the reader's click —
+ * the card degrades to the navigate shell instead of promising a verb this
+ * carrier does not have.
+ */
 function canAnswer(interaction: unknown): interaction is MirrorInteractionLike & MirrorCarrierActions {
   if (typeof interaction !== 'object' || interaction === null) return false
   const carrier = interaction as MirrorCarrierActions
-  return typeof carrier.answer === 'function' && typeof carrier.cancel === 'function'
+  return typeof carrier.answer === 'function' && typeof carrier.dismiss === 'function'
 }
 
 /** The one reader of the official carrier shape (structural, never instanceof). */
@@ -98,14 +112,14 @@ function wireQuestionOf(sessionId: string, mapKey: string, interaction: unknown)
   const carrier = interaction as MirrorInteractionLike
   if (carrier.kind !== 'question' && carrier.kind !== 'plan-review') return undefined
   if (carrier.sessionId !== sessionId) return undefined
-  const questions = mirrorQuestionsOf(carrier.questions)
+  const questions = wireQuestionsOf(carrier.questions)
   if (questions === undefined) return undefined
   const rawKey = carrier.key
   return {
     rpcId: typeof rawKey === 'string' && rawKey !== '' ? rawKey : mapKey,
     sessionId,
     questions,
-    isPlanReview: carrier.kind === 'plan-review',
+    isPlanReview: isPlanReviewBatch(carrier.kind, questions),
   }
 }
 
@@ -148,7 +162,7 @@ export class PendingMirror implements QuestionRpcFace {
   /**
    * Whether THIS session's live interaction can be settled from here. Read
    * fresh by the card on every render: a data-only snapshot entry (no
-   * `answer`/`cancel`) keeps that card on its read-only navigate shell, so
+   * `answer`/`dismiss`) keeps that card on its read-only navigate shell, so
    * "can answer" is never claimed for a carrier that cannot — and never
    * claimed for one session because a DIFFERENT session's carrier is
    * interactive (the board reads this once per card, with that card's
@@ -180,14 +194,33 @@ export class PendingMirror implements QuestionRpcFace {
     if (carrier === undefined) return false
     try {
       await carrier.answer({ answers: [...answers] })
-      return true
     } catch (error) {
       console.error('[dsh-task-board] answering the pending question failed', error)
       return false
     }
+    // A question the host already CONTINUED answers through the Remote path, and
+    // the card that answered it still occupies the composer seat: the official
+    // plan panel releases that seat with the same second call. The answer IS
+    // delivered by now, so a failed release reports rather than failing the answer.
+    if (carrier.snapshot?.()?.channel === 'rpc') {
+      try {
+        await carrier.dismiss()
+      } catch (error) {
+        console.error('[dsh-task-board] releasing the answered question failed', error)
+      }
+    }
+    return true
   }
 
-  /** Reject the whole ask (the tool call settles as cancelled, like the native ×). */
+  /**
+   * Hand the whole ask back to its owner: the official carrier's `dismiss()`.
+   * OUR name stays `cancel` because the face's verb is about the ask, not about
+   * the host method — and because what that method means is the carrier's own
+   * two-state contract: a card keyed by a tool call only leaves the composer
+   * seat (`hide`; the request stands, its countdown keeps running, and the tool
+   * call row reopens it), while a card the host never named ends its request as
+   * `ASK_CANCELLED`, because nothing could bring it back.
+   */
   async cancel(rpcId: string): Promise<boolean> {
     const entries = this.entries
     for (const [sessionId, entry] of entries) {
@@ -195,10 +228,10 @@ export class PendingMirror implements QuestionRpcFace {
       const carrier = liveCarrierOf(entries, rpcId, sessionId)
       if (carrier === undefined) return false
       try {
-        await carrier.cancel()
+        await carrier.dismiss()
         return true
       } catch (error) {
-        console.error('[dsh-task-board] cancelling the pending question failed', error)
+        console.error('[dsh-task-board] dismissing the pending question failed', error)
         return false
       }
     }

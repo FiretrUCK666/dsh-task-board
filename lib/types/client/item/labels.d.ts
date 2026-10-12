@@ -102,6 +102,19 @@ export declare const GROUP_LABEL: Readonly<Record<ItemStatusView, TaskBoardKey>>
 /** The agenda's buckets and the word for each. */
 export declare const BUCKET_LABEL: Readonly<Record<ScheduleBucketId, TaskBoardKey>>;
 /**
+ * 每一节的**那句解释**（没有就不给），闭合成 `ScheduleBucketId`。
+ *
+ * **它是一张穷尽的表，不是一个问句。** 排期页原来在渲染处写了一个三元
+ * （`gated ? … : undated ? … : undefined`），于是**加一个桶不会有人想起要写解释**，而少一句解释
+ * 在屏幕上表现为「这一节没有 ⓘ」——一处不存在的东西不会有人报缺陷。表穷尽之后，加一个桶而
+ * 不写解释是**编译错误**，就像 `BUCKET_LABEL` 与 `MARK_OF_BUCKET` 一样。
+ *
+ * **按天的那四节显式写 `undefined`**：它们的名字就是那一天，问「这一节为什么在这里」的人
+ * 要的答案是日期本身。`undefined` 写出来而不是省掉，是因为这张表要回答的正是
+ * 「这一节有没有话说」——省掉的那一行与「想过之后决定不说」在源码里长得一模一样。
+ */
+export declare const BUCKET_EXPLAIN: Readonly<Record<ScheduleBucketId, TaskBoardKey | undefined>>;
+/**
  * **每一枚 flag 自己的词**，闭合成 `ItemFlag`——`has:` 芯片与左栏那一组都读这一份。
  *
  * 一枚筛子要的是**这一枚筛子叫什么**，所以这张表不许折：每一枚自己那一格写自己的词，

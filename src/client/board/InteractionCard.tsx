@@ -22,9 +22,10 @@
  *
  * ANSWERING IS IN PLACE, THROUGH THE OFFICIAL CARRIER. The pending question
  * arrives from the official session-status snapshot (each session's
- * `pendingInteraction` — the same source the native composer reads), so
- * `answer`/`cancel` settle the very request
- * the native surface would settle — nothing new is registered, first answer
+ * `pendingInteraction` — the same source the native composer reads), and the
+ * carrier's `answer` settles the very request the native surface would settle
+ * (the `dismiss` behind our own `cancel` hands the whole ask back to it).
+ * Nothing new is registered, first answer
  * still wins, and the other surface's card drops with the next snapshot
  * notification. A host whose snapshot entries carry data but no action keeps
  * the read-only shell (kind + one navigate affordance); the waiting banner
@@ -36,8 +37,11 @@ import {
   approveLabelOf,
   answerBatchOf,
   declineLabelOf,
-  planDecisionAnswers,
+  planApproveAnswers,
+  planDeclineAnswers,
   planQuestionOf,
+  type PlanReviewItem,
+  type QuestionAnswerEntry,
   type QuestionDraft,
   type WireQuestion,
   type WireQuestionItem,
@@ -153,7 +157,7 @@ export function InteractionCard({ question, shellWaiting, sessionId, controller 
   }
   if (question === undefined) return null
   // The carrier cannot be settled from here (a snapshot entry without its own
-  // answer/cancel, or a host with no uiSession): the read-only card is the
+  // answer/dismiss, or a host with no uiSession): the read-only card is the
   // honest surface — the whole batch, no submit path that could race the
   // native answerer.
   if (!controller.questionAnswerableOf(sessionId)) {
@@ -316,12 +320,15 @@ function QuestionFlow({ question, sessionId, controller }: {
    * Abandoning the batch, and the two things it does that a reader cannot see.
    *
    * It does NOT erase anything the reader wrote — the agent still holds its own
-   * question text. It settles the host call as CANCELLED and the agent moves on
-   * WITHOUT the answers, which is the part that reads like a decision made for
-   * them. And the answers already given are STRANDED: they are written to the
-   * draft store under this `rpcId`, which is minted once and never re-published,
-   * and the drafts are only cleared on an ACCEPTED submit — so after an abandon
-   * they sit under a dead id where nothing can reach them.
+   * question text. What the host call settles AS is the carrier's own contract
+   * (see `pending-mirror.ts`): a card keyed by a tool call only leaves the
+   * composer seat and the request stands, while an unnamed card ends as
+   * cancelled and the agent moves on WITHOUT the answers — which is the part
+   * that reads like a decision made for them. And the answers already given are
+   * STRANDED either way: they are written to the draft store under this
+   * `rpcId`, which is minted once and never re-published, and the drafts are
+   * only cleared on an ACCEPTED submit — so after an abandon they sit under a
+   * dead id where nothing can reach them.
    *
    * Which is why the button asks first rather than firing: the reader is about to
    * answer for the agent, and the thing they are losing is the chance to.
@@ -642,39 +649,44 @@ function AnswerField({ variant, value, placeholder, disabled, focusOnMount, onCh
 
 /**
  * The plan under review: the plan body (Markdown, its own scroll region) with the
- * three decisions the hosted plan card itself offers — 去聊天里说 (dismiss the
- * request, keep discussing), 拒绝 and 确认执行 — drawn as the SAME rows the
- * question card's options use. An option list is a vertical menu at every width,
- * and a decision that reads as one line of a menu is a decision the reader can
- * find; beside each decision sits the asker's own description of that option when
- * it wrote one, so the row says what leaving plan mode means in its words.
+ * decisions the hosted plan card itself offers — 去聊天里说 (dismiss the request,
+ * keep discussing), 拒绝 and 确认执行 — drawn as the SAME rows the question card's
+ * options use. An option list is a vertical menu at every width, and a decision
+ * that reads as one line of a menu is a decision the reader can find; beside each
+ * decision sits the asker's own description of that option when it wrote one, so
+ * the row says what leaving plan mode means in its words.
  *
- * The approve label is the intent's own, never inferred from option order.
+ * THE LABEL IS THE ASKER'S, NEVER THE ORDER. The approve row sends the label the
+ * intent names (`intent.approve`), and the refusal row sends the asker's own other
+ * option as an ordinary single choice — both verbatim, because the host matches
+ * the label, not a meaning of ours. A plan whose asker offered no alternative has
+ * no refusal row: the official narrowing leaves `decline` absent for exactly that
+ * case, and an empty selection is a SKIP of the whole question, never a refusal.
  *
- * This card carries no fourth affordance: an amendment field whose text turned a
- * refusal into "revise with feedback" would break parity — the hosted plan card
- * offers no such input, and a board card that invents an extra decision is not the
- * same card. `planDecisionAnswers` still accepts an amendment (the host API
- * supports revise-with-feedback), so adding one is a UI change, not a new
- * capability — and `''` here is deliberate rather than an oversight.
+ * This card carries no amendment field: an input whose text turned a refusal into
+ * "revise with feedback" would break parity — the hosted plan card offers no such
+ * input, and a board card that invents an extra decision is not the same card.
+ * `planDeclineAnswers` still accepts an amendment (the host API supports
+ * revise-with-feedback), so adding one is a UI change, not a new capability —
+ * and `''` here is deliberate rather than an oversight.
  */
 function PlanReviewCard({ question, item, sessionId, controller }: {
   question: WireQuestion
-  item: WireQuestionItem
+  item: PlanReviewItem
   sessionId: string
   controller: BoardController
 }) {
   const plan = item.detail ?? item.question
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | undefined>(undefined)
-  const approve = useMemo(() => planDecisionAnswers(item, 'approve', ''), [item])
-  const decline = useMemo(() => planDecisionAnswers(item, 'decline', ''), [item])
+  const approve = useMemo(() => planApproveAnswers(item), [item])
+  const decline = useMemo(() => planDeclineAnswers(item), [item])
   // The asker's own words for its two options, when it wrote any: the approve
   // option is the intent's label, the decline one is the first non-approve.
   const approveNote = item.options?.find(option => option.label === approveLabelOf(item))?.description
   const declineNote = item.options?.find(option => option.label === declineLabelOf(item))?.description
 
-  const send = (answers: ReturnType<typeof planDecisionAnswers>): void => {
+  const send = (answers: QuestionAnswerEntry[]): void => {
     setBusy(true)
     setError(undefined)
     void controller.answerQuestion(question.rpcId, sessionId, answers).then(accepted => {
@@ -713,18 +725,20 @@ function PlanReviewCard({ question, item, sessionId, controller }: {
             description={approveNote ?? t('review.planApproveNote')}
           />
         </button>
-        <button
-          type="button"
-          className={css.interactionOptionButton}
-          disabled={busy}
-          onClick={() => { send(decline) }}
-        >
-          <DecisionRowInside
-            marker={<span className={css.interactionOptionNumber} aria-hidden="true">2</span>}
-            label={t('review.planDecline')}
-            description={declineNote ?? t('review.planDeclineNote')}
-          />
-        </button>
+        {decline !== undefined && (
+          <button
+            type="button"
+            className={css.interactionOptionButton}
+            disabled={busy}
+            onClick={() => { send(decline) }}
+          >
+            <DecisionRowInside
+              marker={<span className={css.interactionOptionNumber} aria-hidden="true">2</span>}
+              label={t('review.planDecline')}
+              description={declineNote ?? t('review.planDeclineNote')}
+            />
+          </button>
+        )}
         <button
           type="button"
           className={css.interactionOptionButton}
@@ -779,7 +793,7 @@ function OfferedDecisions({ item }: { item: WireQuestionItem }) {
 
 /**
  * The read-only card for a carrier the board cannot settle (a snapshot entry
- * without its own answer/cancel, or no uiSession at all): the full batch —
+ * without its own answer/dismiss, or no uiSession at all): the full batch —
  * every question, its detail, its options QUOTED (never as clickable answers) —
  * with ONE action: navigate to the native session, where the official composer
  * owns the call. Same chrome as the interactive card, so the rail geometry never
