@@ -60,6 +60,7 @@ import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
    — minting an id, and formatting a date. */
 import { applyItemPatch, applyItemStatus, applyItemStep, captureItemRecord, isBlankCapture, mountItemRecord, planItemPromotion, removeItemRecord, restoreItemRecord, type ItemPatch, type ItemPromotionOverrides } from '../../core/item-transitions.ts'
 import { itemContextText } from '../../core/item-view.ts'
+import { attachmentsOf } from '../../core/attachment.ts'
 import { itemTitleOf } from '../../core/item.ts'
 import { defaultRunPresetOf, RUN_CONFIG_KEYS, type RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { RunConfigFields } from '../board/RunConfigFields.tsx'
@@ -769,8 +770,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
     void (async () => {
       try {
         /* 这一条自己的话在这里成型，**只成型一次**：控制器拿它去开一轮、或者送进那条已经在
-         * 说话的会话，两条路收到的是同一段字。 */
-        const outcome = await controller.askCard(cardId, itemContextText(item))
+         * 说话的会话，两条路收到的是同一段字。**附件跟着同一份东西走**（`attachmentsOf`：
+         * 三代形状一个读法），所以「读者把图给了这一条、而模型从没见过它」不会发生。 */
+        const outcome = await controller.askCard(cardId, itemContextText(item), attachmentsOf(item))
         setReceipt({ id: item.id, words: askSaidOf(outcome) })
       } catch (error) {
         setReceipt({ id: item.id, words: t('item.ask.refused', { why: whyLabelOf(error instanceof Error ? error.message : String(error)).words }) })

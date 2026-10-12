@@ -279,7 +279,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / bundle 注册 id / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前 `@firetruck666/dsh-task-board`，**含作用域**） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（看板本身在根 tail；`/items` 是第二份文档；`/lease` `/command` `/events` SSE 子路径） |
-| 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report` |
+| 其余 host 路由 | `/api/dsh-task-board/session-state`、`/update`、`/client-report`、`/attachments`（收字节与按 ref 读回） |
 | host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名） |
 | 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制」） |

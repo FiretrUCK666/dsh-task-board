@@ -73,10 +73,15 @@ function fakeTimers() {
  * spell a command the same way.
  */
 function commandKey(command: BoardCommand): string {
+  /* 附件也算「它带了什么」：这个键存在的理由正是**分得出哪条载具、载了什么**
+     （见上面那段注释），而一张跟着走的图与一段跟着走的话同属那个答案。 */
+  const carried = 'attachments' in command && command.attachments !== undefined
+    ? `:+${command.attachments.map(ref => ref.attachmentId).join(',')}`
+    : ''
   if (command.type === 'run') {
-    return `run:${command.taskId}:${command.trigger}${command.kickoff === undefined ? '' : `:${command.kickoff}`}`
+    return `run:${command.taskId}:${command.trigger}${command.kickoff === undefined ? '' : `:${command.kickoff}`}${carried}`
   }
-  if (command.type === 'comment') return `comment:${command.taskId}:${command.sessionId}:${command.text}`
+  if (command.type === 'comment') return `comment:${command.taskId}:${command.sessionId}:${command.text}${carried}`
   if (command.type === 'session.rename') return `session.rename:${command.sessionId}:${command.title}`
   return `session.create:${command.taskId}`
 }
@@ -634,6 +639,25 @@ describe('BoardSyncClient requestLaunch + requestComment + dispose', () => {
     await client.start()
     client.requestComment('t-9', 's-1', '接着说')
     expect(t.calls.command).toEqual(['comment:t-9:s-1:接着说'])
+  })
+
+  it('附件跟着两条载荷一起中转，而走不动的车道会在日志里出声', async () => {
+    /* ref 走得了：字节在官方附件库里，两台机器读的是同一份。另两代走不了，而且**不该**被塞进
+       这份命令（`receiptId` 只对某一个 Agent 有效、内联字节会把命令撑大）——所以这里钉两件事：
+       能走的原样过去，走不动的**出声**（一条日志），绝不静默消失。 */
+    const { client, t } = makeClient()
+    await client.start()
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    client.requestLaunch('t-9', 'manual', '这一条的内容', [lamp])
+    expect(t.calls.command.at(-1)).toBe('run:t-9:manual:这一条的内容:+att-lamp')
+    client.requestComment('t-9', 's-1', '接着说', [lamp])
+    expect(t.calls.command.at(-1)).toBe('comment:t-9:s-1:接着说:+att-lamp')
+    // 老形状（临时字节 / per-Agent 票据）：不在命令上，但留下一条日志。
+    const legacy = makeClient()
+    await legacy.client.start()
+    legacy.client.requestLaunch('t-9', 'manual', '这一条的内容', [{ name: '旧图.png', bytes: 3, data: 'QUJD' }])
+    expect(legacy.t.calls.command.at(-1)).toBe('run:t-9:manual:这一条的内容')
+    expect(legacy.logs.join(' ')).toContain('cannot travel')
   })
 
   it('dispose releases the lease and stops the loops', async () => {

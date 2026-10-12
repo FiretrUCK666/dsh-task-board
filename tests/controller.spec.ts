@@ -251,8 +251,12 @@ class FakeSessions {
 
 /** Controllable ExecutionService stub: captures run calls, fires events on demand. */
 class StubExec {
-  runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; options?: { prompt?: string; sessionId?: string; fresh?: boolean; renameTo?: string }; fire: (event: ExecutionEvent) => void }> = []
-  commentCalls: Array<{ taskId: string; executionId: string; sessionId: string; text: string; fire: (event: ExecutionEvent) => void }> = []
+  /* **这两个记录形状必须和真实的那一面一样宽。** `run` 收到的是 `RunOptions`，
+     `commentRun` 收到的是**整条轮次**（`launchComment` 传的正是 `marked` 那个
+     `ExecutionRecord`）——只记 `{id}` 与 `{prompt}` 的假面会让「附件有没有跟着走」
+     在测试里根本问不出来，而那是这一层最容易静默丢掉的东西（硬性规范 18）。 */
+  runCalls: Array<{ task: TaskRecord; taskId: string; executionId: string; options?: { prompt?: string; sessionId?: string; fresh?: boolean; renameTo?: string; attachments?: readonly { attachmentId: string }[] }; fire: (event: ExecutionEvent) => void }> = []
+  commentCalls: Array<{ taskId: string; executionId: string; sessionId: string; text: string; attachments?: readonly { attachmentId: string }[]; fire: (event: ExecutionEvent) => void }> = []
   reconcileResult: ExecutionEvent | undefined = undefined
   /** Per-task reconcile answers (a multi-settle pass asks about several tasks
    *  in one go); consulted before the single `reconcileResult`. */
@@ -265,8 +269,8 @@ class StubExec {
   ): Promise<void> {
     this.runCalls.push({ task, taskId: task.id, executionId: execution.id, options, fire: onEvent })
   }
-  async commentRun(task: TaskRecord, execution: { id: string }, sessionId: string, text: string, onEvent: (event: ExecutionEvent) => void): Promise<void> {
-    this.commentCalls.push({ taskId: task.id, executionId: execution.id, sessionId, text, fire: onEvent })
+  async commentRun(task: TaskRecord, execution: { id: string; attachments?: readonly { attachmentId: string }[] }, sessionId: string, text: string, onEvent: (event: ExecutionEvent) => void): Promise<void> {
+    this.commentCalls.push({ taskId: task.id, executionId: execution.id, sessionId, text, attachments: execution.attachments, fire: onEvent })
   }
   reconcile(task: { id: string }): ExecutionEvent | undefined {
     return this.reconcileByTaskId[task.id] ?? this.reconcileResult
@@ -6322,6 +6326,27 @@ describe('「问 AI」：开始还是继续由卡自己说，界面只说「交�
     expect(await controller.askCard(taskId, '   ')).toEqual({ kind: 'refused', why: 'empty' })
     expect(stub.commentCalls).toHaveLength(0)
     expect(stub.runCalls).toHaveLength(0)
+  })
+
+  it('这一条带的图片与文件跟着两条车道走（只发图不发字也是一条真消息）', async () => {
+    /* 「附件即内容」在这一条路上的落地：`attachments` 与那句话一起走，两条车道各一次。
+       少一处，读者就会看到「图上去了、模型没见过它」，而屏上不会有人说一句话。 */
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    const continuing = cardWith(['s-1'])
+    expect(await continuing.controller.askCard(continuing.taskId, '这一条的内容', [lamp])).toEqual({ kind: 'continued', sessionId: 's-1' })
+    expect(continuing.stub.commentCalls[0]?.attachments).toEqual([lamp])
+    // 一个字都没有、只有一张图：**照样发得出去**（`isBlankMessage` 是唯一的判空处）。
+    expect(await continuing.controller.askCard(continuing.taskId, '   ', [lamp])).not.toEqual({ kind: 'refused', why: 'empty' })
+    const starting = cardWith([])
+    expect(await starting.controller.askCard(starting.taskId, '这一条的内容', [lamp])).toEqual({ kind: 'started' })
+    expect(starting.stub.runCalls[0]?.options?.attachments).toEqual([lamp])
+    expect(starting.stub.runCalls[0]?.options?.prompt).toBe('这一条的内容')
+  })
+
+  it('一个字一张图都没有：仍然是「空的」，拒绝', async () => {
+    const { controller, stub, taskId } = cardWith(['s-1'])
+    expect(await controller.askCard(taskId, '   ', [])).toEqual({ kind: 'refused', why: 'empty' })
+    expect(stub.commentCalls).toHaveLength(0)
   })
 
   it('卡不在了：拒绝，而且不碰任何会话', async () => {

@@ -134,6 +134,42 @@ export function sameAttachmentRefs(
 }
 
 /**
+ * 一份附件里**能随中转走**的那一条车道，以及走不了的有几个。
+ *
+ * ── 为什么只有 ref 走得动 ────────────────────────────────────────────────────
+ *
+ * 中转是「这一台不是引擎，请引擎替我发」的那条路（`host-sync` 的 `requestLaunch` /
+ * `requestComment`）。ref 走得了，因为字节在**官方附件库**里、两台机器读的是同一份；
+ * 另两代走不了，而且**不该被塞进这份命令**：`receiptId` 是**只对某一个 Agent 有效**的
+ * 票据（在另一台机器上毫无意义），内联的 `data` 则是一段会把命令撑大的字节。
+ *
+ * ── 走不了的不许静默消失 ──────────────────────────────────────────────────────
+ *
+ * 所以这一份读法把「丢了几个」一起交回来，调用点据此**出声**（`host-sync` 记一条日志）。
+ * 今天这条路上不会有老形状——清单的附件只有 ref 这一代——但「今天不可能」不是一条可以
+ * 依赖的性质：一个安静丢掉的附件，屏上没有任何东西解释它去了哪儿。
+ * @param attachments - 调用点要送出去的那一份（三代形状都可能）。
+ * @returns 能中转的 ref，以及走不了的那几个的条数。
+ */
+export function relayLaneOf(attachments: readonly PromptAttachment[] | undefined): { refs: AttachmentRef[]; dropped: number } {
+  const refs: AttachmentRef[] = []
+  let dropped = 0
+  for (const attachment of attachments ?? []) {
+    if (attachment.attachmentId === undefined) {
+      dropped += 1
+      continue
+    }
+    refs.push({
+      attachmentId: attachment.attachmentId,
+      name: attachment.name,
+      bytes: attachment.bytes,
+      ...(attachment.mediaType !== undefined ? { mediaType: attachment.mediaType } : {}),
+    })
+  }
+  return { refs, dropped }
+}
+
+/**
  * Every attachment one record carries, in document order, whichever age wrote
  * it. THE one bridge: the send path, the caption and the surfaces all read
  * this, so a legacy document cannot be visible to one of them and invisible to

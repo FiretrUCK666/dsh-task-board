@@ -33,6 +33,7 @@
  * drive it directly.
  */
 import { applyRowCommit, maxSeen, mergeSection, sameMergeState } from './board-merge-core.ts'
+import type { AttachmentRef } from './attachment.ts'
 import type { MergeDelete, MergeRowOps, MergeSection, MergeTombstone } from './board-merge-core.ts'
 import { isCruiseWindow, normalizeWindow, sortWindows } from './cruise.ts'
 import type { CruiseWindow } from './cruise.ts'
@@ -84,8 +85,8 @@ export type BoardDelete = MergeDelete
  * is a request with nowhere to go. Both are gaps the coverage gate reports.
  */
 export type BoardCommand =
-  | { type: 'run'; taskId: string; trigger: 'manual' | 'schedule' | 'chain'; clientId: string; /** The first message of the run, when the caller has one (the checklist hands a row's own words to a card whose prompt may say something else — see `controller.runTask`). Absent = the card's own prompt, which is every other launch. */ kickoff?: string }
-  | { type: 'comment'; taskId: string; sessionId: string; text: string; clientId: string }
+  | { type: 'run'; taskId: string; trigger: 'manual' | 'schedule' | 'chain'; clientId: string; /** The first message of the run, when the caller has one (the checklist hands a row's own words to a card whose prompt may say something else — see `controller.runTask`). Absent = the card's own prompt, which is every other launch. */ kickoff?: string; /** 那一句话带的图片与文件（同一份 ref 形状）。缺席 = 只有文字，是绝大多数启动；带上传的那一条来自清单的「问 AI」，而它**必须跟着走**——不然同一按在两台机器上送出两种东西（引擎那一台带图、中转那一台只有字）。 */ attachments?: AttachmentRef[] }
+  | { type: 'comment'; taskId: string; sessionId: string; text: string; clientId: string; /** 与 `run` 同一个理由：这句话带的东西一起中转。 */ attachments?: AttachmentRef[] }
   | { type: 'session.create'; taskId: string; config: BoardCommandConfig; clientId: string }
   | { type: 'session.rename'; sessionId: string; title: string; clientId: string }
 

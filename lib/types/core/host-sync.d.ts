@@ -57,6 +57,7 @@
  * actually becomes a burden, not before.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts';
+import { type PromptAttachment } from './attachment.ts';
 import type { BoardCommit, BoardCommand, BoardEvent, CruiseValue, LeaseWire } from './board-doc.ts';
 import type { ItemsCommit, ItemsDoc } from './items-doc.ts';
 import type { ItemRecord } from './item.ts';
@@ -218,16 +219,16 @@ export declare class BoardSyncClient {
     setSchedulePresets(value: SchedulePreset[]): void;
     setRunPresets(value: RunPresetsDocument): void;
     /** Relay one user-initiated launch to the engine (non-engine replicas). The
-     *  kickoff rides along when the caller has one: the engine performs the SAME
-     *  `runTask` this replica would have, so a relayed run and a local one are one
-     *  behaviour rather than two. */
-    requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain', kickoff?: string): void;
+     *  kickoff — and whatever it carries — rides along when the caller has them:
+     *  the engine performs the SAME `runTask` this replica would have, so a relayed
+     *  run and a local one are one behaviour rather than two. */
+    requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain', kickoff?: string, attachments?: readonly PromptAttachment[]): void;
     /** Relay one message into a conversation a card already has (non-engine
      *  replicas' 「问 AI」 on a card that is already talking). Same carrier shape as
      *  the launch relay and for the same reason: only the engine may write the
      *  round and send it, so the request travels rather than the fact being
      *  written twice. */
-    requestComment(taskId: string, sessionId: string, text: string): void;
+    requestComment(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): void;
     onRemote(listener: (view: BoardView, revision: number) => void): void;
     /** Fires whenever the SEAT changes — either half of it: which replica
      *  holds the engine, or the host's lease protocol version (a host restart

@@ -1493,6 +1493,30 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
       }
     }
   })
+
+  it('这一条带的图片与文件跟着「问 AI」一起交给它（只送文字就是把它给的东西吞了）', () => {
+    /* 与评论区丢掉附件是同一类缺陷：读者把图给了这一条，按了「问 AI」，而模型从没见过它
+       —— 屏上不会有人说一句话。这一条钉的是**那一按带着几个附件走到门口**。 */
+    const panel = mountPanel(oneRow({
+      taskId: 't-1',
+      attachments: [
+        { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' },
+        { attachmentId: 'att-note', name: '灯座型号.txt', bytes: 320 },
+      ],
+    }), 'list', 'wide')
+    try {
+      expect(panel.calls.join(' '), '没有附件的一条不该多带东西').toBe('')
+      openRowDetail(panel)
+      const ask = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
+      if (ask === undefined) throw new Error('详情里没有「问 AI」那一枚')
+      click(ask)
+      panel.settle()
+      expect(panel.calls.join(' '), '按下去时那两个附件没有跟着走').toContain('+2')
+    } finally {
+      panel.dispose()
+    }
+  })
 })
 
 describe('the card chip is a door when the wiring gives one, and a reading when it does not', () => {
@@ -5346,8 +5370,13 @@ describe('正文那一段带的图片与文件', () => {
     Object.defineProperty(input, 'files', { value: files, configurable: true })
     await act(async () => {
       input.dispatchEvent(new Event('change', { bubbles: true }))
-      // FileReader 的 onload 在下一个宏任务里到；不把它放进来，测出来的是「还没读完」。
-      await new Promise(resolve => { setTimeout(resolve, 0) })
+      /* FileReader 的 onload 在下一个宏任务里到，收件那一串还要再走几跳（压缩 / 上传 /
+         `setState`）。**只让一跳是不够的**：整份 suite 一起跑时机器慢下来，这条会偶发地
+         读到「还没读完」——一个会偶发的断言比没有断言更贵（它教人重跑，而不是修东西）。
+         所以这里让出四跳，比最长的链还多。 */
+      for (let turn = 0; turn < 4; turn += 1) {
+        await new Promise(resolve => { setTimeout(resolve, 0) })
+      }
     })
   }
   /** 一个收下字节、换回一个 ref 的附件库（官方那一半的替身）。 */

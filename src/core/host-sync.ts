@@ -57,6 +57,7 @@
  * actually becomes a burden, not before.
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
+import { relayLaneOf, type PromptAttachment } from './attachment.ts'
 import { boardViewOf, changedIdsOf, emptyBoardDoc, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
 import type {
   BoardCommit,
@@ -526,14 +527,17 @@ export class BoardSyncClient {
   }
 
   /** Relay one user-initiated launch to the engine (non-engine replicas). The
-   *  kickoff rides along when the caller has one: the engine performs the SAME
-   *  `runTask` this replica would have, so a relayed run and a local one are one
-   *  behaviour rather than two. */
-  requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain', kickoff?: string): void {
+   *  kickoff — and whatever it carries — rides along when the caller has them:
+   *  the engine performs the SAME `runTask` this replica would have, so a relayed
+   *  run and a local one are one behaviour rather than two. */
+  requestLaunch(taskId: string, trigger: 'manual' | 'schedule' | 'chain', kickoff?: string, attachments?: readonly PromptAttachment[]): void {
+    const lane = relayLaneOf(attachments)
+    if (lane.dropped > 0) this.log(`[dsh-task-board] ${String(lane.dropped)} attachment(s) cannot travel with a relayed launch (only store refs can)`)
     void this.deps.transport
       .command(this.clientId, {
         type: 'run', taskId, trigger, clientId: this.clientId,
         ...kickoff !== undefined && kickoff.trim() !== '' ? { kickoff } : {},
+        ...lane.refs.length > 0 ? { attachments: lane.refs } : {},
       })
       .catch(error => this.log('[dsh-task-board] launch relay failed', error))
   }
@@ -543,9 +547,14 @@ export class BoardSyncClient {
    *  the launch relay and for the same reason: only the engine may write the
    *  round and send it, so the request travels rather than the fact being
    *  written twice. */
-  requestComment(taskId: string, sessionId: string, text: string): void {
+  requestComment(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): void {
+    const lane = relayLaneOf(attachments)
+    if (lane.dropped > 0) this.log(`[dsh-task-board] ${String(lane.dropped)} attachment(s) cannot travel with a relayed comment (only store refs can)`)
     void this.deps.transport
-      .command(this.clientId, { type: 'comment', taskId, sessionId, text, clientId: this.clientId })
+      .command(this.clientId, {
+        type: 'comment', taskId, sessionId, text, clientId: this.clientId,
+        ...lane.refs.length > 0 ? { attachments: lane.refs } : {},
+      })
       .catch(error => this.log('[dsh-task-board] comment relay failed', error))
   }
 

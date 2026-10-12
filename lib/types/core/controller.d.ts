@@ -603,7 +603,7 @@ export interface ControllerDeps {
      * double launch). Absent = this controller never leaves the engine seat
      * (the single-browser/localStorage mode).
      */
-    requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string) => void;
+    requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string, attachments?: readonly PromptAttachment[]) => void;
     /**
      * Relay one message INTO a conversation a card already has (a non-engine
      * replica's 「问 AI」 on a card that is already talking): the host forwards it
@@ -613,7 +613,7 @@ export interface ControllerDeps {
      * reference to. Absent = this controller never leaves the engine seat (the
      * single-browser/localStorage mode).
      */
-    requestComment?: (taskId: string, sessionId: string, text: string) => void;
+    requestComment?: (taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]) => void;
     /** Force one seat re-read from the host (the engine-note dialog's
      *  「重新检查」): the wiring calls the sync client's lease renewal, whose
      *  seat announcement then flows back through setHostProto/setEngine.
@@ -1429,7 +1429,7 @@ export declare class BoardController {
      * therefore runnable — there is something to send. Every other caller passes
      * nothing, so every other gate, threshold and outcome here is unchanged.
      */
-    runTask(id: string, trigger?: RunTrigger, kickoff?: string): Promise<boolean>;
+    runTask(id: string, trigger?: RunTrigger, kickoff?: string, attachments?: readonly PromptAttachment[]): Promise<boolean>;
     /**
      * Continue an armed chain schedule after a settle: persist the incremented
      * counter (disarming after the final budgeted run) and start the next run.
@@ -1565,7 +1565,7 @@ export declare class BoardController {
      * @param text - the row's own words ({@link itemContextText}).
      * @returns which lane ran, or why neither could.
      */
-    askCard(taskId: string, text: string): Promise<AskCardOutcome>;
+    askCard(taskId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<AskCardOutcome>;
     /**
      * The second half of {@link askCard}: say this text into the conversation the
      * CALLER named. It exists apart because the lane travels — a non-engine replica
@@ -1579,7 +1579,7 @@ export declare class BoardController {
      * opening a lane nobody asked for.
      * @returns whether the round was recorded and sent.
      */
-    askCardSession(taskId: string, sessionId: string, text: string): boolean;
+    askCardSession(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): boolean;
     /**
      * Record one comment round against an existing conversation and send it NOW —
      * the manual twin of `submitComment`, sharing everything with it except the

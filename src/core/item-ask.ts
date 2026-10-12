@@ -40,6 +40,7 @@
  * card made from this very row receive it identically.
  */
 import { itemTagsOf, type ItemRecord, type ItemStep } from './item.ts'
+import { attachmentsOf, type PromptAttachment } from './attachment.ts'
 import type { RelatedSessionFact } from './task-live.ts'
 import type { TaskRecord } from './tasks.ts'
 
@@ -71,11 +72,11 @@ export type ItemAskTarget =
   | { readonly kind: 'start' }
   | { readonly kind: 'continue'; readonly sessionId: string }
 
-/** The whole hand-off: the lane, and the words. */
+/** The whole hand-off: the lane, the words, and what travels with them. */
 export type ItemAskPlan =
   | { readonly kind: 'refused'; readonly why: ItemAskRefusal }
-  | { readonly kind: 'start'; readonly text: string }
-  | { readonly kind: 'continue'; readonly sessionId: string; readonly text: string }
+  | { readonly kind: 'start'; readonly text: string; readonly attachments: PromptAttachment[] }
+  | { readonly kind: 'continue'; readonly sessionId: string; readonly text: string; readonly attachments: PromptAttachment[] }
 
 /**
  * 开始还是继续——**这一张卡有没有一条能接下去的对话**。
@@ -163,7 +164,11 @@ export function planItemAsk(input: ItemAskInput): ItemAskPlan {
   if (item.taskId !== card.id) return { kind: 'refused', why: 'rowBelongsElsewhere' }
   const target = askTargetOf(sessions, isRunning)
   const text = itemContextText(item)
+  /* **这一条自己的图片与文件跟着这句话走**（`attachmentsOf`：三代的形状都读）。
+     它们是这一条的内容——只送文字就是「读者把图给了这一条，而模型从没见过它」，
+     与评论区丢掉附件是同一类缺陷。两条车道收到的是同一份 `attachments`。 */
+  const attachments = attachmentsOf(item)
   return target.kind === 'start'
-    ? { kind: 'start', text }
-    : { kind: 'continue', sessionId: target.sessionId, text }
+    ? { kind: 'start', text, attachments }
+    : { kind: 'continue', sessionId: target.sessionId, text, attachments }
 }

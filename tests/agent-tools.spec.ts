@@ -1197,6 +1197,22 @@ describe('a model asks a question about a row, through the same plan the panel u
     expect(board.commits).toBe(0)
   })
 
+  it('一条带图片的记录：附件跟着载具一起中转（模型与界面同一个结果）', async () => {
+    /* 模型这一条路没有第二个说法：`planItemAsk` 读的是**文档里那一行**的附件，而
+       `buildRelay` 按字段白名单拼命令——不在这里点名搬过去，附件就在这一步静默消失，
+       同一次 `item.ask` 会在界面上带图、在模型这边只有字。 */
+    const { board, relayed, run, ...rest } = linked()
+    void rest
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    board.seedItems(oneItem({ taskId: 't-挂着的卡', attachments: [lamp] }))
+    const out = await runBatch(run(), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
+    expect(out.ok).toBe(true)
+    const command = relayed[0]
+    expect(command?.type).toBe('comment')
+    if (command?.type !== 'comment') return
+    expect(command.attachments).toEqual([lamp])
+  })
+
   it('says what to DO when the row has no card, rather than only what is wrong', async () => {
     const said: string[] = []
     const board = face()

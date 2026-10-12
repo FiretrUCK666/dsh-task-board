@@ -40,6 +40,7 @@
  * card made from this very row receive it identically.
  */
 import { type ItemRecord } from './item.ts';
+import { type PromptAttachment } from './attachment.ts';
 import type { RelatedSessionFact } from './task-live.ts';
 import type { TaskRecord } from './tasks.ts';
 /** Why the row cannot be handed over at all. A CODE, never a sentence — the
@@ -70,17 +71,19 @@ export type ItemAskTarget = {
     readonly kind: 'continue';
     readonly sessionId: string;
 };
-/** The whole hand-off: the lane, and the words. */
+/** The whole hand-off: the lane, the words, and what travels with them. */
 export type ItemAskPlan = {
     readonly kind: 'refused';
     readonly why: ItemAskRefusal;
 } | {
     readonly kind: 'start';
     readonly text: string;
+    readonly attachments: PromptAttachment[];
 } | {
     readonly kind: 'continue';
     readonly sessionId: string;
     readonly text: string;
+    readonly attachments: PromptAttachment[];
 };
 /**
  * 开始还是继续——**这一张卡有没有一条能接下去的对话**。

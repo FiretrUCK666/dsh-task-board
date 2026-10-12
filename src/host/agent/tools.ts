@@ -67,6 +67,7 @@ import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery, 
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { taskUnviewed } from '../../core/session-display.ts'
 import { itemQualifierVocabulary } from '../../core/item-query.ts'
+import { normalizeAttachmentRefs } from '../../core/attachment.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
@@ -704,10 +705,15 @@ function buildRelay(
       // of its own to a card whose prompt may say something else entirely, and the
       // run reads this instead. Absent = the card's own prompt, unchanged.
       const kickoff = String(payload.kickoff ?? '').trim()
+      /* **载具只带它明说带的东西。** 这里按字段白名单地拼命令：`item.ask` 交给载具的
+         附件（那一行自己的图片与文件）必须在这里被**点名搬过去**，否则它到这一步就没了
+         ——而屏上不会有人说一句话，模型与界面也会对同一件事给出两个结果。 */
+      const carried = normalizeAttachmentRefs(payload.attachments) ?? []
       return {
         command: {
           type: 'run', taskId: found.id, trigger: 'manual', clientId,
           ...kickoff === '' ? {} : { kickoff },
+          ...carried.length === 0 ? {} : { attachments: carried },
         },
         title: found.title,
       }
@@ -718,8 +724,16 @@ function buildRelay(
       const sessionId = String(payload.session ?? '')
       if (sessionId === '') return '要跟哪个会话说话？给一个 session。'
       const text = String(payload.text ?? '').trim()
-      if (text === '') return '要发的话是空的。'
-      return { command: { type: 'comment', taskId: found.id, sessionId, text, clientId }, title: found.title }
+      const carried = normalizeAttachmentRefs(payload.attachments) ?? []
+      // 与别处同一条律：**只有附件、没有字，是一条真消息**（`isBlankMessage`）。
+      if (text === '' && carried.length === 0) return '要发的话是空的。'
+      return {
+        command: {
+          type: 'comment', taskId: found.id, sessionId, text, clientId,
+          ...carried.length === 0 ? {} : { attachments: carried },
+        },
+        title: found.title,
+      }
     }
     case 'session.create': {
       const found = card()
@@ -1686,9 +1700,13 @@ function applyOne(
        * person asking the same question get the same behaviour, which is the only
        * reason this action shares `planItemAsk` with the button at all. */
       const titled = card?.id ?? ''
+      /* **这一条自己的附件跟着载具走。** `planItemAsk` 读的是**文档里**那一行（`attachmentsOf`），
+         不是模型给的参数——模型手里没有字节，也就不该有第二个说法。少了这一行，同一次
+         `item.ask` 在界面上带图、在模型这边只有字，而两种调用点共用的正是这一个计划。 */
+      const carried = verdict.attachments
       return verdict.kind === 'start'
-        ? { doc, items, item: found, carrier: { kind: 'run', payload: { of: titled, kickoff: verdict.text } } }
-        : { doc, items, item: found, carrier: { kind: 'comment', payload: { of: titled, session: verdict.sessionId, text: verdict.text } } }
+        ? { doc, items, item: found, carrier: { kind: 'run', payload: { of: titled, kickoff: verdict.text, ...carried.length > 0 ? { attachments: carried } : {} } } }
+        : { doc, items, item: found, carrier: { kind: 'comment', payload: { of: titled, session: verdict.sessionId, text: verdict.text, ...carried.length > 0 ? { attachments: carried } : {} } } }
     }
     case 'item.purge': {
       // ADDRESSED BY ITS SHORT NUMBER, the same name `item.restore` takes: it is

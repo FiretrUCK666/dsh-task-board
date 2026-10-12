@@ -180,4 +180,25 @@ describe('整件事：两条车道与两种拒绝', () => {
     })
     expect(plan).toEqual({ kind: 'refused', why: 'noCard' })
   })
+
+  it('这一条自己的图片与文件跟着那句话走，两条车道都一样', () => {
+    /* 只送文字就是「读者把图给了这一条，而模型从没见过它」——与评论区丢掉附件是同一类
+       缺陷。所以 `attachments` 是**计划的一部分**，两条车道各带一份（同一个读法
+       `attachmentsOf`，所以老形状也算数）。 */
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    const note = { attachmentId: 'att-note', name: '灯座型号.txt', bytes: 320 }
+    const item = row({ taskId: 'card-a', title: '一件事', attachments: [lamp, note] })
+    const started = planItemAsk({ item, card: card(), sessions: [], isRunning: never })
+    expect(started.kind === 'start' && started.attachments).toEqual([
+      { name: '灯位.png', bytes: 2048, mediaType: 'image/png', attachmentId: 'att-lamp' },
+      { name: '灯座型号.txt', bytes: 320, attachmentId: 'att-note' },
+    ])
+    const continued = planItemAsk({ item, card: card(), sessions: [{ sessionId: 's-1' }], isRunning: never })
+    expect(continued.kind === 'continue' && continued.attachments).toHaveLength(2)
+  })
+
+  it('一个附件都没有时是空表（下游读的是表，不判「有没有」）', () => {
+    const plan = planItemAsk({ item: row({ taskId: 'card-a' }), card: card(), sessions: [], isRunning: never })
+    expect(plan.kind === 'start' && plan.attachments).toEqual([])
+  })
 })

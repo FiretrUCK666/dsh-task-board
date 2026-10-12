@@ -1174,7 +1174,10 @@ function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void
    * 回答取舍：`askCard` 回 `started`，因为这个假面的快照里一张卡都没有会话，而「没有会话」
    * 正是 `start` 那一档的定义；想测「继续」那一档的用例自己换掉这个方法。 */
   out.askCard = (...args: unknown[]) => {
-    calls.push(`askCard(${args.length})`)
+    /* **带上「这一按带了几个附件」**，因为那正是这一条最容易被静默丢掉的东西：调用点少传
+       一个参数不会有任何症状，而屏上「图给了这一条」与「模型收到了图」之间就断了一截。 */
+    const carried = Array.isArray(args[2]) ? (args[2] as unknown[]).length : 0
+    calls.push(carried === 0 ? `askCard(${args.length})` : `askCard(${args.length})+${carried}`)
     notify()
     return Promise.resolve({ kind: 'started' as const })
   }

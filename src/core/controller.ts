@@ -607,7 +607,7 @@ export interface ControllerDeps {
    * double launch). Absent = this controller never leaves the engine seat
    * (the single-browser/localStorage mode).
    */
-  requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string) => void
+  requestLaunch?: (taskId: string, trigger: RunTrigger, kickoff?: string, attachments?: readonly PromptAttachment[]) => void
   /**
    * Relay one message INTO a conversation a card already has (a non-engine
    * replica's 「问 AI」 on a card that is already talking): the host forwards it
@@ -617,7 +617,7 @@ export interface ControllerDeps {
    * reference to. Absent = this controller never leaves the engine seat (the
    * single-browser/localStorage mode).
    */
-  requestComment?: (taskId: string, sessionId: string, text: string) => void
+  requestComment?: (taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]) => void
   /** Force one seat re-read from the host (the engine-note dialog's
    *  「重新检查」): the wiring calls the sync client's lease renewal, whose
    *  seat announcement then flows back through setHostProto/setEngine.
@@ -2523,7 +2523,7 @@ export class BoardController {
    * reads the supplemented record, so no launch path can run a card with an
    * empty head (its title names the fresh session).
    */
-  private launchTask(task: TaskRecord, kickoff?: string): void {
+  private launchTask(task: TaskRecord, kickoff?: string, attachments?: readonly PromptAttachment[]): void {
     const launch = this.supplementedTask(task)
     const { task: next, execution } = startExecution(launch, this.now(), this.uuid())
     this.land(task.id, next, this.now())
@@ -2536,12 +2536,20 @@ export class BoardController {
      * message, the prompt is the standing one), which is why no new field and no
      * new state appears anywhere — `RunOptions.prompt` already means exactly this.
      * Absent (every automatic path, and every manual run from the board), the run
-     * reads the card's prompt and nothing about this line changes. */
+     * reads the card's prompt and nothing about this line changes.
+     *
+     * **这一句话带的图片与文件走 `RunOptions.attachments`**（清单那一条自己的内容，
+     * 见 `planItemAsk`）：它们与 Prompt 覆盖是**同一次运行的两个字段**，所以「换掉卡上的
+     * Prompt 却发不出那张图」这种半件事在结构上不成立。 */
+    const options = {
+      ...kickoff === undefined || kickoff.trim() === '' ? {} : { prompt: kickoff },
+      ...attachments === undefined || attachments.length === 0 ? {} : { attachments },
+    }
     void this.deps.exec.run(
       next,
       execution,
       (event) => { this.handleExecutionEvent(event) },
-      kickoff === undefined || kickoff.trim() === '' ? undefined : { prompt: kickoff },
+      Object.keys(options).length === 0 ? undefined : options,
     )
   }
 
@@ -2593,7 +2601,7 @@ export class BoardController {
    * therefore runnable — there is something to send. Every other caller passes
    * nothing, so every other gate, threshold and outcome here is unchanged.
    */
-  async runTask(id: string, trigger: RunTrigger = 'manual', kickoff?: string): Promise<boolean> {
+  async runTask(id: string, trigger: RunTrigger = 'manual', kickoff?: string, attachments?: readonly PromptAttachment[]): Promise<boolean> {
     const task = this.tasks.find(candidate => candidate.id === id)
     if (task === undefined) return false
     // NOTHING can execute an empty prompt — manual, quick-run, re-run,
@@ -2613,12 +2621,12 @@ export class BoardController {
     // run is "accepted" — the engine's ledger write will surface it here.
     if (!this.engine) {
       if (this.deps.requestLaunch === undefined) return false
-      this.deps.requestLaunch(id, trigger, kickoff)
+      this.deps.requestLaunch(id, trigger, kickoff, attachments)
       return true
     }
     // The 缺则补 supplement applies at the ONE launch door (launchTask).
     if (trigger === 'manual' || this.inFlightCount() < this.cruiseState.limit) {
-      this.launchTask(task, kickoff)
+      this.launchTask(task, kickoff, attachments)
       return true
     }
     if (!this.queuedLaunches.some(candidate => candidate.taskId === id)) {
@@ -2880,9 +2888,9 @@ export class BoardController {
    * @param text - the row's own words ({@link itemContextText}).
    * @returns which lane ran, or why neither could.
    */
-  async askCard(taskId: string, text: string): Promise<AskCardOutcome> {
+  async askCard(taskId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<AskCardOutcome> {
     const trimmed = text.trim()
-    if (trimmed === '') return { kind: 'refused', why: 'empty' }
+    if (isBlankMessage(trimmed, attachments)) return { kind: 'refused', why: 'empty' }
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return { kind: 'refused', why: 'unknownTask' }
     const target = askTargetOf(this.relatedSessionsOf(task), sessionId => this.sessionActiveOf(sessionId))
@@ -2890,10 +2898,10 @@ export class BoardController {
       const sessionId = target.sessionId
       if (!this.engine) {
         if (this.deps.requestComment === undefined) return { kind: 'refused', why: 'unavailable' }
-        this.deps.requestComment(taskId, sessionId, trimmed)
+        this.deps.requestComment(taskId, sessionId, trimmed, attachments)
         return { kind: 'continued', sessionId }
       }
-      return this.askCardSession(taskId, sessionId, trimmed)
+      return this.askCardSession(taskId, sessionId, trimmed, attachments)
         ? { kind: 'continued', sessionId }
         : { kind: 'refused', why: 'unavailable' }
     }
@@ -2903,7 +2911,7 @@ export class BoardController {
      * `runTask` answer a bare `false` is the difference between 「它刚开跑，会话还
      * 没定下来」 and a button that did nothing. This lasts milliseconds. */
     if (hasOpenRun(task)) return { kind: 'refused', why: 'busy' }
-    return await this.runTask(taskId, 'manual', trimmed)
+    return await this.runTask(taskId, 'manual', trimmed, attachments)
       ? { kind: 'started' }
       : { kind: 'refused', why: 'unavailable' }
   }
@@ -2921,12 +2929,12 @@ export class BoardController {
    * opening a lane nobody asked for.
    * @returns whether the round was recorded and sent.
    */
-  askCardSession(taskId: string, sessionId: string, text: string): boolean {
+  askCardSession(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): boolean {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return false
     if (!this.relatedSessionsOf(task).some(row => row.sessionId === sessionId)) return false
-    if (isBlankMessage(text)) return false
-    this.commentNow(taskId, sessionId, text)
+    if (isBlankMessage(text, attachments)) return false
+    this.commentNow(taskId, sessionId, text, attachments)
     return true
   }
 
@@ -2942,8 +2950,8 @@ export class BoardController {
    * a completed card is revived rather than dead-ended, and a leading '/' routes
    * through the command registry (a rule instruction's grammar).
    */
-  private commentNow(taskId: string, sessionId: string, text: string): void {
-    if (isBlankMessage(text)) return
+  private commentNow(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): void {
+    if (isBlankMessage(text, attachments)) return
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
@@ -2954,6 +2962,7 @@ export class BoardController {
       text: text.trim(),
       command: text.trimStart().startsWith('/'),
       sessionId,
+      ...attachmentLanesOf(attachments),
     })
     // Through the landing funnel, like every other round: this is the one place
     // round records enter the ledger, so the session list reads "this

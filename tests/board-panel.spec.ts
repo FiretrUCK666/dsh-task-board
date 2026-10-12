@@ -27,6 +27,10 @@ import type { TaskRecord } from '../src/core/tasks.ts'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
 import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
 import { createTask } from '../src/core/tasks.ts'
+import { withSessionRules } from '../src/core/automation.ts'
+import { InteractionCard } from '../src/client/board/InteractionCard.tsx'
+import { SessionRulesSection } from '../src/client/board/automation-ui.tsx'
+import type { WireQuestion } from '../src/core/question-rpc.ts'
 import { alignClassNames, panelCss, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
@@ -733,5 +737,138 @@ describe('the update dialog, driven through the header button', () => {
       expect(host.innerHTML, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
     }
     unmount()
+  })
+})
+
+/**
+ * 看板的另外两处界面：会话规则表单（那条自填指令带的附件）与只读那张计划卡。
+ *
+ * ── 为什么需要第二台工件 ──────────────────────────────────────────────────────
+ *
+ * `writeBoardArtifact` 画的是**看板舞台**（列与卡片），而这两处住在看板的另一半：一个在任务
+ * 详情的「自动化」里，一个在复核页的交互区。它们此前**一张图都没有**——「附件条在看板上
+ * 长什么样」「计划正文到底渲染成了什么」只靠结构断言回答，而结构断言答不了排版。
+ *
+ * ── 它能证明什么、不能证明什么 ───────────────────────────────────────────────
+ *
+ * 与看板那一台同一条边界（见 `writeBoardArtifact` 的注释）：静态渲染没有布局，所以窄档
+ * 那一条证明的是 **CSS 的响应式一半**（换行、让位、芯片不折行），不是 `useSurfaceNarrow`
+ * 真正判出来的窄档版面。规则表单那一张还多一层：它是 **jsdom 里挂载、点开之后取下的真实
+ * DOM**，所以「点了编辑，表单里的芯片画出来了」这件事本身也在图里。
+ */
+describe('看板的另外两处界面（规则表单的附件条 / 只读计划卡）', () => {
+  /** 一条带附件的规则：表单打开时要看得到芯片，否则这一张图证明不了那一格画得对。 */
+  const LAMP = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+
+  function ruleTask(): TaskRecord {
+    const at = 1_700_000_000_000
+    const base = createTask({ title: '画廊第二版', description: '', prompt: '把画廊的第二版做出来' }, at, 'task-1')
+    return withSessionRules(base, [{
+      id: 'rule-1', sessionId: 's-1', instruction: '看一眼这面墙，然后告诉我灯该换哪种',
+      trigger: 'cron', cron: '0 9 * * *', send: 'queue', enabled: true, nextAt: at + 3_600_000,
+      attachments: [LAMP],
+    }])
+  }
+
+  /** 这一面只用到这几样；少哪一个，渲染会自己抛，而不是安静地少画一点。 */
+  function ruleFace(): BoardController {
+    return {
+      sessionLabelsOf: () => [{ sessionId: 's-1', title: '画廊那条对话' }],
+      /* `presetStore` 是**排期预设**那个 store，它的 `load()` 回的是**表**（不是
+         `{ presets }` 那个对象——运行配置预设的 store 才是那样）。假面给错形状，
+         渲染时抛的是 `custom.map is not a function`，看起来像组件坏了。 */
+      presetStore: () => ({ load: () => [], save: () => undefined, clear: () => undefined }),
+      sessionAvailability: () => ({ kind: 'available' }),
+      attachmentsAvailable: () => false,
+      admitAttachment: async () => ({ ok: false as const, error: 'no-store' }),
+      /* 指令那个框里的 `/` 菜单要读它（`PromptInput` 一挂载就读）。**没有运行目录是
+         一个答案**（部署没接那个目录时真实 controller 回的正是 undefined），所以这一档
+         是「这一台没有斜杠菜单」，不是「假面少画一点」。 */
+      runCatalog: () => undefined,
+      toggleSessionRule: () => undefined,
+      deleteSessionRule: () => true,
+    } as unknown as BoardController
+  }
+
+  /** 一份计划：标题、清单、任务勾选与表格各一个，好一眼看出渲染器有没有干活。 */
+  function planQuestion(): WireQuestion {
+    return {
+      rpcId: 'rpc-plan-1',
+      sessionId: 's-1',
+      isPlanReview: true,
+      questions: [{
+        id: 'plan',
+        question: '这份计划可以开工吗？',
+        intent: { kind: 'plan-review', approve: '确认' },
+        detail: [
+          '## 计划：换掉东墙的灯',
+          '',
+          '- [x] 先看现场',
+          '- 换灯',
+          '  1. 断电',
+          '  2. 上灯',
+          '',
+          '| 谁 | 什么时候 |',
+          '| :-- | --: |',
+          '| 我 | 明天 |',
+        ].join('\n'),
+      }],
+    }
+  }
+
+  it('writes the page when DSH_BOARD_SHOT names one, and it carries what it must', async () => {
+    const target = process.env.DSH_PANEL_HTML
+    const asked = process.env.DSH_BOARD_SHOT
+    if (target === undefined || target === '' || asked === undefined || asked === '') return
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    let markup = ''
+    const must: string[] = []
+    try {
+      if (asked === 'plan-card') {
+        markup = renderToStaticMarkup(createElement(InteractionCard, {
+          question: planQuestion(),
+          shellWaiting: undefined,
+          sessionId: 's-1',
+          controller: { questionAnswerInPlace: false, openSession: () => undefined } as never,
+        } as never))
+        /* **这一张图要能证明渲染器真的渲染了。** 计划正文此前是 `<span>` 里的裸文本，所以这里
+           读的是**元素**：标题、清单、编号清单、表格各自到位，记号本身不再出现在屏上。 */
+        must.push('换掉东墙的灯', '先看现场', '断电')
+        for (const element of ['<h3', '<ul', '<ol', '<table']) {
+          expect(markup, `计划正文里没有 ${element}——它又被当成纯文本画了`).toContain(element)
+        }
+        expect(markup, '任务勾选的记号被原样打印出来了').not.toContain('[x]')
+        expect(markup, '标题的记号被原样打印出来了').not.toContain('##')
+      } else if (asked === 'rule-form') {
+        const root = createRoot(host)
+        await act(async () => {
+          root.render(createElement(SessionRulesSection, { controller: ruleFace(), task: ruleTask() } as never))
+        })
+        // 表单要点一下才开（`formKey` 是这一节自己的状态），点的是那一行的「编辑」。
+        const edit = [...host.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === t('auto.rule.edit'))
+        if (edit === undefined) throw new Error('规则那一行上没有「编辑」——这一张图拍不到表单')
+        await act(async () => { edit.click() })
+        /* **jsdom 量不出高度，于是它会写下一个零。** 那个自增高的文本域（`PromptInput`）
+           在自己的 effect 里读 `scrollHeight` 来定高，而 jsdom 的 `scrollHeight` 永远是 0
+           ——截下来的那一行是 `style="height: 0px"`，图上就是一道被切掉一半的扁带。那是
+           **仪器的边界，不是版面的样子**：这一页没有布局，所以这个框的高度只能由它自己声明的
+           `rows` 给。把那个零去掉，工件画的才是读者会看到的那三行——留着一个只有 jsdom 造得出
+           的零，读图的人会以为这个表单坏了。 */
+        markup = host.innerHTML.replace(/style="height: 0px; overflow-y: hidden;"/g, '')
+        must.push('灯位.png', '看一眼这面墙', '含 1 张图片')
+        root.unmount()
+      } else {
+        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card)`)
+      }
+      const aligned = alignClassNames(markup, panelCss())
+      writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')
+      for (const needle of must) {
+        expect(markup, `工件里少了「${needle}」——那张图不能用来下结论`).toContain(needle)
+      }
+      expect(existsSync(target)).toBe(true)
+    } finally {
+      document.body.removeChild(host)
+    }
   })
 })

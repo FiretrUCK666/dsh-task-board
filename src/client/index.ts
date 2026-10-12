@@ -1007,11 +1007,11 @@ export function apply(ctx: ClientContext): void {
       // A non-engine replica relays a user-initiated launch to the lease
       // holder (the host forwards it over the SSE command frame). Pre-sync
       // this replica is its own engine, so the relay is never used.
-      requestLaunch: (taskId, trigger, kickoff) => { if (sync.isSynced()) sync.requestLaunch(taskId, trigger, kickoff) },
+      requestLaunch: (taskId, trigger, kickoff, attachments) => { if (sync.isSynced()) sync.requestLaunch(taskId, trigger, kickoff, attachments) },
       // The twin relay: a message INTO a conversation the card already has. It
       // travels for the same reason a launch does — only the seat holder may
       // write the round and send it, so many open boards never send twice.
-      requestComment: (taskId, sessionId, text) => { if (sync.isSynced()) sync.requestComment(taskId, sessionId, text) },
+      requestComment: (taskId, sessionId, text, attachments) => { if (sync.isSynced()) sync.requestComment(taskId, sessionId, text, attachments) },
       // The engine-note dialog's 「重新检查」: renew the lease NOW (the sync
       // client's seat announcement then re-mirrors hostProto into the
       // controller), so a user who just restarted the host sees the banner
@@ -1348,11 +1348,11 @@ export function apply(ctx: ClientContext): void {
     // renaming one) are the engine's work, not a board run.
     sync.onCommand(command => {
       if (command.type === 'run') {
-        void controller.runTask(command.taskId, command.trigger, command.kickoff)
+        void controller.runTask(command.taskId, command.trigger, command.kickoff, command.attachments)
         return
       }
       if (command.type === 'comment') {
-        controller.askCardSession(command.taskId, command.sessionId, command.text)
+        controller.askCardSession(command.taskId, command.sessionId, command.text, command.attachments)
       }
     })
 

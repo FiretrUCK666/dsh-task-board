@@ -107,7 +107,18 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
     let alive = true
     setCatalog(undefined)
     void (async () => {
-      const rows = await controller.runCatalog()?.listSlashCandidates(sessionId)
+      /* **一条未处理的拒绝不是一种降级。** `listSlashCandidates` 是宿主那一次调用，
+         它会失败；不接住，浏览器控制台上就是一条 `unhandled rejection`，而这一格照旧
+         停在「加载中」——与 '@' 那一支（下面那个 effect，注释里写着 last-resort net）
+         同一处的情形，两处的写法不该只有一个有网。失败时按「这一台没有这个菜单」降级：
+         菜单不出现，读者打的字一个字都不动。 */
+      let rows: Awaited<ReturnType<NonNullable<ReturnType<typeof controller.runCatalog>>['listSlashCandidates']>> | undefined
+      try {
+        rows = await controller.runCatalog()?.listSlashCandidates(sessionId)
+      } catch {
+        if (alive) setCatalog(null)
+        return
+      }
       if (!alive) return
       setCatalog(rows ?? null)
     })()
