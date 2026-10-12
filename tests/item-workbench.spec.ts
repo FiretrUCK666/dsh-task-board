@@ -1485,8 +1485,7 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
           .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
         expect(ask, `Prompt 为「${prompt}」时详情里没有「问 AI」那一枚`).toBeDefined()
         expect(ask?.disabled, `Prompt 为「${prompt}」时「问 AI」是灰的`).toBe(false)
-        click(ask)
-        panel.settle()
+        askThrough(panel)
         expect(panel.calls.join(' '), `Prompt 为「${prompt}」时没有走到那扇门`).toContain('askCard(')
       } finally {
         panel.dispose()
@@ -1510,8 +1509,7 @@ describe('一张跑不起来的卡，照样问得出去——送出去的是这�
       const ask = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '问 AI') as HTMLButtonElement | undefined
       if (ask === undefined) throw new Error('详情里没有「问 AI」那一枚')
-      click(ask)
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '按下去时那两个附件没有跟着走').toContain('+2')
     } finally {
       panel.dispose()
@@ -3688,8 +3686,7 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
       const ask = [...panel.surface.querySelectorAll('button')]
         .find(node => (node.textContent ?? '').trim() === '问 AI')
       expect(ask, '详情里没有「问 AI」那一枚').toBeDefined()
-      click(ask)
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '没挂卡的行问 AI 时没有先建卡').toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3728,8 +3725,7 @@ describe('「问 AI」与「执行」同一判据（有没有卡都问得出去�
       /* **这一枚必须存在，而且必须按得到**：写成 `if (ask !== undefined)` 的话，按钮不见了
          这条也会绿——那正是「假面比现实宽容」：测试说它测了，其实什么都没测。 */
       expect(ask, '卡被删掉的行详情里没有「问 AI」那一枚').toBeDefined()
-      click(ask)
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '卡被删了却建了一张新卡').not.toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3749,13 +3745,38 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      const button = askButton(panel)
-      expect(button, '详情里没有「问 AI」那一枚').toBeDefined()
-      click(button)
-      panel.settle()
+      expect(askButton(panel), '详情里没有「问 AI」那一枚').toBeDefined()
+      askThrough(panel)
       const calls = panel.calls.join(' ')
       expect(calls, '没有建卡').toContain('createTask(')
       expect(calls, '建了卡却没有交给它').toContain('askCard(')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('按「问 AI」不立刻开跑：先开那张纸，配置看过、按了「交给它」才建卡发出去', () => {
+    /* **这一条钉的是「什么时候开跑」。** 早先按下去就建卡并立刻开跑，用的是部署默认或读者
+       设过的默认预设——而读者从头到尾没有机会看一眼「它要用哪个工作区、哪个模型、什么权限」。
+       一份要花真实算力的工作不该在没点头的时候启动，所以第一按只开纸。 */
+    const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      click(askButton(panel))
+      panel.settle()
+      /* 那一按只许有**读**（读默认预设把纸预填好），不许有写：建卡与交给它是第二按的事。
+         （`calls` 里记的是读与写两种，所以这里断言的是**没有那两个动作**，不是「什么都没发生」。） */
+      expect(panel.calls.join(' '), '第一按就建卡开跑了——配置还没被看过').not.toContain('createTask(')
+      expect(panel.calls.join(' '), '第一按就交给它了').not.toContain('askCard(')
+      const submit = [...panel.surface.querySelectorAll('button')]
+        .find(node => (node.textContent ?? '').trim() === '交给它')
+      expect(submit, '按下去只开了一张没有「交给它」的纸').toBeDefined()
+      // 纸里那五个值**预填过**（是「默认…」而不是空白）：默认是一条路，不是一个空下拉。
+      expect(panel.surface.textContent, '那张纸里没有 Agent 那一格').toContain('Agent')
+      click(submit)
+      panel.settle()
+      expect(panel.calls.join(' '), '按了「交给它」却没有建卡').toContain('createTask(')
+      expect(panel.calls.join(' '), '建了卡却没有交给它').toContain('askCard(')
     } finally {
       panel.dispose()
     }
@@ -3768,8 +3789,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(askButton(panel))
-      panel.settle()
+      askThrough(panel)
       expect(panel.lastWrite()[0]?.taskId, '文档里没有把这一行挂到新卡上').toBe('task-minted')
       const chip = panel.surface.querySelector('[class*="itemRowCardChip"]')
       expect(chip, '行尾那枚卡芯片没有出现').not.toBeNull()
@@ -3789,8 +3809,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '把这件事做了', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(askButton(panel))
-      panel.settle()
+      askThrough(panel)
       // 默认预设是空的（台架的存储里没有预设），所以这一条钉的是**它去读了那一个存储**：
       // 少了这一次读，卡的配置就永远只是部署默认，「换成我的默认」这句话在清单里不成立。
       expect(panel.calls.join(' '), '建卡时没有去读默认运行预设').toContain('runPresetStore(')
@@ -3808,8 +3827,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ body: '', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(askButton(panel))
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '标题在、正文空，却不肯建卡').toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3822,8 +3840,7 @@ describe('没挂卡的一条也能交给 AI：按「问 AI」= 就地建卡并�
     const panel = mountPanel(oneRow({ title: '', body: '', taskId: undefined }), 'list', 'wide')
     try {
       openRowDetail(panel)
-      click(askButton(panel))
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '一条没有字的行却建了一张没有名字的卡').not.toContain('createTask(')
     } finally {
       panel.dispose()
@@ -3845,6 +3862,25 @@ function openRowDetail(panel: ReturnType<typeof mountPanel>): void {
   const entry = findMenuEntry(panel.surface, '展开详情')
   if (entry === null) throw new Error('the row menu offers no way to expand the row')
   click(entry)
+}
+
+/**
+ * 「问 AI」是**两步**：先开那张纸（运行配置预填好），按「交给它」才真的发出去。
+ *
+ * 一处写下来，因为「按哪两下才算问过 AI」是这一整批用例共同的步骤——每个用例各写一遍，
+ * 改一次交互就要改十几处，而漏掉的那一处会以「没走到那扇门」的样子报出来，指的却是别处。
+ */
+function askThrough(panel: ReturnType<typeof mountPanel>): void {
+  const ask = [...panel.surface.querySelectorAll('button')]
+    .find(node => (node.textContent ?? '').trim() === '问 AI')
+  if (ask === undefined) throw new Error('这一屏上没有「问 AI」')
+  click(ask)
+  panel.settle()
+  const submit = [...panel.surface.querySelectorAll('button')]
+    .find(node => (node.textContent ?? '').trim() === '交给它')
+  if (submit === undefined) throw new Error('那张纸上没有「交给它」——这一按停在半路')
+  click(submit)
+  panel.settle()
 }
 
 describe('an in-place editor answers a press away from it, and the row stays open', () => {
@@ -4157,7 +4193,28 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
       && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
       && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'card-focus') throw new Error(`a mounted state this bench does not know: ${state}`)
+      && state !== 'card-focus' && state !== 'ask-sheet') throw new Error(`a mounted state this bench does not know: ${state}`)
+
+    if (state === 'ask-sheet') {
+      /* **「问 AI」的第一站**：那张纸开在配置上，读者点头才开跑。
+       *
+       * 加它的理由：这一条交互改的是「什么时候开跑」，而那件事只有看图才判得出来——纸里
+       * 五个值预填成什么、那句「要送出去的是什么」在不在、两栏的宽窄对不对。 */
+      const panel = mountPanel(oneRow({ taskId: 't-1' }), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        openRowDetail(panel)
+        const ask = [...panel.surface.querySelectorAll('button')]
+          .find(node => (node.textContent ?? '').trim() === '问 AI')
+        if (ask === undefined) throw new Error('详情里没有「问 AI」那一枚')
+        askThrough(panel)
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
 
     if (state === 'chips-open') {
       /* 搜索框下面那排筛子芯片**开着**的那一屏（四枚：状态 · 优先级 · 日期 · 放着没动）。
@@ -4927,8 +4984,7 @@ describe('批量那一枚也照同一条律（这一条是它自己发现的问�
         .find(node => (node.textContent ?? '').includes('问 AI')) as HTMLButtonElement | undefined
       expect(ask, '批量那一排里没有「问 AI」').toBeDefined()
       expect(ask?.disabled, '两行都没挂卡，批量那一枚却是灰的').toBe(false)
-      click(ask)
-      panel.settle()
+      askThrough(panel)
       expect(panel.calls.join(' '), '批量里没挂卡的行没有各自建卡').toContain('createTask(')
     } finally {
       panel.dispose()

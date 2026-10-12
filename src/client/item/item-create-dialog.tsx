@@ -283,7 +283,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
           <button
             type="button"
             className={css.itemCreateDialogClose}
-            aria-label={t('item.create.close')}
+            aria-label={t('item.sheet.close')}
             onClick={props.onClose}
           >
             <CrossMark size={14} />

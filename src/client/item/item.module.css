@@ -3595,6 +3595,44 @@ textarea.itemInput {
 
 
 /* 底栏：提交在右侧，而两个按钮之间一档 10px。 */
+/* ── 「交给 AI」那张纸 ─────────────────────────────────────────────────────────
+ *
+ * 它与新建那张**共用同一副壳**（遮罩、头、纸尾、圆角与阴影都读同一批类），只有三处是自己的：
+ * **窄**（它只有一句话与一块配置，940 宽会是一条空荡荡的带子）、**身子滚而不铺满**
+ * （配置那一块的高度由内容定），以及那句「要送出去的是什么」的位置。
+ *
+ * 它为什么存在：按「问 AI」不再当场开跑——一份要花真实算力的工作不该在读者没点头时按默认
+ * 值启动。纸里那五个值预填（有卡用卡上的、没卡用默认预设链），按「交给它」才建卡、写配置、
+ * 发出去。同一个纸也是详情右栏那一行「改」的去处。 */
+.itemAskSheet {
+  display: flex;
+  flex-direction: column;
+  inline-size: min(560px, 100%);
+  max-block-size: 100%;
+  min-inline-size: 0;
+  background: var(--item-float);
+  border: var(--item-hair-strong);
+  border-radius: var(--dsh-tb-radius-xl);
+  box-shadow: var(--dsh-tb-shadow-3);
+  overflow: hidden;
+}
+
+.itemAskWhat {
+  margin: 0;
+  padding: 12px 22px 0;
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 18px;
+  color: var(--item-ink-3);
+}
+
+/* 身子**可以滚**，但不必长到顶：配置那一块由内容定高（五个下拉）。 */
+.itemAskBody {
+  padding: 12px 22px 16px;
+  overflow-y: auto;
+  min-block-size: 0;
+}
+
 .itemCreateDialogFoot {
   display: flex;
   align-items: center;

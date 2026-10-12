@@ -667,6 +667,20 @@ export const zh = {
   'item.count': '共 {n} 条',
   'item.countFiltered': '显示 {shown} / 共 {total} 条',
   'item.ask': '问 AI',
+  /* 「交给 AI」那张纸：**先看一眼它要用什么跑**。三个词各管一处——纸的标题、右栏那一行
+     摘要开出来的那份（同一个纸、另一个动词）、以及主按钮。 */
+  'item.ask.sheetTitle': '交给 AI',
+  'item.ask.configTitle': '运行配置',
+  'item.ask.submit': '交给它',
+  'item.ask.saveConfig': '存下',
+  'item.ask.what': '要送出去的是这一条自己的内容（标题、标签、正文、步骤、备注，以及正文带的图片与文件）。',
+  'item.ask.whatAttached': '要送出去的是这一条自己的内容，另外还有 {n} 个附件。',
+  'item.ask.whatMany': '这一批 {n} 条，各自把自己那一句话送出去（附件也跟着）。',
+  'item.ask.configRow': '运行配置',
+  'item.ask.configChange': '改',
+  'item.ask.configDefault': '用默认预设',
+  // 那一行摘要只说「钉住了几项」：五项各自是什么在纸里，一行里写五个值就是第二份配置表。
+  'item.ask.configPinned': '已指定 {n} 项',
   /* 两句话，两件不同的事：**它开了新的一轮**，或者**它接着说进了那条会话**。
    *
    * 一句「已经交给 AI」会让读者分不清他刚才是启动了什么，还是往一件已经在跑的事里添了一句——
@@ -925,7 +939,9 @@ export const zh = {
   'item.done.show': '隐藏已完成',
   'item.menu.rename': '改标题',
   'item.create.title': '新建一条',
-  'item.create.close': '关掉',
+  /* 两张纸共用的那一个动词：浮层右上角那枚叉的读音。它不属于哪一张纸，所以不在
+     `item.create.*` 里——那个前缀是**新建那条自己的词**（它的标题、它的按钮、它的段名）。 */
+  'item.sheet.close': '关掉',
   'item.create.titlePlaceholder': '一句话也行——它就是标题',
   'item.create.steps': '步骤',
   'item.create.stepsPlaceholder': '一行一步',
@@ -1685,6 +1701,17 @@ export const en: Record<keyof typeof zh, string> = {
   'item.count': '{n} total',
   'item.countFiltered': 'showing {shown} of {total}',
   'item.ask': 'Ask AI',
+  'item.ask.sheetTitle': 'Hand it to the AI',
+  'item.ask.configTitle': 'Run configuration',
+  'item.ask.submit': 'Hand it over',
+  'item.ask.saveConfig': 'Save',
+  'item.ask.what': 'What travels is the row itself (title, tags, body, steps, notes, and the images and files its body carries).',
+  'item.ask.whatAttached': 'What travels is the row itself, plus {n} attachment(s).',
+  'item.ask.whatMany': '{n} rows, each sending its own words (with its own attachments).',
+  'item.ask.configRow': 'Run config',
+  'item.ask.configChange': 'Change',
+  'item.ask.configDefault': 'Deployment default',
+  'item.ask.configPinned': '{n} field(s) pinned',
   // Two sentences for two different things: a new run opened, or a message added
   // to the conversation this card already had.
   'item.ask.started': 'Started: the card moved to “In progress” on the board.',
@@ -1867,7 +1894,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.done.show': 'Hide finished',
   'item.menu.rename': 'Edit the title',
   'item.create.title': 'New row',
-  'item.create.close': 'Close',
+  'item.sheet.close': 'Close',
   'item.create.titlePlaceholder': 'A sentence is enough — it is the title',
   'item.create.steps': 'Steps',
   'item.create.stepsPlaceholder': 'One step per line',
