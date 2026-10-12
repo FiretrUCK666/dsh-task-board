@@ -6368,15 +6368,29 @@ span.interactionOptions {
    a dropped file highlights the strip then encodes. */
 .attachStrip {
   display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  min-inline-size: 0;
+}
+
+/* ── 芯片那一行：一条横向滚动的行 ───────────────────────────────────────────────
+   ONE line that scrolls sideways, never wraps: a wrapped second line collides with
+   the send row under the keyboard. One line keeps the composer compact so the send
+   row stays visible; every chip (and its remove button) stays reachable by scrolling.
+
+   **它只装芯片，不装句子。** 那三行字（正在传 / 这一台收不了 / 这一条带的附件是什么）
+   此前与芯片同排，于是窄屏上被 24px 的「＋」与两枚芯片挤到只剩一个字的宽度，**竖着排成
+   一列**（412 上量到过：句子变成「随/这/一/条/保/存…」）。句子是**整句读的**，所以它
+   自己占一行、按普通换行排；滚动的只有芯片。 */
+.attachRow {
+  display: flex;
   align-items: center;
   gap: 6px;
-  /* ONE line that scrolls sideways, never wraps: a wrapped second line
-     collides with the send row under the keyboard. One line keeps the
-     composer compact so the send row stays visible; every chip (and its remove
-     button) stays reachable by scrolling. */
   flex-wrap: nowrap;
   overflow-x: auto;
   min-height: 24px;
+  min-inline-size: 0;
 }
 
 /* Drop-anywhere affordance: the composer CONTAINER carries

@@ -60,43 +60,48 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
   const fileRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className={css.attachStrip}>
-      <button
-        type="button"
-        className={css.attachAdd}
-        aria-label={t('review.attachFile')}
-        title={t('review.attachFile')}
-        onClick={() => { fileRef.current?.click() }}
-      >
-        <Icon name="link" />
-      </button>
-      <input
-        ref={fileRef}
-        type="file"
-        multiple
-        hidden
-        onChange={event => {
-          if (event.currentTarget.files !== null) onAdd(event.currentTarget.files)
-          event.currentTarget.value = ''
-        }}
-      />
-      {attachments.map(attachment => (
-        <span key={attachment.id} className={css.attachChip} title={`${attachment.name} · ${formatBytes(attachment.bytes)}`}>
-          {/* The name is its own truncation item (min-width 0 + ellipsis) —
-              the chip grammar: text truncates, the remove button never
-              shrinks. A raw text child of an inline-flex chip would clip
-              without an ellipsis (text-overflow needs a block box). */}
-          <span className={css.attachChipName}>{attachment.name}</span>
-          <span className={css.attachChipMeta}>{formatBytes(attachment.bytes)}</span>
-          <button
-            type="button"
-            className={css.attachRemove}
-            aria-label={attachment.name}
-            onClick={() => { onRemove(attachment.id) }}
-          >
-            <Icon name="close" />
-          </button>
-        </span>
-      ))}
+      {/* 芯片、取件按钮与那个藏起来的框**同一条横滚行**：它们是同一件事（这一条带了哪几个
+          文件），而句子（正在传 / 收不了 / 这条附件是什么）在下面各自占一行——把句子塞进
+          这一行，窄屏上它会缩成一个字一行的竖条（见 `.attachRow` 的注释）。 */}
+      <div className={css.attachRow}>
+        <button
+          type="button"
+          className={css.attachAdd}
+          aria-label={t('review.attachFile')}
+          title={t('review.attachFile')}
+          onClick={() => { fileRef.current?.click() }}
+        >
+          <Icon name="link" />
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={event => {
+            if (event.currentTarget.files !== null) onAdd(event.currentTarget.files)
+            event.currentTarget.value = ''
+          }}
+        />
+        {attachments.map(attachment => (
+          <span key={attachment.id} className={css.attachChip} title={`${attachment.name} · ${formatBytes(attachment.bytes)}`}>
+            {/* The name is its own truncation item (min-width 0 + ellipsis) —
+                the chip grammar: text truncates, the remove button never
+                shrinks. A raw text child of an inline-flex chip would clip
+                without an ellipsis (text-overflow needs a block box). */}
+            <span className={css.attachChipName}>{attachment.name}</span>
+            <span className={css.attachChipMeta}>{formatBytes(attachment.bytes)}</span>
+            <button
+              type="button"
+              className={css.attachRemove}
+              aria-label={attachment.name}
+              onClick={() => { onRemove(attachment.id) }}
+            >
+              <Icon name="close" />
+            </button>
+          </span>
+        ))}
+      </div>
       {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
       {error !== undefined && error !== '' && <span className={css.attachError}>{error}</span>}
       {hint !== undefined && hint !== '' && <span className={css.attachHint}>{hint}</span>}

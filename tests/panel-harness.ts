@@ -403,6 +403,13 @@ export function fixtures(): ItemRecord[] {
       ref: 6,
       title: '',
       body: '这一条没有标题，所以标题要从正文首行借',
+      /* 正文带的图片与文件。**它必须出现在 fixture 里**：这一条的功能（行上的回形针、
+        展开区正文下面那一条挂附件的）没有别的办法被拍下来——一张没有行上记号、没有芯片的
+        截图，正是「改完没看过」的样子。 */
+      attachments: [
+        { attachmentId: 'att-fixture-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png', width: 800, height: 600 },
+        { attachmentId: 'att-fixture-note', name: '灯座型号.txt', bytes: 320 },
+      ],
     },
     {
       ...base,

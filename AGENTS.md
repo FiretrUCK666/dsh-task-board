@@ -126,11 +126,11 @@ CONTRIBUTING 给人看、要能直接复制粘贴，因此必须写具体命令�
   之间——增删或改名任何二级标题后必须重跑，否则 `pnpm verify` 会红（它内含 `--check`）。锚点不要
   手写（带序号与带 emoji 的标题最容易错，写错表现为「点了没反应」且不报错）。徽章依赖外部服务，
   **不进自动检查**（会因对方抖动误报）。`sync-toc.mjs` 由 `project-forge` skill 提供，为保持
-  **独立自包含**（硬性规范 7）在此留一份副本；升级时以 skill 里那份为准覆盖过来。
+  **独立自包含**（硬性规范 7）在此留一份副本，升级时以 skill 里那份覆盖过来。
 
 ## 环境与上下文（以实际环境为准，不依赖固定值）
 
-- 宿主：DeepSeek Harness (DSH) Web GUI，本机运行；一切皆插件，本插件以 cordis 插件形态
+- 宿主：DeepSeek Harness (DSH) Web GUI；本插件以 cordis 插件形态
   存在。平台与用户名不写死——需要时用 `process.platform`、`os.homedir()` 现场发现。
 - 项目根：本文件所在目录。DSH 数据根：`$DSH_HOME` 优先，否则 `os.homedir()` 下的 `.dsh`；
   激活 profile 是 `profiles` 下的目录。挂载方式见「启停机制」。**生效规则**：host 半区改动
@@ -289,8 +289,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | **插件行的开关** | `cordis.patch.yml` 的四行 = 详情页的四个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
-**本插件没有设置项，这是有意的**：每个行为都已经是使用者自己的选择（任务、定时、巡航、规则
-都是看板上的数据，在界面里直接编辑），而「插件开不开」是插件管理页的开关。
+**本插件没有设置项，这是有意的**：每个行为都是看板上的数据，在界面里直接编辑；「插件开不开」
+是插件管理页的开关。
 
 **本插件向 agent 播报的是行为准则，不是能力清单**：注入 `systemPrompt` 的 `tool:taskboard` 一节，
 **固定文本**（变动会击穿提示缓存）。能力清单一律走 `taskboard_capabilities` 按需查——
@@ -327,7 +327,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
 
 **清单与看板是同一形状的两个主舞台面板**：两个 `main` 键、面板列表里的两行、共用同一个
-`selectPanel(null)` 出口——出口只有一条，「离开一个面板」就不可能是两种意思。
+`selectPanel(null)` 出口。
 
 **这张表只列真有人用的座位**，且与 patch 行、`exports`、`tsdown` entry 一致——门禁查的就是这三个。
 
@@ -377,6 +377,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | --- | --- | --- | --- |
 | host | `profileContext` | `dir` | `@deepseek-ai/dsh` |
 | host | `pluginManager` | `installBundle` | `@deepseek-ai/dsh-plugin-manager` |
+| host | `attachments` | `admitEncodedFile`、`saveImage` | `@deepseek-ai/dsh-attachment` |
 
 **两条使用纪律**（比表本身更重要）：
 
@@ -516,8 +517,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   （租约；席位任一半变即通知）。
 - **运行态唯一推导**：`live` 腿读**会话活跃度**（`own ∨ descendant`），不是裸 `running`；结算的列门
   读同一条腿（轮的期限不因后代延长）；卡片黄边与呼吸同源。
-- **统一会话与评论单轨**：同会话同一线程；排队/插话两态只由用户开关定；图片走字节 part、文件走
-  `receiptId`（禁自建桥）。
+- **统一会话与评论单轨**：同会话同一线程；排队/插话两态只由用户开关定；附件一律是官方附件库里的
+  ref（`ctx.attachments`，字节不进文档、禁自建桥），发送那一刻才物化成官方 part。
 - **附件即内容**：判空只有一处 `isBlankMessage`（文字空且无图无文件才算空）——只发图不发字是真消息，
   任何发送路径都不得拒它。
 - **归档是「可恢复的隐藏」，不是删除**：只从 `ctx.workspaces.list` 快照派生 + 订阅，**任何界面不得

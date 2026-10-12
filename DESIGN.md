@@ -1534,7 +1534,42 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 | 同一个框、摘掉标记 | 条宽 5，`marker: false` | 平台自己那根：顶端方、通到圆角里 |
 | 新建那张纸上的三个框 | `marker: true` ×3 | 同一个元件，五处一起挂上 |
 
+#### 正文那一段带的附件：芯片一条横滚行，句子各自一行
+
+**它是正文的一部分，不是这一页的第 N 个字段。** 展开区的附件条挂在**写入框下面**（同一个
+「正文」那一块里，间距取 `--s1`，比块与块之间近一档），新建那张纸里同样在「正文」那一格
+里面。理由不是排版好看：这两个控件说的是同一件事（这一段字 + 它带的图），拆成两个字段会让
+「这一条带没带东西」变成读者要在两处分别读的一个事实。
+
+**四件事，都只有一处实现**：上传走 `useComposerAttachments`（与卡片执行 Prompt、评论、
+会话规则同一个钩子、同一组上限、同一句拒绝话术）；ref 走文档字段（`ItemRecord.attachments`，
+与卡片同一个 `AttachmentRef`）；芯片走 `AttachmentStrip`；「变成看板卡片」时附件跟着计划走
+（`planItemPromotion`）。
+
+**行上有一枚回形针 + 数目**（`AttachMark`，12px，与步数那一枚同族、同一套 `translateY`
+补偿）。它**必须存在**：一条正文里挂着图的记录，在列表上曾经与别的一条完全一样——而
+「哪一条里有那张图」正是读者回来找的东西。**它按得动**（打开这一条），因为触屏没有 hover
+（硬性规范 11③）。
+
+**芯片一条横滚行，句子各自一行。** `.attachStrip` 是竖排的列，第一行是 `.attachRow`
+（「＋」、芯片，`flex-wrap: nowrap` + `overflow-x: auto`），正在传 / 这一台收不了 / 这一条带的
+附件是什么这三句在它下面，按普通换行排。
+
+| 量什么 | 实测（412） | 结论 |
+| --- | --- | --- |
+| 句子与芯片同排时（旧） | 十一行单字（「随/这/一/条/保/存…」） | **就是这一条把排布改掉的**：中文有换行机会、`flex-shrink` 默认 1，于是那句说明被压成一根竖条 |
+| 句子自己一行时（新） | 一整行，正常换行；芯片那一行横向滚 | 句子是整句读的，滚动的只该是芯片 |
+
+**量法**（硬性规范 19）：`.design/attach-open-narrow.html`（台架的 `fx-untitled` 那一行带着
+两张附件、`DSH_PANEL_ROW=fx-untitled` 展开）经 `node scripts/shot-panel.mjs --width 412
+--height 1000 --eval "document.querySelector('[data-open]')?.scrollIntoView({block:'start'})"`
+出图，肉眼读两档。宽档同一份工件（`--width 1440`）里芯片仍是一行、说明仍在它下面一行。
+
+**图片与文件的上限**（`MAX_ITEM_IMAGES` / `MAX_ITEM_FILES`）与预算（`TASK_IMAGE_BUDGET`）在
+`attach.ts`，与卡片那一条同一个理由：它们**随记录保存**，发送那一刻才读回字节。
+
 #### 窄档里每个可点目标的实测尺寸（412）
+
 
 **量法**：`.design/shots/probe-tap.mjs`，经 `scripts/shot-panel.mjs` 开真 Chromium、在
 412 宽的工件上读 `getBoundingClientRect()`（盒，不是墨）。**命令与读法只有那一份**，改前改后
