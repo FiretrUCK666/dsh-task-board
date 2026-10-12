@@ -766,20 +766,22 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
 
   it('comment attachment lines name their own kind (images ≠ files, never one paraphrase)', () => {
     // The "发文件却显示含图片" worry: the thread renders the image line and
-    // the file line as TWO independent conditionals (length-guarded each),
-    // so images-only / files-only / both / neither all read correctly — no
-    // shared label can drift across kinds.
+    // the file line as TWO independent conditionals (count-guarded each), so
+    // images-only / files-only / both / neither all read correctly — no shared
+    // label can drift across kinds. Both counts come from ONE reader, which is
+    // what makes a steered (插话) picture and a queued one read the same.
     const threadPath = fileURLToPath(new URL('../src/client/board/CommentsThread.tsx', import.meta.url))
     const thread = readFileSync(threadPath, 'utf8')
-    expect(thread).toMatch(/promptImages[\s\S]{0,120}\.length > 0[\s\S]{0,200}review\.commentImages/)
-    expect(thread).toMatch(/promptFiles[\s\S]{0,120}\.length > 0[\s\S]{0,200}review\.commentFiles/)
+    expect(thread).toMatch(/attachmentCountsOf\(attachmentsOf\(/)
+    expect(thread).toMatch(/counts\.images > 0[\s\S]{0,200}review\.commentImages/)
+    expect(thread).toMatch(/counts\.files > 0[\s\S]{0,200}review\.commentFiles/)
   })
 
   it('the attachment busy line names the in-flight intake, never the ledger', () => {
     // A staging file is not in the ledger yet: naming the busy line from
     // settled chips is exactly the "传文件却显示图片压缩中" lie. The hook
     // tracks per-lane in-flight counts; every caller renders the helper.
-    const composerPath = fileURLToPath(new URL('../src/client/board/composer-images.ts', import.meta.url))
+    const composerPath = fileURLToPath(new URL('../src/client/board/composer-attachments.ts', import.meta.url))
     const composer = readFileSync(composerPath, 'utf8')
     expect(composer).toMatch(/busyKind/)
     expect(composer).toMatch(/busyKindOf\(/)
@@ -821,15 +823,16 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
 
   it('comment drafts persist attachments (text is not the only survivor)', () => {
     // The reported loss: text came back, staged images/files did not. The
-    // composer saves the full envelope (text + images + file NAMES — bytes
-    // are unrecoverable after unmount, so files come back as a re-add
-    // notice, never as sendable chips) and restores through the hook setters.
+    // composer now saves the full envelope — text + the REFS it carries — and
+    // restores through the hook, so a draft that comes back comes back whole
+    // (pictures AND files; a per-Agent receipt could not survive, and neither
+    // could the old byte cap). v1 leftovers are re-admitted on restore.
     for (const [name, key] of [['session-panel.tsx', 'commentDraftKey']] as const) {
       const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
       expect(caller).toContain('encodeCommentDraft(')
       expect(caller).toContain('decodeCommentDraft(')
       expect(caller).toContain(key)
-      expect(caller).toContain('draftFilesGone')
+      expect(caller).toContain('restored.legacyImages')
     }
     // No raw-text draft write may clobber the envelope (the persist effect
     // owns the store after restore).

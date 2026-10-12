@@ -28,8 +28,8 @@ import { CommentsThread } from './CommentsThread.tsx'
 import type { CommentView } from './comment-thread.ts'
 import { InteractionCard } from './InteractionCard.tsx'
 import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
-import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, type DraftFile, type DraftImage } from './attach.ts'
-import { decodeCommentDraft, encodeCommentDraft, pickedHasFiles, useComposerImages, type CommentDraftSnapshot, type FileStager } from './composer-images.ts'
+import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES } from './attach.ts'
+import { decodeCommentDraft, encodeCommentDraft, useComposerAttachments, type CommentDraftSnapshot, type DraftAttachment } from './composer-attachments.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, Notice, SendModeToggle } from './ui.tsx'
@@ -947,25 +947,16 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
  * live only in a foldable explanation or a hover-only tooltip. Draft / steer
  * here (the per-session draft slot, shared across panels); the caller
  * supplies only the send semantics:
- *   - onDrive(text, images, files) schedules a session-anchored comment round
+ *   - onDrive(text, attachments) schedules a session-anchored comment round
  *     (true = saved, the draft clears) — / commands route through the native
- *     registry; attachments ride the round and go out WITH it when the lane
- *     frees (排队 means wait, with or without attachments);
- *   - onSteer(text) delivers the comment straight to the session now;
- *   - onSteerImages(text, images) delivers text + images at once (插话 with a
- *     picture); onSteerFiles(text, images, files) the same with files. The
- *     send mode is the user's toggle — attachments never force steer.
+ *     registry; whatever the message carries rides the round and goes out WITH
+ *     it when the lane frees (排队 means wait, with or without attachments);
+ *   - onSteer(text, attachments) delivers the same message straight to the
+ *     session now. ONE ledger, two dispositions: the send mode is the user's
+ *     toggle — attachments never force steer, and neither mode can lose them.
  */
 
-/** Stage one file's bytes on a session via the controller's upload face. */
-export function useFileStager(controller: BoardController, sessionId: string | undefined): FileStager | undefined {
-  if (sessionId === undefined) return undefined
-  const upload = controller.uploadFile(sessionId)
-  if (upload === undefined) return undefined
-  return async (target: string, file: File) => upload(target, file)
-}
-
-export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages, onSteerFiles }: {
+export function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer }: {
   controller: BoardController
   taskId: string
   sessionId: string | undefined
@@ -974,67 +965,58 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   disabled?: boolean
   /** The composer's own explanation (blocking reason, or the drive hint). */
   hint?: string
-  onDrive: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => boolean
-  onSteer: (text: string) => Promise<boolean>
-  onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>
-  /** Steer with staged files (absent = this surface closes the file lane). */
-  onSteerFiles?: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => Promise<boolean>
+  onDrive: (text: string, attachments: readonly DraftAttachment[]) => boolean
+  onSteer: (text: string, attachments: readonly DraftAttachment[]) => Promise<boolean>
 }) {
   const storeKey = sessionId === undefined ? undefined : commentDraftKey(taskId, sessionId)
-  // Restored once per mount (text via useState, attachments via the effect
-  // below — the hook owns the ledger, so restoration goes through its
-  // setters, never around them).
+  // Restored once per mount (text via useState, attachments through the hook's
+  // setter — the hook owns the ledger, so restoration goes through it, never
+  // around it).
   const [restored] = useState<CommentDraftSnapshot>(() =>
     decodeCommentDraft(storeKey !== undefined ? draftStore.get(storeKey) : undefined))
   const [draft, setDraft] = useState<string>(restored.text)
   const [steer, setSteer] = useState(false)
-  // Files staged before unmount are gone (bytes unrecoverable) — their names
-  // come back as a re-add notice, never as sendable chips (a chip promises
-  // "will send", a name only asks to be re-added).
-  const [unrestoredFiles, setUnrestoredFiles] = useState<string[]>(restored.fileNames)
-  // Images over the persist cap stay memory-only (see encodeCommentDraft) —
-  // the surface says so instead of losing them quietly.
-  const [draftOversized, setDraftOversized] = useState(false)
   // The attachment ledger is the SHARED hook: pick / drop-anywhere / paste,
-  // image compression + file staging, count caps and every rejection said
-  // out loud. The composer container carries the drop/paste props so a
-  // desktop user can drop a file or paste a screenshot anywhere on it, not
-  // just on the thin strip. The file lane stages on THIS session (receipts
-  // are per-Agent); without a session it stays closed (images only).
-  const stager = useFileStager(controller, sessionId)
-  const attachments = useComposerImages(COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES, undefined,
-    stager !== undefined && sessionId !== undefined ? { sessionId, stage: stager } : undefined)
-  const { images: attachedImages, files: attachedFiles, setImages, setFiles, addFiles, dropProps } = attachments
+  // image compression, admission into the official store, count caps and every
+  // rejection said out loud. The composer container carries the drop/paste
+  // props so a desktop user can drop a file or paste a screenshot anywhere on
+  // it, not just on the thin strip. No session is needed to attach: the bytes
+  // go to the store now, and the send materializes them for whichever session
+  // the message actually leaves through.
+  const attachments = useComposerAttachments({
+    budget: COMMENT_IMAGE_BUDGET,
+    maxImages: MAX_COMMENT_IMAGES,
+    ...controller.attachmentsAvailable() ? { admit: input => controller.admitAttachment(input) } : {},
+  })
+  const { attachments: attached, setAttachments, addFiles, addEncoded, dropProps } = attachments
   // A failed SEND is distinct from a failed INTAKE; surface it right under
   // the composer (never a silent drop — the user must know their words and
   // attachments did not go out).
   const [sendError, setSendError] = useState<string | undefined>(undefined)
   // ONE persist grammar: every text/attachment change lands in the draft
-  // store (text + images + staged file NAMES — bytes are unrecoverable after
-  // unmount, so files come back as a re-add notice, images come back whole).
+  // store. Attachments persist as refs, so a draft that comes back comes back
+  // whole — text, pictures and files alike.
   useEffect(() => {
     if (storeKey === undefined) return
-    const { value, imagesDropped } = encodeCommentDraft(draft, attachedImages, attachedFiles)
-    draftStore.set(storeKey, value)
-    setDraftOversized(imagesDropped)
-  }, [storeKey, draft, attachedImages, attachedFiles])
-  // Restore-once: images the draft kept come back as chips on mount.
+    draftStore.set(storeKey, encodeCommentDraft(draft, attached))
+  }, [storeKey, draft, attached])
+  // Restore-once: refs the draft kept come back as chips, and the v1 leftovers
+  // (pictures the old grammar stored as bytes) are admitted right here — one
+  // round trip, then they are ordinary attachments again.
   useEffect(() => {
-    if (restored.images.length > 0) setImages(restored.images)
+    if (restored.attachments.length > 0) setAttachments(restored.attachments)
+    if (restored.legacyImages.length > 0) void addEncoded(restored.legacyImages)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   const clear = (): void => {
     setDraft('')
-    setImages([])
-    setFiles([])
+    setAttachments([])
     setSendError(undefined)
-    setUnrestoredFiles([])
-    setDraftOversized(false)
     if (storeKey !== undefined) draftStore.clear(storeKey)
   }
   const submit = (): void => {
     const text = draft.trim()
-    if ((text === '' && attachedImages.length === 0 && attachedFiles.length === 0) || disabled === true) return
+    if ((text === '' && attached.length === 0) || disabled === true) return
     // ONE clear grammar for every send mode: the draft leaves the composer at
     // submit, so a repeated click can never double-send (queue cleared right
     // away; steer only after the host answered — a quick second click would
@@ -1042,20 +1024,17 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     // the user keeps their words to retry.
     const restore = (): void => {
       setDraft(text)
-      setImages(attachedImages)
-      setFiles(attachedFiles)
+      setAttachments(attached)
       // No direct store write: the persist effect re-saves the full envelope
-      // (text + images + file names) from the restored state — a raw-text
-      // write here would clobber the attachments out of the draft.
+      // (text + refs) from the restored state — a raw-text write here would
+      // clobber the attachments out of the draft.
     }
     clear()
     // The send mode is the user's toggle — NEVER overridden by the presence of
     // attachments (that was the bug: a queued picture jumped the queue and sent
     // immediately while the session was still running).
     if (steer) {
-      const sent = attachedFiles.length > 0 && onSteerFiles !== undefined
-        ? onSteerFiles(text, attachedImages, attachedFiles)
-        : attachedImages.length > 0 ? onSteerImages(text, attachedImages) : onSteer(text)
+      const sent = onSteer(text, attached)
       // A REFUSAL MUST SPEAK, and this branch is why that sentence exists six
       // lines below: a draft that comes back silently leaves a reader whose
       // words reappear in the box seeing NOTHING AT ALL — which is the whole
@@ -1074,24 +1053,14 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     // A refusal must SPEAK: restoring the draft silently is how "点了没反应"
     // happens (the words came back, so the user sees nothing at all).
     setSendError(undefined)
-    if (!onDrive(text, attachedImages, attachedFiles)) {
+    if (!onDrive(text, attached)) {
       restore()
       setSendError(t('review.sendNotSent'))
     }
   }
   // The busy line names the IN-FLIGHT intake (hook's busyKind), never the
-  // settled ledger — a staging file is not in the ledger yet, and the old
-  // ledger-based label is exactly the "传文件却显示图片压缩中" lie.
+  // settled ledger — a file being admitted is not in the ledger yet.
   const busyLabel = attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined
-  // Draft notices (below intake/send errors in priority): images that could
-  // not ride the draft (over the persist cap) + staged files lost to an
-  // unmount (names only — re-add them). Both clear on send; the file notice
-  // also clears the moment the user picks new non-image files (re-adding).
-  const draftNotice = draftOversized
-    ? t('review.draftImagesDropped')
-    : unrestoredFiles.length > 0
-      ? t('review.draftFilesGone', { names: unrestoredFiles.slice(0, 3).join('、') })
-      : undefined
   return (
     <div className={css.reviewComposer} {...dropProps}>
       <PromptInput
@@ -1107,29 +1076,24 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
           button stays visible + tappable no matter how many files are
           picked (the "选图后发送按钮被挤没" bug). */}
       <AttachmentStrip
-        images={attachedImages}
-        files={attachedFiles}
-        onAdd={files => {
-          if (pickedHasFiles(files)) setUnrestoredFiles([])
-          void addFiles(files)
-        }}
-        onRemoveImage={id => { setImages(attachedImages.filter(image => image.id !== id)) }}
-        onRemoveFile={id => { setFiles(attachedFiles.filter(file => file.id !== id)) }}
+        attachments={attached}
+        onAdd={files => { void addFiles(files) }}
+        onRemove={id => { setAttachments(attached.filter(entry => entry.id !== id)) }}
         busy={attachments.busy}
         busyLabel={busyLabel}
         // SEND FAILURE FIRST. Sitting behind `attachments.error` would let an
-        // upload error left over from a moment ago mask the reason a send was
+        // admission error left over from a moment ago mask the reason a send was
         // refused — and the two answer different questions: one is 「the file did
         // not go up」, the other is 「your words did not go out」. The newest thing
         // that went wrong is the one the reader is looking at, so the refusal
-        // leads and the older upload problem waits its turn.
-        error={sendError ?? attachments.error ?? draftNotice}
+        // leads and the older attachment problem waits its turn.
+        error={sendError ?? attachments.error}
       />
       <div className={css.reviewComposerRow}>
         <SendModeToggle steer={steer} onChange={setSteer} />
         <Button
           variant="primary"
-          disabled={(draft.trim() === '' && attachedImages.length === 0 && attachedFiles.length === 0) || disabled === true}
+          disabled={(draft.trim() === '' && attached.length === 0) || disabled === true}
           onClick={submit}
         >
           {t('review.commentSend')}

@@ -1,86 +1,48 @@
 /**
- * Browser attachment intake: turn picked/pasted/dropped Files into the forms
- * the OFFICIAL native prompt parts carry. Two lanes, one hook:
+ * Browser attachment intake: turn picked/pasted/dropped Files into ONE shape
+ * the whole plugin stores and sends — a durable attachment ref.
  *
- *  - IMAGES (png/jpeg/webp/gif — the native whitelist) are RE-ENCODED
- *    through a canvas downscale (longest edge + quality), so a 12 MB phone
- *    photo becomes a sub-megabyte JPEG/WebP in the browser BEFORE it goes on
- *    the wire — sending is fast and the model still sees the picture. A
- *    silent drop on any unsupported type (the old 「电脑端发不了图」: BMP /
- *    HEIC / screenshots pasted, all discarded without a word) is a contract
+ * WHY THERE IS ONLY ONE LANE TO STORE. The harness owns a durable,
+ * content-addressed attachment store (`ctx.attachments`), and every surface here
+ * — the task prompt, a session rule, a comment, a checklist row — admits its
+ * bytes into that same store through the plugin's host route. A document then
+ * carries `{attachmentId, name, bytes, mediaType?}` and nothing else, so the
+ * bytes have exactly one home and every sender can materialize them later (a
+ * run on another session, a cron rule firing next week, a promotion from the
+ * checklist into a card).
+ *
+ * WHAT THIS MODULE STILL OWNS: the decision of how one picked file is prepared
+ * for admission —
+ *
+ *  - IMAGES (png/jpeg/webp/gif — the native whitelist) are RE-ENCODED through a
+ *    canvas downscale (longest edge + quality), so a 12 MB phone photo becomes a
+ *    sub-megabyte JPEG/WebP in the browser BEFORE it is stored. Animated GIFs
+ *    pass through untouched (a canvas would flatten them) while still bounded by
+ *    the byte budget.
+ *  - FILES (everything else: pdf/txt/md/zip/video/…) are uploaded byte-for-byte,
+ *    never base64'd into an image part and never reshaped.
+ *  - A silent drop on any unsupported type (the old 「电脑端发不了图」: BMP / HEIC
+ *    / screenshots pasted, all discarded without a word) is a contract
  *    violation: every rejection names its reason to the user.
- *  - animated GIFs pass through untouched (a canvas would flatten them)
- *    while still bounded by the byte budget.
- *  - FILES (everything else: pdf/txt/md/zip/video/…) never enter the image
- *    lane. They ride the OFFICIAL file channel instead: the browser uploads
- *    the exact bytes through `fileUploads/upload` (or the binary HTTP
- *    fallback) and the prompt carries only the opaque `{type:'file',
- *    receiptId}` ref. The board never invents a file wire shape and never
- *    base64s file bytes into an image part.
  *
- * The HOST performs the durable admission when it takes the prompt (image
- * bytes are temporary, file refs are staged per-Agent), so the board never
- * uploads through a side channel — there is exactly one mechanism per lane,
- * both shared with the native composer. The pure decision + result-parsing
- * halves are framework-free and unit-tested; only the decode/encode middle
- * touches the DOM.
+ * The pure decision + result-parsing halves are framework-free and unit-tested;
+ * only the decode/encode middle touches the DOM.
  */
-import type { PromptImage } from '../../core/controller.ts'
 import { IMAGE_MEDIA_TYPES } from '../../core/tasks.ts'
 
 /** The accepted raster media types — the core table (the intake gate AND
  *  every storage wall read one table, never two). */
 export { IMAGE_MEDIA_TYPES }
 
-/** An encoded, ready-to-send browser image. */
-export interface DraftImage {
-  /** Stable local identity for the composer strip. */
-  id: string
-  /** Base64 payload (data URL already stripped): the wire `data` field. */
+/** One encoded, ready-to-admit browser image. */
+export interface EncodedImage {
+  /** Base64 payload (data URL already stripped). */
   data: string
   /** Encoded media type (always inside the native whitelist). */
   mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
   /** Browser display name (never an OS path). */
   name: string
 }
-
-/** The official temporary-bytes part for one draft image. */
-export function toPromptImage(image: DraftImage): PromptImage {
-  return { mediaType: image.mediaType, data: image.data, name: image.name }
-}
-
-/** The accepted raster media types — re-exported from the core table (the
- *  intake gate AND every storage wall read one table, never two). */
-
-/** Why one file never became a draft attachment (each maps to a visible reason). */
-export type ImageRejectReason = 'type' | 'size' | 'decode' | 'count'
-
-/** The file lane: a staged upload the prompt references by receipt. */
-export interface DraftFile {
-  /** Stable local identity for the composer strip. */
-  id: string
-  /** Opaque receipt from a preceding `fileUploads/upload` on the SAME session. */
-  receiptId: string
-  /** The file's display name + byte size (never an OS path). */
-  name: string
-  /** Exact byte size (files carry no admission limits — shown, not gated). */
-  bytes: number
-}
-
-/** The official file prompt part for one staged file. */
-export function toPromptFilePart(file: DraftFile): { type: 'file'; receiptId: string } {
-  return { type: 'file', receiptId: file.receiptId }
-}
-
-/** A staged file as the controller's PromptFile (receipt + name + bytes). */
-export function toPromptFile(file: DraftFile): { receiptId: string; name: string; bytes: number } {
-  return { receiptId: file.receiptId, name: file.name, bytes: file.bytes }
-}
-
-/** The outcome of intake for one file: an image, or the reason it was not. */
-export type IntakeOutcome =
-  | { ok: true; image: DraftImage }
-  | { ok: false; reason: ImageRejectReason; name: string }
 
 /** A per-surface size budget: what "an image" may cost once encoded. */
 export interface ImageBudget {
@@ -92,24 +54,46 @@ export interface ImageBudget {
   quality: number
 }
 
-/** The comment composer: generous — the wire carries it once, per send. */
+/** Why one file never became a draft attachment (each maps to a visible reason). */
+export type ImageRejectReason = 'type' | 'size' | 'decode' | 'count'
+
+/** The outcome of intake for one file: an encoded image, or why it was not one. */
+export type IntakeOutcome =
+  | { ok: true; image: EncodedImage }
+  | { ok: false; reason: ImageRejectReason; name: string }
+
+/** The comment composer: generous — it is stored once, then sent per message. */
 export const COMMENT_IMAGE_BUDGET: ImageBudget = { maxEdge: 1568, maxBytes: 4 * 1024 * 1024, quality: 0.82 }
 
-/** Task-prompt images PERSIST in the shared board document (every device
- *  syncs them), so the budget is deliberately tight: a few hundred KB each,
- *  a handful per task. */
+/** Prompt images persist with the record and are read back at send time, so the
+ *  budget stays deliberately tight: a few hundred KB each, a handful per card. */
 export const TASK_IMAGE_BUDGET: ImageBudget = { maxEdge: 1280, maxBytes: 512 * 1024, quality: 0.78 }
 
-/** How many images a task's execution prompt may carry (persisted payload). */
+/** How many images one record (task prompt / rule / comment / checklist row)
+ *  may carry. */
 export const MAX_TASK_IMAGES = 3
 
-/** How many images one comment send may carry (transient wire payload —
- *  generous, but a hard edge so a whole album drop cannot balloon one send). */
+/** How many images one COMMENT may carry (a conversation is not a document). */
 export const MAX_COMMENT_IMAGES = 9
 
-/** How many non-image files one send may carry (the twin cap of images —
- *  files ride receipts, not bytes, but the strip still needs an edge). */
+/** How many non-image files one message may carry (the twin cap of images). */
 export const MAX_COMMENT_FILES = 5
+
+/** How many images one checklist row's body may carry. */
+export const MAX_ITEM_IMAGES = 3
+
+/** How many files one checklist row's body may carry. */
+export const MAX_ITEM_FILES = 3
+
+/**
+ * The largest file the browser will upload through the plugin's own route.
+ *
+ * The official file lane streams and has no limit; the plugin's route carries
+ * one JSON body, so it needs an edge the user can understand — and a refusal
+ * that names the number beats a request the host has to kill. Anything larger
+ * is refused at pick time, in words.
+ */
+export const MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 
 /**
  * PURE decision for one candidate file (unit-tested): the intake route.
@@ -137,10 +121,7 @@ export function intakeDecision(
  * hand back a type the host would reject — that is a decode failure, said
  * out loud, never a silent drop).
  */
-let sequence = 0
-
-export function finishEncoded(
-  dataUrl: string,
+export function finishEncoded(  dataUrl: string,
   name: string,
   budget: ImageBudget,
 ): IntakeOutcome {
@@ -153,16 +134,24 @@ export function finishEncoded(
   // base64 length → bytes (ceil of 3/4 of the payload, exact enough to gate).
   const bytes = Math.ceil(data.length * 3 / 4)
   if (bytes > budget.maxBytes) return { ok: false, reason: 'size', name }
-  sequence += 1
   return {
     ok: true,
-    image: {
-      id: `img-${Date.now()}-${sequence}`,
-      data,
-      mediaType: mediaType as DraftImage['mediaType'],
-      name,
-    },
+    image: { data, mediaType: mediaType as EncodedImage['mediaType'], name },
   }
+}
+
+/** Read a File's exact bytes as canonical base64 (no data-URL prefix). */
+export function readFileBase64(file: File): Promise<string> {
+  return new Promise(resolve => {
+    const reader = new FileReader()
+    reader.onload = () => {
+      const result = typeof reader.result === 'string' ? reader.result : ''
+      const comma = result.indexOf(',')
+      resolve(comma >= 0 ? result.slice(comma + 1) : '')
+    }
+    reader.onerror = () => resolve('')
+    reader.readAsDataURL(file)
+  })
 }
 
 /** Scale a length so the longest edge is at most `maxEdge`. */

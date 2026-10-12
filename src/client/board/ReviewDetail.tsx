@@ -35,7 +35,6 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
-import { toPromptFile, toPromptImage } from './attach.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
@@ -259,16 +258,10 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
                  is the user's own words, never gated by the task's execution
                  prompt (that gate belongs to task execution only). */
               disabled={sessionId === undefined}
-              onDrive={(text, images, files) => controller.submitComment(current.id, execution.id, text, text.startsWith('/'), images.map(toPromptImage), files.map(toPromptFile)) !== undefined}
-              onSteer={text => sessionId === undefined
+              onDrive={(text, attachments) => controller.submitComment(current.id, execution.id, text, text.startsWith('/'), attachments) !== undefined}
+              onSteer={(text, attachments) => sessionId === undefined
                 ? Promise.resolve(false)
-                : controller.steerComment(current.id, sessionId, text).then(result => result.ok)}
-              onSteerImages={(text, images) => sessionId === undefined
-                ? Promise.resolve(false)
-                : controller.steerCommentWithImages(current.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
-              onSteerFiles={(text, images, files) => sessionId === undefined
-                ? Promise.resolve(false)
-                : controller.steerCommentWithImages(current.id, sessionId, text, images.map(toPromptImage), files.map(toPromptFile)).then(result => result.ok)}
+                : controller.steerComment(current.id, sessionId, text, attachments).then(result => result.ok)}
             />
           }
         />

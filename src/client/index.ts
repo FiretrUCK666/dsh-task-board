@@ -12,7 +12,8 @@ import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayout
 import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
-import { BoardController, type PromptFile, type PromptImage, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
+import { BoardController, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
+import type { AttachmentRef, PromptAttachment } from '../core/attachment.ts'
 import { pickTranscriptProjections, readPermissionValueOf } from '../core/projections.ts'
 import { UNTITLED_SESSION_KEY } from '../core/session-list.ts'
 import { ExecutionService, type ExecutionHistoryEvent, type SessionDriver } from '../core/execution.ts'
@@ -192,8 +193,35 @@ interface RemoteFace {
  *  and its "unavailable" warning live here once, never in three copies.
  *  Nothing is hard-coded: commands registered by DSH or any plugin show up
  *  without a plugin update. */
-function commandsOf(ctx: ClientContext): RemoteCommandsFace | undefined {
-  const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
+/**
+ * Fetch one JSON document with a hard bound; any failure resolves to undefined
+ * (the attachment routes answer an envelope, and a dead route must degrade to a
+ * spoken refusal, never to a thrown error inside a composer).
+ */
+async function boundedJson(url: string, timeoutMs: number, init?: RequestInit): Promise<unknown> {
+  const ctrl = new AbortController()
+  const timer = setTimeout(() => { ctrl.abort() }, timeoutMs)
+  try {
+    const response = await fetch(url, { signal: ctrl.signal, ...init })
+    if (!response.ok) return undefined
+    return await response.json() as unknown
+  } catch {
+    return undefined
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** Whether a wire value names a stored attachment. */
+function isRefLike(value: unknown): boolean {
+  if (typeof value !== 'object' || value === null) return false
+  const ref = value as Record<string, unknown>
+  return typeof ref.attachmentId === 'string' && ref.attachmentId !== ''
+    && typeof ref.name === 'string'
+    && typeof ref.bytes === 'number'
+}
+
+function commandsOf(ctx: ClientContext): RemoteCommandsFace | undefined {  const commands = ctx.get('remote.commands') as RemoteCommandsFace | undefined
     ?? (ctx.get('remote') as RemoteFace | undefined)?.commands
   if (commands === undefined) {
     console.warn('[dsh-task-board] slash commands unavailable: no remote.commands bridge')
@@ -442,31 +470,106 @@ export function apply(ctx: ClientContext): void {
     // the host performs the durable admission itself, exactly like the
     // native composer does. There is deliberately no board-side attachment
     // bridge: the wire only accepts these shapes.
+    // One door to the plugin's own attachment routes: admit bytes (they land in
+    // the harness's attachment store) and read them back when a message is
+    // actually sent. A checklist row has no session, so the official
+    // `fileUploads` face — which mints a receipt for one Agent — could not serve
+    // it; the durable store speaks in content-addressed ids instead, which is
+    // what a synced document can carry and what any later sender can read.
+    const admitAttachment = async (
+      input: { name: string; data: string; mediaType?: string },
+    ): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }> => {
+      const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments'), 120_000, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify(input),
+      })
+      const envelope = body as { ok?: unknown; value?: unknown; error?: { message?: unknown } } | undefined
+      if (envelope?.ok === true && isRefLike(envelope.value)) return { ok: true as const, ref: envelope.value as AttachmentRef }
+      const message = typeof envelope?.error?.message === 'string' ? envelope.error.message : 'the attachment store refused it'
+      return { ok: false as const, error: message }
+    }
+    /** Read one stored attachment back as base64 (cached per id). */
+    const attachmentReads = new Map<string, Promise<{ data: string; mediaType?: string } | undefined>>()
+    const readAttachment = (ref: PromptAttachment): Promise<{ data: string; mediaType?: string } | undefined> => {
+      if (ref.attachmentId === undefined) return Promise.resolve(undefined)
+      const key = ref.attachmentId
+      const cached = attachmentReads.get(key)
+      if (cached !== undefined) return cached
+      const pending = (async (): Promise<{ data: string; mediaType?: string } | undefined> => {
+        const body = await boundedJson(routeUrl('/api/dsh-task-board/attachments/read'), 120_000, {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ ref: {
+            attachmentId: ref.attachmentId,
+            name: ref.name,
+            bytes: ref.bytes,
+            ...ref.mediaType !== undefined ? { mediaType: ref.mediaType } : {},
+          } }),
+        })
+        const envelope = body as { ok?: unknown; value?: { data?: unknown; mediaType?: unknown } } | undefined
+        if (envelope?.ok !== true || typeof envelope.value?.data !== 'string') return undefined
+        return {
+          data: envelope.value.data,
+          ...typeof envelope.value.mediaType === 'string' ? { mediaType: envelope.value.mediaType } : {},
+        }
+      })()
+      attachmentReads.set(key, pending)
+      return pending
+    }
+    // Comment continuations, rule rounds and a run's own prompt all leave
+    // through here: what the record carries travels as refs (or as the two
+    // legacy shapes an older document still holds), and this is the ONE place
+    // that materializes the official prompt parts from them. A ref whose bytes
+    // cannot be read, or a legacy receipt that died with its session, is
+    // REPORTED BY NAME — never silently dropped from the message.
     const sendComment = async (
       sessionId: string,
       text: string,
-      images?: readonly PromptImage[] | undefined,
       mode: 'queue' | 'steer' = 'queue',
-      files?: readonly PromptFile[] | undefined,
+      attachments: readonly PromptAttachment[] = [],
     ): Promise<{ ok: true } | { ok: false; error: string }> => {
       const content: Array<{ type: string; text?: string; mediaType?: string; data?: string; name?: string; receiptId?: string }> =
         text.trim() !== ''
           ? [{ type: 'text', text }]
           : []
-      if (images !== undefined) {
-        for (const image of images) {
+      for (const attachment of attachments) {
+        const label = attachment.name === '' ? 'attachment' : attachment.name
+        if (attachment.mediaType !== undefined) {
+          // Image lane: the wire part carries the bytes; read them from the
+          // store when this record holds a ref, or use them directly when the
+          // document still carries the older temporary-bytes shape.
+          const bytes = attachment.data !== undefined
+            ? { data: attachment.data, mediaType: attachment.mediaType }
+            : await readAttachment(attachment)
+          if (bytes === undefined) return { ok: false as const, error: `attachment unavailable: ${label} could not be read back from the store` }
           content.push({
             type: 'image',
-            mediaType: image.mediaType,
-            data: image.data,
-            ...image.name !== undefined ? { name: image.name } : {},
+            mediaType: bytes.mediaType ?? attachment.mediaType,
+            data: bytes.data,
+            ...attachment.name !== '' ? { name: attachment.name } : {},
           })
+          continue
         }
-      }
-      if (files !== undefined) {
-        for (const file of files) {
-          content.push({ type: 'file', receiptId: file.receiptId })
+        // File lane: the wire part is an opaque receipt for THIS session, so
+        // the exact bytes go up through the official upload face first. A
+        // legacy receipt is used as-is and fails loudly when its session is
+        // gone.
+        if (attachment.receiptId !== undefined) {
+          content.push({ type: 'file', receiptId: attachment.receiptId })
+          continue
         }
+        const bytes = await readAttachment(attachment)
+        if (bytes === undefined) return { ok: false as const, error: `attachment unavailable: ${label} could not be read back from the store` }
+        const staged = await api.fileUploads.upload({
+          sessionId: sessionId as SessionId,
+          data: bytes.data,
+          ...attachment.name === '' ? {} : { name: attachment.name },
+        })
+        if (!staged.result.ok) {
+          return { ok: false as const, error: `attachment rejected: ${label} (${staged.result.error.code}: ${staged.result.error.message})` }
+        }
+        content.push({ type: 'file', receiptId: staged.result.value.receiptId })
       }
       if (content.length === 0) return { ok: false as const, error: 'empty message' }
       const response = await api.sessions.prompt({
@@ -619,7 +722,7 @@ export function apply(ctx: ClientContext): void {
         const ledger = sessionAgentStore.load()
         sessionAgentStore.save(recordApplied(ledger, sessionId, preset, Date.now()))
       },
-      sendComment: (sessionId, text, mode, images) => sendComment(sessionId, text, images, mode),
+      sendComment,
       sendCommand,
       // Session rename: the OFFICIAL user-title write (host-level rename RPC
       // — works for any session id, not just bound/staged ones). The native
@@ -978,6 +1081,10 @@ export function apply(ctx: ClientContext): void {
       // + file-lane staging (official upload pre-step, per session).
       loadImage: (sessionId, attachmentId) => imageReader(`${sessionId}|${attachmentId}`),
       uploadFile,
+      // The plugin's OWN attachment door (the durable half the official
+      // per-Agent upload cannot provide: a checklist row has no session, and a
+      // document needs the reference rather than a receipt).
+      admitAttachment,
       // The native goal verbs (official `remote.goals` mutations): the CAS
       // ref is read at call time from the live binding's `goal` projection
       // (verbatim the GoalBar grammar), activation arrives on

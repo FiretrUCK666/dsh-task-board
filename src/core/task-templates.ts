@@ -14,6 +14,8 @@
  * no migration and no multi-device merge grammar is needed. Pure functions +
  * a storage seam, so everything unit-tests in isolation.
  */
+import type { AttachmentRef } from './attachment.ts'
+import { normalizeAttachmentRefs } from './attachment.ts'
 import type { NewTaskInput, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
 import { normalizePromptFiles, normalizePromptImages } from './tasks.ts'
 
@@ -29,8 +31,13 @@ export interface TaskTemplate {
   title: string
   description: string
   prompt: string
+  /** What the prompt carries (durable refs — a template stamps them onto the
+   *  new card and the bytes stay in the shared store). */
+  attachments?: AttachmentRef[]
+  /** LEGACY (read-only): carried through from a template saved by an older
+   *  revision, so stamping it still sends what the reader attached. */
   promptImages?: TaskImage[]
-  /** File refs (the twin lane of images — templates carry both or neither). */
+  /** LEGACY (read-only): the file twin of `promptImages`. */
   promptFiles?: TaskFile[]
   workspaceId?: string
   provider?: string
@@ -65,6 +72,9 @@ export function templateFromTask(task: TaskRecord, id: string, name: string): Ta
     title: task.title,
     description: task.description,
     prompt: task.prompt,
+    ...task.attachments !== undefined && task.attachments.length > 0
+      ? { attachments: task.attachments.map(ref => ({ ...ref })) }
+      : {},
     ...task.promptImages !== undefined && task.promptImages.length > 0
       ? { promptImages: task.promptImages.map(image => ({ ...image })) }
       : {},
@@ -88,6 +98,9 @@ export function templateToNewInput(template: TaskTemplate): NewTaskInput {
     description: template.description,
     prompt: template.prompt,
     status: 'backlog',
+    ...template.attachments !== undefined && template.attachments.length > 0
+      ? { attachments: template.attachments.map(ref => ({ ...ref })) }
+      : {},
     ...template.promptImages !== undefined && template.promptImages.length > 0
       ? { promptImages: template.promptImages.map(image => ({ ...image })) }
       : {},
@@ -122,12 +135,14 @@ export function normalizeTemplates(raw: unknown): TaskTemplate[] {
     seen.add(row.id)
     const promptImages = normalizePromptImages(row.promptImages)
     const promptFiles = normalizePromptFiles(row.promptFiles)
+    const attachments = normalizeAttachmentRefs((row as { attachments?: unknown }).attachments)
     out.push({
       id: row.id,
       name: row.name,
       title: typeof row.title === 'string' ? row.title : '',
       description: typeof row.description === 'string' ? row.description : '',
       prompt: typeof row.prompt === 'string' ? row.prompt : '',
+      ...attachments !== undefined ? { attachments } : {},
       ...promptImages !== undefined ? { promptImages } : {},
       ...promptFiles !== undefined ? { promptFiles } : {},
       ...typeof row.workspaceId === 'string' ? { workspaceId: row.workspaceId } : {},

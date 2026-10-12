@@ -43,7 +43,7 @@ describe('host entry apply', () => {
     // update, page self-report. The model's surface is NOT here any more — it
     // is its own row, so the plugin page can switch it off by never loading
     // this file's sibling rather than by a check that could be forgotten.
-    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(5)
+    expect(fake.registrations.filter(r => r === 'effect')).toHaveLength(6)
     expect(host.inject).toEqual(['webServer'])
   })
 

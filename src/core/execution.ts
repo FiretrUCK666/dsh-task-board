@@ -22,7 +22,8 @@
  * over; peeking ({@link SessionsExecutionFace.binding}) is reserved for reads
  * that must not outlive whoever holds the session.
  */
-import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts'
+import { attachmentsOf, type PromptAttachment } from './attachment.ts'
+import type { ExecutionRecord, TaskRecord } from './tasks.ts'
 
 /** Session ids whose history-probe failure already logged (reconcile loop hot
  *  path: warn once per session). Plain Set with no eviction: ids are durable
@@ -149,7 +150,7 @@ export interface AgentPresetSelectFace {
  * so an immediate rule message is genuinely immediate.
  */
 export interface CommentSendFace {
-  (sessionId: string, text: string, mode?: 'queue' | 'steer', images?: readonly TaskImage[], files?: readonly TaskFile[]): Promise<{ ok: true } | { ok: false; error: string }>
+  (sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly PromptAttachment[]): Promise<{ ok: true } | { ok: false; error: string }>
 }
 
 /**
@@ -296,17 +297,11 @@ export interface RunOptions {
    */
   fresh?: boolean
   /**
-   * Images to send with the prompt (the official temporary-bytes parts).
-   * A plain run omits this and takes the TASK's own persisted prompt images;
-   * a message that attaches its own images passes them instead.
+   * What the prompt carries (see `core/attachment.ts`). A plain run omits this
+   * and takes the TASK's own list; a message that carries its own attachments
+   * (a comment, a rule round) passes them instead.
    */
-  images?: readonly { mediaType: string; data: string; name?: string }[]
-  /**
-   * File refs to send with the prompt (the official `{type:'file',
-   * receiptId}` parts). Same override rule as images: a plain run omits this
-   * and takes the TASK's own persisted prompt files.
-   */
-  files?: readonly { receiptId: string; name: string; bytes: number }[]
+  attachments?: readonly PromptAttachment[]
 }
 
 /**
@@ -444,9 +439,8 @@ export class ExecutionService {
       // with no text and no attachments is rejected before a session is even
       // created (never execute a title as a silent fallback).
       const effectiveText = (options?.prompt ?? task.prompt).trim()
-      const effectiveImages = options?.images ?? task.promptImages ?? []
-      const effectiveFiles = options?.files ?? task.promptFiles ?? []
-      if (effectiveText === '' && effectiveImages.length === 0 && effectiveFiles.length === 0) {
+      const effectiveAttachments = options?.attachments ?? attachmentsOf(task)
+      if (effectiveText === '' && effectiveAttachments.length === 0) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
           error: 'empty prompt: task has nothing executable',
@@ -537,7 +531,7 @@ export class ExecutionService {
         // completes while prompt is in flight must still advance past this
         // baseline, or the watch below would never observe it settle.
         const baseline = driver.getSnapshot().turnEnds.size
-        const accepted = await this.sendPrompt(driver, task, options?.prompt, options?.images, options?.files)
+        const accepted = await this.sendPrompt(sessionId, driver, task, options?.prompt, options?.attachments)
         if (!accepted.ok) {
           onEvent({
             kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -612,23 +606,12 @@ export class ExecutionService {
         return
       }
       const driver = hold.driver
-      const send = this.env.sendComment
-        ?? (async (_id, content, m = 'queue' as const, imgs?: readonly TaskImage[], files?: readonly TaskFile[]) => {
-          const parts: unknown[] = []
-          if (content.trim() !== '') parts.push({ type: 'text', text: content })
-          for (const image of imgs ?? []) {
-            parts.push({ type: 'image', mediaType: image.mediaType, data: image.data, ...image.name !== undefined ? { name: image.name } : {} })
-          }
-          for (const file of files ?? []) {
-            parts.push({ type: 'file', receiptId: file.receiptId })
-          }
-          return driver.prompt(parts, m)
-        })
-      // A queued comment carries its pictures AND files on the round: text +
+      const send = this.env.sendComment ?? this.bareSendFace(driver)
+      // A queued comment carries everything it was saved with: text +
       // attachments go out together when the dispatcher injects it (the send
       // mode is the user's choice, never forced to steer just because
       // attachments are present).
-      const result = await send(sessionId, text, mode, execution.promptImages, execution.promptFiles)
+      const result = await send(sessionId, text, mode, attachmentsOf(execution))
       if (!result.ok) {
         onEvent({
           kind: 'settled', taskId: task.id, executionId: execution.id, outcome: 'failed',
@@ -925,41 +908,63 @@ export class ExecutionService {
     return this.env.sessions.hold(sessionId)
   }
 
+  /**
+   * The no-wiring fallback sender: it can only build parts from material it
+   * already holds — legacy temporary image bytes and legacy staged receipts —
+   * and it REFUSES a durable ref by name, because materializing one needs the
+   * attachment store, which lives on the platform side. The real deployment
+   * always wires {@link ExecutionEnvironment.sendComment}, so this path exists
+   * for tests and for a host whose runtime faces are missing: a refusal that
+   * names the file is the honest end state, never a message that quietly goes
+   * out without its attachment.
+   */
+  private bareSendFace(driver: SessionDriver): CommentSendFace {
+    return async (_sessionId, content, mode = 'queue', attachments = []) => {
+      const parts: unknown[] = []
+      if (content.trim() !== '') parts.push({ type: 'text', text: content })
+      for (const attachment of attachments) {
+        if (attachment.data !== undefined) {
+          parts.push({
+            type: 'image',
+            mediaType: attachment.mediaType ?? 'image/jpeg',
+            data: attachment.data,
+            ...attachment.name !== '' ? { name: attachment.name } : {},
+          })
+          continue
+        }
+        if (attachment.receiptId !== undefined) {
+          parts.push({ type: 'file', receiptId: attachment.receiptId })
+          continue
+        }
+        return {
+          ok: false as const,
+          error: `attachment unavailable: ${attachment.name === '' ? 'one attachment' : attachment.name} needs the attachment store (no send face is wired)`,
+        }
+      }
+      const result = await driver.prompt(parts, mode)
+      return result.ok ? result : { ok: false as const, error: messageOf(result.error) }
+    }
+  }
+
   private async sendPrompt(
+    sessionId: string,
     driver: SessionDriver,
     task: TaskRecord,
     promptOverride: string | undefined,
-    images?: readonly { mediaType: string; data: string; name?: string }[],
-    files?: readonly { receiptId: string; name: string; bytes: number }[],
+    attachments?: readonly PromptAttachment[],
   ): Promise<{ ok: true } | { ok: false; error: unknown }> {
     // No title fallback: blank means blank (the controller's `taskExecutable`
     // gate owns the "can this run" judgment; the service sends exactly what
     // it was given so a bypass can never silently execute a title).
     const text = promptOverride ?? task.prompt
-    // The prompt's attachments: an explicit override (a message that attaches
-    // its own files) wins; otherwise the TASK's persisted attachments ride
-    // EVERY run path (manual / scheduled / cruise / chain / rerun) — one
-    // prompt, same attachments, wherever it fires from. Images are the
-    // OFFICIAL temporary-bytes shape (the host admits them durably); files
-    // are the OFFICIAL receipt refs (staged per-Agent before the run).
-    const attached = images ?? task.promptImages ?? []
-    const attachedFiles = files ?? task.promptFiles ?? []
-    const parts: readonly unknown[] = [
-      ...(text === '' ? [] : [{ type: 'text', text }]),
-      ...attached.map(image => ({
-        type: 'image',
-        mediaType: image.mediaType,
-        data: image.data,
-        ...(image.name !== undefined ? { name: image.name } : {}),
-      })),
-      ...attachedFiles.map(file => ({
-        type: 'file',
-        receiptId: file.receiptId,
-      })),
-    ]
+    // The prompt's attachments: an explicit override (a message that carries
+    // its own) wins; otherwise the TASK's list rides EVERY run path (manual /
+    // scheduled / cruise / chain / rerun / a rule that sends the task prompt) —
+    // one prompt, same attachments, wherever it fires from.
+    const carried = attachments ?? attachmentsOf(task)
+    const send = this.env.sendComment ?? this.bareSendFace(driver)
     try {
-      const result = await driver.prompt(parts, 'queue')
-      return result
+      return await send(sessionId, text, 'queue', carried)
     } catch (error) {
       return { ok: false, error }
     }

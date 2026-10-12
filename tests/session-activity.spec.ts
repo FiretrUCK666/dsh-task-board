@@ -108,7 +108,7 @@ describe('latestUserMessage', () => {
       { type: 'assistant/message', data: { message: { content: [{ type: 'text', text: '回应' }] } } },
       { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: ' 你好，plan mode ' }, { type: 'text', text: '继续' }] } },
     ]
-    expect(latestUserMessage(events)).toEqual({ text: '你好，plan mode\n继续', hasImage: false })
+    expect(latestUserMessage(events)).toEqual({ text: '你好，plan mode\n继续', attachments: [] })
   })
 
   it('carries the message seq as the turn anchor', () => {
@@ -116,24 +116,49 @@ describe('latestUserMessage', () => {
       { type: 'user/message', seq: 7, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '旧' }] } },
       { type: 'user/message', seq: 9, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '新' }] } },
     ]
-    expect(latestUserMessage(events)).toEqual({ text: '新', hasImage: false, anchor: 9 })
+    expect(latestUserMessage(events)).toEqual({ text: '新', attachments: [], anchor: 9 })
   })
 
   it('the LATEST user message is the truth — never falls back to an older text', () => {
     const events = [
       { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '较早的消息' }] } },
       // A picture-only message follows: its truth is "a picture", not the
-      // older text above (a fallback would mislabel the thread).
-      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'image', attachment: {} }] } },
+      // older text above (a fallback would mislabel the thread). The stored
+      // part is the HOST's admitted shape — an id, a media type and a size.
+      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 4 } }] } },
     ]
-    expect(latestUserMessage(events)).toEqual({ hasImage: true })
+    expect(latestUserMessage(events)).toEqual({
+      attachments: [{ attachmentId: 'att-1', name: '', bytes: 4, mediaType: 'image/png' }],
+    })
   })
 
   it('a picture + text message reports both facts', () => {
     const events = [
-      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '看图' }, { type: 'image', attachment: {} }] } },
+      { type: 'user/message', data: { source: { kind: 'user' }, content: [{ type: 'text', text: '看图' }, { type: 'image', attachment: { attachmentId: 'att-2', mediaType: 'image/webp', bytes: 9 } }] } },
     ]
-    expect(latestUserMessage(events)).toEqual({ text: '看图', hasImage: true })
+    expect(latestUserMessage(events)).toEqual({
+      text: '看图',
+      attachments: [{ attachmentId: 'att-2', name: '', bytes: 9, mediaType: 'image/webp' }],
+    })
+  })
+
+  it('reads a stored FILE part by its durable reference too (the caption counts both)', () => {
+    const events = [
+      {
+        type: 'user/message',
+        data: {
+          source: { kind: 'user' },
+          content: [
+            { type: 'text', text: '看文件' },
+            { type: 'file', attachment: { attachmentId: 'att-3', name: 'notes.txt', bytes: 12 } },
+          ],
+        },
+      },
+    ]
+    expect(latestUserMessage(events)).toEqual({
+      text: '看文件',
+      attachments: [{ attachmentId: 'att-3', name: 'notes.txt', bytes: 12 }],
+    })
   })
 
   it('returns undefined for a missing window or non-user tails', () => {
@@ -146,7 +171,7 @@ describe('latestUserMessage', () => {
 describe('nativeTurnOf', () => {
   it('parses a live user/message frame into the turn facts (with anchor)', () => {
     expect(nativeTurnOf({ type: 'user/message', seq: 12, data: { source: { kind: 'user' }, content: [{ type: 'text', text: '直接对话' }] } }))
-      .toEqual({ text: '直接对话', hasImage: false, anchor: 12 })
+      .toEqual({ text: '直接对话', attachments: [], anchor: 12 })
   })
 
   it('ignores everything that is not a user message', () => {

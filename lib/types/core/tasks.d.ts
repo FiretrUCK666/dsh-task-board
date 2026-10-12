@@ -4,6 +4,7 @@
  * Framework-free (no cordis, no runtime imports) so the state machine is
  * unit-testable in isolation.
  */
+import type { AttachmentRef, PromptAttachment } from './attachment.ts';
 /** Task lifecycle status, one per kanban column. */
 export type TaskStatus = 'backlog' | 'todo' | 'running' | 'review' | 'done';
 /**
@@ -31,18 +32,21 @@ export interface ExecutionRecord {
     /** The comment text when this round is a comment continuation (absent = a plain run). */
     comment?: string;
     /**
-     * Images attached to a comment round (the same base64 wire shape as a task
-     * prompt image). A QUEUED comment carries its pictures on the round so the
-     * dispatcher sends text + images together when the lane frees — the send
-     * mode (排队 vs 插话) is the user's choice and is NEVER overridden by the
-     * mere presence of images.
+     * What this round carries: the durable refs of its images and files. The
+     * bytes live in the official attachment store (see `core/attachment.ts`), so
+     * a round — queued, steered, rule-fired or observed — describes its
+     * attachments the same way, and the comment thread's 「含 N 张图片 / N 个
+     * 文件」 reads ONE list for every kind of round.
+     */
+    attachments?: AttachmentRef[];
+    /**
+     * LEGACY (read-only): images this round was born with under the old
+     * temporary-bytes shape. Still sent, still counted — see `attachmentsOf`.
      */
     promptImages?: TaskImage[];
     /**
-     * File refs attached to a comment round (the OFFICIAL `{type:'file',
-     * receiptId}` shape). Same queueing as images: a QUEUED comment carries
-     * its files on the round so the dispatcher sends text + files together
-     * when the lane frees.
+     * LEGACY (read-only): file receipts this round was born with under the old
+     * per-Agent shape. Valid only for the session they were staged on.
      */
     promptFiles?: TaskFile[];
     /**
@@ -199,24 +203,48 @@ export interface ScheduleRule {
     primed: boolean;
 }
 /** One task on the board. */
-/** One image attached to a task's execution prompt — the same base64 shape
- *  the native `PromptContentPart` image variant carries (the host admits the
- *  bytes durably when it takes the prompt). */
+/**
+ * LEGACY (read-only): one image attached to a task's execution prompt under
+ * the old temporary-bytes shape (the native `PromptContentPart` image variant,
+ * base64 inline). Self-contained, so documents carrying it still send — but
+ * nothing writes it any more: new picks become an {@link AttachmentRef} and the
+ * bytes go to the official attachment store. `attachmentsOf` is its only reader.
+ */
 export interface TaskImage {
     mediaType: string;
     /** Canonical base64 (no data-URL prefix). */
     data: string;
     name?: string;
 }
-/** One file ref attached to a task's execution prompt — the OFFICIAL
- *  `{type:'file', receiptId}` shape (files carry no admission limits; the
- *  stored object is the exact submitted bytes). Queued like images: a file
- *  staged for a session rides the round until the lane frees. */
+/**
+ * LEGACY (read-only): one file ref attached to a prompt under the old
+ * per-Agent receipt shape. A receipt is valid only for the session it was
+ * staged on, so a task run on another session cannot re-stage it — the send
+ * path reports that instead of dropping the file in silence.
+ */
 export interface TaskFile {
     receiptId: string;
     name: string;
     bytes: number;
 }
+/**
+ * Split one incoming attachment list into the lanes a RECORD stores: durable
+ * refs stay refs; legacy bytes and receipts (which can only arrive from an
+ * older source — a task born before refs existed, or a legacy round) are
+ * carried through in the shape they came in, so the round that snapshots them
+ * still sends exactly what the source would have sent.
+ *
+ * THE one splitter: every record-creating path (comment, direct send, rule
+ * round, external observation) uses it, so no path can silently keep half of
+ * what it was handed.
+ * @param incoming - the attachments a caller passed (see `core/attachment`).
+ * @returns the two lanes to store.
+ */
+export declare function attachmentLanesOf(incoming: readonly PromptAttachment[] | undefined): {
+    attachments: AttachmentRef[];
+    promptImages?: TaskImage[];
+    promptFiles?: TaskFile[];
+};
 export interface TaskRecord {
     /** Stable task id (uuid). */
     id: string;
@@ -227,22 +255,25 @@ export interface TaskRecord {
     /** The prompt sent to dsh when this task is executed. */
     prompt: string;
     /**
-     * Images attached to the execution prompt — the OFFICIAL temporary-bytes
-     * image shape (base64 + media type), PERSISTED with the task so EVERY run
-     * path (manual / scheduled / cruise / chain / rerun) sends the same
-     * picture-text prompt. Deliberately tiny by contract: the browser
-     * compresses each image hard before it lands here and the form caps the
-     * count (this rides the shared board document to every device). Absent =
-     * a text-only prompt (the overwhelming majority of tasks).
+     * What the execution prompt carries: the durable refs of its images and
+     * files. PERSISTED with the task so EVERY run path (manual / scheduled /
+     * cruise / chain / rerun / a rule that sends the task prompt) sends the same
+     * picture-text prompt, and so a run on another session months later can
+     * still materialize the bytes (a receipt could not). The bytes themselves
+     * live in the official attachment store; this list is what travels the
+     * synced document. Absent = a text-only prompt (the overwhelming majority).
+     */
+    attachments?: AttachmentRef[];
+    /**
+     * LEGACY (read-only): images this task was born with under the old
+     * temporary-bytes shape — self-contained base64, so they still send.
+     * Migrated into `attachments` the next time the task is edited.
      */
     promptImages?: TaskImage[];
     /**
-     * File refs attached to the execution prompt — the OFFICIAL
-     * `{type:'file', receiptId}` shape, PERSISTED with the task like images.
-     * Receipts are staged per-Agent: a receipt minted for one session MUST be
-     * re-staged before a run on another session (the send layer re-uploads by
-     * name when the stored receipt is rejected — files are re-readable from
-     * the composer's staged bytes, never re-asked from the user).
+     * LEGACY (read-only): file receipts this task was born with. A receipt is
+     * valid for one Agent, so these are reported as lost when their session is
+     * gone rather than silently dropped. Migrated (or reported) on the next edit.
      */
     promptFiles?: TaskFile[];
     /** Current column. */
@@ -338,12 +369,12 @@ export interface NewTaskInput {
     title: string;
     description: string;
     prompt: string;
-    /** Images attached to the execution prompt (already compressed by the
-     *  browser intake; capped in count by the form). */
+    /** What the execution prompt carries at birth (see {@link TaskRecord.attachments}). */
+    attachments?: AttachmentRef[];
+    /** LEGACY: only ever carried THROUGH from an older task (a template of one);
+     *  this revision never produces it. */
     promptImages?: TaskImage[];
-    /** File refs attached to the execution prompt (receipt shape — the twin
-     *  lane of images: every birth/copy/template/draft path carries both or
-     *  documents why not, never one silently). */
+    /** LEGACY: same law as `promptImages`. */
     promptFiles?: TaskFile[];
     /** Landing column; defaults to 'todo'. Any column is legal — an external
      *  sidebar drop lands in exactly the column it was dropped into. */
@@ -557,6 +588,8 @@ export declare function newExternalRound(options: {
     anchor?: number;
     /** The observed message carried only image blocks (thread placeholder). */
     imageOnly?: boolean;
+    /** What the observed native message carried (read off the transcript). */
+    attachments?: readonly AttachmentRef[];
 }): ExecutionRecord;
 /**
  * Whether a user-authored message carries NOTHING to deliver.
@@ -564,20 +597,17 @@ export declare function newExternalRound(options: {
  * THE one blank-message rule for every send path (queued comment, session
  * comment, rule comment, direct steer). Written per path as
  * `trimmed === ''`, it quietly rejects an ATTACHMENT-ONLY message — the
- * composer accepts it (`text === '' && images.length === 0 && files.length === 0`
- * is the gate that lets it through) and the controller then returns
- * `undefined`, so the draft is restored and the user sees nothing happen at
- * all. One rule living in four places drifts: the picture-with-no-words case
- * works on one surface and silently fails on the others, and only the direct
- * steer path is right.
+ * composer accepts it and the controller then returns `undefined`, so the draft
+ * is restored and the user sees nothing happen at all. One rule living in four
+ * places drifts: the picture-with-no-words case works on one surface and
+ * silently fails on the others, and only the direct steer path is right.
  *
  * Attachments are content: text alone is not the whole message.
  * @param text - raw (untrimmed) message text.
- * @param images - images carried by the message, if any.
- * @param files - staged file refs carried by the message, if any.
+ * @param attachments - what the message carries, if anything.
  * @returns whether there is nothing to send.
  */
-export declare function isBlankMessage(text: string, images?: readonly unknown[] | undefined, files?: readonly unknown[] | undefined): boolean;
+export declare function isBlankMessage(text: string, attachments?: readonly unknown[] | undefined): boolean;
 /**
  * Create a new comment-continuation round (pure): the single factory for
  * both comment anchors. An execution-anchored comment (`parentExecutionId`)
@@ -602,9 +632,11 @@ export declare function newCommentRound(options: {
     sessionAnchor?: string;
     /** The session automation rule that created this round (loop marker). */
     ruleId?: string;
-    /** Images carried by the comment (queued sends deliver them with the text). */
+    /** What the comment carries (see {@link ExecutionRecord.attachments}). */
+    attachments?: readonly AttachmentRef[];
+    /** LEGACY pass-through: only ever filled from a source that predates refs. */
     images?: readonly TaskImage[];
-    /** File refs carried by the comment (queued sends deliver them with the text). */
+    /** LEGACY pass-through: the file twin of `images`. */
     files?: readonly TaskFile[];
 }): ExecutionRecord;
 /**
@@ -620,6 +652,17 @@ export declare function newDirectRound(options: {
     text: string;
     /** The native session the message was sent to. */
     sessionId: string;
+    /**
+     * What the message carried. A steer (插话) delivers its attachments to the
+     * session immediately, and its round must say so too: this is the record the
+     * comment thread reads, and a steered picture that leaves no trace in the
+     * thread is the same silence a dropped attachment would be.
+     */
+    attachments?: readonly AttachmentRef[];
+    /** LEGACY pass-through: only ever filled from a source that predates refs. */
+    images?: readonly TaskImage[];
+    /** LEGACY pass-through: the file twin of `images`. */
+    files?: readonly TaskFile[];
 }): ExecutionRecord;
 /**
  * Whether the card already holds completed work awaiting the human gate:

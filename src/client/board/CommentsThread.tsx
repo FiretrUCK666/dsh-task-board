@@ -9,6 +9,7 @@
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { TaskRecord } from '../../core/tasks.ts'
+import { attachmentCountsOf, attachmentsOf } from '../../core/attachment.ts'
 import { Chip } from './Chip.tsx'
 import { commentKindOf, commentStateKey, queuePositionOf, type CommentView } from './comment-thread.ts'
 import { Markdown } from './Markdown.tsx'
@@ -27,6 +28,7 @@ export function CommentsThread({ task, views, onCancel }: {
       {views.map(view => {
         const position = queuePositionOf(task, view.round.id)
         const cancellable = view.state === 'saved' || view.state === 'queued'
+        const counts = attachmentCountsOf(attachmentsOf(view.round))
         return (
           <li key={view.round.id} className={css.reviewComment}>
             <span className={css.reviewCommentText}>
@@ -38,13 +40,16 @@ export function CommentsThread({ task, views, onCancel }: {
                   never stale text from an older message. */}
               {view.round.comment !== undefined && view.round.comment !== '' && <Markdown text={view.round.comment} />}
               {view.round.imageOnly === true && <span className={css.reviewCommentImage}>{t('review.commentImage')}</span>}
-              {/* A queued comment that carries attachments says so (they ride
-                  the round and go out with it when the lane frees). */}
-              {view.round.promptImages !== undefined && view.round.promptImages.length > 0 && (
-                <span className={css.reviewCommentImage}>{t('review.commentImages', { n: String(view.round.promptImages.length) })}</span>
+              {/* What this round carries, whatever moved it: a queued comment, a
+                  steer (插话), a rule's own round, or a native turn the board
+                  observed. ONE reader (`attachmentsOf`) so the two lanes cannot
+                  be counted differently — the old per-lane fields were exactly
+                  how a steered picture left no trace in the thread. */}
+              {counts.images > 0 && (
+                <span className={css.reviewCommentImage}>{t('review.commentImages', { n: String(counts.images) })}</span>
               )}
-              {view.round.promptFiles !== undefined && view.round.promptFiles.length > 0 && (
-                <span className={css.reviewCommentImage}>{t('review.commentFiles', { n: String(view.round.promptFiles.length) })}</span>
+              {counts.files > 0 && (
+                <span className={css.reviewCommentImage}>{t('review.commentFiles', { n: String(counts.files) })}</span>
               )}
             </span>
             <span className={css.reviewCommentMeta}>

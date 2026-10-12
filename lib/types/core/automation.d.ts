@@ -12,6 +12,7 @@
  *   No due slot, no cron expression — the completion IS the appointment.
  * Pure and unit-testable.
  */
+import { type AttachmentRef } from './attachment.ts';
 import type { TaskRecord } from './tasks.ts';
 /** A rule's trigger: cron (schedule) or on-complete (fires at run settle). */
 export type SessionRuleTrigger = 'cron' | 'on-complete';
@@ -28,6 +29,12 @@ export interface SessionRule {
      *  非快照——改 Prompt 即时生效）；false/缺省 = 发送 `instruction`。
      *  绘画场景：对单个会话定时/每次完成时注入执行 Prompt。 */
     usePrompt?: boolean;
+    /**
+     * 这条规则自己带的附件（仅 `usePrompt === false` 时有意义）：自填指令也能
+     * 带图片/文件。`usePrompt` 规则不带自己的——它在开火那一刻取**任务**的附件，
+     * 与它取任务文本同一条律（改任务即生效）。字节在官方附件库里，这里只存 ref。
+     */
+    attachments?: AttachmentRef[];
     /** 触发方式: cron = 按时间表 (default; legacy rows normalize to this);
      *  on-complete = 任务一次执行结算时发送. */
     trigger: SessionRuleTrigger;
@@ -104,6 +111,9 @@ export type AutomationRow = {
     sessionId: string;
     instruction: string;
     usePrompt?: boolean;
+    /** What this rule carries (its own; a `usePrompt` rule reads the task's at
+     *  fire time and shows none here). */
+    attachments?: AttachmentRef[];
     trigger: SessionRuleTrigger;
     cron: string;
     send: 'queue' | 'steer';

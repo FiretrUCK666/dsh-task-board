@@ -13,6 +13,7 @@
  * orchestration is unit-testable with fakes.
  */
 import { ExecutionService } from './execution.ts';
+import { type AttachmentRef, type PromptAttachment } from './attachment.ts';
 import { type LinkedSessionRow } from './linked-sessions.ts';
 import { type LatestUserMessage } from './session-activity.ts';
 import { type TaskLiveState } from './task-live.ts';
@@ -241,8 +242,11 @@ export interface ReferenceRemoteFace {
         }>;
     };
 }
-/** The editable slice of a task (content + run configuration). */
-export type TaskUpdatePatch = Partial<Pick<TaskRecord, 'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model' | 'reasoningEffort' | 'agentPreset' | 'permission' | 'color'>>;
+/** The editable slice of a task (content + run configuration). `attachments`
+ *  is the live field; the two legacy keys stay patchable so an edit that
+ *  migrates them can CLEAR them in the same write, and so a template of an
+ *  older task still carries its data forward. */
+export type TaskUpdatePatch = Partial<Pick<TaskRecord, 'title' | 'description' | 'prompt' | 'attachments' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model' | 'reasoningEffort' | 'agentPreset' | 'permission' | 'color'>>;
 /** The auto-cruise state: the current on/off truth, the last manual intent,
  *  concurrency, and the scheduled windows that flip it at their boundaries
  *  (see cruise.ts — `enabled` IS the truth: manual toggles set it directly
@@ -543,14 +547,30 @@ export interface ControllerDeps {
      *  direct composer is disabled with a hint). This is deliberately NOT the
      *  task-execution path: it never creates execution records, never enters
      *  the dispatcher and never affects task state — it is exactly "typing in
-     *  the native conversation". Images (temporary bytes) and files (staged
-     *  receipts) ride the prompt content as the OFFICIAL parts — the host
-     *  admits both, exactly like the native composer does.
+     *  the native conversation".
+     *  WHAT THE MESSAGE CARRIES travels as refs (`core/attachment.ts`); the
+     *  wiring materializes the OFFICIAL prompt parts from them — image bytes
+     *  inline, files through the official upload face — and reports a ref it
+     *  could not materialize instead of dropping it.
      *  `mode` is the OFFICIAL prompt disposition: 'queue' (in order) or
      *  'steer' (interrupt the current turn now) — a 插话 is only a 插话 when
      *  the wire says so. */
-    sessionMessage?: (sessionId: string, text: string, images?: readonly PromptImage[] | undefined, mode?: 'queue' | 'steer', files?: readonly PromptFile[] | undefined) => Promise<{
+    sessionMessage?: (sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly PromptAttachment[] | undefined) => Promise<{
         ok: true;
+    } | {
+        ok: false;
+        error: string;
+    }>;
+    /** Admits one attachment's bytes into the durable store (see
+     *  {@link BoardController.admitAttachment}). Absent = the attach affordance
+     *  hides with a reason; every other feature keeps working. */
+    admitAttachment?: (input: {
+        name: string;
+        data: string;
+        mediaType?: string;
+    }) => Promise<{
+        ok: true;
+        ref: AttachmentRef;
     } | {
         ok: false;
         error: string;
@@ -599,28 +619,6 @@ export interface ControllerDeps {
      *  seat announcement then flows back through setHostProto/setEngine.
      *  Absent = the button hides (fallback mode has no host to re-read). */
     seatRecheck?: () => Promise<void>;
-}
-/** One image attached to a native prompt — the OFFICIAL `PromptContentPart`
- *  image shape: the browser submits temporary base64 bytes and the HOST
- *  performs the durable admission (promoting them to attachment refs). The
- *  board never admits images by itself; there is no second mechanism. */
-export interface PromptImage {
-    mediaType: string;
-    /** Canonical base64 of the image bytes (no data-URL prefix). */
-    data: string;
-    name?: string;
-}
-/** One file attached to a native prompt — the OFFICIAL `PromptContentPart`
- *  file shape: the browser stages the EXACT bytes first (same session) and
- *  the prompt carries only the opaque receipt. Files carry no admission
- *  limits; the stored object is the exact submitted bytes. */
-export interface PromptFile {
-    /** Opaque receipt from a preceding upload on the SAME session. */
-    receiptId: string;
-    /** Display name (never an OS path). */
-    name: string;
-    /** Exact byte size (shown, not gated). */
-    bytes: number;
 }
 /** Immutable controller snapshot for UI subscriptions. */
 export interface ControllerSnapshot {
@@ -1488,6 +1486,31 @@ export declare class BoardController {
      *  panel's composer is disabled without it). */
     directMessageAvailable(): boolean;
     /**
+     * Admit one attachment into the durable store — the ONE upload path every
+     * composer uses (task prompt, session rule, comment, checklist row).
+     *
+     * It goes through the controller because the shelf that needs it (a checklist
+     * row) has no session, so the official per-Agent upload face cannot serve it;
+     * the wiring's admission lands the bytes in the harness's own attachment store
+     * and hands back the reference a document can keep. Absent store = a spoken
+     * refusal, never a silent drop.
+     * @param input - display name, base64 bytes and, for images, the media type.
+     * @returns the durable ref, or the reason it was refused.
+     */
+    admitAttachment(input: {
+        name: string;
+        data: string;
+        mediaType?: string;
+    }): Promise<{
+        ok: true;
+        ref: AttachmentRef;
+    } | {
+        ok: false;
+        error: string;
+    }>;
+    /** Whether attachments can be admitted at all right now (the strip's gate). */
+    attachmentsAvailable(): boolean;
+    /**
      * Send one message directly to any native session — the linked-session
      * panel's composer. This is deliberately NOT the task-execution path: the
      * message is delivered to the native session exactly as if typed in its
@@ -1505,10 +1528,11 @@ export declare class BoardController {
      * @param text - the message; a leading '/' routes through the command
      *   registry (unmatched lines fall back to plain text, matching the
      *   native composer's default sink).
+     * @param attachments - what the message carries.
      * @returns ok, or ok:false with an error string (faces absent, session
      *   gone, prompt rejected).
      */
-    sendSessionMessage(taskId: string, sessionId: string, text: string): Promise<{
+    sendSessionMessage(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<{
         ok: true;
     } | {
         ok: false;
@@ -1603,15 +1627,7 @@ export declare class BoardController {
      * the default queued send (submitSessionComment). One message, two send
      * modes: queue (调度器注入) vs steer (现在直达).
      */
-    steerComment(taskId: string, sessionId: string, text: string): Promise<{
-        ok: true;
-    } | {
-        ok: false;
-        error: string;
-    }>;
-    /** The attachment-carrying twin of steerComment: images (temporary bytes)
-     *  and files (staged receipts) ride the same direct-send path as text. */
-    steerCommentWithImages(taskId: string, sessionId: string, text: string, images: readonly PromptImage[] | undefined, files?: readonly PromptFile[] | undefined): Promise<{
+    steerComment(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<{
         ok: true;
     } | {
         ok: false;
@@ -1700,11 +1716,19 @@ export declare class BoardController {
      * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
      * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
      */
+    /**
+     * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
+     * carries the task's own list (read at FIRE time, so editing the prompt or its
+     * attachments takes effect on the next firing — the same law the text
+     * follows), and a custom-instruction rule carries its own. ONE reader, so the
+     * three firing paths (cron / on-complete / loop) cannot disagree about what a
+     * rule carries.
+     */
+    private ruleAttachmentsOf;
     tickSessionRules(now: number): Promise<void>;
     /** The raw host send for a direct line (slash-aware, no recording).
-     *  Attachments are durable refs appended to the message content (images =
-     *  temporary bytes, files = staged receipts); `mode` is the official
-     *  prompt disposition (queue / steer). */
+     *  What the message carries travels as refs — the wiring turns them into the
+     *  official prompt parts and reports any ref it could not materialize. */
     private sendRawMessage;
     /**
      * Save a comment continuation against a settled execution: a new comment
@@ -1733,7 +1757,7 @@ export declare class BoardController {
      * @returns the queued comment round, or undefined when rejected (unknown
      *   task/execution, execution not settled).
      */
-    submitComment(taskId: string, executionId: string, text: string, command?: boolean, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined;
+    submitComment(taskId: string, executionId: string, text: string, command?: boolean, attachments?: readonly PromptAttachment[]): ExecutionRecord | undefined;
     /** A comment on a completed task revives it: moving the task back to 待办 is   *  the SAME column transition as a drag (the schedule re-arms per column
      *  rules), so the comment drives the task instead of hitting a dead end. */
     private reviveTaskIfDone;
@@ -1756,7 +1780,7 @@ export declare class BoardController {
      * @returns the queued comment round, or undefined when rejected (unknown
      *   task).
      */
-    submitSessionComment(taskId: string, sessionId: string, text: string, command?: boolean, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined;
+    submitSessionComment(taskId: string, sessionId: string, text: string, command?: boolean, attachments?: readonly PromptAttachment[]): ExecutionRecord | undefined;
     /**
      * Session-RULE enqueue: the same session-anchored round as
      * {@link submitSessionComment} marked with the rule's id. A rule's content

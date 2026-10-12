@@ -241,13 +241,17 @@ export const TASK_FIELDS: Record<keyof TaskUpdatePatch, FieldSpec> = {
   title: { access: 'writable', why: '一行标题，可以留空（空了就从执行 Prompt 补）' },
   description: { access: 'writable', why: '详情正文，参与展示' },
   prompt: { access: 'writable', why: '执行 Prompt，卡真正跑起来送出去的那段' },
+  attachments: {
+    access: 'forbidden',
+    why: '附件要先真实上传换成官方附件库里的 ref，模型手里没有字节；凭空写一个 id 就是一条画不出来的卡',
+  },
   promptImages: {
     access: 'forbidden',
-    why: '图片要走浏览器压缩 + 上传通道，模型手里没有；凭空的图片引用等于一张画不出来的卡',
+    why: '老形状（临时字节）：只由旧文档带出，模型不写；新附件走 attachments',
   },
   promptFiles: {
     access: 'forbidden',
-    why: '文件引用必须是真实上传换来的 receiptId，模型编一个就是一条断链',
+    why: '老形状（per-Agent receipt）：只由旧文档带出，模型不写；新附件走 attachments',
   },
   workspaceId: { access: 'writable', why: '跑在哪台机器上，参与运行配置' },
   provider: { access: 'writable', why: '模型供应方' },

@@ -13,8 +13,9 @@
  * orchestration is unit-testable with fakes.
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
+import { attachmentsOf, type AttachmentRef, type PromptAttachment } from './attachment.ts'
 import { nextRunAtMs } from './schedule.ts'
-import { nextSessionRuleAt, sessionRuleReadiness, withSessionRules } from './automation.ts'
+import { nextSessionRuleAt, sessionRuleReadiness, withSessionRules, type SessionRule } from './automation.ts'
 import { armSchedule, moveTaskToStatus, removeSessionFromTask } from './task-transitions.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
@@ -36,7 +37,7 @@ import { verbsOf, type GoalActivationChanged, type GoalServiceFace, type GoalVer
 import type { TaskStore } from './store.ts'
 import type { SkipLedger } from './scheduler.ts'
 import {
-  applyCardOrder, createTask, hasOpenRun, isBlankMessage, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, startedOrSettledSessions, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
+  applyCardOrder, attachmentLanesOf, createTask, hasOpenRun, isBlankMessage, newCommentRound, newDirectRound, newExternalRound, openRoundsOf, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, ruleArmingBlocked, ruleReadiness, sameBind, sessionIsBusy, settleExecution, startExecution, startedOrSettledSessions, supplementLaunchFields, taskBindsOf, taskExecutable, withSchedule, withStatus,
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
@@ -265,9 +266,12 @@ export interface ReferenceRemoteFace {
   }
 }
 
-/** The editable slice of a task (content + run configuration). */
+/** The editable slice of a task (content + run configuration). `attachments`
+ *  is the live field; the two legacy keys stay patchable so an edit that
+ *  migrates them can CLEAR them in the same write, and so a template of an
+ *  older task still carries its data forward. */
 export type TaskUpdatePatch = Partial<Pick<TaskRecord,
-  'title' | 'description' | 'prompt' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
+  'title' | 'description' | 'prompt' | 'attachments' | 'promptImages' | 'promptFiles' | 'workspaceId' | 'provider' | 'model'
   | 'reasoningEffort' | 'agentPreset' | 'permission' | 'color'
 >>
 
@@ -569,13 +573,19 @@ export interface ControllerDeps {
    *  direct composer is disabled with a hint). This is deliberately NOT the
    *  task-execution path: it never creates execution records, never enters
    *  the dispatcher and never affects task state — it is exactly "typing in
-   *  the native conversation". Images (temporary bytes) and files (staged
-   *  receipts) ride the prompt content as the OFFICIAL parts — the host
-   *  admits both, exactly like the native composer does.
+   *  the native conversation".
+   *  WHAT THE MESSAGE CARRIES travels as refs (`core/attachment.ts`); the
+   *  wiring materializes the OFFICIAL prompt parts from them — image bytes
+   *  inline, files through the official upload face — and reports a ref it
+   *  could not materialize instead of dropping it.
    *  `mode` is the OFFICIAL prompt disposition: 'queue' (in order) or
    *  'steer' (interrupt the current turn now) — a 插话 is only a 插话 when
    *  the wire says so. */
-  sessionMessage?: (sessionId: string, text: string, images?: readonly PromptImage[] | undefined, mode?: 'queue' | 'steer', files?: readonly PromptFile[] | undefined) => Promise<{ ok: true } | { ok: false; error: string }>
+  sessionMessage?: (sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly PromptAttachment[] | undefined) => Promise<{ ok: true } | { ok: false; error: string }>
+  /** Admits one attachment's bytes into the durable store (see
+   *  {@link BoardController.admitAttachment}). Absent = the attach affordance
+   *  hides with a reason; every other feature keeps working. */
+  admitAttachment?: (input: { name: string; data: string; mediaType?: string }) => Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }>
   /** Executes one slash-command line against any native session through the
    *  host command registry (matched = recognized; unmatched = the caller
    *  falls back to sending the line as plain text). Absent = slash lines
@@ -613,30 +623,6 @@ export interface ControllerDeps {
    *  seat announcement then flows back through setHostProto/setEngine.
    *  Absent = the button hides (fallback mode has no host to re-read). */
   seatRecheck?: () => Promise<void>
-}
-
-/** One image attached to a native prompt — the OFFICIAL `PromptContentPart`
- *  image shape: the browser submits temporary base64 bytes and the HOST
- *  performs the durable admission (promoting them to attachment refs). The
- *  board never admits images by itself; there is no second mechanism. */
-export interface PromptImage {
-  mediaType: string
-  /** Canonical base64 of the image bytes (no data-URL prefix). */
-  data: string
-  name?: string
-}
-
-/** One file attached to a native prompt — the OFFICIAL `PromptContentPart`
- *  file shape: the browser stages the EXACT bytes first (same session) and
- *  the prompt carries only the opaque receipt. Files carry no admission
- *  limits; the stored object is the exact submitted bytes. */
-export interface PromptFile {
-  /** Opaque receipt from a preceding upload on the SAME session. */
-  receiptId: string
-  /** Display name (never an OS path). */
-  name: string
-  /** Exact byte size (shown, not gated). */
-  bytes: number
 }
 
 /** Immutable controller snapshot for UI subscriptions. */
@@ -1636,6 +1622,9 @@ export class BoardController {
     task = {
       ...task,
       ...source.color !== undefined ? { color: source.color } : {},
+      ...source.attachments !== undefined && source.attachments.length > 0
+        ? { attachments: source.attachments.map(ref => ({ ...ref })) }
+        : {},
       ...source.promptImages !== undefined && source.promptImages.length > 0
         ? { promptImages: source.promptImages.map(image => ({ ...image })) }
         : {},
@@ -2149,8 +2138,14 @@ export class BoardController {
     if (patch.description !== undefined) applied.description = patch.description.trim()
     if (patch.prompt !== undefined) applied.prompt = patch.prompt.trim()
     // Prompt attachments: a present key sets/clears the whole set (the form
-    // owns the cap; an empty array clears the task's attachments). Images
-    // and file refs ride side by side (two lanes, one set semantics).
+    // owns the cap; an empty array clears the task's attachments). The durable
+    // lane is the live one; the two legacy keys are still writable so an edit
+    // that migrates them can clear them in the same write.
+    if ('attachments' in patch) {
+      applied.attachments = patch.attachments !== undefined && patch.attachments.length > 0
+        ? patch.attachments.map(ref => ({ ...ref }))
+        : undefined
+    }
     if ('promptImages' in patch) {
       applied.promptImages = patch.promptImages !== undefined && patch.promptImages.length > 0
         ? patch.promptImages.map(image => ({ ...image }))
@@ -2784,6 +2779,29 @@ export class BoardController {
   }
 
   /**
+   * Admit one attachment into the durable store — the ONE upload path every
+   * composer uses (task prompt, session rule, comment, checklist row).
+   *
+   * It goes through the controller because the shelf that needs it (a checklist
+   * row) has no session, so the official per-Agent upload face cannot serve it;
+   * the wiring's admission lands the bytes in the harness's own attachment store
+   * and hands back the reference a document can keep. Absent store = a spoken
+   * refusal, never a silent drop.
+   * @param input - display name, base64 bytes and, for images, the media type.
+   * @returns the durable ref, or the reason it was refused.
+   */
+  admitAttachment(input: { name: string; data: string; mediaType?: string }): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }> {
+    const admit = this.deps.admitAttachment
+    if (admit === undefined) return Promise.resolve({ ok: false, error: 'this host has no attachment store' })
+    return admit(input)
+  }
+
+  /** Whether attachments can be admitted at all right now (the strip's gate). */
+  attachmentsAvailable(): boolean {
+    return this.deps.admitAttachment !== undefined
+  }
+
+  /**
    * Send one message directly to any native session — the linked-session
    * panel's composer. This is deliberately NOT the task-execution path: the
    * message is delivered to the native session exactly as if typed in its
@@ -2801,13 +2819,14 @@ export class BoardController {
    * @param text - the message; a leading '/' routes through the command
    *   registry (unmatched lines fall back to plain text, matching the
    *   native composer's default sink).
+   * @param attachments - what the message carries.
    * @returns ok, or ok:false with an error string (faces absent, session
    *   gone, prompt rejected).
    */
-  sendSessionMessage(taskId: string, sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
+  sendSessionMessage(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
-    if (trimmed === '') return Promise.resolve({ ok: false, error: 'empty message' })
-    const send = this.sendRawMessage(sessionId, trimmed)
+    if (isBlankMessage(text, attachments)) return Promise.resolve({ ok: false, error: 'empty message' })
+    const send = this.sendRawMessage(sessionId, trimmed, attachments)
     return send.then(result => {
       if (!result.ok) return result
       // The turn this direct-send starts is already recorded as a direct
@@ -2825,6 +2844,7 @@ export class BoardController {
             now: this.now(),
             text: trimmed,
             sessionId,
+            ...attachmentLanesOf(attachments),
           })],
         }, this.now())
       }
@@ -2905,7 +2925,7 @@ export class BoardController {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return false
     if (!this.relatedSessionsOf(task).some(row => row.sessionId === sessionId)) return false
-    if (isBlankMessage(text, undefined, undefined)) return false
+    if (isBlankMessage(text)) return false
     this.commentNow(taskId, sessionId, text)
     return true
   }
@@ -2923,7 +2943,7 @@ export class BoardController {
    * through the command registry (a rule instruction's grammar).
    */
   private commentNow(taskId: string, sessionId: string, text: string): void {
-    if (isBlankMessage(text, undefined, undefined)) return
+    if (isBlankMessage(text)) return
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
@@ -2990,23 +3010,16 @@ export class BoardController {
    * the default queued send (submitSessionComment). One message, two send
    * modes: queue (调度器注入) vs steer (现在直达).
    */
-  steerComment(taskId: string, sessionId: string, text: string): Promise<{ ok: true } | { ok: false; error: string }> {
-    return this.steerCommentWithImages(taskId, sessionId, text, undefined)
-  }
-
-  /** The attachment-carrying twin of steerComment: images (temporary bytes)
-   *  and files (staged receipts) ride the same direct-send path as text. */
-  steerCommentWithImages(
+  steerComment(
     taskId: string,
     sessionId: string,
     text: string,
-    images: readonly PromptImage[] | undefined,
-    files?: readonly PromptFile[] | undefined,
+    attachments?: readonly PromptAttachment[],
   ): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = text.trim()
-    // THE one blank-message rule (see isBlankMessage): an image or a staged
-    // file with no words is still a message.
-    if (isBlankMessage(text, images, files)) {
+    // THE one blank-message rule (see isBlankMessage): an attachment with no
+    // words is still a message.
+    if (isBlankMessage(text, attachments)) {
       return Promise.resolve({ ok: false, error: 'empty message' })
     }
     // A steer on a completed task revives it (moved back to 待办) — the same
@@ -3015,7 +3028,7 @@ export class BoardController {
     // A steer is a human message — never gated by the task's execution prompt
     // (that gate belongs to task execution only); the blank-message rejection
     // above is the one guard.
-    return this.sendRawMessage(sessionId, trimmed, images, 'steer', files).then(result => {
+    return this.sendRawMessage(sessionId, trimmed, attachments, 'steer').then(result => {
       if (!result.ok) return result
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
@@ -3024,6 +3037,9 @@ export class BoardController {
       if (card !== undefined) {
         // Through the landing funnel: the round is born, so the session list
         // reads "this conversation just started working" on the same pass.
+        // The attachments ride the round: the message went out WITH them, and
+        // the thread must be able to say so (a steered picture that leaves no
+        // trace is the same silence a dropped attachment would be).
         this.land(taskId, {
           ...card,
           updatedAt: this.now(),
@@ -3032,6 +3048,7 @@ export class BoardController {
             now: this.now(),
             text: trimmed,
             sessionId,
+            ...attachmentLanesOf(attachments),
           })],
         }, this.now())
       }
@@ -3243,6 +3260,18 @@ export class BoardController {
    * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
    * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
    */
+  /**
+   * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
+   * carries the task's own list (read at FIRE time, so editing the prompt or its
+   * attachments takes effect on the next firing — the same law the text
+   * follows), and a custom-instruction rule carries its own. ONE reader, so the
+   * three firing paths (cron / on-complete / loop) cannot disagree about what a
+   * rule carries.
+   */
+  private ruleAttachmentsOf(task: TaskRecord, rule: SessionRule): PromptAttachment[] {
+    return attachmentsOf(rule.usePrompt === true ? task : rule)
+  }
+
   async tickSessionRules(now: number): Promise<void> {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const updates = new Map<string, TaskRecord>()
@@ -3279,6 +3308,10 @@ export class BoardController {
         if (rule.nextAt > now) continue
         const text = rule.usePrompt === true ? task.prompt.trim() : rule.instruction
         if (text === '') continue
+        // What the rule sends, it sends WHOLE: a custom instruction carries its
+        // own attachments, and a rule in 「发送任务 Prompt」 mode carries the
+        // task's — the same list every other run path would send.
+        const carried = this.ruleAttachmentsOf(task, rule)
         // ONE due instant, ONE round. A queue-mode rule instruction that is
         // still waiting (its session is busy — the common case now that a lane
         // can be held by a long conversation) already honours this due slot;
@@ -3303,7 +3336,7 @@ export class BoardController {
         // recorded as a direct round.
         let fired: { ok: true } | { ok: false; error: string }
         if (rule.send === 'queue') {
-          const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id)
+          const round = this.queueRuleComment(task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id, undefined, carried)
           if (round === undefined) {
             // The injector refused (blank line / completed task / unknown
             // task): keep the due slot, retried next tick.
@@ -3311,7 +3344,7 @@ export class BoardController {
           }
           fired = { ok: true }
         } else {
-          fired = await this.sendSessionMessage(task.id, rule.sessionId, text)
+          fired = await this.sendSessionMessage(task.id, rule.sessionId, text, carried)
         }
         if (!fired.ok) continue
         taskChanged = true
@@ -3335,10 +3368,9 @@ export class BoardController {
   }
 
   /** The raw host send for a direct line (slash-aware, no recording).
-   *  Attachments are durable refs appended to the message content (images =
-   *  temporary bytes, files = staged receipts); `mode` is the official
-   *  prompt disposition (queue / steer). */
-  private sendRawMessage(sessionId: string, text: string, images?: readonly PromptImage[], mode: 'queue' | 'steer' = 'queue', files?: readonly PromptFile[]): Promise<{ ok: true } | { ok: false; error: string }> {
+   *  What the message carries travels as refs — the wiring turns them into the
+   *  official prompt parts and reports any ref it could not materialize. */
+  private sendRawMessage(sessionId: string, text: string, attachments?: readonly PromptAttachment[], mode: 'queue' | 'steer' = 'queue'): Promise<{ ok: true } | { ok: false; error: string }> {
     const direct = this.deps.sessionMessage
     if (text.startsWith('/')) {
       const command = this.deps.sessionCommand
@@ -3349,12 +3381,12 @@ export class BoardController {
           // Unknown command: the native default-sink — deliver the line as
           // plain text (never drop a user's input), attachments still ride.
           if (direct === undefined) return { ok: false as const, error: 'direct message unavailable' }
-          return direct(sessionId, text, images, mode, files)
+          return direct(sessionId, text, mode, attachments)
         })
       }
     }
     if (direct === undefined) return Promise.resolve({ ok: false, error: 'direct message unavailable' })
-    return direct(sessionId, text, images, mode, files)
+    return direct(sessionId, text, mode, attachments)
   }
 
   // --- comments ---------------------------------------------------------------
@@ -3386,11 +3418,11 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task/execution, execution not settled).
    */
-  submitComment(taskId: string, executionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
+  submitComment(taskId: string, executionId: string, text: string, command = false, attachments?: readonly PromptAttachment[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
-    // Attachments are content: a message with an image or a staged file and no
-    // words is a real message (see isBlankMessage).
-    if (isBlankMessage(text, images, files)) return undefined
+    // Attachments are content: a message carrying one and no words is a real
+    // message (see isBlankMessage).
+    if (isBlankMessage(text, attachments)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     // A comment on a completed task revives it (moved back to 待办) — the
@@ -3411,8 +3443,7 @@ export class BoardController {
       command,
       sessionId: execution.sessionId,
       parentExecutionId: execution.id,
-      ...(images !== undefined && images.length > 0 ? { images } : {}),
-      ...(files !== undefined && files.length > 0 ? { files } : {}),
+      ...attachmentLanesOf(attachments),
     })
     // A saved comment is not work yet: it is queued, not injected, so it starts
     // nothing in any session. The round is still written through the landing
@@ -3461,14 +3492,14 @@ export class BoardController {
    * @returns the queued comment round, or undefined when rejected (unknown
    *   task).
    */
-  submitSessionComment(taskId: string, sessionId: string, text: string, command = false, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
+  submitSessionComment(taskId: string, sessionId: string, text: string, command = false, attachments?: readonly PromptAttachment[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     // Same blank rule as every other path: attachments alone are a message.
-    if (isBlankMessage(text, images, files)) return undefined
+    if (isBlankMessage(text, attachments)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, images, files)
+    return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, attachments)
   }
 
   /**
@@ -3484,10 +3515,10 @@ export class BoardController {
    * its on-complete rule (完成后续跑 loop); a user comment carries none and
    * never loops.
    */
-  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, images?: readonly PromptImage[], files?: readonly PromptFile[]): ExecutionRecord | undefined {
+  private queueRuleComment(taskId: string, sessionId: string, text: string, command = false, ruleId?: string, injectedAt?: number, attachments?: readonly PromptAttachment[]): ExecutionRecord | undefined {
     const trimmed = text.trim()
     // Same blank rule as every other path: attachments alone are a message.
-    if (isBlankMessage(text, images, files)) return undefined
+    if (isBlankMessage(text, attachments)) return undefined
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
@@ -3500,8 +3531,7 @@ export class BoardController {
         sessionId,
         sessionAnchor: sessionId,
         ...ruleId !== undefined ? { ruleId } : {},
-        ...(images !== undefined && images.length > 0 ? { images } : {}),
-        ...(files !== undefined && files.length > 0 ? { files } : {}),
+        ...attachmentLanesOf(attachments),
       }),
       // A STEER rule round is born already-injected: it is handed to the
       // session immediately, so the dispatcher must NEVER see it as a fresh
@@ -3740,9 +3770,12 @@ export class BoardController {
     // A STEER rule round is born injected (see queueRuleComment) — the
     // dispatcher can never race it; the explicit launch below is the ONE
     // handoff. A queue rule waits for dispatch as before.
+    // The rule's attachments are read HERE, once, for both trigger kinds: a
+    // rule fires with everything it carries or not at all.
     const round = this.queueRuleComment(
       task.id, rule.sessionId, text, text.trimStart().startsWith('/'), rule.id,
       rule.send === 'steer' ? this.now() : undefined,
+      this.ruleAttachmentsOf(task, rule),
     )
     if (round === undefined) return
     this.tasks = this.tasks.map(candidate => candidate.id === task.id
@@ -4578,7 +4611,17 @@ export class BoardController {
           sessionId,
           ...msg?.text !== undefined ? { text: msg.text } : {},
           ...msg?.anchor !== undefined ? { anchor: msg.anchor } : {},
-          ...msg !== undefined && msg.text === undefined && msg.hasImage ? { imageOnly: true } : {},
+          // A picture-only native message: no text, and everything it carried
+          // was an image — derived from the ONE attachment list rather than a
+          // second "was there an image" flag that could disagree with it.
+          ...msg !== undefined && msg.text === undefined && msg.attachments.length > 0
+            && msg.attachments.every(ref => ref.mediaType !== undefined)
+            ? { imageOnly: true }
+            : {},
+          // What the native message carried rides its round, so the comment
+          // thread can say 「含 N 张图片 / N 个文件」 about a message typed in the
+          // native chat exactly as it does about one written here.
+          ...msg !== undefined && msg.attachments.length > 0 ? { attachments: msg.attachments } : {},
         })],
       }
       // The funnel writes this record — it must NOT be written here first, or

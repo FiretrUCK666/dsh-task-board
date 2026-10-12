@@ -14,6 +14,7 @@
  * no migration and no multi-device merge grammar is needed. Pure functions +
  * a storage seam, so everything unit-tests in isolation.
  */
+import type { AttachmentRef } from './attachment.ts';
 import type { NewTaskInput, TaskFile, TaskImage, TaskRecord } from './tasks.ts';
 /** The localStorage key for the user's template library (never renamed). */
 export declare const TEMPLATE_STORAGE_KEY = "dsh.taskBoard.templates.v1";
@@ -26,8 +27,13 @@ export interface TaskTemplate {
     title: string;
     description: string;
     prompt: string;
+    /** What the prompt carries (durable refs — a template stamps them onto the
+     *  new card and the bytes stay in the shared store). */
+    attachments?: AttachmentRef[];
+    /** LEGACY (read-only): carried through from a template saved by an older
+     *  revision, so stamping it still sends what the reader attached. */
     promptImages?: TaskImage[];
-    /** File refs (the twin lane of images — templates carry both or neither). */
+    /** LEGACY (read-only): the file twin of `promptImages`. */
     promptFiles?: TaskFile[];
     workspaceId?: string;
     provider?: string;

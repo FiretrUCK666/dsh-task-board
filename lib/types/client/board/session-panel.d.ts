@@ -17,8 +17,7 @@ import type { TaskRecord } from '../../core/tasks.ts';
 import { type TranscriptLine } from './review-transcript.ts';
 import { type ChipKind } from './Chip.tsx';
 import type { CommentView } from './comment-thread.ts';
-import { type DraftFile, type DraftImage } from './attach.ts';
-import { type FileStager } from './composer-images.ts';
+import { type DraftAttachment } from './composer-attachments.ts';
 /**
  * The shared transcript-region content: optional header (the review page's
  * outcome banner), the waiting banner, error/loading/empty states, the
@@ -199,18 +198,15 @@ export declare function SessionRail({ stateChip, updatedAt, sessionId, controlle
  * live only in a foldable explanation or a hover-only tooltip. Draft / steer
  * here (the per-session draft slot, shared across panels); the caller
  * supplies only the send semantics:
- *   - onDrive(text, images, files) schedules a session-anchored comment round
+ *   - onDrive(text, attachments) schedules a session-anchored comment round
  *     (true = saved, the draft clears) — / commands route through the native
- *     registry; attachments ride the round and go out WITH it when the lane
- *     frees (排队 means wait, with or without attachments);
- *   - onSteer(text) delivers the comment straight to the session now;
- *   - onSteerImages(text, images) delivers text + images at once (插话 with a
- *     picture); onSteerFiles(text, images, files) the same with files. The
- *     send mode is the user's toggle — attachments never force steer.
+ *     registry; whatever the message carries rides the round and goes out WITH
+ *     it when the lane frees (排队 means wait, with or without attachments);
+ *   - onSteer(text, attachments) delivers the same message straight to the
+ *     session now. ONE ledger, two dispositions: the send mode is the user's
+ *     toggle — attachments never force steer, and neither mode can lose them.
  */
-/** Stage one file's bytes on a session via the controller's upload face. */
-export declare function useFileStager(controller: BoardController, sessionId: string | undefined): FileStager | undefined;
-export declare function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer, onSteerImages, onSteerFiles }: {
+export declare function SessionComposer({ controller, taskId, sessionId, placeholder, disabled, hint, onDrive, onSteer }: {
     controller: BoardController;
     taskId: string;
     sessionId: string | undefined;
@@ -219,10 +215,7 @@ export declare function SessionComposer({ controller, taskId, sessionId, placeho
     disabled?: boolean;
     /** The composer's own explanation (blocking reason, or the drive hint). */
     hint?: string;
-    onDrive: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => boolean;
-    onSteer: (text: string) => Promise<boolean>;
-    onSteerImages: (text: string, images: readonly DraftImage[]) => Promise<boolean>;
-    /** Steer with staged files (absent = this surface closes the file lane). */
-    onSteerFiles?: (text: string, images: readonly DraftImage[], files: readonly DraftFile[]) => Promise<boolean>;
+    onDrive: (text: string, attachments: readonly DraftAttachment[]) => boolean;
+    onSteer: (text: string, attachments: readonly DraftAttachment[]) => Promise<boolean>;
 }): import("react").JSX.Element;
 export {};

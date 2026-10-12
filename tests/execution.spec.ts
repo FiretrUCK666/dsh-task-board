@@ -274,7 +274,7 @@ describe('ExecutionService.run', () => {
       prompt: '回答文本',
       sessionId: 's-alt',
       fresh: false,
-      images: [{ mediaType: 'image/jpeg', data: 'QUJD' }],
+      attachments: [{ mediaType: 'image/jpeg', data: 'QUJD', name: '', bytes: 3 }],
     })
     expect(drivers.get('s-alt')?.promptCalls).toEqual([[
       { type: 'text', text: '回答文本' },
@@ -977,9 +977,9 @@ describe('ExecutionService.commentRun', () => {
 
   it('a queued comment round delivers its text AND its images together through the comment face', async () => {
     const { env } = makeEnv({ blankSummary: false })
-    const seen: Array<{ text: string; images?: readonly unknown[] }> = []
-    env.sendComment = async (_id, text, _mode, images) => {
-      seen.push({ text, images })
+    const seen: Array<{ text: string; attachments?: readonly unknown[] }> = []
+    env.sendComment = async (_id, text, _mode, attachments) => {
+      seen.push({ text, attachments })
       return { ok: true }
     }
     const service = new ExecutionService(env)
@@ -989,6 +989,8 @@ describe('ExecutionService.commentRun', () => {
       ...running.executions[0],
       sessionId: 's-1',
       comment: '看图',
+      // A record written by an older revision: the picture is still the
+      // temporary-bytes shape, and the send face receives it as it is.
       promptImages: [{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }],
     }
     await service.commentRun(running, round, 's-1', '看图', () => {})
@@ -996,14 +998,14 @@ describe('ExecutionService.commentRun', () => {
     // — the send mode is the toggle, never forced to steer by having images.
     expect(seen).toHaveLength(1)
     expect(seen[0]?.text).toBe('看图')
-    expect(seen[0]?.images).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+    expect(seen[0]?.attachments).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png', bytes: 3 }])
   })
 
   it('a queued comment round delivers its file refs together through the comment face', async () => {
     const { env } = makeEnv({ blankSummary: false })
     const seen: Array<{ text: string; files?: readonly unknown[] }> = []
-    env.sendComment = async (_id, text, _mode, _images, files) => {
-      seen.push({ text, files })
+    env.sendComment = async (_id, text, _mode, attachments) => {
+      seen.push({ text, files: attachments })
       return { ok: true }
     }
     const service = new ExecutionService(env)
@@ -1018,7 +1020,7 @@ describe('ExecutionService.commentRun', () => {
     await service.commentRun(running, round, 's-1', '看文件', () => {})
     expect(seen).toHaveLength(1)
     expect(seen[0]?.text).toBe('看文件')
-    expect(seen[0]?.files).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+    expect(seen[0]?.files).toEqual([{ name: 'a.pdf', bytes: 10, receiptId: 'rcpt-1' }])
   })
 
   it('settles a rejected comment send as failed', async () => {

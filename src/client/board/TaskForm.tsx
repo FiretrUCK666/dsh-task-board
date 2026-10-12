@@ -13,13 +13,14 @@
  * field, capped in count — and every run path (manual / cron / cruise /
  * chain) sends the same attachments with the text.
  */
+import { useEffect } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
 import { MAX_COMMENT_FILES, MAX_COMMENT_IMAGES, MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
-import { useComposerImages } from './composer-images.ts'
+import { useComposerAttachments } from './composer-attachments.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
 import type { TaskDraft } from './task-draft.ts'
@@ -60,14 +61,35 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
   }
 
   // The prompt's attachment ledger, CONTROLLED by the draft (it round-trips
-  // through save/restore and persists onto the task). Images persist as
-  // bytes; files persist as name + bytes (receipts are per-Agent and are
-  // re-staged at send time). The task form has no session yet, so the file
-  // lane stages lazily at send (see the execution wiring).
-  const attachments = useComposerImages(TASK_IMAGE_BUDGET, MAX_TASK_IMAGES, {
-    images: draft.promptImages,
-    onChange: next => { onChange({ ...draft, promptImages: [...next] }) },
+  // through save/restore and persists onto the task as durable refs). Every
+  // pick is admitted into the official attachment store through the controller,
+  // so a run on any session, months later, can still read the bytes back.
+  const attachments = useComposerAttachments({
+    budget: TASK_IMAGE_BUDGET,
+    maxImages: MAX_TASK_IMAGES,
+    ...controller.attachmentsAvailable() ? { admit: input => controller.admitAttachment(input) } : {},
+    controlled: {
+      attachments: draft.attachments,
+      onChange: next => { onChange({ ...draft, attachments: [...next] }) },
+    },
   })
+  // A task born before refs existed carries its pictures as bytes; admit them
+  // the moment the form opens, so an ordinary edit turns them into refs (and
+  // the legacy fields are cleared in the same save). Files cannot come back —
+  // their bytes lived in a per-Agent receipt that died with its session — so the
+  // strip says which ones are gone instead of dropping them in silence.
+  const legacyImages = draft.legacyImages
+  useEffect(() => {
+    if (legacyImages.length === 0) return
+    void attachments.addEncoded(legacyImages).then(() => {
+      onChange({ ...draft, legacyImages: [] })
+    })
+    // Runs once per restored set: the promise clears the field it consumed, so
+    // the next render has nothing left to admit.
+  }, [legacyImages, attachments, draft, onChange])
+  const legacyHint = draft.legacyFiles.length === 0
+    ? undefined
+    : t('attach.legacyFilesLost', { names: draft.legacyFiles.map(file => file.name).join('、') })
 
   return (
     <>
@@ -113,14 +135,13 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           sessionId={sessionId}
         />
         <AttachmentStrip
-          images={draft.promptImages}
-          files={draft.promptFiles}
+          attachments={draft.attachments}
           onAdd={attachments.addFiles}
-          onRemoveImage={id => { onChange({ ...draft, promptImages: draft.promptImages.filter(image => image.id !== id) }) }}
-          onRemoveFile={id => { onChange({ ...draft, promptFiles: draft.promptFiles.filter(file => file.id !== id) }) }}
+          onRemove={id => { onChange({ ...draft, attachments: draft.attachments.filter(entry => entry.id !== id) }) }}
           busy={attachments.busy}
           busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
           error={attachments.error}
+          hint={legacyHint}
         />
         <span className={css.fieldHint}>{t('new.attachHint', { maxImages: String(MAX_TASK_IMAGES), commentImages: String(MAX_COMMENT_IMAGES), commentFiles: String(MAX_COMMENT_FILES) })}</span>
       </div>

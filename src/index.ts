@@ -28,6 +28,7 @@ import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
 import { registerUpdateRoute } from './host/update-route.ts'
 import { registerClientReportRoute } from './host/client-report-route.ts'
+import { registerAttachmentRoute } from './host/attachment-route.ts'
 
 /**
  * Only `webServer`. The model's whole surface (three tools, two slash commands,
@@ -55,11 +56,17 @@ export function apply(ctx: Context): void {
     'dsh-task-board: session-state route',
   )
 
-  // Images need NO board-side route: the browser submits the official
-  // temporary-bytes prompt part (`{type:'image', mediaType, data}`) and the
-  // host admits it durably as part of taking the prompt. Display reads back
-  // through the official `sessions.attachment` RPC. There is exactly one
-  // image mechanism, and it is the native one.
+  // Images need NO board-side route of their own for a PROMPT: the browser
+  // submits the official temporary-bytes part and the host admits it durably as
+  // part of taking the prompt. What the plugin's own attachment route adds is the
+  // DURABLE reference a document keeps — the official per-Agent upload face mints
+  // a receipt for one session, which a checklist row (no session at all) cannot
+  // use — plus the read-back every later sender needs. Bytes land in the
+  // harness's own store; there is still exactly one place they live.
+  ctx.effect(
+    () => registerAttachmentRoute(ctx, 'dsh-task-board'),
+    'dsh-task-board: attachment route',
+  )
 
   // Serve the host-owned board document (the synced truth every replica —
   // desktop or phone, any origin — reads, commits and watches), plus the

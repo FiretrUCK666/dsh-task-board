@@ -1,28 +1,29 @@
 /**
- * Composer attachment strip: the file-drag/pick entrance of every composer
- * that attaches files (review page, session panel, task prompt).
- * It is PRESENTATION + the picker affordance; the ledger state, intake
- * (image encode/compress + file staging) and the drop/paste wiring live in
- * the shared `useComposerImages` hook, which the composer spreads onto its
- * container so a drop anywhere on the composer (not just this strip) works.
- * A plus button opens the picker (any file kind — images route to the image
- * lane, everything else to the staged-file lane); encoded images and staged
- * files show as removable chips; a busy row names the in-flight work and a
- * rejection line names the failed file — nothing is ever silently dropped.
- * One grammar everywhere.
+ * Composer attachment strip: the file-drag/pick entrance of every surface that
+ * attaches files (the task prompt, the comment composers, a session rule's
+ * instruction, a checklist row's body).
+ *
+ * It is PRESENTATION + the picker affordance; the ledger state, the intake
+ * (image compression, admission) and the drop/paste wiring live in the shared
+ * `useComposerAttachments` hook, which the composer spreads onto its container
+ * so a drop anywhere on the composer (not just this strip) works. A plus button
+ * opens the picker (any file kind — images are compressed first, everything else
+ * goes up byte-for-byte); every entry shows as a removable chip with its name
+ * and, for files, its size; a busy row names the in-flight work and a rejection
+ * line names the failed file — nothing is ever silently dropped. One grammar
+ * everywhere, and the chips are the same whether the row is a card, a comment or
+ * a checklist line.
  */
 import { useRef } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from './ui.tsx'
-import type { DraftFile, DraftImage } from './attach.ts'
-import type { IntakeBusyKind } from './composer-images.ts'
+import type { DraftAttachment } from './composer-attachments.ts'
+import type { IntakeBusyKind } from './composer-attachments.ts'
 
 /**
  * The busy line for an in-flight intake, named by WHAT is in flight (never
- * the settled ledger — a staging file is not in the ledger yet). undefined
- * kind falls back to the image line (the only intake a file-lane-less
- * surface can start).
+ * the settled ledger — a file being admitted is not in the ledger yet).
  */
 export function attachBusyLabel(kind: IntakeBusyKind | undefined): string {
   if (kind === 'file') return t('review.attachFileBusy')
@@ -41,23 +42,22 @@ export function formatBytes(bytes: number): string {
   return `${v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)} MB`
 }
 
-export function AttachmentStrip({ images, files, onAdd, onRemoveImage, onRemoveFile, busy, busyLabel, error }: {
-  images: readonly DraftImage[]
-  /** Staged files (empty when the surface closes the file lane). */
-  files?: readonly DraftFile[]
-  /** Intake picked files (the hook encodes + stages + validates). */
+export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error, hint }: {
+  /** The ledger, in the order the reader added it. */
+  attachments: readonly DraftAttachment[]
+  /** Intake picked files (the hook compresses + admits + validates). */
   onAdd: (files: FileList | File[]) => void
-  onRemoveImage: (id: string) => void
-  onRemoveFile?: (id: string) => void
-  /** A file is encoding/uploading right now (phone photos/uploads take a beat). */
+  onRemove: (id: string) => void
+  /** A file is being compressed/admitted right now. */
   busy?: boolean
-  /** Busy line override (file uploads say uploading, not compressing). */
+  /** Busy line override (uploads say uploading, not compressing). */
   busyLabel?: string
   /** The last rejection, said out loud (never a silent drop). */
   error?: string
+  /** One quiet line under the chips (what this surface's attachments mean). */
+  hint?: string
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
-  const staged = files ?? []
   return (
     <div className={css.attachStrip}>
       <button
@@ -79,41 +79,27 @@ export function AttachmentStrip({ images, files, onAdd, onRemoveImage, onRemoveF
           event.currentTarget.value = ''
         }}
       />
-      {images.map(image => (
-        <span key={image.id} className={css.attachChip} title={image.name}>
+      {attachments.map(attachment => (
+        <span key={attachment.id} className={css.attachChip} title={`${attachment.name} · ${formatBytes(attachment.bytes)}`}>
           {/* The name is its own truncation item (min-width 0 + ellipsis) —
               the chip grammar: text truncates, the remove button never
               shrinks. A raw text child of an inline-flex chip would clip
               without an ellipsis (text-overflow needs a block box). */}
-          <span className={css.attachChipName}>{image.name}</span>
+          <span className={css.attachChipName}>{attachment.name}</span>
+          <span className={css.attachChipMeta}>{formatBytes(attachment.bytes)}</span>
           <button
             type="button"
             className={css.attachRemove}
-            aria-label={image.name}
-            onClick={() => { onRemoveImage(image.id) }}
+            aria-label={attachment.name}
+            onClick={() => { onRemove(attachment.id) }}
           >
             <Icon name="close" />
           </button>
         </span>
       ))}
-      {staged.map(file => (
-        <span key={file.id} className={css.attachChip} title={`${file.name} · ${formatBytes(file.bytes)}`}>
-          <span className={css.attachChipName}>{file.name}</span>
-          <span className={css.attachChipMeta}>{formatBytes(file.bytes)}</span>
-          {onRemoveFile !== undefined && (
-            <button
-              type="button"
-              className={css.attachRemove}
-              aria-label={file.name}
-              onClick={() => { onRemoveFile(file.id) }}
-            >
-              <Icon name="close" />
-            </button>
-          )}
-        </span>
-      ))}
       {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
       {error !== undefined && error !== '' && <span className={css.attachError}>{error}</span>}
+      {hint !== undefined && hint !== '' && <span className={css.attachHint}>{hint}</span>}
     </div>
   )
 }

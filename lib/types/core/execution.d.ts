@@ -22,7 +22,8 @@
  * over; peeking ({@link SessionsExecutionFace.binding}) is reserved for reads
  * that must not outlive whoever holds the session.
  */
-import type { ExecutionRecord, TaskFile, TaskImage, TaskRecord } from './tasks.ts';
+import { type PromptAttachment } from './attachment.ts';
+import type { ExecutionRecord, TaskRecord } from './tasks.ts';
 /** The narrow sessions face the service needs. */
 export interface SessionsExecutionFace {
     list: {
@@ -155,7 +156,7 @@ export interface AgentPresetSelectFace {
  * so an immediate rule message is genuinely immediate.
  */
 export interface CommentSendFace {
-    (sessionId: string, text: string, mode?: 'queue' | 'steer', images?: readonly TaskImage[], files?: readonly TaskFile[]): Promise<{
+    (sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly PromptAttachment[]): Promise<{
         ok: true;
     } | {
         ok: false;
@@ -318,25 +319,11 @@ export interface RunOptions {
      */
     fresh?: boolean;
     /**
-     * Images to send with the prompt (the official temporary-bytes parts).
-     * A plain run omits this and takes the TASK's own persisted prompt images;
-     * a message that attaches its own images passes them instead.
+     * What the prompt carries (see `core/attachment.ts`). A plain run omits this
+     * and takes the TASK's own list; a message that carries its own attachments
+     * (a comment, a rule round) passes them instead.
      */
-    images?: readonly {
-        mediaType: string;
-        data: string;
-        name?: string;
-    }[];
-    /**
-     * File refs to send with the prompt (the official `{type:'file',
-     * receiptId}` parts). Same override rule as images: a plain run omits this
-     * and takes the TASK's own persisted prompt files.
-     */
-    files?: readonly {
-        receiptId: string;
-        name: string;
-        bytes: number;
-    }[];
+    attachments?: readonly PromptAttachment[];
 }
 /**
  * Run one task to completion (or to a settled failure).
@@ -499,6 +486,17 @@ export declare class ExecutionService {
      * settled failure with the host's own words.
      */
     private holdOf;
+    /**
+     * The no-wiring fallback sender: it can only build parts from material it
+     * already holds — legacy temporary image bytes and legacy staged receipts —
+     * and it REFUSES a durable ref by name, because materializing one needs the
+     * attachment store, which lives on the platform side. The real deployment
+     * always wires {@link ExecutionEnvironment.sendComment}, so this path exists
+     * for tests and for a host whose runtime faces are missing: a refusal that
+     * names the file is the honest end state, never a message that quietly goes
+     * out without its attachment.
+     */
+    private bareSendFace;
     private sendPrompt;
     /**
      * Apply a task's permission preset to the execution session through the

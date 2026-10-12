@@ -1858,26 +1858,26 @@ describe('comments', () => {
     const stub = new StubExec()
     const { controller } = makeController(stub)
     const { taskId, executionId } = await settledReviewTask(stub, controller)
-    const image = { mediaType: 'image/png' as const, data: 'AAAA', name: 'shot.png' }
-    const file = { receiptId: 'r-1', name: 'notes.txt', bytes: 12 }
+    const image = { attachmentId: 'att-1', name: 'shot.png', bytes: 3, mediaType: 'image/png' }
+    const file = { attachmentId: 'att-2', name: 'notes.txt', bytes: 12 }
 
     const withImage = controller.submitComment(taskId, executionId, '', false, [image])
     expect(withImage, 'an image with no words must still send').toBeDefined()
-    expect(withImage?.promptImages).toHaveLength(1)
+    expect(withImage?.attachments).toHaveLength(1)
 
-    const withFile = controller.submitComment(taskId, executionId, '   ', false, undefined, [file])
-    expect(withFile, 'a staged file with no words must still send').toBeDefined()
-    expect(withFile?.promptFiles).toHaveLength(1)
+    const withFile = controller.submitComment(taskId, executionId, '   ', false, [file])
+    expect(withFile, 'a file with no words must still send').toBeDefined()
+    expect(withFile?.attachments).toHaveLength(1)
 
     // The session-anchored path (linked-session composer) obeys the same rule.
     const sessionRound = controller.submitSessionComment(taskId, 's-1', '', false, [image])
     expect(sessionRound).toBeDefined()
-    expect(sessionRound?.promptImages).toHaveLength(1)
+    expect(sessionRound?.attachments).toHaveLength(1)
 
     // And the rule still rejects a message with NOTHING at all — text alone was
     // never the whole question.
     expect(controller.submitComment(taskId, executionId, '   ')).toBeUndefined()
-    expect(controller.submitComment(taskId, executionId, '', false, [], [])).toBeUndefined()
+    expect(controller.submitComment(taskId, executionId, '', false, [])).toBeUndefined()
   })
 
   it('injects pending comments when the cruise turns on and settles back into review', async () => {
@@ -2100,24 +2100,25 @@ describe('submitSessionComment (drive-mode linked-session comments)', () => {
     expect(store.load()[0].status).toBe('todo')
   })
 
-  it('a queued comment carries its images on the round (the send mode is the toggle, never the pictures)', async () => {
+  it('a queued comment carries its attachments on the round (the send mode is the toggle, never the pictures)', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    const round = controller.submitSessionComment(task.id, 'linked-7', '看图', false, [{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
-    expect(round?.promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+    const ref = { attachmentId: 'att-1', name: 'a.png', bytes: 4, mediaType: 'image/png' }
+    const round = controller.submitSessionComment(task.id, 'linked-7', '看图', false, [ref])
+    expect(round?.attachments).toEqual([ref])
     // Persisted on the shared doc so every device sees the queued picture.
-    expect(store.load()[0].executions[0].promptImages).toEqual([{ mediaType: 'image/png', data: 'RkZG', name: 'a.png' }])
+    expect(store.load()[0].executions[0].attachments).toEqual([ref])
   })
 
   it('a queued comment carries its file refs on the round (same queueing as images)', async () => {
     const stub = new StubExec()
     const { controller, store } = makeController(stub)
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    const round = controller.submitSessionComment(task.id, 'linked-7', '看文件', false, undefined,
-      [{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
-    expect(round?.promptFiles).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
-    expect(store.load()[0].executions[0].promptFiles).toEqual([{ receiptId: 'rcpt-1', name: 'a.pdf', bytes: 10 }])
+    const ref = { attachmentId: 'att-2', name: 'a.pdf', bytes: 10 }
+    const round = controller.submitSessionComment(task.id, 'linked-7', '看文件', false, [ref])
+    expect(round?.attachments).toEqual([ref])
+    expect(store.load()[0].executions[0].attachments).toEqual([ref])
   })
 
   it('rejects blank text and unknown tasks; a completed task is revived by its comment', async () => {
@@ -3323,20 +3324,20 @@ describe('sendSessionMessage (direct linked-session messages)', () => {
     expect(sent).toEqual(['s-1:继续'])
   })
 
-  it('passes prompt images through to the sessionMessage face unchanged (official bytes shape)', async () => {
-    const seen: Array<{ text: string; images: unknown }> = []
+  it('passes a steer’s attachments through to the sessionMessage face unchanged', async () => {
+    const seen: Array<{ text: string; attachments: unknown }> = []
     const { controller } = makeController(new StubExec(), {
-      sessionMessage: async (_sessionId, text, images) => {
-        seen.push({ text, images })
+      sessionMessage: async (_sessionId, text, _mode, attachments) => {
+        seen.push({ text, attachments })
         return { ok: true as const }
       },
     })
     const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
-    const images = [{ mediaType: 'image/png', data: 'aGk=', name: 'a.png' }]
-    await expect(controller.steerCommentWithImages(task.id, 's-1', '看图', images)).resolves.toEqual({ ok: true })
-    // The wiring receives the temporary-bytes parts as-is (attachmentId is the
-    // HOST's business after admission — the board never invents a ref shape).
-    expect(seen[0].images).toEqual(images)
+    const refs = [{ attachmentId: 'att-1', name: 'a.png', bytes: 4, mediaType: 'image/png' }]
+    await expect(controller.steerComment(task.id, 's-1', '看图', refs)).resolves.toEqual({ ok: true })
+    // The wiring receives exactly the record's refs; materializing the official
+    // prompt parts from them (and reading the bytes back) is its job.
+    expect(seen[0].attachments).toEqual(refs)
   })
 
   it('revives a completed task when a steer is sent to its session', async () => {
@@ -3658,7 +3659,7 @@ describe('recordNativeTurn (live turn channel)', () => {
 
   it('a live user/message records the external round with text + anchor and drives the card', async () => {
     const { controller } = await boundHarness()
-    controller.recordNativeTurn('s-1', { text: '帮我重构', hasImage: false, anchor: 42 })
+    controller.recordNativeTurn('s-1', { text: '帮我重构', attachments: [], anchor: 42 })
     const task = controller.getSnapshot().tasks[0]
     const ext = task.executions[task.executions.length - 1]
     expect(ext.external).toBe(true)
@@ -3669,12 +3670,12 @@ describe('recordNativeTurn (live turn channel)', () => {
 
   it('the same anchor never records twice (live frame + reconcile backstop)', async () => {
     const { controller, sessions } = await boundHarness()
-    controller.recordNativeTurn('s-1', { text: '同一轮', hasImage: false, anchor: 7 })
+    controller.recordNativeTurn('s-1', { text: '同一轮', attachments: [], anchor: 7 })
     // The backstop now sees the session running (the frame baselined it) —
     // even a second frame for the same seq must not double-record.
     sessions.setRunning('s-1', true)
     await flush()
-    controller.recordNativeTurn('s-1', { text: '同一轮', hasImage: false, anchor: 7 })
+    controller.recordNativeTurn('s-1', { text: '同一轮', attachments: [], anchor: 7 })
     await flush()
     const task = controller.getSnapshot().tasks[0]
     expect(task.executions.filter(run => run.external === true)).toHaveLength(1)
@@ -3692,7 +3693,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     expect(queued).toBeDefined()
     expect(stub.commentCalls).toHaveLength(0) // cruise off: saved, nothing injected
     // The user chats in the native UI while the comment is still queued.
-    controller.recordNativeTurn('s-1', { text: '工作区里直接说的话', hasImage: false, anchor: 11 })
+    controller.recordNativeTurn('s-1', { text: '工作区里直接说的话', attachments: [], anchor: 11 })
     const running = controller.getSnapshot().tasks[0]
     const ext = running.executions[running.executions.length - 1]
     expect(ext.external).toBe(true)
@@ -3775,7 +3776,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     // — nothing to record.
     expect(controller.getSnapshot().tasks[0].executions.some(run => run.external === true)).toBe(false)
     // The live echo of the board's OWN injection must not add an external round.
-    controller.recordNativeTurn('s-1', { text: '驱动一下', hasImage: false, anchor: 99 })
+    controller.recordNativeTurn('s-1', { text: '驱动一下', attachments: [], anchor: 99 })
     const after = controller.getSnapshot().tasks[0]
     expect(after.executions.some(run => run.external === true)).toBe(false)
     expect(after.executions).toHaveLength(1)
@@ -3785,7 +3786,7 @@ describe('recordNativeTurn (live turn channel)', () => {
   it('a non-engine replica records nothing (the engine records once, sync carries it)', async () => {
     const { controller } = await boundHarness()
     controller.setEngine(false)
-    controller.recordNativeTurn('s-1', { text: ' viewer 端不记', hasImage: false, anchor: 3 })
+    controller.recordNativeTurn('s-1', { text: ' viewer 端不记', attachments: [], anchor: 3 })
     const task = controller.getSnapshot().tasks[0]
     expect(task.executions.some(run => run.external === true)).toBe(false)
   })
@@ -3795,7 +3796,7 @@ describe('recordNativeTurn (live turn channel)', () => {
     const second = controller.createTask({ title: 'y', description: '', prompt: 'run' })!
     controller.addTaskSources(second.id, [{ kind: 'session', sessionId: 's-1' }])
     await flush()
-    controller.recordNativeTurn('s-1', { text: '共同会话', hasImage: false, anchor: 11 })
+    controller.recordNativeTurn('s-1', { text: '共同会话', attachments: [], anchor: 11 })
     const tasks = controller.getSnapshot().tasks
     expect(tasks.every(task => task.executions.some(run => run.external === true && run.anchor === 11))).toBe(true)
     expect(tasks.every(task => task.status === 'running')).toBe(true)
@@ -4657,7 +4658,7 @@ describe('bound-session instant sync (拖入瞬间全同步)', () => {
 
 describe('session automation rules (给会话定时发指令)', () => {
   function ruleHarness(sessionIds: string[], faces: {
-    sessionMessage?: (sessionId: string, text: string, images?: unknown, mode?: 'queue' | 'steer') => Promise<{ ok: true } | { ok: false; error: string }>
+    sessionMessage?: (sessionId: string, text: string, mode?: 'queue' | 'steer', attachments?: readonly unknown[]) => Promise<{ ok: true } | { ok: false; error: string }>
     sessionCommand?: (sessionId: string, line: string) => Promise<{ ok: true; matched: boolean } | { ok: false; error: string }>
   }): { controller: BoardController; sessions: FakeSessions; stub: StubExec } {
     const stub = new StubExec()
@@ -5227,7 +5228,7 @@ describe('session automation rules (给会话定时发指令)', () => {
   it('a direct steer sends with the OFFICIAL steer mode and drives the card running → review (插话状态根治)', async () => {
     let receivedMode: string | undefined
     const { controller, sessions } = ruleHarness(['s-a'], {
-      sessionMessage: async (_sessionId, _text, _images, mode) => { receivedMode = mode; return { ok: true as const } },
+      sessionMessage: async (_sessionId, _text, mode) => { receivedMode = mode; return { ok: true as const } },
     })
     const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
     await controller.steerComment(task.id, 's-a', '现在立刻做')

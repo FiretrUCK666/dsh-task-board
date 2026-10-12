@@ -17,7 +17,6 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
-import { toPromptFile, toPromptImage } from './attach.ts'
 import { sessionStateChip, sessionUnavailableReasonOf } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -179,10 +178,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
               placeholder={t('detail.sessionDrivePlaceholder')}
               disabled={liveGone}
               hint={goneReason}
-              onDrive={(text, images, files) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), images.map(toPromptImage), files.map(toPromptFile)) !== undefined}
-              onSteer={text => controller.steerComment(task.id, sessionId, text).then(result => result.ok)}
-              onSteerImages={(text, images) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage)).then(result => result.ok)}
-              onSteerFiles={(text, images, files) => controller.steerCommentWithImages(task.id, sessionId, text, images.map(toPromptImage), files.map(toPromptFile)).then(result => result.ok)}
+              onDrive={(text, attachments) => controller.submitSessionComment(task.id, sessionId, text, text.startsWith('/'), attachments) !== undefined}
+              onSteer={(text, attachments) => controller.steerComment(task.id, sessionId, text, attachments).then(result => result.ok)}
             />
           }
         />

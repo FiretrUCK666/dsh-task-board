@@ -452,15 +452,14 @@ export declare const zh: {
     'review.attachBusy': string;
     'review.attachFileBusy': string;
     'review.attachWorking': string;
-    'review.draftImagesDropped': string;
-    'review.draftFilesGone': string;
     'attach.rejectType': string;
     'attach.rejectSize': string;
     'attach.rejectDecode': string;
     'attach.rejectCount': string;
-    'attach.rejectNoSession': string;
     'attach.rejectFileCount': string;
     'attach.rejectUpload': string;
+    'attach.rejectNoStore': string;
+    'attach.legacyFilesLost': string;
     'review.sendMode': string;
     'review.sendNotSent': string;
     'review.sendQueue': string;

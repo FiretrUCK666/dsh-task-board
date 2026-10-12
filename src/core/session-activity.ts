@@ -33,6 +33,7 @@
  * behind a descendant and fabricate external rounds that never happened.
  * Pure and framework-free.
  */
+import type { AttachmentRef } from './attachment.ts'
 import {
   indexSubagentDescendants,
   type DescendantRollup,
@@ -69,8 +70,15 @@ interface UserMessageEventShape {
 export interface LatestUserMessage {
   /** The message's text (absent when the message carried no text). */
   text?: string
-  /** Whether the message carried image blocks. */
-  hasImage: boolean
+  /**
+   * The durable attachments the message carried — read off the STORED parts
+   * (the host promotes submitted bytes and resolves file receipts before a
+   * message exists, so a stored message always names its attachments by id).
+   * This is what lets the board's comment thread say 「含 N 张图片 / N 个文件」
+   * about a message the user typed in the NATIVE chat, exactly as it does for
+   * a comment composed on the board.
+   */
+  attachments: AttachmentRef[]
   /** The native log seq of the message that started the turn — THE anchor
    *  identifying this turn across detection channels, devices and engines
    *  (same session, same seq = same turn; never record it twice). */
@@ -81,7 +89,7 @@ export interface LatestUserMessage {
  * THE newest native user message in a transcript tail — the line the user
  * typed in the native chat that started the observed turn. The LATEST user
  * message is the truth and never falls back to an older one: a picture-only
- * message reports `{ text: undefined, hasImage: true }` so the thread shows a
+ * message reports no text with its attachments, so the thread shows a
  * 图片消息 placeholder instead of stale text from an earlier message.
  * undefined when the tail carries no user message at all.
  */
@@ -115,7 +123,7 @@ function turnOfMessageEvent(event: unknown): LatestUserMessage | undefined {
   const text = contentTextOf(data.content)
   return {
     ...text !== '' ? { text } : {},
-    hasImage: hasImageBlock(data.content),
+    attachments: contentAttachmentsOf(data.content),
     ...typeof entry.seq === 'number' && Number.isFinite(entry.seq) ? { anchor: entry.seq } : {},
   }
 }
@@ -140,17 +148,54 @@ export function contentTextOf(content: unknown): string {
   return parts.join('\n')
 }
 
-/** Whether a message's blocks carry an image block (the "what was said" of a
- *  picture-only message is the picture itself). */
-function hasImageBlock(content: unknown): boolean {
-  if (!Array.isArray(content)) return false
+/**
+ * The durable attachments one message's content carries (structural): parts of
+ * the shape `{type:'image'|'file', attachment:{attachmentId, …}}` — exactly what
+ * the host stores after admitting submitted bytes and resolving file receipts.
+ * Anything malformed is skipped (never a crash on an unknown part), and a
+ * repeated id counts once.
+ *
+ * THE one reader of that wire shape in the core: the observed-turn recorder
+ * reads it to describe what a native message carried, and the review page's
+ * image lane derives from the same call rather than parsing the parts again.
+ * @param content - a native message's content blocks.
+ * @returns the durable refs, in message order.
+ */
+export function contentAttachmentsOf(content: unknown): AttachmentRef[] {
+  if (!Array.isArray(content)) return []
+  const out: AttachmentRef[] = []
+  const seen = new Set<string>()
   for (const block of content) {
     if (typeof block !== 'object' || block === null) continue
-    const entry = block as { type?: unknown }
-    if (entry.type === 'image') return true
+    const part = block as Record<string, unknown>
+    if (part.type !== 'image' && part.type !== 'file') continue
+    const attachment = part.attachment
+    if (typeof attachment !== 'object' || attachment === null) continue
+    const ref = attachment as Record<string, unknown>
+    const attachmentId = typeof ref.attachmentId === 'string' ? ref.attachmentId : ''
+    if (attachmentId === '' || seen.has(attachmentId)) continue
+    seen.add(attachmentId)
+    const mediaType = typeof ref.mediaType === 'string' && ref.mediaType !== '' ? ref.mediaType : undefined
+    const name = typeof ref.name === 'string' && ref.name !== '' ? ref.name : ''
+    const bytes = typeof ref.bytes === 'number' && Number.isFinite(ref.bytes) && ref.bytes >= 0 ? ref.bytes : 0
+    const width = typeof ref.width === 'number' && Number.isFinite(ref.width) ? ref.width : undefined
+    const height = typeof ref.height === 'number' && Number.isFinite(ref.height) ? ref.height : undefined
+    out.push({
+      attachmentId,
+      name,
+      bytes,
+      // An image without a declared media type is still an image: the part's
+      // `type` said so, and the caption's lane split must not read it as a file.
+      ...(part.type === 'image' ? { mediaType: mediaType ?? 'image/png' } : {}),
+      ...(width !== undefined ? { width } : {}),
+      ...(height !== undefined ? { height } : {}),
+    })
   }
-  return false
+  return out
 }
+
+/** Whether a message's blocks carry an image block (the "what was said" of a
+ *  picture-only message is the picture itself). */
 
 /** One concrete detection: record an external round on this task's session. */
 export interface DetectedExternalTurn {

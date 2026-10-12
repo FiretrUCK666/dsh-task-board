@@ -22,7 +22,9 @@ function freshDraft(): TaskDraft {
     title: '',
     description: '',
     prompt: '',
-    promptImages: [],
+    attachments: [],
+    legacyImages: [],
+    legacyFiles: [],
     status: 'backlog',
     agentPreset: '',
     workspaceId: '',
@@ -31,7 +33,6 @@ function freshDraft(): TaskDraft {
     reasoningEffort: '',
     permission: '',
     color: '',
-    promptFiles: [],
   }
 }
 
