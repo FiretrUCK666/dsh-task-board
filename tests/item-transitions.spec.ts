@@ -47,6 +47,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 12,
     title: 'A thing',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',
@@ -170,7 +171,7 @@ describe('deleting takes the row out of the list and says nothing about the disk
 })
 
 describe('the capture box and the model mint a row the same way', () => {
-  const base: ItemCapture = { title: '  trimmed  ', body: '', notes: '', origin: 'human' }
+  const base: ItemCapture = { title: '  trimmed  ', body: '', attachments: [], notes: '', origin: 'human' }
 
   it('what the writer decided is what is stored, and the rest is the document\'s', () => {
     const { item, mintedSteps } = captureItemRecord(base, T0 + 5, () => 'i-new')
@@ -285,7 +286,7 @@ describe('the module is pure, because a function that reads the clock is unteste
   it('and the two calls really do agree, which is what "pure" buys', () => {
     // The scan above can be satisfied by a rename, so the property is also
     // demonstrated: the same input twice is the same output, down to the ids.
-    const input: ItemCapture = { title: 't', body: '', notes: '', origin: 'ai', steps: [{ text: 'a', done: false }] }
+    const input: ItemCapture = { title: 't', body: '', attachments: [], notes: '', origin: 'ai', steps: [{ text: 'a', done: false }] }
     expect(captureItemRecord(input, T0, () => 'i-x')).toEqual(captureItemRecord(input, T0, () => 'i-x'))
   })
 })
@@ -330,5 +331,79 @@ describe('the promotion plan says what the card would say, once', () => {
   it('「another」 does not make an unnamed card, because a card with no name cannot be made', () => {
     const plan = planItemPromotion(row({ title: '', body: '', taskId: 'task-9' }), { another: true })
     expect(plan).toEqual({ kind: 'refused', why: 'noTitle' })
+  })
+
+  it('正文带的图片与文件跟着卡走：ref 指的是同一份字节，没有第二份拷贝', () => {
+    // 「正文 + 附件」被拆成两半交给两个对象，就出现「卡上看得到正文、看不到那张图」——
+    // 而读者在清单里明明把图给了这一条。所以它们是**计划的一部分**，与标题、正文、
+    // 备注同一个道理：这三个字段是这一条自己的事实，鉴定它们的这一处不该漏掉第四个。
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    const item = row({ body: '把东墙的灯换掉', attachments: [lamp] })
+    const plan = planItemPromotion(item)
+    if (plan.kind !== 'ready') throw new Error('a titled row plans a card')
+    expect(plan.task.attachments).toEqual([lamp])
+    // 交给调用者的是一份拷贝：计划被别的写入者动过之后，这一条自己的记录不该跟着变。
+    expect(plan.task.attachments).not.toBe(item.attachments)
+  })
+
+  it('没有附件的一条：计划里是空表，不是 undefined（下游读的是表）', () => {
+    const plan = planItemPromotion(row({ body: '看一眼' }))
+    if (plan.kind !== 'ready') throw new Error('a titled row plans a card')
+    expect(plan.task.attachments).toEqual([])
+  })
+})
+
+describe('附件这一栏与标签、步骤同一条律：按值比，不按引用比', () => {
+  const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+
+  it('把一模一样的一张表重发一遍**不是一次写入**（面板每次渲染都重建它）', () => {
+    // 面板每一次改动都重建一张表（`[...current.attachments]`），所以引用比必然不等；照引用比
+    // 就是「重新渲染一次」= 一次修改 = 盖一次戳 = 把每台设备都叫醒——而屏上什么都没变。
+    const items = [row({ attachments: [lamp] })]
+    const rebuilt = items[0]!.attachments.map(ref => ({ ...ref }))
+    expect(applyItemPatch(items, 'i-1', { attachments: rebuilt }, T0 + 99)).toBe(items)
+  })
+
+  it('换掉一个附件是**一次**写入，而且戳记跟着走', () => {
+    const items = [row({ attachments: [lamp] })]
+    const next = applyItemPatch(items, 'i-1', { attachments: [{ attachmentId: 'att-other', name: 'b.txt', bytes: 3 }] }, T0 + 99)
+    expect(next).not.toBe(items)
+    expect(next[0]?.attachments).toEqual([{ attachmentId: 'att-other', name: 'b.txt', bytes: 3 }])
+    expect(next[0]?.updatedAt).toBe(T0 + 99)
+  })
+
+  it('显示用的补充信息（尺寸）补上了不算一次修改：同一份字节还是那个附件', () => {
+    const items = [row({ attachments: [{ attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048 }] })]
+    const sized = applyItemPatch(items, 'i-1', {
+      attachments: [{ attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, width: 800, height: 600 }],
+    }, T0 + 99)
+    expect(sized).toBe(items)
+  })
+
+  it('拿掉最后一个附件是清空（空表与「这一栏没有」是同一件事）', () => {
+    const items = [row({ attachments: [lamp] })]
+    const next = applyItemPatch(items, 'i-1', { attachments: [] }, T0 + 99)
+    expect(next[0]?.attachments).toEqual([])
+  })
+})
+
+describe('一条新记录带的附件走同一个 ref 文法', () => {
+  it('capture 读得懂的表原样进去，读不懂的行丢掉而不是整条不要', () => {
+    const input: ItemCapture = {
+      title: 't', body: '', notes: '', origin: 'ai',
+      attachments: [
+        null,
+        { attachmentId: '', name: 'x', bytes: 1 },
+        { attachmentId: 'att-ok', name: 'ok.txt', bytes: 2 },
+        { attachmentId: 'att-8' },
+      ],
+    }
+    const { item } = captureItemRecord(input, T0, () => 'i-new')
+    expect(item.attachments).toEqual([{ attachmentId: 'att-ok', name: 'ok.txt', bytes: 2 }])
+  })
+
+  it('一个附件都没有时是空表——下游不必为一个可选的字段写第二遍判断', () => {
+    const { item } = captureItemRecord({ title: 't', body: '', notes: '', origin: 'human' }, T0, () => 'i-new')
+    expect(item.attachments).toEqual([])
   })
 })

@@ -171,7 +171,7 @@ async function queryText(args: Record<string, unknown>, board = face()): Promise
 /** A row carrying something in every field the read side can be asked for. */
 function richItem(): ItemRecord {
   return {
-    id: 'i-rich', ref: 7, title: 'A note', body: 'the body', notes: 'the notes',
+    id: 'i-rich', ref: 7, title: 'A note', body: 'the body', attachments: [], notes: 'the notes',
     steps: [{ id: 's1', text: 'one', done: false }, { id: 's2', text: 'two', done: true }],
     status: 'todo', priority: 'high', tags: ['gallery', 'later'],
     startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
@@ -1142,6 +1142,7 @@ describe('a model asks a question about a row, through the same plan the panel u
         ref: 1,
         title: '量一遍地板',
         body: '',
+        attachments: [],
         notes: '',
         steps: [{ id: 'i-1.s1', text: '在真机上量', done: false }],
         status: 'todo',

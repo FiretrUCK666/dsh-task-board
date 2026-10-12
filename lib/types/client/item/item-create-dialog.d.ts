@@ -1,4 +1,5 @@
 import type { ItemCapture } from '../../core/item-transitions.ts';
+import { type AttachmentAdmitter } from '../board/composer-attachments.ts';
 export interface ItemCreateDialogProps {
     readonly open: boolean;
     readonly onClose: () => void;
@@ -34,6 +35,11 @@ export interface ItemCreateDialogProps {
      */
     readonly proseHeight?: number;
     readonly onProseHeight?: (px: number) => void;
+    /**
+     * 收进官方附件库的那一次上传，与展开区那一栏**是同一个能力**（同一个钩子、同一条路由）。
+     * 没有它（没接上看板、宿主没接上附件库）时，「＋」照样在，点它会明说收不了。
+     */
+    readonly admit?: AttachmentAdmitter;
 }
 /**
  * The sheet.

@@ -1649,6 +1649,10 @@ export declare class BoardController {
         trigger?: 'cron' | 'on-complete';
         usePrompt?: boolean;
         send: 'queue' | 'steer';
+        /** 这一条规则自己带的图片与文件（自定义指令规则用；`usePrompt` 规则在开火那一刻
+         *  读任务的）。它是**接口的一部分**而不是可选的装饰：少了它，读者在规则表单上挂的
+         *  文件在写入这一步就被丢掉，而屏上不会有人说一句话。 */
+        attachments?: readonly PromptAttachment[];
     }): import('./automation.ts').SessionRule | undefined;
     /**
      * Edit an existing session rule: replace its target / instruction / content
@@ -1667,6 +1671,9 @@ export declare class BoardController {
         usePrompt?: boolean;
         cron?: string;
         send?: 'queue' | 'steer';
+        /** 这一条规则自己的附件，整份替换（空表 = 都拿掉）。与别的字段同一条：没传就不动，
+         *  这样「改一句指令」不会顺手清掉读者挂上去的那张图。 */
+        attachments?: readonly PromptAttachment[];
     }): boolean;
     /**
      * 一条会话规则**现在**是不是「上着却跑不起来」的（THE dead-arm judgment，

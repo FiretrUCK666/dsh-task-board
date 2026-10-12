@@ -350,6 +350,9 @@ export declare const zh: {
     'auto.content.custom': string;
     'auto.content.usePrompt': string;
     'auto.form.usePromptHint': string;
+    'auto.form.promptAttach': string;
+    'auto.form.promptAttachNone': string;
+    'auto.form.attachHint': string;
     'auto.form.cron': string;
     'auto.form.send': string;
     'auto.form.save': string;
@@ -740,6 +743,7 @@ export declare const zh: {
     'item.field.notesHint': string;
     'item.field.notesAdd': string;
     'item.field.bodyAdd': string;
+    'item.attach.hint': string;
     'item.field.status': string;
     'item.field.priority': string;
     'item.page.list': string;
@@ -753,6 +757,7 @@ export declare const zh: {
     'item.ref.pending': string;
     'item.row.untitled': string;
     'item.row.status': string;
+    'item.row.attach': string;
     'item.stale': string;
     'item.menu.more': string;
     'item.menu.expand': string;

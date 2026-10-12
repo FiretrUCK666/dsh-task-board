@@ -46,6 +46,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 12,
     title: 'A thing',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',

@@ -260,6 +260,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 3,
     title: '给猫换一张壁纸',
     body: '水彩风格，暖色',
+    attachments: [],
     notes: '等猫不在家的时候换',
     steps: [],
     status: 'todo',

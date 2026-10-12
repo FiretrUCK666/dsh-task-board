@@ -71,6 +71,7 @@
  */
 import type { ItemOriginSource, ItemRecord, ItemStep } from './item.ts';
 import { ITEM_FIELDS } from './item.ts';
+import { type AttachmentRef } from './attachment.ts';
 import { type TaskStatus } from './tasks.ts';
 /**
  * The keys a patch may carry, DERIVED from the ruling table instead of being
@@ -201,8 +202,15 @@ export interface ItemPromotionTask {
     /** The card's description: the row's context notes, which is what they are FOR. */
     readonly description: string;
     /** The execution prompt: the override, else the row's body. */
-    /** The execution prompt: the override, else the row's body. */
     readonly prompt: string;
+    /**
+     * 这一条正文带的图片与文件，跟卡一起走。
+     *
+     * **它们是这一条自己的内容**，不是卡上另挂一份：把「正文 + 附件」拆成两半交给两个对象，
+     * 就出现「卡上看得见正文、看不见那张图」——而读者在清单里明明把图给了这一条。所以提升
+     * 把附件原样交给新卡（ref 指的是同一份字节，没有第二份拷贝）。
+     */
+    readonly attachments: readonly AttachmentRef[];
     /**
      * 这张卡出生在哪一栏：**这一条自己现在的状态**（执行器才能给的那两档落到「待办」）。
      *
@@ -441,6 +449,10 @@ export interface ItemCapture {
     readonly priority?: unknown;
     readonly steps?: unknown;
     readonly tags?: unknown;
+    /** 附件 ref（读者在自己的设备上选的字节）。与别的字段一样是 `unknown`：它从一个
+     *  介质来（面板的补丁、模型的 JSON、手改过的文件），所以由**一个具名的读法**
+     *  （`normalizeAttachmentRefs`）读，而不是靠调用点断言。 */
+    readonly attachments?: unknown;
     readonly startsAfter?: unknown;
     readonly dueAt?: unknown;
     readonly hardDueAt?: unknown;

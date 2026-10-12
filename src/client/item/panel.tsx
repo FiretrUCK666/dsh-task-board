@@ -258,6 +258,19 @@ export function ItemListPanel(props: ItemListPanelProps) {
      左栏计数里都已经不算挂着卡了——同一屏上两个说法。 */
   const board = useBoardSnapshot(face.controller)
   const cardColumns = useMemo(() => cardsMapOf(board), [board])
+  /**
+   * 这一页**唯一**的附件入口，交给两个写作面（展开区那一栏、新建那条那张纸）。
+   *
+   * 依附件的面有四个（卡片执行 Prompt、评论、会话规则、清单正文），而它们收字节的通道只有
+   * 一条（`useComposerAttachments` → 控制器的 `admitAttachment` → 插件自己那条路由 → 官方
+   * 附件库）。这里只是把**能力**取出来一次：没有看板、或宿主没接上附件库时它是 `undefined`，
+   * 那两个面照样画芯片、点「＋」会明说收不了——不画一枚按下去没反应的按钮。
+   */
+  const admitAttachment = useMemo(() => {
+    const controller = face.controller
+    if (controller === undefined || !controller.attachmentsAvailable()) return undefined
+    return (input: { name: string; data: string; mediaType?: string }) => controller.admitAttachment(input)
+  }, [face.controller])
   const items = cardFocus === undefined
     ? allItems
     : allItems.filter(row => linkedCardIdOf(row, cardColumns) === cardFocus.cardId)
@@ -966,6 +979,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
          而不是进文档——两台设备对一块写字的地方多大有不同意见，不是数据冲突。 */
       proseHeight={prefs.proseHeight}
       onProseHeight={px => choose({ proseHeight: px })}
+      /* 正文那一段的附件：与新建那张纸**同一个入口**（见 `admitAttachment`）。 */
+      admit={admitAttachment}
       /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档
          ——见 `writeStatus`。没有看板可写时传 `undefined`，状态那一格于是只说事实、不给按钮
          ——一个按下去什么都不会发生的控件比一个不在的控件糟。 */
@@ -1732,6 +1747,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           /* 同一份偏好、同一个数：这张纸上的写作框与展开区那五个是同一个控件。 */
           proseHeight={prefs.proseHeight}
           onProseHeight={px => choose({ proseHeight: px })}
+          admit={admitAttachment}
           onCreate={(input, newCard) => {
             if (isBlankCapture(input)) return false
             const made = captureItemRecord(input, Date.now(), newItemId)

@@ -13,7 +13,7 @@
  * orchestration is unit-testable with fakes.
  */
 import { ExecutionService, type ExecutionEvent } from './execution.ts'
-import { attachmentsOf, type AttachmentRef, type PromptAttachment } from './attachment.ts'
+import { attachmentsOf, sameAttachmentRefs, type AttachmentRef, type PromptAttachment } from './attachment.ts'
 import { nextRunAtMs } from './schedule.ts'
 import { nextSessionRuleAt, sessionRuleReadiness, withSessionRules, type SessionRule } from './automation.ts'
 import { armSchedule, moveTaskToStatus, removeSessionFromTask } from './task-transitions.ts'
@@ -3074,6 +3074,10 @@ export class BoardController {
     trigger?: 'cron' | 'on-complete'
     usePrompt?: boolean
     send: 'queue' | 'steer'
+    /** 这一条规则自己带的图片与文件（自定义指令规则用；`usePrompt` 规则在开火那一刻
+     *  读任务的）。它是**接口的一部分**而不是可选的装饰：少了它，读者在规则表单上挂的
+     *  文件在写入这一步就被丢掉，而屏上不会有人说一句话。 */
+    attachments?: readonly PromptAttachment[]
   }): import('./automation.ts').SessionRule | undefined {
     const task = this.tasks.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
@@ -3085,11 +3089,15 @@ export class BoardController {
     const nextAt = trigger === 'cron' ? nextRunAtMs(cron, this.now()) : undefined
     if (trigger === 'cron' && (cron === '' || nextAt === undefined)) return undefined
     if (task.rules?.some(rule => rule.sessionId === input.sessionId)) return undefined
+    /* 附件与它旁边那段字**同一条**：规则只带自己的那一份，所以走的是与任务、评论、
+     * 外源轮同一个分流器（`attachmentLanesOf`）——一条规则不该有第二种存法。 */
+    const lanes = attachmentLanesOf(input.attachments)
     const rule: import('./automation.ts').SessionRule = {
       id: this.uuid(),
       sessionId: input.sessionId,
       instruction: usePrompt ? '' : instruction,
       ...usePrompt ? { usePrompt: true } : {},
+      ...lanes.attachments.length > 0 ? { attachments: lanes.attachments } : {},
       trigger,
       cron,
       send: input.send,
@@ -3127,6 +3135,9 @@ export class BoardController {
     usePrompt?: boolean
     cron?: string
     send?: 'queue' | 'steer'
+    /** 这一条规则自己的附件，整份替换（空表 = 都拿掉）。与别的字段同一条：没传就不动，
+     *  这样「改一句指令」不会顺手清掉读者挂上去的那张图。 */
+    attachments?: readonly PromptAttachment[]
   }): boolean {
     const now = this.now()
     return this.userEdit(taskId, task => {
@@ -3140,6 +3151,9 @@ export class BoardController {
         const cron = trigger === 'cron' ? (patch.cron?.trim() ?? rule.cron) : ''
         const sessionId = patch.sessionId ?? rule.sessionId
         const send = patch.send ?? rule.send
+        const attachments = patch.attachments === undefined
+          ? rule.attachments
+          : attachmentLanesOf(patch.attachments).attachments
         // Validate BEFORE applying: an invalid rule is never half-updated.
         if (sessionId === '') return rule
         if (!usePrompt && instruction === '') return rule
@@ -3154,11 +3168,13 @@ export class BoardController {
         const updated = {
           ...rule, sessionId, instruction, trigger, cron, send,
           ...usePrompt ? { usePrompt: true } : { usePrompt: undefined },
+          ...attachments !== undefined && attachments.length > 0 ? { attachments } : { attachments: undefined },
           ...nextAt !== undefined ? { nextAt } : { nextAt: undefined },
         }
         if (updated.sessionId === rule.sessionId && updated.instruction === rule.instruction
           && updated.trigger === rule.trigger && updated.usePrompt === rule.usePrompt
-          && updated.cron === rule.cron && updated.send === rule.send && updated.nextAt === rule.nextAt) return rule
+          && updated.cron === rule.cron && updated.send === rule.send && updated.nextAt === rule.nextAt
+          && sameAttachmentRefs(updated.attachments, rule.attachments)) return rule
         // The one transition that creates a DEAD ARM is refused (the same law
         // the task-level schedule follows): turning a rule INTO a
         // prompt-sender on a card whose execution prompt is empty would arm

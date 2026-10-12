@@ -37,6 +37,34 @@ export type AttachmentAdmitter = (
   input: { name: string; data: string; mediaType?: string },
 ) => Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }>
 
+/**
+ * 一枚芯片的本地键：**内容寻址的 id 加它在表里的位置**。
+ *
+ * 位置要进来，因为同一个文件可以被挂两次（两份芯片、两个删除键），而删除键只能指一个。
+ * 位置让这个键**在两次渲染之间是同一个字符串**——React 靠它认得出「还是那几枚芯片」；
+ * 而它**不进文档**（`refsOf` 把它丢掉），所以它变了也换不掉任何一条记录。
+ */
+export function chipKeyOf(ref: AttachmentRef, at: number): string {
+  return `${ref.attachmentId}:${at}`
+}
+
+/** 文档里那一份读成芯片表（`refsOf` 是反方向，两个方向只有这一对）。 */
+export function chipsOf(refs: readonly AttachmentRef[]): DraftAttachment[] {
+  return refs.map((ref, at) => ({ ...ref, id: chipKeyOf(ref, at) }))
+}
+
+/** 芯片表写回文档的那一份：本地键不是记录的一部分，出这一层就丢掉。 */
+export function refsOf(chips: readonly DraftAttachment[]): AttachmentRef[] {
+  return chips.map(chip => ({
+    attachmentId: chip.attachmentId,
+    name: chip.name,
+    bytes: chip.bytes,
+    ...(chip.mediaType !== undefined ? { mediaType: chip.mediaType } : {}),
+    ...(chip.width !== undefined ? { width: chip.width } : {}),
+    ...(chip.height !== undefined ? { height: chip.height } : {}),
+  }))
+}
+
 /** Image-lane or file-lane for one picked file (pure routing, no I/O). */
 function intakeDecisionOf(file: File): 'image' | 'file' {
   const decision = intakeDecision(file.type, file.size, { maxEdge: 0, maxBytes: Number.POSITIVE_INFINITY, quality: 1 })
@@ -237,11 +265,19 @@ export function useComposerAttachments(options: ComposerAttachmentOptions): Comp
   const ledgerRef = useRef<readonly DraftAttachment[]>(attachments)
   ledgerRef.current = attachments
 
+  /**
+   * Land a new ledger.
+   *
+   * **它不碰 `error`，而这不是省略——清了它就等于把一次拒绝咽下去。** 每一条收件
+   * 循环都以 `commit` 收尾，而拒绝是在循环里报的（`setError`）：`commit` 顺手清一次，
+   * 读者就只会看到那一行闪一下然后消失，屏上只剩「文件没进来」。「永不明着丢」这句
+   * 承诺就是被这一行清掉的。所以 `error` 只有两个出口：**下一次收件的开头**
+   * （`addFiles` / `addEncoded` 各清一次）与读者自己重试。
+   */
   const commit = useCallback((next: readonly DraftAttachment[]): void => {
     ledgerRef.current = next
     if (controlled !== undefined) controlled.onChange(next)
     else setOwn(next)
-    setError(undefined)
   }, [controlled])
 
   const setAttachments = useCallback((next: readonly DraftAttachment[]): void => {
@@ -251,6 +287,7 @@ export function useComposerAttachments(options: ComposerAttachmentOptions): Comp
   /** Admit one image already encoded (shared by the picker and the v1 restore). */
   const addEncoded = useCallback(async (images: readonly EncodedImage[]): Promise<void> => {
     if (images.length === 0) return
+    setError(undefined)
     setBusyCount(count => count + 1)
     const next = [...ledgerRef.current]
     try {

@@ -370,7 +370,7 @@ export interface NewTaskInput {
     description: string;
     prompt: string;
     /** What the execution prompt carries at birth (see {@link TaskRecord.attachments}). */
-    attachments?: AttachmentRef[];
+    attachments?: readonly AttachmentRef[];
     /** LEGACY: only ever carried THROUGH from an older task (a template of one);
      *  this revision never produces it. */
     promptImages?: TaskImage[];

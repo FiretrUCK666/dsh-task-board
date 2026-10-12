@@ -26,11 +26,15 @@ import {
   automationRowsOf, blockedCauseOf, pausedFailedOf, sessionRuleOf, sessionRuleReadiness, type AutomationRow,
 } from '../../core/automation.ts'
 import { isValidCron, nextRunAtMs } from '../../core/schedule.ts'
+import { attachmentCountsOf, attachmentsOf, type AttachmentRef } from '../../core/attachment.ts'
 import {
   chainUnlimited, lastPlainResult, ruleArmingBlocked, ruleReadiness, type ScheduleMode, type TaskRecord,
 } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import { AttachmentStrip, attachBusyLabel } from './AttachmentStrip.tsx'
+import { chipsOf, refsOf, useComposerAttachments, type DraftAttachment } from './composer-attachments.ts'
+import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { cronHumanLabel } from './cron-label.ts'
 import { draftStore, ruleDraftKey } from './drafts.ts'
 import { formatDateTime } from './format-time.ts'
@@ -195,6 +199,8 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
 }) {
   const readiness = sessionRuleReadiness(task, sessionRuleOf(row))
   const title = ruleSessionTitle(controller, task, row.sessionId)
+  /* 这一条规则带的东西，按同一个读法数出来（见下面那两行怎么用它）。 */
+  const attachmentCounts = attachmentCountsOf(attachmentsOf(row))
   // The switch is refused when ARMING would be refused, and only then: turning a
   // dead arm off is never refused, so it must stay operable or the rule could
   // never be disarmed. Same condition the controller uses, so the switch and the
@@ -247,6 +253,17 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
       </span>
       <span className={css.autoRuleInstruction} title={row.usePrompt === true ? t('auto.content.usePrompt') : row.instruction}>
         {row.usePrompt === true ? t('auto.content.usePrompt') : row.instruction}
+        {/* **这一条规则发出去的那句话还带着什么。**
+            与评论区的计数是**同一个读法**（`attachmentsOf` + `attachmentCountsOf`）与
+            同一对词（`review.commentImages` / `review.commentFiles`）：同一个事实在两个
+            面上各写一遍，就是改一处不报错的那种债。一条规则挂着图却在行上什么都不说，
+            读者只能打开编辑器才知道自己配了什么。 */}
+        {attachmentCounts.images > 0 && (
+          <span className={css.autoRuleAttach}>{t('review.commentImages', { n: String(attachmentCounts.images) })}</span>
+        )}
+        {attachmentCounts.files > 0 && (
+          <span className={css.autoRuleAttach}>{t('review.commentFiles', { n: String(attachmentCounts.files) })}</span>
+        )}
       </span>
       <span className={css.autoRuleMeta} title={row.trigger === 'cron' ? row.cron : undefined}>
         {row.trigger === 'cron' ? (
@@ -372,6 +389,27 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
   // execution prompt (绘画 = 定时/每次完成把执行 Prompt 注入单个会话).
   const [usePrompt, setUsePrompt] = useState(existing?.usePrompt === true)
   const [steer, setSteer] = useState(existing?.send === 'steer')
+  /**
+   * 这一条规则自己带的图片与文件。
+   *
+   * **与卡片执行 Prompt 同一个账本**（同一个钩子、同一档图片预算、同一个上限）：它们都是
+   * 「随记录保存、开火那一刻读回字节」的那种附件，所以两处不该各有一套预算。规则自己的附件
+   * 属于**读者写的那句话**，所以它只在「自己写」那一档出现——`usePrompt` 那一档发的是任务的
+   * Prompt，附件也跟着任务走（那一段由下面的提示行说清）。
+   *
+   * 受控（本地状态就是「正在编辑的那一份」）：这是**还没保存的编辑**，没有可供往返的文档
+   * 字段，存下那一下才跟着 `attachments` 一起落。
+   */
+  const [chips, setChips] = useState<readonly DraftAttachment[]>(() => chipsOf(existing?.attachments ?? []))
+  const attach = useComposerAttachments({
+    budget: TASK_IMAGE_BUDGET,
+    maxImages: MAX_TASK_IMAGES,
+    ...controller.attachmentsAvailable() ? { admit: input => controller.admitAttachment(input) } : {},
+    controlled: { attachments: chips, onChange: setChips },
+  })
+  /* 这一档实际会送出去的附件数：**任务的**那一份（`ruleAttachmentsOf` 读的就是它），
+     走同一个桥（老记录的字节形状也算数），所以这一行不会与真发出去的东西不一致。 */
+  const promptAttachmentCount = attachmentsOf(task).length
   // The ONE failing field at a time (first failure wins): the message renders
   // inline next to that field and only that field wears the red border — a
   // combined "instruction AND cron" error names nothing. `promptEmpty` is its
@@ -428,10 +466,15 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
       usePrompt?: boolean
       cron: string
       send: 'queue' | 'steer'
+      attachments: readonly AttachmentRef[]
     } = {
       sessionId, instruction: usePrompt ? '' : trimmedInstruction, trigger,
       ...usePrompt ? { usePrompt: true } : {},
       cron: trigger === 'cron' ? trimmedCron : '', send,
+      /* **附件属于读者写的那句话。** 换成「发送任务 Prompt」之后，这一条不再有自己的话，
+       * 附件也就跟着任务那一份走——所以写进去的是空表（不是忘掉，也不是把那几张悄悄留在
+       * 一条用不到它们的规则上）。表单里那几张还在：改回「自己写」就回来了。 */
+      attachments: usePrompt ? [] : refsOf(chips),
     }
     if (existing !== undefined) {
       const ok = controller.updateSessionRule(task.id, existing.id, input)
@@ -499,19 +542,36 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             />
           </label>
           {!usePrompt ? (
-            <label className={css.autoField}>
-              <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
-              <PromptInput
-                value={instruction}
-                onChange={next => { setInstruction(next); setError(undefined); draftStore.set(draftKey, next) }}
-                placeholder={t('auto.form.instructionPlaceholder')}
-                rows={3}
-                controller={controller}
-                sessionId={sessionId === '' ? undefined : sessionId}
-                invalid={error === 'instruction'}
+            /* **写完那句话的框和它带的附件是同一个字段**，所以外面这一格是 `<div>` 而不是
+               `<label>`：一个 label 只认一个控件，而它会把附件条上每一枚按钮的点击都转给
+               那个文本域。里面的 label 仍然把字段名与写入框绑在一起，两格读同一个类，
+               所以这一块看上去仍然是一个字段（与清单新建那张纸同一条律）。 */
+            <div className={css.autoField} {...attach.dropProps}>
+              <label className={css.autoField}>
+                <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
+                <PromptInput
+                  value={instruction}
+                  onChange={next => { setInstruction(next); setError(undefined); draftStore.set(draftKey, next) }}
+                  placeholder={t('auto.form.instructionPlaceholder')}
+                  rows={3}
+                  controller={controller}
+                  sessionId={sessionId === '' ? undefined : sessionId}
+                  invalid={error === 'instruction'}
+                />
+                {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
+              </label>
+              {/* 附件就在那句话下面：它是**这句话的一部分**，不是这张表单的第 6 个字段
+                  ——与卡片执行 Prompt、清单正文那几处同一个组件、同一句话。 */}
+              <AttachmentStrip
+                attachments={attach.attachments}
+                onAdd={attach.addFiles}
+                onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
+                busy={attach.busy}
+                busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
+                error={attach.error}
+                hint={t('auto.form.attachHint')}
               />
-              {error === 'instruction' && <span className={css.formError}>{t('auto.form.invalidInstruction')}</span>}
-            </label>
+            </div>
           ) : (
             // The prompt-reading mode states its precondition up front rather
             // than letting 保存 fail: a rule that sends the task's prompt cannot
@@ -519,9 +579,18 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
             // nothing. The reason line replaces the generic hint only in that
             // state — a workable card still gets the explanation of what the
             // mode DOES.
-            ruleArmingBlocked(task)
-              ? <p className={css.formError}>{t('auto.form.promptEmpty')}</p>
-              : <p className={css.detailHint}>{t('auto.form.usePromptHint')}</p>
+            <>
+              {ruleArmingBlocked(task)
+                ? <p className={css.formError}>{t('auto.form.promptEmpty')}</p>
+                : <p className={css.detailHint}>{t('auto.form.usePromptHint')}</p>}
+              {/* **这一档的附件跟着任务走**，所以说的是任务那一份有几个——一条规则在这里
+                  挂着图却发不出去，是这一行要挡的事（`ruleAttachmentsOf` 读的正是任务）。 */}
+              <p className={css.detailHint}>
+                {promptAttachmentCount > 0
+                  ? t('auto.form.promptAttach', { n: String(promptAttachmentCount) })
+                  : t('auto.form.promptAttachNone')}
+              </p>
+            </>
           )}
           {trigger === 'cron' && (
             <label className={css.autoField}>

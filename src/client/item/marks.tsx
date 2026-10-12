@@ -276,6 +276,26 @@ export function StepsMark(): React.ReactElement {
 }
 
 /**
+ * 附件那一枚：一枚回形针 + 这一条带了几个。
+ *
+ * 与步数那一枚同族、同一条律（**墨围绕 viewBox 的正中对称**）：回形针画在 12×12 里，
+ * 墨从 y 1.5 到 y 10.5、从 x 3.4 到 x 8.6，两轴的中心都是 6——所以它旁边那串数字按
+ * 同一个中心读，不必为这一枚另配一个补偿。
+ *
+ * 它**非有不可**：一条正文里挂着一张图的记录，在列表上看不出与别的一条有任何不同，
+ * 而「哪一条里有那张图」正是读者回来找的东西。一枚 12px 的回形针加一个数就够了，
+ * 按它等于打开这一条（图在正文那一段下面）。
+ * @returns 一枚 12px 的回形针。
+ */
+export function AttachMark(): React.ReactElement {
+  return (
+    <svg viewBox="0 0 12 12" width="12" height="12" aria-hidden="true">
+      <path d="M8.6 4.0v3.9a2.6 2.6 0 0 1-5.2 0V3.2a1.7 1.7 0 0 1 3.4 0v4.5a.9.9 0 0 1-1.8 0V4.0" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+/**
  * 日期那一枚：一枚钟表图标 + 那个读数。
  *
  * 读者从参考图里学到的形状就是它：日期挨着 ⋮、左边有一枚图标，而不是跟在标题后面加一对

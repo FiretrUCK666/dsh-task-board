@@ -74,6 +74,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 12,
     title: '画廊随访',
     body: '把东墙的灯换掉',
+    attachments: [],
     notes: '灯座是旧款',
     steps: [],
     status: 'todo',

@@ -30,6 +30,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 1,
     title: 'a thing',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',
@@ -52,6 +53,7 @@ function fakeRes(): ServerResponse & { state: { status: number; body: string; he
   const state = {
     status: 200,
     body: '',
+    attachments: [],
     headers: {} as Record<string, string>,
     writes: [] as string[],
     close() { emitter.emit('close') },

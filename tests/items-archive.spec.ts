@@ -21,6 +21,7 @@ function row(patch: Partial<ItemRecord> = {}): Record<string, unknown> {
     ref: 4,
     title: '找回我',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'open',

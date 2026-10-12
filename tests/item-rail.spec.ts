@@ -46,6 +46,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 1,
     title: '一条',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',

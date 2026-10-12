@@ -5597,6 +5597,73 @@ button.interactionOption:focus-visible,
   gap: 4px;
 }
 
+/* 任务清单的记号（`- [ ]` / `- [x]`）：**画出来，不打印 `[x]`**。
+   一行里的一个小方块：`vertical-align: middle` 让它的盒子中心落在文本的中间高度上
+   ——图标与字之间没有第二条基线要对，所以这里不需要一个手量的偏移数。
+   完成的那一格只换墨与底，**不给字加删除线**：一份计划里已经做完的步骤仍然是这份计划。 */
+.mdTask {
+  list-style: none;
+}
+
+.mdTaskBox {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  inline-size: 13px;
+  block-size: 13px;
+  margin-inline-end: 6px;
+  vertical-align: middle;
+  border: 1px solid var(--dsw-alias-border-l2);
+  /* 与内联代码那一个小盒子同一档（`.mdCode`）：它们都是**正文行里的一个小方块**，
+     而阶梯令牌（--dsh-tb-radius-sm 是 10px）是给面板与输入框的——套到 13px 的方盒上
+     就是一个圆。 */
+  border-radius: 4px;
+  color: var(--dsw-alias-state-business-primary);
+}
+
+.mdTaskBox[data-done=''] {
+  border-color: var(--dsw-alias-state-business-primary);
+}
+
+/* ── 表格 ──────────────────────────────────────────────────────────────────────
+   表格在**它自己的框里横向滚**，不把面板撑宽：读者写的那些字不是这一屏该重排的东西，
+   而一张表是唯一可能溢出的块。`data-dsh-tb-scroll` 挂的是共用的滚动文法（窄条、两端内缩）。 */
+.mdTableScroll {
+  max-inline-size: 100%;
+  margin: 8px 0;
+  overflow-x: auto;
+}
+
+.mdTable {
+  border-collapse: collapse;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.mdTable th,
+.mdTable td {
+  padding: 4px 10px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  text-align: start;
+  vertical-align: top;
+}
+
+.mdTable th {
+  font-weight: 600;
+  background: var(--dsw-alias-bg-layer-2);
+}
+
+/* 对齐栏：分隔行里的冒号说了每一栏怎么对齐（`:--:` 居中、`--:` 右），一个来源。 */
+.mdTable th[data-align='center'],
+.mdTable td[data-align='center'] {
+  text-align: center;
+}
+
+.mdTable th[data-align='right'],
+.mdTable td[data-align='right'] {
+  text-align: right;
+}
+
 .mdQuote {
   margin: 8px 0;
   padding: 2px 12px;
@@ -6321,6 +6388,14 @@ span.interactionOptions {
   outline: 2px dashed var(--dsh-tb-accent);
   outline-offset: -2px;
   border-radius: var(--dsh-tb-radius-md);
+}
+
+/* 会话规则那一行里「这句话还带着什么」的读数（图片 / 文件）。与评论区那两行**同一对词**
+   （`review.commentImages` / `review.commentFiles`），所以这里只给它的位置与墨档：跟在
+   指令后面、比指令轻一档，读起来是那句话的一个后缀。 */
+.autoRuleAttach {
+  margin-inline-start: 6px;
+  color: var(--dsh-tb-text-2);
 }
 .attachAdd {
   display: inline-flex;

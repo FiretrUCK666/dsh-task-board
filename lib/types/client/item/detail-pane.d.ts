@@ -17,6 +17,7 @@ import type { ItemStep } from '../../core/item.ts';
 import type { ItemRowView } from '../../core/item-view.ts';
 import { type TaskStatus } from '../../core/tasks.ts';
 import type { ItemPatch } from '../../core/item-transitions.ts';
+import { type AttachmentAdmitter } from '../board/composer-attachments.ts';
 export interface ItemDetailProps {
     /**
      * The row on show AS ITS PROJECTION.
@@ -135,6 +136,15 @@ export interface ItemDetailProps {
      */
     readonly proseHeight?: number;
     readonly onProseHeight?: (px: number) => void;
+    /**
+     * 把读者选的一张图或一个文件收进官方附件库，换回一个 ref。
+     *
+     * **附件这一条通道只有这一个入口**（与卡片、评论、会话规则同一个
+     * `useComposerAttachments`），而它需要的东西只有一处有：那一次上传要发一个请求。
+     * 所以这一屏拿到的是**能力本身**，不是控制器——没有它（没有看板、宿主没接上附件库）
+     * 时，芯片照样显示、点「＋」会明说收不了，而不是画一枚按下去没反应的按钮。
+     */
+    readonly admit?: AttachmentAdmitter;
     readonly onRemove: () => void;
 }
 /**

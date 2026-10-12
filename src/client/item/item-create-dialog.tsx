@@ -38,6 +38,9 @@ import { ProseField } from './prose-field.tsx'
 import { t } from '../locales.ts'
 import { Button } from '../board/ui.tsx'
 import { TagField, tagName } from './tag-field.tsx'
+import { AttachmentStrip, attachBusyLabel } from '../board/AttachmentStrip.tsx'
+import { refsOf, useComposerAttachments, type AttachmentAdmitter } from '../board/composer-attachments.ts'
+import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/attach.ts'
 import css from './item.module.css'
 
 /** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
@@ -90,6 +93,11 @@ export interface ItemCreateDialogProps {
    */
   readonly proseHeight?: number
   readonly onProseHeight?: (px: number) => void
+  /**
+   * 收进官方附件库的那一次上传，与展开区那一栏**是同一个能力**（同一个钩子、同一条路由）。
+   * 没有它（没接上看板、宿主没接上附件库）时，「＋」照样在，点它会明说收不了。
+   */
+  readonly admit?: AttachmentAdmitter
 }
 
 /**
@@ -139,6 +147,19 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   }, [cardNaming])
   const [parsed, setParsed] = useState<ComposerParse | undefined>(undefined)
   const [words, setWords] = useState('')
+  /**
+   * 正文那一段的附件，**与展开区那一栏是同一个账本**（同一个钩子、同一组上限、同一句话）。
+   *
+   * 这一张纸是**还没出生的记录**，所以它自己保管（非受控）：没有可供往返的文档字段，
+   * 存下那一下才把 ref 交给 capture 一起落。取消就是整张纸一起作废——附件也不例外。
+   */
+  const attach = useComposerAttachments({
+    budget: TASK_IMAGE_BUDGET,
+    maxImages: MAX_ITEM_IMAGES,
+    maxFiles: MAX_ITEM_FILES,
+    ...props.admit !== undefined ? { admit: props.admit } : {},
+  })
+  const { setAttachments: clearAttachments } = attach
   /** 「挂卡会动到什么」那一句的把手——按需出现，理由在下面那一行旁边。 */
   const cardNote = useNote(t('item.cardLink.why'))
   const sheet = useRef<HTMLDivElement | null>(null)
@@ -160,8 +181,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     setPendingCard(undefined); setCardNaming(false); setCardDraft(''); setCardHint(false)
     setParsed(undefined)
     setTouched(new Set())
+    clearAttachments([])
     titleField.current?.focus()
-  }, [props.open])
+  }, [props.open, clearAttachments])
 
   /**
    * THE GRAMMAR FILLS THE FORM, ONCE PER KEYSTROKE, AND ONLY WHERE THE READER
@@ -263,6 +285,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
     const input: ItemCapture = {
       title: title.trim(),
       body,
+      attachments: refsOf(attach.attachments),
       notes,
       origin: 'human',
       status,
@@ -343,20 +366,36 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               onKeyDown={event => { if (event.key === 'Enter') { event.preventDefault(); submit() } }}
             />
 
-            <label className={css.itemCreateDialogField}>
-              <span className={css.itemCreateDialogLabel}>{t('item.field.body')}</span>
-              {/* 与展开区那一栏是**同一个写入框**（`prose-field.tsx`）：同一个地板、同一个
-                  高度、同一条横贯下沿的抓条、同一个数（读者拉过的那个）。这一张纸只是把
-                  它画成竖排的一张表单，而不是另一个长得像它的盒子。 */}
-              <ProseField
-                value={body}
-                onChange={value => { mark('body'); setBody(value) }}
-                placeholder={t('item.field.bodyHint')}
-                ariaLabel={t('item.field.body')}
-                height={props.proseHeight}
-                onHeight={props.onProseHeight}
+            {/* **正文这一段有两个控件**（写字的框、挂附件的条），所以外面这一格是 `<div>`
+                而不是 `<label>`：一个 label 只能认一个控件，而它会把条上每一枚按钮的点击都
+                转给那个文本框。里面的 label 仍然把名字与写入框绑在一起（点名字就落光标），
+                两格的几何都读同一个类，所以这一块看上去仍然是一个字段。 */}
+            <div className={css.itemCreateDialogField} {...attach.dropProps}>
+              <label className={css.itemCreateDialogField}>
+                <span className={css.itemCreateDialogLabel}>{t('item.field.body')}</span>
+                {/* 与展开区那一栏是**同一个写入框**（`prose-field.tsx`）：同一个地板、同一个
+                    高度、同一条横贯下沿的抓条、同一个数（读者拉过的那个）。这一张纸只是把
+                    它画成竖排的一张表单，而不是另一个长得像它的盒子。 */}
+                <ProseField
+                  value={body}
+                  onChange={value => { mark('body'); setBody(value) }}
+                  placeholder={t('item.field.bodyHint')}
+                  ariaLabel={t('item.field.body')}
+                  height={props.proseHeight}
+                  onHeight={props.onProseHeight}
+                />
+              </label>
+              {/* 附件在**同一个字段里**：它是正文那一段的一部分，不是这张纸的第 7 个字段
+                  ——展开区那一栏也是这么摆的（同一个组件、同一句话）。 */}
+              <AttachmentStrip
+                attachments={attach.attachments}
+                onAdd={attach.addFiles}
+                onRemove={id => { clearAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
+                busy={attach.busy}
+                busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
+                error={attach.error}
               />
-            </label>
+            </div>
 
             <label className={css.itemCreateDialogField}>
               <span className={css.itemCreateDialogLabel}>{t('item.create.steps')}</span>

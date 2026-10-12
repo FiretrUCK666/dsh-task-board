@@ -42,6 +42,8 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
+import type { AttachmentRef } from '../src/core/attachment.ts'
+import type { AttachmentAdmitter } from '../src/client/board/composer-attachments.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
 import { DEFAULT_VIEW_PREFS, ITEM_OVERLAYS, VIEW_PREFS_KEY, type ItemOverlay } from '../src/client/item/view-prefs.ts'
@@ -255,6 +257,7 @@ export const DAY = 86_400_000
 export function fixtures(): ItemRecord[] {
   const base = {
     body: '',
+    attachments: [] as ItemRecord['attachments'],
     notes: '',
     steps: [],
     status: 'todo' as const,
@@ -570,11 +573,21 @@ function faceOf(
  * @param prefs - remembered view fields to seed, on top of the defaults.
  * @returns the markup.
  */
-export function renderPanel(
-  items: readonly ItemRecord[],
-  band: Band = 'wide',
-  page: Page = 'list',
-  controller: unknown = {
+/**
+ * The board face a render gets when the caller does not name one.
+ *
+ * IT IS THE REAL FAKE, NOT A TWO-METHOD STAND-IN, and that is a fix rather than
+ * a tidy-up: a literal `{ getSnapshot, liveStateOf }` is a face NARROWER than
+ * the real controller, so the day the panel asked the face anything else the
+ * bench answered `… is not a function` about code that is correct (hard rule 18
+ * — a fake valid only until the next question is not a fixture). Composing it
+ * from {@link fakeController} means every method the real controller has is
+ * present here by construction, and the only thing overridden is the two cards
+ * this bench's own fixture rows hang off.
+ */
+function defaultFace(): unknown {
+  return {
+    ...fakeController([]),
     getSnapshot: () => ({
       tasks: [
         { id: 'task-1', title: '画廊第二版', status: 'todo', prompt: 'p', description: '' },
@@ -582,8 +595,14 @@ export function renderPanel(
         { id: 'task-review', title: '给画廊换一批挂画', status: 'review', prompt: 'p', description: '' },
       ],
     }),
-    liveStateOf: () => 'idle',
-  },
+  }
+}
+
+export function renderPanel(
+  items: readonly ItemRecord[],
+  band: Band = 'wide',
+  page: Page = 'list',
+  controller: unknown = defaultFace(),
   prefs: Record<string, unknown> = {},
   /** WHICH ROW IS EXPANDED, for a capture. `renderToStaticMarkup` presses nothing,
    *  so the expansion is the one state a static render cannot reach by itself. */
@@ -1046,7 +1065,7 @@ function cardsFor(items: readonly ItemRecord[], only?: readonly string[]): { id:
   return [...new Set(ids)].map(id => ({ id, title: titles[id] ?? `看板上的 ${id}` }))
 }
 
-export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }]) {
+export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }], admit?: AttachmentAdmitter) {
   const minted: TaskRecord[] = []
   let rows: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[] = tasks
   /**
@@ -1073,7 +1092,7 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
       listeners.add(listener)
       return () => { listeners.delete(listener) }
     },
-    ...boundRecorder(calls, minted, notify),
+    ...boundRecorder(calls, minted, notify, admit),
     /** A READING of what the face has minted so far — the mounted panel exposes
      *  it so a promote's seeding can be asserted; reading, not holding. */
     mintedSnapshot: (): readonly TaskRecord[] => [...minted],
@@ -1114,7 +1133,7 @@ export function fakeController(calls: string[], tasks: { id: string; title: stri
  * So the two constructors mint a real record with the real core constructor, and
  * only the genuinely boolean methods answer `true`.
  */
-function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void): Record<string, (...args: unknown[]) => unknown> {
+function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void, admit?: AttachmentAdmitter): Record<string, (...args: unknown[]) => unknown> {
   const mutators = [
     'updateTask', 'deleteTask', 'moveTask', 'runTask',
     'openTask', 'closeTask', 'addComment', 'setSchedule', 'ackTask', 'duplicateTask',
@@ -1161,6 +1180,20 @@ function boundRecorder(calls: string[], minted: TaskRecord[], notify: () => void
    * 部署没有接那个目录时 `runCatalog()` 就回 undefined，而 `RunConfigEditor` 为这一档专门
    * 写了一段（「这是关于部署的事实，不是读失败」）。测试台架没有部署，所以这就是该给的那一档。 */
   out.runCatalog = () => undefined
+  /* **附件那一条通道。** 真实 controller 的答案是「宿主接没接上附件库」：没接上时
+   * `attachmentsAvailable()` 回 false、`admitAttachment` 回 `{ok:false,error:'no-store'}`，
+   * 而界面为这一档专门写了一段（「＋」照样在，点它明说收不了）。台架没有宿主，所以这就是
+   * 它该给的那一档——不是回一个更窄的假面（回 undefined 会让正确的实现抛
+   * `attachmentsAvailable is not a function`，那是被假面报出来的缺陷，硬性规范 18）。
+   *
+   * 要测「选了文件会怎样」的用例从 `over.admit` 换掉它：那一次上传的字节进的是官方附件库，
+   * 台架能扮演的只有「收下字节、回一个 ref」这一半。 */
+  out.attachmentsAvailable = (): boolean => admit !== undefined
+  out.admitAttachment = (input: unknown): Promise<{ ok: true; ref: AttachmentRef } | { ok: false; error: string }> => {
+    if (admit === undefined) return Promise.resolve({ ok: false as const, error: 'no-store' })
+    calls.push('admitAttachment(1)')
+    return admit(input as { name: string; data: string; mediaType?: string })
+  }
   return out
 }
 
@@ -1182,7 +1215,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; proseHeight?: number; focus?: { readonly token: number; readonly cardId: string } } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; proseHeight?: number; focus?: { readonly token: number; readonly cardId: string }; admit?: AttachmentAdmitter } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1197,7 +1230,7 @@ export function mountPanel(
   const openCard = over.openCard === undefined
     ? undefined
     : (cardId: string) => { openedCards.push(cardId); over.openCard?.(cardId) }
-  const controller = fakeController(calls, cardsFor(items, over.cards))
+  const controller = fakeController(calls, cardsFor(items, over.cards), over.admit)
   const root = createRoot(host)
   const signal = new AbortController().signal
 

@@ -78,6 +78,21 @@ export interface AttachmentCarrier {
  */
 export declare function normalizeAttachmentRefs(raw: unknown): AttachmentRef[] | undefined;
 /**
+ * 两份附件表**是不是同一份**——问的是「这次改动动了它没有」。
+ *
+ * 比的是内容寻址的 id、名字与字节数三项，而不是整对象：`mediaType` / `width` /
+ * `height` 是显示用的补充信息，同一份字节补不补它们都还是那个附件，而把它们算进
+ * 「变了没」会让一次纯粹的补充渲染算成一次修改、盖一次戳、把每台设备都叫醒。
+ * `undefined` 与空表**不是同一件事**（前者是「没人说过」，后者是「一个都不留」），
+ * 所以两端各自缺席时才相等。
+ *
+ * 一处定义：清单那条 patch 的「按值比」与会话规则那条 patch 的「按值比」是同一个问题。
+ * @param a - 左表。
+ * @param b - 右表。
+ * @returns 两份表是否逐条相同。
+ */
+export declare function sameAttachmentRefs(a: readonly AttachmentRef[] | undefined, b: readonly AttachmentRef[] | undefined): boolean;
+/**
  * Every attachment one record carries, in document order, whichever age wrote
  * it. THE one bridge: the send path, the caption and the surfaces all read
  * this, so a legacy document cannot be visible to one of them and invisible to

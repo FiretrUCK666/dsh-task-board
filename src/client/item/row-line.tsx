@@ -42,7 +42,7 @@ import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { ITEM_STATUSES, type ItemDateKey, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { DATE_FIELD_KEY, GROUP_LABEL } from './labels.ts'
-import { CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
+import { AttachMark, CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
 import { formatItemDate } from './model.ts'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
@@ -408,6 +408,22 @@ export function ItemRowLine(props: ItemRowLineProps) {
         * 三枚各有一枚图标，而其中只有「步数」是控件（按下去开步骤那一栏）：卡与日期这两枚
         * 说的是事实，事实不该长得像按钮。 */}
       <div className={css.itemRowMarks}>
+        {/* **附件也在这簇记号里，因为「这一条里有没有东西」是一行的事实。**
+            一条正文里挂着一张图的记录，在列表上曾经与别的一条完全一样——而读者回来找的
+            正是那一条。它是**控件**（按它打开这一条，图在正文那一段下面），与步数那一枚
+            同一族：触屏没有 hover，所以承载这件事的东西必须点得到（硬性规范 11③）。 */}
+        {item.attachments.length > 0 && (
+          <button
+            type="button"
+            className={css.itemRowAttach}
+            aria-label={t('item.row.attach', { n: String(item.attachments.length) })}
+            title={t('item.row.attach', { n: String(item.attachments.length) })}
+            onClick={event => { event.stopPropagation(); props.onToggle() }}
+          >
+            <AttachMark />
+            {String(item.attachments.length)}
+          </button>
+        )}
         {view.progress !== undefined && (
           <button
             type="button"

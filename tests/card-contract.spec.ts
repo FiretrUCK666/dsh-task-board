@@ -837,7 +837,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       { px: '12px', why: /sidebarFooterAction|interactionCard/ },
       { px: '22px', why: /reviewMessage/ },
       { px: '3px', why: /dropIndicator/ },
-      { px: '4px', why: /scrollbar-thumb|mdCode|attachRemove/ },
+      { px: '4px', why: /scrollbar-thumb|mdCode|attachRemove|mdTaskBox/ },
       { px: '1px', why: /MeterSegment/ },
       { px: '2px', why: /MeterSwatch/ },
     ]

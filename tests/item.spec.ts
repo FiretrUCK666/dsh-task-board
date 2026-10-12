@@ -33,6 +33,7 @@ function item(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 12,
     title: 'A thing',
     body: 'the body',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',
@@ -171,6 +172,20 @@ describe('parseItems', () => {
     updatedAt: T0,
     ...patch,
   }])
+
+  it('attachments go through the ONE ref grammar, and a row with none carries the empty table', () => {
+    /* 一行记录自己的字段永远是表，不是 `undefined`：下游（行上的回形针、正文那一段的
+       芯片、提升计划）读的是同一张表，让它们各自去判一次「有没有」就是三处各写一遍。
+       读不懂的行**丢掉那一行**而不是整条不要——一条记录是人写下的东西，附件是它的内容。 */
+    const [plain] = parseItems(raw({}), counter())
+    expect(plain.attachments).toEqual([])
+    const [row] = parseItems(raw({
+      attachments: [null, { attachmentId: '', name: 'x', bytes: 1 }, { attachmentId: 'att-ok', name: '灯位.png', bytes: 2048, mediaType: 'image/png', width: 800, height: 600 }],
+    }), counter())
+    expect(row.attachments).toEqual([
+      { attachmentId: 'att-ok', name: '灯位.png', bytes: 2048, mediaType: 'image/png', width: 800, height: 600 },
+    ])
+  })
 
   it('starts empty on absent, unparseable and non-array input', () => {
     expect(parseItems(null, counter())).toEqual([])

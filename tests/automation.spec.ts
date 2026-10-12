@@ -35,6 +35,22 @@ describe('automationRowsOf', () => {
   it('yields an empty list for a task with neither kind', () => {
     expect(automationRowsOf(createTask({ title: 't', description: '', prompt: '' }, NOW, 'task-1'))).toEqual([])
   })
+
+  it('carries a rule\'s attachments into the row (the row is where they are read back)', () => {
+    /* 那一行要说的「这一条规则还带着什么」读的是这个投影；投影不带，行上就永远说不出
+       ——而读者只能打开编辑器才知道自己配了什么。拷贝而不是同一个数组：行是**读数**，
+       它不该拿着文档里那一份（改一处会跟着动另一处）。 */
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    const withAttachment = { ...rule(), attachments: [lamp] }
+    const rows = automationRowsOf(withSessionRules(createTask({ title: 't', description: '', prompt: 'run' }, NOW, 'task-1'), [withAttachment]))
+    const row = rows[0]
+    if (row?.kind !== 'session-rule') throw new Error('the rule did not project into a session-rule row')
+    expect(row.attachments).toEqual([lamp])
+    expect(row.attachments).not.toBe(withAttachment.attachments)
+    // 没有附件的规则：这一栏干脆不在（空表与「没人说过」不是同一件事）。
+    const plain = automationRowsOf(withSessionRules(createTask({ title: 't', description: '', prompt: 'run' }, NOW, 'task-1'), [rule()]))[0]
+    expect(plain !== undefined && 'attachments' in plain).toBe(false)
+  })
 })
 
 describe('automationTasksOf (the overview membership)', () => {

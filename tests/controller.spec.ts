@@ -4719,6 +4719,86 @@ describe('session automation rules (给会话定时发指令)', () => {
     expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules).toHaveLength(2)
   })
 
+  it('a rule carries its own attachments, and they go out with the text it sends', async () => {
+    /* 读者在规则表单上挂的那张图，此前**在写入口就没了**：`createSessionRule` 的入参
+       里根本没有附件这一栏，而屏上不会有人说一句话。现在它与那段字走同一条账（规则自己
+       的那一份），开火那一刻与文本一起送出去。 */
+    const seen: Array<{ text: string; attachments: unknown }> = []
+    const { controller } = ruleHarness(['s-a'], {
+      sessionMessage: async (_sessionId, text, _mode, attachments) => { seen.push({ text, attachments }); return { ok: true as const } },
+    })
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const lamp = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
+    const rule = controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: '看一眼这面墙', cron: '* * * * *', send: 'steer', attachments: [lamp],
+    })!
+    expect(rule.attachments).toEqual([lamp])
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(seen).toHaveLength(1)
+    expect(seen[0]?.text).toBe('看一眼这面墙')
+    expect(seen[0]?.attachments).toEqual([lamp])
+    // 这一轮自己也留了痕：评论区的「含 N 张图片」读的就是它。
+    const row = controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
+    expect(row.executions.find(round => round.comment === '看一眼这面墙')?.attachments).toEqual([lamp])
+  })
+
+  it('editing a rule replaces its attachments; not mentioning them leaves them alone', () => {
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const a = { attachmentId: 'att-a', name: 'a.txt', bytes: 3 }
+    const b = { attachmentId: 'att-b', name: 'b.txt', bytes: 4 }
+    const rule = controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: 'hi', cron: '* * * * *', send: 'queue', attachments: [a],
+    })!
+    const rulesOf = (): readonly { attachments?: readonly { attachmentId: string }[] }[] =>
+      controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.rules ?? []
+    // 改一句字，**不许顺手清掉读者挂上去的那一张**（没传就是不动）。
+    expect(controller.updateSessionRule(task.id, rule.id, { instruction: '改一句' })).toBe(true)
+    expect(rulesOf()[0]?.attachments).toEqual([a])
+    // 传了就整份替换，空表就是都拿掉。
+    expect(controller.updateSessionRule(task.id, rule.id, { attachments: [b] })).toBe(true)
+    expect(rulesOf()[0]?.attachments).toEqual([b])
+    expect(controller.updateSessionRule(task.id, rule.id, { attachments: [] })).toBe(true)
+    expect(rulesOf()[0]?.attachments).toBeUndefined()
+  })
+
+  it('re-sending the same attachments is not a write (a rebuilt array is not a change)', () => {
+    // 表单每次渲染都重建那张表，所以按引用比必然不等；照引用比就是「打开一次编辑器、
+    // 按一次保存」= 一次修改 = 盖一次戳 = 把每台设备都叫醒，而屏上什么都没变。
+    const { controller } = ruleHarness(['s-a'], {})
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run' })!
+    const a = { attachmentId: 'att-a', name: 'a.txt', bytes: 3 }
+    const rule = controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: 'hi', cron: '* * * * *', send: 'queue', attachments: [a],
+    })!
+    expect(controller.updateSessionRule(task.id, rule.id, { attachments: [{ ...a }] })).toBe(false)
+    expect(controller.updateSessionRule(task.id, rule.id, { instruction: 'hi' })).toBe(false)
+    // 对照：真的换了内容就是一次写入——否则上面那条「不是写入」可能只是「从不写入」。
+    expect(controller.updateSessionRule(task.id, rule.id, { attachments: [{ attachmentId: 'att-a', name: 'a.txt', bytes: 4 }] })).toBe(true)
+  })
+
+  it('a prompt-sending rule reads the TASK attachments at fire time, never its own stale copy', async () => {
+    /* `usePrompt` 那一档发的是任务当下的 Prompt，**附件也跟着任务那一份**：规则自己
+       留着一份旧的（改档时留下的），照它发就会送出一张读者早就换掉的图。 */
+    const seen: Array<{ attachments: unknown }> = []
+    const { controller } = ruleHarness(['s-a'], {
+      sessionMessage: async (_sessionId, _text, _mode, attachments) => { seen.push({ attachments }); return { ok: true as const } },
+    })
+    const fresh = { attachmentId: 'att-new', name: '新图.png', bytes: 9, mediaType: 'image/png' }
+    const stale = { attachmentId: 'att-old', name: '旧图.png', bytes: 8, mediaType: 'image/png' }
+    const task = controller.createTask({ title: 't', description: '', prompt: 'run', attachments: [fresh] })!
+    const rule = controller.createSessionRule(task.id, {
+      sessionId: 's-a', instruction: '', cron: '* * * * *', usePrompt: true, send: 'steer', attachments: [stale],
+    })!
+    expect(rule.usePrompt).toBe(true)
+    /* 记录里那一份旧的**是通过核心直接写进去的**：界面在「发送任务 Prompt」这一档存的是空表
+       （附件的去处由表单那一行说明）。所以这一条钉的是核心自己的律：开火那一刻读的是任务。 */
+    expect(rule.attachments).toEqual([stale])
+    await controller.tickSessionRules(NOW + 120_000)
+    expect(seen.length).toBeGreaterThan(0)
+    expect(seen[seen.length - 1]?.attachments).toEqual([fresh])
+  })
+
   it('fires a due steer rule: sends the instruction, records a direct round, rolls forward', async () => {
     const sent: Array<[string, string]> = []
     const { controller } = ruleHarness(['s-a'], { sessionMessage: async (sessionId, text) => { sent.push([sessionId, text]); return { ok: true as const } } })

@@ -17,6 +17,18 @@ export type AttachmentAdmitter = (input: {
     ok: false;
     error: string;
 }>;
+/**
+ * 一枚芯片的本地键：**内容寻址的 id 加它在表里的位置**。
+ *
+ * 位置要进来，因为同一个文件可以被挂两次（两份芯片、两个删除键），而删除键只能指一个。
+ * 位置让这个键**在两次渲染之间是同一个字符串**——React 靠它认得出「还是那几枚芯片」；
+ * 而它**不进文档**（`refsOf` 把它丢掉），所以它变了也换不掉任何一条记录。
+ */
+export declare function chipKeyOf(ref: AttachmentRef, at: number): string;
+/** 文档里那一份读成芯片表（`refsOf` 是反方向，两个方向只有这一对）。 */
+export declare function chipsOf(refs: readonly AttachmentRef[]): DraftAttachment[];
+/** 芯片表写回文档的那一份：本地键不是记录的一部分，出这一层就丢掉。 */
+export declare function refsOf(chips: readonly DraftAttachment[]): AttachmentRef[];
 /** The in-flight intake kind (what the busy line must name). */
 export type IntakeBusyKind = 'image' | 'file' | 'mixed';
 /** Combine per-lane in-flight counts into one label kind (pure, tested). */

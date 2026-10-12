@@ -29,6 +29,9 @@ import { ItemSteps } from './step-editor.tsx'
 import { addStep, moveStep, removeStep } from './steps.ts'
 import type { ItemPatch } from '../../core/item-transitions.ts'
 import { TagField, tagName } from './tag-field.tsx'
+import { AttachmentStrip, attachBusyLabel } from '../board/AttachmentStrip.tsx'
+import { chipsOf, refsOf, useComposerAttachments, type AttachmentAdmitter } from '../board/composer-attachments.ts'
+import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/attach.ts'
 import css from './item.module.css'
 
 const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
@@ -158,6 +161,15 @@ export interface ItemDetailProps {
    */
   readonly proseHeight?: number
   readonly onProseHeight?: (px: number) => void
+  /**
+   * 把读者选的一张图或一个文件收进官方附件库，换回一个 ref。
+   *
+   * **附件这一条通道只有这一个入口**（与卡片、评论、会话规则同一个
+   * `useComposerAttachments`），而它需要的东西只有一处有：那一次上传要发一个请求。
+   * 所以这一屏拿到的是**能力本身**，不是控制器——没有它（没有看板、宿主没接上附件库）
+   * 时，芯片照样显示、点「＋」会明说收不了，而不是画一枚按下去没反应的按钮。
+   */
+  readonly admit?: AttachmentAdmitter
   readonly onRemove: () => void
 }
 
@@ -177,6 +189,24 @@ export function ItemDetail(props: ItemDetailProps) {
    * 一个事实在投影里只算一次。 */
   const running = view.status === 'running'
   const write = (next: readonly ItemStep[]): void => props.onEditSteps([...next])
+
+  /**
+   * 正文那一段的附件账本：**与卡片的执行 Prompt、评论、会话规则是同一个钩子**。
+   *
+   * 受控（`controlled`）而不是自己保管：真相在这一条的记录里，芯片只是它的一层皮——
+   * 于是「换一台设备打开，图还在」不需要任何一次额外的同步。传出去的一律是
+   * `refsOf`（芯片的本地键不进文档），读进来的走 `chipsOf`。
+   */
+  const attach = useComposerAttachments({
+    budget: TASK_IMAGE_BUDGET,
+    maxImages: MAX_ITEM_IMAGES,
+    maxFiles: MAX_ITEM_FILES,
+    ...props.admit !== undefined ? { admit: props.admit } : {},
+    controlled: {
+      attachments: chipsOf(item.attachments),
+      onChange: next => props.onEdit({ attachments: refsOf(next) }),
+    },
+  })
 
   /**
    * **按不动的那两枚按下去要说的话，落在它们自己脚下。**
@@ -436,6 +466,23 @@ export function ItemDetail(props: ItemDetailProps) {
                 />
               </div>
             )}
+
+          {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
+              那个手势**：一行正文还空着也可能先挂上一张图。拖进来的文件落在这一条上
+              （`dropProps` 铺在这一格），与卡片那边同一个手感。 */}
+          <div className={css.itemAttachRow} {...attach.dropProps}>
+            <AttachmentStrip
+              attachments={attach.attachments}
+              onAdd={attach.addFiles}
+              onRemove={id => { attach.setAttachments(attach.attachments.filter(chip => chip.id !== id)) }}
+              busy={attach.busy}
+              busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
+              error={attach.error}
+              /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
+                 已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
+              hint={cardId === undefined ? t('item.attach.hint') : undefined}
+            />
+          </div>
 
           <p className={css.itemOpenCaption}>{t('item.section.steps')}</p>
           <ItemSteps

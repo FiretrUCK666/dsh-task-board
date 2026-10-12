@@ -71,6 +71,7 @@
  */
 import type { ItemOriginSource, ItemPriority, ItemRecord, ItemStatus, ItemStep } from './item.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_FIELDS, itemInstantOf, itemTagsOf, itemTitleOf, newItem } from './item.ts'
+import { normalizeAttachmentRefs, sameAttachmentRefs, type AttachmentRef } from './attachment.ts'
 import { MANUAL_STATUSES, type TaskStatus } from './tasks.ts'
 
 /**
@@ -141,6 +142,14 @@ function patchChanges(current: ItemRecord, next: ItemRecord, patch: ItemPatch): 
     if (key === 'tags') {
       if (current.tags.length !== next.tags.length) return true
       if (current.tags.some((tag, at) => tag !== next.tags[at])) return true
+      continue
+    }
+    /* 附件与标签、步骤同一条律：**按值比，不按引用比**。面板每次改动都重建一张表
+     * （`[...current.attachments]`），引用比必然不等，于是「重新渲染一次」会被算成一次
+     * 修改、盖一次戳、把每台设备都叫醒——正是 `patchChanges` 守的那个 bug。那一比在
+     * `core/attachment.ts` 里只有一处（会话规则那条 patch 问的是同一个问题）。 */
+    if (key === 'attachments') {
+      if (!sameAttachmentRefs(current.attachments, next.attachments)) return true
       continue
     }
     if (current[key] !== next[key]) return true
@@ -315,8 +324,15 @@ export interface ItemPromotionTask {
   /** The card's description: the row's context notes, which is what they are FOR. */
   readonly description: string
   /** The execution prompt: the override, else the row's body. */
-  /** The execution prompt: the override, else the row's body. */
   readonly prompt: string
+  /**
+   * 这一条正文带的图片与文件，跟卡一起走。
+   *
+   * **它们是这一条自己的内容**，不是卡上另挂一份：把「正文 + 附件」拆成两半交给两个对象，
+   * 就出现「卡上看得见正文、看不见那张图」——而读者在清单里明明把图给了这一条。所以提升
+   * 把附件原样交给新卡（ref 指的是同一份字节，没有第二份拷贝）。
+   */
+  readonly attachments: readonly AttachmentRef[]
   /**
    * 这张卡出生在哪一栏：**这一条自己现在的状态**（执行器才能给的那两档落到「待办」）。
    *
@@ -409,6 +425,7 @@ export function planItemPromotion(item: ItemRecord, over?: ItemPromotionOverride
       title,
       description: item.notes,
       prompt: (over?.cardPrompt ?? item.body).trim(),
+      attachments: item.attachments.map(ref => ({ ...ref })),
       /* **出生栏就是这一条现在的状态。**
        *
        * 不许写死 `'todo'`——那不看这一条当时的真实状态，于是把一条标成「已完成」再挂到
@@ -666,6 +683,10 @@ export interface ItemCapture {
   readonly priority?: unknown
   readonly steps?: unknown
   readonly tags?: unknown
+  /** 附件 ref（读者在自己的设备上选的字节）。与别的字段一样是 `unknown`：它从一个
+   *  介质来（面板的补丁、模型的 JSON、手改过的文件），所以由**一个具名的读法**
+   *  （`normalizeAttachmentRefs`）读，而不是靠调用点断言。 */
+  readonly attachments?: unknown
   readonly startsAfter?: unknown
   readonly dueAt?: unknown
   readonly hardDueAt?: unknown
@@ -740,6 +761,7 @@ export function captureItemRecord(input: ItemCapture, now: number, mintId: () =>
     item: newItem({
       title: input.title,
       body: input.body,
+      attachments: normalizeAttachmentRefs(input.attachments) ?? [],
       notes: input.notes,
       // Unrecognised or absent means the neutral tier, never a default the
       // writer did not choose: a fresh row has no history to inherit one from.

@@ -242,6 +242,29 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(card).toMatch(/if \(!accepted\) setError\(t\('review\.interactionRejected'\)\)/)
   })
 
+  it('计划正文在两张卡上都按 markdown 画（同一个渲染器，不是两种读法）', () => {
+    /* 这一条钉的是一次「同一份内容两个样子」：能就地作答的那张卡早就走 `<Markdown>`，
+       而只读的镜像卡把整份计划塞进一个 `<span>` —— 标题、清单、勾选框、代码块全都以原始
+       记号出现在屏上，取决于这台机器的宿主支不支持就地作答。计划是模型写的 markdown，
+       画法只有一处。
+       
+       判据读的是**结构**：`css.interactionDetail` 那一格只能是 `<div>`（装块的容器），
+       而且里面必须有一个 `<Markdown>`——把纯文本塞回那一格就会红。注释先剥掉（硬性规范 14：
+       检查器不许读字样）。 */
+    const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
+    const code = readFileSync(cardPath, 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    const blocks = [...code.matchAll(/<(span|div) className=\{css\.interactionDetail\}>([\s\S]{0,160}?)<\/\1>/g)]
+    expect(blocks.length, '一处 interactionDetail 都没找到——这个检查扫不到东西').toBeGreaterThan(0)
+    for (const [all, tag, body] of blocks) {
+      expect(tag, `${all.slice(0, 60)}… 把说明文字画成了裸文本`).toBe('div')
+      expect(body, `${all.slice(0, 60)}… 里没有渲染器`).toContain('<Markdown')
+    }
+    // 计划的正文本身在`PlanReviewCard`里也仍然是一个 markdown 块（不是被上面那条改没了）。
+    expect(code).toMatch(/<Markdown text=\{plan\} \/>/)
+  })
+
   it('the plan card keeps the native three decisions (approve / decline / discuss)', () => {
     const cardPath = fileURLToPath(new URL('../src/client/board/InteractionCard.tsx', import.meta.url))
     const card = readFileSync(cardPath, 'utf8')

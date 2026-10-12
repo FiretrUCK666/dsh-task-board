@@ -133,6 +133,7 @@ function row(patch: Partial<ItemRecord> = {}): ItemRecord {
     ref: 1,
     title: 'a thing',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',

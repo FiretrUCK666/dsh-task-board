@@ -1844,7 +1844,8 @@ button.itemRowText {
  * 半像素的；这一枚里坐着一枚 12px 的图标与一串数字，两者各自居中，多出来的
  * 一像素就是整整 0.5px 的偏高（量过：整盒中心 266.5，图标与字都在 266）。**一个补偿
  * 要么是给这一族的，要么不属于它**；这一枚不是药丸族，所以它不领那一笔。 */
-.itemRowSteps {
+.itemRowSteps,
+.itemRowAttach {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1862,12 +1863,14 @@ button.itemRowText {
   transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
 }
 
-.itemRowSteps:hover {
+.itemRowSteps:hover,
+.itemRowAttach:hover {
   color: var(--item-ink-1);
   background: var(--dsh-tb-hover);
 }
 
-.itemRowSteps svg {
+.itemRowSteps svg,
+.itemRowAttach svg {
   flex: none;
 }
 
@@ -1886,6 +1889,7 @@ button.itemRowText {
  * 而 `1/3` 那个斜杠自带下伸部、把它再压低一档。所以**一个数说这一族**：三枚图标一起下移
  * 0.75 CSS px，落到 533 —— 与字对齐；余下那 0.5 CSS px 是斜杠自己的形状，不是对齐缺陷。 */
 .itemRowSteps svg,
+.itemRowAttach svg,
 .itemRowCardChip svg,
 .itemRowDate svg {
   transform: translateY(0.75px);
@@ -3997,6 +4001,19 @@ textarea.itemInput {
 
 .itemProseWrap {
   min-inline-size: 0;
+}
+
+/* **正文那一段带的附件，就站在正文下面。**
+ *
+ * 它是这一段的一部分，所以间距比「另一个字段」近一档（`--s1`），与段落标题同一条线：
+ * 读者读到的顺序是「这一段字 → 这一段带的图」，中间没有一次「这是另一个字段」的分隔。
+ *
+ * 拖拽落点在这一格上（`dropProps` 铺的就是它），所以它自己要有内衬：一个贴着边线的
+ * 高亮环会让「文件要落在哪」看起来像落在纸上没画出来的地方。 */
+.itemAttachRow {
+  display: flex;
+  min-inline-size: 0;
+  padding-block-start: var(--s1);
 }
 
 /* 40em 读起来是一档好行长，**但这一列里的三个框要一样宽**：正文、步骤板、上下文

@@ -214,6 +214,7 @@ function oneRow(patch: Partial<ItemRecord>): ItemRecord[] {
     ref: 1,
     title: '一条普通的行',
     body: '',
+    attachments: [],
     notes: '',
     steps: [],
     status: 'todo',
@@ -3116,7 +3117,7 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
 describe('the archive is the reader\'s account, and erasing is the last thing in it', () => {
   /** The one row the fake host is holding, and the whole of its record. */
   const ARCHIVED: ItemRecord = {
-    id: 'gone-1', ref: 7, title: '删掉的那一条', body: '', notes: '', steps: [],
+    id: 'gone-1', ref: 7, title: '删掉的那一条', body: '', attachments: [], notes: '', steps: [],
     status: 'todo', priority: 'normal', tags: [],
     startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
     origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
@@ -4050,7 +4051,11 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
     // 挂卡的两句实话，一条钉住：新建的那张卡的名字/执行稿/描述是**播种**——来自
     // 行自己的词，建完两边各改各；而挂已有卡只写 taskId 一个字段，板的那边一个字
     // 都没被碰（calls 里除 createTask 外没有别的写法）。
-    const panel = mountPanel(oneRow({ title: '画廊随访', body: '把东墙的灯换掉', notes: '灯座是旧款' }), 'list', 'wide')
+    //
+    // **附件也是这一条自己的内容，所以也在播种里**（`planItemPromotion` 带着 ref 走）：
+    // 「正文 + 图」被拆成两半交给两个对象，就出现「卡上看得到正文、看不到那张图」——
+    // 而读者在清单里明明把图给了这一条。
+    const panel = mountPanel(oneRow({ title: '画廊随访', body: '把东墙的灯换掉', notes: '灯座是旧款', attachments: [{ attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }] }), 'list', 'wide')
     try {
       openRowDetail(panel)
       const promote = [...panel.surface.querySelectorAll('button')]
@@ -4063,6 +4068,9 @@ describe('「新建卡片」 names the card in place, where the picker stands', 
       expect(made?.title, 'the card did not take the row\'s own title as its seed').toBe('画廊随访')
       expect(made?.prompt, 'the card did not take the row\'s body as its seed').toBe('把东墙的灯换掉')
       expect(made?.description, 'the card did not take the row\'s notes as its seed').toBe('灯座是旧款')
+      expect(made?.attachments, 'the row\'s pictures did not travel with it onto the card').toEqual([
+        { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' },
+      ])
       // And hanging an EXISTING card touches nothing on the board — the card's
       // own words are not this surface's to write.
       //
@@ -4520,7 +4528,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
 
     /** 抽屉里有三行的样子——读者的屏上出现的正是这个状态，而它此前无法被拍下来。 */
     const tombstoneRows = (): readonly ItemRecord[] => [1, 2, 3].map(n => ({
-      id: `gone-${String(n)}`, ref: 100 + n, title: `删掉的那一条 ${String(n)}`, body: '', notes: '', steps: [],
+      id: `gone-${String(n)}`, ref: 100 + n, title: `删掉的那一条 ${String(n)}`, body: '', attachments: [], notes: '', steps: [],
       status: 'todo' as const, priority: 'normal' as const, tags: [],
       startsAfter: undefined, dueAt: undefined, hardDueAt: undefined, taskId: undefined,
       origin: { source: 'human' as const, at: Date.now() }, createdAt: Date.now(), updatedAt: Date.now(),
@@ -5305,6 +5313,128 @@ describe('新建一条：读不懂的日期不存下这一条，而是当场说'
       expect(written.length, '矛盾的那一条被拦住了，而它该存下').toBe(before + 1)
       expect(written[written.length - 1]?.startsAfter).toBe(new Date(2026, 9, 9).getTime())
       expect(written[written.length - 1]?.hardDueAt).toBe(new Date(2026, 9, 5).getTime())
+    } finally {
+      panel.dispose()
+    }
+  })
+})
+
+/**
+ * 正文那一段带的图片与文件。
+ *
+ * ── 这一块钉的是什么 ──────────────────────────────────────────────────────────
+ *
+ * 一条清单记录的**正文**可以带图片与文件（读者在正文那一段里传），而它此前整套不存在：
+ * 正文只有字。这与「附件即内容」是同一条律在清单这一侧的落地，所以三处必须成立，缺一处
+ * 这个能力就是半件：**写得进去**（新建那张纸与展开区那一栏都能选）、**看得见**（芯片画在
+ * 正文下面、行上有一枚回形针）、**不静默丢掉**（收不了的时候说是哪一个文件）。
+ *
+ * ── 那两个「换个假的」的地方，各自是为了让一条真话能被问出来 ────────────────────
+ *
+ * `over.admit` 是**官方附件库那一半的替身**：台架没有宿主，所以默认那一档是「这台 host
+ * 没有附件库」（真实的 `attachmentsAvailable()` 就是 false）。给了它，读者选的文件才走得完
+ * 整条路——而这条路上真正属于本插件的部分是「ref 有没有真的落进文档」，那正是要测的。
+ *
+ * 收字的那半条（`readFileBase64`）走的是真的 `FileReader`：一个替身读不出真字节，
+ * 而「文件太大就传不上去」这类判据全都读字节。
+ */
+describe('正文那一段带的图片与文件', () => {
+  /** 把一串文件交给一个写作面里那个藏起来的取件框——读者按的「＋」就是它。 */
+  const pickInto = async (scope: ParentNode, files: File[]): Promise<void> => {
+    const input = scope.querySelector('input[type="file"]') as HTMLInputElement | null
+    if (input === null) throw new Error('这一块写作面里没有取件的框')
+    Object.defineProperty(input, 'files', { value: files, configurable: true })
+    await act(async () => {
+      input.dispatchEvent(new Event('change', { bubbles: true }))
+      // FileReader 的 onload 在下一个宏任务里到；不把它放进来，测出来的是「还没读完」。
+      await new Promise(resolve => { setTimeout(resolve, 0) })
+    })
+  }
+  /** 一个收下字节、换回一个 ref 的附件库（官方那一半的替身）。 */
+  const storeOf = (refs: { attachmentId: string; name: string; bytes: number; mediaType?: string }[]): (input: { name: string; data: string; mediaType?: string }) => Promise<{ ok: true; ref: { attachmentId: string; name: string; bytes: number; mediaType?: string } }> =>
+    async input => ({ ok: true as const, ref: refs.shift() ?? { attachmentId: `att-${input.name}`, name: input.name, bytes: 5 } })
+
+  it('展开一条带附件的记录：芯片画在正文那一段下面，按掉它真的从文档里去掉了', () => {
+    const panel = mountPanel(oneRow({
+      body: '把东墙的灯换掉',
+      attachments: [{ attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }],
+    }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      const strip = panel.surface.querySelector('[class*="attachStrip"]')
+      expect(strip, '展开区里没有那一块可以挂附件的地方').not.toBeNull()
+      const chip = strip?.querySelector('[class*="attachChip"]')
+      expect(chip?.textContent, '芯片上没有那个文件的名字').toContain('灯位.png')
+      // **去掉一个附件是一次真的写入**：文档里那一条不见了，而不是屏上少了一枚芯片。
+      const remove = chip?.querySelector('button')
+      if (remove === null || remove === undefined) throw new Error('芯片上没有去掉它的那枚按钮')
+      click(remove)
+      expect(panel.lastWrite()[0]?.attachments, '去掉它之后文档里还留着').toEqual([])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('行上有一枚回形针与数目，按它打开这一条；没有附件的行上它不在', () => {
+    const panel = mountPanel(oneRow({
+      attachments: [
+        { attachmentId: 'att-a', name: 'a.txt', bytes: 5 },
+        { attachmentId: 'att-b', name: 'b.txt', bytes: 6 },
+      ],
+    }), 'list', 'wide')
+    try {
+      const mark = panel.surface.querySelector('button[class*="itemRowAttach"]')
+      expect(mark, '一条带着两份附件的记录，在列表上看不出与别的一条有任何不同').not.toBeNull()
+      expect((mark?.textContent ?? '').trim(), '那一枚没有说有几个').toBe('2')
+      // 触屏没有 hover：这件事必须点得到（硬性规范 11③）。
+      click(mark)
+      const row = rowEls(panel.surface)[0]!
+      expect(row.getAttribute('data-open'), '按了那一枚，这一条没有打开').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('没有附件的行上不画那一枚（一个「0」是一句关于空的话）', () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      expect(panel.surface.querySelector('button[class*="itemRowAttach"]')).toBeNull()
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('这台 host 没有附件库时，选中的文件会**点名**说收不了，不是静默丢掉', async () => {
+    const panel = mountPanel(oneRow({ body: '一段旧字' }), 'list', 'wide')
+    try {
+      openRowDetail(panel)
+      await pickInto(panel.surface, [new File(['hello'], 'note.txt', { type: 'text/plain' })])
+      panel.settle()
+      expect(panel.surface.textContent, '文件没进去，而屏上没有一个字说为什么').toContain('note.txt')
+      expect(panel.surface.textContent).toContain('没有附件库')
+      expect(panel.lastWrite()[0]?.attachments, '收不了的那一次，却把附件写进了文档').toEqual([])
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('新建那条那张纸也带着这一条通道：存下的 ref 跟着这一条落进文档', async () => {
+    const panel = mountPanel(oneRow({}), 'list', 'wide', { admit: storeOf([{ attachmentId: 'att-shot', name: '截图.png', bytes: 12, mediaType: 'image/png' }]) })
+    try {
+      const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
+      click(open)
+      const title = [...panel.surface.querySelectorAll('input')].find(node => node.getAttribute('aria-label') === '标题')
+      typeInto(title, '纸上带一张图')
+      await pickInto(panel.surface, [new File(['hello'], 'note.txt', { type: 'text/plain' })])
+      panel.settle()
+      const save = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').trim() === '存下这一条')
+      const before = panel.lastWrite().length
+      click(save)
+      const written = panel.lastWrite()
+      expect(written.length, '带了附件的一条没有被存下').toBe(before + 1)
+      expect(written[written.length - 1]?.attachments, '文件收下了，却没有跟着这一条落进文档').toEqual([
+        { attachmentId: 'att-shot', name: '截图.png', bytes: 12, mediaType: 'image/png' },
+      ])
     } finally {
       panel.dispose()
     }

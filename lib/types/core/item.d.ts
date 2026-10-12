@@ -40,6 +40,7 @@
  * ——`TaskStatus` 与 `ALL_STATUSES`——而不是把它们抄一遍。抄一遍的代价不是重复十二行，
  * 是**加一栏时清单不会跟着加**，而屏上不会有人说一句话。
  */
+import { type AttachmentRef } from './attachment.ts';
 import { type TaskStatus } from './tasks.ts';
 /**
  * THE STORED STATUS: **五档，与看板那五栏是同一套词。**
@@ -108,6 +109,14 @@ export interface ItemRecord {
     title: string;
     /** The body, as Markdown. */
     body: string;
+    /**
+     * 正文自带的图片与文件，按读者选择的先后。
+     *
+     * **它属于正文，不是一条独立的记录**——所以读者在正文那一段里上传，附件就在那一段
+     * 旁边显示，而这一行被提升成卡时它们跟着走（见 `planItemPromotion`）。字节进宿主的
+     * 官方附件库，这里只有 ref（见 `core/attachment.ts` 的模块注释）。
+     */
+    attachments: AttachmentRef[];
     /** Context notes for whoever (model included) picks this up later. */
     notes: string;
     /** The checklist. One level; progress is derived from it. */
@@ -225,6 +234,16 @@ export declare const ITEM_FIELDS: {
     readonly body: {
         readonly access: "writable";
         readonly why: "正文，Markdown；没进模型的新字段一律写这里";
+    };
+    /**
+     * 附件：**读者在自己的设备上选的字节，所以只有界面能写**（`writable` 说的是「一行
+     * 自己的字段由写入漏斗落」，而这条通道就是面板那一次补丁）。模型没有这个参数——
+     * 它手里没有字节，凭空造一个 id 只会得到一枚点不开的芯片。字节进官方附件库，这里只
+     * 存 ref，理由见 `core/attachment.ts`。
+     */
+    readonly attachments: {
+        readonly access: "writable";
+        readonly why: "正文可以带图片与文件：读者在界面上传，字节进官方附件库、文档只存 ref；没有字节的一侧（模型）不给这个参数";
     };
     readonly notes: {
         readonly access: "writable";
@@ -351,6 +370,7 @@ export interface NewItemInput {
     readonly priority: ItemPriority;
     readonly steps?: readonly ItemStep[];
     readonly tags?: readonly string[];
+    readonly attachments?: readonly AttachmentRef[];
     readonly startsAfter?: number;
     readonly dueAt?: number;
     readonly hardDueAt?: number;
@@ -395,6 +415,7 @@ interface RawItem {
         sessionId?: string;
     };
     ref?: unknown;
+    attachments?: unknown;
     status?: unknown;
     priority?: unknown;
     tags?: unknown;

@@ -187,6 +187,7 @@ function itemAuthorshipKey(item: ItemRecord): string {
     id: item.id,
     title: item.title,
     body: item.body,
+    attachments: item.attachments,
     notes: item.notes,
     steps: item.steps,
     status: item.status,

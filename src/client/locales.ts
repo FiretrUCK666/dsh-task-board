@@ -362,6 +362,12 @@ export const zh = {
   'auto.content.custom': '自定义指令',
   'auto.content.usePrompt': '任务执行 Prompt',
   'auto.form.usePromptHint': '发送时使用任务当前的执行 Prompt（改 Prompt 即时生效）；配合按时间表 = 定时注入，配合任务完成后 = 完成后继续、一轮接一轮。',
+  // 这一档的附件**跟着任务那一份走**（`ruleAttachmentsOf` 读的就是任务），所以说的是任务
+  // 现在有几个——一条规则在这里挂着图却发不出去，正是这两行要挡的事。
+  'auto.form.promptAttach': '任务 Prompt 现在带着 {n} 个附件，开火时一起送出去',
+  'auto.form.promptAttachNone': '任务 Prompt 现在没有附件，这一条只会送那段 Prompt',
+  // 那句自定义指令带的图片与文件：一句话说清它们跟着谁走。
+  'auto.form.attachHint': '随这一条规则保存，每次开火一起发出去',
   'auto.form.cron': 'Cron 表达式',
   'auto.form.send': '发送方式',
   'auto.form.save': '保存',
@@ -834,10 +840,13 @@ export const zh = {
   'item.field.bodyHint': 'Markdown；写多少行都行。',
   'item.field.notes': '上下文备注',
   // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
-  // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemAskText`）。
+  // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemContextText`）。
   'item.field.notesHint': '这一条从哪来、要做什么；交给 AI 时会一起带上',
   'item.field.notesAdd': '＋ 上下文备注',
   'item.field.bodyAdd': '＋ 写点什么',
+  // **一句话说清这些附件的去处**：它们随这一条保存，而「变成看板卡片」时跟着卡一起走
+  // ——不说这一句，读者会以为图只留在这个列表里。
+  'item.attach.hint': '随这一条保存；变成卡片时一起过去',
   'item.field.status': '状态',
   'item.field.priority': '优先级',
 
@@ -869,6 +878,8 @@ export const zh = {
   'item.row.untitled': '还没名字',
   // 状态那一枚胶囊的读音（挂卡的行走的是「看板卡片：那一栏」那把门）。
   'item.row.status': '状态：{where}',
+  // 一行里那枚回形针的名字（读数只有图标与一个数，所以这句话就是它的全部说明）。
+  'item.row.attach': '这一条带了 {n} 个附件',
   'item.stale': '放着 {days} 天',
 
   // 行尾菜单。
@@ -1407,6 +1418,9 @@ export const en: Record<keyof typeof zh, string> = {
   'auto.content.custom': 'Custom instruction',
   'auto.content.usePrompt': 'Task run prompt',
   'auto.form.usePromptHint': 'Sends the task\'s CURRENT run prompt (edits apply at once); with On schedule = timed injection, with After completion = keeps continuing, round after round.',
+  'auto.form.promptAttach': 'The run prompt currently carries {n} attachment(s); they go out with every firing',
+  'auto.form.promptAttachNone': 'The run prompt carries no attachments right now, so this rule sends the text only',
+  'auto.form.attachHint': 'Saved with this rule and sent out on every firing',
   'auto.form.cron': 'Cron expression',
   'auto.form.send': 'Send mode',
   'auto.form.save': 'Save',
@@ -1811,6 +1825,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.notesHint': 'Where this row came from and what it is for; it travels with the row when you hand it to the AI',
   'item.field.notesAdd': '＋ Context notes',
   'item.field.bodyAdd': '＋ Write something',
+  'item.attach.hint': 'Saved with this row; it travels to the card when you promote it',
   'item.field.status': 'Status',
   'item.field.priority': 'Priority',
 
@@ -1836,6 +1851,7 @@ export const en: Record<keyof typeof zh, string> = {
   // A row with no words of its own yet (a body with no title, or a tag on its own).
   'item.row.untitled': 'no name yet',
   'item.row.status': 'Status: {where}',
+  'item.row.attach': 'This row carries {n} attachment(s)',
   'item.stale': 'untouched {days}d',
 
   // The row-end menu.

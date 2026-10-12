@@ -681,7 +681,16 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
           <>
             <Chip kind="warn" title={t('review.planAwaiting')}>{t('review.planAwaiting')}</Chip>
             <span className={css.interactionQuestion}>{planQuestion.question}</span>
-            {planQuestion.detail !== undefined && <span className={css.interactionDetail}>{planQuestion.detail}</span>}
+            {/* **计划正文是 markdown，就按 markdown 画。**
+                这一格此前把整份计划塞进一个 `<span>`：标题、清单、勾选框、代码块全都以
+                原始记号出现在屏上（`## 步骤`、`- [ ] …`），而同一个计划在能就地作答的那张卡上
+                是渲染好的——**同一份内容，两个样子，取决于这台机器的宿主支不支持就地作答**。
+                渲染器与评论区、交互卡用的是同一个（`Markdown.tsx`），所以三处不可能各说各的。 */}
+            {planQuestion.detail !== undefined && (
+              <div className={css.interactionDetail}>
+                <Markdown text={planQuestion.detail} />
+              </div>
+            )}
           </>
         ) : (
           <>
@@ -702,7 +711,12 @@ function MirrorQuestionCard({ question, sessionId, controller }: {
                   </Chip>
                   {' '}{item.question}
                 </span>
-                {item.detail !== undefined && <span className={css.interactionDetail}>{item.detail}</span>}
+                {/* 问题的说明文字与问答卡上那一处同一条律：模型写的是 markdown。 */}
+                {item.detail !== undefined && (
+                  <div className={css.interactionDetail}>
+                    <Markdown text={item.detail} />
+                  </div>
+                )}
                 {(item.options ?? []).length > 0 && (
                   <span className={css.interactionOptions}>
                     {(item.options ?? []).map(option => (

@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "Task Board",
-    "description": "Two main-stage panels: a multi-column board (tasks run for real through DSH sessions, with 5-field cron schedules, session automation rules and auto-cruise) and a task-list workbench (Inbox / List / Schedule, inline capture grammar, command palette and keyboard flow). Data lives on the host, so desktop and phone see the same copy."
+    "description": "Board and list panels: tasks run for real through DSH sessions and report their status back. Data lives on the host, so every device sees one copy."
   }
 }
