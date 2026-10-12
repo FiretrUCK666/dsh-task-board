@@ -2066,6 +2066,30 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(/<svg[\s\S]{0,300}<b>[\s\S]{0,160}<i/.test(planted), '内联的组头被放过了').toBe(true)
   })
 
+  /* 「族名单」与「块向内衬」两条读法各写**一处**：一条读真表（契约），一条读种出来的病表
+     （证明它咬得动）。两次都在断言里内联同一段正则，就只能永远同意自己。 */
+  /** 那条唯一的补偿规则里的**族名单**（选择器列表）。 */
+  const inkLiftMembers = (text: string): string[] => {
+    const lift = declarationRules(text).find(rule => /var\(--item-ink-lift\)/.test(rule.body))
+    if (lift === undefined) return []
+    return lift.selector.split(',').map(one => one.trim().replace(/^\./, '')).filter(one => one !== '')
+  }
+  /** 一段规则文本里的**块向内衬**的值。`var()` 静态判不了，跳过（那一条由上面那条闸门管）。 */
+  const blockPaddingsOf = (text: string): number[] => {
+    const out: number[] = []
+    for (const decl of text.matchAll(/padding(?:-block(?:-start|-end)?)?\s*:\s*([^;]+)/g)) {
+      if ((decl[0] ?? '').includes('var(')) continue
+      const parts = (decl[1] ?? '').split(/\s+/).filter(one => one !== '')
+      const block = parts.length >= 3 ? [parts[0], parts[2]] : [parts[0]]
+      for (const one of block) {
+        if (one === undefined) continue
+        const value = Number.parseFloat(one)
+        if (Number.isFinite(value)) out.push(value)
+      }
+    }
+    return out
+  }
+
   it('光学补偿只有一个出口，而那个数只在令牌层声明一次', () => {
     /* **这一族付过的账。** 同一个毛病（中文的墨在它自己的行盒里低半格）在这张表里曾经有
        四套做法：逐个子元素垫 `translateY`、一族底衬 + 给某一档单开 3px 与 4px、
@@ -2086,6 +2110,34 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(declaredOf('.itemRoot { color: red; }', 'itemRoot', '--item-ink-lift')).toHaveLength(0)
   })
 
+  it('族成员不给自己带块向内衬：那一格由族规则统一加', () => {
+    /* **这一族付过的账。** 族规则那条补偿是**绝对值**（`padding-block-end: 1px`），它**替换**
+       成员的底衬而不是加在它上面——所以自带块向内衬的成员会被它连底衬一起改掉：`.itemOpt`
+       曾是 `3px 9px`，被改成「上 3 下 1」，量出来墨心偏下 **1.5px**；`.itemTag` 曾是
+       `1px 8px 2px`，偏下 0.5px。读者看到的是「文案没有居中于它自己的胶囊，偏下了」，而屏幕上
+       没有任何一处说得出为什么。
+       判据：族名单里每个成员**自己的**规则不许出现任何非零的块向内衬——成员只许写
+       `padding-inline` 与 `block-size`（**定高不低于行盒 + 3px**：两条边 2px 加族的那一格 1px，
+       内容盒由此不小于行盒，居中才真的发生在字身上）。 */
+    const members = inkLiftMembers(css)
+    expect(members.length, '那一族里一个成员都没有，这条闸门在空转').toBeGreaterThan(4)
+    for (const name of members) {
+      const values = blockPaddingsOf(rulesOf(css, name).join('\n')).filter(one => one !== 0)
+      expect(values, `.${name} 自己带了块向内衬——那一格只能由族规则加`).toEqual([])
+    }
+    // 咬得动：同一段读法喂给自带块向内衬的成员规则，它必须报出来。
+    expect(blockPaddingsOf('.itemOpt { padding: 3px 9px; }'), '简写的块那一档没被读出来').toEqual([3])
+    expect(blockPaddingsOf('.itemTag { padding: 1px 8px 2px; }'), '三档简写的上下两档没被读出来').toEqual([1, 2])
+    expect(blockPaddingsOf('.itemOpt { padding-inline: 9px; block-size: 18px; }'),
+      '行向内衬被误读成块向内衬').toEqual([])
+    // 咬得动第二半：把**同一条**循环喂给一张种了病的表（真表 + 一条自带块向内衬的成员规则），
+    // 它必须把那个成员点出来——只证明正则认得字样，不证明这条断言拦得住人。
+    const sick = `${css}\n.itemOpt { padding: 3px 9px; }`
+    const offenders = inkLiftMembers(sick).flatMap(name =>
+      blockPaddingsOf(rulesOf(sick, name).join('\n')).filter(one => one !== 0).map(one => `${name}:${String(one)}`))
+    expect(offenders, '种了病的表被放过了').toContain('itemOpt:3')
+  })
+
   it('一族里没有人再给自己垫位移', () => {
     /* 位移（`transform`）只改**画**的位置，不改版面——而版面才是量得出的那一层：
        `Range.getClientRects()` 报的是排版位置，于是「量出来是 0」与「看着偏半格」可以同时
@@ -2094,9 +2146,7 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
        **范围就是那一族**（读 `--item-ink-lift` 的那条规则里的选择器）：行上那簇记号
        （步数 / 卡 / 日期）是**另一族**，它们旁边那段字不属于这一族，所以它们自己那一格
        位移不在这条闸门里管——一条管得过宽的规则会逼着人改对的东西来迁就它。 */
-    const lift = declarationRules(css).find(rule => /var\(--item-ink-lift\)/.test(rule.body))
-    expect(lift, '那条一族规则不见了').not.toBeUndefined()
-    const members = (lift?.selector ?? '').split(',').map(one => one.trim().replace(/^\./, '')).filter(one => one !== '')
+    const members = inkLiftMembers(css)
     expect(members.length, '那一族里一个成员都没有，这条闸门在空转').toBeGreaterThan(4)
     for (const name of members) {
       expect(rulesOf(css, name).join('\n'), `.${name} 自己垫了位移——这一族又有了第二个答案`)

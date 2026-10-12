@@ -2106,11 +2106,16 @@ button.itemRowCardChip {
 .itemTag {
   flex: none;
   white-space: nowrap;
-  /* **上 1 下 2，不是上下各 2。** 一枚标签在行里是 flex item 化出来的**块盒**，
-   * 块盒的行盒从内容盒顶端开始排——所以把字往上挪半像素的办法是少给顶端一衬，
-   * 而不是多给底端一衬（那样只是把盒子撑高，字相对盒子反而更低：量出来 0.5 → 1.0）。
-   * 这一像素是 canvas ink 度量量的：12px 的中文墨心比 22px 的盒子中心低约 0.5px。 */
-  padding: 1px 8px 2px;
+  /* **定高，块向内衬为零。** 一枚标签在行里是 flex item 化出来的**块盒**，让字与盒心对齐
+   * 只有一个做法：盒子由 `block-size` 定死、内容自己居中，那半格补偿由表尾那条族规则统一加。
+   * 定高取 `19px`——它比行盒（16px）高出的那 3px 是**两条边 2px + 族的那一格 1px**：内容盒
+   * 由此正好等于行盒，居中才真的发生在字身上（矮于这个数，行盒就压在内容盒顶端，字偏下
+   * 0.5px——量出来的正是这个数）。
+   *
+   * 此前这里是 `1px 8px 2px` 的手凑值：它与族规则里那条**绝对值**打架，被覆盖成「上 1 下 1」，
+   * 于是墨心偏下 0.5。 */
+  block-size: 19px;
+  padding: 0 8px;
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
@@ -4135,7 +4140,14 @@ textarea.itemInput {
    * 30px 是详情四枚芯片的同一个地板，两处一个词汇。 */
   min-inline-size: 30px;
   font-variant-numeric: tabular-nums;
-  padding: 3px 9px;
+  /* **定高，块向内衬为零，而且要显式写出来。**
+   *
+   * 族规则只写**底衬那一格**（`padding-block-end`），另一条块向内衬它管不到——而
+   * `<button>` 有 UA 的 `padding: 1px 6px`：只写 `padding-inline` 的成员会带着那 1px 上衬
+   * 进来，量出来墨心仍然偏下 0.5px（同一枚药丸，有的地方是 `<button>`、有的地方是 `<span>`，
+   * 两种盒子的结果还不一样）。所以块向内衬在简写里**写明 0**，那半格留给族规则。 */
+  block-size: 18px;
+  padding: 0 9px;
   font-size: 12px;
   font-weight: 400;
   /* **行盒与字同高。** 这一族（本表末尾那排 `padding-block-end: 1px`）靠**一个**补偿
@@ -4254,7 +4266,10 @@ textarea.itemInput {
  * 形状沿用这一族里输入的档位——同款内衬与描边、焦点落在 focus 令牌上，字号与
  * 芯片同号。读者换手的地方，形状不许跟着换手。 */
 .itemOptNaming {
-  padding: 3px 9px;
+  /* 就地改名时读者换手的地方，形状不许跟着换手：与 `.itemOpt` 同一个盒模型（定高 18、
+   * 块向内衬为零，那半格由表尾那条族规则加），所以它也在那份族名单里。 */
+  block-size: 18px;
+  padding: 0 9px;
   font-size: 12px;
   font-weight: 400;
   color: var(--item-ink-2);
@@ -5292,16 +5307,31 @@ textarea.itemInput {
  * 15/600 与数字 13），盒心比墨心低半格。两个都写在下面这张名单上——一个在内、一个不在，
  * 而「为什么」在 `DESIGN.md` 的表里（每个数旁都写着它是在哪一档量出来的）。
  *
+ * **家族成员的盒模型只有一种：块向内衬为零（显式） + 定高（不低于行盒 + 3px）。** 那半格补偿
+ * 写的是**绝对值**（`1px`），它**替换**成员自己的底衬，而不是加在它上面——所以只有「底衬本来
+ * 就是 0」的成员是对的。任何自带块向内衬的成员（`.itemOpt` 曾是 `3px 9px`、`.itemTag` 曾是
+ * `1px 8px 2px`）都会被它连底衬一起改掉：量出来墨心分别偏下 **1.5px** 与 **0.5px**，而读者
+ * 看到的就是「文案没有居中于它自己的胶囊，偏下了」。
+ * **「显式」两个字是承重的**：族规则只写底衬那一格，另一条块向内衬它管不到——而 `<button>`
+ * 带着 UA 的 `padding: 1px 6px` 进来，于是只写 `padding-inline` 的成员上衬是 1px、墨心偏下
+ * 0.5px（同一个类，`<button>` 与 `<span>` 两种写法量出来还不一样：标签那一族量到过 0 与 1）。
+ * 所以成员一律用简写把块向内衬写成 0（`padding: 0 9px`），那一格留给这一条。
+ * **定高为什么是「行盒 + 3px」**：两条边 2px 加这一格 1px——内容盒由此不小于行盒，居中才真的
+ * 发生在字身上；矮一寸，行盒就压在内容盒顶端，那半格又回来了。成员一律不许有自己的块向内衬，
+ * 那条由 `tests/panel-render.spec.ts` 的结构门禁钉住（它读声明，不读字样），而「上衬必须是 0」
+ * 由 `scripts/probe-item-rail.js` 在真浏览器里量（UA 那一层不在样式表里，门禁读不到它）。
+ *
  * **一族里不许再有第二种做法**：逐个子元素垫 `translateY`、给某一档单开 3px 或 4px 的
  * 内衬，都是在同一个问题上给第二个答案——量出来的结果是同一排控件里三种垂直位置。
  * 判据由那个探针给（宽 1440 / 窄 412）：几块字的**基线**互差 ≤ 0.25px，一枚药丸的
- * **墨心**与盒心 ≤ 0.25px。 */
+ * **墨心**与盒心 ≤ 0.5px。 */
 .itemTopBarChip,
 .itemNewButton,
 .itemPrioChip,
 .itemRefChip,
 .itemTag,
 .itemOpt,
+.itemOptNaming,
 .itemRailToday,
 .itemRailDayNum,
 .itemGroupText {

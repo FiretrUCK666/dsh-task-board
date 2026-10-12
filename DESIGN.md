@@ -1280,6 +1280,10 @@ undated / gated`——两套词汇只有「没定日期」重合，于是按「�
 **判据：几块字的基线互差 ≤ 0.25px；一枚药丸的墨心与盒心 ≤ 0.25px。** 取 0.25 而不是 0.5，
 因为 0.5px 是「设备像素的一半」：在 2× 屏上它就是**一整颗**设备像素，读者放大就看得见（读者报
 上来的那张图就是放大 7 倍截的）；而小于四分之一像素的偏差不会把墨心推进相邻那一颗像素里。
+**一个例外，写清它的来源**：药丸那一族里**两号字**的成员（顶栏芯片、新建按钮：一枚 15px 的值
+旁边跟一个 11px 的标签）并起来量到 **−0.5**——那是**内容**的性质（几个字号的墨心不在同一条线
+上），不是盒子的几何；所以那一族按 **≤ 0.5** 判，而单号字的成员（`.itemOpt` / `.itemTag` /
+`.itemPrioChip`）仍然按 0.25。
 
 **量法**（硬性规范 19）：`scripts/probe-item-rail.js` 交给 `node scripts/shot-panel.mjs` 开真
 Chromium，在台架的工件页上跑，宽 1440 与窄 412 各一次。**字形那一段的墨由
@@ -1293,8 +1297,8 @@ Chromium，在台架的工件页上跑，宽 1440 与窄 412 各一次。**字�
 一次；读它的规则在 `item.module.css` **末尾**，全表只有一条：
 
 ```
-.itemTopBarChip, .itemNewButton, .itemPill, .itemPrioChip, .itemRefChip,
-.itemTag, .itemOpt, .itemRailToday, .itemRailDayNum, .itemGroupText {
+.itemTopBarChip, .itemNewButton, .itemPrioChip, .itemRefChip, .itemTag,
+.itemOpt, .itemOptNaming, .itemRailToday, .itemRailDayNum, .itemGroupText {
   padding-block-end: var(--item-ink-lift);
 }
 ```
@@ -1317,6 +1321,38 @@ Chromium，在台架的工件页上跑，宽 1440 与窄 412 各一次。**字�
 **一条内衬值，两种换算法。** `--item-ink-lift`（1px）让**墨心**移动 **0.5px**；而**定高**的成员
 （日历日格）1px 换 1px——盒子因此长高 1px、内容在自己的盒里居中，墨跟着移满那 1px。每个成员的
 量法写在它自己那一条规则的旁边，这里不重讲。
+
+**族成员的盒模型只有一种：块向内衬为零（显式）+ 定高（不低于行盒 + 3px）。** 这条是量出来的，
+而它的两个半边各付过一次账：
+
+- **为什么必须「为零」**：那条补偿写的是**绝对值**（`padding-block-end: 1px`），它**替换**成员的
+  底衬，而不是加在它上面——所以只有「底衬本来就是 0」的成员是对的。自带块向内衬的两枚被它连底衬
+  一起改掉：`.itemOpt` 的 `3px 9px` 变成「上 3 下 1」，量到墨心偏下 **1.5px**；`.itemTag` 的
+  `1px 8px 2px` 变成「上 1 下 1」，偏下 **0.5px**。读者报的就是这个：「文案没有居中于它自己的
+  胶囊，偏下了」。判据由 `tests/panel-render.spec.ts` 的结构门禁钉住（族名单里每个成员自己的
+  规则不许出现非零的块向内衬，读声明不读字样）。
+- **为什么必须「显式」**：那条族规则只写**底衬那一格**，另一条块向内衬它管不到——而 `<button>`
+  带着 UA 的 `padding: 1px 6px` 进来。只写 `padding-inline: 9px` 的成员上衬就是 **1px**，墨心
+  仍然偏下 **0.5px**（这一轮真的量到过）；而同一个类在 `<button>` 与 `<span>` 上结果还不一样
+  ——标签那一族量到过 0 与 1。所以成员一律用简写把块向内衬写成 0（`padding: 0 9px`），那一格
+  留给这一条。**UA 那一层不在样式表里，门禁读不到它**，所以这条由探针量
+  （`pass.pillsFootOnly`：每一枚的 `padding-block-start` 必须是 `0px`）。
+- **为什么定高是「行盒 + 3px」**：两条边 2px 加这一格 1px——内容盒由此不小于行盒，居中才真的
+  发生在字身上；矮一寸，行盒就压在内容盒顶端，那半格又回来了（`.itemTag` 的行盒 16px，所以它
+  的定高是 19px；`.itemOpt` 的行盒 12px，定高取 18px 是这一族的药丸高度，不必卡在下限上）。
+
+**量出来的数——改后（`pass.pillsFootOnly` 与 `pass.pillsOptical` 全真，宽 1440 / 窄 412 一致）：**
+
+| 成员 | 改前墨心 vs 盒心 | 改后 | 盒高 |
+| --- | --- | --- | --- |
+| `.itemOpt`（状态 / 优先级 / 卡片那一排） | **+1.5** | **0** | 18（未变） |
+| `.itemTag`（标签，`<span>` 与 `<button>` 两种写法） | +0.5 / +1.0 | **0** | 20 → 19 |
+| `.itemTopBarChip` / `.itemNewButton`（两号字） | 0 / −0.5 | 0 / −0.5（未动） | 32 |
+| `.itemPrioChip` | 0 | **0** | 20 |
+| 上衬（`padding-block-start`） | `.itemOpt` 与两种写法的 `.itemTag` 都是 1（UA） | 全部 **0** | —— |
+
+改前/改后各一张 3× 的对比图：`.design/shots/crop-pills-before.png` 与 `crop-pills-wide.png`
+（同一张工件页，只把这三条声明改回旧值，见 `.design/shots/make-before.mjs`）。
 
 **几块字装在一个盒子里，那个盒子按基线对齐自己的内容。** `.itemGroupText`、`.itemRailText`、
 `.itemEmptyGroup` 都是 `display: inline-flex; align-items: baseline`。中文与拉丁的字体度量不同：

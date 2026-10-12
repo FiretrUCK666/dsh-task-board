@@ -246,6 +246,41 @@
   /* ── 四、安静行与空摘要 ───────────────────────────────────────────────────── */
   const quiet = all('.itemEmptyGroups, .itemEmptyGroup').map(el => offsetOf(el))
 
+  /* ── 五、一族药丸：底衬归零之后，「墨心落在盒心」要每一枚都成立 ────────────────
+   *
+   * 这一族此前只有「定高、块向内衬为零」的成员是对的：`.itemOpt`（`padding: 3px 9px`）
+   * 与 `.itemTag`（`padding: 1px 8px 2px`）各自带着自己的块向内衬，而表尾那条补偿写的是
+   * **绝对值** `1px`，于是它把底衬**覆盖掉**——上 3 下 1，内容整整朝下 1px。读者看到的是
+   * 「文案没有居中于它自己的胶囊，偏下了」。
+   *
+   * 所以每一枚都量（同一族里量一枚看起来最能代表的，就是这次漏掉它的原因）。
+   * **输入框不在这里量**：`<input>` 没有文字节点，取不到墨；它的几何由「族成员不许有自己的
+   * 块向内衬」那条结构门禁钉住，与 `.itemOpt` 逐字同形。 */
+  const PILL_FAMILY = [
+    '.itemOpt', '.itemTag', '.itemTopBarChip', '.itemNewButton', '.itemPrioChip', '.itemRefChip',
+  ]
+  const pills = PILL_FAMILY.flatMap(sel =>
+    all(sel).slice(0, 4).map(el => {
+      /* **墨走这个元素自己的文字**（`inkOf` 是走文字节点的那一条），不是走「没有元素孩子的
+         格子」：一枚药丸的字常常就是它自己的直接文字节点（`.itemOpt` 就是），而按元素找会
+         报 null——一个量不到的成员与一枚居中的成员在报告里长得一模一样。 */
+      const self = offsetOf(el)
+      const measured = familyOf(el)
+      return {
+        sel,
+        name: nameOf(el),
+        offY: self.offY,
+        baselineSpread: measured === null ? null : measured.baselineSpread,
+        h: self.box === null ? null : round(self.box.b - self.box.t),
+        padTop: getComputedStyle(el).paddingBlockStart,
+        padEnd: getComputedStyle(el).paddingBlockEnd,
+      }
+    }))
+  /* 这一族的补偿读的是根上那个令牌：令牌不在（挂载页没有 `.itemRoot`），`var()` 就整条
+     失效、底衬回落到 shorthand 那一档——量出来的数会**看着正常**，而屏上根本不是那样。 */
+  const rootEl = document.querySelector('.itemRoot')
+  const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--item-ink-lift').trim()
+
   /* ── 判据 ───────────────────────────────────────────────────────────────────
    *
    * **0.25 而不是 0.5。** 0.5px 是「设备像素的一半」：在 2× 屏上它是一整颗像素，读者
@@ -258,7 +293,9 @@
    * 不算准：左栏那一行选中态（粗体）上读到 1.1px，而同一行的墨心读数是 0。所以基线留在
    * 数里给人看，判据落在墨心上——那是读者的眼睛真正在看的那件事。 */
   const TOL = 0.25
-  const withinTol = (value) => value !== null && Math.abs(value) <= TOL
+  /** 一个读数在给定容差内吗（缺失与 NaN 一律算「没量到」，不算通过）。 */
+  const within = (value, tol) => value !== null && value !== undefined && Number.isFinite(value) && Math.abs(value) <= tol
+  const withinTol = (value) => within(value, TOL)
   const worst = (list) => {
     const numbers = list.filter(v => v !== null).map(v => Math.abs(v))
     return numbers.length === 0 ? null : round(Math.max(...numbers))
@@ -277,7 +314,15 @@
     rowsOptical: railRows.every(r => r.textInkOffY === null || withinTol(r.textInkOffY)),
     rowsWorst: worst(railRows.map(r => r.textInkOffY)),
     cellsOptical: dayCells.every(c => c.num.ink !== null && withinTol(c.num.offY)),
+    liftToken,
+    pillsOptical: rootEl !== null && pills.length > 0 && pills.every(p => within(p.offY, 0.5)),
+    pillsWorst: worst(pills.map(p => p.offY)),
+    /* **上衬必须是 0。** 这一条量的是样式表读不到的那一层：`<button>` 的 UA 内衬
+       （`padding: 1px 6px`）——只写 `padding-inline` 的成员会带着它进来，而门禁读的是作者
+       样式表，看不见它。同一个类在 `<button>` 与 `<span>` 上量出来还不一样（标签那一族量到过
+       0 与 1），所以这一条只能是**量**出来的判据。 */
+    pillsFootOnly: pills.length > 0 && pills.every(p => p.padTop === '0px'),
   }
 
-  return JSON.stringify({ viewport: window.innerWidth, trio, heads, railRows, dayCells, quiet, pass })
+  return JSON.stringify({ viewport: window.innerWidth, trio, heads, railRows, dayCells, quiet, pills, pass })
 })())

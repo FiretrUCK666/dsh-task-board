@@ -4329,8 +4329,12 @@ describe('the mounted-page artifact, for the states a static render cannot reach
        * 状态选择器下面那句话（「『进行中』与『待审核』是执行器给的……」）只在这一屏上存在：
        * 它要一条**挂着卡**的行，上面那些状态用的都是没挂卡的行。加它的理由就是读者报过的
        * 那件事——那句话被旁边一排按钮挤成「一个字一列」——而那一处的宽度只有真浏览器给得出
-       * （硬性规范 19）。 */
-      const panel = mountPanel(oneRow({ id: 'cd-1', ref: 1, title: '挂着卡的一行', taskId: 'task-1' }), 'list', band === 'narrow' ? 'narrow' : 'wide')
+       * （硬性规范 19）。
+       *
+       * **它带上标签**：`.itemTag` 是这一族里另一个「自己带着块向内衬」的成员，而族规则那条
+       * 补偿写的是绝对值——它把标签的 `1px 8px 2px` 也一起覆盖掉了。不带标签的这一屏量不到它，
+       * 而一个量不到的成员与一枚居中的成员在报告里长得一模一样。 */
+      const panel = mountPanel(oneRow({ id: 'cd-1', ref: 1, title: '挂着卡的一行', taskId: 'task-1', tags: ['画廊', '第二版'] }), 'list', band === 'narrow' ? 'narrow' : 'wide')
       try {
         const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
         if (row === undefined) throw new Error('the list page drew no row to open')
