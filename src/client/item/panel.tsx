@@ -2022,8 +2022,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
               value={freeTextOf(prefs.search)}
               placeholder={t('item.search.label')}
               aria-label={t('item.search.label')}
-              aria-expanded={overlay === 'palette'}
-              aria-controls={`${topPanels}-palette`}
+              /* 这一格打开的是**一层对话**，不是它自己的下拉：面板里那台命令面板是一个
+                 `role="dialog"`，而这一格只是它的门。所以这里写的是 `aria-haspopup`，
+                 不是 `aria-expanded`——后者在 `searchbox` 上不成立（记进无障碍树的是
+                 「这个输入框展开了」而输入框并没有展开什么），而 `aria-controls` 指的那个
+                 id 属于对话本身，对话收着时它根本不在页面上。 */
+              aria-haspopup="dialog"
               onClick={() => openLayer(overlay === 'palette' ? undefined : 'palette')}
               onChange={event => choose({ search: withFreeText(prefs.search, event.target.value) })}
             />

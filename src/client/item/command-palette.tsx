@@ -442,7 +442,10 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
                           role="option"
                           aria-selected={on}
                           data-selected={on ? '' : undefined}
-                          aria-pressed={option.pressed}
+                          /* 没有 `aria-pressed`：这一枚的 role 是 `option`，而 `option`
+                             只认 `aria-selected`——`aria-pressed` 在这个 role 上**不成立**，
+                             写上去等于那枚「已选中」的印记对读屏不存在（同一个状态在
+                             `data-selected` 上还画着，所以屏上看起来一切正常）。 */
                           onClick={() => option.run()}
                         >
                           {option.label}

@@ -77,9 +77,7 @@ import {
 // `type` keyword as a bare import name, so it is renamed at the boundary rather
 // than avoided — a gate that cannot drive the keyboard cannot claim the keyboard
 // works.
-import { writeFileSync, mkdirSync } from 'node:fs'
-import { dirname } from 'node:path'
-import { type as typeInto, alignClassNames, click, coreSurfaceSource, drag, fakeController, fixtures, hostTokenCss, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel, writeStandalonePage } from './panel-harness.ts'
+import { type as typeInto, alignClassNames, click, coreSurfaceSource, drag, fakeController, fixtures, itemSurfaceFiles, itemSurfaceSource, locateSource, mountPanel, panelCss, press, readSource, renderPanel, writeStandalonePage } from './panel-harness.ts'
 import { pickThrough } from '../src/client/item/selection.ts'
 import { addStep, moveStep, removeStep } from '../src/client/item/steps.ts'
 import { whyLabelOf } from '../src/client/item/why-label.ts'
@@ -4163,26 +4161,18 @@ function writeMountedPage(panel: ReturnType<typeof mountPanel>, target: string):
     const field = node as HTMLInputElement | HTMLTextAreaElement
     if (field.getAttribute('value') !== field.value) field.setAttribute('value', field.value)
   }
-  const document_ = [
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
-    '<meta name="viewport" content="width=device-width, initial-scale=1">',
-    '<title>task list panel (mounted)</title>',
-    '<style>', hostTokenCss(), '</style>',
-    '<style>', panelCss(), '</style>',
-    '<style>',
-    'html,body{margin:0;block-size:100%;}',
-    'body{display:flex;flex-direction:column;overflow:hidden;}',
-    '</style></head><body>',
-    panel.host.outerHTML,
-    '</body></html>',
-  ].join('\n')
-  /* The mounted DOM carries the renderer's SCOPED class names, the sheet on
-     disk the friendly ones — the same split the static artifact reconciles
-     before writing. Without it the capture renders completely unstyled, which
-     reads as a CSS failure and is nothing of the kind. */
-  const aligned = alignClassNames(document_, panelCss())
-  mkdirSync(dirname(target), { recursive: true })
-  writeFileSync(target, aligned.html, 'utf8')
+  /* **一次页面装配，不是两次。** 这里原本自己拼 `<head>`、自己写那两条 `body` 规则、
+     自己拼那对 `<style>`——而它就是 `writeStandalonePage` 的一份拷贝，于是**漂了**：
+     它写的页面里，外壳那个确定高度的盒子从 `body` 到面板之间断了链，也没有页面字体。
+     后果是量出来的（不是读出来的）：同一块面板在 900px 的窗口里长成 2011px，于是弹层
+     被算成「超出视口」、绝对定位的那些字被算成「被裁掉」——而这两样在真 GUI 里都不成立。
+     对齐留在这一边，因为它管的是**这条路自己的输入**：挂载后的 DOM 带渲染器的作用域类名，
+     磁盘上的样式表带友好的那些。 */
+  const { html, css } = alignClassNames(panel.host.outerHTML, panelCss())
+  /* 深色档与静态那一侧**同一个开关**：`DSH_PANEL_DARK`。挂载态里住着这一页所有的浮层
+     （那张纸、菜单、步骤板），而浮层是颜色最密的地方——只拍浅色等于把一半的判据留在
+     没人看过的那一档。 */
+  writeStandalonePage(target, html, css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'task list panel (mounted)')
 }
 
 describe('新建一条那张纸：卡是在这里诞生的，所以它带着什么跑要先看得见', () => {
@@ -4658,10 +4648,14 @@ describe('the mounted-page artifact, for the states a static render cannot reach
        * 是这条对齐律唯一的取证方式。 */
       const panel = mountPanel([...fixtures().slice(0, 2)], 'list', band === 'narrow' ? 'narrow' : 'wide')
       try {
-        const fold = [...panel.surface.querySelectorAll('button')]
-          .find(one => (one.getAttribute('aria-label') ?? '') === '按日期看')
-        if (fold === undefined) throw new Error('the rail drew no calendar fold control')
-        click(fold)
+        /* **按类名找，不按可达名的字样找。** 这一条原本比的是 `aria-label === '按日期看'`，
+           而那串字是**可达名的一部分**——它现在带着月题（`按日期看：2026-09`，因为屏上写的
+           就是那个月，而 WCAG 2.5.3 要可见标签进名字）。比全串的写法把台架焊死在文案上：
+           文案一改，报的是「这栏没画折页」——一句关于产品的话，而事实是关于这条断言的。
+           类名是这条路自己的记号（同文件里 `[class*="itemCreateDialog"]` 就是这么找的）。 */
+        const fold = panel.surface.querySelector('[class*="itemRailCalendarFold"]')
+        if (fold === null) throw new Error('the rail drew no calendar fold control')
+        click(fold as Element)
         await settle()
       } catch (error) {
         panel.dispose()

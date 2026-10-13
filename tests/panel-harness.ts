@@ -1012,8 +1012,36 @@ export function writeStandalonePage(target: string, markup: string, css: string,
     // auto-height box would not have reproduced anything.
     'html,body{margin:0;block-size:100%;}',
     'body{display:flex;flex-direction:column;overflow:hidden;}',
+    /* AND THE BOX HAS TO REACH THE PANEL. Some callers wrap the panel in one more
+       element of their own (`panel.surface.outerHTML` sits inside a div), and a
+       wrapper with an auto height is where the definite box STOPS: the stage's
+       `height: 100%` then resolves against a content-sized parent, so the panel
+       is as tall as its content instead of as tall as the shell's box. Measured
+       on the item panel: a stage 354px tall in a 900px window, and 2003px tall in
+       the state that opens the create sheet — which is what turned a
+       viewport-clamped sheet into a 1253px one and made every absolutely
+       positioned overlay report as clipped. The promise above ("the shell hands
+       the panel a definite height") is only kept if this line is here. */
+    'body>*{flex:1 1 auto;min-block-size:0;}',
+    /* THE SHELL'S PAGE FONT, for the same reason the definite height above is
+       reproduced: a page that leaves it out is not a smaller version of the GUI,
+       it is a different one. Nothing inside `.board` / `.itemRoot` notices — they
+       declare the face for their own subtree — but anything the plugin PORTALS
+       out of that subtree inherits from the page, and would otherwise be
+       photographed in the browser's default serif. */
+    'html{font-family:var(--dsw-font-family);}',
     `</style></head><body${bodyAttributes}>`,
-    markup,
+    /* A FRAGMENT GETS THE PANEL ROOT. Some callers hand this function a piece of
+       a panel rather than a panel — one card, one form, one section — and the
+       design system's alias layer is declared on `[data-dsh-taskboard-view]`, so
+       a fragment written straight into `<body>` resolves none of `--dsh-tb-*`:
+       every rule that consumes one is invalid at computed-value time, and the
+       page renders as an unstyled document. That is not a smaller reading of the
+       surface, it is a reading of a surface that does not exist (every capture
+       and every audit of it answers a question nobody asked).
+       The wrapper is added ONLY when the markup does not already carry the root,
+       so panel pages keep the exact element tree they had. */
+    markup.includes('data-dsh-taskboard-view') ? markup : `<div class="panelStage" data-dsh-taskboard-view="">${markup}</div>`,
     '</body></html>',
   ].join('\n')
   mkdirSync(dirname(target), { recursive: true })

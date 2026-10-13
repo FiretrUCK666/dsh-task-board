@@ -4,13 +4,28 @@
 
 ## 报告问题
 
-到 [Issues](https://github.com/FiretrUCK666/dsh-task-board/issues) 提交。**插件无法加载**是最常见的一类，请附上：
+到 [Issues](https://github.com/FiretrUCK666/dsh-task-board/issues) 提交，请先搜索已有的 Issue 避免重复。**插件无法加载**是最常见的一类，请附上：
 
 - 你的 DeepSeek Harness 版本（`dsh --version`）；
 - 本插件版本（设置 → 已安装插件列表里看）；
-- 界面上那段报错原文，或终端启动时的报错。
+- 界面上那段报错原文，或终端启动时的报错；
+- 怎么复现（操作步骤；偶发的也说明当时在做什么）。
 
-这三样基本能直接定位。DeepSeek Harness 的内部接口会随版本变化，插件需要跟着改；报错原文能直接指出是哪个接口变了。
+这四样基本能直接定位。DeepSeek Harness 的内部接口会随版本变化，插件需要跟着改；报错原文能直接指出是哪个接口变了。
+
+## 提出改动
+
+1. 开一个 Issue 说明你想改什么、为什么。涉及行为变化或新增依赖的，先在 Issue 里讨论清楚再动手。
+2. 在分支上改，然后开拉取请求：
+   - **没有本仓库写权限**（大多数情况）：先 **fork** 到你自己的账号，克隆 fork 出来的那份，在分支上开发，推回你自己的 fork，再从那个分支开拉取请求；
+   - **有写权限**（协作者）：直接从主干拉一个分支即可；
+   - **只改文字**（错别字、文档表述）：在网页上点开文件、点铅笔图标改完提交即可，GitHub 会替你建好分支与拉取请求——这条路跑不了下面「提交 PR 前」那些检查，别用它改代码。
+3. 跑完「提交 PR 前」那几条检查，全绿再提交。
+4. 提交拉取请求，说明改了什么、为什么、怎么验证的。
+
+第一次提拉取请求、或不确定 fork 怎么用，看 GitHub 官方的[参与项目](https://docs.github.com/zh/get-started/exploring-projects-on-github/contributing-to-a-project)（复刻到拉取请求的完整步骤）。fork 落后于正本时，在自己 fork 的页面上点 **Sync fork** 更新即可。
+
+**不要往本仓库推主干，也不要打版本标签或发布**——发版由维护者执行（见「发布」）。
 
 ## 开发环境
 
@@ -66,3 +81,7 @@ pnpm build && pnpm typecheck && pnpm test && pnpm verify
 ## 发布
 
 发版由维护者执行：更新版本号 → 构建 → 提交 → 推 tag。推 tag 会触发 GitHub Actions 完成构建、测试、GitHub Release 说明与 npm 发布，不需要手动操作 npm。
+
+## 许可
+
+提交贡献即表示你同意以本项目的许可证（[MIT](LICENSE)）发布你的贡献。

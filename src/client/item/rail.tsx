@@ -195,7 +195,10 @@ export function ItemRail(props: ItemRailProps) {
             className={css.itemRailCalendarFold}
             aria-expanded={props.calendarOpen}
             aria-controls={calendarId}
-            aria-label={t('item.rail.calendar.label')}
+            /* **可达名里带着月题**：屏上那串字是「2026-09」，而这一枚做的事是「展开
+               日历」——只写后者，一个用嘴操作的人念出他看见的那串字就对不上
+               （WCAG 2.5.3：可见的标签要在名字里）。 */
+            aria-label={`${t('item.rail.calendar.label')}：${props.month}`}
             onClick={props.onToggleCalendar}
           >
             <span className={css.itemRailMonth}>{props.month}</span>

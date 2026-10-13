@@ -433,7 +433,12 @@ describe('board header and navigator legibility', () => {
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
     expect(board).toMatch(/t\(STATUS_SHORT_KEY\[column\.status\]\)/)
-    expect(board).toMatch(/aria-label=\{t\(STATUS_KEY\[column\.status\]\)\}/)
+    /* 全名仍然进可达名——但走**藏起来的那一串**，不走 `aria-label`。后者**替换**内容，
+       于是屏上那串字（短名 + 计数）被挡在名字之外：一个用嘴操作的人念出他看见的
+       「规划 1」对不上，而检查器报的正是同一件事（`label-content-name-mismatch`，五枚
+       标签一起报）。藏起来的字进名字、不进可见文字，于是「全名照读出来」与「名字里有
+       屏上那串字」（WCAG 2.5.3）两件同时成立。 */
+    expect(board).toMatch(/<span className=\{css\.srOnly\}>\{t\(STATUS_KEY\[column\.status\]\)\}<\/span>/)
     const statusPath = fileURLToPath(new URL('../src/client/board/status.ts', import.meta.url))
     const statusSource = readFileSync(statusPath, 'utf8')
     for (const key of ['backlog', 'todo', 'running', 'review', 'done']) {

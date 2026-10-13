@@ -160,15 +160,6 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         }
       }}
       title={task.description !== '' ? task.description : task.title}
-      /* The accessible name carries the keyboard grammar, which is how a shortcut
-         becomes discoverable at all: a screen-reader or keyboard user hears the
-         card, its column, and the keys that move it, without opening anything. */
-      aria-label={onMoveStep === undefined
-        ? undefined
-        : t('card.keyboardLabel', {
-          title: titleOrUntitled(task.title, t('card.untitled')),
-          column: t(STATUS_KEY[task.status]),
-        })}
       onDragStart={event => {
         setDragging(true)
         event.dataTransfer.setData('text/plain', task.id)
@@ -194,6 +185,26 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
       }}
       onDragEnd={() => { setDragging(false) }}
     >
+      {/* THE KEYBOARD GRAMMAR, WHISPERED RATHER THAN SHOUTED OVER THE CARD.
+       *
+       * It used to be the card's `aria-label`, and that made it the card's whole
+       * name: an `aria-label` REPLACES the content, so everything the card shows
+       * — the title, the time, the demand chip — was pushed out of the accessible
+       * name. A reader who saw 「更新于 2023-11-15」 on screen and said it got
+       * nothing back (WCAG 2.5.3), and the check reports the same thing as
+       * `label-content-name-mismatch`.
+       *
+       * As a hidden span it is added to the name instead of replacing it: the
+       * name now starts with everything the card actually says, and the keys stay
+       * discoverable exactly as before — which is why the sentence is unchanged. */}
+      {onMoveStep !== undefined && (
+        <span className={css.srOnly}>
+          {t('card.keyboardLabel', {
+            title: titleOrUntitled(task.title, t('card.untitled')),
+            column: t(STATUS_KEY[task.status]),
+          })}
+        </span>
+      )}
       {onQuickRun !== undefined && (
         <span
           className={css.cardQuickRun}

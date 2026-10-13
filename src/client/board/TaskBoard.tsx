@@ -1621,7 +1621,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   ref={element => { columnTabRefs.current[column.status] = element }}
                   className={css.columnTab}
                   aria-selected={activeColumn === column.status}
-                  aria-label={t(STATUS_KEY[column.status])}
+                  /* 全名**藏在里面**，不写 `aria-label`：后者会把屏上那串字（短名 + 计数）
+                     挡在可达名之外——用嘴操作的人念出他看见的「规划 1」就对不上。藏起来的
+                     那一串进可达名、不进可见文字，于是「名字里有屏上那串字」与「全名照
+                     读出来」两件同时成立。 */
                   /* Roving tabindex: the tablist is ONE stop in the page's tab order,
                      and Arrow/Home/End move within it (see onColumnTabKeyDown). Five
                      tab stops for one widget is what the ARIA pattern exists to avoid. */
@@ -1630,6 +1633,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   onClick={() => { jumpToColumn(column.status) }}
                   onKeyDown={event => { onColumnTabKeyDown(event, column.status) }}
                 >
+                  <span className={css.srOnly}>{t(STATUS_KEY[column.status])}</span>
                   <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
                   <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
                   <span className={css.columnTabCount}>{String(count)}</span>

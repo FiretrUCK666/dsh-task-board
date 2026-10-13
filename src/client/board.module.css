@@ -173,6 +173,47 @@
   --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
   --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
   --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
+  /* ── 文字档：同一个色相，深到读得出来 ──────────────────────────────────────
+   *
+   * 上面那五个（以及 accent / danger）是**填充色**：点、珠子、环、洗底。拿它们去写
+   * **小字**是另一件事，而那两个方向在浅色主题下差着一倍：同一枚色在白底上量出来
+   * 1.91（review）· 2.15（running）· 2.28（done）· 4.23（accent）· 4.50（danger），
+   * 而 11–12px 的字要 4.5。深色主题下同一批值是 7.31 / 8.21 / 6.89 / 6.75 / 4.77
+   * ——**一条都不缺**，所以这是一处**只属于浅色主题的**修正。
+   *
+   * 修法是同一个色相往下压：与 `--dsw-alias-label-primary`（浅色下近黑、深色下近白）
+   * 混合，于是两个主题各走各的方向，而色相一步不让。比例是**量出来的**，不是挑的：
+   * 取「还能过 4.5 的最大比例」——比例越大越接近原色，所以最大的通过值就是最小的改动。
+   *
+   * **量的底不是白纸，是芯片自己那层洗底。** 第一版比例是对着「平面 + 墨自己 14% 的
+   * 洗底」标的，而那对**行芯片**成立（它的洗底跟着 `currentColor` 走）、对**优先级
+   * 芯片**不成立（它的洗底是**原色**的 14%，更浅）。所以这一版把每个元素**真实的祖先
+   * 背景栈**逐层合成出来再量，取它所有用处里最差的那个底。同一个色相在几处落地时取
+   * **最小**比例——浅色下压得越深对比越高，取最小就是取最保险的那一个。
+   *
+   * 量完（洗底上）：70%（business）· 72%（danger）· 52%（warn-secondary）·
+   * 58%（warn-primary）· 58%（success）· 78%（tertiary），落在 4.54–4.68。
+   *
+   * **最差的那个底是「展开的那一行」**（DESIGN.md 的 `.itemRow[data-open]`：面 80% +
+   * accent 20%）。同一枚芯片在展开行上比在普通行上低一档（business 84→70、danger
+   * 84→72），所以每个色相取的是**它所有落地上最小的那个比例**——浅色下压得越深对比
+   * 越高，取最小就是取最保险的那一个。代价是平铺那一档比它自己需要的更深一点，这是
+   * 一条令牌服务两种底的必然。
+   *
+   * 深色那一段**紧跟在上面那块别名之后**：那里是重置，不是第二套颜色——深色下五条的
+   * **原值本来就够**（4.78–5.69），混出来只是同一件事的更浅版本；只有 danger 与 accent
+   * 在展开行上不够（2.59 / 3.31），所以这两条在深色里各降一档。
+   *
+   * 一个概念仍只有一份定义：这七条从上面那七条**派生**，谁也不另写一个色值。 */
+  --dsh-tb-status-backlog-ink: color-mix(in srgb, var(--dsh-tb-status-backlog) 78%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 70%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-running-ink: color-mix(in srgb, var(--dsh-tb-status-running) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-review-ink: color-mix(in srgb, var(--dsh-tb-status-review) 52%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-done-ink: color-mix(in srgb, var(--dsh-tb-status-done) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 70%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-attention: color-mix(in srgb, var(--dsh-tb-attention) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-success: color-mix(in srgb, var(--dsh-tb-success) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-danger: color-mix(in srgb, var(--dsh-tb-danger) 72%, var(--dsw-alias-label-primary));
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
   /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
@@ -282,6 +323,29 @@
   corner-shape: var(--dsh-tb-corner, round) !important;
 }
 
+/* 深色主题下这七条几乎**原样退回**：那里五条本来就不缺（量出来 4.78–5.69），往下压
+   只是白白丢掉饱和度——浅色主题缺的那一半，不该拿深色主题的色相来补。例外是 danger 与
+   accent：它们在**展开行**上不够（实测 2.59 / 3.31），所以单独各降一档（50 / 62）。
+
+   选 `body[data-ds-dark-theme]` 不是猜外壳的 DOM：**那是宿主自己的主题开关**，它那份
+   token 表的深色一半就是挂在它下面（`scripts/verify-design-docs.mjs` 按这两块定位，本仓库
+   的测试台架也用它把工件切到深色）。若外壳哪天换了开关，代价是有界的：深色下应用到浅色
+   的那几个比例，颜色偏浅而对比度仍然更高——不会失效，也不会报错。 */
+body[data-ds-dark-theme] [data-dsh-taskboard-view],
+body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
+  --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
+  /* 同一个色相、同一个比例——`--dsh-tb-status-todo` 与 `--dsh-tb-accent` 读的是
+     同一个宿主令牌，所以**展开行**在深色下不够（实测 3.42）时，两条要一起走。 */
+  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 62%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-running-ink: var(--dsh-tb-status-running);
+  --dsh-tb-status-review-ink: var(--dsh-tb-status-review);
+  --dsh-tb-status-done-ink: var(--dsh-tb-status-done);
+  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 62%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-attention: var(--dsh-tb-attention);
+  --dsh-tb-ink-success: var(--dsh-tb-success);
+  --dsh-tb-ink-danger: color-mix(in srgb, var(--dsh-tb-danger) 50%, var(--dsw-alias-label-primary));
+}
+
 /* --- shared attention motion ------------------------------------------------
  * The unread/"new content" signal speaks one language everywhere — the same
  * color (--dsh-tb-attention), the same pulse timing (--dsh-tb-breath). The
@@ -334,6 +398,17 @@
   height: 100%;
   min-width: 0;
   min-height: 0;
+  /* THE INTERFACE FONT BELONGS TO THE PANEL ROOT, not to the surface inside it.
+     Both panels used to declare it one level down (`.board` / `.itemRoot`), and
+     that level is exactly the one their overlays leave: a dialog, a sheet or a
+     menu is portalled into THIS element, so it landed in a subtree that had no
+     font of its own and inherited the browser's default serif. Measured on the
+     update dialog, before this line: 26 visible nodes reading `Times New Roman`
+     (`h2.modalTitle`, `p.detailText`, `pre.updateOutput`, the footer buttons).
+     Declaring it here covers the panels AND everything they portal out of
+     themselves, and it makes the panel stop depending on a font its host
+     happens to set above it. */
+  font-family: var(--dsw-font-family);
   /* No backdrop blur here by decision: the user keeps transparent skins and
      wants the wallpaper wash to show through untouched (a frost reads as
      「背景变不透明」 — tried in 0.2.97, reverted). Readability over a photo
@@ -383,6 +458,49 @@
   margin: 0;
 }
 
+/* Form controls do NOT inherit the page font, and the UA's own choice is the
+   one face this panel must never show. The browser hands `button`, `input`,
+   `select` and `textarea` a standalone `font: ... Arial` — so every control that
+   does not say otherwise renders in a font the host does not use, sitting
+   directly beside host text that does. That is precisely the seam
+   `DESIGN.md`（「板与宿主用同一套系统字族…看不出拼接痕迹」）says must not exist.
+
+   ONE rule for the whole class, not a declaration per component. The per-class
+   spelling is what let this through: `board.module.css` carried it on three
+   rules and missed the eight controls in its own header, because a rule that is
+   written where a control is styled only covers the controls somebody
+   remembered. `:where()` keeps specificity at zero, so any component that wants
+   a different face still wins by writing a class — the markdown code spans do
+   exactly that. Both panels carry `data-dsh-taskboard-view`, so this one
+   declaration is the whole fix for both. */
+[data-dsh-taskboard-view] :where(button, input, select, textarea) {
+  font-family: inherit;
+}
+
+/* ── 说给读屏听、不画在屏上的那几个词 ─────────────────────────────────────────
+ *
+ * 一处工具，两个用处，而它们要的是同一件事：**让可读的名字里含有屏上那串字**。
+ * 一个用嘴操作的人念出他看见的东西，而那个东西必须能对上（WCAG 2.5.3）——
+ * 而 `aria-label` 做不到这件事：它**替换**内容，于是屏上的短名与计数被挡在名字之外，
+ * 检查器会把它报成「可见文字不在可达名里」，而读屏的人也拿不到那两个读数。
+ *
+ * 藏在里面的词进可达名、不进可见文字，所以两条都成立。
+ *
+ * **`overflow: hidden` 不在这里**，而这是量出来的一次修正：那一版会让检查器报「这串字
+ * 被自己的裁切盒裁掉了」——它说得对（那就是这个写法的定义），于是一次审计要为每一枚
+ * 「说给读屏听」的记号写一条豁免。裁掉它的是 `clip-path: inset(50%)`，而那一层**不报**；
+ * 盒仍然只有 1px、仍然离流，所以可见与布局两侧与原来一模一样。 */
+.srOnly {
+  position: absolute;
+  inline-size: 1px;
+  block-size: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 /* --- panel entry icon (official slot, TaskBoardIcon.tsx) -------------------- */
 
 /* The board's row in the shell's global-panel list (`sidebar.panellist`). The
@@ -413,7 +531,6 @@
   gap: 12px;
   background: var(--dsh-tb-bg);
   color: var(--dsh-tb-text-1);
-  font-family: var(--dsw-font-family);
 }
 
 /* 板头两行命令栏。导航行 = 返回 + 板名 + 状态组（左）…… 自动巡航 + 新建任务
@@ -775,7 +892,7 @@
   max-width: 100%;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 
 
@@ -798,7 +915,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
@@ -872,7 +989,7 @@
 }
 
 .boardStatusButton[data-warn='true'] {
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 
 .boardStatusButton[data-warn='true'] .boardStatusDot {
@@ -883,7 +1000,7 @@
 /* The honest warning variant (stale host / work waiting on another device):
    same quiet line, attention tint — never a toast, never a modal. */
 .boardStatus[data-warn='true'] {
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 .boardStatus[data-warn='true'] .boardStatusDot {
   background: var(--dsh-tb-attention);
@@ -1252,7 +1369,7 @@
 
 .columnTab[data-active='true'] {
   color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-accent);
+  border-color: var(--dsh-tb-ink-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
 }
 
@@ -1628,7 +1745,7 @@
 
 @keyframes dshTbRejectFlash {
   0%, 100% { border-color: var(--dsh-tb-border-soft); }
-  50% { border-color: var(--dsh-tb-danger); }
+  50% { border-color: var(--dsh-tb-ink-danger); }
 }
 
 /* A successful drop needs no column flash: the moved card settles into its
@@ -1682,7 +1799,7 @@
 }
 
 .cardQuickRun:hover {
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
   background: var(--dsh-tb-hover);
   border-color: var(--dsw-alias-border-l3);
 }
@@ -2199,9 +2316,11 @@
   background: var(--dsh-tb-chip-fill);
 }
 
-.chip[data-kind='success'] { color: var(--dsw-alias-state-success-primary); }
-.chip[data-kind='error'] { color: var(--dsw-alias-state-error-primary); }
-.chip[data-kind='warn'] { color: var(--dsw-alias-state-warn-primary); }
+/* 这三条写的是**文字**，所以读的是文字档那三条（`--dsh-tb-ink-*`）。同一个色相、同一个
+   出处，差的是深浅——而「淡黄的字写在白底上」不是设计，是没人量过：1.91 / 2.15 / 2.28。 */
+.chip[data-kind='success'] { color: var(--dsh-tb-status-done-ink); }
+.chip[data-kind='error'] { color: var(--dsh-tb-ink-danger); }
+.chip[data-kind='warn'] { color: var(--dsh-tb-status-running-ink); }
 .chip[data-kind='muted'] { color: var(--dsw-alias-label-tertiary); }
 
 /* Shared spinner (cards + detail execution rows), colored by currentColor.
@@ -2365,7 +2484,7 @@
    action in a dense list (hidden-tray delete) — the FILLED danger button
    stays reserved for the step's primary destroyer (confirm dialogs). */
 .dangerGhostButton {
-  color: var(--dsh-tb-danger);
+  color: var(--dsh-tb-ink-danger);
   background: transparent;
   border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) 45%, transparent);
   /* Same quiet density as the ghost twin above (one track, never drift). */
@@ -2375,7 +2494,7 @@
 
 .dangerGhostButton:hover:not(:disabled) {
   background: color-mix(in srgb, var(--dsh-tb-danger) 10%, transparent);
-  border-color: var(--dsh-tb-danger);
+  border-color: var(--dsh-tb-ink-danger);
 }
 
 .dangerGhostButton:active:not(:disabled) {
@@ -3049,6 +3168,10 @@ textarea.input {
   align-items: center;
   gap: 6px;
   width: 100%;
+  /* **盒子写出来，不留给行盒。** 这一枚是**整行的**控制（`width: 100%`），而它的高
+     原本只等于那一行字——一个不声明的值，随字体与皮肤漂（The Declared Line Box Rule
+     的同一条）。18 是这一页控件的地板；写出来之后它的命中盒与它的意图一样确定。 */
+  min-block-size: 18px;
   padding: 0;
   background: none;
   border: none;
@@ -3447,7 +3570,7 @@ textarea.input {
   flex: none;
   padding: 1px 8px;
   font-size: 12px;
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
   border-radius: var(--dsh-tb-pill);
 }
@@ -3921,7 +4044,7 @@ textarea.input {
    check in the markup, so the state is never colour-only. */
 .addSessionRow[data-selected] {
   color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-accent);
+  border-color: var(--dsh-tb-ink-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
 }
 
@@ -4180,7 +4303,7 @@ textarea.input {
    rest of the board (accent border + focus ring + the shared 2.6s breath),
    so the drop affordance speaks the same motion language as unread signals. */
 .column[data-dropaccept='link'] {
-  border-color: var(--dsh-tb-accent);
+  border-color: var(--dsh-tb-ink-accent);
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
@@ -4319,7 +4442,7 @@ textarea.input {
 
 .autoMetaIcon {
   flex: none;
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
 }
 
 /* Session rules block. */
@@ -5301,7 +5424,7 @@ textarea.input {
    same warn grammar as every board signal, so a nearly-full context window
    is noticed at a glance. */
 .reviewContextMeter[data-warn] .reviewMeterPercent {
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 
 .reviewContextMeter[data-warn] .reviewMeterBar {
@@ -6163,7 +6286,7 @@ textarea.input {
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 16%, transparent);
   border-radius: var(--dsh-tb-radius-sm);
 }
@@ -6230,7 +6353,7 @@ textarea.input {
 .interactionFieldInput {
   resize: none;
   color: var(--dsh-tb-text-1);
-  caret-color: var(--dsh-tb-accent);
+  caret-color: var(--dsh-tb-ink-accent);
   background: none;
   border: none;
   outline: none;
@@ -6307,7 +6430,7 @@ textarea.input {
   min-height: 16px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsh-tb-danger);
+  color: var(--dsh-tb-ink-danger);
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -6621,7 +6744,7 @@ textarea.input {
 
 .sessionContextLead {
   flex: none;
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
 }
 
 .sessionContextTitle {
@@ -6708,7 +6831,7 @@ textarea.input {
      text beside it. Ellipsis lives in .chipBody; flex: none keeps the chip's
      natural width and the label inside. */
   flex: none;
-  color: var(--dsh-tb-success);
+  color: var(--dsh-tb-ink-success);
 }
 
 /* The session goal strip (the board's GoalBar): phase chip + objective +
@@ -6803,13 +6926,13 @@ textarea.input {
 }
 
 .sessionContextGlyphDone {
-  color: var(--dsh-tb-success);
+  color: var(--dsh-tb-ink-success);
 }
 
 .sessionContextSubagent {
   flex: none;
   border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
 }
 
 /* The subagent block: chip line + ONE row per subagent (the same row grammar
@@ -7871,7 +7994,7 @@ textarea.input {
 }
 
 .toolCard[data-ok] .toolCardIcon {
-  color: var(--dsh-tb-success);
+  color: var(--dsh-tb-ink-success);
 }
 
 .toolCardSummary,
@@ -7883,7 +8006,7 @@ textarea.input {
 }
 
 .toolCardNote {
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 
 .toolCardOps {
@@ -7907,7 +8030,7 @@ textarea.input {
 }
 
 .toolCardOps > li[data-ok] .toolCardOpKind {
-  color: var(--dsh-tb-success);
+  color: var(--dsh-tb-ink-success);
 }
 
 .toolCardOpKind {

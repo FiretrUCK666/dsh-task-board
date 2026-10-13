@@ -361,6 +361,15 @@ export function ItemRowLine(props: ItemRowLineProps) {
                * 去承担动作是错的——读者看见的是「紧急」，而它按下去做的事叫"改名"。 */}
               <span
                 className={css.itemPrioButton}
+                /* A MARK IS A THING WITH A NAME, and an unnamed element cannot
+                   have one. `aria-label` on a plain `<span>` is dropped by the
+                   accessibility tree — the name never reaches a reader, and an
+                   automated check reports the attribute as invalid rather than
+                   as missing. `role="img"` is what makes the name legal: the
+                   mark's own glyph (`!3`) is then presentational and the label,
+                   which says the same thing in words, is what gets announced.
+                   Same shape as `.itemStepBar` next door. */
+                role="img"
                 aria-label={t(PRIORITY_LABEL[item.priority])}
                 title={t(PRIORITY_LABEL[item.priority])}
               >
@@ -428,7 +437,10 @@ export function ItemRowLine(props: ItemRowLineProps) {
           <button
             type="button"
             className={css.itemRowSteps}
-            aria-label={t('item.menu.steps')}
+            /* **可达名里带着屏上那串字**（`1/3`）。只写「编辑步骤」的话，一个用嘴
+               操作的人看见「1/3」念出来却对不上——WCAG 2.5.3 要的正是这一条：可见的
+               标签要在名字里。 */
+            aria-label={`${t('item.menu.steps')}：${t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}`}
             title={t('item.menu.steps')}
             onClick={event => { event.stopPropagation(); props.onSteps() }}
           >
@@ -466,6 +478,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
             <span
               className={css.itemRowCardChip}
               data-door={undefined}
+              role="img"
               aria-label={t('item.row.status', { where: t(GROUP_LABEL[view.status]) })}
             >
               {cardId !== undefined && <CardMark size="chip" />}
@@ -486,10 +499,11 @@ export function ItemRowLine(props: ItemRowLineProps) {
         className={css.itemRowDots}
         aria-haspopup="menu"
         aria-expanded={menuOpen}
-        // The menu is the region this control governs, so it names it. A disclosure
-        // that says 「I am open」 without saying 「I open THAT」 announces a state the
-        // listener cannot tie to anything.
-        aria-controls={`item-menu-${item.id}`}
+        // 菜单是这一枚管着的区域，所以它点名那块区域。但**只在它真的在页面上时点名**：
+        // 收着的菜单不渲染，长在 `aria-controls` 里的那个 id 就指不到任何东西——而一个
+        // 指不到的 id 比不写它更糟（校验器报错，读屏则可能把状态挂到一个不存在的区域上）。
+        // 收着的时候 `aria-haspopup="menu"` 加 `aria-expanded={false}` 已经把这件事说完。
+        aria-controls={menuOpen ? `item-menu-${item.id}` : undefined}
         aria-label={t('item.menu.more')}
         onClick={event => { event.stopPropagation(); onMenuToggle() }}
       >

@@ -68,7 +68,11 @@
    * 的那块底色——多一跳 `var()` 就既读不出它是哪一级，也读不出它被换成了什么。 */
   background: var(--dsh-tb-bg);
   color: var(--item-ink-1);
-  font-family: var(--dsw-font-family);
+  /* **面板根说出它的基准字号。** 不说的话，任何一处忘了声明字号的东西继承到的是**浏览器
+     的 16px**——而 16 不在这张表的四档里（11/12/13/15）。这不是假想的：勾选框那一枚
+     `appearance: none` 的 input 就是这么漏出来的，检查器量到它 16px。13 是这张表声明最多
+     的一档，也是「字段里写的字」那一档，作为基准它落在标度内。 */
+  font-size: var(--item-write-size);
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 
@@ -394,9 +398,10 @@
   list-style: none;
 }
 
-.itemRoot button {
-  font-family: inherit;
-}
+/* 控件不继承页面字体的那一条**不在这里**：它与看板同读一条规则
+   （`board.module.css` 设计系统层里的 `[data-dsh-taskboard-view] :where(button,
+   input, select, textarea)`）。写在这里的那一份只覆盖 `button`，于是同一个面板里
+   的 `input` 要靠各自那条规则记得补上——而「记得」正是这一类漏网之鱼的来处。 */
 
 /* ── 2. 舞台 ─────────────────────────────────────────────────────────────── */
 
@@ -1206,7 +1211,10 @@
 }
 
 .itemRailDay[data-today] .itemRailDayNum {
-  color: var(--dsw-alias-label-primary-foreground);
+  /* **浅底的填充用静态深墨，这是 `DESIGN.md` 已经量过的决定**：那里写着白字配强调色
+     只有 4.23，低于 4.5，而同一处的深墨是 8.80。`label-primary-foreground` 答的是
+     「品牌深墨上写什么」，配浅底正好答反——所以这一处读的是那枚为浅底准备的墨。 */
+  color: var(--dsh-tb-ink-on-fill);
   font-size: 12px;
   font-weight: 600;
 }
@@ -1785,11 +1793,11 @@
 }
 
 .itemRow[data-status='inProgress'] .itemRowLead {
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
 }
 
 .itemRow[data-status='blocked'] .itemRowLead {
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-ink-attention);
 }
 
 .itemRowCell {
@@ -1991,11 +1999,11 @@ button.itemRowCardChip {
   }
 }
 
-.itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog); }
-.itemRow[data-status='todo'] .itemRowCardChip { color: var(--dsh-tb-status-todo); }
-.itemRow[data-status='running'] .itemRowCardChip { color: var(--dsh-tb-status-running); }
-.itemRow[data-status='review'] .itemRowCardChip { color: var(--dsh-tb-status-review); }
-.itemRow[data-status='done'] .itemRowCardChip { color: var(--dsh-tb-status-done); }
+.itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog-ink); }
+.itemRow[data-status='todo'] .itemRowCardChip { color: var(--dsh-tb-status-todo-ink); }
+.itemRow[data-status='running'] .itemRowCardChip { color: var(--dsh-tb-status-running-ink); }
+.itemRow[data-status='review'] .itemRowCardChip { color: var(--dsh-tb-status-review-ink); }
+.itemRow[data-status='done'] .itemRowCardChip { color: var(--dsh-tb-status-done-ink); }
 
 /* 日期那一枚：一枚钟表图标 + 那个读数。
  *
@@ -2037,7 +2045,7 @@ button.itemRowCardChip {
  * 红色 + 加粗会让那一行有两个东西在喊，读者分不清它在喊「晚了」还是
  * 在喊「最后」。**一个语气只改一种东西，改的就是墨。** */
 .itemRowDate[data-tone='over'] {
-  color: var(--dsh-tb-danger);
+  color: var(--dsh-tb-ink-danger);
 }
 
 /* 副行：**编号 · 放着几天**。12 / 400 / 第三档墨。
@@ -2260,13 +2268,15 @@ button.itemRowCardChip {
 /* **红是红字，不是红底。** 同色系一层洗底 + 同色的字与边，读起来与「高」是同一族、
   只差色相——而色相本身就是这一档要说的全部。 */
 .itemPrioChip[data-tone='urgent'] {
-  color: var(--dsh-tb-danger);
+  /* 底与边读**原色**（它们本来就是填充），字读**文字档**：同一个色相深一档。原色当字在
+     白底上只有 3.56，而这一枚是 11px。 */
+  color: var(--dsh-tb-ink-danger);
   background: color-mix(in srgb, var(--dsh-tb-danger) 14%, transparent);
   border-color: color-mix(in srgb, var(--dsh-tb-danger) 42%, transparent);
 }
 
 .itemPrioChip[data-tone='high'] {
-  color: var(--dsh-tb-accent);
+  color: var(--dsh-tb-ink-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 14%, transparent);
   border-color: color-mix(in srgb, var(--dsh-tb-accent) 42%, transparent);
 }
@@ -2741,6 +2751,11 @@ button.itemRowCardChip {
   background: none;
   border: 0;
   cursor: pointer;
+  /* 平台画的那一支**整支已经在这里重画过了**（`appearance: none` + 下面那条 `> i`），
+     所以它自带的 `font: 400 13.3333px Arial` 是这一页上唯一一处**没人声明过**的字面与
+     字号——而一个没声明过的值正是下一次「它为什么和旁边不一样」的来处。`font: inherit`
+     一次把六个属性都交回给这一页，和宿主自己的 `themeCube` 同一条写法。 */
+  font: inherit;
 }
 
 .itemTick > i {
@@ -3614,7 +3629,7 @@ textarea.itemInput {
 }
 
 .itemCreateDialogNote[data-warn] {
-  color: var(--dsh-tb-danger);
+  color: var(--dsh-tb-ink-danger);
 }
 
 /* 标题框：它装的是那一行的名字，所以它和行标题同号（15 / 600）——**同一个问题用
@@ -4593,8 +4608,8 @@ textarea.itemInput {
  * 所以珠子保持 9px、保持在线的正中，只是从空心环变成实心的危险色；字重与另外两行
  * 一样。危险色已经是墨能发出的最大声。 */
 .itemDateAxis li[data-tone='over'] > i {
-  border-color: var(--dsh-tb-danger);
-  background-color: var(--dsh-tb-danger);
+  border-color: var(--dsh-tb-ink-danger);
+  background-color: var(--dsh-tb-ink-danger);
 }
 
 /* 硬期限那一颗，**挂着就红**：第三行与第二行的区别必须看得见——空心红环
@@ -4602,7 +4617,7 @@ textarea.itemInput {
  * 描边进危险色，孔与底不换：实与空仍是超与未超的分界。 */
 .itemDateAxis li[data-key='hardDueAt'][data-tone='set'] > i,
 .itemDateAxis li[data-key='hardDueAt'][data-tone='soon'] > i {
-  border-color: var(--dsh-tb-danger);
+  border-color: var(--dsh-tb-ink-danger);
 }
 
 /* 硬期限没定日期的一颗：**淡红环**——「这一行挂着最后期限」常态可见，不等到它
@@ -4619,7 +4634,7 @@ textarea.itemInput {
 }
 
 .itemDateAxis li[data-tone='over'] > span {
-  color: var(--dsh-tb-danger);
+  color: var(--dsh-tb-ink-danger);
   font-size: 13px;
 }
 

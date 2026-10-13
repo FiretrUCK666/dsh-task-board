@@ -224,6 +224,16 @@ export function ProseField(props: ProseFieldProps) {
         role="separator"
         aria-orientation="horizontal"
         aria-label={t('item.field.resize')}
+        /* **范围永远在，哪怕还没量出来。** 一个可聚焦的 `separator` 是「分隔条」这个
+           控件，规范要求它带一个值；而 `bounds` 的初值是 `undefined`（那是第一次测量
+           之前的那一帧），于是早先那版**到那一刻就把三个值一起省掉**——留下一个
+           「读屏说不出它在哪一档」的可聚焦控件。它也不能靠退出 Tab 序来躲：抓条够不着
+           就是键盘够不着（`item-workbench.spec` 钉着这一条）。
+           所以这三个值读的是**拖动自己用的那两个地板**（`onGripMove` 里 `min`/`max`
+           的兜底就是这两个数）：读屏听到的范围与这个控件真能做的事完全一致。 */
+        aria-valuemin={bounds?.min ?? 0}
+        aria-valuenow={height ?? bounds?.min ?? 0}
+        aria-valuemax={bounds?.max ?? Number.MAX_SAFE_INTEGER}
         tabIndex={0}
         data-dsh-tb-keys="ArrowUp ArrowDown"
         {...(bounds === undefined ? {} : { 'aria-valuemin': bounds.min, 'aria-valuenow': height ?? bounds.min, 'aria-valuemax': bounds.max })}
