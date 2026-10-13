@@ -336,11 +336,11 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
   /* 同一个色相、同一个比例——`--dsh-tb-status-todo` 与 `--dsh-tb-accent` 读的是
      同一个宿主令牌，所以**展开行**在深色下不够（实测 3.42）时，两条要一起走。 */
-  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 62%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 58%, var(--dsw-alias-label-primary));
   --dsh-tb-status-running-ink: var(--dsh-tb-status-running);
   --dsh-tb-status-review-ink: var(--dsh-tb-status-review);
   --dsh-tb-status-done-ink: var(--dsh-tb-status-done);
-  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 62%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 58%, var(--dsw-alias-label-primary));
   --dsh-tb-ink-attention: var(--dsh-tb-attention);
   --dsh-tb-ink-success: var(--dsh-tb-success);
   --dsh-tb-ink-danger: color-mix(in srgb, var(--dsh-tb-danger) 50%, var(--dsw-alias-label-primary));
