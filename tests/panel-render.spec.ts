@@ -3522,3 +3522,92 @@ describe('说明小字：一处机制、一处数字、一副骨架', () => {
       'the plant did not bite — 那一枚盒子拿掉之后还读得到规则').toBe('')
   })
 })
+
+/* ── 药丸的几何：一条基座，微调一个也没有 ─────────────────────────────────────
+ *
+ * 这一页只有一条对齐机制（胶囊把装字的盒子居中），而它此前是**每个族各写一遍**：一个族漏掉
+ * 一条时，屏上只表现为「那一枚的字有点歪」，没有任何一处说得出为什么。所以判据不落在「量出来
+ * 多少像素」上，而落在**结构**上：基座那一条必须在、基座列出的族里不许再有第二份几何、逐元素
+ * 的竖向微调（照一种字体试出来的长度）一个也不许有。
+ *
+ * 读法先剥注释（硬性规范 14）：注释里出现「vertical-align」不是一次声明——这一条自己就要被
+ * 下面那个「种一颗」的用例证明。 */
+describe('药丸的几何只写一次', () => {
+  const css = stripCssComments(itemSheet())
+  const FAMILIES = ['itemOpt', 'itemPrioChip', 'itemTag']
+  /* `line-height` 不在这张表里，这是量出来的：**行盒是每一族自己那一档**（`itemTag` 16px、
+   * `itemOpt` 12px），而「由高度推出来」的那一版反而读到 −0.5px（`DESIGN.md` 那一节有两条
+   * 读数）。所以行盒跟着族走，要收敛的是**高度**——一族一档，写一次。 */
+  const SHARED = ['display', 'align-items', 'justify-content', 'box-sizing']
+
+  /** 一条规则体里的声明，`{ 属性: 值 }`。 */
+  const declsOf = (body: string): Map<string, string> => {
+    const out = new Map<string, string>()
+    for (const match of body.matchAll(/(?:^|[;{\s])([a-z-]+)\s*:\s*([^;}]+)/g)) {
+      out.set(match[1] as string, (match[2] as string).trim())
+    }
+    return out
+  }
+
+  /* 逐元素的竖向微调：值既不是关键词、也不是由令牌推出来的算式，就算一条。**只认负数**的
+   * 那一半是有意的：`margin-block-end: 1px` 是排版里的空气（正数），而把一枚记号往上挪才是
+   * 一次「微调」。 */
+  const nudgesOf = (text: string): string[] => declarationRules(stripCssComments(text))
+    .flatMap(rule => {
+      const decls = declsOf(rule.body)
+      const found: string[] = []
+      const watched: readonly (readonly [string, boolean])[] = [
+        ['vertical-align', false], ['translate', false],
+        ['margin-block-start', true], ['margin-block-end', true],
+      ]
+      for (const [property, negativeOnly] of watched) {
+        const value = decls.get(property)
+        if (value === undefined) continue
+        if (/^[a-z-]+$/.test(value)) continue
+        if (/^(calc|min|max|clamp)\(/.test(value)) continue
+        if (negativeOnly && !/^-/.test(value)) continue
+        found.push(`${rule.selector.replace(/\s+/g, ' ').trim()} { ${property}: ${value} }`)
+      }
+      return found
+    })
+
+  it('基座那一条在，而且它给的就是居中的机制', () => {
+    const base = declarationRules(css)
+      .find(rule => rule.selector.includes(':where(') && rule.selector.includes('itemPrioChip'))
+    expect(base, '药丸的基座不见了——几何于是又回到每个族各写一遍').toBeDefined()
+    const decls = declsOf(base?.body ?? '')
+    expect(decls.get('display'), '基座不再给原子盒').toBe('inline-flex')
+    expect(decls.get('align-items'), '基座不再把盒里的东西放到盒心').toBe('center')
+  })
+
+  it('基座列出的族里，没有第二份几何', () => {
+    const redeclared = FAMILIES.flatMap(name => declarationRules(css)
+      .filter(rule => rule.selector.replace(/\s+/g, ' ').trim() === `.${name}`)
+      .flatMap(rule => {
+        const decls = declsOf(rule.body)
+        return SHARED.filter(property => decls.has(property)).map(property => `${name} { ${property} }`)
+      }))
+    expect(redeclared,
+      `这些族各自又声明了一遍几何：${redeclared.join(', ')}——第二份定义只会和基座悄悄分叉`).toEqual([])
+  })
+
+  it('清单表里没有逐元素的竖向微调', () => {
+    const found = nudgesOf(css)
+    expect(found,
+      `这些是按字体试出来的竖向长度：${found.join(', ')}——换一套度量就把那一枚从邻居那条线上挪开半个到一个像素`).toEqual([])
+  })
+
+  it('the probe bites: 三种微调都读得出来，关键词、正数与算式不误报', () => {
+    expect(nudgesOf('.itemTag { vertical-align: 1px; }'), 'the plant did not bite')
+      .toEqual(['.itemTag { vertical-align: 1px }'])
+    expect(nudgesOf('.itemRowDots { margin-block-start: -3px; }'), 'the plant did not bite')
+      .toEqual(['.itemRowDots { margin-block-start: -3px }'])
+    expect(nudgesOf('.itemTag { translate: 0 -1px; }'), 'the plant did not bite')
+      .toEqual(['.itemTag { translate: 0 -1px }'])
+    expect(nudgesOf('.itemPrioButton { vertical-align: top; }'), '关键词被误报').toEqual([])
+    expect(nudgesOf('.itemStepKind { margin-block-end: 1px; }'), '排版里的正数空气被误报').toEqual([])
+    expect(nudgesOf('.itemRowDots { margin-block-start: calc((var(--item-row-line) - var(--item-dots-h)) / 2); }'),
+      '由令牌推出来的算式被误报').toEqual([])
+    expect(nudgesOf('/* vertical-align: 1px; */ .itemTag { color: red; }'), '注释里的字样被当成声明').toEqual([])
+  })
+})
