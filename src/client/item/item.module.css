@@ -4482,7 +4482,9 @@ textarea.itemInput {
   .itemOptRow {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 6px;
-    align-items: start;
+    /* **这里不写 `align-items`。** 窄档这一行是**一列**：名字一格、值一格，两条轨都由自己的
+       内容定高，所以「对齐到哪一头」没有东西可对齐——写了也只是把基座那条声明在这里再抄一遍，
+       而两份声明只会分叉。宽档那两列才需要它（名字与值同高、要一条中线）。 */
     padding-block: var(--s2);
   }
 
