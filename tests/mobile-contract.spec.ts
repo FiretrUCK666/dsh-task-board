@@ -311,9 +311,16 @@ describe('touch parity block (invisible ergonomics only)', () => {
   })
 
   it('grows small hit areas without changing visual size', () => {
-    // The ::before overlay pattern on the compact controls.
-    expect(touch).toMatch(/\.buttonSm::before[\s\S]*?inset:\s*-7px/)
-    expect(touch).toMatch(/position:\s*absolute/)
+    // The ::before overlay pattern on the compact controls. **The outset is a TOKEN,
+    // never a literal**: two sheets each writing their own `inset: -7px` / `-8px -3px`
+    // is how one concept grew three values (board 7, item 8 block / 3 inline), and a
+    // number that is only right in one place is wrong in the next one. Both touch
+    // blocks read `--dsh-tb-hit-ring-block` / `-inline`, declared once in the layer.
+    expect(touch).toMatch(/\.buttonSm::before[\s\S]*?position:\s*absolute/)
+    expect(touch).toMatch(/inset:\s*calc\(-1 \* var\(--dsh-tb-hit-ring-block\)\)/)
+    expect(touch).not.toMatch(/inset:\s*-\d+px/)
+    // Planted bite: the literal-ban above must react when a literal comes back.
+    expect(/inset:\s*-\d+px/.test(`${touch}\n.x::before { inset: -7px; }`)).toBe(true)
   })
 
   it('inputs reach 16px to stop the mobile auto-zoom on focus', () => {

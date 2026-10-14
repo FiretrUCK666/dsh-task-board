@@ -30,6 +30,8 @@ import { createTask } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
 import { InteractionCard } from '../src/client/board/InteractionCard.tsx'
 import { SessionRulesSection } from '../src/client/board/automation-ui.tsx'
+import { AttachmentStrip, formatBytes } from '../src/client/board/AttachmentStrip.tsx'
+import type { DraftAttachment } from '../src/client/board/composer-attachments.ts'
 import type { WireQuestion } from '../src/core/question-rpc.ts'
 import { alignClassNames, panelCss, railWrap, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
@@ -741,11 +743,12 @@ describe('the update dialog, driven through the header button', () => {
 })
 
 /**
- * 看板的另外两处界面：会话规则表单（那条自填指令带的附件）与只读那张计划卡。
+ * 看板的另外几处界面：会话规则表单（那条自填指令带的附件）、只读那张计划卡，以及
+ * **附件条自己在它两个宿主里的样子**（`attach-strip`）。
  *
  * ── 为什么需要第二台工件 ──────────────────────────────────────────────────────
  *
- * `writeBoardArtifact` 画的是**看板舞台**（列与卡片），而这两处住在看板的另一半：一个在任务
+ * `writeBoardArtifact` 画的是**看板舞台**（列与卡片），而这几处住在看板的另一半：一个在任务
  * 详情的「自动化」里，一个在复核页的交互区。它们此前**一张图都没有**——「附件条在看板上
  * 长什么样」「计划正文到底渲染成了什么」只靠结构断言回答，而结构断言答不了排版。
  *
@@ -756,7 +759,7 @@ describe('the update dialog, driven through the header button', () => {
  * 真正判出来的窄档版面。规则表单那一张还多一层：它是 **jsdom 里挂载、点开之后取下的真实
  * DOM**，所以「点了编辑，表单里的芯片画出来了」这件事本身也在图里。
  */
-describe('看板的另外两处界面（规则表单的附件条 / 只读计划卡）', () => {
+describe('看板的另外几处界面（规则表单的附件条 / 只读计划卡 / 附件条的两个宿主）', () => {
   /** 一条带附件的规则：表单打开时要看得到芯片，否则这一张图证明不了那一格画得对。 */
   const LAMP = { attachmentId: 'att-lamp', name: '灯位.png', bytes: 2048, mediaType: 'image/png' }
 
@@ -873,6 +876,158 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     return { ...askQuestion(), isPlanReview: false }
   }
 
+  /* ── 附件条自己的那一页（`DSH_BOARD_SHOT=attach-strip`）─────────────────────
+   *
+   * WHY IT EXISTS. 这条附件条是五处界面共用的元件（看板那张纸的执行 Prompt、复核页的
+   * 留言框、规则那条自填指令、清单展开区的正文、新建那条纸）。既有的工件页里，四张常拍的
+   * （`tb-items` / `tb-board` / `tb-ask` / `tb-plan-live`）元素数是 **0**：规则在样式表里，
+   * DOM 不在任何一张图上（数过：`attachStrip` / `attachRow` / `attachAdd` / `attachChip` /
+   * `attachHint` 各 0）。另有两条路径**顺带**画得到它——`DSH_PANEL_MOUNT=prompt-form`
+   * （看板那张纸的 Prompt 那一格）与清单页开着一行时——但那是别人页面上的配角，于是有两档
+   * 一直没有图：**空账本那一档**（就是用户截的那一格：只有一颗圆形的「＋」），以及**看板留言框
+   * 那个宿主**（`.reviewComposer`）。
+   *
+   * WHAT IT DRAWS. 一个宿主一条**真实的祖先链**，链上每一层都是产品自己的类名，所以
+   * **宽度是算出来的，不是写死的**（这一页里没有一处 `width`）：
+   *
+   *   · 看板留言框：`.review → .reviewBody → .reviewRail`，留言框是那条轨的第二个孩子
+   *     （`.sessionRailFolds` 是它的兄弟，不是它的父级）。板盒是
+   *     `min(880px,100%)`，`.reviewRail` 是 `min(344px, 46cqw)`——1440 下量到 344，
+   *     于是留言框的内容盒是 316，而两枚芯片（各到 180 的上限）真的比它宽，横滚是真的；
+   *     412 下 `.review` 落进 `@container dsh-tb-panel` 的窄档，这份留言框整幅铺开（量到 396）。
+   *   · 清单展开区：`.itemPanelStage → .itemRoot → .itemWorkbench → .itemListColumn →
+   *     .itemFlow → .itemTable → .itemTableBody → .itemRow → .itemDetail → .itemOpen →
+   *     .itemOpenMain → .itemOpenText → .itemOpenSection → .itemBodyField → .itemAttachRow`
+   *     ——**层数与顺序逐条照真实的 DOM**（对着真实清单页里那条链核对过）。`.itemRoot` 是
+   *     几何令牌与具名容器的声明处（少了它，这一档的样子不是清单的样子），行形状由
+   *     `.itemListColumn` 那个 `dsh-tb-item-list` 给——窄档一条线、宽档一张表。宽档量到
+   *     `.itemAttachRow` 在 x=341 / 736 宽，与真实清单页里同一个盒子量到的数**一模一样**。
+   *
+   * 两种账本各画两遍（空档 = 用户截图里的那一档；两枚芯片 = 长名字用省略号收尾、
+   * 文件带字节读数），所以「宿主有没有影响这一条」与「账本有没有影响这一条」是两个
+   * 看得出来的方向。
+   *
+   * NOT PROVEN HERE. 窄屏真正的版面判定（`useSurfaceNarrow` 那次测量）不在图上：静态
+   * 渲染没有布局。这一页给的是 `@container` 那一半。**触屏那一档要另外拍**——两条滚动条
+   * 只在 `(hover: none) and (pointer: coarse)` 里出现（触屏那一段给 `.attachAdd` /
+   * `.attachRemove` 加了一圈 `inset: -7px` 的命中环，那圈环超出 `overflow-x: auto`
+   * 的那一行时，两个轴一起成为可滚动区），所以那张图要用
+   * `--touch --scrollbars` 拍，否则它看不见这两条。
+   */
+
+  /**
+   * 两枚附件：一个长到只能用省略号收尾的名字，和一个带字节读数的文件。
+   *
+   * 名字与字节都**不写第二遍**：产物里要出现的字面量由这两个字段自己长出来
+   * （`formatBytes` 是元件导出的那一个），所以改一处不会让这一页的判据变成谎话。
+   */
+  const stripChips: readonly DraftAttachment[] = [
+    {
+      id: 'att-east-wall:0',
+      attachmentId: 'att-east-wall',
+      name: '东墙灯位实测-下午补光后-第二次补拍.png',
+      bytes: 2_411_724,
+      mediaType: 'image/png',
+      width: 1600,
+      height: 1200,
+    },
+    { id: 'att-socket-note:1', attachmentId: 'att-socket-note', name: '灯座型号与层高记录.txt', bytes: 4096 },
+  ]
+
+  /**
+   * 把几层壳套在一段内芯外面，**开合由同一个数组给**。
+   *
+   * 这一页的宿主链是手写标签串出来的，而少写一个 `</div>` 的症状是**DOM 长在错的父亲下面**：
+   * 它不报错、不抛，量出来只是「这一格怎么这么窄」——两个清单例子叠在一起时，第二个的附件条
+   * 量到 154px 宽、y=1392（视口只有 1100），而元素计数一切正常。层数与它的开合因此只能有
+   * 一个出处。
+   */
+  function wrap(tags: readonly string[], inner: string): string {
+    return tags.reduceRight((acc, tag) => `<${tag}>${acc}</div>`, inner)
+  }
+
+  /** 一条附件条，按两处真实调用点的形状接线（留言框不给 hint，展开区给）。 */
+  function stripIn(attachments: readonly DraftAttachment[], hint?: string): string {
+    return renderToStaticMarkup(createElement(AttachmentStrip, {
+      attachments,
+      onAdd: () => undefined,
+      onRemove: () => undefined,
+      ...hint === undefined ? {} : { hint },
+    }))
+  }
+
+  /** 看板留言框那条真实的祖先链。链上不留别的行：它们不碰这一条的宽。 */
+  function composerHost(strip: string): string {
+    const rail = wrap(['div class="reviewRail"'], [
+      '<div class="sessionRailFolds"></div>',
+      wrap(['div class="reviewComposer"'], '<textarea class="input promptTextarea" rows="3" readonly></textarea>' + strip),
+    ].join(''))
+    return wrap(['div class="review"'], [
+      '<div class="reviewHeader">画廊第二版</div>',
+      wrap(['div class="reviewBody"'], '<div class="reviewMain"></div>' + rail),
+    ].join(''))
+  }
+
+  /** 清单展开区那条真实的祖先链，到 `.itemAttachRow` 为止——层数与顺序逐条照真实的 DOM，
+   *  `.itemTable` / `.itemTableBody` 也在内（它们夹在行与滚动体之间，漏掉它们，这一页与
+   *  产品的差别就只差一次「某天有人给那张表加一条宽度的规则」）。
+   *  正文那个写入框不画：它与附件条同宽，画上它只是让这一页更长。 */
+  function itemHost(strip: string): string {
+    const section = wrap(['div class="itemOpenSection"'], [
+      `<p class="itemOpenCaption">${t('item.field.body')}</p>`,
+      wrap(['div class="itemBodyField"'], `<div class="itemAttachRow">${strip}</div>`),
+    ].join(''))
+    return wrap([
+      'div class="itemPanelStage"',
+      'div class="itemRoot"',
+      'div class="itemWorkbench"',
+      'div class="itemListColumn"',
+      'div class="itemFlow"',
+      'div class="itemTable"',
+      'div class="itemTableBody"',
+      'div class="itemRow" data-open=""',
+      'div class="itemDetail"',
+      'div class="itemOpen"',
+      'div class="itemOpenMain"',
+      'div class="itemOpenText"',
+    ], section)
+  }
+
+  /**
+   * 清单那两例各裹一层**没有类名**的盒子。
+   *
+   * 它管的是高度，不是宽度。面板根是 `block-size: 100%`（`.itemPanelStage` 与 `.itemRoot`
+   * 各一次）——面板的身高就是宿主给它的盒子，这在真实页面里是对的（面板占满舞台）；而这一页
+   * 里那条百分比会一路量到 `.panelStage`（= 整个窗口），于是第一例吃掉一屏、第二例落到折线
+   * 以下，永远看不见（量到过：第二个例子的附件条在 y=1392，而视口只有 1100）。一层自动高度的
+   * 普通盒子让那条百分比退回 `auto`，面板按内容定高；而这一条的宽度与行的形状都由**宽度**
+   * 决定，一个像素都不因此改变（改前改后各量一次：`.itemAttachRow` 都是 x=341 / 736 宽——
+   * 与真实清单页里同一个盒子量到的一样）。
+   */
+  function itemCase(strip: string): string {
+    return `<div>${itemHost(strip)}</div>`
+  }
+
+  /** 每一例上面那一行说明。它是仪器的话，穿的是产品那件安静的字衣（`.detailHint`），
+   *  所以这一页不必再自带一份样式表——第二份样式表是同一个问题的第二个答案。 */
+  function caseCaption(text: string): string {
+    return `<p class="detailHint">${text}</p>`
+  }
+
+  /** 这一页：两种账本 × 两个宿主，四例，一屏之内。 */
+  function attachStripPage(): string {
+    return [
+      caseCaption('看板留言框（.reviewComposer）· 还没有附件：就是用户截图里的那一档'),
+      composerHost(stripIn([])),
+      caseCaption('看板留言框 · 两枚附件：长名字用省略号收尾，文件带字节读数'),
+      composerHost(stripIn(stripChips)),
+      caseCaption('清单展开区（.itemAttachRow）· 还没有附件'),
+      itemCase(stripIn([], t('item.attach.hint'))),
+      caseCaption('清单展开区 · 同一对附件'),
+      itemCase(stripIn(stripChips, t('item.attach.hint'))),
+    ].join('\n')
+  }
+
   it('writes the page when DSH_BOARD_SHOT names one, and it carries what it must', async () => {
     const target = process.env.DSH_PANEL_HTML
     const asked = process.env.DSH_BOARD_SHOT
@@ -940,6 +1095,22 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         must.push(...answerable
           ? [t('review.interactionSkip'), t('review.interactionNext'), t('review.interactionProgress', { n: '1', total: '2' })]
           : [t('review.interactionOffered'), t('review.interactionGoAnswer')])
+      } else if (asked === 'attach-strip') {
+        markup = attachStripPage()
+        /* **工件要能证明自己画对了。** 两条断言各管一件事：这一条是**住在真实宿主里**
+           （两根链的父级取自两处调用点的实际父级，不是一条裸的 div），以及它自己那几个槽
+           都在（那一颗圆形的「＋」、芯片的名字槽与字节槽、去掉它的那枚、以及展开区那句
+           说明）。名字与字节**从夹具自己长出来**，不在这里抄第二遍。 */
+        must.push(
+          'class="reviewComposer"',
+          'class="itemAttachRow"',
+          'attachAdd',
+          'attachChipName',
+          'attachChipMeta',
+          'attachRemove',
+          'attachHint',
+          ...stripChips.flatMap(chip => [chip.name, formatBytes(chip.bytes)]),
+        )
       } else if (asked === 'rule-form') {
         const root = createRoot(host)
         await act(async () => {
@@ -959,7 +1130,7 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         must.push('灯位.png', '看一眼这面墙', '含 1 张图片')
         root.unmount()
       } else {
-        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single | question-card | question-mirror)`)
+        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single | question-card | question-mirror | attach-strip)`)
       }
       const aligned = alignClassNames(rail ? railWrap(markup) : markup, panelCss())
       writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')

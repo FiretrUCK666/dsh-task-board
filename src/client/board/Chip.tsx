@@ -59,7 +59,7 @@ export function Chip({ kind = 'neutral', fill = true, title, label, className, i
       {...(label ?? title) !== undefined ? { 'aria-label': label ?? title } : {}}
     >
       {icon !== undefined && <span className={css.chipLead}>{icon}</span>}
-      <span className={css.chipBody}>{children}</span>
+      <span className={css.chipBody} data-dsh-tb-pilltext>{children}</span>
     </span>
   )
 }

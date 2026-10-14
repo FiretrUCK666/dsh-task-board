@@ -855,6 +855,12 @@
    * 而一个被裁掉一半的左栏会把「全部」与「已删除」变成两个够不着的按钮。
    * 它滚自己那份，列表滚自己那份，两块互不牵动。 */
   overflow-y: auto;
+  /* **另一条轴显式关掉。** 只写 `overflow-y: auto` 时横向的计算值是 `auto`（规范如此），
+   * 于是日历那几枚日格的热区环（横向各伸 3px）会给左栏多出一条横滚轴——量到过：
+   * `itemRailCalendar` 的横向溢出 +3px，而这一栏本来一个字都不该横向滚。窄档另有
+   * `overflow-x: auto`（那一档左栏真的变成一条横带），那一条写在它自己的容器查询里，
+   * 位置比这里靠后，照样赢。 */
+  overflow-x: hidden;
   overscroll-behavior: contain;
   /* 左右各一档 --s2：左栏在画布上的空气由工作台与栏自己两层给出——月题与数字
    * 不贴玻璃边。 */
@@ -1944,12 +1950,10 @@ button.itemRowText {
  * 两枚图标的墨心一致（它们自己是对称的），差在字那一侧：中文与数字那一串的墨心在 533，
  * 而 `1/3` 那个斜杠自带下伸部、把它再压低一档。所以**一个数说这一族**：三枚图标一起下移
  * 0.75 CSS px，落到 533 —— 与字对齐；余下那 0.5 CSS px 是斜杠自己的形状，不是对齐缺陷。 */
-.itemRowSteps svg,
-.itemRowAttach svg,
-.itemRowCardChip svg,
-.itemRowDate svg {
-  transform: translateY(0.75px);
-}
+/* **这一族的记号不再自己垫半格。** 从前这四枚 svg 各自 `translateY(0.75px)`，为的是追上
+ * 「中文字在行盒里偏低」那半格——而那是**字**的事，不是记号的事。现在字装在一个裁到墨上的
+ * 槽里（`[data-dsh-tb-pilltext]`，见 `board.module.css`），字的墨心落在盒心上，记号绕 viewBox
+ * 中心对称、由 `align-items: center` 居中，两边于是都在盒心——**谁都不需要第二个数**。 */
 
 /* 卡那一枚：一个方框 + **那张卡在哪一栏的词**，颜色就是看板那一栏的颜色（`--dsh-tb-status-*`，
    与列头那颗点同源）。卡的名字写在 `title` 里，因为一行里放不下一个卡名，而**栏**才是这里
@@ -1969,8 +1973,12 @@ button.itemRowText {
   align-items: center;
   gap: 4px;
   flex: none;
-  /* 与 `.itemRowSteps` 同一条：这一枚里也是一枚图标 + 一串字，所以上下内衬一样高。 */
-  padding: 1px 8px;
+  /* **定高 + 一个装字的槽。** 高度由这一条说（18px），不再由行盒派生的内衬说：槽把自己
+   * 的盒子裁到墨上，`align-items: center` 居中它就是居中那行字——换字体也一样。从前这里写
+   * 的是 `padding: 1px 8px`：对称，所以字看着没歪，但它落在行盒里偏低的那半格是**字体**的
+   * 事，而这一枚从来没读过任何补偿（量过：墨心 +0.5，同排的记号还被另一条规则下移 0.75）。 */
+  block-size: 18px;
+  padding: 0 8px;
   font-size: 12px;
   font-weight: 400;
   line-height: 16px;
@@ -2149,16 +2157,18 @@ button.itemRowCardChip {
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
 .itemTag {
+  /* **行内流里的原子盒 + 一个装字的槽。** 标签是句子末尾的一个词（这一行是行内排版），而
+   * `block-size` 与块向内衬在**行内非替换盒**上都不生效：从前这一枚只写 `block-size: 19px`，
+   * 于是那 19px 在标题这一侧根本没有发生，内衬只把底画宽了 —— 字在自己的胶囊里**偏高**，
+   * 而同一个类名在 `.itemOpts` 那一侧（flex item，被 blockify）拿到的是另一套几何。
+   * 现在它自己就是 `inline-flex`：定高生效，槽把墨居中，两侧同一种几何。
+   *
+   * 定高的数不变（19px）：比行盒 16px 高出的 3px 里，2px 是两条边，余下的那一格由槽的居中
+   * 吸收——槽的盒子是裁到墨上的（约 8.7px），它居中在内容盒里，于是字落在盒心。 */
+  display: inline-flex;
+  align-items: center;
   flex: none;
   white-space: nowrap;
-  /* **定高，块向内衬为零。** 一枚标签在行里是 flex item 化出来的**块盒**，让字与盒心对齐
-   * 只有一个做法：盒子由 `block-size` 定死、内容自己居中，那半格补偿由表尾那条族规则统一加。
-   * 定高取 `19px`——它比行盒（16px）高出的那 3px 是**两条边 2px + 族的那一格 1px**：内容盒
-   * 由此正好等于行盒，居中才真的发生在字身上（矮于这个数，行盒就压在内容盒顶端，字偏下
-   * 0.5px——量出来的正是这个数）。
-   *
-   * 此前这里是 `1px 8px 2px` 的手凑值：它与族规则里那条**绝对值**打架，被覆盖成「上 1 下 1」，
-   * 于是墨心偏下 0.5。 */
   block-size: 19px;
   padding: 0 8px;
   border-radius: var(--item-radius-pill);
@@ -5341,6 +5351,13 @@ textarea.itemInput {
  * 归档页头是这一族里唯一的文字控件，步骤 ⋯ 与月历日格是面板里最小的两处命中区
  * ——三者都站进这一族。 */
 @media (hover: none) and (pointer: coarse) {
+  /* 这一档把**横向那一格**收窄：行内邻居只隔 3px（量过），而块向那一条留给令牌里的 7px。
+     名字与看板那一边同一个，值由这一处的邻居距离回答——这是「一个规格」与「一处例外」
+     的区别：例外写在这里，因为它测的是这里的邻居。 */
+  .itemRoot {
+    --dsh-tb-hit-ring-inline: 3px;
+  }
+
   .itemFacetChip,
   .itemQueryChipRemove,
   .itemQueryClear,
@@ -5360,8 +5377,8 @@ textarea.itemInput {
   .itemOpt::after {
     content: '';
     position: absolute;
-    inset-block: -8px;
-    inset-inline: -3px;
+    inset-block: calc(-1 * var(--dsh-tb-hit-ring-block));
+    inset-inline: calc(-1 * var(--dsh-tb-hit-ring-inline));
   }
 }
 
@@ -5503,11 +5520,20 @@ textarea.itemInput {
  * 内衬，都是在同一个问题上给第二个答案——量出来的结果是同一排控件里三种垂直位置。
  * 判据由那个探针给（宽 1440 / 窄 412）：几块字的**基线**互差 ≤ 0.25px，一枚药丸的
  * **墨心**与盒心 ≤ 0.5px。 */
+/* ── 过渡名单：成员一个个改读「槽」，每改一个从这里删一行 ───────────────────────
+ *
+ * 表尾这一条是**旧的补偿**（底部内衬半格），而新的做法是**槽**：装字的盒子裁到墨上
+ * （`[data-dsh-tb-pilltext]`，声明在 `board.module.css` 的视图根那一块）。两者同时生效
+ * 就是**双重补偿**（槽把墨放正，内衬又把它抬半格），所以一个成员只能读一条：
+ * 改读槽的同一次里必须从这张名单上删掉。
+ *
+ * **判据不在名单上。** 一枚胶囊合不合格由 `scripts/probe-item-capsules.js` 按结构量
+ * （有底或边、够圆、装着看得见的字、高 ≤ 56px），两档宽 × 三档 DPR × 两种指针能力；
+ * 名单删多了、漏加了，量出来就是红的。删到一行不剩时这一条规则整个消失。 */
 .itemTopBarChip,
 .itemNewButton,
 .itemPrioChip,
 .itemRefChip,
-.itemTag,
 .itemOpt,
 .itemOptNaming,
 .itemRailToday,

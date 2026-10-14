@@ -461,10 +461,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   量法见 `DESIGN.md` 的清单节）。所以这一页里：要读的字用 **padding** 让位，要让**形**（药丸的底）
   也让位就得换个元素（`<div>` / `<h2>`）。这不是风格问题——一个写在 `<p>` 上的 `margin-inline-start`
   会让一整列左沿对不齐，而屏幕上没有任何一处说明为什么。
-- **一行里记号与字的对齐只有一个机制。** `--item-ink-lift` 在 `.itemRoot` 里声明一次、由
-  `item.module.css` **末尾全表唯一那条规则**消费，成员是**直接装字的盒子**，**装记号的不读**（记号
-  绕 viewBox 中心对称，居中时墨心已在位）；几块字共享一条线靠 **`align-items: baseline`** 的分组
-  盒子（`.itemGroupText` / `.itemRailText` / `.itemEmptyGroup`）。判据见 `DESIGN.md`「一行里的对齐」。
+- **一行里记号与字的对齐只有一个机制：装字的盒子裁到墨上**（`[data-dsh-tb-pilltext]` + `text-box: trim-both cap alphabetic`）；
+  **装记号的不读**（记号绕 viewBox 中心对称，居中时墨心已在位）。判据不靠名单：`pnpm audit` 按结构
+  逐颗量胶囊，两档宽 × 三档 DPR × 两种指针能力。判据与量法见 `DESIGN.md`「一行里的对齐」。
 - **判据一律不落在界面上**：行轨定值、字阶、颜色预算、三种日期的四种读法、窄屏逐控件结论，全部
   成文在 `DESIGN.md` 的对应节，并且多数各带一条机械断言。**改界面前先读那一节，别从代码反推。**
   响应式**禁 `@media(max-width)`**（JS 侧唯一开关是 `useSurfaceNarrow`）；触屏**只加热区不改几何**；

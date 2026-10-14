@@ -393,7 +393,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
                 >
                   {view.title}
                 </button>
-              {item.tags.map(tag => <span key={tag} className={css.itemTag}>{`#${tag}`}</span>)}
+              {item.tags.map(tag => <span key={tag} className={css.itemTag}><span data-dsh-tb-pilltext>{`#${tag}`}</span></span>)}
             </h3>
           )}
 
@@ -475,7 +475,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
               onClick={event => { event.stopPropagation(); props.onOpenCard?.(cardId) }}
             >
               <CardMark size="chip" />
-              {t(GROUP_LABEL[view.status])}
+              <span data-dsh-tb-pilltext>{t(GROUP_LABEL[view.status])}</span>
             </button>
           )
           : (
@@ -486,7 +486,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
               aria-label={t('item.row.status', { where: t(GROUP_LABEL[view.status]) })}
             >
               {cardId !== undefined && <CardMark size="chip" />}
-              {t(GROUP_LABEL[view.status])}
+              <span data-dsh-tb-pilltext>{t(GROUP_LABEL[view.status])}</span>
             </span>
           )}
         {due !== undefined && (

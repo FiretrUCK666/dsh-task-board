@@ -32,10 +32,29 @@
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
  *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--eval-file <path>] [--label text]
  *        [--css-for "<selector>" [--property padding]]
- *        [--both] [--scrollbars]
+ *        [--both] [--scrollbars] [--touch] [--audit]
  *
  *   DSH_SHOT_URL=<the whole URL, token included>   used in place of --url
  *   DSH_SHOT_BROWSER=<path to a Chromium>          used in place of discovery
+ *
+ * `--touch` IS A DIFFERENT DEVICE, NOT A DIFFERENT WIDTH. A narrow `--width`
+ * alone does not turn on the touch tier: measured, at `--width 412` the media
+ * query `(hover: none) and (pointer: coarse)` still reads FALSE, because
+ * `Emulation.setDeviceMetricsOverride`'s `mobile` flag changes the viewport and
+ * nothing else. So every rule inside a `@media (hover: none) and (pointer:
+ * coarse)` block — the whole touch-ergonomics tier of both sheets — had never
+ * been rendered by this tool at all. `--touch` adds the two calls that make a
+ * phone: `Emulation.setTouchEmulationEnabled` plus `hover`/`pointer` in
+ * `Emulation.setEmulatedMedia`. Chromium reports the phone's answer afterwards
+ * (`both: true`), which is how the tier is proven rather than assumed.
+ *
+ * `--audit` RUNS THE PANEL AUDIT AND WRITES ITS READINGS. It evaluates
+ * `scripts/probe-item-capsules.js` (unless `--eval`/`--eval-file` says
+ * otherwise) and writes the returned object to `<out>` with a `.audit.json`
+ * suffix. One run = one reading; the matrix (widths x device scale factors x
+ * both pointer capabilities) and the pass/fail judgement belong to
+ * `scripts/audit-panels.mjs`, which drives this tool — a screenshot tool that
+ * grew an assertion language would be a second test framework.
  *
  * `--both` captures TWO shots with one browser launch: the claimed --width and
  * the narrow 412, both derived from the SAME --out prefix (`shot.png` writes
@@ -60,8 +79,17 @@
 import { spawn } from 'node:child_process'
 import { existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { fileURLToPath } from 'node:url'
+
+/**
+ * Where this file's neighbours are. The audit probe is addressed relative to
+ * this script rather than to the caller's working directory: a tool that only
+ * works when run from one particular cwd is a tool that fails from everywhere
+ * else, and that failure would read as "the audit found nothing".
+ */
+const HERE = dirname(fileURLToPath(import.meta.url))
+const AUDIT_PROBE = join(HERE, 'probe-item-capsules.js')
 
 /** Flag parsing, long form only. Unknown flags are a fact worth printing. */
 function parseArgs(argv) {
@@ -81,6 +109,8 @@ function parseArgs(argv) {
     property: 'padding',
     both: false,
     scrollbars: false,
+    touch: false,
+    audit: false,
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
@@ -98,9 +128,11 @@ function parseArgs(argv) {
     if (key === 'full') { out.full = true; continue }
     if (key === 'both') { out.both = true; continue }
     if (key === 'scrollbars') { out.scrollbars = true; continue }
+    if (key === 'touch') { out.touch = true; continue }
+    if (key === 'audit') { out.audit = true; continue }
     if (key === undefined) {
       console.error(`shot-panel: unknown flag ${flag}`)
-      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both --scrollbars')
+      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both --scrollbars --touch --audit')
       process.exit(2)
     }
     out[key] = argv[i + 1] ?? ''
@@ -475,15 +507,29 @@ try {
   // 390px screen", and the page's own meta is then free to disagree (which is
   // what a real phone does). Any page without a meta still gets the old
   // behaviour, so the generated page declares one too.
+  /* THE POINTER CAPABILITY IS WHAT MAKES A PHONE, AND `--width` CANNOT SET IT.
+   * `mobile: true` only tells the engine "this viewport is a phone's" (it turns
+   * on meta-viewport handling); `(hover: none) and (pointer: coarse)` answers
+   * from the INPUT DEVICE, which stays a mouse until touch emulation is on.
+   * Measured at `--width 412` before this flag existed: `both: false`,
+   * `maxTouchPoints: 0`, `canHover: true`. */
+  const touch = args.touch
+  const mobileViewport = touch || shot.width < 600
   await browser.send('Emulation.setDeviceMetricsOverride', {
     width: shot.width,
     height: Number(args.height),
     deviceScaleFactor: Number(args.scale),
-    mobile: shot.width < 600,
-    ...(shot.width < 600 ? { screenWidth: shot.width, screenHeight: Number(args.height) } : {}),
+    mobile: mobileViewport,
+    ...(mobileViewport ? { screenWidth: shot.width, screenHeight: Number(args.height) } : {}),
   }, sessionId)
+  if (touch) {
+    await browser.send('Emulation.setTouchEmulationEnabled', { enabled: true, maxTouchPoints: 5 }, sessionId)
+  }
   await browser.send('Emulation.setEmulatedMedia', {
-    features: [{ name: 'prefers-color-scheme', value: args.colorScheme }],
+    features: [
+      { name: 'prefers-color-scheme', value: args.colorScheme },
+      ...(touch ? [{ name: 'hover', value: 'none' }, { name: 'pointer', value: 'coarse' }] : []),
+    ],
   }, sessionId)
 
   const loaded = new Promise(done => browser.on('Page.loadEventFired', done))
@@ -500,7 +546,11 @@ try {
    * 所以内容一律走文件：文件由文件工具写（LF、无 BOM），脚本只收路径。 */
   const evalSource = args.evalFile !== ''
     ? readFileSync(args.evalFile, 'utf8').replace(/^\uFEFF/, '')
-    : args.eval
+    : args.eval !== ''
+      ? args.eval
+      : args.audit
+        ? readFileSync(AUDIT_PROBE, 'utf8').replace(/^\uFEFF/, '')
+        : ''
   if (evalSource !== '') {
     const result = await browser.send('Runtime.evaluate', {
       expression: evalSource,
@@ -508,9 +558,23 @@ try {
       returnByValue: true,
     }, sessionId)
     if (result.exceptionDetails !== undefined) {
-      console.error(`shot-panel: --eval threw: ${result.exceptionDetails.text ?? 'unknown'}`)
+      /* 「Uncaught」不是一条错误信息，它是一句「出事了」。探针抛出来的那句话与栈在
+       * `exception.description` 里——不打印它，量的人就只能靠猜（这一条是真栽过的）。 */
+      const detail = result.exceptionDetails.exception?.description ?? result.exceptionDetails.text ?? 'unknown'
+      console.error(`shot-panel: --eval threw: ${detail.split('\n').slice(0, 4).join(' | ')}`)
+      /* AN AUDIT THAT COULD NOT RUN MUST NOT LOOK LIKE A PASS. A zero exit and
+       * a missing file are different facts, and only one of them means "clean". */
+      if (args.audit) await finish(8)
     } else if (result.result?.value !== undefined) {
-      console.error(`shot-panel: --eval -> ${JSON.stringify(result.result.value)}`)
+      const value = result.result.value
+      if (args.audit) {
+        const auditOut = `${shot.out.replace(/\.png$/i, '')}.audit.json`
+        writeFileSync(auditOut, `${JSON.stringify(value, null, 2)}\n`, 'utf8')
+        console.error(`shot-panel: audit -> ${auditOut}`)
+        console.error(`shot-panel: audit pass = ${JSON.stringify(value?.pass ?? null)}`)
+      } else {
+        console.error(`shot-panel: --eval -> ${JSON.stringify(value)}`)
+      }
     }
     // The click lands, the panel mounts, and the layout settles: give it the
     // same settle a human hand would, rather than capturing mid-paint.

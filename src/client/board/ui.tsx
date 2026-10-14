@@ -56,7 +56,9 @@ export function Button({ variant = 'ghost', size, type = 'button', className, di
       title={title}
       aria-label={label}
     >
-      {children}
+      {typeof children === 'string' || typeof children === 'number'
+        ? <span data-dsh-tb-pilltext>{children}</span>
+        : children}
     </button>
   )
 }

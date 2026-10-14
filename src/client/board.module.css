@@ -61,6 +61,9 @@
      box by HALF a pixel and the correction silently under-delivers. A transform
      is 1px because it says 1px. */
   --dsh-tb-mark-drop: 1px;
+  /* 装字的盒子那一格光学底衬——**降级路径用的那一个数**（见 `[data-dsh-tb-pilltext]`）。
+     支持 `text-box` 的引擎上它一行都不生效；两个面板共用一个名字，谁也不再手写 1px。 */
+  --dsh-tb-slot-lift: 1px;
   /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
      and the shell declares no such token (0 declarations across the whole DSH
      install — only references), so the alias was invalid and every consumer
@@ -86,6 +89,13 @@
      that are NOT pills (meter swatch, code, remove ×) keep their own tiny
      radii by design. */
   --dsh-tb-pill: 999px;
+  /* 触屏热区环：**一个小控件长出来的、看不见的那一圈。** 两轴各一个数，因为挡住它的
+     东西在两条轴上不一样——块向的邻居是上一行/下一行，行内的邻居是同排的下一个控件。
+     两个面板共用这两个名字：清单面板在窄档把横向那一格收窄到 3px（它那一排胶囊只隔
+     3px，量过），其余一律读这里。**不许再在媒体查询里手写 `inset: -7px`**：同一件事
+     两处写数，就会出现「7px 与 8px 与 3px」三种，而它们看起来都像对的。 */
+  --dsh-tb-hit-ring-block: 7px;
+  --dsh-tb-hit-ring-inline: 7px;
   /* corner geometry: `border-radius` decides how big a corner is, `corner-shape`
      decides whether that corner is a circular ARC. They are two axes, and only
      the second one can turn a 50% dot or a 999px pill into a rounded square —
@@ -391,6 +401,48 @@
      narrow layout and blows out the columns. */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+}
+
+/* ── 胶囊的文字槽：**一个声明，与字体无关** ────────────────────────────────────
+ *
+ * 一颗胶囊里的字「居中了吗」，此前由三个写死的数回答：清单那一族十一个选择器各垫的 1px
+ * 底衬、看板按钮里硬写的 `padding-block-end: 1px`、四族图标各自的 `translateY(0.75px)`。
+ * 三个数都是**按一种字体量出来的**——换一套字体度量，同一颗药丸的墨心就从 +0.5 走到 +1.0
+ * （量过），而图标那一侧是几何，字体换了它不动，于是「字偏上、图标不偏」正是这样来的。
+ *
+ * 这里给的是另一条路：**让装字的盒子裁到墨上**。`text-box: trim-both cap alphabetic` 把行盒
+ * 上下那截半行距剪掉，盒子于是正好包住墨——「居中这个盒子」就等于「居中这行字」，而盒子是
+ * 几何，几何不认字体。同一颗药丸、两种字体度量，宽度 390 / DPR 3 上量到的墨心与盒心之差：
+ *
+ *   固定行盒 + flex 居中     桌面度量 +0.5    安卓度量 +0.5
+ *   `line-height: normal`    桌面度量 +0.5    安卓度量 +1.0
+ *   **裁到墨上的槽**         桌面度量 −0.3    安卓度量 **+0.03**
+ *
+ * 留下的 0.3px 是「汉字的墨比 cap 边高」这一条**脚本常量**（两种度量下同号同量级），
+ * 在 DPR≥2 上不到一个设备像素——所以判据取 0.35，而**不加任何补偿**：拉丁-only 的槽量到的
+ * 是 0，一个固定补偿会把它推偏。
+ *
+ * **槽是「直接装字的那个盒子」。** 装记号的盒子不读它：记号绕 viewBox 中心对称，居中把盒心
+ * 放到位时墨心已经在位。一枚药丸里「一枚图标 + 一串字」时进去的是字那一枚，不是药丸自己
+ * ——挂在外面的药丸上会连记号一起抬。
+ *
+ * **槽没有类名，只有这一个属性**：于是没有第二条规则改得到它的 `display`，级联上没有对手。
+ *
+ * 判据不靠名单：`scripts/probe-item-capsules.js` 按**长什么样**把所有胶囊找出来（画了底或边、
+ * 够圆、装着看得见的字、高 ≤ 56px），一枚一枚量它的墨心与盒心，两档宽 × 三档 DPR × 两种
+ * 指针能力。忘了给槽的胶囊会被**量出来红**，而不是等着谁记得去名单上加一行。 */
+[data-dsh-tb-pilltext] {
+  display: block;
+  text-box: trim-both cap alphabetic;
+}
+
+/* 引擎还不认识 `text-box` 时退回旧机制（底部内衬半格）。这是**降级**，不是第二种做法：
+   认识裁墨的引擎上它一行都不生效，而两条路都由同一个探针量同一件事。 */
+@supports not (text-box: trim-both cap alphabetic) {
+  [data-dsh-tb-pilltext] {
+    display: block;
+    padding-block-end: var(--dsh-tb-slot-lift);
+  }
 }
 
 /* The board's stage: the shell's own `main` panel is the mounting point
@@ -1299,12 +1351,16 @@
    bar (the board's quiet aesthetic). One :is() list covers every hidden-bar
    surface — .columnTabs, .cards, .modalBackdrop and the compact .columns
    track — so a new hidden-bar surface joins the list instead of re-typing. */
-:is(.columnTabs, .cards, .modalBackdrop, .columns) {
+:is(.columnTabs, .cards, .modalBackdrop, .columns, .attachRow) {
   scrollbar-width: none;
 }
-:is(.columnTabs, .cards, .modalBackdrop, .columns)::-webkit-scrollbar {
+:is(.columnTabs, .cards, .modalBackdrop, .columns, .attachRow)::-webkit-scrollbar {
   display: none;
 }
+/* `.attachRow` 为什么在这张名单上（而不是画一条统一的细条）：**它这条行装不下一条条。**
+   芯片是 22px 高，而行是 24px，一条经典的 8px 横条会把滚动口的高度压到 16px——比芯片还矮，
+   于是块向也变成可滚的，读者看到的就是两根条（手机上真的量到过这一对）。这一行是触屏优先
+   的横滚带，横滚靠拖动、触控板与滚轮；条不画。 */
 
 .columns {
   display: grid;
@@ -2193,6 +2249,11 @@
   border-radius: var(--dsh-tb-pill);
 }
 .feedAction {
+  /* **定高 + 没有居中机制 = 字钉在盒顶。** 这一条从前只写 `height` 与内衬，于是那行字的
+     行盒落在 24px 内容盒的顶端，字的墨心比盒心高约 4px——同一排的 `.feedFilter` 有
+     `align-items: center`，两枚并排时一个居中一个贴在顶上。 */
+  display: inline-flex;
+  align-items: center;
   flex: none;
   height: 24px;
   padding: 0 10px;
@@ -2348,17 +2409,6 @@
      0 14px lands the two-character label near a 2:1 aspect like the reference
      board; height and radius stay on the shared rhythm, untouched. */
   padding: 0 14px;
-  /* **一像素的底内衬：把字的光学中心抬回盒子的中线。**
-   *
-   * 定高 + `align-items: center` 之下，居中由**行盒**算，而一个 13px 的中文行盒里，
-   * 墨的中心并不在行盒的中心——它比几何中心低约半像素到一像素，读者看到的是「文字
-   * 看着偏低」。底内衬加 1px，内容盒的下沿收进去一像素，居中的内容于是上移半像素
-   * （定高盒上是半个、随内容定高的盒上是一整个），落回光学中线。
-   *
-   * 这一条与清单面板那一族药丸是同一条律（`item.module.css` 末尾那一族，那里**逐像素
-   * 量过**：加之前四个控件的墨心偏 1px，加之后为 0）。看板这一侧没有对应的量法
-   * （看板没有面板那样的渲染工件），所以这里跟着同一条律走，**不宣称量过**。 */
-  padding-block-end: 1px;
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
@@ -2498,6 +2548,24 @@
   padding: 0 10px;
   font-size: 12px;
   border-radius: var(--dsh-tb-pill);
+}
+
+/* **脸是「图标 + 字」的按钮继续读那半格底衬；脸就是那个槽的读槽。**
+ *
+ * 从前基规则里垫着 `padding-block-end: 1px`，而它**从来没在这两个变体上生效过**：
+ * `.ghostButton { padding: 0 12px }` 与 `.buttonSm { padding: 0 10px }` 都写在基规则之后，
+ * 一句 `padding` 简写把底衬那一格整条抹掉——浏览器里量到的正是这个（同一页同一档：
+ * ghost 与 sm 的内衬 `0px/0px`、墨心 +0.5；同排的 primary 是 `0px/1px`、墨心 0）。
+ * 「一族里不许有第二种做法」在一次简写里被违反了，而没有任何一处报错。
+ *
+ * 现在这一条按**结构**分流：装字的槽自己把墨居中（`[data-dsh-tb-pilltext]`），没有槽的
+ * 按钮（字裹在图标那一段里的）继续读降级那半格。判据是 `:has()` 问的一句实话——
+ * 「这一颗按钮里有没有那个槽」——而不是又一份名单。 */
+.ghostButton:not(:has([data-dsh-tb-pilltext])),
+.primaryButton:not(:has([data-dsh-tb-pilltext])),
+.dangerButton:not(:has([data-dsh-tb-pilltext])),
+.dangerGhostButton:not(:has([data-dsh-tb-pilltext])) {
+  padding-block-end: var(--dsh-tb-slot-lift);
 }
 
 .iconButton {
@@ -6563,6 +6631,13 @@ textarea.input {
   flex: 0 1 auto;
   flex-wrap: nowrap;
   overflow-x: auto;
+  /* **另一条轴显式关掉，不交给规范去猜。** 只写 `overflow-x: auto` 时另一轴的**计算值
+     会变成 `auto`**（规范如此，浏览器里量到 computed `overflowY: auto`），于是任何越出
+     滚动口的东西都会多出一条可滚的轴——而这一行上正好站着一枚触屏热区环
+     （`::before` 伸出 7px，只在 `(hover: none) and (pointer: coarse)` 里生成）。量过的
+     结果：同一页同一 DOM，只把指针能力切成触屏，这一行多出 6px 竖向溢出，手机上那枚
+     「＋」旁边同时出现一根竖条与一根横条，桌面档什么都没有。 */
+  overflow-y: hidden;
   min-height: 24px;
   min-inline-size: 0;
 }
@@ -6616,8 +6691,18 @@ textarea.input {
   border: 1px solid var(--dsw-alias-border-l2);
   /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
   border-radius: var(--dsh-tb-pill);
+  /* **定高这条**在这枚芯片上量出来是**更差**的一版：`block-size: 22px` 之后它的名牌与
+     记号差了 0.7px（改前 0.5）——这一枚里最高的一件是那枚 16px 的移除按钮，块向内衬一收，
+     行盒与按钮的居中就不再是同一件事。所以这一枚保留**行盒派生的高度**，也不加「槽」：
+     它是**两串字**（名牌 12px + 字节数 11px），而给其中一串裁墨只会把并集的墨心挪走
+     （量过：加槽 0.7，不加 0.5）。两串字要的是**共享一条基线**，那是 `.itemGroupText` 那一族
+     的形状，属于还没做的一步——记在这里，不猜。 */
   padding: 2px 6px 2px 8px;
-  overflow: hidden;
+  /* **这里不许写 `overflow: hidden`。** 它当年是为了「芯片不长胖」而写的，而收窄那件事由
+     两个成员各自负责：`.attachChipName`（`min-width: 0` + 省略号）与 `.attachChipMeta`
+     （`flex: none`）。留在这里的代价是它把**后代的热区环一起裁掉**：触屏时 `.attachRemove`
+     那一圈伸到这枚芯片外面，于是那枚 16px 的「移除」在手机上**点不到**（量到过：
+     `outBy 5`，裁剪者就是这枚芯片）。去掉它，环落在芯片里，那一圈才真的算热区。 */
   white-space: nowrap;
 }
 
@@ -7878,6 +7963,11 @@ textarea.input {
   /* Invisible hit-area expansion (visual geometry unchanged). Each control
      gets a transparent border ring it can spare; the row/card is the
      positioned ancestor already. */
+  /* **`.`attachAdd` 不在这张名单上，是量出来的一个决定。** 它住在 `.attachRow`（一条
+     横滚带）里：环向上向下各伸 7px，而那一行只有 24px 高——伸出去的那一圈在滚动口外，
+     **既不可点**（`elementFromPoint` 在按钮上下 4px、8px 处返回的是那一行自己），
+     又给这一行**凭空加出 6px 的竖向溢出**：手机上那枚「＋」右边一根竖条、下边一根横条，
+     桌面档一根都没有。留着它只有代价，没有那半寸热区。 */
   .buttonSm,
   .rowHide,
   .cruiseMore,
@@ -7885,7 +7975,6 @@ textarea.input {
   .iconButton,
   .sessionRowHandle,
   .segmentedButton,
-  .attachAdd,
   .attachRemove,
   .reviewCommentCancel,
   .promptCopy,
@@ -7916,7 +8005,6 @@ textarea.input {
   .iconButton::before,
   .sessionRowHandle::before,
   .segmentedButton::before,
-  .attachAdd::before,
   .attachRemove::before,
   .reviewCommentCancel::before,
   .promptCopy::before,
@@ -7938,7 +8026,8 @@ textarea.input {
   .thumbBar .iconButton::before {
     content: '';
     position: absolute;
-    inset: -7px;
+    /* 两格都给令牌：一个规格，两轴各一个数（见 `--dsh-tb-hit-ring-*` 那一处）。 */
+    inset: calc(-1 * var(--dsh-tb-hit-ring-block)) calc(-1 * var(--dsh-tb-hit-ring-inline));
     border-radius: inherit;
   }
 
