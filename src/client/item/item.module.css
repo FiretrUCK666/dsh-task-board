@@ -4040,7 +4040,7 @@ textarea.itemInput {
 
 /* 指着它、或正拉着它：握痕**进一档墨**，不是换一种颜色。
  *
- * 这正是这一页每一枚安静控件的做法（`.itemWritePrompt` / `.itemQueryClear` / … 悬停都是
+ * 这正是这一页每一枚安静控件的做法（`.itemQueryClear` / … 悬停都是
  * `--item-ink-1`），而强调色在这里是**预算之外**的：它在这一面上只剩五个位置（当前页、
  * 选中行、正在跑、命令面板里的游标、优先级「高」），每一处都是「产品在说一句话」。
  * 一条抓条不是在说话，它是一枚控件的边缘——`tests/panel-render.spec.ts` 的预算断言就是
@@ -5067,35 +5067,6 @@ textarea.itemInput {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-/* ── 「＋ 写点什么」：空的那一块 ─────────────────────────────────────────
- *
- * 正文与备注**空的时候不画框**。这一面板上最常见的一行就是「没有正文」，
- * 所以最常见的展开区是一块空白，读者读到的第一件事是「这里空了一块」。
- *
- * 所以空的时候只留这一行：按下去框才出现，光标已经在里面。它是这一行里唯一的
- * 控件，所以它靠**左对齐 + 第三层墨 + 一条虚下边**说自己「空着」——一个实心边框
- * 的按钮在问「按我」，而这里要说的是「这里还没有东西」。 */
-.itemWritePrompt {
-  align-self: flex-start;
-  padding: 7px 10px;
-  margin-inline-start: -10px;
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  text-align: start;
-  color: var(--item-ink-3);
-  background: none;
-  border: 0;
-  border-block-end: 1px dashed var(--dsw-alias-border-l1);
-  cursor: text;
-  transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
-}
-
-.itemWritePrompt:hover {
-  color: var(--item-ink-1);
-  border-block-end-color: var(--dsw-alias-border-l1);
 }
 
 .itemOriginRow {
