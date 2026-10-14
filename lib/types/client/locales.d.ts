@@ -751,8 +751,6 @@ export declare const zh: {
     'item.field.bodyHint': string;
     'item.field.notes': string;
     'item.field.notesHint': string;
-    'item.field.notesAdd': string;
-    'item.field.bodyAdd': string;
     'item.attach.hint': string;
     'item.field.status': string;
     'item.field.priority': string;

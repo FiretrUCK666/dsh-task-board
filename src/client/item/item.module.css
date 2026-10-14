@@ -3928,10 +3928,6 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-.itemProseWrap {
-  min-inline-size: 0;
-}
-
 /* **正文那一段带的附件，就站在正文下面。**
  *
  * 它是这一段的一部分，所以间距比「另一个字段」近一档（`--s1`），与段落标题同一条线：
@@ -3999,7 +3995,10 @@ textarea.itemInput {
   font-size: var(--item-write-size);
   line-height: var(--item-write-leading);
   color: var(--item-ink-1);
-  background: none;
+  /* **与步骤板同一种底。** 这一列里「可以写一段」的三块地方（正文、步骤、上下文备注）是同一
+     件事的三种内容，读者不该从底色上猜它们是不是一类。令牌只读一处（`--item-fill`），所以
+     它们永远一起变——这也是这一格从「透明的框」变成「白框」的全部内容。 */
+  background: var(--item-fill);
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-ctl);
   /* 高度的两种平台写法都不在这里：原生拖拽关掉、随内容长关掉，超出由这一条接管。 */
@@ -4289,10 +4288,6 @@ textarea.itemInput {
 
 /* 就地可写的两处，按下的一拍：写入示意线与提示词各自进一档墨——触屏上按是
  * 唯一的反馈，这一拍不能缺席。 */
-.itemWritePrompt:active {
-  color: var(--item-ink-1);
-}
-
 .itemDateOpen:active > span {
   text-decoration-color: var(--item-ink-1);
 }
@@ -4984,6 +4979,14 @@ textarea.itemInput {
  *
  * **被拿掉的是另一批**：四个分组、行的身份轨、现状条的「一块框里一段话」。
  * 那些是被这一轮的骨架明确取代的结构，不是「暂时没找到新名字的东西」。 */
+
+/* **「还没有步骤。」也是一枚白底的胶囊。** 它与步骤板、两个写入框是同一种底：这一列里凡是
+   「可以往里写东西」的地方都是白的，空状态也不例外——一枚透明的胶囊在它们中间读起来像
+   一句旁注，而它其实是这一格的开场白。形状与其余提示同一套（`.itemHint` 的圆角、描边、
+   内衬），这里只加一层底。 */
+.itemStepEmpty {
+  background: var(--item-fill);
+}
 
 /* 一段提示。空着的一行是读者第一条行上方的一条什么都没有的东西，所以它不占行。 */
 .itemHint {

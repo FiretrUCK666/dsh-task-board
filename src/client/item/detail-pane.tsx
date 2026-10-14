@@ -315,22 +315,16 @@ export function ItemDetail(props: ItemDetailProps) {
     ? t('item.dates.overdue', { days: String(view.posture.days) })
     : undefined
   /**
-   * **空的正文与空的备注都不画框。**
+   * **正文与备注各是一个开着的框，没有折叠这一档。**
    *
-   * 画一个五行高的输入框的话——而这一面板上最常见的一行就是「没有正文」——最常见的展开区
-   * 就是一块空白，读者读到的第一件事是「这里空了一块」。
+   * 从前空着的时候只画一句「＋ 写点什么」，按下去框才出现、点开别处又收回去。那一步是拿
+   * 「这一格能写字」换「少画一个空盒子」，而这一面板上最常见的一行就是「没有正文」——于是
+   * 最常见的展开区是一句要按一下的话，而读者要的恰恰是**直接能写**。
    *
-   * 空的时候只留**一行安静的话**，按下去框才出现，光标已经在里面：读者要的
-   * 「我要写点什么」这一步没有变，少掉的是一个从来没人填过的盒子。
-   *
-   * 两个字段各有一份这个状态，因为它们是两件事——一个空着而另一个开着，是读者
-   * 自己造成的，不是坏了。
-   *
-   * **光标由框自己拿**（`ProseField` 的 `takeCaret`）：它就在那一刻挂上，所以「出现
-   * 就聚焦」不需要两个 `useEffect` 和两个 ref 在这一屏上各记一遍。
+   * 现在两格都是框：占位说明写着写什么，框自己有白底与抓条（与步骤板同一种底）。文字随每一次
+   * 键入写进文档，焦点进出不改变任何东西——所以没有 `takeCaret`：框不是「按出来的」，打开一行
+   * 不该把光标抢进正文。
    */
-  const [bodyOpen, setBodyOpen] = useState(false)
-  const [notesOpen, setNotesOpen] = useState(false)
   /** 新标签在右列就地加：回车就上，而上完就把框清空，因为读者多半还要写下一个。 */
   const [draftTag, setDraftTag] = useState('')
   /**
@@ -448,39 +442,25 @@ export function ItemDetail(props: ItemDetailProps) {
                 父级的 22 与自己的 4（量到 26），而新建那张纸里同一段距离是 6——同一件事两个数。
                 拖拽落点也铺在这一格上：**整段正文都收文件**，不是只有那个 24px 的「＋」。 */}
             <div className={css.itemBodyField} {...attach.dropProps}>
-              {item.body === '' && !bodyOpen
-                ? (
-                  <button type="button" className={css.itemWritePrompt} onClick={() => setBodyOpen(true)}>
-                    {t('item.field.bodyAdd')}
-                  </button>
-                )
-                : (
-                  <div
-                    className={css.itemProseWrap}
-                    onBlur={event => {
-                      /* 点开别处就收回，与卡片起名框同一律：焦点走出这一块
-                       * （relatedTarget 不在块里）= 读者去了别处，框收回；焦点在
-                       * 块内互相走动（正文与它下面那条抓条）不算点外。
-                       * 文字本身早已随每一次键入写进文档，收回只是收场，不丢字。 */
-                      if (event.currentTarget.contains(event.relatedTarget)) return
-                      setBodyOpen(false)
-                    }}
-                  >
-                    {/* 正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉
-                         （整个下沿都是抓条），超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：
-                        一个自己会滚的框就是那一个说法，不必再有「还有 N 行」那一枚，
-                        也不必再按一下才展开。 */}
-                    <ProseField
-                      value={item.body}
-                      onChange={body => props.onEdit({ body })}
-                      placeholder={t('item.field.bodyHint')}
-                      ariaLabel={t('item.field.body')}
-                      height={props.proseHeight}
-                      onHeight={props.onProseHeight}
-                      takeCaret
-                    />
-                  </div>
-                )}
+              {/* **正文永远是一个开着的框。** 从前空的时候只画一句「＋ 写点什么」，按下去才
+                  出现框、点开别处又收回去——那等于把「这一格能写字」藏在一按后面，而这一面板上
+                  最常见的一行就是「没有正文」，于是最常见的展开区是一句要按一下的话。
+                  现在它就是框：空着时占位说明写着写什么（`item.field.bodyHint`），框自己有白底
+                  与抓条，读者看到的第一件事就是「这里能写字」。文字仍随每一次键入写进文档，
+                  焦点进出不再改变任何东西——所以这里不传 `takeCaret`：框不是「按出来的」，
+                  它本来就在，打开一行不该把光标抢进正文。
+
+                  正文可以很长，而**框不会替读者决定它有多高**：高度由读者拉（整个下沿都是抓条），
+                  超出就在框内滚动。**「剩下的在哪」由滚动自己回答**：一个自己会滚的框就是那一个
+                  说法，不必再有「还有 N 行」那一枚。 */}
+              <ProseField
+                value={item.body}
+                onChange={body => props.onEdit({ body })}
+                placeholder={t('item.field.bodyHint')}
+                ariaLabel={t('item.field.body')}
+                height={props.proseHeight}
+                onHeight={props.onProseHeight}
+              />
 
               {/* **附件与正文是同一段东西**，所以它挂在正文那一段下面，而**不属于「打开正文」
                   那个手势**：一行正文还空着也可能先挂上一张图。 */}
@@ -514,36 +494,17 @@ export function ItemDetail(props: ItemDetailProps) {
 
           <section className={css.itemOpenSection}>
             <p className={css.itemOpenCaption}>{t('item.field.notes')}</p>
-            {item.notes === '' && !notesOpen
-              ? (
-                <button type="button" className={css.itemWritePrompt} onClick={() => setNotesOpen(true)}>
-                  {t('item.field.notesAdd')}
-                </button>
-              )
-              : (
-                /* 与正文**同一个元件**（`ProseField`）：边、底、字号、字色、地板与那条
-                 * 抓条都在一个地方——它们**不许各写一份**：只给这一格的样式，会让两格之间
-                 * 的差别要靠读者自己猜是为什么。它们是同一列里的两个输入，输入就该长得
-                 * 一样——而且是同一个东西，不是两处长得像的东西。 */
-                <div
-                  className={css.itemProseWrap}
-                  onBlur={event => {
-                    /* 与正文块同一律：点开别处收回；块内互走不算点外。 */
-                    if (event.currentTarget.contains(event.relatedTarget)) return
-                    setNotesOpen(false)
-                  }}
-                >
-                  <ProseField
-                    value={item.notes}
-                    onChange={notes => props.onEdit({ notes })}
-                    placeholder={t('item.field.notesHint')}
-                    ariaLabel={t('item.field.notes')}
-                    height={props.proseHeight}
-                    onHeight={props.onProseHeight}
-                    takeCaret
-                  />
-                </div>
-              )}
+            {/* 与正文**同一个元件、同一条规矩**（`ProseField`，永远开着）：边、底、字号、字色、
+                地板与那条抓条都在一个地方——它们**不许各写一份**。两格之间的差别要靠读者自己猜
+                是为什么，那是「长得像」而不是「是同一个东西」。 */}
+            <ProseField
+              value={item.notes}
+              onChange={notes => props.onEdit({ notes })}
+              placeholder={t('item.field.notesHint')}
+              ariaLabel={t('item.field.notes')}
+              height={props.proseHeight}
+              onHeight={props.onProseHeight}
+            />
           </section>
         </div>
 

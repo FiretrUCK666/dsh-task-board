@@ -2910,8 +2910,8 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     // has NO tick to explain it, so a fill there reads as 「this row is selected」)
     // -- and the press that enters a text field must not move either of them.
     //
-    // The body of an EMPTY row is a BUTTON that swaps itself for the field, so the
-    // press that 「点击正文」 describes is a press on a control inside the detail.
+    // The body of an EMPTY row is the FIELD itself now — no prompt button and no
+    // collapse — so the press that 「点击正文」 describes is a press on that field.
     // The detail region stops propagation for its own subtree; a child that writes
     // state and lets the event through would reach the row, whose plain press
     // selects AND toggles.
@@ -2925,8 +2925,8 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
       const row = rowEls(panel.surface)[0]
       click(row)
       expect(row.getAttribute('data-open'), 'the row did not open, so the rest of this proves nothing').toBe('')
-      const prompt = byToken(row, 'itemWritePrompt')
-      if (prompt !== null) click(prompt)
+      const field = [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
+      if (field !== undefined) click(field)
       expect(row.getAttribute('data-open'), 'pressing into the body closed the row').toBe('')
       expect(row.getAttribute('data-picked'), 'pressing into the body held the row').toBeNull()
       // And the collapse the reader asks for by pressing the row itself.
@@ -4109,21 +4109,20 @@ describe('展开区左列：三段各有一个段名，两句说明按需才出�
 })
 
 describe('an in-place editor answers a press away from it, and the row stays open', () => {
-  it('the body prompt opens into a block, and a press outside collapses the block with the row still open', () => {
+  it('the body block is there from the moment the row opens, and a press outside leaves it there', () => {
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       openRowDetail(panel)
       const row = rowEls(panel.surface)[0]!
       expect(row.getAttribute('data-open'), 'the row did not open').toBe('')
-      const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
-      if (prompt === null) throw new Error('the open row has no body prompt')
-      click(prompt)
-      const field = [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
-      expect(field, 'pressing the prompt turned nothing into a body block').not.toBeNull()
-      // 点开别处 = 焦点走出这一块。文字已随每次键入写进文档，收回只是收场。
-      act(() => { field!.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
-      const promptAgain = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
-      expect(promptAgain, 'the body block stayed open after a press outside it').not.toBeNull()
+      // **没有「先按一下才出现」这一步。** 框从打开这一行起就在：读者看到的第一件事就是
+      // 「这里能写字」，而不是一句要按一下的话。
+      const bodyOf = (): Element | undefined =>
+        [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
+      expect(bodyOf(), '打开的行里没有正文框').not.toBeUndefined()
+      // 点开别处 = 焦点走出这一块：**什么都不收回**（文字早已随每一次键入写进文档）。
+      act(() => { bodyOf()!.dispatchEvent(new FocusEvent('focusout', { bubbles: true })) })
+      expect(bodyOf(), '焦点离开之后正文框收起来了').not.toBeUndefined()
       expect(row.getAttribute('data-open'), 'the collapse took the open row with it').toBe('')
     } finally {
       panel.dispose()
@@ -5413,11 +5412,9 @@ describe('写入框：高度是读者的，整条下沿都能拉', () => {
     openRowDetail(panel)
     const row = rowEls(panel.surface)[0]
     if (row === undefined) throw new Error('the list page drew no row to open')
-    const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
-    if (prompt === undefined) throw new Error('the open row has no body prompt')
-    click(prompt)
+    /* **框本来就在，没有「先按一下」这一步。** 空着的一行也是同一个框：占位说明写着写什么。 */
     const field = [...row.querySelectorAll('textarea')].find(one => one.getAttribute('aria-label') === '正文')
-    if (field === undefined) throw new Error('pressing the prompt turned nothing into a body block')
+    if (field === undefined) throw new Error('the open row has no body field')
     const grip = row.querySelector('[role="separator"]')
     if (grip === null) throw new Error('the writing box drew no grip to drag')
     const box = field.parentElement

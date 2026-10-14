@@ -854,8 +854,6 @@ export const zh = {
   // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
   // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemContextText`）。
   'item.field.notesHint': '这一条从哪来、要做什么；交给 AI 时会一起带上',
-  'item.field.notesAdd': '＋ 上下文备注',
-  'item.field.bodyAdd': '＋ 写点什么',
   // **一句话说清这些附件的去处**：它们随这一条保存，而「变成看板卡片」时跟着卡一起走
   // ——不说这一句，读者会以为图只留在这个列表里。
   'item.attach.hint': '随这一条保存；变成卡片时一起过去',
@@ -1837,8 +1835,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.body': 'Body',
   'item.field.notes': 'Context notes',
   'item.field.notesHint': 'Where this row came from and what it is for; it travels with the row when you hand it to the AI',
-  'item.field.notesAdd': '＋ Context notes',
-  'item.field.bodyAdd': '＋ Write something',
   'item.attach.hint': 'Saved with this row; it travels to the card when you promote it',
   'item.field.status': 'Status',
   'item.field.priority': 'Priority',

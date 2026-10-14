@@ -120,7 +120,7 @@ export function ItemSteps(props: ItemStepsProps) {
   if (steps.length === 0) {
     return (
       <>
-        <p className={css.itemHint}>{t('item.steps.empty')}</p>
+        <p className={`${css.itemHint} ${css.itemStepEmpty}`}>{t('item.steps.empty')}</p>
         {addField}
       </>
     )
