@@ -7,7 +7,7 @@
 // 枚行内状态胶囊就不在任何一份名单上。所以这里的每一条判据都只问「它长什么样」与
 // 「它装了什么」，不问它叫什么：新加一颗胶囊，只要它长得像胶囊就自动进网。
 //
-// ── 三条判据 ─────────────────────────────────────────────────────────────────
+// ── 六条判据 ─────────────────────────────────────────────────────────────────
 //
 //   A1 胶囊里的字居中了没有   盒子按「画了底或边 + 够圆 + 装着看得见的字 + 高 ≤ 56」
 //                            认领；**只量最内层的那一颗**（装了几颗胶囊的盒子不算胶囊，
@@ -15,17 +15,37 @@
 //   A2 滚动体是什么形状       每条非 `visible` 的 overflow 都报出来，附两轴的使用值与
 //                            溢出量。触屏档与桌面档各跑一次，**差**才是信号：热区环越出
 //                            滚动口时，这一档会凭空多出一条滚动轴。
-//   A3 热区环越界了没有       生成中的 `::before`/`::after` 且 inset 有负值 = 一颗看不见
-//                            的扩大热区。它的墨框必须落在**每一个**裁剪祖先（滚动体或
+//   A3 热区环越界了没有       生成中的 `::before`/`::after` 且 inset 有负值 = 一颗看不见的
+//                            扩大热区。它的墨框必须落在**每一个**裁剪祖先（滚动体或
 //                            `overflow: hidden`）的内边之内——越出去的那部分既不可点，
 //                            又白白拉长滚动距离（量过：`.attachRow` 由此多出 6px 竖向
 //                            溢出，手机上就是那两根圆头灰条）。
+//   A4 字被切了没有           **只看竖向。** 墨盒与整条裁剪链求交，切掉超过 0.25px 就是一条
+//                            缺陷。横向不判：一枚省略号里的字**本来就**长过它的盒子，那是
+//                            设计；被切掉的一截字才是缺陷（量过：装字的盒子被裁到 8.41px
+//                            而 12px 汉字的墨有 11px 高，字的上沿少了 1.59px、下沿少了 1px）。
+//   A5 胶囊被装字的盒子压扁了没有  胶囊的高度地板 = 它自己声明的行盒 + 块向内衬 + 上下边。
+//                            比这矮，说明它的高度被装字的盒子带着缩了（量过：22px 的芯片
+//                            缩到 12.41px，因为它里面那个装字的盒子被裁到了 8.41px）。
+//                            这是结构判据——**不含任何按字体量出来的数**。
+//   A6 这把尺子还灵不灵        量真页面之前先种一颗**已知的坏胶囊**（偏上 + 被裁 + 被压扁），
+//                            用同一套扫描量它，要求三条判据都报出来。报不出来就是 `blind`。
+//                            「上一轮全绿而屏幕是坏的」的根子不是某个数算错，而是没有一步
+//                            问过尺子还灵不灵——所以自证是**判据的一部分**，不是调试开关。
 //
-// ── 字的墨怎么量 ─────────────────────────────────────────────────────────────
+// ── 字的墨怎么量：**基线由浏览器给，不由算式给** ───────────────────────────────
 //
-// `Range.getClientRects()` 给的是**行盒**，行盒上下对称，于是真实的半像素偏差会被它报成
-// 0；字的墨只能由 `TextMetrics.actualBoundingBox*` 配半行距算出来。图形（SVG）走第三条
-// 路：`getBoundingClientRect()` 是几何包围盒，按 `stroke-width` 的一半外扩才是描边的墨。
+// `Range.getClientRects()` 给的是**行盒**，行盒上下对称，于是真实的半像素偏差会被它报成 0。
+// 而「基线在行盒里的位置 = 行盒顶 + 半行距 + 字体自身的高」是一个**算式**：它对被裁过的盒子
+// 直接错约 1px（裁过的盒子基线在盒底，不在半行距里），而算错的尺子会把「偏上 0.85px 又被切掉
+// 一截」读成「偏 0.3px，通过」——本项目的探针就是这么在屏幕上明显坏着的时候报绿的。
+//
+// 换成量：在**同一个行盒**里插一个空的 `inline-block`——它没有行盒，于是它的基线就是自己的
+// 下边缘（CSS 2.1），它的 `bottom` 就是这一行的基线。量完立刻还原 DOM。没量到就报 `no-reading`：
+// 三态里的「没量到」好过一个似是而非的数。
+//
+// 图形（SVG）走第三条路：`getBoundingClientRect()` 是几何包围盒，按 `stroke-width` 的一半
+// 外扩才是描边的墨。
 //
 // 最后一个表达式就是答案（`shot-panel` 取表达式的完成值），所以这里不许以 `console.log` 收尾。
 ;((() => {
@@ -42,18 +62,26 @@
 
   /** 两轴容差。**竖向严、横向松，理由不一样：**
    *
-   *   竖 0.5   槽把墨居中之后剩下的那一点，是「汉字的墨比 cap 边高」这一条**脚本常量**——
-   *            它随字号与字重浮动，两种字体度量下量到 −0.3 与 +0.03，12px 与 13px 的成员
-   *            又差 0.16。刻意**不加补偿**：一个固定的补偿只对一种度量成立（那正是旧机制的
-   *            病），而这里的残差在 DPR≥2 上不到一个设备像素。
+   *   竖 0.5   「把行盒居中」与「把墨居中」之间差的，是字体度量自己的那一点零点几像素
+   *            （CJK 字形在 em 盒里本来就略高于几何中心）。它是**字体的事**，随字号与字重
+   *            浮动；固定补偿只对一种字体成立（那正是旧机制的病），所以这里只量、不补。
+   *            0.5px 在 DPR≥2 上不到两个设备像素，而真正的结构缺陷（丢了一格内衬、一行
+   *            没居中、盒子被压扁）都是 1px 起步——判据落在那个量级。
    *   横 1.5   字形的左/右侧承与前进宽度让「墨心」与「盒心」本来就差约 1px——那不是排版
    *            缺陷。读者看得见的横向问题是「靠边」（>2px 的事），所以判据落在那个量级。 */
   const TOL = 0.5
   const TOL_X = 1.5
-  /** 「几块字与记号对齐」的容差——两号字可以差半格，所以比药丸宽一档。 */
-  const MARK_TOL = 0.5
+  /** 「几块字与记号对齐」的容差。**它是竖向容差加一个圆整步**，不是另定的一个数：记号落在
+   * 盒心上（`markOffY` 量到的就是那零点零几），所以「字 vs 记号」的上界就是「字 vs 盒心」的
+   * 上界，两个各自取整的数最多再差一个圆整步。量到过 0.51 卡在 0.5 上——那不是缺陷，
+   * 是同一个残差被量了两遍。 */
+  const MARK_TOL = TOL + 0.1
   /** 热区环可以伸出的最大距离：0 表示「不许越出自己的裁剪祖先」。 */
   const RING_SLACK = 0.5
+  /** 墨被切掉的圆整余量：「切没切」是有/无的事，只留亚像素取整的余地。 */
+  const CUT_SLACK = 0.25
+  /** 高度地板的圆整余量，同理。 */
+  const FLOOR_SLACK = 0.25
 
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
@@ -63,6 +91,61 @@
     const raw = typeof el.className === 'string' ? el.className : ''
     return raw.split(/\s+/).filter((one) => one !== '').map((one) => one.replace(/^[A-Za-z0-9]+_/, '')).join(' ').slice(0, 40)
   }
+
+  /* ── 基线锚 ─────────────────────────────────────────────────────────────────── */
+
+  /** 一串字排在哪几个行盒里。 */
+  const lineRectsOf = (node) => {
+    const range = document.createRange()
+    range.selectNodeContents(node)
+    return [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0)
+  }
+
+  const PROBE_ATTR = 'data-dsh-tb-probe'
+  /** 空的 `inline-block` 没有行盒，于是它的基线**就是自己的下边缘**。零尺寸，不进流。 */
+  const ANCHOR_STYLE = 'display:inline-block;width:0;height:0;margin:0;padding:0;border:0;overflow:visible'
+  const flexLike = (display) => display.includes('flex') || display.includes('grid')
+
+  /** 这一行的基线在哪——**量出来**，不是算出来。量不到返回 null。 */
+  const baselineOf = (run) => {
+    const parent = run.node.parentElement
+    if (parent === null) return null
+    const line = lineRectsOf(run.node)[0]
+    if (line === undefined) return null
+    const undo = []
+    try {
+      let host = parent
+      /* 文本是 flex/grid 容器的**匿名项**时，往容器里插行内块不会进那一行（它会成为另一个
+         flex item）。先把这段文本搬进自己的 span 再插锚：匿名项与块化的 span 占的是同一格，
+         几何不变。量完按相反顺序还原，页面回到原样。 */
+      if (flexLike(getComputedStyle(parent).display)) {
+        const span = document.createElement('span')
+        span.setAttribute(PROBE_ATTR, '')
+        parent.insertBefore(span, run.node)
+        span.appendChild(run.node)
+        undo.push(() => { span.parentNode?.insertBefore(run.node, span); span.remove() })
+        host = span
+      }
+      const anchor = document.createElement('span')
+      anchor.setAttribute(PROBE_ATTR, '')
+      anchor.setAttribute('style', ANCHOR_STYLE)
+      host.insertBefore(anchor, run.node.nextSibling)
+      undo.push(() => anchor.remove())
+      const rect = anchor.getBoundingClientRect()
+      /* 锚必须落在**这一串字那一行**上：字正好占满一行时它会掉到下一行，那时它的下边缘是
+         下一行的基线。读不准就报 `no-reading`。 */
+      if (rect.height > 0.5 || rect.top < line.top - 0.5 || rect.bottom > line.bottom + 0.5) return null
+      return rect.bottom
+    } finally {
+      for (const step of undo.reverse()) step()
+    }
+  }
+
+  /** 一个盒子**本来**该有多高的行盒：`line-height` 是 px 就是它，`normal` 就是字体自己的
+   * 内容区。裁墨那一类属性改的是盒子，不改这个声明——所以它是地板那一侧的权威。 */
+  const declaredLineBox = (st, metrics) => st.lineHeight === 'normal'
+    ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
+    : px(st.lineHeight)
 
   /* ── 字的墨：一个一个**看得见的**文字节点并起来 ─────────────────────────────
    *
@@ -90,23 +173,41 @@
   const glyphInk = (el, runs) => {
     const boxes = []
     const lineTops = new Set()
+    let hl = Number.POSITIVE_INFINITY
+    let hr = Number.NEGATIVE_INFINITY
+    let lineBox = 0
     for (const run of runs) {
-      const range = document.createRange()
-      range.selectNodeContents(run.node)
-      const line = [...range.getClientRects()].find((r) => r.width > 0 && r.height > 0)
+      const lines = lineRectsOf(run.node)
+      const line = lines[0]
       if (line === undefined) continue
+      const baseline = baselineOf(run)
+      if (baseline === null) continue
       const st = run.style
       ctx.font = `${st.fontStyle} ${st.fontWeight} ${st.fontSize} ${st.fontFamily}`
       const metrics = ctx.measureText(run.text)
-      const ascent = metrics.fontBoundingBoxAscent
-      const descent = metrics.fontBoundingBoxDescent
-      if (!Number.isFinite(ascent) || !Number.isFinite(descent)) continue
-      // 基线在行盒里的位置 = 行盒顶 + 半行距 + 字体自身的高。
-      const baseline = line.top + (line.height - (ascent + descent)) / 2 + ascent
-      lineTops.add(round(line.top))
+      if (!Number.isFinite(metrics.actualBoundingBoxAscent)) continue
+      /* **横向的权威是行盒，不是画布。** 画布给的是一串字的**前进宽度**，而排版还认
+       * `font-variant-numeric` 这类字形特性——`tabular-nums` 下的 `1` 比画布量的宽近 2px，
+       * 于是「画布宽度 ≠ 行盒宽度」在一个完全正常的盒子上也会成立（实测：`.itemPrioChip` 的
+       * `!1` 因此被判成横向读不出来）。而横向要问的本来就是「这一排**排**居中了吗」——
+       * 那是布局的事，行盒正是答案；纵向才是墨的事。
+       *
+       * **行盒要按裁剪口收一刀**：省略号生效时，这一串字的行盒比读者看得见的那一段长
+       * （量到过：`.boardDemand` 因为这一刀没收到，内容被量成偏右 6px，而它是居中的）。
+       * 收刀的前提是这一串自己就在口子里——整块滚出去的元素不能收，否则会量出一个负宽度。 */
+      const own = run.node.parentElement === null ? null : run.node.parentElement.getBoundingClientRect()
+      const clips = run.node.parentElement === null ? [] : clipBoxesOf(run.node.parentElement, true)
+      const inside = own !== null && clips.every((c) => c.node === run.node.parentElement ||
+        (own.left >= c.l - 1 && own.right <= c.r + 1 && own.top >= c.t - 1 && own.bottom <= c.b + 1))
+      const clipL = inside && clips.length > 0 ? Math.max(...clips.map((c) => c.l)) : Number.NEGATIVE_INFINITY
+      const clipR = inside && clips.length > 0 ? Math.min(...clips.map((c) => c.r)) : Number.POSITIVE_INFINITY
+      for (const one of lines) {
+        hl = Math.min(hl, Math.max(one.left, clipL))
+        hr = Math.max(hr, Math.min(one.right, clipR))
+        lineTops.add(round(one.top))
+      }
+      lineBox = Math.max(lineBox, declaredLineBox(st, metrics))
       boxes.push({
-        l: line.left - metrics.actualBoundingBoxLeft,
-        r: line.left + metrics.actualBoundingBoxRight,
         t: baseline - metrics.actualBoundingBoxAscent,
         b: baseline + metrics.actualBoundingBoxDescent,
       })
@@ -126,11 +227,12 @@
       previous = top
     }
     return {
-      l: round(Math.min(...boxes.map((b) => b.l))),
-      r: round(Math.max(...boxes.map((b) => b.r))),
+      l: Number.isFinite(hl) ? round(hl) : null,
+      r: Number.isFinite(hr) ? round(hr) : null,
       t: round(Math.min(...boxes.map((b) => b.t))),
       b: round(Math.max(...boxes.map((b) => b.b))),
       lines,
+      lineBox: round(lineBox),
     }
   }
 
@@ -152,21 +254,93 @@
   }
 
   /** 墨框的并集（字与记号各是一块墨；「这一排内容居中了吗」问的是并集）。 */
-  const unionInk = (a, b) => (a === null ? b : b === null ? a : {
-    l: Math.min(a.l, b.l), r: Math.max(a.r, b.r), t: Math.min(a.t, b.t), b: Math.max(a.b, b.b), lines: a.lines,
-  })
+  const unionInk = (a, b) => {
+    if (a === null) return b
+    if (b === null) return a
+    return {
+      l: a.l === null || b.l === null ? null : Math.min(a.l, b.l),
+      r: a.r === null || b.r === null ? null : Math.max(a.r, b.r),
+      t: Math.min(a.t, b.t),
+      b: Math.max(a.b, b.b),
+      lines: a.lines,
+    }
+  }
 
   const boxOf = (el) => {
     const r = el.getBoundingClientRect()
     return { l: round(r.left), r: round(r.right), t: round(r.top), b: round(r.bottom), w: round(r.width), h: round(r.height) }
   }
-  const cy = (box) => (box.l + box.r === 0 ? 0 : round((box.t + box.b) / 2))
-  const cx = (box) => round((box.l + box.r) / 2)
+  /* 中心只在**量得到**的时候给：`null` 混进算式会静默变成 0，而 0 是一个看起来很像答案的数
+   * （实测栽过：墨的横向读数没量到时，`cy` 把 `null + null` 当 0 收下，偏差被报成 −955px）。 */
+  const cy = (box) => (Number.isFinite(box.t) && Number.isFinite(box.b) ? round((box.t + box.b) / 2) : null)
+  const cx = (box) => (Number.isFinite(box.l) && Number.isFinite(box.r) ? round((box.l + box.r) / 2) : null)
+
+  /* ── 裁剪链：墨的刀 ─────────────────────────────────────────────────────────
+   *
+   * **只数面板自己的祖先。** `html`/`body` 不算：窗口边缘不是我们能修的裁剪，而且那外面的
+   * 像素读者本来就够不着——量到过的那一枚（面板顶栏的铃）在工件页上被 `body` 裁掉 7px，那是
+   * **工件页自己的壳**，不是面板的几何。
+   *
+   * 最近的那一条给 A3（热区环），整条链给 A4（墨被谁切了）。`includeSelf` 是给 A4 用的：
+   * 装字的盒子自己就可能是那把刀（省略号那一条 `overflow: hidden`）。 */
+  const clipBoxesOf = (el, includeSelf) => {
+    const out = []
+    let node = includeSelf ? el : el.parentElement
+    while (node !== null && node !== document.body && node !== document.documentElement) {
+      const st = getComputedStyle(node)
+      if (st.overflowX !== 'visible' || st.overflowY !== 'visible' || st.clipPath !== 'none') {
+        const r = node.getBoundingClientRect()
+        out.push({
+          node,
+          // 名字为空时退回标签名：一个报成空串的裁剪者，读者认不出它说的是谁。
+          key: keyOf(node) === '' ? node.tagName.toLowerCase() : keyOf(node),
+          overflowX: st.overflowX,
+          overflowY: st.overflowY,
+          overflow: `${st.overflowX}/${st.overflowY}`,
+          // 内边 = 边框盒减掉边框，也就是滚动口/裁剪口所在的那一格。
+          l: r.left + node.clientLeft,
+          t: r.top + node.clientTop,
+          r: r.left + node.clientLeft + node.clientWidth,
+          b: r.top + node.clientTop + node.clientHeight,
+        })
+      }
+      node = node.parentElement
+    }
+    return out
+  }
+
+  /** 一串字被切掉多少。**逐边问**：这一串字自己在裁剪口里、而墨在外面，那才是被切掉的一截；
+   * 整块内容滚出去了（元素自己就在裁剪口外）不算——那不是切，是没滚到。 */
+  const cutOf = (run, ink) => {
+    const parent = run.node.parentElement
+    if (parent === null || ink === null) return null
+    const clips = clipBoxesOf(parent, true)
+    if (clips.length === 0) return null
+    const own = parent.getBoundingClientRect()
+    /* 每一条边取最紧的那把刀（裁剪链的交集）。 */
+    const topClip = clips.reduce((a, c) => (c.t > a.t ? c : a))
+    const bottomClip = clips.reduce((a, c) => (c.b < a.b ? c : a))
+    const leftClip = clips.reduce((a, c) => (c.l > a.l ? c : a))
+    const rightClip = clips.reduce((a, c) => (c.r < a.r ? c : a))
+    /* 这一边作不作数：刀就是**自己**（省略号那一条 `overflow: hidden`）时永远作数；
+     * 是祖先时，只有「这一串字还在那个口子里」才作数。 */
+    const side = (clip, holds) => (clip.node === parent || holds ? round(Math.max(0, clip.gap)) : 0)
+    return {
+      top: side({ node: topClip.node, gap: topClip.t - ink.t }, own.top >= topClip.t - 1),
+      bottom: side({ node: bottomClip.node, gap: ink.b - bottomClip.b }, own.bottom <= bottomClip.b + 1),
+      left: ink.l === null ? 0 : side({ node: leftClip.node, gap: leftClip.l - ink.l }, own.left >= leftClip.l - 1),
+      right: ink.r === null ? 0 : side({ node: rightClip.node, gap: ink.r - rightClip.r }, own.right <= rightClip.r + 1),
+      by: `${topClip.key}/${bottomClip.key}`,
+    }
+  }
 
   /* ── A1：胶囊 ──────────────────────────────────────────────────────────────── */
   const looksLikeCapsule = (el) => {
     const r = el.getBoundingClientRect()
-    if (r.height < 14 || r.height > 56 || r.width < 24) return null
+    /* **这张网的下沿必须低于任何一枚正常的胶囊，而不是低于缺陷。** 从前这里是 14px，于是
+     * 「被压扁到 12.41px 的芯片」连进网都进不来——缺陷自己把自己的证据藏起来了，而 A5 正是
+     * 为它写的。10px 以下不可能是一枚装得下字的胶囊，所以下沿放在那里。 */
+    if (r.height < 10 || r.height > 56 || r.width < 24) return null
     const st = getComputedStyle(el)
     if (!['flex', 'inline-flex', 'block', 'inline-block', 'grid', 'inline-grid'].includes(st.display)) return null
     const radius = Math.max(px(st.borderTopLeftRadius), px(st.borderTopRightRadius))
@@ -176,71 +350,152 @@
     return painted ? st : null
   }
 
-  /* **横向政策由盒子自己说。** 一枚胶囊的内容是靠中还是靠左，答案在它自己的
-   * `justify-content`（flex）或 `text-align`（块）里——那不是审计该猜的事，也不是该由一枚
-   * 新属性重复一遍的事。审计只判「声明了居中的那些**真的**居中了吗」，并把靠左的那些**列出来**
-   * （名单进报告），因为「这一枚为什么靠左」是设计决定。谁连一句政策都没写、靠继承碰巧对了，
-   * 那是静态门禁管的事（那里读得到声明，浏览器里读不到「没写」）。 */
+  /* **横向政策由盒子自己说，而且只在它说了算的那条轴上问。** 一枚胶囊的内容是靠中还是靠左：
+   * flex/grid 容器里答案是 `justify-content`——`text-align` 在那里**不生效**，而 `<button>` 带着
+   * browser 默认的 `text-align: center` 进来，于是「按 text-align 判」会把每一枚按钮型胶囊都
+   * 当成声明了居中，再把它的内容量成一枚靠左的缺陷（量到过：`.boardDemand` 报 6px，而它是
+   * `padding: 0 12px` 对称、内容本来就居中）。块容器里才读 `text-align`。
+   * 审计只判「声明了居中的那些**真的**居中了吗」，靠左的那些**列出来**——「这一枚为什么靠左」
+   * 是设计决定。 */
   const horizPolicy = (st) => {
-    if (st.justifyContent === 'center' || st.justifyContent === 'space-around' || st.justifyContent === 'space-evenly') return 'center'
-    if (st.textAlign === 'center') return 'center'
-    return 'start'
+    const flex = st.display.includes('flex') || st.display.includes('grid')
+    if (flex) {
+      return st.justifyContent === 'center' || st.justifyContent === 'space-around' || st.justifyContent === 'space-evenly' ? 'center' : 'start'
+    }
+    return st.textAlign === 'center' ? 'center' : 'start'
   }
 
-  const candidates = []
-  for (const el of document.querySelectorAll('*')) {
-    if (looksLikeCapsule(el) === null) continue
-    const runs = visibleRuns(el)
-    if (runs.length === 0) continue
-    candidates.push({ el, runs })
-  }
-  /* **只量最内层那一颗。** 装了几颗胶囊的盒子（一行标签、一排选择器）自己也符合「画了底、
-   * 够圆、装着字」，但它的墨是**并集**：量它等于量一排东西的中心，那不是任何一颗胶囊。 */
-  const capsules = candidates
-    .filter((one) => !candidates.some((other) => other !== one && one.el.contains(other.el)))
-    .map(({ el, runs }) => {
-      const st = getComputedStyle(el)
-      const box = boxOf(el)
-      const ink = glyphInk(el, runs)
-      const mark = el.querySelector('svg') === null ? null : strokeInk(el)
-      const content = unionInk(ink, mark)
-      return {
-        key: keyOf(el),
-        /* 屏上那串字的前几个字：**只为了让人认得出是哪一颗**，判据不看它。一枚在报告里
-         * 叫 `ghostButton` 的盒子，两个面板加起来有几十个。 */
-        label: (el.textContent ?? '').trim().slice(0, 14),
-        tag: el.tagName.toLowerCase(),
-        h: box.h,
-        w: box.w,
-        display: st.display,
-        align: st.alignItems,
-        justify: st.justifyContent,
-        lineHeight: st.lineHeight,
-        fontSize: st.fontSize,
-        padBlock: `${st.paddingTop}/${st.paddingBottom}`,
-        policy: horizPolicy(st),
-        lines: ink === null ? null : ink.lines,
-        hasTextSlot: el.querySelector('[data-dsh-tb-pilltext]') !== null || el.hasAttribute('data-dsh-tb-pilltext'),
-        offY: ink === null ? null : round(cy(ink) - cy(box)),
-        /* **横着问的是「这一排内容居中了吗」，不是「字的墨心居中了吗」。** 一枚「图标 + 标签」
-         * 的按钮，居中的是那两件东西并起来的一排；只量字，会把「图标占了左边 7px」报成缺陷
-         * （量过：面板顶栏那颗新建按钮就是这样，7px 正好是图标宽加间距的一半）。
-         * 纵着仍然只量字：读者说「字没居中于它的胶囊」时，说的是字。 */
-        offX: content === null ? null : round(cx(content) - cx(box)),
-        markOffY: mark === null ? null : round(cy(mark) - cy(box)),
-        textVsMark: ink === null || mark === null ? null : round(cy(ink) - cy(mark)),
-      }
-    })
+  /* ── 一次扫描（可重跑：自证要在同一把尺子上量一颗种下的坏胶囊）───────────────── */
+  const scan = () => {
+    const candidates = []
+    for (const el of document.querySelectorAll('*')) {
+      if (looksLikeCapsule(el) === null) continue
+      const runs = visibleRuns(el)
+      if (runs.length === 0) continue
+      candidates.push({ el, runs })
+    }
+    /* **只量最内层那一颗。** 装了几颗胶囊的盒子（一行标签、一排选择器）自己也符合「画了底、
+     * 够圆、装着字」，但它的墨是**并集**：量它等于量一排东西的中心，那不是任何一颗胶囊。 */
+    const capsules = candidates
+      .filter((one) => !candidates.some((other) => other !== one && one.el.contains(other.el)))
+      .map(({ el, runs }) => {
+        const st = getComputedStyle(el)
+        const box = boxOf(el)
+        const ink = glyphInk(el, runs)
+        const mark = el.querySelector('svg') === null ? null : strokeInk(el)
+        const content = unionInk(ink, mark)
+        /* 切割逐串字求，取最大的那一边。 */
+        let cutTop = 0
+        let cutBottom = 0
+        let cutLeft = 0
+        let cutRight = 0
+        let cutBy = null
+        for (const run of runs) {
+          const one = glyphInk(el, [run])
+          const cut = one === null ? null : cutOf(run, one)
+          if (cut === null) continue
+          if (cut.top > cutTop) { cutTop = cut.top; cutBy = cut.by }
+          if (cut.bottom > cutBottom) { cutBottom = cut.bottom; cutBy = cut.by }
+          cutLeft = Math.max(cutLeft, cut.left)
+          cutRight = Math.max(cutRight, cut.right)
+        }
+        /* 高度地板：胶囊至少要装得下它自己声明的行盒加块向内衬与上下边。 */
+        const floor = ink === null ? null : round(ink.lineBox + px(st.paddingTop) + px(st.paddingBottom) + px(st.borderTopWidth) + px(st.borderBottomWidth))
+        return {
+          key: keyOf(el),
+          /* 屏上那串字的前几个字：**只为了让人认得出是哪一颗**，判据不看它。一枚在报告里
+           * 叫 `ghostButton` 的盒子，两个面板加起来有几十个。 */
+          label: (el.textContent ?? '').trim().slice(0, 14),
+          tag: el.tagName.toLowerCase(),
+          h: box.h,
+          w: box.w,
+          display: st.display,
+          align: st.alignItems,
+          justify: st.justifyContent,
+          lineHeight: st.lineHeight,
+          fontSize: st.fontSize,
+          padBlock: `${st.paddingTop}/${st.paddingBottom}`,
+          policy: horizPolicy(st),
+          lines: ink === null ? null : ink.lines,
+          hasTextSlot: el.querySelector('[data-dsh-tb-pilltext]') !== null || el.hasAttribute('data-dsh-tb-pilltext'),
+          offY: ink === null ? null : round(cy(ink) - cy(box)),
+          /* **横着问的是「这一排内容居中了吗」，不是「字的墨心居中了吗」。** 一枚「图标 + 标签」
+           * 的按钮，居中的是那两件东西并起来的一排；只量字，会把「图标占了左边 7px」报成缺陷
+           * （量过：面板顶栏那颗新建按钮就是这样，7px 正好是图标宽加间距的一半）。
+           * 纵着仍然只量字：读者说「字没居中于它的胶囊」时，说的是字。 */
+          offX: content === null || cx(content) === null ? null : round(cx(content) - cx(box)),
+          markOffY: mark === null ? null : round(cy(mark) - cy(box)),
+          textVsMark: ink === null || mark === null ? null : round(cy(ink) - cy(mark)),
+          cutTop: round(cutTop),
+          cutBottom: round(cutBottom),
+          cutLeft: round(cutLeft),
+          cutRight: round(cutRight),
+          cutBy,
+          floor,
+          squeezed: floor !== null && round(box.h) < floor - FLOOR_SLACK,
+        }
+      })
 
-  /* 判据只管**单行的**胶囊：多行的盒子装的是段落，不是标签（`lines` 就是那个判据）。 */
-  const labels = capsules.filter((c) => c.lines === 1)
-  const centred = labels.filter((c) => c.policy === 'center')
-  const startAligned = labels.filter((c) => c.policy !== 'center')
-  const worstV = worst(labels.map((c) => c.offY))
-  const worstH = worst(centred.map((c) => c.offX))
-  const worstMark = worst(labels.map((c) => c.textVsMark))
-  const offendersV = labels.filter((c) => !within(c.offY, TOL))
-  const offendersH = centred.filter((c) => !within(c.offX, TOL_X))
+    /* 判据只管**单行的**胶囊：多行的盒子装的是段落，不是标签（`lines` 就是那个判据）。 */
+    const labels = capsules.filter((c) => c.lines === 1)
+    const centred = labels.filter((c) => c.policy === 'center')
+    const startAligned = labels.filter((c) => c.policy !== 'center')
+    return {
+      capsules,
+      labels,
+      centred,
+      startAligned,
+      worstV: worst(labels.map((c) => c.offY)),
+      worstH: worst(centred.map((c) => c.offX)),
+      worstMark: worst(labels.map((c) => c.textVsMark)),
+      /* 判据只对**量得到的**那些下结论：读不出来的那一枚是 `no-reading`，不是一条缺陷。 */
+      offendersV: labels.filter((c) => Number.isFinite(c.offY) && !within(c.offY, TOL)),
+      offendersH: centred.filter((c) => Number.isFinite(c.offX) && !within(c.offX, TOL_X)),
+      /* **只看竖向**的切割。横向那一截是省略号的定义，不是缺陷。 */
+      cutOffenders: labels.filter((c) => c.cutTop > CUT_SLACK || c.cutBottom > CUT_SLACK),
+      floorOffenders: labels.filter((c) => c.squeezed),
+    }
+  }
+
+  const clean = scan()
+
+  /* ── A6：自证 ────────────────────────────────────────────────────────────────
+   *
+   * 种一颗**已知的坏胶囊**：一行装不下（`line-height: 40px` 的盒子只有 20px 高 = 压扁）、
+   * 里面的装字盒子只有 6px 高还 `overflow: hidden`（= 字被切）、块首内衬 6px（= 偏下）。
+   * 三条判据都该报出来；少一条就是这把尺子瞎了。种下去的那一颗带 `data-dsh-tb-selftest`，
+   * 量完删掉——**探针不许留在页面上**。 */
+  const SELFTEST_KEY = 'selftestCapsule'
+  const plantDefect = () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-dsh-tb-selftest', '')
+    host.className = SELFTEST_KEY
+    host.setAttribute('style', 'position:fixed;left:-400px;top:0;box-sizing:border-box;width:120px;height:20px;display:inline-flex;align-items:center;justify-content:center;padding-block-start:6px;background:rgb(9,9,9);border-radius:999px;overflow:hidden;line-height:40px;font-size:12px;color:rgb(255,255,255)')
+    const inner = document.createElement('span')
+    inner.setAttribute('style', 'display:block;block-size:6px;overflow:hidden;line-height:20px')
+    inner.textContent = '自检'
+    host.appendChild(inner)
+    document.body.appendChild(host)
+    return host
+  }
+
+  let selfTest = 'blind'
+  let planted = null
+  const probe = plantDefect()
+  try {
+    planted = scan()
+  } finally {
+    probe.remove()
+  }
+  if (planted !== null) {
+    const seen = (list) => list.some((c) => c.key === SELFTEST_KEY)
+    const alive = {
+      offY: seen(planted.offendersV),
+      cut: seen(planted.cutOffenders),
+      squeezed: seen(planted.floorOffenders),
+    }
+    selfTest = alive.offY && alive.cut && alive.squeezed ? 'caught' : `blind:${JSON.stringify(alive)}`
+  }
 
   /* ── A2：滚动体 ────────────────────────────────────────────────────────────── */
   const scrollers = []
@@ -261,35 +516,7 @@
     })
   }
 
-  /* ── A3：热区环越界 ──────────────────────────────────────────────────────────
-   *
-   * **裁剪者只数面板自己的祖先。** `html`/`body` 不算：窗口边缘不是我们能修的裁剪，而且那
-   * 外面的像素读者本来就够不着——量到过的那一枚（面板顶栏的铃）在工件页上被 `body` 裁掉
-   * 7px，那是**工件页自己的壳**，不是面板的几何。 */
-  const clipAncestorOf = (el) => {
-    let node = el.parentElement
-    while (node !== null && node !== document.body && node !== document.documentElement) {
-      const st = getComputedStyle(node)
-      if (st.overflowX !== 'visible' || st.overflowY !== 'visible') {
-        const r = node.getBoundingClientRect()
-        return {
-          // 名字为空时退回标签名：一个报成空串的裁剪者，读者认不出它说的是谁。
-          key: keyOf(node) === '' ? node.tagName.toLowerCase() : keyOf(node),
-          overflowX: st.overflowX,
-          overflowY: st.overflowY,
-          overflow: `${st.overflowX}/${st.overflowY}`,
-          // 内边 = 边框盒减掉边框，也就是滚动口所在的那一格。
-          l: r.left + node.clientLeft,
-          t: r.top + node.clientTop,
-          r: r.left + node.clientLeft + node.clientWidth,
-          b: r.top + node.clientTop + node.clientHeight,
-        }
-      }
-      node = node.parentElement
-    }
-    return null
-  }
-
+  /* ── A3：热区环越界 ────────────────────────────────────────────────────────── */
   const rings = []
   for (const el of document.querySelectorAll('*')) {
     for (const pseudo of ['::before', '::after']) {
@@ -302,7 +529,7 @@
       if (t >= 0 && l >= 0 && b >= 0 && r >= 0) continue
       const elBox = el.getBoundingClientRect()
       const box = { l: elBox.left + l, t: elBox.top + t, r: elBox.right - r, b: elBox.bottom - b }
-      const clip = clipAncestorOf(el)
+      const clip = clipBoxesOf(el, false)[0] ?? null
       /* **只数「环比元素多出来的那一圈」。** 元素自己在裁剪盒外——内容滚下去了、或者在长列表
        * 下面——不是环的问题：把那种情况算进来，一页会报出一千多像素的假越界（量到过，
        * `itemProseGrip` 与滚到下面去的按钮都这样）。所以逐边问：**元素的这一边在裁剪盒里，
@@ -357,10 +584,13 @@
   const pass = {
     tier: media.both ? 'touch' : 'desktop',
     /* 判据只对**量得到的**下结论：一枚胶囊都没有的页面是 `not-here`，不是通过。 */
-    capsulesCentredV: stateOf(labels.length, labels.filter((c) => Number.isFinite(c.offY)).length, offendersV.length === 0),
-    capsulesCentredH: stateOf(centred.length, centred.filter((c) => Number.isFinite(c.offX)).length, offendersH.length === 0),
-    textVsMarkAligned: stateOf(labels.filter((c) => c.textVsMark !== null).length, labels.filter((c) => c.textVsMark !== null).length, labels.filter((c) => c.textVsMark !== null).every((c) => within(c.textVsMark, MARK_TOL))),
+    capsulesCentredV: stateOf(clean.labels.length, clean.labels.filter((c) => Number.isFinite(c.offY)).length, clean.offendersV.length === 0),
+    capsulesCentredH: stateOf(clean.centred.length, clean.centred.filter((c) => Number.isFinite(c.offX)).length, clean.offendersH.length === 0),
+    textVsMarkAligned: stateOf(clean.labels.filter((c) => c.textVsMark !== null).length, clean.labels.filter((c) => c.textVsMark !== null).length, clean.labels.filter((c) => c.textVsMark !== null).every((c) => within(c.textVsMark, MARK_TOL))),
+    inkNotCut: stateOf(clean.labels.length, clean.labels.length, clean.cutOffenders.length === 0),
+    capsulesNotSqueezed: stateOf(clean.labels.length, clean.labels.filter((c) => c.floor !== null).length, clean.floorOffenders.length === 0),
     ringsInsideClip: stateOf(rings.length, rings.length, clippedRings.length === 0),
+    selfTest,
   }
 
   return {
@@ -370,27 +600,31 @@
     media,
     pass,
     counts: {
-      capsules: capsules.length,
-      labels: labels.length,
-      startAligned: startAligned.length,
-      withTextSlot: capsules.filter((c) => c.hasTextSlot).length,
-      missingSlot: [...new Set(capsules.filter((c) => !c.hasTextSlot).map((c) => c.key))],
+      capsules: clean.capsules.length,
+      labels: clean.labels.length,
+      startAligned: clean.startAligned.length,
+      withTextSlot: clean.capsules.filter((c) => c.hasTextSlot).length,
+      missingSlot: [...new Set(clean.capsules.filter((c) => !c.hasTextSlot).map((c) => c.key))],
+      cut: clean.cutOffenders.length,
+      squeezed: clean.floorOffenders.length,
       scrollers: scrollers.length,
       rings: rings.length,
       clippedRings: clippedRings.length,
       deadRings: deadRings.length,
     },
-    worst: { offY: worstV, offX: worstH, textVsMark: worstMark },
+    worst: { offY: clean.worstV, offX: clean.worstH, textVsMark: clean.worstMark },
     offenders: {
-      offY: offendersV.map((c) => ({ key: c.key, offY: c.offY, h: c.h, lineHeight: c.lineHeight, padBlock: c.padBlock, markOffY: c.markOffY, slot: c.hasTextSlot })),
-      offX: offendersH.map((c) => ({ key: c.key, offX: c.offX, h: c.h, justify: c.justify })),
+      offY: clean.offendersV.map((c) => ({ key: c.key, label: c.label, offY: c.offY, h: c.h, lineHeight: c.lineHeight, padBlock: c.padBlock, markOffY: c.markOffY, slot: c.hasTextSlot })),
+      offX: clean.offendersH.map((c) => ({ key: c.key, label: c.label, offX: c.offX, h: c.h, justify: c.justify })),
+      cut: clean.cutOffenders.map((c) => ({ key: c.key, label: c.label, cutTop: c.cutTop, cutBottom: c.cutBottom, h: c.h, lineHeight: c.lineHeight, by: c.cutBy })),
+      squeezed: clean.floorOffenders.map((c) => ({ key: c.key, label: c.label, h: c.h, floor: c.floor, lineHeight: c.lineHeight, padBlock: c.padBlock })),
       rings: clippedRings,
     },
     /* 够不着、但没有危害的那半圈：报出来给人看，不判红。 */
     deadRings: deadRings.map((ring) => ({ key: ring.key, dead: ring.dead, clippedBy: ring.clippedBy, clippedAxis: ring.clippedAxis })),
     /* 靠左的那些**列出来**，不判红：一枚胶囊为什么靠左是设计决定，报告里看得见就够了。 */
-    startAligned: startAligned.map((c) => ({ key: c.key, offX: c.offX, w: c.w, justify: c.justify, h: c.h })),
-    capsules,
+    startAligned: clean.startAligned.map((c) => ({ key: c.key, offX: c.offX, w: c.w, justify: c.justify, h: c.h })),
+    capsules: clean.capsules,
     scrollers,
   }
 })())

@@ -12,9 +12,20 @@
 //   412@2    触屏档（配对的一半）
 //   390@3    真手机的视口与像素密度
 //   390@3    触屏档（配对的一半）
+//   390@3    触屏档 + 换一套字体度量（配对的另一半不适用：字变了，版面本来就变）
 //
 // **配对是这条审计的主力**：同一页、同一宽度、同一像素密度，只切指针能力——两档之间
 // 冒出来的任何一条滚动轴，都是触屏那一段 CSS 改出来的几何，不是内容变多了。
+//
+// **换字体的那一档是「我看不见你的手机」的解药**：竖向居中的每一个数都是「盒子与盒子里那团
+// 墨」的距离，而墨的形状是字体的。报告缺陷的那台手机装的字体这台机器没有，所以只量一档就等于
+// 只量一种字体。这一档把整页压到另一套字体度量上再量一遍，于是「随字体浮动的残差」与
+// 「结构性错位」被分开：残差在报告里看得见，结构性错位在两档里都红。
+//
+// ── 判据 ─────────────────────────────────────────────────────────────────────
+//
+// 探针（`probe-item-capsules.js`）自己带六条判据，这一层只做三件事：把矩阵跑完、把每一档的
+// 读数打出来、把**它自己承认量不出来**的那些（`no-reading`/`blind`）当成红的。
 //
 // ── 工件从哪来 ───────────────────────────────────────────────────────────────
 //
@@ -31,7 +42,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SHOT_PANEL = join(HERE, 'shot-panel.mjs')
 
-/** 一条矩阵带：窗口、像素密度、指针能力。 */
+/** 一条矩阵带：窗口、像素密度、指针能力、（可选）换掉的字体栈。 */
 const BANDS = [
   { id: 'w1440x1', width: 1440, height: 900, scale: 1, touch: false },
   { id: 'w1440x2', width: 1440, height: 900, scale: 2, touch: false },
@@ -39,6 +50,8 @@ const BANDS = [
   { id: 'w412x2-touch', width: 412, height: 900, scale: 2, touch: true, pair: 'w412x2' },
   { id: 'w390x3', width: 390, height: 844, scale: 3, touch: false },
   { id: 'w390x3-touch', width: 390, height: 844, scale: 3, touch: true, pair: 'w390x3' },
+  /* 故意选一枚**不在**项目字体栈里的 CJK 字体：另一套度量，才有另一套读数。 */
+  { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif' },
 ]
 
 function parseArgs(argv) {
@@ -95,6 +108,7 @@ function measure(page, band) {
     '--wait', '1200',
     '--audit',
     ...(band.touch ? ['--touch'] : []),
+    ...(band.font === undefined ? [] : ['--font', band.font]),
   ]
   const run = spawnSync(process.execPath, cli, { encoding: 'utf8' })
   const auditPath = `${shot.replace(/\.png$/, '')}.audit.json`
@@ -126,9 +140,9 @@ for (const page of found) {
       continue
     }
     const { pass, counts, worst } = reading
-    console.log(`   ${band.id.padEnd(14)} tier=${pass.tier.padEnd(7)} capsules=${counts.capsules} labels=${counts.labels} start=${counts.startAligned} slot=${counts.withTextSlot} ` +
-      `worstV=${worst.offY} worstH=${worst.offX} vsMark=${worst.textVsMark} rings=${counts.rings}/${counts.clippedRings} scrollers=${counts.scrollers} ` +
-      `V=${pass.capsulesCentredV} H=${pass.capsulesCentredH} mark=${pass.textVsMarkAligned} ring=${pass.ringsInsideClip}`)
+    console.log(`   ${band.id.padEnd(20)} tier=${pass.tier.padEnd(7)} capsules=${counts.capsules} labels=${counts.labels} start=${counts.startAligned} slot=${counts.withTextSlot} ` +
+      `worstV=${worst.offY} worstH=${worst.offX} vsMark=${worst.textVsMark} cut=${counts.cut} squeezed=${counts.squeezed} rings=${counts.rings}/${counts.clippedRings} scrollers=${counts.scrollers} ` +
+      `V=${pass.capsulesCentredV} H=${pass.capsulesCentredH} mark=${pass.textVsMarkAligned} cutP=${pass.inkNotCut} squeezeP=${pass.capsulesNotSqueezed} ring=${pass.ringsInsideClip} self=${pass.selfTest}`)
 
     // A TIER THAT DID NOT TURN ON PROVES NOTHING. `--touch` exists because a
     // narrow width alone leaves `(pointer: coarse)` false; if the emulation ever
@@ -138,7 +152,19 @@ for (const page of found) {
     if (pass.tier !== wanted) {
       findings.push({ page, band: band.id, kind: 'tier-mismatch', detail: `asked ${wanted}, engine answered ${pass.tier}` })
     }
-    for (const [name, verdict] of [['capsulesCentredV', pass.capsulesCentredV], ['capsulesCentredH', pass.capsulesCentredH], ['textVsMarkAligned', pass.textVsMarkAligned], ['ringsInsideClip', pass.ringsInsideClip]]) {
+    /* **量具瞎了 = 整轮红。** 探针里那一步会先种一颗已知的坏胶囊再量；它报不出来，就说明这一轮
+     * 的「绿」不是量出来的。这条判据的存在理由就是上一轮那次「全绿而屏幕是坏的」。 */
+    if (pass.selfTest !== 'caught') {
+      findings.push({ page, band: band.id, kind: 'probe-blind', detail: `the instrument did not catch its own planted defect: ${String(pass.selfTest)}` })
+    }
+    for (const [name, verdict] of [
+      ['capsulesCentredV', pass.capsulesCentredV],
+      ['capsulesCentredH', pass.capsulesCentredH],
+      ['textVsMarkAligned', pass.textVsMarkAligned],
+      ['inkNotCut', pass.inkNotCut],
+      ['capsulesNotSqueezed', pass.capsulesNotSqueezed],
+      ['ringsInsideClip', pass.ringsInsideClip],
+    ]) {
       if (verdict !== 'fail') continue
       /* **每一条判据只带自己那一段证据。** 把整个 `offenders` 塞进去，读者看到的第一段
          永远是别人的（量过：环形那一条报出来的是胶囊的表），于是真正红的那个找不着。 */
@@ -146,12 +172,16 @@ for (const page of found) {
         capsulesCentredV: () => JSON.stringify(reading.offenders.offY),
         capsulesCentredH: () => JSON.stringify(reading.offenders.offX),
         textVsMarkAligned: () => JSON.stringify(reading.capsules.filter((c) => c.textVsMark !== null && Math.abs(c.textVsMark) > 0.5).map((c) => ({ key: c.key, textVsMark: c.textVsMark }))),
+        inkNotCut: () => JSON.stringify(reading.offenders.cut),
+        capsulesNotSqueezed: () => JSON.stringify(reading.offenders.squeezed),
         ringsInsideClip: () => JSON.stringify(reading.offenders.rings),
       }[name]()
       findings.push({ page, band: band.id, kind: name, detail: detail.slice(0, 500) })
     }
+    /* **没有记号的胶囊只报数、不判红。** 记号（`data-dsh-tb-pilltext`）现在是**纯标记**：
+     * 它不参与排版，所以「谁没有它」不是几何缺陷——它是审计自己的词表清单。 */
     if (counts.missingSlot !== undefined && counts.missingSlot.length > 0) {
-      findings.push({ page, band: band.id, kind: 'no-slot', detail: `${counts.missingSlot.length} kind(s) without a text slot: ${counts.missingSlot.slice(0, 10).join(', ')}` })
+      notes.push({ page, band: band.id, kind: 'no-marker', detail: `${counts.missingSlot.length} kind(s) without the text marker: ${counts.missingSlot.slice(0, 10).join(', ')}` })
     }
   }
 }

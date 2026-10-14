@@ -32,7 +32,7 @@
  *        [--width 1440] [--height 900] [--scale 2] [--wait 2500]
  *        [--color-scheme dark|light] [--full] [--eval "<js>"] [--eval-file <path>] [--label text]
  *        [--css-for "<selector>" [--property padding]]
- *        [--both] [--scrollbars] [--touch] [--audit]
+ *        [--both] [--scrollbars] [--touch] [--audit] [--font "<css family stack>"]
  *
  *   DSH_SHOT_URL=<the whole URL, token included>   used in place of --url
  *   DSH_SHOT_BROWSER=<path to a Chromium>          used in place of discovery
@@ -55,6 +55,16 @@
  * both pointer capabilities) and the pass/fail judgement belong to
  * `scripts/audit-panels.mjs`, which drives this tool — a screenshot tool that
  * grew an assertion language would be a second test framework.
+ *
+ * `--font` IS THE OTHER HALF OF "IT LOOKS FINE HERE". Every number this tool
+ * reads about vertical centring is a distance between a box and the ink inside
+ * it, and **the ink's shape is the font's**. The phone that reported the
+ * defect runs a font this machine does not have, so a reading taken with one
+ * font is a reading of that font. `--font` forces every element onto the given
+ * family stack (`*{font-family:… !important}`, applied before the audit probe
+ * runs and before the capture) so the same page can be measured twice with two
+ * metric sets — which is how a font-dependent residual is told apart from a
+ * layout defect.
  *
  * `--both` captures TWO shots with one browser launch: the claimed --width and
  * the narrow 412, both derived from the SAME --out prefix (`shot.png` writes
@@ -111,6 +121,7 @@ function parseArgs(argv) {
     scrollbars: false,
     touch: false,
     audit: false,
+    font: '',
   }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i]
@@ -132,7 +143,7 @@ function parseArgs(argv) {
     if (key === 'audit') { out.audit = true; continue }
     if (key === undefined) {
       console.error(`shot-panel: unknown flag ${flag}`)
-      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both --scrollbars --touch --audit')
+      console.error('known flags: --out --url --width --height --scale --wait --color-scheme --full --eval --label --css-for --property --both --scrollbars --touch --audit --font')
       process.exit(2)
     }
     out[key] = argv[i + 1] ?? ''
@@ -536,6 +547,23 @@ try {
   await browser.send('Page.navigate', { url: args.url }, sessionId)
   await Promise.race([loaded, new Promise(done => setTimeout(done, 30000))])
   await new Promise(done => setTimeout(done, Number(args.wait)))
+
+  if (args.font !== '') {
+    /* 字体必须在**量之前**换好，而且要在字体真的加载完之后再量（`document.fonts.ready`），
+     * 否则量到的是一次回退字体的读数——那比不换还糟。 */
+    await browser.send('Runtime.evaluate', {
+      expression: `(() => {
+        const s = document.createElement('style')
+        s.setAttribute('data-dsh-tb-font', '')
+        s.textContent = ${JSON.stringify(`*{font-family:${args.font} !important}`)}
+        document.head.appendChild(s)
+        return document.fonts.ready.then(() => getComputedStyle(document.body).fontFamily)
+      })()`,
+      awaitPromise: true,
+      returnByValue: true,
+    }, sessionId)
+    await new Promise(done => setTimeout(done, 300))
+  }
 
   /* `--eval-file` READS THE SCRIPT FROM A FILE, and it exists because the other
    * spelling of the same thing is a trap: 一段要量的 JS 从 shell 传进来，先要过引号与

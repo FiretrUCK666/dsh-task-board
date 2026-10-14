@@ -2046,7 +2046,7 @@ describe('a status is stated once, and it is a column rather than a heading', ()
 })
 
 
-describe('一行里的记号与字：一族一个补偿，几块字共享一条基线', () => {
+describe('一行里的记号与字：胶囊居中自己的盒子，几块字共享一条基线', () => {
   const css = stripCssComments(itemSheet())
 
   it('两个页面共用一枚组头，没有第二份内联实现', () => {
@@ -2066,104 +2066,75 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(/<svg[\s\S]{0,300}<b>[\s\S]{0,160}<i/.test(planted), '内联的组头被放过了').toBe(true)
   })
 
-  /* 「族名单」与「块向内衬」两条读法各写**一处**：一条读真表（契约），一条读种出来的病表
-     （证明它咬得动）。两次都在断言里内联同一段正则，就只能永远同意自己。 */
-  /** 那条唯一的补偿规则里的**族名单**（选择器列表）。
+  /* ── 这一族只有一条律：**胶囊把装字的盒子居中**，而标记只标记 ─────────────────
    *
-   * **读的是「谁声明了那一格」，不是「谁的规则体里出现过那个令牌」。** 这一族之外还有一个
-   * 读那个数的规则（运行配置头行里那枚 ⓘ 的垂直位置：它要落到那一行的**墨线**上，而墨线在
-   * 行盒心下面半个补偿——那里读的是同一个数的另一半，写在 `margin-block-start` 里）。按
-   * 「出现过」读的时候，那一行会被认成这一族唯一的成员：成员数 1，两条闸门双双空转，
-   * 而空转与全绿在报告里长得一模一样。**一个判据只许读结构**，而这里的结构是那一格
-   * （属性 + 令牌），不是令牌的名字在文件里出现过几次。 */
-  const inkLiftMembers = (text: string): string[] => {
-    const lift = declarationRules(text).find(rule => /padding-block-end\s*:\s*var\(--item-ink-lift\)/.test(rule.body))
-    if (lift === undefined) return []
-    return lift.selector.split(',').map(one => one.trim().replace(/^\./, '')).filter(one => one !== '')
-  }
-  /** 一段规则文本里的**块向内衬**的值。`var()` 静态判不了，跳过（那一条由上面那条闸门管）。 */
-  const blockPaddingsOf = (text: string): number[] => {
-    const out: number[] = []
-    for (const decl of text.matchAll(/padding(?:-block(?:-start|-end)?)?\s*:\s*([^;]+)/g)) {
-      if ((decl[0] ?? '').includes('var(')) continue
-      const parts = (decl[1] ?? '').split(/\s+/).filter(one => one !== '')
-      const block = parts.length >= 3 ? [parts[0], parts[2]] : [parts[0]]
-      for (const one of block) {
-        if (one === undefined) continue
-        const value = Number.parseFloat(one)
-        if (Number.isFinite(value)) out.push(value)
-      }
-    }
-    return out
+   * `data-dsh-tb-pilltext` 是给审计按结构认领用的**纯标记**：它说「这一串是这一格的文字」，
+   * 它自己不声明任何属性。它一旦去排版，被改掉的就不只是它自己——装字的盒子换了一个高度，
+   * 于是「墨在不在盒心」、胶囊有多高、旁边那枚记号对着哪条线，三件事一起变，而屏上只会表现
+   * 为几处各自偏一点。所以这一族**没有按字体量出来的数**：`padding-block-end: 1px` 在一种
+   * 字体上量出来是对的，换一套度量就偏半格，而没有任何一处会说这句话。
+   *
+   * 真判据在 `scripts/probe-item-capsules.js`（`pnpm audit`）：它开真 Chromium 逐颗量墨心、
+   * 切割与高度地板，两档宽 × 三档 DPR × 两种指针能力 + 一档换字体。这条闸门管的是另一半
+   * ——**机制不许回来**，读的是两张表的结构，注释里提到这些名字不算一次使用（硬性规范 14）。
+   */
+  /** 标记属性的名字：只写一处，闸门的消息也读它，免得两处对不上。 */
+  const MARKER = 'data-dsh-tb-pilltext'
+  /** 这一族不许再有的两个令牌：一个给装字的盒子垫底衬，一个给记号垫位移。 */
+  const DEAD_TOKENS = ['--item-ink-lift', '--dsh-tb-slot-lift'] as const
+
+  /** 一次读法的三条出口。三条各自成列，因为三条的修法完全不同（删规则 / 删声明 / 删令牌）。 */
+  interface MarkerStyling {
+    /** 把标记写进**选择器**的规则（选择器原文）。 */
+    readonly selectors: readonly string[]
+    /** 声明位置上的 `text-box` 那一族属性（属性名，含探测式写法里的那一种）。 */
+    readonly boxes: readonly string[]
+    /** 表里还留着的死令牌（令牌名）。 */
+    readonly tokens: readonly string[]
   }
 
-  it('光学补偿只有一个出口，而那个数只在令牌层声明一次', () => {
-    /* **这一族付过的账。** 同一个毛病（中文的墨在它自己的行盒里低半格）在这张表里曾经有
-       四套做法：逐个子元素垫 `translateY`、一族底衬 + 给某一档单开 3px 与 4px、
-       `align-items: baseline` 与 `center` 各来一处。结果不是「某一处差半像素」，是
-       **同一排控件里三种垂直位置**，而屏上没有任何一处说明为什么。
-       现在的机制只有一个：一条规则读一个令牌。这条闸门数的是出口数。 */
-    const lifts = [...css.matchAll(/padding-block-end\s*:\s*var\(--item-ink-lift\)/g)].length
-    expect(lifts, '光学补偿出现在不止一处——这一族又长出了第二个答案').toBe(1)
-    expect(declaredOf(css, 'itemRoot', '--item-ink-lift').length,
-      '那个数没有在令牌层声明，于是所有读它的规则都静默失效（computed 为空、声明被丢掉）').toBe(1)
-    /* **咬得动第二半：同一个令牌在别的属性里出现，不算这一族的第二个出口。**
-       运行配置那一行真的这么读（记号的垂直位置），而它必须**不**被认成族成员——
-       认错了的后果是族名单只剩它一个：两条闸门从此空转，而报告里一切正常。 */
-    expect(inkLiftMembers(`${css}\n.itemElsewhere { margin-block-start: calc(var(--item-ink-lift) / 2); }`).length,
-      '一个借那个数算别的位置的规则，被认成了这一族的名单')
-      .toBe(inkLiftMembers(css).length)
-  })
-
-  it('而这把尺子咬得动：多一处补偿、少一处声明，它都报', () => {
-    const reads = (text: string): number => [...text.matchAll(/padding-block-end\s*:\s*var\(--item-ink-lift\)/g)].length
-    expect(reads('.itemPill { padding-block-end: var(--item-ink-lift); }')).toBe(1)
-    expect(reads('.itemA { padding-block-end: var(--item-ink-lift); }\n.itemB { padding-block-end: var(--item-ink-lift); }')).toBe(2)
-    expect(declaredOf('.itemRoot { --item-ink-lift: 1px; }', 'itemRoot', '--item-ink-lift')).toHaveLength(1)
-    expect(declaredOf('.itemRoot { color: red; }', 'itemRoot', '--item-ink-lift')).toHaveLength(0)
-  })
-
-  it('族成员不给自己带块向内衬：那一格由族规则统一加', () => {
-    /* **这一族付过的账。** 族规则那条补偿是**绝对值**（`padding-block-end: 1px`），它**替换**
-       成员的底衬而不是加在它上面——所以自带块向内衬的成员会被它连底衬一起改掉：`.itemOpt`
-       曾是 `3px 9px`，被改成「上 3 下 1」，量出来墨心偏下 **1.5px**；`.itemTag` 曾是
-       `1px 8px 2px`，偏下 0.5px。读者看到的是「文案没有居中于它自己的胶囊，偏下了」，而屏幕上
-       没有任何一处说得出为什么。
-       判据：族名单里每个成员**自己的**规则不许出现任何非零的块向内衬——成员只许写
-       `padding-inline` 与 `block-size`（**定高不低于行盒 + 3px**：两条边 2px 加族的那一格 1px，
-       内容盒由此不小于行盒，居中才真的发生在字身上）。 */
-    const members = inkLiftMembers(css)
-    expect(members.length, '那一族里一个成员都没有，这条闸门在空转').toBeGreaterThan(4)
-    for (const name of members) {
-      const values = blockPaddingsOf(rulesOf(css, name).join('\n')).filter(one => one !== 0)
-      expect(values, `.${name} 自己带了块向内衬——那一格只能由族规则加`).toEqual([])
+  /**
+   * 一张表里让标记参与排版的三条路子，各读各的。
+   *
+   * **三条分开报，是因为它们在同一次改动里一起回来**：选择器里的标记是那套机制的入口，
+   * `text-box` 是它的手段，两个令牌是它留下的数。只报一个布尔的话，读的人得自己去猜坏在
+   * 哪一条，而三处的修法完全不同；只报第一条的话，另外两条会安静地长回来。
+   *
+   * 注释先剥掉：散文里**提到**一个选择器或一个令牌不是一次使用（硬性规范 14）。这不是
+   * 洁癖——两张表都用大段散文解释自己，不剥的话它们会把自己判成有病，而被逼着改的会是
+   * 那段解释。
+   * @param text - 一张样式表，注释有没有都行。
+   * @returns 三条出口各自的发现，全空才是对的。
+   */
+  const markerStyling = (text: string): MarkerStyling => {
+    const live = stripCssComments(text)
+    return {
+      selectors: declarationRules(live).map(rule => rule.selector).filter(one => one.includes(MARKER)),
+      // 读的是**声明位置**（`属性:`），不是「那个词在文件里出现过几次」：`@supports not
+      // (text-box: …)` 那种回退式探测也落在这一条里，而它正是那套机制的伴生写法。
+      boxes: [...live.matchAll(/(?:^|[;{\s(])(text-box(?:-trim|-edge)?)\s*:/g)].map(one => one[1] as string),
+      tokens: DEAD_TOKENS.filter(token => live.includes(token)),
     }
-    // 咬得动：同一段读法喂给自带块向内衬的成员规则，它必须报出来。
-    expect(blockPaddingsOf('.itemOpt { padding: 3px 9px; }'), '简写的块那一档没被读出来').toEqual([3])
-    expect(blockPaddingsOf('.itemTag { padding: 1px 8px 2px; }'), '三档简写的上下两档没被读出来').toEqual([1, 2])
-    expect(blockPaddingsOf('.itemOpt { padding-inline: 9px; block-size: 18px; }'),
-      '行向内衬被误读成块向内衬').toEqual([])
-    // 咬得动第二半：把**同一条**循环喂给一张种了病的表（真表 + 一条自带块向内衬的成员规则），
-    // 它必须把那个成员点出来——只证明正则认得字样，不证明这条断言拦得住人。
-    const sick = `${css}\n.itemOpt { padding: 3px 9px; }`
-    const offenders = inkLiftMembers(sick).flatMap(name =>
-      blockPaddingsOf(rulesOf(sick, name).join('\n')).filter(one => one !== 0).map(one => `${name}:${String(one)}`))
-    expect(offenders, '种了病的表被放过了').toContain('itemOpt:3')
-  })
+  }
 
-  it('一族里没有人再给自己垫位移', () => {
-    /* 位移（`transform`）只改**画**的位置，不改版面——而版面才是量得出的那一层：
-       `Range.getClientRects()` 报的是排版位置，于是「量出来是 0」与「看着偏半格」可以同时
-       成立（这一轮就是这么发现的：位移那一版量出来是 0，屏幕上却一个像素没动）。这一族
-       曾经靠 `translateY` 逐处补——那是一个数说不了那一族的时候。
-       **范围就是那一族**（读 `--item-ink-lift` 的那条规则里的选择器）：行上那簇记号
-       （步数 / 卡 / 日期）是**另一族**，它们旁边那段字不属于这一族，所以它们自己那一格
-       位移不在这条闸门里管——一条管得过宽的规则会逼着人改对的东西来迁就它。 */
-    const members = inkLiftMembers(css)
-    expect(members.length, '那一族里一个成员都没有，这条闸门在空转').toBeGreaterThan(4)
-    for (const name of members) {
-      expect(rulesOf(css, name).join('\n'), `.${name} 自己垫了位移——这一族又有了第二个答案`)
-        .not.toMatch(/translateY/)
+  /* 两张表各读一遍。只读一张表，就是让另一张表里的同一套机制随它去——而这两张表里各有一族
+     药丸，同一个标记在两边都能被写成排版规则。 */
+  const SHEETS = [
+    'src/client/board.module.css',
+    'src/client/item/item.module.css',
+  ].map(path => ({ path, source: readFileSync(join(repoRoot, path), 'utf8') }))
+
+  it('标记只标记、不排版：两张表的三个出口都是空的', () => {
+    for (const sheet of SHEETS) {
+      // 读空了要说话：一条对空串成立的断言什么都没断言。
+      expect(sheet.source, `${sheet.path} 读出来是空的——这条闸门在空转`).not.toBe('')
+      const found = markerStyling(sheet.source)
+      expect(found.selectors,
+        `${sheet.path} 的选择器里出现 ${MARKER}——标记一参与排版，装字的盒子、胶囊有多高、旁边那枚记号对着哪条线会一起变`).toEqual([])
+      expect(found.boxes,
+        `${sheet.path} 声明了 ${found.boxes.join('、')}——按字体裁出来的盒子会切掉墨，也会把胶囊压矮`).toEqual([])
+      expect(found.tokens,
+        `${sheet.path} 里还留着 ${found.tokens.join('、')}——没人读的令牌会让下一个人以为它还在生效`).toEqual([])
     }
   })
 
@@ -2199,41 +2170,6 @@ describe('一行里的记号与字：一族一个补偿，几块字共享一条�
     expect(alignsOnBaseline(planted, 'itemGroupText')).toBe(true)
     expect(alignsOnBaseline(planted, 'itemRailText')).toBe(true)
     expect(alignsOnBaseline(css, 'itemEmptyGroup'), '真表里那一处也被读成没对齐——尺子量错了地方').toBe(true)
-  })
-
-  /* 这一族之外还有读同一个数的规则——而**这一轮它一处也不许有**：ⓘ 那一侧只许由父级居中，
-     不许自己算半个字的高差。读法与读法之间的分界由这条读法说清楚：按「谁读了那个令牌」读，
-     而不是按「谁长得像一族」。 */
-  const liftConsumers = (text: string): string[] =>
-    declarationRules(text)
-      .filter(rule => rule.body.includes('var(--item-ink-lift)'))
-      .flatMap(rule => rule.selector.split(',').map(one => one.trim()))
-
-  it('四个消费点读同一条律：装字的盒子进名单，装记号的不进', () => {
-    /* 四个位置各有一行「一枚 ⓘ + 一串字」（组头、安静行、属性表的字段名、运行配置的头行），
-       而那一行里**装字的那一枚盒子**读同一个补偿——组头有 `.itemGroupText`、字段名有
-       `.itemOptNameText`，运行配置那一行头里那两枚字（`Disclosure` 的标题与摘要）由
-       `.itemRunConfigHeadRow > section > button > span` 认领；记号那一枚
-       （`.itemGroupWhy`）**不读**：记号绕 viewBox 中心对称，父级居中把盒心放到位时墨心已经在位。 */
-    const members = inkLiftMembers(css)
-    for (const name of ['itemGroupText', 'itemOptNameText']) {
-      expect(members, `.${name} 直接装字、旁边又站着一枚 ⓘ，却没进补偿名单`)
-        .toContain(name)
-    }
-    expect(members.some(one => one.includes('itemRunConfigHeadRow') && one.includes('span')),
-      '运行配置那一行头里那两枚装字的盒子不在补偿名单上——它们的半个像素没人补').toBe(true)
-    expect(members, '.itemGroupWhy 是装记号的那一枚盒子——跟着抬半格，记号会比它旁边那串字高半个像素')
-      .not.toContain('itemGroupWhy')
-    // 咬得动：把记号那一枚种成族成员，它必须被读出来。
-    expect(inkLiftMembers('.itemGroupWhy { padding-block-end: var(--item-ink-lift); }'),
-      'the plant did not bite — 种进去的记号那一枚没有被读成族成员').toContain('itemGroupWhy')
-    /* **记号那一侧一处也不读那个数。** ⓘ 的位置只能由「它和那一行字共处一格、由父级居中」给：
-       一个算出来的 `margin-block-start` 需要知道**那一行**的行盒，而那个数不归记号这一侧
-       （`1lh` 取的是记号自己的行盒，与头那一行不是同一个数——真面板上量到过 1px 的偏上）。 */
-    expect(liftConsumers(css).filter(one => one.includes('itemGroupWhy')),
-      '还有一处把那一枚补偿算在记号一侧——记号又开始自己算半个字的高差了').toEqual([])
-    expect(css, '表里又出现了 `1lh` 算术：行盒归谁不归谁，是这一族唯一的那个数')
-      .not.toContain('1lh')
   })
 
   it('运行配置那一行：头那一行与 ⓘ 同在一格行里，折叠体在下一行', () => {
@@ -3399,7 +3335,6 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
 describe('说明小字：一处机制、一处数字、一副骨架', () => {
   const css = panelCss()
   /** 只读清单那一张表：看板那张表里的同族规则是另一个表面上的另一件事。 */
-  const sheet = stripCssComments(itemSheet())
   /** JS/TS 注释剥掉：散文里提到一个类名不算一次使用（硬性规范 14）。 */
   const code = (text: string): string =>
     text.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
@@ -3529,17 +3464,5 @@ describe('说明小字：一处机制、一处数字、一副骨架', () => {
     expect(lastDeclaredOf(css, 'attachHint', 'min-inline-size'),
       '句子没有宽度地板——窄一点它就是一根一个字一行的竖条（412 上真的量到过十一行单字）')
       .toBe('min(22em, 100%)')
-  })
-
-  it('属性表的字段名自己是一枚盒子：补偿只能落在直接装字的盒子里', () => {
-    /* 那一行里也站着一枚 ⓘ，而「字段名」这三个字本来是一段**裸文本**——连一个能垫的盒子都没有，
-       于是它的墨心比这一行的盒心低半个像素（量过：改前 −0.5）。成员加进表末那一族名单，
-       而它自己的规则里不写补偿（成员自带块向内衬会被族规则整条替换掉）。 */
-    const family = declarationRules(sheet)
-      .filter(rule => /padding-block-end\s*:\s*var\(--item-ink-lift\)/.test(rule.body))
-    expect(family.length, '那一族不是一条规则').toBe(1)
-    expect(family[0]?.selector, '字段名那枚盒子不在那一族的名单上——它的半个像素没人补').toContain('.itemOptNameText')
-    expect(code(readSource('client/item/item-create-dialog.tsx')), '字段名又变回了裸文本')
-      .toContain('css.itemOptNameText')
   })
 })

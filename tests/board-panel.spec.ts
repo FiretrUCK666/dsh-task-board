@@ -26,9 +26,12 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import type { TaskRecord } from '../src/core/tasks.ts'
 import { TaskBoardIcon } from '../src/client/TaskBoardIcon.tsx'
 import { TaskBoardPanel, type TaskBoardPanelProps } from '../src/client/TaskBoardPanel.tsx'
-import { createTask } from '../src/core/tasks.ts'
+import { createTask, newCommentRound, settleExecution, startExecution } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
 import { InteractionCard } from '../src/client/board/InteractionCard.tsx'
+import { settledChipLabel } from '../src/client/board/TaskCard.tsx'
+import { resultChipKind } from '../src/client/board/session-chip.ts'
+import { PRIORITY_LABEL } from '../src/client/item/labels.ts'
 import { SessionRulesSection } from '../src/client/board/automation-ui.tsx'
 import { AttachmentStrip, formatBytes } from '../src/client/board/AttachmentStrip.tsx'
 import type { DraftAttachment } from '../src/client/board/composer-attachments.ts'
@@ -483,16 +486,67 @@ describe('stale-bundle status line (rendered through the panel)', () => {
    * `file://` 工件做不到。**这一条是这台仪器的边界，不是产品的问题。**
    */
   /**
-   * 工件里的两张卡：一张挂着三条清单条目（最急是紧急），一张光卡——那枚读数的「有」与
-   * 「没有」两种情形一屏看全。用 core 的真构造器建（`NewTaskInput` 里 `description` 是
-   * **必填**，手写的对象少写一个字段不会报错，只会在运行时抛 `trim of undefined`）：手写对象会随字段增加静默变成一个
-   * 「看起来很像真卡的东西」（硬性规范 18）。
+   * 工件里的五张卡：**卡片那一行芯片画得出的三种主芯片各一张，外加两张对照卡**。
+   *
+   * 为什么后三张是必需的。只画两张**没有任何主芯片**的卡，卡片上那一行芯片就一枚也不会出现
+   * ——而读者报的正是这一行。「待你决断」「评论排队」这些词不是卡片自己
+   * 算的：主芯片来自 `cardViewModelOf.primary`，它读的是**这张卡自己那几轮工作**（开着的轮 /
+   * 排队中的评论 / 结算过的工作）加上**读时钟**。所以后三张卡全部走 core 的真构造器与真语义：
+   * `startExecution` 开一轮、`settleExecution` 结算（成功一律落回「审核」），评论走
+   * `newCommentRound`。手写的对象只会随字段增加静默变成一个「看起来很像真卡的东西」
+   * （硬性规范 18）——`NewTaskInput` 里的 `description` 是必填，少写一个字段不报错，只在
+   * 运行时抛 `trim of undefined`。
+   *
+   * 三张结算卡之间只差一件事——**看没看过**（读状态），而它们三个说的也正是三句不同的话：
+   * 没人看过 →「待你决断」；看过、还没裁决 →「1 次执行」（成功底色）；看过的卡上再追一条评论
+   * 在排队 →「评论排队 1」。一屏看全，才能一眼看出这不是同一句话说了三遍。
    */
   function boardFixture(): TaskRecord[] {
     const at = 1_700_000_000_000
+    /** 跑完一轮的卡：开一轮、把会话补上（真流程里由创建过程回填）、结算成功。 */
+    const ran = (id: string, title: string, sessionId: string): TaskRecord => {
+      const opened = startExecution(
+        createTask({ title, description: '', prompt: '跑一遍，把结果留在卡上', status: 'todo' }, at, id),
+        at + 2_000,
+        `run-${id}`,
+      )
+      const withSession: TaskRecord = {
+        ...opened.task,
+        executions: opened.task.executions.map(round => ({ ...round, sessionId })),
+      }
+      return settleExecution(withSession, `run-${id}`, 'succeeded', at + 3_000, undefined)
+    }
+    /**
+     * 「这一轮已经看过了」：控制器写的就是这一对戳记——任务自己的 `viewedAt` 加上每条轮次的
+     * `viewedAt`（`markTaskViewed` / `markAllViewed`）。读时钟只朝前走，所以传进来的时刻必须
+     * 在结算之后，否则卡上会多出一枚「新」。
+     */
+    const lookedAt = (task: TaskRecord, when: number): TaskRecord => ({
+      ...task,
+      viewedAt: Math.max(task.viewedAt ?? 0, when),
+      executions: task.executions.map(round => ({ ...round, viewedAt: when })),
+    })
+    const queuedBase = lookedAt(ran('task-queued', '跑完了、看过了，又追了一条评论在排队', 'sess-queue'), at + 4_000)
     return [
       createTask({ title: '画廊第二版', description: '', prompt: '把画廊的第二版做出来', status: 'todo' }, at, 'task-1'),
       createTask({ title: '光卡：没有挂任何清单条目', description: '', prompt: '随便什么', status: 'backlog' }, at, 'task-2'),
+      /* 「待你决断」：跑完了，谁也还没看过。它同时还会带一枚「新 1」——两枚读的是同一个读时钟，
+         所以这一档必然一起出现，不是多画了一枚。 */
+      ran('task-review', '跑完了，还没人看过', 'sess-review'),
+      /* 「1 次执行」（成功底色）：同一轮工作，只是已经看过、还没裁决。 */
+      lookedAt(ran('task-settled', '跑完了，也看过了，就等你裁决', 'sess-settled'), at + 4_000),
+      /* 「评论排队 1」：看过的结算卡上再追一条评论——排队中的评论压过「裁决」那一枚
+         （`cardViewModelOf` 只有一条链，一张卡只有一个主芯片）。 */
+      lookedAt({
+        ...queuedBase,
+        executions: [...queuedBase.executions, newCommentRound({
+          id: 'comment-queued',
+          now: at + 5_000,
+          text: '把东墙那盏灯换成轨道灯，再拍一张',
+          sessionId: 'sess-queue',
+          parentExecutionId: 'run-task-queued',
+        })],
+      }, at + 5_000),
     ]
   }
 
@@ -513,16 +567,35 @@ describe('stale-bundle status line (rendered through the panel)', () => {
   it('writes the board page when DSH_PANEL_HTML names a path', () => {
     const target = process.env.DSH_PANEL_HTML
     if (target === undefined || target === '') return
-    /* 一张挂着三条清单条目的卡（最急的一档是紧急）与一张光卡：那一枚读数与「没有条目就不画」
-       的两种情况，一屏里都看得到。 */
-    const markup = writeBoardArtifact(target, cardId => (cardId === 'task-1' ? { count: 3, loudest: 'urgent' } : undefined))
+    /* 第一张卡上那枚清单条目读数（「挂 3 条 · 最急：紧急」）：这件事实只在这里写一次，
+       下面那条名单里的一项是它自己长出来的（硬性规范 17）。 */
+    const mounted = { count: 3, loudest: 'urgent' } as const
+    const markup = writeBoardArtifact(target, cardId => (cardId === 'task-1' ? mounted : undefined))
     /* **工件要能证明自己画对了。** 这台假 controller 若少一个成员（真发生过：卡片的圆点读
        `sessionsOf`，而它没有），渲染要么直接抛、要么**安静地少画一点**——后者最危险：截出来
        是一张看起来很好、实际缺东西的图，而读图的人会照它下结论。所以这里断言它画出了该画的
-       那几样，任何一个没了就红。 */
-    for (const must of ['画廊第二版', '光卡：没有挂任何清单条目', '挂 3 条 · 最急：紧急', '规划', '待办', '进行', '审核', '完成']) {
+       那几样，任何一个没了就红。
+       芯片那一行的词一律**从定义处取**，不在这里抄第二遍：那张卡的清单条目读数由夹具自己
+       算出来，另外三枚主芯片分别是待你决断（结算完、没人看过）、`settledChipLabel`（结算完、
+       看过了还没裁决）、评论排队（同一张卡上又追了一条）。 */
+    for (const must of [
+      '画廊第二版',
+      '光卡：没有挂任何清单条目',
+      t('card.mountedRows', { n: String(mounted.count), tier: t(PRIORITY_LABEL[mounted.loudest]) }),
+      t('card.awaitingDecision'),
+      settledChipLabel(1),
+      t('card.commentQueue'),
+      '规划',
+      '待办',
+      '进行',
+      '审核',
+      '完成',
+    ]) {
       expect(markup, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
     }
+    /* 结算成功那一枚的**词**是「N 次执行」（`board.runs`），它的**成功**在底色上——底色由
+       `resultChipKind` 那一个映射给，所以这里钉的是那个映射的结果，不是一个写死的色名。 */
+    expect(markup, '结算成功的那一枚芯片没有成功的底色').toContain(`data-kind="${resultChipKind('succeeded')}"`)
   })
 
   it('states the mismatch in a real, tappable status button', async () => {
