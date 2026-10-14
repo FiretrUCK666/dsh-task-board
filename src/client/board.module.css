@@ -8184,6 +8184,17 @@ textarea.input {
   padding-block-end: calc(-2 * min(var(--dsh-tb-ink-shift, 0em), 0em));
 }
 
+/* **记号不跟着字走。** 上面那条把胶囊的内容整体推半格——字因此落到盒心上，而**记号本来就在
+ * 盒心上**：它是盒子的几何，不认字体（逐个量过：前导记号的墨心与盒心是同一个数）。所以记号把
+ * 那一格原样还回去，字动、记号不动，两者才同时落在盒心上，也才互相对齐。
+ *
+ * 这就是「字与记号差 1.1px」那一类的解法：**不是给记号也垫一个数**（那只会让两边一起偏，而
+ * 补偿数只在一种字体上成立），而是让两边各自落在同一个参照上。 */
+[data-dsh-taskboard-view] :is(.chip, .chipFill, .cruisePill, .columnTab, .boardDemand,
+    .ghostButton, .primaryButton, .dangerButton, .dangerGhostButton) :where(svg, i:empty) {
+  translate: 0 calc(-1 * var(--dsh-tb-ink-shift, 0em));
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),

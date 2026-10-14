@@ -279,8 +279,8 @@ export function ItemRail(props: ItemRailProps) {
             >
               <span className={css.itemRailMark}>{markOf(entry)}</span>
               {/* 词与数是**一个盒子里的两块字**：盒子按基线对齐（中文与拉丁的字体度量
-                  不同，按盒子居中会让两串字的基线差着将近一个像素），而那一族的光学补偿
-                  挂在这个盒子上。 */}
+                  不同，按盒子居中会让两串字的基线差着将近一个像素）。这个盒子自己不带任何
+                  光学补偿——按字体量出来的数只在一种字体上成立，见 `src/client/ink-shift.ts`。 */}
               <span className={css.itemRailText}>
                 <span className={css.itemRailWord}>{t(WORD[entry.key])}</span>
                 <b className={css.itemRailCount}>{entry.n}</b>
