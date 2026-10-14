@@ -132,6 +132,11 @@
      高度、行盒与边的关系在这里是**等式**：行盒 = 高度 − 上下边，于是内容盒被行盒填满，
      居中不发生，也就没有那半像素的余量让像素网格去判它落在哪一边。 */
   --item-pill-h: 19px;
+  /* **一行里两个数，量出来的是一个。** 句子的行盒（`--item-row-line`）与 ⋮ 的命中盒
+     （`--item-dots-h`）不是两个各调各的数：⋮ 要**居中在句子的第一行**上，而那件事由
+     `calc((行盒 − 命中盒) / 2)` 从这两个数推出来——算术，不是照着一种字体试出来的长度。 */
+  --item-row-line: 22px;
+  --item-dots-h: 28px;
   /* ── THE LINES, AND THERE ARE EXACTLY TWO ──────────────────────────────────
    *
    * `--item-hair` is a SEPARATOR between two pieces of content; `--item-hair-strong`
@@ -1821,7 +1826,7 @@
   min-inline-size: 0;
   font-size: 15px;
   font-weight: 600;
-  line-height: 22px;
+  line-height: var(--item-row-line);
   color: var(--item-ink-1);
 }
 
@@ -1845,20 +1850,19 @@ button.itemRowText {
 
 /* **句子末尾的标签与句子之间那一档，就是 `!N` 与句子之间那一档（6px）。**
  *
- * 量出来两件事：
+ * **间距是 `-start`，不是 `-end`。** 写成 `-end` 时，芯片的**形**（那个圆角底）正好贴在
+ * 最后一个字上——它自己的 8px 内衬让「字到字」有 9px，于是「看起来粘着」与「量出来有
+ * 9px」同时成立：读者看见的是**形**之间的距离，不是字之间的距离。`-start` 之下，
+ * 形与形之间处处是 6px：`!N` 的芯片 → 句子、句子 → 第一枚标签、标签 → 标签、最后一枚
+ * 标签 → 右边那簇记号，四档同一个数，而那个数就是 `!N` 芯片自己的 `margin-inline-end`。
  *
- *   ①**间距是 `-start`，不是 `-end`。** 写成 `-end` 时，芯片的**形**（那个圆角底）正好贴在
- *      最后一个字上——它自己的 8px 内衬让「字到字」有 9px，于是「看起来粘着」与「量出来有
- *      9px」同时成立：读者看见的是**形**之间的距离，不是字之间的距离。`-start` 之下，
- *      形与形之间处处是 6px：`!N` 的芯片 → 句子、句子 → 第一枚标签、标签 → 标签、最后一枚
- *      标签 → 右边那簇记号，四档同一个数，而那个数就是 `!N` 芯片自己的 `margin-inline-end`。
- *   ②**纵向差 2.25px**（量过：句子的墨心 268，标签的墨心 270.25）。`middle` 对齐的是**盒子
- *      的中线**与「基线 + 半个 x-height」，而这两条线在这枚芯片上不重合。所以写一个**量出来
- *      的长度**：`1px` 把芯片抬到 268（2px 抬过头 1px，数由量决定，不由推决定）。
- */
+ * **纵向一个字也不写。** 芯片是 `inline-flex`，它的基线就是它里面那串字的基线，所以它本来
+ * 就坐在句子的基线上——**同一个行盒里的两串字共享一条基线**，这是排版给的，不是调出来的。
+ * 两种字号（句子 15px、芯片 12px）的**墨心**天然差半个字：小字号的墨心离基线更近。把芯片
+ * 抬起来去凑「墨心齐」等于把它从基线上挪开，读者看到的正是「芯片里的字比句子高一点」——
+ * 按字体量出来的竖向长度一个也不许有。 */
 .itemRowTitle .itemTag {
   margin-inline-start: 6px;
-  vertical-align: 1px;
 }
 
 /* ── 行右边的三枚记号：步数 · 卡 · 日期 ───────────────────────────────────────
@@ -1881,14 +1885,15 @@ button.itemRowText {
   flex: none;
   min-inline-size: 0;
   white-space: nowrap;
-  /* **这一簇的高度取标题的行高（22px），不是它自己内容的高度。**
+  /* **这一簇的高度取标题的行高，不是它自己内容的高度。**
    *
    * 行的网格是 `align-items: start`，于是这一簇的盒顶与标题的盒顶齐平；而它里面最高的一件
    * 只有 18px（那三枚胶囊）——量出来的结果是**这一簇的墨心 272，而标题、珠子与 ⋮ 都是 274**：
    * 读者看到的正是「标题右边那些东西比标题高一点点」。给这一簇一个与标题行盒等高的盒
    * （`align-items: center` 已经把里面几件居中了），三枚记号与标题就落在同一条线上。
-   * 这与 `.itemPrioButton` 用 22px 让那枚芯片跟上同一行是同一条律、同一个数。 */
-  block-size: 22px;
+   * 这与 `.itemPrioButton` 让那枚芯片跟上同一行是同一条律、同一个数——**那个数只写一次**
+   * （`--item-row-line`）：写在两处时，改一处不会让另一处跟着改。 */
+  block-size: var(--item-row-line);
 }
 
 /* 步数那一枚是**控件**：按下去开步骤那一栏。它长得像一枚读数（一枚图标 + 一个比例），
@@ -2089,11 +2094,11 @@ button.itemRowCardChip {
    * 155.5 / 156.5 / 167 / 167.5，读者看到的正是「那一横上的东西不在一条线上」。
    *
    * `top` 把它从「定基线的人」变成「跟着行盒走的人」，而 `block-size` 取**标题的
-   * 行高**（见 `.itemRowTitle` 的 22px）：盒子于是与这一行等高等长，里面的药丸居中
+   * 行高**（`--item-row-line`）：盒子于是与这一行等高等长，里面的药丸居中
    * ——量出来药丸的墨心 155.5，与标题的 157、日期的 156.5、左侧的点 155.5 同在 1
    * 个 CSS 像素以内。中途量过三种写法：`baseline` 低 5px、`middle` 低 4px，只有
    * `top` + 等行高落在 1px 以内。 */
-  block-size: 22px;
+  block-size: var(--item-row-line);
   vertical-align: top;
   margin: 0;
   padding: 0;
@@ -2176,9 +2181,12 @@ button.itemRowCardChip {
   display: flex;
   align-items: center;
   justify-content: center;
-  inline-size: 28px;
-  block-size: 28px;
-  margin-block-start: -3px;
+  inline-size: var(--item-dots-h);
+  block-size: var(--item-dots-h);
+  /* **居中在句子的第一行上**，不是靠一个试出来的长度：命中盒比行盒高，于是它的上沿要比
+     行盒的上沿高出半个差——`(行盒 − 命中盒) / 2` 是算术。行多高都不影响：多行时它仍然
+     站在第一行上（网架把每一项对齐到行的上沿）。 */
+  margin-block-start: calc((var(--item-row-line) - var(--item-dots-h)) / 2);
   padding: 0;
   border: 0;
   border-radius: var(--item-radius-ctl);
@@ -2651,7 +2659,10 @@ button.itemRowCardChip {
   flex: none;
   inline-size: 20px;
   block-size: 20px;
-  margin-block-start: -1px;
+  /* **位置由版面给。** 这一行是网架、`align-items: start`，所以三样东西的上沿对齐；而这
+     一枚的盒（20px）与句子的行盒（13px × 1.6 = 20.8px）只差 0.4px——半个像素以下，本来
+     就在探针的容差里。曾经那句 `margin-block-start: -1px` 是**反方向**的：它把这枚记号
+     又往上推了 1px，于是它比句子的中线高 1.4px。 */
   padding: 0;
   color: var(--item-ink-3);
   background: none;
