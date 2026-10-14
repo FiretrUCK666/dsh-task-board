@@ -719,6 +719,8 @@
   gap: var(--s1);
   font-size: 13px;
   font-weight: 600;
+  /* 与 `.itemOpt` 同一条：主按钮的字也必须是产品字栈的。 */
+  font-family: inherit;
   color: var(--dsh-tb-ink-on-solid);
   background: var(--dsw-alias-button-primary-fill);
   border: 0;
@@ -2192,6 +2194,8 @@ button.itemRowCardChip {
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
+  /* 与 `.itemOpt` 同一条：按钮的字必须也是产品字栈的。 */
+  font-family: inherit;
   /* **行盒取量出来的那一档（16px），不由高度推。** 这一档是量过的：16px 的行盒居中在一个
      17px 的内容盒里时，这一族的墨心与盒心**差 0**；改成「行盒 = 内容盒高」（余量归零）之后
      同一族读到 **−0.5px**——归零不是改善，是把行盒整体挪了半格。 */
@@ -4251,6 +4255,10 @@ textarea.itemInput {
   padding: 0 9px;
   font-size: 12px;
   font-weight: 400;
+  /* **按钮不继承字体，得写出来。** UA 给表单控件自己的一套字，中文按字回退到另一套
+     字体——度量与产品字栈不一样，桌面与手机还各不一样。「盒子居中了、字还是偏」剩下的
+     那一半就是它：同一枚药丸在两台设备上是两套字。 */
+  font-family: inherit;
   /* **行盒与字同高（`1`），同一排的每一枚都一样。** 漏了 `line-height` 的这一枚会落到
    * `normal`（≈1.2）：行盒比同桌的高，**两枚药丸里的字差半个到一个像素**，而屏上没有任何一处
    * 会说明为什么。同一个盒模型里，行盒这一格必须是同一个值——而这个值是量出来的那一档
@@ -4369,6 +4377,8 @@ textarea.itemInput {
   block-size: 18px;
   padding: 0 9px;
   font-size: 12px;
+  /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的，否则它与镜像尺是两套字。 */
+  font-family: inherit;
   line-height: 16px;
   font-weight: 400;
   color: var(--item-ink-2);
@@ -4441,6 +4451,8 @@ textarea.itemInput {
      行盒也必须同一个数——一个由高度推、一个写死，两枚里的字就差半格。 */
   line-height: 16px;
   font-size: 12px;
+  /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的。 */
+  font-family: inherit;
   color: var(--item-ink-2);
   background: none;
   border: var(--item-hair-strong);

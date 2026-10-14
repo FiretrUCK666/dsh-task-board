@@ -3603,6 +3603,37 @@ describe('药丸的几何只写一次', () => {
     expect(declsOf(slot?.body ?? '').get('display'), '文字槽不再是块级盒').toBe('block')
   })
 
+  /* **按钮与输入框继承产品字体。** UA 给表单控件自己的一套字，中文按字回退到另一套
+     字体——度量与产品字栈不一样，桌面与手机还各不一样。「盒子居中了、字还是偏」剩下的
+     那一半就是它：同一枚药丸在两台设备上是两套字。 */
+  const FORM_CONTROLS = ['itemOpt', 'itemTag', 'itemTagAdd', 'itemOptNaming', 'itemNewButton', 'itemTopBarChip', 'itemRailNavBtn', 'itemRailToday', 'itemSearch', 'itemRowAttach', 'itemRailRow', 'itemFacetChip', 'itemArchiveToggle', 'itemRowCardChip']
+
+  const declsFor = (text: string, name: string): Map<string, string> => {
+    const out = new Map<string, string>()
+    for (const rule of declarationRules(stripCssComments(text))) {
+      for (const one of rule.selector.split(',')) {
+        const normalized = one.replace(/\s+/g, ' ').trim().replace(/^[a-zA-Z]+\./, '.')
+        if (normalized !== `.${name}`) continue
+        for (const [property, value] of declsOf(rule.body)) out.set(property, value)
+      }
+    }
+    return out
+  }
+
+  const controlsMissingFont = (text: string): string[] => FORM_CONTROLS.filter(name => {
+    const decls = declsFor(text, name)
+    return !/inherit/.test(decls.get('font-family') ?? decls.get('font') ?? '')
+  })
+
+  it('按钮与输入框继承产品字体，不读 UA 那套字', () => {
+    const missing = controlsMissingFont(css)
+    expect(missing, `这些控件的字是 UA 给的，不是产品字栈的：${missing.join(', ')}——中文按字回退，桌面与手机各用一套度量`).toEqual([])
+    const planted = FORM_CONTROLS.map(name => name === 'itemOpt'
+      ? '.itemOpt { color: red; }'
+      : `.${name} { font-family: inherit; }`).join('\n')
+    expect(controlsMissingFont(planted), 'the probe bites').toEqual(['itemOpt'])
+  })
+
   it('基座列出的族里，没有第二份几何', () => {
     const redeclared = FAMILIES.flatMap(name => declarationRules(css)
       .filter(rule => rule.selector.replace(/\s+/g, ' ').trim() === `.${name}`)
