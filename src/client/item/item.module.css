@@ -2148,20 +2148,16 @@ button.itemRowCardChip {
  *
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
-/* ── 药丸的基座：一个机制，一条规则 ──────────────────────────────────────────
+/* ── 药丸的基座在共用表里 ────────────────────────────────────────────────────
  *
- * 「胶囊把自己装字的盒子居中」是这一页唯一的对齐机制，而它由两条声明给出：`inline-flex`
- * （盒里的东西才有一个能被居中的盒子）与 `align-items: center`（把那些盒子放到盒心）。
- * **一个族写一遍时，第二个族会漏掉一条**，而漏掉的那一族在屏上只是「字有点歪」——
- * 所以它只写一次：族里只留「自己是什么」（颜色、描边、内衬、字重、高度档）。
+ * `display: inline-flex` 与 `align-items: center`——「胶囊把自己装字的盒子居中」这条机制——
+ * 现在**只写在 `board.module.css` 那条 `:is(...)` 里**，两个面板的胶囊共用它（清单这三个族
+ * 也在那张名单上）。一份机制写两遍，就是两个面板开始分叉的方式：分叉之后屏上只表现为
+ * 「清单这边的字在某台设备上偏半格，看板那边不偏」，而没有任何一处说得出为什么。
  *
- * `justify-content: center` 也在这里：横向上是同一个道理。
- *
- * **不在基座里的两种**：`<input>`（没有孩子，`align-items` 对它无效，它的居中手段是行盒）
- * 与按基线对齐的族（`.itemDateOpen` 要的是 `baseline`，不是 `center`）。 */
-:where(.itemOpt, .itemPrioChip, .itemTag) {
-  display: inline-flex;
-  align-items: center;
+ * 这里只留这一族**自己**的那一件：定宽的地板要把字放在中间（`.itemOpt` 与 `.itemPrioChip`
+ * 都有 30px 的地板，字比它窄时居不居中看得出来）。 */
+:where(.itemOpt, .itemPrioChip) {
   justify-content: center;
 }
 
@@ -4558,13 +4554,15 @@ textarea.itemInput {
    * 各自比属性行多出两倍的空气，同一列里两套节奏。轴自己连成一根
    * 线这件事不受影响：线跟着行高走，珠子打点。 */
   padding: 0 0 var(--s2) 22px;
-  /* **珠子挂在 5px 上，这是一个试出来的数。** 它要落在标题那一行**墨心**的位置上，而墨心在行盒
-     里偏多少是**每种字体自己的**（同一份样式，本机默认字体与 SimSun 差半个到一个像素）。所以
-     这个数只能在一种字体上对——本机默认字体上它是对的（珠子与标题齐平），换一份度量就会偏。
-     **不许用亚像素的补偿去"修"它**：0.5px 在像素网格上落不下去，量到过：按理想轮廓推出来的
-     修正把一个本来居中的盒子推歪了 1.1px。要修就得是**整像素**、并且先由画出来的墨量出来
-     （见 `scripts/probe-item-capsules.js` 的 `paintedOffY`）。 */
-  --item-bead-top: 5px;
+  /* **珠子落在标签那一行的中线上，而那个位置是算出来的。** 标签的行盒由这一族的令牌给
+     （`--item-date-line`），珠子自己也是令牌给的大小（`--item-bead-size`），于是
+     「(行盒 − 珠子) / 2」是**两个声明过的数之间的算术**——不是照着一种字体试出来的长度。
+     从前这里是 `5px`：标签没声明行盒时它跟着字体度量走（`normal`），同一个 5px 在一台设备上
+     落在中线上、在另一台设备上就偏半个到一个像素，而屏上没有任何一处说得出这句话——
+     手机上「珠子与开始/计划/截止不在一条线上」就是这么来的。 */
+  --item-date-line: 19px;
+  --item-bead-size: 9px;
+  --item-bead-top: calc((var(--item-date-line) - var(--item-bead-size)) / 2);
 }
 
 .itemDateAxis li:last-child {
@@ -4599,15 +4597,15 @@ textarea.itemInput {
  * **中线**起就没人接，会读成「线到上一颗就断了，这一颗悬空」。所以最后一行只画
  * 从接缝到本珠中线的那一小段，珠子同样把多余的部分盖住。 */
 .itemDateAxis li:last-child::before {
-  inset-block-end: calc(100% - var(--item-bead-top) - 4.5px);
+  inset-block-end: calc(100% - var(--item-bead-top) - var(--item-bead-size) / 2);
 }
 
 .itemDateAxis li > i {
   position: absolute;
   inset-block-start: var(--item-bead-top);
   inset-inline-start: 0;
-  inline-size: 9px;
-  block-size: 9px;
+  inline-size: var(--item-bead-size);
+  block-size: var(--item-bead-size);
   border-radius: 999px;
   /* THE HOLE IS A HOLE IN THE LINE: opaque composite of the wash the row wears
      (see --item-bead-hole above). A transparent hole would draw the spine
@@ -4618,6 +4616,9 @@ textarea.itemInput {
 }
 
 .itemDateAxis li > b {
+  /* **这一行自己说行盒**：珠子要落在它的中线上，而中线的位置就是从这个数推出来的。
+     缺省（`normal`）时行盒跟着字体度量走——珠子于是只在一种字体上是对的。 */
+  line-height: var(--item-date-line);
   font-size: 12px;
   font-weight: 600;
   color: var(--item-ink-3);

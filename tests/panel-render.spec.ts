@@ -3571,13 +3571,20 @@ describe('药丸的几何只写一次', () => {
       return found
     })
 
-  it('基座那一条在，而且它给的就是居中的机制', () => {
-    const base = declarationRules(css)
-      .find(rule => rule.selector.includes(':where(') && rule.selector.includes('itemPrioChip'))
-    expect(base, '药丸的基座不见了——几何于是又回到每个族各写一遍').toBeDefined()
+  it('基座在共用表里，而且两个面板的胶囊都在那张名单上', () => {
+    /* 机制只有一份，而且它在**共用表**（`board.module.css`）里——两个面板的胶囊共用它。
+       清单这一侧若自己再写一遍，就是两个面板分叉的开始：分叉之后屏上只表现为「清单的字在某台
+       设备上偏半格，看板的不偏」，而没有任何一处说得出为什么。 */
+    const shared = stripCssComments(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'))
+    const base = declarationRules(shared)
+      .find(rule => rule.selector.includes(':is(') && rule.selector.includes('.chip') && rule.selector.includes('itemPrioChip'))
+    expect(base, '共用的胶囊基座不见了，或者它不再把清单那三个族列进去——两个面板于是各写一份机制').toBeDefined()
     const decls = declsOf(base?.body ?? '')
     expect(decls.get('display'), '基座不再给原子盒').toBe('inline-flex')
     expect(decls.get('align-items'), '基座不再把盒里的东西放到盒心').toBe('center')
+    for (const name of FAMILIES) {
+      expect(base?.selector, `基座的名单里没有 .${name}`).toContain(`.${name}`)
+    }
   })
 
   it('基座列出的族里，没有第二份几何', () => {
@@ -3609,5 +3616,30 @@ describe('药丸的几何只写一次', () => {
     expect(nudgesOf('.itemRowDots { margin-block-start: calc((var(--item-row-line) - var(--item-dots-h)) / 2); }'),
       '由令牌推出来的算式被误报').toEqual([])
     expect(nudgesOf('/* vertical-align: 1px; */ .itemTag { color: red; }'), '注释里的字样被当成声明').toEqual([])
+  })
+
+  /* **行盒必须是声明过的数。** 看板那边不出问题的一半原因就在这里：它的胶囊自己说行盒
+   * （`.chip { line-height: 1.5 }`）。清单这边漏过一处——日期轴那一行的标签落到 `normal`，
+   * 于是珠子按一种字体凑出来的 `5px` 只在那种字体上落在中线上，手机上就看见「珠子与
+   * 开始/计划/截止不在一条线上」。缺省的行盒跟着字体度量走，屏上没有任何一处说得出这句话。 */
+  const normalLineBoxes = (text: string): string[] => declarationRules(stripCssComments(text))
+    .filter(rule => declsOf(rule.body).get('line-height') === 'normal')
+    .map(rule => rule.selector.replace(/\s+/g, ' ').trim())
+
+  it('每一处行盒都是声明过的数，不是字体给的 normal', () => {
+    const found = normalLineBoxes(css)
+    expect(found, `这些行盒是字体给的，不是我们给的：${found.join(', ')}`).toEqual([])
+    expect(normalLineBoxes('.x { line-height: normal; }'), 'the probe bites').toEqual(['.x'])
+  })
+
+  it('珠子落在标签那一行的中线上，位置由两个令牌算出来', () => {
+    const axis = declarationRules(css).find(rule => rule.selector.replace(/\s+/g, ' ').trim() === '.itemDateAxis li')
+    const top = declsOf(axis?.body ?? '').get('--item-bead-top') ?? ''
+    expect(top.startsWith('calc('), `珠子又挂在一个长度上了：${top}——换一套字体度量就偏`).toBe(true)
+    expect(top, '珠子那个算式里没有行盒令牌').toContain('var(--item-date-line)')
+    expect(top, '珠子那个算式里没有珠子自己的令牌').toContain('var(--item-bead-size)')
+    const label = declarationRules(css).find(rule => rule.selector.replace(/\s+/g, ' ').trim() === '.itemDateAxis li > b')
+    expect(declsOf(label?.body ?? '').get('line-height'), '标签那一行不再声明行盒，珠子就没有可算的中线')
+      .toBe('var(--item-date-line)')
   })
 })

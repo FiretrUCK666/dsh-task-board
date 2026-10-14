@@ -492,10 +492,10 @@
  *
  * 藏在里面的词进可达名、不进可见文字，所以两条都成立。
  *
- * **`overflow: hidden` 不在这里**，而这是量出来的一次修正：那一版会让检查器报「这串字
- * 被自己的裁切盒裁掉了」——它说得对（那就是这个写法的定义），于是一次审计要为每一枚
- * 「说给读屏听」的记号写一条豁免。裁掉它的是 `clip-path: inset(50%)`，而那一层**不报**；
- * 盒仍然只有 1px、仍然离流，所以可见与布局两侧与原来一模一样。 */
+ * **`overflow: hidden` 也在这里，理由与上面那条相反的一半是量出来的。** 它自己裁自己，
+ * 于是「这串字被裁掉了」报在**它自己**头上——而它已经在审计的豁免名单里（`content-clipping`
+ * 那一条，理由写着「说给读屏听的字按定义不可见」）。少了这一条，裁它的是**最近的祖先**：
+ * 一张 `overflow: hidden` 的卡片于是替它背了这一条，而卡片什么都没裁。 */
 .srOnly {
   position: absolute;
   inline-size: 1px;
@@ -503,6 +503,7 @@
   margin: -1px;
   padding: 0;
   border: 0;
+  overflow: hidden;
   clip-path: inset(50%);
   white-space: nowrap;
 }
@@ -906,7 +907,12 @@
 /* 诉求行：全板最该先说的事，坐在导航行之上。只在真有事在等时渲染。
    它是注意力色上的**静态**指示——呼吸归未读独有，所以「等你」与「有新的」永远
    不会读成同一件事。真按钮（触屏没有 hover），故用 --dsh-tb-hover 做悬停底、
-   并用药丸形与其它安静控件同族；不新增颜色。 */
+   并用药丸形与其它安静控件同族；不新增颜色。
+
+   **色相在圆点上，字是墨。** 这一行的字曾经是注意力色本身：白底上量到 **2.14:1**，
+   连本项目已经收下的 3.56:1（状态色当墨）都不到——那是「读不清」，不是一种语气。
+   「等你」与「有新的」这两个意思仍然分得开，而且各有各的载体：圆点带色相、
+   呼吸只归未读。 */
 .boardDemand {
   display: inline-flex;
   align-items: center;
@@ -921,7 +927,7 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  color: var(--dsh-tb-attention);
+  color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
@@ -2285,8 +2291,17 @@
 /* Pill base (one rule): every pill/badge is an inline-flex centered row; only
    the density (gap/padding) differs per pill, so the shared geometry lives
    here once. .chipFill always rides with .chip, so listing it keeps the
-   family explicit without changing rendering. */
-:is(.chip, .chipFill, .cruisePill, .columnTab) {
+   family explicit without changing rendering.
+
+   THE LIST PANEL'S PILLS ARE IN THIS LIST TOO, and that is the point: both
+   panels' pills are ONE mechanism (an atomic box + a text slot centred in
+   it), so the two declarations that give it live here once. A second copy is
+   how the two panels drift apart — and that drift shows up as "the list
+   panel's text sits half a pixel off on this device and the board's does
+   not", with nothing on screen saying why. Sizes stay per family (the
+   board's chips are 22px, the list's pills 19px): that is a design
+   difference, not a mechanism one. */
+:is(.chip, .chipFill, .cruisePill, .columnTab, .itemOpt, .itemPrioChip, .itemTag) {
   display: inline-flex;
   align-items: center;
 }
