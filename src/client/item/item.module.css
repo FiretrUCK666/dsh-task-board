@@ -2233,7 +2233,9 @@ button.itemRowCardChip {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  vertical-align: 1px;
+  /* **位置由版面给，不由微调给。** 这里曾经有一句 `vertical-align: 1px`：那是照着一种字体试出来
+     的常量，把整颗药丸连字抬高一像素，于是在同一行里它比邻居高出一格（读者看到的正是「一大
+     一小、不在同一条水平线上」）。行里的对齐只有一个机制——容器把内容居中。 */
   margin-inline-end: 6px;
   min-inline-size: 30px;
   block-size: 20px;
@@ -4164,6 +4166,10 @@ textarea.itemInput {
 .itemOpts {
   display: flex;
   flex-wrap: wrap;
+  /* **同一行只有一条中线。** 这一行里装的是 18 / 19 / 20 / 24px 四种高的药丸，而 `align-items`
+     不写就是 `stretch`：定高的成员不被拉伸，于是各自贴在这一行的**上沿**——读者看到的正是
+     「一大一小、不在同一条水平线上」。居中是这一页唯一的对齐机制，逐元素的垂直微调一个也没有。 */
+  align-items: center;
   /* 一档 --s2：选中芯片的外圈墨环（环 2px + 空气 2px）要在这条沟里放得下，
    * 环不碰邻居的边。 */
   gap: var(--s2);
