@@ -4511,11 +4511,13 @@ textarea.itemInput {
    * 各自比属性行多出两倍的空气，同一列里两套节奏。轴自己连成一根
    * 线这件事不受影响：线跟着行高走，珠子打点。 */
   padding: 0 0 var(--s2) 22px;
-  /* **珠子挂在哪一行，由一个不认字体的数说。** 标题那一行自己声明了 16px 的行盒（见下面
-     `li > b`），于是「半个行盒减半个珠子」= 3.5px 是纯几何——**一个写死的数**（原来是 5px，
-     那是在开发者的字体上试出来的，换一份度量就偏）。珠子、线头、线尾三处读同一个数，所以
-     它们永远在同一条轴上。 */
-  --item-bead-top: 3.5px;
+  /* **珠子挂在 5px 上，这是一个试出来的数。** 它要落在标题那一行**墨心**的位置上，而墨心在行盒
+     里偏多少是**每种字体自己的**（同一份样式，本机默认字体与 SimSun 差半个到一个像素）。所以
+     这个数只能在一种字体上对——本机默认字体上它是对的（珠子与标题齐平），换一份度量就会偏。
+     **不许用亚像素的补偿去"修"它**：0.5px 在像素网格上落不下去，量到过：按理想轮廓推出来的
+     修正把一个本来居中的盒子推歪了 1.1px。要修就得是**整像素**、并且先由画出来的墨量出来
+     （见 `scripts/probe-item-capsules.js` 的 `paintedOffY`）。 */
+  --item-bead-top: 5px;
 }
 
 .itemDateAxis li:last-child {
@@ -4559,8 +4561,6 @@ textarea.itemInput {
   inset-inline-start: 0;
   inline-size: 9px;
   block-size: 9px;
-  /* 令牌是 em，按**标题**的字号解析；珠子自己不装字，所以它替标题说一遍那一档字号。 */
-  font-size: 12px;
   border-radius: 999px;
   /* THE HOLE IS A HOLE IN THE LINE: opaque composite of the wash the row wears
      (see --item-bead-hole above). A transparent hole would draw the spine
@@ -4571,11 +4571,6 @@ textarea.itemInput {
 }
 
 .itemDateAxis li > b {
-  /* **标题自己声明行盒。** 珠子、图标、分隔线是**盒子的几何**（不认字体），而字的墨跟着基线走
-     （认字体）——两边要对齐，就得让几何这一侧有一个不认字体的参照。写 `line-height: normal`
-     时那个参照是字体自己的内容区（同一份样式在两种字体下 16.8px 与 14px），于是珠子在开发者的
-     字体上对、在读者的字体上错。 */
-  line-height: 16px;
   font-size: 12px;
   font-weight: 600;
   color: var(--item-ink-3);
