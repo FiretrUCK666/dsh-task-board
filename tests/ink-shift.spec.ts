@@ -45,9 +45,10 @@ describe('墨心修正：一个令牌，两端都有人', () => {
   })
 
   it('两个样式表都在读它，而且只在修正自己那几处读', () => {
-    // 令牌只有两类合法读法：胶囊族的两条块向内衬，以及那一列珠子挂靠的行盒位置。
-    // 多出来的第三类位置意味着有人在别处又读了一次——那正是「同一个数散成好几处」的开头。
-    const allowed = /^(padding-block-(start|end):|--item-bead-top:)/
+    // 令牌只有三类合法读法：胶囊族的两条块向内衬（字落到盒心）、那一列珠子挂靠的行盒位置
+    // （珠子跟着墨走）、以及记号把那一格还回去的那条 `translate`（记号本来就在盒心上）。
+    // 多出来的第四类位置意味着有人在别处又读了一次——那正是「同一个数散成好几处」的开头。
+    const allowed = /^(padding-block-(start|end):|--item-bead-top:|translate:)/
     for (const [name, sheet] of [['board', boardSheet], ['item', itemSheet]] as const) {
       const uses = sheet.split('\n').filter((line) => line.includes(INK_SHIFT_TOKEN))
       expect(uses.length, `${name} 表读令牌的次数`).toBeGreaterThan(1)
