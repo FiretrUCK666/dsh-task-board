@@ -15,6 +15,15 @@ import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/bo
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const cssSource = readFileSync(cssPath, 'utf8')
 
+/** Rule text with its comments removed. A ban reads CODE, not the prose that
+ *  explains it — and this sheet documents its rules inside them, so a substring
+ *  search without this step forbids the explanation along with the practice
+ *  (硬性规范 14: a checker that cannot see context forces people to edit the
+ *  right thing to please it). */
+function withoutComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
 /** The first top-level `.name { … }` rule body (line-start match, trim-tolerant
  *  so indented @container rules are also findable). */
 function ruleOf(name: string): string {
@@ -47,33 +56,51 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(card).toMatch(/margin:\s*0 var\(--dsh-tb-rail-inset\) 2px/)
   })
 
-  it('HEIGHT CONTRACT: the interaction card is capped, its body scrolls, its actions stay pinned', () => {
-    const card = ruleOf('interactionCard')
-    // THE cap is a three-part max(): never taller than the 320px reading
-    // ceiling, never taller than the box holding it — and never SHORTER than a
-    // 290px floor. The floorless min() destroyed itself in a short box
-    // (measured on a real screenshot + fixture at comments-box height 122px):
-    // the card shrank to the box, head+footer no longer fit inside it, and
-    // overflow:hidden sliced the submit button's bottom edge while the body
-    // collapsed to a sliver that could not show the answer field at all. With
-    // the floor a short box can no longer starve the card; the OVERFLOW the
-    // floor creates is absorbed by the outer comments scroller (with follow
-    // landing on the card's bottom = the footer), never clipped. Still never
-    // a viewport unit: the card lives inside a panel sized against the BOARD
-    // box, so `40vh` measured a different box than the one that has to hold
-    // it (and the mobile contract bans viewport units board-wide — so the two
-    // tests must agree about this line).
-    expect(card).toMatch(/max-height:\s*max\(290px,\s*min\(320px,\s*100%\)/)
+  it('HEIGHT LAW: the card is content — it never caps or clips itself, and the comments box is the region that scrolls', () => {
+    const card = withoutComments(ruleOf('interactionCard'))
+    // The card draws no cap and no clip of its own, and the two halves are the
+    // SAME law: a capped card whose chrome is `flex: none` cannot survive a box
+    // shorter than head+footer — `overflow: hidden` slices the pinned rows
+    // instead of shrinking them. Measured at 412 (the narrow band, where the
+    // folds block is capped): the comments box is 273px, a question with four
+    // described options is 292px, and a 290px floor under the cap put the
+    // card's own footer 29px BELOW its box — the reader met a card whose
+    // 跳过/下一题 were sliced in half, while the card's inner scroller carried
+    // `overscroll-behavior: contain` and so swallowed the gesture that would
+    // have revealed them. Content has no such state.
+    expect(card, 'the card grew a cap again: it is content, and the comments box is the scroller').not.toMatch(/max-height/)
+    expect(card, 'the card clips its own chrome again').not.toMatch(/overflow:\s*hidden/)
     expect(card).not.toMatch(/\d+(vh|dvh|vw)\b/)
-    expect(card).toContain('overflow: hidden')
-    // The body is the ONE scroll slot: long plan/question text scrolls inside
-    // while the action row stays pinned at the card's bottom edge, always
-    // inside the card (never painted past it).
+    // The bodies are plain content. A scroll region here would be a second,
+    // smaller window onto the same text — and one whose `contain` traps the
+    // gesture instead of chaining it out to the box that holds the card.
     for (const body of ['interactionBody', 'interactionCardBody']) {
-      expect(ruleOf(body), `.${body} must scroll its own content`).toContain('overflow-y: auto')
-      expect(ruleOf(body), `.${body} must be allowed to shrink`).toContain('min-height: 0')
+      expect(withoutComments(ruleOf(body)), `.${body} must not be a scroll region of its own`).not.toMatch(/overflow(-y)?:\s*(auto|scroll|hidden)/)
+      expect(withoutComments(ruleOf(body)), `.${body} must not trap the gesture it cannot chain`).not.toContain('overscroll-behavior')
     }
+    // The POSITIVE half, so the bans above cannot be satisfied by the rules
+    // simply going missing: the plan's body is the ONE reading window inside the
+    // card (a plan is a document), the box is the region that scrolls, and the
+    // footer is still the row at the card's end.
+    expect(ruleOf('interactionPlanBody'), 'the plan body stopped being a reading window').toContain('overflow-y: auto')
+    expect(ruleOf('commentsScroll'), 'the rail lost its scroller — nothing absorbs the card any more')
+      .toMatch(/overflow-y:\s*auto/)
     expect(ruleOf('interactionFooter')).toContain('flex: none')
+    // And the plan's window must CHAIN: a gesture that ends there has to keep
+    // going into the box that holds the card, or the decision rows below look
+    // unreachable from the one place the reader's finger already is. Read from
+    // the rule body, never from the sheet as a whole — the prose that explains
+    // the ban names the property (硬性规范 14).
+    expect(withoutComments(ruleOf('interactionPlanBody')), 'the plan window traps the gesture again (overscroll-behavior: contain)')
+      .not.toContain('overscroll-behavior')
+    // 咬得动：把封顶、自裁与内滚写回去，上面的读法必须各报一次。种在测试里，不在 src 上做
+    // 临时改动（硬性规范 16）——而且先剥注释再读（硬性规范 14）。
+    expect(withoutComments('max-height: max(290px, min(320px, 100%));'), 'the cap ban did not bite').toMatch(/max-height/)
+    expect(withoutComments('overflow: hidden;'), 'the clip ban did not bite').toMatch(/overflow:\s*hidden/)
+    expect(withoutComments('.interactionBody { overflow-y: auto; }'), 'the scroll-region ban did not bite')
+      .toMatch(/overflow(-y)?:\s*(auto|scroll|hidden)/)
+    expect(withoutComments('/* an `overscroll-behavior: contain` note */ padding: 0;'), 'the trap ban did not bite on prose')
+      .not.toContain('overscroll-behavior')
   })
 
   it('the rail clips horizontally; the FOLDS block owns the only scroll', () => {

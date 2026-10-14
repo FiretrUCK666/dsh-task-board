@@ -634,18 +634,17 @@ describe('alignment grammar (the OCD contract)', () => {
     // unpadded scroller floats the bar beside the text — the「滚动条贴着文字」
     // complaint on the interaction (question/plan) card.
     const card = ruleOf('interactionCard')
-    // The narrow rail is where the cap's box bound matters: the comments box
-    // is ~285px on a phone, so an uncapped 320px card overflowed it (盘点
-    // 「选项在、按钮按不了」). max() keeps the reading ceiling AND the container
-    // bound AND the 290px floor — the floor is what stops a SHORT box from
-    // re-creating that bug by shrinking the card into sliced buttons (see the
-    // HEIGHT CONTRACT in review-page.spec for the measured mechanism).
-    expect(card).toMatch(/max-height:\s*max\(290px,\s*min\(320px,\s*100%\)/)
-    // The interactive card's ONE scroller is the question body (detail,
-    // options, custom answer field); the read-only shell's plain-text body
-    // keeps its own. Both own their horizontal inset.
-    expect(ruleOf('interactionBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*8px 12px/)
-    expect(ruleOf('interactionCardBody')).toMatch(/overflow-y:\s*auto[\s\S]*?padding:\s*0 12px/)
+    // The narrow rail is where the box is at its shortest — the folds block is
+    // capped here, so a phone's comments box is 273px while a question with
+    // four described options is 292px. The card is CONTENT (no cap, no clip of
+    // its own: the law and the measurement behind it live in
+    // `review-page.spec.ts`), because a cap can only ever be a promise about a
+    // box this tier is the one to break.
+    expect(card, 'the card caps itself again — on a phone its box is shorter than its own floor').not.toMatch(/max-height/)
+    // The bodies own their horizontal inset (the text keeps the card's line) and
+    // are NOT scroll regions: the comments box is the region that scrolls.
+    expect(ruleOf('interactionBody')).toMatch(/padding:\s*8px 12px/)
+    expect(ruleOf('interactionCardBody')).toMatch(/padding:\s*0 12px/)
     expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
     // Two option grammars, deliberately distinct: the read-only card QUOTES the
     // options in `li` rows (no pointer cursor, no hover lift, no focus ring),
@@ -1615,10 +1614,23 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // breaks anywhere (an unbreakable path cannot pierce the rail).
     expect(ruleOf('interactionOffered')).toMatch(/min-width:\s*0/)
     expect(ruleOf('interactionOptionLabel')).toMatch(/overflow-wrap:\s*anywhere/)
-    // Both card scrollers ride the ONE scrollbar grammar (their bars look
-    // like every other bar on the board — thin and themed, not the system
-    // default that outed the desktop-only bug).
-    expect(source).toMatch(/:is\([^)]*\.interactionCardBody, \.interactionBody, \.interactionPlanBody[^)]*\)\s*\{/)
+    // The plan's reading window is the card's ONE scroller, and it rides the ONE
+    // scrollbar grammar (its bar looks like every other bar on the board — thin
+    // and themed, not the system default that outed the desktop-only bug). The
+    // list is a claim about WHICH regions scroll, so every member must declare
+    // its own scroll — a class that never produces a bar is a scrolling rule for
+    // something that cannot scroll.
+    expect(source).toMatch(/:is\([^)]*\.interactionPlanBody[^)]*\)\s*\{/)
+    const listed = /:is\(([^)]+)\)::-webkit-scrollbar-button/.exec(source)?.[1]
+      ?.split(',').map(name => name.trim()).filter(name => name.startsWith('.'))
+      ?? []
+    expect(listed.length, 'the scrollbar grammar lost its member list').toBeGreaterThan(4)
+    const notScrolling = listed.filter(name => !/overflow(-y)?:\s*(auto|scroll)/.test(ruleOf(name.slice(1))))
+    expect(notScrolling, 'these ride the scrollbar grammar but never scroll — a bar that can never appear').toEqual([])
+    // 咬得动：一个不滚动的成员必须被判出来（种在测试里，硬性规范 16）。
+    const scrolls = (text: string): boolean => /overflow(-y)?:\s*(auto|scroll)/.test(text)
+    expect(scrolls('.interactionBody { overflow-y: auto; }'), 'the predicate stopped seeing a scroller').toBe(true)
+    expect(scrolls('.interactionBody { padding: 8px 12px; }'), 'the predicate cannot tell a scroller from plain content').toBe(false)
     // WHICH implementation renders is decided by the @supports gate, measured
     // on the running Edge: with scrollbar-width declared ungated, Chromium
     // silences every ::-webkit-scrollbar rule below and draws its native bar
@@ -1662,8 +1674,11 @@ describe('content-box family + interaction-card containment (the desktop truncat
     expect(body, 'a long plan no longer scrolls inside its own region').toMatch(/max-block-size:\s*var\(--plan-body-ceiling\)/)
     // The pinned rows stay pinned, and the card is the thing that gives way.
     expect(ruleOf('interactionPlanActions'), 'the decision rows stopped being pinned under the body').toMatch(/flex:\s*none/)
-    expect(source, 'the plan card still caps itself: its cap cannot know how much the pinned rows will take')
-      .toMatch(/\.interactionCard:has\(>\s*\.interactionPlanBody\)\s*\{[^}]*max-height:\s*none/)
+    // ONE height rule for both kinds of card: the card never caps itself, so a
+    // plan-specific exception has nothing left to undo — the cap was its only
+    // reason to exist. The plan's ceiling lives on the BODY, asserted above.
+    expect(ruleOf('interactionCard'), 'the card caps itself again: the plan loses its reading window and the question loses its footer')
+      .not.toMatch(/max-height/)
     // 咬得动：写回一个像素数的地板，这条读法必须报。
     expect(/\d+(?:\.\d+)?px/.test('min-block-size: 78.5px'), 'the plant did not bite').toBe(true)
     expect(/min-block-size:\s*([^;]+)/.exec('min-block-size: calc(3 * var(--plan-body-line));')?.[1], 'the plant did not bite')

@@ -31,7 +31,7 @@ import { withSessionRules } from '../src/core/automation.ts'
 import { InteractionCard } from '../src/client/board/InteractionCard.tsx'
 import { SessionRulesSection } from '../src/client/board/automation-ui.tsx'
 import type { WireQuestion } from '../src/core/question-rpc.ts'
-import { alignClassNames, panelCss, writeStandalonePage } from './panel-harness.ts'
+import { alignClassNames, panelCss, railWrap, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
 import { BUNDLED_VERSION } from '../src/client/update-source.ts'
@@ -832,6 +832,47 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     }
   }
 
+  /**
+   * 一道**普通的问题**（不是计划）——`/question` 那一支，也就是用户报「评论区里直接截断」
+   * 的那张卡。两道题装在一个批次里（原生就是一次问多题、一次答完），第一道带说明与四个
+   * 带描述的选项，于是卡的正文**真的比它的窗口高**——那正是被截断的那个状态。
+   */
+  function askQuestion(): WireQuestion {
+    return {
+      rpcId: 'rpc-ask-1',
+      sessionId: 's-1',
+      isPlanReview: false,
+      questions: [
+        {
+          id: 'lamp',
+          header: '选型',
+          question: '东墙那盏灯用哪一种？',
+          detail: '现场量到的层高是 2.7 米，原来的灯座留在原位不动。',
+          options: [
+            { label: '轨道灯', description: '想挪就挪，但天花板要加一条轨道' },
+            { label: '吸顶灯', description: '不动天花板，改动最小' },
+            { label: '吊灯', description: '最好看，但要重新拉线' },
+            { label: '先不换', description: '把这一次留到装修一起做' },
+          ],
+        },
+        {
+          id: 'who',
+          header: '验收',
+          question: '装完谁来验收？',
+          options: [
+            { label: '我自己看' },
+            { label: '叫上房东' },
+          ],
+        },
+      ],
+    }
+  }
+
+  /** 同一批问题，只是这台机器的宿主不让就地作答——只读那张卡。 */
+  function mirrorQuestion(): WireQuestion {
+    return { ...askQuestion(), isPlanReview: false }
+  }
+
   it('writes the page when DSH_BOARD_SHOT names one, and it carries what it must', async () => {
     const target = process.env.DSH_PANEL_HTML
     const asked = process.env.DSH_BOARD_SHOT
@@ -840,6 +881,10 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
     document.body.appendChild(host)
     let markup = ''
     const must: string[] = []
+    /* 交互卡那几张**一律装进真实祖先链**（见 `railWrap`）。画在顶层会让卡里那条
+       `max-height: max(290px, min(320px, 100%))` 里的 `100%` 量到整个窗口——那正是
+       「问题卡在窄档被评论框切掉下半张」能藏这么久的原因。规则表单不住在右栏，不套。 */
+    const rail = asked.startsWith('plan-card') || asked.startsWith('question')
     try {
       if (asked === 'plan-card' || asked === 'plan-card-live' || asked === 'plan-card-single') {
         /* 三张：**只读那一支**（这台机器的宿主不提供就地作答：选项是引用行 + 那扇门）、
@@ -875,6 +920,26 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         }
         expect(markup, '任务勾选的记号被原样打印出来了').not.toContain('[x]')
         expect(markup, '标题的记号被原样打印出来了').not.toContain('##')
+      } else if (asked === 'question-card' || asked === 'question-mirror') {
+        /* 普通的问题卡（`/question` 那一支）。**这一支此前一张图都没有**：工件只画了计划卡与
+           规则表单，于是「问题卡被评论区切掉下半张」这件事没有任何仪器看得见——结构断言答不了
+           「装它的盒子有多高」，而卡的整条高度契约恰恰只关于那个盒子。 */
+        const answerable = asked === 'question-card'
+        markup = renderToStaticMarkup(createElement(InteractionCard, {
+          question: answerable ? askQuestion() : mirrorQuestion(),
+          shellWaiting: undefined,
+          sessionId: 's-1',
+          controller: {
+            questionAnswerableOf: () => answerable,
+            openSession: () => undefined,
+            answerQuestion: async () => true,
+            cancelQuestion: async () => true,
+          } as never,
+        } as never))
+        must.push('东墙那盏灯用哪一种？', '轨道灯', '不动天花板，改动最小')
+        must.push(...answerable
+          ? [t('review.interactionSkip'), t('review.interactionNext'), t('review.interactionProgress', { n: '1', total: '2' })]
+          : [t('review.interactionOffered'), t('review.interactionGoAnswer')])
       } else if (asked === 'rule-form') {
         const root = createRoot(host)
         await act(async () => {
@@ -894,9 +959,9 @@ describe('看板的另外两处界面（规则表单的附件条 / 只读计划�
         must.push('灯位.png', '看一眼这面墙', '含 1 张图片')
         root.unmount()
       } else {
-        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single)`)
+        throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single | question-card | question-mirror)`)
       }
-      const aligned = alignClassNames(markup, panelCss())
+      const aligned = alignClassNames(rail ? railWrap(markup) : markup, panelCss())
       writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')
       for (const needle of must) {
         expect(markup, `工件里少了「${needle}」——那张图不能用来下结论`).toContain(needle)
@@ -1014,6 +1079,54 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
     expect(markup).not.toContain(t('review.planDecline'))
     expect(markup).toContain(t('review.planConfirm'))
     expect(markup).toContain(t('review.interactionDiscuss'))
+  })
+
+  it('a question batch answers in place: one option click per question, then one submit', async () => {
+    /* 普通问题与计划走的是**两条不同的路**（计划那条读 `intent.approve`，这一条读
+       `choose` → 单选自动翻页 → `answerBatchOf`），各有各的门禁——一条绿了不算另一条也绿。
+       这条此前一张图、一次点击都没有。 */
+    const batch: WireQuestion = {
+      rpcId: 'rpc-ask-1',
+      sessionId: 's-1',
+      isPlanReview: false,
+      questions: [
+        { id: 'lamp', question: '灯用哪一种？', options: [{ label: '轨道灯' }, { label: '吸顶灯' }] },
+        { id: 'who', question: '谁来验收？', options: [{ label: '我自己看' }] },
+      ],
+    }
+    const { controller, answerQuestion } = face(true)
+    const host = document.createElement('div')
+    document.body.appendChild(host)
+    const root = createRoot(host)
+    try {
+      await act(async () => {
+        root.render(createElement(InteractionCard, {
+          question: batch,
+          shellWaiting: undefined,
+          sessionId: 's-1',
+          controller,
+        } as never))
+      })
+      const optionRow = (label: string): HTMLButtonElement | undefined =>
+        [...host.querySelectorAll<HTMLButtonElement>('button[role="radio"]')]
+          .find(row => (row.textContent ?? '').includes(label))
+      expect(optionRow('轨道灯'), '第一题没有画出选项——读者无从作答').toBeDefined()
+      await act(async () => { optionRow('轨道灯')?.click() })
+      // 单选选完就翻页（原生那一支的规矩），所以第二题的题面必须已经在屏上。
+      expect(host.textContent, '选了第一题却没有翻到第二题').toContain('谁来验收？')
+      await act(async () => { optionRow('我自己看')?.click() })
+      const submit = [...host.querySelectorAll<HTMLButtonElement>('button')]
+        .find(row => (row.textContent ?? '').trim() === t('review.interactionSubmit'))
+      expect(submit, '两题都答完了，却没有「提交」那一枚').toBeDefined()
+      await act(async () => { submit?.click() })
+      expect(answerQuestion).toHaveBeenCalledWith('rpc-ask-1', 's-1', [
+        { id: 'lamp', selected: ['轨道灯'] },
+        { id: 'who', selected: ['我自己看'] },
+      ])
+    } finally {
+      await act(async () => { root.unmount() })
+      document.body.removeChild(host)
+    }
   })
 
   it('cannot answer here: the card quotes the options and nothing in it looks pressable', () => {

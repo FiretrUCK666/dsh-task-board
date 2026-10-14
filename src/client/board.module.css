@@ -2709,28 +2709,28 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
    mechanism again, and this list has already moved twice for no reason. */
 
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
+  :is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
+:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
+:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
+:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .reviewRail, .sessionRailFolds, .reviewTranscriptScroll, .interactionCardBody, .interactionBody, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
+:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -5970,34 +5970,37 @@ textarea.input {
 
    The card is a rail flex child and must never exceed its container —
    min-width: 0 lets its rows wrap instead of bursting out of the rail's right
-   edge (the reported 「放弃整组爆出框」bug). HEIGHT CONTRACT: the card is
-   capped and the BODY scrolls internally while the head and the footer stay
-   pinned — a long plan/question can never push 确认执行/拒绝 or the composer
-   out of reach (the reported 「长计划把评论区/发送挤掉」bug). */
+   edge (the reported 「放弃整组爆出框」bug).
+
+   ── THE HEIGHT LAW: THE CARD IS CONTENT ────────────────────────────────────
+   It has no cap and it never clips. The rail's comments box (`.commentsScroll`)
+   is the region that scrolls, and the card is one more thing inside it, exactly
+   like a comment. Two measured reasons, both about a box shorter than the card:
+
+     · at 412 (the narrow band, where the folds block is capped at 340px) the
+       comments box is 273px while a question with four described options is
+       292px. A 290px FLOOR under the cap therefore made the card taller than
+       its own box ON PURPOSE, and the box cut the card's bottom 29px off: the
+       reader arrived at a card whose 跳过 / 下一题 were sliced in half — the
+       floor defeated the very thing it was written to protect;
+     · the cap also bought an inner scroll region, and that region carried
+       `overscroll-behavior: contain`, so a gesture starting on the card's body
+       could never chain out to the box: what lay below the box was unreachable,
+       not merely out of view.
+
+   A capped card is also unsalvageable whenever the box is shorter than
+   head + footer: the chrome is `flex: none`, so `overflow: hidden` slices the
+   pinned rows instead of shrinking them. Content has no such state.
+
+   The plan's body is the ONE reading window left inside the card (a plan is a
+   document that wants its own scroll); everything else is plain content, and
+   the comments box absorbs every overflow. Never a viewport unit here — the
+   board box is not the viewport (see the .modalBackdrop note). */
 .interactionCard {
   display: flex;
   flex-direction: column;
   flex: none;
   min-width: 0;
-  /* THE height contract: a card is capped by BOTH the 320px reading ceiling and
-     the box holding it — and the cap carries a 290px FLOOR under them, because
-     a floorless cap is exactly how the card destroyed itself in a short box:
-     `min(320px, 100%)` against a ~120px comments box shrank the card to the
-     box, the pinned footer no longer fit inside head+footer+pad and
-     `overflow: hidden` sliced the submit button's bottom edge, while the body
-     collapsed to a sliver that could not show the answer field at all
-     (measured: box 122 → body 16px, field 6px visible, footer 8px past the
-     card's bottom border). With the floor, a short box can no longer starve
-     the card below its natural height: the card keeps head+body+footer
-     intact, and the OVERFLOW the floor creates is absorbed by the outer
-     `.commentsScroll` (overflow-y: auto, with its 滑到最新/follow landing on
-     the card's bottom = the footer) — never clipped, always reachable.
-     `min()` needs BOTH halves valid, and its 100% half still caps the card to
-     its box whenever the box is roomier than 290px, so the wide-rail and
-     stacked tiers keep their geometry; never a viewport unit here — the
-     board box is not the viewport (see the .modalBackdrop note). */
-  max-height: max(290px, min(320px, 100%));
-  overflow: hidden;
   margin: 0 var(--dsh-tb-rail-inset) 2px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l2);
@@ -6067,37 +6070,30 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 
-/* The card's ONE scroll region: the question body (detail, options, custom
-   answer field). Its 12px side inset lives HERE so the bar renders at the
-   card edge, never beside the text. */
+/* The question's body (detail, options, custom answer field) — PLAIN CONTENT:
+   no cap, no scroll region of its own. The card has no height to divide up, so
+   a scroller here could only ever be a second, smaller window onto the same
+   text, and one whose `contain` (it used to carry it) swallowed the gesture
+   that would have moved the region actually holding the card. Its 12px side
+   inset lives HERE so the text keeps the card's own line. */
 .interactionBody {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  flex: 1 1 auto;
   min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
-  overscroll-behavior: contain;
   padding: 8px 12px;
 }
 
-/* The read-only shell's plain-text body. It DOES scroll its own content, and that
-   is a requirement rather than an accident: the card is capped
-   (`max-height: min(320px, 100%)`) and clips (`overflow: hidden`), so without a
-   scroll region here any overflow would be silently unreachable instead of
-   scrollable — the shell body would lose content with no way to see it.
-   Two CSS layout contracts pin this (`mobile-contract` and `review-page`).
-   The earlier comment said "no scroller of its own", which was wrong about the
-   requirement and is exactly the kind of stale prose that invites someone to
-   delete a load-bearing declaration. */
+/* The read-only shell's plain-text body — plain content, like the answerable
+   card's body: the comments box is the region that scrolls, so the shell's
+   batch is reached by scrolling the thread, exactly as its quoted options are
+   read. A scroller of its own here would be a second window onto the same text
+   with none of the box's context around it. */
 .interactionCardBody {
   display: flex;
   flex-direction: column;
   gap: 8px;
   min-width: 0;
-  min-height: 0;
-  overflow-y: auto;
   padding: 0 12px;
 }
 
@@ -6499,7 +6495,10 @@ textarea.input {
   min-block-size: calc(var(--plan-body-floor-lines) * var(--plan-body-line) + 2 * var(--plan-body-pad-block));
   max-block-size: var(--plan-body-ceiling);
   overflow-y: auto;
-  overscroll-behavior: contain;
+  /* NO `overscroll-behavior: contain`. The plan body is a window INSIDE the
+     comments box; when its own scroll ends, the gesture has to keep going into
+     the box that holds it, or the decision rows below the card look
+     unreachable from the one place the reader's finger already is. */
   padding: var(--plan-body-pad-block) 12px;
   font-size: var(--plan-body-ink);
   line-height: var(--plan-body-lead);
@@ -6513,16 +6512,10 @@ textarea.input {
   overflow-wrap: break-word;
 }
 
-/* The plan card does NOT cap itself: its ceiling belongs to the body that
-   scrolls (above), because a cap on the card cannot tell how much of it the
-   pinned chrome will take. So the card is as tall as strip + body + decisions +
-   footer, and a box too short for that is absorbed by the region that scrolls
-   (`.commentsScroll` — 「滑到最新」 already lands on the card's bottom) instead
-   of being paid for by the plan. The read-only plan card keeps the shared cap:
-   its body is `.interactionCardBody`, so it is not this one. */
-.interactionCard:has(> .interactionPlanBody) {
-  max-height: none;
-}
+/* The plan body's ceiling belongs to the box that scrolls (above), because a
+   cap on the card cannot tell how much of it the pinned chrome will take. The
+   card itself carries no cap for either kind — see `.interactionCard`'s height
+   law — so plan and question share ONE height rule instead of an exception. */
 
 /* The plan card's decision rows: the same vertical menu the question card's
    options are (one row per decision, label + description), with the card's own
@@ -7072,6 +7065,28 @@ textarea.input {
     border-bottom: var(--dsh-tb-separator);
   }
 
+  /* ── 有一张卡等着被回答时，这一块拿走它需要的空间 ──────────────────────────────
+   *
+   * 340px 的那条封顶是为了「一个折叠不许把会话记录和输入框挤下手机屏」——它管的是
+   * **读者在看**的东西。而一张卡是**读者要动手答**的东西，两者对空间的主张不一样：
+   * 卡是内容（没有封顶、不裁自己），于是它需要多少就该拿到多少，由这一块自己去滚。
+   *
+   * 量到的差别就在这一条上：窄档评论框 273px，一张四选项的问题是 292px——卡本身没有
+   * 任何问题，是那个盒子先把它切了 29px。
+   *
+   * 两行都**不会**把输入框挤出去：折叠块那一行的 min 是 0（`minmax(0, auto)`，基础
+   * 尺寸 0，只能长进富余空间），会话记录那一行给一个 96px（≈3 行）的地板，输入框那一行
+   * 自己还能缩到 0 并内部滚动。所以最小总量是那个 96px——比手机软键盘顶起来的任何一屏都小。
+   * 没有 `:has()` 支持的环境落回上面那条 340px，与今天完全一样，不是坏掉。
+   *
+   * 评论框自己那条 300px 也要一起解（见那条规则下面）。 */
+  .reviewBody:has(.interactionCard) {
+    grid-template-rows: minmax(0, auto) minmax(96px, 1fr) minmax(0, auto);
+  }
+  .reviewBody:has(.interactionCard) .sessionRailFolds {
+    max-height: none;
+  }
+
   /* The head surrenders its desktop extras on a phone: no 12px bottom pad,
      no hairline — the uniform 10px gap separates (air, not lines, is the
      narrow separator; a border + a gap stacked is exactly the double
@@ -7124,6 +7139,15 @@ textarea.input {
   .commentsScroll {
     overflow-y: auto;
     max-height: 300px;
+  }
+
+  /* 有一张卡等着被回答时，这条 300px 也要解。它与折叠块那条封顶是**同一个顾虑写在这一层上
+     的第二个数**（别让一个折叠把会话记录和输入框挤下手机屏），而卡是内容：读者要动手答的东西
+     需要多少就该拿到多少，由盒子自己滚。留着它，折叠块让出来的空间就全落在盒子外面——量到的
+     正是这样：盒子 320px 而卡 336px，差的那 16px 就是这条把盒子的上限压在了卡的自然高度之下。
+     盒子不再有上限时，约束回到折叠块那一行（它是 `minmax(0, auto)`，长不进富余空间之外）。 */
+  .reviewBody:has(.interactionCard) .commentsScroll {
+    max-height: none;
   }
 
   /* The header re-maps the SAME five names to two deterministic lines (no

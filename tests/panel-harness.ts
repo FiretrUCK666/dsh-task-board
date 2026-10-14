@@ -1048,6 +1048,46 @@ export function writeStandalonePage(target: string, markup: string, css: string,
   writeFileSync(target, document_, 'utf8')
 }
 
+/**
+ * 把一段标记装回它**真正住的那条链**里（复核页右栏：会话头 / 评论 / 留言框）。
+ *
+ * **为什么必须有这一步。** 交互卡此前一直是画在页面顶层的：`writeStandalonePage` 给它套一层
+ * `.panelStage`（= 整个窗口），于是卡里那条 `max-height: max(290px, min(320px, 100%))` 里的
+ * `100%` 量到的是**整个窗口**——比它真实住的那个盒子大两三倍。结果是：**这张卡从来没有被量在
+ * 它真正住的地方**，而它的高度契约恰恰全部建立在「装它的盒子有多高」上。它在窄档被评论框切掉
+ * 下半张（决断行、选项、提交全在框外）这件事，就是被这一层假的盒子藏了很久。
+ *
+ * 链的形状照抄 `SessionFrame` + `SessionRail`：`.review`（面板，`max-height: min(100%, 860px)`）
+ * → `.reviewBody`（两列）→ `.reviewRail` → `.sessionRailFolds`（这半区的滚动区）→
+ * `.sessionRailComments` → `.detailSection` / `.detailSectionBody` → `.commentsScroll`（评论框）。
+ * 会话头与留言框各给一个占位块：它们**占高度**，而高度正是这条链上唯一的变量。
+ *
+ * 一处**已知的失真**：真实页面里 `.review` 是 portal 到板盒、由 `.modalBackdrop` 的 padding
+ * 与 `margin: auto` 定位的；这里它直接坐在 `.panelStage` 里。差别只在那圈 24px 与 `100%` 量到
+ * 的是板盒还是舞台盒，量级相同，不影响「卡有没有被框切掉」这个结论。
+ */
+export function railWrap(markup: string): string {
+  return [
+    '<div class="review">',
+    '<div class="reviewHeader">会话头</div>',
+    '<div class="reviewBody">',
+    '<div class="reviewMain"></div>',
+    '<div class="reviewRail">',
+    '<div class="sessionRailFolds">',
+    '<div class="sessionRailHead"><div class="detailSection">上下文 38%</div></div>',
+    '<div class="sessionRailComments" data-open="true">',
+    '<section class="detailSection">',
+    '<button type="button" class="detailDisclosure">评论 3</button>',
+    '<div class="detailSectionBody">',
+    '<div class="commentsScroll">',
+    markup,
+    '</div></div></section></div>',
+    '</div>',
+    '<div class="reviewComposer">留言</div>',
+    '</div></div></div>',
+  ].join('')
+}
+
 // ── the mounted reading ─────────────────────────────────────────────────────
 
 /** A mounted panel: a real DOM, a real React root, and the caller's own seams. */
