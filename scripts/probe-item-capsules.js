@@ -489,7 +489,7 @@
    * 胶囊居中的是**它自己装字的那个盒子**，而那个盒子的形状每族不同，于是同一份字体在十几个族
    * 上量出来的偏差本来就不是同一个值（本机默认字体：0.46px 到 1.18px）。写一个数去补，就是把
    * 一族修好、把另一族推过头。 */
-  const inkBiasEm = () => {
+  const measureBiasEm = () => {
     const root = document.querySelector('[data-dsh-taskboard-view]')
     if (root === null || document.body === null) return null
     const family = getComputedStyle(root).fontFamily
@@ -516,7 +516,18 @@
     }
   }
 
-  const clean = scan()
+  /* 工件页是**静态渲染**：插件那个运行时模块（`src/client/ink-shift.ts`）在 `file://` 工件上
+   * 跑不起来，而这条机制的值正是它写的（面板根上的 `--dsh-tb-ink-shift`）。所以审计**自己量
+   * 一遍**并把它注入工件页——与它注入宿主的真实令牌表是同一个办法，量法与模块同源但是**独立的
+   * 一份实现**（审计不读被审计对象的数）。于是同一次运行里两套读数都在：`rawWorst` 是「这份
+   * 字体偏多少」，`worst` 是「这条机制把偏补掉了没有」，而后者才是判据。 */
+  const raw = scan()
+  const bias = measureBiasEm()
+  if (bias !== null) {
+    const value = `${round(bias * 10000) / 10000}em`
+    for (const root of document.querySelectorAll('[data-dsh-taskboard-view]')) root.style.setProperty('--dsh-tb-ink-shift', value)
+  }
+  const clean = bias === null ? raw : scan()
 
   /* ── A6：自证 ────────────────────────────────────────────────────────────────
    *
@@ -654,8 +665,9 @@
 
   return {
     page: document.title,
-    /* 这份字体自己的度量不对称（em，正数 = 字偏下）。它进报告、不进判据——判据是逐颗胶囊的墨心。 */
-    inkBiasEm: inkBiasEm(),
+    /* 这份字体自己的度量不对称（em，正数 = 字偏下），以及**修之前**的那套读数。 */
+    inkBiasEm: bias,
+    rawWorst: raw.worstV,
     href: location.pathname.split('/').pop() ?? '',
     viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio, scrollbars: innerWidth - document.documentElement.clientWidth },
     media,

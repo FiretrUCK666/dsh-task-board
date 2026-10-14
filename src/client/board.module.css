@@ -2323,7 +2323,12 @@
 }
 
 .chipFill {
-  padding: 2px 8px;
+  /* **它有自己的高。** 22px 是设计给它的数（18px 的行盒 + 上下各 2px）；交给内容去算，高度就
+     跟着字体度量走——同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。定高之后
+     下面那条墨心修正才只动内容、不动这颗药丸的形状。 */
+  box-sizing: border-box;
+  block-size: 22px;
+  padding: 0 8px;
   border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
      double-fade under a glass skin) — the shared quiet-chip surface, so a
@@ -8152,6 +8157,27 @@ textarea.input {
    "where the other overrides live", silently re-breaks the five.** The token
    cannot save them, because they spell their own durations instead of reading
    it — that is the whole reason they are named here at all. */
+/* ── 墨心修正：**一个令牌，一族读一次** ────────────────────────────────────────
+ *
+ * CSS 能居中的只有**行盒**，而行盒的高度是**字体的度量**；汉字的墨不落在行盒的几何中心上，
+ * 于是「把行盒居中」之后，读者看到的墨还差一点。差多少**与字号、行高、盒高都无关**（半行距在
+ * 上下对称地加减），是每种字体自己的一个 em 值——同一份样式，本机默认字体量到 +0.09em（字偏下），
+ * 换成 SimSun 量到约 0，而报告的读者是第三种字体（他的手机：字偏上）。所以它**不能写成一个数**：
+ * 写死一个数就是在一种字体上对、在另一种字体上错。它在读者自己的浏览器里量一次
+ * （`src/client/ink-shift.ts`），写成这个令牌。
+ *
+ * 消费方式是**内衬**，不是位移：位移只改画的位置，版面里量不到它（探针读的正是版面），而内衬改的
+ * 是版面。两个方向各一条——令牌为正（字要往下走）时加上衬，为负时加下衬，居中的盒子因此把内容
+ * 整体推半格，而**药丸自己的形状不动**（成员各自有定高）。令牌是 em，随每一枚胶囊自己的字号缩放。
+ *
+ * 名单按**结构**给：能进这一条的都是「胶囊」（画了底或边、够圆、装着字、只装一行）。漏掉的那一颗
+ * 不会被放过——`pnpm audit` 逐颗量墨心，谁不在名单上就报谁：**判据不靠这份名单**。 */
+[data-dsh-taskboard-view] :is(.chip, .chipFill, .cruisePill, .columnTab, .boardDemand,
+    .ghostButton, .primaryButton, .dangerButton, .dangerGhostButton) {
+  padding-block-start: calc(2 * max(var(--dsh-tb-ink-shift, 0em), 0em));
+  padding-block-end: calc(-2 * min(var(--dsh-tb-ink-shift, 0em), 0em));
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),

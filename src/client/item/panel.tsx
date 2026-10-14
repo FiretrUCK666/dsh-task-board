@@ -64,6 +64,7 @@ import { attachmentsOf } from '../../core/attachment.ts'
 import { itemTitleOf } from '../../core/item.ts'
 import { defaultRunPresetOf, RUN_CONFIG_KEYS, normalizeRunConfig, pinnedConfigCount, sameRunConfig, type RunConfigPresetConfig } from '../../core/run-presets.ts'
 
+import { inkShiftRef } from '../ink-shift.ts'
 import { t } from '../locales.ts'
 import { askConfigDraftKey, CAPTURE_CARD_CONFIG_KEY, draftStore } from '../board/drafts.ts'
 import { RunConfigBlock } from './run-config-block.tsx'
@@ -1003,7 +1004,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
 
   if (replica === undefined) {
     return (
-      <div className={css.itemPanelStage} data-dsh-taskboard-view="">
+      <div className={css.itemPanelStage} data-dsh-taskboard-view="" ref={inkShiftRef}>
         <div className={css.itemRoot}>
           {/* 「还没有行」那一档，不是「有一行提示」。副本还没落定的时候这个面板
               本来就没有东西可画，一句居中的话是这个状态唯一正确的形状；一条贴着
@@ -1878,7 +1879,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
     return on
   }, [archiveOpen, railGroups, prefs.page, prefs.search])
   return (
-    <div className={css.itemPanelStage} data-dsh-taskboard-view="">
+    <div className={css.itemPanelStage} data-dsh-taskboard-view="" ref={inkShiftRef}>
       <div className={css.itemRoot}>
         <ItemCommandPalette
           open={paletteOpen}

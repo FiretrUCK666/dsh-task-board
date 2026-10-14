@@ -1520,7 +1520,11 @@
   /* 它是一块内容的题，所以**自己的 margin 与字号自己说**：不声明，`<h2>` 那一份就落在
      浏览器的 `.83em` 与 `1.5em` 上——两个没人选过的数。 */
   margin: 0;
-  padding: 3px 10px;
+  /* **它有自己的高**（23px = 17px 的行盒 + 上下各 3px）：交给内容去算，高度就跟着字体度量走
+     （量到过：同一枚题头在两种字体下 23px 与 21px）。定高之后墨心修正只动内容，不动它的形状。 */
+  box-sizing: border-box;
+  block-size: 23px;
+  padding: 0 10px;
   font-size: 13px;
   font-weight: 600;
   border-radius: var(--item-radius-pill);
@@ -1961,7 +1965,11 @@ button.itemRowText {
   padding: 0 8px;
   font-size: 12px;
   font-weight: 400;
-  line-height: 16px;
+  /* 14px 而不是 16px：**行盒是这条修正的余量**。墨心修正按 em 加块向内衬（两个方向合起来约
+     2.2px），而内容盒必须先装得下这一行字——行盒 16px 时余量只剩 2px，差 0.2px 就被挤出去
+     （量到过：`contentBox 15.84 < lineBox 16`）。行盒缩到 14px 余量就有 4px，而**字的位置一个
+     像素都不动**：墨心与行盒中心差的是字体度量，与行盒多高无关（半行距在上下对称地加减）。 */
+  line-height: 14px;
   background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
   border-radius: var(--item-radius-pill);
 }
@@ -2153,7 +2161,9 @@ button.itemRowCardChip {
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
-  line-height: 16px;
+  /* 14px 而不是 16px：与 `.itemRowCardChip` 同一笔账——行盒是墨心修正的余量（修正按 em 加块向
+     内衬，约 2.2px），而 19px 的盒子减掉两条边只剩 17px，16px 的行盒差 1.16px 就被挤出去。 */
+  line-height: 14px;
   color: var(--item-ink-2);
   background: var(--item-fill);
   border: var(--item-hair-strong);
@@ -4514,6 +4524,11 @@ textarea.itemInput {
    * 各自比属性行多出两倍的空气，同一列里两套节奏。轴自己连成一根
    * 线这件事不受影响：线跟着行高走，珠子打点。 */
   padding: 0 0 var(--s2) 22px;
+  /* **珠子挂在哪一行，由一个不认字体的数说。** 标题那一行自己声明了 16px 的行盒（见下面
+     `li > b`），于是「半个行盒减半个珠子」= 3.5px 是纯几何；剩下那一点由 `--dsh-tb-ink-shift`
+     补——**字的墨并不落在行盒的几何中心上**，差多少是每种字体自己的一个 em 值。珠子、线头、
+     线尾三处读同一个数，所以它们永远在同一条轴上。 */
+  --item-bead-top: calc(3.5px - var(--dsh-tb-ink-shift, 0em));
 }
 
 .itemDateAxis li:last-child {
@@ -4541,22 +4556,24 @@ textarea.itemInput {
  * 被切掉了」。线从珠子的**盒顶**起画——珠子不透明，把它盖住的部分盖住，线在珠子
  * 底下接上，屏幕上看不出接缝，也看不出任何线头。 */
 .itemDateAxis li:first-child::before {
-  inset-block-start: 5px;
+  inset-block-start: var(--item-bead-top);
 }
 
 /* 最后一颗珠子**身旁**要有线：上一行的线在接缝处交过来，最后这一行的线从珠子的
  * **中线**起就没人接，会读成「线到上一颗就断了，这一颗悬空」。所以最后一行只画
  * 从接缝到本珠中线的那一小段，珠子同样把多余的部分盖住。 */
 .itemDateAxis li:last-child::before {
-  inset-block-end: calc(100% - 9.5px);
+  inset-block-end: calc(100% - var(--item-bead-top) - 4.5px);
 }
 
 .itemDateAxis li > i {
   position: absolute;
-  inset-block-start: 5px;
+  inset-block-start: var(--item-bead-top);
   inset-inline-start: 0;
   inline-size: 9px;
   block-size: 9px;
+  /* 令牌是 em，按**标题**的字号解析；珠子自己不装字，所以它替标题说一遍那一档字号。 */
+  font-size: 12px;
   border-radius: 999px;
   /* THE HOLE IS A HOLE IN THE LINE: opaque composite of the wash the row wears
      (see --item-bead-hole above). A transparent hole would draw the spine
@@ -4567,6 +4584,11 @@ textarea.itemInput {
 }
 
 .itemDateAxis li > b {
+  /* **标题自己声明行盒。** 珠子、图标、分隔线是**盒子的几何**（不认字体），而字的墨跟着基线走
+     （认字体）——两边要对齐，就得让几何这一侧有一个不认字体的参照。写 `line-height: normal`
+     时那个参照是字体自己的内容区（同一份样式在两种字体下 16.8px 与 14px），于是珠子在开发者的
+     字体上对、在读者的字体上错。 */
+  line-height: 16px;
   font-size: 12px;
   font-weight: 600;
   color: var(--item-ink-3);
@@ -5430,4 +5452,25 @@ textarea.itemInput {
  * `data-dsh-tb-pilltext` 是**纯标记**：它说「这一串是这一格的文字」，供审计按结构认领；它自己
  * 不声明任何属性（这两个样式表里它不出现在任何选择器里，`tests/panel-render.spec.ts` 钉住这一条）。
  */
+
+/* ── 墨心修正：**一个令牌，一族读一次** ────────────────────────────────────────
+ *
+ * 与看板那一份同一条机制、同一个令牌（声明在 `board.module.css`，由面板根上的
+ * `src/client/ink-shift.ts` 写入）：CSS 能居中的只有行盒，而行盒的高度是字体度量，汉字的墨
+ * 不落在它的几何中心上——差多少是每种字体自己的一个 em 值，所以在读者自己的浏览器里量一次。
+ *
+ * 内衬而不是位移（位移在版面里量不到），两个方向各一条，药丸形状不动（成员各自有定高）。
+ * 名单按**结构**给（能进这一条的都是「胶囊」）；漏掉的那一颗由 `pnpm audit` 逐颗量墨心报出来
+ * ——**判据不靠这份名单**。
+ *
+ * **两族按量到的数不进名单**：`.itemRailRow` 与 `.itemRailMonthNav`。前者的行里数字占了一半
+ * （数字的墨坐在基线上方），它的偏差量出来只有 +0.46px——按整份字体量出来的修正会把它推过头
+ * （量到过 −0.73）；后者是 `align-items: stretch`（它的字由自己的块流摆放，不归居中管），
+ * 加内衬会按两倍推。两族的读数都在容差内，**不进名单是量出来的决定，不是省事**。 */
+[data-dsh-taskboard-view] :is(.itemTopBarChip, .itemNewButton, .itemGroupHead,
+    .itemPrioChip, .itemRowCardChip, .itemTag, .itemRefChip, .itemOpt, .itemOptNaming,
+    .itemRailToday, .itemRailDay) {
+  padding-block-start: calc(2 * max(var(--dsh-tb-ink-shift, 0em), 0em));
+  padding-block-end: calc(-2 * min(var(--dsh-tb-ink-shift, 0em), 0em));
+}
 
