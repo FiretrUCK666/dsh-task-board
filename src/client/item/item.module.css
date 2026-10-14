@@ -1015,6 +1015,9 @@
   font-family: inherit;
   font-size: 12px;
   font-weight: 600;
+  /* 三格里的字与箭头共享一格 24px：行盒不声明就落到 `normal`，跟着字体度量走，
+   * 「回到今天」在一种字体上居中、换一套就偏。行盒取字高（`1`），居中由 flex 给。 */
+  line-height: 1;
   color: var(--item-ink-2);
   background: none;
   border: 0;
@@ -2148,17 +2151,30 @@ button.itemRowCardChip {
  *
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
-/* ── 药丸的基座在共用表里 ────────────────────────────────────────────────────
+/* ── 药丸的基座：三条声明，两个表各写一次 ────────────────────────────────────
  *
- * `display: inline-flex` 与 `align-items: center`——「胶囊把自己装字的盒子居中」这条机制——
- * 现在**只写在 `board.module.css` 那条 `:is(...)` 里**，两个面板的胶囊共用它（清单这三个族
- * 也在那张名单上）。一份机制写两遍，就是两个面板开始分叉的方式：分叉之后屏上只表现为
- * 「清单这边的字在某台设备上偏半格，看板那边不偏」，而没有任何一处说得出为什么。
+ * 「胶囊把自己装字的盒子居中」是两个面板共用的机制（`display: inline-flex`、
+ * `align-items: center`、`justify-content: center`），但它**不能只写在共用表里**：
+ * 构建是 CSS Modules，同一个字面类名在两个表里编出两个不同的运行时类——看板表里的
+ * `:is(... .itemOpt ...)` 在生产包里编成 `.Sr3ygG_itemOpt` 一类，而清单节点是
+ * `.crtfUa_itemOpt` 一类，根本打不到。只写一处，清单的药丸在真机上就回到 UA 的行内块，
+ * 字全部偏上——而工件页因为字面类名拼接看着全绿，这正是「门禁绿、真机坏」的来处。
  *
- * 这里只留这一族**自己**的那一件：定宽的地板要把字放在中间（`.itemOpt` 与 `.itemPrioChip`
- * 都有 30px 的地板，字比它窄时居不居中看得出来）。 */
-:where(.itemOpt, .itemPrioChip) {
+ * 所以三条声明在两个表里各写一次，`tests/panel-render.spec.ts` 的 parity 门禁数着它们
+ * 结构一致：第二份不是分叉，是同一个机制在两个作用域各一份拷贝，改一处不改另一处就红。 */
+:where(.itemOpt, .itemPrioChip, .itemTag) {
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
+}
+
+/* 药丸的文字槽：看板 `Chip` 的 `.chipBody` 在清单这一侧的同形，只是短词不截断。
+ * 裸文本在 flex 药丸里是匿名项，各浏览器与各字体放的位置不一样；包成块级槽之后，
+ * 居中的是这个槽，字只差字体自己那一点。输入框没有孩子，走行盒那条路，不用它。 */
+.itemPillText {
+  display: block;
+  line-height: inherit;
+  white-space: nowrap;
 }
 
 .itemTag {
@@ -4348,10 +4364,12 @@ textarea.itemInput {
  * 芯片同号。读者换手的地方，形状不许跟着换手。 */
 .itemOptNaming {
   /* 就地改名时读者换手的地方，形状不许跟着换手：与 `.itemOpt` 同一个盒模型（定高 18、
-   * 块向内衬为零、行盒与字同高），所以两枚里面的字落在同一个位置。 */
+   * 块向内衬为零），行盒取内容盒高（18 减上下边）：输入框没有孩子，flex 居中够不着它，
+   * 行盒等于内容盒高才是它真正的居中手段——与 `.itemTagAdd` 同一条律。 */
   block-size: 18px;
   padding: 0 9px;
   font-size: 12px;
+  line-height: 16px;
   font-weight: 400;
   color: var(--item-ink-2);
   background: none;

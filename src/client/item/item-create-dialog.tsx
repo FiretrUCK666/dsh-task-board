@@ -419,7 +419,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     aria-pressed={status === one}
                     onClick={() => { setStatus(one) }}
                   >
-                    {t(GROUP_LABEL[one])}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t(GROUP_LABEL[one])}</span>
                   </button>
                 ))}
               </div>
@@ -435,7 +435,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                     className={css.itemTag}
                     onClick={() => { setTags(tagList().filter(x => x !== one).join('、')) }}
                   >
-                    #{one}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>#{one}</span>
                   </button>
                 ))}
                 <TagField

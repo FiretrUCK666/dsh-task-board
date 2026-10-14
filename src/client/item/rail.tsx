@@ -248,7 +248,7 @@ export function ItemRail(props: ItemRailProps) {
               disabled={!props.canReturnToToday}
               onClick={props.onToday}
             >
-              {t('item.rail.today')}
+              <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.rail.today')}</span>
             </button>
             <button
               type="button"

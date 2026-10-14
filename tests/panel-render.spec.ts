@@ -3571,20 +3571,36 @@ describe('药丸的几何只写一次', () => {
       return found
     })
 
-  it('基座在共用表里，而且两个面板的胶囊都在那张名单上', () => {
-    /* 机制只有一份，而且它在**共用表**（`board.module.css`）里——两个面板的胶囊共用它。
-       清单这一侧若自己再写一遍，就是两个面板分叉的开始：分叉之后屏上只表现为「清单的字在某台
-       设备上偏半格，看板的不偏」，而没有任何一处说得出为什么。 */
+  it('两块表里的基座是同一套机制：声明相同，各自命中各自的节点', () => {
+    /* 构建是 CSS Modules：同一个字面类名在两个表里编出两个不同的运行时类，所以基座
+       必须在两个表里各写一次——只写在共用表里，清单的药丸在生产包里回到 UA 的行内块，
+       字全部偏上，而工件页因为字面类名拼接看着全绿。两个拷贝结构一致，由这一条数着：
+       改一处不改另一处就红。 */
+    const itemBase = declarationRules(css)
+      .find(rule => rule.selector.replace(/\s+/g, ' ').trim() === ':where(.itemOpt, .itemPrioChip, .itemTag)')
+    expect(itemBase, '清单表里的药丸基座不见了——生产包里的药丸回到 UA 行内块').toBeDefined()
     const shared = stripCssComments(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'))
-    const base = declarationRules(shared)
+    const boardBase = declarationRules(shared)
       .find(rule => rule.selector.includes(':is(') && rule.selector.includes('.chip') && rule.selector.includes('itemPrioChip'))
-    expect(base, '共用的胶囊基座不见了，或者它不再把清单那三个族列进去——两个面板于是各写一份机制').toBeDefined()
-    const decls = declsOf(base?.body ?? '')
-    expect(decls.get('display'), '基座不再给原子盒').toBe('inline-flex')
-    expect(decls.get('align-items'), '基座不再把盒里的东西放到盒心').toBe('center')
-    for (const name of FAMILIES) {
-      expect(base?.selector, `基座的名单里没有 .${name}`).toContain(`.${name}`)
+    expect(boardBase, '共用表里的基座不见了').toBeDefined()
+    for (const property of ['display', 'align-items', 'justify-content'] as const) {
+      const itemValue = declsOf(itemBase?.body ?? '').get(property)
+      const boardValue = declsOf(boardBase?.body ?? '').get(property)
+      expect(itemValue, `清单基座不再声明 ${property}`).toBeDefined()
+      expect(boardValue, `两块表分叉了：${property} 在清单是 ${itemValue}，在共用表是 ${boardValue}`).toBe(itemValue)
     }
+    for (const name of FAMILIES) {
+      expect(boardBase?.selector, `共用表基座的名单里没有 .${name}`).toContain(`.${name}`)
+    }
+  })
+
+  it('药丸文字有自己的槽，而不是裸文本匿名项', () => {
+    /* 看板 `Chip` 的 `.chipBody` 在这一侧的同形：裸文本在 flex 药丸里是匿名项，
+       各浏览器与各字体放的位置不一样；包成槽之后居中的是槽。输入框没有孩子，
+       走行盒那条路，不用它。 */
+    const slot = declarationRules(css).find(rule => rule.selector.replace(/\s+/g, ' ').trim() === '.itemPillText')
+    expect(slot, '文字槽 .itemPillText 不见了——药丸回到裸文本匿名项').toBeDefined()
+    expect(declsOf(slot?.body ?? '').get('display'), '文字槽不再是块级盒').toBe('block')
   })
 
   it('基座列出的族里，没有第二份几何', () => {

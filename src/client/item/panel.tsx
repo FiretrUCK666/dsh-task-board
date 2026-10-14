@@ -1990,12 +1990,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
               <div className={css.itemArchiveTopBar}>
                 <h2 className={css.itemArchiveHead}>
                   <button type="button" className={css.itemArchiveToggle} onClick={closeArchive}>
-                    {t('item.archive.title')}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.archive.title')}</span>
                     <span className={css.itemArchiveCount}>{deletedItems.length}</span>
                   </button>
                 </h2>
                 <button type="button" className={css.itemTopBarChip} onClick={closeArchive}>
-                  {t('item.archive.back')}
+                  <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.archive.back')}</span>
                 </button>
               </div>
             )
@@ -2066,7 +2066,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     disabled={visibleIds.length === 0}
                     onClick={() => setSelection(current => setArmed(current, !current.armed))}
                   >
-                    {t('item.batch.arm')}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.batch.arm')}</span>
                   </button>
                   {/* 「隐藏已完成」说的是正在进行的动作：按下去 = 藏起来（pressed），
                       再按 = 拿回来。它的状态机一直是真的（切片读的就是它），缺的
@@ -2077,7 +2077,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     aria-pressed={!showDone}
                     onClick={() => setShowDone(current => !current)}
                   >
-                    {t('item.done.show')}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.done.show')}</span>
                   </button>
                 </>
               )}
@@ -2114,7 +2114,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 <svg viewBox="0 0 11 11" width="11" height="11" aria-hidden="true">
                   <path d="M5.5 1v9M1 5.5h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
-                {t('item.topbar.create')}
+                <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.topbar.create')}</span>
               </button>
             </div>
           </div>
@@ -2187,7 +2187,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                       }
                     }}
                   >
-                    {t(SORT_LABEL[order])}{current && prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t(SORT_LABEL[order])}{current && prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}</span>
                   </button>
                 )
               })}

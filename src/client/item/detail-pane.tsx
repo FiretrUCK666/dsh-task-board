@@ -250,7 +250,7 @@ export function ItemDetail(props: ItemDetailProps) {
             「它现在是什么」；而「标为」是**菜单**的动词——菜单项在动作发生之前，属性表在
             动作之后。同一张表两处用，于是属性表上一枚按钮在回答一个读者没有问的问题，
             而三个「标为…」在 268px 那一列里排成了 2 + 1。 */}
-        {t(GROUP_LABEL[status])}
+        <span className={css.itemPillText} data-dsh-tb-pilltext>{t(GROUP_LABEL[status])}</span>
       </button>
     ))
     : props.onMoveCard === undefined
@@ -289,7 +289,7 @@ export function ItemDetail(props: ItemDetailProps) {
             title={movable ? undefined : t('item.status.executorOnly')}
             onClick={() => setRefusedNote(props.onMoveCard?.(status))}
           >
-            {movable ? t(`status.move.${status}` as TaskBoardKey) : t(GROUP_LABEL[status])}
+            <span className={css.itemPillText} data-dsh-tb-pilltext>{movable ? t(`status.move.${status}` as TaskBoardKey) : t(GROUP_LABEL[status])}</span>
           </button>
         )
       })
@@ -562,7 +562,7 @@ export function ItemDetail(props: ItemDetailProps) {
                   className={css.itemTag}
                   onClick={() => props.onEdit({ tags: item.tags.filter(one => one !== tag) })}
                 >
-                  #{tag}
+                  <span className={css.itemPillText} data-dsh-tb-pilltext>#{tag}</span>
                 </button>
               ))}
               <TagField
@@ -665,7 +665,7 @@ export function ItemDetail(props: ItemDetailProps) {
                 aria-pressed={cardId === undefined}
                 onClick={() => props.onEdit({ taskId: undefined })}
               >
-                {t('item.field.noCard')}
+                <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.field.noCard')}</span>
               </button>
               {props.cards.map(card => (
                 <button
@@ -676,7 +676,7 @@ export function ItemDetail(props: ItemDetailProps) {
                   aria-pressed={cardId === card.id}
                   onClick={() => props.onEdit({ taskId: card.id })}
                 >
-                  {card.title}
+                  <span className={css.itemPillText} data-dsh-tb-pilltext>{card.title}</span>
                 </button>
               ))}
               {cardNaming ? (
@@ -707,7 +707,7 @@ export function ItemDetail(props: ItemDetailProps) {
                 />
               ) : (
                 <button type="button" className={css.itemOpt} data-add="" onClick={openCardNaming}>
-                  {t('item.field.newCard')}
+                  <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.field.newCard')}</span>
                 </button>
               )}
               {cardNameHint && <p className={css.itemOptHint}>{t('item.cardName.empty')}</p>}

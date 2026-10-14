@@ -1420,10 +1420,11 @@ undefined`），于是**加一个桶不会有人想起要写解释**——而少
 数字的墨坐在基线**上方**（大写高度），一个汉字的墨跨基线**两侧**——两串字可以墨心相同而基线不同，
 读者看到的是两行字。
 
-**机制只有一条：胶囊把自己装字的那个盒子居中。** 每一族药丸的基规则都写着
-`display: inline-flex; align-items: center`（`.chip/.chipFill/.cruisePill/.columnTab` 共用一条，
-清单那几族各写自己那一条），于是「字居中于它自己的胶囊」是**结构**给的：`align-items: center` 把
-盒里每一个盒子放到盒心上，居中发生在**盒子**这一层，而盒子是几何——几何不认字体，也不认字号。
+**机制只有一条：胶囊把自己装字的那个盒子居中。** 两条声明（`display: inline-flex` 与
+`align-items: center`，外加定宽地板要的 `justify-content: center`）在两个表里**各写一次**，
+而不是只写在共用表里：构建是 CSS Modules，同一个字面类名在两个表里编出两个运行时类，
+只写一处，清单的药丸在生产包里回到 UA 行内块——而工件页因为字面类名拼接看着全绿。
+两个拷贝结构一致由 `panel-render.spec.ts` 的 parity 门禁数着。
 一行里几块字共享一条基线则走那条更早的规则：`display: inline-flex; align-items: baseline`
 的分组盒子（`.itemGroupText` / `.itemRailText` / `.itemEmptyGroup`）。
 

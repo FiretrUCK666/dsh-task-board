@@ -2293,17 +2293,19 @@
    here once. .chipFill always rides with .chip, so listing it keeps the
    family explicit without changing rendering.
 
-   THE LIST PANEL'S PILLS ARE IN THIS LIST TOO, and that is the point: both
-   panels' pills are ONE mechanism (an atomic box + a text slot centred in
-   it), so the two declarations that give it live here once. A second copy is
-   how the two panels drift apart — and that drift shows up as "the list
-   panel's text sits half a pixel off on this device and the board's does
-   not", with nothing on screen saying why. Sizes stay per family (the
-   board's chips are 22px, the list's pills 19px): that is a design
-   difference, not a mechanism one. */
+   THE LIST PANEL'S PILLS ARE IN THIS LIST TOO, and that is the intent — but
+   read the scoping caveat: this build is CSS Modules, so one literal name in
+   two sheets compiles to two different runtime classes. This rule therefore
+   centres the BOARD's pills; the list's pills take the same three declarations
+   from their own sheet, and `tests/panel-render.spec.ts` holds the two copies
+   structurally identical. A single copy here is how the list silently fell
+   back to UA inline-block on real devices while the artifact pages stayed
+   green. Sizes stay per family (the board's chips are 22px, the list's pills
+   19px): that is a design difference, not a mechanism one. */
 :is(.chip, .chipFill, .cruisePill, .columnTab, .itemOpt, .itemPrioChip, .itemTag) {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
 }
 .chip {
   gap: 5px;

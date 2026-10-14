@@ -205,7 +205,9 @@ export function PriorityMark(props: {
       data-size={props.size === 'rail' ? 'rail' : undefined}
       data-on={props.on === true ? '' : undefined}
     >
-      !{PRIORITY_DIGIT[props.priority]}
+      {/* 看板 `Chip` 的 `.chipBody` 在这一侧的同形：裸文本在 flex 药丸里是匿名项，
+          各字体放的位置不一样；包成槽之后居中的是槽，残差只剩字体自己那一点。 */}
+      <span className={css.itemPillText} data-dsh-tb-pilltext>!{PRIORITY_DIGIT[props.priority]}</span>
     </i>
   )
 }
