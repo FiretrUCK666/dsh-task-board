@@ -2148,16 +2148,31 @@ button.itemRowCardChip {
  *
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
+/* ── 药丸的基座：一个机制，一条规则 ──────────────────────────────────────────
+ *
+ * 「胶囊把自己装字的盒子居中」是这一页唯一的对齐机制，而它由两条声明给出：`inline-flex`
+ * （盒里的东西才有一个能被居中的盒子）与 `align-items: center`（把那些盒子放到盒心）。
+ * **一个族写一遍时，第二个族会漏掉一条**，而漏掉的那一族在屏上只是「字有点歪」——
+ * 所以它只写一次：族里只留「自己是什么」（颜色、描边、内衬、字重、高度档）。
+ *
+ * `justify-content: center` 也在这里：横向上是同一个道理。
+ *
+ * **不在基座里的两种**：`<input>`（没有孩子，`align-items` 对它无效，它的居中手段是行盒）
+ * 与按基线对齐的族（`.itemDateOpen` 要的是 `baseline`，不是 `center`）。 */
+:where(.itemOpt, .itemPrioChip, .itemTag) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .itemTag {
   /* **行内流里的原子盒 + 一个装字的槽。** 标签是句子末尾的一个词（这一行是行内排版），所以它
-   * 必须是 `inline-flex`：`block-size` 与块向内衬在**行内非替换盒**上都不生效，只有原子盒才
-   * 拿得到定高，字也才有一个**能被居中的盒子**。同一个类名在 `.itemOpts` 那一侧是 flex item，
-   * 被 blockify —— 两侧因此是同一种几何。
+   * 必须是原子盒（基座给）：`block-size` 与块向内衬在**行内非替换盒**上都不生效，只有原子盒
+   * 才拿得到定高，字也才有一个**能被居中的盒子**。同一个类名在 `.itemOpts` 那一侧是 flex
+   * item，被 blockify —— 两侧因此是同一种几何。
    *
    * 高度取这一行的档（`--item-pill-h`），行盒由它减去上下边推出来：内容盒被行盒填满，
    * 余量为零。 */
-  display: inline-flex;
-  align-items: center;
   flex: none;
   white-space: nowrap;
   block-size: var(--item-pill-h);
@@ -2165,7 +2180,10 @@ button.itemRowCardChip {
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
-  line-height: calc(var(--item-pill-h) - 2 * var(--item-pill-hair));
+  /* **行盒取量出来的那一档（16px），不由高度推。** 这一档是量过的：16px 的行盒居中在一个
+     17px 的内容盒里时，这一族的墨心与盒心**差 0**；改成「行盒 = 内容盒高」（余量归零）之后
+     同一族读到 **−0.5px**——归零不是改善，是把行盒整体挪了半格。 */
+  line-height: 16px;
   color: var(--item-ink-2);
   background: var(--item-fill);
   border: var(--item-hair-strong);
@@ -2242,15 +2260,15 @@ button.itemRowCardChip {
  * 普通与低因此隔着一整块面（25 级），不是一次混合误差；而低是**真的没有底**，在暗色
  * 主题下它仍然垫底（读的是「不填充」，不是字面的白——字面的白在暗色下是最响的一档）。 */
 .itemPrioChip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 1px;
   /* **位置由版面给，不由微调给。** 行里的对齐只有一个机制——容器把内容居中；按字体量出来的
      竖向长度（`vertical-align: <长度>`）一个也不许有：它只在一种字体上量得对，换一套度量就
      把这一枚从邻居那条线上挪开半个到一个像素，而屏上没有任何一处说得出这句话。 */
   margin-inline-end: 6px;
   min-inline-size: 30px;
+  /* **高度与行盒都取这一族量出来的那一档**（20px 的盒里放 12px 的行盒，上下各 3px——偶数，
+     行盒落在整像素上）：高度取「这一行的档」之前先要有一条读数说它更好，而把它换成 19px 的
+     档 + 由高度推出的行盒之后，这一族读到 **−0.5px**（原来是 0）。 */
   block-size: 20px;
   padding: 0 6px;
   border-radius: var(--item-radius-pill);
@@ -4207,9 +4225,6 @@ textarea.itemInput {
 }
 
 .itemOpt {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   /* **宽度地板 + 表格数字：一枚「值」药丸不管选中与否同宽。** 选中态只换面
    * 不换宽（下面那枚规则不再抬字重），比例数字走 tabular——`!1` 与 `!2` 一样宽，
    * 30px 是详情四枚芯片的同一个地板，两处一个词汇。 */
@@ -4224,9 +4239,10 @@ textarea.itemInput {
   padding: 0 9px;
   font-size: 12px;
   font-weight: 400;
-  /* **行盒与字同高，同一排的每一枚都一样。** 漏了 `line-height` 的这一枚会落到 `normal`
-   * （≈1.2）：14.4px 的行盒比它同桌的 `!N`（`line-height: 1`）高 2.4px——**两枚药丸里的字
-   * 差 1px**，而屏上没有任何一处会说明为什么。同一个盒模型里，行盒这一格必须是同一个值。 */
+  /* **行盒与字同高（`1`），同一排的每一枚都一样。** 漏了 `line-height` 的这一枚会落到
+   * `normal`（≈1.2）：行盒比同桌的高，**两枚药丸里的字差半个到一个像素**，而屏上没有任何一处
+   * 会说明为什么。同一个盒模型里，行盒这一格必须是同一个值——而这个值是量出来的那一档
+   * （12px 的行盒居中在一个 16px 的内容盒里，墨心与盒心差 0）。 */
   line-height: 1;
   color: var(--item-ink-2);
   background: none;
@@ -4407,7 +4423,9 @@ textarea.itemInput {
   inline-size: 100%;
   min-inline-size: 0;
   padding: 0 8px;
-  line-height: calc(var(--item-pill-h) - 2 * var(--item-pill-hair));
+  /* **与同一行的药丸同一个行盒（16px）**：这一格与那几枚标签是同一行里的同一种东西，
+     行盒也必须同一个数——一个由高度推、一个写死，两枚里的字就差半格。 */
+  line-height: 16px;
   font-size: 12px;
   color: var(--item-ink-2);
   background: none;
