@@ -141,11 +141,30 @@
     }
   }
 
+  /** 墨的相对高度（相对基线，按元素自己的字号缩放）。
+   *
+   * **必须在放大字号上量再折算。** canvas 的 `actualBoundingBox*` 是**整数**：12px 的字量出来
+   * 上高 11、下高 1，而真实值是 10.56 与 1.44——于是「墨心」在 12px 上有半像素级的取整误差，
+   * 一个真实 1.08px 的偏差会被报成 0.5px（本项目量到过：同一枚胶囊，探针报 0.5，而按 200px
+   * 折算出来是 1.08）。取整误差不随字号缩小，所以把量尺放大到 `INK_REF` 再乘回去，误差被摊薄
+   * 十几倍，落到 12px 上不到 0.05px。 */
+  const INK_REF = 200
+  const inkExtentsOf = (st, text) => {
+    ctx.font = `${st.fontStyle} ${st.fontWeight} ${INK_REF}px ${st.fontFamily}`
+    const metrics = ctx.measureText(text)
+    if (!Number.isFinite(metrics.actualBoundingBoxAscent)) return null
+    const scale = px(st.fontSize) / INK_REF
+    return { asc: metrics.actualBoundingBoxAscent * scale, desc: metrics.actualBoundingBoxDescent * scale, fontAsc: metrics.fontBoundingBoxAscent * scale, fontDesc: metrics.fontBoundingBoxDescent * scale }
+  }
+
   /** 一个盒子**本来**该有多高的行盒：`line-height` 是 px 就是它，`normal` 就是字体自己的
    * 内容区。裁墨那一类属性改的是盒子，不改这个声明——所以它是地板那一侧的权威。 */
   const declaredLineBox = (st, metrics) => st.lineHeight === 'normal'
     ? metrics.fontBoundingBoxAscent + metrics.fontBoundingBoxDescent
     : px(st.lineHeight)
+
+  /* 见 `inkExtentsOf`：**量尺放大到 `INK_REF` 再折算**，否则 12px 上的整数取整会把一个
+     1.08px 的偏差报成 0.5px。 */
 
   /* ── 字的墨：一个一个**看得见的**文字节点并起来 ─────────────────────────────
    *
@@ -161,7 +180,10 @@
       if (text.trim() !== '' && parent !== null) {
         const st = getComputedStyle(parent)
         const box = parent.getBoundingClientRect()
-        if (st.position !== 'absolute' && st.position !== 'fixed' && box.width > 2 && box.height > 2) {
+        /* **不可见的那一串不算读数**：`.itemTagAddMirror` 是那把量宽的尺子（`visibility: hidden`），
+         * 它的几何是「这段字要多宽」，屏上没有它的墨——把它算成一颗胶囊的标签，就会量出一个
+         * 谁也没看见的偏差（量到过 +0.86px）。 */
+        if (st.position !== 'absolute' && st.position !== 'fixed' && st.visibility !== 'hidden' && box.width > 2 && box.height > 2) {
           out.push({ node, text, style: st })
         }
       }
@@ -183,9 +205,9 @@
       const baseline = baselineOf(run)
       if (baseline === null) continue
       const st = run.style
-      ctx.font = `${st.fontStyle} ${st.fontWeight} ${st.fontSize} ${st.fontFamily}`
-      const metrics = ctx.measureText(run.text)
-      if (!Number.isFinite(metrics.actualBoundingBoxAscent)) continue
+      const ink = inkExtentsOf(st, run.text)
+      if (ink === null) continue
+      lineBox = Math.max(lineBox, st.lineHeight === 'normal' ? ink.fontAsc + ink.fontDesc : px(st.lineHeight))
       /* **横向的权威是行盒，不是画布。** 画布给的是一串字的**前进宽度**，而排版还认
        * `font-variant-numeric` 这类字形特性——`tabular-nums` 下的 `1` 比画布量的宽近 2px，
        * 于是「画布宽度 ≠ 行盒宽度」在一个完全正常的盒子上也会成立（实测：`.itemPrioChip` 的
@@ -206,11 +228,8 @@
         hr = Math.max(hr, Math.min(one.right, clipR))
         lineTops.add(round(one.top))
       }
-      lineBox = Math.max(lineBox, declaredLineBox(st, metrics))
-      boxes.push({
-        t: baseline - metrics.actualBoundingBoxAscent,
-        b: baseline + metrics.actualBoundingBoxDescent,
-      })
+      lineBox = Math.max(lineBox, st.lineHeight === 'normal' ? ink.fontAsc + ink.fontDesc : px(st.lineHeight))
+      boxes.push({ t: baseline - ink.asc, b: baseline + ink.desc })
     }
     if (boxes.length === 0) return null
     /* **行数决定这颗盒子算不算「一枚胶囊的标签」。** 一段多行的说明不是标签：它的墨是几行
@@ -399,8 +418,11 @@
           cutLeft = Math.max(cutLeft, cut.left)
           cutRight = Math.max(cutRight, cut.right)
         }
-        /* 高度地板：胶囊至少要装得下它自己声明的行盒加块向内衬与上下边。 */
-        const floor = ink === null ? null : round(ink.lineBox + px(st.paddingTop) + px(st.paddingBottom) + px(st.borderTopWidth) + px(st.borderBottomWidth))
+        /* **装得下**才是那条不变量：内容盒（盒高减掉块向内衬与上下边）不小于它自己声明的行盒。
+         * 写成「盒高 ≥ 行盒 + 内衬」在墨心修正加了内衬之后会自己变红——那条式子里内衬出现两次，
+         * 而真正要问的只有一件事：这一行字在它的内容盒里放得下吗。 */
+        const contentBox = ink === null ? null : round(box.h - px(st.paddingTop) - px(st.paddingBottom) - px(st.borderTopWidth) - px(st.borderBottomWidth))
+        const floor = ink === null ? null : ink.lineBox
         return {
           key: keyOf(el),
           /* 屏上那串字的前几个字：**只为了让人认得出是哪一颗**，判据不看它。一枚在报告里
@@ -431,8 +453,9 @@
           cutLeft: round(cutLeft),
           cutRight: round(cutRight),
           cutBy,
+          contentBox,
           floor,
-          squeezed: floor !== null && round(box.h) < floor - FLOOR_SLACK,
+          squeezed: contentBox !== null && floor !== null && contentBox < floor - FLOOR_SLACK,
         }
       })
 
@@ -454,6 +477,42 @@
       /* **只看竖向**的切割。横向那一截是省略号的定义，不是缺陷。 */
       cutOffenders: labels.filter((c) => c.cutTop > CUT_SLACK || c.cutBottom > CUT_SLACK),
       floorOffenders: labels.filter((c) => c.squeezed),
+    }
+  }
+
+  /* ── 这一份字体偏多少 ────────────────────────────────────────────────────────
+   *
+   * 量法与 `inkExtentsOf` 同源（零尺寸行内块给基线、canvas 给墨、行盒给中心），只是把量尺放大
+   * 到 200px 再折算成 em：**这是「这份字体自己的度量不对称有多大」那一个数**。
+   *
+   * 它进报告，不进判据。判据是逐颗胶囊的墨心（下面那套读数）——**因为一个数修不好所有族**：
+   * 胶囊居中的是**它自己装字的那个盒子**，而那个盒子的形状每族不同，于是同一份字体在十几个族
+   * 上量出来的偏差本来就不是同一个值（本机默认字体：0.46px 到 1.18px）。写一个数去补，就是把
+   * 一族修好、把另一族推过头。 */
+  const inkBiasEm = () => {
+    const root = document.querySelector('[data-dsh-taskboard-view]')
+    if (root === null || document.body === null) return null
+    const family = getComputedStyle(root).fontFamily
+    const host = document.createElement('span')
+    host.setAttribute(PROBE_ATTR, '')
+    host.setAttribute('aria-hidden', 'true')
+    host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${family};font-size:200px;line-height:normal`
+    host.textContent = '国'
+    const anchor = document.createElement('span')
+    anchor.setAttribute('style', ANCHOR_STYLE)
+    host.appendChild(anchor)
+    document.body.appendChild(host)
+    try {
+      const line = lineRectsOf(host.firstChild ?? host)[0]
+      if (line === undefined) return null
+      const baseline = anchor.getBoundingClientRect().bottom
+      ctx.font = `200px ${family}`
+      const metrics = ctx.measureText('国')
+      if (!Number.isFinite(metrics.actualBoundingBoxAscent)) return null
+      const inkCentre = baseline - (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2
+      return round(((line.top + line.bottom) / 2 - inkCentre) / 200 * 10000) / 10000
+    } finally {
+      host.remove()
     }
   }
 
@@ -595,6 +654,8 @@
 
   return {
     page: document.title,
+    /* 这份字体自己的度量不对称（em，正数 = 字偏下）。它进报告、不进判据——判据是逐颗胶囊的墨心。 */
+    inkBiasEm: inkBiasEm(),
     href: location.pathname.split('/').pop() ?? '',
     viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio, scrollbars: innerWidth - document.documentElement.clientWidth },
     media,
@@ -617,7 +678,7 @@
       offY: clean.offendersV.map((c) => ({ key: c.key, label: c.label, offY: c.offY, h: c.h, lineHeight: c.lineHeight, padBlock: c.padBlock, markOffY: c.markOffY, slot: c.hasTextSlot })),
       offX: clean.offendersH.map((c) => ({ key: c.key, label: c.label, offX: c.offX, h: c.h, justify: c.justify })),
       cut: clean.cutOffenders.map((c) => ({ key: c.key, label: c.label, cutTop: c.cutTop, cutBottom: c.cutBottom, h: c.h, lineHeight: c.lineHeight, by: c.cutBy })),
-      squeezed: clean.floorOffenders.map((c) => ({ key: c.key, label: c.label, h: c.h, floor: c.floor, lineHeight: c.lineHeight, padBlock: c.padBlock })),
+      squeezed: clean.floorOffenders.map((c) => ({ key: c.key, label: c.label, h: c.h, contentBox: c.contentBox, lineBox: c.floor, lineHeight: c.lineHeight, padBlock: c.padBlock })),
       rings: clippedRings,
     },
     /* 够不着、但没有危害的那半圈：报出来给人看，不判红。 */
