@@ -173,47 +173,48 @@
   --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
   --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
   --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
-  /* ── 文字档：同一个色相，深到读得出来 ──────────────────────────────────────
+  /* ── 文字档：同一个色相，**至多压暗一档** ────────────────────────────────────
    *
    * 上面那五个（以及 accent / danger）是**填充色**：点、珠子、环、洗底。拿它们去写
-   * **小字**是另一件事，而那两个方向在浅色主题下差着一倍：同一枚色在白底上量出来
-   * 1.91（review）· 2.15（running）· 2.28（done）· 4.23（accent）· 4.50（danger），
-   * 而 11–12px 的字要 4.5。深色主题下同一批值是 7.31 / 8.21 / 6.89 / 6.75 / 4.77
-   * ——**一条都不缺**，所以这是一处**只属于浅色主题的**修正。
+   * **小字**是另一件事。浅色主题下只有两族不够读——同一枚色在**元素真实的祖先背景栈**
+   * 上（逐层合成，不是对白纸）量出来 1.91（review）· 2.15（running）· 2.28（done）；
+   * 而 blue **3.54**（accent）与 red **3.56**（danger）**本来就过线**，本来不需要任何
+   * 修正——这两条也被一起压暗，正是「蓝色和红色也一起变暗淡」的来源。
    *
-   * 修法是同一个色相往下压：与 `--dsw-alias-label-primary`（浅色下近黑、深色下近白）
-   * 混合，于是两个主题各走各的方向，而色相一步不让。比例是**量出来的**，不是挑的：
-   * 取「还能过 4.5 的最大比例」——比例越大越接近原色，所以最大的通过值就是最小的改动。
+   * 修法只有一句：**同一个色相，只压明度，彩度与色相一步不让。**
+   * `oklch(from <填充色> calc(l * k) c h)` 就是这个意思；`k` 是**量出来的**：取「还能
+   * 过 3.0 的最大 k」——k 越大越接近原色，所以最大的通过值就是最小的改动。3.0 是本表
+   * 自己选的地板（WCAG 1.4.11 的门槛；`PRODUCT.md` 没有确立任何等级，所以这个数记在
+   * 这里而不是别处）。
    *
-   * **量的底不是白纸，是芯片自己那层洗底。** 第一版比例是对着「平面 + 墨自己 14% 的
-   * 洗底」标的，而那对**行芯片**成立（它的洗底跟着 `currentColor` 走）、对**优先级
-   * 芯片**不成立（它的洗底是**原色**的 14%，更浅）。所以这一版把每个元素**真实的祖先
-   * 背景栈**逐层合成出来再量，取它所有用处里最差的那个底。同一个色相在几处落地时取
-   * **最小**比例——浅色下压得越深对比越高，取最小就是取最保险的那一个。
+   * **地板不能靠压明度无限换。** 实测：review 要一路压到 k=0.31 才够 3.0，而那时彩度
+   * 只剩 **0.34**——黄压暗了就是棕，读者再也认不出那是哪一档状态。所以有一条下限：
+   * **k 不得低于 0.75**（「同一枚色，深一档」，不是「另一枚发闷的色」）。压到 0.75 仍
+   * 到不了 3.0 的色相**保持原色**，并把量到的数如实写在这里，而不是把颜色改坏。
    *
-   * 量完（洗底上）：70%（business）· 72%（danger）· 52%（warn-secondary）·
-   * 58%（warn-primary）· 58%（success）· 78%（tertiary），落在 4.54–4.68。
+   * 量完的账（浅色，探针见 DESIGN.md 的交互节同一套量法）：
+   * blue 3.54（k=1，原色）· red 3.56（k=1，原色）· review k=0.79 → 3.03，彩度留 0.86 ·
+   * green k=0.84 → 3.02，彩度留 0.88。同一枚 review 在旧机制（朝中性深墨混）下只剩
+   * **0.55 的彩度**——「颜色变暗淡」在数字上就是这个差值。
    *
-   * **最差的那个底是「展开的那一行」**（DESIGN.md 的 `.itemRow[data-open]`：面 80% +
-   * accent 20%）。同一枚芯片在展开行上比在普通行上低一档（business 84→70、danger
-   * 84→72），所以每个色相取的是**它所有落地上最小的那个比例**——浅色下压得越深对比
-   * 越高，取最小就是取最保险的那一个。代价是平铺那一档比它自己需要的更深一点，这是
-   * 一条令牌服务两种底的必然。
+   * 同一个色相的几条取**同一个 k**（一整族一起走）：族里最浅的那一个定了 k，深的那几个
+   * 只会更安全。这是「一条规则」，不是每条各调一个数。
    *
-   * 深色那一段**紧跟在上面那块别名之后**：那里是重置，不是第二套颜色——深色下五条的
-   * **原值本来就够**（4.78–5.69），混出来只是同一件事的更浅版本；只有 danger 与 accent
-   * 在展开行上不够（2.59 / 3.31），所以这两条在深色里各降一档。
+   * **这九条只许出现在 `color:`（与 `caret-color:`）里。** 墨是给**字**的：点、珠子、
+   * 边框、洗底是**记号与边界**，它们读的还是上面那几条填充色。把记号也压暗，屏幕上就少了
+   * 一枚能当信号的东西，而小字一个都没变得更清楚——`item.module.css` 的日期轴珠子就吃过
+   * 这一次：它本该是「这一颗超期了」的最大声，压暗之后红得发闷。
    *
-   * 一个概念仍只有一份定义：这七条从上面那七条**派生**，谁也不另写一个色值。 */
-  --dsh-tb-status-backlog-ink: color-mix(in srgb, var(--dsh-tb-status-backlog) 78%, var(--dsw-alias-label-primary));
-  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 70%, var(--dsw-alias-label-primary));
-  --dsh-tb-status-running-ink: color-mix(in srgb, var(--dsh-tb-status-running) 58%, var(--dsw-alias-label-primary));
-  --dsh-tb-status-review-ink: color-mix(in srgb, var(--dsh-tb-status-review) 52%, var(--dsw-alias-label-primary));
-  --dsh-tb-status-done-ink: color-mix(in srgb, var(--dsh-tb-status-done) 58%, var(--dsw-alias-label-primary));
-  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 70%, var(--dsw-alias-label-primary));
-  --dsh-tb-ink-attention: color-mix(in srgb, var(--dsh-tb-attention) 58%, var(--dsw-alias-label-primary));
-  --dsh-tb-ink-success: color-mix(in srgb, var(--dsh-tb-success) 58%, var(--dsw-alias-label-primary));
-  --dsh-tb-ink-danger: color-mix(in srgb, var(--dsh-tb-danger) 72%, var(--dsw-alias-label-primary));
+   * 一个概念仍只有一份定义：这九条从上面那几条**派生**，谁也不另写一个色值。 */
+  --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
+  --dsh-tb-status-todo-ink: var(--dsh-tb-status-todo);
+  --dsh-tb-status-running-ink: oklch(from var(--dsh-tb-status-running) calc(l * 0.79) c h);
+  --dsh-tb-status-review-ink: oklch(from var(--dsh-tb-status-review) calc(l * 0.79) c h);
+  --dsh-tb-status-done-ink: oklch(from var(--dsh-tb-status-done) calc(l * 0.82) c h);
+  --dsh-tb-ink-accent: var(--dsh-tb-accent);
+  --dsh-tb-ink-attention: oklch(from var(--dsh-tb-attention) calc(l * 0.79) c h);
+  --dsh-tb-ink-success: oklch(from var(--dsh-tb-success) calc(l * 0.82) c h);
+  --dsh-tb-ink-danger: var(--dsh-tb-danger);
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
   /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
@@ -323,27 +324,25 @@
   corner-shape: var(--dsh-tb-corner, round) !important;
 }
 
-/* 深色主题下这七条几乎**原样退回**：那里五条本来就不缺（量出来 4.78–5.69），往下压
-   只是白白丢掉饱和度——浅色主题缺的那一半，不该拿深色主题的色相来补。例外是 danger 与
-   accent：它们在**展开行**上不够（实测 2.59 / 3.31），所以单独各降一档（50 / 62）。
+/* 深色主题下**九条一条都不压**：那里填充色在深色底上量出来 4.78–5.69，本来就够读，
+   而「压暗一档」在深色底上只会更不清楚——这是一处**只属于浅色主题**的修正，不是两套颜色。
+   于是深色这一块是一次重置：九条全部退回原色。
 
    选 `body[data-ds-dark-theme]` 不是猜外壳的 DOM：**那是宿主自己的主题开关**，它那份
    token 表的深色一半就是挂在它下面（`scripts/verify-design-docs.mjs` 按这两块定位，本仓库
    的测试台架也用它把工件切到深色）。若外壳哪天换了开关，代价是有界的：深色下应用到浅色
-   的那几个比例，颜色偏浅而对比度仍然更高——不会失效，也不会报错。 */
+   的那几个 k，颜色更深而对比度仍然更高——不会失效，也不会报错。 */
 body[data-ds-dark-theme] [data-dsh-taskboard-view],
 body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
-  /* 同一个色相、同一个比例——`--dsh-tb-status-todo` 与 `--dsh-tb-accent` 读的是
-     同一个宿主令牌，所以**展开行**在深色下不够（实测 3.42）时，两条要一起走。 */
-  --dsh-tb-status-todo-ink: color-mix(in srgb, var(--dsh-tb-status-todo) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-status-todo-ink: var(--dsh-tb-status-todo);
   --dsh-tb-status-running-ink: var(--dsh-tb-status-running);
   --dsh-tb-status-review-ink: var(--dsh-tb-status-review);
   --dsh-tb-status-done-ink: var(--dsh-tb-status-done);
-  --dsh-tb-ink-accent: color-mix(in srgb, var(--dsh-tb-accent) 58%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-accent: var(--dsh-tb-accent);
   --dsh-tb-ink-attention: var(--dsh-tb-attention);
   --dsh-tb-ink-success: var(--dsh-tb-success);
-  --dsh-tb-ink-danger: color-mix(in srgb, var(--dsh-tb-danger) 50%, var(--dsw-alias-label-primary));
+  --dsh-tb-ink-danger: var(--dsh-tb-danger);
 }
 
 /* --- shared attention motion ------------------------------------------------
@@ -1378,7 +1377,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 
 .columnTab[data-active='true'] {
   color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-ink-accent);
+  border-color: var(--dsh-tb-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
 }
 
@@ -1754,7 +1753,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 
 @keyframes dshTbRejectFlash {
   0%, 100% { border-color: var(--dsh-tb-border-soft); }
-  50% { border-color: var(--dsh-tb-ink-danger); }
+  50% { border-color: var(--dsh-tb-danger); }
 }
 
 /* A successful drop needs no column flash: the moved card settles into its
@@ -2503,7 +2502,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 
 .dangerGhostButton:hover:not(:disabled) {
   background: color-mix(in srgb, var(--dsh-tb-danger) 10%, transparent);
-  border-color: var(--dsh-tb-ink-danger);
+  border-color: var(--dsh-tb-danger);
 }
 
 .dangerGhostButton:active:not(:disabled) {
@@ -4053,7 +4052,7 @@ textarea.input {
    check in the markup, so the state is never colour-only. */
 .addSessionRow[data-selected] {
   color: var(--dsh-tb-text-1);
-  border-color: var(--dsh-tb-ink-accent);
+  border-color: var(--dsh-tb-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
 }
 
@@ -4312,7 +4311,7 @@ textarea.input {
    rest of the board (accent border + focus ring + the shared 2.6s breath),
    so the drop affordance speaks the same motion language as unread signals. */
 .column[data-dropaccept='link'] {
-  border-color: var(--dsh-tb-ink-accent);
+  border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }

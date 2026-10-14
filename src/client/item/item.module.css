@@ -4620,8 +4620,8 @@ textarea.itemInput {
  * 所以珠子保持 9px、保持在线的正中，只是从空心环变成实心的危险色；字重与另外两行
  * 一样。危险色已经是墨能发出的最大声。 */
 .itemDateAxis li[data-tone='over'] > i {
-  border-color: var(--dsh-tb-ink-danger);
-  background-color: var(--dsh-tb-ink-danger);
+  border-color: var(--dsh-tb-danger);
+  background-color: var(--dsh-tb-danger);
 }
 
 /* 硬期限那一颗，**挂着就红**：第三行与第二行的区别必须看得见——空心红环
@@ -4629,7 +4629,7 @@ textarea.itemInput {
  * 描边进危险色，孔与底不换：实与空仍是超与未超的分界。 */
 .itemDateAxis li[data-key='hardDueAt'][data-tone='set'] > i,
 .itemDateAxis li[data-key='hardDueAt'][data-tone='soon'] > i {
-  border-color: var(--dsh-tb-ink-danger);
+  border-color: var(--dsh-tb-danger);
 }
 
 /* 硬期限没定日期的一颗：**淡红环**——「这一行挂着最后期限」常态可见，不等到它
