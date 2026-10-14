@@ -950,6 +950,12 @@
 
 .boardDemandText {
   min-width: 0;
+  /* **这一格的盒子要装得下这一行字的墨。** 省略号那一刀是这个盒子自己下的（`overflow: hidden`），
+     而墨并不受 `line-height` 约束：12px 的中文在默认字体下从基线往上 10.56、往下 1.44，而继承来
+     的 12px 行盒里基线落在 10.8 处——墨的下沿于是超出盒底（量到过：切掉 0.74px）。行盒放到 16px
+     （字体自己的内容区）墨就整个在里面，而**字的位置一个像素都不动**：墨心与行盒中心差的是字体
+     度量，与行盒多高无关（半行距在上下对称地加减）。 */
+  line-height: 16px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;

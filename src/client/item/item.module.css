@@ -5463,13 +5463,11 @@ textarea.itemInput {
  * 名单按**结构**给（能进这一条的都是「胶囊」）；漏掉的那一颗由 `pnpm audit` 逐颗量墨心报出来
  * ——**判据不靠这份名单**。
  *
- * **两族按量到的数不进名单**：`.itemRailRow` 与 `.itemRailMonthNav`。前者的行里数字占了一半
- * （数字的墨坐在基线上方），它的偏差量出来只有 +0.46px——按整份字体量出来的修正会把它推过头
- * （量到过 −0.73）；后者是 `align-items: stretch`（它的字由自己的块流摆放，不归居中管），
- * 加内衬会按两倍推。两族的读数都在容差内，**不进名单是量出来的决定，不是省事**。 */
+ * **一族按量到的数不进名单**：`.itemRailMonthNav` 是 `align-items: stretch`（它的字由自己的块流
+ * 摆放，不归居中管），加内衬会按两倍推；它的读数在容差内，**不进名单是量出来的决定，不是省事**。 */
 [data-dsh-taskboard-view] :is(.itemTopBarChip, .itemNewButton, .itemGroupHead,
     .itemPrioChip, .itemRowCardChip, .itemTag, .itemRefChip, .itemOpt, .itemOptNaming,
-    .itemRailToday, .itemRailDay) {
+    .itemRailToday, .itemRailDay, .itemRailRow) {
   padding-block-start: calc(2 * max(var(--dsh-tb-ink-shift, 0em), 0em));
   padding-block-end: calc(-2 * min(var(--dsh-tb-ink-shift, 0em), 0em));
 }

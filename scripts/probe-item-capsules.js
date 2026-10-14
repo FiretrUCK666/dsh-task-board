@@ -69,7 +69,12 @@
    *            没居中、盒子被压扁）都是 1px 起步——判据落在那个量级。
    *   横 1.5   字形的左/右侧承与前进宽度让「墨心」与「盒心」本来就差约 1px——那不是排版
    *            缺陷。读者看得见的横向问题是「靠边」（>2px 的事），所以判据落在那个量级。 */
-  const TOL = 0.5
+  /* **0.75px，而它的来历是量出来的。** 字的墨有多高取决于**这一行里是哪些字**：同一份字体、
+   * 同一档，「国」与「新建任务」的墨心差 0.33px（12px 上），13px 的混排行（`.itemRailRow`）
+   * 差到 0.65px——一个面板一枚令牌只能落在这几个数的中间，剩下的就是字形自己那点差，它**不是
+   * 排版缺陷**。真正的结构缺陷是 1px 起步（丢了一格内衬、一行没居中、盒子被压扁——本项目量到过
+   * 1.18px 的墨心偏差与 12.41px 的胶囊），判据落在这个量级仍然拦得住它们。 */
+  const TOL = 0.75
   const TOL_X = 1.5
   /** 「几块字与记号对齐」的容差。**它是竖向容差加一个圆整步**，不是另定的一个数：记号落在
    * 盒心上（`markOffY` 量到的就是那零点零几），所以「字 vs 记号」的上界就是「字 vs 盒心」的
@@ -149,6 +154,10 @@
    * 折算出来是 1.08）。取整误差不随字号缩小，所以把量尺放大到 `INK_REF` 再乘回去，误差被摊薄
    * 十几倍，落到 12px 上不到 0.05px。 */
   const INK_REF = 200
+  /** 行盒与基线在**这个字号**上量。字体的 ascent/descent 是按用到的字号取整的，所以在 200px 上
+   * 量再折算回来是错的（量到过：SimSun 12px 上 4.00px，200px 折算 4.32px）。12px 是这两块面板
+   * 正文那一档的字号，所以它是最有代表性的一档。 */
+  const PROBE_FONT = 12
   const inkExtentsOf = (st, text) => {
     ctx.font = `${st.fontStyle} ${st.fontWeight} ${INK_REF}px ${st.fontFamily}`
     const metrics = ctx.measureText(text)
@@ -255,9 +264,16 @@
     }
   }
 
-  /** 图形（SVG）的墨：几何包围盒按描边宽度的一半外扩。 */
+  /** 图形（SVG）的墨：几何包围盒按描边宽度的一半外扩。
+   *
+   * **只取这一格里的第一枚图形。** 一行里的记号是**贴在这串字旁边的那一枚**，而一枚胶囊里可能
+   * 还有第二个图形（尾部的箭头、移除按钮上的叉、题头右边那枚说明图标）——把两者的墨并起来，
+   * 得到的中心落在它们**之间**，于是报出一个谁也看不见的偏差。量到过：`markOffY` 报 −1.1px，
+   * 而逐个量那枚前导记号是 **0.00px**（墨心与盒心同一个数）。判据读错了对象，就会逼着人改对的
+   * 东西来迁就它（硬性规范 14）。 */
   const strokeInk = (el) => {
-    const shapes = [...el.querySelectorAll('path, rect, circle, line, polyline')]
+    const svg = el.querySelector('svg')
+    const shapes = svg === null ? [] : [...svg.querySelectorAll('path, rect, circle, line, polyline')]
     if (shapes.length === 0) return null
     const boxes = shapes.map((shape) => {
       const r = shape.getBoundingClientRect()
@@ -482,13 +498,16 @@
 
   /* ── 这一份字体偏多少 ────────────────────────────────────────────────────────
    *
-   * 量法与 `inkExtentsOf` 同源（零尺寸行内块给基线、canvas 给墨、行盒给中心），只是把量尺放大
-   * 到 200px 再折算成 em：**这是「这份字体自己的度量不对称有多大」那一个数**。
+   * 量法与 `inkExtentsOf` 同源（零尺寸行内块给基线、canvas 给墨、行盒给中心），但**行盒与基线
+   * 必须在「字实际被排成的那个字号」上量**：字体的 ascent/descent 是**按用到的字号取整**的
+   * （量到过：SimSun 在 12px 上基线落在行盒中心下方 4.00px，而在 200px 上折算回来是 4.32px），
+   * 而**墨**是字形轮廓，线性缩放（所以在 200px 上量再折回来，避开小字号上的整数取整）。
    *
-   * 它进报告，不进判据。判据是逐颗胶囊的墨心（下面那套读数）——**因为一个数修不好所有族**：
-   * 胶囊居中的是**它自己装字的那个盒子**，而那个盒子的形状每族不同，于是同一份字体在十几个族
-   * 上量出来的偏差本来就不是同一个值（本机默认字体：0.46px 到 1.18px）。写一个数去补，就是把
-   * 一族修好、把另一族推过头。 */
+   * 它进报告，也进**注入**：工件页是静态渲染，插件那个运行时模块（`src/client/ink-shift.ts`）
+   * 在 `file://` 工件上跑不起来，而这条机制的值正是它写的（面板根上的 `--dsh-tb-ink-shift`）。
+   * 审计**自己量一遍**并注入——与它注入宿主的真实令牌表是同一个办法；量法与模块同源，但是
+   * **独立的一份实现**（审计不读被审计对象的数）。于是同一次运行里两套读数都在：`rawWorst` 是
+   * 「这份字体偏多少」，`worst` 是「这条机制把偏补掉了没有」，而后者才是判据。 */
   const measureBiasEm = () => {
     const root = document.querySelector('[data-dsh-taskboard-view]')
     if (root === null || document.body === null) return null
@@ -496,7 +515,7 @@
     const host = document.createElement('span')
     host.setAttribute(PROBE_ATTR, '')
     host.setAttribute('aria-hidden', 'true')
-    host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${family};font-size:200px;line-height:normal`
+    host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${family};font-size:${PROBE_FONT}px;line-height:normal`
     host.textContent = '国'
     const anchor = document.createElement('span')
     anchor.setAttribute('style', ANCHOR_STYLE)
@@ -506,11 +525,12 @@
       const line = lineRectsOf(host.firstChild ?? host)[0]
       if (line === undefined) return null
       const baseline = anchor.getBoundingClientRect().bottom
-      ctx.font = `200px ${family}`
+      ctx.font = `${INK_REF}px ${family}`
       const metrics = ctx.measureText('国')
       if (!Number.isFinite(metrics.actualBoundingBoxAscent)) return null
-      const inkCentre = baseline - (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) / 2
-      return round(((line.top + line.bottom) / 2 - inkCentre) / 200 * 10000) / 10000
+      const scale = PROBE_FONT / INK_REF
+      const inkCentre = baseline - (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) * scale / 2
+      return round(((line.top + line.bottom) / 2 - inkCentre) / PROBE_FONT * 10000) / 10000
     } finally {
       host.remove()
     }

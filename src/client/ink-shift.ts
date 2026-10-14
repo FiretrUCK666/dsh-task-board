@@ -29,9 +29,10 @@
  *          那条算式：那一条对任何被改过盒子的元素都会错约 1px。
  *   墨     `TextMetrics.actualBoundingBoxAscent/Descent`（canvas 用同一个字体串）。
  *   行盒   `Range.getClientRects()`。
- *   精度   探针字号放大到 `PROBE_SIZE`（200px）再折算：度量整数化带来的误差被摊薄十几倍。
- *          canvas 的 `actualBoundingBox*` 是整数，12px 的中文上高量成 11、下高量成 1，
- *          而真值是 10.56 与 1.44——不放大就会把一个真实的 1.08px 报成 0.5px。
+ *   精度   **两件事在两种字号上量，因为它们的取整方式不同。** 行盒与基线在 `PROBE_FONT`（12px）
+ *          上量——字体的 ascent/descent 按用到的字号取整，换一个字号量再折算回来就是另一个数；
+ *          墨在 `INK_REF`（200px）上量再折回来——字形轮廓线性缩放，而 `actualBoundingBox*` 是
+ *          整数，12px 的中文上高会量成 11、下高 1，一个真实的 1.08px 偏差会被报成 0.5px。
  *
  * ── 它不做什么 ───────────────────────────────────────────────────────────────
  *
@@ -42,8 +43,16 @@
 /** 消费端读的那个令牌。名字进命名矩阵：`--dsh-tb-*` 是这一层自己的前缀。 */
 export const INK_SHIFT_TOKEN = '--dsh-tb-ink-shift'
 
-/** 探针字号。放大是为了精度，不是显示——探针离屏、不可见、量完即删。 */
-const PROBE_SIZE = 200
+/** 行盒与基线在**这个字号**上量：字体的 ascent/descent 是**按用到的字号取整**的，所以在别的
+ * 字号上量再折算回来是错的（量到过：SimSun 在 12px 上基线落在行盒中心下方 4.00px，而在 200px
+ * 上折算回来是 4.32px——差的那 0.32px 正好是判据容差的大半）。12px 是这两块面板正文那一档的
+ * 字号，所以它是最有代表性的一档。 */
+const PROBE_FONT = 12
+
+/** 墨在**这个字号**上量再按比例折回来：字形轮廓是线性缩放的，而 `actualBoundingBox*` 是整数
+ * ——在 12px 上量，中文的上高会量成 11、下高 1（真值 10.56 与 1.44），一个真实的 1.08px 偏差
+ * 会被报成 0.5px。放大到 200px 再折算，那一档误差被摊薄十几倍。 */
+const INK_REF = 200
 
 /** 量哪个字：一个汉字就够——汉字的墨跨基线两侧，是这一族里最宽的那块墨。 */
 const SAMPLE = '国'
@@ -87,7 +96,7 @@ function measureUnsafe(fontFamily: string): number | null {
   host.setAttribute(PROBE_ATTR, '')
   host.setAttribute('aria-hidden', 'true')
   /* 离屏 + 不可见：它绝不参与版面，也绝不被看到；`white-space: pre` 保证锚与字在同一行。 */
-  host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${fontFamily};font-size:${PROBE_SIZE}px;line-height:normal`
+  host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${fontFamily};font-size:${PROBE_FONT}px;line-height:normal`
   host.textContent = SAMPLE
   const anchor = document.createElement('span')
   anchor.style.cssText = 'display:inline-block;width:0;height:0;margin:0;padding:0;border:0;overflow:visible'
@@ -99,11 +108,12 @@ function measureUnsafe(fontFamily: string): number | null {
     const baseline = anchor.getBoundingClientRect().bottom
     const ctx = document.createElement('canvas').getContext('2d')
     if (ctx === null || ctx === undefined || typeof ctx.measureText !== 'function') return null
-    ctx.font = `${PROBE_SIZE}px ${fontFamily}`
+    ctx.font = `${INK_REF}px ${fontFamily}`
     const metrics = ctx.measureText(SAMPLE)
     if (!Number.isFinite(metrics.actualBoundingBoxAscent) || !Number.isFinite(metrics.actualBoundingBoxDescent)) return null
-    const inkCentre = (baseline - metrics.actualBoundingBoxAscent + baseline + metrics.actualBoundingBoxDescent) / 2
-    return ((line.top + line.bottom) / 2 - inkCentre) / PROBE_SIZE
+    const scale = PROBE_FONT / INK_REF
+    const inkCentre = (baseline - metrics.actualBoundingBoxAscent * scale + baseline + metrics.actualBoundingBoxDescent * scale) / 2
+    return ((line.top + line.bottom) / 2 - inkCentre) / PROBE_FONT
   } finally {
     host.remove()
   }
