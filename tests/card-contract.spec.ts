@@ -1270,7 +1270,12 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     const rule = /\.cardSessionDot\[data-state='unread'\]\s*\{([^}]*)\}/.exec(source)?.[1] ?? ''
     expect(rule, 'the unread dot must exist as its own rule').not.toBe('')
     expect(rule).toMatch(/animation:\s*dshTbBreathRing/)
-    expect(rule).toMatch(/background:\s*var\(--dsw-alias-state-warn-primary\)/)
+    // 「同一个注意色」有两半，缺一半就不成立：这一条读的是**本层的名字**（调用点不许
+    // 绕过本层直读宿主别名，那是同一个颜色的第二条路——两条路会各自漂），而本层那个
+    // 名字确实解析成宿主的 warn-primary。
+    expect(rule, 'the dot reads past the layer: a second road to the same colour').toMatch(/background:\s*var\(--dsh-tb-attention\)/)
+    expect(source, 'the layer no longer declares the one attention colour as the host warn-primary')
+      .toMatch(/--dsh-tb-attention:\s*var\(--dsw-alias-state-warn-primary\)/)
     // Live dots keep their SOLID colors — one breathing dot state, never a
     // second animation competing inside the 8px strip.
     expect(source).toMatch(/\.cardSessionDot\[data-state='running'\]\s*\{[^}]*background/)

@@ -674,12 +674,12 @@
 .itemTopBarChip[aria-pressed='true'] {
   background: var(--item-ink-1);
   border-color: var(--item-ink-1);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
 }
 
 .itemTopBarChip[aria-expanded='true'] .itemTopBarLabel,
 .itemTopBarChip[aria-expanded='true'] .itemTopBarValue {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
 }
 
 /* 排序那一枚是**一枚药丸上的一句话**：前半是问，后半是答，而且**问小答大**。
@@ -723,7 +723,7 @@
   gap: var(--s1);
   font-size: 13px;
   font-weight: 600;
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
   background: var(--dsw-alias-button-primary-fill);
   border: 0;
 }
@@ -1229,7 +1229,7 @@
  * 「今天被选中了」——而蓝底是日历事实，它不该被圈没了。蓝在外、白环在内，两个事实
  * 各说各的，谁也不吃掉谁。 */
 .itemRailDay[data-today][data-picked] {
-  box-shadow: inset 0 0 0 2px var(--dsw-alias-label-primary-foreground);
+  box-shadow: inset 0 0 0 2px var(--dsh-tb-ink-on-solid);
 }
 
 /* ── 分组：节标题承担分隔，线只在两处 ───────────────────────────────────
@@ -1312,7 +1312,7 @@
   color: var(--item-ink-1);
   font-size: 13px;
   font-weight: 600;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
 }
 
 .itemRailRow[aria-current='true'] .itemRailCount {
@@ -1793,11 +1793,11 @@
 }
 
 .itemRow[data-status='inProgress'] .itemRowLead {
-  color: var(--dsh-tb-ink-accent);
+  color: var(--dsh-tb-accent);
 }
 
 .itemRow[data-status='blocked'] .itemRowLead {
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 
 .itemRowCell {
@@ -1974,7 +1974,7 @@ button.itemRowText {
   font-size: 12px;
   font-weight: 400;
   line-height: 16px;
-  background: color-mix(in srgb, currentColor 12%, transparent);
+  background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
   border-radius: var(--item-radius-pill);
 }
 
@@ -1995,15 +1995,15 @@ button.itemRowCardChip {
  * ——一行里的东西不因为鼠标路过而挪位置（那是硬性规范 11 的同一条精神）。 */
 @media (hover: hover) {
   button.itemRowCardChip:hover {
-    background: color-mix(in srgb, currentColor 20%, transparent);
+    background: color-mix(in srgb, currentColor var(--dsh-tb-wash-strong), transparent);
   }
 }
 
-.itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog-ink); }
-.itemRow[data-status='todo'] .itemRowCardChip { color: var(--dsh-tb-status-todo-ink); }
-.itemRow[data-status='running'] .itemRowCardChip { color: var(--dsh-tb-status-running-ink); }
-.itemRow[data-status='review'] .itemRowCardChip { color: var(--dsh-tb-status-review-ink); }
-.itemRow[data-status='done'] .itemRowCardChip { color: var(--dsh-tb-status-done-ink); }
+.itemRow[data-status='backlog'] .itemRowCardChip { color: var(--dsh-tb-status-backlog); }
+.itemRow[data-status='todo'] .itemRowCardChip { color: var(--dsh-tb-status-todo); }
+.itemRow[data-status='running'] .itemRowCardChip { color: var(--dsh-tb-status-running); }
+.itemRow[data-status='review'] .itemRowCardChip { color: var(--dsh-tb-status-review); }
+.itemRow[data-status='done'] .itemRowCardChip { color: var(--dsh-tb-status-done); }
 
 /* 日期那一枚：一枚钟表图标 + 那个读数。
  *
@@ -2045,7 +2045,7 @@ button.itemRowCardChip {
  * 红色 + 加粗会让那一行有两个东西在喊，读者分不清它在喊「晚了」还是
  * 在喊「最后」。**一个语气只改一种东西，改的就是墨。** */
 .itemRowDate[data-tone='over'] {
-  color: var(--dsh-tb-ink-danger);
+  color: var(--dsh-tb-danger);
 }
 
 /* 副行：**编号 · 放着几天**。12 / 400 / 第三档墨。
@@ -2268,17 +2268,17 @@ button.itemRowCardChip {
 /* **红是红字，不是红底。** 同色系一层洗底 + 同色的字与边，读起来与「高」是同一族、
   只差色相——而色相本身就是这一档要说的全部。 */
 .itemPrioChip[data-tone='urgent'] {
-  /* 底与边读**原色**（它们本来就是填充），字读**文字档**：同一个色相深一档。原色当字在
-     白底上只有 3.56，而这一枚是 11px。 */
-  color: var(--dsh-tb-ink-danger);
-  background: color-mix(in srgb, var(--dsh-tb-danger) 14%, transparent);
-  border-color: color-mix(in srgb, var(--dsh-tb-danger) 42%, transparent);
+  /* 底、边、字读的是**同一枚红**：一个色相就一个色（见看板那份色族律）。红当字在真实底上
+     量到 3.56——浅色主题下本表收下这个数，把字改深就是同一块屏上的第二枚红。 */
+  color: var(--dsh-tb-danger);
+  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash), transparent);
+  border-color: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
 }
 
 .itemPrioChip[data-tone='high'] {
-  color: var(--dsh-tb-ink-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 14%, transparent);
-  border-color: color-mix(in srgb, var(--dsh-tb-accent) 42%, transparent);
+  color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
+  border-color: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-edge), transparent);
 }
 
 /* 第三档**无彩**：颜色预算只给两档真正要喊的，普通与低靠「有没有底」区分——而普通的
@@ -2290,6 +2290,8 @@ button.itemRowCardChip {
    一次混合误差。两档的墨也各差一档（`ink-2` 对 `ink-3`），所以色与墨两条线索方向一致。 */
 .itemPrioChip[data-tone='normal'] {
   color: var(--item-ink-2);
+  /* **20% 不是一个族洗底，是本页中性面的那一档**（12% 在白底上等于没有，量过）。
+     所以它读自己的数，不读色族那条梯子：梯子管的是彩色族的深浅，这一枚是灰面。 */
   background: color-mix(in srgb, var(--item-ink-3) 20%, transparent);
   border-color: var(--item-hair);
 }
@@ -3641,7 +3643,7 @@ textarea.itemInput {
 }
 
 .itemCreateDialogNote[data-warn] {
-  color: var(--dsh-tb-ink-danger);
+  color: var(--dsh-tb-danger);
 }
 
 /* 标题框：它装的是那一行的名字，所以它和行标题同号（15 / 600）——**同一个问题用
@@ -4293,7 +4295,7 @@ textarea.itemInput {
 .itemTopBarChip[aria-expanded='true']:active {
   background: var(--item-ink-1);
   border-color: var(--item-ink-1);
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
 }
 
 /* 就地可写的两处，按下的一拍：写入示意线与提示词各自进一档墨——触屏上按是
@@ -4646,7 +4648,7 @@ textarea.itemInput {
 }
 
 .itemDateAxis li[data-tone='over'] > span {
-  color: var(--dsh-tb-ink-danger);
+  color: var(--dsh-tb-danger);
   font-size: 13px;
 }
 

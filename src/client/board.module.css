@@ -173,49 +173,29 @@
   --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
   --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
   --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
-  /* ── 文字档：同一个色相，**至多压暗一档** ────────────────────────────────────
+  /* ── 一条色族律：**一个色相就一个色** ────────────────────────────────────────
    *
-   * 上面那五个（以及 accent / danger）是**填充色**：点、珠子、环、洗底。拿它们去写
-   * **小字**是另一件事。浅色主题下只有两族不够读——同一枚色在**元素真实的祖先背景栈**
-   * 上（逐层合成，不是对白纸）量出来 1.91（review）· 2.15（running）· 2.28（done）；
-   * 而 blue **3.54**（accent）与 red **3.56**（danger）**本来就过线**，本来不需要任何
-   * 修正——这两条也被一起压暗，正是「蓝色和红色也一起变暗淡」的来源。
+   * 上面那五条（以及 accent / attention / success / danger）是这一页与清单页唯一
+   * 的颜色来源。**点、珠子、环、洗底、边、文字，读的都是同一枚**——没有「填充档」与
+   * 「文字档」之分。
    *
-   * 修法只有一句：**同一个色相，只压明度，彩度与色相一步不让。**
-   * `oklch(from <填充色> calc(l * k) c h)` 就是这个意思；`k` 是**量出来的**：取「还能
-   * 过 3.0 的最大 k」——k 越大越接近原色，所以最大的通过值就是最小的改动。3.0 是本表
-   * 自己选的地板（WCAG 1.4.11 的门槛；`PRODUCT.md` 没有确立任何等级，所以这个数记在
-   * 这里而不是别处）。
+   * 这一条是被两次报价买来的：
+   *   · 把当字的那一档做成「朝中性深墨混」（`color-mix(…, label-primary)`）：对比度达标，
+   *     而彩度只剩**源色的 0.61**——黄压暗了就是棕，棕色的芯片说不出它是哪一档状态。
+   *   · 改成「只压明度」（`oklch(from … l*k c h)`）：彩度保住了（0.86–0.94），却**造出
+   *     系统里本来不存在的颜色**——同一块屏上于是有两种黄，芯片文字 `#bf7800`、旁边的
+   *     会话点 `#f59e0b`。**一个色相分成两半就是缺陷**，跟它更深还是更浅无关。
    *
-   * **地板不能靠压明度无限换。** 实测：review 要一路压到 k=0.31 才够 3.0，而那时彩度
-   * 只剩 **0.34**——黄压暗了就是棕，读者再也认不出那是哪一档状态。所以有一条下限：
-   * **k 不得低于 0.75**（「同一枚色，深一档」，不是「另一枚发闷的色」）。压到 0.75 仍
-   * 到不了 3.0 的色相**保持原色**，并把量到的数如实写在这里，而不是把颜色改坏。
+   * 所以这里没有派生，只有**复用**：文字读的就是它那一族的色。代价如实记在 DESIGN.md
+   * （浅色主题下 amber 与 green 的小字只到 1.63:1 / 2.33:1）——而这个代价**只能用换形状
+   * 来还**（同色淡洗底 + 近黑字），不能用造第二枚颜色来还。
    *
-   * 量完的账（浅色，探针见 DESIGN.md 的交互节同一套量法）：
-   * blue 3.54（k=1，原色）· red 3.56（k=1，原色）· review k=0.79 → 3.03，彩度留 0.86 ·
-   * green k=0.84 → 3.02，彩度留 0.88。同一枚 review 在旧机制（朝中性深墨混）下只剩
-   * **0.55 的彩度**——「颜色变暗淡」在数字上就是这个差值。
-   *
-   * 同一个色相的几条取**同一个 k**（一整族一起走）：族里最浅的那一个定了 k，深的那几个
-   * 只会更安全。这是「一条规则」，不是每条各调一个数。
-   *
-   * **这九条只许出现在 `color:`（与 `caret-color:`）里。** 墨是给**字**的：点、珠子、
-   * 边框、洗底是**记号与边界**，它们读的还是上面那几条填充色。把记号也压暗，屏幕上就少了
-   * 一枚能当信号的东西，而小字一个都没变得更清楚——`item.module.css` 的日期轴珠子就吃过
-   * 这一次：它本该是「这一颗超期了」的最大声，压暗之后红得发闷。
-   *
-   * 一个概念仍只有一份定义：这九条从上面那几条**派生**，谁也不另写一个色值。 */
-  --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
-  --dsh-tb-status-todo-ink: var(--dsh-tb-status-todo);
-  --dsh-tb-status-running-ink: oklch(from var(--dsh-tb-status-running) calc(l * 0.79) c h);
-  --dsh-tb-status-review-ink: oklch(from var(--dsh-tb-status-review) calc(l * 0.79) c h);
-  --dsh-tb-status-done-ink: oklch(from var(--dsh-tb-status-done) calc(l * 0.82) c h);
-  --dsh-tb-ink-accent: var(--dsh-tb-accent);
-  --dsh-tb-ink-attention: oklch(from var(--dsh-tb-attention) calc(l * 0.79) c h);
-  --dsh-tb-ink-success: oklch(from var(--dsh-tb-success) calc(l * 0.82) c h);
-  --dsh-tb-ink-danger: var(--dsh-tb-danger);
-  --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) 22%, transparent);
+   * 机械闸门：`scripts/verify-palette.mjs`——族只有一枚令牌、色相只许经本层到达、
+   * 洗底与边只许读下面那条梯子。 */
+  --dsh-tb-wash: 14%;
+  --dsh-tb-wash-strong: 22%;
+  --dsh-tb-edge: 42%;
+  --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
   --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
   /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
    *
@@ -256,6 +236,14 @@
      (18.90 and 4.50 in the light theme) — see .primaryButton / .dangerButton. */
   --dsh-tb-ink-on-fill: var(--dsw-static-neutral-bluish-1000);
 
+  /* 深底上的那一枚，与上面成对：**两种底，两枚墨**。
+     浅底的填充色（warn / success / accent）在两个主题下同值、都是亮的，所以它们上面要
+     一枚**深**字——那是 `--dsh-tb-ink-on-fill`。而品牌按钮与危险按钮的底在两个主题下
+     都是深的，上面要的就是宿主自己那一枚会翻面的前景色（浅色主题下量到 18.90 与 4.50）。
+     这一对名字同时把「调用点该读什么」说清楚了：填充色上写字，永远从这两枚里挑一枚，
+     不直接读宿主的 `label-primary-foreground`——那是一条绕过本层的路。 */
+  --dsh-tb-ink-on-solid: var(--dsw-alias-label-primary-foreground);
+
   /* interaction + motion grammar (one source) */
   --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
   /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
@@ -263,16 +251,16 @@
      shared token carries it: a shared token with no consumer is a rule that
      answers nothing. */
   --dsh-tb-input-bg: var(--dsw-specific-input-major);
-  /* The focus halo, derived from the SAME 22% step the attention/selection system
-     already uses (see --dsh-tb-attention-alpha below) rather than from a token
-     that does not exist: `var(--dsw-alias-state-business-primary-alpha)` was
-     declared by no shell version, so without a fallback the property was invalid
-     at computed-value time and the four `box-shadow` rings that consume it
-     (`.input:focus`, `.search:focus`, the drop-accept ring, the bind-active drop
-     zone) painted nothing — the documented 3px halo never once appeared.
-     Deriving it here keeps one alpha ladder instead of inventing a second. */
-  --dsh-tb-focus-ring: color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent);
-  --dsh-tb-focus-color: var(--dsw-alias-state-business-primary);
+  /* The focus halo: the SAME `--dsh-tb-wash-strong` step the attention/selection
+     system uses, over the accent — rather than a token that does not exist
+     (`var(--dsw-alias-state-business-primary-alpha)` was declared by no shell
+     version, so without a fallback the property was invalid at computed-value
+     time and the four `box-shadow` rings that consume it (`.input:focus`,
+     `.search:focus`, the drop-accept ring, the bind-active drop zone) painted
+     nothing — the documented 3px halo never once appeared).
+     One alpha ladder, read from the ladder: never a second set of numbers. */
+  --dsh-tb-focus-ring: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
+  --dsh-tb-focus-color: var(--dsh-tb-accent);
   --dsh-tb-motion: 160ms ease;
   --dsh-tb-breath: 2.6s ease-in-out;
   /* Breathing amplitude tokens (the pulse itself is a state message, so under
@@ -324,26 +312,10 @@
   corner-shape: var(--dsh-tb-corner, round) !important;
 }
 
-/* 深色主题下**九条一条都不压**：那里填充色在深色底上量出来 4.78–5.69，本来就够读，
-   而「压暗一档」在深色底上只会更不清楚——这是一处**只属于浅色主题**的修正，不是两套颜色。
-   于是深色这一块是一次重置：九条全部退回原色。
-
-   选 `body[data-ds-dark-theme]` 不是猜外壳的 DOM：**那是宿主自己的主题开关**，它那份
-   token 表的深色一半就是挂在它下面（`scripts/verify-design-docs.mjs` 按这两块定位，本仓库
-   的测试台架也用它把工件切到深色）。若外壳哪天换了开关，代价是有界的：深色下应用到浅色
-   的那几个 k，颜色更深而对比度仍然更高——不会失效，也不会报错。 */
-body[data-ds-dark-theme] [data-dsh-taskboard-view],
-body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
-  --dsh-tb-status-backlog-ink: var(--dsh-tb-status-backlog);
-  --dsh-tb-status-todo-ink: var(--dsh-tb-status-todo);
-  --dsh-tb-status-running-ink: var(--dsh-tb-status-running);
-  --dsh-tb-status-review-ink: var(--dsh-tb-status-review);
-  --dsh-tb-status-done-ink: var(--dsh-tb-status-done);
-  --dsh-tb-ink-accent: var(--dsh-tb-accent);
-  --dsh-tb-ink-attention: var(--dsh-tb-attention);
-  --dsh-tb-ink-success: var(--dsh-tb-success);
-  --dsh-tb-ink-danger: var(--dsh-tb-danger);
-}
+/* 深色主题**不需要第二套颜色，也就不需要重置块**：六族读的是宿主那几枚语义别名，
+   它们自己在深色主题下就解析成深色的那一半（amber/green 同值，accent 与 danger 会翻面）。
+   两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。
+   上一版这里有一块九行的重置，只因为它上游有九条派生；派生没了，它跟着没了。 */
 
 /* --- shared attention motion ------------------------------------------------
  * The unread/"new content" signal speaks one language everywhere — the same
@@ -442,7 +414,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   justify-content: center;
   height: 100%;
   margin: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   font-size: 14px;
 }
 
@@ -582,7 +554,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .boardBack:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 2px;
 }
 
@@ -900,7 +872,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   max-width: 100%;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 
 
@@ -923,7 +895,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
@@ -997,7 +969,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .boardStatusButton[data-warn='true'] {
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 
 .boardStatusButton[data-warn='true'] .boardStatusDot {
@@ -1008,7 +980,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 /* The honest warning variant (stale host / work waiting on another device):
    same quiet line, attention tint — never a toast, never a modal. */
 .boardStatus[data-warn='true'] {
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 .boardStatus[data-warn='true'] .boardStatusDot {
   background: var(--dsh-tb-attention);
@@ -1094,7 +1066,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .cruiseMore:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -1296,7 +1268,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .timeFieldCalendar:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -1311,7 +1283,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 
 .timeFieldError {
   font-size: 11px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
 }
 
 .timeFieldHint {
@@ -1378,7 +1350,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 .columnTab[data-active='true'] {
   color: var(--dsh-tb-text-1);
   border-color: var(--dsh-tb-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
 }
 
 .columnTab:focus-visible {
@@ -1674,11 +1646,11 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
    keyframes for "being picked" is exactly the family-splitting this sheet
    closed above. */
 .card.selectedCard {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-accent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
-    0 0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent),
-    0 4px 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
+    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
+    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
     var(--dsh-tb-shadow-2);
   transform: translateY(-1px);
 }
@@ -1698,7 +1670,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   height: 18px;
   /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */
   color: var(--dsh-tb-ink-on-fill);
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsh-tb-accent);
   border-radius: 50%;
   pointer-events: none;
 }
@@ -1719,11 +1691,11 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
    appear the instant the card is picked and stay while it is selected,
    hover or not (the badge is selection-bound; the ring is too). */
 .card.selectedCard:hover {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-accent);
   box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
-    0 0 0 5px color-mix(in srgb, var(--dsw-alias-state-business-primary) 10%, transparent),
-    0 4px 18px color-mix(in srgb, var(--dsw-alias-state-business-primary) 22%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
+    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
+    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
     var(--dsh-tb-shadow-2);
 }
 
@@ -1740,7 +1712,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   right: 8px;
   height: 4px;
   border-radius: 3px;
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsh-tb-accent);
   box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
   pointer-events: none;
   z-index: 1;
@@ -1761,7 +1733,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
    confirmation IS the card's own motion. */
 
 .card[data-status='running'] {
-  border-color: var(--dsw-alias-state-warn-primary);
+  border-color: var(--dsh-tb-attention);
 }
 
 /* Hover quick-run on a card: a small play pill that floats top-right,
@@ -1807,7 +1779,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .cardQuickRun:hover {
-  color: var(--dsh-tb-ink-accent);
+  color: var(--dsh-tb-accent);
   background: var(--dsh-tb-hover);
   border-color: var(--dsw-alias-border-l3);
 }
@@ -1919,7 +1891,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   min-width: 0;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   overflow: hidden;
   overflow-wrap: anywhere;
   display: -webkit-box;
@@ -1943,7 +1915,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   padding-top: 6px;
   margin-top: 0;
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 .cardMetaRow {
@@ -1963,7 +1935,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   gap: var(--card-mark-gap);
   flex: 1;
   min-width: 0;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .cardWorkspaceDot {
@@ -1986,7 +1958,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
      the row a person pointed at. */
   transform: translateY(var(--dsh-tb-mark-drop));
   border-radius: 50%;
-  background: var(--dsw-alias-label-tertiary);
+  background: var(--dsh-tb-text-3);
 }
 
 .cardWorkspaceName {
@@ -2077,23 +2049,23 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   height: 8px;
   border-radius: 50%;
   flex: none;
-  background: var(--dsw-alias-label-tertiary);
+  background: var(--dsh-tb-text-3);
 }
-.cardSessionDot[data-state='running'] { background: var(--dsw-alias-state-warn-primary); }
-.cardSessionDot[data-state='waiting'] { background: var(--dsw-alias-state-warn-secondary); }
+.cardSessionDot[data-state='running'] { background: var(--dsh-tb-attention); }
+.cardSessionDot[data-state='waiting'] { background: var(--dsh-tb-status-review); }
 /* A finished run on this card that has not been reviewed: the same amber,
    now BREATHING (the outer ring the unread card wears, at dot scale) — the
    strip answers "which session just finished" instead of only "which card".
    One dot, one loudest truth: live states above keep their solid colors and
    the card's own halo already carries the live breath. */
 .cardSessionDot[data-state='unread'] {
-  background: var(--dsw-alias-state-warn-primary);
+  background: var(--dsh-tb-attention);
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 .cardSessionMore {
   flex: none;
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2121,7 +2093,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   min-width: 0;
   font-size: 12px;
   line-height: 1.4;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   overflow: hidden;
   overflow-wrap: anywhere;
   white-space: nowrap;
@@ -2206,7 +2178,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 .feedFilter[data-active] {
   /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */
   color: var(--dsh-tb-ink-on-fill);
-  background: var(--dsw-alias-state-business-primary);
+  background: var(--dsh-tb-accent);
   border-color: transparent;
 }
 .feedSearch {
@@ -2242,7 +2214,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   margin: 10px 0 4px;
   font-size: 12px;
   font-weight: 600;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 .feedPreview {
   min-width: 0;
@@ -2285,7 +2257,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   font-size: 12px;
   font-weight: 500;
   line-height: 1.5;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -2324,12 +2296,13 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   background: var(--dsh-tb-chip-fill);
 }
 
-/* 这三条写的是**文字**，所以读的是文字档那三条（`--dsh-tb-ink-*`）。同一个色相、同一个
-   出处，差的是深浅——而「淡黄的字写在白底上」不是设计，是没人量过：1.91 / 2.15 / 2.28。 */
-.chip[data-kind='success'] { color: var(--dsh-tb-status-done-ink); }
-.chip[data-kind='error'] { color: var(--dsh-tb-ink-danger); }
-.chip[data-kind='warn'] { color: var(--dsh-tb-status-running-ink); }
-.chip[data-kind='muted'] { color: var(--dsw-alias-label-tertiary); }
+/* 这三条写的是**文字**，读的还是同一枚状态色——一个色相就一个色（见上面那条色族律）。
+   黄在浅色主题下的真实底上只到 1.63:1，这是本表收下的代价：把字改深就是同一块屏上的
+   第二枚黄，而两枚黄比一个字淡更难解释。 */
+.chip[data-kind='success'] { color: var(--dsh-tb-status-done); }
+.chip[data-kind='error'] { color: var(--dsh-tb-danger); }
+.chip[data-kind='warn'] { color: var(--dsh-tb-status-running); }
+.chip[data-kind='muted'] { color: var(--dsh-tb-text-3); }
 
 /* Shared spinner (cards + detail execution rows), colored by currentColor.
    display: inline-block keeps its 8x8 box even in a non-flex context (an
@@ -2397,7 +2370,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .primaryButton {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
   /* The native primary fill (brand) — same token the shell's primary
      buttons use, so a skin's remap lands on both. Height comes from the
      shared button rule (28px), so a primary never towers over its ghost/
@@ -2468,7 +2441,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 }
 
 .dangerButton {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
   background: var(--dsh-tb-danger);
   border: 1px solid transparent;
   box-shadow: var(--dsh-tb-shadow-1);
@@ -2492,21 +2465,21 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
    action in a dense list (hidden-tray delete) — the FILLED danger button
    stays reserved for the step's primary destroyer (confirm dialogs). */
 .dangerGhostButton {
-  color: var(--dsh-tb-ink-danger);
+  color: var(--dsh-tb-danger);
   background: transparent;
-  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) 45%, transparent);
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
   /* Same quiet density as the ghost twin above (one track, never drift). */
   font-size: 12px;
   padding: 0 12px;
 }
 
 .dangerGhostButton:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dsh-tb-danger) 10%, transparent);
+  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash), transparent);
   border-color: var(--dsh-tb-danger);
 }
 
 .dangerGhostButton:active:not(:disabled) {
-  background: color-mix(in srgb, var(--dsh-tb-danger) 22%, transparent);
+  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash-strong), transparent);
 }
 
 .dangerGhostButton:disabled {
@@ -2829,7 +2802,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   margin: 0;
   font-size: 13px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
@@ -2853,7 +2826,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 .fieldLabel {
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 /* Template picker row (new-task modal): the select flexes, the delete keeps
@@ -2873,7 +2846,7 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
 .fieldHint {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 .input {
@@ -2926,7 +2899,7 @@ textarea.input {
 .formError {
   margin: 0;
   font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
 }
 
 /* --- select wrapper ----------------------------------------------------------- */
@@ -2968,8 +2941,8 @@ textarea.input {
   width: 7px;
   height: 7px;
   transform: translateY(-70%) rotate(45deg);
-  border-right: 1.5px solid var(--dsw-alias-label-tertiary);
-  border-bottom: 1.5px solid var(--dsw-alias-label-tertiary);
+  border-right: 1.5px solid var(--dsh-tb-text-3);
+  border-bottom: 1.5px solid var(--dsh-tb-text-3);
   pointer-events: none;
 }
 
@@ -3026,7 +2999,7 @@ textarea.input {
   padding: 6px 8px;
   font-size: 12px;
   text-align: left;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   background: transparent;
   border: none;
   border-radius: var(--dsh-tb-radius-sm);
@@ -3049,18 +3022,18 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .slashMenuHint {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 .slashMenuEmpty {
   padding: 6px 8px;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* The official reference menu's group heading (文件与文件夹 / Session 对话):
@@ -3072,7 +3045,7 @@ textarea.input {
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* --- detail ------------------------------------------------------------------- */
@@ -3190,7 +3163,7 @@ textarea.input {
 .detailChevron {
   flex: none;
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   transition: transform var(--dsh-tb-motion);
 }
 
@@ -3220,7 +3193,7 @@ textarea.input {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .detailSection h4 {
@@ -3268,7 +3241,7 @@ textarea.input {
   margin: 0;
   font-size: 14px;
   line-height: 1.55;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
@@ -3290,7 +3263,7 @@ textarea.input {
 .configLabel {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
@@ -3298,7 +3271,7 @@ textarea.input {
   margin: 0;
   font-size: 12px;
   line-height: 1.6;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   /* `anywhere` (not `break-word`) actually lowers the min-content contribution
      so a long path wraps inside the track instead of overflowing it. */
   overflow-wrap: anywhere;
@@ -3325,7 +3298,7 @@ textarea.input {
 
 .scheduleLabel {
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -3364,11 +3337,11 @@ textarea.input {
 /* Any invalid form field (cron input, session select, prompt textarea): the
    ONE error-border grammar shared by every validation surface. */
 .inputInvalid {
-  border-color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsh-tb-danger);
 }
 
 .inputInvalid:focus {
-  border-color: var(--dsw-alias-state-error-primary);
+  border-color: var(--dsh-tb-danger);
 }
 
 /* The preset picker's slot in the cron row. (`flex: none` written on the
@@ -3401,7 +3374,7 @@ textarea.input {
 .scheduleMeta {
   margin: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   overflow-wrap: break-word;
 }
 
@@ -3528,13 +3501,13 @@ textarea.input {
 .presetHint {
   grid-column: 1 / -1;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 .presetEmpty {
   padding: 8px 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* Run-config preset manager rows: name | note | actions (right cluster) —
@@ -3578,8 +3551,8 @@ textarea.input {
   flex: none;
   padding: 1px 8px;
   font-size: 12px;
-  color: var(--dsh-tb-ink-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+  color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
   border-radius: var(--dsh-tb-pill);
 }
 
@@ -3805,7 +3778,7 @@ textarea.input {
 
 .hiddenTrayTitle {
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .hiddenTrayList {
@@ -3905,7 +3878,7 @@ textarea.input {
 }
 
 .sessionRow:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: -2px;
 }
 
@@ -3913,7 +3886,7 @@ textarea.input {
    Button component (one keyboard grammar, no stray browser outline). */
 .sessionRowHandle:focus-visible,
 .rowHide:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 2px;
 }
 
@@ -4053,7 +4026,7 @@ textarea.input {
 .addSessionRow[data-selected] {
   color: var(--dsh-tb-text-1);
   border-color: var(--dsh-tb-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 10%, transparent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
 }
 
 .addSessionLabel {
@@ -4125,7 +4098,7 @@ textarea.input {
      label must be dark in both. Measured 8.80:1, against 2.15:1 for light ink: the
      worst pairing in the whole stylesheet. See --dsh-tb-ink-on-fill. */
   color: var(--dsh-tb-ink-on-fill);
-  background: var(--dsw-alias-state-warn-primary);
+  background: var(--dsh-tb-attention);
   border: none;
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
@@ -4134,20 +4107,20 @@ textarea.input {
 }
 
 .sessionRowHandle:hover {
-  background: var(--dsw-alias-state-warn-primary-hover, var(--dsw-alias-state-warn-primary));
+  background: var(--dsw-alias-state-warn-primary-hover, var(--dsh-tb-attention));
   filter: brightness(1.1);
 }
 
 .sessionRowMeta {
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   overflow-wrap: anywhere;
   font-variant-numeric: tabular-nums;
 }
 
 .executionError {
   font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
   overflow-wrap: anywhere;
 }
 
@@ -4176,12 +4149,12 @@ textarea.input {
   gap: 6px;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .executionDynamicsLabel {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
@@ -4199,7 +4172,7 @@ textarea.input {
 
 .executionCommentsCount {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
@@ -4209,12 +4182,12 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 .executionCommentsTime {
   flex: none;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   white-space: nowrap;
 }
 
@@ -4321,7 +4294,7 @@ textarea.input {
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* The tail of a failed update command's output: what the command said is the
@@ -4450,7 +4423,7 @@ textarea.input {
 
 .autoMetaIcon {
   flex: none;
-  color: var(--dsh-tb-ink-accent);
+  color: var(--dsh-tb-accent);
 }
 
 /* Session rules block. */
@@ -4700,7 +4673,7 @@ textarea.input {
 
 .detailMeta {
   font-size: 11px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* `.detailBlockedField` lived here: an attention-coloured replacement for the empty
@@ -4751,7 +4724,7 @@ textarea.input {
 .sessionContextHead:focus-visible,
 .tagCustomColor:focus-visible,
 .tagSwatch:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 2px;
 }
 
@@ -4833,7 +4806,7 @@ textarea.input {
    drops are one-shot flashes (animated rules + keyframes in the drag & drop
    section above). */
 .column[data-dragover] {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-accent);
 }
 
 .primaryButton:active:not(:disabled),
@@ -4847,7 +4820,7 @@ textarea.input {
        disabled today, but a disabled element must not react to hover) --- */
 .iconButton:hover:not(:disabled) {
   background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
 }
 
 .iconButton:disabled {
@@ -4870,7 +4843,7 @@ textarea.input {
   width: 52px;
   padding: 2px 6px;
   font-size: 12px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   background: var(--dsw-specific-input-major);
   border: 1px solid var(--dsw-alias-border-l2);
   border-radius: var(--dsh-tb-radius-sm);
@@ -4878,7 +4851,7 @@ textarea.input {
 }
 
 .cruiseLimit:focus {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-accent);
 }
 
 /* The one control OUTSIDE the board's own focus grammar: killing
@@ -4887,7 +4860,7 @@ textarea.input {
    not the 2px outline every sibling carries — and a colour-only shift is
    invisible to anyone who cannot distinguish it. Same grammar as `.cruiseMore`. */
 .cruiseLimit:focus-visible {
-  outline: 2px solid var(--dsw-alias-state-business-primary);
+  outline: 2px solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -4975,7 +4948,7 @@ textarea.input {
   font-size: 11px;
   font-weight: 500;
   line-height: 1.4;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -5251,7 +5224,7 @@ textarea.input {
 
 .reviewOutcomeMeta {
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5301,7 +5274,7 @@ textarea.input {
   max-width: 100%;
   font-size: 16px;
   line-height: 28px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   /* Markdown block elements own their spacing; the container itself must not
      force pre-wrap or every paragraph-internal newline would double-break. */
   overflow-wrap: break-word;
@@ -5359,7 +5332,7 @@ textarea.input {
   padding: 10px 16px;
   background: var(--dsw-specific-bubble, var(--dsw-static-deepseek-50));
   border-radius: 22px;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   transition: background-color 120ms ease;
 }
 
@@ -5372,7 +5345,7 @@ textarea.input {
 .reviewContext {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   padding: 4px 10px;
   border-left: 2px solid var(--dsw-alias-border-l2);
   opacity: 0.85;
@@ -5416,7 +5389,7 @@ textarea.input {
 .reviewMeterReading {
   grid-area: reading;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -5424,7 +5397,7 @@ textarea.input {
   grid-area: percent;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5432,7 +5405,7 @@ textarea.input {
    same warn grammar as every board signal, so a nearly-full context window
    is noticed at a glance. */
 .reviewContextMeter[data-warn] .reviewMeterPercent {
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 
 .reviewContextMeter[data-warn] .reviewMeterBar {
@@ -5445,7 +5418,7 @@ textarea.input {
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -5467,7 +5440,7 @@ textarea.input {
   min-width: 2px;
   height: 100%;
   border-radius: 1px;
-  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+  background: var(--meter-tint, var(--dsh-tb-text-3));
 }
 
 .meterSystem { --meter-tint: var(--dsw-static-neutral-bluish-400); }
@@ -5492,7 +5465,7 @@ textarea.input {
   align-items: center;
   column-gap: 6px;
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   min-width: 0;
 }
 
@@ -5508,7 +5481,7 @@ textarea.input {
   grid-area: value;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
-  color: var(--dsw-alias-label-primary);
+  color: var(--dsh-tb-text-1);
 }
 
 .reviewMeterSwatch {
@@ -5516,7 +5489,7 @@ textarea.input {
   width: 8px;
   height: 8px;
   border-radius: 2px;
-  background: var(--meter-tint, var(--dsw-alias-label-tertiary));
+  background: var(--meter-tint, var(--dsh-tb-text-3));
 }
 
 /* Token-usage summary under the conversation (fallback when no native
@@ -5524,7 +5497,7 @@ textarea.input {
 .reviewUsage {
   margin: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5543,7 +5516,7 @@ textarea.input {
      分节标题 grammar on the rail. */
   font-size: 13px;
   font-weight: 500;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 /* One line of three config cells (model / effort / permission); effort and
@@ -5574,7 +5547,7 @@ textarea.input {
      is shared and the weight is not, which is what the same-thing-one-place rule means
      when the difference is deliberate rather than accidental. */
   font-size: 12px;
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -5588,7 +5561,7 @@ textarea.input {
 .reviewConfigUnavailable,
 .reviewConfigMessage {
   font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
 }
 
 /* The honest third state: the read is IN FLIGHT, not broken. Quiet text,
@@ -5748,11 +5721,11 @@ textarea.input {
      而阶梯令牌（--dsh-tb-radius-sm 是 10px）是给面板与输入框的——套到 13px 的方盒上
      就是一个圆。 */
   border-radius: 4px;
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsh-tb-accent);
 }
 
 .mdTaskBox[data-done=''] {
-  border-color: var(--dsw-alias-state-business-primary);
+  border-color: var(--dsh-tb-accent);
 }
 
 /* ── 表格 ──────────────────────────────────────────────────────────────────────
@@ -5798,14 +5771,14 @@ textarea.input {
   margin: 8px 0;
   padding: 2px 12px;
   border-left: 2px solid var(--dsw-alias-border-l2);
-  color: var(--dsw-alias-label-secondary);
+  color: var(--dsh-tb-text-2);
 }
 
 /* Rendered links read as links: an underline with offset is the affordance —
    accent colour alone is indistinguishable from plain text, and touch has no
    hover to reveal it. Thickness grows on hover without moving layout. */
 .mdLink {
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsh-tb-accent);
   text-decoration: underline;
   text-underline-offset: 2px;
   text-decoration-thickness: 1px;
@@ -5831,7 +5804,7 @@ textarea.input {
    accent so a command reads as a command, not a plain sentence. */
 .reviewCommentCommand {
   font-weight: 500;
-  color: var(--dsw-alias-state-business-primary);
+  color: var(--dsh-tb-accent);
 }
 
 /* The comment meta line: 状态 chip + 时间 + (pending) cancel. Sources no
@@ -5843,7 +5816,7 @@ textarea.input {
    read-only"). Succeeded outcomes render muted; failed ones keep the error
    color via .executionError. */
 .reviewCommandOutcome {
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
 }
 
 /* A comment's meta line is a named grid (chip | time | cancel): the cancel
@@ -5868,7 +5841,7 @@ textarea.input {
   grid-area: time;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5878,7 +5851,7 @@ textarea.input {
   flex: none;
   padding: 0;
   font-size: 12px;
-  color: var(--dsw-alias-label-tertiary);
+  color: var(--dsh-tb-text-3);
   background: none;
   border: none;
   cursor: pointer;
@@ -5887,7 +5860,7 @@ textarea.input {
 }
 
 .reviewCommentCancel:hover {
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
 }
 
 /* The sticky "Latest" affordance inside a scroll region: shown only while
@@ -6007,7 +5980,7 @@ textarea.input {
   color: var(--dsh-tb-text-1);
 }
 .interactionCard[data-plan='true'] {
-  border-color: color-mix(in srgb, var(--dsh-tb-attention) 45%, transparent);
+  border-color: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
 }
 
 /* Inside the rail's comments scroll region the 14px inset belongs to the
@@ -6258,7 +6231,7 @@ textarea.input {
   position: relative;
 }
 .interactionCheckOn {
-  color: var(--dsw-alias-label-primary-foreground);
+  color: var(--dsh-tb-ink-on-solid);
 }
 .interactionCheckOn::before {
   background: var(--dsh-tb-text-1);
@@ -6290,8 +6263,8 @@ textarea.input {
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
-  color: var(--dsh-tb-ink-accent);
-  background: color-mix(in srgb, var(--dsh-tb-accent) 16%, transparent);
+  color: var(--dsh-tb-accent);
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
   border-radius: var(--dsh-tb-radius-sm);
 }
 .interactionOptionDescription {
@@ -6357,7 +6330,7 @@ textarea.input {
 .interactionFieldInput {
   resize: none;
   color: var(--dsh-tb-text-1);
-  caret-color: var(--dsh-tb-ink-accent);
+  caret-color: var(--dsh-tb-accent);
   background: none;
   border: none;
   outline: none;
@@ -6434,7 +6407,7 @@ textarea.input {
   min-height: 16px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsh-tb-ink-danger);
+  color: var(--dsh-tb-danger);
   text-align: right;
   overflow-wrap: anywhere;
 }
@@ -6703,7 +6676,7 @@ textarea.input {
   flex: 1 1 100%;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
   overflow-wrap: anywhere;
 }
 
@@ -6745,7 +6718,7 @@ textarea.input {
 
 .sessionContextLead {
   flex: none;
-  color: var(--dsh-tb-ink-accent);
+  color: var(--dsh-tb-accent);
 }
 
 .sessionContextTitle {
@@ -6832,7 +6805,7 @@ textarea.input {
      text beside it. Ellipsis lives in .chipBody; flex: none keeps the chip's
      natural width and the label inside. */
   flex: none;
-  color: var(--dsh-tb-ink-success);
+  color: var(--dsh-tb-success);
 }
 
 /* The session goal strip (the board's GoalBar): phase chip + objective +
@@ -6872,7 +6845,7 @@ textarea.input {
   flex: 1 1 100%;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsw-alias-state-error-primary);
+  color: var(--dsh-tb-danger);
   overflow-wrap: anywhere;
 }
 /* A blocked goal names its reason out loud (the message rides the durable
@@ -6927,13 +6900,13 @@ textarea.input {
 }
 
 .sessionContextGlyphDone {
-  color: var(--dsh-tb-ink-success);
+  color: var(--dsh-tb-success);
 }
 
 .sessionContextSubagent {
   flex: none;
-  border-color: color-mix(in srgb, var(--dsh-tb-accent) 45%, transparent);
-  color: var(--dsh-tb-ink-accent);
+  border-color: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-edge), transparent);
+  color: var(--dsh-tb-accent);
 }
 
 /* The subagent block: chip line + ONE row per subagent (the same row grammar
@@ -7261,7 +7234,7 @@ textarea.input {
 }
 
 .tagSwatchOn {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
 }
 
 /* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
@@ -7303,7 +7276,7 @@ textarea.input {
 }
 
 .tagCustomWrap:focus-within {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsw-alias-state-business-primary);
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
 }
 
 .tagCustomColor {
@@ -8026,7 +7999,7 @@ textarea.input {
 }
 
 .toolCard[data-ok] .toolCardIcon {
-  color: var(--dsh-tb-ink-success);
+  color: var(--dsh-tb-success);
 }
 
 .toolCardSummary,
@@ -8038,7 +8011,7 @@ textarea.input {
 }
 
 .toolCardNote {
-  color: var(--dsh-tb-ink-attention);
+  color: var(--dsh-tb-attention);
 }
 
 .toolCardOps {
@@ -8062,7 +8035,7 @@ textarea.input {
 }
 
 .toolCardOps > li[data-ok] .toolCardOpKind {
-  color: var(--dsh-tb-ink-success);
+  color: var(--dsh-tb-success);
 }
 
 .toolCardOpKind {
