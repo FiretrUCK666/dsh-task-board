@@ -127,6 +127,11 @@
    * 「表头补上药丸的量」那一节。这两个数不许再写第二遍。 */
   --item-pill-pad: 10px;
   --item-pill-hair: 1px;
+  /* **一行的值只有一档高。** 药丸与输入框装的是同一种东西（这一行的一个值），所以它们取
+     同一个高度——一行里两种高，读者看到的是「一大一小、不在同一条水平线上」。
+     高度、行盒与边的关系在这里是**等式**：行盒 = 高度 − 上下边，于是内容盒被行盒填满，
+     居中不发生，也就没有那半像素的余量让像素网格去判它落在哪一边。 */
+  --item-pill-h: 19px;
   /* ── THE LINES, AND THERE ARE EXACTLY TWO ──────────────────────────────────
    *
    * `--item-hair` is a SEPARATOR between two pieces of content; `--item-hair-strong`
@@ -2139,23 +2144,23 @@ button.itemRowCardChip {
  * 描一个对象的边要用重一档那条线；分隔用的那条只有 1.08:1，落在同一个底色上
  * 等于没有边——形状没了，剩下一段和副行同档的字。 */
 .itemTag {
-  /* **行内流里的原子盒 + 一个装字的槽。** 标签是句子末尾的一个词（这一行是行内排版），而
-   * `block-size` 与块向内衬在**行内非替换盒**上都不生效：从前这一枚只写 `block-size: 19px`，
-   * 于是那 19px 在标题这一侧根本没有发生，内衬只把底画宽了 —— 字在自己的胶囊里**偏高**，
-   * 而同一个类名在 `.itemOpts` 那一侧（flex item，被 blockify）拿到的是另一套几何。
-   * 现在它自己就是 `inline-flex`：定高生效，`align-items: center` 把字居中，两侧同一种几何。
+  /* **行内流里的原子盒 + 一个装字的槽。** 标签是句子末尾的一个词（这一行是行内排版），所以它
+   * 必须是 `inline-flex`：`block-size` 与块向内衬在**行内非替换盒**上都不生效，只有原子盒才
+   * 拿得到定高，字也才有一个**能被居中的盒子**。同一个类名在 `.itemOpts` 那一侧是 flex item，
+   * 被 blockify —— 两侧因此是同一种几何。
    *
-   * 定高的数不变（19px）：比行盒 16px 高出的 3px 里，2px 是两条边，余下的那一格由居中吸收。 */
+   * 高度取这一行的档（`--item-pill-h`），行盒由它减去上下边推出来：内容盒被行盒填满，
+   * 余量为零。 */
   display: inline-flex;
   align-items: center;
   flex: none;
   white-space: nowrap;
-  block-size: 19px;
+  block-size: var(--item-pill-h);
   padding: 0 8px;
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
-  line-height: 16px;
+  line-height: calc(var(--item-pill-h) - 2 * var(--item-pill-hair));
   color: var(--item-ink-2);
   background: var(--item-fill);
   border: var(--item-hair-strong);
@@ -2233,9 +2238,9 @@ button.itemRowCardChip {
   align-items: center;
   justify-content: center;
   gap: 1px;
-  /* **位置由版面给，不由微调给。** 这里曾经有一句 `vertical-align: 1px`：那是照着一种字体试出来
-     的常量，把整颗药丸连字抬高一像素，于是在同一行里它比邻居高出一格（读者看到的正是「一大
-     一小、不在同一条水平线上」）。行里的对齐只有一个机制——容器把内容居中。 */
+  /* **位置由版面给，不由微调给。** 行里的对齐只有一个机制——容器把内容居中；按字体量出来的
+     竖向长度（`vertical-align: <长度>`）一个也不许有：它只在一种字体上量得对，换一套度量就
+     把这一枚从邻居那条线上挪开半个到一个像素，而屏上没有任何一处说得出这句话。 */
   margin-inline-end: 6px;
   min-inline-size: 30px;
   block-size: 20px;
@@ -4384,9 +4389,14 @@ textarea.itemInput {
  * 猜出来的像素数：那段说明有几个字，控件就该有多宽——**一根写死的轨道装不下它要装
  * 的东西时，溢出不回灌，只会被切掉**。 */
 .itemTagAdd {
+  /* **与同一行的药丸同高、同行盒。** 这一格装的是同一种东西（这一行的一个值），所以高度取
+     同一个档，行盒同样由「高度 − 上下边」推出来——一枚 24px 的输入框站在 19px 的标签旁边，
+     读者看到的是「一大一小、不在同一条水平线上」。 */
+  block-size: var(--item-pill-h);
   inline-size: 100%;
   min-inline-size: 0;
-  padding: 3px 8px;
+  padding: 0 8px;
+  line-height: calc(var(--item-pill-h) - 2 * var(--item-pill-hair));
   font-size: 12px;
   color: var(--item-ink-2);
   background: none;
