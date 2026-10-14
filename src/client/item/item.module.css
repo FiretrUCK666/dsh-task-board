@@ -1521,7 +1521,7 @@
      浏览器的 `.83em` 与 `1.5em` 上——两个没人选过的数。 */
   margin: 0;
   /* **它有自己的高**（23px = 17px 的行盒 + 上下各 3px）：交给内容去算，高度就跟着字体度量走
-     （量到过：同一枚题头在两种字体下 23px 与 21px）。定高之后墨心修正只动内容，不动它的形状。 */
+     （量到过：同一枚题头在两种字体下 23px 与 21px）。 */
   box-sizing: border-box;
   block-size: 23px;
   padding: 0 10px;
@@ -1931,9 +1931,9 @@ button.itemRowText {
  * 量法（硬性规范 19）：`pnpm audit` 逐颗量**字的墨心与盒心**（量法与判据见 `DESIGN.md`
  * 「一行里的对齐」）。
  *
- * 修法**不是给图标垫一个数**——按字体量出来的数只在一种字体上成立。字与记号各自落在**同一个
- * 参照**上才是解：字由 `--dsh-tb-ink-shift` 推到盒心（见本表末那条修正），而记号本来就在盒心上，
- * 所以记号把那一格原样还回去（同一条修正下面那条 `translate`）。 */
+ * 修法**不是给图标垫一个数**——按字体量出来的数只在一种字体上成立（量到过：同一枚胶囊上，
+ * 字形的理想轮廓与画出来的墨差 0.5px，而 0.5px 在像素网格上根本落不下去）。字与记号各自落在
+ * **同一个参照**上才是解：记号绕 viewBox 中心对称，由 `align-items: center` 居中，墨心就在盒心。 */
 /* **这一族的记号不自己垫位移。** 记号绕 viewBox 中心对称，由 `align-items: center` 居中，
    墨心就在盒心；字那一侧的半像素差是**字体**的事，不是记号的事——给记号垫一个数只会让两
    边一起偏。同一族里不许再有第二种做法。 */
@@ -1963,11 +1963,7 @@ button.itemRowText {
   padding: 0 8px;
   font-size: 12px;
   font-weight: 400;
-  /* 14px 而不是 16px：**行盒是这条修正的余量**。墨心修正按 em 加块向内衬（两个方向合起来约
-     2.2px），而内容盒必须先装得下这一行字——行盒 16px 时余量只剩 2px，差 0.2px 就被挤出去
-     （量到过：`contentBox 15.84 < lineBox 16`）。行盒缩到 14px 余量就有 4px，而**字的位置一个
-     像素都不动**：墨心与行盒中心差的是字体度量，与行盒多高无关（半行距在上下对称地加减）。 */
-  line-height: 14px;
+  line-height: 16px;
   background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
   border-radius: var(--item-radius-pill);
 }
@@ -2159,9 +2155,7 @@ button.itemRowCardChip {
   border-radius: var(--item-radius-pill);
   font-size: 12px;
   font-weight: 400;
-  /* 14px 而不是 16px：与 `.itemRowCardChip` 同一笔账——行盒是墨心修正的余量（修正按 em 加块向
-     内衬，约 2.2px），而 19px 的盒子减掉两条边只剩 17px，16px 的行盒差 1.16px 就被挤出去。 */
-  line-height: 14px;
+  line-height: 16px;
   color: var(--item-ink-2);
   background: var(--item-fill);
   border: var(--item-hair-strong);
@@ -4518,10 +4512,10 @@ textarea.itemInput {
    * 线这件事不受影响：线跟着行高走，珠子打点。 */
   padding: 0 0 var(--s2) 22px;
   /* **珠子挂在哪一行，由一个不认字体的数说。** 标题那一行自己声明了 16px 的行盒（见下面
-     `li > b`），于是「半个行盒减半个珠子」= 3.5px 是纯几何；剩下那一点由 `--dsh-tb-ink-shift`
-     补——**字的墨并不落在行盒的几何中心上**，差多少是每种字体自己的一个 em 值。珠子、线头、
-     线尾三处读同一个数，所以它们永远在同一条轴上。 */
-  --item-bead-top: calc(3.5px - var(--dsh-tb-ink-shift, 0em));
+     `li > b`），于是「半个行盒减半个珠子」= 3.5px 是纯几何——**一个写死的数**（原来是 5px，
+     那是在开发者的字体上试出来的，换一份度量就偏）。珠子、线头、线尾三处读同一个数，所以
+     它们永远在同一条轴上。 */
+  --item-bead-top: 3.5px;
 }
 
 .itemDateAxis li:last-child {
@@ -5425,35 +5419,4 @@ textarea.itemInput {
  * 不声明任何属性（这两个样式表里它不出现在任何选择器里，`tests/panel-render.spec.ts` 钉住这一条）。
  */
 
-/* ── 墨心修正：**一个令牌，一族读一次** ────────────────────────────────────────
- *
- * 与看板那一份同一条机制、同一个令牌（声明在 `board.module.css`，由面板根上的
- * `src/client/ink-shift.ts` 写入）：CSS 能居中的只有行盒，而行盒的高度是字体度量，汉字的墨
- * 不落在它的几何中心上——差多少是每种字体自己的一个 em 值，所以在读者自己的浏览器里量一次。
- *
- * 内衬而不是位移（位移在版面里量不到），两个方向各一条，药丸形状不动（成员各自有定高）。
- * 名单按**结构**给（能进这一条的都是「胶囊」）；漏掉的那一颗由 `pnpm audit` 逐颗量墨心报出来
- * ——**判据不靠这份名单**。
- *
- * **一族按量到的数不进名单**：`.itemRailMonthNav` 是 `align-items: stretch`（它的字由自己的块流
- * 摆放，不归居中管），加内衬会按两倍推；它的读数在容差内，**不进名单是量出来的决定，不是省事**。 */
-[data-dsh-taskboard-view] :is(.itemTopBarChip, .itemNewButton, .itemGroupHead,
-    .itemPrioChip, .itemRowCardChip, .itemTag, .itemRefChip, .itemOpt, .itemOptNaming,
-    .itemRailToday, .itemRailDay, .itemRailRow) {
-  padding-block-start: calc(2 * max(var(--dsh-tb-ink-shift, 0em), 0em));
-  padding-block-end: calc(-2 * min(var(--dsh-tb-ink-shift, 0em), 0em));
-}
-
-/* **记号不跟着字走**（与看板那一份同一条）：上面那条把内容整体推半格让字落到盒心，而记号本来
- * 就在盒心上——它是盒子的几何，不认字体。记号把那一格还回去，字与记号才同时落在同一个参照上。
- * 逐个量到过：不加这一条时前导记号被推离盒心 1.13px（`textVsMark` 1.12px），加上之后两者都回到
- * 零点零几。
- *
- * `i:empty` 而不是 `i`：**装字的 `<i>` 不是记号**（题头右边那个计数就是一枚 `<i>`），它属于
- * 「字」那一侧，得跟着字走。`:empty` 正好是「里面什么都没有」——没有内容就是一枚记号。 */
-[data-dsh-taskboard-view] :is(.itemTopBarChip, .itemNewButton, .itemGroupHead,
-    .itemPrioChip, .itemRowCardChip, .itemTag, .itemRefChip, .itemOpt, .itemOptNaming,
-    .itemRailToday, .itemRailDay, .itemRailRow) :where(svg, i:empty) {
-  translate: 0 calc(-1 * var(--dsh-tb-ink-shift, 0em));
-}
 

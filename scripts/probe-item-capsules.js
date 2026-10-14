@@ -158,12 +158,59 @@
    * 量再折算回来是错的（量到过：SimSun 12px 上 4.00px，200px 折算 4.32px）。12px 是这两块面板
    * 正文那一档的字号，所以它是最有代表性的一档。 */
   const PROBE_FONT = 12
+  /** 墨的相对高度（相对基线，按元素自己的字号）——**画出来的像素，不是 `actualBoundingBox*`**。
+   *
+   * 后者是字形轮廓的**理想值**，而读者看见的是画出来的像素，两者差半个像素、方向随字体变。
+   * 量到过（同一枚 12px 的胶囊）：
+   *
+   *   默认字体   理想 上高 10 / 下高 **1**   画出来 上高 10 / 下高 **0**
+   *   SimSun     理想 上高 10 / 下高 **2**   画出来 上高 10 / 下高 **1**
+   *
+   * 于是理想值说「墨心偏低 0.5px」，而画出来的墨**正好在盒心**（0.00）。按理想值去修，就是把
+   * 一个本来居中的盒子推歪——本项目栽过这一次：桌面端本来是正的，被推高了 1.1px。而 0.5px 在
+   * 像素网格上根本落不下去：**比一个设备像素更细的修正，只会变成另一台机器上的新偏差**。
+   *
+   * 做法：把这一串字按它自己的字体、字号、字重画进一个 canvas，扫 alpha 找墨的上沿与下沿；
+   * 基线画在已知的 `baselineY`，所以上高/下高直接从像素来。理想值仍然读一份进报告
+   * （`idealOffY`），用来让「理想 ≠ 眼睛」这件事在每一档读数里都看得见。 */
   const inkExtentsOf = (st, text) => {
-    ctx.font = `${st.fontStyle} ${st.fontWeight} ${INK_REF}px ${st.fontFamily}`
-    const metrics = ctx.measureText(text)
-    if (!Number.isFinite(metrics.actualBoundingBoxAscent)) return null
-    const scale = px(st.fontSize) / INK_REF
-    return { asc: metrics.actualBoundingBoxAscent * scale, desc: metrics.actualBoundingBoxDescent * scale, fontAsc: metrics.fontBoundingBoxAscent * scale, fontDesc: metrics.fontBoundingBoxDescent * scale }
+    const size = px(st.fontSize)
+    if (!Number.isFinite(size) || size <= 0 || text.trim() === '') return null
+    const font = `${st.fontStyle} ${st.fontWeight} ${size}px ${st.fontFamily}`
+    ctx.font = font
+    const ideal = ctx.measureText(text)
+    if (!Number.isFinite(ideal.fontBoundingBoxAscent)) return null
+    const pad = Math.ceil(size)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(8, Math.ceil(ideal.width) + 2 * pad)
+    canvas.height = Math.max(8, Math.ceil(size * 3))
+    const paint = canvas.getContext('2d')
+    if (paint === null) return null
+    paint.font = font
+    paint.textBaseline = 'alphabetic'
+    paint.fillStyle = '#000'
+    const baselineY = Math.round(size * 2)
+    paint.fillText(text, pad, baselineY)
+    const data = paint.getImageData(0, 0, canvas.width, canvas.height).data
+    let top = canvas.height
+    let bottom = -1
+    for (let y = 0; y < canvas.height; y += 1) {
+      for (let x = 0; x < canvas.width; x += 1) {
+        if (data[(y * canvas.width + x) * 4 + 3] > 24) {
+          if (y < top) top = y
+          if (y > bottom) bottom = y
+        }
+      }
+    }
+    if (bottom < 0) return null
+    return {
+      asc: baselineY - top,
+      desc: bottom - baselineY,
+      idealAsc: ideal.actualBoundingBoxAscent,
+      idealDesc: ideal.actualBoundingBoxDescent,
+      fontAsc: ideal.fontBoundingBoxAscent,
+      fontDesc: ideal.fontBoundingBoxDescent,
+    }
   }
 
   /** 一个盒子**本来**该有多高的行盒：`line-height` 是 px 就是它，`normal` 就是字体自己的
@@ -496,58 +543,7 @@
     }
   }
 
-  /* ── 这一份字体偏多少 ────────────────────────────────────────────────────────
-   *
-   * 量法与 `inkExtentsOf` 同源（零尺寸行内块给基线、canvas 给墨、行盒给中心），但**行盒与基线
-   * 必须在「字实际被排成的那个字号」上量**：字体的 ascent/descent 是**按用到的字号取整**的
-   * （量到过：SimSun 在 12px 上基线落在行盒中心下方 4.00px，而在 200px 上折算回来是 4.32px），
-   * 而**墨**是字形轮廓，线性缩放（所以在 200px 上量再折回来，避开小字号上的整数取整）。
-   *
-   * 它进报告，也进**注入**：工件页是静态渲染，插件那个运行时模块（`src/client/ink-shift.ts`）
-   * 在 `file://` 工件上跑不起来，而这条机制的值正是它写的（面板根上的 `--dsh-tb-ink-shift`）。
-   * 审计**自己量一遍**并注入——与它注入宿主的真实令牌表是同一个办法；量法与模块同源，但是
-   * **独立的一份实现**（审计不读被审计对象的数）。于是同一次运行里两套读数都在：`rawWorst` 是
-   * 「这份字体偏多少」，`worst` 是「这条机制把偏补掉了没有」，而后者才是判据。 */
-  const measureBiasEm = () => {
-    const root = document.querySelector('[data-dsh-taskboard-view]')
-    if (root === null || document.body === null) return null
-    const family = getComputedStyle(root).fontFamily
-    const host = document.createElement('span')
-    host.setAttribute(PROBE_ATTR, '')
-    host.setAttribute('aria-hidden', 'true')
-    host.style.cssText = `position:absolute;left:-9999px;top:0;visibility:hidden;white-space:pre;font-family:${family};font-size:${PROBE_FONT}px;line-height:normal`
-    host.textContent = '国'
-    const anchor = document.createElement('span')
-    anchor.setAttribute('style', ANCHOR_STYLE)
-    host.appendChild(anchor)
-    document.body.appendChild(host)
-    try {
-      const line = lineRectsOf(host.firstChild ?? host)[0]
-      if (line === undefined) return null
-      const baseline = anchor.getBoundingClientRect().bottom
-      ctx.font = `${INK_REF}px ${family}`
-      const metrics = ctx.measureText('国')
-      if (!Number.isFinite(metrics.actualBoundingBoxAscent)) return null
-      const scale = PROBE_FONT / INK_REF
-      const inkCentre = baseline - (metrics.actualBoundingBoxAscent - metrics.actualBoundingBoxDescent) * scale / 2
-      return round(((line.top + line.bottom) / 2 - inkCentre) / PROBE_FONT * 10000) / 10000
-    } finally {
-      host.remove()
-    }
-  }
-
-  /* 工件页是**静态渲染**：插件那个运行时模块（`src/client/ink-shift.ts`）在 `file://` 工件上
-   * 跑不起来，而这条机制的值正是它写的（面板根上的 `--dsh-tb-ink-shift`）。所以审计**自己量
-   * 一遍**并把它注入工件页——与它注入宿主的真实令牌表是同一个办法，量法与模块同源但是**独立的
-   * 一份实现**（审计不读被审计对象的数）。于是同一次运行里两套读数都在：`rawWorst` 是「这份
-   * 字体偏多少」，`worst` 是「这条机制把偏补掉了没有」，而后者才是判据。 */
-  const raw = scan()
-  const bias = measureBiasEm()
-  if (bias !== null) {
-    const value = `${round(bias * 10000) / 10000}em`
-    for (const root of document.querySelectorAll('[data-dsh-taskboard-view]')) root.style.setProperty('--dsh-tb-ink-shift', value)
-  }
-  const clean = bias === null ? raw : scan()
+  const clean = scan()
 
   /* ── A6：自证 ────────────────────────────────────────────────────────────────
    *
@@ -685,9 +681,6 @@
 
   return {
     page: document.title,
-    /* 这份字体自己的度量不对称（em，正数 = 字偏下），以及**修之前**的那套读数。 */
-    inkBiasEm: bias,
-    rawWorst: raw.worstV,
     href: location.pathname.split('/').pop() ?? '',
     viewport: { w: innerWidth, h: innerHeight, dpr: devicePixelRatio, scrollbars: innerWidth - document.documentElement.clientWidth },
     media,

@@ -2917,11 +2917,6 @@ describe('a row is held with the mouse, with shift, and with the keyboard', () =
     // selects AND toggles.
     const panel = mountPanel(fixtures(), 'list', 'wide')
     try {
-      const byToken = (root: Element, token: string): HTMLElement | null =>
-        (root.querySelector(`.${token}`) as HTMLElement | null) ??
-        ([...root.querySelectorAll('[class]')].find(node =>
-          [...node.classList].some(c => c.endsWith(`_${token}`))) as HTMLElement | undefined) ??
-        null
       const row = rowEls(panel.surface)[0]
       click(row)
       expect(row.getAttribute('data-open'), 'the row did not open, so the rest of this proves nothing').toBe('')

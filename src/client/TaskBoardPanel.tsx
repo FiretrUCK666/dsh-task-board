@@ -31,7 +31,6 @@ import { useEffect } from 'react'
 import type { BoardController } from '../core/controller.ts'
 import type { ItemPriority } from '../core/item.ts'
 import type { BundleFreshnessState } from './bundle-freshness.ts'
-import { inkShiftRef } from './ink-shift.ts'
 import { t } from './locales.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
 import css from './board.module.css'
@@ -83,7 +82,7 @@ export function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }:
   }, [controller])
 
   return (
-    <div className={css.panelStage} data-dsh-taskboard-view="" ref={inkShiftRef}>
+    <div className={css.panelStage} data-dsh-taskboard-view="">
       {controller === undefined
         ? <p className={css.panelLoading} role="status">{t('board.loading')}</p>
         : <TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} onOpenRows={onOpenRows} />}
