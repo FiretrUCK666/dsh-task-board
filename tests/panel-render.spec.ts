@@ -2128,6 +2128,9 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
     for (const sheet of SHEETS) {
       // 读空了要说话：一条对空串成立的断言什么都没断言。
       expect(sheet.source, `${sheet.path} 读出来是空的——这条闸门在空转`).not.toBe('')
+      // 而「读到 0 条规则」会让三个出口也全空——那是空转，不是干净，两者在报告里长得一模一样。
+      expect(declarationRules(stripCssComments(sheet.source)).length,
+        `${sheet.path} 一条规则都没读出来——三个出口全空是空转，不是干净`).toBeGreaterThan(1)
       const found = markerStyling(sheet.source)
       expect(found.selectors,
         `${sheet.path} 的选择器里出现 ${MARKER}——标记一参与排版，装字的盒子、胶囊有多高、旁边那枚记号对着哪条线会一起变`).toEqual([])
@@ -2136,6 +2139,39 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
       expect(found.tokens,
         `${sheet.path} 里还留着 ${found.tokens.join('、')}——没人读的令牌会让下一个人以为它还在生效`).toEqual([])
     }
+  })
+
+  it('而这把尺子咬得动：三条子句各报各的，一条都不许空转', () => {
+    /** 一颗病只许由**一条**子句报出来——三条读的是同一件事的三个面，串起来报就说不出坏在哪。 */
+    const onlyOne = (found: MarkerStyling, clause: keyof MarkerStyling): readonly string[] => {
+      expect(found[clause].length, `种进去的那颗病没有被「${clause}」读出来——这一条子句在空转`).toBeGreaterThan(0)
+      for (const other of ['selectors', 'boxes', 'tokens'] as const) {
+        if (other === clause) continue
+        expect(found[other], `「${clause}」读出来的病被「${other}」顺手也报了一次——两条子句读的是同一件事`).toEqual([])
+      }
+      return found[clause]
+    }
+    // 反向对照：一张干净的胶囊规则，三条都是空的——否则这三条读的是「规则」，不是「病」。
+    expect(markerStyling('.itemPill { display: inline-flex; align-items: center; }'),
+      '一张干净的胶囊规则被读成了有病').toEqual({ selectors: [], boxes: [], tokens: [] })
+    // 子句一：标记进了选择器——两个形状，一个是它自己一条规则，一个是「除它之外」那一族规则。
+    expect(onlyOne(markerStyling(`.itemPill ${MARKER} { display: block; }`), 'selectors'),
+      'the plant did not bite — 选择器里的标记没有被读出来').toHaveLength(1)
+    expect(onlyOne(markerStyling(`.itemPill:not(:has(${MARKER})) { padding-block-end: 1px; }`), 'selectors'),
+      'the plant did not bite — 「除它之外」那一族的写法没有被读出来').toHaveLength(1)
+    // 子句二：那一族属性写在规则体里，以及写在 `@supports not (…)` 的探测里——后者是回退的
+    // 写法，一条只读规则体的读法在这里会沉默。
+    expect(onlyOne(markerStyling('.itemPill { text-box: trim-both cap alphabetic; }'), 'boxes')).toEqual(['text-box'])
+    expect(onlyOne(markerStyling('@supports not (text-box-trim: trim-both) { .itemPill { padding-block-end: 1px; } }'), 'boxes'),
+      'the plant did not bite — 回退探测里的那一族属性没有被读出来').toEqual(['text-box-trim'])
+    // 子句三：两个死令牌各来一颗。
+    expect(onlyOne(markerStyling('.itemPill { padding-block-end: var(--item-ink-lift); }'), 'tokens')).toEqual(['--item-ink-lift'])
+    expect(onlyOne(markerStyling('.itemPill { margin-block-start: var(--dsh-tb-slot-lift); }'), 'tokens')).toEqual(['--dsh-tb-slot-lift'])
+    // 反向对照第二半：**注释里提到那些名字不算一次使用**。两张真表就是这么写的（各自用一段
+    // 散文说「这个标记不排版」），先剥注释的那条读法必须放它们过去。
+    expect(markerStyling(
+      `/* ${MARKER} 是纯标记，不排版；这里也没有 --item-ink-lift 那种按字体量出来的数 */\n.itemPill { display: inline-flex; }`),
+      '散文里提到标记或令牌，被判成了一次使用——被逼着改的会是那段解释').toEqual({ selectors: [], boxes: [], tokens: [] })
   })
 
   /* 下面两条读法各写**一处**、被两个断言读：一次读真表（契约），一次读种了病的
@@ -3464,5 +3500,25 @@ describe('说明小字：一处机制、一处数字、一副骨架', () => {
     expect(lastDeclaredOf(css, 'attachHint', 'min-inline-size'),
       '句子没有宽度地板——窄一点它就是一根一个字一行的竖条（412 上真的量到过十一行单字）')
       .toBe('min(22em, 100%)')
+  })
+
+  it('属性表的字段名自己是一枚盒子：它要能参与那一行的对齐', () => {
+    /* 那一行里也站着一枚 ⓘ，而「字段名」这三个字本来是一段**裸文本**：裸文本在行里是一枚
+       匿名盒子，谁都点不到它——样式表里写不出它的名字，审计也认领不到它，于是「字与记号在
+       不在同一条线上」既改不了、也量不了。现在这三个字由这一枚盒子装着，垂直位置由那一行
+       居中给（这一条里**不写任何数**：按字体量出来的补偿在一种字体上是对的，换一套度量就偏
+       半格，而屏上没有任何一处会说这句话）。
+       只读清单那一张表：字段名这枚盒子只在这一张表里，看板那张表是另一个表面上的另一件事。 */
+    const sheet = stripCssComments(itemSheet())
+    expect(rulesOf(sheet, 'itemOptNameText').join('\n'),
+      '字段名那枚盒子在表里没有规则——它和裸文本就是同一件事，那一行的对齐又只能靠运气').not.toBe('')
+    expect(lastDeclaredOf(sheet, 'itemOptName', 'align-items'),
+      '字段名那一行不按中线对齐，那枚盒子不在任何一条对齐的线上').toBe('center')
+    expect(code(readSource('client/item/item-create-dialog.tsx')), '字段名又变回了裸文本')
+      .toContain('css.itemOptNameText')
+    // 咬得动：把那一枚盒子从表里拿掉（同名规则换成别的类），读法必须说「没有规则」。
+    const planted = sheet.replace(/\.itemOptNameText\s*\{[^}]*\}/, '.itemElsewhere { min-inline-size: 0; }')
+    expect(rulesOf(planted, 'itemOptNameText').join('\n'),
+      'the plant did not bite — 那一枚盒子拿掉之后还读得到规则').toBe('')
   })
 })
