@@ -467,7 +467,11 @@ export function ItemRowLine(props: ItemRowLineProps) {
               type="button"
               className={css.itemRowCardChip}
               data-door=""
-              aria-label={t('item.row.cardDoor', { where: t(GROUP_LABEL[view.status]) })}
+              /* **名字以屏上那串字开头。** 它原先只写「到看板打开这张卡（…）」，于是
+                 「待办」被挡在可达名之外——一个用嘴操作的人念出他看见的词就对不上
+                 （WCAG 2.5.3）。把可见的那一段放在最前，两件事就同时成立：念得出屏上
+                 那个词，也听得见它是一扇门。与月题那一枚、`1/3` 那一枚同一条写法。 */
+              aria-label={`${t(GROUP_LABEL[view.status])}：${t('item.row.cardDoor', { where: t(GROUP_LABEL[view.status]) })}`}
               onClick={event => { event.stopPropagation(); props.onOpenCard?.(cardId) }}
             >
               <CardMark size="chip" />

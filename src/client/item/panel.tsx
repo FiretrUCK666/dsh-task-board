@@ -471,6 +471,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
   // shell sidebar opens, splits or collapses.
   const [narrow, surfaceRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', 1080)
 
+  /* **开着浮层时，清单这一层对无障碍不成立。** 命令面板与那张纸都在上面声明了
+     `aria-modal="true"`，那是「外面的一切都不成立」这句承诺——而它得有人兑现，否则一个
+     键盘使用者能从打开的那张纸里 Tab 出去，操作他看不见的那一栏；读屏念的也是纸底下那
+     一页。两个浮层都是 `.itemRoot` 的孩子，所以「外面」就是这一棵。
+     `sort` 不算：它是顶栏里的一枚小浮层，盖不住这一层，也不是模态。 */
+  const overlayIsModal = paletteOpen || overlay === 'create'
+
   // Deadlines age in front of the reader, and only while the panel is on
   // screen: a clock ticking for a surface nobody is looking at spends the
   // reader's battery on a picture they cannot see.
@@ -1952,7 +1959,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
       * moved to where it is read: surface to the rows, air to the workbench's own
       * padding. The head this card once carried left to the bar long before the
       * face went; the count lives beside the search that changes it. */}
-  <div className={css.itemWorkbench} ref={surfaceRef}>
+  <div
+    className={css.itemWorkbench}
+    ref={surfaceRef}
+    /* **开着浮层时，清单这一层对无障碍不成立。** 命令面板与那张纸都在上面声明了
+       `aria-modal="true"`，那是「外面的一切都不成立」这句承诺——而它得有人兑现，否则一个
+       键盘使用者能从打开的那张纸里 Tab 出去，操作他看不见的那一栏；读屏念的也是纸底下那
+       一页。两个浮层都是 `.itemRoot` 的孩子，所以「外面」就是这一棵。
+       `sort` 不算：它是顶栏里的一枚小浮层，盖不住这一层，也不是模态。
+
+       **`inert` 写成字符串，不写布尔。** `inert` 在 HTML 里是一个**布尔属性**——存在即
+       成立——而 React 18 的布尔形式两个渲染器都不落笔（实测 `aria-hidden` 在、`inert`
+       不在）。空串是那个属性本身，React 对未知的字符串属性原样透传。 */
+    {...(overlayIsModal ? { 'aria-hidden': true, inert: '' } as Record<string, unknown> : {})}
+  >
     <div className={css.itemListColumn}>
 {/* ── 两条带子，同一个高度，位置一个像素都不动。 ─────────────────────────────
             *

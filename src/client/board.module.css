@@ -477,6 +477,15 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   font-family: inherit;
 }
 
+/* 占位符那一档墨：**一次管住两个面板的一切字段**。它必须挂在这一层而不是面板自己的
+   表面里——弹窗、那张纸都 portal 到 `[data-dsh-taskboard-view]`，落在 `.board` /
+   `.itemRoot` 之外，按类名列举的写法因此漏掉了它们（那张纸的标题框一直读着浏览器的
+   `#757575`：深色下 3.02:1）。这里读的是共享别名 `--dsh-tb-text-3`，因为面板自己那份
+   `--item-ink-3` 就声明在更深一层的 `.itemRoot` 上，在这一层的门户上取不到。 */
+[data-dsh-taskboard-view] :where(input, textarea)::placeholder {
+  color: var(--dsh-tb-text-3);
+}
+
 /* ── 说给读屏听、不画在屏上的那几个词 ─────────────────────────────────────────
  *
  * 一处工具，两个用处，而它们要的是同一件事：**让可读的名字里含有屏上那串字**。

@@ -2363,7 +2363,10 @@ button.itemRowCardChip {
 .itemRowMenuHint {
   flex: none;
   font-size: 11px;
-  color: var(--item-ink-3);
+  /* **提示不是元信息。** `DESIGN.md` 的三档墨里，第三档只承载「可丢弃」的读数；而这一行
+     说的是「删除后 30 天内可以找回来」——读者要读了才敢按那一下。第三档实测 3.7:1，
+     而它正是「读了才能正确操作」的那一类，属第二档。 */
+  color: var(--item-ink-2);
 }
 
 /* ── 7.9 零行的一行摘要 ───────────────────────────────────────────────────
@@ -3175,10 +3178,11 @@ button.itemRowCardChip {
  * （`tests/panel-render.spec.ts`：`<textarea>` 只许住在 `prose-field.tsx`；写入框的
  * 高度只许声明在 `.itemProse`）。 */
 
-.itemInput::placeholder,
-.itemSearch::placeholder {
-  color: var(--item-ink-3);
-}
+/* 占位符那一档墨**不在这里**：它现在声明在 `board.module.css` 的设计系统层，对着
+   `[data-dsh-taskboard-view]` 下的一切 `input` / `textarea`。按类名列举的那一版只覆盖
+   两个类，而那张纸（`.itemCreateDialogTitleField` 等）**portal 到面板根**、住在 `.itemRoot`
+   之外，于是它的占位符一直读着浏览器的 `#757575`——深色下 3.02:1，而这一页的第三档墨在
+   深色下是 7:1 出头。列类名的写法漏掉一个类不报错，只是那一格的字换了个颜色。 */
 
 textarea.itemInput {
   min-block-size: 64px;
@@ -3204,6 +3208,10 @@ textarea.itemInput {
   background: var(--item-float);
   border: var(--item-hair);
   border-radius: var(--item-radius-pill);
+  /* 控件自己说出字号。不写的话这一枚继承到的是**浏览器的 13.3333px**——那不在这一页的
+     四档里（11/12/13/15），而它只因为里面的字住在 `.itemQueryChipLabel` 里才没在屏上
+     露出来。一个没人声明的值就是下一次「它为什么和旁边不一样」的来处。 */
+  font-size: var(--item-write-size);
 }
 
 .itemQueryChipLabel {
@@ -3237,7 +3245,10 @@ textarea.itemInput {
   font-size: 13px;
   font-weight: 400;
   line-height: 1;
-  color: var(--item-ink-3);
+  /* **这一枚是控件，不是元信息。** 第三档墨在 `DESIGN.md` 里的定义是「淡、可丢弃」——
+     时间戳、占位符、计数；**「说明与提示」属第二档，因为用户要读了才能正确操作**。一个
+     取掉这个筛选条件的叉是一件动作，它读不出来就等于那枚芯片拿不下来。第二档。 */
+  color: var(--item-ink-2);
   background: none;
   border: 0;
   border-radius: var(--item-radius-ctl);
@@ -3257,7 +3268,8 @@ textarea.itemInput {
   font-size: 13px;
   font-weight: 400;
   line-height: 22px;
-  color: var(--item-ink-3);
+  /* 同 `.itemQueryChipRemove`：这是一件动作（把全部筛选条件拿掉），不是元信息。 */
+  color: var(--item-ink-2);
   background: none;
   border: 0;
   cursor: pointer;

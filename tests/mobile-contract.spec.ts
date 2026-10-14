@@ -1180,8 +1180,14 @@ describe('composer under the soft keyboard (no row overlap)', () => {
 describe('no raw color literals leak in (design-system rule)', () => {
   it('the whole sheet stays token-fed: no hex/rgb color literals', () => {
     // The board's hard rule: colors ride --dsw-*/--dsh-tb-* tokens only.
-    expect(source).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
-    expect(source).not.toMatch(/rgba?\(\s*\d/)
+    //
+    // 判据只读**结构**，不读字样（硬性规范 14）：注释里写出一个 hex，不是这张表画了
+    // 一种颜色。这条原先对着整份源码匹配，于是它逮住的是「解释浏览器默认占位符色在
+    // 深色下值多少」的那句注解——一个不看上下文的检查器会逼着人把那句解释改糊。先剥
+    // 注释再匹配，力度一点没少：声明里真写了 hex 照样红。
+    const live = source.replace(/\/\*[\s\S]*?\*\//g, '')
+    expect(live).not.toMatch(/#[0-9a-fA-F]{3,8}\b/)
+    expect(live).not.toMatch(/rgba?\(\s*\d/)
   })
 
   it('the unseen arrival dot is static and token-fed (no second breathing source)', () => {
