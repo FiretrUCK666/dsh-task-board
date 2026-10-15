@@ -80,6 +80,6 @@ describe('the gallery is a page that renders and does not lie', () => {
       renderToStaticMarkup(createElement(DesignGallery)),
       pageCss('gallery') + '\n' + pageCss('board') + '\n' + pageCss('item') + '\n' + designCss(),
     )
-    writeStandalonePage(target, aligned.html, aligned.css, 'light', 'design system gallery')
+    writeStandalonePage(target, aligned.html, aligned.css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'design system gallery')
   })
 })

@@ -550,7 +550,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     ]
   }
 
-  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = 'light'): string {
+  function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light'): string {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
         controller: boardStub(boardFixture()) as unknown as BoardController,
@@ -801,7 +801,7 @@ describe('the update dialog, driven through the header button', () => {
     await clickLabel(host, t('board.update.check'))
     await clickLabel(host, t('board.update.apply'))
     const aligned = alignClassNames(host.innerHTML, panelCss())
-    writeStandalonePage(target, aligned.html, aligned.css, 'light', 'update dialog')
+    writeStandalonePage(target, aligned.html, aligned.css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'update dialog')
     for (const must of [
       t('board.update.title'),
       t('board.update.mode.npm'),
@@ -1206,7 +1206,7 @@ describe('看板的另外几处界面（规则表单的附件条 / 只读计划�
         throw new Error(`DSH_BOARD_SHOT=${asked} names nothing this file can draw (rule-form | plan-card | plan-card-live | plan-card-single | question-card | question-mirror | attach-strip)`)
       }
       const aligned = alignClassNames(rail ? railWrap(markup) : markup, panelCss())
-      writeStandalonePage(target, aligned.html, aligned.css, 'light', 'board shot')
+      writeStandalonePage(target, aligned.html, aligned.css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'board shot')
       for (const needle of must) {
         expect(markup, `工件里少了「${needle}」——那张图不能用来下结论`).toContain(needle)
       }

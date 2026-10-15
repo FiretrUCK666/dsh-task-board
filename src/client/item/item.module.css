@@ -1332,10 +1332,21 @@
   background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
 }
 
+/* THE COUNT ON THE CURRENT ROW READS THE ROW'S OWN INK, and the hierarchy is
+ * carried by WEIGHT instead.
+ *
+ * The wash above is `currentColor` at `--dsh-tb-wash` — and `currentColor` here is
+ * ink-1, so it lands around `#dddddd`. Ink-2 on that is 4.27:1: the wash is fine,
+ * the pairing was not. The count is the quieter half of the row, but "quieter"
+ * cannot be bought with contrast below the floor — and this panel already decided
+ * where that distinction lives (see `.itemOpenCaption`: weight, not ink). So the
+ * count keeps ink-1 and drops to 400 against the name's 600, which is the same
+ * 600/400 step the rest of the page uses. Measured: ink-1 on the wash clears AA
+ * with room, and the pair still reads as name-then-count. */
 .itemRailRow[aria-current='true'] .itemRailCount {
-  color: var(--item-ink-2);
+  color: var(--item-ink-1);
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 400;
 }
 
 /* 已删除那一行在语气上退一档：它不是「有多少要做」，是「有多少等着被扔掉」，而
