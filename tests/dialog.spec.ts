@@ -108,3 +108,73 @@ describe('ConfirmDialog destructive grammar (same overlay family)', () => {
     expect(confirm).toContain('<Dialog title={title} label={title} onClose={onCancel} portal>')
   })
 })
+
+describe('the overlay family composes the shared chrome', () => {
+  /* THE CARD IS NOT THE PANEL'S. Background, border, radius, shadow, the flex
+     column, `margin: auto` centring and the height cap all belong to the overlay
+     FAMILY and are declared once, on `.modal` in `design/components.module.css`.
+     A surface panel supplies only what is its own — `.detail` its 640px cap,
+     `.review` its 880px cap and its container.
+
+     So a call site has to apply BOTH classes, and forgetting one is silent: the
+     panel still renders, still holds all its content, and comes out as a
+     transparent, un-centred block with the board showing through it. That is
+     exactly what happened when the chrome was moved out of the board's sheet —
+     the rule had covered `.modal, .detail, .review` together, the move turned it
+     into a class, and two call sites were not updated. No gate could see it:
+     `verify-design-docs.mjs` checks that `css.detail` EXISTS in the sheet its
+     alias resolves to, and it did.
+
+     These two assertions are the invariant that was missing. The first says the
+     call sites compose; the second says the panel classes do NOT declare the
+     chrome themselves — together they mean the composition is both required and
+     present, so a panel can never come out half-dressed again. */
+  const boardSheet = readFileSync(
+    fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+
+  /** The declaration block of a top-level class, comments stripped. */
+  function ruleBody(sheet: string, name: string): string {
+    const withoutComments = sheet.replace(/\/\*[\s\S]*?\*\//g, '')
+    const at = withoutComments.indexOf(`\n.${name} {`)
+    expect(at, `.${name} 在表里不存在`).toBeGreaterThanOrEqual(0)
+    return withoutComments.slice(at, withoutComments.indexOf('}', at))
+  }
+
+  /** Does this panel's markup apply the shared chrome alongside its own class?
+   *  Pure, so the assertion below can be shown to bite on a planted input rather
+   *  than only on the files as they happen to stand. */
+  function composesChrome(src: string, own: string): boolean {
+    return src.includes('className={`${components.modal} ${css.' + own + '}`}')
+  }
+
+  it('the composition check bites (planted both ways)', () => {
+    // A checker that answers the same thing on a good and a bad input is not a
+    // checker. This is the planted pair — the bad one is what shipped, verbatim.
+    expect(composesChrome('<div className={`${components.modal} ${css.detail}`}>', 'detail')).toBe(true)
+    expect(composesChrome('<div className={css.detail}>', 'detail')).toBe(false)
+    expect(composesChrome('<div className={`${css.detail}`}>', 'detail')).toBe(false)
+    // And the twin that must NOT be accepted: the right classes in the wrong place.
+    expect(composesChrome('<div className={`${css.detail}`} data-x={components.modal}>', 'detail')).toBe(false)
+  })
+
+  it('every surface panel applies the chrome alongside its own class', () => {
+    for (const [who, src, own] of [
+      ['TaskDetail', detail, 'detail'],
+      ['SessionFrame', frame, 'review'],
+    ] as const) {
+      expect(composesChrome(src, own), `${who} 的面板没挂共享 chrome，会画成一块透明的、不居中的东西`)
+        .toBe(true)
+    }
+  })
+
+  it('the panel classes own only their sizing, so the chrome has to come from somewhere', () => {
+    for (const own of ['detail', 'review']) {
+      const body = ruleBody(boardSheet, own)
+      // If any of these ever move back into the panel class, this assertion is
+      // telling the reader that the composition above is now redundant — decide
+      // which home the chrome has, do not keep both.
+      expect(body, `.${own} 自己声明了卡片的一部分，chrome 就有了两个家`)
+        .not.toMatch(/background|box-shadow|border-radius|margin:\s*auto|flex-direction/)
+    }
+  })
+})

@@ -604,7 +604,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
       <div
         ref={detailPanelRef}
         tabIndex={-1}
-        className={css.detail}
+        /* THE SHARED CHROME IS PART OF THIS PANEL, not something a call site
+           remembers to add. `.detail` owns only its 640px cap; the card —
+           background, border, radius, shadow, the flex column, `margin: auto`
+           centring and the height cap — is the overlay family's, and it lives
+           with `.modal` in the design system. Dropping it here renders a
+           transparent, un-centred block that lets the board show through. */
+        className={`${components.modal} ${css.detail}`}
         role="dialog"
         aria-modal="true"
         aria-label={t('detail.title')}

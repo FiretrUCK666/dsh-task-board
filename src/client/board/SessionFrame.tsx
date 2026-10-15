@@ -92,7 +92,15 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
       <div
         ref={panelRef}
         tabIndex={-1}
-        className={css.review}
+        /* THE SHARED CHROME IS PART OF THIS PANEL, not something a call site
+           remembers to add. `.review` owns only what is review-specific (its
+           880px cap, its container); the card — background, border, radius,
+           shadow, the flex column, `margin: auto` centring and the height cap —
+           is the overlay family's, and it lives with `.modal` in the design
+           system. Dropping it here renders a transparent, un-centred block that
+           lets the board show through, which is what happened when the chrome
+           was moved out of the board's sheet and this line was not updated. */
+        className={`${components.modal} ${css.review}`}
         role="dialog"
         aria-modal="true"
         aria-label={ariaLabel}
