@@ -230,6 +230,18 @@ function runConfigOf(task: TaskRecord | undefined): RunConfigPresetConfig {
 
 /**
  * The page body.
+ *
+ * WHY THIS IS ONE LONG FUNCTION. The panel is already decomposed — the rail, the
+ * rows, the menus, the palette and the create sheet are all components of their
+ * own, and the return below is mostly attributes and expressions: it is WIRING.
+ *
+ * Measured: the scope declares 191 names and the return reads 99 of them, so
+ * carving a block out of it means writing a props interface of that size — the
+ * same complexity behind a boundary, plus an interface to keep in sync. The
+ * change that WOULD help is a reducer plus context, so a piece reads the slice it
+ * needs rather than being handed it; that touches every line and needs its own
+ * verification cycle.
+ *
  * @param props - the slot's injected face and the plugin's own lifetime.
  * @returns the workbench, or the loading state while the replica settles.
  */
