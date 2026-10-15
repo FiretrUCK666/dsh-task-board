@@ -2,6 +2,7 @@
  * New-task modal: the shared task form (content + run configuration) on a
  * fresh draft. Creates through the controller (which persists immediately).
  */
+import { Field, Select } from '../design/Field.tsx'
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import {
@@ -119,18 +120,15 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
             and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
         <div className={css.modalScroll}>
           {templates.length > 0 && (
-            <div className={css.field}>
-              <label className={css.fieldLabel} htmlFor="dsh-tb-template-picker">
-                {t('new.fromTemplate')}
-              </label>
+            <Field wrap="div" label={t('new.fromTemplate')} htmlFor="dsh-tb-template-picker">
+              
               {/* Picker + delete share one line: the select flexes, the danger
                   action keeps its width (让位不压扁 — never a dangling lone
                   button on the next line). */}
               <div className={css.templateRow}>
                 <span className={css.selectWrap}>
-                  <select
+                  <Select
                     id="dsh-tb-template-picker"
-                    className={css.input}
                     value={pickedId}
                     onChange={event => { applyTemplate(event.target.value) }}
                   >
@@ -138,7 +136,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
                     {templates.map(template => (
                       <option key={template.id} value={template.id}>{template.name}</option>
                     ))}
-                  </select>
+                  </Select>
                 </span>
                 <Button
                   variant="dangerGhost"
@@ -159,7 +157,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
                   onConfirm={removePicked}
                 />
               )}
-            </div>
+            </Field>
           )}
           <TaskForm
             draft={draft}

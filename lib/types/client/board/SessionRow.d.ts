@@ -1,16 +1,3 @@
-/**
- * One session row in a task's detail — THE single row component for every
- * session of a task (run sessions and bound external sessions alike). One
- * skeleton, written once: an identity slot + status chip + right-aligned
- * actions on the top line, a meta line below, and the run-row-only extras
- * (comment summary / live dynamics / error) as the footer slot. Clicking the
- * row activates it — the review page for a run row, the session panel
- * otherwise — while the row's own affordances stay on the row and never
- * bubble into the click. Row-specific data (run index vs workspace label,
- * times vs last-updated) is computed by the caller and passed in; the grammar
- * (chip + spinner, ghost "查看会话", quiet "隐藏", keyboard activation)
- * lives here once.
- */
 import { type ReactNode } from 'react';
 import type { SessionChipShape, SessionRowState } from './session-chip.ts';
 /** The unified session row (one grammar for every session of a task). */

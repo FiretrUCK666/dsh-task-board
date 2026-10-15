@@ -1,3 +1,5 @@
+import { Field, Select } from '../design/Field.tsx'
+
 /**
  * The run-configuration FIELDS block as one shared component: the
  * 配置预设 picker (instant-apply + manager) and the ONE RunConfigEditor.
@@ -16,7 +18,6 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { RunConfigEditor } from './RunConfigEditor.tsx'
 import { RunPresetManager } from './RunPresetManager.tsx'
-
 export function RunConfigFields({ value, onChange, controller }: {
   value: RunConfigPresetConfig
   onChange: (next: RunConfigPresetConfig) => void
@@ -38,18 +39,15 @@ export function RunConfigFields({ value, onChange, controller }: {
   }
 
   return (
-    <div className={css.field}>
-      <span className={css.fieldLabel}>{t('new.runConfig')}</span>
+    <Field wrap="div" label={t('new.runConfig')}>
 
       {/* 配置预设 row: ONE picker for every surface. Choosing a preset
           instantly rewrites the fields below (瞬切); 管理 opens the shared
           manager — whose add/edit form is the SAME RunConfigEditor, so a
           preset's content is visible and editable, never a hidden snapshot. */}
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.runPresets')}</span>
+      <Field label={t('new.runPresets')}>
         <span className={css.selectWrap}>
-          <select
-            className={css.input}
+          <Select
             value=""
             aria-label={t('new.runPresets')}
             onChange={event => {
@@ -72,9 +70,9 @@ export function RunConfigFields({ value, onChange, controller }: {
               </option>
             ))}
             <option value="__manage">{t('runPreset.manage')}…</option>
-          </select>
+          </Select>
         </span>
-      </label>
+      </Field>
 
       <RunConfigEditor value={value} onChange={onChange} controller={controller} />
 
@@ -88,6 +86,6 @@ export function RunConfigFields({ value, onChange, controller }: {
           onClose={() => { setShowPresetManager(false) }}
         />
       )}
-    </div>
+    </Field>
   )
 }

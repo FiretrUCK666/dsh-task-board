@@ -946,7 +946,7 @@
   min-width: 0;
 }
 
-.timeFieldRow .input {
+.timeFieldInput {
   flex: 1;
   min-width: 0;
   width: 100%;
@@ -2244,17 +2244,9 @@
   flex: none;
 }
 
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: var(--dsh-tb-space-3);
-}
 
-.fieldLabel {
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dsh-tb-text-2);
-}
+
+
 
 /* Template picker row (new-task modal): the select flexes, the delete keeps
    its width — one line, never a dangling lone button (让位不压扁：可伸缩成员
@@ -2269,59 +2261,17 @@
   min-width: 0;
 }
 
-/* Muted helper text under a field (e.g. the new-task status hint). */
-.fieldHint {
-  font-size: 12px;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-3);
-}
 
-.input {
-  /* **`box-sizing` 在这里，不是靠全局重置。** 本项目的每一处自己的盒子都显式写它
-   * （清单面板在自己的根上整片声明，`.itemCellTitle` 这样的件各自写），因为宿主不
-   * 提供这个重置，而一个表单控件漏了它就会胖出自己全部内衬的两倍。预设弹层的
-   * 「添加」行是它第一个受害者：MEASURED，轨道算出来 205.45 / 246.55 / 56（加两条
-   * 沟正好等于行宽 524，**网格自己是对的**），而两个输入框各自量到 229 与 271——
-   * **各胖 23.6 与 24.5，而 `padding: 0 12px` 的两倍是 24**。两个胖出来的宽度合起来
-   * 48px，两条沟只有 16px，于是每个控件都往右压进下一个里 16px，「添加」被盖住。
-   *
-   * **补上这一行之后同一把尺子量到 205 / 247 / 56，与轨道分毫不差。** */
-  box-sizing: border-box;
-  height: 34px;
-  padding: 0 12px;
-  font-size: 13px;
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-input-bg);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  outline: none;
-  resize: vertical;
-  font-family: inherit;
-  -webkit-appearance: none;
-  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
 
-textarea.input {
-  height: auto;
-  padding: 8px 12px;
-  line-height: 1.5;
-}
 
-.input:focus {
-  border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
-}
 
-.input::placeholder {
-  color: var(--dsh-tb-text-3);
-}
 
-/* The native textarea corner grip (the two hatch lines) is hidden — the
-   resize behavior stays (drag the corner to change the height), only the
-   visual hint is removed. */
-.input::-webkit-resizer {
-  display: none;
-}
+
+
+
+
+
+
 
 .formError {
   margin: 0;
@@ -2649,15 +2599,9 @@ textarea.input {
   font-size: 13px;
 }
 
-/* Any invalid form field (cron input, session select, prompt textarea): the
-   ONE error-border grammar shared by every validation surface. */
-.inputInvalid {
-  border-color: var(--dsh-tb-danger);
-}
 
-.inputInvalid:focus {
-  border-color: var(--dsh-tb-danger);
-}
+
+
 
 /* The preset picker's slot in the cron row. (`flex: none` written on the
    SELECT was dead code — the flex item is the WRAPPER, so the intent never
@@ -7066,7 +7010,6 @@ textarea.input {
   
 
   /* 16px input text stops iOS/Android auto-zoom on focus. */
-  .input,
   .promptTextarea,
   .search,
   .selectWrap select,
@@ -7074,7 +7017,7 @@ textarea.input {
   .scheduleInput,
   .presetCron,
   .cruiseLimit,
-  .timeFieldRow .input {
+  .cruiseLimit {
     font-size: 16px;
   }
 }

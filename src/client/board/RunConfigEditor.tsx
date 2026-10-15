@@ -1,3 +1,5 @@
+import { Field, Select } from '../design/Field.tsx'
+
 /**
  * THE one run-configuration field editor (工作区 / Agent / 模型 / 思考程度 /
  * 权限): the task form's 运行配置 block and the preset manager's add/edit
@@ -14,7 +16,6 @@ import { agentPresetNameOf } from '../../core/session-agents.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-
 /** Model-select value encoding: provider + model, joined by a NUL separator. */
 const MODEL_SEP = '\u0000'
 
@@ -142,11 +143,9 @@ export function RunConfigEditor({ value, onChange, controller }: {
       {catalogUnreadable && (
         <p className={css.formError} role="status">{t('new.catalogUnreadable')}</p>
       )}
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.agentPreset')}</span>
+      <Field label={t('new.agentPreset')}>
         <span className={css.selectWrap}>
-          <select
-            className={css.input}
+          <Select
             value={value.agentPreset ?? ''}
             onChange={event => { set({ agentPreset: event.target.value === '' ? undefined : event.target.value }) }}
           >
@@ -161,15 +160,13 @@ export function RunConfigEditor({ value, onChange, controller }: {
                 {preset.isDefault === true ? ` (${t('new.agentPresetDefaultTag')})` : ''}
               </option>
             ))}
-          </select>
+          </Select>
         </span>
-      </label>
+      </Field>
 
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.workspace')}</span>
+      <Field label={t('new.workspace')}>
         <span className={css.selectWrap}>
-          <select
-            className={css.input}
+          <Select
             value={value.workspaceId ?? ''}
             onChange={event => { set({ workspaceId: event.target.value === '' ? undefined : event.target.value }) }}
           >
@@ -177,15 +174,13 @@ export function RunConfigEditor({ value, onChange, controller }: {
             {withCurrent(workspaceRows, value.workspaceId, stored).map(row => (
               <option key={row.id} value={row.id}>{row.title}</option>
             ))}
-          </select>
+          </Select>
         </span>
-      </label>
+      </Field>
 
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.model')}</span>
+      <Field label={t('new.model')}>
         <span className={css.selectWrap}>
-          <select
-            className={css.input}
+          <Select
             value={value.provider !== undefined && value.model !== undefined ? `${value.provider}${MODEL_SEP}${value.model}` : ''}
             onChange={event => { setModel(event.target.value) }}
           >
@@ -199,16 +194,14 @@ export function RunConfigEditor({ value, onChange, controller }: {
                 ))}
               </optgroup>
             ))}
-          </select>
+          </Select>
         </span>
-      </label>
+      </Field>
 
       {effortOptions.length > 0 && (
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.effort')}</span>
+        <Field label={t('new.effort')}>
           <span className={css.selectWrap}>
-            <select
-              className={css.input}
+            <Select
               value={value.reasoningEffort ?? ''}
               onChange={event => { set({ reasoningEffort: event.target.value === '' ? undefined : event.target.value }) }}
             >
@@ -216,20 +209,18 @@ export function RunConfigEditor({ value, onChange, controller }: {
               {withCurrent(effortOptions, value.reasoningEffort, stored).map(option => (
                 <option key={option.id} value={option.id}>{option.name ?? option.id}</option>
               ))}
-            </select>
+            </Select>
           </span>
-        </label>
+        </Field>
       )}
 
       {/* The permission selector renders only when the deployment's native
           permission service advertises presets; the options are its dynamic
           table, never a hard-coded list. */}
       {permissionRows !== undefined && (
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.permission')}</span>
+        <Field label={t('new.permission')}>
           <span className={css.selectWrap}>
-            <select
-              className={css.input}
+            <Select
               value={value.permission ?? ''}
               onChange={event => { set({ permission: event.target.value === '' ? undefined : event.target.value }) }}
             >
@@ -243,9 +234,9 @@ export function RunConfigEditor({ value, onChange, controller }: {
                   {permissionLabel(row.id, row.name)}
                 </option>
               ))}
-            </select>
+            </Select>
           </span>
-        </label>
+        </Field>
       )}
     </>
   )

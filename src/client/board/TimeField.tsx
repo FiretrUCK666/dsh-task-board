@@ -7,6 +7,7 @@
  * (09:00 when empty). Value is epoch ms; undefined = empty. Used by the
  * cruise window editor (start / optional end).
  */
+import { Input } from '../design/Field.tsx'
 import { useEffect, useRef, useState } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -67,8 +68,7 @@ export function TimeField({ label, hint, placeholder, value, onChange, allowEmpt
     <span className={css.timeField}>
       <span className={css.timeFieldLabel}>{label}</span>
       <span className={css.timeFieldRow}>
-        <input
-          className={`${css.input}${error ? ` ${css.inputInvalid}` : ''}`}
+        <Input className={css.timeFieldInput} invalid={error}
           value={text}
           placeholder={placeholder ?? t('board.cruiseTimePlaceholder')}
           aria-label={label}

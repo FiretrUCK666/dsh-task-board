@@ -9,6 +9,7 @@
  * defaults). Fully nested overlay: rendered inside the task detail, so it
  * MUST portal (see Dialog).
  */
+import { Field, Input } from '../design/Field.tsx'
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
@@ -123,16 +124,13 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
           <p className={css.detailHint}>{t('detail.sessionNewHint')}</p>
           {partial !== undefined && <p className={css.detailHint}>{partial}</p>}
           {error !== undefined && <p className={css.formError}>{error}</p>}
-          <label className={css.field}>
-            <span className={css.fieldLabel}>{t('detail.sessionNewTitleLabel')}</span>
-            <input
-              className={css.input}
+          <Field label={t('detail.sessionNewTitleLabel')} hint={t('detail.sessionNewTitleHint')}>
+            <Input
               value={title}
               placeholder={t('detail.sessionNewTitlePlaceholder')}
               onChange={event => { setTitle(event.target.value); stash(event.target.value, config) }}
             />
-            <span className={css.fieldHint}>{t('detail.sessionNewTitleHint')}</span>
-          </label>
+          </Field>
           <RunConfigFields
             value={config}
             onChange={next => { setConfig(next); stash(title, next) }}

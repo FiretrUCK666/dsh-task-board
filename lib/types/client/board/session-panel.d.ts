@@ -1,14 +1,3 @@
-/**
- * Shared session-panel components: the right-rail building blocks that every
- * session surface composes — the execution review page (ReviewDetail) and the
- * linked-session panel (SessionDetail). Each block is small and self-contained; the callers own
- * their rail layout and their semantic differences (a drive composer vs a
- * direct composer are deliberately NOT shared here — see the two panels).
- *
- * Everything reads the same session-generic faces (sessionInfo,
- * sessionConfig, transcript projections), so any block works for any native
- * session id.
- */
 import { type ReactNode } from 'react';
 import type { BoardController, PendingInteractionKind, TranscriptProjectionsShape } from '../../core/controller.ts';
 import type { WireQuestion } from '../../core/question-rpc.ts';

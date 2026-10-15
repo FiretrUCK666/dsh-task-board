@@ -7,6 +7,7 @@
  * the default falls back to 部署默认 (the built-in, never deletable): the
  * fallback chain lives in run-presets.ts (defaultRunPresetOf).
  */
+import { Input } from '../design/Field.tsx'
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type {
@@ -179,8 +180,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
           <div className={css.autoForm}>
             <label className={css.autoField}>
               <span className={css.autoFieldLabel}>{t('runPreset.name')}</span>
-              <input
-                className={`${css.input} ${css.autoNameInput}`}
+              <Input className={css.autoNameInput}
                 value={name}
                 data-autofocus
                 placeholder={t('runPreset.namePlaceholder')}

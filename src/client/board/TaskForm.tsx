@@ -1,3 +1,5 @@
+import { Field, Input, Select, TextArea } from '../design/Field.tsx'
+
 /**
  * Shared task form: content fields (title / description / prompt) plus the
  * run-configuration selector row — the config FIELDS themselves are the ONE
@@ -24,7 +26,6 @@ import { useComposerAttachments } from './composer-attachments.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
 import type { TaskDraft } from './task-draft.ts'
-
 /** The shared new/edit task form. */
 export function TaskForm({ draft, onChange, controller, withStatus = false, sessionId }: {
   draft: TaskDraft
@@ -93,27 +94,23 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
 
   return (
     <>
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.title')}</span>
-        <input
-          className={css.input}
+      <Field label={t('new.title')}>
+        <Input
           value={draft.title}
           data-autofocus
           placeholder={t('new.titlePlaceholder')}
           onChange={event => { onChange({ ...draft, title: event.target.value }) }}
         />
-      </label>
+      </Field>
 
-      <label className={css.field}>
-        <span className={css.fieldLabel}>{t('new.description')}</span>
-        <textarea
-          className={css.input}
+      <Field label={t('new.description')}>
+        <TextArea
           rows={3}
           value={draft.description}
           placeholder={t('new.descriptionPlaceholder')}
           onChange={event => { onChange({ ...draft, description: event.target.value }) }}
         />
-      </label>
+      </Field>
 
       {/* NO color row here. Color belongs to the two places the user manages
           it in: the board's 整理 panel (assign/clear in bulk) and the card
@@ -124,8 +121,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds
           buttons, and a label would route their clicks to the input. */}
-      <div className={css.field} {...attachments.dropProps}>
-        <span className={css.fieldLabel}>{t('new.prompt')}</span>
+      <Field wrap="div" label={t('new.prompt')} wrapperProps={attachments.dropProps} hint={t('new.attachHint', { maxImages: String(MAX_TASK_IMAGES), commentImages: String(MAX_COMMENT_IMAGES), commentFiles: String(MAX_COMMENT_FILES) })}>
         <PromptInput
           value={draft.prompt}
           onChange={next => { onChange({ ...draft, prompt: next }) }}
@@ -143,27 +139,23 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           error={attachments.error}
           hint={legacyHint}
         />
-        <span className={css.fieldHint}>{t('new.attachHint', { maxImages: String(MAX_TASK_IMAGES), commentImages: String(MAX_COMMENT_IMAGES), commentFiles: String(MAX_COMMENT_FILES) })}</span>
-      </div>
+      </Field>
 
       {/* Landing-column selector: new-task modal only. Choosing a column is
           about where the task rests until it is started; auto rules never
           run a not-yet-started task, so this does not change execution. */}
       {withStatus && (
-        <label className={css.field}>
-          <span className={css.fieldLabel}>{t('new.status')}</span>
+        <Field label={t('new.status')} hint={t('new.statusHint')}>
           <span className={css.selectWrap}>
-            <select
-              className={css.input}
+            <Select
               value={draft.status}
               onChange={event => { onChange({ ...draft, status: event.target.value as 'backlog' | 'todo' }) }}
             >
               <option value="todo">{t('board.status.todo')}</option>
               <option value="backlog">{t('board.status.backlog')}</option>
-            </select>
+            </Select>
           </span>
-          <span className={css.fieldHint}>{t('new.statusHint')}</span>
-        </label>
+        </Field>
       )}
 
       <RunConfigFields value={currentConfig} onChange={applyConfig} controller={controller} />

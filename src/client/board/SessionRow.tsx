@@ -11,6 +11,7 @@
  * (chip + spinner, ghost "查看会话", quiet "隐藏", keyboard activation)
  * lives here once.
  */
+import { Input } from '../design/Field.tsx'
 import { useState, type ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
@@ -202,8 +203,7 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
         /* The rename editor rides where the meta line sits — one row, no
            modal, no layout jump; the row click is suppressed while editing. */
         <span className={css.sessionRenameRow} onClick={event => { event.stopPropagation() }}>
-          <input
-            className={`${css.input} ${css.sessionRenameInput}`}
+          <Input className={css.sessionRenameInput}
             value={draft}
             autoFocus
             disabled={saving}

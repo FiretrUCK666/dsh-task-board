@@ -228,6 +228,66 @@ const sameColor = (a, b) => {
 
 // --- load the docs -----------------------------------------------------------
 
+// ── the probe: the reader must be shown to bite ─────────────────────────────
+//
+// Planted in memory, against the pure reader, so nothing in the working tree is
+// touched (hard rule 16). Each case says what the reader must conclude, and the
+// lawful twins are here because a checker that reports everything is as useless
+// as one that reports nothing — the pair is what pins the judgement.
+if (process.argv.includes('--probe-binding')) {
+  const FILE = '/repo/src/client/board/Thing.tsx'
+  // Resolved the SAME way the reader resolves an import, not spelled out: on
+  // Windows `resolve('/repo/...')` gains a drive prefix, so a hand-written key
+  // never matches and the probe passes while judging nothing.
+  const BOARD = resolve(dirname(FILE), '../board.module.css')
+  const DESIGN = resolve(dirname(FILE), '../design/components.module.css')
+  const classesOf = new Map([[BOARD, new Set(['input', 'columnTab'])], [DESIGN, new Set(['input', 'chip'])]])
+  const defined = new Set(['input', 'columnTab', 'chip'])
+
+  /** What the reader concludes for one planted module. */
+  const verdicts = (text) => classReferences(text, FILE)
+    .map(ref => `${ref.alias}.${ref.name}=${judgeReference(ref, classesOf, defined)}`)
+    .sort()
+    .join(' ')
+
+  const planted = [
+    // The failure this check exists for: declared, but in the OTHER sheet — the
+    // alias compiles to a hash nothing renders, and the control falls back to UA
+    // styling with nothing reporting it.
+    ['a class from the other sheet is foreign',
+      'import css from "../board.module.css"\nconst x = css.chip', 'css.chip=foreign'],
+    // The same class through the sheet that declares it is lawful. The pair is
+    // the point: a checker that flags both is as useless as one that flags none.
+    ['the same class through its own sheet is lawful',
+      'import design from "../design/components.module.css"\nconst x = design.chip', 'design.chip=ok'],
+    ['a class no sheet declares is unknown',
+      'import css from "../board.module.css"\nconst x = css.nope', 'css.nope=unknown'],
+    // An import PATH ends in `x.module.css`; read as a usage it invents a class
+    // named `module` and reports it as undeclared.
+    ['an import path is not a usage',
+      'import design from "../design/components.module.css"\nconst x = design.chip', 'design.chip=ok'],
+    // A module with no stylesheet import at all has no sheet to judge against;
+    // the `css` fallback keeps a re-exported sheet readable.
+    ['the css fallback reads a re-exported sheet',
+      'const x = css.chip', 'css.chip=ok'],
+    ['both aliases in one module are read separately',
+      'import css from "../board.module.css"\nimport design from "../design/components.module.css"\nconst a = css.columnTab\nconst b = design.chip',
+      'css.columnTab=ok design.chip=ok'],
+  ]
+  const wrong = []
+  for (const [what, text, expected] of planted) {
+    const got = verdicts(text)
+    if (got !== expected) wrong.push(`${what}: expected "${expected}", got "${got}"`)
+  }
+  if (wrong.length > 0) {
+    for (const line of wrong) console.error(`probe: ${line}`)
+    console.error('verify-design-docs probe FAILED: the class-reference reader does not bite')
+    process.exit(1)
+  }
+  console.log(`verify-design-docs self-test OK: ${planted.length} planted module(s) read as expected (a class from the other sheet and an undeclared one are reported; the same class through its own sheet, an import path, and a re-exported sheet are not)`)
+  process.exit(0)
+}
+
 const designPath = join(root, 'DESIGN.md')
 const sidecarPath = join(root, '.impeccable', 'design.json')
 if (!existsSync(designPath)) {
@@ -427,6 +487,62 @@ if (sidecar !== null) {
 // The scan is exact rather than heuristic because this codebase reaches classes only
 // through `css.<name>` — verified against the whole surface: 460 defined, 460
 // referenced, zero on both sides.
+
+/**
+ * Every `alias.name` class reference in one module, with the sheet the alias
+ * resolves to.
+ *
+ * PURE, and that is the point: the probe at the bottom of this file plants text
+ * and asserts the reader bites, so the gate can be shown to work without touching
+ * a real file (hard rule 16 — a shared workspace has two writers, and "edit it and
+ * edit it back" proves the edit took effect, not that the gate would have caught
+ * it).
+ *
+ * USAGES ONLY. Import statements are blanked out first, keeping every newline and
+ * every column: an import PATH ends in `x.module.css`, which this scan otherwise
+ * reads as an `x.module` usage and reports as a class no sheet declares. A module
+ * importing a SECOND sheet is exactly when that starts happening.
+ */
+function classReferences(text, file) {
+  const sheets = new Map()
+  for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"]([^'"]+\.module\.css)['"]/g)) {
+    sheets.set(m[1], resolve(dirname(file), m[2]))
+  }
+  // Every LOCAL NAME bound to a stylesheet, whatever it is called, plus `css` as a
+  // fallback so a module reaching its sheet through a re-export is still read.
+  const bound = new Set(sheets.keys())
+  bound.add('css')
+  const body = text.replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]*['"]\s*;?/gm, m => m.replace(/[^\n]/g, ' '))
+  const out = []
+  for (const m of body.matchAll(/\b([A-Za-z_$][\w$]*)\.([a-zA-Z][\w-]*)/g)) {
+    if (!bound.has(m[1])) continue
+    out.push({ alias: m[1], name: m[2], sheet: sheets.get(m[1]), line: body.slice(0, m.index).split('\n').length })
+  }
+  return out
+}
+
+/**
+ * The judgement, as a pure function of the reference and the sheets' class sets:
+ * does this reference resolve to a class ITS OWN sheet declares?
+ *
+ *   'ok'      — yes, or the alias has no resolvable sheet (the `css` fallback) and
+ *               the class exists somewhere.
+ *   'foreign' — the class is declared, but in a DIFFERENT sheet. This is the
+ *               silent one: the name resolves to a hash nothing renders, so the
+ *               element falls back to UA styling with no error anywhere.
+ *   'unknown' — no sheet declares it at all.
+ *
+ * Separated from the walk for the same reason `classReferences` is: the probe
+ * plants inputs and asserts the verdicts, so the judgement is tested rather than
+ * restated.
+ */
+function judgeReference(ref, classesOf, defined) {
+  const own = ref.sheet !== undefined ? classesOf.get(ref.sheet) : undefined
+  if (own === undefined) return defined.has(ref.name) ? 'ok' : 'unknown'
+  if (own.has(ref.name)) return 'ok'
+  return defined.has(ref.name) ? 'foreign' : 'unknown'
+}
+
 {
   const clientDir = join(root, 'src', 'client')
   const tsxFiles = []
@@ -442,52 +558,41 @@ if (sidecar !== null) {
 
   const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
   const defined = new Set()
+  /** Each sheet's OWN classes, so a reference can be judged against the sheet it
+   *  actually resolves to rather than against the union of all of them. */
+  const classesOf = new Map()
   let classesDefined = 0
   for (const p of CLIENT_STYLESHEETS) {
     const css = stripCssComments(readFileSync(p, 'utf8'))
-    for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) { defined.add(m[1]); classesDefined++ }
+    const own = new Set()
+    for (const m of css.matchAll(/\.([a-zA-Z][\w-]*)/g)) { own.add(m[1]); defined.add(m[1]); classesDefined++ }
+    classesOf.set(p, own)
   }
 
   const referenced = new Map()
   for (const f of tsxFiles) {
     const text = readFileSync(f, 'utf8')
-    // Every LOCAL NAME this file binds to a stylesheet module, whatever it is
-    // called. Looking for the literal `css.` and nothing else quietly assumes
-    // every module in the client half is imported under one name — but a surface
-    // with its OWN stylesheet cannot also be `css`, so it imports the shared one
-    // under a second name, and every one of its uses goes invisible here,
-    // reported as "defined but unreferenced" for a rule that is very much in
-    // use. The names are resolved from the imports rather than assumed, so a
-    // second (or fifth) stylesheet is read correctly instead of needing the
-    // checker rewritten again.
-    const bound = new Set()
-    for (const m of text.matchAll(/import\s+([A-Za-z_$][\w$]*)\s+from\s+['"][^'"]+\.module\.css['"]/g)) {
-      bound.add(m[1])
-    }
-    // `css` is kept as a name even without a matching import, so a file that
-    // reaches its stylesheet through a re-export is still read.
-    bound.add('css')
-    // USAGES ONLY. Import statements are blanked out first, keeping every
-    // newline and every column: an import PATH ends in `x.module.css`, which
-    // this scan otherwise reads as an `x.module` usage and reports as a class no
-    // stylesheet declares. A module importing a second sheet is exactly when
-    // that starts happening, so the reader has to know where imports end.
-    const body = text.replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]*['"]\s*;?/gm, m => m.replace(/[^\n]/g, ' '))
-    for (const m of body.matchAll(/\b([A-Za-z_$][\w$]*)\.([a-zA-Z][\w-]*)/g)) {
-      if (!bound.has(m[1])) continue
-      const name = m[2]
-      if (!referenced.has(name)) {
-        const line = body.slice(0, m.index).split('\n').length
-        referenced.set(name, `${relative(root, f).split(sep).join('/')}:${line}:${m[1]}`)
+    for (const ref of classReferences(text, f)) {
+      const at = `${relative(root, f).split(sep).join('/')}:${ref.line}`
+      const verdict = judgeReference(ref, classesOf, defined)
+      if (verdict !== 'ok') {
+        failures.push(verdict === 'foreign'
+          ? `${at}: ${ref.alias}.${ref.name} is declared in ANOTHER stylesheet, not in the one ${ref.alias} imports. A class name is hashed from its filename, so this resolves to undefined and the element renders with NO styling at all — no build error, no warning, and it looks like a taste problem rather than a bug. Import the sheet that declares it and apply its class there.`
+          : `${at}: ${ref.alias}.${ref.name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
+        // Counted as referenced anyway, so the audit does not report the same bug
+        // a second time from the opposite direction ("defined but nothing
+        // references it") and bury the actionable line.
+        if (!referenced.has(ref.name)) referenced.set(ref.name, `${at}:${ref.alias}`)
+        continue
       }
+      if (!referenced.has(ref.name)) referenced.set(ref.name, `${at}:${ref.alias}`)
     }
   }
 
   for (const [name, at] of referenced) {
     if (!defined.has(name)) {
-      // The alias is the one actually bound in that file, not a guess: a module
-      // may reach a second sheet under a second name, and naming the wrong one
-      // sends the reader to the wrong import.
+      // Only reachable for an alias with no resolvable import; a resolved one
+      // was already judged against its own sheet above.
       const cut = at.lastIndexOf(':')
       failures.push(`${at.slice(0, cut)}: ${at.slice(cut + 1)}.${name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
     }

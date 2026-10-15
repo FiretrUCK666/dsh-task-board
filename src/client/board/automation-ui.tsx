@@ -19,6 +19,7 @@
  *   (cron / after-completion chain) + the session-rules section, rendered by
  *   the detail's disclosure AND the board overview's task card verbatim.
  */
+import { Input, Select } from '../design/Field.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { type SchedulePreset } from '../../core/presets.ts'
@@ -69,8 +70,7 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
 }) {
   return (
     <span className={css.scheduleCronRow}>
-      <input
-        className={`${css.input} ${css.scheduleInput}${invalid === true ? ` ${css.inputInvalid}` : ''}`}
+      <Input className={css.scheduleInput} invalid={invalid === true}
         value={value}
         placeholder="0 9 * * *"
         spellCheck={false}
@@ -124,8 +124,7 @@ function MaxRunsField({ value, invalid, runCount, maxRuns, onChange, onCommit }:
 }) {
   return (
     <span className={css.scheduleMaxRow}>
-      <input
-        className={`${css.input} ${css.scheduleMaxInput}${invalid ? ` ${css.inputInvalid}` : ''}`}
+      <Input className={css.scheduleMaxInput} invalid={invalid}
         value={value}
         type="number"
         min={1}
@@ -501,8 +500,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
           <label className={css.autoField}>
             <span className={css.autoFieldLabel}>{t('auto.form.session')}</span>
             <span className={css.selectWrap}>
-              <select
-                className={`${css.input}${error === 'session' ? ` ${css.inputInvalid}` : ''}`}
+              <Select invalid={error === 'session'}
                 value={sessionId}
                 disabled={existing !== undefined}
                 aria-label={t('auto.form.session')}
@@ -514,7 +512,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
                     {label.title}
                   </option>
                 ))}
-              </select>
+              </Select>
             </span>
             {error === 'session' && <span className={css.formError}>{t('auto.form.invalidSession')}</span>}
           </label>

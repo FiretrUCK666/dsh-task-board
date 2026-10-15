@@ -9,6 +9,7 @@
  * sessionConfig, transcript projections), so any block works for any native
  * session id.
  */
+import { Select } from '../design/Field.tsx'
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { bandNarrowMax } from '../design/bands.ts'
@@ -623,8 +624,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
           <span className={css.reviewConfigRow}>
             <span className={css.reviewConfigLabel}>{t('review.model')}</span>
             <span className={css.selectWrap}>
-              <select
-                className={css.input}
+              <Select
                 value={`${sessionModels.current.provider}${MODEL_SEP}${sessionModels.current.model}`}
                 disabled={configBusy}
                 onChange={event => { applyModel(event.target.value) }}
@@ -638,7 +638,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
                     ))}
                   </optgroup>
                 ))}
-              </select>
+              </Select>
             </span>
           </span>
           {(() => {
@@ -650,8 +650,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
               <span className={css.reviewConfigRow}>
                 <span className={css.reviewConfigLabel}>{t('review.effort')}</span>
                 <span className={css.selectWrap}>
-                  <select
-                    className={css.input}
+                  <Select
                     value={sessionModels.current.reasoningEffort ?? ''}
                     disabled={configBusy}
                     onChange={event => { applyEffort(event.target.value) }}
@@ -660,7 +659,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
                     {efforts.map(effort => (
                       <option key={effort.id} value={effort.id}>{effort.name ?? effort.id}</option>
                     ))}
-                  </select>
+                  </Select>
                 </span>
               </span>
             )
@@ -687,8 +686,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
             <span className={css.reviewConfigRow}>
               <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
               <span className={css.selectWrap}>
-                <select
-                  className={css.input}
+                <Select
                   value={permissionValue}
                   disabled={configBusy}
                   onChange={event => { applyPermission(event.target.value) }}
@@ -699,7 +697,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
                   {permissionOptions.map(option => (
                     <option key={option.id} value={option.id}>{permissionLabel(option.id, option.name)}</option>
                   ))}
-                </select>
+                </Select>
               </span>
             </span>
           )}

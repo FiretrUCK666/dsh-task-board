@@ -1,3 +1,5 @@
+import { TextArea } from '../design/Field.tsx'
+
 /**
  * Prompt input with trigger autocomplete: typing '/' pops the live slash
  * candidates (host commands plus skills — the same merged catalog the native
@@ -25,7 +27,6 @@ import {
 } from './slash-token.ts'
 import { catalogSessionRowsOf, listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
-
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
 const MAX_ROWS = 8
 
@@ -385,9 +386,8 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
 
   return (
     <div className={css.promptField} ref={fieldRef}>
-      <textarea
+      <TextArea className={css.promptTextarea} invalid={invalid === true}
         ref={textareaRef}
-        className={`${css.input} ${css.promptTextarea}${invalid === true ? ` ${css.inputInvalid}` : ''}`}
         rows={rows}
         value={value}
         placeholder={placeholder}

@@ -12,6 +12,7 @@
  * call time from the live binding (the RPC guards staleness). Creation lives
  * on the `/goal` command, not here — exactly like the official strip.
  */
+import { Input } from '../design/Field.tsx'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type { GoalVerbResult, GoalVerbs } from '../../core/goal-verbs.ts'
@@ -87,8 +88,7 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
   if (editing) {
     return (
       <div className={css.goalStrip} data-goal-strip="">
-        <input
-          className={`${css.input} ${css.goalStripInput}`}
+        <Input className={css.goalStripInput}
           type="text"
           aria-label={t('review.goalObjectiveAria')}
           value={draft}

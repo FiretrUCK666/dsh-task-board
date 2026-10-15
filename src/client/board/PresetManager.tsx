@@ -5,6 +5,7 @@
  * Persistence rides the local preset store; the built-ins are code
  * constants and are never persisted.
  */
+import { Input } from '../design/Field.tsx'
 import { useState } from 'react'
 import { isValidCron } from '../../core/schedule.ts'
 import { t } from '../locales.ts'
@@ -46,15 +47,13 @@ function PresetRow({ preset, onSave, onDelete }: {
   const hint = presetCronHint(cron)
   return (
     <li className={css.presetRow}>
-      <input
-        className={`${css.input} ${css.presetName}`}
+      <Input className={css.presetName}
         value={label}
         aria-label={t('detail.schedule.presets.name')}
         onChange={event => { setLabel(event.target.value) }}
       />
       <span className={css.presetCronWrap}>
-        <input
-          className={`${css.input} ${css.presetCron}${!valid ? ` ${css.inputInvalid}` : ''}`}
+        <Input className={css.presetCron} invalid={!valid}
           value={cron}
           spellCheck={false}
           aria-label={t('detail.schedule.cron')}
@@ -165,15 +164,13 @@ export function PresetManager({ store, onClose }: {
         </ul>
 
         <div className={css.presetNew}>
-          <input
-            className={`${css.input} ${css.presetName}`}
+          <Input className={css.presetName}
             value={newLabel}
             placeholder={t('detail.schedule.presets.newName')}
             aria-label={t('detail.schedule.presets.name')}
             onChange={event => { setNewLabel(event.target.value); setNewError(undefined) }}
           />
-          <input
-            className={`${css.input} ${css.presetCron}${newCron.trim() !== '' && !isValidCron(newCron) ? ` ${css.inputInvalid}` : ''}`}
+          <Input className={css.presetCron} invalid={newCron.trim() !== '' && !isValidCron(newCron)}
             value={newCron}
             placeholder={t('detail.schedule.presets.newCron')}
             spellCheck={false}

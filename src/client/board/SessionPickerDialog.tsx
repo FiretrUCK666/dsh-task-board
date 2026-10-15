@@ -19,6 +19,7 @@
  * - **没有全局条数上限**。旧的 `.slice(0, 50)` 会静默吞掉整组工作区（本项目
  *   的 no-silent-drop 律）；面板本来就滚动，一行不少地列全。
  */
+import { Input } from '../design/Field.tsx'
 import { useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { UNGROUPED_KEY, type SessionGroup } from '../../core/session-groups.ts'
@@ -82,8 +83,7 @@ export function SessionPickerDialog({ controller, exclude, title, submitLabel, o
   return (
     <Dialog title={title} label={title} onClose={onClose} portal>
       <div className={css.modalScroll}>
-        <input
-          className={css.input}
+        <Input
           type="search"
           value={query}
           placeholder={t('detail.addSessionSearch')}
