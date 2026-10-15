@@ -198,7 +198,16 @@
   --dsh-tb-shadow-2: var(--dsw-shadow-lv2);
   --dsh-tb-shadow-3: var(--dsw-shadow-lv3);
 
-  /* text levels */
+  /* 文字两档，而第三档不是文字档。
+   *
+   * 一二两档是能读的两级：`#0f1115` 与 `#61666b`。**没有第三级**，因为宿主的
+   * `--dsw-alias-label-tertiary` 是 `#81858c`——白底 3.7:1，文字上不过 AA——而宿主在
+   * 它与二级（`#61666b`，5.6:1）之间**一个令牌都没有**。「更轻又还能读」的第三档在宿主
+   * 的色阶里根本表达不出来，所以文字只有两级，层次改由**字号与字重**承担。
+   *
+   * `--dsh-tb-text-3` 保留名字与取值，职责换成**画记号**：折角、标记、圆点、日期轴的珠子。
+   * 那些走的是非文字的 3:1 线，#81858c 过得去。**拿它去画文字就是缺陷**——别名留着而不是
+   * 删掉，是因为画记号的用法真实且不少，但为一行字伸手拿它的人拿错了令牌。 */
   --dsh-tb-text-1: var(--dsw-alias-label-primary);
   --dsh-tb-text-2: var(--dsw-alias-label-secondary);
   --dsh-tb-text-3: var(--dsw-alias-label-tertiary);

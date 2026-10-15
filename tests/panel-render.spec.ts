@@ -1667,14 +1667,35 @@ describe('the triage sentence is a sentence, not filler', () => {
     expect(label, 'a field label is not smaller than the value it names')
       .toBeLessThanOrEqual(value)
     // SIZE IS NOT THE LEVER. The caption and the field name are both 12px — a caption
-    // a size below its own field names reads as a label FOR the label — so what
-    // separates the three tiers is INK: the value is the thing, the name is a plate on
-    // it, and the caption a plate on the plates.
-    // THE THREE INKS ARE NUMBERED BY STRENGTH, so quieter is a BIGGER number.
-    // The caption is the quietest, the name is a tier above the value, and the
-    // value is the thing itself.
-    expect(ink('itemOpenCaption'), 'the caption is not the quietest of the three')
-      .toBeGreaterThan(ink('itemOptName'))
+    // a size below its own field names reads as a label FOR the label — so the three
+    // tiers have to be separated by something else.
+    //
+    // IT IS NO LONGER INK, AND INK RAN OUT OF ROOM RATHER THAN FALLING OUT OF FAVOUR.
+    // The three used to be ink-1/2/3, but ink-3 is the host's
+    // `--dsw-alias-label-tertiary` (#81858c) — 3.7:1 on white, below AA for text — and
+    // the host ships NO token between it and `--dsw-alias-label-secondary`
+    // (#61666b, 5.6:1). A quieter-AND-readable third ink is not expressible, so both
+    // labels came up to ink-2, and the ladder moved to WEIGHT — the panel's table is
+    // {12: [400, 600]}, so the only step available at this size is 400 against the
+    // field name's 600, and 400 is the right one: the caption is the quietest.
+    //
+    // The claim is unchanged and still pinned — a caption must not outrank the field
+    // names it introduces — but it is read from the axis that now carries it. The ink
+    // assertions stay, at the value they now share, so a caption that drifts back down
+    // onto a quieter tier is still caught.
+    const weight = (name: string): number => {
+      const body = declarationRules(css)
+        .filter(rule => new RegExp(`\\.${name}(?![\\w-])`).test(rule.selector))
+        .map(rule => /font-weight\s*:\s*(\d+)/.exec(rule.body)?.[1])
+        .find(v => v !== undefined)
+      return body === undefined ? NaN : Number(body)
+    }
+    expect(weight('itemOpenCaption'), 'the caption outranks the field names it introduces')
+      .toBeLessThan(weight('itemOptName'))
+    expect(weight('itemOptName'), 'a field name does not outrank the value it names')
+      .toBeGreaterThanOrEqual(weight('itemRowMeta'))
+    expect(ink('itemOpenCaption'), 'the caption drifted back onto a quieter tier')
+      .toBeGreaterThanOrEqual(ink('itemOptName'))
     expect(ink('itemOptName'), 'a field name is not louder than the value it names')
       .toBeGreaterThanOrEqual(ink('itemInput'))
   })

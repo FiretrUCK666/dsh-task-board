@@ -27,21 +27,34 @@ export const BUTTON_VARIANTS = ['primary', 'ghost', 'danger', 'dangerGhost'] as 
 /** One button variant. */
 export type ButtonVariant = (typeof BUTTON_VARIANTS)[number]
 
-/** The board's one button (see module doc). The click handler receives the
- *  native event so callers inside clickable rows can stopPropagation; plain
- *  zero-arg handlers stay assignable (fewer parameters are always valid).
- *  `size="sm"` is the quiet row/header variant (view-session, refresh, row
- *  actions): one compact size for every secondary in-list affordance, so the
- *  board never mixes a full-size button into a row. */
-export function Button({ variant = 'ghost', size, type = 'button', className, disabled, pressed, onClick, title, label, children }: {
-  variant?: ButtonVariant
+/** The variants that can carry a TOGGLE state.
+ *
+ *  `.buttonPressed` is a ghost treatment — hover tone plus a stronger border, and
+ *  deliberately no fill (see its rule in the design sheet). On a FILLED variant
+ *  it replaces the fill with a nearly transparent wash while the text stays
+ *  white: the label disappears. Measured on the gallery's own `pressed` specimen
+ *  for `primary` — 1.11:1, effectively invisible.
+ *
+ *  So `pressed` is not a free-standing flag; it is a property of the ghost
+ *  family. The list below is the definition, the type is derived from it, and the
+ *  button's props are a union that makes `variant="primary" pressed` a COMPILE
+ *  ERROR rather than a button nobody can read. A hand-written list beside a
+ *  hand-written union would be two statements of one fact — and this one already
+ *  went stale once. */
+export const BUTTON_TOGGLE_VARIANTS = ['ghost', 'dangerGhost'] as const
+
+/** A variant that can be a toggle. */
+export type ButtonToggleVariant = (typeof BUTTON_TOGGLE_VARIANTS)[number]
+
+/** The filled variants — `pressed` is not expressible on these. */
+type ButtonFillVariant = Exclude<ButtonVariant, ButtonToggleVariant>
+
+/** Everything a button takes, whatever its variant. */
+type ButtonCommon = {
   size?: 'sm'
   type?: 'button' | 'submit'
   className?: string
   disabled?: boolean
-  /** Toggle-state styling (aria-pressed): an active mode reads through a
-   *  gentle press, never through the primary/danger fill. */
-  pressed?: boolean
   onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void
   title?: string
   /** The button's ACCESSIBLE NAME, for a button whose face is a word that does
@@ -50,7 +63,29 @@ export function Button({ variant = 'ghost', size, type = 'button', className, di
    *  and a title is exactly that. */
   label?: string
   children: ReactNode
-}) {
+}
+
+/** A button's props: the toggle state exists only where it can be styled. */
+type ButtonProps = ButtonCommon & (
+  | {
+    variant?: ButtonToggleVariant
+    /** Toggle-state styling (aria-pressed): an active mode reads through a
+     *  gentle press, never through a fill. */
+    pressed?: boolean
+  }
+  | {
+    variant: ButtonFillVariant
+    pressed?: never
+  }
+)
+
+/** The board's one button (see module doc). The click handler receives the
+ *  native event so callers inside clickable rows can stopPropagation; plain
+ *  zero-arg handlers stay assignable (fewer parameters are always valid).
+ *  `size="sm"` is the quiet row/header variant (view-session, refresh, row
+ *  actions): one compact size for every secondary in-list affordance, so the
+ *  board never mixes a full-size button into a row. */
+export function Button({ variant = 'ghost', size, type = 'button', className, disabled, pressed, onClick, title, label, children }: ButtonProps) {
   const base = variant === 'primary' ? css.primaryButton
     : variant === 'danger' ? css.dangerButton
       : variant === 'dangerGhost' ? css.dangerGhostButton

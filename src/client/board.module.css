@@ -164,10 +164,14 @@
 /* 占位符那一档墨：**一次管住两个面板的一切字段**。它必须挂在这一层而不是面板自己的
    表面里——弹窗、那张纸都 portal 到 `[data-dsh-taskboard-view]`，落在 `.board` /
    `.itemRoot` 之外，按类名列举的写法因此漏掉了它们（那张纸的标题框一直读着浏览器的
-   `#757575`：深色下 3.02:1）。这里读的是共享别名 `--dsh-tb-text-3`，因为面板自己那份
-   `--item-ink-3` 就声明在更深一层的 `.itemRoot` 上，在这一层的门户上取不到。 */
+   `#757575`：深色下 3.02:1）。这里读的是共享别名 `--dsh-tb-text-2`，因为面板自己那份
+   `--item-ink-2` 就声明在更深一层的 `.itemRoot` 上，在这一层的门户上取不到。
+
+   第二档而不是第三档：第三档是宿主的 `#81858c`，3.7:1，**文字上不过 AA**。占位符本来
+   也可以留在第三档——它确实该比打进去的字轻——但打进去之后读的是 `--dsh-tb-text-1`
+   (`#0f1115`)，所以第二档既过 AA 又与真值分得开。 */
 [data-dsh-taskboard-view] :where(input, textarea)::placeholder {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* ── 说给读屏听、不画在屏上的那几个词 ─────────────────────────────────────────
@@ -454,7 +458,7 @@
   min-width: 10ch;
   text-align: right;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -526,7 +530,7 @@
   -webkit-line-clamp: 2;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   overflow-wrap: anywhere;
 }
 
@@ -565,7 +569,7 @@
   min-width: 0;
   font-size: 12px;
   line-height: 1;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .boardStatusText {
@@ -685,7 +689,7 @@
   font: inherit;
   font-size: 12px;
   line-height: 1;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   cursor: pointer;
 }
 
@@ -745,7 +749,7 @@
 }
 
 .search::placeholder {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* 自动巡航胶囊：透明行内控件（开关 + ▾），玻璃下不露白块。 */
@@ -777,7 +781,7 @@
   width: 22px;
   height: 22px;
   padding: 0;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
   border-radius: var(--dsh-tb-pill);
@@ -860,7 +864,7 @@
   flex: none;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -1089,7 +1093,7 @@
 
 .columnTabCount {
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .column {
@@ -1239,7 +1243,7 @@
   font-size: 12px;
   font-family: inherit;
   line-height: inherit;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   /* Single-layer solid pill: an rgba pill on a translucent column would
      wash out to a double fade. */
   background: var(--dsh-tb-surface-sunken);
@@ -1644,7 +1648,7 @@
   padding-top: 6px;
   margin-top: 0;
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .cardMetaRow {
@@ -1794,7 +1798,7 @@
 .cardSessionMore {
   flex: none;
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -2412,13 +2416,13 @@
 
 .slashMenuHint {
   flex: none;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .slashMenuEmpty {
   padding: 6px 8px;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The official reference menu's group heading (文件与文件夹 / Session 对话):
@@ -2430,7 +2434,7 @@
   font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.02em;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* --- detail ------------------------------------------------------------------- */
@@ -2540,7 +2544,7 @@
 .configLabel {
   font-size: 12px;
   line-height: 1.6;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -2737,13 +2741,13 @@
 .presetHint {
   grid-column: 1 / -1;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .presetEmpty {
   padding: 8px 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* Run-config preset manager rows: name | note | actions (right cluster) —
@@ -2955,7 +2959,7 @@
 .detailEmptyField {
   margin: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The row's inline rename editor: rides where the meta line sits (one row,
@@ -3288,7 +3292,7 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The picker's footer count: it owns the free space so the actions sit right
@@ -3376,7 +3380,7 @@
    was said" is the picture) — same quiet rhythm, never dressed as content. */
 .reviewCommentImage {
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-style: italic;
 }
 
@@ -3394,7 +3398,7 @@
 
 .executionDynamicsLabel {
   flex: none;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -3412,7 +3416,7 @@
 
 .executionCommentsCount {
   flex: none;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -3427,7 +3431,7 @@
 
 .executionCommentsTime {
   flex: none;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -3440,7 +3444,7 @@
   flex: none;
   padding: 2px 6px;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   background: none;
   border: none;
   border-radius: var(--dsh-tb-radius-sm);
@@ -3482,7 +3486,7 @@
   text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 400;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   padding: 1px 7px;
   /* Single-layer solid capsule (an rgba fill would double-fade on the
      translucent row under a glass skin). */
@@ -3508,7 +3512,7 @@
 
 .sessionFactTime {
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -3535,7 +3539,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The tail of a failed update command's output: what the command said is the
@@ -3571,7 +3575,7 @@
   padding: 16px 8px;
   text-align: center;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .autoList {
@@ -3754,7 +3758,7 @@
   overflow-wrap: anywhere;
   white-space: normal;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The rule row's LAST line is a named two-slot grid: the switch leads on the
@@ -3816,7 +3820,7 @@
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The preset manager's name field: a free-text name rides its field's full
@@ -3889,7 +3893,7 @@
 
 .detailMeta {
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* `.detailBlockedField` lived here: an attention-coloured replacement for the empty
@@ -4402,7 +4406,7 @@
 
 .reviewOutcomeMeta {
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -4498,7 +4502,7 @@
   display: inline-flex;
   align-items: center;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* User messages are right-aligned bubbles, native look (deepseek-50 fill,
@@ -4523,7 +4527,7 @@
 .reviewContext {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   padding: 4px 10px;
   border-left: 2px solid var(--dsw-alias-border-l2);
   opacity: 0.85;
@@ -4596,7 +4600,7 @@
   overflow: hidden;
   text-overflow: ellipsis;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -4675,7 +4679,7 @@
 .reviewUsage {
   margin: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -4746,7 +4750,7 @@
    never the error red (「会话经常加载不了」 was this row mislabeled). */
 .reviewConfigLoading {
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* Failed AND the automatic retry did not land: the honest error line plus
@@ -4998,7 +5002,7 @@
    read-only"). Succeeded outcomes render muted; failed ones keep the error
    color via .executionError. */
 .reviewCommandOutcome {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* A comment's meta line is a named grid (chip | time | cancel): the cancel
@@ -5023,7 +5027,7 @@
   grid-area: time;
   min-width: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
 }
 
@@ -5037,7 +5041,7 @@
   flex: none;
   padding: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   background: none;
   border: none;
   cursor: pointer;
@@ -5195,7 +5199,7 @@
   margin-bottom: 4px;
   font-size: 11px;
   line-height: 16px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 /* The title tier (16px), like every other container title in the board
    (.boardTitle / .modalTitle / .detailTitle / .reviewTitle). It was 15px, which
@@ -5295,7 +5299,7 @@
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 .interactionOffered {
   display: flex;
@@ -5323,7 +5327,7 @@
   padding: 8px 12px 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* One clickable choice: a full-width menu row (native grammar) — a wrapping
@@ -5445,7 +5449,7 @@
 .interactionOptionDescription {
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   overflow-wrap: anywhere;
 }
 
@@ -5512,7 +5516,7 @@
   overflow-y: auto;
 }
 .interactionFieldInput::placeholder {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 /* No options at all: the field IS the question's body (native block variant). */
 .interactionFieldBlock {
@@ -5827,7 +5831,7 @@
 .attachChipMeta {
   flex: none;
   font-size: 11px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
@@ -5838,7 +5842,7 @@
   flex: none;
   width: 16px;
   height: 16px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   background: none;
   border: none;
   border-radius: 4px;
@@ -5928,7 +5932,7 @@
   /* Same size as the title beside it — hierarchy via the tertiary color,
      never via a second font size on one line. */
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .sessionContextChevron {
@@ -5988,7 +5992,7 @@
 /* Completed todo rows read as done (quiet + strike) — the same meaning the
    harness's completed glyph carries, never a busy open item. */
 .sessionContextText[data-done] {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   text-decoration: line-through;
 }
 
@@ -6047,7 +6051,7 @@
   min-width: 0;
   margin: 0;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   overflow-wrap: break-word;
 }
 
@@ -6447,7 +6451,7 @@
 .organizeLabel {
   flex: none;
   font-size: 12px;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
 
@@ -7135,13 +7139,13 @@
 
 .toolCardOpKind {
   flex: none;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .toolCardOpRef {
   flex: none;
   font-variant-numeric: tabular-nums;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .toolCardOpTitle {
@@ -7154,7 +7158,7 @@
 
 .toolCardOpDetail {
   min-width: 0;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .toolCardMore {

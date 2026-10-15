@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import { ALL_STATUSES } from '../../core/tasks.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, Notice } from '../design/ui.tsx'
+import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, Notice, type ButtonToggleVariant } from '../design/ui.tsx'
 import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
@@ -252,7 +252,14 @@ export function DesignGallery() {
                   <Button variant={variant} size="sm">{variant}</Button>
                 </div>
                 <div className={css.gallerySpecimenRow}>
-                  <Button variant={variant} pressed>{variant}</Button>
+                  {/* THE TOGGLE STATE IS SHOWN ONLY WHERE IT EXISTS. `pressed` is
+                      a ghost treatment, and on a filled variant it would render
+                      white text on a transparent wash — 1.11:1, unreadable. The
+                      button's props make that a compile error; this reads the
+                      same definition so the specimen shows the truth instead of
+                      a state the component refuses to have. */}
+                  {(BUTTON_TOGGLE_VARIANTS as readonly string[]).includes(variant)
+                    && <Button variant={variant as ButtonToggleVariant} pressed>{variant}</Button>}
                   <Button variant={variant} disabled>{variant}</Button>
                 </div>
               </div>

@@ -91,7 +91,7 @@
 
 .chip[data-kind='warn'] { color: var(--dsh-tb-status-running); }
 
-.chip[data-kind='muted'] { color: var(--dsh-tb-text-3); }
+.chip[data-kind='muted'] { color: var(--dsh-tb-text-2); }
 
 /* One button standard: primary / ghost / danger share the native button
    rhythm (same radius and type scale as the shell's buttons) so every row
@@ -466,7 +466,7 @@
   flex: none;
   font-size: 12px;
   font-weight: 500;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .detailDisclosureSummary {
@@ -484,7 +484,7 @@
   font-size: 12px;
   font-weight: 500;
   letter-spacing: 0.02em;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
   text-transform: none;
 }
 
@@ -648,7 +648,7 @@
 /* The quiet tier: a glyph that is present but not asking for attention until
    the pointer is on it (the interaction card's collapse/dismiss pair). */
 .iconButtonQuiet {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .iconButtonQuiet:hover:not(:disabled) {
@@ -963,7 +963,7 @@
 .fieldHint {
   font-size: 12px;
   line-height: 1.5;
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 .input {
@@ -1003,7 +1003,7 @@ textarea.input {
 }
 
 .input::placeholder {
-  color: var(--dsh-tb-text-3);
+  color: var(--dsh-tb-text-2);
 }
 
 /* The native textarea corner grip (the two hatch lines) is hidden — the

@@ -1290,11 +1290,16 @@ describe('no raw color literals leak in (design-system rule)', () => {
     expect(demandFresh, 'the demand flash must be anchored on the fresh state').toContain('.boardDemand[data-fresh]')
     expect(source).toMatch(/@keyframes dshTbDemandFlash\s*\{[\s\S]*?var\(--dsh-tb-attention/)
     // The waiting-row excerpt is a second-line scan slot inside the wrapping
-    // row: full-width by line (让位), clamped, tertiary ink, unbreakable-safe.
+    // row: full-width by line (让位), clamped, QUIETER INK than the row's title,
+    // unbreakable-safe.
+    //
+    // The ink is tier 2, not tier 3. Tier 3 is the host's --dsw-alias-label-tertiary`n    // (#81858c, 3.7:1) and this is a line of real text a reader scans — below AA,
+    // so it moved up. What the claim needs is that it is a STEP BELOW the title,
+    // and tier 2 is that step.
     const excerpt = ruleOf('notifyExcerpt')
     expect(excerpt).toContain('flex: 1 1 100%')
     expect(excerpt).toContain('-webkit-line-clamp: 2')
-    expect(excerpt).toContain('var(--dsh-tb-text-3)')
+    expect(excerpt, 'the excerpt must stay a step quieter than the row title').toContain('var(--dsh-tb-text-2)')
     expect(excerpt).toContain('overflow-wrap: anywhere')
   })
 })
