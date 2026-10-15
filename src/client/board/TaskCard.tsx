@@ -64,7 +64,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onReorder, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -91,6 +91,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
    *  `resolveCardDrop` a drag uses, so the keyboard cannot reach a move the
    *  pointer would refuse. Absent = no keyboard moves (read-only surfaces). */
   onMoveStep?: (direction: -1 | 1) => void
+  /** Optional keyboard reorder INSIDE the current column. Same funnel as the
+   *  column step (the controller move with the status unchanged), because the
+   *  drop insertion point is persisted — a hand-placed card is never reordered
+   *  by the engine — so the manual order needs a door a keyboard can open. */
+  onReorder?: (direction: -1 | 1) => void
   /** Optional hover quick-action: pick a card color right from the card. */
   onColorPick?: (color: string | undefined) => void
   /** Related-session dots (max 3 rendered, overflow counted separately). */
@@ -152,6 +157,13 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
           if (event.ctrlKey || event.metaKey || event.altKey) return
           event.preventDefault()
           onMoveStep(event.key === ']' ? 1 : -1)
+          return
+        }
+        // Within a column, the same "one place" idea on Alt with the arrows.
+        if (onReorder !== undefined && (event.key === 'ArrowUp' || event.key === 'ArrowDown')
+          && event.altKey && !event.ctrlKey && !event.metaKey) {
+          event.preventDefault()
+          onReorder(event.key === 'ArrowDown' ? 1 : -1)
           return
         }
         if (event.key === 'Enter' || event.key === ' ') {

@@ -57,3 +57,41 @@ export function insertionGapOf(
   }
   return best ?? { beforeId: undefined, top: 0 }
 }
+
+/**
+ * The same question the pointer asks, asked by the keyboard: which gap does a
+ * card move to when it is told to go one place up or down INSIDE its column?
+ *
+ * It exists because the manual order is PERSISTED — the board's own rule is that
+ * a hand-placed card is never reordered by the engine — so "where I put it" is a
+ * capability, and a capability with only a pointer as its door is unreachable for
+ * a keyboard reader. `[` / `]` answer the column half; this answers the position
+ * half, through the same gap shape the drop produces, so both roads end in the
+ * one `moveTask(id, status, beforeId)` funnel.
+ *
+ * `others` is the column's ids in visual order with the moving card REMOVED —
+ * the same shape `insertionGapOf` takes, for the same reason: the card being
+ * moved is not a landmark for its own landing. `at` is where it currently sits in
+ * the full column, which is also the index it would be re-inserted at.
+ *
+ * Returns `undefined` when there is nothing to swap with — the top card asked to
+ * go up, the bottom card asked to go down. `{ beforeId: undefined }` is a real
+ * answer and a different one: it means the column TAIL.
+ */
+export function reorderTargetOf(
+  others: readonly string[],
+  at: number,
+  direction: -1 | 1,
+): { beforeId: string | undefined } | undefined {
+  if (direction === -1) {
+    if (at === 0) return undefined
+    return { beforeId: others[at - 1] }
+  }
+  // ALREADY LAST is the only "nothing to do" case going down, and it is not the
+  // same thing as "the gap is the column tail". `at` equals the count of the
+  // others exactly when no card sits below; anything less has a card below to
+  // swap with, and if that card is the last one the answer is a real
+  // `{ beforeId: undefined }` — the tail — rather than a refusal.
+  if (at >= others.length) return undefined
+  return { beforeId: others[at + 1] }
+}

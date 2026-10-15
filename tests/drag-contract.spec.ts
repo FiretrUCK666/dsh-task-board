@@ -18,7 +18,7 @@ import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { act, createElement } from 'react'
 import { createRoot } from 'react-dom/client'
-import { indicatorTopOf, insertionGapOf } from '../src/client/board/drop-position.ts'
+import { indicatorTopOf, insertionGapOf, reorderTargetOf } from '../src/client/board/drop-position.ts'
 import { edgeScrollStep } from '../src/client/board/drag-autoscroll.ts'
 import { TaskBoard } from '../src/client/board/TaskBoard.tsx'
 import { TaskDetail } from '../src/client/board/TaskDetail.tsx'
@@ -68,6 +68,53 @@ describe('insertionGapOf', () => {
   it('handles an empty column and a lone dragged card', () => {
     expect(insertionGapOf([], 100, 'ghost', GAP)).toEqual({ beforeId: undefined, top: 0 })
     expect(insertionGapOf(cards(['a']), 100, 'a', GAP)).toEqual({ beforeId: undefined, top: 0 })
+  })
+})
+
+describe('reorderTargetOf (the keyboard asks the same question the pointer asks)', () => {
+  // The manual order is PERSISTED — a hand-placed card is never reordered by the
+  // engine — so "where I put it" is a capability. `[` / `]` answer the column
+  // half of the drag; this answers the position half, and the pair is what makes
+  // the capability reachable without a pointer.
+  //
+  // Every case names the column as it looks on screen and the column with the
+  // moving card REMOVED, because that is the shape the function takes — the card
+  // being moved is not a landmark for its own landing.
+
+  it('swaps with the neighbour above or below', () => {
+    // Screen: a b c d. Moving c (index 2) → others are [a, b, d].
+    expect(reorderTargetOf(['a', 'b', 'd'], 2, -1), 'up did not land before b').toEqual({ beforeId: 'b' })
+    // Down from c lands PAST d, and d is the last card — so the gap is the column
+    // tail. That is a real answer and not a refusal: `undefined` (nothing to swap
+    // with) and `{ beforeId: undefined }` (the tail) are two different things.
+    expect(reorderTargetOf(['a', 'b', 'd'], 2, 1), 'down did not land past d').toEqual({ beforeId: undefined })
+  })
+
+  it('the top card cannot go up and the bottom card cannot go down', () => {
+    // Screen: a b c. Moving a (index 0) → others are [b, c].
+    expect(reorderTargetOf(['b', 'c'], 0, -1), 'the top card moved up anyway').toBeUndefined()
+    // Moving c (index 2) → others are [a, b]; there is nothing below it.
+    expect(reorderTargetOf(['a', 'b'], 2, 1), 'the bottom card moved down anyway').toBeUndefined()
+  })
+
+  it('the middle of a long column lands on the right gap, not the tail', () => {
+    // Screen: a b c d e. Moving c (index 2) → others are [a, b, d, e]. Down must
+    // land before e — which is PAST d — not append to the column tail.
+    expect(reorderTargetOf(['a', 'b', 'd', 'e'], 2, 1), 'down skipped a place or fell to the tail')
+      .toEqual({ beforeId: 'e' })
+    expect(reorderTargetOf(['a', 'b', 'd', 'e'], 2, -1), 'up skipped a place').toEqual({ beforeId: 'b' })
+  })
+
+  it('a two-card column swaps in both directions', () => {
+    // Screen: a b. Moving a → others [b]; down lands before b. Moving b → others
+    // [a]; up lands before a.
+    expect(reorderTargetOf(['b'], 0, 1)).toEqual({ beforeId: undefined })
+    expect(reorderTargetOf(['a'], 1, -1)).toEqual({ beforeId: 'a' })
+  })
+
+  it('a lone card has nowhere to go in either direction', () => {
+    expect(reorderTargetOf([], 0, -1)).toBeUndefined()
+    expect(reorderTargetOf([], 0, 1)).toBeUndefined()
   })
 })
 

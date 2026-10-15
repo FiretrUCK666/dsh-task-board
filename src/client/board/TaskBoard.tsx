@@ -29,7 +29,7 @@ import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
 import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from '../design/Dialog.tsx'
-import { indicatorTopOf, insertionGapOf, type InsertionGap } from './drop-position.ts'
+import { indicatorTopOf, insertionGapOf, reorderTargetOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
 import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
@@ -1171,6 +1171,37 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     applyCardDrop(task, next)
   }
 
+  /**
+   * Move a card one place up or down INSIDE its own column (keyboard).
+   *
+   * This is the half of the drag that `[` / `]` did not cover. A drag carries an
+   * insertion point as well as a column, and that position is PERSISTED — the
+   * board's own rule is that a hand-placed card is never reordered by the engine.
+   * So the manual order was a capability with a pointer as its only door, which is
+   * the same shape as the label-hiding defect one level up: a thing you can do,
+   * that a keyboard reader cannot.
+   *
+   * It goes through the SAME funnel the drop does — `moveTask(id, status,
+   * beforeId)`, with the status unchanged — so a keyboard move cannot take a path
+   * a drag could not refuse, and the landing rule (top of the target column for an
+   * engine move, the previewed gap for a hand move) stays in one place.
+   *
+   * The neighbour is read from the RENDERED order, which is the order the reader
+   * is looking at: stepping up means "swap with the card above me on screen".
+   */
+  const reorderCard = (task: TaskRecord, direction: -1 | 1): void => {
+    const column = snapshot.tasks.filter(candidate => candidate.status === task.status)
+    const at = column.findIndex(candidate => candidate.id === task.id)
+    if (at < 0) return
+    // The gap comes from the same module the pointer's drop uses, on the same
+    // shape (the column with the moving card removed), so both roads answer
+    // "which gap" identically and both end at the one move funnel.
+    const others = column.filter(candidate => candidate.id !== task.id).map(candidate => candidate.id)
+    const target = reorderTargetOf(others, at, direction)
+    if (target === undefined) return // at an end: nothing to swap with, no noise
+    controller.moveTask(task.id, task.status, target.beforeId)
+  }
+
   // The viewer hint only matters while something is actually waiting on the
   // engine (queued comments or launches) — an idle board never nags.
   const engineWaitVisible = snapshot.stats.queued > 0
@@ -2161,6 +2192,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                       pendingTitle={pendingTitle}
                       view={view}
                       onMoveStep={direction => { stepCard(task, direction) }}
+                      onReorder={direction => { reorderCard(task, direction) }}
                       selected={selectedCards.includes(task.id)}
                       onClick={event => { cardClick(task.id, event) }}
                       onQuickRun={taskExecutable(task) ? () => { void controller.rerunTask(task.id) } : undefined}
