@@ -1106,8 +1106,25 @@ export function writeStandalonePage(target: string, markup: string, css: string,
   // semantic tokens. Reconstructing a dark theme by hand would photograph this
   // plugin's own guess, which is the one thing a capture cannot be evidence for.
   const bodyAttributes = scheme === 'dark' ? ' data-ds-dark-theme' : ''
+  /* THE HOST SCOPES ITS TOKEN TABLES TO `body` — so a standalone page's ROOT has
+     no tokens and no background at all, while the real GUI's page is painted by
+     the shell. Adding `html` to those two selector lists (and the scheme
+     attribute to the root with it) is what makes `html{background:…}` below
+     resolve: the shell owns the page and the plugin never does, so a capture that
+     leaves the root bare is not a smaller GUI, it is a different one — every
+     translucent surface composites against nothing and the page has no stated
+     colour. */
+  const hostCss = hostTokenCss().replace(
+    // A selector boundary is the start of the sheet OR a `}` — the host's CSS is
+    // minified, so the token table's `body{` sits mid-line right after another
+    // rule's closing brace. Anchoring on `^`/newline alone matched a different
+    // `body{` and left the token table untouched, which reads exactly like "the
+    // transform worked" while the root stays bare.
+    /(^|[}\n])(body)(\[data-ds-dark-theme\])?\{/g,
+    (_whole, lead: string, _body: string, dark: string | undefined) => `${lead}html${dark ?? ''},body${dark ?? ''}{`,
+  )
   const document_ = [
-    '<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">',
+    `<!doctype html><html lang="zh-CN"${bodyAttributes}><head><meta charset="utf-8">`,
     // WITHOUT THIS, EVERY NARROW SCREENSHOT IS A LIE. The harness asks the
     // browser for mobile emulation below 600px, and a page with no viewport
     // meta falls back to Chrome's DEFAULT LAYOUT WIDTH of 980px, which is then
@@ -1116,7 +1133,7 @@ export function writeStandalonePage(target: string, markup: string, css: string,
     // reader draws conclusions from it.
     '<meta name="viewport" content="width=device-width, initial-scale=1">',
     `<title>${title}</title>`,
-    '<style>', hostTokenCss(), '</style>',
+    '<style>', hostCss, '</style>',
     '<style>', css, '</style>',
     '<style>',
     // The shell hands the panel a definite height through a centred column.
@@ -1143,6 +1160,13 @@ export function writeStandalonePage(target: string, markup: string, css: string,
        out of that subtree inherits from the page, and would otherwise be
        photographed in the browser's default serif. */
     'html{font-family:var(--dsw-font-family);}',
+    /* AND THE SHELL'S PAGE BACKGROUND, for the third time the same reason: the
+       real GUI paints its page, and a capture on a transparent root is not a
+       smaller version of the GUI — it is a different one. It reads as a defect
+       (every translucent surface composites against nothing, and the page has no
+       stated colour at all), and it is the artifact's own gap rather than the
+       product's: the plugin never owns the page, the shell does. */
+    'html{background:var(--dsw-alias-bg-base);}',
     `</style></head><body${bodyAttributes}>`,
     /* A FRAGMENT GETS THE PANEL ROOT. Some callers hand this function a piece of
        a panel rather than a panel — one card, one form, one section — and the

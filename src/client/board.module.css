@@ -108,6 +108,10 @@
    `@container` rule below measures against. Nothing here claims a shell DOM
    node, hides a shell subtree, or depends on a shell class name: the board is
    a panel the shell renders, not a takeover it must tolerate. */
+/* ══ 看板列与卡片 ══════════════════════════════════════════════════════════════
+ *
+ * 面板座位与加载态、板头那一行（标题/模式/通知铃/巡航）、列头与列轨、卡片及其徽标、整理条与色板、时间输入。
+ */
 .panelStage {
   height: 100%;
   min-width: 0;
@@ -2008,6 +2012,10 @@
    inline span would ignore width/height and collapse to a strip); inside a
    flex item (its normal home, .chipLead) it is blockified anyway, so this
    is a pure belt-and-suspenders for geometry. */
+/* ══ 弹层外壳与 Prompt 输入 ══════════════════════════════════════════════════════════════
+ *
+ * 对话框外壳与确认框、模板选择行、表单错误行、select 包装、执行 Prompt 的输入区与斜杠菜单。
+ */
 .spinner {
   display: inline-block;
   width: 10px;
@@ -2502,6 +2510,10 @@
 
 
 
+/* ══ 任务详情：配置与排期 ══════════════════════════════════════════════════════════════
+ *
+ * 详情里的配置网格（标签/值两列）、任务级排期表单（cron 行、上限行、预设选择）。
+ */
 .detailText {
   margin: 0;
   font-size: 14px;
@@ -2751,6 +2763,10 @@
   background: var(--dsw-alias-interactive-bg-hover);
 }
 
+/* ══ 运行预设、内容块与会话列表 ══════════════════════════════════════════════════════════════
+ *
+ * 运行预设的列表与默认徽标、内容块与 Prompt 块（含复制）、会话列表与拖放区、重命名行、隐藏托盘。
+ */
 .runPresetName {
   display: inline-flex;
   align-items: center;
@@ -3504,6 +3520,10 @@
    sidebar): the target column breathes with the same attention light as the
    rest of the board (accent border + focus ring + the shared 2.6s breath),
    so the drop affordance speaks the same motion language as unread signals. */
+/* ══ 自动化总览 ══════════════════════════════════════════════════════════════
+ *
+ * 自动化弹层：空态、任务列表、每条任务的可展开行与折叠箭头、会话规则块与新建规则表单。
+ */
 .column[data-dropaccept='link'] {
   border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
@@ -4004,6 +4024,10 @@
   outline: none;
 }
 
+/* ══ 复核页：头、主体与会话 rail ══════════════════════════════════════════════════════════════
+ *
+ * 复核页的头（标题/徽标/动作簇/关闭键/上下文读数）、主体两列、会话 rail 的折叠块与头部。
+ */
 .cruiseLimit:focus {
   border-color: var(--dsh-tb-accent);
 }
@@ -4754,6 +4778,10 @@
   white-space: nowrap;
 }
 
+/* ══ 评论与 Markdown 渲染 ══════════════════════════════════════════════════════════════
+ *
+ * 评论线程的行与文本、Markdown 的段落/代码块/标题/强调/列表/任务框/表格。
+ */
 .reviewComments {
   display: flex;
   flex-direction: column;
@@ -4999,6 +5027,10 @@
   font-variant-numeric: tabular-nums;
 }
 
+/* ══ 交互卡与评论框 ══════════════════════════════════════════════════════════════
+ *
+ * 交互卡（题头、题身、问题与计划、选项、页脚）、评论框与跳到最新、计划卡与运行中的输出。
+ */
 .reviewCommentCancel {
   grid-area: cancel;
   justify-self: end;
@@ -6006,6 +6038,10 @@
 }
 /* A blocked goal names its reason out loud (the message rides the durable
    snapshot, exactly while the phase is blocked) — never a bare 受阻 chip. */
+/* ══ 会话上下文块与目标条 ══════════════════════════════════════════════════════════════
+ *
+ * 会话上下文块（待办/子代理两栏及其状态字形）、目标条与阻塞态、复核页的收尾几行。
+ */
 .goalStripBlocked {
   flex: 1 1 100%;
   min-width: 0;

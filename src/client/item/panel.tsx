@@ -1880,6 +1880,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   }, [archiveOpen, railGroups, prefs.page, prefs.search])
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
+      {/* ══ 左栏与列表 ════════════════════════════════════════════════════ */}
       <div className={css.itemRoot}>
         <ItemCommandPalette
           open={paletteOpen}
@@ -2206,6 +2207,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               * is the same one the bar follows — a control over the list stands
               * outside the list — and it is why the panels' markup is a sibling of
               * `.itemFlow` and never a child of it. */}
+      {/* ══ 浮层与命令面板 ════════════════════════════════════════════════ */}
       <div className={css.itemFlow} data-dsh-tb-scroll="">
 
               {/* Reading in-flight, unreachable and syncing are THREE different

@@ -81,12 +81,17 @@
   container-name: dsh-tb-gallery;
 }
 
+/* THE STACK OWNS ITS OWN RHYTHM. The sections used to be separated by a
+   `margin-block-end` on each of them, which is the older mechanism: the spacing
+   belongs to the GROUP, not to every member of it, and a margin on the member is
+   a second way to say the same thing — the one that drifts the moment somebody
+   adds a section with different content. One primitive, declared once, read from
+   the ladder. */
 .galleryBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-8);
   padding: var(--dsh-tb-space-6) var(--dsh-tb-space-7);
-}
-
-.gallerySection {
-  margin-block-end: var(--dsh-tb-space-8);
 }
 
 .gallerySectionHead {

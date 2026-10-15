@@ -202,7 +202,7 @@ export function DesignGallery() {
         {/* ── 设计变量 ───────────────────────────────────────────────────── */}
         <Section title={t('gallery.tokens')}>
           {GALLERY_TOKEN_GROUPS.map(group => (
-            <div key={group.title} className={css.gallerySection}>
+            <div key={group.title}>
               <div className={css.gallerySectionHead}>
                 <h3 className={css.gallerySectionTitle}>{group.title}</h3>
                 <p className={css.gallerySectionWhy}>{group.why}</p>

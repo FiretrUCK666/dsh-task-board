@@ -1182,6 +1182,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
         }
       }}
     >
+      {/* ══ 板头：标题、模式、通知铃、巡航、动作簇 ════════════════════════ */}
       <header className={css.boardHeader}>
         {/* 板头两行，语义分区（紧凑档行结构确定，不靠内容驱动折行）：
             导航行 = 返回 + 板名 + 状态组（左，紧跟板名）+ 空位 + 自动巡航 +
@@ -1900,6 +1901,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
 
       </header>
 
+      {/* ══ 看板主体：列与卡片 ════════════════════════════════════════════ */}
       <div
         className={css.columns}
         ref={columnsRef}
@@ -2675,6 +2677,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           twins. Every member reuses its header handler verbatim
           (setShowNew / notify / activity), so desktop and phone share one
           behavior and there is nothing new to maintain. */}
+      {/* ══ 拇指条（窄屏专属） ════════════════════════════════════════════ */}
       <nav className={css.thumbBar} aria-label={t('board.thumbBar')}>
         <span className={css.thumbNew}>
           <Button variant="primary" onClick={() => { setShowNew(true) }}>
