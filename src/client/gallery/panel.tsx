@@ -31,7 +31,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import { ALL_STATUSES } from '../../core/tasks.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { BUTTON_VARIANTS, Button, Icon, ICON_NAMES, Section, Switch, Notice } from '../design/ui.tsx'
+import { BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, Notice } from '../design/ui.tsx'
+import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
 import { t } from '../locales.ts'
@@ -256,6 +257,70 @@ export function DesignGallery() {
                 </div>
               </div>
             ))}
+          </div>
+        </Section>
+
+        {/* ── 图标按钮：档位从导出处读，加一档不用改这里 ───────────────────── */}
+        <Section title={t('gallery.iconButtons')}>
+          <div className={css.galleryGrid}>
+            {ICON_BUTTON_SIZES.map(size => (
+              <div key={size} className={css.gallerySpecimen}>
+                <p className={css.galleryLabel}>{size}</p>
+                <div className={css.gallerySpecimenRow}>
+                  <IconButton size={size} label={`${size} icon`}><Icon name="close" /></IconButton>
+                  <IconButton size={size} quiet label={`${size} quiet icon`}><Icon name="bell" /></IconButton>
+                  <IconButton size={size} disabled label={`${size} disabled icon`}><Icon name="pencil" /></IconButton>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* ── 表单字段：外壳、三种控件、错误态与说明 ──────────────────────────
+            每一格都渲染真件，所以「题头的档位、控件的盒高、错误态的那条线」在这里
+            就是它们在页面上的样子，而不是一份看起来像它们的仿制品。 */}
+        <Section title={t('gallery.fields')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Input</p>
+              <Field label={t('gallery.typeSpecimen')}>
+                <Input defaultValue={t('gallery.typeSpecimen')} readOnly />
+              </Field>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Input + hint</p>
+              <Field label={t('gallery.typeSpecimen')} hint={t('gallery.note')}>
+                <Input defaultValue="" placeholder={t('gallery.typeSpecimen')} readOnly />
+              </Field>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Input invalid</p>
+              <Field label={t('gallery.typeSpecimen')}>
+                <Input invalid defaultValue="not a cron" readOnly />
+              </Field>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>TextArea</p>
+              <Field label={t('gallery.typeSpecimen')}>
+                {/* A SHORT value, and that is the specimen's whole job: a
+                    textarea given more text than it has rows renders as a
+                    clipped box, and the eye reads that as the CONTROL being
+                    broken rather than the sample being too long. */}
+                <TextArea rows={2} defaultValue={t('gallery.typeSpecimen')} readOnly />
+              </Field>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Select</p>
+              <Field label={t('gallery.typeSpecimen')}>
+                {/* NOT disabled: a disabled select is greyed, so the specimen
+                    would show a state the control does not normally have — and
+                    the chevron it exists to show would be dimmed with it. */}
+                <Select defaultValue="a">
+                  <option value="a">{t('gallery.typeSpecimen')}</option>
+                  <option value="b">{t('gallery.note')}</option>
+                </Select>
+              </Field>
+            </div>
           </div>
         </Section>
 

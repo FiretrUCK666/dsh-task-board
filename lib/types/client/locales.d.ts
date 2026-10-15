@@ -16,6 +16,8 @@ export declare const zh: {
     'gallery.tokens': string;
     'gallery.type': string;
     'gallery.buttons': string;
+    'gallery.iconButtons': string;
+    'gallery.fields': string;
     'gallery.chips': string;
     'gallery.statuses': string;
     'gallery.icons': string;
