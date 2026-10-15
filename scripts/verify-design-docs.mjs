@@ -288,6 +288,55 @@ if (process.argv.includes('--probe-binding')) {
   process.exit(0)
 }
 
+// ── the cross-sheet probe: the reader must be shown to bite ───────────────────
+//
+// Planted against the pure reader, so nothing in the working tree is touched
+// (hard rule 16). The lawful twins are here for the same reason as above: the
+// whole difficulty of this check is that a SHARED name is legitimate, and a
+// checker that reports shared names would be worse than none — it would force
+// authors to rename classes that are working correctly.
+if (process.argv.includes('--probe-crosssheet')) {
+  const BOARD = 'src/client/board.module.css'
+  const DESIGN = 'src/client/design/components.module.css'
+  const MINE = new Set(['mask', 'modal', 'rowAction'])
+  const FOREIGN = new Map([['modalBackdrop', DESIGN], ['chip', DESIGN], ['@dsh-tb-panel', DESIGN]])
+
+  const cases = [
+    // The class half. Both known instances looked exactly like this.
+    ['a class only another sheet declares is reported',
+      '.mask .modalBackdrop { padding: 8px }', 1],
+    // The lawful twin: this sheet declares it, so the hash resolves here.
+    ['a class this sheet declares is not reported',
+      '.mask .modal { padding: 24px }', 0],
+    // The container half — the one that made a whole at-rule block dead.
+    ['a container only another sheet declares is reported',
+      '@container dsh-tb-panel (max-width: 680px) { .mask { padding: 8px } }', 1],
+    ['an unnamed container query is not reported',
+      '@container (max-width: 680px) { .mask { padding: 8px } }', 0],
+    ['a container this sheet declares is not reported',
+      '@container mask (max-width: 680px) { .mask { padding: 8px } }', 0],
+    // Element selectors and property values are not class names.
+    ['an element selector is not a class name', 'p { margin: 0 }', 0],
+    ['a value that looks like a name is not a selector',
+      '.mask { container-name: dsh-tb-panel }', 0],
+    ['both halves in one sheet are counted separately',
+      '.mask .chip { padding: 0 } @container dsh-tb-panel (max-width: 1px) { .rowAction { color: red } }', 2],
+  ]
+
+  const wrong = []
+  for (const [what, text, expected] of cases) {
+    const got = crossSheetRefs(text, MINE, FOREIGN).length
+    if (got !== expected) wrong.push(`${what}: expected ${expected}, got ${got}`)
+  }
+  if (wrong.length > 0) {
+    for (const line of wrong) console.error(`probe: ${line}`)
+    console.error('verify-design-docs probe FAILED: the cross-sheet reader does not bite')
+    process.exit(1)
+  }
+  console.log(`verify-design-docs cross-sheet probe OK: ${cases.length} planted sheet(s) read as expected (a class or container from another sheet is reported; a shared name, an unnamed query, an element selector and a value that looks like a name are not)`)
+  process.exit(0)
+}
+
 const designPath = join(root, 'DESIGN.md')
 const sidecarPath = join(root, '.impeccable', 'design.json')
 if (!existsSync(designPath)) {
@@ -661,6 +710,93 @@ function judgeReference(ref, classesOf, defined) {
     }
   }
   notes.push(`token consumers: ${declaredProps.size} custom propert(ies) declared across ${CLIENT_STYLESHEETS.length} sheet(s), ${[...declaredProps.keys()].filter(n => !mentioned.has(n)).length} with no reader`)
+}
+
+/**
+ * Which names in ONE sheet's selectors can only resolve to ANOTHER sheet?
+ *
+ * PURE, and separated from the walk for the same reason `classReferences` is: the
+ * probe at the bottom of this file plants text against this function, so the
+ * judgement is shown to bite without touching the working tree (hard rule 16).
+ *
+ * `mine` is what this sheet declares; `foreign` maps a name to the sheet that
+ * declares it, already excluding anything this sheet also declares — a SHARED
+ * name resolves correctly in both sheets and must not be reported. Returns the
+ * findings, not a boolean, so the caller can name the line and the owner.
+ */
+function crossSheetRefs(css, mine, foreign) {
+  const out = []
+  for (const m of css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) {
+    const owner = foreign.get(m[1])
+    if (owner === undefined) continue
+    out.push({ kind: 'class', name: m[1], owner, at: m.index })
+  }
+  for (const m of css.matchAll(/@container\s+([\w-]+)/g)) {
+    const owner = foreign.get(`@${m[1]}`)
+    if (owner === undefined) continue
+    out.push({ kind: 'container', name: m[1], owner, at: m.index })
+  }
+  return out
+}
+
+// --- check 5c: a sheet's SELECTOR may only name its own classes ----------------
+// The class-drift check above answers "does this name exist somewhere". This one
+// answers the question that actually bit twice: **does it exist in THIS sheet.**
+//
+// Class names AND `container-name` values are hashed per sheet, so a selector in
+// sheet A naming a class that only sheet B declares matches NOTHING in the
+// production bundle. Both known instances were invisible to every gate:
+//   - four compact-band rules lost their enclosing at-rule and became top-level,
+//     so the dialog mask and the colour swatches took their touch values at every
+//     width and on every pointer — measured: mask padding 8px where the base rule
+//     says 24px, swatch 24px where the base says 16px;
+//   - `@container dsh-tb` in the design system's sheet compiled to
+//     `QeuTqq_dsh-tb` while the container is declared in the board's sheet as
+//     `Sr3ygG_dsh-tb`, so the whole query never matched — and the four escaped
+//     rules above were propping it up, which is why removing them first made the
+//     compact band vanish entirely.
+//
+// The rule is stated so a SHARED name is not a false positive: a name declared in
+// both sheets resolves correctly in both, and is fine. Only a name that this sheet
+// does NOT declare, and some other sheet does, can only ever mean the other one.
+{
+  const stripCss = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
+  const classesOf = new Map()
+  const containersOf = new Map()
+  for (const p of CLIENT_STYLESHEETS) {
+    const rel = relative(root, p).split(sep).join('/')
+    const css = stripCss(readFileSync(p, 'utf8'))
+    classesOf.set(rel, new Set([...css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1])))
+    containersOf.set(rel, new Set([...css.matchAll(/container-name\s*:\s*([\w-]+)/g)].map((m) => m[1])))
+  }
+
+  const sheets = [...classesOf.keys()]
+  let crossFindings = 0
+  for (const rel of sheets) {
+    const css = stripCss(readFileSync(join(root, rel), 'utf8'))
+    const mine = classesOf.get(rel)
+    const foreign = new Map()
+    for (const other of sheets) {
+      if (other === rel) continue
+      for (const name of classesOf.get(other)) if (!mine.has(name)) foreign.set(name, other)
+    }
+    // Container names go in the same map under an `@` prefix: one lookup, one
+    // "which sheet owns this name" answer, two kinds of name.
+    const myContainers = containersOf.get(rel)
+    for (const other of sheets) {
+      if (other === rel) continue
+      for (const name of containersOf.get(other)) if (!myContainers.has(name)) foreign.set(`@${name}`, other)
+    }
+
+    for (const ref of crossSheetRefs(css, mine, foreign)) {
+      const line = css.slice(0, ref.at).split('\n').length
+      failures.push(ref.kind === 'class'
+        ? `${rel}:${line}: the selector names .${ref.name}, which only ${ref.owner} declares — class names are hashed per sheet, so this matches nothing in the production bundle. Give it a class this sheet declares, or move the rule to ${ref.owner}.`
+        : `${rel}:${line}: the query names container \`${ref.name}\`, which is declared in ${ref.owner} — container names are hashed per sheet too, so this query never matches. Use an unnamed query, or declare the container here.`)
+      crossFindings++
+    }
+  }
+  notes.push(`cross-sheet selectors: ${sheets.length} sheet(s) checked, ${crossFindings} reference(s) that could only resolve to another sheet`)
 }
 
 // --- check 6: no snapshot values in the docs ---------------------------------
