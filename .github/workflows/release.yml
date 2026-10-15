@@ -26,9 +26,16 @@ on:
     tags:
       - 'v*'
   # A manual run of THIS workflow carries the same workflow name in its OIDC
-  # claim, so it is authorized by the same trusted-publisher entry. Handy for
-  # verifying the wiring on a version that is already published (it will fail
-  # at the registry with "cannot publish over" rather than at authentication).
+  # claim, so it is authorized by the same trusted-publisher entry.
+  #
+  # PICK A TAG AS THE REF, not a branch. The version check below compares
+  # `GITHUB_REF_NAME` against `package.json`, and a manual run takes that name
+  # from whatever ref you select — so running it on `main` fails at the version
+  # check ("tag main does not match package.json version …") long before it
+  # reaches the registry, and reads as broken wiring rather than as a wrong ref.
+  # On a tag it does what this door is for: verifying the wiring against a
+  # version that is already published, failing at the registry with
+  # "cannot publish over" rather than at authentication.
   workflow_dispatch:
 
 # id-token: write is what lets the job request the OIDC token. Without it the
