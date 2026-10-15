@@ -89,7 +89,7 @@ Stop the running `dsh web` and start it again. Refreshing the page is not enough
 
 The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back.
 
-The plugin has **exactly one switch: on or off.** It appears in two places and they do the same thing — the toggle on the plugin's row under **sidebar → Plugins → Installed**, and the one at the top right of the plugin's own page (click the plugin name). **Off means the plugin is not loaded** (sidebar entry, board and background routes all stop); **on restores it.**
+The plugin's switches live in two places, and they do different jobs. The toggle on the plugin's row under **sidebar → Plugins → Installed** is the **master switch**; the one at the top right of the plugin's own page (click the plugin name) does the same thing. **Off means the plugin is not loaded** (sidebar entry, board, list and background routes all stop); **on restores it.** Under "Included components" on that page there are **four more rows, one switch each**, governing their own half (board / list / AI interface) — see the FAQ.
 
 ### Nothing to configure by hand
 

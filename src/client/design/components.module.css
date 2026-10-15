@@ -742,13 +742,31 @@
   cursor: pointer;
 }
 
-/* The floating-panel geometry is board-relative at EVERY width now (see
+/* AN UNNAMED CONTAINER QUERY, and both halves of that matter.
+ *
+ * UNNAMED, because a container NAME is hashed from the sheet it is written in,
+ * exactly like a class name. This block used to say `@container dsh-tb …` — the
+ * name the board sheet declares on the panel root — so the query compiled to this
+ * sheet's hash while the container carried the board's, and the whole block was
+ * DEAD. It looked alive, because the same rules also had copies sitting outside
+ * any at-rule that applied at every width. An unnamed query asks the NEAREST
+ * container, whatever it is called, so it works from here — and a shared
+ * component stops depending on which panel rendered it.
+ *
+ * A CONTAINER CANNOT QUERY ITSELF, which is why the panel root declares the
+ * container and this sheet only asks. Giving `.modalBackdrop` its own
+ * `container-type` looks like the tidy fix and is a trap: the backdrop is the
+ * element that needs the compact padding, and an element cannot answer a query
+ * about its own box. Measured both ways — with the backdrop as its own container
+ * the padding stayed 24px at 412 wide; asking the panel's container gives 8px. */
+@container (max-width: 680px) {
+  /* The floating-panel geometry is board-relative at EVERY width now (see
      .modalBackdrop/.modal) — the compact block only tightens the gutters. */
   .modalBackdrop {
     padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
   }
 
-/* Segmented tracks give way too: an English two/three-label row cannot fit a
+  /* Segmented tracks give way too: an English two/three-label row cannot fit a
      244px panel, so it wraps (a clipped nowrap track painting past the modal
      edge is the forbidden 「文字画在盒外」). */
   .segmentedRow {
@@ -756,7 +774,7 @@
     row-gap: var(--dsh-tb-space-2);
   }
 
-/* A section title row keeps its action cluster ON THE SAME LINE at every
+  /* A section title row keeps its action cluster ON THE SAME LINE at every
      width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
      previous compact template stacked title over action — which "solved" a
      squeeze that cannot happen: the title track is minmax(0,1fr) and
@@ -765,38 +783,6 @@
   .sectionAction {
     justify-self: end;
   }
-
-/* The 16px color dots are too small to tap; grow the swatch itself. */
-  .tagSwatch,
-  .tagCustomWrap {
-    width: 24px;
-    height: 24px;
-  }
-
-@container dsh-tb (max-width: 680px) {
-  /* The floating-panel geometry is board-relative at EVERY width now (see
-       .modalBackdrop/.modal) — the compact block only tightens the gutters. */
-    .modalBackdrop {
-      padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
-    }
-
-  /* Segmented tracks give way too: an English two/three-label row cannot fit a
-       244px panel, so it wraps (a clipped nowrap track painting past the modal
-       edge is the forbidden 「文字画在盒外」). */
-    .segmentedRow {
-      flex-wrap: wrap;
-      row-gap: var(--dsh-tb-space-2);
-    }
-
-  /* A section title row keeps its action cluster ON THE SAME LINE at every
-       width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
-       previous compact template stacked title over action — which "solved" a
-       squeeze that cannot happen: the title track is minmax(0,1fr) and
-       ellipsizes, so the row gives way by shortening the LABEL, never by
-       dropping the button to its own line and breaking the pair. */
-    .sectionAction {
-      justify-self: end;
-    }
 }
 
 @media (hover: none) and (pointer: coarse) {
@@ -805,7 +791,7 @@
     .tagCustomWrap {
       width: 24px;
       height: 24px;
-    }
+  }
 }
 
 
@@ -833,35 +819,7 @@
   justify-content: center;
 }
 
-/* The standard-bar path, behind the SAME gate as the surface's half of this
-   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
-   in Chromium, and the bar loses its styling in the one engine that needs the
-   gate. One gate per sheet, one grammar across both. */
-@supports not selector(::-webkit-scrollbar) {
-  .modalScroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--dsw-alias-border-l3) transparent;
-  }
-}
 
-.modalScroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.modalScroll::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-border-l3);
-  border-radius: 4px;
-  background-clip: padding-box;
-}
-
-.modalScroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.modalScroll::-webkit-scrollbar-button {
-  display: none;
-}
 
 
 /* ── THE SHARED LISTS, HALF HERE (2) ──────────────────────────────────────────

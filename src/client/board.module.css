@@ -2222,7 +2222,19 @@
 
 /* The dialog's ONE scroll region: the same insets as the edit panel's
    .detailBody (14px 18px), so the native bar sits at the panel edge inside
-   those insets — never a half-panel floating bar, never full-height. */
+   those insets — never a half-panel floating bar, never full-height.
+ *
+ * BOX AND BAR GRAMMAR IN ONE SHEET, because they are one class. The bar half
+ * used to live in `design/components.module.css` — where `.modal` (the panel this
+ * scrolls inside) is declared — and that made it DEAD: every one of this class's
+ * call sites reads the alias bound to THIS sheet, so the element carries this
+ * sheet's hash and the other sheet's rules matched nothing. The bar was the
+ * platform default while the design system's own comment described a thin bar
+ * flush to the panel edge.
+ *
+ * It belongs here by the admission rule, not by taste: a class reaches the design
+ * system when it has a SECOND consumer directory, and `.modalScroll` has one
+ * (`board/`). `.modal` stays in the design system because `Dialog` renders it too. */
 .modalScroll {
   display: flex;
   flex-direction: column;
@@ -2231,6 +2243,36 @@
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px;
+}
+
+/* The standard-bar path, behind the SAME gate as the surface's half of this
+   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
+   in Chromium, and the bar loses its styling in the one engine that needs the
+   gate. */
+@supports not selector(::-webkit-scrollbar) {
+  .modalScroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsw-alias-border-l3) transparent;
+  }
+}
+
+.modalScroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.modalScroll::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-border-l3);
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+.modalScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalScroll::-webkit-scrollbar-button {
+  display: none;
 }
 
 
