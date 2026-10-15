@@ -30,7 +30,7 @@ import { hasOpenRun, type ExecutionRecord, type TaskRecord } from '../../core/ta
 import { sessionDisplay } from '../../core/session-display.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Chip } from './Chip.tsx'
+import { Chip } from '../design/Chip.tsx'
 import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
@@ -38,7 +38,7 @@ import { SessionComposer, SessionRail, SessionTranscript } from './session-panel
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
-import { Button } from './ui.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {

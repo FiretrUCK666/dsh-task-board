@@ -15,8 +15,8 @@ import {
 } from '../../core/presets.ts'
 import { cronHumanLabel } from './cron-label.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-import { Dialog } from './Dialog.tsx'
-import { Button } from './ui.tsx'
+import { Dialog } from '../design/Dialog.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** The merged list shown in the preset dropdown (defaults + custom). */
 export function mergedPresets(store: PresetStore): SchedulePreset[] {

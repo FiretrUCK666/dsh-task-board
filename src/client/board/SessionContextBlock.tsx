@@ -33,8 +33,8 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
 import { contextWorthOf, FINISHED_SUBAGENT_STATUS } from './interaction.ts'
-import { Chip } from './Chip.tsx'
-import { Icon } from './ui.tsx'
+import { Chip } from '../design/Chip.tsx'
+import { Icon } from '../design/ui.tsx'
 import { GoalStrip } from './goal-strip.tsx'
 
 /** One todo glyph: pending = dashed circle, in_progress = the shared spinner,

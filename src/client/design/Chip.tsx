@@ -22,7 +22,7 @@
  *  longer reason must not live in `title` alone).
  */
 import type { ReactNode } from 'react'
-import css from '../design/components.module.css'
+import css from './components.module.css'
 
 /** Semantic chip color; neutral is the default.
  *

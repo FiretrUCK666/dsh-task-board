@@ -9,7 +9,7 @@
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
-import type { ChipKind } from './Chip.tsx'
+import type { ChipKind } from '../design/Chip.tsx'
 
 /** The live session state every row derives (execution kind). */
 export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'

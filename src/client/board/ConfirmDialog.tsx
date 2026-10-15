@@ -4,8 +4,8 @@
  */
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Dialog } from './Dialog.tsx'
-import { Button } from './ui.tsx'
+import { Dialog } from '../design/Dialog.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** Confirm overlay props. */
 interface ConfirmDialogProps {

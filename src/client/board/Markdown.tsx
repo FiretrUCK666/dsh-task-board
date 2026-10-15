@@ -9,7 +9,7 @@
 import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import css from '../board.module.css'
-import { Icon } from './ui.tsx'
+import { Icon } from '../design/ui.tsx'
 import { parseMarkdown, type BlockNode, type InlineNode, type ListItem } from './markdown-parser.ts'
 
 function renderInline(node: InlineNode, key: number): ReactNode {

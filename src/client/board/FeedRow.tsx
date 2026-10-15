@@ -25,7 +25,7 @@
  * — is identical by construction.
  */
 import type { ReactNode } from 'react'
-import { Chip, type ChipKind } from './Chip.tsx'
+import { Chip, type ChipKind } from '../design/Chip.tsx'
 import css from '../board.module.css'
 
 /** Props of one feed row. */

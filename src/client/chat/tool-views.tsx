@@ -21,7 +21,7 @@
  */
 import { useState } from 'react'
 import { t, type TaskBoardKey } from '../locales.ts'
-import { Button, Icon } from '../board/ui.tsx'
+import { Button, Icon } from '../design/ui.tsx'
 import css from '../board.module.css'
 
 /** The tool names this plugin contributes, spelled as they travel on the wire. */

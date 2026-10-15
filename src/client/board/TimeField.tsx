@@ -12,7 +12,7 @@ import { useEffect, useRef, useState } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { formatTimeInput, parseTimeText } from './time-parse.ts'
-import { Icon } from './ui.tsx'
+import { Icon } from '../design/ui.tsx'
 
 export function TimeField({ label, hint, placeholder, value, onChange, allowEmpty = true }: {
   label: string

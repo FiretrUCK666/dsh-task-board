@@ -216,13 +216,13 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     // `focusKey` for dialogs) — so the gate is on the mechanism, not on each call
     // site, because three call sites checked three times is the arrangement that
     // let the third one ship in the first place.
-    const focus = readFileSync(fileURLToPath(new URL('../src/client/board/dialog-focus.ts', import.meta.url)), 'utf8')
+    const focus = readFileSync(fileURLToPath(new URL('../src/client/design/dialog-focus.ts', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     expect(focus, 'the shared re-aim is gone, so a replacing form drops focus to the body again')
       .toContain('useFocusOnChange')
     // `Dialog` must actually pass it through, or the mechanism exists and nothing
     // can reach it — which is exactly how the first two call sites failed.
-    const dialog = readFileSync(fileURLToPath(new URL('../src/client/board/Dialog.tsx', import.meta.url)), 'utf8')
+    const dialog = readFileSync(fileURLToPath(new URL('../src/client/design/Dialog.tsx', import.meta.url)), 'utf8')
       .replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
     expect(dialog, 'Dialog declares a focusKey but does not hand it to the hook')
       .toMatch(/useDialogFocus\(panelRef, focusKey\)/)
@@ -656,7 +656,7 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(panelSource).toMatch(/useState\(!narrowPanel\)/)
     const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url))
     expect(readFileSync(framePath, 'utf8')).toContain('data-dsh-taskboard-panel=""')
-    const hookPath = fileURLToPath(new URL('../src/client/board/use-narrow.ts', import.meta.url))
+    const hookPath = fileURLToPath(new URL('../src/client/design/use-narrow.ts', import.meta.url))
     const hook = readFileSync(hookPath, 'utf8')
     expect(hook).toMatch(/new ResizeObserver\(measure\)/)
     // Every observer is disposed (lifecycle rule 6).

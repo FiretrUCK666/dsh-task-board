@@ -904,7 +904,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(gap ?? 0, 'the section gap must exceed a section\'s internal gap').toBeGreaterThan(configGap)
     // And the fold body must be the ONE owner: the Disclosure component is the
     // only place that renders it, so no caller can forget it.
-    const ui = readFileSync(fileURLToPath(new URL('../src/client/board/ui.tsx', import.meta.url)), 'utf8')
+    const ui = readFileSync(fileURLToPath(new URL('../src/client/design/ui.tsx', import.meta.url)), 'utf8')
     expect(ui).toContain('className={css.detailSectionBody}')
     // The body also relays its fold's definite height to the scroll region
     // inside (grow + shrinkable to zero): a height-bounded fold must be able

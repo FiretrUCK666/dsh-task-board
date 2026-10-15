@@ -25,7 +25,7 @@
  * — is identical by construction.
  */
 import type { ReactNode } from 'react';
-import { type ChipKind } from './Chip.tsx';
+import { type ChipKind } from '../design/Chip.tsx';
 /** Props of one feed row. */
 export interface FeedRowProps {
     /** The task title (pre-resolved; untitled rows pass the placeholder). */

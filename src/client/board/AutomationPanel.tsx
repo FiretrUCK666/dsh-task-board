@@ -18,10 +18,10 @@ import { automationTasksOf } from '../../core/automation.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Chip } from './Chip.tsx'
-import { Dialog } from './Dialog.tsx'
+import { Chip } from '../design/Chip.tsx'
+import { Dialog } from '../design/Dialog.tsx'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
-import { Button, Icon } from './ui.tsx'
+import { Button, Icon } from '../design/ui.tsx'
 import { STATUS_KEY } from './status.ts'
 
 /** One automated task in the overview: identity + ONE expand row (live

@@ -15,9 +15,9 @@ import { Input } from '../design/Field.tsx'
 import { useState, type ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Chip } from './Chip.tsx'
+import { Chip } from '../design/Chip.tsx'
 import type { SessionChipShape, SessionRowState } from './session-chip.ts'
-import { Button, Icon } from './ui.tsx'
+import { Button, Icon } from '../design/ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
 export function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle, unviewed }: {

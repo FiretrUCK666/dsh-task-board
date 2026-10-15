@@ -25,8 +25,8 @@ import type { BoardController } from '../../core/controller.ts'
 import { UNGROUPED_KEY, type SessionGroup } from '../../core/session-groups.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Dialog } from './Dialog.tsx'
-import { Button, Disclosure, Icon } from './ui.tsx'
+import { Dialog } from '../design/Dialog.tsx'
+import { Button, Disclosure, Icon } from '../design/ui.tsx'
 
 /** One picker's props. The two callers differ ONLY in `exclude` / `onSubmit`. */
 export function SessionPickerDialog({ controller, exclude, title, submitLabel, onSubmit, onClose }: {

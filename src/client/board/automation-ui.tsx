@@ -42,11 +42,11 @@ import { formatDateTime } from './format-time.ts'
 import { mergedPresets, presetIsDefault, PresetManager } from './PresetManager.tsx'
 import { STATUS_KEY, PAUSED_REASON_KEY } from './status.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from './ui.tsx'
-import { Chip } from './Chip.tsx'
+import { Button, Icon, Section, Segmented, SendModeToggle, Switch } from '../design/ui.tsx'
+import { Chip } from '../design/Chip.tsx'
 import { sessionUnavailableReasonOf } from './session-chip.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-import { useFocusOnChange } from './dialog-focus.ts'
+import { useFocusOnChange } from '../design/dialog-focus.ts'
 
 /**
  * The one cron grammar: text input + preset dropdown (+ optional preset

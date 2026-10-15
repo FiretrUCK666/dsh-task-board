@@ -29,11 +29,11 @@
 import { useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { t } from '../locales.ts'
-import css from '../design/components.module.css'
+import css from './components.module.css'
 import { Icon, IconButton } from './ui.tsx'
 import { useEscapeStack } from './escape-stack.ts'
 import { useDialogFocus } from './dialog-focus.ts'
-import { useModalInert } from '../modal-inert.ts'
+import { useModalInert } from './modal-inert.ts'
 
 /** The board box: the anchor every board dialog's backdrop covers. Exported
  *  for overlay shells that portal directly (SessionFrame). */

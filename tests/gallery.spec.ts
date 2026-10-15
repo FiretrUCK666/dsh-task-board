@@ -21,7 +21,7 @@ import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
 import { createElement } from 'react'
 import { DesignGallery, GALLERY_TOKEN_GROUPS, GALLERY_TYPE_LADDER } from '../src/client/gallery/panel.tsx'
-import { CHIP_KINDS } from '../src/client/board/Chip.tsx'
+import { CHIP_KINDS } from '../src/client/design/Chip.tsx'
 import { alignClassNames, designCss, pageCss, writeStandalonePage } from './panel-harness.ts'
 
 /** Every `--dsh-tb-*` name any client stylesheet declares. */

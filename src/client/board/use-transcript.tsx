@@ -27,7 +27,7 @@ import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape 
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { foldTranscript, type TranscriptLine } from './review-transcript.ts'
-import { Icon } from './ui.tsx'
+import { Icon } from '../design/ui.tsx'
 
 /** How close to the bottom a scroll position counts as "at the latest". */
 export const NEAR_BOTTOM_PX = 24

@@ -4,7 +4,7 @@ import type { WireQuestion } from '../../core/question-rpc.ts';
 import { type AgentPresetLabelSource } from '../../core/session-agents.ts';
 import type { TaskRecord } from '../../core/tasks.ts';
 import { type TranscriptLine } from './review-transcript.ts';
-import { type ChipKind } from './Chip.tsx';
+import { type ChipKind } from '../design/Chip.tsx';
 import type { CommentView } from './comment-thread.ts';
 import { type DraftAttachment } from './composer-attachments.ts';
 /**

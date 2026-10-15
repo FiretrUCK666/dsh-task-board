@@ -18,8 +18,8 @@ import type { BoardController } from '../../core/controller.ts'
 import type { GoalVerbResult, GoalVerbs } from '../../core/goal-verbs.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Chip } from './Chip.tsx'
-import { Icon, IconButton } from './ui.tsx'
+import { Chip } from '../design/Chip.tsx'
+import { Icon, IconButton } from '../design/ui.tsx'
 import type { SessionGoalView } from './use-interaction.ts'
 
 /** Strip label per visible phase; complete goals render nothing. */

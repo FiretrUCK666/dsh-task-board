@@ -20,7 +20,7 @@ import { SessionComposer, SessionRail, SessionTranscript } from './session-panel
 import { sessionStateChip, sessionUnavailableReasonOf } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
-import { Button } from './ui.tsx'
+import { Button } from '../design/ui.tsx'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 
 /** The linked-session panel (see module doc). */

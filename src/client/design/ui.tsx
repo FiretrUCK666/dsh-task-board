@@ -8,7 +8,7 @@
  */
 import { useId, type ReactNode } from 'react'
 import { PALETTE } from '../../core/colors.ts'
-import css from '../design/components.module.css'
+import css from './components.module.css'
 import { t } from '../locales.ts'
 import { Chip } from './Chip.tsx'
 

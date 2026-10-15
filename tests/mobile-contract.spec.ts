@@ -252,7 +252,7 @@ describe('responsive container mechanism', () => {
     expect(board).not.toMatch(/useNarrow\(/)
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     expect(readFileSync(panelPath, 'utf8')).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', bandNarrowMax\('sessionPanel', 600\)\)/)
-    const hookPath = fileURLToPath(new URL('../src/client/board/use-narrow.ts', import.meta.url))
+    const hookPath = fileURLToPath(new URL('../src/client/design/use-narrow.ts', import.meta.url))
     expect(readFileSync(hookPath, 'utf8')).toMatch(/@deprecated/)
   })
 })

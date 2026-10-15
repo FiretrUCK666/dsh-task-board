@@ -17,7 +17,7 @@
 import { useRef } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Icon } from './ui.tsx'
+import { Icon } from '../design/ui.tsx'
 import type { DraftAttachment } from './composer-attachments.ts'
 import type { IntakeBusyKind } from './composer-attachments.ts'
 

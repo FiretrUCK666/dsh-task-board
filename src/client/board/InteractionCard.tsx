@@ -50,9 +50,9 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { draftStore, questionDraftKey, restoreQuestionDrafts, saveQuestionDrafts } from './drafts.ts'
 import { Markdown } from './Markdown.tsx'
-import { Button } from './ui.tsx'
-import { Chip } from './Chip.tsx'
-import { Icon, IconButton } from './ui.tsx'
+import { Button } from '../design/ui.tsx'
+import { Chip } from '../design/Chip.tsx'
+import { Icon, IconButton } from '../design/ui.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 
 /** The 推荐 suffix the native surface splits off an option label. */

@@ -11,11 +11,11 @@ import {
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
-import { Dialog } from './Dialog.tsx'
+import { Dialog } from '../design/Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
 import { NEW_TASK_DRAFT_KEY, draftStore } from './drafts.ts'
 import { draftFromTemplate, draftToNewInput, normalizeDraft, stampTemplate, type TaskDraft } from './task-draft.ts'
-import { Button } from './ui.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** The fresh draft shape ('' = default / not set; landing column 待规划). */
 function freshDraft(): TaskDraft {

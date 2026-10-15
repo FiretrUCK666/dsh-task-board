@@ -13,10 +13,10 @@ import { PRIORITY_LABEL } from '../item/labels.ts'
 import css from '../board.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
 import { cardLightOf, cardUpdatedAtOf, titleOrUntitled, type CardPrimary, type CardSessionDot, type CardViewModel } from './card-view.ts'
-import { Chip } from './Chip.tsx'
+import { Chip } from '../design/Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
-import { ColorSwatches, Icon } from './ui.tsx'
+import { ColorSwatches, Icon } from '../design/ui.tsx'
 import { formatDateTime, formatTime } from './format-time.ts'
 
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the

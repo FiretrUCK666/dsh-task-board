@@ -16,10 +16,10 @@ import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Dialog } from './Dialog.tsx'
+import { Dialog } from '../design/Dialog.tsx'
 import { newSessionDraftKey, draftStore } from './drafts.ts'
 import { RunConfigFields } from './RunConfigFields.tsx'
-import { Button } from './ui.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** The task's own run config as the dialog's starting value (absent = default). */
 function taskConfigOf(task: TaskRecord): RunConfigPresetConfig {

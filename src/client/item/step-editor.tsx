@@ -32,7 +32,7 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import { t } from '../locales.ts'
-import { Button } from '../board/ui.tsx'
+import { Button } from '../design/ui.tsx'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'

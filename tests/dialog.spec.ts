@@ -9,9 +9,9 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
-const hookPath = fileURLToPath(new URL('../src/client/board/dialog-focus.ts', import.meta.url))
+const hookPath = fileURLToPath(new URL('../src/client/design/dialog-focus.ts', import.meta.url))
 const hook = readFileSync(hookPath, 'utf8')
-const dialogPath = fileURLToPath(new URL('../src/client/board/Dialog.tsx', import.meta.url))
+const dialogPath = fileURLToPath(new URL('../src/client/design/Dialog.tsx', import.meta.url))
 const dialog = readFileSync(dialogPath, 'utf8')
 const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url))
 const detail = readFileSync(detailPath, 'utf8')

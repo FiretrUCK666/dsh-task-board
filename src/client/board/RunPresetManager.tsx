@@ -16,8 +16,8 @@ import type {
 import { DEPLOY_DEFAULT_PRESET_ID, findRunPreset } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Button } from './ui.tsx'
-import { Dialog } from './Dialog.tsx'
+import { Button } from '../design/ui.tsx'
+import { Dialog } from '../design/Dialog.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { RunConfigEditor } from './RunConfigEditor.tsx'
 
