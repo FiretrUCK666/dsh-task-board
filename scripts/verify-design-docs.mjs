@@ -467,19 +467,29 @@ if (sidecar !== null) {
     // `css` is kept as a name even without a matching import, so a file that
     // reaches its stylesheet through a re-export is still read.
     bound.add('css')
-    for (const m of text.matchAll(/\b([A-Za-z_$][\w$]*)\.([a-zA-Z][\w-]*)/g)) {
+    // USAGES ONLY. Import statements are blanked out first, keeping every
+    // newline and every column: an import PATH ends in `x.module.css`, which
+    // this scan otherwise reads as an `x.module` usage and reports as a class no
+    // stylesheet declares. A module importing a second sheet is exactly when
+    // that starts happening, so the reader has to know where imports end.
+    const body = text.replace(/^\s*import\s[\s\S]*?from\s*['"][^'"]*['"]\s*;?/gm, m => m.replace(/[^\n]/g, ' '))
+    for (const m of body.matchAll(/\b([A-Za-z_$][\w$]*)\.([a-zA-Z][\w-]*)/g)) {
       if (!bound.has(m[1])) continue
       const name = m[2]
       if (!referenced.has(name)) {
-        const line = text.slice(0, m.index).split('\n').length
-        referenced.set(name, `${relative(root, f).split(sep).join('/')}:${line}`)
+        const line = body.slice(0, m.index).split('\n').length
+        referenced.set(name, `${relative(root, f).split(sep).join('/')}:${line}:${m[1]}`)
       }
     }
   }
 
   for (const [name, at] of referenced) {
     if (!defined.has(name)) {
-      failures.push(`${at}: css.${name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
+      // The alias is the one actually bound in that file, not a guess: a module
+      // may reach a second sheet under a second name, and naming the wrong one
+      // sends the reader to the wrong import.
+      const cut = at.lastIndexOf(':')
+      failures.push(`${at.slice(0, cut)}: ${at.slice(cut + 1)}.${name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
     }
   }
   for (const name of defined) {
@@ -488,6 +498,64 @@ if (sidecar !== null) {
     }
   }
   notes.push(`class drift: ${defined.size} classes defined, ${referenced.size} referenced, ${failures.length} drift finding(s) so far`)
+}
+
+// --- check 5b: a declared custom property must have a consumer ----------------
+// The mirror of the class-drift check, for the same reason and with the same
+// two silent directions:
+//   - DECLARED BUT NEVER READ is a token that answers nothing. It was measured:
+//     `--dsh-tb-glass`, `--dsh-tb-lead-x`, `--item-pill-pad` and
+//     `--item-pill-hair` were each declared with a paragraph explaining what
+//     they were for and read by no rule at all — and `--dsh-tb-lead-x` was cited
+//     in DESIGN.md as the worked example of a derivation nothing used.
+//   - READ BUT NEVER DECLARED is the same failure the `--dsw-*` scan catches one
+//     level up: the property is invalid at computed-value time and the rule
+//     silently drops that declaration.
+// The scan reads the whole client half (sheets AND TypeScript, because
+// `keyboard-inset.ts` writes `--dsh-tb-kb` and `prose-field.tsx` writes
+// `--item-prose-h` from inline styles), and it accepts the `var(--x, fallback)`
+// form, which is how `--dsh-tb-corner` is read.
+{
+  const clientDir = join(root, 'src', 'client')
+  const codeFiles = []
+  const walkCode = (d) => {
+    if (!existsSync(d)) return
+    for (const entry of readdirSync(d, { withFileTypes: true })) {
+      const p = join(d, entry.name)
+      if (entry.isDirectory()) walkCode(p)
+      else if (/\.(?:ts|tsx)$/.test(entry.name)) codeFiles.push(p)
+    }
+  }
+  walkCode(clientDir)
+
+  const stripCss = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
+  const declaredProps = new Map()
+  for (const p of CLIENT_STYLESHEETS) {
+    const css = stripCss(readFileSync(p, 'utf8'))
+    for (const m of css.matchAll(/(?:^|[;{\s])(--[a-z][\w-]*)\s*:/g)) {
+      if (!declaredProps.has(m[1])) declaredProps.set(m[1], relative(root, p).split(sep).join('/'))
+    }
+  }
+
+  // Every mention of a property name anywhere in the client half, minus the
+  // declarations themselves — a `var(--x)` read, a `var(--x, fallback)` read, a
+  // name written from a script, or a bare name in a `style` object all count.
+  const mentioned = new Set()
+  for (const p of CLIENT_STYLESHEETS) {
+    const css = stripCss(readFileSync(p, 'utf8'))
+    for (const m of css.matchAll(/var\(\s*(--[a-z][\w-]*)/g)) mentioned.add(m[1])
+  }
+  for (const p of codeFiles) {
+    const text = readFileSync(p, 'utf8')
+    for (const m of text.matchAll(/--[a-z][\w-]*/g)) mentioned.add(m[0])
+  }
+
+  for (const [name, where] of declaredProps) {
+    if (!mentioned.has(name)) {
+      failures.push(`${where}: ${name} is declared but nothing reads it — a token with no consumer answers nothing. Delete it, or give it its reader.`)
+    }
+  }
+  notes.push(`token consumers: ${declaredProps.size} custom propert(ies) declared across ${CLIENT_STYLESHEETS.length} sheet(s), ${[...declaredProps.keys()].filter(n => !mentioned.has(n)).length} with no reader`)
 }
 
 // --- check 6: no snapshot values in the docs ---------------------------------

@@ -123,10 +123,6 @@
    * 宿主那一档，线跟着换，不会有一条留在旧颜色上。 */
   --item-hair-color: var(--dsw-alias-border-l1);
   --item-hair: 1px solid var(--item-hair-color);
-  /* 药丸自己的内衬与描边**有名字**，因为它们要参与一次对齐计算——见下面
-   * 「表头补上药丸的量」那一节。这两个数不许再写第二遍。 */
-  --item-pill-pad: 10px;
-  --item-pill-hair: 1px;
   /* **一行的值只有一档高。** 药丸与输入框装的是同一种东西（这一行的一个值），所以它们取
      同一个高度——一行里两种高，读者看到的是「一大一小、不在同一条水平线上」。
      高度、行盒与边的关系在这里是**等式**：行盒 = 高度 − 上下边，于是内容盒被行盒填满，
@@ -231,11 +227,17 @@
    *   --s3  组与组之间：一段和它下面那段
    *   --s4  一张布局的两列之间
    * 这一条直接治「步骤那块和备注那块贴太近」——它们之间的距离是尺子上的一个刻度，
-   * 不是一次手调。 */
-  --s1: 4px;
-  --s2: 10px;
-  --s3: 22px;
-  --s4: 32px;
+   * 不是一次手调。
+   *
+   * **这四个名字读设计系统的阶梯，不再自带数字。** 它们原来是 4/10/22/32 四个
+   * 裸值，而 DESIGN.md 把「可见的 gap 主阶梯」写成 2/4/6/8/10/12/16——两份词汇，
+   * 一份成文、一份不成文，其中 22 还被当 gap 用了六处，不在那条阶梯上。现在阶梯
+   * 是 `--dsh-tb-space-*` 一处，这四个名字只剩「这一页的哪一档用在哪儿」这一件事，
+   * 所以 `--s3` 与 `--s2` 的关系由阶梯回答，不由这张表回答。 */
+  --s1: var(--dsh-tb-space-2);
+  --s2: var(--dsh-tb-space-5);
+  --s3: var(--dsh-tb-space-8);
+  --s4: var(--dsh-tb-space-9);
 
   --item-inset: 24px;      /* 浮层遮罩离面板边缘的空气 */
   --item-card-pad: 24px;   /* 卡内衬 */
@@ -1813,7 +1815,7 @@
   grid-row: 1;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-inline-size: 0;
 }
 
@@ -1886,7 +1888,7 @@ button.itemRowText {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex: none;
   min-inline-size: 0;
   white-space: nowrap;
@@ -1911,7 +1913,7 @@ button.itemRowText {
 .itemRowAttach {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
   padding: 1px 6px;
   font-family: inherit;
@@ -1969,7 +1971,7 @@ button.itemRowText {
 .itemRowCardChip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
   /* **定高 + 居中。** 高度由这一条说（18px），字由 `align-items: center` 居中：一个盒子
    * 装一行字，居中就是居中那行字。字在行盒里那半像素的位置是**字体**的事，谁也不替它垫数
@@ -2020,7 +2022,7 @@ button.itemRowCardChip {
 .itemRowDate {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
   /* 它自己是一条**能收能剪**的槽：一簇里三枚并排，日期那一段最长（「最早开始 10月5日」），
      而一个不能收的槽会把旁边的卡芯片挤出屏幕。图标不参与收缩（它 12px 见方），所以收缩与
@@ -2060,7 +2062,7 @@ button.itemRowCardChip {
 .itemRowMeta {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   font-size: 12px;
   font-weight: 400;
@@ -2464,7 +2466,7 @@ button.itemRowCardChip {
 .itemEmptyGroup {
   display: inline-flex;
   align-items: baseline;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   white-space: nowrap;
 }
 
@@ -2605,7 +2607,7 @@ button.itemRowCardChip {
 .itemStepGauges {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   margin-block-end: 4px;
 }
 
@@ -2643,7 +2645,7 @@ button.itemRowCardChip {
   display: grid;
   grid-template-columns: 16px minmax(120px, 1fr) 20px;
   align-items: start;
-  column-gap: 10px;
+  column-gap: var(--dsh-tb-space-5);
   padding: 7px 0;
   min-inline-size: 0;
 }
@@ -2872,7 +2874,7 @@ button.itemRowCardChip {
   z-index: 3;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-inline-size: 180px;
   max-inline-size: min(320px, 100%);
   max-block-size: 60%;
@@ -2974,7 +2976,7 @@ button.itemRowCardChip {
 .itemCommandPaletteList > .itemFacetRow {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   margin: 0;
   padding: 0;
   border: 0;
@@ -3004,7 +3006,7 @@ button.itemRowCardChip {
 .itemCommandPaletteList > .itemFacetRow[data-palette-group='rows'] .itemFacetValues {
   flex-direction: column;
   align-items: stretch;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
 }
 
 .itemFacetName {
@@ -3095,7 +3097,7 @@ button.itemRowCardChip {
 .itemCommandPaletteBox .itemFacetRow[data-palette-group='rows'] .itemFacetValues {
   flex-direction: column;
   align-items: flex-start;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
 }
 
 .itemCommandPaletteBox .itemFacetRow[data-palette-group='rows'] .itemFacetChip {
@@ -3112,7 +3114,7 @@ button.itemRowCardChip {
 .itemBatch {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-inline-size: 0;
   padding: var(--item-gap);
   background: var(--item-float);
@@ -3143,7 +3145,7 @@ button.itemRowCardChip {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-inline-size: 0;
 }
 
@@ -3235,14 +3237,14 @@ textarea.itemInput {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-inline-size: 0;
 }
 
 .itemQueryChip {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   max-inline-size: 100%;
   min-inline-size: 0;
   padding: 0 4px 0 10px;
@@ -3326,7 +3328,7 @@ textarea.itemInput {
   display: grid;
   grid-template-columns: 4.5em minmax(0, 1fr);
   align-items: baseline;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-inline-size: 0;
 }
 
@@ -3341,7 +3343,7 @@ textarea.itemInput {
 .itemFacetValues {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   min-inline-size: 0;
 }
 
@@ -3795,7 +3797,7 @@ textarea.itemInput {
 .itemArchiveList {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-inline-size: 0;
   margin: 0;
   padding: 0;
@@ -3865,7 +3867,7 @@ textarea.itemInput {
   display: grid;
   grid-template-columns: 16px minmax(0, 1fr) auto;
   column-gap: var(--s2);
-  row-gap: 2px;
+  row-gap: var(--dsh-tb-space-1);
   align-items: start;
   min-inline-size: 0;
   padding: 12px 0;
@@ -3878,7 +3880,7 @@ textarea.itemInput {
 .itemArchiveCell {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-inline-size: 0;
 }
 
@@ -4507,7 +4509,7 @@ textarea.itemInput {
 @container dsh-tb-item (max-width: 880px) {
   .itemOptRow {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 6px;
+    row-gap: var(--dsh-tb-space-3);
     /* **这里不写 `align-items`。** 窄档这一行是**一列**：名字一格、值一格，两条轨都由自己的
        内容定高，所以「对齐到哪一头」没有东西可对齐——写了也只是把基座那条声明在这里再抄一遍，
        而两份声明只会分叉。宽档那两列才需要它（名字与值同高、要一条中线）。 */
@@ -4578,7 +4580,7 @@ textarea.itemInput {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-inline-size: 0;
   /* 行与行之间 10px——**与右列其它行同一档**。取 --s3（22px）会让三行日期
    * 各自比属性行多出两倍的空气，同一列里两套节奏。轴自己连成一根

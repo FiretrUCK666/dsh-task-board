@@ -278,6 +278,7 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
       </span>
       <span className={css.autoRuleActions}>
         <Switch
+          className={css.autoRuleSwitch}
           checked={row.enabled}
           onChange={next => { controller.toggleSessionRule(task.id, row.ruleId, next) }}
           label={t('auto.rule.enable')}

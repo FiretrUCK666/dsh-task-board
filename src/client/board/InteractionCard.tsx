@@ -52,7 +52,7 @@ import { draftStore, questionDraftKey, restoreQuestionDrafts, saveQuestionDrafts
 import { Markdown } from './Markdown.tsx'
 import { Button } from './ui.tsx'
 import { Chip } from './Chip.tsx'
-import { Icon } from './ui.tsx'
+import { Icon, IconButton } from './ui.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 
 /** The 推荐 suffix the native surface splits off an option label. */
@@ -402,32 +402,30 @@ function QuestionFlow({ question, sessionId, controller }: {
         {/* Header actions mirror the native pair: collapse (the card keeps its
             head only) and dismiss-the-whole-request. */}
         <div className={css.interactionHeadActions}>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t(minimized ? 'review.interactionExpand' : 'review.interactionCollapse')}
+          <IconButton
+            
+            label={t(minimized ? 'review.interactionExpand' : 'review.interactionCollapse')}
             title={t(minimized ? 'review.interactionExpand' : 'review.interactionCollapse')}
             aria-expanded={!minimized}
             aria-controls={bodyId}
             disabled={disabled}
-            onClick={() => { setMinimized(value => !value) }}
-          >
+            onClick={() => { setMinimized(value => !value) }}>
+          
             {/* The arrow turns around. Expanding to `chevronDown` and collapsing to
                 `arrowDown` is two glyphs half a unit apart, both pointing down — the
                 icon says "down" either way, and only `aria-expanded` carries the
                 state (to screen readers alone). */}
             <Icon name={minimized ? 'chevronDown' : 'arrowUp'} />
-          </button>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('review.interactionAbandon')}
+          </IconButton>
+          <IconButton size="sm" quiet
+            
+            label={t('review.interactionAbandon')}
             title={t('review.interactionAbandon')}
             disabled={disabled}
-            onClick={() => { setConfirmAbandon(true) }}
-          >
+            onClick={() => { setConfirmAbandon(true) }}>
+          
             <Icon name="close" />
-          </button>
+          </IconButton>
         </div>
       </header>
 
@@ -553,22 +551,20 @@ function QuestionFlow({ question, sessionId, controller }: {
 
           <footer className={css.interactionFooter}>
             <div className={css.interactionPager}>
-              <button
-                type="button"
-                className={css.iconButton}
-                aria-label={t('review.interactionPrev')}
+              <IconButton size="sm" quiet
+                
+                label={t('review.interactionPrev')}
                 title={t('review.interactionPrev')}
                 disabled={index === 0 || disabled}
-                onClick={() => { replaceProgress(index - 1, drafts); setError(undefined) }}
-              >
+                onClick={() => { replaceProgress(index - 1, drafts); setError(undefined) }}>
+              
                 <Icon name="arrowLeft" />
-              </button>
+              </IconButton>
               <span className={css.interactionProgress}>
                 {t('review.interactionProgress', { n: String(index + 1), total: String(question.questions.length) })}
               </span>
-              <button
-                type="button"
-                className={css.iconButton}
+              <IconButton
+                
                 /* The pager's forward arrow and the primary button were BOTH named
                    「下一题」 while behaving differently: the arrow moves between
                    questions without submitting (and without the "answer this one
@@ -577,13 +573,13 @@ function QuestionFlow({ question, sessionId, controller }: {
                    下一题" matches either — and it also hid the guard difference from
                    screen-reader users, who could not tell which one would refuse.
                    The arrow now says what it actually does. */
-                aria-label={t('review.interactionNextQuestion')}
+                label={t('review.interactionNextQuestion')}
                 title={t('review.interactionNextQuestion')}
                 disabled={last || disabled}
-                onClick={() => { replaceProgress(index + 1, drafts); setError(undefined) }}
-              >
+                onClick={() => { replaceProgress(index + 1, drafts); setError(undefined) }}>
+              
                 <Icon name="arrowRight" />
-              </button>
+              </IconButton>
             </div>
             {/* role=status: the reason for a refusal is announced, not just
                 painted (native grammar). */}

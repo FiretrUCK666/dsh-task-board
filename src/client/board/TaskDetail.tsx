@@ -11,6 +11,7 @@ import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes, sessionUnviewedOf } from '../../core/session-display.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { RunConfigRows } from './RunConfigRows.tsx'
 import { useEscapeStack } from './escape-stack.ts'
@@ -30,7 +31,7 @@ import { SessionPickerDialog } from './SessionPickerDialog.tsx'
 import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
-import { Button, Disclosure, Icon, Section } from './ui.tsx'
+import { Button, Disclosure, Icon, IconButton, Section } from './ui.tsx'
 import { STATUS_KEY } from './status.ts'
 import { titleOrUntitled } from './card-view.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
@@ -599,7 +600,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   }
 
   return (
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
+    <div className={components.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) controller.closeTask() }}>
       <div
         ref={detailPanelRef}
         tabIndex={-1}
@@ -619,14 +620,13 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
               {t('detail.edit')}
             </Button>
           )}
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('detail.close')}
-            onClick={() => { controller.closeTask() }}
-          >
+          <IconButton size="md"
+            
+            label={t('detail.close')}
+            onClick={() => { controller.closeTask() }}>
+          
             <Icon name="close" />
-          </button>
+          </IconButton>
         </header>
 
         <div className={css.detailBody} ref={detailBodyRef}>

@@ -11,6 +11,7 @@
  */
 import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
+import { bandNarrowMax } from '../design/bands.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
 import { agentPresetLabelOf, type AgentPresetLabelSource } from '../../core/session-agents.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -817,7 +818,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // viewport: a mid-size window with the shell sidebar open already renders the
   // stacked panel while the viewport still says "wide", and a default that
   // followed the viewport would disagree with what the user is looking at.
-  const [narrowPanel, foldsRef] = useSurfaceNarrow('[data-dsh-taskboard-panel]', 600)
+  const [narrowPanel, foldsRef] = useSurfaceNarrow('[data-dsh-taskboard-panel]', bandNarrowMax('sessionPanel', 600))
   const [headOpen, setHeadOpen] = useState(!narrowPanel)
   // The comments default follows the PANEL width (same surface the CSS
   // queries): open on desktop (the thread is the first screen beside the
@@ -878,6 +879,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             transcript's or the composer's room. */}
         <div className={css.sessionRailHead}>
           <Disclosure
+            className={css.railHeadSection}
+            headerClassName={css.railDisclosure}
             title={t('review.railHeadTitle')}
             summary={occupancy !== undefined ? `${occupancy.percent}%` : undefined}
             open={headOpen}
@@ -905,6 +908,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
             fold can never hide it; the summary names that wait too. */}
         <div className={css.sessionRailComments} data-open={commentsOpen || awaiting}>
           <Disclosure
+            className={css.railCommentsSection}
+            headerClassName={css.railCommentsDisclosure}
             title={t('review.comments')}
             summary={awaiting ? t('review.waiting') : String(thread.length)}
             open={commentsOpen || awaiting}

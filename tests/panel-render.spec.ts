@@ -43,7 +43,7 @@ import { describe, expect, it } from 'vitest'
 import { existsSync, readFileSync } from 'node:fs'
 import * as lightningcss from 'lightningcss'
 import { join } from 'node:path'
-import { itemSurfaceSource, PAGES, repoRoot, type Page } from './panel-harness.ts'
+import { designCss, itemSurfaceSource, PAGES, repoRoot, type Page } from './panel-harness.ts'
 import {
   aliasLayer,
   backgroundOf,
@@ -335,7 +335,7 @@ describe('the panel renders against the host it will actually run in', () => {
     // surface, and a check that spans both is a check nobody can act on.
     const named = [...new Set([
       ...dswNamesReferenced(itemSheetText),
-      ...dswNamesReferenced(aliasLayer(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'))),
+      ...dswNamesReferenced(aliasLayer()),
     ])]
     const missing = named.filter(name => !tokens.includes(`${name}:`) && ABSENT_BY_DECISION[name] === undefined)
     const why = missing.map(name => `${name}${ABSENT_BY_DECISION[name] === undefined ? '' : ` (${ABSENT_BY_DECISION[name]})`}`)
@@ -973,7 +973,7 @@ describe('the panel fills the stage it is given', () => {
     }
     // AND THE NEW HALF, on the surface that actually floats over text.
     for (const name of ['itemRowMenu', 'itemCommandPalette']) {
-      const resolved = tokenValueOf(css, `--dsh-tb-${name === 'itemRowMenu' ? 'surface-float' : 'surface-float'}`)
+      const resolved = tokenValueOf(`--dsh-tb-${name === 'itemRowMenu' ? 'surface-float' : 'surface-float'}`)
       const alpha = alphaOf(resolved)
       expect(
         alpha,
@@ -1854,8 +1854,8 @@ function fieldPresence(markups: readonly { page: Page; field: string }[]): Page[
  * colour, and returns `''` when the chain is broken — which the caller has to
  * treat as 「cannot vouch for it」 rather than as 「fine」.
  */
-function tokenValueOf(css: string, name: string): string {
-  const alias = new RegExp(`${name}\\s*:\\s*([^;]+)`).exec(aliasLayer(css))?.[1]?.trim() ?? ''
+function tokenValueOf(name: string): string {
+  const alias = new RegExp(`${name}\\s*:\\s*([^;]+)`).exec(aliasLayer())?.[1]?.trim() ?? ''
   const host = /var\((--dsw-[\w-]+)\)/.exec(alias)?.[1]
   if (host === undefined) return ''
   const value = new RegExp(`${host}\\s*:\\s*([^;]+)`).exec(hostTokens().css)?.[1]?.trim() ?? ''
@@ -1906,7 +1906,7 @@ describe('a phone gets the same surface, only narrower', () => {
     // So: every rule that applies to a segmented control RENDERED BY THIS
     // SURFACE is read — the shared one and any rule on this surface that names
     // the class the panel puts on it — and the union has to permit giving way.
-    const shared = rulesOf(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'), 'segmentedRow')
+    const shared = rulesOf(designCss(), 'segmentedRow')
     expect(shared.length, 'the shared segmented control has no rule — the gate is reading a control that does not exist').toBeGreaterThan(0)
     // The classes this surface puts on a segmented control, discovered from the
     // markup rather than named here, so a rename moves the gate with the code.
@@ -3579,9 +3579,11 @@ describe('药丸的几何只写一次', () => {
     const itemBase = declarationRules(css)
       .find(rule => rule.selector.replace(/\s+/g, ' ').trim() === ':where(.itemOpt, .itemPrioChip, .itemTag)')
     expect(itemBase, '清单表里的药丸基座不见了——生产包里的药丸回到 UA 行内块').toBeDefined()
-    const shared = stripCssComments(readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8'))
-    const boardBase = declarationRules(shared)
-      .find(rule => rule.selector.includes(':is(') && rule.selector.includes('.chip') && rule.selector.includes('itemPrioChip'))
+    /* 共用的一半现在在 design 表里，而且只写它自己拥有的类。旧写法把清单那三个药丸类
+       也列进共用表的选择器——那是跨表的类名，编出来的是本表永远不渲染的哈希，声明被丢掉
+       且不报错。 */
+    const boardBase = declarationRules(stripCssComments(designCss()))
+      .find(rule => rule.selector.includes(':is(') && rule.selector.includes('.chip'))
     expect(boardBase, '共用表里的基座不见了').toBeDefined()
     for (const property of ['display', 'align-items', 'justify-content'] as const) {
       const itemValue = declsOf(itemBase?.body ?? '').get(property)
@@ -3589,8 +3591,9 @@ describe('药丸的几何只写一次', () => {
       expect(itemValue, `清单基座不再声明 ${property}`).toBeDefined()
       expect(boardValue, `两块表分叉了：${property} 在清单是 ${itemValue}，在共用表是 ${boardValue}`).toBe(itemValue)
     }
+    // 清单的类由清单那张表自己列——那是唯一渲染得出它们的表。
     for (const name of FAMILIES) {
-      expect(boardBase?.selector, `共用表基座的名单里没有 .${name}`).toContain(`.${name}`)
+      expect(itemBase?.selector, `清单表基座的名单里没有 .${name}`).toContain(`.${name}`)
     }
   })
 

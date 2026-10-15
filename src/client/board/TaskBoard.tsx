@@ -15,6 +15,7 @@
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
+import { bandNarrowMax } from '../design/bands.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
 import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
@@ -23,6 +24,7 @@ import { boardDemandOf, waitingSessionsOf } from '../../core/task-demand.ts'
 import { t } from '../locales.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from './use-narrow.ts'
 import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
@@ -40,7 +42,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
-import { Button, ColorSwatches, Icon, Switch } from './ui.tsx'
+import { Button, ColorSwatches, Icon, IconButton, Switch } from './ui.tsx'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
 import { commandLineOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
 import { applyUpdate, BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
@@ -247,7 +249,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       header: css.boardHeader,
       columns: css.columns,
       firstColumn: css.column,
-      primary: css.primaryButton,
+      primary: components.primaryButton,
       thumbBar: css.thumbBar,
     })
   }, [snapshot.boardOpen])
@@ -383,7 +385,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     }
     setShowNotify(true)
   }
-  const renderNotifyBell = (): ReactNode => {
+  const renderNotifyBell = (extraClass?: string): ReactNode => {
     const total = notes.length
     // The bell carries TWO facts, and they are deliberately different ones: the
     // badge is the open total, the dot is "arrived since you last opened the
@@ -402,10 +404,8 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) })
       : t('board.notify')
     return (
-      <button
-        type="button"
-        className={`${css.iconButton} ${css.notifyBell}`}
-        aria-label={unseenCount > 0 ? t('board.notifyNew', { base: label, n: String(unseenCount) }) : label}
+      <IconButton className={extraClass === undefined ? css.notifyBell : `${css.notifyBell} ${extraClass}`}
+        label={unseenCount > 0 ? t('board.notifyNew', { base: label, n: String(unseenCount) }) : label}
         title={t('board.notify')}
         onClick={openNotify}
       >
@@ -422,7 +422,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             {total > 99 ? '99+' : String(total)}
           </span>
         )}
-      </button>
+      </IconButton>
     )
   }
   // Activity feed derivation (memoized for the same reason as notes): typing
@@ -639,7 +639,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // container query measures this same box — one truth, never viewport vs
   // surface). Declared FIRST: the cruise popover/Dialog switch below reads
   // `narrow`, so the hook must precede it.
-  const [narrow, narrowRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', 680)
+  const [narrow, narrowRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', bandNarrowMax('board', 680))
   const boardRef = useRef<HTMLDivElement | null>(null)
   const boardRefs = useCallback((node: HTMLDivElement | null): void => {
     boardRef.current = node
@@ -2589,7 +2589,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                         aria-label={headTitle}
                         onClick={() => { setExpandedActivityFold(current => current === fold.key ? undefined : fold.key) }}
                       >
-                        <Icon name="chevronDown" className={css.detailChevron} />
+                        <Icon name="chevronDown" className={css.notifyChevron} />
                       </button>
                       <button
                         type="button"
@@ -2598,7 +2598,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                         onClick={() => { setShowActivity(false); openTaskAtSession(fold.taskId, head.sessionId) }}
                       >
                         <span className={css.notifyTask}>{headTitle}</span>
-                        <Chip kind="neutral" fill={false}>{`×${fold.items.length}`}</Chip>
+                        <Chip kind="neutral" fill={false} className={css.notifyMainChip}>{`×${fold.items.length}`}</Chip>
                       </button>
                       <span className={css.notifyActions}>
                         <span className={css.notifyMeta}>{formatTime(head.at)}</span>
@@ -2681,7 +2681,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             {t('board.new')}
           </Button>
         </span>
-        {renderNotifyBell()}
+        {renderNotifyBell(css.thumbBarButton)}
         <Button
           variant="ghost"
           title={t('board.activityTitle')}

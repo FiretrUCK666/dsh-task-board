@@ -1,0 +1,285 @@
+/**
+ * The design-system gallery's own layout — and NOTHING else.
+ *
+ * THE ONE RULE THIS FILE FOLLOWS. It lays out the CATALOGUE: section headings,
+ * the specimen grid, the labels under a specimen. It declares no component's
+ * geometry, no colour of its own, and no radius of its own — every specimen on
+ * the page is the real component, rendered by the real component, wearing the
+ * real component's stylesheet. A gallery that styled its own specimens would be
+ * a second implementation of the thing it exists to display, and the day the
+ * two disagreed the gallery would be the one that looked right.
+ *
+ * So the only values here are the ones a CATALOGUE needs: a grid, a gap, a
+ * heading, a caption. They read the same ladder the panels read.
+ */
+
+.galleryRoot {
+  display: flex;
+  flex-direction: column;
+  block-size: 100%;
+  min-inline-size: 0;
+  min-block-size: 0;
+  padding: 0;
+  margin: 0;
+  background: var(--dsh-tb-bg);
+  color: var(--dsh-tb-text-1);
+  font-family: var(--dsw-font-family);
+  font-size: 13px;
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* The page head: title, the band switch, and the note that says what this page
+   is for. It never scrolls — the body below it owns the only scroll region. */
+.galleryHead {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsh-tb-space-5);
+  padding: var(--dsh-tb-space-6) var(--dsh-tb-space-7);
+  border-block-end: var(--dsh-tb-border-soft);
+}
+
+.galleryTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.galleryNote {
+  flex: 1 1 240px;
+  min-inline-size: 0;
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
+.galleryHeadTools {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-5);
+  margin-inline-start: auto;
+}
+
+/* The measured box. The band switch sets its inline size, which is what makes
+   the container query below fire for real rather than being described.
+   IT DECLARES THE CONTAINER AND IS NOT STYLED BY IT: a container query about
+   the element that IS the container can never match (the query resolves against
+   the nearest ancestor container, and this element is its own box's owner, not
+   its own ancestor). `tests/panel-render.spec.ts` has a gate for exactly that,
+   and it caught this rule's first draft. Everything the query styles therefore
+   lives one level down, in `.galleryBody`. */
+.galleryStage {
+  inline-size: 100%;
+  max-inline-size: 100%;
+  margin: 0 auto;
+  overflow: auto;
+  min-block-size: 0;
+  flex: 1 1 auto;
+  container-type: inline-size;
+  container-name: dsh-tb-gallery;
+}
+
+.galleryBody {
+  padding: var(--dsh-tb-space-6) var(--dsh-tb-space-7);
+}
+
+.gallerySection {
+  margin-block-end: var(--dsh-tb-space-8);
+}
+
+.gallerySectionHead {
+  display: flex;
+  align-items: baseline;
+  gap: var(--dsh-tb-space-4);
+  margin-block-end: var(--dsh-tb-space-5);
+}
+
+/* A GROUP heading inside a section. Smaller than the section's own title, so
+   the two levels read as two levels: the first version of this page had the
+   group at 14px/600 and the section at 12px, which inverted the hierarchy and
+   made every group look like a new section. */
+.gallerySectionTitle {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+}
+
+.gallerySectionWhy {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-3);
+}
+
+/* One specimen grid: as many columns as fit, never a fixed count — a catalogue
+   that reflowed into a fixed number of columns would misreport the components'
+   own responsive behaviour. */
+.galleryGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: var(--dsh-tb-space-6);
+}
+
+.gallerySpecimen {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-4);
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-5);
+  background: var(--dsh-tb-bg-raised);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.gallerySpecimenRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsh-tb-space-5);
+  min-inline-size: 0;
+}
+
+.galleryLabel {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
+}
+
+/* The band switch: a row of quiet pills. It is a CONTROL, so it reads the
+   button family's tokens rather than inventing a height — and it is the page's
+   own control, not a specimen, which is why it is the one thing here that
+   declares its own geometry. */
+.galleryBandButton {
+  box-sizing: border-box;
+  block-size: var(--dsh-tb-button-h);
+  padding: 0 var(--dsh-tb-space-6);
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-button-radius);
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+}
+
+.galleryBandButton:hover {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
+}
+
+.galleryBandButton[aria-pressed='true'] {
+  color: var(--dsh-tb-text-1);
+  border-color: var(--dsh-tb-accent);
+}
+
+.galleryValue {
+  margin: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  overflow-wrap: anywhere;
+}
+
+/* A colour chip: the swatch plus the two facts a reader needs — the token's
+   name and what it resolves to right now. */
+.gallerySwatch {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-4);
+  min-inline-size: 0;
+}
+
+/* ── ONE SPECIMEN BOX, FIVE KINDS ────────────────────────────────────────────
+ *
+ * The box reads the token through `--gallery-value`, and `data-kind` decides
+ * WHICH of the token's properties is shown. A radius token is not a colour, and
+ * a spacing token is not a shape: rendering all of them as filled dots puts a
+ * meaningless white square beside `--dsh-tb-radius-md`, and a catalogue whose
+ * specimens do not match their subjects teaches the reader to skip them.
+ *
+ * The box's own size is fixed (22px) so a row of specimens reads as a row — a
+ * spacing bar is the exception, because its LENGTH is the fact being shown.
+ */
+.gallerySpecimenBox {
+  flex: none;
+  inline-size: 22px;
+  block-size: 22px;
+  border-radius: var(--dsh-tb-radius-sm);
+  border: var(--dsh-tb-border-soft);
+  background: transparent;
+}
+
+.gallerySpecimenBox[data-kind='color'] {
+  background: var(--gallery-value);
+}
+
+.gallerySpecimenBox[data-kind='radius'] {
+  border-radius: var(--gallery-value);
+  background: var(--dsh-tb-chip-fill);
+}
+
+.gallerySpecimenBox[data-kind='shadow'] {
+  background: var(--dsh-tb-bg-raised);
+  border: 0;
+  box-shadow: var(--gallery-value);
+}
+
+/* The bar's width IS the token — the one specimen whose geometry is its
+   subject. It grows from a fixed start so the differences line up as a ladder
+   rather than as a ragged row. */
+.gallerySpecimenBox[data-kind='space'] {
+  inline-size: var(--gallery-value);
+  min-inline-size: 2px;
+  block-size: 8px;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-accent);
+}
+
+/* A number or a duration has no shape; the row shows the value and nothing
+   else, rather than a square that means nothing. */
+.gallerySpecimenBox[data-kind='plain'] {
+  display: none;
+}
+
+.gallerySwatchText {
+  display: flex;
+  flex-direction: column;
+  min-inline-size: 0;
+}
+
+
+.galleryTypeSpecimen {
+  margin: 0;
+  min-inline-size: 0;
+}
+
+/* ── THE NARROW BAND, AND WHY IT IS THE LAST THING IN THE FILE ────────────────
+ *
+ * Written the way every panel in this plugin writes one: a container query
+ * against the box that is actually being sized, never `@media (max-width)`.
+ * The band switch in the head sets the stage's inline size, so this rule is
+ * DEMONSTRATED rather than described.
+ *
+ * POSITION IS NOT COSMETIC. This block was first written next to `.galleryStage`
+ * — above `.galleryGrid`'s own base rule — and it did nothing at all: same
+ * specificity, so the LATER `.galleryGrid { grid-template-columns: repeat(
+ * auto-fit, …) }` won and the page stayed three columns wide at 680px. The
+ * screenshot said so and nothing else would have. A band override belongs after
+ * everything it overrides; `board.module.css`'s reduced-motion block carries the
+ * same warning for the same reason.
+ */
+@container dsh-tb-gallery (max-width: 720px) {
+  .galleryBody {
+    padding: var(--dsh-tb-space-5);
+  }
+
+  .galleryGrid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

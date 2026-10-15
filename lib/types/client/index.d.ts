@@ -8,6 +8,9 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
+import './design/tokens.module.css';
+import './design/base.module.css';
+import './design/components.module.css';
 import type { ApiFace, ClientContext } from './platform.ts';
 import type { AttachmentRef, PromptAttachment } from '../core/attachment.ts';
 /** What the plugin's own attachment door publishes (see {@link createAttachmentBridge}). */

@@ -10,8 +10,16 @@ import { type ReactNode } from 'react';
 /** One button variant; shared rhythm everywhere. `dangerGhost` is the
  *  row-level destructive affordance (outline + danger text) — the filled
  *  `danger` stays reserved for the primary destroyer (confirm dialogs,
- *  the detail footer's delete). */
-export type ButtonVariant = 'primary' | 'ghost' | 'danger' | 'dangerGhost';
+ *  the detail footer's delete).
+ *
+ *  THE ARRAY IS THE DEFINITION and the type is derived from it, so the
+ *  design-system gallery can render every variant by iterating it. A union
+ *  written by hand beside a hand-written list is two statements of one fact,
+ *  and the gallery — whose whole job is "show me everything the system has" —
+ *  is exactly where the second one goes stale without anyone noticing. */
+export declare const BUTTON_VARIANTS: readonly ["primary", "ghost", "danger", "dangerGhost"];
+/** One button variant. */
+export type ButtonVariant = (typeof BUTTON_VARIANTS)[number];
 /** The board's one button (see module doc). The click handler receives the
  *  native event so callers inside clickable rows can stopPropagation; plain
  *  zero-arg handlers stay assignable (fewer parameters are always valid).
@@ -37,12 +45,52 @@ export declare function Button({ variant, size, type, className, disabled, press
     children: ReactNode;
 }): import("react").JSX.Element;
 /**
+ * The board's one icon-only button.
+ *
+ * WHY IT EXISTS. Five surfaces were hand-writing
+ * `<button className={css.iconButton}><Icon name="close" /></button>` — the
+ * markup is four lines, so it got copied rather than reached for, and every copy
+ * was a place where the accessible name could be forgotten and where a size
+ * tweak had to be re-derived. The class existed; the component did not, and a
+ * class is not something a page author looks for.
+ *
+ * `label` IS REQUIRED, and that is the point of the component rather than a
+ * formality: an icon-only control has no text, so without it the button
+ * announces nothing. Hard rule 11 forbids a control whose only explanation is a
+ * `title` — hover does not exist on a phone — so the accessible name is a
+ * parameter, not an option.
+ *
+ * `size` is the component's own ladder (see the size steps in the design sheet):
+ * `lg` is the 30px toolbar default, `md` the full button height, `sm` the
+ * compact one. A row picks ONE tier; it never mixes two heights side by side.
+ */
+export declare const ICON_BUTTON_SIZES: readonly ["lg", "md", "sm"];
+/** One icon-button size step. */
+export type IconButtonSize = (typeof ICON_BUTTON_SIZES)[number];
+export declare function IconButton({ size, quiet, type, className, disabled, onClick, title, label, children }: {
+    size?: IconButtonSize;
+    /** Present but not asking for attention until hovered or focused. */
+    quiet?: boolean;
+    type?: 'button' | 'submit';
+    /** The page's own class, for placing the control in ITS layout (a grid area,
+     *  a justify-self). This is the supported way for a surface to say where the
+     *  button goes — a descendant selector across the sheet boundary is not. */
+    className?: string;
+    disabled?: boolean;
+    onClick?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    title?: string;
+    /** The button's ACCESSIBLE NAME. Required — see the component doc. */
+    label: string;
+    /** The glyph. */
+    children: ReactNode;
+}): import("react").JSX.Element;
+/**
  * An iOS-style toggle switch (pure CSS): a hidden checkbox driving a track +
  * knob. "On" fills the track with the success tone and slides the knob right;
  * keyboard focus draws a soft ring around the track. Every on/off control on
  * the board (cruise, schedule enable) renders through this component.
  */
-export declare function Switch({ checked, onChange, label, title, disabled, describedBy }: {
+export declare function Switch({ checked, onChange, label, title, disabled, describedBy, className }: {
     checked: boolean;
     onChange: (next: boolean) => void;
     label: string;
@@ -52,6 +100,11 @@ export declare function Switch({ checked, onChange, label, title, disabled, desc
      *  be reachable on touch (there is no hover) and announced to assistive
      *  technology, so it is a real reference rather than a tooltip. */
     describedBy?: string;
+    /** The surface's own class, for placing the switch in ITS layout. A surface
+     *  that needs the switch in a particular grid cell passes this and styles it
+     *  in its own sheet — the supported direction, where `.row > .switch` from
+     *  another sheet is a selector that matches nothing. */
+    className?: string;
 }): import("react").JSX.Element;
 /** A titled detail section: one shared title style for every detail module.
  *  `action` is an optional right-aligned affordance on the title row (the
@@ -74,13 +127,21 @@ export declare function Section({ title, action, children, className }: {
  *  automation editor, the session rail head): collapsed it is quiet, one row,
  *  no buttons, and the chevron turns (collapsed = right, expanded = down) —
  *  never a second hand-rolled fold that forgets the turn. */
-export declare function Disclosure({ title, summary, open, onToggle, children }: {
+export declare function Disclosure({ title, summary, open, onToggle, children, className, headerClassName }: {
     title: string;
     /** One-line live summary shown on the header row (collapsed or not). */
     summary?: string;
     open: boolean;
     onToggle: () => void;
     children?: ReactNode;
+    /** The surface's own class on the SECTION — how a surface gives the fold its
+     *  place in a rail (a flex role, an inline inset). */
+    className?: string;
+    /** The surface's own class on the FOLD ROW itself. Two hooks because the fold
+     *  is two elements and a surface legitimately places both: the section in its
+     *  column, the row inside the section. Reaching either one with a descendant
+     *  selector from another sheet is the failure this replaces. */
+    headerClassName?: string;
 }): import("react").JSX.Element;
 /** The waiting notice: one neutral framed row + warn chip for every surface. */
 export declare function Notice({ chip, children }: {
@@ -93,6 +154,14 @@ export declare function Notice({ chip, children }: {
  * route goes through this component.
  */
 export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arrowRight' | 'arrowLeft' | 'link' | 'play' | 'pause' | 'bell' | 'calendar' | 'copy' | 'check' | 'checklist' | 'eyeOff' | 'pencil';
+/**
+ * Every glyph name, DERIVED from the path table.
+ *
+ * The gallery renders the whole icon set by iterating this, so a glyph added to
+ * the table appears there with no second edit — and a name that somehow has no
+ * path cannot appear at all, because the list IS the table's keys.
+ */
+export declare const ICON_NAMES: readonly IconName[];
 export declare function Icon({ name, className }: {
     name: IconName;
     className?: string;

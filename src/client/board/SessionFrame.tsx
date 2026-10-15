@@ -46,7 +46,8 @@ import { createPortal } from 'react-dom'
 import { useRef, type ReactNode } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { Icon } from './ui.tsx'
+import components from '../design/components.module.css'
+import { Icon, IconButton } from './ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from './Dialog.tsx'
 import { useEscapeStack } from './escape-stack.ts'
@@ -87,7 +88,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
   const panelRef = useRef<HTMLDivElement | null>(null)
   const { onKeyDown } = useDialogFocus(panelRef)
   return createPortal(
-    <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
+    <div className={components.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>
       <div
         ref={panelRef}
         tabIndex={-1}
@@ -115,14 +116,13 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
             />
           )}
           <div className={css.reviewActions}>{actions}</div>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('detail.close')}
-            onClick={onClose}
-          >
+          <IconButton size="sm" className={css.reviewClose}
+            
+            label={t('detail.close')}
+            onClick={onClose}>
+          
             <Icon name="close" />
-          </button>
+          </IconButton>
         </header>
         <div className={css.reviewBody}>
           <div className={css.reviewMain}>{main}</div>

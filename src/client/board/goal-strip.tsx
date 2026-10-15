@@ -18,7 +18,7 @@ import type { GoalVerbResult, GoalVerbs } from '../../core/goal-verbs.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from './Chip.tsx'
-import { Icon } from './ui.tsx'
+import { Icon, IconButton } from './ui.tsx'
 import type { SessionGoalView } from './use-interaction.ts'
 
 /** Strip label per visible phase; complete goals render nothing. */
@@ -103,26 +103,24 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
           autoFocus
         />
         <span className={css.goalStripActions}>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('review.goalSave')}
+          <IconButton size="sm"
+            
+            label={t('review.goalSave')}
             title={t('review.goalSave')}
             disabled={pending || draft.trim() === ''}
-            onClick={() => { void handleEdit(verbs.edit) }}
-          >
+            onClick={() => { void handleEdit(verbs.edit) }}>
+          
             <Icon name="check" />
-          </button>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('review.goalCancel')}
+          </IconButton>
+          <IconButton size="sm"
+            
+            label={t('review.goalCancel')}
             title={t('review.goalCancel')}
             disabled={pending}
-            onClick={() => { setEditing(false) }}
-          >
+            onClick={() => { setEditing(false) }}>
+          
             <Icon name="close" />
-          </button>
+          </IconButton>
         </span>
         {actionError !== null && <span className={css.goalStripError}>{actionError}</span>}
       </div>
@@ -137,43 +135,39 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
         <span className={css.sessionContextText} title={goal.title}>{goal.title}</span>
         <span className={css.goalStripActions}>
           {showResume && (
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label={t('review.goalResume')}
+            <IconButton size="sm"
+              
+              label={t('review.goalResume')}
               title={t('review.goalResume')}
               disabled={pending}
-              onClick={() => { void runAction(verbs.resume) }}
-            >
+              onClick={() => { void runAction(verbs.resume) }}>
+            
               <Icon name="play" />
-            </button>
+            </IconButton>
           )}
           {showPause && (
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label={t('review.goalPause')}
+            <IconButton size="sm"
+              
+              label={t('review.goalPause')}
               title={t('review.goalPause')}
               disabled={pending}
-              onClick={() => { void runAction(verbs.pause) }}
-            >
+              onClick={() => { void runAction(verbs.pause) }}>
+            
               <Icon name="pause" />
-            </button>
+            </IconButton>
           )}
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('review.goalEdit')}
+          <IconButton size="sm"
+            
+            label={t('review.goalEdit')}
             title={t('review.goalEdit')}
             disabled={pending}
-            onClick={startEdit}
-          >
+            onClick={startEdit}>
+          
             <Icon name="pencil" />
-          </button>
-          <button
-            type="button"
-            className={css.iconButton}
-            aria-label={t('review.goalClear')}
+          </IconButton>
+          <IconButton size="sm"
+            
+            label={t('review.goalClear')}
             title={t('review.goalClear')}
             disabled={pending}
             /* NO CONFIRMATION HERE, AND THAT IS THE POINT — it was checked, not
@@ -196,10 +190,10 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
                places, and nobody is pretending otherwise. If the native bar ever
                grows a confirm, this grows one in the same change — and that is
                the moment to change this comment. */
-            onClick={() => { void handleClear(verbs.clear, goalId) }}
-          >
+            onClick={() => { void handleClear(verbs.clear, goalId) }}>
+          
             <Icon name="close" />
-          </button>
+          </IconButton>
         </span>
       </div>
       {phase === 'blocked' && goal.blockedReason !== undefined && (

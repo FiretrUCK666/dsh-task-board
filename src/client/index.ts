@@ -8,6 +8,16 @@
  * shell fails the whole boot when a plugin apply throws, and an external
  * plugin must not take the GUI down.
  */
+// The design variables, first: every sheet below reads `--dsh-tb-*`, and a
+// custom property has to be DECLARED somewhere for those reads to resolve. One
+// import is the whole wiring — the layer's selector is the plugin's seat, so it
+// covers both panels and everything they portal out of themselves.
+import './design/tokens.module.css'
+// …then the shared shape grammar (the focus ring, and whatever else two
+// surfaces have to agree on). Same reason: the rule is seat-level, so one
+// import covers every surface the plugin renders.
+import './design/base.module.css'
+import './design/components.module.css'
 import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
@@ -32,6 +42,7 @@ import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
 import { itemListStage, registerItemList, LIST_GROUP } from './item/register.tsx'
+import { registerDesignGallery } from './gallery/register.tsx'
 import { ITEM_PRIORITIES_BY_WEIGHT } from '../core/item-view.ts'
 import type { ItemPriority } from '../core/item.ts'
 import { registerToolViews } from './chat/tool-views.tsx'
@@ -550,6 +561,10 @@ export function apply(ctx: ClientContext): void {
   // funnel. One way out for both, so leaving a panel can never mean two
   // different things on two panels.
   ctx.effect(() => registerItemList(ctx as never, returnToConversation), 'dsh-task-board: task list registration')
+  // The design-system gallery: a third main-stage panel in the same shape, and
+  // absent unless the host announced its surface (see `gallery/register.tsx`
+  // for why its failure direction is the opposite of the two product panels).
+  ctx.effect(() => registerDesignGallery(ctx as never, returnToConversation), 'dsh-task-board: design gallery registration')
   // How the model's work reads in the transcript. Keyed by the WIRE tool name,
   // so a name that never travels simply never renders.
   ctx.effect(() => ctx.slots.inject('tool.call.toolview', () => registerToolViews(

@@ -30,6 +30,7 @@
  *    selected.
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
+import { bandNarrowMax } from '../design/bands.ts'
 import type { ItemRecord, ItemStatusView } from '../../core/item.ts'
 import { itemStatusOf } from '../../core/item.ts'
 import {
@@ -469,7 +470,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
   // The detail lives beside the list only when there is room for both. The
   // measurement is of THIS surface, never the viewport, so it is right when the
   // shell sidebar opens, splits or collapses.
-  const [narrow, surfaceRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', 1080)
+  const [narrow, surfaceRef] = useSurfaceNarrow('[data-dsh-taskboard-view]', bandNarrowMax('item', 1080))
 
   /* **开着浮层时，清单这一层对无障碍不成立。** 命令面板与那张纸都在上面声明了
      `aria-modal="true"`，那是「外面的一切都不成立」这句承诺——而它得有人兑现，否则一个

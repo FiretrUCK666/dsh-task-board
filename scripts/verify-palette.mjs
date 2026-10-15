@@ -38,10 +38,49 @@
  *      will not match its neighbour's. Non-family mixes (a shadow's shadow, a
  *      card's own picked tint) are not this rule's subject.
  */
-import { existsSync, readFileSync } from 'node:fs'
-import { join, resolve } from 'node:path'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { join, resolve, relative, sep } from 'node:path'
 
-const FILES = ['src/client/board.module.css', 'src/client/item/item.module.css']
+/**
+ * Every stylesheet the client half owns, DISCOVERED rather than listed.
+ *
+ * A named list of sheets goes stale the moment a surface gets a stylesheet of
+ * its own: the new sheet is then checked by nothing at all, and it is exactly
+ * the new sheet whose colours nobody has reviewed against the ladder. Walking
+ * the tree means the next one is covered the day it is created — the same
+ * reasoning `verify-design-docs.mjs` records for its own walk.
+ *
+ * `*.module.css` is the build's own convention (one hashed class scope per
+ * sheet), so the walk keys on it rather than on a filename.
+ */
+function clientStylesheets(root) {
+  const clientDir = join(root, 'src', 'client')
+  if (!existsSync(clientDir)) return []
+  const found = []
+  const walk = dir => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (entry.name.endsWith('.module.css')) found.push(p)
+    }
+  }
+  walk(clientDir)
+  return found.sort()
+}
+
+/**
+ * The alias layer's home, located by WHAT IT DECLARES rather than by a path.
+ *
+ * `namedHostTokens` derives the banned set from the layer's own words, so
+ * "which sheet is the layer" is a load-bearing question — and a path answers it
+ * only until the layer moves. `--dsh-tb-text-1` is the layer's own signature
+ * (it is the alias every text level is read through), so the sheet that
+ * declares it IS the layer, wherever it lives.
+ *
+ * Two sheets declaring it is a finding, not a tie to break: one concept with
+ * two homes is how a colour family ends up with two values.
+ */
+const ALIAS_SIGNATURE = '--dsh-tb-text-1'
 
 /** Drop comments so a ban reads CODE, not the prose that explains it (硬性规范 14). */
 function stripComments(css) {
@@ -146,18 +185,31 @@ if (process.argv.includes('--probe-palette')) {
 // ── the real run ────────────────────────────────────────────────────────────
 
 const root = resolve(process.argv[2] ?? '.')
+const FILES = clientStylesheets(root).map(abs => relative(root, abs).split(sep).join('/'))
+if (FILES.length === 0) {
+  console.error('verify-palette: no client stylesheet found under src/client — the walk read nothing, so every rule below is vacuous')
+  process.exit(1)
+}
 const missing = FILES.map(rel => join(root, rel)).filter(file => !existsSync(file))
 if (missing.length > 0) {
   console.error(`verify-palette: missing ${missing.join(', ')}`)
   process.exit(1)
 }
 
-const sheet = stripComments(readFileSync(join(root, FILES[0]), 'utf8'))
-const both = FILES.map(rel => stripComments(readFileSync(join(root, rel), 'utf8'))).join('\n')
+const sheets = FILES.map(rel => ({ rel, css: stripComments(readFileSync(join(root, rel), 'utf8')) }))
+const layerSheets = sheets.filter(sheet => declarations(sheet.css).some(decl => decl.name === ALIAS_SIGNATURE))
+if (layerSheets.length !== 1) {
+  console.error(
+    `verify-palette: ${layerSheets.length} sheet(s) declare ${ALIAS_SIGNATURE} (${layerSheets.map(s => s.rel).join(', ') || 'none'}) — `
+    + 'the alias layer must have exactly one home, or "the layer names it once" has no subject',
+  )
+  process.exit(1)
+}
+const sheet = layerSheets[0].css
+const both = sheets.map(entry => entry.css).join('\n')
 
 const findings = []
-for (const [index, rel] of FILES.entries()) {
-  const css = stripComments(readFileSync(join(root, rel), 'utf8'))
+for (const { rel, css } of sheets) {
   for (const finding of derivedTier(css)) findings.push(`${rel}: ${finding}`)
   for (const finding of privateAlphaFinding(css)) findings.push(`${rel}: ${finding}`)
 }
@@ -172,4 +224,4 @@ if (findings.length > 0) {
   console.error(`verify-palette FAILED: ${findings.length} finding(s)`)
   process.exit(1)
 }
-console.log(`verify-palette: one colour per family — ${banned.size} host token(s) named once by the layer and reached only through it, no derived tier, no private wash`)
+console.log(`verify-palette: one colour per family — ${banned.size} host token(s) named once by the layer (${layerSheets[0].rel}) and reached only through it, no derived tier, no private wash; ${FILES.length} sheet(s) walked`)

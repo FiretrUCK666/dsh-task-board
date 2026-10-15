@@ -89,7 +89,7 @@ export function FeedRow({
             {session}
           </span>
         )}
-        <Chip kind={status.kind} fill={false}>{status.label}</Chip>
+        <Chip kind={status.kind} fill={false} className={css.notifyMainChip}>{status.label}</Chip>
       </button>
       {excerpt !== undefined && excerpt !== '' && (
         <p className={css.notifyExcerpt}>{excerpt}</p>

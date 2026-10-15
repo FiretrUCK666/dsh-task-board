@@ -11,9 +11,27 @@ import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/bo
 import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
+import { designCss } from './panel-harness.ts'
 
 const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
 const cssSource = readFileSync(cssPath, 'utf8')
+
+/**
+ * The board sheet PLUS the design system's own sheet — "this surface as it
+ * renders".
+ *
+ * The two are not interchangeable and the difference is the point:
+ *
+ *   - a BAN reads `cssSource` alone. "This surface must not declare X" is a
+ *     claim about what THIS surface owns; scanning somebody else's sheet would
+ *     make the ban fire on a rule the surface never wrote, and the cheapest way
+ *     to pass would be to edit the design system.
+ *   - a POSITIVE claim about a SHARED component reads `renderedSource`. The
+ *     disclosure turn, the modal chrome and every other shared grammar live in
+ *     `design/components.module.css` now, so a rule asserting that the shared
+ *     component behaves must read where that component's rules actually are.
+ */
+const renderedSource = `${cssSource}\n${designCss()}`
 
 /** Rule text with its comments removed. A ban reads CODE, not the prose that
  *  explains it — and this sheet documents its rules inside them, so a substring
@@ -26,8 +44,15 @@ function withoutComments(text: string): string {
 
 /** The first top-level `.name { … }` rule body (line-start match, trim-tolerant
  *  so indented @container rules are also findable). */
+/** One class's own rule text, as THIS SURFACE renders it.
+ *
+ *  Reads enderedSource (board + design system) rather than the board sheet
+ *  alone, because these assertions are about what an element gets when the
+ *  review page renders — and half of what it gets now comes from the shared
+ *  components' sheet. Board first, so at equal specificity the surface's own
+ *  rule is the one found, which is also the cascade's precedence. */
 function ruleOf(name: string): string {
-  const lines = cssSource.split('\n')
+  const lines = renderedSource.split('\n')
   for (let i = 0; i < lines.length; i++) {
     if (lines[i].trim() !== `.${name} {`) continue
     let depth = 0
@@ -408,8 +433,8 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // config into a clipped box) and never caps or scrolls its own config.
     const head = ruleOf('sessionRailHead')
     expect(head).toMatch(/flex:\s*none/)
-    expect(ruleOf('sessionRailHead > .detailSection')).not.toMatch(/max-height/)
-    expect(ruleOf('sessionRailHead > .detailSection')).not.toMatch(/overflow-y/)
+    expect(ruleOf('railHeadSection')).not.toMatch(/max-height/)
+    expect(ruleOf('railHeadSection')).not.toMatch(/overflow-y/)
     // The comments region absorbs the leftover height and owns the scroller.
     expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/flex:\s*1 1 auto/)
     expect(ruleOf('sessionRailComments[data-open=\'true\']')).toMatch(/min-height:\s*0/)
@@ -608,7 +633,12 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // 「同一排控件同级高」: a 30px circle beside 24px pills is the misalignment
     // the eye reads as sloppiness. The size rides the sm token (or its equal
     // literal) — the test pins the VALUE, never the spelling.
-    expect(cssSource).toMatch(/\.reviewHeader \.iconButton\s*\{[^}]*(width:\s*(24px|var\(--dsh-tb-button-h-sm\));[^}]*height:\s*(24px|var\(--dsh-tb-button-h-sm\))|height:\s*(24px|var\(--dsh-tb-button-h-sm\));[^}]*width:\s*(24px|var\(--dsh-tb-button-h-sm\)))/)
+    // The size step, in the sheet that can render it.
+    expect(renderedSource).toMatch(/\.iconButtonSm\s*\{[^}]*width:\s*var\(--dsh-tb-button-h-sm\)[^}]*height:\s*var\(--dsh-tb-button-h-sm\)/)
+    // …and this surface asking for that step, read from the markup rather than
+    // named here, so a rename moves the gate with the code.
+    const frame = readFileSync(fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url)), 'utf8')
+    expect(frame).toMatch(/<IconButton[^>]*size="sm"/)
   })
 
   it('the fold defaults follow the PANEL width, not the viewport', () => {
@@ -619,7 +649,7 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // CSS queries, and the panel is stamped for it.
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource = readFileSync(panelPath, 'utf8')
-    expect(panelSource).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
+    expect(panelSource).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', bandNarrowMax\('sessionPanel', 600\)\)/)
     // The comments default follows the PANEL width (open desktop, folded
     // phone — an open thread would bury the conversation there); only the
     // config head keeps a single narrow-default. Tap toggles either way.
@@ -642,7 +672,9 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/sessionRailHeadToggle/)
     expect(cssSource).not.toMatch(/sessionRailHeadTitle/)
     // The fold grammar turns: collapsed points right, expanded points down.
-    expect(cssSource).toMatch(/\.detailDisclosure\[aria-expanded='false'\] \.detailChevron\s*\{[^}]*rotate\(-90deg\)/)
+    // The shared Disclosure's own turn lives in the design sheet, so this reads
+    // the surface as it renders; the surface's own twin below stays on cssSource.
+    expect(renderedSource).toMatch(/\.detailDisclosure\[aria-expanded='false'\] \.detailChevron\s*\{[^}]*rotate\(-90deg\)/)
     expect(cssSource).toMatch(/\.sessionContextHead\[aria-expanded='false'\] \.sessionContextChevron\s*\{[^}]*rotate\(-90deg\)/)
     expect(cssSource).not.toMatch(/sessionContextChevronOpen/)
   })
@@ -1305,11 +1337,8 @@ describe('contextWorthOf (show only UNFINISHED context)', () => {
 })
 
 describe('session context panel row grammar (badge never spills over the text)', () => {
-  const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-  const cssSource = readFileSync(cssPath, 'utf8')
-
   function ruleOf(name: string): string {
-    const lines = cssSource.split('\n')
+    const lines = renderedSource.split('\n')
     for (let i = 0; i < lines.length; i++) {
       if (lines[i].trim() !== `.${name} {`) continue
       let depth = 0

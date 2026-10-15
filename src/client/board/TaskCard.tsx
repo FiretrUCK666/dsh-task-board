@@ -291,17 +291,17 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         {(() => {
           const primary = view.primary
           const primaryChip = primary.kind === 'waiting' ? (
-            <Chip kind="warn" fill={false} title={pendingTitle !== ''
+            <Chip className={css.cardBadge} kind="warn" fill={false} title={pendingTitle !== ''
               ? pendingTitle
               : t('card.waitingTitle', { kind: t(waitingKeyOf(primary.waiting)) })}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : primary.kind === 'running' ? (
-            <Chip kind="warn" fill={false} icon={<span className={css.spinner} aria-hidden="true" />}>
+            <Chip className={css.cardBadge} kind="warn" fill={false} icon={<span className={css.spinner} aria-hidden="true" />}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : primary.kind === 'queued' ? (
-            <Chip kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(primary.count) })}>
+            <Chip className={css.cardBadge} kind="warn" fill={false} title={t('card.commentQueueTitle', { n: String(primary.count) })}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : primary.kind === 'gate' ? (
@@ -310,23 +310,23 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                clock as 新 and the ring) or DECIDES (通过/打回 move the card).
                There is no third, and none of them is the other. STATIC (no
                breathing): the amber breath belongs to unread alone. */
-            <Chip kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
+            <Chip className={css.cardBadge} kind="warn" fill={false} title={t('card.awaitingDecisionTitle')}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : primary.kind === 'runs' ? (
-            <Chip kind={resultChipKind(primary.failed ? 'failed' : 'succeeded')} fill={false}>
+            <Chip className={css.cardBadge} kind={resultChipKind(primary.failed ? 'failed' : 'succeeded')} fill={false}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : undefined
           const automationChips = (
             <>
               {task.schedule?.enabled === true && view.autoBlocked === undefined && (
-                <Chip fill={false} title={scheduleChipTitle(task)}>
+                <Chip className={css.cardBadge} fill={false} title={scheduleChipTitle(task)}>
                   {task.schedule.mode === 'chain' ? t('card.chain') : t('card.scheduled')}
                 </Chip>
               )}
               {task.schedule?.enabled === true && task.schedule.maxRuns !== undefined && view.autoBlocked === undefined && (
-                <Chip kind="muted" fill={false} title={t('card.batchProgress')}>
+                <Chip className={css.cardBadge} kind="muted" fill={false} title={t('card.batchProgress')}>
                   {task.schedule.runCount}/{task.schedule.maxRuns}
                 </Chip>
               )}
@@ -335,12 +335,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                   instead of stacking four chips for it. Live progress is orthogonal
                   and survives (see view.chaining). */}
               {view.autoBlocked !== undefined && (
-                <Chip kind="error" fill={false} title={scheduleChipTitle(task)}>
+                <Chip className={css.cardBadge} kind="error" fill={false} title={scheduleChipTitle(task)}>
                   {t('card.autoBlocked')}
                 </Chip>
               )}
               {view.chaining && (
-                <Chip kind="warn" fill={false} title={t('card.chainingTitle')}>
+                <Chip className={css.cardBadge} kind="warn" fill={false} title={t('card.chainingTitle')}>
                   {t('card.chaining')}
                 </Chip>
               )}
@@ -348,7 +348,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                   stopped the rule" at a glance, distinct from "success awaiting
                   confirmation". */}
               {view.autoPausedFailed && (
-                <Chip kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
+                <Chip className={css.cardBadge} kind="error" fill={false} title={t('card.autoPausedFailedTitle')}>
                   {t('card.autoPausedFailed')}
                 </Chip>
               )}
@@ -359,7 +359,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                    move; the second means somebody said something. Stating the count
                    only when a run is behind it keeps the number meaningful — a bare
                    new-comment label is the comment-only case. */
-                <Chip kind="warn" fill={false} title={t(view.unviewedRunCount > 0 ? 'card.newContentTitle' : 'card.newCommentTitle')}>
+                <Chip className={css.cardBadge} kind="warn" fill={false} title={t(view.unviewedRunCount > 0 ? 'card.newContentTitle' : 'card.newCommentTitle')}>
                   {view.unviewedRunCount > 0 ? `${t('card.newContent')} ${view.unviewedRunCount}` : t('card.newComment')}
                 </Chip>
               )}
@@ -382,7 +382,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                    （按下去什么都不会发生的控件比一句没有更糟）。门的另一半在装配层：抬清单舞台
                    并让那边只显示挂着这张卡的条目。 */
                 onOpenMounted === undefined ? (
-                  <Chip kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
+                  <Chip className={css.cardBadge} kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
                     {t('card.mountedRows', {
                       n: String(mounted.count),
                       tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),
@@ -395,7 +395,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
                     title={t('card.mountedDoor')}
                     onClick={event => { event.stopPropagation(); onOpenMounted() }}
                   >
-                    <Chip kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
+                    <Chip className={css.cardBadge} kind={mounted.loudest === undefined ? 'neutral' : 'warn'} fill={false}>
                       {t('card.mountedRows', {
                         n: String(mounted.count),
                         tier: mounted.loudest === undefined ? '' : t(PRIORITY_LABEL[mounted.loudest]),

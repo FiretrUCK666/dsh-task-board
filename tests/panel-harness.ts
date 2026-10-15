@@ -39,7 +39,7 @@ import { act, createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createRoot } from 'react-dom/client'
 import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import type { ItemRecord } from '../src/core/item.ts'
 import type { AttachmentRef } from '../src/core/attachment.ts'
@@ -815,27 +815,140 @@ export function itemSheetPath(): string {
   return join(repoRoot, 'src/client/item/item.module.css')
 }
 
-/** The shared alias layer: the `--dsh-tb-*` definitions both sheets consume. */
-export function aliasLayer(css: string): string {
-  return /\[data-dsh-taskboard-view\][^{]*\{([^}]*)\}/s.exec(css)?.[1] ?? ''
+/**
+ * The shared alias layer: the `--dsh-tb-*` definitions every surface consumes.
+ *
+ * Located by WHAT IT DECLARES, not by a path. `--dsh-tb-text-1` is the layer's
+ * own signature — the alias every text level is read through — so the sheet
+ * that declares it IS the layer, wherever it lives. A path would answer the
+ * question only until the layer moved, and the move is the point of having one
+ * home for it.
+ * @returns the declaration block, or `''` when no sheet declares the signature.
+ */
+export function aliasLayer(): string {
+  const layer = clientSheets().find(sheet => stripCssComments(sheet.css).includes(`${ALIAS_SIGNATURE}:`))
+  if (layer === undefined) return ''
+  return /\[data-dsh-taskboard-view\][^{]*\{([^}]*)\}/s.exec(layer.css)?.[1] ?? ''
 }
 
-/** The panel's own stylesheets, as written (the module class names are literal here). */
+/**
+ * The signature that identifies the alias layer's sheet: the alias every text
+ * level is read through. One sheet declares it, and that sheet IS the layer.
+ */
+const ALIAS_SIGNATURE = '--dsh-tb-text-1'
+
+/**
+ * Every stylesheet the client half owns, discovered by walking the tree.
+ *
+ * WHY DISCOVERY AND NOT A LIST. This file already records the lesson for
+ * SOURCES (`locateSource` / `readSource`: three gates were pinned to
+ * `panel.tsx` by path and all three went red the day the panel was split, on
+ * claims that were still true). The stylesheets had the same defect and it bit
+ * the same way: a sheet named in a list here is a sheet the harness renders
+ * WITHOUT the moment it is added — the page comes out unstyled, which reads as
+ * a CSS failure and is really a missing line.
+ *
+ * `*.module.css` is the build's own convention (one hashed class scope per
+ * sheet), so the walk keys on it rather than on a filename.
+ */
+export function clientSheets(): { readonly rel: string; readonly css: string }[] {
+  const clientDir = join(repoRoot, 'src', 'client')
+  if (!existsSync(clientDir)) return []
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const p = join(dir, entry.name)
+      if (entry.isDirectory()) walk(p)
+      else if (entry.name.endsWith('.module.css')) found.push(p)
+    }
+  }
+  walk(clientDir)
+  return found.sort().map(abs => ({ rel: relative(repoRoot, abs).split(sep).join('/'), css: readFileSync(abs, 'utf8') }))
+}
+
+/**
+ * The sheet that DEFINES a class, found by looking rather than by knowing.
+ *
+ * A gate that asks "what does `.reviewBody` declare" should not also have to
+ * know which file `.reviewBody` lives in: that second fact changes every time
+ * a surface gets its own sheet, and every change is a gate that goes red on a
+ * claim that is still true. Classes are unique across the client half (a
+ * duplicate is its own defect, and `verify-design-docs.mjs` counts them), so
+ * the definition is unambiguous.
+ * @param name - the bare class name (no leading dot).
+ * @returns the owning sheet, or `undefined` when no sheet defines it.
+ */
+export function sheetOf(name: string): { readonly rel: string; readonly css: string } | undefined {
+  const needle = `.${name}`
+  return clientSheets().find(sheet => stripCssComments(sheet.css).includes(needle))
+}
+
+/**
+ * The design layer: every sheet under `src/client/design`.
+ *
+ * One surface's own sheet plus this is "that surface as it renders" — a page
+ * reads the layer, and a claim about a `--dsh-tb-*` token or the corner-shape
+ * rule is a claim about a rule that lives here rather than in the page.
+ */
+export function designCss(): string {
+  return clientSheets()
+    .filter(sheet => sheet.rel.startsWith('src/client/design/'))
+    .map(sheet => sheet.css)
+    .join('\n')
+}
+
+/**
+ * One page's own sheets, by the directory it lives in.
+ *
+ * `pageCss('board')` is `board.module.css` plus anything under `board/`; the
+ * same call answers for `item` and for any page added later, so a surface that
+ * grows a second sheet needs no edit here. This is the read a claim scoped to
+ * ONE surface wants — the concatenation of every sheet would make the item
+ * panel's type ladder a finding against the board's.
+ * @param page - the directory name under `src/client`.
+ * @returns that page's sheets, concatenated.
+ */
+export function pageCss(page: string): string {
+  return clientSheets()
+    .filter(sheet => sheet.rel.startsWith(`src/client/${page}/`) || sheet.rel === `src/client/${page}.module.css`)
+    .map(sheet => sheet.css)
+    .join('\n')
+}
+
+/**
+ * A spacing value as a number of pixels — a literal `12px`, or a ladder token.
+ *
+ * THE LADDER'S NUMBERS ARE READ FROM THE SHEET THAT DECLARES THEM, never
+ * restated here. A second copy on the test side is the very defect the ladder
+ * exists to remove — one concept, two names — and it would go stale in the same
+ * silence: change a step in `design/tokens.module.css` and a test-side table
+ * keeps asserting the old number against a sheet that no longer uses it.
+ * @param value - a declaration value: `8px`, `0`, or `var(--dsh-tb-space-4)`.
+ * @returns the number, or `undefined` when this is not a spacing it can read.
+ */
+export function spacingPx(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const text = value.trim()
+  const literal = /^([\d.]+)px$/.exec(text)
+  if (literal !== null) return Number(literal[1])
+  if (text === '0') return 0
+  const token = /^var\((--dsh-tb-space-[a-z0-9-]+)\)$/.exec(text)
+  if (token === null) return undefined
+  for (const sheet of clientSheets()) {
+    const declared = new RegExp(`${token[1]}\\s*:\\s*([\\d.]+)px`).exec(stripCssComments(sheet.css))
+    if (declared !== null) return Number(declared[1])
+  }
+  return undefined
+}
+
+/**
+ * The panel's own stylesheets, as written (the module class names are literal
+ * here). Every sheet under `src/client`, so a surface with a sheet of its own
+ * is rendered from the day it exists.
+ */
 export function panelCss(): string {
-  // The surface's sheets are ENUMERATED, and a surface with a sheet of its own
-  // has to be added here or it renders unstyled in every screenshot — which reads
-  // as a CSS failure and is really a missing line. Found by looking: the key
-  // help sheet's own rules were absent from the artifact, so the `?` button came
-  // out unstyled and looked like a margin rule that did not work.
-  const sheets = [
-    'src/client/board.module.css',
-    'src/client/item/item.module.css',
-  ]
-  return sheets
-    .map(sheet => {
-      const path = join(repoRoot, sheet)
-      return existsSync(path) ? `\n/* ${sheet} */\n${readFileSync(path, 'utf8')}` : ''
-    })
+  return clientSheets()
+    .map(sheet => `\n/* ${sheet.rel} */\n${sheet.css}`)
     .join('\n')
 }
 

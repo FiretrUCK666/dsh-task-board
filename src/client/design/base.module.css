@@ -1,0 +1,57 @@
+/**
+ * The shared shape grammar: declarations two or more surfaces must agree on.
+ *
+ * WHY THIS IS A SHEET AND NOT MORE COMPONENTS. A component owns an element it
+ * renders; this sheet owns grammar that has to land on elements a PAGE owns —
+ * a focus ring on a row, a touch ring on a menu button, a pill base on a filter
+ * chip. Wrapping those in components would mean rewriting the pages' own
+ * markup, which is a different (and much larger) change than naming the grammar
+ * once.
+ *
+ * HOW A PAGE USES A CLASS FROM HERE. Import THIS sheet and apply the class:
+ * `import base from '../design/base.module.css'` then
+ * `className={`${css.itemTag} ${base.pill}`}`. That works because the class map
+ * belongs to the SHEET, not to the importing file — the same sheet resolves to
+ * the same hashed class wherever it is imported from. What does NOT work is a
+ * rule in one sheet naming a class defined in another: that sheet compiles its
+ * own copy of the literal name, and in the production bundle the selector
+ * matches nothing. That distinction is the whole reason this file exists.
+ *
+ * WHAT BELONGS HERE. A declaration is here when a SECOND surface needs the same
+ * one. A number used once stays where it is used, with its measurement note —
+ * the admission test is 「does a second consumer exist」, not 「does it look
+ * generic」.
+ */
+
+/* ── 焦点环：一条影，座位级，没有名单 ────────────────────────────────────────
+ *
+ * 这一条取代了看板表里那份**手写的 22 个类名**的名单。名单的问题不是长，是它
+ * 只会漏：新加一个控件要记得把自己加进去，忘了的后果是那个控件在键盘下**没有环**
+ * ——而屏幕上没有任何一处会说明为什么。
+ *
+ * 机制本身写在 `tokens.module.css` 的 `--dsh-tb-ring` 上，包括为什么环是一条影
+ * 而不是一条 `outline`（`outline` 由浏览器按 `border-radius` 画，不读
+ * `corner-shape`；皮肤换成超椭圆族时环会与自己的边在每个角上分叉）。清单面板
+ * 一直这么做，看板没有——两个面板因此有两条不同的焦点环。
+ *
+ * **座位级而不是名单**：`:focus-visible` 落在座位子树的每一个可聚焦元素上，
+ * 所以「哪些元素有环」由元素自己是不是可聚焦回答，不由一张要人维护的表回答。
+ *
+ * 已经声明自己 `box-shadow` 的规则（`.input:focus` 那条柔光晕、`.card:hover`
+ * 的抬升）**仍然是它们自己说了算**：它们与这一条特异性相同、写在后面。这是有意
+ * 的——一处输入框的焦点该读作「这个字段活了」，而不是「这一圈是当前焦点」。
+ */
+[data-dsh-taskboard-view] :focus-visible,
+[data-dsh-taskboard-panel] :focus-visible {
+  outline: none;
+  box-shadow: var(--dsh-tb-ring);
+}
+
+/* 强行色模式会把影抹掉，那里把 outline 放回来：那个模式下颜色由浏览器接管，
+   一条 outline 就是「看得见的环」的唯一写法。 */
+@media (forced-colors: active) {
+  [data-dsh-taskboard-view] :focus-visible,
+  [data-dsh-taskboard-panel] :focus-visible {
+    outline: 2px solid;
+  }
+}

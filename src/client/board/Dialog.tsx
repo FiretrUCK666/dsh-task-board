@@ -29,8 +29,8 @@
 import { useId, useRef, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import { t } from '../locales.ts'
-import css from '../board.module.css'
-import { Icon } from './ui.tsx'
+import css from '../design/components.module.css'
+import { Icon, IconButton } from './ui.tsx'
 import { useEscapeStack } from './escape-stack.ts'
 import { useDialogFocus } from './dialog-focus.ts'
 import { useModalInert } from '../modal-inert.ts'
@@ -96,14 +96,12 @@ export function Dialog({ title, label, onClose, className, children, portal = tr
         {title !== undefined && (
           <header className={css.dialogHeader}>
             <h2 id={titleId} className={css.modalTitle}>{title}</h2>
-            <button
-              type="button"
-              className={css.iconButton}
-              aria-label={t('detail.close')}
+            <IconButton
+              label={t('detail.close')}
               onClick={onClose}
             >
               <Icon name="close" />
-            </button>
+            </IconButton>
           </header>
         )}
         {children}

@@ -3,9 +3,10 @@ export interface SurfaceManifest {
     readonly board: boolean;
     readonly items: boolean;
     readonly agent: boolean;
+    readonly design: boolean;
 }
 /** Which surface a registration is asking about. */
-export type SurfaceName = 'board' | 'items';
+export type SurfaceName = 'board' | 'items' | 'design';
 /**
  * Ask the host which surfaces are on.
  *
@@ -20,8 +21,17 @@ export declare function readSurfaceManifest(fetchImpl?: typeof fetch): Promise<S
 /**
  * Should this surface be registered?
  *
+ * THE FALLBACK IS PER-SURFACE, and that is the whole reason it is a parameter.
+ * A manifest that cannot be read means "the host said nothing", and the
+ * product panels must register anyway — a broken switch must leave the plugin
+ * exactly as it was before anyone thought about switches. The gallery is the
+ * opposite case: it is a developer instrument, so an unreadable manifest must
+ * leave it ABSENT rather than put a design catalogue in front of a user whose
+ * host is simply unreachable. One default cannot serve both directions.
+ *
  * @param name - the surface asking.
  * @param manifest - what the host said, or `undefined` if it said nothing.
- * @returns whether to register it. `undefined` means YES.
+ * @param whenUnknown - what an unreadable manifest means for this surface.
+ * @returns whether to register it.
  */
-export declare function surfaceEnabled(name: SurfaceName, manifest: SurfaceManifest | undefined): boolean;
+export declare function surfaceEnabled(name: SurfaceName, manifest: SurfaceManifest | undefined, whenUnknown?: boolean): boolean;

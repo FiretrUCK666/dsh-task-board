@@ -56,7 +56,7 @@ export function CommentsThread({ task, views, onCancel }: {
               {/* 来源不再分家：直发/驱动/原生会话已并轨为一种「会话活动」，
                   每行统一为 文本 + 状态 chip + 时间；回合的真实性质由数据
                   (direct/external) 承载，界面上不并排来源标签。 */}
-              <Chip kind={commentKindOf(view.state)}>
+              <Chip kind={commentKindOf(view.state)} className={css.reviewCommentChip}>
                 {view.state === 'queued'
                   ? t('review.commentQueued', { n: String(position) })
                   : t(commentStateKey(view.state))}

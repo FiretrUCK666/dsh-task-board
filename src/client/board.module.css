@@ -6,323 +6,6 @@
  * the board adapts with zero per-skin work.
  */
 
-/* --- design-system layer -----------------------------------------------------
- * One alias layer: the board never writes raw values — every color, border,
- * radius, corner SHAPE, shadow, text level and motion constant flows from the
- * native dsh semantic tokens below (or is derived from them). A future skin
- * re-maps the --dsw-* tokens and the whole board follows automatically.
- */
-[data-dsh-taskboard-view],
-:where([data-dsh-taskboard-panel]) {
-  /* surfaces: the glass/opaque split lives here once — the wallpaper wash
-     (--dsh-tb-glass, follows a skin's translucency on bg-base) belongs to
-     the canvas layer only; every inner floating/sunken surface consumes the
-     opaque layer tokens, exactly like the native "inner surfaces stay
-     opaque" convention of glass skins. */
-  --dsh-tb-glass: var(--dsw-alias-bg-base);
-  --dsh-tb-bg: var(--dsw-alias-bg-base);
-  --dsh-tb-bg-raised: var(--dsw-alias-bg-layer-2);
-  --dsh-tb-surface-float: var(--dsw-alias-bg-layer-1);
-  --dsh-tb-surface-sunken: var(--dsw-alias-bg-layer-2);
-  --dsh-tb-surface-menu: var(--dsw-specific-menu);
-  /* THE chip fill: ONE fill for every quiet control that must read as "a
-     field I can act on" — the 筛选任务 search box, the quiet buttons beside it
-     (整理 / 自动化 / 动态 / 检查更新 / 刷新 / 查看会话 …) and the tabs.
-     It is the NATIVE input surface (`bg` + `specific-input-major`), not our
-     own layer-2 approximation: a hand-picked layer token is an opaque colour
-     the shell never remaps, so under a skin the chips drifted away from the
-     native inputs sitting right next to them (the 「跟其他按钮都不一样」
-     report). Consuming the native input face makes every one of them move with
-     the skin, at both themes, by construction — there is no second value left
-     to keep in sync. */
-  --dsh-tb-chip-fill: var(--dsh-tb-input-bg);
-  /* Modal mask: a touch stronger than the native mask-1 so column lines
-     behind the glassy board no longer glimmer through the dialog. */
-  --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
-  --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
-  --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
-  /* ── A MARK'S VERTICAL PLACE, AS ONE NUMBER ────────────────────────────────
-     A line box reserves room for descenders whether or not the string has any,
-     so **the line box's centre is NOT the type's optical centre** — it sits
-     above the x-height band, and a dot centred on it reads high. That is a
-     measured fact about this surface, not a preference: at 11px the name's
-     x-height band measured y=182..188 (mid 185) and the dot's centre measured
-     184 — one pixel, which is exactly what 「那个点还是比它高了一点点」 is.
-
-     It is a TOKEN and not a stray `1px` because this surface has four marks and
-     each of them had been corrected separately, in its own row, by looking at
-     that row: the card's title mark, the workspace dot, the column header's dot
-     and the compact tab's dot. Four rows, four numbers, and nothing saying they
-     are the same question. A number that is only correct in one place is a
-     number that will be wrong in the next place.
-
-     `translateY` and NOT `margin-top`: on a `align-items: center` flex item the
-     free space is halved around the margins, so a 1px `margin-top` moves the
-     box by HALF a pixel and the correction silently under-delivers. A transform
-     is 1px because it says 1px. */
-  --dsh-tb-mark-drop: 1px;
-  /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
-     and the shell declares no such token (0 declarations across the whole DSH
-     install — only references), so the alias was invalid and every consumer
-     dropped to `none` anyway: the separators never painted. Declaring the intent
-     as `none` says what is actually true and keeps the three consumers honest,
-     instead of a broken `var()` that reads as a hairline to every future reader.
-     If a shell version ever exports the token, this becomes a real border again
-     — `scripts/verify-design-docs.mjs` audits CSS token references and will say
-     so when it exists. */
-  --dsh-tb-separator: none;
-
-  /* corners: proportional to component size (Apple rhythm). The rounder
-     values are the "圆润感" the user asked back for — the previous sm/md/lg
-     read square on phones at 390px (8px on a card, 12px on a panel). */
-  --dsh-tb-radius-sm: 10px;
-  --dsh-tb-radius-md: 14px;
-  --dsh-tb-radius-lg: 20px;
-  --dsh-tb-radius-xl: 28px;
-  /* corner family: pills are FULLY round (999px), cards/panels step the
-     radius-md/lg/xl ladder. A pill written sm/md reads square — that was the
-     「圆变方」 family (columnTab compact override, interactionOption,
-     attachChip, attachAdd, timeFieldCalendar, cruiseLimit). Small widgets
-     that are NOT pills (meter swatch, code, remove ×) keep their own tiny
-     radii by design. */
-  --dsh-tb-pill: 999px;
-  /* 触屏热区环：**一个小控件长出来的、看不见的那一圈。** 两轴各一个数，因为挡住它的
-     东西在两条轴上不一样——块向的邻居是上一行/下一行，行内的邻居是同排的下一个控件。
-     两个面板共用这两个名字：清单面板在窄档把横向那一格收窄到 3px（它那一排胶囊只隔
-     3px，量过），其余一律读这里。**不许再在媒体查询里手写 `inset: -7px`**：同一件事
-     两处写数，就会出现「7px 与 8px 与 3px」三种，而它们看起来都像对的。 */
-  --dsh-tb-hit-ring-block: 7px;
-  --dsh-tb-hit-ring-inline: 7px;
-  /* corner geometry: `border-radius` decides how big a corner is, `corner-shape`
-     decides whether that corner is a circular ARC. They are two axes, and only
-     the second one can turn a 50% dot or a 999px pill into a rounded square —
-     measured in the browser: `corner-shape: superellipse(1.33)` renders an 8x8
-     `border-radius: 50%` box as a rounded square, while the initial value
-     (`superellipse(1)`) renders a true circle. That is why the 「圆变方」 family
-     survived every previous radius-only pass: the radii were always correct.
-     `corner-shape` does NOT inherit (measured: a value on the parent box leaves
-     every child at the initial value), so it cannot be fixed from the root —
-     but it CAN be declared once for the whole subtree with the universal
-     selector below, which is zero-specificity and therefore overrides an
-     element rule while still losing to nothing else. `--dsh-tb-corner` is the
-     single switch: if the board ever wants a squircle family, it changes here. */
-  --dsh-tb-corner: round;
-  /* ONE breathing rhythm for the compact navigator strip and the thumb-bar
-     clearance: both sides of the strip and the room above the thumb bar draw
-     from this single value, so the top gap can never again disagree with the
-     bottom one (the 「上面有空隙下面紧贴」 class). Hand-typed 8px/10px/64px
-     must not come back — see the compact rules below. */
-  --dsh-tb-strip-gap: 10px;
-
-  /* Button family: every clickable button is FULLY round (pill), at every
-     height (28px default, 24px sm, 34px preset rows, 44px touch floor). A
-     fixed px radius only covers one height and reads as
-     「方形圆弧」 beside 999px pills (search/cruise/columnTab) — the token
-     below is the single truth so future buttons cannot drift. Cards/panels/
-     inputs keep the sm/md/lg/xl ladder and are NOT pills. */
-  --dsh-tb-button-radius: var(--dsh-tb-pill);
-  --dsh-tb-button-h: 28px;
-  /* The in-list tier. A quiet row action and the text beside it are aligned by
-     a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
-     moment either size changes — see .sessionHintRow). */
-  --dsh-tb-button-h-sm: 24px;
-
-  /* ONE content line per surface, declared once and consumed by every member
-     of that surface. Rail segments each writing their own 14px is how one
-     of them wrote it TWICE (the 「上下文与运行配置」 row sat 28px while the
-     comments sat 14px — the misalignment the user pointed at). A member may
-     reference the token, never re-type the number. */
-  --dsh-tb-rail-inset: 14px;
-  /* The session row's identity column: a 12px mark + a 7px gutter. The title,
-     the workspace pill, the status chip and the meta line all read against
-     this ONE derived x (the 「工作区/未运行 各搞各的」 family). */
-  --dsh-tb-lead-icon: 12px;
-  --dsh-tb-lead-gap: 7px;
-  --dsh-tb-lead-x: calc(var(--dsh-tb-lead-icon) + var(--dsh-tb-lead-gap));
-  /* The session row's declared first-line box (never `normal`, which differs
-     per font/skin and would move any offset measured against it). */
-  --dsh-tb-row-line: 20px;
-  --dsh-tb-dot: 6px;
-  /* The quiet meta line's line box — the optical center every small control
-     beside it is measured against. */
-  --dsh-tb-hint-line: 18px;
-
-  /* depth */
-  --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
-  --dsh-tb-shadow-2: var(--dsw-shadow-lv2);
-  --dsh-tb-shadow-3: var(--dsw-shadow-lv3);
-
-  /* text levels */
-  --dsh-tb-text-1: var(--dsw-alias-label-primary);
-  --dsh-tb-text-2: var(--dsw-alias-label-secondary);
-  --dsh-tb-text-3: var(--dsw-alias-label-tertiary);
-
-  /* semantic accents (single source for status color) */
-  --dsh-tb-accent: var(--dsw-alias-state-business-primary);
-  --dsh-tb-attention: var(--dsw-alias-state-warn-primary);
-  --dsh-tb-success: var(--dsw-alias-state-success-primary);
-  --dsh-tb-danger: var(--dsw-alias-state-error-primary);
-  /* ── 五栏的颜色：**只有这一份** ──────────────────────────────────────────────
-   *
-   * 看板列头那颗点、清单行首那颗珠子、任何以后画「这一条在哪一栏」的地方，都读这五个
-   * 名字。读者要求的是「按状态那些点的颜色，完全参考任务看板那边的颜色」——而那一句话
-   * 能成立的条件只有一个：**颜色不是抄过来的，是同一个令牌**。
-   *
-   * 这几条读的全是**别名层**那五个名字，不许直接写 `--dsw-*` 越过它：那五个名字声明在
-   * 根属性块里，一处、一份，而两个面板都要消费。写成两处就是**一份拷贝**，换肤时两个
-   * 面板各有各的颜色，而屏上不会有人说一句话。
-   * 而且有一条断言在「谁又抄了一份」时变红（`tests/panel-render.spec.ts`）。
-   *
-   * `running` 与 `review` 用的是 warn 的两档——看板早就这么画了，清单从它那里继承，
-   * 不另挑颜色。 */
-  --dsh-tb-status-backlog: var(--dsw-alias-label-tertiary);
-  --dsh-tb-status-todo: var(--dsw-alias-state-business-primary);
-  --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
-  --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
-  --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
-  /* ── 一条色族律：**一个色相就一个色** ────────────────────────────────────────
-   *
-   * 上面那五条（以及 accent / attention / success / danger）是这一页与清单页唯一
-   * 的颜色来源。**点、珠子、环、洗底、边、文字，读的都是同一枚**——没有「填充档」与
-   * 「文字档」之分。
-   *
-   * 这一条是被两次报价买来的：
-   *   · 把当字的那一档做成「朝中性深墨混」（`color-mix(…, label-primary)`）：对比度达标，
-   *     而彩度只剩**源色的 0.61**——黄压暗了就是棕，棕色的芯片说不出它是哪一档状态。
-   *   · 改成「只压明度」（`oklch(from … l*k c h)`）：彩度保住了（0.86–0.94），却**造出
-   *     系统里本来不存在的颜色**——同一块屏上于是有两种黄，芯片文字 `#bf7800`、旁边的
-   *     会话点 `#f59e0b`。**一个色相分成两半就是缺陷**，跟它更深还是更浅无关。
-   *
-   * 所以这里没有派生，只有**复用**：文字读的就是它那一族的色。代价如实记在 DESIGN.md
-   * （浅色主题下 amber 与 green 的小字只到 1.63:1 / 2.33:1）——而这个代价**只能用换形状
-   * 来还**（同色淡洗底 + 近黑字），不能用造第二枚颜色来还。
-   *
-   * 机械闸门：`scripts/verify-palette.mjs`——族只有一枚令牌、色相只许经本层到达、
-   * 洗底与边只许读下面那条梯子。 */
-  --dsh-tb-wash: 14%;
-  --dsh-tb-wash-strong: 22%;
-  --dsh-tb-edge: 42%;
-  --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
-  --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
-  /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
-   *
-   * `outline` 由浏览器按 `border-radius` 画，**不读 `corner-shape`**；而元素的底与边
-   * 读它。本插件的 `--dsh-tb-corner` 是明说的换肤入口，皮肤一旦换成超椭圆族，**全表
-   * 每一个焦点环都会与它自己那条边在每个角上分叉**——两条线之间露出一块白，读者
-   * 报的原话是「线框的四个边角像缺了一块」。
-   *
-   * 这不是猜的：一支把四种组合并排画出来的探针（round/squircle × outline/shadow）
-   * 量到圆族下两者同形，超椭圆族下只有 `box-shadow` 跟着角走。
-   *
-   * 所以环是一族影，写成一个令牌，元素自己的影写在它后面：
-   * `box-shadow: var(--dsh-tb-ring), …自己的影…`。被强行色模式（forced-colors）抹掉
-   * 影的时候由一条 `@media (forced-colors: active)` 把 outline 放回来——那里
-   * 浏览器自己会接管颜色，两条路径都是「看得见」。
-   *
-   * **环贴着盒沿（没有 offset）。** 那 2px 空气，在影这一
-   * 族里画不出来：影是不透明的，一层「空气」要么得知道背后是什么颜色，要么就得再加
-   * 一个伪元素。贴着盒沿是这一族的成立条件，换来的是「环与边永远同形」；环也因此更紧、
-   * 更像一条边，而不是一枚飘在盒子外面的圈。 */
-  --dsh-tb-ring: 0 0 0 2px var(--dsh-tb-accent);
-
-  /* THE text colour for text sitting ON a light-hued fill.
-     The state fills have fixed hues that do not follow the theme (warn, success
-     and the accent all resolve to the same value in light and dark), but
-     `--dsw-alias-label-primary-foreground` DOES flip: it is white in the light
-     theme and near-black in the dark one. That token answers "what reads on the
-     BRAND fill", and the brand fill is dark ink — so pairing it with a light
-     fill got the answer backwards exactly half the time. Measured before this
-     token existed, in the light theme: white on warn 2.15:1, white on
-     warn-secondary 1.91:1, white on success 2.28:1, white on the accent 4.23:1
-     — all below 4.5, while the same pairings passed in the dark theme.
-     A light fill needs dark ink in BOTH themes, so the value comes from the
-     static ramp (identical in light and dark by construction). Measured after:
-     8.80 / 9.88 / 8.29 / 4.46.
-     NOT for dark fills: the brand button and the danger button are dark in both
-     themes, and `label-primary-foreground` is already the right answer there
-     (18.90 and 4.50 in the light theme) — see .primaryButton / .dangerButton. */
-  --dsh-tb-ink-on-fill: var(--dsw-static-neutral-bluish-1000);
-
-  /* 深底上的那一枚，与上面成对：**两种底，两枚墨**。
-     浅底的填充色（warn / success / accent）在两个主题下同值、都是亮的，所以它们上面要
-     一枚**深**字——那是 `--dsh-tb-ink-on-fill`。而品牌按钮与危险按钮的底在两个主题下
-     都是深的，上面要的就是宿主自己那一枚会翻面的前景色（浅色主题下量到 18.90 与 4.50）。
-     这一对名字同时把「调用点该读什么」说清楚了：填充色上写字，永远从这两枚里挑一枚，
-     不直接读宿主的 `label-primary-foreground`——那是一条绕过本层的路。 */
-  --dsh-tb-ink-on-solid: var(--dsw-alias-label-primary-foreground);
-
-  /* interaction + motion grammar (one source) */
-  --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
-  /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
-     translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
-     shared token carries it: a shared token with no consumer is a rule that
-     answers nothing. */
-  --dsh-tb-input-bg: var(--dsw-specific-input-major);
-  /* The focus halo: the SAME `--dsh-tb-wash-strong` step the attention/selection
-     system uses, over the accent — rather than a token that does not exist
-     (`var(--dsw-alias-state-business-primary-alpha)` was declared by no shell
-     version, so without a fallback the property was invalid at computed-value
-     time and the four `box-shadow` rings that consume it (`.input:focus`,
-     `.search:focus`, the drop-accept ring, the bind-active drop zone) painted
-     nothing — the documented 3px halo never once appeared).
-     One alpha ladder, read from the ladder: never a second set of numbers. */
-  --dsh-tb-focus-ring: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
-  --dsh-tb-focus-color: var(--dsh-tb-accent);
-  --dsh-tb-motion: 160ms ease;
-  --dsh-tb-breath: 2.6s ease-in-out;
-  /* Breathing amplitude tokens (the pulse itself is a state message, so under
-     `prefers-reduced-motion` these slow down and shrink — they are never set
-     to zero, which would turn "live" into "frozen"). */
-  --dsh-tb-breath-spread: 3px;
-  --dsh-tb-breath-halo: 14px;
-}
-
-/* The corner SHAPE, declared once for the whole board surface.
- *
- * `corner-shape` is not inherited (measured: a value on the parent box leaves
- * every child at the initial value), so this one rule states the board's corner
- * language for every element it renders — dots, spinners, pills, chips, cards —
- * in one place, instead of an `corner-shape: round` on each of the ~60 pills
- * and 8 circles (the drift-prone patch pile this rule exists to replace).
- *
- * Why it is needed at all: with the initial value the two axes agree and every
- * radius draws a circular arc, but any environment that sets a superellipse
- * family (a skin, an injected stylesheet, a future default) silently turns
- * every one of those same radii into a rounded square — and no radius edit can
- * undo it. That is the 「圆变方」 family, and it came back after every previous
- * radius-only pass because the radii were never the problem.
- *
- * The declaration is `!important` and the descendant selector carries the
- * `[class]` qualifier, both for the same measured reason: against a leak of
- * equal specificity `!important` is decided by SPECIFICITY rather than source
- * order, so `[data-dsh-taskboard-view] *` (0,2,0) still loses to
- * `.theme .statusDot` (0,2,0) and the dots stay square. Describing the board's
- * own geometry is not a case for a specificity bet: the reader of a stylesheet
- * the board does not control is unknown, and the value may be inherited or
- * injected per element. There is no cost inside this sheet — a component
- * wanting another shape would be expressing the same board language — and a
- * skin that genuinely wants another corner family has a supported door:
- * re-map `--dsh-tb-corner` below, the board's single switch. The root is in the
- * selector list so the token resolves there too; `*[class]` is what every
- * widget the board actually renders matches.
- *
- * `:not([class])` is ALSO in the selector list, and it is not a stylistic
- * flourish: some of this surface's geometry carries NO class — the date axis's
- * beads are a bare `<i>`, thrown frames are outlines — and a skin whose global
- * sheet sets `corner-shape` on everything would land on exactly those, drawing
- * rings as rounded squares with the fill poking out of the corners. A surface
- * that declares a corner language protects every element that draws in it. */
-[data-dsh-taskboard-view],
-[data-dsh-taskboard-view] *[class],
-[data-dsh-taskboard-view] :not([class]),
-[data-dsh-taskboard-panel] {
-  corner-shape: var(--dsh-tb-corner, round) !important;
-}
-
-/* 深色主题**不需要第二套颜色，也就不需要重置块**：六族读的是宿主那几枚语义别名，
-   它们自己在深色主题下就解析成深色的那一半（amber/green 同值，accent 与 danger 会翻面）。
-   两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。
-   上一版这里有一块九行的重置，只因为它上游有九条派生；派生没了，它跟着没了。 */
 
 /* --- shared attention motion ------------------------------------------------
  * The unread/"new content" signal speaks one language everywhere — the same
@@ -535,7 +218,7 @@
   min-width: 0;
   min-height: 0;
   padding: 14px 16px 16px;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   background: var(--dsh-tb-bg);
   color: var(--dsh-tb-text-1);
 }
@@ -546,14 +229,14 @@
 .boardHeader {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex: none;
 }
 
 .boardRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex: none;
   min-width: 0;
 }
@@ -611,7 +294,7 @@
 .boardState {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex: 0 1 auto;
   min-width: 0;
 }
@@ -619,7 +302,7 @@
 .boardModes {
   display: inline-flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex: none;
 }
 
@@ -680,7 +363,7 @@
 .notifyList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -689,7 +372,7 @@
 .notifyRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex-wrap: wrap;
   width: 100%;
   min-width: 0;
@@ -717,7 +400,7 @@
 .notifyMain {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: 1;
   /* Identity floor: [task + session + status] refuses to compress below this
      — when the row cannot hold the floor BESIDE the action cluster, the
@@ -743,7 +426,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   width: 100%;
   min-width: 0;
 }
@@ -752,7 +435,7 @@
 .notifyActionCluster {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -820,7 +503,7 @@
      row's time stamp stays tertiary. */
   color: var(--dsh-tb-text-2);
 }
-.notifyMain .chip {
+.notifyMainChip {
   flex: none;
 }
 
@@ -868,7 +551,7 @@
 .boardStatus {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   /* Shrinkable, but the CLIPPING belongs to the text slot: a container that
      hides its own overflow also cuts the dot's glow (the dot is a child, and
      its box-shadow reaches past the container's 12px line box) — which is
@@ -916,7 +599,7 @@
 .boardDemand {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   /* Shrinkable like .boardStatus, with the clip on the text slot so the dot's
      halo is never cut by its own container. */
   flex: 0 1 auto;
@@ -988,7 +671,7 @@
 .boardStatusButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex: 0 1 auto;
   min-width: 0;
   margin: 0;
@@ -1068,7 +751,7 @@
 }
 
 .cruisePill {
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   /* 同一排控件同级高: the pill rides the 28px button row beside 新建任务 and
      the search field (its 22px switch is centered inside the 28px frame). */
   height: var(--dsh-tb-button-h);
@@ -1124,7 +807,7 @@
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   width: 300px;
   padding: 14px;
   background: var(--dsh-tb-surface-float);
@@ -1138,13 +821,13 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
 }
 
 .cruisePopoverLimit {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
 }
 
 .cruisePopoverLabel {
@@ -1157,7 +840,7 @@
 .cruiseSchedule {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding-top: 8px;
   border-top: var(--dsh-tb-separator);
 }
@@ -1166,7 +849,7 @@
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 .cruiseScheduleTitle {
@@ -1198,13 +881,13 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
 }
 
 .cruiseWindowRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding: 3px 6px;
   border-radius: var(--dsh-tb-radius-sm);
 }
@@ -1234,7 +917,7 @@
 .cruiseWindowAdd {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 /* TimeField (cruise window editor): a labeled FREE-TYPED time input with a
@@ -1246,7 +929,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   min-width: 0;
 }
 
@@ -1259,7 +942,7 @@
 .timeFieldRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 
@@ -1337,10 +1020,10 @@
    bar (the board's quiet aesthetic). One :is() list covers every hidden-bar
    surface — .columnTabs, .cards, .modalBackdrop and the compact .columns
    track — so a new hidden-bar surface joins the list instead of re-typing. */
-:is(.columnTabs, .cards, .modalBackdrop, .columns, .attachRow) {
+:is(.columnTabs, .cards, .columns, .attachRow) {
   scrollbar-width: none;
 }
-:is(.columnTabs, .cards, .modalBackdrop, .columns, .attachRow)::-webkit-scrollbar {
+:is(.columnTabs, .cards, .columns, .attachRow)::-webkit-scrollbar {
   display: none;
 }
 /* `.attachRow` 为什么在这张名单上（而不是画一条统一的细条）：**它这条行装不下一条条。**
@@ -1351,7 +1034,7 @@
 .columns {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   flex: 1;
   min-height: 0;
 }
@@ -1363,13 +1046,13 @@
 .columnTabs {
   display: none;
   flex: none;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   overflow-x: auto;
   padding: 1px 2px 4px;
 }
 
 .columnTab {
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex: none;
   /* Border-box like the header buttons: 28px means 28. */
   box-sizing: border-box;
@@ -1589,7 +1272,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   /* Top padding leaves room for the drop indicator at the column-top gap
      (gap/2 + indicator half-height): without it the bar's negative offset
      would be clipped by the scroll container and render thinner. The bottom
@@ -1618,7 +1301,7 @@
      theme versus 5.80:1 here. */
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   padding: 16px 8px;
   text-align: center;
   font-size: 12px;
@@ -1639,7 +1322,7 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   /* THE RAIL, read from the column: 8 of air, the mark, 8 of air. It replaced a
      12px side padding, which is the width an 8px mark needs plus NOTHING — and
      a mark with 0px between it and the title is the defect this rail exists to
@@ -1950,7 +1633,7 @@
 .cardMeta {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
   /* Separated from the title by air, not a rule: a hairline between title
      and meta on a 60px-wide card reads as noise on a dense board. */
@@ -1963,7 +1646,7 @@
 .cardMetaRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -2027,7 +1710,7 @@
 .cardBadges {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex-wrap: wrap;
   min-width: 0;
   /* **这一行不做任何补偿。** 往左拉「药丸内衬 + 描边」那么多，药丸里的**字**是和上面的
@@ -2058,7 +1741,7 @@
 
    The gap still does the separating; this is what gives the gap something to
    separate. */
-.cardBadges .chip {
+.cardBadge {
   padding: 0 var(--card-badge-pad);
   border: var(--card-badge-hair) solid var(--dsw-alias-border-l1);
   border-radius: var(--dsh-tb-pill);
@@ -2082,7 +1765,7 @@
 .cardSessions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -2147,7 +1830,7 @@
 .feedTools {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex-wrap: wrap;
   min-width: 0;
   margin-bottom: 8px;
@@ -2155,7 +1838,7 @@
 .feedFilterGroup {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -2165,7 +1848,7 @@
 .filterChips {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
   overflow-x: auto;
   padding: 2px 0 6px;
@@ -2177,7 +1860,7 @@
 .filterChip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
 }
 .filterChipRemove {
@@ -2302,69 +1985,23 @@
    back to UA inline-block on real devices while the artifact pages stayed
    green. Sizes stay per family (the board's chips are 22px, the list's pills
    19px): that is a design difference, not a mechanism one. */
-:is(.chip, .chipFill, .cruisePill, .columnTab, .itemOpt, .itemPrioChip, .itemTag) {
+:is(.cruisePill, .columnTab) {
   display: inline-flex;
   align-items: center;
   justify-content: center;
 }
-.chip {
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  flex: 0 1 auto;
-  font-size: 12px;
-  font-weight: 500;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-2);
-  white-space: nowrap;
-}
 
-/* The chip's text slot: the ellipsizing half of the two-slot grammar — a
-   flex item that absorbs the chip's shrink and ellipsizes (flex containers
-   themselves cannot ellipsize their text items, so every Chip wraps its
-   text-only children here). The chip's own title attribute keeps the full
-   text available on hover. Any lead glyph with its own box geometry goes in
-   .chipLead below, never here. */
-.chipBody {
-  display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-/* The chip's lead-glyph slot: the geometry half of the two-slot grammar. A
-   real flex item of the chip (NOT inside .chipBody), so an activity spinner
-   or icon keeps its own box — width/height are honored only for flex items,
-   an inline span would collapse to a strip — and the chip's gap: 5px keeps
-   it separated from the text. Being outside the ellipsizing body, the glyph
-   is never truncated away while the label still shows. */
-.chipLead {
-  flex: none;
-  display: inline-flex;
-  align-items: center;
-}
 
-.chipFill {
-  /* **它有自己的高。** 22px 是设计给它的数（18px 的行盒 + 上下各 2px）；交给内容去算，高度就
-     跟着字体度量走——同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。 */
-  box-sizing: border-box;
-  block-size: 22px;
-  padding: 0 8px;
-  border-radius: var(--dsh-tb-pill);
-  /* Single-layer solid fill (an rgba fill on translucent surfaces would
-     double-fade under a glass skin) — the shared quiet-chip surface, so a
-     status chip and the controls around it never drift apart under a skin. */
-  background: var(--dsh-tb-chip-fill);
-}
 
-/* 这三条写的是**文字**，读的还是同一枚状态色——一个色相就一个色（见上面那条色族律）。
-   黄在浅色主题下的真实底上只到 1.63:1，这是本表收下的代价：把字改深就是同一块屏上的
-   第二枚黄，而两枚黄比一个字淡更难解释。 */
-.chip[data-kind='success'] { color: var(--dsh-tb-status-done); }
-.chip[data-kind='error'] { color: var(--dsh-tb-danger); }
-.chip[data-kind='warn'] { color: var(--dsh-tb-status-running); }
-.chip[data-kind='muted'] { color: var(--dsh-tb-text-3); }
+
+
+
+
+
+
+
+
 
 /* Shared spinner (cards + detail execution rows), colored by currentColor.
    display: inline-block keeps its 8x8 box even in a non-flex context (an
@@ -2388,189 +2025,47 @@
 
 /* --- buttons ------------------------------------------------------------------ */
 
-/* One button standard: primary / ghost / danger share the native button
-   rhythm (same radius and type scale as the shell's buttons) so every row
-   stays aligned with the host UI — including under a glass skin, where the
-   fills come straight from the native button tokens. */
-.primaryButton,
-.ghostButton,
-.dangerButton,
-.dangerGhostButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  /* Border-box: height MEANS outer height (the cruise pill already owns this;
-     without it every 28px control is really 30 and no two rows ever agree). */
-  box-sizing: border-box;
-  height: var(--dsh-tb-button-h);
-  /* Dainty reads round: at a fixed height the NARROWER pill's semicircle ends
-     dominate and the straighter the long edges, the squarer it feels (the old
-     0 18px widening went the wrong way — admitted and reverted here). 13px /
-     0 14px lands the two-character label near a 2:1 aspect like the reference
-     board; height and radius stay on the shared rhythm, untouched. */
-  padding: 0 14px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  border-radius: var(--dsh-tb-button-radius);
-  white-space: nowrap;
-  cursor: pointer;
-  -webkit-appearance: none;
-  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
-}
 
-.primaryButton {
-  color: var(--dsh-tb-ink-on-solid);
-  /* The native primary fill (brand) — same token the shell's primary
-     buttons use, so a skin's remap lands on both. Height comes from the
-     shared button rule (28px), so a primary never towers over its ghost/
-     danger siblings in the same row. */
-  background: var(--dsw-alias-button-primary-fill);
-  border: 1px solid transparent;
-  box-shadow: var(--dsh-tb-shadow-1);
-}
 
-.primaryButton:hover:not(:disabled) {
-  background: var(--dsw-alias-button-primary-hover);
-  box-shadow: var(--dsh-tb-shadow-2);
-}
 
-.primaryButton:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 14%, transparent);
-}
 
-.primaryButton:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
-.ghostButton {
-  color: var(--dsh-tb-text-1);
-  /* FILLED quiet chip — the SAME grammar as every other quiet control the
-     board already has (the column tabs, the search field, and the shell's own
-     nav rows are all filled pills). A hollow pill whose only ink is a hairline
-     outline reads as a rectangular FRAME: the border draws two long straight
-     edges and the eye reads the shape as boxy even though the ends are exact
-     semicircles (measured on a real phone: a 94px-tall button whose corner arc
-     is 41px = half the height, i.e. already maximally round, still reported as
-     「方的」). Fill first, then geometry is what the eye actually sees.
-     The fill is the SHARED chip token, so a quiet button and the search field
-     beside it are literally the same surface — a hand-picked layer token here
-     is what made these buttons read as a different family under a skin. */
-  background: var(--dsh-tb-chip-fill);
-  /* The same hairline the tabs carry (l2) — one chip grammar, no new token. */
-  border: var(--dsh-tb-border);
-  /* Quiet density (reference parity: their ghost is 12px on tighter padding
-     while their primary stays 13px — the small pill reads round, the wide one
-     reads square-arc, so the two tracks never share type scale). */
-  font-size: 12px;
-  padding: 0 12px;
-}
 
-.ghostButton:hover:not(:disabled) {
-  background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
-}
 
-.ghostButton:active:not(:disabled) {
-  background: var(--dsh-tb-hover);
-}
 
-.ghostButton:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 
-/* A toggle-state ghost (aria-pressed): the mode reads through a gentle
-   press (hover tone + stronger border), never through the primary fill —
-   entering 整理 stays a quiet affordance. */
-.buttonPressed {
-  background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
-}
 
-.dangerButton {
-  color: var(--dsh-tb-ink-on-solid);
-  background: var(--dsh-tb-danger);
-  border: 1px solid transparent;
-  box-shadow: var(--dsh-tb-shadow-1);
-}
 
-.dangerButton:hover:not(:disabled) {
-  filter: brightness(1.07);
-}
 
-.dangerButton:active:not(:disabled) {
-  filter: brightness(0.94);
-  transform: translateY(1px);
-}
 
-.dangerButton:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
 
-/* Row-level destructive affordance: outline + danger text. A light danger
-   action in a dense list (hidden-tray delete) — the FILLED danger button
-   stays reserved for the step's primary destroyer (confirm dialogs). */
-.dangerGhostButton {
-  color: var(--dsh-tb-danger);
-  background: transparent;
-  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
-  /* Same quiet density as the ghost twin above (one track, never drift). */
-  font-size: 12px;
-  padding: 0 12px;
-}
 
-.dangerGhostButton:hover:not(:disabled) {
-  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash), transparent);
-  border-color: var(--dsh-tb-danger);
-}
 
-.dangerGhostButton:active:not(:disabled) {
-  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash-strong), transparent);
-}
 
-.dangerGhostButton:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
 
-/* The compact button size (Button size="sm"): one quiet in-list geometry for
-   every secondary affordance on a row/header — view-session, refresh, row
-   actions — so a full-size button never sits inside a row. */
-.buttonSm {
-  /* Border-box with the base: 24px means 24, so the derived hint-row offset
-     stays exact instead of drifting 2px under content-box. */
-  box-sizing: border-box;
-  height: var(--dsh-tb-button-h-sm);
-  padding: 0 10px;
-  font-size: 12px;
-  border-radius: var(--dsh-tb-pill);
-}
 
-.iconButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: var(--dsh-tb-pill);
-  color: var(--dsh-tb-text-2);
-  cursor: pointer;
-  font-size: 14px;
-  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
-}
 
-.iconButton:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--dsh-tb-text-1);
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 /* The bell, in its tool-row home, takes the SAME chip surface as the mode
    buttons beside it (fill + hairline + pill), so the row reads as one control
@@ -2599,107 +2094,27 @@
 
 /* --- iOS-style switch (Switch component) -------------------------------------- */
 
-.switch {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  user-select: none;
-}
 
-.switch:has(input:disabled) {
-  opacity: 0.5;
-  cursor: default;
-}
 
-.switch input {
-  position: absolute;
-  width: 0;
-  height: 0;
-  opacity: 0;
-  pointer-events: none;
-}
 
-.switchTrack {
-  position: relative;
-  flex: none;
-  width: 38px;
-  height: 22px;
-  border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-hover);
-  border: var(--dsh-tb-border-soft);
-  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
-}
 
-.switchKnob {
-  position: absolute;
-  top: 2px;
-  left: 2px;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  /* A solid knob — a translucent one would read as a hole on the track. */
-  background: var(--dsw-alias-button-elevated-fill);
-  box-shadow: 0 1px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 32%, transparent);
-  transition: transform var(--dsh-tb-motion);
-}
 
-.switch input:checked + .switchTrack {
-  background: var(--dsh-tb-success);
-  border-color: transparent;
-}
 
-.switch input:checked + .switchTrack .switchKnob {
-  transform: translateX(16px);
-}
 
-.switch input:focus-visible + .switchTrack {
-  outline: 2px solid var(--dsh-tb-focus-color);
-  outline-offset: 2px;
-}
 
-.switchLabel {
-  /* 500, because the thing it labels is a control and this surface's rule pairs
-     13px with 500. It inherited 400, so the cruise toggle read as a 13/400 WORD
-     sitting 30px from a 13/500 BUTTON — two controls of the same size in the same
-     row, one of them shouting for no reason. The label names the control, so it
-     wears the control's weight; the difference between a setting and its name is
-     ink, not a louder size. */
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--dsh-tb-text-1);
-}
+
+
+
+
+
+
+
+
+
 
 /* --- modals ------------------------------------------------------------------- */
 
-.modalBackdrop {
-  /* Board-relative: absolutely positioned inside the board's own box ([data-
-     dsh-taskboard-view], position:absolute inset:0). Panels center via the
-     `margin: auto` flex pattern (NOT align-items:center — a centered flex
-     child TALLER than the container clips its own top past the scroll start;
-     margin:auto keeps every pixel reachable when the backdrop scrolls). The
-     keyboard inset (--dsh-tb-kb, see keyboard-inset.ts) rides the bottom
-     padding, so an open soft keyboard shrinks the stage instead of burying
-     the panel header. Centering lives inside the board box, so the dialog is
-     never shifted by the shell sidebar and immune to any transform/filter a
-     skin applies to an ancestor (viewport-fixed would be absorbed by it). */
-  position: absolute;
-  inset: 0;
-  z-index: 40;
-  display: flex;
-  /* The STAGE scrolls (a tall panel must reach its top/bottom) but never
-     SHOWS a bar — the dimmed area is not a surface; the one visible bar of a
-     dialog belongs to its own scroll body (.modalScroll), flush to the panel
-     edge (see the shared hidden-bar rule above). */
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
-  overscroll-behavior: contain;
-  /* A touch stronger than the native mask-1 so the column lines behind the
-     glassy board no longer glimmer through the dialog edges. */
-  background: var(--dsh-tb-mask);
-  animation: dshTbBoardIn 160ms ease;
-}
+
 
 /* THE single scrollbar grammar for every panel scroll body: a THIN bar that
    sits flush against the surface edge (each of these owns its region's full
@@ -2732,28 +2147,28 @@
    mechanism again, and this list has already moved twice for no reason. */
 
 @supports not selector(::-webkit-scrollbar) {
-  :is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
+  :is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
     scrollbar-width: thin;
     scrollbar-color: var(--dsw-alias-border-l3) transparent;
   }
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
+:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
+:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
   background: var(--dsw-alias-border-l3);
   border-radius: 4px;
   background-clip: padding-box;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
+:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
   background: transparent;
 }
 
-:is(.modalScroll, .detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
+:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
   display: none;
 }
 
@@ -2789,35 +2204,9 @@
   to { opacity: 1; }
 }
 
-/* THE overlay-panel chrome — one declaration for the whole family (.modal
-   forms, .detail edit panel, .review page): the same board-relative
-   margin:auto centering, opaque float surface, border, radius-xl, shadow-3 and
-   entrance animation. A panel adds ONLY its own width / max-height; the chrome
-   is never re-typed (the family once drifted — .detail had no entrance). */
-.modal, .detail, .review {
-  display: flex;
-  flex-direction: column;
-  position: relative;
-  margin: auto;
-  max-height: 100%;
-  overflow: hidden;
-  background: var(--dsh-tb-surface-float);
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-xl);
-  box-shadow: var(--dsh-tb-shadow-3);
-  color: var(--dsh-tb-text-1);
-  animation: dshTbDialogIn var(--dsh-tb-motion);
-}
 
-.modal {
-  /* Board-box relative at EVERY width (% of the backdrop content box, never
-     vw/vh — the mobile dynamic toolbar and the sidebar rail make viewport
-     units lie). margin:auto centers inside the scrollable backdrop. The panel
-     never scrolls as a whole: the header and the footer stay pinned, only the
-     middle body region (modalScroll) scrolls. NO panel padding and NO panel
-     gap: header / body / footer own their insets. */
-  width: min(520px, 100%);
-}
+
+
 
 /* The dialog's ONE scroll region: the same insets as the edit panel's
    .detailBody (14px 18px), so the native bar sits at the panel edge inside
@@ -2825,29 +2214,16 @@
 .modalScroll {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--dsh-tb-space-7);
   flex: 1;
   min-height: 0;
   overflow-y: auto;
   padding: 14px 18px;
 }
 
-.modalTitle {
-  margin: 0;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
-}
 
-.dialogHeader {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 14px 18px;
-  border-bottom: var(--dsh-tb-separator);
-  flex: none;
-}
+
+
 
 .confirmMessage {
   margin: 0;
@@ -2861,7 +2237,7 @@
 .modalFooter {
   display: flex;
   justify-content: flex-end;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   padding: 14px 18px;
   border-top: var(--dsh-tb-separator);
   /* Pinned: the action row never shrinks out of reach (see .modal). */
@@ -2871,7 +2247,7 @@
 .field {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
 }
 
 .fieldLabel {
@@ -2886,7 +2262,7 @@
 .templateRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 .templateRow .selectWrap {
   flex: 1 1 auto;
@@ -3042,7 +2418,7 @@ textarea.input {
 .slashMenuRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   width: 100%;
   /* Border-box: same width:100% family law as .interactionOptionButton —
      padding is chrome, chrome must not count as extra width. */
@@ -3115,18 +2491,10 @@ textarea.input {
 .detailHeader {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   padding: 14px 18px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
-}
-
-/* 同一排控件同级高: the header row's siblings are 28px Buttons (编辑), so the
-   close glyph rides the same 28px box (the review header does the same for
-   its 24px pills — each row picks its height tier, never mixes two). */
-.detailHeader .iconButton {
-  width: 28px;
-  height: var(--dsh-tb-button-h);
 }
 
 .detailTitle {
@@ -3154,139 +2522,35 @@ textarea.input {
   min-height: 0;
 }
 
-.detailSection {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
 
-/* The fold's BODY: the container that stacks the folded sections themselves.
-   The board's one rhythm law is "every declaration of vertical space belongs to
-   a container": paragraphs carry `margin: 0`, so a stack of sections is spaced
-   by ITS OWN gap and never by inherited margins. `.detailSection` above is the
-   header-to-body gap; this is the section-to-section gap inside it, which had
-   no owner at all — an unstyled div in block flow put every pair of folded
-   sections at a measured 0px, beside neighbours sitting at 6px/8px on purpose.
-   That is exactly the 「这个间隙跟其他地方不一样」 the user pointed at under
-   「运行配置（当前会话）」, whose title landed flush against the token totals
-   above it. Declared HERE, once per fold, so no caller has to remember it and
-   no second fold can drift (the automation editor and the run-config fold are
-   the same container).
 
-   HEIGHT PASS-THROUGH: the body also relays its fold's definite height to the
-   scroll region inside it (`flex: 1 1 auto; min-height: 0`). Without this the
-   body refuses to shrink below its content, the comment box below never
-   receives a bounded height, grows to full content and can never scroll on its
-   own — no scrollbar, no 滑到最新, no follow, while an ancestor block scrolls
-   the whole rail instead. For a content-sized fold (the config head, every
-   task-detail section) the parent height IS the content, so grow/shrink have
-   nothing to act on and the rule is inert — only a height-bounded fold (the
-   comments fold) feels it, which is exactly where it is required. */
-.detailSectionBody {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  flex: 1 1 auto;
-  min-width: 0;
-  min-height: 0;
-}
 
-/* The shared collapsible-block grammar (Disclosure): chevron + title +
-   one-line live summary; collapsed it is a single quiet row with no buttons.
-   Used by the run-config disclosure and the automation editor, so every
-   foldable detail module reads the same. */
-.detailDisclosure {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  width: 100%;
-  /* **盒子写出来，不留给行盒。** 这一枚是**整行的**控制（`width: 100%`），而它的高
-     原本只等于那一行字——一个不声明的值，随字体与皮肤漂（The Declared Line Box Rule
-     的同一条）。18 是这一页控件的地板；写出来之后它的命中盒与它的意图一样确定。 */
-  min-block-size: 18px;
-  padding: 0;
-  background: none;
-  border: none;
-  cursor: pointer;
-  text-align: left;
-}
 
-.detailChevron {
-  flex: none;
-  font-size: 11px;
-  color: var(--dsh-tb-text-3);
-  transition: transform var(--dsh-tb-motion);
-}
 
-.detailDisclosure[aria-expanded='false'] .detailChevron {
-  transform: rotate(-90deg);
-}
+
+
+
+
 
 /* Folded feed-group headers reuse the disclosure chevron law verbatim (same
    11px tertiary glyph, same standard turn): collapsed reads right, expanded
    reads down. Scoped to feed toggles carrying a chevron — row toggles have
    none, so their look is untouched. */
-.notifyMain[aria-expanded='false'] .detailChevron {
+.notifyMain[aria-expanded='false'] .notifyChevron {
   transform: rotate(-90deg);
 }
 
-.detailDisclosureTitle {
-  flex: none;
-  font-size: 12px;
-  font-weight: 500;
-  color: var(--dsh-tb-text-3);
-}
 
-.detailDisclosureSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-}
 
-.detailSection h4 {
-  margin: 0;
-  font-size: 12px;
-  font-weight: 500;
-  letter-spacing: 0.02em;
-  color: var(--dsh-tb-text-3);
-  text-transform: none;
-}
 
-/* The section title row: a named grid (title | action), NOT flex +
-   margin-left:auto. The title track is `minmax(0,1fr)` so it can shrink and
-   the action cluster keeps its natural width at the right — and on a narrow
-   panel the cluster wraps to its own line (让位不压扁) instead of being
-   clipped by the panel's overflow:hidden. */
-.sectionHead {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  grid-template-areas: "title action";
-  align-items: center;
-  gap: 8px;
-}
 
-.sectionHead h4 {
-  grid-area: title;
-  min-width: 0;
-  /* The give-way member is the LABEL (truncation lives in a text slot, never
-     in a container that hides its children): a section head keeps its action
-     cluster on the same line at every width. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.sectionAction {
-  grid-area: action;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
+
+
+
+
+
+
 
 .detailText {
   margin: 0;
@@ -3357,7 +2621,7 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -3365,7 +2629,7 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   min-width: 0;
 }
 
@@ -3434,55 +2698,20 @@ textarea.input {
 .scheduleActionRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex-wrap: wrap;
   min-width: 0;
 }
 
 /* --- schedule driving mode (cron / chain segmented control) ------------------- */
 
-.segmentedRow {
-  display: inline-flex;
-  gap: 4px;
-  padding: 3px;
-  align-self: flex-start;
-  background: var(--dsw-alias-interactive-bg-hover);
-  border-radius: var(--dsh-tb-radius-md);
-}
 
-/* One segmented-radio grammar for every mode switch on the board (schedule
-   drive mode, session composer mode): a quiet track, an elevated active
-   segment, no per-mode styling — both controls read as siblings. Segments
-   are pills (same family as buttons): sm read square beside them. */
-.segmentedButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  /* 22px + the 3px track padding on each side = 28px total — the SAME height
-     as the primary/composer buttons the segmented sits beside. */
-  padding: 0 14px;
-  font-size: 12px;
-  font-weight: 500;
-  height: 22px;
-  line-height: 1;
-  color: var(--dsh-tb-text-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--dsh-tb-pill);
-  cursor: pointer;
-  white-space: nowrap;
-  transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
 
-.segmentedButton:hover {
-  color: var(--dsh-tb-text-1);
-}
 
-.segmentedActive {
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-surface-float);
-  box-shadow: var(--dsh-tb-shadow-1);
-}
+
+
+
+
 
 /* --- preset manager ----------------------------------------------------------- */
 
@@ -3502,7 +2731,7 @@ textarea.input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 .presetRow {
@@ -3510,7 +2739,7 @@ textarea.input {
   /* Same floors as the add row: one grammar for both, so the edit row can no
      longer read as a different (crushable) thing. */
   grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   align-items: center;
   padding: 6px 4px;
   border-radius: var(--dsh-tb-radius-sm);
@@ -3522,7 +2751,7 @@ textarea.input {
 .presetActions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 .presetRowAction {
@@ -3568,7 +2797,7 @@ textarea.input {
 .runPresetRow {
   display: grid;
   grid-template-columns: minmax(8ch, 1fr) auto auto;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   align-items: center;
   padding: 6px 4px;
   border-radius: var(--dsh-tb-radius-sm);
@@ -3581,7 +2810,7 @@ textarea.input {
 .runPresetName {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
   font-size: 13px;
   font-weight: 600;
@@ -3614,7 +2843,7 @@ textarea.input {
 .presetNew {
   display: grid;
   grid-template-columns: minmax(9ch, 1fr) minmax(11ch, 1.2fr) auto;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   align-items: center;
 }
 
@@ -3750,7 +2979,7 @@ textarea.input {
 .sessionDropZone {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding: 6px;
   margin: -6px;
   border-radius: var(--dsh-tb-radius-md);
@@ -3779,7 +3008,7 @@ textarea.input {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -3813,7 +3042,7 @@ textarea.input {
 .hiddenTray {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   padding: 10px 12px;
   background: var(--dsh-tb-surface-sunken);
   border: var(--dsh-tb-border-soft);
@@ -3824,7 +3053,7 @@ textarea.input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
 }
 
 .hiddenTrayTitle {
@@ -3843,7 +3072,7 @@ textarea.input {
 .hiddenTrayRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   padding: 4px 0;
 }
 
@@ -3852,7 +3081,7 @@ textarea.input {
 .hiddenTrayActions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
 }
 
@@ -3880,7 +3109,7 @@ textarea.input {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   padding: 10px 12px;
   cursor: pointer;
   border-radius: var(--dsh-tb-radius-md);
@@ -3951,7 +3180,7 @@ textarea.input {
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas: "lead chip act";
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   min-width: 0;
 }
 
@@ -3997,7 +3226,7 @@ textarea.input {
 .sessionToolbarActions {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
 }
 
@@ -4012,7 +3241,7 @@ textarea.input {
 .sessionHintRow {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   min-width: 0;
   margin: 0;
 }
@@ -4038,13 +3267,13 @@ textarea.input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
 }
 
 .addSessionRow {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   width: 100%;
   /* Border-box: same width:100% family law — padding + border are chrome,
      never extra width. */
@@ -4120,7 +3349,7 @@ textarea.input {
   display: inline-flex;
   align-items: center;
   justify-content: flex-end;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 /* Row-action label / glyph pair: on a wide board the WORDS carry the action
@@ -4197,7 +3426,7 @@ textarea.input {
 .executionDynamics {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
@@ -4215,7 +3444,7 @@ textarea.input {
 .executionComments {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
@@ -4242,10 +3471,7 @@ textarea.input {
   white-space: nowrap;
 }
 
-/* Inline icon glyphs (Icon component): tiny, currentColor, non-shrinking. */
-.icon {
-  flex: none;
-}
+
 
 /* Non-destructive "hide this row" affordance (execution rows + linked rows):
    a quiet ghost-text action that only removes the row from display — never
@@ -4314,7 +3540,7 @@ textarea.input {
 .sessionFacts {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex-wrap: wrap;
   min-width: 0;
   padding-inline: var(--dsh-tb-rail-inset);
@@ -4387,7 +3613,7 @@ textarea.input {
 .autoList {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--dsh-tb-space-7);
 }
 
 /* One automated task: a floating inner surface holding the card identity,
@@ -4395,7 +3621,7 @@ textarea.input {
 .autoTask {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding: 12px;
   background: var(--dsh-tb-surface-sunken);
   border: var(--dsh-tb-border-soft);
@@ -4405,7 +3631,7 @@ textarea.input {
 .autoTaskHead {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -4484,7 +3710,7 @@ textarea.input {
    editor looked like one endless list. */
 .autoRules {
   padding: 0;
-  gap: 16px;
+  gap: var(--dsh-tb-space-7);
 }
 
 /* The task-schedule control family is ONE group: 8px inside (each label bound
@@ -4494,7 +3720,7 @@ textarea.input {
 .autoGroup {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -4504,7 +3730,7 @@ textarea.input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 .autoRuleRow {
@@ -4513,7 +3739,7 @@ textarea.input {
   /* 4px grid: the row's own lines (identity → instruction → trigger →
      actions) are one rhythm. 3px with a 2px add-on below is two
      off-grid values that read as "these gaps are all slightly different". */
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   padding: 8px 10px;
   background: var(--dsh-tb-surface-float);
   border-radius: var(--dsh-tb-radius-sm);
@@ -4522,7 +3748,7 @@ textarea.input {
 .autoRuleTop {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -4577,10 +3803,10 @@ textarea.input {
   grid-template-columns: minmax(0, 1fr) auto;
   grid-template-areas: "switch buttons";
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
-.autoRuleActions > .switch {
+.autoRuleSwitch {
   grid-area: switch;
   justify-self: start;
 }
@@ -4591,7 +3817,7 @@ textarea.input {
   grid-area: buttons;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   justify-self: end;
 }
 
@@ -4608,7 +3834,7 @@ textarea.input {
 .autoForm {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   padding: 12px;
   background: var(--dsh-tb-surface-sunken);
   border: var(--dsh-tb-border-soft);
@@ -4618,7 +3844,7 @@ textarea.input {
 .autoField {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 
@@ -4639,42 +3865,17 @@ textarea.input {
 
 .autoFormActions {
   display: inline-flex;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   align-self: flex-end;
 }
 
-/* One shared waiting notice for every surface (review page banner): a neutral
-   framed row with a warn chip carrying the semantics —
-   no per-surface amber bars. The border uses the same token as the other
-   framed surfaces around it, so every surrounding border stays in sync. */
-.waitingNotice {
-  display: flex;
-  /* Same row grammar as .sessionContextRow: the warn badge rides the FIRST
-     line (never floats mid-block), the badge never shrinks, and the text takes
-     the remaining width and wraps — so a long notice never squeezes the chip to
-     "等…" (the bare-span-no-min-width fork between the two row grammars). */
-  align-items: flex-start;
-  gap: 8px;
-  min-width: 0;
-  padding: 8px 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-bg-raised);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-}
-.waitingNotice > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-.waitingNotice .chip {
-  flex: none;
-}
+
+
+
 
 .moveRow {
   display: flex;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex-wrap: wrap;
 }
 
@@ -4688,7 +3889,7 @@ textarea.input {
   grid-template-columns: minmax(0, 1fr) auto auto;
   grid-template-areas: "actions meta danger";
   align-items: center;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
   padding: 12px 18px;
   border-top: var(--dsh-tb-separator);
   flex: none;
@@ -4701,7 +3902,7 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -4709,7 +3910,7 @@ textarea.input {
   grid-area: danger;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
 }
 
@@ -4742,42 +3943,13 @@ textarea.input {
  * automatically, so every rule below is dark-safe by construction.
  * --------------------------------------------------------------------------- */
 
-/* --- one themed focus-visible ring (approx 2px, 2px offset) --- */
-.card:focus-visible,
-.primaryButton:focus-visible,
-.ghostButton:focus-visible,
-.dangerButton:focus-visible,
-.dangerGhostButton:focus-visible,
-.iconButton:focus-visible,
-.boardStatusButton:focus-visible,
-.slashMenuRow:focus-visible,
-.search:focus-visible,
-.input:focus-visible,
-.schedulePreset:focus-visible,
-.attachAdd:focus-visible,
-.reviewJumpLatest:focus-visible,
-/* The remainder of the board's interactive surface. These are all real
-   <button>/<input> elements, so they WERE keyboard-visible through the UA's own
-   ring — but that ring is the browser's, not this system's: a platform-dependent
-   outline sitting beside a board of 2px accent rings, which is exactly the
-   "browser surface nobody drew" class. None of them sets `outline: none`, so
-   adding them to the group only replaces the default with the system's own
-   grammar; it cannot remove an indicator that was not there. */
-.notifyMain:focus-visible,
-.filterChipRemove:focus-visible,
-.feedFilter:focus-visible,
-.feedAction:focus-visible,
-.detailDisclosure:focus-visible,
-.segmentedButton:focus-visible,
-.autoTaskExpand:focus-visible,
-.reviewCommentCancel:focus-visible,
-.attachRemove:focus-visible,
-.sessionContextHead:focus-visible,
-.tagCustomColor:focus-visible,
-.tagSwatch:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
-  outline-offset: 2px;
-}
+/* The focus ring is NOT declared here any more. It is one seat-level rule in
+   `design/base.module.css` (`[data-dsh-taskboard-view] :focus-visible`), which
+   replaced this list of twenty-two class names. The list's problem was never
+   its length: a control added without joining it has NO ring under the
+   keyboard, and nothing on screen says why. "Which elements have a ring" is now
+   answered by whether an element is focusable, not by a table somebody has to
+   remember to extend. */
 
 /* --- press (active) feedback --- */
 .card:active {
@@ -4860,24 +4032,11 @@ textarea.input {
   border-color: var(--dsh-tb-accent);
 }
 
-.primaryButton:active:not(:disabled),
-.ghostButton:active:not(:disabled),
-.dangerButton:active:not(:disabled),
-.iconButton:active:not(:disabled) {
-  transform: translateY(1px);
-}
 
-/* --- guarded hover for the remaining icon/link buttons (defensive: never
-       disabled today, but a disabled element must not react to hover) --- */
-.iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
-  color: var(--dsh-tb-text-1);
-}
 
-.iconButton:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
+
+
+
 
 /* --- search box focus (hairline accent + themed soft ring) --- */
 .search:focus,
@@ -4948,7 +4107,7 @@ textarea.input {
   grid-template-columns: minmax(0, 1fr) auto auto auto auto;
   grid-template-areas: "title badge context actions close";
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   /* The page's OUTER grid: 14px vertical / 20px horizontal — the header
      title lines up with the conversation's text (left column at 20) and the
      action cluster with the page's own 20px box; the right rail keeps its
@@ -4964,11 +4123,6 @@ textarea.input {
    pill actions beside it (a 30px circle next to 24px pills is the "没对齐"
    the eye reads as sloppiness). Size rides the sm token, never a re-typed
    number. */
-.reviewHeader .iconButton {
-  width: var(--dsh-tb-button-h-sm);
-  height: var(--dsh-tb-button-h-sm);
-}
-
 /* Title + run-sequence badge: two cells of the header grid (title grows and
    ellipsizes, badge never clips); the grid's `align-items: center` keeps
    title, badge, context, actions and close on exactly the same horizontal
@@ -4977,7 +4131,7 @@ textarea.input {
   grid-area: title;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -5007,11 +4161,17 @@ textarea.input {
   grid-area: actions;
   display: inline-flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
 }
 
-.reviewHeader > .iconButton {
+/* The review header's close glyph, PLACED by this surface (grid-area + the
+   narrow band's justify-self). Placement is the surface's business; the glyph's
+   size is the component's, and rides IconButton's `size` prop. This is the
+   supported direction — a class of our own through `className` — where
+   `.reviewHeader > .iconButton` was a rule that crossed the sheet boundary and
+   therefore matched nothing in the built bundle. */
+.reviewClose {
   grid-area: close;
 }
 
@@ -5162,7 +4322,7 @@ textarea.input {
   border-bottom: var(--dsh-tb-separator);
 }
 
-.sessionRailHead > .detailSection {
+.railHeadSection {
   min-width: 0;
   /* The head's ONE inset (the rail's content line). The fold row and the
      config body are both inside it, so neither may add another — this 14px AND
@@ -5191,7 +4351,7 @@ textarea.input {
   min-height: 0;
 }
 
-.sessionRailComments > .detailSection {
+.railCommentsSection {
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -5215,7 +4375,7 @@ textarea.input {
 .commentsScroll {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   flex: 1 1 auto;
   min-width: 0;
   min-height: 120px;
@@ -5225,8 +4385,7 @@ textarea.input {
 
 /* The fold rows get a comfortable tap height (they sit at the top of a phone
    screen where a 16px line is too small a target). */
-.sessionRailHead .detailDisclosure,
-.sessionRailComments .detailDisclosure {
+.railDisclosure {
   padding: 8px 0;
 }
 
@@ -5236,7 +4395,7 @@ textarea.input {
    single-scrollbar grammar). The HEAD fold row gets its inset from the section
    padding above, so it takes none here; a second inset on that row is exactly
    the 28px drift the user pointed at. */
-.sessionRailComments .detailDisclosure {
+.railCommentsDisclosure {
   margin-inline: var(--dsh-tb-rail-inset);
 }
 
@@ -5254,7 +4413,7 @@ textarea.input {
 .reviewTranscriptScroll {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--dsh-tb-space-7);
   min-height: 120px;
   flex: 1;
   overflow-y: auto;
@@ -5265,7 +4424,7 @@ textarea.input {
 .reviewOutcome {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
   padding: 8px 12px;
   background: var(--dsw-alias-bg-layer-2);
   border: 1px solid var(--dsw-alias-border-l1);
@@ -5288,7 +4447,7 @@ textarea.input {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
   padding: 2px 0 0;
 }
@@ -5298,7 +4457,7 @@ textarea.input {
 .reviewTranscript {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: var(--dsh-tb-space-7);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5338,7 +4497,7 @@ textarea.input {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--dsh-tb-space-6);
 }
 
 /* Message images: a wrapped row of thumbnails above the message text. The
@@ -5348,7 +4507,7 @@ textarea.input {
 .reviewImageRow {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   margin: 6px 0;
 }
 .reviewImageBox {
@@ -5415,7 +4574,7 @@ textarea.input {
 .reviewContextMeter {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex: none;
 }
 
@@ -5429,7 +4588,7 @@ textarea.input {
   grid-template-columns: auto auto minmax(0, 1fr);
   grid-template-areas: "reading percent figures";
   align-items: baseline;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
   /* One line, forever: the figures track swallows the shrink (ellipsis),
      so 已用/百分比 can never wrap under the numbers no matter how narrow
@@ -5506,7 +4665,7 @@ textarea.input {
 .reviewMeterRows {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
 }
 
 .reviewMeterRow {
@@ -5514,7 +4673,7 @@ textarea.input {
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "swatch label value";
   align-items: center;
-  column-gap: 6px;
+  column-gap: var(--dsh-tb-space-3);
   font-size: 12px;
   color: var(--dsh-tb-text-2);
   min-width: 0;
@@ -5558,7 +4717,7 @@ textarea.input {
 .reviewConfig {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
 }
 
@@ -5581,7 +4740,7 @@ textarea.input {
 .reviewConfigRow {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 
@@ -5628,7 +4787,7 @@ textarea.input {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -5654,7 +4813,7 @@ textarea.input {
 .reviewComments {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -5663,7 +4822,7 @@ textarea.input {
 .reviewComment {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   padding: 8px 12px;
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l1);
@@ -5748,7 +4907,7 @@ textarea.input {
   padding-left: 20px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
 }
 
 /* 任务清单的记号（`- [ ]` / `- [x]`）：**画出来，不打印 `[x]`**。
@@ -5880,11 +5039,11 @@ textarea.input {
   grid-template-columns: auto minmax(0, 1fr) auto;
   grid-template-areas: "chip time cancel";
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
-.reviewCommentMeta > .chip {
+.reviewCommentChip {
   grid-area: chip;
 }
 
@@ -5955,7 +5114,7 @@ textarea.input {
 .reviewComposer {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
   /* The rail's ONE content line on the sides (the state row, both fold rows,
      the thread and the composer all read on this x). */
@@ -6050,7 +5209,7 @@ textarea.input {
   flex: none;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding: 12px 8px 0 12px;
 }
 .interactionHeading {
@@ -6080,19 +5239,8 @@ textarea.input {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
 }
-/* The head's two icon buttons ride the card's own compact scale (the shared
-   .iconButton is 30px for a toolbar; the native card's pair is 24px). */
-.interactionHeadActions .iconButton {
-  width: 24px;
-  height: 24px;
-  color: var(--dsh-tb-text-3);
-}
-.interactionHeadActions .iconButton:hover:not(:disabled) {
-  color: var(--dsh-tb-text-1);
-}
-
 /* The question's body (detail, options, custom answer field) — PLAIN CONTENT:
    no cap, no scroll region of its own. The card has no height to divide up, so
    a scroller here could only ever be a second, smaller window onto the same
@@ -6102,7 +5250,7 @@ textarea.input {
 .interactionBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
   padding: 8px 12px;
 }
@@ -6115,7 +5263,7 @@ textarea.input {
 .interactionCardBody {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
   padding: 0 12px;
 }
@@ -6134,7 +5282,7 @@ textarea.input {
 .interactionQuestionBlock {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 /* The question's supporting detail (native renders it as Markdown): one
@@ -6156,7 +5304,7 @@ textarea.input {
 .interactionOptions {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   min-width: 0;
 }
 /* The read-only card's QUOTATION of what the session offers. It is the same row
@@ -6176,7 +5324,7 @@ textarea.input {
 .interactionOffered {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   margin: 0;
   padding: 0 0 0 10px;
   list-style: none;
@@ -6186,7 +5334,7 @@ textarea.input {
 .interactionOffered > li {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
   padding: 2px 0;
 }
@@ -6208,7 +5356,7 @@ textarea.input {
 .interactionOptionButton {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
   width: 100%;
   /* Border-box is load-bearing: width:100% + this padding/border under the
@@ -6331,7 +5479,7 @@ textarea.input {
 .interactionCustomRow {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   width: 100%;
   /* Same content-box trap as the option row above — same fix, same reason. */
   box-sizing: border-box;
@@ -6431,14 +5579,14 @@ textarea.input {
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   padding: 8px 12px 10px;
 }
 .interactionPager {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
 }
 .interactionProgress {
   padding: 0 4px;
@@ -6466,7 +5614,7 @@ textarea.input {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
 }
 
 /* The plan strip + its body (native plan-review grammar): a labelled strip,
@@ -6475,7 +5623,7 @@ textarea.input {
   display: flex;
   flex: none;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   padding: 8px 12px;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
@@ -6546,7 +5694,7 @@ textarea.input {
 .interactionPlanActions {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   flex: none;
   min-width: 0;
   padding: 8px 12px 0;
@@ -6559,7 +5707,7 @@ textarea.input {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   flex: none;
   padding: 0 12px 10px;
 }
@@ -6581,7 +5729,7 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   /* **这一条占满给它的那一格。** 五处宿主里四处的父级是块或列向 flex，块级子元素本来就
      铺满；清单详情那一处的父级 `.itemAttachRow` 是**行向** flex，于是这一条会按内容收缩
      到「＋ 加一整句」的宽度（量到过：列宽 736 而它只有 222）——宽度一旦由内容决定，
@@ -6610,7 +5758,7 @@ textarea.input {
 .attachRow {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex: 0 1 auto;
   flex-wrap: nowrap;
   overflow-x: auto;
@@ -6665,7 +5813,7 @@ textarea.input {
 .attachChip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   flex: none;
   max-width: 180px;
   font-size: 12px;
@@ -6832,7 +5980,7 @@ textarea.input {
   z-index: 1;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   padding: 10px 12px;
   /* Capped like every menu surface (the slash menu's grammar) — a viewport
      unit here would size against the phone window, not the panel, and the
@@ -6850,7 +5998,7 @@ textarea.input {
      subagent dot): a multi-line goal title never leaves it floating over the
      middle of the block. */
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -6886,7 +6034,7 @@ textarea.input {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 .goalStrip .sessionContextRow {
@@ -6898,12 +6046,8 @@ textarea.input {
 .goalStripActions {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
   flex: none;
-}
-.goalStripActions .iconButton {
-  width: 24px;
-  height: 24px;
 }
 .goalStripInput {
   flex: 1 1 140px;
@@ -6939,7 +6083,7 @@ textarea.input {
 .sessionContextTodo {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--dsh-tb-space-4);
   min-width: 0;
 }
 
@@ -6983,14 +6127,14 @@ textarea.input {
 .sessionContextBlock {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   min-width: 0;
 }
 
 .sessionContextSubList {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -7017,7 +6161,7 @@ textarea.input {
 .reviewComposerRow {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--dsh-tb-space-5);
 }
 
 /* The review family reflows to a STACKED layout below the honest two-column
@@ -7090,7 +6234,7 @@ textarea.input {
        top) read as 「间距全都不一样」. The fold rows keep their own 8px tap
        height inside their boxes; the gap owns BETWEEN. Desktop keeps its own
        rhythm untouched (base rules above). */
-    gap: 10px;
+    gap: var(--dsh-tb-space-5);
     /* The area's ONE scroller (the base rule already declares it; `min-height:
        0` lets the row give its space back). The fold bodies inside it still
        render FULLY — one bar per region is the whole point. */
@@ -7204,8 +6348,8 @@ textarea.input {
       "title badge close"
       "context actions actions";
     align-items: center;
-    column-gap: 10px;
-    row-gap: 8px;
+    column-gap: var(--dsh-tb-space-5);
+    row-gap: var(--dsh-tb-space-4);
     padding: 14px;
     min-height: 0;
   }
@@ -7218,7 +6362,7 @@ textarea.input {
     justify-self: start;
   }
 
-  .reviewHeader > .iconButton {
+  .reviewClose {
     justify-self: end;
   }
 
@@ -7275,92 +6419,25 @@ textarea.input {
   display: flex;
 }
 
-/* The one swatch row grammar (ColorSwatches): palette dots + native custom
-   color dot + trailing 「移除颜色」 dot — shared by the card hover bar and
-   the organize bar. Every entry is round and same-sized (16px), so a mixed
-   shape can never appear. */
-.tagSwatches {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  flex-wrap: wrap;
-}
 
-.tagSwatch {
-  flex: none;
-  width: 16px;
-  height: 16px;
-  padding: 0;
-  border: 1px solid color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
-  border-radius: 50%;
-  cursor: pointer;
-  transition: transform var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
 
-.tagSwatch:hover {
-  transform: scale(1.12);
-}
 
-.tagSwatchOn {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
-}
 
-/* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
-   color" next to the filled palette dots. */
-.tagSwatchNone {
-  background: transparent;
-  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2);
-}
 
-.tagSwatchNone:hover {
-  background: var(--dsh-tb-surface-sunken);
-}
 
-/* The native color input dressed as one round dot of the same size. The wrap
-   carries the LOOK: the picked custom color when one is active (data, applied
-   inline), otherwise a conic rainbow affordance ("open the picker" — named
-   colors only, never a white circle that reads as a second 移除颜色 dot).
-   The native input floats on top invisibly: still opens the picker and stays
-   focusable (the focus ring comes from the wrap's :focus-within). */
-.tagCustomWrap {
-  position: relative;
-  display: inline-flex;
-  flex: none;
-  width: 16px;
-  height: 16px;
-  border-radius: 50%;
-  overflow: hidden;
-}
 
-/* The custom-colour affordance: a full hue wheel, because the control's whole job
-   is to say "pick any colour" and a part-spectrum ring would silently narrow the
-   offer. These are the browser's six named hues on purpose, NOT palette values:
-   the wheel represents every colour the picker can produce, so tinting it from
-   --dsw-* would make it advertise a subset of itself. This is the ONE place in
-   the stylesheet without a token, it is a control rather than a design colour,
-   and the reason lives here so the next reader neither "fixes" it nor copies it. */
-.tagCustomEmpty {
-  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
-}
 
-.tagCustomWrap:focus-within {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
-}
 
-.tagCustomColor {
-  appearance: none;
-  -webkit-appearance: none;
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  opacity: 0;
-  cursor: pointer;
-}
+
+
+
+
+
+
+
+
+
+
 
 /* --- organize (tidy) mode bar: the board header strip for bulk tagging and
        recoloring — same chip/swatch grammar reused, nothing hand-rolled --- */
@@ -7382,7 +6459,7 @@ textarea.input {
   grid-area: colors;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex-wrap: wrap;
   min-width: 0;
 }
@@ -7407,7 +6484,7 @@ textarea.input {
   grid-area: actions;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   flex-wrap: wrap;
   justify-content: flex-end;
 }
@@ -7448,7 +6525,7 @@ textarea.input {
        10 between every pair of rows, including the two
        that bound a band, leaves 「诉求行 / 导航行 / 工具行」 with no visible grouping
        at all and the whole header reading as one undifferentiated stack. */
-    gap: 10px;
+    gap: var(--dsh-tb-space-5);
   }
 
   /* THE WITHIN-GROUP GAP, 6, IN ONE PLACE. The header is a stack of three bands
@@ -7463,12 +6540,12 @@ textarea.input {
      declaration is what makes it hold for whatever lands inside the header
      later. */
   .boardHeader {
-    gap: 6px;
+    gap: var(--dsh-tb-space-3);
   }
 
   /* Command rows breathe by wrapping instead of overflowing. */
   .boardRow {
-    gap: 8px;
+    gap: var(--dsh-tb-space-4);
   }
 
   /* 导航行 = 确定的两行，用具名区域表达（⑨：层级由 AREAS 说，不由 order +
@@ -7594,7 +6671,7 @@ textarea.input {
     display: flex;
     flex-direction: row;
     grid-template-columns: none;
-    gap: 10px;
+    gap: var(--dsh-tb-space-5);
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
@@ -7635,7 +6712,7 @@ textarea.input {
        problem the tool grid above closes). */
     grid-template-rows: var(--dsh-tb-button-h);
     align-content: center;
-    gap: 6px;
+    gap: var(--dsh-tb-space-3);
     /* The strip owns symmetric breathing from the ONE strip token. */
     padding: var(--dsh-tb-strip-gap) 0;
     overflow-x: visible;
@@ -7664,7 +6741,7 @@ textarea.input {
        indicator once, the bar simply cancels its own share. */
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: var(--dsh-tb-space-5);
     flex: none;
     margin: 0 calc(-1 * var(--dsh-tb-dock-x)) calc(-1 * (var(--dsh-tb-dock-b) + env(safe-area-inset-bottom)));
     /* The horizontal inset is the rail's, BY TOKEN — not the number 14. It
@@ -7723,11 +6800,7 @@ textarea.input {
     white-space: nowrap;
   }
 
-  /* The floating-panel geometry is board-relative at EVERY width now (see
-     .modalBackdrop/.modal) — the compact block only tightens the gutters. */
-  .modalBackdrop {
-    padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
-  }
+  
 
   /* Action rows wrap rather than overflow off the panel edge. */
   .modalFooter,
@@ -7744,7 +6817,7 @@ textarea.input {
     grid-template-areas:
       "actions actions"
       "meta danger";
-    row-gap: 10px;
+    row-gap: var(--dsh-tb-space-5);
   }
 
   .detailFooter > .detailMeta {
@@ -7756,7 +6829,7 @@ textarea.input {
      cron expression never has to fight a 90px label for the same 210px. */
   .scheduleGrid {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 4px;
+    row-gap: var(--dsh-tb-space-2);
   }
 
   /* The run-config grid follows the same give-way law: the label/value two
@@ -7764,16 +6837,10 @@ textarea.input {
      pushing the value track past the panel edge. */
   .configGrid {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 4px;
+    row-gap: var(--dsh-tb-space-2);
   }
 
-  /* Segmented tracks give way too: an English two/three-label row cannot fit a
-     244px panel, so it wraps (a clipped nowrap track painting past the modal
-     edge is the forbidden 「文字画在盒外」). */
-  .segmentedRow {
-    flex-wrap: wrap;
-    row-gap: 4px;
-  }
+  
 
   /* The preset rows stack into one control per line (the same floors as the
      wide row, just fewer columns) — an input that keeps a whole line cannot
@@ -7781,7 +6848,7 @@ textarea.input {
   .presetNew,
   .presetRow {
     grid-template-columns: minmax(0, 1fr);
-    row-gap: 6px;
+    row-gap: var(--dsh-tb-space-3);
   }
 
   /* The run-preset row re-stacks the same way: name over note + actions. */
@@ -7790,7 +6857,7 @@ textarea.input {
     grid-template-areas:
       "name name"
       "note actions";
-    row-gap: 4px;
+    row-gap: var(--dsh-tb-space-2);
   }
 
   .runPresetRow .runPresetName {
@@ -7808,15 +6875,7 @@ textarea.input {
     justify-self: end;
   }
 
-  /* A section title row keeps its action cluster ON THE SAME LINE at every
-     width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
-     previous compact template stacked title over action — which "solved" a
-     squeeze that cannot happen: the title track is minmax(0,1fr) and
-     ellipsizes, so the row gives way by shortening the LABEL, never by
-     dropping the button to its own line and breaking the pair. */
-  .sectionAction {
-    justify-self: end;
-  }
+  
 
   .presetRow .presetActions {
     justify-self: start;
@@ -7835,7 +6894,7 @@ textarea.input {
       "chip act";
     align-items: start;
     /* ONE 4px vertical rhythm inside the row (title → workspace → chip). */
-    row-gap: 4px;
+    row-gap: var(--dsh-tb-space-2);
   }
 
   .sessionRowTop .sessionRowActions {
@@ -7878,7 +6937,7 @@ textarea.input {
       "icon name"
       "workspace workspace";
     column-gap: var(--dsh-tb-lead-gap);
-    row-gap: 4px;
+    row-gap: var(--dsh-tb-space-2);
     align-items: start;
     min-width: 0;
   }
@@ -7923,7 +6982,7 @@ textarea.input {
   }
 
   .sessionRowActions {
-    gap: 4px;
+    gap: var(--dsh-tb-space-2);
   }
 }
 
@@ -7951,13 +7010,10 @@ textarea.input {
      **既不可点**（`elementFromPoint` 在按钮上下 4px、8px 处返回的是那一行自己），
      又给这一行**凭空加出 6px 的竖向溢出**：手机上那枚「＋」右边一根竖条、下边一根横条，
      桌面档一根都没有。留着它只有代价，没有那半寸热区。 */
-  .buttonSm,
   .rowHide,
   .cruiseMore,
   .boardBack,
-  .iconButton,
   .sessionRowHandle,
-  .segmentedButton,
   .attachRemove,
   .reviewCommentCancel,
   .promptCopy,
@@ -7972,22 +7028,17 @@ textarea.input {
   .filterChipRemove,
   .feedFilter,
   .feedAction,
-  .detailDisclosure,
   .autoTaskExpand,
   .sessionContextHead,
-  .tagCustomColor,
   .thumbNew > *,
-  .thumbBar .iconButton {
+  .thumbBarButton {
     position: relative;
   }
 
-  .buttonSm::before,
   .rowHide::before,
   .cruiseMore::before,
   .boardBack::before,
-  .iconButton::before,
   .sessionRowHandle::before,
-  .segmentedButton::before,
   .attachRemove::before,
   .reviewCommentCancel::before,
   .promptCopy::before,
@@ -8001,12 +7052,10 @@ textarea.input {
   .filterChipRemove::before,
   .feedFilter::before,
   .feedAction::before,
-  .detailDisclosure::before,
   .autoTaskExpand::before,
   .sessionContextHead::before,
-  .tagCustomColor::before,
   .thumbNew > *::before,
-  .thumbBar .iconButton::before {
+  .thumbBarButton::before {
     content: '';
     position: absolute;
     /* 两格都给令牌：一个规格，两轴各一个数（见 `--dsh-tb-hit-ring-*` 那一处）。 */
@@ -8014,12 +7063,7 @@ textarea.input {
     border-radius: inherit;
   }
 
-  /* The 16px color dots are too small to tap; grow the swatch itself. */
-  .tagSwatch,
-  .tagCustomWrap {
-    width: 24px;
-    height: 24px;
-  }
+  
 
   /* 16px input text stops iOS/Android auto-zoom on focus. */
   .input,
@@ -8045,7 +7089,7 @@ textarea.input {
 .toolCard {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   padding: 6px 8px;
   border: 1px solid var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
@@ -8059,7 +7103,7 @@ textarea.input {
 .toolCardHeadline {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--dsh-tb-space-3);
   margin: 0;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
@@ -8092,14 +7136,14 @@ textarea.input {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: var(--dsh-tb-space-1);
 }
 
 .toolCardOps > li {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: 4px;
+  gap: var(--dsh-tb-space-2);
   min-height: 20px;
   font-size: 12px;
   line-height: 18px;
@@ -8209,8 +7253,6 @@ textarea.input {
   .columns,
   .thumbBar,
   .card[data-fresh],
-  .modalBackdrop,
-  .modal,
   .detail,
   .review,
   .reviewMessage,

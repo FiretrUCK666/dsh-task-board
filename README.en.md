@@ -240,6 +240,21 @@ pnpm verify
 
 `AGENTS.md` in the repository root records the project conventions, the architecture index and the release process; it is the reference AI assistants work from in this repository.
 
+### Design system preview
+
+When you are working on the interface there is a page to compare against: set `DSH_TASK_BOARD_DESIGN_PREVIEW=1`
+before starting, and the sidebar grows a "Design system" row. It lays out the design variables, the type
+ladder, every button and chip variant, the five statuses, every icon, the data palette, the feedback
+grammar and the breakpoint table at once — and every specimen is **the real component itself**, so what
+you see there is what the panels render.
+
+```sh
+DSH_TASK_BOARD_DESIGN_PREVIEW=1 pnpm dsh web   # or add that variable to however you start it
+```
+
+It is registered only when that variable is set, so without it the page **does not exist at all** — no
+extra switch on the plugin page, and nothing for an ordinary user to run into.
+
 ## Contributing
 
 Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](CONTRIBUTING.md): development setup, the pre-PR checklist and the hard rules. Load-failure reports should include three things: your DSH version, the plugin version and the error text.

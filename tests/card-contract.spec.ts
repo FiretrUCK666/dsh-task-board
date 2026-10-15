@@ -28,9 +28,20 @@ import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
+import { aliasLayer, designCss, pageCss, spacingPx } from './panel-harness.ts'
 
-const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-const source = readFileSync(cssPath, 'utf8')
+/**
+ * The board surface AS IT RENDERS: the board's own sheets plus the design layer
+ * every surface reads.
+ *
+ * NOT every sheet in the client half. The design variables (`--dsh-tb-*`) are
+ * declared once for the whole plugin, so a claim about a token has to read the
+ * layer — but the type ladder and the radius allowlist below are claims about
+ * THIS surface, and the task list has a ladder of its own. Reading one path made
+ * these assertions answer 「which file」 instead of 「does the rule hold」; reading
+ * everything would make the list panel's numbers findings against the board.
+ */
+const source = pageCss('board') + '\n' + designCss()
 
 /** The [start, end) character ranges of every conditional block of one kind
  *  (`@media` / `@container`), found by brace-walking — used to prove a rule is
@@ -77,8 +88,20 @@ function ruleOf(name: string): string | undefined {
 
 function expectRule(name: string): string {
   const block = ruleOf(name)
-  if (block === undefined) throw new Error(`rule ".${name}" not found in board.module.css`)
+  if (block === undefined) throw new Error(`rule ".${name}" not found in any client stylesheet`)
   return block
+}
+
+/**
+ * The `gap` a rule declares, in pixels.
+ *
+ * A gap may be a literal (`8px`) or a ladder step (`var(--dsh-tb-space-4)`), and
+ * which one it is must not change what a claim about the RHYTHM means. The
+ * ladder's number is resolved from the sheet that declares it, so a step that
+ * moves moves every assertion with it.
+ */
+function gapPxOf(selector: string): number | undefined {
+  return spacingPx(/(?:^|[;{\s])(?:row-|column-)?gap\s*:\s*([^;}]+)/.exec(ruleFor(selector))?.[1])
 }
 
 describe('the column header and the cards under it share ONE text edge', () => {  // MEASURED, NOT ASSUMED. This contract exists because one board column can show
@@ -199,7 +222,11 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // the margins, so a 1px `margin-top` moves the box by HALF a pixel and the
     // correction silently under-delivers — which is indistinguishable, in a
     // screenshot, from not having fixed it at all.
-    const root = /\[data-dsh-taskboard-view\][^{]*\{([^}]*)\}/s.exec(source)?.[1] ?? ''
+    // The layer is named by WHAT IT DECLARES (`aliasLayer`), not by the first
+    // `[data-dsh-taskboard-view]` block in whichever sheet happens to be first:
+    // the board's own root rule wears the same selector, so a positional read
+    // answers 「which rule comes first」 instead of 「is the number declared」.
+    const root = aliasLayer()
     expect(root, '--dsh-tb-mark-drop is not declared, so every mark will re-guess its own optical centring')
       .toMatch(/--dsh-tb-mark-drop:\s*[\d.]+px/)
     for (const selector of ['.cardWorkspaceDot'] as const) {
@@ -221,7 +248,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // The check is that the chip OWNS a boundary. A filled pill is not required —
     // that would undo the quiet-card decision — so the assertion is on a
     // hairline, which is the quietest edge the design system has.
-    const rule = ruleFor('.cardBadges .chip')
+    const rule = ruleFor('.cardBadge')
     expect(rule, 'card chips have no edge again, so a multi-chip card reads as one sentence').not.toBe('')
     // THE CLAIM, NOT THE SPELLING. Pinning `border: var(--dsh-tb-border-soft)`
     // would pin ONE way of writing a hairline rather than the hairline itself — and
@@ -600,8 +627,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // whose only statement of whether it is armed and when it next fires they
     // could not read. 换行 is one of the four mechanisms rule 11 allows; the
     // ellipsis is not one of them.
-    const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
+    const sheet = (pageCss('board') + '\n' + designCss()).replace(/\/\*[\s\S]*?\*\//g, '')
     expect(sheet, 'the board sheet is empty, so every ruleFor below reads nothing').not.toBe('')
     for (const name of ['.runPresetName', '.autoTaskSummary']) {
       const rule = ruleFor(name)
@@ -665,7 +691,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // on purpose: a shared left label column is a different SHAPE, not a
     // different value, and its row gap was already 6px.
     const stacked = ['.field', '.autoField', '.reviewConfigRow']
-    const gaps = stacked.map(name => ruleFor(name).match(/gap:\s*([\d.]+)px/)?.[1])
+    const gaps = stacked.map(name => gapPxOf(name))
     expect(new Set(gaps).size, `the label-to-control gap is not one value: ${stacked.map((n, i) => `${n}=${gaps[i]}`).join(', ')}`).toBe(1)
     // One label size on every pair. 11px was below this ladder's floor, and it
     // was the only surface where a reader could see a label change size.
@@ -685,12 +711,12 @@ describe('the column header and the cards under it share ONE text edge', () => {
     // relationship is what makes this hold for a fourth row added later —
     // three tuned numbers would agree today and say nothing about tomorrow.
     const compact = source.slice(source.indexOf('@container dsh-tb (max-width: 680px) {'))
-    const between = Number(compact.match(/\.board \{[\s\S]*?gap:\s*(\d+)px/)?.[1])
-    const within = Number(compact.match(/\.boardHeader \{[\s\S]*?gap:\s*(\d+)px/)?.[1])
-    expect(Number.isFinite(between) && Number.isFinite(within),
+    const between = spacingPx(/\.board \{[\s\S]*?(?:^|[;{\s])gap\s*:\s*([^;}]+)/.exec(compact)?.[1])
+    const within = spacingPx(/\.boardHeader \{[\s\S]*?(?:^|[;{\s])gap\s*:\s*([^;}]+)/.exec(compact)?.[1])
+    expect(between !== undefined && within !== undefined,
       'the compact band no longer states both gaps, so the relationship cannot be checked').toBe(true)
-    expect(between, 'the gap between groups is not larger than the gap inside one, so a phone has no visible grouping')
-      .toBeGreaterThan(within)
+    expect(between ?? 0, 'the gap between groups is not larger than the gap inside one, so a phone has no visible grouping')
+      .toBeGreaterThan(within ?? 0)
   })
 })
 
@@ -870,12 +896,12 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     const body = expectRule('detailSectionBody')
     expect(body).toContain('display: flex')
     expect(body).toContain('flex-direction: column')
-    const gap = /gap:\s*(\d+)px/.exec(body)
-    expect(gap, '.detailSectionBody must own its section gap explicitly').not.toBeNull()
+    const gap = spacingPx(/(?:^|[;{\s])gap\s*:\s*([^;}]+)/.exec(body)?.[1])
+    expect(gap, '.detailSectionBody must own its section gap explicitly').not.toBeUndefined()
     // A section gap must out-rank a section's OWN internal gap, or the fold
     // reads as one block: .reviewConfig spaces its title from its grid by 8px.
-    const configGap = Number(/gap:\s*(\d+)px/.exec(expectRule('reviewConfig'))?.[1] ?? '0')
-    expect(Number(gap?.[1] ?? '0'), 'the section gap must exceed a section\'s internal gap').toBeGreaterThan(configGap)
+    const configGap = gapPxOf('reviewConfig') ?? 0
+    expect(gap ?? 0, 'the section gap must exceed a section\'s internal gap').toBeGreaterThan(configGap)
     // And the fold body must be the ONE owner: the Disclosure component is the
     // only place that renders it, so no caller can forget it.
     const ui = readFileSync(fileURLToPath(new URL('../src/client/board/ui.tsx', import.meta.url)), 'utf8')

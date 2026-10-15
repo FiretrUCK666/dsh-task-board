@@ -1,0 +1,371 @@
+/**
+ * The plugin's design variables, declared ONCE for every surface it renders.
+ *
+ * WHY THIS IS A FILE OF ITS OWN. Both panels — and every surface added after
+ * them — read `--dsh-tb-*` and never a raw value. While this layer lived inside
+ * the board's page sheet, the task list consumed tokens it did not own: the
+ * board sheet could be renamed, split or deleted and the list would have gone
+ * on compiling, with every rule that reads an alias invalid at computed-value
+ * time and nothing on screen to say why. A design variable has one home, and
+ * it is not a page.
+ *
+ * THE SCOPE IS THE PLUGIN'S SEAT, not a panel: `[data-dsh-taskboard-view]` is
+ * the element both panels mount into, so one declaration covers both — and
+ * everything either panel portals out of itself, because a dialog is portalled
+ * into the seat rather than into the page.
+ *
+ * NOTHING HERE DECLARES GEOMETRY OF ITS OWN. A token is a name for a value two
+ * or more rules must agree on; a number used once stays where it is used, with
+ * its measurement note. `scripts/verify-palette.mjs` holds the colour half of
+ * this file to its law (one colour per family, reached only through the layer),
+ * and `scripts/verify-design-docs.mjs` holds every `--dsw-*` name here to the
+ * shell that declares it.
+ */
+
+/* --- design-system layer -----------------------------------------------------
+ * One alias layer: the board never writes raw values — every color, border,
+ * radius, corner SHAPE, shadow, text level and motion constant flows from the
+ * native dsh semantic tokens below (or is derived from them). A future skin
+ * re-maps the --dsw-* tokens and the whole board follows automatically.
+ */
+[data-dsh-taskboard-view],
+:where([data-dsh-taskboard-panel]) {
+  /* surfaces: the glass/opaque split lives here once — the canvas layer may be
+     translucent (it reads `--dsh-tb-bg`, which follows a skin's translucency on
+     bg-base), while every inner floating/sunken surface consumes the OPAQUE
+     layer tokens, exactly like the native "inner surfaces stay opaque"
+     convention of glass skins. */
+  --dsh-tb-bg: var(--dsw-alias-bg-base);
+  --dsh-tb-bg-raised: var(--dsw-alias-bg-layer-2);
+  --dsh-tb-surface-float: var(--dsw-alias-bg-layer-1);
+  --dsh-tb-surface-sunken: var(--dsw-alias-bg-layer-2);
+  --dsh-tb-surface-menu: var(--dsw-specific-menu);
+  /* THE chip fill: ONE fill for every quiet control that must read as "a
+     field I can act on" — the 筛选任务 search box, the quiet buttons beside it
+     (整理 / 自动化 / 动态 / 检查更新 / 刷新 / 查看会话 …) and the tabs.
+     It is the NATIVE input surface (`bg` + `specific-input-major`), not our
+     own layer-2 approximation: a hand-picked layer token is an opaque colour
+     the shell never remaps, so under a skin the chips drifted away from the
+     native inputs sitting right next to them (the 「跟其他按钮都不一样」
+     report). Consuming the native input face makes every one of them move with
+     the skin, at both themes, by construction — there is no second value left
+     to keep in sync. */
+  --dsh-tb-chip-fill: var(--dsh-tb-input-bg);
+  /* Modal mask: a touch stronger than the native mask-1 so column lines
+     behind the glassy board no longer glimmer through the dialog. */
+  --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
+  --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
+  --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
+  /* 边界**不走颜色那条路**，这是有意的：`scripts/verify-palette.mjs` 的「一个色相
+     一个词」只管 label 与 state 两族，因为边界是另一套词汇（几何，不是颜色）。所以
+     宿主那三个 `--dsw-alias-border-l*` 在两张表里都可以直接读——把它们的颜色再起
+     一个 `--dsh-tb-*` 名字，只会让同一条线有第三条路，而三条路正是「一个概念一套
+     词汇」要消掉的东西。 */
+  /* ── A MARK'S VERTICAL PLACE, AS ONE NUMBER ────────────────────────────────
+     A line box reserves room for descenders whether or not the string has any,
+     so **the line box's centre is NOT the type's optical centre** — it sits
+     above the x-height band, and a dot centred on it reads high. That is a
+     measured fact about this surface, not a preference: at 11px the name's
+     x-height band measured y=182..188 (mid 185) and the dot's centre measured
+     184 — one pixel, which is exactly what 「那个点还是比它高了一点点」 is.
+
+     It is a TOKEN and not a stray `1px` because this surface has four marks and
+     each of them had been corrected separately, in its own row, by looking at
+     that row: the card's title mark, the workspace dot, the column header's dot
+     and the compact tab's dot. Four rows, four numbers, and nothing saying they
+     are the same question. A number that is only correct in one place is a
+     number that will be wrong in the next place.
+
+     `translateY` and NOT `margin-top`: on a `align-items: center` flex item the
+     free space is halved around the margins, so a 1px `margin-top` moves the
+     box by HALF a pixel and the correction silently under-delivers. A transform
+     is 1px because it says 1px. */
+  --dsh-tb-mark-drop: 1px;
+  /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
+     and the shell declares no such token (0 declarations across the whole DSH
+     install — only references), so the alias was invalid and every consumer
+     dropped to `none` anyway: the separators never painted. Declaring the intent
+     as `none` says what is actually true and keeps the three consumers honest,
+     instead of a broken `var()` that reads as a hairline to every future reader.
+     If a shell version ever exports the token, this becomes a real border again
+     — `scripts/verify-design-docs.mjs` audits CSS token references and will say
+     so when it exists. */
+  --dsh-tb-separator: none;
+
+  /* corners: proportional to component size (Apple rhythm). The rounder
+     values are the "圆润感" the user asked back for — the previous sm/md/lg
+     read square on phones at 390px (8px on a card, 12px on a panel). */
+  --dsh-tb-radius-sm: 10px;
+  --dsh-tb-radius-md: 14px;
+  --dsh-tb-radius-lg: 20px;
+  --dsh-tb-radius-xl: 28px;
+  /* corner family: pills are FULLY round (999px), cards/panels step the
+     radius-md/lg/xl ladder. A pill written sm/md reads square — that was the
+     「圆变方」 family (columnTab compact override, interactionOption,
+     attachChip, attachAdd, timeFieldCalendar, cruiseLimit). Small widgets
+     that are NOT pills (meter swatch, code, remove ×) keep their own tiny
+     radii by design. */
+  --dsh-tb-pill: 999px;
+  /* 触屏热区环：**一个小控件长出来的、看不见的那一圈。** 两轴各一个数，因为挡住它的
+     东西在两条轴上不一样——块向的邻居是上一行/下一行，行内的邻居是同排的下一个控件。
+     两个面板共用这两个名字：清单面板在窄档把横向那一格收窄到 3px（它那一排胶囊只隔
+     3px，量过），其余一律读这里。**不许再在媒体查询里手写 `inset: -7px`**：同一件事
+     两处写数，就会出现「7px 与 8px 与 3px」三种，而它们看起来都像对的。 */
+  --dsh-tb-hit-ring-block: 7px;
+  --dsh-tb-hit-ring-inline: 7px;
+  /* corner geometry: `border-radius` decides how big a corner is, `corner-shape`
+     decides whether that corner is a circular ARC. They are two axes, and only
+     the second one can turn a 50% dot or a 999px pill into a rounded square —
+     measured in the browser: `corner-shape: superellipse(1.33)` renders an 8x8
+     `border-radius: 50%` box as a rounded square, while the initial value
+     (`superellipse(1)`) renders a true circle. That is why the 「圆变方」 family
+     survived every previous radius-only pass: the radii were always correct.
+     `corner-shape` does NOT inherit (measured: a value on the parent box leaves
+     every child at the initial value), so it cannot be fixed from the root —
+     but it CAN be declared once for the whole subtree with the universal
+     selector below, which is zero-specificity and therefore overrides an
+     element rule while still losing to nothing else. `--dsh-tb-corner` is the
+     single switch: if the board ever wants a squircle family, it changes here. */
+  --dsh-tb-corner: round;
+  /* ONE breathing rhythm for the compact navigator strip and the thumb-bar
+     clearance: both sides of the strip and the room above the thumb bar draw
+     from this single value, so the top gap can never again disagree with the
+     bottom one (the 「上面有空隙下面紧贴」 class). Hand-typed 8px/10px/64px
+     must not come back — see the compact rules below. */
+  --dsh-tb-strip-gap: 10px;
+
+  /* ── 间距阶梯 ──────────────────────────────────────────────────────────────
+   *
+   * DESIGN.md 一直把「可见的 gap 主阶梯」写成一句话：2 / 4 / 6 / 8 / 10 / 12 / 16。
+   * **一句话没有消费者**，所以它可以和代码不一致而没有任何东西会红——量过：清单
+   * 面板自造了 `--s1..--s4 = 4/10/22/32`，其中 22 被当 gap 用了 6 处，而 22 不在
+   * 那条阶梯上。两份词汇，一份成文、一份不成文，而它们互相矛盾。
+   *
+   * 所以阶梯在这里，一次。**阶梯是配额**：一个 gap 要么读它，要么是一次写明的
+   * 测量（`--dsh-tb-mark-drop` 那一类），不许是手打的数字。22 与 32 补进来，是
+   * 因为它们已经在清单面板里当间距用了——阶梯的职责是覆盖**两个面板**已经用掉的
+   * 档位，不是复述看板那一张表量出来的那几个数。
+   *
+   * **阶梯之外的间距不进标度**：1px 的光学补偿、2px 的环、3px 的投放条、7px 的
+   * 热区。它们是逐元素的细节尺寸，写进标度只会诱使别人把细节当成系统语言——
+   * 与 Shapes 一节对微圆角说的同一句话，判据也一样：它会不会被第二处复用。
+   */
+  --dsh-tb-space-1: 2px;
+  --dsh-tb-space-2: 4px;
+  --dsh-tb-space-3: 6px;
+  --dsh-tb-space-4: 8px;
+  --dsh-tb-space-5: 10px;
+  --dsh-tb-space-6: 12px;
+  --dsh-tb-space-7: 16px;
+  --dsh-tb-space-8: 22px;
+  --dsh-tb-space-9: 32px;
+
+
+  /* Button family: every clickable button is FULLY round (pill), at every
+     height (28px default, 24px sm, 34px preset rows, 44px touch floor). A
+     fixed px radius only covers one height and reads as
+     「方形圆弧」 beside 999px pills (search/cruise/columnTab) — the token
+     below is the single truth so future buttons cannot drift. Cards/panels/
+     inputs keep the sm/md/lg/xl ladder and are NOT pills. */
+  --dsh-tb-button-radius: var(--dsh-tb-pill);
+  --dsh-tb-button-h: 28px;
+  /* The in-list tier. A quiet row action and the text beside it are aligned by
+     a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
+     moment either size changes — see .sessionHintRow). */
+  --dsh-tb-button-h-sm: 24px;
+
+  /* ONE content line per surface, declared once and consumed by every member
+     of that surface. Rail segments each writing their own 14px is how one
+     of them wrote it TWICE (the 「上下文与运行配置」 row sat 28px while the
+     comments sat 14px — the misalignment the user pointed at). A member may
+     reference the token, never re-type the number. */
+  --dsh-tb-rail-inset: 14px;
+  /* The session row's identity column: a 12px mark + a 7px gutter, read
+     together by the title, the workspace pill, the status chip and the meta
+     line (the 「工作区/未运行 各搞各的」 family). */
+  --dsh-tb-lead-icon: 12px;
+  --dsh-tb-lead-gap: 7px;
+  /* The session row's declared first-line box (never `normal`, which differs
+     per font/skin and would move any offset measured against it). */
+  --dsh-tb-row-line: 20px;
+  --dsh-tb-dot: 6px;
+  /* The quiet meta line's line box — the optical center every small control
+     beside it is measured against. */
+  --dsh-tb-hint-line: 18px;
+
+  /* depth */
+  --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
+  --dsh-tb-shadow-2: var(--dsw-shadow-lv2);
+  --dsh-tb-shadow-3: var(--dsw-shadow-lv3);
+
+  /* text levels */
+  --dsh-tb-text-1: var(--dsw-alias-label-primary);
+  --dsh-tb-text-2: var(--dsw-alias-label-secondary);
+  --dsh-tb-text-3: var(--dsw-alias-label-tertiary);
+
+  /* semantic accents (single source for status color) */
+  --dsh-tb-accent: var(--dsw-alias-state-business-primary);
+  --dsh-tb-attention: var(--dsw-alias-state-warn-primary);
+  --dsh-tb-success: var(--dsw-alias-state-success-primary);
+  --dsh-tb-danger: var(--dsw-alias-state-error-primary);
+  /* ── 五栏的颜色：**只有这一份** ──────────────────────────────────────────────
+   *
+   * 看板列头那颗点、清单行首那颗珠子、任何以后画「这一条在哪一栏」的地方，都读这五个
+   * 名字。读者要求的是「按状态那些点的颜色，完全参考任务看板那边的颜色」——而那一句话
+   * 能成立的条件只有一个：**颜色不是抄过来的，是同一个令牌**。
+   *
+   * 这几条读的全是**别名层**那五个名字，不许直接写 `--dsw-*` 越过它：那五个名字声明在
+   * 根属性块里，一处、一份，而两个面板都要消费。写成两处就是**一份拷贝**，换肤时两个
+   * 面板各有各的颜色，而屏上不会有人说一句话。
+   * 而且有一条断言在「谁又抄了一份」时变红（`tests/panel-render.spec.ts`）。
+   *
+   * `running` 与 `review` 用的是 warn 的两档——看板早就这么画了，清单从它那里继承，
+   * 不另挑颜色。 */
+  --dsh-tb-status-backlog: var(--dsw-alias-label-tertiary);
+  --dsh-tb-status-todo: var(--dsw-alias-state-business-primary);
+  --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
+  --dsh-tb-status-review: var(--dsw-alias-state-warn-secondary);
+  --dsh-tb-status-done: var(--dsw-alias-state-success-primary);
+  /* ── 一条色族律：**一个色相就一个色** ────────────────────────────────────────
+   *
+   * 上面那五条（以及 accent / attention / success / danger）是这一页与清单页唯一
+   * 的颜色来源。**点、珠子、环、洗底、边、文字，读的都是同一枚**——没有「填充档」与
+   * 「文字档」之分。
+   *
+   * 这一条是被两次报价买来的：
+   *   · 把当字的那一档做成「朝中性深墨混」（`color-mix(…, label-primary)`）：对比度达标，
+   *     而彩度只剩**源色的 0.61**——黄压暗了就是棕，棕色的芯片说不出它是哪一档状态。
+   *   · 改成「只压明度」（`oklch(from … l*k c h)`）：彩度保住了（0.86–0.94），却**造出
+   *     系统里本来不存在的颜色**——同一块屏上于是有两种黄，芯片文字 `#bf7800`、旁边的
+   *     会话点 `#f59e0b`。**一个色相分成两半就是缺陷**，跟它更深还是更浅无关。
+   *
+   * 所以这里没有派生，只有**复用**：文字读的就是它那一族的色。代价如实记在 DESIGN.md
+   * （浅色主题下 amber 与 green 的小字只到 1.63:1 / 2.33:1）——而这个代价**只能用换形状
+   * 来还**（同色淡洗底 + 近黑字），不能用造第二枚颜色来还。
+   *
+   * 机械闸门：`scripts/verify-palette.mjs`——族只有一枚令牌、色相只许经本层到达、
+   * 洗底与边只许读下面那条梯子。 */
+  --dsh-tb-wash: 14%;
+  --dsh-tb-wash-strong: 22%;
+  --dsh-tb-edge: 42%;
+  --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
+  --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
+  /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
+   *
+   * `outline` 由浏览器按 `border-radius` 画，**不读 `corner-shape`**；而元素的底与边
+   * 读它。本插件的 `--dsh-tb-corner` 是明说的换肤入口，皮肤一旦换成超椭圆族，**全表
+   * 每一个焦点环都会与它自己那条边在每个角上分叉**——两条线之间露出一块白，读者
+   * 报的原话是「线框的四个边角像缺了一块」。
+   *
+   * 这不是猜的：一支把四种组合并排画出来的探针（round/squircle × outline/shadow）
+   * 量到圆族下两者同形，超椭圆族下只有 `box-shadow` 跟着角走。
+   *
+   * 所以环是一族影，写成一个令牌，元素自己的影写在它后面：
+   * `box-shadow: var(--dsh-tb-ring), …自己的影…`。被强行色模式（forced-colors）抹掉
+   * 影的时候由一条 `@media (forced-colors: active)` 把 outline 放回来——那里
+   * 浏览器自己会接管颜色，两条路径都是「看得见」。
+   *
+   * **环贴着盒沿（没有 offset）。** 那 2px 空气，在影这一
+   * 族里画不出来：影是不透明的，一层「空气」要么得知道背后是什么颜色，要么就得再加
+   * 一个伪元素。贴着盒沿是这一族的成立条件，换来的是「环与边永远同形」；环也因此更紧、
+   * 更像一条边，而不是一枚飘在盒子外面的圈。 */
+  --dsh-tb-ring: 0 0 0 2px var(--dsh-tb-accent);
+
+  /* THE text colour for text sitting ON a light-hued fill.
+     The state fills have fixed hues that do not follow the theme (warn, success
+     and the accent all resolve to the same value in light and dark), but
+     `--dsw-alias-label-primary-foreground` DOES flip: it is white in the light
+     theme and near-black in the dark one. That token answers "what reads on the
+     BRAND fill", and the brand fill is dark ink — so pairing it with a light
+     fill got the answer backwards exactly half the time. Measured before this
+     token existed, in the light theme: white on warn 2.15:1, white on
+     warn-secondary 1.91:1, white on success 2.28:1, white on the accent 4.23:1
+     — all below 4.5, while the same pairings passed in the dark theme.
+     A light fill needs dark ink in BOTH themes, so the value comes from the
+     static ramp (identical in light and dark by construction). Measured after:
+     8.80 / 9.88 / 8.29 / 4.46.
+     NOT for dark fills: the brand button and the danger button are dark in both
+     themes, and `label-primary-foreground` is already the right answer there
+     (18.90 and 4.50 in the light theme) — see .primaryButton / .dangerButton. */
+  --dsh-tb-ink-on-fill: var(--dsw-static-neutral-bluish-1000);
+
+  /* 深底上的那一枚，与上面成对：**两种底，两枚墨**。
+     浅底的填充色（warn / success / accent）在两个主题下同值、都是亮的，所以它们上面要
+     一枚**深**字——那是 `--dsh-tb-ink-on-fill`。而品牌按钮与危险按钮的底在两个主题下
+     都是深的，上面要的就是宿主自己那一枚会翻面的前景色（浅色主题下量到 18.90 与 4.50）。
+     这一对名字同时把「调用点该读什么」说清楚了：填充色上写字，永远从这两枚里挑一枚，
+     不直接读宿主的 `label-primary-foreground`——那是一条绕过本层的路。 */
+  --dsh-tb-ink-on-solid: var(--dsw-alias-label-primary-foreground);
+
+  /* interaction + motion grammar (one source) */
+  --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
+  /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
+     translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
+     shared token carries it: a shared token with no consumer is a rule that
+     answers nothing. */
+  --dsh-tb-input-bg: var(--dsw-specific-input-major);
+  /* The focus halo: the SAME `--dsh-tb-wash-strong` step the attention/selection
+     system uses, over the accent — rather than a token that does not exist
+     (`var(--dsw-alias-state-business-primary-alpha)` was declared by no shell
+     version, so without a fallback the property was invalid at computed-value
+     time and the four `box-shadow` rings that consume it (`.input:focus`,
+     `.search:focus`, the drop-accept ring, the bind-active drop zone) painted
+     nothing — the documented 3px halo never once appeared).
+     One alpha ladder, read from the ladder: never a second set of numbers. */
+  --dsh-tb-focus-ring: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
+  --dsh-tb-focus-color: var(--dsh-tb-accent);
+  --dsh-tb-motion: 160ms ease;
+  --dsh-tb-breath: 2.6s ease-in-out;
+  /* Breathing amplitude tokens (the pulse itself is a state message, so under
+     `prefers-reduced-motion` these slow down and shrink — they are never set
+     to zero, which would turn "live" into "frozen"). */
+  --dsh-tb-breath-spread: 3px;
+  --dsh-tb-breath-halo: 14px;
+}
+
+/* The corner SHAPE, declared once for the whole board surface.
+ *
+ * `corner-shape` is not inherited (measured: a value on the parent box leaves
+ * every child at the initial value), so this one rule states the board's corner
+ * language for every element it renders — dots, spinners, pills, chips, cards —
+ * in one place, instead of an `corner-shape: round` on each of the ~60 pills
+ * and 8 circles (the drift-prone patch pile this rule exists to replace).
+ *
+ * Why it is needed at all: with the initial value the two axes agree and every
+ * radius draws a circular arc, but any environment that sets a superellipse
+ * family (a skin, an injected stylesheet, a future default) silently turns
+ * every one of those same radii into a rounded square — and no radius edit can
+ * undo it. That is the 「圆变方」 family, and it came back after every previous
+ * radius-only pass because the radii were never the problem.
+ *
+ * The declaration is `!important` and the descendant selector carries the
+ * `[class]` qualifier, both for the same measured reason: against a leak of
+ * equal specificity `!important` is decided by SPECIFICITY rather than source
+ * order, so `[data-dsh-taskboard-view] *` (0,2,0) still loses to
+ * `.theme .statusDot` (0,2,0) and the dots stay square. Describing the board's
+ * own geometry is not a case for a specificity bet: the reader of a stylesheet
+ * the board does not control is unknown, and the value may be inherited or
+ * injected per element. There is no cost inside this sheet — a component
+ * wanting another shape would be expressing the same board language — and a
+ * skin that genuinely wants another corner family has a supported door:
+ * re-map `--dsh-tb-corner` below, the board's single switch. The root is in the
+ * selector list so the token resolves there too; `*[class]` is what every
+ * widget the board actually renders matches.
+ *
+ * `:not([class])` is ALSO in the selector list, and it is not a stylistic
+ * flourish: some of this surface's geometry carries NO class — the date axis's
+ * beads are a bare `<i>`, thrown frames are outlines — and a skin whose global
+ * sheet sets `corner-shape` on everything would land on exactly those, drawing
+ * rings as rounded squares with the fill poking out of the corners. A surface
+ * that declares a corner language protects every element that draws in it. */
+[data-dsh-taskboard-view],
+[data-dsh-taskboard-view] *[class],
+[data-dsh-taskboard-view] :not([class]),
+[data-dsh-taskboard-panel] {
+  corner-shape: var(--dsh-tb-corner, round) !important;
+}
+
+/* 深色主题**不需要第二套颜色，也就不需要重置块**：六族读的是宿主那几枚语义别名，
+   它们自己在深色主题下就解析成深色的那一半（amber/green 同值，accent 与 danger 会翻面）。
+   两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。
+   上一版这里有一块九行的重置，只因为它上游有九条派生；派生没了，它跟着没了。 */

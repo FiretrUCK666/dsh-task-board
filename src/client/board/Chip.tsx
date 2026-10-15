@@ -22,10 +22,16 @@
  *  longer reason must not live in `title` alone).
  */
 import type { ReactNode } from 'react'
-import css from '../board.module.css'
+import css from '../design/components.module.css'
 
-/** Semantic chip color; neutral is the default. */
-export type ChipKind = 'neutral' | 'success' | 'error' | 'warn' | 'muted'
+/** Semantic chip color; neutral is the default.
+ *
+ *  THE ARRAY IS THE DEFINITION and the type is derived from it, so the gallery
+ *  renders every kind by iterating it — see the same note on `BUTTON_VARIANTS`. */
+export const CHIP_KINDS = ['neutral', 'success', 'error', 'warn', 'muted'] as const
+
+/** One semantic chip colour. */
+export type ChipKind = (typeof CHIP_KINDS)[number]
 
 /** One badge. */
 export function Chip({ kind = 'neutral', fill = true, title, label, className, icon, children }: {

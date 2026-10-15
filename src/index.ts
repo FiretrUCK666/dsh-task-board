@@ -23,6 +23,7 @@
  * runtime — which is the only way a switch stays honest.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { markSurfaceActive } from './host/surfaces.ts'
 import { registerPermissionRoute } from './host/permission-route.ts'
 import { registerSessionStateRoute } from './host/session-state-route.ts'
 import { registerBoardRoute } from './host/board-route.ts'
@@ -40,6 +41,18 @@ export const inject = ['webServer']
 
 /** Declared entry point: the board's host routes, one effect per route. */
 export function apply(ctx: Context): void {
+  // The design-system gallery, announced from the package row rather than from
+  // a row of its own.
+  //
+  // A row per surface is the rule, and this is the one deliberate exception:
+  // a row would put a fifth switch on EVERY user's plugin page, and this
+  // surface is a developer instrument, not a product panel. Its gate is the
+  // environment instead — set `DSH_TASK_BOARD_DESIGN_PREVIEW=1` and the row
+  // announces `design`, so the browser registers the panel and its entry; leave
+  // it unset and the surface does not exist, with nothing on screen to hint
+  // that it could.
+  if (process.env.DSH_TASK_BOARD_DESIGN_PREVIEW === '1') markSurfaceActive('design')
+
   // Serve the deployment's native permission-preset catalog to the browser
   // half (the new-task form's permission selector reads this).
   ctx.effect(

@@ -20,7 +20,7 @@
  * reader with what it would have done anyway.
  */
 /** The surfaces a row can announce. The package row itself is not one. */
-export type SurfaceId = 'board' | 'items' | 'agent';
+export type SurfaceId = 'board' | 'items' | 'agent' | 'design';
 /** Every surface id, so a caller cannot announce one this file does not know. */
 export declare const SURFACE_IDS: readonly SurfaceId[];
 /**
@@ -51,4 +51,5 @@ export declare function surfaceManifest(): {
     board: boolean;
     items: boolean;
     agent: boolean;
+    design: boolean;
 };

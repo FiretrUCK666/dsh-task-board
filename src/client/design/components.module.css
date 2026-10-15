@@ -1,0 +1,934 @@
+/**
+ * The design system's own rules: every declaration that belongs to a shared
+ * component, and nothing else.
+ *
+ * WHAT LIVES HERE. A rule belongs in this sheet when its selector names only
+ * classes the shared components bind — Button, Chip, Dialog, Icon, Section,
+ * Switch, Disclosure, Notice, Segmented, ColorSwatches. Everything else stays
+ * in the surface that owns it.
+ *
+ * WHY THE SPLIT IS STRUCTURAL AND NOT TIDINESS. A CSS Modules class name is
+ * hashed from its FILENAME, so one literal name in two sheets compiles to two
+ * different runtime classes. That makes a sheet boundary a hard edge in both
+ * directions:
+ *
+ *   - a rule HERE may not name a class that lives in a surface sheet — the
+ *     selector would compile against a name nothing ever renders;
+ *   - a rule in a surface sheet may not name a class that lives HERE, for the
+ *     same reason, and that is the failure this file exists to end: it is
+ *     SILENT (the declaration is simply dropped) and it looks fine locally,
+ *     because in the source both sides are spelled the same.
+ *
+ * So a surface that needs a design component to look different in its own
+ * context passes a class of its OWN through the component's `className` prop
+ * (`<Chip className={css.cardBadge}>`) and styles that class in its own sheet.
+ * That direction is the whole mechanism; a descendant selector across the
+ * boundary is not a style choice, it is a rule that does nothing.
+ *
+ * POSITION IS LOAD-BEARING. This sheet is imported before every surface sheet
+ * (see src/client/index.ts), so at equal specificity a surface rule wins. That
+ * is the direction we want — a surface overrides the design system, never the
+ * other way round — and it is why the import order there is not cosmetic.
+ */
+
+.chip {
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  flex: 0 1 auto;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+  white-space: nowrap;
+}
+
+/* The chip's text slot: the ellipsizing half of the two-slot grammar — a
+   flex item that absorbs the chip's shrink and ellipsizes (flex containers
+   themselves cannot ellipsize their text items, so every Chip wraps its
+   text-only children here). The chip's own title attribute keeps the full
+   text available on hover. Any lead glyph with its own box geometry goes in
+   .chipLead below, never here. */
+.chipBody {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The chip's lead-glyph slot: the geometry half of the two-slot grammar. A
+   real flex item of the chip (NOT inside .chipBody), so an activity spinner
+   or icon keeps its own box — width/height are honored only for flex items,
+   an inline span would collapse to a strip — and the chip's gap: 5px keeps
+   it separated from the text. Being outside the ellipsizing body, the glyph
+   is never truncated away while the label still shows. */
+.chipLead {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+}
+
+.chipFill {
+  /* **它有自己的高。** 22px 是设计给它的数（18px 的行盒 + 上下各 2px）；交给内容去算，高度就
+     跟着字体度量走——同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。 */
+  box-sizing: border-box;
+  block-size: 22px;
+  padding: 0 8px;
+  border-radius: var(--dsh-tb-pill);
+  /* Single-layer solid fill (an rgba fill on translucent surfaces would
+     double-fade under a glass skin) — the shared quiet-chip surface, so a
+     status chip and the controls around it never drift apart under a skin. */
+  background: var(--dsh-tb-chip-fill);
+}
+
+/* 这三条写的是**文字**，读的还是同一枚状态色——一个色相就一个色（见上面那条色族律）。
+   黄在浅色主题下的真实底上只到 1.63:1，这是本表收下的代价：把字改深就是同一块屏上的
+   第二枚黄，而两枚黄比一个字淡更难解释。 */
+.chip[data-kind='success'] { color: var(--dsh-tb-status-done); }
+
+.chip[data-kind='error'] { color: var(--dsh-tb-danger); }
+
+.chip[data-kind='warn'] { color: var(--dsh-tb-status-running); }
+
+.chip[data-kind='muted'] { color: var(--dsh-tb-text-3); }
+
+/* One button standard: primary / ghost / danger share the native button
+   rhythm (same radius and type scale as the shell's buttons) so every row
+   stays aligned with the host UI — including under a glass skin, where the
+   fills come straight from the native button tokens. */
+.primaryButton,
+.ghostButton,
+.dangerButton,
+.dangerGhostButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsh-tb-space-3);
+  /* Border-box: height MEANS outer height (the cruise pill already owns this;
+     without it every 28px control is really 30 and no two rows ever agree). */
+  box-sizing: border-box;
+  height: var(--dsh-tb-button-h);
+  /* Dainty reads round: at a fixed height the NARROWER pill's semicircle ends
+     dominate and the straighter the long edges, the squarer it feels (the old
+     0 18px widening went the wrong way — admitted and reverted here). 13px /
+     0 14px lands the two-character label near a 2:1 aspect like the reference
+     board; height and radius stay on the shared rhythm, untouched. */
+  padding: 0 14px;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1;
+  border-radius: var(--dsh-tb-button-radius);
+  white-space: nowrap;
+  cursor: pointer;
+  -webkit-appearance: none;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+}
+
+.primaryButton {
+  color: var(--dsh-tb-ink-on-solid);
+  /* The native primary fill (brand) — same token the shell's primary
+     buttons use, so a skin's remap lands on both. Height comes from the
+     shared button rule (28px), so a primary never towers over its ghost/
+     danger siblings in the same row. */
+  background: var(--dsw-alias-button-primary-fill);
+  border: 1px solid transparent;
+  box-shadow: var(--dsh-tb-shadow-1);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: var(--dsw-alias-button-primary-hover);
+  box-shadow: var(--dsh-tb-shadow-2);
+}
+
+.primaryButton:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 14%, transparent);
+}
+
+.primaryButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ghostButton {
+  color: var(--dsh-tb-text-1);
+  /* FILLED quiet chip — the SAME grammar as every other quiet control the
+     board already has (the column tabs, the search field, and the shell's own
+     nav rows are all filled pills). A hollow pill whose only ink is a hairline
+     outline reads as a rectangular FRAME: the border draws two long straight
+     edges and the eye reads the shape as boxy even though the ends are exact
+     semicircles (measured on a real phone: a 94px-tall button whose corner arc
+     is 41px = half the height, i.e. already maximally round, still reported as
+     「方的」). Fill first, then geometry is what the eye actually sees.
+     The fill is the SHARED chip token, so a quiet button and the search field
+     beside it are literally the same surface — a hand-picked layer token here
+     is what made these buttons read as a different family under a skin. */
+  background: var(--dsh-tb-chip-fill);
+  /* The same hairline the tabs carry (l2) — one chip grammar, no new token. */
+  border: var(--dsh-tb-border);
+  /* Quiet density (reference parity: their ghost is 12px on tighter padding
+     while their primary stays 13px — the small pill reads round, the wide one
+     reads square-arc, so the two tracks never share type scale). */
+  font-size: 12px;
+  padding: 0 12px;
+}
+
+.ghostButton:hover:not(:disabled) {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.ghostButton:active:not(:disabled) {
+  background: var(--dsh-tb-hover);
+}
+
+.ghostButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* A toggle-state ghost (aria-pressed): the mode reads through a gentle
+   press (hover tone + stronger border), never through the primary fill —
+   entering 整理 stays a quiet affordance. */
+.buttonPressed {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+}
+
+.dangerButton {
+  color: var(--dsh-tb-ink-on-solid);
+  background: var(--dsh-tb-danger);
+  border: 1px solid transparent;
+  box-shadow: var(--dsh-tb-shadow-1);
+}
+
+.dangerButton:hover:not(:disabled) {
+  filter: brightness(1.07);
+}
+
+.dangerButton:active:not(:disabled) {
+  filter: brightness(0.94);
+  transform: translateY(1px);
+}
+
+.dangerButton:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Row-level destructive affordance: outline + danger text. A light danger
+   action in a dense list (hidden-tray delete) — the FILLED danger button
+   stays reserved for the step's primary destroyer (confirm dialogs). */
+.dangerGhostButton {
+  color: var(--dsh-tb-danger);
+  background: transparent;
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
+  /* Same quiet density as the ghost twin above (one track, never drift). */
+  font-size: 12px;
+  padding: 0 12px;
+}
+
+.dangerGhostButton:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash), transparent);
+  border-color: var(--dsh-tb-danger);
+}
+
+.dangerGhostButton:active:not(:disabled) {
+  background: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash-strong), transparent);
+}
+
+.dangerGhostButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* The compact button size (Button size="sm"): one quiet in-list geometry for
+   every secondary affordance on a row/header — view-session, refresh, row
+   actions — so a full-size button never sits inside a row. */
+.buttonSm {
+  /* Border-box with the base: 24px means 24, so the derived hint-row offset
+     stays exact instead of drifting 2px under content-box. */
+  box-sizing: border-box;
+  height: var(--dsh-tb-button-h-sm);
+  padding: 0 10px;
+  font-size: 12px;
+  border-radius: var(--dsh-tb-pill);
+}
+
+.iconButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: var(--dsh-tb-pill);
+  color: var(--dsh-tb-text-2);
+  cursor: pointer;
+  font-size: 14px;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+}
+
+.iconButton:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.switch {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-4);
+  cursor: pointer;
+  user-select: none;
+}
+
+.switch:has(input:disabled) {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.switch input {
+  position: absolute;
+  width: 0;
+  height: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.switchTrack {
+  position: relative;
+  flex: none;
+  width: 38px;
+  height: 22px;
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-hover);
+  border: var(--dsh-tb-border-soft);
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.switchKnob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  /* A solid knob — a translucent one would read as a hole on the track. */
+  background: var(--dsw-alias-button-elevated-fill);
+  box-shadow: 0 1px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 32%, transparent);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.switch input:checked + .switchTrack {
+  background: var(--dsh-tb-success);
+  border-color: transparent;
+}
+
+.switch input:checked + .switchTrack .switchKnob {
+  transform: translateX(16px);
+}
+
+.switch input:focus-visible + .switchTrack {
+  outline: 2px solid var(--dsh-tb-focus-color);
+  outline-offset: 2px;
+}
+
+.switchLabel {
+  /* 500, because the thing it labels is a control and this surface's rule pairs
+     13px with 500. It inherited 400, so the cruise toggle read as a 13/400 WORD
+     sitting 30px from a 13/500 BUTTON — two controls of the same size in the same
+     row, one of them shouting for no reason. The label names the control, so it
+     wears the control's weight; the difference between a setting and its name is
+     ink, not a louder size. */
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-1);
+}
+
+.modalBackdrop {
+  /* Board-relative: absolutely positioned inside the board's own box ([data-
+     dsh-taskboard-view], position:absolute inset:0). Panels center via the
+     `margin: auto` flex pattern (NOT align-items:center — a centered flex
+     child TALLER than the container clips its own top past the scroll start;
+     margin:auto keeps every pixel reachable when the backdrop scrolls). The
+     keyboard inset (--dsh-tb-kb, see keyboard-inset.ts) rides the bottom
+     padding, so an open soft keyboard shrinks the stage instead of burying
+     the panel header. Centering lives inside the board box, so the dialog is
+     never shifted by the shell sidebar and immune to any transform/filter a
+     skin applies to an ancestor (viewport-fixed would be absorbed by it). */
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  /* The STAGE scrolls (a tall panel must reach its top/bottom) but never
+     SHOWS a bar — the dimmed area is not a surface; the one visible bar of a
+     dialog belongs to its own scroll body (.modalScroll), flush to the panel
+     edge (see the shared hidden-bar rule above). */
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
+  overscroll-behavior: contain;
+  /* A touch stronger than the native mask-1 so the column lines behind the
+     glassy board no longer glimmer through the dialog edges. */
+  background: var(--dsh-tb-mask);
+  animation: dshTbBoardIn 160ms ease;
+}
+
+.modalTitle {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+.dialogHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--dsh-tb-space-5);
+  padding: 14px 18px;
+  border-bottom: var(--dsh-tb-separator);
+  flex: none;
+}
+
+.detailSection {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-3);
+}
+
+/* The fold's BODY: the container that stacks the folded sections themselves.
+   The board's one rhythm law is "every declaration of vertical space belongs to
+   a container": paragraphs carry `margin: 0`, so a stack of sections is spaced
+   by ITS OWN gap and never by inherited margins. `.detailSection` above is the
+   header-to-body gap; this is the section-to-section gap inside it, which had
+   no owner at all — an unstyled div in block flow put every pair of folded
+   sections at a measured 0px, beside neighbours sitting at 6px/8px on purpose.
+   That is exactly the 「这个间隙跟其他地方不一样」 the user pointed at under
+   「运行配置（当前会话）」, whose title landed flush against the token totals
+   above it. Declared HERE, once per fold, so no caller has to remember it and
+   no second fold can drift (the automation editor and the run-config fold are
+   the same container).
+
+   HEIGHT PASS-THROUGH: the body also relays its fold's definite height to the
+   scroll region inside it (`flex: 1 1 auto; min-height: 0`). Without this the
+   body refuses to shrink below its content, the comment box below never
+   receives a bounded height, grows to full content and can never scroll on its
+   own — no scrollbar, no 滑到最新, no follow, while an ancestor block scrolls
+   the whole rail instead. For a content-sized fold (the config head, every
+   task-detail section) the parent height IS the content, so grow/shrink have
+   nothing to act on and the rule is inert — only a height-bounded fold (the
+   comments fold) feels it, which is exactly where it is required. */
+.detailSectionBody {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-6);
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
+/* The shared collapsible-block grammar (Disclosure): chevron + title +
+   one-line live summary; collapsed it is a single quiet row with no buttons.
+   Used by the run-config disclosure and the automation editor, so every
+   foldable detail module reads the same. */
+.detailDisclosure {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  width: 100%;
+  /* **盒子写出来，不留给行盒。** 这一枚是**整行的**控制（`width: 100%`），而它的高
+     原本只等于那一行字——一个不声明的值，随字体与皮肤漂（The Declared Line Box Rule
+     的同一条）。18 是这一页控件的地板；写出来之后它的命中盒与它的意图一样确定。 */
+  min-block-size: 18px;
+  padding: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+
+.detailChevron {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-3);
+  transition: transform var(--dsh-tb-motion);
+}
+
+.detailDisclosure[aria-expanded='false'] .detailChevron {
+  transform: rotate(-90deg);
+}
+
+.detailDisclosureTitle {
+  flex: none;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--dsh-tb-text-3);
+}
+
+.detailDisclosureSummary {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+}
+
+.detailSection h4 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: var(--dsh-tb-text-3);
+  text-transform: none;
+}
+
+/* The section title row: a named grid (title | action), NOT flex +
+   margin-left:auto. The title track is `minmax(0,1fr)` so it can shrink and
+   the action cluster keeps its natural width at the right — and on a narrow
+   panel the cluster wraps to its own line (让位不压扁) instead of being
+   clipped by the panel's overflow:hidden. */
+.sectionHead {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas: "title action";
+  align-items: center;
+  gap: var(--dsh-tb-space-4);
+}
+
+.sectionHead h4 {
+  grid-area: title;
+  min-width: 0;
+  /* The give-way member is the LABEL (truncation lives in a text slot, never
+     in a container that hides its children): a section head keeps its action
+     cluster on the same line at every width. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sectionAction {
+  grid-area: action;
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-4);
+  min-width: 0;
+}
+
+.segmentedRow {
+  display: inline-flex;
+  gap: var(--dsh-tb-space-2);
+  padding: 3px;
+  align-self: flex-start;
+  background: var(--dsw-alias-interactive-bg-hover);
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+/* One segmented-radio grammar for every mode switch on the board (schedule
+   drive mode, session composer mode): a quiet track, an elevated active
+   segment, no per-mode styling — both controls read as siblings. Segments
+   are pills (same family as buttons): sm read square beside them. */
+.segmentedButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  /* 22px + the 3px track padding on each side = 28px total — the SAME height
+     as the primary/composer buttons the segmented sits beside. */
+  padding: 0 14px;
+  font-size: 12px;
+  font-weight: 500;
+  height: 22px;
+  line-height: 1;
+  color: var(--dsh-tb-text-2);
+  background: transparent;
+  border: none;
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.segmentedButton:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.segmentedActive {
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-surface-float);
+  box-shadow: var(--dsh-tb-shadow-1);
+}
+
+/* Inline icon glyphs (Icon component): tiny, currentColor, non-shrinking. */
+.icon {
+  flex: none;
+}
+
+/* One shared waiting notice for every surface (review page banner): a neutral
+   framed row with a warn chip carrying the semantics —
+   no per-surface amber bars. The border uses the same token as the other
+   framed surfaces around it, so every surrounding border stays in sync. */
+.waitingNotice {
+  display: flex;
+  /* Same row grammar as .sessionContextRow: the warn badge rides the FIRST
+     line (never floats mid-block), the badge never shrinks, and the text takes
+     the remaining width and wraps — so a long notice never squeezes the chip to
+     "等…" (the bare-span-no-min-width fork between the two row grammars). */
+  align-items: flex-start;
+  gap: var(--dsh-tb-space-4);
+  min-width: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-bg-raised);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+}
+
+.waitingNotice > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.waitingNotice .chip {
+  flex: none;
+}
+
+.primaryButton:active:not(:disabled),
+.ghostButton:active:not(:disabled),
+.dangerButton:active:not(:disabled),
+.iconButton:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* --- guarded hover for the remaining icon/link buttons (defensive: never
+       disabled today, but a disabled element must not react to hover) --- */
+.iconButton:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+.iconButton:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── ICON-BUTTON SIZE STEPS ───────────────────────────────────────────────────
+ *
+ * `.iconButton` is 30px — the TOOLBAR size, for a glyph that stands alone in a
+ * header. Two rows on this board run tighter than that and used to say so with a
+ * descendant selector from their own sheet (`.detailHeader .iconButton`,
+ * `.reviewHeader .iconButton`): a rule that crosses a sheet boundary compiles
+ * against a name nothing renders, so those declarations were doing nothing at
+ * all in the built bundle — silently, because in the source both sides spell the
+ * same. They are size steps of the component, so they are declared here, once,
+ * and reached through `IconButton`'s `size` prop.
+ *
+ * The numbers are the button ladder's own tokens, never re-typed: `md` is the
+ * full button height, `sm` the compact one. A row picks its height TIER and
+ * never mixes two — that is why there is no fourth step.
+ *
+ * ORDER: these come after the base rule so they win at equal specificity.
+ */
+.iconButtonMd {
+  width: var(--dsh-tb-button-h);
+  height: var(--dsh-tb-button-h);
+}
+
+.iconButtonSm {
+  width: var(--dsh-tb-button-h-sm);
+  height: var(--dsh-tb-button-h-sm);
+}
+
+/* The quiet tier: a glyph that is present but not asking for attention until
+   the pointer is on it (the interaction card's collapse/dismiss pair). */
+.iconButtonQuiet {
+  color: var(--dsh-tb-text-3);
+}
+
+.iconButtonQuiet:hover:not(:disabled) {
+  color: var(--dsh-tb-text-1);
+}
+
+/* The one swatch row grammar (ColorSwatches): palette dots + native custom
+   color dot + trailing 「移除颜色」 dot — shared by the card hover bar and
+   the organize bar. Every entry is round and same-sized (16px), so a mixed
+   shape can never appear. */
+.tagSwatches {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  flex-wrap: wrap;
+}
+
+.tagSwatch {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
+  border-radius: 50%;
+  cursor: pointer;
+  transition: transform var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.tagSwatch:hover {
+  transform: scale(1.12);
+}
+
+.tagSwatchOn {
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
+}
+
+/* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
+   color" next to the filled palette dots. */
+.tagSwatchNone {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--dsw-alias-border-l2);
+}
+
+.tagSwatchNone:hover {
+  background: var(--dsh-tb-surface-sunken);
+}
+
+/* The native color input dressed as one round dot of the same size. The wrap
+   carries the LOOK: the picked custom color when one is active (data, applied
+   inline), otherwise a conic rainbow affordance ("open the picker" — named
+   colors only, never a white circle that reads as a second 移除颜色 dot).
+   The native input floats on top invisibly: still opens the picker and stays
+   focusable (the focus ring comes from the wrap's :focus-within). */
+.tagCustomWrap {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  overflow: hidden;
+}
+
+/* The custom-colour affordance: a full hue wheel, because the control's whole job
+   is to say "pick any colour" and a part-spectrum ring would silently narrow the
+   offer. These are the browser's six named hues on purpose, NOT palette values:
+   the wheel represents every colour the picker can produce, so tinting it from
+   --dsw-* would make it advertise a subset of itself. This is the ONE place in
+   the stylesheet without a token, it is a control rather than a design colour,
+   and the reason lives here so the next reader neither "fixes" it nor copies it. */
+.tagCustomEmpty {
+  background: conic-gradient(red, yellow, lime, cyan, blue, magenta, red);
+}
+
+.tagCustomWrap:focus-within {
+  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
+}
+
+.tagCustomColor {
+  appearance: none;
+  -webkit-appearance: none;
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* The floating-panel geometry is board-relative at EVERY width now (see
+     .modalBackdrop/.modal) — the compact block only tightens the gutters. */
+  .modalBackdrop {
+    padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
+  }
+
+/* Segmented tracks give way too: an English two/three-label row cannot fit a
+     244px panel, so it wraps (a clipped nowrap track painting past the modal
+     edge is the forbidden 「文字画在盒外」). */
+  .segmentedRow {
+    flex-wrap: wrap;
+    row-gap: var(--dsh-tb-space-2);
+  }
+
+/* A section title row keeps its action cluster ON THE SAME LINE at every
+     width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
+     previous compact template stacked title over action — which "solved" a
+     squeeze that cannot happen: the title track is minmax(0,1fr) and
+     ellipsizes, so the row gives way by shortening the LABEL, never by
+     dropping the button to its own line and breaking the pair. */
+  .sectionAction {
+    justify-self: end;
+  }
+
+/* The 16px color dots are too small to tap; grow the swatch itself. */
+  .tagSwatch,
+  .tagCustomWrap {
+    width: 24px;
+    height: 24px;
+  }
+
+@container dsh-tb (max-width: 680px) {
+  /* The floating-panel geometry is board-relative at EVERY width now (see
+       .modalBackdrop/.modal) — the compact block only tightens the gutters. */
+    .modalBackdrop {
+      padding: 8px 8px calc(8px + var(--dsh-tb-kb, 0px));
+    }
+
+  /* Segmented tracks give way too: an English two/three-label row cannot fit a
+       244px panel, so it wraps (a clipped nowrap track painting past the modal
+       edge is the forbidden 「文字画在盒外」). */
+    .segmentedRow {
+      flex-wrap: wrap;
+      row-gap: var(--dsh-tb-space-2);
+    }
+
+  /* A section title row keeps its action cluster ON THE SAME LINE at every
+       width (「会话规则和新增会话规则在电脑端是一条水平线，手机端不是」). The
+       previous compact template stacked title over action — which "solved" a
+       squeeze that cannot happen: the title track is minmax(0,1fr) and
+       ellipsizes, so the row gives way by shortening the LABEL, never by
+       dropping the button to its own line and breaking the pair. */
+    .sectionAction {
+      justify-self: end;
+    }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* The 16px color dots are too small to tap; grow the swatch itself. */
+    .tagSwatch,
+    .tagCustomWrap {
+      width: 24px;
+      height: 24px;
+    }
+}
+
+
+/* ── THE SHARED LISTS, HALF HERE ──────────────────────────────────────────────
+ *
+ * Each of these used to be one `:is()` list in the board's sheet naming classes
+ * from both sheets — a list that reads as one rule and behaves as none, because
+ * a class name is hashed from its filename. The list is split along the boundary
+ * it always had: this half names the members the DESIGN owns, and the surface
+ * sheet keeps the members it owns. Same grammar, two halves, each declared next
+ * to the class it applies to.
+ */
+
+.modalBackdrop {
+  scrollbar-width: none;
+}
+
+.modalBackdrop::-webkit-scrollbar {
+  display: none;
+}
+
+:is(.chip, .chipFill) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* The standard-bar path, behind the SAME gate as the surface's half of this
+   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
+   in Chromium, and the bar loses its styling in the one engine that needs the
+   gate. One gate per sheet, one grammar across both. */
+@supports not selector(::-webkit-scrollbar) {
+  .modalScroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsw-alias-border-l3) transparent;
+  }
+}
+
+.modalScroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.modalScroll::-webkit-scrollbar-thumb {
+  background: var(--dsw-alias-border-l3);
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+.modalScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalScroll::-webkit-scrollbar-button {
+  display: none;
+}
+
+
+/* ── THE SHARED LISTS, HALF HERE (2) ──────────────────────────────────────────
+ *
+ * The hit-area ring and the reduced-motion stop, for the controls the DESIGN
+ * owns. Same declarations as the surface sheet's half — what differs is only
+ * which sheet can name which class. The ring is INVISIBLE ergonomics: it
+ * expands the touch target without changing a pixel of geometry, which is why
+ * both halves carry the identical inset expression rather than a number each.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .buttonSm,
+  .iconButton,
+  .segmentedButton,
+  .detailDisclosure,
+  .tagCustomColor {
+    position: relative;
+  }
+
+  .buttonSm::before,
+  .iconButton::before,
+  .segmentedButton::before,
+  .detailDisclosure::before,
+  .tagCustomColor::before {
+    content: '';
+    position: absolute;
+    inset: calc(-1 * var(--dsh-tb-hit-ring-block)) calc(-1 * var(--dsh-tb-hit-ring-inline));
+    border-radius: inherit;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .modalBackdrop,
+  .modal {
+    animation: none;
+  }
+}
+
+
+/* The overlay family's chrome — declared once, for the whole family.
+ *
+ * It used to live in the board's sheet as `.modal, .detail, .review`, which
+ * meant the design system's own `Dialog` (binding `css.modal` from HERE) got
+ * none of it while the two surface panels got all of it — the same sheet
+ * boundary, pointing the other way. It belongs to the class, so it lives with
+ * the class; a surface panel that wants the chrome applies `components.modal`
+ * alongside its own class.
+ */
+
+.modal {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  margin: auto;
+  /* Board-box relative at EVERY width (% of the backdrop content box, never
+     vw/vh — the mobile dynamic toolbar and the sidebar rail make viewport
+     units lie). margin:auto centers inside the scrollable backdrop. The panel
+     never scrolls as a whole: the header and the footer stay pinned, only the
+     middle body region (modalScroll) scrolls. NO panel padding and NO panel
+     gap: header / body / footer own their insets. */
+  width: min(520px, 100%);
+  max-height: 100%;
+  overflow: hidden;
+  background: var(--dsh-tb-surface-float);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-xl);
+  box-shadow: var(--dsh-tb-shadow-3);
+  color: var(--dsh-tb-text-1);
+  animation: dshTbDialogIn var(--dsh-tb-motion);
+}

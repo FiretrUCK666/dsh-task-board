@@ -24,10 +24,11 @@ export interface SurfaceManifest {
   readonly board: boolean
   readonly items: boolean
   readonly agent: boolean
+  readonly design: boolean
 }
 
 /** Which surface a registration is asking about. */
-export type SurfaceName = 'board' | 'items'
+export type SurfaceName = 'board' | 'items' | 'design'
 
 /** The route, named here once so the manifest has a single home. */
 const SURFACES_URL = routeUrl('/api/dsh-task-board/board/surfaces')
@@ -83,18 +84,29 @@ function isManifest(value: unknown): value is SurfaceManifest {
   return typeof record.board === 'boolean'
     && typeof record.items === 'boolean'
     && typeof record.agent === 'boolean'
+    && typeof record.design === 'boolean'
 }
 
 /**
  * Should this surface be registered?
  *
+ * THE FALLBACK IS PER-SURFACE, and that is the whole reason it is a parameter.
+ * A manifest that cannot be read means "the host said nothing", and the
+ * product panels must register anyway — a broken switch must leave the plugin
+ * exactly as it was before anyone thought about switches. The gallery is the
+ * opposite case: it is a developer instrument, so an unreadable manifest must
+ * leave it ABSENT rather than put a design catalogue in front of a user whose
+ * host is simply unreachable. One default cannot serve both directions.
+ *
  * @param name - the surface asking.
  * @param manifest - what the host said, or `undefined` if it said nothing.
- * @returns whether to register it. `undefined` means YES.
+ * @param whenUnknown - what an unreadable manifest means for this surface.
+ * @returns whether to register it.
  */
 export function surfaceEnabled(
   name: SurfaceName,
   manifest: SurfaceManifest | undefined,
+  whenUnknown = true,
 ): boolean {
-  return manifest === undefined ? true : manifest[name]
+  return manifest === undefined ? whenUnknown : manifest[name]
 }

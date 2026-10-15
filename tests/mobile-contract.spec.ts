@@ -23,9 +23,57 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
+import { panelCss, spacingPx, stripCssComments } from './panel-harness.ts'
 
-const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-const source = readFileSync(cssPath, 'utf8')
+/**
+ * The `gap` inside a rule body, in pixels.
+ *
+ * A gap may be a literal or a ladder step; the ladder's number is resolved from
+ * the sheet that declares it, so the rhythm claims below survive a step moving
+ * — and a step that moves wrongly moves them with it.
+ */
+function gapPxIn(body: string): number | undefined {
+  return spacingPx(/(?:^|[;{\s])(?:row-|column-)?gap\s*:\s*([^;}]+)/.exec(body)?.[1])
+}
+
+/**
+ * The board surface AS IT RENDERS: every sheet the client half owns.
+ *
+ * Not the board's own sheet alone. The design variables (`--dsh-tb-*`) are
+ * declared once for the whole plugin, in their own sheet, because both panels
+ * read them — so a claim about a token, the corner-shape rule or the
+ * reduced-motion policy is a claim about a rule that may live in any of them.
+ * Reading one path made these assertions answer 「which file」 instead of
+ * 「does the policy hold」, and the day the layer moved they went red on a
+ * surface that was exactly as it should be.
+ */
+const source = panelCss()
+
+/** EVERY block that starts at a matching line.
+ *
+ *  The coarse-pointer block now exists once per SHEET — the surface's controls
+ *  in one, the design system's in the other — and the grammar is the union of
+ *  the two. A reader that takes only the first match sees half of it and reports
+ *  the other half as missing. */
+function blocksFrom(pred: (line: string) => boolean): string {
+  const lines = source.split('\n')
+  const out: string[] = []
+  for (let i = 0; i < lines.length; i++) {
+    if (!pred(lines[i])) continue
+    let depth = 0
+    const chunks: string[] = []
+    let closed = false
+    for (let j = i; j < lines.length && !closed; j++) {
+      chunks.push(lines[j])
+      for (const ch of lines[j]) {
+        if (ch === '{') depth++
+        else if (ch === '}') { depth--; if (depth === 0) { closed = true; break } }
+      }
+    }
+    out.push(chunks.join('\n'))
+  }
+  return out.join('\n')
+}
 
 /** Extract a brace-balanced block that STARTS at the first line matching pred. */
 function blockFrom(pred: (line: string) => boolean): string {
@@ -60,8 +108,16 @@ function blockWith(marker: RegExp): string {
 }
 
 /** The rule block whose selector line is exactly `.name {`. */
+/** One class's own rule, TOP LEVEL first.
+ *
+ *  A conditional block may carry a same-named rule (`.modal` appears again
+ *  inside the reduced-motion block with `animation: none`), and a trimmed
+ *  comparison hits the indented one first — so "how wide is the panel" read
+ *  `animation: none`. The top-level rule is the class's own; the nested ones are
+ *  overrides under a condition, and they are read through `ruleIn` with the
+ *  block they belong to. */
 function ruleOf(name: string): string {
-  return blockFrom(line => line.trim() === `.${name} {`)
+  return blockFrom(line => line === `.${name} {`) || blockFrom(line => line.trim() === `.${name} {`)
 }
 
 /** One rule's OWN text inside a scope (up to its closing brace) — never the
@@ -192,10 +248,10 @@ describe('responsive container mechanism', () => {
     // open), so `useNarrow` is frozen and no caller may import it.
     const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(boardPath, 'utf8')
-    expect(board).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-view\]', 680\)/)
+    expect(board).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-view\]', bandNarrowMax\('board', 680\)\)/)
     expect(board).not.toMatch(/useNarrow\(/)
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
-    expect(readFileSync(panelPath, 'utf8')).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', 600\)/)
+    expect(readFileSync(panelPath, 'utf8')).toMatch(/useSurfaceNarrow\('\[data-dsh-taskboard-panel\]', bandNarrowMax\('sessionPanel', 600\)\)/)
     const hookPath = fileURLToPath(new URL('../src/client/board/use-narrow.ts', import.meta.url))
     expect(readFileSync(hookPath, 'utf8')).toMatch(/@deprecated/)
   })
@@ -225,7 +281,9 @@ describe('compact columns + panel geometry', () => {
   it('floating panels size to the board box at EVERY width, never vh/vw', () => {
     // The overlay chrome (margin:auto + max-height + opaque float) is ONE
     // shared rule for the whole family; each panel adds only its own width.
-    const chrome = blockFrom(line => line.trim() === '.modal, .detail, .review {')
+    const chrome = /* 顶层的那一条：.modal 在 @media 里也有一条（reduced motion 的 animation:none），
+       trim 过的比较会先命中缩进的那一条。chrome 是顶层规则，所以按列位匹配。 */
+    blockFrom(line => line === '.modal {')
     expect(chrome).toMatch(/max-height:\s*100%/)
     expect(chrome).toMatch(/margin:\s*auto/)
     expect(chrome).toMatch(/overflow:\s*hidden/)
@@ -291,7 +349,7 @@ describe('compact columns + panel geometry', () => {
 })
 
 describe('touch parity block (invisible ergonomics only)', () => {
-  const touch = blockFrom(line => /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)/.test(line))
+  const touch = blocksFrom(line => /@media\s*\(hover:\s*none\)\s*and\s*\(pointer:\s*coarse\)/.test(line))
 
   it('exists', () => {
     expect(touch).not.toBe('')
@@ -411,7 +469,7 @@ describe('form-row grammar (give way, never crush)', () => {
     expect(source).not.toMatch(/\.autoRuleButtons\s*\{[^}]*margin-left:\s*auto/)
     expect(ruleOf('autoRuleActions')).toMatch(/grid-template-areas:\s*"switch buttons"/)
     // …and no off-grid 2px/3px leftovers in the rule row's own rhythm.
-    expect(ruleOf('autoRuleRow')).toMatch(/gap:\s*4px/)
+    expect(gapPxIn(ruleOf('autoRuleRow')), 'the rule row left the ladder').toBe(4)
   })
 
   it('the automation body never repeats the fold row summary', () => {
@@ -749,7 +807,7 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
     const top = ruleIn(compact, '.sessionRowTop')
     expect(top).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\) auto/)
-    expect(top).toMatch(/row-gap:\s*4px/)
+    expect(top).toMatch(/row-gap:\s*var\(--dsh-tb-space-2\)/)
     expect(compact).toMatch(/\.sessionRowTop \.sessionRowChip\s*\{[^}]*padding-left:\s*0/)
     // The identity slot is a NAMED GRID whose flexible track is declared, and
     // the identity block is placed BY NAME. Auto-placement into a fixed track
@@ -769,13 +827,21 @@ describe('alignment grammar (the OCD contract)', () => {
     // own 14px, and the head wrote it TWICE (section padding + button margin)
     // while the state row wrote it ZERO. One token, consumed once per member.
     expect(source).toMatch(/--dsh-tb-rail-inset:\s*14px/)
-    for (const member of ['sessionFacts', 'sessionRailHead > \\.detailSection', 'commentsScroll', 'reviewComposer']) {
+    for (const member of ['sessionFacts', 'railHeadSection', 'commentsScroll', 'reviewComposer']) {
       expect(source).toMatch(new RegExp(`\\.${member}[^}]*var\\(--dsh-tb-rail-inset\\)`))
     }
     // The head's fold row must NOT add a second inset (that was the 28px).
-    expect(source).not.toMatch(/\.sessionRailHead \.detailDisclosure\s*\{[^}]*margin/)
-    // The session row's identity column is one derived x, not a magic 19px.
-    expect(source).toMatch(/--dsh-tb-lead-x:\s*calc\(/)
+    expect(source).not.toMatch(/\.railDisclosure\s*\{[^}]*margin/)
+    // The session row's identity column is one DERIVED x, not a magic 19px —
+    // and the derivation is a GRID, not a `calc()` someone has to remember to
+    // use: a named mark track plus a named gutter. This used to assert that a
+    // `--dsh-tb-lead-x: calc(…)` token existed; the token had no consumer, so
+    // the claim was about a declaration rather than about the layout, and it
+    // passed while every member could have re-typed the number. What is
+    // load-bearing is that the two numbers are tokens AND that the grid spends
+    // them.
+    expect(source).toMatch(/grid-template-columns:\s*var\(--dsh-tb-lead-icon\)\s+minmax\(0,\s*1fr\)/)
+    expect(source).toMatch(/column-gap:\s*var\(--dsh-tb-lead-gap\)/)
   })
 
   it('the dock does not re-type the rail line either', () => {
@@ -1044,7 +1110,9 @@ describe('button geometry (one base for every variant)', () => {
     for (const panel of ['modal', 'detail', 'review']) {
       expect(ruleOf(panel), `.${panel} missing`).not.toBe('')
     }
-    const chrome = blockFrom(line => line.trim() === '.modal, .detail, .review {')
+    const chrome = /* 顶层的那一条：.modal 在 @media 里也有一条（reduced motion 的 animation:none），
+       trim 过的比较会先命中缩进的那一条。chrome 是顶层规则，所以按列位匹配。 */
+    blockFrom(line => line === '.modal {')
     expect(chrome).toMatch(/border-radius:\s*var\(--dsh-tb-radius-xl\)/)
   })
 })
@@ -1444,7 +1512,7 @@ describe('template library wiring', () => {
     // block pads + 14px transcript top stacked ad-hoc. Narrow unifies to one
     // 10px gap (desktop keeps its own rhythm — base rules untouched).
     const compact = blockFrom(line => /@container\s+dsh-tb-panel\s*\(max-width:\s*600px\)/.test(line))
-    expect(ruleIn(compact, '.sessionRailFolds')).toMatch(/gap:\s*10px/)
+    expect(gapPxIn(ruleIn(compact, '.sessionRailFolds')), 'the narrow rail left the ladder').toBe(10)
     expect(ruleIn(compact, '.sessionRailHead')).toMatch(/padding-bottom:\s*0/)
     expect(ruleIn(compact, '.sessionRailHead')).toMatch(/border-bottom:\s*none/)
     expect(ruleIn(compact, '.reviewMain')).toMatch(/padding:\s*10px 14px/)
@@ -1467,7 +1535,7 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(ruleOf('notifyTask')).toMatch(/text-overflow:\s*ellipsis/)
     expect(ruleOf('notifySession')).toMatch(/min-width:\s*4em/)
     expect(ruleOf('notifySession')).toMatch(/max-width:\s*40%/)
-    expect(source).toMatch(/\.notifyMain \.chip\s*\{[^}]*flex:\s*none/)
+    expect(source).toMatch(/\.notifyMainChip\s*\{[^}]*flex:\s*none/)
   })
 
   it('every row answers WHEN, on the row\'s RIGHT: a fixed time slot keeps action placement stable', () => {
@@ -1645,13 +1713,16 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // the ONLY thin+color declaration, and the webkit path must hide its
     // buttons explicitly — strip the gate and no thin may remain; the button
     // pseudo must be display:none.
-    const gate = /@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/.exec(source)
+    // 判据读结构，不读字样（硬性规范 14）：注释里提到一个属性不是一次声明，而两张表
+    // 现在各自解释这条文法，所以扫描先剥注释再匹配——否则一次措辞改动就会让这条红。
+    const structural = stripCssComments(source)
+    const gate = /@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/.exec(structural)
     expect(gate, 'the standard scrollbar props must live behind the webkit gate').not.toBeNull()
     expect(gate?.[0]).toContain('scrollbar-width: thin')
     expect(gate?.[0]).toContain('scrollbar-color:')
-    const ungated = source.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/, '')
+    const ungated = structural.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/g, '')
     expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
-    expect(source).toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
+    expect(structural).toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
   })
 
   it('a plan card body keeps a floor computed from its own line box, and the card yields', () => {
