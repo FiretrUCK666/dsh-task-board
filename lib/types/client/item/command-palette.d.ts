@@ -55,7 +55,6 @@ export interface ItemCommandPaletteProps {
      * the next key they press answers to nothing. The caller knows which control
      * opened the box, so it takes this call and gives the focus to that control.
      */
-    readonly onClosed?: () => void;
     /**
      * The candidate cursor, as commands — see {@link PaletteCommands}. Optional
      * because a caller that renders the palette without the key map (a screenshot,

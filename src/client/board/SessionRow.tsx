@@ -17,7 +17,7 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from '../design/Chip.tsx'
 import type { SessionChipShape, SessionRowState } from './session-chip.ts'
-import { Button, Icon } from '../design/ui.tsx'
+import { Button } from '../design/ui.tsx'
 
 /** The unified session row (one grammar for every session of a task). */
 export function SessionRow({ state, chip, leading, meta, footer, handle, sessionId, onActivate, onOpenSession, onHide, hideTitle, draggable, onDragStart, onDragEnd, onRename, renameTitle, unviewed }: {
@@ -159,8 +159,7 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
               onClick={event => { event.stopPropagation(); onOpenSession() }}
               title={sessionId}
             >
-              <span className={css.rowActionText}>{handle}</span>
-              <Icon name="arrowRight" className={css.rowActionIcon} />
+              {handle}
             </button>
           ) : sessionId !== undefined && (
             <Button
@@ -168,8 +167,7 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
               onClick={event => { event.stopPropagation(); onOpenSession() }}
               title={sessionId}
             >
-              <span className={css.rowActionText}>{t('detail.viewSession')}</span>
-              <Icon name="arrowRight" className={css.rowActionIcon} />
+              {t('detail.viewSession')}
             </Button>
           )}
           {/* Every row action is the SAME text/glyph pair: wide shows the
@@ -184,8 +182,7 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
               title={renameTitle}
               onClick={event => { event.stopPropagation(); startRename() }}
             >
-              <span className={css.rowActionText}>{t('detail.rename')}</span>
-              <Icon name="pencil" className={css.rowActionIcon} />
+              {t('detail.rename')}
             </button>
           )}
           <button
@@ -194,8 +191,7 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
             onClick={event => { event.stopPropagation(); onHide() }}
             title={hideTitle}
           >
-            <span className={css.rowActionText}>{t('detail.hide')}</span>
-            <Icon name="eyeOff" className={css.rowActionIcon} />
+            {t('detail.hide')}
           </button>
         </span>
       </div>

@@ -55,6 +55,8 @@ import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken, w
 import { ItemQueryChips } from './query-chips.tsx'
 import { PRIORITY_LABEL, SORT_LABEL } from './labels.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
+import { useDialogFocus } from '../design/dialog-focus.ts'
+import { useEscapeStack } from '../design/escape-stack.ts'
 import css from './item.module.css'
 
 /** One answer in the palette: a label, and what pressing it does. */
@@ -147,7 +149,6 @@ export interface ItemCommandPaletteProps {
    * the next key they press answers to nothing. The caller knows which control
    * opened the box, so it takes this call and gives the focus to that control.
    */
-  readonly onClosed?: () => void
   /**
    * The candidate cursor, as commands — see {@link PaletteCommands}. Optional
    * because a caller that renders the palette without the key map (a screenshot,
@@ -184,6 +185,14 @@ function poolOf(groups: readonly PaletteGroup[], typed: string): readonly Palett
 
 export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   const input = useRef<HTMLInputElement | null>(null)
+  /* `aria-modal` is a promise that the rest of the page is inert to the keyboard.
+     This surface was making it without keeping it: Tab walked out of the box into
+     the list behind the mask, and focus came back only because a caller remembered
+     to do it. Both belong to `dialog-focus.ts` — it traps Tab and returns focus to
+     the opener — and Escape to the shared stack, so no surface keeps a copy. */
+  const box = useRef<HTMLDivElement | null>(null)
+  const { onKeyDown: onBoxKeyDown } = useDialogFocus(box)
+  useEscapeStack(props.onClose)
   const [active, setActive] = useState(0)
   // The text this cursor was last placed against. A changed query means a
   // different list, so the cursor goes back to its first row rather than staying
@@ -215,16 +224,6 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   // reach for the mouse to do the thing they opened it for.
   useEffect(() => {
     if (props.open) input.current?.focus()
-  }, [props.open])
-
-  // THE FOCUS COMES BACK, and only on the way out. Unmounting is not closing:
-  // a reader who navigated away from the panel has nothing to give the focus to,
-  // and reaching for a button that is not on the page would be worse than
-  // doing nothing.
-  const closedBy = useRef(props.open)
-  useEffect(() => {
-    if (closedBy.current && !props.open) props.onClosed?.()
-    closedBy.current = props.open
   }, [props.open])
 
   const groups = useMemo<readonly PaletteGroup[]>(() => {
@@ -388,7 +387,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
             if (event.target === event.currentTarget) props.onClose()
           }}
         >
-          <div className={css.itemCommandPaletteBox}>
+          <div className={css.itemCommandPaletteBox} ref={box} onKeyDown={onBoxKeyDown}>
             <input
               ref={input}
               className={css.itemSearch}

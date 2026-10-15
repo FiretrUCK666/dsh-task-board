@@ -32,6 +32,8 @@ import { TagField, tagName } from './tag-field.tsx'
 import { AttachmentStrip, attachBusyLabel } from '../board/AttachmentStrip.tsx'
 import { refsOf, useComposerAttachments, type AttachmentAdmitter } from '../board/composer-attachments.ts'
 import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/attach.ts'
+import { useDialogFocus } from '../design/dialog-focus.ts'
+import { useEscapeStack } from '../design/escape-stack.ts'
 import css from './item.module.css'
 
 /** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
@@ -166,6 +168,10 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   const cardNote = useNote(t('item.cardLink.why'))
   const sheet = useRef<HTMLDivElement | null>(null)
   const titleField = useRef<HTMLInputElement | null>(null)
+  /* Tab stays inside the sheet, and closing hands focus back to whoever opened
+     it — the two things `aria-modal` promises. Escape rides the shared stack. */
+  const { onKeyDown: onSheetKeyDown } = useDialogFocus(sheet)
+  useEscapeStack(props.onClose)
 
   /* THE WHOLE FORM GOES BACK TO ITS OPENING STATE.
    *
@@ -280,13 +286,15 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
         role="dialog"
         aria-modal="true"
         aria-label={t('item.create.title')}
-        onKeyDown={event => {
-          // ONE LAYER, ONE ESCAPE, and the sheet takes it before anything behind it
-          // does — the same rule the key sheet follows, for the same reason.
-          if (event.key !== 'Escape') return
-          event.stopPropagation()
-          props.onClose()
-        }}
+        /* THE ONE FOCUS IMPLEMENTATION, not a second one. `aria-modal` is a
+           promise that the rest of the page is inert to the keyboard, and this
+           sheet was making that promise without keeping it: Tab walked straight
+           out into the list behind the mask, and closing dropped focus on
+           `<body>` because the sheet unmounts rather than restoring. Both are
+           what `dialog-focus.ts` exists for — it traps Tab, and it returns focus
+           to whoever opened the sheet. Escape comes from the shared stack for
+           the same reason: one layer, one escape, no per-surface copy. */
+        onKeyDown={onSheetKeyDown}
       >
         <header className={css.itemCreateDialogHead}>
           <h2 className={css.itemCreateDialogTitle}>{t('item.create.title')}</h2>

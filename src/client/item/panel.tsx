@@ -433,7 +433,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 它就变成了「这是什么」。而入口存在的唯一理由是「一个只能键盘打开的控件等于没有」。
    * **搜索框已经回答了那一条**（点它开面板、打字收窄它，本就是同一件事的两个阶段），
    * 所以入口就是搜索框，没有第二枚控件。 */
-  const paletteTrigger = useRef<HTMLInputElement | null>(null)
   /**
    * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
    * record so a render can begin with one of them already open.
@@ -1907,13 +1906,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
           actions={paletteActions}
           onPickRow={id => { setSelected(id); setCursor(id) }}
           onClose={() => openLayer(undefined)}
-          /* THE FOCUS GOES BACK WHERE IT CAME FROM. The box declared itself modal,
-             and a modal surface that takes the caret and never gives it back
-             leaves the panel with no focus at all — the next key answers to
-             nothing and the reader has to click their way out of their own
-             surface. The box cannot do this itself: it does not own the button
-             the reader pressed. */
-          onClosed={() => paletteTrigger.current?.focus()}
+          /* THE FOCUS GOES BACK WHERE IT CAME FROM, and the box does it itself
+             now: `useDialogFocus` remembers whoever held focus when it mounted —
+             which is the search box, since that is where ⌘K is pressed — and
+             hands it back when the box unmounts. It used to be a callback here,
+             because the box did not own the button the reader pressed; it does
+             not need to. It only needs to remember. */
           onCommands={commands => { paletteCommands.current = commands }}
         />
         {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
@@ -2050,8 +2048,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               * keystroke appends the field to the field and `abc` becomes
               * `a ab a abc`. */}
             <input
-              ref={paletteTrigger}
-              className={css.itemSearch}
+                className={css.itemSearch}
               type="search"
               value={freeTextOf(prefs.search)}
               placeholder={t('item.search.label')}

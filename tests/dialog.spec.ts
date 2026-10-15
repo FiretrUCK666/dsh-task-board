@@ -17,6 +17,10 @@ const detailPath = fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', i
 const detail = readFileSync(detailPath, 'utf8')
 const framePath = fileURLToPath(new URL('../src/client/board/SessionFrame.tsx', import.meta.url))
 const frame = readFileSync(framePath, 'utf8')
+const createSheetPath = fileURLToPath(new URL('../src/client/item/item-create-dialog.tsx', import.meta.url))
+const createSheet = readFileSync(createSheetPath, 'utf8')
+const palettePath = fileURLToPath(new URL('../src/client/item/command-palette.tsx', import.meta.url))
+const palette = readFileSync(palettePath, 'utf8')
 
 describe('useDialogFocus (one implementation, three surfaces)', () => {
   it('enters on the declared control, else the first control, else the panel', () => {
@@ -58,16 +62,40 @@ describe('useDialogFocus (one implementation, three surfaces)', () => {
     expect(hook).toContain('previous.focus({ preventScroll: true })')
   })
 
-  it('all three surfaces read the hook (no second implementation)', () => {
-    for (const source of [dialog, detail, frame]) {
+  it('every surface that declares aria-modal reads the hook (no second implementation)', () => {
+    // FIVE, NOT THREE. The list panel's two overlays also declare `aria-modal`
+    // and were not on it: Tab walked out of both into the list behind the mask,
+    // and the new-row sheet dropped focus on `<body>` when it closed. A surface
+    // that makes the promise has to be in this loop — that is the whole point of
+    // having one implementation to read.
+    for (const source of [dialog, detail, frame, createSheet, palette]) {
       expect(source).toContain('useDialogFocus(')
-      expect(source).toContain('tabIndex={-1}')
       expect(source).toContain('aria-modal="true"')
       expect(source).toContain('onKeyDown={')
     }
-    expect(dialog).not.toContain("addEventListener('keydown'")
-    expect(detail).not.toContain("addEventListener('keydown'")
-    expect(frame).not.toContain("addEventListener('keydown'")
+    // The panel-hosted ones trap Tab inside their own panel element; the two
+    // design-system shells put `tabIndex={-1}` on it so the mount target is
+    // reachable. Both are the hook's contract, not a per-surface choice.
+    for (const source of [dialog, detail, frame]) expect(source).toContain('tabIndex={-1}')
+    for (const source of [dialog, detail, frame, createSheet, palette]) {
+      expect(source).not.toContain("addEventListener('keydown'")
+    }
+  })
+
+  it('Escape rides the shared stack, never a per-surface copy', () => {
+    // ONE LAYER, ONE ESCAPE. A surface that closes ITSELF on Escape has taken the
+    // stack's job, and the layer behind it stops hearing its own.
+    //
+    // An INNER layer may still read the key for itself — the new-row sheet's card
+    // naming field cancels the naming step and calls `stopPropagation`, which is
+    // exactly how a nested layer yields to the one above it. So this pins the
+    // CLOSING path, not the string: both sheets register with the stack, and
+    // neither closes itself from an Escape branch.
+    for (const source of [createSheet, palette]) {
+      expect(source).toContain('useEscapeStack(')
+      expect(source).not.toMatch(/key !== 'Escape'[\s\S]{0,140}?onClose\(\)/)
+      expect(source).not.toMatch(/key === 'Escape'[\s\S]{0,140}?onClose\(\)/)
+    }
   })
 
   it('the Dialog shell labels its title for assistive tech', () => {
@@ -147,6 +175,14 @@ describe('the overlay family composes the shared chrome', () => {
     return src.includes('className={`${components.modal} ${css.' + own + '}`}')
   }
 
+  /** And the MASK, which is the other half of the same pair. Losing it is the
+   *  same visible failure — a panel with no dimmed stage behind it, positioned
+   *  against whatever ancestor happens to be positioned — so the invariant covers
+   *  both, not just the one that was broken first. */
+  function composesBackdrop(src: string): boolean {
+    return src.includes('className={components.modalBackdrop}')
+  }
+
   it('the composition check bites (planted both ways)', () => {
     // A checker that answers the same thing on a good and a bad input is not a
     // checker. This is the planted pair — the bad one is what shipped, verbatim.
@@ -155,14 +191,20 @@ describe('the overlay family composes the shared chrome', () => {
     expect(composesChrome('<div className={`${css.detail}`}>', 'detail')).toBe(false)
     // And the twin that must NOT be accepted: the right classes in the wrong place.
     expect(composesChrome('<div className={`${css.detail}`} data-x={components.modal}>', 'detail')).toBe(false)
+    // The mask's half of the pair, planted the same way.
+    expect(composesBackdrop('<div className={components.modalBackdrop}>')).toBe(true)
+    expect(composesBackdrop('<div className={css.detail}>')).toBe(false)
+    expect(composesBackdrop('<div className={`${components.modalBackdrop} x`}>')).toBe(false)
   })
 
-  it('every surface panel applies the chrome alongside its own class', () => {
+  it('every surface panel applies the chrome AND the mask', () => {
     for (const [who, src, own] of [
       ['TaskDetail', detail, 'detail'],
       ['SessionFrame', frame, 'review'],
     ] as const) {
       expect(composesChrome(src, own), `${who} 的面板没挂共享 chrome，会画成一块透明的、不居中的东西`)
+        .toBe(true)
+      expect(composesBackdrop(src), `${who} 的外层没挂遮罩，浮层会对着随便哪个定位祖先摆`)
         .toBe(true)
     }
   })

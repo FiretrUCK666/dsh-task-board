@@ -137,8 +137,19 @@
    LAYOUT row (the session hint row is the case in point) kept a surprise 16px
    top and bottom that no rule accounted for. Rhythm here is always declared
    (gap / margin), never inherited from the medium — so one reset closes the
-   whole class instead of patching the next `<p>` someone forgets. */
-[data-dsh-taskboard-view] p {
+   whole class instead of patching the next `<p>` someone forgets.
+
+   THE `:where()` IS LOAD-BEARING, and it is what makes this a reset rather than
+   a ruling. Written plainly, `[data-dsh-taskboard-view] p` is (0,1,1) — attribute
+   plus type — and it BEATS every class rule (0,1,0). All three panels carry that
+   attribute, so one rule in the board's sheet was silently zeroing three `<p>`
+   margins in the LIST's sheet: a 10px gap beside the top-bar count, the vertical
+   centring of the no-match message, a date field's 2px. Declared, computed to 0,
+   no error, no warning — the same shape as the class-name trap, one level down.
+   `:where()` contributes nothing, so this is (0,0,1): still above the UA's own
+   `p` margin (author beats UA) and below every class, which is exactly what a
+   reset should be. The list's sheet already writes its own reset this way. */
+:where([data-dsh-taskboard-view]) p {
   margin: 0;
 }
 
@@ -3358,13 +3369,13 @@
   gap: var(--dsh-tb-space-4);
 }
 
-/* Row-action label / glyph pair: on a wide board the WORDS carry the action
-   (the glyph is hidden); on a narrow board the words collapse and the glyph
-   takes over (the tooltip always keeps the full wording). One pair of
-   elements, swapped by the container — never a second set of buttons. */
-.rowActionIcon {
-  display: none;
-}
+/* THE ROW ACTIONS CARRY THEIR WORDS AT EVERY WIDTH. They used to swap to bare
+   glyphs on a narrow board, which is hard rule 11's forbidden move — and it was
+   also wrong about its own cost: the glyphs left 24x16 touch targets whose only
+   explanation was a `title`, and one of those titles is the session ID, not the
+   action. The squeeze the swap was avoiding is answered by GIVING WAY instead:
+   the cluster wraps, so the title keeps its line and the buttons take the width
+   the words need. */
 .sessionRowActions button {
   display: inline-flex;
   align-items: center;
@@ -6999,16 +7010,12 @@
      to glyphs (≥36px touch targets stay via the ergonomics block), so the
      title keeps its 60% floor instead of being squeezed to three characters
      by a 156px "查看会话 / 隐藏" text row. */
-  .sessionRowActions .rowActionText {
-    display: none;
-  }
-
-  .sessionRowActions .rowActionIcon {
-    display: inline-flex;
-  }
-
   .sessionRowActions {
     gap: var(--dsh-tb-space-2);
+    /* 让位, not 藏掉: the words are always shown, so the cluster wraps when the
+       row is too narrow to hold them on one line. The title keeps its line; the
+       buttons take the width the words need. */
+    flex-wrap: wrap;
   }
 }
 

@@ -78,7 +78,6 @@ interface Loose {
   /** What a press actually DID, in the order it happened. */
   readonly did: readonly string[]
   /** How many times the box told its caller it had closed. */
-  readonly closes: () => number
   dispose: () => void
 }
 
@@ -106,7 +105,6 @@ function mountLoose(): Loose {
   const reactRoot: Root = createRoot(host)
   const did: string[] = []
   let commands: PaletteCommands | undefined
-  let closes = 0
   let setText: (next: string) => void = () => undefined
   let setOpen: (next: boolean) => void = () => undefined
 
@@ -134,7 +132,6 @@ function mountLoose(): Loose {
       actions,
       onPickRow: id => { did.push(`row:${id}`) },
       onClose: () => setOpen(false),
-      onClosed: () => { closes += 1 },
       onCommands: next => { commands = next },
     })
   }
@@ -165,7 +162,6 @@ function mountLoose(): Loose {
   return {
     host,
     did,
-    closes: () => closes,
     search: next => { act(() => { setText(next) }) },
     key: name => {
       const field = host.querySelector('input')
@@ -296,18 +292,26 @@ describe('a modal surface has to offer a way out of it', () => {  it('a press on
     }
   })
 
-  it('and closing it tells the caller, so the focus has somewhere to go back to', () => {
+  it('and closing it hands the focus back to whoever held it', () => {
     // `aria-modal` promises two things: a way out, and the focus back. The box
-    // cannot give the focus back to a control it does not own — the reader pressed
-    // `⌘K` and the caret is in a field they cannot see from — so it REPORTS the
-    // close and the caller does it. Reported, not done: a caller that has no
-    // trigger to focus must not be left with an exception on the way out.
+    // used to REPORT the close and let the caller do the restoring, on the
+    // reasoning that it does not own the control the reader pressed. It does not
+    // need to own it — `useDialogFocus` remembers whoever held focus when the box
+    // mounted and hands it back when the box unmounts, which is the same promise
+    // kept in one place instead of two. So this pins the OUTCOME, not the report:
+    // a trigger outside the box has focus again once Escape has closed it.
     const loose = mountLoose()
     try {
-      expect(loose.closes(), 'the box reported a close it was never given').toBe(0)
+      const trigger = document.createElement('button')
+      trigger.textContent = 'opener'
+      document.body.appendChild(trigger)
+      trigger.focus()
+      expect(document.activeElement, 'the harness could not put focus on the opener').toBe(trigger)
+
       loose.key('Escape')
       expect(loose.host.querySelector('[class*="itemCommandPalette"]'), 'Escape did not close the box').toBeNull()
-      expect(loose.closes(), 'the box closed without saying so, so the caller cannot hand the focus back').toBe(1)
+      expect(document.activeElement, 'the box closed and left the focus nowhere').toBe(trigger)
+      trigger.remove()
     } finally {
       loose.dispose()
     }

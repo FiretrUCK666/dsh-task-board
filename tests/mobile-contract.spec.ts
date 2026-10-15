@@ -798,13 +798,19 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(toolsRow).toContain('css.columnTabs')
   })
 
-  it('row actions collapse to glyphs compact so the title keeps its quota', () => {
-    // The text cluster ("查看会话 → / 隐藏") was a ~156px fixed tax that left
-    // the title three characters. Labels fold, glyphs take over — and the
-    // compact row-top grid gives the lead the whole leftover track (minmax(0,
-    // 1fr)) with one 4px rhythm.
-    expect(compact).toMatch(/\.sessionRowActions \.rowActionText\s*\{\s*\n?\s*display:\s*none/)
-    expect(compact).toMatch(/\.sessionRowActions \.rowActionIcon\s*\{\s*\n?\s*display:\s*inline-flex/)
+  it('row actions KEEP THEIR WORDS compact, and give way instead of hiding', () => {
+    // The text cluster ("查看会话 / 重命名 / 隐藏") is a real tax on a 412px row,
+    // and the first answer to it was to hide the words and show glyphs. That is
+    // hard rule 11's forbidden move, and it cost more than it saved: the glyphs
+    // left 24x16 touch targets whose only explanation was a `title`, and one of
+    // those titles is the session ID rather than the action.
+    //
+    // The tax is answered by GIVING WAY. The words stay at every width and the
+    // cluster wraps; the title keeps its quota because the compact grid still
+    // gives the lead the whole leftover track (`minmax(0, 1fr)`).
+    expect(compact).not.toMatch(/rowActionText\s*\{[^}]*display:\s*none/)
+    expect(compact).not.toMatch(/rowActionIcon/)
+    expect(compact).toMatch(/\.sessionRowActions\s*\{[^}]*flex-wrap:\s*wrap/)
     const top = ruleIn(compact, '.sessionRowTop')
     expect(top).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\) auto/)
     expect(top).toMatch(/row-gap:\s*var\(--dsh-tb-space-2\)/)
