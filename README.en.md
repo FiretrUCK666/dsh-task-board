@@ -308,7 +308,7 @@ row in the sidebar to go back to it, or "back to conversation" to leave either p
 | npm package | `@firetruck666/dsh-task-board` |
 | Permission preset route | `/api/dsh-task-board/permissions` |
 | Board data route | `/api/dsh-task-board/board` (`/items`, `/surfaces`, `/lease`, `/command`, `/events`) |
-| Other host routes | `/api/dsh-task-board/session-state`, `/update`, `/client-report` |
+| Other host routes | `/api/dsh-task-board/session-state`, `/update`, `/client-report`, `/attachments` (takes bytes, reads them back by ref) |
 | Host storage unit | `dsh_task_board` (one file per data kind under `documents/`) |
 | Board stage slot | `main` (`key: dsh-task-board`) |
 | Task list stage slot | `main` (`key: dsh-task-board-items`; same seat as the board, different key) |

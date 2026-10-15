@@ -10,7 +10,7 @@
  *
  * HOW A PAGE USES A CLASS FROM HERE. Import THIS sheet and apply the class:
  * `import base from '../design/base.module.css'` then
- * `className={`${css.itemTag} ${base.pill}`}`. That works because the class map
+ * `className={`${css.itemTag} ${components.chip}`}`. That works because the class map
  * belongs to the SHEET, not to the importing file — the same sheet resolves to
  * the same hashed class wherever it is imported from. What does NOT work is a
  * rule in one sheet naming a class defined in another: that sheet compiles its

@@ -464,8 +464,8 @@ hashed 类；而**一张表的选择器写另一张表的类名，在生产包�
   `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
   `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
   （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域
-  拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-triage`/`-query`/`-rows`/`-membership`/`-navigate`
-  九个模块，**门面 re-export 全部符号**，所以调用点一个都不用改）——界面与模型读同一份** ·
+  拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-rail`/`-ask`/`-query`/`-rows`/`-membership`/`-navigate`
+  十个模块，**门面 re-export 全部符号**，所以调用点一个都不用改）——界面与模型读同一份** ·
   `board-actions`（动作目录，界面与 AI 的唯一同步面，见硬性规范 12）· `task-transitions`（看板的
   语义层）· **`item-transitions`（清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/
   `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在

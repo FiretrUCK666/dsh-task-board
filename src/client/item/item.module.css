@@ -3051,25 +3051,6 @@ button.itemRowCardChip {
   white-space: nowrap;
 }
 
-.itemFacetChip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  min-block-size: 26px;
-  min-inline-size: 26px;
-  padding: 0 10px;
-  font-family: inherit;
-  font-size: 12px;
-  line-height: 16px;
-  max-inline-size: 100%;
-  justify-content: flex-start;
-  text-align: start;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
 /* **盒子里的通则也不写在这里，理由与列表列那一条同源。**
  *
  * 这个盒子装着四类要法不同的孩子：一枚定宽的搜索框、一排芯片、**一个必须吃掉剩余
@@ -3381,6 +3362,14 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
+/* ONE RULE, NOT TWO. This class was declared twice at the top level of this
+ * sheet — once where the facet row was first built, and again when the panel was
+ * rebuilt — and the second silently won. So half the box came from each: the
+ * later rule's 24px / `line-height: 1` / `justify-content: center` beat the
+ * earlier 26px / 16px / `flex-start`, while `max-inline-size`, `text-align`,
+ * `overflow` and `text-overflow` survived from the first because nothing
+ * overwrote them. Nothing errors, no test goes red, and the file reads as if the
+ * first one is live. Merged here with the values that were actually winning. */
 .itemFacetChip {
   display: inline-flex;
   align-items: center;
@@ -3393,7 +3382,11 @@ textarea.itemInput {
   font-size: 12px;
   font-weight: 400;
   line-height: 1;
+  max-inline-size: 100%;
+  text-align: start;
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--item-ink-2);
   background: none;
   border: var(--item-hair);
