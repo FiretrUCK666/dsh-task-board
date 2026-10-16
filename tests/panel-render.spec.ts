@@ -601,7 +601,7 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     /* 一个字段里面（字段名 / 写入框 / 它带的附件）只有一个数，而字段与字段之间是另一个数。
        这条断言守的是**被算过两遍的那个间隔**：附件条曾经是那一列的直接子级，于是同时吃到
        父级的 22 与自己的 4——量到 26，而新建那张纸里同一段距离是 6（硬性规范 19 的探针：
-       `.design/attach-gap-probe.js`）。
+       读四层的盒、在「有正文」与「没有正文」两种工件上各跑一次）。
        
        判据抽成函数，因为**一条从不失败的检查与没有检查是一回事**：下面拿一份故意写坏的
        样式表喂同一个函数，它必须报出来。 */
@@ -2095,7 +2095,7 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
    * 为几处各自偏一点。所以这一族**没有按字体量出来的数**：`padding-block-end: 1px` 在一种
    * 字体上量出来是对的，换一套度量就偏半格，而没有任何一处会说这句话。
    *
-   * 真判据在 `scripts/probe-item-capsules.js`（`pnpm audit`）：它开真 Chromium 逐颗量墨心、
+   * 真判据在 `scripts/probes/probe-item-capsules.js`（`pnpm audit`）：它开真 Chromium 逐颗量墨心、
    * 切割与高度地板，两档宽 × 三档 DPR × 两种指针能力 + 一档换字体。这条闸门管的是另一半
    * ——**机制不许回来**，读的是两张表的结构，注释里提到这些名字不算一次使用（硬性规范 14）。
    */
@@ -3300,7 +3300,7 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
        而一个「行」是**字**给的：字号 13 × 行距 1.65 = 21.45px。这两条曾经按 20px 算，
        于是「地板 = 四行」只有 3.07 行——读者写满四行，框右边就冒出一条滚动条，而那条滚动条
        比设计早来一行。所以字号与行距各自成令牌，行盒由它们算出来，四条声明读同一枚数。
-       **量法**（硬性规范 19）在 `scripts/probe-item-rail.js` 的第十段：`(clientHeight − 内衬) ÷
+       **量法**（硬性规范 19）在 `scripts/probes/probe-item-rail.js` 的第十段：`(clientHeight − 内衬) ÷
        行盒` 报「装得下几行」，再往框里塞四行看 `scrollHeight === clientHeight`。 */
     expect(sizeIn('.itemProse', 'font-size'), '写入框的字号不再来自令牌——行盒就没有出处了')
       .toBe('var(--item-write-size)')

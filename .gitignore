@@ -60,6 +60,8 @@ coverage/
 # 静态渲染台架的产物：每跑一次出图就冒一个，verify 会因为「根目录有未申报的文件」变红
 tmp-*.html
 
-# Design exploration scratch: screenshots, candidate pages and the comparison page.
-# Never tracked and never packed - they are evidence for one redesign round, not source.
+# Local design scratch: screenshots, candidate pages, one-off probes. Never tracked and
+# never packed, and never cited by DESIGN.md: a path written into the design doc has to
+# point at something a clean clone can open, so the instruments a section names live in
+# scripts/probes/ instead.
 .design/

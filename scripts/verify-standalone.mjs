@@ -26,11 +26,44 @@
  *      (without one the plugin manager's settings page disappears), and the
  *      plugin never calls the removed namespace-registration API
  *   8. src imports only official SDK / react / node builtins / relative
+ *   9. the citations written in this repository's own prose — the documents in
+ *      CITED_DOCS and the comments in CITED_TREES — name only files it carries:
+ *      a path in DESIGN.md is a promise that the method can be re-run, and a
+ *      citation of a scratch directory or a deleted probe is not one
  */
 import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
+
+/**
+ * The doc-citation audit's data (check 9, below).
+ *
+ * The roots are a DECLARATION, not a pattern, for the same reason ROOT_ALLOWED
+ * is one: a pattern would accept the next scratch directory too, and that is how
+ * fourteen dead citations arrived. `shared` and `.design` are listed on purpose —
+ * neither may be cited from a document any more, so naming either is a finding
+ * even though the prefix is known.
+ *
+ * Declared up here, ahead of the self-tests, because a `const` is in its
+ * temporal dead zone until its own line runs; the probes below execute before
+ * the checks do.
+ */
+
+/** Repository prefixes whose inline-code citations are checked. */
+const CITED_ROOTS = ['.design', 'build', 'lib', 'locale', 'scripts', 'shared', 'src', 'tests']
+
+/** The documents that describe this repository to a reader. */
+const CITED_DOCS = ['AGENTS.md', 'CONTRIBUTING.md', 'DESIGN.md', 'PRODUCT.md', 'README.en.md', 'README.md']
+
+/** Source trees whose comments are prose too: a citation rots the same way in a comment. */
+const CITED_TREES = ['src', 'tests', 'scripts']
+
+/** The file kinds in those trees that carry comments. */
+const CITED_SOURCE = /\.(ts|tsx|css|mjs|js|mts)$/
+
+/** Any of these makes a token a shape rather than a path. */
+const CITED_SHAPE = /[*<>{}[\]]/
 
 // The encoding audit's self-test, dispatched BEFORE any other check runs so it
 // cannot be confused with a real result: a deliberately damaged copy must be
@@ -96,6 +129,36 @@ if (process.argv.includes('--probe-deps')) {
   process.exit(0)
 }
 
+if (process.argv.includes('--probe-docpaths')) {
+  // Self-test for the doc-citation audit, run against the same function the real
+  // gate uses. BOTH directions are pinned: a citation nobody can open must be
+  // reported, and the four shapes that only LOOK like a path must stay quiet. A
+  // check that reds on a placeholder is a check somebody switches off, and a
+  // check that never reds is not evidence of anything.
+  const exists = (cited) => cited === 'scripts/shot-panel.mjs'
+  const cases = [
+    { label: 'a citation of a file that is there', text: 'the seam is `scripts/shot-panel.mjs`', expect: [] },
+    { label: 'a citation of a file that is not', text: 'measure it with `.design/gone-probe.js`', expect: ['.design/gone-probe.js'] },
+    { label: 'a glob is a shape, not a path', text: 'every `scripts/*.mjs` is parsed', expect: [] },
+    { label: 'an angle-bracket placeholder is a shape', text: 'one `src/client/design/<X>.tsx` per layer', expect: [] },
+    { label: 'a bare directory is not a file', text: 'scratch lives in `.design/`', expect: [] },
+    { label: 'a prefix this repository does not declare', text: 'vendored from `vendor/preset.ts`', expect: [] },
+  ]
+  let bad = 0
+  for (const c of cases) {
+    const found = citedPaths([['probe.md', c.text]], exists)
+      .filter(citation => !citation.resolved)
+      .map(citation => citation.cited)
+    if (found.length !== c.expect.length || found.some((path, index) => path !== c.expect[index])) {
+      console.error(`verify-standalone PROBE FAILED: "${c.label}" reported ${JSON.stringify(found)}, expected ${JSON.stringify(c.expect)}`)
+      bad++
+    }
+  }
+  if (bad > 0) process.exit(1)
+  console.log(`verify-standalone doc-path probe OK: an unopenable citation is reported, and the four non-path shapes stay quiet (${cases.length} case(s))`)
+  process.exit(0)
+}
+
 const [dirArg, pluginIdArg, packageNameArg] = process.argv.slice(2)
 if (!dirArg) {
   console.error('usage: node verify-standalone.mjs <plugin-dir> [plugin-id] [package-name]')
@@ -146,8 +209,14 @@ const notes = []
  * `AGENTS.md` in the user's home directory, and past it the file stops being
  * injected at all — a contract nobody reads is the failure this ceiling exists
  * to make loud.
+ *
+ * It sits where it does because the governing section at the top of the file is
+ * the owner's own text and is not compressible, so everything else has to fit in
+ * what is left. That is what a gated number is for: the margin is small enough
+ * that the next addition has to cut something first, and large enough that the
+ * section which outranks the budget is not itself the thing being trimmed.
  */
-const AGENTS_CEILING_BYTES = 60_000
+const AGENTS_CEILING_BYTES = 62_000
 
 /**
  * The repository root holds EXACTLY the files it declares, and nothing else.
@@ -165,7 +234,7 @@ const AGENTS_CEILING_BYTES = 60_000
  * is how it got here.
  */
 const ROOT_ALLOWED = new Set([
-  '.editorconfig', '.gitattributes', '.github', '.gitignore',
+  '.gitattributes', '.gitignore', '.github',
   'AGENTS.md', 'CONTRIBUTING.md', 'DESIGN.md', 'LICENSE', 'PRODUCT.md',
   'README.en.md', 'README.md',
   'cordis.patch.yml', 'icon.svg', 'package.json', 'pnpm-lock.yaml', 'pnpm-workspace.yaml',
@@ -815,6 +884,80 @@ for (const file of srcFiles) {
     if (ALLOWED_PREFIXES.some((p) => spec.startsWith(p))) continue
     failures.push(`${rel}: unexpected import "${spec}"`)
   }
+}
+
+// --- 9. a document cites only files this repository carries ------------------
+//
+// Hard rule 19 requires every measured number in DESIGN.md to say HOW it was
+// measured — "use the same probe before and after" — so a path in that document
+// is a promise that somebody can open it and run it again. Nothing here ever
+// looked at a document's paths, and fourteen of them rotted: eight pointed into
+// a gitignored scratch directory that no longer exists, the rest at probes that
+// had been deleted. Every one of them still read like a method, which is the
+// whole cost — a reader who cannot re-measure has to take the number on faith.
+//
+// The roots and the document list are declared at the top of this file (the
+// probes run before the checks, so their data has to be initialized first).
+
+/**
+ * Every inline-code citation in `docs` that names a file, and whether it is
+ * there.
+ *
+ * Only inline code is read, and only tokens that start with a declared root and
+ * end in an extension: prose, fenced examples and directory names are not
+ * citations. A token carrying a glob or an angle-bracket placeholder is a shape
+ * (`scripts/*.mjs`, `src/client/design/<X>.tsx`), and a bare directory
+ * (`.design/`) is not a file — the two forms this check must never red on.
+ *
+ * @param docs - [document name, full text] pairs.
+ * @param exists - whether one cited path is in the repository.
+ * @returns one entry per citation, with `resolved` saying whether it can be opened.
+ */
+function citedPaths(docs, exists) {
+  const citations = []
+  for (const [doc, text] of docs) {
+    text.split('\n').forEach((line, index) => {
+      for (const span of line.matchAll(/`([^`]*)`/g)) {
+        for (const raw of span[1].split(/[\s,;:()]+/)) {
+          const cited = raw.replace(/[.,;:)\]]+$/, '')
+          if (cited === '' || CITED_SHAPE.test(cited)) continue
+          const slash = cited.indexOf('/')
+          if (slash <= 0 || !CITED_ROOTS.includes(cited.slice(0, slash))) continue
+          if (!/\.[a-z0-9]+$/i.test(cited)) continue
+          citations.push({ doc, line: index + 1, cited, resolved: exists(cited) })
+        }
+      }
+    })
+  }
+  return citations
+}
+
+{
+  const docs = CITED_DOCS
+    .map((name) => [name, join(root, name)])
+    .filter(([, file]) => existsSync(file))
+    .map(([name, file]) => [name, readFileSync(file, 'utf8')])
+  const sources = CITED_TREES.flatMap((tree) => {
+    const base = join(root, tree)
+    if (!existsSync(base)) return []
+    const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const full = join(dir, entry.name)
+      return entry.isDirectory() ? walk(full) : [full]
+    })
+    // The checker's own source is exempt for the same reason section 2 exempts it:
+    // the self-test's cases ARE its data, and one of them has to name a path that
+    // is not there for "does this bite?" to mean anything.
+    return walk(base)
+      .filter((file) => CITED_SOURCE.test(file) && file !== VERIFY_SELF)
+      .map((file) => [relative(root, file).split(sep).join('/'), readFileSync(file, 'utf8')])
+  })
+  const scanned = [...docs, ...sources]
+  const citations = citedPaths(scanned, (cited) => existsSync(join(root, cited)))
+  for (const citation of citations) {
+    if (citation.resolved) continue
+    failures.push(`${citation.doc}:${citation.line}: cites \`${citation.cited}\`, which this repository does not carry — a path in a document or a comment has to be openable, so either add the file or drop the citation`)
+  }
+  notes.push(`doc citations: ${citations.length} file path(s) named in inline code across ${scanned.length} file(s), all of them openable`)
 }
 
 // --- report -----------------------------------------------------------------

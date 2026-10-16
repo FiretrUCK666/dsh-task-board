@@ -214,16 +214,6 @@ the app's own menu installs is accepted; see Install.)
 
 With the plugin marketplace installed you can also press Update on its Installed tab.
 
-### Coming from a version before 0.9.59
-
-Before 0.9.59 the update check had a profile name written into its code: inside the desktop app it
-described itself with the web profile's checkout, so **it could never update itself** — pressing its
-own Update now ran a `git pull` in the web checkout instead. That is fixed, but **fixed code has to
-reach that copy somehow**, and the broken copy is the thing that would have carried it. Do it by hand
-once: open the desktop app, sidebar → Plugins → uninstall `@firetruck666/dsh-task-board` from
-Installed, then add it again with Add plugin (same package name), and fully quit and reopen the app.
-Check for updates and Update now both work from then on.
-
 ## What it does
 
 ### The board

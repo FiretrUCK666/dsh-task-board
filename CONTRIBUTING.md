@@ -27,6 +27,22 @@
 
 **不要往本仓库推主干，也不要打版本标签或发布**——发版由维护者执行（见「发布」）。
 
+## 仓库结构
+
+克隆下来之后，根目录每一项是什么：
+
+| 路径 | 是什么 |
+| --- | --- |
+| `src/` | 源码。host 半区（Node 主进程）、client 半区（浏览器）、`core/` 纯逻辑三层；各自的入口与职责见 `AGENTS.md` 的「架构」 |
+| `lib/` | 构建产物，**但它入库**：安装来源（npm / GitHub / 本地链接）都不执行构建，缺了它别人起不来。改完源码必须 `pnpm build` 再一起提交，CI 会比对 |
+| `tests/` | 测试。一个 src 模块一个 spec；`panel-harness.ts` 是被多个 spec 共用的渲染台架，不是测试本身 |
+| `scripts/` | 能直接 `node` 跑的程序：`verify-*` 是随 `pnpm verify` 跑的静态门禁，其余是构建、发版与开发工具 |
+| `scripts/probes/` | **探针**：不能自己跑，只能当载荷交给 `shot-panel --eval-file` 在真 Chromium 里求值。`DESIGN.md` 里每一条「量法」点的就是这里 |
+| `build/` | 构建配置：打包器的预设与它用的平台模块表，由根目录的 `tsdown.config.ts` 导入 |
+| `locale/` | 界面文案的中英词条 |
+| `.impeccable/` | `impeccable` 设计技能的状态；`design.json` 与 `config.json` 入库，`pnpm verify` 的设计文档检查要读它们 |
+| `.design/` | 本地草稿：截图、候选页、一次性探针。**不入库，也不许被 `DESIGN.md` 引用**——正文里写的路径必须是干净克隆也打得开的 |
+
 ## 开发环境
 
 ```sh

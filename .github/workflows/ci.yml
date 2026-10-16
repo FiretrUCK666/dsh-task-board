@@ -35,7 +35,7 @@ jobs:
       # nothing to keep.
       - name: Script syntax
         run: |
-          node -e "const { readdirSync } = require('node:fs'); const { execFileSync } = require('node:child_process'); const names = readdirSync('scripts').filter((name) => /\.(mjs|js)$/.test(name)); for (const name of names) execFileSync(process.execPath, ['--check', 'scripts/' + name], { stdio: 'inherit' }); console.log('scripts parsed: ' + names.length);"
+          node -e "const { readdirSync } = require('node:fs'); const { execFileSync } = require('node:child_process'); const walk = (dir) => readdirSync(dir, { withFileTypes: true }).flatMap((entry) => entry.isDirectory() ? walk(dir + '/' + entry.name) : (/\.(mjs|js)$/.test(entry.name) ? [dir + '/' + entry.name] : [])); const names = walk('scripts'); for (const name of names) execFileSync(process.execPath, ['--check', name], { stdio: 'inherit' }); console.log('scripts parsed: ' + names.length);"
 
       - name: Install dependencies
         run: pnpm install --frozen-lockfile

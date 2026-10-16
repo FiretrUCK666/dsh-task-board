@@ -1283,7 +1283,7 @@ undated / gated`——两套词汇只有「没定日期」重合，于是按「�
 收到 8、负外边距取消：墨仍旧在 18，胶囊与命中面一起回到 10。
 **把盒子挪开去对齐里面的墨，对齐的就不是那一行，是那个字。**
 
-**量法**（硬性规范 19）：`scripts/probe-item-rail.js` 交给 `shot-panel --eval-file`，在真 Chromium
+**量法**（硬性规范 19）：`scripts/probes/probe-item-rail.js` 交给 `shot-panel --eval-file`，在真 Chromium
 里对月题、折控、翻月三枚、以及第一行导航的记号/词/数各读一次 `getBoundingClientRect()`（盒）
 与 `Range.getClientRects()`（墨），并算出两者的差。改前 / 改后（面板 1000）：
 
@@ -1292,7 +1292,7 @@ undated / gated`——两套词汇只有「没定日期」重合，于是按「�
 | 改前 | **6** | 18 | 10 | 18 |
 | 改后 | **10** | 18 | 10 | 18 |
 
-同一支探针报的另外四个数（面板 1440，`scripts/probe-item-rail.js`）：
+同一支探针报的另外四个数（面板 1440，`scripts/probes/probe-item-rail.js`）：
 
 | 判据 | 数 |
 | --- | --- |
@@ -1418,7 +1418,8 @@ undated / gated`——两套词汇只有「没定日期」重合，于是按「�
 对齐付在左栏（`padding-block-start: --s2`）：右栏那一行的内衬与行距一个字都没动，因为动它会
 改掉那一列自己的拍子（量过：首行少付 10px 会让头两行的间距从 65 变成 68，而第三行还是 66）。
 余下 **3px** 不追——那是那一行的控件（芯片 22）比字（16）高出来的那一半，`align-items: center`
-是**行内**的律。量法：`.design/sheet-align-probe.js` 读两栏第一个名字的盒（`create-sheet` 工件）。
+是**行内**的律。量法（硬性规范 19）：在真 Chromium 里读两栏第一个名字的盒，工件是台架的
+`DSH_PANEL_MOUNT=create-sheet` 那一档。
 
 **只有一块滚动体**：头与底不动，中间在它们下面滚，于是读者正要按的按钮永远不是刚刚
 滚走的那一个。反过来（面板自己 `overflow: hidden`、里面不滚）会在手机上把最后两个
@@ -1512,7 +1513,7 @@ undated / gated`——两套词汇只有「没定日期」重合，于是按「�
 竖线上（一屏四条竖线互相不认，是这一族付过账的缺陷，见框架律）。**它跟着档位走**：`--item-row-pad`
 自己就是按档给的（宽 16 / 窄 12），所以这一页不写第二份。
 
-**量法**（硬性规范 19）：`scripts/probe-item-agenda.js` 交给 `shot-panel --eval-file`，在真 Chromium
+**量法**（硬性规范 19）：`scripts/probes/probe-item-agenda.js` 交给 `shot-panel --eval-file`，在真 Chromium
 里对那几样各读一次 `getBoundingClientRect()`（盒）与 `Range.getClientRects()`（墨），并同时读出
 行卡与行里第一点墨。宽 1440 / 窄 412：
 
@@ -1604,10 +1605,10 @@ undefined`），于是**加一个桶不会有人想起要写解释**——而少
 最长的那几句有 43 个字：**必然折两行，右边留一大片空**（读者报的就是这个：「怎么到了一定程度就
 直接跳到下一行」）。`em` 才是中文的尺子（一个字一个 em），所以这个数说的是「一行放得下几个字」。
 
-**量法**（硬性规范 19）：`scripts/probe-item-rail.js` 的第八段。它先让 `.itemNote` 全部显形（平时
+**量法**（硬性规范 19）：`scripts/probes/probe-item-rail.js` 的第八段。它先让 `.itemNote` 全部显形（平时
 收着的话没有可量的行），然后对每一句读三个数：`naturalW`——这句话**单行**要多少像素（canvas 按它
 自己的字体量字宽的和）；`lines`——它**真的**排了几行（`Range.getClientRects()` 一行一个矩形）；
-`maxInline`——限宽自己。宽 1440（工件 `DSH_PANEL_PAGE=schedule`，`.design/mine-schedule-wide.html`）：
+`maxInline`——限宽自己。宽 1440（工件状态 `DSH_PANEL_PAGE=schedule`）：
 
 | 那一句 | 字数 | 单行宽 `naturalW` | 加行内衬后 `needed` | 限宽 | 改前（46ch = 297.56） | 改后 |
 | --- | --- | --- | --- | --- | --- | --- |
@@ -1706,7 +1707,7 @@ undefined`），于是**加一个桶不会有人想起要写解释**——而少
 **这两个样式表里，一个按字体量出来的补偿也不许有。** 「居中」的答案只能是上面那一条，而按墨把
 内容推半格的那些数（一族一个 `padding-block-end: 1px` 的底衬、图标上的 `translateY(0.75px)`）
 只在一种字体上量得对，换一套度量就偏半个到一个像素——**屏上没有任何一处说得出这句话**。所以
-判据也不靠名单、不靠读声明：`scripts/probe-item-capsules.js` 由 `pnpm audit`
+判据也不靠名单、不靠读声明：`scripts/probes/probe-item-capsules.js` 由 `pnpm audit`
 （`scripts/audit-panels.mjs`）驱动，在**真工件页**上按**结构**逐颗认领胶囊（画了底或边 · 够圆 ·
 装着看得见的字 · 高 ≤ 56px · 只取最内层那一颗），新加一颗自动进网，忘了加标记也照样被量。
 
@@ -1762,7 +1763,7 @@ undefined`），于是**加一个桶不会有人想起要写解释**——而少
 那个盒子只有 8.41px**——这个比例就是为什么「裁到墨的边上」不是一句与脚本无关的话：那两个边
 （`cap` 与 `alphabetic`）是**拉丁的边**，一条中文字串的墨会越过它们。
 
-**量出来的数**（`pnpm audit`：`scripts/probe-item-capsules.js` 由 `scripts/audit-panels.mjs` 驱动，
+**量出来的数**（`pnpm audit`：`scripts/probes/probe-item-capsules.js` 由 `scripts/audit-panels.mjs` 驱动，
 在真工件页上跑）：
 
 | 档 | 读数 | 改前 | 改后 |
@@ -1829,7 +1830,7 @@ undefined`），于是**加一个桶不会有人想起要写解释**——而少
 真面板的哈希类名再量，改前才露出 **−1.0**、改后 0。**所以这一节的结论不许只在台架工件上取**：
 占位盒（后面那串字所在的盒子）的行盒在工件与真面板里可能不是同一个数——工件的行盒归 `normal`，
 真面板的归宿主。真面板的量法：`node scripts/shot-panel.mjs --url <真面板 URL> --eval-file
-scripts/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`），同一个 URL 加 `#before`
+scripts/probes/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`），同一个 URL 加 `#before`
 给改前的数。日程页五处 ⓘ（工件，宽 1440 与窄 412 各一次）的读数是 `markRows 5`、`sitesWorst 0`、
 `gapSame "pass"`。
 
@@ -1882,8 +1883,7 @@ scripts/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`）
 | `.itemPrioChip` | **0** | 20 |
 | 上衬（`padding-block-start`） | `.itemOpt` 与两种写法的 `.itemTag` 都量到过 **1**（UA）→ 全部 **0** | —— |
 
-改前/改后各一张 3× 的对比图：`.design/shots/crop-pills-before.png` 与 `crop-pills-wide.png`
-（同一张工件页，只把这三条声明改回旧值，见 `.design/shots/make-before.mjs`）。
+改前/改后各拿一张 3× 的对比图：同一张工件页，只把这三条声明改回旧值各截一张。
 
 **几块字装在一个盒子里，那个盒子按基线对齐自己的内容。** `.itemGroupText`、`.itemRailText`、
 `.itemEmptyGroup` 都是 `display: inline-flex; align-items: baseline`。中文与拉丁的字体度量不同：
@@ -1958,7 +1958,7 @@ scripts/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`）
 在这处按面板宽度决定竖排，而这一排的宽度由卡片给，不由面板给，两把尺子量同一件事必然
 有一档对不上。
 
-**量法**（硬性规范 19）：`scripts/probe-item-footer.js` 交给 `shot-panel --eval-file`，在真 Chromium
+**量法**（硬性规范 19）：`scripts/probes/probe-item-footer.js` 交给 `shot-panel --eval-file`，在真 Chromium
 里读 `.itemOpenAct` / `.itemOpenActions` / `.itemOptsFoot` / `.itemOpenBtns` 的
 `getBoundingClientRect()` 与计算样式。下面每个数都出自它（那一句理由 174px、按钮排 271px）：
 
@@ -2005,11 +2005,11 @@ scripts/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`）
 - 顺带把回执那枚胶囊也给了地板 `min(12ch, 100%)` 与 `overflow-wrap: anywhere`：它装的那句话可能
   很长（一条卡的名字就写在里面），**胶囊里的字换行不好看，溢出比不好看糟**。
 
-**量法与证据**：`scripts/probe-item-note.js` 逐行读 `.itemOptRow` 的高度与它带不带脚注。改前 /
-改后（面板 1200）：**优先级 42 · 状态 133 → 101 · 标签 45 · 看板卡片 145**。按下去的交互由台架
-那一屏 `carded-chip-answer` 取证（静态渲染按不了东西）：`.design/ca2-412.png` 与 `ca2-1200.png`
-里那句话都在芯片正下方，两行说完；同一屏的底排回到「你记的 / 问 AI / 删除这条」一条线，只有
-这三枚，见下面「只剩一枚交给 AI」那一节）。
+**量法与证据**：`scripts/probes/probe-item-note.js` 逐行读 `.itemOptRow` 的高度与它带不带脚注。
+改前 / 改后（面板 1200）：**优先级 42 · 状态 133 → 101 · 标签 45 · 看板卡片 145**。按下去的交互
+由台架那一屏 `DSH_PANEL_MOUNT=carded-chip-answer` 取证（静态渲染按不了东西）：宽 412 与 1200
+两档里那句话都在芯片正下方，两行说完；同一屏的底排回到「你记的 / 问 AI / 删除这条」一条线，
+只有这三枚，见下面「只剩一枚交给 AI」那一节）。
 
 **同一句话，两个表面同形**：看板卡片那一格的 `item.cardLink.note`（「挂已有的卡：……新建卡片：
 ……」）与新建那张纸上的同一格**逐字同形**——同一个位置（字段名后面一枚 ⓘ）、同一句话、同一枚
@@ -2104,14 +2104,11 @@ scripts/probe-item-rail.js`（探针按类名整词取，认 `[hash]_[local]`）
 工作区、跨会话）。所以「挂卡的行」与「没挂卡的行」在同一个位置上写的是两件不同的事，而两块屏
 各要一张图。
 
-**证据**：`.design/shots/config-wide.png` / `config-narrow.png`（工件状态
-`DSH_PANEL_MOUNT=config-open`，宽 1440 / 窄 412），加两张按块裁的
-`config-block-wide.png`（宽档：五行两列 + 下面那五个下拉 + `取消 · 保存` + 那一句「还没挂卡」）
-与 `config-narrow-block.png`（窄档：同一块变成一列，标签与值上下排——那是看板自己的窄档形状，
-因为是同一个组件）。第三处（新建那条纸上的「新建卡片」档）同样是工件状态
-`DSH_PANEL_MOUNT=capture-card`：`capture-wide.png` / `capture-open-wide.png` 与
-`capture-open-narrow.png`——折叠时它只占**一行**（右边那一列里，卡芯片下面），展开后五行与
-那一枚「改」都落在纸的右列里，宽度够、不挤。
+**证据**：工件状态 `DSH_PANEL_MOUNT=config-open`，宽 1440 / 窄 412 各一屏，另按块裁两张——宽档看
+五行两列 + 下面那五个下拉 + `取消 · 保存` + 那一句「还没挂卡」；窄档看同一块变成一列、标签与值
+上下排（那是看板自己的窄档形状，因为是同一个组件）。第三处（新建那条纸上的「新建卡片」档）同样是
+工件状态 `DSH_PANEL_MOUNT=capture-card`：折叠时它只占**一行**（右边那一列里，卡芯片下面），展开
+后五行与那一枚「改」都落在纸的右列里，宽度够、不挤。
 
 #### 展开区左列：三段，每段有自己的段名；两个间距是两个数
 
@@ -2140,10 +2137,9 @@ specificity 是 (0,1,1)，赢过任何写在 `<p>` 上的类名规则，于是�
 它装着段名与它引入的内容；那一列是这些盒子之间的 `gap`（`--item-open-section-gap`）。一个盒子
 里的 gap 是量得出来的，一句写在 `<p>` 上的 margin 不是。
 
-**量法**（硬性规范 19）：`.design/probe-sections.js` 经 `node scripts/shot-panel.mjs --eval-file` 跑，
-读的是**盒**（不是墨）：每一段的段名盒下沿 → 它引入的内容盒上沿，以及相邻两段之间（上一段的
-下沿 → 下一段段名的上沿）。宽 1440 / 窄 412，工件是台架的 `DSH_PANEL_ROW=fx-untitled`（.design/mine-list-open-wide.html）
-那一屏：
+**量法**（硬性规范 19）：一支读**盒**（不是墨）的探针经 `node scripts/shot-panel.mjs --eval-file` 跑：
+每一段的段名盒下沿 → 它引入的内容盒上沿，以及相邻两段之间（上一段的下沿 → 下一段段名的上沿）。
+宽 1440 / 窄 412，工件是台架的 `DSH_PANEL_ROW=fx-untitled` 那一屏：
 
 | 量什么 | 宽 1440 | 窄 412 |
 | --- | --- | --- |
@@ -2173,9 +2169,9 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 **「随文字长」与「原生拖拽」都不在**：框不再有 `field-sizing`，也没有 `resize`——
 一个高度是内容函数的地方，不可能同时是一个读者定过尺寸的地方。
 
-**量法**（硬性规范 19）：工件 `.design/mine-prose-open-wide.html`（台架挂载态 `row-body-open`：
-展开一行、按下「＋ 写点什么」）经 `node scripts/shot-panel.mjs` 交给
-`scripts/probe-item-rail.js` 的第十段，宽 1440 与窄 412 各一次。那一段既不读令牌也不信注释，只做
+**量法**（硬性规范 19）：工件是台架挂载态 `DSH_PANEL_MOUNT=row-body-open`（展开一行、按下
+「＋ 写点什么」），经 `node scripts/shot-panel.mjs` 交给 `scripts/probes/probe-item-rail.js` 的
+第十段，宽 1440 与窄 412 各一次。那一段既不读令牌也不信注释，只做
 两件事：**算术** `(clientHeight − 内衬) ÷ 行盒` 报「装得下几行」；**实测**往框里塞 4 行、再塞 5 行，
 看 `scrollHeight` 与 `clientHeight` 是不是相等（相等 = 不滚 = 那 N 行真的装得下）。改前的数用同一个
 探针的 `#before` 取（把两个令牌改回按 20px 算的那一版）：
@@ -2203,7 +2199,7 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 它还把轨道的两端各收 10px（`margin-block`），于是条子的端头落在边的直线段上，而不是钻进 10px 的
 圆角里；少了它，平台自己那根顶端是方的、一路通到圆角里去，读起来正是「它要突破上边缘」。
 
-**量法**（硬性规范 19）：`node scripts/shot-panel.mjs --scrollbars --eval-file .design/prose-probe.js <url>`。
+**量法**（硬性规范 19）：一支探针经 `node scripts/shot-panel.mjs --scrollbars --eval-file <探针> <url>` 跑。
 `--scrollbars` 是这一条量法的前提——工具默认传 `--hide-scrollbars`，不打开它，滚动条在图上根本不存在。
 探针读 `offsetWidth − clientWidth − 两条边` 就是条子的宽；A/B 是把标记从**活 DOM** 上摘掉再量一次，
 同一页、同一段内容，唯一的变量就是那个标记。
@@ -2233,10 +2229,9 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 | 修之后：同一个距离 | **6** | 与新建那张纸的每一格同一个数 |
 | 没有正文时：「＋ 写点什么」到「＋」 | **6**（字段盒 38 = 按钮 32 + 6） | 两种情形同一个数，不会一个近一个远 |
 
-**量法**（硬性规范 19）：`.design/attach-gap-probe.js`（读 `getBoundingClientRect` 的**盒**，
-不是墨）经 `node scripts/shot-panel.mjs --eval-file .design/attach-gap-probe.js <artifact>` 跑；
-工件是 `.design/attach-open-wide.html`（有正文）与 `.design/attach-nobody-wide.html`（无正文）。
-它一回把四层的盒一起报出来——**只报一个差值的话，读的人分不出那个 22 是父级的沟还是自己的
+**量法**（硬性规范 19）：一支读 `getBoundingClientRect` 的**盒**（不是墨）的探针，经
+`node scripts/shot-panel.mjs --eval-file <探针> <artifact>` 在**有正文**与**没有正文**两种工件上各跑
+一次。它一回把四层的盒一起报出来——**只报一个差值的话，读的人分不出那个 22 是父级的沟还是自己的
 内衬**，而这两种原因的改法完全不同（第一版就改错了：改完还是 22，因为 `--item-field-gap`
 这个名字在详情那一层已经被重新声明成 `var(--s3)`）。
 
@@ -2268,8 +2263,8 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 | 412・两张附件（芯片行 276.5） | 句 **264 × 16**，**整句落到下一行** | 276.5 + 6 + 264 > 306：让位，不是被压 |
 | 两档结构量 `squeezed`（盒宽 < 地板）/ `column`（高 > 宽） | 全 false | 十一行单字那个缺陷没有回来 |
 
-**量法**（硬性规范 19）：`.design/attach-row-probe.js`（读**盒**，不读墨）经
-`node scripts/shot-panel.mjs --eval-file .design/attach-row-probe.js <artifact>` 跑；同一份探针在
+**量法**（硬性规范 19）：一支读**盒**（不读墨）的探针经
+`node scripts/shot-panel.mjs --eval-file <探针> <artifact>` 跑；同一份探针在
 **清单详情（有 / 无附件）、会话规则、卡片执行 Prompt、新建那张纸**五处各量一次——这一条是五处
 共用的元件，只量一处会把别处的宿主布局漏掉（222 那一次就是宿主那一格没给宽度）。工件同一份
 （台架的 `fx-untitled` 那一行带两张附件，`DSH_PANEL_ROW=fx-untitled` 展开），宽 1440 / 窄 412 各一次。
@@ -2280,7 +2275,7 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 #### 窄档里每个可点目标的实测尺寸（412）
 
 
-**量法**：`.design/shots/probe-tap.mjs`，经 `scripts/shot-panel.mjs` 开真 Chromium、在
+**量法**：一支探针经 `scripts/shot-panel.mjs` 开真 Chromium、在
 412 宽的工件上读 `getBoundingClientRect()`（盒，不是墨）。**命令与读法只有那一份**，改前改后
 各量一次即可。
 

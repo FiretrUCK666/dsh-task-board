@@ -49,7 +49,7 @@
  * (`both: true`), which is how the tier is proven rather than assumed.
  *
  * `--audit` RUNS THE PANEL AUDIT AND WRITES ITS READINGS. It evaluates
- * `scripts/probe-item-capsules.js` (unless `--eval`/`--eval-file` says
+ * `scripts/probes/probe-item-capsules.js` (unless `--eval`/`--eval-file` says
  * otherwise) and writes the returned object to `<out>` with a `.audit.json`
  * suffix. One run = one reading; the matrix (widths x device scale factors x
  * both pointer capabilities) and the pass/fail judgement belong to
@@ -99,7 +99,7 @@ import { fileURLToPath } from 'node:url'
  * else, and that failure would read as "the audit found nothing".
  */
 const HERE = dirname(fileURLToPath(import.meta.url))
-const AUDIT_PROBE = join(HERE, 'probe-item-capsules.js')
+const AUDIT_PROBE = join(HERE, 'probes', 'probe-item-capsules.js')
 
 /** Flag parsing, long form only. Unknown flags are a fact worth printing. */
 function parseArgs(argv) {

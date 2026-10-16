@@ -1,8 +1,8 @@
 /**
  * Standalone build config for the task-board client plugin.
  *
- * Uses the vendored dsh client-bundle preset (shared/tsdown.client.ts + the
- * platform module list in shared/web-platform.ts; keep in sync when the dsh
+ * Uses the vendored dsh client-bundle preset (build/tsdown.client.ts + the
+ * platform module list in build/web-platform.ts; keep in sync when the dsh
  * version changes): node-half lib/ plus the browser bundle lib/client.js
  * (closure-factory artifact for the GUI's __ModuleLoader__, CSS Modules inlined
  * with auto-injected <style data-plugin>).
@@ -19,7 +19,7 @@
  * for an unscoped package, which is why this only broke once the package moved
  * to a scope — the id below must follow package.json's `name`.
  */
-import { clientBundle } from './shared/tsdown.client.ts'
+import { clientBundle } from './build/tsdown.client.ts'
 
 /** Package name; must equal package.json `name` and the cordis.patch.yml row `name`. */
 const PACKAGE_NAME = '@firetruck666/dsh-task-board'
