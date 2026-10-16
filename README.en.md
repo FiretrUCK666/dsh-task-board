@@ -140,6 +140,18 @@ The entry sits beside DSH's own Plugins panel. Selecting it puts the board in th
 
 The plugin's switches live in two places, and they do different jobs. The toggle on the plugin's row under **sidebar → Plugins → Installed** is the **master switch**; the one at the top right of the plugin's own page (click the plugin name) does the same thing. **Off means the plugin is not loaded** (sidebar entry, board, list and background routes all stop); **on restores it.** Under "Included components" on that page there are **four more rows, one switch each**, governing their own half (board / list / AI interface) — see the FAQ.
 
+### Try it once
+
+Two minutes after the restart is enough to see what this does:
+
+1. Open **Task Board** in the sidebar, press **+ new item**, and write down one thing you actually
+   have to do (a title is enough).
+2. Open that row in the left rail, pick a workspace and an agent under the run configuration on the
+   right, and press **Ask AI** — it becomes a card on the spot and a session starts working.
+3. Back on the board: the card is in progress, and it lands in In Review by itself when the run
+   finishes. The numbers along the top start reporting.
+4. Open the card, read the result, press Pass.
+
 ### Nothing to configure by hand
 
 It works once installed — no config file to edit, no declaration to write. And **do not add anything to `cordis.patch.yml` yourself**: the plugin's row lives inside the package, and the install command only registers that package in the profile; the two together are the whole setup. Hand-adding a row makes the same plugin appear twice.
@@ -218,46 +230,46 @@ With the plugin marketplace installed you can also press Update on its Installed
 
 ### The board
 
-- Five columns: Backlog / To do / In progress / In Review / Done. Drag a card to another column, or up and down inside one to set the order.
-- Running is real: press "run" in the detail and a DSH session does the work, landing the card in In Review when it finishes. How many times it ran, and whether the last one worked, are on the card.
-- A running card carries a yellow edge; an unread one carries an outer ring.
-- One line at the top of the board: how many are waiting on you, how many need review. Press it to open the notification centre.
-- The notification centre collects everything waiting on you. The activity feed groups what just happened by day.
+Five columns, and reading them left to right is the whole life of a piece of work: Backlog / To do /
+In progress / In Review / Done. Drag a card between columns, or up and down inside one to set the
+order.
+
+- **Running is real.** Press "run" in the detail and a DSH session actually does the work, landing
+  the card in In Review when it finishes. How many times it ran and whether the last one worked are
+  on the card; a running card carries a yellow edge.
+- **Things waiting on you surface by themselves.** One line along the top: how many sessions have a
+  question parked, how many cards need your verdict. Pressing it opens the notification centre, and
+  the activity feed groups what happened by day.
+- **The model asks in the comment thread and you answer on the card.** A plan waiting for approval
+  works the same way — approve it, or send it back to the composer, without a trip into the
+  conversation. Each card's comments ARE its DSH session: queue or steer, and drag images and files
+  straight in.
+- **Drag a session or a workspace in from the sidebar and you get a card bound to it.**
 - The review page is the full record of one run, with "pass" and "send back" right there.
-- The model asks its questions in the comment thread and you answer on the spot. **A plan waiting for approval works the same way** — approve it, or send it back to the composer to ask for changes, without a trip into the conversation. (Where a host does not take answers in place, that card quotes the session's options, says why it cannot answer here, and leaves one door: go to the session.)
-- Each card's comments ARE its DSH session. Queue or steer, and drag images and files straight in.
-- Drag a session or a workspace in from the sidebar and you get a card bound to it.
-- Two kinds of automation, each minding its own: schedules that fire on a timetable or chain onto completion, and rules that send a session an instruction on the same triggers. A rule's instruction can carry images and files, and the row says how many it holds.
-- Auto-cruise: one switch in the board header, with a cap on how many run at once and the hours they may run in.
-- Multi-select, then recolour, run or delete the whole selection in one go.
-- Save the detail as a template and pick it when creating; run configurations save as presets, one of them the default.
-- On a phone the columns become a horizontal track, and nothing is missing.
+- Multi-select, then recolour, run or delete the whole selection in one go. Save the detail as a
+  template; run configurations save as presets, one of them the default.
 
 ### The task list
 
-- Press "+ new item" to write one down: **the title comes first**, then body, steps and context notes (the body also takes images and files). The left column is what you write, the right column is what you decide — priority, state, tags, the three dates, and which card it hangs off. Hanging it has three answers: **no card** (write it down, decide later), **an existing card** (nothing inside that card moves), or **a new card** — and for a new card you first see **what that card will run with** (workspace / agent / model / effort / permission). It is born with what you saw; change it later on the card or in this row's detail.
-- The list stands on its own — an item does not have to become a card. Once it hangs off one, the state it shows is wherever that card sits — but **your own "Done" outranks the card**: a finished thing does not turn back into unfinished work because the card is still running.
-- **"Ask AI" is the only press on this page that hands a row to a model, and it works on a row with no card**: if the card already has a conversation this is **said into it**, and if it has none this **opens a run** — the card decides which, so you never have to. What travels is the row itself (title, tags, body, steps, notes, **and the images and files its body carries**), not the card's run prompt, so a card whose own prompt is blank does not block it. A row with no card gets one first, and **that card is born with the run configuration you can see**: the block in the detail rail is always there (open it for workspace / agent / model / effort / permission, and "Change" edits it in place), so the press runs exactly what is on screen rather than something that only appears at the moment you press.
-- The card on the board carries "**N rows · loudest: X**"; pressing it opens the checklist filtered to that card (a filter chip you can see and remove).
-- Three independent times: start, target, deadline — each date box carries a one-line gloss beside its name (not before this day / the day you mean to finish / the day that cannot slip), and the same pair shows up when you open that line in the detail. Only a missed deadline turns a row red, and that row reads **Past due**; a slipped target reads **behind** — a broken promise and a moved plan are not the same thing.
-- Ticking a step draws a progress bar. Four priority tiers. Tags as you like.
-- Everything that filters is in the left rail: the calendar, by date (past / upcoming / no date), by time untouched, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
-- The calendar at the top of the rail moves month by month, comes back to today, and folds into a single line — the month steps and "back to today" are **three cells of one control** (`‹` / today / `›` inside one frame), and "back to today" greys out rather than disappearing when there is nowhere to come back from. Picking a day shows that day alone and leaves a **removable date chip** under the search box, so an empty list still says why it is empty.
-- The state column uses **the board's own words and the board's own colours**: Backlog / To do / In progress / In Review / Done. The row keeps its own one of those five, and once a card is attached it reads that card's column unless you marked the row done yourself; the bead at the row's head says which state it is, and its colour says which column. **That state chip is pressable**: it takes you to the board and opens the card the row hangs off.
-- Title, body, notes and dates are edited in the row itself, not in another window; the **run configuration** lives there too, and it shows the one that will actually be used: a carded row shows and edits **that card's** (the same setting the board edits, not a second copy), while a row with no card shows "the one this hand-over will use" and says the new card will keep it.
-- **The box you write in has YOUR height.** It does not grow as you type — when it fills up it scrolls. Grab **anywhere along its bottom edge** to make it taller or shorter, and it remembers (the three boxes on "New row" are the same height, on the same machine). The grip is always drawn, and the arrow keys work too.
-- The row's body can carry images and files: drag them in, or press "+". They are saved with the row and travel to the card when you promote it, and the row shows a paperclip with how many it holds.
-- **A date you mistyped never disappears, and the three ways it can fail each say their own thing.** `@tomorrow`, `10月15日`, `2026-10-15`, `10/15` and `Oct 15` are all understood. An unreadable spelling gets the spelling taught back to you (`2026-10-15`, `tomorrow`, `Wed`, `+3`); a day with no year that has already passed this year asks for the year (guessing moves a day by a whole year); a day the calendar does not have (`2026-02-30`) asks you to check the month and the day. The dates you already set do not move, and "New row" says the same thing under the same box.
-- The agenda reads by day, and a section name is the same word the row carries: past the deadline / past the target / today / tomorrow / within a week / further out. A section with nothing in it takes no section at all: empty days, and the rows deliberately left off this page (finished work, captures not yet sorted), are counted in one line at the foot. Rows with no date wait in "no date", rows whose start day has not come wait in "not started yet" — **every section whose name cannot say why it is on this page carries a small circled i** (past the deadline / past the target / no date / not started yet), and the foot line carries one too: point at it, or press it, and one sentence appears. The by-day sections (today / tomorrow / within a week / further out) carry none — their name is the day.
-- Delete has an undo. What you deleted sits under "deleted" at the bottom of the rail, recoverable for 30 days or erased for good.
-- Multi-select, then set state, priority, "set for today", ask AI or delete the whole selection in one go.
-- Keyboard: `A` new, `J`/`K` move, `X` multi-select, `1`–`4` priority, `E` rename, `⌘Z` undo, `Esc` closes one layer.
+Some things are not ready to be worked on yet. Write them down first.
 
-### Several devices, and the AI doors
+- Press "+ new item": **the title comes first**, then body, steps and context notes. The left column is what you write, the right column is what you decide — priority, state, tags, the three dates, and which card it hangs off.
+- **Whether it hangs off a card is yours to choose**: no card (write it down, decide later), an existing card (nothing inside that card moves), or a new card — and for a new card you first see **what that card will run with** (workspace / agent / model / effort / permission) and it is born with what you saw.
+- A row's own state is **five steps**, in the board's own words and colours. With no card you pick freely; with a card it follows that card — but **your own "Done" outranks the card**: a finished thing does not turn back into unfinished work because the card is still running. That state chip is pressable: it takes you to the board and opens the card the row hangs off.
+- **"Ask AI" is the only press on this page that hands a row to a model, and it works on a row with no card**: if the card already has a conversation this is said into it, and if it has none this opens a run — **the card decides which**, so you never have to. What travels is the row itself (title, tags, body, steps, notes, and the images and files its body carries), not the card's run prompt, so a card whose own prompt is blank does not block it.
+- Everything that filters is in the left rail: the calendar, by date, by time untouched, priority, state, the agenda, and the deleted. Each row carries its number, 0 included.
+- Delete has an undo, and what you deleted sits under "deleted" for 30 days — recoverable, or erased for good.
+- Three independent times: start, target, deadline. Only a missed deadline turns a row red, and that row reads **Past due**; a slipped target reads **behind** — a broken promise and a moved plan are not the same thing.
+- Three details that are easy to miss: **the date boxes understand plain words** (`@tomorrow`, `10月15日`, `2026-10-15`, `+3`, `Wed`), and a spelling it cannot read is taught back to you rather than silently dropped; **the height of the body and notes boxes is yours** — grab anywhere along the bottom edge and it remembers; and on a phone the five columns become a horizontal track with nothing missing.
 
-- The data lives on this machine under `~/.dsh/storages/dsh_task_board/`, human-readable. Moving machines is a copy of that directory.
-- Your phone opens the same data. It works offline and catches up when the connection returns.
+### Automation, several devices, and the AI doors
+
+- **Schedules** that fire on a timetable or chain onto completion.
+- **Rules** that send a session an instruction on the same triggers; the instruction can carry images and files, and the row says how many it holds.
+- **Auto-cruise**: one switch in the board header, with a cap on how many run at once and the hours they may run in.
+- Your phone opens the same data, and changes sync live. It works offline and catches up when the connection returns.
 - `/task` hands your sentence to the current session's model. `/task-continue` asks it to pick up where it left off.
+- Keyboard: `A` new, `J`/`K` move, `X` multi-select, `1`–`4` priority, `E` rename, `⌘Z` undo, `Esc` closes one layer.
 
 **What the words on a card mean.**
 The five columns are **Backlog / To do / In progress / In Review / Done**. They all read

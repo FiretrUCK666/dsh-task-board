@@ -210,13 +210,13 @@ const notes = []
  * injected at all — a contract nobody reads is the failure this ceiling exists
  * to make loud.
  *
- * It sits where it does because the governing section at the top of the file is
- * the owner's own text and is not compressible, so everything else has to fit in
- * what is left. That is what a gated number is for: the margin is small enough
- * that the next addition has to cut something first, and large enough that the
- * section which outranks the budget is not itself the thing being trimmed.
+ * It sits where it does because two blocks of the file are not compressible —
+ * the governing section at the top and the hard rules, both the owner's own text
+ * — so everything else has to fit in what is left. That is what a gated number is
+ * for: the margin is a few dozen bytes, so the next addition has to cut
+ * something first rather than quietly widen the budget.
  */
-const AGENTS_CEILING_BYTES = 62_000
+const AGENTS_CEILING_BYTES = 56_000
 
 /**
  * The repository root holds EXACTLY the files it declares, and nothing else.
@@ -246,6 +246,31 @@ const ROOT_ALLOWED = new Set([
     .map(entry => entry.name)
   if (stray.length > 0) {
     failures.push(`the repository root carries files it does not declare: ${stray.join(', ')}`)
+  }
+}
+
+/**
+ * Directories are declared too, and this is the same rule one level up: the
+ * file check above only looks at files, so a whole unlisted DIRECTORY could sit
+ * at the root with anything inside it and no check would say a word. That is not
+ * hypothetical — the design-round scratch directory that DESIGN.md used to cite
+ * lived at the root for months with nothing watching it, and every citation of it
+ * was a dead path by the time anyone looked.
+ *
+ * The gitignored ones (`.git`, `node_modules`, and the per-machine scratch) are
+ * on the list because they are legitimately present in a working tree and absent
+ * in a clone; a declaration covers both.
+ */
+const ROOT_DIRS_ALLOWED = new Set([
+  '.agent-teams', '.design', '.git', '.github', '.impeccable',
+  'build', 'lib', 'locale', 'node_modules', 'scripts', 'src', 'tests',
+])
+{
+  const stray = readdirSync(root, { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && !ROOT_DIRS_ALLOWED.has(entry.name))
+    .map(entry => entry.name)
+  if (stray.length > 0) {
+    failures.push(`the repository root carries directories it does not declare: ${stray.join(', ')} — declare one in ROOT_DIRS_ALLOWED with the reason it belongs there, or remove it`)
   }
 }
 
