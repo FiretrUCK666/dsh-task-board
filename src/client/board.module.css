@@ -6671,7 +6671,6 @@
   }
 
   .boardRowNav .boardNewTask {
-    grid-area: new;
     justify-self: end;
   }
 
@@ -7099,6 +7098,11 @@
   .autoTaskExpand,
   .sessionContextHead,
   .thumbNew > *,
+  /* The conversation's tool card. It is the fourth product surface and lives
+     outside every panel, so nothing in this file was written with it in mind —
+     and its only control was 24px tall with no ring. It sits alone on its own
+     line inside the card, so a 7px ring cannot reach a neighbour. */
+  .toolCardMore,
   .thumbBarButton {
     position: relative;
   }

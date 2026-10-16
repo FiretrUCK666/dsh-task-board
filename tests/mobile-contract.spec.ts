@@ -550,7 +550,16 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*grid-area:\s*title/)
     expect(compact).toMatch(/\.boardRowNav \.boardState\s*\{[^}]*grid-area:\s*state/)
     expect(compact).toMatch(/\.boardRowNav \.cruiseWrap\s*\{[^}]*grid-area:\s*cruise/)
-    expect(compact).toMatch(/\.boardRowNav \.boardNewTask\s*\{[^}]*grid-area:\s*new/)
+    // 新建 has NO area here, and this assertion used to claim it had one. The
+    // compact template declares `back` / `title` / `cruise` / `state` — there is no
+    // `new` — so `grid-area: new` could never apply, and the element is `display:
+    // none` in this band anyway because it relocated to the thumb bar. Pinning a
+    // dead declaration as if it were the contract is the same shape as pinning a
+    // hidden label: the test passes, and it is describing something that does not
+    // happen. The real contract is the RELOCATION.
+    expect(compact).not.toMatch(/\.boardRowNav \.boardNewTask\s*\{[^}]*grid-area/)
+    expect(compact).toMatch(/\.boardNewTask\s*\{\s*\n?\s*display:\s*none/)
+    expect(compact).toMatch(/\.thumbBar\s*\{[^}]*display:\s*flex/)
     // Hierarchy is AREAS, never `order` + auto margins (auto margin right-aligns
     // whichever item happens to START a wrapped line, so a wrap scatters it).
     expect(compact).not.toMatch(/margin-left:\s*auto/)
