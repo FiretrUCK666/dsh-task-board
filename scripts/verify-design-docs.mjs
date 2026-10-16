@@ -295,6 +295,44 @@ if (process.argv.includes('--probe-binding')) {
 // whole difficulty of this check is that a SHARED name is legitimate, and a
 // checker that reports shared names would be worse than none — it would force
 // authors to rename classes that are working correctly.
+if (process.argv.includes('--probe-dataattrs')) {
+  const A = 'src/client/board/Thing.tsx'
+  const B = 'src/client/board.module.css'
+  const cases = [
+    // The failure: set on every render, read by nothing.
+    ['an attribute read by nothing is reported',
+      [[A, '<div data-ghost={x}>']], ['data-ghost']],
+    // Read by a SELECTOR — the normal case.
+    ['an attribute a sheet selects on is not reported',
+      [[A, '<div data-open={x}>'], [B, '.row[data-open] { color: red }']], []],
+    // Read by a query in the same file — the occurrence is not a write.
+    ['an attribute queried in the same file is not reported',
+      [[A, '<div data-mark="">\nconst el = root.querySelector("[data-mark]")']], []],
+    // Read by a TEST — the reason the walk covers tests too.
+    ['an attribute only a test reads is not reported',
+      [[A, '<div data-mark="">'], ['tests/x.spec.ts', 'expect(root.querySelector("[data-mark]")).toBeTruthy()']], []],
+    // Our own subtree marks are exempt by convention.
+    ['the plugin subtree marks are exempt',
+      [[A, '<div data-dsh-taskboard-view="">']], []],
+    // CONSERVATIVE: a prose mention counts as read, so this one is missed rather
+    // than reported. That is the direction the check errs in, on purpose.
+    ['a prose mention clears it, and that is deliberate',
+      [[A, '<div data-ghost={x}>\n// the data-ghost state']], []],
+  ]
+  const wrong = []
+  for (const [what, files, expected] of cases) {
+    const got = orphanDataAttrs(files).map(o => o.name)
+    if (got.join(',') !== expected.join(',')) wrong.push(`${what}: expected [${expected}], got [${got}]`)
+  }
+  if (wrong.length > 0) {
+    for (const line of wrong) console.error(`probe: ${line}`)
+    console.error('verify-design-docs probe FAILED: the data-hook reader does not bite')
+    process.exit(1)
+  }
+  console.log(`verify-design-docs data-hook probe OK: ${cases.length} planted file set(s) read as expected (an attribute with no reader is reported; one read by a selector, a query, a test or a prose mention is not, and the plugin subtree marks are exempt)`)
+  process.exit(0)
+}
+
 if (process.argv.includes('--probe-dupes')) {
   const A = 'src/client/board.module.css'
   const B = 'src/client/item/item.module.css'
@@ -891,6 +929,56 @@ function duplicateBodies(sheets, minDeclarations = 4) {
   return out
 }
 
+/**
+ * Which `data-*` hooks are written and read by nothing?
+ *
+ * PURE, and separated from the walk for the same reason the others are: the probe
+ * plants files and asserts the judgement (hard rule 16).
+ *
+ * CONSERVATIVE BY DESIGN. A name counts as read if it appears anywhere other than as
+ * a write — even inside a sentence — so an orphan that someone happens to mention in
+ * a comment is missed, and a live hook is never reported. The other direction is how
+ * a gate earns a reputation for crying wolf.
+ *
+ * @param files - [relative path, text] pairs, from `src/` and `tests/`.
+ * @returns the names that only ever appear as writes.
+ */
+function orphanDataAttrs(files) {
+  const WRITE = /(?:^|[\s{,'"`])(data-[a-z0-9-]+)\s*[=/>'"`]/g
+  /** How many times each name is WRITTEN, per file. */
+  const writesIn = new Map()
+  /** How many times each name appears at all, per file — write or read. */
+  const allIn = new Map()
+  for (const [rel, text] of files) {
+    for (const m of text.matchAll(WRITE)) {
+      if (!writesIn.has(m[1])) writesIn.set(m[1], new Map())
+      const per = writesIn.get(m[1])
+      per.set(rel, (per.get(rel) ?? 0) + 1)
+    }
+    for (const m of text.matchAll(/data-[a-z0-9-]+/g)) {
+      if (!allIn.has(m[0])) allIn.set(m[0], new Map())
+      const per = allIn.get(m[0])
+      per.set(rel, (per.get(rel) ?? 0) + 1)
+    }
+  }
+  const out = []
+  for (const [name, writes] of writesIn) {
+    /* The plugin's own subtree marks. They are read by JavaScript and by tests rather
+       than by selectors, and the prefix is the plugin id — which is why the first
+       version's `data-dsh-tb-` exemption matched none of them. */
+    if (name.startsWith('data-dsh-taskboard-')) continue
+    /* READ means: the name occurs more times than it is written. Counting beats
+       looking at the next character, because a space after the name is both a bare
+       JSX attribute and a word in a sentence. */
+    let read = false
+    for (const [rel, total] of allIn.get(name) ?? []) {
+      if (total > (writes.get(rel) ?? 0)) { read = true; break }
+    }
+    if (!read) out.push({ name, sheets: [...writes.keys()] })
+  }
+  return out
+}
+
 // --- check 5c: a sheet's SELECTOR may only name its own classes ----------------
 // The class-drift check above answers "does this name exist somewhere". This one
 // answers the question that actually bit twice: **does it exist in THIS sheet.**
@@ -977,6 +1065,31 @@ const PER_SHEET_FORMS = [
     failures.push(`${dupe.sheets.join(' + ')}: the same ${dupe.body.split(';').length}-declaration rule body is declared in more than one sheet — ${where}. Two copies of one form drift the first time someone changes one of them, and the screen says nothing. Keep one, and let the other compose it.`)
   }
   notes.push(`shared forms: ${sheets.length} sheet(s) checked, ${dupes.length} rule body(ies) declared in more than one, ${excused.length} excused with a reason`)
+}
+
+// --- check 5e: a data hook must have a reader ---------------------------------
+{
+  const read2 = (dir) => {
+    const base = join(root, dir)
+    if (!existsSync(base)) return []
+    const found = []
+    const walk = (d) => {
+      for (const entry of readdirSync(d, { withFileTypes: true })) {
+        const p = join(d, entry.name)
+        if (entry.isDirectory()) walk(p)
+        else if (/\.(?:tsx?|module\.css)$/.test(entry.name)) found.push([relative(root, p).split(sep).join('/'), readFileSync(p, 'utf8')])
+      }
+    }
+    walk(base)
+    return found
+  }
+  // WRITES come from src/ only: a spec may read a hook, it does not declare one.
+  const files = [...read2('src'), ...read2('tests')]
+  const orphans = orphanDataAttrs(files).filter(o => o.sheets.every(f => f.startsWith('src/')))
+  for (const orphan of orphans) {
+    failures.push(`${orphan.sheets.join(', ')}: ${orphan.name} is written on every render and read by nothing — not by a selector, not by a query, not by a test. It is inert, which is exactly why it misleads: the next reader preserves it out of caution. Delete it, or give it a reader.`)
+  }
+  notes.push(`data hooks: ${files.length} file(s) scanned, ${orphans.length} attribute(s) written with no reader`)
 }
 
 // --- check 6: no snapshot values in the docs ---------------------------------
