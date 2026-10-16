@@ -1381,7 +1381,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                 {stateParts.length > 0 && (
                   <span className={css.boardStatus}>
                     <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={css.boardStatusText}>{stateParts.join(' · ')}</span>
+                    <span className={components.truncate}>{stateParts.join(' · ')}</span>
                   </span>
                 )}
                 {/* The flow numbers, in their OWN slot so the instant facts above are
@@ -1392,7 +1392,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                     what is happening now. */}
                 {showFlow && (
                   <span className={css.boardStatus} title={t('board.flowStatsTitle')}>
-                    <span className={css.boardStatusText}>{t('board.flowStats', { parts: flowParts.join(' · ') })}</span>
+                    <span className={components.truncate}>{t('board.flowStats', { parts: flowParts.join(' · ') })}</span>
                   </span>
                 )}
                 {/* The page or the server runs an older version — and WHICH one it is
@@ -1413,7 +1413,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                     onClick={() => { reloadForFreshBundle() }}
                   >
                     <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={css.boardStatusText}>
+                    <span className={components.truncate}>
                       {t(hostOld ? 'board.bundleStaleHostOld' : 'board.bundleStale', {
                         c: freshnessView?.bundled ?? '',
                         s: freshnessView?.host ?? '',
@@ -1429,7 +1429,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                     onClick={() => { setEngineNote('stale') }}
                   >
                     <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={css.boardStatusText}>{t('board.engineStale')}</span>
+                    <span className={components.truncate}>{t('board.engineStale')}</span>
                   </button>
                 )}
                 {engineViewer && (
@@ -1439,7 +1439,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                     onClick={() => { setEngineNote('viewer') }}
                   >
                     <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={css.boardStatusText}>{t('board.engineViewer')}</span>
+                    <span className={components.truncate}>{t('board.engineViewer')}</span>
                   </button>
                 )}
               </span>

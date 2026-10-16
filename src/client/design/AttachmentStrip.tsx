@@ -13,22 +13,32 @@
  * line names the failed file — nothing is ever silently dropped. One grammar
  * everywhere, and the chips are the same whether the row is a card, a comment or
  * a checklist line.
+ *
+ * IT BELONGS TO THE DESIGN SYSTEM because five hosts in two panels render it —
+ * the chip grammar has one home, and a second copy would drift the first time a
+ * chip changed shape. Nothing here knows what a ledger IS: the chips it draws
+ * are the shape it declares itself (id, name, bytes), so the design system
+ * depends on no page, and the busy line — which names the LEDGER's state — stays
+ * with the ledger (see `attachBusyLabel` in `board/composer-attachments.ts`).
  */
 import { useRef } from 'react'
 import { t } from '../locales.ts'
-import css from '../board.module.css'
-import { Icon } from '../design/ui.tsx'
-import type { DraftAttachment } from './composer-attachments.ts'
-import type { IntakeBusyKind } from './composer-attachments.ts'
+import css from './components.module.css'
+import { Icon } from './ui.tsx'
 
 /**
- * The busy line for an in-flight intake, named by WHAT is in flight (never
- * the settled ledger — a file being admitted is not in the ledger yet).
+ * One chip as this component draws it: what to show, and which entry to hand
+ * back when it is removed. Deliberately a SHAPE rather than the ledger's own
+ * record — `DraftAttachment` satisfies it, and any caller with the same three
+ * fields needs nothing more.
  */
-export function attachBusyLabel(kind: IntakeBusyKind | undefined): string {
-  if (kind === 'file') return t('review.attachFileBusy')
-  if (kind === 'mixed') return t('review.attachWorking')
-  return t('review.attachBusy')
+export interface AttachmentChip {
+  /** The ledger's local key for this entry (removal names it). */
+  readonly id: string
+  /** The file's name, as chosen. */
+  readonly name: string
+  /** Its size in bytes. */
+  readonly bytes: number
 }
 
 /** Format a byte count compactly (B/KB/MB, one decimal under 100). */
@@ -43,8 +53,8 @@ export function formatBytes(bytes: number): string {
 }
 
 export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error, hint }: {
-  /** The ledger, in the order the reader added it. */
-  attachments: readonly DraftAttachment[]
+  /** The chips, in the order the reader added them. */
+  attachments: readonly AttachmentChip[]
   /** Intake picked files (the hook compresses + admits + validates). */
   onAdd: (files: FileList | File[]) => void
   onRemove: (id: string) => void
@@ -91,7 +101,7 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
                 the chip grammar: text truncates, the remove button never
                 shrinks. A raw text child of an inline-flex chip would clip
                 without an ellipsis (text-overflow needs a block box). */}
-            <span className={css.attachChipName}>{attachment.name}</span>
+            <span className={css.truncate}>{attachment.name}</span>
             <span className={css.attachChipMeta}>{formatBytes(attachment.bytes)}</span>
             <button
               type="button"
@@ -105,7 +115,7 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
         ))}
       </div>
       {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
-      {error !== undefined && error !== '' && <span className={css.attachError}>{error}</span>}
+      {error !== undefined && error !== '' && <span className={css.errorLine}>{error}</span>}
       {hint !== undefined && hint !== '' && <span className={css.attachHint}>{hint}</span>}
     </div>
   )

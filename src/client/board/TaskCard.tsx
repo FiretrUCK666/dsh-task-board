@@ -18,6 +18,7 @@ import { Chip } from '../design/Chip.tsx'
 import { resultChipKind, waitingKeyOf } from './session-chip.ts'
 import { STATUS_KEY } from './status.ts'
 import { ColorSwatches, Icon } from '../design/ui.tsx'
+import components from '../design/components.module.css'
 import { formatDateTime, formatTime } from './format-time.ts'
 
 /** Tooltip for the schedule chip: THE one summary grammar (shared with the
@@ -283,7 +284,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
               title={sourceLabel}
             >
               <span className={css.cardWorkspaceDot} aria-hidden="true" />
-              <span className={css.cardWorkspaceName}>{sourceLabel}</span>
+              <span className={components.truncate}>{sourceLabel}</span>
             </span>
           )}
           <span

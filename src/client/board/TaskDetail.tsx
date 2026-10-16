@@ -124,7 +124,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
                 session title, then the optional workspace label — one row
                 skeleton for every session of a task. */}
             <Icon name="play" className={css.sessionRowIcon} />
-            <span className={css.sessionRowName}>{row.title}</span>
+            <span className={components.truncate}>{row.title}</span>
             {runWorkspace !== '' && runWorkspace !== row.title && (
               <span className={css.sessionRowWorkspace}>{runWorkspace}</span>
             )}
@@ -192,7 +192,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       leading={
         <span className={css.sessionRowLeading}>
           <Icon name="link" className={css.sessionRowIcon} />
-          <span className={css.sessionRowName} title={row.title}>{row.title}</span>
+          <span className={components.truncate} title={row.title}>{row.title}</span>
           {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
             <span className={css.sessionRowWorkspace}>{row.workspaceLabel}</span>
           )}

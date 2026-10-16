@@ -806,14 +806,22 @@
   .iconButton,
   .segmentedButton,
   .detailDisclosure,
+  .attachRemove,
   .tagCustomColor {
     position: relative;
   }
+
+  /* **`.attachAdd` 不在这张名单上，是量出来的一个决定。** 它住在 `.attachRow`（一条
+     横滚带）里：环向上向下各伸 7px，而那一行只有 24px 高——伸出去的那一圈在滚动口外，
+     **既不可点**（`elementFromPoint` 在按钮上下 4px、8px 处返回的是那一行自己），
+     又给这一行**凭空加出 6px 的竖向溢出**：手机上那枚「＋」右边一根竖条、下边一根横条，
+     桌面档一根都没有。留着它只有代价，没有那半寸热区。 */
 
   .buttonSm::before,
   .iconButton::before,
   .segmentedButton::before,
   .detailDisclosure::before,
+  .attachRemove::before,
   .tagCustomColor::before {
     content: '';
     position: absolute;
@@ -950,6 +958,217 @@ textarea.input {
 
 .inputInvalid:focus {
   border-color: var(--dsh-tb-danger);
+}
+
+/* ── THE COMPOSER'S ATTACHMENT STRIP ──────────────────────────────────────────
+ *
+ * Five hosts in two panels render it (the task form, the comment composers, a
+ * session rule's instruction, a checklist row's body), so the chip grammar has
+ * ONE home. Both halves of the shared browser lists that used to name these
+ * classes travel with them: the hidden bar below, and the touch ring in the
+ * media block further down.
+ */
+
+/* The composer attachment strip: a quiet add button, the removable chips, and the
+   sentences that explain them — ONE wrapping row (a dropped file highlights the
+   strip, then encodes). Width decides where the sentences land: enough room and a
+   sentence rides beside the chips; not enough and it moves to its own line. */
+.attachStrip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  /* **这一条占满给它的那一格。** 五处宿主里四处的父级是块或列向 flex，块级子元素本来就
+     铺满；清单详情那一处的父级 `.itemAttachRow` 是**行向** flex，于是这一条会按内容收缩
+     到「＋ 加一整句」的宽度（量到过：列宽 736 而它只有 222）——宽度一旦由内容决定，
+     下面那条地板就永远够不着，句子只好自己换行，而它的换行**不是宽度不够，是没人把宽度
+     给它**。铺满之后，谁跟谁同排由宽度自己回答。 */
+  inline-size: 100%;
+  min-inline-size: 0;
+}
+
+/* ── 芯片那一行：一条横向滚动的行 ───────────────────────────────────────────────
+   ONE line that scrolls sideways, never wraps: a wrapped second line collides with
+   the send row under the keyboard. One line keeps the composer compact so the send
+   row stays visible; every chip (and its remove button) stays reachable by scrolling.
+
+   **它只装芯片。** 那几句话（正在传 / 这一台收不了 / 这一条带的附件是什么）一起排在这一行
+   旁边，而**它们各自带着一条宽度地板**（`.attachHint` 的 `min-inline-size`）：地板装得下就
+   同排，装不下就**整句换到下一行**。句子与芯片曾经一起被压过——窄屏上 24px 的「＋」与两枚
+   芯片把它挤到只剩一个字宽，**竖着排成一列**（412 上量到过：句子变成「随/这/一/条/保/存…」）。
+   所以这里给的是**让位**：挤不动地板，就换行，不许压扁。
+
+   **它不长大。** `flex: 0 1 auto`：这一行的宽就是它装的东西的宽。写成 `flex: 1 1 auto` 时它
+   会吃掉整行剩下的空位，于是句子被推到那一行的**最右边**——量到过：736 宽的一格里，装了
+   24px 的「＋」，而句子落在离它 440px 远的右端。句子是来解释左边那几样东西的，站在 440px
+   之外它就不属于它们了。芯片多到装不下时这一行的**基准尺寸本来就是内容宽**（大于可用宽），
+   照样缩到整行并横滚——两种情形都是它该有的样子。 */
+.attachRow {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  /* **另一条轴显式关掉，不交给规范去猜。** 只写 `overflow-x: auto` 时另一轴的**计算值
+     会变成 `auto`**（规范如此，浏览器里量到 computed `overflowY: auto`），于是任何越出
+     滚动口的东西都会多出一条可滚的轴——而这一行上正好站着一枚触屏热区环
+     （`::before` 伸出 7px，只在 `(hover: none) and (pointer: coarse)` 里生成）。量过的
+     结果：同一页同一 DOM，只把指针能力切成触屏，这一行多出 6px 竖向溢出，手机上那枚
+     「＋」旁边同时出现一根竖条与一根横条，桌面档什么都没有。 */
+  overflow-y: hidden;
+  min-height: 24px;
+  min-inline-size: 0;
+}
+
+.attachAdd {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 24px;
+  height: 24px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-sunken);
+  border: 1px solid var(--dsw-alias-border-l2);
+  /* Round icon button (same family as .iconButton/.cardQuickRun 999px) —
+     sm read square. */
+  border-radius: var(--dsh-tb-pill);
+  cursor: pointer;
+}
+
+
+.attachAdd:hover {
+  background: var(--dsh-tb-hover);
+  color: var(--dsh-tb-text-1);
+}
+
+
+.attachChip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-2);
+  flex: none;
+  max-width: 180px;
+  font-size: 12px;
+  color: var(--dsh-tb-text-2);
+  background: var(--dsh-tb-surface-float);
+  border: 1px solid var(--dsw-alias-border-l2);
+  /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
+  border-radius: var(--dsh-tb-pill);
+  /* **定高这条**在这枚芯片上量出来是**更差**的一版：`block-size: 22px` 之后它的名牌与
+     记号差了 0.7px（改前 0.5）——这一枚里最高的一件是那枚 16px 的移除按钮，块向内衬一收，
+     行盒与按钮的居中就不再是同一件事。所以这一枚保留**行盒派生的高度**，也不加「槽」：
+     它是**两串字**（名牌 12px + 字节数 11px），而给其中一串裁墨只会把并集的墨心挪走
+     （量过：加槽 0.7，不加 0.5）。两串字要的是**共享一条基线**，那是 `.itemGroupText` 那一族
+     的形状，属于还没做的一步——记在这里，不猜。 */
+  padding: 2px 6px 2px 8px;
+  /* **这里不许写 `overflow: hidden`。** 它当年是为了「芯片不长胖」而写的，而收窄那件事由
+     两个成员各自负责：`.attachChipName`（`min-width: 0` + 省略号）与 `.attachChipMeta`
+     （`flex: none`）。留在这里的代价是它把**后代的热区环一起裁掉**：触屏时 `.attachRemove`
+     那一圈伸到这枚芯片外面，于是那枚 16px 的「移除」在手机上**点不到**（量到过：
+     `outBy 5`，裁剪者就是这枚芯片）。去掉它，环落在芯片里，那一圈才真的算热区。 */
+  white-space: nowrap;
+}
+
+/* The chip's text is its own truncation item (the chip two-slot grammar):
+   ellipsis engages on a block box — a raw text child of the inline-flex
+   chip would hard-clip instead. */
+/* ── THE TRUNCATION FORM ─────────────────────────────────────────────────────
+ *
+ * One home for 「一个会省略的文字子槽」: a text slot that may be narrower than its
+ * text, ellipsizing instead of spilling. The board's sheet used to carry this
+ * same four-declaration body three times (the board status text, a card's
+ * workspace name, a session row's title) and the chip below carried a fourth —
+ * four copies of one form, which is the drift the shared-forms audit exists to
+ * catch. They all apply THIS class now, and the one obligation it states is the
+ * one every caller has to honour: **the element must be allowed to shrink**
+ * (`min-width: 0`), because an ellipsis that never engages is not a truncation,
+ * it is a spill.
+ */
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The file chip's byte size: quiet meta beside the name, never truncated
+   itself (the name yields first). */
+.attachChipMeta {
+  flex: none;
+  font-size: 11px;
+  color: var(--dsh-tb-text-2);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+
+
+
+
+.attachRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 16px;
+  height: 16px;
+  color: var(--dsh-tb-text-2);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+
+.attachRemove:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+
+.attachHint {
+  /* 与芯片同排，但**有一条宽度地板**：地板装得下就跟着芯片走，装不下就整句换到下一行
+     （`min(22em, 100%)` 是「地板 + 让位」——容器自己比地板还窄时，地板退到容器宽而不是
+     溢出去）。22em 在 12px 下是 264px：低于它，中文会被压成一列单字（那件事 412 上真的
+     发生过），高于它，整句还能一次读完。 */
+  flex: 0 1 auto;
+  min-inline-size: min(22em, 100%);
+  font-size: 12px;
+  /* Tier 2: this line states the SIZE LIMIT the user must respect to send a
+     file ("图片 2.5M 自保"). Getting it wrong costs a failed upload, so it is
+     instruction rather than disposable meta — see .cruiseStateLine. */
+  color: var(--dsh-tb-text-2);
+}
+
+/* The one-line error form for a WRAPPING FLEX ROW: a rejection is named OUT LOUD
+   (the silent drop that read as 「电脑端发不了图」) on a line of its own
+   (`flex: 1 1 100%`) so it never squeezes the controls beside it, and it wraps
+   anywhere so a long path cannot paint outside the box. Two surfaces use it
+   today — the attachment strip and the goal strip — and the second one applies
+   this class instead of copying the five declarations into its own sheet. */
+.errorLine {
+  flex: 1 1 100%;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--dsh-tb-danger);
+  overflow-wrap: anywhere;
+}
+
+/* The chip row scrolls sideways and paints no bar — the same hidden-bar grammar
+   as `.modalBackdrop` above, and on the list for a measured reason rather than
+   tidiness. */
+/* `.attachRow` 为什么在这张名单上（而不是画一条统一的细条）：**它这条行装不下一条条。**
+   芯片是 22px 高，而行是 24px，一条经典的 8px 横条会把滚动口的高度压到 16px——比芯片还矮，
+   于是块向也变成可滚的，读者看到的就是两根条（手机上真的量到过这一对）。这一行是触屏优先
+   的横滚带，横滚靠拖动、触控板与滚轮；条不画。 */
+
+.attachRow {
+  scrollbar-width: none;
+}
+
+.attachRow::-webkit-scrollbar {
+  display: none;
 }
 
 /* 16px input text stops iOS/Android auto-zoom on focus. The design system's own

@@ -524,8 +524,13 @@ describe('board header and navigator legibility', () => {
     // not, which is why it is the only one that needed the guard.
     const status = ruleOfPresent('boardStatus')
     expect(status).not.toMatch(/overflow:\s*hidden/)
-    expect(ruleOf('boardStatusText')).toMatch(/overflow:\s*hidden/)
-    expect(ruleOf('boardStatusText')).toMatch(/text-overflow:\s*ellipsis/)
+    // 省略号形态只有一处家（设计系统的 `.truncate`，四个文字子槽共用）。这里断言的那
+    // 两句说的是**这个形态**能省略，第三句说的是状态行**应用**了它——读结构，不读字样。
+    const ellipsis = ruleOfPresent('truncate')
+    expect(ellipsis).toMatch(/overflow:\s*hidden/)
+    expect(ellipsis).toMatch(/text-overflow:\s*ellipsis/)
+    const boardTsx = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(boardTsx, '状态行没有应用省略号那一类').toMatch(/components\.truncate\}/)
   })
 
   it('the compact board header is a DETERMINISTIC split (never a wrap soup)', () => {
@@ -940,7 +945,6 @@ describe('session row overlap fix', () => {
     expect(leading).toMatch(/grid-template-areas:[\s\S]*"icon name"/)
     expect(leading).toMatch(/"workspace workspace"/)
     expect(compact).toMatch(/\.sessionRowLeading \.sessionRowWorkspace\s*\{[^}]*justify-self:\s*start/)
-    expect(compact).not.toMatch(/\.sessionRowLeading \.sessionRowName\s*\{[^}]*flex:\s*1 1 100%/)
   })
 
   it('no row-level unread BADGE — the marker machinery is gone (the glow is a separate mechanism)', () => {
@@ -1253,7 +1257,7 @@ describe('composer under the soft keyboard (no row overlap)', () => {
     const hint = ruleOf('attachHint')
     expect(hint, '那句说明没有宽度地板——它又会被压成一个字一行的竖条').toMatch(/min-inline-size:\s*min\(/)
     // 结构那一半：那两个句子必须是 `.attachStrip` 的**直接子级**，不在 `.attachRow` 里。
-    const tsx = readFileSync(fileURLToPath(new URL('../src/client/board/AttachmentStrip.tsx', import.meta.url)), 'utf8')
+    const tsx = readFileSync(fileURLToPath(new URL('../src/client/design/AttachmentStrip.tsx', import.meta.url)), 'utf8')
     const rowBlock = /<div className=\{css\.attachRow\}>([\s\S]*?)\n {6}<\/div>/.exec(tsx)?.[1] ?? ''
     expect(rowBlock, '找不到 `.attachRow` 那一段——这个检查扫不到东西').toContain('attachChip')
     for (const line of ['attachHint', 'attachError']) {

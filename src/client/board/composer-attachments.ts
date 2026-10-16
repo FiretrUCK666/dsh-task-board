@@ -92,6 +92,21 @@ export function busyKindOf(images: number, files: number): IntakeBusyKind | unde
   return undefined
 }
 
+/**
+ * The busy line for an in-flight intake, named by WHAT is in flight (never the
+ * settled ledger — a file being admitted is not in the ledger yet).
+ *
+ * It lives HERE, with the kind it reads, rather than on the strip that renders
+ * it: the strip is the design system's (it draws chips and knows nothing about
+ * intakes), and this is the ledger's own vocabulary. Every host that renders the
+ * strip reads the label from the same place it reads `busyKind` from.
+ */
+export function attachBusyLabel(kind: IntakeBusyKind | undefined): string {
+  if (kind === 'file') return t('review.attachFileBusy')
+  if (kind === 'mixed') return t('review.attachWorking')
+  return t('review.attachBusy')
+}
+
 /** A composer draft that survives unmount: text + the refs it carries. */
 export interface CommentDraftSnapshot {
   text: string

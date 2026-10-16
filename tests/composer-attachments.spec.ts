@@ -9,9 +9,8 @@
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
-  busyKindOf, decodeCommentDraft, encodeCommentDraft, pickedHasFiles, rejectMessage,
+  attachBusyLabel, busyKindOf, decodeCommentDraft, encodeCommentDraft, pickedHasFiles, rejectMessage,
 } from '../src/client/board/composer-attachments.ts'
-import { attachBusyLabel } from '../src/client/board/AttachmentStrip.tsx'
 import { createAttachmentBridge } from '../src/client/index.ts'
 import type { ApiFace } from '../src/client/platform.ts'
 import type { AttachmentRef } from '../src/core/attachment.ts'

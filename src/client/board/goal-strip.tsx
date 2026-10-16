@@ -18,6 +18,7 @@ import type { BoardController } from '../../core/controller.ts'
 import type { GoalVerbResult, GoalVerbs } from '../../core/goal-verbs.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Chip } from '../design/Chip.tsx'
 import { Icon, IconButton } from '../design/ui.tsx'
 import type { SessionGoalView } from './use-interaction.ts'
@@ -122,7 +123,7 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
             <Icon name="close" />
           </IconButton>
         </span>
-        {actionError !== null && <span className={css.goalStripError}>{actionError}</span>}
+        {actionError !== null && <span className={components.errorLine}>{actionError}</span>}
       </div>
     )
   }
@@ -199,7 +200,7 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
       {phase === 'blocked' && goal.blockedReason !== undefined && (
         <p className={css.goalStripBlocked}>{goal.blockedReason.message}</p>
       )}
-      {actionError !== null && <span className={css.goalStripError}>{actionError}</span>}
+      {actionError !== null && <span className={components.errorLine}>{actionError}</span>}
     </div>
   )
 }

@@ -753,10 +753,14 @@ describe('card no-breakout CSS contract', () => {
     expect(expectRule('cardMetaRow')).toContain('min-width: 0')
     expect(expectRule('cardWorkspace')).toContain('min-width: 0')
 
-    // Workspace name: must be allowed to shrink so its ellipsis engages.
-    const name = expectRule('cardWorkspaceName')
-    expect(name).toContain('min-width: 0')
-    expect(name).toContain('text-overflow: ellipsis')
+    // Workspace name: it must ellipsize instead of spilling. 省略号形态只有一处家
+    // （设计系统的 `.truncate`，四个文字子槽共用），所以这里断言两件事：形态本身带着
+    // 省略号三件套，而这一处**应用**了它——第二句读的是结构，不是字样。
+    const ellipsis = expectRule('truncate')
+    expect(ellipsis).toContain('min-width: 0')
+    expect(ellipsis).toContain('text-overflow: ellipsis')
+    const cardTsx = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    expect(cardTsx, '卡片的工作区名没有应用省略号那一类').toMatch(/components\.truncate\}>\{sourceLabel\}/)
 
     // Updated-at label: shrinkable (never flex: none) so the ellipsis trio
     // engages instead of overflowing the card.

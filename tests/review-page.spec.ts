@@ -872,8 +872,14 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     const composer = readFileSync(composerPath, 'utf8')
     expect(composer).toMatch(/busyKind/)
     expect(composer).toMatch(/busyKindOf\(/)
-    const stripPath = fileURLToPath(new URL('../src/client/board/AttachmentStrip.tsx', import.meta.url))
-    expect(readFileSync(stripPath, 'utf8')).toMatch(/attachBusyLabel/)
+    // 标签与它读的那个类型同住一处：元件是设计系统的（它只画芯片），而"这一条在传什么"
+    // 是台账的词汇。这一对分开住，正是那条分界本身。
+    expect(composer).toMatch(/export function attachBusyLabel/)
+    const strip = readFileSync(fileURLToPath(new URL('../src/client/design/AttachmentStrip.tsx', import.meta.url)), 'utf8')
+    // 结构，不是字样（硬性规范 14）：元件可以在注释里**提到**那句话住在哪，但它不许
+    // **调用**台账的词汇，也不许 import 任何一页——那两条才是"设计系统不认识台账"。
+    expect(strip, '设计系统里的那一枚不该认识台账的忙闲').not.toMatch(/attachBusyLabel\(/)
+    expect(strip, '设计系统里的那一枚不该 import 页面').not.toMatch(/from '\.\.\/board\//)
     for (const name of ['session-panel.tsx', 'TaskForm.tsx']) {
       const caller = readFileSync(fileURLToPath(new URL(`../src/client/board/${name}`, import.meta.url)), 'utf8')
       expect(caller).toContain('attachBusyLabel(attachments.busyKind)')

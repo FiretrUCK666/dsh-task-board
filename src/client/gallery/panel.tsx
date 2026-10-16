@@ -37,6 +37,7 @@ import components from '../design/components.module.css'
 import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
+import { AttachmentStrip, type AttachmentChip } from '../design/AttachmentStrip.tsx'
 import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
@@ -160,6 +161,12 @@ export function DesignGallery() {
   const [segment, setSegment] = useState('one')
   const [steer, setSteer] = useState(false)
   const [swatch, setSwatch] = useState<string | undefined>(PALETTE[0])
+  // The attachment strip is shown with real chips so the removal key is the real
+  // one: a specimen whose × does nothing is a drawing of the component.
+  const [stripChips, setStripChips] = useState<readonly AttachmentChip[]>([
+    { id: 'specimen:0', name: 'screenshot.png', bytes: 842_113 },
+    { id: 'specimen:1', name: 'brief.pdf', bytes: 24_576 },
+  ])
 
   // The values are read AFTER mount, from the element they apply to. Reading
   // them from the stylesheet at build time would show the layer's own text
@@ -324,6 +331,29 @@ export function DesignGallery() {
               <p className={css.galleryLabel}>ColorSwatches</p>
               <div className={css.gallerySpecimenRow}>
                 <ColorSwatches value={swatch} onChange={setSwatch} />
+              </div>
+            </div>
+            {/* 附件条自成一个标本：**它的忙闲那句话不属于它**（那一句由台账按在传什么
+                给出来，见 `attachBusyLabel`），所以这里两行画的是同一件事的两半——读者
+                能删掉的那条，与正在传的那条。 */}
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>AttachmentStrip</p>
+              <div className={css.gallerySpecimenRow}>
+                <AttachmentStrip
+                  attachments={stripChips}
+                  onAdd={() => {}}
+                  onRemove={id => { setStripChips(chips => chips.filter(chip => chip.id !== id)) }}
+                  hint={t('auto.form.attachHint')}
+                />
+              </div>
+              <div className={css.gallerySpecimenRow}>
+                <AttachmentStrip
+                  attachments={[]}
+                  onAdd={() => {}}
+                  onRemove={() => {}}
+                  busy
+                  busyLabel={t('review.attachFileBusy')}
+                />
               </div>
             </div>
           </div>

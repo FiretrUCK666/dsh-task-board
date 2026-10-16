@@ -1,5 +1,6 @@
 /**
- * The two gates that turn 「共享件会自动出现在预览页」 from a hope into a check.
+ * The gates that turn 「共享件会自动出现在预览页」 and 「共享件有一个家」 from hopes
+ * into checks.
  *
  * AGENTS.md claimed the gallery covers a new shared component automatically. That
  * is true for the ENUMERATIONS — the page `map`s the exported lists, so a new
@@ -8,31 +9,54 @@
  * components were never previewed: `Disclosure`, `Segmented`, `SendModeToggle`,
  * `ColorSwatches`.
  *
- * So this checks the two properties that were only ever asserted in prose:
+ * So this checks the properties that were only ever asserted in prose:
  *
  *   1. EVERY exported component from `design/` is RENDERED on the preview page.
  *      A shared component nobody can see is one nobody will reuse, and the whole
  *      point of the page is that it is the design system's own surface.
  *   2. EVERY exported component is rendered by at least TWO consumer directories
- *      — the project's own admission rule for the design system. Two names are
- *      declared exceptions with their reasons, because moving them is a layering
- *      change with no user-visible effect and the honest record is better than a
- *      silent exemption.
+ *      — the project's own admission rule for the design system.
+ *   3. ADMISSION, the other direction: a component that two PRODUCT SURFACES
+ *      render belongs in `design/` — or carries a written reason here for why it
+ *      cannot. The rule existed in AGENTS.md and nowhere else, so three
+ *      components shared across the board and the list panel sat in the board's
+ *      own directory with nothing saying whether that was a decision or a drift.
+ *      Two of them moved (`AttachmentStrip`, and the strip had to bring its CSS
+ *      with it); the run-config pair is excused below, with its reason.
+ *   4. LAYERING, which is what makes (3) a real home rather than a shelf: the
+ *      design system may not import a page. It may read the client root
+ *      (`locales.ts`) and `core/`; a page directory is one dependency away from
+ *      the design system depending on whichever panel rendered it.
  *
- * A third property is checked where it belongs rather than here: that the page's
+ * A fifth property is checked where it belongs rather than here: that the page's
  * LISTS are the definitions and not copies of them. The page `map`s the exported
  * arrays, so the shape is the guarantee — `gallery.spec.ts`'s older assertion on
  * `CHIP_KINDS` says less than its name promised, and the arrangement is what
  * actually holds.
  */
 import { readFileSync, readdirSync, statSync } from 'node:fs'
-import { join, relative } from 'node:path'
+import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const designDir = join(root, 'src', 'client', 'design')
 const galleryPath = join(root, 'src', 'client', 'gallery', 'panel.tsx')
+
+/**
+ * The shared component the design system cannot host, with the reason.
+ *
+ * NOT a silent exemption: every entry is printed on every run, and an entry that
+ * no longer needs its excuse is a failure below. Reasons are `DEBT:`-shaped for
+ * the same reason the action catalog's are — an honest debt is a decision, and a
+ * missing entry is indistinguishable from an oversight.
+ */
+const EXCUSED: Readonly<Record<string, string>> = {
+  RunConfigRows:
+    'It and `RunConfigFields` are one grammar (read the five rows / write the five selects) and the writing half needs a `BoardController` plus two board-owned editors, so hosting it here would make the design system import a page. Moving the READ half alone also moves its compact band, which lives in the board\'s `@container dsh-tb` today: no such container exists in the list panel, so the rule is dead there, and the design system\'s unnamed query would instead grow a NEW 680px band inside a list rail that is almost always narrower than that. That is a layout decision for that panel, not a side effect of a move.',
+  RunConfigFields:
+    'Same pair, same reason as `RunConfigRows`: it takes a `BoardController` and renders `RunConfigEditor` and `RunPresetManager`, both of which are board pages\' own. Hosting it here would point the design system at a page.',
+}
 
 /** Every `.tsx` under `src/client`, with its text. */
 function clientTsx(): { path: string; text: string }[] {
@@ -59,6 +83,15 @@ for (const f of files) {
   }
 }
 
+/** Every component DECLARED outside the design system, and where. */
+const declaredOutside = new Map<string, string>()
+for (const f of files) {
+  if (f.path.startsWith(designDir)) continue
+  for (const m of f.text.matchAll(/^export function ([A-Z]\w+)/gm)) {
+    if (!declaredOutside.has(m[1])) declaredOutside.set(m[1], relative(root, f.path).replace(/\\/g, '/'))
+  }
+}
+
 /** Every render site of one component: `file:line`. */
 function renderSites(name: string): string[] {
   const re = new RegExp(`<${name}[\\s/>]`, 'g')
@@ -74,18 +107,54 @@ function renderSites(name: string): string[] {
 }
 
 /**
- * Which PRODUCT surfaces render this component.
+ * A PRODUCT SURFACE: the top-level directory under `src/client` a file belongs
+ * to. Discovered rather than listed, so a fourth panel is covered the day its
+ * directory exists.
  *
- * `gallery/` is deliberately not counted here. It is a mirror of the design system,
- * not a consumer of it: counting it would let any component satisfy a sharing rule
- * by being added to the page that exists to show it — which is circular, and would
+ * `gallery/` is deliberately not one. It is a mirror of the design system, not a
+ * consumer of it: counting it would let any component satisfy a sharing rule by
+ * being added to the page that exists to show it — which is circular, and would
  * make this gate unable to see the thing it is for. (It bit immediately: adding
  * `ColorSwatches` to the preview page made the component look cross-surface.)
+ *
+ * ROOT FILES ARE NOT A SURFACE EITHER. `src/client/*.tsx` holds the two seat
+ * shells, each of which mounts one panel; a shell rendering a panel's component
+ * is that panel, not a second consumer of it.
  */
+function surfaceOf(site: string): string | undefined {
+  const rest = site.slice('src/client/'.length)
+  const parts = rest.split('/')
+  if (parts.length < 2) return undefined
+  const top = parts[0]
+  return top === 'gallery' || top === 'design' ? undefined : top
+}
+
+/** The product surfaces that render one component (empty when only `design/`). */
+function productSurfaces(name: string): Set<string> {
+  const out = new Set<string>()
+  for (const site of renderSites(name)) {
+    const surface = surfaceOf(site)
+    if (surface !== undefined) out.add(surface)
+  }
+  return out
+}
+
+/** Which PRODUCT surfaces render this component, by render-site directory. */
 function productDirs(name: string): Set<string> {
   return new Set(renderSites(name)
     .filter(site => !site.startsWith('src/client/gallery/'))
     .map(site => site.split('/').slice(0, -1).join('/')))
+}
+
+/**
+ * Every PAGE: the top-level directories under `src/client` other than the design
+ * system itself. Discovered, not listed — a new panel is a page the day its
+ * directory exists.
+ */
+function pageDirs(): Set<string> {
+  return new Set(readdirSync(join(root, 'src', 'client'), { withFileTypes: true })
+    .filter(entry => entry.isDirectory() && entry.name !== 'design')
+    .map(entry => entry.name))
 }
 
 /**
@@ -158,5 +227,42 @@ describe('the design system and its preview page stay in step', () => {
     expect(imported.length, 'no design components imported by the preview page').toBeGreaterThan(5)
     const unrendered = imported.filter(name => !new RegExp(`<${name}[\\s/>]`).test(gallery))
     expect(unrendered, `the preview page imports these and renders none of them: ${unrendered.join(', ')}`).toEqual([])
+  })
+
+  it('a component two panels render lives in design/ — or is excused with a reason', () => {
+    const shared: string[] = []
+    for (const [name, where] of declaredOutside) {
+      if (productSurfaces(name).size < 2) continue
+      if (EXCUSED[name] !== undefined) continue
+      shared.push(`${name} (${where}; rendered by ${[...productSurfaces(name)].sort().join(' + ')})`)
+    }
+    expect(shared, `these are declared outside design/ and two product surfaces render them — move them into design/ or record in this file why they cannot. Where a shared component lives is a decision, and an unrecorded one is indistinguishable from drift: ${shared.join('; ')}`)
+      .toEqual([])
+    const excused = Object.keys(EXCUSED).filter(name => productSurfaces(name).size >= 2).sort()
+    console.log(`design-coverage: shared across panels but outside design/, with a recorded reason: ${excused.length > 0 ? excused.join(', ') : 'none'}`)
+    // An excuse nobody needs any more is the same defect as a missing one: it
+    // keeps a decision that is no longer true in front of every reader.
+    const stale = Object.keys(EXCUSED).filter(name => !excused.includes(name))
+    expect(stale, `these carry an excuse they no longer need (they are not shared across two product surfaces any more, or they moved into design/): delete their entries`).toEqual([])
+  })
+
+  it('the design system never imports a page', () => {
+    // What makes `design/` a home rather than a shelf. A shared component that
+    // reads a page module depends on whichever panel happens to render it, which
+    // is the thing the four-layer split exists to prevent — and the dependency
+    // that has to be dragged along is how a "move it into design/" ends up moving
+    // half a page.
+    const pages = pageDirs()
+    const offenders: string[] = []
+    for (const f of files) {
+      if (!f.path.startsWith(designDir)) continue
+      for (const m of f.text.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+        const rel = relative(join(root, 'src', 'client'), resolve(dirname(f.path), m[1])).replace(/\\/g, '/')
+        const top = rel.split('/')[0] ?? ''
+        if (!pages.has(top)) continue
+        offenders.push(`${relative(root, f.path).replace(/\\/g, '/')} → ${m[1]}`)
+      }
+    }
+    expect(offenders, `the design system reaches into a page directory, so the shared component now depends on the panel that rendered it: ${offenders.join('; ')}`).toEqual([])
   })
 })

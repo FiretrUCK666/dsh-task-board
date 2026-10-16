@@ -33,6 +33,16 @@ export declare function refsOf(chips: readonly DraftAttachment[]): AttachmentRef
 export type IntakeBusyKind = 'image' | 'file' | 'mixed';
 /** Combine per-lane in-flight counts into one label kind (pure, tested). */
 export declare function busyKindOf(images: number, files: number): IntakeBusyKind | undefined;
+/**
+ * The busy line for an in-flight intake, named by WHAT is in flight (never the
+ * settled ledger — a file being admitted is not in the ledger yet).
+ *
+ * It lives HERE, with the kind it reads, rather than on the strip that renders
+ * it: the strip is the design system's (it draws chips and knows nothing about
+ * intakes), and this is the ledger's own vocabulary. Every host that renders the
+ * strip reads the label from the same place it reads `busyKind` from.
+ */
+export declare function attachBusyLabel(kind: IntakeBusyKind | undefined): string;
 /** A composer draft that survives unmount: text + the refs it carries. */
 export interface CommentDraftSnapshot {
     text: string;

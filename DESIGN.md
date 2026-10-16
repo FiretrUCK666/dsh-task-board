@@ -194,15 +194,24 @@ components:
 | --- | --- | --- |
 | 令牌 | `src/client/design/tokens.module.css` | 一个值被两处以上消费 |
 | 形态 | `src/client/design/base.module.css` | **至少两个表面消费它** |
-| 组件 | `src/client/design/<X>.tsx` + `design/components.module.css` | **至少两个消费者目录** |
+| 组件 | `src/client/design/<X>.tsx` + `design/components.module.css` | **至少两个消费者目录**；两个面板都渲染的**必须在这里** |
 | 页面 | `src/client/board/`、`src/client/item/`、`src/client/gallery/` | 只有这一页的几何与排版 |
 
 **一条规则两个家**：组件的类写在 `design/components.module.css`（`ui.tsx` / `Chip.tsx` /
-`Dialog.tsx` / `Field.tsx` 都从那里取），令牌写在 `tokens.module.css`，页面自己的几何留在页面
+`Dialog.tsx` / `Field.tsx` / `AttachmentStrip.tsx` 都从那里取），令牌写在 `tokens.module.css`，
+页面自己的几何留在页面
 表里。判定同上是**消费者目录数**，另有一种例外：**被搬走的东西依赖的模块跟着搬**——
 `escape-stack` / `dialog-focus` / `modal-inert` 留在原地会让 `design/` 反过来 `import` `board/`，
 层方向就反了，而方向比数量更硬。它们今天也**确实有了第二个消费者**（`design/Dialog.tsx` 各读一个，
 两个浮层与 `automation-ui` 也读），所以这条早已不只是例外。
+
+**三件事都由 `tests/design-coverage.spec.ts` 机械守着**（改这一层之前先读它）：每个导出的组件都要
+被预览、都要被至少两个文件渲染；**跨两个面板的元件必须在 `design/` 里**，除非它在那一份的豁免表
+里带着理由（理由过时即红）；**`design/` 不许 import 任何一页**——它只许读客户端根部的模块与
+`core/`。第三条是第二条能成立的原因：一个伸手去读某一页的元件，又变成了「哪一页渲染它」的函数。
+附件条是第二条的样板：五个宿主横跨两个面板，于是它整件（连同 CSS、连同它在那两张共享名单里的
+两半）搬进了设计系统，而**忙闲那句话没有跟着搬**——那是台账的词汇，留在
+`board/composer-attachments.ts`，与它读的那个类型同住一处。
 
 令牌层是**唯一**声明 `--dsh-tb-*` 的地方（`verify-palette.mjs` 按「谁声明了别名签名」定位它，
 而不是按文件名——所以它可以搬家而不弄坏门禁）。它里面是纯粹的别名：`--dsh-tb-bg` 读
