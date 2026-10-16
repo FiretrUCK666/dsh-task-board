@@ -211,8 +211,7 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
         role="menu"
         aria-label={t('item.menu.more')}
         tabIndex={-1}
-        data-placement={spot?.placement ?? 'below'}
-        style={spot === undefined ? undefined : { insetBlockStart: `${spot.top}px`, insetInlineStart: `${spot.left}px`, maxBlockSize: `${spot.maxBlockSize}px` }}
+              style={spot === undefined ? undefined : { insetBlockStart: `${spot.top}px`, insetInlineStart: `${spot.left}px`, maxBlockSize: `${spot.maxBlockSize}px` }}
         onKeyDown={event => {
           // Escape is handled HERE, on the menu, while focus is inside it. It is
           // not a document listener: that would fire for every overlay in the

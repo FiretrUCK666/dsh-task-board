@@ -6670,7 +6670,15 @@
     justify-self: end;
   }
 
+  /* `grid-area: new` LOOKS dead — the templates above declare `back` / `title` /
+     `cruise` / `state` and no `new` — and removing it MOVED the button onto its
+     own line, left-aligned, and pushed the tool row down. It is not dead: an area
+     name with no matching area creates IMPLICIT NAMED LINES, and the item is
+     placed against them. The element is `display: none` in this band (it lives in
+     the thumb bar), so nothing here is visible either way — but the declaration is
+     what keeps the implicit grid from re-flowing the row, and that IS visible. */
   .boardRowNav .boardNewTask {
+    grid-area: new;
     justify-self: end;
   }
 

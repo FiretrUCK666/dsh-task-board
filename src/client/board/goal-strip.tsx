@@ -87,7 +87,7 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
 
   if (editing) {
     return (
-      <div className={css.goalStrip} data-goal-strip="">
+      <div className={css.goalStrip}>
         <Input className={css.goalStripInput}
           type="text"
           aria-label={t('review.goalObjectiveAria')}
@@ -127,7 +127,7 @@ export function GoalStrip({ sessionId, controller, goal, activation }: {
     )
   }
   return (
-    <div className={css.goalStrip} data-goal-strip="">
+    <div className={css.goalStrip}>
       <div className={css.sessionContextRow}>
         <Chip fill={false} className={css.sessionContextGoalOn}>
           {phaseLabel(phase, activation)}

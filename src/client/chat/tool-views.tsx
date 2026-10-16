@@ -172,7 +172,7 @@ function ExecuteRow(props: ToolCallViewProps) {
   const visible = showAll ? reports : reports.slice(0, 3)
 
   return (
-    <div className={css.toolCard} data-ok={meta.ok ? '' : undefined} data-dry={rehearsing ? '' : undefined}>
+    <div className={css.toolCard} data-ok={meta.ok ? '' : undefined}>
       <p className={css.toolCardHeadline}>
         <Icon name={meta.ok ? 'checklist' : 'close'} className={css.toolCardIcon} />
         {rehearsing ? t('toolCard.rehearsed', { what: headline }) : headline}
