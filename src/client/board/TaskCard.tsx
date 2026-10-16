@@ -7,6 +7,7 @@
 import { useState, type CSSProperties } from 'react'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { cardSourceLabel, taskBindsOf } from '../../core/tasks.ts'
+import { availableCardKeys, BOARD_KEY_PHRASE, dispatchCardKey, type BoardCardKeyActions, type BoardCardState } from './keyboard.ts'
 import { t } from '../locales.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { PRIORITY_LABEL } from '../item/labels.ts'
@@ -131,6 +132,19 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
   // working AND unread wears the in-flight halo — never both, and never a
   // winner left to stylesheet order.
   const light = cardLightOf(view.active, view.unviewed)
+  /* What this card can actually do, and the handlers for exactly the actions
+     the map can name. The record is CLOSED: a name added to the table with no
+     handler here is a compile error, not a key that does nothing. */
+  const cardKeyState: BoardCardState = {
+    canStep: onMoveStep !== undefined,
+    canReorder: onReorder !== undefined,
+  }
+  const cardKeyActions: BoardCardKeyActions = {
+    open: () => { onClick(undefined as unknown as React.MouseEvent) },
+    stepColumn: direction => { onMoveStep?.(direction ?? 1) },
+    reorder: direction => { onReorder?.(direction ?? 1) },
+  }
+
   return (
     /* A card is a clickable REGION, never a <button>: the color swatches and
        the quick-run control inside are real interactive elements, and a
@@ -148,28 +162,12 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
       draggable
       onClick={onClick}
       onKeyDown={event => {
-        // Keyboard parity for the one interaction that would otherwise be mouse-only.
-        // `[` / `]` step the card one column along the SAME COLUMNS order the
-        // board renders, and the caller runs them through `resolveCardDrop` — so
-        // a key move can never take a path a drag could not refuse. Modifier
-        // combinations are left alone: Ctrl+[ and friends belong to the browser.
-        if (onMoveStep !== undefined && (event.key === '[' || event.key === ']')) {
-          if (event.ctrlKey || event.metaKey || event.altKey) return
-          event.preventDefault()
-          onMoveStep(event.key === ']' ? 1 : -1)
-          return
-        }
-        // Within a column, the same "one place" idea on Alt with the arrows.
-        if (onReorder !== undefined && (event.key === 'ArrowUp' || event.key === 'ArrowDown')
-          && event.altKey && !event.ctrlKey && !event.metaKey) {
-          event.preventDefault()
-          onReorder(event.key === 'ArrowDown' ? 1 : -1)
-          return
-        }
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault()
-          onClick(event as unknown as React.MouseEvent)
-        }
+        // THE MAP IS `board/keyboard.ts` — one table, one matcher, one place to
+        // read what a card answers to. `preventDefault` is called here rather
+        // than inside each branch because a React handler owns the event; the
+        // decision of WHICH key it was lives in the map, with the modifier
+        // guards as data, so a new binding cannot forget one.
+        if (dispatchCardKey(event, cardKeyState, cardKeyActions)) event.preventDefault()
       }}
       title={task.description !== '' ? task.description : task.title}
       onDragStart={event => {
@@ -209,14 +207,19 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
        * As a hidden span it is added to the name instead of replacing it: the
        * name now starts with everything the card actually says, and the keys stay
        * discoverable exactly as before — which is why the sentence is unchanged. */}
-      {onMoveStep !== undefined && (
-        <span className={css.srOnly}>
-          {t('card.keyboardLabel', {
-            title: titleOrUntitled(task.title, t('card.untitled')),
-            column: t(STATUS_KEY[task.status]),
-          })}
-        </span>
-      )}
+      {/* THE SENTENCE IS BUILT FROM THE MAP. Every key this card can honour is
+          named here, in the reader's ear, because a keyboard flow nobody is told
+          about is a keyboard flow nobody uses — and a hand-written sentence is a
+          second copy of the map that drifts the first time someone adds a key. */}
+      <span className={css.srOnly}>
+        {t('card.keyboardLabel', {
+          title: titleOrUntitled(task.title, t('card.untitled')),
+          column: t(STATUS_KEY[task.status]),
+          keys: availableCardKeys(cardKeyState)
+            .map(offer => t(BOARD_KEY_PHRASE[offer.action], { keys: offer.keys }))
+            .join('；'),
+        })}
+      </span>
       {onQuickRun !== undefined && (
         <span
           className={css.cardQuickRun}

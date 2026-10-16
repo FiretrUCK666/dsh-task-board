@@ -170,11 +170,6 @@ export declare function Disclosure({ title, summary, open, onToggle, children, c
      *  selector from another sheet is the failure this replaces. */
     headerClassName?: string;
 }): import("react").JSX.Element;
-/** The waiting notice: one neutral framed row + warn chip for every surface. */
-export declare function Notice({ chip, children }: {
-    chip: ReactNode;
-    children: ReactNode;
-}): import("react").JSX.Element;
 /**
  * Minimal inline-icon set (SVG glyphs live here once, sized explicitly so no
  * glyph can ever balloon to the SVG default 300x150 box). Every board icon

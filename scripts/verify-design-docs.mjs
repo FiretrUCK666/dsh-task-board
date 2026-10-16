@@ -619,10 +619,28 @@ function judgeReference(ref, classesOf, defined) {
   }
 
   const referenced = new Map()
+  /** The same references, keyed by (sheet, name) — a definition is dead only when
+   *  the sheet that DECLARES it has no reader for it. Keying by bare name let a
+   *  dead rule hide behind a same-named class in another sheet. */
+  const referencedBySheet = new Map()
+  const markReferenced = (ref) => {
+    if (ref.sheet !== undefined) {
+      if (!referencedBySheet.has(ref.sheet)) referencedBySheet.set(ref.sheet, new Set())
+      referencedBySheet.get(ref.sheet).add(ref.name)
+      return
+    }
+    // Unattributable (the `css` fallback): credit every sheet that declares it.
+    for (const [sheet, own] of classesOf) {
+      if (!own.has(ref.name)) continue
+      if (!referencedBySheet.has(sheet)) referencedBySheet.set(sheet, new Set())
+      referencedBySheet.get(sheet).add(ref.name)
+    }
+  }
   for (const f of tsxFiles) {
     const text = readFileSync(f, 'utf8')
     for (const ref of classReferences(text, f)) {
       const at = `${relative(root, f).split(sep).join('/')}:${ref.line}`
+      markReferenced(ref)
       const verdict = judgeReference(ref, classesOf, defined)
       if (verdict !== 'ok') {
         failures.push(verdict === 'foreign'
@@ -646,12 +664,37 @@ function judgeReference(ref, classesOf, defined) {
       failures.push(`${at.slice(0, cut)}: ${at.slice(cut + 1)}.${name} is not defined in any stylesheet — it resolves to undefined, so the element renders with no styling at all.`)
     }
   }
-  for (const name of defined) {
-    if (!referenced.has(name)) {
-      failures.push(`stylesheets: .${name} is defined but no component references it — a rule nobody dares delete. Remove it, or give it back its user.`)
+  // A SHEET READS ITS OWN CLASSES TOO, and the scan above cannot see it: it counts
+  // `css.<name>` from TypeScript. A class reached by another rule in the same sheet
+  // — a descendant, a state rule, an `:is()` list — is read, and calling it dead is
+  // a false positive that teaches the reader to ignore this check.
+  for (const sheet of classesOf.keys()) {
+    const css = stripCssComments(readFileSync(sheet, 'utf8'))
+    if (!referencedBySheet.has(sheet)) referencedBySheet.set(sheet, new Set())
+    const read = referencedBySheet.get(sheet)
+    // Every selector PRELUDE (what sits before a `{`), with the plain definition
+    // definition form subtracted: `.<name> {` alone is the definition, anything
+    // else that names it is a reader.
+    for (const m of css.matchAll(/(^|[};])([^{}]*)\{/g)) {
+      const prelude = m[2].trim()
+      if (prelude === '') continue
+      for (const name of new Set([...prelude.matchAll(/\.([a-zA-Z][\w-]*)/g)].map(x => x[1]))) {
+        if (prelude === `.${name}`) continue
+        read.add(name)
+      }
     }
   }
-  notes.push(`class drift: ${defined.size} classes defined, ${referenced.size} referenced, ${failures.length} drift finding(s) so far`)
+
+  let deadRules = 0
+  for (const [sheet, own] of classesOf) {
+    const read = referencedBySheet.get(sheet) ?? new Set()
+    for (const name of own) {
+      if (read.has(name)) continue
+      deadRules++
+      failures.push(`${relative(root, sheet).split(sep).join('/')}: .${name} is declared here and read by nothing that imports THIS sheet — a rule nobody dares delete. Remove it, or give it back its user.`)
+    }
+  }
+  notes.push(`class drift: ${defined.size} classes defined, ${referenced.size} referenced by bare name, ${deadRules} sheet-local rule(s) with no reader`)
 }
 
 // --- check 5b: a declared custom property must have a consumer ----------------

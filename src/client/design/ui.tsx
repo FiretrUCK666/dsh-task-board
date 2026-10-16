@@ -10,7 +10,6 @@ import { useId, type ReactNode } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import css from './components.module.css'
 import { t } from '../locales.ts'
-import { Chip } from './Chip.tsx'
 
 /** One button variant; shared rhythm everywhere. `dangerGhost` is the
  *  row-level destructive affordance (outline + danger text) — the filled
@@ -279,15 +278,6 @@ export function Disclosure({ title, summary, open, onToggle, children, className
   )
 }
 
-/** The waiting notice: one neutral framed row + warn chip for every surface. */
-export function Notice({ chip, children }: { chip: ReactNode; children: ReactNode }) {
-  return (
-    <div className={css.waitingNotice} role="status">
-      <Chip kind="warn" fill={false}>{chip}</Chip>
-      <span>{children}</span>
-    </div>
-  )
-}
 
 /**
  * Minimal inline-icon set (SVG glyphs live here once, sized explicitly so no

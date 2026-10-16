@@ -34,7 +34,7 @@ import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES } from './attach.ts'
 import { decodeCommentDraft, encodeCommentDraft, useComposerAttachments, type CommentDraftSnapshot, type DraftAttachment } from './composer-attachments.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
-import { Button, Disclosure, Notice, SendModeToggle } from '../design/ui.tsx'
+import { Button, Disclosure, SendModeToggle } from '../design/ui.tsx'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
 
@@ -219,6 +219,19 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
 }
 
 /** One waiting banner, shared by every session surface. */
+
+/** The waiting notice: one neutral framed row + a warn chip carrying the
+ *  semantics, so the banner is not a per-surface amber bar. It lived in the
+ *  design system until it turned out to have exactly one user — this file — and
+ *  one user is not sharing, so it lives beside the thing it draws. */
+function Notice({ chip, children }: { chip: ReactNode; children: ReactNode }) {
+  return (
+    <div className={css.waitingNotice} role="status">
+      <Chip kind="warn" fill={false}>{chip}</Chip>
+      <span>{children}</span>
+    </div>
+  )
+}
 export function SessionWaitingNotice({ waiting }: { waiting: PendingInteractionKind | undefined }) {
   if (waiting === undefined) return null
   return (

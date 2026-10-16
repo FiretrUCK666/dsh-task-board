@@ -31,7 +31,8 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import { ALL_STATUSES } from '../../core/tasks.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, Notice, type ButtonToggleVariant } from '../design/ui.tsx'
+import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, type ButtonToggleVariant } from '../design/ui.tsx'
+import { ColorSwatches, Disclosure, Segmented, SendModeToggle } from '../design/ui.tsx'
 import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
@@ -69,7 +70,7 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
   },
   {
     title: '墨色',
-    why: '三层，一个概念一层。禁用态用 opacity，不另开一个颜色。',
+    why: '文字两档，层次靠字重；第三档 3.7:1，只画记号（折角、圆点、环）。禁用态用 opacity，不另开一个颜色。',
     kind: 'color',
     names: ['--dsh-tb-text-1', '--dsh-tb-text-2', '--dsh-tb-text-3'],
   },
@@ -152,6 +153,12 @@ export function DesignGallery() {
   const [band, setBand] = useState<number | undefined>(undefined)
   const [dialogOpen, setDialogOpen] = useState(false)
   const [switchOn, setSwitchOn] = useState(true)
+  // The composed specimens below are live: a fold that cannot fold and a group
+  // that cannot change are pictures of the component, not the component.
+  const [foldOpen, setFoldOpen] = useState(true)
+  const [segment, setSegment] = useState('one')
+  const [steer, setSteer] = useState(false)
+  const [swatch, setSwatch] = useState<string | undefined>(PALETTE[0])
 
   // The values are read AFTER mount, from the element they apply to. Reading
   // them from the stylesheet at build time would show the layer's own text
@@ -283,6 +290,44 @@ export function DesignGallery() {
           </div>
         </Section>
 
+        {/* ── 组合件：四件由别的组件拼出来的共用件 ───────────────────────────
+            它们此前没有被预览过——组件标本是手写的，所以「加进设计系统」与
+            「出现在这一页」之间没有任何东西连着。现在 `tests/gallery.spec.ts`
+            数着这一条。每一格都渲染真件并且能用。 */}
+        <Section title={t('gallery.composed')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Disclosure</p>
+              <div className={css.gallerySpecimenRow}>
+                <Disclosure title={t('gallery.composedFold')} summary={foldOpen ? 'expanded' : 'collapsed'} open={foldOpen} onToggle={() => { setFoldOpen(!foldOpen) }}>
+                  <p className={css.galleryNote}>{t('gallery.note')}</p>
+                </Disclosure>
+              </div>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>Segmented</p>
+              <div className={css.gallerySpecimenRow}>
+                <Segmented ariaLabel={t('gallery.composedSegment')} value={segment} onChange={setSegment} options={[{ value: 'one', label: 'one' }, { value: 'two', label: 'two' }]} />
+              </div>
+              <div className={css.gallerySpecimenRow}>
+                <Segmented ariaLabel={t('gallery.composedSegment')} disabled value="one" onChange={() => {}} options={[{ value: 'one', label: 'one' }, { value: 'two', label: 'two' }]} />
+              </div>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>SendModeToggle</p>
+              <div className={css.gallerySpecimenRow}>
+                <SendModeToggle steer={steer} onChange={setSteer} />
+              </div>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>ColorSwatches</p>
+              <div className={css.gallerySpecimenRow}>
+                <ColorSwatches value={swatch} onChange={setSwatch} />
+              </div>
+            </div>
+          </div>
+        </Section>
+
         {/* ── 表单字段：外壳、三种控件、错误态与说明 ──────────────────────────
             每一格都渲染真件，所以「题头的档位、控件的盒高、错误态的那条线」在这里
             就是它们在页面上的样子，而不是一份看起来像它们的仿制品。 */}
@@ -383,10 +428,6 @@ export function DesignGallery() {
           </div>
         </Section>
 
-        {/* ── 反馈与折叠 ─────────────────────────────────────────────────── */}
-        <Section title={t('gallery.feedback')}>
-          <Notice chip={t('gallery.noticeChip')}>{t('gallery.noticeBody')}</Notice>
-        </Section>
 
         {/* ── 断点表 ─────────────────────────────────────────────────────── */}
         <Section title={t('gallery.bands')}>

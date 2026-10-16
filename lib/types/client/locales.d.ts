@@ -13,6 +13,9 @@ export declare const zh: {
     'gallery.note': string;
     'gallery.stage': string;
     'gallery.switch': string;
+    'gallery.composed': string;
+    'gallery.composedFold': string;
+    'gallery.composedSegment': string;
     'gallery.tokens': string;
     'gallery.type': string;
     'gallery.buttons': string;
@@ -22,7 +25,6 @@ export declare const zh: {
     'gallery.statuses': string;
     'gallery.icons': string;
     'gallery.palette': string;
-    'gallery.feedback': string;
     'gallery.bands': string;
     'gallery.overlay': string;
     'gallery.openDialog': string;
@@ -30,8 +32,6 @@ export declare const zh: {
     'gallery.dialogOpen': string;
     'gallery.dialogClosed': string;
     'gallery.dialogBody': string;
-    'gallery.noticeChip': string;
-    'gallery.noticeBody': string;
     'gallery.typeSpecimen': string;
     'gallery.unread': string;
     'board.title': string;
@@ -601,6 +601,9 @@ export declare const zh: {
     'card.newComment': string;
     'card.newCommentTitle': string;
     'card.keyboardLabel': string;
+    'card.key.open': string;
+    'card.key.stepColumn': string;
+    'card.key.reorder': string;
     'card.sessionsForAt': string;
     'card.awaitingDecisionTitle': string;
     'card.dotUnread': string;

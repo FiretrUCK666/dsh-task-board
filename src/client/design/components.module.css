@@ -568,36 +568,7 @@
   flex: none;
 }
 
-/* One shared waiting notice for every surface (review page banner): a neutral
-   framed row with a warn chip carrying the semantics —
-   no per-surface amber bars. The border uses the same token as the other
-   framed surfaces around it, so every surrounding border stays in sync. */
-.waitingNotice {
-  display: flex;
-  /* Same row grammar as .sessionContextRow: the warn badge rides the FIRST
-     line (never floats mid-block), the badge never shrinks, and the text takes
-     the remaining width and wraps — so a long notice never squeezes the chip to
-     "等…" (the bare-span-no-min-width fork between the two row grammars). */
-  align-items: flex-start;
-  gap: var(--dsh-tb-space-4);
-  min-width: 0;
-  padding: 8px 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-bg-raised);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
-}
 
-.waitingNotice > span {
-  min-width: 0;
-  overflow-wrap: anywhere;
-}
-
-.waitingNotice .chip {
-  flex: none;
-}
 
 .primaryButton:active:not(:disabled),
 .ghostButton:active:not(:disabled),

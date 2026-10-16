@@ -44,7 +44,6 @@ export declare function SessionTranscript({ lines, error, atBottom, jumpToBottom
     sessionId?: string;
     controller?: BoardController;
 }): import("react").JSX.Element;
-/** One waiting banner, shared by every session surface. */
 export declare function SessionWaitingNotice({ waiting }: {
     waiting: PendingInteractionKind | undefined;
 }): import("react").JSX.Element | null;
