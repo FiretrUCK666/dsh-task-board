@@ -34,6 +34,7 @@ import css from '../board.module.css'
 import type { SessionContext } from './use-interaction.ts'
 import { contextWorthOf, FINISHED_SUBAGENT_STATUS } from './interaction.ts'
 import { Chip } from '../design/Chip.tsx'
+import components from '../design/components.module.css'
 import { Icon } from '../design/ui.tsx'
 import { GoalStrip } from './goal-strip.tsx'
 
@@ -117,7 +118,7 @@ export function SessionContextBlock({ context, className, sessionId, controller 
       >
         <Icon name="checklist" className={css.sessionContextLead} />
         <span className={css.sessionContextTitle}>{t('review.sessionContext')}</span>
-        <span className={css.sessionContextSummary} title={summary}>{summary}</span>
+        <span className={components.inlineSummary} title={summary}>{summary}</span>
         {/* THE shared chevron grammar (same law as every Disclosure): the
             icon is drawn pointing DOWN (expanded); collapsed it turns to
             point RIGHT — the fold always reads as a fold. */}

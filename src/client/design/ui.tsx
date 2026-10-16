@@ -271,7 +271,7 @@ export function Disclosure({ title, summary, open, onToggle, children, className
       >
         <Icon name="chevronDown" className={css.detailChevron} />
         <span className={css.detailDisclosureTitle}>{title}</span>
-        {summary !== undefined && <span className={css.detailDisclosureSummary}>{summary}</span>}
+        {summary !== undefined && <span className={css.inlineSummary}>{summary}</span>}
       </button>
       {open && <div id={regionId} className={css.detailSectionBody}>{children}</div>}
     </section>

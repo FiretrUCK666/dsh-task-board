@@ -377,7 +377,7 @@
   animation: dshTbBoardIn 160ms ease;
 }
 
-.modalTitle {
+.titleStep {
   margin: 0;
   font-size: 16px;
   font-weight: 600;
@@ -469,7 +469,7 @@
   color: var(--dsh-tb-text-2);
 }
 
-.detailDisclosureSummary {
+.inlineSummary {
   flex: 1;
   min-width: 0;
   overflow: hidden;

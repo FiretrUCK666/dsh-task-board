@@ -5976,17 +5976,6 @@
   font-weight: 600;
 }
 
-.sessionContextSummary {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  /* Same size as the title beside it — hierarchy via the tertiary color,
-     never via a second font size on one line. */
-  font-size: 12px;
-  color: var(--dsh-tb-text-2);
-}
 
 .sessionContextChevron {
   flex: none;

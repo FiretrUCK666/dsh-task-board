@@ -33,6 +33,7 @@ import { ALL_STATUSES } from '../../core/tasks.ts'
 import { STATUS_KEY } from '../board/status.ts'
 import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, type ButtonToggleVariant } from '../design/ui.tsx'
 import { ColorSwatches, Disclosure, Segmented, SendModeToggle } from '../design/ui.tsx'
+import components from '../design/components.module.css'
 import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
@@ -185,7 +186,7 @@ export function DesignGallery() {
   return (
     <div ref={rootRef} className={css.galleryRoot} data-dsh-taskboard-view="">
       <div className={css.galleryHead}>
-        <h1 className={css.galleryTitle}>{t('gallery.title')}</h1>
+        <h1 className={components.titleStep}>{t('gallery.title')}</h1>
         <p className={css.galleryNote}>{t('gallery.note')}</p>
         <div className={css.galleryHeadTools}>
           <Switch checked={switchOn} onChange={setSwitchOn} label={t('gallery.switch')} />

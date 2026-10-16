@@ -95,7 +95,7 @@ export function Dialog({ title, label, onClose, className, children, portal = tr
       >
         {title !== undefined && (
           <header className={css.dialogHeader}>
-            <h2 id={titleId} className={css.modalTitle}>{title}</h2>
+            <h2 id={titleId} className={css.titleStep}>{title}</h2>
             <IconButton
               label={t('detail.close')}
               onClick={onClose}

@@ -295,6 +295,47 @@ if (process.argv.includes('--probe-binding')) {
 // whole difficulty of this check is that a SHARED name is legitimate, and a
 // checker that reports shared names would be worse than none — it would force
 // authors to rename classes that are working correctly.
+if (process.argv.includes('--probe-dupes')) {
+  const A = 'src/client/board.module.css'
+  const B = 'src/client/item/item.module.css'
+  const cases = [
+    // The failure: one form, two homes.
+    ['the same body in two sheets is reported',
+      [[A, '.x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }'],
+        [B, '.y { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }']], 1],
+    // Order and whitespace are not the form.
+    ['declaration order does not matter',
+      [[A, '.x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }'],
+        [B, '.y { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; min-width: 0; flex: 1 }']], 1],
+    // The lawful twin: the same body in ONE sheet is a shorthand, not a copy.
+    ['the same body twice in one sheet is not reported',
+      [[A, '.x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }\n.y { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }']], 0],
+    // Below the threshold, common one-liners would drown the check.
+    ['a short body is below the threshold',
+      [[A, '.x { display: flex; align-items: center }'], [B, '.y { display: flex; align-items: center }']], 0],
+    // A comment is not a declaration.
+    ['a comment does not change the body',
+      [[A, '.x { /* why */ flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }'],
+        [B, '.y { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap }']], 1],
+    // At-rules are containers, not rules.
+    ['an at-rule prelude is not a rule body',
+      [[A, '@media (hover: none) { .x { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis } }'],
+        [B, '.y { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis }']], 1],
+  ]
+  const wrong = []
+  for (const [what, sheets, expected] of cases) {
+    const got = duplicateBodies(sheets).length
+    if (got !== expected) wrong.push(`${what}: expected ${expected}, got ${got}`)
+  }
+  if (wrong.length > 0) {
+    for (const line of wrong) console.error(`probe: ${line}`)
+    console.error('verify-design-docs probe FAILED: the duplicate-body reader does not bite')
+    process.exit(1)
+  }
+  console.log(`verify-design-docs duplicate-body probe OK: ${cases.length} planted sheet pair(s) read as expected (a shared body across sheets is reported; order, comments and a same-sheet repeat are not, and a short body is below the threshold)`)
+  process.exit(0)
+}
+
 if (process.argv.includes('--probe-crosssheet')) {
   const BOARD = 'src/client/board.module.css'
   const DESIGN = 'src/client/design/components.module.css'
@@ -782,6 +823,74 @@ function crossSheetRefs(css, mine, foreign) {
   return out
 }
 
+/**
+ * Which rule BODIES appear in more than one sheet?
+ *
+ * PURE, and separated from the walk for the same reason the others are: the probe at
+ * the bottom plants sheets and asserts the judgement, so the gate is shown to bite
+ * without touching the working tree (hard rule 16).
+ *
+ * The body is normalised — comments stripped, declarations trimmed, whitespace
+ * collapsed, order ignored — so a pair written in a different order still counts.
+ * Two sheets declaring the same SHAPE under different names is 「共用文法只有一处家」
+ * being broken, and the copy that goes stale is the one nobody looks at.
+ *
+ * @param sheets - [relative path, css text] pairs.
+ * @returns one finding per body shared by two or more sheets.
+ */
+function duplicateBodies(sheets, minDeclarations = 4) {
+  const byBody = new Map()
+  for (const [rel, text] of sheets) {
+    const css = text.replace(/\/\*[\s\S]*?\*\//g, '')
+    /* A BRACE-MATCHING WALK, not a regex. A regex whose body cannot contain a brace
+       skips every rule inside an at-rule — and in this codebase that is most of
+       them, so the check would have reported almost nothing while looking healthy.
+       The probe's at-rule case is what caught it. */
+    let depth = 0
+    let preludeStart = 0
+    for (let i = 0; i < css.length; i++) {
+      const ch = css[i]
+      if (ch === '{') {
+        const selector = css.slice(preludeStart, i).trim().replace(/\s+/g, ' ')
+        let d = 1
+        let j = i + 1
+        for (; j < css.length && d > 0; j++) {
+          if (css[j] === '{') d++
+          else if (css[j] === '}') d--
+        }
+        // An at-rule prelude is a CONTAINER, not a rule. DESCEND into it rather than
+        // skipping the block — the inner rules are the whole point, and `i = j - 1`
+        // below would step past every one of them. Stepping to `i + 1` keeps the walk
+        // inside; the depth tracking handles the rest.
+        if (selector.startsWith('@')) {
+          preludeStart = i + 1
+          continue
+        }
+        if (selector !== '') {
+          const body = css.slice(i + 1, j - 1)
+          const norm = body.split(';').map(s => s.trim().replace(/\s+/g, ' ')).filter(Boolean).sort().join(';')
+          if (norm !== '' && norm.split(';').length >= minDeclarations) {
+            if (!byBody.has(norm)) byBody.set(norm, [])
+            byBody.get(norm).push({ sheet: rel, selector })
+          }
+        }
+        i = j - 1
+        preludeStart = j
+        continue
+      }
+      if (ch === '}') { depth--; preludeStart = i + 1 }
+      else if (ch === ';' && depth === 0) preludeStart = i + 1
+    }
+  }
+  const out = []
+  for (const [body, sites] of byBody) {
+    const sheetsInvolved = [...new Set(sites.map(s => s.sheet))]
+    if (sheetsInvolved.length < 2) continue
+    out.push({ body, sites, sheets: sheetsInvolved })
+  }
+  return out
+}
+
 // --- check 5c: a sheet's SELECTOR may only name its own classes ----------------
 // The class-drift check above answers "does this name exist somewhere". This one
 // answers the question that actually bit twice: **does it exist in THIS sheet.**
@@ -840,6 +949,34 @@ function crossSheetRefs(css, mine, foreign) {
     }
   }
   notes.push(`cross-sheet selectors: ${sheets.length} sheet(s) checked, ${crossFindings} reference(s) that could only resolve to another sheet`)
+}
+
+/**
+ * Rule bodies that legitimately live in more than one sheet.
+ *
+ * Each needs a reason, and the reason has to be structural rather than a preference:
+ * a body whose SELECTORS must differ per sheet cannot be hoisted, and CSS Modules
+ * makes that true of anything naming a class. The shared part of such a form is its
+ * TOKENS, and those live in the token layer.
+ */
+const PER_SHEET_FORMS = [
+  {
+    match: '--dsh-tb-hit-ring-block',
+    why: 'DEBT: the invisible touch ring. Its declarations are identical in both sheets on purpose — the selectors cannot be, because a class name is hashed per sheet, so one rule cannot reach the board\'s controls and the design system\'s at once. What is shared is the SPEC, and that is the token (--dsh-tb-hit-ring-*), which is declared once.',
+  },
+]
+
+// --- check 5d: a shared form lives in ONE sheet -------------------------------
+{
+  const sheets = CLIENT_STYLESHEETS.map(p => [relative(root, p).split(sep).join('/'), readFileSync(p, 'utf8')])
+  const all = duplicateBodies(sheets)
+  const excused = all.filter(d => PER_SHEET_FORMS.some(e => d.body.includes(e.match)))
+  const dupes = all.filter(d => !excused.includes(d))
+  for (const dupe of dupes) {
+    const where = dupe.sites.map(s => `${s.sheet} ${s.selector}`).join('  ==  ')
+    failures.push(`${dupe.sheets.join(' + ')}: the same ${dupe.body.split(';').length}-declaration rule body is declared in more than one sheet — ${where}. Two copies of one form drift the first time someone changes one of them, and the screen says nothing. Keep one, and let the other compose it.`)
+  }
+  notes.push(`shared forms: ${sheets.length} sheet(s) checked, ${dupes.length} rule body(ies) declared in more than one, ${excused.length} excused with a reason`)
 }
 
 // --- check 6: no snapshot values in the docs ---------------------------------
