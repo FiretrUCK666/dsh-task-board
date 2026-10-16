@@ -663,16 +663,16 @@ describe('stale-bundle status line (rendered through the panel)', () => {
 describe('the update dialog, driven through the header button', () => {
   afterEach(() => { vi.unstubAllGlobals() })
 
-  /** One host view: an npm install inside the desktop application's profile. */
+  /** One host view: an npm install inside a profile the reader started themselves. */
   function viewOf(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     return {
       packageName: '@firetruck666/dsh-task-board',
       version: '0.8.26',
       spec: '^0.8.26',
       mode: 'npm',
-      profile: 'desktop',
-      dir: 'C:/Users/u/.dsh/profiles/desktop',
-      appManaged: true,
+      profile: 'web',
+      dir: 'C:/Users/u/.dsh/profiles/web',
+      appManaged: false,
       evidence: { linked: false, declared: true, disagreement: false },
       githubSpec: 'github:FiretrUCK666/dsh-task-board',
       // The newest upstream travels IN this view: only the host knows which
@@ -686,18 +686,42 @@ describe('the update dialog, driven through the header button', () => {
       plan: {
         mode: 'npm',
         packageName: '@firetruck666/dsh-task-board',
-        profile: 'desktop',
-        appManaged: true,
+        profile: 'web',
+        appManaged: false,
         packageSpec: '@firetruck666/dsh-task-board@latest',
         apply: 'package',
         reinstall: true,
         steps: [{
           command: 'dsh',
-          args: ['plugin', '--profile', 'desktop', 'add', '@firetruck666/dsh-task-board@latest'],
+          args: ['plugin', '--profile', 'web', 'add', '@firetruck666/dsh-task-board@latest'],
         }],
       },
       ...overrides,
     }
+  }
+
+  /**
+   * The same install inside the desktop application's own profile. The app owns
+   * that profile, so the host reports no terminal command at all — the two
+   * fields move together, and a fixture that carried both would pin a state
+   * production cannot reach.
+   */
+  function appManagedView(): Record<string, unknown> {
+    return viewOf({
+      profile: 'desktop',
+      dir: 'C:/Users/u/.dsh/profiles/desktop',
+      appManaged: true,
+      plan: {
+        mode: 'npm',
+        packageName: '@firetruck666/dsh-task-board',
+        profile: 'desktop',
+        appManaged: true,
+        packageSpec: '@firetruck666/dsh-task-board@latest',
+        apply: 'package',
+        reinstall: true,
+        steps: [],
+      },
+    })
   }
 
   /** Answer the update route's requests, and count the applies it was asked for. */
@@ -750,13 +774,13 @@ describe('the update dialog, driven through the header button', () => {
     await clickLabel(host, t('board.update.check'))
     const dialog = dialogIn(host)
     expect(dialog.textContent).toContain(t('board.update.mode.npm'))
-    expect(dialog.textContent, '对话框没有说这份安装属于哪个 profile').toContain('desktop')
+    expect(dialog.textContent, '对话框没有说这份安装属于哪个 profile').toContain('web')
     expect(dialog.textContent).toContain('0.8.26')
-    expect(dialog.textContent, '对话框没有说这份安装在哪').toContain('C:/Users/u/.dsh/profiles/desktop')
+    expect(dialog.textContent, '对话框没有说这份安装在哪').toContain('C:/Users/u/.dsh/profiles/web')
     expect(dialog.textContent).toContain(t('board.update.newVersion', { v: '0.9.60' }))
     expect(dialog.textContent, '对话框没有说问的是哪个源').toContain('https://registry.npmjs.org/')
     // The equivalent terminal line names THIS profile, not a profile written into the bundle.
-    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    expect(dialog.textContent).toContain('dsh plugin --profile web add')
     expect(dialog.textContent).toContain(t('board.update.apply'))
     unmount()
   })
@@ -775,7 +799,7 @@ describe('the update dialog, driven through the header button', () => {
     const words = [...(dialog.querySelector('code')?.querySelectorAll('span') ?? [])]
       .map(one => one.textContent)
     expect(words).toEqual([
-      'dsh', 'plugin', '--profile', 'desktop', 'add', '@firetruck666/dsh-task-board@latest',
+      'dsh', 'plugin', '--profile', 'web', 'add', '@firetruck666/dsh-task-board@latest',
     ])
     const aligned = alignClassNames(dialog.innerHTML, panelCss())
     const wordClass = /<code><span class="([^"]+)"/.exec(aligned.html)?.[1]
@@ -794,31 +818,40 @@ describe('the update dialog, driven through the header button', () => {
     expect(dialog.textContent).toContain(t('board.update.noLatest'))
     expect(dialog.textContent).not.toContain(t('board.update.newVersion', { v: '0.9.60' }))
     // 不能是死路：命令仍然在。
-    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    expect(dialog.textContent).toContain('dsh plugin --profile web add')
     unmount()
   })
 
-  it('a packaged application keeps its command, and is told to quit the app first', async () => {
-    // The app's own profile is special-cased by the CLI rather than refused, so
-    // the line works — the only extra requirement is that the app be quit.
-    stubUpdateFetch({ view: () => viewOf() })
-    const { host, unmount } = await mountBoard({})
-    await clickLabel(host, t('board.update.check'))
-    const dialog = dialogIn(host)
-    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
-    expect(dialog.textContent).toContain(t('board.update.desktopQuit'))
-    expect(dialog.textContent).toContain(t('board.update.reinstall'))
-    unmount()
-  })
-
-  it('a host that can name no profile says so instead of inventing a command', async () => {
-    const plan = { ...viewOf().plan as object, profile: undefined, steps: [] }
-    stubUpdateFetch({ view: () => viewOf({ profile: undefined, appManaged: true, plan }) })
+  it('a packaged application is given no command, and is pointed at the app instead', async () => {
+    // The CLI has two shims and only the application's own accepts this profile
+    // name: the npm-installed one errors with "profile \"desktop\" is managed
+    // exclusively by the Electron application". Which one a reader has is not
+    // something this page can see, so it names the route that always works
+    // instead of a line that works for one of them.
+    stubUpdateFetch({ view: () => appManagedView() })
     const { host, unmount } = await mountBoard({})
     await clickLabel(host, t('board.update.check'))
     const dialog = dialogIn(host)
     expect(dialog.textContent).toContain(t('board.update.appManaged'))
+    expect(dialog.textContent, '桌面端不该给出一条终端命令').not.toContain('dsh plugin --profile')
+    // 一键更新仍然在：那条路走的是 host 自己的安装服务，不经过任何命令行。
+    expect(dialog.textContent).toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('a host that can name no profile invents no command, and still offers the button', async () => {
+    // The two ways of having no command are different and must stay different:
+    // here nothing owns the profile and the profile simply could not be named,
+    // so the reader gets no line to type — and the button, which never needed a
+    // profile name, is still there.
+    const plan = { ...viewOf().plan as object, profile: undefined, steps: [] }
+    stubUpdateFetch({ view: () => viewOf({ profile: undefined, plan }) })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
     expect(dialog.textContent).not.toContain('dsh plugin --profile')
+    expect(dialog.textContent).not.toContain(t('board.update.appManaged'))
+    expect(dialog.textContent).toContain(t('board.update.apply'))
     unmount()
   })
 
@@ -852,16 +885,17 @@ describe('the update dialog, driven through the header button', () => {
     expect(dialog.textContent).toContain(t('board.update.reason.failed'))
     expect(dialog.textContent).toContain('ERR_PNPM_FETCH_404')
     // A failure never removes the way out.
-    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    expect(dialog.textContent).toContain('dsh plugin --profile web add')
     unmount()
   })
 
   it('writes the dialog page when DSH_PANEL_HTML names a path', async () => {
     const target = process.env.DSH_PANEL_HTML
     if (target === undefined || target === '') return
-    /* 这张工件要能证明自己画对了什么：把失败态开在屏上，因为失败态才是这个对话框里
-       元素最多的一档（结果行 + 原因 + 输出块 + 命令 + 重启说明）。缺任何一样，读图的
-       人会照一张「看起来很好、其实少了东西」的图下结论。 */
+    /* 每一张工件都要能证明自己画对了什么，而两张证明的东西不同：第一张是失败态（这个
+       对话框里元素最多的一档：结果行 + 原因 + 输出块 + 命令 + 重启说明），第二张是应用
+       托管 profile 那一档，它证明的是**有没有那条命令**。缺任何一样，读图的人会照一张
+       「看起来很好、其实少了东西」的图下结论，所以两张各查各的清单。 */
     stubUpdateFetch({
       view: () => viewOf(),
       apply: { ok: false, error: 'failed', output: 'ERR_PNPM_FETCH_404  GET https://registry.npmjs.org/@firetruck666/dsh-task-board: Not Found' },
@@ -869,20 +903,36 @@ describe('the update dialog, driven through the header button', () => {
     const { host, unmount } = await mountBoard({})
     await clickLabel(host, t('board.update.check'))
     await clickLabel(host, t('board.update.apply'))
-    const aligned = alignClassNames(host.innerHTML, panelCss())
-    writeStandalonePage(target, aligned.html, aligned.css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'update dialog')
+    /* 读的是屏上的字，不是标记：工件是给人看的图，一段只活在属性里、读者看不到的文本
+       不该让这张图算数（而命令现在由多个词元素拼成，源码里本来就没有那一整串）。 */
     for (const must of [
       t('board.update.title'),
       t('board.update.mode.npm'),
       t('board.update.applyFailed'),
       'ERR_PNPM_FETCH_404',
-      'dsh plugin --profile desktop add',
+      'dsh plugin --profile web add',
     ]) {
-      // 读的是屏上的字，不是标记：工件是给人看的图，一段只活在属性里、读者
-      // 看不到的文本不该让这张图算数（而命令现在由多个词元素拼成，源码里本来
-      // 就没有那一整串）。
       expect(host.textContent, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
     }
+    const aligned = alignClassNames(host.innerHTML, panelCss())
+    writeStandalonePage(target, aligned.html, aligned.css, process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light', 'update dialog')
+    /* 第二张：换的是 host 的答复，不是再挂一块板——两块板会让第二块落到 viewport 之外，
+       截出来只有第一块（第一版就是这么错的）。此时按钮上写的是刚才那个结论，点它等于
+       再查一次（面板自己的规矩），这就是同一块板换一份答复的路。 */
+    stubUpdateFetch({ view: () => appManagedView() })
+    await clickLabel(host, t('board.update.available', { v: '0.9.60' }))
+    for (const must of [t('board.update.appManaged'), t('board.update.apply')]) {
+      expect(host.textContent, `第二张工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
+    }
+    expect(host.textContent, '应用托管的那一档不该有终端命令').not.toContain('dsh plugin --profile')
+    const managedAligned = alignClassNames(host.innerHTML, panelCss())
+    writeStandalonePage(
+      target.replace(/\.html?$/i, '.app-managed.html'),
+      managedAligned.html,
+      managedAligned.css,
+      process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light',
+      'update dialog, application-managed profile',
+    )
     unmount()
   })
 })

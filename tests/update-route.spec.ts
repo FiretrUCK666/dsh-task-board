@@ -174,7 +174,7 @@ describe('runningCopyOf', () => {
     return { dir: profile.dir, self: target }
   }
 
-  it('reports the desktop profile\'s own npm install, and gives it a command', () => {
+  it('reports the desktop profile\'s own npm install, and hands it no command', () => {
     // The defect: an npm install in the desktop profile was described with the
     // web profile's `link:` spec, so it said "local development" and offered to
     // git-pull somebody else's checkout — and the desktop could never update.
@@ -190,10 +190,10 @@ describe('runningCopyOf', () => {
     expect(copy.appManaged).toBe(true)
     expect(copy.plan.apply).toBe('package')
     expect(copy.plan.packageSpec).toBe(`${PKG}@latest`)
-    // A packaged application's profile DOES have a terminal path — the CLI
-    // special-cases that profile name instead of refusing it, and only asks
-    // that the application has run once and is fully quit.
-    expect(commandLineOf(copy.plan.steps)).toBe(`dsh plugin --profile desktop add ${PKG}@latest`)
+    // A packaged application's profile gets no terminal command: the CLI's
+    // npm-installed shim rejects that profile name, only the application's own
+    // shim accepts it, and the plan cannot tell which one a reader has.
+    expect(copy.plan.steps).toEqual([])
   })
 
   it('a linked copy is a checkout, and the checkout is where the code runs', () => {

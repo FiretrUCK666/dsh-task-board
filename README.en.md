@@ -54,26 +54,28 @@ below with the word from that table.
 
 ### The desktop app
 
-Two routes; pick one. **The in-app route is the one to prefer** — no terminal involved.
+**Use the app's own plugin page** — no terminal involved.
 
-**In the app**: sidebar → Plugins → Add plugin → package name `@firetruck666/dsh-task-board` →
-pick an install source → Install.
+Sidebar → Plugins → Add plugin → package name `@firetruck666/dsh-task-board` → pick an install
+source → Install.
 
-**In a terminal**:
+A terminal works too, but **only with the right `dsh`**: that profile is honoured by the application's
+own command line and refused by the one npm installs:
+
+```
+error: profile "desktop" is managed exclusively by the Electron application
+```
+
+To use a terminal, first have the app put its own `dsh` on the system: the menu's **Manage dsh
+Command…** (directly under Check for Updates…) does it in one step — on Windows into your user PATH,
+on macOS as `/usr/local/bin/dsh`. Then:
 
 ```sh
 dsh plugin --profile desktop add @firetruck666/dsh-task-board
 ```
 
-Two things must be true first, or the command fails:
-
-1. the desktop app has been **opened at least once** (it creates its own profile), and
-2. the desktop app is **fully quit** (while it runs, the files are locked).
-
-Where does that `dsh` come from? The app's own menu has **Manage dsh Command…** (directly under
-Check for Updates…); using it once installs the command — on Windows into your user PATH, on macOS
-as `/usr/local/bin/dsh` — and it keeps working while the app is closed. You can also skip it and use
-the in-app route above.
+Two things must be true first, or the command fails: the app has been **opened at least once** (it
+creates its own profile), and it is **fully quit** (while it runs, the files are locked).
 
 ### The web GUI
 
@@ -184,11 +186,12 @@ latest version it says exactly that — it never reports "up to date" it cannot 
 
 Uninstall-then-install is DSH's own update route (with HMR live it refuses to install over an
 installed package), so the plugin disappears for a few seconds. A restart may be needed afterwards,
-and **if the install fails the plugin stays uninstalled** — which is why the dialog also gives you
-the terminal command that puts it back. **Your task data is never touched** at any point: it lives
-in `~/.dsh/storages/dsh_task_board/`, not in the package.
+and **if the install fails the plugin stays uninstalled** — put it back the way you installed it.
+**Your task data is never touched** at any point: it lives in
+`~/.dsh/storages/dsh_task_board/`, not in the package.
 
-The dialog also shows the equivalent terminal command, with your own profile name in it:
+The dialog also shows the equivalent terminal command (except on the desktop app, for the reason
+below), with your own profile name in it:
 
 ```sh
 dsh plugin --profile <profile> add @firetruck666/dsh-task-board@latest
@@ -204,9 +207,10 @@ For a local checkout:
 git pull --ff-only && pnpm run build
 ```
 
-**Desktop app**: the app owns that profile, but the terminal route works — the CLI special-cases the
-`desktop` profile name instead of refusing it, and only asks that the app has run once and is fully
-quit. So the desktop's dialog offers both Update now and a command that works.
+**Desktop app**: that profile is the app's own, and the command above does not hold for it — the
+`dsh` npm installs refuses the `desktop` profile name, so that dialog offers no terminal line and
+points at the app's plugin page instead. Uninstall and re-add the package there to update. (The `dsh`
+the app's own menu installs is accepted; see Install.)
 
 With the plugin marketplace installed you can also press Update on its Installed tab.
 
@@ -215,15 +219,10 @@ With the plugin marketplace installed you can also press Update on its Installed
 Before 0.9.59 the update check had a profile name written into its code: inside the desktop app it
 described itself with the web profile's checkout, so **it could never update itself** — pressing its
 own Update now ran a `git pull` in the web checkout instead. That is fixed, but **fixed code has to
-reach that copy somehow**, and the broken copy is the thing that would have carried it. Install once
-by hand:
-
-```sh
-dsh plugin --profile desktop add @firetruck666/dsh-task-board@latest
-```
-
-Fully quit the desktop app first, then reopen it. From then on Check for updates and Update now both
-work.
+reach that copy somehow**, and the broken copy is the thing that would have carried it. Do it by hand
+once: open the desktop app, sidebar → Plugins → uninstall `@firetruck666/dsh-task-board` from
+Installed, then add it again with Add plugin (same package name), and fully quit and reopen the app.
+Check for updates and Update now both work from then on.
 
 ## What it does
 

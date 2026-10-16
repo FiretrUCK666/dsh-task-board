@@ -1979,13 +1979,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   </p>
                 </div>
               )}
-              {/* 桌面端：那份 profile 由应用托管，命令能用但要先完全退出应用。 */}
+              {/* 桌面端：那份 profile 由应用托管，命令行里的 dsh 不接受它，
+                  所以这条链路给不出命令，只能指向应用自己的插件页。 */}
               {updateSource?.appManaged === true && (
-                <p className={css.detailHint}>
-                  {updateCommand !== undefined
-                    ? t('board.update.desktopQuit')
-                    : t('board.update.appManaged')}
-                </p>
+                <p className={css.detailHint}>{t('board.update.appManaged')}</p>
               )}
               {updateSource !== undefined && updatePlan?.apply === 'none' && updateCommand === undefined && !updateSource.appManaged && (
                 <p className={css.detailHint}>{t('board.update.unreadable')}</p>

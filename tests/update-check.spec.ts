@@ -114,15 +114,21 @@ describe('updatePlanFor', () => {
     expect(updatePlanFor({ ...base, mode: 'local', checkoutSteps: steps }).steps).toEqual(steps)
   })
 
-  it('a packaged application KEEPS its terminal command, quit-app note and all', () => {
-    // Withholding it left the one install with no working button-side path and
-    // no command either. The CLI special-cases the desktop profile rather than
-    // refusing it; the only extra requirement is that the app be quit first,
-    // which is page copy.
+  it('a packaged application gets no terminal command, because which dsh a reader has decides it', () => {
+    // The CLI has two shims and only the application's own accepts the profile
+    // name: the npm-installed `dsh` errors with
+    // `profile "desktop" is managed exclusively by the Electron application`.
+    // A line that works for one shim and fails for the other is not a line to
+    // hand a reader, so the page names the application's own plugin page.
     const plan = updatePlanFor({ ...base, mode: 'npm', appManaged: true })
     expect(plan.apply).toBe('package')
     expect(plan.appManaged).toBe(true)
-    expect(commandLineOf(plan.steps)).toBe(`dsh plugin --profile web add ${pkg}@latest`)
+    expect(plan.steps).toEqual([])
+  })
+
+  it('a profile nobody owns keeps its command', () => {
+    expect(commandLineOf(updatePlanFor({ ...base, mode: 'npm' }).steps))
+      .toBe(`dsh plugin --profile web add ${pkg}@latest`)
   })
 
   it('a reinstall is stated on the plan, not left for the page to guess', () => {

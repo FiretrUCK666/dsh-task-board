@@ -654,7 +654,6 @@ export declare const zh: {
     'board.update.reason.failed': string;
     'board.update.reinstall': string;
     'board.update.overwrite': string;
-    'board.update.desktopQuit': string;
     'board.update.losingConnection': string;
     'board.update.appManaged': string;
     'board.update.unreadable': string;
