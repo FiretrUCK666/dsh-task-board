@@ -59,7 +59,8 @@ export interface UpdateSourceView {
 /** What one applied update did, as the host reported it. */
 export interface UpdateApplyResult {
     ok: boolean;
-    outcome?: 'applied' | 'restart-required' | 'rebuilt';
+    /** `unchanged` means the run reported success and the version did not move. */
+    outcome?: 'applied' | 'restart-required' | 'rebuilt' | 'unchanged';
     version?: string;
     output?: string;
     error?: 'unsupported' | 'unavailable' | 'dirty' | 'tool-missing' | 'timeout' | 'failed';

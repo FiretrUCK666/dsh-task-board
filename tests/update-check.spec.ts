@@ -17,6 +17,7 @@ import {
   packumentUrl,
   parseVersionParts,
   shortSha,
+  sourceSpecOf,
   updatePlanFor,
 } from '../src/core/update-check.ts'
 
@@ -31,15 +32,54 @@ describe('classifyInstallSpec', () => {
     expect(classifyInstallSpec('https://example.com/pkg.tar.gz/abc123')).toBe('github')
   })
 
+  it('every git spelling is a source install, not a registry one', () => {
+    // A `git+…` spec read as npm would offer `<pkg>@latest` — a DIFFERENT
+    // package under the same name — as the update for it.
+    expect(classifyInstallSpec('git+https://github.com/o/r.git')).toBe('github')
+    expect(classifyInstallSpec('git+ssh://git@github.com/o/r')).toBe('github')
+    expect(classifyInstallSpec('git@github.com:o/r.git')).toBe('github')
+    expect(classifyInstallSpec('gitlab:o/r')).toBe('github')
+    expect(classifyInstallSpec('bitbucket:o/r')).toBe('github')
+    expect(classifyInstallSpec('github:o/r#abc1234')).toBe('github')
+  })
+
+  it('a local artifact is neither a checkout nor a registry install', () => {
+    // `file:`/`portal:`/`workspace:` name a local build. Reading them as npm
+    // would put a command on screen that replaces that reader's own build with
+    // the published one; reading them as `local` would offer a `git pull` in a
+    // directory that is not a working tree. Neither route exists, so neither is
+    // claimed.
+    expect(classifyInstallSpec('file:../dsh-task-board')).toBe('unknown')
+    expect(classifyInstallSpec('portal:../dsh-task-board')).toBe('unknown')
+    expect(classifyInstallSpec('workspace:*')).toBe('unknown')
+  })
+
   it('version ranges are npm installs', () => {
     expect(classifyInstallSpec('^0.2.80')).toBe('npm')
     expect(classifyInstallSpec('0.2.80')).toBe('npm')
     expect(classifyInstallSpec('latest')).toBe('npm')
+    expect(classifyInstallSpec('^1.1.0')).toBe('npm')
   })
 
   it('a missing spec reads as unknown (never a guess)', () => {
     expect(classifyInstallSpec(undefined)).toBe('unknown')
     expect(classifyInstallSpec('')).toBe('unknown')
+  })
+})
+
+describe('sourceSpecOf', () => {
+  it('re-adds the spec the profile recorded, without a pinned commit', () => {
+    // The fragment names ONE commit: re-adding it would reinstall exactly the
+    // code that is already there and call it an update.
+    expect(sourceSpecOf('github:someone/fork#abc1234')).toBe('github:someone/fork')
+    expect(sourceSpecOf('https://example.com/pkg.tgz')).toBe('https://example.com/pkg.tgz')
+  })
+
+  it('a non-source spec is not a source update', () => {
+    expect(sourceSpecOf('^1.1.0')).toBeUndefined()
+    expect(sourceSpecOf('link:C:/repo')).toBeUndefined()
+    expect(sourceSpecOf(undefined)).toBeUndefined()
+    expect(sourceSpecOf('#abc')).toBeUndefined()
   })
 })
 
@@ -101,6 +141,18 @@ describe('updatePlanFor', () => {
     expect(plan.apply).toBe('package')
     expect(plan.packageSpec).toBe(spec)
     expect(commandLineOf(plan.steps)).toBe(`dsh plugin --profile web add ${spec}`)
+  })
+
+  it('a github install re-adds what THIS profile recorded, not the canonical repo', () => {
+    // A fork, a mirror or a tarball URL is what that reader installed. Pointing
+    // the update at the package's own repository would swap their package for a
+    // different one under the same name — and a pinned commit would reinstall
+    // the same code.
+    const plan = updatePlanFor({ ...base, mode: 'github', recordedSpec: 'github:someone/fork#abc1234' })
+    expect(plan.packageSpec).toBe('github:someone/fork')
+    expect(commandLineOf(plan.steps)).toBe('dsh plugin --profile web add github:someone/fork')
+    const url = updatePlanFor({ ...base, mode: 'github', recordedSpec: 'https://example.com/pkg.tgz' })
+    expect(url.packageSpec).toBe('https://example.com/pkg.tgz')
   })
 
   it('local checkouts pull and rebuild in place', () => {

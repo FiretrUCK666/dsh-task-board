@@ -496,6 +496,10 @@ export function runningCopyOf(ctx: Context, selfDir = SELF_ROOT): RunningCopy {
     mode: facts.mode,
     packageName: PACKAGE_NAME,
     ...(GITHUB_SPEC !== undefined ? { githubSpec: GITHUB_SPEC } : {}),
+    // What the profile declares WINS over the spec derived from the package's
+    // own repository field: a fork or a tarball URL is what this reader
+    // installed, and the update must re-add that, not the canonical repo.
+    ...(spec !== undefined ? { recordedSpec: spec } : {}),
     ...(facts.profile !== undefined ? { profile: facts.profile } : {}),
     appManaged: facts.appManaged,
     canInstall: facts.canInstall,

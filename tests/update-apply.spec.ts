@@ -47,6 +47,20 @@ function recordingRunner(outcomes: readonly CommandOutcome[]): {
   }
 }
 
+/**
+ * A version reader that answers what the disk said AT EACH MOMENT: the run
+ * reads it before and after the install, because "did anything change" is the
+ * one fact the installation service cannot report. The last value repeats.
+ */
+function versionSeq(...versions: (string | undefined)[]): () => string | undefined {
+  let index = 0
+  return () => {
+    const value = versions[Math.min(index, versions.length - 1)]
+    index += 1
+    return value
+  }
+}
+
 /** The package path's deps: one installation record, one version on disk. */
 function packageDeps(
   record: Record<string, unknown>,
@@ -82,6 +96,7 @@ describe('applyUpdate on a package install', () => {
     const recorded: string[] = []
     const result = await applyUpdate({
       ...packageDeps({ application: 'applied', version: '0.9.59' }),
+      readVersion: versionSeq('0.9.59', '0.9.60'),
       installer: {
         installBundle: async (spec) => {
           recorded.push(spec)
@@ -95,8 +110,33 @@ describe('applyUpdate on a package install', () => {
   })
 
   it('keeps restart-required distinct from applied (they read differently)', async () => {
-    const result = await applyUpdate(packageDeps({ application: 'restart-required' }))
+    const result = await applyUpdate({
+      ...packageDeps({ application: 'restart-required' }),
+      readVersion: versionSeq('0.9.59', '0.9.60'),
+    })
     expect(result.ok).toBe(true)
+    expect(result.outcome).toBe('restart-required')
+  })
+
+  it('a run that reports success without moving the version is NOT an update', async () => {
+    // The measured shape: `pnpm add <pkg>@latest` on a copy whose declared range
+    // already resolves to the installed version exits 0 having done nothing, and
+    // the installation service reports that as a successful application. Saying
+    // "updated to 1.1.0" there is the one answer a reader cannot check.
+    const result = await applyUpdate({
+      ...packageDeps({ application: 'restart-required', version: '1.1.0' }),
+      readVersion: versionSeq('1.1.0', '1.1.0'),
+    })
+    expect(result).toEqual({ ok: true, outcome: 'unchanged', version: '1.1.0' })
+  })
+
+  it('the same non-move on a branch install IS still an update', async () => {
+    // A `github:` install can move without any version changing (the branch's
+    // commits did), so the version is not the identity of that install.
+    const result = await applyUpdate({
+      ...packageDeps({ application: 'restart-required', version: '1.1.0' }, { plan: planOf('github') }),
+      readVersion: versionSeq('1.1.0', '1.1.0'),
+    })
     expect(result.outcome).toBe('restart-required')
   })
 
@@ -250,7 +290,7 @@ describe('applyUpdate on a reinstall', () => {
       plan: REINSTALL,
       installer: service(order),
       runner: recordingRunner([]).run,
-      readVersion: () => '1.2.0',
+      readVersion: versionSeq('1.1.0', '1.2.0'),
     })
     expect(order).toEqual([`remove:${PKG}`, `install:${PKG}@latest`])
     expect(result).toEqual({ ok: true, outcome: 'applied', version: '1.2.0' })

@@ -628,6 +628,7 @@ export declare const zh: {
     'board.update.source': string;
     'board.update.where': string;
     'board.update.dir': string;
+    'board.update.spec': string;
     'board.update.evidence': string;
     'board.update.mode.npm': string;
     'board.update.mode.github': string;
@@ -644,6 +645,7 @@ export declare const zh: {
     'board.update.applied': string;
     'board.update.restartRequired': string;
     'board.update.rebuilt': string;
+    'board.update.unchanged': string;
     'board.update.versionUnknown': string;
     'board.update.applyFailed': string;
     'board.update.reason.dirty': string;
@@ -657,6 +659,7 @@ export declare const zh: {
     'board.update.losingConnection': string;
     'board.update.appManaged': string;
     'board.update.unreadable': string;
+    'board.update.unrouted': string;
     'board.update.restart': string;
     'board.update.copy': string;
     'board.update.hint.npm': string;

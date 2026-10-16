@@ -872,6 +872,32 @@ describe('the update dialog, driven through the header button', () => {
     unmount()
   })
 
+  it('a run that changed nothing says so, and keeps the button (it is not a success)', async () => {
+    stubUpdateFetch({
+      view: () => viewOf(),
+      apply: { ok: true, outcome: 'unchanged', version: '0.8.26' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain(t('board.update.unchanged', { v: '0.8.26' }))
+    // 「已更新到 v」正是读者无法核对、却会照着它行动的那句话：它一个字都不许出现。
+    expect(dialog.textContent).not.toContain(t('board.update.restartRequired', { v: '0.8.26' }))
+    expect(dialog.textContent).not.toContain(t('board.update.applied', { v: '0.8.26' }))
+    // 跑完没变化，按钮要留着：保护期过了、或换个装法之后，同一按还有意义。
+    expect(dialog.textContent).toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('the dialog states what the profile declares — the answer to "why not the new one"', async () => {
+    stubUpdateFetch({ view: () => viewOf() })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    expect(dialogIn(host).textContent).toContain(t('board.update.spec', { spec: '^0.8.26' }))
+    unmount()
+  })
+
   it('a refused update states the reason, shows the output, and keeps the manual line', async () => {
     stubUpdateFetch({
       view: () => viewOf(),
@@ -932,6 +958,35 @@ describe('the update dialog, driven through the header button', () => {
       managedAligned.css,
       process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light',
       'update dialog, application-managed profile',
+    )
+    /* 第三张：跑完版本没动的那一档——按下更新、什么都没变。它是这套文案里最容易说错的
+       一处：安装服务报的是"包管理器做成了什么"，而"装最新版"解析到已经装着的那个版本时
+       它成功退出、什么也没做（真机上就是安装器的供应链保护期把刚发布的那一版挡在解析
+       之外）。那张图必须写着"没有变化"，一个字的"已更新到"都不能有。 */
+    stubUpdateFetch({
+      view: () => viewOf(),
+      apply: { ok: true, outcome: 'unchanged', version: '0.8.26' },
+    })
+    await clickLabel(host, t('board.update.available', { v: '0.9.60' }))
+    await clickLabel(host, t('board.update.apply'))
+    for (const must of [
+      t('board.update.unchanged', { v: '0.8.26' }),
+      t('board.update.spec', { spec: '^0.8.26' }),
+      t('board.update.apply'),
+    ]) {
+      expect(host.textContent, `第三张工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
+    }
+    expect(
+      host.textContent,
+      '一次没有变化的更新被说成了"已更新到"——那正是读者无法核对、却会照着它行动的那句话',
+    ).not.toContain(t('board.update.restartRequired', { v: '0.8.26' }))
+    const unchangedAligned = alignClassNames(host.innerHTML, panelCss())
+    writeStandalonePage(
+      target.replace(/\.html?$/i, '.unchanged.html'),
+      unchangedAligned.html,
+      unchangedAligned.css,
+      process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light',
+      'update dialog, nothing changed',
     )
     unmount()
   })

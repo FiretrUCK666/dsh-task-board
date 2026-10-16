@@ -202,6 +202,15 @@ and **if the install fails the plugin stays uninstalled** — put it back the wa
 **Your task data is never touched** at any point: it lives in
 `~/.dsh/storages/dsh_task_board/`, not in the package.
 
+When the version has **not** changed, the dialog says exactly that instead of claiming an update —
+the run did not install the new version, which is not the same thing as failing. Two usual causes:
+the **installer's own release-age policy** (a package manager holds back a version published minutes
+ago — measured: an install run within the first ten minutes still lands on the previous one, so press
+it again once that window has passed), and the **version range this profile recorded**, which is what
+the **Declared as** line shows; uninstalling and installing again re-resolves it. Those three lines —
+which copy is running, where it lives, what it declares — answer "which one is this machine actually
+running" for good.
+
 The dialog also shows the equivalent terminal command (except on the desktop app, for the reason
 below), with your own profile name in it:
 

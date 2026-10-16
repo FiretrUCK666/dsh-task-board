@@ -182,6 +182,16 @@ describe('applyUpdate', () => {
     expect(await applyUpdate(1_000)).toEqual({ ok: false, error: 'dirty', output: 'git: exit 1' })
   })
 
+  it('carries the unchanged outcome through (it is not a success to be reshaped)', async () => {
+    answerJson({ ok: true, value: { ok: true, outcome: 'unchanged', version: '1.1.0' } })
+    expect(await applyUpdate(1_000)).toEqual({ ok: true, outcome: 'unchanged', version: '1.1.0' })
+  })
+
+  it('an outcome this version does not know is dropped, not guessed', async () => {
+    answerJson({ ok: true, value: { ok: true, outcome: 'staged', version: '1.1.0' } })
+    expect(await applyUpdate(1_000)).toEqual({ ok: true, version: '1.1.0' })
+  })
+
   it('malformed answers and hangs degrade to undefined', async () => {
     answerJson({ ok: true, value: { application: 'applied' } })
     expect(await applyUpdate(1_000)).toBeUndefined()

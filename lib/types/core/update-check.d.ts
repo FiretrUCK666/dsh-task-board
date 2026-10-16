@@ -13,11 +13,24 @@
 /** How this copy was installed (read off the profile manifest's spec string). */
 export type UpdateInstallMode = 'npm' | 'github' | 'local' | 'unknown';
 /**
- * Classify one profile-manifest dependency spec. `link:` is local development;
- * `github:` and tarball URLs are source installs (their update path is the
- * GitHub re-add); anything else version-shaped is an npm install.
+ * Classify one profile-manifest dependency spec. The three routes the plugin
+ * documents are what this reads, and nothing is guessed into them:
+ *
+ * - `link:` is local development: the code being run is a checkout, and the
+ *   update refreshes it in place.
+ * - a `github:`/`gitlab:`/`bitbucket:`/`gist:` spec, ANY `git+…` spec, or an
+ *   `http(s)://` URL is a SOURCE install: what was installed is a repository or
+ *   a tarball named by that spec, and re-adding that same spec is its update.
+ *   (A URL is not assumed to be GitHub — the plan re-adds the recorded spec, so
+ *   a private tarball URL updates from itself.)
+ * - anything else is a registry install, EXCEPT the specs that name a local
+ *   artifact (`file:`, `portal:`, `workspace:`) — those are not in the registry
+ *   and not a checkout either, so no route here can update them. They read as
+ *   `unknown` on purpose: the page then says it has no command for this install
+ *   instead of offering `@latest`, which would replace someone's local build
+ *   with the published one.
  * @param spec - the raw `dependencies[name]` string, or undefined when unread.
- * @returns the install mode (`unknown` when the spec is missing).
+ * @returns the install mode (`unknown` when the spec is missing or unrouted).
  */
 export declare function classifyInstallSpec(spec: string | undefined): UpdateInstallMode;
 /**
@@ -116,6 +129,8 @@ export interface UpdatePlanInput {
     packageName: string;
     /** The `github:` spec (absent when the repository URL is not GitHub). */
     githubSpec?: string;
+    /** What the profile manifest actually declares for this package (when read). */
+    recordedSpec?: string;
     /** The profile carrying this copy (absent when unreadable). */
     profile?: string;
     /** The profile belongs to a packaged application. */
@@ -128,10 +143,25 @@ export interface UpdatePlanInput {
     checkoutSteps?: readonly UpdateStep[];
 }
 /**
+ * The spec to re-add when updating a SOURCE install, read from what the profile
+ * actually recorded.
+ *
+ * The profile's own declaration wins over the spec derived from the package's
+ * `repository` field: a fork, a mirror or a tarball URL is what that reader
+ * installed, and re-pointing the update at the canonical repository would swap
+ * their package for a different one under the same name. A `#fragment` is
+ * dropped — it names ONE commit, so re-adding it would reinstall precisely the
+ * code that is already there and call it an update.
+ * @param recorded - the profile manifest's spec string, when it was read.
+ * @returns the spec to re-add, or undefined when the recorded one is not a source spec.
+ */
+export declare function sourceSpecOf(recorded: string | undefined): string | undefined;
+/**
  * Build the update plan for the running copy. Local checkouts pull and rebuild
- * in place; source installs re-add the GitHub spec; npm installs re-add the
- * package at latest; an unreadable mode gets no plan at all — guessing an
- * install mode is how a reader is told to run a command that cannot work.
+ * in place; source installs re-add the spec the profile recorded (see
+ * {@link sourceSpecOf}); npm installs re-add the package at latest; an
+ * unreadable or unrouted mode gets no plan at all — guessing an install mode is
+ * how a reader is told to run a command that cannot work.
  * @param input - the facts about the running copy.
  * @returns the plan.
  */

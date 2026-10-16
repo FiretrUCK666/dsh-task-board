@@ -122,6 +122,10 @@ function updateOutcomeOf(result: UpdateApplyResult): string {
   const v = result.version ?? t('board.update.versionUnknown')
   if (result.outcome === 'applied') return t('board.update.applied', { v })
   if (result.outcome === 'rebuilt') return t('board.update.rebuilt', { v })
+  // 一次跑完版本没动，不是一次更新。安装服务报的是包管理器做成了什么，而
+  // "装最新版"解析到已经装着的那个版本时，它成功退出、什么也没做——把这件事
+  // 说成「已更新到 v」正是读者无法核对、却会照着它行动的那句话。
+  if (result.outcome === 'unchanged') return t('board.update.unchanged', { v })
   return t('board.update.restartRequired', { v })
 }
 
@@ -495,8 +499,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   const [showUpdate, setShowUpdate] = useState(false)
   const [updateCopied, setUpdateCopied] = useState(false)
   const [updateCopyFailed, setUpdateCopyFailed] = useState(false)
-  // 应用阶段与结果：running 时按钮不可再按，done/failed 各出一条结果行。
-  const [updateApply, setUpdateApply] = useState<{ phase: 'idle' | 'running' | 'done' | 'failed'; result?: UpdateApplyResult }>({ phase: 'idle' })
+  // 应用阶段与结果：running 时按钮不可再按。done 是"成了，没有别的可做"；
+  // unchanged 是"跑完了，但版本没动"——它既不是成功也不是失败，按钮要留着
+  // （保护期过了、或换个装法之后，同一按还有意义），所以它自成一档。
+  const [updateApply, setUpdateApply] = useState<{ phase: 'idle' | 'running' | 'done' | 'unchanged' | 'failed'; result?: UpdateApplyResult }>({ phase: 'idle' })
   const updateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   useEffect(() => () => {
     if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
@@ -571,21 +577,32 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       const result = await applyUpdate()
       const source = await fetchUpdateSource()
       if (source !== undefined) setUpdateSource(source)
+      const reported = result !== undefined && result.ok === true ? result : undefined
+      // 「成了」有两种证据：host 说这次是更新（不是"没变化"），或盘上的版本确实动了
+      // ——一次 live 重载可能让答复回不来，而版本变了本身就证明它成了。
+      const updated = reported !== undefined && reported.outcome !== 'unchanged'
       const landed = source !== undefined && source.version !== before
-      if (result?.ok === true) {
-        setUpdateApply({ phase: 'done', result })
-      } else if (landed) {
-        setUpdateApply({ phase: 'done', result: { ok: true, outcome: 'applied', version: source.version } })
-      } else {
-        setUpdateApply({ phase: 'failed', ...(result !== undefined ? { result } : {}) })
-      }
-      if (result?.ok === true || landed) {
+      if (updated || landed) {
+        setUpdateApply({
+          phase: 'done',
+          result: updated && reported !== undefined
+            ? reported
+            : { ok: true, outcome: 'applied', version: source?.version ?? before },
+        })
         // 更新成了：按钮的读数收回常驻态（有新版 → 已是最新）。重读到的来源里
         // 已经带着新的最新版读数，不需要再问一次。
         setUpdatePhase('latest')
         if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
         updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
+        return
       }
+      // 跑完了、版本没动：既不是成功也不是失败。按钮要留着——保护期过了、或换个
+      // 装法之后，同一按还有意义；而把它说成「已更新到 v」是读者无法核对的那句话。
+      if (reported !== undefined) {
+        setUpdateApply({ phase: 'unchanged', result: reported })
+        return
+      }
+      setUpdateApply({ phase: 'failed', ...(result !== undefined ? { result } : {}) })
     })()
   }
 
@@ -1889,6 +1906,12 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {updateSource?.dir !== undefined && (
                 <p className={css.detailHint}>{t('board.update.dir', { path: updateSource.dir })}</p>
               )}
+              {/* 这份 profile 到底声明了什么。它是"为什么装不上新版"最常见的答案
+                  （一个范围可以几年不动、一个固定的 commit 永远不会是新版），
+                  而读者唯一能核对的原始依据就是它。 */}
+              {updateSource?.spec !== undefined && (
+                <p className={css.detailHint}>{t('board.update.spec', { spec: updateSource.spec })}</p>
+              )}
               {updateSource?.evidence?.disagreement === true && (
                 <p className={css.detailHint}>{t('board.update.evidence')}</p>
               )}
@@ -1912,7 +1935,11 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {updateSource?.mode === 'github' && !updateNewer && (
                 <p className={css.detailHint}>{t('board.update.gitSameVersion')}</p>
               )}
-              {updateSource !== undefined && updateLatest === undefined && updateSource.mode !== 'local' && (
+              {/* 只有真去远端读过的两种安装才谈得上"读不到最新版"：本地检出读的是
+                  git，而来源读不出来的那一份根本没人问过网络——对着它说"网络或源
+                  不可达"是把一件没发生过的事说成原因。 */}
+              {updateSource !== undefined && updateLatest === undefined
+                && (updateSource.mode === 'npm' || updateSource.mode === 'github') && (
                 <p className={css.detailText}>{t('board.update.noLatest')}</p>
               )}
               {updateGitBehind && updateGit?.remoteHead !== undefined && (
@@ -1928,7 +1955,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               )}
               {/* 结果：成一条、败一条加原因，再加上 host 捕到的末尾输出。失败不
                   吞掉出路——下面那行命令就是同一件事的手动版本。 */}
-              {updateApply.phase === 'done' && updateApply.result !== undefined && (
+              {(updateApply.phase === 'done' || updateApply.phase === 'unchanged') && updateApply.result !== undefined && (
                 <p className={css.detailText} role="status" aria-live="polite">
                   {updateOutcomeOf(updateApply.result)}
                 </p>
@@ -1984,8 +2011,17 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {updateSource?.appManaged === true && (
                 <p className={css.detailHint}>{t('board.update.appManaged')}</p>
               )}
+              {/* 「这条链路给不出命令」有三种不同的原因，各说各的那一句：声明读了
+                  但没有可走的路（本地路径那类装法）、压根没有声明、这台 host 没有
+                  能应用更新的组件。混成一句，就把三种不同的处境说成同一件事。 */}
               {updateSource !== undefined && updatePlan?.apply === 'none' && updateCommand === undefined && !updateSource.appManaged && (
-                <p className={css.detailHint}>{t('board.update.unreadable')}</p>
+                <p className={css.detailHint}>
+                  {updateSource.mode !== 'unknown'
+                    ? t('board.update.reason.unavailable')
+                    : updateSource.spec !== undefined
+                      ? t('board.update.unrouted', { spec: updateSource.spec })
+                      : t('board.update.unreadable')}
+                </p>
               )}
               <p className={css.detailHint}>{t('board.update.restart')}</p>
             </div>

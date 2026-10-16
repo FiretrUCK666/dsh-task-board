@@ -79,8 +79,20 @@ export interface CheckoutUpdate {
     /** Uncommitted changes: refreshing over them would mix two states. */
     dirty: boolean;
 }
-/** How an applied update landed. */
-export type UpdateApplyOutcome = 'applied' | 'restart-required' | 'rebuilt';
+/**
+ * How an applied update landed.
+ *
+ * `unchanged` is the case the installation service cannot report: it answers
+ * with what the package manager did, and a package manager asked for "the
+ * latest" that resolves to the version already installed exits successfully
+ * having done nothing at all. A package update's whole subject is its version,
+ * so a run that left the version alone is not an update — and reporting one is
+ * how a page tells a reader they are current when the resolution was merely
+ * held back (an installer's release-age policy does exactly that to a version
+ * that was published minutes ago). Only `npm` mode claims it: a branch install
+ * can move without any version changing.
+ */
+export type UpdateApplyOutcome = 'applied' | 'restart-required' | 'rebuilt' | 'unchanged';
 /** Why an update could not be applied (a stable code the page turns into copy). */
 export type UpdateApplyError = 
 /** This install mode has no host-side update path at all. */

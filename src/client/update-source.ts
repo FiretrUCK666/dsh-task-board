@@ -74,7 +74,8 @@ export interface UpdateSourceView {
 /** What one applied update did, as the host reported it. */
 export interface UpdateApplyResult {
   ok: boolean
-  outcome?: 'applied' | 'restart-required' | 'rebuilt'
+  /** `unchanged` means the run reported success and the version did not move. */
+  outcome?: 'applied' | 'restart-required' | 'rebuilt' | 'unchanged'
   version?: string
   output?: string
   error?: 'unsupported' | 'unavailable' | 'dirty' | 'tool-missing' | 'timeout' | 'failed'
@@ -249,7 +250,7 @@ export async function applyUpdate(timeoutMs = 600_000): Promise<UpdateApplyResul
   const error = value.error
   return {
     ok: value.ok,
-    ...(outcome === 'applied' || outcome === 'restart-required' || outcome === 'rebuilt'
+    ...(outcome === 'applied' || outcome === 'restart-required' || outcome === 'rebuilt' || outcome === 'unchanged'
       ? { outcome }
       : {}),
     ...(typeof value.version === 'string' ? { version: value.version } : {}),
