@@ -152,8 +152,6 @@ export interface UpdateLatestView {
     registry?: string;
     /** Where the answer came from. */
     source: 'registry' | 'repository';
-    /** The repository's default-branch head (git installs only). */
-    head?: string;
 }
 /**
  * The registries to ask when the host carries no installation service to ask

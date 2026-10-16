@@ -8,7 +8,7 @@
  * one machine (a desktop install and a `link:` checkout) each describe
  * themselves — no profile name is written into the route.
  */
-import { afterAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, describe, expect, it, vi } from 'vitest'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
@@ -16,11 +16,13 @@ import type { Context } from '@deepseek-ai/cordis'
 import {
   createUpdateHandler,
   installedVersionIn,
+  readLatest,
+  registryOrderOf,
   runningCopyOf,
   type UpdateRouteDeps,
   type UpdateSourceView,
 } from '../src/host/update-route.ts'
-import { commandLineOf, updatePlanFor } from '../src/core/update-check.ts'
+import { commandLineOf, PUBLIC_REGISTRIES, updatePlanFor } from '../src/core/update-check.ts'
 import type { UpdateApplyResult } from '../src/host/update-apply.ts'
 
 const PKG = '@firetruck666/dsh-task-board'
@@ -273,6 +275,96 @@ describe('runningCopyOf', () => {
     const copy = runningCopyOf(fakeCtx({ profileContext: { name: 'web', dir: profile.dir } }), profile.self)
     expect(copy.plan.apply).toBe('none')
     expect(copy.plan.steps.map(step => step.command)).toEqual(['dsh'])
+  })
+})
+
+describe('registryOrderOf', () => {
+  it('asks the profile\'s own plan first, then the public pair, without repeats', () => {
+    expect(registryOrderOf({
+      resolved: 'https://mirror.internal/npm/',
+      registry: 'https://registry.npmmirror.com/',
+      fallbackRegistries: ['https://registry.npmjs.org/', 'https://mirror.internal/npm/'],
+    })).toEqual([
+      'https://mirror.internal/npm/',
+      'https://registry.npmmirror.com/',
+      'https://registry.npmjs.org/',
+    ])
+  })
+
+  it('a host that reports no plan still asks the public pair', () => {
+    expect(registryOrderOf(undefined)).toEqual([...PUBLIC_REGISTRIES])
+  })
+
+  it('a null registry means pnpm decides, and is never asked as a URL', () => {
+    expect(registryOrderOf({ registry: null, resolved: 'https://npm.corp/' }))
+      .toEqual(['https://npm.corp/', ...PUBLIC_REGISTRIES])
+  })
+})
+
+describe('readLatest', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  /** A context whose installation service reports one registry plan. */
+  function ctxOf(plan: unknown): Context {
+    return fakeCtx({ pluginManager: { registries: async () => plan } })
+  }
+
+  /** Stub fetch with a table of answers, recording every URL asked. */
+  function answerWith(answers: Array<{ url: string; body?: unknown; status?: number }>): string[] {
+    const asked: string[] = []
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      asked.push(String(url))
+      const match = answers.find(one => String(url).startsWith(one.url))
+      if (match === undefined) return new Response('{}', { status: 404 })
+      return new Response(JSON.stringify(match.body ?? {}), { status: match.status ?? 200 })
+    })
+    return asked
+  }
+
+  it('asks its own registry first and stops at the first answer', async () => {
+    // The reader this replaces asked `registry.npmjs.org` and nothing else, so a
+    // reader behind a mirror — the very reader who chose that mirror when
+    // installing — got a failed check instead of an answer.
+    const asked = answerWith([
+      { url: 'https://mirror.internal/', body: { 'dist-tags': { latest: '1.2.0' } } },
+      { url: 'https://registry.npmjs.org/', body: { 'dist-tags': { latest: '9.9.9' } } },
+    ])
+    const latest = await readLatest(ctxOf({ resolved: 'https://mirror.internal/npm/' }), { mode: 'npm' })
+    expect(latest).toEqual({
+      version: '1.2.0',
+      source: 'registry',
+      registry: 'https://mirror.internal/npm/',
+    })
+    expect(asked).toEqual([`https://mirror.internal/npm/${PKG.replace('/', '%2F')}`])
+  })
+
+  it('moves on when a registry answers without the package, and names who answered', async () => {
+    const asked = answerWith([
+      { url: 'https://registry.npmjs.org/', body: { 'dist-tags': {} } },
+      { url: 'https://registry.npmmirror.com/', body: { 'dist-tags': { latest: '1.2.0' } } },
+    ])
+    const latest = await readLatest(ctxOf(undefined), { mode: 'npm' })
+    expect(latest?.registry).toBe('https://registry.npmmirror.com/')
+    expect(asked).toHaveLength(2)
+  })
+
+  it('no registry answering is absent, never "up to date"', async () => {
+    vi.stubGlobal('fetch', async () => { throw new Error('offline') })
+    expect(await readLatest(ctxOf(undefined), { mode: 'npm' })).toBeUndefined()
+  })
+
+  it('a repository install reads the version its default branch declares', async () => {
+    const asked = answerWith([
+      { url: 'https://raw.githubusercontent.com/', body: { version: '1.3.0' } },
+    ])
+    const latest = await readLatest(fakeCtx({}), { mode: 'github' })
+    expect(latest).toEqual({ version: '1.3.0', source: 'repository' })
+    expect(asked).toEqual(['https://raw.githubusercontent.com/FiretrUCK666/dsh-task-board/HEAD/package.json'])
+  })
+
+  it('a checkout has nothing to read here: its own git state answers instead', async () => {
+    vi.stubGlobal('fetch', async () => { throw new Error('must not be asked') })
+    expect(await readLatest(fakeCtx({}), { mode: 'local' })).toBeUndefined()
   })
 })
 

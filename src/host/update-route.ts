@@ -514,39 +514,60 @@ export function runningCopyOf(ctx: Context, selfDir = SELF_ROOT): RunningCopy {
   }
 }
 
+/** The registry plan one profile's installation service reports. */
+export interface RegistryPlanLike {
+  registry?: unknown
+  fallbackRegistries?: unknown
+  resolved?: unknown
+}
+
 /**
- * The registries to ask, in order: the profile's own plan first (it knows the
- * mirrors, private sources, proxies and credentials this installation really
- * uses), then the public pair.
+ * The registries to ask, in order, for the plan an installation service
+ * reported.
+ *
+ * Pure, and separate from the service call that produces the plan, because the
+ * ORDER is the part with a rule in it: the profile's own plan first (it knows
+ * the mirrors, private sources, proxies and credentials this installation
+ * really uses), then the public pair.
  *
  * Asking the public pair after a private source is safe here because the only
  * thing ever asked for is THIS package, which is public: a private source that
  * answers ends the walk before a public one is reached, and a private source
  * that does not carry the package is exactly the case where the public answer
  * is the right one.
+ * @param plan - the service's plan, or undefined when it reported none.
+ * @returns the registry base URLs, in the order to ask them, without repeats.
+ */
+export function registryOrderOf(plan: RegistryPlanLike | undefined): string[] {
+  const ordered: string[] = []
+  const add = (value: unknown): void => {
+    if (typeof value === 'string' && value !== '' && !ordered.includes(value)) ordered.push(value)
+  }
+  // `resolved` is what pnpm reads right now; `registry` is the configured first
+  // choice, and a null there means pnpm's own configuration decides.
+  add(plan?.resolved)
+  add(plan?.registry)
+  if (Array.isArray(plan?.fallbackRegistries)) for (const item of plan.fallbackRegistries) add(item)
+  for (const item of PUBLIC_REGISTRIES) add(item)
+  return ordered
+}
+
+/**
+ * The registries to ask for this host, from its installation service when it has
+ * one and from the public pair when it does not.
  * @param ctx - context carrying the host services.
  * @returns the registry base URLs, in the order to ask them.
  */
 async function registriesFor(ctx: Context): Promise<string[]> {
   const manager = ctx.get('pluginManager') as PluginManagerLike | undefined
-  const ordered: string[] = []
-  const add = (value: unknown): void => {
-    if (typeof value === 'string' && value !== '' && !ordered.includes(value)) ordered.push(value)
-  }
+  let plan: RegistryPlanLike | undefined
   try {
-    const plan = await manager?.registries?.()
-    if (plan !== undefined) {
-      // `resolved` is what pnpm reads right now; `registry` is the configured
-      // first choice, and a null there means pnpm's own configuration decides.
-      add(plan.resolved)
-      add(plan.registry)
-      if (Array.isArray(plan.fallbackRegistries)) for (const item of plan.fallbackRegistries) add(item)
-    }
+    plan = await manager?.registries?.() as RegistryPlanLike | undefined
   } catch {
     // The service is not answering; the public pair below still applies.
+    plan = undefined
   }
-  for (const item of PUBLIC_REGISTRIES) add(item)
-  return ordered
+  return registryOrderOf(plan)
 }
 
 /** Read one JSON document with a hard bound; any failure reads as undefined. */
@@ -574,12 +595,6 @@ function rawBaseOf(spec: string | undefined): string | undefined {
   return slug === '' ? undefined : `https://raw.githubusercontent.com/${slug}`
 }
 
-/** The `https://` repository URL a `github:Owner/Repo` spec names. */
-function repoUrlOf(spec: string | undefined): string | undefined {
-  const base = rawBaseOf(spec)
-  return base === undefined ? undefined : base.replace('raw.githubusercontent.com', 'github.com')
-}
-
 /**
  * The newest upstream for this copy, as this host can read it.
  *
@@ -595,7 +610,10 @@ function repoUrlOf(spec: string | undefined): string | undefined {
  * @param copy - the running copy (its mode decides what to ask).
  * @returns the newest upstream, or undefined when it could not be read.
  */
-async function readLatest(ctx: Context, copy: RunningCopy): Promise<UpdateLatestView | undefined> {
+export async function readLatest(
+  ctx: Context,
+  copy: Pick<RunningCopy, 'mode'>,
+): Promise<UpdateLatestView | undefined> {
   if (copy.mode === 'npm') {
     for (const registry of await registriesFor(ctx)) {
       const answer = latestFromPackument(
@@ -611,14 +629,12 @@ async function readLatest(ctx: Context, copy: RunningCopy): Promise<UpdateLatest
     const manifest = await boundedJson(`${base}/HEAD/package.json`, REGISTRY_TIMEOUT_MS)
     const version = (manifest as { version?: unknown } | undefined)?.version
     if (typeof version !== 'string' || version === '') return undefined
-    const repo = repoUrlOf(GITHUB_SPEC)
-    const head = repo === undefined ? undefined : gitOut(repo, ['ls-remote', repo, 'HEAD'], 15_000)
-    const sha = head !== undefined && head !== '' ? head.split(/\s/)[0] : undefined
-    return {
-      version,
-      source: 'repository',
-      ...(sha !== undefined && sha !== '' ? { head: sha } : {}),
-    }
+    // Only the declared version, on purpose. The branch's commit would be a
+    // second network transport (a `git ls-remote` subprocess) in a check that
+    // already has one, and there is nothing here to compare a commit AGAINST:
+    // a git install carries no recorded commit of its own to measure against.
+    // Version-against-version is one grammar for every mode.
+    return { version, source: 'repository' }
   }
   return undefined
 }

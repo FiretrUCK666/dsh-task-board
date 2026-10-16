@@ -252,8 +252,6 @@ export interface UpdateLatestView {
   registry?: string
   /** Where the answer came from. */
   source: 'registry' | 'repository'
-  /** The repository's default-branch head (git installs only). */
-  head?: string
 }
 
 /**

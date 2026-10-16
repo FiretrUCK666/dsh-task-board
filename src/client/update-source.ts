@@ -169,7 +169,6 @@ function parseLatest(value: unknown): UpdateLatestView | undefined {
     source,
     ...(typeof latest.publishedAt === 'string' ? { publishedAt: latest.publishedAt } : {}),
     ...(typeof latest.registry === 'string' ? { registry: latest.registry } : {}),
-    ...(typeof latest.head === 'string' ? { head: latest.head } : {}),
   }
 }
 

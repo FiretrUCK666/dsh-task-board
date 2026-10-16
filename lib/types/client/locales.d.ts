@@ -636,7 +636,6 @@ export declare const zh: {
     'board.update.newVersion': string;
     'board.update.published': string;
     'board.update.registry': string;
-    'board.update.remoteHead': string;
     'board.update.remoteVersion': string;
     'board.update.gitSameVersion': string;
     'board.update.noLatest': string;

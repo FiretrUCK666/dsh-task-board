@@ -1906,12 +1906,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               )}
               {updateLatest?.source === 'repository' && (
                 <p className={css.detailHint}>
-                  {updateLatest.head !== undefined
-                    ? t('board.update.remoteHead', {
-                      sha: shortSha(updateLatest.head),
-                      v: updateLatest.version,
-                    })
-                    : t('board.update.remoteVersion', { v: updateLatest.version })}
+                  {t('board.update.remoteVersion', { v: updateLatest.version })}
                 </p>
               )}
               {updateSource?.mode === 'github' && !updateNewer && (
