@@ -27,6 +27,14 @@
 // 探针（`probes/probe-item-capsules.js`）自己带六条判据，这一层只做三件事：把矩阵跑完、把每一档的
 // 读数打出来、把**它自己承认量不出来**的那些（`no-reading`/`blind`）当成红的。
 //
+// ── 第二条判据：框架空气（`probes/probe-item-frame.js`） ──────────────────────
+//
+// 胶囊那一套量的是「一件东西自己画得正不正」；**行卡到面板两沿的距离**是另一件事，而且
+// 它是**容器宽度**的函数，不是视口的：主矩阵按视口宽度跑，于是它自己一档（`frame-ladder`），
+// 探针把页面宽度从 1600 逐档扫到 390（阶梯与容差写在探针里）。判据是「行卡的左间隙等于右
+// 间隙、且两个都在」——这条曾经是 0（面板 720–880 时贴住侧板），而按视口宽度的矩阵在任何
+// 一档上都看不见它。量不到清单框架的页面由探针自己说 `not-here`，这一层**不按文件名猜**。
+//
 // ── 工件从哪来 ───────────────────────────────────────────────────────────────
 //
 // 本脚本**不生成工件**：它量你给它的那一页。工件由台架写（`DSH_PANEL_HTML=<path> pnpm test`），
@@ -41,6 +49,8 @@ import { fileURLToPath, pathToFileURL } from 'node:url'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
 const SHOT_PANEL = join(HERE, 'shot-panel.mjs')
+/** 框架空气那一支探针（见头注释的第二条判据）。 */
+const FRAME_PROBE = join(HERE, 'probes', 'probe-item-frame.js')
 
 /** 一条矩阵带：窗口、像素密度、指针能力、（可选）换掉的字体栈。 */
 const BANDS = [
@@ -52,6 +62,19 @@ const BANDS = [
   { id: 'w390x3-touch', width: 390, height: 844, scale: 3, touch: true, pair: 'w390x3' },
   /* 故意选一枚**不在**项目字体栈里的 CJK 字体：另一套度量，才有另一套读数。 */
   { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif' },
+]
+
+/** 框架空气那一档：**不是**一条设备档，是一次容器宽度的阶梯（阶梯在探针里）。 */
+const FRAME_BAND = { id: 'frame-ladder', width: 1600, height: 900, scale: 1, touch: false }
+
+/** 探针的判据名 ↔ 它自己的 `offenders` 键。两处都说同一件事，所以写在一张表上。 */
+const FRAME_CRITERIA = [
+  ['airConstant', null],
+  ['airSymmetric', 'symmetric'],
+  ['airPresent', 'present'],
+  ['linesAgree', 'lines'],
+  ['railOnLine', 'rail'],
+  ['scrollbarFits', 'scrollbar'],
 ]
 
 function parseArgs(argv) {
@@ -95,7 +118,7 @@ if (found.length === 0) {
 }
 
 /** 一个 band 的一页量一次；返回它的审计读数。 */
-function measure(page, band) {
+function measure(page, band, probe = '') {
   const stem = `${page.split(/[\\/]/).pop().replace(/\.html$/, '')}--${band.id}`
   const shot = join(outDir, `${stem}.png`)
   const cli = [
@@ -107,6 +130,7 @@ function measure(page, band) {
     '--scale', String(band.scale),
     '--wait', '1200',
     '--audit',
+    ...(probe === '' ? [] : ['--eval-file', probe]),
     ...(band.touch ? ['--touch'] : []),
     ...(band.font === undefined ? [] : ['--font', band.font]),
   ]
@@ -182,6 +206,36 @@ for (const page of found) {
      * 它不参与排版，所以「谁没有它」不是几何缺陷——它是审计自己的词表清单。 */
     if (counts.missingSlot !== undefined && counts.missingSlot.length > 0) {
       notes.push({ page, band: band.id, kind: 'no-marker', detail: `${counts.missingSlot.length} kind(s) without the text marker: ${counts.missingSlot.slice(0, 10).join(', ')}` })
+    }
+  }
+
+  /* ── 框架空气：行卡到两沿的距离，在容器宽度的整条阶梯上 ──────────────────────
+   *
+   * 这一档量的是**面板自己的宽度**（探针把页面宽度逐档设过去），所以它不可能由上面那些
+   * 设备档代替：0 间隙那一段落在 720–880 的面板宽度上，而任何一个视口档都可能落在别处。
+   * 「这页没有清单框架」由探针说（`not-here`），这里不按文件名猜。 */
+  if (args.only === '' || args.only === FRAME_BAND.id) {
+    const frame = measure(page, FRAME_BAND, FRAME_PROBE)
+    entry.frame = frame
+    if (frame.error !== undefined) {
+      console.log(`   ${FRAME_BAND.id.padEnd(14)} NO READING  ${frame.error} ${frame.stderr ?? ''}`)
+      findings.push({ page, band: FRAME_BAND.id, kind: 'no-reading', detail: frame.error })
+    } else if (frame.pass?.listFrame === 'not-here') {
+      console.log(`   ${FRAME_BAND.id.padEnd(14)} not a list panel — skipped`)
+    } else {
+      const ladder = (frame.ladder ?? []).map((one) => (one.missing === true ? `${one.width}:?` : `${one.width}:${one.left}/${one.right}`)).join(' ')
+      console.log(`   ${FRAME_BAND.id.padEnd(14)} air=${frame.counts.air} cardL/cardR by width -> ${ladder}`)
+      console.log(`   ${''.padEnd(14)} constant=${frame.pass.airConstant} symmetric=${frame.pass.airSymmetric} present=${frame.pass.airPresent} ` +
+        `lines=${frame.pass.linesAgree} rail=${frame.pass.railOnLine} scrollbar=${frame.pass.scrollbarFits} self=${frame.pass.selfTest}`)
+      /* 量具瞎了 = 整轮红：种下去的那颗不对称没被报出来，「绿」就不是量出来的。 */
+      if (frame.pass.selfTest !== 'caught') {
+        findings.push({ page, band: FRAME_BAND.id, kind: 'probe-blind', detail: `the frame probe did not catch its own planted asymmetry: ${String(frame.pass.selfTest)}` })
+      }
+      for (const [name, offenders] of FRAME_CRITERIA) {
+        if (frame.pass[name] !== 'fail') continue
+        const detail = offenders === null ? frame.counts.air : JSON.stringify((frame.offenders ?? {})[offenders] ?? [])
+        findings.push({ page, band: FRAME_BAND.id, kind: name, detail: detail.slice(0, 500) })
+      }
     }
   }
 }

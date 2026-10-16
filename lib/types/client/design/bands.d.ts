@@ -61,7 +61,7 @@ export declare const BANDS: {
     readonly item: readonly [{
         readonly container: "dsh-tb-item";
         readonly narrowMax: 1080;
-        readonly what: "左栏与列表不再并排——JS 的「窄」就是这一档";
+        readonly what: "左栏的日历默认折起来——JS 的「窄」就是这一档";
     }, {
         readonly container: "dsh-tb-item";
         readonly narrowMax: 880;
@@ -69,11 +69,11 @@ export declare const BANDS: {
     }, {
         readonly container: "dsh-tb-item";
         readonly narrowMax: 719;
-        readonly what: "行形状：四列变两行";
+        readonly what: "新建那张纸的两栏并成一栏；内容线那一档（行内衬 12 / 宽 16）";
     }, {
         readonly container: "dsh-tb-item-list";
         readonly narrowMax: 559;
-        readonly what: "清单内层的左栏带收成一行";
+        readonly what: "行形状：四列变两行（标签落到句子下面那一行）";
     }];
     /**
      * The design-system gallery's measured box (`DesignGallery` declares

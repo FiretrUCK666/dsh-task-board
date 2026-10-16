@@ -54,10 +54,10 @@ export const BANDS = {
   ],
   /** The task list's box (`ItemListPanel` declares `container-name: dsh-tb-item`). */
   item: [
-    { container: 'dsh-tb-item', narrowMax: 1080, what: '左栏与列表不再并排——JS 的「窄」就是这一档' },
+    { container: 'dsh-tb-item', narrowMax: 1080, what: '左栏的日历默认折起来——JS 的「窄」就是这一档' },
     { container: 'dsh-tb-item', narrowMax: 880, what: '工作台并成一列、顶栏折行、字段落成两行' },
-    { container: 'dsh-tb-item', narrowMax: 719, what: '行形状：四列变两行' },
-    { container: 'dsh-tb-item-list', narrowMax: 559, what: '清单内层的左栏带收成一行' },
+    { container: 'dsh-tb-item', narrowMax: 719, what: '新建那张纸的两栏并成一栏；内容线那一档（行内衬 12 / 宽 16）' },
+    { container: 'dsh-tb-item-list', narrowMax: 559, what: '行形状：四列变两行（标签落到句子下面那一行）' },
   ],
   /**
    * The design-system gallery's measured box (`DesignGallery` declares

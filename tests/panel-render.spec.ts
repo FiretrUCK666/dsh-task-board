@@ -129,6 +129,36 @@ function declarationRules(css: string): Rule[] {
   return out
 }
 
+/**
+ * Every `@media` / `@container` block in a sheet, as [start, end) offsets.
+ *
+ * A declaration does not say whether it is CONDITIONAL — its position does.
+ * `@container dsh-tb-item (min-width: 720px) { .itemWorkbench { --x: 0px } }`
+ * contains an ordinary-looking declaration, and `declarationRules` reports it as
+ * a rule like any other: it cannot tell a default from a band. So the question
+ * "does this value answer to width" is a question about WHERE it sits, and this
+ * is what answers it.
+ *
+ * Comments must already be off: a comment quoting a block would be brace-matched
+ * exactly like a real one.
+ * @param sheet - the sheet, comments already stripped.
+ * @returns each block's own [start, end) range, in source order.
+ */
+function conditionalRanges(sheet: string): Array<[number, number]> {
+  const out: Array<[number, number]> = []
+  for (const match of sheet.matchAll(/@(?:media|container)\b[^{]*\{/g)) {
+    const start = match.index ?? 0
+    let depth = 0
+    let end = start
+    for (; end < sheet.length; end++) {
+      if (sheet[end] === '{') depth += 1
+      else if (sheet[end] === '}') { depth -= 1; if (depth === 0) break }
+    }
+    out.push([start, end])
+  }
+  return out
+}
+
 
 
 /**
@@ -1378,6 +1408,127 @@ describe('the rail and in-row detail share one workbench', () => {
     // And the line detector, on the selector that now must NOT carry one.
     expect(drawsSeparator('.itemListColumn { border-inline-start: var(--item-hair); }', 'border-inline-start')).toBe(true)
     expect(drawsSeparator('.itemListColumn { border-inline-start: 0; }', 'border-inline-start')).toBe(false)
+  })
+})
+
+/**
+ * THE FRAME'S AIR: ONE NUMBER, PAID AT BOTH ENDS.
+ *
+ * A row card's distance to the panel's two edges was a FUNCTION OF WIDTH: the
+ * scroller paid `0` for a panel 720 and wider and `12px` below, while the left
+ * column that gives a card a LEFT NEIGHBOUR only exists from 881 up — below that
+ * the rail folds into a strip above the list. Measured on the render artifact
+ * across a ladder of container widths (1600 -> 390): every rung from 1600 down to
+ * 881 had the card's left gap at 0 and its right gap at 10, and the band
+ * 720…880 had the same 0 **with nothing to its left at all** — the card sat flush
+ * against the panel's own edge while the top bar's text and the strip above it
+ * stayed at 16. A reader dragging the window watches the gap appear and vanish;
+ * a reader on a narrow screen sees a card glued to the sidebar.
+ *
+ * WHY THIS GATE IS STRUCTURAL AND NOT NUMERICAL: 0 was the right value for the
+ * desktop geometry it was chosen for — the defect is not the value, it is that
+ * the air ANSWERED TO WIDTH while the thing that made 0 work (two columns)
+ * answered to a DIFFERENT width. So the gate asks the two questions that defect
+ * fails:
+ *
+ *   1. what the scroller pays is ONE value, declared exactly once and outside
+ *      every conditional block;
+ *   2. the trailing alias IS the leading one (`--item-inset-x-end` resolves to
+ *      `var(--item-inset-x)`), so the right end cannot carry a second sum.
+ *
+ * The geometry those two produce is measured where geometry can be measured:
+ * `scripts/probes/probe-item-frame.js` walks the container width in a real
+ * Chromium (`pnpm audit`, the `frame-ladder` stage) and reports both gaps per
+ * rung. This is the half that runs on every `pnpm test`.
+ */
+describe('the frame pays one air at both ends', () => {
+  const css = panelCss()
+
+  /* The invariant as a function rather than as one inline expectation, so it can
+   * be pointed at a PLANTED violation and be seen to report. */
+  const frameAirFindings = (cssText: string): string[] => {
+    const findings: string[] = []
+    const live = stripCssComments(cssText)
+    const blocks = conditionalRanges(live)
+    const insideABand = (at: number): boolean => blocks.some(([from, to]) => at > from && at < to)
+    const declared = (name: string): RegExpMatchArray[] => [...live.matchAll(new RegExp(`(?:^|[;{\\s])${name}\\s*:\\s*([^;}]+)`, 'g'))]
+
+    // 1. THE SCROLLER PAYS ONE VALUE. `padding-inline: A B` is the asymmetry
+    //    itself, written on one line; and a `padding` SHORTHAND here would set
+    //    the block axis too, which is the scroller's vertical air — two axes,
+    //    one declaration, and the next edit to either one moves both.
+    const flowRules = declarationRules(live).filter(rule => /(?:^|[,\s])\.itemFlow(?:\s|,|$|\{)/.test(rule.selector))
+    const inlinePads: string[] = []
+    for (const rule of flowRules) {
+      if (/(?:^|[;{\s])padding\s*:/.test(rule.body)) {
+        findings.push('.itemFlow declares a `padding` shorthand, which also sets the block axis and can hide a second inline value')
+      }
+      for (const call of rule.body.matchAll(/(?:^|[;{\s])padding-inline\s*:\s*([^;]+)/g)) inlinePads.push((call[1] ?? '').trim())
+    }
+    if (inlinePads.length !== 1) {
+      findings.push(`.itemFlow declares ${inlinePads.length} inline padding(s): one declaration is what says both ends pay the same, and a second one is a second answer`)
+    }
+    for (const value of inlinePads) {
+      if (value.split(/\s+/).filter(part => part !== '').length !== 1) {
+        findings.push(`.itemFlow pays its two ends different values (padding-inline: ${value}) — the left gap and the right gap are two numbers again`)
+      }
+    }
+
+    // 2. THAT ONE VALUE IS DECLARED ONCE, AND NOT INSIDE A BAND. A band that
+    //    restates the air is the defect whatever number it picks: it makes the
+    //    gap answer to width, and the width it answers to need not be the width
+    //    that gave the card a left neighbour.
+    const air = /var\(\s*(--[a-z][\w-]*)\s*\)/.exec(inlinePads[0] ?? '')?.[1]
+    if (air === undefined) {
+      findings.push(`what .itemFlow pays is not a single token (${inlinePads[0] ?? 'missing'}), so nothing states the frame's air once`)
+    } else {
+      const airDeclarations = declared(air)
+      if (airDeclarations.length !== 1) {
+        findings.push(`${air} is declared ${airDeclarations.length} time(s) — the frame's air is a function of width again`)
+      }
+      for (const one of airDeclarations) {
+        if (insideABand(one.index ?? 0)) {
+          findings.push(`${air} is declared inside a conditional block, so the gap changes with the panel's width while the layout around it need not`)
+        }
+      }
+    }
+
+    // 3. THE TWO ENDS ARE THE SAME NUMBER. The trailing alias is checked as an
+    //    ALIAS rather than as a value: a second sum
+    //    (`calc(var(--item-row-pad) + var(--s2))`) is exactly how the right end
+    //    drifted out of the air's reach in the first place.
+    const leading = declared('--item-inset-x').at(-1)?.[1]?.trim() ?? ''
+    const trailing = declared('--item-inset-x-end').at(-1)?.[1]?.trim() ?? ''
+    if (air !== undefined && !leading.includes(`var(${air})`)) {
+      findings.push(`--item-inset-x does not read the frame's air (${leading || 'missing'}), so the content line can drift from the card's own edge`)
+    }
+    if (trailing !== 'var(--item-inset-x)') {
+      findings.push(`--item-inset-x-end is not the leading alias (${trailing || 'missing'}) — the trailing end is a second sum again, and the two ends can disagree`)
+    }
+    return findings
+  }
+
+  it('is quiet on the stylesheet as it stands', () => {
+    expect(frameAirFindings(css)).toEqual([])
+  })
+
+  it('reports a banded air, an asymmetric pair, and a second sum at the trailing end', () => {
+    const banded = `${css}\n@container dsh-tb-item (min-width: 720px) {\n  .itemWorkbench { --item-air: 0px; }\n}\n`
+    expect(frameAirFindings(banded).join('\n'), 'the gate cannot report the air becoming a function of width').toMatch(/is declared 2 time/)
+    const asymmetric = css.replace('padding-inline: var(--item-air);', 'padding-inline: 0px var(--item-air);')
+    expect(asymmetric, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(css)
+    expect(frameAirFindings(asymmetric).join('\n')).toMatch(/pays its two ends different values/)
+    const secondSum = css.replace('--item-inset-x-end: var(--item-inset-x);', '--item-inset-x-end: calc(var(--item-row-pad) + var(--s2));')
+    expect(secondSum, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(css)
+    expect(frameAirFindings(secondSum).join('\n')).toMatch(/is not the leading alias/)
+  })
+
+  it('does not read a sentence about the air as a declaration of it', () => {
+    // This sheet explains itself in prose, so the reader has to survive the token
+    // being NAMED where it is not written — the shape that made a sibling gate
+    // demand a deleted rule back.
+    const prose = `/* the frame pays --item-air at both ends */\n.itemFlow { padding-block: 0; }\n`
+    expect(frameAirFindings(prose).join('\n')).toMatch(/declares 0 inline padding/)
   })
 })
 
