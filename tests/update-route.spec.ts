@@ -52,6 +52,7 @@ const VIEW: UpdateSourceView = {
   mode: 'local',
   profile: 'web',
   appManaged: false,
+  evidence: { linked: true, declared: true, disagreement: false },
   githubSpec: 'github:FiretrUCK666/dsh-task-board',
   plan: updatePlanFor({
     mode: 'local',
@@ -126,7 +127,11 @@ describe('createUpdateHandler', () => {
 describe('runningCopyOf', () => {
   const roots: string[] = []
 
-  /** One throwaway profile (or checkout) directory with a manifest. */
+  afterAll(() => {
+    for (const dir of roots) fs.rmSync(dir, { recursive: true, force: true })
+  })
+
+  /** One throwaway directory with a manifest. */
   function tempDir(manifest: Record<string, unknown>): string {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-update-'))
     roots.push(dir)
@@ -134,82 +139,138 @@ describe('runningCopyOf', () => {
     return dir
   }
 
-  afterAll(() => {
-    for (const dir of roots) fs.rmSync(dir, { recursive: true, force: true })
-  })
+  /**
+   * A profile that really installs this package, plus where that copy's code
+   * would then be running from.
+   *
+   * A profile only counts as this copy's install when its installed location
+   * actually IS this copy, so a fixture that skipped this would be pinning a
+   * state production cannot reach — which is how the original defect stayed
+   * green here while the real desktop reported the wrong thing.
+   */
+  function installedProfile(spec: string): { dir: string; self: string } {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-profile-'))
+    roots.push(dir)
+    fs.writeFileSync(
+      path.join(dir, 'package.json'),
+      JSON.stringify({ name: `dsh-profile-${path.basename(dir)}`, dependencies: { [PKG]: spec } }),
+    )
+    const self = path.join(dir, 'node_modules', ...PKG.split('/'))
+    fs.mkdirSync(self, { recursive: true })
+    fs.writeFileSync(
+      path.join(self, 'package.json'),
+      JSON.stringify({ name: PKG, version: '0.9.54' }),
+    )
+    return { dir, self }
+  }
 
-  it('reads the spec from the profile that is running, not from a named one', () => {
+  /** A profile whose installed location is a link out to `target`. */
+  function linkedProfile(target: string): { dir: string; self: string } {
+    const profile = installedProfile(`link:${target}`)
+    fs.rmSync(profile.self, { recursive: true, force: true })
+    fs.symlinkSync(target, profile.self, 'junction')
+    return { dir: profile.dir, self: target }
+  }
+
+  it('reports the desktop profile\'s own npm install, and gives it a command', () => {
     // The defect: an npm install in the desktop profile was described with the
-    // web profile's `link:` spec, so it reported "local development".
-    const desktop = tempDir({ name: 'dsh-profile-desktop', dependencies: { [PKG]: '^0.8.26' } })
+    // web profile's `link:` spec, so it said "local development" and offered to
+    // git-pull somebody else's checkout — and the desktop could never update.
+    const desktop = installedProfile('^0.9.54')
     const copy = runningCopyOf(fakeCtx({
-      profileContext: { name: 'desktop', dir: desktop, packageManager: { command: 'app' } },
+      profileContext: { name: 'desktop', dir: desktop.dir, packageManager: { command: 'app' } },
       pluginManager: {},
-    }))
+      hmr: {},
+    }), desktop.self)
     expect(copy.mode).toBe('npm')
     expect(copy.profile).toBe('desktop')
+    expect(copy.spec).toBe('^0.9.54')
     expect(copy.appManaged).toBe(true)
     expect(copy.plan.apply).toBe('package')
-    // A packaged application owns its profile: the CLI refuses it, so no
-    // terminal command is offered for it.
-    expect(copy.plan.steps).toEqual([])
+    expect(copy.plan.packageSpec).toBe(`${PKG}@latest`)
+    // A packaged application's profile DOES have a terminal path — the CLI
+    // special-cases that profile name instead of refusing it, and only asks
+    // that the application has run once and is fully quit.
+    expect(commandLineOf(copy.plan.steps)).toBe(`dsh plugin --profile desktop add ${PKG}@latest`)
   })
 
-  it('a link: checkout keeps its terminal command, built from its own profile name', () => {
+  it('a linked copy is a checkout, and the checkout is where the code runs', () => {
     // The checkout's own markers decide the manager, so a pnpm checkout gets a
     // pnpm build even on a machine whose convention could have been npm.
     const checkout = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-checkout-'))
     roots.push(checkout)
     fs.writeFileSync(path.join(checkout, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n')
-    const web = tempDir({ name: 'dsh-profile-web', dependencies: { [PKG]: `link:${checkout}` } })
-    const copy = runningCopyOf(fakeCtx({ profileContext: { name: 'web', dir: web }, pluginManager: {} }))
+    const profile = linkedProfile(checkout)
+    const copy = runningCopyOf(
+      fakeCtx({ profileContext: { name: 'web', dir: profile.dir }, pluginManager: {} }),
+      profile.self,
+    )
     expect(copy.mode).toBe('local')
     expect(copy.appManaged).toBe(false)
     expect(copy.checkoutDir).toBe(checkout)
     expect(copy.plan.profile).toBe('web')
+    expect(copy.evidence.linked).toBe(true)
     expect(commandLineOf(copy.plan.steps)).toBe('git pull --ff-only && pnpm run build')
   })
 
+  it('the reinstall step follows HMR, which is the predicate the service uses', () => {
+    // With HMR the service refuses to install over an installed package, so the
+    // running copy has to come out first; without it the service refuses to
+    // REMOVE a running bundle, so the install goes straight over the top.
+    const profile = installedProfile('^1.0.0')
+    const withHmr = runningCopyOf(fakeCtx({
+      profileContext: { name: 'web', dir: profile.dir },
+      pluginManager: {},
+      hmr: {},
+    }), profile.self)
+    const withoutHmr = runningCopyOf(fakeCtx({
+      profileContext: { name: 'web', dir: profile.dir },
+      pluginManager: {},
+    }), profile.self)
+    expect(withHmr.plan.reinstall).toBe(true)
+    expect(withoutHmr.plan.reinstall).toBeUndefined()
+    expect(withHmr.plan.apply).toBe('package')
+    expect(withoutHmr.plan.apply).toBe('package')
+  })
+
   it('the profile name falls back to the directory it was loaded from', () => {
-    const dir = tempDir({ dependencies: { [PKG]: '^1.0.0' } })
-    const copy = runningCopyOf(fakeCtx({ profileContext: { dir } }))
-    expect(copy.profile).toBe(path.basename(dir))
+    const profile = installedProfile('^1.0.0')
+    const copy = runningCopyOf(fakeCtx({ profileContext: { dir: profile.dir } }), profile.self)
+    expect(copy.profile).toBe(path.basename(profile.dir))
   })
 
-  it('a host without a profile service still reads the launcher environment', () => {
-    const dir = tempDir({ dependencies: { [PKG]: '^1.0.0' } })
-    const previous = process.env.DSH_PROFILE_DIR
-    process.env.DSH_PROFILE_DIR = dir
-    try {
-      const copy = runningCopyOf(fakeCtx({}))
-      expect(copy.mode).toBe('npm')
-      expect(copy.profile).toBe(path.basename(dir))
-    } finally {
-      if (previous === undefined) delete process.env.DSH_PROFILE_DIR
-      else process.env.DSH_PROFILE_DIR = previous
-    }
+  it('a host that declares nothing still finds the profile the copy runs from', () => {
+    // The declaration corroborates; the location decides. A host with no
+    // profile service at all still names the right profile, because the copy
+    // was found inside it.
+    const profile = installedProfile('^1.0.0')
+    const copy = runningCopyOf(fakeCtx({}), profile.self)
+    expect(copy.mode).toBe('npm')
+    expect(copy.profile).toBe(path.basename(profile.dir))
+    expect(copy.evidence.declared).toBe(false)
+    expect(copy.evidence.linked).toBe(false)
   })
 
-  it('an unreadable copy reads as unknown and offers no command at all', () => {
-    // No profile service and no launcher variable: nothing is observed, so
-    // nothing is claimed. (The variable is cleared because this suite runs
-    // inside a dsh process, which really does export it.)
-    const previous = process.env.DSH_PROFILE_DIR
-    delete process.env.DSH_PROFILE_DIR
-    try {
-      const copy = runningCopyOf(fakeCtx({}))
-      expect(copy.mode).toBe('unknown')
-      expect(copy.plan.apply).toBe('none')
-      expect(copy.plan.steps).toEqual([])
-      expect(copy.plan.profile).toBeUndefined()
-    } finally {
-      if (previous !== undefined) process.env.DSH_PROFILE_DIR = previous
-    }
+  it('a declaration that names another copy is recorded, not believed', () => {
+    // The shape of the original defect: something declares a profile, and the
+    // code is somewhere else entirely. The location wins and the disagreement
+    // is reported instead of hidden.
+    const elsewhere = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-elsewhere-'))
+    roots.push(elsewhere)
+    const declared = tempDir({
+      name: 'dsh-profile-web',
+      dependencies: { [PKG]: 'link:C:/somewhere/else' },
+    })
+    const copy = runningCopyOf(fakeCtx({ profileContext: { name: 'web', dir: declared } }), elsewhere)
+    expect(copy.mode).toBe('local')
+    expect(copy.checkoutDir).toBe(elsewhere)
+    expect(copy.evidence.disagreement).toBe(true)
+    expect(copy.profile).toBe(path.basename(declared))
   })
 
   it('a host without the installation service keeps the command but applies nothing', () => {
-    const dir = tempDir({ dependencies: { [PKG]: '^1.0.0' } })
-    const copy = runningCopyOf(fakeCtx({ profileContext: { name: 'web', dir } }))
+    const profile = installedProfile('^1.0.0')
+    const copy = runningCopyOf(fakeCtx({ profileContext: { name: 'web', dir: profile.dir } }), profile.self)
     expect(copy.plan.apply).toBe('none')
     expect(copy.plan.steps.map(step => step.command)).toEqual(['dsh'])
   })

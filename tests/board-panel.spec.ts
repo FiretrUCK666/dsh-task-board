@@ -435,6 +435,20 @@ function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
   })
 }
 
+/**
+ * Every board this file has mounted and not yet torn down.
+ *
+ * A test that fails throws before its own `unmount()`, and the tree it left
+ * behind puts a second board on the NEXT test's screen — which is how one real
+ * failure reads as five and hides which one was real. Cleanup belongs to the
+ * harness, not to the last line of every test.
+ */
+const liveMounts: Array<() => void> = []
+
+afterEach(() => {
+  for (const unmount of liveMounts.splice(0)) unmount()
+})
+
 /** Mount the real panel (effects and all) and return its host element. */
 async function mountBoard(props: {
   controller?: BoardController
@@ -450,13 +464,14 @@ async function mountBoard(props: {
       ...props.freshness === undefined ? {} : { freshness: props.freshness },
     } as never))
   })
-  return {
-    host,
-    unmount: () => {
-      act(() => { root.unmount() })
-      host.remove()
-    },
+  const unmount = (): void => {
+    // Idempotent: a test may tear down early, and this registry tears down again.
+    if (!host.isConnected) return
+    act(() => { root.unmount() })
+    host.remove()
   }
+  liveMounts.push(unmount)
+  return { host, unmount }
 }
 
 /**
@@ -656,14 +671,26 @@ describe('the update dialog, driven through the header button', () => {
       spec: '^0.8.26',
       mode: 'npm',
       profile: 'desktop',
-      appManaged: false,
+      dir: 'C:/Users/u/.dsh/profiles/desktop',
+      appManaged: true,
+      evidence: { linked: false, declared: true, disagreement: false },
       githubSpec: 'github:FiretrUCK666/dsh-task-board',
+      // The newest upstream travels IN this view: only the host knows which
+      // registry (or mirror, or proxy) this installation uses.
+      latest: {
+        version: '0.9.60',
+        publishedAt: '2026-10-12T00:00:00.000Z',
+        registry: 'https://registry.npmjs.org/',
+        source: 'registry',
+      },
       plan: {
         mode: 'npm',
+        packageName: '@firetruck666/dsh-task-board',
         profile: 'desktop',
-        appManaged: false,
+        appManaged: true,
         packageSpec: '@firetruck666/dsh-task-board@latest',
         apply: 'package',
+        reinstall: true,
         steps: [{
           command: 'dsh',
           args: ['plugin', '--profile', 'desktop', 'add', '@firetruck666/dsh-task-board@latest'],
@@ -685,12 +712,6 @@ describe('the update dialog, driven through the header button', () => {
         status: 200,
         headers: { 'content-type': 'application/json' },
       })
-      if (href.includes('registry.npmjs.org')) {
-        return answer({
-          'dist-tags': { latest: '0.9.60' },
-          time: { '0.9.60': '2026-10-12T00:00:00.000Z' },
-        })
-      }
       /* 板子自己的请求（租约、文档）与这条链路无关，而这个 stub 不该假装它们成了：
          一次真的答复会把租约当成拿到手，于是这个用例在测另一件事（硬性规范 18）。 */
       if (!href.includes('api/dsh-task-board/update')) {
@@ -723,7 +744,7 @@ describe('the update dialog, driven through the header button', () => {
     return dialog as HTMLElement
   }
 
-  it('states the install method and profile of the copy that is running', async () => {
+  it('names the copy that is running, its location, and the registry it asked', async () => {
     stubUpdateFetch({ view: () => viewOf() })
     const { host, unmount } = await mountBoard({})
     await clickLabel(host, t('board.update.check'))
@@ -731,25 +752,73 @@ describe('the update dialog, driven through the header button', () => {
     expect(dialog.textContent).toContain(t('board.update.mode.npm'))
     expect(dialog.textContent, '对话框没有说这份安装属于哪个 profile').toContain('desktop')
     expect(dialog.textContent).toContain('0.8.26')
+    expect(dialog.textContent, '对话框没有说这份安装在哪').toContain('C:/Users/u/.dsh/profiles/desktop')
     expect(dialog.textContent).toContain(t('board.update.newVersion', { v: '0.9.60' }))
+    expect(dialog.textContent, '对话框没有说问的是哪个源').toContain('https://registry.npmjs.org/')
     // The equivalent terminal line names THIS profile, not a profile written into the bundle.
     expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
     expect(dialog.textContent).toContain(t('board.update.apply'))
     unmount()
   })
 
-  it('says what a packaged application can do instead, and offers no impossible command', async () => {
-    // The app's own profile is owned by the app: its CLI refuses it, so a
-    // terminal line here would be a command that cannot work.
-    stubUpdateFetch({
-      view: () => viewOf({ appManaged: true, plan: { ...viewOf().plan as object, appManaged: true, steps: [] } }),
-    })
+  it('draws the command as whole words, so a hyphen never splits a name', async () => {
+    // The command is a line the reader retypes. Default line breaking also
+    // breaks AFTER a hyphen, so a scoped package name came out as
+    // `@firetruck666/dsh-task-` / `board@latest` whenever the line ended there —
+    // two words, in a string that must be typed exactly. jsdom has no line
+    // breaking, so what is pinned is the structure the browser needs: one
+    // element per word, and a rule that keeps each word whole.
+    stubUpdateFetch({ view: () => viewOf() })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    const words = [...(dialog.querySelector('code')?.querySelectorAll('span') ?? [])]
+      .map(one => one.textContent)
+    expect(words).toEqual([
+      'dsh', 'plugin', '--profile', 'desktop', 'add', '@firetruck666/dsh-task-board@latest',
+    ])
+    const aligned = alignClassNames(dialog.innerHTML, panelCss())
+    const wordClass = /<code><span class="([^"]+)"/.exec(aligned.html)?.[1]
+    expect(wordClass, '命令的词没有自己的类，无从保证不被拆开').toBeDefined()
+    expect(aligned.css).toMatch(new RegExp(`\\.${String(wordClass)}\\s*\\{[^}]*white-space:\\s*nowrap`))
+    unmount()
+  })
+
+  it('cannot read the latest version without saying so, and never says "up to date"', async () => {
+    // The three-state verdict, driven through the screen: a host that could not
+    // reach its registry must not arrive as a conclusion.
+    stubUpdateFetch({ view: () => viewOf({ latest: undefined }) })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain(t('board.update.noLatest'))
+    expect(dialog.textContent).not.toContain(t('board.update.newVersion', { v: '0.9.60' }))
+    // 不能是死路：命令仍然在。
+    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    unmount()
+  })
+
+  it('a packaged application keeps its command, and is told to quit the app first', async () => {
+    // The app's own profile is special-cased by the CLI rather than refused, so
+    // the line works — the only extra requirement is that the app be quit.
+    stubUpdateFetch({ view: () => viewOf() })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent).toContain('dsh plugin --profile desktop add')
+    expect(dialog.textContent).toContain(t('board.update.desktopQuit'))
+    expect(dialog.textContent).toContain(t('board.update.reinstall'))
+    unmount()
+  })
+
+  it('a host that can name no profile says so instead of inventing a command', async () => {
+    const plan = { ...viewOf().plan as object, profile: undefined, steps: [] }
+    stubUpdateFetch({ view: () => viewOf({ profile: undefined, appManaged: true, plan }) })
     const { host, unmount } = await mountBoard({})
     await clickLabel(host, t('board.update.check'))
     const dialog = dialogIn(host)
     expect(dialog.textContent).toContain(t('board.update.appManaged'))
     expect(dialog.textContent).not.toContain('dsh plugin --profile')
-    expect(dialog.textContent).toContain(t('board.update.apply'))
     unmount()
   })
 
@@ -809,7 +878,10 @@ describe('the update dialog, driven through the header button', () => {
       'ERR_PNPM_FETCH_404',
       'dsh plugin --profile desktop add',
     ]) {
-      expect(host.innerHTML, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
+      // 读的是屏上的字，不是标记：工件是给人看的图，一段只活在属性里、读者
+      // 看不到的文本不该让这张图算数（而命令现在由多个词元素拼成，源码里本来
+      // 就没有那一整串）。
+      expect(host.textContent, `工件里少了「${must}」——那张图不能用来下结论`).toContain(must)
     }
     unmount()
   })

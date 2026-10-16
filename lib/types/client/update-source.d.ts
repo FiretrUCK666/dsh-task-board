@@ -1,19 +1,34 @@
 /**
  * Browser readers for the header's check-for-updates button: the installed
- * source (version + install mode + the plan that updates it) from the host
- * route, the published latest from the public npm registry, and the one action
- * that applies the plan.
+ * source (version + where it runs from + the plan that updates it) from the
+ * host route, and the one action that applies the plan.
+ *
+ * The published latest comes from that same route. It used to be fetched here
+ * from `registry.npmjs.org` directly, which meant a reader behind a mirror —
+ * the very reader who picked that mirror when installing — got a failed check
+ * instead of an answer, and a git install got no check at all. `latest` is a
+ * host-side fact for the same reason the install mode is: only the host knows
+ * which registry this profile actually uses.
  *
  * Every failure degrades to `undefined` (the button reads it as "check
  * failed, retry inline"), so a dropped line, a blocked registry, or an old
  * host without the route can never take the board down — the same discipline
  * as the board transport's bounded fetch.
  */
-import type { UpdateGitStatus, UpdateInstallMode, UpdatePlan } from '../core/update-check.ts';
+import type { UpdateGitStatus, UpdateInstallMode, UpdateLatestView, UpdatePlan } from '../core/update-check.ts';
 /** The bundle's own package identity (the host-unreachable fallback). */
 export declare const BUNDLED_PACKAGE_NAME: string;
 /** The bundle's own version (the host-unreachable comparison baseline). */
 export declare const BUNDLED_VERSION: string;
+/** How the host established which copy is running. */
+export interface UpdateEvidence {
+    /** This copy is a link into a checkout, not a copy installed in a profile. */
+    linked: boolean;
+    /** The host declared a profile at all. */
+    declared: boolean;
+    /** The declaration named a different copy than the one actually running. */
+    disagreement: boolean;
+}
 /** The installed-source view the host update route serves. */
 export interface UpdateSourceView {
     /** Package name (the npm update command's subject). */
@@ -26,12 +41,18 @@ export interface UpdateSourceView {
     mode: UpdateInstallMode;
     /** The profile carrying this copy (absent when the host cannot read it). */
     profile?: string;
+    /** The profile's directory, or the checkout this copy runs from. */
+    dir?: string;
     /** The profile belongs to a packaged application, which installs through its own runtime. */
     appManaged: boolean;
+    /** How the host established which copy is running (absent from an older host). */
+    evidence?: UpdateEvidence;
     /** The `github:` install spec (absent when the repo URL is not GitHub). */
     githubSpec?: string;
     /** How to update this copy, and who applies it. */
     plan: UpdatePlan;
+    /** The newest upstream the host could read (absent is "cannot tell"). */
+    latest?: UpdateLatestView;
     /** Local-checkout git state (only for `local` installs). */
     git?: UpdateGitStatus;
 }
@@ -42,13 +63,6 @@ export interface UpdateApplyResult {
     version?: string;
     output?: string;
     error?: 'unsupported' | 'unavailable' | 'dirty' | 'tool-missing' | 'timeout' | 'failed';
-}
-/** The published latest read off the npm registry. */
-export interface NpmLatest {
-    /** The `dist-tags.latest` version. */
-    version: string;
-    /** The registry's publish instant for that version, when advertised. */
-    publishedAt?: string;
 }
 /**
  * Read the installed source through the host route. An old host without the
@@ -71,11 +85,3 @@ export declare function fetchUpdateSource(timeoutMs?: number): Promise<UpdateSou
  * @returns the result, or undefined when the answer never arrived.
  */
 export declare function applyUpdate(timeoutMs?: number): Promise<UpdateApplyResult | undefined>;
-/**
- * Read the published latest from the public npm registry packument
- * (`dist-tags.latest` plus its publish instant from `time`).
- * @param packageName - the scoped package name (slash-encoded for the URL).
- * @param timeoutMs - per-request bound (default 15s).
- * @returns the latest version, or undefined when unreadable.
- */
-export declare function fetchNpmLatest(packageName: string, timeoutMs?: number): Promise<NpmLatest | undefined>;

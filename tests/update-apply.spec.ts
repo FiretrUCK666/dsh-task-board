@@ -219,3 +219,107 @@ describe('applyUpdate on a plan with nothing to apply', () => {
     expect(result).toEqual({ ok: false, error: 'unsupported' })
   })
 })
+
+describe('applyUpdate on a reinstall', () => {
+  const REINSTALL = planOf('npm', { reinstall: true })
+
+  /** The service, recording the order it was asked to do things in. */
+  function service(
+    order: string[],
+    remove: Record<string, unknown> | Error = {},
+    install: Record<string, unknown> = { application: 'applied', version: '1.2.0' },
+  ): UpdateApplyDeps['installer'] {
+    return {
+      removeBundle: async (name: string) => {
+        order.push(`remove:${name}`)
+        if (remove instanceof Error) throw remove
+        return remove
+      },
+      installBundle: async (spec: string) => {
+        order.push(`install:${spec}`)
+        return install
+      },
+    }
+  }
+
+  it('uninstalls first, then installs, in that order', async () => {
+    // The order is the contract: HMR hosts refuse to install over an installed
+    // package precisely so the old version stops before its files are replaced.
+    const order: string[] = []
+    const result = await applyUpdate({
+      plan: REINSTALL,
+      installer: service(order),
+      runner: recordingRunner([]).run,
+      readVersion: () => '1.2.0',
+    })
+    expect(order).toEqual([`remove:${PKG}`, `install:${PKG}@latest`])
+    expect(result).toEqual({ ok: true, outcome: 'applied', version: '1.2.0' })
+  })
+
+  it('a plan without reinstall installs straight over the running copy', async () => {
+    const order: string[] = []
+    const result = await applyUpdate({
+      plan: planOf('npm'),
+      installer: service(order),
+      runner: recordingRunner([]).run,
+      readVersion: () => '1.2.0',
+    })
+    expect(order).toEqual([`install:${PKG}@latest`])
+    expect(result.ok).toBe(true)
+  })
+
+  it('a host whose service cannot uninstall reports unavailable, and installs nothing', async () => {
+    const order: string[] = []
+    const result = await applyUpdate({
+      plan: REINSTALL,
+      installer: {
+        installBundle: async (spec: string) => {
+          order.push(`install:${spec}`)
+          return { application: 'applied' }
+        },
+      },
+      runner: recordingRunner([]).run,
+      readVersion: () => undefined,
+    })
+    expect(result).toEqual({ ok: false, error: 'unavailable' })
+    expect(order).toEqual([])
+  })
+
+  it('a refused removal stops there, and says which refusal it was', async () => {
+    // `bundle-in-use` and friends arrive as a code on the record; a failed
+    // `pnpm remove` arrives as a thrown error whose message is its output.
+    const order: string[] = []
+    const refused = await applyUpdate({
+      plan: REINSTALL,
+      installer: service(order, { error: { code: 'bundle-in-use' } }),
+      runner: recordingRunner([]).run,
+      readVersion: () => undefined,
+    })
+    expect(refused.ok).toBe(false)
+    expect(refused.output).toContain('bundle-in-use')
+    const thrown = await applyUpdate({
+      plan: REINSTALL,
+      installer: service(order, new Error('ERR_PNPM_NO_MATCHING_VERSION')),
+      runner: recordingRunner([]).run,
+      readVersion: () => undefined,
+    })
+    expect(thrown.ok).toBe(false)
+    expect(thrown.output).toContain('ERR_PNPM_NO_MATCHING_VERSION')
+    // Neither one went on to install: an uninstall that did not happen must not
+    // be followed by an install that pretends it did.
+    expect(order.filter(entry => entry.startsWith('install:'))).toEqual([])
+  })
+
+  it('a removal that exits non-zero is a failure, not an install', async () => {
+    const order: string[] = []
+    const result = await applyUpdate({
+      plan: REINSTALL,
+      installer: service(order, { packageResult: { exitCode: 1, output: 'boom' } }),
+      runner: recordingRunner([]).run,
+      readVersion: () => undefined,
+    })
+    expect(result.ok).toBe(false)
+    expect(result.output).toContain('boom')
+    expect(order).toEqual([`remove:${PKG}`])
+  })
+})

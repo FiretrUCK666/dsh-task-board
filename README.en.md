@@ -32,45 +32,90 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 ## Requirements
 
 - DeepSeek Harness `0.1.7-rc.2` or later. `0.1.7-rc.2` is the **minimum supported version**, not "the current one": anything older is untested, and there is no upper bound — the plugin is updated alongside DSH, so just install the latest build after upgrading DSH. If loading fails, follow the Troubleshooting section.
-- Node.js `^22.19.0` or `>= 24.0.0`
-- pnpm 10 or newer
-- The DSH `web` profile
-
-This plugin runs in the web GUI only.
+- For the web GUI (a `dsh web` you started yourself): Node.js `^22.19.0` or `>= 24.0.0`, and pnpm 10 or newer.
+- The **desktop app needs neither**: it ships its own Node and pnpm and runs package operations on its own runtime.
 
 ## Install
 
-Pick one. All three commands run in your own terminal. **The desktop app needs no command**: add the same package name on its Plugins page — that application manages its own profile.
+One thing decides every command below: **the desktop app and the web GUI are two separate installs.**
 
-### From npm
+Each has its own profile (`~/.dsh/profiles/<name>`). A plugin installed into one profile is visible
+to that surface and no other — installing it in the web GUI does not give you it in the desktop app,
+and the other way round. The two surfaces look identical and install the same way, but they install
+**separately**.
+
+| What you are using | Its profile | Who owns it |
+| --- | --- | --- |
+| The desktop app (DSH Desktop) | `desktop` | the app itself (it ships the runtime) |
+| `dsh web` (the GUI you started) | `web` | you, or whatever profile name you launched |
+
+So there is one rule: **install into the profile of the surface you are using.** Replace `<profile>`
+below with the word from that table.
+
+### The desktop app
+
+Two routes; pick one. **The in-app route is the one to prefer** — no terminal involved.
+
+**In the app**: sidebar → Plugins → Add plugin → package name `@firetruck666/dsh-task-board` →
+pick an install source → Install.
+
+**In a terminal**:
+
+```sh
+dsh plugin --profile desktop add @firetruck666/dsh-task-board
+```
+
+Two things must be true first, or the command fails:
+
+1. the desktop app has been **opened at least once** (it creates its own profile), and
+2. the desktop app is **fully quit** (while it runs, the files are locked).
+
+Where does that `dsh` come from? The app's own menu has **Manage dsh Command…** (directly under
+Check for Updates…); using it once installs the command — on Windows into your user PATH, on macOS
+as `/usr/local/bin/dsh` — and it keeps working while the app is closed. You can also skip it and use
+the in-app route above.
+
+### The web GUI
 
 ```sh
 dsh plugin --profile web add @firetruck666/dsh-task-board
 ```
 
-Installs the most recent release. This is the right choice for everyday use.
+### Where the package comes from
 
-### From GitHub
+Either command above only says *which profile*; the package name says *what*. There are three forms.
+
+#### From npm
 
 ```sh
-dsh plugin --profile web add github:FiretrUCK666/dsh-task-board
+dsh plugin --profile <profile> add @firetruck666/dsh-task-board
+```
+
+Installs the most recent release. This is the right choice for everyday use.
+
+#### From GitHub
+
+```sh
+dsh plugin --profile <profile> add github:FiretrUCK666/dsh-task-board
 ```
 
 Installs the current `main` branch. Like the npm install this is a ready-to-use package, not a development environment: it has no tests and no build tooling, so the code cannot be changed in place. Use it to pick up unreleased changes early; stability depends on the state of the branch at that moment.
 
-### From a local checkout
+#### From a local checkout
 
 In the repository directory:
 
 ```sh
 pnpm install
 pnpm build
-dsh plugin --profile web add .
+dsh plugin --profile <profile> add .
 ```
 
 This is the path for changing the code. See "Building from source" below.
 
 A local install links to your working directory rather than copying it, so one install is enough: after changing code, just run `pnpm build` and restart `dsh web` — do not re-run the install command above. Client-half changes need only a page refresh; host-half changes need the restart. See "A code change had no effect" under Troubleshooting.
+
+#### How the three differ
 
 The first two are installs: each delivers a ready-to-use package containing only the files in the publish list (runtime code, source, the bundle patch, documentation). The third is development: a full checkout you can edit and test.
 
@@ -79,13 +124,15 @@ The first two are installs: each delivers a ready-to-use package containing only
 | Purpose | install and use | install and use | development |
 | You get | latest release | current `main` | your working tree |
 | Version | stable | newest, may be less stable | whatever you have |
-| Update source | npm version | latest commit | not applicable |
+| Update source | npm version | the repository's default branch | not applicable |
 
 An npm install and a GitHub install contain essentially the same files; they differ in how new the code is. Install from GitHub to pick up unreleased changes, from npm for a stable release.
 
 ### After installing
 
-Stop the running `dsh web` and start it again. Refreshing the page is not enough: the host half of the plugin loads inside the server process. The **Task Board** entry appears in the sidebar after the restart.
+**Restart that surface**: stop the running `dsh web` and start it again, or fully quit and reopen the
+desktop app. Refreshing the page is not enough: the host half of the plugin loads inside the server
+process. The **Task Board** entry appears in the sidebar after the restart.
 
 The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back.
 
@@ -104,34 +151,44 @@ It works once installed — no config file to edit, no declaration to write. And
 | Display name, description, icon | `locale/` and `icon.svg` in the package, read directly by DSH |
 | Where that switch lives | The plugin manager writes `disabled` on this row (and only when you switch it off) |
 
-The one step you must take is **restarting `dsh web`** (the host half lives in the server process and is not loaded otherwise). All three install routes — npm, GitHub, local — behave identically here.
+The one step you must take is **restarting that surface** (the host half lives in the server process and is not loaded otherwise). All three install routes — npm, GitHub, local — behave identically here, and so do the two surfaces.
 
 This plugin has no settings and needs no settings panel: the board's behavior (tasks, schedules, cruise, rules) is edited directly on the board, and on/off is the switch above.
 
 To remove it:
 
 ```sh
-dsh plugin --profile web remove @firetruck666/dsh-task-board
+dsh plugin --profile <profile> remove @firetruck666/dsh-task-board
 ```
 
 A restart is required here too. Your task data is not deleted.
 
 ## Updating
 
-Easiest: the board header's right toolbar has a permanent Check for updates button. One click compares the running version against the latest, and opens the update dialog when an update exists.
+The board header's right toolbar has a permanent **Check for updates** button. One click answers
+three questions: **which copy is running** (which profile, where it lives, how it was installed),
+**whether there is a newer one**, and **how to get it**.
 
-The dialog's Update now button knows what to do because it reads the install source of **the copy that is running**: the install method and the profile it belongs to both come from that profile's own manifest — so a local checkout on the web profile and an npm install inside the desktop app each describe themselves, on the same machine, with nothing guessed.
+It reads **the running copy's own location and manifest** rather than a name written into the code,
+so a local checkout on the web profile and an npm install inside the desktop app each describe
+themselves on the same machine. The latest version is read **by the host** as well: only it knows
+which registry this profile actually uses (official, a mirror, or an internal one), so a browser
+that cannot reach `registry.npmjs.org` no longer turns into "check failed". When it cannot read the
+latest version it says exactly that — it never reports "up to date" it cannot prove.
 
 | Installed via | What Update now does |
 | --- | --- |
-| npm | reinstalls this package at the latest published version |
-| GitHub | reinstalls at the current commit on `main` |
+| npm | uninstalls, then installs the latest published version |
+| GitHub | uninstalls, then reinstalls at the current state of the repository's default branch |
 | a local checkout | `git pull --ff-only` in the repository, then rebuilds `lib/` with the package manager that repository declares |
-| the desktop app | handed to the app, which owns that profile |
 
-When it finishes, a change that can hot-load takes effect at once; when a restart is needed instead, the dialog says so. Your task data is never touched.
+Uninstall-then-install is DSH's own update route (with HMR live it refuses to install over an
+installed package), so the plugin disappears for a few seconds. A restart may be needed afterwards,
+and **if the install fails the plugin stays uninstalled** — which is why the dialog also gives you
+the terminal command that puts it back. **Your task data is never touched** at any point: it lives
+in `~/.dsh/storages/dsh_task_board/`, not in the package.
 
-The dialog also shows the equivalent terminal command, with your own profile name in it. You can run it yourself (`<profile>` is yours, usually `web`):
+The dialog also shows the equivalent terminal command, with your own profile name in it:
 
 ```sh
 dsh plugin --profile <profile> add @firetruck666/dsh-task-board@latest
@@ -147,9 +204,26 @@ For a local checkout:
 git pull --ff-only && pnpm run build
 ```
 
+**Desktop app**: the app owns that profile, but the terminal route works — the CLI special-cases the
+`desktop` profile name instead of refusing it, and only asks that the app has run once and is fully
+quit. So the desktop's dialog offers both Update now and a command that works.
+
 With the plugin marketplace installed you can also press Update on its Installed tab.
 
-**Desktop app**: the plugin lives in that application's own profile, and the app owns it — a terminal `dsh plugin --profile desktop` is refused. Use Update now in the dialog, or add the package again on the app's Plugins page, then fully quit and reopen the app.
+### Coming from a version before 0.9.59
+
+Before 0.9.59 the update check had a profile name written into its code: inside the desktop app it
+described itself with the web profile's checkout, so **it could never update itself** — pressing its
+own Update now ran a `git pull` in the web checkout instead. That is fixed, but **fixed code has to
+reach that copy somehow**, and the broken copy is the thing that would have carried it. Install once
+by hand:
+
+```sh
+dsh plugin --profile desktop add @firetruck666/dsh-task-board@latest
+```
+
+Fully quit the desktop app first, then reopen it. From then on Check for updates and Update now both
+work.
 
 ## What it does
 

@@ -4,32 +4,45 @@
  * action that brings the running copy up to date.
  *
  * GET  /api/<ns>/update → {ok:true, value:{packageName, version, spec?, mode,
- *                           profile?, appManaged, githubSpec?, plan, git?, clients?}}
+ *                           profile?, appManaged, evidence?, githubSpec?, plan,
+ *                           latest?, git?, clients?}}
  * POST /api/<ns>/update → {ok:true, value:UpdateApplyResult}
  *
- * WHICH COPY IS RUNNING is a fact about this process, never a name written
- * here. The profile is read from the host's own profile service (present only
- * in a profile launched by `dsh`), falling back to the launcher's environment;
- * the manifest spec is read from THAT profile's `package.json`, so a desktop
- * install and a `link:` checkout on the same machine each describe themselves
- * correctly. When neither can be read the mode is `unknown` and the view says
- * so — an earlier revision hardcoded the `web` profile, which made every
- * install report the web profile's mode instead of its own.
+ * WHICH COPY IS RUNNING is measured, not declared. The measured fact is where
+ * this module itself is running from (`import.meta.url` → the package root):
+ * a copy that sits in some profile's `node_modules` is an install of that
+ * profile, and a copy that sits anywhere else was linked in from a checkout.
+ * The host's own `profileContext` supplies the profile name, its directory and
+ * whether an application owns it; the profile manifest then supplies the
+ * recorded spec that says HOW that install was made.
+ *
+ * The order matters, and it is the whole point of this module. An earlier
+ * revision named a profile in code (`profiles/web`), so a desktop install
+ * described itself with the web profile's `link:` spec and reported "local
+ * development" — and then offered, as its one-click update, a `git pull` in
+ * somebody else's checkout. Reading the declaration ALONE is the same mistake
+ * with a better key: the launcher's `DSH_PROFILE_DIR` is exported into every
+ * model shell call, not into this process, so consulting it would let an
+ * ambient variable decide which copy is running. Location wins; the
+ * declaration is corroboration, and a disagreement is reported rather than
+ * hidden.
+ *
+ * Nothing is applied from anything the page sends: the request carries no
+ * spec, and the route re-derives the plan from the running copy every time.
  *
  * The install mode then selects WHO applies an update (see
  * `core/update-check.ts` for the plan and `update-apply.ts` for the executors):
  * a package install goes through the host's installation service, a `link:`
- * checkout is refreshed in place. A packaged application manages its own
- * profile — its CLI refuses that profile — so no terminal command is offered
- * for it. Nothing is applied from anything the page sends: the request carries
- * no spec, and the route re-derives the plan from the running copy every time.
+ * checkout is refreshed in place. `git` is present only for `link:` checkouts
+ * and is gathered on demand per request — never at plugin startup — through
+ * read-only git commands (`rev-parse`, `status --porcelain`, `ls-remote`); any
+ * failure degrades to an absent field, never an error. `latest` is read here
+ * too, through the profile's own registry plan, because the browser cannot know
+ * which registry (or mirror, or proxy) this installation actually uses.
  *
- * `git` is present only for `link:` checkouts and is gathered on demand per
- * request — never at plugin startup — through read-only git commands
- * (`rev-parse`, `status --porcelain`, `ls-remote`); any failure degrades to an
- * absent field, never an error. The handler is split from the pure processing
- * function (`createUpdateHandler`) so the response logic is unit-testable
- * without a live server.
+ * The handler is split from the pure processing function
+ * (`createUpdateHandler`) so the response logic is unit-testable without a live
+ * server.
  * @module dsh-task-board/host/update-route
  */
 
@@ -38,13 +51,18 @@ import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
 import fs from 'node:fs'
 import path from 'node:path'
+import { fileURLToPath } from 'node:url'
 import { execFileSync } from 'node:child_process'
 import {
   classifyInstallSpec,
   githubSpecOfRepositoryUrl,
+  latestFromPackument,
+  packumentUrl,
   updatePlanFor,
+  PUBLIC_REGISTRIES,
   type UpdateGitStatus,
   type UpdateInstallMode,
+  type UpdateLatestView,
   type UpdatePlan,
   type UpdateStep,
 } from '../core/update-check.ts'
@@ -63,6 +81,15 @@ const PACKAGE_VERSION = (packageJson as { version?: string }).version ?? 'unknow
 const GITHUB_SPEC = githubSpecOfRepositoryUrl(
   (packageJson as { repository?: { url?: string } }).repository?.url ?? '',
 )
+/** This package's own directory, resolved from where this module is running. */
+const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
+/** How long one registry answer may take before the next one is asked. */
+const REGISTRY_TIMEOUT_MS = 8000
+/** The package directory one profile installs this package into. */
+function installedDirIn(profileDir: string): string {
+  return path.join(profileDir, 'node_modules', ...PACKAGE_NAME.split('/'))
+}
+
 
 /** The profile facts this route reads by name; every field is optional. */
 interface ProfileContextLike {
@@ -70,6 +97,16 @@ interface ProfileContextLike {
   dir?: unknown
   /** Present only when a packaged application supplies its own package manager. */
   packageManager?: unknown
+}
+
+/** How the running copy's own location was established. */
+export interface UpdateEvidence {
+  /** This copy IS a link into a checkout, rather than a copy installed in a profile. */
+  linked: boolean
+  /** The host declared a profile at all. */
+  declared: boolean
+  /** The declaration named a different copy than the one actually running. */
+  disagreement: boolean
 }
 
 /** The update-source view served to the browser half. */
@@ -84,12 +121,18 @@ export interface UpdateSourceView {
   mode: UpdateInstallMode
   /** The profile carrying this copy (absent when the running profile is unreadable). */
   profile?: string
+  /** The profile's directory, or the checkout this copy runs from. */
+  dir?: string
   /** The profile belongs to a packaged application, which installs through its own runtime. */
   appManaged: boolean
+  /** How this copy's identity was established. */
+  evidence: UpdateEvidence
   /** The `github:` install spec (absent when the repo URL is not GitHub). */
   githubSpec?: string
   /** How to update this copy, and who applies it. */
   plan: UpdatePlan
+  /** The newest upstream, when the host could read one (absent is "cannot tell"). */
+  latest?: UpdateLatestView
   /** Local-checkout git state (only for `local` installs). */
   git?: UpdateGitStatus
   /** Self-reports from the pages that are currently open (newest first). */
@@ -118,8 +161,8 @@ function json(res: ServerResponse, envelope: UpdateRouteEnvelope, status = 200):
 
 /** The service face the pure handler needs (real readers or fakes). */
 export interface UpdateRouteDeps {
-  /** Read the current update-source view. */
-  read(): UpdateSourceView
+  /** Read the current update-source view (reading the newest upstream is I/O). */
+  read(): UpdateSourceView | Promise<UpdateSourceView>
   /** Bring the running copy up to date. */
   apply(): Promise<UpdateApplyResult>
 }
@@ -137,7 +180,7 @@ export function createUpdateHandler(
     if (req.method === 'GET') {
       let view: UpdateSourceView
       try {
-        view = deps.read()
+        view = await deps.read()
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error)
         json(res, { ok: false as const, error: { code: 'update', message } })
@@ -175,32 +218,111 @@ export interface RunningCopy {
   spec?: string
   /** The classified install mode. */
   mode: UpdateInstallMode
-  /** The checkout a `link:` install points at. */
+  /** How this copy's identity was established. */
+  evidence: UpdateEvidence
+  /** The checkout this copy runs from (only for a linked copy). */
   checkoutDir?: string
   /** What an update on this copy runs, and who applies it. */
   plan: UpdatePlan
 }
 
+/** `realpath`, or the input unchanged when it cannot be resolved. */
+function realOf(target: string): string {
+  try {
+    return fs.realpathSync(target)
+  } catch {
+    return target
+  }
+}
+
 /**
- * Read which profile is running, from the host's own declaration first and the
- * launcher's environment second. No profile name is assumed: a name that is
- * not observed here is not used anywhere.
- * @param ctx - context carrying the host services.
- * @returns the profile directory, its name, and whether an application owns it.
+ * Whether a profile's installed location for this package resolves to
+ * somewhere ELSE.
+ *
+ * A symlink test cannot answer this: pnpm links every package it installs,
+ * including a plain registry install (into the profile's own `.pnpm` store),
+ * so "is a link" would read a normal install as a checkout. Containment does
+ * answer it — a package manager's store lives inside the profile, and a
+ * `link:` target does not.
+ * @param profileDir - the profile directory.
+ * @param selfDir - this package's own resolved directory.
+ * @returns true when the copy lives outside the profile that declares it.
  */
-function readProfile(ctx: Context): { dir?: string; profile?: string; appManaged: boolean } {
+function resolvesOutside(profileDir: string, selfDir: string): boolean {
+  const profile = realOf(profileDir)
+  const rel = path.relative(profile, selfDir)
+  return rel !== '' && (rel.startsWith('..') || path.isAbsolute(rel))
+}
+
+/**
+ * The profile whose installed location IS this running copy, found by walking
+ * up from where the code actually is. Only a real (non-linked) install is found
+ * this way: a linked copy lives in its checkout, and the link that points at it
+ * lives in a profile the checkout knows nothing about.
+ *
+ * The walk starts one level above the package root, so a checkout's own
+ * `node_modules` can never be mistaken for a profile holding it.
+ * @param selfDir - this package's own resolved directory.
+ * @returns the profile directory, or undefined when this is not a real install.
+ */
+function profileHolding(selfDir: string): string | undefined {
+  let current = selfDir
+  for (;;) {
+    const parent = path.dirname(current)
+    if (parent === current) return undefined
+    if (realOf(installedDirIn(parent)) === selfDir) return parent
+    current = parent
+  }
+}
+
+/**
+ * Read which profile is running. The copy's own LOCATION decides; the host's
+ * declaration corroborates it and supplies facts only the host knows (whether
+ * a packaged application owns the profile).
+ *
+ * The launcher's `DSH_PROFILE_DIR` is deliberately not consulted. It is
+ * exported into every model shell call rather than into this process, so
+ * reading it would let an ambient variable decide which copy is running — the
+ * same failure as naming a profile in code, with a less obvious cause.
+ * @param ctx - context carrying the host services.
+ * @param selfDir - where this copy's code actually is (the measured fact).
+ * @returns the profile directory, its name, the owner, and the evidence.
+ */
+function readProfile(ctx: Context, selfDir: string): {
+  dir?: string
+  profile?: string
+  appManaged: boolean
+  evidence: UpdateEvidence
+} {
   const declared = ctx.get('profileContext') as ProfileContextLike | undefined
-  const envDir = process.env.DSH_PROFILE_DIR
-  const dir = typeof declared?.dir === 'string' && declared.dir !== ''
+  const declaredDir = typeof declared?.dir === 'string' && declared.dir !== ''
     ? declared.dir
-    : typeof envDir === 'string' && envDir !== '' ? envDir : undefined
-  const name = typeof declared?.name === 'string' && declared.name !== ''
+    : undefined
+  const declaredHoldsSelf = declaredDir !== undefined
+    && realOf(installedDirIn(declaredDir)) === selfDir
+  const derivedDir = declaredHoldsSelf ? declaredDir : profileHolding(selfDir)
+  const dir = derivedDir ?? declaredDir
+  const declaredName = typeof declared?.name === 'string' && declared.name !== ''
     ? declared.name
-    : dir !== undefined ? path.basename(dir) : undefined
+    : undefined
+  // The declared name describes THIS copy only when the declaration does.
+  const named = declaredHoldsSelf ? declaredName : undefined
+  const name = named ?? (dir !== undefined ? path.basename(dir) : undefined)
   return {
     ...(dir !== undefined ? { dir } : {}),
     ...(name !== undefined && name !== '' ? { profile: name } : {}),
     appManaged: declared?.packageManager !== undefined,
+    evidence: {
+      // No profile holds this copy, or the profile that does holds a pointer
+      // out of itself: either way this is a checkout, not an installed copy.
+      linked: dir === undefined || resolvesOutside(dir, selfDir),
+      declared: declaredDir !== undefined,
+      // The declaration simply not describing this copy IS the disagreement —
+      // whether it named another profile or the copy turned out to be a bare
+      // checkout. Requiring a second profile to compare against would report
+      // the quieter half of the same problem as agreement.
+      disagreement: declaredDir !== undefined && !declaredHoldsSelf,
+    },
   }
 }
 
@@ -322,6 +444,15 @@ function checkoutStepsFor(dir: string): UpdateStep[] {
   ]
 }
 
+/** The installation service's registry plan, read by name (absent is supported). */
+interface PluginManagerLike {
+  registries?(): Promise<{
+    registry?: unknown
+    fallbackRegistries?: unknown
+    resolved?: unknown
+  }>
+}
+
 /** What the plan rules read, gathered once per request. */
 interface PlanFacts {
   mode: UpdateInstallMode
@@ -330,28 +461,36 @@ interface PlanFacts {
   checkoutDir?: string
   checkoutSteps?: UpdateStep[]
   canInstall: boolean
+  reinstall: boolean
 }
 
 /**
  * Gather the facts every update surface needs, from THIS process. Nothing here
- * assumes a profile name: the profile comes from the host's declaration (or the
- * launcher's environment), and the spec comes from that profile's own manifest.
+ * assumes a profile name: the profile comes from where this copy runs, and the
+ * spec comes from that profile's own manifest.
  * @param ctx - context carrying the host services.
+ * @param selfDir - where this copy's code actually is; the real location by
+ * default, and an explicit premise wherever a caller must state one.
  * @returns the running copy's identity and plan.
  */
-export function runningCopyOf(ctx: Context): RunningCopy {
-  const profile = readProfile(ctx)
+export function runningCopyOf(ctx: Context, selfDir = SELF_ROOT): RunningCopy {
+  const profile = readProfile(ctx, selfDir)
   const spec = readProfileSpec(profile.dir)
-  const mode = classifyInstallSpec(spec)
-  const checkoutDir = mode === 'local' && spec !== undefined && spec.startsWith('link:')
-    ? spec.slice('link:'.length)
-    : undefined
+  // A linked copy IS a checkout, whatever the manifest records — and when the
+  // manifest cannot be read at all, the location still answers.
+  const linked = profile.evidence.linked
+  const mode: UpdateInstallMode = linked ? 'local' : classifyInstallSpec(spec)
+  const checkoutDir = linked ? selfDir : undefined
   const facts: PlanFacts = {
     mode,
     ...(profile.profile !== undefined ? { profile: profile.profile } : {}),
     appManaged: profile.appManaged,
     ...(checkoutDir !== undefined ? { checkoutDir, checkoutSteps: checkoutStepsFor(checkoutDir) } : {}),
     canInstall: ctx.get('pluginManager') !== undefined,
+    // The installation service refuses to install over an installed package
+    // exactly when HMR is live, and refuses to remove a running bundle exactly
+    // when it is not. Both halves are read from the predicate it uses itself.
+    reinstall: ctx.get('hmr') !== undefined,
   }
   const plan = updatePlanFor({
     mode: facts.mode,
@@ -360,6 +499,7 @@ export function runningCopyOf(ctx: Context): RunningCopy {
     ...(facts.profile !== undefined ? { profile: facts.profile } : {}),
     appManaged: facts.appManaged,
     canInstall: facts.canInstall,
+    reinstall: facts.reinstall,
     ...(facts.checkoutSteps !== undefined ? { checkoutSteps: facts.checkoutSteps } : {}),
   })
   return {
@@ -368,20 +508,132 @@ export function runningCopyOf(ctx: Context): RunningCopy {
     appManaged: profile.appManaged,
     ...(spec !== undefined ? { spec } : {}),
     mode,
+    evidence: profile.evidence,
     ...(checkoutDir !== undefined ? { checkoutDir } : {}),
     plan,
   }
 }
 
 /**
- * Build the live view: the running copy's own manifest spec, classified through
- * the shared grammar, plus the checkout state for `link:` installs.
+ * The registries to ask, in order: the profile's own plan first (it knows the
+ * mirrors, private sources, proxies and credentials this installation really
+ * uses), then the public pair.
+ *
+ * Asking the public pair after a private source is safe here because the only
+ * thing ever asked for is THIS package, which is public: a private source that
+ * answers ends the walk before a public one is reached, and a private source
+ * that does not carry the package is exactly the case where the public answer
+ * is the right one.
+ * @param ctx - context carrying the host services.
+ * @returns the registry base URLs, in the order to ask them.
+ */
+async function registriesFor(ctx: Context): Promise<string[]> {
+  const manager = ctx.get('pluginManager') as PluginManagerLike | undefined
+  const ordered: string[] = []
+  const add = (value: unknown): void => {
+    if (typeof value === 'string' && value !== '' && !ordered.includes(value)) ordered.push(value)
+  }
+  try {
+    const plan = await manager?.registries?.()
+    if (plan !== undefined) {
+      // `resolved` is what pnpm reads right now; `registry` is the configured
+      // first choice, and a null there means pnpm's own configuration decides.
+      add(plan.resolved)
+      add(plan.registry)
+      if (Array.isArray(plan.fallbackRegistries)) for (const item of plan.fallbackRegistries) add(item)
+    }
+  } catch {
+    // The service is not answering; the public pair below still applies.
+  }
+  for (const item of PUBLIC_REGISTRIES) add(item)
+  return ordered
+}
+
+/** Read one JSON document with a hard bound; any failure reads as undefined. */
+async function boundedJson(url: string, timeoutMs: number): Promise<unknown> {
+  const controller = new AbortController()
+  const timer = setTimeout(() => { controller.abort() }, timeoutMs)
+  try {
+    const response = await fetch(url, {
+      headers: { accept: 'application/json' },
+      signal: controller.signal,
+    })
+    if (!response.ok) return undefined
+    return await response.json() as unknown
+  } catch {
+    return undefined
+  } finally {
+    clearTimeout(timer)
+  }
+}
+
+/** The raw-content base for a `github:Owner/Repo` spec. */
+function rawBaseOf(spec: string | undefined): string | undefined {
+  if (spec === undefined || !spec.startsWith('github:')) return undefined
+  const slug = spec.slice('github:'.length)
+  return slug === '' ? undefined : `https://raw.githubusercontent.com/${slug}`
+}
+
+/** The `https://` repository URL a `github:Owner/Repo` spec names. */
+function repoUrlOf(spec: string | undefined): string | undefined {
+  const base = rawBaseOf(spec)
+  return base === undefined ? undefined : base.replace('raw.githubusercontent.com', 'github.com')
+}
+
+/**
+ * The newest upstream for this copy, as this host can read it.
+ *
+ * A registry install asks the profile's own registries in order; a repository
+ * install reads the version the default branch declares and the commit that
+ * branch is on. A checkout is compared by its own git state instead (see
+ * {@link readGitStatus}), so it has nothing to read here.
+ *
+ * Anything unreadable is reported as absent. That is the whole contract: the
+ * page renders absence as "cannot tell", and a check that cannot tell must
+ * never be dressed up as "already newest".
+ * @param ctx - context carrying the host services.
+ * @param copy - the running copy (its mode decides what to ask).
+ * @returns the newest upstream, or undefined when it could not be read.
+ */
+async function readLatest(ctx: Context, copy: RunningCopy): Promise<UpdateLatestView | undefined> {
+  if (copy.mode === 'npm') {
+    for (const registry of await registriesFor(ctx)) {
+      const answer = latestFromPackument(
+        await boundedJson(packumentUrl(registry, PACKAGE_NAME), REGISTRY_TIMEOUT_MS),
+      )
+      if (answer !== undefined) return { ...answer, registry, source: 'registry' }
+    }
+    return undefined
+  }
+  if (copy.mode === 'github') {
+    const base = rawBaseOf(GITHUB_SPEC)
+    if (base === undefined) return undefined
+    const manifest = await boundedJson(`${base}/HEAD/package.json`, REGISTRY_TIMEOUT_MS)
+    const version = (manifest as { version?: unknown } | undefined)?.version
+    if (typeof version !== 'string' || version === '') return undefined
+    const repo = repoUrlOf(GITHUB_SPEC)
+    const head = repo === undefined ? undefined : gitOut(repo, ['ls-remote', repo, 'HEAD'], 15_000)
+    const sha = head !== undefined && head !== '' ? head.split(/\s/)[0] : undefined
+    return {
+      version,
+      source: 'repository',
+      ...(sha !== undefined && sha !== '' ? { head: sha } : {}),
+    }
+  }
+  return undefined
+}
+
+/**
+ * Build the live view: the running copy's own location and manifest spec, the
+ * newest upstream this host can read for that mode, and the checkout state for
+ * a linked copy.
  * @param ctx - context carrying the host services.
  * @returns the update-source view.
  */
-function readLiveView(ctx: Context): UpdateSourceView {
+async function readLiveView(ctx: Context): Promise<UpdateSourceView> {
   const copy = runningCopyOf(ctx)
   const git = copy.checkoutDir !== undefined ? readGitStatus(copy.checkoutDir) : undefined
+  const latest = await readLatest(ctx, copy)
   // What the pages that are actually open reported about themselves (bundle
   // version + measured geometry). Diagnosing "the phone looks wrong" without
   // this meant arguing from screenshots; with it, the host shows the truth.
@@ -392,9 +644,12 @@ function readLiveView(ctx: Context): UpdateSourceView {
     ...(copy.spec !== undefined ? { spec: copy.spec } : {}),
     mode: copy.mode,
     ...(copy.profile !== undefined ? { profile: copy.profile } : {}),
+    ...(copy.dir !== undefined ? { dir: copy.dir } : {}),
     appManaged: copy.appManaged,
+    evidence: copy.evidence,
     ...(GITHUB_SPEC !== undefined ? { githubSpec: GITHUB_SPEC } : {}),
     plan: copy.plan,
+    ...(latest !== undefined ? { latest } : {}),
     ...(git !== undefined ? { git } : {}),
     ...(clients.length > 0 ? { clients } : {}),
   }
@@ -404,6 +659,11 @@ function readLiveView(ctx: Context): UpdateSourceView {
  * Apply the running copy's own plan. The request body is never read: the plan
  * is re-derived here, so a page cannot ask this route to install anything the
  * copy is not already declared to be.
+ *
+ * The version is read back from disk afterwards rather than taken from the
+ * answer: on an HMR host this update uninstalls the plugin that is serving this
+ * very request, so the answer may never arrive, and only the file on disk says
+ * what actually landed.
  * @param ctx - context carrying the host services.
  * @returns the apply result.
  */

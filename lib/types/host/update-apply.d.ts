@@ -41,11 +41,30 @@ export interface PackageInstallRecord {
     };
     packageResult?: {
         output?: unknown;
+        exitCode?: unknown;
+    };
+}
+/** What one uninstallation hands back (the same record, minus a version). */
+export interface PackageRemoveRecord {
+    application?: unknown;
+    error?: {
+        code?: unknown;
+        diagnostic?: unknown;
+    };
+    packageResult?: {
+        output?: unknown;
+        exitCode?: unknown;
     };
 }
 /** The installation service, read by name (absent is a supported deployment). */
 export interface PackageInstaller {
     installBundle(spec: string, options?: Record<string, unknown>): Promise<PackageInstallRecord>;
+    /**
+     * Unload and remove a profile-owned bundle. Absent on a host whose
+     * installation service predates it — such a host reports `unavailable`
+     * rather than being handed a plan it cannot carry out.
+     */
+    removeBundle?(name: string): Promise<PackageRemoveRecord>;
 }
 /** Run one step; the real implementation is {@link spawnStep}. */
 export type UpdateRunner = (step: UpdateStep, options: {

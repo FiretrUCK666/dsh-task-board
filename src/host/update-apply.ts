@@ -53,12 +53,25 @@ export interface PackageInstallRecord {
   /** The installed bundle's manifest version, when the record carries one. */
   version?: unknown
   error?: { code?: unknown; diagnostic?: unknown }
-  packageResult?: { output?: unknown }
+  packageResult?: { output?: unknown; exitCode?: unknown }
+}
+
+/** What one uninstallation hands back (the same record, minus a version). */
+export interface PackageRemoveRecord {
+  application?: unknown
+  error?: { code?: unknown; diagnostic?: unknown }
+  packageResult?: { output?: unknown; exitCode?: unknown }
 }
 
 /** The installation service, read by name (absent is a supported deployment). */
 export interface PackageInstaller {
   installBundle(spec: string, options?: Record<string, unknown>): Promise<PackageInstallRecord>
+  /**
+   * Unload and remove a profile-owned bundle. Absent on a host whose
+   * installation service predates it — such a host reports `unavailable`
+   * rather than being handed a plan it cannot carry out.
+   */
+  removeBundle?(name: string): Promise<PackageRemoveRecord>
 }
 
 /** Run one step; the real implementation is {@link spawnStep}. */
@@ -138,8 +151,52 @@ function stringOf(value: unknown): string | undefined {
 }
 
 /**
+ * Uninstall the running copy, the first half of a reinstall.
+ *
+ * Everything that can go wrong is folded into one answer here, because the
+ * service reports its refusals two different ways: an unremovable bundle comes
+ * back as a failure code in the record, while a package-manager run that exits
+ * nonzero is thrown as an error whose message is the run's own output.
+ * @param installer - the installation service.
+ * @param name - the package to uninstall.
+ * @returns the failure, or undefined when the removal went through.
+ */
+async function removeInstalled(
+  installer: PackageInstaller,
+  name: string,
+): Promise<UpdateApplyResult | undefined> {
+  const remove = installer.removeBundle?.bind(installer)
+  if (remove === undefined) return { ok: false, error: 'unavailable' }
+  let record: PackageRemoveRecord
+  try {
+    record = await remove(name)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    return { ok: false, error: 'failed', output: tailText(`remove ${name}: ${message}`) }
+  }
+  const output = stringOf(record?.error?.diagnostic) ?? stringOf(record?.packageResult?.output)
+  const code = record?.error?.code
+  const exit = record?.packageResult?.exitCode
+  if (code !== undefined || record?.application === 'failed' || (typeof exit === 'number' && exit !== 0)) {
+    const reason = code !== undefined ? `remove: ${String(code)}` : `remove: exit ${String(exit ?? 'none')}`
+    return {
+      ok: false,
+      error: 'failed',
+      output: tailText(`${reason}${output !== undefined ? `\n${output}` : ''}`),
+    }
+  }
+  return undefined
+}
+
+/**
  * Apply a package update through the installation service.
- * @param plan - the plan whose `packageSpec` is re-added.
+ *
+ * A plan that says `reinstall` uninstalls first: that is the only order the
+ * service accepts on an HMR host, which refuses to install over a package that
+ * is already there so that the old version's plugin stops before its files are
+ * replaced. A plan without it installs straight over the running copy, which is
+ * what a host without HMR accepts and reports as `restart-required`.
+ * @param plan - the plan whose package is reinstalled and whose spec re-added.
  * @param installer - the installation service.
  * @param readVersion - reads the version now on disk.
  * @returns the result.
@@ -152,9 +209,15 @@ async function applyPackage(
   if (installer === undefined) return { ok: false, error: 'unavailable' }
   const spec = plan.packageSpec
   if (spec === undefined) return { ok: false, error: 'unsupported' }
+  const name = plan.packageName
+  if (plan.reinstall === true) {
+    if (name === undefined || name === '') return { ok: false, error: 'unsupported' }
+    const refused = await removeInstalled(installer, name)
+    if (refused !== undefined) return refused
+  }
   let record: PackageInstallRecord
   try {
-    record = await installer.installBundle(spec)
+    record = await installer.installBundle(spec, { enabled: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     return { ok: false, error: 'failed', output: tailText(message) }

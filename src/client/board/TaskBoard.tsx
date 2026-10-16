@@ -44,8 +44,8 @@ import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, IconButton, Switch } from '../design/ui.tsx'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
-import { commandLineOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
-import { applyUpdate, BUNDLED_PACKAGE_NAME, BUNDLED_VERSION, fetchNpmLatest, fetchUpdateSource, type NpmLatest, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
+import { commandLineOf, commandWordsOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
+import { applyUpdate, BUNDLED_VERSION, fetchUpdateSource, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -490,9 +490,8 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // 常驻检查更新（Header 模式组的 ghost 按钮，点一下即查）：host 按"正在运行
   // 的那一份"给出安装来源与更新计划，npm 最新版并行读取；有新版即开结果 Dialog。
   // 更新本身是 Dialog 里的一按，由 host 应用——页面只说"更新"，不说"装什么"。
-  const [updatePhase, setUpdatePhase] = useState<'idle' | 'checking' | 'latest' | 'available' | 'failed'>('idle')
+  const [updatePhase, setUpdatePhase] = useState<'idle' | 'checking' | 'latest' | 'available' | 'undetermined' | 'failed'>('idle')
   const [updateSource, setUpdateSource] = useState<UpdateSourceView | undefined>(undefined)
-  const [updateLatest, setUpdateLatest] = useState<NpmLatest | undefined>(undefined)
   const [showUpdate, setShowUpdate] = useState(false)
   const [updateCopied, setUpdateCopied] = useState(false)
   const [updateCopyFailed, setUpdateCopyFailed] = useState(false)
@@ -503,28 +502,36 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
   }, [])
 
-  /** 点一下即查：两路并行，任一能证明"有新版"即 available，否则按 npm 定论。 */
+  /**
+   * 点一下即查：一次问 host 就拿到全部结论——它是哪一份、装在哪、最新版是多少、
+   * 该怎么更新。最新版由 host 读（它知道这份 profile 用哪个源），页面不再自己
+   * 直连 npm：那样镜像用户永远查不到，git 安装更是完全没得查。
+   */
   const checkUpdate = (): void => {
     if (updatePhase === 'checking') return
     setUpdatePhase('checking')
     void (async () => {
-      const [source, latest] = await Promise.all([
-        fetchUpdateSource(),
-        fetchNpmLatest(BUNDLED_PACKAGE_NAME),
-      ])
-      const current = source?.version ?? BUNDLED_VERSION
+      const source = await fetchUpdateSource()
       setUpdateSource(source)
-      setUpdateLatest(latest ?? undefined)
-      const npmNewer = latest !== undefined && isNewerVersion(latest.version, current)
-      const gitNewer = source?.mode === 'local' && source.git !== undefined && isGitBehind(source.git)
-      if (npmNewer || gitNewer) {
+      if (source === undefined) {
+        setUpdatePhase('failed')
+        return
+      }
+      const latestVersion = source.latest?.version
+      const newer = latestVersion !== undefined && isNewerVersion(latestVersion, source.version)
+      const gitNewer = source.mode === 'local' && source.git !== undefined && isGitBehind(source.git)
+      // 一个 git 安装没有可比的版本基线——远端那个分支就是它的最新版——所以
+      // 无论读没读到版本号都开面板：那种安装的更新入口只有这一个。
+      if (newer || gitNewer || source.mode === 'github') {
         setUpdatePhase('available')
         setShowUpdate(true)
         return
       }
-      // npm 不可读时无法定论（唯一的"无证据"形态）：行内失败可重试。
-      if (latest === undefined) {
-        setUpdatePhase('failed')
+      // 读不到最新版：这不是"已是最新"这个结论，也不该是一条死路。开面板把
+      // 读不到这件事说清楚，出路（命令 / 一键更新）照样摆在下面。
+      if (source.mode === 'npm' && source.latest === undefined) {
+        setUpdatePhase('undetermined')
+        setShowUpdate(true)
         return
       }
       // 已是最新：按钮短暂确认后回弹常驻态（注意力只借两秒）。
@@ -573,12 +580,11 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
         setUpdateApply({ phase: 'failed', ...(result !== undefined ? { result } : {}) })
       }
       if (result?.ok === true || landed) {
-        // 更新成了：按钮的读数收回常驻态（有新版 → 已是最新），并把最新版重读一次。
+        // 更新成了：按钮的读数收回常驻态（有新版 → 已是最新）。重读到的来源里
+        // 已经带着新的最新版读数，不需要再问一次。
         setUpdatePhase('latest')
         if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
         updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
-        const latest = await fetchNpmLatest(source?.packageName ?? BUNDLED_PACKAGE_NAME)
-        setUpdateLatest(latest ?? undefined)
       }
     })()
   }
@@ -586,13 +592,17 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // The dialog's derived readings (one funnel — the button label below and
   // the dialog body read the same three values, never recompute apart).
   const updateCurrent = updateSource?.version ?? BUNDLED_VERSION
-  const updateNpmNewer = updateLatest !== undefined && isNewerVersion(updateLatest.version, updateCurrent)
+  const updateLatest = updateSource?.latest
+  const updateNewer = updateLatest !== undefined && isNewerVersion(updateLatest.version, updateCurrent)
   const updateGit = updateSource?.mode === 'local' ? updateSource.git : undefined
   const updateGitBehind = updateGit !== undefined && isGitBehind(updateGit)
   const updatePlan = updateSource?.plan
   const updateCommand = updatePlan !== undefined && updatePlan.steps.length > 0
     ? commandLineOf(updatePlan.steps)
     : undefined
+  // 命令按「一个词一格」画：换行只发生在词之间。整条命令是要照着敲的，
+  // 而浏览器默认会在连字符处断行，于是包装名被画成两个词那样的两截。
+  const updateWords = updatePlan !== undefined ? commandWordsOf(updatePlan.steps) : []
   const updateCommandHint = updateSource !== undefined ? updateCommandHintOf(updateSource.mode) : undefined
   const updateBlocked = updatePlan?.apply === 'checkout' && updateGit?.dirty === true
   const updateRunning = updateApply.phase === 'running'
@@ -604,9 +614,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   const updateLabel = (() => {
     if (updatePhase === 'checking') return t('board.update.checking')
     if (updatePhase === 'latest') return t('board.update.latest')
+    if (updatePhase === 'undetermined') return t('board.update.undetermined')
     if (updatePhase === 'failed') return t('board.update.failed')
     if (updatePhase === 'available') {
-      return updateNpmNewer && updateLatest !== undefined
+      return updateNewer && updateLatest !== undefined
         ? t('board.update.available', { v: updateLatest.version })
         : t('board.update.availableGit')
     }
@@ -1636,8 +1647,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               title={t('board.update.check')}
               disabled={updatePhase === 'checking'}
               onClick={() => {
-                if (updatePhase === 'available' && !showUpdate) setShowUpdate(true)
-                else checkUpdate()
+                if ((updatePhase === 'available' || updatePhase === 'undetermined') && !showUpdate) {
+                  setShowUpdate(true)
+                } else checkUpdate()
               }}
             >
               {updateLabel}
@@ -1862,19 +1874,51 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           >
             <div className={css.modalScroll}>
               <p className={css.detailText}>{t('board.update.current', { v: updateCurrent })}</p>
+              {/* 这是哪一份：同一台机器上 Web 端与桌面端是两份独立安装，读者
+                  最先要确认的就是"我现在看的是哪一份"。 */}
               {updateSource !== undefined && (
-                <p className={css.detailHint}>{t('board.update.source', { mode: updateModeLabel(updateSource.mode) })}</p>
+                <p className={css.detailHint}>
+                  {updateSource.profile !== undefined
+                    ? t('board.update.where', {
+                      profile: updateSource.profile,
+                      mode: updateModeLabel(updateSource.mode),
+                    })
+                    : t('board.update.source', { mode: updateModeLabel(updateSource.mode) })}
+                </p>
               )}
-              {updateSource?.profile !== undefined && (
-                <p className={css.detailHint}>{t('board.update.profile', { name: updateSource.profile })}</p>
+              {updateSource?.dir !== undefined && (
+                <p className={css.detailHint}>{t('board.update.dir', { path: updateSource.dir })}</p>
               )}
-              {updateNpmNewer && updateLatest !== undefined && (
+              {updateSource?.evidence?.disagreement === true && (
+                <p className={css.detailHint}>{t('board.update.evidence')}</p>
+              )}
+              {/* 结论三态：有新版 / 已是最新 / 读不到。读不到绝不说成"已是最新"。 */}
+              {updateNewer && updateLatest !== undefined && (
                 <p className={css.detailText}>{t('board.update.newVersion', { v: updateLatest.version })}</p>
               )}
-              {updateNpmNewer && Number.isFinite(updatePublishedMs) && (
+              {updateNewer && Number.isFinite(updatePublishedMs) && (
                 <p className={css.detailHint}>
                   {t('board.update.published', { time: formatDateTime(updatePublishedMs) })}
                 </p>
+              )}
+              {updateLatest?.registry !== undefined && (
+                <p className={css.detailHint}>{t('board.update.registry', { registry: updateLatest.registry })}</p>
+              )}
+              {updateLatest?.source === 'repository' && (
+                <p className={css.detailHint}>
+                  {updateLatest.head !== undefined
+                    ? t('board.update.remoteHead', {
+                      sha: shortSha(updateLatest.head),
+                      v: updateLatest.version,
+                    })
+                    : t('board.update.remoteVersion', { v: updateLatest.version })}
+                </p>
+              )}
+              {updateSource?.mode === 'github' && !updateNewer && (
+                <p className={css.detailHint}>{t('board.update.gitSameVersion')}</p>
+              )}
+              {updateSource !== undefined && updateLatest === undefined && updateSource.mode !== 'local' && (
+                <p className={css.detailText}>{t('board.update.noLatest')}</p>
               )}
               {updateGitBehind && updateGit?.remoteHead !== undefined && (
                 <p className={css.detailHint}>
@@ -1905,11 +1949,29 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {updateApply.phase === 'failed' && updateApply.result?.output !== undefined && (
                 <pre className={css.updateOutput}>{updateApply.result.output}</pre>
               )}
+              {/* 后果预告：说清按下去会发生什么，读者才敢按。 */}
+              {updateCanApply && updatePlan?.apply === 'package' && (
+                <p className={css.detailHint}>
+                  {updatePlan.reinstall === true ? t('board.update.reinstall') : t('board.update.overwrite')}
+                </p>
+              )}
+              {updateRunning && (
+                <p className={css.detailHint} role="status" aria-live="polite">
+                  {t('board.update.losingConnection')}
+                </p>
+              )}
               {updateCommand !== undefined && updateCommandHint !== undefined && (
                 <div>
                   <p className={css.detailHint}>{updateCommandHint}</p>
-                  <p className={css.detailText}>
-                    <code>{updateCommand}</code>
+                  <p className={css.updateCommand}>
+                    <code>
+                      {updateWords.map((word, index) => (
+                        <Fragment key={`${index}:${word}`}>
+                          {index === 0 ? null : ' '}
+                          <span className={css.updateWord}>{word}</span>
+                        </Fragment>
+                      ))}
+                    </code>
                     {' '}
                     <Button
                       size="sm"
@@ -1922,8 +1984,13 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   </p>
                 </div>
               )}
-              {updateSource?.appManaged === true && updateCommand === undefined && (
-                <p className={css.detailHint}>{t('board.update.appManaged')}</p>
+              {/* 桌面端：那份 profile 由应用托管，命令能用但要先完全退出应用。 */}
+              {updateSource?.appManaged === true && (
+                <p className={css.detailHint}>
+                  {updateCommand !== undefined
+                    ? t('board.update.desktopQuit')
+                    : t('board.update.appManaged')}
+                </p>
               )}
               {updateSource !== undefined && updatePlan?.apply === 'none' && updateCommand === undefined && !updateSource.appManaged && (
                 <p className={css.detailHint}>{t('board.update.unreadable')}</p>

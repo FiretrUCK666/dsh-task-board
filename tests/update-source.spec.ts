@@ -1,12 +1,16 @@
 /**
  * Browser update-source readers (src/client/update-source.ts): the host view
- * passes through shape-guarded, an apply answer parses into its outcome, the
- * npm packument yields latest + publish instant, and every failure — HTTP
- * error, hang, malformed body, old host without the route — degrades to
- * `undefined` (inline retry, never a crash).
+ * passes through shape-guarded — including where the copy runs from, the
+ * evidence behind that, and the newest upstream the host read — an apply answer
+ * parses into its outcome, and every failure (HTTP error, hang, malformed body,
+ * old host without the route) degrades to `undefined` (inline retry, never a
+ * crash).
+ *
+ * The published latest is NOT fetched here any more; it travels in the same
+ * view, because only the host knows which registry this profile uses.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyUpdate, fetchNpmLatest, fetchUpdateSource } from '../src/client/update-source.ts'
+import { applyUpdate, fetchUpdateSource } from '../src/client/update-source.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -31,6 +35,7 @@ function hangFetch(): void {
 function planOf(mode: 'npm' | 'github' | 'local' | 'unknown'): Record<string, unknown> {
   return {
     mode,
+    packageName: '@firetruck666/dsh-task-board',
     profile: 'web',
     appManaged: false,
     ...(mode === 'npm' ? { packageSpec: '@firetruck666/dsh-task-board@latest' } : {}),
@@ -42,7 +47,7 @@ function planOf(mode: 'npm' | 'github' | 'local' | 'unknown'): Record<string, un
 }
 
 describe('fetchUpdateSource', () => {
-  it('passes a well-formed host view through', async () => {
+  it('passes a well-formed host view through, newest upstream included', async () => {
     answerJson({
       ok: true,
       value: {
@@ -51,9 +56,17 @@ describe('fetchUpdateSource', () => {
         spec: 'link:/repo',
         mode: 'local',
         profile: 'web',
+        dir: '/home/u/.dsh/profiles/web',
         appManaged: false,
+        evidence: { linked: true, declared: true, disagreement: false },
         githubSpec: 'github:FiretrUCK666/dsh-task-board',
         plan: planOf('local'),
+        latest: {
+          version: '0.2.82',
+          publishedAt: '2026-09-11T10:00:00.000Z',
+          registry: 'https://registry.npmmirror.com/',
+          source: 'registry',
+        },
         git: { head: 'aaa', remoteHead: 'bbb', dirty: true },
       },
     })
@@ -63,17 +76,58 @@ describe('fetchUpdateSource', () => {
       spec: 'link:/repo',
       mode: 'local',
       profile: 'web',
+      dir: '/home/u/.dsh/profiles/web',
       appManaged: false,
+      evidence: { linked: true, declared: true, disagreement: false },
       githubSpec: 'github:FiretrUCK666/dsh-task-board',
       plan: {
         mode: 'local',
+        packageName: '@firetruck666/dsh-task-board',
         profile: 'web',
         appManaged: false,
         apply: 'checkout',
         steps: [],
       },
+      latest: {
+        version: '0.2.82',
+        publishedAt: '2026-09-11T10:00:00.000Z',
+        registry: 'https://registry.npmmirror.com/',
+        source: 'registry',
+      },
       git: { head: 'aaa', remoteHead: 'bbb', dirty: true },
     })
+  })
+
+  it('an unreadable newest upstream is absent, not invented', async () => {
+    // The whole point of the three-state verdict: a host that could not read
+    // the registry must not arrive as "already newest".
+    answerJson({
+      ok: true,
+      value: {
+        packageName: '@firetruck666/dsh-task-board',
+        version: '0.2.81',
+        mode: 'npm',
+        plan: planOf('npm'),
+      },
+    })
+    const view = await fetchUpdateSource(1_000)
+    expect(view?.latest).toBeUndefined()
+    expect(view?.evidence).toBeUndefined()
+    expect(view?.dir).toBeUndefined()
+  })
+
+  it('a malformed newest-upstream answer is dropped whole', async () => {
+    answerJson({
+      ok: true,
+      value: {
+        packageName: '@firetruck666/dsh-task-board',
+        version: '0.2.81',
+        mode: 'npm',
+        plan: planOf('npm'),
+        latest: { publishedAt: '2026-09-11T10:00:00.000Z', source: 'registry' },
+      },
+    })
+    expect((await fetchUpdateSource(1_000))?.latest).toBeUndefined()
   })
 
   it('drops malformed envelopes and HTTP errors to undefined', async () => {
@@ -133,32 +187,5 @@ describe('applyUpdate', () => {
     expect(await applyUpdate(1_000)).toBeUndefined()
     hangFetch()
     expect(await applyUpdate(30)).toBeUndefined()
-  })
-})
-
-describe('fetchNpmLatest', () => {
-  it('reads dist-tags.latest plus its publish instant', async () => {
-    answerJson({
-      'dist-tags': { latest: '0.2.81' },
-      time: { '0.2.80': '2026-09-10T22:21:52.483Z', '0.2.81': '2026-09-11T10:00:00.000Z' },
-    })
-    expect(await fetchNpmLatest('@firetruck666/dsh-task-board', 1_000)).toEqual({
-      version: '0.2.81',
-      publishedAt: '2026-09-11T10:00:00.000Z',
-    })
-  })
-
-  it('a missing publish instant still yields the version', async () => {
-    answerJson({ 'dist-tags': { latest: '0.2.81' }, time: {} })
-    expect(await fetchNpmLatest('@firetruck666/dsh-task-board', 1_000)).toEqual({
-      version: '0.2.81',
-    })
-  })
-
-  it('malformed packuments and hangs degrade to undefined', async () => {
-    answerJson({ 'dist-tags': {} })
-    expect(await fetchNpmLatest('@firetruck666/dsh-task-board', 1_000)).toBeUndefined()
-    hangFetch()
-    expect(await fetchNpmLatest('@firetruck666/dsh-task-board', 30)).toBeUndefined()
   })
 })

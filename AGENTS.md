@@ -293,9 +293,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
 本插件与宿主之间只有下面这些接触面，由 `pnpm verify` 对照**实际安装的 DSH** 逐条核对，
-少任何一条即红并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot 在
+少一条即红并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot 在
 `slots.inject` 里**静默 no-op**；被删的服务成员只在用户点击那一刻抛 `TypeError`；缺失的
-宿主服务让对应半区**永远等不到依赖、什么也注册不出来**。
+宿主服务让对应半区**等不到依赖，什么也注册不出来**。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -323,7 +323,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
 
 **这张表是声明，不是副本**——`verify-host-contracts.mjs` 逐条解析它并与实际安装的 DSH 对照，
-少一行即红。所以它必须留在这里，且与源码里各半区的 `inject` 列表一致。
+少一行即红；它还得与源码里各半区的 `inject` 列表一致。
 
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
@@ -341,28 +341,30 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
 
-**每个注入都是负债**：声明了一个实际不用的服务，会在该服务缺席的部署里白等——那个半区永远不
+**每个注入都是负债**：声明一个实际不用的服务，会在该服务缺席的部署里白等——那个半区永不
 激活，什么也注册不出来。所以 `inject` 只列真正用到的（**不**注入 `settings` / `configForms`，
 也**不**注入右栏那个服务）。该脚本另带两组反向自测（`--probe-removed` / `--probe-services`）：
-拿一组**不可能存在**的成员与服务名各扫一次，**两次都必须报红**——否则说明检查本身失效了。
+拿一组**不可能存在**的成员与服务名各扫一次，**两次都必须报红**——否则检查本身失效了。
 
 ### 插件按名读的宿主服务（**不进 `inject`**：缺席即降级）
 
-`ctx.get(<名>)` 直接读、不声明——读不到时那个动作不出现，插件照常加载。核对方式与上表相同。
+`ctx.get(<名>)` 直接读、不声明——读不到时那个动作不出现，插件照常加载。核对方式同上表；
+**只判在不在的服务**在成员一列写服务名本身。
 
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
 | host | `profileContext` | `dir` | `@deepseek-ai/dsh` |
-| host | `pluginManager` | `installBundle` | `@deepseek-ai/dsh-plugin-manager` |
+| host | `pluginManager` | `installBundle`、`removeBundle`、`registries` | `@deepseek-ai/dsh-plugin-manager` |
+| host | `hmr` | `hmr` | `@deepseek-ai/dsh-hmr` |
 | host | `attachments` | `admitEncodedFile`、`saveImage`、`readImage`、`readFileStream` | `@deepseek-ai/dsh-attachment` |
 
 **两条使用纪律**（比表本身更重要）：
 
 1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方 slot；
    自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
-   不读写 shell 的节点或类名——那是唯一不能靠文档兜住的脆弱面（shell 换实现即失效，且不报错）。
+   不读写 shell 的节点或类名——那是唯一兜不住的脆弱面（shell 换实现即失效，不报错）。
 2. **接口只按名读，绝不 `instanceof`、绝不跨包值导入。** 宿主成员缺失时降级并说真话
-   （`openSession` 返回 `false` 让 UI 就近报错），不抛、不静默假装成功。
+   （`openSession` 返回 `false` 让 UI 就近报错），不抛、不假装成功。
 
 ## 架构（索引：职责与入口，机制细节以代码注释为准，不复述）
 

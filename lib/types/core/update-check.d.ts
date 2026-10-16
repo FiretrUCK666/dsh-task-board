@@ -69,6 +69,8 @@ export type UpdateApplyKind = 'package' | 'checkout' | 'none';
 export interface UpdatePlan {
     /** The install mode the plan was built from. */
     mode: UpdateInstallMode;
+    /** The package this plan is about (the subject a reinstall uninstalls). */
+    packageName?: string;
     /** The profile carrying this copy (absent when the running profile is unreadable). */
     profile?: string;
     /** The profile belongs to a packaged application, which installs through its own runtime. */
@@ -77,6 +79,14 @@ export interface UpdatePlan {
     packageSpec?: string;
     /** Where the host applies the update itself. */
     apply: UpdateApplyKind;
+    /**
+     * A package update must uninstall the running copy before installing the new
+     * one. The installation service refuses to install over an installed package
+     * exactly when HMR is live, and refuses to REMOVE a running bundle exactly
+     * when it is not — so which of the two happens is decided by the host, and
+     * the page reads it here rather than describing a step it cannot know.
+     */
+    reinstall?: boolean;
     /** What this update runs: the host's steps, and the equivalent terminal line. */
     steps: UpdateStep[];
 }
@@ -86,6 +96,20 @@ export interface UpdatePlan {
  * @returns the `&&`-joined command line (empty for no steps).
  */
 export declare function commandLineOf(steps: readonly UpdateStep[]): string;
+/**
+ * The same command as its individual words, one entry per word.
+ *
+ * A command is a line to retype or paste, and the page must break it the way a
+ * reader would: between words. Left to itself the browser also breaks after a
+ * hyphen, so `@scope/dsh-task-board@latest` renders as `@scope/dsh-task-` /
+ * `board@latest` whenever the line happens to end there — which reads as two
+ * words in a string that has to be typed exactly. The words are what the page
+ * puts in unbreakable spans, and {@link commandLineOf} is this same list joined
+ * up, so the copyable line and the drawn line cannot drift apart.
+ * @param steps - the steps in order.
+ * @returns the words, with `&&` as its own word between steps.
+ */
+export declare function commandWordsOf(steps: readonly UpdateStep[]): string[];
 /** Every fact the plan rules read; each one describes the copy that is running. */
 export interface UpdatePlanInput {
     mode: UpdateInstallMode;
@@ -98,6 +122,8 @@ export interface UpdatePlanInput {
     appManaged: boolean;
     /** The host carries the installation service that applies a package update. */
     canInstall: boolean;
+    /** That service will uninstall the running copy first (it refuses to install over one). */
+    reinstall?: boolean;
     /** The steps a checkout refresh runs (local mode; absent keeps the documented pair). */
     checkoutSteps?: readonly UpdateStep[];
 }
@@ -110,6 +136,51 @@ export interface UpdatePlanInput {
  * @returns the plan.
  */
 export declare function updatePlanFor(input: UpdatePlanInput): UpdatePlan;
+/**
+ * The newest upstream this copy could move to, as the host read it. One shape
+ * for every install mode: a registry answers with a version and which registry
+ * said so, a repository answers with the version its default branch declares.
+ * Absent means the host could not read it — the page reports that as "cannot
+ * tell", never as "already newest".
+ */
+export interface UpdateLatestView {
+    /** The newest version found. */
+    version: string;
+    /** That version's publish instant (registry answers only). */
+    publishedAt?: string;
+    /** The registry that answered (registry answers only). */
+    registry?: string;
+    /** Where the answer came from. */
+    source: 'registry' | 'repository';
+    /** The repository's default-branch head (git installs only). */
+    head?: string;
+}
+/**
+ * The registries to ask when the host carries no installation service to ask
+ * instead. A degraded fallback on purpose: the profile's own registry plan is
+ * the authority (it knows mirrors, private sources and proxies), and this pair
+ * is the public default that any Node installation already reaches. Reading
+ * only the first of them is what made a mirror user's check fail outright.
+ */
+export declare const PUBLIC_REGISTRIES: string[];
+/**
+ * The packument URL for one package on one registry.
+ * @param registry - the registry base URL, with or without a trailing slash.
+ * @param packageName - the package name (a scope's slash is encoded).
+ * @returns the URL to fetch.
+ */
+export declare function packumentUrl(registry: string, packageName: string): string;
+/**
+ * Read the published latest out of one registry's packument. A document that
+ * does not carry a `dist-tags.latest` string is not an answer, so it reads as
+ * undefined and the caller asks the next registry.
+ * @param body - the parsed packument.
+ * @returns the version and its publish instant, or undefined.
+ */
+export declare function latestFromPackument(body: unknown): {
+    version: string;
+    publishedAt?: string;
+} | undefined;
 /** The local checkout's git state (only meaningful for `local` installs). */
 export interface UpdateGitStatus {
     /** Full local HEAD SHA. */

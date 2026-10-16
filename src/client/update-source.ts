@@ -1,8 +1,14 @@
 /**
  * Browser readers for the header's check-for-updates button: the installed
- * source (version + install mode + the plan that updates it) from the host
- * route, the published latest from the public npm registry, and the one action
- * that applies the plan.
+ * source (version + where it runs from + the plan that updates it) from the
+ * host route, and the one action that applies the plan.
+ *
+ * The published latest comes from that same route. It used to be fetched here
+ * from `registry.npmjs.org` directly, which meant a reader behind a mirror —
+ * the very reader who picked that mirror when installing — got a failed check
+ * instead of an answer, and a git install got no check at all. `latest` is a
+ * host-side fact for the same reason the install mode is: only the host knows
+ * which registry this profile actually uses.
  *
  * Every failure degrades to `undefined` (the button reads it as "check
  * failed, retry inline"), so a dropped line, a blocked registry, or an old
@@ -12,6 +18,7 @@
 import type {
   UpdateGitStatus,
   UpdateInstallMode,
+  UpdateLatestView,
   UpdatePlan,
   UpdateStep,
 } from '../core/update-check.ts'
@@ -26,6 +33,16 @@ export const BUNDLED_PACKAGE_NAME =
 export const BUNDLED_VERSION =
   (packageJson as { version?: string }).version ?? 'unknown'
 
+/** How the host established which copy is running. */
+export interface UpdateEvidence {
+  /** This copy is a link into a checkout, not a copy installed in a profile. */
+  linked: boolean
+  /** The host declared a profile at all. */
+  declared: boolean
+  /** The declaration named a different copy than the one actually running. */
+  disagreement: boolean
+}
+
 /** The installed-source view the host update route serves. */
 export interface UpdateSourceView {
   /** Package name (the npm update command's subject). */
@@ -38,12 +55,18 @@ export interface UpdateSourceView {
   mode: UpdateInstallMode
   /** The profile carrying this copy (absent when the host cannot read it). */
   profile?: string
+  /** The profile's directory, or the checkout this copy runs from. */
+  dir?: string
   /** The profile belongs to a packaged application, which installs through its own runtime. */
   appManaged: boolean
+  /** How the host established which copy is running (absent from an older host). */
+  evidence?: UpdateEvidence
   /** The `github:` install spec (absent when the repo URL is not GitHub). */
   githubSpec?: string
   /** How to update this copy, and who applies it. */
   plan: UpdatePlan
+  /** The newest upstream the host could read (absent is "cannot tell"). */
+  latest?: UpdateLatestView
   /** Local-checkout git state (only for `local` installs). */
   git?: UpdateGitStatus
 }
@@ -55,14 +78,6 @@ export interface UpdateApplyResult {
   version?: string
   output?: string
   error?: 'unsupported' | 'unavailable' | 'dirty' | 'tool-missing' | 'timeout' | 'failed'
-}
-
-/** The published latest read off the npm registry. */
-export interface NpmLatest {
-  /** The `dist-tags.latest` version. */
-  version: string
-  /** The registry's publish instant for that version, when advertised. */
-  publishedAt?: string
 }
 
 /** Fetch one JSON document with a hard bound; any failure reads as undefined. */
@@ -120,11 +135,41 @@ function parsePlan(value: unknown): UpdatePlan | undefined {
   if (!isMode(plan.mode) || !isApplyKind(plan.apply)) return undefined
   return {
     mode: plan.mode,
+    ...(typeof plan.packageName === 'string' ? { packageName: plan.packageName } : {}),
     ...(typeof plan.profile === 'string' ? { profile: plan.profile } : {}),
     appManaged: plan.appManaged === true,
     ...(typeof plan.packageSpec === 'string' ? { packageSpec: plan.packageSpec } : {}),
+    ...(plan.reinstall === true ? { reinstall: true } : {}),
     apply: plan.apply,
     steps: Array.isArray(plan.steps) ? plan.steps.filter(isStep) : [],
+  }
+}
+
+/** Whether a value is one of the four install modes. */
+function isEvidence(value: unknown): value is UpdateEvidence {
+  if (typeof value !== 'object' || value === null) return false
+  const evidence = value as Record<string, unknown>
+  return typeof evidence.linked === 'boolean' && typeof evidence.declared === 'boolean'
+}
+
+/**
+ * Parse the newest-upstream reading. An answer without a version is not an
+ * answer: it is dropped, and the page then says it cannot tell.
+ * @param value - the wire value.
+ * @returns the reading, or undefined when it is not one.
+ */
+function parseLatest(value: unknown): UpdateLatestView | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const latest = value as Record<string, unknown>
+  if (typeof latest.version !== 'string' || latest.version === '') return undefined
+  const source = latest.source === 'repository' ? 'repository' : latest.source === 'registry' ? 'registry' : undefined
+  if (source === undefined) return undefined
+  return {
+    version: latest.version,
+    source,
+    ...(typeof latest.publishedAt === 'string' ? { publishedAt: latest.publishedAt } : {}),
+    ...(typeof latest.registry === 'string' ? { registry: latest.registry } : {}),
+    ...(typeof latest.head === 'string' ? { head: latest.head } : {}),
   }
 }
 
@@ -150,15 +195,19 @@ export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourc
   const plan = parsePlan(value.plan)
   if (plan === undefined) return undefined
   const git = value.git as Record<string, unknown> | undefined
+  const latest = parseLatest(value.latest)
   return {
     packageName: value.packageName,
     version: value.version,
     ...(typeof value.spec === 'string' ? { spec: value.spec } : {}),
     mode: value.mode,
     ...(typeof value.profile === 'string' ? { profile: value.profile } : {}),
+    ...(typeof value.dir === 'string' ? { dir: value.dir } : {}),
     appManaged: value.appManaged === true,
+    ...(isEvidence(value.evidence) ? { evidence: value.evidence } : {}),
     ...(typeof value.githubSpec === 'string' ? { githubSpec: value.githubSpec } : {}),
     plan,
+    ...(latest !== undefined ? { latest } : {}),
     ...(git !== undefined && typeof git === 'object' && git !== null
       && typeof git.head === 'string'
       && typeof git.dirty === 'boolean'
@@ -210,31 +259,3 @@ export async function applyUpdate(timeoutMs = 600_000): Promise<UpdateApplyResul
   }
 }
 
-/**
- * Read the published latest from the public npm registry packument
- * (`dist-tags.latest` plus its publish instant from `time`).
- * @param packageName - the scoped package name (slash-encoded for the URL).
- * @param timeoutMs - per-request bound (default 15s).
- * @returns the latest version, or undefined when unreadable.
- */
-export async function fetchNpmLatest(
-  packageName: string,
-  timeoutMs = 15_000,
-): Promise<NpmLatest | undefined> {
-  const body = await boundedJson(
-    `https://registry.npmjs.org/${packageName.replace('/', '%2F')}`,
-    timeoutMs,
-  )
-  if (typeof body !== 'object' || body === null) return undefined
-  const packument = body as {
-    'dist-tags'?: { latest?: unknown }
-    time?: Record<string, unknown>
-  }
-  const latest = packument['dist-tags']?.latest
-  if (typeof latest !== 'string' || latest === '') return undefined
-  const published = packument.time?.[latest]
-  return {
-    version: latest,
-    ...(typeof published === 'string' ? { publishedAt: published } : {}),
-  }
-}

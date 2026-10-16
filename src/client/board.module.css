@@ -3595,6 +3595,26 @@
   color: var(--dsh-tb-text-2);
 }
 
+/* The equivalent terminal command, drawn one word per unbreakable span.
+   `pre-wrap` alone is not enough: the default line-breaking rules also break
+   after a hyphen, so a scoped package name is drawn as `@scope/dsh-task-` /
+   `board@latest` whenever the line happens to end there — two words, in a
+   string the reader has to retype exactly. Breaks belong between words. */
+.updateCommand {
+  margin: 0;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  /* A word is unbreakable by design, so a word longer than the line has
+     nowhere to go. Scrolling is the bound that keeps it inside the box
+     (hard rule 11②): the alternative is text drawn past the edge. */
+  overflow-x: auto;
+}
+
+.updateWord {
+  white-space: nowrap;
+}
+
 /* The tail of a failed update command's output: what the command said is the
    reason, and the last lines are where it says it. Same "code frame" as the
    prompt block (monospace + markdown code surface + hairline), and no scroll
