@@ -4736,13 +4736,18 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     }
 
     if (state === 'row-body-open') {
-      /* 展开了这一行、并且**按了「＋ 写点什么」**之后的那一屏。
+      /* 展开了这一行之后的那一屏。
        *
        * 读者的原话是两句：按了正文之后那一行「暗色的背景直接消失」，而且框的四个角
        * 「像缺了一块」。两句话说的都不是属性——`data-open` 在 jsdom 里量过，它一直在
        * （见「pressing into the body of an open row…」那条）——所以能被看见的只有
        * **同一份 DOM 在真浏览器里画成什么**。这就是那个状态：这一步结束时的活 DOM，
-       * 加真样式表，交给浏览器。 */
+       * 加真样式表，交给浏览器。
+       *
+       * **这里曾经要先按一句「＋ 写点什么」**，而那个入口已经不在了：正文现在**永远
+       * 是一个开着的框**（理由写在 `detail-pane.tsx` 那一段）。所以这一步只剩「展开
+       * 这一行」。它坏了很久而没人知道，因为这条路径只在 `DSH_PANEL_MOUNT` 指到它时
+       * 才跑——**一个只在有人手动打开时才跑的工具，坏了是不会有声音的**。 */
       const items = [...fixtures().slice(0, 2)]
       const panel = mountPanel(items, 'list', band === 'narrow' ? 'narrow' : 'wide')
       try {
@@ -4750,10 +4755,10 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         if (row === undefined) throw new Error('the list page drew no row to open')
         click(row)
         await settle()
-        const prompt = [...row.querySelectorAll('button')].find(one => (one.textContent ?? '').includes('写点什么'))
-        if (prompt === undefined) throw new Error('the open row carries no 正文 prompt')
-        click(prompt)
-        await settle()
+        // The body field must actually be there, or this artifact photographs an
+        // empty pane and the state name is a lie.
+        const body = [...row.querySelectorAll('textarea, input')].length
+        if (body === 0) throw new Error('the open row carries no body field')
       } catch (error) {
         panel.dispose()
         throw error
