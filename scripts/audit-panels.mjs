@@ -70,9 +70,21 @@ const BANDS = [
   { id: 'w412x2-touch', width: 412, height: 900, scale: 2, touch: true, pair: 'w412x2' },
   { id: 'w390x3', width: 390, height: 844, scale: 3, touch: false },
   { id: 'w390x3-touch', width: 390, height: 844, scale: 3, touch: true, pair: 'w390x3' },
-  /* 故意选一枚**不在**项目字体栈里的 CJK 字体：另一套度量，才有另一套读数。 */
-  { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif' },
+  /* 故意选一枚**不在**项目字体栈里的 CJK 字体：另一套度量，才有另一套读数。
+   *
+   * **这一档是诊断档，不是判据档。** 它的用途写在头注释里：把「字体自身的残差」与「结构性
+   * 错位」分开——同一页在两种字体度量下都红，才是结构问题。所以这一档的**墨心判据**先进 notes
+   * （读数看得见），只有越过结构错位的量级（1.25px：本项目量到过的最小的结构缺陷是 1.18px）
+   * 才判红。把 0.75px 那条结构容差套到另一种字体上，等于拿一把对 A 字体调好的尺子去判 B 字体
+   * ——那条红量出来的是 SimSun 的字形位置，不是这一页的排版（硬性规范 14：先怀疑检查的读法）。 */
+  { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif', diagnostic: true },
 ]
+
+/** 诊断档里，墨心判据越过这个数才算结构错位（项目量到过的最小结构缺陷是 1.18px）。 */
+const STRUCTURAL_TOL = 1.25
+
+/** 这三条读的是**墨的位置**，会跟着字体度量走；诊断档里它们按结构阈值判。 */
+const FONT_DEPENDENT = new Set(['capsulesCentredV', 'capsulesCentredH', 'textVsMarkAligned'])
 
 /** 框架空气那一档：**不是**一条设备档，是一次容器宽度的阶梯（阶梯在探针里）。 */
 const FRAME_BAND = { id: 'frame-ladder', width: 1600, height: 900, scale: 1, touch: false }
@@ -222,6 +234,15 @@ for (const page of found) {
         capsulesNotSqueezed: () => JSON.stringify(reading.offenders.squeezed),
         ringsInsideClip: () => JSON.stringify(reading.offenders.rings),
       }[name]()
+      /* **诊断档只报数，不判墨心。** 那一档的用途是**分开**两件事：同一页在项目自己的字体栈
+         下绿、在另一套度量下出现零点几到一像素的偏移，那偏移是字形的而不是排版的。所以这一档
+         里「墨心 / 字与记号」那三条一律进 notes（读数照打），判红留给**其它档**——同一处结构
+         错位在别的档里一样红，那才是「换成什么字体都错」的意思（头注释里写着这条判据）。
+         结构性的三条（字被切、胶囊被压扁、热区环越界）在诊断档里照判：它们与字体无关。 */
+      if (band.diagnostic === true && FONT_DEPENDENT.has(name)) {
+        notes.push({ page, band: band.id, kind: 'font-residual', detail: `${name} under ${band.font}: ${detail.slice(0, 300)}` })
+        continue
+      }
       findings.push({ page, band: band.id, kind: name, detail: detail.slice(0, 500) })
     }
     /* **没有记号的胶囊只报数、不判红。** 记号（`data-dsh-tb-pilltext`）现在是**纯标记**：

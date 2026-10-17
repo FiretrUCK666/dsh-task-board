@@ -3583,7 +3583,15 @@
    `board@latest` whenever the line happens to end there — two words, in a
    string the reader has to retype exactly. Breaks belong between words. */
 .updateCommand {
-  margin: 0;
+  /* **给命中环留地方，而字不动。** 这一行里坐着「复制」那枚按钮，它的热区放大环是
+     `::before` 的 `inset: -7px`——而这一格自己又是 `overflow-x: auto` 的裁剪体，于是那一圈
+     **既点不到也滚不到**（读者摸到的是半个热区），触屏那一档还因此凭空多出 6px 滚动量
+     （`pnpm audit` 的 ringsInsideClip 与 touch-scroll-delta 两条一起报的就是它）。
+     7px 的内衬恰好把那一圈装进来；左右各让 7px、再把外边距同样拉回 7px，**这一行的第一个字
+     仍然站在原来那条线上**（挪的是盒子，不是字）。 */
+  margin-block: 0;
+  margin-inline: -7px;
+  padding: 7px;
   min-width: 0;
   white-space: pre-wrap;
   overflow-wrap: break-word;
