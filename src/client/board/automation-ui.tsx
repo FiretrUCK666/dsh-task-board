@@ -568,7 +568,6 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
                 busy={attach.busy}
                 busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
                 error={attach.error}
-                hint={t('auto.form.attachHint')}
               />
             </div>
           ) : (

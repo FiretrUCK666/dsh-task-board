@@ -126,7 +126,6 @@ export const zh = {
   'new.descriptionPlaceholder': '补充背景、范围与验收（可选）',
   'new.prompt': '执行 Prompt',
   'new.promptPlaceholder': '发给 agent 的完整指令（可选）',
-  'new.attachHint': '附件随每次执行连同文字一起发出：图片最多 {maxImages} 张（自动压缩）；其他类型文件请在会话留言里添加（留言图片最多 {commentImages} 张、文件最多 {commentFiles} 个）。',
   'new.status': '初始状态',
   'new.statusHint': '开启自动化的任务会按计划自动执行（无需先手动执行）；未配置自动化的待办任务需手动「执行」或开启板级「自动巡航」才会跑。',
   'new.submit': '创建',
@@ -392,8 +391,6 @@ export const zh = {
   // 现在有几个——一条规则在这里挂着图却发不出去，正是这两行要挡的事。
   'auto.form.promptAttach': '任务 Prompt 现在带着 {n} 个附件，开火时一起送出去',
   'auto.form.promptAttachNone': '任务 Prompt 现在没有附件，这一条只会送那段 Prompt',
-  // 那句自定义指令带的图片与文件：一句话说清它们跟着谁走。
-  'auto.form.attachHint': '随这一条规则保存，每次开火一起发出去',
   'auto.form.cron': 'Cron 表达式',
   'auto.form.send': '发送方式',
   'auto.form.save': '保存',
@@ -731,9 +728,11 @@ export const zh = {
   'item.ask.started': '已经开跑了：它在看板上进了「进行中」。',
   'item.ask.said': '已经交给 {sessionId} 这个会话的模型，它会接着处理。',
   'item.ask.refused': '没能交给模型：{why}。这条还在清单里，没有丢。',
-  /* 按之前就知道这一按会走哪条路（正在跑 = 这张卡已经有对话了）。它不是一句解释，
-     是那一按的事实，所以写在按钮旁边而不是挂在 `title` 上（触屏没有 hover）。 */
+  /* 按之前就知道这一按会走哪条路（正在跑 = 这张卡已经有对话了）。它是那一按的事实，
+     而**事实不必常驻**：读者指着那枚 ⓘ 偷看、按下去留住（触屏没有 hover，所以它按得动）。 */
   'item.ask.continues': '它正在跑——这一条会接着说进那条会话。',
+  /* 上面那句话的门：可达名回答「这枚记号在解释什么」，不重复那句话本身。 */
+  'item.ask.continuesWhy': '这一按会走哪条路',
   /* 门那边给的是码，词在这一侧（要翻译，也只有它知道读者刚看见的是什么）。 */
   'item.ask.why.unknownTask': '那张卡已经不在了',
   'item.ask.why.empty': '这一条没有内容可发',
@@ -896,9 +895,6 @@ export const zh = {
   // **说清「谁会读、为什么」**：「模型也会读到」没有说什么时候、为什么读，而读者读到的是
   // 「看不懂」。真相是：把这一条交给 AI 处理时，这段话跟着一起过去（`itemContextText`）。
   'item.field.notesHint': '这一条从哪来、要做什么；交给 AI 时会一起带上',
-  // **一句话说清这些附件的去处**：它们随这一条保存，而「变成看板卡片」时跟着卡一起走
-  // ——不说这一句，读者会以为图只留在这个列表里。
-  'item.attach.hint': '随这一条保存；变成卡片时一起过去',
   'item.field.status': '状态',
   'item.field.priority': '优先级',
 
@@ -1237,7 +1233,6 @@ export const en: Record<keyof typeof zh, string> = {
   'new.descriptionPlaceholder': 'Background, scope, acceptance criteria (optional)',
   'new.prompt': 'Run Prompt',
   'new.promptPlaceholder': 'The full instruction sent to the agent (optional)',
-  'new.attachHint': 'Attachments send with the text on every run: up to {maxImages} images (auto-compressed); other file types attach in session comments (up to {commentImages} images, {commentFiles} files).',
   'new.status': 'Initial status',
   'new.statusHint': 'Tasks with automation enabled run on their own plan (no manual first run needed); plain todo tasks without automation only run when you hit Run or switch on the board\'s auto-cruise.',
   'new.submit': 'Create',
@@ -1492,7 +1487,6 @@ export const en: Record<keyof typeof zh, string> = {
   'auto.form.usePromptHint': 'Sends the task\'s CURRENT run prompt (edits apply at once); with On schedule = timed injection, with After completion = keeps continuing, round after round.',
   'auto.form.promptAttach': 'The run prompt currently carries {n} attachment(s); they go out with every firing',
   'auto.form.promptAttachNone': 'The run prompt carries no attachments right now, so this rule sends the text only',
-  'auto.form.attachHint': 'Saved with this rule and sent out on every firing',
   'auto.form.cron': 'Cron expression',
   'auto.form.send': 'Send mode',
   'auto.form.save': 'Save',
@@ -1806,6 +1800,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.ask.said': 'Handed to the model in {sessionId}; it takes it from here.',
   'item.ask.refused': 'Could not reach a model: {why}. The item is still here; nothing was lost.',
   'item.ask.continues': 'It is running, so this will be said into that conversation.',
+  'item.ask.continuesWhy': 'what this press will do',
   'item.ask.why.unknownTask': 'that card is gone',
   'item.ask.why.empty': 'this row has nothing to send',
   'item.ask.why.busy': 'the card is just starting and has not resolved a conversation yet; ask again once it speaks',
@@ -1919,7 +1914,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.body': 'Body',
   'item.field.notes': 'Context notes',
   'item.field.notesHint': 'Where this row came from and what it is for; it travels with the row when you hand it to the AI',
-  'item.attach.hint': 'Saved with this row; it travels to the card when you promote it',
   'item.field.status': 'Status',
   'item.field.priority': 'Priority',
 

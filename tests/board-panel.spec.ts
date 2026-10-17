@@ -1196,13 +1196,14 @@ describe('看板的另外几处界面（规则表单的附件条 / 只读计划�
     return tags.reduceRight((acc, tag) => `<${tag}>${acc}</div>`, inner)
   }
 
-  /** 一条附件条，按两处真实调用点的形状接线（留言框不给 hint，展开区给）。 */
-  function stripIn(attachments: readonly DraftAttachment[], hint?: string): string {
+  /** 一条附件条，按两处真实调用点的形状接线（这一格不再收「这条附件是什么」那句说明；
+   *  旁边那一句仍然画得出来——用「正在传」那一档验同一个形状）。 */
+  function stripIn(attachments: readonly DraftAttachment[], busyLabel?: string): string {
     return renderToStaticMarkup(createElement(AttachmentStrip, {
       attachments,
       onAdd: () => undefined,
       onRemove: () => undefined,
-      ...hint === undefined ? {} : { hint },
+      ...busyLabel === undefined ? {} : { busy: true, busyLabel },
     }))
   }
 
@@ -1272,9 +1273,9 @@ describe('看板的另外几处界面（规则表单的附件条 / 只读计划�
       caseCaption('看板留言框 · 两枚附件：长名字用省略号收尾，文件带字节读数'),
       composerHost(stripIn(stripChips)),
       caseCaption('清单展开区（.itemAttachRow）· 还没有附件'),
-      itemCase(stripIn([], t('item.attach.hint'))),
+      itemCase(stripIn([], t('review.attachBusy'))),
       caseCaption('清单展开区 · 同一对附件'),
-      itemCase(stripIn(stripChips, t('item.attach.hint'))),
+      itemCase(stripIn(stripChips, t('review.attachBusy'))),
     ].join('\n')
   }
 

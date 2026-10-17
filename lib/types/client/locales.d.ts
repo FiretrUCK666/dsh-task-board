@@ -123,7 +123,6 @@ export declare const zh: {
     'new.descriptionPlaceholder': string;
     'new.prompt': string;
     'new.promptPlaceholder': string;
-    'new.attachHint': string;
     'new.status': string;
     'new.statusHint': string;
     'new.submit': string;
@@ -378,7 +377,6 @@ export declare const zh: {
     'auto.form.usePromptHint': string;
     'auto.form.promptAttach': string;
     'auto.form.promptAttachNone': string;
-    'auto.form.attachHint': string;
     'auto.form.cron': string;
     'auto.form.send': string;
     'auto.form.save': string;
@@ -685,6 +683,7 @@ export declare const zh: {
     'item.ask.said': string;
     'item.ask.refused': string;
     'item.ask.continues': string;
+    'item.ask.continuesWhy': string;
     'item.ask.why.unknownTask': string;
     'item.ask.why.empty': string;
     'item.ask.why.busy': string;
@@ -793,7 +792,6 @@ export declare const zh: {
     'item.field.bodyHint': string;
     'item.field.notes': string;
     'item.field.notesHint': string;
-    'item.attach.hint': string;
     'item.field.status': string;
     'item.field.priority': string;
     'item.page.list': string;

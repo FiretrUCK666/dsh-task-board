@@ -5202,6 +5202,22 @@ textarea.itemInput {
   border-radius: var(--item-radius-ctl);
 }
 
+/* **步骤这一族的字与正文是同一副嗓子。** 「还没有步骤。」、加一步那个框、正文与上下文备注
+ * ——读者在四处写的是同一种东西（一段话），所以字号、行距、字重、字族读**同一批令牌**：
+ * `--item-write-*` 那一族（13px / 1.65 / 400 / 继承）。
+ *
+ * 空态原先读 `.itemHint` 的 11px/16px（提示那一档），于是一句话在同一个框里换了大小；
+ * 加一步那个框则靠继承碰巧对上。**「碰巧对上」不是同一套**：改一处不会让另一处跟着改。
+ * 这一条把三处绑在同一份声明上（量过：改前三处是 13/11/13、改后都是 13）。 */
+.itemProse,
+.itemStepEmpty,
+.itemStepsAdd input {
+  font-family: inherit;
+  font-size: var(--item-write-size);
+  line-height: var(--item-write-leading);
+  font-weight: 400;
+}
+
 /* 归档几行状态：读中 / 读不到 / 一条都没有 / 一次找回的结果。**同一档墨、同一个字号**，
  * 因为它们说的是同一件事的四种读法，而四种读法不该长得像四样东西。
  *

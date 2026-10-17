@@ -342,6 +342,9 @@ export function ItemDetail(props: ItemDetailProps) {
   /* 「挂卡会动到什么」那句话的把手：它与新建那张纸问的是**同一个问题**，所以可达名读同一个键
      （`item.cardLink.why`），两个表面上的那枚入口说的是同一句话。 */
   const cardNote = useNote(t('item.cardLink.why'))
+  /* 「这一按会接着说进那条会话」那句话的把手：它说的是**一次按下的后果**，不是这一条现在的
+     状态，所以它按需出现（指着偷看 / 按下留住），而可达名回答「这枚记号在解释什么」。 */
+  const askNote = useNote(t('item.ask.continuesWhy'))
   useEffect(() => {
     if (cardNaming) cardNameField.current?.focus()
   }, [cardNaming])
@@ -472,9 +475,11 @@ export function ItemDetail(props: ItemDetailProps) {
                   busy={attach.busy}
                   busyLabel={attach.busy ? attachBusyLabel(attach.busyKind) : undefined}
                   error={attach.error}
-                  /* 这一句话只在**还没挂卡**时说：那时它是一条会被提升的条目，附件跟着卡走；
-                     已经挂着卡时说了反而是第二句关于卡的话，而卡有它自己的地方。 */
-                  hint={cardId === undefined ? t('item.attach.hint') : undefined}
+                  /* **这里不再有一句常驻的说明。** 原来它写着附件「随这一条保存；变成卡片时一起
+                     过去」——那是**这件事的规则**，而规则不是操作这一格的人每一眼都要读的东西：
+                     它就挂在这一格旁边，把一块写入区读成了一段带脚注的表单。读者要求删掉它
+                     （原话）。删掉的是**常驻**，不是这件事：附件随这一条存，提升时跟过去，行为
+                     一处没改（`AttachmentStrip` 自己不再收 `hint`）。 */
                 />
               </div>
             </div>
@@ -754,9 +759,18 @@ export function ItemDetail(props: ItemDetailProps) {
             永不省略号），按钮整排跟着下移一行。所以按钮**必须是一个单位**——见下面那个盒子。 */}
         <div className={css.itemOpenActions}>
           {props.receipt !== undefined && <p className={css.itemHint} role="status">{props.receipt}</p>}
-          {/* 这一按会走哪条路，写在按钮旁边：正在跑 = 这张卡已经有对话了，这一句会接着说进去。
-              读者有权在按之前知道它；**它不能只挂在 `title=` 上**（触屏没有 hover，硬性规范 11③）。 */}
-          {running && <p className={css.itemOptsFoot}>{t('item.ask.continues')}</p>}          {/* **按钮是一排，不是一串各自能换行的东西。**
+          {/* **这一按会走哪条路，收成一句按需的话。**
+              它曾经是一句常驻的旁注、与「问 AI」并排——而它说的是**一次按下的后果**，
+              不是这一条现在的状态；常驻就把一句条件句读成了事实（读者：「不要显示在它旁边」）。
+              现在两种门都在：指着那枚 ⓘ 偷看一句（`data-note-hover`），按下去留住
+              （`data-note` + `aria-expanded`）——**触屏没有 hover，所以按得动是承重的**
+              （硬性规范 11③）：那句话仍然在按之前读得到。 */}
+          {running && (
+            <span data-note={askNote.open ? '' : undefined} data-note-hover="">
+              <NoteEntry note={askNote} size={12} />
+              <p className={css.itemNote} id={askNote.id}>{t('item.ask.continues')}</p>
+            </span>
+          )}{/* **按钮是一排，不是一串各自能换行的东西。**
               四个按钮直接挂在上面那个会换行的容器里的话，窄一点的时候
               `删除这条` 自己掉到第二行，四个按钮被拆成「三 + 一」两堆——正是读者最不想要的那
               种排版。换行的判定是逐个元素的，所以「它们永远在一起」只能靠结构说，不能靠宽度猜。 */}

@@ -3792,18 +3792,21 @@ describe('说明小字：一处机制、一处数字、一副骨架', () => {
     }
   })
 
-  it('常驻的那两句事实还在，而它们只有两句', () => {
-    /* **够得上按需的收进 ⓘ，够不上的原样留下**——这条闸门钉的是那个决定没有被下一次改动悄悄抹平：
-       现在还剩两处常驻（没有看板可写时状态那一格的那句事实、以及「它正在跑」那句路线说明），
-       它们都不是「为什么是这样」，而是**这一格/这一按的答案本身**。 */
+  it('常驻的只剩那一条事实，而搬进 ⓘ 的那一句仍然有一扇门', () => {
+    /* **够得上按需的收进 ⓘ，够不上的原样留下**——这条闸门钉的是那个决定没有被下一次改动悄悄抹平。
+       「没有看板可写」那一条是**这一格的答案本身**（状态），所以常驻；而「它正在跑——这一条会
+       接着说进那条会话」说的是**按下去之后的后果**，是一句条件句，常驻就把条件读成了事实
+       （读者的原话：不要显示在它旁边）。它现在是一枚 ⓘ：指着偷看一句、按下去留住
+       （触屏没有 hover，所以按得动是承重的）。 */
     const users = itemSurfaceFiles()
       .flatMap(file => [...code(file.source).matchAll(/css\.itemOptsFoot/g)].map(() => file.path))
-    expect(users.length, `常驻脚注的使用者：${users.join('、')}——收进 ⓘ 的是解释，留下的是事实`)
-      .toBe(2)
-    expect(code(readSource('client/item/detail-pane.tsx')), '那两句事实之一不见了')
-      .toContain("t('item.status.card')")
-    expect(code(readSource('client/item/detail-pane.tsx')), '那两句事实之一不见了')
-      .toContain("t('item.ask.continues')")
+    expect(users.length, `常驻脚注的使用者：${users.join('、')}——剩下的应当只有那一格答案`)
+      .toBe(1)
+    const detail = code(readSource('client/item/detail-pane.tsx'))
+    expect(detail, '那一格答案不见了').toContain("t('item.status.card')")
+    expect(detail, '搬走的那一句不见了').toContain("t('item.ask.continues')")
+    expect(detail, '搬走的那一句又变回常驻了——它是一句条件句，不是这一条的现状')
+      .toMatch(/running && \(\s*<span data-note=\{askNote\.open/)
   })
 
   it('说明小字的限宽是一个数，而且按**物理行长**给', () => {

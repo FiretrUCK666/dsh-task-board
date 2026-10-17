@@ -52,7 +52,7 @@ export function formatBytes(bytes: number): string {
   return `${v >= 100 ? String(Math.round(v)) : String(Math.round(v * 10) / 10)} MB`
 }
 
-export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error, hint }: {
+export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error }: {
   /** The chips, in the order the reader added them. */
   attachments: readonly AttachmentChip[]
   /** Intake picked files (the hook compresses + admits + validates). */
@@ -64,17 +64,16 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
   busyLabel?: string
   /** The last rejection, said out loud (never a silent drop). */
   error?: string
-  /** One quiet sentence about what this surface's attachments mean — beside the
-   * chips when the row can spare the width, on its own line when it cannot. */
-  hint?: string
 }) {
   const fileRef = useRef<HTMLInputElement | null>(null)
   return (
     <div className={css.attachStrip}>
       {/* 芯片、取件按钮与那个藏起来的框**同一条横滚行**：它们是同一件事（这一条带了哪几个
-          文件）。句子（正在传 / 收不了 / 这条附件是什么）跟着这一行走，但各自带着**宽度
-          地板**（`.attachHint` 的 `min-inline-size`）——装得下就同排，装不下就整句换到
-          下一行；被压成一个字一行的竖条是这条街上前一版的样子（见 `.attachRow` 的注释）。 */}
+          文件）。句子（正在传 / 收不了）跟着这一行走，但各自带着**宽度地板**
+          （`.attachHint` 的 `min-inline-size`）——装得下就同排，装不下就整句换到
+          下一行；被压成一个字一行的竖条是这条街上前一版的样子（见 `.attachRow` 的注释）。
+          **这一条没有「这条附件是什么」那句话了**：它是规则，不是操作这一格的人每一眼都要
+          读的东西（读者要求把添加附件的文案全部删掉）。状态与拒绝仍然说得出话。 */}
       <div className={css.attachRow}>
         <button
           type="button"
@@ -116,7 +115,6 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
       </div>
       {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
       {error !== undefined && error !== '' && <span className={css.errorLine}>{error}</span>}
-      {hint !== undefined && hint !== '' && <span className={css.attachHint}>{hint}</span>}
     </div>
   )
 }

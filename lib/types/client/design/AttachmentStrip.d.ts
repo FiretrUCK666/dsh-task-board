@@ -14,7 +14,7 @@ export interface AttachmentChip {
 }
 /** Format a byte count compactly (B/KB/MB, one decimal under 100). */
 export declare function formatBytes(bytes: number): string;
-export declare function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error, hint }: {
+export declare function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel, error }: {
     /** The chips, in the order the reader added them. */
     attachments: readonly AttachmentChip[];
     /** Intake picked files (the hook compresses + admits + validates). */
@@ -26,7 +26,4 @@ export declare function AttachmentStrip({ attachments, onAdd, onRemove, busy, bu
     busyLabel?: string;
     /** The last rejection, said out loud (never a silent drop). */
     error?: string;
-    /** One quiet sentence about what this surface's attachments mean — beside the
-     * chips when the row can spare the width, on its own line when it cannot. */
-    hint?: string;
 }): import("react").JSX.Element;

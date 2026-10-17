@@ -343,7 +343,6 @@ export function DesignGallery() {
                   attachments={stripChips}
                   onAdd={() => {}}
                   onRemove={id => { setStripChips(chips => chips.filter(chip => chip.id !== id)) }}
-                  hint={t('auto.form.attachHint')}
                 />
               </div>
               <div className={css.gallerySpecimenRow}>

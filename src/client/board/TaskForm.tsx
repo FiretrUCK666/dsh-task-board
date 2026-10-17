@@ -21,7 +21,7 @@ import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { AttachmentStrip } from '../design/AttachmentStrip.tsx'
-import { MAX_COMMENT_FILES, MAX_COMMENT_IMAGES, MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
+import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
 import { attachBusyLabel, useComposerAttachments } from './composer-attachments.ts'
 import { PromptInput } from './PromptInput.tsx'
 import { RunConfigFields } from './RunConfigFields.tsx'
@@ -120,8 +120,12 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
 
       {/* Prompt field: the text plus its image ledger (pick / drop / paste
           anywhere on the field). A <div>, not a <label> — the strip holds
-          buttons, and a label would route their clicks to the input. */}
-      <Field wrap="div" label={t('new.prompt')} wrapperProps={attachments.dropProps} hint={t('new.attachHint', { maxImages: String(MAX_TASK_IMAGES), commentImages: String(MAX_COMMENT_IMAGES), commentFiles: String(MAX_COMMENT_FILES) })}>
+          buttons, and a label would route their clicks to the input.
+          **不要再在它下面补一句「附件怎么走」的说明**：那一句曾经写着图片与文件的张数上限、
+          以及「其他类型请去会话留言里加」——规则不是操作这一格的人每一眼都要读的东西
+          （读者要求：添加附件的这类文案全部删掉）。上限与去处由条子自己说：选不进去时它
+          就地报错，发出去时它跟着字一起走。 */}
+      <Field wrap="div" label={t('new.prompt')} wrapperProps={attachments.dropProps}>
         <PromptInput
           value={draft.prompt}
           onChange={next => { onChange({ ...draft, prompt: next }) }}
@@ -136,8 +140,10 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           onRemove={id => { onChange({ ...draft, attachments: draft.attachments.filter(entry => entry.id !== id) }) }}
           busy={attachments.busy}
           busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
-          error={attachments.error}
-          hint={legacyHint}
+          /* **旧附件找不回来是一句报错，不是一条说明。** 它原先走 `hint`（这一格已经不收
+             hint 了：添加附件的那类文案全部删掉），而它是**真的丢了东西**——「这些旧附件
+             找不回字节了，请重新选择」必须说得出来，所以它落在 `error` 那一档。 */
+          error={attachments.error ?? legacyHint}
         />
       </Field>
 
