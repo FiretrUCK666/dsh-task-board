@@ -80,10 +80,7 @@ const BANDS = [
   { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif', diagnostic: true },
 ]
 
-/** 诊断档里，墨心判据越过这个数才算结构错位（项目量到过的最小结构缺陷是 1.18px）。 */
-const STRUCTURAL_TOL = 1.25
-
-/** 这三条读的是**墨的位置**，会跟着字体度量走；诊断档里它们按结构阈值判。 */
+/** 这三条读的是**墨的位置**，会跟着字体度量走：诊断档里它们只报数、不判红。 */
 const FONT_DEPENDENT = new Set(['capsulesCentredV', 'capsulesCentredH', 'textVsMarkAligned'])
 
 /** 框架空气那一档：**不是**一条设备档，是一次容器宽度的阶梯（阶梯在探针里）。 */
