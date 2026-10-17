@@ -1532,6 +1532,196 @@ describe('the frame pays one air at both ends', () => {
   })
 })
 
+/**
+ * THE PANEL'S HEIGHT IS DIVIDED, AND NOTHING IT CANNOT SHOW IS UNREACHABLE.
+ *
+ * The rail band's height follows its CONTENT — the month grid is 240px of it when
+ * it is unfolded — and the band used to receive that content with `flex-wrap`,
+ * which treats every one of the nineteen navigator chips as a thing that may
+ * wrap. Measured on the render artifact: at a 412px panel an unfolded calendar
+ * made the band **541px** tall, and in a 560px-tall panel that left the list
+ * **19px** with a 32px scroller and NOTHING scrollable anywhere — the reader
+ * could not reach a single button. That is the report this gate exists for.
+ *
+ * So the law is written as a promise TO THE WORK, not as a limit on the band:
+ *
+ *   1. the list's row carries a floor of half the panel (`minmax(50%, 1fr)`),
+ *      which is what bounds the band above it;
+ *   2. whatever the band cannot show, it must be able to SCROLL to — an
+ *      `overflow-y: hidden` band with taller content is content nobody reaches;
+ *   3. the navigator is ONE row in the strip band (it scrolls sideways), never
+ *      nineteen chips each on a line of its own.
+ *
+ * The geometry all three produce is measured in a real Chromium by
+ * `scripts/probes/probe-item-strip.js` (`pnpm audit`, the `rail-band` stage) over
+ * a ladder of (width, height) pairs. This is the half that runs on every
+ * `pnpm test`.
+ */
+describe('the list keeps half the panel, and nothing it cannot show is unreachable', () => {
+  const css = panelCss()
+  const STRIP_BAND = '@container dsh-tb-item (max-width: 880px)'
+
+  /** Bodies of `name` rules inside EVERY block whose prelude matches. */
+  const inBands = (cssText: string, prelude: string, name: string): string[] => {
+    const live = stripCssComments(cssText)
+    const out: string[] = []
+    for (let at = live.indexOf(prelude); at >= 0; at = live.indexOf(prelude, at + 1)) {
+      const open = live.indexOf('{', at)
+      if (open < 0) continue
+      let depth = 0
+      let end = open
+      for (; end < live.length; end += 1) {
+        if (live[end] === '{') depth += 1
+        else if (live[end] === '}') { depth -= 1; if (depth === 0) break }
+      }
+      out.push(...rulesOf(live.slice(open, end), name))
+    }
+    return out
+  }
+  const declaredIn = (bodies: readonly string[], property: string): string[] =>
+    bodies.flatMap(body => [...body.matchAll(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;}]+)`, 'g'))].map(call => (call[1] ?? '').trim()))
+  /** Split a track list at TOP-LEVEL whitespace — a track may be `minmax(0, 1fr)`. */
+  const tracksOf = (value: string): string[] => {
+    const out: string[] = []
+    let depth = 0
+    let current = ''
+    for (const ch of value) {
+      if (ch === '(') depth += 1
+      if (ch === ')') depth -= 1
+      if (/\s/.test(ch) && depth === 0) {
+        if (current !== '') out.push(current)
+        current = ''
+        continue
+      }
+      current += ch
+    }
+    if (current !== '') out.push(current)
+    return out
+  }
+
+  const budgetFindings = (cssText: string): string[] => {
+    const findings: string[] = []
+    // 1. THE WORK ROW HAS A FLOOR.
+    for (const value of declaredIn(inBands(cssText, STRIP_BAND, 'itemWorkbench'), 'grid-template-rows')) {
+      const tracks = tracksOf(value)
+      if (tracks.length < 2) {
+        findings.push(`the strip band declares one track (${value}): the rail band and the list are then one row and the list has no floor`)
+        continue
+      }
+      const floor = /^minmax\(\s*([\d.]+)%/.exec(tracks[tracks.length - 1] ?? '')?.[1]
+      if (floor === undefined || Number(floor) < 50) {
+        findings.push(`the list's row has no half-panel floor (grid-template-rows: ${value}) — a content-sized rail band can then take the whole panel`)
+      }
+    }
+    // 2. WHAT DOES NOT FIT MUST BE SCROLLABLE.
+    const base = declaredIn(inBands(cssText, STRIP_BAND, 'itemRail'), 'overflow-y')
+    const open = declaredIn(inBands(cssText, STRIP_BAND, 'itemRail\\[data-calendar\\]'), 'overflow-y')
+    const effective = open.length > 0 ? open[open.length - 1] : (base[base.length - 1] ?? '')
+    if (effective !== 'auto' && effective !== 'scroll') {
+      findings.push(`the unfolded band is ${effective || 'not declared'} on the block axis — content the floor pushes out of it is then neither reachable nor scrollable`)
+    }
+    // 3. ONE ROW, NOT NINETEEN.
+    for (const value of declaredIn(inBands(cssText, STRIP_BAND, 'itemRail'), 'flex-wrap')) {
+      if (value === 'wrap') findings.push('the strip wraps again: every navigator chip becomes a line of its own and the band eats the panel')
+    }
+    const chips = inBands(cssText, STRIP_BAND, 'itemRailChips')
+    if (declaredIn(chips, 'flex-direction')[0] !== 'row') {
+      findings.push('the navigator is not a row in the strip band, so the strip is not one row of chips')
+    }
+    if (!declaredIn(chips, 'overflow-x').some(one => one === 'auto' || one === 'scroll')) {
+      findings.push('the navigator row does not scroll sideways, so a chip that does not fit is a chip nobody can press')
+    }
+    return findings
+  }
+
+  it('is quiet on the stylesheet as it stands', () => {
+    expect(budgetFindings(css)).toEqual([])
+  })
+
+  it('reports a band with no floor, a hidden overflow, and a wrapping strip', () => {
+    expect(budgetFindings(`${css}\n${STRIP_BAND} { .itemWorkbench { grid-template-rows: auto minmax(0, 1fr); } }\n`).join('\n'))
+      .toMatch(/no half-panel floor/)
+    expect(budgetFindings(`${css}\n${STRIP_BAND} { .itemRail[data-calendar] { overflow-y: hidden; } }\n`).join('\n'))
+      .toMatch(/neither reachable nor scrollable/)
+    expect(budgetFindings(`${css}\n${STRIP_BAND} { .itemRail { flex-wrap: wrap; } }\n`).join('\n'))
+      .toMatch(/wraps again/)
+  })
+
+  it('does not read a sentence about the band as a rule in it', () => {
+    const prose = `${css}\n/* in ${STRIP_BAND} the strip used to wrap, and a ` +
+      '`grid-template-rows: auto minmax(0, 1fr)`' + ` was what let it eat the panel */\n`
+    expect(budgetFindings(prose)).toEqual([])
+  })
+})
+
+/**
+ * THE TOP BAR TABS ITS CHIPS AND ITS ACTION WITH ONE GAP.
+ *
+ * The chips and the primary action are one row of pills, and the cluster hangs at
+ * the row's end by its own auto margin — the same rule the wide band uses. The
+ * strip band used to give the cluster a FULL ROW (`flex: 1 1 100%`) and the action
+ * an auto margin of its own: measured on the render artifact that is a **500px**
+ * gap between 「排序 要紧的先」 and 「＋新建一条」 at an 880px panel while the chips
+ * beside them sat 4px apart, and when the cluster itself wrapped the action landed
+ * 4px under the chips, reading as a row that is out of alignment.
+ *
+ * **A row with two gap sizes has no skeleton**, so the gate asks for the two
+ * things that make it one: the cluster never takes a full row here, and when it
+ * does wrap, its lines are separated by the bar's own gap.
+ */
+describe('the top bar tabs its chips and its action with one gap', () => {
+  const css = panelCss()
+  const STRIP_BAND = '@container dsh-tb-item (max-width: 880px)'
+
+  const inBand = (cssText: string, name: string): string[] => {
+    const live = stripCssComments(cssText)
+    const out: string[] = []
+    for (let at = live.indexOf(STRIP_BAND); at >= 0; at = live.indexOf(STRIP_BAND, at + 1)) {
+      const open = live.indexOf('{', at)
+      if (open < 0) continue
+      let depth = 0
+      let end = open
+      for (; end < live.length; end += 1) {
+        if (live[end] === '{') depth += 1
+        else if (live[end] === '}') { depth -= 1; if (depth === 0) break }
+      }
+      out.push(...rulesOf(live.slice(open, end), name))
+    }
+    return out
+  }
+  const declared = (bodies: readonly string[], property: string): string[] =>
+    bodies.flatMap(body => [...body.matchAll(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;}]+)`, 'g'))].map(call => (call[1] ?? '').trim()))
+
+  const gapFindings = (cssText: string): string[] => {
+    const findings: string[] = []
+    const tools = inBand(cssText, 'itemTopBarTools')
+    for (const value of [...declared(tools, 'flex'), ...declared(tools, 'flex-basis')]) {
+      if (/(?:^|\s)100%$/.test(value)) {
+        findings.push(`the tool cluster takes a full row (flex: ${value}), so the action is pushed to the far end of it and a hole opens between them`)
+      }
+    }
+    const bar = declared(inBand(cssText, 'itemTopBar'), 'row-gap')
+    const cluster = declared(tools, 'row-gap')
+    if (bar.length > 0 && cluster.length > 0 && bar[bar.length - 1] !== cluster[cluster.length - 1]) {
+      findings.push(`a wrapped tool row is separated by ${cluster[cluster.length - 1]} while the bar's own rows are ${bar[bar.length - 1]} apart — two rhythms in one bar`)
+    }
+    return findings
+  }
+
+  it('is quiet on the stylesheet as it stands', () => {
+    expect(gapFindings(css)).toEqual([])
+  })
+
+  it('reports a full-row cluster and a second rhythm under it', () => {
+    expect(gapFindings(`${css}\n${STRIP_BAND} { .itemTopBarTools { flex: 1 1 100%; } }\n`).join('\n')).toMatch(/takes a full row/)
+    expect(gapFindings(`${css}\n${STRIP_BAND} { .itemTopBarTools { row-gap: var(--s1); } }\n`).join('\n')).toMatch(/two rhythms/)
+  })
+
+  it('does not read a sentence about the cluster as a rule', () => {
+    expect(gapFindings(`/* .itemTopBarTools used to take a full row */\n.a { color: red; }\n`)).toEqual([])
+  })
+})
+
 describe('a fact that does not fit is truncated in its own text slot', () => {
   const css = panelCss()
 

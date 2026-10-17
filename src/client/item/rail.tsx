@@ -262,33 +262,42 @@ export function ItemRail(props: ItemRailProps) {
           <MonthGrid month={props.month} days={props.daysWithRows} today={props.today} activeDay={props.activeDay} onPick={props.onPickDay} />
         </div>
       </div>
-      {props.groups.map(group => (
-        /* `data-turn` on the ONE group that changes the question rather than
-           narrowing the view, because that is the only place a rule earns its
-           keep: the rest are separated by the gap alone. */
-        <div key={group.id} className={css.itemRailGroup} data-turn={group.id === 'out' ? '' : undefined}>
-          {group.word !== undefined && <p className={css.itemRailCaption}>{t(CAPTION[group.word])}</p>}
-          {group.entries.map(entry => (
-            <button
-              key={entry.id}
-              type="button"
-              className={css.itemRailRow}
-              data-kind={entry.kind}
-              aria-current={props.activeIds.has(entry.id) ? 'true' : undefined}
-              onClick={() => props.onEnter(entry)}
-            >
-              <span className={css.itemRailMark}>{markOf(entry)}</span>
-              {/* 词与数是**一个盒子里的两块字**：盒子按基线对齐（中文与拉丁的字体度量
-                  不同，按盒子居中会让两串字的基线差着将近一个像素）。这个盒子自己不带任何
-                  光学补偿——按字体量出来的数只在一种字体上成立，见 `DESIGN.md` 的「一行里的对齐」。 */}
-              <span className={css.itemRailText}>
-                <span className={css.itemRailWord}>{t(WORD[entry.key])}</span>
-                <b className={css.itemRailCount}>{entry.n}</b>
-              </span>
-            </button>
-          ))}
-        </div>
-      ))}
+      {/* ── 导航那几组装在**一个盒子**里 ───────────────────────────────────────
+        *
+        * 宽档它是一列（组与组之间一档空气），窄档它是横带里的**一条横滑的行**。
+        * 这一层是**结构**，不是样式：没有它，窄档的 `flex-wrap` 会把十九枚芯片逐枚
+        * 当成可以换行的东西——日历一展开，横带就长成五百多像素、把下面的列表挤成 0
+        * （读者按不开任何一个按钮，也滚不动）。「谁跟谁同行」不该由 wrap 的副产品
+        * 决定，所以它写成一个盒子，两档各自说清自己那一种排法。 */}
+      <div className={css.itemRailChips}>
+        {props.groups.map(group => (
+          /* `data-turn` on the ONE group that changes the question rather than
+             narrowing the view, because that is the only place a rule earns its
+             keep: the rest are separated by the gap alone. */
+          <div key={group.id} className={css.itemRailGroup} data-turn={group.id === 'out' ? '' : undefined}>
+            {group.word !== undefined && <p className={css.itemRailCaption}>{t(CAPTION[group.word])}</p>}
+            {group.entries.map(entry => (
+              <button
+                key={entry.id}
+                type="button"
+                className={css.itemRailRow}
+                data-kind={entry.kind}
+                aria-current={props.activeIds.has(entry.id) ? 'true' : undefined}
+                onClick={() => props.onEnter(entry)}
+              >
+                <span className={css.itemRailMark}>{markOf(entry)}</span>
+                {/* 词与数是**一个盒子里的两块字**：盒子按基线对齐（中文与拉丁的字体度量
+                    不同，按盒子居中会让两串字的基线差着将近一个像素）。这个盒子自己不带任何
+                    光学补偿——按字体量出来的数只在一种字体上成立，见 `DESIGN.md` 的「一行里的对齐」。 */}
+                <span className={css.itemRailText}>
+                  <span className={css.itemRailWord}>{t(WORD[entry.key])}</span>
+                  <b className={css.itemRailCount}>{entry.n}</b>
+                </span>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
     </nav>
   )
 }

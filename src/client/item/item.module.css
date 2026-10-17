@@ -771,29 +771,29 @@
   }
 
   .itemTopBarTools {
-    flex: 1 1 100%;
-    /* **间隙一律一样宽，两端各贴一条框架线。**
+    /* **间隙一律一样宽，整簇吊在行的末端。**
      *
-     * 「三枚挤在左边 4px、＋新建一条靠 auto 外距顶到右端」就是两种间距——它和左边
-     * 那些之间会空出一大块。间距是这一行唯一的骨架，而**一条骨架里有两种间距**就是
-     * 没有骨架。所以中间那三档由 `gap` 给出，一律相等。
+     * 芯片之间与「＋新建一条」之间读同一个 `gap`；整簇由基础规则那条
+     * `margin-inline-start: auto` 顶到行的末端（宽档同一条律）。
      *
-     * **两端那两条线由 `margin-inline-start: auto` 给出，不由 `space-between`。**
-     * 这一条改过一次，原因是折行：`space-between` 在**最后一行只剩一枚**时把它放在
-     * 行首（flex 的规矩），于是窄到放不下四枚时，主行动一个人落在左边、上面三枚却
-     * 摊满整行——看起来像谁忘了把它摆好。auto 外距把同一枚推到**行末**，折与不折
-     * 都落在右边那条框架线上；而 `gap` 仍然保证中间那几档一样宽，所以两种间距的毛病
-     * 没有回来。
+     * 这一簇曾经在窄档占满一整行（`flex: 1 1 100%`），而主行动由自己的 auto 外距顶到
+     * 行末——屏幕上是「排序 要紧的先」与「＋新建一条」之间空出一大块（读者报的「间隙
+     * 不一样」）；而它真的折行时，与上面那一行之间只有 `--s1`（4px），看起来像同一行
+     * 没对齐。两条都不是数值没调好：**一行里两种间距就是没有骨架**，而「谁跟谁同行」
+     * 也不该由 wrap 的副产品决定（与 `.itemRailChips` 同一条理由）。
      *
-     * 四枚在宽一点的面板上仍然是一行（412 上量过放得下），折行只在更窄或更长的语言里
-     * 发生——那时「新建一条」落在行末，而不是行首。 */
+     * 现在：内容宽——装得下就与数、搜索框同一行（与宽档一致），装不下就自己折到下一行，
+     * 行与行之间读**带子那一档**（`--s2`，与顶栏自己的 row-gap 同一个数）。 */
+    flex: 0 1 auto;
+    min-inline-size: 0;
     justify-content: flex-start;
     flex-wrap: wrap;
-    row-gap: var(--s1);
+    row-gap: var(--s2);
   }
 
   .itemNewButton {
-    /* 行末那条框架线，折行时也成立（见上）。 */
+    /* 折行时它落在行末那条框架线上；与芯片同一行时 auto 外距没有余量可分，于是它就
+     * 是芯片族里的下一枚——同一个 `gap`，不需要第二套间距。 */
     margin-inline-start: auto;
   }
 }
@@ -880,6 +880,24 @@
   /* 左右各一档 --s2：左栏在画布上的空气由工作台与栏自己两层给出——月题与数字
    * 不贴玻璃边。 */
   padding: var(--s3) var(--s2);
+}
+
+/* ── 导航那几组：宽档一列，窄档一条横滑的行 ──────────────────────────────────
+ *
+ * 这一层是**结构**，不是样式。窄档的横带要同时装下两件事：「日历展开时占一整行」与
+ * 「导航仍然是一条可以横滑的行」。没有这一层时，横带的 `flex-wrap` 会把十九枚芯片
+ * 逐枚当成可以换行的东西——日历一展开，每一枚各落一行，横带长到 **421–541px**（量过，
+ * 面板 390–800），把下面的列表挤到只剩 59–238px：读者按不开任何一个按钮，整个面板
+ * 也滚不动（两处报告都指向它）。「谁跟谁同行」于是必须是**结构**，不是 wrap 的副产品。
+ *
+ * 宽档这里就是今天那一列：组内 4px、组与组之间 22px（`.itemRailGroup + .itemRailGroup`），
+ * 两条都由组自己说，这一层不重说一遍。 */
+.itemRailChips {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s1);
+  min-inline-size: 0;
+  min-block-size: 0;
 }
 
 /* **左栏与列表之间没有线。** 两栏之间的分界由**空气**说：左栏那一列与列表那一列之间
@@ -1420,41 +1438,75 @@
     grid-template-areas:
       'rail'
       'list';
-    grid-template-rows: auto minmax(0, 1fr);
+    /* ── 两行怎么分这一块的高度，是**一条律**，不是一个愿望 ───────────────────
+     *
+     * 上面那一行是导航带，下面那一行是工作（顶栏 + 列表）。写成 `auto` 时，
+     * 「导航带想要多高就多高」——而它里面那幅月历展开时的高度是**内容**决定的：面板
+     * 390–800 上量到 421–541px，于是一个 600px 高的手机上面板里，列表只剩几十像素，
+     * 而两条轴都不滚（列表的滚动体高度接近 0），**读者按不开任何一个按钮**。
+     *
+     * 所以这条律写成**对工作的保证**，不是对带子的限制：`minmax(50%, 1fr)` 说「列表
+     * 至少拿一半」，导航带于是最多拿另一半——`minmax(0, auto)` 的**下限是 0**，内容小
+     * 就按内容走（折叠态 51px 一个像素都不受影响），内容大就被上面那条地板顶住。 */
+    grid-template-rows: minmax(0, auto) minmax(50%, 1fr);
   }
 
+  /* ── 横带：折叠时一行，展开时两行 ───────────────────────────────────────────
+   *
+   * **折叠**：一枚月题芯片 + 一条横滑的导航行（量过 51px 高）。
+   * **展开**：日历占一整行，导航仍然是那条横滑的行。
+   *
+   * 两档都不用 `flex-wrap`——那句「横带因此换行」的代价是十九枚芯片逐枚各落一行，
+   * 带子长成五百多像素（见 `.itemRailChips` 的注释）。这里改用**方向**说清两件事：
+   * 带子展开时是一列（日历在上、导航行在下），而导航行自己是一条横滑的行。 */
   .itemRail {
     flex-direction: row;
     align-items: center;
     gap: var(--s2);
-    overflow-x: auto;
-    overflow-y: hidden;
-    scrollbar-width: none;
+    /* 横带自己不滚横轴（那条轴归 `.itemRailChips`），展开时纵轴归它自己。 */
+    overflow: hidden;
     padding: var(--s2) var(--item-inset-x);
     border-inline-end: 0;
     border-block-end: var(--item-hair);
   }
 
-  .itemRail::-webkit-scrollbar {
-    display: none;
+  /* **展开时不许裁掉自己装不下的东西。** 上限（上面那 50%）咬到的时候，带子内部
+   * 纵向可滚——被裁掉的内容既按不动也滚不到，而那正是读者报的那一次。滚动条在这一档
+   * 是可见的（`.itemRail` 带着 `data-dsh-tb-scroll`，读到宿主那一套细条）：一条看不见
+   * 的滚动条在纵向等于「下面还有东西」这句话没人说。 */
+  .itemRail[data-calendar] {
+    flex-direction: column;
+    align-items: stretch;
+    overflow-y: auto;
+    overscroll-behavior: contain;
   }
 
   /* **日历不许被藏掉。** 在这里 `display: none`，手机上就没有任何
    * 「按日期看」的入口——一项能力只发给桌面端，正是硬性规范 11 禁止的那种省地方。
-   * 折起来是一枚芯片（和左栏别的行并排站在横带里），展开则**占满一整行**
-   * ——横带因此换行，而不是把一幅月历压在 30px 高的细条里。 */
+   * 折起来是一枚芯片（和左栏别的行并排站在横带里），展开则**占满一整行**。 */
   .itemRailCalendar {
     flex: none;
   }
 
-  .itemRail[data-calendar] {
-    flex-wrap: wrap;
-    overflow-x: hidden;
+  /* 导航行：**一条能横滑的行**，折叠与展开两档同读。 */
+  .itemRailChips {
+    flex-direction: row;
+    align-items: center;
+    gap: var(--s2);
+    /* 折叠时它吃下剩下的全部宽度，展开时被 `align-items: stretch` 拉满整行。 */
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: none;
   }
 
-  .itemRail[data-calendar] .itemRailCalendar {
-    flex: 1 0 100%;
-    order: -1;
+  .itemRailChips::-webkit-scrollbar {
+    display: none;
+  }
+
+  .itemRail[data-calendar] .itemRailChips {
+    flex: none;
   }
 
   /* 题头在这一档不站在字阶的大字档上：横带里的 26px 会把整条带子撑高，而这一档

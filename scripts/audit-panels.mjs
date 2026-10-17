@@ -35,6 +35,14 @@
 // 间隙、且两个都在」——这条曾经是 0（面板 720–880 时贴住侧板），而按视口宽度的矩阵在任何
 // 一档上都看不见它。量不到清单框架的页面由探针自己说 `not-here`，这一层**不按文件名猜**。
 //
+// ── 第三条判据：高度预算（`probes/probe-item-strip.js`） ──────────────────────
+//
+// 前两条问的是「行卡到两沿多远」；这一条问**这一块的高度怎么分**：导航带（那幅可以展开的
+// 月历住在这里）最多拿走一半，剩下的永远是列表的；而装不下的东西一定滚得到。曾经横带用
+// `flex-wrap` 收下展开的月历，于是十九枚芯片各落一行、带子长到 541px，一个 560px 高的
+// 面板里列表只剩 **19px**、两条轴都不滚——读者按不开任何按钮。宽度决定档位、高度决定预算，
+// 所以这一档的阶梯是 `(宽, 高)` 一对一对的，写在探针里。
+//
 // ── 工件从哪来 ───────────────────────────────────────────────────────────────
 //
 // 本脚本**不生成工件**：它量你给它的那一页。工件由台架写（`DSH_PANEL_HTML=<path> pnpm test`），
@@ -51,6 +59,8 @@ const HERE = dirname(fileURLToPath(import.meta.url))
 const SHOT_PANEL = join(HERE, 'shot-panel.mjs')
 /** 框架空气那一支探针（见头注释的第二条判据）。 */
 const FRAME_PROBE = join(HERE, 'probes', 'probe-item-frame.js')
+/** 高度预算那一支探针（见头注释的第三条判据）。 */
+const STRIP_PROBE = join(HERE, 'probes', 'probe-item-strip.js')
 
 /** 一条矩阵带：窗口、像素密度、指针能力、（可选）换掉的字体栈。 */
 const BANDS = [
@@ -75,6 +85,17 @@ const FRAME_CRITERIA = [
   ['linesAgree', 'lines'],
   ['railOnLine', 'rail'],
   ['scrollbarFits', 'scrollbar'],
+  ['barGapsEven', 'barGaps'],
+]
+
+/** 高度预算那一档：同样是**自己一条阶梯**（`(宽, 高)` 写在探针里）。 */
+const STRIP_BAND = { id: 'rail-band', width: 1600, height: 900, scale: 1, touch: false }
+
+const STRIP_CRITERIA = [
+  ['listFloor', 'floor'],
+  ['listUsable', 'usable'],
+  ['stripReachable', 'reachable'],
+  ['chipsOneRow', 'oneRow'],
 ]
 
 function parseArgs(argv) {
@@ -226,7 +247,7 @@ for (const page of found) {
       const ladder = (frame.ladder ?? []).map((one) => (one.missing === true ? `${one.width}:?` : `${one.width}:${one.left}/${one.right}`)).join(' ')
       console.log(`   ${FRAME_BAND.id.padEnd(14)} air=${frame.counts.air} cardL/cardR by width -> ${ladder}`)
       console.log(`   ${''.padEnd(14)} constant=${frame.pass.airConstant} symmetric=${frame.pass.airSymmetric} present=${frame.pass.airPresent} ` +
-        `lines=${frame.pass.linesAgree} rail=${frame.pass.railOnLine} scrollbar=${frame.pass.scrollbarFits} self=${frame.pass.selfTest}`)
+        `lines=${frame.pass.linesAgree} rail=${frame.pass.railOnLine} scrollbar=${frame.pass.scrollbarFits} gaps=${frame.pass.barGapsEven} self=${frame.pass.selfTest}`)
       /* 量具瞎了 = 整轮红：种下去的那颗不对称没被报出来，「绿」就不是量出来的。 */
       if (frame.pass.selfTest !== 'caught') {
         findings.push({ page, band: FRAME_BAND.id, kind: 'probe-blind', detail: `the frame probe did not catch its own planted asymmetry: ${String(frame.pass.selfTest)}` })
@@ -235,6 +256,33 @@ for (const page of found) {
         if (frame.pass[name] !== 'fail') continue
         const detail = offenders === null ? frame.counts.air : JSON.stringify((frame.offenders ?? {})[offenders] ?? [])
         findings.push({ page, band: FRAME_BAND.id, kind: name, detail: detail.slice(0, 500) })
+      }
+    }
+  }
+
+  /* ── 高度预算：导航带与列表怎么分这一块的高度 ───────────────────────────────
+   *
+   * 与框架那一档同一条理由，只是另一条轴：**宽度决定档位，高度决定预算**，所以这一档的
+   * 阶梯是 `(宽, 高)` 一对一对的，写在探针里。它管的是「带子长到把列表挤没、而两条轴
+   * 都不滚」那一类缺陷——读者报的正是它。 */
+  if (args.only === '' || args.only === STRIP_BAND.id) {
+    const strip = measure(page, STRIP_BAND, STRIP_PROBE)
+    entry.strip = strip
+    if (strip.error !== undefined) {
+      console.log(`   ${STRIP_BAND.id.padEnd(14)} NO READING  ${strip.error} ${strip.stderr ?? ''}`)
+      findings.push({ page, band: STRIP_BAND.id, kind: 'no-reading', detail: strip.error })
+    } else if (strip.pass?.listFrame === 'not-here') {
+      console.log(`   ${STRIP_BAND.id.padEnd(14)} not a list panel — skipped`)
+    } else {
+      console.log(`   ${STRIP_BAND.id.padEnd(14)} ${(strip.ladder ?? []).join(' | ')}`)
+      console.log(`   ${''.padEnd(14)} floor=${strip.pass.listFloor} usable=${strip.pass.listUsable} ` +
+        `reachable=${strip.pass.stripReachable} oneRow=${strip.pass.chipsOneRow} self=${strip.pass.selfTest}`)
+      if (strip.pass.selfTest !== 'caught') {
+        findings.push({ page, band: STRIP_BAND.id, kind: 'probe-blind', detail: `the rail-band probe did not catch its own planted clip: ${String(strip.pass.selfTest)}` })
+      }
+      for (const [name, offenders] of STRIP_CRITERIA) {
+        if (strip.pass[name] !== 'fail') continue
+        findings.push({ page, band: STRIP_BAND.id, kind: name, detail: JSON.stringify((strip.offenders ?? {})[offenders] ?? []).slice(0, 500) })
       }
     }
   }
