@@ -928,10 +928,27 @@
   transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
+/* ── 一个「写一段话」的框：高度有上限、写多了自己滚 ─────────────────────────────
+ *
+ * **这是两个面板共用的那一条律，而且只有这一处。** 一段话写不下的地方必须能滚：被裁掉的
+ * 尾巴读者永远读不回来，而一个没有上限的框会把它所在的那一列越撑越高——评论区里那份
+ * 长留言曾是后者（`overflow-y: hidden` 一写，超出部分直接看不见，读者写了三百字只能看到
+ * 前两百字，也没有任何东西可以滚）。
+ *
+ * 上限写成**行数**：十二行（本行的行盒由 `line-height: 1.5` 与 13px 推出来，所以「十二行」
+ * 是一个算得出来的高度，不是一个随手挑的像素）。调用点要更矮或更高时给
+ * `--dsh-tb-write-max` 一个值；那个值只在真正需要另一种场合时出现，不在每一处重说一遍。
+ *
+ * 滚动条读的是**共用的那套细条**（`data-dsh-tb-scroll`，机制与「轨道两端各让一档」的理由
+ * 在 `board.module.css`）：`Field.tsx` 的 `TextArea` 挂着它，清单面板的写入框也挂着它，
+ * 于是两个面板里的框画出来是同一条条。 */
 textarea.input {
   height: auto;
   padding: 8px 12px;
   line-height: 1.5;
+  max-block-size: var(--dsh-tb-write-max, calc(12 * 1.5 * 13px));
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 
 .input:focus {

@@ -86,6 +86,7 @@ const FRAME_CRITERIA = [
   ['railOnLine', 'rail'],
   ['scrollbarFits', 'scrollbar'],
   ['barGapsEven', 'barGaps'],
+  ['loneActionFills', 'loneAction'],
 ]
 
 /** 高度预算那一档：同样是**自己一条阶梯**（`(宽, 高)` 写在探针里）。 */
@@ -247,7 +248,7 @@ for (const page of found) {
       const ladder = (frame.ladder ?? []).map((one) => (one.missing === true ? `${one.width}:?` : `${one.width}:${one.left}/${one.right}`)).join(' ')
       console.log(`   ${FRAME_BAND.id.padEnd(14)} air=${frame.counts.air} cardL/cardR by width -> ${ladder}`)
       console.log(`   ${''.padEnd(14)} constant=${frame.pass.airConstant} symmetric=${frame.pass.airSymmetric} present=${frame.pass.airPresent} ` +
-        `lines=${frame.pass.linesAgree} rail=${frame.pass.railOnLine} scrollbar=${frame.pass.scrollbarFits} gaps=${frame.pass.barGapsEven} self=${frame.pass.selfTest}`)
+        `lines=${frame.pass.linesAgree} rail=${frame.pass.railOnLine} scrollbar=${frame.pass.scrollbarFits} gaps=${frame.pass.barGapsEven} action=${frame.pass.loneActionFills} self=${frame.pass.selfTest}`)
       /* 量具瞎了 = 整轮红：种下去的那颗不对称没被报出来，「绿」就不是量出来的。 */
       if (frame.pass.selfTest !== 'caught') {
         findings.push({ page, band: FRAME_BAND.id, kind: 'probe-blind', detail: `the frame probe did not catch its own planted asymmetry: ${String(frame.pass.selfTest)}` })

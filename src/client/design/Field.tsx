@@ -40,11 +40,18 @@ export function Input({ invalid, className, ...rest }: ComponentPropsWithRef<'in
 }
 
 /** A multi-line text field. `textarea.input` raises the height and re-pads the
- *  box for wrapped text, so this is a real variant and not just a tag swap. */
+ *  box for wrapped text, so this is a real variant and not just a tag swap.
+ *
+ *  **`data-dsh-tb-scroll` IS WHAT MAKES A LONG ANSWER REACHABLE.** The height has a
+ *  ceiling (twelve lines, declared in `components.module.css`), so a paragraph that
+ *  outgrows it has to scroll INSIDE the box — and the shared scroll grammar (the
+ *  8px bar whose track is inset at both ends) is keyed on that attribute, the same
+ *  one the list panel's writing box mounts. Without it the box either clipped its
+ *  own tail or drew the raw platform bar through its rounded corner. */
 export function TextArea({ invalid, className, ...rest }: ComponentPropsWithRef<'textarea'> & {
   invalid?: boolean
 }) {
-  return <textarea className={controlClass(invalid, className)} {...rest} />
+  return <textarea className={controlClass(invalid, className)} data-dsh-tb-scroll="" {...rest} />
 }
 
 /** A select. */

@@ -2405,10 +2405,18 @@
 
 /* The prompt textarea auto-grows with its content (height is driven from
    scrollHeight in PromptInput) and scrolls internally past its cap — no
-   manual resize handle, matching the native composer. */
+   manual resize handle, matching the native composer.
+
+   **THE SCROLL IS THE HALF THAT WAS MISSING.** This rule said `overflow-y: hidden`
+   while the sentence above it promised "scrolls internally past its cap": the box
+   grew to the cap and then CUT the rest off — a reader who typed three hundred
+   words could see two hundred of them, and there was nothing on screen to scroll
+   (the report that sent me here). The ceiling and the scroll now come from the one
+   shared law in `components.module.css` (`textarea.input`: twelve lines,
+   `overflow-y: auto`, the `data-dsh-tb-scroll` bar), so this rule keeps only what
+   is its own: the composer has no drag handle. */
 .promptTextarea {
   resize: none;
-  overflow-y: hidden;
 }
 
 .slashMenuRow {

@@ -58,6 +58,8 @@
   const LINE_TOL = 1.5
   /** 同一行里两枚控件之间允许的差：亚像素取整的余地。 */
   const GAP_TOL = 1
+  /** 手机那一档的列表列宽上限（`dsh-tb-item-list` 的 559）——「独占一行就占满」只在这一档是律。 */
+  const PHONE_COL_MAX = 559
   const r2 = (v) => Math.round(v * 100) / 100
   const boxOf = (el) => {
     const r = el.getBoundingClientRect()
@@ -110,6 +112,16 @@
         const gaps = sorted.slice(1).map((one, i) => one.left - sorted[i].right)
         return r2(Math.max(...gaps) - Math.min(...gaps))
       })
+    /* **一行里只有主行动时，它必须占满那一行。** 一枚小药丸吊在行的末端，左边空着三百
+     * 多像素——读者读到的是「这里是不是少了点什么」（读者报的就是它）。所以量：主行动
+     * 独占一行时，它的宽与那一簇的内容宽之差 ≤ 1px。 */
+    const action = document.querySelector('.itemNewButton')
+    const actionBox = action === null ? null : action.getBoundingClientRect()
+    const actionLine = actionBox === null ? null : lines.find((line) => line.items.includes(actionBox))
+    const loneAction = actionLine !== undefined && actionLine !== null && actionLine.items.length === 1
+    const fillsRow = loneAction && tools !== null
+      ? r2(Math.abs(actionBox.width - tools.clientWidth))
+      : null
     return {
       width,
       panelW: panelBox.w,
@@ -132,6 +144,9 @@
       railPanelLeft: r2(boxOf(rail).l + parseFloat(getComputedStyle(rail).paddingLeft) - panelBox.l),
       toolLines: lines.length,
       toolsSpread: spread.length === 0 ? null : r2(Math.max(...spread)),
+      /* 只有小屏（列表列 ≤ 559）那一档要求「独占一行就占满」：560–880 里四枚放得下，
+       * 主行动与芯片同一行、间距一律相同，那一档不该被这条判据判红。 */
+      fillsRow: colBox.w <= PHONE_COL_MAX ? fillsRow : null,
       /* 折行时行与行之间那一档必须与顶栏自己那一档是同一个数。**只在真的折了行时判**：
        * 一行里那个数不参与排版，拿它判红就是拿一个没生效的数说事。 */
       gapsMatch: bar === null || tools === null || lines.length < 2
@@ -141,7 +156,7 @@
   }
 
   const rungs = []
-  const failed = { symmetric: [], present: [], lines: [], rail: [], scrollbar: [], barGaps: [] }
+  const failed = { symmetric: [], present: [], lines: [], rail: [], scrollbar: [], barGaps: [], loneAction: [] }
   /* ── 阶梯量在**折叠**态上 ───────────────────────────────────────────────────
    *
    * 日历的折叠是读者的选择，而两个状态在窄档是两种排法（折起来带子是一行，展开时是一列）。
@@ -172,6 +187,8 @@
     /* 一行里两种间距 = 没有骨架；折行的两行之间读的必须是顶栏那一档。 */
     if (rung.toolsSpread !== null && rung.toolsSpread > GAP_TOL) failed.barGaps.push(rung)
     if (rung.gapsMatch === false) failed.barGaps.push(rung)
+    /* 手机那一档：独占一行的主行动必须占满那一行（不是一枚吊在右端的小药丸）。 */
+    if (rung.fillsRow !== null && rung.fillsRow > GAP_TOL) failed.loneAction.push(rung)
   }
   /* 页面宽度与日历状态还原：探针跑完之后截图与别的读数都该看到**它自己的**那一档。 */
   document.body.style.width = ''
@@ -208,7 +225,8 @@
       linesAgree: stateOf(withCard.length, failed.lines.length === 0),
       railOnLine: stateOf(stripRungs.length, failed.rail.length === 0),
       scrollbarFits: stateOf(rungs.length, failed.scrollbar.length === 0),
-      barGapsEven: stateOf(rungs.filter((rung) => rung.toolsSpread !== null || rung.gapsMatch !== null).length, failed.barGaps.length === 0),      selfTest,
+      barGapsEven: stateOf(rungs.filter((rung) => rung.toolsSpread !== null || rung.gapsMatch !== null).length, failed.barGaps.length === 0),
+      loneActionFills: stateOf(rungs.filter((rung) => rung.fillsRow !== null).length, failed.loneAction.length === 0),      selfTest,
     },
     counts: {
       rungs: rungs.length,

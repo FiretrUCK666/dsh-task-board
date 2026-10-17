@@ -628,9 +628,12 @@ function AnswerField({ variant, value, placeholder, disabled, focusOnMount, onCh
   return (
     <div className={`${css.interactionField}${variant === 'inline' ? ` ${css.interactionFieldInline}` : ` ${css.interactionFieldBlock}`}`}>
       <div aria-hidden="true" className={css.interactionFieldMirror}>{`${value}\n`}</div>
+      {/* `data-dsh-tb-scroll`：答不完的那一段要能滚，而滚动条读共用那一套细条——同一个
+          属性，清单面板的写入框与看板的每一个多行框都挂着它（机制见 `board.module.css`）。 */}
       <textarea
         ref={inputRef}
         className={css.interactionFieldInput}
+        data-dsh-tb-scroll=""
         value={value}
         disabled={disabled}
         rows={1}
