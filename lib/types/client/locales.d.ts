@@ -644,6 +644,7 @@ export declare const zh: {
     'board.update.restartRequired': string;
     'board.update.rebuilt': string;
     'board.update.unchanged': string;
+    'board.update.unchangedHeld': string;
     'board.update.versionUnknown': string;
     'board.update.applyFailed': string;
     'board.update.reason.dirty': string;

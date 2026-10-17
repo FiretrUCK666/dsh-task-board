@@ -1960,6 +1960,20 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   {updateOutcomeOf(updateApply.result)}
                 </p>
               )}
+              {/* 「跑完版本没动」是一条死胡同，而出路就在这个对话框已经知道的两件事里：
+                  真机上唯一会发生它的是本机安装器的供应链观察期（`unchanged` 只由 npm
+                  那条路产生，见 host/update-apply.ts），而它挡下的那一版与「按指定版本
+                  装」这条现成的路，这里都有。没有更新的一版可说时这行不出现——把一个
+                  观察期说给根本无新版可等的人听，是换了一种假原因。 */}
+              {updateApply.phase === 'unchanged' && updateNewer && updateLatest !== undefined
+                && updateSource !== undefined && (
+                <p className={css.detailHint}>
+                  {t('board.update.unchangedHeld', {
+                    latest: updateLatest.version,
+                    spec: `${updateSource.packageName}@${updateLatest.version}`,
+                  })}
+                </p>
+              )}
               {updateApply.phase === 'failed' && (
                 <p className={css.detailText} role="status" aria-live="polite">
                   {t('board.update.applyFailed')}

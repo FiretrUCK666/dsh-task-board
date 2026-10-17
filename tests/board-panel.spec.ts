@@ -882,11 +882,49 @@ describe('the update dialog, driven through the header button', () => {
     await clickLabel(host, t('board.update.apply'))
     const dialog = dialogIn(host)
     expect(dialog.textContent).toContain(t('board.update.unchanged', { v: '0.8.26' }))
+    // 死胡同要带着出路。真机上这一次不含糊：挡住新版的正是本机安装器的供应链观察期，
+    // 而这个对话框两样东西都已经知道——被挡下的是哪一版，以及「按指定版本装」那条路。
+    expect(
+      dialog.textContent,
+      '一次没能装上新版的结果里没有说出路：读者只知道自己还停在旧版上',
+    ).toContain(t('board.update.unchangedHeld', {
+      latest: '0.9.60',
+      spec: '@firetruck666/dsh-task-board@0.9.60',
+    }))
     // 「已更新到 v」正是读者无法核对、却会照着它行动的那句话：它一个字都不许出现。
     expect(dialog.textContent).not.toContain(t('board.update.restartRequired', { v: '0.8.26' }))
     expect(dialog.textContent).not.toContain(t('board.update.applied', { v: '0.8.26' }))
     // 跑完没变化，按钮要留着：保护期过了、或换个装法之后，同一按还有意义。
     expect(dialog.textContent).toContain(t('board.update.apply'))
+    unmount()
+  })
+
+  it('the same result blames no waiting period when the source reports nothing newer', async () => {
+    /* 同一句结果要能在两种处境下都成立：有新版被挡下（上一例），和「没有更新的一版可说」
+       （这里）。后一种真能走到——第一次读不到最新版（面板照开，出路照摆），按下更新之后
+       重读读到了，而它读到的并不比现在这一版新。那时说「观察期挡住了它」是凭空多给一个
+       原因，而一个假原因比不说贵。 */
+    const same = viewOf()
+    const reads = { n: 0 }
+    stubUpdateFetch({
+      view: () => {
+        reads.n += 1
+        return reads.n === 1
+          ? viewOf({ latest: undefined })
+          : viewOf({ latest: { ...same.latest as object, version: '0.8.26' } })
+      },
+      apply: { ok: true, outcome: 'unchanged', version: '0.8.26' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    const dialog = dialogIn(host)
+    expect(reads.n, '这条用例要的两次读数没有发生，它测的就不是这件事').toBe(2)
+    expect(dialog.textContent).toContain(t('board.update.unchanged', { v: '0.8.26' }))
+    expect(dialog.textContent).not.toContain(t('board.update.unchangedHeld', {
+      latest: '0.8.26',
+      spec: '@firetruck666/dsh-task-board@0.8.26',
+    }))
     unmount()
   })
 
@@ -971,6 +1009,10 @@ describe('the update dialog, driven through the header button', () => {
     await clickLabel(host, t('board.update.apply'))
     for (const must of [
       t('board.update.unchanged', { v: '0.8.26' }),
+      t('board.update.unchangedHeld', {
+        latest: '0.9.60',
+        spec: '@firetruck666/dsh-task-board@0.9.60',
+      }),
       t('board.update.spec', { spec: '^0.8.26' }),
       t('board.update.apply'),
     ]) {
