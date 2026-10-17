@@ -140,6 +140,12 @@ jobs:
       # 并打印 `+ 包名@版本`，所以上面那一步绿了**不等于** npm 上真的有这一版：
       # 没人在看 CI 输出，一次没落地的发布会以「全绿」的样子过去。只查这一个
       # 版本的地址（不问 dist-tags——「最新」标记可能不跟随实际发布）。
+      #
+      # **窗口是 15 分钟，不是 5 分钟。** 量过两次：1.2.2 那一版几十秒就可见，而 1.2.7
+      # 花了约 **7 分钟**（本地独立回读：发布步在 09:37:33 结束，第一次见到 200 在
+      # 09:44 前后）——5 分钟的窗口在那一次刚好差一点，于是**发布成功而工作流红**。
+      # 红的是这一条检查的耐心，不是那一版 npm 上有没有。窗口放宽到 15 分钟；最后那句话
+      # 仍然照旧（别重发同一个版本号，先查为什么）。
       - name: Verify the published version is live on npm
         run: |
           set -euo pipefail
@@ -148,14 +154,14 @@ jobs:
           ENCODED="$(node -p "encodeURIComponent(require('./package.json').name)")"
           URL="https://registry.npmjs.org/$ENCODED/$VERSION"
           CODE=""
-          for attempt in $(seq 1 60); do
+          for attempt in $(seq 1 180); do
             CODE="$(curl -s -o /dev/null -w '%{http_code}' "$URL" || true)"
             if [ "$CODE" = "200" ]; then
-              echo "$NAME@$VERSION is live on npm: $URL"
+              echo "$NAME@$VERSION is live on npm: $URL (attempt $attempt)"
               exit 0
             fi
             echo "attempt $attempt: HTTP $CODE (registry still catching up), retrying in 5s"
             sleep 5
           done
-          echo "::error::$NAME@$VERSION is not visible on npm after 5 minutes (last HTTP $CODE). Do NOT re-publish the same version — find out why first."
+          echo "::error::$NAME@$VERSION is not visible on npm after 15 minutes (last HTTP $CODE). Do NOT re-publish the same version — find out why first."
           exit 1
