@@ -184,6 +184,28 @@ export type IconName = 'arrowDown' | 'arrowUp' | 'chevronDown' | 'close' | 'arro
  * path cannot appear at all, because the list IS the table's keys.
  */
 export declare const ICON_NAMES: readonly IconName[];
+/**
+ * THE plus sign, drawn once.
+ *
+ * WHY IT IS NOT THE CHARACTER `+`. A full-width or even a half-width plus
+ * carries side bearing the glyph itself does not fill, so in a perfectly centred
+ * pill the two strokes sit visibly off the optical centre — 「上下居中了，左右偏
+ * 右一点」 is a property of the CHARACTER, not of the layout. Drawing the two
+ * strokes on a symmetric viewBox removes the question.
+ *
+ * WHY IT IS A COMPONENT. The board's primary button spelled it as the literal
+ * `+ ` inside a template string while the list's drew an SVG — two primary
+ * buttons for the same action, with two different plus signs, is the exact
+ * 「这个跟那个不是同一套东西」 the reader reported. One glyph, both pages.
+ *
+ * `size` defaults to 11 and is an ODD number on purpose: the strokes are centred
+ * on `5.5` in an 11-unit box, so at every odd size they land on a half-pixel
+ * boundary rather than one side of a pixel.
+ */
+export declare function PlusIcon({ size, className }: {
+    size?: number;
+    className?: string;
+}): import("react").JSX.Element;
 export declare function Icon({ name, className }: {
     name: IconName;
     className?: string;

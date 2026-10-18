@@ -30,7 +30,6 @@
 import { useEffect } from 'react'
 import type { BoardController } from '../core/controller.ts'
 import type { ItemPriority } from '../core/item.ts'
-import type { BundleFreshnessState } from './bundle-freshness.ts'
 import { t } from './locales.ts'
 import { TaskBoard } from './board/TaskBoard.tsx'
 import css from './board.module.css'
@@ -46,13 +45,7 @@ export interface TaskBoardPanelProps {
    * face can hand over an explicitly absent controller without a cast.
    */
   controller: BoardController | undefined
-  /**
-   * The live stale-bundle verdict, published on the same inject face as the
-   * controller and withdrawn with it. Optional so a composition that publishes
-   * no verdict still mounts the board; when absent the board renders no status
-   * line (see bundle-freshness.ts).
-   */
-  freshness?: BundleFreshnessState
+
   /**
    * **这张卡上挂着几条清单条目、最急的是哪一档。**
    *
@@ -70,10 +63,10 @@ export interface TaskBoardPanelProps {
 
 /**
  * Render the task board as a centre-stage panel.
- * @param props - the injected controller and freshness state.
+ * @param props - the injected controller and the two cross-panel readings.
  * @returns the board surface, or the loading state while the board is not ready.
  */
-export function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }: TaskBoardPanelProps) {
+export function TaskBoardPanel({ controller, mountedOf, onOpenRows }: TaskBoardPanelProps) {
   useEffect(() => {
     if (controller === undefined) return
     // The stage is showing this panel: that IS the board being open.
@@ -85,7 +78,7 @@ export function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }:
     <div className={css.panelStage} data-dsh-taskboard-view="">
       {controller === undefined
         ? <p className={css.panelLoading} role="status">{t('board.loading')}</p>
-        : <TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} onOpenRows={onOpenRows} />}
+        : <TaskBoard controller={controller} mountedOf={mountedOf} onOpenRows={onOpenRows} />}
     </div>
   )
 }

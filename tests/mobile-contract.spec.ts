@@ -565,14 +565,18 @@ describe('board header and navigator legibility', () => {
     // 主行动与铃不再被搬去第二条栏：两个宽度都在这条工具带里。
     expect(compact).not.toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
     expect(compact).not.toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
-    // 引擎席位的说明仍是真按钮（触屏没有 hover 可以揭示一个 title）。
-    const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
-    const board = readFileSync(tsxPath, 'utf8')
-    expect(board).toContain('css.boardStatusButton')
-    expect(board).toMatch(/onClick=\{\(\) => \{ setEngineNote\('stale'\) \}\}/)
-    // 状态行省略零段（「排队 0」是噪音——与上下文计量同一条静默文法）。
-    expect(board).toMatch(/snapshot\.stats\.running > 0 \? \[t\('board\.statusRunning'/)
-    expect(board).toMatch(/snapshot\.stats\.queued > 0 \? \[t\('board\.statusQueued'/)
+    /* 引擎席位的说明仍是真按钮（触屏没有 hover 可以揭示一个 title）——但它现在住在
+       工作台级的警告条里，不再住在看板的读数槽里：警告只有一页看得见，等于另外两页
+       看不见。所以判据读的是那个组件，不是看板那张表。 */
+    const noticePath = fileURLToPath(new URL('../src/client/design/WorkbenchNotice.tsx', import.meta.url))
+    const notice = readFileSync(noticePath, 'utf8')
+    expect(notice, 'the warning entry must be a real button').toContain('<button')
+    // 状态行省略零段（「排队 0」是噪音——与上下文计量同一条静默文法）。这两条读的是
+    // 看板那张表，所以变量在**这一条用例里**重新读一次（上面那一段的 `board` 已经
+    // 不属于这个 describe）。
+    const boardSrc = readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8')
+    expect(boardSrc).toMatch(/snapshot\.stats\.running > 0 \? \[t\('board\.statusRunning'/)
+    expect(boardSrc).toMatch(/snapshot\.stats\.queued > 0 \? \[t\('board\.statusQueued'/)
   })
 
   it('the tool row carries the agreed MEMBERS at both widths', () => {
@@ -921,7 +925,7 @@ describe('button geometry (one base for every variant)', () => {
     // the semicircle): the 0 18px widening read squarer and was reverted.
     const base = blockFrom(line => line.trim() === '.primaryButton,')
     expect(base).toMatch(/padding:\s*0 14px/)
-    expect(base).toMatch(/font-size:\s*13px/)
+    expect(base).toMatch(/font-size:\s*var\(--dsh-tb-type-body-size\)/)
     expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
   })
 
@@ -956,13 +960,13 @@ describe('button geometry (one base for every variant)', () => {
     // consumes it — the labels the user compared must not drift.
     expect(source).toMatch(/--dsh-tb-chip-fill:\s*var\(--dsh-tb-plane-inlay\)/)
     expect(source).toMatch(/--dsh-tb-input-bg:\s*var\(--dsh-tb-chip-fill\)/)
-    for (const name of ['searchField', 'columnTab', 'chipFill', 'feedSearch']) {
+    for (const name of ['searchField', 'columnTab', 'chipFill']) {
       expect(ruleOf(name), `.${name} must consume the shared chip fill`).toContain('var(--dsh-tb-chip-fill)')
     }
     // The field is the same family, from the same ladder.
     expect(ruleOf('searchField')).toContain('var(--dsh-tb-chip-fill)')
     // No member of the family may go back to the private layer token.
-    for (const name of ['ghostButton', 'searchField', 'columnTab', 'chipFill', 'feedSearch']) {
+    for (const name of ['ghostButton', 'searchField', 'columnTab', 'chipFill']) {
       expect(ruleOf(name), `.${name} must not use the private layer fill`).not.toContain('--dsh-tb-surface-sunken')
     }
     // The tool row's own icon member takes the same surface, and it must be
@@ -1023,9 +1027,7 @@ describe('button geometry (one base for every variant)', () => {
       'cruisePill',
       'cruiseMore',
       'columnTab',
-      'feedFilter',
       'feedAction',
-      'feedSearch',
       'searchField',
       'cardQuickRun',
       'columnCount',
@@ -1045,11 +1047,13 @@ describe('button geometry (one base for every variant)', () => {
   it('non-buttons keep the stepped ladder (pill must not leak into containers)', () => {
     // Over-rounding is the mirror bug: cards/columns/panels/inputs stay on
     // sm/md/lg/xl so a button fix never turns the whole board into bubbles.
+    /* `segmentedRow` 不在这张名单上，理由是形状而不是宽容：它是**装着若干胶囊的
+     * 一条轨道**，圆角必须与里面的胶囊一致（都是 pill），否则轨道两端的半圆与第一
+     * 枚胶囊的半圆不同心，读起来像两个不同的控件叠在一起。它属于上面那一族。 */
     for (const [name, ladder] of [
       ['card', 'md'],
       ['column', 'lg'],
       ['input', 'md'],
-      ['segmentedRow', 'md'],
       ['schedulePreset', 'md'],
       ['cruiseLimit', 'sm'],
     ] as const) {

@@ -69,7 +69,7 @@ import { t } from '../locales.ts'
 import { askConfigDraftKey, CAPTURE_CARD_CONFIG_KEY, draftStore } from '../board/drafts.ts'
 import { RunConfigBlock } from './run-config-block.tsx'
 import { itemsRestore } from '../items-archive.ts'
-import { Button, SearchField } from '../design/ui.tsx'
+import { Button, PlusIcon, SearchField } from '../design/ui.tsx'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
 import { useBoardSnapshot, type BoardSnapshot } from '../board/use-board-snapshot.ts'
 import { ItemDetail } from './detail-pane.tsx'
@@ -104,6 +104,9 @@ import type { ItemListFace } from './register.tsx'
    它读的那几样（去处、状态、出口）由 `chrome.ts` 一处装配：一处装配，三页就不可能各说
    一个数。这一页只负责说「我在清单这一格」。 */
 import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { WorkbenchNotice } from '../design/WorkbenchNotice.tsx'
+import { updateController } from '../workbench/update-controller.ts'
+import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import css from './item.module.css'
 
@@ -1899,6 +1902,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 在渲染里读而不是存在状态里：计数是两份文档在**被画出来的那一刻**的函数，而存下来的
    * 计数就是第二份真相——它会和列表上的行数各说各的，且屏上不会有人提这件事。 */
   const chrome = workbenchChromeOf()
+  /* 检查更新的状态与按钮的脸都是三页共用的（`workbench/update-controller.ts` 与
+   * `use-update.ts`）：状态不归这一页，一次还在跑的检查不该因为切页而丢掉。 */
+  const update = useUpdateState()
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       {/* ══ 左栏与列表 ════════════════════════════════════════════════════ */}
@@ -1995,10 +2001,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
       tabs={chrome.tabs}
       label={t('workbench.navLabel')}
       status={chrome.status}
+      checking={update.phase === 'checking'}
+      checkLabel={updateLabelOf(update)}
+      onCheck={() => { updateController.check() }}
       exitLabel={chrome.exitLabel}
       onNavigate={chrome.onNavigate}
       onExit={chrome.onExit}
     />
+  </div>
+  {/* 警告条：与栏同宽、在栏与内容之间，三页都有——它说的是工作台的事，不是这一页的事。 */}
+  <div
+    className={css.itemWorkbenchNotice}
+    {...(overlayIsModal ? { 'aria-hidden': true, inert: '' } as Record<string, unknown> : {})}
+  >
+    <WorkbenchNotice items={chrome.notices} />
   </div>
 
   {/* THE SHELL CARD IS GONE, and the ROWS are the cards now: the panel sits
@@ -2163,17 +2179,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
               </Button>
               <Button
                 variant="primary"
-                className={css.itemNewButton}
+                className={css.itemTopBarPrimary}
                 onClick={() => openLayer('create')}
               >
-                {/* A DRAWN PLUS, not the `＋` character. A full-width glyph carries
-                    * one em of side bearing on each side of a two-stroke mark, so the
-                    * ink it draws sits visibly off the centre of a perfectly centred
-                    * box — 「上下居中了，左右偏右一点」 is exactly that, and it is a
-                    * property of the character rather than of the layout. */}
-                <svg viewBox="0 0 11 11" width="11" height="11" aria-hidden="true">
-                  <path d="M5.5 1v9M1 5.5h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
-                </svg>
+                {/* 同一枚加号，与看板那一枚是**同一个组件**（`design/ui.tsx` 的
+                    `PlusIcon`）：两页各画一次，就会出现一个 11 单位、一个字面 `+` 的
+                    那种「跟别处不是一套」的差别。 */}
+                <PlusIcon />
                 <span>{t('item.topbar.create')}</span>
               </Button>
             </div>

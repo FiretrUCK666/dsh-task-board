@@ -1,4 +1,5 @@
 import type { WorkbenchTab } from '../design/WorkbenchBar.tsx';
+import type { WorkbenchNoticeItem } from '../design/WorkbenchNotice.tsx';
 /** The three pages, in reading order. */
 export declare const WORKBENCH_PAGES: readonly ["home", "board", "items"];
 /** A page of the workbench. */
@@ -16,6 +17,11 @@ export declare const WORKBENCH_KEYS: {
     readonly items: "dsh-task-board-items";
 };
 /**
+ * Record the warnings every page should show.
+ * @param notices - the current list; empty clears the strip.
+ */
+export declare function setWorkbenchNotices(notices: readonly WorkbenchNoticeItem[]): void;
+/**
  * Record which pages exist.
  * @param pages - the pages whose rows the host reported as loaded.
  */
@@ -24,6 +30,16 @@ export declare function setWorkbenchPages(pages: readonly WorkbenchPage[]): void
 export interface WorkbenchChrome {
     readonly tabs: readonly WorkbenchTab[];
     readonly status: string | undefined;
+    /**
+     * Warnings to show BELOW the bar, on every page.
+     *
+     * They live here rather than in a page because they are facts about the
+     * workbench (`this page's bundle is older than the host`, `the engine seat is
+     * stale`), not about the board's columns — and the reader's rule is that the
+     * three pages are one surface. A warning that only exists on one page is a
+     * warning the reader will miss on the other two.
+     */
+    readonly notices: readonly WorkbenchNoticeItem[];
     readonly exitLabel: string;
     readonly onNavigate: (id: string) => void;
     readonly onExit: () => void;

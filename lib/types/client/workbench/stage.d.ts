@@ -34,6 +34,22 @@ export interface FocusRequest {
     readonly cardId: string;
 }
 /**
+ * Where to go, and what to show on arrival.
+ *
+ * A tagged union so a new destination cannot be added without deciding what
+ * arriving there means — the failure it prevents is a page that opens on
+ * everything while the caller believed it had asked for one thing.
+ */
+export type LandTarget = {
+    readonly page: 'items';
+    readonly cardId: string;
+} | {
+    readonly page: 'board';
+    readonly cardId: string;
+} | {
+    readonly page: 'home';
+};
+/**
  * The holder. Owns its own lifetime rather than borrowing a mount's: a
  * main-stage panel unmounts every time the reader looks at the conversation, so
  * a lifetime tied to its mount would tear down the replica subscription on
@@ -91,6 +107,20 @@ export declare class WorkbenchStage {
     focusRowsOf(cardId: string): void;
     /** 面板读它：带 token，所以同一个请求不会被消费两次，也不会漏掉第二次。 */
     focusRequest(): FocusRequest | undefined;
+    /**
+     * Go to a page AND say what to look at when you arrive.
+     *
+     * WHY THIS IS ONE VERB AND NOT TWO CALLS. 「去清单」 and 「清单只看挂着这张卡的条目」
+     * are one thought: a reader who presses a count is asking a question, and a page that
+     * arrives unfiltered answers a different one. Splitting it into `focusRowsOf` then
+     * `navigate` would let a caller do the first and forget the second — and the result
+     * looks perfectly healthy, just wrong.
+     *
+     * The intent is a tagged union rather than a loose object so a new destination cannot
+     * be added without deciding what arriving there means.
+     * @param target - where to go, and what to show.
+     */
+    land(target: LandTarget): void;
     /**
      * The four numbers the bar and the overview report.
      *

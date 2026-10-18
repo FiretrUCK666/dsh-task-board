@@ -26,6 +26,12 @@ export interface WorkbenchBarProps {
      * reader scan a readout that says "nothing" on most days.
      */
     readonly status?: string;
+    /** Whether a check is in flight; the button stands down while it runs. */
+    readonly checking: boolean;
+    /** The button's face: `检查更新 / 检查中… / 已是最新 / 有新版 v1.3.2`. */
+    readonly checkLabel: string;
+    /** Run the check (the page layer owns the controller that answers). */
+    readonly onCheck: () => void;
     /** Accessible name for the exit control. */
     readonly exitLabel: string;
     /** Leave the workbench (back to the shell's conversation). */
@@ -38,4 +44,4 @@ export interface WorkbenchBarProps {
  * @param props - destinations, the active one, the status line and the exit.
  * @returns the bar, as one flex row that wraps rather than hides.
  */
-export declare function WorkbenchBar({ active, tabs, label, status, exitLabel, onExit, onNavigate }: WorkbenchBarProps): import("react").JSX.Element;
+export declare function WorkbenchBar({ active, tabs, label, status, checking, checkLabel, onCheck, exitLabel, onExit, onNavigate, }: WorkbenchBarProps): import("react").JSX.Element;

@@ -327,6 +327,45 @@ const ICON_PATHS: Record<IconName, string> = {  arrowDown: 'M3 6.5 8 11.5 13 6.5
  */
 export const ICON_NAMES = Object.keys(ICON_PATHS) as readonly IconName[]
 
+/**
+ * THE plus sign, drawn once.
+ *
+ * WHY IT IS NOT THE CHARACTER `+`. A full-width or even a half-width plus
+ * carries side bearing the glyph itself does not fill, so in a perfectly centred
+ * pill the two strokes sit visibly off the optical centre — 「上下居中了，左右偏
+ * 右一点」 is a property of the CHARACTER, not of the layout. Drawing the two
+ * strokes on a symmetric viewBox removes the question.
+ *
+ * WHY IT IS A COMPONENT. The board's primary button spelled it as the literal
+ * `+ ` inside a template string while the list's drew an SVG — two primary
+ * buttons for the same action, with two different plus signs, is the exact
+ * 「这个跟那个不是同一套东西」 the reader reported. One glyph, both pages.
+ *
+ * `size` defaults to 11 and is an ODD number on purpose: the strokes are centred
+ * on `5.5` in an 11-unit box, so at every odd size they land on a half-pixel
+ * boundary rather than one side of a pixel.
+ */
+export function PlusIcon({ size = 11, className }: { size?: number; className?: string }) {
+  return (
+    <svg
+      className={className === undefined ? undefined : className}
+      viewBox="0 0 11 11"
+      width={size}
+      height={size}
+      aria-hidden="true"
+      focusable="false"
+    >
+      <path
+        d="M5.5 1v9M1 5.5h9"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
 export function Icon({ name, className }: { name: IconName; className?: string }) {
   return (
     <svg
@@ -438,7 +477,9 @@ export function Segmented({ options, value, onChange, ariaLabel, disabled }: {
           title={option.title}
           onClick={() => { onChange(option.value) }}
         >
-          {option.label}
+          {/* 槽是文法的一部分：裸文本在 flex 容器里变成匿名项，行盒不再受
+              `line-height` 支配（见 `[data-dsh-tb-pilltext]` 那一处）。 */}
+          <span data-dsh-tb-pilltext>{option.label}</span>
         </button>
       ))}
     </span>

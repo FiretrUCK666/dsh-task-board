@@ -54,6 +54,10 @@ export declare const BANDS: {
         readonly container: "dsh-tb";
         readonly narrowMax: 400;
         readonly what: "工具行拆成四行：搜索独占一行，巡航与新建并排（换行，不压扁）";
+    }, {
+        readonly container: "dsh-tb";
+        readonly narrowMax: 352;
+        readonly what: "工作台栏换行：三条 100px 轨道加两侧内衬要 332px，独占一行才不溢出";
     }];
     /** The session panel inside the board (`container-name: dsh-tb-panel`). */
     readonly sessionPanel: readonly [{

@@ -28,7 +28,6 @@
  */
 import type { BoardController } from '../core/controller.ts';
 import type { ItemPriority } from '../core/item.ts';
-import type { BundleFreshnessState } from './bundle-freshness.ts';
 /** Props the shell's `main` slot renderer binds for this panel. */
 export interface TaskBoardPanelProps {
     /**
@@ -40,13 +39,6 @@ export interface TaskBoardPanelProps {
      * face can hand over an explicitly absent controller without a cast.
      */
     controller: BoardController | undefined;
-    /**
-     * The live stale-bundle verdict, published on the same inject face as the
-     * controller and withdrawn with it. Optional so a composition that publishes
-     * no verdict still mounts the board; when absent the board renders no status
-     * line (see bundle-freshness.ts).
-     */
-    freshness?: BundleFreshnessState;
     /**
      * **这张卡上挂着几条清单条目、最急的是哪一档。**
      *
@@ -66,7 +58,7 @@ export interface TaskBoardPanelProps {
 }
 /**
  * Render the task board as a centre-stage panel.
- * @param props - the injected controller and freshness state.
+ * @param props - the injected controller and the two cross-panel readings.
  * @returns the board surface, or the loading state while the board is not ready.
  */
-export declare function TaskBoardPanel({ controller, freshness, mountedOf, onOpenRows }: TaskBoardPanelProps): import("react").JSX.Element;
+export declare function TaskBoardPanel({ controller, mountedOf, onOpenRows }: TaskBoardPanelProps): import("react").JSX.Element;

@@ -90,6 +90,7 @@ const FOREIGN_CALLS = {
   'sync.start': 'the host-sync engine',
   'uiWorkspace.openSession': 'the host workspace service',
   'launcher.subscribe': 'the task-list launcher (a store the list panel subscribes to; the board controller has a `subscribe` of the same name and they are unrelated)',
+  'updateController.subscribe': 'the workbench update controller (a module singleton that owns the check-for-updates state; its `subscribe`/`reset`/`check` are unrelated to the board controller)',
 }
 
 /**

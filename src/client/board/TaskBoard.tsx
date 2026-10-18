@@ -21,7 +21,7 @@ import { selectedTaskOf, type BoardController } from '../../core/controller.ts'
 import { bandNarrowMax } from '../design/bands.ts'
 import { MAX_CRUISE_LIMIT } from '../../core/controller.ts'
 import { isHeartbeatStale } from '../../core/scheduler.ts'
-import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, pendingCommentCount, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { adjacentStatus, COLUMNS, hasOpenRun, landingStatusOf, plainRunsOf, resolveCardDrop, taskExecutable, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { taskUnviewed, taskViewedBaseline } from '../../core/session-display.ts'
 import { boardDemandOf, waitingSessionsOf } from '../../core/task-demand.ts'
 import { t } from '../locales.ts'
@@ -45,12 +45,14 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
-import { Button, ColorSwatches, Icon, IconButton, SearchField, Switch } from '../design/ui.tsx'
-import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { Button, ColorSwatches, Icon, IconButton, PlusIcon, SearchField, Switch } from '../design/ui.tsx'
+import { WorkbenchShell } from '../design/WorkbenchShell.tsx'
+import { updateController } from '../workbench/update-controller.ts'
+import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
-import { commandLineOf, commandWordsOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
-import { applyUpdate, BUNDLED_VERSION, fetchUpdateSource, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
+import { commandLineOf, commandWordsOf, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
+import { BUNDLED_VERSION, type UpdateApplyResult } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -86,7 +88,7 @@ import { activityFoldKeyOf, activityOf, foldFeedByTaskDay, foldRestKeyOf, freeze
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from '../design/Chip.tsx'
 import { FeedRow } from './FeedRow.tsx'
-import { reloadForFreshBundle, type BundleFreshnessState } from '../bundle-freshness.ts'
+
 import { sendClientReport } from '../client-report.ts'
 
 /**
@@ -227,7 +229,7 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
  *  line, with its own verification cycle — not a refactor to slip in beside
  *  something else. Until then the three section markers in the return are what
  *  the reader navigates by. */
-export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { controller: BoardController; freshness?: BundleFreshnessState; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined; onOpenRows?: (cardId: string) => void }) {
+export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: BoardController; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined; onOpenRows?: (cardId: string) => void }) {
   const [snapshot, setSnapshot] = useState(controller.getSnapshot())
   useEffect(
     () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
@@ -240,28 +242,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // row (the board's loudest line) flashes the same generation key, so the
   // eye lands on the new wait without opening anything.
   const [lastArrivalGen, setLastArrivalGen] = useState(0)
-  // The stale-bundle verdict (see bundle-freshness.ts): the page compares the
-  // version it was built from against the one the host serves, reloads itself
-  // once when they disagree, and states the mismatch here if it survives that
-  // attempt. A silent stale page is what makes "I restarted everything and
-  // nothing changed" unfalsifiable — this line is the falsifier.
-  const [freshnessView, setFreshnessView] = useState(() => freshness?.snapshot())
-  useEffect(() => {
-    if (freshness === undefined) return undefined
-    setFreshnessView(freshness.snapshot())
-    return freshness.subscribe(() => { setFreshnessView(freshness.snapshot()) })
-  }, [freshness])
-  const bundleStale = freshnessView?.state === 'stale'
-  /**
-   * Which side is the stale one. Both read as `stale`, but only one of them can be
-   * fixed from the page: when the HOST is older (the package was updated on disk and
-   * `dsh web` has not been restarted), reloading fetches the same old server however
-   * many times it is tried. Read from the versions the freshness probe already
-   * carries, so no second comparison path exists.
-   */
-  const hostOld = freshnessView !== undefined
-    && freshnessView.host !== undefined
-    && isNewerVersion(freshnessView.bundled, freshnessView.host)
+  /* **新鲜度不是这一页的事。** 那三条警告（页面旧 / 服务端旧 / 引擎席位）住在工作台级
+     （`design/WorkbenchNotice.tsx`，由 `index.ts` 发布、`chrome.ts` 分发），所以这一页
+     不再收 `freshness`、也不再判断哪一侧更旧：一份判断只有一个主人，而它现在是装配层
+     ——三页因此都看得见，而不是只有看板看得见。 */
   // One self-report per VISIBLE board: the bundle version plus the measured
   // boxes (see client-report.ts). The tree mounts once at boot and stays
   // mounted while hidden (display:none → every rect is 0x0), so a mount-only
@@ -494,129 +478,26 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // The engine-seat note the header chip opens (touch has no hover, so the
   // explanation must be a real, reachable surface — not a `title`).
   const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
-  // 常驻检查更新（Header 模式组的 ghost 按钮，点一下即查）：host 按"正在运行
-  // 的那一份"给出安装来源与更新计划，npm 最新版并行读取；有新版即开结果 Dialog。
-  // 更新本身是 Dialog 里的一按，由 host 应用——页面只说"更新"，不说"装什么"。
-  const [updatePhase, setUpdatePhase] = useState<'idle' | 'checking' | 'latest' | 'available' | 'undetermined' | 'failed'>('idle')
-  const [updateSource, setUpdateSource] = useState<UpdateSourceView | undefined>(undefined)
-  const [showUpdate, setShowUpdate] = useState(false)
-  const [updateCopied, setUpdateCopied] = useState(false)
-  const [updateCopyFailed, setUpdateCopyFailed] = useState(false)
-  // 应用阶段与结果：running 时按钮不可再按。done 是"成了，没有别的可做"；
-  // unchanged 是"跑完了，但版本没动"——它既不是成功也不是失败，按钮要留着
-  // （保护期过了、或换个装法之后，同一按还有意义），所以它自成一档。
-  const [updateApply, setUpdateApply] = useState<{ phase: 'idle' | 'running' | 'done' | 'unchanged' | 'failed'; result?: UpdateApplyResult }>({ phase: 'idle' })
-  const updateTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
-  useEffect(() => () => {
-    if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
-  }, [])
+  // 常驻检查更新：**三页共用的那个控制器**（`workbench/update-controller.ts`）。
+  // 状态不归这一页——读者切到对话时这一页会卸载，而一次还在跑的检查不该因此丢掉。
+  // 按钮的脸也共用（`workbench/use-update.ts`），所以三页说的是同一句话。
+  const update = useUpdateState()
+  const showUpdate = update.open
+  const setShowUpdate = (next: boolean): void => { updateController.setOpen(next) }
+  const updateCopied = update.copied
+  const updateCopyFailed = update.copyFailed
+  const updateApply = update.apply
 
-  /**
-   * 点一下即查：一次问 host 就拿到全部结论——它是哪一份、装在哪、最新版是多少、
-   * 该怎么更新。最新版由 host 读（它知道这份 profile 用哪个源），页面不再自己
-   * 直连 npm：那样镜像用户永远查不到，git 安装更是完全没得查。
-   */
-  const checkUpdate = (): void => {
-    if (updatePhase === 'checking') return
-    setUpdatePhase('checking')
-    void (async () => {
-      const source = await fetchUpdateSource()
-      setUpdateSource(source)
-      if (source === undefined) {
-        setUpdatePhase('failed')
-        return
-      }
-      const latestVersion = source.latest?.version
-      const newer = latestVersion !== undefined && isNewerVersion(latestVersion, source.version)
-      const gitNewer = source.mode === 'local' && source.git !== undefined && isGitBehind(source.git)
-      // 一个 git 安装没有可比的版本基线——远端那个分支就是它的最新版——所以
-      // 无论读没读到版本号都开面板：那种安装的更新入口只有这一个。
-      if (newer || gitNewer || source.mode === 'github') {
-        setUpdatePhase('available')
-        setShowUpdate(true)
-        return
-      }
-      // 读不到最新版：这不是"已是最新"这个结论，也不该是一条死路。开面板把
-      // 读不到这件事说清楚，出路（命令 / 一键更新）照样摆在下面。
-      if (source.mode === 'npm' && source.latest === undefined) {
-        setUpdatePhase('undetermined')
-        setShowUpdate(true)
-        return
-      }
-      // 已是最新：按钮短暂确认后回弹常驻态（注意力只借两秒）。
-      setUpdatePhase('latest')
-      if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
-      updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
-    })()
-  }
-
-  /** 复制那条更新命令（与详情页复制同一闪现文法，best-effort 不抛）。 */
-  const copyUpdateCommand = (command: string): void => {
-    const flash = (ok: boolean): void => {
-      setUpdateCopied(ok)
-      setUpdateCopyFailed(!ok)
-      if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
-      updateTimer.current = setTimeout(() => {
-        setUpdateCopied(false)
-        setUpdateCopyFailed(false)
-      }, 1500)
-    }
-    void navigator.clipboard?.writeText(command).then(
-      () => { flash(true) },
-      () => { flash(false) },
-    )
-  }
-
-  /**
-   * 按下「一键更新」：host 应用它自己推导出的计划，随后无论成败都重读一次来源。
-   * 读回这一步是必需的——一次 live 重载可能让答复回不来，而"host 报的版本变了"
-   * 本身就证明更新成了；少了它，页面会把一次成功的更新报成失败。
-   */
-  const runUpdate = (): void => {
-    if (updateApply.phase === 'running') return
-    const before = updateSource?.version ?? BUNDLED_VERSION
-    setUpdateApply({ phase: 'running' })
-    void (async () => {
-      const result = await applyUpdate()
-      const source = await fetchUpdateSource()
-      if (source !== undefined) setUpdateSource(source)
-      const reported = result !== undefined && result.ok === true ? result : undefined
-      // 「成了」有两种证据：host 说这次是更新（不是"没变化"），或盘上的版本确实动了
-      // ——一次 live 重载可能让答复回不来，而版本变了本身就证明它成了。
-      const updated = reported !== undefined && reported.outcome !== 'unchanged'
-      const landed = source !== undefined && source.version !== before
-      if (updated || landed) {
-        setUpdateApply({
-          phase: 'done',
-          result: updated && reported !== undefined
-            ? reported
-            : { ok: true, outcome: 'applied', version: source?.version ?? before },
-        })
-        // 更新成了：按钮的读数收回常驻态（有新版 → 已是最新）。重读到的来源里
-        // 已经带着新的最新版读数，不需要再问一次。
-        setUpdatePhase('latest')
-        if (updateTimer.current !== undefined) clearTimeout(updateTimer.current)
-        updateTimer.current = setTimeout(() => { setUpdatePhase('idle') }, 2500)
-        return
-      }
-      // 跑完了、版本没动：既不是成功也不是失败。按钮要留着——保护期过了、或换个
-      // 装法之后，同一按还有意义；而把它说成「已更新到 v」是读者无法核对的那句话。
-      if (reported !== undefined) {
-        setUpdateApply({ phase: 'unchanged', result: reported })
-        return
-      }
-      setUpdateApply({ phase: 'failed', ...(result !== undefined ? { result } : {}) })
-    })()
-  }
-
-  // The dialog's derived readings (one funnel — the button label below and
-  // the dialog body read the same three values, never recompute apart).
-  const updateCurrent = updateSource?.version ?? BUNDLED_VERSION
-  const updateLatest = updateSource?.latest
-  const updateNewer = updateLatest !== undefined && isNewerVersion(updateLatest.version, updateCurrent)
-  const updateGit = updateSource?.mode === 'local' ? updateSource.git : undefined
-  const updateGitBehind = updateGit !== undefined && isGitBehind(updateGit)
-  const updatePlan = updateSource?.plan
+  // The dialog's derived readings come from the controller (one funnel — the
+  // dialog body never recomputes the four values it shows).
+  const updateSource = update.source
+  const derived = updateController.derived()
+  const updateCurrent = derived.current
+  const updateLatest = derived.latest
+  const updateNewer = derived.newer
+  const updateGit = derived.git
+  const updateGitBehind = derived.gitBehind
+  const updatePlan = derived.plan
   const updateCommand = updatePlan !== undefined && updatePlan.steps.length > 0
     ? commandLineOf(updatePlan.steps)
     : undefined
@@ -631,18 +512,6 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   const updatePublishedMs = updateLatest?.publishedAt !== undefined
     ? Date.parse(updateLatest.publishedAt)
     : Number.NaN
-  const updateLabel = (() => {
-    if (updatePhase === 'checking') return t('board.update.checking')
-    if (updatePhase === 'latest') return t('board.update.latest')
-    if (updatePhase === 'undetermined') return t('board.update.undetermined')
-    if (updatePhase === 'failed') return t('board.update.failed')
-    if (updatePhase === 'available') {
-      return updateNewer && updateLatest !== undefined
-        ? t('board.update.available', { v: updateLatest.version })
-        : t('board.update.availableGit')
-    }
-    return t('board.update.check')
-  })()
   // The stale note resolves itself: once a seat re-read reports a current
   // protocol (or sync drops), the dialog closes WITH its banner — no stale
   // explanation lingering over a healthy state.
@@ -1233,53 +1102,52 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     controller.moveTask(task.id, task.status, target.beforeId)
   }
 
-  // The viewer hint only matters while something is actually waiting on the
-  // engine (queued comments or launches) — an idle board never nags.
-  const engineWaitVisible = snapshot.stats.queued > 0
-    || snapshot.tasks.some(task => pendingCommentCount(task) > 0)
-
   // The workbench bar's props: destination tabs, the one-line status, and the
   // two navigation verbs. Built here because a page owns its counts; the bar
   // itself is presentation only (see design/WorkbenchBar.tsx).
   const chrome = workbenchChromeOf()
 
   return (
-    <div
-      ref={boardRefs}
-      className={css.board}
-      data-dsh-taskboard-board=""
-      data-dragging={dragId !== undefined ? '' : undefined}
-      onDragEnter={event => {
-        // Latch an external sidebar drag once, on entry: dragover cannot
-        // read the payload (protected data store), but the advertised types
-        // plus the absence of a board card drag are enough to know this is a
-        // session/workspace drag. Card drags set `dragSourceRef` at dragstart
-        // (synchronously, before any dragenter) and never latch.
-        if (!dragSourceRef.current && candidateExternalDrag(Array.from(event.dataTransfer.types))) {
-          externalRef.current = true
-        }
-      }}
-      onDragOver={event => { if (externalRef.current) event.preventDefault() }}
-      onDrop={event => {
-        const external = externalOf(event)
-        clearDrag()
-        if (external !== undefined) {
-          event.preventDefault()
-          // A drop on the board's empty area (no column) lands in 待办.
-          createFromSidebar(external, 'todo')
-        }
-      }}
+    <WorkbenchShell
+      active="board"
+      tabs={chrome.tabs}
+      label={t('workbench.navLabel')}
+      status={chrome.status}
+      checking={update.phase === 'checking'}
+      checkLabel={updateLabelOf(update)}
+      onCheck={() => { updateController.check() }}
+      exitLabel={chrome.exitLabel}
+      onExit={chrome.onExit}
+      onNavigate={chrome.onNavigate}
+      notices={chrome.notices}
+      seat="data-dsh-taskboard-view"
     >
-      {/* ══ 工作台栏：三个去处、一行状态、一个出口 ══════════════════════ */}
-      <WorkbenchBar
-        active="board"
-        tabs={chrome.tabs}
-        label={t('workbench.navLabel')}
-        status={chrome.status}
-        exitLabel={chrome.exitLabel}
-        onNavigate={chrome.onNavigate}
-        onExit={chrome.onExit}
-      />
+      <div
+        ref={boardRefs}
+        className={css.board}
+        data-dsh-taskboard-board=""
+        data-dragging={dragId !== undefined ? '' : undefined}
+        onDragEnter={event => {
+          // Latch an external sidebar drag once, on entry: dragover cannot
+          // read the payload (protected data store), but the advertised types
+          // plus the absence of a board card drag are enough to know this is a
+          // session/workspace drag. Card drags set `dragSourceRef` at dragstart
+          // (synchronously, before any dragenter) and never latch.
+          if (!dragSourceRef.current && candidateExternalDrag(Array.from(event.dataTransfer.types))) {
+            externalRef.current = true
+          }
+        }}
+        onDragOver={event => { if (externalRef.current) event.preventDefault() }}
+        onDrop={event => {
+          const external = externalOf(event)
+          clearDrag()
+          if (external !== undefined) {
+            event.preventDefault()
+            // A drop on the board's empty area (no column) lands in 待办.
+            createFromSidebar(external, 'todo')
+          }
+        }}
+      >
       {/* ══ 工具带：工作台栏之下的唯一命令行 ════════════════════════════
           搜索在左（它筛选下面的列），报告簇紧随其后（诉求行 + 状态槽——全板
           最该先说的两件事），右端是巡航、主行动与模式簇。导航与出口归工作台
@@ -1392,13 +1260,13 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   : []
               })(),
             ]
-            // 引擎席位的诚实指示（只在同步模式且真的"不在本机/服务端过旧"时
-            // 出现）：排队的工作在等谁、为什么不动——用户看得见，就不用猜、
-            // 不用刷。它是真按钮：说明必须能点开（触屏没有 hover，写着
-            // 「点此了解」却点不动是假 affordance，比不写更糟）。
-            const engineStale = snapshot.engine.synced && snapshot.engine.hostProto < 2
-            const engineViewer = snapshot.engine.synced && !engineStale && !snapshot.engine.held && engineWaitVisible
-            if (stateParts.length === 0 && !engineStale && !engineViewer && !bundleStale) return null
+            /* **这一槽只放读数，不放警告。**
+             *
+             * 它曾经同时装着 `正在跑 1` 和「服务端仍在跑旧版本…需重启 dsh web」——两件
+             * 性质完全不同的事挤在同一条 12px 的句子里，于是读者来查「还有多少活」，却
+             * 先读到一条重启说明。警告搬去了工作台级的条（`design/WorkbenchNotice.tsx`），
+             * 三页都有、位置一致；这里只留一直在变、一直需要的那几个数。 */
+            if (stateParts.length === 0) return null
             return (
               <span className={css.boardState}>
                 {stateParts.length > 0 && (
@@ -1417,53 +1285,6 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   <span className={css.boardStatus} title={t('board.flowStatsTitle')}>
                     <span className={components.truncate}>{t('board.flowStats', { parts: flowParts.join(' · ') })}</span>
                   </span>
-                )}
-                {/* The page or the server runs an older version — and WHICH one it is
-                    decides what the user must do, so the two cases are separated.
-                    `hostOld` = the disk package is newer than the running host process,
-                    which is what happens after any version bump before `dsh web` is
-                    restarted; refreshing cannot resolve it and telling the user to
-                    force-refresh sends them in a circle. The button stays a real button
-                    in both cases (touch has no hover, and a warning you cannot act on is
-                    worse than none): tapping still reloads, which is the right action
-                    for the page-old case and a harmless retry for the host-old one. */}
-                {bundleStale && (
-                  <button
-                    type="button"
-                    className={css.boardStatusButton}
-                    data-warn="true"
-                    title={t(hostOld ? 'board.bundleStaleHostOldTitle' : 'board.bundleStaleTitle')}
-                    onClick={() => { reloadForFreshBundle() }}
-                  >
-                    <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={components.truncate}>
-                      {t(hostOld ? 'board.bundleStaleHostOld' : 'board.bundleStale', {
-                        c: freshnessView?.bundled ?? '',
-                        s: freshnessView?.host ?? '',
-                      })}
-                    </span>
-                  </button>
-                )}
-                {engineStale && (
-                  <button
-                    type="button"
-                    className={css.boardStatusButton}
-                    data-warn="true"
-                    onClick={() => { setEngineNote('stale') }}
-                  >
-                    <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={components.truncate}>{t('board.engineStale')}</span>
-                  </button>
-                )}
-                {engineViewer && (
-                  <button
-                    type="button"
-                    className={css.boardStatusButton}
-                    onClick={() => { setEngineNote('viewer') }}
-                  >
-                    <span className={css.boardStatusDot} aria-hidden="true" />
-                    <span className={components.truncate}>{t('board.engineViewer')}</span>
-                  </button>
                 )}
               </span>
             )
@@ -1598,7 +1419,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             className={css.boardNewTask}
             onClick={() => { setShowNew(true) }}
           >
-            + {t('board.new')}
+            {/* 加号是画出来的，不是字面 `+`——同一枚图标，清单那一页也在用。 */}
+            <PlusIcon />
+            {t('board.new')}
           </Button>
           {/* 模式按钮（整理/自动化/通知）是一个语义组：宽档贴右成簇，紧凑档整组
               独占一行——它们永远同进同退，不会被挤散。 */}
@@ -1649,26 +1472,10 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             >
               {t('board.activity')}
             </Button>
-            {/* 检查更新：常驻的 ghost 按钮（与模式组同进同退，窄屏同行换列不断行）。
-                点一下即查；有新版时同一按钮改文案，再点重开结果 Dialog。
-
-                为什么必须常驻：**检查只由这个按钮触发**——没有自动检查，也没有定时器。
-                把它藏到「有新版时」看起来更克制，实际会让这个功能永久不可达（藏起来的
-                入口等于不存在，硬性规范 11③）。它确实与邻居分类不同（那三个是模式开关，
-                靠 aria-pressed 区分），但可达性优先于分类洁癖；真正的整理（把维护动作搬去
-                设置卡）需要先给它另一个入口，不是把入口摘掉。 */}
-            <Button
-              variant="ghost"
-              title={t('board.update.check')}
-              disabled={updatePhase === 'checking'}
-              onClick={() => {
-                if ((updatePhase === 'available' || updatePhase === 'undetermined') && !showUpdate) {
-                  setShowUpdate(true)
-                } else checkUpdate()
-              }}
-            >
-              {updateLabel}
-            </Button>
+            {/* 检查更新**不在这里**。它是工作台级的动作，三页同一个位置——在工作台栏里、
+                紧贴出口左边（见 `design/WorkbenchBar.tsx` 与 `workbench/update-controller.ts`）。
+                它曾经是这一排里的一枚 ghost 按钮，于是只有看板够得着，而另外两页没有
+                任何一处能查更新：同一套三页，一件全局的事住在了其中一页里。 */}
             {/* 通知：等你处理的会话聚合（只读列表 — 点行进任务详情，
                 会话操作归详情页）。有等待事项才亮数（折叠计 1），开屉后新到
                 才亮点，无则安静。 */}
@@ -2011,7 +1818,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                       size="sm"
                       title={updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
                       aria-label={t('board.update.copy')}
-                      onClick={() => { copyUpdateCommand(updateCommand) }}
+                      onClick={() => { updateController.copyCommand(updateCommand) }}
                     >
                       {updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
                     </Button>
@@ -2042,7 +1849,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                 <Button
                   variant="primary"
                   disabled={updateRunning || updateBlocked === true}
-                  onClick={() => { runUpdate() }}
+                  onClick={() => { updateController.run() }}
                 >
                   {updateRunning ? t('board.update.applying') : t('board.update.apply')}
                 </Button>
@@ -2400,17 +2207,15 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
                   ['waiting', notes.filter(note => note.kind === 'waiting').length],
                   ['review', notes.filter(note => note.kind === 'review').length],
                 ] as const).map(([kind, size]) => (
-                  <button
+                  <Button
                     key={kind}
-                    type="button"
-                    className={css.feedFilter}
-                    data-active={notifyFilter === kind ? '' : undefined}
-                    aria-pressed={notifyFilter === kind}
+                    variant="ghost"
+                    pressed={notifyFilter === kind}
                     onClick={() => { setNotifyFilter(kind) }}
                   >
                     {t(`board.notifyFilter.${kind}`)}
                     <span className={css.feedFilterCount} aria-hidden="true">{String(size)}</span>
-                  </button>
+                  </Button>
                 ))}
               </span>
               {/* 「全部标为已读」是 review 层的账（waiting 行等的是动作，标读
@@ -2604,33 +2409,37 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       {showActivity && (
         <Dialog title={t('board.activity')} label={t('board.activity')} onClose={() => { setShowActivity(false) }} portal>
           <div className={css.modalScroll}>
+            {/* **这一排是共享控件，不是第五套药丸。**
+             *
+             * 它们曾经是手写的 `.feedFilter`：24px、12px 字、`background: none`，而且
+             * **一条 `:hover` 都没有**——鼠标移上去毫无反应，读者对它的原话是「这些按钮
+             * 里面没有复用其他的按钮，就等于没有任何交互」。工作台里已经有一套按钮，
+             * 这一排没有理由自己再长一套。
+             *
+             * 现在：分类是 `variant="ghost"` + `pressed`（同一档高度、同一档字号、同一圈
+             * 悬停底），搜索框是共用的 `SearchField`。 */}
             <div className={css.feedTools} role="group" aria-label={t('board.activity')}>
               <span className={css.feedFilterGroup}>
                 {(['all', 'run', 'comment', 'other'] as const).map(kind => (
-                  <button
+                  <Button
                     key={kind}
-                    type="button"
-                    className={css.feedFilter}
-                    data-active={activityKind === kind ? '' : undefined}
-                    aria-pressed={activityKind === kind}
+                    variant="ghost"
+                    pressed={activityKind === kind}
                     onClick={() => { setFeedBase(-1); setActivityKind(kind) }}
                   >
                     {t(`board.activityFilter.${kind}`)}
-                  </button>
+                  </Button>
                 ))}
               </span>
-              <button
-                type="button"
-                className={css.feedFilter}
-                data-active={activityUnviewed ? '' : undefined}
-                aria-pressed={activityUnviewed}
+              <Button
+                variant="ghost"
+                pressed={activityUnviewed}
                 onClick={() => { setFeedBase(-1); setActivityUnviewed(current => !current) }}
               >
                 {t('board.activityUnviewed')}
-              </button>
-              <input
+              </Button>
+              <SearchField
                 className={css.feedSearch}
-                type="search"
                 placeholder={t('board.activitySearch')}
                 value={activityQuery}
                 onChange={event => { setFeedBase(-1); setActivityQuery(event.target.value) }}
@@ -2833,6 +2642,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           </div>
         </Dialog>
       )}
-    </div>
+      </div>
+    </WorkbenchShell>
   )
 }

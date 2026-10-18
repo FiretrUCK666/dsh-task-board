@@ -16,7 +16,7 @@
  * environment.
  */
 // @vitest-environment jsdom
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync, existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -39,7 +39,7 @@ import type { WireQuestion } from '../src/core/question-rpc.ts'
 import { alignClassNames, panelCss, railWrap, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
-import { BUNDLED_VERSION } from '../src/client/update-source.ts'
+import { updateController } from '../src/client/workbench/update-controller.ts'
 import { t } from '../src/client/locales.ts'
 import type { BoardController } from '../src/core/controller.ts'
 import type { ClientContext } from '../src/client/platform.ts'
@@ -347,7 +347,7 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
     }
   }
 
-  it('carries the bundle-freshness state next to the controller, and withdraws both with the board', () => {
+  it('injects the controller, and does NOT hand the panel a freshness probe any more', () => {
     const fake = fakeClientContext()
     apply(fake.ctx as unknown as ClientContext)
     const main = fake.registrations.get('main')
@@ -355,23 +355,29 @@ describe('panel inject face (the live state the shell hands the panel)', () => {
 
     const face = main!.inject() as TaskBoardPanelProps
     expect(face.controller).toBeDefined()
-    // The verdict source is created at apply time and must ride the same face;
-    // without it TaskBoard's `freshnessView` is undefined forever and the whole
-    // stale status line (with its retry button) can never render.
-    expect(face.freshness).toBeInstanceOf(BundleFreshnessState)
-    expect(face.freshness?.snapshot().bundled).toBe(BUNDLED_VERSION)
+    /* THE PROBE LEFT THIS FACE ON PURPOSE.
+     *
+     * The stale-bundle verdict used to ride the inject face because the BOARD was
+     * the only surface that could show it. Warnings are now a workbench-level
+     * strip published by the assembly layer (`setWorkbenchNotices`), so the panel
+     * has nothing to do with the probe: a page that still took it would be the
+     * second reader of one fact, and the two could disagree.
+     *
+     * So the contract this case protects is the ABSENCE — but asserted against
+     * the panel's props type rather than the runtime object, because a component
+     * that ignores an extra prop would still pass a runtime check while the type
+     * drift went unnoticed. */
+    expect(read('../src/client/TaskBoardPanel.tsx')).not.toContain('freshness')
 
     // Read fresh on every call: one live instance, a new face object per render.
-    expect((main!.inject() as TaskBoardPanelProps).freshness).toBe(face.freshness)
     expect(main!.inject()).not.toBe(face)
 
     // Fiber teardown (the plugin manager switched this entry off, so the whole
     // client half is disposed): the face publishes nothing, so a late render
-    // cannot subscribe to a dead probe.
+    // cannot subscribe to a dead controller.
     fake.disposeAll()
     const afterDispose = main!.inject() as TaskBoardPanelProps
     expect(afterDispose.controller).toBeUndefined()
-    expect(afterDispose.freshness).toBeUndefined()
   })
 })
 
@@ -616,42 +622,32 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     expect(markup, '结算成功的那一枚芯片没有成功的底色').toContain(`data-kind="${resultChipKind('succeeded')}"`)
   })
 
-  it('states the mismatch in a real, tappable status button', async () => {
-    const freshness = new BundleFreshnessState({
-      bundled: '1.0.0',
-      readHostVersion: async () => '2.0.0',
-      reload: () => {},
-      storage: undefined,
-    })
-    await freshness.probe()
-    const { host, unmount } = await mountBoard({ freshness })
-    const warn = host.querySelector('[data-warn="true"]')
-    expect(warn, 'the page-old verdict must render as the warn status button').not.toBeNull()
-    expect(warn!.tagName).toBe('BUTTON')
-    expect(warn!.textContent).toContain(t('board.bundleStale', { c: '1.0.0', s: '2.0.0' }))
-    unmount()
+  /* THE STRIP IS RENDERED BY THE WORKBENCH BAR, NOT BY THE BOARD.
+   *
+   * These two cases used to mount the board and look for `[data-warn]` inside it.
+   * That was the right assertion while the warning lived in the board's status
+   * slot; it is the wrong one now that warnings belong to the workbench (they
+   * must show on all three pages, and a board-only warning cannot).
+   *
+   * So the cases moved to where the thing they describe now lives: the publisher
+   * in `index.ts` (does the sentence appear, with the right words?) and the strip
+   * component (is an actionable warning a real button?). Read from the source,
+   * because the publisher runs inside `apply()` and mounting the whole client
+   * half to assert one string would test the harness, not the product. */
+  it('the publisher states the page-old verdict with both versions in it', () => {
+    const bootstrap = read('../src/client/index.ts')
+    expect(bootstrap).toContain("t(hostOld ? 'board.bundleStaleHostOld' : 'board.bundleStale', {")
+    expect(bootstrap).toContain('c: view.bundled')
+    expect(bootstrap).toContain("s: view.host ?? ''")
   })
 
-  it('says nothing while the versions agree, then states a verdict that arrives after mount', async () => {
-    // The production sequence: the board mounts while the probe is still in
-    // flight (or has agreed), and the mismatch is discovered LATER. The line
-    // must appear from the subscription, not only from the first snapshot.
-    let hostVersion = BUNDLED_VERSION
-    const freshness = new BundleFreshnessState({
-      bundled: BUNDLED_VERSION,
-      readHostVersion: async () => hostVersion,
-      reload: () => {},
-      storage: undefined,
-    })
-    await freshness.probe()
-    const { host, unmount } = await mountBoard({ freshness })
-    expect(host.querySelector('[data-warn="true"]')).toBeNull()
-    hostVersion = '99.0.0'
-    await act(async () => { await freshness.probe() })
-    const warn = host.querySelector('[data-warn="true"]')
-    expect(warn, 'the late verdict must reach the mounted board').not.toBeNull()
-    expect(warn!.textContent).toContain(t('board.bundleStale', { c: BUNDLED_VERSION, s: '99.0.0' }))
-    unmount()
+  it('the strip keeps an actionable warning a real button, and a quiet one a line', () => {
+    const notice = read('../src/client/design/WorkbenchNotice.tsx')
+    // Actionable → <button>; informational → a role="status" line. A warning that
+    // looks pressable but is not is worse than one that plainly is not.
+    expect(notice).toContain('<button')
+    expect(notice).toContain('role="status"')
+    expect(notice).toContain("item.onPress === undefined")
   })
 })
 
@@ -664,6 +660,18 @@ describe('stale-bundle status line (rendered through the panel)', () => {
  * 断言的是**屏上的字**，不是 host 的返回值：返回值对了而屏上照旧文写，它就该红。
  */
 describe('the update dialog, driven through the header button', () => {
+  /* THE CONTROLLER IS A SINGLETON, so its state survives a test.
+   *
+   * That is the product's whole point (a check must outlive a page switch), and
+   * it is exactly what makes a suite read the wrong screen: the first case opens
+   * the dialog, and every case after it starts with that dialog already open —
+   * nine of them measured a state they never asked for. The reset belongs in the
+   * product (the controller owns its own lifetime); the hook here is what makes
+   * each case start from rest, the way a fresh page does.
+   *
+   * `beforeEach` and not `afterEach`: a case that throws must not poison the one
+   * after it. */
+  beforeEach(() => { updateController.reset() })
   afterEach(() => { vi.unstubAllGlobals() })
 
   /** One host view: an npm install inside a profile the reader started themselves. */

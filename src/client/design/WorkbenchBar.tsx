@@ -35,6 +35,22 @@
  * The bar is presentation only: labels, counts and the active page arrive as
  * props from the page layer, which is where the locale and the surface switch
  * live. A design component that reached for either would be a page in disguise.
+ *
+ * ── NOTHING IN THIS BAR MAY MOVE ────────────────────────────────────────────
+ *
+ * The reader's rule: switching between the three pages must not move this row
+ * at all — not the tabs, not the readout, not the exit. That is a geometry
+ * promise, so every slot here is FIXED rather than content-sized:
+ *
+ *   - the tab track is three fixed 100px columns (see the sheet);
+ *   - the readout keeps its slot even when there is nothing to report, and its
+ *     text is `tabular-nums` so a count changing from 9 to 10 does not widen it;
+ *   - the exit button is a fixed circle pinned to the far end.
+ *
+ * A conditional element that disappears is how a row of fixed positions turns
+ * into a row that jumps: the readout leaving silently slides the exit one slot
+ * left. So the readout slot is always rendered — it carries nothing when there
+ * is nothing to say, which reserves the space without printing a zero.
  */
 import { Icon } from './ui.tsx'
 import css from './components.module.css'
@@ -68,6 +84,12 @@ export interface WorkbenchBarProps {
    * reader scan a readout that says "nothing" on most days.
    */
   readonly status?: string
+  /** Whether a check is in flight; the button stands down while it runs. */
+  readonly checking: boolean
+  /** The button's face: `检查更新 / 检查中… / 已是最新 / 有新版 v1.3.2`. */
+  readonly checkLabel: string
+  /** Run the check (the page layer owns the controller that answers). */
+  readonly onCheck: () => void
   /** Accessible name for the exit control. */
   readonly exitLabel: string
   /** Leave the workbench (back to the shell's conversation). */
@@ -81,7 +103,18 @@ export interface WorkbenchBarProps {
  * @param props - destinations, the active one, the status line and the exit.
  * @returns the bar, as one flex row that wraps rather than hides.
  */
-export function WorkbenchBar({ active, tabs, label, status, exitLabel, onExit, onNavigate }: WorkbenchBarProps) {
+export function WorkbenchBar({
+  active,
+  tabs,
+  label,
+  status,
+  checking,
+  checkLabel,
+  onCheck,
+  exitLabel,
+  onExit,
+  onNavigate,
+}: WorkbenchBarProps) {
   return (
     <div className={css.workbenchBar}>
       <nav className={css.workbenchNav} aria-label={label}>
@@ -102,12 +135,33 @@ export function WorkbenchBar({ active, tabs, label, status, exitLabel, onExit, o
         ))}
       </nav>
       {/* 一个具名 spacer，而不是给状态行一个 `margin-inline-start: auto`：自动外边距
-          只把**换行后的首项**推到末端，而这里状态行与出口是两个必须一起靠右的东西。
+          只把**换行后的首项**推到末端，而这里状态行与两个动作是必须一起靠右的东西。
           spacer 吃掉所有空隙，于是窄档换行时它们落到第二行、由出口自己的外边距收右。 */}
       <span className={css.workbenchSpacer} aria-hidden="true" />
-      {status === undefined || status === ''
-        ? null
-        : <p className={css.workbenchStatus}>{status}</p>}
+      {/* **读数槽永远在，即使没话说。** 它一旦条件渲染，出口与检查更新就会整体左移一格
+          ——「点一下页面，那一整条东西就动一下」最刺眼的一种。空的时候它不打印任何字，
+          只占住自己的位（宽度也是定的，见样式表）。 */}
+      <p
+        className={css.workbenchStatus}
+        aria-live="polite"
+        data-empty={status === undefined || status === '' ? '' : undefined}
+      >
+        {status === undefined || status === '' ? null : status}
+      </p>
+      {/* 检查更新：三页同一个位置，紧贴出口左边。它是工作台级动作，不是某一页的工具。
+        *
+        * **文字包一层 span，和 `Button` 一致。** 裸文本节点在 flex 容器里变成一个
+        * 匿名 flex 项，它的行盒按字体度量算、不受 `line-height: 1` 支配——量到过：
+        * 同一套内衬与墨位校正，包起来的偏 −0.02px，裸的偏 −8px。 */}
+      <button
+        type="button"
+        className={css.workbenchCheck}
+        onClick={onCheck}
+        disabled={checking}
+        title={checkLabel}
+      >
+        <span data-dsh-tb-pilltext>{checkLabel}</span>
+      </button>
       <button
         type="button"
         className={css.workbenchExit}

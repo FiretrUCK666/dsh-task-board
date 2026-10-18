@@ -175,7 +175,7 @@ describe('the rail is the map, and the bar above the rows says three things', ()
       'itemTopCount', // 计数：紧挨着搜索框
       'itemSearch', // 搜索
       'itemTopBarChip', // 筛选与排序
-      'itemNewButton', // ＋新建一条
+      'itemTopBarPrimary', // ＋新建一条
       'itemRail', // 左栏
     ]) {
       expect(html, `${part} is not on the surface — the strip no longer holds what it claims to hold`).toContain(part)
@@ -196,9 +196,9 @@ describe('capturing a row is one door, and it is the sheet it opens', () => {
     // 框再也拦不住一个还在想的人。
     //
     // 门在两种状态下都在，这条没变——变的是它通向哪里。
-    expect(renderPanel([]), 'a first-time reader has no way to put a row down').toContain('itemNewButton')
+    expect(renderPanel([]), 'a first-time reader has no way to put a row down').toContain('itemTopBarPrimary')
     const withRows = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
-    expect(withRows).toContain('itemNewButton')
+    expect(withRows).toContain('itemTopBarPrimary')
     expect(withRows).toContain('A note')
   })
 
@@ -213,7 +213,7 @@ it('the door is the LAST control on the strip, and the strip never scrolls away'
     // the door is not merely before the list, it is before the element that actually
     // takes the rows away with it.
     const html = renderPanel([item({ id: 'a', ref: 1, title: 'A note' })])
-    const bar = html.indexOf('itemNewButton')
+    const bar = html.indexOf('itemTopBarPrimary')
     const scroller = html.indexOf('itemFlow')
     expect(bar, 'the capture door is not in the render at all').toBeGreaterThan(-1)
     expect(scroller, 'the scrolling list is not in the render at all').toBeGreaterThan(-1)
@@ -230,7 +230,7 @@ it('the door is the LAST control on the strip, and the strip never scrolls away'
     expect(html, 'the capture box came back as something always on screen').not.toContain('itemComposerChips')
     // 文法本身一个字都没改，它只是搬进了新建面板——所以它仍然得是**这一页写着
     // 它的那个东西**。这枚门就是那件事的入口。
-    expect(html).toContain('itemNewButton')
+    expect(html).toContain('itemTopBarPrimary')
   })
 })
 
@@ -275,7 +275,10 @@ describe('a row is legible at rest', () => {
     // the position changes; **wherever the position goes, the selector that measures
     // it goes with it** — an assertion still looking for the former class turns green
     // on an empty string.
-    const cell = /<span class="[^"]*itemRowDateText[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
+    // The slot wears the SHARED truncation class now, so the selector follows it to
+    // the class that actually renders (the same rule the comment above states: an
+    // assertion looking for a former class turns green on an empty string).
+    const cell = /<span class="[^"]*_truncate[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
     expect(cell, 'the date reading states no words at all, so the tone below is being read off nothing').not.toBe('')
     expect(cell).toContain('落后')
     expect(cell, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')

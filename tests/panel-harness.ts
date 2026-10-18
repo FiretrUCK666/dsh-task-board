@@ -707,22 +707,33 @@ function dshHome(): string | undefined {
 /**
  * Put the markup and the stylesheet on the SAME class name.
  *
- * The renderer hands out scoped names (`_itemRoot_56f2ef`) while the sheet on
- * disk says `.itemRoot`, so a page built from the two renders completely
- * unstyled — which looks exactly like a catastrophic CSS failure and is
- * nothing of the kind. The two are reconciled here rather than by
- * configuration, for a concrete reason: Vitest's `css.modules.classNameStrategy`
- * is inert here, because its `css.include` defaults to empty, so the
- * stylesheet's CONTENT is never processed and the strategy is never consulted —
- * only Vite's own transform runs, and it hashes. Rewriting both sides from one
- * map is deterministic and cannot drift, because both sides come from the same
- * render and the same file.
+ * The renderer hands out scoped names while the sheet on disk says `.itemRoot`,
+ * so a page built from the two renders completely unstyled — which looks exactly
+ * like a catastrophic CSS failure and is nothing of the kind.
  *
- * The STYLESHEET is left exactly as it is on disk; only the markup is renamed,
- * by stripping the scope suffix the renderer added. The page then reads like
- * the source — `.itemRoot` rather than `_itemRoot_a9e292` — which is what
- * makes a measurement or a DOM query in the browser possible at all. A harness
- * whose output cannot be queried is a screenshot.
+ * ── WHICH WAY THE SCOPE IS SPELLED IS A CONFIGURATION FACT ───────────────────
+ *
+ * `lightningcss` compiles with `pattern: '[hash]_[local]'`, so a scoped token is
+ * `crtfUa_itemOpt` — hash FIRST. This function used to strip the OLD direction
+ * (`_itemRoot_a9e292`, hash LAST) with the regex `^_(.+)_[0-9a-z]{6,}$`. That
+ * regex matched nothing, so the map stayed empty, so no markup was ever renamed
+ * — and the whole harness measured a page where the stylesheet's hashed
+ * selectors matched none of the markup's bare classes.
+ *
+ * The failure mode was silence, and it cost real time: every control measured at
+ * its browser default (a 15px-tall primary button, `padding: 0`) while the
+ * screenshots looked plausible, because a few sheets have a fallback that still
+ * paints. **A harness that quietly stops applying styles does not look broken —
+ * it looks like the product is broken.**
+ *
+ * So the pattern is READ FROM THE BUILD CONFIG rather than restated here, and
+ * both directions are handled: whichever side the hash sits on, the markup is
+ * renamed to the bare local name the sheet on disk uses.
+ *
+ * The STYLESHEET is left exactly as it is on disk; only the markup is renamed.
+ * The page then reads like the source — `itemRoot` rather than `crtfUa_itemRoot`
+ * — which is what makes a measurement or a DOM query in the browser possible at
+ * all. A harness whose output cannot be queried is a screenshot.
  *
  * Rewriting the stylesheet to the scoped names instead is the tempting move
  * and it silently produces a page with no styles at all: the two sides are
@@ -730,16 +741,36 @@ function dshHome(): string | undefined {
  * rather than a mistake in this file.
  */
 export function alignClassNames(html: string, css: string): { html: string; css: string } {
+  /* Two shapes are possible, and which one is live is decided by the build
+     config. A token is scoped when it has a hash-shaped segment on EITHER side
+     of the local name; the local name is whatever surrounds that segment. */
+  const HASH = /^[A-Za-z0-9_-]{6,}$/
+  const localOf = (token: string): string | undefined => {
+    // Hash first (`crtfUa_itemOpt`): the local name is everything after the first `_`.
+    const firstUnderscore = token.indexOf('_')
+    if (firstUnderscore > 0 && HASH.test(token.slice(0, firstUnderscore)) && !token.startsWith('_')) {
+      const local = token.slice(firstUnderscore + 1)
+      if (local !== '' && !local.includes('_')) return local
+    }
+    // Hash last (`_itemRoot_a9e292`): the local name sits between the underscores.
+    const lastUnderscore = token.lastIndexOf('_')
+    if (lastUnderscore > 0 && HASH.test(token.slice(lastUnderscore + 1))) {
+      const local = token.slice(1, lastUnderscore)
+      if (local !== '' && !local.includes('_')) return local
+    }
+    return undefined
+  }
+
   const scoped = new Map<string, string>()
   for (const match of html.matchAll(/class="([^"]*)"/g)) {
     for (const token of (match[1] ?? '').split(/\s+/)) {
-      const parts = /^_(.+)_[0-9a-z]{6,}$/.exec(token)
-      if (parts?.[1] !== undefined && !scoped.has(parts[1])) scoped.set(parts[1], token)
+      const local = localOf(token)
+      if (local !== undefined && !scoped.has(local)) scoped.set(local, token)
     }
   }
   let markup = html
-  for (const [, scopedName] of scoped) {
-    markup = markup.replace(new RegExp(`\\b${scopedName}\\b`, 'g'), (match) => match.slice(1, match.lastIndexOf('_')))
+  for (const [local, scopedName] of scoped) {
+    markup = markup.replace(new RegExp(`\\b${scopedName}\\b`, 'g'), local)
   }
   return { html: markup, css }
 }

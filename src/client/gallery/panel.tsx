@@ -299,6 +299,9 @@ export function DesignGallery() {
                 ]}
                 label={t('workbench.navLabel')}
                 status={t('workbench.status', { n: '3', m: '1' })}
+                checking={false}
+                checkLabel={t('board.update.check')}
+                onCheck={() => undefined}
                 exitLabel={t('workbench.exit')}
                 onExit={() => undefined}
                 onNavigate={() => undefined}
@@ -314,6 +317,9 @@ export function DesignGallery() {
                   { id: 'items', label: t('workbench.tab.items') },
                 ]}
                 label={t('workbench.navLabel')}
+                checking={false}
+                checkLabel={t('board.update.check')}
+                onCheck={() => undefined}
                 exitLabel={t('workbench.exit')}
                 onExit={() => undefined}
                 onNavigate={() => undefined}

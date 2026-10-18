@@ -114,6 +114,26 @@
    rhythm (same radius and type scale as the shell's buttons) so every row
    stays aligned with the host UI — including under a glass skin, where the
    fills come straight from the native button tokens. */
+/* ── 一行字居中的**唯一机制**：裁掉行盒多余的半行距 ─────────────────────────────
+ *
+ * `align-items: center` 居中的是行盒。行盒比字的墨高，多出来的那一对半行距按字体
+ * 的 ascent/descent 分配——**这是字体之间的唯一差别**，所以「用一个固定比例去抵消」
+ * 在换字体时必然失效（读者在手机上看到整排偏高，桌面却是对的）。
+ *
+ * 支持 `text-box-trim` 时把那一对半行距真的裁掉：盒心 = 墨心，任何字体、任何字号都
+ * 不需要补偿，`--dsh-tb-optical-drop` 同时被置零（见 tokens 表）。不支持时这两条被
+ * 整块忽略，那一族继续读兜底值——渐进增强，不是两套实现。
+ *
+ * **这一族是「一行字」的控件**：按钮、分段、芯片、tab、栏里的读数。卡片正文、清单行
+ * 标题不进来：它们的墨位由行高与多行基线管，裁掉第一行的半行距会让整块内容上移。 */
+/* **这一族不靠 `text-box-trim`。** 它在这个 Chromium 里 `CSS.supports` 报 true，而
+ * `getComputedStyle` 读回来是 `none`——**属性被静默丢弃**，于是「能裁就裁」这条路
+ * 在支持声明与实际行为之间差了一整截，而它的失败形态是「什么都没裁」：比不做更糟，
+ * 因为代码里写着它做了。
+ *
+ * 实际依赖的是 `--dsh-tb-optical-drop`：一个**下内衬**，量出来的。谁能改它？
+ * `@supports` 的判断若与真实行为不符，就只剩一处真相。所以这里不再声明属性，
+ * 那一段在 tokens 表里保留成**探测**（见那里的注释），由探针读真实值判定。 */
 .primaryButton,
 .ghostButton,
 .dangerButton,
@@ -135,10 +155,13 @@
      `align-items: center` the CONTENT BOX is what gets centred, so 2d of extra
      bottom padding moves the line up by d — a transform on the button would move
      the box and its text together and correct nothing. */
-  padding: 0 14px calc(2 * var(--dsh-tb-optical-drop));
-  font-size: 13px;
+  /* **行高 = 墨高**，不留半行距：`halfLeading` 为零时「墨心 = 盒心」自动成立，任何
+     字体都一样（见 `--dsh-tb-text-line-h` 那一处的算式）。这里不再有 `padding-block-end`
+     校正——那种做法会把整个盒子推上去，读者看到的是「按钮自己偏了」。 */
+  padding: 0 14px;
+  font-size: var(--dsh-tb-type-body-size);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   border-radius: var(--dsh-tb-button-radius);
   white-space: nowrap;
   cursor: pointer;
@@ -392,9 +415,11 @@
   overflow-x: hidden;
   padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
   overscroll-behavior: contain;
-  /* A touch stronger than the native mask-1 so the column lines behind the
-     glassy board no longer glimmer through the dialog edges. */
+  /* 比原生 mask-1 实一档，免得磨砂列线在弹层边缘闪光；再带一档极轻的模糊——弹层
+     下面是同一页，它该「退后」而不是消失（见 `--dsh-tb-mask-blur` 的说明）。 */
   background: var(--dsh-tb-mask);
+  -webkit-backdrop-filter: blur(var(--dsh-tb-mask-blur));
+  backdrop-filter: blur(var(--dsh-tb-mask-blur));
   animation: dshTbBoardIn 160ms ease;
 }
 
@@ -544,26 +569,38 @@
 .segmentedRow {
   display: inline-flex;
   gap: var(--dsh-tb-space-2);
-  padding: 3px;
+  padding: var(--dsh-tb-segment-pad);
   align-self: flex-start;
   background: var(--dsw-alias-interactive-bg-hover);
-  border-radius: var(--dsh-tb-radius-md);
+  border-radius: var(--dsh-tb-pill);
 }
 
 /* One segmented-radio grammar for every mode switch on the board (schedule
    drive mode, session composer mode): a quiet track, an elevated active
-   segment, no per-mode styling — both controls read as siblings. Segments
-   are pills (same family as buttons): sm read square beside them. */
+   segment, no per-mode styling — both controls read as siblings.
+ *
+ * ── 段高从轨道推，且**不用 transform** ─────────────────────────────────────
+ *
+ * 这里曾经是 `height: 22px` + `transform: translateY(-0.04em)`。两处都错：
+ *
+ *   1. 22 是一个凭空的第三档高度（轨道 3 + 22 + 3 = 28，靠加法凑到按钮那一档），
+ *      于是段高与轨道内衬是两个各自维护的数；
+ *   2. `translateY` 把**盒子**整体上移——它移动的不是字在盒子里的位置，而是盒子
+ *      本身。读到的效果就是读者报的「按钮偏上来一点」：上间隙 2.5px、下间隙 0.5px。
+ *      墨位校正必须是**下内衬**（见 `--dsh-tb-optical-drop`），因为只有内衬会改变
+ *      内容盒的中心。
+ *
+ * 现在段高读 `--dsh-tb-segment-h`（由轨道高与轨道内衬推出来，见 tokens 表），
+ * 校正写成 padding-block-end。28 = 3 + 22 + 3 这条算式只剩一个出处。 */
 .segmentedButton {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  /* 22px + the 3px track padding on each side = 28px total — the SAME height
-     as the primary/composer buttons the segmented sits beside. */
+  box-sizing: border-box;
+  block-size: var(--dsh-tb-segment-h);
   padding: 0 14px calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
   font-weight: 500;
-  height: 22px;
   line-height: 1;
   color: var(--dsh-tb-text-2);
   background: transparent;
@@ -571,7 +608,6 @@
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   white-space: nowrap;
-  transform: translateY(calc(-1 * var(--dsh-tb-optical-drop)));
   transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
@@ -1289,6 +1325,74 @@ textarea.input {
   min-inline-size: 0;
 }
 
+/* ── 三页共用的框架（`design/WorkbenchShell.tsx`）────────────────────────────
+ *
+ * **这三条是整页几何的唯一出处。** 以前三页各自摆自己的框：看板把内衬放在根上
+ * （14/16/16），清单把栏放在自己那一行、内容另起一层，总览又是第三种。每个单看都
+ * 说得通，合起来就是栏在 16/10/16、栏下的间隙 12/0/12——读者看到的「切页时整页都
+ * 在动」。
+ *
+ * 所以框架是一个组件：页面只提供内容，**栏在哪、四周多少空气、内容从多高开始**全在
+ * 这里决定一次。页面还可以决定自己的内部（列、行、卡、怎么滚），但不许再决定自己的
+ * 外围空气或自己画一条栏——那两样是共用的框架，自己推一遍就是给自己留一个将来会和
+ * 兄弟页面对不上的机会。
+ *
+ * 栏是滚动体的**兄弟**，不是它的孩子：一个会跟着滚走的栏，是读者离不开也回不去的栏。 */
+.workbenchFrame {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 0;
+  inline-size: 100%;
+  min-inline-size: 0;
+  /* 画布：皮肤可能给它半透明，壁纸在下面透出来。 */
+  background: var(--dsh-tb-bg);
+  color: var(--dsh-tb-text-1);
+  container-type: inline-size;
+  container-name: dsh-tb;
+}
+
+/* 栏那一行：四个边的空气都从这里出，三页同一个数。 */
+.workbenchFrameBar {
+  flex: none;
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding-block: var(--dsh-tb-frame-air) 0;
+  padding-inline: var(--dsh-tb-frame-air);
+}
+
+/* 警告条那一行：在栏下面、内容上面。它只在真有事时渲染——**它不在栏里**，所以它
+   出现或消失都不会推着栏里的任何东西动（栏已经是上面那一行的全部内容）。 */
+.workbenchFrameNotice {
+  flex: none;
+  box-sizing: border-box;
+  inline-size: 100%;
+  padding-block-start: var(--dsh-tb-frame-gap);
+  padding-inline: var(--dsh-tb-frame-air);
+}
+
+/* 内容那一块：栏底到它的顶端就是「栏到内容」那一档，三页同一个数。
+   它自己**不留内衬**——内衬归页面（看板的列、清单的左栏、总览的四格各自说），
+   框架只负责把它的起点放在同一条水平线上。 */
+.workbenchFrameBody {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-block-size: 0;
+  min-inline-size: 0;
+  inline-size: 100%;
+  padding-block-start: var(--dsh-tb-frame-gap);
+}
+
+/* 单文档的页面（总览）由框架滚；两栏的页面（看板 / 清单）各自滚自己那一份，
+   所以它们不读这一条。 */
+.workbenchFrameScroll {
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
 .workbenchNav {
   position: relative;
   display: grid;
@@ -1304,15 +1408,17 @@ textarea.input {
    * 定宽之后轨道是常量：切换页面只换颜色与字重，几何一个像素都不动。
    * 96px 是「两个汉字 + 一枚两位计数徽标 + 左右各 10px 内衬」量出来的宽，
    * 再加两档余量给将来出现的三个字的名字。 */
-  grid-auto-columns: 96px;
+  grid-auto-columns: 100px;
   /* **不长大、也不靠被挤来让位。** 内容多宽就是多宽（`flex: 0 0 auto`）：这一栏以前是
      `flex: 0 1 340px`，旁边的状态行一变长就把三条轨道一起压窄——于是切换页面时高亮
      会跟着「动一下」。窄档装不下时整栏换行（`.workbenchBar` 是 wrap），不压扁。 */
   flex: 0 0 auto;
   box-sizing: border-box;
   block-size: var(--dsh-tb-nav-h);
-  padding: 2px;
-  border: var(--dsh-tb-border-soft);
+  /* 轨道自己的内衬与边各是一档令牌：页签高度要从它们推出来（见 `.workbenchTab`），
+     所以它们不能是散落的手写数。 */
+  padding: var(--dsh-tb-nav-pad);
+  border: var(--dsh-tb-nav-edge) solid var(--dsh-tb-edge);
   border-radius: var(--dsh-tb-pill);
   /* 嵌面：这一枚是「嵌在纸面里的轨道」，比页底深一级、比纸面深一级。 */
   background: var(--dsh-tb-plane-inlay);
@@ -1328,6 +1434,18 @@ textarea.input {
  *
  * 切换时底色与影淡入淡出（同一档 transition），不再横滑：读者要的是「到了」，不是
  * 「旅程」。 */
+/* ── 极窄档：整条栏换行，而不是把轨道压窄 ────────────────────────────────────
+ *
+ * 三条定宽轨道加两侧内衬要 332px，而 320 的手机屏幕只有 320（量到过：`nav.right=322`
+ * 比视口宽 2px，横向溢出的机械证据）。
+ *
+ * **不许用「把轨道压窄」来让位。** 轨道定宽是「切页时这一行一个像素都不动」的全部
+ * 依据——一旦它随宽度变，那条承诺就回到了起点。所以让位的是**排布**：导航轨独占一行，
+ * 读数与两枚动作落到下一行（`.workbenchBar` 本来就是 wrap）。
+ *
+ * 判据是内容需求的宽度，不是某个设备名：`100px * 3 + 2 * 16px = 332px`。所以断点取
+ * **352px**（332 再留一档 gap 的余量）——取 340 时 341–351 那一段仍然会溢出，而那个
+ * 区间里没有任何一台设备会「看起来正常」。 */
 .workbenchTab {
   position: relative;
   display: inline-flex;
@@ -1336,7 +1454,14 @@ textarea.input {
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   box-sizing: border-box;
-  block-size: calc(var(--dsh-tb-nav-h) - 4px);
+  /* ── 页签的高从**轨道的内容区**推出来，不写死 ──────────────────────────────
+   *
+   * 量到过：轨道 32px 含 1px 边 + 2px 内衬 → 内容区 26px，而页签写死 `32 - 4 = 28`，
+   * 于是它比内容区高 2px，`align-items: center` 把它顶成**上 3px、下 1px**——读者报的
+   * 「上面间隙比下面宽、下面没对齐」就是这个。
+   *
+   * 算式读三枚令牌，所以改边宽、改内衬、改轨道高，页签都跟着走，不会再差半格。 */
+  block-size: calc(var(--dsh-tb-nav-h) - 2 * var(--dsh-tb-nav-pad) - 2 * var(--dsh-tb-nav-edge));
   padding: 0 var(--dsh-tb-space-5) calc(2 * var(--dsh-tb-optical-drop));
   border: none;
   border-radius: var(--dsh-tb-pill);
@@ -1389,7 +1514,7 @@ textarea.input {
   justify-content: center;
   box-sizing: border-box;
   min-inline-size: 18px;
-  block-size: 18px;
+  block-size: 20px;
   padding: 0 5px calc(2 * var(--dsh-tb-optical-drop));
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
@@ -1410,7 +1535,11 @@ textarea.input {
   /* `<p>` 的 margin 在座位里被一条属性选择器压死（见 DESIGN.md），这里写 0 是为了
      让「有没有外边距」不依赖那条规则还活着。 */
   margin: 0;
-  min-inline-size: 0;
+  /* **槽永远占着，宽度也是定的。** 它一旦条件渲染，右边的检查更新与出口就会整体
+     左移一格；它一旦按内容定宽，9 变成 10 也会让整段挪动。等宽数字 + 一个定宽下限，
+     于是「有没有话说」「数几位」都不改变这一行的几何。 */
+  flex: none;
+  min-inline-size: 12ch;
   overflow: hidden;
   color: var(--dsh-tb-text-2);
   font-size: var(--dsh-tb-type-meta-size);
@@ -1420,6 +1549,97 @@ textarea.input {
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
   text-overflow: ellipsis;
+  text-align: end;
+}
+
+/* 检查更新：工作台级动作，三页同一个位置（紧贴出口左边）。 */
+/* ── 胶囊里那一行字：**一个槽，一条规则** ────────────────────────────────────────
+ *
+ * 它存在的原因是 flex 的一个具体行为：容器里的**裸文本**会变成一个匿名 flex 项，
+ * 而匿名项的行盒由字体度量决定，`line-height` 管不到它。量到过：同一套内衬与墨位
+ * 校正，文字包进这个槽的偏 −0.02px，裸的偏 −8px——同一枚按钮，两种命运。
+ *
+ * 所以凡是「胶囊里只有一行字」的控件，文字都包进 `[data-dsh-tb-pilltext]`；这条
+ * 给那个槽一条明确的行高，让它的行盒就是 `line-height` 本身，而不是字体的上下沿。
+ * 属性选择器而不是类名，因为它是**文法**而不是某个组件的私有件：设计表、页面表与
+ * 页面的 React 都写同一个属性名（见 `DESIGN.md` 的「一行字的槽」）。 */
+[data-dsh-tb-pilltext] {
+  line-height: inherit;
+  text-align: center;
+}
+
+/* **图标与文字：让两者的盒子一样高，而不是各自居中。**
+ *
+ * `align-items: center` 会分别居中「11px 的图标」与「13px 的行盒」——两个高度不同
+ * 的东西各自居中，视觉中心并不重合：量到过 `新建一条` 里加号上距 8、下距 9，差 1px。
+ * 读者对那 1px 极其敏感，这也是「加号和文案没有居中于胶囊」的来源。
+ *
+ * **试过但不对的做法：`baseline` 对齐。** `svg` 的基线在它的底沿，`baseline` 会把
+ * 图标压到文字下面（量到过上距 −0.1、下距 17.1）。
+ *
+ * 对的做法是让图标**占住文字行盒那么高**：行高是 13px，图标只有 11px，给它一个
+ * 13px 的盒并在里面居中，两者的中线就由同一个数决定。这不挪任何东西，只是让两个
+ * 子项的盒子等高——等高之后，容器的一次 `center` 就是对两者同时成立的居中。 */
+.primaryButton > svg,
+.ghostButton > svg,
+.dangerButton > svg,
+.dangerGhostButton > svg {
+  flex: none;
+  /* `1lh` 是这一行字自己的行高；图标在它里面居中，于是与文字共享同一条中线。
+     下面那条 `margin-block-end` 与容器的墨位校正**同量**：容器的 `padding-bottom`
+     把内容盒上移了 `2 × drop`，图标若不动，它相对盒子上沿就多出那一档——量到过
+     上 7 / 下 8。一起上移之后两端相等。 */
+  block-size: 1lh;
+  align-self: center;
+  /* **图标跟文字走同一个 `--dsh-tb-optical-drop`。**
+   *
+   * 容器的墨位校正写在 `padding-block-end: 2 × drop` 上——它把**内容盒**上移半档，
+   * 于是文字的墨落在盒子中央。而图标是另一个子项：它按内容盒居中，内容盒已经上移，
+   * 它也跟着上移了。所以图标**不需要任何补偿**，需要的只是和文字一样高。
+   *
+   * 之前那几次 `translate` 都是在补偿一个不存在的偏差：量到过 1px 时上 7.98 / 下
+   * 7.02，看起来「对了」，但那是因为容器的上内衬是 0、下内衬是 1.04——两处不对称
+   * 恰好互相抵消，换一个字号就又会歪。 */
+  translate: 0 0;
+  overflow: visible;
+}
+.workbenchCheck {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  block-size: var(--dsh-tb-button-h);
+  /* **裸文本节点在 flex 容器里会变成一个匿名 flex 项**，而那个项的行盒按字体度量
+     算，不受 `line-height: 1` 支配——量到过：同一套内衬与校正，`.primaryButton`
+     （文字包在 span 里）偏 −0.02，这一枚（裸文本）偏 −8。差的那 8px 就是匿名行盒
+     与 12px 行高的差。
+     所以文字一律包一层（`WorkbenchBar` 已经这么做）；这条 `line-height` 是给那道
+     包裹缺席时的兜底，不能当作主机制。 */
+  line-height: 1;
+  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-chip-fill);
+  color: var(--dsh-tb-text-2);
+  font: inherit;
+  font-size: var(--dsh-tb-type-meta-size);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.workbenchCheck:hover:not(:disabled) {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsh-tb-border);
+  color: var(--dsh-tb-text-1);
+}
+
+.workbenchCheck:disabled {
+  opacity: 0.6;
+  cursor: default;
 }
 
 .workbenchExit {
@@ -1447,4 +1667,113 @@ textarea.input {
   background: var(--dsh-tb-hover);
   border-color: var(--dsw-alias-border-l3);
   color: var(--dsh-tb-text-1);
+}
+
+/* ── 警告条（`design/WorkbenchNotice.tsx`）──────────────────────────────────
+ *
+ * 它有**自己的底与边**，因为它说的是另一类话：上面那一行是读数（一直有、一直在变），
+ * 这一条是「出了问题、而且只有一件事要你做」。底板用注意力色的淡洗，字用正文墨——琥珀
+ * 小字在白底上过不了 AA，这一条早就记过账。 */
+.workbenchNotice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsh-tb-space-3) var(--dsh-tb-space-5);
+  min-inline-size: 0;
+}
+
+.workbenchNoticeLine,
+.workbenchNoticeButton {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  box-sizing: border-box;
+  min-inline-size: 0;
+  block-size: var(--dsh-tb-button-h);
+  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
+  border-radius: var(--dsh-tb-pill);
+  background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash), transparent);
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  font-size: var(--dsh-tb-type-meta-size);
+  font-weight: 500;
+  line-height: 1;
+}
+
+/* 按得动的那一条才给悬停与指针：一条只说话、按不动的警告不该长得像按钮。 */
+.workbenchNoticeButton {
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.workbenchNoticeButton:hover {
+  background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
+}
+
+/* 一枚与字同轴的圆点：它是「有事」的记号，不是状态色——状态色由底与边说。 */
+.workbenchNoticeDot {
+  flex: none;
+  inline-size: var(--dsh-tb-dot);
+  block-size: var(--dsh-tb-dot);
+  border-radius: 50%;
+  background: var(--dsh-tb-attention);
+}
+
+.workbenchNoticeText {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* ── 极窄档：整条栏换行，而不是把轨道压窄 ────────────────────────────────────
+ *
+ * 三条定宽轨道加两侧内衬要 332px，而 320 的手机屏幕只有 320（量到过：`nav.right=322`
+ * 比视口宽 2px，横向溢出的机械证据）。
+ *
+ * **不许用「把轨道压窄」来让位。** 轨道定宽是「切页时这一行一个像素都不动」的全部
+ * 依据——一旦它随宽度变，那条承诺就回到了起点。所以让位的是**排布**：导航轨独占一行，
+ * 读数与两枚动作落到下一行（`.workbenchBar` 本来就是 wrap）。
+ *
+ * 判据是内容需求的宽度，不是某个设备名：`100px * 3 + 2 * 16px = 332px`。断点取
+ * **352px**（332 再留一档余量）——取 340 时 341–351 那一段仍然会溢出。
+ *
+ * **这一段必须写在它所覆盖的规则之后**：与 `.workbenchBar` / `.workbenchNav` 特异性
+ * 相同，先写就会被后写的那一条整条盖掉——而盖掉的是一条容器规则时，屏上完全没有声音，
+ * 只有「320 就是差那 2px」。
+ */
+@container dsh-tb (max-width: 352px) {
+  .workbenchBar {
+    /* 导航轨与右簇分成两行：这一档 gap 同时是行与列的间隙。 */
+    row-gap: var(--dsh-tb-space-4);
+  }
+
+  .workbenchNav {
+    /* 独占一行（spacer 在它后面，于是右簇落到第二行）。 */
+    flex: 1 1 100%;
+    grid-auto-columns: minmax(0, 1fr);
+  }
+
+  /* 换行之后 spacer 已经无事可做；留着它只会让「检查更新 + 出口」永远吊在行的最右，
+     中间空出半屏。 */
+  .workbenchSpacer {
+    display: none;
+  }
+
+  /* **空读数在窄档不占位。** 它在宽档是一个固定的 `12ch` 槽（切页时几何不动），
+     但这一档一行只放得下「检查更新 + 出口」——一个空槽挤在左边，会把「检查更新」
+     推到行中间，读起来像它属于另一组。有话说时它自然占宽（`auto`），没话说时
+     宽度归零，于是那一行从左边读起。 */
+  .workbenchStatus {
+    margin-inline-end: auto;
+    text-align: start;
+    min-inline-size: 0;
+  }
+
+  /* 用 `[data-empty]` 而不是 `:empty`：那个 `<p>` 里有一个换行留下的空白文本节点，
+     `:empty` 因此永远不匹配——而它的失败形态是「规则在那儿，什么也没发生」。 */
+  .workbenchStatus[data-empty] {
+    display: none;
+  }
 }

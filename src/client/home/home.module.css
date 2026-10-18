@@ -37,9 +37,10 @@
   container-type: inline-size;
 }
 
-/* **这一页不另设一列窄宽。** 工作台栏是三页共用的：板与清单的栏都在页面左沿 16px 处，
-   所以总览的栏也必须在同一个位置——给内容加一个 1200 的上限，栏就会在 1440 上右移 126px，
-   切页时同一颗 tab 会左右跳。宽屏上四格与两栏自己会摊开，那不是缺陷，是同一套栅格。 */
+/* **这一页不另设一列窄宽。** 工作台栏是三页共用的：板与清单的栏都在页面左沿
+   `--dsh-tb-frame-air` 处，所以总览的栏也必须在同一个位置——给内容加一个 1200 的上限，
+   栏就会在 1440 上右移 126px，切页时同一颗 tab 会左右跳。宽屏上四格与两栏自己会摊开，
+   那不是缺陷，是同一套栅格。 */
 [data-dsh-taskboard-view] .homeSheet {
   box-sizing: border-box;
   flex: 1 1 auto;
@@ -47,46 +48,40 @@
   min-inline-size: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--dsh-tb-space-6);
-  padding: var(--dsh-tb-space-6) var(--dsh-tb-space-7) var(--dsh-tb-space-8);
+  gap: var(--dsh-tb-frame-gap);
+  padding: 0 var(--dsh-tb-frame-air) var(--dsh-tb-space-8);
   font-variant-numeric: tabular-nums;
 }
 
-/* 工作台栏那一行：与内容列同宽、同左沿。 */
+/* 工作台栏那一行：与内容列同宽、同左沿，三页同一个框架空气。 */
 [data-dsh-taskboard-view] .homeBar {
   box-sizing: border-box;
   flex: none;
   align-self: stretch;
   inline-size: 100%;
-  padding: var(--dsh-tb-space-7) var(--dsh-tb-space-7) 0;
+  padding-block: var(--dsh-tb-frame-air) var(--dsh-tb-frame-gap);
+  padding-inline: var(--dsh-tb-frame-air);
 }
 
 /* ── 标题行 ────────────────────────────────────────────────────────────────
- * 两行、两种角色：一行眉（这一页叫什么，11px 正字距、二级墨），一行读数。
- * 读数**整句一个字号**：句子里的数不跨档——「一个 30px 的 2 夹在 13px 的字里」会被读成
- * 一颗孤零零的数字，语序散了、基线也散了。数字仍然等宽（根上已继承 tabular-nums）。 */
+ * **一个 h1，四档字号，没有眉题。**
+ *
+ * 曾经它上面还有一行 11px 的眉（「工作台」），压在 17px 的标题上：两行只差一档半，
+ * 读起来是两行一样重的东西，而读者对它的原话是「又小又丑」。删掉之后主次由**字号档差**
+ * 建立——句子 24/700、四格的数 22/700、卡片题 13/600、辅助 12——四档之间彼此拉得开，
+ * 而颜色深浅在白底上读不出层级（这一轮早就记过账）。 */
 [data-dsh-taskboard-view] .homeHead {
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-2);
-  padding-block-start: var(--dsh-tb-space-2);
-}
-
-[data-dsh-taskboard-view] .homeEyebrow {
-  margin: 0;
-  font-size: var(--dsh-tb-type-eyebrow-size);
-  line-height: var(--dsh-tb-type-eyebrow-line);
-  letter-spacing: var(--dsh-tb-type-eyebrow-track);
-  font-weight: 600;
-  color: var(--dsh-tb-text-2);
 }
 
 [data-dsh-taskboard-view] .pageTitle {
   margin: 0;
-  font-size: 17px;
-  line-height: 24px;
-  font-weight: 600;
-  letter-spacing: -0.01em;
+  font-size: 24px;
+  line-height: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
   color: var(--dsh-tb-text-1);
   font-variant-numeric: tabular-nums;
 }

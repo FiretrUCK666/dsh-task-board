@@ -192,33 +192,42 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     expect(bootstrap).toContain('new BundleFreshnessState({')
     expect(bootstrap).toContain('bundled: BOARD_VERSION')
     expect(bootstrap).toContain('void freshness.probe()')
-    // The verdict reaches the board through the panel registration: the stage
-    // holder publishes it and `inject()` hands it over together with the
-    // controller, which is the ONLY path into the panel's props. Declaring the
-    // prop and rendering it are not enough — a face that omits the field leaves
-    // `freshnessView` undefined forever, with the status line below it dead.
-    expect(bootstrap).toContain('new TaskBoardStage()')
-    expect(bootstrap).toContain('stage.bind(controller, freshness)')
-    expect(bootstrap).toMatch(/inject\(\):\s*\{[^}]*freshness/)
+    /* THE VERDICT NO LONGER TRAVELS THROUGH THE PANEL.
+     *
+     * It used to ride the inject face into the board's props. Warnings are now a
+     * workbench-level strip — the same `正在跑 1` problem applied to three pages:
+     * a warning only the board could show was invisible on the other two. So the
+     * assembly layer publishes the sentences (`setWorkbenchNotices`) and every
+     * page's bar prints the same list.
+     *
+     * The wiring assertions therefore name the NEW path, and the one they must
+     * keep is the one that could silently break: something has to subscribe, or
+     * a restart behind an open page never reaches the strip. */
+    expect(bootstrap).toContain('setWorkbenchNotices(list)')
+    expect(bootstrap).toContain('freshness.subscribe(publishNotices)')
+    expect(bootstrap).toContain('setWorkbenchNotices(')
     const panel = read('../src/client/TaskBoardPanel.tsx')
-    expect(panel).toContain('<TaskBoard controller={controller} freshness={freshness} mountedOf={mountedOf} onOpenRows={onOpenRows} />')
+    expect(panel, 'the panel must no longer take a freshness probe').not.toContain('freshness={freshness}')
     // Watching, not just probing: a restart must reach an already-open page.
     expect(bootstrap).toContain('return freshness.watch()')
   })
 
-  it('the board renders the stale verdict as a real, tappable status line', () => {
-    const board = read('../src/client/board/TaskBoard.tsx')
-    expect(board).toContain('freshness?.snapshot()')
-    expect(board).toContain("freshnessView?.state === 'stale'")
-    // The key must be REACHED, not written in a particular shape: the render picks
-    // between two copy sets with a ternary, so `t('board.bundleStale'` never appears
-    // as one contiguous string. Assert the key's presence and let the shape be the
-    // implementation's business.
-    expect(board).toContain("'board.bundleStale'")
-    expect(board).toContain('reloadForFreshBundle()')
-    // It rides the settled status-button grammar (a warn-styled real button),
-    // never a bare title attribute (touch has no hover).
-    expect(board).toMatch(/data-warn="true"[\s\S]{0,400}reloadForFreshBundle\(\)/)
+  it('the ASSEMBLY layer turns the verdict into one workbench warning and the page below it is tappable', () => {
+    /* The warning moved out of the board and into the workbench strip: same
+     * sentence, same action, one home for three pages. What must hold is that
+     * the publisher still (a) reads the verdict, (b) points at the reload, and
+     * (c) hands the sentence to the strip — a publisher that quietly stopped
+     * subscribing is a warning nobody would ever see. */
+    const bootstrap = read('../src/client/index.ts')
+    expect(bootstrap).toContain('freshness.snapshot()')
+    expect(bootstrap).toContain("view.state === 'stale'")
+    expect(bootstrap).toContain("'board.bundleStale'")
+    expect(bootstrap).toContain('reloadForFreshBundle()')
+    // The strip renders an actionable warning as a real BUTTON (touch has no
+    // hover — a warning you cannot press is a warning you cannot act on).
+    const notice = read('../src/client/design/WorkbenchNotice.tsx')
+    expect(notice).toContain('onPress')
+    expect(notice).toContain('<button')
   })
 
   it('the warning names WHICH side is stale, because the two need different actions', () => {
@@ -230,14 +239,14 @@ describe('wiring (the probe cannot be dropped silently)', () => {
     //     circle.
     // The second is what a maintainer sees after any version bump before restarting,
     // so it is the ordinary case, not an edge case.
-    const board = read('../src/client/board/TaskBoard.tsx')
-    expect(board, 'the direction must come from the two versions the probe carries')
-      .toContain('isNewerVersion(freshnessView.bundled, freshnessView.host)')
-    expect(board, 'the host-old case needs its own copy').toContain("t(hostOld ? 'board.bundleStaleHostOld'")
-    expect(board, 'the host-old case needs its own explainer').toContain("t(hostOld ? 'board.bundleStaleHostOldTitle'")
-    // Still a real button in both cases: tapping reloads, which is the right action
-    // for page-old and a harmless retry for host-old.
-    expect(board).toMatch(/data-warn="true"[\s\S]{0,600}reloadForFreshBundle\(\)/)
+    const bootstrap = read('../src/client/index.ts')
+    expect(bootstrap, 'the direction must come from the two versions the probe carries')
+      .toContain('isNewerVersion(view.bundled, view.host)')
+    expect(bootstrap, 'the host-old case needs its own copy').toContain("t(hostOld ? 'board.bundleStaleHostOld'")
+    expect(bootstrap, 'the host-old case needs its own explainer').toContain("t(hostOld ? 'board.bundleStaleHostOldTitle'")
+    // Still actionable: the press reloads, which is the right action for page-old
+    // and a harmless retry for host-old.
+    expect(bootstrap).toMatch(/onPress: \(\) => \{ reloadForFreshBundle\(\) \}/)
   })
 
   it('both dictionaries carry the copy (the warning can never read as a raw key)', () => {

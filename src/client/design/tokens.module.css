@@ -62,9 +62,18 @@
      report, and it was mechanical: 4% black hairline on a white slab.
      Reading the ladder means the fill moves with the page by construction. */
   --dsh-tb-chip-fill: var(--dsh-tb-plane-inlay);
-  /* Modal mask: a touch stronger than the native mask-1 so column lines
-     behind the glassy board no longer glimmer through the dialog. */
-  --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
+  /* ── 遮罩：**比原生再实一档，并且带一点模糊** ────────────────────────────────
+   *
+   * 底色读宿主那两档 mask 的混合（比 mask-1 实，免得磨砂列线在弹层边缘闪光）；
+   * 读者对它的要求是「透了一点点」——所以再往 mask-3 多混一档，而不是换一个色。
+   *
+   * **模糊是这一层的高级感来源，而且必须很轻。** 参考项目让弹层下面的整页微微失焦，
+   * 于是「上面一层是实的、下面那层退后」由**焦距**说出来，不靠加黑。4px 是量出来的：
+   * 再高（8px 以上）下面的内容就认不出是同一页了，而这里是同一个工作台；再低（2px）
+   * 屏上读不出差别。`backdrop-filter` 只出现在**遮罩**上（一处），不是给每个面板做
+   * 毛玻璃——那会让壁纸本身被反复转发，性能和观感都变差。 */
+  --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 40%, var(--dsw-alias-bg-mask-3));
+  --dsh-tb-mask-blur: 4px;
   /* ── 边界：**从墨推导，带下限** ───────────────────────────────────────────────
    *
    * 曾经读宿主的 `alias-border-l2` / `-l1`，理由是「边界是几何词汇、不是色相」。
@@ -185,9 +194,31 @@
      inputs keep the sm/md/lg/xl ladder and are NOT pills. */
   --dsh-tb-button-radius: var(--dsh-tb-pill);
   --dsh-tb-button-h: 28px;
-  /* 工作台导航轨那一档：32px 的轨道装 28px 的页签，上下各 2px 的内衬是药丸与轨道
-     之间的那圈空气。它比按钮高一档，因为轨道自己还有一圈内衬。 */
+  /* 工作台导航轨那一档：32px 的轨道装 26px 的页签。轨道自己付 1px 边 + 2px 内衬，
+     所以**内容区是 26px，不是 28**——页签高度从轨道推（见 components 表的算式），
+     写死 28 就会上 3px、下 1px。
+     这两枚是导航栏自己的几何，不是按钮的：换一档高度，栏与页签一起动。 */
   --dsh-tb-nav-h: 32px;
+  --dsh-tb-nav-pad: 2px;
+  --dsh-tb-nav-edge: 1px;
+
+  /* 分段控件（排队 / 插话、驱动方式那两族）的段高。轨道内衬 3px 两侧 =
+     `--dsh-tb-segment-h` + 6 是**轨道的外高**，而它与按钮那一档同高（28）——这条算式
+     只有一个出处，段高不再是一个凭空的 22。 */
+  --dsh-tb-segment-h: 22px;
+  --dsh-tb-segment-pad: 3px;
+
+  /* ── 框架空气：**三页共用的那一个数** ──────────────────────────────────────
+   *
+   * 页面四边的空气。看板、清单、总览各写各的，量出来是 16 / 10 / 16（看板的上沿
+   * 还是 14）——所以切页时整条工作台栏会左右挪 6px、上下挪 6px，读者报的「点总览
+   * 看板清单，位置在不停地移动」有一半就是它。
+   *
+   * 现在三页只读这一个名字：改一档，三页一起动；量一次，三页一起验。
+   * `--dsh-tb-frame-gap` 是竖着的那一条：栏底到第一个内容块。清单页曾经是 **0**
+   * （栏底 42、顶栏顶 42），于是顶栏直接粘在栏上。 */
+  --dsh-tb-frame-air: 16px;
+  --dsh-tb-frame-gap: 12px;
   /* The in-list tier. A quiet row action and the text beside it are aligned by
      a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
      moment either size changes — see .sessionHintRow). */
@@ -410,12 +441,34 @@
    *
    * **第一档要能看见才算第一档。** 原来的 5% / 8% 在白底上量不出来（读者报的
    * 「没有阴影」就是它），所以静止态抬到 7% / 10%：一枚安静按钮的影不该抢戏，但
-   * 它必须在白纸上留下一条边。 */
-  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 62%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 4%, transparent);
-  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 45%, transparent);
+   * 它必须在白纸上留下一条边。
+   *
+   * ── 边光的强度必须**从纸面推**，不能是一个固定的白 ─────────────────────────
+   *
+   * 这里曾经是 `inset 0 1px 0 62% 白`。在白纸上它是「纸被光照到」的那一条；可一旦
+   * 皮肤把纸画成**半透明**，同样的 62% 白就画在**壁纸本身**上——屏上是一条硬白边，
+   * 读者对它的原话是「上面有一条白色的东西，整体观感有点丑」。
+   *
+   * 白纸不需要白边（它已经是最亮的了），半透明的纸才需要一点受光；所以边光读的是
+   * `--dsh-tb-paper`：它与纸面同源，纸越亮边越弱、纸越实边越轻。18% 是量出来的
+   * 上限——再高，壁纸模式又会出现那条线；再低，白纸上它就消失。 */
+  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 70%, white), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 4%, transparent);
+  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 55%, white);
   --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 7%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent);
   --dsh-tb-cast-2: 0 2px 4px color-mix(in srgb, var(--dsw-static-neutral-1000) 9%, transparent), 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 14%, transparent);
   --dsh-tb-cast-3: 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 12%, transparent), 0 36px 70px -20px color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
+
+  /* ── 墨位：能裁就裁，裁不了才补 ────────────────────────────────────────────────
+   *
+   * `text-box-trim: trim-both` + `text-box-edge: cap alphabetic` 把行盒裁到字的墨；
+   * 裁完「盒心 = 墨心」，任何字体、任何字号都不再需要补偿。这就是上面那条兜底
+   * `0.04em` 在支持的浏览器里被置零的原因——不是「调成 0」，是**不再需要抵消**。
+   *
+   * 只在支持时置零：不支持时这条不生效，兜底值继续工作（渐进增强，不是两套做法）。
+   *
+   * `cap alphabetic` 而不是 `text`：`text` 用的是字体声明的**文字上下沿**，中文系统
+   * 字体常常把那一对报得很宽（为了给标点留空间），裁了等于没裁；`cap` 到基线是
+   * 拉丁大写高度到基线，对一行中文标签来说更接近视觉中心，且各家字体的差别最小。 */
 
   /* ── 字阶与行高：一档一个名字，页面只读档位 ───────────────────────────────────
    *
@@ -452,24 +505,45 @@
      太窄、图标没居中」），而它是**标签**不是行内件——两族两个高，各有一个名字。 */
   --dsh-tb-pill-h: 24px;
 
-  /* ── 控件里那点字的墨位：**一个数，按字号缩放** ──────────────────────────────
+  /* ── 一行字在胶囊里居中：**把行盒压到墨高**，而不是拿一个数去抵消 ─────────────
    *
-   * `align-items: center` 居中的是**行盒**，不是字。墨落在行盒中心的下方，于是
-   * 「文字居中」的按钮读起来整体偏下——用户看到的原话是「文案没有居中于它自己的
-   * 胶囊中间，偏下」。
+   * 读者反复报的那件事（「所有文案都没有垂直居中于它的胶囊」「移动端整体抬高了一点」）
+   * 到这里查清了，结论和前面几版都不一样，所以把它量出来的算式写在最前面：
    *
-   * 量过，不是估的：`scripts/probes/probe-ink-center.js` 在真 Chromium 里对
-   * 工作台栏三段、清单顶栏四颗按钮、行内药丸与计数各量一次，12–13px 的字偏下
-   * 0.5–1.0px（盒越高、字号越小，越看得出来）。同一份探针也量到 24px 高的按钮与
-   * 28px 高的 tab 偏得一样多，所以这不是某个控件的高度问题，是字的问题。
+   *   浏览器把行盒按字体的 `fontBoundingBox` 分配，而那个盒**常常比行高大**：
+   *     boxAsc 14 + boxDesc 3 = 17，而行高只有 13
+   *     halfLeading = (13 − 17) / 2 = −2        ← 负的：行盒比字高，反要往里挤
+   *     baseline    = −2 + 14 = 12
+   *     墨心        = (12 − 11 + 12 + 1) / 2 = 7
+   *     盒心        = 13 / 2 = 6.5
+   *     偏差        = +0.5px                     ← 墨偏下半像素
    *
-   * 写成 `em` 而不是 `px`：偏下量与字号成正比，12 / 13 / 15 三档要各自的补偿，
-   * 一个按字号缩放的数替掉三处手调。0.04em 在 13px 上是 0.52px，把 0.5–1.0px
-   * 的残差压到 ±0.5px 以内。
+   * 这个 0.5 不是「某个按钮的 bug」，是**字体度量与行高不匹配**的必然结果；换一款字体
+   * 它会变成别的数（这正是桌面正常、手机偏偏的原因）。所以「拿一个固定比例去抵消」必然
+   * 是按不住的补丁——它的方向、大小都跟着字体跑。
    *
-   * **它只给「只有一行字」的控件用**：按钮、药丸、tab、分段控件。卡片、行、正文
-   * 不读它——那些地方的墨位由行高与基线管，挪一下只会让整块内容偏上。 */
-  --dsh-tb-optical-drop: 0.04em;
+   * ── 三条路都量过，只有一条成立 ──────────────────────────────────────────────
+   *
+   *   `text-box-trim` / `text-box-edge`：这个 Chromium 里 `CSS.supports` 报 true、
+   *   `getComputedStyle` 也读得出 `trim-both / cap alphabetic`，**但行盒高度一个像素
+   *   都不变**（量过：13 / 13 / 13，三种 edge 全一样）。声明被接受、行为不存在——这种
+   *   「看着生效其实没生效」比不支持更危险，所以不采用。
+   *
+   *   下内衬 `2 × drop`：只是把内容盒整体上移，**盒子跟着动**，于是「胶囊里偏了」变成
+   *   「胶囊自己偏了」——读者看到的就是「整体抬高了一点」。
+   *
+   *   行高 = 墨高：这才是对的。行盒等于字的墨，`halfLeading` 变成 0，墨心就是盒心。
+   *   下面两枚令牌是它的两个数：`--dsh-tb-text-line-h` 是一个汉字的墨高（等于字号：中文的
+   *   字身框就是 em），`--dsh-tb-optical-drop` 因此归零——**不是「调成 0」，是这条校
+   *   正不再需要存在**。
+   *
+   * 用法：所有「只有一行字」的控件用 `line-height: var(--dsh-tb-text-line-h)`，并且**不再
+   * 写任何 `padding-block-end` 校正**。图标与文字同高时由 `align-items: center` 一次
+   * 居中，两者共享同一条中线。 */
+  /* 名字里不能有 ink：那是配色族的前缀，erify-palette 会把它当成一条颜色来查。
+     这一枚说的是**一行字有多高**，所以名字落在 	ext-line 这一族里。 */
+  --dsh-tb-text-line-h: 1em;
+  --dsh-tb-optical-drop: 0px;
 
   /* ── 动效：一条曲线，四个速度 ────────────────────────────────────────────────
    *
@@ -557,9 +631,10 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   --dsh-tb-plane-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 10%, var(--dsh-tb-bg));
   --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 4.5%, var(--dsh-tb-bg));
   --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 7%, var(--dsh-tb-paper));
-  /* 边光在暗纸上只需要一条能读出来的轮廓——62% 的白会变成荧光。 */
-  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 8%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);
-  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 5%, transparent);
+  /* 边光在暗纸上只需要一条能读出来的轮廓——它仍然**从纸面推**（见上面浅色那一块的
+     说明），暗纸比画布亮，所以同一条公式在这里给出一条柔和的亮沿，而不是荧光白。 */
+  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 60%, white), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);
+  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 45%, white);
   /* 黑投影在暗底上几乎不可见，所以加大量：深色里的层级主要交给阶梯与边光，
      投影只负责「纸和桌面之间那一条接触暗影」，它不需要也不应该抢戏。 */
   --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent);

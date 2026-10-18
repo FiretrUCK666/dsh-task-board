@@ -258,8 +258,11 @@
   box-sizing: border-box;
   min-width: 0;
   min-height: 0;
-  padding: 14px 16px 16px;
-  gap: var(--dsh-tb-space-6);
+  /* **三页共用的框架空气**（见 `--dsh-tb-frame-air`）：以前这里是 `14px 16px 16px`，
+     而清单是 10、总览是 16——切页时整条栏会左右挪 6px、上下挪 6px。现在三页只读
+     同一个名字，量一次三页一起验。 */
+  padding: var(--dsh-tb-frame-air);
+  gap: var(--dsh-tb-frame-gap);
   background: var(--dsh-tb-bg);
   color: var(--dsh-tb-text-1);
 }
@@ -2008,55 +2011,23 @@
 .filterChipRemove:hover {
   opacity: 1;
 }
-.feedFilter {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 5px;
-  flex: none;
-  height: 24px;
-  padding: 0 10px;
-  /* One line of text in a capsule: the bottom bearing lifts the ink to the
-     box's centre (a transform would move the box and the text together). */
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  font-size: 12px;
-  line-height: 1;
-  color: var(--dsh-tb-text-2);
-  background: none;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-pill);
-  cursor: pointer;
-}
-/* The partition's own size, inside the chip: the number is what makes the
-   classification legible without toggling anything, and it sits in the same
-   weight and colour as its label (it is a count, not a second emphasis) so the
-   chip never looks like a badge about the chip. The group already wraps, so a
-   third chip never pushes anything out of the row on a narrow surface. */
+/* 计数：**分类那一枚自己带的数**（「等你处理 3」），不是徽标。它与标签同重同色，
+   所以读者读到的是一句话的两截；等宽，于是 9 变成 10 不让整枚药丸变宽。 */
 .feedFilterCount {
   font-variant-numeric: tabular-nums;
   opacity: 0.75;
 }
-.feedFilter[data-active] {
-  /* Dark ink on a light accent fill (see --dsh-tb-ink-on-fill). */
-  color: var(--dsh-tb-ink-on-fill);
-  background: var(--dsh-tb-accent);
-  border-color: transparent;
-}
+
+/* 位置，不是外观：这一格是 `SearchField`（design/ui.tsx）。这里只说它在筛选那一行里
+   占多少宽度、什么时候缩。 */
 .feedSearch {
-  flex: 1;
-  min-width: 120px;
-  height: 24px;
-  padding: 0 10px;
-  font-size: 12px;
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-chip-fill);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-pill);
+  flex: 1 1 auto;
+  min-inline-size: 120px;
 }
 .feedAction {
   /* **定高 + 没有居中机制 = 字钉在盒顶。** 这一条从前只写 `height` 与内衬，于是那行字的
-     行盒落在 24px 内容盒的顶端，字的墨心比盒心高约 4px——同一排的 `.feedFilter` 有
-     `align-items: center`，两枚并排时一个居中一个贴在顶上。 */
+     行盒落在 24px 内容盒的顶端，字的墨心比盒心高约 4px，而同一排的共享按钮有
+     `align-items: center`——两枚并排时一个居中一个贴在顶上。 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2421,6 +2392,13 @@
 
 .modalFooter {
   display: flex;
+  /* **这一条是承重的，不是排版偏好。** 没有它，子项按 `stretch` 拉满整条脚注的
+     高度，而里面的字是按自己的行盒画的——于是一句「已选 0 个」贴着顶部，旁边两枚
+     28px 的按钮却垂直居中，两者差着七八个像素（读者报的「它没有和右边的按钮水平
+     对齐，往上偏了」）。
+     居中对齐放在容器上，是因为它说的就是「这一行的东西在同一条中线上」——写进
+     `.pickerCount` 的 `line-height` 只会让那一句话自己居中，下一句文案又得再来一次。 */
+  align-items: center;
   justify-content: flex-end;
   gap: var(--dsh-tb-space-5);
   padding: 14px 18px;
@@ -7032,7 +7010,6 @@
      below must name the same set, and two lists is how they drift apart. */
   .notifyMain,
   .filterChipRemove,
-  .feedFilter,
   .feedAction,
   .autoTaskExpand,
   .sessionContextHead,
@@ -7056,7 +7033,6 @@
      the disclosure headers and the segmented control. */
   .notifyMain::before,
   .filterChipRemove::before,
-  .feedFilter::before,
   .feedAction::before,
   .autoTaskExpand::before,
   .sessionContextHead::before {

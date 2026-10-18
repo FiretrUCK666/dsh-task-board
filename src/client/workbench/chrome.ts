@@ -23,6 +23,7 @@
  */
 import { t } from '../locales.ts'
 import type { WorkbenchTab } from '../design/WorkbenchBar.tsx'
+import type { WorkbenchNoticeItem } from '../design/WorkbenchNotice.tsx'
 import { workbenchStage } from './stage.ts'
 
 /** The three pages, in reading order. */
@@ -48,6 +49,26 @@ export const WORKBENCH_KEYS = {
 let registered: readonly WorkbenchPage[] = WORKBENCH_PAGES
 
 /**
+ * The warnings the ASSEMBLY layer published (see `index.ts`).
+ *
+ * WHY PUSHED RATHER THAN PULLED. The freshness probe and the engine seat are
+ * wired at the client entry, not here: this module is read during render by
+ * three pages and must not reach for a probe that may not exist. The assembly
+ * layer already owns both subscriptions, so it hands the resulting sentences
+ * down through this one field — and every page prints the same list, because
+ * there is only one list.
+ */
+let publishedNotices: readonly WorkbenchNoticeItem[] = []
+
+/**
+ * Record the warnings every page should show.
+ * @param notices - the current list; empty clears the strip.
+ */
+export function setWorkbenchNotices(notices: readonly WorkbenchNoticeItem[]): void {
+  publishedNotices = notices
+}
+
+/**
  * Record which pages exist.
  * @param pages - the pages whose rows the host reported as loaded.
  */
@@ -59,6 +80,16 @@ export function setWorkbenchPages(pages: readonly WorkbenchPage[]): void {
 export interface WorkbenchChrome {
   readonly tabs: readonly WorkbenchTab[]
   readonly status: string | undefined
+  /**
+   * Warnings to show BELOW the bar, on every page.
+   *
+   * They live here rather than in a page because they are facts about the
+   * workbench (`this page's bundle is older than the host`, `the engine seat is
+   * stale`), not about the board's columns — and the reader's rule is that the
+   * three pages are one surface. A warning that only exists on one page is a
+   * warning the reader will miss on the other two.
+   */
+  readonly notices: readonly WorkbenchNoticeItem[]
   readonly exitLabel: string
   readonly onNavigate: (id: string) => void
   readonly onExit: () => void
@@ -97,6 +128,7 @@ export function workbenchChromeOf(): WorkbenchChrome {
   return {
     tabs,
     status,
+    notices: publishedNotices,
     exitLabel: t('workbench.exit'),
     onNavigate: id => { workbenchStage.navigate(id as WorkbenchPage) },
     onExit: () => { workbenchStage.exit() },

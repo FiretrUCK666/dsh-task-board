@@ -44,6 +44,7 @@ import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { DATE_FIELD_KEY, GROUP_LABEL } from './labels.ts'
 import { AttachMark, CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
 import { formatItemDate } from './model.ts'
+import components from '../design/components.module.css'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
@@ -445,7 +446,11 @@ export function ItemRowLine(props: ItemRowLineProps) {
             onClick={event => { event.stopPropagation(); props.onSteps() }}
           >
             <StepsMark />
-            {t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}
+            {/* 读数包进槽：与图标并排时，裸文本的行盒按字体度量算，比 16px 行高矮，
+                于是整枚读数偏下 2.5px（量过）。 */}
+            <span data-dsh-tb-pilltext>
+              {t('item.steps', { done: String(view.progress.done), total: String(view.progress.total) })}
+            </span>
           </button>
         )}
         {/* **状态那一枚胶囊，每一行都在。**
@@ -492,7 +497,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
         {due !== undefined && (
           <span className={css.itemRowDate} data-tone={due.tone}>
             <ClockMark />
-            <span className={css.itemRowDateText}>{due.text}</span>
+            <span className={components.truncate}>{due.text}</span>
           </span>
         )}
       </div>

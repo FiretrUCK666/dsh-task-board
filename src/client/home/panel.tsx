@@ -34,11 +34,13 @@ import { t } from '../locales.ts'
 import { useBoardSnapshot } from '../board/use-board-snapshot.ts'
 import { formatDateTime, formatTime } from '../board/format-time.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { WorkbenchShell } from '../design/WorkbenchShell.tsx'
 import { Button } from '../design/ui.tsx'
 import type { WorkbenchPage } from '../workbench/chrome.ts'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { workbenchStage } from '../workbench/stage.ts'
+import { updateController } from '../workbench/update-controller.ts'
+import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import css from './home.module.css'
 
 /** 四格：哪一格、叫什么、一句说明、按下去去哪。 */
@@ -120,10 +122,9 @@ export function HomePage({ now }: { readonly now?: number }) {
   return (
     <HomeShell chrome={chrome}>
       <header className={css.homeHead}>
-        {/* 两行、两种角色：上面这行是**这一页叫什么**（眉，只供定位），下面那行是**今天
-            的读数**。句子整句同一档字，数字不再跨档——「一个大数字夹在 13px 的句子里」
-            会被读成一颗孤零零的 2。 */}
-        <p className={css.homeEyebrow}>{t('home.eyebrow')}</p>
+        {/* **一个 h1，没有眉题。** 曾经上面还有一行 11px 的「工作台」：它与 17px 的标题
+            只差一档半，读起来是两行一样重的东西，而读者对它的原话是「又小又丑」。主次
+            现在由字号档差建立——这一行 24/700，四格的数 22/700，卡片题 13/600，辅助 12。 */}
         <h1 className={css.pageTitle}>
           {counts.demand === 0
             ? `${t('home.title')} ${t('home.subtitleCalm')}`
@@ -251,18 +252,27 @@ export function HomePage({ now }: { readonly now?: number }) {
   )
 }
 
-/** 页面外壳：根节点带座位属性，栏永远在，内容由调用方给。 */
+/** 页面外壳：共用框架（`design/WorkbenchShell.tsx`）负责栏、警告与几何，页面只给内容。 */
 function HomeShell({ chrome, children }: { readonly chrome: ReturnType<typeof workbenchChromeOf>; readonly children: ReactNode }) {
+  const update = useUpdateState()
   return (
-    <div className={css.homeStage} data-dsh-taskboard-view="">
-      {/* **栏在内容列之外。** 三页的工作台栏必须落在同一个位置：板与清单的栏都在页面左沿
-          16px 处。所以栏单独一行、与内容列同宽同左沿；内容列也不另设窄宽（没有居中的
-          1200 列），宽屏上四格与两栏自己摊开，切页时同一颗 tab 不会左右跳。 */}
-      <div className={css.homeBar}>
-        <WorkbenchBar active="home" label={t('workbench.navLabel')} {...chrome} />
-      </div>
+    <WorkbenchShell
+      active="home"
+      tabs={chrome.tabs}
+      label={t('workbench.navLabel')}
+      status={chrome.status}
+      checking={update.phase === 'checking'}
+      checkLabel={updateLabelOf(update)}
+      onCheck={() => { updateController.check() }}
+      exitLabel={chrome.exitLabel}
+      onExit={chrome.onExit}
+      onNavigate={chrome.onNavigate}
+      notices={chrome.notices}
+      scrolls
+      seat="data-dsh-taskboard-view"
+    >
       <div className={css.homeSheet}>{children}</div>
-    </div>
+    </WorkbenchShell>
   )
 }
 

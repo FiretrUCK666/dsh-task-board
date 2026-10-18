@@ -282,10 +282,14 @@
   --item-write-line: calc(var(--item-write-size) * var(--item-write-leading));
   --item-write-floor: calc(4 * var(--item-write-line) + 3 * var(--s2) + 2px);
   --item-write-ceil: calc(24 * var(--item-write-line) + 3 * var(--s2) + 2px);
-  /* **整页两端那一档框架空气，声明在根上。** 工作台栏与工作台（左栏 + 主列）是兄弟，
-   * 两者要站在同一条左沿上，所以空气必须声明在它们的共同祖先前——声明在任意一方，
-   * 另一方就读不到它，两个左沿会差这一档。 */
-  --item-air: var(--s2);
+  /* **整页两端那一档框架空气**——读三页共用的那个数（`--dsh-tb-frame-air`），
+   * 不是本地一个 10。
+   *
+   * 它曾经是 `--s2`（10px），而看板与总览是 16px：于是只有清单这一页贴着宿主侧栏，
+   * 读者报的「任务清单左边几乎没有间隙、看板有一道分隔」就是这 6px。一个页面自己
+   * 决定页边空气，就没有三页可言——现在它只是那个共用名字的本地别名，工作台里
+   * 每一层（栏、左栏、行卡、顶栏）都从它派生。 */
+  --item-air: var(--dsh-tb-frame-air);
   /* **顶栏带子的高，一个数。** 活清单那一页与归档页各有一条带子，它们说的是不同的
    * 事，但**必须一样高**：一条带子不在，页面顶上的内容就往上跳 56px。两条带子两条
    * 规则、各写一个 56，
@@ -467,6 +471,9 @@
   grid-template-columns: 260px minmax(0, 1fr);
   grid-template-areas: 'rail list';
   grid-template-rows: minmax(0, 1fr);
+  /* 栏到工作台之间那一档：与另两页同一个数（`--dsh-tb-frame-gap`）。它曾经是 0，
+     而看板与总览都有分隔——同一套三页，一页粘着一页分开着。 */
+  padding-block-start: var(--dsh-tb-frame-gap);
   /* ── 横向框架：两条竖线，两端同一个数 ───────────────────────────────────────
    *
    * **两条线，而两端的空气是同一个数。**
@@ -518,18 +525,32 @@
  * 还没有内容」。所以它是 `.itemRoot` 这个 flex 列的第一项，`.itemWorkbench` 是第二项，
  * 拿到剩下的全部高度；栏自己 `flex: none`，永远不会被列表挤走。
  *
- * **两端读框架空气（`--item-air`），与下面那一层同一条左沿。** 那个数声明在 `.itemRoot`
- * 上，因为栏与工作台是兄弟：声明在任意一方，另一方就读不到。栏的内容（三个去处那一枚
- * 嵌面轨道）与左栏的内容、顶栏的文字站在同一条竖线上，整页于是只有一条左沿。
+ * **两端读框架空气（`--item-air`），与下面那一层同一条左沿。**
  *
- * 竖向只给上面一档：栏底与工作台顶之间由工作台自己的第一行出空气（顶栏的 56px 带子），
- * 这里再加一档就是两档叠在一起。 */
+ * 竖向：上沿读框架空气（与看板、总览同一个数），**下沿给一档 `--dsh-tb-frame-gap`**
+ * ——那一档就是「栏底到第一个内容块」。它曾经是 **0**（量到过栏底 42、顶栏顶 42），
+ * 于是顶栏那一条带子直接粘在栏上，而看板与总览都有分隔：同一套三页，一页粘着一页
+ * 分开着。间隙归框架，不归顶栏自己的 padding。 */
 .itemWorkbenchBar {
   display: flex;
   flex: none;
   min-inline-size: 0;
-  padding-block-start: var(--s2);
+  padding-block: var(--dsh-tb-frame-air) 0;
   padding-inline: var(--item-air);
+}
+
+/* 警告条那一行：在栏下面、内容上面，与栏同宽同左沿。它只在真有事时渲染，而它不在栏里
+   ——所以它出现或消失都不会推着栏里的任何东西动。 */
+.itemWorkbenchNotice {
+  display: flex;
+  flex: none;
+  min-inline-size: 0;
+  padding-block-start: var(--dsh-tb-frame-gap);
+  padding-inline: var(--item-air);
+}
+
+.itemWorkbenchNotice:not(:has(> *)) {
+  display: none;
 }
 
 /* **栏把整行占满。** 栏自己是一枚 flex 项（`flex: 0 1 auto`，宽度按内容），于是它的
@@ -648,13 +669,13 @@
 
 /* ── 顶栏那一排：**共用按钮，只有布局归这一页** ────────────────────────────────
  *
- * 这一排曾经自己画药丸（`.itemTopBarChip` / `.itemNewButton`）：24px 高、11–13px 三种
- * 字号、自选底色与描边；而看板同一排是 28px 的共用 `Button`。两页并排在同一个工作台里，
- * 工具行差 4px、字体差一档，读者看到的就是两件产品（原话：「清单的按钮又变窄了」）。
+ * 这一排曾经自己画药丸：24px 高、11–13px 三种字号、自选底色与描边；而看板同一排是
+ * 28px 的共用 `Button`。两页并排在同一个工作台里，工具行差 4px、字体差一档，读者看到
+ * 的就是两件产品（原话：「清单的按钮又变窄了」）。
  *
  * 现在高度、字号、内衬、圆角、悬停、按下与「开着」的开关态**全部归 `Button`**
- * （`design/components.module.css` 一处）。这一页只剩**位次**：这一排里的每一枚都不
- * 伸缩（`flex: none`），主行动在窄档占满自己那一行（见那条容器查询）。
+ * （`design/components.module.css` 一处）。这一页只剩**位次**：`.itemTopBarPrimary`
+ * 是一个纯布局类（折行时占满自己那一行），它不给外观——名字因此只说它管什么。
  *
  * 两个类名留在标记里，是因为它们仍是「这一排的哪一枚」的把手；但它们**一条外观也
  * 不声明**——第二份外观就是下一次两页分家的地方。 */
@@ -737,7 +758,7 @@
     row-gap: var(--s2);
   }
 
-  .itemNewButton {
+  .itemTopBarPrimary {
     /* 折行时它落在行末那条框架线上；与芯片同一行时 auto 外距没有余量可分，于是它就
      * 是芯片族里的下一枚——同一个 `gap`，不需要第二套间距。 */
     margin-inline-start: auto;
@@ -2054,7 +2075,10 @@ button.itemRowText {
   font-family: inherit;
   font-size: 12px;
   font-weight: 400;
-  line-height: 16px;
+  /* **行高等于字号**，不是 16px。字号 12 而行高 16 时，行盒比字的墨高 4px，那 4px
+     按字体的上下沿分配——分配不均，墨就偏下（量过 2.5px）。行高与字号相同之后，
+     行盒就是字本身，图标与数字共用的那一条中线才是真的中线。 */
+  line-height: var(--dsh-tb-type-meta-size);
   color: var(--item-ink-2);
   background: none;
   border: 0;
@@ -2170,12 +2194,9 @@ button.itemRowCardChip {
   color: var(--item-ink-2);
 }
 
-.itemRowDateText {
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
+/* 日期读数那一格：**截断槽**。它不自己写那四行，而是读设计系统里唯一那个槽
+   （`.truncate`，`design/components.module.css`）——同一段「让它省略」的规则在两处
+   各写一遍，就是下一次改一处、另一处原样躺在旧写法里的那种债。 */
 
 .itemRowDate[data-tone='soft-late'],
 .itemRowDate[data-tone='soon'] {
@@ -5596,7 +5617,7 @@ textarea.itemInput {
     flex: 1 1 100%;
   }
 
-  .itemNewButton {
+  .itemTopBarPrimary {
     flex: 1 1 100%;
     /* 整宽之后不再需要那条把它顶到行末的外距——它在自己的行里，两边都是自己。 */
     margin-inline-start: 0;
@@ -5725,7 +5746,11 @@ textarea.itemInput {
   align-items: flex-start;
   justify-content: center;
   padding: 64px var(--item-inset) calc(var(--item-inset) + var(--dsh-tb-kb, 0px));
+  /* 与看板的弹层同一个遮罩配方：实一档的底 + 一档极轻的模糊。两页各写一条 rgba 就是
+     两个「透多少」的答案，而读者会比较。 */
   background: var(--dsh-tb-mask);
+  -webkit-backdrop-filter: blur(var(--dsh-tb-mask-blur));
+  backdrop-filter: blur(var(--dsh-tb-mask-blur));
   overflow: hidden;
 }
 

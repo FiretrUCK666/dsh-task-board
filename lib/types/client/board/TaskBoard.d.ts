@@ -1,6 +1,5 @@
 import { type BoardController } from '../../core/controller.ts';
 import type { ItemPriority } from '../../core/item.ts';
-import { type BundleFreshnessState } from '../bundle-freshness.ts';
 /** Board component; subscribes to the controller snapshot.
  *
  *  WHY THIS IS ONE LONG FUNCTION, AND WHY SPLITTING IT IS NOT THE FIX.
@@ -23,9 +22,8 @@ import { type BundleFreshnessState } from '../bundle-freshness.ts';
  *  line, with its own verification cycle — not a refactor to slip in beside
  *  something else. Until then the three section markers in the return are what
  *  the reader navigates by. */
-export declare function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: {
+export declare function TaskBoard({ controller, mountedOf, onOpenRows }: {
     controller: BoardController;
-    freshness?: BundleFreshnessState;
     mountedOf?: (cardId: string) => {
         readonly count: number;
         readonly loudest?: ItemPriority;

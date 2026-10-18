@@ -48,6 +48,7 @@ export const BANDS = {
     { container: 'dsh-tb', narrowMax: 680, what: '五列变横滑轨道、板头换两行、出现拇指栏' },
     { container: 'dsh-tb', narrowMax: 648, what: '复核页的内衬减半（板 648 正好对应会话面板的 600）' },
     { container: 'dsh-tb', narrowMax: 400, what: '工具行拆成四行：搜索独占一行，巡航与新建并排（换行，不压扁）' },
+    { container: 'dsh-tb', narrowMax: 352, what: '工作台栏换行：三条 100px 轨道加两侧内衬要 332px，独占一行才不溢出' },
   ],
   /** The session panel inside the board (`container-name: dsh-tb-panel`). */
   sessionPanel: [

@@ -1777,7 +1777,12 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     // under the sentence. The promise is one — a fact that cannot fit is truncated
     // in ITS OWN slot, never by the row's — so it is checked on the slots that
     // exist.
-    const facts = ['itemRowMarks', 'itemRowDate', 'itemRowDateText', 'itemRowMeta']
+    /* `itemRowDateText` left this list because the SLOT IT NAMED left the sheet:
+     * the date reading now renders the design system's one truncation slot
+     * (`.truncate`), so a rule of its own would be a second copy of those four
+     * declarations. What must still hold is that the reading IS truncated in its
+     * own slot — and the shared class is where that promise lives now. */
+    const facts = ['itemRowMarks', 'itemRowDate', 'itemRowMeta']
     for (const name of facts) {
       const bodies = rulesOf(css, name)
       expect(bodies.length, `there is no .${name} rule`).toBeGreaterThan(0)
@@ -1898,9 +1903,14 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
     // reading's own text slot declares how it ends (ellipsis), so a reading that cannot fit clips
     // in its OWN slot rather than pushing the fact beside it.
     expect(resolved, `the sentence's floor is ${resolved}px; a floor below the ${LONGEST_DATE_READING_PX}px the longest reading needs means that reading cannot start on screen at all`).toBeGreaterThanOrEqual(LONGEST_DATE_READING_PX)
-    const slot = rulesOf(css, 'itemRowDateText').join('\n')
-    expect(slot, 'the reading does not declare how it ends when its slot is full').toMatch(/text-overflow\s*:\s*ellipsis/)
-    expect(slot, 'the reading does not declare a floor of its own, so it pushes the marks beside it').toMatch(/min-inline-size\s*:\s*0/)
+    /* The reading wears the SHARED truncation slot now (`.truncate` in the design
+     * sheet), so the two declarations this case protects are read there — one copy
+     * of 「how it ends」 and 「它有自己的地板」 for the whole plugin, which is the
+     * point of moving it. Reading them from the local sheet would assert a rule
+     * that no longer exists and say nothing about what renders. */
+    const slot = rulesOf(designCss(), 'truncate').join('\n')
+    expect(slot, 'the shared text slot does not declare how it ends when it is full').toMatch(/text-overflow\s*:\s*ellipsis/)
+    expect(slot, 'the shared text slot does not declare a floor of its own, so it pushes its neighbours').toMatch(/min-width\s*:\s*0/)
   })
 
   it('the probe bites, and a track that resolves too narrow is reported', () => {

@@ -43,7 +43,8 @@ import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
 import { registerItemList, LIST_GROUP } from './item/register.tsx'
 import { workbenchStage } from './workbench/stage.ts'
-import { setWorkbenchPages, WORKBENCH_KEYS, WORKBENCH_PAGES } from './workbench/chrome.ts'
+import { setWorkbenchNotices, setWorkbenchPages, WORKBENCH_KEYS, WORKBENCH_PAGES } from './workbench/chrome.ts'
+import type { WorkbenchNoticeItem } from './design/WorkbenchNotice.tsx'
 import { readSurfaceManifest, surfaceEnabled } from './surfaces.ts'
 import { HOME_GROUP, HomePanel } from './home/register.tsx'
 import { HomeIcon } from './home/HomeIcon.tsx'
@@ -54,6 +55,7 @@ import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
 import { fetchUpdateSource } from './update-source.ts'
+import { isNewerVersion } from '../core/update-check.ts'
 import packageJson from '../../package.json'
 
 /** Deployed bundle version (diagnostic only — never rendered in the UI). */
@@ -523,6 +525,38 @@ export function apply(ctx: ClientContext): void {
     // open tab pinned to the previous bundle forever).
     return freshness.watch()
   }, 'dsh-task-board: bundle freshness probe + watch')
+  /* ── THE WORKBENCH WARNINGS: published once, printed by every page ─────────
+   *
+   * These used to be three buttons inside the BOARD's status slot, on the same
+   * 12px line as `正在跑 1`. That put a live count and a restart instruction in
+   * one sentence, and it put both on only one of the three pages.
+   *
+   * The assembly layer owns the two subscriptions they need (the freshness
+   * probe above, the sync seat below), so it composes them here and hands the
+   * sentences to `chrome.ts` — where every page reads the same list. A page
+   * cannot forget to show one, and adding a fourth page cannot skip them.
+   *
+   * A warning that is NOT actionable prints as a sentence; one that is
+   * actionable is a real button (touch has no hover — hard rule 11③). */
+  const publishNotices = (): void => {
+    const list: WorkbenchNoticeItem[] = []
+    const view = freshness.snapshot()
+    if (view.state === 'stale') {
+      const hostOld = view.host !== undefined && isNewerVersion(view.bundled, view.host)
+      list.push({
+        id: 'bundle-stale',
+        text: t(hostOld ? 'board.bundleStaleHostOld' : 'board.bundleStale', {
+          c: view.bundled,
+          s: view.host ?? '',
+        }),
+        title: t(hostOld ? 'board.bundleStaleHostOldTitle' : 'board.bundleStaleTitle'),
+        onPress: () => { reloadForFreshBundle() },
+      })
+    }
+    setWorkbenchNotices(list)
+  }
+  publishNotices()
+  ctx.effect(() => freshness.subscribe(publishNotices), 'dsh-task-board: workbench warnings')
   // --- the soft keyboard inset ------------------------------------------------
   //
   // `--dsh-tb-kb` is ONE variable on the document root, shared by every floating
