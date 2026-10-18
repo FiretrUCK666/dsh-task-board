@@ -1,12 +1,13 @@
 /** The answer's shape, exactly as the host spells it. */
 export interface SurfaceManifest {
+    readonly home: boolean;
     readonly board: boolean;
     readonly items: boolean;
     readonly agent: boolean;
     readonly design: boolean;
 }
 /** Which surface a registration is asking about. */
-export type SurfaceName = 'board' | 'items' | 'design';
+export type SurfaceName = 'home' | 'board' | 'items' | 'design';
 /**
  * Ask the host which surfaces are on.
  *

@@ -941,9 +941,19 @@ describe('the panel fills the stage it is given', () => {
     // background layers are the SAME colour, so a card with a hairline and no
     // shadow is a rectangle on a rectangle — which is 「文字粘在左侧边缘上」 seen
     // from the other side: the card is there, and nothing says it is in front.
+    //
+    // **The claim names the CAST LADDER, not the page's old alias.** `--item-card-shadow`
+    // was this sheet's own name for `--dsh-tb-shadow-1` back when there was no
+    // ladder; the design system now ships `--dsh-tb-cast-1/2/3` plus the rim, and a
+    // page alias on top of a token that says exactly this is the second road the
+    // palette rule exists to remove. So the gate reads what the claim actually
+    // needs: a cast from the ladder AND the lit top edge that makes the card read
+    // as a raised sheet rather than a shaded box.
     const rowShadow = /(?:^|[;{\s])box-shadow\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
     expect(rowShadow, '.itemRow has no shadow, so in the light theme — where the host\'s three background layers are the SAME colour — nothing says this card is in front of the page')
-      .toBe('var(--item-card-shadow)')
+      .toContain('var(--dsh-tb-cast-1)')
+    expect(rowShadow, 'the row card lost its lit top edge — a cast with no rim is a shadow under a box, not a raised sheet')
+      .toContain('var(--dsh-tb-rim)')
     // THE EDGE AND THE SHAPE: a card reads as an object — a hairline edge and the
     // card radius the board's own cards read (a card inside a panel is a THING,
     // not another panel).
@@ -1515,7 +1525,14 @@ describe('the frame pays one air at both ends', () => {
   it('reports a banded air, an asymmetric pair, and a second sum at the trailing end', () => {
     const banded = `${css}\n@container dsh-tb-item (min-width: 720px) {\n  .itemWorkbench { --item-air: 0px; }\n}\n`
     expect(frameAirFindings(banded).join('\n'), 'the gate cannot report the air becoming a function of width').toMatch(/is declared 2 time/)
-    const asymmetric = css.replace('padding-inline: var(--item-air);', 'padding-inline: 0px var(--item-air);')
+    // THE PLANT NAMES THE SCROLLER, NOT THE FIRST DECLARATION THAT HAPPENS TO READ
+    // THE TOKEN. `--item-air` has a second reader now (the workbench bar, which is
+    // the root's first row and therefore cannot see the workbench's own aliases),
+    // and a literal `String.replace` would poison THAT rule while leaving
+    // `.itemFlow` symmetric — the probe would then report nothing and read exactly
+    // like a sheet with no defect. The claim is about the scroller, so the plant is.
+    const scroller = /(\.itemFlow \{[^}]*padding-inline: )var\(--item-air\)/
+    const asymmetric = css.replace(scroller, '$10px var(--item-air)')
     expect(asymmetric, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(css)
     expect(frameAirFindings(asymmetric).join('\n')).toMatch(/pays its two ends different values/)
     const secondSum = css.replace('--item-inset-x-end: var(--item-inset-x);', '--item-inset-x-end: calc(var(--item-row-pad) + var(--s2));')

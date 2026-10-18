@@ -63,8 +63,10 @@ const CONTRACT_SURFACES = ['ui', 'ui+ai', 'ai-only']
 
 /** Receivers that ARE a BoardController. `this` counts: the controller calls
  *  its own public methods, and an internal caller reaching a verb the model was
- *  never told about is the same drift one layer down. */
-const CONTROLLER_RECEIVERS = new Set(['controller', 'this'])
+ *  never told about is the same drift one layer down. `board` counts because the
+ *  workbench holder names the controller by what it is — the workbench's board —
+ *  and a receiver the gate does not recognise stops being checked at all. */
+const CONTROLLER_RECEIVERS = new Set(['controller', 'this', 'board'])
 
 /**
  * Call sites on a receiver that is NOT the board controller, keyed

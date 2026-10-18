@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Kanban board and task-list panels for the DSH web GUI: tasks run for real through DSH sessions and write their status back, with schedules, session rules and auto-cruise. Data lives on the host, so desktop and phone see one board.",
-  "version": "1.2.8",
+  "version": "1.3.0",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -17,6 +17,10 @@
     "./host-board": {
       "types": "./lib/types/host-board.d.ts",
       "default": "./lib/host-board.js"
+    },
+    "./host-home": {
+      "types": "./lib/types/host-home.d.ts",
+      "default": "./lib/host-home.js"
     },
     "./host-items": {
       "types": "./lib/types/host-items.d.ts",

@@ -70,16 +70,24 @@
 }
 
 .chipFill {
-  /* **它有自己的高。** 22px 是设计给它的数（18px 的行盒 + 上下各 2px）；交给内容去算，高度就
-     跟着字体度量走——同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。 */
+  /* **它有自己的高。** 20px 是设计给它的数；交给内容去算，高度就跟着字体度量走——
+     同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。
+     **它的字靠 flex 居中，不靠行高**：一枚定了高的盒子若不声明对齐，字就贴在顶边（旧写法
+     正是如此：22px 的盒、18px 的行盒，字比几何中心高 2px），而它是这一页最常出现的控件。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   box-sizing: border-box;
-  block-size: 22px;
+  block-size: var(--dsh-tb-chip-h);
   padding: 0 8px;
   border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
      double-fade under a glass skin) — the shared quiet-chip surface, so a
      status chip and the controls around it never drift apart under a skin. */
   background: var(--dsh-tb-chip-fill);
+  /* 行盒居中了，墨还差半像素——见 `--dsh-tb-optical-drop`（内衬而不是 transform：
+     transform 会把盒子与字一起挪走，等于没修）。 */
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
 }
 
 /* 这三条写的是**文字**，读的还是同一枚状态色——一个色相就一个色（见上面那条色族律）。
@@ -113,8 +121,12 @@
      dominate and the straighter the long edges, the squarer it feels (the old
      0 18px widening went the wrong way — admitted and reverted here). 13px /
      0 14px lands the two-character label near a 2:1 aspect like the reference
-     board; height and radius stay on the shared rhythm, untouched. */
-  padding: 0 14px;
+     board; height and radius stay on the shared rhythm, untouched.
+     **The bottom padding is the ink correction** (see `--dsh-tb-optical-drop`): with
+     `align-items: center` the CONTENT BOX is what gets centred, so 2d of extra
+     bottom padding moves the line up by d — a transform on the button would move
+     the box and its text together and correct nothing. */
+  padding: 0 14px calc(2 * var(--dsh-tb-optical-drop));
   font-size: 13px;
   font-weight: 500;
   line-height: 1;
@@ -171,7 +183,7 @@
      while their primary stays 13px — the small pill reads round, the wide one
      reads square-arc, so the two tracks never share type scale). */
   font-size: 12px;
-  padding: 0 12px;
+  padding: 0 12px calc(2 * var(--dsh-tb-optical-drop));
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -226,7 +238,7 @@
   border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
   /* Same quiet density as the ghost twin above (one track, never drift). */
   font-size: 12px;
-  padding: 0 12px;
+  padding: 0 12px calc(2 * var(--dsh-tb-optical-drop));
 }
 
 .dangerGhostButton:hover:not(:disabled) {
@@ -251,7 +263,7 @@
      stays exact instead of drifting 2px under content-box. */
   box-sizing: border-box;
   height: var(--dsh-tb-button-h-sm);
-  padding: 0 10px;
+  padding: 0 10px calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
   border-radius: var(--dsh-tb-pill);
 }
@@ -539,7 +551,7 @@
   justify-content: center;
   /* 22px + the 3px track padding on each side = 28px total — the SAME height
      as the primary/composer buttons the segmented sits beside. */
-  padding: 0 14px;
+  padding: 0 14px calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
   font-weight: 500;
   height: 22px;
@@ -550,6 +562,7 @@
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   white-space: nowrap;
+  transform: translateY(calc(-1 * var(--dsh-tb-optical-drop)));
   transition: color var(--dsh-tb-motion), background-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
@@ -1195,4 +1208,167 @@ textarea.input {
   .input {
     font-size: 16px;
   }
+}
+
+/* ── 工作台栏：三个去处 + 一行状态 + 一个出口 ──────────────────────────────────
+ *
+ * 三段等宽轨道 + 一枚滑动的药丸。**药丸是轨道自己的几何，不是量出来的矩形。**
+ * `--dsh-tb-tab-count` 与 `--dsh-tb-tab-active` 由组件按 tab 数组写入（见
+ * WorkbenchBar.tsx），所以以后加第四个去处不用改这里一个字节；而量像素的指示器
+ * 每次侧栏开合、每次分屏都会失准，且失准时屏上不会有人说一句话。
+ *
+ * **换行而不是藏东西**：这一栏在窄档把状态行换到第二行，出口由自己的自动外边距
+ * 收到右端。没有任何一条 `display:none` —— 一个在多数字面上都要靠「藏」来成立的
+ * 栏，在一行里永远读不出它到底有几个去处。 */
+.workbenchBar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--dsh-tb-space-4) var(--dsh-tb-space-4);
+  min-inline-size: 0;
+}
+
+.workbenchNav {
+  position: relative;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  /* **不长大、只让位。** `flex-grow: 0` 是有意的：一个会长满整行的轨道在 1440 上把三段
+     tab 撑成 280px 一颗，读起来像三个按钮而不是三个页签；`min-inline-size: 0` 让它在
+     412 上缩到放得下出口为止（换行是状态行的事，不是出口的事）。 */
+  flex: 0 1 340px;
+  min-inline-size: 0;
+  /* 32px 的轨道装 28px 的纽：上下各 2px 的内衬是药丸与轨道之间的那圈空气。 */
+  box-sizing: border-box;
+  block-size: 32px;
+  padding: 2px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  /* 嵌面：这一枚是「嵌在纸面里的轨道」，比页底深一级、比纸面深一级。 */
+  background: var(--dsh-tb-plane-inlay);
+  box-shadow: var(--dsh-tb-rim-soft);
+}
+
+.workbenchThumb {
+  position: absolute;
+  inset-block: 2px;
+  inset-inline-start: 2px;
+  inline-size: calc((100% - 4px) / var(--dsh-tb-tab-count, 3));
+  border-radius: var(--dsh-tb-pill);
+  /* 被选中的那一格是**纸面**：它从嵌面里浮起来，于是「当前在哪一页」由材质回答，
+     而不是只靠字重变了半档。 */
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  transform: translateX(calc(var(--dsh-tb-tab-active, 0) * 100%));
+  transition: transform var(--dsh-tb-motion-lift);
+  pointer-events: none;
+}
+
+.workbenchTab {
+  /* 定位于药丸之上：不定位的按钮与定位的拇指在同一个层叠上下文里时，拇指会盖住字。 */
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsh-tb-space-3);
+  min-inline-size: 0;
+  box-sizing: border-box;
+  block-size: 28px;
+  padding: 0 var(--dsh-tb-space-5) calc(2 * var(--dsh-tb-optical-drop));
+  border: none;
+  border-radius: var(--dsh-tb-pill);
+  background: transparent;
+  color: var(--dsh-tb-text-2);
+  font: inherit;
+  font-size: var(--dsh-tb-type-body-size);
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: pointer;
+  transform: translateY(calc(-1 * var(--dsh-tb-optical-drop)));
+  transition: color var(--dsh-tb-motion);
+}
+
+.workbenchTab:hover {
+  color: var(--dsh-tb-text-1);
+}
+
+.workbenchTab[aria-current='page'] {
+  color: var(--dsh-tb-text-1);
+  font-weight: 600;
+}
+
+.workbenchTabLabel {
+  min-inline-size: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* 计数徽标：**同色淡洗底 + 正文墨**。不拿状态色当字号——琥珀在小字上的对比度
+   是这一页早就记过账的代价，而一枚 11px 的数字没有理由去背它。 */
+.workbenchTabBadge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-inline-size: 16px;
+  block-size: 16px;
+  padding: 0 4px;
+  border-radius: var(--dsh-tb-pill);
+  background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
+  color: var(--dsh-tb-text-1);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* 具名 spacer：见组件里的注释。它吃掉的正是「状态行与出口之间那段空隙」。 */
+.workbenchSpacer {
+  flex: 1 1 0;
+  min-inline-size: 0;
+}
+
+.workbenchStatus {
+  /* `<p>` 的 margin 在座位里被一条属性选择器压死（见 DESIGN.md），这里写 0 是为了
+     让「有没有外边距」不依赖那条规则还活着。 */
+  margin: 0;
+  min-inline-size: 0;
+  overflow: hidden;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  /* 一行里全是数字（等你处理 3 · 进行中 1）：不等宽的话，计数的每一次变化都会让
+     整行左右抖一下。 */
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.workbenchExit {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  inline-size: var(--dsh-tb-button-h);
+  block-size: var(--dsh-tb-button-h);
+  padding: 0;
+  /* 自动外边距在换行后的第二行上把出口收到右端；宽档里 spacer 已经吃掉了空隙，
+     所以它拿到的余量是 0，不会与 spacer 抢位置。 */
+  margin-inline-start: auto;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-plane-inlay);
+  box-shadow: var(--dsh-tb-rim-soft);
+  color: var(--dsh-tb-text-2);
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+}
+
+.workbenchExit:hover {
+  background: var(--dsh-tb-hover);
+  border-color: var(--dsw-alias-border-l3);
+  color: var(--dsh-tb-text-1);
 }

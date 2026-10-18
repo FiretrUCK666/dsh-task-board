@@ -1,0 +1,569 @@
+/**
+ * 工作台总览的版式。**这一页只有它自己的几何**——纸面、墨色、字阶、动效全部读
+ * `design/tokens.module.css` 里那套 `--dsh-tb-*`，颜色一个原始值都没有。
+ *
+ * 视觉主张只有一句：**一张被抬起的纸**。页面是画布（`--dsh-tb-bg`），每一格是纸面
+ * （`--dsh-tb-plane-sheet`）：一条上边光（`--dsh-tb-rim`）+ 一条下投影（`--dsh-tb-cast-1`），
+ * 悬停把投影抬到第二档。不做毛玻璃、不加渐变——玻璃与渐变都需要一个本层没有的原始
+ * 颜色，而这一页的颜色只能经令牌到达。
+ *
+ * 两条「不留补丁」的结构选择：
+ *
+ *   1. **宽度由这一页自己的盒子回答**：根节点是唯一的 inline-size 容器，档位只有一条
+ *      无名 `@container (max-width: 620px)` ——四格从 4 列折成 2×2、两栏并成一栏。无名是
+ *      有意的：命名容器要进 `design/bands.ts` 那张表，而这张表属于跨页的 JS/CSS 契约；
+ *      这一页的档位只有 CSS 需要知道，用一条无名查询就不必为它造一个两处维护的名字，
+ *      `bands.spec.ts` 也不会把一条没有 JS 侧的界线当成合约。
+ *   2. **不藏东西**：窄档只换列、让位、收内衬，没有任何 `display: none`，也没有为手机
+ *      另写一套标记——四格、五栏、六条动态在 412 上一个不少，只是折行。
+ *
+ * 数字一律等宽（根上 `font-variant-numeric: tabular-nums`，随继承落在每一处）：计数每变
+ * 一次就让整行左右抖一下的页面，读者会以为是自己看错了。
+ */
+
+/* ── 舞台 ──────────────────────────────────────────────────────────────────── */
+[data-dsh-taskboard-view].homeStage {
+  box-sizing: border-box;
+  block-size: 100%;
+  min-block-size: 0;
+  inline-size: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  overflow-x: hidden;
+  overflow-y: auto;
+  background: var(--dsh-tb-bg);
+  color: var(--dsh-tb-text-1);
+  container-type: inline-size;
+}
+
+/* **这一页不另设一列窄宽。** 工作台栏是三页共用的：板与清单的栏都在页面左沿 16px 处，
+   所以总览的栏也必须在同一个位置——给内容加一个 1200 的上限，栏就会在 1440 上右移 126px，
+   切页时同一颗 tab 会左右跳。宽屏上四格与两栏自己会摊开，那不是缺陷，是同一套栅格。 */
+[data-dsh-taskboard-view] .homeSheet {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  inline-size: 100%;
+  min-inline-size: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-6);
+  padding: var(--dsh-tb-space-6) var(--dsh-tb-space-7) var(--dsh-tb-space-8);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 工作台栏那一行：与内容列同宽、同左沿。 */
+[data-dsh-taskboard-view] .homeBar {
+  box-sizing: border-box;
+  flex: none;
+  align-self: stretch;
+  inline-size: 100%;
+  padding: var(--dsh-tb-space-7) var(--dsh-tb-space-7) 0;
+}
+
+/* ── 标题行 ────────────────────────────────────────────────────────────────
+ * 「今天 · N 件事等你」：**只有那个数字吃 kpi 字阶**，两边的词是标题档。基线对齐而不是
+ * 居中对齐——一个 30px 的数字与一行 15px 的字，中心对齐会让那行字看起来浮在半空。 */
+[data-dsh-taskboard-view] .homeHead {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-2);
+  padding-block-start: var(--dsh-tb-space-2);
+}
+
+[data-dsh-taskboard-view] .pageTitle {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--dsh-tb-space-3);
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-kpi-line);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
+[data-dsh-taskboard-view] .titleWord {
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  color: var(--dsh-tb-text-1);
+}
+
+/* 间隔号是标点，不是记号：三级墨在文字上不过 AA（见 token 层那段账），所以它读二级。 */
+[data-dsh-taskboard-view] .titleSep {
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  color: var(--dsh-tb-text-2);
+}
+
+[data-dsh-taskboard-view] .titleCount {
+  font-size: var(--dsh-tb-type-kpi-size);
+  line-height: var(--dsh-tb-type-kpi-line);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* ── 四格 ──────────────────────────────────────────────────────────────────
+ * 整格是一枚按钮。四格等宽由 grid 说，不由 `margin-left: auto` 说；窄档折成 2×2 见
+ * 文末那条无名容器查询。 */
+[data-dsh-taskboard-view] .tiles {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--dsh-tb-space-5);
+}
+
+[data-dsh-taskboard-view] .tile {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--dsh-tb-space-2);
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-6);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-lg);
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
+}
+
+[data-dsh-taskboard-view] .tile:hover {
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+  transform: translateY(-1px);
+}
+
+[data-dsh-taskboard-view] .tile:active {
+  transform: translateY(0);
+}
+
+/* 焦点环显式写在这里：本规则比座位级那条 `:focus-visible` 更具体，不把环带上来的话
+   它就是被自己的 `box-shadow` 覆盖掉了——键盘使用者会在一个按得动的格子上看不见焦点。 */
+[data-dsh-taskboard-view] .tile:focus-visible {
+  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+}
+
+[data-dsh-taskboard-view] .tileValue {
+  font-size: var(--dsh-tb-type-kpi-size);
+  line-height: var(--dsh-tb-type-kpi-line);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+/* 标题与说明都走 meta 档（见 DESIGN.md 的字阶分工）：这一格里唯一该有重量的是数字。 */
+[data-dsh-taskboard-view] .tileLabel {
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  font-weight: 600;
+  color: var(--dsh-tb-text-1);
+}
+
+[data-dsh-taskboard-view] .tileHint {
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  color: var(--dsh-tb-text-2);
+}
+
+/* ── 两栏四张卡 ─────────────────────────────────────────────────────────────
+ * 行优先：流水线 | 吞吐，最近动态 | 会话。左栏略宽，因为占比条与标题需要横向空间；
+ * 右栏是读数，窄一点更好扫。窄档由文末那条查询并成一栏。 */
+[data-dsh-taskboard-view] .homeColumns {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(0, 1fr);
+  gap: var(--dsh-tb-space-6);
+  align-items: stretch;
+  min-inline-size: 0;
+}
+
+[data-dsh-taskboard-view] .homeCard {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-5);
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-7);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-lg);
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+}
+
+/* 卡片标题是「眉」：11px、正字距、二级墨。它只说这一块是什么，不跟数字抢眼球。 */
+[data-dsh-taskboard-view] .homeCardTitle {
+  margin: 0;
+  font-size: var(--dsh-tb-type-eyebrow-size);
+  line-height: var(--dsh-tb-type-eyebrow-line);
+  letter-spacing: var(--dsh-tb-type-eyebrow-track);
+  font-weight: 600;
+  color: var(--dsh-tb-text-2);
+}
+
+[data-dsh-taskboard-view] .homeCardEmpty {
+  margin: 0;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+}
+
+/* ── 流水线 ────────────────────────────────────────────────────────────────── */
+[data-dsh-taskboard-view] .pipeline {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-1);
+}
+
+/* 一行是一条纸下的窄条：它自己不是纸面，只在悬停时浮起一层底色。
+ * 网格列宽而不是 auto：五行的名字长度不同（待办 / 进行中 / In Progress），名字列一旦
+ * 由内容决定宽度，五根占比条就会各自从一个不同的位置开始——那不是密度，那是没对齐。
+ * 名字列 5.5em 是按最长的那个词量的（13px 下 "In Progress" 约 68px）。 */
+[data-dsh-taskboard-view] .pipeRow {
+  display: grid;
+  grid-template-columns: var(--dsh-tb-dot) 5.5em 2.5ch minmax(var(--dsh-tb-space-9), 1fr) auto;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-2) var(--dsh-tb-space-3);
+  border: none;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: transparent;
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion);
+}
+
+[data-dsh-taskboard-view] .pipeRow:hover {
+  background: var(--dsh-tb-hover);
+}
+
+/* 状态点：整行里唯一的彩色记号。色相只经 `--dsh-tb-status-*`（看板那五枚的同一个源头）。
+ * `--dsh-tb-mark-drop` 是这一族记号的统一光学下沉：行盒的中心比字的视觉中心高一点点。 */
+[data-dsh-taskboard-view] .homeStatusDot {
+  flex: none;
+  inline-size: var(--dsh-tb-dot);
+  block-size: var(--dsh-tb-dot);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-text-2);
+  transform: translateY(var(--dsh-tb-mark-drop));
+}
+
+[data-dsh-taskboard-view] .homeStatusDot[data-status='backlog'] { background: var(--dsh-tb-status-backlog); }
+[data-dsh-taskboard-view] .homeStatusDot[data-status='todo'] { background: var(--dsh-tb-status-todo); }
+[data-dsh-taskboard-view] .homeStatusDot[data-status='running'] { background: var(--dsh-tb-status-running); }
+[data-dsh-taskboard-view] .homeStatusDot[data-status='review'] { background: var(--dsh-tb-status-review); }
+[data-dsh-taskboard-view] .homeStatusDot[data-status='done'] { background: var(--dsh-tb-status-done); }
+
+[data-dsh-taskboard-view] .pipeName {
+  min-inline-size: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-type-body-line);
+}
+
+[data-dsh-taskboard-view] .pipeCount {
+  text-align: end;
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  font-weight: 600;
+}
+
+/* 占比条的槽是**凹面**：嵌进纸面的一条浅槽。槽里的填充是墨的淡洗底，不是第二种色相——
+ * 色相在这张卡里已经由那颗点说了，条只负责「多少」。 */
+[data-dsh-taskboard-view] .pipeTrack {
+  min-inline-size: 0;
+  block-size: 6px;
+  overflow: hidden;
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-plane-recess);
+}
+
+[data-dsh-taskboard-view] .pipeFill {
+  display: block;
+  block-size: 100%;
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-wash-strong), transparent);
+  transition: inline-size var(--dsh-tb-motion-lift);
+}
+
+/* 空列的这一格是空的：没有最旧的东西，就没有「多久没动」这句话。 */
+[data-dsh-taskboard-view] .pipeStale {
+  white-space: nowrap;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+}
+
+/* ── 吞吐 ──────────────────────────────────────────────────────────────────── */
+[data-dsh-taskboard-view] .flowStats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dsh-tb-space-6);
+}
+
+[data-dsh-taskboard-view] .flowStat {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-1);
+}
+
+[data-dsh-taskboard-view] .flowLabel {
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  color: var(--dsh-tb-text-2);
+}
+
+[data-dsh-taskboard-view] .flowValue {
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  font-weight: 600;
+}
+
+/* 四周竖条：纯 div，不引图表库。底线上那一条细边是「零」的基线——一根都没有时，
+ * 读者看到的是一条线而不是一块空白，那才读得出「这四周是 0」。
+ * 条宽有上限（24px）而不是各占 1fr：四根柱子铺满一张 1100px 的卡时，它们会变成三块
+ * 板子，「四周的趋势」这件事反而读不出来；一条 120px 宽的小图才是它该有的体量。 */
+[data-dsh-taskboard-view] .weekChart {
+  display: flex;
+  align-self: flex-start;
+  align-items: flex-end;
+  gap: var(--dsh-tb-space-3);
+  block-size: 40px;
+  min-inline-size: 0;
+  border-block-end: var(--dsh-tb-border-soft);
+}
+
+[data-dsh-taskboard-view] .weekBar {
+  flex: 0 0 24px;
+  min-block-size: 2px;
+  border-radius: var(--dsh-tb-radius-sm) var(--dsh-tb-radius-sm) 0 0;
+  background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
+}
+
+/* 唯一的彩色数据图形（同色淡洗底）。 */
+[data-dsh-taskboard-view] .weekCaption {
+  margin: 0;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+}
+
+/* ── 最近动态 ──────────────────────────────────────────────────────────────── */
+[data-dsh-taskboard-view] .recentList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-1);
+  min-inline-size: 0;
+}
+
+[data-dsh-taskboard-view] .recentItem {
+  min-inline-size: 0;
+}
+
+/* 时间列固定宽度：`formatTime` 会给「5m」「3h」或「2026-09-20」三种长度，让列宽跟着
+   内容走的话，六条标题的左沿会各差几像素。6.2em（12px 下约 74px）是按最长的日期量的。 */
+[data-dsh-taskboard-view] .recentRow {
+  box-sizing: border-box;
+  display: grid;
+  grid-template-columns: 6.2em minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  inline-size: 100%;
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-2) var(--dsh-tb-space-3);
+  border: none;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: transparent;
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  text-align: start;
+  transition: background var(--dsh-tb-motion);
+}
+
+/* 只有装配层给了「打开这张卡」那扇门时，这一行才是按钮；没给时它是一枚读数，
+ * 于是它也不必长出一副按得动的样子（见 panel.tsx 里的同一条判断）。 */
+[data-dsh-taskboard-view] .recentRowAction {
+  cursor: pointer;
+}
+
+[data-dsh-taskboard-view] .recentRowAction:hover {
+  background: var(--dsh-tb-hover);
+}
+
+[data-dsh-taskboard-view] .recentTime {
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  white-space: nowrap;
+}
+
+/* 标题**折行，不省略**：清单那一页的行标题也是这个规矩（`itemRowText` 的
+ * `overflow-wrap: anywhere`）。一条「最近发生了什么」被截成「把清单的日期字段改成硬截…」
+ * 之后，读者拿到的是一句不完整的话；一行放不下就让它占两行，行高自己长。 */
+[data-dsh-taskboard-view] .recentTitle {
+  min-inline-size: 0;
+  overflow-wrap: anywhere;
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-type-body-line);
+}
+
+/* 状态词是一枚小件：高 `--dsh-tb-chip-h`、嵌面底、一条软边光。整行里它不说话最响，
+ * 但它是「这条现在在哪一栏」的唯一读数，所以不能只留一颗点（点认不出五档）。
+ *
+ * **最后那条下内衬是墨的光学校正**（见 `--dsh-tb-optical-drop`）：一枚定高的盒子里
+ * `align-items: center` 居中的是**内容盒**，而行盒的中心比字的视觉中心高一点点。多出
+ * 2d 的下内衬把内容盒往上推 d，字就落在盒子的光学中间。**这里不能用 transform**——这块
+ * 底色就是药丸自己，transform 会把盒与字一起挪走，等于没修（共享 Chip 用的是同一条）。 */
+[data-dsh-taskboard-view] .recentStatus {
+  box-sizing: border-box;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--dsh-tb-space-2);
+  block-size: var(--dsh-tb-chip-h);
+  padding: 0 var(--dsh-tb-space-3) calc(2 * var(--dsh-tb-optical-drop));
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-plane-inlay);
+  box-shadow: var(--dsh-tb-rim-soft);
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* ── 会话 ──────────────────────────────────────────────────────────────────── */
+[data-dsh-taskboard-view] .sessionStats {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--dsh-tb-space-4);
+}
+
+/* 两个读数各是一枚按钮：它们把读者送到看板——会话就住在那里。 */
+[data-dsh-taskboard-view] .sessionStat {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--dsh-tb-space-1);
+  min-inline-size: 0;
+  padding: var(--dsh-tb-space-5);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  background: var(--dsh-tb-plane-inlay);
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+  transition: background var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+[data-dsh-taskboard-view] .sessionStat:hover {
+  background: var(--dsh-tb-hover);
+  box-shadow: var(--dsh-tb-rim-soft);
+}
+
+/* 焦点环显式带上：`:hover` 与座位级焦点规则特异性相同且写在本表里（更靠后），只写 hover
+ * 的话「键盘选中 + 鼠标恰好停在上面」那一瞬会把环盖掉。 */
+[data-dsh-taskboard-view] .sessionStat:focus-visible {
+  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim-soft);
+}
+
+[data-dsh-taskboard-view] .sessionValue {
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  font-weight: 600;
+}
+
+[data-dsh-taskboard-view] .sessionLabel {
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  color: var(--dsh-tb-text-2);
+}
+
+/* ── 空态与读不到 ────────────────────────────────────────────────────────────
+ * 一张居中的纸：它离开页面浮起来，所以读浮面与第三档投影（这一页唯一这样抬的一层）。 */
+[data-dsh-taskboard-view] .homeEmptyWrap {
+  flex: 1 1 auto;
+  display: grid;
+  place-items: center;
+  min-block-size: 240px;
+  padding-block: var(--dsh-tb-space-8);
+}
+
+[data-dsh-taskboard-view] .emptySheet {
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--dsh-tb-space-4);
+  inline-size: min(100%, 440px);
+  padding: var(--dsh-tb-space-8);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-lg);
+  background: var(--dsh-tb-plane-float);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-3);
+}
+
+[data-dsh-taskboard-view] .emptyTitle {
+  margin: 0;
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  font-weight: 600;
+}
+
+[data-dsh-taskboard-view] .emptyBody {
+  margin: 0;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-type-body-line);
+}
+
+[data-dsh-taskboard-view] .emptyActions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--dsh-tb-space-3);
+  padding-block-start: var(--dsh-tb-space-2);
+}
+
+[data-dsh-taskboard-view] .noticeText {
+  margin: 0;
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-type-body-line);
+}
+
+/* ── 窄档：换列，不藏东西 ────────────────────────────────────────────────────
+ * 无名容器查询：量的是这一页自己的盒子（根节点是 inline-size 容器），不是视口——侧栏
+ * 开合、分屏、手机都改这个盒子而不改窗口。620 是「四格还能各留 ~150px」的下限。 */
+@container (max-width: 620px) {
+  [data-dsh-taskboard-view] .homeSheet {
+    padding: var(--dsh-tb-space-7);
+  }
+
+  [data-dsh-taskboard-view] .tiles {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  [data-dsh-taskboard-view] .homeColumns {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* 抬升是一段位移：前庭功能敏感的人读到的应该是同一个盒子，不是一个会往上飘的盒子。 */
+@media (prefers-reduced-motion: reduce) {
+  [data-dsh-taskboard-view] .tile {
+    transition: none;
+  }
+
+  [data-dsh-taskboard-view] .tile:hover {
+    transform: none;
+  }
+}

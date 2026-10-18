@@ -21,6 +21,7 @@ import { routeUrl } from './route-base.ts'
 
 /** The answer's shape, exactly as the host spells it. */
 export interface SurfaceManifest {
+  readonly home: boolean
   readonly board: boolean
   readonly items: boolean
   readonly agent: boolean
@@ -28,7 +29,7 @@ export interface SurfaceManifest {
 }
 
 /** Which surface a registration is asking about. */
-export type SurfaceName = 'board' | 'items' | 'design'
+export type SurfaceName = 'home' | 'board' | 'items' | 'design'
 
 /** The route, named here once so the manifest has a single home. */
 const SURFACES_URL = routeUrl('/api/dsh-task-board/board/surfaces')
@@ -81,7 +82,8 @@ export async function readSurfaceManifest(
 function isManifest(value: unknown): value is SurfaceManifest {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.board === 'boolean'
+  return typeof record.home === 'boolean'
+    && typeof record.board === 'boolean'
     && typeof record.items === 'boolean'
     && typeof record.agent === 'boolean'
     && typeof record.design === 'boolean'

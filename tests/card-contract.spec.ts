@@ -849,7 +849,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
 
   it('every pill-geometry rule consumes the pill token (never a fixed px)', () => {
     for (const name of [
-      'boardBack', 'search', 'cruisePill', 'cruiseMore', 'columnTab',
+      'search', 'cruisePill', 'cruiseMore', 'columnTab',
       'columnCount', 'chipFill', 'feedFilter', 'feedSearch', 'feedAction',
       'segmentedButton', 'iconButton', 'buttonSm', 'notifyBadge',
       'cardQuickRun', 'promptCopy', 'reviewJumpLatest', 'attachAdd',

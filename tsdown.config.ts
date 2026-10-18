@@ -36,6 +36,7 @@ const PACKAGE_NAME = '@firetruck666/dsh-task-board'
 export default clientBundle(PACKAGE_NAME, [
   'src/index.ts',
   'src/invariant.ts',
+  'src/host-home.ts',
   'src/host-board.ts',
   'src/host-items.ts',
   'src/host-agent.ts',

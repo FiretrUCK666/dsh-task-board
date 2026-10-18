@@ -533,80 +533,79 @@ describe('board header and navigator legibility', () => {
     expect(boardTsx, '状态行没有应用省略号那一类').toMatch(/components\.truncate\}/)
   })
 
-  it('the compact board header is a DETERMINISTIC split (never a wrap soup)', () => {
-    // The old shape was one flex-wrap row soup: the engine banner appearing
-    // pushed 整理/自动化 to a second line and 自动巡航 to a fourth. Compact
-    // fixes the SHAPE with a named grid: line 1 = back + title + cruise
-    // (the always-on toggle fills the right end the relocated 新建 left);
-    // line 2 = the state announcement, full width, ONLY when it has
-    // content (stateless = single line, no dead band).
-    // Why the cruise switch is NOT beside the new-task button on a phone: the
-    // fixed members of that line would be back 28 + cruise pill ~132 + primary
-    // ~96 + gaps 24 = 280 of a 320px phone's 296 — the board title would
-    // ellipsize to a stub, i.e. "labels survive" broken by arithmetic. So
-    // 新建 moved to the thumb bar and cruise took line 1 right alone.
-    const nav = ruleIn(compact, '.boardRowNav')
-    expect(nav).toMatch(/display:\s*grid/)
-    expect(nav).toMatch(/align-items:\s*center/)
-    expect(nav).toMatch(/grid-template-columns:\s*auto minmax\(0,\s*1fr\) auto/)
-    expect(nav).toMatch(/grid-template-areas:[\s\S]*"back title cruise"[\s\S]*"state state state"/)
-    expect(compact).toMatch(/\.boardRowNav:not\(:has\(\.boardState\)\)[\s\S]*?"back title cruise"/)
-    expect(compact).toMatch(/\.boardRowNav \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
-    expect(compact).toMatch(/\.boardRowNav \.boardTitle\s*\{[^}]*grid-area:\s*title/)
-    expect(compact).toMatch(/\.boardRowNav \.boardState\s*\{[^}]*grid-area:\s*state/)
-    expect(compact).toMatch(/\.boardRowNav \.cruiseWrap\s*\{[^}]*grid-area:\s*cruise/)
-    // `grid-area: new` STAYS, and this assertion was briefly changed to forbid it on
-    // the reasoning that no `new` area exists. That reasoning is wrong about CSS
-    // Grid: an unmatched area name creates IMPLICIT NAMED LINES and places the item
-    // against them. Removing it re-flowed the header — the button onto its own line,
-    // left-aligned, the tool row pushed down — which the screenshot showed and the
-    // reasoning did not. So this pins the declaration, not its absence.
-    expect(compact).toMatch(/\.boardRowNav \.boardNewTask\s*\{[^}]*grid-area:\s*new/)
-    // And the relocation, which is the visible half of the same decision.
-    expect(compact).toMatch(/\.boardNewTask\s*\{\s*\n?\s*display:\s*none/)
-    expect(compact).toMatch(/\.thumbBar\s*\{[^}]*display:\s*flex/)
-    // Hierarchy is AREAS, never `order` + auto margins (auto margin right-aligns
-    // whichever item happens to START a wrapped line, so a wrap scatters it).
+  it('the compact board header is a DECLARED tool grid (never a wrap soup)', () => {
+    // 工作台栏之后只剩一条命令带。它的窄档形状由具名区域说死：第 1 行
+    // 搜索 | 巡航 | 新建，第 2 行模式簇，第 3 行列导航。报告簇（诉求 + 状态）
+    // 只在真有话说时占第 0 行——一个常驻的空槽就是一条死掉的带。
+    const tools = ruleIn(compact, '.boardRowTools')
+    expect(tools).toMatch(/display:\s*grid/)
+    expect(tools).toMatch(/grid-template-columns:\s*minmax\(0,\s*1fr\)\s+auto\s+auto/)
+    expect(tools).toMatch(/grid-template-areas:[\s\S]*"search cruise new"[\s\S]*"modes modes modes"[\s\S]*"tabs tabs tabs"/)
+    // 报告行是一个条件行：簇里有内容时模板才多出那一行；空簇本身不渲染
+    // （没有孩子的 flex 项仍会白吃两侧间隙，读起来像一条空槽）。
+    expect(compact).toMatch(/\.boardRowTools:has\(\.boardDemand,\s*\.boardState\)\s*\{[\s\S]*?"reports reports reports"/)
+    expect(source).toMatch(/\.boardReports:not\(:has\(>\s*\*\)\)\s*\{\s*\n?\s*display:\s*none/)
+    // 每个成员都由区域定位，没有一件靠 `order` 或 auto margin 获得位置。
+    for (const [member, area] of [
+      ['.boardRowTools .search', 'search'],
+      ['.boardRowTools .cruiseWrap', 'cruise'],
+      ['.boardRowTools .boardNewTask', 'new'],
+      ['.boardRowTools .boardModes', 'modes'],
+      ['.boardRowTools .columnTabs', 'tabs'],
+    ] as const) {
+      expect(ruleIn(compact, member), `${member} has no declared area`).toMatch(new RegExp(`grid-area:\\s*${area}`))
+    }
+    // 宽档的弹性留白在窄档退场（它只为把动作簇推到右端而生）。
+    expect(compact).toMatch(/\.boardRowTools \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).not.toMatch(/margin-left:\s*auto/)
-    expect(compact).not.toMatch(/\.boardRowNav[^{]*\{[^}]*order:/)
-    // Groups keep members together; the cruise label survives at every width
-    // (hiding words to buy pixels is the forbidden trade).
-    expect(ruleOf('boardModes')).toMatch(/display:\s*inline-flex/)
-    expect(ruleOf('boardState')).toMatch(/display:\s*inline-flex/)
-    expect(compact).not.toMatch(/\.cruisePill \.switchLabel\s*\{\s*\n?\s*display:\s*none/)
-    // The engine note is a real button (touch has no hover to reveal a `title`).
+    expect(compact).not.toMatch(/\.boardRowTools[^{]*\{[^}]*order:/)
+    // 320–400px：搜索的 140px 地板 + 两个动作装不下一行，于是搜索独占一行
+    // （换行，不压扁）。
+    expect(compact).toMatch(/@container dsh-tb \(max-width: 400px\)[\s\S]*?"search search"[\s\S]*?"cruise new"/)
+    // 主行动与铃不再被搬去第二条栏：两个宽度都在这条工具带里。
+    expect(compact).not.toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
+    expect(compact).not.toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
+    // 引擎席位的说明仍是真按钮（触屏没有 hover 可以揭示一个 title）。
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
     expect(board).toContain('css.boardStatusButton')
     expect(board).toMatch(/onClick=\{\(\) => \{ setEngineNote\('stale'\) \}\}/)
-    // The status line omits zero segments (「排队 0」 is noise — the same
-    // quietness grammar as the context meter's legend).
+    // 状态行省略零段（「排队 0」是噪音——与上下文计量同一条静默文法）。
     expect(board).toMatch(/snapshot\.stats\.running > 0 \? \[t\('board\.statusRunning'/)
     expect(board).toMatch(/snapshot\.stats\.queued > 0 \? \[t\('board\.statusQueued'/)
   })
 
-  it('the header rows carry the agreed MEMBERS at both widths', () => {
-    // Desktop AND compact share one DOM: nav row = back, title, state, spacer,
-    // cruise, NEW TASK; tools row = search, MODES. The user's re-flow: 整理/
-    // 自动化 move next to the filter, 新建任务 swaps places with 自动巡航 and
-    // the statuses read on the left.
+  it('the tool row carries the agreed MEMBERS at both widths', () => {
+    // ONE command lane serves both widths: search, the report cluster (demand +
+    // state), cruise, the primary action, the modes cluster (organize /
+    // automation / card-from-sessions / activity / update check / bell) and the
+    // compact column navigator. Each control has ONE DOM node — the old
+    // 「窄档搬去拇指栏」 twins are gone, so nothing can be visible twice or
+    // missing once.
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
-    const navRow = board.slice(board.indexOf('css.boardRowNav'), board.indexOf('css.boardRowTools'))
     const toolsRow = board.slice(board.indexOf('css.boardRowTools'), board.indexOf('organizeBar'))
-    expect(navRow).toMatch(/boardNewTask[\s\S]*<\/div>/)
-    expect(navRow.indexOf('cruiseWrap')).toBeLessThan(navRow.indexOf('boardNewTask'))
-    expect(navRow.indexOf('boardState')).toBeLessThan(navRow.indexOf('cruiseWrap'))
-    expect(navRow).not.toContain('boardModes')
-    expect(toolsRow).toMatch(/className=\{css\.search\}/)
-    expect(toolsRow).toContain('boardModes')
-    expect(toolsRow).not.toContain('boardNewTask')
-    // The notification bell rides the modes cluster (never a third header
-    // row): one shared helper renders both twins (header + thumb bar), so one
-    // tap opens the waiting-sessions dialog at either width.
-    expect(toolsRow).toContain('renderNotifyBell()')
-    expect(board).toContain('css.notifyBell')
-    expect(board).toContain('setShowNotify(true)')
+    for (const member of [
+      'css.search', 'css.boardReports', 'css.boardDemand', 'css.boardState',
+      'css.cruiseWrap', 'css.boardNewTask', 'css.boardModes', 'renderNotifyBell()',
+      'css.columnTabs',
+    ]) {
+      expect(toolsRow, `${member} left the tool row`).toContain(member)
+    }
+    // Actions stay at the right end: cruise → primary → modes cluster.
+    expect(toolsRow.indexOf('css.cruiseWrap')).toBeLessThan(toolsRow.indexOf('css.boardNewTask'))
+    expect(toolsRow.indexOf('css.boardNewTask')).toBeLessThan(toolsRow.indexOf('css.boardModes'))
+    // The workbench bar is the board's FIRST child, and the way out is ITS
+    // exit: there is no second back button in the header.
+    expect(board.indexOf('<WorkbenchBar')).toBeLessThan(board.indexOf('<header className={css.boardHeader}'))
+    expect(board, 'a second back control came back into the header').not.toContain('css.boardBack')
+    expect(board).not.toContain("t('board.close')")
+    // The primary action and the bell exist once.
+    expect(board.match(/\{t\('board\.new'\)\}/g)).toHaveLength(1)
+    expect(board, 'the removed thumb bar came back').not.toMatch(/<nav className=\{css\.thumbBar\}/)
+    // The modes cluster is one named group; its name is dictionary copy, not a
+    // string typed on the screen (touch has no hover to explain the cluster).
+    expect(board).toContain('role="group" aria-label={t(\'board.thumbBar\')}')
     // Batch run rides the organize bar as its apex action (primary): only
     // prompt-ready cards fire, through the single launch point.
     expect(board).toContain("t('board.organizeRun', {")
@@ -622,55 +621,16 @@ describe('board header and navigator legibility', () => {
     expect(board).toContain("t('board.activity')")
     expect(board).toContain('setShowActivity(true)')
     expect(board).toContain('activityOf(snapshot.tasks,')
-    // Thumb bar: compact-only twins reusing the header handlers (one
-    // behavior, never a second implementation). Hidden at base; in the compact
-    // tier it is the board column's LAST FLEX CHILD — overlap with the columns
-    // is then structurally impossible (no reserved padding, no keyboard-lift
-    // var: the board's own gap separates, a shrinking viewport lifts an
-    // in-flow bar by itself). It still FILLS edge to edge like the old pinned
-    // dock (never an inset box): negative margins spend exactly the board's
-    // dock-bleed tokens, which live on the compact board rule once. An
-    // absolutely positioned bar plus a derived reservation formula is the
-    // banned spelling (the 「列底部被拇指栏压住」 family: two numbers that
-    // must agree forever).
-    expect(board).toContain('css.thumbBar')
-    expect(board).toContain("t('board.thumbBar')")
-    expect(ruleOf('thumbBar')).toMatch(/display:\s*none/)
-    // The board frame is height:100% plus padding: without border-box it runs
-    // ~30px taller than its view and the in-flow thumb bar lands in the
-    // overflowed strip (「底部被截断」); a pinned bar would hide this.
-    expect(ruleOf('board')).toMatch(/box-sizing:\s*border-box/)
-    // The bleed tokens live on the compact board rule and feed its padding.
-    expect(compact).toMatch(/--dsh-tb-dock-x:\s*12px/)
-    expect(compact).toMatch(/--dsh-tb-dock-b:\s*12px/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/display:\s*flex/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/flex:\s*none/)
-    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/position:\s*absolute/)
-    expect(ruleIn(compact, '.thumbBar')).not.toMatch(/--dsh-tb-kb/)
-    // Full-bleed spends the tokens, never re-typed 12s.
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/-1 \* var\(--dsh-tb-dock-x\)/)
-    expect(ruleIn(compact, '.thumbBar')).toMatch(/-1 \* \(var\(--dsh-tb-dock-b\)/)
-    // The columns carry no bottom reservation for the bar anymore (in-flow
-    // needs none) — and no hand-typed clearance may come back.
-    expect(ruleIn(compact, '.columns')).not.toMatch(/padding-bottom:/)
-    expect(ruleIn(compact, '.columns')).not.toMatch(/64px/)
-    // Relocation, not duplication: the header twins hide on compact (their
-    // thumb-bar twins carry the same handlers). One visible instance per
-    // width — two DOM nodes, never two on screen.
-    expect(compact).toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
-    expect(compact).toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
-    expect(compact).toMatch(/\.boardModes \.modeDynamic\s*\{[^}]*display:\s*none/)
-    expect(board).toContain('css.modeDynamic')
-    // 会话建卡 rides the modes cluster at BOTH widths — one DOM node, no
-    // compact twin. The nav row cannot host it: that line's arithmetic is
-    // pinned above (28 + 132 + 96 + 24 = 280 of a 296px phone), and the
-    // modes cluster is already a declared grid track at both tiers.
-    expect(toolsRow).toContain('css.boardModes')
-    expect(board).toContain("t('board.newFromSessions')")
+    // Card-from-sessions rides the modes cluster at BOTH widths — one node, no
+    // twin.
+    expect(toolsRow).toContain("t('board.newFromSessions')")
     expect(board).toContain('setShowCardFromSessions(true)')
-    // No twin: nothing hides or re-shows it per width.
-    expect(compact).not.toMatch(/\.boardModes \.newFromSessions/)
-    expect(board).not.toMatch(/thumbBar[\s\S]{0,400}newFromSessions/)
+    // The board frame is height:100% plus padding: without border-box it runs
+    // ~30px taller than its view, and the columns lose their bottom edge.
+    expect(ruleOf('board')).toMatch(/box-sizing:\s*border-box/)
+    // The strip really lives inside that row (DOM, not just CSS): the JSX nests
+    // it there, so the declared tracks actually own it.
+    expect(toolsRow).toContain('css.columnTabs')
   })
 
   it('feed rows keep their box AND land on the session thread (no right-bleed, no stuck hover, no bare task open)', () => {
@@ -771,45 +731,16 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(source).toMatch(/\.interactionField > \* \{[^}]*line-height:\s*20px/)
   })
 
-  it('the compact tool row is deterministic: modes above, the filter owns the line below it (贴状态列)', () => {
-    // A filter field sharing the tool row gets crushed to one glyph ("筛"); a
-    // width floor only hides the structure problem. Compact
-    // fixes the SHAPE by REORDERING the two lines (user decision): 整理/自动化
-    // take the FIRST line left-aligned, because right-aligning two pills voids
-    // the left two-thirds, and the
-    // search takes a full-width line BELOW it — so the long filter strip
-    // sits directly above the five status columns. The grid areas are the whole
-    // answer to where 新建任务 is: it has no area here, so it is not on this row.
+  it('the compact tool row keeps ONE rhythm and the strip owns its last track', () => {
+    // 同一张 grid 里的间距由轨道与 row-gap 声明，不从「上一行盒子的底边」推导
+    // ——那条底边在真机上会被行盒悄悄吃掉几像素。列导航条是这张 grid 的第三条
+    // 轨，条带自己再声明一条单行的药丸轨，任何一侧的行盒异动都够不到间距。
     const tools = ruleIn(compact, '.boardRowTools')
-    expect(tools).toMatch(/display:\s*grid/)
-    expect(tools).toMatch(/grid-template-areas:[\s\S]*"modes"[\s\S]*"search"[\s\S]*"tabs"/)
-    // All three tracks are DECLARED (two button rows + the strip), and the one
-    // rhythm token owns the row gap: the strip then sits exactly gap + its own
-    // padding below the search field and the columns sit exactly its own
-    // padding + the board gap below the pills. Deriving that spacing from a
-    // neighbour's BOX EDGE is what let a device-side line box eat ~3px above
-    // the strip (pristine render: 20/20; real phone: 23.6/19.3 across three
-    // releases — the measurement that motivated moving the strip into this
-    // grid).
-    expect(tools).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\) var\(--dsh-tb-button-h\) auto/)
     expect(tools).toMatch(/row-gap:\s*var\(--dsh-tb-strip-gap\)/)
     expect(ruleIn(compact, '.boardRowTools .columnTabs')).toMatch(/grid-area:\s*tabs/)
-    // The strip declares its own single pill row too, so no line box inside it
-    // can inflate its box either.
     expect(ruleExact(compact, '.columnTabs')).toMatch(/grid-template-rows:\s*var\(--dsh-tb-button-h\)/)
-    const search = ruleIn(compact, '.boardRowTools .search')
-    expect(search).toMatch(/grid-area:\s*search/)
-    expect(search).toMatch(/max-width:\s*none/)
-    const modes = ruleIn(compact, '.boardRowTools .boardModes')
-    expect(modes).toMatch(/grid-area:\s*modes/)
-    expect(modes).toMatch(/justify-self:\s*start/)
-    expect(compact).not.toMatch(/\.boardRowTools \.boardNewTask/)
-    // The strip really lives inside that grid (DOM, not just CSS): the JSX
-    // nests it in the tools row, so the declared tracks actually own it.
-    const boardPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
-    const board = readFileSync(boardPath, 'utf8')
-    const toolsRow = board.slice(board.indexOf('css.boardRowTools'), board.indexOf('organizeBar'))
-    expect(toolsRow).toContain('css.columnTabs')
+    // The search fills its track here: no 520px desktop cap in a 388px row.
+    expect(ruleIn(compact, '.boardRowTools .search')).toMatch(/max-width:\s*none/)
   })
 
   it('row actions KEEP THEIR WORDS compact, and give way instead of hiding', () => {
@@ -864,16 +795,12 @@ describe('alignment grammar (the OCD contract)', () => {
     expect(source).toMatch(/column-gap:\s*var\(--dsh-tb-lead-gap\)/)
   })
 
-  it('the dock does not re-type the rail line either', () => {
-    // Same class as above, one surface further out: the compact dock's negative
-    // margins spend the dock tokens, and its padding had `14px` written by hand —
-    // the rail token's value, typed instead of referenced. It could not disagree
-    // with the rail members TODAY, which is what makes it dangerous: the day the
-    // rail line moves, the dock's contents stay behind and nothing fails.
-    const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
-    const bar = ruleIn(compact, '.thumbBar')
-    expect(bar).toMatch(/padding:\s*10px var\(--dsh-tb-rail-inset\)/)
-    expect(bar).not.toMatch(/padding:[^;]*\b14px\b/)
+  it('the workbench bar is the only page-level control inside the board', () => {
+    // 「工具栏不能重写轨道线」的那条旧断言随拇指栏一起退场：那条栏已经不存在，
+    // 留一条关于死代码的测试只会让下一个人以为它还需要。它守的「同一件事只有
+    // 一个数」现在由工具带的具名区域接管（见 compact header 那一条）。
+    expect(source).not.toContain('.thumbNew')
+    expect(source).not.toContain('.thumbBarButton')
   })
 
   it('a widget role that promises arrow keys implements them', () => {
@@ -959,9 +886,12 @@ describe('session row overlap fix', () => {
     expect(ruleOf('sessionRowLeading')).toMatch(/line-height:\s*var\(--dsh-tb-row-line\)/)
   })
 
-  it('the detail title and board title are shrinkable', () => {
+  it('the detail title and the workbench tab labels are shrinkable', () => {
+    // The detail's title and the bar's destination labels are the two places a
+    // long name meets a fixed neighbour (the close button / the exit). Both
+    // ellipsize instead of pushing it away.
     expect(ruleOf('detailTitle')).toMatch(/min-width:\s*0/)
-    expect(ruleOf('boardTitle')).toMatch(/min-width:\s*0/)
+    expect(ruleOf('workbenchTabLabel')).toMatch(/min-inline-size:\s*0/)
   })
 })
 
@@ -1088,7 +1018,6 @@ describe('button geometry (one base for every variant)', () => {
     for (const name of [
       'buttonSm',
       'iconButton',
-      'boardBack',
       'cruisePill',
       'cruiseMore',
       'columnTab',
@@ -1498,27 +1427,18 @@ describe('template library wiring', () => {
     expect(ruleIn(compact, '.organizeBar')).not.toMatch(/"count actions"/)
   })
 
-  it('compact crowds nothing: modes share the left x', () => {
-    // After the relocation the modes cluster is two pills — right-aligning
-    // them leaves the left two-thirds void. Left shares the x-line with
-    // 返回/筛选.
+  it('compact crowds nothing: the action cluster shares the board content edge', () => {
+    // The modes cluster is the whole action row at this width; right-aligning it
+    // leaves the left two-thirds void, so it starts on the same x as the
+    // search field and the columns below.
     const compact = blockFrom(line => /@container\s+dsh-tb\s*\(max-width:\s*680px\)/.test(line))
     expect(ruleIn(compact, '.boardRowTools .boardModes')).toMatch(/justify-self:\s*start/)
     // The board meets the shell edge-to-edge: separation is a hairline, not
     // air (padding alone never reads as separation against the shell head).
-    // Padding rides the dock-bleed tokens for the SIDES, and the top is a
-    // literal so it can equal them. The two bands must not disagree about which
-    // is larger: wide is 14 top against 16 sides, compact 12 top against 12
-    // sides — the SAME relationship with the OPPOSITE sign in the two bands is
-    // what nothing in the suite would compare. The compact top is 12, which
-    // makes the narrow board square (12/12) and leaves the wide band's 14/16
-    // exactly as it is; a phone and a desktop do not disagree about what
-    // 「the edge is wider than the top」 means.
-    //
-    // That top stays a literal rather than `--dsh-tb-dock-x`: the thumb bar
-    // spends the same token on its negative margins, so moving the token moves
-    // the dock too. The gate below pins the relationship, not the numbers.
-    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*12px var\(--dsh-tb-dock-x\)/)
+    // Wide is 14 top against 16 sides; compact is 12/12 — the SAME relationship
+    // with the OPPOSITE sign in the two bands, which is what makes the narrow
+    // board square. No dock token: the thumb bar that spent it is gone.
+    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*12px\s+12px\s+calc\(12px\s*\+\s*env\(safe-area-inset-bottom\)\)/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to

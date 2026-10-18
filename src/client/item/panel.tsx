@@ -100,6 +100,11 @@ import { ItemCommandPalette, type PaletteAction, type PaletteCommands } from './
 import type { ItemKeyActions } from './keyboard.ts'
 import { DEFAULT_VIEW_PREFS, readViewPrefs, writeViewPrefs, type ItemOverlay, type ItemViewPrefs } from './view-prefs.ts'
 import type { ItemListFace } from './register.tsx'
+/* 工作台栏是**三页共用的那一条**，所以它从设计系统来（那里写着为什么不是三份拷贝）。
+   它读的那几样（去处、状态、出口）由 `chrome.ts` 一处装配：一处装配，三页就不可能各说
+   一个数。这一页只负责说「我在清单这一格」。 */
+import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { workbenchChromeOf } from '../workbench/chrome.ts'
 import css from './item.module.css'
 
 /** The page names, as closed keys so no name is ever built by template. */
@@ -1889,6 +1894,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
     }
     return on
   }, [archiveOpen, railGroups, prefs.page, prefs.search])
+  /* **那一条栏要说的四样东西，从 `chrome.ts` 取一次。**
+   *
+   * 在渲染里读而不是存在状态里：计数是两份文档在**被画出来的那一刻**的函数，而存下来的
+   * 计数就是第二份真相——它会和列表上的行数各说各的，且屏上不会有人提这件事。 */
+  const chrome = workbenchChromeOf()
   return (
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       {/* ══ 左栏与列表 ════════════════════════════════════════════════════ */}
@@ -1963,6 +1973,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
             return true
           }}
         />
+
+  {/* **工作台栏是整页的第一行，不是任何一列的格子。**
+      *
+      * 它横跨左栏与主列：三个去处（总览 / 看板 / 清单）说的是「我在哪一页」，而左栏说的是
+      * 「这一页里我去哪儿」——一条只属于某一列的栏，会让另一个座位看起来像另一件产品。
+      * 组件与它读的那几样都在设计系统与 `chrome.ts` 里（三页共用一条，理由在那边）。
+      *
+      * **它在 `.itemWorkbench` 之前、在同一个 flex 列里**，所以下面的工作台拿到的是
+      * 「剩下来的高度」：左栏与列表各自滚自己那一份，栏永远停在顶上。
+      *
+      * **开着浮层时它和下面那一层一起失效。** 两个浮层都声明了 `aria-modal="true"`，
+      * 而「外面的一切都不成立」这句话必须有人兑现——栏在浮层外面，不写上这一句，一个键盘
+      * 使用者就能 Tab 到浮层背后去换页。 */}
+  <div
+    className={css.itemWorkbenchBar}
+    {...(overlayIsModal ? { 'aria-hidden': true, inert: '' } as Record<string, unknown> : {})}
+  >
+    <WorkbenchBar
+      active="items"
+      tabs={chrome.tabs}
+      label={t('workbench.navLabel')}
+      status={chrome.status}
+      exitLabel={chrome.exitLabel}
+      onNavigate={chrome.onNavigate}
+      onExit={chrome.onExit}
+    />
+  </div>
 
   {/* THE SHELL CARD IS GONE, and the ROWS are the cards now: the panel sits
       * directly on the canvas and each row paints its own card — the board's own

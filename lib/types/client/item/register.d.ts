@@ -40,61 +40,6 @@ export interface ItemListFace {
     };
 }
 /**
- * The holder the background settle publishes into, and the panel reads from.
- *
- * ONE holder, and the module-level instance below is the only one: the earlier
- * code also had a second `new ItemListStage()` in the client entry, which bound
- * the live replica while this file's panel read the module singleton — so the
- * panel sat on "preparing" forever while every test stayed green. **A binding
- * side and a reading side that name the same thing are only the same thing if
- * they are the same object**, and that is a fact a type can check and a habit
- * cannot.
- *
- * The holder owns its own lifetime signal rather than borrowing a mount's: a
- * main-stage panel unmounts every time the reader looks at the conversation, so
- * a lifetime tied to its mount would tear down the replica subscription on
- * every panel switch. It aborts when the plugin does, and only then.
- */
-export declare class ItemListStage {
-    private itemReplica;
-    private board;
-    private open;
-    /**
-     * **看板那一侧递过来的一次「只看挂着这张卡的条目」请求。**
-     *
-     * 计数器 + 载荷，不是布尔：布尔会漏掉「在同一个状态下的第二次按」（挂载时读到 `true`，
-     * 之后再看还是 `true`，第二次按就没了声音）——与本页归档抽屉那一行同一个形状。
-     */
-    private focus;
-    private focusToken;
-    private readonly lifetime;
-    /**
-     * Publish the live faces; the signal already exists and is unchanged.
-     *
-     * `openCard` 是**可选**的第三个面：装配层（`client/index.ts`）知道看板住在哪个座位、
-     * 也知道 shell 的布局服务，而这一层只把它转交给面板（见 `ItemListFace.openCard`）。
-     * 缺席时面板画一枚**读数**而不是一枚按不动的按钮。
-     */
-    bind(replica: ChecklistReplica | undefined, controller: BoardController | undefined, openCard?: (cardId: string) => void): void;
-    /** The plugin's own lifetime, for every timer and subscription inside. */
-    signal(): AbortSignal;
-    replica(): ChecklistReplica | undefined;
-    controller(): BoardController | undefined;
-    /** The cross-panel door, when the wiring layer gave one (see {@link bind}). */
-    openCardOf(): ((cardId: string) => void) | undefined;
-    /** 装配层（或看板那一侧）请清单只显示挂着这张卡的条目。 */
-    focusRowsOf(cardId: string): void;
-    /** 面板读它：带 token，所以同一个请求不会被消费两次，也不会漏掉第二次。 */
-    focusRequest(): {
-        readonly token: number;
-        readonly cardId: string;
-    } | undefined;
-    /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
-    unbind(): void;
-}
-/** THE single stage, exported so the client entry binds THIS one. */
-export declare const itemListStage: ItemListStage;
-/**
  * Contribute the list: its main-stage panel and the panel-list row that
  * selects it.
  *

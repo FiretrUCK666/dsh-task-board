@@ -21,10 +21,10 @@
  */
 
 /** The surfaces a row can announce. The package row itself is not one. */
-export type SurfaceId = 'board' | 'items' | 'agent' | 'design'
+export type SurfaceId = 'home' | 'board' | 'items' | 'agent' | 'design'
 
 /** Every surface id, so a caller cannot announce one this file does not know. */
-export const SURFACE_IDS: readonly SurfaceId[] = ['board', 'items', 'agent', 'design']
+export const SURFACE_IDS: readonly SurfaceId[] = ['home', 'board', 'items', 'agent', 'design']
 
 /** Process-wide, because the host is one process and a row is loaded once. */
 const active = new Set<SurfaceId>()
@@ -59,8 +59,9 @@ export function activeSurfaces(): readonly SurfaceId[] {
  * register that surface.
  * @returns which surfaces the host says are on.
  */
-export function surfaceManifest(): { board: boolean; items: boolean; agent: boolean; design: boolean } {
+export function surfaceManifest(): { home: boolean; board: boolean; items: boolean; agent: boolean; design: boolean } {
   return {
+    home: active.has('home'),
     board: active.has('board'),
     items: active.has('items'),
     agent: active.has('agent'),

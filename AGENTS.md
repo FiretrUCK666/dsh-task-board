@@ -260,10 +260,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名） |
 | 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制」） |
 | **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
+| **总览舞台 slot** | `main`，`key: dsh-task-board-home`（工作台的第一页） |
 | **清单舞台 slot** | `main`，`key: dsh-task-board-items`（与看板同一个座位、不同键） |
 | **设计系统预览舞台 slot** | `main`，`key: dsh-task-board-design`（同上；**只在开发环境注册**，见启停机制） |
 | **侧栏入口 slot** | `sidebar.panellist`，`id` 与各自的 `main` 键**一致**（shell 靠它把行解析到舞台） |
-| **插件行的开关** | `cordis.patch.yml` 的四行 = 详情页的四个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
+| **插件行的开关** | `cordis.patch.yml` 的五行 = 详情页的五个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
 **本插件没有设置项**：每个行为都是看板上的数据，在界面里直接编辑。
@@ -298,10 +299,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 | slot | 用途 |
 | --- | --- |
+| `main` | 总览舞台（keyed slot，key = `dsh-task-board-home`） |
 | `main` | 看板舞台（keyed slot，key = `dsh-task-board`） |
 | `main` | 任务清单舞台（keyed slot，**key = `dsh-task-board-items`**——一个面板一个键） |
 | `main` | 设计系统预览舞台（keyed slot，**key = `dsh-task-board-design`**，只在开发环境注册） |
-| `sidebar.panellist` | 侧栏面板列表里的三行：看板 / 清单 / 设计系统（id 与各自的 `main` 键**一致**） |
+| `sidebar.panellist` | 侧栏面板列表里的四行：总览 / 看板 / 清单 / 设计系统（id 与各自的 `main` 键**一致**） |
 | `tool.call.toolview` | AI 动作在对话里的呈现（keyed，按工具名） |
 
 **这张表只列真有人用的座位**，且与 patch 行、`exports`、`tsdown` entry 一致——门禁查的就是这三个。
@@ -373,8 +375,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - `src/index.ts`：inject 只有 `webServer`；`ctx.effect` 各注册一条路由。**模型的整个面在它自己的
   一行**（`src/host-agent.ts`），关掉「AI 接口」是装配层的事。**没有 `Config` schema、没有 enable
   检查**——启停是 profile 行的 `disabled`。
-- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的四行：**一行 = 详情页上的一个开关**；面板的开关
-  只能由宿主侧那一行先宣告（`host-board.ts` / `host-items.ts` 只有几行）。
+- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：**一行 = 详情页上的一个开关**；面板的开关
+  只能由宿主侧那一行先宣告（`host-home.ts` / `host-board.ts` / `host-items.ts`）。
 - `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
   **动作目录是它们的唯一权威**（`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts` 的
   注册表）；写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI 调同一套语义实现**。
@@ -417,41 +419,35 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   配置」常驻详情右栏（读 `RunConfigRows`、写 `RunConfigFields`），按下去跑的就是屏上那一份
   （挂卡的读那张卡，其余读 `drafts.ts` 的草稿槽）。**一律不用 Dialog**。
   `hostLostItems()` 为真时说「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder
-  （`itemListStage`）；`surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
+  （`workbenchStage`）；`surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
   **归档是一个抽屉、两扇门**：左栏「已删除」那一行用一个**计数器信号**打开（不是布尔：挂载时
   读到的布尔会漏掉那一下），恢复是 host 操作而不是客户端提交（`items-archive.ts`）。
   **寻址键两个、各具名、互不为兜底**：界面撤销传 `id`，模型的 `item.restore` 传 `ref`。
   **恢复没回来就说没回来**。
 ### 前端架构（**索引**：成文契约在 `DESIGN.md` 的 Design System 节，机制在代码注释里）
 
-**`src/client/design/` 是设计系统，`board/` `item/` `gallery/` 是页面。** 四层各有归属，判据只有
-一条——**有第二个消费者**（「看起来通用」不算），数的是**消费者目录**：
+**四层各有归属，判据只有一条——有第二个消费者**（「看起来通用」不算），数的是**消费者目录**：
 
 | 层 | 位置 | 判据 |
 | --- | --- | --- |
 | 令牌 | `design/tokens.module.css` | 一个值被两处以上消费 |
 | 形态 | `design/base.module.css` | **至少两个表面消费它** |
 | 组件 | `design/<X>.tsx` + `design/components.module.css` | **至少两个文件渲染它**；**两个面板都渲染的必须在这里**（都由 `design-coverage.spec.ts` 管：在外面的要么搬进来，要么在豁免表里写明理由，理由过时即红） |
-| 页面 | `board/` `item/` `gallery/` | 只有这一页的几何与排版 |
-
-**一个例外**：**被搬走的东西依赖的模块跟着搬**——`escape-stack` / `dialog-focus` / `modal-inert`
-只有 board 一个消费者，留在原地会让 `design/` 反过来 import `board/`。
+| 页面 | `board/` `item/` `home/` `gallery/` | 只有这一页的几何与排版 |
+| 装配 | `workbench/` | 三页共用的判定：座位键（`chrome.ts`）、唯一持有者（`stage.ts`）、栏的 props。**它不是页面** |
 
 **层方向是门禁**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`）——伸手去读某一页的
-元件，又成了「哪一页渲染它」的函数。今天唯一豁免是运行配置那一对，理由记在同一张豁免表里。
-
-**改 CSS 前必须知道的一条**：类名属于**表**（构建按文件名哈希），**一张表的选择器写另一张表的
-类名在生产包里匹配不到任何东西**——静默失效，本地还看着正常。跨页面共享的形态只能是**组件**或
-**共享类**；展开与门禁（`verify-design-docs.mjs`）在 `DESIGN.md` 的 Design System 节。
-
-其余成文在 **`DESIGN.md` 的 Design System 节**（间距阶梯、断点表与四个容器、`corner-shape` 两条
-轴、预览页、四步复用顺序）。**改界面前先读那一节。**
+元件，又成了「哪一页渲染它」的函数。两个例外都有理由：`escape-stack` / `dialog-focus` /
+`modal-inert` 只有 board 一个消费者，搬走会让 `design/` 反过来 import `board/`；运行配置那一对
+记在同一张豁免表里。**改 CSS 前必须知道**：类名属于**表**（构建按文件名哈希），一张表的选择器写
+另一张表的类名在生产包里匹配不到任何东西，静默失效。跨页面共享的形态只能是**组件**或**共享类**，
+展开与门禁（`verify-design-docs.mjs`）在 `DESIGN.md` 的 Design System 节；其余成文也在那里（间距
+阶梯、断点表与四个容器、`corner-shape` 两条轴、预览页、四步复用顺序）。**改界面前先读那一节。**
 
 清单面板另有一条陷阱成文在 `DESIGN.md`：**`<p>` 上写 `margin` 一律无效**（压死它的是一条属性
 选择器规则，特异性赢过类规则）。要读的字用 padding 让位。
 
-**预览页**：`gallery/` 是第三个主舞台面板，只在开发环境出现（见启停机制）；渲染的枚举都从导出
-处读，两条读不出来的由 `tests/gallery.spec.ts` 数着。
+**预览页**：`gallery/` 只在开发环境出现；枚举从导出读，两条读不出来的由 `tests/gallery.spec.ts` 数着。
 
 ### 核心层（`src/core/` 纯逻辑）
 

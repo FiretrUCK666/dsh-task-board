@@ -242,9 +242,8 @@
   color: var(--dsh-tb-text-1);
 }
 
-/* 板头两行命令栏。导航行 = 返回 + 板名 + 状态组（左）…… 自动巡航 + 新建任务
-   （右端，动作永远在最右）；工具行 = 筛选（左）…… 整理 + 自动化（右）。
-   层级靠留白与分组表达，不堆边框、不用 auto margin。 */
+/* 板头 = 工作台栏之下的唯一一条工具带：搜索、报告簇（诉求 + 状态）、巡航、
+   主行动、模式簇。层级靠留白与分组表达，不堆边框、不用 auto margin。 */
 .boardHeader {
   display: flex;
   flex-direction: column;
@@ -260,45 +259,20 @@
   min-width: 0;
 }
 
-/* 返回对话：最左的安静图标钮（导航类，权重最低）。 */
-.boardBack {
-  display: inline-flex;
+/* 报告簇：诉求行与状态槽共用的一格。它们是全板最该先说的两件事，所以紧贴
+   搜索（而不是散在两端）。空簇不渲染——一个没有孩子的 flex 项虽然宽 0，
+   却会白吃两侧各一个间隙，读起来像一条空槽。 */
+.boardReports {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  flex: none;
-  width: 28px;
-  height: 28px;
-  padding: 0;
-  color: var(--dsh-tb-text-2);
-  background: transparent;
-  border: none;
-  border-radius: var(--dsh-tb-pill);
-  cursor: pointer;
-  transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
-}
-
-.boardBack:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--dsh-tb-text-1);
-}
-
-.boardBack:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
-  outline-offset: 2px;
-}
-
-.boardTitle {
-  margin: 0;
-  /* Shrinkable so a long title never pushes the cruise/new-task actions out
-     of the header row (flex children default to min-width:auto). */
+  flex-wrap: wrap;
+  gap: var(--dsh-tb-space-5);
+  flex: 0 1 auto;
   min-width: 0;
-  font-size: 16px;
-  font-weight: 600;
-  letter-spacing: -0.02em;
-  color: var(--dsh-tb-text-1);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+
+.boardReports:not(:has(> *)) {
+  display: none;
 }
 
 /* 命令栏中的弹性留白：把右侧动作推到末尾，不用分隔线分组。 */
@@ -345,6 +319,8 @@
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
+  /* 计数药丸同样是「一行字在盒里」：下内衬把墨抬到盒心。 */
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   font-size: 11px;
   font-weight: 600;
   line-height: 1;
@@ -545,22 +521,23 @@
   overflow-wrap: anywhere;
 }
 
-/* 工具行 = 筛选任务（左，与返回/板名同一条 x）+ 模式组（整理/自动化，右）：
-    space-between 让两端各自贴边，中间的空位属于行，两个成员永不互抢。 */
+/* 工具行 = 搜索（左，它与下面的列是同一件事的两端）+ 报告簇 + 弹性留白 +
+   动作簇（模式/巡航/主行动，永远在最右）。flex-wrap 让它在中等宽度换行而不是
+   压扁；紧凑档由下面的具名 grid 接管。 */
 .boardRowTools {
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
 }
 
 .boardNewTask {
   flex: none;
 }
 
-/* Thumb bar: the board's thumb zone. display:none at base (desktop never
-   renders it — one behavior, not two); the compact block below pins it to
-   the board box bottom with the box-relative geometry the whole board uses
-   (never vw/vh — the anchor is [data-dsh-taskboard-view], absolute inset 0).
-   Members reuse the header's own handlers, so there is no second behavior
-   to maintain: 新建 (primary, stretches) + 通知铃 (badge included) + 动态. */
+/* The bar's compact diagnostic key. The thumb bar was removed in favour of a
+   single command row, so nothing renders with this class; it stays declared
+   because `client-report.ts` (a contract outside this sheet) looks the
+   landmark up by this name. Measuring it yields nothing — an absent element,
+   which the collector already treats as "not reported". */
 .thumbBar {
   display: none;
 }
@@ -611,6 +588,7 @@
 .boardDemand {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--dsh-tb-space-3);
   /* Shrinkable like .boardStatus, with the clip on the text slot so the dot's
      halo is never cut by its own container. */
@@ -622,6 +600,9 @@
   font-size: 12px;
   font-weight: 500;
   line-height: 1;
+  /* 行的居中只到内容盒：下内衬多 2d，内容盒中心就上移 d，字的墨才落在盒心
+     （令牌见 tokens 表；transform 会把盒子和字一起挪走，等于没修）。 */
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
@@ -782,8 +763,9 @@
   align-items: center;
   justify-content: center;
   flex: none;
-  width: 22px;
-  height: 22px;
+  /* 小件只有一个高：20px，读令牌而不是写死 22。 */
+  width: var(--dsh-tb-chip-h);
+  height: var(--dsh-tb-chip-h);
   padding: 0;
   color: var(--dsh-tb-text-2);
   background: transparent;
@@ -826,7 +808,7 @@
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 .cruisePopoverHead {
@@ -1066,13 +1048,18 @@
   /* Border-box like the header buttons: 28px means 28. */
   box-sizing: border-box;
   height: 28px;
+  /* A tab is one line of text in a capsule: the bottom bearing is the ink
+     correction (2d moves the content box centre up by d). */
   padding: 0 10px;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-chip-fill);
   color: var(--dsh-tb-text-2);
   font: inherit;
   font-size: 12px;
+  /* AFTER the `font` shorthand: that shorthand resets line-height too. */
+  line-height: 1;
   cursor: pointer;
   transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -1101,11 +1088,13 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
-  /* The same surface token the native conversation pane uses — the board
-     never layers a second tint on top of the app's base. */
-  background: var(--dsh-tb-bg);
+  /* 凹面：桌面上的浅槽。它比页底退后一级，所以放在它上面的纸（卡片）才有
+     地方可浮。边用最轻的一档发丝线，边光只留上沿的一条——列是「槽」，不是
+     又一张纸，投影留给卡片。 */
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
+  box-shadow: var(--dsh-tb-rim-soft);
   overflow: hidden;
   /* ── THE RAIL, AND WHAT IS IN IT ─────────────────────────────────────────
      Four numbers, and every place on this surface that needs one reads one of
@@ -1164,9 +1153,8 @@
 }
 
 .boardHeader,
-.columns,
-.thumbBar {
-  animation: dshTbBoardIn 160ms ease;
+.columns {
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 .columnHeader {
@@ -1203,6 +1191,13 @@
      stays 20, which is what the count pill has always had. */
   padding: 10px 20px 10px calc(var(--column-frame) + var(--card-gutter) + var(--card-mark-col));
   flex: none;
+  /* 状态洗底带：一条 14%（`--dsh-tb-wash`）的状态色洗底，只铺在列头上。
+     它回答「这一列是哪一档」，同时把列头从列身里分出来——不是再加一条边，
+     而是让这 40px 有颜色。色相来自 `.column[data-status]` 上的别名，
+     深浅来自梯子（调用点不写百分比）。 */
+  background: color-mix(in srgb, var(--column-status, transparent) var(--dsh-tb-wash), transparent);
+  /* 洗底带的底沿：一条发丝线，给颜色一个结束的地方。 */
+  border-bottom: var(--dsh-tb-border-soft);
 }
 .columnHeader > .statusDot {
   position: absolute;
@@ -1230,27 +1225,36 @@
 .columnTitle {
   margin: 0;
   flex: 1;
-  font-size: 13px;
-  font-weight: 500;
+  /* 13px/600：列名是这一列唯一的标题，和卡片标题（15/600）同一族字重，
+     小一号——它比卡片标题更「框架」，但不该比卡片标题更轻。 */
+  font-size: var(--dsh-tb-type-body-size);
+  font-weight: 600;
   color: var(--dsh-tb-text-1);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+/* 计数药丸：**一个盒子，不是一枚读不成形的读数。** 嵌面（比列头的洗底再深
+   一级）+ 发丝边 + 20px 的固定高；数字等宽，所以 9→10 不会让药丸自己变宽。 */
 .columnCount {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
   flex: none;
-  min-width: 0;
-  font-size: 12px;
-  font-family: inherit;
-  line-height: inherit;
-  color: var(--dsh-tb-text-2);
-  /* Single-layer solid pill: an rgba pill on a translucent column would
-     wash out to a double fade. */
-  background: var(--dsh-tb-surface-sunken);
-  border: 1px solid transparent;
-  border-radius: var(--dsh-tb-pill);
+  min-width: 24px;
+  block-size: var(--dsh-tb-chip-h);
   padding: 0 7px;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
+  font-size: var(--dsh-tb-type-meta-size);
+  font-family: inherit;
+  line-height: 1;
+  color: var(--dsh-tb-text-2);
+  font-variant-numeric: tabular-nums;
+  background: var(--dsh-tb-plane-inlay);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-pill);
   cursor: inherit;
 }
 
@@ -1276,6 +1280,14 @@
 .statusDot[data-status='running'] { background: var(--dsh-tb-status-running); }
 .statusDot[data-status='review'] { background: var(--dsh-tb-status-review); }
 .statusDot[data-status='done'] { background: var(--dsh-tb-status-done); }
+
+/* 列头那条状态洗底带读哪一族的色：一枚本地别名，五条，与状态点同一张表。
+   洗底的深浅不在这里决定——它由 `--dsh-tb-wash` 那一档梯子给（见列头）。 */
+.column[data-status='backlog'] { --column-status: var(--dsh-tb-status-backlog); }
+.column[data-status='todo'] { --column-status: var(--dsh-tb-status-todo); }
+.column[data-status='running'] { --column-status: var(--dsh-tb-status-running); }
+.column[data-status='review'] { --column-status: var(--dsh-tb-status-review); }
+.column[data-status='done'] { --column-status: var(--dsh-tb-status-done); }
 
 .cards {
   position: relative;
@@ -1352,9 +1364,13 @@
      8px dot on the title line carries the exact picked color, identical to
      the palette swatch, so the card never looks 偏色). Applied as data
      through --card-tint, never a CSS literal; unset cards stay plain. */
-  background: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-surface-float));
+  background: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-plane-sheet));
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
+  /* 一张被抬起的纸：色调台阶（sheet）+ 一条上边光（rim）+ 一条下投影
+     （cast-1）。三件事同时成立才叫「纸」——静止态就有投影，这是它与
+    下面那张凹面列的唯一区别，也是这次修的东西。 */
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   cursor: pointer;
   color: var(--dsh-tb-text-1);
   font-family: inherit;
@@ -1367,7 +1383,13 @@
      ring, focus outline) are element box decorations, not child content,
      so they are NOT clipped. */
   overflow: hidden;
-  transition: box-shadow var(--dsh-tb-motion), border-color var(--dsh-tb-motion), transform var(--dsh-tb-motion), background var(--dsh-tb-motion);
+  /* 两条速度各有职责：影与位移是「抬升」（lift，200ms），颜色与底色是
+     「状态变化」（160ms）。两者的曲线都是同一条 `--dsh-tb-ease`。 */
+  transition:
+    box-shadow var(--dsh-tb-motion-lift),
+    transform var(--dsh-tb-motion-lift),
+    border-color var(--dsh-tb-motion),
+    background var(--dsh-tb-motion);
 }
 
 /* A card picked in the board's organize/tidy mode: an unmistakable but
@@ -1385,7 +1407,8 @@
     0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
     0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
     0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    var(--dsh-tb-shadow-2);
+    var(--dsh-tb-rim),
+    var(--dsh-tb-cast-2);
   transform: translateY(-1px);
 }
 
@@ -1414,9 +1437,19 @@
 }
 
 .card:hover {
-  box-shadow: var(--dsh-tb-shadow-2);
+  /* 纸叠纸：第二档投影 + 1px 抬升。边光保留——抬起来的纸仍然有上沿。 */
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
   border-color: var(--dsw-alias-border-l3);
   transform: translateY(-1px);
+}
+
+/* 按下：立刻回位。反馈要快——慢一拍就像没反应。 */
+.card:active {
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  transform: translateY(0);
+  transition:
+    box-shadow var(--dsh-tb-motion-fast),
+    transform var(--dsh-tb-motion-fast);
 }
 
 /* Selection wins over hover while the pointer stays on the card: equal
@@ -1430,7 +1463,23 @@
     0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
     0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
     0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    var(--dsh-tb-shadow-2);
+    var(--dsh-tb-rim),
+    var(--dsh-tb-cast-2);
+}
+
+/* A selected card still answers the press: the ring is selection-bound, the
+   compression is the click's own feedback. */
+.card.selectedCard:active {
+  transform: translateY(0);
+  box-shadow:
+    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
+    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
+    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
+    var(--dsh-tb-rim),
+    var(--dsh-tb-cast-1);
+  transition:
+    box-shadow var(--dsh-tb-motion-fast),
+    transform var(--dsh-tb-motion-fast);
 }
 
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
@@ -1486,11 +1535,13 @@
   height: 26px;
   padding: 0;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-float);
-  border: 1px solid var(--dsw-alias-border-l2);
+  /* 纸面上的小纸片：同样的台阶 + 边光 + 一档投影，所以它看起来是「放在卡片
+     上的一枚按钮」，而不是卡片里挖出来的一块。 */
+  background: var(--dsh-tb-plane-sheet);
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
-  box-shadow: var(--dsh-tb-shadow-1);
+  box-shadow: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
   opacity: 0;
   /* An INVISIBLE control must not be able to receive a tap. `opacity: 0` alone
      does not disable hit-testing, so on a touch device (no hover to reveal it) a
@@ -1572,6 +1623,12 @@
      closer. */
   gap: var(--card-mark-gap);
   min-width: 0;
+  /* 26px FOR THE HOVER QUICK-RUN. The play pill is absolutely positioned in the
+     card's top-right corner (26x26 at top 8 / right 8); without this reservation
+     a two-line title runs underneath it, so the pill lands ON the word it is
+     meant to act on. Reserving the pill's own width keeps the text behind it
+     even when the pill is still invisible. */
+  padding-inline-end: 26px;
 }
 
 .cardColorMark {
@@ -1598,10 +1655,11 @@
   height: 8px;
   margin-inline-start: calc(var(--card-mark-air) - var(--card-mark-col));
   border-radius: 50%;
-  /* Optical centering against the first title line (14px / 1.35 ≈ 18.9px):
-     the dot's center must sit on the line's visual center, NOT on the
-     flex-start edge — the offset read "high" next to the title. */
-  margin-top: 5px;
+  /* Optical centering against the first title line. The line box is DECLARED
+     (`--dsh-tb-type-title-line`, 22px), so the offset is arithmetic rather than
+     a guess: (22 - 8) / 2 = 7. A number tuned to one font would move the dot
+     off the words the moment the title's step changes. */
+  margin-top: 7px;
   /* The mark's hairline ring is a soft transparency of the SAME data color:
      the visible dot is exactly the picked color — no blend, no偏色. */
   box-shadow: 0 0 0 1px color-mix(in srgb, var(--card-tint) 30%, transparent);
@@ -1609,9 +1667,12 @@
 
 .cardTitle {
   min-width: 0;
-  font-size: 14px;
-  font-weight: 500;
-  line-height: 1.35;
+  /* Title step: 15/600, a declared 22px line box, two lines and then an
+     ellipsis. The line height is spelled from the type ladder, not left to the
+     font — the mark above is centred against it. */
+  font-size: var(--dsh-tb-type-title-size);
+  line-height: var(--dsh-tb-type-title-line);
+  font-weight: 600;
   overflow: hidden;
   /* A single unbreakable token (URL, a run-on word in any font) also
      breaks instead of pushing past the clamped box. */
@@ -1623,8 +1684,11 @@
 
 .cardExcerpt {
   min-width: 0;
-  font-size: 12px;
-  line-height: 1.4;
+  /* Body step: 13/400. The excerpt is the only longer thought on the card, so
+     it takes the reading size rather than the meta size. */
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-type-body-line);
+  font-weight: 400;
   color: var(--dsh-tb-text-2);
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -1648,7 +1712,13 @@
      and meta on a 60px-wide card reads as noise on a dense board. */
   padding-top: 6px;
   margin-top: 0;
-  font-size: 11px;
+  /* Meta step: 12/400, tabular figures. A card's numbers (run counts, times,
+     `+N`) change while the reader watches; proportional digits would make the
+     line jump one pixel per increment. */
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   color: var(--dsh-tb-text-2);
 }
 
@@ -1742,7 +1812,16 @@
    The gap still does the separating; this is what gives the gap something to
    separate. */
 .cardBadge {
+  /* 小件只有一个高：20px（`--dsh-tb-chip-h`）。border-box 是承重的——1px 的
+     描边与内衬算在这 20px 里，否则同一行里外框高矮不一。 */
+  box-sizing: border-box;
+  block-size: var(--dsh-tb-chip-h);
   padding: 0 var(--card-badge-pad);
+  /* The Chip's own ink correction is set inside the design sheet; this surface
+     sets its own padding shorthand, so it has to restate it or the compact
+     bottom bearing is reset to 0 (the same trap every `padding` shorthand
+     spells for a shared shape). */
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   border: var(--card-badge-hair) solid var(--dsw-alias-border-l1);
   border-radius: var(--dsh-tb-pill);
 }
@@ -1816,8 +1895,10 @@
 /* One line for what IS vs HAS: the card's fact line, always single. */
 .cardNext {
   min-width: 0;
-  font-size: 12px;
-  line-height: 1.4;
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-type-meta-line);
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
   color: var(--dsh-tb-text-2);
   overflow: hidden;
   overflow-wrap: anywhere;
@@ -1864,10 +1945,14 @@
   flex: none;
 }
 .filterChipRemove {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex: none;
   border: none;
   background: none;
   padding: 0 2px;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
@@ -1880,11 +1965,16 @@
 .feedFilter {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   flex: none;
   height: 24px;
   padding: 0 10px;
+  /* One line of text in a capsule: the bottom bearing lifts the ink to the
+     box's centre (a transform would move the box and the text together). */
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
+  line-height: 1;
   color: var(--dsh-tb-text-2);
   background: none;
   border: var(--dsh-tb-border-soft);
@@ -1923,10 +2013,13 @@
      `align-items: center`，两枚并排时一个居中一个贴在顶上。 */
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   flex: none;
   height: 24px;
   padding: 0 10px;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   font-size: 12px;
+  line-height: 1;
   color: var(--dsh-tb-text-2);
   background: none;
   border: var(--dsh-tb-border-soft);
@@ -2492,12 +2585,21 @@
      card cap (see .interactionCard). */
 }
 
+/* 详情是「离开页面的一层」，所以它读浮面的纸与最深的一档投影——比卡片高
+   一级、比列高两级。`.modal` 的底与影在 design 表里（它服务整个弹层家族），
+   这条按座位限定、以更高特异性覆盖它：面板自己的纸面只在这个座位里成立，
+   别的 Dialog 不受影响。 */
+[data-dsh-taskboard-view] .detail {
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-cast-3);
+}
+
 .detailHeader {
   display: flex;
   align-items: center;
   gap: var(--dsh-tb-space-6);
   padding: 14px 18px;
-  border-bottom: var(--dsh-tb-separator);
+  border-bottom: var(--dsh-tb-border);
   flex: none;
 }
 
@@ -2516,9 +2618,9 @@
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  /* Breathing air between the detail blocks — a little more than before so
-     内容/运行配置/自动化/会话/状态 each read as a distinct block. */
-  gap: 18px;
+  /* 分节间距只有 12px：内容 / 运行配置 / 自动化 / 会话 / 状态 各读成一块，
+     但一块与一块之间是同一条缝，不是一个按内容长短变形的洞。 */
+  gap: var(--dsh-tb-space-6);
   flex: 1;
   /* Shrink below content so the pinned footer stays reachable (the .modalScroll
      contract; without it a long detail body pushes the actions out of the
@@ -3922,7 +4024,7 @@
   align-items: center;
   gap: var(--dsh-tb-space-6);
   padding: 12px 18px;
-  border-top: var(--dsh-tb-separator);
+  border-top: var(--dsh-tb-border);
   flex: none;
 }
 
@@ -4043,7 +4145,7 @@
    this bounded, self-healing overlap for a permanent ordering rule nobody
    can see. */
 .card[data-fresh] {
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4503,7 +4605,7 @@
 .reviewMessage {
   display: flex;
   max-width: 100%;
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 .reviewMessage[data-role='user'] {
@@ -4594,7 +4696,7 @@
   padding: 4px 10px;
   border-left: 2px solid var(--dsw-alias-border-l2);
   opacity: 0.85;
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 /* The "waiting for you" notice: shown while the execution session is blocked
@@ -4866,7 +4968,7 @@
   background: var(--dsh-tb-surface-sunken);
   border: 1px solid var(--dsw-alias-border-l1);
   border-radius: var(--dsh-tb-radius-md);
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
 
 .reviewCommentText {
@@ -6426,34 +6528,16 @@
   .board {
     /* The board meets the shell header edge-to-edge (the container is
        absolute inset:0), so air alone never reads as separation — the top
-       edge gets the same hairline the columns use. One line, both widths'
-       language; padding stays desktop-parity. */
+       edge gets the same hairline the columns use. */
     border-top: var(--dsh-tb-separator);
-    /* Dock-bleed tokens (single source): the in-flow thumb bar spends exactly
-       these back through negative margins to fill edge to edge — the numbers
-       live here once, never re-typed beside the bar. */
-    --dsh-tb-dock-x: 12px;
-    --dsh-tb-dock-b: 12px;
-    padding: 12px var(--dsh-tb-dock-x) calc(var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
-    /* 10, and it STAYS 10 — this is the BETWEEN-group gap, and it is the number
-       the within-group gap has to be smaller than. See `.boardHeader` below:
-       10 between every pair of rows, including the two
-       that bound a band, leaves 「诉求行 / 导航行 / 工具行」 with no visible grouping
-       at all and the whole header reading as one undifferentiated stack. */
+    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    /* 10, and it STAYS 10 — this is the BETWEEN-band gap, and it is the number
+       the within-group gap has to be smaller than. See `.boardHeader` below. */
     gap: var(--dsh-tb-space-5);
   }
 
-  /* THE WITHIN-GROUP GAP, 6, IN ONE PLACE. The header is a stack of three bands
-     and the only thing that tells the reader where one ends and the next begins
-     is that the gap ACROSS the boundary is larger than the gap WITHIN a band.
-     On a phone both were 10, so the three bands had one flat rhythm and the
-     grouping was gone.
-
-     Stated here rather than per-row because the alternative is three numbers
-     tuned to agree, and a fourth row would be added to neither. The invariant
-     worth keeping is the RELATIONSHIP — `between > within` — and a single
-     declaration is what makes it hold for whatever lands inside the header
-     later. */
+  /* THE WITHIN-GROUP GAP, 6, IN ONE PLACE. 工作台栏 → 工具带 → 内容 是三条
+     带；把它们分开的只有「带与带之间的缝比带内的大」这一条关系。 */
   .boardHeader {
     gap: var(--dsh-tb-space-3);
   }
@@ -6463,88 +6547,34 @@
     gap: var(--dsh-tb-space-4);
   }
 
-  /* 导航行 = 确定的两行，用具名区域表达（⑨：层级由 AREAS 说，不由 order +
-     auto-margin 说）。第 1 行 返回 + 板名 + 新建任务；第 2 行 状态（左，跨
-     两轨）+ 自动巡航（右）。为什么巡航不与新建任务并排在第 1 行：320px 手机
-     上第 1 行的固定成员已是 返回28 + 巡航132 + 新建96 + 间隙24 = 280，板名
-     只剩 16px——「标签一律保留」当场失效。分行后板名拿到 ~156px。
-     行结构由模板固定，与内容长度无关（状态缺席时第二行仍在，巡航守右）。 */
-  .boardRowNav {
-    display: grid;
-    grid-template-columns: auto minmax(0, 1fr) auto;
-    /* One baseline: back (28px) + title + cruise (28px pill) share a center
-       line. The grid default is stretch — without this the three members sit
-       on three different optical lines (「箭头和标题巡航没对齐」). */
-    align-items: center;
-    /* Compact header, owned (not patched): line 1 = back + title + cruise
-       (the always-on toggle fills the right end the relocated 新建 left);
-       line 2 = the state announcement, full width, ONLY when it has
-       content. A toggle beside a title fits 320px; toggle beside 新建 did
-       not (28+132+96+24=280 left the title 16px) — which is why 新建 moved
-       to the thumb bar instead of squeezing in here. */
-    grid-template-areas:
-      "back title cruise"
-      "state state state";
-  }
-  /* Stateless: no announcement row at all (not an empty row + a dead gap —
-     the gap between tracks would still paint). */
-  .boardRowNav:not(:has(.boardState)) {
-    grid-template-areas: "back title cruise";
-  }
-
-  .boardRowNav .boardBack {
-    grid-area: back;
-  }
-
-  .boardRowNav .boardTitle {
-    grid-area: title;
-  }
-
-  .boardRowNav .boardSpacer {
-    display: none;
-  }
-
-  .boardRowNav .boardState {
-    grid-area: state;
-  }
-
-  .boardRowNav .cruiseWrap {
-    grid-area: cruise;
-    justify-self: end;
-  }
-
-  /* `grid-area: new` LOOKS dead — the templates above declare `back` / `title` /
-     `cruise` / `state` and no `new` — and removing it MOVED the button onto its
-     own line, left-aligned, and pushed the tool row down. It is not dead: an area
-     name with no matching area creates IMPLICIT NAMED LINES, and the item is
-     placed against them. The element is `display: none` in this band (it lives in
-     the thumb bar), so nothing here is visible either way — but the declaration is
-     what keeps the implicit grid from re-flowing the row, and that IS visible. */
-  .boardRowNav .boardNewTask {
-    grid-area: new;
-    justify-self: end;
-  }
-
-  /* 紧凑工具列 = 一个 DECLARED 三轨 grid：整理/自动化 ‖ 筛选 ‖ 列导航条。
-     间距由轨道与 row-gap 声明，不再从"上一行盒子的底边"推导 —— 那条底边在
-     真机上会被行盒悄悄吃掉几像素（本机渲染实测条带上下 20/20，真机 23.6/19.3
-     且四张截图跨三个版本纹丝不动），而落在同一 grid 里之后，任何一侧的行盒
-     异动都够不到轨道间距。宽档（flex 单行）零影响，条带在宽档 display:none。 */
+  /* 工具带 = 两行，用 AREAS 说（层级由区域说，不由 order + auto-margin 说）：
+     第 1 行 搜索 | 巡航 | 新建（搜索拿剩余宽度，两个动作各占自然宽）；
+     第 2 行 模式簇（整理/自动化/会话建卡/动态/检查更新/铃）；
+     第 3 行 列导航条。
+     报告簇（诉求 + 状态）只在真有话说时占第 0 行——它是一句「现在怎么样」，
+     不是一行常驻的空槽。 */
   .boardRowTools {
     display: grid;
-    /* 两条控件轨各恰好一行按钮高；第三条（列导航条）按自身内容，条带自己
-       再用 padding 给它内部呼吸。 */
-    grid-template-rows: var(--dsh-tb-button-h) var(--dsh-tb-button-h) auto;
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto auto;
     grid-template-areas:
-      "modes"
-      "search"
-      "tabs";
-    /* ONE rhythm for the whole tool column: 28 + 10 + 28 + 10 + 条带. The
-       strip then sits 10 (gap) + 10 (its own padding) = 20 below the search
-       field and the columns sit 10 (its own padding) + 10 (board gap) = 20
-       below the pills — equal by construction. */
+      "search cruise new"
+      "modes modes modes"
+      "tabs tabs tabs";
+    align-items: center;
+    column-gap: var(--dsh-tb-space-4);
     row-gap: var(--dsh-tb-strip-gap);
+  }
+
+  .boardRowTools:has(.boardDemand, .boardState) {
+    grid-template-areas:
+      "reports reports reports"
+      "search cruise new"
+      "modes modes modes"
+      "tabs tabs tabs";
+  }
+
+  .boardRowTools .boardReports {
+    grid-area: reports;
   }
 
   .boardRowTools .search {
@@ -6553,16 +6583,62 @@
     max-width: none;
   }
 
+  .boardRowTools .cruiseWrap {
+    grid-area: cruise;
+    justify-self: end;
+  }
+
+  .boardRowTools .boardNewTask {
+    grid-area: new;
+    justify-self: end;
+  }
+
+  .boardRowTools .boardSpacer {
+    display: none;
+  }
+
   .boardRowTools .boardModes {
     grid-area: modes;
-    /* Left-aligned: the cluster shrank to 整理/自动化 after the relocation
-       (twins live in the thumb bar) — right-aligning two pills leaves the
-       whole left two-thirds void. Left shares the x-line with 返回/筛选. */
+    /* Left-aligned: the cluster is the whole action row at this width, and a
+       right-aligned cluster leaves the left two-thirds void. */
     justify-self: start;
+    /* 6 between the chips: the six members (5 actions + bell) fit a 412px
+       phone's 388px content box on ONE line at 6, and wrap at the larger
+       gap. Fewer pixels of gap buys the row; no label is dropped. */
+    gap: var(--dsh-tb-space-3);
+    flex-wrap: wrap;
   }
 
   .boardRowTools .columnTabs {
     grid-area: tabs;
+  }
+
+  /* A refused drop is a sentence, not a column member: it takes the full row. */
+  .boardRowTools .dragRejectHint {
+    grid-column: 1 / -1;
+  }
+
+  /* 320–400px: the search field's 140px floor plus the two actions no longer
+     fit one line, so the field takes its own row and cruise/new share the next.
+     换行，不压扁。 */
+  @container dsh-tb (max-width: 400px) {
+    .boardRowTools {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas:
+        "search search"
+        "cruise new"
+        "modes modes"
+        "tabs tabs";
+    }
+
+    .boardRowTools:has(.boardDemand, .boardState) {
+      grid-template-areas:
+        "reports reports"
+        "search search"
+        "cruise new"
+        "modes modes"
+        "tabs tabs";
+    }
   }
 
   /* The organize bar re-stacks to THREE deterministic rows (colors / count /
@@ -6597,11 +6673,6 @@
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
-    /* No bottom reservation here by decision: the thumb bar is in-flow below
-       (see .thumbBar), so the columns can never slide underneath it — the old
-       padding-bottom formula had to agree with the bar's real height, keyboard
-       lift and safe-area on every device, and any disagreement painted as the
-       「列底部被拇指栏压住」 overlap. */
   }
 
   .column {
@@ -6640,52 +6711,9 @@
     overflow-x: visible;
   }
 
-  /* Compact relocation (NOT duplication): the primary actions live in the
-     thumb bar within thumb reach — 新建 stretches, 铃 + 动态 ride along —
-     so their header twins hide here. One visible instance per width, same
-     handlers: two DOM nodes, never two on screen. */
-  .boardNewTask {
-    display: none;
-  }
-  .boardModes .notifyBell {
-    display: none;
-  }
-  .boardModes .modeDynamic {
-    display: none;
-  }
-  .thumbBar {
-    /* Full-bleed dock, still in-flow: negative margins spend exactly the
-       board's dock tokens above, so the strip fills edge to edge like the old
-       pinned bar (never the inset 「长方形盒子」 read) while overlap stays
-       structurally impossible — sequential flex children can never cover each
-       other. No keyboard-lift var (a shrinking layout viewport lifts an
-       in-flow bar by itself); the board's bottom padding still owns the home
-       indicator once, the bar simply cancels its own share. */
-    display: flex;
-    align-items: center;
-    gap: var(--dsh-tb-space-5);
-    flex: none;
-    margin: 0 calc(-1 * var(--dsh-tb-dock-x)) calc(-1 * (var(--dsh-tb-dock-b) + env(safe-area-inset-bottom)));
-    /* The horizontal inset is the rail's, BY TOKEN — not the number 14. It
-       happened to equal `--dsh-tb-rail-inset` already, which is exactly the
-       failure mode the ONE-rail-line contract names: a member that re-types the
-       value stays correct only until the token moves, then silently disagrees
-       with the four members beside it. The two `10px` are the dock's own vertical
-       padding (the bar's height), which no token owns. */
-    padding: 10px var(--dsh-tb-rail-inset) calc(10px + var(--dsh-tb-dock-b) + env(safe-area-inset-bottom));
-    background: var(--dsh-tb-bg);
-    border-top: var(--dsh-tb-separator);
-    z-index: 5;
-  }
-  .thumbNew {
-    flex: 1 1 auto;
-    display: flex;
-    min-width: 0;
-  }
-  .thumbNew > * {
-    flex: 1 1 auto;
-    justify-content: center;
-  }
+  /* One visible instance per control at both widths: the compact grid places
+     the same DOM nodes the wide row does, so nothing hides and nothing has a
+     second copy to keep in step. */
 
   .columnTab {
     /* Each cell centers its pill content; the label ellipsizes instead of
@@ -6695,6 +6723,9 @@
     justify-content: center;
     min-width: 0;
     padding: 0 6px;
+    /* The shorthand above resets the bottom bearing, so the ink correction is
+       restated AFTER it (the same order every shared pill uses). */
+    padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
     border-radius: var(--dsh-tb-pill);
   }
 
@@ -6925,53 +6956,45 @@
      positioned ancestor already. */
   .rowHide,
   .cruiseMore,
-  .boardBack,
   .sessionRowHandle,
   .reviewCommentCancel,
   .promptCopy,
   .timeFieldCalendar,
-  /* The rest of the board's touch surface. Each is a real control in a row or
-     dock with >= 6px of shared spacing, so a 7px ring cannot reach a neighbour's
-     hit area: the strip buttons, the two dock controls (the relocated primary
-     and the bell), the triage rows, the disclosure headers and the segmented
-     control. ONE list: the positioning context and the ring below must name the
-     same set, and two lists is how they drift apart. */
+  /* The rest of the board's touch surface. Each is a real control in a row
+     with >= 6px of shared spacing, so a 7px ring cannot reach a neighbour's
+     hit area: the strip buttons, the triage rows, the disclosure headers and
+     the segmented control. ONE list: the positioning context and the ring
+     below must name the same set, and two lists is how they drift apart. */
   .notifyMain,
   .filterChipRemove,
   .feedFilter,
   .feedAction,
   .autoTaskExpand,
   .sessionContextHead,
-  .thumbNew > *,
   /* The conversation's tool card. It is the fourth product surface and lives
      outside every panel, so nothing in this file was written with it in mind —
      and its only control was 24px tall with no ring. It sits alone on its own
      line inside the card, so a 7px ring cannot reach a neighbour. */
-  .toolCardMore,
-  .thumbBarButton {
+  .toolCardMore {
     position: relative;
   }
 
   .rowHide::before,
   .cruiseMore::before,
-  .boardBack::before,
   .sessionRowHandle::before,
   .reviewCommentCancel::before,
   .promptCopy::before,
   .timeFieldCalendar::before,
   /* The rest of the board's touch surface that has room to give. Each of these
-     is a real control in a row or dock with >= 6px of shared spacing, so a 7px
-     ring cannot reach a neighbour's hit area: the strip buttons, the two dock
-     controls (the relocated primary and the bell), the triage rows, the
-     disclosure headers and the segmented control. */
+     is a real control in a row with >= 6px of shared spacing, so a 7px ring
+     cannot reach a neighbour's hit area: the strip buttons, the triage rows,
+     the disclosure headers and the segmented control. */
   .notifyMain::before,
   .filterChipRemove::before,
   .feedFilter::before,
   .feedAction::before,
   .autoTaskExpand::before,
-  .sessionContextHead::before,
-  .thumbNew > *::before,
-  .thumbBarButton::before {
+  .sessionContextHead::before {
     content: '';
     position: absolute;
     /* 两格都给令牌：一个规格，两轴各一个数（见 `--dsh-tb-hit-ring-*` 那一处）。 */
@@ -7160,13 +7183,17 @@
   .cruisePill,
   .cruiseMore,
   .cardQuickRun,
+  /* The press compression reads the FAST token (it must feel immediate), so
+     it is silenced here instead of inheriting `--dsh-tb-motion: 0s`: the
+     card still moves under the pointer, it just arrives at once. */
+  .card:active,
+  .card.selectedCard:active,
   .card.dragging {
     transition: none;
   }
 
   .boardHeader,
   .columns,
-  .thumbBar,
   .card[data-fresh],
   .detail,
   .review,

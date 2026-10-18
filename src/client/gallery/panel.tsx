@@ -38,6 +38,7 @@ import { Field, Input, Select, TextArea } from '../design/Field.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
 import { AttachmentStrip, type AttachmentChip } from '../design/AttachmentStrip.tsx'
+import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
 import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
@@ -279,6 +280,45 @@ export function DesignGallery() {
                 </div>
               </div>
             ))}
+          </div>
+        </Section>
+
+        {/* ── 工作台栏：三页共用的那一行 ─────────────────────────────────────
+            两个状态并排摆出来，因为它们的差别正是这一栏的语义：有读数时状态行
+            在右端，没有读数时右端只剩出口——而不是一条写着「0」的空读数。 */}
+        <Section title={t('workbench.navLabel')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>3 destinations · status</p>
+              <WorkbenchBar
+                active="board"
+                tabs={[
+                  { id: 'home', label: t('workbench.tab.home') },
+                  { id: 'board', label: t('workbench.tab.board'), badge: 3 },
+                  { id: 'items', label: t('workbench.tab.items'), badge: 2 },
+                ]}
+                label={t('workbench.navLabel')}
+                status={t('workbench.status', { n: '3', m: '1' })}
+                exitLabel={t('workbench.exit')}
+                onExit={() => undefined}
+                onNavigate={() => undefined}
+              />
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>3 destinations · quiet</p>
+              <WorkbenchBar
+                active="items"
+                tabs={[
+                  { id: 'home', label: t('workbench.tab.home') },
+                  { id: 'board', label: t('workbench.tab.board') },
+                  { id: 'items', label: t('workbench.tab.items') },
+                ]}
+                label={t('workbench.navLabel')}
+                exitLabel={t('workbench.exit')}
+                onExit={() => undefined}
+                onNavigate={() => undefined}
+              />
+            </div>
           </div>
         </Section>
 

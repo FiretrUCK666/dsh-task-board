@@ -428,7 +428,15 @@ describe('the list is a main-stage panel, in the same shape as the board', () =>
   })
 
   it('keys the panel and the row by the SAME id, as the shell requires', () => {
-    expect(source).toMatch(/LIST_GROUP\s*=\s*\{\s*id:\s*'dsh-task-board-items'/)
+    // 这个 id 现在声明在**工作台键表**里（`workbench/chrome.ts`）：看板、清单、总览
+    // 三页的座位键、侧栏行 id 与工作台栏的 tab id 是同一个字符串，所以它们只能有一处
+    // 定义；这一层读的是那一处。
+    const keys = readFileSync(
+      fileURLToPath(new URL('../src/client/workbench/chrome.ts', import.meta.url)),
+      'utf8',
+    )
+    expect(keys).toContain("items: 'dsh-task-board-items'")
+    expect(source).toContain('const LIST_GROUP = { id: WORKBENCH_KEYS.items } as const')
     expect(source).toContain('key: LIST_GROUP.id')
     expect(source).toContain('id: LIST_GROUP.id')
   })
@@ -462,7 +470,7 @@ describe('两扇门都接在装配层（这一层此前一条测试都没有）'
   it('看板 → 清单：先记下「只看挂着这张卡」的请求，再抬清单舞台，并且兜住没被组合的情况', () => {
     // 记请求与抬舞台是两件事，缺一件就是半个功能：只记不抬 → 读者按了没反应；
     // 只抬不记 → 到了清单却看见全量。
-    const focusAt = bootstrap.indexOf('itemListStage.focusRowsOf(cardId)')
+    const focusAt = bootstrap.indexOf('workbenchStage.focusRowsOf(cardId)')
     const raiseAt = bootstrap.indexOf('layout.selectPanel(LIST_GROUP.id)')
     expect(focusAt, '看板→清单那扇门没有记下请求').toBeGreaterThan(-1)
     expect(raiseAt, '清单舞台没有被抬起来').toBeGreaterThan(-1)

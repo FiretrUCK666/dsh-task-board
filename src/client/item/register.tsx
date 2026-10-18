@@ -25,6 +25,8 @@ import { t } from '../locales.ts'
 import { readSurfaceManifest, surfaceEnabled } from '../surfaces.ts'
 import { ItemListPanel } from './panel.tsx'
 import { TaskListIcon } from './TaskListIcon.tsx'
+import { workbenchStage } from '../workbench/stage.ts'
+import { WORKBENCH_KEYS } from '../workbench/chrome.ts'
 
 /** The namespace this plugin already registers its strings under. */
 const NS = 'dsh-task-board'
@@ -35,7 +37,7 @@ const NS = 'dsh-task-board'
  * in one place so "they agree" is structural rather than a coincidence two call
  * sites have to remember.
  */
-export const LIST_GROUP = { id: 'dsh-task-board-items' } as const
+export const LIST_GROUP = { id: WORKBENCH_KEYS.items } as const
 
 /** Sits directly after the board's row (which is 110). */
 const LIST_ROW_ORDER = 120
@@ -75,102 +77,16 @@ export interface ItemListFace {
   readonly focusRequest?: { readonly token: number; readonly cardId: string }
 }
 
-/**
- * The holder the background settle publishes into, and the panel reads from.
- *
- * ONE holder, and the module-level instance below is the only one: the earlier
- * code also had a second `new ItemListStage()` in the client entry, which bound
- * the live replica while this file's panel read the module singleton — so the
- * panel sat on "preparing" forever while every test stayed green. **A binding
- * side and a reading side that name the same thing are only the same thing if
- * they are the same object**, and that is a fact a type can check and a habit
- * cannot.
- *
- * The holder owns its own lifetime signal rather than borrowing a mount's: a
- * main-stage panel unmounts every time the reader looks at the conversation, so
- * a lifetime tied to its mount would tear down the replica subscription on
- * every panel switch. It aborts when the plugin does, and only then.
- */
-export class ItemListStage {
-  private itemReplica: ChecklistReplica | undefined
-  private board: BoardController | undefined
-  private open: ((cardId: string) => void) | undefined
-  /**
-   * **看板那一侧递过来的一次「只看挂着这张卡的条目」请求。**
-   *
-   * 计数器 + 载荷，不是布尔：布尔会漏掉「在同一个状态下的第二次按」（挂载时读到 `true`，
-   * 之后再看还是 `true`，第二次按就没了声音）——与本页归档抽屉那一行同一个形状。
-   */
-  private focus: { readonly token: number; readonly cardId: string } | undefined
-  private focusToken = 0
-  private readonly lifetime = new AbortController()
-
-  /**
-   * Publish the live faces; the signal already exists and is unchanged.
-   *
-   * `openCard` 是**可选**的第三个面：装配层（`client/index.ts`）知道看板住在哪个座位、
-   * 也知道 shell 的布局服务，而这一层只把它转交给面板（见 `ItemListFace.openCard`）。
-   * 缺席时面板画一枚**读数**而不是一枚按不动的按钮。
-   */
-  bind(
-    replica: ChecklistReplica | undefined,
-    controller: BoardController | undefined,
-    openCard?: (cardId: string) => void,
-  ): void {
-    this.itemReplica = replica
-    this.board = controller
-    this.open = openCard
-  }
-
-  /** The plugin's own lifetime, for every timer and subscription inside. */
-  signal(): AbortSignal {
-    return this.lifetime.signal
-  }
-
-  replica(): ChecklistReplica | undefined {
-    return this.itemReplica
-  }
-
-  controller(): BoardController | undefined {
-    return this.board
-  }
-
-  /** The cross-panel door, when the wiring layer gave one (see {@link bind}). */
-  openCardOf(): ((cardId: string) => void) | undefined {
-    return this.open
-  }
-
-  /** 装配层（或看板那一侧）请清单只显示挂着这张卡的条目。 */
-  focusRowsOf(cardId: string): void {
-    this.focusToken += 1
-    this.focus = { token: this.focusToken, cardId }
-  }
-
-  /** 面板读它：带 token，所以同一个请求不会被消费两次，也不会漏掉第二次。 */
-  focusRequest(): { readonly token: number; readonly cardId: string } | undefined {
-    return this.focus
-  }
-
-  /** Drop every face and end the lifetime; the panel then has nothing to read and says so. */
-  unbind(): void {
-    this.lifetime.abort()
-    this.itemReplica = undefined
-    this.board = undefined
-    this.open = undefined
-    this.focus = undefined
-  }
-}
-
-/** THE single stage, exported so the client entry binds THIS one. */
-export const itemListStage = new ItemListStage()
+/* 持有者搬去了 `../workbench/stage.ts`：看板、清单、总览三页读的是同一份。那里写着
+   为什么只能有一个实例——上一轮的两个实例让面板永远停在「准备中」，而所有测试都是绿的。 */
 
 /** Build the face the panel registration injects, read fresh on every render. */
 function readFace(): ItemListFace {
-  const openCard = itemListStage.openCardOf()
-  const focus = itemListStage.focusRequest()
+  const openCard = workbenchStage.openCardOf()
+  const focus = workbenchStage.focusRequest()
   return {
-    replica: itemListStage.replica(),
-    controller: itemListStage.controller(),
+    replica: workbenchStage.replica(),
+    controller: workbenchStage.controller(),
     ...openCard === undefined ? {} : { openCard },
     ...focus === undefined ? {} : { focusRequest: focus },
   }
@@ -182,7 +98,7 @@ function ListPanel(props: Record<string, unknown>) {
     <ItemListPanel
       {...props}
       face={readFace()}
-      signal={itemListStage.signal()}
+      signal={workbenchStage.signal()}
     />
   )
 }

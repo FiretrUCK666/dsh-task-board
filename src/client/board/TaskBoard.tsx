@@ -1,7 +1,10 @@
 /**
  * Board view: the multi-column kanban that replaces the middle column while
- * active. Cards open the task detail (never execute directly); the header
- * offers filter, new-task, the auto-cruise toggle, and a back-to-chat escape.
+ * active. Cards open the task detail (never execute directly). The workbench
+ * bar above the board carries page identity and the way back to the
+ * conversation; the single tool row below it carries the filter, the report
+ * cluster (what waits on you, and the engine's state), the auto-cruise toggle
+ * and the board's actions.
  *
  * Drag & drop: same-column drags reorder cards, cross-column drags keep the
  * classic move/rerun/reject semantics. Reorder uses a half-split anchor —
@@ -43,6 +46,8 @@ import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
 import { Button, ColorSwatches, Icon, IconButton, Switch } from '../design/ui.tsx'
+import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
 import { commandLineOf, commandWordsOf, isGitBehind, isNewerVersion, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
 import { applyUpdate, BUNDLED_VERSION, fetchUpdateSource, type UpdateApplyResult, type UpdateSourceView } from '../update-source.ts'
@@ -262,8 +267,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // mounted while hidden (display:none → every rect is 0x0), so a mount-only
   // report always arrives blind; gating on boardOpen re-sends on every
   // opening, and turns "the phone looks wrong" into numbers instead of
-  // another screenshot argument. The thumbBar box is the falsifier for the
-  // columns-vs-bar overlap: overlap ⇔ firstColumn.bottom > thumbBar.top.
+  // another screenshot argument. `thumbBar` is the collector's contract key:
+  // the thumb bar itself is gone (one command row now), so the key measures
+  // nothing — an absent landmark is already a reported fact, not an error.
   useEffect(() => {
     if (!snapshot.boardOpen) return
     void sendClientReport(BUNDLED_VERSION, {
@@ -410,7 +416,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
     }
     setShowNotify(true)
   }
-  const renderNotifyBell = (extraClass?: string): ReactNode => {
+  const renderNotifyBell = (): ReactNode => {
     const total = notes.length
     // The bell carries TWO facts, and they are deliberately different ones: the
     // badge is the open total, the dot is "arrived since you last opened the
@@ -429,7 +435,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       ? t('board.notifyCount', { n: total > 99 ? '99+' : String(total) })
       : t('board.notify')
     return (
-      <IconButton className={extraClass === undefined ? css.notifyBell : `${css.notifyBell} ${extraClass}`}
+      <IconButton className={css.notifyBell}
         label={unseenCount > 0 ? t('board.notifyNew', { base: label, n: String(unseenCount) }) : label}
         title={t('board.notify')}
         onClick={openNotify}
@@ -1235,6 +1241,11 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   const engineWaitVisible = snapshot.stats.queued > 0
     || snapshot.tasks.some(task => pendingCommentCount(task) > 0)
 
+  // The workbench bar's props: destination tabs, the one-line status, and the
+  // two navigation verbs. Built here because a page owns its counts; the bar
+  // itself is presentation only (see design/WorkbenchBar.tsx).
+  const chrome = workbenchChromeOf()
+
   return (
     <div
       ref={boardRefs}
@@ -1262,17 +1273,48 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
         }
       }}
     >
-      {/* ══ 板头：标题、模式、通知铃、巡航、动作簇 ════════════════════════ */}
+      {/* ══ 工作台栏：三个去处、一行状态、一个出口 ══════════════════════ */}
+      <WorkbenchBar
+        active="board"
+        tabs={chrome.tabs}
+        label={t('workbench.navLabel')}
+        status={chrome.status}
+        exitLabel={chrome.exitLabel}
+        onNavigate={chrome.onNavigate}
+        onExit={chrome.onExit}
+      />
+      {/* ══ 工具带：工作台栏之下的唯一命令行 ════════════════════════════
+          搜索在左（它筛选下面的列），报告簇紧随其后（诉求行 + 状态槽——全板
+          最该先说的两件事），右端是巡航、主行动与模式簇。导航与出口归工作台
+          栏，这一行只回答「这块板现在怎么样、能做什么」。窄档由 CSS 排成两
+          行：搜索/巡航/主行动一行、模式簇一行；报告簇只在真有事时占一行。 */}
       <header className={css.boardHeader}>
-        {/* 板头两行，语义分区（紧凑档行结构确定，不靠内容驱动折行）：
-            导航行 = 返回 + 板名 + 状态组（左，紧跟板名）+ 空位 + 自动巡航 +
-            新建任务（右端主行动）；工具行 = 筛选（左，与返回/板名同一条 x）+
-            空位 + 模式组（整理/自动化，右）。紧凑档各自再确定性地换行：
-            导航第二行 = 状态（有内容才出现），工具第二行 = 模式组右对齐，
-            筛选永远独占一条整幅白长条。标签一律保留。 */}
+        <div className={`${css.boardRow} ${css.boardRowTools}`}>
+          <input
+            className={css.search}
+            type="search"
+            placeholder={t('board.search')}
+            value={filter}
+            list="dsh-tb-qualifiers"
+            onChange={event => { setFilter(event.target.value) }}
+            aria-label={t('board.search')}
+          />
+          {/* Qualifier suggestions (native datalist: zero chrome, zero keys,
+              mobile degrades to a plain input — this only shortens typing).
+              Candidates arrive
+              as WHOLE queries (the datalist swaps the entire value — a bare
+              token would eat earlier terms). */}
+          <datalist id="dsh-tb-qualifiers">
+            {completeBoardQuery(filter).map(candidate => (
+              <option key={candidate} value={applyCompletion(filter, candidate)} />
+            ))}
+          </datalist>
+          {/* 报告簇：诉求行 + 状态槽共用一格。整簇只在真有话说时渲染，
+              于是空的报告行连两档之间的间隙一起消失（`:has` 是它的开关）。 */}
+          <div className={css.boardReports}>
         {/* 诉求行（全板最该先说的事）：它答的是产品存在的那个问题——「等我做
-            什么」。放在导航行之上，因为它是用户来这块板的第一个理由；只在真的
-            有事在等时出现，安静时整行消失（与状态行同一条纪律）。
+            什么」。放在搜索之后、动作之前，因为它是用户来这块板的第一个理由；
+            只在真的有事在等时出现，安静时整个簇消失（与状态行同一条纪律）。
             它是真按钮：触屏没有 hover，一个写着「等你处理」却点不动的横幅比不
             写更糟。三处数字各自的含义由 title 与 aria-label 说明。
             不加新的颜色：它复用注意力色，与卡片上的「待你决断」chip 同族。 */}
@@ -1302,23 +1344,8 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
             </span>
           </button>
         )}
-        <div className={`${css.boardRow} ${css.boardRowNav}`}>
-          <button
-            type="button"
-            className={css.boardBack}
-            aria-label={t('board.close')}
-            title={t('board.close')}
-            onClick={() => { controller.showConversation() }}
-          >
-            <Icon name="arrowLeft" />
-          </button>
-          <h2 className={css.boardTitle}>{t('board.title')}</h2>
-          {/* 右簇前的弹性留白：标题紧贴左，状态/巡航/新建同贴右。`margin-left:auto`
-              是被禁的"靠右"写法——它只右对齐换行首项，一换行即散架。 */}
-          <span className={css.boardSpacer} />
-          {/* 状态槽：运行/排队 + 引擎指示，坐在自动巡航的左边（用户原话），
-              与巡航同属右簇。零段省略（「排队 0」是噪音，与上下文计量同一文法）。
-              紧凑档它独占导航第二行左段，巡航守右，永远不挤主行动。 */}
+          {/* 状态槽：运行/排队 + 引擎指示。零段省略（「排队 0」是噪音，与
+              上下文计量同一文法）；只在真有事可说时渲染（见下方的空判断）。 */}
           {(() => {
             // Flow pulse: cycle p85 and weekly throughput, measured over a 28-day
             // window (THROUGHPUT_WINDOW_MS) — LIFETIME statistics, not a statement
@@ -1445,9 +1472,12 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               </span>
             )
           })()}
-          {/* 自动巡航：右簇成员（状态 | 巡航 | 新建，动作永远在最右）。一颗安静的
-              胶囊（开关 + 设置 ▾），点击展开定时设置弹层；巡航是常态开关、新建
-              是一次性动作。 */}
+          </div>
+          {/* 弹性留白：报告簇紧贴搜索，动作簇靠右。`margin-left:auto` 是被禁的
+              "靠右"写法——它只右对齐换行首项，一换行即散架。 */}
+          <span className={css.boardSpacer} />
+          {/* 自动巡航：一颗安静的胶囊（开关 + 设置 ▾），点击展开定时设置弹层；
+              巡航是常态开关、新建是一次性动作。 */}
           <div className={css.cruiseWrap} ref={cruiseWrapRef}>
             <div className={css.cruisePill}>
               <Switch
@@ -1566,9 +1596,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               </CruiseSettingsHost>
             )}
           </div>
-          {/* 新建任务：板上唯一的主行动（primary），永远坐在导航行的最右端——
-              筛选行因此只剩「筛选任务」一条整幅白长条（用户原话），不是
-              一条行里塞一个孤零零的按钮。 */}
+          {/* 新建任务：板上唯一的主行动（primary），永远坐在动作簇的最右端。 */}
           <Button
             variant="primary"
             className={css.boardNewTask}
@@ -1576,33 +1604,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           >
             + {t('board.new')}
           </Button>
-        </div>
-
-        {/* 工具行：筛选左（与返回/板名同一条 x）+ 模式组右（整理/自动化）。
-            紧凑档筛选独占整行、模式组独占一行且右对齐——换行，不压扁。 */}
-        <div className={`${css.boardRow} ${css.boardRowTools}`}>
-          <input
-            className={css.search}
-            type="search"
-            placeholder={t('board.search')}
-            value={filter}
-            list="dsh-tb-qualifiers"
-            onChange={event => { setFilter(event.target.value) }}
-            aria-label={t('board.search')}
-          />
-          {/* Qualifier suggestions (native datalist: zero chrome, zero keys,
-              mobile degrades to a plain input — this only shortens typing).
-              Candidates arrive
-              as WHOLE queries (the datalist swaps the entire value — a bare
-              token would eat earlier terms). */}
-          <datalist id="dsh-tb-qualifiers">
-            {completeBoardQuery(filter).map(candidate => (
-              <option key={candidate} value={applyCompletion(filter, candidate)} />
-            ))}
-          </datalist>
           {/* 模式按钮（整理/自动化/通知）是一个语义组：宽档贴右成簇，紧凑档整组
-              换到自己的一行右对齐——它们永远同进同退，不会被挤散。 */}
-          <span className={css.boardModes}>
+              独占一行——它们永远同进同退，不会被挤散。 */}
+          <span className={css.boardModes} role="group" aria-label={t('board.thumbBar')}>
             {/* 整理 is a MODE toggle, not a primary action: a pressed ghost —
                 never the brand fill, so the bar reads quiet until there is a
                 real selection to manage.
@@ -1641,11 +1645,9 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
               {t('board.newFromSessions')}
             </Button>
             {/* 动态：全板近况聚合（只读 — 点行进任务详情，派生自台账，不同步）。
-                拇指栏里有同一个入口（同一处理器）：窄屏下这里隐藏，归属见
-                thumbBar 注释 — 一处行为，两处 DOM，每宽度只见一处。 */}
+                模式簇里只有这一个入口，两个宽度都显示（不再有拇指栏孪生节点）。 */}
             <Button
               variant="ghost"
-              className={css.modeDynamic}
               title={t('board.activityTitle')}
               onClick={() => { setFeedBase(-1); setShowActivity(true) }}
             >
@@ -2835,26 +2837,6 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           </div>
         </Dialog>
       )}
-      {/* Thumb bar (compact only — CSS gates visibility): the thumb-zone
-          twins. Every member reuses its header handler verbatim
-          (setShowNew / notify / activity), so desktop and phone share one
-          behavior and there is nothing new to maintain. */}
-      {/* ══ 拇指条（窄屏专属） ════════════════════════════════════════════ */}
-      <nav className={css.thumbBar} aria-label={t('board.thumbBar')}>
-        <span className={css.thumbNew}>
-          <Button variant="primary" onClick={() => { setShowNew(true) }}>
-            {t('board.new')}
-          </Button>
-        </span>
-        {renderNotifyBell(css.thumbBarButton)}
-        <Button
-          variant="ghost"
-          title={t('board.activityTitle')}
-          onClick={() => { setFeedBase(-1); setShowActivity(true) }}
-        >
-          {t('board.activity')}
-        </Button>
-      </nav>
     </div>
   )
 }

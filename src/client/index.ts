@@ -41,7 +41,12 @@ import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
 import { watchKeyboardInset } from './board/keyboard-inset.ts'
-import { itemListStage, registerItemList, LIST_GROUP } from './item/register.tsx'
+import { registerItemList, LIST_GROUP } from './item/register.tsx'
+import { workbenchStage } from './workbench/stage.ts'
+import { setWorkbenchPages, WORKBENCH_KEYS, WORKBENCH_PAGES } from './workbench/chrome.ts'
+import { readSurfaceManifest, surfaceEnabled } from './surfaces.ts'
+import { HOME_GROUP, HomePanel } from './home/register.tsx'
+import { HomeIcon } from './home/HomeIcon.tsx'
 import { registerDesignGallery } from './gallery/register.tsx'
 import { ITEM_PRIORITIES_BY_WEIGHT } from '../core/item-view.ts'
 import type { ItemPriority } from '../core/item.ts'
@@ -66,7 +71,7 @@ const NS = 'dsh-task-board'
  * makes "they agree" structural rather than a coincidence two call sites must
  * remember.
  */
-const GROUP = { id: 'dsh-task-board' } as const
+const GROUP = { id: WORKBENCH_KEYS.board } as const
 
 /**
  * The stage holder behind the panel registration.
@@ -555,6 +560,36 @@ export function apply(ctx: ClientContext): void {
     }
     layout.selectPanel(null)
   }
+  // ── 工作台的三个去处：一处接线，三页共用 ──────────────────────────────────────
+  //
+  // 一次 `selectPanel` 就是一次换页，`returnToConversation` 就是那个唯一出口。面板
+  // 自己不知道座位与键（见 `workbench/stage.ts` 的 `bindNavigation`），所以这里是
+  // 唯一知道「哪一页住在哪个键上」的地方——加第四页只改这张表与那个页面。
+  workbenchStage.bindNavigation({
+    navigate: page => {
+      const layout = ctx.get<ILayoutFace>('layout')
+      if (layout === undefined) {
+        console.warn('[dsh-task-board] cannot switch workbench pages: no layout panel capability')
+        return
+      }
+      try {
+        layout.selectPanel(WORKBENCH_KEYS[page])
+      } catch (error) {
+        // 一个被关掉的页面在宿主那里没有注册，`selectPanel` 会抛。栏只画存在的去处
+        // （见下面那次读），走到这里是「读失败之后页面又被关了」的竞态；兜住并说清楚，
+        // 不让一次点击把界面打崩。
+        console.warn(`[dsh-task-board] cannot open the ${page} page (its row is not composed)`, error)
+      }
+    },
+    exit: returnToConversation,
+  })
+  // 哪些页面存在：开机问一次，问不到就三页全给（与注册的失败方向一致：开关只收窄、
+  // 从不放宽）。一次读，四处共用：工作台栏的去处清单、总览那一行的注册。
+  const surfaceRead = readSurfaceManifest()
+  void surfaceRead.then(manifest => {
+    if (manifest === undefined) return
+    setWorkbenchPages(WORKBENCH_PAGES.filter(page => surfaceEnabled(page, manifest)))
+  })
   const stage = new TaskBoardStage()
   // The task list is a second MAIN-STAGE panel, in the same shape as the board
   // above: its own `main` key, its own row in the panel list, and the SAME exit
@@ -589,6 +624,30 @@ export function apply(ctx: ClientContext): void {
     // exit injected here (one funnel with 返回对话) so that clicking the entry
     // while the board is open LEAVES it — click to enter, click again to exit.
   }, (props: { size: number; active: boolean }) => TaskBoardIcon({ ...props, onExit: returnToConversation }))), 'dsh-task-board: panel entry')
+
+  // The overview is the workbench's first page and a MAIN-STAGE panel of its own,
+  // in exactly the shape the two above: one `main` key, one row, the same exit
+  // funnel. Its row is asked for like the list's (see `surfaces.ts`): a page
+  // whose row is off must not be registered, and must not appear as a tab.
+  // Reading the SAME promise the bar's page list reads keeps the two answers one
+  // answer — two reads could disagree on the day the host restarts mid-boot.
+  void surfaceRead.then(manifest => {
+    if (!surfaceEnabled('home', manifest)) return
+    ctx.effect(() => ctx.slots.inject('main', () => ctx.slots.register({
+      name: 'main',
+      key: HOME_GROUP.id,
+      locale: NS,
+    }, HomePanel as never)), 'dsh-task-board: overview panel')
+    ctx.effect(() => ctx.slots.inject('sidebar.panellist', () => ctx.slots.register({
+      name: 'sidebar.panellist',
+      id: HOME_GROUP.id,
+      order: 100,
+      label: () => t('entry.homeLabel'),
+      locale: NS,
+    }, ((props: { size: number; active: boolean }) => (
+      HomeIcon({ ...props, onExit: returnToConversation })
+    )) as never)), 'dsh-task-board: overview entry')
+  })
 
   // No enable gate and no settings section of this plugin's own: being
   // composed IS the on state. The plugin manager's switch writes the profile
@@ -1526,7 +1585,7 @@ export function apply(ctx: ClientContext): void {
          上**选中那张卡**（`openTask` —— 与看板自己点卡片、与目录里 `task.navigate` 同一个
          方法），再请布局把看板舞台抬到前面。反过来的话会有一帧「舞台换了但选中的还是上一张
          卡」的闪烁。 */
-      itemListStage.bind(sync.checklistReplica(), controller, cardId => {
+      workbenchStage.bind(sync.checklistReplica(), controller, cardId => {
         controller.openTask(cardId)
         /* 布局服务**在调用时读**（与 `returnToConversation` 同一条规矩：这条边不需要自己的
            fiber-inject 边、缺席时只报告）。两半的降级不一样，而且是有意的：控制器那一半
@@ -1539,7 +1598,7 @@ export function apply(ctx: ClientContext): void {
         }
         layout.selectPanel(GROUP.id)
       })
-      disposers.push(() => { itemListStage.unbind() })
+      disposers.push(() => { workbenchStage.unbind() })
       /* **看板那一侧要的那个读数：这张卡挂着几条清单条目、最急的是哪一档。**
        *
        * 由装配层算，理由与上面那扇门完全一样：它同时握着两份文档，而看板面板不该知道清单那份
@@ -1561,7 +1620,7 @@ export function apply(ctx: ClientContext): void {
        * 读者自己切过去就看见），而 `selectPanel` 对一个**没注册**的键会抛（清单面板是被
        * surface 开关收窄的那一个），所以这里兜住并说清楚，不让一次点击把界面打崩。 */
       stage.bindOpenRows(cardId => {
-        itemListStage.focusRowsOf(cardId)
+        workbenchStage.focusRowsOf(cardId)
         const layout = ctx.get<ILayoutFace>('layout')
         if (layout === undefined) {
           console.warn('[dsh-task-board] cannot bring the checklist forward: no layout panel capability')

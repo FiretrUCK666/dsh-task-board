@@ -71,9 +71,12 @@ describe('board stage (official main panel)', () => {
 
   it('registers the board into the official `main` slot under a single shared id', () => {
     // The keyed main slot IS the centre stage; `activePanelId === null` means the
-    // Conversation. The id is declared once (GROUP) so the two registrations
-    // cannot drift: the shell resolves a panel ROW to its STAGE by this id.
-    expect(client).toContain("const GROUP = { id: 'dsh-task-board' } as const")
+    // Conversation. The id is declared once — in the workbench's key table, which
+    // the row, the stage and the workbench tab all read — so the three cannot
+    // drift: the shell resolves a panel ROW to its STAGE by this id.
+    const keys = read('../src/client/workbench/chrome.ts')
+    expect(keys).toContain("board: 'dsh-task-board'")
+    expect(client).toContain('const GROUP = { id: WORKBENCH_KEYS.board } as const')
     expect(client).toContain("ctx.slots.inject('main'")
     expect(client).toContain('key: GROUP.id')
     expect(client).toContain("ctx.slots.inject('sidebar.panellist'")

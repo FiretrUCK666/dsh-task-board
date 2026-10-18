@@ -50,6 +50,10 @@ export declare const BANDS: {
         readonly container: "dsh-tb";
         readonly narrowMax: 648;
         readonly what: "复核页的内衬减半（板 648 正好对应会话面板的 600）";
+    }, {
+        readonly container: "dsh-tb";
+        readonly narrowMax: 400;
+        readonly what: "工具行拆成四行：搜索独占一行，巡航与新建并排（换行，不压扁）";
     }];
     /** The session panel inside the board (`container-name: dsh-tb-panel`). */
     readonly sessionPanel: readonly [{

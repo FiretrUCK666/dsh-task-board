@@ -329,13 +329,124 @@
      One alpha ladder, read from the ladder: never a second set of numbers. */
   --dsh-tb-focus-ring: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
   --dsh-tb-focus-color: var(--dsh-tb-accent);
-  --dsh-tb-motion: 160ms ease;
+  --dsh-tb-motion: 160ms var(--dsh-tb-ease);
   --dsh-tb-breath: 2.6s ease-in-out;
   /* Breathing amplitude tokens (the pulse itself is a state message, so under
      `prefers-reduced-motion` these slow down and shrink — they are never set
      to zero, which would turn "live" into "frozen"). */
   --dsh-tb-breath-spread: 3px;
   --dsh-tb-breath-halo: 14px;
+
+  /* ── 表面阶梯（The Ladder）────────────────────────────────────────────────────
+   *
+   * 宿主在浅色主题下把 bg-base / layer-1 / layer-2 / layer-3 全解成 #fff，三档阴影
+   * 的 alpha 只有 5.1% / 3.9% / 7.8% 且不随主题翻转——所以「页面 / 列 / 卡 / 控件」
+   * 四层在白底上是同一个颜色，抬升根本不存在。这不是配色没调好，是宿主令牌表里
+   * **没有第二个表面色可读**（实测：浅色四层全 #fff；深色才有 #151517 → #353638）。
+   *
+   * 所以阶梯在本层自建，一级一个名字，调用点只许读级、不许造级：
+   *
+   *   recess  凹面——桌面上的浅槽（看板列、清单左栏、详情内分区）
+   *   sheet   纸面——放在别的表面之上的东西（卡片、清单行、总览格）
+   *   inlay   嵌面——嵌在纸面里的小件（计数药丸、chip 底、分段轨道）
+   *   float   浮面——离开页面的一层（菜单、弹层、对话框）
+   *
+   * **凹面用「朝墨里混」，纸面直接用底层。** 这一条在四种环境下都成立，而方向是
+   * 主题自己给的：浅色里墨是暗的，混出来比底色深 → 凹面退后、纸面（底色）在前；
+   * 深色里墨是亮的，混出来比底色亮 → 凹面浮起、纸面更高。两种极性下读者看到的
+   * 都是同一条台阶：纸面永远是这一组里最「亮」的那一级。
+   *
+   * 壁纸模式下 `--dsh-tb-bg` 是半透明的 rgba，混出来的凹面仍半透明（alpha 从 0.35
+   * 升到约 0.37），纸面读 `surface-float`（皮肤下不透明的 layer-1）——所以卡从壁纸上
+   * 浮起来，而壁纸在画布与凹面上仍然看得见。 */
+  --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 3.2%, var(--dsh-tb-bg));
+  --dsh-tb-plane-sheet: var(--dsh-tb-surface-float);
+  --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 6%, var(--dsh-tb-surface-float));
+  --dsh-tb-plane-float: var(--dsh-tb-surface-menu);
+
+  /* ── 边光与投影（The Lit Edge）────────────────────────────────────────────────
+   *
+   * 一张被抬起的纸有且只有一条上边光与一条下投影——两者一起画才叫「纸」，只画
+   * 其中一条都会退回扁平：只有边是线框，只有影是脏。
+   *
+   * 边光用两条 `inset` 而不是 `border`：不占盒模型、任意 `border-radius` 与
+   * `corner-shape` 都跟得上（border 会在超椭圆族里与自己的角分叉）。
+   *
+   * 投影的 alpha **不由宿主令牌供给**（那三档在这个色域里看不见），并且刻意写成
+   * 双层：外层大模糊负责「离开桌面」，内层 1px 负责「贴着桌面」。深色下黑色投影
+   * 几乎不可见，那一半由阶梯与边光承担——这也是为什么三条腿缺一不可。 */
+  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 62%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 4%, transparent);
+  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 45%, transparent);
+  --dsh-tb-cast-1: 0 1px 1px color-mix(in srgb, var(--dsw-static-neutral-1000) 5%, transparent), 0 4px 10px -4px color-mix(in srgb, var(--dsw-static-neutral-1000) 8%, transparent);
+  --dsh-tb-cast-2: 0 2px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 6%, transparent), 0 10px 22px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 12%, transparent);
+  --dsh-tb-cast-3: 0 10px 20px -6px color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent), 0 30px 60px -16px color-mix(in srgb, var(--dsw-static-neutral-1000) 20%, transparent);
+
+  /* ── 字阶与行高：一档一个名字，页面只读档位 ───────────────────────────────────
+   *
+   * 两张页面表里手写的 `font-size` 合计 270 条（看板 136、清单 134），其中还有
+   * `12.5px` 与 `0.92em` 两枚越档值。字号不是不可以多，是**同一档必须只有一个数**：
+   * 否则「把标题调大一点」会变成改十处、漏三处。这里收成五档，行高与字号成对声明
+   * （行盒是排版的一半，只给字号就等于让行高由字体度量决定，换设备就变）。
+   *
+   *   kpi      总览的大数字（唯一用在 30px 档）
+   *   title    卡片标题、清单行标题、详情标题
+   *   body     摘要、正文
+   *   meta     元信息、时间、计数
+   *   eyebrow  分组眉、段落眉（带正字距，小字号才立得住）
+   */
+  --dsh-tb-type-kpi-size: 30px;
+  --dsh-tb-type-kpi-line: 34px;
+  --dsh-tb-type-title-size: 15px;
+  --dsh-tb-type-title-line: 22px;
+  --dsh-tb-type-body-size: 13px;
+  --dsh-tb-type-body-line: 19px;
+  --dsh-tb-type-meta-size: 12px;
+  --dsh-tb-type-meta-line: 17px;
+  --dsh-tb-type-eyebrow-size: 11px;
+  --dsh-tb-type-eyebrow-line: 14px;
+  /* 小字号的正字距：11px 在屏上会被字距挤成一团，`+0.06em` 是这一档的成对值。 */
+  --dsh-tb-type-eyebrow-track: 0.06em;
+
+  /* 小件只有一个高。清单表里曾同时存在 18 / 19 / 20 / 22 / 23 / 24 / 32 七档药丸，
+   * 同一行里 18 与 19 并排——那不是密度，那是七套几何。这一枚管所有「嵌在纸面里
+   * 的小件」；按钮仍读 `--dsh-tb-button-h`，两者不互相派生（一个小件不会长成按钮）。 */
+  --dsh-tb-chip-h: 20px;
+
+  /* ── 控件里那点字的墨位：**一个数，按字号缩放** ──────────────────────────────
+   *
+   * `align-items: center` 居中的是**行盒**，不是字。墨落在行盒中心的下方，于是
+   * 「文字居中」的按钮读起来整体偏下——用户看到的原话是「文案没有居中于它自己的
+   * 胶囊中间，偏下」。
+   *
+   * 量过，不是估的：`scripts/probes/probe-ink-center.js` 在真 Chromium 里对
+   * 工作台栏三段、清单顶栏四颗按钮、行内药丸与计数各量一次，12–13px 的字偏下
+   * 0.5–1.0px（盒越高、字号越小，越看得出来）。同一份探针也量到 24px 高的按钮与
+   * 28px 高的 tab 偏得一样多，所以这不是某个控件的高度问题，是字的问题。
+   *
+   * 写成 `em` 而不是 `px`：偏下量与字号成正比，12 / 13 / 15 三档要各自的补偿，
+   * 一个按字号缩放的数替掉三处手调。0.04em 在 13px 上是 0.52px，把 0.5–1.0px
+   * 的残差压到 ±0.5px 以内。
+   *
+   * **它只给「只有一行字」的控件用**：按钮、药丸、tab、分段控件。卡片、行、正文
+   * 不读它——那些地方的墨位由行高与基线管，挪一下只会让整块内容偏上。 */
+  --dsh-tb-optical-drop: 0.04em;
+
+  /* ── 动效：一条曲线，四个速度 ────────────────────────────────────────────────
+   *
+   * 现状是全部 160ms `ease`，共 30 条 transition。`ease` 起步快、收尾软，放在
+   * 「抬升」上会读出犹豫；`cubic-bezier(.16, 1, .3, 1)` 起步快、收尾更软，是
+   * 参考项目里那套「东西自己安定下来」的曲线（不是抄数值，是抄它解决的问题）。
+   *
+   * 四个速度各有各的职责，不许互相借用：
+   *   fast  按下（反馈要立刻，慢一拍就像没反应）
+   *        （默认）颜色、边、影——状态变化
+   *   lift  悬停抬升、指示器滑动——位移
+   *   enter 面板/卡片入场——新东西出现
+   */
+  --dsh-tb-ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --dsh-tb-motion-fast: 110ms var(--dsh-tb-ease);
+  --dsh-tb-motion-lift: 200ms var(--dsh-tb-ease);
+  --dsh-tb-motion-enter: 220ms var(--dsh-tb-ease);
 }
 
 /* The corner SHAPE, declared once for the whole board surface.
@@ -384,3 +495,29 @@
    它们自己在深色主题下就解析成深色的那一半（amber/green 同值，accent 与 danger 会翻面）。
    两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。
    上一版这里有一块九行的重置，只因为它上游有九条派生；派生没了，它跟着没了。 */
+
+/* ── 阶梯的极性：**这一块是整份文件里唯一按主题分开的取值** ──────────────────
+ *
+ * 为什么必须有它。抬升的**方向**随主题极性翻转：浅色里底色是白，纸面无法更白，
+ * 于是让凹面变暗；深色里底色是近黑，纸面可以更亮，于是让凹面变亮。同一条公式
+ * 表达不了这个翻转——不是缺一个令牌，是缺一个符号。
+ *
+ * 为什么只有这几行。整块只改 6 个值，且每个值仍从别名层与静态色阶派生，不写任何
+ * 原始色：凹面的墨量、两条边光的白与黑、三档投影的黑。颜色本身（六族、文字、
+ * 边框、hover、输入、菜单）仍然一套名字跟主题走，一块都不在这里。
+ *
+ * 为什么皮肤也跟着走。第三方皮肤注册成宿主主题，由宿主把 `data-ds-dark-theme`
+ * 打在 body 上——所以一块覆盖同时管住原生深色与深色皮肤，不需要第二套皮肤分支。 */
+body[data-ds-dark-theme] [data-dsh-taskboard-view],
+body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
+  /* 深色里「抬升」是变亮：凹面朝墨（近白）混 4.5%，纸面直接用 layer-1。 */
+  --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 4.5%, var(--dsh-tb-bg));
+  /* 边光在白纸上要亮，在暗纸上只需要一条能读出来的轮廓——62% 的白会变成荧光。 */
+  --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 8%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);
+  --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 5%, transparent);
+  /* 黑投影在暗底上几乎不可见，所以加大量：深色里的层级主要交给阶梯与边光，
+     投影只负责「纸和桌面之间那一条接触暗影」，它不需要也不应该抢戏。 */
+  --dsh-tb-cast-1: 0 1px 1px color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent), 0 4px 10px -4px color-mix(in srgb, var(--dsw-static-neutral-1000) 34%, transparent);
+  --dsh-tb-cast-2: 0 2px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent), 0 10px 22px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 44%, transparent);
+  --dsh-tb-cast-3: 0 10px 20px -6px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent), 0 30px 60px -16px color-mix(in srgb, var(--dsw-static-neutral-1000) 55%, transparent);
+}

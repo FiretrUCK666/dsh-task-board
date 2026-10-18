@@ -13,6 +13,8 @@
 - insert:
     - id: dsh-task-board
       name: '@firetruck666/dsh-task-board'
+    - id: dsh-task-board-home
+      name: '@firetruck666/dsh-task-board/host-home'
     - id: dsh-task-board-board
       name: '@firetruck666/dsh-task-board/host-board'
     - id: dsh-task-board-items
