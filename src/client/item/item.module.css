@@ -108,7 +108,7 @@
    * 的地方**：下面浮层那一张才是投影最重的，因为它压在文字上。
    */
   --item-surface: var(--dsh-tb-bg-raised);
-  --item-float: var(--dsh-tb-surface-float);
+  --item-float: var(--dsh-tb-plane-float);
   /* 卡影**不在这里再起一个名字**：设计系统的投影阶梯（`--dsh-tb-cast-1/2/3`）就是它，
      多一跳别名只会让「卡用哪一档影」变成两个地方才能回答的问题。 */
 
@@ -118,29 +118,26 @@
   --item-ink-3: var(--dsh-tb-text-3);
 
   /* 圆角三档 + 药丸。--dsh-tb-border-soft 是一条完整的 border 值。 */
-  /* **同一条发丝线有两个出口，而它们必须同源。** 分隔线有两种画法：
+  /* **一行与它的分隔线，同一条发丝线。**
    *
-   *   `--item-hair`        一条完整的 `border` 值——画在某一行、某一列的**边**上。
-   *   `--item-hair-color`  同一条线的**颜色**——画在一个 `::after` 的 `background` 上。
+   * 一条 `border-block-end` 撞上 `border-radius` 时，**两端会跟着圆角往上翘**，于是一条
+   * 本该是直线的行分隔线在屏幕上是两条小弧。行身要有圆角（展开时的底色是一张纸），所以
+   * 那条线不能再挂在行的边框上，只能画出来——而画出来的线要一个颜色，不是一条 border。
    *
-   * 第二种不是多余的：一条 `border-block-end` 撞上 `border-radius` 时，**两端会跟着
-   * 圆角往上翘**，于是一条本该是直线的行分隔线在屏幕上是两条小弧。行身要有圆角（展开
-   * 时的底色是一张纸），所以那条线不能再挂在行的边框上，只能画出来——而画出来的线要
-   * 一个颜色，不是一条 border。
-   *
-   * 两个出口都读这一个颜色，所以「一条发丝线」在这份样式表里仍然只有一个值：换肤换掉
-   * 宿主那一档，线跟着换，不会有一条留在旧颜色上。 */
-  --item-hair-color: var(--dsw-alias-border-l1);
-  --item-hair: 1px solid var(--item-hair-color);
+   * 所以这一族有两个出口：`--item-hair`（完整的 border 值，画在行与列的边上）与画出来的
+   * 那条线（`::after` 的 `background`）。两者都读设计系统那一对**朝墨混**的边
+   * （`--dsh-tb-border` 14% / `-soft` 9%），所以「一条发丝线」在这份表里仍然只有一个值。
+   * 宿主那三档边框是 `#0000000a` 一类——4% 黑，在白纸与浅蓝皮肤上都是看不见的，那是
+   * 「卡片没有边」的来源；本层不再读它们。 */
+  --item-hair: var(--dsh-tb-border-soft);
   /* **一行的值只有一档高。** 药丸与输入框装的是同一种东西（这一行的一个值），所以它们取
      同一个高度——一行里两种高，读者看到的是「一大一小、不在同一条水平线上」。
      高度、行盒与边的关系在这里是**等式**：行盒 = 高度 − 上下边，于是内容盒被行盒填满，
      居中不发生，也就没有那半像素的余量让像素网格去判它落在哪一边。
 
-     **这一档读设计系统的「小件高」（20px），不再自带 19。** 一张表里同时存在
-     18 / 19 / 20 / 22 / 23 / 24 / 32 七档药丸，并排时 18 与 19 只差一像素——那不是密度，
-     那是七套几何。小件只有一档，按钮那一档（`--dsh-tb-button-h-sm`）不互相派生。 */
-  --item-pill-h: var(--dsh-tb-chip-h);
+     **它读设计系统的「小件高」（20px），而且不再在这一层另起一个名字**：一个小件只有
+     一档，第二个名字只会让「这一枚是 20 还是 24」变成两个地方才能回答的问题。
+     带字与计数的**标签药丸**是另一族（`--dsh-tb-pill-h`，24），两者的差别由设计系统说。 */
   /* **一行里两个数，量出来的是一个。** 句子的行盒（`--item-row-line`）与 ⋮ 的命中盒
      （`--item-dots-h`）不是两个各调各的数：⋮ 要**居中在句子的第一行**上，而那件事由
      `calc((行盒 − 命中盒) / 2)` 从这两个数推出来——算术，不是照着一种字体试出来的长度。
@@ -177,7 +174,7 @@
    * seven of them pointing at nothing, so they are gone and the seven say which of
    * the two they mean.
    */
-  --item-hair-strong: 1px solid var(--dsw-alias-border-l2);
+  --item-hair-strong: var(--dsh-tb-border);
   /* ── 一行里的对齐 ───────────────────────────────────────────────────────────
    *
    * **字居中于它自己的胶囊，由胶囊的结构给**：这一页每一族药丸的基规则都写着
@@ -285,13 +282,6 @@
   --item-write-line: calc(var(--item-write-size) * var(--item-write-leading));
   --item-write-floor: calc(4 * var(--item-write-line) + 3 * var(--s2) + 2px);
   --item-write-ceil: calc(24 * var(--item-write-line) + 3 * var(--s2) + 2px);
-  /* **控件高一族一个数。** 顶栏的四枚（三枚药丸 + 新建）、排序面板的芯片、搜索框
-   * 都读它——它们并排站在同一条带子上，两个高度就是两次对齐。
-   *
-   * 它读设计系统的「行内按钮档」（24px）：这一族是**按钮**，不是**小件**——小件那一档
-   * （`--dsh-tb-chip-h`，20px）属于行里的读数。两档不互相派生，同一条带子上也不会同时
-   * 出现两个高度，因为这条带子上没有一件是读数。 */
-  --item-control-h: var(--dsh-tb-button-h-sm);
   /* **整页两端那一档框架空气，声明在根上。** 工作台栏与工作台（左栏 + 主列）是兄弟，
    * 两者要站在同一条左沿上，所以空气必须声明在它们的共同祖先前——声明在任意一方，
    * 另一方就读不到它，两个左沿会差这一档。 */
@@ -611,9 +601,9 @@
 /* 位置，不是外观：外观在 `SearchField`（design/ui.tsx）。这一条只说它在顶栏里
  * 占多宽、什么时候把空间让给邻居。
  *
- * **高度不再由这里给。** 它曾经读 `--item-control-h`（那一档是 24px，行内动作的档），
- * 于是同一个工作台里清单的字段比看板矮 4px——两个页面的工具行看起来像两套控件。工具行
- * 的控件只有一档（`--dsh-tb-button-h`，28px），行内动作才用 24。
+ * **高度不在这里给。** 顶栏那一格是共用的 `SearchField`（`design/components.module.css`），
+ * 它的高是 `--dsh-tb-button-h`（28px）——与看板那条工具行同一档。字段与按钮同高才是
+ * 「一排」；矮 4px 的字段在两个页面之间切换时看得最清楚。
  *
  * 上限 280px：搜索框不是标题栏。让它吃掉剩下的全部空间，读起来就变成一条从左栏一路铺到
  * 右边的带子；宽度有上限，剩下的空间由顶栏两端自己占——那才是「对齐」。 */
@@ -656,134 +646,49 @@
   margin-inline-start: auto;
 }
 
-/* ── 顶栏那四样：一个形状，一条对齐 ────────────────────────────────────────
+/* ── 顶栏那一排：**共用按钮，只有布局归这一页** ────────────────────────────────
  *
- * **一排四枚控件各写各的形状，长出来的就是下面这样（每个数都量过）：**
+ * 这一排曾经自己画药丸（`.itemTopBarChip` / `.itemNewButton`）：24px 高、11–13px 三种
+ * 字号、自选底色与描边；而看板同一排是 28px 的共用 `Button`。两页并排在同一个工作台里，
+ * 工具行差 4px、字体差一档，读者看到的就是两件产品（原话：「清单的按钮又变窄了」）。
  *
- *   筛选  32px 高，文字**左靠**（`justify-content` 没写，落到 normal）
- *   排序  32px 高，文字**左靠**（同上）
- *   命令  **28px** 高（邻居都是 32），`line-height: 13px`
- *   新建  32px 高，`line-height: 13px`（字比盒子高一线）
- *   搜索  32px 高，可它是 `display: block`，**字由浏览器放在内容盒顶端**
+ * 现在高度、字号、内衬、圆角、悬停、按下与「开着」的开关态**全部归 `Button`**
+ * （`design/components.module.css` 一处）。这一页只剩**位次**：这一排里的每一枚都不
+ * 伸缩（`flex: none`），主行动在窄档占满自己那一行（见那条容器查询）。
  *
- * 三个不同的高度与两种不同的对齐方式摆在一起，就是「有些按钮那个字和它的按钮没
- * 居中」的全部来源——而每一处单看都说得过去：28px 是某一轮定的，13px 的行高是
- * 「光学居中」那条注释留下的，两种对齐是各自写的。
- *
- * 所以这一族**一条规则说**：控件高一个数（`--item-control-h`）、`align-items`
- * 与 `justify-content` 都居中、`line-height: 1`。＋新建一条沿用同一族的几何（它是
- * 实心的，所以颜色另说）。
- *
- * **底部不垫那 2px 光学内衬，这是量出来的。** 只要新建那一枚多一条同特异度规则
- * （后一条的 `padding: 0 14px` 把垫衬整条盖掉），一排四枚控件里文字就高低差
- * 一像素。所以这一族一律靠 flex 居中，没有第二处声明、没有第二份对齐。
- * 若将来在真图上量出中文墨心确实低于盒心，那是一个数、在这一条里加，不是四枚
- * 控件各自加一遍。
- *
- * **搜索框不在这一族里**：`<input>` 没有孩子，`align-items` 对它无效，字落在内容
- * 盒的顶端。`line-height` 等于内容盒高（控件高减两侧各 1px 描边）才是输入框真正的
- * 居中手段——所以它自己一条，但从同一个控件高推。 */
-.itemTopBarChip,
-.itemNewButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: none;
-  block-size: var(--item-control-h);
-  /* **下内衬是墨位校正，不是空气。** `align-items: center` 居中内容盒，而字**墨**的
-   * 中心比字盒中心低约 0.5–1px（中文字形的墨在字盒里偏下）——多给一档下内衬，内容盒
-   * 中心就上移那半档，墨才真的落在盒心。用 token 而不是 transform：transform 会把
-   * 「盒子 + 字」一起挪走，等于没修。见 `--dsh-tb-optical-drop`。 */
-  padding-block: 0 calc(2 * var(--dsh-tb-optical-drop));
-  padding-inline: var(--s2);
-  font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 1;
-  white-space: nowrap;
-  border-radius: var(--item-radius-pill);
-  cursor: pointer;
-}
-
+ * 两个类名留在标记里，是因为它们仍是「这一排的哪一枚」的把手；但它们**一条外观也
+ * 不声明**——第二份外观就是下一次两页分家的地方。 */
 .itemTopBarChip {
-  gap: var(--s1);
-  color: var(--item-ink-2);
-  background: var(--item-fill);
-  border: var(--item-hair-strong);
+  flex: none;
 }
 
-.itemTopBarChip:hover {
-  background: var(--dsh-tb-hover);
-  color: var(--item-ink-1);
-}
-
-/* 开着的那一枚说它开着：展开的（排序）与按下的（多选/隐藏已完成）是**实墨药丸**
- * ——ink-1 底 + 落在 fill 上的字。这是这一页最响的一档：读者按下去的模式，在它
- * 开着的时候不该靠一根描边让人想起。排序那枚里面的两半字色跟着换（label 与 value
- * 都落在 fill 上）。 */
-.itemTopBarChip[aria-expanded='true'],
-.itemTopBarChip[aria-pressed='true'] {
-  background: var(--item-ink-1);
-  border-color: var(--item-ink-1);
-  color: var(--dsh-tb-ink-on-solid);
-}
-
-.itemTopBarChip[aria-expanded='true'] .itemTopBarLabel,
-.itemTopBarChip[aria-expanded='true'] .itemTopBarValue {
-  color: var(--dsh-tb-ink-on-solid);
-}
-
-/* 排序那一枚是**一枚药丸上的一句话**：前半是问，后半是答，而且**问小答大**。
+/* 排序那一枚是**一枚按钮上的一句话**：前半是问，后半是答。
  *
- * 两个 13px 同粗的词并排，「排序」加「顺序」会被读成一个四字的词——那是「字都在、
- * 关系不在」，读者得停下来才发现中间有空格。所以标签退到 11px 第三层墨，答案用
- * 13px 600 第一层墨：一眼看到的是「顺序」，而「排序」是它前面那个小小的问。
- *
- * 设计稿是同一个做法（`.m-sort` 字号 11px、第三层墨，`b>` 是值）。
+ * 两个同号同粗的词并排，「排序」加「顺序」会被读成一个四字词——那是「字都在、关系
+ * 不在」，读者得停下来才发现中间有空格。所以前半是次级墨、400，后半是第一层墨、600：
+ * 靠**墨与字重**分两半。字号读 `inherit`——这一排四枚按钮是同一个控件家族，家族里的
+ * 字只有一档（`Button` 那一档），页面不另开第二档。
  *
  * **两半按基线对齐，而这一组要居中——所以它是一件东西，不是两个子项。**
- * 把两半直接当药丸的子项、药丸用 `align-items: baseline`，基线那一组会从**交叉轴
- * 的起点**开始摆：量出来这一枚的字坐在 32px 药丸的顶上（值的内盒 13→26，药丸内容
- * 盒 13→43），比旁边三枚高约 8px——读者看到的是「排序顺序的按钮有问题」。包成一个
- * 内层 flex 之后，药丸居中这一件东西，里面两半共用一条基线：量出来两半的墨底同在
- * 一条线上、整组落在药丸的中线上。 */
+ * 两半直接当按钮的子项、按钮按基线摆时，基线那一组会从**交叉轴的起点**开始摆
+ * （按钮顶），这一枚的字就比旁边三枚高一线。包成一个内层 flex 之后，按钮居中这一件
+ * 东西，里面两半共用一条基线。 */
 .itemTopBarPair {
   display: inline-flex;
   align-items: baseline;
   gap: var(--s1);
 }
 
-.itemTopBarChip > .itemTopBarLabel {
-  font-size: 11px;
-  color: var(--item-ink-2);
+.itemTopBarLabel {
+  color: var(--dsh-tb-text-2);
+  font-size: inherit;
+  font-weight: 400;
 }
 
 .itemTopBarValue {
-  font-size: 13px;
-  color: var(--item-ink-1);
+  color: var(--dsh-tb-text-1);
+  font-size: inherit;
   font-weight: 600;
-}
-
-/* 这一页唯一的主动作：同一个控件高、同一枚药丸，只是实心。
- *
- * **它只有这一条规则。** 给它第二条同特异度规则（把 `padding / border` 整个重写
- * 一遍），后写的就赢：这一族只有它没有那 2px 底部内衬——一排四枚控件、三种几何，
- * 而错的那一处恰好是读者最常按的主行动。**同一个类名写两遍，就是给级联一次机会
- * 让两处说的是两回事。** */
-.itemNewButton {
-  gap: var(--s1);
-  font-size: 13px;
-  font-weight: 600;
-  /* 与 `.itemOpt` 同一条：主按钮的字也必须是产品字栈的。 */
-  font-family: inherit;
-  color: var(--dsh-tb-ink-on-solid);
-  background: var(--dsw-alias-button-primary-fill);
-  border: 0;
-}
-
-/* 悬停读看板主按钮那一个令牌：两个面板的主行动是同一件事，不该各挑一个 hover。 */
-.itemNewButton:hover {
-  background: var(--dsw-alias-button-primary-hover);
 }
 
 /* 展开的面**在带子底下**，不在浮层里遮着行。一个把结果挡住一半的筛选器，会让
@@ -1426,24 +1331,28 @@
  * （`[data-size='rail']`，见下面「优先级芯片」那一节）。同一件东西的第二份实现
  * （`.itemRailChip` 那样的一族），在「颜色全站同步」时正是它会漏掉。 */
 
+/* 悬停是**半档**洗底：指针在一个选项上时说的是「它在等你选」，而已经选中的那一行
+ * 说的是「你在这儿」——两件事必须一眼分得开，所以指针那一档只有它一半。半档读的是
+ * 同一把尺子（`--dsh-tb-wash` 的一半），不是第二个手打百分比。 */
 .itemRailRow:hover {
-  background: var(--dsh-tb-hover);
+  background: color-mix(in srgb, var(--dsh-tb-accent) calc(var(--dsh-tb-wash) / 2), transparent);
 }
 
-/* 当前行：**一块强调色的洗底 + 一条左边的竖条 + 一档字重**。
+/* 当前行：**一块强调色的洗底 + 一档字重 + 一枚到场的记号**。
  *
  * 三样一起，因为它们说的是同一件事的三个面：「你站在这儿」得在**扫一眼**时成立。
  * 底色是强调色按色族洗底的梯子（`--dsh-tb-wash`），不是手打的百分比——洗底深浅全站
- * 只有那一把尺子；竖条是 2px 的强调色（`inset` 影，不占盒子、跟着圆角走），它给这片
- * 底色一个**起点**，一排里一眼能找到；字重从行词的 500 到 600，即使底色被换肤抹淡，
- * 这一行仍然读得出来。
+ * 只有那一把尺子；字重从行词的 500 到 600，即使底色被换肤抹淡，这一行仍然读得出来；
+ * 而**记号那一格的到场**（`itemRailMarkIn`）是这唯一的微交互：它落在哪儿，读者就
+ * 站在哪儿。
  *
- * **竖条不画成 `border-inline-start`。** 边框会占盒子，于是被选中的那一行内容整体右移
- * 2px、和上下那些行错开——一排里只有一行字歪着，比没有竖条更糟。影不占盒子。 */
+ * **没有侧边条。** 一根 2px 的强调色竖条是生成式界面最认得的一件家具，而且它与洗底、
+ * 与字重说的是同一句话的第三遍——三样一起喊，读者反而要先读那条线。也不能画成
+ * `border-inline-start`：边框会占盒子，被选中的那一行内容整体右移 2px，一排里只有
+ * 一行字歪着。 */
 .itemRailRow[aria-current='true'] {
   color: var(--item-ink-1);
   background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
-  box-shadow: inset 2px 0 0 var(--dsh-tb-accent);
 }
 
 /* 当前行的计数：**只换墨，不换字号、不换字重**。
@@ -1516,9 +1425,31 @@
 
 /* The mark of the row you are standing in is a POINTER, not a verdict — and the
  * product colour is reserved for facts about the work, which is why it has a budget.
- * So the current row is said with ink, the same way everything else here is. */
+ * So the current row is said with ink, the same way everything else here is.
+ *
+ * **And it arrives.** The current row's mark grows into its column and fades in over
+ * the one duration this sheet uses for state (`--dsh-tb-motion`, 160ms): 0.75 is the
+ * 6px→8px step that reads as "a mark landing" at this size, and `both` keeps the
+ * finished state. It is the only micro-interaction on the rail, which is why it can
+ * afford to speak: the wash says where you are, and this says you just got here.
+ *
+ * The animation starts when `aria-current` starts matching (a row becomes current),
+ * not on every render — a CSS animation restarts only when the rule starts applying. */
+@keyframes itemRailMarkIn {
+  from {
+    opacity: 0;
+    transform: scale(0.75);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
 .itemRailRow[aria-current='true'] .itemRailMark {
   color: var(--item-ink-1);
+  animation: itemRailMarkIn var(--dsh-tb-motion) both;
 }
 
 /* ── 窄屏：左栏变成一条横向的筛选带，**筛选排在前、日历排在后** ────────────
@@ -1684,79 +1615,101 @@
  * 日期读法进了句子、状态变成左边的点。一段为了解决一个已经不存在的问题的说明，
  * 就是一份会骗人的说明；一条因为「拆掉它麻烦」而留下的规则，是一条已经不再描述
  * 它所命名的东西的规则。 */
-/* ── 组头：记号 + 词 + 条数，两个页面一枚 ────────────────────────────────────────
+/* ── 药丸：**全页只有一族**，记号 + 词 + 数 + 可选的日期/说明入口 ──────────────────
  *
- * **清单页的日分段与日程页的节头是同一个元件**（`group-head.tsx`）：一个名字、它下面
- * 有几条、（按天分的那些）那一天是几号。形状只有一个，字阶两档，因为两页的节奏不同：
+ * 读者在截图里看到的是三种药丸：日程页的节头（15/600 + 13/400）、清单页的日分段
+ * （13/600 + 12/400）、以及日程页底部那条摘要。它们说的是同一件事——一个名字，
+ * 它下面有几条——却各自长了一套字阶与内衬，并排读起来是三个元件。
  *
- *   `[data-size='segment']`  清单页 13/600 + 数 12——行才是主角，日分段只是行与行之间
- *                            的一道缝。
- *   `[data-size='section']`  日程页 15/600 + 数 13——节是这一页的骨架，它下面可能有
- *                            几十行。
+ * 现在它们共用下面**一条**规则：高 `--dsh-tb-pill-h`（24）、词 13/600、数 12/400
+ * 等宽、左右内衬 12、件与件之间 6、记号槽 14（glyph 居中在槽里）、说明入口是
+ * **药丸里的 18px 格**（不是挂在药丸末尾的一枚 20px 按钮——那正是它读起来偏心的原因）。
  *
- * **它是一枚药丸，不是排过版的标题**：三样东西合成一个形状，因为它们说的是同一件事；
- * 拆成三个元素就要靠三段间距把它们读成一组，而间距是一种约定，药丸是一个形状。
+ * **层次从空气里来，不从第二套字阶里来。** 日程页的节只比清单页的日分段多上面那一档
+ * 空气（`.itemAgenda` 的 gap），不再有一个 15px 的大字：一页只有一档标题字，而它是
+ * 内容的名字，不是这一页的名字。
+ *
  * 药丸本身按不动（按不动的东西不该长得像按钮），所以它一处是 `<h2>`、一处是
- * `role="presentation"`——**要有话说的时候，入口是它里面那枚 `.itemGroupWhy` 按钮**。
+ * `role="presentation"`——**要有话说的时候，入口是它里面那枚 `.itemGroupWhy`**。
  *
- * **左右对称**：左内衬与记号到词那一档间距同一个数，重心落在自己的几何中心上。
- * **按内容定宽**（`align-self: flex-start`）：父级是列向 flex，不写这一条它就被拉伸到
- * 整列宽——量出来是一条 1116px 的空横杠，里面只有 70px 的东西。
- * **左沿与行、与顶栏那个数同一条线**：左右各一档行内衬（`--item-row-pad`），因为它住在
- * 滚动体里，而滚动体自己已经付过页级空气。
+ * **左右对称**：左右内衬同一个数，记号槽与词之间、词与数之间各一档，重心落在自己的
+ * 几何中心上。**按内容定宽**（`align-self: flex-start`）：父级是列向 flex，不写这一条
+ * 它就被拉伸到整列宽——量出来是一条 1116px 的空横杠，里面只有 70px 的东西。
+ * **左沿与行、与顶栏那个数同一条线**：`[data-size='segment']` 的左右各一档行内衬
+ * （`--item-row-pad`），因为它住在滚动体里，而滚动体自己已经付过页级空气。
  * **墨，不是 accent**：accent 的预算留给「关于这份工作的事实」，而这枚记号装饰的是一个
  * 已经写着「今天」的标签。 */
 /* ══ 列表：分组头与行 ══════════════════════════════════════════════════════════════
  *
  * 按日分段的组头与条数、行本体（单元格、标题、正文、记号、步骤、附件）。
  */
-.itemGroupHead {
+.itemGroupHead,
+.itemEmptyGroups {
   display: inline-flex;
   align-items: center;
-  gap: var(--s1);
+  gap: var(--dsh-tb-space-3);
   align-self: flex-start;
   /* 它是一块内容的题，所以**自己的 margin 与字号自己说**：不声明，`<h2>` 那一份就落在
      浏览器的 `.83em` 与 `1.5em` 上——两个没人选过的数。 */
   margin: 0;
-  /* **它有自己的高，而且是小件那一档（20px）。** 交给内容去算，高度就跟着字体度量走
-     （量到过：同一枚题头在两种字体下 23px 与 21px）；23 也不在两档药丸里——这一页的
-     小件只有一档，按钮那一档不归它。字由 `align-items: center` 居中在自己的盒心里。 */
+  /* **它有自己的高**（`--dsh-tb-pill-h`）：交给内容去算，高度就跟着字体度量走
+     （量到过：同一枚题头在两种字体下 23px 与 21px）。 */
   box-sizing: border-box;
-  block-size: var(--dsh-tb-chip-h);
-  padding: 0 10px;
-  font-size: 13px;
+  block-size: var(--dsh-tb-pill-h);
+  padding: 0 12px;
+  font-size: var(--dsh-tb-type-body-size);
   font-weight: 600;
+  line-height: 1;
   border-radius: var(--item-radius-pill);
   color: var(--item-ink-2);
   background: var(--item-fill);
 }
 
-/* 字阶两档（见文件头）。两档各自说自己那一档的**外边空气**：清单页那一段上面是一整档
-   分隔、下面一档；日程页那几节之间由 `.itemAgenda` 的 gap 管，所以它自己不带上下外边距。 */
+/* 两处只差**外边空气**：清单页那一段上面是一整档分隔、下面一档；日程页那几节之间
+   由 `.itemAgenda` 的 gap 管，所以它自己不带上下外边距。字阶与几何**不在这里分家**。 */
 .itemGroupHead[data-size='segment'] {
   margin: var(--s3) var(--item-row-pad) var(--s1);
 }
 
 .itemGroupHead[data-size='section'] {
   margin: 0 0 0 var(--item-agenda-lead);
-  font-size: var(--dsh-tb-type-title-size);
-  font-weight: 600;
+}
+
+/* 记号槽：**14px 见方，glyph 居中在槽里**。药丸的 `gap` 因此从「槽」开始量，而不是从
+   glyph 自己的边开始量——换一档字号不会顺手改一次「记号 → 词」的沟。 */
+.itemGroupMark {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  inline-size: 14px;
+  block-size: 14px;
 }
 
 /* ── 一枚组头里那几块字：**一个盒子，按基线对齐** ──────────────────────────────
  *
- * 词与条数是两种字（中文 15/600 与拉丁数字 13，或 13 与 12），而中文与拉丁的字体度量
- * 不同：容器按**盒子**居中的时候，两串字各自坐在自己的行盒里，基线差着将近一个像素
+ * 词与条数是两种字（中文 13/600 与拉丁数字 12/400），而中文与拉丁的字体度量不同：
+ * 容器按**盒子**居中的时候，两串字各自坐在自己的行盒里，基线差着将近一个像素
  * （量出来的：词 99、数 98）——读者报的「『1 条』没有跟『今天』对齐」就是它。
  * 这个盒子把基线对齐变成构造性质：换字体、换字号都一样。
  *
  * 这一枚只负责**基线**：两串字共用一条基线（`align-items: baseline`），于是「1 条」与
- * 「今天」由构造对齐——换字体、换字号都一样。垂直方向上那半像素是字体自己的事，这里不碰。 */
+ * 「今天」由构造对齐——换字体、换字号都一样。垂直方向上那半像素是字体自己的事，这里不碰。
+ *
+ * ── 墨位校正挂在**这一枚**上，不挂在药丸上 ────────────────────────────────
+ *
+ * 下内衬会把整个内容盒上移半档。挂在药丸上时，受益的只有字，而药丸里还有记号与「(i)」
+ * 入口——它们是**居中的图形**，被一起挪走了。量出来的：同一枚组头里字是 −0.02px（对），
+ * 记号与感叹号是 **−0.52px（偏高）**，正是读者报的「图标跟文字没有水平对齐」。
+ *
+ * 所以补偿落在**装字的那一枚**上：字自己往上去半档，药丸的几何中心不动，图形留在原处。
+ * 通则：**补偿跟着要被补偿的东西走**——只装字的盒子才配这一条。 */
 .itemGroupText {
   display: inline-flex;
   align-items: baseline;
   gap: var(--s1);
   min-inline-size: 0;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
 }
 
 /* 词是第一档墨：药丸自己的色是给**记号**的（记号吃 `currentColor`），所以词要自己说
@@ -1766,43 +1719,33 @@
   color: var(--item-ink-1);
 }
 
-/* 条数与日期读数：正体数字、第三层墨、等宽（「10」不跳）。 */
+/* 条数与日期读数：**元信息那一档**（12 / 400）、正体数字、等宽（「10」不跳）。
+   三段（清单页的分段、日程页的节、摘要行）读同一个数——它们是同一枚药丸里的同一个槽。 */
 .itemGroupCount,
-.itemGroupText > span {
+.itemGroupText > span,
+.itemEmptyGroups .itemGroupCount {
+  font-size: var(--dsh-tb-type-meta-size);
+  font-weight: 400;
   font-style: normal;
   font-variant-numeric: tabular-nums;
   color: var(--item-ink-2);
 }
 
-.itemGroupHead[data-size='segment'] .itemGroupCount {
-  font-size: 12px;
-  font-weight: 400;
-}
-
-.itemGroupHead[data-size='section'] .itemGroupCount,
-.itemEmptyGroups .itemGroupCount {
-  font-size: 13px;
-  font-weight: 400;
-}
-
-.itemGroupText > span {
-  font-size: 13px;
-  font-weight: 400;
-}
-
-/* ── 「这里有一句话」的入口 ───────────────────────────────────────────────────
+/* ── 「这里有一句话」的入口：**药丸里的 18px 一格** ──────────────────────────────
  *
- * 一枚 `InfoMark` 包在真按钮里：悬停、聚焦、按下都把话叫出来。**它按得动，而药丸按
- * 不动**——所以它自己带一圈悬停底，命中区 20px（触屏上手指够得着），位置在药丸的
- * 末尾一档空气之后。 */
+ * 一枚 `InfoMark` 包在真按钮里：悬停、聚焦、按下都把话叫出来。它是**药丸里的一个格子**
+ * （18px 见方，flex: none），不是挂在药丸末尾、外带 2px 外距的第二枚控件——后者让整条
+ * 药丸的重心偏右，读者看到的是「那个 ⓘ 没跟字对齐」。
+ *
+ * 它比字高一点（18 > 14），因为触屏上手指要够得着；而它比药丸矮（18 < 24），所以药丸
+ * 仍然是药丸。悬停/展开时它自己有一块底——那是它按得动的证据。 */
 .itemGroupWhy {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   flex: none;
-  inline-size: 20px;
-  block-size: 20px;
-  margin-inline-start: 2px;
+  inline-size: 18px;
+  block-size: 18px;
   padding: 0;
   color: var(--item-ink-2);
   background: none;
@@ -2379,11 +2322,11 @@ button.itemRowCardChip {
    * 才拿得到定高，字也才有一个**能被居中的盒子**。同一个类名在 `.itemOpts` 那一侧是 flex
    * item，被 blockify —— 两侧因此是同一种几何。
    *
-   * 高度取这一行的档（`--item-pill-h`），行盒由它减去上下边推出来：内容盒被行盒填满，
+   * 高度取小件那一档（`--dsh-tb-chip-h`），行盒由它减去上下边推出来：内容盒被行盒填满，
    * 余量为零。 */
   flex: none;
   white-space: nowrap;
-  block-size: var(--item-pill-h);
+  block-size: var(--dsh-tb-chip-h);
   padding: 0 8px;
   border-radius: var(--item-radius-pill);
   font-size: 12px;
@@ -2615,17 +2558,13 @@ button.itemRowCardChip {
  * 而不是一行小字灰——而「删掉的东西还会有
  * 第二个使用者」这件事没有写在任何地方。
  *
- * ── 它是一枚药丸，不是一行 11px 的小字 ───────────────────────────────────────
+ * ── 它与节头**是同一条规则里的两枚**（见「药丸」那一节） ───────────────────────
  *
- * **它说的是「哪几天是空的」，而那是关于这份日程的一件事**——与节头同一个量级，只是
- * 一句话缩成了几个名字加几个 0。11px 的第三层墨加一条 5px 的 SVG 界两样都压在没有底的
- * 画布上：小字读不清，0.5 透明度的那条线在照片上根本看不见——**一条看不见的线不是在
- * 说话**。所以它拿节头那一枚药丸（同一个 `--item-fill`、同一个圆角），字号退一档到 13，
- * 名字与自己的 0 之间一档空气。
+ * 它说的是「哪几天是空的」，那是关于这份日程的一件事——只是把一节的几个名字与几个 0
+ * 压进了一条药丸。所以它读同一族的高度、内衬、圆角、词 13/600 与数 12/400，只是它
+ * 里面装的是**几对**「名字 + 数」，所以它换行、并且自己带一档行距。
  *
- * 一行摘要的样子是**轻的**：它回答的是「哪些没排进来」，而那个答案不该与有行的组头
- * 抢目光——所以它比 `.itemGroupHead` 矮一档、名字不是粗体。写重了就变成一条与组头
- * 同量级的内容，而它下面一行任务都没有。 */
+ * 这一层只补家族规则管不到的布局：换行、左沿（日程页那一条）。 */
 .itemQuiet {
   /* **与一节的骨架逐字同形**（`.itemAgendaBlock`：头 / 说明 / 内容，一档 `--s2`）。
      安静行此前是一个**没有 gap 的列**，于是它那句说明贴在药丸下沿上，而节头下面同样那
@@ -2638,24 +2577,10 @@ button.itemRowCardChip {
 }
 
 .itemEmptyGroups {
-  display: flex;
+  /* 家族规则给高度、内衬、字阶与底；这里只说它这一枚自己的两件事：它可以换行，
+     以及它在日程页的哪一条左沿上。 */
   flex-wrap: wrap;
-  align-items: center;
-  gap: var(--s1);
-  align-self: flex-start;
-  margin: 0;
   margin-inline-start: var(--item-agenda-lead);
-  padding: 2px 10px;
-  border-radius: var(--item-radius-pill);
-  font-size: 13px;
-  font-weight: 400;
-  /* **行高不写。** 写死一个行盒（这里曾写 `line-height: 20px`）就是给这一串字换一个几何：
-     13px 的字坐在一个 20px 的行盒里时，墨心比行盒心**高** 0.5px——于是 ⓘ（对称的记号，
-     居中在自己的盒里）看起来比那一串字低了半格。行盒交还给字体自己的度量之后，墨心就落在
-     行盒心上（量与判据见 `DESIGN.md`「一行里的对齐」）。药丸的高度没有变：24 = 20（ⓘ 那个
-     盒子）+ 上下各 2px 内衬。 */
-  color: var(--item-ink-2);
-  background: var(--item-fill);
 }
 
 /* 一个「名字 + 它自己的数」：**一个盒子，按基线对齐**（中文的名字与拉丁的数字度量不同，
@@ -3131,6 +3056,9 @@ button.itemRowCardChip {
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-card);
   box-shadow: var(--dsh-tb-shadow-3);
+  /* 与那张纸同一次入场：两个浮层是同一层东西（遮罩 + 一张纸），所以它们落下来的方式
+     也只有一个。`backwards` 的理由同上面那一条。 */
+  animation: itemOverlayIn var(--dsh-tb-motion) backwards;
 }
 
 /* 搜索框、脚下那一行与「什么都没有」那句话各自不滚动；中间那一列吃掉所有多出来的
@@ -3375,7 +3303,7 @@ button.itemRowCardChip {
   font-size: 13px;
   line-height: 1.6;
   color: var(--item-ink-1);
-  background: var(--item-float);
+  background: var(--item-fill);
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-ctl);
   outline: none;
@@ -3386,10 +3314,6 @@ button.itemRowCardChip {
   border-color: var(--dsh-tb-focus-color);
   box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
-/* 「＋新建一条」的规则只有顶栏那一处（见 `.itemTopBarChip, .itemNewButton` 与紧随
-   其后的 `.itemNewButton`）。**同名的第二条规则不许有**：同特异度、后写的赢，
-   于是主行动会变成这一族里唯一没有那 2px 底部内衬的一枚，一排在四枚控件、三种几何。
-   两条规则不是「把两处改成一样」，是只留一处。 */
 
 /* ── 这一页只有一个写入框，它自己的规则在 `.itemProse` 一处 ──────────────────
  *
@@ -3670,6 +3594,22 @@ textarea.itemInput {
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
   overflow: hidden;
+  /* 入场：从 0.985 长到 1，并淡入——「这张纸落下来」，不是一个开关把画面换掉。
+     `backwards` 而不是 `both`：动画结束后元素不带任何 transform（一个常驻的
+     transform 会给 `position: fixed` 的后代换一个包含块，而那类问题在屏上看不出来）。 */
+  animation: itemOverlayIn var(--dsh-tb-motion) backwards;
+}
+
+@keyframes itemOverlayIn {
+  from {
+    opacity: 0;
+    transform: scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 /* 头：**名字 + 一枚关掉的叉**。叉在右边、28 见方、全圆、悬停才有一块底——**它平时
@@ -3884,7 +3824,10 @@ textarea.itemInput {
 }
 
 /* 标题框：它装的是那一行的名字，所以它和行标题同号（15 / 600）——**同一个问题用
- * 同一档字**，而不是与页面标题同一档，因为弹层不是页面，它浮在页面上面。 */
+ * 同一档字**，而不是与页面标题同一档，因为弹层不是页面，它浮在页面上面。
+ *
+ * 面读**嵌面**（与每一个能写字的地方同一枚），边读**对象边**（14% 墨）：一张纸上的
+ * 输入框，读起来是一个可以写的地方，而不是纸上的一个洞。 */
 .itemCreateDialogTitleField {
   inline-size: 100%;
   min-inline-size: 0;
@@ -3895,8 +3838,8 @@ textarea.itemInput {
   font-weight: 600;
   line-height: 22px;
   color: var(--item-ink-1);
-  background: var(--item-surface);
-  border: var(--item-hair);
+  background: var(--item-fill);
+  border: var(--item-hair-strong);
   border-radius: var(--item-radius-ctl);
   outline: none;
   transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
@@ -4133,10 +4076,19 @@ textarea.itemInput {
   gap: var(--item-open-section-gap);
   min-inline-size: 0;
   padding: var(--item-open-section-gap);
-  /* **底色：嵌面。** 行卡是一张纸，展开体是这张纸里挖出来的那块写字的地方——它比纸面
-   * 深一档（`--dsh-tb-plane-inlay`），圆角与行卡同一档。读者的眼睛因此读得出来「这是
-   * 这一行里面的东西」，而不是另一张贴在下面的纸。 */
-  background: var(--dsh-tb-plane-inlay);
+  /* **底色：纸面 + 一条边 + 一条边光——材质，不是一个写死的颜色。**
+   *
+   * 它曾经是「嵌面」：行卡是一张纸、展开体是纸上挖出来的槽。可展开体里的**字段**
+   * 也是嵌面（`--item-fill` 就是同一枚），于是槽与槽里的东西同色——读者看到的是
+   * 「一片白里什么都没有」（截图 9：白底上一句分区也看不见）。
+   *
+   * 现在台阶反过来：行卡是纸，展开体是**另一张纸**（`--dsh-tb-plane-sheet`），靠边与
+   * 边光与行卡分开；字段仍读嵌面，于是「纸里嵌着一格一格的写字处」。三条腿都在：
+   * 色阶（sheet 对行卡）、边（`--item-hair`，朝墨混）、边光（`--dsh-tb-rim`）。
+   * 浅色、深色、透明皮肤下都是同一套推导——没有一个字面颜色。 */
+  background: var(--dsh-tb-plane-sheet);
+  border: var(--item-hair);
+  box-shadow: var(--dsh-tb-rim);
   border-radius: var(--dsh-tb-radius-md);
 }
 
@@ -4490,7 +4442,7 @@ textarea.itemInput {
    * `<button>` 有 UA 的 `padding: 1px 6px`：只写 `padding-inline` 的成员会带着那 1px 上衬
    * 进来——**一个不对称的内衬就是一格偏移**（居中的盒子整体偏 0.5px），而同一枚药丸有的地方
    * 是 `<button>`、有的地方是 `<span>`，两种盒子的结果还不一样。所以块向内衬在简写里写明 0。 */
-  block-size: var(--item-pill-h);
+  block-size: var(--dsh-tb-chip-h);
   /* **下内衬是墨位校正**（`--dsh-tb-optical-drop`）：`align-items: center` 居中内容盒，多给
    * 一档下内衬，内容盒中心就上移半档，中文字形的墨才落在盒心。用内衬不用 transform——
    * transform 会把盒子和字一起挪走，等于没修。 */
@@ -4538,7 +4490,6 @@ textarea.itemInput {
 .itemTag:hover,
 .itemPrioChip:hover,
 .itemFacetChip:hover,
-.itemTopBarChip:hover,
 .itemArchiveToggle:hover,
 .itemRailRow:hover,
 /* **今天那一格除外**：它是日历事实，不是一枚跟着指针变的芯片。这一族写在文件的
@@ -4559,8 +4510,6 @@ textarea.itemInput {
 .itemTag:active,
 .itemPrioChip:active,
 .itemFacetChip:active,
-.itemTopBarChip:active,
-.itemNewButton:active,
 .itemArchiveToggle:active,
 .itemRailRow:active,
 .itemRailDay:not([data-today]):active {
@@ -4568,17 +4517,9 @@ textarea.itemInput {
   transform: scale(0.97);
 }
 
-/* 按着的那个模式，hover 与按下都不许把它洗回去：家族的浅底说「你指着它」，
- * 实墨说「它开着」——两句话撞在一枚芯片上时，实墨必须赢（这两条写在家族之后
- * 正是为了这个次序）。 */
-.itemTopBarChip[aria-pressed='true']:hover,
-.itemTopBarChip[aria-expanded='true']:hover,
-.itemTopBarChip[aria-pressed='true']:active,
-.itemTopBarChip[aria-expanded='true']:active {
-  background: var(--item-ink-1);
-  border-color: var(--item-ink-1);
-  color: var(--dsh-tb-ink-on-solid);
-}
+/* 按着的那个模式归 `Button`：`pressed` 在共用表里只有一条画法（悬停色调 + 更强的
+ * 描边），两页因此是同一个开关。这一页**不再写第二份**——同一枚按钮两个「开着」的
+ * 样子，读者分不出哪一个是产品说的。 */
 
 /* 就地可写的两处，按下的一拍：写入示意线与提示词各自进一档墨——触屏上按是
  * 唯一的反馈，这一拍不能缺席。 */
@@ -4616,15 +4557,15 @@ textarea.itemInput {
   /* 就地改名时读者换手的地方，形状不许跟着换手：与 `.itemOpt` 同一个盒模型（同一个高度、
    * 块向内衬为零），行盒取内容盒高（高度减上下边）：输入框没有孩子，flex 居中够不着它，
    * 行盒等于内容盒高才是它真正的居中手段——与 `.itemTagAdd` 同一条律。 */
-  block-size: var(--item-pill-h);
+  block-size: var(--dsh-tb-chip-h);
   padding: 0 9px;
   font-size: 12px;
   /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的，否则它与镜像尺是两套字。 */
   font-family: inherit;
-  line-height: calc(var(--item-pill-h) - 2px);
+  line-height: calc(var(--dsh-tb-chip-h) - 2px);
   font-weight: 400;
   color: var(--item-ink-2);
-  background: none;
+  background: var(--item-fill);
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
   outline: none;
@@ -4685,19 +4626,19 @@ textarea.itemInput {
   /* **与同一行的药丸同高、同行盒。** 这一格装的是同一种东西（这一行的一个值），所以高度取
      同一个档，行盒同样由「高度 − 上下边」推出来——一枚比相邻标签高一档的输入框站在这里，
      读者看到的是「一大一小、不在同一条水平线上」。 */
-  block-size: var(--item-pill-h);
+  block-size: var(--dsh-tb-chip-h);
   inline-size: 100%;
   min-inline-size: 0;
   padding: 0 8px;
   /* **行盒 = 内容盒高（高度 − 上下两条边）。** 输入框没有孩子，`align-items` 够不着它，
      行盒等于内容盒高才是它真正的居中手段；写死 16 只会让它在 20px 的盒子里坐上沿。
      相邻那些标签的 16px 行盒由它们自己的 `align-items: center` 居中，两者仍然同一条线。 */
-  line-height: calc(var(--item-pill-h) - 2px);
+  line-height: calc(var(--dsh-tb-chip-h) - 2px);
   font-size: 12px;
   /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的。 */
   font-family: inherit;
   color: var(--item-ink-2);
-  background: none;
+  background: var(--item-fill);
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
   outline: none;
@@ -5001,7 +4942,8 @@ textarea.itemInput {
   font-size: 13px;
   line-height: 1.55;
   color: var(--item-ink-1);
-  background: none;
+  /* 与别的字段同一枚嵌面：一个能改的地方要看得见它是一格。 */
+  background: var(--item-fill);
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-ctl);
   outline: none;
@@ -5417,18 +5359,46 @@ textarea.itemInput {
 }
 
 .itemRow > .itemDetail {
-  display: flex;
+  /* **展开是一次「向下长开」，不是一次「出现」。** 这一格用 `grid-template-rows`
+     从 `0fr` 长到 `1fr`，同时淡入——读者看见的是这一行把自己的纸展开，而不是第二块
+     内容突然插到下面（那会把下面所有行瞬移一下）。它只在**挂载**时播放：元素是条件
+     渲染的（`{inPlace && expanded && …}`），所以出现即入场，收起即离开（不做出场：
+     一个要等 160ms 才肯收起来的详情，会让读者以为按漏了）。
+
+     孩子必须 `min-block-size: 0` + `overflow: hidden`：`0fr` 那一格里，一个不肯缩的
+     孩子会把轨道撑回它自己的高度，动画就只剩淡入。 */
+  display: grid;
+  grid-template-rows: 1fr;
   /* 展开区是这一行的第三行，不是第四列的下一格——网格默认按源顺序把它放进第一列，
      于是它挤在标题底下而不是横贯整行。没有这一条，那条发丝线只画在十像素宽的第一
      轨上，而读者看到的是「这一行下面有半条线」。 */
   grid-column: 1 / -1;
   grid-row: 3;
-  flex-direction: column;
   gap: var(--item-gap);
   flex: 0 0 100%;
   min-inline-size: 0;
+  /* 上沿那一条线 + 那一档空气：它说的是「这一行的正文从这里开始」，也是动画开始时
+     先落地的那条边。 */
   padding: var(--item-gap) 0 0 var(--item-detail-lead);
   border-block-start: var(--item-hair);
+  animation: itemDetailIn var(--dsh-tb-motion) both;
+}
+
+.itemRow > .itemDetail > * {
+  min-block-size: 0;
+  overflow: hidden;
+}
+
+@keyframes itemDetailIn {
+  from {
+    grid-template-rows: 0fr;
+    opacity: 0;
+  }
+
+  to {
+    grid-template-rows: 1fr;
+    opacity: 1;
+  }
 }
 
 /* ── 14. 焦点 ────────────────────────────────────────────────────────────── */
@@ -5811,5 +5781,25 @@ textarea.itemInput {
  * `data-dsh-tb-pilltext` 是**纯标记**：它说「这一串是这一格的文字」，供审计按结构认领；它自己
  * 不声明任何属性（这两个样式表里它不出现在任何选择器里，`tests/panel-render.spec.ts` 钉住这一条）。
  */
+
+/* ── 减少动效：**一根令牌，一块兜底** ───────────────────────────────────────────
+ *
+ * 这一页的动效全部读 `--dsh-tb-motion`（以及它那几档兄弟），所以「慢下来」本来只需要
+ * 改令牌。但**入场**那一类（行详情长开、浮层落下、当前行的记号到场）是一次性的关键帧，
+ * 不是过渡：关键帧里的时长读的是令牌，而令牌在 `prefers-reduced-motion` 下并不会自己
+ * 变短。所以这里与看板同一条纪律：**在这个媒体查询里把入场关掉**，状态仍然到达，只是
+ * 不再播放过程。它必须留在表的最后一处——同特异度下后者赢，写在前面的兜底会被后面的
+ * `animation` 声明盖回去。
+ *
+ * 呼吸/脉冲那类「状态本身」的动效不在这里归零：那会把「在跑」画成「停住了」。
+ */
+@media (prefers-reduced-motion: reduce) {
+  .itemRailRow[aria-current='true'] .itemRailMark,
+  .itemRow > .itemDetail,
+  .itemCommandPaletteBox,
+  .itemCreateDialog {
+    animation: none;
+  }
+}
 
 

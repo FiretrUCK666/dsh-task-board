@@ -1,37 +1,59 @@
 /**
  * Task-board styles. Scoped by the plugin's own data attributes so nothing
- * leaks into the rest of the GUI; colors ride the dsh --dsw-* tokens so the
- * board follows the active theme (light/dark) AND any skin plugin — a skin
- * re-maps the semantic --dsw-* tokens, and every rule here consumes them, so
- * the board adapts with zero per-skin work.
+ * leaks into the rest of the GUI.
+ *
+ * COLOUR IS READ THROUGH THE LAYER, never from the shell's aliases at a call
+ * site: the `--dsh-tb-*` names in design/tokens.module.css are derived from
+ * the page and the ink (paper / recess / inlay / float; hair- lines; casts),
+ * so this sheet follows the active theme AND any skin plugin without knowing
+ * which one is on — under a tinted skin the page, the columns and the cards
+ * move together by construction. A `--dsw-*` colour at a call site is a second
+ * road to the same colour; the only ones left here are CONTENT colours (the
+ * user bubble's hue and the context meter's categorical tints), which are data,
+ * not chrome.
  */
 
 
 /* --- shared attention motion ------------------------------------------------
  * The unread/"new content" signal speaks one language everywhere — the same
- * color (--dsh-tb-attention), the same pulse timing (--dsh-tb-breath). The
- * card flashes as an outer ring, the execution row as a soft inner halo — no
- * per-row border, no flat tint — so every surface reads as the same light.
- */
-/* The breathing ring/halo sizes are TOKENS so the reduced-motion treatment can
-   SOFTEN the pulse instead of killing it: the ring is a functional state
-   indicator (it IS the message "this is live / this is unread"), and a static
-   ring reads as "stuck" — the opposite of the truth, and indistinguishable
-   from a finished-and-unread card. Same law the spinner already follows. */
+ * colour (--dsh-tb-attention), the same pulse timing (--dsh-tb-breath). The
+ * card wears an outer ring, the execution row a soft inner halo — no per-row
+ * border, no flat tint — so every surface reads as the same light.
+ *
+ * THE RULE THIS SECTION EXISTS FOR, and it outranks every taste decision below:
+ * **a decoration may never share the property that carries the material.**
+ * The ring used to animate `box-shadow`; an animation on that property
+ * REPLACES the card's static `rim + cast-1` for the whole run, so the running
+ * card — the one the reader looks at most — lost its paper exactly when it
+ * mattered and read flat beside a settled card (the reported screenshot:
+ * 进行中 flat, 审核 lifted). So:
+ *   - the RING animates `outline-color` only, over a constant-width outline
+ *     the card's `overflow: hidden` cannot clip;
+ *   - the HALO animates a `box-shadow` on the card's own `::after` layer — a
+ *     pseudo-element with no material of its own to replace.
+ * The card's own `box-shadow` is never animated. A future state light joins
+ * one of those two mechanisms or picks a third property; it does not animate
+ * the card's shadow.
+ *
+ * The breathing amplitudes are TOKENS so the reduced-motion treatment can
+ * SOFTEN the pulse instead of killing it: the ring is a functional state
+ * indicator (it IS the message "this is live / this is unread"), and a static
+ * ring reads as "stuck" — the opposite of the truth. Same law the spinner
+ * follows. */
 @keyframes dshTbBreathRing {
-  0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
+  0%, 100% { outline-color: transparent; }
+  50% { outline-color: var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
 }
 
+/* The in-flight halo: an INSET glow on the card's ::after layer (see the rule
+   below the lights). One shadow only — that layer sits inside the card's clip,
+   so an outer edge is impossible there by construction; the card keeps its
+   static rim, cast and yellow border for the whole run. The peak uses the FULL
+   attention step because the inset is the only channel this light has left:
+   the soft 10% step measured invisible against the card's own border. */
 @keyframes dshTbBreathHalo {
-  0%, 100% { box-shadow: inset 0 0 0 0 transparent, 0 0 0 0 transparent; }
-  /* Outer edge = the FULL 22% attention step (same alpha the unread ring
-     peaks at, softer only in FORM: a 3px blur vs the ring's hard spread, and
-     the inset keeps its 10% wash). The inset-only halo was invisible next to
-     the card's static full-strength yellow border — two correct judgments of
-     「进行中的卡边缘不呼吸」 still failed on visibility, so visibility is now
-     part of the contract: an in-flight light must clear its own border. */
-  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha-soft)), 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
+  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
+  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
 }
 
 /* One-shot arrival replay for the bell's unseen dot: the dot itself is the
@@ -463,7 +485,7 @@
   font-size: 12px;
   font-weight: 600;
   color: var(--dsh-tb-text-1);
-  border-top: 1px solid var(--dsw-alias-border-l1);
+  border-top: var(--dsh-tb-border-soft);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -579,11 +601,18 @@
 .boardDemand {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
+  /* **内容盒自己居中，而不是「让 flex 把两个孩子居中」。**
+   *
+   * `justify-content: center` 在有 `flex: 0 1 auto` + `min-width: 0` 的孩子身上不成立：
+   * 文字那一格带省略号，它的**盒子**会先收缩到内容宽，两孩子在剩余空间里的分配于是不再
+   * 对称——量到过 **5.9px** 的横向偏移（`pnpm run audit` 的 `capsulesCentredH`，每一档
+   * 宽度都读同一个数，所以它不是某一档的排版问题）。
+   *
+   * 所以这一枚不靠 justify：它按内容定宽（`flex: 0 0 auto`），内衬左右同一个数，两个
+   * 孩子的沟读阶梯。这样「居中」是构造性质——盒子跟着内容长，内容自然在盒子中间。 */
+  justify-content: flex-start;
   gap: var(--dsh-tb-space-3);
-  /* Shrinkable like .boardStatus, with the clip on the text slot so the dot's
-     halo is never cut by its own container. */
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   min-width: 0;
   align-self: flex-start;
   height: var(--dsh-tb-button-h);
@@ -605,7 +634,6 @@
 
 .boardDemand:hover {
   background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
 }
 
 .boardDemand:focus-visible {
@@ -655,11 +683,18 @@
 .boardStatusButton {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: var(--dsh-tb-space-3);
+  box-sizing: border-box;
+  /* ONE height in the tool row: the status sentence is a control, so it takes
+     the row's 28px frame like every button beside it (it used to be a bare
+     12px line, which is the two-heights report). */
+  height: var(--dsh-tb-button-h);
+  padding: 0;
+  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
   flex: 0 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 0;
   background: none;
   border: none;
   font: inherit;
@@ -953,8 +988,10 @@
 }
 
 .timeFieldCalendar:active {
+  /* Press = background + the 1px drop. No private-alpha inset: the material
+     vocabulary of this sheet is the ladder, and a hand-mixed shadow here was
+     the second road to "slightly darker". */
   background: var(--dsh-tb-hover);
-  box-shadow: inset 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 16%, transparent);
   transform: translateY(1px);
 }
 
@@ -1172,8 +1209,10 @@
      而是让这 40px 有颜色。色相来自 `.column[data-status]` 上的别名，
      深浅来自梯子（调用点不写百分比）。 */
   background: color-mix(in srgb, var(--column-status, transparent) var(--dsh-tb-wash), transparent);
-  /* 洗底带的底沿：一条发丝线，给颜色一个结束的地方。 */
+  /* 洗底带的底沿：一条发丝线，给颜色一个结束的地方；上沿一条边光，让它
+     读成「嵌在凹槽上的一枚带子」而不是一层平涂。 */
   border-bottom: var(--dsh-tb-border-soft);
+  box-shadow: var(--dsh-tb-rim-soft);
 }
 .columnHeader > .statusDot {
   position: absolute;
@@ -1231,6 +1270,9 @@
   background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
+  /* A count pill is an inlay with an edge; the top light is what stops it
+     reading as a flat grey chip on a tinted band. */
+  box-shadow: var(--dsh-tb-rim-soft);
   cursor: inherit;
 }
 
@@ -1413,9 +1455,11 @@
 }
 
 .card:hover {
-  /* 纸叠纸：第二档投影 + 1px 抬升。边光保留——抬起来的纸仍然有上沿。 */
+  /* 纸叠纸：第二档投影 + 1px 抬升。边光保留——抬起来的纸仍然有上沿。
+     No border change: the edge is already the layer's strong hairline, and the
+     lift is carried by the cast (a hover that re-colours the edge too reads as
+     a different surface, not the same sheet raised). */
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-  border-color: var(--dsw-alias-border-l3);
   transform: translateY(-1px);
 }
 
@@ -1472,7 +1516,7 @@
   height: 4px;
   border-radius: 3px;
   background: var(--dsh-tb-accent);
-  box-shadow: 0 0 0 1px var(--dsw-alias-bg-base);
+  box-shadow: 0 0 0 1px var(--dsh-tb-paper);
   pointer-events: none;
   z-index: 1;
 }
@@ -1542,7 +1586,8 @@
 .cardQuickRun:hover {
   color: var(--dsh-tb-accent);
   background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
+  /* Base edge is the soft step; hover takes the stronger one (same width). */
+  border: var(--dsh-tb-border);
 }
 
 .cardQuickRun[aria-disabled='true'] {
@@ -1559,13 +1604,14 @@
 
    unread wears the OUTER RING at full strength — it is the only state asking
    you to LOOK, and it is the message that must never be silenced. In-flight work
-   wears the INSET HALO at the soft alpha step PLUS a soft outer edge: you need
-   not do anything about it, so it must not outrank the card that does — but an
-   inset-only pulse has no presence at the card's rim next to the static
-   full-strength yellow border, which is 「进行中的卡边缘不呼吸」. Intensity
-   differs (soft edge vs
-   full ring) and the halo alone carries the inset; the hue stays the single
-   attention colour.
+   wears the INSET HALO at the softer alpha step, on its own layer: you need
+   not do anything about it, so it must not outrank the card that does. The hue
+   stays the single attention colour, and NEITHER light may animate the card's
+   box-shadow — see the rule at the keyframes: that property carries the
+   material, and an animation on it replaces `rim + cast-1` for the whole run
+   (the flat 进行中 card). The ring therefore animates `outline-color` over a
+   constant-width outline, and the halo animates a pseudo-element's inset
+   shadow.
 
    The switch is ONE attribute (`data-light`, from cardLightOf in card-view.ts),
    never two independent ones: these two rules set the SAME property, so which
@@ -1580,10 +1626,28 @@
    are messages, so they are never `animation: none`). There is no "quiet static
    ring" for reduced motion, and no rule that would produce one. */
 .card[data-light='ring'] {
+  /* A constant-width outline whose COLOUR breathes. The width and offset are
+     declared once (not animated), so the card never reflows and the ring is
+     never clipped by the card's own `overflow: hidden` — outlines are not
+     descendants. */
+  outline: var(--dsh-tb-breath-spread) solid transparent;
+  outline-offset: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
-.card[data-light='halo'] {
+/* The in-flight light's own layer: a decoration with NO material of its own, so
+   animating its box-shadow can never replace the card's rim or cast. It rides
+   the card's padding box, inherits the radius (so a skin's corner family is
+   followed) and never takes the pointer. */
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.card[data-light='halo']::after {
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
 }
 
@@ -1768,7 +1832,6 @@
    * 所以那一行与上一行共用同一条左沿，**零偏移**——这也是这一段唯一要钉住的事，
    * 因为两种错法看起来是同一个问题的两面。 */
   --card-badge-pad: 6px;
-  --card-badge-hair: 1px;
 }
 
 /* A CHIP IS AN OBJECT, AND AN OBJECT HAS AN EDGE. Every chip on a card is
@@ -1798,7 +1861,9 @@
      bottom bearing is reset to 0 (the same trap every `padding` shorthand
      spells for a shared shape). */
   padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  border: var(--card-badge-hair) solid var(--dsw-alias-border-l1);
+  /* The layer's soft hairline — the ONE edge token. A colour here would be a
+     second road to the edge. */
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
 }
 
@@ -1840,6 +1905,11 @@
    the card's own halo already carries the live breath. */
 .cardSessionDot[data-state='unread'] {
   background: var(--dsh-tb-attention);
+  /* The shared ring keyframes breathe `outline-color`, so every non-card
+     consumer declares the constant outline width here — the pulse is the
+     colour, never the geometry. */
+  outline: var(--dsh-tb-breath-spread) solid transparent;
+  outline-offset: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 .cardSessionMore {
@@ -2222,7 +2292,7 @@
 @supports not selector(::-webkit-scrollbar) {
   :is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
     scrollbar-width: thin;
-    scrollbar-color: var(--dsw-alias-border-l3) transparent;
+    scrollbar-color: var(--dsh-tb-text-3) transparent;
   }
 }
 
@@ -2232,7 +2302,7 @@
 }
 
 :is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-border-l3);
+  background: var(--dsh-tb-text-3);
   border-radius: 4px;
   background-clip: padding-box;
 }
@@ -2313,7 +2383,7 @@
 @supports not selector(::-webkit-scrollbar) {
   .modalScroll {
     scrollbar-width: thin;
-    scrollbar-color: var(--dsw-alias-border-l3) transparent;
+    scrollbar-color: var(--dsh-tb-text-3) transparent;
   }
 }
 
@@ -2323,7 +2393,7 @@
 }
 
 .modalScroll::-webkit-scrollbar-thumb {
-  background: var(--dsw-alias-border-l3);
+  background: var(--dsh-tb-text-3);
   border-radius: 4px;
   background-clip: padding-box;
 }
@@ -2462,7 +2532,7 @@
      chrome above (same computed value as --dsh-tb-border). */
   background: var(--dsh-tb-surface-menu);
   border-radius: var(--dsh-tb-radius-md);
-  box-shadow: var(--dsw-shadow-lv3);
+  box-shadow: var(--dsh-tb-shadow-3);
 }
 
 /* Not enough room below the field (the composer sits at the bottom of the
@@ -2508,7 +2578,7 @@
 
 .slashMenuRow:hover,
 .slashMenuRowActive {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
 }
 
 .slashMenuName {
@@ -2575,7 +2645,12 @@
   align-items: center;
   gap: var(--dsh-tb-space-6);
   padding: 14px 18px;
+  /* The header is a BAND, not bare paper: one step into the sheet (inlay), a
+     hairline where it ends, and the same top light the rest of the material
+     vocabulary uses. */
+  background: var(--dsh-tb-plane-inlay);
   border-bottom: var(--dsh-tb-border);
+  box-shadow: var(--dsh-tb-rim-soft);
   flex: none;
 }
 
@@ -2839,7 +2914,7 @@
 }
 
 .presetRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
 }
 
 .presetName {
@@ -2884,7 +2959,7 @@
 }
 
 .runPresetRow:hover {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
 }
 
 /* ══ 运行预设、内容块与会话列表 ══════════════════════════════════════════════════════════════
@@ -2942,9 +3017,12 @@
   font-size: 13px;
   line-height: 1.55;
   color: var(--dsh-tb-text-1);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
+  /* Three legs: the inlay step, its edge, and the top light that makes the
+     block read as laid into the sheet rather than painted on it. */
+  box-shadow: var(--dsh-tb-rim-soft);
   white-space: pre-wrap;
   overflow-wrap: break-word;
 }
@@ -2965,7 +3043,7 @@
   line-height: 1.5;
   font-family: var(--dsw-font-markdown-code-block-small);
   color: var(--dsh-tb-text-1);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
@@ -3105,6 +3183,10 @@
 
 .sessionDropZone[data-bindactive] {
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  /* The breath rides the outline's COLOUR; its width is constant (same
+     mechanism as the card ring — a state light never animates geometry). */
+  outline: var(--dsh-tb-breath-spread) solid transparent;
+  outline-offset: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
@@ -3471,7 +3553,9 @@
 }
 
 .sessionRowHandle:hover {
-  background: var(--dsw-alias-state-warn-primary-hover, var(--dsh-tb-attention));
+  /* The one attention fill; the hover STEP comes from the filter, not from a
+     second host hue read at the call site. */
+  background: var(--dsh-tb-attention);
   filter: brightness(1.1);
 }
 
@@ -3644,6 +3728,9 @@
 .column[data-dropaccept='link'] {
   border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  /* Constant-width outline, colour-only breath (see the card ring). */
+  outline: var(--dsh-tb-breath-spread) solid transparent;
+  outline-offset: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
@@ -3695,7 +3782,7 @@
   line-height: 1.5;
   font-family: var(--dsw-font-markdown-code-block-small);
   color: var(--dsh-tb-text-1);
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   white-space: pre-wrap;
@@ -4000,6 +4087,8 @@
   align-items: center;
   gap: var(--dsh-tb-space-6);
   padding: 12px 18px;
+  /* The footer mirrors the header band: same inlay step, its own hairline. */
+  background: var(--dsh-tb-plane-inlay);
   border-top: var(--dsh-tb-border);
   flex: none;
 }
@@ -4048,8 +4137,9 @@
  * Polish pass: complete interaction states (hover / active / focus-visible /
  * disabled) and reduced-motion fallback. Motion rides the --dsh-tb-motion
  * token (160ms); no per-control ms override lives here.
- * Colors use the --dsw-alias-* design tokens, which adapt to light/dark/skins
- * automatically, so every rule below is dark-safe by construction.
+ * Colors use the --dsh-tb-* layer (derived from page + ink), which adapts to
+ * light/dark/skins automatically, so every rule below is dark-safe by
+ * construction.
  * --------------------------------------------------------------------------- */
 
 /* The focus ring is NOT declared here any more. It is one seat-level rule in
@@ -4060,11 +4150,8 @@
    answered by whether an element is focusable, not by a table somebody has to
    remember to extend. */
 
-/* --- press (active) feedback --- */
-.card:active {
-  box-shadow: var(--dsw-shadow-lv1);
-  transform: translateY(0);
-}
+/* The press state lives with the material rules above (`.card:active`), so the
+   two definitions cannot disagree about what the card's shadow is. */
 
 /* --- drag & drop -------------------------------------------------------------- */
 
@@ -4162,8 +4249,8 @@
   padding: 2px 6px;
   font-size: 12px;
   color: var(--dsh-tb-text-1);
-  background: var(--dsw-specific-input-major);
-  border: 1px solid var(--dsw-alias-border-l2);
+  background: var(--dsh-tb-input-bg);
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-sm);
   outline: none;
 }
@@ -4538,9 +4625,12 @@
   align-items: center;
   gap: var(--dsh-tb-space-5);
   padding: 8px 12px;
-  background: var(--dsw-alias-bg-layer-2);
-  border: 1px solid var(--dsw-alias-border-l1);
+  /* A banner is a surface: a step into the page's ink (inlay), its own edge,
+     and the same top light every raised/inlaid piece wears. */
+  background: var(--dsh-tb-plane-inlay);
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
+  box-shadow: var(--dsh-tb-rim-soft);
   flex: none;
 }
 
@@ -4669,7 +4759,7 @@
   line-height: 1.5;
   color: var(--dsh-tb-text-2);
   padding: 4px 10px;
-  border-left: 2px solid var(--dsw-alias-border-l2);
+  border-left: 2px solid var(--dsh-tb-text-3);
   opacity: 0.85;
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
@@ -4753,7 +4843,7 @@
   gap: 1px;
   height: 4px;
   border-radius: var(--dsh-tb-pill);
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
   overflow: hidden;
 }
 
@@ -4941,7 +5031,7 @@
   gap: var(--dsh-tb-space-2);
   padding: 8px 12px;
   background: var(--dsh-tb-surface-sunken);
-  border: 1px solid var(--dsw-alias-border-l1);
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
 }
@@ -4994,8 +5084,8 @@
 .mdCode {
   font-family: var(--dsw-font-markdown-code-block-small);
   font-size: 0.92em;
-  background: var(--dsw-alias-markdown-code-block);
-  border: 1px solid var(--dsw-alias-border-l1);
+  background: var(--dsh-tb-plane-inlay);
+  border: var(--dsh-tb-border-soft);
   border-radius: 4px;
   padding: 0 4px;
   /* A long inline token (a path, a slug) must break, not push the whole
@@ -5011,7 +5101,7 @@
   font-family: var(--dsw-font-markdown-code-block-small);
   font-size: 12.5px;
   line-height: 1.5;
-  background: var(--dsw-alias-markdown-code-block);
+  background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   overflow-x: auto;
@@ -5042,7 +5132,7 @@
   block-size: 13px;
   margin-inline-end: 6px;
   vertical-align: middle;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
   /* 与内联代码那一个小盒子同一档（`.mdCode`）：它们都是**正文行里的一个小方块**，
      而阶梯令牌（--dsh-tb-radius-sm 是 10px）是给面板与输入框的——套到 13px 的方盒上
      就是一个圆。 */
@@ -5072,14 +5162,14 @@
 .mdTable th,
 .mdTable td {
   padding: 4px 10px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
   text-align: start;
   vertical-align: top;
 }
 
 .mdTable th {
   font-weight: 600;
-  background: var(--dsw-alias-bg-layer-2);
+  background: var(--dsh-tb-plane-inlay);
 }
 
 /* 对齐栏：分隔行里的冒号说了每一栏怎么对齐（`:--:` 居中、`--:` 右），一个来源。 */
@@ -5096,7 +5186,7 @@
 .mdQuote {
   margin: 8px 0;
   padding: 2px 12px;
-  border-left: 2px solid var(--dsw-alias-border-l2);
+  border-left: 2px solid var(--dsh-tb-text-3);
   color: var(--dsh-tb-text-2);
 }
 
@@ -5122,7 +5212,7 @@
      becomes the shell's own separator the moment that token exists. A bare
      `var(--dsw-alias-separator-primary)` would instead make the whole declaration
      invalid and leave the rule with no line at all. */
-  border-top: 1px solid var(--dsw-alias-separator-primary, var(--dsw-alias-bg-layer-2));
+  border-top: var(--dsh-tb-border-soft);
   margin: 10px 0;
 }
 
@@ -5221,7 +5311,7 @@
 
 .reviewJumpLatest:hover {
   background: var(--dsh-tb-hover);
-  border-color: var(--dsw-alias-border-l3);
+  border: var(--dsh-tb-border);
   color: var(--dsh-tb-text-1);
   transform: translateY(-1px);
 }
@@ -5305,7 +5395,7 @@
   min-width: 0;
   margin: 0 var(--dsh-tb-rail-inset) 2px;
   background: var(--dsh-tb-surface-sunken);
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   color: var(--dsh-tb-text-1);
 }
@@ -5449,7 +5539,7 @@
   padding: 0 0 0 10px;
   list-style: none;
   min-width: 0;
-  border-left: 2px solid var(--dsw-alias-border-l2);
+  border-left: 2px solid var(--dsh-tb-text-3);
 }
 .interactionOffered > li {
   display: flex;
@@ -5503,7 +5593,7 @@
   background: var(--dsh-tb-hover);
 }
 .interactionOptionOn {
-  border-color: var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
 }
 .interactionOptionButton:disabled {
   cursor: default;
@@ -5524,7 +5614,7 @@
   font-weight: 500;
   line-height: 18px;
   color: var(--dsh-tb-text-2);
-  background: var(--dsw-alias-bg-overlay);
+  background: var(--dsh-tb-plane-inlay);
   border-radius: var(--dsh-tb-radius-sm);
 }
 .interactionCheck {
@@ -5541,7 +5631,7 @@
   grid-area: 1 / 1;
   width: 14px;
   height: 14px;
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-sm);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -5616,7 +5706,7 @@
 }
 .interactionCustomRow:focus-within,
 .interactionCustomRowOn {
-  border-color: var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
 }
 
 /* The auto-growing answer field: a textarea over a hidden mirror that owns
@@ -5665,7 +5755,7 @@
   margin: 2px 12px;
   padding: 8px 12px;
   background: var(--dsh-tb-input-bg);
-  border: 1px solid var(--dsw-alias-border-l2);
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-sm);
 }
 .interactionFieldBlock:focus-within {
@@ -5747,7 +5837,7 @@
   padding: 8px 12px;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
-  border-bottom: 1px solid var(--dsw-alias-border-l2);
+  border-bottom: var(--dsh-tb-border);
 }
 .interactionStripDot {
   flex: none;

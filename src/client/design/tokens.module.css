@@ -287,7 +287,6 @@
   --dsh-tb-wash-strong: 22%;
   --dsh-tb-edge: 42%;
   --dsh-tb-attention-alpha: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
-  --dsh-tb-attention-alpha-soft: color-mix(in srgb, var(--dsh-tb-attention) 10%, transparent);
   /* ── 焦点环：**一条影，不是一条 outline** ────────────────────────────────────
    *
    * `outline` 由浏览器按 `border-radius` 画，**不读 `corner-shape`**；而元素的底与边
@@ -448,6 +447,10 @@
    * 同一行里 18 与 19 并排——那不是密度，那是七套几何。这一枚管所有「嵌在纸面里
    * 的小件」；按钮仍读 `--dsh-tb-button-h`，两者不互相派生（一个小件不会长成按钮）。 */
   --dsh-tb-chip-h: 20px;
+  /* 带字与计数的标签药丸（组头、日程的节、读数条）读这一档：24px 里装 13px 的词 + 12px
+     的数 + 一个 14px 的图标槽，左右各 12px 内衬。20px 那一档装不下三样（读者报的「胶囊
+     太窄、图标没居中」），而它是**标签**不是行内件——两族两个高，各有一个名字。 */
+  --dsh-tb-pill-h: 24px;
 
   /* ── 控件里那点字的墨位：**一个数，按字号缩放** ──────────────────────────────
    *

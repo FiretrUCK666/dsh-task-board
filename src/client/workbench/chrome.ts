@@ -21,7 +21,6 @@
  * exactly the destinations that exist. An unknown answer means "all three",
  * matching the registration's own failure direction.
  */
-import type { WorkbenchCounts } from '../../core/workbench-summary.ts'
 import { t } from '../locales.ts'
 import type { WorkbenchTab } from '../design/WorkbenchBar.tsx'
 import { workbenchStage } from './stage.ts'
@@ -103,6 +102,3 @@ export function workbenchChromeOf(): WorkbenchChrome {
     onExit: () => { workbenchStage.exit() },
   }
 }
-
-/** Re-exported for callers that only need the count shape. */
-export type { WorkbenchCounts }

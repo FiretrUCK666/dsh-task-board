@@ -237,6 +237,21 @@ With the plugin marketplace installed you can also press Update on its Installed
 
 ## What it does
 
+### One workbench, three pages
+
+The sidebar carries **Overview**, **Task board** and **Task list**, and the three share one navigation
+bar at the top — so which page you are on, and how much is waiting on each of the others, is visible
+at a glance.
+
+- **Overview**: four numbers (waiting on you, finished-but-unseen, due today, overdue), one pipeline
+  row (how many cards in each column, and how long the oldest has sat still), the last seven days of
+  output, and what happened most recently. Press a number to land on that page.
+- **They connect, and they also stay apart.** A card's "N items" chip jumps to the list filtered to
+  that card; a row's card chip jumps back to the board and opens that card. Ignore those chips and the
+  two pages go their own way.
+- **Each page can be switched off on its own**: one toggle per page in the plugin details, and a page
+  that is off simply is not in the bar.
+
 ### The board
 
 Five columns, and reading them left to right is the whole life of a piece of work: Backlog / To do /

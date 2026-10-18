@@ -10,6 +10,15 @@
  * 用法：
  *   node scripts/shot-panel.mjs --url file:///... --eval-file scripts/probes/probe-ink-center.js
  * 只读：不写 DOM、不改样式，量完就走。
+ *
+ * ── 它与 `probe-item-capsules.js` 分工不同，两个数都对 ────────────────────────
+ *
+ * 本探针量的是「**内容盒**中心与墨心之差」：它答的是「墨位校正有没有把字放正」。
+ * 那个探针量的是「**边框盒**中心与墨心之差」：它答的是「这个控件看上去正不正」——
+ * 两句话差着一份内衬，所以本探针读 −0.02、那个读 −0.98 是**同一枚按钮**。
+ *
+ * 判「字在它自己那格字里居中吗」读本探针；判「一个控件的视觉重心在哪」读那个。
+ * 只拿一个数的结论去改样式，改的会是另一个问题。
  */
 (() => {
   const canvas = document.createElement('canvas')
@@ -29,7 +38,7 @@
     const inkDescent = metrics.actualBoundingBoxDescent
     if (boxAscent === undefined || inkAscent === undefined) return
     /* 量的是**内容盒**，不是边框盒：`align-items: center` 居中内容盒，而控件的墨位
-       校正正是靠一档下内衬做的（见 `--dsh-tb-ink-drop`）。按边框盒算会把内衬当成
+       校正正是靠一档下内衬做的（见 `--dsh-tb-optical-drop`）。按边框盒算会把内衬当成
        「本来就该有的空气」，于是校正生效了读数却一动不动——一个量错的探针比没有更糟。 */
     const padTop = parseFloat(style.paddingTop) || 0
     const padBottom = parseFloat(style.paddingBottom) || 0

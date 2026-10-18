@@ -2742,16 +2742,27 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
     // 13/600 带发丝线、说明是一枚 11px 的回执胶囊），读者读到的不是「几种节」，是同一页
     // 上几个不一样的东西。所以名单从两个名字收成一个 `.itemAgendaHead`——判据本身没变：
     // 一个 `<h2>` 不声明自己的 margin 与字号，就是 UA 在排版它。
+    //
+    // **两处读法跟着表走。** ① 一枚药丸现在是**一条选择器列表**里的一个成员
+    // （`.itemGroupHead, .itemEmptyGroups`——同一族只写一次），所以规则按「列表里有它」
+    // 找，而不是按「选择器恰好等于它」找；② 字号可以是一个**字阶令牌**
+    // （`var(--dsh-tb-type-body-size)`）。第二条是硬性规范 14 的那一面：字号搬进令牌层
+    // 之后，一个只认 `px` 的读法会逼着表把令牌抄回像素——而它抄的那一份正是会漂的那份。
+    const sizesItsOwnType = (body: string): boolean =>
+      /(?:^|[;{\s])font-size\s*:\s*(?:[\d.]+px|var\(--dsh-tb-type-[\w-]+\))/
+        .test(body)
+    const ruleFor = (rules: readonly { selector: string; body: string }[], name: string): { selector: string; body: string } | undefined =>
+      rules.find(entry => entry.selector.split(',').map(one => one.replace(/\s+/g, ' ').trim()).includes(`.${name}`))
     const rules = declarationRules(stripCssComments(itemSheet()))
     for (const name of HEADINGS) {
-      const rule = rules.find(entry => entry.selector === `.${name}`)
+      const rule = ruleFor(rules, name)
       expect(rule, `.${name} has no rule at all, so the heading it styles is the user agent's`).not.toBeUndefined()
       expect(
         /(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule?.body ?? ''),
         `.${name} does not declare its own margin — it inherits the UA's .83em, which is nobody's choice`,
       ).toBe(true)
       expect(
-        /(?:^|[;{\s])font-size\s*:\s*[\d.]+px/.test(rule?.body ?? ''),
+        sizesItsOwnType(rule?.body ?? ''),
         `.${name} declares no font-size, so it renders at the UA's 1.5em — 19.5px of bold above a 16px page title`,
       ).toBe(true)
     }
@@ -2807,11 +2818,20 @@ describe('the type scale is a scale, and not a pile of near-identical sizes', ()
       // SETS, NOT LISTS. The reader walks RULES, so a class with two rules in the
       // plant was pushed twice — and a test written around that accident is a test
       // shaped by a reader's slip. 「which headings」 has one answer per selector.
+      //
+      // AND A RULE MAY NAME SEVERAL SELECTORS. The pill family is written once
+      // (`.itemGroupHead, .itemEmptyGroups`), so "the rule that styles this heading"
+      // is the rule whose SELECTOR LIST contains it — reading only an exact match
+      // reports the heading as unstyled. A font-size is a declaration whether it is
+      // `14px` or `var(--dsh-tb-type-body-size)`; the second one is where the type
+      // scale now lives.
       const headings = new Set<string>()
       const unanchoredWeights = new Set<string>()
       for (const rule of declarationRules(source)) {
-        const isHeading = HEADINGS.includes(rule.selector.replace(/^\./, '') as typeof HEADINGS[number])
-        if (isHeading && (!/(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule.body) || !/(?:^|[;{\s])font-size\s*:/.test(rule.body))) {
+        const names = rule.selector.split(',').map(one => one.replace(/\s+/g, ' ').trim())
+        const isHeading = names.some(one => HEADINGS.includes(one.replace(/^\./, '') as typeof HEADINGS[number]))
+        const hasSize = /(?:^|[;{\s])font-size\s*:\s*(?:[\d.]+px|var\(--dsh-tb-type-[\w-]+\))/.test(rule.body)
+        if (isHeading && (!/(?:^|[;{\s])margin\s*:\s*0(?:;|\s|$)/m.test(rule.body) || !hasSize)) {
           headings.add(rule.selector)
         }
         const weight = /(?:^|[;{\s])font-weight\s*:\s*(\d+)/.exec(rule.body)?.[1]
@@ -3247,6 +3267,12 @@ describe('the colour budget is a budget, counted at the token layer', () => {
   const AFFORDANCES: ReadonlyArray<{ readonly key: string; readonly is: (s: string) => boolean }> = [
     { key: '键盘焦点环', is: s => /:focus-visible\b/.test(s) || /--dsh-tb-ring/.test(s) },
     { key: '原生控件的色调', is: s => /(?:^|[;{\s])(?:accent-color|appearance)\s*:/.test(s) },
+    /* **指针停在左栏的那一行上，是平台在回答，不是产品在说话。** 它与「你站在这儿」
+       用的是同一把尺子（`--dsh-tb-wash` 的一半与整档），而两件事分开记：一行说「你在
+       这儿」（装饰位置），另一行说「它按得动」（affordance）。把悬停记进装饰预算，等于
+       让「指针路过」和「这一页是当前页」花同一笔预算——而前者每一屏都会发生在不同的
+       行上，后者永远只有一处。 */
+    { key: '左栏行的悬停', is: s => /\.itemRailRow:hover/.test(s) },
   ]
   /**
    * **一种墨的每一种写法都要被看见，否则计数器报的是一个数字，而那个数字看起来像
@@ -3324,8 +3350,12 @@ describe('the colour budget is a budget, counted at the token layer', () => {
     // page's own marks into the affordance column is not a way to buy headroom.
     // 两个 affordance（焦点环、原生控件的色调）仍旧各算一档，所以总数是 7。
     // 五条装饰位置都写在 `DESIGN.md` 的颜色节里。
+    //
+    // **accent 的 affordance 从 2 变成 3**：左栏那一行的悬停现在读同一把洗底尺子的一半
+    // （`color-mix(accent, wash / 2)`）。它不是第六个「产品在说话」的位置——它是指针在
+    // 回答「这一行按得动」，与焦点环同一类；所以它记在 affordance 一栏，装饰仍然是五处。
     const budget: Readonly<Record<string, { readonly decoration: number; readonly affordance: number; readonly total: number }>> = {
-      '--dsh-tb-accent': { decoration: 5, affordance: 2, total: 7 },
+      '--dsh-tb-accent': { decoration: 5, affordance: 3, total: 8 },
       '--dsh-tb-attention': { decoration: 2, affordance: 0, total: 2 },
       // 危险色五处，其中一处是优先级「紧急」那一枚实心芯片。红在这一面上
       // 说的都是同一件事的两个方向——「已经错了」（句末读法 / 日期轴上过了的截止 /
@@ -3990,8 +4020,15 @@ describe('药丸的几何只写一次', () => {
 
   /* **按钮与输入框继承产品字体。** UA 给表单控件自己的一套字，中文按字回退到另一套
      字体——度量与产品字栈不一样，桌面与手机还各不一样。「盒子居中了、字还是偏」剩下的
-     那一半就是它：同一枚药丸在两台设备上是两套字。 */
-  const FORM_CONTROLS = ['itemOpt', 'itemTag', 'itemTagAdd', 'itemOptNaming', 'itemNewButton', 'itemTopBarChip', 'itemRailNavBtn', 'itemRailToday', 'itemRowAttach', 'itemRailRow', 'itemFacetChip', 'itemArchiveToggle', 'itemRowCardChip']
+     那一半就是它：同一枚药丸在两台设备上是两套字。
+
+     **顶栏那两枚已经不在名单里**：`.itemTopBarChip` / `.itemNewButton` 现在是共用
+     `Button` 的布局把手（`flex: none` / 窄档整宽），外观由 `design/components.module.css`
+     给——在那里给这一枚按钮写第二条 `font-family` 是把两页的字又分一次家。这一页的
+     按钮字体由 `board.module.css` 的设计系统层兜住
+     （`[data-dsh-taskboard-view] :where(button, input, select, textarea) { font-family: inherit }`），
+     那是比逐个类更宽的一条：这一页上**每一枚**按钮与输入框都落在它下面。 */
+  const FORM_CONTROLS = ['itemOpt', 'itemTag', 'itemTagAdd', 'itemOptNaming', 'itemRailNavBtn', 'itemRailToday', 'itemRowAttach', 'itemRailRow', 'itemFacetChip', 'itemArchiveToggle', 'itemRowCardChip']
 
   /* 共用的字段不在这张表里：它的字由 `SearchField`（design 表）给，而这张表只扫清单自己
      的表。它被单独点名，是因为这页顶栏那一格正是它——把「这里不用 UA 的字」这条判据

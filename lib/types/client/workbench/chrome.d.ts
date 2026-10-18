@@ -1,27 +1,3 @@
-/**
- * The workbench's addresses and the bar's chrome, in one place.
- *
- * TWO THINGS LIVE HERE, for the same reason: they are the only facts every page
- * and the assembly layer must agree on, and a second copy of either drifts
- * silently.
- *
- *   1. THE KEYS. A page's `main` slot key, its sidebar row id and the workbench
- *      tab id are the same string (the shell resolves a row to its stage by id).
- *      They used to be authored in two files; a tab that spelled it differently
- *      would be a tab that opens a panel the shell never registered, and the
- *      only symptom is a click that does nothing.
- *   2. THE CHROME. Three pages render the same bar. Building its tabs, labels
- *      and status line in one function is what stops page two from showing a
- *      count that page one does not.
- *
- * WHY THE PAGE LIST IS REGISTRY STATE AND NOT A PROP OF EACH PANEL. The plugin
- * page has one switch per surface; a switched-off page must not appear as a tab
- * anyone can press. The browser already asks the host which surfaces are on (see
- * `surfaces.ts`), and the entry remembers the answer here so the bar can render
- * exactly the destinations that exist. An unknown answer means "all three",
- * matching the registration's own failure direction.
- */
-import type { WorkbenchCounts } from '../../core/workbench-summary.ts';
 import type { WorkbenchTab } from '../design/WorkbenchBar.tsx';
 /** The three pages, in reading order. */
 export declare const WORKBENCH_PAGES: readonly ["home", "board", "items"];
@@ -61,5 +37,3 @@ export interface WorkbenchChrome {
  * @returns the bar's props.
  */
 export declare function workbenchChromeOf(): WorkbenchChrome;
-/** Re-exported for callers that only need the count shape. */
-export type { WorkbenchCounts };

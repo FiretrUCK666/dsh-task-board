@@ -62,8 +62,9 @@
 }
 
 /* ── 标题行 ────────────────────────────────────────────────────────────────
- * 「今天 · N 件事等你」：**只有那个数字吃 kpi 字阶**，两边的词是标题档。基线对齐而不是
- * 居中对齐——一个 30px 的数字与一行 15px 的字，中心对齐会让那行字看起来浮在半空。 */
+ * 两行、两种角色：一行眉（这一页叫什么，11px 正字距、二级墨），一行读数。
+ * 读数**整句一个字号**：句子里的数不跨档——「一个 30px 的 2 夹在 13px 的字里」会被读成
+ * 一颗孤零零的数字，语序散了、基线也散了。数字仍然等宽（根上已继承 tabular-nums）。 */
 [data-dsh-taskboard-view] .homeHead {
   display: flex;
   flex-direction: column;
@@ -71,36 +72,23 @@
   padding-block-start: var(--dsh-tb-space-2);
 }
 
-[data-dsh-taskboard-view] .pageTitle {
+[data-dsh-taskboard-view] .homeEyebrow {
   margin: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: var(--dsh-tb-space-3);
-  font-size: var(--dsh-tb-type-title-size);
-  line-height: var(--dsh-tb-type-kpi-line);
+  font-size: var(--dsh-tb-type-eyebrow-size);
+  line-height: var(--dsh-tb-type-eyebrow-line);
+  letter-spacing: var(--dsh-tb-type-eyebrow-track);
   font-weight: 600;
-  letter-spacing: -0.01em;
-}
-
-[data-dsh-taskboard-view] .titleWord {
-  font-size: var(--dsh-tb-type-title-size);
-  line-height: var(--dsh-tb-type-title-line);
-  color: var(--dsh-tb-text-1);
-}
-
-/* 间隔号是标点，不是记号：三级墨在文字上不过 AA（见 token 层那段账），所以它读二级。 */
-[data-dsh-taskboard-view] .titleSep {
-  font-size: var(--dsh-tb-type-title-size);
-  line-height: var(--dsh-tb-type-title-line);
   color: var(--dsh-tb-text-2);
 }
 
-[data-dsh-taskboard-view] .titleCount {
-  font-size: var(--dsh-tb-type-kpi-size);
-  line-height: var(--dsh-tb-type-kpi-line);
+[data-dsh-taskboard-view] .pageTitle {
+  margin: 0;
+  font-size: 17px;
+  line-height: 24px;
   font-weight: 600;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  color: var(--dsh-tb-text-1);
+  font-variant-numeric: tabular-nums;
 }
 
 /* ── 四格 ──────────────────────────────────────────────────────────────────
@@ -120,7 +108,9 @@
   gap: var(--dsh-tb-space-2);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-6);
-  border: var(--dsh-tb-border-soft);
+  /* 三条腿缺一不可：纸面（色阶）+ 墨推出来的边（14%）+ 投影。**只有底色是「扁的」**，
+     而这条边在默认浅色主题下才是读者真正看得见的那条轮廓。 */
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   background: var(--dsh-tb-plane-sheet);
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
@@ -146,6 +136,14 @@
   box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
+/* 数与标签同一条基线：30px 的数和 12px 的标签并成一行，读者一眼读完一个读数。 */
+[data-dsh-taskboard-view] .tileFigures {
+  display: flex;
+  align-items: baseline;
+  gap: var(--dsh-tb-space-3);
+  min-inline-size: 0;
+}
+
 [data-dsh-taskboard-view] .tileValue {
   font-size: var(--dsh-tb-type-kpi-size);
   line-height: var(--dsh-tb-type-kpi-line);
@@ -153,7 +151,7 @@
   letter-spacing: -0.02em;
 }
 
-/* 标题与说明都走 meta 档（见 DESIGN.md 的字阶分工）：这一格里唯一该有重量的是数字。 */
+/* 标签走 meta 档（见 DESIGN.md 的字阶分工）：这一格里唯一该有重量的是数字。 */
 [data-dsh-taskboard-view] .tileLabel {
   font-size: var(--dsh-tb-type-meta-size);
   line-height: var(--dsh-tb-type-meta-line);
@@ -185,7 +183,9 @@
   gap: var(--dsh-tb-space-5);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-7);
-  border: var(--dsh-tb-border-soft);
+  /* 与四格同一条腿：纸面 + 14% 的墨边 + 第一档投影。卡片不可点，所以它没有 hover——
+     抬升只发生在按得动的东西上，这个区别本身也是可读的。 */
+  border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-lg);
   background: var(--dsh-tb-plane-sheet);
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
@@ -212,38 +212,56 @@
 [data-dsh-taskboard-view] .pipeline {
   display: flex;
   flex-direction: column;
-  gap: var(--dsh-tb-space-1);
+  gap: var(--dsh-tb-space-2);
 }
 
-/* 一行是一条纸下的窄条：它自己不是纸面，只在悬停时浮起一层底色。
+/* 一行是一张**窄纸**：它自己也有色阶、边与投影——五条可以按的读数如果只是透明行上
+ * 加一层底色，读者看到的是「扁的表格」，而不是「一叠可以拿起来的纸」。
  * 网格列宽而不是 auto：五行的名字长度不同（待办 / 进行中 / In Progress），名字列一旦
  * 由内容决定宽度，五根占比条就会各自从一个不同的位置开始——那不是密度，那是没对齐。
- * 名字列 5.5em 是按最长的那个词量的（13px 下 "In Progress" 约 68px）。 */
+ * 名字列 5.5em 是按最长的那个词量的（13px 下 "In Progress" 约 68px）。
+ *
+ * **基线对齐**：名字（13px）与计数（12px）的行高不同，`center` 居中的是行盒、不是基线，
+ * 两者会差半像素；所以这一行按 baseline 排，圆点与占比条各自 `align-self: center`
+ * 退出基线（它们没有字）。 */
 [data-dsh-taskboard-view] .pipeRow {
   display: grid;
   grid-template-columns: var(--dsh-tb-dot) 5.5em 2.5ch minmax(var(--dsh-tb-space-9), 1fr) auto;
-  align-items: center;
+  align-items: baseline;
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-2) var(--dsh-tb-space-3);
-  border: none;
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
-  background: transparent;
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   color: var(--dsh-tb-text-1);
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: background var(--dsh-tb-motion);
+  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
 }
 
+/* 悬停是**抬起来**，不是换一层底色：第二档投影 + 1px 位移，和四格同一个动作。 */
 [data-dsh-taskboard-view] .pipeRow:hover {
-  background: var(--dsh-tb-hover);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+  transform: translateY(-1px);
+}
+
+[data-dsh-taskboard-view] .pipeRow:active {
+  transform: translateY(0);
+}
+
+[data-dsh-taskboard-view] .pipeRow:focus-visible {
+  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
 /* 状态点：整行里唯一的彩色记号。色相只经 `--dsh-tb-status-*`（看板那五枚的同一个源头）。
- * `--dsh-tb-mark-drop` 是这一族记号的统一光学下沉：行盒的中心比字的视觉中心高一点点。 */
+ * `--dsh-tb-mark-drop` 是这一族记号的统一光学下沉：行盒的中心比字的视觉中心高一点点。
+ * `align-self: center` 让它不参与基线对齐——一个圆点没有基线。 */
 [data-dsh-taskboard-view] .homeStatusDot {
   flex: none;
+  align-self: center;
   inline-size: var(--dsh-tb-dot);
   block-size: var(--dsh-tb-dot);
   border-radius: var(--dsh-tb-pill);
@@ -273,14 +291,16 @@
   font-weight: 600;
 }
 
-/* 占比条的槽是**凹面**：嵌进纸面的一条浅槽。槽里的填充是墨的淡洗底，不是第二种色相——
- * 色相在这张卡里已经由那颗点说了，条只负责「多少」。 */
+/* 占比条的槽是纸面上的一条**嵌面**（墨 5% 压在纸里），不是页底的凹槽——这条槽在纸片
+ * 上，不在页面上。槽里的填充是墨的淡洗底，不是第二种色相：色相在这张卡里已经由那颗点
+ * 说了，条只负责「多少」。宽度在数据变化时走 `--dsh-tb-motion-lift`。 */
 [data-dsh-taskboard-view] .pipeTrack {
+  align-self: center;
   min-inline-size: 0;
   block-size: 6px;
   overflow: hidden;
   border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-plane-recess);
+  background: var(--dsh-tb-plane-inlay);
 }
 
 [data-dsh-taskboard-view] .pipeFill {
@@ -303,13 +323,15 @@
 [data-dsh-taskboard-view] .flowStats {
   display: flex;
   flex-wrap: wrap;
-  gap: var(--dsh-tb-space-6);
+  gap: var(--dsh-tb-space-7);
 }
 
+/* 一对「标签 + 数」内部的间距必须小于两对之间的间距：否则「周期 p85 / 4 天 / 每周完成 /
+ * 0.8 张」会被读成四个并列的词。数是标签的读数，所以它贴着标签、与标签同一条基线。 */
 [data-dsh-taskboard-view] .flowStat {
   display: flex;
-  flex-direction: column;
-  gap: var(--dsh-tb-space-1);
+  align-items: baseline;
+  gap: var(--dsh-tb-space-2);
 }
 
 [data-dsh-taskboard-view] .flowLabel {
@@ -446,34 +468,40 @@
   gap: var(--dsh-tb-space-4);
 }
 
-/* 两个读数各是一枚按钮：它们把读者送到看板——会话就住在那里。 */
+/* 两个读数各是一枚按钮：它们把读者送到看板——会话就住在那里。
+ * 它们也是**纸**（色阶 + 9% 墨边 + 第一档投影），不是一块浅色底：同一张卡里的所有可点
+ * 面读到的是同一种材料。数与标签同一条基线（15px 的数 + 12px 的标签）。 */
 [data-dsh-taskboard-view] .sessionStat {
   box-sizing: border-box;
   display: flex;
-  flex-direction: column;
-  align-items: flex-start;
-  gap: var(--dsh-tb-space-1);
+  align-items: baseline;
+  gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
-  padding: var(--dsh-tb-space-5);
+  padding: var(--dsh-tb-space-4) var(--dsh-tb-space-5);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-plane-inlay);
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   color: inherit;
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: background var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
 }
 
 [data-dsh-taskboard-view] .sessionStat:hover {
-  background: var(--dsh-tb-hover);
-  box-shadow: var(--dsh-tb-rim-soft);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+  transform: translateY(-1px);
+}
+
+[data-dsh-taskboard-view] .sessionStat:active {
+  transform: translateY(0);
 }
 
 /* 焦点环显式带上：`:hover` 与座位级焦点规则特异性相同且写在本表里（更靠后），只写 hover
  * 的话「键盘选中 + 鼠标恰好停在上面」那一瞬会把环盖掉。 */
 [data-dsh-taskboard-view] .sessionStat:focus-visible {
-  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim-soft);
+  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
 [data-dsh-taskboard-view] .sessionValue {
@@ -557,13 +585,18 @@
   }
 }
 
-/* 抬升是一段位移：前庭功能敏感的人读到的应该是同一个盒子，不是一个会往上飘的盒子。 */
+/* 抬升是一段位移：前庭功能敏感的人读到的应该是同一个盒子，不是一个会往上飘的盒子。
+ * 抬升的三处（四格、流水线行、会话纸片）一起停，没有一处例外。 */
 @media (prefers-reduced-motion: reduce) {
-  [data-dsh-taskboard-view] .tile {
+  [data-dsh-taskboard-view] .tile,
+  [data-dsh-taskboard-view] .pipeRow,
+  [data-dsh-taskboard-view] .sessionStat {
     transition: none;
   }
 
-  [data-dsh-taskboard-view] .tile:hover {
+  [data-dsh-taskboard-view] .tile:hover,
+  [data-dsh-taskboard-view] .pipeRow:hover,
+  [data-dsh-taskboard-view] .sessionStat:hover {
     transform: none;
   }
 }

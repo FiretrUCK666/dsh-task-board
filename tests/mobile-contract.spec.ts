@@ -1564,7 +1564,11 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     expect(section).toMatch(/font-size:\s*12px/)
     expect(section).toMatch(/font-weight:\s*600/)
     expect(section).toMatch(/color:\s*var\(--dsh-tb-text-1\)/)
-    expect(section).toMatch(/border-top:\s*1px solid/)
+    // The hairline is read from the layer (`--dsh-tb-border-soft`), not typed as
+    // a literal: a hand-written `1px solid` here was a second, invisible edge
+    // token that no skin could move. Either form passes — the assertion is
+    // 「there is a hairline above」, not 「it is spelled this way」.
+    expect(section).toMatch(/border-top:\s*(?:1px solid|var\(--dsh-tb-border-soft\))/)
     // It stays a quiet label: ellipsis for long session names, never a control.
     expect(section).toContain('text-overflow: ellipsis')
     expect(section).toContain('white-space: nowrap')

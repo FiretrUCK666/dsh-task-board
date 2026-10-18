@@ -120,12 +120,14 @@ export function HomePage({ now }: { readonly now?: number }) {
   return (
     <HomeShell chrome={chrome}>
       <header className={css.homeHead}>
+        {/* 两行、两种角色：上面这行是**这一页叫什么**（眉，只供定位），下面那行是**今天
+            的读数**。句子整句同一档字，数字不再跨档——「一个大数字夹在 13px 的句子里」
+            会被读成一颗孤零零的 2。 */}
+        <p className={css.homeEyebrow}>{t('home.eyebrow')}</p>
         <h1 className={css.pageTitle}>
-          <span className={css.titleWord}>{t('home.title')}</span>
-          <span className={css.titleSep} aria-hidden="true">·</span>
           {counts.demand === 0
-            ? <span className={css.titleWord}>{t('home.subtitleCalm')}</span>
-            : <TitleCount value={counts.demand} />}
+            ? `${t('home.title')} ${t('home.subtitleCalm')}`
+            : `${t('home.title')} ${t('home.subtitle', { n: String(counts.demand) })}`}
         </h1>
       </header>
 
@@ -137,8 +139,12 @@ export function HomePage({ now }: { readonly now?: number }) {
             className={css.tile}
             onClick={() => { workbenchStage.navigate(tile.page) }}
           >
-            <span className={css.tileValue}>{tile.value}</span>
-            <span className={css.tileLabel}>{t(tile.label)}</span>
+            {/* 数与它的标签同一条基线：一枚 30px 的数和 12px 的标签若各占一行，读者要
+                来回对两次；并成一行之后，「3 等你处理」是一个读数，不是两行字。 */}
+            <span className={css.tileFigures}>
+              <span className={css.tileValue}>{tile.value}</span>
+              <span className={css.tileLabel}>{t(tile.label)}</span>
+            </span>
             <span className={css.tileHint}>{t(tile.hint)}</span>
           </button>
         ))}
@@ -249,40 +255,14 @@ export function HomePage({ now }: { readonly now?: number }) {
 function HomeShell({ chrome, children }: { readonly chrome: ReturnType<typeof workbenchChromeOf>; readonly children: ReactNode }) {
   return (
     <div className={css.homeStage} data-dsh-taskboard-view="">
-      {/* **栏在内容列之外。** 三页的工作台栏必须落在同一个位置：板与清单的栏是通栏的，
-          而这一页的内容列居中——把栏放进列里，它就会跟着内容一起缩进，同一颗 tab 在三页
-          上左右跳。所以栏单独一行、与内容列同宽同左沿，内容列照旧居中。 */}
+      {/* **栏在内容列之外。** 三页的工作台栏必须落在同一个位置：板与清单的栏都在页面左沿
+          16px 处。所以栏单独一行、与内容列同宽同左沿；内容列也不另设窄宽（没有居中的
+          1200 列），宽屏上四格与两栏自己摊开，切页时同一颗 tab 不会左右跳。 */}
       <div className={css.homeBar}>
         <WorkbenchBar active="home" label={t('workbench.navLabel')} {...chrome} />
       </div>
       <div className={css.homeSheet}>{children}</div>
     </div>
-  )
-}
-
-/**
- * 标题里的那个数：**只有数字吃 kpi 字阶**，两边的词仍是标题档。
- *
- * 句子从字典里按 `{n}` 拆开，而不是在这里把「件事等你」抄一遍——en 的语序与用词都在
- * 同一份字典里，抄一份的那一刻两种语言就开始各走各的。
- * @param props.value - 等你处理的事数。
- * @returns 数字与它后面那半句。
- */
-function TitleCount({ value }: { readonly value: number }) {
-  const template = t('home.subtitle')
-  const split = template.indexOf('{n}')
-  if (split < 0) {
-    // 字典里没有占位符（一份坏的翻译）：退回整句，不把「今天 ·」后面留空。
-    return <span className={css.titleWord}>{t('home.subtitle', { n: String(value) })}</span>
-  }
-  const before = template.slice(0, split).trim()
-  const after = template.slice(split + 3).trim()
-  return (
-    <>
-      {before !== '' && <span className={css.titleWord}>{before}</span>}
-      <span className={css.titleCount}>{value}</span>
-      {after !== '' && <span className={css.titleWord}>{after}</span>}
-    </>
   )
 }
 

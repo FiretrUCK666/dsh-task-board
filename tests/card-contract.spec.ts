@@ -261,26 +261,31 @@ describe('the column header and the cards under it share ONE text edge', () => {
     expect(rule, 'the chip has a border but no bearing, so the edge touches the text')
       .toMatch(/(?:^|[;\s])padding(?:-inline)?\s*:\s*0\s+var\(--card-badge-pad\)/)
 
-    // THE COMPENSATION, and this is the half an assertion on the chip alone cannot
-    // see.
-    // A chip's own bearing plus its hairline pushes its TEXT right of the meta
-    // row directly above it, which spends no bearing of its own — MEASURED: the
-    // 待你决断 / 新留言 row sat 7px right of 「更新于 …」 on the same card, so the
-    // badge row read as indented rather than as aligned.
+    // THE OTHER HALF: the row must NOT compensate.
     //
-    // So the row gives back exactly what the chip takes, and the two numbers are
-    // named ONCE on the row and spent by the chip through the same tokens. That
-    // is the whole reason they are tokens: a hand-written `calc(-1 * 7px)` is
-    // correct on the day it is written and silently wrong the day somebody rounds
-    // the border from 1px to 2px.
+    // This used to assert a `--card-badge-hair` that the row spent pulling itself
+    // left by the chip's border + bearing. That compensation was removed on
+    // purpose, and the measurement is in the sheet: pulling the row left aligns
+    // the chip's TEXT with 「更新于」 while its BOX then hangs outside the content
+    // edge, which reads as something sticking out of the card. **A bordered thing
+    // is aligned by its boundary** — so the box sits on the content edge and zero
+    // offset IS the fix.
+    //
+    // The token went with it (a token with no consumer answers nothing), so what
+    // must hold now is the ABSENCE: nothing that slides the row out of alignment.
     const row = ruleFor('.cardBadges')
-    const hair = /--card-badge-hair\s*:\s*([^;]+)/.exec(row)?.[1]?.trim()
     const pad = /--card-badge-pad\s*:\s*([^;]+)/.exec(row)?.[1]?.trim()
-    expect(hair, 'the badge row does not name the hairline width it gives back').toBeDefined()
     expect(pad, 'the badge row does not name the bearing it gives back').toBeDefined()
-    expect(hair, 'the hairline the row gives back is not a length').toMatch(/^\d*\.?\d+px$/)
     expect(pad, 'the bearing the row gives back is not a length').toMatch(/^\d*\.?\d+px$/)
-    expect(rule, 'the chip spends a border width the row does not give back').toContain('border: var(--card-badge-hair) solid')
+    expect(row, 'the badge row compensates again, so the chip boxes hang off the content edge')
+      .not.toMatch(/margin-inline-start\s*:\s*-/)
+    expect(row, 'the badge row compensates again, so the chip boxes hang off the content edge')
+      .not.toMatch(/transform\s*:\s*translate/)
+    // The chip draws the LAYER's hairline — a hairline, not a zero edge.
+    expect(source, 'the layer hairline must stay a 1px shorthand')
+      .toMatch(/--dsh-tb-border-soft:\s*1px solid/)
+    expect(rule, 'the chip draws its own edge instead of the layer’s hairline')
+      .toContain('border: var(--dsh-tb-border-soft)')
     expect(rule, 'the chip spends a bearing the row does not give back').toContain('padding: 0 var(--card-badge-pad)')
     // **AND THE ROW IS NOT SHIFTED — zero offset, in EITHER direction.** Two
     // mistakes look like one problem here and both must be avoided:
@@ -1005,58 +1010,118 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
 
     // 2. "a run finished and you have not looked" and "work is in flight" were the
     //    SAME animation, duration and colour, so the one light on the card could
-    //    not separate the state that asks you to look from the state that is merely
-    //    ambient. They must differ in FORM: the unread ring (outer, full strength)
-    //    versus the in-flight halo (inset, soft alpha).
-    const unread = source.match(/\.card\[data-light='ring'\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
-    const active = source.match(/\.card\[data-light='halo'\] \{\s*\n\s*animation:\s*(\S+)/)?.[1]
-    expect(unread, 'the unread card must use a breath animation').toBeTruthy()
-    expect(active, 'the live card must use a breath animation').toBeTruthy()
-    expect(unread, 'the two card lights must not be the same animation').not.toBe(active)
-    // The inset variant is the only one whose shadow is contained by the card's own
-    // clipped box, so the states must not be swapped by accident.
-    expect(active).toBe('dshTbBreathHalo')
+    //    not separate the state that asks you to look from the state that is
+    //    merely ambient. They must differ in FORM — and NEITHER may animate the
+    //    card's own `box-shadow`: that property carries the material (rim + cast),
+    //    and an animation on it replaces both for the whole run. That is the
+    //    reported flat 进行中 card: the one card the reader looks at most lost its
+    //    paper exactly when it mattered.
+    const ringRule = ruleFor(".card[data-light='ring']")
+    expect(ringRule, 'the unread card must have its own light rule').not.toBe('')
+    expect(ringRule, 'the unread ring must use a breath animation').toMatch(/animation:\s*dshTbBreathRing/)
+    expect(ringRule, 'the unread ring must breathe an OUTLINE, not the card’s material')
+      .toContain('outline: var(--dsh-tb-breath-spread) solid transparent')
+    expect(ringRule, 'the unread ring still takes the card’s box-shadow').not.toContain('box-shadow')
+    const haloRule = ruleFor(".card[data-light='halo']::after")
+    expect(haloRule, 'the in-flight halo must breathe on its own ::after layer').not.toBe('')
+    expect(haloRule, 'the in-flight halo must use a breath animation').toMatch(/animation:\s*dshTbBreathHalo/)
+    const haloLayer = ruleFor('.card::after')
+    expect(haloLayer, 'the halo layer must be a decoration with no material of its own').toContain('pointer-events: none')
+    expect(haloLayer, 'the halo layer must cover the card’s padding box').toContain('inset: 0')
+    expect(haloLayer, 'the halo layer must follow the card’s corner family').toContain('border-radius: inherit')
+    expect(haloLayer, 'the halo layer must not paint a material of its own').not.toContain('box-shadow')
 
     // 3. FORM is asserted at the KEYFRAME level too, not only through the two
-    //    animation names: a swap of the two keyframe BODIES would keep the name
-    //    assertions green while the in-flight halo silently became the light
-    //    that asks you to look (and vice versa). The contract is the shape —
-    //    halo = INNER (`inset`) shadow at the SOFT alpha step, ring = OUTER
-    //    spread at the STRONGER step — and both rest transparent so each light
-    //    is a pulse, never a permanent glow.
+    //    animation names: a swap of the keyframe bodies would keep the name
+    //    assertions green while the two lights traded places. The contract:
+    //    ring = an outline COLOUR at the stronger step, constant geometry;
+    //    halo = an INSET shadow on the decoration layer (its only channel — that
+    //    layer is inside the card's clip, so an outer edge there would be cut);
+    //    both rest transparent, so each light is a pulse, never a permanent glow.
     /** The 50% frame of one `@keyframes <name>` block (the pulse's peak). */
     const peakOf = (name: string): string => {
       const block = new RegExp(`@keyframes ${name} \\{([\\s\\S]*?)\\n\\}`).exec(source)?.[1]
       expect(block, `${name} must exist`).toBeTruthy()
       return /50%\s*\{([^}]*)\}/.exec(block ?? '')?.[1] ?? ''
     }
+    const ringPeak = peakOf('dshTbBreathRing')
+    expect(ringPeak, 'the unread ring is an outline colour').toContain('outline-color')
+    expect(ringPeak, 'the ring must not touch the material property').not.toContain('box-shadow')
+    expect(ringPeak, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
+    expect(ringPeak, 'the ring must not animate its geometry').not.toMatch(/outline-width|outline-style|outline:/)
     const haloPeak = peakOf('dshTbBreathHalo')
     expect(haloPeak, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
     expect(haloPeak, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
-    expect(haloPeak, 'the halo INSET wears the soft alpha step').toContain('var(--dsh-tb-attention-alpha-soft)')
-    // …and it carries an OUTER component too: an inset-only pulse has no edge
-    // presence next to the card's static full-strength yellow border —
-    // 「进行中的卡边缘根本不呼吸」, misdiagnosed twice as the judgment. The
-    // outer component peaks at the FULL 22% step (the same alpha the ring
-    // uses): a soft-edged glow at10% was still invisible against the border,
-    // so visibility itself became part of the contract — the halo stays
-    // distinct from the ring by FORM (3px blur + inset wash vs the ring's
-    // hard spread, ring-only), never by hiding below the visibility floor.
-    expect(haloPeak, 'the halo breathes AT THE EDGE as well').toMatch(
-      /,\s*0 0 var\(--dsh-tb-breath-spread\) var\(--dsh-tb-breath-color, var\(--dsh-tb-attention-alpha\)\)/,
-    )
-    expect(haloPeak, 'the halo edge peaks at the FULL attention alpha (visibility floor)').toContain(
-      'var(--dsh-tb-attention-alpha)',
-    )
-    const ringPeak = peakOf('dshTbBreathRing')
-    expect(ringPeak, 'the unread ring must be an OUTER shadow').not.toMatch(/\binset\b/)
-    expect(ringPeak, 'the ring amplitude token is the outer spread').toContain('var(--dsh-tb-breath-spread)')
-    expect(ringPeak, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
-    for (const name of ['dshTbBreathRing', 'dshTbBreathHalo']) {
-      expect(source, `${name} must rest transparent (a pulse, not a permanent glow)`).toMatch(
-        new RegExp(`@keyframes ${name} \\{\\s*0%, 100% \\{ box-shadow: [^}]*transparent; \\}`),
-      )
+    expect(haloPeak, 'the halo peaks at the attention step').toContain('var(--dsh-tb-attention-alpha)')
+    expect(haloPeak, 'the halo must not grow an outer edge on a clipped layer')
+      .not.toMatch(/,\s*0 0 var\(--dsh-tb-breath-spread\)/)
+    expect(source, 'the ring must rest transparent (a pulse, not a permanent glow)')
+      .toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ outline-color: transparent; \}/)
+    expect(source, 'the halo must rest transparent (a pulse, not a permanent glow)')
+      .toMatch(/@keyframes dshTbBreathHalo \{\s*0%, 100% \{ box-shadow: inset 0 0 0 0 transparent; \}/)
+
+    // 4. THE GENERAL LAW, AS A GATE: **a decoration may never share the property
+    //    that carries the material.** Concretely — no animation applied to `.card`
+    //    itself may animate `box-shadow`. A future state light joins one of the
+    //    two mechanisms above (outline colour, or a shadow on a pseudo-element),
+    //    or picks a third property; it may not take the material away for the
+    //    duration of a run. The detector is proved on planted sheets below.
+    /** Rules whose subject IS the card — not its children, not a pseudo-element. */
+    const cardRulesOf = (sheet: string): Array<{ selector: string; body: string }> => {
+      const out: Array<{ selector: string; body: string }> = []
+      for (const match of sheet.matchAll(/([^{}]+?)\{([^{}]*)\}/g)) {
+        const selector = (match[1] ?? '').trim()
+        if (!/(?:^|[^\w-])\.card(?=$|[^\w-])/.test(selector)) continue
+        if (selector.includes('::')) continue
+        out.push({ selector, body: match[2] ?? '' })
+      }
+      return out
     }
+    /** Every `@keyframes` body, by name, brace-matched. */
+    const framesOf = (sheet: string): Map<string, string> => {
+      const map = new Map<string, string>()
+      for (const match of sheet.matchAll(/@keyframes\s+([\w-]+)\s*\{/g)) {
+        const start = (match.index ?? 0) + match[0].length
+        let depth = 1
+        let cursor = start
+        while (cursor < sheet.length && depth > 0) {
+          if (sheet[cursor] === '{') depth++
+          else if (sheet[cursor] === '}') depth--
+          cursor++
+        }
+        map.set(match[1] ?? '', sheet.slice(start, cursor - 1))
+      }
+      return map
+    }
+    const shadowAnimators = (sheet: string): string[] => {
+      const frames = framesOf(sheet)
+      const offenders: string[] = []
+      for (const rule of cardRulesOf(sheet)) {
+        for (const call of rule.body.matchAll(/(?:^|[;{\s])animation\s*:\s*([^;}]+)/g)) {
+          for (const [name, body] of frames) {
+            if (new RegExp(`(?:^|\\s)${name}(?:\\s|$)`).test(call[1] ?? '') && /box-shadow/.test(body)) {
+              offenders.push(`${rule.selector} → ${name}`)
+            }
+          }
+        }
+      }
+      return offenders
+    }
+    expect(
+      shadowAnimators(source),
+      'an animation on `.card` animates box-shadow again, so the card loses its rim and cast for the whole run',
+    ).toEqual([])
+    // The probe: the detector must report the planted pair, or a green above
+    // proves nothing. (The planted colours are synthetic fixtures, not styles.)
+    expect(
+      shadowAnimators('.card { animation: pulse 1s infinite; }\n@keyframes pulse { 50% { box-shadow: 0 0 0 3px red; } }'),
+      'the detector cannot see the exact defect it exists for',
+    ).toEqual(['.card → pulse'])
+    // …and the pseudo-element escape is lawful: that layer has no material.
+    expect(
+      shadowAnimators('.card::after { animation: halo 1s infinite; }\n@keyframes halo { 50% { box-shadow: inset 0 0 3px red; } }'),
+      'the detector rejects the halo’s own lawful layer',
+    ).toEqual([])
   })
 
   it('the light and the yellow border are ONE end-agnostic pair (both ends read the same two attributes)', () => {
@@ -1310,8 +1375,15 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     // second animation competing inside the 8px strip.
     expect(source).toMatch(/\.cardSessionDot\[data-state='running'\]\s*\{[^}]*background/)
     expect(source).toMatch(/\.cardSessionDot\[data-state='waiting'\]\s*\{[^}]*background/)
-    // The shared keyframe rests transparent (a pulse, not a permanent glow).
-    expect(source).toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ box-shadow: [^}]*transparent; \}/)
+    // The dot is a NON-CARD consumer of the shared ring keyframes, so it has to
+    // declare the constant outline the colour breath rides on (the card gets it
+    // from its own rule). Without it the pulse would have nothing to colour.
+    expect(rule, 'the unread dot must declare the outline the shared ring breathes')
+      .toMatch(/outline:\s*var\(--dsh-tb-breath-spread\)\s+solid\s+transparent/)
+    // The shared keyframe rests transparent (a pulse, not a permanent glow) and
+    // animates the OUTLINE COLOUR — never geometry, never the material property.
+    expect(source).toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ outline-color: transparent; \}/)
+    expect(source, 'the ring must not animate box-shadow').not.toMatch(/@keyframes dshTbBreathRing \{[^}]*box-shadow/)
   })
 
   it('the session row glows attention OR unread through ONE attribute (two rules, one breath)', () => {

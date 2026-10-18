@@ -15,6 +15,7 @@ export declare const zh: {
     'workbench.tab.items': string;
     'workbench.exit': string;
     'workbench.status': string;
+    'home.eyebrow': string;
     'home.title': string;
     'home.subtitle': string;
     'home.subtitleCalm': string;

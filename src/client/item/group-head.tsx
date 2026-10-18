@@ -120,7 +120,14 @@ export function GroupHead(props: GroupHeadProps): React.ReactElement {
   const size = props.size ?? 'segment'
   const body = (
     <>
-      {props.mark !== undefined && <GroupMark mark={props.mark} size={size === 'section' ? 12 : 11} />}
+      {/* **记号有自己的槽（14px），glyph 居中在槽里。** 不包槽时，glyph 自己就是药丸的
+          第一个 flex 项：它是 11px 还是 12px 就直接决定「记号 → 词」那一档沟看起来有多宽，
+          换一档字阶就换一次几何。槽固定之后，两处组头的记号列由构造成立。 */}
+      {props.mark !== undefined && (
+        <span className={css.itemGroupMark}>
+          <GroupMark mark={props.mark} size={size === 'section' ? 12 : 11} />
+        </span>
+      )}
       {/* **几块字装在一个盒子里，那个盒子按基线对齐自己的内容。**
        *
        * 一枚组头里常常有两种字：词（15/600 中文）与条数（13 数字）。容器按盒子居中的时候，

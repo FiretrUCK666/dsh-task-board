@@ -2032,7 +2032,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
             * **而归档页不能把整条带子卸载掉**（`{!archiveOpen && …}`）：页面顶上的
             * 内容会**往上跳 56px**。「搜索 / 排序 / 新建这一页不成立」这条理由成立，
             * 但归档页仍要有带子，只是**带子里放什么**不同：归档页放它自己的题头
-            * （名字 + 条数 + 回去的路）。两条带子共用 `--item-control-h` 与 `--item-inset-x`，
+            * （名字 + 条数 + 回去的路）。两条带子共用 `--item-topbar-h` 与 `--item-inset-x`，
             * 所以同高不是两次巧合。 */}
         {archiveOpen
           ? (
@@ -2043,9 +2043,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     <span className={css.itemArchiveCount}>{deletedItems.length}</span>
                   </button>
                 </h2>
-                <button type="button" className={css.itemTopBarChip} onClick={closeArchive}>
-                  <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.archive.back')}</span>
-                </button>
+                {/* Same control family as the live row's tools — the same `Button`,
+                    because a page that draws its own pill next to one shared pill is
+                    two families again. Only PLACEMENT is this page's. */}
+                <Button variant="ghost" className={css.itemTopBarChip} onClick={closeArchive}>
+                  {t('item.archive.back')}
+                </Button>
               </div>
             )
           : (
@@ -2062,12 +2065,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
             {/* THE SEARCH BOX IS ALSO THE COMMAND PALETTE'S DOOR.
               *
               * **这里站不下第二枚控件**：一枚为 ⌘K 找的鼠标入口，和
-              * 邻居不一样高（28 对 32）、不一样宽、夹在两个药丸中间——于是它自己成了
-              * 「这是什么」。
+              * 邻居不一样宽、夹在两个按钮中间——于是它自己成了「这是什么」。
               *
               * 而 ⌘K 的答案本来就是这一页上唯一能被看见的那部分：**搜索框**。点它开
               * 面板、打字收窄它，两件事本来就是同一件事的两个阶段。所以入口就是它，
-              * 形状与邻居一致，没有第二枚控件。 */}
+              * 形状与邻居同高（`--dsh-tb-button-h`），没有第二枚控件。 */}
             {/* THE FIELD HOLDS THE READER'S OWN WORDS. Nothing else.
               *
               * Holding the whole query would put
@@ -2103,53 +2105,64 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   与命令面板的词表里的话：一个有四十行活要一起改的读者，得先按开某一行
                   的菜单，才看见这个模式存在——「批量做一件事」这个问题的第一句是
                   「多选」，它就该站在带上。清单页是批量干活的页，芯片只在那页出现。
-                  再按一次收回，与栏里的「多选做完了」是同一扇门。 */}
+                  再按一次收回，与栏里的「多选做完了」是同一扇门。
+
+                  **它是共用 `Button`，不是这一页自己画的药丸。** 顶栏这一排原先自造了
+                  一套 24px 的 `.itemTopBarChip`，而看板同一排是 28px 的共用按钮——两页
+                  并排在同一个工作台里，工具行差 4px、字体差一档，读者看到的是两件产品。
+                  高度、字号、内衬、按下与悬停现在都归 `Button`；这里只剩 `pressed`
+                  这一句话：「多选这个模式开着」。 */}
               {prefs.page === 'list' && (
                 <>
-                  <button
-                    type="button"
+                  <Button
+                    variant="ghost"
                     className={css.itemTopBarChip}
-                    aria-pressed={selection.armed}
+                    pressed={selection.armed}
                     disabled={visibleIds.length === 0}
                     onClick={() => setSelection(current => setArmed(current, !current.armed))}
                   >
-                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.batch.arm')}</span>
-                  </button>
+                    {t('item.batch.arm')}
+                  </Button>
                   {/* 「隐藏已完成」说的是正在进行的动作：按下去 = 藏起来（pressed），
                       再按 = 拿回来。它的状态机一直是真的（切片读的就是它），缺的
-                      只是这枚够得着的控制——芯片与「多选」同一族、同一个开关形状。 */}
-                  <button
-                    type="button"
+                      只是这枚够得着的控制——与「多选」同族、同一个开关形状。 */}
+                  <Button
+                    variant="ghost"
                     className={css.itemTopBarChip}
-                    aria-pressed={!showDone}
+                    pressed={!showDone}
                     onClick={() => setShowDone(current => !current)}
                   >
-                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.done.show')}</span>
-                  </button>
+                    {t('item.done.show')}
+                  </Button>
                 </>
               )}
-              <button
-                type="button"
+              {/* SORT: one `Button` holding two spans.
+                  *
+                  * **问题与答案在同一个字阶里分轻重**：两个 13px 同粗的词并排时，
+                  * 「排序」加「顺序」会被读成一个四字词。所以前半退到次级墨、400，
+                  * 后半是第一层墨、600——同一档字号，靠**墨与字重**分两半，而不是
+                  * 靠一个 11px 的小字。字号只有一档，因为这一排四枚按钮是同一个
+                  * 控件家族，不是四种排版。
+                  *
+                  * 共用 `Button` 没有 `aria-expanded` 通道（`design/ui.tsx` 的 props
+                  * 不转发任意 aria 属性），而这一枚的行为就是一个开关：按一下展开、
+                  * 再按一下收起，所以状态走 `pressed`。面板自己有 `role="group"`
+                  * 与名字，开没开由面板出现在屏上回答。 */}
+              <Button
+                variant="ghost"
                 className={css.itemTopBarChip}
-                aria-expanded={sortOpen}
-                aria-controls={`${topPanels}-sort`}
+                pressed={sortOpen}
                 onClick={() => openLayer(sortOpen ? undefined : 'sort')}
               >
-                {/* 一问一答，**包成一件东西**：这一枚药丸里装的是「排序 · 顺序」这一
-                    个短语，所以它居中的是**这一个短语**，而短语内部的两半按基线对齐。
-                    两半直接当药丸的子项、药丸又用 `align-items: baseline` 时，基线那
-                    一组会被按到药丸的**顶**上（flex 的基线组从交叉轴起点开始摆），于是
-                    这一枚的字比旁边三枚高约 8px。
-                    包一层：外面居中，里面共用一条基线，两个承诺各归各位。 */}
                 <span className={css.itemTopBarPair}>
                   <span className={css.itemTopBarLabel}>{t('item.topbar.sort')}</span>
                   <span className={css.itemTopBarValue}>
                     {t(SORT_LABEL[prefs.sort])}{prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}
                   </span>
                 </span>
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="primary"
                 className={css.itemNewButton}
                 onClick={() => openLayer('create')}
               >
@@ -2161,8 +2174,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 <svg viewBox="0 0 11 11" width="11" height="11" aria-hidden="true">
                   <path d="M5.5 1v9M1 5.5h9" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" />
                 </svg>
-                <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.topbar.create')}</span>
-              </button>
+                <span>{t('item.topbar.create')}</span>
+              </Button>
             </div>
           </div>
 
@@ -2221,11 +2234,11 @@ export function ItemListPanel(props: ItemListPanelProps) {
                  * 那一列真的翻过来；换了一列才收起——那是一次选择，选择之后要回到列表。 */
                 const current = prefs.sort === order
                 return (
-                  <button
+                  <Button
                     key={order}
-                    type="button"
+                    variant="ghost"
                     className={css.itemTopBarChip}
-                    aria-pressed={current}
+                    pressed={current}
                     onClick={() => {
                       if (current) choose({ sortDesc: !prefs.sortDesc })
                       else {
@@ -2234,8 +2247,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
                       }
                     }}
                   >
-                    <span className={css.itemPillText} data-dsh-tb-pilltext>{t(SORT_LABEL[order])}{current && prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}</span>
-                  </button>
+                    {t(SORT_LABEL[order])}{current && prefs.sortDesc ? ` ${t('item.sort.desc')}` : ''}
+                  </Button>
                 )
               })}
             </div>
