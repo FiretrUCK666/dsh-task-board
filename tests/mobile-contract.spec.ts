@@ -911,7 +911,7 @@ describe('button geometry (one base for every variant)', () => {
     // cruise 28 never agreed; every clearance formula silently lost 2px).
     const base = blockFrom(line => line.trim() === '.primaryButton,')
     expect(base).toMatch(/box-sizing:\s*border-box/)
-    for (const name of ['buttonSm', 'search', 'columnTab']) {
+    for (const name of ['buttonSm', 'columnTab', 'searchField']) {
       expect(ruleOf(name), `.${name} missing`).toMatch(/box-sizing:\s*border-box/)
     }
   })
@@ -946,21 +946,23 @@ describe('button geometry (one base for every variant)', () => {
     // chip language, no second hollow variant:
     const ghost = ruleOf('ghostButton')
     expect(ghost).not.toMatch(/background:\s*transparent/)
-    // ONE fill for the whole quiet family, and it is the NATIVE input surface: a
-    // hand-picked layer token would be an opaque colour the
-    // shell never remaps, which is exactly why 整理/自动化/动态/检查更新 drifted
-    // away from 筛选任务 under a skin (「跟其他按钮都不一样」).
+    // ONE fill for the whole quiet family, and it is the LADDER's inlay plane: a
+    // host-supplied face (the shell's opaque white) does not move with the page,
+    // which is exactly why 整理/自动化/动态/检查更新 read as a different family
+    // from the field beside them under a skin (「跟其他按钮都不一样」).
     expect(ghost).toMatch(/background:\s*var\(--dsh-tb-chip-fill\)/)
     expect(ghost).toMatch(/border:\s*var\(--dsh-tb-border\)/)
-    // The token itself resolves to the native input face, and every member of
-    // the family consumes it — the labels the user compared must not drift.
-    expect(source).toMatch(/--dsh-tb-chip-fill:\s*var\(--dsh-tb-input-bg\)/)
-    expect(source).toMatch(/--dsh-tb-input-bg:\s*var\(--dsw-specific-input-major\)/)
-    for (const name of ['search', 'columnTab', 'chipFill', 'feedSearch']) {
+    // The token itself resolves to the ladder, and every member of the family
+    // consumes it — the labels the user compared must not drift.
+    expect(source).toMatch(/--dsh-tb-chip-fill:\s*var\(--dsh-tb-plane-inlay\)/)
+    expect(source).toMatch(/--dsh-tb-input-bg:\s*var\(--dsh-tb-chip-fill\)/)
+    for (const name of ['searchField', 'columnTab', 'chipFill', 'feedSearch']) {
       expect(ruleOf(name), `.${name} must consume the shared chip fill`).toContain('var(--dsh-tb-chip-fill)')
     }
+    // The field is the same family, from the same ladder.
+    expect(ruleOf('searchField')).toContain('var(--dsh-tb-chip-fill)')
     // No member of the family may go back to the private layer token.
-    for (const name of ['ghostButton', 'search', 'columnTab', 'chipFill', 'feedSearch']) {
+    for (const name of ['ghostButton', 'searchField', 'columnTab', 'chipFill', 'feedSearch']) {
       expect(ruleOf(name), `.${name} must not use the private layer fill`).not.toContain('--dsh-tb-surface-sunken')
     }
     // The tool row's own icon member takes the same surface, and it must be
@@ -1024,7 +1026,7 @@ describe('button geometry (one base for every variant)', () => {
       'feedFilter',
       'feedAction',
       'feedSearch',
-      'search',
+      'searchField',
       'cardQuickRun',
       'columnCount',
       'notifyBadge',

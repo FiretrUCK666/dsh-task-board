@@ -36,31 +36,47 @@
      layer tokens, exactly like the native "inner surfaces stay opaque"
      convention of glass skins. */
   --dsh-tb-bg: var(--dsw-alias-bg-base);
-  --dsh-tb-bg-raised: var(--dsw-alias-bg-layer-2);
-  --dsh-tb-surface-float: var(--dsw-alias-bg-layer-1);
-  --dsh-tb-surface-sunken: var(--dsw-alias-bg-layer-2);
-  --dsh-tb-surface-menu: var(--dsw-specific-menu);
+  /* ── 表面：**全部从页面推导**，一级一个名字 ───────────────────────────────────
+   *
+   * 这四枚以前直接读宿主的 `bg-layer-1/2`，而宿主在浅色档里把 base 与三层 layer
+   * **全解成同一个值**（实测全是纯白）——于是「页面 / 面板 / 输入框 / 弹层」四层
+   * 在白底上同色，只有皮肤把页面染成浅蓝时才露出一条缝：面板硬白、页面浅蓝。
+   * 读者报的「展开之后里面变白、旁边还是浅蓝」就是这一条，不是配色没调好。
+   *
+   * 所以别名层不再借表面，只借**两个输入**：页面（`--dsh-tb-bg`，皮肤可能给它
+   * 半透明）与墨（`--dsh-tb-text-1`）。四个表面由 `--dsh-tb-paper` 这一条链推出来，
+   * 名字保留是因为它们是**语义级**（sheet / inlay / recess / float），消费者不该
+   * 知道某一级今天是「78% 白」还是「6% 白」。 */
+  --dsh-tb-bg-raised: var(--dsh-tb-paper);
+  --dsh-tb-surface-float: var(--dsh-tb-paper);
+  --dsh-tb-surface-sunken: var(--dsh-tb-plane-recess);
+  --dsh-tb-surface-menu: var(--dsh-tb-plane-float);
   /* THE chip fill: ONE fill for every quiet control that must read as "a
      field I can act on" — the 筛选任务 search box, the quiet buttons beside it
      (整理 / 自动化 / 动态 / 检查更新 / 刷新 / 查看会话 …) and the tabs.
-     It is the NATIVE input surface (`bg` + `specific-input-major`), not our
-     own layer-2 approximation: a hand-picked layer token is an opaque colour
-     the shell never remaps, so under a skin the chips drifted away from the
-     native inputs sitting right next to them (the 「跟其他按钮都不一样」
-     report). Consuming the native input face makes every one of them move with
-     the skin, at both themes, by construction — there is no second value left
-     to keep in sync. */
-  --dsh-tb-chip-fill: var(--dsh-tb-input-bg);
+     It reads the INLAY plane (a step into the page's own ink), not the shell's
+     input face: that face is `--dsw-static-neutral-bluish-00` — pure white at
+     both themes — so under a skin that tints the page (wallpaper mode paints
+     `bg-base` as translucent light blue) every quiet control became a hard
+     white block with no edge of its own. That is the 「白色背景下看不见」
+     report, and it was mechanical: 4% black hairline on a white slab.
+     Reading the ladder means the fill moves with the page by construction. */
+  --dsh-tb-chip-fill: var(--dsh-tb-plane-inlay);
   /* Modal mask: a touch stronger than the native mask-1 so column lines
      behind the glassy board no longer glimmer through the dialog. */
   --dsh-tb-mask: color-mix(in srgb, var(--dsw-alias-bg-mask-1) 60%, var(--dsw-alias-bg-mask-3));
-  --dsh-tb-border: 1px solid var(--dsw-alias-border-l2);
-  --dsh-tb-border-soft: 1px solid var(--dsw-alias-border-l1);
-  /* 边界**不走颜色那条路**，这是有意的：`scripts/verify-palette.mjs` 的「一个色相
-     一个词」只管 label 与 state 两族，因为边界是另一套词汇（几何，不是颜色）。所以
-     宿主那三个 `--dsw-alias-border-l*` 在两张表里都可以直接读——把它们的颜色再起
-     一个 `--dsh-tb-*` 名字，只会让同一条线有第三条路，而三条路正是「一个概念一套
-     词汇」要消掉的东西。 */
+  /* ── 边界：**从墨推导，带下限** ───────────────────────────────────────────────
+   *
+   * 曾经读宿主的 `alias-border-l2` / `-l1`，理由是「边界是几何词汇、不是色相」。
+   * 那条理由在颜色上成立，在**可见性**上不成立：宿主这两枚是一张表里的两个固定
+   * alpha——实测 `l1 = #0000000a`（4% 黑）、`l2 = #0000001a`（10% 黑）。4% 的黑线
+   * 画在白纸或浅蓝页上，屏上等于没有；而它们并不随皮肤变深。
+   *
+   * 所以边界也从墨推：浅色里墨是暗的，14% 落在 `#dbdbdb` 一档（看得见、仍是一条
+   * 发丝）；深色里墨是亮的，同样的百分比变成一条亮线——**同一个数在两种极性下都
+   * 成立**，这正是这一层所有推导的共同形状。 */
+  --dsh-tb-border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
+  --dsh-tb-border-soft: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
   /* ── A MARK'S VERTICAL PLACE, AS ONE NUMBER ────────────────────────────────
      A line box reserves room for descenders whether or not the string has any,
      so **the line box's centre is NOT the type's optical centre** — it sits
@@ -169,6 +185,9 @@
      inputs keep the sm/md/lg/xl ladder and are NOT pills. */
   --dsh-tb-button-radius: var(--dsh-tb-pill);
   --dsh-tb-button-h: 28px;
+  /* 工作台导航轨那一档：32px 的轨道装 28px 的页签，上下各 2px 的内衬是药丸与轨道
+     之间的那圈空气。它比按钮高一档，因为轨道自己还有一圈内衬。 */
+  --dsh-tb-nav-h: 32px;
   /* The in-list tier. A quiet row action and the text beside it are aligned by
      a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
      moment either size changes — see .sessionHintRow). */
@@ -193,10 +212,14 @@
      beside it is measured against. */
   --dsh-tb-hint-line: 18px;
 
-  /* depth */
-  --dsh-tb-shadow-1: var(--dsw-shadow-lv1);
-  --dsh-tb-shadow-2: var(--dsw-shadow-lv2);
-  --dsh-tb-shadow-3: var(--dsw-shadow-lv3);
+  /* depth: 语义级引用材料配方（recipe），一级一个名字。
+     曾经这三枚直接读宿主的 `shadow-lv1/2/3`，而那三档的 alpha 是 **5.1% / 3.9% / 7.8%**
+     且不随主题翻转——一枚 5% 的影在浅色白底上肉眼不可见，这就是「按钮没有阴影」的
+     字面来源。现在语义级指向本层自建的 `cast-*`（材料），消费者仍然只读
+     `--dsh-tb-shadow-N`（「这是第几档抬升」），不必知道影是用什么墨画的。 */
+  --dsh-tb-shadow-1: var(--dsh-tb-cast-1);
+  --dsh-tb-shadow-2: var(--dsh-tb-cast-2);
+  --dsh-tb-shadow-3: var(--dsh-tb-cast-3);
 
   /* 文字两档，而第三档不是文字档。
    *
@@ -318,7 +341,13 @@
      translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
      shared token carries it: a shared token with no consumer is a rule that
      answers nothing. */
-  --dsh-tb-input-bg: var(--dsw-specific-input-major);
+  /* 输入面就是**安静控件的那一个面**：一个文本域与一枚安静按钮坐在同一行上时，它们必须
+     是同一个材质，否则「哪个能打字」要由读者猜。这一枚只是给它起了一个说「这是输入」的
+     名字，值仍然只有 `--dsh-tb-chip-fill` 一条（= 阶梯的嵌面）。
+     曾经它读宿主的 `specific-input-major`：那一枚在两个主题下都是纯白，而本插件的页面在
+     皮肤下是半透明浅蓝——一个纯白的框坐在浅蓝页上，边框又是 4% 黑，于是「框」只剩下
+     里面的字。 */
+  --dsh-tb-input-bg: var(--dsh-tb-chip-fill);
   /* The focus halo: the SAME `--dsh-tb-wash-strong` step the attention/selection
      system uses, over the accent — rather than a token that does not exist
      (`var(--dsw-alias-state-business-primary-alpha)` was declared by no shell
@@ -346,23 +375,28 @@
    *
    * 所以阶梯在本层自建，一级一个名字，调用点只许读级、不许造级：
    *
-   *   recess  凹面——桌面上的浅槽（看板列、清单左栏、详情内分区）
-   *   sheet   纸面——放在别的表面之上的东西（卡片、清单行、总览格）
-   *   inlay   嵌面——嵌在纸面里的小件（计数药丸、chip 底、分段轨道）
-   *   float   浮面——离开页面的一层（菜单、弹层、对话框）
+   *   page    画布——皮肤画出来的那一层（可能半透明、可能带壁纸）
+   *   paper   纸面——铺在画布上的东西（卡片、行、面板、弹层）
+   *   inlay   嵌面——嵌在纸面里的小件（输入框、胶囊、分段轨道）
+   *   recess  凹面——桌面上的浅槽（看板列、清单左栏、分区底）
+   *   float   浮面——离开页面的一层（菜单、对话框），比纸面更实
    *
-   * **凹面用「朝墨里混」，纸面直接用底层。** 这一条在四种环境下都成立，而方向是
-   * 主题自己给的：浅色里墨是暗的，混出来比底色深 → 凹面退后、纸面（底色）在前；
-   * 深色里墨是亮的，混出来比底色亮 → 凹面浮起、纸面更高。两种极性下读者看到的
-   * 都是同一条台阶：纸面永远是这一组里最「亮」的那一级。
+   * **纸面不是一个固定色，是「画布 + 一档白」。** 以前纸面直接用底层的白，于是
+   * 皮肤把画布染成浅蓝的那一刻，纸面还是硬白——读者看到的「里面变白、旁边浅蓝」
+   * 就是这一条。现在纸面从画布推：画布白，纸面就是白；画布浅蓝，纸面就是更亮一档
+   * 的浅蓝。**两种画布下它都是「同一张桌子上更亮的那张纸」**，而不是两种视觉语言。
    *
-   * 壁纸模式下 `--dsh-tb-bg` 是半透明的 rgba，混出来的凹面仍半透明（alpha 从 0.35
-   * 升到约 0.37），纸面读 `surface-float`（皮肤下不透明的 layer-1）——所以卡从壁纸上
-   * 浮起来，而壁纸在画布与凹面上仍然看得见。 */
-  --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 3.2%, var(--dsh-tb-bg));
-  --dsh-tb-plane-sheet: var(--dsh-tb-surface-float);
-  --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 6%, var(--dsh-tb-surface-float));
-  --dsh-tb-plane-float: var(--dsh-tb-surface-menu);
+   * **凹面与嵌面朝墨里混。** 方向由主题自己给：浅色里墨是暗的，混出来更深（退后）；
+   * 深色里墨是亮的，混出来更亮（浮起）。两种极性下读者看到的都是同一条台阶。
+   *
+   * 壁纸模式下 `--dsh-tb-bg` 是半透明的 rgba。`color-mix` 按预乘 alpha 混，所以
+   * 纸面的 alpha ≈ 0.86（比画布的 0.35 实得多），壁纸在画布与凹面上仍然看得见，
+   * 而纸面上的字永远够得着 AA。 */
+  --dsh-tb-paper: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 78%, var(--dsh-tb-bg));
+  --dsh-tb-plane-sheet: var(--dsh-tb-paper);
+  --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 3.5%, var(--dsh-tb-bg));
+  --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 5%, var(--dsh-tb-paper));
+  --dsh-tb-plane-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 92%, var(--dsh-tb-bg));
 
   /* ── 边光与投影（The Lit Edge）────────────────────────────────────────────────
    *
@@ -372,14 +406,17 @@
    * 边光用两条 `inset` 而不是 `border`：不占盒模型、任意 `border-radius` 与
    * `corner-shape` 都跟得上（border 会在超椭圆族里与自己的角分叉）。
    *
-   * 投影的 alpha **不由宿主令牌供给**（那三档在这个色域里看不见），并且刻意写成
-   * 双层：外层大模糊负责「离开桌面」，内层 1px 负责「贴着桌面」。深色下黑色投影
-   * 几乎不可见，那一半由阶梯与边光承担——这也是为什么三条腿缺一不可。 */
+   * 投影刻意写成双层：外层大模糊负责「离开桌面」，内层 1px 负责「贴着桌面」。深色
+   * 下黑色投影几乎不可见，那一半由阶梯与边光承担——这也是为什么三条腿缺一不可。
+   *
+   * **第一档要能看见才算第一档。** 原来的 5% / 8% 在白底上量不出来（读者报的
+   * 「没有阴影」就是它），所以静止态抬到 7% / 10%：一枚安静按钮的影不该抢戏，但
+   * 它必须在白纸上留下一条边。 */
   --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 62%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 4%, transparent);
   --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 45%, transparent);
-  --dsh-tb-cast-1: 0 1px 1px color-mix(in srgb, var(--dsw-static-neutral-1000) 5%, transparent), 0 4px 10px -4px color-mix(in srgb, var(--dsw-static-neutral-1000) 8%, transparent);
-  --dsh-tb-cast-2: 0 2px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 6%, transparent), 0 10px 22px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 12%, transparent);
-  --dsh-tb-cast-3: 0 10px 20px -6px color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent), 0 30px 60px -16px color-mix(in srgb, var(--dsw-static-neutral-1000) 20%, transparent);
+  --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 7%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent);
+  --dsh-tb-cast-2: 0 2px 4px color-mix(in srgb, var(--dsw-static-neutral-1000) 9%, transparent), 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 14%, transparent);
+  --dsh-tb-cast-3: 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 12%, transparent), 0 36px 70px -20px color-mix(in srgb, var(--dsw-static-neutral-1000) 22%, transparent);
 
   /* ── 字阶与行高：一档一个名字，页面只读档位 ───────────────────────────────────
    *
@@ -510,14 +547,19 @@
  * 打在 body 上——所以一块覆盖同时管住原生深色与深色皮肤，不需要第二套皮肤分支。 */
 body[data-ds-dark-theme] [data-dsh-taskboard-view],
 body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
-  /* 深色里「抬升」是变亮：凹面朝墨（近白）混 4.5%，纸面直接用 layer-1。 */
+  /* 深色里「抬升」是变亮，所以纸面是「画布 + 6% 白」（#151517 → 约 #232324），
+     浮面再高一档。浅色那一套是「78% 白」，两种极性各自说自己那一档。
+     凹面照旧朝墨（近白）混 4.5%——比画布亮一点点，但仍低于纸面：台阶方向不变。 */
+  --dsh-tb-paper: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 6%, var(--dsh-tb-bg));
+  --dsh-tb-plane-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 10%, var(--dsh-tb-bg));
   --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 4.5%, var(--dsh-tb-bg));
-  /* 边光在白纸上要亮，在暗纸上只需要一条能读出来的轮廓——62% 的白会变成荧光。 */
+  --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 7%, var(--dsh-tb-paper));
+  /* 边光在暗纸上只需要一条能读出来的轮廓——62% 的白会变成荧光。 */
   --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 8%, transparent), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);
   --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 5%, transparent);
   /* 黑投影在暗底上几乎不可见，所以加大量：深色里的层级主要交给阶梯与边光，
      投影只负责「纸和桌面之间那一条接触暗影」，它不需要也不应该抢戏。 */
-  --dsh-tb-cast-1: 0 1px 1px color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent), 0 4px 10px -4px color-mix(in srgb, var(--dsw-static-neutral-1000) 34%, transparent);
-  --dsh-tb-cast-2: 0 2px 3px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent), 0 10px 22px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 44%, transparent);
-  --dsh-tb-cast-3: 0 10px 20px -6px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent), 0 30px 60px -16px color-mix(in srgb, var(--dsw-static-neutral-1000) 55%, transparent);
+  --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent);
+  --dsh-tb-cast-2: 0 2px 4px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent), 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 44%, transparent);
+  --dsh-tb-cast-3: 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent), 0 36px 70px -20px color-mix(in srgb, var(--dsw-static-neutral-1000) 55%, transparent);
 }

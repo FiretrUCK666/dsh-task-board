@@ -6,7 +6,7 @@
  * follows the native --dsw-* tokens (light/dark + any skin plugin) without
  * any per-surface styling drift.
  */
-import { type ReactNode } from 'react';
+import { type InputHTMLAttributes, type ReactNode } from 'react';
 /** One button variant; shared rhythm everywhere. `dangerGhost` is the
  *  row-level destructive affordance (outline + danger text) — the filled
  *  `danger` stays reserved for the primary destroyer (confirm dialogs,
@@ -232,5 +232,27 @@ export declare function Segmented({ options, value, onChange, ariaLabel, disable
 export declare function SendModeToggle({ steer, onChange }: {
     steer: boolean;
     onChange: (steer: boolean) => void;
+}): import("react").JSX.Element;
+/**
+ * The one search / filter field.
+ *
+ * WHY IT IS A COMPONENT AND NOT A CLASS. The board's toolbar and the list's
+ * toolbar each had their own input rule — one filled with the shell's input
+ * face, one with a surface token, both with the shell's 4% hairline — and the
+ * two sat one above the other in the same workbench reading as two different
+ * products: 「里面的按钮又变窄了、又看不清了」. A field's look is not a page
+ * decision. It is the same question in both pages ("let me narrow this"),
+ * so it gets one answer, and a page may only place it (width, flex, margins)
+ * through its own `className`.
+ *
+ * WHY IT TAKES NATIVE PROPS. The list's field opens the command palette on
+ * click and carries `aria-haspopup`; the board's field feeds a `<datalist>`.
+ * Those are behaviours of the CALLER, not variations of the control, so the
+ * component stays a thin, fully-props-compatible input instead of growing a
+ * zoo of booleans. `type` is fixed to `search` because a field of this family
+ * is always a search box.
+ */
+export declare function SearchField({ className, ...rest }: Omit<InputHTMLAttributes<HTMLInputElement>, 'type' | 'size' | 'className'> & {
+    className?: string;
 }): import("react").JSX.Element;
 export {};

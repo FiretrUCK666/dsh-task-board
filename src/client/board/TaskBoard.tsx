@@ -45,7 +45,7 @@ import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { TaskDetail } from './TaskDetail.tsx'
 import { AutomationPanel } from './AutomationPanel.tsx'
 import { TimeField } from './TimeField.tsx'
-import { Button, ColorSwatches, Icon, IconButton, Switch } from '../design/ui.tsx'
+import { Button, ColorSwatches, Icon, IconButton, SearchField, Switch } from '../design/ui.tsx'
 import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
@@ -267,9 +267,7 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
   // mounted while hidden (display:none → every rect is 0x0), so a mount-only
   // report always arrives blind; gating on boardOpen re-sends on every
   // opening, and turns "the phone looks wrong" into numbers instead of
-  // another screenshot argument. `thumbBar` is the collector's contract key:
-  // the thumb bar itself is gone (one command row now), so the key measures
-  // nothing — an absent landmark is already a reported fact, not an error.
+  // another screenshot argument.
   useEffect(() => {
     if (!snapshot.boardOpen) return
     void sendClientReport(BUNDLED_VERSION, {
@@ -281,7 +279,6 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
       columns: css.columns,
       firstColumn: css.column,
       primary: components.primaryButton,
-      thumbBar: css.thumbBar,
     })
   }, [snapshot.boardOpen])
   const [filter, setFilter] = useState('')
@@ -1290,9 +1287,8 @@ export function TaskBoard({ controller, freshness, mountedOf, onOpenRows }: { co
           行：搜索/巡航/主行动一行、模式簇一行；报告簇只在真有事时占一行。 */}
       <header className={css.boardHeader}>
         <div className={`${css.boardRow} ${css.boardRowTools}`}>
-          <input
+          <SearchField
             className={css.search}
-            type="search"
             placeholder={t('board.search')}
             value={filter}
             list="dsh-tb-qualifiers"

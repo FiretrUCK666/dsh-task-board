@@ -990,6 +990,58 @@ textarea.input {
   border-color: var(--dsh-tb-danger);
 }
 
+/* ── 搜索 / 筛选：**两个面板共用的那一格** ──────────────────────────────────────
+ *
+ * 以前看板与清单各写一条 input 规则（一条读宿主输入面、一条读表面层），两条都配宿主的
+ * 4% 黑发丝线——于是同一个工作台里上下两格字段看起来是两个产品，而且白底上都没有边。
+ *
+ * 这一族只有这一条规则：**外观归这里，位置归页面**（页面通过 `className` 给宽度、
+ * flex 与外边距，它不许再写外观）。
+ *
+ * 高读按钮那一档（28px）：搜索框与它旁边的按钮是同一排控件，同高才是「一排」；
+ * 字读正文档；底读嵌面（比它所在的纸面深一档），边读 14% 墨，顶上再垫一条极淡的
+ * 受光边——三样一起，是「这个框坐在纸上」的全部证据。
+ *
+ * 下内衬是墨位校正：`align-items` 对单个 input 不成立，但 input 自己的行盒同样把它
+ * 的内容盒居中，所以两倍 `--dsh-tb-optical-drop` 让字墨落在几何中线上（量与判据同
+ * 按钮，见 DESIGN.md 的「墨位」一节）。 */
+.searchField {
+  box-sizing: border-box;
+  display: block;
+  inline-size: 100%;
+  block-size: var(--dsh-tb-button-h);
+  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  font-family: inherit;
+  font-size: var(--dsh-tb-type-body-size);
+  font-weight: 400;
+  line-height: 1;
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-chip-fill);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-pill);
+  outline: none;
+  box-shadow: var(--dsh-tb-rim-soft);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
+}
+
+.searchField::placeholder {
+  color: var(--dsh-tb-text-2);
+}
+
+/* 原生搜索框那个「×」在两种皮肤下长相都不可控，且它和本页的清除语法（筛选 chip 的 ×）
+   是两套——去掉它，清空由 chip 或 Esc 承担。 */
+.searchField::-webkit-search-cancel-button {
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.searchField:focus {
+  border-color: var(--dsh-tb-focus-color);
+  box-shadow: var(--dsh-tb-rim-soft), 0 0 0 3px var(--dsh-tb-focus-ring);
+}
+
 /* ── THE COMPOSER'S ATTACHMENT STRIP ──────────────────────────────────────────
  *
  * Five hosts in two panels render it (the task form, the comment composers, a
@@ -1232,15 +1284,15 @@ textarea.input {
   position: relative;
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 1fr);
-  /* **不长大、只让位。** `flex-grow: 0` 是有意的：一个会长满整行的轨道在 1440 上把三段
-     tab 撑成 280px 一颗，读起来像三个按钮而不是三个页签；`min-inline-size: 0` 让它在
-     412 上缩到放得下出口为止（换行是状态行的事，不是出口的事）。 */
-  flex: 0 1 340px;
-  min-inline-size: 0;
-  /* 32px 的轨道装 28px 的纽：上下各 2px 的内衬是药丸与轨道之间的那圈空气。 */
+  /* 三条轨道**按内容定宽、彼此等宽**（下限 84px）：等宽让三颗 tab 读起来是一组页签，
+     而不是三枚宽窄不一的按钮；下限保证两个字的名字不会被挤成一条缝。 */
+  grid-auto-columns: minmax(84px, 1fr);
+  /* **不长大、也不靠被挤来让位。** 内容多宽就是多宽（`flex: 0 0 auto`）：这一栏以前是
+     `flex: 0 1 340px`，旁边的状态行一变长就把三条轨道一起压窄——于是切换页面时高亮
+     会跟着「动一下」。窄档装不下时整栏换行（`.workbenchBar` 是 wrap），不压扁。 */
+  flex: 0 0 auto;
   box-sizing: border-box;
-  block-size: 32px;
+  block-size: var(--dsh-tb-nav-h);
   padding: 2px;
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
@@ -1249,36 +1301,29 @@ textarea.input {
   box-shadow: var(--dsh-tb-rim-soft);
 }
 
-.workbenchThumb {
-  position: absolute;
-  inset-block: 2px;
-  inset-inline-start: 2px;
-  inline-size: calc((100% - 4px) / var(--dsh-tb-tab-count, 3));
-  border-radius: var(--dsh-tb-pill);
-  /* 被选中的那一格是**纸面**：它从嵌面里浮起来，于是「当前在哪一页」由材质回答，
-     而不是只靠字重变了半档。 */
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
-  transform: translateX(calc(var(--dsh-tb-tab-active, 0) * 100%));
-  transition: transform var(--dsh-tb-motion-lift);
-  pointer-events: none;
-}
-
+/* 当前那一颗 tab 自己就是那枚纸面药丸。
+ *
+ * 以前高亮是一个**独立的绝对定位浮层**（宽度 `calc((100% - 4px) / 3)`、位移
+ * `translateX(index * 100%)`），它和被它盖住的 tab 是两个盒子：一个内衬的账算错，
+ * 高亮就偏半格，而屏上没有任何一处会报错。现在高亮是 tab 自己的底——**一个盒子不可能
+ * 跟自己错位**，也不需要知道一共有几颗。
+ *
+ * 切换时底色与影淡入淡出（同一档 transition），不再横滑：读者要的是「到了」，不是
+ * 「旅程」。 */
 .workbenchTab {
-  /* 定位于药丸之上：不定位的按钮与定位的拇指在同一个层叠上下文里时，拇指会盖住字。 */
   position: relative;
-  z-index: 1;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   box-sizing: border-box;
-  block-size: 28px;
+  block-size: calc(var(--dsh-tb-nav-h) - 4px);
   padding: 0 var(--dsh-tb-space-5) calc(2 * var(--dsh-tb-optical-drop));
   border: none;
   border-radius: var(--dsh-tb-pill);
   background: transparent;
+  box-shadow: inset 0 0 0 1px transparent;
   color: var(--dsh-tb-text-2);
   font: inherit;
   font-size: var(--dsh-tb-type-body-size);
@@ -1286,17 +1331,25 @@ textarea.input {
   line-height: 1;
   white-space: nowrap;
   cursor: pointer;
-  transform: translateY(calc(-1 * var(--dsh-tb-optical-drop)));
-  transition: color var(--dsh-tb-motion);
+  transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
 }
 
 .workbenchTab:hover {
   color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-hover);
 }
 
+/* 被选中的那一格是**纸面**：它从嵌面里浮起来，于是「当前在哪一页」由材质回答，
+   而不是只靠字重变了半档。 */
 .workbenchTab[aria-current='page'] {
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   color: var(--dsh-tb-text-1);
   font-weight: 600;
+}
+
+.workbenchTab[aria-current='page']:hover {
+  background: var(--dsh-tb-plane-sheet);
 }
 
 .workbenchTabLabel {
@@ -1306,15 +1359,20 @@ textarea.input {
 }
 
 /* 计数徽标：**同色淡洗底 + 正文墨**。不拿状态色当字号——琥珀在小字上的对比度
-   是这一页早就记过账的代价，而一枚 11px 的数字没有理由去背它。 */
+   是这一页早就记过账的代价，而一枚 11px 的数字没有理由去背它。
+
+   18px 而不是 16：16 的圆里塞一位 11px 的数字，左右各只剩 2px，读起来像一枚「点」
+   而不是一枚计数（读者报的「那个 2 旁边有个很细的小点」就是它被挤出来的边）。
+   数字等宽，所以 1 与 11 占同样的宽；下内衬是墨位校正，与按钮同一条律。 */
 .workbenchTabBadge {
   flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-inline-size: 16px;
-  block-size: 16px;
-  padding: 0 4px;
+  box-sizing: border-box;
+  min-inline-size: 18px;
+  block-size: 18px;
+  padding: 0 5px calc(2 * var(--dsh-tb-optical-drop));
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
   color: var(--dsh-tb-text-1);

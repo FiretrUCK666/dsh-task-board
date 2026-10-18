@@ -608,34 +608,20 @@
  * 全部空间），高度由 `--s3` 那一档的控件高度决定，而 `align-self: center`
  * **写出来**——不是因为 `align-items: center` 不够，而是因为一个 flex 项的居中
  * 不该靠继承来的父级声明活着。 */
+/* 位置，不是外观：外观在 `SearchField`（design/ui.tsx）。这一条只说它在顶栏里
+ * 占多宽、什么时候把空间让给邻居。
+ *
+ * **高度不再由这里给。** 它曾经读 `--item-control-h`（那一档是 24px，行内动作的档），
+ * 于是同一个工作台里清单的字段比看板矮 4px——两个页面的工具行看起来像两套控件。工具行
+ * 的控件只有一档（`--dsh-tb-button-h`，28px），行内动作才用 24。
+ *
+ * 上限 280px：搜索框不是标题栏。让它吃掉剩下的全部空间，读起来就变成一条从左栏一路铺到
+ * 右边的带子；宽度有上限，剩下的空间由顶栏两端自己占——那才是「对齐」。 */
 .itemSearch {
   flex: 1 1 auto;
   align-self: center;
   min-inline-size: 0;
-  /* 上限 280px。搜索框不是标题栏：让它吃掉剩下的全部空间，读起来就变成一条从
-   * 左栏一路铺到右边的白带，而读者要的是左边那个数与右边那几颗药丸之间一块**有
-   * 边**的地方。宽度有上限，剩下的空间由顶栏两端自己占——那才是「对齐」。 */
   max-inline-size: 280px;
-  block-size: var(--item-control-h);
-  /* 字落在内容盒顶端，`align-items` 对 `<input>` 无效；`line-height` 等于内容盒高
-   * （控件高减两侧各 1px 描边）才是输入框真正的居中手段——与药丸族同一条律，
-   * 所以这里不另写一个数，从控件高推。 */
-  line-height: calc(var(--item-control-h) - 2px);
-  padding-block: 0;
-  padding-inline: 12px;
-  font-family: inherit;
-  font-size: 13px;
-  color: var(--item-ink-1);
-  background: var(--item-fill);
-  border: var(--item-hair-strong);
-  border-radius: var(--item-radius-pill);
-  outline: none;
-  transition: border-color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
-}
-
-.itemSearch:focus {
-  border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* ── 归档页自己的题头带 ─────────────────────────────────────────────────────

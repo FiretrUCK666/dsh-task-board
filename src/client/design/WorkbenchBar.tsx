@@ -14,12 +14,18 @@
  * and a radiogroup would announce "option 2 of 3 selected" for a page change.
  * The visual grammar (a sliding pill in a track) is shared; the meaning is not.
  *
- * WHY THE SLIDING PILL IS PURE CSS. Three equal tracks plus one thumb whose
- * width is one track and whose offset is `index * 100%` of its own width: no
- * `getBoundingClientRect`, no ResizeObserver, nothing to re-measure when the
- * reader collapses the shell sidebar or the panel is split. A measured
- * indicator is a number that goes stale on every layout change, and it goes
- * stale silently — the pill simply stops lining up with its label.
+ * WHY THE ACTIVE PILL BELONGS TO THE TAB ITSELF. It used to be one absolutely
+ * positioned thumb whose width was `(100% - 4px) / count` and whose offset was
+ * `index * 100%` — fractional geometry against a track list, sitting on a nav
+ * that could also be squeezed by the status line beside it. The arithmetic was
+ * one padding box away from the tracks it was supposed to cover, and the result
+ * was exactly what the reader reported: 「点来点去，高亮的位置一直变」.
+ *
+ * A pill that is the tab's own background cannot disagree with its own label:
+ * there is no second box to place, nothing to re-measure when the sidebar
+ * collapses, and no count to divide by. Switching pages cross-fades the fill
+ * (one `background`/`box-shadow` transition) instead of sliding a box across
+ * two tracks — the arrival is what the eye needs, not the journey.
  *
  * WHAT IT DELIBERATELY DOES NOT DO. No primary action, no search box, no
  * notification bell: every page already owns those in its own toolbar, and two
@@ -30,7 +36,6 @@
  * props from the page layer, which is where the locale and the surface switch
  * live. A design component that reached for either would be a page in disguise.
  */
-import type { CSSProperties } from 'react'
 import { Icon } from './ui.tsx'
 import css from './components.module.css'
 
@@ -77,17 +82,9 @@ export interface WorkbenchBarProps {
  * @returns the bar, as one flex row that wraps rather than hides.
  */
 export function WorkbenchBar({ active, tabs, label, status, exitLabel, onExit, onNavigate }: WorkbenchBarProps) {
-  const index = Math.max(0, tabs.findIndex(tab => tab.id === active))
-  // The thumb's geometry is expressed against the track count, so a future
-  // fourth destination needs no CSS change — only another tab in the array.
-  const geometry = {
-    '--dsh-tb-tab-count': String(Math.max(1, tabs.length)),
-    '--dsh-tb-tab-active': String(index),
-  } as CSSProperties
   return (
     <div className={css.workbenchBar}>
-      <nav className={css.workbenchNav} aria-label={label} style={geometry}>
-        <span className={css.workbenchThumb} aria-hidden="true" />
+      <nav className={css.workbenchNav} aria-label={label}>
         {tabs.map(tab => (
           <button
             key={tab.id}

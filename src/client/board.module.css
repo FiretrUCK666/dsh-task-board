@@ -533,15 +533,6 @@
   flex: none;
 }
 
-/* The bar's compact diagnostic key. The thumb bar was removed in favour of a
-   single command row, so nothing renders with this class; it stays declared
-   because `client-report.ts` (a contract outside this sheet) looks the
-   landmark up by this name. Measuring it yields nothing — an absent element,
-   which the collector already treats as "not reported". */
-.thumbBar {
-  display: none;
-}
-
 /* 安静的行内巡航状态：一个状态色圆点 + 12px 次级文字；仅在有内容时渲染，
    且永远不做成 0/0 的空状态。 */
 .boardStatus {
@@ -714,27 +705,12 @@
   transform: translateY(-0.5px);
 }
 
+/* 位置，不是外观：这一格是 `SearchField`（design/ui.tsx），外观只有那一处。
+   这里只说它在这条工具行里占多宽、什么时候让位。 */
 .search {
   flex: 1 1 260px;
   max-width: 520px;
   min-width: 140px;
-  /* Border-box like the buttons it rides with: 28px means 28. */
-  box-sizing: border-box;
-  /* 28px — the same row rhythm as the header action buttons (28px standard),
-     so 搜索框 and 整理/自动化/新建任务 read as one control row. */
-  height: var(--dsh-tb-button-h);
-  padding: 0 12px;
-  font-size: 13px;
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-chip-fill);
-  border: var(--dsh-tb-border-soft);
-  /* 胶囊 — 与板头其它动作同一圆角语言。 */
-  border-radius: var(--dsh-tb-pill);
-  outline: none;
-}
-
-.search::placeholder {
-  color: var(--dsh-tb-text-2);
 }
 
 /* 自动巡航胶囊：透明行内控件（开关 + ▾），玻璃下不露白块。 */
@@ -4171,8 +4147,7 @@
 
 
 
-/* --- search box focus (hairline accent + themed soft ring) --- */
-.search:focus,
+/* --- 焦点：搜索那一格自己的环在 `SearchField` 里（design 表），此处只剩排期预设那一格 --- */
 .schedulePreset:focus {
   border-color: var(--dsh-tb-focus-color);
   box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);

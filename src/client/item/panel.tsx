@@ -69,7 +69,7 @@ import { t } from '../locales.ts'
 import { askConfigDraftKey, CAPTURE_CARD_CONFIG_KEY, draftStore } from '../board/drafts.ts'
 import { RunConfigBlock } from './run-config-block.tsx'
 import { itemsRestore } from '../items-archive.ts'
-import { Button } from '../design/ui.tsx'
+import { Button, SearchField } from '../design/ui.tsx'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
 import { useBoardSnapshot, type BoardSnapshot } from '../board/use-board-snapshot.ts'
 import { ItemDetail } from './detail-pane.tsx'
@@ -2084,9 +2084,8 @@ export function ItemListPanel(props: ItemListPanelProps) {
               * is the trap — that treats the whole field as ONE token, so each
               * keystroke appends the field to the field and `abc` becomes
               * `a ab a abc`. */}
-            <input
-                className={css.itemSearch}
-              type="search"
+            <SearchField
+              className={css.itemSearch}
               value={freeTextOf(prefs.search)}
               placeholder={t('item.search.label')}
               aria-label={t('item.search.label')}

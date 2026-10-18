@@ -31,7 +31,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { PALETTE } from '../../core/colors.ts'
 import { ALL_STATUSES } from '../../core/tasks.ts'
 import { STATUS_KEY } from '../board/status.ts'
-import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, Section, Switch, type ButtonToggleVariant } from '../design/ui.tsx'
+import { BUTTON_TOGGLE_VARIANTS, BUTTON_VARIANTS, Button, Icon, ICON_BUTTON_SIZES, ICON_NAMES, IconButton, SearchField, Section, Switch, type ButtonToggleVariant } from '../design/ui.tsx'
 import { ColorSwatches, Disclosure, Segmented, SendModeToggle } from '../design/ui.tsx'
 import components from '../design/components.module.css'
 import { Field, Input, Select, TextArea } from '../design/Field.tsx'
@@ -430,6 +430,11 @@ export function DesignGallery() {
                     broken rather than the sample being too long. */}
                 <TextArea rows={2} defaultValue={t('gallery.typeSpecimen')} readOnly />
               </Field>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryLabel}>SearchField</p>
+              {/* 两个面板的工具行都是它：这一格是那一格在页面上的真身。 */}
+              <SearchField placeholder={t('board.search')} aria-label={t('board.search')} defaultValue="" readOnly />
             </div>
             <div className={css.gallerySpecimen}>
               <p className={css.galleryLabel}>Select</p>

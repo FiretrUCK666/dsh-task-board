@@ -5,8 +5,10 @@ export interface MeasuredBox {
     height: number;
 }
 /** Landmark → class name. The caller supplies the real (scoped) class names,
- *  so this module never guesses a selector. `thumbBar` is the falsifier for
- *  the columns-vs-bar overlap: overlap ⇔ firstColumn.bottom > thumbBar.top. */
+ *  so this module never guesses a selector. The list is exactly the landmarks
+ *  the board still renders: a key whose element no longer exists reports
+ *  nothing, which reads identically to "the board is not mounted" — a fact
+ *  nobody can act on. */
 export interface LandmarkClasses {
     modes: string;
     search: string;
@@ -16,7 +18,6 @@ export interface LandmarkClasses {
     columns: string;
     firstColumn: string;
     primary: string;
-    thumbBar: string;
 }
 /** One element's box, or undefined when it is absent or has no area. */
 export declare function boxOf(element: Element | null | undefined): MeasuredBox | undefined;
