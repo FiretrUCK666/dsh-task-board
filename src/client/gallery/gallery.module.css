@@ -155,7 +155,7 @@
 .galleryBandButton {
   box-sizing: border-box;
   block-size: var(--dsh-tb-button-h);
-  padding: 0 var(--dsh-tb-space-6);
+  padding-inline: var(--dsh-tb-space-6); padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;

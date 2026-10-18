@@ -365,8 +365,22 @@
      不直接读宿主的 `label-primary-foreground`——那是一条绕过本层的路。 */
   --dsh-tb-ink-on-solid: var(--dsw-alias-label-primary-foreground);
 
-  /* interaction + motion grammar (one source) */
-  --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
+  /* ── 悬浮态：**从墨色反向取，不从主题取** ─────────────────────────────────
+   *
+   * 曾经读的是宿主的 `--dsw-alias-interactive-bg-hover`。那一枚在官方浅色下是
+   * **4% 的墨**——白纸上几乎看不见，读者报的原话是「鼠标悬停基本没有任何变化，
+   * 看都看不清」。而第三方皮肤把它换成自己的色，于是同一份 CSS 在皮肤下看得见、
+   * 在官方浅色下看不见：**同一个交互两个观感**，这就是「各搞一套」的来源。
+   *
+   * 修法不是再挑一枚宿主令牌（下一枚也会是 4%），而是让**对比度由构造保证**：
+   * 悬浮层与它所在的那张纸**反向**。纸是浅的 → 悬浮往墨的方向压；
+   * 纸是深的 → 悬浮往白的方向提。`--dsh-tb-hover-mix` 说「往哪边」，
+   * 由主题在下面那一处翻面；强度读**同一条洗底梯子**（`--dsh-tb-wash`），
+   * 所以「悬浮有多明显」全系统只有一个数，不随主题变来变去。
+   *
+   * 结果是：官方浅色、官方深色、任何第三方皮肤，看到的都是**同一档强度**的悬浮。 */
+  --dsh-tb-hover-mix: var(--dsw-alias-label-primary);
+  --dsh-tb-hover: color-mix(in srgb, var(--dsh-tb-hover-mix) calc(2 * var(--dsh-tb-wash)), transparent);
   /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
      translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
      shared token carries it: a shared token with no consumer is a rule that
@@ -533,9 +547,8 @@
    *   「胶囊自己偏了」——读者看到的就是「整体抬高了一点」。
    *
    *   行高 = 墨高：这才是对的。行盒等于字的墨，`halfLeading` 变成 0，墨心就是盒心。
-   *   下面两枚令牌是它的两个数：`--dsh-tb-text-line-h` 是一个汉字的墨高（等于字号：中文的
-   *   字身框就是 em），`--dsh-tb-optical-drop` 因此归零——**不是「调成 0」，是这条校
-   *   正不再需要存在**。
+   *   令牌就是 `--dsh-tb-text-line-h`（一个汉字的墨高，等于字号：中文的字身框就是 em）。
+   *   那条旧的 `padding-block-end` 补偿随之整条删掉——不是「调成 0」，是它不再需要存在。
    *
    * 用法：所有「只有一行字」的控件用 `line-height: var(--dsh-tb-text-line-h)`，并且**不再
    * 写任何 `padding-block-end` 校正**。图标与文字同高时由 `align-items: center` 一次
@@ -543,7 +556,32 @@
   /* 名字里不能有 ink：那是配色族的前缀，erify-palette 会把它当成一条颜色来查。
      这一枚说的是**一行字有多高**，所以名字落在 	ext-line 这一族里。 */
   --dsh-tb-text-line-h: 1em;
-  --dsh-tb-optical-drop: 0px;
+  /* ── 墨位校正：**运行时量出来的一个数** ────────────────────────────────────────
+   *
+   * 一行字在胶囊里偏多少，只由字体决定：
+   *
+   *   墨心偏移 = [(fontAsc − fontDesc) − (inkAsc − inkDesc)] / 2
+   *
+   * 式子里**没有行高**——把行高设成 1、1em 或墨高，基线与盒心一起移动，偏移不变。
+   * 它全是字体度量，所以换设备就换值：这就是「电脑端偏下、手机端正好」的全部原因。
+   *
+   * 因此它不是常量。`design/ink-metrics.ts` 在挂载时（以及字体加载完之后）用离屏
+   * canvas 量出这四个数，把结果写到这里的默认值上。写死的 `0px` 是**测量之前的
+   * 兜底**，不是答案——测量一到就覆盖它。
+   *
+   * 那一族胶囊读它，写成一对内衬：
+   *
+   *   padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge)))
+   *                  max(0px, var(--dsh-tb-line-nudge));
+   *
+   * 布局是「上内衬 / 下内衬」，而**符号决定用哪一侧**：值是正的（墨偏下）就加在
+   * 下内衬上把它抬起来；值是负的（墨偏上）就加在上内衬上把它压下去。`max(0px, …)`
+   * 让另一侧恒为 0，于是同一对声明两种方向都对——不需要两套规则，也不需要在
+   * JS 里分支。
+   *
+   * 为什么内衬能修：内衬只把内容盒挤向一侧，中心移动量是内衬的一半，所以
+   * `ink-metrics.ts` 给出的值已经乘过 2。 */
+  --dsh-tb-line-nudge: 0px;
 
   /* ── 动效：一条曲线，四个速度 ────────────────────────────────────────────────
    *
@@ -624,6 +662,10 @@
  * 打在 body 上——所以一块覆盖同时管住原生深色与深色皮肤，不需要第二套皮肤分支。 */
 body[data-ds-dark-theme] [data-dsh-taskboard-view],
 body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
+  /* **悬浮在深色里朝白走。** 浅色下 `--dsh-tb-hover-mix` 是墨（把纸压暗一档），
+   * 深色下反过来——同一个名字、同一个强度，两种极性各自说自己那一侧。
+   * 这就是「一套令牌管住所有主题」：换主题只翻这一个方向，不换强度、不换规则。 */
+  --dsh-tb-hover-mix: var(--dsw-static-neutral-bluish-00);
   /* 深色里「抬升」是变亮，所以纸面是「画布 + 6% 白」（#151517 → 约 #232324），
      浮面再高一档。浅色那一套是「78% 白」，两种极性各自说自己那一档。
      凹面照旧朝墨（近白）混 4.5%——比画布亮一点点，但仍低于纸面：台阶方向不变。 */

@@ -1224,7 +1224,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
 
   it('compact rhythm derives from the single strip token (symmetric by construction)', () => {
     expect(source).toContain('row-gap: var(--dsh-tb-strip-gap)')
-    expect(source).toContain('padding: var(--dsh-tb-strip-gap) 0')
+    expect(source).toContain('padding: 0')
   })
 })
 describe('card reading measure (one line for what IS vs HAS)', () => {

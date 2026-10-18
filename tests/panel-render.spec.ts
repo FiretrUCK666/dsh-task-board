@@ -2563,11 +2563,10 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
       '散文里提到标记或令牌，被判成了一次使用——被逼着改的会是那段解释').toEqual({ selectors: [], boxes: [], tokens: [] })
   })
 
-  /* 下面两条读法各写**一处**、被两个断言读：一次读真表（契约），一次读种了病的
-     表（证明这契约破得掉）。读法内联在断言里，就只能永远同意自己。 */
-  /** 这个类**最终**是按基线对齐的吗——读最后一条声明，不是「曾经写过」。 */
-  const alignsOnBaseline = (text: string, name: string): boolean =>
-    lastDeclaredOf(text, name, 'align-items') === 'baseline'
+  /* 下面一条读法各写**一处**、被两个断言读：一次读真表（契约），一次读种了病的
+     表（证明这契约破得掉）。读法内联在断言里，就只能永远同意自己。
+     读法本身是共享的 `lastDeclaredOf`（「这个类**最终**是什么值」——读最后一条声明，
+     不是「曾经写过」），所以这里不再包一层只服务于一种对齐值的壳子。 */
   /** `.itemNote` 的揭示钩子数——**读结构，不读钩子叫什么名字**：凡是选择器指着它、
       又把 `display` 打开的规则，就是一个入口（第三个入口换了名字也一样数得进来）。 */
   const noteReveals = (text: string): number =>
@@ -2577,24 +2576,35 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
       说的那一个，所以这里读的是「有没有这样一条」，不是「最后一条是什么」。 */
   const noteHidden = (text: string): boolean => /display:\s*none/.test(rulesOf(text, 'itemNote').join('\n'))
 
-  it('几块字装在一个按基线对齐的盒子里', () => {
-    /* 一枚药丸里常常有两种字（中文的词、拉丁的数字），两套字体度量不同：容器按**盒子**
-       居中时，两串字的基线差着将近一个像素——读者报的「『1 条』没有跟『今天』对齐」就是它。
-       按基线对齐把这件事变成构造性质：换字体、换字号都一样。 */
-    for (const name of ['itemGroupText', 'itemRailText', 'itemEmptyGroup']) {
-      expect(alignsOnBaseline(css, name), `.${name} 没有按基线对齐，它里面几块字的基线要靠运气`)
-        .toBe(true)
+  it('几块字**每段各自居中**，于是墨心齐平（不是靠基线共线）', () => {
+    /* 这条用例的**意图**一直没变：一枚药丸里两种字（中文的词、拉丁的数字）的墨心必须
+       齐平。变的是**机制**，而旧机制是错的——`align-items: baseline` 对齐的是「字的底」，
+       而眼睛看的是「墨的中心」：汉字一个 em 的墨几乎全在基线之上（`inkAscent ≈ 0.88em`），
+       拉丁数字只占上面约 `0.71em`，所以同一条基线上汉字天生偏高。
+       量过（`scripts/probes/probe-text-runs.js`，同一枚组头，词 13px / 数 12px）：
+         baseline   → 词 0.5 / 数 1.0（相差 0.5）
+         各段居中   → 词 0.5 / 数 0.5（相差 0）
+       所以判据是两件事：容器 `align-items: center`，且**每一段自己的行盒等于自己的字号**
+    for (const name of ['itemGroupText', 'itemRailRow', 'itemEmptyGroup']) {
+       `align-items`，少了它这一段就还是跟着父级的行盒走。 */
+    for (const name of ['itemGroupText', 'itemRailRow', 'itemEmptyGroup']) {
+      expect(lastDeclaredOf(css, name, 'align-items'), `.${name} 没有按内容盒居中，两段字的墨心要靠运气`)
+        .toBe('center')
     }
+    expect(css, 'itemGroupText 的段没有自己的行盒，1em 就不会按字号解析')
+      .toMatch(/\.itemGroupText > \*\s*\{[\s\S]{0,200}?line-height:\s*1em/)
   })
 
-  it('而这把尺子咬得动：把其中一处的对齐改掉，它就报', () => {
-    // 种在真表后面的一条同名规则——浏览器就是这么读的（后写的赢），所以读法也这么读。
-    const planted = `${css}\n.itemEmptyGroup {\n  align-items: center;\n}\n`
-    expect(alignsOnBaseline(planted, 'itemEmptyGroup'), 'the plant did not bite — 后写的规则没有改变读数').toBe(false)
+  it('而这把尺子咬得动：把其中一处改回基线共线，它就报', () => {
+    /* 种在真表后面的一条同名规则——浏览器就是这么读的（后写的赢），所以读法也这么读。
+       种的是**旧机制**（`align-items: baseline`）：那正是这条用例在防的那件事——有人
+       出于好意把它「改回统一基线」，于是中文又比数字高半像素，而屏上不会有人说一句话。 */
+    const planted = `${css}\n.itemEmptyGroup {\n  align-items: baseline;\n}\n`
+    expect(lastDeclaredOf(planted, 'itemEmptyGroup', 'align-items'), 'the plant did not bite — 后写的规则没有改变读数').toBe('baseline')
     // 反向对照：同一张表里另外两处不受影响，说明报的不是「谁都不对齐」。
-    expect(alignsOnBaseline(planted, 'itemGroupText')).toBe(true)
-    expect(alignsOnBaseline(planted, 'itemRailText')).toBe(true)
-    expect(alignsOnBaseline(css, 'itemEmptyGroup'), '真表里那一处也被读成没对齐——尺子量错了地方').toBe(true)
+    expect(lastDeclaredOf(planted, 'itemGroupText', 'align-items')).toBe('center')
+    expect(lastDeclaredOf(planted, 'itemRailRow', 'align-items')).toBe('center')
+    expect(lastDeclaredOf(css, 'itemEmptyGroup', 'align-items'), '真表里那一处被读成基线了——尺子量错了地方').toBe('center')
   })
 
   it('运行配置那一行：头那一行与 ⓘ 同在一格行里，折叠体在下一行', () => {

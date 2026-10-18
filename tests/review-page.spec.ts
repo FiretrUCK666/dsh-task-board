@@ -449,9 +449,13 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     const comments = ruleOf('commentsScroll')
     expect(comments).toMatch(/flex:\s*1 1 auto/)
     expect(comments).toMatch(/overflow-y:\s*auto/)
-    // The box floors at the conversation region's 120px: a fully rendered
-    // config head may squeeze it, but never to a slit that hides the thread.
-    expect(comments).toMatch(/min-height:\s*120px/)
+    /* **地板必须是 0，原因写在注释里。** 这条断言的**意图**没变（「别被挤成一条缝」），
+       但实现从「一个 120px 的 px 地板」改成了「归零 + 让 flex 分配」：
+       那个 120px 在矮屏上比它所在的列还高，滚动区于是长出卡片之外、滚动条跟着出去
+       （读者的原话：「滚动条的头感觉要突破天际」）。归零之后「让位」是对的，
+       而「别太窄」由 `flex: 1 1 auto` 与上面的布局来保证，不是靠一个写死的数。
+       机制判据见 `scripts/verify-scroll-floor.mjs`。 */
+    expect(comments).toMatch(/min-height:\s*0/)
     // The scroll region owns the rail's content line; segments inside add none.
     expect(comments).toMatch(/padding:\s*10px var\(--dsh-tb-rail-inset\)/)
     expect(ruleOf('sessionFacts')).toMatch(/padding-inline:\s*var\(--dsh-tb-rail-inset\)/)

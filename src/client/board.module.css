@@ -343,12 +343,11 @@
   justify-content: center;
   min-width: 16px;
   height: 16px;
-  padding: 0 4px;
+  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   /* 计数药丸同样是「一行字在盒里」：下内衬把墨抬到盒心。 */
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  font-size: 11px;
+    font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   /* Dark ink, not `foreground`: this fill is a LIGHT hue shared by both themes,
      so the text must be dark in both — see the --dsh-tb-ink-on-fill note. */
   color: var(--dsh-tb-ink-on-fill);
@@ -403,16 +402,28 @@
   box-sizing: border-box;
   padding: 8px 10px;
   color: var(--dsh-tb-text-1);
-  background: none;
-  border: none;
+  /* **它是一条记录，所以它有纸面。** 之前是 `background: none` + 无边框：一行里的
+     名字、时间、按钮各自浮在弹层的底上，读起来是「几段散落的字」，而不是「一条
+     发生了的事」。纸面 + 发丝边 + 悬停读全系统那一档——与行卡、列表行同一个材质。 */
+  background: var(--dsh-tb-plane-sheet);
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
   text-align: left;
   font: inherit;
+  transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
+
 /* Hover paint is hover-pointer-only: on touch a tap leaves :hover stuck on
    the row, turning a transient glance into a persistent "selected" bar that
    never clears (touch has no hover — hard rule). */
 @media (hover: hover) {
+  /* 触屏没有悬停：一条裸 `:hover` 会在点按之后把高亮**留在**那一行上，一次张望变成
+     一条常驻的条。所以悬停一律住在 `(hover: hover)` 里——与 `.notifyRow` 的
+     纸面互相独立（纸面常在，高亮只属于指针）。 */
+  .notifyRow:hover {
+    background: var(--dsh-tb-hover);
+    border-color: var(--dsh-tb-border);
+  }
   .notifyRow:hover {
     background: var(--dsh-tb-hover);
   }
@@ -443,11 +454,18 @@
    controls are. `width: 100%` + `space-between` is the whole fix, at every
    width, with no width special case. */
 .notifyActions {
+  /* **一行，三栏，不是两行。** 曾经这里是 `width: 100%`：一个 flex 项硬占满整行，
+     于是「进详情」与时间被挤到第二行——读者看到的是「名字一行、时间与按钮又一行」，
+     一条本来是一行的记录被拆成两截，所以它读起来「很扁平、没有模块的感觉」。
+   *
+   * 现在它只占**自己需要的那一栏**：主区（名字 + 计数）吃剩余宽度，这一簇贴右。
+   * `flex-wrap` 留在外面那一层，所以真的装不下时（很长的名字 + 很窄的屏）它仍然
+   * 换行，只是不再**无条件**换行。 */
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-end;
   gap: var(--dsh-tb-space-4);
-  width: 100%;
+  flex: none;
   min-width: 0;
 }
 /* The buttons themselves: they wrap as a cluster, so a narrow surface stacks
@@ -572,8 +590,9 @@
   flex: 0 1 auto;
   min-width: 0;
   font-size: 12px;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
 }
 
 /* A refused drop, in words. Sits in the header's own column flow (not absolute),
@@ -619,14 +638,13 @@
   min-width: 0;
   align-self: flex-start;
   height: var(--dsh-tb-button-h);
-  padding: 0 12px;
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 12px;
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   /* 行的居中只到内容盒：下内衬多 2d，内容盒中心就上移 d，字的墨才落在盒心
      （令牌见 tokens 表；transform 会把盒子和字一起挪走，等于没修）。 */
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  color: var(--dsh-tb-text-2);
+    color: var(--dsh-tb-text-2);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
@@ -693,8 +711,8 @@
      the row's 28px frame like every button beside it (it used to be a bare
      12px line, which is the two-heights report). */
   height: var(--dsh-tb-button-h);
-  padding: 0;
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
+  /* 内衬为 0 的一枚：墨位校正只能单独写块向那一档（见 `--dsh-tb-line-nudge`）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   flex: 0 1 auto;
   min-width: 0;
   margin: 0;
@@ -702,7 +720,7 @@
   border: none;
   font: inherit;
   font-size: 12px;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
   cursor: pointer;
 }
@@ -963,7 +981,7 @@
      family law — see .interactionOptionButton). */
   box-sizing: border-box;
   height: 30px;
-  padding: 0 10px;
+  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -1061,21 +1079,22 @@
 .columnTab {
   gap: var(--dsh-tb-space-3);
   flex: none;
-  /* Border-box like the header buttons: 28px means 28. */
+  /* **导航那一档（24px），不是按钮那一档（28px）。** 它是「去哪一栏」，不是「做什么」；
+     与它并排的按钮是动作。窄档的列导航读这一档，宽档五列同屏、这一条被隐藏
+     （见窄档那条 `display: grid`）。 */
   box-sizing: border-box;
-  height: 28px;
+  block-size: var(--dsh-tb-button-h);
   /* A tab is one line of text in a capsule: the bottom bearing is the ink
      correction (2d moves the content box centre up by d). */
-  padding: 0 10px;
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  border: var(--dsh-tb-border);
+  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+    border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-chip-fill);
   color: var(--dsh-tb-text-2);
   font: inherit;
   font-size: 12px;
   /* AFTER the `font` shorthand: that shorthand resets line-height too. */
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   cursor: pointer;
   transition: color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -1263,11 +1282,10 @@
   flex: none;
   min-width: 24px;
   block-size: var(--dsh-tb-chip-h);
-  padding: 0 7px;
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  font-size: var(--dsh-tb-type-meta-size);
+  padding-inline: 7px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+    font-size: var(--dsh-tb-type-meta-size);
   font-family: inherit;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
   background: var(--dsh-tb-plane-inlay);
@@ -1424,12 +1442,14 @@
    closed above. */
 .card.selectedCard {
   border-color: var(--dsh-tb-accent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
-    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    var(--dsh-tb-rim),
-    var(--dsh-tb-cast-2);
+  /* **环走 `outline`，不走 `box-shadow`。** 这正是「装饰不许与承载材质的属性共用」
+     那一条法则：`box-shadow` 在这一族里承载的是**纸面**（`--dsh-tb-rim` 的受光顶边 +
+     `--dsh-tb-cast-2` 的投影）。把环也画进同一个属性，就等于让一次动画同时改掉材质
+     ——而那一次真的发生过：`[data-light]` 动过一次 `box-shadow`，进行中那几张卡直接
+     失去纸面。`outline` 与它互不干扰，`outline-offset` 给的是同一档视觉距离。 */
+  outline: 3px solid color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
+  outline-offset: 2px;
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
   transform: translateY(-1px);
 }
 
@@ -1481,25 +1501,17 @@
    appear the instant the card is picked and stay while it is selected,
    hover or not (the badge is selection-bound; the ring is too). */
 .card.selectedCard:hover {
-  border-color: var(--dsh-tb-accent);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
-    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    var(--dsh-tb-rim),
-    var(--dsh-tb-cast-2);
+  /* 只改**该变的那一笔**（阴影深一档）。环与纸面都从主规则继承——重抄一遍整个
+     `box-shadow` 就是给「环与材质共用同一个属性」再开一次口，而那正是这一族要
+     消掉的东西。 */
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
 /* A selected card still answers the press: the ring is selection-bound, the
    compression is the click's own feedback. */
 .card.selectedCard:active {
   transform: translateY(0);
-  box-shadow:
-    0 0 0 3px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    0 0 0 5px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent),
-    0 4px 18px color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent),
-    var(--dsh-tb-rim),
-    var(--dsh-tb-cast-1);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   transition:
     box-shadow var(--dsh-tb-motion-fast),
     transform var(--dsh-tb-motion-fast);
@@ -1863,8 +1875,7 @@
      sets its own padding shorthand, so it has to restate it or the compact
      bottom bearing is reset to 0 (the same trap every `padding` shorthand
      spells for a shared shape). */
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  /* The layer's soft hairline — the ONE edge token. A colour here would be a
+    /* The layer's soft hairline — the ONE edge token. A colour here would be a
      second road to the edge. */
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
@@ -2000,10 +2011,9 @@
   flex: none;
   border: none;
   background: none;
-  padding: 0 2px;
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  font-size: 12px;
-  line-height: 1;
+  padding-inline: 2px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+    font-size: 12px;
+  line-height: var(--dsh-tb-text-line-h);
   cursor: pointer;
   color: inherit;
   opacity: 0.6;
@@ -2033,10 +2043,9 @@
   justify-content: center;
   flex: none;
   height: 24px;
-  padding: 0 10px;
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-  font-size: 12px;
-  line-height: 1;
+  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+    font-size: 12px;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
   background: none;
   border: var(--dsh-tb-border-soft);
@@ -2803,7 +2812,7 @@
 
 .schedulePreset {
   height: 34px;
-  padding: 0 12px;
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
@@ -2962,6 +2971,8 @@
      rising, not a control being squeezed. */
   overflow-wrap: anywhere;
   min-block-size: 1lh;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 .runPresetDefaultBadge {
@@ -3515,7 +3526,7 @@
 .sessionRowHandle {
   flex: none;
   height: var(--dsh-tb-button-h-sm);
-  padding: 0 10px;
+  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 12px;
   font-weight: 500;
   /* Dark ink, not `foreground`: the amber fill is light in BOTH themes, so the
@@ -4555,7 +4566,10 @@
   gap: var(--dsh-tb-space-5);
   flex: 1 1 auto;
   min-width: 0;
-  min-height: 120px;
+  /* 与 `.reviewTranscriptScroll` 同一个 bug、同一个修法：`flex: 1 1 auto` 的项
+     默认下限是**内容高**，写一个 `120px` 的地板只是把「不许缩」写得更硬——
+     在矮屏上它就长出容器之外。归零才允许它真的让位。 */
+  min-height: 0;
   overflow-y: auto;
   padding: 10px var(--dsh-tb-rail-inset) 10px;
 }
@@ -4591,10 +4605,20 @@
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-7);
-  min-height: 120px;
+  /* **`min-height` 不许超过它的容器。** 这里原先是 `120px`：一个固定的地板，在矮屏
+   * （手机 1568 高、导航吃掉 300 多）上比它所在的列还高，于是滚动区**长出卡片之外**——
+   * 读者看到的是「滚动条的头突破天际」。`flex: 1` 已经表达了「占满剩下的空间」，
+   * 地板只需要一个**能被压缩的下限**：`min-height: 0`（flex 项的默认下限是内容高，
+   * 必须显式归零才允许它缩）。表格与列表同理，`min-height: 120px` 这一类写法在
+   * 任何「容器可能比它矮」的地方都是同一个 bug。 */
+  min-height: 0;
   flex: 1;
   overflow-y: auto;
   padding-right: 14px;
+  /* 滚动条画在自己的圆角内：`overflow-y: auto` 的滚动条在某些引擎里会画到
+   * `border-radius` 之外，加一条同半径的裁剪把它关进来。 */
+  border-radius: inherit;
+  overscroll-behavior: contain;
 }
 
 /* The run's outcome banner: what the agent came back with. */
@@ -4711,6 +4735,8 @@
   align-items: center;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 /* User messages are right-aligned bubbles, native look (deepseek-50 fill,
@@ -4978,7 +5004,7 @@
 .reviewConfigValue {
   display: block;
   height: 34px;
-  padding: 0 12px;
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 13px;
   line-height: 32px;
   color: var(--dsh-tb-text-2);
@@ -5065,7 +5091,7 @@
   background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: 4px;
-  padding: 0 4px;
+  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   /* A long inline token (a path, a slug) must break, not push the whole
      transcript wider than its column (the "转写冲出右边缘" bug — the card
      never-pierce contract extended to the review conversation). */
@@ -5453,7 +5479,7 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-4);
   min-width: 0;
-  padding: 0 12px;
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
 }
 
 .interactionQuestion {
@@ -5646,7 +5672,7 @@
 }
 .interactionBadge {
   flex: none;
-  padding: 0 4px;
+  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -5777,7 +5803,7 @@
   gap: var(--dsh-tb-space-2);
 }
 .interactionProgress {
-  padding: 0 4px;
+  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
@@ -6568,12 +6594,41 @@
    the geometry changes. Colors stay on the --dsh-tb-* tokens (no new literals).
    ══════════════════════════════════════════════════════════════════════════ */
 @container dsh-tb (max-width: 680px) {
+  /* **主行动搬到拇指栏。** 窄档的工具带里它原本占一格，与搜索/巡航挤在同一行；
+     搬到栏杆之后那一行只剩下「搜索 + 巡航」两件，宽度立刻宽松。
+     动作本身没有第二份实现：同一个 `onClick`、同一枚 `PlusIcon`、同一个 `Button`，
+     只是它渲染在另一处（见 `TaskBoard.tsx` 的 `thumb` 区）。 */
+  /* **跨表类名在这里必然失效。** `.thumbRail` 属于 `design/components.module.css`，
+     而 CSS Modules 按**表**哈希类名：这张表写下的 `.thumbRail` 在生产包里是另一个
+     字符串，匹配不到任何节点。判据只能靠**结构标记**：栏杆自己带的那个 `role`。
+     （`verify-design-docs.mjs` 的跨表检查就是为了逮这一类。） */
+  .board [data-dsh-tb-thumbrail] {
+    display: flex;
+  }
+
+  /* 工具带里那一枚在窄档不画：动作在栏杆里，画两遍就是两个入口。 */
+  .boardRowTools .boardNewTask {
+    display: none;
+  }
+
+  /* 窄档的主行动由栏杆里那一枚承担（TaskBoard.tsx 的 	humbPrimary）：它吃满
+     剩下的宽度，拇指够得到。 */
+  .thumbRail > .thumbPrimary {
+    flex: 1 1 auto;
+    justify-content: center;
+  }
+
   .board {
     /* The board meets the shell header edge-to-edge (the container is
        absolute inset:0), so air alone never reads as separation — the top
        edge gets the same hairline the columns use. */
     border-top: var(--dsh-tb-separator);
-    padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+    /* **底部留出栏杆那一档。** 栏杆是 `absolute` 的，它不推内容——所以内容自己要让开，
+       否则最后一张卡永远有一截被它盖住。这一档比栏杆本身高一点（栏杆 28 + 两档内衬），
+       多出来的那点是「滚到底时最后一行与栏杆之间的空气」。 */
+    padding: 12px 12px calc(var(--dsh-tb-button-h) + 2 * var(--dsh-tb-space-3) + var(--dsh-tb-space-3) + env(safe-area-inset-bottom, 0px));
+    /* 栏杆的定位参照物：它只属于这一页的列区，不是视口。 */
+    position: relative;
     /* 10, and it STAYS 10 — this is the BETWEEN-band gap, and it is the number
        the within-group gap has to be smaller than. See `.boardHeader` below. */
     gap: var(--dsh-tb-space-5);
@@ -6608,6 +6663,9 @@
     row-gap: var(--dsh-tb-strip-gap);
   }
 
+  /* 有话说时才多一行读数。**试过把它与列导航并成一行，更差**（实测板头 144 -> 188）：
+     导航被压到 257px，五列装不下就撑高那一行。所以读数保持独占，导航保持独占——
+     两次「省一行」的尝试都记在这里，免得再走一遍。 */
   .boardRowTools:has(.boardDemand, .boardState) {
     grid-template-areas:
       "reports reports reports"
@@ -6746,11 +6804,19 @@
        box a pill's content brings can no longer make the strip's box taller
        than the pills the eye sees (the mirror image of the neighbour-edge
        problem the tool grid above closes). */
+    /* **列导航比按钮薄一档。** 它是导航（去哪一栏），不是动作：一个 24px 的导航条
+       与 28px 的动作按钮在同一列里并排，读者读得出层次；而窄档的竖向额度正是最紧的
+       那一处（412×900 上板头占 144px，五列只剩 620px）。四个像素不多，但它是这一条
+       唯一可以省的四——按钮那一档不动，因为它们是动作。 */
     grid-template-rows: var(--dsh-tb-button-h);
     align-content: center;
     gap: var(--dsh-tb-space-3);
-    /* The strip owns symmetric breathing from the ONE strip token. */
-    padding: var(--dsh-tb-strip-gap) 0;
+    /* **这一条没有自己的竖向留白。** 它曾经付一份 `--dsh-tb-strip-gap`（上下各一份），
+       而它上面那条工具行已经有行间距、下面就是列本体——于是这一条 28px 的轨道量出来
+       48px：多出来的 20px 是同一段空隙的第三份。窄档的竖向额度是有限的（412×900 上，
+       板头一共 164px、五列只剩 606px），三份留白里省掉一份，五列就多 20px。
+       横向留白归它自己：那一条不与邻居共担。 */
+    padding: 0;
     overflow-x: visible;
   }
 
@@ -6765,11 +6831,10 @@
        pill, not a card). */
     justify-content: center;
     min-width: 0;
-    padding: 0 6px;
+    padding-inline: 6px; padding-block: max(0px, calc(-1 * var(--dsh-tb-line-nudge))) max(0px, var(--dsh-tb-line-nudge));
     /* The shorthand above resets the bottom bearing, so the ink correction is
        restated AFTER it (the same order every shared pill uses). */
-    padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-    border-radius: var(--dsh-tb-pill);
+        border-radius: var(--dsh-tb-pill);
   }
 
   .columnTab > span {

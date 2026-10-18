@@ -87,6 +87,7 @@ function activityChipOf(item: ActivityItem): { kind: 'neutral' | 'success' | 'er
 import { activityFoldKeyOf, activityOf, foldFeedByTaskDay, foldRestKeyOf, freezeFeed, sectionFoldBySession, splitFoldItems, CLUSTER_KINDS, type ActivityItem, type ActivityTaskFold } from './activity.ts'
 import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from '../design/Chip.tsx'
+import { ThumbRail } from '../design/ThumbRail.tsx'
 import { FeedRow } from './FeedRow.tsx'
 
 import { sendClientReport } from '../client-report.ts'
@@ -1413,7 +1414,9 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
               </CruiseSettingsHost>
             )}
           </div>
-          {/* 新建任务：板上唯一的主行动（primary），永远坐在动作簇的最右端。 */}
+          {/* 新建任务：板上唯一的主行动（primary）。**宽档坐在动作簇最右端，窄档搬到底部
+              栏杆**（那一份在 `.thumbRail` 里，见本文件末尾）。两处是同一个动作、同一枚
+              图标、同一个 `onClick`——不是两个入口，是同一件东西在两个断点上的位置。 */}
           <Button
             variant="primary"
             className={css.boardNewTask}
@@ -2145,6 +2148,38 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
           )
         })}
       </div>
+
+      {/* ══ 窄档的底部栏杆 ══════════════════════════════════════════════
+        *
+        * **主行动不占内容的额度。** 实测（412×900）：板头四行 144px，五列只剩 626px。
+        * 把「新建任务」搬到这条栏杆上，工具带那一行就只剩「搜索 + 巡航」，宽度立刻宽松，
+        * 而五列多出的那一格高度是真的还给了内容。
+        *
+        * 它 `absolute` 定位在 `.board` 的下沿，所以**不推内容**——内容自己让开的额度在
+        * `.board` 的 padding 里（见样式表那一处）。宽档它 `display: none`：五个动作都摆得下
+        * 时不需要第二个入口。 */}
+      <ThumbRail label={t('board.thumbBar')}>
+        {/* **窄档的主行动在这里。** 它在工具带里那一枚窄档 `display: none`（见样式表），
+            而这一枚是窄档唯一可见的那一个——所以「一个动作一个入口」在**每一档**都成立，
+            只是入口换了位置。两档各渲染一次的那份代码是同一条 JSX：`variant`、图标、
+            `onClick` 一个字都不差。 */}
+        <Button
+          variant="primary"
+          className={css.thumbPrimary}
+          onClick={() => { setShowNew(true) }}
+        >
+          <PlusIcon />
+          {t('board.new')}
+        </Button>
+        <Button
+          variant="ghost"
+          title={t('board.activityTitle')}
+          onClick={() => { setFeedBase(-1); setShowActivity(true) }}
+        >
+          {t('board.activity')}
+        </Button>
+        {renderNotifyBell()}
+      </ThumbRail>
 
       {selected !== undefined && (
         <TaskDetail

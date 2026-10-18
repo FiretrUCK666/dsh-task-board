@@ -55,6 +55,7 @@ import { registerToolViews } from './chat/tool-views.tsx'
 import { TaskBoardIcon } from './TaskBoardIcon.tsx'
 import { BundleFreshnessState, reloadForFreshBundle } from './bundle-freshness.ts'
 import { fetchUpdateSource } from './update-source.ts'
+import { installInkMetrics } from './design/ink-metrics.ts'
 import { isNewerVersion } from '../core/update-check.ts'
 import packageJson from '../../package.json'
 
@@ -571,6 +572,27 @@ export function apply(ctx: ClientContext): void {
   // long as the plugin is composed, written at the root so it rides an ancestor
   // of every possible sheet.
   ctx.effect(() => watchKeyboardInset(document.documentElement), 'dsh-task-board: soft keyboard inset')
+  // --- the ink correction, measured from the real font ------------------------
+  //
+  // One line of text sits where the browser puts it, and how far that is from the
+  // box's centre is decided entirely by the font's own metrics:
+  //
+  //   墨心偏移 = [(fontAsc − fontDesc) − (inkAsc − inkDesc)] / 2
+  //
+  // There is no `line-height` in that expression, which is why every attempt to
+  // fix this by changing a line height failed for two rounds. It is ALL font —
+  // so a constant (`0.04em`, `0.5px`, `1px`) can only ever be right on one
+  // machine: 「电脑端偏下、手机端正好」 is one number, two fonts.
+  //
+  // So it is measured at runtime and published as `--dsh-tb-line-nudge`, which the
+  // capsule family reads as `padding-block-end: calc(2 * var(--dsh-tb-line-nudge))`.
+  // It runs at the root because the token has to be on an ancestor of every
+  // sheet, and it measures TWICE: once now (whatever font is already rendering)
+  // and again after `document.fonts.ready`, because a page whose Chinese font
+  // arrives late would otherwise publish the fallback font's number.
+  ctx.effect(() => {
+    installInkMetrics()
+  }, 'dsh-task-board: ink nudge measured from the rendering font')
   // --- official seats ---------------------------------------------------------
   //
   // The board occupies the shell's CENTRE STAGE as a global panel, and its entry
