@@ -209,4 +209,33 @@ describe('the update dialog opens on the list page too', () => {
       act(() => { panel.dispose() })
     }
   })
+
+  it('the page behind the dialog is inert while it is open', async () => {
+    /* **`aria-modal` 是一个承诺，这条是它没写成字的那一半。**
+       清单页不像另外两页那样走 `WorkbenchShell`——它自己拼框架，并且自己管着自己的
+       `inert`（`overlayIsModal`）。所以「更新对话框开着时，背后的内容还活着吗」是
+       这一页**独有**的问题：另外两页的答案来自壳，这一页没有壳可依。
+       答案必须是活的之外没有活的：一个键盘使用者不能从打开的对话框里 Tab 出去，
+       操作他看不见的一列。
+       机制在 `Dialog` 自己那一侧（`useModalInert` + `boardBox()` 把弹层 portal 进
+       座位内部，所以「弹层之外、座位之内」是被标记的范围），这里只断言结果。 */
+    const panel = mountPanel(oneRow(), 'list', 'wide')
+    try {
+      stubUpdateFetch()
+      await pressCheck(panel.host)
+      const dialog = document.querySelector('[role="dialog"]')
+      expect(dialog, '对话框没开，这条用例的前提不成立').not.toBeNull()
+      const seat = dialog?.closest('[data-dsh-taskboard-view]')
+      expect(seat, '弹层被 portal 到座位之外了，于是「外面的一切」无处可标——背景会保持完全可用').not.toBeNull()
+      const siblings = [...(seat?.children ?? [])].filter((one) => !one.contains(dialog))
+      expect(siblings.length, '座位里没有「背后的内容」可标，这条用例测不到东西').toBeGreaterThan(0)
+      const live = siblings.filter((one) => !one.hasAttribute('inert'))
+      expect(live, '对话框开着，背后这些节点仍可聚焦（缺 inert）').toEqual([])
+      for (const one of siblings) {
+        expect(one.getAttribute('aria-hidden'), '读屏仍会念到弹窗底下那一页').toBe('true')
+      }
+    } finally {
+      act(() => { panel.dispose() })
+    }
+  })
 })
