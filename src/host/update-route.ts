@@ -83,8 +83,30 @@ const GITHUB_SPEC = githubSpecOfRepositoryUrl(
 )
 /** This package's own directory, resolved from where this module is running. */
 const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
-/** How long one registry answer may take before the next one is asked. */
+/** 单条 registry 请求的上限。它不是「多久没答就换下一个」——那是 `HEDGE_AFTER_MS`。 */
 const REGISTRY_TIMEOUT_MS = 8000
+
+/**
+ * **这个路由里每一段网络/子进程的预算，都必须明显小于浏览器的预算。**
+ *
+ * 浏览器那一侧读这个接口的上限是 `fetchUpdateSource` 的 15 秒
+ * （`src/client/update-source.ts`）。host 这一侧若把某一段也设成 15 秒，
+ * 那一段只要走满就等于让整次读取**必然超支**：浏览器先放弃，于是屏上出现
+ * 「检查失败，请重试」——而 host 其实还在正常地干活。
+ *
+ * 这正是那个故障的成因（读者报的「有时能成、有时失败」）：一个 checkout 的
+ * `git ls-remote` 打的是 **github.com**，而它原先的上限正是 15 秒。github 可达时
+ * 它 1.4 秒返回、一切正常；被墙时它走满 15 秒、正好压死浏览器那一侧。所以「忽好忽坏」
+ * 不是随机，是**取决于那一刻 github 通不通**。
+ *
+ * 定 6 秒的理由：它给一次正常读留足余量（实测可达的 `ls-remote` 约 1.4 秒），
+ * 又留出 9 秒给同一请求里其余的段（`rev-parse`、`status`、registry 对冲）走完并
+ * 把 JSON 送回去。**改大它之前先看客户端那个 15 秒**——两者的关系是约束，不是巧合。
+ */
+const CHECK_STAGE_BUDGET_MS = 6000
+
+/** 一次 `git rev-parse` / `status` 这种纯本地子进程的上限（它们不碰网络）。 */
+const GIT_LOCAL_TIMEOUT_MS = 3000
 
 /**
  * 第一个源领先多久之后，第二个源也起跑。
@@ -404,10 +426,13 @@ function gitOut(repoDir: string, args: string[], timeoutMs: number): string | un
  * @returns the git status, or undefined when unreadable.
  */
 function readGitStatus(repoDir: string): UpdateGitStatus | undefined {
-  const head = gitOut(repoDir, ['rev-parse', 'HEAD'], 10_000)
+  const head = gitOut(repoDir, ['rev-parse', 'HEAD'], GIT_LOCAL_TIMEOUT_MS)
   if (head === undefined || head === '') return undefined
-  const porcelain = gitOut(repoDir, ['status', '--porcelain'], 10_000) ?? ''
-  const remoteLine = gitOut(repoDir, ['ls-remote', 'origin', 'refs/heads/main'], 15_000)
+  const porcelain = gitOut(repoDir, ['status', '--porcelain'], GIT_LOCAL_TIMEOUT_MS) ?? ''
+  /* **打网络的那一段用 `CHECK_STAGE_BUDGET_MS`，不是客户端的 15 秒。** 走满它就意味着
+     这次读取拿不到 git 状态（下面降级成 `undefined`，界面只是不显示 git 那一段），
+     而不是让浏览器先放弃、把整次检查画成一次失败。见那个常量的注释。 */
+  const remoteLine = gitOut(repoDir, ['ls-remote', 'origin', 'refs/heads/main'], CHECK_STAGE_BUDGET_MS)
   const remoteHead = remoteLine !== undefined && remoteLine !== ''
     ? remoteLine.split(/\s/)[0]
     : undefined
@@ -656,6 +681,17 @@ function rawBaseOf(spec: string | undefined): string | undefined {
  * 对冲请求的形状是：按次序起跑，给前一条 `hedgeMs` 的领先窗口；窗口内它答了就结束
  * （次序被时间保证），窗口过后把下一条也发出去，之后第一个**成功**的胜出。
  *
+ * ── 一条候选只许启动一次 ────────────────────────────────────────────────────
+ *
+ * 有**两条**路会把控制权推进到下一条：前一条**失败**时立刻推进（不等窗口——那 800ms
+ * 是给「慢」的源留的，不该被「坏」的源白占），以及窗口到点时放行。两条路都会到同一条
+ * 候选上，所以必须**在启动处去重**，而不是指望两条路互斥。
+ *
+ * 不去重的后果不是多一个请求，是**丢掉一个已经到手的答案**：重复的那条若先失败，而
+ * 原来那条还在飞，`finished >= candidates.length` 就把整次读取定成 `undefined`——
+ * 一个本来会作答的源被报成「读不到」，屏上就是「检查失败，请重试」。触发条件是「前
+ * 一条在窗口内失败」（连接被拒通常就是几十毫秒）加上「后一条慢或抖」。
+ *
  * @param candidates - 候选，按优先级从高到低。
  * @param hedgeMs - 领先窗口；超过它仍未答就放行下一条。
  * @param timeoutMs - 单条的上限，由 `ask` 自己带。
@@ -668,19 +704,36 @@ function hedgeFor<T>(
 ): Promise<T | undefined> {
   return new Promise<T | undefined>((resolve) => {
     let settled = false
-    let started = 0
     let finished = 0
     const timers: ReturnType<typeof setTimeout>[] = []
+    /* 已起跑的下标。存在的唯一理由是那两条推进路径会撞在一起（见函数的注释）。 */
+    const launched = new Set<number>()
     const done = (value: T | undefined): void => {
       if (settled) return
       settled = true
       for (const timer of timers) clearTimeout(timer)
       resolve(value)
     }
+    /* 空候选：没有任何一条会作答，所以**立刻**收场。留着不结算就是一个永不返回的
+       Promise，而调用方在等它。 */
+    if (candidates.length === 0) {
+      done(undefined)
+      return
+    }
     const launch = (index: number): void => {
       if (settled || index >= candidates.length) return
+      if (launched.has(index)) return
+      launched.add(index)
       const candidate = candidates[index] as string
-      started += 1
+      const settleOne = (): void => {
+        finished += 1
+        /* **这一条没有答案，就立刻放下一条**——不等窗口走完。窗口是给「慢」的源留的，
+           不该被「坏」的源白占：一条连不上的源让读者白等 800ms，而那 800ms 里本来
+           已经有另一条在等着被发出去。
+           `launch` 自己去重，所以这里与窗口那条路撞上也不会重复启动。 */
+        if (finished >= launched.size) launch(index + 1)
+        if (finished >= candidates.length) done(undefined)
+      }
       void boundedJson(packumentUrl(candidate, PACKAGE_NAME), timeoutMs).then(
         (document) => {
           const answer = latestFromPackument(document)
@@ -688,17 +741,12 @@ function hedgeFor<T>(
             done({ ...answer, registry: candidate, source: 'registry' } as T)
             return
           }
-          finished += 1
-          /* 这一条没答案：后面还有就立刻推进，否则在全部落地后收场。 */
-          if (finished >= started) launch(index + 1)
-          if (finished >= candidates.length) done(undefined)
+          settleOne()
         },
-        () => {
-          finished += 1
-          if (finished >= started) launch(index + 1)
-          if (finished >= candidates.length) done(undefined)
-        },
+        () => { settleOne() },
       )
+      /* 窗口到点放行下一条。它同时是「前一条只是慢」的唯一出路——前一条若失败，
+         失败那一支会立刻推进，而这里的去重保证不会因此启动第二条路。 */
       if (index + 1 < candidates.length) {
         timers.push(setTimeout(() => { launch(index + 1) }, hedgeMs))
       }
@@ -726,9 +774,15 @@ export async function readLatest(
   ctx: Context,
   copy: Pick<RunningCopy, 'mode'>,
 ): Promise<UpdateLatestView | undefined> {
-  /* **一个 checkout 不该发出任何网络请求。** 它的「有没有新版本」由自己那份 git 状态
-     回答（见 `readGitStatus`），去看发布号是另一件事，而且会把「本地改了还没提交」
-     误报成「有新版」。这条判断在函数最前面，因为它省掉整条网络链，不只是省一次请求。 */
+  /* **一个 checkout 的「有没有新版」不来自发布号。** 它由自己那份 git 状态回答
+     （见 `readGitStatus`），去看 registry 上的发布号是另一件事，而且会把「本地改了
+     还没提交」误报成「有新版」。这条判断在函数最前面，因为它省掉整条 registry 链，
+     不只是省一次请求。
+
+     **但这不等于这个请求不发任何网络请求。** 同一个请求里的 `readGitStatus` 会打一次
+     `git ls-remote` 到那个 checkout 的 origin（通常是 github.com）——那一条是有意的，
+     因为「远端有没有新提交」只能问远端。它的上限由 `CHECK_STAGE_BUDGET_MS` 压住，
+     必须明显小于浏览器的预算，否则一次被墙的 github 会把整次检查拖成「检查失败」。 */
   if (copy.mode === 'local') return undefined
 
   /* ── **一条路走不通，不等于「检查失败」。** ───────────────────────────────────

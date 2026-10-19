@@ -321,6 +321,82 @@ describe('readLatest', () => {
     return asked
   }
 
+  /**
+   * 一条**按延迟与成败**作答的 feeder，记录每个 URL 被问了几次。
+   *
+   * `answerWith` 是瞬时答的，所以它看不见任何与「什么时候」有关的行为：整条链在
+   * 1 毫秒内结束，`done()` 把 800ms 的定时器全清掉了，于是每个地址正好被问一次——
+   * **哪怕实现里有一处会让同一个地址被问两次**。这一支要能看见「问了谁、几次、
+   * 什么时候」，因为并发读的唯一真实缺陷就是这三样。
+   * @param table - 每个前缀的作答方式：延迟（毫秒）与成败。
+   * @returns 一个按 URL 记次数的记录器。
+   */
+  function timedFeeder(
+    table: Array<{ url: string; afterMs: number; body?: unknown; fail?: true }>,
+  ): { counts: Map<string, number>; order: string[] } {
+    const counts = new Map<string, number>()
+    const order: string[] = []
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      const href = String(url)
+      const match = table.find(one => href.startsWith(one.url))
+      const key = match?.url ?? href
+      counts.set(key, (counts.get(key) ?? 0) + 1)
+      order.push(key)
+      if (match === undefined) return new Response('{}', { status: 404 })
+      if (match.afterMs > 0) await new Promise(done => setTimeout(done, match.afterMs))
+      if (match.fail === true) throw new Error('network down')
+      return new Response(JSON.stringify(match.body ?? {}), { status: 200 })
+    })
+    return { counts, order }
+  }
+
+  it('asks each public registry at most once, even when the first one fails fast', async () => {
+    /* **这条钉的是一个真实发生过的缺陷。** 先失败的那一支既「立刻推进下一条」，
+       又留着那个 800ms 的定时器；定时器到点时会把下一条**再启动一次**。
+       后果不止是多一个请求：如果重复那一条先失败，而原来那一条还在飞，
+       `finished >= candidates.length` 会把整次读取定成 `undefined` ——
+       一个本来会作答的源，被报成「读不到」。 */
+    const feeder = timedFeeder([
+      { url: 'https://registry.npmjs.org/', afterMs: 20, fail: true },
+      { url: 'https://registry.npmmirror.com/', afterMs: 900, body: { 'dist-tags': { latest: '2.0.0' } } },
+    ])
+    const latest = await readLatest(ctxOf(undefined), { mode: 'npm' })
+    expect(latest?.version, '第二条源答了，读取却没有拿到它').toBe('2.0.0')
+    for (const [url, times] of feeder.counts) {
+      expect(times, `${url} 被问了 ${String(times)} 次：并发读不是「多问几遍」，多问一遍就可能把已到手的答案丢掉`).toBe(1)
+    }
+  })
+
+  it('starts the next registry as soon as one fails, without waiting out the window', async () => {
+    /* 失败要**立刻**推进，不是等窗口结束。等窗口意味着一条连不上的源会让读者白等
+       800ms——而那 800ms 存在的理由是「这条可能只是慢」，不是「它坏了」。 */
+    const started = Date.now()
+    const feeder = timedFeeder([
+      { url: 'https://registry.npmjs.org/', afterMs: 10, fail: true },
+      { url: 'https://registry.npmmirror.com/', afterMs: 10, body: { 'dist-tags': { latest: '3.0.0' } } },
+    ])
+    const latest = await readLatest(ctxOf(undefined), { mode: 'npm' })
+    const elapsed = Date.now() - started
+    expect(latest?.version).toBe('3.0.0')
+    expect(elapsed, `失败之后等了 ${String(elapsed)}ms 才推进——那 800ms 的窗口是给「慢」的源留的，不是给「坏」的`).toBeLessThan(400)
+    expect(feeder.counts.size).toBe(2)
+  })
+
+  it('a slow first registry does not stop the second from answering within the window', async () => {
+    /* 这一条是那次改动存在的全部理由：第一条正常但慢（真实的 npmjs 常在 1 秒上下），
+       第二条（镜像）快。串行读要等到第一条的 8 秒上限，并发读只要窗口 + 第二条自己的时间。 */
+    const started = Date.now()
+    timedFeeder([
+      { url: 'https://registry.npmjs.org/', afterMs: 5_000, body: { 'dist-tags': { latest: '4.0.0' } } },
+      { url: 'https://registry.npmmirror.com/', afterMs: 100, body: { 'dist-tags': { latest: '5.0.0' } } },
+    ])
+    const latest = await readLatest(ctxOf(undefined), { mode: 'npm' })
+    const elapsed = Date.now() - started
+    expect(latest?.version, '快的那个源答了，读取却没有采信它').toBe('5.0.0')
+    expect(latest?.registry).toBe('https://registry.npmmirror.com/')
+    expect(elapsed, `第一条要 5 秒，读取却等了 ${String(elapsed)}ms——并发读没有生效`).toBeLessThan(2_500)
+  })
+
   it('asks its own registry first and stops at the first answer', async () => {
     // The reader this replaces asked `registry.npmjs.org` and nothing else, so a
     // reader behind a mirror — the very reader who chose that mirror when
