@@ -181,6 +181,26 @@ export interface RegistryPlanLike {
  */
 export declare function registryOrderOf(plan: RegistryPlanLike | undefined): string[];
 /**
+ * **给一整段工作一个总额，而不是给它内部的每一步各定一个上限。**
+ *
+ * `boundedJson` 管的是「一次请求多久放弃」。它是必要的，但不够：几个各自合规的
+ * 上限加起来可以超出一次读取的总预算，而超出的那部分表现为**浏览器先放弃**——
+ * 屏上说「检查失败」，host 却还在正常地一段一段往下走。
+ *
+ * 所以有两种边界，各管一件事：
+ *
+ *   · `boundedJson(url, timeoutMs)` —— 一次请求的上限（这一段多久没答就当作没有）。
+ *   · `boundedByBudget(work, ms)`   —— 一件事的上限（整体多久没成就算了，用已有的收场）。
+ *
+ * 后者不 abort 那个 Promise（它与网络无关，可能是一串子进程），只是**不再等它**。
+ * 那是对的：读者要的是「这一次检查的答案」，不是那个后台操作必须被取消。它自己的
+ * 分段上限保证它不会永远挂着。
+ * @param work - 要等的那件事。
+ * @param ms - 等它多久。
+ * @returns 它的结果，或超时后的 `undefined`。
+ */
+export declare function boundedByBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined>;
+/**
  * The newest upstream for this copy, as this host can read it.
  *
  * A registry install asks the profile's own registries first and the public pair

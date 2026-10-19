@@ -687,7 +687,7 @@ async function registriesFor(ctx: Context): Promise<{ own: string[]; order: stri
  * @param ms - 等它多久。
  * @returns 它的结果，或超时后的 `undefined`。
  */
-function boundedByBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
+export function boundedByBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
   return new Promise<T | undefined>((resolve) => {
     const timer = setTimeout(() => { resolve(undefined) }, ms)
     void work.then(

@@ -86,7 +86,12 @@ export interface WorkbenchBarProps {
   readonly status?: string
   /** Whether a check is in flight; the button stands down while it runs. */
   readonly checking: boolean
-  /** The button's face: `检查更新 / 检查中… / 已是最新 / 有新版 v1.3.2`. */
+  /**
+   * 按钮的脸，**六种**：`检查更新 / 检查中… / 已是最新 / 有新版 v1.3.2 /
+   * 无法确认最新版 / 检查失败，请重试`。后两种都是「没得出结论」，而它们与
+   * 「已是最新」是**三个不同的答案**——把这个组件写对只要照抄上游给的那句话，
+   * 判断在哪一句上由 `use-update.ts` 一处决定（它读控制器的 `phase`）。
+   */
   readonly checkLabel: string
   /** Run the check (the page layer owns the controller that answers). */
   readonly onCheck: () => void
