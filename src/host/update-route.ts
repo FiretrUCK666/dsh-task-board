@@ -653,6 +653,35 @@ async function registriesFor(ctx: Context): Promise<{ own: string[]; order: stri
 }
 
 /**
+ * **给一整段工作一个总额，而不是给它内部的每一步各定一个上限。**
+ *
+ * `boundedJson` 管的是「一次请求多久放弃」。它是必要的，但不够：几个各自合规的
+ * 上限加起来可以超出一次读取的总预算，而超出的那部分表现为**浏览器先放弃**——
+ * 屏上说「检查失败」，host 却还在正常地一段一段往下走。
+ *
+ * 所以有两种边界，各管一件事：
+ *
+ *   · `boundedJson(url, timeoutMs)` —— 一次请求的上限（这一段多久没答就当作没有）。
+ *   · `boundedByBudget(work, ms)`   —— 一件事的上限（整体多久没成就算了，用已有的收场）。
+ *
+ * 后者不 abort 那个 Promise（它与网络无关，可能是一串子进程），只是**不再等它**。
+ * 那是对的：读者要的是「这一次检查的答案」，不是那个后台操作必须被取消。它自己的
+ * 分段上限保证它不会永远挂着。
+ * @param work - 要等的那件事。
+ * @param ms - 等它多久。
+ * @returns 它的结果，或超时后的 `undefined`。
+ */
+function boundedByBudget<T>(work: Promise<T>, ms: number): Promise<T | undefined> {
+  return new Promise<T | undefined>((resolve) => {
+    const timer = setTimeout(() => { resolve(undefined) }, ms)
+    void work.then(
+      (value) => { clearTimeout(timer); resolve(value) },
+      () => { clearTimeout(timer); resolve(undefined) },
+    )
+  })
+}
+
+/**
  * Read one JSON document with a hard bound; any failure reads as undefined.
  *
  * @param url - the document to read.
@@ -1000,6 +1029,20 @@ export async function readLatest(
 }
 
 /**
+ * **一次读取的总上限。** 它小于浏览器的 15 秒预算，理由与 `CHECK_STAGE_BUDGET_MS`
+ * 同一件：浏览器先放弃，屏上就是「检查失败」，而 host 还在正常干活。
+ *
+ * 为什么需要「总额」而不是只把每一段压小：`readLatest` 内部是**有层次**的——registry
+ * 整体（最坏 800 + 8000 = 8.8 秒）答不上来才问仓库（最坏 8000 秒，两条探针并发）。
+ * 逐段看每一段都「小于 15 秒」，加起来却是 16.8 秒。**每一段都合规而整体超支**，正是
+ * 这类 bug 的形状：没有任何一个数字是错的，错的是它们的和，而和不写在任何一个地方。
+ *
+ * 所以这里量的是整次读取的时间，超了就带着已经读到的部分收场（`latest` 缺席），
+ * 界面据此说「读不到」——那比让浏览器先放弃、把整次检查画成失败要好。
+ */
+const CHECK_TOTAL_BUDGET_MS = 11_000
+
+/**
  * Build the live view: the running copy's own location and manifest spec, the
  * newest upstream this host can read for that mode, and the checkout state for
  * a linked copy.
@@ -1009,7 +1052,12 @@ export async function readLatest(
 async function readLiveView(ctx: Context): Promise<UpdateSourceView> {
   const copy = runningCopyOf(ctx)
   const git = copy.checkoutDir !== undefined ? readGitStatus(copy.checkoutDir) : undefined
-  const latest = await readLatest(ctx, copy)
+  /* 从这里开始计总账：`readLatest` 拿到的是**整次读取还剩多少时间**，不是它自己那一档
+     的上限。超时的结果是「读不到最新版」（`latest` 缺席），不是一次失败。 */
+  const latest = await boundedByBudget(
+    readLatest(ctx, copy),
+    Math.max(1_000, CHECK_TOTAL_BUDGET_MS - GIT_LOCAL_TIMEOUT_MS * 2),
+  )
   // What the pages that are actually open reported about themselves (bundle
   // version + measured geometry). Diagnosing "the phone looks wrong" without
   // this meant arguing from screenshots; with it, the host shows the truth.

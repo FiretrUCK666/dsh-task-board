@@ -125,6 +125,19 @@ export function judge(root, clientBudget, hostFiles) {
           + '一次走满它就会让浏览器先放弃，把整次读取画成「检查失败」——而 host 其实还在正常干活。',
       })
     }
+    /* **总额也要有一道闸。** 逐段看每一段都合规，加起来照样能超支：registry 最坏
+       8.8 秒，答不上来才问仓库（最坏 8 秒），合计 16.8 秒 > 15 秒。没有任何一个数字
+       是错的，错的是它们的和——而和不写在任何一个地方，所以只能由这里问：
+       **这个文件里有没有一个「整次读取」的总额，且它够小？** */
+    if (!/CHECK_TOTAL_BUDGET_MS\s*=/.test(text)) {
+      findings.push({
+        file,
+        where: '缺一个总预算常量',
+        detail: '这个文件里没有 `CHECK_TOTAL_BUDGET_MS`。逐段上限加起来可以超过客户端预算'
+          + '（registry 8.8s + 仓库 8s = 16.8s > 15s），而每一段单独看都是合规的。'
+          + '需要一个「整次读取」的总额，让读取带着已经拿到的部分收场。',
+      })
+    }
     for (const one of inlineBudgetsOf(text)) {
       if (one.value <= limit) continue
       findings.push({
@@ -143,10 +156,13 @@ function main() {
   const probe = probeOf(['--probe-overrun', '--probe-within'])
 
   if (probe !== undefined) {
-    /* 自测：种两段超时，一段与客户端等长（必须红），一段明显更短（必须放行）。 */
+    /* 自测：两份夹具都带一个合规的总额常量，只有被考察的那一段不同。
+       少了总额那一行，`--probe-within` 会被「缺总预算」那条规则误报——那不是门禁
+       太严，是夹具不像真实文件。 */
     const budget = 15_000
-    const overrun = { file: 'fixture.ts', text: 'const SLOW_MS = 15000\n' }
-    const within = { file: 'fixture.ts', text: 'const FAST_MS = 6000\n' }
+    const total = 'const CHECK_TOTAL_BUDGET_MS = 11000\n'
+    const overrun = { file: 'fixture.ts', text: `${total}const SLOW_MS = 15000\n` }
+    const within = { file: 'fixture.ts', text: `${total}const FAST_MS = 6000\n` }
     const bad = judge(root, budget, [probe === '--probe-overrun' ? overrun : within])
     const shouldBeRed = probe === '--probe-overrun'
     const isRed = bad.findings.length > 0
