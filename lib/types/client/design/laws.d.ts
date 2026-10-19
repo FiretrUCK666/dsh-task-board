@@ -38,5 +38,3 @@ export interface DesignLaw {
  * 那里是散文；这张表只收**必须有机械门禁**的那些。
  */
 export declare const DESIGN_LAWS: readonly DesignLaw[];
-/** 按 id 取一条法则。 */
-export declare function designLaw(id: string): DesignLaw | undefined;

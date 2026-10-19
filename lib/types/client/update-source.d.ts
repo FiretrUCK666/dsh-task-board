@@ -16,8 +16,6 @@
  * as the board transport's bounded fetch.
  */
 import type { UpdateGitStatus, UpdateInstallMode, UpdateLatestView, UpdatePlan } from '../core/update-check.ts';
-/** The bundle's own package identity (the host-unreachable fallback). */
-export declare const BUNDLED_PACKAGE_NAME: string;
 /** The bundle's own version (the host-unreachable comparison baseline). */
 export declare const BUNDLED_VERSION: string;
 /** How the host established which copy is running. */

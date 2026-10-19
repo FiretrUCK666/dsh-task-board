@@ -185,8 +185,3 @@ export const DESIGN_LAWS: readonly DesignLaw[] = [
       + 'host 每一段必须小于它并留出余量（0.99 倍也叫小于，但一次正常读走不满它，照样在边界上翻车）。',
   },
 ]
-
-/** 按 id 取一条法则。 */
-export function designLaw(id: string): DesignLaw | undefined {
-  return DESIGN_LAWS.find((entry) => entry.id === id)
-}

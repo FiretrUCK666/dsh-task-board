@@ -42,15 +42,6 @@ export function markSurfaceActive(id: SurfaceId): void {
 }
 
 /**
- * Which surfaces are on, read fresh at request time rather than cached at load
- * time: a row may be evaluated after this module is.
- * @returns the active surface ids.
- */
-export function activeSurfaces(): readonly SurfaceId[] {
-  return SURFACE_IDS.filter(id => active.has(id))
-}
-
-/**
  * The whole set, in the shape the browser reads.
  *
  * Absent rather than `false`, so "the host could not answer" and "the host

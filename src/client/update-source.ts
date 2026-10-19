@@ -25,10 +25,6 @@ import type {
 import { routeUrl } from './route-base.ts'
 import packageJson from '../../package.json'
 
-/** The bundle's own package identity (the host-unreachable fallback). */
-export const BUNDLED_PACKAGE_NAME =
-  (packageJson as { name?: string }).name ?? 'dsh-task-board'
-
 /** The bundle's own version (the host-unreachable comparison baseline). */
 export const BUNDLED_VERSION =
   (packageJson as { version?: string }).version ?? 'unknown'

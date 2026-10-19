@@ -337,27 +337,6 @@ function momentOf(day: CalendarDay, now: number): DateReading {
   return { kind: 'at', at: stamp }
 }
 
-/**
- * **这串字看起来是在写一个日期吗。**
- *
- * 快记里的一串字读不懂时要不要出声，判据就是它：`@13/45`、`@下个月`、`@截止 下个月` 是在
- * 写日期，读不懂必须说；而 `@每周`、`@张三`、`@晚餐的菜单`、`@日本料理` 里的 `@` 只是一个
- * 符号，说了就是噪声——而一句会被读者学会忽略的提示，等于没有提示。
- *
- * 判据只读**形状**，不读意思：数字、单个星期字、以及那几个只有日期会用的词头。写成
- * 「含 `月` 或 `日` 二字」是不行的——`月光曲` 与 `日本料理` 会因此开始报错，而这条判据的
- * 全部价值就在于它不乱说话。
- * @param word - `@` 后面那些字（名字已经剥掉）。
- * @returns 是否像在写一个日期。
- */
-export function looksLikeDate(word: string): boolean {
-  const text = word.trim()
-  if (text === '') return false
-  if (/\d/.test(text)) return true
-  if (/^(?:下|周)?[一二三四五六日天]$/.test(text)) return true
-  return /^(?:今天|今日|明天|明日|昨天|前天|后天|大后天|下周|下个月|这个月|下月|本月|月底|月初|周末|今年|明年|去年)/.test(text)
-}
-
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export function toItemDateField(at: number | undefined): string {
   return at === undefined ? '' : localDayKey(at)

@@ -17,11 +17,6 @@ import { type CruiseWindow } from '../../core/cruise.ts';
 export declare function formatTime(ms: number): string;
 /** Exact local time label: `YYYY-MM-DD HH:mm:ss`. */
 export declare function formatDateTime(ms: number): string;
-/** Compact calendar-date label (day only, never a clock): `M月D日` / `M/D`
- *  same-year, year-prefixed across years. THE date half of the cruise
- *  grammar, split out so due dates never inherit a meaningless 00:00.
- */
-export declare function formatDayLabel(ms: number, now?: number): string;
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
 export declare function formatDuration(ms: number): string;
 /** Compact cruise time label: `HH:mm` when same-day, `M月D日 HH:mm` /

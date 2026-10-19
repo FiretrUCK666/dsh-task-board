@@ -34,23 +34,6 @@ export function formatDateTime(ms: number): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`
 }
 
-/** Compact calendar-date label (day only, never a clock): `M月D日` / `M/D`
- *  same-year, year-prefixed across years. THE date half of the cruise
- *  grammar, split out so due dates never inherit a meaningless 00:00.
- */
-export function formatDayLabel(ms: number, now: number = Date.now()): string {
-  const date = new Date(ms)
-  const base = new Date(now)
-  if (date.getFullYear() === base.getFullYear()) {
-    return isEnglish()
-      ? `${date.getMonth() + 1}/${date.getDate()}`
-      : `${date.getMonth() + 1}月${date.getDate()}日`
-  }
-  return isEnglish()
-    ? `${date.getFullYear()}/${date.getMonth() + 1}/${date.getDate()}`
-    : `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日`
-}
-
 /** Human duration label (zh: `X 分 Y 秒`; en: `Xm Ys`). */
 export function formatDuration(ms: number): string {
   const totalSeconds = Math.max(0, Math.round(ms / 1000))

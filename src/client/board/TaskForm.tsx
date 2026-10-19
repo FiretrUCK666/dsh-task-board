@@ -140,9 +140,9 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           onRemove={id => { onChange({ ...draft, attachments: draft.attachments.filter(entry => entry.id !== id) }) }}
           busy={attachments.busy}
           busyLabel={attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined}
-          /* **旧附件找不回来是一句报错，不是一条说明。** 它原先走 `hint`（这一格已经不收
-             hint 了：添加附件的那类文案全部删掉），而它是**真的丢了东西**——「这些旧附件
-             找不回字节了，请重新选择」必须说得出来，所以它落在 `error` 那一档。 */
+          /* **找不回来的旧附件是一句报错，不是一条说明。** 它是**真的丢了东西**——
+             「这些旧附件找不回字节了，请重新选择」必须说得出来，所以落在 `error`
+             那一档，而不是与「还能补救」的提示共用一行更轻的字。 */
           error={attachments.error ?? legacyHint}
         />
       </Field>
