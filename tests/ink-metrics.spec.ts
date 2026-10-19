@@ -71,15 +71,15 @@ describe('the ink offset is computed from the font, not written down', () => {
 
 describe('what gets published is a ratio, and both directions get published', () => {
   it('a low-sitting ink publishes a POSITIVE em value', () => {
-    /* 偏移 0.5px、参考字号 14px：内衬 = 2 × 0.5 / 14 = 1px。
-       **乘 2** 是因为内衬只把内容盒挤向一侧，盒心只走一半；
-       **除以参考字号** 是因为发出去的必须与字号无关。 */
+    /* 偏移 +0.5px。发布量**不是** `偏移 × 2 = 1px`：1px 与 0 在内衬的量化表上落在
+       同一级（见 `QUANTUM`），写下去屏幕上的墨一动不动。所以发布的是「至少跨一级」
+       ——`1.4px`。这一条钉的正是那个「修了等于没修」的坑。 */
     stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
     publishInkMetrics()
     expect(
       document.documentElement.style.getPropertyValue(INK_PROPERTY),
-      'a positive offset needs a positive pad, expressed in em',
-    ).toBe('1px')
+      'a positive offset needs a positive pad that actually crosses a step',
+    ).toBe('1.4px')
   })
 
   it('a HIGH-sitting ink publishes a NEGATIVE pad instead of nothing', () => {
@@ -92,27 +92,27 @@ describe('what gets published is a ratio, and both directions get published', ()
     expect(
       document.documentElement.style.getPropertyValue(INK_PROPERTY),
       'the sign picks the side; it does not decide whether to correct at all',
-    ).toBe('-1px')
+    ).toBe('-1.4px')
   })
 
-  it('the published number is TWICE the offset, in px, whatever the size', () => {
-    /* **这条钉的是单位。** 量到过的事实（`probe-pad-needed.js`，在真实渲染上量的）：
-       28px 的按钮、26px 的页签、20px 的小件与芯片，需要的下内衬**都是 1.00px**，与字号
-       和盒高无关——偏移只来自「字体的上下沿不对称」，那是字体自己的常数。
-       所以发布的是 `偏移 × 2` 的像素量，不是按字号缩放的比例。
-       早先发过 em：12px 上算出 0.86px、16px 上 1.14px，而实测需要的是同一个 1.00px，
-       于是小字欠校正、大字过校正，两端都不对。 */
+  it('the published pad is in px and always crosses at least one step', () => {
+    /* **这条钉两件事：单位与量化。**
+       单位是 px，不是按字号缩放的比例——偏移只来自「字体的上下沿不对称」，那是字体
+       自己的常数，换字号时行盒与墨一起缩放，而盒子的余量按另外一档走，两者相抵。
+       早先发过 em：12px 上算出 0.86px、16px 上 1.14px，都不对。
+
+       量化是这一条真正的重点：内衬每约 1.4px 才让墨跳一格，`1px` 与 `0` 同档。
+       所以**任何偏移都至少发一级**，而不是照偏移量精确取值。 */
     stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
     publishInkMetrics()
-    const twice = document.documentElement.style.getPropertyValue(INK_PROPERTY)
+    const big = document.documentElement.style.getPropertyValue(INK_PROPERTY)
     document.documentElement.style.removeProperty(INK_PROPERTY)
-    /* 偏移减半、方向不变：发布量也该减半，且仍然是同一个单位。
-       （上行 14 / 下行 4 = 10，墨 11 / 1.5 = 9.5，差 0.5 → 偏移 +0.25 → 内衬 0.5px。） */
+    /* 偏移减半（+0.25px，刚好在死区边界之外）：仍然要跨一级，不能退化成 0.5px。 */
     stubCanvas({ fontAscent: 14, fontDescent: 4, inkAscent: 11, inkDescent: 1.5 })
     publishInkMetrics()
-    const half = document.documentElement.style.getPropertyValue(INK_PROPERTY)
-    expect(twice, 'twice the offset, in px').toBe('1px')
-    expect(half, 'half the offset halves the pad, in px').toBe('0.5px')
+    const small = document.documentElement.style.getPropertyValue(INK_PROPERTY)
+    expect(big, 'the big offset still publishes one step, in px').toBe('1.4px')
+    expect(small, 'a smaller offset must not fall back to a value below one step').toBe('1.4px')
   })
 
   it('writes the reading onto the element that DECLARES the token', () => {
@@ -122,7 +122,7 @@ describe('what gets published is a ratio, and both directions get published', ()
     stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
     const first = publishInkMetrics()
     expect(first?.offset).toBe(0.5)
-    expect(document.documentElement.style.getPropertyValue(INK_PROPERTY)).toBe('1px')
+    expect(document.documentElement.style.getPropertyValue(INK_PROPERTY)).toBe('1.4px')
 
     /* 同一份字体再量一次：值没变，就不该再写一次（每一次写都让整页的样式失效重算）。 */
     const setSpy = vi.spyOn(document.documentElement.style, 'setProperty')
@@ -161,7 +161,7 @@ describe('what gets published is a ratio, and both directions get published', ()
     expect(
       document.documentElement.style.getPropertyValue(INK_PROPERTY),
       'the synchronous pass must publish before any await',
-    ).toBe('1px')
+    ).toBe('1.4px')
     await Promise.resolve()
     await Promise.resolve()
     expect(probe, 'the fonts.ready pass must run').toHaveBeenCalled()
