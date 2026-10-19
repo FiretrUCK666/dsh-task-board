@@ -68,18 +68,6 @@ export declare const DATE_FIELD_KEY: {
     readonly hardDueAt: "item.field.hardDueAt";
 };
 /**
- * 每个字段名旁边那一句**注解**的键——「这个字段是干什么的」。
- *
- * 与 `DATE_FIELD_KEY` 并排定义，因为它们是同一件事的两半：名字说「我是谁」，注解说
- * 「我管什么」。两个表面（新建那张纸的字段名旁、详情里点开那一行时）读的是同一份，
- * 所以「计划」与「截止」的分别不可能只在一处被说清。
- */
-export declare const DATE_GLOSS_KEY: {
-    readonly startsAfter: "item.field.startsAfter.gloss";
-    readonly dueAt: "item.field.dueAt.gloss";
-    readonly hardDueAt: "item.field.hardDueAt.gloss";
-};
-/**
  * 每个日期框里那行**占位**的键：它教的是**拼写**（这个框认哪几种写法，包括 `@` 那一种）。
  *
  * 三份键住在这里而不是某一张纸里：它说的是字段自己认什么，而**两个表面都在写同一个字段**

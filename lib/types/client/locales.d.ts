@@ -301,7 +301,6 @@ export declare const zh: {
     'detail.renameCancel': string;
     'detail.renameEmpty': string;
     'detail.sessionDrivePlaceholder': string;
-    'detail.sessionDriveHint': string;
     'detail.promptEmpty': string;
     'detail.moveBlockedBusy': string;
     'detail.schedule.blocked': string;
@@ -811,9 +810,6 @@ export declare const zh: {
     'item.field.startsAfter': string;
     'item.field.dueAt': string;
     'item.field.hardDueAt': string;
-    'item.field.startsAfter.gloss': string;
-    'item.field.dueAt.gloss': string;
-    'item.field.hardDueAt.gloss': string;
     'item.field.tags': string;
     'item.field.tagsHint': string;
     'item.field.taskId': string;

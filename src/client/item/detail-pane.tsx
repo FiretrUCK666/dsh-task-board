@@ -23,7 +23,7 @@ import { Chip } from '../design/Chip.tsx'
 import { DateField } from './date-field.tsx'
 import { ProseField } from './prose-field.tsx'
 import { formatItemDate, readDateDraft, toItemDateField } from './model.ts'
-import { DATE_GLOSS_KEY, DATE_HINT_KEY, GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
+import { DATE_HINT_KEY, GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark } from './marks.tsx'
 import { NoteEntry, useNote } from './group-head.tsx'
 import { ItemSteps } from './step-editor.tsx'
@@ -831,11 +831,9 @@ function DateLine(props: {
     <li data-key={props.keyName} data-tone={props.tone}>
       <i aria-hidden="true" />
       <b>{props.label}</b>
-      {/* **注解只在读者正写这一格的时候出现。** 它说的是「这个字段管什么」——那是读者
-          按下这一行、准备写一个日期时的问题；读的时候（三个读数各说各的日期）不需要它，
-          三个注解永远挂在那里只会把一列读数变成一列解释。
-          词与新建那张纸**同一份**（`DATE_GLOSS_KEY`）：同一句话不该有两个版本。 */}
-      {props.field === true && <span className={css.itemFieldGloss}>{t(DATE_GLOSS_KEY[props.keyName])}</span>}
+      {/* **这一行只有名字、读数和框，没有注解。** 名字已经说清它是哪一个日期，读数就在
+          旁边——中间再塞一句「这个字段管什么」，是把一列读数变成一列解释。按下这一行时
+          框会出现，占位教的是**怎么写**（`DATE_HINT_KEY`）。 */}
       {/* **这一格是共用元件，不是一根长得像它的输入框。** 读得懂就读出那个日期、读不懂
           就原地拒绝（`date-field.tsx`），而「新建一条」那张纸上用的是同一个元件——同一个
           词在两处被同一个判定读，就不会有一处把它悄悄丢掉。占位也是字段自己那一份

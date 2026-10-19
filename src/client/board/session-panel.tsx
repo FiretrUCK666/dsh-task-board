@@ -1115,11 +1115,13 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
           {t('review.commentSend')}
         </Button>
       </div>
-      {/* One quiet line, owned by the composer: what the two send modes do, or
-          the reason sending is refused. It lives HERE (not inside any fold)
-          because a touch user has no hover to discover the explanation
-          with. */}
-      <p className={css.detailHint}>{hint ?? t('detail.sessionDriveHint')}</p>
+      {/* One quiet line, and it only ever says why SENDING IS REFUSED.
+          The two send modes are already spelt out by the two buttons' own
+          labels (「排队」/「插话」), so a line explaining them was a third
+          copy of the same sentence. A refusal, on the other hand, has no
+          other place to appear — and it lives HERE, outside any fold, because
+          a touch user has no hover to discover it with. */}
+      {hint !== undefined && <p className={css.detailHint}>{hint}</p>}
     </div>
   )
 }

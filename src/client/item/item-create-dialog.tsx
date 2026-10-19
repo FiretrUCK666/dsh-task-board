@@ -19,7 +19,7 @@ import type { ItemCapture } from '../../core/item-transitions.ts'
 import { isBlankCapture } from '../../core/item-transitions.ts'
 import type { ItemPriority, ItemStatus } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemDateConflict } from '../../core/item.ts'
-import { DATE_FIELD_KEY, DATE_GLOSS_KEY, DATE_HINT_KEY, PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
+import { DATE_FIELD_KEY, DATE_HINT_KEY, PRIORITY_LABEL, GROUP_LABEL } from './labels.ts'
 import { CrossMark, PriorityMark } from './marks.tsx'
 import { NoteEntry, useNote } from './group-head.tsx'
 import type { DateDraft } from './model.ts'
@@ -463,15 +463,16 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               </div>
             </div>
 
-            {/* **三个日期：共用元件、共用判定、共用那句话，也共用这一行形状。**
-                每一格是「字段名 + 那一句注解」在上、框在下，框下是它读出来的那个日期或者
-                它读不懂的那句拒绝（见 `date-field.tsx`）。三格由 `DATE_FIELDS` 那**一份
-                声明**长出来，所以纸上的顺序、字段名、注解、占位之间不可能彼此错位。 */}
+            {/* **三个日期：共用元件、共用判定、共用占位，也共用这一行形状。**
+                每一格是「字段名」在上、框在下，框下是它读出来的那个日期或者它读不懂的
+                那句拒绝（见 `date-field.tsx`）。三格由 `DATE_FIELDS` 那**一份声明**长出
+                来，所以纸上的顺序、字段名、占位之间不可能彼此错位。
+                **名字旁边没有注解**：名字已经说清它是哪一个日期，而框里的占位教的是
+                怎么写——中间那一句「这个字段管什么」是同一件事的第三次说明。 */}
             {DATE_FIELDS.map(key => (
               <label key={key} className={css.itemCreateDialogDate}>
                 <span className={css.itemCreateDialogLabel}>
                   {t(DATE_FIELD_KEY[key])}
-                  <b className={css.itemFieldGloss}>{t(DATE_GLOSS_KEY[key])}</b>
                 </span>
                 <DateField
                   value={dates[key]}

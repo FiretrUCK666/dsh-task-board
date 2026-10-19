@@ -5610,17 +5610,29 @@ describe('新建一条：读不懂的日期不存下这一条，而是当场说'
     }
   })
 
-  it('三个日期各说得出自己管什么，而且只写一个也算数', () => {
-    // 「这三个是不是重复了、能不能只写一个」是读者问的第一个问题，答案就在字段名旁边那句
-    // 注解与下面那一行里——不在别处。
+  it('三个日期只写名字，字旁不再挂注解，而「只写一个也算数」仍然说得出', () => {
+    // 字段名（开始 / 计划 / 截止）已经回答了「这是哪一个」，框里的占位教的是**怎么写**。
+    // 名字与占位之间再塞一句「这个字段管什么」，是同一件事的第三次说明——所以那一句删了。
+    // 「只写一个也算数」留着：它回答的是另一个问题（能不能跳过），而且没有别的出口。
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       openSheet(panel, '三个日期的分工')
       const shown = panel.surface.textContent ?? ''
       for (const gloss of ['早于这天不动', '想做完的那天', '不能顺延的那天']) {
-        expect(shown, `字段名旁没有说「${gloss}」`).toContain(gloss)
+        expect(shown, `字段名旁又挂回了注解「${gloss}」`).not.toContain(gloss)
       }
+      expect(shown, '三个日期都还在').toContain('开始')
       expect(shown, '没有说清「只写一个也算数」').toContain('只写一个也算数')
+      /* **删的是注解，不是字段。** 三个框各有一个占位（教怎么写），这是那张纸上唯一
+         还剩的说明——只断言「注解不见了」的话，把整个日期格删掉这一条也会绿。 */
+      const cells = [...panel.surface.querySelectorAll('[class*="itemCreateDialogDate"]')]
+      expect(cells.length, '三个日期格少了一个').toBe(3)
+      for (const cell of cells) {
+        const input = cell.querySelector('input')
+        expect(input, '一个日期格没有框').not.toBeNull()
+        expect((input?.getAttribute('placeholder') ?? '').length, '占位说明也没了').toBeGreaterThan(0)
+        expect(cell.querySelector('[class*="itemCreateDialogLabel"] b'), '字段名旁边又挂回了注解').toBeNull()
+      }
     } finally {
       panel.dispose()
     }

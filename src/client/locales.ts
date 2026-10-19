@@ -304,7 +304,6 @@ export const zh = {
   'detail.renameCancel': '取消',
   'detail.renameEmpty': '标题不能为空',
   'detail.sessionDrivePlaceholder': '给这个会话留言，等于驱动本任务继续…',
-  'detail.sessionDriveHint': '排队按序注入；插话即时送达；排队中可取消。',
   'detail.promptEmpty': '执行 Prompt 取自正文，先写正文。',
   'detail.moveBlockedBusy': '这一轮还在跑，跑完就能换栏了。',
   'detail.schedule.blocked': '执行 Prompt 为空',
@@ -901,15 +900,6 @@ export const zh = {
   'item.field.startsAfter': '开始',
   'item.field.dueAt': '计划',
   'item.field.hardDueAt': '截止',
-  /* 每个字段名旁边那一小句：**这个字段是干什么的**。
-   *
-   * 三个词说得出「我是哪一头」，但说不出「我和另外两个什么关系」——而读者真正要回答的
-   * 就是那个问题（「这三个是不是重复了」）。所以三句并列写，读起来是一组对照：一扇门、
-   * 一个打算、一条不许顺延的上限。它们出现在**读者正在写这个字段的地方**（新建那张纸的
-   * 字段名旁、详情里点开那一行时），而不是塞进一段说明文。 */
-  'item.field.startsAfter.gloss': '早于这天不动',
-  'item.field.dueAt.gloss': '想做完的那天',
-  'item.field.hardDueAt.gloss': '不能顺延的那天',
   'item.field.tags': '标签',
   'item.field.tagsHint': '用顿号或逗号分开',
   'item.field.taskId': '看板卡片',
@@ -1464,7 +1454,6 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.renameCancel': 'Cancel',
   'detail.renameEmpty': 'The title cannot be empty',
   'detail.sessionDrivePlaceholder': 'Comment here to drive this task in this session…',
-  'detail.sessionDriveHint': 'Injected in order; steer sends now; queued ones can be cancelled.',
   'detail.promptEmpty': 'The run prompt is the body text, so write the body first.',
   'detail.moveBlockedBusy': 'This run is still going. You can move the card once it lands.',
   'detail.schedule.blocked': 'Execution prompt is empty',
@@ -1984,9 +1973,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.field.startsAfter': 'Starts',
   'item.field.dueAt': 'Target',
   'item.field.hardDueAt': 'Deadline',
-  'item.field.startsAfter.gloss': 'not before this day',
-  'item.field.dueAt.gloss': 'the day you mean to finish',
-  'item.field.hardDueAt.gloss': 'the day that cannot slip',
   'item.field.tags': 'Tags',
   'item.field.tagsHint': 'Separate with 、 or a comma',
   'item.field.taskId': 'Card',

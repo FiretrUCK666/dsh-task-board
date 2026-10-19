@@ -526,13 +526,19 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(folds).toMatch(/min-height:\s*0/)
     expect(folds).toMatch(/display:\s*flex/)
     expect(ruleOf('reviewComposer')).toMatch(/flex:\s*none/)
-    // The composer explains itself (a fold that starts collapsed on a phone
-    // must not hide the send-mode / blocking-reason line behind a hover).
+    // The composer prints ONE line, and only when it has something to refuse:
+    // 「排队」/「插话」 already spell out the two send modes on the buttons
+    // themselves, so the line that explained them was a third copy — it is gone.
+    // A blocking reason has no other outlet, so that one still renders, and it
+    // renders HERE rather than inside a fold (a collapsed fold on a phone must
+    // not hide why sending is refused).
     const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
     const panelSource = readFileSync(panelPath, 'utf8')
     const composer = panelSource.slice(panelSource.indexOf('export function SessionComposer'))
     expect(composer).toMatch(/hint\?: string/)
-    expect(composer).toMatch(/\{hint \?\? t\('detail\.sessionDriveHint'\)\}/)
+    expect(composer).toMatch(/\{hint !== undefined && <p className=\{css\.detailHint\}>\{hint\}<\/p>\}/)
+    // …and it must not fall back to any built-in sentence of its own.
+    expect(composer).not.toMatch(/sessionDriveHint/)
     // …and the rail no longer takes it.
     const rail = panelSource.slice(panelSource.indexOf('export function SessionRail'), panelSource.indexOf('export function SessionComposer'))
     expect(rail).not.toMatch(/hint\?: string/)
