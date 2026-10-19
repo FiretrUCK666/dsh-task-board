@@ -885,6 +885,7 @@ export declare const zh: {
     'item.agenda.quietWhy': string;
     'item.agenda.inbox': string;
     'item.agenda.quietNote': string;
+    'item.agenda.nothingDated': string;
     'item.filter.clear': string;
     'item.filters.label': string;
     'item.filters.byCard': string;

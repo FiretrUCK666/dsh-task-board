@@ -184,6 +184,16 @@ export function SchedulePage(props: ItemPageProps) {
         <AgendaSection key={bucket.id} bucket={bucket} english={english} renderRows={props.renderRows} now={props.now} sort={props.sort} />
       ))}
       {quiet.length > 0 && <QuietLine entries={quiet} noteText={t('item.agenda.quietNote')} label={t('item.agenda.quietWhy')} />}
+      {/* **一行日期都没有时，页面不能只剩那一行计数。**
+          读者截图报过一次：正文区整片空白，只有一枚「截止已过 0 · … · 已完成 1 · 刚记下 3」
+          的药丸浮在上面。那在逻辑上是对的（那三条还没排进任何一天、那一条已完成，都确实
+          不进日程），可屏上看起来就是**坏掉了**——`item.agenda.quietNote` 那句话是给
+          「节头下面」写的，它解释的是「这些没被列出来」，而不是「今天这一页什么都没有」。
+          所以这里补一句处境说明：读者要知道**为什么空、以及下一步去哪**（那几条在哪一页
+          看得到），而不是对着一片空白猜。判据是 `buckets` 里有没有任何一条进过日期桶。 */}
+      {buckets.every(bucket => bucket.items.length === 0) && (
+        <p className={css.itemAgendaNothing}>{t('item.agenda.nothingDated')}</p>
+      )}
     </div>
   )
 }

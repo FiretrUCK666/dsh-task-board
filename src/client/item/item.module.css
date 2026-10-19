@@ -5307,6 +5307,23 @@ textarea.itemInput {
   display: block;
 }
 
+/* **一行日期都没有时的那句处境说明。**
+ *
+ * 它不是空态（空态是「这个文档里一条都没有」），而是「有 4 条，但没有一条落在某一天」——
+ * 读者截图里那片空白正是这一种。所以它比 `.itemNote` 显眼一档：那是注释，这是回答。
+ *
+ * 左沿与它上面那枚药丸对齐（`--item-agenda-lead`），用 `padding` 而不是 `margin`：
+ * 本表的 UA 重置 `:where(.itemRoot) p { margin: 0 }` 的 specificity 是 (0,1,1)，
+ * 赢过任何类名规则，所以 `<p>` 上的 margin 在真页面上恒为 0。 */
+.itemAgendaNothing {
+  padding-inline-start: var(--item-agenda-lead);
+  margin: 0;
+  max-inline-size: var(--item-note-measure);
+  font-size: var(--dsh-tb-type-body-size);
+  line-height: var(--dsh-tb-text-line-h);
+  color: var(--item-ink-2);
+}
+
 /* 悬停就偷看一句：`data-note-hover` 由调用点挂在**该被指着的那一件**上（一枚组头、
    安静行那枚药丸、属性表的字段名）——所以「指着哪儿会偷看」在标记里读得出来，而不是靠
    一条看不见的兄弟关系猜出来的。
