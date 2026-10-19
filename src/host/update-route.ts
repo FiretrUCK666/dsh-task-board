@@ -52,7 +52,7 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import {
   classifyInstallSpec,
   githubSpecOfRepositoryUrl,
@@ -404,17 +404,33 @@ export function installedVersionIn(dir: string | undefined): string | undefined 
   return undefined
 }
 
-/** Run one read-only git command; undefined on any failure (git may be absent). */
-function gitOut(repoDir: string, args: string[], timeoutMs: number): string | undefined {
-  try {
-    return execFileSync('git', args, {
+/**
+ * Run one read-only git command; `undefined` on any failure (git may be absent).
+ *
+ * **异步，不是 `execFileSync`。** 两条理由，都不是风格问题：
+ *
+ *   1. **同步子进程会阻塞整个 host 事件循环。** 一次 `ls-remote` 挂住 6 秒，这 6 秒里
+ *      同一个进程要伺候的每一条别的请求（看板文档、SSE、会话状态）都停着。
+ *   2. **同步让「总预算」变成一个算不出来的数。** `boundedByBudget` 包一个同步调用
+ *      没有意义：它先跑完，才轮到计时器。于是整段的墙钟时间是两段相加，而不是两者的
+ *      较大值——那正好是这一版要修掉的缺陷的形状。
+ * @param repoDir - the checkout directory.
+ * @param args - the git arguments.
+ * @param timeoutMs - the bound; a hung command is the same as an absent one.
+ * @returns the trimmed stdout, or `undefined`.
+ */
+function gitOut(repoDir: string, args: string[], timeoutMs: number): Promise<string | undefined> {
+  return new Promise<string | undefined>((resolve) => {
+    execFile('git', args, {
       cwd: repoDir,
-      stdio: ['ignore', 'pipe', 'ignore'],
       timeout: timeoutMs,
-    }).toString().trim()
-  } catch {
-    return undefined
-  }
+      killSignal: 'SIGKILL',
+    }, (error, stdout) => {
+      if (error !== null) { resolve(undefined); return }
+      const text = stdout.toString().trim()
+      resolve(text === '' ? undefined : text)
+    })
+  })
 }
 
 /**
@@ -425,14 +441,14 @@ function gitOut(repoDir: string, args: string[], timeoutMs: number): string | un
  * @param repoDir - the `link:` target directory.
  * @returns the git status, or undefined when unreadable.
  */
-function readGitStatus(repoDir: string): UpdateGitStatus | undefined {
-  const head = gitOut(repoDir, ['rev-parse', 'HEAD'], GIT_LOCAL_TIMEOUT_MS)
+async function readGitStatus(repoDir: string): Promise<UpdateGitStatus | undefined> {
+  const head = await gitOut(repoDir, ['rev-parse', 'HEAD'], GIT_LOCAL_TIMEOUT_MS)
   if (head === undefined || head === '') return undefined
-  const porcelain = gitOut(repoDir, ['status', '--porcelain'], GIT_LOCAL_TIMEOUT_MS) ?? ''
+  const porcelain = (await gitOut(repoDir, ['status', '--porcelain'], GIT_LOCAL_TIMEOUT_MS)) ?? ''
   /* **打网络的那一段用 `CHECK_STAGE_BUDGET_MS`，不是客户端的 15 秒。** 走满它就意味着
      这次读取拿不到 git 状态（下面降级成 `undefined`，界面只是不显示 git 那一段），
      而不是让浏览器先放弃、把整次检查画成一次失败。见那个常量的注释。 */
-  const remoteLine = gitOut(repoDir, ['ls-remote', 'origin', 'refs/heads/main'], CHECK_STAGE_BUDGET_MS)
+  const remoteLine = await gitOut(repoDir, ['ls-remote', 'origin', 'refs/heads/main'], CHECK_STAGE_BUDGET_MS)
   const remoteHead = remoteLine !== undefined && remoteLine !== ''
     ? remoteLine.split(/\s/)[0]
     : undefined
@@ -1051,13 +1067,27 @@ const CHECK_TOTAL_BUDGET_MS = 11_000
  */
 async function readLiveView(ctx: Context): Promise<UpdateSourceView> {
   const copy = runningCopyOf(ctx)
-  const git = copy.checkoutDir !== undefined ? readGitStatus(copy.checkoutDir) : undefined
-  /* 从这里开始计总账：`readLatest` 拿到的是**整次读取还剩多少时间**，不是它自己那一档
-     的上限。超时的结果是「读不到最新版」（`latest` 缺席），不是一次失败。 */
-  const latest = await boundedByBudget(
-    readLatest(ctx, copy),
-    Math.max(1_000, CHECK_TOTAL_BUDGET_MS - GIT_LOCAL_TIMEOUT_MS * 2),
-  )
+  /* **两件事并发，各自都受同一个总额保护。**
+   *
+   * 原先这里是「先读 git 状态（同步，最长 12 秒：本地两条各 3 秒 + `ls-remote` 6 秒），
+   * 再从余额里扣掉 6 秒给 `readLatest`」——那是个**算术**保证，而算术会算错：git 的
+   * 真实最坏是 3000 + 3000 + 6000 = 12 秒，扣掉 6 秒之后剩 5 秒，两者相加仍是 17 秒，
+   * 比客户端的 15 秒还长。于是这个函数存在的理由（host 不许比浏览器活得久）在**最需要
+   * 它的那一条路上**恰好失效：一个 `ls-remote` 挂住的 checkout。
+   *
+   * 改成并发之后，保证是**结构性的**而不是算术的：两件事同时起跑，谁都没有机会把
+   * 对方的时间花掉，整段的墙钟时间不超过 `CHECK_TOTAL_BUDGET_MS`。
+   *
+   * 而且这本来就是它们的关系——它们互不依赖：一个问「本机这份 checkout 在哪、脏不脏、
+   * 远端有没有新提交」，一个问「上游发布到哪一版」。串行只是历史顺序。
+   *
+   * 超时的后果都是**降级而非失败**：`git` 缺席只是不显示 git 那一段（对话里那句
+   * 「远端读不到」就是它），`latest` 缺席是「读不到最新版」。两者都不是「检查失败」。 */
+  const gitWork = copy.checkoutDir !== undefined
+    ? boundedByBudget(readGitStatus(copy.checkoutDir), CHECK_TOTAL_BUDGET_MS)
+    : Promise.resolve(undefined)
+  const latestWork = boundedByBudget(readLatest(ctx, copy), CHECK_TOTAL_BUDGET_MS)
+  const [git, latest] = await Promise.all([gitWork, latestWork])
   // What the pages that are actually open reported about themselves (bundle
   // version + measured geometry). Diagnosing "the phone looks wrong" without
   // this meant arguing from screenshots; with it, the host shows the truth.
@@ -1095,6 +1125,7 @@ async function applyRunningCopy(ctx: Context): Promise<UpdateApplyResult> {
   const copy = runningCopyOf(ctx)
   const installer = ctx.get('pluginManager') as PackageInstaller | undefined
   const target = copy.plan.apply === 'checkout' ? copy.checkoutDir : copy.dir
+  const status = copy.checkoutDir !== undefined ? await readGitStatus(copy.checkoutDir) : undefined
   return await applyUpdate({
     plan: copy.plan,
     ...(installer !== undefined ? { installer } : {}),
@@ -1103,7 +1134,7 @@ async function applyRunningCopy(ctx: Context): Promise<UpdateApplyResult> {
       ? {
         checkout: {
           dir: copy.checkoutDir,
-          dirty: readGitStatus(copy.checkoutDir)?.dirty === true,
+          dirty: status?.dirty === true,
         },
       }
       : {}),

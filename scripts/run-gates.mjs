@@ -44,17 +44,31 @@ const SCRIPTS_DIR = 'scripts'
 
 /**
  * 从一个门禁脚本的源码里读出它认识的自测开关。
+ *
+ * 两种读法，**都必须有**：
+ *
+ *   · `probeOf(['--probe-a', '--probe-b'])` —— 共享解析器的调用形态。绝大多数门禁
+ *     走这条，它也是推荐形态（拼错的开关会被 `probe-args.mjs` 拒绝）。
+ *   · 直接写在源码里的 `'--probe-…'` 字面量 —— 少数脚本自己解析参数（`verify-design-sync`
+ *     有 5 个、`verify-scroll-floor` 与 `verify-decoration-property` 各 1 个）。
+ *
+ * **只认第一种是一个真实发生过的缺陷。** 这个运行器第一版只读 `probeOf([...])`，
+ * 于是上面那 7 个自测**静默地不再被 `verify` 调用**——旧的逐行清单里有它们，新的一行
+ * 里没有，而没有任何东西报错。讽刺的是 `verify-design-sync` 正是那条守「每个门禁都要
+ * 被接线」的法则，它自己的 5 个自测反倒先掉了。
+ *
+ * 所以判据放宽到「源码里出现过这个开关名字」：它仍然是**同一处真相**（脚本自己知道
+ * 自己认识什么），只是不再假设那真相必须长成某一种写法。
  * @param text - 那个脚本的全文。
- * @returns `{ probes: string[], declaresProbeOf: boolean }`。
+ * @returns `{ probes }`。
  */
 export function probesIn(text) {
-  const calls = [...text.matchAll(/probeOf\(\s*\[([^\]]*)\]/g)]
   const probes = []
-  for (const call of calls) {
-    for (const m of (call[1] ?? '').matchAll(/'(--probe[\w-]*)'/g)) {
-      const name = m[1]
-      if (name !== undefined && !probes.includes(name)) probes.push(name)
-    }
+  for (const m of text.matchAll(/['"](--probe[\w-]*)['"]/g)) {
+    const name = m[1]
+    /* `'--probe-'` 是前缀本身，不是开关名。 */
+    if (name === undefined || name === '--probe-') continue
+    if (!probes.includes(name)) probes.push(name)
   }
   return { probes, declaresProbeOf: /probeOf\(/.test(text) }
 }
@@ -72,7 +86,9 @@ export function planOf(root) {
     const text = readFileSync(join(dir, name), 'utf8')
     const { probes, declaresProbeOf } = probesIn(text)
     if (declaresProbeOf && probes.length === 0) {
-      /* 声明了却读不出名字：它的自测会静默不跑。这是一次真失败，不是「没有探针」。 */
+      /* 调了 `probeOf(` 却一个开关名字都读不到：那说明开关名是拼出来的（变量、模板
+         字符串），这个运行器看不见，它的自测会静默不跑。这是一次真失败，不是
+         「没有探针」——所以报红而不是跳过。 */
       out.push({ script: name, args: [], kind: 'unreadable-probes' })
       continue
     }
@@ -103,23 +119,31 @@ function main() {
   const argv = process.argv.slice(2)
   const probe = probeOf(['--probe-parse'], process.argv)
   if (probe === '--probe-parse') {
-    /* 三种写法：单引号、多行、以及与别的参数混在一起。 */
+    /* **两种写法都必须读到**，因为只读到第一种会让第二种的自测静默消失——那正是
+       这个运行器第一版的缺陷（7 个自测掉了，没有任何东西报错）。 */
     const cases = [
-      { text: "probeOf(['--probe-a', '--probe-b'])", want: 2 },
-      { text: "probeOf([\n  '--probe-x',\n  '--probe-y',\n  '--probe-z',\n])", want: 3 },
-      { text: 'probeOf([])', want: 0 },
+      { text: "probeOf(['--probe-a', '--probe-b'])", want: 2, why: '共享解析器，单行' },
+      { text: "probeOf([\n  '--probe-x',\n  '--probe-y',\n  '--probe-z',\n])", want: 3, why: '共享解析器，多行' },
+      { text: 'probeOf([])', want: 0, why: '没有探针' },
+      /* 自己解析参数的脚本：开关名只是一个源码里的字面量，与 `probeOf` 无关。 */
+      { text: "if (arg === '--probe-deco') { run() }", want: 1, why: '自解析、单引号字面量' },
+      { text: "const known = ['--probe-a', '--probe-b', '--probe-c']", want: 3, why: '自解析、数组字面量' },
+      /* 双引号也算：那是合法的 JS，一个只认单引号的读法会漏掉它。 */
+      { text: 'if (a === "--probe-dq") go()', want: 1, why: '双引号字面量' },
+      /* 前缀本身不是开关名。 */
+      { text: "const P = '--probe-'", want: 0, why: '只有前缀，没有名字' },
     ]
     const wrong = []
     for (const one of cases) {
       const got = probesIn(one.text).probes.length
-      if (got !== one.want) wrong.push(`${one.text.slice(0, 30)}… 读出 ${String(got)}，应为 ${String(one.want)}`)
+      if (got !== one.want) wrong.push(`${one.why}：读出 ${String(got)}，应为 ${String(one.want)}`)
     }
     if (wrong.length > 0) {
       for (const line of wrong) console.error(`  - ${line}`)
       console.error('run-gates self-test FAILED: 探针解析读得不对')
       process.exit(1)
     }
-    console.log('OK 自测：探针解析对单行、多行、空数组都读得对（门禁是活的）。')
+    console.log('OK 自测：两种写法（共享解析器 / 源码字面量）都读得对，双引号与空数组也对（门禁是活的）。')
     return
   }
 

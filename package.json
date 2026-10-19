@@ -84,7 +84,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "verify": "node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check && node scripts/run-gates.mjs .",
+    "verify": "node scripts/smoke-client.mjs . && node scripts/sync-toc.mjs README.md README.en.md --check && node scripts/run-gates.mjs . && node scripts/run-gates.mjs . --probe-parse",
     "smoke": "node scripts/smoke-client.mjs .",
     "audit": "node scripts/audit-panels.mjs",
     "audit:ci": "node scripts/audit-render.mjs",

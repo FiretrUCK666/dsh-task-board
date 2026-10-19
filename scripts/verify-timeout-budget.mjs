@@ -125,11 +125,14 @@ export function judge(root, clientBudget, hostFiles) {
           + '一次走满它就会让浏览器先放弃，把整次读取画成「检查失败」——而 host 其实还在正常干活。',
       })
     }
-    /* **总额也要有一道闸。** 逐段看每一段都合规，加起来照样能超支：registry 最坏
-       8.8 秒，答不上来才问仓库（最坏 8 秒），合计 16.8 秒 > 15 秒。没有任何一个数字
-       是错的，错的是它们的和——而和不写在任何一个地方，所以只能由这里问：
-       **这个文件里有没有一个「整次读取」的总额，且它够小？** */
-    if (!/CHECK_TOTAL_BUDGET_MS\s*=/.test(text)) {
+    /* **总额也要有一道闸，而且它得看数字，不能只看有没有这个名字。**
+       逐段看每一段都合规，加起来照样能超支：registry 最坏 8.8 秒，答不上来才问仓库
+       （最坏 8 秒），合计 16.8 秒 > 15 秒。没有任何一个数字是错的，错的是它们的和——
+       而和不写在任何一个地方。
+       第一版这里只判「有没有 `CHECK_TOTAL_BUDGET_MS`」这个**名字**，于是把它写成 1
+       也照样通过——一条量不出差别的检查。现在读它的值。 */
+    const totalMatch = /CHECK_TOTAL_BUDGET_MS\s*=\s*([\d_]+)/.exec(text)
+    if (totalMatch === null) {
       findings.push({
         file,
         where: '缺一个总预算常量',
@@ -137,6 +140,26 @@ export function judge(root, clientBudget, hostFiles) {
           + '（registry 8.8s + 仓库 8s = 16.8s > 15s），而每一段单独看都是合规的。'
           + '需要一个「整次读取」的总额，让读取带着已经拿到的部分收场。',
       })
+    } else {
+      const total = Number((totalMatch[1] ?? '').replace(/_/g, ''))
+      /* 总预算必须**真的比客户端小**（用同一个 75% 余量档），而不是「有个数就算」。
+         顺带也要求它不小于 1 秒：一个 1ms 的总额会让每次读取都立刻放弃，那是一种
+         看起来门禁通过、实际功能已死的写法。 */
+      if (total > limit) {
+        findings.push({
+          file,
+          where: `CHECK_TOTAL_BUDGET_MS = ${String(total)}ms`,
+          detail: `整次读取的总额 ${String(total)}ms 超了上限 ${String(limit)}ms。`
+            + '这个数比任何一段都重要：它决定读者等多久，而各段之和不受它约束。',
+        })
+      }
+      if (total < 1_000) {
+        findings.push({
+          file,
+          where: `CHECK_TOTAL_BUDGET_MS = ${String(total)}ms`,
+          detail: '总额小于 1 秒：每次读取都会立刻放弃，功能等于没有。',
+        })
+      }
     }
     for (const one of inlineBudgetsOf(text)) {
       if (one.value <= limit) continue
@@ -153,28 +176,36 @@ export function judge(root, clientBudget, hostFiles) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probe = probeOf(['--probe-overrun', '--probe-within'])
+  const probe = probeOf(['--probe-overrun', '--probe-within', '--probe-huge-total', '--probe-tiny-total'])
 
   if (probe !== undefined) {
-    /* 自测：两份夹具都带一个合规的总额常量，只有被考察的那一段不同。
-       少了总额那一行，`--probe-within` 会被「缺总预算」那条规则误报——那不是门禁
-       太严，是夹具不像真实文件。 */
     const budget = 15_000
     const total = 'const CHECK_TOTAL_BUDGET_MS = 11000\n'
-    const overrun = { file: 'fixture.ts', text: `${total}const SLOW_MS = 15000\n` }
-    const within = { file: 'fixture.ts', text: `${total}const FAST_MS = 6000\n` }
-    const bad = judge(root, budget, [probe === '--probe-overrun' ? overrun : within])
-    const shouldBeRed = probe === '--probe-overrun'
+    /* 四个夹具，各考一条：
+       · overrun —— 某一段与客户端等长（必须红）
+       · within  —— 某一段明显更短（必须放行）
+       · huge-total —— 总额本身超了上限（必须红）。这一条钉的是「门禁要读数字，
+         不能只读名字」：第一版把它写成 1 也照样通过，那是量不出差别的检查。
+       · tiny-total —— 总额小到每次都会立刻放弃（必须红：功能等于没有） */
+    const cases = {
+      '--probe-overrun': { text: `${total}const SLOW_MS = 15000\n`, red: true },
+      '--probe-within': { text: `${total}const FAST_MS = 6000\n`, red: false },
+      '--probe-huge-total': {
+        text: 'const CHECK_TOTAL_BUDGET_MS = 20000\nconst FAST_MS = 6000\n', red: true,
+      },
+      '--probe-tiny-total': {
+        text: 'const CHECK_TOTAL_BUDGET_MS = 1\nconst FAST_MS = 6000\n', red: true,
+      },
+    }
+    const one = cases[probe]
+    const bad = judge(root, budget, [{ file: 'fixture.ts', text: one.text }])
     const isRed = bad.findings.length > 0
-    if (shouldBeRed === isRed) {
-      console.log(shouldBeRed
-        ? 'OK 自测：与客户端等长的预算被抓到（门禁是活的）。'
-        : 'OK 自测：明显更短的预算被放行（门禁不会误报）。')
+    if (one.red === isRed) {
+      console.log(`OK 自测（${probe}）：${one.red ? '该红的红了' : '该绿的绿了'}（门禁是活的）。`)
       return
     }
-    console.error(shouldBeRed
-      ? 'verify-timeout-budget self-test FAILED: 与客户端等长的预算没被抓住'
-      : 'verify-timeout-budget self-test FAILED: 明显更短的预算被误报')
+    console.error(`verify-timeout-budget self-test FAILED（${probe}）：应为 ${one.red ? '红' : '绿'}，实为 ${isRed ? '红' : '绿'}`)
+    if (bad.findings.length > 0) for (const f of bad.findings) console.error(`  ${f.where} — ${f.detail}`)
     process.exit(1)
   }
 
