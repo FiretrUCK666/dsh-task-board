@@ -574,13 +574,25 @@ async function registriesFor(ctx: Context): Promise<string[]> {
   return registryOrderOf(plan)
 }
 
-/** Read one JSON document with a hard bound; any failure reads as undefined. */
-async function boundedJson(url: string, timeoutMs: number): Promise<unknown> {
+/**
+ * Read one JSON document with a hard bound; any failure reads as undefined.
+ *
+ * @param url - the document to read.
+ * @param timeoutMs - the bound; a hung endpoint is the same as an absent one.
+ * @param headers - extra request headers. GitHub's contents API answers with the
+ *   file body itself only when asked for `application/vnd.github.raw`; without
+ *   it the same URL returns a base64 envelope instead.
+ */
+async function boundedJson(
+  url: string,
+  timeoutMs: number,
+  headers?: Record<string, string>,
+): Promise<unknown> {
   const controller = new AbortController()
   const timer = setTimeout(() => { controller.abort() }, timeoutMs)
   try {
     const response = await fetch(url, {
-      headers: { accept: 'application/json' },
+      headers: { accept: 'application/json', ...headers },
       signal: controller.signal,
     })
     if (!response.ok) return undefined
@@ -618,7 +630,32 @@ export async function readLatest(
   ctx: Context,
   copy: Pick<RunningCopy, 'mode'>,
 ): Promise<UpdateLatestView | undefined> {
-  if (copy.mode === 'npm') {
+  /* ── **一条路走不通，不等于「检查失败」。** ───────────────────────────────────
+   *
+   * 这个函数原先按装法各走一条路：npm 问 registry、git 安装读
+   * `raw.githubusercontent.com`、判定不了就 `return undefined`（永远显示「检查失败」）。
+   *
+   * 问题不在逻辑，在**可达性**。实测（同一个网络，同一次会话）：
+   *
+   *   registry.npmjs.org      200
+   *   registry.npmmirror.com  200
+   *   api.github.com          200
+   *   raw.githubusercontent.com   SSL 连接被切断
+   *
+   * 于是同一个「检查更新」，装法不同的人得到完全不同的结果——其中一种**永远失败**，
+   * 而失败的原因与「有没有新版本」毫无关系。
+   *
+   * 现在按可靠度逐层降级，哪一种装法都至少有一条通：
+   *
+   *   1. registry（发布过的版本才权威，而且两条公共源都在可用网络里）
+   *   2. `api.github.com` 的 contents 接口（读同一份 package.json，走可达的域名，
+   *      未登录限流 60 次/小时，手动点击绰绰有余）
+   *   3. 最后才是 `raw.githubusercontent.com`
+   *
+   * 顺序是「最权威且最快 → 次优 → 最后手段」，不是「哪条路属于哪种装法」：**版本号这
+   * 件事 registry 比仓库文件更权威**，因为只有发布过的版本才存在别人装得到的可能。
+   */
+  const fromRegistries = async (): Promise<UpdateLatestView | undefined> => {
     for (const registry of await registriesFor(ctx)) {
       const answer = latestFromPackument(
         await boundedJson(packumentUrl(registry, PACKAGE_NAME), REGISTRY_TIMEOUT_MS),
@@ -627,7 +664,22 @@ export async function readLatest(
     }
     return undefined
   }
-  if (copy.mode === 'github') {
+  const fromRepository = async (): Promise<UpdateLatestView | undefined> => {
+    const slug = GITHUB_SPEC !== undefined && GITHUB_SPEC.startsWith('github:')
+      ? GITHUB_SPEC.slice('github:'.length)
+      : undefined
+    if (slug === undefined || slug === '') return undefined
+    /* GitHub 的 contents 接口与 raw 读的是**同一份文件**，只是前者走 `api.github.com`。
+       `Accept: raw` 让响应正文就是文件本身，不必解 base64。 */
+    const viaApi = await boundedJson(
+      `https://api.github.com/repos/${slug}/contents/package.json`,
+      REGISTRY_TIMEOUT_MS,
+      { accept: 'application/vnd.github.raw' },
+    )
+    const apiVersion = (viaApi as { version?: unknown } | undefined)?.version
+    if (typeof apiVersion === 'string' && apiVersion !== '') {
+      return { version: apiVersion, source: 'repository' }
+    }
     const base = rawBaseOf(GITHUB_SPEC)
     if (base === undefined) return undefined
     const manifest = await boundedJson(`${base}/HEAD/package.json`, REGISTRY_TIMEOUT_MS)
@@ -640,6 +692,14 @@ export async function readLatest(
     // Version-against-version is one grammar for every mode.
     return { version, source: 'repository' }
   }
+  /* registry 先问：最权威，且两种装法下都可达。 */
+  const published = await fromRegistries()
+  if (published !== undefined) return published
+  /* registry 全答不上来（离线、私有源、包没发布过）——这时才问仓库。 */
+  if (copy.mode === 'github') return await fromRepository()
+  /* **判定不了的装法也问一次。** 原先这里 `return undefined`，于是「不知道自己是
+     怎么装的」等于「永远检查失败」；而那恰恰是最需要一次答案的情形。 */
+  if (copy.mode === 'unknown') return await fromRepository()
   return undefined
 }
 

@@ -354,12 +354,47 @@ describe('readLatest', () => {
   })
 
   it('a repository install reads the version its default branch declares', async () => {
+    /* **先问 registry，再问仓库。** 这不是「多打几次网络」，是可达性问题：
+       `raw.githubusercontent.com` 在部分网络下被切断（实测 ECONNRESET），而 registry 与
+       `api.github.com` 都是 200。所以这条路的第一答案来自 registry；它答不上来时，
+       `api.github.com` 的 contents 读同一份文件，raw 只是最后手段。
+       下面把前三条都关掉、只留 raw，验证最后那一步仍然能答。 */
     const asked = answerWith([
       { url: 'https://raw.githubusercontent.com/', body: { version: '1.3.0' } },
     ])
     const latest = await readLatest(fakeCtx({}), { mode: 'github' })
     expect(latest).toEqual({ version: '1.3.0', source: 'repository' })
-    expect(asked).toEqual(['https://raw.githubusercontent.com/FiretrUCK666/dsh-task-board/HEAD/package.json'])
+    /* 顺序是契约的一部分：registry 两条 → GitHub API → raw。 */
+    expect(asked).toEqual([
+      'https://registry.npmjs.org/@firetruck666%2Fdsh-task-board',
+      'https://registry.npmmirror.com/@firetruck666%2Fdsh-task-board',
+      'https://api.github.com/repos/FiretrUCK666/dsh-task-board/contents/package.json',
+      'https://raw.githubusercontent.com/FiretrUCK666/dsh-task-board/HEAD/package.json',
+    ])
+  })
+
+  it('raw 不可达时检查仍然给出答案（读者报的正是这件事）', async () => {
+    /* 钉住「一条路被切断不等于检查失败」：registry 与 raw 都失败，只有 API 通，
+       结果必须来自 API 而不是 undefined。 */
+    vi.stubGlobal('fetch', async (url: string) => {
+      const u = String(url)
+      if (u.includes('registry.')) return { ok: false, json: async () => ({}) } as unknown as Response
+      if (u.includes('api.github.com')) return { ok: true, json: async () => ({ version: '1.3.9' }) } as unknown as Response
+      throw new Error('raw is unreachable on this network')
+    })
+    const latest = await readLatest(fakeCtx({}), { mode: 'github' })
+    expect(latest).toEqual({ version: '1.3.9', source: 'repository' })
+  })
+
+  it('判定不了装法的拷贝也去问一次，不再直接报失败', async () => {
+    /* 原先 `unknown` 直接 `return undefined`，于是「不知道自己是哪种装法」等于
+       「永远检查失败」——而那恰恰是最需要一次答案的情形。 */
+    const asked = answerWith([
+      { url: 'https://registry.npmmirror.com/', body: { versions: {}, 'dist-tags': { latest: '2.0.0' } } },
+    ])
+    const latest = await readLatest(fakeCtx({}), { mode: 'unknown' })
+    expect(latest?.version).toBe('2.0.0')
+    expect(asked.length).toBeGreaterThan(0)
   })
 
   it('a checkout has nothing to read here: its own git state answers instead', async () => {
