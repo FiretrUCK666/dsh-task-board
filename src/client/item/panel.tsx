@@ -108,6 +108,7 @@ import { ThumbRail } from '../design/ThumbRail.tsx'
 import { WorkbenchNotice } from '../design/WorkbenchNotice.tsx'
 import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
+import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import css from './item.module.css'
 
@@ -2362,6 +2363,12 @@ export function ItemListPanel(props: ItemListPanelProps) {
             />
           </div>
       </div>
+      {/* **这一页自己的顶层覆盖层。** 清单页不走 `WorkbenchShell`（栏要横跨左栏与
+          主列，见上面那段注释），所以它自己渲染这一行——内容与另外两页是**同一个
+          组件**：「检查更新」不属于哪一页，按钮在共用的栏里，结果也必须在共用的那一处，
+          否则加第 4 个页面时它又会缺一次。
+          `design-coverage.spec.ts` 数着「每个面板都要渲染它」，漏了即红。 */}
+      <WorkbenchOverlays />
     </div>
   )
 }

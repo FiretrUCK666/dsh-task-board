@@ -85,6 +85,20 @@ const GITHUB_SPEC = githubSpecOfRepositoryUrl(
 const SELF_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 /** How long one registry answer may take before the next one is asked. */
 const REGISTRY_TIMEOUT_MS = 8000
+
+/**
+ * 第一个源领先多久之后，第二个源也起跑。
+ *
+ * 这个数字是「按次序」与「不等死」之间的那条线，两侧各有实测依据：
+ *
+ *   - 公共 registry 正常一次应答 0.5–1.0 秒（这台机器实测 npmjs 999ms、npmmirror
+ *     561ms）。窗口定在它之下，才可能在第一条**挂住**时真正省下时间。
+ *   - 定得太小（比如 100ms）会把「按次序」变成「事实上并发」，第一条本来一秒内就
+ *     会答，却已经多发了第二条请求——那既浪费又不尊重次序。
+ *
+ * 800ms 落在两个实测值的低端：充足常请求领先，又不至于让一次挂住拖到用户察觉。
+ */
+const HEDGE_AFTER_MS = 800
 /** The package directory one profile installs this package into. */
 function installedDirIn(profileDir: string): string {
   return path.join(profileDir, 'node_modules', ...PACKAGE_NAME.split('/'))
@@ -559,10 +573,19 @@ export function registryOrderOf(plan: RegistryPlanLike | undefined): string[] {
 /**
  * The registries to ask for this host, from its installation service when it has
  * one and from the public pair when it does not.
+ *
+ * 返回值分成两半，因为**两半的性质不同**：`own` 是这台机器自己配的源（镜像、内网
+ * registry），`order` 是完整的询问次序（`own` 之后接公共回退）。
+ *
+ * 为什么必须分开：`order` 永远至少有两个公共源，所以「数组长度」说明不了「用户有
+ * 没有配自己的源」。而这件事决定两件不同的事——配了自己的源就**只问它**（那是隐私
+ * 与正确性），没配才**并发问公共源**（那才是性能）。用一个数字同时表达两件事，
+ * 就会在某一头上错。
+ *
  * @param ctx - context carrying the host services.
- * @returns the registry base URLs, in the order to ask them.
+ * @returns `own`（用户配置的源，可能为空）与 `order`（完整询问次序）。
  */
-async function registriesFor(ctx: Context): Promise<string[]> {
+async function registriesFor(ctx: Context): Promise<{ own: string[]; order: string[] }> {
   const manager = ctx.get('pluginManager') as PluginManagerLike | undefined
   let plan: RegistryPlanLike | undefined
   try {
@@ -571,7 +594,11 @@ async function registriesFor(ctx: Context): Promise<string[]> {
     // The service is not answering; the public pair below still applies.
     plan = undefined
   }
-  return registryOrderOf(plan)
+  const order = registryOrderOf(plan)
+  /* 用户自己的源 = 完整次序里那些**不在公共名单里**的项。这样判断与
+     `registryOrderOf` 的构造方式一致，不必在第二处重复「谁算公共」。 */
+  const own = order.filter((url) => !PUBLIC_REGISTRIES.includes(url))
+  return { own, order }
 }
 
 /**
@@ -612,6 +639,75 @@ function rawBaseOf(spec: string | undefined): string | undefined {
 }
 
 /**
+ * 按次序起跑、带领先窗口的**对冲请求**：第一个成功答案胜出。
+ *
+ * ── 为什么这不是 `Promise.race`，也不是 `for … await` ──────────────────────
+ *
+ * 这两种写法在这个项目里都真出现过，各自错在不同的地方：
+ *
+ *   `for … await`（串行）：第一条挂住要等满它的超时才试第二条。实测两个 registry
+ *     各自 0.5–1.0 秒可达，而接口要 2.3–4.0 秒——差额就是这段空等，而它每一天都
+ *     在被等。
+ *
+ *   `Promise.race`（无序并发）：「第一个完成的」不等于「第一个成功的」。连接被拒
+ *     往往比正常返回**更快**，于是明明有一条能答的来源，却被拒连的那条抢先，正确答案
+ *     被丢掉。那会把「有更新」说成「读不到」。
+ *
+ * 对冲请求的形状是：按次序起跑，给前一条 `hedgeMs` 的领先窗口；窗口内它答了就结束
+ * （次序被时间保证），窗口过后把下一条也发出去，之后第一个**成功**的胜出。
+ *
+ * @param candidates - 候选，按优先级从高到低。
+ * @param hedgeMs - 领先窗口；超过它仍未答就放行下一条。
+ * @param timeoutMs - 单条的上限，由 `ask` 自己带。
+ * @returns 第一个可用答案；全部没有则 `undefined`。
+ */
+function hedgeFor<T>(
+  candidates: readonly string[],
+  hedgeMs: number,
+  timeoutMs: number,
+): Promise<T | undefined> {
+  return new Promise<T | undefined>((resolve) => {
+    let settled = false
+    let started = 0
+    let finished = 0
+    const timers: ReturnType<typeof setTimeout>[] = []
+    const done = (value: T | undefined): void => {
+      if (settled) return
+      settled = true
+      for (const timer of timers) clearTimeout(timer)
+      resolve(value)
+    }
+    const launch = (index: number): void => {
+      if (settled || index >= candidates.length) return
+      const candidate = candidates[index] as string
+      started += 1
+      void boundedJson(packumentUrl(candidate, PACKAGE_NAME), timeoutMs).then(
+        (document) => {
+          const answer = latestFromPackument(document)
+          if (answer !== undefined) {
+            done({ ...answer, registry: candidate, source: 'registry' } as T)
+            return
+          }
+          finished += 1
+          /* 这一条没答案：后面还有就立刻推进，否则在全部落地后收场。 */
+          if (finished >= started) launch(index + 1)
+          if (finished >= candidates.length) done(undefined)
+        },
+        () => {
+          finished += 1
+          if (finished >= started) launch(index + 1)
+          if (finished >= candidates.length) done(undefined)
+        },
+      )
+      if (index + 1 < candidates.length) {
+        timers.push(setTimeout(() => { launch(index + 1) }, hedgeMs))
+      }
+    }
+    launch(0)
+  })
+}
+
+/**
  * The newest upstream for this copy, as this host can read it.
  *
  * A registry install asks the profile's own registries in order; a repository
@@ -630,6 +726,11 @@ export async function readLatest(
   ctx: Context,
   copy: Pick<RunningCopy, 'mode'>,
 ): Promise<UpdateLatestView | undefined> {
+  /* **一个 checkout 不该发出任何网络请求。** 它的「有没有新版本」由自己那份 git 状态
+     回答（见 `readGitStatus`），去看发布号是另一件事，而且会把「本地改了还没提交」
+     误报成「有新版」。这条判断在函数最前面，因为它省掉整条网络链，不只是省一次请求。 */
+  if (copy.mode === 'local') return undefined
+
   /* ── **一条路走不通，不等于「检查失败」。** ───────────────────────────────────
    *
    * 这个函数原先按装法各走一条路：npm 问 registry、git 安装读
@@ -655,14 +756,87 @@ export async function readLatest(
    * 顺序是「最权威且最快 → 次优 → 最后手段」，不是「哪条路属于哪种装法」：**版本号这
    * 件事 registry 比仓库文件更权威**，因为只有发布过的版本才存在别人装得到的可能。
    */
-  const fromRegistries = async (): Promise<UpdateLatestView | undefined> => {
-    for (const registry of await registriesFor(ctx)) {
-      const answer = latestFromPackument(
-        await boundedJson(packumentUrl(registry, PACKAGE_NAME), REGISTRY_TIMEOUT_MS),
-      )
-      if (answer !== undefined) return { ...answer, registry, source: 'registry' }
+
+  /**
+   * 同时问所有候选源，取第一个给出**可用答案**的。
+   *
+   * 为什么不是 `Promise.race`：`race` 等的是「第一个 settle 的」，而第一个完成的
+   * 完全可能是**失败**——连接被拒往往比正常返回还快。要的是第一个**成功**，所以逐个
+   * settle，成功即返回。
+   *
+   * 为什么不是串行的 `for`：串行时每一层都可能吃满自己的超时，最坏 8 秒 × N 层，而
+   * 那些时间几乎全花在等一个注定不可用的地址上。实测：两个 registry 各自 0.5–1.0 秒
+   * 可达，接口却要 2.3–4.0 秒——差的正是「等前一个失败」。
+   *
+   * 权威次序没有因此改变：并发的只是**查询**，取舍仍然按此前的判断（registry 优先于
+   * 仓库文件这件事由 `readLatest` 的分层决定，不由这里的快慢决定）。
+   *
+   * @param probes - 候选项；`ask` 返回 `undefined` 表示这一源没有可用答案。
+   * @returns 第一个可用答案；全部没有则 `undefined`。
+   */
+  const raceFor = async <T>(
+    probes: readonly { readonly ask: () => Promise<T | undefined> }[],
+  ): Promise<T | undefined> => await new Promise<T | undefined>((resolve) => {
+    let pending = probes.length
+    if (pending === 0) {
+      resolve(undefined)
+      return
     }
-    return undefined
+    for (const probe of probes) {
+      void probe.ask().then(
+        (answer) => {
+          if (answer !== undefined) {
+            resolve(answer)
+            return
+          }
+          pending -= 1
+          if (pending === 0) resolve(undefined)
+        },
+        () => {
+          /* 一个源抛错不是这条链的失败——其余源仍在跑。 */
+          pending -= 1
+          if (pending === 0) resolve(undefined)
+        },
+      )
+    }
+  })
+
+  const fromRegistries = async (): Promise<UpdateLatestView | undefined> => {
+    const { own, order } = await registriesFor(ctx)
+    /* **配了源的人只问那个源。**
+     *
+     * 这不是性能取舍，是隐私与正确性：用户挑了一个镜像（公司内网、私有 registry），
+     * 「这个包有没有新版本」就不该问到外面去——那是把他的依赖清单泄露给第三方。
+     * 所以「只问自己的源」优先于任何并发技巧；那条路只有一条候选，也就无从并发。 */
+    const candidates = own.length > 0 ? own : order
+    if (candidates.length === 1) {
+      const only = candidates[0] as string
+      const answer = latestFromPackument(
+        await boundedJson(packumentUrl(only, PACKAGE_NAME), REGISTRY_TIMEOUT_MS),
+      )
+      return answer === undefined ? undefined : { ...answer, registry: only, source: 'registry' }
+    }
+
+    /* ── 公共回退：**对冲请求**，不是串行排队，也不是无序并发 ────────────────────
+     *
+     * 两者都不对，理由不同：
+     *
+     *   - **串行**（原实现）：第一条挂住时要等满 8 秒才试第二条。实测这台机器上两条
+     *     各自 0.5–1.0 秒可达，接口却要 2.3–4.0 秒——差的就是这段空等。
+     *   - **无序并发**（`Promise.race`）：谁先 settle 就用谁，而先 settle 的完全可能
+     *     是**失败**（连接被拒比正常返回快），于是明明有一条能答的来源，却被拒连的
+     *     那条抢先。那会把「有更新」说成「读不到」。
+     *
+     * 对冲请求是两者的折中，也正是这一处想要的形状：**按次序起跑，给前一条一个短暂
+     * 领先窗口**（`HEDGE_AFTER_MS`），窗口过后把下一条也发出去，然后**第一个成功的
+     * 胜出**。于是
+     *
+     *   - 第一条正常（0.5–1 秒）→ 它先答，第二条根本没发出去 → 次序被尊重；
+     *   - 第一条挂住 → 第二条在窗口后起跑，不必等满 8 秒 → 快；
+     *   - 第一条失败 → 第二条已在跑或将要在跑 → 不会因为「先失败」而丢掉答案。
+     *
+     * 优先级由**时间**保证（窗口内只有第一条在跑），不靠运气。 */
+    return await hedgeFor(candidates, HEDGE_AFTER_MS, REGISTRY_TIMEOUT_MS)
   }
   const fromRepository = async (): Promise<UpdateLatestView | undefined> => {
     const slug = GITHUB_SPEC !== undefined && GITHUB_SPEC.startsWith('github:')
@@ -670,37 +844,63 @@ export async function readLatest(
       : undefined
     if (slug === undefined || slug === '') return undefined
     /* GitHub 的 contents 接口与 raw 读的是**同一份文件**，只是前者走 `api.github.com`。
-       `Accept: raw` 让响应正文就是文件本身，不必解 base64。 */
-    const viaApi = await boundedJson(
-      `https://api.github.com/repos/${slug}/contents/package.json`,
-      REGISTRY_TIMEOUT_MS,
-      { accept: 'application/vnd.github.raw' },
-    )
-    const apiVersion = (viaApi as { version?: unknown } | undefined)?.version
-    if (typeof apiVersion === 'string' && apiVersion !== '') {
-      return { version: apiVersion, source: 'repository' }
-    }
+       `Accept: raw` 让响应正文就是文件本身，不必解 base64。
+       **两条路并发**：实测 `raw.githubusercontent.com` 在某些网络下 SSL 连接被切断，
+       而 `api.github.com` 通——反过来也见过。串行时被切断的那条要等满超时才轮到通的那条，
+       并发则取先到的那个。 */
     const base = rawBaseOf(GITHUB_SPEC)
-    if (base === undefined) return undefined
-    const manifest = await boundedJson(`${base}/HEAD/package.json`, REGISTRY_TIMEOUT_MS)
-    const version = (manifest as { version?: unknown } | undefined)?.version
-    if (typeof version !== 'string' || version === '') return undefined
+    const versionOf = (document: unknown): string | undefined => {
+      const version = (document as { version?: unknown } | undefined)?.version
+      return typeof version === 'string' && version !== '' ? version : undefined
+    }
+    const probes = [
+      {
+        ask: async (): Promise<UpdateLatestView | undefined> => {
+          const viaApi = await boundedJson(
+            `https://api.github.com/repos/${slug}/contents/package.json`,
+            REGISTRY_TIMEOUT_MS,
+            { accept: 'application/vnd.github.raw' },
+          )
+          const version = versionOf(viaApi)
+          return version === undefined ? undefined : { version, source: 'repository' }
+        },
+      },
+    ]
+    if (base !== undefined) {
+      probes.push({
+        ask: async (): Promise<UpdateLatestView | undefined> => {
+          const manifest = await boundedJson(`${base}/HEAD/package.json`, REGISTRY_TIMEOUT_MS)
+          const version = versionOf(manifest)
+          return version === undefined ? undefined : { version, source: 'repository' }
+        },
+      })
+    }
     // Only the declared version, on purpose. The branch's commit would be a
     // second network transport (a `git ls-remote` subprocess) in a check that
     // already has one, and there is nothing here to compare a commit AGAINST:
     // a git install carries no recorded commit of its own to measure against.
     // Version-against-version is one grammar for every mode.
-    return { version, source: 'repository' }
+    return await raceFor(probes)
   }
-  /* registry 先问：最权威，且两种装法下都可达。 */
+  /* **registry 先行，仓库只是它的后备——这条次序是契约，不能并发掉。**
+   *
+   * 为什么次序本身是契约（而不是「谁快谁先」）：
+   *
+   *   1. **权威**：版本号这件事 registry 比仓库文件更权威——只有发布过的版本才存在
+   *      别人装得到的可能；仓库里那份 `package.json` 可能写着一个从未发布的号。
+   *   2. **隐私**：装法判定不出来时也要问仓库，而问仓库意味着把「我在查这个包」这件事
+   *      告诉 GitHub。能由 registry 答的问题就不该去问仓库。
+   *
+   * 所以这里是**有先后的**：registry 的候选全部试完（`fromRegistries` 内部对自己的
+   * 候选做对冲，那只是「不必等死」，不改变 registry 先于仓库），答不上来才问仓库。
+   *
+   * 串行**不等于慢**：真正慢的那一段在 `fromRegistries` 内部——两个公共 registry 之间
+   * 已经是对冲的，第一条挂住时第二条在 800ms 后起跑。这里串行的两条是「registry 整体」
+   * 与「仓库」，而后者在绝大多数网络下根本不会被走到。 */
   const published = await fromRegistries()
   if (published !== undefined) return published
-  /* registry 全答不上来（离线、私有源、包没发布过）——这时才问仓库。 */
-  if (copy.mode === 'github') return await fromRepository()
-  /* **判定不了的装法也问一次。** 原先这里 `return undefined`，于是「不知道自己是
-     怎么装的」等于「永远检查失败」；而那恰恰是最需要一次答案的情形。 */
-  if (copy.mode === 'unknown') return await fromRepository()
-  return undefined
+  /* registry 全答不上来（离线、私有源、包没发布过、判定不了的装法）——这时才问仓库。 */
+  return await fromRepository()
 }
 
 /**

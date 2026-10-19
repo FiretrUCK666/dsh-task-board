@@ -41,6 +41,7 @@ import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { workbenchStage } from '../workbench/stage.ts'
 import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
+import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import css from './home.module.css'
 
 /** 四格：哪一格、叫什么、一句说明、按下去去哪。 */
@@ -270,6 +271,7 @@ function HomeShell({ chrome, children }: { readonly chrome: ReturnType<typeof wo
       notices={chrome.notices}
       scrolls
       seat="data-dsh-taskboard-view"
+      overlay={<WorkbenchOverlays />}
     >
       <div className={css.homeSheet}>{children}</div>
     </WorkbenchShell>

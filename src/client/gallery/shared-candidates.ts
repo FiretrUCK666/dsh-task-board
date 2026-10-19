@@ -44,7 +44,6 @@ export type SharedCandidate = {
  */
 export const SHARED_CANDIDATES: readonly SharedCandidate[] = [
   { name: 'ColorSwatches', why: '预览页是它唯一的第二处；真正的产品消费者只有一处' },
-  { name: 'Dialog', why: '看板有弹层；清单那一页刻意不用 Dialog（成文在 DESIGN.md）' },
   { name: 'Field', why: '表单原件；两页被有意给了不同的表单语言' },
   { name: 'Input', why: '表单原件；清单的输入是专用组合件，不是它的薄封装' },
   { name: 'Section', why: '设置区块的容器；目前只有看板有那种区块' },

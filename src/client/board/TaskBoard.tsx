@@ -49,10 +49,10 @@ import { Button, ColorSwatches, Icon, IconButton, PlusIcon, SearchField, Switch 
 import { WorkbenchShell } from '../design/WorkbenchShell.tsx'
 import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
+import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import { sessionUnavailableReasonOf, waitingKeyOf } from './session-chip.ts'
-import { commandLineOf, commandWordsOf, shortSha, type UpdateInstallMode } from '../../core/update-check.ts'
-import { BUNDLED_VERSION, type UpdateApplyResult } from '../update-source.ts'
+import { BUNDLED_VERSION } from '../update-source.ts'
 import { candidateExternalDrag, externalDragOf, type SidebarDrag } from '../sidebar-drag.ts'
 import { taskBindsOf } from '../../core/tasks.ts'
 
@@ -91,51 +91,6 @@ import { ThumbRail } from '../design/ThumbRail.tsx'
 import { FeedRow } from './FeedRow.tsx'
 
 import { sendClientReport } from '../client-report.ts'
-
-/**
- * The install-mode label the update dialog shows (one branch per mode — the
- * locale dict keys cannot be built dynamically, so the mapping lives here).
- */
-function updateModeLabel(mode: UpdateInstallMode): string {
-  if (mode === 'npm') return t('board.update.mode.npm')
-  if (mode === 'github') return t('board.update.mode.github')
-  if (mode === 'local') return t('board.update.mode.local')
-  return t('board.update.mode.unknown')
-}
-
-/**
- * The one-line hint above the copyable update command. Only the three modes
- * whose update is a terminal command have one; an unreadable mode carries no
- * command at all, and a hint for it would explain nothing.
- */
-function updateCommandHintOf(mode: UpdateInstallMode): string | undefined {
-  if (mode === 'npm') return t('board.update.hint.npm')
-  if (mode === 'github') return t('board.update.hint.github')
-  if (mode === 'local') return t('board.update.hint.local')
-  return undefined
-}
-
-/** Why an update could not be applied, in the reader's words. */
-function updateReasonOf(error: NonNullable<UpdateApplyResult['error']>): string {
-  if (error === 'dirty') return t('board.update.reason.dirty')
-  if (error === 'tool-missing') return t('board.update.reason.toolMissing')
-  if (error === 'timeout') return t('board.update.reason.timeout')
-  if (error === 'unavailable') return t('board.update.reason.unavailable')
-  if (error === 'unsupported') return t('board.update.reason.unsupported')
-  return t('board.update.reason.failed')
-}
-
-/** What one applied update did, in one sentence. */
-function updateOutcomeOf(result: UpdateApplyResult): string {
-  const v = result.version ?? t('board.update.versionUnknown')
-  if (result.outcome === 'applied') return t('board.update.applied', { v })
-  if (result.outcome === 'rebuilt') return t('board.update.rebuilt', { v })
-  // 一次跑完版本没动，不是一次更新。安装服务报的是包管理器做成了什么，而
-  // "装最新版"解析到已经装着的那个版本时，它成功退出、什么也没做——把这件事
-  // 说成「已更新到 v」正是读者无法核对、却会照着它行动的那句话。
-  if (result.outcome === 'unchanged') return t('board.update.unchanged', { v })
-  return t('board.update.restartRequired', { v })
-}
 
 /**
  * Human day label for an activity group header: 今天 / 昨天, else the
@@ -483,36 +438,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
   // 状态不归这一页——读者切到对话时这一页会卸载，而一次还在跑的检查不该因此丢掉。
   // 按钮的脸也共用（`workbench/use-update.ts`），所以三页说的是同一句话。
   const update = useUpdateState()
-  const showUpdate = update.open
-  const setShowUpdate = (next: boolean): void => { updateController.setOpen(next) }
-  const updateCopied = update.copied
-  const updateCopyFailed = update.copyFailed
-  const updateApply = update.apply
 
-  // The dialog's derived readings come from the controller (one funnel — the
-  // dialog body never recomputes the four values it shows).
-  const updateSource = update.source
-  const derived = updateController.derived()
-  const updateCurrent = derived.current
-  const updateLatest = derived.latest
-  const updateNewer = derived.newer
-  const updateGit = derived.git
-  const updateGitBehind = derived.gitBehind
-  const updatePlan = derived.plan
-  const updateCommand = updatePlan !== undefined && updatePlan.steps.length > 0
-    ? commandLineOf(updatePlan.steps)
-    : undefined
-  // 命令按「一个词一格」画：换行只发生在词之间。整条命令是要照着敲的，
-  // 而浏览器默认会在连字符处断行，于是包装名被画成两个词那样的两截。
-  const updateWords = updatePlan !== undefined ? commandWordsOf(updatePlan.steps) : []
-  const updateCommandHint = updateSource !== undefined ? updateCommandHintOf(updateSource.mode) : undefined
-  const updateBlocked = updatePlan?.apply === 'checkout' && updateGit?.dirty === true
-  const updateRunning = updateApply.phase === 'running'
-  const updateDone = updateApply.phase === 'done'
-  const updateCanApply = updatePlan !== undefined && updatePlan.apply !== 'none' && !updateDone
-  const updatePublishedMs = updateLatest?.publishedAt !== undefined
-    ? Date.parse(updateLatest.publishedAt)
-    : Number.NaN
   // The stale note resolves itself: once a seat re-read reports a current
   // protocol (or sync drops), the dialog closes WITH its banner — no stale
   // explanation lingering over a healthy state.
@@ -1122,6 +1048,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
       onNavigate={chrome.onNavigate}
       notices={chrome.notices}
       seat="data-dsh-taskboard-view"
+      overlay={<WorkbenchOverlays />}
     >
       <div
         ref={boardRefs}
@@ -1682,187 +1609,6 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
               )}
               <Button variant="primary" onClick={() => { setEngineNote(undefined) }}>
                 {t('board.engineNoteOk')}
-              </Button>
-            </footer>
-          </Dialog>
-        )}
-        {/* 检查更新的结果：与引擎说明同一 Dialog 家族（正文走 modalScroll，
-            动作钉 modalFooter）。更新由 host 应用——按钮只说「更新」，装什么由
-            host 按"正在运行的那一份"自己推导（页面不传任何安装目标）。那行命令
-            是同一件事的手动等价做法：host 应用不了时它就是唯一出路。 */}
-        {showUpdate && (
-          <Dialog
-            label={t('board.update.title')}
-            title={t('board.update.title')}
-            onClose={() => { setShowUpdate(false) }}
-            portal
-          >
-            <div className={css.modalScroll}>
-              <p className={css.detailText}>{t('board.update.current', { v: updateCurrent })}</p>
-              {/* 这是哪一份：同一台机器上 Web 端与桌面端是两份独立安装，读者
-                  最先要确认的就是"我现在看的是哪一份"。 */}
-              {updateSource !== undefined && (
-                <p className={css.detailHint}>
-                  {updateSource.profile !== undefined
-                    ? t('board.update.where', {
-                      profile: updateSource.profile,
-                      mode: updateModeLabel(updateSource.mode),
-                    })
-                    : t('board.update.source', { mode: updateModeLabel(updateSource.mode) })}
-                </p>
-              )}
-              {updateSource?.dir !== undefined && (
-                <p className={css.detailHint}>{t('board.update.dir', { path: updateSource.dir })}</p>
-              )}
-              {/* 这份 profile 到底声明了什么。它是"为什么装不上新版"最常见的答案
-                  （一个范围可以几年不动、一个固定的 commit 永远不会是新版），
-                  而读者唯一能核对的原始依据就是它。 */}
-              {updateSource?.spec !== undefined && (
-                <p className={css.detailHint}>{t('board.update.spec', { spec: updateSource.spec })}</p>
-              )}
-              {updateSource?.evidence?.disagreement === true && (
-                <p className={css.detailHint}>{t('board.update.evidence')}</p>
-              )}
-              {/* 结论三态：有新版 / 已是最新 / 读不到。读不到绝不说成"已是最新"。 */}
-              {updateNewer && updateLatest !== undefined && (
-                <p className={css.detailText}>{t('board.update.newVersion', { v: updateLatest.version })}</p>
-              )}
-              {updateNewer && Number.isFinite(updatePublishedMs) && (
-                <p className={css.detailHint}>
-                  {t('board.update.published', { time: formatDateTime(updatePublishedMs) })}
-                </p>
-              )}
-              {updateLatest?.registry !== undefined && (
-                <p className={css.detailHint}>{t('board.update.registry', { registry: updateLatest.registry })}</p>
-              )}
-              {updateLatest?.source === 'repository' && (
-                <p className={css.detailHint}>
-                  {t('board.update.remoteVersion', { v: updateLatest.version })}
-                </p>
-              )}
-              {updateSource?.mode === 'github' && !updateNewer && (
-                <p className={css.detailHint}>{t('board.update.gitSameVersion')}</p>
-              )}
-              {/* 只有真去远端读过的两种安装才谈得上"读不到最新版"：本地检出读的是
-                  git，而来源读不出来的那一份根本没人问过网络——对着它说"网络或源
-                  不可达"是把一件没发生过的事说成原因。 */}
-              {updateSource !== undefined && updateLatest === undefined
-                && (updateSource.mode === 'npm' || updateSource.mode === 'github') && (
-                <p className={css.detailText}>{t('board.update.noLatest')}</p>
-              )}
-              {updateGitBehind && updateGit?.remoteHead !== undefined && (
-                <p className={css.detailHint}>
-                  {t('board.update.gitBehind', { head: shortSha(updateGit.head), remote: shortSha(updateGit.remoteHead) })}
-                </p>
-              )}
-              {updateGit !== undefined && !updateGitBehind && (
-                <p className={css.detailHint}>{t('board.update.gitUpToDate')}</p>
-              )}
-              {updateGit !== undefined && updateGit.dirty && (
-                <p className={css.detailHint}>{t('board.update.gitDirty')}</p>
-              )}
-              {/* 结果：成一条、败一条加原因，再加上 host 捕到的末尾输出。失败不
-                  吞掉出路——下面那行命令就是同一件事的手动版本。 */}
-              {(updateApply.phase === 'done' || updateApply.phase === 'unchanged') && updateApply.result !== undefined && (
-                <p className={css.detailText} role="status" aria-live="polite">
-                  {updateOutcomeOf(updateApply.result)}
-                </p>
-              )}
-              {/* 「跑完版本没动」是一条死胡同，而出路就在这个对话框已经知道的两件事里：
-                  真机上唯一会发生它的是本机安装器的供应链观察期（`unchanged` 只由 npm
-                  那条路产生，见 host/update-apply.ts），而它挡下的那一版与「按指定版本
-                  装」这条现成的路，这里都有。没有更新的一版可说时这行不出现——把一个
-                  观察期说给根本无新版可等的人听，是换了一种假原因。 */}
-              {updateApply.phase === 'unchanged' && updateNewer && updateLatest !== undefined
-                && updateSource !== undefined && (
-                <p className={css.detailHint}>
-                  {t('board.update.unchangedHeld', {
-                    latest: updateLatest.version,
-                    spec: `${updateSource.packageName}@${updateLatest.version}`,
-                  })}
-                </p>
-              )}
-              {updateApply.phase === 'failed' && (
-                <p className={css.detailText} role="status" aria-live="polite">
-                  {t('board.update.applyFailed')}
-                </p>
-              )}
-              {updateApply.phase === 'failed' && updateApply.result?.error !== undefined && (
-                <p className={css.detailHint}>{updateReasonOf(updateApply.result.error)}</p>
-              )}
-              {updateApply.phase === 'failed' && updateApply.result?.output !== undefined && (
-                <pre className={css.updateOutput}>{updateApply.result.output}</pre>
-              )}
-              {/* 后果预告：说清按下去会发生什么，读者才敢按。 */}
-              {updateCanApply && updatePlan?.apply === 'package' && (
-                <p className={css.detailHint}>
-                  {updatePlan.reinstall === true ? t('board.update.reinstall') : t('board.update.overwrite')}
-                </p>
-              )}
-              {updateRunning && (
-                <p className={css.detailHint} role="status" aria-live="polite">
-                  {t('board.update.losingConnection')}
-                </p>
-              )}
-              {updateCommand !== undefined && updateCommandHint !== undefined && (
-                <div>
-                  <p className={css.detailHint}>{updateCommandHint}</p>
-                  <p className={css.updateCommand}>
-                    <code>
-                      {updateWords.map((word, index) => (
-                        <Fragment key={`${index}:${word}`}>
-                          {index === 0 ? null : ' '}
-                          <span className={css.updateWord}>{word}</span>
-                        </Fragment>
-                      ))}
-                    </code>
-                    {' '}
-                    <Button
-                      size="sm"
-                      title={updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
-                      aria-label={t('board.update.copy')}
-                      onClick={() => { updateController.copyCommand(updateCommand) }}
-                    >
-                      {updateCopied ? t('detail.copied') : updateCopyFailed ? t('detail.copyFailed') : t('board.update.copy')}
-                    </Button>
-                  </p>
-                </div>
-              )}
-              {/* 桌面端：那份 profile 由应用托管，命令行里的 dsh 不接受它，
-                  所以这条链路给不出命令，只能指向应用自己的插件页。 */}
-              {updateSource?.appManaged === true && (
-                <p className={css.detailHint}>{t('board.update.appManaged')}</p>
-              )}
-              {/* 「这条链路给不出命令」有三种不同的原因，各说各的那一句：声明读了
-                  但没有可走的路（本地路径那类装法）、压根没有声明、这台 host 没有
-                  能应用更新的组件。混成一句，就把三种不同的处境说成同一件事。 */}
-              {updateSource !== undefined && updatePlan?.apply === 'none' && updateCommand === undefined && !updateSource.appManaged && (
-                <p className={css.detailHint}>
-                  {updateSource.mode !== 'unknown'
-                    ? t('board.update.reason.unavailable')
-                    : updateSource.spec !== undefined
-                      ? t('board.update.unrouted', { spec: updateSource.spec })
-                      : t('board.update.unreadable')}
-                </p>
-              )}
-              <p className={css.detailHint}>{t('board.update.restart')}</p>
-            </div>
-            <footer className={css.modalFooter}>
-              {updateCanApply && (
-                <Button
-                  variant="primary"
-                  disabled={updateRunning || updateBlocked === true}
-                  onClick={() => { updateController.run() }}
-                >
-                  {updateRunning ? t('board.update.applying') : t('board.update.apply')}
-                </Button>
-              )}
-              <Button
-                variant={updateCanApply ? undefined : 'primary'}
-                disabled={updateRunning}
-                onClick={() => { setShowUpdate(false) }}
-              >
-                {t('detail.close')}
               </Button>
             </footer>
           </Dialog>

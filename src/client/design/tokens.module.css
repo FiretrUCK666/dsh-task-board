@@ -577,6 +577,17 @@
   --dsh-tb-motion-fast: 110ms var(--dsh-tb-ease);
   --dsh-tb-motion-lift: 200ms var(--dsh-tb-ease);
   --dsh-tb-motion-enter: 220ms var(--dsh-tb-ease);
+  /* 文字变色比状态变化慢一点才读得出来。它与 `--dsh-tb-motion`（160ms，状态变化）
+     分开，因为两者会同时出现在同一行里。 */
+  --dsh-tb-motion-tint: 120ms var(--dsh-tb-ease);
+  /* 拒绝：拖到不允许的地方、按了不该按的东西。要**短而硬**——一次拒绝是一句「不行」，
+     不是一段动画。 */
+  --dsh-tb-motion-reject: 180ms ease;
+  /* 循环：等待转圈、到达时闪一下。它说的是「这件事还在进行」，不是「某个属性变了」，
+     所以与上面的过渡不是同一档。 */
+  --dsh-tb-motion-cycle: 900ms ease-out;
+  /* 转圈专用：`linear` 是必须的——`ease` 会让一圈里快慢不均，看起来像卡顿。 */
+  --dsh-tb-motion-spin: 800ms linear;
 }
 
 /* The corner SHAPE, declared once for the whole board surface.

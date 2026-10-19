@@ -420,7 +420,7 @@
   background: var(--dsh-tb-mask);
   -webkit-backdrop-filter: blur(var(--dsh-tb-mask-blur));
   backdrop-filter: blur(var(--dsh-tb-mask-blur));
-  animation: dshTbBoardIn 160ms ease;
+  animation: dshTbBoardIn var(--dsh-tb-motion);
 }
 
 .titleStep {

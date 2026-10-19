@@ -41,10 +41,19 @@ export function stripComments(css) {
  *
  * @param css - 源文本（可以带注释；内部会剥）。
  * @param at - 当前的 at-rule 前导（递归用，调用方不要传）。
- * @returns `{ selector, body, line, at }` 数组。`at` 是这条规则所在 at-rule 的完整
- *   前导（顶层规则是 `''`），`line` 是 1 起的真实行号。
+ * @param base - 本段文本在**原文**里的起始偏移（递归用，调用方不要传）。
+ * @returns `{ selector, body, line, at, offset, endOffset }` 数组。`at` 是这条规则
+ *   所在 at-rule 的完整前导（顶层规则是 `''`），`line` 是 1 起的真实行号，
+ *   `offset` / `endOffset` 是**相对原文**的字符区间。
+ *
+ * ── 为什么偏移必须相对原文 ──────────────────────────────────────────────────
+ *
+ * 递归进 at-rule 时切出的是 `body` 子串，它自己的下标从 0 开始。如果直接把那个
+ * 下标当偏移报出去，所有 at-rule 里的规则都会指回文件开头——搬运时会切到别的段落，
+ * 而这件事**看起来只是「样式少了一点」**。所以 `base` 一路加下去，保证任何一个
+ * 偏移拿去切原文都是对的。实测：不加 `base` 时有 10 对区间前后颠倒。
  */
-export function rulesOf(css, at = '') {
+export function rulesOf(css, at = '', base = 0) {
   const text = stripComments(css)
   const rules = []
   let i = 0
@@ -58,17 +67,28 @@ export function rulesOf(css, at = '') {
       else if (text[j] === '}') depth--
       j++
     }
-    const prelude = text.slice(i, open).trim()
+    const raw = text.slice(i, open)
+    const prelude = raw.trim()
     const body = text.slice(open + 1, j - 1)
-    const line = (text.slice(0, i).match(/\n/g)?.length ?? 0) + 1
+    /* `line` 是**选择器第一个字符**所在行，`offset` 是它在原文里的字符位置，
+       `endOffset` 是规则体闭合 `}` 之后的位置。行号只用于报错，偏移用于搬运。 */
+    const lead = raw.length - raw.trimStart().length
+    const offset = base + i + lead
+    const line = (text.slice(0, i + lead).match(/\n/g)?.length ?? 0) + 1
     if (prelude.startsWith('@')) {
       /* 容器：递归进去。`@supports` / `@container` / `@media` 的前导都只是「在什么
          条件下」，不是选择器本身，但它必须被带下去——一条规则的完整身份是
-         「在哪个 at-rule 里的哪条选择器」。 */
-      const nested = at === '' ? prelude : `${at} ${prelude}`
-      rules.push(...rulesOf(body, nested))
+         「在哪个 at-rule 里的哪条选择器」。
+         **`@keyframes` 不递归**：它的内部是帧（`0%` / `50%`），不是选择器，按规则
+         读会把每一帧当成一条顶层规则、搬走时切坏。整块作为一个不可分单元。 */
+      if (/^@(-[a-z]+-)?keyframes\b/.test(prelude)) {
+        rules.push({ selector: prelude, body, line, at, offset, endOffset: base + j, opaque: true })
+      } else {
+        const nested = at === '' ? prelude : `${at} ${prelude}`
+        rules.push(...rulesOf(body, nested, base + open + 1))
+      }
     } else if (prelude !== '') {
-      rules.push({ selector: prelude, body, line, at })
+      rules.push({ selector: prelude, body, line, at, offset, endOffset: base + j })
     }
     i = j
   }

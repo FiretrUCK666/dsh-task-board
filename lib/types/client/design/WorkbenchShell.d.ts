@@ -67,6 +67,20 @@ export interface WorkbenchShellProps {
      * (a missing marker means its whole stylesheet stops matching, silently).
      */
     readonly seat: string;
+    /**
+     * **每一页都要有的那些弹层。**
+     *
+     * 这个插槽存在的理由是一次真实的缺陷：检查更新的按钮由这一层渲染（`checking` /
+     * `onCheck`），而它打开的对话框曾经住在看板那一页的 JSX 里。于是同一个按钮在三页
+     * 里有两种行为——看板页能弹，其余两页什么都不发生。那不是漏改一处，是**一个功能被
+     * 拆在两个地方**：触发在共享层、结果在页面层。
+     *
+     * 把内容放这里，等于把「结果」也搬到共享层：壳渲染它一次，每个用壳的页面自动都有，
+     * 加第 4、第 5 个页面时不用做任何事。它由**装配层**传入（而不是壳自己 import），
+     * 因为壳在 `design/` 里，而 `design/` 不许依赖任何一页——见 `design-coverage.spec.ts`
+     * 的层方向判据。
+     */
+    readonly overlay?: ReactNode;
     /** The page. */
     readonly children: ReactNode;
 }
@@ -75,4 +89,4 @@ export interface WorkbenchShellProps {
  * @param props - the bar's props, optional warnings, and the page content.
  * @returns the frame: bar row, optional warning strip, then the page.
  */
-export declare function WorkbenchShell({ active, tabs, label, status, checking, checkLabel, onCheck, exitLabel, onExit, onNavigate, notices, scrolls, seat, children, }: WorkbenchShellProps): import("react").JSX.Element;
+export declare function WorkbenchShell({ active, tabs, label, status, checking, checkLabel, onCheck, exitLabel, onExit, onNavigate, notices, scrolls, seat, overlay, children, }: WorkbenchShellProps): import("react").JSX.Element;

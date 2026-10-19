@@ -1,0 +1,125 @@
+/* 检查更新对话框自己的表。
+ *
+ * ── 为什么它有一张表，而不是复用看板那张 ────────────────────────────────────
+ *
+ * 这三条规则（`commandRow` / `word` / `output`）只有一个消费者：这个对话框。
+ * 它们的形状是「一条要照着敲的命令怎么断行」「命令输出怎么画成代码框」——那是
+ * **更新这件事**的排版，不是看板的。
+ *
+ * 而 `.modalScroll` / `.detailText` / `.modalFooter` 那几个**不搬**：它们同时被看板的
+ * 其他部位用着（详情、表单、确认框），搬走会让那些地方失去样式。共享形态的正确
+ * 表达是「同一份规则」，而不是「同一张表」——但跨表类名会静默失效（见
+ * `verify-sheet-scope.mjs`），所以本文件里出现的每个类名都在下面自己声明，
+ * 需要共享的观感用令牌表达（`--dsh-tb-*`），不引用别的表的名字。
+ */
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-2);
+  /* 一个对话框只有**一个**滚动体。正文长了在它自己里面滚，嵌套第二条滚动条
+     会让滚轮落到哪一条变成猜测。 */
+  overflow-y: auto;
+  min-block-size: 0;
+}
+
+.text {
+  margin: 0;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-1);
+}
+
+.hint {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-3);
+  /* 路径与 spec 是长串，会撑破对话框；换行比截断好——它们是要读全的。 */
+  overflow-wrap: anywhere;
+}
+
+.warn {
+  margin: 0;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-attention);
+  overflow-wrap: anywhere;
+}
+
+/* 命令按「一个词一格」画：换行只发生在词之间。整条命令是要照着敲的，而浏览器
+   默认会在连字符处断行，于是包名被画成两个词那样的两截。
+   横向滚动而不是换行：命令的长短是内容决定的，换行会让它看起来像两条命令。 */
+/* ── 一条要照抄进终端的命令 ─────────────────────────────────────────────────
+ *
+ * 分两层，因为 `<code>` 要当一个「干净」的语义容器：
+ *
+ *   `.commandFrame`  外框：底色、边、圆角、横向滚动。
+ *   `.commandRow`    `<code>` 自己：只负责排版（字体、空白、行高）。
+ *
+ * **`display` 不能用 `flex`。** 这条命令的词是 `<span>`，词与词之间的空格是一个
+ * **真实的文本节点**（React 会丢掉相邻元素之间的空白，所以它由 JSX 显式插入）。
+ * flex 布局会把只含空白的文本节点丢掉，于是 `textContent` 变成
+ * `dshplugin--profilewebadd`——屏幕上看着有间距，而从对话框里选中复制出来的是一串
+ * 连在一起的字。「看着对、复制错」正是这个对话框最容易犯的错，所以版面靠
+ * `white-space` 而不是靠布局。 */
+.commandFrame {
+  display: block;
+  padding: 8px 12px;
+  overflow-x: auto;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-plane-inlay);
+  /* 字体与空白在这一格上，`<code>` 因此不必带类：它只管语义（「这是可照抄的命令」），
+     版面由父级决定。这样结构最朴素，测试也能直接读到 `<code><span class="word">`。 */
+  font-family: var(--dsw-font-markdown-code-block-small);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-1);
+  white-space: pre;
+}
+
+/* `<code>` 是 UA 样式里的等宽字体，这里归零成全继承——字体已在上面那一格定过。 */
+.commandFrame > code {
+  font: inherit;
+  white-space: inherit;
+  color: inherit;
+}
+
+.word {
+  /* 一个词绝不拆开：浏览器默认会在连字符后换行，把 `@firetrUCK666/dsh-task-`
+     和 `board@latest` 画成两个词，而这条命令是要照抄进终端的。
+     词与词之间的空格不是这一格的职责——它在 `<code>` 那一层的空白里（见下）。 */
+  white-space: nowrap;
+}
+
+/* 命令打印出来的那段尾巴：失败时它**就是**理由，而最后几行是它说理由的地方。
+   代码框的样子与命令那一格一致（同一族表面、同一档边），但自带内滚——
+   它可能很长，而对话框正文只能有一个滚动体（`.body`），所以这里用固定上限 + 自滚。 */
+.output {
+  margin: 0;
+  padding: 10px 12px;
+  max-block-size: 160px;
+  overflow: auto;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-plane-inlay);
+  font-family: var(--dsw-font-markdown-code-block-small);
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-1);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: var(--dsh-tb-space-2);
+  /* 动作钉在底部：正文再长，按钮也在读者预期的地方。 */
+  margin-block-start: var(--dsh-tb-space-3);
+}

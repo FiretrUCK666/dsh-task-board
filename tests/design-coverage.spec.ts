@@ -57,6 +57,8 @@ const EXCUSED: Readonly<Record<string, string>> = {
     'It and `RunConfigFields` are one grammar (read the five rows / write the five selects) and the writing half needs a `BoardController` plus two board-owned editors, so hosting it here would make the design system import a page. Moving the READ half alone also moves its compact band, which lives in the board\'s `@container dsh-tb` today: no such container exists in the list panel, so the rule is dead there, and the design system\'s unnamed query would instead grow a NEW 680px band inside a list rail that is almost always narrower than that. That is a layout decision for that panel, not a side effect of a move.',
   RunConfigFields:
     'Same pair, same reason as `RunConfigRows`: it takes a `BoardController` and renders `RunConfigEditor` and `RunPresetManager`, both of which are board pages\' own. Hosting it here would point the design system at a page.',
+  WorkbenchOverlays:
+    'It is the set of overlays EVERY workbench page carries, and it reads `update-controller` — a module singleton that owns the update check. Hosting it in `design/` would make the design system import the assembler layer, which is the one direction the four-layer split forbids: the check would then depend on the shell that happens to render it. Its content is not a design substance either; it is one product feature (检查更新) that must appear on every page. What actually has to hold is "every page renders it", and that is asserted on its own — see the spec that counts overlays per panel.',
 }
 
 /** Every `.tsx` under `src/client`, with its text. */
@@ -289,8 +291,7 @@ describe('the design system and its preview page stay in step', () => {
     expect(stale, `these carry an excuse they no longer need (they are not shared across two product surfaces any more, or they moved into design/): delete their entries`).toEqual([])
   })
 
-  it('the design system never imports a page', () => {
-    // What makes `design/` a home rather than a shelf. A shared component that
+  it('the design system never imports a page', () => {    // What makes `design/` a home rather than a shelf. A shared component that
     // reads a page module depends on whichever panel happens to render it, which
     // is the thing the four-layer split exists to prevent — and the dependency
     // that has to be dragged along is how a "move it into design/" ends up moving
@@ -307,5 +308,45 @@ describe('the design system and its preview page stay in step', () => {
       }
     }
     expect(offenders, `the design system reaches into a page directory, so the shared component now depends on the panel that rendered it: ${offenders.join('; ')}`).toEqual([])
+  })
+
+  it('every page that shows the workbench bar also mounts the overlays', () => {
+    /* ── 这条钉的是一次真实的「功能被拆在两个地方」 ────────────────────────────
+     *
+     * 检查更新的**按钮**由 `WorkbenchBar` 渲染（`checking` / `onCheck` 是它的 props），
+     * 而按钮打开的**对话框**曾经只住在看板页的 JSX 里。于是同一个按钮在三个页面里有
+     * 两种行为：看板页能弹出，另外两页什么都不发生。
+     *
+     * 那不是漏改一处：触发在共享层、结果在页面层，**一个功能被拆开了**。每加一个新
+     * 页面这个缺口就再出现一次，而它不报错、不红、测试也过——每一页各自都「正确地」
+     * 渲染了自己那份 JSX，只是少了一份。
+     *
+     * 判据是结构性的，而且**自己发现页面**：
+     *
+     *   1. 凡是用 `WorkbenchBar` / `WorkbenchShell` 的文件就是一个「带栏的页面」——
+     *      因为栏是那个按钮的来源，与「哪一页」无关。
+     *   2. 这样的文件必须同时渲染 `WorkbenchOverlays`（或直接渲染 `UpdateDialog`）——
+     *      否则它有一颗按下没反应的按钮。
+     *
+     * 加第 4、第 5 个页面时，只要它用了栏，这条就自动覆盖它；不用栏的页面没有那颗
+     * 按钮，也就不需要对话框。 */
+    const barUsers: string[] = []
+    const missing: string[] = []
+    for (const f of files) {
+      const rel = relative(root, f.path).replace(/\\/g, '/')
+      /* `design/` 里是壳与栏的**定义**，不是消费者；`gallery/` 摆的是**标本**
+         （`onCheck={() => undefined}`，一个不接任何东西的按钮），它不打开对话框是
+         对的——那里没有真的检查要跑。判据只问「真页面上那颗按钮有没有结果」。 */
+      if (rel.startsWith('src/client/design/') || rel.startsWith('src/client/gallery/')) continue
+      const rendersBar = /<WorkbenchBar[\s>]|<WorkbenchShell[\s>]/.test(f.text)
+      if (!rendersBar) continue
+      barUsers.push(rel)
+      const mountsOverlays = /<WorkbenchOverlays[\s/>]|<UpdateDialog[\s/>]/.test(f.text)
+      if (!mountsOverlays) missing.push(rel)
+    }
+    /* 读取器自证：一个页面都没找到说明扫描坏了，而不是「都没问题」。 */
+    expect(barUsers.length, 'no page renders the workbench bar — the scan is broken, not the pages').toBeGreaterThan(1)
+    expect(missing, `these pages show the 检查更新 button but never mount its dialog, so the button does nothing there: ${missing.join(', ')}`)
+      .toEqual([])
   })
 })

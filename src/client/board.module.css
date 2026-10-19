@@ -373,7 +373,7 @@
 /* The one-shot replay half of the dot (see dshTbNotifyPing): same element,
    same tone — the animation is the tense, not a second signal. */
 .notifyPulse {
-  animation: dshTbNotifyPing 900ms ease-out 1;
+  animation: dshTbNotifyPing var(--dsh-tb-motion-cycle) 1;
 }
 
 /* 通知列表：一行一条（主区进任务详情 + 行内 triage 动作）。主区与动作区
@@ -689,7 +689,7 @@
    Reduced-motion softens it with the shared breath tokens, never zeroes it —
    it IS the arrival tense, same law as the card lights. */
 .boardDemand[data-fresh] {
-  animation: dshTbDemandFlash 900ms ease-out 1;
+  animation: dshTbDemandFlash var(--dsh-tb-motion-cycle) 1;
 }
 
 @keyframes dshTbDemandFlash {
@@ -1506,7 +1506,7 @@
 
 /* A rejected drop: a one-shot danger flash (not a persistent state). */
 .column[data-dragreject] {
-  animation: dshTbRejectFlash 180ms ease;
+  animation: dshTbRejectFlash var(--dsh-tb-motion-reject);
 }
 
 @keyframes dshTbRejectFlash {
@@ -2111,7 +2111,7 @@
   border: 2px solid currentColor;
   border-top-color: transparent;
   border-radius: 50%;
-  animation: dshTbSpin 800ms linear infinite;
+  animation: dshTbSpin var(--dsh-tb-motion-spin) infinite;
 }
 
 @keyframes dshTbSpin {
@@ -3153,7 +3153,7 @@
 }
 
 .sessionDropZone[data-flash] {
-  animation: dshTbDropConfirm 180ms ease;
+  animation: dshTbDropConfirm var(--dsh-tb-motion-reject);
 }
 
 /* One-shot accept ring on a successful session drop: the same 2px accent ring
@@ -3703,53 +3703,6 @@
   font-size: 12px;
   line-height: 1.5;
   color: var(--dsh-tb-text-2);
-}
-
-/* The equivalent terminal command, drawn one word per unbreakable span.
-   `pre-wrap` alone is not enough: the default line-breaking rules also break
-   after a hyphen, so a scoped package name is drawn as `@scope/dsh-task-` /
-   `board@latest` whenever the line happens to end there — two words, in a
-   string the reader has to retype exactly. Breaks belong between words. */
-.updateCommand {
-  /* **给命中环留地方，而字不动。** 这一行里坐着「复制」那枚按钮，它的热区放大环是
-     `::before` 的 `inset: -7px`——而这一格自己又是 `overflow-x: auto` 的裁剪体，于是那一圈
-     **既点不到也滚不到**（读者摸到的是半个热区），触屏那一档还因此凭空多出 6px 滚动量
-     （`pnpm audit` 的 ringsInsideClip 与 touch-scroll-delta 两条一起报的就是它）。
-     7px 的内衬恰好把那一圈装进来；左右各让 7px、再把外边距同样拉回 7px，**这一行的第一个字
-     仍然站在原来那条线上**（挪的是盒子，不是字）。 */
-  margin-block: 0;
-  margin-inline: -7px;
-  padding: 7px;
-  min-width: 0;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  /* A word is unbreakable by design, so a word longer than the line has
-     nowhere to go. Scrolling is the bound that keeps it inside the box
-     (hard rule 11②): the alternative is text drawn past the edge. */
-  overflow-x: auto;
-}
-
-.updateWord {
-  white-space: nowrap;
-}
-
-/* The tail of a failed update command's output: what the command said is the
-   reason, and the last lines are where it says it. Same "code frame" as the
-   prompt block (monospace + markdown code surface + hairline), and no scroll
-   of its own — a dialog owns exactly ONE scroll body (.modalScroll), and a
-   nested bar would be the second. */
-.updateOutput {
-  margin: 0;
-  padding: 10px 12px;
-  font-size: 12px;
-  line-height: 1.5;
-  font-family: var(--dsw-font-markdown-code-block-small);
-  color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-plane-inlay);
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
 }
 
 /* --- automation overview panel (board header "自动化") ----------------------
@@ -4746,7 +4699,7 @@
   background: var(--dsw-specific-bubble, var(--dsw-static-deepseek-50));
   border-radius: 22px;
   color: var(--dsh-tb-text-1);
-  transition: background-color 120ms ease;
+  transition: background-color var(--dsh-tb-motion-tint);
 }
 
 .reviewMessage[data-role='user'] .reviewMessageText:hover {
@@ -5278,7 +5231,7 @@
   border: none;
   cursor: pointer;
   white-space: nowrap;
-  transition: color 120ms ease;
+  transition: color var(--dsh-tb-motion-tint);
 }
 
 .reviewCommentCancel:hover {
