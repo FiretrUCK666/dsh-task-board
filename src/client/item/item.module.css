@@ -1063,14 +1063,16 @@
 
 .itemRailNavBtn {
   inline-size: 22px;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
 .itemRailToday {
   /* 一格里的字要「居中」，而居中说的是墨心，不是行盒心：这一条就是那句话的实现。
      旁边的两枚是箭头（绕中心对称的记号），不参与这一条。 */
-  padding-inline: var(--s2); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: var(--s2); --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemRailNavBtn:hover,
@@ -1195,7 +1197,8 @@
   justify-content: center;
   block-size: 26px;
   /* 那个 3px 的点是绝对定位的，跟着格子的下沿走，不受这一档影响。 */
-  padding-inline: 0; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 0; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   border: 0;
   border-radius: var(--item-radius-ctl);
   background: none;
@@ -1212,7 +1215,8 @@
   /* 这一枚是**真正装字的那一段**——格子自己只是一口盒子。所以墨位校正要落在它身上，
      而不是只落在盒子上：盒子里的字如果自己不校正，格子挪了半像素、字跟着挪，
      相对位置一点没变。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   color: var(--item-ink-2);
   font-variant-numeric: tabular-nums;
 }
@@ -1322,10 +1326,11 @@
   letter-spacing: var(--dsh-tb-type-eyebrow-track);
   color: var(--item-ink-2);
   /* 这一条是小标题：上下的**留白**由空间阶梯给，块向的**校正**叠加在它上面。
-     两者不是同一件事——留白说的是「它离邻居多远」，校正说的是「墨落在行盒中心」。
+     两者不是同一件事——留白说的是「它离邻居多远」，校正说的是「墨落在盒心」。
      写成两条才不会为了修墨位而改掉留白。 */
-  padding-block: calc(var(--dsh-tb-space-1) + max(0px, calc(-1 * var(--dsh-tb-optical-drop))))
-                 calc(var(--dsh-tb-space-3) + max(0px, var(--dsh-tb-optical-drop)));
+  --dsh-tb-optical-target: 1;
+  padding-block: calc(var(--dsh-tb-space-1) + max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))))
+                   calc(var(--dsh-tb-space-3) + max(0px, var(--dsh-tb-optical-shift, 0px)));
   padding-inline-start: calc(var(--item-rail-lead) + var(--item-rail-mark-col) + var(--s2));
 }
 
@@ -1339,7 +1344,7 @@
 .itemRailRow {
   /* **行盒必须自己说，不能落回 `normal`。** 这两个类（行与日历格）曾经既没有
      `font-size` 也没有 `line-height`：字从父级继承、行盒由字体度量决定，于是墨位
-     校正那一条（`--dsh-tb-optical-drop`）虽然写在 `padding-block` 上，却是在一个
+     校正那一条虽然写在 `padding-block` 上，却是在一个
      **不受控的行盒**里挪格子——量出来的结果是「有内衬、没效果」，读者看到的是
      「左栏那些行整体偏下」。行盒取那一档令牌，字阶取小件那一档。 */
   font-size: var(--dsh-tb-type-meta-size);
@@ -1360,7 +1365,8 @@
   min-block-size: var(--dsh-tb-button-h-sm);
   /* 上衬与下衬在这里不是等量的：下面那一笔是墨位校正，它只挪内容盒中心、不挪行盒。
      记号是一枚对称的图形，跟着上移半像素看不出来，而字会看得出来。 */
-  padding-inline: var(--item-rail-lead); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: var(--item-rail-lead); --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   border: 0;
   border-radius: var(--item-radius-ctl);
   background: none;
@@ -1617,7 +1623,7 @@
   .itemRailRow {
   /* **行盒必须自己说，不能落回 `normal`。** 这两个类（行与日历格）曾经既没有
      `font-size` 也没有 `line-height`：字从父级继承、行盒由字体度量决定，于是墨位
-     校正那一条（`--dsh-tb-optical-drop`）虽然写在 `padding-block` 上，却是在一个
+     校正那一条虽然写在 `padding-block` 上，却是在一个
      **不受控的行盒**里挪格子——量出来的结果是「有内衬、没效果」，读者看到的是
      「左栏那些行整体偏下」。行盒取那一档令牌，字阶取小件那一档。 */
   font-size: var(--dsh-tb-type-meta-size);
@@ -1716,7 +1722,8 @@
   border-radius: var(--item-radius-pill);
   color: var(--item-ink-2);
   background: var(--item-fill);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* 两处只差**外边空气**：清单页那一段上面是一整档分隔、下面一档；日程页那几节之间
@@ -1781,7 +1788,8 @@
   gap: var(--s1);
   min-inline-size: 0;
   line-height: var(--dsh-tb-text-line-h);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* 每一段：**行内块 + 行盒 = 它自己的字号**。`1em` 按这一段自己的 `font-size` 解析，
@@ -1834,7 +1842,8 @@
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemGroupWhy:hover,
@@ -2130,9 +2139,10 @@ button.itemRowText {
   gap: var(--dsh-tb-space-2);
   flex: none;
   /* 小件那一档（20px）：与这一行右边那些药丸同高，于是簇里四枚的盒心在同一条线上。
-   * 下内衬是墨位校正（见 `--dsh-tb-optical-drop`）：内容盒中心上移半档，墨才落在盒心。 */
+   * 墨位校正由运行时逐元素算出来（见 `design/ink-metrics.ts`），这里不管内衬。 */
   block-size: var(--dsh-tb-chip-h);
-  padding-inline: 6px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 6px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-family: inherit;
   font-size: 12px;
   font-weight: 400;
@@ -2146,7 +2156,8 @@ button.itemRowText {
   border-radius: var(--item-radius-pill);
   cursor: pointer;
   transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemRowSteps:hover,
@@ -2195,16 +2206,18 @@ button.itemRowText {
   gap: var(--dsh-tb-space-2);
   flex: none;
   /* **定高 + 居中。** 高度读小件那一档（20px），字由 `align-items: center` 居中：一个盒子
-   * 装一行字，居中就是居中那行字。下内衬是**墨位校正**（`--dsh-tb-optical-drop`）：内容盒
+   * 装一行字，居中就是居中那行字。墨位校正由运行时逐元素算（`design/ink-metrics.ts`）：内容盒
    * 中心因此上移半档，墨才真的落在盒心——补偿数由字体度量给出，不是照着一种字体试出来的。 */
   block-size: var(--dsh-tb-chip-h);
-  padding-inline: 8px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 8px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 12px;
   font-weight: 400;
   line-height: var(--dsh-tb-text-line-h);
   background: color-mix(in srgb, currentColor var(--dsh-tb-wash), transparent);
   border-radius: var(--item-radius-pill);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 button.itemRowCardChip {
@@ -2255,7 +2268,8 @@ button.itemRowCardChip {
   font-weight: 400;
   line-height: var(--dsh-tb-text-line-h);
   color: var(--item-ink-2);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* 日期读数那一格：**截断槽**。它不自己写那四行，而是读设计系统里唯一那个槽
@@ -2426,7 +2440,8 @@ button.itemRowCardChip {
   background: var(--item-fill);
   border: var(--item-hair-strong);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* ⋮ 是一个控制，所以它有一块**命中区**，悬停时画一块底，而不是改字的颜色。
@@ -2523,7 +2538,8 @@ button.itemRowCardChip {
   background: none;
   border: var(--item-hair);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemPrioChip i {
@@ -3313,7 +3329,8 @@ button.itemRowCardChip {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -3361,10 +3378,11 @@ button.itemRowCardChip {
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 400;
   /* 行高读墨高那枚令牌，不是写死的 20px：写死的那一个既绕开了墨位校正
-     （`--dsh-tb-optical-drop`），又与全系统的「一行字」不是同一个构造。
+     ，又与全系统的「一行字」不是同一个构造。
      墨是第一档而不是第二档——它是一句**刚发生的事**，不是辅助说明。 */
   line-height: var(--dsh-tb-text-line-h);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   color: var(--item-ink-1);
 }
 
@@ -3463,7 +3481,8 @@ textarea.itemInput {
      四档里（11/12/13/15），而它只因为里面的字住在 `.itemQueryChipLabel` 里才没在屏上
      露出来。一个没人声明的值就是下一次「它为什么和旁边不一样」的来处。 */
   font-size: var(--item-write-size);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -3504,13 +3523,15 @@ textarea.itemInput {
    之后它只差最后 1 设备像素（3x 下量到 203.5，而芯片里的字在 204.5）。位移补上这一格；
    **位移不动布局**，而内衬会连盒心一起挪（同一笔账在勾选框那里记过）。 */
   transform: translateY(0.33px);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemQueryClear {
   flex: none;
   position: relative;
-  padding-inline: 6px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 6px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-family: inherit;
   font-size: 13px;
   font-weight: 400;
@@ -3566,7 +3587,8 @@ textarea.itemInput {
   flex: none;
   min-block-size: 24px;
   min-inline-size: 24px;
-  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 10px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-family: inherit;
   font-size: 12px;
   font-weight: 400;
@@ -3755,7 +3777,8 @@ textarea.itemInput {
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemCreateDialogClose:hover {
@@ -4545,10 +4568,12 @@ textarea.itemInput {
    * 进来——**一个不对称的内衬就是一格偏移**（居中的盒子整体偏 0.5px），而同一枚药丸有的地方
    * 是 `<button>`、有的地方是 `<span>`，两种盒子的结果还不一样。所以块向内衬在简写里写明 0。 */
   block-size: var(--dsh-tb-chip-h);
-  /* **下内衬是墨位校正**（`--dsh-tb-optical-drop`）：`align-items: center` 居中内容盒，多给
-   * 一档下内衬，内容盒中心就上移半档，中文字形的墨才落在盒心。用内衬不用 transform——
-   * transform 会把盒子和字一起挪走，等于没修。 */
-  padding-inline: 9px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  /* 墨位校正由运行时逐元素算（见 `design/ink-metrics.ts`）：它把**这一枚**该差的那一档
+   * 写进 `--dsh-tb-optical-shift`，这里只负责读。内衬改的是内容盒，所以在
+   * `align-items: center` 的盒子里它与基准一起走——读者看到的相对位置靠这一档才动。 */
+  padding-inline: 9px;
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 12px;
   font-weight: 400;
   /* **按钮不继承字体，得写出来。** UA 给表单控件自己的一套字，中文按字回退到另一套
@@ -4677,7 +4702,8 @@ textarea.itemInput {
   border-radius: var(--item-radius-pill);
   outline: none;
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemOptNaming:focus {
@@ -4747,7 +4773,7 @@ textarea.itemInput {
      **必须减掉校正那一档。** 写完 `padding-block` 之后内容盒就矮了那一档（20 − 2 − 1），
      而行盒若仍按 18 算就**高出内容盒**——输入框的行盒由 `line-height` 定、不会被内衬挤动，
      于是溢出、基线不动，校正一次都不生效（量到过：整条 `.itemTagAdd` 的 `moved` 是 0）。 */
-  line-height: calc(var(--dsh-tb-chip-h) - 2px - max(0px, var(--dsh-tb-optical-drop)));
+  line-height: calc(var(--dsh-tb-chip-h) - 2px - max(0px, var(--dsh-tb-optical-shift, 0px)) - max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))));
   font-size: 12px;
   /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的。 */
   font-family: inherit;
@@ -4757,7 +4783,8 @@ textarea.itemInput {
   border-radius: var(--item-radius-pill);
   outline: none;
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* **这一格由里面那两样东西里更宽的那一样定宽**：输入框（`inline-size: 100%`，跟着格子）与
@@ -5032,7 +5059,8 @@ textarea.itemInput {
   cursor: pointer;
   font-variant-numeric: tabular-nums;
   transition: color var(--dsh-tb-motion);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemDateOpen > span {
@@ -5368,7 +5396,8 @@ textarea.itemInput {
   border-radius: var(--dsh-tb-pill);
   justify-self: start;
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* **「还没有步骤。」和步骤板是同一个框**：同一层底、同一条边、同一个圆角、同一档内衬。
@@ -5435,7 +5464,8 @@ textarea.itemInput {
   background: none;
   border: 0;
   cursor: pointer;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -5459,7 +5489,7 @@ textarea.itemInput {
 .itemRefChip {
   flex: none;
   align-self: center;
-  padding: 0 8px;
+  padding-inline: 8px;
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -5468,6 +5498,9 @@ textarea.itemInput {
   background: none;
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
+  /* 墨位校正由运行时逐元素算（见 `design/ink-metrics.ts`），这里只负责读。 */
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .itemRecentTitleText {

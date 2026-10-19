@@ -343,7 +343,8 @@
   justify-content: center;
   min-width: 16px;
   height: 16px;
-  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 4px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   /* 计数药丸同样是「一行字在盒里」：下内衬把墨抬到盒心。 */
     font-size: 11px;
   font-weight: 600;
@@ -592,7 +593,8 @@
   font-size: 12px;
   line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* A refused drop, in words. Sits in the header's own column flow (not absolute),
@@ -638,7 +640,8 @@
   min-width: 0;
   align-self: flex-start;
   height: var(--dsh-tb-button-h);
-  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 12px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 12px;
   font-weight: 500;
   line-height: var(--dsh-tb-text-line-h);
@@ -711,8 +714,9 @@
      the row's 28px frame like every button beside it (it used to be a bare
      12px line, which is the two-heights report). */
   height: var(--dsh-tb-button-h);
-  /* 内衬为 0 的一枚：墨位校正只能单独写块向那一档（见 `--dsh-tb-optical-drop`）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  /* 墨位校正由运行时逐元素算（见 `design/ink-metrics.ts`），这里只负责读。 */
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   flex: 0 1 auto;
   min-width: 0;
   margin: 0;
@@ -785,7 +789,8 @@
   border-radius: var(--dsh-tb-pill);
   transition: background var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .cruisePill:hover {
@@ -808,7 +813,8 @@
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .cruiseMore:hover {
@@ -985,7 +991,8 @@
      family law — see .interactionOptionButton). */
   box-sizing: border-box;
   height: 30px;
-  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 10px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 12px;
   font-variant-numeric: tabular-nums;
 }
@@ -1006,7 +1013,8 @@
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .timeFieldCalendar:hover {
@@ -1092,7 +1100,8 @@
   block-size: var(--dsh-tb-button-h);
   /* A tab is one line of text in a capsule: the bottom bearing is the ink
      correction (2d moves the content box centre up by d). */
-  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 10px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
     border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-chip-fill);
@@ -1288,7 +1297,8 @@
   flex: none;
   min-width: 24px;
   block-size: var(--dsh-tb-chip-h);
-  padding-inline: 7px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 7px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
     font-size: var(--dsh-tb-type-meta-size);
   font-family: inherit;
   line-height: var(--dsh-tb-text-line-h);
@@ -1597,7 +1607,8 @@
   pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .card:hover .cardQuickRun,
@@ -1888,7 +1899,8 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
      /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-     padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+     --dsh-tb-optical-target: 1;
+     padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* **「挂着 N 条清单条目」那枚读数同时是一扇门**（跳到清单、只看挂着这张卡的条目）。
@@ -2021,7 +2033,8 @@
   flex: none;
   border: none;
   background: none;
-  padding-inline: 2px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 2px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
     font-size: 12px;
   line-height: var(--dsh-tb-text-line-h);
   cursor: pointer;
@@ -2053,7 +2066,8 @@
   justify-content: center;
   flex: none;
   height: 24px;
-  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 10px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
     font-size: 12px;
   line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
@@ -2822,7 +2836,8 @@
 
 .schedulePreset {
   height: 34px;
-  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 12px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
@@ -2981,7 +2996,8 @@
      rising, not a control being squeezed. */
   overflow-wrap: anywhere;
   min-block-size: 1lh;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -2993,7 +3009,8 @@
   background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
   border-radius: var(--dsh-tb-pill);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* The add-preset row obeys the SAME form-row grammar as every other control
@@ -3077,7 +3094,8 @@
   pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .promptBlock:hover .promptCopy,
@@ -3540,7 +3558,8 @@
 .sessionRowHandle {
   flex: none;
   height: var(--dsh-tb-button-h-sm);
-  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 10px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 12px;
   font-weight: 500;
   /* Dark ink, not `foreground`: the amber fill is light in BOTH themes, so the
@@ -3694,7 +3713,8 @@
   border-radius: var(--dsh-tb-pill);
   white-space: nowrap;
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
@@ -4775,7 +4795,8 @@
   align-items: center;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -4884,7 +4905,8 @@
    --meter-tint custom property set by each segment's class. */
 .reviewMeterBar {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+--dsh-tb-optical-target: 1;
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   display: flex;
   gap: 1px;
   height: 4px;
@@ -5046,7 +5068,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 .reviewConfigValue {
   display: block;
   height: 34px;
-  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 12px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 13px;
   line-height: 32px;
   color: var(--dsh-tb-text-2);
@@ -5133,7 +5156,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   background: var(--dsh-tb-plane-inlay);
   border: var(--dsh-tb-border-soft);
   border-radius: 4px;
-  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 4px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   /* A long inline token (a path, a slug) must break, not push the whole
      transcript wider than its column (the "转写冲出右边缘" bug — the card
      never-pierce contract extended to the review conversation). */
@@ -5354,7 +5378,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   box-shadow: var(--dsh-tb-shadow-2);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .reviewJumpLatest:hover {
@@ -5523,7 +5548,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   flex-direction: column;
   gap: var(--dsh-tb-space-4);
   min-width: 0;
-  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 12px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .interactionQuestion {
@@ -5716,7 +5742,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 .interactionBadge {
   flex: none;
-  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 4px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 11px;
   font-weight: 600;
   line-height: 16px;
@@ -5847,7 +5874,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   gap: var(--dsh-tb-space-2);
 }
 .interactionProgress {
-  padding-inline: 4px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  padding-inline: 4px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   font-size: 13px;
   font-weight: 500;
   line-height: 20px;
@@ -6875,7 +6903,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
        pill, not a card). */
     justify-content: center;
     min-width: 0;
-    padding-inline: 6px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+    padding-inline: 6px; --dsh-tb-optical-target: 1;
+ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
     /* The shorthand above resets the bottom bearing, so the ink correction is
        restated AFTER it (the same order every shared pill uses). */
         border-radius: var(--dsh-tb-pill);

@@ -497,14 +497,19 @@ export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'u
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-task-board: dictionaries')
-  /* **墨位校正：量当前字体，写进令牌。** 必须在这里跑，因为它是唯一一处「每次挂载
-     都会执行、且早于任何胶囊渲染」的位置。量到的是**这台机器这款字体**的偏移，
-     所以它在你的电脑上算出 0.5px、在手机上算出别的值（或 0），**两端各自正确**——
-     这正是写死一个数永远做不到的事（写死只会修好一台、弄坏另一台）。
-     两次测量：现在一次，`document.fonts.ready` 之后再一次（中文字体常常晚到）。 */
-  ctx.effect(() => {
-    installInkMetrics()
-  }, 'dsh-task-board: ink nudge measured from the rendering font')
+  /* **墨位校正：逐元素量，每一枚写回自己那一个变量。** 必须在这里跑，因为它是
+     唯一一处「每次挂载都会执行」的位置。量的是**这一枚自己的**排版结果（基线、
+     内容盒中心、那串字在 canvas 上画出来的墨），所以芯片、页签、组头——三族几何
+     完全不同的盒子——各自拿到各自该差的那个数，而不是一个全局常数。
+     它自带三条重新测量的触发：字体到齐、子树变化（切页、展开一行）、尺寸变化。
+     **只处理带 `--dsh-tb-optical-target: 1` 标记的盒子**，所以宿主自己的界面一个都
+     不碰（上一版栽在这里：它把整个 document 的每一行字都改了，于是整个 DSH 页面
+     都在被抬起）。
+     `ctx.effect` 收下它返回的 disposer，所以每次挂载不会多留一个观察者。 */
+  ctx.effect(
+    () => installInkMetrics(document.body),
+    'dsh-task-board: per-element ink shift measured from the rendered line box',
+  )
   // Stale-bundle self-heal (see bundle-freshness.ts). This runs BEFORE any
   // mounting work: the client half is an immutable, revisioned artifact, so a
   // document that is already open keeps rendering the bundle it booted with —

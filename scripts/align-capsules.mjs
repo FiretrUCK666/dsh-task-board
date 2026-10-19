@@ -1,55 +1,52 @@
 #!/usr/bin/env node
 /**
- * 给每一个胶囊补上墨位校正，**并且把这件事变成一条可检查的通则**。
+ * 墨位校正的判据：**那个量按元素算**，而且每一枚都真的挂上了。
  *
- * ── 为什么需要这个脚本 ──────────────────────────────────────────────────────
+ * ── 它守的是什么 ────────────────────────────────────────────────────────────
  *
- * 校正本身很简单：一对对称内衬，源自运行时量出的 `--dsh-tb-optical-drop`。
- * 麻烦的是**它要落在每一个胶囊上，而且真的生效**——「每一个」是个移动目标（新写一个
- * 按钮、新加一个芯片都该自动带上），「真的生效」是个更隐蔽的目标。两件事都出过错：
+ * `align-items: center` 居中的是**行盒**，读者看的是**字的墨**。两者不同心，而差值
+ * 逐元素不同（字体度量、行盒比元素盒高多少、字号），且渲染时基线被吸附到整像素，
+ * 于是「差多少」是**一格一格**的、每格的门槛由那一枚自己的几何决定。量过的三个族：
+ * 12px 的芯片要 1.1px、13px 的页签要 2.0px、组头要 1.25px——**一个全局常数必然只
+ * 对齐一族**。
  *
- *   清单页 29 处都加了，看板页 0 处   → 同一个界面两页表现不同
- *   规则里写了，后面一条 `padding` 简写又把它整条盖掉 → 同一页里有的对、有的错
+ * 所以判三件事，缺一件都算没过：
  *
- * 两种失效都不会报错：样式表合法、类名都在、测试全过，屏幕上就是偏了。所以这个脚本
- * 判两件事，缺一件都算没过：
- *
- *   1. **覆盖**：每一个胶囊都要带校正；
- *   2. **有效**：校正必须是这条规则里**最后一条**管块向内衬的声明。CSS 里同族属性
- *      后声明的赢，所以后面再来一条 `padding: 0 4px 0 6px`，前面那对 `padding-block`
- *      就整条作废——文件里看得见它，浏览器里一次都没跑。
+ *   1. **每枚要校正的盒子都挂上了**：声明 `--dsh-tb-optical-target: 1`，并读
+ *      `var(--dsh-tb-optical-shift, 0px)`（**这一枚自己的**值）。
+ *   2. **校正没被盖掉**：那对 `padding-block` 必须是这条规则里**最后一条**管块向
+ *      内衬的声明——CSS 里同族属性后声明的赢，后面再来一条 `padding: 0 4px`，
+ *      前面那对就整条作废，而文件里看得见、浏览器里一次都没跑。
+ *   3. **写入方在位**：运行时真的按元素算、真的写回那一枚；而且**只碰带标记的**
+ *      （不碰宿主自己的界面——上一版就是栽在这里：它把整个 document 的每一行字都
+ *      改了，于是整个 DSH 页面都在被抬起）。
  *
  * ── 判据是结构，不是名单 ────────────────────────────────────────────────────
  *
  * 「胶囊」= 一条规则把圆角**解析成**胶囊那一档。这里不认字面量：先把全项目的自定义
- * 属性建成一张图，把 `var()` 链解析到底再判。
- *
- * 这一条也是踩出来的：旧版只匹配字面量 `border-radius: var(--dsh-tb-pill)`，于是
- * `border-radius: var(--item-radius-pill)` 那 16 条**一条都没进网**——它有 10 条
- * 从来没被补过校正，而门禁是绿的。同一个圆角、两个名字，检查只认其中一个。
+ * 属性建成一张图，把 `var()` 链解析到底再判（`--item-radius-pill` 与
+ * `--dsh-tb-pill` 是同一个圆角的两个名字，只认一个就永远有一族不在网里）。
  *
  * 用法：
- *   node scripts/align-capsules.mjs .           # 检查（verify 用这一档）
- *   node scripts/align-capsules.mjs . --fix     # 补齐 / 排到最后
- *   node scripts/align-capsules.mjs . --probe   # 自测：种一个缺校正的胶囊，必须报红
- *   node scripts/align-capsules.mjs . --probe-clobbered  # 自测：种一个被简写盖掉的，必须报红
- *   node scripts/align-capsules.mjs . --probe-ordered    # 自测：种一个写对了的，必须放行
+ *   node scripts/align-capsules.mjs .            # 检查（verify 用这一档）
+ *   node scripts/align-capsules.mjs . --probe    # 自测：种一个缺标记的，必须报红
+ *   node scripts/align-capsules.mjs . --probe-writer  # 自测：种一个没有写入方的，必须报红
+ *   node scripts/align-capsules.mjs . --probe-clobbered  # 自测：种一个被简写盖掉的
+ *   node scripts/align-capsules.mjs . --probe-ordered    # 自测：种一个写对了的
  */
 
-import { readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { pathToFileURL } from 'node:url'
 
-/** 补上去的那一对声明：两侧都写，令牌的符号决定用哪一侧。 */
-const CORRECTION = 'padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));'
-
-/**
- * 插进去的注释，一句话。
- *
- * 同一个说明在几十处重复一遍就是噪声，所以只留**这一行**：它说清「为什么不加会偏」，
- * 完整算术在 `base.module.css` 的墨位那一节与 `DESIGN.md`——**一份成文，多处指路**。
- */
-const NOTE = '/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */'
+/** 那一枚盒子上的「我要被校正」的标记。 */
+const MARK = '--dsh-tb-optical-target: 1;'
+/** 那一枚盒子读自己的那个变量。 */
+const SHIFT = 'var(--dsh-tb-optical-shift, 0px)'
+/** 那个被废掉的全局令牌。它一旦再出现，就是旧路复活。 */
+const RETIRED = '--dsh-tb-optical-drop'
+/** 唯一允许写校正的那个模块。 */
+const WRITER = 'design/ink-metrics.ts'
 
 /** 管块向内衬的四条属性：它们互相覆盖，最后一条赢。 */
 const BLOCK_PADDING = /(^|[;{\s])(padding|padding-block|padding-block-start|padding-block-end|padding-top|padding-bottom)\s*:/g
@@ -76,7 +73,7 @@ function blankComments(css) {
   return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
 }
 
-/** 把一张表拆成规则（保留字节位置，方便原地改）。 */
+/** 把一张表拆成规则。 */
 function rulesOf(css) {
   const rules = []
   let i = 0
@@ -91,40 +88,23 @@ function rulesOf(css) {
       else if (css[j] === '}') depth--
       j++
     }
-    rules.push({ selector, bodyStart: open + 1, bodyEnd: j - 1, body: css.slice(open + 1, j - 1) })
+    rules.push({ selector, body: css.slice(open + 1, j - 1) })
     i = j
   }
   return rules
 }
 
-/**
- * 全项目的自定义属性图：名字 → 值（第一条声明为准）。
- *
- * 只需要「能不能解析到胶囊档」这一个答案，所以同名只留一份即可——本项目的令牌都是
- * 在 `:root` / 座位选择器上各声明一次，值一致。真正需要区分作用域的那一天，这里得
- * 改成按出处的图，而不是靠取巧。
- */
+/** 全项目的自定义属性图：名字 → 值（第一条声明为准）。 */
 function customProperties(root) {
   const map = new Map()
-  const typed = new Set()
   for (const file of sheets(root)) {
     const css = blankComments(readFileSync(file, 'utf8'))
     for (const match of css.matchAll(/(--[A-Za-z0-9-]+)\s*:\s*([^;}]+)/g)) {
       if (!map.has(match[1])) map.set(match[1], match[2].trim())
     }
-    /* 顺便收一张「哪些类名与排版声明同处一条规则」的表：`.chip` 与 `.chipFill` 是同一个
-       元素的两个类，前者给字号、后者给皮与校正——那一次计算是对的，不该报出来。 */
-    for (const rule of rulesOf(css)) {
-      if (!/(^|[;{\s])(font-size|font-weight|line-height|font-family)\s*:/.test(rule.body)) continue
-      for (const one of rule.selector.matchAll(/\.([A-Za-z_][A-Za-z0-9_-]*)/g)) typed.add(one[1])
-    }
   }
-  map.set(TYPED_CLASSES, typed)
   return map
 }
-
-/** 那张「类名 → 与排版声明同处一条规则」的表在令牌图里的键（不是 CSS 变量）。 */
-const TYPED_CLASSES = Symbol.for('dsh-task-board/typed-classes')
 
 /** 沿 `var()` 链解析到底；解析不动就原样返回。 */
 function resolveValue(value, properties, depth = 0) {
@@ -137,321 +117,191 @@ function resolveValue(value, properties, depth = 0) {
   return trimmed
 }
 
-/**
- * 一条规则的圆角是不是胶囊那一档。
- *
- * 「胶囊」在这个项目里有一个定义处：`--dsh-tb-pill`。别名（`--dsh-tb-button-radius`、
- * `--item-radius-pill`）都指回它。所以判据是**解析之后与那枚令牌相等**，不是匹配某个
- * 写法——同一个圆角有三个名字，只认其中一个，另外两条就永远不在网里（这条正是踩出来的：
- * 旧版只认字面量 `var(--dsh-tb-pill)`，`--item-radius-pill` 那 16 条里 10 条从没被补过）。
- *
- * 为什么不按数值门槛判（「圆角 ≥ 20px 就算胶囊」）：那样 `--dsh-tb-radius-lg`（20px）
- * 与 `--dsh-tb-radius-xl`（28px）的卡片、抽屉全会落进来，而它们装的是段落不是一行字，
- * 给它们加块向内衬是会真的改变版面的。判「与 pill 同一个值」既收得住，又不写死 999。
- */
+/** 一条规则的圆角是不是胶囊那一档（沿 `var()` 链解析之后比）。 */
 function isCapsule(body, properties) {
   const declared = /border-radius\s*:\s*([^;}]+)/.exec(body)
   if (declared === null) return false
   const pill = properties.get('--dsh-tb-pill')
   if (pill === undefined) return false
   const pillValue = resolveValue(pill, properties)
-  /* 只看 `/` 之前的水平半径：`a / b` 那种椭圆写法在本项目里不存在，出现了也不该
-     被当成胶囊。四个角只要有一个是胶囊圆角就够了（`border-radius: 999px 0 0 0`
-     头是圆的，仍然是一个胶囊）。 */
   const horizontal = declared[1].split('/')[0].trim()
-  return horizontal
-    .split(/\s+/)
-    .some((part) => resolveValue(part, properties) === pillValue)
-}
-
-/**
- * 这条规则自己会不会画出一行字。
- *
- * 墨位校正移动的是「字的墨」，所以只有当这条规则真的画出字的时候它才有意义。没有这一
- * 条的后果量得到：`.itemStepBar`（4px 高的进度槽）、`.itemProseGrip > span`（3px 的
- * 抓握条）这些圆形的纯色块都被判成胶囊，再被塞进一对上下内衬——在 `box-sizing:
- * border-box` 与固定 `block-size` 之下像素没错，但那对声明在描述一件这个盒子里根本
- * 不存在的事，下一个人只能靠猜它为什么在那儿。
- *
- * **判据不能是「声明了 font-size」。** 试过那一版，它漏掉了 `.cruisePill`：那条规则
- * 一个字号都没写（字号从父级继承）。两个结构信号缺一不可：
- *
- *   1. **自己声明了排版**（字号、字重、行高、字族任一）。本项目的胶囊绝大多数如此。
- *   2. **自己是一个控件**（`button` / `a` / `label` / `input` / `select` / `textarea`
- *      选择器，或 `[role=button]`）。控件的字就在自己身上，而它们常常不重复声明字号
- *      ——字号是全站给按钮的，而门禁读的是**这一条规则**，只能看到本地的。
- *
- * 两个信号都不是类名名单，所以新写一个按钮、新加一枚芯片都会自动落进来。
- *
- * **有一类东西两个信号都不满足，而且它们确实不需要校正：外壳。** `.cruisePill` 是
- * 一枚装着 `<Switch>` 的 `div`——真正装字的是那个组件里的 `.switchLabel`，它自己有
- * 字号、自己居中。给外壳加内衬只会把整个组件推偏，组件里那一行字纹丝不动。
- * 「自己是不是控件」正好把外壳挡在外面，这不是特例，是它本来的含义。
- */
-function hasText(selector, body) {
-  if (/(^|[;{\s])(font-size|font-weight|line-height|font-family)\s*:/.test(body)) return true
-  return /(^|[\s,>])(button|a|label|input|select|textarea)(\.|\[|:|\s|,|$)/i.test(selector)
-    || /\[role=['"]button['"]\]/.test(selector)
-}
-
-/** 一枚定高控件：块向尺寸不由内容决定。 */
-function isFixedHeight(body) {
-  return /(^|[;{\s])(block-size|height|min-block-size)\s*:\s*(?!auto)[^;}]+;/.test(body)
-}
-
-/**
- * 这条规则是不是**一枚装字的定高胶囊**。
- *
- * 判据三样，全部读结构：
- *   1. 圆角解析到底 = 胶囊那一档（`--dsh-tb-pill` 的值）；
- *   2. 有块向定高（`block-size` / `height`，或 `min-block-size`）——一枚胶囊是
- *      「一行字的定高盒子」，没有定高的圆角盒子是段落，不归这里管；
- *   3. 有**居中手段**：`align-items: center`，或者这条规则自己声明了 `line-height`
- *      （行盒撑满内容盒的写法，输入框走这一条），或者它把自己声明成 flex/grid。
- *
- * 第 3 条是这一轮补的，它抓的正是上一版漏掉的那一类：`.itemTag` 把居中写在一条
- * 共享基座 `:where(.itemOpt, .itemPrioChip, .itemTag)` 里，自己一条声明都没有。
- * 旧判据（「这条规则有没有写校正」）对它直接跳过——于是它既没有校正，也不在网里，
- * 而屏幕上它是偏的。判据换成「它是一条胶囊吗」之后，这类跨规则拼出来的胶囊才进得来。
- *
- * 纯色记号（进度槽、抓握条）会落进第 1、2 条，但落不进第 3 条：它们既不居中、也不
- * 声明行高，因为它们不装字。
- */
-function isTextCapsule(selector, body, properties) {
-  if (!isCapsule(body, properties)) return false
-  if (!isFixedHeight(body)) return false
-  return /align-items\s*:\s*center/.test(body)
-    || /line-height\s*:/.test(body)
-    || /display\s*:\s*(inline-)?(flex|grid)/.test(body)
-}
-
-/** 一条规则里管块向内衬的声明，按出现顺序。 */
-function blockPaddingDeclarations(body) {
-  return [...body.matchAll(BLOCK_PADDING)].map((match) => ({
-    property: match[2],
-    value: body.slice(match.index + match[0].length).split(/[;}]/)[0].trim(),
-    at: match.index,
-  }))
-}
-
-/**
- * 校正是否**真的生效**：管块向内衬的最后一条声明必须带令牌。
- *
- * 这是这个脚本里唯一一条能看见「文件里有、浏览器里没有」的判据。写成「体里出现
- * 过令牌」是不够的——那正是前两次失效的样子。
- *
- * 三种结论，因为补救动作不同：
- *   - `ok`        最后一条就是校正；
- *   - `clobbered` 有校正，但被后面一条声明盖掉了 → 把它挪到最后（原样搬）；
- *   - `missing`   根本没有校正 → 在末尾补一条（同族后者胜，所以它能赢）。
- */
-function effectiveCorrection(body) {
-  const declarations = blockPaddingDeclarations(body)
-  const carries = declarations.some((one) => /var\(--dsh-tb-optical-drop\)/.test(one.value))
-  if (!carries) return { ok: false, reason: 'missing' }
-  const last = declarations[declarations.length - 1]
-  if (!/var\(--dsh-tb-optical-drop\)/.test(last.value)) {
-    return { ok: false, reason: 'clobbered', by: `${last.property}: ${last.value.replace(/\s+/g, ' ')}` }
+  for (const one of horizontal.split(/\s+/)) {
+    if (resolveValue(one, properties) === pillValue) return true
   }
-  return { ok: true }
+  return false
 }
 
-/** 扫描：返回每个有问题的胶囊。 */
+/** 这条规则里，那对校正的 `padding-block` 是不是**最后一条**管块向内衬的声明。 */
+function correctionIsLast(body) {
+  const matches = [...body.matchAll(BLOCK_PADDING)]
+  if (matches.length === 0) return true
+  const last = matches[matches.length - 1]
+  return last[0].includes('padding-block')
+}
+
+/** 扫描整个客户端半区，返回问题清单。 */
 export function audit(root) {
-  const properties = customProperties(root)
   const findings = []
+  const properties = customProperties(root)
+
   for (const file of sheets(root)) {
-    const raw = readFileSync(file, 'utf8')
-    const css = blankComments(raw)
-    for (const rule of rulesOf(css)) {
-      /* at-rule 的前导（`@container (…)`）不是一条规则，它体里装的是别的规则。 */
-      if (rule.selector.startsWith('@')) continue
-      if (!isTextCapsule(rule.selector, rule.body, properties)) continue
-      const verdict = effectiveCorrection(rule.body)
-      if (verdict.ok) continue
+    const css = blankComments(readFileSync(file, 'utf8'))
+    const rel = relative(root, file).replace(/\\/g, '/')
+
+    /* 1. 旧路不许回来。 */
+    if (css.includes(RETIRED)) {
       findings.push({
+        kind: 'retired-token',
         file,
-        selector: rule.selector,
-        bodyStart: rule.bodyStart,
-        reason: verdict.reason,
-        by: verdict.by,
+        message: `又读到了 \`${RETIRED}\`：那是「一个全局常数」那一版，已被逐元素取代`,
+      })
+    }
+
+    for (const rule of rulesOf(css)) {
+      const hasMarker = rule.body.includes(MARK)
+      const hasShift = rule.body.includes(SHIFT)
+      if (!hasMarker && !hasShift) continue
+
+      if (!hasMarker) {
+        findings.push({
+          kind: 'missing-marker',
+          file,
+          message: `${rule.selector} 读了 \`${SHIFT}\` 却没有声明 \`${MARK}\`——`
+            + '运行时不知道要校正它，于是这一枚的字永远偏着',
+        })
+      }
+      if (!hasShift) {
+        findings.push({
+          kind: 'missing-shift',
+          file,
+          message: `${rule.selector} 声明了 \`${MARK}\` 却没有读 \`${SHIFT}\`——`
+            + '声明了要校正，却没有任何一条声明跟着它',
+        })
+      }
+      if (hasShift && !correctionIsLast(rule.body)) {
+        findings.push({
+          kind: 'clobbered',
+          file,
+          message: `${rule.selector} 的校正被后面一条块向内衬的声明整条盖掉了——`
+            + '文件里看得见，浏览器里一次都没跑',
+        })
+      }
+    }
+  }
+
+  /* 2. 写入方必须在位，而且只碰带标记的。 */
+  const writer = sheets(root).length > 0 ? join(root, 'src/client', WRITER) : undefined
+  const sources = []
+  const walk = (dir) => {
+    let entries
+    try { entries = readdirSync(dir) } catch { return }
+    for (const name of entries) {
+      const full = join(dir, name)
+      if (statSync(full).isDirectory()) walk(full)
+      else if (full.endsWith('.ts') || full.endsWith('.tsx')) sources.push(full)
+    }
+  }
+  walk(join(root, 'src/client'))
+  const writerFile = sources.find((file) => relative(root, file).replace(/\\/g, '/').endsWith(WRITER))
+  if (writerFile === undefined) {
+    findings.push({
+      kind: 'writer-missing',
+      file: join(root, 'src/client', WRITER),
+      message: '没有墨位校正的写入方',
+    })
+  } else {
+    const source = blankComments(readFileSync(writerFile, 'utf8'))
+    const finds = /getPropertyValue\(OPTICAL_TARGET_PROPERTY\)/.test(source)
+    const measures = /function\s+shiftOf/.test(source)
+    const writes = /setProperty\(OPTICAL_SHIFT_PROPERTY/.test(source)
+    if (!finds || !measures || !writes) {
+      findings.push({
+        kind: 'writer-missing',
+        file: writerFile,
+        message: '写入方必须：只认带标记的元素（`getPropertyValue(OPTICAL_TARGET_PROPERTY)`）、'
+          + '按元素算（`shiftOf`）、把结果写回那一枚（`setProperty(OPTICAL_SHIFT_PROPERTY`）——'
+          + '少了任何一样，界面就是「盒子居中、字没居中」，而没有报错',
       })
     }
   }
+
+  /* 3. 胶囊这一族不能没有校正（覆盖：老网眼继续用）。 */
+  for (const file of sheets(root)) {
+    const css = blankComments(readFileSync(file, 'utf8'))
+    const rel = relative(root, file).replace(/\\/g, '/')
+    for (const rule of rulesOf(css)) {
+      if (!isCapsule(rule.body, properties)) continue
+      /* **这条规则自己得给字定排版**，才谈得上「装一行字」。
+         判据是**这条规则自己的** `font-size` / `line-height` 等，不是「同一个类名在别处
+         出现过」——日历上那颗圆点（`.itemDateAxis li > i`，`border-radius: 999px`）
+         也解析到胶囊那一档，但它是个**点**，里面没有字。
+         （早先这一条按「类名在别处有排版声明」判，于是那颗点被算成一枚装字的胶囊。） */
+      if (!/(^|[;{\s])(font-size|line-height)\s*:/.test(rule.body)) continue
+      if (!rule.body.includes(MARK)) {
+        findings.push({
+          kind: 'missing-correction',
+          file,
+          message: `${rule.selector} 是一枚装字的胶囊，却没有 \`${MARK}\`——`
+            + '它的字会一直偏着，而没有任何测试会红',
+        })
+      }
+    }
+  }
+
   return findings
 }
 
-/**
- * 补齐：让每一枚胶囊的校正排在**规则体最后**。
- *
- * 动作只有两个，都只碰与这件事有关的那几行：
- *
- *   1. **已经有校正、但被后面的简写盖掉了**：把那两行（声明 + 它的注释）
- *      **挪到规则体最后**。原样搬，一个字节都不改写——那条简写是谁写的、
- *      写的什么值，都轮不到这个脚本替他决定。
- *   2. **完全没有校正**：追加两行。若这条规则同时写着 `padding` 简写，那个简写
- *      会盖掉刚追加的行，所以要报出来让人处理——**不替作者拆简写**：拆开会把
- *      一行声明变成四行，还会丢掉注释与排版，而那不是这个脚本该做的事。
- *
- * 从后往前改，前面规则的字节位置就不会被后面的改动挤动。
- */
-export function fix(root) {
-  const findings = audit(root)
-  const byFile = new Map()
-  for (const finding of findings) {
-    if (!byFile.has(finding.file)) byFile.set(finding.file, [])
-    byFile.get(finding.file).push(finding)
-  }
-  let touched = 0
-  const refused = []
-  for (const [file, list] of byFile) {
-    let raw = readFileSync(file, 'utf8')
-    list.sort((a, b) => b.bodyStart - a.bodyStart)
-    for (const item of list) {
-      const rule = rulesOf(blankComments(raw)).find((one) => one.bodyStart === item.bodyStart)
-      if (rule === undefined) continue
-      let body = raw.slice(rule.bodyStart, rule.bodyEnd)
-      const indent = indentOf(body)
-
-      if (item.reason === 'clobbered') {
-        /* 找出校正那一行（含它上面那行注释），整行搬走。
-           **保留它原来的缩进**——早期那几处是机械插入的、顶格写的，原样搬过去
-           就等于把那种痕迹散播到文件里；这里按这条规则的惯用缩进重写前导空白，
-           声明与注释的内容一个字都不动。 */
-        const lines = body.split('\n')
-        const at = lines.findIndex((line) => /var\(--dsh-tb-optical-drop\)/.test(line))
-        if (at < 0) continue
-        const from = lines[at - 1]?.trim() === NOTE ? at - 1 : at
-        const moved = lines.splice(from, at - from + 1).map((line) => (
-          /var\(--dsh-tb-optical-drop\)/.test(line) || line.trim() === NOTE
-            ? indent + line.trim()
-            : line
-        ))
-        body = lines.join('\n')
-        while (body.endsWith('\n\n')) body = body.slice(0, -1)
-        if (!body.endsWith('\n')) body += '\n'
-        body += moved.join('\n') + (moved[moved.length - 1].endsWith('\n') ? '' : '\n')
-        if (!body.endsWith('\n')) body += '\n'
-      } else {
-        /* 缺校正。有两种情况，处理方式不同：
-           - **这条规则没有管块向内衬的声明**：直接追加两行，它天然就是最后一条；
-           - **有一条 `padding` 简写**：追加到末尾就赢了（同族属性后者胜），所以也追加。
-             唯一不能追加的是「已经有一条块向内衬、又不是校正」——但那属于 clobbered
-             分支之外的情形，追加会静默失效，于是报出来让人看。 */
-        const declarations = blockPaddingDeclarations(body)
-        const last = declarations[declarations.length - 1]
-        const wins = last === undefined || last.property === 'padding'
-        if (!wins) {
-          refused.push(`${relative(root, file).replace(/\\/g, '/')}  ${rule.selector.replace(/\s+/g, ' ').slice(0, 60)}`)
-          continue
-        }
-        if (!body.endsWith('\n')) body += '\n'
-        body += `${indent}${NOTE}\n${indent}${CORRECTION}\n`
-      }
-      raw = raw.slice(0, rule.bodyStart) + body + raw.slice(rule.bodyEnd)
-      touched += 1
-    }
-    writeFileSync(file, raw)
-  }
-  return { touched, refused }
-}
-
-/**
- * 规则体里声明行惯用的缩进。
- *
- * 从**这一条规则自己的声明**里取，不从文件或选择器去猜：本仓库两种缩进都真实存在
- * （页面表两格、`design/` 里的表两格，个别规则整体缩进四格），而一条规则内部的缩进
- * 是自洽的。取出现次数最多的那个前导空白——新插的两行于是与邻居对齐。
- *
- * **顶格的行不参与投票。** 一条规则的声明顶格写，只会是「某次机械插入漏了缩进」的
- * 痕迹，不是这一条的风格；让它投票会把下一行也插成顶格，于是痕迹越留越多。
- */
-function indentOf(body) {
-  const counts = new Map()
-  for (const line of body.split('\n')) {
-    const trimmed = line.trim()
-    if (trimmed === '' || trimmed.startsWith('/*') || trimmed.startsWith('*')) continue
-    const lead = /^[ \t]*/.exec(line)[0]
-    if (lead === '') continue
-    counts.set(lead, (counts.get(lead) ?? 0) + 1)
-  }
-  let best = '  '
-  let bestCount = -1
-  for (const [lead, count] of counts) {
-    if (count > bestCount) { best = lead; bestCount = count }
-  }
-  return best
-}
-
 function report(findings, root) {
-  console.error(`FAIL ${findings.length} 个胶囊的墨位校正没有生效——它里面的字会偏，而屏幕上只有它一个偏：`)
-  for (const f of findings) {
-    const where = `${relative(root, f.file).replace(/\\/g, '/')}  ${f.selector.replace(/\s+/g, ' ').slice(0, 70)}`
-    console.error(`  ${where}`)
-    if (f.reason === 'silent') {
-      console.error('      写了校正，却读不到自己的字号：这一枚的内衬是按继承来的字号算的')
-      console.error('      改法：这条规则自己声明 font-size（它装着的那一段字的那一档）')
-    } else if (f.reason === 'missing') {
-      console.error('      缺校正')
-    } else {
-      console.error(`      被后面这条声明整条盖掉：${f.by}`)
-    }
+  console.error(`FAIL ${findings.length} 处墨位校正退回到了「一个常数」、断了线，或者漏了一枚：`)
+  for (const finding of findings) {
+    console.error(`  ${relative(root, finding.file).replace(/\\/g, '/')}  [${finding.kind}]`)
+    console.error(`      ${finding.message}`)
   }
-  if (findings.some((f) => f.reason !== 'silent')) {
-    console.error('  改法：跑 node scripts/align-capsules.mjs . --fix（它会把校正排到规则最后）')
-  }
+  console.error('  这一条的判据是「量出来的数按元素算吗」，不是「那个常数的值调对了吗」。')
+  console.error('  见 DESIGN.md 的墨位一节。')
 }
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const doFix = process.argv.includes('--fix')
-  const probes = {
-    '--probe': 'tests/fixtures/capsule-align',
-    '--probe-clobbered': 'tests/fixtures/capsule-clobbered',
-    '--probe-ordered': 'tests/fixtures/capsule-ordered',
-  }
-  const probeFlag = Object.keys(probes).find((flag) => process.argv.includes(flag))
+  const probe = process.argv.find((arg) => arg.startsWith('--probe'))
 
-  if (probeFlag !== undefined) {
-    /* 自测种在 tests/ 里，不碰真实样式表（硬性规范 16）。 */
-    const findings = audit(join(root, probes[probeFlag]))
-    if (probeFlag === '--probe-ordered') {
-      if (findings.length !== 0) {
-        console.error('FAIL 自测：一条把校正写在最后的胶囊必须放行，却报了：')
-        for (const f of findings) console.error(`  ${f.selector}  (${f.reason}${f.by === undefined ? '' : `: ${f.by}`})`)
-        process.exit(1)
+  if (probe !== undefined) {
+    const fixtures = {
+      '--probe': ['tests/fixtures/ink-missing-marker', 'missing-marker'],
+      '--probe-writer': ['tests/fixtures/ink-no-writer', 'writer-missing'],
+      '--probe-clobbered': ['tests/fixtures/ink-clobbered', 'clobbered'],
+    }
+    const entry = fixtures[probe]
+    if (entry === undefined) {
+      /* `--probe-ordered` 是**反向**自测：种一个写对了的，门禁必须**放行**。
+         只测「会红」不测「不乱红」，那门禁就可能被写成「见谁都要红」。 */
+      if (probe === '--probe-ordered') {
+        const findings = audit(join(root, 'tests/fixtures/ink-ordered'))
+        const wrong = findings.filter((one) => one.kind === 'missing-marker'
+          || one.kind === 'missing-shift' || one.kind === 'clobbered')
+        if (wrong.length > 0) {
+          console.error(`FAIL 自测：写对了的那一版被门禁判成 ${wrong.map((one) => one.kind).join('、')}——门禁成了「见谁都要红」。`)
+          process.exit(1)
+        }
+        console.log('OK 自测：写对了的那一版被放行（门禁不是「见谁都要红」）。')
+        return
       }
-      console.log('OK 自测：写对了的胶囊放行（不误伤正确写法）。')
-      return
+      console.error(`align-capsules: unknown probe ${probe}`)
+      process.exit(2)
     }
-    if (findings.length === 0) {
-      console.error(`FAIL 自测：${probes[probeFlag]} 里必须报出问题，但一条都没有。`)
+    const [dir, want] = entry
+    const findings = audit(join(root, dir))
+    if (!findings.some((one) => one.kind === want)) {
+      console.error(`FAIL 自测：${dir} 里必须报出 ${want}，但一条都没有——门禁是死的。`)
       process.exit(1)
     }
-    if (probeFlag === '--probe-clobbered' && findings.every((f) => f.reason !== 'clobbered')) {
-      console.error('FAIL 自测：被 padding 简写盖掉的校正必须判成 clobbered，却只看到 missing。')
-      process.exit(1)
-    }
-    console.log(`OK 自测：${probes[probeFlag]} 报出 ${findings.length} 条（门禁是活的）。`)
-    return
-  }
-
-  if (doFix) {
-    const { touched, refused } = fix(root)
-    console.log(touched === 0
-      ? 'align-capsules: 每个胶囊的校正都生效。'
-      : `align-capsules: 收拾了 ${touched} 个胶囊（补上 / 挪到最后）。`)
-    if (refused.length !== 0) {
-      console.error(`还有 ${refused.length} 个胶囊只缺校正，但规则里有 padding 简写，追加也会被盖掉：`)
-      for (const one of refused) console.error(`  ${one}`)
-      console.error('  改法见 DESIGN.md 的墨位一节：把校正写成最后一条，或把那条简写改成 padding-inline。')
-    }
+    console.log(`OK 自测：${want} 被认出（门禁是活的）。`)
     return
   }
 
   const findings = audit(root)
   if (findings.length === 0) {
-    console.log('verify-capsules-aligned OK: 每个胶囊的墨位校正都真的生效。')
+    console.log('verify-capsules-aligned OK: 墨位按元素算，每一枚都挂上了，校正也没被盖掉。')
     return
   }
   report(findings, root)

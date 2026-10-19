@@ -1,0 +1,13 @@
+/* 自测素材：**写对了的那一版**——声明与读取成对，且校正排在最后一条块向内衬声明。
+
+   门禁必须**放行**（这一条不是「种一个坏样子」，是「种一个好样子，证明门禁不是
+   见谁都要红」）。 */
+.sampleChip {
+  display: inline-flex;
+  align-items: center;
+  block-size: 20px;
+  border-radius: var(--dsh-tb-pill);
+  font-size: 12px;
+  --dsh-tb-optical-target: 1;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+}

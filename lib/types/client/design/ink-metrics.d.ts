@@ -1,92 +1,65 @@
 /**
- * 字在胶囊里的墨位：**每次按当前字体量，不写死一个数**。
+ * 墨位校正：**每一枚装字的盒子，各自算出自己该差多少**。
  *
- * ── 为什么这件事必须由运行时回答 ──────────────────────────────────────────────
+ * ── 为什么必须逐元素 ──────────────────────────────────────────────────────────
  *
- * `align-items: center` 居中的是**行盒**，而读者看的是**字的墨**。两者不同心，差值是
+ * 屏上看到的是**字**（墨），而盒子里装的是**行盒**。两者不同心，差多少取决于三样
+ * 东西，而这三样**逐元素不同**：
  *
- *   墨心偏移 = [(fontAsc − fontDesc) − (inkAsc − inkDesc)] / 2
+ *   1. **字体度量**：字体的上下沿不对称，墨在行盒里就不居中。
+ *   2. **行盒比元素盒高多少**：本项目的行高是 `1em`，中文字体的自然行高约 `1.33em`
+ *      ——行盒比元素盒高出来的那一截落在盒子的哪一边，由元素自己的 `line-height`
+ *      与 strut 决定。
+ *   3. **字号**：上面两条都随字号缩放。
  *
- * 三条性质，都是量出来的：
+ * 而且**渲染时基线会被吸附到整像素**：内衬 0.8px 与 1px 落在同一格（墨一动不动），
+ * 1.1px 才跳一格。所以「差多少」不是连续的，而是**一格一格**的，而每一格的门槛
+ * 由那一枚自己的几何决定。
  *
- *   1. **式子里没有行高。** 把 `line-height` 设成 1、1em、墨高或任何别的值，基线
- *      与盒心一起移动，偏移不变。所以「调行高」这条路从一开始就不可能成功。
- *   2. **式子里全是字体度量。** 换一款字体，四个数全变，偏移的方向与大小也变——
- *      这就是「同一个界面、一台机器偏下、另一台正好」的全部来源：两台机器上根本
- *      不是同一款字体。
- *   3. **它可以是正的、负的或零。** 等于 0 是那一款字体的巧合，不是常态。
+ * **⇒ 一个全局常数只能对齐一族，把别族推歪。**（量过的三个族：12px 的芯片要
+ * 1.1px、13px 的页签要 2.0px、组头要 1.25px。）
  *
- * 所以任何写死的补偿（`0.5px`、`0.04em`、`1px`）都只能修一台机器、弄坏另一台。
- * 这不是「还没调对」，是**这条路本身不可能对**。
+ * ── 这一版怎么算 ────────────────────────────────────────────────────────────
  *
- * ── 怎么做 ──────────────────────────────────────────────────────────────────
+ * 对每一枚**声明自己要被校正**的盒子（CSS 里写了 `--dsh-tb-optical-target: 1`）：
  *
- * 挂载时用离屏 canvas 量出当前字体的四个数，算出偏移，写进 `--dsh-tb-optical-drop`。
- * 每一个胶囊读它，写成一对对称的内衬（`base.module.css` 那条，以及每条规则自己那一行）。
+ *   1. 从排版结果读出那行字的**基线**（`Range.getClientRects()` + 字体度量）；
+ *   2. 读出**盒子的内容盒中心**（墨该待的地方）；
+ *   3. 用 canvas 画一遍**同一串字**（同样的相位），量出**渲染后的墨**相对基线
+ *      偏了多少——这是字体自己的性质，与元素无关；
+ *   4. 由此解出「内衬该是多少」，写进这一枚自己的 `--dsh-tb-optical-shift`。
  *
- * **写在哪个元素上，决定它有没有用。** 令牌声明在 `:root` 上，所以测量也必须写到
- * `documentElement`——写到别处会被「元素自己的声明压过继承值」静默丢掉。
+ * 写的是**一个 CSS 变量**：CSS 那一侧仍然是自己那一行 `padding-block`，读的是
+ * `var(--dsh-tb-optical-shift, 0px)`。所以：
  *
- * ── 发布什么：**符号两边都要，单位是比例而不是像素** ───────────────────────────
- *
- *  1. **两个方向都发布。** CSS 那一侧本来就是两侧都写的
- *     （`max(0px, calc(-1 * …)) max(0px, …)`）：值为正时下内衬把字抬起来，为负时
- *     上内衬把它压下去，另一边由 `max(0px, …)` 恒为 0。所以「只发正值」不是安全边界，
- *     是**一半的设备一次都不校正**——墨天生偏上的那款字体，读者看到的就是「整体偏上
- *     一点点」，而且无论怎么调都调不出来。
- *
- *  2. **发 `em`，不发 `px`。** 偏移与字号成正比，所以校正也必须是比例。发一个参考字号
- *     下的绝对像素，到了 11px 的标签上就过校正、到了 16px 的移动端输入框上就欠校正
- *     ——一个数只能对一档字号。`em` 在 `padding-block` 里按**元素自己的字号**解析，
- *     于是同一个令牌在每一档上都对，不需要第二遍。
- *
- *   推导：量到的是参考字号下的偏移 `offset`；某元素字号为 `S` 时偏移是
- *   `offset × S / REF`；内衬只把内容盒挤向一侧、盒心移动量是内衬的一半，所以内衬
- *   `= 2 × offset × S / REF`；换成 em 就除掉 `S`，得到 `2 × offset / REF`——**与 S 无关**，
- *   这正是能一个令牌通吃全部字号的原因。
- *
- * ── 一个安全边界 ────────────────────────────────────────────────────────────
- *
- *   - **死区**：偏移小于 `DEAD_ZONE`（0.25px）时**什么都不写**。已经居中的设备不该
- *     被一个四舍五入的噪声推动；`0` 是「这台设备本来就行」的合法答案。
+ *   - **不动几何**（没有 transform、没有 relative 定位）：不裁切、不重排、
+ *     不让旁边的图标跟着动；
+ *   - **不动宿主页**（只认自己那棵子树里的 `--dsh-tb-optical-target: 1`）；
+ *   - **换机器自动重算**（量的是那台机器的字体与那一刻的排版）。
  */
-/** The custom property the capsule family reads. One name, one place. */
-export declare const INK_PROPERTY = "--dsh-tb-optical-drop";
-/** 量到的那四个数，写进日志便于对账。 */
-export interface InkMetrics {
-    /** 墨心相对盒心的偏移（px，正 = 墨偏下）。 */
-    readonly offset: number;
-    readonly fontAscent: number;
-    readonly fontDescent: number;
-    readonly inkAscent: number;
-    readonly inkDescent: number;
-}
+/** 盒子上那个「我要被校正」的标记。CSS 里与它同一条规则必须读 `--dsh-tb-optical-shift`。 */
+export declare const OPTICAL_TARGET_PROPERTY = "--dsh-tb-optical-target";
+/** 写在这一枚盒子上的那个变量。 */
+export declare const OPTICAL_SHIFT_PROPERTY = "--dsh-tb-optical-shift";
 /**
- * Measure the ink offset for the font the page is actually using.
+ * 把**自己子树里**那些声明了要校正的盒子，各算各的。
  *
- * @param family - the family stack to measure; defaults to the body's own, which is
- *   what the controls inherit. Measuring a made-up stack answers nobody's question.
- * @param weight - the weight the capsule family renders at.
- * @returns the offset and the four readings it came from, or undefined when the
- *   platform cannot measure (no canvas, no document).
+ * 只认 `--dsh-tb-optical-target: 1` 的元素——那是 CSS 显式声明的「这一枚要校正」。
+ * 于是：**宿主自己的界面一个都不碰**（上一版就是栽在这里：它把整个 document 的
+ * 每一行字都改了，于是整个 DSH 页面都在被抬起）。
+ *
+ * @param root - 自己的子树。默认整个 document，但**只处理带标记的**。
+ * @returns 写了几枚。
  */
-export declare function measureInkMetrics(family?: string, weight?: string): InkMetrics | undefined;
+export declare function applyInkShifts(root?: ParentNode): number;
 /**
- * Publish the measurement onto the element that declares the token (`:root`).
+ * 装上墨位校正：立刻量一次，然后在字体到齐、内容变化、尺寸变化时再量。
  *
- * Only writes when the value actually changed: a write per pass would invalidate
- * style for the whole page for nothing, and `document.fonts.ready` resolves after
- * every page load.
+ * 三条触发都必需，缺一条就有一种真实场景一直歪：
+ *   - `fonts.ready`：中文字体常晚到，第一帧量的是回退字体；
+ *   - `MutationObserver`（只看子节点）：切页、展开一行、列表增删都会出现新的盒子；
+ *   - `ResizeObserver`：面板宽度变化会让文字换行、让行盒换高。
  *
- * @returns the metrics it read, or `undefined` when it could not measure.
+ * @returns 一个 disposer；不返回它会让每次挂载都多留一个观察者。
  */
-export declare function publishInkMetrics(): InkMetrics | undefined;
-/**
- * Measure now, then again once the fonts are actually loaded.
- *
- * The second pass is not belt-and-braces: a page whose Chinese font arrives after
- * first paint measures the FALLBACK font, and the fallback's metrics are exactly
- * what this correction exists to compensate for. Without the second pass the first
- * paint would publish a number belonging to a font nobody is looking at.
- */
-export declare function installInkMetrics(): void;
+export declare function installInkMetrics(seat?: HTMLElement | null): () => void;

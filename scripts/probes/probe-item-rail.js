@@ -358,13 +358,13 @@
   /* 这一族的补偿读的是根上那个令牌：令牌不在（挂载页没有 `.itemRoot`），`var()` 就整条
      失效、底衬回落到 shorthand 那一档——量出来的数会**看着正常**，而屏上根本不是那样。 */
   const rootEl = one('.itemRoot')
-  const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--dsh-tb-ink-shift').trim()
+  const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--dsh-tb-optical-shift').trim()
 
   /* ── 六、那一枚 ⓘ 与它同行的那串字 ──────────────────────────────────────────
    *
    * 一枚「这里有一句话」的入口（`.itemGroupWhy`）站在**一串字的旁边**，而它们共享一条线。
    * 这条线**不是盒子给的**：记号绕 viewBox 中心对称，居中在自己的盒里时墨心已经在位；而字
-   * 的墨心与它自己的盒心差半个像素（`--dsh-tb-ink-shift` 治的就是这一点）。所以「它们对齐了
+   * 的墨心与它自己的盒心差半个像素（`--dsh-tb-optical-shift` 治的就是这一点）。所以「它们对齐了
    * 没有」问的是**记号的墨心与那串字的墨心差多少**（`markVsText`），以及记号自己居中了没有
    * （`markOffY`）——两个都由墨算出来，跟上面几段同一套量法。
    *

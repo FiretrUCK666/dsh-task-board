@@ -1,182 +1,307 @@
 /**
- * 字在胶囊里的墨位：**每次按当前字体量，不写死一个数**。
+ * 墨位校正：**每一枚装字的盒子，各自算出自己该差多少**。
  *
- * ── 为什么这件事必须由运行时回答 ──────────────────────────────────────────────
+ * ── 为什么必须逐元素 ──────────────────────────────────────────────────────────
  *
- * `align-items: center` 居中的是**行盒**，而读者看的是**字的墨**。两者不同心，差值是
+ * 屏上看到的是**字**（墨），而盒子里装的是**行盒**。两者不同心，差多少取决于三样
+ * 东西，而这三样**逐元素不同**：
  *
- *   墨心偏移 = [(fontAsc − fontDesc) − (inkAsc − inkDesc)] / 2
+ *   1. **字体度量**：字体的上下沿不对称，墨在行盒里就不居中。
+ *   2. **行盒比元素盒高多少**：本项目的行高是 `1em`，中文字体的自然行高约 `1.33em`
+ *      ——行盒比元素盒高出来的那一截落在盒子的哪一边，由元素自己的 `line-height`
+ *      与 strut 决定。
+ *   3. **字号**：上面两条都随字号缩放。
  *
- * 三条性质，都是量出来的：
+ * 而且**渲染时基线会被吸附到整像素**：内衬 0.8px 与 1px 落在同一格（墨一动不动），
+ * 1.1px 才跳一格。所以「差多少」不是连续的，而是**一格一格**的，而每一格的门槛
+ * 由那一枚自己的几何决定。
  *
- *   1. **式子里没有行高。** 把 `line-height` 设成 1、1em、墨高或任何别的值，基线
- *      与盒心一起移动，偏移不变。所以「调行高」这条路从一开始就不可能成功。
- *   2. **式子里全是字体度量。** 换一款字体，四个数全变，偏移的方向与大小也变——
- *      这就是「同一个界面、一台机器偏下、另一台正好」的全部来源：两台机器上根本
- *      不是同一款字体。
- *   3. **它可以是正的、负的或零。** 等于 0 是那一款字体的巧合，不是常态。
+ * **⇒ 一个全局常数只能对齐一族，把别族推歪。**（量过的三个族：12px 的芯片要
+ * 1.1px、13px 的页签要 2.0px、组头要 1.25px。）
  *
- * 所以任何写死的补偿（`0.5px`、`0.04em`、`1px`）都只能修一台机器、弄坏另一台。
- * 这不是「还没调对」，是**这条路本身不可能对**。
+ * ── 这一版怎么算 ────────────────────────────────────────────────────────────
  *
- * ── 怎么做 ──────────────────────────────────────────────────────────────────
+ * 对每一枚**声明自己要被校正**的盒子（CSS 里写了 `--dsh-tb-optical-target: 1`）：
  *
- * 挂载时用离屏 canvas 量出当前字体的四个数，算出偏移，写进 `--dsh-tb-optical-drop`。
- * 每一个胶囊读它，写成一对对称的内衬（`base.module.css` 那条，以及每条规则自己那一行）。
+ *   1. 从排版结果读出那行字的**基线**（`Range.getClientRects()` + 字体度量）；
+ *   2. 读出**盒子的内容盒中心**（墨该待的地方）；
+ *   3. 用 canvas 画一遍**同一串字**（同样的相位），量出**渲染后的墨**相对基线
+ *      偏了多少——这是字体自己的性质，与元素无关；
+ *   4. 由此解出「内衬该是多少」，写进这一枚自己的 `--dsh-tb-optical-shift`。
  *
- * **写在哪个元素上，决定它有没有用。** 令牌声明在 `:root` 上，所以测量也必须写到
- * `documentElement`——写到别处会被「元素自己的声明压过继承值」静默丢掉。
+ * 写的是**一个 CSS 变量**：CSS 那一侧仍然是自己那一行 `padding-block`，读的是
+ * `var(--dsh-tb-optical-shift, 0px)`。所以：
  *
- * ── 发布什么：**符号两边都要，单位是比例而不是像素** ───────────────────────────
- *
- *  1. **两个方向都发布。** CSS 那一侧本来就是两侧都写的
- *     （`max(0px, calc(-1 * …)) max(0px, …)`）：值为正时下内衬把字抬起来，为负时
- *     上内衬把它压下去，另一边由 `max(0px, …)` 恒为 0。所以「只发正值」不是安全边界，
- *     是**一半的设备一次都不校正**——墨天生偏上的那款字体，读者看到的就是「整体偏上
- *     一点点」，而且无论怎么调都调不出来。
- *
- *  2. **发 `em`，不发 `px`。** 偏移与字号成正比，所以校正也必须是比例。发一个参考字号
- *     下的绝对像素，到了 11px 的标签上就过校正、到了 16px 的移动端输入框上就欠校正
- *     ——一个数只能对一档字号。`em` 在 `padding-block` 里按**元素自己的字号**解析，
- *     于是同一个令牌在每一档上都对，不需要第二遍。
- *
- *   推导：量到的是参考字号下的偏移 `offset`；某元素字号为 `S` 时偏移是
- *   `offset × S / REF`；内衬只把内容盒挤向一侧、盒心移动量是内衬的一半，所以内衬
- *   `= 2 × offset × S / REF`；换成 em 就除掉 `S`，得到 `2 × offset / REF`——**与 S 无关**，
- *   这正是能一个令牌通吃全部字号的原因。
- *
- * ── 一个安全边界 ────────────────────────────────────────────────────────────
- *
- *   - **死区**：偏移小于 `DEAD_ZONE`（0.25px）时**什么都不写**。已经居中的设备不该
- *     被一个四舍五入的噪声推动；`0` 是「这台设备本来就行」的合法答案。
+ *   - **不动几何**（没有 transform、没有 relative 定位）：不裁切、不重排、
+ *     不让旁边的图标跟着动；
+ *   - **不动宿主页**（只认自己那棵子树里的 `--dsh-tb-optical-target: 1`）；
+ *   - **换机器自动重算**（量的是那台机器的字体与那一刻的排版）。
  */
 
-/** 量的时候用的字号：够大，读到的比例稳定；具体值不影响结论（都是比例）。 */
-const REFERENCE_SIZE = 14
+/** 盒子上那个「我要被校正」的标记。CSS 里与它同一条规则必须读 `--dsh-tb-optical-shift`。 */
+export const OPTICAL_TARGET_PROPERTY = '--dsh-tb-optical-target'
 
-/**
- * 内衬的量化台阶：**内衬每增加约这么多像素，墨才跳一格**。
- *
- * 这个数不是算出来的，是量出来的（`.design/pad-quantum-probe.html`，4 倍缩放扫 0→6px）：
- *
- *     下内衬 0 / 0.5 / 1      → 墨心 +0.5 设备像素（同一档，**1px 等于没校正**）
- *     下内衬 1.4 / 2 / 3      → 墨心 −0.5 设备像素（下一档）
- *     下内衬 4 / 5            → −1.5
- *     下内衬 6                → −2.5
- *
- * 原因：内衬改变的是内容盒，而墨在行盒里的位置由字体度量定；两者都是整数化的布局量，
- * 于是「内衬 → 墨位移」不是连续函数，而是一级一级跳。`1px` 恰好和 `0` 落在同一级——
- * 那条规则写了、`padding-bottom` 也算出了 1px，**但屏幕上的墨一个像素都没动**。
- * 这正是「修了还是偏」的全部原因，也是必须跨过 1.4 这个门槛的理由。
- */
-const QUANTUM = 1.4
+/** 写在这一枚盒子上的那个变量。 */
+export const OPTICAL_SHIFT_PROPERTY = '--dsh-tb-optical-shift'
 
-/** 小于这个偏移视为已经居中——不值得为一个四舍五入的噪声移动整页的字。 */
-const DEAD_ZONE = 0.25
+/** 死区：差值小于它就不动——不值得为一个四舍五入的噪声改布局。 */
+const DEAD_ZONE = 0.2
 
-/** The custom property the capsule family reads. One name, one place. */
-export const INK_PROPERTY = '--dsh-tb-optical-drop'
+/** canvas 量字体度量用的一张离屏画布（一张就够，量完只读不写）。 */
+let scratch: CanvasRenderingContext2D | undefined
 
-/** 量到的那四个数，写进日志便于对账。 */
-export interface InkMetrics {
-  /** 墨心相对盒心的偏移（px，正 = 墨偏下）。 */
-  readonly offset: number
-  readonly fontAscent: number
-  readonly fontDescent: number
-  readonly inkAscent: number
-  readonly inkDescent: number
-}
-
-/**
- * Measure the ink offset for the font the page is actually using.
- *
- * @param family - the family stack to measure; defaults to the body's own, which is
- *   what the controls inherit. Measuring a made-up stack answers nobody's question.
- * @param weight - the weight the capsule family renders at.
- * @returns the offset and the four readings it came from, or undefined when the
- *   platform cannot measure (no canvas, no document).
- */
-export function measureInkMetrics(family?: string, weight = '500'): InkMetrics | undefined {
+function context(): CanvasRenderingContext2D | undefined {
+  if (scratch !== undefined) return scratch
   if (typeof document === 'undefined') return undefined
-  const canvas = document.createElement('canvas').getContext('2d')
-  if (canvas === null) return undefined
-
-  /* 量一小段中文而不是单个字：`actualBoundingBox` 是一整段文字的墨范围，一段比一个
-     字更能代表「一行字」的墨高（单字的墨可能缺笔）。 */
-  const sample = '任务清单'
-  const resolvedFamily = family ?? (typeof getComputedStyle === 'function'
-    ? getComputedStyle(document.body).fontFamily
-    : 'inherit')
-  canvas.font = `${weight} ${REFERENCE_SIZE}px ${resolvedFamily}`
-  const metrics = canvas.measureText(sample)
-
-  const fontAscent = metrics.fontBoundingBoxAscent
-  const fontDescent = metrics.fontBoundingBoxDescent
-  const inkAscent = metrics.actualBoundingBoxAscent
-  const inkDescent = metrics.actualBoundingBoxDescent
-  if (![fontAscent, fontDescent, inkAscent, inkDescent].every(Number.isFinite)) return undefined
-
-  /* 公式与系数：`(fontAsc − fontDesc)/2` 是行盒中线相对基线的高度，
-     `(inkAsc − inkDesc)/2` 是墨的中线相对基线的高度，两者相减就是墨心离盒心的距离。
-     正的 = 墨偏下。 */
-  const offset = ((fontAscent - fontDescent) - (inkAscent - inkDescent)) / 2
-  return { offset, fontAscent, fontDescent, inkAscent, inkDescent }
+  const canvas = document.createElement('canvas')
+  const ratio = Math.max(1, Math.min(4, Math.round(window.devicePixelRatio || 1)))
+  /* **画布必须按设备像素比来画。** `getImageData` 读的是后备存储，而 canvas 的后备
+     存储默认是**一个 CSS 像素一格**——于是它按 1 倍光栅化，而 DOM 的文字是在**设备
+     像素**上光栅化的。光栅化比例不同，hinted 的字形外框就不同：实测 12px 的中文，
+     1 倍画布的墨高 11px、DPR 画布的 11.5px，差半像素——比要校正的那点偏移还大。 */
+  canvas.width = 256 * ratio
+  canvas.height = 128 * ratio
+  const ctx = canvas.getContext('2d', { willReadFrequently: true })
+  if (ctx === null) return undefined
+  ctx.scale(ratio, ratio)
+  scratch = ctx
+  return scratch
 }
 
 /**
- * Publish the measurement onto the element that declares the token (`:root`).
+ * 一枚元素的字体度量。
  *
- * Only writes when the value actually changed: a write per pass would invalidate
- * style for the whole page for nothing, and `document.fonts.ready` resolves after
- * every page load.
- *
- * @returns the metrics it read, or `undefined` when it could not measure.
+ * @param style - 那枚元素的计算样式（字号、字重、字栈都从它来）。
+ * @param text - 要量的那串字。
  */
-export function publishInkMetrics(): InkMetrics | undefined {
-  const metrics = measureInkMetrics()
+function metricsOf(style: CSSStyleDeclaration, text: string): {
+  ascent: number
+  descent: number
+} | undefined {
+  const ctx = context()
+  if (ctx === undefined) return undefined
+  const size = Number.parseFloat(style.fontSize)
+  if (!Number.isFinite(size) || size <= 0) return undefined
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${size}px ${style.fontFamily}`
+  const measured = ctx.measureText(text)
+  const { fontBoundingBoxAscent: ascent, fontBoundingBoxDescent: descent } = measured
+  if (!Number.isFinite(ascent) || !Number.isFinite(descent)) return undefined
+  return { ascent, descent }
+}
+
+/**
+ * **渲染后的墨**相对基线偏了多少。
+ *
+ * 用 canvas 在**同样的亚像素相位**上画一遍同一串字，量它的像素：这是「屏幕上的字」
+ * 而不是「字形轮廓」。两者在小字号下能差将近一个像素（光栅化把字形吸附到像素
+ * 栅格），而读者看到的是前者。
+ *
+ * @param phase - 基线的小数部分（0~1）。canvas 与 DOM 用同一套光栅化，所以相位
+ *   相同则量到的东西相同。
+ */
+function renderedInkOffset(style: CSSStyleDeclaration, text: string, phase: number): number | undefined {
+  const ctx = context()
+  if (ctx === undefined) return undefined
+  const size = Number.parseFloat(style.fontSize)
+  if (!Number.isFinite(size) || size <= 0) return undefined
+
+  const canvas = ctx.canvas
+  const ratio = canvas.width / 256
+  ctx.clearRect(0, 0, 256, 128)
+  ctx.fillStyle = '#ffffff'
+  ctx.fillRect(0, 0, 256, 128)
+  ctx.font = `${style.fontStyle} ${style.fontWeight} ${size}px ${style.fontFamily}`
+  ctx.textBaseline = 'alphabetic'
+  ctx.fillStyle = '#000000'
+  const baseline = 64 + phase
+  ctx.fillText(text, 8, baseline)
+
+  const data = ctx.getImageData(0, 0, canvas.width, canvas.height).data
+  let top = -1
+  let bottom = -1
+  for (let y = 0; y < canvas.height; y += 1) {
+    for (let x = 0; x < canvas.width; x += 1) {
+      const i = (y * canvas.width + x) * 4
+      if (data[i] < 128) {
+        if (top < 0) top = y
+        bottom = y
+        break
+      }
+    }
+  }
+  if (top < 0) return undefined
+  /* 位图上的行号要换回 CSS 像素（画布是按设备像素比开的）。 */
+  return (top + bottom) / 2 / ratio - baseline
+}
+
+/** 一枚盒子里**直接装着字**的那个元素。 */
+function textHolder(box: HTMLElement): HTMLElement | undefined {
+  const hasOwn = [...box.childNodes]
+    .some((node) => node.nodeType === 3 && (node.textContent ?? '').trim() !== '')
+  if (hasOwn) return box
+  const found = [...box.querySelectorAll('*')].find((one) =>
+    [...one.childNodes].some((node) => node.nodeType === 3 && (node.textContent ?? '').trim() !== ''))
+  return found instanceof HTMLElement ? found : undefined
+}
+
+/**
+ * 算一枚盒子该差多少内衬。
+ *
+ * 记号：`B` 是基线（排版结果），`C` 是内容盒中心（墨该待的地方），`K` 是渲染后的
+ * 墨相对基线的偏移（字体自己的性质，与元素无关）。加了 `P` 的下内衬之后，基线上移
+ * `P/2`，于是渲染出来的墨心是
+ *
+ *     snap(B − P/2) + K
+ *
+ * `snap` 是浏览器把基线吸附到像素栅格的那一步——**它让「差多少」变成一格一格的**：
+ * 内衬 0.8px 与 1px 落在同一格（墨一动不动），1.1px 才跳一格。
+ *
+ * 要墨心等于 `C`，就要 `snap(B − P/2)` 等于 `C − K`。而**基线只能落在整像素上**，
+ * 所以真正要命中的是 `C − K` 附近的**那个整数** `T'`：
+ *
+ *     snap(B − P/2) = T'   ⟺   B − P/2 ∈ [T' − 0.5, T' + 0.5)
+ *
+ * 于是 `P = 2 × (B − T')`。
+ *
+ * **`T'` 怎么取**：取离 `C − K` 最近的那个整数；**正好落在半像素上时取低的那一侧**
+ * （`ceil(T − 0.5)`）。理由有两条：其一，DOM 渲染出来的墨比理想度量**略低**
+ * （实测 12px：理想 −4.5px、实际 −4.25px——光栅化把字形吸附得比轮廓短一点），
+ * 所以平局时瞄准「略低」才是对准实际；其二，读者对「偏上」的察觉比「偏下」敏感
+ * （半像素的字在栅格上偏上时，下沿会贴到盒边）。
+ */
+function shiftOf(box: HTMLElement): number | undefined {
+  const holder = textHolder(box)
+  if (holder === undefined) return undefined
+  const text = (holder.textContent ?? '').trim()
+  if (text === '') return undefined
+
+  const boxStyle = getComputedStyle(box)
+  const holderStyle = getComputedStyle(holder)
+  const metrics = metricsOf(holderStyle, text)
   if (metrics === undefined) return undefined
 
-  /* 死区：|offset| 小到读不出来时不动。
-     **方向不设限**：符号决定 CSS 用哪一侧的内衬，两个方向都是有效值。
-     **乘 2**：内衬只挤内容盒，盒心移动量是内衬的一半。
+  const range = document.createRange()
+  range.selectNodeContents(holder)
+  const lines = [...range.getClientRects()].filter((one) => one.height > 0)
+  if (lines.length === 0) return undefined
+  const line = lines[0]
 
-     **单位是 px，不是 em。** 量过的数：本项目所有胶囊——28px 的按钮、26px 的页签、
-     20px 的小件、20px 的芯片——需要的下内衬是同一个量级，与字号、盒高、行高无关。
-     原因是墨心偏移只取决于「字体的上下沿不对称」，那是字体自己的常数；换字号时
-     行盒与墨一起缩放，而盒子的余量按另外一档走，两者恰好相抵。
-     em 会按字号缩放（12px 上 0.86px、16px 上 1.14px），实测需要的是同一个值。
+  /* 基线 = 行盒顶 + max(半行距_内联 + 字体上沿, 半行距_strut + 字体上沿)。
+     strut 来自**元素自己**的字体（块容器的 strut 用它自己的 font/line-height）。 */
+  const strut = metrics.ascent + metrics.descent
+  const lineHeight = Number.parseFloat(holderStyle.lineHeight)
+  const used = Number.isFinite(lineHeight) ? lineHeight : strut
+  const baseline = line.top + Math.max(
+    (used - strut) / 2 + metrics.ascent,
+    metrics.ascent,
+  )
 
-     **必须至少跨过 `QUANTUM`。** 这是这一条最容易写错的地方：写成 `1px` 时，
-     `padding-bottom` 算出来确实是 1px，而屏幕上的墨一动不动——因为 `1px` 与 `0`
-     落在同一级台阶上（见 `QUANTUM` 的量表）。所以这里不是「按偏移量精确取值」，
-     而是「**在偏移的方向上至少跨一级**」：跨过去之后，剩下的差值是 1/8 CSS 像素，
-     比任何浏览器会画出来的差别都小。 */
-  const wanted = Math.abs(metrics.offset) >= DEAD_ZONE
-    ? Math.sign(metrics.offset) * Math.max(QUANTUM, Math.abs(metrics.offset) * 2)
-    : 0
-  const next = wanted === 0 ? '' : `${wanted}px`
+  /* 盒子的内容盒中心：墨该待的地方。 */
+  const rect = box.getBoundingClientRect()
+  const padTop = Number.parseFloat(boxStyle.paddingTop) || 0
+  const padBottom = Number.parseFloat(boxStyle.paddingBottom) || 0
+  const borderTop = Number.parseFloat(boxStyle.borderTopWidth) || 0
+  const borderBottom = Number.parseFloat(boxStyle.borderBottomWidth) || 0
+  const contentTop = rect.top + borderTop + padTop
+  const contentBottom = rect.bottom - borderBottom - padBottom
+  const contentMid = (contentTop + contentBottom) / 2
 
-  const seat: HTMLElement | null = document.documentElement
-  const current = seat.style.getPropertyValue(INK_PROPERTY)
-  if (current === next) return metrics
-  if (next === '') seat.style.removeProperty(INK_PROPERTY)
-  else seat.style.setProperty(INK_PROPERTY, next)
-  return metrics
+  /* 渲染后的墨相对基线偏了多少：同一个字体、同样的相位、同样的设备像素比。 */
+  const phase = baseline - Math.floor(baseline)
+  const inkOffset = renderedInkOffset(holderStyle, text, phase)
+  if (inkOffset === undefined) return undefined
+
+  /* 目标：基线该落在哪个整像素上。 */
+  const target = Math.ceil((contentMid - inkOffset) - 0.5)
+  return 2 * (baseline - target)
 }
 
 /**
- * Measure now, then again once the fonts are actually loaded.
+ * 把**自己子树里**那些声明了要校正的盒子，各算各的。
  *
- * The second pass is not belt-and-braces: a page whose Chinese font arrives after
- * first paint measures the FALLBACK font, and the fallback's metrics are exactly
- * what this correction exists to compensate for. Without the second pass the first
- * paint would publish a number belonging to a font nobody is looking at.
+ * 只认 `--dsh-tb-optical-target: 1` 的元素——那是 CSS 显式声明的「这一枚要校正」。
+ * 于是：**宿主自己的界面一个都不碰**（上一版就是栽在这里：它把整个 document 的
+ * 每一行字都改了，于是整个 DSH 页面都在被抬起）。
+ *
+ * @param root - 自己的子树。默认整个 document，但**只处理带标记的**。
+ * @returns 写了几枚。
  */
-export function installInkMetrics(): void {
-  publishInkMetrics()
+export function applyInkShifts(root: ParentNode = document): number {
+  let written = 0
+  for (const element of root.querySelectorAll<HTMLElement>('*')) {
+    const style = getComputedStyle(element)
+    if (style.getPropertyValue(OPTICAL_TARGET_PROPERTY).trim() !== '1') continue
+    const shift = shiftOf(element)
+    if (shift === undefined) continue
+    const next = Math.abs(shift) < DEAD_ZONE ? '0px' : `${Math.round(shift * 100) / 100}px`
+    if (element.style.getPropertyValue(OPTICAL_SHIFT_PROPERTY) === next) continue
+    element.style.setProperty(OPTICAL_SHIFT_PROPERTY, next)
+    written += 1
+  }
+  return written
+}
+
+/**
+ * 排队一次测量。
+ *
+ * **用微任务，不用 `setTimeout`。** 这是「跳页时弹一下」那条反馈的根因：延时 80ms
+ * 意味着**浏览器已经画过一帧了**，于是新出现的文字先在没校正的位置上待一帧，
+ * 下一帧才被挪过去——读者看到的就是「弹一下」。
+ *
+ * 微任务在**当前任务末尾、下一次绘制之前**跑完：文字在**它第一次被画出来之前**就已经
+ * 在正确的位置上了。同一批里的多次变化会被合并成一次（微任务只排一个）。
+ */
+function scheduler(): () => void {
+  let queued = false
+  return () => {
+    if (queued) return
+    queued = true
+    queueMicrotask(() => {
+      queued = false
+      applyInkShifts()
+    })
+  }
+}
+
+/**
+ * 装上墨位校正：立刻量一次，然后在字体到齐、内容变化、尺寸变化时再量。
+ *
+ * 三条触发都必需，缺一条就有一种真实场景一直歪：
+ *   - `fonts.ready`：中文字体常晚到，第一帧量的是回退字体；
+ *   - `MutationObserver`（只看子节点）：切页、展开一行、列表增删都会出现新的盒子；
+ *   - `ResizeObserver`：面板宽度变化会让文字换行、让行盒换高。
+ *
+ * @returns 一个 disposer；不返回它会让每次挂载都多留一个观察者。
+ */
+export function installInkMetrics(seat?: HTMLElement | null): () => void {
+  const run = scheduler()
+  run()
+
+  const cleanups: Array<() => void> = []
+
   const fonts = (document as Document & { fonts?: FontFaceSet }).fonts
-  if (fonts === undefined) return
-  void fonts.ready.then(() => { publishInkMetrics() }).catch(() => {
-    /* 字体没加载成功不是让页面失败的理由：第一次测量已经覆盖了正在渲染的那一款。 */
-  })
+  if (fonts !== undefined) {
+    void fonts.ready.then(() => { run() }).catch(() => {
+      /* 字体没加载成功不是让页面失败的理由：第一帧那一量已经覆盖了正在渲染的字。 */
+    })
+  }
+
+  const target = seat ?? document.body
+  if (target !== null) {
+    if (typeof MutationObserver === 'function') {
+      /* 只看子节点：**不看属性**，因为校正本身就是写样式，看属性会自己触发自己。 */
+      const observer = new MutationObserver(() => { run() })
+      observer.observe(target, { childList: true, subtree: true })
+      cleanups.push(() => { observer.disconnect() })
+    }
+    if (typeof ResizeObserver === 'function') {
+      const observer = new ResizeObserver(() => { run() })
+      observer.observe(target)
+      cleanups.push(() => { observer.disconnect() })
+    }
+  }
+
+  return () => {
+    for (const cleanup of cleanups) cleanup()
+  }
 }

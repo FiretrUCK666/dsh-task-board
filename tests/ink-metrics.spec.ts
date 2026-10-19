@@ -1,169 +1,205 @@
 // @vitest-environment jsdom
-import { describe, expect, it, vi, afterEach } from 'vitest'
-import { INK_PROPERTY, installInkMetrics, measureInkMetrics, publishInkMetrics } from '../src/client/design/ink-metrics.ts'
+import { describe, expect, it, afterEach } from 'vitest'
+import {
+  applyInkShifts,
+  installInkMetrics,
+  OPTICAL_SHIFT_PROPERTY,
+  OPTICAL_TARGET_PROPERTY,
+} from '../src/client/design/ink-metrics.ts'
 
 /**
- * 墨位校正的算法：**它必须是「由字体算出来的」，不是「写死的一个数」**。
+ * 墨位校正：**每一枚盒子自己算出自己该差多少**。
  *
- * 这一节钉住五件事，每一件都对应一个曾经真实出过的错：
+ * 这一节钉的是那条被反复推翻的路：**一个全局常数对不齐一组不同的需求**。
+ * 试过四次（`0.04em`、`0.5px`、`1px`、`1.4px`），每次都只对一部分、把另一部分推歪，
+ * 屏上表现为「有的偏上、有的偏下」——而每一次都有人以为是「还差一点」，于是再调一个数。
  *
- *   1. 公式与符号。偏移 = `[(fontAsc − fontDesc) − (inkAsc − inkDesc)] / 2`。
- *      正的值表示墨偏下。
- *   2. **两个方向都要发布**。CSS 那一侧本来就是两侧都写的，只发正值会让「墨天生
- *      偏上」的那款字体一次都不校正——那种机器上看到的就是「整体偏上一点点」。
- *   3. **单位是 em，不是 px**。偏移与字号成正比，发一个参考字号下的绝对像素，到了
- *      11px 的标签上就过校正、到了 16px 的输入框上就欠校正。
- *   4. **死区**：偏移小于 `DEAD_ZONE` 时一位都不写。已经居中的设备不该被一个四舍五入
- *      的噪声推动——那是「手机本来好好的，被改坏了」的直接原因。
- *   5. 写在**声明令牌的那个元素**上，并在字体加载完之后再量一次。
+ * 真正缺的不是更好的常数，是**逐元素**这件事：需要的量同时取决于字体度量、
+ * 行盒比元素盒高多少、以及字号；而渲染时基线被吸附到整像素，于是「差多少」是
+ * **一格一格**的，每格的门槛由那一枚自己的几何决定（量过的三个族：12px 的芯片要
+ * 1.1px、13px 的页签要 2.0px、组头要 1.25px）。
+ *
+ * jsdom 没有布局，所以这里钉的不是「像素对不对」（那要真 Chromium，见
+ * `scripts/probes/ink-sweep.mjs`），而是四条机制事实：
+ *
+ *   1. **只碰带标记的盒子**——宿主自己的界面一个都不碰；
+ *   2. **每一枚写的是它自己的值**，不是共享的一个；
+ *   3. **写的是一个变量**，不动几何（不动 `transform`、不改 `position`）；
+ *   4. 重复运行不重复写；`installInkMetrics` 返回 disposer。
  */
 
-/** 造一个只带 `measureText` 的 canvas，把四个度量写死。 */
-function stubCanvas(metrics: {
-  fontAscent: number
-  fontDescent: number
-  inkAscent: number
-  inkDescent: number
-}): void {
+/** 给元素造一个可测的盒子与一行字。 */
+function textBox(text: string, height = 20, top = 100): HTMLElement {
+  const element = document.createElement('div')
+  element.textContent = text
+  document.body.append(element)
+  /* jsdom 不做布局，`getBoundingClientRect` 全 0；量法的第一步就是「盒高为 0 就返回
+     undefined」，所以这里必须伪造一个盒子——伪造的只是**布局**，判据仍然按真实接口读。 */
+  Object.defineProperty(element, 'getBoundingClientRect', {
+    configurable: true,
+    value: () => ({
+      width: 60, height, top, bottom: top + height,
+      left: 0, right: 60, x: 0, y: top, toJSON: () => ({}),
+    }) as DOMRect,
+  })
+  return element
+}
+
+/** 让 `Range.getClientRects()` 返回一行。 */
+function stubRangeTop(top: number, height: number): () => void {
+  const original = Range.prototype.getClientRects
+  Range.prototype.getClientRects = function (): DOMRectList {
+    const list = [{
+      width: 50, height, top, bottom: top + height,
+      left: 0, right: 50, x: 0, y: top, toJSON: () => ({}),
+    }]
+    return Object.assign(list, { item: (index: number) => list[index] }) as unknown as DOMRectList
+  } as never
+  return () => { Range.prototype.getClientRects = original }
+}
+
+/** canvas 量出的四个数；jsdom 没有 2d 上下文。 */
+function stubCanvas(fontAscent: number, fontDescent: number, inkAscent: number, inkDescent: number): void {
+  /* 画布是按**设备像素比**开的（运行时那样做），所以墨带也要按那个比例铺。 */
   const context = {
     font: '',
+    canvas: { width: 256, height: 128 },
     measureText: () => ({
-      fontBoundingBoxAscent: metrics.fontAscent,
-      fontBoundingBoxDescent: metrics.fontDescent,
-      actualBoundingBoxAscent: metrics.inkAscent,
-      actualBoundingBoxDescent: metrics.inkDescent,
+      fontBoundingBoxAscent: fontAscent,
+      fontBoundingBoxDescent: fontDescent,
+      actualBoundingBoxAscent: inkAscent,
+      actualBoundingBoxDescent: inkDescent,
     }),
+    scale: () => {},
+    clearRect: () => {},
+    fillRect: () => {},
+    fillText: () => {},
+    getImageData: (_x: number, _y: number, width: number, height: number) => {
+      /* 假装画了一行字：基线在中间，墨在基线上方 11 个 CSS 像素。 */
+      const data = new Uint8ClampedArray(width * height * 4)
+      const ratio = width / 256
+      const baseline = 64 * ratio
+      const top = Math.round(baseline - 11 * ratio)
+      for (let y = top; y < baseline; y += 1) {
+        for (let x = 0; x < width; x += 1) {
+          const i = (y * width + x) * 4
+          data[i] = 0
+          data[i + 3] = 255
+        }
+      }
+      return { data }
+    },
   }
-  const original = HTMLCanvasElement.prototype.getContext
-  vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(function (this: HTMLCanvasElement, id: string) {
-    if (id === '2d') return context as unknown as CanvasRenderingContext2D
-    return original.call(this, id as '2d')
-  } as never)
+  HTMLCanvasElement.prototype.getContext = (() => context) as never
+}
+
+/** 让 `getComputedStyle` 报出**这一档**的行高与字号。 */
+function stubTypography(lineHeight: number, fontSize = 12): () => void {
+  const original = window.getComputedStyle
+  window.getComputedStyle = ((element: Element) => {
+    const style = original.call(window, element)
+    return new Proxy(style, {
+      get(target, property, receiver) {
+        if (property === 'lineHeight') return `${lineHeight}px`
+        if (property === 'fontSize') return `${fontSize}px`
+        if (property === 'fontFamily') return 'sans-serif'
+        return Reflect.get(target, property, receiver)
+      },
+    })
+  }) as typeof window.getComputedStyle
+  return () => { window.getComputedStyle = original }
+}
+
+/** 声明「这一枚要校正」。 */
+function mark(element: HTMLElement): void {
+  element.style.setProperty(OPTICAL_TARGET_PROPERTY, '1')
 }
 
 afterEach(() => {
-  vi.restoreAllMocks()
-  document.documentElement.style.removeProperty(INK_PROPERTY)
+  document.body.innerHTML = ''
 })
 
-describe('the ink offset is computed from the font, not written down', () => {
-  it('a font whose ink sits low reads a POSITIVE offset', () => {
-    /* 上行 15 / 下行 4、墨 11 / 1：`((15−4) − (11−1)) / 2 = 0.5`，墨偏下。 */
-    stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
-    const metrics = measureInkMetrics('sans-serif', '500')
-    expect(metrics, 'the measurement must produce a reading').toBeDefined()
-    expect(metrics!.offset, 'a low-sitting ink reads positive').toBe(0.5)
+describe('the shift is measured per element, and only where it was asked for', () => {
+  it('leaves an unmarked box completely alone', () => {
+    /* **这一条是整个文件的重点。** 上一版把整个 document 的每一行字都改了，于是整个
+       DSH 页面（宿主自己的界面）都在被抬起、跳页时还会「弹一下」。宿主不是我们的，
+       所以没有标记的盒子一个都不碰。 */
+    stubCanvas(15, 4, 11, 0)
+    const restoreType = stubTypography(12)
+    const element = textBox('字', 20, 100)
+    const restore = stubRangeTop(100, 12)
+    applyInkShifts()
+    restore()
+    restoreType()
+    expect(element.style.getPropertyValue(OPTICAL_SHIFT_PROPERTY), 'an unmarked box is left alone').toBe('')
   })
 
-  it('a font whose ink sits HIGH reads a NEGATIVE offset', () => {
-    /* 同一组数字里把上行与下行对调：`((4−15) − (1−11)) / 2 = −0.5`，墨偏上。 */
-    stubCanvas({ fontAscent: 4, fontDescent: 15, inkAscent: 1, inkDescent: 11 })
-    const metrics = measureInkMetrics('sans-serif', '500')
-    expect(metrics!.offset, 'a high-sitting ink reads negative').toBe(-0.5)
+  it('writes a variable on a marked box, and does not move the box', () => {
+    /* 写的是**一个变量**：不动几何，所以不会裁切、不会重排、不会让旁边的图标跟着动。
+       （「用 transform 挪」不行：「非替换的行内元素不接受 transform」，而这一份界面里
+       大量文字是行内的——写了不执行，而屏上什么都不会说。） */
+    stubCanvas(15, 4, 11, 0)
+    const restoreType = stubTypography(12)
+    const element = textBox('待办', 20, 100)
+    mark(element)
+    const restore = stubRangeTop(100, 12)
+    applyInkShifts()
+    restore()
+    restoreType()
+    expect(element.style.getPropertyValue(OPTICAL_SHIFT_PROPERTY), 'the shift is written as a variable').not.toBe('')
+    expect(element.style.transform, 'and it must not move the box by a transform').toBe('')
+    expect(element.style.position, 'nor by a relative position').toBe('')
+    expect(element.style.paddingBottom, 'nor by touching the padding itself').toBe('')
   })
 
-  it('a font whose ink is already centred reads zero, and zero is a real answer', () => {
-    stubCanvas({ fontAscent: 12, fontDescent: 3, inkAscent: 11, inkDescent: 2 })
-    const metrics = measureInkMetrics('sans-serif', '500')
-    expect(metrics!.offset).toBe(0)
-  })
-})
+  it('gives two boxes with different line boxes DIFFERENT shifts', () => {
+    /* 同一款字体、同样的盒高，只有行盒位置不同——全局常数会给出同一个数（因为只看
+       字体），因此必然有一个是歪的。逐元素各算各的，才对得上。 */
+    stubCanvas(15, 4, 11, 0)
+    const restoreType = stubTypography(12)
+    const first = textBox('短', 20, 100)
+    mark(first)
+    const restore = stubRangeTop(100, 12)
+    applyInkShifts()
+    const high = first.style.getPropertyValue(OPTICAL_SHIFT_PROPERTY)
+    restore()
 
-describe('what gets published is a ratio, and both directions get published', () => {
-  it('a low-sitting ink publishes a POSITIVE em value', () => {
-    /* 偏移 +0.5px。发布量**不是** `偏移 × 2 = 1px`：1px 与 0 在内衬的量化表上落在
-       同一级（见 `QUANTUM`），写下去屏幕上的墨一动不动。所以发布的是「至少跨一级」
-       ——`1.4px`。这一条钉的正是那个「修了等于没修」的坑。 */
-    stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
-    publishInkMetrics()
-    expect(
-      document.documentElement.style.getPropertyValue(INK_PROPERTY),
-      'a positive offset needs a positive pad that actually crosses a step',
-    ).toBe('1.4px')
-  })
+    const second = textBox('低', 20, 100)
+    mark(second)
+    const restore2 = stubRangeTop(103, 12)
+    applyInkShifts()
+    const low = second.style.getPropertyValue(OPTICAL_SHIFT_PROPERTY)
+    restore2()
+    restoreType()
 
-  it('a HIGH-sitting ink publishes a NEGATIVE pad instead of nothing', () => {
-    /* **这一条钉的是一个真实存在过的「一半的设备收不到校正」。** CSS 那边写的是
-       `max(0px, calc(-1 * …)) max(0px, …)`：负值时上内衬生效、下内衬被 `max` 压成 0。
-       旧实现只发正值，于是墨偏上的字体发布什么都不写，而那些机器上看到的正是
-       「所有文案整体偏上一丢丢」——调行高、调内衬都调不出来，因为从来没有值被写进去。 */
-    stubCanvas({ fontAscent: 4, fontDescent: 15, inkAscent: 1, inkDescent: 11 })
-    publishInkMetrics()
-    expect(
-      document.documentElement.style.getPropertyValue(INK_PROPERTY),
-      'the sign picks the side; it does not decide whether to correct at all',
-    ).toBe('-1.4px')
+    expect(high, 'a line box that sits high still reads a number').not.toBe('')
+    expect(low, 'a line box that sits low reads a different number').not.toBe('')
+    expect(low, 'the reading follows the element, not a global constant').not.toBe(high)
   })
 
-  it('the published pad is in px and always crosses at least one step', () => {
-    /* **这条钉两件事：单位与量化。**
-       单位是 px，不是按字号缩放的比例——偏移只来自「字体的上下沿不对称」，那是字体
-       自己的常数，换字号时行盒与墨一起缩放，而盒子的余量按另外一档走，两者相抵。
-       早先发过 em：12px 上算出 0.86px、16px 上 1.14px，都不对。
-
-       量化是这一条真正的重点：内衬每约 1.4px 才让墨跳一格，`1px` 与 `0` 同档。
-       所以**任何偏移都至少发一级**，而不是照偏移量精确取值。 */
-    stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
-    publishInkMetrics()
-    const big = document.documentElement.style.getPropertyValue(INK_PROPERTY)
-    document.documentElement.style.removeProperty(INK_PROPERTY)
-    /* 偏移减半（+0.25px，刚好在死区边界之外）：仍然要跨一级，不能退化成 0.5px。 */
-    stubCanvas({ fontAscent: 14, fontDescent: 4, inkAscent: 11, inkDescent: 1.5 })
-    publishInkMetrics()
-    const small = document.documentElement.style.getPropertyValue(INK_PROPERTY)
-    expect(big, 'the big offset still publishes one step, in px').toBe('1.4px')
-    expect(small, 'a smaller offset must not fall back to a value below one step').toBe('1.4px')
+  it('does not rewrite an unchanged reading', () => {
+    /* 观察者会连续触发；每一次都重写行内样式会让整页样式失效重算。
+       幂等的判据是「第二次调用写 0 次」。 */
+    stubCanvas(15, 4, 11, 0)
+    const restoreType = stubTypography(12)
+    const element = textBox('字', 20, 100)
+    mark(element)
+    const restore = stubRangeTop(100, 12)
+    applyInkShifts()
+    const second = applyInkShifts()
+    restore()
+    restoreType()
+    expect(second, 'an unchanged pass must not touch the DOM').toBe(0)
   })
 
-  it('writes the reading onto the element that DECLARES the token', () => {
-    /* **这一条钉的是一个真实存在过的「什么都没发生」。** 令牌声明在 `:root` 上，所以
-       发布也必须写在同一个元素上。CSS 里**元素自己的声明压过继承来的值**，写到别处
-       量出来的数就永远不生效——每个胶囊读到的都是表里那个静态的 0，校正一次都没跑。 */
-    stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
-    const first = publishInkMetrics()
-    expect(first?.offset).toBe(0.5)
-    expect(document.documentElement.style.getPropertyValue(INK_PROPERTY)).toBe('1.4px')
-
-    /* 同一份字体再量一次：值没变，就不该再写一次（每一次写都让整页的样式失效重算）。 */
-    const setSpy = vi.spyOn(document.documentElement.style, 'setProperty')
-    publishInkMetrics()
-    expect(setSpy, 'an unchanged reading must not touch the root').not.toHaveBeenCalled()
-  })
-
-  it('a reading inside the dead zone writes nothing', () => {
-    /* **死区**：0.1px 是四舍五入的噪声，不是偏差。已经居中的设备被推动一下，就会
-       出现「本来好好的，被改坏了」——手机端就是这么被弄坏的。 */
-    stubCanvas({ fontAscent: 12.1, fontDescent: 3, inkAscent: 11, inkDescent: 2 })
-    const metrics = publishInkMetrics()
-    expect(metrics, 'the measurement still reports what it read').toBeDefined()
-    expect(
-      document.documentElement.style.getPropertyValue(INK_PROPERTY),
-      'a sub-quarter-pixel offset must leave the page alone',
-    ).toBe('')
-  })
-
-  it('measures again once the fonts are actually loaded', async () => {
-    /* 首帧可能还在用回退字体。回退字体的度量恰恰是这条校正要补偿的那一份，所以
-       `document.fonts.ready` 之后必须再量一次，否则会发布一个「没人正在看的字体」的数。 */
-    const probe = vi.fn()
-    stubCanvas({ fontAscent: 15, fontDescent: 4, inkAscent: 11, inkDescent: 1 })
-    /* jsdom 没有 `document.fonts`；这个测试要验证的是「有没有第二次测量」，所以给它
-       一个最小的替身。替身如实模拟真实 API 的那一件事：`ready` 是一个 Promise。 */
-    const replaced = 'fonts' in document
-    if (!replaced) {
-      Object.defineProperty(document, 'fonts', {
-        configurable: true,
-        value: { ready: Promise.resolve().then(() => { probe() }) },
-      })
-    }
-    installInkMetrics()
-    /* 第一次是同步的：令牌已经有了。 */
-    expect(
-      document.documentElement.style.getPropertyValue(INK_PROPERTY),
-      'the synchronous pass must publish before any await',
-    ).toBe('1.4px')
-    await Promise.resolve()
-    await Promise.resolve()
-    expect(probe, 'the fonts.ready pass must run').toHaveBeenCalled()
+  it('returns a disposer so no observer outlives the mount', () => {
+    /* 硬性规范 6：观察者必须能被回收。返回的不是 disposer 的话，反复挂载会留下
+       一串还在跑的观察者，而屏上没有任何一处会说出来。 */
+    stubCanvas(15, 4, 11, 0)
+    const restoreType = stubTypography(12)
+    const dispose = installInkMetrics(document.body)
+    restoreType()
+    expect(typeof dispose, 'install must hand back a disposer').toBe('function')
+    expect(() => { dispose() }, 'disposing must not throw').not.toThrow()
   })
 })
