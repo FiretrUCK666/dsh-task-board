@@ -1,0 +1,14 @@
+/* 自测素材：一条**错**的行。容器在基线上，子元素里有一颗圆点（图形，没有基线）。
+   门禁必须把它报出来，否则说明这门禁是死的。 */
+.pipeRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.pipeRow > .pipeDot {
+  display: inline-block;
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+}

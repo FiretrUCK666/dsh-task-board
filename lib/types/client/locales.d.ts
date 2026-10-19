@@ -56,6 +56,9 @@ export declare const zh: {
     'gallery.composedFold': string;
     'gallery.composedSegment': string;
     'gallery.tokens': string;
+    'gallery.mixedRow': string;
+    'gallery.mixedRowWhy': string;
+    'gallery.mixedRowSpecimen': string;
     'gallery.type': string;
     'gallery.buttons': string;
     'gallery.iconButtons': string;

@@ -216,13 +216,18 @@
  * 由内容决定宽度，五根占比条就会各自从一个不同的位置开始——那不是密度，那是没对齐。
  * 名字列 5.5em 是按最长的那个词量的（13px 下 "In Progress" 约 68px）。
  *
- * **基线对齐**：名字（13px）与计数（12px）的行高不同，`center` 居中的是行盒、不是基线，
- * 两者会差半像素；所以这一行按 baseline 排，圆点与占比条各自 `align-self: center`
- * 退出基线（它们没有字）。 */
+ * **整行按盒心对齐，不按基线。** 这一行里有圆点与占比条——它们没有基线，按基线
+ * 对齐只能把盒底贴上去；而且 13px 的名字与 12px 的计数在同一条基线上时，两种字的
+ * 行盒高度不同，**盒心必然错开**（量到过 19.5 对 20.5，正好一个像素）。
+ *
+ * 旧写法是「文字按基线、圆点用 `align-self: center` 退出基线」——两套轴线混在同一
+ * 行里，正是那个偏差的来源。现在全部按 `center`：每一段的盒心都落在行心，任何字号
+ * 组合、以后加任何新记号都齐平。每段自己的 `line-height: 1em` 让段内没有多余半行距，
+ * 见下面那组子元素规则。 */
 [data-dsh-taskboard-view] .pipeRow {
   display: grid;
   grid-template-columns: var(--dsh-tb-dot) 5.5em 2.5ch minmax(var(--dsh-tb-space-9), 1fr) auto;
-  align-items: baseline;
+  align-items: center;
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-2) var(--dsh-tb-space-3);
@@ -237,9 +242,19 @@
   transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
 }
 
+/* **这一行的每一段各自 line-height: 1em。** 这是上一条法则的另一半：center 只保证
+   **盒子**落在行心，而段里若有多余半行距，墨仍然会偏在盒子里。行高等于字号时行盒
+   收成字的墨框，盒心就是墨心。
+
+   写在这一层而不是逐个子类里：以后往这一行加新记号、新数字、新标签，它们自动继承
+   这条行高，不需要有人记得再加一遍。 */
+[data-dsh-taskboard-view] .pipeRow > * {
+  display: inline-block;
+  line-height: 1em;
+}
+
 /* 悬停是**抬起来**，不是换一层底色：第二档投影 + 1px 位移，和四格同一个动作。 */
-[data-dsh-taskboard-view] .pipeRow:hover {
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+[data-dsh-taskboard-view] .pipeRow:hover {  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
   transform: translateY(-1px);
 }
 
@@ -252,8 +267,12 @@
 }
 
 /* 状态点：整行里唯一的彩色记号。色相只经 `--dsh-tb-status-*`（看板那五枚的同一个源头）。
- * `--dsh-tb-mark-drop` 是这一族记号的统一光学下沉：行盒的中心比字的视觉中心高一点点。
- * `align-self: center` 让它不参与基线对齐——一个圆点没有基线。 */
+ *
+ * **没有 `translateY`，也不需要。** 这里原先挂着 `translateY(var(--dsh-tb-mark-drop))`
+ * （1px 的光学下沉），理由是「行盒中心比字的视觉中心高一点」。那个前提在这一行改成
+ * 「每段 `line-height: 1em`」之后就不成立了：段里没有多余半行距，盒心就是墨心，圆点
+ * 按盒心居中即与文字的中线重合。留着那条下沉，量到的结果正好是圆点比文字低 1px——
+ * 它在补偿一个已经不存在的偏差。 */
 [data-dsh-taskboard-view] .homeStatusDot {
   flex: none;
   align-self: center;
@@ -261,7 +280,6 @@
   block-size: var(--dsh-tb-dot);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-text-2);
-  transform: translateY(var(--dsh-tb-mark-drop));
 }
 
 [data-dsh-taskboard-view] .homeStatusDot[data-status='backlog'] { background: var(--dsh-tb-status-backlog); }

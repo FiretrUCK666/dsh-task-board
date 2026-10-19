@@ -1,0 +1,15 @@
+/* 自测素材：一条**对**的行。容器在基线上，两个子元素都是文字、只是字号不同
+   （30px 的数 + 12px 的标签）。在纯文字行上基线与居中结果一致，门禁必须放行。 */
+.tileFigures {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.tileFigures > .tileBig {
+  font-size: 30px;
+}
+
+.tileFigures > .tileLabel {
+  font-size: 12px;
+}

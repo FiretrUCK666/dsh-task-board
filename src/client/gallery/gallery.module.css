@@ -282,3 +282,59 @@
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── 混排行的标本：**它自己必须就是那条法则的示范** ─────────────────────────
+ *
+ * 一颗圆点（6px，没有基线）、一个 30px 的数、一个 12px 的标签、一条占比条——
+ * 四样东西的中线必须是同一条。标本违反自己演示的法则，比没有标本更糟：读者会
+ * 照着它抄。
+ *
+ * 三件事一起做，缺一个就会歪：容器 `center`、每一段 `line-height: 1em`、
+ * **不给任何记号单独的 `translateY`**（那正是这次的病根：一个为了补偿「行盒中心
+ * 与墨心不重合」的 1px 下沉，在行盒收窄之后变成了新的偏差）。 */
+.mixedRowSpecimen {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  padding: var(--dsh-tb-space-2) 0;
+}
+
+/* **每段 `display: block` + `line-height: 1em`**，不用 `inline-block`：这一行是
+ * flex 容器，子元素本来就是块级项，`inline-block` 只会把 flex 的伸展算法律掉
+ * （占比条会因此收成零宽）。行高决定行盒高度，`block` 不影响它。 */
+.mixedRowSpecimen > * {
+  display: block;
+  line-height: 1em;
+}
+
+.mixedRowDot {
+  flex: none;
+  inline-size: var(--dsh-tb-dot);
+  block-size: var(--dsh-tb-dot);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-text-2);
+}
+
+.mixedRowBig {
+  color: var(--dsh-tb-text-1);
+  font-size: var(--dsh-tb-type-kpi-size);
+  font-weight: 600;
+  letter-spacing: -0.02em;
+}
+
+.mixedRowSmall {
+  color: var(--dsh-tb-text-2);
+  font-size: var(--dsh-tb-type-meta-size);
+}
+
+.mixedRowTrack {
+  /* `align-self: center` 不参与这一行的中线对齐——它是**条**，不是字，它的厚度
+     由自己的 `block-size` 决定，占满剩余宽度由 `flex` 决定。 */
+  flex: 1 1 var(--dsh-tb-space-9);
+  align-self: center;
+  min-inline-size: var(--dsh-tb-space-8);
+  block-size: var(--dsh-tb-dot);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-text-2);
+  opacity: 0.22;
+}

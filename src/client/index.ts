@@ -18,6 +18,7 @@ import './design/tokens.module.css'
 // import covers every surface the plugin renders.
 import './design/base.module.css'
 import './design/components.module.css'
+import { installInkMetrics } from './design/ink-metrics.ts'
 import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
 import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
@@ -496,6 +497,14 @@ export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'u
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-task-board: dictionaries')
+  /* **墨位校正：量当前字体，写进令牌。** 必须在这里跑，因为它是唯一一处「每次挂载
+     都会执行、且早于任何胶囊渲染」的位置。量到的是**这台机器这款字体**的偏移，
+     所以它在你的电脑上算出 0.5px、在手机上算出别的值（或 0），**两端各自正确**——
+     这正是写死一个数永远做不到的事（写死只会修好一台、弄坏另一台）。
+     两次测量：现在一次，`document.fonts.ready` 之后再一次（中文字体常常晚到）。 */
+  ctx.effect(() => {
+    installInkMetrics()
+  }, 'dsh-task-board: ink nudge measured from the rendering font')
   // Stale-bundle self-heal (see bundle-freshness.ts). This runs BEFORE any
   // mounting work: the client half is an immutable, revisioned artifact, so a
   // document that is already open keeps rendering the bundle it booted with —

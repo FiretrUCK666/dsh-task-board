@@ -626,17 +626,18 @@ scripts 与 `scripts/`**。
 18. **删一个词、一档状态、一个组件，是那次改名的一部分，不是下一件事。** 同一个改动里要一起清干净：
     孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟
     真相的 fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来
-    很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键审计与类漂移审计必须是 0，
-    而一条只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。**fixture 与
-    宿主一样严**（判据见「测试」一节）。
+    很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0，
+    而只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
 19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们不由 `tests/` 守，而由 `scripts/shot-panel.mjs` 开真 Chromium 量。**读者看见的那点墨不是
-    `Range` 给的**：`Range.getClientRects()` 报的是**行盒**（上下对称，半像素的偏移读出来正好是
-    0），字的墨要靠 `ctx.measureText()` 的 `actualBoundingBoxAscent/Descent`；`getBoundingClientRect()`
-    给盒，两者之差才是「偏上/偏下」。**每一个这样的数都写进 `DESIGN.md` 的对应节，并写清它是怎么
-    量的**——一个没有出处、没有量法的数字，会一直「看起来在被遵守」。查对齐有没有坏，用同一个
-    探针在改前改后各量一次。**被 `DESIGN.md` 点名的探针必须入库 `scripts/probes/`，工件写
-    `DSH_PANEL_*` 状态而不写路径。**
+    它们不由 `tests/` 守，而由 `scripts/shot-panel.mjs` 开真 Chromium 量。**墨不是 `Range` 给
+    的**：`getClientRects()` 报的是**行盒**（半像素偏移读出来正好是 0）；要用
+    `ctx.measureText()` 的 `actualBoundingBox*`。**每一个这样的数都写进 `DESIGN.md` 的对应节，
+    并写清它是怎么量的**——一个没有出处、没有量法的数字，会一直「看起来在被遵守」。查对齐有
+    没有坏，用同一个探针在改前改后各量一次。**被 `DESIGN.md` 点名的探针必须入库
+    `scripts/probes/`。**
+    **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
+    `translateY` 补偿必须一起删。法则登记在 `design/laws.ts`，由 `verify-capsule-centring.mjs`
+    与 `verify-design-sync.mjs` 双向守着——加一条法则就得给它门禁与预览标本。
 20. **开发页面先复用，再扩展，最后才新增。** 顺序是硬的，每一步都要说得出为什么上一步不行：
     ① 开发页面时**必须优先复用** `src/client/design/` 与页面目录里已有的组件；② 已有组件能通过
     `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；

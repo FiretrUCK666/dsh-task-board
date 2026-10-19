@@ -242,9 +242,33 @@ export function DesignGallery() {
           ))}
         </Section>
 
-        {/* ── 字体 ───────────────────────────────────────────────────────── */}
-        <Section title={t('gallery.type')}>
+        {/* ── 混排行：**一条必须有门禁的法则，标本在这里** ─────────────────── */}
+        <Section title={t('gallery.mixedRow')}>
+          <p className={css.gallerySectionWhy}>{t('gallery.mixedRowWhy')}</p>
+          {/* 标本就是真的组件：四个不同字号 + 一颗圆点 + 一条占比条，全部落在同一条
+              中线上。读者可以拿放大镜看，也可以改字号重新渲染——它不会因为字号变了
+              就塌掉，因为每一段自己的行高是 1em。 */}
           <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="mixed-row">
+              <span className={css.galleryLabel}>{t('gallery.mixedRowSpecimen')}</span>
+              <div className={css.mixedRowSpecimen}>
+                <span className={css.mixedRowDot} aria-hidden="true" />
+                <span className={css.mixedRowBig}>128</span>
+                <span className={css.mixedRowSmall}>条</span>
+                <span className={css.mixedRowTrack} aria-hidden="true" />
+              </div>
+              <div className={css.mixedRowSpecimen}>
+                <span className={css.mixedRowDot} aria-hidden="true" />
+                <span className={css.mixedRowBig}>7</span>
+                <span className={css.mixedRowSmall}>条</span>
+                <span className={css.mixedRowTrack} aria-hidden="true" />
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* ── 字体 ───────────────────────────────────────────────────────── */}
+        <Section title={t('gallery.type')}>          <div className={css.galleryGrid}>
             {GALLERY_TYPE_LADDER.map(step => (
               <div key={step.label} className={css.gallerySpecimen}>
                 <p className={css.galleryLabel}>{step.label} · {step.size}px / {step.weight}</p>
