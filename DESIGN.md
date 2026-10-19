@@ -362,8 +362,18 @@ className={components.modalBackdrop}                // 遮罩
   状态规则，它们要求被组合的类**在同一张表里**。
 
 所以这张表的问题不是「太长」，而是**它本来就是一张共同语法表**。分区标记（9 段）是它保持可读
-的办法，与两个 TSX 用的是同一套。真正该做的是**把名字与实际位置不符的类改正**（例如以 `review`
-开头、实际是会话转录通用的那几个），那是一次更有价值的重命名，风险也比切表小。
+的办法，与两个 TSX 用的是同一套。
+
+**已知的命名债，别被名字骗**：`review*` 里有一批（32 个，如 `reviewTranscript`、`reviewMessage`、
+`reviewMessageText`、`reviewContext`、`reviewImage*`）**只被 `session-panel.tsx` 使用**，而那是
+**两个复核面板共用的会话转录块**——它们的注释自己写着「one grammar for every transcript surface」。
+名字说 review，位置是会话转录通用。同一段里的 `.transcriptEarlierRow` / `.transcriptErrorRow`
+就是正确的命名，两种前缀现在并存在同一批规则里。
+
+**这批没有改名，是一个判断不是一次遗漏**：改名要动 4 处组合选择器（其中两处是长选择器列表，
+`.reviewMessage` 就出现在聚焦环与滚动条那两条里），而收益只有可读性——没有任何缺陷由它引起。
+要改的时候按这三步走：先把 `session-panel.tsx` 的用途在文件头写清，再改那 32 个类与它们的
+4 处组合，最后跑 `verify-sheet-scope` 与 `verify-sheet-ownership`（它们会在名字与表不一致时红）。
 
 
 四个容器，各自的档位与含义（数值以 `bands.ts` 为准，这里只记它们各自在测什么）：
