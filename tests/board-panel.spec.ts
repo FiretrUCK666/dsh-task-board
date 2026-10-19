@@ -36,7 +36,7 @@ import { SessionRulesSection } from '../src/client/board/automation-ui.tsx'
 import { AttachmentStrip, formatBytes } from '../src/client/design/AttachmentStrip.tsx'
 import type { DraftAttachment } from '../src/client/board/composer-attachments.ts'
 import type { WireQuestion } from '../src/core/question-rpc.ts'
-import { alignClassNames, panelCss, railWrap, writeStandalonePage } from './panel-harness.ts'
+import { alignClassNames, pageCss, panelCss, railWrap, writeStandalonePage } from './panel-harness.ts'
 import { apply } from '../src/client/index.ts'
 import { BundleFreshnessState } from '../src/client/bundle-freshness.ts'
 import { updateController } from '../src/client/workbench/update-controller.ts'
@@ -106,7 +106,10 @@ describe('board stage (official main panel)', () => {
   })
 
   it('keeps the board box a named size container (the responsive contract is unchanged)', () => {
-    const css = read('../src/client/board.module.css')
+    /* 读的是**这一页的全部表**，不是某一个文件名：`pageCss('board')` 把
+       `board.module.css` 与 `board/` 目录下任何 `*.module.css` 一起拼起来，所以
+       表怎么拆都不影响这条判据——它问的是「这一页的整体声明里有没有这两行」。 */
+    const css = pageCss('board')
     expect(css).toMatch(/\[data-dsh-taskboard-view\]\s*\{[\s\S]*?container-type:\s*inline-size/)
     expect(css).toMatch(/\[data-dsh-taskboard-view\]\s*\{[\s\S]*?container-name:\s*dsh-tb/)
     // No viewport media queries in the board's own sheet.
@@ -153,7 +156,7 @@ describe('board stage (official main panel)', () => {
       ['../src/client/index.ts', stripComments(client)],
       ['../src/client/TaskBoardPanel.tsx', stripComments(panel)],
       ['../src/client/TaskBoardIcon.tsx', stripComments(icon)],
-      ['../src/client/board.module.css', read('../src/client/board.module.css')],
+      ['../src/client/board.module.css', pageCss('board')],
     ] as const
     for (const [name, text] of sources) {
       for (const needle of banned) {

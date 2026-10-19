@@ -45,6 +45,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { rulesOf, stripComments } from './css-core.mjs'
 import { probeOf } from './probe-args.mjs'
 
 /**
@@ -89,55 +90,6 @@ function sheetsUnder(root) {
   }
   walk(join(root, 'src'))
   return out
-}
-
-/** 去掉注释，保留行号（用等长空白替换，行号才对得上）。 */
-function stripCommentsKeepingLines(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
-}
-
-/**
- * 把一张表拆成 { selector, body, line } 的规则列表，**下降进 at-rule**。
- *
- * ── 为什么必须下降 ──────────────────────────────────────────────────────────
- *
- * 第一版是「遇到 `{` 就一路吃到配对的 `}`」，于是 `@container` / `@media` 整块被当成
- * **一条**规则，选择器是 `@container dsh-tb (max-width: 680px)`。实测：同一段内容放在
- * 顶层会报红，包进 at-rule 就**完全静默** —— 而这个仓库的窄档规则全在 at-rule 里
- * （board 109 条、item 50 条、home 5 条，共 164 条）。也就是说**布局最密集的那一段是
- * 这条门禁的盲区**，而它绿的每一轮都不代表那里没问题。
- *
- * 判据是结构，所以读法必须与结构一致：at-rule 是**容器**，不是规则。遇到 `@` 开头
- * 的前导就递归进它的块，并把这个 at-rule 的完整前导（含条件）作为**父选择器**传下去
- * ——子元素判据在窄档里问的仍然是「谁是谁的子元素」，只是多了一层不知道宽度的祖先。
- */
-function rulesOf(css, prefix = '') {
-  const rules = []
-  let i = 0
-  while (i < css.length) {
-    const open = css.indexOf('{', i)
-    if (open < 0) break
-    const selector = css.slice(i, open)
-    let depth = 1
-    let j = open + 1
-    while (j < css.length && depth > 0) {
-      if (css[j] === '{') depth++
-      else if (css[j] === '}') depth--
-      j++
-    }
-    const body = css.slice(open + 1, j - 1)
-    const lineAt = (css.slice(0, i).match(/\n/g)?.length ?? 0) + 1
-    const head = selector.trim()
-    if (head.startsWith('@')) {
-      /* 容器：递归进去，把它的前导带上（`@supports not (…)` 与 `@container x (…)`
-         都只是「在什么条件下」，不是选择器本身）。 */
-      rules.push(...rulesOf(body, prefix === '' ? head : `${prefix} ${head}`))
-    } else {
-      rules.push({ selector: head, body, line: lineAt, at: prefix })
-    }
-    i = j
-  }
-  return rules
 }
 
 /**
@@ -242,7 +194,7 @@ function containerDeclaresGraphic(selector, body) {
 function findAsymmetricCompensation(root) {
   const findings = []
   for (const file of sheetsUnder(root)) {
-    const css = stripCommentsKeepingLines(readFileSync(file, 'utf8'))
+    const css = stripComments(readFileSync(file, 'utf8'))
     for (const rule of rulesOf(css)) {
       const match = rule.body.match(/padding-block:\s*([^;]+);/)
       if (match === null) continue
@@ -279,7 +231,7 @@ export function findMixedBaselineRows(root) {
   const findings = []
   for (const file of sheetsUnder(root)) {
     const raw = readFileSync(file, 'utf8')
-    const css = stripCommentsKeepingLines(raw)
+    const css = stripComments(raw)
     const rules = rulesOf(css)
     for (const rule of rules) {
       const usesBaseline = /align-(items|self):\s*baseline/.test(rule.body)
@@ -408,3 +360,4 @@ function main() {
 }
 
 main()
+

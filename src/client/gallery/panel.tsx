@@ -47,6 +47,7 @@ import { ThumbRail } from '../design/ThumbRail.tsx'
 import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
+import { SHARED_CANDIDATES } from './shared-candidates.ts'
 
 /**
  * How a token group is SHOWN.
@@ -633,6 +634,26 @@ export function DesignGallery() {
                 {law.gate !== undefined && (
                   <p className={css.galleryNote}>{`guarded by ${law.gate}`}</p>
                 )}
+              </div>
+            ))}
+          </div>
+        </Section>
+
+        {/* ── 共享候选：只有一个消费者的那几件，连同为什么 ─────────────────
+            「以后会不会被复用」答不出来，「现在被几处用到」是事实。这一栏摆的是
+            事实，不是待办：每一条都有理由，因为这三类东西混在一起就会误导——
+            表单原件（两页被有意给了不同的表单语言）、只有一边需要的形态、以及
+            常驻 design/ 但当下面板只用了一次的那些。
+            名单与测试里的计数由 `design-coverage.spec.ts` 双向对账，陈旧即红。
+            放在法则之后，是因为两节说的是同一件事的两面：法则说「共用的东西该长
+            什么样」，这一栏说「还有哪些东西正在等第二个消费者」。 */}
+        <Section title={t('gallery.sharedCandidates')}>
+          <p className={css.galleryValue}>{t('gallery.sharedCandidatesWhy')}</p>
+          <div className={css.galleryGrid}>
+            {SHARED_CANDIDATES.map(entry => (
+              <div key={entry.name} className={css.gallerySpecimen}>
+                <p className={css.galleryLabel}>{entry.name}</p>
+                <p className={css.galleryValue}>{entry.why}</p>
               </div>
             ))}
           </div>

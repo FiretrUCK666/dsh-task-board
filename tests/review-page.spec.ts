@@ -11,10 +11,10 @@ import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/bo
 import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
-import { designCss } from './panel-harness.ts'
+import { designCss, pageCss } from './panel-harness.ts'
 
-const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-const cssSource = readFileSync(cssPath, 'utf8')
+/* 看板这一页可以有任意多张表——判据读的是**合计**，不是某一个文件名。 */
+const cssSource = pageCss('board')
 
 /**
  * The board sheet PLUS the design system's own sheet — "this surface as it
@@ -919,8 +919,7 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     const card = readFileSync(cardPath, 'utf8')
     expect(card).toContain('cardColorBar')
     expect(card).toContain('<ColorSwatches')
-    const cssPath = fileURLToPath(new URL('../src/client/board.module.css', import.meta.url))
-    const sheet = readFileSync(cssPath, 'utf8')
+    const sheet = pageCss('board')
     expect(sheet).toMatch(/\.card:hover \.cardColorBar,\s*\n\.card:focus-within \.cardColorBar \{\s*\n\s*display: flex;/)
   })
 

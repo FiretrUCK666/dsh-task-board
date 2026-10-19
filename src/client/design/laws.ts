@@ -131,6 +131,31 @@ export const DESIGN_LAWS: readonly DesignLaw[] = [
       + '头部就成一扇窗，正文从标题和状态胶囊后面透出来，读作「上面被砍了一下」。这个失效'
       + '三层检查全绿：样式表合法、类名都在、测试全过，屏幕上却少了一块。',
   },
+  {
+    id: 'a-selector-stays-in-its-own-sheet',
+    law: '一条选择器只能命名**它自己那张表**声明的类；复合选择器里只要有一个类名属于别的表，整条就死。',
+    gate: 'verify-sheet-scope.mjs',
+    specimen: 'surfaces',
+    why:
+      '构建按**文件名**给每张 `*.module.css` 算哈希前缀。所以表 A 里写下的 `.chip` 指的是 '
+      + '`A_hash_chip`，而 `.chip` 真正声明在表 B 里、渲染时带的是 `B_hash_chip`——两个字符串'
+      + '永不相同，这条选择器匹配不到任何节点。它不报错、不抛异常、样式表合法，只是**什么都不做**。'
+      + '这个仓库栽过三次，三次都是「有一半是本表的类，所以看起来像对的」：窄档里主按钮吃满'
+      + '宽度、等待提示里芯片的 `flex: none`、会话行标题的 `grid-area`，全部从未生效。',
+  },
+  {
+    id: 'a-component-owns-only-its-own-sheet',
+    law: '组件点到的类名必须由**它自己 import 的那张表**声明；点到别处的名字渲染成 `class="undefined"`。',
+    gate: 'verify-sheet-ownership.mjs',
+    specimen: 'surfaces',
+    why:
+      '`import css from "./x.module.css"` 给的是一个映射对象，表里没有的键取出来是 `undefined`。'
+      + '于是点一个表里没有的名字，渲染成一个合法、无样式、**不报错**的节点，类型上也不红——'
+      + '映射对象的类型是 `Record<string, string>`，任何键都「存在」。'
+      + '上一条法则管的是**表与表之间**，这一条管的是**组件与表之间**：一个 import 写错、'
+      + '或某个类名搬去了别的表而组件没跟上，都只表现为「那里没样式」。'
+      + '一次拆表会把这张网撒得更开，所以两条必须同时在。',
+  },
 ]
 
 /** 按 id 取一条法则。 */

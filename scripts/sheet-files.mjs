@@ -19,7 +19,7 @@
  * 构建脚本这些不在这条判据的范围里。
  */
 
-import { readdirSync, statSync } from 'node:fs'
+import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 
 /**
@@ -56,6 +56,23 @@ export function clientSheets(root) {
  * @param root - 仓库根目录。
  * @returns `{ path, rel }` 数组。
  */
+/**
+ * 与 {@link clientSheets} 同，但每一项带上是「相对仓库根、正斜杠」的路径**与文本**。
+ *
+ * 文本一起给：调用方几乎总是立刻要读它，而「先拿路径再自己 readFileSync」在同一条
+ * 门禁里会写三遍。读失败（文件在遍历与读取之间消失）时 `css` 是空串而不是抛错——
+ * 一份读不到的样式表不该让整条门禁崩掉，它只是这一张表这一轮没被检查。
+ * @param root - 仓库根目录。
+ * @returns `{ path, rel, css }` 数组。
+ */
 export function clientSheetFiles(root) {
-  return clientSheets(root).map((path) => ({ path, rel: relative(root, path).replace(/\\/g, '/') }))
+  return clientSheets(root).map((path) => {
+    let css = ''
+    try {
+      css = readFileSync(path, 'utf8')
+    } catch {
+      /* 读不到就留空：这一张这一轮不参与判定，其余照常。 */
+    }
+    return { path, rel: relative(root, path).replace(/\\/g, '/'), css }
+  })
 }

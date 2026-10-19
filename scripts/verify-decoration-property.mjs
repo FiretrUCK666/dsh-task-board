@@ -24,37 +24,12 @@
  * 自测：`--probe-decoration`（种四条，两对两错）。
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { declOf, rulesOf } from './css-core.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 
 const target = process.argv[2] ?? ''
 /* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
 const SHEETS = clientSheetFiles(target)
-
-/** 剥注释：注释里出现「环」不是一次环的声明（硬性规范 14）。 */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-/** 一张表里的 `{ selector, body }`。 */
-function rulesOf(css) {
-  const out = []
-  for (const match of stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selector = (match[1] ?? '').trim()
-    if (selector === '' || selector.startsWith('@')) continue
-    out.push({ selector, body: match[2] ?? '' })
-  }
-  return out
-}
-
-/** 最后一条某属性。 */
-function declOf(body, property) {
-  let found
-  for (const match of body.matchAll(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;]+)`, 'g'))) {
-    found = (match[1] ?? '').trim()
-  }
-  return found
-}
 
 /**
  * 一份 `box-shadow` 值里有没有「环」。

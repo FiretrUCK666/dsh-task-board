@@ -6,6 +6,7 @@
  * instead of pinning the single implementation).
  */
 import { describe, expect, it } from 'vitest'
+import { pageCss } from './panel-harness.ts'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 
@@ -157,8 +158,7 @@ describe('the overlay family composes the shared chrome', () => {
      call sites compose; the second says the panel classes do NOT declare the
      chrome themselves — together they mean the composition is both required and
      present, so a panel can never come out half-dressed again. */
-  const boardSheet = readFileSync(
-    fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+  const boardSheet = pageCss('board')
 
   /** The declaration block of a top-level class, comments stripped. */
   function ruleBody(sheet: string, name: string): string {

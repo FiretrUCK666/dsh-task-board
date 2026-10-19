@@ -84,6 +84,8 @@ export declare const zh: {
     'gallery.palette': string;
     'gallery.bands': string;
     'gallery.overlay': string;
+    'gallery.sharedCandidates': string;
+    'gallery.sharedCandidatesWhy': string;
     'gallery.openDialog': string;
     'gallery.closeDialog': string;
     'gallery.dialogOpen': string;

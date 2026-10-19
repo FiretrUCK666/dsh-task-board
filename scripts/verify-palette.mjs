@@ -40,6 +40,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, relative, sep } from 'node:path'
+import { stripComments } from './css-core.mjs'
 import { probeOf } from './probe-args.mjs'
 
 /**
@@ -82,11 +83,6 @@ function clientStylesheets(root) {
  * two homes is how a colour family ends up with two values.
  */
 const ALIAS_SIGNATURE = '--dsh-tb-text-1'
-
-/** Drop comments so a ban reads CODE, not the prose that explains it (硬性规范 14). */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
 
 /** Every custom-property declaration, as `name -> value` (the layer's own words). */
 function declarations(css) {

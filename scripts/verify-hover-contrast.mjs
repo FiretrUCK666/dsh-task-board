@@ -28,6 +28,7 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { declOf, rulesOf, stripComments } from './css-core.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 import { probeOf } from './probe-args.mjs'
 
@@ -38,33 +39,6 @@ const ALLOWED_BACKGROUND = [
   'transparent',
   'none',
 ]
-
-/** 剥掉注释：注释里出现「悬浮」两个字不是一次悬浮声明（硬性规范 14）。 */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-/** 把一张表拆成 `{ selector, body }`。 */
-function rulesOf(css) {
-  const out = []
-  const clean = stripComments(css)
-  for (const match of clean.matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selector = (match[1] ?? '').trim()
-    const body = match[2] ?? ''
-    if (selector === '' || selector.startsWith('@')) continue
-    out.push({ selector, body })
-  }
-  return out
-}
-
-/** 一个声明块里某条属性的值（最后一条胜出）。 */
-function declOf(body, property) {
-  let found
-  for (const match of body.matchAll(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;]+)`, 'g'))) {
-    found = (match[1] ?? '').trim()
-  }
-  return found
-}
 
 const target = process.argv[2] ?? '.'
 /* 自测开关先过一遍：拼错要红，不能静默变成一次正常跑（见 `probe-args.mjs`）。 */

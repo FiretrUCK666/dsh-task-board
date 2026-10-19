@@ -38,6 +38,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
+import { SHARED_CANDIDATES } from '../src/client/gallery/shared-candidates.ts'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const designDir = join(root, 'src', 'client', 'design')
@@ -227,6 +228,34 @@ describe('the design system and its preview page stay in step', () => {
     if (single.length > 0) console.log(`design-coverage: single-surface (recorded, not a failure): ${single.join(', ')}`)
     expect(single.length, 'every component is cross-surface now — the note can go, and AGENTS.md can say the rule holds')
       .toBeGreaterThanOrEqual(0)
+  })
+
+  it('the preview page shows exactly the components that have one consumer today', () => {
+    // 「以后会不会被复用」答不出来，「现在被几处用到」是事实。名单摆到预览页上，
+    // 让下一个人翻得到——所以这份名单必须**跟着计数走**，不能自己长。
+    //
+    // 三个方向都判，因为三种走法各不相同：名单里写了一个已经被两个页面用的名字
+    // （过时的借口）、名单漏了一个只有一个消费者的组件（还没记的欠账）、以及
+    // 名单里那个名字根本不是 design/ 导出的（拼错或已删除）。少判一个方向，名单
+    // 就会朝那个方向慢慢腐烂。
+    const single = new Set([...exported.keys()].filter(name => productDirs(name).size < 2))
+    const listed = new Set(SHARED_CANDIDATES.map(entry => entry.name))
+
+    const stale = [...listed].filter(name => !single.has(name)).sort()
+    expect(stale, `these are on the preview page as single-consumer components but have two or more consumers now (or are no longer exported): ${stale.join(', ')}`)
+      .toEqual([])
+
+    const missing = [...single].filter(name => !listed.has(name)).sort()
+    expect(missing, `these have one consumer and are not on the preview page's list, so nobody can see they exist: ${missing.join(', ')}`)
+      .toEqual([])
+
+    const unexported = [...listed].filter(name => !exported.has(name)).sort()
+    expect(unexported, `the preview page lists names that design/ does not export: ${unexported.join(', ')}`)
+      .toEqual([])
+
+    const noReason = SHARED_CANDIDATES.filter(entry => entry.why.trim().length < 8)
+    expect(noReason.map(entry => entry.name), 'a name with no reason reads as a to-do item, and these are decisions or excuses — say which')
+      .toEqual([])
   })
 
   it('the preview page renders every component it imports', () => {

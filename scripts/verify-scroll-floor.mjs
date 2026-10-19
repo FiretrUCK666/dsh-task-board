@@ -35,35 +35,12 @@
  * 自测：`--probe-scroll-floor`（种四条，两对两错）。
  */
 import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { declOf, rulesOf } from './css-core.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 
 const target = process.argv[2] ?? ''
 /* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
 const SHEETS = clientSheetFiles(target)
-
-/** 剥注释（硬性规范 14：注释里出现一个数不是一次声明）。 */
-function stripComments(css) {
-  return css.replace(/\/\*[\s\S]*?\*\//g, '')
-}
-
-function rulesOf(css) {
-  const out = []
-  for (const match of stripComments(css).matchAll(/([^{}]+)\{([^{}]*)\}/g)) {
-    const selector = (match[1] ?? '').trim()
-    if (selector === '' || selector.startsWith('@')) continue
-    out.push({ selector, body: match[2] ?? '' })
-  }
-  return out
-}
-
-function declOf(body, property) {
-  let found
-  for (const match of body.matchAll(new RegExp(`(?:^|[;{\\s])${property}\\s*:\\s*([^;]+)`, 'g'))) {
-    found = (match[1] ?? '').trim()
-  }
-  return found
-}
 
 /**
  * 这条规则是不是「滚动 + flex 项 + 固定地板」。

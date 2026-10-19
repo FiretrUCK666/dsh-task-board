@@ -44,6 +44,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import * as lightningcss from 'lightningcss'
 import { join } from 'node:path'
 import { designCss, itemSurfaceSource, PAGES, repoRoot, type Page } from './panel-harness.ts'
+import { clientSheets, pageCss } from './panel-harness.ts'
 import {
   aliasLayer,
   backgroundOf,
@@ -342,10 +343,16 @@ describe('the panel renders against the host it will actually run in', () => {
     // whether or not the file exists: it is a decoration answering an assertion
     // about the source. What is left is the part that can actually fail: the
     // list's own rules are in the concatenation at all.
-    expect(/\.item[A-Z]/.test(css), 'the harness read no list rules at all, so the sweep of board.module.css below is over an empty claim').toBe(true)
-    const boardOnly = readFileSync(join(cssPanelRoot(), 'board.module.css'), 'utf8')
+    expect(/\.item[A-Z]/.test(css), 'the harness read no list rules at all, so the sweep of the board page\'s sheets below is over an empty claim').toBe(true)
+    /* 这一条问的是「清单的规则有没有漏在看板那一页的表里」。读法不能写死一个
+       文件名——那一页可以有任意多张表，拆分与合并都不该让这条判据失效。所以扫
+       **这一页的全部表**，并把命中的表名逐个报出来。 */
+    const boardOnly = clientSheets()
+      .filter(sheet => sheet.rel === 'src/client/board.module.css' || sheet.rel.startsWith('src/client/board/'))
+      .map(sheet => `/* ${sheet.rel} */\n${sheet.css}`)
+      .join('\n')
     const leftover = [...boardOnly.matchAll(/^\.item[A-Z][A-Za-z]*\s*\{/gm)].map(m => m[0])
-    expect(leftover, `these list rules are still in board.module.css: ${leftover.join(', ')}`).toEqual([])
+    expect(leftover, `these list rules are still in the board page's own sheets: ${leftover.join(', ')}`).toEqual([])
     // The assertion that is left CAN fail, and this is the state it stands in
     // for: `panelCss()` writes each sheet's path into the string as a banner
     // comment, so on a concatenation carrying two banners and no rules the banner
@@ -550,11 +557,6 @@ const ABSENT_BY_DECISION: Readonly<Record<string, string>> = {
   '--dsw-alias-separator-primary': 'the host references it and never declares it; the alias is deliberately `none`',
 }
 
-/** The client half, where the board's sheet sits beside the list's. */
-function cssPanelRoot(): string {
-  return join(repoRoot, 'src', 'client')
-}
-
 /**
  * THE GEOMETRY CONTRACTS.
  *
@@ -621,7 +623,7 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
    * is no block here to catch it and no token to reach through.
    */
   const itemSheet = readFileSync(new URL('../src/client/item/item.module.css', import.meta.url), 'utf8')
-  const boardSheet = readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')
+  const boardSheet = pageCss('board')
 
   /** Comments out, because a token named in prose is not a use. */
   const bare = (sheet: string): string =>
@@ -721,22 +723,34 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     // the block is meant to silence. Asserted as an ORDER, because the failure is
     // an order — and because a comment saying "keep this last" is exactly the kind
     // of instruction the next edit moves past.
-    const sheet = readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')
-    const last = sheet.lastIndexOf('@media (prefers-reduced-motion: reduce)')
-    expect(last, 'the sheet has no reduced-motion block at all — motion preference is not honoured anywhere')
-      .toBeGreaterThan(0)
-    const after = sheet.slice(last)
-    // Inside the block is fine. After it, only whitespace and comments may appear.
-    const close = after.indexOf('\n}')
-    const tail = close >= 0 ? after.slice(close + 2) : after
-    const declarations = tail
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/^\s*\/\/.*$/gm, '')
-      .replace(/@media[^{]*\{[\s\S]*?\n\}/g, '')
-      .trim()
-    expect(declarations,
-      `something is declared AFTER the reduced-motion block, so at equal specificity it wins and the motion is not reduced: ${declarations.slice(0, 200)}`)
-      .toBe('')
+    /* 判据按**每张表**各自成立，因为级联的边界是表：一个文件里「最后」才有意义，
+       而看板这一页现在是多张表。拼接之后再问「最后一块」会变成「readdir 顺序里
+       最后那张表的最后一块」，那不是这条法则要说的事。
+       每一张表都必须满足：它的 reduced-motion 块之后没有任何声明。 */
+    const boardSheets = clientSheets()
+      .filter(sheet => sheet.rel === 'src/client/board.module.css' || sheet.rel.startsWith('src/client/board/'))
+    expect(boardSheets.length, 'no board sheet found at all — this sweep would pass over nothing').toBeGreaterThan(0)
+    let sawBlock = false
+    for (const boardSheet of boardSheets) {
+      const sheet = boardSheet.css
+      const last = sheet.lastIndexOf('@media (prefers-reduced-motion: reduce)')
+      if (last < 0) continue
+      sawBlock = true
+      const after = sheet.slice(last)
+      // Inside the block is fine. After it, only whitespace and comments may appear.
+      const close = after.indexOf('\n}')
+      const tail = close >= 0 ? after.slice(close + 2) : after
+      const declarations = tail
+        .replace(/\/\*[\s\S]*?\*\//g, '')
+        .replace(/^\s*\/\/.*$/gm, '')
+        .replace(/@media[^{]*\{[\s\S]*?\n\}/g, '')
+        .trim()
+      expect(declarations,
+        `in ${boardSheet.rel}, something is declared AFTER the reduced-motion block, so at equal specificity it wins and the motion is not reduced: ${declarations.slice(0, 200)}`)
+        .toBe('')
+    }
+    expect(sawBlock, 'no board sheet has a reduced-motion block at all — motion preference is not honoured anywhere')
+      .toBe(true)
   })
 
   it('the token IS zeroed under reduced motion, on the scope that reaches both sheets', () => {
