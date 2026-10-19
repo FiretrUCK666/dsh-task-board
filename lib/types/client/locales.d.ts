@@ -723,6 +723,7 @@ export declare const zh: {
     'board.update.hint.local': string;
     'board.update.gitBehind': string;
     'board.update.gitUnreadable': string;
+    'board.update.gitRemoteUnread': string;
     'board.update.gitDirty': string;
     'board.update.gitUpToDate': string;
     'item.loading': string;

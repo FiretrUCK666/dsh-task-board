@@ -759,6 +759,7 @@ export const zh = {
   'board.update.hint.local': '本地开发：也可以在仓库目录里执行下面命令更新。',
   'board.update.gitBehind': '远端已有新提交（{head} → {remote}），更新会拉取它们。',
   'board.update.gitUnreadable': '读不到这份 checkout 的 git 状态（没有 git 命令，或这里不是仓库），所以无法判断远端有没有新提交。下面那条命令仍然可以用。',
+  'board.update.gitRemoteUnread': '读不到远端（github 不可达，或这一问超时了），所以无法判断远端有没有新提交。下面那条命令仍然可以用。',
   'board.update.gitDirty': '工作区有未提交改动，更新前请先存档或提交。',
   'board.update.gitUpToDate': '本地已与远端同步。',
 
@@ -1886,6 +1887,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.update.hint.local': 'Local checkout: you can also run the command below in the repository.',
   'board.update.gitBehind': 'New commits on origin ({head} → {remote}) — the update pulls them.',
   'board.update.gitUnreadable': 'This checkout’s git state cannot be read (no git command, or the directory is not a repository), so whether origin has new commits cannot be judged. The command below still works.',
+  'board.update.gitRemoteUnread': 'origin could not be reached (github unreachable, or that lookup timed out), so whether it has new commits cannot be judged. The command below still works.',
   'board.update.gitDirty': 'Uncommitted changes in the worktree — stash or commit before updating.',
   'board.update.gitUpToDate': 'The local checkout is in sync with origin.',
 

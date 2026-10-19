@@ -199,6 +199,14 @@ export function UpdateDialog() {
         {source?.mode === 'local' && git === undefined && (
           <p className={css.hint}>{t('board.update.gitUnreadable')}</p>
         )}
+        {/* **读到一半也要说。** 本地那两条 git 命令白问；`ls-remote` 才是打网络的那条，
+            它超时或失败时 `head` 有值、`remoteHead` 没有。那种状态下面两句话都不成立
+            （不能说「有新提交」，也不能说「已同步」），于是原先是**什么都不说**——
+            读者看着一个关于 git 的对话框，却读不到「远端到底问到了没有」。
+            而按钮那边正是靠这个字段决定说不说「已是最新」，所以它必须在这里被说出来。 */}
+        {source?.mode === 'local' && git !== undefined && git.remoteHead === undefined && (
+          <p className={css.hint}>{t('board.update.gitRemoteUnread')}</p>
+        )}
         {/* 读不出装法时**没有命令可给**，那是一种要说清的状态：不是「检查失败」，而是
             「这份 profile 里没有这个包的安装声明」。读者据此知道该按当初装它的方式重装，
             而不是以为按钮坏了。 */}

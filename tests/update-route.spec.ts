@@ -401,22 +401,19 @@ describe('readLatest', () => {
     /* 「谁算公共源」是按**身份**判的，不是按字面。宿主的 `normalizeRegistry` 今天会
        补上结尾斜杠，但那是它的实现细节、不是契约；一旦某个来源给出没有斜杠的地址，
        精确比较就会把**公共源**判成「用户自己配的源」，于是这次读取只问它一个、
-       不再回退镜像——而镜像正是「墙内也能用」的全部理由。 */
-    const asked = answerWith([
-      { url: 'https://registry.npmjs.org', body: { 'dist-tags': { latest: '9.9.9' } } },
-    ])
-    const latest = await readLatest(ctxOf({ resolved: 'https://registry.npmjs.org' }), { mode: 'npm' })
-    /* 判据一：它被当成公共源，所以镜像也在候选里（这次没有可答的镜像，但读取要能
-       正常完成并且拿到的正是那个源）。 */
-    expect(latest?.version).toBe('9.9.9')
-    /* 判据二：反向——同一个地址若被误判成 own，就只会问它一个。这里它答了，
-       所以两种判法都会成功；真正区分它们的是**没有答案时**会不会回退。
-       用一个答不出的公共源，看它是否还在自己的候选里。 */
+       不再回退镜像——而镜像正是「墙内也能用」的全部理由。
+
+       **判据必须是「镜像有没有被问到」。** 这里最容易写错的方向是数请求总数：没人
+       作答时 `readLatest` 会回退去问仓库，那两条 GitHub 请求会把总数抬到 3 以上，
+       于是「总数 > 1」在**旧代码上照样成立**——一条测不出差别的断言，读起来却像在守
+       这条规则。所以要直接问那个地址。 */
     const silent = answerWith([])
     const none = await readLatest(ctxOf({ resolved: 'https://registry.npmjs.org' }), { mode: 'npm' })
     expect(none, '读不到就应该是读不到，不能凭空造一个').toBeUndefined()
-    expect(silent.length, '两个公共源都该被问到：地址少一个斜杠不该让它变成「用户自己的源」').toBeGreaterThan(1)
-    expect(asked.length).toBeGreaterThan(0)
+    expect(
+      silent.some((one) => one.includes('registry.npmmirror.com')),
+      `没有问镜像，说明这个少一个斜杠的地址被误判成了「用户自己配的源」。实际问了：${silent.join(', ')}`,
+    ).toBe(true)
   })
 
   it('a profile with its own registry never asks the public ones, even when its own cannot answer', async () => {

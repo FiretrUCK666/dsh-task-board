@@ -191,28 +191,37 @@ export class UpdateController {
         this.emit()
         return
       }
-      // "Cannot tell" is not "up to date" and must not be a dead end: open the
-      // dialog, say it cannot tell, and leave the way out (command / one press)
-      // where it already is.
-      //
-      // **Two ways to be unable to tell, one rule.** The first is a registry
-      // answer that never arrived. The second is a checkout whose git state is
-      // unreadable (`source.git === undefined`: no `git` binary, or not a repo).
-      // A checkout's newest IS its remote branch, so with no git status this
-      // copy has nothing to compare — and falling through to `restAfter('latest')`
-      // would print 「已是最新」 for a question that was never answered, and hide
-      // the dialog (with it the update command) behind a claim the reader cannot
-      // check. `update-route.ts` states that "cannot tell" must never be dressed
-      // up as "already newest"; this is where that would have happened.
-      const cannotTell = (source.mode === 'npm' && source.latest === undefined)
-        || (source.mode === 'local' && source.git === undefined)
+      /* ── 「已是最新」必须是一个**有证据的**结论 ──────────────────────────────
+       *
+       * 这个按钮只有三种可能的脸：有新版 / 无法确认 / 已是最新。前两个都无害，
+       * 第三个是这里唯一会说谎的那个——它断言了一件读者**无法核实**的事，而且顺手
+       * 关掉了对话框（连同更新命令）。
+       *
+       * 所以判据不是「装法是哪一种」，而是**「我们手上有没有能得出结论的证据」**。
+       * 枚举装法是错的方向：每多一种装法、每多一处降级，枚举就漏一次，而漏的那次
+       * 表现正是这句话。这里只问：这两个可能的新版来源里，**哪一个真的读到了？**
+       *
+       *   · 发布号（`latest`）：npm / github / unknown 的答案来源。读不到 = 没证据。
+       *     注意 `unknown` 也会去问（`readLatest` 只对 `local` 提前返回），别以为它
+       *     一定没有答案。
+       *   · 远端分支（`git.remoteHead`）：checkout 的答案来源。**只有 `git` 存在还不够**
+       *     ——`readGitStatus` 在 `ls-remote` 超时/失败时仍然返回状态（head 读到了、
+       *     remoteHead 缺失），那时它并不知道远端有没有新提交。`isGitBehind` 对这种
+       *     情况返回 false，于是一个被墙的 github 会被念成「已是最新」——这恰好是
+       *     那个 6 秒预算想要优雅降级掉的情形。
+       */
+      const hasPublishedAnswer = source.latest !== undefined
+      const hasRemoteAnswer = source.mode === 'local'
+        && source.git !== undefined
+        && source.git.remoteHead !== undefined
+      const cannotTell = source.mode === 'local' ? !hasRemoteAnswer : !hasPublishedAnswer
       if (cannotTell) {
         this.phase = 'undetermined'
         this.open = true
         this.emit()
         return
       }
-      // Up to date: the button confirms briefly, then goes back to rest.
+      // Up to date — and only now is that a claim the host actually answered.
       this.restAfter('latest')
       this.emit()
     })()

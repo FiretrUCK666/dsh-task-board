@@ -846,6 +846,65 @@ describe('the update dialog, driven through the header button', () => {
     unmount()
   })
 
+  it('a checkout whose remote could not be reached cannot claim "up to date" either', async () => {
+    /* **这一条与上一条只差一个字段，而它是那个更常见的情形。**
+       一个 checkout 的 git 状态可能读得到一半：`rev-parse` 与 `status` 是本地的、秒回，
+       而 `ls-remote` 要打 github。远端被墙、或那 6 秒预算到点时，`head` 有值、
+       `remoteHead` 缺失——`isGitBehind` 对这种状态返回 false，于是原先会落到
+       「已是最新」，**而远端根本没被问到**。
+       这正是那 6 秒预算想要优雅降级掉的那个情形：降级是对的，但降级之后不许说
+       「已是最新」——那句话断言了一件没被回答的事。 */
+    stubUpdateFetch({
+      view: () => viewOf({
+        mode: 'local',
+        latest: undefined,
+        git: { head: 'a'.repeat(40), dirty: false },
+        plan: {
+          mode: 'local', appManaged: false, apply: 'checkout',
+          steps: [{ command: 'git', args: ['pull', '--ff-only'] }],
+        },
+      }),
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent, '远端没连上，却被告知「已是最新」')
+      .not.toContain(t('board.update.latest'))
+    /* 对话框是开的，而且**说清了远端的回答没到**——不是留一个关于 git 的面板让读者猜。 */
+    expect(dialog.textContent, '远端问了但没答，对话框里却没提这件事')
+      .toContain(t('board.update.gitRemoteUnread'))
+    expect(dialog.textContent).toContain('git')
+    unmount()
+  })
+
+  it('an install mode the host could not classify cannot claim "up to date" either', async () => {
+    /* `unknown` 装法**会**去问（`readLatest` 只对 `local` 提前返回），所以它可能带着
+       一个空答案回来。空答案不是「没有新版」，是「没读到」——而原先它落到「已是最新」，
+       那张脸同样把对话框关着，更新命令也就无从看到。
+       `file:` / `portal:` / `workspace:` 这些装法都会落到 `unknown`，所以这条路径是
+       真实可达的，不是理论上的。 */
+    /* `plan` 不能省：`fetchUpdateSource` 把它当作视图完整性的一部分（没有 plan 就说不清
+       怎么更新，整份视图读作无效，phase 会变成「检查失败」）。所以给一个 `apply: 'none'`
+       的 plan——那是「装法判定不出来」在协议里的真实形状，而不是把字段拿掉。 */
+    stubUpdateFetch({
+      view: () => viewOf({
+        mode: 'unknown',
+        latest: undefined,
+        plan: { mode: 'unknown', appManaged: false, apply: 'none', steps: [] },
+      }),
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent, '装法判定不出来、新版也读不到，却被告知「已是最新」')
+      .not.toContain(t('board.update.latest'))
+    /* 对话框开着的意义在这里：它解释了「这份 profile 里没有安装声明」，而那句话在
+       「已是最新」那张脸下面永远读不到。 */
+    expect(dialog.textContent, '对话框没开，读者看不到「为什么判断不了」')
+      .toContain(t('board.update.unreadable'))
+    unmount()
+  })
+
   it('cannot read the latest version without saying so, and never says "up to date"', async () => {
     // The three-state verdict, driven through the screen: a host that could not
     // reach its registry must not arrive as a conclusion.
