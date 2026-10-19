@@ -440,6 +440,12 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   padding: 14px 18px;
   border-bottom: var(--dsh-tb-separator);
   flex: none;
+  /* 头部**自己**给不透明的底：它下面就是滚动的那一段（`.modalScroll`），而面板
+     那层底可能被主题调透——那时正文会从标题后面透出来，读者看到的是「上面被砍了
+     一下」。读梯子上最实的一级（浮面），不读面板那枚可能被改的值。
+     同一条理由在 board 表的 `.reviewHeader` 上有完整推导。 */
+  background: var(--dsh-tb-plane-float);
+  z-index: 1;
 }
 
 .detailSection {

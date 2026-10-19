@@ -1,0 +1,10 @@
+/* 自测素材：一个**画了分隔线、压在上面、却没有自己的底**的头。
+   门禁必须报出它——正文会从它后面透出来，而屏幕上没人会说话。 */
+.headerWithoutSurface {
+  display: grid;
+  align-items: center;
+  flex: none;
+  min-height: 52px;
+  padding: 14px 20px;
+  border-bottom: var(--dsh-tb-separator);
+}

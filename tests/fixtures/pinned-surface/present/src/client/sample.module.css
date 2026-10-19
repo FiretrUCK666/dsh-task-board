@@ -1,0 +1,17 @@
+/* 自测素材：同形状的头，但**自己带了底**——必须放行。
+   另有一条「只画了分隔线、不压在上面」的普通行（表格行），也不该被抓。 */
+.headerWithSurface {
+  display: grid;
+  align-items: center;
+  flex: none;
+  min-height: 52px;
+  padding: 14px 20px;
+  border-bottom: var(--dsh-tb-separator);
+  background: var(--dsh-tb-plane-float);
+}
+
+/* 普通行：只有下边框，不压在任何滚动内容上面，透明是对的。 */
+.plainRow {
+  padding: 8px 12px;
+  border-bottom: var(--dsh-tb-separator);
+}

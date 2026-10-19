@@ -4321,6 +4321,30 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   flex: none;
   min-height: 52px;
   box-sizing: border-box;
+  /* ── 头部**自己**拥有不透明的底，而且不建立在「可能被改透明」的值上 ──────────
+   *
+   * 面板（`.modal`）已经有一层背景，所以「头部不写背景」看起来只省了一行。
+   * 它省掉的是一次**依赖**：正文在头部下面滚过时，读者看见的是谁的底，取决于
+   * 父元素那层是否真的不透明。第三方皮肤重写 `--dsh-tb-surface-float`
+   * （半透明、渐变、或带一点模糊）之后，头部就成一扇窗——正文从标题与状态胶囊
+   * 后面透出来，读作「上面被砍了一下」。
+   *
+   * **为什么这里不能直接读面板那枚令牌**：`--dsh-tb-surface-float` 与
+   * `--dsh-tb-plane-sheet` 最终都指向 `--dsh-tb-paper`，而 paper 是
+   * `color-mix(… 与 --dsh-tb-bg)`。皮肤改一个，三个一起变——量过，写成
+   * `var(--dsh-tb-surface-float)` 之后头部的计算值是 `rgba(0, 0, 0, 0)`，
+   * 与面板一模一样，等于没改。
+   *
+   * 所以这里读洗底梯子里**最实的那一级**：`--dsh-tb-plane-float`（92% 白 + 8%
+   * 底），它是梯子上为「浮起来的面」准备的那一档，比纸面（78%）实得多。它仍然
+   * 由本表的令牌层派生，所以深色主题、壁纸模式下都跟着走——但它**不读**面板那枚
+   * `--dsh-tb-surface-float`，于是皮肤把它调透时，头部仍然是实心的。
+   *
+   * 这不是为某个皮肤打的补丁：任何把面板底做透的主题都会撞上同一现象，而头部是
+   * 唯一一处「下面有东西滚过去」的地方。`z-index` 一并给上，让它在同一层里永远
+   * 盖住滚动的正文。 */
+  background: var(--dsh-tb-plane-float);
+  z-index: 1;
 }
 
 /* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
