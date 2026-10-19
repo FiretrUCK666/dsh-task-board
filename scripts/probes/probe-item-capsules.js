@@ -333,9 +333,40 @@
    * 得到的中心落在它们**之间**，于是报出一个谁也看不见的偏差。量到过：`markOffY` 报 −1.1px，
    * 而逐个量那枚前导记号是 **0.00px**（墨心与盒心同一个数）。判据读错了对象，就会逼着人改对的
    * 东西来迁就它（硬性规范 14）。 */
-  const strokeInk = (el) => {
+  /**
+   * 一枚胶囊里的**前导记号**：`svg`，或一个画了底/边的小盒子。
+   *
+   * 只认 `svg` 是不够的——总览页那颗状态点是一个 `<span>` + `border-radius` + 底色
+   * （`homeStatusDot`），于是「图标 + 标签」那一排的并集里少了它，`offX` 报出 5px
+   * 的假红（正好是点宽 + 间距的一半）。判据读错对象，就会逼着人把对的胶囊改歪
+   * （硬性规范 14）。判据因此按**结构**认：不含文字、有尺寸、画了底或边。
+   */
+  const leadMark = (el) => {
     const svg = el.querySelector('svg')
-    const shapes = svg === null ? [] : [...svg.querySelectorAll('path, rect, circle, line, polyline')]
+    if (svg !== null) return svg
+    for (const child of el.children) {
+      if ((child.textContent ?? '').trim() !== '') continue
+      const st = getComputedStyle(child)
+      const r = child.getBoundingClientRect()
+      if (r.width < 2 || r.height < 2) continue
+      const painted = st.backgroundColor !== 'rgba(0, 0, 0, 0)'
+        || px(st.borderTopWidth) > 0
+        || st.backgroundImage !== 'none'
+      if (!painted) continue
+      /* 一枚占据大半个盒子的盒子不是记号，是背景层。 */
+      if (r.width > el.getBoundingClientRect().width * 0.6) continue
+      return child
+    }
+    return null
+  }
+
+  const strokeInk = (el) => {
+    const markEl = leadMark(el)
+    if (markEl === null) return null
+    const svg = markEl.tagName.toLowerCase() === 'svg' ? markEl : markEl.querySelector('svg')
+    const shapes = svg === null
+      ? [markEl]
+      : [...svg.querySelectorAll('path, rect, circle, line, polyline')]
     if (shapes.length === 0) return null
     const boxes = shapes.map((shape) => {
       const r = shape.getBoundingClientRect()
@@ -479,7 +510,7 @@
         const st = getComputedStyle(el)
         const box = boxOf(el)
         const ink = glyphInk(el, runs)
-        const mark = el.querySelector('svg') === null ? null : strokeInk(el)
+        const mark = strokeInk(el)
         const content = unionInk(ink, mark)
         /* 切割逐串字求，取最大的那一边。 */
         let cutTop = 0

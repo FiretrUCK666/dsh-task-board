@@ -1,0 +1,17 @@
+/* 自测素材：**一次墨位补偿**——上下两段的块向内衬不相等，而它们读同一个令牌。
+ *
+ * 这是那个现象被修过五轮之后留下的形状：`padding-block: max(0, -X) max(0, X)`。
+ * 它在结构上修不好（挪的是内容盒，而行盒会跟着重新居中），还会压扁定高盒子、把字
+ * 裁掉、并让那个变量被继承。
+ *
+ * 门禁必须报红。 */
+.samplePill {
+  display: inline-flex;
+  align-items: center;
+  block-size: 28px;
+  border-radius: var(--dsh-tb-pill);
+  font-size: 12px;
+  line-height: var(--dsh-tb-text-line-h);
+  padding-inline: 14px;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+}

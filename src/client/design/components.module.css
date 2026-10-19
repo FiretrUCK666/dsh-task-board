@@ -88,8 +88,7 @@
   justify-content: center;
   box-sizing: border-box;
   block-size: var(--dsh-tb-chip-h);
-  padding-inline: 8px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 8px;
   border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
      double-fade under a glass skin) — the shared quiet-chip surface, so a
@@ -154,8 +153,7 @@
   /* **行高 = 墨高**，不留半行距：`halfLeading` 为零时「墨心 = 盒心」自动成立，任何
      字体都一样（见 `--dsh-tb-text-line-h` 那一处的算式）。这里不再有 `padding-block-end`
      校正——那种做法会把整个盒子推上去，读者看到的是「按钮自己偏了」。 */
-  padding-inline: 14px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 14px;
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 500;
   line-height: var(--dsh-tb-text-line-h);
@@ -212,8 +210,7 @@
      while their primary stays 13px — the small pill reads round, the wide one
      reads square-arc, so the two tracks never share type scale). */
   font-size: 12px;
-  padding-inline: 12px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 12px;
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -271,8 +268,7 @@
   border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
   /* Same quiet density as the ghost twin above (one track, never drift). */
   font-size: 12px;
-  padding-inline: 12px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 12px;
 }
 
 .dangerGhostButton:hover:not(:disabled) {
@@ -297,8 +293,7 @@
      stays exact instead of drifting 2px under content-box. */
   box-sizing: border-box;
   height: var(--dsh-tb-button-h-sm);
-  padding-inline: 10px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 10px;
   font-size: 12px;
   border-radius: var(--dsh-tb-pill);
 }
@@ -317,8 +312,6 @@
   cursor: pointer;
   font-size: 14px;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
-  --dsh-tb-optical-target: 1;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -350,8 +343,6 @@
 
 .switchTrack {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   position: relative;
   flex: none;
   width: 38px;
@@ -589,8 +580,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   background: var(--dsw-alias-interactive-bg-hover);
   border-radius: var(--dsh-tb-pill);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  --dsh-tb-optical-target: 1;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* One segmented-radio grammar for every mode switch on the board (schedule
@@ -616,8 +605,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   justify-content: center;
   box-sizing: border-box;
   block-size: var(--dsh-tb-segment-h);
-  padding-inline: 14px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 14px;
   font-size: 12px;
   font-weight: 500;
   line-height: var(--dsh-tb-text-line-h);
@@ -992,8 +980,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
    * **补上这一行之后同一把尺子量到 205 / 247 / 56，与轨道分毫不差。** */
   box-sizing: border-box;
   height: 34px;
-  padding-inline: 12px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 12px;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
@@ -1075,8 +1062,7 @@ textarea.input {
   display: block;
   inline-size: 100%;
   block-size: var(--dsh-tb-button-h);
-  padding-inline: var(--dsh-tb-space-6); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-6);
   font-family: inherit;
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 400;
@@ -1175,8 +1161,6 @@ textarea.input {
 
 .attachAdd {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1224,8 +1208,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
      那一圈伸到这枚芯片外面，于是那枚 16px 的「移除」在手机上**点不到**（量到过：
      `outBy 5`，裁剪者就是这枚芯片）。去掉它，环落在芯片里，那一圈才真的算热区。 */
   white-space: nowrap;
-  --dsh-tb-optical-target: 1;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -1461,8 +1443,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   background: var(--dsh-tb-plane-inlay);
   box-shadow: var(--dsh-tb-rim-soft);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  --dsh-tb-optical-target: 1;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 /* 当前那一颗 tab 自己就是那枚纸面药丸。
@@ -1502,8 +1482,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
    *
    * 算式读三枚令牌，所以改边宽、改内衬、改轨道高，页签都跟着走，不会再差半格。 */
   block-size: calc(var(--dsh-tb-nav-h) - 2 * var(--dsh-tb-nav-pad) - 2 * var(--dsh-tb-nav-edge));
-  padding-inline: var(--dsh-tb-space-5); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-5);
   border: none;
   border-radius: var(--dsh-tb-pill);
   background: transparent;
@@ -1556,8 +1535,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   box-sizing: border-box;
   min-inline-size: 18px;
   block-size: 20px;
-  padding-inline: 5px; --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: 5px;
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
   color: var(--dsh-tb-text-1);
@@ -1653,8 +1631,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
      所以文字一律包一层（`WorkbenchBar` 已经这么做）；这条 `line-height` 是给那道
      包裹缺席时的兜底，不能当作主机制。 */
   line-height: var(--dsh-tb-text-line-h);
-  padding-inline: var(--dsh-tb-space-6); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-6);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-chip-fill);
@@ -1699,8 +1676,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-  --dsh-tb-optical-target: 1;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
 }
 
 .workbenchExit:hover {
@@ -1730,8 +1705,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   box-sizing: border-box;
   min-inline-size: 0;
   block-size: var(--dsh-tb-button-h);
-  padding-inline: var(--dsh-tb-space-6); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-6);
   border: 1px solid color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash), transparent);

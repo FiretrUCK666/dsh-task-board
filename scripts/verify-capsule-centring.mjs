@@ -167,6 +167,59 @@ function containerDeclaresGraphic(selector, body) {
   return null
 }
 
+/**
+ * 装字的盒子**不许用不对称的块向内衬去假装居中**。
+ *
+ * 这是那个现象的第五次复发形态，也是唯一一个「结构上可以一眼认出来」的形态：
+ *
+ *   1. 一个全局令牌（`0.04em` / `0.5px` / `1px` / `1.4px`）；
+ *   2. 逐元素测量 + 按元素写一个变量；
+ *   3. 两者都写成一对 `padding-block: max(0, -X) max(0, X)`。
+ *
+ * 三种都失败在同一个地方：块向内衬挪的是**内容盒**，而 `align-items: center` 会把
+ * 行盒重新居中到新的内容盒里——两者一起走，相对位置一位小数都没变。它还压扁定高
+ * 盒子（28px 的按钮只剩 20.5px 的内容盒）、把字裁掉、并让那个变量被继承（药丸里的
+ * 圆点读到了药丸那一档，6×6 变成 6×18 的竖条）。
+ *
+ * 判据只认**形状**，不认令牌名：一条规则里 `padding-block` 的两个值不相等，而且
+ * 其中一个读了一个自定义属性或 `calc()`——那就是一次补偿。**对称**的块向内衬（`0 8px`
+ * 这类、或者两边写同一个值）放行：那是留白，不是补偿。
+ */
+function findAsymmetricCompensation(root) {
+  const findings = []
+  for (const file of sheetsUnder(root)) {
+    const css = stripCommentsKeepingLines(readFileSync(file, 'utf8'))
+    for (const rule of rulesOf(css)) {
+      const match = rule.body.match(/padding-block:\s*([^;]+);/)
+      if (match === null) continue
+      const parts = match[1].trim().split(/\s+/)
+      if (parts.length === 1) continue
+      const [top, bottom] = [parts[0], parts[parts.length - 1]]
+      if (top === bottom) continue
+      /* 不带变量、也不带 calc 的两段简写是静态留白（`0 8px`），不是补偿。 */
+      if (!/var\(|calc\(/.test(match[1])) continue
+      /* **一次补偿的标志是「同一个量、取正负两侧」。**
+         上下两段读的是**同一枚**自定义属性（`max(0, -X)` 与 `max(0, X)` 只差一个否定），
+         或者其中一段是 `calc(-1 * …)`。两段读**不同**的令牌（`air` 与 `gap`、
+         `space-1` 与 `space-3`）是两种不同的留白，放行——把它判成缺陷，就会逼着人
+         去改对的排版（硬性规范 14）。 */
+      const sameVariable = /calc\(\s*-1\s*\*/.test(match[1])
+        || (() => {
+          const names = [...match[1].matchAll(/var\((--[\w-]+)/g)].map((one) => one[1])
+          return names.length === 2 && names[0] === names[1]
+        })()
+      if (!sameVariable) continue
+      findings.push({
+        file: relative(root, file).replace(/\\/g, '/'),
+        line: rule.line,
+        container: rule.selector,
+        childSelector: match[1].trim(),
+      })
+    }
+  }
+  return findings
+}
+
 /** 找出所有错的 baseline：容器在基线上，而它有一个带图形信号的子元素规则。 */
 export function findMixedBaselineRows(root) {
   const findings = []
@@ -236,17 +289,46 @@ function main() {
     return
   }
 
-  const findings = findMixedBaselineRows(root)
-  if (findings.length === 0) {
-    console.log('verify-capsule-centring OK: 没有一行在基线上混排图形。')
+  const probeCompensation = process.argv.includes('--probe-compensation')
+  if (probeCompensation) {
+    /* 自测种在 tests/ 里（硬性规范 16）：一条不对称的块向内衬必须报红，对称的必须放行。 */
+    const bad = findAsymmetricCompensation(join(root, 'tests/fixtures/centring-compensation-bad'))
+    if (bad.length === 0) {
+      console.error('FAIL 自测：不对称的块向内衬（一次墨位补偿）必须被报出来，但一条都没有。')
+      process.exit(1)
+    }
+    const good = findAsymmetricCompensation(join(root, 'tests/fixtures/centring-compensation-good'))
+    if (good.length !== 0) {
+      console.error('FAIL 自测：对称的块向内衬（留白）必须放行，却报了：')
+      for (const f of good) console.error(`  ${f.file}:${f.line} ${f.container}`)
+      process.exit(1)
+    }
+    console.log(`OK 自测：补偿被认出 ${bad.length} 条，留白放行（门禁既不瞎也不乱红）。`)
     return
   }
-  console.error(`FAIL ${findings.length} 行在基线上混排了图形或不同行盒——它会读作「这一行的字偏下一点点」：`)
-  for (const f of findings) {
-    console.error(`  ${f.file}:${f.line}`)
-    console.error(`    容器 ${f.container} 用了 baseline，而它的子元素 ${f.childSelector}`)
-    console.error(`    原因：${f.why}`)
-    console.error('    改法：容器改 align-items: center，并在子元素规则里给每段 line-height: 1em。')
+
+  const findings = findMixedBaselineRows(root)
+  const compensations = findAsymmetricCompensation(root)
+  if (findings.length === 0 && compensations.length === 0) {
+    console.log('verify-capsule-centring OK: 没有一行在基线上混排图形，也没有一处用内衬补墨位。')
+    return
+  }
+  if (compensations.length > 0) {
+    console.error(`FAIL ${compensations.length} 处用不对称的块向内衬去补墨位——它在结构上修不好，还会压扁定高盒子：`)
+    for (const f of compensations) {
+      console.error(`  ${f.file}:${f.line}  ${f.container}`)
+      console.error(`    padding-block: ${f.childSelector}`)
+      console.error('    改法：删掉那一对补偿，改写 `line-height: var(--dsh-tb-text-line-h)` + `align-items: center`。')
+    }
+  }
+  if (findings.length > 0) {
+    console.error(`FAIL ${findings.length} 行在基线上混排了图形或不同行盒——它会读作「这一行的字偏下一点点」：`)
+    for (const f of findings) {
+      console.error(`  ${f.file}:${f.line}`)
+      console.error(`    容器 ${f.container} 用了 baseline，而它的子元素 ${f.childSelector}`)
+      console.error(`    原因：${f.why}`)
+      console.error('    改法：容器改 align-items: center，并在子元素规则里给每段 line-height: 1em。')
+    }
   }
   process.exit(1)
 }

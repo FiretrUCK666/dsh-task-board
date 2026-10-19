@@ -155,8 +155,7 @@
 .galleryBandButton {
   box-sizing: border-box;
   block-size: var(--dsh-tb-button-h);
-  padding-inline: var(--dsh-tb-space-6); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-6);
   font-family: inherit;
   font-size: 12px;
   font-weight: 500;
@@ -310,8 +309,6 @@
 
 .mixedRowDot {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   flex: none;
   inline-size: var(--dsh-tb-dot);
   block-size: var(--dsh-tb-dot);
@@ -333,8 +330,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
 
 .mixedRowTrack {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   /* `align-self: center` 不参与这一行的中线对齐——它是**条**，不是字，它的厚度
      由自己的 `block-size` 决定，占满剩余宽度由 `flex` 决定。 */
   flex: 1 1 var(--dsh-tb-space-9);

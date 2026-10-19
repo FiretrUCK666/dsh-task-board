@@ -1,0 +1,23 @@
+/* 自测素材：**对称的块向内衬是留白，不是补偿**——门禁必须放行。
+ *
+ * 这一条存在的理由：只测「会红」不测「不乱红」，门禁就可能被写成「见谁都要红」，
+ * 于是下一个人只好改对的东西来迁就它（硬性规范 14）。 */
+.samplePill {
+  display: inline-flex;
+  align-items: center;
+  block-size: 28px;
+  border-radius: var(--dsh-tb-pill);
+  font-size: 12px;
+  line-height: var(--dsh-tb-text-line-h);
+  padding-inline: 14px;
+  padding-block: var(--dsh-tb-space-2) var(--dsh-tb-space-2);
+}
+
+.sampleQuiet {
+  display: inline-flex;
+  align-items: center;
+  border-radius: var(--dsh-tb-pill);
+  font-size: 12px;
+  line-height: var(--dsh-tb-text-line-h);
+  padding-block: 0;
+}

@@ -275,8 +275,6 @@
  * 它在补偿一个已经不存在的偏差。 */
 [data-dsh-taskboard-view] .homeStatusDot {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   flex: none;
   align-self: center;
   inline-size: var(--dsh-tb-dot);
@@ -312,8 +310,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
  * 说了，条只负责「多少」。宽度在数据变化时走 `--dsh-tb-motion-lift`。 */
 [data-dsh-taskboard-view] .pipeTrack {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
---dsh-tb-optical-target: 1;
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
   align-self: center;
   min-inline-size: 0;
   block-size: 6px;
@@ -472,8 +468,7 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, va
   block-size: var(--dsh-tb-chip-h);
   /* 行盒 = 墨高：`halfLeading` 归零之后墨心就是盒心，任何字体都成立（见 tokens 表
      的 `--dsh-tb-text-line-h`）。这里曾经靠下内衬补偿，而那条补偿现在是 0。 */
-  padding-inline: var(--dsh-tb-space-3); --dsh-tb-optical-target: 1;
- padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-inline: var(--dsh-tb-space-3);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-plane-inlay);
   box-shadow: var(--dsh-tb-rim-soft);

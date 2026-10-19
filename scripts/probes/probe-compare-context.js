@@ -6,7 +6,7 @@
  * flex 属性），所以这里把每个实例自己的计算值全部打出来，用来找那一处不同。
  *
  * 字墨偏移直接从像素里量（PIL 不可用，所以这里只报几何；像素那一半由
- * `.design/measure-bands.cjs` 读同一张图）。这一条负责「为什么」。
+ * `scripts/audit-panels.mjs` 读同一张图）。这一条负责「为什么」。
  */
 (() => {
   const round = (value) => Math.round(value * 100) / 100

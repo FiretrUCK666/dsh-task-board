@@ -632,13 +632,14 @@ scripts 与 `scripts/`**。
     它们由 `shot-panel.mjs` 开真 Chromium 量。**每一个这样的数都写进 `DESIGN.md` 并写清量法**
     （探针入库 `scripts/probes/`）。
     **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
-    `translateY` 补偿必须一起删。**每个装字的定高盒子都要声明 `--dsh-tb-optical-target: 1` 并读
-    `var(--dsh-tb-optical-shift, 0px)`，那对声明必须是这条规则里最后一条管块向内衬的声明**；那个
-    变量由运行时**按这一枚自己**的排版结果算出来（墨位校正的量逐元素不同，一个全局常数必然
-    只对齐一族），**且只处理带标记的盒子**——宿主自己的界面一个都不碰（判据读结构与解析后
-    的圆角，不读类名；`align-capsules.mjs` 守着）；**压滚动内容的头自带不透明底**（洗底不算遮挡，
-    `verify-pinned-surface.mjs` 守着）。法则在 `design/laws.ts`，`verify-design-sync`
-    双向对账：加法则给门禁与标本，**门禁也必须进表**（自动发现 `verify-*`）。
+    `translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
+    var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——
+    那个补法在结构上无效（它挪内容盒，而行盒会跟着重新居中，相对位置一位不变），还会压扁
+    定高盒子、裁掉字、并让那个变量**被继承**（药丸里的圆点读到了药丸那一档，变成竖条）。
+    判据读结构、不读数值与类名，`verify-capsule-centring.mjs` 守着；**压滚动内容的头自带
+    不透明底**（洗底不算遮挡，`verify-pinned-surface.mjs` 守着）。法则在 `design/laws.ts`，
+    `verify-design-sync` 双向对账：加法则给门禁与标本，**门禁也必须进表**（自动发现
+    `verify-*`）。
 20. **开发页面先复用，再扩展，最后才新增。** 顺序是硬的，每一步都要说得出为什么上一步不行：
     ① 开发页面时**必须优先复用** `src/client/design/` 与页面目录里已有的组件；② 已有组件能通过
     `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；

@@ -86,9 +86,9 @@ function readdirRecursive(dir) {
  *
  * 判据只有一条：`pnpm verify` 调用了它，而且它的名字说明它守的是界面。名字那一半
  * 用前缀表达——`verify-*` 与 `align-*` 是本仓库里「检查/对齐界面」的两个既有前缀
- * （`verify-palette`、`verify-capsule-centring`、`align-capsules`）。
+ * （`verify-palette`、`verify-capsule-centring`）。
  *
- * **为什么不能写死一张名单**：我刚写第一版就漏了自己——新加的 `align-capsules.mjs`
+ * **为什么不能写死一张名单**：我刚写第一版就漏了自己——新加的一条门禁
  * 不在名单里，于是它在法则表外独自活着，而脚本一声不吭。这与清单页加 29 处校正、
  * 看板页一处没加是**同一个错误**：一条约定如果有第二个地方要同步，就不该靠人记。
  *
