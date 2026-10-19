@@ -575,14 +575,14 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .segmentedRow {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: inline-flex;
   gap: var(--dsh-tb-space-2);
   padding: var(--dsh-tb-segment-pad);
   align-self: flex-start;
   background: var(--dsw-alias-interactive-bg-hover);
   border-radius: var(--dsh-tb-pill);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* One segmented-radio grammar for every mode switch on the board (schedule
@@ -1412,8 +1412,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .workbenchNav {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: relative;
   display: grid;
   grid-auto-flow: column;
@@ -1449,6 +1447,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   /* 嵌面：这一枚是「嵌在纸面里的轨道」，比页底深一级、比纸面深一级。 */
   background: var(--dsh-tb-plane-inlay);
   box-shadow: var(--dsh-tb-rim-soft);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* 当前那一颗 tab 自己就是那枚纸面药丸。
@@ -1663,8 +1663,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .workbenchExit {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1683,6 +1681,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   color: var(--dsh-tb-text-2);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .workbenchExit:hover {

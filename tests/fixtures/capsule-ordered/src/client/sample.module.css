@@ -1,0 +1,26 @@
+:root {
+  --dsh-tb-pill: 999px;
+}
+
+/* 自测素材：一枚**写对了**的胶囊，门禁必须放行。
+
+   校正排在规则体的最后，所以它不可能被同族属性盖掉；圆角走别名令牌，
+   证明判据认的是「解析成不胶囊」，不是「有没有写那个字面量」。
+
+   反面素材在 `tests/fixtures/capsule-clobbered/`：同样的圆角，校正被 `padding`
+   简写整条盖掉，那一份必须报红。两份合起来证明这把尺子既会响也会放行。 */
+:root {
+  --sample-radius-pill: 999px;
+}
+
+.correctlyOrdered {
+  display: inline-flex;
+  font-size: 12px;
+  align-items: center;
+  block-size: var(--dsh-tb-chip-h);
+  padding: 0 8px;
+  border-radius: var(--sample-radius-pill);
+  box-sizing: border-box;
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+}

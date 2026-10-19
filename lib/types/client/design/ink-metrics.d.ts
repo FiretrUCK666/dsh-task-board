@@ -22,18 +22,33 @@
  * ── 怎么做 ──────────────────────────────────────────────────────────────────
  *
  * 挂载时用离屏 canvas 量出当前字体的四个数，算出偏移，写进 `--dsh-tb-optical-drop`。
- * `tokens.module.css` 里那 20 处 `calc(2 * var(--dsh-tb-optical-drop))` 读它。
+ * 每一个胶囊读它，写成一对对称的内衬（`base.module.css` 那条，以及每条规则自己那一行）。
  *
- * **写在哪个元素上，决定它有没有用。** 令牌声明在 `[data-dsh-taskboard-view]`
- * （面板挂载的元素）上，所以测量也必须写到**那个元素**——写在 `<html>` 上会被
- * 「子元素自己的声明压过继承值」这条规则静默丢掉，校正一次都不会生效。
+ * **写在哪个元素上，决定它有没有用。** 令牌声明在 `:root` 上，所以测量也必须写到
+ * `documentElement`——写到别处会被「元素自己的声明压过继承值」静默丢掉。
  *
- * ── 两个安全边界 ────────────────────────────────────────────────────────────
+ * ── 发布什么：**符号两边都要，单位是比例而不是像素** ───────────────────────────
+ *
+ *  1. **两个方向都发布。** CSS 那一侧本来就是两侧都写的
+ *     （`max(0px, calc(-1 * …)) max(0px, …)`）：值为正时下内衬把字抬起来，为负时
+ *     上内衬把它压下去，另一边由 `max(0px, …)` 恒为 0。所以「只发正值」不是安全边界，
+ *     是**一半的设备一次都不校正**——墨天生偏上的那款字体，读者看到的就是「整体偏上
+ *     一点点」，而且无论怎么调都调不出来。
+ *
+ *  2. **发 `em`，不发 `px`。** 偏移与字号成正比，所以校正也必须是比例。发一个参考字号
+ *     下的绝对像素，到了 11px 的标签上就过校正、到了 16px 的移动端输入框上就欠校正
+ *     ——一个数只能对一档字号。`em` 在 `padding-block` 里按**元素自己的字号**解析，
+ *     于是同一个令牌在每一档上都对，不需要第二遍。
+ *
+ *   推导：量到的是参考字号下的偏移 `offset`；某元素字号为 `S` 时偏移是
+ *   `offset × S / REF`；内衬只把内容盒挤向一侧、盒心移动量是内衬的一半，所以内衬
+ *   `= 2 × offset × S / REF`；换成 em 就除掉 `S`，得到 `2 × offset / REF`——**与 S 无关**，
+ *   这正是能一个令牌通吃全部字号的原因。
+ *
+ * ── 一个安全边界 ────────────────────────────────────────────────────────────
  *
  *   - **死区**：偏移小于 `DEAD_ZONE`（0.25px）时**什么都不写**。已经居中的设备不该
- *     被一个四舍五入的噪声推动。
- *   - **只处理正值**：内衬不能为负，所以墨偏上时不写（写了也是无效值）。那一侧本来
- *     就比偏下少见，而且把它推到 `< 0` 只会让浏览器丢掉整条声明。
+ *     被一个四舍五入的噪声推动；`0` 是「这台设备本来就行」的合法答案。
  */
 /** The custom property the capsule family reads. One name, one place. */
 export declare const INK_PROPERTY = "--dsh-tb-optical-drop";
@@ -57,7 +72,7 @@ export interface InkMetrics {
  */
 export declare function measureInkMetrics(family?: string, weight?: string): InkMetrics | undefined;
 /**
- * Publish the measurement onto the element that declares the token.
+ * Publish the measurement onto the element that declares the token (`:root`).
  *
  * Only writes when the value actually changed: a write per pass would invalidate
  * style for the whole page for nothing, and `document.fonts.ready` resolves after

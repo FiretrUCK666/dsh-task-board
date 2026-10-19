@@ -776,8 +776,6 @@
 }
 
 .cruisePill {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   gap: var(--dsh-tb-space-1);
   /* 同一排控件同级高: the pill rides the 28px button row beside 新建任务 and
      the search field (its 22px switch is centered inside the 28px frame). */
@@ -786,6 +784,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   padding: 0 4px 0 6px;
   border-radius: var(--dsh-tb-pill);
   transition: background var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .cruisePill:hover {
@@ -793,8 +793,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .cruiseMore {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -809,6 +807,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .cruiseMore:hover {
@@ -991,8 +991,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .timeFieldCalendar {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1007,6 +1005,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .timeFieldCalendar:hover {
@@ -1565,8 +1565,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
    button). It is a span acting as a button, because nesting a <button>
    inside the card's own <button> would be invalid HTML. */
 .cardQuickRun {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1598,6 +1596,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
      the pill itself, which keeps `.card:hover` true). */
   pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .card:hover .cardQuickRun,
@@ -1874,8 +1874,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
    The gap still does the separating; this is what gives the gap something to
    separate. */
 .cardBadge {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   /* 小件只有一个高：20px（`--dsh-tb-chip-h`）。border-box 是承重的——1px 的
      描边与内衬算在这 20px 里，否则同一行里外框高矮不一。 */
   box-sizing: border-box;
@@ -1889,6 +1887,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
      second road to the edge. */
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
+     /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+     padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* **「挂着 N 条清单条目」那枚读数同时是一扇门**（跳到清单、只看挂着这张卡的条目）。
@@ -2986,14 +2986,14 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .runPresetDefaultBadge {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   padding: 1px 8px;
   font-size: 12px;
   color: var(--dsh-tb-accent);
   background: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent);
   border-radius: var(--dsh-tb-pill);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* The add-preset row obeys the SAME form-row grammar as every other control
@@ -3052,8 +3052,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .promptCopy {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: absolute;
   top: 8px;
   right: 8px;
@@ -3078,6 +3076,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
      screen to say so. */
   pointer-events: none;
   transition: opacity var(--dsh-tb-motion), background var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .promptBlock:hover .promptCopy,
@@ -3677,8 +3677,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
 }
 
 .sessionRowWorkspace {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   /* Shrinkable + ellipsized: a long workspace name must never push the row's
      actions group (查看会话/隐藏) out of the row and over the title — the one
      grammar every inline pill follows (Chip's .chipBody). */
@@ -3695,6 +3693,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   background: var(--dsh-tb-surface-sunken);
   border-radius: var(--dsh-tb-pill);
   white-space: nowrap;
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* --- linked-session detail panel (SessionDetail) --------------------------- */
@@ -5335,8 +5335,6 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
    hovers above the content's bottom-right; sized explicitly so it can never
    balloon, and lifted with a soft shadow like a floating Apple control. */
 .reviewJumpLatest {
-/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
-padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: sticky;
   bottom: 8px;
   align-self: flex-end;
@@ -5355,6 +5353,8 @@ padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--ds
   cursor: pointer;
   box-shadow: var(--dsh-tb-shadow-2);
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion), color var(--dsh-tb-motion), transform var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .reviewJumpLatest:hover {

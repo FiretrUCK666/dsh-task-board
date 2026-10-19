@@ -629,15 +629,14 @@ scripts 与 `scripts/`**。
     很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0，
     而只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
 19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们由 `shot-panel.mjs` 开真 Chromium 量。**墨不是 `Range` 给的**：`getClientRects()`
-    报的是**行盒**（半像素偏移读出来正好是 0）；要用 `ctx.measureText()` 的 `actualBoundingBox*`。
-    **每一个这样的数都写进 `DESIGN.md` 并写清量法**（探针入库 `scripts/probes/`）。
+    它们由 `shot-panel.mjs` 开真 Chromium 量。**每一个这样的数都写进 `DESIGN.md` 并写清量法**
+    （探针入库 `scripts/probes/`）。
     **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
-    `translateY` 补偿必须一起删。**每个胶囊都要读 `--dsh-tb-optical-drop`**（判据是「有没有
-    pill 圆角」，`align-capsules.mjs` 守着）；**压滚动内容的头自带不透明底**（洗底不算
-    遮挡，别读会被主题调透的令牌，`verify-pinned-surface.mjs` 守着）。法则登记在
-    `design/laws.ts`，`verify-design-sync` 双向对账：加法则给门禁与标本，**门禁也必须进表**
-    （自动发现 `verify-*`）。
+    `translateY` 补偿必须一起删。**每个装字的定高胶囊都要读 `--dsh-tb-optical-drop`，且那对声明
+    必须是这条规则里最后一条管块向内衬的声明**（判据读结构与解析后的圆角，不读类名；
+    `align-capsules.mjs` 守着）；**压滚动内容的头自带不透明底**（洗底不算遮挡，
+    `verify-pinned-surface.mjs` 守着）。法则在 `design/laws.ts`，`verify-design-sync`
+    双向对账：加法则给门禁与标本，**门禁也必须进表**（自动发现 `verify-*`）。
 20. **开发页面先复用，再扩展，最后才新增。** 顺序是硬的，每一步都要说得出为什么上一步不行：
     ① 开发页面时**必须优先复用** `src/client/design/` 与页面目录里已有的组件；② 已有组件能通过
     `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；
