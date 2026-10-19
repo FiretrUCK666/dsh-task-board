@@ -187,12 +187,26 @@ describe('the design system and its preview page stay in step', () => {
   })
 
   it('every exported component is rendered on the preview page', () => {
-    const missing = [...exported.keys()].filter(name => renderSites(name).length === 0)
-    expect(missing, `these are exported from design/ and rendered nowhere — either show them on the preview page or delete them: ${missing.join(', ')}`)
+    // THE ASSERTION IS "ON THE PREVIEW PAGE", and it used to be "anywhere at all".
+    // `renderSites` scans the whole of `src/client`, so the old form passed for a
+    // component that no specimen ever showed: `WorkbenchShell` and
+    // `WorkbenchNotice` are rendered by TaskBoard/home/item and were previewed
+    // nowhere, while this test reported green. The distinction matters because
+    // the preview page is the one place a reader can SEE what the system
+    // contains — a component that only exists in a page's own code is exactly
+    // the thing this gate is for.
+    const missing = [...exported.keys()].filter(name =>
+      !renderSites(name).some(site => site.startsWith('src/client/gallery/')))
+    expect(missing, `these are exported from design/ and shown nowhere on the preview page — the page is how a reader learns the system exists: ${missing.join(', ')}`)
       .toEqual([])
   })
 
-  it('no design component is a one-off — every one is rendered by at least two files', () => {
+  it('no design component is a one-off — every one has at least two render sites', () => {
+    // SITES, not distinct files. The original name said 「两个文件」 and the code
+    // counted occurrences, so a component rendered twice inside ONE file would
+    // have satisfied it. No such case exists today; the name now says what the
+    // assertion does, so the next reader is not told something stronger than the
+    // check delivers.
     const oneOff = []
     for (const name of exported.keys()) {
       const sites = renderSites(name).filter(site => !site.startsWith('src/client/gallery/'))

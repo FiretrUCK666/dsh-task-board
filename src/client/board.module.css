@@ -697,44 +697,10 @@
   100% { box-shadow: 0 0 0 10px transparent; }
 }
 
-/* The engine note is a REAL button (same quiet line as the status text): on a
-   touch device a `title=` explanation can never be reached, so anything that
-   says "tap to learn" must actually respond to a tap. */
-.boardStatusButton {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: var(--dsh-tb-space-3);
-  box-sizing: border-box;
-  /* ONE height in the tool row: the status sentence is a control, so it takes
-     the row's 28px frame like every button beside it (it used to be a bare
-     12px line, which is the two-heights report). */
-  height: var(--dsh-tb-button-h);
-  /* 墨位校正由运行时逐元素算（见 `design/ink-metrics.ts`），这里只负责读。 */
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0;
-  background: none;
-  border: none;
-  font: inherit;
-  font-size: 12px;
-  line-height: var(--dsh-tb-text-line-h);
-  color: var(--dsh-tb-text-2);
-  cursor: pointer;
-}
-
-.boardStatusButton:hover {
-  color: var(--dsh-tb-text-1);
-}
-
-.boardStatusButton[data-warn='true'] {
-  color: var(--dsh-tb-attention);
-}
-
-.boardStatusButton[data-warn='true'] .boardStatusDot {
-  background: var(--dsh-tb-attention);
-  box-shadow: 0 0 4px var(--dsh-tb-attention);
-}
+/* 引擎那句话与状态文字共用同一条安静的行——它们是同一个 `.boardStatus`。这里曾经有
+   一条 `.boardStatusButton`（连它的 `:hover` 与两条 `[data-warn]` 状态）在做一个真按钮，
+   而那个类没有任何组件在使用：按钮那一版被 `.boardStatus` 取代了。一条没人用的规则不
+   会报错，它只会让下一个人以为这里还有一个可按的东西。 */
 
 /* The honest warning variant (stale host / work waiting on another device):
    same quiet line, attention tint — never a toast, never a modal. */
@@ -753,10 +719,11 @@
   flex: none;
   background: var(--dsh-tb-accent);
   box-shadow: 0 0 4px var(--dsh-tb-accent);
-  /* Optical centering: the dot's geometric center is the flex center, but a
-     12px text's visual center rides slightly above it — nudge the dot up so
-     it reads on the same axis as the label beside it. */
-  transform: translateY(-0.5px);
+  /* **没有 `translateY`，也不需要。** 这里原先挂着 `translateY(-0.5px)`，理由是「6px
+     圆点的几何中心比 12px 文字的视觉中心略高」。那个前提只在行盒比墨高时成立；
+     `.boardStatus` 已经写着 `line-height: var(--dsh-tb-text-line-h)`（行盒 = 墨高）和
+     `align-items: center`，所以盒心就是墨心，圆点按盒心居中即与文字同轴。留着那半像素，
+     量到的结果是这颗点比旁边的字低半像素——它在补偿一个已经不存在的偏差。 */
 }
 
 /* 位置，不是外观：这一格是 `SearchField`（design/ui.tsx），外观只有那一处。
@@ -1307,9 +1274,9 @@
   height: 8px;
   border-radius: 50%;
   flex: none;
-  /* Optical centering against the 13px column title (same rule as the board
-     header's status dot): a geometric center reads "high" beside the text. */
-  transform: translateY(-0.5px);
+  /* **没有 `translateY`，也不需要**——理由与 `.boardStatusDot` 同一句：父行
+     `.columnCount` 已经是 `align-items: center` + `line-height: var(--dsh-tb-text-line-h)`，
+     盒心即墨心，再挪半像素就是把正确的排版推歪。 */
 }
 
 /* 五栏的颜色读别名层那五个名字（声明在根属性块里，一处）。
@@ -1813,11 +1780,13 @@
      an 8px dot's centre ((8 - 6) / 2). Two marks of the same kind in the same
      rail, at two centres, read as two cards' worth of left edge. */
   margin-inline-start: calc(var(--card-mark-air) + 1px - var(--card-mark-col));
-  /* THE ONE VERTICAL CORRECTION, and it is the token's whole job: the line box's
-     centre is above the x-height band, so a dot centred on it reads high. See
-     `--dsh-tb-mark-drop`. This is the row where it was measured, because this is
-     the row a person pointed at. */
-  transform: translateY(var(--dsh-tb-mark-drop));
+  /* **没有 `translateY`，也不需要。** 这里原先挂着
+     `translateY(var(--dsh-tb-mark-drop))`（1px 的光学下沉），理由是「行盒中心比字的
+     视觉中心高一点」。那个前提在这一行改成「每段 `line-height: 1em`」之后就不成立了：
+     段里没有多余半行距，盒心就是墨心，圆点按盒心居中即与文字的中线重合。留着那条下沉，
+     量到的结果正好是圆点比文字低 1px——它在补偿一个已经不存在的偏差。
+     `home.module.css` 的 `.homeStatusDot` 是同一个记号、同一条理由，那里已经删了；
+     两页的圆点因此不再差 1px。 */
   border-radius: 50%;
   background: var(--dsh-tb-text-3);
 }
@@ -6610,7 +6579,13 @@
   overflow-wrap: anywhere;
 }
 
-.waitingNotice .chip {
+/* **那颗警告芯片不许被压窄，而这条判据不能写类名。** 原来是 `.waitingNotice .chip`
+   ——`.chip` 声明在 `design/components.module.css`，按表哈希之后本表里的字串匹配不到
+   任何节点，所以 `flex: none` 从写下那天起就没生效过；长通信用的是同一行的 `> span`
+   规则（它才是真的），而芯片那一半一直是靠 `Chip` 自己的默认值撑着的。
+   判据改成**位置**：这一行里第一件东西就是那颗芯片（见 `session-panel.tsx` 的
+   `Notice`），所以「第一个子元素不参与收缩」正是要说的那句话，且不读任何一张表的类名。 */
+.waitingNotice > :first-child {
   flex: none;
 }
 
@@ -6641,9 +6616,18 @@
     display: none;
   }
 
-  /* 窄档的主行动由栏杆里那一枚承担（TaskBoard.tsx 的 	humbPrimary）：它吃满
-     剩下的宽度，拇指够得到。 */
-  .thumbRail > .thumbPrimary {
+  /* 窄档的主行动由栏杆里那一枚承担（`TaskBoard.tsx` 把它渲染进 `thumb` 区）：它吃满
+     剩下的宽度，拇指够得到。
+   *
+   * **只有一半是死的，而那一半就足以让整条规则失效。** `.thumbPrimary` 是本表的类
+   * （`css.thumbPrimary` 由 `TaskBoard.tsx` 应用），在这一张表里哈希对得上；但
+   * `.thumbRail` 属于 `design/components.module.css`，按表哈希之后是本表里另一个字串，
+   * 匹配不到任何节点。一个复合选择器只要有一半不成立，整条就不成立——所以「主行动吃满
+   * 宽度」这一条从写下那天起就没生效过，窄档里那枚按钮一直是自己的自然宽度。
+   *
+   * 修法是把祖先那一半换成**结构标记**：栏杆自己带 `data-dsh-tb-thumbrail`。判据仍然
+   * 只读结构，而本表的类照常使用。 */
+  [data-dsh-tb-thumbrail] > .thumbPrimary {
     flex: 1 1 auto;
     justify-content: center;
   }

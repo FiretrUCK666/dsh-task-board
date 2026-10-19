@@ -22,25 +22,29 @@
  */
 
 /* ── 舞台 ──────────────────────────────────────────────────────────────────── */
-[data-dsh-taskboard-view].homeStage {
-  box-sizing: border-box;
-  block-size: 100%;
-  min-block-size: 0;
-  inline-size: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  overflow-x: hidden;
-  overflow-y: auto;
-  background: var(--dsh-tb-bg);
-  color: var(--dsh-tb-text-1);
-  container-type: inline-size;
-}
 
-/* **这一页不另设一列窄宽。** 工作台栏是三页共用的：板与清单的栏都在页面左沿
-   `--dsh-tb-frame-air` 处，所以总览的栏也必须在同一个位置——给内容加一个 1200 的上限，
-   栏就会在 1440 上右移 126px，切页时同一颗 tab 会左右跳。宽屏上四格与两栏自己会摊开，
-   那不是缺陷，是同一套栅格。 */
+/* **这一页的容器就是内容列本身。**
+ *
+ * 这里曾经有一条 `[data-dsh-taskboard-view].homeStage` 规则（`block-size: 100%`、
+ * `overflow-y: auto`、`container-type: inline-size`），而 `.homeStage` 这个类**没有任何
+ * 组件在使用**——页面经 `WorkbenchShell` 渲染，它的根是 `css.workbenchFrame`。那条规则
+ * 整条是死的，包括它的 `container-type`。
+ *
+ * 后果不是「少了一条样式」，而是**下面那条无名查询量错了盒子**：`workbenchFrame` 自己
+ * 带 `container-type: inline-size`（`design/components.module.css`），所以无名查询落到
+ * 了**外壳**上，而外壳比内容列宽出两侧各一条 `--dsh-tb-frame-air`（栏的内衬）。于是
+ * 「620 折成两列」实际发生在内容宽约 588 的地方，而不是 620。
+ *
+ * 修法不是给死规则补一个使用者，而是**把容器放到真正被渲染的那个盒子上**：`.homeSheet`
+ * 是 home 的内容列（`home/panel.tsx` 里唯一包住 children 的那一层），它的宽度就是这一页
+ * 排版真正要问的那个数。
+ *
+ * 为什么仍然无名：命名容器要进 `design/bands.ts` 那张跨页的 JS/CSS 契约表，而这一页的
+ * 档位只有 CSS 需要知道。无名查询不会让 `bands.spec.ts` 把一条没有 JS 侧的界线当成合约。
+ *
+ * 为什么不再设自己的滚动与底色：这两件事现在由 `WorkbenchShell` 统一负责（`scrolls`
+ * 一档），三页的滚动条因此落在同一个位置——页面自己再开一个滚动容器，就把「三页同一个
+ * 框架」这件事拆掉了。 */
 [data-dsh-taskboard-view] .homeSheet {
   box-sizing: border-box;
   flex: 1 1 auto;
@@ -51,17 +55,12 @@
   gap: var(--dsh-tb-frame-gap);
   padding: 0 var(--dsh-tb-frame-air) var(--dsh-tb-space-8);
   font-variant-numeric: tabular-nums;
+  container-type: inline-size;
 }
 
-/* 工作台栏那一行：与内容列同宽、同左沿，三页同一个框架空气。 */
-[data-dsh-taskboard-view] .homeBar {
-  box-sizing: border-box;
-  flex: none;
-  align-self: stretch;
-  inline-size: 100%;
-  padding-block: var(--dsh-tb-frame-air) var(--dsh-tb-frame-gap);
-  padding-inline: var(--dsh-tb-frame-air);
-}
+/* 工作台栏本身属于 `design/`（`components.module.css` 的 `.workbenchFrameBar`）：
+   三页共用同一条栏是那一层存在的理由，所以这一页不再为它写第二份几何——这里曾经有
+   一条 `.homeBar` 规则，而那个类没有任何组件在用。 */
 
 /* ── 标题行 ────────────────────────────────────────────────────────────────
  * **一个 h1，四档字号，没有眉题。**

@@ -88,6 +88,39 @@ export const DESIGN_LAWS: readonly DesignLaw[] = [
       + '保证：没有它，加一条法则可以忘了给门禁，加一个门禁也可以忘了登记。',
   },
   {
+    id: 'hover-opposes-the-paper',
+    law: '悬浮态读的那一档必须与它所在的纸**反向**（浅色更沉、深色更亮），并且方向由令牌自己声明，不读静息底、也不直读宿主那一枚 4% 的通用悬浮。',
+    gate: 'verify-hover-contrast.mjs',
+    specimen: 'interaction',
+    why:
+      '宿主的 `--dsw-alias-interactive-bg-hover` 在两个主题下确实给了不同极性，所以「直接读它」'
+      + '今天看着是对的——那是**碰巧对**，不是**结构对**。第三方皮肤换一套数值，同一个交互就'
+      + '在两个皮肤下两个观感，而屏上不会有人说一句话：4% 的墨在一张白纸上几乎看不见。'
+      + '所以方向写进名字（`--dsh-tb-hover-mix`），深浅由主题块翻面，混的是 `--dsh-tb-text-1`'
+      + '——那枚墨自己在两个主题下就是反的，所以一个颜色源给出两个方向。',
+  },
+  {
+    id: 'a-ring-never-shares-the-material',
+    law: '装饰性的环（焦点环、打开环、选中环）不许和材质（边光 + 投影）共用同一个 `box-shadow`：它们必须分开声明。',
+    gate: 'verify-decoration-property.mjs',
+    specimen: 'interaction',
+    why:
+      '一条 `box-shadow` 是整体被替换的。把环写进同一个属性，某一条状态规则（或一次动画）'
+      + '换掉它的时候，纸的边缘与投影会**一起消失**，卡片变成一块没有边、没有层次、贴在'
+      + '桌面上的平色块。它不报错、不抛异常、样式表合法，只是那一块少了它之所以是一张纸的'
+      + '全部东西——读者看到的是「这块卡坏了」，而检查三档全绿。',
+  },
+  {
+    id: 'scroll-floor-is-not-px',
+    law: '一个会滚动的 flex 子项，不许用一个 px 的 `min-height` 当地板；地板要么是 0，要么由内容与令牌推。',
+    gate: 'verify-scroll-floor.mjs',
+    specimen: 'surfaces',
+    why:
+      'px 地板是**视口高度**的函数写死成常数：窗口一矮，那个盒子撑着自己 pid 的下沿，'
+      + '滚动条就跟着它跑到卡片外面去——条落在圆角之外，或者压住下一块内容。它在高窗口上'
+      + '一切正常，所以只有小屏或分屏才看得见；而它恰好是硬性规范 11 要的「让位而不是压扁」。',
+  },
+  {
     id: 'pinned-surface-needs-own-floor',
     law: '压在滚动内容之上、又自己画了分隔线的头，必须自带不透明的底；洗底（含 transparent 的混合）不算遮挡。',
     gate: 'verify-pinned-surface.mjs',

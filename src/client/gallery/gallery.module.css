@@ -246,6 +246,41 @@
   display: none;
 }
 
+/* ── 材料：一块**有面积的纸**，不是一颗色点 ──────────────────────────────────
+ *
+ * 纸面令牌的值与背景差几个百分点：放在一颗 22px 的圆点里，读者看到的是「这里也有个
+ * 圆点」；而它要说的是「这块比旁边那块浅一点、而且上面有一条受光的边」。所以这一档
+ * 换成一个**宽而扁的方块**——面积足够让人看见台阶差，边光才有地方显示。
+ *
+ * 它同时带上 `--dsh-tb-rim`（那条受光顶边）与一档投影：这正是 DESIGN.md 说的
+ * 「一张纸由三件事同时说」。只画色调的话，五个台阶看起来仍然像五块灰。 */
+.gallerySpecimenBox[data-kind='surface'] {
+  inline-size: 96px;
+  block-size: 40px;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--gallery-value);
+  box-shadow: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
+}
+
+/* ── 边光与投影：一块**真纸**，让那一对阴影各自落在它该落的位置上 ────────────
+ *
+ * `--dsh-tb-rim` 是**内**阴影（受光顶边），`--dsh-tb-cast-*` 是**外**阴影（纸与桌面
+ * 之间的接触暗影）。两者都写 `box-shadow`，但一个画在盒子里、一个画在盒子外——所以
+ * 这一档必须给盒子一个不透明的纸底，否则内阴影没有东西可以压，那几格看起来是空的
+ * （而读者会读成「这几枚没有值」）。
+ *
+ * 内阴影与外阴影可以在同一个 `box-shadow` 里共存，写成「令牌 + 一档固定投影」：
+ * 前一半由令牌给，后一半保证外沿永远看得见，于是边光的强弱是唯一在变的东西。 */
+.gallerySpecimenBox[data-kind='rim'] {
+  inline-size: 96px;
+  block-size: 40px;
+  border: 0;
+  border-radius: var(--dsh-tb-radius-sm);
+  background: var(--dsh-tb-paper);
+  box-shadow: var(--gallery-value), var(--dsh-tb-cast-2);
+}
+
 .gallerySwatchText {
   display: flex;
   flex-direction: column;
@@ -340,3 +375,19 @@
   background: var(--dsh-tb-text-2);
   opacity: 0.22;
 }
+/* ── 外壳标本 ────────────────────────────────────────────────────────────
+ * `.workbenchFrame` 在真页面里吃掉一整个舞台的高度（`flex: 1` +
+ * `min-block-size: 0`），摆在目录里会长成一条贯穿整页的空白。所以标本给它一个**明确
+ * 的高度**，让它按页面上的比例出现——读的人要看到三条横带（栏 / 警告 / 内容）的
+ * 关系，而不是把它们读成三个独立件。
+ */
+.galleryShellPreview {
+  block-size: 220px;
+  overflow: hidden;
+  border-radius: var(--dsh-tb-radius-md);
+}
+
+.galleryShellPreview > * {
+  block-size: 100%;
+}
+

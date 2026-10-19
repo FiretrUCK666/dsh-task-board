@@ -39,6 +39,8 @@ import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
 import { AttachmentStrip, type AttachmentChip } from '../design/AttachmentStrip.tsx'
 import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { WorkbenchShell } from '../design/WorkbenchShell.tsx'
+import { WorkbenchNotice } from '../design/WorkbenchNotice.tsx'
 import { DESIGN_LAWS } from '../design/laws.ts'
 import { PlusIcon } from '../design/ui.tsx'
 import { ThumbRail } from '../design/ThumbRail.tsx'
@@ -56,7 +58,7 @@ import css from './gallery.module.css'
  * and beside `--dsh-tb-space-4`, and a catalogue whose specimens do not match
  * their subjects teaches the reader to stop looking at the specimens.
  */
-export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain'
+export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain' | 'surface' | 'rim'
 
 /**
  * The design variables this page displays, GROUPED BY WHAT THEY ARE FOR.
@@ -73,6 +75,36 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
     why: '画布可透、内层不透明。三个台阶，不多不少。',
     kind: 'color',
     names: ['--dsh-tb-bg', '--dsh-tb-bg-raised', '--dsh-tb-surface-float', '--dsh-tb-surface-sunken', '--dsh-tb-surface-menu', '--dsh-tb-chip-fill'],
+  },
+  {
+    /* **材料阶梯：这一页此前唯一缺掉的整组。**
+     *
+     * DESIGN.md 说的深度观是「三张摊在同一张桌子上的纸，不是三层毛玻璃」——而说这句话
+     * 的那些令牌（纸面、三个平面台阶、两档边光、三档投影，共 10 枚、被消费 114 次）
+     * 一枚都没有出现在这一页上。一张纸由三件事同时说：**色调台阶 + 受光顶边 + 投影**，
+     * 所以它们必须**并排**看才有意义——分开看，读者只会以为那是一堆灰色。
+     *
+     * `kind: 'surface'` 而不是 `'color'`：这些令牌的值在白纸上与白纸差几个百分点，用一个
+     * 22px 的圆点展示等于什么都没展示。surface 是一块**有面积的纸**，读者要看见的是
+     * 「比旁边那块浅一点」，而不是「这里有个色块」。
+     *
+     * 顺序就是深度从低到高：桌面 → 纸 → 浮 → 凹 → 嵌。 */
+    title: '材料（一张纸的三件事）',
+    why: '深度只有三个来源：色调台阶、受光的顶边、投影。没有毛玻璃。',
+    kind: 'surface',
+    names: ['--dsh-tb-paper', '--dsh-tb-plane-sheet', '--dsh-tb-plane-float', '--dsh-tb-plane-recess', '--dsh-tb-plane-inlay'],
+  },
+  {
+    /* 边光是**内阴影**（受光顶边），投影是**外阴影**（纸与桌面之间的接触暗影）。
+     *
+     * 两者都是 `box-shadow` 值，但方向相反：把 `--dsh-tb-rim` 套进只画外阴影的那个
+     * 标本里，它画在盒子**内部**，而那一格的底色不透明——于是看起来是空的，读者会
+     * 以为「这几枚没有值」。所以这一组用 `rim` 档：**一块真纸**，让边光与投影各自
+     * 落在它该落的位置上。 */
+    title: '边光与投影',
+    why: '边光从纸面推出来（受光的顶边），投影只负责「纸与桌面之间那一条接触暗影」。',
+    kind: 'rim',
+    names: ['--dsh-tb-rim', '--dsh-tb-rim-soft', '--dsh-tb-cast-1', '--dsh-tb-cast-2', '--dsh-tb-cast-3'],
   },
   {
     title: '墨色',
@@ -377,6 +409,55 @@ export function DesignGallery() {
             它们此前没有被预览过——组件标本是手写的，所以「加进设计系统」与
             「出现在这一页」之间没有任何东西连着。现在 `tests/gallery.spec.ts`
             数着这一条。每一格都渲染真件并且能用。 */}
+        {/* ══ 页面外壳与警告带 ═══════════════════════════════════════════════
+            这两件此前**一次都没有被预览过**，而它们是三页共用的骨架：
+            `WorkbenchShell` 是栏 + 警告 + 内容的唯一出处，`WorkbenchNotice` 是栏下
+            那一条只在有事时出现的横带。它们不在这一页上的那段日子里，门禁的断言写的是
+            「任何文件渲染过就算」——所以「共享件都在预览页上」这句话一直没有被验证。
+            现在断言改成「预览页必须渲染它」，这两格就是它的答案。
+
+            两格都渲染**真件**：外壳自带壁龛（`seat`），警告带两种形态（可按 / 只读）
+            各一条，因为它们确实是两种东西——一个能按的警告与一个纯告知的警告，
+            差别是「有没有事可做」，不是样式偏好。 */}
+        <Section title={t('gallery.shellFrame')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="shell-frame">
+              <p className={css.galleryLabel}>WorkbenchShell</p>
+              <div className={css.galleryShellPreview}>
+                <WorkbenchShell
+                  active="board"
+                  tabs={[
+                    { id: 'home', label: t('workbench.tab.home') },
+                    { id: 'board', label: t('workbench.tab.board'), badge: 3 },
+                    { id: 'items', label: t('workbench.tab.items'), badge: 2 },
+                  ]}
+                  label={t('workbench.navLabel')}
+                  status={t('workbench.status', { n: '3', m: '1' })}
+                  checking={false}
+                  checkLabel={t('board.update.check')}
+                  onCheck={() => undefined}
+                  exitLabel={t('workbench.exit')}
+                  onExit={() => undefined}
+                  onNavigate={() => undefined}
+                  notices={[{ id: 'specimen', text: t('gallery.frameNotice'), onPress: () => undefined }]}
+                  seat="data-dsh-taskboard-view"
+                >
+                  <p className={css.galleryNote}>{t('gallery.frameBody')}</p>
+                </WorkbenchShell>
+              </div>
+            </div>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="shell-frame">
+              <p className={css.galleryLabel}>WorkbenchNotice</p>
+              <div className={css.gallerySpecimenRow}>
+                <WorkbenchNotice items={[{ id: 'a', text: t('gallery.frameNotice'), onPress: () => undefined }]} />
+              </div>
+              <div className={css.gallerySpecimenRow}>
+                <WorkbenchNotice items={[{ id: 'b', text: t('gallery.frameNoticeQuiet') }]} />
+              </div>
+            </div>
+          </div>
+        </Section>
+
         <Section title={t('gallery.composed')}>
           <div className={css.galleryGrid}>
             <div className={css.gallerySpecimen}>

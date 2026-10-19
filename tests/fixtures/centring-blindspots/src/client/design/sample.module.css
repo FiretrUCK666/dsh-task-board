@@ -1,0 +1,52 @@
+/* 自测素材：**门禁读法的三个盲区各来一条**，而且每一条都必须是错的。
+ *
+ * 为什么要有这一份：`centring-mixed` 那份用的是「顶层规则 + `>` 直接子选择器 +
+ * 名字里带 `Dot` 的类」，正好同时避开了三个盲区。于是那一份全绿并不能证明这三个
+ * 盲区是安全的——它只证明门禁在它最舒服的形状上能工作。
+ *
+ * 三条都必须是**真的错**（容器在基线上、行里确实有图形或不同行盒）：
+ *
+ *   1. **在 at-rule 里**：窄档容器查询整块曾经被读成一条规则，里面的行一眼都没被看过。
+ *      而这个仓库的窄档规则全在 at-rule 里（164 条），所以这一条是最要紧的。
+ *   2. **驼峰类名**：`\b` 在 `statusDot` 里不成立，1144 个类名当时只命中 1 个。
+ *   3. **后代选择器**（不是 `>`）：旧判据只认直接子选择器。
+ */
+
+/* 1. at-rule 里的混排行 */
+@container dsh-tb (max-width: 680px) {
+  .inBandRow {
+    display: flex;
+    align-items: baseline;
+  }
+
+  .inBandRow > .inBandDot {
+    display: inline-block;
+    inline-size: 6px;
+    block-size: 6px;
+    border-radius: 50%;
+  }
+}
+
+/* 2. 驼峰类名的记号，子元素没有 display，也没有 line-height */
+.camelCaseRow {
+  display: flex;
+  align-items: baseline;
+}
+
+.camelCaseRow > .camelCaseStatusDot {
+  inline-size: 6px;
+  block-size: 6px;
+  border-radius: 50%;
+}
+
+/* 3. 后代选择器（容器与记号的规则不在非直接子关系上） */
+.descendantRow {
+  display: flex;
+  align-items: baseline;
+}
+
+.descendantRow .descendantTrack {
+  display: inline-flex;
+  inline-size: 40px;
+  block-size: 4px;
+}

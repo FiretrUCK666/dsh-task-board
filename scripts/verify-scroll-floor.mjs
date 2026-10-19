@@ -36,15 +36,11 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { clientSheetFiles } from './sheet-files.mjs'
 
-const target = process.argv[2] ?? '.'
-const SHEETS = [
-  'src/client/design/components.module.css',
-  'src/client/design/base.module.css',
-  'src/client/board.module.css',
-  'src/client/item/item.module.css',
-  'src/client/home/home.module.css',
-]
+const target = process.argv[2] ?? ''
+/* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
+const SHEETS = clientSheetFiles(target)
 
 /** 剥注释（硬性规范 14：注释里出现一个数不是一次声明）。 */
 function stripComments(css) {
@@ -124,7 +120,7 @@ let checked = 0
 for (const sheet of SHEETS) {
   let css
   try {
-    css = readFileSync(join(target, sheet), 'utf8')
+    css = readFileSync(sheet.path, 'utf8')
   } catch {
     continue
   }
@@ -133,7 +129,7 @@ for (const sheet of SHEETS) {
     checked += 1
     const floor = badFloorOf(rule.body)
     if (floor !== undefined) {
-      findings.push(`${sheet}: ${rule.selector.slice(0, 46)} — a scrolling flex item with min-height: ${floor}; on a short viewport it grows past its container and the scrollbar leaves the card`)
+      findings.push(`${sheet.rel}: ${rule.selector.slice(0, 46)} — a scrolling flex item with min-height: ${floor}; on a short viewport it grows past its container and the scrollbar leaves the card`)
     }
   }
 }

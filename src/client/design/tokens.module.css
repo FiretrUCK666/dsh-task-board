@@ -86,26 +86,24 @@
    * 成立**，这正是这一层所有推导的共同形状。 */
   --dsh-tb-border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
   --dsh-tb-border-soft: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
-  /* ── A MARK'S VERTICAL PLACE, AS ONE NUMBER ────────────────────────────────
-     A line box reserves room for descenders whether or not the string has any,
-     so **the line box's centre is NOT the type's optical centre** — it sits
-     above the x-height band, and a dot centred on it reads high. That is a
-     measured fact about this surface, not a preference: at 11px the name's
-     x-height band measured y=182..188 (mid 185) and the dot's centre measured
-     184 — one pixel, which is exactly what 「那个点还是比它高了一点点」 is.
-
-     It is a TOKEN and not a stray `1px` because this surface has four marks and
-     each of them had been corrected separately, in its own row, by looking at
-     that row: the card's title mark, the workspace dot, the column header's dot
-     and the compact tab's dot. Four rows, four numbers, and nothing saying they
-     are the same question. A number that is only correct in one place is a
-     number that will be wrong in the next place.
-
-     `translateY` and NOT `margin-top`: on a `align-items: center` flex item the
-     free space is halved around the margins, so a 1px `margin-top` moves the
-     box by HALF a pixel and the correction silently under-delivers. A transform
-     is 1px because it says 1px. */
-  --dsh-tb-mark-drop: 1px;
+  /* ── 这里没有「记号的垂直位置」这个令牌，而且不该有 ────────────────────────
+   *
+   * 这里曾经声明过 `--dsh-tb-mark-drop: 1px`：行盒会给下行字母留位置，所以行盒心比
+   * 字的视觉中心高，按盒心居中的圆点读起来偏高。那个观察是**对的**，而且当时量出了
+   * 具体数（11px 那一行，x-height 带 182..188、中点 185，圆点中心 184）。
+   *
+   * 但那个结论只在「行盒比墨高」的前提下成立。每段改写 `line-height: 1em` 之后，
+   * 半行距归零、盒心就是墨心，圆点按盒心居中即与文字中线重合——**偏差不存在了，
+   * 于是补偿变成了新的偏差**：留着那 1px，量到的结果是圆点比文字低 1px。
+   *
+   * 它同时是一条**会被继承**的补偿：`--dsh-tb-*` 是自定义属性，任何读了它的后代都会
+   * 平移，而它们各自的墨位未必需要同样的 1px。这与那个已经删掉的运行时墨位校正
+   * （`--dsh-tb-optical-*`）是同一类错误：把「某个盒子的一个测量」写成全局的数。
+   *
+   * 今天的判据是结构而不是数字：装字的盒子用 `line-height: var(--dsh-tb-text-line-h)`
+   * 配 `align-items: center`，记号则是 `align-self: center` 的定尺寸盒子。`board.module.css`
+   * 与 `home.module.css` 里那两枚同形状的状态点现在读同一套声明，所以它们在两页上
+   * 落在同一条中线上。 */
   /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
      and the shell declares no such token (0 declarations across the whole DSH
      install — only references), so the alias was invalid and every consumer
@@ -365,8 +363,24 @@
      不直接读宿主的 `label-primary-foreground`——那是一条绕过本层的路。 */
   --dsh-tb-ink-on-solid: var(--dsw-alias-label-primary-foreground);
 
-  /* interaction + motion grammar (one source) */
-  --dsh-tb-hover: var(--dsw-alias-interactive-bg-hover);
+  /* ── 悬浮档：**与纸反向**，方向随主题翻面 ────────────────────────────────
+   *
+   * 悬浮反馈必须比它所在的纸**更深**（浅色主题）或**更亮**（深色主题）。把这件事
+   * 交给宿主的 `--dsw-alias-interactive-bg-hover` 是**碰巧对**而不是**结构对**：
+   * 宿主确实在两个主题下给了不同极性（实测浅色 `#2631480f`、深色 `#ffffff14`），
+   * 所以今天屏上看着是对的——但那个值由宿主的主题决定，第三方皮肤换一套数值，
+   * 同一个交互就变成两个观感，而屏上不会有人说一句话。
+   *
+   * 所以极性**自己写在名字里**：`--dsh-tb-hover-mix` 说「往哪个方向混、混多少」，
+   * `--dsh-tb-hover` 从它派生。深色块把 `--dsh-tb-hover-mix` 翻过来（见文件末尾
+   * 那一块），于是「与纸反向」这条律在**两个主题下都由公式保证**，不读宿主的运气。
+   *
+   * 混的是 `--dsh-tb-text-1`（墨），不是某个固定的黑：浅色主题里墨是暗的，混出来
+   * 是压深；深色主题里墨是亮的，混出来是提亮。**一个颜色源，两个方向**——这正是
+   * 本层「一个色相只有一个颜色」那条律的用法，不是第二条路。
+   */
+  --dsh-tb-hover-mix: 6%;
+  --dsh-tb-hover: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-hover-mix), transparent);
   /* The task-list's open surface is the item sheet's own opaque `--item-open` (a
      translucent inner fill is exactly what The Opaque Inner Rule forbids), so no
      shared token carries it: a shared token with no consumer is a rule that
@@ -664,4 +678,8 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent);
   --dsh-tb-cast-2: 0 2px 4px color-mix(in srgb, var(--dsw-static-neutral-1000) 36%, transparent), 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 44%, transparent);
   --dsh-tb-cast-3: 0 12px 24px -8px color-mix(in srgb, var(--dsw-static-neutral-1000) 40%, transparent), 0 36px 70px -20px color-mix(in srgb, var(--dsw-static-neutral-1000) 55%, transparent);
+  /* 悬浮档在深色里要**更强一点**才看得出来：暗纸上的 6% 浅墨比白纸上的 6% 深墨
+     更难分辨（人眼对亮部的差比对暗部敏感）。这不是第二套机制，是同一条公式换一档
+     强度——极性仍由 `--dsh-tb-text-1` 在深色下的亮墨天然给出，见上面那一处说明。 */
+  --dsh-tb-hover-mix: 9%;
 }

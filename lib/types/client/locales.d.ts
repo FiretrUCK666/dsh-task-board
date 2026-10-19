@@ -68,6 +68,10 @@ export declare const zh: {
     'gallery.interaction': string;
     'gallery.surfaces': string;
     'gallery.shell': string;
+    'gallery.shellFrame': string;
+    'gallery.frameBody': string;
+    'gallery.frameNotice': string;
+    'gallery.frameNoticeQuiet': string;
     'gallery.hoverMe': string;
     'gallery.surfaceSheet': string;
     'gallery.surfaceFloat': string;

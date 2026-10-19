@@ -42,8 +42,11 @@ import { readFileSync, existsSync, readdirSync, mkdtempSync, mkdirSync, writeFil
 import { resolve, join, dirname } from 'node:path'
 import { execFileSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
+import { probeOf } from './probe-args.mjs'
 
 const root = resolve(process.argv[2] ?? '.')
+/* 自测开关先过一遍：拼错要红，不能静默变成一次正常跑（见 `probe-args.mjs`）。 */
+probeOf(['--probe-removed', '--probe-services', '--probe-attachment-face'])
 const args = new Set(process.argv.slice(2).filter(arg => arg.startsWith('--')))
 const failures = []
 const notes = []

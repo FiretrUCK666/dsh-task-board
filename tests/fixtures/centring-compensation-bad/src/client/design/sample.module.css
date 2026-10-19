@@ -4,8 +4,13 @@
  * 它在结构上修不好（挪的是内容盒，而行盒会跟着重新居中），还会压扁定高盒子、把字
  * 裁掉、并让那个变量被继承。
  *
+ * 门禁判的是**形状**，不是令牌名：上下不等 + 读同一个自定义属性（或一个 `calc(-1 *)`）。
+ * 所以样本用自己的变量名——它模拟的是「有人又写了一对补偿」，而不是某一个特定令牌；
+ * 那个旧令牌已经不存在了，写在这里会让样本假装它还活着。
+ *
  * 门禁必须报红。 */
 .samplePill {
+  --sample-lift: 1px;
   display: inline-flex;
   align-items: center;
   block-size: 28px;
@@ -13,5 +18,5 @@
   font-size: 12px;
   line-height: var(--dsh-tb-text-line-h);
   padding-inline: 14px;
-  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-shift, 0px))) max(0px, var(--dsh-tb-optical-shift, 0px));
+  padding-block: max(0px, calc(-1 * var(--sample-lift))) max(0px, var(--sample-lift));
 }

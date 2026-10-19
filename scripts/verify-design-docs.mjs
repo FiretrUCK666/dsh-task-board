@@ -22,8 +22,11 @@
 import { readFileSync, existsSync, readdirSync } from 'node:fs'
 import { resolve, join, dirname, relative, sep } from 'node:path'
 import { execFileSync } from 'node:child_process'
+import { probeOf } from './probe-args.mjs'
 
 const root = resolve(process.argv[2] ?? '.')
+/* 自测开关先过一遍：拼错要红，不能静默变成一次正常跑（见 `probe-args.mjs`）。 */
+const activeProbe = probeOf(['--probe-binding', '--probe-crosssheet', '--probe-dupes', '--probe-dataattrs'])
 const failures = []
 const notes = []
 
@@ -234,7 +237,7 @@ const sameColor = (a, b) => {
 // touched (hard rule 16). Each case says what the reader must conclude, and the
 // lawful twins are here because a checker that reports everything is as useless
 // as one that reports nothing — the pair is what pins the judgement.
-if (process.argv.includes('--probe-binding')) {
+if (activeProbe === '--probe-binding') {
   const FILE = '/repo/src/client/board/Thing.tsx'
   // Resolved the SAME way the reader resolves an import, not spelled out: on
   // Windows `resolve('/repo/...')` gains a drive prefix, so a hand-written key
@@ -295,7 +298,7 @@ if (process.argv.includes('--probe-binding')) {
 // whole difficulty of this check is that a SHARED name is legitimate, and a
 // checker that reports shared names would be worse than none — it would force
 // authors to rename classes that are working correctly.
-if (process.argv.includes('--probe-dataattrs')) {
+if (activeProbe === '--probe-dataattrs') {
   const A = 'src/client/board/Thing.tsx'
   const B = 'src/client/board.module.css'
   const cases = [
@@ -333,7 +336,7 @@ if (process.argv.includes('--probe-dataattrs')) {
   process.exit(0)
 }
 
-if (process.argv.includes('--probe-dupes')) {
+if (activeProbe === '--probe-dupes') {
   const A = 'src/client/board.module.css'
   const B = 'src/client/item/item.module.css'
   const cases = [
@@ -374,7 +377,7 @@ if (process.argv.includes('--probe-dupes')) {
   process.exit(0)
 }
 
-if (process.argv.includes('--probe-crosssheet')) {
+if (activeProbe === '--probe-crosssheet') {
   const BOARD = 'src/client/board.module.css'
   const DESIGN = 'src/client/design/components.module.css'
   const MINE = new Set(['mask', 'modal', 'rowAction'])
@@ -407,6 +410,26 @@ if (process.argv.includes('--probe-crosssheet')) {
     const got = crossSheetRefs(text, MINE, FOREIGN).length
     if (got !== expected) wrong.push(`${what}: expected ${expected}, got ${got}`)
   }
+  /* **定义读法本身的自测**，与上面那组分开：上面测的是「引用判得对不对」，这里测的是
+   * 「本表声明了什么」——两个不同的判断，而后者曾经把三处跨表失效读成「自己也有」。 */
+  const declaresCases = [
+    ['a plain class rule is a definition', '.chip { flex: none }', ['chip']],
+    ['a state rule is the same definition', '.chip:hover { color: red }', ['chip']],
+    ['an attribute修饰 is the same definition', '.chip[data-x] { flex: none }', ['chip']],
+    ['a pseudo element is the same definition', '.chip::before { content: "" }', ['chip']],
+    ['a compound using another sheet\'s class is NOT a definition',
+      '.waitingNotice .chip { flex: none }', []],
+    ['a child combinator naming another sheet\'s class is NOT a definition',
+      '.thumbRail > .thumbPrimary { flex: 1 }', []],
+    ['a sibling combinator is NOT a definition', '.a + .chip { x: y }', []],
+    ['two classes compounded are NOT definitions', '.mask.chip { x: y }', []],
+    ['a comma list defines each plain class', '.chip, .pill { x: y }', ['chip', 'pill']],
+    ['an at-rule prelude is not a definition', '@container (max-width: 1px) { .chip { x: y } }', ['chip']],
+  ]
+  for (const [what, text, expected] of declaresCases) {
+    const got = [...declaredClassesOf(text)].sort().join(',')
+    if (got !== expected.join(',')) wrong.push(`declared: ${what}: expected [${expected}], got [${got}]`)
+  }
   if (wrong.length > 0) {
     for (const line of wrong) console.error(`probe: ${line}`)
     console.error('verify-design-docs probe FAILED: the cross-sheet reader does not bite')
@@ -414,6 +437,63 @@ if (process.argv.includes('--probe-crosssheet')) {
   }
   console.log(`verify-design-docs cross-sheet probe OK: ${cases.length} planted sheet(s) read as expected (a class or container from another sheet is reported; a shared name, an unnamed query, an element selector and a value that looks like a name are not)`)
   process.exit(0)
+}
+
+/**
+ * 一张表**定义**了哪些类——判据是「这一段选择器就是那个类」，不是「全文出现过」。
+ *
+ * ── 为什么这一处是整个跨表检查的成败处 ──────────────────────────────────────
+ *
+ * 第一版用 `/\.(-?[_a-zA-Z][\w-]*)/g` 全文扫 `.xxx`。于是**任何一处提及**都让这个类
+ * 被算成「本表已声明」——包括后代引用（`.waitingNotice .chip`）、属性值。后果是这条
+ * 检查**看不见它存在的理由**：board 表写了 `.waitingNotice .chip`（`chip` 只定义在
+ * `design/components.module.css`），宽松读法因此认为 board 声明了 `chip`，`foreign`
+ * 里没有它，findings = 0——而那条规则在生产包里是死的（按表哈希，两个字符串永不相同）。
+ *
+ * 第二版改成「起首类名」，仍然不够：`.thumbRail > .thumbPrimary` 的起首是 `.thumbRail`，
+ * 于是 board 被读成声明了 `thumbRail`——而它声明的是**一个用别表类名做的后代选择器**。
+ *
+ * 现行判据：这一段**从前到后**就是 `.name` 加可选的伪类/属性修饰
+ * （`.name`、`.name:hover`、`.name[data-x]`、`.name::before`）。出现空格、`>`、`+`、
+ * `~` 或第二个类，就说明这一段在**引用**什么，不是在**定义**什么。
+ *
+ * PURE，所以 probe 能直接种文本断言判据会咬（硬性规范 16）。
+ * @param css - 已经剥掉注释的样式表文本。
+ * @returns 这张表定义的类名集合。
+ */
+function declaredClassesOf(css) {
+  const out = new Set()
+  /* **按块递归，不是平铺扫。** 一条 `@container …{ .chip { … } }` 里的 `.chip` 是真定义；
+   * 平铺正则会把 `@container …{ .chip` 整段当成一个前导，于是它 `startsWith('@')` 被跳过，
+   * 里面的类一个也不算。这个仓库的窄档规则全在 at-rule 里（164 条），所以漏掉它们等于
+   * 这条判据在最密集的那一段上失效。 */
+  const walk = (text) => {
+    let i = 0
+    while (i < text.length) {
+      const open = text.indexOf('{', i)
+      if (open < 0) break
+      let depth = 1
+      let j = open + 1
+      while (j < text.length && depth > 0) {
+        if (text[j] === '{') depth++
+        else if (text[j] === '}') depth--
+        j++
+      }
+      const prelude = text.slice(i, open).trim()
+      const body = text.slice(open + 1, j - 1)
+      if (prelude.startsWith('@')) {
+        walk(body)
+      } else if (prelude !== '') {
+        for (const part of prelude.split(',')) {
+          const own = part.trim().match(/^\.(-?[_a-zA-Z][\w-]*)((?:[:[][^>+~\s]*)*)$/)
+          if (own !== null) out.add(own[1])
+        }
+      }
+      i = j
+    }
+  }
+  walk(css)
+  return out
 }
 
 const designPath = join(root, 'DESIGN.md')
@@ -1006,7 +1086,7 @@ function orphanDataAttrs(files) {
   for (const p of CLIENT_STYLESHEETS) {
     const rel = relative(root, p).split(sep).join('/')
     const css = stripCss(readFileSync(p, 'utf8'))
-    classesOf.set(rel, new Set([...css.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1])))
+    classesOf.set(rel, declaredClassesOf(css))
     containersOf.set(rel, new Set([...css.matchAll(/container-name\s*:\s*([\w-]+)/g)].map((m) => m[1])))
   }
 

@@ -355,16 +355,17 @@
         padEnd: getComputedStyle(el).paddingBlockEnd,
       }
     }))
-  /* 这一族的补偿读的是根上那个令牌：令牌不在（挂载页没有 `.itemRoot`），`var()` 就整条
-     失效、底衬回落到 shorthand 那一档——量出来的数会**看着正常**，而屏上根本不是那样。 */
+  /* 墨位的判据现在是**结构**而不是一个令牌：装字的盒子写 `line-height: var(--dsh-tb-text-line-h)`
+     并用 `align-items: center`，于是墨心 = 盒心，任何字体都成立。这里量的是结果
+     （`markOffY` / `markVsText`），所以不读任何令牌——那个令牌曾经存在过，现在**故意不存在**
+     （见 `tokens.module.css` 那一段墓碑）。 */
   const rootEl = one('.itemRoot')
-  const liftToken = rootEl === null ? null : getComputedStyle(rootEl).getPropertyValue('--dsh-tb-optical-shift').trim()
 
   /* ── 六、那一枚 ⓘ 与它同行的那串字 ──────────────────────────────────────────
    *
    * 一枚「这里有一句话」的入口（`.itemGroupWhy`）站在**一串字的旁边**，而它们共享一条线。
    * 这条线**不是盒子给的**：记号绕 viewBox 中心对称，居中在自己的盒里时墨心已经在位；而字
-   * 的墨心与它自己的盒心差半个像素（`--dsh-tb-optical-shift` 治的就是这一点）。所以「它们对齐了
+   * 的墨心与它自己的盒心差半个像素。所以「它们对齐了
    * 没有」问的是**记号的墨心与那串字的墨心差多少**（`markVsText`），以及记号自己居中了没有
    * （`markOffY`）——两个都由墨算出来，跟上面几段同一套量法。
    *
@@ -664,7 +665,6 @@
        所以判据是「四格都读得出数、且都在容差里」，`cellsRead` 把读到几格打出来。 */
     cellsOptical: dayCells.length > 0 && dayCells.every(c => c.num !== null && withinTol(c.num.offY)),
     cellsRead: dayCells.filter(c => c.num !== null && c.num.ink !== null).length,
-    liftToken,
     pillsOptical: rootEl !== null && pills.length > 0 && pills.every(p => within(p.offY, 0.5)),
     pillsWorst: worst(pills.map(p => p.offY)),
     /* **上衬必须是 0。** 这一条量的是样式表读不到的那一层：`<button>` 的 UA 内衬

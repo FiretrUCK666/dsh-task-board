@@ -40,6 +40,7 @@
  */
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join, resolve, relative, sep } from 'node:path'
+import { probeOf } from './probe-args.mjs'
 
 /**
  * Every stylesheet the client half owns, DISCOVERED rather than listed.
@@ -153,7 +154,7 @@ function privateAlphaFinding(css) {
 
 // ── the probe: the gate must be shown to bite ───────────────────────────────
 
-if (process.argv.includes('--probe-palette')) {
+if (probeOf(['--probe-palette']) === '--probe-palette') {
   const planted = [
     ['a derived tier came back', derivedTier('--dsh-tb-status-todo-ink: oklch(from var(--dsh-tb-status-todo) calc(l * 0.8) c h);'), 1],
     ['a family colour derived again', derivedTier('--dsh-tb-attention: color-mix(in srgb, var(--dsw-static-amber-500) 60%, black);'), 1],

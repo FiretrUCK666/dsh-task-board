@@ -124,7 +124,14 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
                 session title, then the optional workspace label — one row
                 skeleton for every session of a task. */}
             <Icon name="play" className={css.sessionRowIcon} />
-            <span className={components.truncate}>{row.title}</span>
+            {/* THE TITLE MUST BE PLACED BY NAME. The identity box is a named grid
+                (`"icon name" / "workspace workspace"`), and a child with no
+                `grid-area` is AUTO-PLACED — it lands in the first free cell, which
+                is the `icon` column (`--dsh-tb-lead-icon`, 12px). That is a title
+                one character wide. The rule that names it
+                (`.sessionRowLeading .sessionRowName`) had been in the sheet all
+                along; nothing carried the class, so it never applied. */}
+            <span className={`${components.truncate} ${css.sessionRowName}`}>{row.title}</span>
             {runWorkspace !== '' && runWorkspace !== row.title && (
               <span className={css.sessionRowWorkspace}>{runWorkspace}</span>
             )}
@@ -192,7 +199,9 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
       leading={
         <span className={css.sessionRowLeading}>
           <Icon name="link" className={css.sessionRowIcon} />
-          <span className={components.truncate} title={row.title}>{row.title}</span>
+          {/* Placed by name, same as the run row above: auto-placement puts an
+              unnamed child in the `icon` cell. */}
+          <span className={`${components.truncate} ${css.sessionRowName}`} title={row.title}>{row.title}</span>
           {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
             <span className={css.sessionRowWorkspace}>{row.workspaceLabel}</span>
           )}

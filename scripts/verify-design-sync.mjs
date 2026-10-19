@@ -85,20 +85,52 @@ function readdirRecursive(dir) {
  * 「守视觉法则的门禁」= **自动发现，不是手写名单**。
  *
  * 判据只有一条：`pnpm verify` 调用了它，而且它的名字说明它守的是界面。名字那一半
- * 用前缀表达——`verify-*` 与 `align-*` 是本仓库里「检查/对齐界面」的两个既有前缀
- * （`verify-palette`、`verify-capsule-centring`）。
+ * 用前缀表达——`verify-*` 是本仓库「检查界面」的**唯一**前缀（`verify-palette`、
+ * `verify-capsule-centring`、`verify-hover-contrast`……）。
  *
- * **为什么不能写死一张名单**：我刚写第一版就漏了自己——新加的一条门禁
- * 不在名单里，于是它在法则表外独自活着，而脚本一声不吭。这与清单页加 29 处校正、
- * 看板页一处没加是**同一个错误**：一条约定如果有第二个地方要同步，就不该靠人记。
+ * **为什么不能写死一张名单**：第一版就漏了自己——新加的一条门禁不在名单里，于是它
+ * 在法则表外独自活着，而脚本一声不吭。这与清单页加 29 处校正、看板页一处没加是
+ * **同一个错误**：一条约定如果有第二个地方要同步，就不该靠人记。
  *
- * 所以反方向（门禁 → 表）也从 `verify` 的实际调用清单里长出来：加一个门禁、忘了
- * 登记，这里就红；而名字不带这两个前缀的脚本（`sync-toc`、`smoke-client`）不会被
- * 误抓，因为它们守的不是界面。
+ * **前缀只有一种写法。** 这里曾经还认一个 `align-` 前缀，那是一个已经删掉的脚本留下
+ * 的；守着一条没有实现者的规则，等于给「换个名字就能绕过登记」开一个口子——一个叫
+ * `check-palette.mjs` 的门禁会从发现里漏掉，而它照样在守界面。所以前缀只留一个，
+ * 新的界面门禁一律 `verify-*`，并由 {@link orphanGates} 兜住「文件在但没接线」。
  */
-const GATE_PREFIXES = ['verify-', 'align-']
+const GATE_PREFIXES = ['verify-']
 
-/** 守界面的门禁：`verify` 真的调用了它们，且名字带那两个前缀之一。 */
+/**
+ * `scripts/` 下每一个门禁文件——**从文件系统读，不从调用清单读**。
+ *
+ * 这是本脚本此前最大的盲区：反向检查遍历的是 `gatesCalledByVerify()`，也就是
+ * **已经被调用**的那些。于是「一个门禁文件存在、但 `pnpm verify` 没调它」这件事
+ * 谁也看不见——它不在集合里，所以循环永远碰不到它。这正是 `verify-hover-contrast`
+ * 在红着、CI 全绿、而没有任何东西报出来的原因（它在 v1.3.4 被一次整行重写
+ * `verify` 长字符串时漏掉，之后一直没人发现）。
+ *
+ * 判据因此必须**两个方向各读一个真相**：调用清单回答「谁在跑」，文件系统回答
+ * 「谁存在」。两者的差集就是漏网的门禁。
+ */
+export function gateFilesOnDisk(root) {
+  const dir = join(root, 'scripts')
+  if (!existsSync(dir)) return []
+  return readdirSync(dir)
+    .filter((name) => name.startsWith('verify-') && name.endsWith('.mjs'))
+    .sort()
+}
+
+/**
+ * 存在、名字像门禁、却**没有被 `pnpm verify` 调用**的脚本。
+ *
+ * 名字为 `verify-*` 就是一次表态：「我是门禁」。表态了却不在闭环里，比没有这个
+ * 文件更糟——它会让读者以为有东西在守，而实际上那条线是断的。
+ */
+export function orphanGates(root) {
+  const called = gatesCalledByVerify(root)
+  return gateFilesOnDisk(root).filter((name) => !called.has(name))
+}
+
+/** 守界面的门禁：`verify` 真的调用了它们，且名字带前缀。 */
 export function visualGates(root) {
   return [...gatesCalledByVerify(root)]
     .filter((name) => GATE_PREFIXES.some((prefix) => name.startsWith(prefix)))
@@ -149,6 +181,15 @@ export function check(root) {
     }
   }
 
+  /* 反向的第四条，也是此前唯一没人守的那一条：**文件在、调用清单里没有**。
+     两个独立真相（磁盘 / package.json）的差集，不依赖任何人的记忆。 */
+  for (const gate of orphanGates(root)) {
+    problems.push({
+      kind: 'orphan-gate',
+      detail: `scripts/${gate} 名字是 verify-*，但 pnpm verify 从不调用它——它存在、有意见、可能正红着，而没有任何一次提交会知道。把它接进 package.json 的 verify（连同它的 --probe-* 自测），或者删掉它。`,
+    })
+  }
+
   return { laws, problems }
 }
 
@@ -157,11 +198,13 @@ function main() {
   const probe = process.argv.find((arg) => arg.startsWith('--probe-'))
 
   if (probe !== undefined) {
-    /* 自测：三种失效各造一份最小现场，都必须报出来（硬性规范 16：种在 tests/ 里）。 */
+    /* 自测：每种失效各造一份最小现场，都必须报出来（硬性规范 16：种在 tests/ 里）。 */
     const fixture = {
       '--probe-missing-gate': 'tests/fixtures/design-sync/missing-gate',
       '--probe-missing-specimen': 'tests/fixtures/design-sync/missing-specimen',
       '--probe-unlisted': 'tests/fixtures/design-sync/unlisted',
+      '--probe-unwired-gate': 'tests/fixtures/design-sync/unwired-gate',
+      '--probe-orphan-gate': 'tests/fixtures/design-sync/orphan-gate',
     }[probe]
     if (fixture === undefined) {
       console.error(`FAIL 未知自测项 ${probe}`)
@@ -172,6 +215,8 @@ function main() {
       '--probe-missing-gate': 'missing-gate',
       '--probe-missing-specimen': 'missing-specimen',
       '--probe-unlisted': 'unlisted',
+      '--probe-unwired-gate': 'unwired-gate',
+      '--probe-orphan-gate': 'orphan-gate',
     }[probe]
     if (!problems.some((p) => p.kind === wanted)) {
       console.error(`FAIL 自测：${probe} 应当报出 ${wanted}，但什么都没报——门禁是死的。`)

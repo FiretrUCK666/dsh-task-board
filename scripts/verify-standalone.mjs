@@ -35,6 +35,7 @@ import { readdirSync, readFileSync, statSync, existsSync } from 'node:fs'
 import { spawnSync } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join, relative, resolve, sep } from 'node:path'
+import { probeOf } from './probe-args.mjs'
 
 /**
  * The doc-citation audit's data (check 9, below).
@@ -69,7 +70,8 @@ const CITED_SHAPE = /[*<>{}[\]]/
 // cannot be confused with a real result: a deliberately damaged copy must be
 // reported, by file and line. A gate that cannot be shown to bite is not
 // evidence of anything.
-if (process.argv.includes('--probe-encoding')) {
+const probe = probeOf(['--probe-encoding', '--probe-deps', '--probe-docpaths'])
+if (probe === '--probe-encoding') {
   const damaged = [
     { path: 'probe/replaced.md', bytes: Buffer.from('# ok\nbroken \uFFFD here\n', 'utf8') },
     { path: 'probe/bom.md', bytes: Buffer.concat([Buffer.from([0xef, 0xbb, 0xbf]), Buffer.from('# ok\n', 'utf8')]) },
@@ -102,7 +104,7 @@ if (process.argv.includes('--probe-encoding')) {
   process.exit(0)
 }
 
-if (process.argv.includes('--probe-deps')) {
+if (probe === '--probe-deps') {
   // Self-test for the "present AND empty" rule, run against the same function
   // the real gate uses. All four states are checked, because a gate that only
   // knows how to complain is half a check: the exempt case and the correct case
@@ -129,7 +131,7 @@ if (process.argv.includes('--probe-deps')) {
   process.exit(0)
 }
 
-if (process.argv.includes('--probe-docpaths')) {
+if (probe === '--probe-docpaths') {
   // Self-test for the doc-citation audit, run against the same function the real
   // gate uses. BOTH directions are pinned: a citation nobody can open must be
   // reported, and the four shapes that only LOOK like a path must stay quiet. A

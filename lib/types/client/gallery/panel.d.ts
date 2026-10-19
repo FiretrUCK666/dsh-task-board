@@ -8,7 +8,7 @@
  * and beside `--dsh-tb-space-4`, and a catalogue whose specimens do not match
  * their subjects teaches the reader to stop looking at the specimens.
  */
-export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain';
+export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain' | 'surface' | 'rim';
 /**
  * The design variables this page displays, GROUPED BY WHAT THEY ARE FOR.
  *

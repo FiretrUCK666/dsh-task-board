@@ -36,6 +36,7 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { probeOf } from './probe-args.mjs'
 
 /**
  * 已知「父容器已经替它挡住」或「它不在滚动区上方」的表头，逐条写清理由。
@@ -150,7 +151,7 @@ export function audit(root) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probe = process.argv.find((a) => a.startsWith('--probe'))
+  const probe = probeOf(['--probe-missing', '--probe-present'])
 
   if (probe !== undefined) {
     const dir = probe === '--probe-missing' ? 'missing' : 'present'

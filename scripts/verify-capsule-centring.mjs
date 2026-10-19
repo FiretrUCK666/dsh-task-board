@@ -45,9 +45,29 @@
 
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
+import { probeOf } from './probe-args.mjs'
 
-/** 图形的类名记号：出现这些词的类，是记号而不是文字。 */
-const GRAPHIC_HINTS = /\b(dot|bar|meter|icon|glyph|pip|tick|mark|swatch|bead|spark)\b/i
+/**
+ * 图形的类名记号：出现这些词的类，是记号而不是文字。
+ *
+ * **`\b` 在 camelCase 里不成立，而本仓库的类名全是 camelCase。** 第一版写的是
+ * `/\b(dot|bar|…)\b/i`，实测在 1144 个类名里只命中 **1 个**（`.icon`）：因为
+ * `statusDot` / `cardSessionDot` / `reviewMeterBar` 里 `dot` 与 `bar` 两侧都是字母，
+ * 词边界根本不存在。于是「类名说明它是记号」这条判据对**这个项目几乎完全失效**，
+ * 真正在起作用的只剩另外两条（`line-height: 1em` 家族、`display: inline-flex`）。
+ *
+ * 读法是**按词切分再比对**，不是正则去凑边界：camelCase 的每个大写字母都是一个新词的
+ * 开始，`-` 与 `_` 也一样。切出来逐段比，`statusDot` → `status` + `dot`（命中），
+ * `galleryBandButton` → `gallery` + `band` + `button`（不命中——`band` 不是 `bar`，
+ * 这正是想要的：它是分段控件的按钮，不是进度条）。
+ */
+const GRAPHIC_WORDS = ['dot', 'bar', 'meter', 'icon', 'glyph', 'pip', 'tick', 'mark', 'swatch', 'bead', 'spark']
+
+/** 类名（或选择器里的任意一处）是否含一个记号词。 */
+function namesAGraphic(text) {
+  const words = text.replace(/([a-z0-9])([A-Z])/g, '$1 $2').split(/[\s_-]+/)
+  return words.some((word) => GRAPHIC_WORDS.includes(word.toLowerCase()))
+}
 
 /** 收集客户端样式表，跳过 node_modules 与产物目录。 */
 function sheetsUnder(root) {
@@ -76,11 +96,24 @@ function stripCommentsKeepingLines(css) {
   return css.replace(/\/\*[\s\S]*?\*\//g, (block) => block.replace(/[^\n]/g, ' '))
 }
 
-/** 把一张表拆成 { selector, body, line } 的规则列表（只看单层，嵌套由调用方处理）。 */
-function rulesOf(css) {
+/**
+ * 把一张表拆成 { selector, body, line } 的规则列表，**下降进 at-rule**。
+ *
+ * ── 为什么必须下降 ──────────────────────────────────────────────────────────
+ *
+ * 第一版是「遇到 `{` 就一路吃到配对的 `}`」，于是 `@container` / `@media` 整块被当成
+ * **一条**规则，选择器是 `@container dsh-tb (max-width: 680px)`。实测：同一段内容放在
+ * 顶层会报红，包进 at-rule 就**完全静默** —— 而这个仓库的窄档规则全在 at-rule 里
+ * （board 109 条、item 50 条、home 5 条，共 164 条）。也就是说**布局最密集的那一段是
+ * 这条门禁的盲区**，而它绿的每一轮都不代表那里没问题。
+ *
+ * 判据是结构，所以读法必须与结构一致：at-rule 是**容器**，不是规则。遇到 `@` 开头
+ * 的前导就递归进它的块，并把这个 at-rule 的完整前导（含条件）作为**父选择器**传下去
+ * ——子元素判据在窄档里问的仍然是「谁是谁的子元素」，只是多了一层不知道宽度的祖先。
+ */
+function rulesOf(css, prefix = '') {
   const rules = []
   let i = 0
-  let line = 1
   while (i < css.length) {
     const open = css.indexOf('{', i)
     if (open < 0) break
@@ -93,23 +126,44 @@ function rulesOf(css) {
       j++
     }
     const body = css.slice(open + 1, j - 1)
-    const lineAt = line + (css.slice(0, i).match(/\n/g)?.length ?? 0)
-    rules.push({ selector: selector.trim(), body, line: lineAt })
-    line += (css.slice(i, j).match(/\n/g)?.length ?? 0)
+    const lineAt = (css.slice(0, i).match(/\n/g)?.length ?? 0) + 1
+    const head = selector.trim()
+    if (head.startsWith('@')) {
+      /* 容器：递归进去，把它的前导带上（`@supports not (…)` 与 `@container x (…)`
+         都只是「在什么条件下」，不是选择器本身）。 */
+      rules.push(...rulesOf(body, prefix === '' ? head : `${prefix} ${head}`))
+    } else {
+      rules.push({ selector: head, body, line: lineAt, at: prefix })
+    }
     i = j
   }
   return rules
 }
 
-/** 一条规则的选择器里，末段是否指向「该容器的子元素」。 */
+/**
+ * 一条规则的选择器里，末段是否指向「该容器里的一个子元素」。
+ *
+ * **直接子（`>`）与后代（空格）都算。** 第一版只认 `>`，理由是「行盒的居中只对直接
+ * 子元素成立」——那个理由对**居中**成立，对**这条判据**不成立：判据要回答的是「这条
+ * 基线行里有没有不参与基线的东西」，而一个包在中间层里的圆点同样没有基线，同样会把
+ * 盒底贴到基线上。实测：`.row{baseline}` + `.row .dot{尺寸}` 这一对在旧读法下静默，
+ * 和「at-rule 里的行」「驼峰类名」是同一类漏读。
+ *
+ * 判据仍然是结构：一个复合选择器的**前缀**等于容器选择器，后面还有别的东西——那就是
+ * 「容器里的某个后代」，与它中间隔着几层无关。
+ */
 function isChildSelectorOf(childSel, parentSel) {
   const last = childSel.split(',').map((s) => s.trim())
   return last.some((part) => {
     if (!part.startsWith(parentSel)) return false
     const tail = part.slice(parentSel.length).trim()
     if (tail === '') return false
-    // `> *`、`> x`、`> span`、`> :is(a, b)`、` > *[class]`
-    return /^>\s*\S/.test(tail)
+    /* `> x`（直接子）、` .x` / `.x`（后代，可能是复合选择器的一部分）。
+       排除 `:hover` 这类**状态**写法与 `[data-…]` 这类**同元素**修饰——它们描述的是
+       容器自己，不是它里面的东西。 */
+    if (/^>/.test(tail)) return true
+    if (/^[:[]/.test(tail)) return false
+    return /^[.\s#:[]/.test(tail)
   })
 }
 
@@ -130,7 +184,7 @@ function childHasGraphicSignal(selector, body) {
   if (/display:\s*(inline-)?(flex|grid)/.test(body)) {
     return 'the child is itself a flex/grid container (a box, not a run of text)'
   }
-  if (GRAPHIC_HINTS.test(selector) && /(inline-size|block-size|(^|[^-])width|(^|[^-])height|border-radius)/.test(body)) {
+  if (namesAGraphic(selector) && /(inline-size|block-size|(^|[^-])width|(^|[^-])height|border-radius)/.test(body)) {
     return 'the child selector names a mark (dot / bar / icon) and sizes it'
   }
   return null
@@ -152,7 +206,7 @@ function containerDeclaresGraphic(selector, body) {
   const template = body.match(/grid-template-columns:\s*([^;]+);/)
   if (template !== null) {
     const columns = template[1]
-    if (GRAPHIC_HINTS.test(columns)) {
+    if (namesAGraphic(columns)) {
       return 'its grid template gives a column to a mark (dot / bar / icon)'
     }
     /* 记号宽度也常以令牌出现：`var(--dsh-tb-dot)`、`var(--dsh-tb-mark-*)`。 */
@@ -160,7 +214,7 @@ function containerDeclaresGraphic(selector, body) {
       return 'its grid template sizes a mark column from a mark token'
     }
   }
-  if (GRAPHIC_HINTS.test(selector)
+  if (namesAGraphic(selector)
     && /(inline-size|block-size|(^|[^-])width|(^|[^-])height):/.test(body)) {
     return 'the container names a mark and sizes it'
   }
@@ -266,8 +320,28 @@ export function findMixedBaselineRows(root) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probeMixed = process.argv.includes('--probe-mixed')
-  const probeText = process.argv.includes('--probe-text')
+  const probe = probeOf(['--probe-mixed', '--probe-text', '--probe-compensation', '--probe-blindspots'])
+  const probeMixed = probe === '--probe-mixed'
+  const probeText = probe === '--probe-text'
+
+  /* **读法的自测：三个曾经静默的盲区各一条，都必须被抓到。**
+   *
+   * 这份 fixture 存在的理由就是 `centring-mixed` 那份的局限：那一份用的是「顶层规则 +
+   * `>` + 名字带记号词」的形状，正好是旧读法唯一的舒服位置，所以它绿的时候并不能证明
+   * 另外三种形状安全。实测那三个盲区覆盖 164 条 at-rule 规则与 1144 个类名里的绝大多数。
+   * 判据要求**三条全部被认出**：漏一条就说明那一种读法又回去了。 */
+  if (probe === '--probe-blindspots') {
+    const found = findMixedBaselineRows(join(root, 'tests/fixtures/centring-blindspots'))
+    const want = ['inBandRow', 'camelCaseRow', 'descendantRow']
+    const missing = want.filter((token) => !found.some((f) => f.container.includes(token)))
+    if (missing.length > 0) {
+      console.error(`FAIL 自测：这些形状里的混排行没被读到——${missing.join(', ')}`)
+      for (const f of found) console.error(`  （读到的：${f.container} -> ${f.childSelector}）`)
+      process.exit(1)
+    }
+    console.log(`OK 自测：at-rule 里、驼峰类名、后代选择器三种形状都被读到（共 ${found.length} 条）。`)
+    return
+  }
 
   if (probeMixed || probeText) {
     /* 自测种在 tests/ 里，不碰真实样式表（硬性规范 16）。 */
@@ -289,7 +363,7 @@ function main() {
     return
   }
 
-  const probeCompensation = process.argv.includes('--probe-compensation')
+  const probeCompensation = probe === '--probe-compensation'
   if (probeCompensation) {
     /* 自测种在 tests/ 里（硬性规范 16）：一条不对称的块向内衬必须报红，对称的必须放行。 */
     const bad = findAsymmetricCompensation(join(root, 'tests/fixtures/centring-compensation-bad'))

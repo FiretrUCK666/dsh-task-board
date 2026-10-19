@@ -138,7 +138,7 @@ process. The **Task Board** entry appears in the sidebar after the restart.
 
 The entry sits beside DSH's own Plugins panel. Selecting it puts the board in the centre stage; selecting the entry again — or any session in the sidebar — brings the conversation back.
 
-The plugin's switches live in two places, and they do different jobs. The toggle on the plugin's row under **sidebar → Plugins → Installed** is the **master switch**; the one at the top right of the plugin's own page (click the plugin name) does the same thing. **Off means the plugin is not loaded** (sidebar entry, board, list and background routes all stop); **on restores it.** Under "Included components" on that page there are **four more rows, one switch each**, governing their own half (board / list / AI interface) — see the FAQ.
+The plugin's switches live in two places, and they do different jobs. The toggle on the plugin's row under **sidebar → Plugins → Installed** is the **master switch**; the one at the top right of the plugin's own page (click the plugin name) does the same thing. **Off means the plugin is not loaded** (sidebar entry, board, overview, list and background routes all stop); **on restores it.** Under "Included components" on that page there are **four more rows, one switch each**, governing their own half (board / overview / list / AI interface) — see the FAQ.
 
 ### Try it once
 
@@ -362,7 +362,7 @@ Issues and pull requests are welcome. Before you start, read [CONTRIBUTING.md](C
 
 **No sidebar entry after installing.** The host half loads in the server process. Restart `dsh web`; refreshing the page is not enough.
 
-**Where the entry and the switches are.** The board and the task list are two panel icons in the sidebar, beside DSH's own Plugins panel. The switches live on the plugin's own page: sidebar → Plugins → Installed → Task Board. There the four rows — board, task list, AI surface and host half — each carry one switch; turning a row off unregisters that half. If you see no entry at all, this client is still serving an older front-end bundle — refresh the page.
+**Where the entry and the switches are.** The board, the overview and the task list are three panel icons in the sidebar, beside DSH's own Plugins panel. The switches live on the plugin's own page: sidebar → Plugins → Installed → Task Board. There the five rows — board, overview, task list, AI surface and host half — each carry one switch; turning a row off unregisters that half. If you see no entry at all, this client is still serving an older front-end bundle — refresh the page.
 
 **The plugin fails to load after a DeepSeek Harness upgrade (the page says "Failed to load plugins").** DSH's internal interfaces change between releases, and the plugin has to follow. Two steps:
 

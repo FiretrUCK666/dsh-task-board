@@ -28,7 +28,7 @@ import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
-import { aliasLayer, designCss, pageCss, spacingPx } from './panel-harness.ts'
+import { designCss, pageCss, spacingPx } from './panel-harness.ts'
 
 /**
  * The board surface AS IT RENDERS: the board's own sheets plus the design layer
@@ -207,34 +207,36 @@ describe('the column header and the cards under it share ONE text edge', () => {
     .toMatch(/inset-inline-start:\s*calc\(var\(--column-frame\)\s*\+\s*var\(--card-gutter\)\s*\+\s*var\(--card-mark-air\)\)/)
   })
 
-  it('a mark is dropped onto the x-height band, and there is ONE number for it', () => {
-    // A LINE BOX IS NOT THE TYPE. It reserves room for descenders whether or not
-    // the string has any, so its centre sits above the band where the glyphs
-    // actually are, and a dot centred on it reads high. Measured on this surface:
-    // at 11px the name's x-height band ran y=186..192 (mid 189) and the dot's
-    // centre measured 189 after the correction and 188 before it — one pixel,
-    // which is exactly what 「那个点还是比它高了一点点」 is, and exactly what a
-    // horizontal measurement can never have found.
+  it('a mark is centred by the row\'s structure, not by a per-mark nudge', () => {
+    // A LINE BOX IS NOT THE TYPE — but that difference only exists while the line
+    // box is taller than the ink. Once every run in the row declares
+    // `line-height: var(--dsh-tb-text-line-h)` (= 1em), half-leading is zero, the
+    // line box centre IS the ink centre, and a mark centred on it is already on
+    // the text's axis.
     //
-    // The check is that the correction is a NAMED token rather than a literal,
-    // and that it is a `transform` rather than a margin. The margin form is the
-    // trap: on an `align-items: center` flex item the free space is halved around
-    // the margins, so a 1px `margin-top` moves the box by HALF a pixel and the
-    // correction silently under-delivers — which is indistinguishable, in a
-    // screenshot, from not having fixed it at all.
-    // The layer is named by WHAT IT DECLARES (`aliasLayer`), not by the first
-    // `[data-dsh-taskboard-view]` block in whichever sheet happens to be first:
-    // the board's own root rule wears the same selector, so a positional read
-    // answers 「which rule comes first」 instead of 「is the number declared」.
-    const root = aliasLayer()
-    expect(root, '--dsh-tb-mark-drop is not declared, so every mark will re-guess its own optical centring')
-      .toMatch(/--dsh-tb-mark-drop:\s*[\d.]+px/)
-    for (const selector of ['.cardWorkspaceDot'] as const) {
+    // This surface carried the counter-measurement for a long time: at 11px the
+    // name's x-height band ran y=186..192 and the dot's centre measured 188 before
+    // a `translateY(var(--dsh-tb-mark-drop))` and 189 after it. That was true of
+    // the OLD row, which still had half-leading. Under the current row the same
+    // nudge moves a correctly centred dot OFF the axis — the home page's identical
+    // mark records exactly that (`home.module.css` `.homeStatusDot`: keeping the
+    // drop measured the dot 1px low), and it deleted its copy.
+    //
+    // So the contract is the structure, not the number:
+    //   1. the row centres its items (`align-items: center`);
+    //   2. no mark in it carries its own vertical transform.
+    // A named token made of one measured pixel was the previous answer, and the
+    // reason it is gone is written where it used to live
+    // (`design/tokens.module.css`, the tombstone above `--dsh-tb-border`).
+    const row = ruleFor('.cardWorkspace')
+    expect(row, 'the mark\'s row no longer centres its items, so the mark has nothing holding it on the text\'s axis')
+      .toMatch(/align-items:\s*center/)
+    for (const selector of ['.cardWorkspaceDot', '.cardSessionDot'] as const) {
       const body = ruleFor(selector)
-      expect(body, `${selector} does not read the shared optical-centring number`)
-        .toMatch(/transform:\s*translateY\(var\(--dsh-tb-mark-drop\)\)/)
-      expect(body, `${selector} corrects its height with a margin, which on a centred flex item moves the box by half of it`)
-        .not.toMatch(/margin-top:\s*[\d.]+px/)
+      expect(body, `${selector} carries a vertical nudge again — a per-mark pixel is what the deleted token was, and it is wrong under any font`)
+        .not.toMatch(/transform:\s*translateY\(/)
+      expect(body, `${selector} corrects its place with a margin, which on a centred flex item moves the box by half of it`)
+        .not.toMatch(/margin-block|margin-top:|margin-bottom:/)
     }
   })
 

@@ -28,6 +28,8 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { clientSheetFiles } from './sheet-files.mjs'
+import { probeOf } from './probe-args.mjs'
 
 /** 这些属性选择器里的 `background` 是一次悬浮反馈，必须读悬浮令牌。 */
 const ALLOWED_BACKGROUND = [
@@ -65,9 +67,11 @@ function declOf(body, property) {
 }
 
 const target = process.argv[2] ?? '.'
+/* 自测开关先过一遍：拼错要红，不能静默变成一次正常跑（见 `probe-args.mjs`）。 */
+const probe = probeOf(['--probe-hover', '--probe-dark-flip'])
 
 /* ── 自测：种四条规则，两对两错 ─────────────────────────────────────────── */
-if (process.argv.includes('--probe-hover')) {
+if (probe === '--probe-hover') {
   const planted = `
     .good { background: var(--dsh-tb-hover); }
     .good2 { background: transparent; }
@@ -96,18 +100,13 @@ if (process.argv.includes('--probe-hover')) {
 const findings = []
 
 /* ── 1. 每一条 :hover 的 background ─────────────────────────────────────── */
-const sheets = [
-  'src/client/design/components.module.css',
-  'src/client/design/tokens.module.css',
-  'src/client/item/item.module.css',
-  'src/client/board.module.css',
-  'src/client/home/home.module.css',
-]
+/* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
+const sheets = clientSheetFiles(target)
 let hoverCount = 0
 for (const sheet of sheets) {
   let css
   try {
-    css = readFileSync(join(target, sheet), 'utf8')
+    css = readFileSync(sheet.path, 'utf8')
   } catch {
     continue
   }
@@ -131,7 +130,7 @@ for (const sheet of sheets) {
          也是明确的强度声明，不是静息底。 */
       || /color-mix\(|var\(--dsh-tb-wash|var\(--dsh-tb-plane-|var\(--dsh-tb-accent|var\(--dsh-tb-attention/.test(background)
     if (!lawful) {
-      findings.push(`${sheet}: ${rule.selector.slice(0, 48)} — hover background reads ${background.slice(0, 60)}, which is not the hover rung`)
+      findings.push(`${sheet.rel}: ${rule.selector.slice(0, 48)} — hover background reads ${background.slice(0, 60)}, which is not the hover rung`)
     }
   }
 }
@@ -145,16 +144,39 @@ if (!/--dsh-tb-hover-mix\s*:/.test(cleaned)) {
 if (!/--dsh-tb-hover\s*:\s*color-mix\(/.test(cleaned)) {
   findings.push('tokens: `--dsh-tb-hover` is not derived with color-mix, so its contrast is whatever the host happens to ship')
 }
-const darkFlip = /body\[data-ds-dark-theme\][\s\S]{0,400}?--dsh-tb-hover-mix\s*:/.test(cleaned)
-if (!darkFlip) {
+/**
+ * 深色块里有没有**声明** `--dsh-tb-hover-mix`。
+ *
+ * 判据必须落在**规则**上，不能落在「选择器之后 N 个字符」这种窗口上：一块深色覆盖
+ * 长起来之后，写在末尾的那条声明会掉出窗口，于是一条正确的实现被判红——而修红最
+ * 省事的办法是把它挪到前面去，也就是**改对的东西来迁就一把量不准的尺子**（硬性
+ * 规范 14）。所以这里用和别处同一套 `rulesOf`：先在规则层面找到深色块，再看它自己
+ * 的声明体里有没有这一条。
+ */
+const darkDeclaresHoverMix = rulesOf(cleaned).some(rule =>
+  /\[data-ds-dark-theme\]/.test(rule.selector)
+  && new RegExp('--dsh-tb-hover-mix\\s*:').test(rule.body))
+if (!darkDeclaresHoverMix) {
   findings.push('tokens: the dark theme does not flip `--dsh-tb-hover-mix` — dark mode would keep a light-theme direction')
+}
+if (probe === '--probe-dark-flip') {
+  /* 自测：窗口式读法会漏掉写在长块末尾的那一条，规则式读法不会。 */
+  const long = `.x { --a: 1 }\nbody[data-ds-dark-theme] .t {\n${'  --pad: 0;\n'.repeat(80)}  --dsh-tb-hover-mix: 9%;\n}`
+  const heard = rulesOf(long).some(rule =>
+    /\[data-ds-dark-theme\]/.test(rule.selector) && /--dsh-tb-hover-mix\s*:/.test(rule.body))
+  if (!heard) {
+    console.error('FAIL 自测：深色块末尾的 hover-mix 声明没被读到——窗口式读法又回来了。')
+    process.exit(1)
+  }
+  console.log('OK 自测：深色块末尾的 hover-mix 声明被读到（判据读规则，不读字符窗口）。')
+  process.exit(0)
 }
 
 /* ── 3. 不许有第二条路：主机悬浮直读 ───────────────────────────────────── */
 for (const sheet of sheets) {
   let css
   try {
-    css = readFileSync(join(target, sheet), 'utf8')
+    css = readFileSync(sheet.path, 'utf8')
   } catch {
     continue
   }
@@ -165,7 +187,7 @@ for (const sheet of sheets) {
     if (!/:hover/.test(rule.selector)) continue
     const body = rule.body
     if (/--dsw-alias-interactive-bg-hover/.test(body)) {
-      findings.push(`${sheet}: ${rule.selector.slice(0, 48)} — hover reads the host's 4% hover token directly; that is invisible on the official light theme and visible under a skin`)
+      findings.push(`${sheet.rel}: ${rule.selector.slice(0, 48)} — hover reads the host's 4% hover token directly; that is invisible on the official light theme and visible under a skin`)
     }
   }
 }
@@ -182,3 +204,4 @@ if (findings.length > 0) {
 }
 
 console.log(`verify-hover-contrast OK: ${hoverCount} hover rule(s) all read the one reversed rung (--dsh-tb-hover), and the rung flips direction in dark; no host hover token is read directly`)
+

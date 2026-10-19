@@ -447,8 +447,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 清单面板另有一条陷阱成文在 `DESIGN.md`：**`<p>` 上写 `margin` 一律无效**（压死它的是一条属性
 选择器规则，特异性赢过类规则）。要读的字用 padding 让位。
 
-**预览页**：`gallery/` 只在开发环境出现；枚举从导出读，两条读不出来的由 `tests/gallery.spec.ts` 数着。
-
+**预览页**只在开发环境出现。
 ### 核心层（`src/core/` 纯逻辑）
 
 - 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
@@ -629,28 +628,28 @@ scripts 与 `scripts/`**。
     很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0，
     而只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
 19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们由 `shot-panel.mjs` 开真 Chromium 量。**每一个这样的数都写进 `DESIGN.md` 并写清量法**
-    （探针入库 `scripts/probes/`）。
+    它们由 `shot-panel.mjs` 开真 Chromium 量（`pnpm run audit:ci` 造工件再跑矩阵；没有浏览器
+    时它**明说 SKIP**，不假装量过）。**每一个这样的数都写进 `DESIGN.md` 并写清量法**。
     **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
     `translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
     var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——
-    那个补法在结构上无效（它挪内容盒，而行盒会跟着重新居中，相对位置一位不变），还会压扁
-    定高盒子、裁掉字、并让那个变量**被继承**（药丸里的圆点读到了药丸那一档，变成竖条）。
-    判据读结构、不读数值与类名，`verify-capsule-centring.mjs` 守着；**压滚动内容的头自带
-    不透明底**（洗底不算遮挡，`verify-pinned-surface.mjs` 守着）。法则在 `design/laws.ts`，
-    `verify-design-sync` 双向对账：加法则给门禁与标本，**门禁也必须进表**（自动发现
-    `verify-*`）。
+    那个补法在结构上无效（挪内容盒而行盒跟着重新居中，相对位置一位不变），还会压扁定高盒子、
+    裁掉字、并让那个变量**被继承**（药丸里的圆点读到药丸那一档，变成竖条）。
+    判据读结构、不读数值与类名，`verify-capsule-centring.mjs` 守着（`--probe-blindspots`：
+    at-rule 里的行、驼峰类名、后代选择器都必须被读到）；**压滚动内容的头自带不透明底**
+    （`verify-pinned-surface.mjs`）。法则在 `design/laws.ts`，`verify-design-sync` 双向对账：
+    加法则给门禁与标本，**门禁也必须进表**；**「文件里有、但 `verify` 没调用」也算红**
+    （`--probe-orphan-gate`）。**自测开关一律经 `scripts/probe-args.mjs` 读**：拼错的
+    `--probe-*` 必须报错退出，不能静默变成一次正常跑。
 20. **开发页面先复用，再扩展，最后才新增。** 顺序是硬的，每一步都要说得出为什么上一步不行：
     ① 开发页面时**必须优先复用** `src/client/design/` 与页面目录里已有的组件；② 已有组件能通过
     `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；
     ③ 只有现有组件确实满足不了时才新增。**共用文法只有一处家**：
     任何跨页面的形态声明属于 `design/`（组件或共享类），**页面表里出现第二份拷贝即违规**——
     它不会报错，只会在下一次改一处时让另一处留在旧值上。
-    **「预览页会不会自动覆盖」分两半，别记混**：**枚举会**（`BUTTON_VARIANTS` 这类导出，
-    `map` 的是导出本身，加一个值预览页自己就长出来）；**组件不会**（标本是手写的）。
-    两条各有一道门禁（`tests/design-coverage.spec.ts`）：每个导出的组件**都要被预览**、
-    **都要被至少两个文件渲染**（一次性件不属于 `design/`），而跨 surface 的数每次运行打出来。
-    所以「预览页里没有」对枚举是一条线索，对组件是**门禁会红**。
+    **「预览页会不会自动覆盖」分两半**：**枚举会**（`map` 的是导出本身）；**组件不会**（标本手写）。
+    两条各有一道门禁（`tests/design-coverage.spec.ts`）：每个导出的组件**都要被预览页渲染**、
+    **都要有两处渲染点**，跨 surface 的数每次运行打出来。
 
 ## 测试（布局约定）
 

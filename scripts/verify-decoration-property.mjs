@@ -25,15 +25,11 @@
  */
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { clientSheetFiles } from './sheet-files.mjs'
 
-const target = process.argv[2] ?? '.'
-const SHEETS = [
-  'src/client/design/components.module.css',
-  'src/client/board.module.css',
-  'src/client/item/item.module.css',
-  'src/client/home/home.module.css',
-  'src/client/design/base.module.css',
-]
+const target = process.argv[2] ?? ''
+/* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
+const SHEETS = clientSheetFiles(target)
 
 /** 剥注释：注释里出现「环」不是一次环的声明（硬性规范 14）。 */
 function stripComments(css) {
@@ -115,7 +111,7 @@ let checked = 0
 for (const sheet of SHEETS) {
   let css
   try {
-    css = readFileSync(join(target, sheet), 'utf8')
+    css = readFileSync(sheet.path, 'utf8')
   } catch {
     continue
   }
@@ -139,7 +135,7 @@ for (const sheet of SHEETS) {
     const material = /var\(--dsh-tb-(rim|cast|shadow)[^)]*\)/.test(shadow)
     if (!material) continue
     if (hasRing(shadow)) {
-      findings.push(`${sheet}: ${rule.selector.slice(0, 46)} — the same box-shadow carries both the paper (--dsh-tb-rim / --dsh-tb-cast-*) and a ring, so a later animation on that property flattens the material`)
+      findings.push(`${sheet.rel}: ${rule.selector.slice(0, 46)} — the same box-shadow carries both the paper (--dsh-tb-rim / --dsh-tb-cast-*) and a ring, so a later animation on that property flattens the material`)
     }
   }
 }
