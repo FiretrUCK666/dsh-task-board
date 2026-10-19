@@ -969,6 +969,37 @@ describe('the update dialog, driven through the header button', () => {
     unmount()
   })
 
+  it('checking again brings the action back, because that is a new round', async () => {
+    /* **「一次动作走完了」与「这一轮查完了」是两件事，只有前者该让按钮消失。**
+     *
+     * 上一次应用的结果（`apply`）有三个终态，按钮在其中两个里隐去——那是对的，因为
+     * 一次安装已经走完，没有可再按的东西。但如果读者接着按「检查更新」再查一遍，
+     * 那就是**新的一轮**：此刻屏上又有一个可装的版本，那颗按钮必须回来。不清上一轮
+     * 的结论，屏上就出现一个「有更新、但没有按钮」的对话框，读者唯一的出路只剩终端命令。
+     *
+     * 这条同时钉住了那个静态工件的第二张图：它靠「再查一次」来画应用托管那一档，
+     * 而那一档的第一件事就是要有那颗按钮。 */
+    stubUpdateFetch({
+      view: () => viewOf(),
+      apply: { ok: true, outcome: 'restart-required', version: '0.9.60' },
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    await clickLabel(host, t('board.update.apply'))
+    expect(dialogIn(host).textContent, '前提不成立：应用之后按钮本该隐去')
+      .not.toContain(t('board.update.apply'))
+    /* 关掉对话框，再按栏上那颗。它此时写的是「已是最新」——`run()` 成功后会把 phase
+       收到那一档（装完了当然是最新），而按它等于重新检查一遍。 */
+    const close = [...host.querySelectorAll('button')]
+      .find((one) => (one.textContent ?? '').trim() === t('detail.close'))
+    expect(close, '对话框里没有关闭键').toBeDefined()
+    await act(async () => { close?.click() })
+    await clickLabel(host, t('board.update.latest'))
+    expect(dialogIn(host).textContent, '再查一次之后按钮没有回来：屏上说有更新，却没有可按的东西')
+      .toContain(t('board.update.apply'))
+    unmount()
+  })
+
   it('a run that changed nothing says so, and keeps the button (it is not a success)', async () => {
     stubUpdateFetch({
       view: () => viewOf(),

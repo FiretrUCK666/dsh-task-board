@@ -170,6 +170,18 @@ export class UpdateController {
     if (this.phase === 'checking') return
     this.clearTimer()
     this.phase = 'checking'
+    /* **新一轮检查就是新的一轮，上一次的应用结果必须清掉。**
+     *
+     * `apply` 记的是「上一次按了更新之后发生了什么」，而它有三个终态
+     * （`done` / `unchanged` / `failed`）。「一键更新」那颗按钮在其中两个里会消失——
+     * 那是对的：一次动作已经走完，没有可再按的东西。但如果**不清它**，读者按下
+     * 「检查更新」再查一次之后，那颗按钮仍然不会回来，因为 `apply.phase` 还停在上一轮
+     * 的结论上。屏上于是出现一个「有一个更新可以装，但没有按钮」的对话框，而读者唯一
+     * 的出路只剩下面那条终端命令。
+     *
+     * 清在这里而不是在 `run()` 里：会走到这条路的不是「又要跑一次」那个动作，是
+     * 「重新看一遍现在是什么情况」——而它才是读者会反复走的那条。 */
+    this.apply = { phase: 'idle' }
     this.emit()
     void (async () => {
       const source = await fetchUpdateSource()
