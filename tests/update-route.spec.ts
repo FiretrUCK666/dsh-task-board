@@ -442,6 +442,43 @@ describe('readLatest', () => {
     expect(asked.some((one) => one.startsWith('https://mirror.internal/')), '私有源根本没被问到').toBe(true)
   })
 
+  it('a failure after the hedge window still advances at once, not at the next window', async () => {
+    /* **这条钉的是一处只影响等待时长的缺陷，不影响正确性。**
+     *
+     * 推进判据曾经是「已启动的候选全部结算完」，而不是「刚刚这一条失败了」。两者在
+     * 只有一条在飞时相同，对冲之后就不同：A 慢、B 由窗口在 800ms 放出、B 在 850ms
+     * 失败时，旧判据下 `finished(1) >= launched.size(2)` 不成立，于是 C 要等它自己的
+     * 1600ms 窗口才起跑——**一次失败让读者白等约 750ms**。
+     *
+     * 场景必须是**三条私有源**（`own` 有三项才会进入 `hedgeFor`；公共源只有两个，
+     * 拼不出这条时间线）。判据用的是「C 在什么时候起跑」而不是总耗时：总耗时会被
+     * A 自己的超时盖住，看不出差别。 */
+    const t0 = Date.now()
+    const starts: Array<{ url: string; at: number }> = []
+    vi.stubGlobal('fetch', async (url: unknown) => {
+      const href = String(url)
+      const at = Date.now() - t0
+      const which = href.includes('a.example') ? 'A' : href.includes('b.example') ? 'B' : href.includes('c.example') ? 'C' : '?'
+      starts.push({ url: which, at })
+      const answer = (v: string): Response => new Response(JSON.stringify({ 'dist-tags': { latest: v } }), { status: 200 })
+      if (which === 'A') { await new Promise(r => setTimeout(r, 5_000)); return answer('9.0.0') }
+      if (which === 'B') { await new Promise(r => setTimeout(r, 50)); throw new Error('refused') }
+      if (which === 'C') { await new Promise(r => setTimeout(r, 50)); return answer('7.7.7') }
+      return new Response('{}', { status: 404 })
+    })
+    const latest = await readLatest(ctxOf({
+      resolved: 'https://a.example/npm/',
+      fallbackRegistries: ['https://b.example/npm/', 'https://c.example/npm/'],
+    }), { mode: 'npm' })
+    expect(latest?.version, 'C 答了，读取却没有采信它').toBe('7.7.7')
+    const cStart = starts.find(one => one.url === 'C')?.at
+    expect(cStart, 'C 根本没起跑').toBeDefined()
+    /* 立刻推进：B 在约 800+50=850ms 失败，C 紧接着起跑。
+       等下一个窗口：C 要到 1600ms 才起跑。分界线取 1200ms，两侧都留足余量。 */
+    expect(cStart ?? 0, `C 在 ${String(cStart)}ms 才起跑——B 850ms 就失败了，它却在等下一个窗口`)
+      .toBeLessThan(1_200)
+  })
+
   it('asks its own registry first and stops at the first answer', async () => {
     // The reader this replaces asked `registry.npmjs.org` and nothing else, so a
     // reader behind a mirror — the very reader who chose that mirror when

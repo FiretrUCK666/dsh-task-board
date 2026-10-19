@@ -753,11 +753,18 @@ function hedgeFor<T>(
       const candidate = candidates[index] as string
       const settleOne = (): void => {
         finished += 1
-        /* **这一条没有答案，就立刻放下一条**——不等窗口走完。窗口是给「慢」的源留的，
-           不该被「坏」的源白占：一条连不上的源让读者白等 800ms，而那 800ms 里本来
-           已经有另一条在等着被发出去。
-           `launch` 自己去重，所以这里与窗口那条路撞上也不会重复启动。 */
-        if (finished >= launched.size) launch(index + 1)
+        /* **这一条没有答案，就立刻放下一条**——不等窗口走完，也不等别的候选。
+           窗口是给「慢」的源留的，不该被「坏」的源白占：一条连不上的源让读者白等
+           800ms，而那 800ms 里本来已经有另一条在等着被发出去。
+
+           这里**无条件**推进，判据是「刚刚这一条失败了」，不是「已启动的都结算完了」。
+           两者在只有一条在飞时相同，但在对冲之后不同：A 慢、B 由窗口放出、B 在 850ms
+           失败时，若按后者判，C 要等到它自己的 1600ms 窗口才起跑——一次失败白等 750ms。
+           `launch` 自己去重，所以无条件推进不会重复启动，也不会让窗口那条路多启一次。 */
+        launch(index + 1)
+        /* 收场只看「全部候选都结算过」。它**不能删**：没有它，最后一条失败之后既不
+           推进也不结算，这个 Promise 永远不返回。也不能只留它——那样每次推进都要等
+           窗口，而窗口存在的理由是「这条可能只是慢」，不是「它坏了」。 */
         if (finished >= candidates.length) done(undefined)
       }
       void boundedJson(packumentUrl(candidate, PACKAGE_NAME), timeoutMs).then(
