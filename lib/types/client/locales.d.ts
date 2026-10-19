@@ -63,6 +63,17 @@ export declare const zh: {
     'gallery.buttons': string;
     'gallery.iconButtons': string;
     'gallery.fields': string;
+    'gallery.laws': string;
+    'gallery.ink': string;
+    'gallery.interaction': string;
+    'gallery.surfaces': string;
+    'gallery.shell': string;
+    'gallery.hoverMe': string;
+    'gallery.surfaceSheet': string;
+    'gallery.surfaceFloat': string;
+    'gallery.surfaceRecess': string;
+    'gallery.readoutSpecimen': string;
+    'gallery.thumbRail': string;
     'gallery.chips': string;
     'gallery.statuses': string;
     'gallery.icons': string;

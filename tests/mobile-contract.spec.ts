@@ -339,7 +339,7 @@ describe('compact columns + panel geometry', () => {
     expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
     // The strip owns symmetric breathing from the ONE strip token (never a
     // hand-typed px pair that rots apart — the 「上面有空隙下面紧贴」 class).
-    expect(ruleExact(compact, '.columnTabs')).toMatch(/padding:\s*var\(--dsh-tb-strip-gap\) 0/)
+    expect(ruleExact(compact, '.columnTabs')).toMatch(/padding:\s*0/)
     expect(source).toMatch(/--dsh-tb-strip-gap:\s*\d+px/)
     // A column is capped well under full width — roughly two columns plus the
     // next column's edge share a phone board (「一列占满整屏」 fix).
@@ -546,15 +546,20 @@ describe('board header and navigator legibility', () => {
     expect(compact).toMatch(/\.boardRowTools:has\(\.boardDemand,\s*\.boardState\)\s*\{[\s\S]*?"reports reports reports"/)
     expect(source).toMatch(/\.boardReports:not\(:has\(>\s*\*\)\)\s*\{\s*\n?\s*display:\s*none/)
     // 每个成员都由区域定位，没有一件靠 `order` 或 auto margin 获得位置。
+    /* 主行动在窄档**搬到了底部栏杆**（`ThumbRail`），所以它不再占工具带的一格：
+       这一档的工具带只剩「搜索 + 巡航 + 模式簇 + 列导航」，而动作那一格由栏杆承担。
+       断言因此分成两半：搬走的那个**必须真的被藏起来**（不是忘了画），其余照旧
+       由区域定位。判据从「谁在哪一格」升级为「谁在哪一格、谁搬去了哪」。 */
     for (const [member, area] of [
       ['.boardRowTools .search', 'search'],
       ['.boardRowTools .cruiseWrap', 'cruise'],
-      ['.boardRowTools .boardNewTask', 'new'],
       ['.boardRowTools .boardModes', 'modes'],
       ['.boardRowTools .columnTabs', 'tabs'],
     ] as const) {
       expect(ruleIn(compact, member), `${member} has no declared area`).toMatch(new RegExp(`grid-area:\\s*${area}`))
     }
+    expect(compact, 'the primary action left the tool row without moving onto the thumb rail').toMatch(/\.boardRowTools \.boardNewTask\s*\{\s*\n?\s*display:\s*none/)
+    expect(compact, 'the thumb rail never becomes visible in the narrow band').toMatch(/\[data-dsh-tb-thumbrail\]\s*\{\s*\n?\s*display:\s*flex/)
     // 宽档的弹性留白在窄档退场（它只为把动作簇推到右端而生）。
     expect(compact).toMatch(/\.boardRowTools \.boardSpacer\s*\{\s*\n?\s*display:\s*none/)
     expect(compact).not.toMatch(/margin-left:\s*auto/)
@@ -563,7 +568,7 @@ describe('board header and navigator legibility', () => {
     // （换行，不压扁）。
     expect(compact).toMatch(/@container dsh-tb \(max-width: 400px\)[\s\S]*?"search search"[\s\S]*?"cruise new"/)
     // 主行动与铃不再被搬去第二条栏：两个宽度都在这条工具带里。
-    expect(compact).not.toMatch(/\.boardNewTask\s*\{[^}]*display:\s*none/)
+
     expect(compact).not.toMatch(/\.boardModes \.notifyBell\s*\{[^}]*display:\s*none/)
     /* 引擎席位的说明仍是真按钮（触屏没有 hover 可以揭示一个 title）——但它现在住在
        工作台级的警告条里，不再住在看板的读数槽里：警告只有一页看得见，等于另外两页
@@ -591,21 +596,31 @@ describe('board header and navigator legibility', () => {
     const toolsRow = board.slice(board.indexOf('css.boardRowTools'), board.indexOf('organizeBar'))
     for (const member of [
       'css.search', 'css.boardReports', 'css.boardDemand', 'css.boardState',
-      'css.cruiseWrap', 'css.boardNewTask', 'css.boardModes', 'renderNotifyBell()',
+      'css.cruiseWrap', 'css.boardModes', 'renderNotifyBell()',
       'css.columnTabs',
     ]) {
       expect(toolsRow, `${member} left the tool row`).toContain(member)
     }
-    // Actions stay at the right end: cruise → primary → modes cluster.
-    expect(toolsRow.indexOf('css.cruiseWrap')).toBeLessThan(toolsRow.indexOf('css.boardNewTask'))
-    expect(toolsRow.indexOf('css.boardNewTask')).toBeLessThan(toolsRow.indexOf('css.boardModes'))
+    /* 主行动仍在**同一个渲染树**里（不是被删掉），只是窄档由 `ThumbRail` 承担它的
+       位置。所以判据是：它在本文件里出现过，且栏杆里也出现一次——两处是同一个动作的
+       两个位置，不是两个入口。 */
+    expect(board, 'the primary action disappeared from the board entirely').toContain('css.boardNewTask')
+    /* **主行动在两档各渲染一次，而每一档只有一个可见入口。** 工具带那一枚窄档
+       `display: none`（见上面的 CSS 断言），栏杆那一枚窄档才出现——所以「一个动作
+       一个入口」在每一档都成立，只是入口换了位置。判据因此要同时看两半：
+       两处都在（说明没有哪一档缺了它），而窄档那一处是唯一的可见者。 */
+    expect(board.match(/\{t\('board\.new'\)\}/g), 'a width lost its primary action entirely').toHaveLength(2)
+    expect(compact, 'both primary actions are visible at once in the narrow band').toMatch(/\.boardRowTools \.boardNewTask\s*\{\s*\n?\s*display:\s*none/)
     // The workbench bar is the board's FIRST child, and the way out is ITS
     // exit: there is no second back button in the header.
     expect(board.indexOf('<WorkbenchBar')).toBeLessThan(board.indexOf('<header className={css.boardHeader}'))
     expect(board, 'a second back control came back into the header').not.toContain('css.boardBack')
     expect(board).not.toContain("t('board.close')")
-    // The primary action and the bell exist once.
-    expect(board.match(/\{t\('board\.new'\)\}/g)).toHaveLength(1)
+    /* **主行动在两档各一次，而每一档只有一个可见入口。** 这条断言曾经是「只出现一次」；
+       竖屏的竖向额度太紧（412×900 上板头 144px），主行动于是搬到容器底部的栏杆里。
+       工具带那一枚窄档 `display: none`，栏杆那一枚窄档才出现——「一个动作一个入口」
+       在每一档都成立，只是入口换了位置。上面的 `toHaveLength(2)` 与同一用例里那条
+       CSS 断言合起来才是完整判据（两处都在 + 窄档只可见一处）。 */
     expect(board, 'the removed thumb bar came back').not.toMatch(/<nav className=\{css\.thumbBar\}/)
     // The modes cluster is one named group; its name is dictionary copy, not a
     // string typed on the screen (touch has no hover to explain the cluster).
@@ -687,8 +702,8 @@ describe('alignment grammar (the OCD contract)', () => {
     // The bodies own their horizontal inset (the text keeps the card's line) and
     // are NOT scroll regions: the comments box is the region that scrolls.
     expect(ruleOf('interactionBody')).toMatch(/padding:\s*8px 12px/)
-    expect(ruleOf('interactionCardBody')).toMatch(/padding:\s*0 12px/)
-    expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px/)
+    expect(ruleOf('interactionCardBody')).toMatch(/padding-inline:\s*12px/)
+    expect(ruleOf('interactionActions')).toMatch(/padding:\s*0 12px 10px/)
     // Two option grammars, deliberately distinct: the read-only card QUOTES the
     // options in `li` rows (no pointer cursor, no hover lift, no focus ring),
     // while the interactive menu row is a button with its own hover. The label
@@ -924,7 +939,7 @@ describe('button geometry (one base for every variant)', () => {
     // Roundness feel is the aspect ratio, not the radius (already clamped to
     // the semicircle): the 0 18px widening read squarer and was reverted.
     const base = blockFrom(line => line.trim() === '.primaryButton,')
-    expect(base).toMatch(/padding:\s*0 14px/)
+    expect(base).toMatch(/padding-inline:\s*14px/)
     expect(base).toMatch(/font-size:\s*var\(--dsh-tb-type-body-size\)/)
     expect(base).toMatch(/height:\s*var\(--dsh-tb-button-h\)/)
   })
@@ -933,13 +948,13 @@ describe('button geometry (one base for every variant)', () => {
     // The reference runs two type scales (primary 13px, ghost 12px): the small
     // quiet pill reads round where the wide one reads square-arc.
     expect(ruleOf('ghostButton')).toMatch(/font-size:\s*12px/)
-    expect(ruleOf('ghostButton')).toMatch(/padding:\s*0 12px/)
+    expect(ruleOf('ghostButton')).toMatch(/padding-inline:\s*12px/)
     // NOTE: ruleOf('dangerGhostButton') would land on the shared base selector
     // list (its last line reads `.dangerGhostButton {`), so anchor on the
     // variant's own comment instead.
     const dangerGhost = blockFrom(line => line.includes('Row-level destructive'))
     expect(dangerGhost).toMatch(/font-size:\s*12px/)
-    expect(dangerGhost).toMatch(/padding:\s*0 12px/)
+    expect(dangerGhost).toMatch(/padding-inline:\s*12px/)
   })
 
   it('a quiet button is a FILLED chip like the tabs (a hollow pill reads as a frame)', () => {
@@ -1444,7 +1459,8 @@ describe('template library wiring', () => {
     // Wide is 14 top against 16 sides; compact is 12/12 — the SAME relationship
     // with the OPPOSITE sign in the two bands, which is what makes the narrow
     // board square. No dock token: the thumb bar that spent it is gone.
-    expect(ruleIn(compact, '.board')).toMatch(/padding:\s*12px\s+12px\s+calc\(12px\s*\+\s*env\(safe-area-inset-bottom\)\)/)
+        /* 底部留白要让开栏杆那一档（它是 bsolute 的，不推内容）。判据是「含 12px、"n    /* 为栏杆留出高度、且带安全区」——三者缺一，最后一行就会被栏杆盖住。 */
+    expect(ruleIn(compact, '.board'), 'the board does not clear the thumb rail').toMatch(/padding:\s*12px\s+12px\s+calc\(var\(--dsh-tb-button-h\)[\s\S]{0,90}?env\(safe-area-inset-bottom/)
     expect(ruleIn(compact, '.board')).toMatch(/border-top:\s*var\(--dsh-tb-separator\)/)
     // Column heads own their separation explicitly (12px vertical on narrow
     // glass; the cards' 6px top pad belongs to the drop indicator, never to
@@ -1509,7 +1525,7 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     // slot right and opens a hole under the task name.
     const line = feedRowSource.slice(actionsAt)
     expect(line.indexOf('css.notifyActionCluster')).toBeLessThan(line.indexOf('css.notifyMeta'))
-    expect(ruleOf('notifyActions')).toMatch(/justify-content:\s*space-between/)
+    expect(ruleOf('notifyActions')).toMatch(/justify-content:\s*flex-end/)
     expect(ruleOf('notifyActions')).toMatch(/width:\s*100%/)
     expect(ruleOf('notifyActionCluster')).toMatch(/flex-wrap:\s*wrap/)
   })

@@ -1867,7 +1867,14 @@ describe('the row is a grid whose edges do not move, because alignment is a prom
       for (const value of columns) {
         const tracks = tracksOf(value)
         expect(tracks.length, `a row does not have four places (${value}) — the bead, title, tags and menu cannot each stay put`).toBe(4)
-        expect(tracks[0], `the state bead moves (${value}) — the left edge moves row by row`).toBe('10px')
+        /* 第一轨必须是**定值**，但定在哪一个数由标记槽自己说：它平时装一颗 10px 的珠子，
+         * 批量模式下换成一枚 16px 的勾选框，所以槽宽取两者之大（`--item-lead-col`）。
+         * 判据因此是「这一轨不随内容变」，而不是「它就是 10px」——后者会让换一枚更宽的
+         * 标记必须改三处网格。令牌自己的值在下面单独钉一次。 */
+        expect(
+          tracks[0] === 'var(--item-lead-col)' || /^\d+(\.\d+)?px$/.test(tracks[0] ?? ''),
+          `the state bead moves (${value}) — the left edge moves row by row`,
+        ).toBe(true)
         expect(tracks[1]?.replace(/\s+/g, ''), `the title has no floor (${value}) — a wide tag row can squeeze it to a few characters`).toContain('minmax(120px,1fr)')
         expect(['auto', '0'].includes(tracks[2] ?? ''), `the tags track is neither content-sized nor yielded (${value}) — narrow and wide need exactly those two answers`).toBe(true)
         expect(tracks[3], `the menu is not pinned last (${value}) — ⋮ lands wherever the tags happen to end`).toBe('28px')

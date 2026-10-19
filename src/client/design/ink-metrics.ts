@@ -43,7 +43,7 @@ const REFERENCE_SIZE = 14
 const DEAD_ZONE = 0.25
 
 /** The custom property the capsule family reads. One name, one place. */
-export const INK_NUDGE_PROPERTY = '--dsh-tb-optical-drop'
+export const INK_PROPERTY = '--dsh-tb-optical-drop'
 
 /** 量到的那四个数，写进日志便于对账。 */
 export interface InkMetrics {
@@ -107,15 +107,18 @@ export function publishInkMetrics(): InkMetrics | undefined {
   /* 死区与方向，两条都是「不许猜」的落地：
      - 已经居中的设备（|offset| < DEAD_ZONE）**一位都不动**，它本来就不需要校正；
      - 内衬不能为负，所以墨偏上（offset < 0）时不写——写了会让 `calc()` 变负，
-       浏览器把整条 `padding` 声明丢掉，那比不校正更糟。 */
-  const wanted = metrics.offset >= DEAD_ZONE ? metrics.offset : 0
+       浏览器把整条 `padding` 声明丢掉，那比不校正更糟。
+     - **发布的是内衬量，不是偏移量，所以乘 2。** 内衬只把内容盒挤向一侧，盒心的
+       移动量是内衬的**一半**（量过：`padding-block-end: 0.5px` 让墨从 +0.5 走到
+       +0.25，只走了一半）。`measureInkMetrics` 报的是偏移，这里换成要的内衬。 */
+  const wanted = metrics.offset >= DEAD_ZONE ? metrics.offset * 2 : 0
   const next = wanted === 0 ? '' : `${Math.round(wanted * 100) / 100}px`
 
   const seat: HTMLElement | null = document.documentElement
-  const current = seat.style.getPropertyValue(INK_NUDGE_PROPERTY)
+  const current = seat.style.getPropertyValue(INK_PROPERTY)
   if (current === next) return metrics
-  if (next === '') seat.style.removeProperty(INK_NUDGE_PROPERTY)
-  else seat.style.setProperty(INK_NUDGE_PROPERTY, next)
+  if (next === '') seat.style.removeProperty(INK_PROPERTY)
+  else seat.style.setProperty(INK_PROPERTY, next)
   return metrics
 }
 

@@ -453,7 +453,7 @@
 /* 状态词是一枚小件：高 `--dsh-tb-chip-h`、嵌面底、一条软边光。整行里它不说话最响，
  * 但它是「这条现在在哪一栏」的唯一读数，所以不能只留一颗点（点认不出五档）。
  *
- * **最后那条下内衬是墨的光学校正**（见 `--dsh-tb-optical-drop`）：一枚定高的盒子里
+ * **行的墨位由行盒高度决定**（见 `--dsh-tb-text-line-h`）：一枚定高的盒子里
  * `align-items: center` 居中的是**内容盒**，而行盒的中心比字的视觉中心高一点点。多出
  * 2d 的下内衬把内容盒往上推 d，字就落在盒子的光学中间。**这里不能用 transform**——这块
  * 底色就是药丸自己，transform 会把盒与字一起挪走，等于没修（共享 Chip 用的是同一条）。 */
@@ -464,13 +464,15 @@
   justify-content: center;
   gap: var(--dsh-tb-space-2);
   block-size: var(--dsh-tb-chip-h);
-  padding: 0 var(--dsh-tb-space-3) calc(2 * var(--dsh-tb-optical-drop));
+  /* 行盒 = 墨高：`halfLeading` 归零之后墨心就是盒心，任何字体都成立（见 tokens 表
+     的 `--dsh-tb-text-line-h`）。这里曾经靠下内衬补偿，而那条补偿现在是 0。 */
+  padding-inline: var(--dsh-tb-space-3); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-plane-inlay);
   box-shadow: var(--dsh-tb-rim-soft);
   color: var(--dsh-tb-text-2);
   font-size: var(--dsh-tb-type-meta-size);
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   white-space: nowrap;
 }
 

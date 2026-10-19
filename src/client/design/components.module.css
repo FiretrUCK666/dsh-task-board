@@ -88,16 +88,15 @@
   justify-content: center;
   box-sizing: border-box;
   block-size: var(--dsh-tb-chip-h);
-  padding: 0 8px;
+  padding-inline: 8px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border-radius: var(--dsh-tb-pill);
   /* Single-layer solid fill (an rgba fill on translucent surfaces would
      double-fade under a glass skin) — the shared quiet-chip surface, so a
      status chip and the controls around it never drift apart under a skin. */
   background: var(--dsh-tb-chip-fill);
-  /* 行盒居中了，墨还差半像素——见 `--dsh-tb-optical-drop`（内衬而不是 transform：
+  /* 墨位由**行盒高度**决定，不再靠补偿——见 `--dsh-tb-text-line-h`（不是 transform：
      transform 会把盒子与字一起挪走，等于没修）。 */
-  padding-block-end: calc(2 * var(--dsh-tb-optical-drop));
-}
+  }
 
 /* 这三条写的是**文字**，读的还是同一枚状态色——一个色相就一个色（见上面那条色族律）。
    黄在浅色主题下的真实底上只到 1.63:1，这是本表收下的代价：把字改深就是同一块屏上的
@@ -114,26 +113,23 @@
    rhythm (same radius and type scale as the shell's buttons) so every row
    stays aligned with the host UI — including under a glass skin, where the
    fills come straight from the native button tokens. */
-/* ── 一行字居中的**唯一机制**：裁掉行盒多余的半行距 ─────────────────────────────
+/* ── 一行字居中：**行盒 = 墨高**，一个机制，没有补偿 ─────────────────────────
  *
- * `align-items: center` 居中的是行盒。行盒比字的墨高，多出来的那一对半行距按字体
- * 的 ascent/descent 分配——**这是字体之间的唯一差别**，所以「用一个固定比例去抵消」
- * 在换字体时必然失效（读者在手机上看到整排偏高，桌面却是对的）。
+ * `align-items: center` 居中的是**行盒**。行盒按字体的 `fontBoundingBox` 分配，
+ * 而那个盒常常比字的墨高——多出来的那一对半行距（`halfLeading`）按 ascent/descent
+ * 分，于是墨心离盒心差半个 `halfLeading`。**这是字体之间的唯一差别**，所以「用一个
+ * 固定比例去抵消」在换字体时必然失效（读者在手机上看到整排偏高、桌面却是对的）。
  *
- * 支持 `text-box-trim` 时把那一对半行距真的裁掉：盒心 = 墨心，任何字体、任何字号都
- * 不需要补偿，`--dsh-tb-optical-drop` 同时被置零（见 tokens 表）。不支持时这两条被
- * 整块忽略，那一族继续读兜底值——渐进增强，不是两套实现。
+ * 处方是把行高设成墨高（`--dsh-tb-text-line-h`，值 `1em`）：`halfLeading` 归零，
+ * 墨心就是盒心，**任何字体、任何字号都成立**。这一族因此不写任何 `padding-block-end`
+ * 补偿——那条补偿只把内容盒整体上移，盒子跟着动，读者看到的是「胶囊自己偏了」。
+ *
+ * 试过但不采用：`text-box-trim`（这个 Chromium 里 `CSS.supports` 报 true、
+ * `getComputedStyle` 也读得出 `trim-both`，**行盒高度一个像素都不变**——声明被接受、
+ * 行为不存在，比不支持更危险）。
  *
  * **这一族是「一行字」的控件**：按钮、分段、芯片、tab、栏里的读数。卡片正文、清单行
- * 标题不进来：它们的墨位由行高与多行基线管，裁掉第一行的半行距会让整块内容上移。 */
-/* **这一族不靠 `text-box-trim`。** 它在这个 Chromium 里 `CSS.supports` 报 true，而
- * `getComputedStyle` 读回来是 `none`——**属性被静默丢弃**，于是「能裁就裁」这条路
- * 在支持声明与实际行为之间差了一整截，而它的失败形态是「什么都没裁」：比不做更糟，
- * 因为代码里写着它做了。
- *
- * 实际依赖的是 `--dsh-tb-optical-drop`：一个**下内衬**，量出来的。谁能改它？
- * `@supports` 的判断若与真实行为不符，就只剩一处真相。所以这里不再声明属性，
- * 那一段在 tokens 表里保留成**探测**（见那里的注释），由探针读真实值判定。 */
+ * 标题不进来：它们的墨位由行高与多行基线管。 */
 .primaryButton,
 .ghostButton,
 .dangerButton,
@@ -151,14 +147,13 @@
      0 18px widening went the wrong way — admitted and reverted here). 13px /
      0 14px lands the two-character label near a 2:1 aspect like the reference
      board; height and radius stay on the shared rhythm, untouched.
-     **The bottom padding is the ink correction** (see `--dsh-tb-optical-drop`): with
-     `align-items: center` the CONTENT BOX is what gets centred, so 2d of extra
-     bottom padding moves the line up by d — a transform on the button would move
-     the box and its text together and correct nothing. */
+     The ink sits centred because the LINE BOX IS THE INK HEIGHT
+     (`--dsh-tb-text-line-h`), not because anything is compensated: `halfLeading`
+     is zero, so ink centre and box centre are the same point for every font. */
   /* **行高 = 墨高**，不留半行距：`halfLeading` 为零时「墨心 = 盒心」自动成立，任何
      字体都一样（见 `--dsh-tb-text-line-h` 那一处的算式）。这里不再有 `padding-block-end`
      校正——那种做法会把整个盒子推上去，读者看到的是「按钮自己偏了」。 */
-  padding: 0 14px;
+  padding-inline: 14px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 500;
   line-height: var(--dsh-tb-text-line-h);
@@ -215,7 +210,7 @@
      while their primary stays 13px — the small pill reads round, the wide one
      reads square-arc, so the two tracks never share type scale). */
   font-size: 12px;
-  padding: 0 12px calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .ghostButton:hover:not(:disabled) {
@@ -224,7 +219,10 @@
 }
 
 .ghostButton:active:not(:disabled) {
+  /* 按下 = 悬浮那一层**再叠一层**（同一枚令牌叠两次），不是同一个值再来一遍：
+     同一个值意味着悬浮与按下在屏上没有区别，按下去就没有回应。 */
   background: var(--dsh-tb-hover);
+  box-shadow: inset 0 0 0 100px var(--dsh-tb-hover);
 }
 
 .ghostButton:disabled {
@@ -270,7 +268,7 @@
   border: 1px solid color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-edge), transparent);
   /* Same quiet density as the ghost twin above (one track, never drift). */
   font-size: 12px;
-  padding: 0 12px calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .dangerGhostButton:hover:not(:disabled) {
@@ -295,7 +293,7 @@
      stays exact instead of drifting 2px under content-box. */
   box-sizing: border-box;
   height: var(--dsh-tb-button-h-sm);
-  padding: 0 10px calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: 10px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-size: 12px;
   border-radius: var(--dsh-tb-pill);
 }
@@ -314,6 +312,8 @@
   cursor: pointer;
   font-size: 14px;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 .iconButton:hover {
@@ -587,7 +587,7 @@
  *      于是段高与轨道内衬是两个各自维护的数；
  *   2. `translateY` 把**盒子**整体上移——它移动的不是字在盒子里的位置，而是盒子
  *      本身。读到的效果就是读者报的「按钮偏上来一点」：上间隙 2.5px、下间隙 0.5px。
- *      墨位校正必须是**下内衬**（见 `--dsh-tb-optical-drop`），因为只有内衬会改变
+ *      墨位校正必须是**行盒高度**（见 `--dsh-tb-text-line-h`），因为只有内衬会改变
  *      内容盒的中心。
  *
  * 现在段高读 `--dsh-tb-segment-h`（由轨道高与轨道内衬推出来，见 tokens 表），
@@ -598,10 +598,10 @@
   justify-content: center;
   box-sizing: border-box;
   block-size: var(--dsh-tb-segment-h);
-  padding: 0 14px calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: 14px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-size: 12px;
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-2);
   background: transparent;
   border: none;
@@ -638,7 +638,7 @@
 /* --- guarded hover for the remaining icon/link buttons (defensive: never
        disabled today, but a disabled element must not react to hover) --- */
 .iconButton:hover:not(:disabled) {
-  background: var(--dsw-alias-interactive-bg-hover);
+  background: var(--dsh-tb-hover);
   color: var(--dsh-tb-text-1);
 }
 
@@ -722,7 +722,7 @@
 }
 
 .tagSwatchNone:hover {
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-hover);
 }
 
 /* The native color input dressed as one round dot of the same size. The wrap
@@ -973,7 +973,7 @@
    * **补上这一行之后同一把尺子量到 205 / 247 / 56，与轨道分毫不差。** */
   box-sizing: border-box;
   height: 34px;
-  padding: 0 12px;
+  padding-inline: 12px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-size: 13px;
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-input-bg);
@@ -1048,18 +1048,18 @@ textarea.input {
  * 受光边——三样一起，是「这个框坐在纸上」的全部证据。
  *
  * 下内衬是墨位校正：`align-items` 对单个 input 不成立，但 input 自己的行盒同样把它
- * 的内容盒居中，所以两倍 `--dsh-tb-optical-drop` 让字墨落在几何中线上（量与判据同
+ * 的内容盒居中，所以行盒等于墨高让字墨落在几何中线上（量与判据同
  * 按钮，见 DESIGN.md 的「墨位」一节）。 */
 .searchField {
   box-sizing: border-box;
   display: block;
   inline-size: 100%;
   block-size: var(--dsh-tb-button-h);
-  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: var(--dsh-tb-space-6); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-family: inherit;
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 400;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   color: var(--dsh-tb-text-1);
   background: var(--dsh-tb-chip-fill);
   border: var(--dsh-tb-border);
@@ -1083,8 +1083,12 @@ textarea.input {
 }
 
 .searchField:focus {
+  /* 焦点环走 `outline`：搜索框的 `box-shadow` 承载纸面（`--dsh-tb-rim-soft`），
+     环也画在同一个属性里就会与材质共用——而那一条冲突在本文件里被记过一次。 */
   border-color: var(--dsh-tb-focus-color);
-  box-shadow: var(--dsh-tb-rim-soft), 0 0 0 3px var(--dsh-tb-focus-ring);
+  box-shadow: var(--dsh-tb-rim-soft);
+  outline: 3px solid var(--dsh-tb-focus-ring);
+  outline-offset: 0;
 }
 
 /* ── THE COMPOSER'S ATTACHMENT STRIP ──────────────────────────────────────────
@@ -1196,6 +1200,8 @@ textarea.input {
      那一圈伸到这枚芯片外面，于是那枚 16px 的「移除」在手机上**点不到**（量到过：
      `outBy 5`，裁剪者就是这枚芯片）。去掉它，环落在芯片里，那一圈才真的算热区。 */
   white-space: nowrap;
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 /* The chip's text is its own truncation item (the chip two-slot grammar):
@@ -1397,6 +1403,12 @@ textarea.input {
   position: relative;
   display: grid;
   grid-auto-flow: column;
+  /* **十字轴必须声明，否则页签坐在轨道顶上。** grid 的 `align-items` 默认是
+     `stretch`，而页签有固定的 `block-size`——两者相抵之后浏览器按**起点**摆放它，
+     于是上间隙 = 内衬 2px、下间隙 = 内衬 + 边 4px：读者看到的就是「上面窄、下面宽，
+     整组往上偏」。量到过：top 2 / bottom 4。
+     与墨位那一轮同一个错法：容器的十字轴没有说清对齐，子项只能落在起点。 */
+  align-items: center;
   /* ── 三条轨道**定宽**，不是「至少 84、能宽就宽」 ────────────────────────────
    *
    * 原来的写法是 `minmax(84px, 1fr)`。`1fr` 在这里拿不到余量（轨道盒子按内容定宽），
@@ -1462,7 +1474,7 @@ textarea.input {
    *
    * 算式读三枚令牌，所以改边宽、改内衬、改轨道高，页签都跟着走，不会再差半格。 */
   block-size: calc(var(--dsh-tb-nav-h) - 2 * var(--dsh-tb-nav-pad) - 2 * var(--dsh-tb-nav-edge));
-  padding: 0 var(--dsh-tb-space-5) calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: var(--dsh-tb-space-5); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border: none;
   border-radius: var(--dsh-tb-pill);
   background: transparent;
@@ -1471,7 +1483,7 @@ textarea.input {
   font: inherit;
   font-size: var(--dsh-tb-type-body-size);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   white-space: nowrap;
   cursor: pointer;
   transition: color var(--dsh-tb-motion), background var(--dsh-tb-motion), box-shadow var(--dsh-tb-motion);
@@ -1515,13 +1527,13 @@ textarea.input {
   box-sizing: border-box;
   min-inline-size: 18px;
   block-size: 20px;
-  padding: 0 5px calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: 5px; padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
   color: var(--dsh-tb-text-1);
   font-size: 11px;
   font-weight: 600;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   font-variant-numeric: tabular-nums;
 }
 
@@ -1585,22 +1597,16 @@ textarea.input {
 .dangerButton > svg,
 .dangerGhostButton > svg {
   flex: none;
-  /* `1lh` 是这一行字自己的行高；图标在它里面居中，于是与文字共享同一条中线。
-     下面那条 `margin-block-end` 与容器的墨位校正**同量**：容器的 `padding-bottom`
-     把内容盒上移了 `2 × drop`，图标若不动，它相对盒子上沿就多出那一档——量到过
-     上 7 / 下 8。一起上移之后两端相等。 */
+  /* **图标盒与文字行等高，两者由容器的一次 `align-items: center` 同时居中。**
+   *
+   * `1lh` 是这一行字自己的行高；而这一族的行高又等于墨高（`--dsh-tb-text-line-h`），
+   * 所以图标盒的上沿、下沿与文字的墨同高——中线自然是同一条，不需要任何 `translate`。
+   *
+   * 试过但不对：`baseline` 对齐（`svg` 的基线在它自己底沿，图标被压到文字底下，量到过
+   * 上 −0.1 / 下 17.1）；以及几次 `translate` 微调（那是在补偿一个不存在的偏差——
+   * 看起来「对了」是因为当时容器的内衬不对称恰好抵消，换一个字号就又会歪）。 */
   block-size: 1lh;
   align-self: center;
-  /* **图标跟文字走同一个 `--dsh-tb-optical-drop`。**
-   *
-   * 容器的墨位校正写在 `padding-block-end: 2 × drop` 上——它把**内容盒**上移半档，
-   * 于是文字的墨落在盒子中央。而图标是另一个子项：它按内容盒居中，内容盒已经上移，
-   * 它也跟着上移了。所以图标**不需要任何补偿**，需要的只是和文字一样高。
-   *
-   * 之前那几次 `translate` 都是在补偿一个不存在的偏差：量到过 1px 时上 7.98 / 下
-   * 7.02，看起来「对了」，但那是因为容器的上内衬是 0、下内衬是 1.04——两处不对称
-   * 恰好互相抵消，换一个字号就又会歪。 */
-  translate: 0 0;
   overflow: visible;
 }
 .workbenchCheck {
@@ -1616,8 +1622,8 @@ textarea.input {
      与 12px 行高的差。
      所以文字一律包一层（`WorkbenchBar` 已经这么做）；这条 `line-height` 是给那道
      包裹缺席时的兜底，不能当作主机制。 */
-  line-height: 1;
-  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  line-height: var(--dsh-tb-text-line-h);
+  padding-inline: var(--dsh-tb-space-6); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-chip-fill);
@@ -1625,7 +1631,7 @@ textarea.input {
   font: inherit;
   font-size: var(--dsh-tb-type-meta-size);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
@@ -1690,7 +1696,7 @@ textarea.input {
   box-sizing: border-box;
   min-inline-size: 0;
   block-size: var(--dsh-tb-button-h);
-  padding: 0 var(--dsh-tb-space-6) calc(2 * var(--dsh-tb-optical-drop));
+  padding-inline: var(--dsh-tb-space-6); padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   border: 1px solid color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
   border-radius: var(--dsh-tb-pill);
   background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash), transparent);
@@ -1698,7 +1704,7 @@ textarea.input {
   font: inherit;
   font-size: var(--dsh-tb-type-meta-size);
   font-weight: 500;
-  line-height: 1;
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 /* 按得动的那一条才给悬停与指针：一条只说话、按不动的警告不该长得像按钮。 */
@@ -1750,8 +1756,14 @@ textarea.input {
   }
 
   .workbenchNav {
-    /* 独占一行（spacer 在它后面，于是右簇落到第二行）。 */
-    flex: 1 1 100%;
+    /* **导航与右簇共处一行，而导航是可收缩的。** 曾经它是 `flex: 1 1 100%`（独占整行，
+       把「检查更新」与出口挤到第二行，左边空着半屏）；改成 `1 1 auto` 之后仍然换行，
+       因为它自己的轨道是**定宽**的 `grid-auto-columns: 100px`——300px 的页签吃掉了整行。
+       所以两件事一起改：外面让它可以被压缩，里面让轨道按可用宽度等分。
+       412 宽上那一行是宝贵的竖向额度，而「去哪 · 检查更新 · 出去」本来就是同一层级的
+       三个去处，挤在一行才读得成一条栏。 */
+    flex: 1 1 auto;
+    min-inline-size: 0;
     grid-auto-columns: minmax(0, 1fr);
   }
 
@@ -1776,4 +1788,58 @@ textarea.input {
   .workbenchStatus[data-empty] {
     display: none;
   }
+}
+
+/* ── 窄档的底部栏杆（`design/ThumbRail.tsx`）──────────────────────────────────
+ *
+ * **它只在窄档出现**，宽档五个动作都摆得下，不需要第二处入口。
+ *
+ * 浮在滚动区上面而不占它的额度：`absolute` 定位在父容器的下沿。父容器负责
+ * `position: relative` 与底部留白（否则最后一行永远被它盖住一半）。
+ *
+ * 纸面读 `--dsh-tb-paper`、边读 `--dsh-tb-border`，与其余表面同一套——一条底栏自己
+ * 挑一个色，就是「同一页上两块纸不是一个材质」。
+ */
+.thumbRail {
+  position: absolute;
+  inset-inline: 0;
+  inset-block-end: 0;
+  z-index: 12;
+  display: none;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  padding: var(--dsh-tb-space-3) var(--dsh-tb-frame-air) calc(var(--dsh-tb-space-3) + env(safe-area-inset-bottom, 0px));
+  background: var(--dsh-tb-paper);
+  /* **没有线，也没有影。** 这一条曾经画过一条 `--dsh-tb-border-soft` 的上边线（读者的
+     原话：「上面怎么还有一条线，很奇怪」），换成 `--dsh-tb-cast-2` 之后更糟——那是**向下**
+     的投影，而这一条贴着容器下沿，向下的部分被裁掉，只剩模糊的边缘往上溢出，看起来是
+     **一条很长的投影线**；改成朝上的 `0 -2px 8px` 之后仍然是一道可见的灰边。
+     结论：这一条与内容是**同一张纸**上的两段，不是一块浮起来的板。它靠自己的纸面与
+     那一档内衬已经说得够清楚，任何一条线或一层影都是多出来的第四种语言。 */
+}
+/* **只有主行动吃满剩下的宽度**：拇指要够得到的是「新建」那一枚，不是每一枚。
+   把 `ghostButton` 也写进来会让「动态」被拉成一条横幅，而旁边的铃铛被挤到边上
+   ——宽窄是对的，主次却是反的。 */
+.thumbRail > :where(.primaryButton) {
+  flex: 1 1 auto;
+  justify-content: center;
+}
+
+.thumbRail > :where(.ghostButton) {
+  flex: none;
+}
+
+.thumbRail > :where(.iconButton) {
+  flex: none;
+}
+
+/* 预览页的栏杆标本：那一枚在宽档 `display: none`（它只在窄档出现），
+   所以标本要先把它的容器放开，否则「摆了一个看不见的东西」。 */
+.thumbRailPreview {
+  position: relative;
+  min-block-size: calc(var(--dsh-tb-button-h) + 3 * var(--dsh-tb-space-3));
+}
+
+.thumbRailPreview .thumbRail {
+  display: flex;
 }

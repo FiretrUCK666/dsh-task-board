@@ -36,7 +36,7 @@
  *     就比偏下少见，而且把它推到 `< 0` 只会让浏览器丢掉整条声明。
  */
 /** The custom property the capsule family reads. One name, one place. */
-export declare const INK_NUDGE_PROPERTY = "--dsh-tb-optical-drop";
+export declare const INK_PROPERTY = "--dsh-tb-optical-drop";
 /** 量到的那四个数，写进日志便于对账。 */
 export interface InkMetrics {
     /** 墨心相对盒心的偏移（px，正 = 墨偏下）。 */

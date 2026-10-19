@@ -104,6 +104,7 @@ import type { ItemListFace } from './register.tsx'
    它读的那几样（去处、状态、出口）由 `chrome.ts` 一处装配：一处装配，三页就不可能各说
    一个数。这一页只负责说「我在清单这一格」。 */
 import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { ThumbRail } from '../design/ThumbRail.tsx'
 import { WorkbenchNotice } from '../design/WorkbenchNotice.tsx'
 import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
@@ -2190,6 +2191,23 @@ export function ItemListPanel(props: ItemListPanelProps) {
               </Button>
             </div>
           </div>
+
+          {/* ══ 窄档的底部栏杆：与看板同一条 ═══════════════════════════════
+            *
+            * 读者对这两页的要求是「和看板统一」，所以主行动在窄档搬到同一条栏杆上
+            * （同一个 `ThumbRail`、同一个 `Button`、同一枚 `PlusIcon`）。顶栏那一枚
+            * 在窄档不画（见样式表），宽档仍在带子里——两处是**同一个动作的两个位置**，
+            * 不是两个入口。
+            *
+            * 为什么这条能省高度：顶栏那一行在窄档要放「数 + 搜索 + 三枚工具」，本来就
+            * 挤成两行；主行动搬走之后那一行只剩搜索与工具，行的数量少一条，而栏杆
+            * 不占内容的额度（`absolute`，浮在列表底部）。 */}
+          <ThumbRail label={t('item.topbar.create')}>
+            <Button variant="primary" onClick={() => openLayer('create')}>
+              <PlusIcon />
+              <span>{t('item.topbar.create')}</span>
+            </Button>
+          </ThumbRail>
 
           {/* THE CHIP ROW IS THE FILTER'S OWN FACE, and it is ALWAYS HERE — below
               the bar, above the rows, in the same column the list is in.

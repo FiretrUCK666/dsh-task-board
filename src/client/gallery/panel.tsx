@@ -39,6 +39,9 @@ import { Dialog } from '../design/Dialog.tsx'
 import { CHIP_KINDS, Chip } from '../design/Chip.tsx'
 import { AttachmentStrip, type AttachmentChip } from '../design/AttachmentStrip.tsx'
 import { WorkbenchBar } from '../design/WorkbenchBar.tsx'
+import { DESIGN_LAWS } from '../design/laws.ts'
+import { PlusIcon } from '../design/ui.tsx'
+import { ThumbRail } from '../design/ThumbRail.tsx'
 import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
@@ -217,6 +220,7 @@ export function DesignGallery() {
         <div className={css.galleryBody}>
         {/* ── 设计变量 ───────────────────────────────────────────────────── */}
         <Section title={t('gallery.tokens')}>
+          <div data-dsh-taskboard-specimen="colours" hidden />
           {GALLERY_TOKEN_GROUPS.map(group => (
             <div key={group.title}>
               <div className={css.gallerySectionHead}>
@@ -283,6 +287,7 @@ export function DesignGallery() {
 
         {/* ── 按钮 ───────────────────────────────────────────────────────── */}
         <Section title={t('gallery.buttons')}>
+          <div data-dsh-taskboard-specimen="buttons" hidden />
           <div className={css.galleryGrid}>
             {BUTTON_VARIANTS.map(variant => (
               <div key={variant} className={css.gallerySpecimen}>
@@ -428,6 +433,129 @@ export function DesignGallery() {
           </div>
         </Section>
 
+        {/* ══ 墨位：一行字在胶囊里居中 ═══════════════════════════════════════
+            三格说同一件事的三个面，读者一眼能看出「行盒」与「墨」不是一回事：
+              1. 单段中文（13px）——基线校准后墨心落在盒心；
+              2. 混排（13px 的词 + 12px 的数）——**每段各自居中**，不靠基线共线；
+              3. 三档字号并排——校正按字号缩放（`em`），所以三格一样齐。 */}
+        <Section title={t('gallery.ink')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="ink">
+              <p className={css.galleryLabel}>13px 中文</p>
+              <span className={components.chip}>今天</span>
+            </div>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="ink">
+              <p className={css.galleryLabel}>混排（词 + 数）</p>
+              <span className={components.chip}>
+                <span>今天</span>
+                <span>1 条</span>
+              </span>
+            </div>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="ink">
+              <p className={css.galleryLabel}>三档字号并排</p>
+              <span className={components.chip}>小 12</span>
+              <span className={components.chip} style={{ fontSize: '15px' }}>大 15</span>
+            </div>
+          </div>
+        </Section>
+
+        {/* ══ 交互：悬浮与按下 ═══════════════════════════════════════════════
+            这一格是**唯一一处悬浮可见性被写给人看的地方**。用指针扫过它：
+            底板与它反向，强度读同一条梯子——所以官方浅色、官方深色、任何第三方
+            皮肤看到的是同一档。曾经的读法（宿主的 4% 墨）在这里是看不见的。 */}
+        <Section title={t('gallery.interaction')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="interaction">
+              <p className={css.galleryLabel}>hover / active（把指针放上来）</p>
+              <Button variant="ghost">{t('gallery.hoverMe')}</Button>
+            </div>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="interaction">
+              <p className={css.galleryLabel}>同一档用在图标键上</p>
+              <button type="button" className={components.iconButton} aria-label={t('gallery.hoverMe')}>
+                <PlusIcon />
+              </button>
+            </div>
+          </div>
+        </Section>
+
+        {/* ══ 表面阶梯：深度的三个来源 ═══════════════════════════════════════
+            这里刻意**没有毛玻璃**：深度只由色调台阶、受光顶边、投影说。 */}
+        <Section title={t('gallery.surfaces')}>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="surfaces">
+              <p className={css.galleryLabel}>纸 / 浮 / 凹</p>
+              {/* 真件，不是画出来的方块：芯片自带纸面、发丝边与投影，那一套就是
+                  表面阶梯在页面上的样子。三档深浅由芯片 / 输入面 / 分段轨道给。 */}
+              <div className={css.gallerySpecimenRow}>
+                <Chip kind="neutral">{t('gallery.surfaceSheet')}</Chip>
+                <Chip kind="success">{t('gallery.surfaceFloat')}</Chip>
+                <span className={components.segmentedRow}>
+                  <span className={components.segmentedButton}>{t('gallery.surfaceRecess')}</span>
+                </span>
+              </div>
+            </div>
+          </div>
+        </Section>
+
+        {/* ══ 外壳几何：换页时位置一个像素都不动 ═════════════════════════════
+            这一格复现栏的骨架（三档页签 + 常驻读数槽），三页共用同一份几何。 */}
+        <Section title={t('gallery.shell')}>
+          <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="shell">
+            <p className={css.galleryLabel}>三档页签 + 读数槽（固定轨道）</p>
+            <WorkbenchBar
+              active="board"
+              tabs={[{ id: 'home', label: t('workbench.tab.home') }, { id: 'board', label: t('workbench.tab.board') }, { id: 'items', label: t('workbench.tab.items') }]}
+              label={t('workbench.navLabel')}
+              status={t('gallery.readoutSpecimen')}
+              checking={false}
+              checkLabel={t('board.update.check')}
+              onCheck={() => {}}
+              exitLabel={t('workbench.exit')}
+              onExit={() => {}}
+              onNavigate={() => {}}
+            />
+          </div>
+        </Section>
+        {/* ══ 承重法则：一条一格，**由法则表驱动** ═════════════════════════
+            这一节不是手写的清单——它 `map` 的是 `design/laws.ts`。加一条法则，
+            这一页自己就多一格；漏了门禁或漏了标本，`verify-design-sync` 会点名。
+
+            为什么这一节必须存在：每一条法则都有三个家（实现、门禁、标本）。
+            前两个家是给人读代码的，第三个是给**看见**的——而「看见」是复用发生的
+            唯一入口：一份没人见过的规矩，下一个人只会照着自己的理解再写一份。 */}
+        {/* ══ 窄档的底部栏杆 ══════════════════════════════════════════════
+            这一格摆的是**真件**，而且**在这一页上真的显示**（它自己的 `display`
+            在宽档是 `none`，所以这里用一格容器把它放开）——标本必须能看见，
+            否则它只是又一次「写在文档里」。 */}
+        <Section title={t('gallery.thumbRail')}>
+          <div data-dsh-taskboard-specimen="rail" hidden />
+          <div className={`${css.gallerySpecimen} ${components.thumbRailPreview}`}>
+            <ThumbRail label={t('gallery.thumbRail')}>
+              <Button variant="primary"><PlusIcon />{t('board.new')}</Button>
+              <Button variant="ghost">{t('board.activity')}</Button>
+            </ThumbRail>
+          </div>
+        </Section>
+        <Section title={t('gallery.laws')}>
+          <div className={css.galleryGrid}>
+            {DESIGN_LAWS.map(law => (
+              <div
+                key={law.id}
+                className={css.gallerySpecimen}
+                /* 机器可读的锚：`verify-design-sync` 逐个确认这些 id 真的被渲染。
+                   写成 `data-*` 而不是注释，因为它要能被**读到**，不是被相信。 */
+                data-dsh-taskboard-specimen={law.specimen ?? law.id}
+              >
+                <p className={css.galleryLabel}>{law.id}</p>
+                <p className={css.galleryNote}>{law.law}</p>
+                <p className={css.galleryNote}>{law.why}</p>
+                {law.gate !== undefined && (
+                  <p className={css.galleryNote}>{`guarded by ${law.gate}`}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        </Section>
         {/* ── 表单字段：外壳、三种控件、错误态与说明 ──────────────────────────
             每一格都渲染真件，所以「题头的档位、控件的盒高、错误态的那条线」在这里
             就是它们在页面上的样子，而不是一份看起来像它们的仿制品。 */}
