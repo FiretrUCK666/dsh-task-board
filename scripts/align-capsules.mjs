@@ -200,19 +200,29 @@ function isFixedHeight(body) {
 }
 
 /**
- * 这条规则是不是**认领了校正**。
+ * 这条规则是不是**一枚装字的定高胶囊**。
  *
- * 这是本脚本的判据分岔口，也是它唯一一次读「作者自己的意图」：一条规则写了校正，
- * 就是作者在说「这一枚装着一行需要校正的字」。于是**不需要门禁去猜它装的是不是字**：
- * 装了，就必须赢；没写，就交给渲染探针去问「这一枚到底该不该有」。
+ * 判据三样，全部读结构：
+ *   1. 圆角解析到底 = 胶囊那一档（`--dsh-tb-pill` 的值）；
+ *   2. 有块向定高（`block-size` / `height`，或 `min-block-size`）——一枚胶囊是
+ *      「一行字的定高盒子」，没有定高的圆角盒子是段落，不归这里管；
+ *   3. 有**居中手段**：`align-items: center`，或者这条规则自己声明了 `line-height`
+ *      （行盒撑满内容盒的写法，输入框走这一条），或者它把自己声明成 flex/grid。
  *
- * 为什么必须这样分：静态分析**读不到 DOM**，所以「这个盒子有没有文本子节点」它答不了。
- * 早先试过用「声明了字号 / 是 button 选择器」去近似，结果 `.cardBadge` 漏网（它复用
- * `Chip` 的形状、字号在父级那一族），而 `.mixedRowDot`、`.pipeTrack` 这些纯色记号被
- * 误报——检查器逼着人改对的东西（硬性规范 14）。分岔之后两个方向都干净了。
+ * 第 3 条是这一轮补的，它抓的正是上一版漏掉的那一类：`.itemTag` 把居中写在一条
+ * 共享基座 `:where(.itemOpt, .itemPrioChip, .itemTag)` 里，自己一条声明都没有。
+ * 旧判据（「这条规则有没有写校正」）对它直接跳过——于是它既没有校正，也不在网里，
+ * 而屏幕上它是偏的。判据换成「它是一条胶囊吗」之后，这类跨规则拼出来的胶囊才进得来。
+ *
+ * 纯色记号（进度槽、抓握条）会落进第 1、2 条，但落不进第 3 条：它们既不居中、也不
+ * 声明行高，因为它们不装字。
  */
-function claimsCorrection(body) {
-  return /var\(--dsh-tb-optical-drop\)/.test(body)
+function isTextCapsule(selector, body, properties) {
+  if (!isCapsule(body, properties)) return false
+  if (!isFixedHeight(body)) return false
+  return /align-items\s*:\s*center/.test(body)
+    || /line-height\s*:/.test(body)
+    || /display\s*:\s*(inline-)?(flex|grid)/.test(body)
 }
 
 /** 一条规则里管块向内衬的声明，按出现顺序。 */
@@ -256,10 +266,7 @@ export function audit(root) {
     for (const rule of rulesOf(css)) {
       /* at-rule 的前导（`@container (…)`）不是一条规则，它体里装的是别的规则。 */
       if (rule.selector.startsWith('@')) continue
-      /* **只看认领了校正的规则。** 没认领的不归这个脚本判：它装不装字是 DOM 的事实，
-         静态分析读不到，硬猜只会误报或漏报（两种都发生过，见 `claimsCorrection`）。 */
-      if (!claimsCorrection(rule.body)) continue
-      if (!isCapsule(rule.body, properties)) continue
+      if (!isTextCapsule(rule.selector, rule.body, properties)) continue
       const verdict = effectiveCorrection(rule.body)
       if (verdict.ok) continue
       findings.push({

@@ -1833,6 +1833,8 @@
   border-radius: var(--item-radius-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .itemGroupWhy:hover,
@@ -2423,6 +2425,8 @@ button.itemRowCardChip {
   color: var(--item-ink-2);
   background: var(--item-fill);
   border: var(--item-hair-strong);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* ⋮ 是一个控制，所以它有一块**命中区**，悬停时画一块底，而不是改字的颜色。
@@ -2518,6 +2522,8 @@ button.itemRowCardChip {
   color: var(--item-ink-2);
   background: none;
   border: var(--item-hair);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .itemPrioChip i {
@@ -3748,6 +3754,8 @@ textarea.itemInput {
   border-radius: var(--item-radius-pill);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .itemCreateDialogClose:hover {
@@ -4668,6 +4676,8 @@ textarea.itemInput {
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
   outline: none;
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 .itemOptNaming:focus {
@@ -4729,10 +4739,15 @@ textarea.itemInput {
   inline-size: 100%;
   min-inline-size: 0;
   padding: 0 8px;
-  /* **行盒 = 内容盒高（高度 − 上下两条边）。** 输入框没有孩子，`align-items` 够不着它，
-     行盒等于内容盒高才是它真正的居中手段；写死 16 只会让它在 20px 的盒子里坐上沿。
-     相邻那些标签的 16px 行盒由它们自己的 `align-items: center` 居中，两者仍然同一条线。 */
-  line-height: calc(var(--dsh-tb-chip-h) - 2px);
+  /* **行盒 = 内容盒高（高度 − 上下两条边 − 墨位校正）。** 输入框没有孩子，
+     `align-items` 够不着它，行盒等于内容盒高才是它真正的居中手段；写死 16 只会让它在
+     20px 的盒子里坐上沿。相邻那些标签的 16px 行盒由它们自己的 `align-items: center`
+     居中，两者仍然同一条线。
+
+     **必须减掉校正那一档。** 写完 `padding-block` 之后内容盒就矮了那一档（20 − 2 − 1），
+     而行盒若仍按 18 算就**高出内容盒**——输入框的行盒由 `line-height` 定、不会被内衬挤动，
+     于是溢出、基线不动，校正一次都不生效（量到过：整条 `.itemTagAdd` 的 `moved` 是 0）。 */
+  line-height: calc(var(--dsh-tb-chip-h) - 2px - max(0px, var(--dsh-tb-optical-drop)));
   font-size: 12px;
   /* 与 `.itemOpt` 同一条：输入框的字也必须是产品字栈的。 */
   font-family: inherit;
@@ -4741,6 +4756,8 @@ textarea.itemInput {
   border: var(--item-hair-strong);
   border-radius: var(--item-radius-pill);
   outline: none;
+  /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+  padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
 }
 
 /* **这一格由里面那两样东西里更宽的那一样定宽**：输入框（`inline-size: 100%`，跟着格子）与

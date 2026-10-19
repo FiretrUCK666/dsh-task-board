@@ -119,17 +119,19 @@ export function publishInkMetrics(): InkMetrics | undefined {
   const metrics = measureInkMetrics()
   if (metrics === undefined) return undefined
 
-  /* 死区：已经居中的设备（|offset| < DEAD_ZONE）**一位都不动**，它本来就不需要校正。
-     **方向不设限**：符号决定 CSS 用哪一侧的内衬，两个方向都是有效值——只发正值会
-     让「墨天生偏上」的那款字体永远收不到校正，而那种机器上看到的正是「整体偏上」。
-     发布的是内衬量（偏移 × 2），单位是 em（比例，不是参考字号下的像素）：内衬只把
-     内容盒挤向一侧，盒心移动量是内衬的一半，所以乘 2；em 让同一枚令牌在每一档字号上
-     各自算出正确的量。 */
-  const wanted = Math.abs(metrics.offset) >= DEAD_ZONE ? (metrics.offset * 2) / REFERENCE_SIZE : 0
-  /* 四位小数约等于 0.005px（在 13px 的字上），比任何浏览器会画出来的差别都小，
-     而且它必须够细：偏移本身常常只有半像素，粗一位就把结论改掉。 */
-  const rounded = Math.round(wanted * 10000) / 10000
-  const next = rounded === 0 ? '' : `${rounded}em`
+  /* 死区：|offset| 小到读不出来时不动。
+     **方向不设限**：符号决定 CSS 用哪一侧的内衬，两个方向都是有效值。
+     **乘 2**：内衬只挤内容盒，盒心移动量是内衬的一半。
+
+     **单位是 px，不是 em。** 量过的数（`probe-decl-geometry.js`）：本项目所有胶囊
+     ——28px 的按钮、26px 的页签、20px 的小件、20px 的芯片——需要的下内衬**都是
+     1.00px**，与字号、盒高、行高无关。原因是墨心偏移只取决于「字体的上下沿不对称」，
+     而那是字体自己的常数：换字号时行盒与墨一起缩放，但**盒子的余量**（盒高减行盒）
+     按另外一档走，两者恰好相抵。
+     em 会把校正按字号缩放（12px 上 0.86px、16px 上 1.14px），而实测需要的是同一个
+     1.00px——所以 em 在这里既过校正小的、又欠校正大的。 */
+  const wanted = Math.abs(metrics.offset) >= DEAD_ZONE ? Math.round(metrics.offset * 2 * 100) / 100 : 0
+  const next = wanted === 0 ? '' : `${wanted}px`
 
   const seat: HTMLElement | null = document.documentElement
   const current = seat.style.getPropertyValue(INK_PROPERTY)
