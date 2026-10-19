@@ -81,8 +81,45 @@ function readdirRecursive(dir) {
   return out
 }
 
-/** 守视觉法则的门禁脚本：必须在表里有条目。 */
-const VISUAL_GATES = ['verify-capsule-centring.mjs']
+/**
+ * 「守视觉法则的门禁」= **自动发现，不是手写名单**。
+ *
+ * 判据只有一条：`pnpm verify` 调用了它，而且它的名字说明它守的是界面。名字那一半
+ * 用前缀表达——`verify-*` 与 `align-*` 是本仓库里「检查/对齐界面」的两个既有前缀
+ * （`verify-palette`、`verify-capsule-centring`、`align-capsules`）。
+ *
+ * **为什么不能写死一张名单**：我刚写第一版就漏了自己——新加的 `align-capsules.mjs`
+ * 不在名单里，于是它在法则表外独自活着，而脚本一声不吭。这与清单页加 29 处校正、
+ * 看板页一处没加是**同一个错误**：一条约定如果有第二个地方要同步，就不该靠人记。
+ *
+ * 所以反方向（门禁 → 表）也从 `verify` 的实际调用清单里长出来：加一个门禁、忘了
+ * 登记，这里就红；而名字不带这两个前缀的脚本（`sync-toc`、`smoke-client`）不会被
+ * 误抓，因为它们守的不是界面。
+ */
+const GATE_PREFIXES = ['verify-', 'align-']
+
+/** 守界面的门禁：`verify` 真的调用了它们，且名字带那两个前缀之一。 */
+export function visualGates(root) {
+  return [...gatesCalledByVerify(root)]
+    .filter((name) => GATE_PREFIXES.some((prefix) => name.startsWith(prefix)))
+    /* `verify-standalone` / `verify-host-contracts` / `verify-action-coverage` 守的是
+       仓库、宿主契约与动作目录，不是画出来的东西——它们不进这张表。 */
+    .filter((name) => !NON_VISUAL.has(name))
+    .sort()
+}
+
+/**
+ * 守的不是「画出来的东西」的门禁，明列在此。
+ *
+ * 这是**唯一**允许存在的手写名单，而它列的是**例外**：漏一项的后果是「那个脚本被
+ * 要求登记进法则表」——一条红，不是在屏幕上出问题。方向是安全的。
+ */
+const NON_VISUAL = new Set([
+  'verify-standalone.mjs',
+  'verify-host-contracts.mjs',
+  'verify-action-coverage.mjs',
+  'verify-design-docs.mjs',
+])
 
 export function check(root) {
   const laws = lawsFrom(root)
@@ -106,9 +143,9 @@ export function check(root) {
     }
   }
 
-  for (const gate of VISUAL_GATES) {
+  for (const gate of visualGates(root)) {
     if (!laws.some((law) => law.gate === gate)) {
-      problems.push({ kind: 'unlisted', detail: `scripts/${gate} 在守一条视觉法则，但 design/laws.ts 里没有它的条目——下一个人只会看到一条红，不知道为什么。` })
+      problems.push({ kind: 'unlisted', detail: `scripts/${gate} 在守界面，但 design/laws.ts 里没有它的条目——下一个人只会看到一条红，不知道为什么。` })
     }
   }
 

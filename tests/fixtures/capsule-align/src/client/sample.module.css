@@ -1,0 +1,9 @@
+/* 自测素材：一个**缺校正**的胶囊（声明了 pill 圆角却没读那枚令牌）。
+   门禁必须报出它，否则说明这条检查是死的。 */
+.missingCorrection {
+  display: inline-flex;
+  align-items: center;
+  block-size: var(--dsh-tb-button-h);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-wash);
+}

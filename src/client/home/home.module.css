@@ -274,6 +274,8 @@
  * 按盒心居中即与文字的中线重合。留着那条下沉，量到的结果正好是圆点比文字低 1px——
  * 它在补偿一个已经不存在的偏差。 */
 [data-dsh-taskboard-view] .homeStatusDot {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   align-self: center;
   inline-size: var(--dsh-tb-dot);
@@ -308,6 +310,8 @@
  * 上，不在页面上。槽里的填充是墨的淡洗底，不是第二种色相：色相在这张卡里已经由那颗点
  * 说了，条只负责「多少」。宽度在数据变化时走 `--dsh-tb-motion-lift`。 */
 [data-dsh-taskboard-view] .pipeTrack {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   align-self: center;
   min-inline-size: 0;
   block-size: 6px;

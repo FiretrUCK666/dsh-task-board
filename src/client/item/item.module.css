@@ -5338,6 +5338,8 @@ textarea.itemInput {
 
 /* 一段提示。空着的一行是读者第一条行上方的一条什么都没有的东西，所以它不占行。 */
 .itemHint {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   font-size: 11px;
   font-weight: 400;
   line-height: 16px;

@@ -776,6 +776,8 @@
 }
 
 .cruisePill {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   gap: var(--dsh-tb-space-1);
   /* 同一排控件同级高: the pill rides the 28px button row beside 新建任务 and
      the search field (its 22px switch is centered inside the 28px frame). */
@@ -791,6 +793,8 @@
 }
 
 .cruiseMore {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -987,6 +991,8 @@
 }
 
 .timeFieldCalendar {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   display: inline-flex;
   align-items: center;
@@ -1559,6 +1565,8 @@
    button). It is a span acting as a button, because nesting a <button>
    inside the card's own <button> would be invalid HTML. */
 .cardQuickRun {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: absolute;
   top: 8px;
   right: 8px;
@@ -1866,6 +1874,8 @@
    The gap still does the separating; this is what gives the gap something to
    separate. */
 .cardBadge {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   /* 小件只有一个高：20px（`--dsh-tb-chip-h`）。border-box 是承重的——1px 的
      描边与内衬算在这 20px 里，否则同一行里外框高矮不一。 */
   box-sizing: border-box;
@@ -2976,6 +2986,8 @@
 }
 
 .runPresetDefaultBadge {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   padding: 1px 8px;
   font-size: 12px;
@@ -3040,6 +3052,8 @@
 }
 
 .promptCopy {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: absolute;
   top: 8px;
   right: 8px;
@@ -3663,6 +3677,8 @@
 }
 
 .sessionRowWorkspace {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   /* Shrinkable + ellipsized: a long workspace name must never push the row's
      actions group (查看会话/隐藏) out of the row and over the title — the one
      grammar every inline pill follows (Chip's .chipBody). */
@@ -4843,6 +4859,8 @@
    segments — the native ContextMeter look. Tints ride the shared
    --meter-tint custom property set by each segment's class. */
 .reviewMeterBar {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: flex;
   gap: 1px;
   height: 4px;
@@ -5293,6 +5311,8 @@
    hovers above the content's bottom-right; sized explicitly so it can never
    balloon, and lifted with a soft shadow like a floating Apple control. */
 .reviewJumpLatest {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: sticky;
   bottom: 8px;
   align-self: flex-end;

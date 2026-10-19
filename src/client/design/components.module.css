@@ -343,6 +343,8 @@
 }
 
 .switchTrack {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: relative;
   flex: none;
   width: 38px;
@@ -567,6 +569,8 @@
 }
 
 .segmentedRow {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: inline-flex;
   gap: var(--dsh-tb-space-2);
   padding: var(--dsh-tb-segment-pad);
@@ -1153,6 +1157,8 @@ textarea.input {
 }
 
 .attachAdd {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1400,6 +1406,8 @@ textarea.input {
 }
 
 .workbenchNav {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   position: relative;
   display: grid;
   grid-auto-flow: column;
@@ -1649,6 +1657,8 @@ textarea.input {
 }
 
 .workbenchExit {
+/* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
+padding-block: max(0px, calc(-1 * var(--dsh-tb-optical-drop))) max(0px, var(--dsh-tb-optical-drop));
   flex: none;
   display: inline-flex;
   align-items: center;
