@@ -47,12 +47,29 @@ function stripComments(source) {
   return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
-/** `pnpm verify` 到底调了哪些脚本。 */
+/**
+ * `pnpm verify` 到底调了哪些脚本。
+ *
+ * 有一条间接：`run-gates.mjs` 会把它发现的**每一个** `verify-*.mjs` 都跑一遍（并跑
+ * 各自的每个自测）。所以 `verify` 里出现 `run-gates` 就等于**全部**门禁都被调用了
+ * ——它是那个「门禁清单」的唯一来源，不在这里再抄一份名单。
+ *
+ * 为什么必须认这一条：`verify` 原先逐行列出每个脚本，于是每加一个门禁要手改
+ * `package.json`；`run-gates` 把那一步去掉之后，这条检查若还只认逐行列举，就会把
+ * 「已经全都在跑」误报成「一条都没接线」。接线方式换了，检查读的正是接线方式。
+ * @param root - 仓库根。
+ * @returns 被调用的脚本文件名集合。
+ */
 export function gatesCalledByVerify(root) {
   const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
   const verify = pkg.scripts?.verify ?? ''
   const called = new Set()
   for (const match of verify.matchAll(/scripts\/([\w.-]+\.mjs)/g)) called.add(match[1])
+  if (called.has('run-gates.mjs')) {
+    for (const one of readdirSync(join(root, 'scripts'))) {
+      if (one.startsWith('verify-') && one.endsWith('.mjs')) called.add(one)
+    }
+  }
   return called
 }
 
