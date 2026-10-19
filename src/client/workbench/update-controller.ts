@@ -194,7 +194,19 @@ export class UpdateController {
       // "Cannot tell" is not "up to date" and must not be a dead end: open the
       // dialog, say it cannot tell, and leave the way out (command / one press)
       // where it already is.
-      if (source.mode === 'npm' && source.latest === undefined) {
+      //
+      // **Two ways to be unable to tell, one rule.** The first is a registry
+      // answer that never arrived. The second is a checkout whose git state is
+      // unreadable (`source.git === undefined`: no `git` binary, or not a repo).
+      // A checkout's newest IS its remote branch, so with no git status this
+      // copy has nothing to compare — and falling through to `restAfter('latest')`
+      // would print 「已是最新」 for a question that was never answered, and hide
+      // the dialog (with it the update command) behind a claim the reader cannot
+      // check. `update-route.ts` states that "cannot tell" must never be dressed
+      // up as "already newest"; this is where that would have happened.
+      const cannotTell = (source.mode === 'npm' && source.latest === undefined)
+        || (source.mode === 'local' && source.git === undefined)
+      if (cannotTell) {
         this.phase = 'undetermined'
         this.open = true
         this.emit()

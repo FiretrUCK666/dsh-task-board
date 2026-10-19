@@ -397,6 +397,51 @@ describe('readLatest', () => {
     expect(elapsed, `第一条要 5 秒，读取却等了 ${String(elapsed)}ms——并发读没有生效`).toBeLessThan(2_500)
   })
 
+  it('a public registry written without its trailing slash is still recognised as public', async () => {
+    /* 「谁算公共源」是按**身份**判的，不是按字面。宿主的 `normalizeRegistry` 今天会
+       补上结尾斜杠，但那是它的实现细节、不是契约；一旦某个来源给出没有斜杠的地址，
+       精确比较就会把**公共源**判成「用户自己配的源」，于是这次读取只问它一个、
+       不再回退镜像——而镜像正是「墙内也能用」的全部理由。 */
+    const asked = answerWith([
+      { url: 'https://registry.npmjs.org', body: { 'dist-tags': { latest: '9.9.9' } } },
+    ])
+    const latest = await readLatest(ctxOf({ resolved: 'https://registry.npmjs.org' }), { mode: 'npm' })
+    /* 判据一：它被当成公共源，所以镜像也在候选里（这次没有可答的镜像，但读取要能
+       正常完成并且拿到的正是那个源）。 */
+    expect(latest?.version).toBe('9.9.9')
+    /* 判据二：反向——同一个地址若被误判成 own，就只会问它一个。这里它答了，
+       所以两种判法都会成功；真正区分它们的是**没有答案时**会不会回退。
+       用一个答不出的公共源，看它是否还在自己的候选里。 */
+    const silent = answerWith([])
+    const none = await readLatest(ctxOf({ resolved: 'https://registry.npmjs.org' }), { mode: 'npm' })
+    expect(none, '读不到就应该是读不到，不能凭空造一个').toBeUndefined()
+    expect(silent.length, '两个公共源都该被问到：地址少一个斜杠不该让它变成「用户自己的源」').toBeGreaterThan(1)
+    expect(asked.length).toBeGreaterThan(0)
+  })
+
+  it('a profile with its own registry never asks the public ones, even when its own cannot answer', async () => {
+    /* **这条钉的是隐私，不是性能。** 用户配了自己的源（内网 registry、公司镜像）
+       就等于说「我的依赖情况只进这个源」。这时去问 `registry.npmjs.org` 会把
+       「这台机器在查这个包」告诉一个他没授权的地方——而那正是他配置私有源想避免的事。
+
+       私有源答不出之后，`readLatest` 会去问**仓库**（`api.github.com` / `raw`），
+       那是既有的第二层回退：两者都是这个包自己的公开仓库，与「把依赖清单交给公共
+       registry」不是同一件事。所以判据是**公共 registry 一个都没被问**。 */
+    const asked = answerWith([
+      /* 私有源没有这个包。 */
+      { url: 'https://mirror.internal/', status: 404 },
+      /* 公共源**会**答——它必须没被问到。 */
+      { url: 'https://registry.npmjs.org/', body: { 'dist-tags': { latest: '9.9.9' } } },
+    ])
+    const latest = await readLatest(ctxOf({ resolved: 'https://mirror.internal/npm/' }), { mode: 'npm' })
+    expect(latest, '私有源答不出，却拿公共 registry 的答案顶上——那是一次未授权的对外询问').toBeUndefined()
+    const registryAsks = asked.filter((one) => one.startsWith('https://registry.'))
+    expect(registryAsks, `问了公共 registry：${registryAsks.join(', ')}——用户配了私有源，那些一个都不该被问到`)
+      .toEqual([])
+    /* 私有源自己**必须**被问到（否则这条用例在测「什么都没问」）。 */
+    expect(asked.some((one) => one.startsWith('https://mirror.internal/')), '私有源根本没被问到').toBe(true)
+  })
+
   it('asks its own registry first and stops at the first answer', async () => {
     // The reader this replaces asked `registry.npmjs.org` and nothing else, so a
     // reader behind a mirror — the very reader who chose that mirror when

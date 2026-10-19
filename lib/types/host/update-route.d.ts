@@ -160,29 +160,40 @@ export interface RegistryPlanLike {
     resolved?: unknown;
 }
 /**
- * The registries to ask, in order, for the plan an installation service
- * reported.
+ * The registries to ask for the plan an installation service reported.
  *
  * Pure, and separate from the service call that produces the plan, because the
  * ORDER is the part with a rule in it: the profile's own plan first (it knows
  * the mirrors, private sources, proxies and credentials this installation
  * really uses), then the public pair.
  *
- * Asking the public pair after a private source is safe here because the only
- * thing ever asked for is THIS package, which is public: a private source that
- * answers ends the walk before a public one is reached, and a private source
- * that does not carry the package is exactly the case where the public answer
- * is the right one.
+ * **The order is a priority, not a walk.** `registriesFor` splits this list into
+ * "the reader's own sources" and the rest, and asks ONLY the own sources when
+ * there are any: a user-configured mirror is the only source asked, because
+ * asking the public mirrors would tell them "this machine looks up this package".
+ * The public entries below are a fallback for a profile that configured nothing,
+ * not a second opinion for one that did. Reading this order as "a private source
+ * that misses falls through to the public one" is exactly the reading the privacy
+ * rule forbids — see `registriesFor`.
+ *
  * @param plan - the service's plan, or undefined when it reported none.
- * @returns the registry base URLs, in the order to ask them, without repeats.
+ * @returns the registry base URLs, in priority order, without repeats.
  */
 export declare function registryOrderOf(plan: RegistryPlanLike | undefined): string[];
 /**
  * The newest upstream for this copy, as this host can read it.
  *
- * A registry install asks the profile's own registries in order; a repository
- * install reads the version the default branch declares and the commit that
- * branch is on. A checkout is compared by its own git state instead (see
+ * A registry install asks the profile's own registries first and the public pair
+ * only when the profile configured none (see `registriesFor`); within one tier the
+ * candidates are **hedged**, not serial — the next one starts after
+ * `HEDGE_AFTER_MS`, and the first *successful* answer wins.
+ *
+ * A repository install reads the version the default branch declares. It does
+ * **not** read the commit that branch is on: this view answers "what version is
+ * upstream", and a commit SHA in the same field would be a different question
+ * wearing the same shape.
+ *
+ * A checkout is compared by its own git state instead (see
  * {@link readGitStatus}), so it has nothing to read here.
  *
  * Anything unreadable is reported as absent. That is the whole contract: the

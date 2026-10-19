@@ -822,6 +822,30 @@ describe('the update dialog, driven through the header button', () => {
     unmount()
   })
 
+  it('a checkout with no readable git state cannot claim "up to date"', async () => {
+    /* 一个 checkout 的「最新」是它自己的远端分支，所以 git 状态读不到时它**没有**
+       可比较的东西（没有 `git` 命令，或那个目录不是仓库）。这时落到「已是最新」就是
+       把一个没被回答的问题印成答案，并且顺手把对话框——连同更新命令——藏在那句
+       读者无法核实的断言后面。
+       `update-route.ts` 明说「无法确认」不许被打扮成「已是最新」，这条守的就是那一步。 */
+    stubUpdateFetch({
+      view: () => viewOf({ mode: 'local', latest: undefined, git: undefined, plan: {
+        mode: 'local', appManaged: false, apply: 'checkout',
+        steps: [{ command: 'git', args: ['pull', '--ff-only'] }],
+      } }),
+    })
+    const { host, unmount } = await mountBoard({})
+    await clickLabel(host, t('board.update.check'))
+    const dialog = dialogIn(host)
+    expect(dialog.textContent, '读不到 git 状态，却被告知「已是最新」')
+      .not.toContain(t('board.update.latest'))
+    expect(dialog.textContent, '对话框开了却没有说明「判断不了」及为什么，读者只看到一个空壳')
+      .toContain(t('board.update.gitUnreadable'))
+    // 不是死路：那条 checkout 的命令仍在。
+    expect(dialog.textContent).toContain('git')
+    unmount()
+  })
+
   it('cannot read the latest version without saying so, and never says "up to date"', async () => {
     // The three-state verdict, driven through the screen: a host that could not
     // reach its registry must not arrive as a conclusion.

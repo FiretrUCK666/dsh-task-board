@@ -565,21 +565,24 @@ export interface RegistryPlanLike {
 }
 
 /**
- * The registries to ask, in order, for the plan an installation service
- * reported.
+ * The registries to ask for the plan an installation service reported.
  *
  * Pure, and separate from the service call that produces the plan, because the
  * ORDER is the part with a rule in it: the profile's own plan first (it knows
  * the mirrors, private sources, proxies and credentials this installation
  * really uses), then the public pair.
  *
- * Asking the public pair after a private source is safe here because the only
- * thing ever asked for is THIS package, which is public: a private source that
- * answers ends the walk before a public one is reached, and a private source
- * that does not carry the package is exactly the case where the public answer
- * is the right one.
+ * **The order is a priority, not a walk.** `registriesFor` splits this list into
+ * "the reader's own sources" and the rest, and asks ONLY the own sources when
+ * there are any: a user-configured mirror is the only source asked, because
+ * asking the public mirrors would tell them "this machine looks up this package".
+ * The public entries below are a fallback for a profile that configured nothing,
+ * not a second opinion for one that did. Reading this order as "a private source
+ * that misses falls through to the public one" is exactly the reading the privacy
+ * rule forbids — see `registriesFor`.
+ *
  * @param plan - the service's plan, or undefined when it reported none.
- * @returns the registry base URLs, in the order to ask them, without repeats.
+ * @returns the registry base URLs, in priority order, without repeats.
  */
 export function registryOrderOf(plan: RegistryPlanLike | undefined): string[] {
   const ordered: string[] = []
@@ -594,6 +597,27 @@ export function registryOrderOf(plan: RegistryPlanLike | undefined): string[] {
   for (const item of PUBLIC_REGISTRIES) add(item)
   return ordered
 }
+
+/**
+ * 一个 registry 地址的**身份**：比较时只看这个，不看它写成什么样。
+ *
+ * 为什么要归一化再比：`PUBLIC_REGISTRIES` 里的两个值是常量（带结尾斜杠），而
+ * `order` 里的值来自宿主安装服务。两者**今天**恰好一字不差（DSH 的
+ * `normalizeRegistry` 会小写主机名并补上斜杠），但那是宿主的实现细节，不是契约。
+ * 一旦某个来源给出 `https://registry.npmjs.org`（少一个斜杠），精确比较就会把
+ * **公共源判成「用户自己的源」**——于是这次读取只问 npmjs、不问 npmmirror，
+ * 而镜像回退正是「墙内也能用」的全部理由。
+ *
+ * 所以判据是身份：小写、去结尾斜杠。这样写法的差异不再能改变「谁算公共源」。
+ * @param url - 一个 registry 地址。
+ * @returns 用于比较的规范形式。
+ */
+function registryIdentityOf(url: string): string {
+  return url.trim().toLowerCase().replace(/\/+$/, '')
+}
+
+/** 公共源的规范形式，算一次。 */
+const PUBLIC_IDENTITIES: ReadonlySet<string> = new Set(PUBLIC_REGISTRIES.map((one) => registryIdentityOf(one)))
 
 /**
  * The registries to ask for this host, from its installation service when it has
@@ -621,8 +645,10 @@ async function registriesFor(ctx: Context): Promise<{ own: string[]; order: stri
   }
   const order = registryOrderOf(plan)
   /* 用户自己的源 = 完整次序里那些**不在公共名单里**的项。这样判断与
-     `registryOrderOf` 的构造方式一致，不必在第二处重复「谁算公共」。 */
-  const own = order.filter((url) => !PUBLIC_REGISTRIES.includes(url))
+     `registryOrderOf` 的构造方式一致，不必在第二处重复「谁算公共」。
+     比较的是**身份**而不是字面（见 `registryIdentityOf`）：一个少写斜杠的公共地址
+     不该被误判成用户自己配的源，否则镜像回退会静默消失。 */
+  const own = order.filter((url) => !PUBLIC_IDENTITIES.has(registryIdentityOf(url)))
   return { own, order }
 }
 
@@ -758,9 +784,17 @@ function hedgeFor<T>(
 /**
  * The newest upstream for this copy, as this host can read it.
  *
- * A registry install asks the profile's own registries in order; a repository
- * install reads the version the default branch declares and the commit that
- * branch is on. A checkout is compared by its own git state instead (see
+ * A registry install asks the profile's own registries first and the public pair
+ * only when the profile configured none (see `registriesFor`); within one tier the
+ * candidates are **hedged**, not serial — the next one starts after
+ * `HEDGE_AFTER_MS`, and the first *successful* answer wins.
+ *
+ * A repository install reads the version the default branch declares. It does
+ * **not** read the commit that branch is on: this view answers "what version is
+ * upstream", and a commit SHA in the same field would be a different question
+ * wearing the same shape.
+ *
+ * A checkout is compared by its own git state instead (see
  * {@link readGitStatus}), so it has nothing to read here.
  *
  * Anything unreadable is reported as absent. That is the whole contract: the
@@ -900,8 +934,9 @@ export async function readLatest(
     /* GitHub 的 contents 接口与 raw 读的是**同一份文件**，只是前者走 `api.github.com`。
        `Accept: raw` 让响应正文就是文件本身，不必解 base64。
        **两条路并发**：实测 `raw.githubusercontent.com` 在某些网络下 SSL 连接被切断，
-       而 `api.github.com` 通——反过来也见过。串行时被切断的那条要等满超时才轮到通的那条，
-       并发则取先到的那个。 */
+       而 `api.github.com` 通——反过来也见过。串行时被切断的那条要等满超时才轮到通的那条。
+       取舍取的是第一个**成功**的（不是第一个结束的）：连接被拒往往比正常返回更快，
+       按「先到」取会把一个能答的源判掉。 */
     const base = rawBaseOf(GITHUB_SPEC)
     const versionOf = (document: unknown): string | undefined => {
       const version = (document as { version?: unknown } | undefined)?.version

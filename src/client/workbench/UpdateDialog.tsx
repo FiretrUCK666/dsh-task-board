@@ -191,6 +191,14 @@ export function UpdateDialog() {
           && git.remoteHead !== undefined && (
           <p className={css.hint}>{t('board.update.gitUpToDate')}</p>
         )}
+        {/* **读不到 git 状态，是一种要说清的状态，不是一句「已是最新」。**
+            一个 checkout 的「最新」就是它自己的远端分支；这个目录不是仓库、或机器上
+            没有 git 命令时，它没有任何可比较的东西。这时对话框仍然打开（否则读者连
+            更新命令都看不到），但必须说明「判断不了」以及为什么——把一件没被回答的
+            事印成答案，是这个功能最容易犯、也最难核实的那种谎。 */}
+        {source?.mode === 'local' && git === undefined && (
+          <p className={css.hint}>{t('board.update.gitUnreadable')}</p>
+        )}
         {/* 读不出装法时**没有命令可给**，那是一种要说清的状态：不是「检查失败」，而是
             「这份 profile 里没有这个包的安装声明」。读者据此知道该按当初装它的方式重装，
             而不是以为按钮坏了。 */}
