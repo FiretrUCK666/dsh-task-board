@@ -43,17 +43,53 @@ export declare function selectedCount(selection: ItemSelection): number;
  * would show no pickbox and the bar would be gone, so the held rows would be
  * invisible AND still writable. An invisible write is the failure this whole
  * mechanism exists to make impossible.
+ *
+ * **ARMED WITH NOTHING HELD IS ONLY SAFE WHILE THE SCREEN HAS ROWS.** Turning the
+ * mode on is the reader's act and happens before they have picked anything — that
+ * is what pressing 多选 means. What is NOT safe is that state existing over an
+ * empty list: the bar it draws says 「已选 0 条」 with every action greyed out, and
+ * if 多选 is disabled at that moment the reader cannot leave. So the caller that
+ * arms without a row in hand goes through `armFor`, which knows how many rows the
+ * screen is showing. See it for the whole account.
  * @param selection - the current holding.
  * @param armed - whether the reader wants the pickboxes.
  * @returns the next holding.
  */
 export declare function setArmed(selection: ItemSelection, armed: boolean): ItemSelection;
 /**
+ * Turn the pickboxes on for a reader who pressed 多选 — or decline when there is
+ * nothing on screen to put a pickbox on.
+ *
+ * **THE DEAD END.** The surface used to arm unconditionally and draw the batch
+ * bar whenever `armed` was true. Over an empty list that is a bar reading
+ * 「已选 0 条」 with every action greyed out — and, because 多选 also carried
+ * `disabled={visibleIds.length === 0}`, no control on the page could leave the
+ * mode. A reader who had just deleted everything was stuck until they found
+ * `Esc`.
+ *
+ * **WHY THIS IS A SEPARATE ENTRY AND NOT A CHANGE TO `setArmed`.** The two
+ * callers want opposite things from the same word. The pickbox on a ROW arms as
+ * a side effect of holding that row (`togglePicked`), and there the row is the
+ * proof that the mode has something to act on. The top-bar button arms with
+ * nothing held yet — that is the point of pressing it — so it is the one caller
+ * that has to know whether the screen has anything to offer. Making that
+ * knowledge a parameter is the whole content of this function.
+ * @param selection - the current holding.
+ * @param available - how many rows the reader can point at right now.
+ * @returns the next holding: armed when there is something to arm for.
+ */
+export declare function armFor(selection: ItemSelection, available: number): ItemSelection;
+/**
  * Hold or release one row.
  *
  * Tapping a row's pickbox while the batch is NOT armed arms it as a side effect
  * — there is no state in which a reader has expressed 「I want to select that
  * row」 and the surface has declined to show them the control for it.
+ *
+ * **RELEASING THE LAST ROW ALSO LEAVES THE MODE**, for the reason written on
+ * `reconcile`: a mode with nothing in it has nothing to act on, and the bar it
+ * draws would lead with 「已选 0 条」 over an empty list. The reader who let go of
+ * everything has said the same thing as one who pressed 多选 twice.
  * @param selection - the current holding.
  * @param id - the row's identity.
  * @returns the next holding.
@@ -119,6 +155,18 @@ export declare function allPicked(selection: ItemSelection, visible: readonly st
  * that narrows the list takes the rows it hides out of the holding, so 「选中 4 条」
  * always means four rows the reader can point at. A row that is still held after
  * its own deletion goes too, because writing to it would be a write to a tombstone.
+ *
+ * **A HOLDING THAT BECAME EMPTY IS NOT A MODE, IT IS NOTHING.** Arming exists to
+ * pick rows; with no rows held there is nothing the mode could act on, and the
+ * surface has no action that would put something back into it. Leaving `armed`
+ * true produced a bar reading 「已选 0 条」 over an empty list with every action in
+ * it greyed out, and the one control that could have left the mode was disabled
+ * for the same reason the bar appeared — a reader who had just deleted everything
+ * was stuck on a panel whose only exit was `Esc`.
+ *
+ * So arming is **derived from the holding**, not kept alongside it: no ids, no
+ * mode. A reader who wants to pick again presses 多选 again, which is the same
+ * press they made the first time.
  * @param selection - the current holding.
  * @param visible - the rows the reader can still see, by identity.
  * @param gone - rows that are no longer in the document at all, by identity.

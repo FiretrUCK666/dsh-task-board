@@ -35,6 +35,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { bandNarrowMax } from '../design/bands.ts'
 import base from '../design/base.module.css'
+import components from '../design/components.module.css'
 import type { ItemRecord, ItemStatusView } from '../../core/item.ts'
 import { itemStatusOf } from '../../core/item.ts'
 import {
@@ -91,6 +92,7 @@ import {
   reconcile,
   selectedCount,
   setAllPicked,
+  armFor,
   setArmed,
   togglePicked,
   type ItemSelection,
@@ -2139,8 +2141,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
                     variant="ghost"
                     className={css.itemTopBarChip}
                     pressed={selection.armed}
-                    disabled={visibleIds.length === 0}
-                    onClick={() => setSelection(current => setArmed(current, !current.armed))}
+                    /* **这一枚不许被禁用。**
+                     *
+                     * 它原先带 `disabled={visibleIds.length === 0}`，而那在「列表空了」
+                     * 时把**唯一的出口**关掉了：读者删光所有条目之后，多选栏还在、
+                     * 里面每一枚动作都是灰的，而这一枚也按不动——那个页面只有 `Esc`
+                     * 能出去。
+                     *
+                     * 现在空列表不会留下那栏（`armFor` 在没有行可勾时**不开**这个
+                     * 模式，见 `selection.ts`），所以这里不需要禁用。列表为空时它是一
+                     * 枚普通的「多选」——按下去没有东西可勾，也就什么都不开启。
+                     * 按得动这件事本身就是读者确认「我没被困住」的方式。 */
+                    onClick={() => setSelection(current => (current.armed ? setArmed(current, false) : armFor(current, visibleIds.length)))}
                   >
                     {t('item.batch.arm')}
                   </Button>
@@ -2310,9 +2322,15 @@ export function ItemListPanel(props: ItemListPanelProps) {
                 : replica.isSynced() === false && <p className={css.itemHint} role="status">{t('item.syncing')}</p>}
               {/* ONLY THE RECEIPTS WITH NO ROW OF THEIR OWN. A receipt that is about
                   one row is drawn beside that row, under the control that earned
-                  it. */}
+                  it.
+
+                  **它走共享的回执条（`components.receiptLine`），不借 `.itemHint`。**
+                  后者是给「简短事实」用的 11px 小药丸（「读不到主机」那种）；拿它去画
+                  一份回执，屏上是一行小字飘在白画布上——读者报的原话是「看都看不清，
+                  感觉没有复用其他模块的那种感觉」。同一页上两种提示本来就该是同一
+                  副骨架，差别只在色：事实用中性，警告用琥珀。 */}
               {receipt !== undefined && receipt.id === undefined && (
-                <p className={css.itemHint} role="status">{receipt.words}</p>
+                <p className={`${components.receiptLine} ${base.stripInsetInner}`} role="status">{receipt.words}</p>
               )}
 
               {/* THE RECEIPT. It sits at the top of the list the row left, not in a
@@ -2321,13 +2339,13 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   states BOTH halves of the promise — the undo available now, and
                   the thirty-day window that remains after it is spent. */}
               {undo !== undefined && (
-                <div className={`${css.itemReceipt} ${base.stripInsetInner}`} role="status">
-                  <span className={css.itemReceiptText}>
+                <div className={`${components.receiptLine} ${base.stripInsetInner}`} role="status">
+                  <span>
                     {restoring !== undefined
                       ? t('item.undo.working')
                       : t('item.undo.said', { n: String(undo.ids.length) })}
                   </span>
-                  <span className={css.itemReceiptWindow}>{t('item.archive.window')}</span>
+                  <span className={components.receiptAside}>{t('item.archive.window')}</span>
                   {restoring === undefined && (
                     <Button variant="ghost" size="sm" onClick={runUndo}>{t('item.undo.do')}</Button>
                   )}

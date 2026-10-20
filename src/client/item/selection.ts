@@ -49,13 +49,48 @@ export function selectedCount(selection: ItemSelection): number {
  * would show no pickbox and the bar would be gone, so the held rows would be
  * invisible AND still writable. An invisible write is the failure this whole
  * mechanism exists to make impossible.
+ *
+ * **ARMED WITH NOTHING HELD IS ONLY SAFE WHILE THE SCREEN HAS ROWS.** Turning the
+ * mode on is the reader's act and happens before they have picked anything — that
+ * is what pressing 多选 means. What is NOT safe is that state existing over an
+ * empty list: the bar it draws says 「已选 0 条」 with every action greyed out, and
+ * if 多选 is disabled at that moment the reader cannot leave. So the caller that
+ * arms without a row in hand goes through `armFor`, which knows how many rows the
+ * screen is showing. See it for the whole account.
  * @param selection - the current holding.
  * @param armed - whether the reader wants the pickboxes.
  * @returns the next holding.
  */
 export function setArmed(selection: ItemSelection, armed: boolean): ItemSelection {
-  if (armed) return selection.armed ? selection : { armed: true, ids: selection.ids }
-  return NO_SELECTION
+  if (!armed) return NO_SELECTION
+  return selection.armed ? selection : { armed: true, ids: selection.ids }
+}
+
+/**
+ * Turn the pickboxes on for a reader who pressed 多选 — or decline when there is
+ * nothing on screen to put a pickbox on.
+ *
+ * **THE DEAD END.** The surface used to arm unconditionally and draw the batch
+ * bar whenever `armed` was true. Over an empty list that is a bar reading
+ * 「已选 0 条」 with every action greyed out — and, because 多选 also carried
+ * `disabled={visibleIds.length === 0}`, no control on the page could leave the
+ * mode. A reader who had just deleted everything was stuck until they found
+ * `Esc`.
+ *
+ * **WHY THIS IS A SEPARATE ENTRY AND NOT A CHANGE TO `setArmed`.** The two
+ * callers want opposite things from the same word. The pickbox on a ROW arms as
+ * a side effect of holding that row (`togglePicked`), and there the row is the
+ * proof that the mode has something to act on. The top-bar button arms with
+ * nothing held yet — that is the point of pressing it — so it is the one caller
+ * that has to know whether the screen has anything to offer. Making that
+ * knowledge a parameter is the whole content of this function.
+ * @param selection - the current holding.
+ * @param available - how many rows the reader can point at right now.
+ * @returns the next holding: armed when there is something to arm for.
+ */
+export function armFor(selection: ItemSelection, available: number): ItemSelection {
+  if (available <= 0) return NO_SELECTION
+  return setArmed(selection, true)
 }
 
 /**
@@ -64,6 +99,11 @@ export function setArmed(selection: ItemSelection, armed: boolean): ItemSelectio
  * Tapping a row's pickbox while the batch is NOT armed arms it as a side effect
  * — there is no state in which a reader has expressed 「I want to select that
  * row」 and the surface has declined to show them the control for it.
+ *
+ * **RELEASING THE LAST ROW ALSO LEAVES THE MODE**, for the reason written on
+ * `reconcile`: a mode with nothing in it has nothing to act on, and the bar it
+ * draws would lead with 「已选 0 条」 over an empty list. The reader who let go of
+ * everything has said the same thing as one who pressed 多选 twice.
  * @param selection - the current holding.
  * @param id - the row's identity.
  * @returns the next holding.
@@ -72,7 +112,8 @@ export function togglePicked(selection: ItemSelection, id: string): ItemSelectio
   const ids = new Set(selection.ids)
   if (ids.has(id)) ids.delete(id)
   else ids.add(id)
-  return { armed: selection.armed || ids.size > 0, ids }
+  if (ids.size === 0) return NO_SELECTION
+  return { armed: true, ids }
 }
 
 /**
@@ -128,9 +169,15 @@ export function pickThrough(selection: ItemSelection, visible: readonly string[]
  * @returns the next holding.
  */
 export function setAllPicked(selection: ItemSelection, visible: readonly string[], on: boolean): ItemSelection {
-  return on
-    ? { armed: true, ids: new Set(visible) }
-    : { armed: selection.armed, ids: new Set() }
+  if (on) {
+    /* 全选一个**空**视图不开启模式：那会造出「手里 0 条、模式开着」那个死局。
+       空视图上按全选什么都不会发生，也不该有任何东西发生。 */
+    if (visible.length === 0) return selection.ids.size === 0 ? NO_SELECTION : { armed: true, ids: selection.ids }
+    return { armed: true, ids: new Set(visible) }
+  }
+  /* 取消全选 = 手上一条都没有 = 离开这个模式（见 `reconcile` 那段判据）。
+     这一支原先留着 `armed`，于是「全选之后取消全选」也留下一块「已选 0 条」的面板。 */
+  return NO_SELECTION
 }
 
 /**
@@ -160,17 +207,33 @@ export function allPicked(selection: ItemSelection, visible: readonly string[]):
  * that narrows the list takes the rows it hides out of the holding, so 「选中 4 条」
  * always means four rows the reader can point at. A row that is still held after
  * its own deletion goes too, because writing to it would be a write to a tombstone.
+ *
+ * **A HOLDING THAT BECAME EMPTY IS NOT A MODE, IT IS NOTHING.** Arming exists to
+ * pick rows; with no rows held there is nothing the mode could act on, and the
+ * surface has no action that would put something back into it. Leaving `armed`
+ * true produced a bar reading 「已选 0 条」 over an empty list with every action in
+ * it greyed out, and the one control that could have left the mode was disabled
+ * for the same reason the bar appeared — a reader who had just deleted everything
+ * was stuck on a panel whose only exit was `Esc`.
+ *
+ * So arming is **derived from the holding**, not kept alongside it: no ids, no
+ * mode. A reader who wants to pick again presses 多选 again, which is the same
+ * press they made the first time.
  * @param selection - the current holding.
  * @param visible - the rows the reader can still see, by identity.
  * @param gone - rows that are no longer in the document at all, by identity.
  * @returns the next holding, or `undefined` when there is nothing left to hold.
  */
 export function reconcile(selection: ItemSelection, visible: readonly string[], gone: readonly string[] = []): ItemSelection {
-  if (selection.ids.size === 0) return selection
+  if (selection.ids.size === 0) {
+    /* 空手就不该还在这个模式里。这一支原先返回 `{ armed: true, ids: 空 }`，
+       于是「删光之后面板不消失」——把那句判据并进下面同一条出口。 */
+    return selection.armed ? NO_SELECTION : selection
+  }
   const live = new Set(visible)
   const dead = new Set(gone)
   const ids = new Set([...selection.ids].filter(id => live.has(id) && !dead.has(id)))
   if (ids.size === selection.ids.size) return selection
-  if (ids.size === 0) return selection.armed ? { armed: true, ids } : NO_SELECTION
+  if (ids.size === 0) return NO_SELECTION
   return { armed: selection.armed, ids }
 }

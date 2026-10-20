@@ -1958,6 +1958,56 @@ textarea.input {
   line-height: var(--dsh-tb-text-line-h);
 }
 
+/* ── 回执条：刚做完那件事的收据 ──────────────────────────────────────────────
+ *
+ * 「2 条找回来了。」「标成已完成。」「已归档。」——这类句子是**一份收据**：它说的
+ * 是一件已经发生的事，读者需要读到它、有时还要就地撤销。
+ *
+ * **它必须有自己的底与边，与警告条同一条骨架、不同的一档色。** 它此前借的是清单页
+ * 那枚 11px 的小药丸（`.itemHint`），而那是给**简短事实**用的（「读不到主机」）：
+ * 1px 的内衬、11px 的次级墨，飘在一大片白画布上。读者的原话是「看都看不清，感觉
+ * 没有复用其他模块的那种感觉」——那正是「一种形状被借去说另一种话」的样子。
+ *
+ * 与警告条共用**尺寸与骨架**（同样的高度、药丸、字阶、内衬）：同一页上两种提示不该
+ * 是两种体量。不同的只有色——收据是中性的事实，警告是琥珀的「有一件事要你做」。
+ * 把这条做成警告色，读者会以为出事了。
+ *
+ * 内衬比警告条多一档（`space-7` 而不是 `space-6`）：收据里经常跟着一枚「撤销」，
+ * 而按得动的字需要比读的字多一点呼吸，否则那枚按钮贴着边。 */
+/* 内衬不写在这里：回执条长在滚动体内部，横向内衬由 `base.stripInsetInner` 给
+ * （那一档只付行内衬，框架空气由滚动体自己付过）。写一个数字在这里就是第三条路径，
+ * 而它会在下一次改行内衬时留在旧值上。 */
+.receiptLine {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-5);
+  box-sizing: border-box;
+  min-inline-size: 0;
+  min-block-size: var(--dsh-tb-button-h);
+  /* **贴着字收口，不拉通整行。** 父级是 flex 列，默认 `align-items: stretch` 会把它
+     撑满列表宽度——屏上就成了一条通栏横幅，而它与旁边那块「昨天 7 条」的分组头、
+     与列表里每一行都不是一个体量。收口之后它是一枚药丸：读者一眼看出这是「一次操作
+     留下的收据」，而不是这一页的又一条分区标题。
+     长句子仍然换行（`flex-wrap`），上限由容器给，不另写一个宽度。 */
+  align-self: flex-start;
+  flex-wrap: wrap;
+  border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-edge), transparent);
+  border-radius: var(--dsh-tb-pill);
+  background: var(--dsh-tb-plane-inlay);
+  color: var(--dsh-tb-text-1);
+  font: inherit;
+  font-size: var(--dsh-tb-type-meta-size);
+  font-weight: 500;
+  line-height: var(--dsh-tb-text-line-h);
+}
+
+/* 收据里那句「30 天内可以找回来」是**附加信息**：它属于这条收据，但不与主句争。 */
+.receiptAside {
+  min-inline-size: 0;
+  color: var(--dsh-tb-text-2);
+  font-weight: 400;
+}
+
 /* 按得动的那一条才给悬停与指针：一条只说话、按不动的警告不该长得像按钮。 */
 .workbenchNoticeButton {
   cursor: pointer;

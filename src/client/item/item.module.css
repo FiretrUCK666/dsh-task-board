@@ -3589,31 +3589,6 @@ button.itemRowCardChip {
   color: var(--item-ink-1);
 }
 
-/* 撤销回执长在那一行离开的地方，并且同时说两半：现在能撤销，以及撤销之后
- * 还剩三十天。 */
-.itemReceipt {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: baseline;
-  gap: 8px var(--item-gap);
-  min-inline-size: 0;
-  padding-block: 12px;
-}
-
-.itemReceiptText {
-  font-size: 13px;
-  font-weight: 400;
-  line-height: 20px;
-  color: var(--item-ink-1);
-}
-
-.itemReceiptWindow {
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--item-ink-2);
-}
-
 /* ── 12. 控件 ────────────────────────────────────────────────────────────── */
 
 /* 输入框是浮层那一档：它浮在卡面上，底下的字必须从它身上活下来。

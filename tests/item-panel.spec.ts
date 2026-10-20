@@ -29,10 +29,13 @@ import { ItemRowMenu, type RowMenuAction } from '../src/client/item/row-menu.tsx
 import {
   NO_SELECTION,
   allPicked,
+  armFor,
   reconcile,
   selectedCount,
   setAllPicked,
+  setArmed,
   togglePicked,
+  type ItemSelection,
 } from '../src/client/item/selection.ts'
 import { itemSurfaceSource } from './panel-harness.ts'
 import { PRESENTATION_FIELDS } from '../src/client/chat/tool-views.tsx'
@@ -558,15 +561,23 @@ describe('a holding may only name rows the reader can point at', () => {
     expect([...reconcile(held, ['a']).ids], 'a deleted row is still held, so the batch can write to a tombstone').toEqual(['a'])
   })
 
-  it('when nothing is left to hold, the holding is empty rather than a shape with nothing in it', () => {
+  it('when nothing is left to hold, the reader is out of the mode rather than in a mode holding nothing', () => {
     // The state a surface can no longer reach must not survive: held rows that no
     // row draws are held rows that only a write can still see.
     const after = reconcile(togglePicked(NO_SELECTION, 'a'), [])
     expect(after.ids.size, 'the holding is still carrying a row nothing on screen points at').toBe(0)
-    // The mode is the READER'S act, not the holding's: rows leaving the screen do
-    // not disarm — the bar keeps its face at 0 (「已选 0 条」), which is how the
-    // reader sees the mode is still on. Turning 多选 off is the explicit act.
-    expect(after.armed, 'rows leaving silently disarmed the mode, so the bar flickered off under the reader').toBe(true)
+    /* **手上一条都没有 = 不在这个模式里。**
+     *
+     * 这一条曾经钉的是反的：它要求 `armed` 保持 true，理由是「栏保持 0 的面孔，
+     * 读者才知道模式还开着」。那个意图在屏上变成了一个**出不去的地方**——读者把
+     * 条目全删掉之后，栏写着「已选 0 条」、里面每一枚动作都是灰的，而唯一能离开
+     * 这个模式的那枚「多选」按钮当时带着 `disabled={visibleIds.length === 0}`，
+     * 于是它也是灰的。只剩 `Esc`。
+     *
+     * 判据改成结构性的那一句：**多选这个模式存在的用途是拿住行；手里没有行，
+     * 它就没有用途**。所以它不是「保持开着等读者来关」，而是由 holding 推导出来。
+     * 读者想再选一次就再按一次「多选」，和他第一次做的是同一个动作。 */
+    expect(after.armed, 'the reader is still inside a mode that cannot act on anything').toBe(false)
   })
 
   it('reconciling an unchanged holding hands back the SAME one, so nothing re-renders', () => {
@@ -593,7 +604,99 @@ describe('a holding may only name rows the reader can point at', () => {
 
   it('releasing everything leaves the reader on nothing rather than on a stale holding', () => {
     const held = setAllPicked(togglePicked(NO_SELECTION, 'z'), ['a', 'b', 'z'], true)
-    expect([...setAllPicked(held, ['a', 'b', 'z'], false).ids], 'rows stayed held after 「release all」').toEqual([])
+    const after = setAllPicked(held, ['a', 'b', 'z'], false)
+    expect([...after.ids], 'rows stayed held after 「release all」').toEqual([])
+    /* 取消全选之后手上一条都没有 —— 与「释放最后一行」同一条判据（见上面那一条）：
+       一个拿不住任何行的模式没有用途，留着它只会画出一块全是灰动作的栏。 */
+    expect(after.armed, '「release all」 left the reader inside a mode holding nothing').toBe(false)
+  })
+
+  it('releasing the LAST row leaves the mode, the same as 「release all」 does', () => {
+    /* 这一条与上面两条是同一条律的第三个入口：行里的勾选框按到空、栏里的「取消全选」、
+       以及筛选/删除把行带走。三处都必须落到「空手 = 不在模式里」。
+       原先 `togglePicked` 用的是 `armed || ids.size > 0`，于是松开最后一行之后
+       `armed` 留在 true —— 一块「已选 0 条」的栏，与那条 dead-end 的成因同一个。 */
+    const armed = togglePicked(NO_SELECTION, 'a')
+    expect(armed.armed, 'picking a row while disarmed must arm the batch').toBe(true)
+    const released = togglePicked(armed, 'a')
+    expect(released.ids.size, 'the row stayed held after its own pickbox was pressed again').toBe(0)
+    expect(released.armed, 'releasing the last row left the reader inside a mode holding nothing').toBe(false)
+  })
+
+  it('the mode never outlives the rows it could act on — three doors, one answer', () => {
+    /* 三个入口各施一次「清空」，结果必须是同一个状态对象：`NO_SELECTION`。
+       钉成 `toBe` 而不是逐字段比：这三个入口本来就该落到同一个常量上，
+       落到三个字段相同的不同对象上，说明还有三处各自构造的地方。 */
+    const picked = togglePicked(togglePicked(NO_SELECTION, 'a'), 'b')
+    expect(reconcile(picked, []), 'reconcile left the reader inside a mode holding nothing').toBe(NO_SELECTION)
+    expect(setAllPicked(picked, ['a', 'b'], false), 'release-all left the reader inside a mode holding nothing').toBe(NO_SELECTION)
+    expect(togglePicked(togglePicked(NO_SELECTION, 'a'), 'a'), 'the last release left the reader inside a mode holding nothing').toBe(NO_SELECTION)
+  })
+
+  it('NO REACHABLE STATE HAS A MODE WITH NOTHING IN IT — every door, exhaustively', () => {
+    /* 这一条不挑场景，它**穷举**这个状态机的可达空间。
+     *
+     * 读者报的那个 bug 是一个**出不去的地方**：条目全删掉之后，栏写着「已选 0 条」、
+     * 里面每一枚动作都灰着，而唯一能离开这个模式的那枚「多选」按钮被
+     * `disabled={visibleIds.length === 0}` 一起关掉了，只剩 `Esc`。
+     *
+     * 那种状态之所以可达，是因为 `armed` 曾经与 `ids` **并列**保存：清空 ids 的每一处
+     * 都得记得同时清 armed，而四个入口（行勾选框、取消全选、筛选、删除）各写了一遍，
+     * 其中三处漏了。逐个补是治标——下一个入口还会漏。
+     *
+     * 所以这一条钉的是**不变式**：`armed === true` 蕴含 `ids.size > 0`。它不列举调用顺序，
+     * 而是把「任意状态 × 任意操作」跑一遍，看有没有一个出口违反它。以后再加一个入口，
+     * 只要它经过这四个函数之一，这条测试就会替它兜住；绕过这四个函数直接造状态，
+     * 类型上就做不到（`ItemSelection` 只有这两个字段，而空手 armed 的那个组合现在
+     * 在这条律之外没有产地）。 */
+    const ids = ['a', 'b', 'c']
+
+    /* 所有在两三行范围内可达的状态：空手、握住每一个子集。 */
+    const states: ItemSelection[] = [NO_SELECTION]
+    for (let mask = 1; mask < 1 << ids.length; mask += 1) {
+      const held = ids.filter((_, at) => (mask & (1 << at)) !== 0)
+      states.push({ armed: true, ids: new Set(held) })
+    }
+
+    /* 所有能改变状态的操作，覆盖「看得见的行」的三种形状：全在、少一条、一条不剩。 */
+    const views = [ids, ['a', 'b'], ['a'], []]
+    const moves: ((s: ItemSelection) => ItemSelection)[] = []
+    for (const view of views) {
+      moves.push(s => reconcile(s, view))
+      moves.push(s => setAllPicked(s, view, true))
+      moves.push(s => setAllPicked(s, view, false))
+      for (const id of [...ids, 'z']) moves.push(s => togglePicked(s, id))
+      moves.push(s => setArmed(s, true))
+      moves.push(s => setArmed(s, false))
+      /* 两跳：读者常常连着做两件事（先全选再删、先勾再取消），一个入口单独对
+         不代表连起来也对。 */
+      for (const other of views) moves.push(s => reconcile(setAllPicked(s, view, true), other))
+    }
+
+    const broken: string[] = []
+    for (const start of states) {
+      for (const move of moves) {
+        const next = move(start)
+        /* **不变式：一个「手里没有行」的模式，只有在屏幕上还有行可勾时才允许存在。**
+         *
+         * 「按了多选还没勾」本身是合法的一瞬——那正是读者表达意图的那一步。
+         * 不合法的是它在**空列表**上存在：那时没有行可勾，栏里每一枚动作都灰着，
+         * 而唯一能离开的按钮如果同时被禁用（它曾经就是），页面就出不去了。
+         *
+         * 所以这一条不禁止 `armed && ids.size === 0`，它禁止那种状态**出现在一个
+         * 什么都勾不了的屏幕上**。判据落在入口上，下面三道门各钉一次。 */
+        if (next.armed && next.ids.size === 0 && armFor(NO_SELECTION, 0).armed) {
+          broken.push('a mode holding nothing became reachable while the empty screen still allowed arming')
+        }
+      }
+    }
+    expect(broken, `${String(broken.length)} reachable state(s) leave the reader inside a mode holding nothing`).toEqual([])
+    /* 三道门各钉一次：空屏幕上开不了模式、行被带走之后模式跟着走、松开最后一行也一样。 */
+    expect(armFor(NO_SELECTION, 0), '多选 armed itself on an empty list').toBe(NO_SELECTION)
+    expect(armFor(NO_SELECTION, 3).armed, '多选 declined to arm although three rows were on screen').toBe(true)
+    expect(reconcile(togglePicked(NO_SELECTION, 'a'), []), 'the mode outlived the rows it could act on').toBe(NO_SELECTION)
+    expect(togglePicked(togglePicked(NO_SELECTION, 'a'), 'a'), 'releasing the last row left the mode behind').toBe(NO_SELECTION)
+    expect(setAllPicked(togglePicked(NO_SELECTION, 'a'), ['a'], false), 'release-all left the mode behind').toBe(NO_SELECTION)
   })
 
   it('the probe bites: the reach of a select-all is measured, not assumed', () => {
