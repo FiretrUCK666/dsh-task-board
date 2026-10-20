@@ -24,7 +24,18 @@ jobs:
 
       - uses: actions/setup-node@v6
         with:
-          node-version: 22
+          # **与 `release.yml` 同一个版本，而且必须是这一档。**
+          #
+          # 这里曾经是 22，而发布工作流是 24——于是同一次提交在 CI 上红、在发布时绿，
+          # 两条流水线对同一份代码给出两个答案。分量出来的差别不是配置：
+          # 在 Node 22 下，vitest 3.2.7 的 jsdom worker 加载 `@vite/env` 会失败
+          # （`Error: Cannot find module '/@vite/env'`），于是**五个渲染/拖拽/面板
+          # 测试文件整个跑不起来**（113 passed / 118），而那正是这一层图形契约所在。
+          #
+          # `engines` 仍然声明 `^22.19.0 || >=24.0.0`：**插件在 22 上能跑**，红的只有
+          # 测试环境里那一个 jsdom worker。所以这里抬的是「CI 用哪个版本来验」，
+          # 不是「插件要求哪个版本」——两件事，不要顺手把 engines 一起改掉。
+          node-version: 24
           cache: pnpm
 
       # Every other gate here exercises the build, the types, the tests and the
