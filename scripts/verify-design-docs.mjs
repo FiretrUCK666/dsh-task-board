@@ -1007,7 +1007,16 @@ function duplicateBodies(sheets, minDeclarations = 3) {
   const out = []
   for (const [body, sites] of byBody) {
     const sheetsInvolved = [...new Set(sites.map(s => s.sheet))]
-    if (sheetsInvolved.length < 2) continue
+    /* **同一张表里的两份同体也算重复。** 这一句原先只判「跨表」，理由是「同一张表的两条
+     * 规则可以靠顺序叠加」。那个理由在**逐字相同**的情况下不成立：两份一模一样，后一份
+     * 覆盖前一份，等于谁都没有说话——而它永远不会有任何报错。
+     *
+     * 这条盲区是真的踩上过：`.titleText` 在同一张表里被写了两遍（整段注释一起复制），
+     * 而那一刻 `shared forms: 0` 是真话——它只证明了「没有跨表拷贝」。判据要问的是
+     * 「这条形态有几个家」，不是「它跨了几张表」。 */
+    const selectors = sites.map(s => s.selector)
+    const sameSelectorTwice = new Set(selectors).size < selectors.length
+    if (sheetsInvolved.length < 2 && !sameSelectorTwice) continue
     out.push({ body, sites, sheets: sheetsInvolved })
   }
   return out

@@ -772,13 +772,21 @@ describe('card no-breakout CSS contract', () => {
     expect(chip).not.toContain('flex: none')
 
     // The body span (every Chip wraps its text children in it) is the
-    // ellipsis slot: overflow hidden + single line + ellipsis, shrinkable.
+    // ellipsis slot. **The clipping itself lives in the shared `.truncate`** —
+    // the body keeps only `display: block` (it must be a block so the centring
+    // has a box) and mounts the shared form at the render site. Reading the four
+    // declarations off `.chipBody` would demand a second copy of a form whose
+    // whole point is that it has one home.
     const body = expectRule('chipBody')
     expect(body).toContain('display: block')
-    expect(body).toContain('min-width: 0')
-    expect(body).toContain('overflow: hidden')
-    expect(body).toContain('text-overflow: ellipsis')
-    expect(body).toContain('white-space: nowrap')
+    expect(body, 'the chip body grew a second copy of the clip form').not.toContain('text-overflow: ellipsis')
+    const clip = expectRule('truncate')
+    expect(clip).toMatch(/min-(?:inline-)?(?:width|size):\s*var\(--dsh-tb-clip-floor/)
+    expect(clip).toContain('overflow: hidden')
+    expect(clip).toContain('text-overflow: ellipsis')
+    expect(clip).toContain('white-space: nowrap')
+    const chipTsx = readFileSync(fileURLToPath(new URL('../src/client/design/Chip.tsx', import.meta.url)), 'utf8')
+    expect(chipTsx, 'the chip body does not mount the shared clip form').toMatch(/css\.chipBody\} \$\{css\.truncate\}/)
   })
 
   it('two-slot grammar: a lead glyph keeps its box geometry outside the text body', () => {
@@ -1537,5 +1545,32 @@ describe('the card 更新于 clock is the card own progress, not the sync stamp'
     // budge, or every sibling would claim to be 「刚刚」.
     const reshuffled = { ...ended, order: 0, updatedAt: 999_999 }
     expect(cardUpdatedAtOf(reshuffled)).toBe(3000)
+  })
+})
+
+describe('一个装一句话的输入框，宽度由内容定', () => {
+  it('没有人再给那句输入框写 size 属性——那是固定字符数，不是内容宽度', () => {
+    /* **这一条钉的是一个真实的截断。** 「新卡的名字」那个输入框原先带
+     * `<input size={13}>`：那是 HTML 给的**固定 123px**。而用户往里打的是**一句卡片
+     * 标题**——实测 23 个字要 276px，于是盒子只有内容的 44%，最后几个字被外层
+     * `overflow` 切掉，读者看不见自己刚打的是什么。
+     *
+     * 修法是两件事一起：`field-sizing: content`（宽度由内容定）+ 右栏够宽
+     * （`--item-field-side` 从 292 到 340，左栏还剩 924，正文没被压扁）。
+     *
+     * **`size` 是给短字段用的**（一个编码、一个编号）。一句话的长度由用户定，
+     * 所以宽度也得由内容定——判据就写这一句。 */
+    for (const page of ['../src/client/item/detail-pane.tsx', '../src/client/item/item-create-dialog.tsx']) {
+      const source = readFileSync(fileURLToPath(new URL(page, import.meta.url)), 'utf8')
+      expect(source, `${page} 又给那句输入框写回了 size 属性——那是固定字符数，装不下一句话`)
+        .not.toMatch(/className=\{css\.itemOptNaming\}[\s\S]{0,80}size=\{/)
+    }
+    // 那份样式自己说得出「宽度由内容定」。
+    const sheet = readFileSync(fileURLToPath(new URL('../src/client/item/item.module.css', import.meta.url)), 'utf8')
+    /* **先剥注释再找规则。** 那条规则里有多行注释，而注释里出现过 `}`——一个
+       `[^}]*` 的正则会停在那儿，把后面半条规则（含 `field-sizing`）截掉，于是这条判据
+       会在一份正确的样式上红。这是硬性规范 14 的老坑：先怀疑检查的读法。 */
+    const naming = /\.itemOptNaming\s*\{[^}]*\}/.exec(sheet.replace(/\/\*[\s\S]*?\*\//g, ''))?.[0] ?? ''
+    expect(naming, '输入框不再由内容定宽——它又回到了固定字符数').toContain('field-sizing: content')
   })
 })

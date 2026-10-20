@@ -3846,7 +3846,20 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
   })
 
   it('高度只由这一处给：没有 field-sizing，没有原生拖拽，抓条压在自己那一条空气里', () => {
-    expect(css.includes('field-sizing'), '有 `field-sizing`：框会随每一次键入自己长高，而高度是读者的').toBe(false)
+    /* **这条规矩说的是「多行写入框的高度由读者定，不由键入定」**，而它原先问的是整张表
+       （`css.includes('field-sizing')`）。那是判据把自己放大成了一个「这个属性在本项目里
+       一次都不许出现」的禁令——于是它误伤了一个正当用途：**单行的「新卡名字」输入框**，
+       宽度本来就该由内容定（它的 `size={13}` 只给了 123px，而一句卡片标题要 294px，
+       字被裁掉）。宽度随内容长 ≠ 高度随键入长，两件事。
+
+       所以判据精确到那个类：**多行框不许有 `field-sizing`**（那是这条规矩的对象），
+       单行输入框不在它的范围内。 */
+    const proseBody = declarationRules(css)
+      .filter(rule => rule.selector.includes('.itemProse'))
+      .map(rule => rule.body)
+      .join('\n')
+    expect(proseBody, '多行写入框有 `field-sizing`：框会随每一次键入自己长高，而高度是读者的')
+      .not.toContain('field-sizing')
     expect(css.includes('::-webkit-resizer'), '在给一个不存在的原生抓手化妆').toBe(false)
     /* 读**声明**，不写一条带前瞻的正则：`resize\s*:\s*(?!none)` 会被回溯放过——`\s*`
        可以只吃零个空白，于是前瞻去看那个空格，正好「不是 none」。数出来的值不会骗人。 */

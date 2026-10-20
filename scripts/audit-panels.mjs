@@ -9,6 +9,7 @@
 //
 //   1440@1   半像素取整最狠的那一档（设备像素最少，0.5px 无处可去）
 //   1440@2   项目原本唯一的量法
+//   1440@2   深色档（**主题不是宽度**，见下）
 //   412@2    桌面档的窄端，与下面同一宽度的触屏档**配对**
 //   412@2    触屏档（配对的一半）
 //   390@3    真手机的视口与像素密度
@@ -17,6 +18,17 @@
 //
 // **配对是这条审计的主力**：同一页、同一宽度、同一像素密度，只切指针能力——两档之间
 // 冒出来的任何一条滚动轴，都是触屏那一段 CSS 改出来的几何，不是内容变多了。
+//
+// **深色那一档本来不在矩阵里，而这件事值得写下来。** 「深色下这些数还成立吗」从来没有被量过，
+// 而深色不是「同一页换个颜色」：令牌层的深色块挂在 `body[data-ds-dark-theme]` 上（宿主打的
+// 属性，**不是 `prefers-color-scheme`**），而宿主浅色把三档表面解成同一个白、深色才给出
+// `#151517 → #353638` 的台阶。换句话说，**「这张卡浮在页面上」这件事在深色下才真的有颜色
+// 可用**，浅色全靠影撑着。只加一对非触屏档：主题与指针能力正交，把两者相乘会让矩阵翻倍，而
+// 它们的交叉不是这条审计要问的问题。
+//
+// **假主题比不测更坏**：`--color-scheme` 只设媒体查询，而一块只读 `:root` 的静态工件在深色下
+// 与浅色逐像素相同——于是报告里会写「深色已审」，那是这一整套仪器最坏的一种谎。所以那一档
+// 必须真的把属性打到 `body` 上（`probes/probe-dark-theme.js` 做这件事），截图才不是浅色的。
 //
 // **换字体的那一档是「我看不见你的手机」的解药**：竖向居中的每一个数都是「盒子与盒子里那团
 // 墨」的距离，而墨的形状是字体的。报告缺陷的那台手机装的字体这台机器没有，所以只量一档就等于
@@ -71,10 +83,29 @@ const FRAME_PROBE = join(HERE, 'probes', 'probe-item-frame.js')
 /** 高度预算那一支探针（见头注释的第三条判据）。 */
 const STRIP_PROBE = join(HERE, 'probes', 'probe-item-strip.js')
 
+/**
+ * 深色那一档的探针。
+ *
+ * 它与别的探针不是一类东西：别的量「这一页排得正不正」，这一支量「这一档是不是真的深色」。
+ * 理由写在 BANDS 的注释里——`--color-scheme` 只设媒体查询，而令牌层的深色块挂在
+ * `body[data-ds-dark-theme]` 上，所以一块只读 `:root` 的静态工件在深色下与浅色逐像素
+ * 相同。假主题比不测更坏：报告会写「深色已审」。
+ */
+const DARK_PROBE = join(HERE, 'probes', 'probe-dark-theme.js')
+
+/** 只用主题探针的那几档（它们不做胶囊审计，只回答「深色是不是真的」）。 */
+const THEME_ONLY_BANDS = new Set(['w1440x2-dark'])
+
 /** 一条矩阵带：窗口、像素密度、指针能力、（可选）换掉的字体栈。 */
 const BANDS = [
   { id: 'w1440x1', width: 1440, height: 900, scale: 1, touch: false },
   { id: 'w1440x2', width: 1440, height: 900, scale: 2, touch: false },
+  /* 深色那一档。**主题不是宽度**，也不是 `prefers-color-scheme`：令牌层的深色块挂在
+     `body[data-ds-dark-theme]` 上（宿主打的属性），而宿主浅色把三档表面解成同一个白、
+     深色才给出 #151517 -> #353638 的台阶。换句话说「这张卡浮在页面上」在深色下才真的
+     有颜色可用，浅色全靠影撑着。这一档由 `probe-dark-theme.js` 量，走的是另一条路
+     （它不量胶囊，只回答「深色是不是真的」）——见 THEME_ONLY_BANDS。 */
+  { id: 'w1440x2-dark', width: 1440, height: 900, scale: 2, touch: false, theme: 'dark' },
   { id: 'w412x2', width: 412, height: 900, scale: 2, touch: false },
   { id: 'w412x2-touch', width: 412, height: 900, scale: 2, touch: true, pair: 'w412x2' },
   { id: 'w390x3', width: 390, height: 844, scale: 3, touch: false },
@@ -240,6 +271,46 @@ for (const page of found) {
 
   for (const band of BANDS) {
     if (args.only !== '' && band.id !== args.only) continue
+    /* 主题档不量胶囊，它量「这一档是不是真的深色」。两条判据问的不是同一件事，
+       混在一个读数里会让「深色已审」与「胶囊排得正」互相冒充。 */
+    if (THEME_ONLY_BANDS.has(band.id)) {
+      const themed = measure(page, band, DARK_PROBE)
+      entry.runs[band.id] = themed
+      if (themed.error !== undefined) {
+        console.log('   ' + band.id.padEnd(20) + ' NO READING  ' + themed.error + ' ' + (themed.stderr ?? ''))
+        findings.push({ page, band: band.id, kind: 'no-reading', detail: themed.error })
+        continue
+      }
+      if (themed.theme === undefined) {
+        findings.push({ page, band: band.id, kind: 'no-reading', detail: '主题探针没有返回读数' })
+        continue
+      }
+      const theme = themed.theme
+      const ok = themed.ok
+      console.log('   ' + band.id.padEnd(20) + ' theme=' + (theme.changed ? 'dark' : 'UNCHANGED')
+        + ' canvas=' + theme.canvasAfter + ' papers=' + (themed.papers ?? []).length
+        + ' D1=' + ok.d1ThemeChanged + ' D2=' + ok.d2CanvasIsDark + ' D3=' + ok.d3PaperSeparatedFromCanvas
+        + ' D4=' + ok.d4PaperOpaque + ' D5=' + ok.d5EveryPaperRounded)
+      /* 主题没变 = 这一档什么也没证明。它是整条审计最坏的一种谎：报告里会写
+         「深色已审」，而截图与浅色逐像素相同。 */
+      if (!ok.d1ThemeChanged) {
+        findings.push({ page, band: band.id, kind: 'theme-not-applied', detail: 'canvas ' + theme.canvasBefore + ' -> ' + theme.canvasAfter })
+      }
+      if (!ok.d2CanvasIsDark) {
+        findings.push({ page, band: band.id, kind: 'theme-not-dark', detail: 'canvas luminance ' + theme.canvasLuminance })
+      }
+      if (!ok.d3PaperSeparatedFromCanvas) {
+        findings.push({ page, band: band.id, kind: 'paper-flush-with-canvas', detail: '纸面与画布同色：深色下台阶没了，读者看不到一张纸' })
+      }
+      if (!ok.d4PaperOpaque) {
+        findings.push({ page, band: band.id, kind: 'paper-translucent', detail: '纸面半透明：深色下背景会透上来，而那上面是要读的字' })
+      }
+      if (!ok.d5EveryPaperRounded) {
+        const flat = (themed.papers ?? []).filter(function (one) { return one.radius === '0px' || one.radius === '' })
+        findings.push({ page, band: band.id, kind: 'paper-is-square', detail: '直角的纸：' + flat.map(function (one) { return one.cls }).join(' | ') })
+      }
+      continue
+    }
     const reading = measure(page, band)
     entry.runs[band.id] = reading
     if (reading.error !== undefined) {

@@ -223,7 +223,7 @@ export function Section({ title, action, children, className }: {
     <section className={`${css.detailSection}${className !== undefined ? ` ${className}` : ''}`}>
       {(title !== '' || action !== undefined) && (
         <div className={css.sectionHead}>
-          <h4>{title}</h4>
+          <h4 className={`${css.sectionHeadTitle} ${css.truncate}`}>{title}</h4>
           {action !== undefined && <span className={css.sectionAction}>{action}</span>}
         </div>
       )}
@@ -271,7 +271,7 @@ export function Disclosure({ title, summary, open, onToggle, children, className
       >
         <Icon name="chevronDown" className={css.detailChevron} />
         <span className={css.detailDisclosureTitle}>{title}</span>
-        {summary !== undefined && <span className={css.inlineSummary}>{summary}</span>}
+        {summary !== undefined && <span className={`${css.inlineSummary} ${css.truncate}`}>{summary}</span>}
       </button>
       {open && <div id={regionId} className={css.detailSectionBody}>{children}</div>}
     </section>

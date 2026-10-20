@@ -297,7 +297,13 @@
   --item-topbar-h: 56px;
   /* **字段区的两列。** 详情面板与「新建一条」那张纸装同一批字段，所以它们的右列宽与
    * 列间沟必须是同两个数（见 `.itemOpenMain` / `.itemCreateDialogGrid`）。 */
-  --item-field-side: 292px;
+  /* **右栏宽：按「一句话」定，不按「两三个字」定。** 这一列里装的是优先级 / 状态 /
+     标签 / 三个日期——都是短值——外加**一句用户写的卡片标题**。实测那一句 23 个字要
+     276px 的内容宽度，而 292 减去内衬只剩 269，差 7px，于是最后一个字被外层切掉。
+     加到 340：左栏还剩 924（正文一点没被压扁），而一句话装得下了。
+
+     一处声明、两处消费（详情栏与「新建一条」那张纸），所以两边一起变好。 */
+  --item-field-side: 340px;
   --item-field-gap: var(--s3);
   /* **一个字段内部的空气：6px，与「字段与字段之间」不是同一个数。**
    *
@@ -3508,7 +3514,12 @@ button.itemRowCardChip {
 }
 
 /* 面片的值在调色板里是竖列（每个一条），因为那里是「一件我可以开口要的事」
- * 的名单，不是一排要一眼扫过的药丸。 */
+ * 的名单，不是一排要一眼扫过的药丸。
+ *
+ * **这一条只说排法。** 裁剪（`overflow` / `text-overflow` / `white-space`）归共享的
+ * `.truncate`，由 `command-palette.tsx` 挂在同一枚元素上——这里原先还留了一句
+ * `overflow: hidden`，那是那条规则被收走时漏下的半句：它不与别处冲突，只是**第二份
+ * 说法**，改一处不会带着另一处走。 */
 .itemCommandPaletteBox .itemFacetRow[data-palette-group='rows'] .itemFacetValues {
   flex-direction: column;
   align-items: flex-start;
@@ -3519,7 +3530,6 @@ button.itemRowCardChip {
   max-inline-size: 100%;
   justify-content: flex-start;
   text-align: start;
-  overflow: hidden;
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -3738,13 +3748,6 @@ textarea.itemInput {
   min-inline-size: 0;
 }
 
-.itemFacetName {
-  font-size: 11px;
-  font-weight: 400;
-  line-height: 16px;
-  color: var(--item-ink-2);
-  white-space: nowrap;
-}
 
 .itemFacetValues {
   display: flex;
@@ -4375,10 +4378,14 @@ textarea.itemInput {
    * 边光与行卡分开；字段仍读嵌面，于是「纸里嵌着一格一格的写字处」。三条腿都在：
    * 色阶（sheet 对行卡）、边（`--item-hair`，朝墨混）、边光（`--dsh-tb-rim`）。
    * 浅色、深色、透明皮肤下都是同一套推导——没有一个字面颜色。 */
-  background: var(--dsh-tb-plane-sheet);
+  /* **底与影走槽，不写属性。** 直写 `background` / `box-shadow` 时，它能不能赢过共享的
+     `.paperSheet` 取决于两张表在产物里的先后——**侥幸成立不是成立**。`.itemOpen` 贴在纸上、
+     不浮起来，所以「只有一条边光、没有投影」是靠 `--dsh-tb-paper-cast` 只给一笔说的。
+     角用默认那一档（md），不必写。 */
+  --dsh-tb-paper-plane: var(--dsh-tb-plane-sheet);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim);
   border: var(--item-hair);
-  box-shadow: var(--dsh-tb-rim);
-  --dsh-tb-paper-radius: var(--dsh-tb-radius-md);}
+}
 
 /* **字段区的两列几何：一个宽、一条沟，两处读同一对令牌。**
  *
@@ -4713,17 +4720,21 @@ textarea.itemInput {
   flex: none;
 }
 
-/* **装句子的那一行不是「一行两列」，是一节。** 右栏 292px：`.itemOptRow` 的
-   `76px minmax(0,1fr)` 网格把第二列压到 183px，一句 60 字的标题在里面折成 4 行，
-   读起来是一根竖条。把栏加宽是拿左栏正文的地方换（压扁另一边），所以让**这一节**
-   换个排法：字段名一行，值占满整行、按行流动。
+/* **装句子的那一行在右栏里自己排成一节**：字段名一行，值占满整行。右栏只有 292px
+   （减去内衬更少），「名 + 值并排」会把值压到 183px——一句卡片标题在那里折成四行，读起来
+   是一根竖条。所以这一行换成单列，值吃满右栏给的全部宽度。
 
-   判据是内容的形状，不是一个开关：这一行装的是句子，所以它不参与「名 + 值并排」
-   那一档。 */
+   **它不跨到左栏去。** 试过用负边距把它推出右栏、占满整张纸——那一版在截图里把这一节整个
+   挪到了页面中部、压在「正文」上面。「让一行更宽」不是「把这一行挪个地方」：跨栏改的是
+   位置，而其余每个元素的排法都假定它还在右栏里。
+
+   右栏本身不再加宽：那是拿左栏正文的地方换（压扁另一边，硬性规范 11①）。读者打长标题时
+   框内横向滚动，而不是被切掉。 */
 .itemOptRow[data-card-row] {
   grid-template-columns: minmax(0, 1fr);
   row-gap: var(--s1);
   align-items: start;
+  /* 右栏够宽之后这一条不再需要：那一行自己就装得下（见 `--item-field-side`）。 */
 }
 
 .itemOpts > .itemOptCard {
@@ -4903,6 +4914,15 @@ textarea.itemInput {
  * 形状沿用这一族里输入的档位——同款内衬与描边、焦点落在 focus 令牌上，字号与
  * 芯片同号。读者换手的地方，形状不许跟着换手。 */
 .itemOptNaming {
+  /* **宽度由内容定，不由 `size` 属性定。** 那个属性能给一个「短字段」一个合适的
+     起手宽度，而这里装的是**一句卡片标题**（实测 23 个字要 294px，`size={13}` 给
+     123px——盒子只有内容的 41%，字被裁掉，读者看不到自己刚打的最后几个字）。 */
+  field-sizing: content;
+  min-inline-size: 12ch;
+  /* **上限回到"父容器"。** 右栏够宽了（见 `--item-field-side`），所以 `field-sizing`
+     长到内容宽度就够用，盒子不必再超出它那一格——「让盒子溢出、靠外层 `overflow` 兜底」
+     是治标：兜底不是布局，超出那几像素在别的视口下会变成别的数。 */
+  max-inline-size: 100%;
   /* 就地改名时读者换手的地方，形状不许跟着换手：与 `.itemOpt` 同一个盒模型（同一个高度、
    * 块向内衬为零），行盒取内容盒高（高度减上下边）：输入框没有孩子，flex 居中够不着它，
    * 行盒等于内容盒高才是它真正的居中手段——与 `.itemTagAdd` 同一条律。 */

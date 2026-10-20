@@ -78,6 +78,24 @@ describe('裁剪形态只有一个家', () => {
     expect(found).toHaveLength(0)
   })
 
+  it('共享层**内部**的第二份拷贝不算那个家——豁免区不等于没有规矩', () => {
+    /* **这一条钉的是一处真实的盲区。** 门禁把共享层划成豁免区（`.truncate` 本来就住那儿），
+     * 而豁免区是它唯一一处「信任」——于是共享层内部还有 5 处自己抄了同一副三件套
+     * （`.chipBody` / `.inlineSummary` / 一个分节标题 / 状态栏 / 通知文字），从头到尾没人管。
+     *
+     * 判据：除了那个家本身，**任何地方**再出现一条同时声明那两件事的规则就是抄了一份——
+     * 包括它自己那张表。 */
+    const found = truncationCopiesIn([
+      SHARED_HOME,
+      {
+        rel: 'src/client/design/components.module.css',
+        css: '.secondCopy { white-space: nowrap; text-overflow: ellipsis; overflow: hidden; }',
+      },
+    ])
+    expect(found.length, '共享层内部的第二份拷贝被放过了——豁免区变成了没规矩的地方').toBeGreaterThan(0)
+    expect(found.some(hit => hit.selector.includes('secondCopy'))).toBe(true)
+  })
+
   it('只写「不可换行」不算裁剪——没有省略号就没有裁剪形态', () => {
     const found = truncationCopiesIn([
       {
@@ -129,10 +147,14 @@ describe('裁剪形态只有一个家', () => {
   })
 
   it('豁免是有理由的：每一条都写清为什么，不是一张白名单', () => {
-    expect(PER_SHEET_EXEMPTIONS.length).toBeGreaterThan(0)
+    /* **表可以是空的，而且空着是当前正确状态**——那条唯一的历史豁免（两行夹还没有家）
+     * 等到过它等的东西，而那个形态随后整个被删掉，于是这条记录也一起清掉（硬性规范 18）。
+     *
+     * 所以这条用例不再要求表非空（那会把「删干净」判成红的），改要求：**只要有一条，
+     * 它就必须说得出理由**。机制活不活由下面那条自备豁免的用例证明。 */
     for (const one of PER_SHEET_EXEMPTIONS) {
-      expect(one.match.length).toBeGreaterThan(0)
-      expect(one.why.length).toBeGreaterThan(0)
+      expect(one.match.length, '豁免的 match 是空的——它匹配不到任何东西').toBeGreaterThan(0)
+      expect(one.why.length, '豁免没有写理由——那就是一张白名单').toBeGreaterThan(0)
     }
   })
 })
@@ -150,26 +172,32 @@ describe('豁免是棘轮：形状一变，它自动失效', () => {
     ].join('\n'),
   })
 
+  /* **自备一条豁免，不借生产表。** 生产表空着是正确的（它等的那一族已经不存在了），
+   * 而「豁免机制还活着」这件事仍然要被证明——不然它就成了一个没人验证过的分支。 */
+  const OWN_EXEMPTION = [
+    { match: '-webkit-box-orient: vertical;-webkit-line-clamp: 2', why: '这一条只活在这个用例里：证明豁免会被读到。' },
+  ]
+
   it('形状不变，豁免有效', () => {
-    const found = truncationCopiesIn([shaped('2')], PER_SHEET_EXEMPTIONS)
-    expect(found).toHaveLength(1)
-    expect(found[0].exempt).toBe(true)
+    const found = truncationCopiesIn([shaped('2')], OWN_EXEMPTION)
+    expect(found, '形状没变的拷贝必须被认出来').toHaveLength(1)
+    expect(found[0].exempt, '写对了理由的豁免没有生效').toBe(true)
     expect(found[0].why).not.toBeNull()
     /* 放行的理由必须**就是表里写的那一条**——不是「随便哪一条都行」。 */
-    expect(found[0].why).toBe(PER_SHEET_EXEMPTIONS[0].why)
+    expect(found[0].why).toBe(OWN_EXEMPTION[0].why)
   })
 
   it('形状一变，豁免失效，门禁重新报', () => {
-    const found = truncationCopiesIn([shaped('3')], PER_SHEET_EXEMPTIONS)
+    const found = truncationCopiesIn([shaped('3')], OWN_EXEMPTION)
     expect(found).toHaveLength(1)
-    expect(found[0].exempt).toBe(false)
+    expect(found[0].exempt, '形状变了而豁免还在放行——那不是棘轮，是一张白名单').toBe(false)
   })
 
   it('共享层一旦有了那个家，这条「还没有家」的豁免就作废', () => {
     const withHome = {
       rel: `${SHARED_LAYER}components.module.css`,
       css: [
-        '.truncateTwo {',
+        '.truncate {',
         '  -webkit-box-orient: vertical;',
         '  -webkit-line-clamp: 2;',
         '  display: -webkit-box;',
@@ -178,7 +206,10 @@ describe('豁免是棘轮：形状一变，它自动失效', () => {
       ].join('\n'),
     }
     const found = truncationCopiesIn([shaped('2'), withHome], PER_SHEET_EXEMPTIONS)
+    /* 页面表那一处（`shaped('2')`）被报出来，而且**不再是豁免的**：共享层已经有那个家了，
+     * 「等一个家」的豁免不能比那个家活得久。共享层自己那一份是答案，不报。 */
     expect(found).toHaveLength(1)
+    expect(found[0].file).toBe('src/client/board.module.css')
     expect(found[0].exempt).toBe(false)
   })
 })

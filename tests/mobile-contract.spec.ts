@@ -470,8 +470,16 @@ describe('form-row grammar (give way, never crush)', () => {
     expect(ruleOf('sectionHead')).toMatch(/grid-template-areas:\s*"title action"/)
     expect(compact).not.toMatch(/\.sectionHead\s*\{[^}]*grid-template-areas:\s*"title"\s*"action"/)
     // The give-way member is the text slot (truncation never lives in a
-    // container that hides its children).
-    expect(ruleOf('sectionHead h4')).toMatch(/text-overflow:\s*ellipsis/)
+    // container that hides its children). **That slot is the shared `.truncate`**:
+    // the head's own class only says which grid area it sits in — a tag name
+    // (`h4`) is not an identity, and the heading level is free to follow the
+    // document outline without silently losing the clip.
+    expect(ruleOf('sectionHeadTitle')).toMatch(/grid-area:\s*title/)
+    expect(ruleOf('sectionHeadTitle'), 'the head grew a second clip of its own').not.toMatch(/text-overflow/)
+    expect(ruleOf('truncate')).toMatch(/text-overflow:\s*ellipsis/)
+    const ui = readFileSync(fileURLToPath(new URL('../src/client/design/ui.tsx', import.meta.url)), 'utf8')
+    expect(ui, 'the section head does not mount the shared clip form')
+      .toMatch(/css\.sectionHeadTitle\} \$\{css\.truncate\}/)
   })
 
   it('row hierarchy is a named grid, never margin-left:auto (automation rows)', () => {

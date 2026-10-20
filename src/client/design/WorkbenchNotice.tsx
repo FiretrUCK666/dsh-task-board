@@ -61,7 +61,7 @@ export function WorkbenchNotice({ items, children }: WorkbenchNoticeProps) {
         ? (
           <span key={item.id} className={css.workbenchNoticeLine} title={item.title}>
             <span className={css.workbenchNoticeDot} aria-hidden="true" />
-            <span className={css.workbenchNoticeText}>{item.text}</span>
+            <span className={`${css.workbenchNoticeText} ${css.truncate}`}>{item.text}</span>
           </span>
         )
         : (
@@ -73,7 +73,7 @@ export function WorkbenchNotice({ items, children }: WorkbenchNoticeProps) {
             title={item.title}
           >
             <span className={css.workbenchNoticeDot} aria-hidden="true" />
-            <span className={css.workbenchNoticeText}>{item.text}</span>
+            <span className={`${css.workbenchNoticeText} ${css.truncate}`}>{item.text}</span>
           </button>
         ))}
       {children}

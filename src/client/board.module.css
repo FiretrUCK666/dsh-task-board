@@ -1502,7 +1502,10 @@
   color: var(--dsh-tb-text-2);
   /* 纸面上的小纸片：同样的台阶 + 边光 + 一档投影，所以它看起来是「放在卡片
      上的一枚按钮」，而不是卡片里挖出来的一块。 */
-  background: var(--dsh-tb-plane-sheet);
+  /* **它坐在卡片里面**，所以底要自己说：不写就会读到卡片那一档，一张白纸片跟着卡片
+     泛蓝。底与影走纸面的槽（那是**材质**）；**角不走那个槽**——纸面槽装的是「这张纸的
+     角有多大」（sm/md/lg），而 pill 是另一族：一枚药丸的角是它的形状，不是它的材质。 */
+  --dsh-tb-paper-plane: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
@@ -1657,10 +1660,12 @@
      from the type ladder, not left to the font — the card's colour mark is
      centred against it.
 
-     **标题折行，不夹断。** 夹断那一族（`-webkit-line-clamp` 与它要的两条配套）
-     住在共享的 `.titleText` 里：一张卡的标题是「这是哪一件事」的唯一答案，夹掉
-     后半句，读者就得靠猜，而猜错的代价是点开一张不该点的卡。这一条只说字号、
-     字重与断词——一个没有空格的长串也得断在盒里，不许顶出卡片。 */
+     **标题折行，不夹断。** 夹断那一族（`-webkit-line-clamp` 与它要的两条配套）已经
+     **整个删掉了**——它一度被收进共享层做成一枚 `.titleClamp2`，而「卡片不许有截断」
+     这条要求落地之后它就没有消费者了，于是连同那个家一起清掉。留下的只有折行，规则在
+     共享的 `.titleText` 里。一张卡的标题是「这是哪一件事」的唯一答案，夹掉后半句，
+     读者就得靠猜，而猜错的代价是点开一张不该点的卡。这一条只说字号、字重与断词——
+     一个没有空格的长串也得断在盒里，不许顶出卡片。 */
   font-size: var(--dsh-tb-type-title-size);
   line-height: var(--dsh-tb-type-title-line);
   font-weight: 600;

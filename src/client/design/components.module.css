@@ -60,10 +60,7 @@
    .chipLead below, never here. */
 .chipBody {
   display: block;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 裁剪三件套归 `.truncate`（chip 里的文字槽：它是省略号落点，但现在自己抄了一份三件套。）——共享层内部也只有一个家。 */
 }
 
 /* The chip's lead-glyph slot: the geometry half of the two-slot grammar. A
@@ -523,12 +520,9 @@
 
 .inlineSummary {
   flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
+  /* 裁剪三件套归 `.truncate`（一行摘要：元信息，省略号。）——共享层内部也只有一个家。 */
 }
 
 .detailSection h4 {
@@ -553,15 +547,12 @@
   gap: var(--dsh-tb-space-4);
 }
 
-.sectionHead h4 {
+/* 小节标题在网格里占哪一格。**给它一个名字，不靠 `h4` 这个标签**：结构位置不是身份，
+   换一个标签（`<h4>` → `<h3>`，标题层级是该跟着文档结构走的）就会指错，而屏上不会报错。
+   让位的是**标题那一段字**（裁剪住在文字槽里，不在会藏孩子的容器上）：一条分节头在任何宽度下
+   都把动作簇留在同一行。 */
+.sectionHeadTitle {
   grid-area: title;
-  min-width: 0;
-  /* The give-way member is the LABEL (truncation lives in a text slot, never
-     in a container that hides its children): a section head keeps its action
-     cluster on the same line at every width. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .sectionAction {
@@ -1369,7 +1360,7 @@ textarea.input {
  * a title is body text, so the honest way to lose the width is to lose a LINE, not
  * a word. 一行放不下就让它占两行，行高自己长.
  *
- * (`.truncate` above is the candidatos' other half of the pair: 元信息可省略号.)
+ * (`.truncate` above is the other half of the pair: 元信息可省略号.)
  *
  * The obligation this class states is the one every caller has to honour:
  * **the element must be allowed to shrink** (min-width: 0), and white-space must
@@ -1382,26 +1373,6 @@ textarea.input {
   white-space: normal;
 }
 
-
-/* ── THE TITLE FORM ──────────────────────────────────────────────────────────
- *
- * One home for 「一个标题」: a title that may be narrower than its text, and which
- * WRAPS instead of being cut. The law is the project's own — 标题**折行，不省略**:
- * a title is body text, so the honest way to lose the width is to lose a LINE, not
- * a word. 一行放不下就让它占两行，行高自己长.
- *
- * (`.truncate` above is the candidatos' other half of the pair: 元信息可省略号.)
- *
- * The obligation this class states is the one every caller has to honour:
- * **the element must be allowed to shrink** (min-width: 0), and white-space must
- * be free to wrap (normal) — a title that inherits nowrap from an ancestor is a
- * title that hard-clips, and a hard clip is a sentence the reader cannot finish.
- */
-.titleText {
-  min-width: 0;
-  overflow-wrap: anywhere;
-  white-space: normal;
-}
 
 
 /* The file chip's byte size: quiet meta beside the name, never truncated
@@ -1725,17 +1696,15 @@ textarea.input {
      左移一格；它一旦按内容定宽，9 变成 10 也会让整段挪动。等宽数字 + 一个定宽下限，
      于是「有没有话说」「数几位」都不改变这一行的几何。 */
   flex: none;
-  min-inline-size: 12ch;
-  overflow: hidden;
   color: var(--dsh-tb-text-2);
   font-size: var(--dsh-tb-type-meta-size);
   line-height: var(--dsh-tb-type-meta-line);
   /* 一行里全是数字（等你处理 3 · 进行中 1）：不等宽的话，计数的每一次变化都会让
      整行左右抖一下。 */
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   text-align: end;
+  /* 裁剪三件套归 `.truncate`（状态栏：元信息，省略号。它有自己的 12ch 地板，走槽。）——共享层内部也只有一个家。 */
+  --dsh-tb-clip-floor: 12ch;
 }
 
 /* 检查更新：工作台级动作，三页同一个位置（紧贴出口左边）。 */
@@ -1902,10 +1871,7 @@ textarea.input {
 }
 
 .workbenchNoticeText {
-  min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  /* 裁剪三件套归 `.truncate`（通知文字：元信息，省略号。）——共享层内部也只有一个家。 */
 }
 
 /* ── 极窄档：整条栏换行，而不是把轨道压窄 ────────────────────────────────────

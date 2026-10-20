@@ -576,7 +576,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   <input
                     ref={cardNameField}
                     className={css.itemOptNaming}
-                    size={13}
                     value={cardDraft}
                     placeholder={t('item.cardName.label')}
                     aria-label={t('item.cardName.label')}

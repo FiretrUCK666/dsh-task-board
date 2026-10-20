@@ -98,6 +98,25 @@ import { probeOf } from './probe-args.mjs'
 export const SHARED_LAYER = 'src/client/design/'
 
 /**
+ * THE HOME ITSELF — the one rule in the shared layer that spells the form out
+ * *as the answer* rather than as a copy of it.
+ *
+ * **Why this is a name and not "any rule in the shared layer".** The exemption
+ * used to cover the whole sheet, on the reasoning that the home lives there. It
+ * does — but a sheet is not a rule: measured, five more rules inside the very
+ * same sheet spelled out the same three declarations (`.chipBody`,
+ * `.inlineSummary`, a section head, `.workbenchStatus`, `.workbenchNoticeText`),
+ * and every one of them was invisible to this gate, because the gate never
+ * looked. The question the gate asks is 「这条形态有几个家」 — not 「它住在哪张
+ * 表里」. So the exemption belongs to the rule, not to the sheet.
+ *
+ * `--probe-shared` keeps this honest: it feeds a shared sheet whose home rule is
+ * present and asserts the gate stays quiet about *that* rule.
+ * @type {readonly string[]}
+ */
+export const SHARED_HOME_SELECTORS = ['.truncate']
+
+/**
  * Shapes a page sheet may spell out on its own, with the reason.
  *
  * **The key is a fragment of the normalised declaration body.** That is what
@@ -112,14 +131,16 @@ export const SHARED_LAYER = 'src/client/design/'
  * @type {readonly { match: string, home?: string, why: string }[]}
  */
 export const PER_SHEET_EXEMPTIONS = [
-  {
-    match: '-webkit-box-orient: vertical;-webkit-line-clamp: 2',
-    home: '-webkit-line-clamp',
-    why: '**两行夹这一族还没有家**——共享层只有一行省略号那一个形态（`.truncate`），' +
-      '而这一族是另一种裁法（夹两行，不出省略号）。所以这一族不是「抄一份」，是「还没有那个家」：' +
-      '要把它变成共享形态，先按新增登记走一遍（`src/client/design/addition-records.ts`），' +
-      '然后这一条豁免就作废、门禁重新报。**形状一变（行数、盒子写法、这一族整体换了）这条豁免自动失效。**',
-  },
+  /* **空表，而且这本身是一条结论。** 这里曾经有一条：「两行夹这一族还没有家」——它描述的
+   * 是共享层只有一行省略号、而夹两行是另一种裁法的那个时期。后来那一族被收进共享层做成了
+   * `.titleClamp2`，再后来「卡片不许有截断」落地、它失去所有消费者、连同那个家一起被删掉。
+   *
+   * 也就是说这条豁免**等到了它等的东西，然后那个东西整个消失了**。硬性规范 18 管的就是
+   * 这一步：删一个形态要一起清干净——留着这条记录，它就是在描述一族不存在的形态，
+   * 而「一个看起来很权威的假线索」比缺一条注释贵得多。
+   *
+   * 空表不是「没有规矩」：`--probe-exempt` 会种一条带理由的豁免并要求门禁放行，所以
+   * 「豁免机制还活着」这件事仍然被证明。 */
 ]
 
 /**
@@ -228,8 +249,14 @@ export function truncationCopiesIn(sheets, exemptions = PER_SHEET_EXEMPTIONS) {
     .flatMap((sheet) => rulesOf(sheet.css).map((rule) => normaliseBody(rule.body)))
   const out = []
   for (const sheet of sheets) {
-    if (!isPageSheet(sheet.rel)) continue
+    /* **豁免区不等于没有规矩。** 原先这一句是 `if (!isPageSheet(sheet.rel)) continue`——整个
+     * 共享层被跳过，理由是「那个家本来就住那儿」。可豁免只该给**那个家本身**：实测下来共享层
+     * 内部还有 5 处自己抄了同一副三件套（`.chipBody` / `.inlineSummary` / 一个分节标题 /
+     * 状态栏 / 通知文字），而它们从头到尾没人管。判据要问的是「这条形态有几个家」，不是
+     * 「它住在哪张表里」。所以现在只放行**声明它的那几条**，同表里其余的拷贝照报。 */
+    const page = isPageSheet(sheet.rel)
     for (const rule of rulesOf(sheet.css)) {
+      if (!page && SHARED_HOME_SELECTORS.includes(rule.selector.trim())) continue
       const form = truncationFormIn(rule.body)
       if (form === null) continue
       const body = normaliseBody(rule.body)
@@ -290,6 +317,24 @@ function fixtureSheets(root, name) {
   return clientSheetFiles(dir).map((sheet) => ({ rel: sheet.rel, css: sheet.css }))
 }
 
+/**
+ * THE PROBE'S OWN EXEMPTION — used only by the two self-tests below.
+ *
+ * The production table is empty, and empty is the correct state: the one entry it
+ * ever held waited for a home, the home was built, and then the whole shape was
+ * deleted (hard rule 18). A self-test that read the production table would report
+ * "the exemption mechanism is broken" the moment the debt was paid — which is the
+ * opposite of what it should say. So the probes carry their own entry and prove
+ * the BRANCH works, regardless of what production happens to need today.
+ * @type {readonly { match: string, why: string }[]}
+ */
+const PROBE_EXEMPTIONS = [
+  {
+    match: '-webkit-box-orient: vertical;-webkit-line-clamp: 2',
+    why: '这一条只活在自测里：证明「写清理由的豁免会被读到并放行」。',
+  },
+]
+
 function main() {
   const probe = probeOf(['--probe-copy', '--probe-shared', '--probe-exempt', '--probe-ratchet'])
   const root = process.argv[2] ?? '.'
@@ -315,7 +360,7 @@ function main() {
       return
     }
     if (probe === '--probe-exempt') {
-      const found = truncationCopiesIn(fixtureSheets(root, 'exempt'))
+      const found = truncationCopiesIn(fixtureSheets(root, 'exempt'), PROBE_EXEMPTIONS)
       const exempt = found.filter((one) => one.exempt)
       if (exempt.length === 0) {
         console.error('FAIL 自测：豁免表里写明理由的那一种形状必须放行，却一条都没放行。')
@@ -326,8 +371,8 @@ function main() {
     }
     /* The ratchet: the exemption is keyed by the SHAPE, so changing the shape
      * makes it die and the gate reports the site again. */
-    const before = truncationCopiesIn(fixtureSheets(root, 'ratchet-before'))
-    const after = truncationCopiesIn(fixtureSheets(root, 'ratchet-after'))
+    const before = truncationCopiesIn(fixtureSheets(root, 'ratchet-before'), PROBE_EXEMPTIONS)
+    const after = truncationCopiesIn(fixtureSheets(root, 'ratchet-after'), PROBE_EXEMPTIONS)
     const beforeExempt = before.filter((one) => one.exempt).length
     const afterExempt = after.filter((one) => one.exempt).length
     if (beforeExempt === 0) {

@@ -147,7 +147,7 @@ export function WorkbenchBar({
           ——「点一下页面，那一整条东西就动一下」最刺眼的一种。空的时候它不打印任何字，
           只占住自己的位（宽度也是定的，见样式表）。 */}
       <p
-        className={css.workbenchStatus}
+        className={`${css.workbenchStatus} ${css.truncate}`}
         aria-live="polite"
         data-empty={status === undefined || status === '' ? '' : undefined}
       >
