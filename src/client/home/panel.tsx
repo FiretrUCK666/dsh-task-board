@@ -225,6 +225,18 @@ export function HomePage({ now }: { readonly now?: number }) {
             )}
         </section>
 
+        {/* **「会话」这张卡数的是「还活着的对话」，不是「挂着对话的卡」。**
+          *
+          * 两个数：`running` = 那一栏是「进行中」的卡；`waiting` = 会话停在问题、
+          * 审批或计划上等人回答的。两者合起来才是「现在有人在场」的那一类。
+          *
+          * **跑完的会话不在这里。** 它已经不再需要任何人在场，而它的去处是那张卡自己
+          * ——卡片上记着这一轮做过什么。所以一张「待审核」的卡完全可能挂着一整个跑完的
+          * 会话，而这张卡上仍然是 0。
+          *
+          * 空的文案因此不能说「没有挂着会话的卡」：那句话在读者听来是「所有卡都没挂
+          * 会话」，而他手上明明有卡、卡上明明有会话。说清「正在进行」与「跑完的在哪
+          * 儿找」，才是这张卡真正给出的判断。 */}
         <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.sessions')}</h2>
           {counts.running + counts.waiting === 0
