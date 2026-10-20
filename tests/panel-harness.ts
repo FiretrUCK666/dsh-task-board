@@ -1119,6 +1119,28 @@ export function allRules(css: string): SheetRule[] {
  * @param name - the class, without the dot.
  * @returns one body per matching rule, in source order.
  */
+/**
+ * Every rule that **MENTIONS** `.name` anywhere in its selector.
+ *
+ * ── 这把尺子量的是什么（读法要写准，别让人拿它当别的） ──────────────────────
+ *
+ * 它答的是「**哪些规则提到了这个类**」，**不是**「这个类**自己**声明了什么」。
+ * `.card.selectedCard .cardQuickRun` 这一条会被算到 `.card` 与 `.selectedCard` 头上，
+ * 而它真正作用的那个盒子是 `.cardQuickRun`。
+ *
+ * **脚本侧那把尺子答的是另一个问题**：`scripts/css-core.mjs` 的 `holderClassesOf`
+ * 读的是「这条规则**选中哪个盒子**」（选择器的**末段 compound**）——CSS 的语义。
+ * 两者都对，但**答的不是同一件事**：这边是「谁提到了它」，那边是「它作用在谁身上」。
+ *
+ * **今天没有断言被读错**（逐条核过 23 个 (类, 属性) 对，只有一处两种读法读出的数不同，
+ * 而结论一样），但这是**会漂**的隐患：将来某条断言若问「这个类自己声明了什么」，
+ * 应当用**精确选择器**那把尺子（`ruleTextOf(css, '.' + name)`，读法是严格的那个），
+ * 不要用这一把。
+ *
+ * @param css - the sheet, comments intact or not.
+ * @param name - the class name, without the dot.
+ * @returns one body per matching rule, in source order.
+ */
 export function rulesOf(css: string, name: string): string[] {
   /* **注释先剥掉。** 不剥的话，一段写着「见 `.itemRowTitle` 的 22px」的注释会被读成一条规则
    * ——从那个词一直吃到**下一条规则**的 `{`，于是那一条的声明挂在了这个类名下。量出来的
@@ -1187,6 +1209,11 @@ export function ruleTextOf(css: string, selector: string): string | undefined {
  *
  * @param css - the sheet, comments intact or not.
  * @returns the value, or `undefined` when the base band says nothing about it.
+ *
+ * ── 读法 ─────────────────────────────────────────────────────────────────────
+ *
+ * **这是「提到 `.name` 的那些规则」里最后一个值**——宽松那一把（见 {@link rulesOf}）。
+ * 要问「这个类**自己**声明了什么」，用精确选择器那把尺子：`ruleTextOf(css, '.' + name)`。
  */
 export function baseDeclaredOf(css: string, name: string, property: string): string | undefined {
   const pattern = new RegExp(`\\.${name}(?![\\w-])`)
