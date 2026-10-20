@@ -47,10 +47,12 @@ import { designCss, itemSurfaceSource, PAGES, repoRoot, type Page } from './pane
 import { clientSheets, pageCss } from './panel-harness.ts'
 import {
   aliasLayer,
+  allRules,
   backgroundOf,
   cssMembersOf,
   declaredOf,
   lastDeclaredOf,
+  baseDeclaredOf,
   dswNamesReferenced,
   fixtures,
   hostTokens,
@@ -109,25 +111,15 @@ interface Rule {
  * thing that was removed. **A checker that cannot tell a rule from a sentence
  * about it will demand the wrong fix**, which is the whole of hard rule 14; the
  * remedy here is to read the sheet the way a browser does.
+ *
+ * **它建在 `allRules` 上**（台架里那一个读法），所以**它看得见窄档**。这一份曾经
+ * 自己做，那份读法**不下降进 at-rule**——于是整段窄档对它不可见，而它守着的
+ * 「宽度 100% 那一族必须声明 border-box」在窄档里**从未被检查过**。
  * @param css - the sheet.
  * @returns one entry per declaration rule, in source order.
  */
 function declarationRules(css: string): Rule[] {
-  const out: Rule[] = []
-  const source = css.replace(/\/\*[\s\S]*?\*\//g, '')
-  for (const match of source.matchAll(/([^{}]+)\{/g)) {
-    const start = (match.index ?? 0) + match[0].length - 1
-    let depth = 0
-    let end = start
-    for (; end < source.length; end++) {
-      if (source[end] === '{') depth++
-      else if (source[end] === '}') { depth--; if (depth === 0) break }
-    }
-    const body = source.slice(start + 1, end)
-    if (body.includes('{')) continue
-    out.push({ selector: (match[1] ?? '').trim().replace(/\s+/g, ' '), body })
-  }
-  return out
+  return allRules(css).map((rule) => ({ selector: rule.selector, body: rule.body }))
 }
 
 /**
@@ -3635,20 +3627,44 @@ describe('标签框按内容定宽', () => {
 describe('行尾那一簇记号与标题共一条线', () => {
   const css = panelCss()
 
-  it('簇高就是标题的行高，不是它自己内容的高度', () => {
+  it('宽档：簇高就是标题的行高，不是它自己内容的高度', () => {
     // 行的网格是 `align-items: start`，于是这一簇的盒顶与标题的盒顶齐平；而它里面最高的一件
     // 只有 18px（那三枚胶囊：步骤 / 状态 / 日期）——**量出来的是这一簇的墨心 272，而标题、
     // 珠子与 ⋮ 都是 274**。读者看到的正是「标题右边那些东西比标题高一点点」。
     // 钉法就是让两者声明同一个数；改一个而不改另一个，这一条就红。
-    expect(lastDeclaredOf(css, 'itemRowMarks', 'block-size'), '行尾那一簇的高度不再与标题的行高同一个数，于是它们不再共线')
-      .toBe(lastDeclaredOf(css, 'itemRowTitle', 'line-height'))
+    //
+    // **读的是基础档**（顶层那一条），因为这一条说的是**宽档**的样子：窄档另有其形
+    // （见下一条），问「最终值」会读到窄档去，答的就不是这一条问的那件事了。
+    expect(baseDeclaredOf(css, 'itemRowMarks', 'block-size'), '行尾那一簇的高度不再与标题的行高同一个数，于是它们不再共线')
+      .toBe(baseDeclaredOf(css, 'itemRowTitle', 'line-height'))
+  })
+
+  it('窄档：那一簇自己占一行，于是放开高——定高 + 换行 = 画到盒外', () => {
+    // 窄档（`@container dsh-tb-item-list (max-width: 559px)`）里这一簇会**换行**：
+    // 量过最坏的一行（附件 + 步骤 + 卡 + 长日期）在 320px 下要 225px，而那一格只有 222px
+    // ——于是它折成两行，而盒高还是 22px 时**第二行画到了盒外**（量到 scrollHeight 38 >
+    // clientHeight 22，16px 露在纸面上）。
+    // 所以窄档放开高：**定高的盒子不许装会换行的内容**（`verify-fixed-height-wrap` 守着
+    // 这一条，它读的是结构：定高与 `flex-wrap: wrap` 不能同时成立）。
+    expect(lastDeclaredOf(css, 'itemRowMarks', 'block-size'), '窄档那一簇仍是定高，于是折行时第二行画到了盒外')
+      .toBe('auto')
   })
 
   it('the probe bites: a cluster sized by its content is reported', () => {
     // 高度改回按内容算时两个数就不同了——那正是这一条要报的那件事。
+    // 种的是**顶层**那一条，所以读数也必须是**基础档**那个（窄档那条与它无关）。
     const planted = `${css}\n.itemRowMarks {\n  block-size: auto;\n}\n`
-    expect(lastDeclaredOf(planted, 'itemRowMarks', 'block-size'), 'the plant did not bite')
-      .not.toBe(lastDeclaredOf(planted, 'itemRowTitle', 'line-height'))
+    expect(baseDeclaredOf(planted, 'itemRowMarks', 'block-size'), 'the plant did not bite')
+      .not.toBe(baseDeclaredOf(planted, 'itemRowTitle', 'line-height'))
+  })
+
+  it('the reader keeps the two bands apart', () => {
+    // **分档读的判据自己也要有判据。** 种一条窄档规则：它该改「最终读数」（窄档赢），
+    // 而**基础档的读数一个字节都不许动**。两件事都成立，才说明这把尺子分得清两档。
+    const planted = `${css}\n@container dsh-tb-item-list (max-width: 559px) {\n  .itemRowMarks {\n    block-size: 3px;\n  }\n}\n`
+    expect(baseDeclaredOf(planted, 'itemRowMarks', 'block-size'), '窄档的值漏进了基础档的读数')
+      .toBe(baseDeclaredOf(css, 'itemRowMarks', 'block-size'))
+    expect(lastDeclaredOf(planted, 'itemRowMarks', 'block-size'), '窄档的值没有盖住最终读数').toBe('3px')
   })
 })
 

@@ -1015,9 +1015,86 @@ export function dswNamesReferenced(css: string): string[] {
   return [...used].sort()
 }
 
-/** CSS block comments, removed. The sheet's only comment form. */
+/**
+ * CSS block comments, removed. The sheet's only comment form.
+ *
+ * **这里是 TS 侧的那一份，脚本侧是另一份**（`scripts/css-core.mjs` 的 `stripComments`）：
+ * 两侧语言不同，脚本不能 import TS、TS 也不能 import `.mjs`（本仓库的 `tsconfig` 不开
+ * `allowJs`）——所以这是**语言边界**，不是抄。同一语言里的多份才要收：脚本侧那四份已经
+ * 收进 `css-core.mjs` 了。
+ */
 export function stripCssComments(css: string): string {
   return css.replace(/\/\*[\s\S]*?\*\//g, '')
+}
+
+/** One rule of a sheet, with the at-rule it lives in. */
+export interface SheetRule {
+  /** The selector, whitespace-collapsed. */
+  readonly selector: string
+  /** The declarations between the braces. */
+  readonly body: string
+  /** The at-rule this rule lives in (`''` for a top-level rule). */
+  readonly at: string
+}
+
+/**
+ * Every rule of a sheet, **descending into at-rules** and saying which band each
+ * one is in.
+ *
+ * **为什么必须下降进去。** 这个仓库的窄档规则写在 `@container` 里，于是同一段 CSS
+ * 有**两个世界**：基础档（顶层）与容器档。读法若不下降进去，看到的只有基础档——
+ * 而**布局最密集的那一段**（窄档）从来没被读过。量出来的症状是：一条窄档的
+ * `width: 100%` 忘了 `box-sizing: border-box`，而「宽度 100% 那一族必须声明
+ * border-box」这条判据是**绿的**（它根本没看见那条规则）。
+ *
+ * **`@keyframes` 整块是一个不可分单元**：它的里面是帧（`0%` / `50%`），不是规则，
+ * 按规则读会把每一帧当成一条顶层规则。于是整块跳过。
+ *
+ * @param css - the sheet, comments intact or not.
+ * @returns one entry per rule, in source order.
+ */
+export function allRules(css: string): SheetRule[] {
+  const source = stripCssComments(css)
+  const out: SheetRule[] = []
+  const walk = (text: string, at: string): void => {
+    let i = 0
+    while (i < text.length) {
+      const open = text.indexOf('{', i)
+      if (open < 0) break
+      /* **前导是「上一条规则结束之后到这一条 `{` 之间」的那一段。**
+       * 边界在**这一条 `{` 之前**找：从扫描位置往前找会找到更早的那一条规则，于是前导里
+       * 混进两段声明，`startsWith('@')` 于是不成立——**那一次「丢掉档」就没发生，而读数
+       * 静悄悄读成了另一个档的值**。 */
+      const preludeStart = Math.max(text.lastIndexOf('}', open), text.lastIndexOf(';', open)) + 1
+      const prelude = text.slice(preludeStart, open).trim()
+      let depth = 1
+      let j = open + 1
+      for (; j < text.length && depth > 0; j++) {
+        if (text[j] === '{') depth++
+        else if (text[j] === '}') depth--
+      }
+      const body = text.slice(open + 1, j - 1)
+      if (prelude.startsWith('@')) {
+        /* 容器：递归进去，并把前导带下去——一条规则的完整身份是「在哪个档里的哪条选择器」。 */
+        if (!/^@(-[a-z]+-)?keyframes\b/.test(prelude)) walk(body, at === '' ? prelude : `${at} ${prelude}`)
+      } else if (prelude === '') {
+        /* **没有前导的块是一个匿名容器**，它的体里装的是规则。
+         *
+         * 这一条不是假想：`reducedMotionBlocks` 切出来的那段文本**是从 `{` 开始的**
+         * （它切的是「这一对花括号」，不含 at-rule 的前导）。而这一段文本的体里装的是
+         * **规则**——于是若把它当成一条规则来读，前导为空、整块被跳过，**块里的规则一条
+         * 都读不到**。
+         * 量出来的症状：那张「减弱动效」的判据说「这些动效没有被沉默」，而那个沉默它们的
+         * 块**就在眼前**——因为它根本没读进去。 */
+        walk(body, at)
+      } else {
+        out.push({ selector: prelude.replace(/\s+/g, ' '), body, at })
+      }
+      i = j
+    }
+  }
+  walk(source, '')
+  return out
 }
 
 /**
@@ -1029,6 +1106,12 @@ export function stripCssComments(css: string): string {
  * stops at the first `}` sees only the base rule and reports a band change that
  * is really there, which is the worst kind of wrong: it sends the next author to
  * delete a correct rule.
+ *
+ * **解析只有一处。** 这段读法曾经是这里自己抄的一份，而 `scripts/css-core.mjs` 的头注释
+ * 写着它已经被抄过四份、读法互相不同（其中几份**不下降进 at-rule**，于是窄档那一整段
+ * 对它们从来没有可见过）。现在这段读法建在 `allRules` 上——**测试侧的那一份**；
+ * 脚本侧是 `.mjs`（脚本不能 import TS、TS 也不能 import `.mjs`），那是**语言边界**，
+ * 不是抄。
  * @param css - the sheet, comments intact or not.
  * @param name - the class, without the dot.
  * @returns one body per matching rule, in source order.
@@ -1038,20 +1121,8 @@ export function rulesOf(css: string, name: string): string[] {
    * ——从那个词一直吃到**下一条规则**的 `{`，于是那一条的声明挂在了这个类名下。量出来的
    * 症状是：一个类明明只有一处 `line-height: 22px`，而门禁读到的是隔壁的 16px，指向一个
    * 根本不存在的问题（硬性规范 14：让实现变得不如以前的检查，先怀疑检查的读法）。 */
-  const source = stripCssComments(css)
-  const out: string[] = []
-  const open = new RegExp(`\\.${name}(?![\\w-])[^\\{;]*\\{`, 'g')
-  for (const match of source.matchAll(open)) {
-    const start = (match.index ?? 0) + match[0].length - 1
-    let depth = 0
-    let end = start
-    for (; end < source.length; end++) {
-      if (source[end] === '{') depth++
-      else if (source[end] === '}') { depth--; if (depth === 0) break }
-    }
-    out.push(source.slice(start + 1, end))
-  }
-  return out
+  const pattern = new RegExp(`\\.${name}(?![\\w-])`)
+  return allRules(css).filter((rule) => pattern.test(rule.selector)).map((rule) => rule.body)
 }
 
 /** Every declaration of `property` across the rules that target `.name`. */
@@ -1062,6 +1133,31 @@ export function declaredOf(css: string, name: string, property: string): string[
     for (const call of body.matchAll(new RegExp(`(?:^|[;{\\s])${value}\\s*:\\s*([^;]+)`, 'g'))) out.push((call[1] ?? '').trim())
   }
   return out
+}
+
+/**
+ * The last declared value of `property` for `.name` **in the base band** — the rules
+ * that are not inside an at-rule.
+ *
+ * **为什么需要「分档读」。** 这个仓库的窄档规则写在 `@container` 里，于是同一个类有
+ * **两个**读数：基础档（顶层）与容器档。问「这一类的最终值是什么」时，容器档赢
+ * （`lastDeclaredOf`）；问「**宽档**是什么样」时，要的是基础档那个。
+ * 两者问的是不同的事，用同一个读法答，其中一个一定答错——而答错的那个会把下一个人
+ * 引去删掉一条正确的规则（这是最难查的一类错）。
+ *
+ * @param css - the sheet, comments intact or not.
+ * @returns the value, or `undefined` when the base band says nothing about it.
+ */
+export function baseDeclaredOf(css: string, name: string, property: string): string | undefined {
+  const pattern = new RegExp(`\\.${name}(?![\\w-])`)
+  const value = property.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+  let found: string | undefined
+  for (const rule of allRules(css)) {
+    if (rule.at !== '') continue
+    if (!pattern.test(rule.selector)) continue
+    for (const call of rule.body.matchAll(new RegExp(`(?:^|[;{\\s])${value}\\s*:\\s*([^;]+)`, 'g'))) found = (call[1] ?? '').trim()
+  }
+  return found
 }
 
 /** The last declared value of `property` for `.name`, or `undefined`. */

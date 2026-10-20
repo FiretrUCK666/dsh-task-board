@@ -28,7 +28,7 @@ import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
-import { designCss, pageCss, spacingPx } from './panel-harness.ts'
+import { allRules, designCss, pageCss, spacingPx } from './panel-harness.ts'
 
 /**
  * The board surface AS IT RENDERS: the board's own sheets plus the design layer
@@ -1068,17 +1068,16 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     //    two mechanisms above (outline colour, or a shadow on a pseudo-element),
     //    or picks a third property; it may not take the material away for the
     //    duration of a run. The detector is proved on planted sheets below.
-    /** Rules whose subject IS the card — not its children, not a pseudo-element. */
-    const cardRulesOf = (sheet: string): Array<{ selector: string; body: string }> => {
-      const out: Array<{ selector: string; body: string }> = []
-      for (const match of sheet.matchAll(/([^{}]+?)\{([^{}]*)\}/g)) {
-        const selector = (match[1] ?? '').trim()
-        if (!/(?:^|[^\w-])\.card(?=$|[^\w-])/.test(selector)) continue
-        if (selector.includes('::')) continue
-        out.push({ selector, body: match[2] ?? '' })
-      }
-      return out
-    }
+    /**
+     * Rules whose subject IS the card — not its children, not a pseudo-element.
+     *
+     * **建在 `allRules` 上**（台架里那一个读法），所以**它看得见窄档**。这一份曾经
+     * 自己做，那份读法**不下降进 at-rule**——于是整个窄档对它不可见。
+     */
+    const cardRulesOf = (sheet: string): Array<{ selector: string; body: string }> =>
+      allRules(sheet)
+        .filter(rule => /(?:^|[^\w-])\.card(?=$|[^\w-])/.test(rule.selector) && !rule.selector.includes('::'))
+        .map(rule => ({ selector: rule.selector, body: rule.body }))
     /** Every `@keyframes` body, by name, brace-matched. */
     const framesOf = (sheet: string): Map<string, string> => {
       const map = new Map<string, string>()

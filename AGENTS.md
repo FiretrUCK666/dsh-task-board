@@ -259,11 +259,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | host 存储单元名 | `dsh_task_board`（落 `~/.dsh/storages/dsh_task_board/` **目录**；平台只允许 `^[a-z][a-z0-9_]*$`，**不能含连字符**） |
 | 单元内文档名 | `documents/<name>.json`（`board` 是看板真相，`meta` 是迁移标记；加一种新数据 = 加一个文档名） |
 | 启停开关 | profile 里本条目的 `disabled`（不写 = 默认启用，见「启停机制」） |
-| **看板舞台 slot** | `main`，`key: dsh-task-board`（keyed slot；`activePanelId === null` 表示会话） |
-| **总览舞台 slot** | `main`，`key: dsh-task-board-home`（工作台的第一页） |
-| **清单舞台 slot** | `main`，`key: dsh-task-board-items`（与看板同一个座位、不同键） |
-| **设计系统预览舞台 slot** | `main`，`key: dsh-task-board-design`（同上；**只在开发环境注册**，见启停机制） |
-| **侧栏入口 slot** | `sidebar.panellist`，`id` 与各自的 `main` 键**一致**（shell 靠它把行解析到舞台） |
+| **舞台 slot 的 key** | 四个 `main` 舞台各带一个 keyed slot，**key 都取插件 id 派生的名字**；侧栏入口是 `sidebar.panellist` 的一行，**id 与各自的 `main` 键一致**。具体键见「宿主契约表」 |
 | **插件行的开关** | `cordis.patch.yml` 的五行 = 详情页的五个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
@@ -340,7 +336,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 | client | `remote` | `$on` | `@deepseek-ai/dsh-api-gateway` |
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
 
-**每个注入都是负债**：声明一个实际不用的服务，会在该服务缺席的部署里白等，那个半区永不激活。
+**每个注入都是负债**：声明一个实际不用的服务，在那个半区永不激活的部署里白等。
 所以 `inject` 只列真正用到的（**不**注入 `settings` / `configForms`，也**不**注入右栏那个服务）。
 该脚本另带反向自测（`--probe-removed` / `--probe-services` / `--probe-attachment-face`）：拿
 **不可能存在**的成员与服务名各扫一次，**都必须报红**——否则检查本身失效了。
@@ -373,10 +369,9 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### host 半区（DSH 主进程）
 
 - `src/index.ts`：inject 只有 `webServer`；`ctx.effect` 各注册一条路由。**模型的整个面在它自己的
-  一行**（`src/host-agent.ts`），关掉「AI 接口」是装配层的事。**没有 `Config` schema、没有 enable
-  检查**——启停是 profile 行的 `disabled`。
-- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：**一行 = 详情页上的一个开关**；面板的开关
-  只能由宿主侧那一行先宣告（`host-home.ts` / `host-board.ts` / `host-items.ts`）。
+  一行**（`src/host-agent.ts`），关掉「AI 接口」是装配层的事。**启停不在代码里判断**（见「启停机制」）。
+- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：面板的开关只能由宿主侧那一行先宣告
+  （`host-home.ts` / `host-board.ts` / `host-items.ts`）。
 - `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
   **动作目录是它们的唯一权威**（`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts` 的
   注册表）；写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI 调同一套语义实现**。
@@ -400,12 +395,11 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 
 - `src/client/index.ts`：inject 六服务；offline-first 挂载（副本常驻 → 接线 → 即时可用 → 后台
   收敛）；官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`。
-  **没有启用判断**：被组合即启用，生命周期挂在一个 `ctx.effect` 上。
+  **没有启用判断**（被组合即启用），生命周期挂在一个 `ctx.effect` 上。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；host 侧注册路径保持绝对，
   浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
   seat 组件。`board-transport.ts`：fetch + EventSource（缺席降轮询）。
-- `src/client/item/`：**清单面板**，与看板同形状的第二个主舞台面板（`main` key =
-  `dsh-task-board-items`，共用 `selectPanel(null)` 出口；**座位见宿主契约表**）。
+- `src/client/item/`：**清单面板**，与看板同形状的第二个主舞台面板（**座位见宿主契约表**）。
   **骨架是「左栏 + 一列」**：方向只在左栏（`rail.tsx` 吃 `item-rail.ts` 的推导）；顶栏只有
   **搜索 · 排序 · ＋新建一条**，**筛选不在顶栏**。列表按**日**分段。几何与四条版面判据在
   `DESIGN.md`。
@@ -440,14 +434,14 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 元件，又成了「哪一页渲染它」的函数。两个例外都有理由：`escape-stack` / `dialog-focus` /
 `modal-inert` 只有 board 一个消费者，搬走会让 `design/` 反过来 import `board/`；运行配置那一对
 记在同一张豁免表里。**改 CSS 前必须知道**：类名属于**表**（构建按文件名哈希），一张表的选择器写
-另一张表的类名在生产包里匹配不到任何东西，静默失效。跨页面共享的形态只能是**组件**或**共享类**，
+另一张表的类名在生产包里匹配不到任何东西，静默失效——所以跨页面共享的形态只能住在 `design/`，
+**页面表里出现第二份拷贝即违规**（硬性规范 20；机械拦：`verify-class-ownership.mjs`）。
 展开与门禁（`verify-design-docs.mjs`）在 `DESIGN.md` 的 Design System 节；其余成文也在那里（间距
 阶梯、断点表与四个容器、`corner-shape` 两条轴、预览页、四步复用顺序）。**改界面前先读那一节。**
 
 清单面板另有一条陷阱成文在 `DESIGN.md`：**`<p>` 上写 `margin` 一律无效**（压死它的是一条属性
 选择器规则，特异性赢过类规则）。要读的字用 padding 让位。
 
-**预览页**只在开发环境出现。
 ### 核心层（`src/core/` 纯逻辑）
 
 - 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
@@ -540,6 +534,10 @@ pnpm test        # vitest run
 pnpm verify      # 静态门禁 + 客户端 bundle 冒烟
 pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 handshake
 ```
+
+**门禁不用记着跑哪一个**：`pnpm verify` 里的 `scripts/run-gates.mjs` 发现磁盘上每一个
+`scripts/verify-*.mjs` 并逐个跑，所以**新写一个门禁脚本就自动生效，不必登记**。
+CI（`.github/workflows/ci.yml`）每次 push 跑 build / typecheck / test / verify，与本地同一套命令。
 
 打包器写的是**带内容哈希**的 chunk 名，内容一变就多一个新文件、旧的从不删，所以 `build` 先经
 `scripts/clean-lib.mjs` **清空 `lib/`**（该目录下每个文件都由 `pnpm build` 产生，没有手写文件）。
@@ -646,7 +644,8 @@ scripts 与 `scripts/`**。
     `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；
     ③ 只有现有组件确实满足不了时才新增。**共用文法只有一处家**：
     任何跨页面的形态声明属于 `design/`（组件或共享类），**页面表里出现第二份拷贝即违规**——
-    它不会报错，只会在下一次改一处时让另一处留在旧值上。
+    它不会报错，只会在下一次改一处时让另一处留在旧值上（机械拦：`verify-class-ownership.mjs`；
+    声明体相同的抄法另由 `verify-design-docs.mjs` 拦）。
     **「预览页会不会自动覆盖」分两半**：**枚举会**（`map` 的是导出本身）；**组件不会**（标本手写）。
     两条各有一道门禁（`tests/design-coverage.spec.ts`）：每个导出的组件**都要被预览页渲染**、
     **都要有两处渲染点**，跨 surface 的数每次运行打出来。

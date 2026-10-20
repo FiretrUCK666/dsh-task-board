@@ -37,6 +37,31 @@ import { clientSheetFiles } from './sheet-files.mjs'
 import { probeOf } from './probe-args.mjs'
 
 /**
+ * 一条规则选中的**承载盒**是哪个类。
+ *
+ * 一条选择器可能命中好几个元素，但**盒子只有承载它的那一个**：
+ * `.boardModes .notifyBell` 里定高的是铃铛（`.notifyBell`），`.boardModes` 只是祖先。
+ * 所以承载盒 = **最后一个类**。
+ *
+ * 组合选择器（`.a, .b`）里每一段各有各的承载盒——`.a` 与 `.b` 是两个盒子。所以这里
+ * 返回**数组**：一段组合选择器可以给多个盒子各发一份声明。
+ * @param {string} selector - 规则的选择器。
+ * @returns {string[]} 承载盒的类名（不含点）。
+ */
+export function holderOf(selector) {
+  const out = []
+  for (const part of selector.split(',')) {
+    const trimmed = part.trim().replace(/\s+/g, ' ')
+    if (trimmed === '') continue
+    /* 伪类/伪元素挂在最后一个类上（`.a:hover` 的盒子还是 `.a`），所以要把它们剥掉。 */
+    const classes = [...trimmed.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1])
+    const last = classes[classes.length - 1]
+    if (last !== undefined && last !== '') out.push(last)
+  }
+  return out
+}
+
+/**
  * 一个 `block-size` / `height` 的值是不是**固定**的（不是 `auto`、不是随内容的）。
  *
  * `auto` / `fit-content` / `100%` 都可能随内容或容器变，所以不算定高；像素、rem、
@@ -74,54 +99,90 @@ export function collisionsIn(css) {
    * 所以：把每个类名收集起来，再看同一个类名有没有同时被「定高」和「可换行」命中。
    * 组合选择器因此自然展开——那正是本仓库共享家族规则的写法。
    *
-   * 分工仍然按 at-rule 隔开：宽档的定高与窄档的换行永远不同时生效，不算冲突。 */
+   * ── **作用域怎么算** ──────────────────────────────────────────────────────
+   * 第二版按 at-rule 把 key 分开（`scope\0cls`），理由是「宽档的定高与窄档的换行不同时
+   * 生效」。**那个理由是错的**，而且它藏着一个真漏报：
+   *
+   *   `.itemRowMarks { block-size: … }`            ← 顶层
+   *   `@container (max-width: 559px) { .itemRowMarks { flex-wrap: wrap } }`
+   *
+   * 窄屏上，容器查询里的规则**只加**了 wrap，顶层那条定高**仍然生效**——两者同时成立，
+   * 于是内容会溢出。这正是本门禁要抓的那一类，而按作用域分开的第二版**报不出来**
+   * （实测：这样的形状返回空数组）。
+   *
+   * 所以判定改成：**同一个类，在任何一个「作用域链」上同时拿到定高与可换行，就是冲突。**
+   * 作用域链 = 它所在的作用域 + 它的所有外层作用域。顶层是所有作用域链的公共部分，
+   * 所以「顶层定高 + 窄档换行」在窄档那条链上撞上——正是要的。
+   *
+   * `auto`（或其它非定高值）仍然算一次**撤销**，但它只撤销**它自己那条链**上的定高：
+   * 顶层写 `auto` 撤掉顶层那条定高，而容器查询里的定高仍要由容器查询自己撤销。
+   * 这就是为什么记账要按「类 + 作用域」两份，而不是一个扁平的类表。
+   *
+   * ── **记账的键是「承载盒」，不是选择器里的每一个类** ──────────────────────
+   *
+   * 一条规则可能选中好几个类，但**盒子只有承载它的那一个**：
+   *
+   *   `.boardModes .notifyBell { block-size: … }`   ← 定高的是**铃铛**
+   *   `.boardRowTools .boardModes  { flex-wrap: … }` ← 换行的是**模式组**
+   *
+   * 那是**两个不同的盒子**，把它们算成冲突就是误报（第二版就误报了这两条）。
+   * 承载盒 = 选择器的**最后一个类**（后代选择器里，被逗号分开的前半段是祖先）。
+   * 只有承载盒相同才是同一个盒子，才谈得上「既有定高又有换行」。 */
+  /** @type {Map<string, Map<string, { value: string, line: number }>>} 承载盒 -> 作用域 -> 定高 */
   const heights = new Map()
+  /** @type {Map<string, Map<string, { value: string, line: number }>>} 承载盒 -> 作用域 -> 换行 */
   const wraps = new Map()
-  const lineOf = new Map()
+
   for (const rule of rulesOf(css)) {
     const scope = rule.at
-    const classes = [...new Set([...rule.selector.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1]))]
-    if (classes.length === 0) continue
+    const holders = holderOf(rule.selector)
+    if (holders.length === 0) continue
     const height = declOf(rule.body, 'block-size') ?? declOf(rule.body, 'height')
-    if (height !== undefined) {
-      for (const cls of classes) {
-        const key = `${scope}\u0000${cls}`
-        /* 后写的 `auto` 是一次**撤销**，不是"没有定高"。 */
-        if (isFixedHeight(height)) {
-          heights.set(key, height.trim())
-          lineOf.set(key, rule.line)
-        } else {
-          heights.delete(key)
-        }
-      }
-    }
     const wrap = declOf(rule.body, 'flex-wrap')
-    if (wrap !== undefined) {
-      for (const cls of classes) {
-        const key = `${scope}\u0000${cls}`
-        if (wrap.trim() === 'wrap' || wrap.trim() === 'wrap-reverse') {
-          wraps.set(key, true)
-          if (!lineOf.has(key)) lineOf.set(key, rule.line)
-        } else {
-          wraps.delete(key)
-        }
+    for (const holder of holders) {
+      if (height !== undefined) {
+        const perScope = heights.get(holder) ?? new Map()
+        /* 非定高的值（`auto` 等）是一次**撤销**：记下来，让它把这条链上的定高顶掉。 */
+        perScope.set(scope, { value: height.trim(), line: rule.line })
+        heights.set(holder, perScope)
+      }
+      if (wrap !== undefined) {
+        const perScope = wraps.get(holder) ?? new Map()
+        perScope.set(scope, { value: wrap.trim(), line: rule.line })
+        wraps.set(holder, perScope)
       }
     }
   }
+
   const out = []
-  /* **只报「此刻同时成立」的那一种。** 一个被 `auto` 撤销过的定高不是缺陷——那正是
-     修法。第一版把「撤销过」也当成可疑报了出来，于是修好之后门禁反而红，那会把下一个人
-     推向删掉那行 `auto`（缺陷回来）或者关掉门禁。
-     撤销行本身受另一层保护：`verify-design-docs` 的类漂移扫描会看见它有没有读者，
-     而 `tests/` 里有一条渲染断言（日程页窄档的安静行不许溢出）。 */
-  for (const [key, height] of heights) {
-    if (wraps.get(key) !== true) continue
-    const cls = key.split('\u0000')[1]
-    out.push({
-      selector: `.${String(cls)}`,
-      height,
-      line: lineOf.get(key) ?? 0,
-    })
+  for (const [cls, heightScopes] of heights) {
+    const wrapScopes = wraps.get(cls)
+    if (wrapScopes === undefined) continue
+    /* **遍历换行的作用域，而不是定高的作用域。**
+     * 冲突发生在「换行的那一档」——因为定高是它的外层祖先（顶层），而外层的声明在
+     * 内层生效时**不会被撤销**（内层只加不减）。反过来，从定高那一档去找换行是找不到的：
+     * 顶层的 scope 是 `""`，而 `""` 不是任何内层 scope 的前缀。
+     *
+     * 于是对每个换行作用域，找这条链上**最终生效**的那一份高度：内层优先，外层兜底
+     * （内层可以写 `auto` 撤销外层的定高）。 */
+    for (const [wrapScope, wrapEntry] of wrapScopes) {
+      const wrapValue = wrapEntry.value
+      if (wrapValue !== 'wrap' && wrapValue !== 'wrap-reverse') continue
+      const chain = [...heightScopes.entries()]
+        .filter(([at]) => at === wrapScope || wrapScope.startsWith(at))
+        .sort((a, b) => b[0].length - a[0].length)
+      const effectiveHeight = chain[0]
+      if (effectiveHeight === undefined) continue
+      const value = effectiveHeight[1].value
+      if (!isFixedHeight(value)) continue
+      out.push({
+        selector: `.${cls}`,
+        height: value,
+        line: effectiveHeight[1].line,
+        scope: wrapScope === '' ? '（顶层）' : wrapScope,
+      })
+      break
+    }
   }
   return out
 }
@@ -135,7 +196,11 @@ export function fixedHeightWrapFindings(root) {
   const findings = []
   for (const sheet of clientSheetFiles(root)) {
     for (const one of collisionsIn(sheet.css)) {
-      findings.push({ file: sheet.rel, line: one.line, selector: one.selector, height: one.fixedHeight })
+      /* **`height` 不是 `fixedHeight`。** `collisionsIn` 产出的键叫 `height`，这里读
+         `fixedHeight` 会拿到 `undefined`——于是报错那一行印的是
+         「block-size: undefined」，恰好在读者最需要知道那个数的时候把它吞了。
+         `.mjs` 没有类型检查，所以这个错不会在构建时冒出来。 */
+      findings.push({ file: sheet.rel, line: one.line, selector: one.selector, height: one.height })
     }
   }
   return findings

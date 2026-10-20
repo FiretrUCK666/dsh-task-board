@@ -1022,7 +1022,6 @@ export const zh = {
   // 安静行的两个词：一行里的名字都必须自己说得清自己是什么。
   'item.agenda.inbox': '刚记下',
   'item.agenda.quietNote': '哪几天是空的，以及有几条被留下。已完成的不再排日程；刚记下、还没整理的还没进任何一天。',
-  'item.agenda.nothingDated': '这一页按日期排，而现在没有任何一条落在某一天上。上面那行数说的是它们在哪：已完成属于历史，刚记下的还没整理——去「全部」看得到每一条。',
 
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
@@ -2078,7 +2077,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.agenda.quietWhy': 'What this line says',
   'item.agenda.inbox': 'just noted',
   'item.agenda.quietNote': 'Which days are empty, and how many rows were left out. Finished rows are off the agenda; rows just noted are not on a day yet.',
-  'item.agenda.nothingDated': 'This page is ordered by date, and right now nothing falls on a day. The counts above say where they are instead: finished rows are history, rows just noted are not filed yet — the All row shows every one of them.',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',

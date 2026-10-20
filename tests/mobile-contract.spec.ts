@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
-import { panelCss, spacingPx, stripCssComments } from './panel-harness.ts'
+import { allRules, panelCss, spacingPx, stripCssComments } from './panel-harness.ts'
 
 /**
  * The `gap` inside a rule body, in pixels.
@@ -1615,11 +1615,14 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
 })
 
 describe('content-box family + interaction-card containment (the desktop truncation roots)', () => {
-  /** Every rule block (selector tail + body) in the sheet. */
-  const rules = [...source.matchAll(/([^{}]+)\{([^}]*)\}/g)].map(match => ({
-    selectors: match[1].trim().split('\n').pop()?.trim() ?? '',
-    body: match[2],
-  }))
+  /**
+   * Every rule block (selector + body) in the sheet.
+   *
+   * **建在 `allRules` 上**（台架里那一个读法），所以**它看得见窄档**。这一份曾经
+   * 自己做，那份读法**不下降进 at-rule**——于是整个窄档对它不可见，而它守着的
+   * 「宽度 100% 那一族必须声明 border-box」在窄档里**从未被检查过**。
+   */
+  const rules = allRules(source).map(rule => ({ selectors: rule.selector, body: rule.body }))
   /** A padding/border value that adds no chrome (empty / none / zeros). */
   const chromeless = (value: string): boolean => {
     const cleaned = value.replace(/;/g, '').trim()

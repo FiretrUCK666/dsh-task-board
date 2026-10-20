@@ -102,6 +102,9 @@
   const CUT_SLACK = 0.25
   /** 高度地板的圆整余量，同理。 */
   const FLOOR_SLACK = 0.25
+  /** 记号簇逐行左沿的容差：它量的是**两条竖线之间的距离**，而那两条线各自是布局算出来的
+   *  整数（盒沿）与浏览器给的行盒左沿（也是整数），所以 1px 之内不算缺陷。 */
+  const MARKS_ALIGN_TOL = 1
 
   const canvas = document.createElement('canvas')
   const ctx = canvas.getContext('2d')
@@ -591,6 +594,80 @@
 
   const clean = scan()
 
+  /* ── A7：记号簇逐行的左沿 ────────────────────────────────────────────────────
+   *
+   * 清单页那一行右边有一簇记号（步数 · 卡 · 日期 · 附件）。**窄档**它落到自己那一行，
+   * 于是读者的参照物是**上面那几行的第一个字**（标题、编号）——**每一行的头**都必须
+   * 落在那条线上。
+   *
+   * **量的是「可见左沿」，不是「盒子左沿」。** 一枚记号的可见左沿有两种：
+   *   · **无底**的（附件、步骤、日期）——它平时没有底，读者看见的是**墨**的左沿；
+   *   · **有底**的（卡那一枚药丸）——读者看见的是**底**的左沿。
+   * 那一簇用 `margin-inline-start: -6px` 抵掉的是**盒子**，对齐的是**墨**——所以量的时候
+   * 也得按同样那条律取：**无底取墨，有底取底**。
+   *
+   * 一次扫描量出每一行第一枚的可见左沿，与**同一行**的标题的墨的左沿比。 */
+  const inkLeftOf = (el) => {
+    const range = document.createRange()
+    range.selectNodeContents(el)
+    const rects = [...range.getClientRects()].filter((r) => r.width > 0 && r.height > 0)
+    return rects.length === 0 ? null : Math.min(...rects.map((r) => r.left))
+  }
+  /** 一枚记号的可见左沿：无底取墨，有底取底。 */
+  const visibleLeftOf = (el) => {
+    const st = getComputedStyle(el)
+    const filled = st.backgroundColor !== 'rgba(0, 0, 0, 0)' && st.backgroundImage === 'none'
+    if (filled) return el.getBoundingClientRect().left
+    return inkLeftOf(el)
+  }
+  const scanMarks = () => {
+    const rows = []
+    for (const cluster of document.querySelectorAll('[class*="itemRowMarks"]')) {
+      const row = cluster.parentElement
+      if (row === null) continue
+      const title = row.querySelector('[class*="itemRowTitle"]')
+      if (title === null) continue
+      const titleInk = inkLeftOf(title)
+      if (titleInk === null) continue
+      /* **这一簇在标题那一列里吗？**
+       *
+       * 宽档里这一簇在行网格的**第三列**——它在标题的**右边**、同一条线上，那时它的
+       * 参照物是**那一列的左沿**（网格给的），而**不是标题的墨**。拿标题去比它，比出来
+       * 的是几百像素的差——**那不是缺陷，是一个问错了的问题**。
+       *
+       * 窄档里这一簇落到**标题下面**（自己那一行），参照物才真的是标题的墨。
+       * 判据是「簇没有排在标题的右边」：簇的盒子左沿 ≤ 标题的墨左沿。
+       * 窄档那一档是 `标题左沿 − 6px`（簇自己抵掉的那 6px），宽档那一档是第三列的
+       * 左沿，远大于标题的左沿。 */
+      const clusterLeft = cluster.getBoundingClientRect().left
+      if (clusterLeft > titleInk + MARKS_ALIGN_TOL) continue
+      const kids = [...cluster.children]
+      if (kids.length === 0) continue
+      /* **分行**：同一行上的记号中心 Y 相同。中心而不是顶，因为一枚记号有高有低
+       * （日期那枚矮、步数那枚高），按顶分行会把同一行劈成两行。 */
+      const centres = [...new Set(kids.map((k) => Math.round(k.getBoundingClientRect().top + k.getBoundingClientRect().height / 2)))].sort((a, b) => a - b)
+      for (const centre of centres) {
+        const first = kids.find((k) => Math.round(k.getBoundingClientRect().top + k.getBoundingClientRect().height / 2) === centre)
+        if (first === undefined) continue
+        const visible = visibleLeftOf(first)
+        if (visible === null) continue
+        rows.push({
+          key: keyOf(cluster),
+          /* **行是谁**：报告里要说得出「哪一行错位」，自证也要靠它认出自己种的那一颗
+           * （簇的键会把哈希前缀抹掉，所以自检件得有一个**抹不掉**的行名）。 */
+          row: keyOf(row),
+          mark: keyOf(first),
+          visible: round(visible),
+          titleInk: round(titleInk),
+          off: round(visible - titleInk),
+        })
+      }
+    }
+    return rows
+  }
+  const marks = scanMarks()
+  const marksOffenders = marks.filter((one) => !within(one.off, MARKS_ALIGN_TOL))
+
   /* ── A6：自证 ────────────────────────────────────────────────────────────────
    *
    * 种一颗**已知的坏胶囊**：一行装不下（`line-height: 40px` 的盒子只有 20px 高 = 压扁）、
@@ -627,6 +704,51 @@
       squeezed: seen(planted.floorOffenders),
     }
     selfTest = alive.offY && alive.cut && alive.squeezed ? 'caught' : `blind:${JSON.stringify(alive)}`
+  }
+
+  /* ── A7 的自证：种一颗**已知的错位记号簇** ───────────────────────────────────
+   *
+   * 这一条量的是**两条竖线之间的距离**，而它量的东西是「可见左沿」——**无底取墨、
+   * 有底取底**。所以自证要种的是**一颗看得见的错位**：一枚有底的记号，它的底比同一行
+   * 标题的墨**左偏一截**。量不出来就是这把尺子瞎了。
+   *
+   * 它的结构与真的那一行同形：**一个父盒里，一个标题 + 一簇记号**——探针就是靠
+   * 「簇的父盒里的标题」配对的，所以自检件也必须这么摆，否则量的是另一件事。 */
+  const MARKS_SELFTEST_KEY = 'selftestMarksRow'
+  const plantMarks = () => {
+    const host = document.createElement('div')
+    host.setAttribute('data-dsh-tb-selftest', '')
+    host.className = MARKS_SELFTEST_KEY
+    host.setAttribute('style', 'position:fixed;left:-400px;top:0;width:200px;font-size:13px;color:rgb(20,20,20)')
+    const title = document.createElement('div')
+    title.className = 'zz_itemRowTitle'
+    title.setAttribute('style', 'display:block;line-height:1.25')
+    title.textContent = '自检标题'
+    const cluster = document.createElement('div')
+    cluster.className = 'zz_itemRowMarks'
+    cluster.setAttribute('style', 'display:flex;flex-wrap:wrap;margin-inline-start:-6px')
+    const mark = document.createElement('span')
+    /* **有底**（于是可见左沿 = 底的左沿），且比标题的墨**左偏 6px**。 */
+    mark.className = 'zz_itemRowCardChip'
+    mark.setAttribute('style', 'display:inline-block;padding:0 8px;background:rgb(200,200,200);border-radius:999px;line-height:1.25')
+    mark.textContent = '0'
+    cluster.appendChild(mark)
+    host.appendChild(title)
+    host.appendChild(cluster)
+    document.body.appendChild(host)
+    return host
+  }
+  let marksSelfTest = 'blind'
+  {
+    const plantedMarks = plantMarks()
+    let seen = null
+    try {
+      seen = scanMarks()
+    } finally {
+      plantedMarks.remove()
+    }
+    const caught = seen.some((one) => one.row.indexOf('selftestMarksRow') >= 0 && !within(one.off, MARKS_ALIGN_TOL))
+    marksSelfTest = caught ? 'caught' : `blind:${JSON.stringify(seen.filter((one) => one.row.indexOf('selftestMarksRow') >= 0))}`
   }
 
   /* ── A2：滚动体 ────────────────────────────────────────────────────────────── */
@@ -722,7 +844,11 @@
     inkNotCut: stateOf(clean.labels.length, clean.labels.length, clean.cutOffenders.length === 0),
     capsulesNotSqueezed: stateOf(clean.labels.length, clean.labels.filter((c) => c.floor !== null).length, clean.floorOffenders.length === 0),
     ringsInsideClip: stateOf(rings.length, rings.length, clippedRings.length === 0),
+    /* **记号簇逐行的左沿。** `not-here` = 这一页没有清单的行（看板、总览、设计系统都没有），
+     * 那不是通过，是「这一条量不到」。 */
+    marksLinesAligned: stateOf(marks.length, marks.length, marksOffenders.length === 0),
     selfTest,
+    marksSelfTest,
   }
 
   return {
@@ -751,6 +877,8 @@
       cut: clean.cutOffenders.map((c) => ({ key: c.key, label: c.label, cutTop: c.cutTop, cutBottom: c.cutBottom, h: c.h, lineHeight: c.lineHeight, by: c.cutBy })),
       squeezed: clean.floorOffenders.map((c) => ({ key: c.key, label: c.label, h: c.h, contentBox: c.contentBox, lineBox: c.floor, lineHeight: c.lineHeight, padBlock: c.padBlock })),
       rings: clippedRings,
+      /* 记号簇逐行的错位：哪一行、哪一枚、偏了多少。 */
+      marks: marksOffenders,
     },
     /* 够不着、但没有危害的那半圈：报出来给人看，不判红。 */
     deadRings: deadRings.map((ring) => ({ key: ring.key, dead: ring.dead, clippedBy: ring.clippedBy, clippedAxis: ring.clippedAxis })),

@@ -55,8 +55,9 @@ import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken, w
 import { ItemQueryChips } from './query-chips.tsx'
 import { PRIORITY_LABEL, SORT_LABEL } from './labels.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
-import { useDialogFocus } from '../design/dialog-focus.ts'
+import { useDialogFocus, useFocusOnChange } from '../design/dialog-focus.ts'
 import { useEscapeStack } from '../design/escape-stack.ts'
+import { SearchField } from '../design/ui.tsx'
 import css from './item.module.css'
 
 /** One answer in the palette: a label, and what pressing it does. */
@@ -184,7 +185,6 @@ function poolOf(groups: readonly PaletteGroup[], typed: string): readonly Palett
 }
 
 export function ItemCommandPalette(props: ItemCommandPaletteProps) {
-  const input = useRef<HTMLInputElement | null>(null)
   /* `aria-modal` is a promise that the rest of the page is inert to the keyboard.
      This surface was making it without keeping it: Tab walked out of the box into
      the list behind the mask, and focus came back only because a caller remembered
@@ -192,6 +192,19 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
      the opener — and Escape to the shared stack, so no surface keeps a copy. */
   const box = useRef<HTMLDivElement | null>(null)
   const { onKeyDown: onBoxKeyDown } = useDialogFocus(box)
+  /* THE CARET GOES TO THE BOX, and it is the SHARED mechanism that takes it there.
+   *
+   * `useDialogFocus` moves the focus on **mount** — but this box mounts **later**:
+   * the component is always mounted, and only the box inside it comes and goes
+   * with `props.open`. So the mount effect ran while the box did not exist, and
+   * `useFocusOnChange` is the shared way to aim at a region that appears later
+   * (same mechanism, two surfaces — see `design/dialog-focus.ts`).
+   *
+   * It focuses the declared `[data-autofocus]` — which is the field below — so
+   * **the intent is declared where the field is**, and this component keeps no
+   * ref of its own. A second way to move the focus is a second answer to
+   * 「where does the caret start」 on one screen. */
+  useFocusOnChange(box, props.open)
   useEscapeStack(props.onClose)
   const [active, setActive] = useState(0)
   // The text this cursor was last placed against. A changed query means a
@@ -221,10 +234,17 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
 
   // The caret goes to the box, because the box is what a reader opened a palette
   // to type into, and a palette that opens with the focus nowhere makes them
-  // reach for the mouse to do the thing they opened it for.
-  useEffect(() => {
-    if (props.open) input.current?.focus()
-  }, [props.open])
+  // reach for the mouse to do the thing they opened it for. (The mechanism is
+  // `useFocusOnChange` above, and the intent is the `data-autofocus` on the
+  // field below.)
+  //
+  // THE FIELD IS THE SHARED ONE. This box used to render a raw `<input>` with
+  // the same class the spine's field carries — so it got the class but not the
+  // shape, and the palette's search read as a **square box** in a panel where
+  // every other control is a capsule (reader: 「它怎么是方的长方形的框」).
+  // A field's look is not a page decision: `SearchField` is THE one search field
+  // (design/ui.tsx), and a page may only place it (width, flex, margins).
+  //
 
   const groups = useMemo<readonly PaletteGroup[]>(() => {
     const out: PaletteGroup[] = []
@@ -388,12 +408,16 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
           }}
         >
           <div className={css.itemCommandPaletteBox} ref={box} onKeyDown={onBoxKeyDown}>
-            <input
-              ref={input}
+            <SearchField
               className={css.itemSearch}
               value={freeTextOf(props.text)}
               placeholder={t('item.search.label')}
               aria-label={t('item.search.label')}
+              /* THE CARET STARTS HERE, declared where the field is. `useDialogFocus`
+                 focuses the first `[data-autofocus]` in the panel on mount, which
+                 is the one mechanism this project uses for that (see
+                 `design/dialog-focus.ts`). */
+              data-autofocus
               /* THE COMBOBOX SHAPE, because the caret stays in the field: the
                  reader types a word and then picks from what it found, which is
                  not what a text field with a list of buttons below it tells a

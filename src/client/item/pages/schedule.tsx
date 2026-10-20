@@ -137,8 +137,21 @@ function QuietLine({ entries, noteText, label }: {
     <div className={css.itemQuiet} data-note={note.open ? '' : undefined}>
       <div className={css.itemEmptyGroups} role="group" data-note-hover="">
         {entries.map((entry, at) => (
-          <span key={entry.word} className={css.itemEmptyGroup}>
-            {at > 0 && <span className={css.itemEmptyGroupSep} aria-hidden="true">·</span>}
+          <span
+            key={entry.word}
+            className={css.itemEmptyGroup}
+            data-last={at === entries.length - 1 ? '' : undefined}
+          >
+            {/* **分隔符不是 DOM 节点，是 `::after` 画的一个标点，且它跟在**后面**那一组。**
+                它曾经是一个 `<span>`，于是成了 `.itemEmptyGroup` 的一个 flex 项：折行时它会
+                独自留在行首（读者截图里那种以「· 刚记下」开头的行），也可能落到上一行末尾。
+
+                **它在后面，不在前面**，理由是排版：领头的标点把一行说成「从中间开始」，
+                而中文的列举标点本来就跟在被列举的那一项之后（甲、乙、丙）。折行时它落在
+                上一行的末尾，读起来是「这一行还没完」，而不是「这一行多了一个点」。
+
+                伪元素不参与 flex 布局，所以换行只会发生在组与组之间，标点永远跟着自己
+                那一组。最后一组没有标点——由 `[data-last]` 说，不靠 JS 少渲染一个节点。 */}
             <span className={css.itemEmptyWord}>{entry.word}</span>
             <i className={css.itemGroupCount}>{entry.count}</i>
           </span>
@@ -184,16 +197,6 @@ export function SchedulePage(props: ItemPageProps) {
         <AgendaSection key={bucket.id} bucket={bucket} english={english} renderRows={props.renderRows} now={props.now} sort={props.sort} />
       ))}
       {quiet.length > 0 && <QuietLine entries={quiet} noteText={t('item.agenda.quietNote')} label={t('item.agenda.quietWhy')} />}
-      {/* **一行日期都没有时，页面不能只剩那一行计数。**
-          读者截图报过一次：正文区整片空白，只有一枚「截止已过 0 · … · 已完成 1 · 刚记下 3」
-          的药丸浮在上面。那在逻辑上是对的（那三条还没排进任何一天、那一条已完成，都确实
-          不进日程），可屏上看起来就是**坏掉了**——`item.agenda.quietNote` 那句话是给
-          「节头下面」写的，它解释的是「这些没被列出来」，而不是「今天这一页什么都没有」。
-          所以这里补一句处境说明：读者要知道**为什么空、以及下一步去哪**（那几条在哪一页
-          看得到），而不是对着一片空白猜。判据是 `buckets` 里有没有任何一条进过日期桶。 */}
-      {buckets.every(bucket => bucket.items.length === 0) && (
-        <p className={css.itemAgendaNothing}>{t('item.agenda.nothingDated')}</p>
-      )}
     </div>
   )
 }

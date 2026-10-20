@@ -212,6 +212,12 @@ for (const page of found) {
     if (pass.selfTest !== 'caught') {
       findings.push({ page, band: band.id, kind: 'probe-blind', detail: `the instrument did not catch its own planted defect: ${String(pass.selfTest)}` })
     }
+    /* **记号簇那一支尺子也必须自证。** 它量的东西与胶囊那一支不同（两条竖线之间的距离，
+     * 且「可见左沿」分墨与底两种取法），所以它自己种一颗已知的错位簇，报不出来就是
+     * 「这一轮的绿不是量出来的」。 */
+    if (pass.marksSelfTest !== undefined && pass.marksSelfTest !== 'caught') {
+      findings.push({ page, band: band.id, kind: 'probe-blind', detail: `the marks-alignment instrument did not catch its own planted defect: ${String(pass.marksSelfTest)}` })
+    }
     for (const [name, verdict] of [
       ['capsulesCentredV', pass.capsulesCentredV],
       ['capsulesCentredH', pass.capsulesCentredH],
@@ -219,6 +225,7 @@ for (const page of found) {
       ['inkNotCut', pass.inkNotCut],
       ['capsulesNotSqueezed', pass.capsulesNotSqueezed],
       ['ringsInsideClip', pass.ringsInsideClip],
+      ['marksLinesAligned', pass.marksLinesAligned],
     ]) {
       if (verdict !== 'fail') continue
       /* **每一条判据只带自己那一段证据。** 把整个 `offenders` 塞进去，读者看到的第一段
@@ -230,6 +237,7 @@ for (const page of found) {
         inkNotCut: () => JSON.stringify(reading.offenders.cut),
         capsulesNotSqueezed: () => JSON.stringify(reading.offenders.squeezed),
         ringsInsideClip: () => JSON.stringify(reading.offenders.rings),
+        marksLinesAligned: () => JSON.stringify(reading.offenders.marks),
       }[name]()
       /* **诊断档只报数，不判墨心。** 那一档的用途是**分开**两件事：同一页在项目自己的字体栈
          下绿、在另一套度量下出现零点几到一像素的偏移，那偏移是字形的而不是排版的。所以这一档

@@ -235,6 +235,28 @@ describe('typing into the box leaves what the reader typed', () => {
     }
   })
 
+  it('the box is THE search field, not a second one that looks like it', () => {
+    // **同一个类名不等于同一个形状。** 这一块曾经自己写了一个裸 `<input>`，类名与主脊
+    // 那个搜索框**一样**——于是它拿到了那个类，却没拿到那个**形状**：屏上是一枚方的
+    // 长方框，而这一页别处的控件都是胶囊（读者：「它怎么是方的长方形的框」）。
+    //
+    // 所以判据不看「类名一样」，看**「那个共享元件的类在不在」**——共享的搜索框带着
+    // `design/components.module.css` 里那个类（胶囊的圆角就写在那里）。抄一份输入框
+    // 而不用那个元件，这条就红。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      open(panel)
+      const field = fieldOf(panel)
+      /* **类名的哈希在两头各有一处**（构建产物是 `[hash]_[local]`，台架里是
+       * `_[local]_[hash]`），所以判据按「本地名夹在下划线之间」来认。 */
+      const isSearchField = [...field.classList].some(one => /(?:^|_)searchField(?:_|$)/.test(one))
+      expect(isSearchField, '这个框不是共享的那个搜索框——它是自己抄的一个输入框').toBe(true)
+      expect(field.getAttribute('type'), '共享的那个搜索框是 type=search').toBe('search')
+    } finally {
+      panel.dispose()
+    }
+  })
+
   it('and a qualifier the chips cannot name survives the typing', () => {
     // The same defect had a second edge: the base handed to the writer was
     // `freeTextOf(text)`, so every qualifier the chip layer cannot render was

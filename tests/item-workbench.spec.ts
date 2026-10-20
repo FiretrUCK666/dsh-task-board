@@ -4492,12 +4492,14 @@ describe('the mounted-page artifact, for the states a static render cannot reach
     if (target === undefined || target === '') return
     const state = process.env.DSH_PANEL_MOUNT ?? 'card-naming'
     const band = process.env.DSH_PANEL_BAND === 'narrow' ? 'narrow' : 'wide'
-    if (state !== 'card-naming' && state !== 'card-pending' && state !== 'batch' && state !== 'steps-open'
-      && state !== 'archive' && state !== 'agenda' && state !== 'archive-rows' && state !== 'archive-restored'
-      && state !== 'create-sheet' && state !== 'create-date-bad' && state !== 'row-body-open' && state !== 'prose-dragged' && state !== 'menu-open' && state !== 'calendar-folded'
-      && state !== 'card-door' && state !== 'chips-open' && state !== 'dangling-card'
-      && state !== 'carded-detail' && state !== 'carded-chip-answer'
-      && state !== 'card-focus' && state !== 'config-open' && state !== 'capture-card' && state !== 'prompt-form') throw new Error(`a mounted state this bench does not know: ${state}`)
+    /* **这一条分支链就是「认得哪些状态」的那份名单。**
+     *
+     * 原来这里另有一份手写的名单，而名单与分支链是**两处**：加一个状态要改两个地方，
+     * 漏一处就得到「这个状态不认得」——而那句报错指向的是名单，不是分支。名单自己也
+     * 会长到读不下去（那份名单一度占了六行）。
+     *
+     * 现在每个分支做完就 `return`，于是**链尾落下来的那个状态一定是没人认得的**——
+     * 一处就够，名单不再存在，也就不会过期。 */
 
     if (state === 'prompt-form') {
       /* **卡片执行 Prompt 那一格。**
@@ -4618,6 +4620,32 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         if (box === null) throw new Error('the bar drew no search box')
         typeInto(box, 'status:done p4 has:undated has:overdue')
         await settle()
+      } catch (error) {
+        panel.dispose()
+        throw error
+      }
+      writeMountedPage(panel, target)
+      panel.dispose()
+      return
+    }
+
+    if (state === 'palette') {
+      /* 命令面板**开着**的那一屏。
+       *
+       * 加它的理由：这一整块界面此前**没有工件**——于是它的几何没有被真浏览器量过，
+       * 而读者报上来的正是几何（「搜索框怎么是方的长方形的框」「离上下左右太近」）。
+       * 没有工件就没有量，量不了就只能靠猜——**这是结构缺口，不是细节**。
+       *
+       * 它是**点开的**（点主脊那个搜索框），不是靠一个开关摆出来的：那一格是命令面板
+       * 唯一的门，而读者就是这么打开它的。 */
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        const field = panel.surface.querySelector('input[type="search"], input[type="text"]')
+        if (field === null) throw new Error('the bar drew no search box')
+        click(field)
+        await settle()
+        const dialog = panel.surface.querySelector('[role="dialog"]')
+        if (dialog === null) throw new Error('the search box did not open the command palette')
       } catch (error) {
         panel.dispose()
         throw error
@@ -4973,10 +5001,12 @@ describe('the mounted-page artifact, for the states a static render cannot reach
         panel.settle()
         // AND THE NOTES: this state is where the reader edits them, so the
         // capture shows the field the way a reader sees it.
-        const notes = [...panel.surface.querySelectorAll('button')]
-          .find(node => (node.textContent ?? '').includes('上下文备注'))
-        if (notes === undefined) throw new Error('the detail carries no notes prompt')
-        click(notes)
+        //
+        // **备注那一格是永远开着的**（正文与备注是同一个 `ProseField`，规矩一样）——
+        // 所以这里**没有一按可按**：从前那枚同名按钮早就没有了。这一步于是改成
+        // **断言那个框就在**（按可达名找，不按字样找），少了它这一屏就红。
+        const notes = panel.surface.querySelector('[aria-label="上下文备注"]')
+        if (notes === null) throw new Error('the detail carries no notes field')
         panel.settle()
       } catch (error) {
         panel.dispose()
@@ -5035,21 +5065,27 @@ describe('the mounted-page artifact, for the states a static render cannot reach
       return
     }
 
-    const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
-    try {
-      openRowMenu(panel.surface)
-      const entry = findMenuEntry(panel.surface, '展开详情')
-      if (entry === null) throw new Error('the row menu offers no way to expand the row')
-      click(entry)
-      const chip = newCardChip(panel.surface)
-      if (chip === null) throw new Error('the card picker does not offer the naming chip')
-      click(chip)
-      if (namingField(panel.surface) === null) throw new Error('the naming field never opened')
-      panel.settle()
-      writeMountedPage(panel, target)
-    } finally {
-      panel.dispose()
+    if (state === 'card-naming') {
+      const panel = mountPanel(fixtures(), 'list', band === 'narrow' ? 'narrow' : 'wide')
+      try {
+        openRowMenu(panel.surface)
+        const entry = findMenuEntry(panel.surface, '展开详情')
+        if (entry === null) throw new Error('the row menu offers no way to expand the row')
+        click(entry)
+        const chip = newCardChip(panel.surface)
+        if (chip === null) throw new Error('the card picker does not offer the naming chip')
+        click(chip)
+        if (namingField(panel.surface) === null) throw new Error('the naming field never opened')
+        panel.settle()
+        writeMountedPage(panel, target)
+      } finally {
+        panel.dispose()
+      }
+      return
     }
+
+    /* **链尾落下来的状态，一定是这条链不认得的。**（名单即分支链，见上面那段。） */
+    throw new Error(`a mounted state this bench does not know: ${state}`)
   })
 })
 
