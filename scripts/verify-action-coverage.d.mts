@@ -26,6 +26,13 @@ export interface CoverageInput {
   boardDocText: string
   /** The scanned sources: src/client/** and the controller itself. */
   scanFiles: { path: string; text: string }[]
+  /** The interface's WHOLE implementation: the scanned sources plus the host
+   *  services the client asks for a host action. The agent's own files are NOT
+   *  in here — they are the model's side, and reading them as the interface's
+   *  would make every model-side call look like an interface-side one. */
+  interfaceFiles?: { path: string; text: string }[]
+  /** The core sources, for the call graph: which shared function calls which. */
+  coreFiles?: { path: string; text: string }[]
   /** Every exported name across src/core, the set a `semanticOf` must hit. */
   coreExportNames: string[]
   /** The exported names of the checklist's own write layer (item-transitions and

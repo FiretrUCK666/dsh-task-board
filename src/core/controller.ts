@@ -16,7 +16,7 @@ import { ExecutionService, type ExecutionEvent } from './execution.ts'
 import { attachmentsOf, sameAttachmentRefs, type AttachmentRef, type PromptAttachment } from './attachment.ts'
 import { nextRunAtMs } from './schedule.ts'
 import { nextSessionRuleAt, sessionRuleReadiness, withSessionRules, type SessionRule } from './automation.ts'
-import { armSchedule, moveTaskToStatus, removeSessionFromTask } from './task-transitions.ts'
+import { approveTaskToStatus, armSchedule, markTaskViewedAt, moveTaskToStatus, removeSessionFromTask } from './task-transitions.ts'
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
@@ -1298,16 +1298,13 @@ export class BoardController {
     let changed = false
     this.tasks = this.tasks.map(task => {
       if (task.id !== taskId) return task
-      const executions = task.executions.map(round => {
-        if (round.viewedAt === at) return round
-        changed = true
-        return { ...round, viewedAt: at }
-      })
-      if ((task.viewedAt ?? 0) >= at && executions.every((round, index) => round === task.executions[index])) {
-        return task
-      }
+      // The read clock is ONE stamp, written by the shared function: the card's
+      // own baseline and every round's, and nothing else. A second copy of the
+      // law here would be a second answer to 「这一行看过了吗」.
+      const next = markTaskViewedAt(task, at)
+      if (next === task) return task
       changed = true
-      return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, at), executions }
+      return next
     })
     if (changed) this.persistAndNotify()
   }
@@ -2205,14 +2202,28 @@ export class BoardController {
    * or, where the reason must stay reachable, explains — through this same
    * judgment; the card drop and the detail move buttons already enforce the
    * identical busy law at their own doors.
+   *
+   * THE WHOLE ACTION IS ONE SHARED FUNCTION. 「看过了」与「它完了」是同一句话的
+   * 两半，而**模型按下去必须是一样的话**——所以两半住在
+   * {@link approveTaskToStatus} 里，这一边与模型那一边都调它，而不是各算一遍。
    * @param taskId - the task to approve.
    * @returns true when approved; false when unknown or busy (state untouched).
    */
   approveTask(taskId: string): boolean {
     const task = this.tasks.find(candidate => candidate.id === taskId)
-    if (task === undefined || hasOpenRun(task)) return false
-    this.markTaskViewed(taskId)
-    this.moveTask(taskId, 'done')
+    if (task === undefined) return false
+    const now = this.now()
+    const approved = approveTaskToStatus(task, now)
+    // A refusal is this method's `false`: the card is busy, so the column does
+    // not move and the read clock does not move either.
+    if (!approved.ok) return false
+    // THE SLOT: the same funnel a manual move uses, so the card lands in
+    // 「已完成」 exactly where a drag would have put it.
+    const moved = applyCardOrder(this.tasks, taskId, 'done', undefined, now)
+    this.tasks = moved.map(candidate => candidate.id === taskId
+      ? { ...approved.task, order: candidate.order, updatedAt: candidate.updatedAt }
+      : candidate)
+    this.persistAndNotify()
     return true
   }
 

@@ -14,7 +14,7 @@ import { sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 import type { CruiseWindow } from '../src/core/cruise.ts'
 import type { PendingInteractionKind, QuestionRpcFace, WireQuestion } from '../src/core/question-rpc.ts'
 import { createTask, ruleReadiness, withStatus, type TaskRecord } from '../src/core/tasks.ts'
-import { moveTaskToStatus } from '../src/core/task-transitions.ts'
+import { approveTaskToStatus, moveTaskToStatus } from '../src/core/task-transitions.ts'
 
 const NOW = 1_700_000_000_000
 let nextId = 0
@@ -459,6 +459,24 @@ describe('task mutations', () => {
     expect(kept.status).toBe('running')
     expect(kept.schedule?.enabled).toBe(true)
     expect(controller.approveTask('unknown-id')).toBe(false)
+  })
+
+  it('the interface path lands the SHARED approve\'s own row, not a hand-rolled copy', () => {
+    // The proof that 「通过」 is ONE implementation and not two that happen to
+    // look alike: the interface's approve is compared with what the shared
+    // function returns for the same input. A hand-written inline approve would
+    // differ on the read clock (the half the model used to miss) and on the
+    // automation shut-off — and this goes red.
+    const { controller, store } = makeController(new StubExec(), { now: () => NOW })
+    const task = controller.createTask({ title: 'x', description: '', prompt: 'run' })!
+    controller.setSchedule(task.id, { enabled: true, cron: '0 9 * * *' })
+    const shared = approveTaskToStatus(store.load()[0], NOW)
+    if (!shared.ok) throw new Error(`a quiescent card must approve: ${shared.why}`)
+    expect(controller.approveTask(task.id)).toBe(true)
+    const row = store.load()[0]
+    expect(row.status).toBe(shared.task.status)
+    expect(row.viewedAt, 'the read clock is the shared function\'s own').toBe(shared.task.viewedAt)
+    expect(row.schedule?.enabled, 'and so is the automation shut-off').toBe(shared.task.schedule?.enabled)
   })
 
   it('the interface path lands the SHARED transition\'s own row, not a hand-rolled copy', () => {

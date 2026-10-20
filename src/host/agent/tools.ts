@@ -70,7 +70,7 @@ import { itemQualifierVocabulary } from '../../core/item-query.ts'
 import { normalizeAttachmentRefs } from '../../core/attachment.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
-import { createTask, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { createTask, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
@@ -89,17 +89,19 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   }
   return config
 }
-import { armSchedule, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
-// The checklist's write semantics: the SAME four functions the capture box and
+import { approveTaskToStatus, armSchedule, BUSY_REASON, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
+// The checklist's write semantics: the SAME functions the capture box and
 // the detail pane call. A field write the tool does itself is a second answer to
 // a question two surfaces already share, and the checklist is the second synced
 // document — two writers with two no-op laws is a document whose replicas
 // disagree about which edits happened.
 import {
   applyItemPatch,
+  applyItemStatus,
   applyItemStep,
   captureItemRecord,
   isItemListValue,
+  mountItemRecord,
   planItemPromotion,
   readItemStepList,
   removeItemRecord,
@@ -1164,15 +1166,37 @@ function applyOne(
     !result.ok ? result.why : result.task === last ? { task: result.task, unchanged: true } : { task: result.task }
   let last: TaskRecord | undefined
   switch (id) {
-    case 'task.move':
-    case 'task.approve': {
+    case 'task.move': {
       last = findTask()
       if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
-      const target = id === 'task.approve' ? 'done' as TaskStatus : String(payload.status) as TaskStatus
+      const target = String(payload.status) as TaskStatus
+      /* THE SAME GATE THE INTERFACE'S DRAG WALKS THROUGH.
+       *
+       * 「一张还在跑的卡能不能换栏」是一个问题，而人按拖动与模型说「移到待办」
+       * 必须拿到同一个答案——所以这里走的是界面走的那道门（`resolveCardDrop`，
+       * 界面的拖动与键盘移动都调它），不是一份「像界面的」判断。 */
+      const drop = resolveCardDrop(last, target)
+      if (drop.kind === 'reject') return BUSY_REASON
+      if (drop.kind === 'run') {
+        return '「进行中」是执行器落的栏：卡跑起来自己会过去，人和模型都不能把它拖过去。'
+      }
       const moved = through(moveTaskToStatus(last, target, now))
       if (typeof moved === 'string') return moved
       const tasks = doc.tasks.map(task => (task.id === last!.id ? moved.task : task))
       return moved.unchanged === true ? { doc, items, task: last, unchanged: true } : { doc: { ...doc, tasks }, items, task: moved.task }
+    }
+    case 'task.approve': {
+      last = findTask()
+      if (last === undefined) return `卡 ${String(payload.of)} 不存在。`
+      /* THE SHARED APPROVE, and it is the whole action: the busy gate, the read
+       * clock and the move to 「已完成」 live in one function, which the
+       * interface's 通过 button calls too. The model approving a card and a
+       * person approving it are then the same act, not two acts that happen to
+       * look alike. */
+      const approved = through(approveTaskToStatus(last, now))
+      if (typeof approved === 'string') return approved
+      const tasks = doc.tasks.map(task => (task.id === last!.id ? approved.task : task))
+      return approved.unchanged === true ? { doc, items, task: last, unchanged: true } : { doc: { ...doc, tasks }, items, task: approved.task }
     }
     case 'task.schedule': {
       last = findTask()
@@ -1587,7 +1611,6 @@ function applyOne(
       if (payload.title !== undefined) patch.title = payload.title as string
       if (payload.body !== undefined) patch.body = payload.body as string
       if (payload.notes !== undefined) patch.notes = payload.notes as string
-      if (payload.status !== undefined) patch.status = payload.status as ItemRecord['status']
       if (payload.priority !== undefined) patch.priority = payload.priority as ItemRecord['priority']
       patch.tags = payload.tags === undefined ? found.tags : itemTagsOf(payload.tags)
       patch.startsAfter = nextInstant('startsAfter')
@@ -1595,13 +1618,49 @@ function applyOne(
       patch.hardDueAt = nextInstant('hardDueAt')
       patch.taskId = nextTaskId
       if (steps !== undefined) patch.steps = steps.steps
-      const rows = applyItemPatch(items.items, found.id, patch, now)
-      if (rows === items.items) return { doc, items, item: found, unchanged: true }
+      const patched = applyItemPatch(items.items, found.id, patch, now)
+      /* THE STATUS HALF IS ITS OWN WRITE, and it is the INTERFACE's write.
+       *
+       * `applyItemStatus` is the one door a row's status goes through: the row's
+       * own field AND the card's column change together, because two documents
+       * telling two stories is a state the reader cannot explain. The panel's
+       * status chips call it; a model that only wrote the field would leave the
+       * card where it was — and the panel's own sync would then quietly undo
+       * that write, so the receipt said 「已生效」 about an edit nobody kept. */
+      let rows = patched
+      let cardMove: { readonly cardId: string; readonly status: TaskStatus } | undefined
+      if (payload.status !== undefined) {
+        const write = applyItemStatus(rows, found.id, payload.status as TaskStatus, found.taskId, now)
+        if (write.refused === 'executorOnly') {
+          return '这一条挂着看板卡片，状态只能给到待规划 / 待办 / 已完成——进行中与待审核是执行器落的事实，写不上去。'
+        }
+        cardMove = write.move
+        // The no-op law: the shared writer always hands back a fresh array, so
+        // "did this edit change anything" is decided by the row's own field.
+        if (write.rows.find(item => item.id === found.id)?.status !== found.status) rows = write.rows
+      }
+      /* AND THE CARD MOVES UNDER `task.move`'s LAW, because that is what moving
+       * it IS: the same gate the drag walks through, so a card with a round in
+       * flight is refused here exactly as it is there. */
+      let nextDoc = doc
+      if (cardMove !== undefined) {
+        const target = doc.tasks.find(task => task.id === cardMove!.cardId)
+        if (target !== undefined) {
+          const drop = resolveCardDrop(target, cardMove.status)
+          if (drop.kind === 'reject') return BUSY_REASON
+          const moved = moveTaskToStatus(target, cardMove.status, now)
+          if (!moved.ok) return moved.why
+          if (moved.task !== target) {
+            nextDoc = { ...doc, tasks: doc.tasks.map(task => (task.id === target.id ? moved.task : task)) }
+          }
+        }
+      }
+      if (rows === items.items && nextDoc === doc) return { doc, items, item: found, unchanged: true }
       const next = rows.find(item => item.id === found.id) ?? found
       const note = steps === undefined ? undefined : mintedNote(steps.minted)
       return note === undefined
-        ? { doc, items: withItemRows(items, rows), item: next }
-        : { doc, items: withItemRows(items, rows), item: next, note }
+        ? { doc: nextDoc, items: withItemRows(items, rows), item: next }
+        : { doc: nextDoc, items: withItemRows(items, rows), item: next, note }
     }
     case 'item.delete': {
       const found = findItem()
@@ -1665,11 +1724,12 @@ function applyOne(
       // ——这里不再写一遍 `status`：写上就等于把那条推导丢掉，于是同一条行由模型提升与由
       // 面板提升会产出两张落在不同栏的卡，而 `createTask` 自己的默认值本来就已经是「待办」。
       const task = createTask(plan.task, now, deps.uuid())
-      // The link is a field write on the checklist row, so it goes through the
-      // same shared writer as every other one — which is also what keeps this op
-      // from appending a SECOND copy of the row instead of editing the one that
-      // is already there.
-      const rows = applyItemPatch(items.items, found.id, { taskId: task.id }, now)
+      // The link AND the row's own tier, in one frame: `mountItemRecord` is the
+      // one door a row is attached to a card through, and the interface's
+      // 「挂到已有卡」 button goes through it too. Writing only the link would
+      // leave the row saying one tier and the card another — and the panel's
+      // own sync would then quietly rewrite the row behind the reader's back.
+      const rows = mountItemRecord(items.items, found.id, task.id, plan.task.status, now)
       return {
         doc: { ...doc, tasks: [...doc.tasks, task] },
         items: withItemRows(items, rows),

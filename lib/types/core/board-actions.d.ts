@@ -145,8 +145,22 @@ export interface ActionShape {
     /** Set when the action has meaning beyond its field writes, so the UI and the
      *  tool must share one implementation. Then `semanticOf` is required. */
     readonly semantic?: true;
-    /** The shared core pure function this action must go through. */
-    readonly semanticOf?: string;
+    /**
+     * THE SHARED CORE FUNCTIONS this action must go through — the ones the
+     * interface AND the model both call.
+     *
+     * A LIST, and the list is the point: an action can be made of more than one
+     * shared call. 「改一条清单条目的状态」 is a field write (`applyItemPatch`) and
+     * a status write (`applyItemStatus`), and the second one is not a smaller
+     * version of the first — it also moves the card, and the card's move is what
+     * makes the two documents agree. Naming one function and leaving the other
+     * out is how a shared action quietly grows a second implementation.
+     *
+     * EVERY NAME HERE IS A PROMISE BOTH SIDES KEEP, and the coverage gate holds
+     * them to it: it reads the interface's own call sites and the model's own
+     * `case`, and reports a side that does not call what this row names.
+     */
+    readonly semanticOf?: readonly string[];
 }
 /** What an action IS. Never how it is carried out — that is the lane's job. */
 export interface ActionSpec<K extends ActionId> extends ActionShape {
@@ -281,9 +295,9 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "guarded";
         readonly surface: "ui+ai";
-        readonly summary: "把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒。";
+        readonly summary: "把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒（与拖动是同一道门：卡上还有轮次在跑时，移到「已完成」与离开「进行中」都被拒）。";
         readonly semantic: true;
-        readonly semanticOf: "moveTaskToStatus";
+        readonly semanticOf: readonly ["resolveCardDrop", "moveTaskToStatus"];
         readonly params: {
             readonly of: {
                 readonly about: "要移动的卡";
@@ -307,7 +321,7 @@ export declare const ACTIONS: {
         readonly surface: "ui+ai";
         readonly summary: "通过一张待审核的卡：一次动作做两件事——把已读钟推到此刻，并把它移到「已完成」（动词是 move，但读状态也一起变了，所以别拿它当纯移栏用）。真有轮次还在跑时整条拒绝，状态与已读都不动；这时候该做的是等这次运行结算完再来，而不是换个动作绕过去。";
         readonly semantic: true;
-        readonly semanticOf: "moveTaskToStatus";
+        readonly semanticOf: readonly ["approveTaskToStatus"];
         readonly params: {
             readonly of: {
                 readonly about: "要通过的卡";
@@ -335,7 +349,7 @@ export declare const ACTIONS: {
         readonly surface: "ui+ai";
         readonly summary: "给卡上/解排期。给没有执行 Prompt 的卡上膛会被拒（规则永远跑不起来，开关却显示已开）。";
         readonly semantic: true;
-        readonly semanticOf: "armSchedule";
+        readonly semanticOf: readonly ["armSchedule"];
         readonly params: {
             readonly of: {
                 readonly about: "要排期的卡";
@@ -696,7 +710,7 @@ export declare const ACTIONS: {
         readonly surface: "ui+ai";
         readonly summary: "把一个会话从卡上永久摘掉（连它的轮次一起）。这是删除，不是隐藏。";
         readonly semantic: true;
-        readonly semanticOf: "removeSessionFromTask";
+        readonly semanticOf: readonly ["removeSessionFromTask"];
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
@@ -872,7 +886,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "captureItemRecord";
+        readonly semanticOf: readonly ["captureItemRecord"];
         readonly summary: "记一条清单条目。标题可以留空（会从正文首行补），步骤只有一层、进度自动算。";
         readonly params: {
             readonly body: {
@@ -937,8 +951,8 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "applyItemPatch";
-        readonly summary: "改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。";
+        readonly semanticOf: readonly ["applyItemPatch", "applyItemStatus"];
+        readonly summary: "改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。改状态与改其它字段走的是两扇门：状态那一扇同时动那张卡。";
         readonly params: {
             readonly of: {
                 readonly about: "要改的条目编号：填那个数字本身（12），不要带 # 号——# 只是它显示时的样子";
@@ -964,7 +978,7 @@ export declare const ACTIONS: {
                 };
             };
             readonly status: {
-                readonly about: "五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时，改的是那张卡在哪一栏）";
+                readonly about: "五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时改的是那张卡在哪一栏，两处一起写；挂着卡时进行中与待审核给不了——那是执行器落的事实）";
                 readonly optional: true;
                 readonly oneOf: readonly string[];
             };
@@ -1006,7 +1020,7 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "removeItemRecord";
+        readonly semanticOf: readonly ["removeItemRecord"];
         readonly summary: "删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。";
         readonly params: {
             readonly of: {
@@ -1021,7 +1035,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "applyItemStep";
+        readonly semanticOf: readonly ["applyItemStep"];
         readonly summary: "勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。";
         readonly params: {
             readonly of: {
@@ -1043,7 +1057,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "planItemPromotion";
+        readonly semanticOf: readonly ["planItemPromotion", "mountItemRecord"];
         readonly summary: "把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。";
         readonly params: {
             readonly of: {
@@ -1066,7 +1080,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "planItemAsk";
+        readonly semanticOf: readonly ["askTargetOf", "itemContextText"];
         readonly summary: "把一条清单条目交给它的看板卡片——卡已经有对话就说进那条对话，没有就开一轮，而这一轮的第一句话就是这一条（标题、标签、正文、步骤、上下文备注）。没挂卡的条目先要用 item.promote 变成一张卡：那张卡就是它的对话。这不是「只问一句」——它按卡的现状走，所以和界面上的「问 AI」是同一件事。";
         readonly params: {
             readonly of: {
@@ -1082,7 +1096,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "restoredItemOf";
+        readonly semanticOf: readonly ["restoredItemOf"];
         readonly summary: "把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。";
         readonly params: {
             readonly of: {
@@ -1097,7 +1111,7 @@ export declare const ACTIONS: {
         readonly danger: "irreversible";
         readonly surface: "ui+ai";
         readonly semantic: true;
-        readonly semanticOf: "purgeItemTombstone";
+        readonly semanticOf: readonly ["purgeItemTombstone"];
         readonly summary: "把一条已删除的清单条目彻底清掉：连墓碑里留着的正文一起扔掉，撤不回来。只想让它从清单里消失就用删除（那个还能找回）。对着还没删过的条目用这一条会被拒。";
         readonly params: {
             readonly of: {
@@ -1112,7 +1126,7 @@ export declare const ACTIONS: {
         readonly danger: "reversible";
         readonly surface: "ui";
         readonly semantic: true;
-        readonly semanticOf: "planItemNavigation";
+        readonly semanticOf: readonly ["planItemNavigation"];
         readonly summary: "把清单面板切到某个页面，或者聚焦到某一条。只给编号就跳到那一行所在的那一页；两样都给就照给的来。只有界面能调：模型不替人翻界面。";
         readonly params: {
             readonly page: {
@@ -1199,15 +1213,15 @@ export declare const NOT_YET_BUILT: Partial<Record<ActionId, string>>;
  * catalog does not have to be added here to keep this table honest.
  */
 export declare const ITEM_HANDLERS: {
-    readonly 'item.create': typeof itemTransitions.captureItemRecord;
-    readonly 'item.update': typeof itemTransitions.applyItemPatch;
-    readonly 'item.delete': typeof itemTransitions.removeItemRecord;
-    readonly 'item.step': typeof itemTransitions.applyItemStep;
-    readonly 'item.promote': typeof itemTransitions.planItemPromotion;
-    readonly 'item.ask': typeof itemAsk.planItemAsk;
-    readonly 'item.navigate': typeof itemNavigate.planItemNavigation;
-    readonly 'item.restore': typeof itemsDocument.restoredItemOf;
-    readonly 'item.purge': typeof itemsDocument.purgeItemTombstone;
+    readonly 'item.create': readonly [typeof itemTransitions.captureItemRecord];
+    readonly 'item.update': readonly [typeof itemTransitions.applyItemPatch, typeof itemTransitions.applyItemStatus];
+    readonly 'item.delete': readonly [typeof itemTransitions.removeItemRecord];
+    readonly 'item.step': readonly [typeof itemTransitions.applyItemStep];
+    readonly 'item.promote': readonly [typeof itemTransitions.planItemPromotion, typeof itemTransitions.mountItemRecord];
+    readonly 'item.ask': readonly [typeof itemAsk.askTargetOf, typeof itemAsk.itemContextText];
+    readonly 'item.navigate': readonly [typeof itemNavigate.planItemNavigation];
+    readonly 'item.restore': readonly [typeof itemsDocument.restoredItemOf];
+    readonly 'item.purge': readonly [typeof itemsDocument.purgeItemTombstone];
 };
 /**
  * {@link ITEM_HANDLERS} by NAME, read off the table itself rather than written
@@ -1218,7 +1232,7 @@ export declare const ITEM_HANDLERS: {
  * so. Read off the table, a rename moves both at once and a binding that was
  * deleted stops vouching for itself the same moment.
  */
-export declare const ITEM_HANDLER_NAMES: Record<string, string>;
+export declare const ITEM_HANDLER_NAMES: Record<string, readonly string[]>;
 /** The verbs, as data — the coverage gate and any renderer read this, never a
  *  second hand-written list. `query` is the read lane's verb and has no action
  *  here on purpose: a query is not a change, and its shape comes from the
@@ -1251,7 +1265,7 @@ export interface CatalogChecks {
     /** The checklist row's field verdicts. */
     readonly itemFields?: Readonly<Record<string, FieldSpec>>;
     /**
-     * Which core function each checklist action binds to, keyed by action id. The
+     * Which core functions each checklist action binds to, keyed by action id. The
      * real table is {@link ITEM_HANDLERS}.
      *
      * Injectable for the same reason as everything else here: a check that has only
@@ -1259,7 +1273,7 @@ export interface CatalogChecks {
      * cannot fail, so the tests feed it a deliberately broken copy and assert each
      * new rule bites.
      */
-    readonly itemHandlers?: Readonly<Record<string, string>>;
+    readonly itemHandlers?: Readonly<Record<string, readonly string[]>>;
     /** The "described but not bound" ledger. The real one is {@link NOT_YET_BUILT}. */
     readonly notYetBuilt?: Readonly<Record<string, string>>;
 }

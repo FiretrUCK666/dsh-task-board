@@ -1285,6 +1285,10 @@ export declare class BoardController {
      * or, where the reason must stay reachable, explains — through this same
      * judgment; the card drop and the detail move buttons already enforce the
      * identical busy law at their own doors.
+     *
+     * THE WHOLE ACTION IS ONE SHARED FUNCTION. 「看过了」与「它完了」是同一句话的
+     * 两半，而**模型按下去必须是一样的话**——所以两半住在
+     * {@link approveTaskToStatus} 里，这一边与模型那一边都调它，而不是各算一遍。
      * @param taskId - the task to approve.
      * @returns true when approved; false when unknown or busy (state untouched).
      */

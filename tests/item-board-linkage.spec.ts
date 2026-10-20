@@ -166,7 +166,10 @@ describe('改状态的入口只有一个，而它挂着卡时给的是看板的�
     // `task.move` 的目标栏），清单那是 `ITEM_STATUSES`（清单自己的五档）。抄一份的代价
     // 不是那几行，是**改一处不报错**。
     const actions = readFileSync(fileURLToPath(new URL('../src/core/board-actions.ts', import.meta.url)), 'utf8')
-    expect(actions, '`task.move` 的目标栏不再取自 `MANUAL_STATUSES`').toMatch(/const MOVABLE[^=]*=\s*MANUAL_STATUSES/)
+    // The catalog reads the board's own module as a namespace (it needs the whole
+    // export list for the shared-implementation registry), so the name may be
+    // qualified — the invariant is the SOURCE, not the spelling of the import.
+    expect(actions, '`task.move` 的目标栏不再取自 `MANUAL_STATUSES`').toMatch(/const MOVABLE[^=]*=\s*(?:taskModel\.)?MANUAL_STATUSES/)
     expect(actions, '清单的五档不再取自 `ITEM_STATUSES`').toMatch(/const ITEM_STATUS_VALUES[^=]*=\s*ITEM_STATUSES/)
   })
 })

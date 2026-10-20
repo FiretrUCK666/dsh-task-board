@@ -44,10 +44,13 @@
  *    shape would only lock in a wrong interface.
  *
  * usage: node scripts/verify-action-coverage.mjs [plugin-dir]
+ *        node scripts/verify-action-coverage.mjs [plugin-dir] --probe-ui-side
+ *        node scripts/verify-action-coverage.mjs [plugin-dir] --probe-model-side
  */
 import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { probeOf } from './probe-args.mjs'
 
 /** The declared verbs, restated as DATA so this gate does not import the TS
  *  module (node cannot load TypeScript) — and so a mismatch is a finding rather
@@ -395,7 +398,7 @@ function readCatalog(source) {
     const lane = /^\s{4}lane:\s*'([^']*)'/m.exec(block)
     const relay = /^\s{4}relay:\s*'([^']*)'/m.exec(block)
     const semantic = /^\s{4}semantic:\s*true\b/m.test(block)
-    const semanticOf = /^\s{4}semanticOf:\s*'([^']*)'/m.exec(block)
+    const semanticOf = readSemanticOf(block)
     const paramsAt = /^\s{4}params:\s*\{/m.exec(block)
     let params = []
     if (paramsAt !== null) {
@@ -442,7 +445,7 @@ function readCatalog(source) {
       lane: lane === null ? undefined : lane[1],
       relay: relay === null ? undefined : relay[1],
       semantic,
-      semanticOf: semanticOf === null ? undefined : semanticOf[1],
+      semanticOf,
       params,
     })
   }
@@ -455,6 +458,177 @@ function readCatalog(source) {
   const relayAt = /readonly relay\?:([^;\n]*)/.exec(source)
   const declaredRelays = relayAt === null ? null : [...relayAt[1].matchAll(/'([^']*)'/g)].map(m => m[1])
   return { actions, verbs, ids: actions.map(a => a.id), declaredRelays }
+}
+
+/**
+ * THE SHARED CORE FUNCTIONS ONE ACTION NAMES, read off its row.
+ *
+ * The field is a LIST, because an action can be made of more than one shared
+ * call — and a list may be written as a literal array or as a reference to a
+ * constant, the same two shapes `oneOf` has and for the same reason (a value
+ * written once and read from two places). A reference this reader cannot
+ * resolve is reported as `UNRESOLVED:<name>` rather than as an absent value:
+ * "the declaration reads as absent" and "the declaration names a constant
+ * nobody can see" are the same screen to a reader and opposite facts to the
+ * program.
+ */
+function readSemanticOf(block) {
+  const at = /^\s{4}semanticOf:\s*(\[[^\]]*\]|'[^']*'|[A-Z_$][\w$]*)/m.exec(block)
+  if (at === null) return undefined
+  const body = at[1]
+  if (body.startsWith('[')) return [...body.matchAll(/'([^']*)'/g)].map(m => m[1])
+  if (body.startsWith("'")) return [body.slice(1, -1)]
+  return [`UNRESOLVED:${body}`]
+}
+
+/**
+ * THE SOURCE WITH ITS COMMENTS TAKEN OUT.
+ *
+ * Hard rule 14: a check reads STRUCTURE, never wording. A comment that names
+ * a function is not a call to it — so the scans below run on this text, or a
+ * line of prose about `applyItemStatus` would count as the panel calling it
+ * and the gate would go green on a panel that never calls it.
+ *
+ * STRINGS ARE RESPECTED, in the only way that can be done cheaply: a `//` is
+ * a comment only when the text before it on its line carries an even number
+ * of quotes, so `https://example.com` inside a string is not a comment and
+ * `don't` in a line of prose does not swallow the rest of the file.
+ */
+function stripComments(text) {
+  const out = []
+  for (const line of text.split('\n')) {
+    let cut = line.length
+    for (let i = 0; i + 1 < line.length; i++) {
+      if (line[i] !== '/' || line[i + 1] !== '/') continue
+      const before = line.slice(0, i)
+      const quotes = (before.match(/(?<!\\)['"]/g) ?? []).length
+      if (quotes % 2 === 0) { cut = i; break }
+    }
+    const block = line.slice(0, cut)
+    // Block comments are removed whole, with their newlines kept so the line
+    // numbers the findings quote stay the ones a reader sees.
+    out.push(block.replace(/\/\*[\s\S]*?\*\//g, ''))
+  }
+  return out.join('\n')
+}
+
+/**
+ * THE CORE CALL GRAPH: which exported core function calls which other one.
+ *
+ * Read from the core sources by brace matching, because the model reaches a
+ * shared function EITHER directly (its own `case` calls it) or THROUGH a
+ * shared function it calls — the model's `planItemAsk` is its own shape of the
+ * two judgments the interface asks for separately, and a check that only saw
+ * direct calls would call that second shape a divergence. The cheapest fix for
+ * such a finding would be to delete the declaration, and that is how a gate
+ * dies.
+ */
+function coreCallGraph(coreFiles, coreNames) {
+  const bodies = new Map()
+  for (const file of coreFiles) {
+    const text = stripComments(file.text)
+    for (const m of text.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(/gm)) {
+      const body = bodyAfterSignature(text, m.index + m[0].length - 1)
+      if (body !== null) bodies.set(m[1], body)
+    }
+    for (const m of text.matchAll(/^export\s+const\s+([A-Za-z_$][\w$]*)\s*=\s*(?:\([^)]*\)|[A-Za-z_$][\w$]*)\s*=>\s*\{/gm)) {
+      const body = bodyOf(text, m.index + m[0].length)
+      if (body !== null) bodies.set(m[1], body)
+    }
+  }
+  const graph = new Map()
+  for (const [name, body] of bodies) {
+    const called = new Set()
+    for (const m of body.matchAll(/(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+      if (coreNames.has(m[1]) && m[1] !== name) called.add(m[1])
+    }
+    graph.set(name, called)
+  }
+  return graph
+}
+
+/** The braced body that starts at or after `from`, or null. */
+function bodyOf(text, from) {
+  const open = text.indexOf('{', from)
+  if (open === -1) return null
+  let depth = 0
+  for (let i = open; i < text.length; i++) {
+    if (text[i] === '{') depth += 1
+    else if (text[i] === '}') {
+      depth -= 1
+      if (depth === 0) return text.slice(open + 1, i)
+    }
+  }
+  return null
+}
+
+/**
+ * The body of a function whose PARAMETER LIST is at `from` (the `(`).
+ *
+ * The parameter list is walked rather than skipped, because a parameter may
+ * carry a type with braces in it — `setSchedule(id, patch: { enabled?: boolean })`
+ * — and a reader that looks for the first `{` after the name finds THAT one and
+ * reads the parameter type as the body. A body that was read wrong is a body
+ * that calls nothing, and the finding that follows blames the implementation
+ * for the reader's mistake.
+ */
+function bodyAfterSignature(text, from) {
+  let depth = 0
+  for (let i = from; i < text.length; i++) {
+    if (text[i] === '(') depth += 1
+    else if (text[i] === ')') {
+      depth -= 1
+      if (depth === 0) return bodyOf(text, i + 1)
+    }
+  }
+  return null
+}
+
+/** The core functions a piece of text calls, by name. */
+function calledCoreFunctions(text, coreNames) {
+  const called = new Set()
+  for (const m of text.matchAll(/(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+    if (coreNames.has(m[1])) called.add(m[1])
+  }
+  return called
+}
+
+/**
+ * THE MODEL'S OWN CASE BODIES, read out of the agent tool.
+ *
+ * The label IS the action id, so the body under `case 'item.update':` is that
+ * action's implementation — and the gate asks of THAT body whether it calls
+ * the shared functions the catalog names. A body shared with the next case
+ * (a fall-through) is an action whose implementation cannot be told apart from
+ * its neighbour's, and the gate says so rather than reading the neighbour's
+ * body as this action's.
+ */
+function modelCaseBodies(toolsSource) {
+  const text = stripComments(toolsSource)
+  const bodies = new Map()
+  const labels = [...text.matchAll(/case\s+'([a-z]+\.[A-Za-z]+)'\s*:/g)]
+  for (let i = 0; i < labels.length; i++) {
+    const from = labels[i].index + labels[i][0].length
+    const to = i + 1 < labels.length ? labels[i + 1].index : text.length
+    bodies.set(labels[i][1], text.slice(from, to))
+  }
+  return bodies
+}
+
+/**
+ * ONE CONTROLLER METHOD'S BODY, read by brace matching.
+ *
+ * The method is the interface's DOOR for the action bound to it, so the gate
+ * asks of the body: does this door call the shared functions the catalog
+ * names? A door that reaches the shared function only through ANOTHER door
+ * (another public method) is an action implemented somewhere else — which is
+ * how 「通过一张卡」 ended up meaning three different things.
+ */
+function controllerMethodBody(controllerText, method) {
+  const text = stripComments(controllerText)
+  const at = new RegExp(`^ {2}(?:async\\s+)?(?:public\\s+|private\\s+|protected\\s+)?(?:readonly\\s+)?${method}\\s*(?:<[^>]*>)?\\s*\\(`, 'm').exec(text)
+  if (at === null) return null
+  return bodyAfterSignature(text, at.index + at[0].length - 1)
 }
 
 /**
@@ -552,6 +726,9 @@ function callSites(files, publicMethods) {
  * itself as the function NAME (the values are written `module.fn`, and only the
  * property is the name the panel calls it by).
  *
+ * A row holds a LIST, because an action can be made of more than one shared
+ * call — so the reader takes every name in the row.
+ *
  * Read off the table rather than kept beside it, for the reason
  * `SEMANTIC_FUNCTIONS` gives in the core: a second list of names is a thing to
  * keep in step with the code, and the day it stops agreeing nothing says so.
@@ -563,12 +740,18 @@ function itemHandlerNames(catalogSource) {
   const body = catalogSource.slice(at)
   const end = body.indexOf('\n} as const')
   if (end === -1) return null
-  // Function name -> action id, because a finding that cannot name the action
-  // is a finding the reader has to go and look up: the table holds the id and
-  // dropping it on the way out means the message says "bind it in ITEM_HANDLERS"
-  // without saying which row.
+  // Function name -> the action ids that bind it, because a finding that cannot
+  // name the action is a finding the reader has to go and look up: the table
+  // holds the id and dropping it on the way out means the message says "bind it
+  // in ITEM_HANDLERS" without saying which row.
   const names = new Map()
-  for (const m of body.slice(0, end).matchAll(/^\s*'([^']+)'\s*:\s*[\w$]+\.([A-Za-z_$][\w$]*)\s*,/gm)) names.set(m[2], m[1])
+  for (const m of body.slice(0, end).matchAll(/^\s*'([^']+)'\s*:\s*\[([^\]]*)\]/gm)) {
+    for (const fn of m[2].matchAll(/\.([A-Za-z_$][\w$]*)/g)) {
+      const owners = names.get(fn[1]) ?? []
+      owners.push(m[1])
+      names.set(fn[1], owners)
+    }
+  }
   if (names.size === 0) return null
   return names
 }
@@ -722,12 +905,20 @@ export function actionCoverageFindings(input) {
     if (action.surface === undefined) fail(`${action.id}: no surface could be read — the catalog's shape moved under this parser`)
     else if (!CONTRACT_SURFACES.includes(action.surface)) fail(`${action.id}: surface "${action.surface}" is not one of ${CONTRACT_SURFACES.join(' / ')}`)
     // 2. semantic honesty, and the reverse direction is the point of the pair
-    if (action.semantic && (action.semanticOf === undefined || action.semanticOf === '')) {
-      fail(`${action.id}: marked semantic without naming the shared core function (semanticOf) — the UI and the tool would each be free to grow their own`)
-    } else if (action.semantic && action.semanticOf !== undefined && !input.coreExportNames.includes(action.semanticOf)) {
-      fail(`${action.id}: claims semanticOf "${action.semanticOf}", which src/core/ does not export — a semantic action must name a function that really exists`)
+    if (action.semantic && (action.semanticOf === undefined || action.semanticOf.length === 0)) {
+      fail(`${action.id}: marked semantic without naming the shared core function(s) (semanticOf) — the UI and the tool would each be free to grow their own`)
+    } else if (action.semantic && action.semanticOf !== undefined) {
+      for (const name of action.semanticOf) {
+        if (name.startsWith('UNRESOLVED:')) continue
+        if (!input.coreExportNames.includes(name)) {
+          fail(`${action.id}: claims semanticOf "${name}", which src/core/ does not export — a semantic action must name a function that really exists`)
+        }
+      }
+      if (new Set(action.semanticOf).size !== action.semanticOf.length) {
+        fail(`${action.id}: names the same shared function twice in semanticOf — a list with a repeat is two statements about one thing, and only one of them is read`)
+      }
     } else if (!action.semantic && action.semanticOf !== undefined) {
-      fail(`${action.id}: names semanticOf "${action.semanticOf}" without being marked semantic`)
+      fail(`${action.id}: names semanticOf ${JSON.stringify(action.semanticOf)} without being marked semantic`)
     }
     for (const param of action.params) {
       // A reference the gate cannot resolve is a FINDING, not an absent value.
@@ -836,7 +1027,7 @@ export function actionCoverageFindings(input) {
   for (const [name, where] of called) {
     const reason = internal[name]
     if (reason === undefined) {
-      fail(`${where}: the panel calls ${name}() from the checklist's own write layer, and it is neither a value in ITEM_HANDLERS nor an INTERNAL entry with a reason — this is a checklist write the catalog says nothing about. Bind it in ITEM_HANDLERS as an action id (the rows that take a core function today are ${[...handlerNames.values()].join(', ')}), or declare in INTERNAL why it is not an action`)
+      fail(`${where}: the panel calls ${name}() from the checklist's own write layer, and it is neither a value in ITEM_HANDLERS nor an INTERNAL entry with a reason — this is a checklist write the catalog says nothing about. Bind it in ITEM_HANDLERS as an action id (the rows that take a core function today are ${[...new Set([...handlerNames.values()].flat())].join(', ')}), or declare in INTERNAL why it is not an action`)
     } else if (reason.trim() === '') {
       fail(`INTERNAL.${name} has an empty reason — an unexplained exclusion is indistinguishable from a forgotten one`)
     } else if (markerOf(reason) !== undefined && reason.slice(markerOf(reason).length).trim() === '') {
@@ -845,6 +1036,102 @@ export function actionCoverageFindings(input) {
     }
   }
   notes.push(`checklist write lane: ${handlerNames.size} core function(s) bound to an action, ${called.size} unbound call(s) the panel makes, ${[...called.keys()].length === 0 ? 'all declared' : 'each declared in INTERNAL with a reason'}`)
+
+  // 1e. THE SHARED IMPLEMENTATION, ON BOTH SIDES.
+  //
+  // WHAT THIS CLOSES. The gate used to ask one question about a `semantic`
+  // action: does the function it names really exist? That is the weakest
+  // question available — it cannot tell 「两边都走它」 from 「只有模型走它」. So
+  // the catalog could promise 「通过一张待审核的卡」 is `moveTaskToStatus` while
+  // the interface's 通过 button did something else, the model's approve did
+  // something else again, and the gate stayed green: three behaviours, one
+  // name.
+  //
+  // SO THE CATALOG'S DECLARATION IS THE CONTRACT, and both sides are held to
+  // it:
+  //
+  //   1. THE INTERFACE SIDE must really call every shared function the row
+  //      names. The scan covers the interface's whole implementation — the
+  //      client, the controller, and the host services the client asks for a
+  //      host action — with the COMMENTS STRIPPED first, so a line of prose
+  //      about a function is not a call to it.
+  //   2. THE MODEL SIDE must really call them too, in that action's own
+  //      `case` (directly, or through a core function that case calls — the
+  //      model's shape of a plan is allowed to differ from the interface's).
+  //   3. THE ACTION'S OWN DOOR must call at least one of them. A card action
+  //      is reached through one controller method; if that method reaches the
+  //      shared function only through ANOTHER controller method, then the
+  //      action is implemented somewhere else, and the door that carries it
+  //      can drift away from the model.
+  //
+  // The third rule is the one that catches 「通过」: `approveTask` called
+  // `markTaskViewed` and `moveTask`, and the shared function it named was
+  // reached one door further down.
+  const coreFiles = input.coreFiles ?? []
+  const coreNames = new Set(input.coreExportNames)
+  const core = coreCallGraph(coreFiles, coreNames)
+  const interfaceFiles = input.interfaceFiles ?? input.scanFiles
+  const interfaceCalled = new Set()
+  for (const file of interfaceFiles) {
+    for (const name of calledCoreFunctions(stripComments(file.text), coreNames)) interfaceCalled.add(name)
+  }
+  const modelBodies = modelCaseBodies(input.agentToolsText ?? '')
+  const sharedReachable = new Set(catalog.actions.filter(a => a.surface !== 'ui').map(a => a.id))
+  let sharedChecked = 0
+  for (const action of catalog.actions) {
+    const declared = action.semanticOf ?? []
+    if (declared.length === 0) continue
+    sharedChecked += 1
+    for (const name of declared) {
+      if (name.startsWith('UNRESOLVED:')) {
+        fail(`${action.id}: semanticOf names ${name}, which this gate could not read out of src/core/board-actions.ts — write the names out, or make the constant one this reader can resolve`)
+        continue
+      }
+      if (!coreNames.has(name)) {
+        fail(`${action.id}: semanticOf names "${name}", which src/core/ does not export — a shared implementation must be a function that really exists`)
+        continue
+      }
+      if (!interfaceCalled.has(name)) {
+        fail(`${action.id}: the catalog says this action goes through "${name}", but NOTHING in the interface's own implementation calls it (src/client, the controller, the host services) — so the interface is doing this action its own way while the model does it the catalog's way. Call the shared function, or drop the claim`)
+      }
+    }
+    if (!sharedReachable.has(action.id)) continue
+    const body = modelBodies.get(action.id)
+    if (body === undefined) {
+      fail(`${action.id}: the model is told it can do this, but the agent tool has no \`case '${action.id}':\` to hold its shared implementation`)
+      continue
+    }
+    if (body.trim() === '') {
+      fail(`${action.id}: the agent tool's \`case '${action.id}':\` shares its body with the next case — an action whose shared functions are named cannot be held to them while its implementation is its neighbour's`)
+      continue
+    }
+    const direct = calledCoreFunctions(body, coreNames)
+    const reached = new Set(direct)
+    for (const name of direct) {
+      for (const callee of core.get(name) ?? []) reached.add(callee)
+    }
+    for (const name of declared) {
+      if (name.startsWith('UNRESOLVED:') || !coreNames.has(name)) continue
+      if (!reached.has(name)) {
+        fail(`${action.id}: the catalog says this action goes through "${name}", but the model's own \`case '${action.id}':\` never calls it — the model is computing this action on its own, and a second implementation is a second answer`)
+      }
+    }
+    // 3. THE DOOR. The action's own controller method must call one of them.
+    const doors = bindings[action.id] ?? []
+    if (doors.length === 0) continue
+    const opening = doors.filter(method => publicMethods.includes(method))
+    if (opening.length === 0) continue
+    const through = opening.some(method => {
+      const methodBody = controllerMethodBody(input.controllerText, method)
+      if (methodBody === null) return false
+      const calledHere = calledCoreFunctions(methodBody, coreNames)
+      return declared.some(name => calledHere.has(name))
+    })
+    if (!through) {
+      fail(`${action.id}: its own door (${opening.map(m => `controller.${m}()`).join(' / ')}) calls none of the shared functions this action names (${declared.join(', ')}) — so the action is implemented somewhere else, and the door that carries it can drift away from the model`)
+    }
+  }
+  notes.push(`shared implementation: ${sharedChecked} semantic action(s) held to the functions they name, on both sides (the interface's own call sites and the model's own case)`)
 
   // 1b. the OTHER direction: model -> execution. The gate above asks whether the
   // UI grew something the catalog does not mention; this one asks whether the
@@ -1099,12 +1386,44 @@ export function readRepo(root) {
   const markPresent = rel => { if (existsSync(at(...rel.split('/')))) presentFiles.push(rel) }
   markPresent('src/core/board-actions.ts')
   markPresent('AGENTS.md')
+  // THE INTERFACE'S WHOLE IMPLEMENTATION, which is more than the client: the
+  // client asks the host for the actions that only the host can perform (the
+  // checklist's undo and its purge), so the host's own services are part of
+  // what the interface calls. The AGENT's files are NOT: they are the model's
+  // side, and reading them as the interface's would make every model-side call
+  // look like an interface-side one — which is the very confusion this scan
+  // exists to end.
+  const interfaceFiles = [...scanFiles]
+  const hostDir = at('src', 'host')
+  if (existsSync(hostDir)) {
+    for (const entry of readdirSync(hostDir, { withFileTypes: true })) {
+      if (entry.name === 'agent') continue
+      const p = join(hostDir, entry.name)
+      if (entry.isDirectory()) {
+        const stack = [p]
+        while (stack.length > 0) {
+          const dir = stack.pop()
+          for (const child of readdirSync(dir, { withFileTypes: true })) {
+            const childPath = join(dir, child.name)
+            if (child.isDirectory()) stack.push(childPath)
+            else if (/\.tsx?$/.test(child.name)) {
+              interfaceFiles.push({ path: relative(root, childPath).split(sep).join('/'), text: readFileSync(childPath, 'utf8') })
+            }
+          }
+        }
+      } else if (/\.tsx?$/.test(entry.name)) {
+        interfaceFiles.push({ path: relative(root, p).split(sep).join('/'), text: readFileSync(p, 'utf8') })
+      }
+    }
+  }
   return {
     catalogText: existsSync(coreDir) ? (readdirSync(coreDir).includes('board-actions.ts') ? read('src/core/board-actions.ts') : '') : '',
     controllerText: existsSync(at('src', 'core', 'controller.ts')) ? read('src/core/controller.ts') : '',
     agentToolsText: existsSync(at('src', 'host', 'agent', 'tools.ts')) ? read('src/host/agent/tools.ts') : '',
     boardDocText: existsSync(at('src', 'core', 'board-doc.ts')) ? read('src/core/board-doc.ts') : '',
     scanFiles,
+    interfaceFiles,
+    coreFiles,
     coreExportNames: [...coreExports(coreFiles)],
     // The checklist's own write layer: the two modules whose exports the panel
     // calls to change a document. Not "every core export" and not "every
@@ -1120,8 +1439,96 @@ export function readRepo(root) {
   }
 }
 
+/* ── the gate's own self-tests ────────────────────────────────────────────────
+ *
+ * A gate that has only ever passed is indistinguishable from a gate that
+ * cannot fail. So each probe takes the REAL repository, breaks ONE thing in
+ * the copy this process holds, and insists the gate reports it.
+ *
+ * NOTHING IS WRITTEN TO DISK. The broken face lives in this process's copy,
+ * so the shared workspace never sees a deliberately inconsistent checkout —
+ * which is the whole reason the project's rule says a proof like this belongs
+ * in a spec and in a self-test, not in a temporary edit of a real file.
+ *
+ * The probes go through the SHARED argument reader, so a misspelled switch is
+ * an error with an exit code of 1 — never a quiet normal run that looks like
+ * a passing self-test.
+ */
+const PROBES = ['--probe-ui-side', '--probe-model-side']
+
+/** Break every call of `name` in the given sources. Null when the name is not
+ *  there at all: a self-test that cannot break anything proves nothing, so
+ *  that is a failure, not a skip. */
+function breakCalls(sources, name) {
+  let broken = 0
+  const out = sources.map(source => {
+    const text = source.text.replace(new RegExp(`\\b${name}\\s*\\(`, 'g'), `${name}ButRenamed(`)
+    if (text !== source.text) broken += 1
+    return { ...source, text }
+  })
+  return broken === 0 ? null : out
+}
+
+/** The shared function the probes break. It is the approve's: one call on each
+ *  side, so breaking one side leaves the other side alone and the finding
+ *  says which side went missing. */
+const PROBE_TARGET = 'approveTaskToStatus'
+
+function probeUiSide(root) {
+  const repo = readRepo(root)
+  const marker = 'NOTHING in the interface'
+  const already = actionCoverageFindings(repo).filter(finding => finding.includes(marker))
+  if (already.length > 0) {
+    return `the real repository already reports that finding (${already[0]}) — the self-test cannot prove anything about a face that is already red`
+  }
+  const files = breakCalls(repo.interfaceFiles ?? repo.scanFiles, PROBE_TARGET)
+  if (files === null) {
+    return `the self-test could not break anything: nothing in the interface calls ${PROBE_TARGET}() — the gate's own fixture moved, and the self-test must be re-pointed`
+  }
+  const controllerText = repo.controllerText.replace(new RegExp(`\\b${PROBE_TARGET}\\s*\\(`, 'g'), `${PROBE_TARGET}ButRenamed(`)
+  if (controllerText === repo.controllerText) {
+    return `the self-test could not break anything: the controller does not call ${PROBE_TARGET}() — the gate's own fixture moved, and the self-test must be re-pointed`
+  }
+  const findings = actionCoverageFindings({ ...repo, interfaceFiles: files, controllerText })
+  const hit = findings.filter(finding => finding.includes(marker))
+  if (hit.length === 0) {
+    return `the broken face was NOT reported: the interface stopped calling ${PROBE_TARGET}() and the gate stayed quiet — the check is blind`
+  }
+  return null
+}
+
+function probeModelSide(root) {
+  const repo = readRepo(root)
+  const marker = 'never calls it'
+  const already = actionCoverageFindings(repo).filter(finding => finding.includes(marker))
+  if (already.length > 0) {
+    return `the real repository already reports that finding (${already[0]}) — the self-test cannot prove anything about a face that is already red`
+  }
+  const brokenTools = repo.agentToolsText.replace(new RegExp(`\\b${PROBE_TARGET}\\s*\\(`, 'g'), `${PROBE_TARGET}ButRenamed(`)
+  if (brokenTools === repo.agentToolsText) {
+    return `the self-test could not break anything: the agent tool does not call ${PROBE_TARGET}() — the gate's own fixture moved, and the self-test must be re-pointed`
+  }
+  const findings = actionCoverageFindings({ ...repo, agentToolsText: brokenTools })
+  const hit = findings.filter(finding => finding.includes(marker))
+  if (hit.length === 0) {
+    return `the broken face was NOT reported: the model stopped calling ${PROBE_TARGET}() and the gate stayed quiet — the check is blind`
+  }
+  return null
+}
+
 const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 if (invokedDirectly) {
+  const probe = probeOf(PROBES)
+  if (probe !== undefined) {
+    const root = resolve(process.argv[2] ?? '.')
+    const problem = probe === '--probe-ui-side' ? probeUiSide(root) : probeModelSide(root)
+    if (problem !== null) {
+      console.error(`verify-action-coverage self-test FAILED: ${problem}`)
+      process.exit(1)
+    }
+    console.log(`verify-action-coverage self-test OK (${probe}): the gate turns red on a deliberately broken face.`)
+    process.exit(0)
+  }
   const root = resolve(process.argv[2] ?? '.')
   const findings = actionCoverageFindings(readRepo(root))
   if (findings.length > 0) {

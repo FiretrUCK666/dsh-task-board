@@ -60,6 +60,7 @@ import { isValidCron, nextRunAtMs } from './schedule.ts'
 import { leaveRunningTargetOf, type TaskLiveState } from './task-live.ts'
 import {
   disarmSchedule,
+  hasOpenRun,
   isOpenRound,
   ruleArmingBlocked,
   taskBindsOf,
@@ -149,6 +150,71 @@ export function moveTaskToStatus(task: TaskRecord, status: TaskStatus, now: numb
     return applied({ ...moved, schedule: { ...moved.schedule, runCount: 0 } })
   }
   return applied(moved)
+}
+
+/**
+ * THE BUSY SENTENCE, in one place, because two refusals say it.
+ *
+ * The model reads it as a receipt; the interface reads the same fact as a
+ * disabled button or a line under it. Two wordings would be two answers to
+ * one question, and the second one to arrive would be the one the reader
+ * believes.
+ */
+export const BUSY_REASON = '这张卡还有轮次在跑：跑完再动它。现在移动会把在跑的那一轮丢下，屏上说不清是谁的错。'
+
+/**
+ * 把已读钟推到此刻——**卡片自己那一档与它的每一轮**。
+ *
+ * 「看过」是一个事实，不是一个手势：它同时住在卡片上（卡片的未读光环、「新 N」
+ * 那个芯片）与它的每一轮上（那一行的未读点）。只推一半就是两份数据两个说法，
+ * 所以这一个函数推两处，而**推的是哪些**由调用点自己决定。
+ *
+ * 单调：已读钟只往前走（`Math.max`），所以两个设备各自推一次也不会把「看过」
+ * 退回「没看过」——一次较早的写不能抹掉一次较晚的写。
+ *
+ * 什么都没变时**返回同一个对象**：一个没有改动的读状态不该盖一个戳（那会让
+ * 每台设备都以为刚刚动过）。
+ *
+ * @param task - the card whose read clock moves.
+ * @param now - the instant it is read at.
+ * @returns the new row, or the very same one when nothing moved.
+ */
+export function markTaskViewedAt(task: TaskRecord, now: number): TaskRecord {
+  const executions = task.executions.map(round => (round.viewedAt === now ? round : { ...round, viewedAt: now }))
+  if ((task.viewedAt ?? 0) >= now && executions.every((round, index) => round === task.executions[index])) {
+    return task
+  }
+  return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, now), executions }
+}
+
+/**
+ * 通过一张待审核的卡：**一次动作做两件事**——把已读钟推到此刻，并把它移到
+ * 「已完成」。
+ *
+ * 这两件事各有各的理由，凑成一个动作是因为人只按一下：按下去的人是在说
+ * 「这一张我看过了，它完了」。而**模型按下去必须是一样的话**——所以这两件事
+ * 住在这里，两边都调它，而不是各算一遍。
+ *
+ * THE ONE REFUSAL, and it is a refusal of the WHOLE action: a card with a
+ * round still in flight is refused **untouched** — the column does not move
+ * and the read clock does not move either, because 「看过了」说的是「我看过
+ * 这一张」，而这一张还在跑的时候说这句话是假的。
+ *
+ * 忙的那道门是**界面的那道门**（`hasOpenRun`）：这一条与移栏问的不是同一个
+ * 问题——移栏问的是「这一栏现在归谁管」（`resolveCardDrop`，所以「已完成」
+ * 与「进行中」由执行器说了算），而「通过」问的是「它跑完了吗」，只要还有
+ * 一轮在飞就还没跑完。两条门共用**同一个忙的判据**（`hasOpenRun`），
+ * 但各答各的问题。
+ *
+ * @param task - the card to approve.
+ * @param now - the instant of the approval.
+ * @returns the new row, or a refusal saying why it did not happen.
+ */
+export function approveTaskToStatus(task: TaskRecord, now: number): TransitionResult {
+  if (hasOpenRun(task)) return refused(BUSY_REASON)
+  const moved = moveTaskToStatus(task, 'done', now)
+  if (!moved.ok) return moved
+  return applied(markTaskViewedAt(moved.task, now))
 }
 
 /**

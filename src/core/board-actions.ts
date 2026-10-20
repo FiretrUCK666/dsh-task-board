@@ -43,7 +43,7 @@
  * until one exists, no action claims `semantic` — a catalog is a contract, not
  * a promise, and `actionCatalogFindings` is what keeps the two honest.
  */
-import { MANUAL_STATUSES } from './tasks.ts'
+import * as taskModel from './tasks.ts'
 import type { TaskUpdatePatch } from './controller.ts'
 import * as taskTransitions from './task-transitions.ts'
 import * as itemTransitions from './item-transitions.ts'
@@ -220,8 +220,22 @@ export interface ActionShape {
   /** Set when the action has meaning beyond its field writes, so the UI and the
    *  tool must share one implementation. Then `semanticOf` is required. */
   readonly semantic?: true
-  /** The shared core pure function this action must go through. */
-  readonly semanticOf?: string
+  /**
+   * THE SHARED CORE FUNCTIONS this action must go through — the ones the
+   * interface AND the model both call.
+   *
+   * A LIST, and the list is the point: an action can be made of more than one
+   * shared call. 「改一条清单条目的状态」 is a field write (`applyItemPatch`) and
+   * a status write (`applyItemStatus`), and the second one is not a smaller
+   * version of the first — it also moves the card, and the card's move is what
+   * makes the two documents agree. Naming one function and leaving the other
+   * out is how a shared action quietly grows a second implementation.
+   *
+   * EVERY NAME HERE IS A PROMISE BOTH SIDES KEEP, and the coverage gate holds
+   * them to it: it reads the interface's own call sites and the model's own
+   * `case`, and reports a side that does not call what this row names.
+   */
+  readonly semanticOf?: readonly string[]
 }
 
 /** What an action IS. Never how it is carried out — that is the lane's job. */
@@ -230,7 +244,7 @@ export interface ActionSpec<K extends ActionId> extends ActionShape {
 }
 
 /** The columns a person may drag a card to by hand — the runner owns the rest. */
-const MOVABLE: readonly string[] = MANUAL_STATUSES
+const MOVABLE: readonly string[] = taskModel.MANUAL_STATUSES
 
 /**
  * Every field the task patch may carry, ruled on. The key set is
@@ -363,9 +377,9 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'guarded',
     surface: 'ui+ai',
-    summary: '把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒。',
+    summary: '把卡移到另一栏。移到「已完成」会同时解甲排期与全部会话规则；这一栏真有轮次在跑时移动被拒（与拖动是同一道门：卡上还有轮次在跑时，移到「已完成」与离开「进行中」都被拒）。',
     semantic: true,
-    semanticOf: 'moveTaskToStatus',
+    semanticOf: ['resolveCardDrop', 'moveTaskToStatus'],
     params: {
       of: { about: '要移动的卡' },
       status: { about: '目标栏', oneOf: MOVABLE },
@@ -380,7 +394,9 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '通过一张待审核的卡：一次动作做两件事——把已读钟推到此刻，并把它移到「已完成」（动词是 move，但读状态也一起变了，所以别拿它当纯移栏用）。真有轮次还在跑时整条拒绝，状态与已读都不动；这时候该做的是等这次运行结算完再来，而不是换个动作绕过去。',
     semantic: true,
-    semanticOf: 'moveTaskToStatus',
+    // NOT `moveTaskToStatus`: 这一条不只是移栏，它还推已读钟，还带一道「忙」的
+    // 拒绝。共用一个「移栏」的实现，等于让「通过」这件事在两边各算一遍。
+    semanticOf: ['approveTaskToStatus'],
     params: {
       of: { about: '要通过的卡' },
     },
@@ -404,7 +420,7 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '给卡上/解排期。给没有执行 Prompt 的卡上膛会被拒（规则永远跑不起来，开关却显示已开）。',
     semantic: true,
-    semanticOf: 'armSchedule',
+    semanticOf: ['armSchedule'],
     params: {
       of: { about: '要排期的卡' },
       enabled: {
@@ -639,7 +655,7 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '把一个会话从卡上永久摘掉（连它的轮次一起）。这是删除，不是隐藏。',
     semantic: true,
-    semanticOf: 'removeSessionFromTask',
+    semanticOf: ['removeSessionFromTask'],
     params: {
       of: { about: '目标卡' },
       session: { about: '要摘掉的会话' },
@@ -777,7 +793,7 @@ export const ACTIONS = {
     // panel and this tool must go through the SAME function for each, and
     // `semanticOf` is what makes that checkable instead of a convention.
     semantic: true,
-    semanticOf: 'captureItemRecord',
+    semanticOf: ['captureItemRecord'],
     summary: '记一条清单条目。标题可以留空（会从正文首行补），步骤只有一层、进度自动算。',
     params: {
       body: { about: '正文，Markdown' },
@@ -810,8 +826,13 @@ export const ACTIONS = {
     danger: 'reversible',
     surface: 'ui+ai',
     semantic: true,
-    semanticOf: 'applyItemPatch',
-    summary: '改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。',
+    // TWO SHARED WRITERS, and both are named: the field write and the status
+    // write are two different doors, and the status one also moves the card
+    // (that is the point of it — one row and one card must never tell two
+    // stories). Naming only the first would leave the second free to be
+    // re-implemented on the model side, which is exactly what happened.
+    semanticOf: ['applyItemPatch', 'applyItemStatus'],
+    summary: '改一条清单条目（用 #编号 指它）。只改传了的字段；编号与来源不可写。改状态与改其它字段走的是两扇门：状态那一扇同时动那张卡。',
     params: {
       of: { about: '要改的条目编号：填那个数字本身（12），不要带 # 号——# 只是它显示时的样子' },
       title: { about: '一行标题', optional: true },
@@ -822,7 +843,7 @@ export const ACTIONS = {
         optional: true,
         list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
       },
-      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时，改的是那张卡在哪一栏）', optional: true, oneOf: ITEM_STATUS_VALUES },
+      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时改的是那张卡在哪一栏，两处一起写；挂着卡时进行中与待审核给不了——那是执行器落的事实）', optional: true, oneOf: ITEM_STATUS_VALUES },
       priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
       tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
       // The same field, the same value, for the same reason as `item.create`'s.
@@ -839,7 +860,7 @@ export const ACTIONS = {
     danger: 'guarded',
     surface: 'ui+ai',
     semantic: true,
-    semanticOf: 'removeItemRecord',
+    semanticOf: ['removeItemRecord'],
     summary: '删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。',
     params: {
       of: { about: '要删的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -858,7 +879,7 @@ export const ACTIONS = {
     danger: 'reversible',
     surface: 'ui+ai',
     semantic: true,
-    semanticOf: 'applyItemStep',
+    semanticOf: ['applyItemStep'],
     summary: '勾掉或取消勾选某一条里的某一步。只动那一步，别的步骤和别的字段都不碰。',
     params: {
       of: { about: '条目编号：填那个数字本身（12），不要带 # 号' },
@@ -887,7 +908,11 @@ export const ACTIONS = {
     danger: 'reversible',
     surface: 'ui+ai',
     semantic: true,
-    semanticOf: 'planItemPromotion',
+    // The plan AND the mount: the plan says what the card will be, and the
+    // mount is the one door a row is attached to a card through (the link and
+    // the row's own tier are written in the same frame). The interface's
+    // 「转成卡片」 button goes through both.
+    semanticOf: ['planItemPromotion', 'mountItemRecord'],
     summary: '把一条清单条目变成一张看板卡片，并把两边互相链接。清单这一条不消失——它已经是那张卡的来处，链接上了以后它会带着卡一起显示。',
     params: {
       of: { about: '要提升的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -902,8 +927,14 @@ export const ACTIONS = {
     // which reads what the CATALOG carries — blind to it, and the model with no
     // way to ask a question about a row it has just read. 「界面有的动作 AI 没有」
     // is not an oversight; it is what happens when a judgment lives in a route
-    // instead of in a function the catalog can name. The judgment lives in
-    // `src/core/item-ask.ts`, both callers go through it, and the action is here.
+    // instead of in a function the catalog can name.
+    //
+    // THE SHARED PART IS NOT THE PLAN, IT IS THE TWO JUDGMENTS INSIDE IT: the
+    // lane (开始还是继续) and the words (这一条自己是什么). The panel asks the
+    // controller for the lane and composes the words itself; the model asks
+    // `planItemAsk`, which is the model's own shape of those SAME two calls.
+    // So the two shared functions are what this row names — and the gate holds
+    // both sides to them, which is what keeps 「谁说话、说什么」one answer.
     verb: 'speak',
     domain: 'item',
     // `engine`, because the effect IS the live host's work: a run, or a message
@@ -915,7 +946,7 @@ export const ACTIONS = {
     danger: 'reversible',
     surface: 'ui+ai',
     semantic: true,
-    semanticOf: 'planItemAsk',
+    semanticOf: ['askTargetOf', 'itemContextText'],
     summary: '把一条清单条目交给它的看板卡片——卡已经有对话就说进那条对话，没有就开一轮，而这一轮的第一句话就是这一条（标题、标签、正文、步骤、上下文备注）。没挂卡的条目先要用 item.promote 变成一张卡：那张卡就是它的对话。这不是「只问一句」——它按卡的现状走，所以和界面上的「问 AI」是同一件事。',
     params: {
       of: { about: '要交给 AI 的条目编号：填那个数字本身（12），不要带 # 号', appliesWhen: '这一条必须已经挂在一张看板卡片上。没有卡的条目会被拒，先用 item.promote 变成卡。' },
@@ -938,7 +969,7 @@ export const ACTIONS = {
     // tombstone it has to outrank. Two callers that each did that arithmetic would
     // be two documents that could disagree about whether a restore worked.
     semantic: true,
-    semanticOf: 'restoredItemOf',
+    semanticOf: ['restoredItemOf'],
     summary: '把一条删掉的清单条目找回来。删除走的是墓碑，条目本身还在，所以是原样回来，不是重建一条新的。',
     params: {
       of: { about: '要恢复的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -973,7 +1004,7 @@ export const ACTIONS = {
     // guessing that would be two surfaces that disagree about whether a
     // deletion is still recoverable.
     semantic: true,
-    semanticOf: 'purgeItemTombstone',
+    semanticOf: ['purgeItemTombstone'],
     summary: '把一条已删除的清单条目彻底清掉：连墓碑里留着的正文一起扔掉，撤不回来。只想让它从清单里消失就用删除（那个还能找回）。对着还没删过的条目用这一条会被拒。',
     params: {
       of: { about: '要清掉的条目编号：填那个数字本身（12），不要带 # 号' },
@@ -996,7 +1027,7 @@ export const ACTIONS = {
     // question only a React component can answer. The judgment lives in
     // `item-navigate.ts`, next to the two predicates that decide it.
     semantic: true,
-    semanticOf: 'planItemNavigation',
+    semanticOf: ['planItemNavigation'],
     summary: '把清单面板切到某个页面，或者聚焦到某一条。只给编号就跳到那一行所在的那一页；两样都给就照给的来。只有界面能调：模型不替人翻界面。',
     params: {
       page: {
@@ -1119,35 +1150,46 @@ type BoundItemActionId = Exclude<ItemActionId, keyof typeof NOT_YET_BUILT>
  * catalog does not have to be added here to keep this table honest.
  */
 export const ITEM_HANDLERS = {
-  'item.create': itemTransitions.captureItemRecord,
-  'item.update': itemTransitions.applyItemPatch,
-  'item.delete': itemTransitions.removeItemRecord,
-  'item.step': itemTransitions.applyItemStep,
-  'item.promote': itemTransitions.planItemPromotion,
+  'item.create': [itemTransitions.captureItemRecord],
+  // TWO, and the second one is not a smaller version of the first: the status
+  // write also moves the card, and that is the whole point of it. A list
+  // because a list is what an action made of two shared calls really is.
+  'item.update': [itemTransitions.applyItemPatch, itemTransitions.applyItemStatus],
+  'item.delete': [itemTransitions.removeItemRecord],
+  'item.step': [itemTransitions.applyItemStep],
+  // The plan AND the mount: the plan says what the card will be, and the mount
+  // is the one door a row is attached to a card through (the link and the row's
+  // own tier in the same frame).
+  'item.promote': [itemTransitions.planItemPromotion, itemTransitions.mountItemRecord],
   // The hand-off half is `item-ask`'s, for the same reason the restore half is
   // `items-doc`'s: which session a row's words go to is a judgment about the CARD
   // and the row together, and a function in the route would have answered it a
   // second time for the model. Naming the wrong module here would be a binding to
   // a function that exists and is not the one the panel calls.
-  'item.ask': itemAsk.planItemAsk,
+  //
+  // THE TWO JUDGMENTS, not the plan: the panel asks the controller for the lane
+  // and composes the words itself; the model's plan is its own shape of those
+  // SAME two calls. So the shared part is these two, and this is what the
+  // coverage gate holds both sides to.
+  'item.ask': [itemAsk.askTargetOf, itemAsk.itemContextText],
   // The jump is a DOCUMENT question — 「#12 在哪一页」 is answered by the same
   // `isInboxItem` / `isAgendaItem` that decide membership everywhere else — and
   // the panel only moves once this has answered it. Bound the other way round,
   // the only place that knows the page set is inside a component.
-  'item.navigate': itemNavigate.planItemNavigation,
+  'item.navigate': [itemNavigate.planItemNavigation],
   // The restore half is `items-doc`'s, not `item-transitions`' — it is the same
   // re-stamp-above-the-tombstone rule the panel's undo goes through, and it
   // belongs to the merge grammar because the tombstone it has to outrank is the
   // grammar's. Naming the wrong module here would be a binding to a function
   // that exists and is not the one both surfaces call.
-  'item.restore': itemsDocument.restoredItemOf,
+  'item.restore': [itemsDocument.restoredItemOf],
   // The purge half is `items-doc`'s for the same reason the restore half is, and
   // the reason is not tidiness: what a purge writes is a tombstone's own field,
   // so the merge grammar is the module that owns the question, and a function
   // in `item-transitions` would have had to answer 「墓碑里还有没有正文」 without
   // ever seeing a tombstone.
-  'item.purge': itemsDocument.purgeItemTombstone,
-} as const satisfies Readonly<Record<BoundItemActionId, ItemHandler>>
+  'item.purge': [itemsDocument.purgeItemTombstone],
+} as const satisfies Readonly<Record<BoundItemActionId, readonly ItemHandler[]>>
 
 /**
  * {@link ITEM_HANDLERS} by NAME, read off the table itself rather than written
@@ -1158,8 +1200,8 @@ export const ITEM_HANDLERS = {
  * so. Read off the table, a rename moves both at once and a binding that was
  * deleted stops vouching for itself the same moment.
  */
-export const ITEM_HANDLER_NAMES: Record<string, string> = Object.fromEntries(
-  Object.entries(ITEM_HANDLERS).map(([id, fn]) => [id, fn.name]),
+export const ITEM_HANDLER_NAMES: Record<string, readonly string[]> = Object.fromEntries(
+  Object.entries(ITEM_HANDLERS).map(([id, fns]) => [id, fns.map(fn => fn.name)]),
 )
 
 /**
@@ -1224,7 +1266,7 @@ export interface CatalogChecks {
   /** The checklist row's field verdicts. */
   readonly itemFields?: Readonly<Record<string, FieldSpec>>
   /**
-   * Which core function each checklist action binds to, keyed by action id. The
+   * Which core functions each checklist action binds to, keyed by action id. The
    * real table is {@link ITEM_HANDLERS}.
    *
    * Injectable for the same reason as everything else here: a check that has only
@@ -1232,7 +1274,7 @@ export interface CatalogChecks {
    * cannot fail, so the tests feed it a deliberately broken copy and assert each
    * new rule bites.
    */
-  readonly itemHandlers?: Readonly<Record<string, string>>
+  readonly itemHandlers?: Readonly<Record<string, readonly string[]>>
   /** The "described but not bound" ledger. The real one is {@link NOT_YET_BUILT}. */
   readonly notYetBuilt?: Readonly<Record<string, string>>
 }
@@ -1257,9 +1299,13 @@ export interface CatalogChecks {
  * would have reported a shared function that both surfaces really call as one
  * that does not exist — which is the one failure this registry exists to prevent,
  * pointing the other way.
+ *
+ * AND THE BOARD'S OWN TASK MODEL, because the busiest judgment on this board —
+ * 「这张还在跑的卡能不能换栏」 — lives next to `hasOpenRun` in `tasks.ts`, and
+ * the drag, the keyboard and the model all have to read THAT one.
  */
 const SEMANTIC_FUNCTIONS: Record<string, true> = Object.fromEntries(
-  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions), ...Object.keys(itemsDocument), ...Object.keys(itemAsk), ...Object.keys(itemNavigate)].map(name => [name, true]),
+  [...Object.keys(taskTransitions), ...Object.keys(itemTransitions), ...Object.keys(itemsDocument), ...Object.keys(itemAsk), ...Object.keys(itemNavigate), ...Object.keys(taskModel)].map(name => [name, true]),
 )
 
 /** What the catalog itself guarantees. Mechanical, so it costs nothing to keep
@@ -1280,20 +1326,28 @@ export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
     board: checks.taskFields ?? TASK_FIELDS,
     item: checks.itemFields ?? ITEM_FIELDS,
   }
-  const handlers: Readonly<Record<string, string | undefined>> = checks.itemHandlers ?? ITEM_HANDLER_NAMES
+  const handlers: Readonly<Record<string, readonly string[] | undefined>> = checks.itemHandlers ?? ITEM_HANDLER_NAMES
   const notYetBuilt: Readonly<Record<string, string | undefined>> = checks.notYetBuilt ?? NOT_YET_BUILT
   const findings: string[] = []
   for (const [id, spec] of Object.entries(table)) {
     if (!BOARD_VERBS.includes(spec.verb)) findings.push(`${id}: verb "${spec.verb}" is not one of the declared verbs`)
     if (spec.summary.trim() === '') findings.push(`${id}: has no summary — a schema renderer would print a nameless op`)
     if (spec.semantic === true) {
-      if (spec.semanticOf === undefined || spec.semanticOf === '') {
-        findings.push(`${id}: marked semantic without naming the shared core function (semanticOf)`)
-      } else if (!(spec.semanticOf in semantic)) {
-        findings.push(`${id}: claims semanticOf "${spec.semanticOf}", which is not a shared core function that exists`)
+      const named = spec.semanticOf ?? []
+      if (named.length === 0) {
+        findings.push(`${id}: marked semantic without naming the shared core function(s) (semanticOf)`)
+      } else {
+        for (const name of named) {
+          if (!(name in semantic)) {
+            findings.push(`${id}: claims semanticOf "${name}", which is not a shared core function that exists`)
+          }
+        }
+        if (new Set(named).size !== named.length) {
+          findings.push(`${id}: names the same shared function twice in semanticOf — a list with a repeat is two statements about one thing, and only one of them is read`)
+        }
       }
     } else if (spec.semanticOf !== undefined) {
-      findings.push(`${id}: names semanticOf "${spec.semanticOf}" without being marked semantic`)
+      findings.push(`${id}: names semanticOf ${JSON.stringify(spec.semanticOf)} without being marked semantic`)
     }
     const verdicts = verdictsByDomain[spec.domain]
     for (const [param, p] of Object.entries(spec.params)) {
@@ -1327,17 +1381,18 @@ export function actionCatalogFindings(checks: CatalogChecks = {}): string[] {
     // ── the checklist's binding, which the controller-method scan cannot see ──
     // Two statements about one action that must not disagree: the catalog row
     // says "this action means more than its field writes and both surfaces share
-    // one function", and {@link ITEM_HANDLERS} says "here is that function". If
-    // they drift, one of them is describing an action nobody implements — which
-    // is the state a button added to the panel and never told to the model used
-    // to be able to reach with the gate still green.
+    // these functions", and {@link ITEM_HANDLERS} says "here are those
+    // functions". If they drift, one of them is describing an action nobody
+    // implements — which is the state a button added to the panel and never told
+    // to the model used to be able to reach with the gate still green.
     if (spec.domain === 'item') {
-      const bound: string | undefined = handlers[id]
+      const bound: readonly string[] | undefined = handlers[id]
       if (bound !== undefined) {
+        const named = spec.semanticOf ?? []
         if (spec.semantic !== true) {
-          findings.push(`${id}: bound to the core function "${bound}" in ITEM_HANDLERS, so it must be marked semantic — a bound action that does not say so is an action the next reader will grow a second implementation beside`)
-        } else if (spec.semanticOf !== bound) {
-          findings.push(`${id}: ITEM_HANDLERS binds it to "${bound}" but the catalog names semanticOf "${spec.semanticOf}" — the binding and the claim are two statements about one action and they must be the same one`)
+          findings.push(`${id}: bound to the core function(s) ${JSON.stringify(bound)} in ITEM_HANDLERS, so it must be marked semantic — a bound action that does not say so is an action the next reader will grow a second implementation beside`)
+        } else if (named.length !== bound.length || named.some((name, at) => name !== bound[at])) {
+          findings.push(`${id}: ITEM_HANDLERS binds it to ${JSON.stringify(bound)} but the catalog names semanticOf ${JSON.stringify(named)} — the binding and the claim are two statements about one action and they must be the same one`)
         }
       } else {
         const reason: string | undefined = notYetBuilt[id]

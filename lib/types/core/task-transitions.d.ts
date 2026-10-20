@@ -54,6 +54,57 @@ export interface SchedulePatch {
  */
 export declare function moveTaskToStatus(task: TaskRecord, status: TaskStatus, now: number): TransitionResult;
 /**
+ * THE BUSY SENTENCE, in one place, because two refusals say it.
+ *
+ * The model reads it as a receipt; the interface reads the same fact as a
+ * disabled button or a line under it. Two wordings would be two answers to
+ * one question, and the second one to arrive would be the one the reader
+ * believes.
+ */
+export declare const BUSY_REASON = "\u8FD9\u5F20\u5361\u8FD8\u6709\u8F6E\u6B21\u5728\u8DD1\uFF1A\u8DD1\u5B8C\u518D\u52A8\u5B83\u3002\u73B0\u5728\u79FB\u52A8\u4F1A\u628A\u5728\u8DD1\u7684\u90A3\u4E00\u8F6E\u4E22\u4E0B\uFF0C\u5C4F\u4E0A\u8BF4\u4E0D\u6E05\u662F\u8C01\u7684\u9519\u3002";
+/**
+ * 把已读钟推到此刻——**卡片自己那一档与它的每一轮**。
+ *
+ * 「看过」是一个事实，不是一个手势：它同时住在卡片上（卡片的未读光环、「新 N」
+ * 那个芯片）与它的每一轮上（那一行的未读点）。只推一半就是两份数据两个说法，
+ * 所以这一个函数推两处，而**推的是哪些**由调用点自己决定。
+ *
+ * 单调：已读钟只往前走（`Math.max`），所以两个设备各自推一次也不会把「看过」
+ * 退回「没看过」——一次较早的写不能抹掉一次较晚的写。
+ *
+ * 什么都没变时**返回同一个对象**：一个没有改动的读状态不该盖一个戳（那会让
+ * 每台设备都以为刚刚动过）。
+ *
+ * @param task - the card whose read clock moves.
+ * @param now - the instant it is read at.
+ * @returns the new row, or the very same one when nothing moved.
+ */
+export declare function markTaskViewedAt(task: TaskRecord, now: number): TaskRecord;
+/**
+ * 通过一张待审核的卡：**一次动作做两件事**——把已读钟推到此刻，并把它移到
+ * 「已完成」。
+ *
+ * 这两件事各有各的理由，凑成一个动作是因为人只按一下：按下去的人是在说
+ * 「这一张我看过了，它完了」。而**模型按下去必须是一样的话**——所以这两件事
+ * 住在这里，两边都调它，而不是各算一遍。
+ *
+ * THE ONE REFUSAL, and it is a refusal of the WHOLE action: a card with a
+ * round still in flight is refused **untouched** — the column does not move
+ * and the read clock does not move either, because 「看过了」说的是「我看过
+ * 这一张」，而这一张还在跑的时候说这句话是假的。
+ *
+ * 忙的那道门是**界面的那道门**（`hasOpenRun`）：这一条与移栏问的不是同一个
+ * 问题——移栏问的是「这一栏现在归谁管」（`resolveCardDrop`，所以「已完成」
+ * 与「进行中」由执行器说了算），而「通过」问的是「它跑完了吗」，只要还有
+ * 一轮在飞就还没跑完。两条门共用**同一个忙的判据**（`hasOpenRun`），
+ * 但各答各的问题。
+ *
+ * @param task - the card to approve.
+ * @param now - the instant of the approval.
+ * @returns the new row, or a refusal saying why it did not happen.
+ */
+export declare function approveTaskToStatus(task: TaskRecord, now: number): TransitionResult;
+/**
  * Remove a session from a card, with everything that removal MEANS: the rounds
  * really go, the hide tray forgets it, the workspace can never derive it back,
  * the manual order loses its slot, a bind that pointed only at it is released —

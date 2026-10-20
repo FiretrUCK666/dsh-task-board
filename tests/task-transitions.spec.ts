@@ -23,7 +23,9 @@ import {
   type BoardCommit,
 } from '../src/core/board-doc.ts'
 import {
+  approveTaskToStatus,
   armSchedule,
+  markTaskViewedAt,
   moveTaskToStatus,
   removeSessionFromTask,
   type TransitionResult,
@@ -132,6 +134,88 @@ describe('moveTaskToStatus', () => {
     const result = moveTaskToStatus(task, 'todo', T0 + 10)
     expect(taskOf(result)).toBe(task)
     expect(result.ok && result.task.updatedAt).toBe(T0)
+  })
+})
+
+describe('markTaskViewedAt', () => {
+  it('moves the card\'s read clock AND its rounds\'', () => {
+    // 「看过」 is one fact with two homes: the card's own baseline (the ring, the
+    // 「新 N」 chip) and every round's (the row's dot). Moving one and not the
+    // other is two data, two stories.
+    const task = card({ executions: [settledRound('e-1'), settledRound('e-2', 's-2')] })
+    const next = markTaskViewedAt(task, T0 + 10)
+    expect(next.viewedAt).toBe(T0 + 10)
+    expect(next.executions.every(round => round.viewedAt === T0 + 10)).toBe(true)
+  })
+
+  it('is MONOTONE: an earlier stamp never moves the clock back', () => {
+    const task = card({ viewedAt: T0 + 100 })
+    const next = markTaskViewedAt(task, T0 + 10)
+    expect(next.viewedAt).toBe(T0 + 100)
+  })
+
+  it('a read that changes nothing is the SAME object (no stamp, no sync churn)', () => {
+    // Both halves already at that instant: the card's baseline and the round's
+    // own clock. A second read of the same moment changes nothing, so it must
+    // not look like an edit.
+    const task = card({ viewedAt: T0 + 10, executions: [{ ...settledRound('e-1'), viewedAt: T0 + 10 }] })
+    const next = markTaskViewedAt(task, T0 + 10)
+    expect(next).toBe(task)
+  })
+})
+
+describe('approveTaskToStatus', () => {
+  it('does BOTH halves: the read clock and the move to 已完成', () => {
+    // The action is one gesture with two halves, and the model pressing it must
+    // mean the same thing a person pressing it means.
+    const task = card({ status: 'review', executions: [settledRound('e-1')] })
+    const next = taskOf(approveTaskToStatus(task, T0 + 10))
+    expect(next.status).toBe('done')
+    expect(next.viewedAt).toBe(T0 + 10)
+    expect(next.executions[0]?.viewedAt).toBe(T0 + 10)
+  })
+
+  it('moving to 已完成 is still the hard stop: the automation is disarmed', () => {
+    const task = card({
+      status: 'review',
+      schedule: rule({ enabled: true, cron: '0 9 * * *' }),
+      rules: [{
+        id: 'r-1', sessionId: 's-1', instruction: 'go', cron: '0 8 * * *',
+        trigger: 'cron', send: 'queue', enabled: true,
+      }],
+    })
+    const next = taskOf(approveTaskToStatus(task, T0 + 10))
+    expect(next.schedule?.enabled).toBe(false)
+    expect(next.rules?.every(rule => !rule.enabled)).toBe(true)
+  })
+
+  it('a card with a round in flight is refused UNTOUCHED — status AND read clock', () => {
+    // The refusal is of the WHOLE action: 「我看过这一张」 is not true of a card
+    // that is still running, so neither half may move.
+    const task = card({ status: 'review', executions: [openRound('e-1')] })
+    const result = approveTaskToStatus(task, T0 + 10)
+    expect(result.ok).toBe(false)
+    expect(result.ok === false && result.why).toContain('还有轮次在跑')
+  })
+
+  it('a busy card is refused even when it is already in 已完成', () => {
+    // The approve asks 「它跑完了吗」, not 「这一栏归谁管」: a card sitting in
+    // 已完成 with a round still in flight has NOT finished, so saying 「看过了」
+    // about it would be false. The move's own gate would let this one through
+    // (same column, nothing to move) — the two questions are different, and
+    // this one is the approve's.
+    const task = card({ status: 'done', executions: [openRound('e-1')] })
+    const result = approveTaskToStatus(task, T0 + 10)
+    expect(result.ok).toBe(false)
+  })
+
+  it('approving a card that is already 已完成 still marks it read', () => {
+    // The move is a no-op there, and the read clock is not: the gesture means
+    // 「我看过了」 either way.
+    const task = card({ status: 'done' })
+    const next = taskOf(approveTaskToStatus(task, T0 + 10))
+    expect(next.status).toBe('done')
+    expect(next.viewedAt).toBe(T0 + 10)
   })
 })
 

@@ -28,7 +28,11 @@ function catalog(overrides: Record<string, unknown> = {}) {
   const verb = overrides?.verb ?? 'create'
   const surface = overrides?.surface ?? 'ui+ai'
   const semantic = overrides?.semantic === undefined ? '' : `\n    semantic: true,`
-  const semanticOf = overrides?.semanticOf === undefined ? '' : `\n    semanticOf: '${overrides.semanticOf}',`
+  // The declaration is a LIST — an action can be made of more than one shared
+  // call — so the fixture writes it the way the real catalog writes it.
+  const semanticOf = overrides?.semanticOf === undefined
+    ? ''
+    : `\n    semanticOf: [${(Array.isArray(overrides.semanticOf) ? overrides.semanticOf : [overrides.semanticOf]).map((n: string) => `'${n}'`).join(', ')}],`
   const optional = overrides?.optional === true ? `, optional: true` : ''
   const requiredWhen = overrides?.requiredWhen === undefined ? '' : `, requiredWhen: '${overrides.requiredWhen}'`
   const createParams = (overrides?.params as string | undefined)
@@ -45,7 +49,8 @@ function catalog(overrides: Record<string, unknown> = {}) {
   const declared = (overrides?.declaredRelays as string[] | undefined) ?? ['alpha.run', 'alpha.move']
   // The checklist write lane's table. The gate REFUSES to run when it cannot
   // read this block, so a fixture without it would not be testing the lane — it
-  // would be testing the refusal. `handlers` is the knob the probes turn.
+  // would be testing the refusal. `handlers` is the knob the probes turn. Each
+  // row is a LIST, because an action can be made of more than one shared call.
   const handlers = (overrides?.handlers as string[] | undefined) ?? ['itemTransitions.captureItemRecord']
   return `
 export interface ActionShape {
@@ -75,19 +80,22 @@ export const ACTIONS = {
 } as const satisfies Record<string, ActionShape>
 
 export const ITEM_HANDLERS = {
-${handlers.map(h => `  '${h.split('.').pop()}': ${h},`).join('\n')}
+${handlers.map(h => `  '${h.split('.').pop()}': [${h}],`).join('\n')}
 } as const satisfies Readonly<Record<string, unknown>>
 
 export const BOARD_VERBS: readonly BoardVerb[] = [${VERB_LIST}]
 `
 }
 
-/** A controller with one private member, so the private/public split is tested. */
+/** A controller with one private member, so the private/public split is tested.
+ *  Its two doors CALL the shared function, so a fixture that declares one has
+ *  an interface that really uses it — a fixture that declared a shared
+ *  implementation nothing calls would be asserting about a broken face. */
 const CONTROLLER = `
 export class BoardController {
   private land(): void {}
-  createTask(id: string): void {}
-  moveTask(id: string, status: string): void {}
+  createTask(id: string): void { moveTaskToStatus(id, 'todo', 0) }
+  moveTask(id: string, status: string): void { moveTaskToStatus(id, status, 0) }
   getSnapshot(): BoardSnapshot { return this.land as never }
   brandNewVerb(): void {}
 }
@@ -122,13 +130,17 @@ const BASE = {
     { path: 'src/client/board/Board.tsx', text: 'controller.createTask("a")\ncontroller.moveTask("a", "todo")\ncontroller.getSnapshot()\n' },
     { path: 'src/client/index.ts', text: 'sync.start()\n' },
     { path: 'src/client/item/panel.tsx', text: 'const made = captureItemRecord(input, now, mint)\n' },
+    // The interface's own call of the shared function. A fixture that declares
+    // a shared implementation nothing calls would be asserting about a broken
+    // face — and the gate would be right to say so.
+    { path: 'src/client/board/Move.tsx', text: 'const moved = moveTaskToStatus(task, status, now)\n' },
   ],
 }
 
 /** An agent-tool source. `engineBranch` is the slice between the engine-lane
  *  condition and the document-lane one, and `documentBody` is what the
  *  document lane does — the two `case` lines the execution gate needs. */
-function tools(engineBranch: string, documentBody = "switch (id) {\n      case 'task.create':\n      case 'task.move':\n        return 1\n      default:\n        return 0\n    }") {
+function tools(engineBranch: string, documentBody = "switch (id) {\n      case 'task.create':\n        return moveTaskToStatus(id, 'todo', 0)\n      case 'task.move':\n        return moveTaskToStatus(id, 'todo', 0)\n      default:\n        return 0\n    }") {
   return `function applyOne(id: string) {\n  if (spec.lane === 'engine') {\n${engineBranch}\n  } else if (spec.lane === 'document') {\n    ${documentBody}\n  }\n}\n`
 }
 
@@ -545,6 +557,123 @@ describe('2 — semantic honesty, including the direction that must stay quiet',
     // The other half. A check that fires here teaches the reader that the fix
     // for a finding is to delete the finding.
     expect(run({ catalogText: catalog({ semantic: true, semanticOf: 'moveTaskToStatus' }) })).toEqual([])
+  })
+})
+
+describe('1e — the shared implementation, on both sides', () => {
+  /* THE REAL REPOSITORY IS THE FIXTURE.
+   *
+   * The three divergences this rule closes were all real, and every one of
+   * them sat behind a GREEN gate: the catalog named a function, the function
+   * existed, and the two sides still did three different things. So the cases
+   * below take the actual repository, break ONE thing in the copy this process
+   * holds, and insist the gate says so.
+   *
+   * NOTHING IS WRITTEN TO DISK. The broken face never reaches the shared
+   * workspace, which is exactly why a proof like this belongs in a spec rather
+   * than in a temporary edit of a real file (hard rule 16). */
+  const real = () => readRepo('.')
+
+  it('is green on the real repository', () => {
+    expect(actionCoverageFindings(real())).toEqual([])
+  })
+
+  it('catches an interface that stopped calling the shared function', () => {
+    // The interface half of the promise: the panel (or the controller, or the
+    // host service) has to go through the function the catalog names.
+    const repo = real()
+    const broken = {
+      ...repo,
+      interfaceFiles: (repo.interfaceFiles ?? repo.scanFiles).map(file => ({
+        ...file,
+        text: file.text.replace(/\bapproveTaskToStatus\s*\(/g, 'approveTaskToStatusButRenamed('),
+      })),
+      controllerText: repo.controllerText.replace(/\bapproveTaskToStatus\s*\(/g, 'approveTaskToStatusButRenamed('),
+    }
+    expect(actionCoverageFindings(broken).join('\n'))
+      .toContain("NOTHING in the interface's own implementation calls it")
+  })
+
+  it('catches a model that stopped calling the shared function', () => {
+    // The model half of the promise: the action's own `case` has to go through
+    // the function the catalog names.
+    const repo = real()
+    const broken = {
+      ...repo,
+      agentToolsText: repo.agentToolsText.replace(/\bapproveTaskToStatus\s*\(/g, 'approveTaskToStatusButRenamed('),
+    }
+    expect(actionCoverageFindings(broken).join('\n')).toContain('never calls it')
+  })
+
+  it('catches a door that reaches the shared function through another door', () => {
+    // THE ORIGINAL 「通过」 SHAPE, planted back: the catalog named the MOVE,
+    // the approve button went through `markTaskViewed` and `this.moveTask`,
+    // and the model did the move by itself. Three behaviours, one name, and
+    // the gate was green — because the only question it asked was whether the
+    // name existed.
+    const repo = real()
+    const broken = {
+      ...repo,
+      catalogText: repo.catalogText.replace(
+        "semanticOf: ['approveTaskToStatus'],",
+        "semanticOf: ['moveTaskToStatus'],",
+      ),
+      controllerText: repo.controllerText.replace(
+        /const approved = approveTaskToStatus\(task, now\)\n {4}if \(!approved\.ok\) return false/,
+        "this.markTaskViewed(taskId)\n    this.moveTask(taskId, 'done')\n    return true",
+      ),
+    }
+    expect(actionCoverageFindings(broken).join('\n'))
+      .toContain('its own door (controller.approveTask()) calls none of the shared functions this action names')
+  })
+
+  it('catches a model that stopped consulting the shared gate', () => {
+    // The original 「移栏」 shape: the catalog promised that a busy card is
+    // refused, the drag obeyed, and the model moved the card anyway.
+    const repo = real()
+    const broken = {
+      ...repo,
+      agentToolsText: repo.agentToolsText.replace(/resolveCardDrop\(last, target\)/, 'undefined'),
+    }
+    expect(actionCoverageFindings(broken).join('\n'))
+      .toContain('the catalog says this action goes through "resolveCardDrop"')
+  })
+
+  it('catches a model that stopped writing the row AND the card', () => {
+    // The original 「改状态」 shape: the model wrote the row's own field and
+    // left the card where it was — and the panel's own sync then quietly undid
+    // the write, so the receipt said 「已生效」 about an edit nobody kept.
+    const repo = real()
+    const broken = {
+      ...repo,
+      agentToolsText: repo.agentToolsText.replace(/applyItemStatus\(rows, found\.id/g, 'applyItemPatch(rows, found.id'),
+    }
+    expect(actionCoverageFindings(broken).join('\n'))
+      .toContain('the catalog says this action goes through "applyItemStatus"')
+  })
+
+  it('reads STRUCTURE, not wording: a comment naming the function is not a call', () => {
+    // Hard rule 14. The comment below names the shared function exactly as a
+    // call would, and the gate must not count it — otherwise a line of prose
+    // would satisfy a promise about the code.
+    const repo = real()
+    const broken = {
+      ...repo,
+      interfaceFiles: (repo.interfaceFiles ?? repo.scanFiles).map(file => ({
+        ...file,
+        text: file.text.replace(/\bapproveTaskToStatus\s*\(/g, 'approveTaskToStatusButRenamed('),
+      })),
+      controllerText: repo.controllerText.replace(/\bapproveTaskToStatus\s*\(/g, 'approveTaskToStatusButRenamed('),
+    }
+    const withComment = {
+      ...broken,
+      interfaceFiles: [
+        ...(broken.interfaceFiles ?? []),
+        { path: 'src/client/board/Comment.tsx', text: '// the old path called approveTaskToStatus(task, status, now)\n' },
+      ],
+    }
+    expect(actionCoverageFindings(withComment).join('\n'))
+      .toContain("NOTHING in the interface's own implementation calls it")
   })
 })
 

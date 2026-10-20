@@ -1148,6 +1148,96 @@ describe('the five new document actions, proven through the merge grammar', () =
   })
 })
 
+describe('the model and the person press the same buttons', () => {
+  /* THE THREE PLACES THE TWO SIDES USED TO DIVERGE.
+   *
+   * Each case below is a divergence that was REAL: the catalog said one
+   * thing, the interface did another, the model did a third, and the gate was
+   * green because it only asked whether the function it named existed.
+   *
+   * The fix is not a second judgment on the model's side — it is the model
+   * calling the very function the interface calls, so there is nothing left to
+   * disagree about. */
+
+  it('task.approve moves the card AND marks it read, like the person\'s button', async () => {
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{
+        ...card('待审核的卡'),
+        status: 'review' as const,
+        executions: [{ id: 'e-1', sessionId: 's-1', startedAt: NOW, endedAt: NOW, result: 'succeeded' as const, error: undefined }] as never,
+      }],
+    })
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.approve', payload: { of: '待审核的卡' } }] })
+    expect(result.ok).toBe(true)
+    const approved = board.getDoc().tasks[0]
+    expect(approved?.status, 'the card moved to 已完成').toBe('done')
+    // The read clock: the half the model used to leave behind, so a card the
+    // model approved kept its unread ring and its 「新 N」 chip.
+    expect(approved?.viewedAt, 'and the read clock moved with it').toBe(NOW)
+  })
+
+  it('task.approve refuses a card that is still running, and touches nothing', async () => {
+    const board = face()
+    const round = { id: 'e-1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('还在跑的卡'), status: 'review' as const, executions: [round] as never }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.approve', payload: { of: '还在跑的卡' } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('还有轮次在跑')
+    const untouched = board.getDoc().tasks[0]
+    expect(untouched?.status, 'neither the column nor the read clock moved').toBe('review')
+    expect(untouched?.viewedAt).toBeUndefined()
+  })
+
+  it('task.move refuses a card that is still running — the drag\'s own gate', async () => {
+    // The catalog promises it, the drag keeps it, and the model used to be the
+    // one side that could move a card out from under a live run.
+    const board = face()
+    const round = { id: 'e-1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('还在跑的卡'), status: 'todo' as const, executions: [round] as never }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.move', payload: { of: '还在跑的卡', status: 'done' } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('还有轮次在跑')
+    expect(board.getDoc().tasks[0]?.status, 'the card is where it was').toBe('todo')
+  })
+
+  it('item.update with a status moves the CARD as well — one fact, two documents', async () => {
+    // THE SILENT NO-OP. The model wrote the row's own field and left the card
+    // where it was, and the panel's own sync then quietly undid that write —
+    // so the receipt said 「已生效」 about an edit nobody kept.
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('挂着卡')] })
+    const base = {
+      id: 'i-1', ref: 1, title: '一条', body: '正文', notes: '', steps: [],
+      status: 'todo', priority: 'normal', tags: [], startsAfter: undefined,
+      dueAt: undefined, hardDueAt: undefined, taskId: 't-挂着卡',
+      origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
+    }
+    board.seedItems(applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [base as never], deleted: [] }, NOW))
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#1', status: 'done' } }] })
+    expect(result.ok).toBe(true)
+    expect(board.getItemsDoc().items[0]?.status, 'the row says 已完成').toBe('done')
+    expect(board.getDoc().tasks[0]?.status, 'and the card is in 已完成 too').toBe('done')
+  })
+
+  it('item.update with a status the executor owns is refused, saying why', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [card('挂着卡')] })
+    const base = {
+      id: 'i-1', ref: 1, title: '一条', body: '正文', notes: '', steps: [],
+      status: 'todo', priority: 'normal', tags: [], startsAfter: undefined,
+      dueAt: undefined, hardDueAt: undefined, taskId: 't-挂着卡',
+      origin: { source: 'human', at: NOW }, createdAt: NOW, updatedAt: NOW,
+    }
+    board.seedItems(applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [base as never], deleted: [] }, NOW))
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#1', status: 'running' } }] })
+    expect(result.reports[0]?.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('进行中')
+    expect(board.getItemsDoc().items[0]?.status, 'the row is untouched').toBe('todo')
+  })
+})
+
 describe('a model asks a question about a row, through the same plan the panel uses', () => {
   /** One row, hung off a card, in a document the fake face will hand back. */
   function oneItem(patch: Partial<ItemRecord>): ItemsDoc {

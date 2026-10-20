@@ -171,6 +171,47 @@ describe('the field verdicts reach the tool surface', () => {
   })
 })
 
+describe('the declarations the shared implementation rests on', () => {
+  /* THE NAMES ARE THE PROMISE, so they are pinned here.
+   *
+   * The coverage gate holds both sides to whatever this table says — but only
+   * if the table says the truth. A row that names one shared function when the
+   * action is really made of two lets the second one grow a second
+   * implementation, and the gate will be green about it because it was never
+   * told. So the names are pinned here, where a change to one of them is a
+   * visible edit rather than a silent narrowing. */
+  it('task.approve names the approve function, NOT the move', () => {
+    // The divergence this pins: the row named the MOVE, the interface's button
+    // did the approve (read clock and all), and the model did the move by
+    // itself. Three behaviours, one name.
+    expect(ACTIONS['task.approve'].semanticOf).toEqual(['approveTaskToStatus'])
+  })
+
+  it('task.move names the gate the drag uses AND the transition', () => {
+    // The busy law is the interface's own judgment, and the column change is
+    // the shared transition: a move is both, and the model must ask the same
+    // two questions the drag asks.
+    expect(ACTIONS['task.move'].semanticOf).toEqual(expect.arrayContaining(['resolveCardDrop', 'moveTaskToStatus']))
+  })
+
+  it('item.update names BOTH writers — the field one and the status one', () => {
+    // The status write also moves the card, and that is the whole point of it:
+    // a row and a card must never tell two stories.
+    expect(ACTIONS['item.update'].semanticOf).toEqual(['applyItemPatch', 'applyItemStatus'])
+  })
+
+  it('item.promote names the mount as well as the plan', () => {
+    expect(ACTIONS['item.promote'].semanticOf).toEqual(['planItemPromotion', 'mountItemRecord'])
+  })
+
+  it('every semantic action names at least one function', () => {
+    for (const [id, spec] of Object.entries(ACTIONS) as Array<[string, ActionShape]>) {
+      if (spec.semantic !== true) continue
+      expect((spec.semanticOf ?? []).length, `${id} claims to be semantic without naming anything`).toBeGreaterThan(0)
+    }
+  })
+})
+
 describe('the catalog gate', () => {
   it('is green on the real catalog', () => {
     expect(actionCatalogFindings()).toEqual([])
@@ -189,9 +230,18 @@ describe('the catalog gate', () => {
   it('catches a semantic action naming a function that does not exist', () => {
     // A renamed or misspelled function is the case this whole check is for.
     const findings = actionCatalogFindings({
-      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatusButRenamed' }),
+      actions: poison('task.move', { semantic: true, semanticOf: ['moveTaskToStatusButRenamed'] }),
     })
     expect(findings.join('\n')).toContain('not a shared core function that exists')
+  })
+
+  it('catches a semantic action naming the same function twice', () => {
+    // A list with a repeat says the same thing twice, and only one of the two
+    // is read — so the other one is a promise nobody keeps.
+    const findings = actionCatalogFindings({
+      actions: poison('task.move', { semantic: true, semanticOf: ['moveTaskToStatus', 'moveTaskToStatus'] }),
+    })
+    expect(findings.join('\n')).toContain('names the same shared function twice')
   })
 
   it('accepts a semantic action once the shared function really exists', () => {
@@ -209,9 +259,9 @@ describe('the catalog gate', () => {
     // once. A fixture must be minimal with respect to the OTHER rules, or the
     // finding it produces is not the one under test.
     expect(ACTIONS['task.move'].semantic, 'the fixture needs a real semantic action').toBe(true)
-    expect(ACTIONS['task.move'].semanticOf).toBe('moveTaskToStatus')
+    expect(ACTIONS['task.move'].semanticOf).toContain('moveTaskToStatus')
     expect(actionCatalogFindings({
-      actions: poison('task.move', { semantic: true, semanticOf: 'moveTaskToStatus' }),
+      actions: poison('task.move', { semantic: true, semanticOf: ['moveTaskToStatus'] }),
     })).toEqual([])
   })
 
@@ -227,7 +277,7 @@ describe('the catalog gate', () => {
     //
     // Same board action as the case above, and for the same reason: an item
     // action would also trip the binding check, which is a different rule.
-    const findings = actionCatalogFindings({ actions: poison('task.move', { semantic: undefined, semanticOf: 'itemStatusOf' }) })
+    const findings = actionCatalogFindings({ actions: poison('task.move', { semantic: undefined, semanticOf: ['itemStatusOf'] }) })
     expect(findings.join('\n')).toContain('without being marked semantic')
   })
 
