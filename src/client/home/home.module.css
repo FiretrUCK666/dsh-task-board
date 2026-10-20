@@ -466,6 +466,13 @@
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: var(--dsh-tb-space-4);
+  /* **两块读数按自己的高度站好，不跟着卡片长高。**
+     一张 174px 的卡里放两枚只有一行字的按钮：拉成 118px 高时，两枚纸片各自空着
+     三分之二，读起来像两块占位符。读者的原话是「上面和下面要有间隔，但**下面那一行
+     东西的位置不要变**」——那条要求对这张卡同样成立：内容按自己的高度站好，多出来的
+     高度留给卡片，而不是摊进每一块里面。 */
+  align-content: start;
+  flex: none;
 }
 
 /* 两个读数各是一枚按钮：它们把读者送到看板——会话就住在那里。
@@ -476,7 +483,12 @@
 [data-dsh-taskboard-view] .sessionStat {
   box-sizing: border-box;
   display: flex;
-  align-items: baseline;
+  /* **盒心，不是基线。** 这两枚按钮会被拉到卡片的高度（见 `.sessionStats` 的
+     `align-content: stretch`），而基线对齐只保证两段字彼此对齐、不保证它们落在盒子中间：
+     拉高之后「1 进行中」贴在纸片顶上，下面空一大块，读起来像这张卡写了一半。
+     一行字在一个被拉高的盒子里，就该落在它的中线上——这是这一族（`itemGroupText` /
+     `itemRailText` / `itemEmptyGroup` 同一条律）的做法。 */
+  align-items: center;
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-4) var(--dsh-tb-space-5);
@@ -490,13 +502,14 @@
 
 [data-dsh-taskboard-view] .sessionValue {
   font-size: var(--dsh-tb-type-title-size);
-  line-height: var(--dsh-tb-type-title-line);
+  /* 段内行盒 = 墨高，于是「按盒心居中」就是「按墨心居中」（与 `.pipeRow > *` 同一条律）。 */
+  line-height: 1em;
   font-weight: 600;
 }
 
 [data-dsh-taskboard-view] .sessionLabel {
   font-size: var(--dsh-tb-type-meta-size);
-  line-height: var(--dsh-tb-type-meta-line);
+  line-height: 1em;
   color: var(--dsh-tb-text-2);
 }
 
