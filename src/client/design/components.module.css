@@ -1083,9 +1083,17 @@ textarea.input {
 }
 
 /* 原生搜索框那个「×」在两种皮肤下长相都不可控，且它和本页的清除语法（筛选 chip 的 ×）
-   是两套——去掉它，清空由 chip 或 Esc 承担。 */
+   是两套——去掉它，清空由 chip 或 Esc 承担。
+ *
+   **两种引擎各有一个选择器**：WebKit 的是 `::-webkit-search-cancel-button`，Gecko 的是
+ * `::-moz-search-clear`（Firefox 从来没有 WebKit 那个）。只藏一个，等于**在另一个引擎上
+   留着那个按钮**——而那句话（「去掉它」）在两个引擎上都得成立。 */
 .searchField::-webkit-search-cancel-button {
   -webkit-appearance: none;
+  appearance: none;
+}
+
+.searchField::-moz-search-clear {
   appearance: none;
 }
 

@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
-import { allRules, panelCss, spacingPx, stripCssComments } from './panel-harness.ts'
+import { allRules, panelCss, ruleTextOf, spacingPx, stripCssComments } from './panel-harness.ts'
 
 /**
  * The `gap` inside a rule body, in pixels.
@@ -117,7 +117,7 @@ function blockWith(marker: RegExp): string {
  *  overrides under a condition, and they are read through `ruleIn` with the
  *  block they belong to. */
 function ruleOf(name: string): string {
-  return blockFrom(line => line === `.${name} {`) || blockFrom(line => line.trim() === `.${name} {`)
+  return ruleTextOf(source, `.${name}`) ?? ''
 }
 
 /** One rule's OWN text inside a scope (up to its closing brace) — never the
@@ -1526,7 +1526,17 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     const line = feedRowSource.slice(actionsAt)
     expect(line.indexOf('css.notifyActionCluster')).toBeLessThan(line.indexOf('css.notifyMeta'))
     expect(ruleOf('notifyActions')).toMatch(/justify-content:\s*flex-end/)
-    expect(ruleOf('notifyActions')).toMatch(/width:\s*100%/)
+    /* **这一簇只占自己需要的那一栏**（主区吃剩余宽度），所以它 `flex: none`。
+     *
+     * 这一条**曾经**是 `width: 100%`（一个 flex 项硬占满整行，于是「进详情」与时间被挤到
+     * 第二行——一条本来是一行的记录被拆成两截）。那个写法已经拿掉了，而**那一段注释里
+     * 仍留着「`width: 100%`」这几个字**——于是判据若连注释一起读，它会一直绿着，
+     * 绿在一个**已经不存在的写法**上。
+     *
+     * 所以判据读的是**结构**（这一簇不撑满整行），而读法**先把注释剥掉**：
+     * 一句关于某个写法的说明，不许替那个写法作证。 */
+    expect(ruleOf('notifyActions')).toMatch(/flex:\s*none/)
+    expect(ruleOf('notifyActions')).not.toMatch(/width:\s*100%/)
     expect(ruleOf('notifyActionCluster')).toMatch(/flex-wrap:\s*wrap/)
   })
 

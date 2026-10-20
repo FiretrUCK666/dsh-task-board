@@ -1136,6 +1136,43 @@ export function declaredOf(css: string, name: string, property: string): string[
 }
 
 /**
+ * The text of the rule whose selector is EXACTLY `selector` — **the top-level one**.
+ *
+ * **为什么必须挑顶层那一条。** 同一个类名可以有两处声明：基础档（顶层）与某个
+ * 条件档（`@container` / `@media` 里，**缩进**着）。而条件档里的那一条是**覆盖**，
+ * 不是那个类自己的形状——「这个面板有多宽」这种问题要读基础档那条。
+ * 读法若按「trim 之后相等」找，**先命中的是缩进的那一条**：量出来的症状是
+ * 「面板的宽度」读成了 `animation: none`（那是减弱动效那一块里的同名规则）。
+ *
+ * @param css - the sheet, comments intact or not.
+ * @param selector - the selector, without the dot and without the braces.
+ * @returns the rule's own text (selector line through its closing brace), or
+ *   `undefined` when there is no such rule.
+ */
+export function ruleTextOf(css: string, selector: string): string | undefined {
+  const lines = stripCssComments(css).split('\n')
+  const take = (matches: (line: string) => boolean): string | undefined => {
+    for (let i = 0; i < lines.length; i++) {
+      if (!matches(lines[i])) continue
+      let depth = 0
+      const chunks: string[] = []
+      for (let j = i; j < lines.length; j++) {
+        const line = lines[j]
+        chunks.push(line)
+        for (const ch of line) {
+          if (ch === '{') depth++
+          else if (ch === '}') { depth--; if (depth === 0) return chunks.join('\n') }
+        }
+      }
+      return chunks.join('\n')
+    }
+    return undefined
+  }
+  /* **顶层优先**：不缩进的那一条是基础档；实在没有，才退到缩进的那一条。 */
+  return take(line => line === `${selector} {`) ?? take(line => line.trim() === `${selector} {`)
+}
+
+/**
  * The last declared value of `property` for `.name` **in the base band** — the rules
  * that are not inside an at-rule.
  *

@@ -31,7 +31,6 @@ export interface PaletteCommands {
     readonly pick: () => void;
 }
 export interface ItemCommandPaletteProps {
-    readonly open: boolean;
     /** The whole query, exactly as the reader typed it. The ONLY state. */
     readonly text: string;
     readonly onText: (next: string) => void;

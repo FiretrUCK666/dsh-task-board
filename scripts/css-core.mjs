@@ -171,16 +171,48 @@ export function classNamesIn(selector) {
 export function declaredClassesOf(css) {
   const out = new Set()
   for (const rule of rulesOf(css)) {
-    for (const part of rule.selector.split(',')) {
-      /* 末段 compound：从最后一个非复合连接符之后开始。连接符是空格、`>`、`+`、`~`。 */
-      const compounds = part.trim().split(/\s*[>+~]\s*|\s+/)
-      const last = compounds[compounds.length - 1] ?? ''
-      /* 末段里可能挂着多个类（`.card.dragging`）与伪类/属性——**每一个类都是被
-         声明出来的**，因为它们共同构成「选中哪个元素」。伪类里的参数
-         （`:not(.x)`）不算：那是条件，不是本体。 */
-      const withoutPseudoArgs = last.replace(/\((?:[^()]|\([^()]*\))*\)/g, '')
-      for (const m of withoutPseudoArgs.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)) out.add(m[1])
+    for (const names of holderClassesOf(rule.selector)) {
+      for (const name of names) out.add(name)
     }
+  }
+  return out
+}
+
+/**
+ * 一条选择器的**每一段**各自主张了哪些类——也就是**承载盒**。
+ *
+ * ── 判据是 CSS 自己的结构：**末段compound** ─────────────────────────────────
+ *
+ * 一条选择器描述的是「哪个元素被这条规则选中」，而那个元素由**最后一段 compound**
+ * 决定（`A B` 选中 B；`A > B` 选中 B；`.card.dragging` 选中同时有这两个类的元素）。
+ * 所以：
+ *
+ *   - `.name` / `.name:hover` / `.name[data-x]` / `.name::before`  → 主张 `name`
+ *   - `.card.dragging`                                            → 主张 `card` 与 `dragging`
+ *   - `[data-dsh-taskboard-view] .itemRoot`                        → 主张 `itemRoot`
+ *   - `.waitingNotice .chip`                                       → 主张 `chip`
+ *
+ * **伪类里的参数不是本体**：`.panel:not(.panelWide)` 选中的是 **`.panel`**，
+ * `.panelWide` 是**条件**（那个盒子此刻不是 panelWide）。把它算成承载盒，记账就挂到了
+ * 错的盒子上——那一条门禁会因此**报一个不存在的问题**（或漏掉一个真问题）。
+ *
+ * @param {string} selector - 一条选择器（可以带逗号）。
+ * @returns {string[][]} 每一段各自主张的类名（不含点）。
+ */
+export function holderClassesOf(selector) {
+  const out = []
+  for (const part of selector.split(',')) {
+    const trimmed = part.trim()
+    if (trimmed === '') continue
+    /* 末段 compound：从最后一个非复合连接符之后开始。连接符是空格、`>`、`+`、`~`。 */
+    const compounds = trimmed.split(/\s*[>+~]\s*|\s+/)
+    const last = compounds[compounds.length - 1] ?? ''
+    /* 末段里可能挂着多个类（`.card.dragging`）与伪类/属性——**每一个类都是被
+       声明出来的**，因为它们共同构成「选中哪个元素」。伪类里的参数
+       （`:not(.x)`）不算：那是条件，不是本体。 */
+    const withoutPseudoArgs = last.replace(/\((?:[^()]|\([^()]*\))*\)/g, '')
+    const names = [...withoutPseudoArgs.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1])
+    if (names.length > 0) out.push(names)
   }
   return out
 }

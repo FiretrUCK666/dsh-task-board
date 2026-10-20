@@ -1911,27 +1911,33 @@ export function ItemListPanel(props: ItemListPanelProps) {
     <div className={css.itemPanelStage} data-dsh-taskboard-view="">
       {/* ══ 左栏与列表 ════════════════════════════════════════════════════ */}
       <div className={css.itemRoot}>
-        <ItemCommandPalette
-          open={paletteOpen}
-          text={prefs.search}
-          onText={next => choose({ search: next })}
-          query={query}
-          tags={items.map(item => item.tags)}
-          sort={prefs.sort}
-          onSort={next => choose({ sort: next })}
-          onPriority={cursor === undefined ? undefined : priority => apply(applyItemPatch(items, cursor, { priority }, Date.now()))}
-          rows={items}
-          actions={paletteActions}
-          onPickRow={id => { setSelected(id); setCursor(id) }}
-          onClose={() => openLayer(undefined)}
-          /* THE FOCUS GOES BACK WHERE IT CAME FROM, and the box does it itself
-             now: `useDialogFocus` remembers whoever held focus when it mounted —
-             which is the search box, since that is where ⌘K is pressed — and
-             hands it back when the box unmounts. It used to be a callback here,
-             because the box did not own the button the reader pressed; it does
-             not need to. It only needs to remember. */
-          onCommands={commands => { paletteCommands.current = commands }}
-        />
+        {/* THE PALETTE IS RENDERED ONLY WHILE IT IS OPEN, and that is what makes
+           the focus work.
+           *
+           * 这一段过去无条件渲染它（`open` 只控制里面那个盒子），于是面板的**组件**
+           * 一直活着、只有盒子来了又走——而「焦点进去、焦点还回来」这件事是**挂载与
+           * 卸载**做的（`useDialogFocus` 记下挂载前谁拿着焦点，卸载时还回去）。组件
+           * 不卸，那条链就永远不跑：关闭时焦点掉到 `<body>`，键盘用户丢了自己的位置。
+           *
+           * 所以这里在面板开着的时候才渲染它：组件的生死与面板的生死对齐，**现成的
+           * 机制就自动对了**——挂载时焦点进到字段（意图声明在字段那儿），卸载时还给
+           * 读者按下 ⌘K 时待着的那一枚搜索框。**不需要第三套搬焦点的做法。** */}
+        {paletteOpen && (
+          <ItemCommandPalette
+            text={prefs.search}
+            onText={next => choose({ search: next })}
+            query={query}
+            tags={items.map(item => item.tags)}
+            sort={prefs.sort}
+            onSort={next => choose({ sort: next })}
+            onPriority={cursor === undefined ? undefined : priority => apply(applyItemPatch(items, cursor, { priority }, Date.now()))}
+            rows={items}
+            actions={paletteActions}
+            onPickRow={id => { setSelected(id); setCursor(id) }}
+            onClose={() => openLayer(undefined)}
+            onCommands={commands => { paletteCommands.current = commands }}
+          />
+        )}
         {/* THE NEW-ROW DIALOG, beside the box rather than inside it: it is a
             different layer that can be open with the box shut.
 

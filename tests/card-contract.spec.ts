@@ -28,7 +28,7 @@ import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
-import { allRules, designCss, pageCss, spacingPx } from './panel-harness.ts'
+import { allRules, designCss, pageCss, ruleTextOf, spacingPx } from './panel-harness.ts'
 
 /**
  * The board surface AS IT RENDERS: the board's own sheets plus the design layer
@@ -65,25 +65,7 @@ function conditionalRanges(css: string, kind: '@media' | '@container'): Array<[n
 
 /** Extract the top-level rule block whose opening line is exactly ".name {". */
 function ruleOf(name: string): string | undefined {
-  const lines = source.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() !== `.${name} {`) continue
-    let depth = 0
-    const chunks: string[] = []
-    for (let j = i; j < lines.length; j++) {
-      const line = lines[j]
-      chunks.push(line)
-      for (const ch of line) {
-        if (ch === '{') depth++
-        else if (ch === '}') {
-          depth--
-          if (depth === 0) return chunks.join('\n')
-        }
-      }
-    }
-    return chunks.join('\n')
-  }
-  return undefined
+  return ruleTextOf(source, `.${name}`)
 }
 
 function expectRule(name: string): string {
@@ -729,24 +711,7 @@ describe('the column header and the cards under it share ONE text edge', () => {
 
 /** Extract the rule block whose opening line is exactly the given SELECTOR. */
 function ruleFor(selector: string): string {
-  const lines = source.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() !== `${selector} {`) continue
-    let depth = 0
-    const chunks: string[] = []
-    for (let j = i; j < lines.length; j++) {
-      const line = lines[j]
-      chunks.push(line)
-      for (const ch of line) {
-        if (ch === '{') depth++
-        else if (ch === '}') {
-          depth--
-          if (depth === 0) return chunks.join('\n')
-        }
-      }
-    }
-  }
-  return ''
+  return ruleTextOf(source, selector) ?? ''
 }
 
 describe('card no-breakout CSS contract', () => {

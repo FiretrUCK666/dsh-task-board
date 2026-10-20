@@ -22,7 +22,7 @@
  */
 // @vitest-environment jsdom
 import { describe, expect, it } from 'vitest'
-import { act, createElement, useState } from 'react'
+import { act, createElement, useState, type ReactElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
 import { claimsKey, dispatchKey, ITEM_KEYS, type ItemKeyActions, type KeyState } from '../src/client/item/keyboard.ts'
 import { EMPTY_ITEM_QUERY, parseItemQuery } from '../src/core/item-view.ts'
@@ -114,13 +114,19 @@ function mountLoose(): Loose {
     { id: 'undo', label: zh['item.undo.do'] as string, run: () => { did.push('undo') } },
   ]
 
-  function Harness(): ReturnType<typeof createElement> {
+  function Harness(): ReactElement | null {
     const [text, setNext] = useState('')
     const [isOpen, setIsOpen] = useState(true)
     setText = setNext
     setOpen = setIsOpen
+    /* **面板开着才渲染它**——与 `panel.tsx` 同一句。
+     *
+     * 这一句不是装饰：焦点「进去、还回来」是**挂载与卸载**做的（`useDialogFocus`
+     * 记下挂载前谁拿着焦点，卸载时还回去）。组件一直活着而只有盒子来了又走，那条链
+     * 就永远不跑——关闭时焦点掉到 `<body>`。台架与页面用**同一句**，于是这条性质在
+     * 这里就能被测到。 */
+    if (!isOpen) return null
     return createElement(ItemCommandPalette, {
-      open: isOpen,
       text,
       onText: setNext,
       query: text.trim() === '' ? EMPTY_ITEM_QUERY : parseItemQuery(text),
@@ -252,6 +258,36 @@ describe('typing into the box leaves what the reader typed', () => {
       const isSearchField = [...field.classList].some(one => /(?:^|_)searchField(?:_|$)/.test(one))
       expect(isSearchField, '这个框不是共享的那个搜索框——它是自己抄的一个输入框').toBe(true)
       expect(field.getAttribute('type'), '共享的那个搜索框是 type=search').toBe('search')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('closing the box hands the focus back to whoever opened it', () => {
+    // **一个模态层欠着焦点。** 读者按下 ⌘K 时，焦点在主脊那枚搜索框上；面板把自己
+    // 的焦点拿走（去打字、去选），关掉时就得**还回去**——不然焦点掉到 `<body>`，
+    // 键盘用户丢了自己的位置：下一次按键无人应答。
+    //
+    // 这一条过去**在真面板上没有断言**，而它也确实不成立：面板的组件**一直挂载**
+    // （父页无条件渲染它），于是「挂载时记下、卸载时还回」那条链**永远不跑**。
+    // 治法不是再写一套搬焦点的机制，是**让组件随面板一起生死**——于是现成机制就对了。
+    //
+    // 这里用的是**真面板**（`mountPanel`），不是台架：读者按 ⌘K 的那一枚，就是主脊上
+    // 那枚真的搜索框。
+    const panel = mountPanel(fixtures(), 'list', 'wide')
+    try {
+      const spine = panel.surface.querySelector('input')
+      if (spine === null) throw new Error('the panel has no search field to press ⌘K from')
+      act(() => { spine.focus() })
+      expect(document.activeElement, '台架没把焦点放在主脊那枚搜索框上，这条测不到东西').toBe(spine)
+
+      open(panel)
+      expect(document.activeElement, '打开面板时焦点没有落到那个字段上').toBe(fieldOf(panel))
+
+      /* **关上它**（Esc 是那个面板自己的出口）。 */
+      act(() => { press(fieldOf(panel), 'Escape') })
+      expect(panel.surface.querySelector('[class*="itemCommandPalette"]'), 'Esc 没有关上这个面板').toBeNull()
+      expect(document.activeElement, '面板关上了，焦点没有回到读者按下 ⌘K 的那一枚').toBe(spine)
     } finally {
       panel.dispose()
     }

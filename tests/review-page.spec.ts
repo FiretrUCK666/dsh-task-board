@@ -11,7 +11,7 @@ import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/bo
 import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
-import { designCss, pageCss } from './panel-harness.ts'
+import { designCss, pageCss, ruleTextOf } from './panel-harness.ts'
 
 /* 看板这一页可以有任意多张表——判据读的是**合计**，不是某一个文件名。 */
 const cssSource = pageCss('board')
@@ -52,24 +52,9 @@ function withoutComments(text: string): string {
  *  components' sheet. Board first, so at equal specificity the surface's own
  *  rule is the one found, which is also the cascade's precedence. */
 function ruleOf(name: string): string {
-  const lines = renderedSource.split('\n')
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() !== `.${name} {`) continue
-    let depth = 0
-    const chunks: string[] = []
-    for (let j = i; j < lines.length; j++) {
-      const line = lines[j]
-      chunks.push(line)
-      for (const ch of line) {
-        if (ch === '{') depth++
-        else if (ch === '}') {
-          depth--
-          if (depth === 0) return chunks.join('\n')
-        }
-      }
-    }
-  }
-  throw new Error(`rule ".${name}" not found in board.module.css`)
+  const found = ruleTextOf(renderedSource, `.${name}`)
+  if (found === undefined) throw new Error(`rule ".${name}" not found in board.module.css`)
+  return found
 }
 
 describe('rail layout CSS contract (interaction card never bursts the rail)', () => {

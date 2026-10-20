@@ -55,7 +55,7 @@ import { freeTextOf, isFacetOn, ITEM_FACETS, tagFacetValuesOf, withFacetToken, w
 import { ItemQueryChips } from './query-chips.tsx'
 import { PRIORITY_LABEL, SORT_LABEL } from './labels.ts'
 import { t, type TaskBoardKey } from '../locales.ts'
-import { useDialogFocus, useFocusOnChange } from '../design/dialog-focus.ts'
+import { useDialogFocus } from '../design/dialog-focus.ts'
 import { useEscapeStack } from '../design/escape-stack.ts'
 import { SearchField } from '../design/ui.tsx'
 import css from './item.module.css'
@@ -126,7 +126,6 @@ export interface PaletteCommands {
 }
 
 export interface ItemCommandPaletteProps {
-  readonly open: boolean
   /** The whole query, exactly as the reader typed it. The ONLY state. */
   readonly text: string
   readonly onText: (next: string) => void
@@ -191,20 +190,27 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
      to do it. Both belong to `dialog-focus.ts` — it traps Tab and returns focus to
      the opener — and Escape to the shared stack, so no surface keeps a copy. */
   const box = useRef<HTMLDivElement | null>(null)
+  /* THE FOCUS GOES IN WHEN THIS MOUNTS, AND COMES BACK WHEN IT UNMOUNTS.
+   *
+   * **这一段曾经是这个面板最贵的一个补丁。** 面板的组件过去**一直挂载**（父页无条件
+   * 渲染它，`open` 只控制里面那个盒子），于是：
+   *
+   *   ① 打开时——`useDialogFocus` 的挂载效果早就跑过了（那时盒子还没挂），焦点进不去；
+   *      于是这里另加了一个 `useFocusOnChange`，把焦点搬进盒子。
+   *   ② 关闭时——卸载的清理**永远不跑**（组件没卸），焦点掉到 `<body>`：键盘用户
+   *      丢了自己的位置，下一次按键无人应答。
+   *
+   * **两件事都是同一个病：面板的生死与组件的生死没有对齐。** 而治法不是再写一套搬
+   * 焦点的机制（那会让「焦点归谁」有三套答案），是**让组件随面板一起生死**：
+   * 父页在面板开着的时候才渲染它（`panel.tsx`）。
+   *
+   * 于是现成的机制就自动对了：**挂载时**焦点进到声明了 `[data-autofocus]` 的那一枚
+   * （意图声明在字段那儿，这个组件不留自己的 ref），**卸载时**焦点还给挂载前拿着它
+   * 的那一枚——也就是读者按下 ⌘K 时待着的那枚搜索框。
+   *
+   * **「意图声明在字段那儿」因此仍然成立**：焦点去哪儿是**字段**说的，不是这个
+   * 组件说的（`useDialogFocus` 找的是可见的 `[data-autofocus]`）。 */
   const { onKeyDown: onBoxKeyDown } = useDialogFocus(box)
-  /* THE CARET GOES TO THE BOX, and it is the SHARED mechanism that takes it there.
-   *
-   * `useDialogFocus` moves the focus on **mount** — but this box mounts **later**:
-   * the component is always mounted, and only the box inside it comes and goes
-   * with `props.open`. So the mount effect ran while the box did not exist, and
-   * `useFocusOnChange` is the shared way to aim at a region that appears later
-   * (same mechanism, two surfaces — see `design/dialog-focus.ts`).
-   *
-   * It focuses the declared `[data-autofocus]` — which is the field below — so
-   * **the intent is declared where the field is**, and this component keeps no
-   * ref of its own. A second way to move the focus is a second answer to
-   * 「where does the caret start」 on one screen. */
-  useFocusOnChange(box, props.open)
   useEscapeStack(props.onClose)
   const [active, setActive] = useState(0)
   // The text this cursor was last placed against. A changed query means a
@@ -219,23 +225,24 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
 
   const typed = freeTextOf(props.text).toLowerCase()
 
-  // THE CURSOR GOES HOME WHEN THE QUERY CHANGES, AND WHEN THE BOX OPENS. React's
-  // documented way to adjust state while rendering: setting state during a render
-  // is discarded and re-run against the new props, which is exactly one extra pass
-  // and never a flash of the old selection against the new list. Both facts are
-  // remembered rather than derived, because 「the list I chose from」 is not a
-  // value the props carry — it is the list as it was when I chose.
-  const [openedAt, setOpenedAt] = useState(props.open)
-  if (placedAt !== props.text || openedAt !== props.open) {
+  // THE CURSOR GOES HOME WHEN THE QUERY CHANGES. React's documented way to adjust
+  // state while rendering: setting state during a render is discarded and re-run
+  // against the new props, which is exactly one extra pass and never a flash of
+  // the old selection against the new list. The fact is remembered rather than
+  // derived, because 「the list I chose from」 is not a value the props carry — it
+  // is the list as it was when I chose.
+  //
+  // 「面板刚打开时游标也回到头一个」——**那一条现在由组件的生死保证**：面板开着才渲染
+  // 这个组件，于是每次打开都是一份新状态，游标天生在头一个。
+  if (placedAt !== props.text) {
     setPlacedAt(props.text)
-    setOpenedAt(props.open)
     setActive(0)
   }
 
   // The caret goes to the box, because the box is what a reader opened a palette
   // to type into, and a palette that opens with the focus nowhere makes them
   // reach for the mouse to do the thing they opened it for. (The mechanism is
-  // `useFocusOnChange` above, and the intent is the `data-autofocus` on the
+  // `useDialogFocus` above, and the intent is the `data-autofocus` on the
   // field below.)
   //
   // THE FIELD IS THE SHARED ONE. This box used to render a raw `<input>` with
@@ -390,111 +397,107 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   const nothing = typed !== '' && groups.every(group => group.kind === 'words' || group.options.length === 0)
 
   return (
-    <>
-      {props.open && (
-        <div
-          className={css.itemCommandPalette}
-          role="dialog"
-          aria-modal="true"
-          aria-label={t('item.palette.title')}
-          onPointerDown={event => {
-            /* `target === currentTarget`, and NOT 「a press that missed the box」:
-               a press that starts inside the field and drags out onto the mask
-               ends with `target === currentTarget` only on the second event, so
-               judging by position instead would close the box under a reader who
-               was selecting text. Judging by WHERE THE PRESS LANDED closes it for
-               exactly the presses that meant it. */
-            if (event.target === event.currentTarget) props.onClose()
-          }}
-        >
-          <div className={css.itemCommandPaletteBox} ref={box} onKeyDown={onBoxKeyDown}>
-            <SearchField
-              className={css.itemSearch}
-              value={freeTextOf(props.text)}
-              placeholder={t('item.search.label')}
-              aria-label={t('item.search.label')}
-              /* THE CARET STARTS HERE, declared where the field is. `useDialogFocus`
-                 focuses the first `[data-autofocus]` in the panel on mount, which
-                 is the one mechanism this project uses for that (see
-                 `design/dialog-focus.ts`). */
-              data-autofocus
-              /* THE COMBOBOX SHAPE, because the caret stays in the field: the
-                 reader types a word and then picks from what it found, which is
-                 not what a text field with a list of buttons below it tells a
-                 screen reader it is. `aria-activedescendant` is what carries the
-                 cursor — the caret never leaves the field, so the thing the
-                 reader is choosing has to be named from out here. */
-              role="combobox"
-              aria-expanded="true"
-              aria-controls={listboxId}
-              aria-autocomplete="list"
-              aria-activedescendant={cursor === undefined ? undefined : `${listboxId}-${cursor.id}`}
-              onChange={event => { props.onText(withFreeText(props.text, event.target.value)) }}
-            />
+    <div
+      className={css.itemCommandPalette}
+      role="dialog"
+      aria-modal="true"
+      aria-label={t('item.palette.title')}
+      onPointerDown={event => {
+        /* `target === currentTarget`, and NOT 「a press that missed the box」:
+           a press that starts inside the field and drags out onto the mask
+           ends with `target === currentTarget` only on the second event, so
+           judging by position instead would close the box under a reader who
+           was selecting text. Judging by WHERE THE PRESS LANDED closes it for
+           exactly the presses that meant it. */
+        if (event.target === event.currentTarget) props.onClose()
+      }}
+    >
+      <div className={css.itemCommandPaletteBox} ref={box} onKeyDown={onBoxKeyDown}>
+        <SearchField
+          className={css.itemSearch}
+          value={freeTextOf(props.text)}
+          placeholder={t('item.search.label')}
+          aria-label={t('item.search.label')}
+          /* THE CARET STARTS HERE, declared where the field is. `useDialogFocus`
+             focuses the first `[data-autofocus]` in the panel on mount, which
+             is the one mechanism this project uses for that (see
+             `design/dialog-focus.ts`). */
+          data-autofocus
+          /* THE COMBOBOX SHAPE, because the caret stays in the field: the
+             reader types a word and then picks from what it found, which is
+             not what a text field with a list of buttons below it tells a
+             screen reader it is. `aria-activedescendant` is what carries the
+             cursor — the caret never leaves the field, so the thing the
+             reader is choosing has to be named from out here. */
+          role="combobox"
+          aria-expanded="true"
+          aria-controls={listboxId}
+          aria-autocomplete="list"
+          aria-activedescendant={cursor === undefined ? undefined : `${listboxId}-${cursor.id}`}
+          onChange={event => { props.onText(withFreeText(props.text, event.target.value)) }}
+        />
 
-            {/* THE SAME CHIP COMPONENT the spine used, and not a second rendering
-                of it. Chips inlined here are a second answer to the same question,
-                with `query-chips.tsx` imported by nobody — and the day
-                「take a qualifier off」 gains a behaviour, one of the two has it and
-                the other does not. */}
-            <ItemQueryChips
-              text={props.text}
-              tags={props.tags}
-              onSearch={props.onText}
-              onClearQualifiers={() => { props.onText(freeTextOf(props.text)) }}
-            />
+        {/* THE SAME CHIP COMPONENT the spine used, and not a second rendering
+            of it. Chips inlined here are a second answer to the same question,
+            with `query-chips.tsx` imported by nobody — and the day
+            「take a qualifier off」 gains a behaviour, one of the two has it and
+            the other does not. */}
+        <ItemQueryChips
+          text={props.text}
+          tags={props.tags}
+          onSearch={props.onText}
+          onClearQualifiers={() => { props.onText(freeTextOf(props.text)) }}
+        />
 
-            {/* THE LISTBOX IS ALSO THE PANEL'S ONLY SCROLLER.
-                *
-                * 盒子自己不滚，而这一列滚——于是搜索框停在原处，滚动条属于**答案那一列**
-                * 而不是属于那个正在打字的框。盒子自己滚的时候，那条滚动条画在盒子内衬
-                * 的边上，于是它压着最后一枚芯片，看起来像从这一块面板里穿了出去。 */}
-            <div id={listboxId} className={css.itemCommandPaletteList} data-dsh-tb-scroll="" role="listbox" aria-label={t('item.palette.answers')}>
-              {groups.map(group => (
-                <div key={group.id} className={css.itemFacetRow} data-palette-group={group.id}>
-                  <span className={css.itemFacetName}>{t(group.name)}</span>
-                  <div className={css.itemFacetValues} role="group" aria-label={t(group.full)}>
-                    {group.options.length === 0 ? null : group.options.map(option => {
-                      const on = cursor !== undefined && option.id === cursor.id
-                      return (
-                        <button
-                          key={option.id}
-                          type="button"
-                          id={`${listboxId}-${option.id}`}
-                          className={css.itemFacetChip}
-                          role="option"
-                          aria-selected={on}
-                          data-selected={on ? '' : undefined}
-                          /* 没有 `aria-pressed`：这一枚的 role 是 `option`，而 `option`
-                             只认 `aria-selected`——`aria-pressed` 在这个 role 上**不成立**，
-                             写上去等于那枚「已选中」的印记对读屏不存在（同一个状态在
-                             `data-selected` 上还画着，所以屏上看起来一切正常）。 */
-                          onClick={() => option.run()}
-                        >
-                          {option.label}
-                        </button>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
+        {/* THE LISTBOX IS ALSO THE PANEL'S ONLY SCROLLER.
+            *
+            * 盒子自己不滚，而这一列滚——于是搜索框停在原处，滚动条属于**答案那一列**
+            * 而不是属于那个正在打字的框。盒子自己滚的时候，那条滚动条画在盒子内衬
+            * 的边上，于是它压着最后一枚芯片，看起来像从这一块面板里穿了出去。 */}
+        <div id={listboxId} className={css.itemCommandPaletteList} data-dsh-tb-scroll="" role="listbox" aria-label={t('item.palette.answers')}>
+          {groups.map(group => (
+            <div key={group.id} className={css.itemFacetRow} data-palette-group={group.id}>
+              <span className={css.itemFacetName}>{t(group.name)}</span>
+              <div className={css.itemFacetValues} role="group" aria-label={t(group.full)}>
+                {group.options.length === 0 ? null : group.options.map(option => {
+                  const on = cursor !== undefined && option.id === cursor.id
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      id={`${listboxId}-${option.id}`}
+                      className={css.itemFacetChip}
+                      role="option"
+                      aria-selected={on}
+                      data-selected={on ? '' : undefined}
+                      /* 没有 `aria-pressed`：这一枚的 role 是 `option`，而 `option`
+                         只认 `aria-selected`——`aria-pressed` 在这个 role 上**不成立**，
+                         写上去等于那枚「已选中」的印记对读屏不存在（同一个状态在
+                         `data-selected` 上还画着，所以屏上看起来一切正常）。 */
+                      onClick={() => option.run()}
+                    >
+                      {option.label}
+                    </button>
+                  )
+                })}
+              </div>
             </div>
-
-            {nothing && <p className={css.itemPaletteNothing}>{t('item.palette.nothing')}</p>}
-
-            {/* THE FOOTER IS A SENTENCE. It is not a group: drawing it as a facet
-                row with an EMPTY name cell, to line the footer up with the groups
-                above it, is what an empty name cell cannot do — the row's first
-                track still reserves its width, so the sentence is indented by it and
-                sits in the middle of a box whose every other line starts at the left
-                edge. The footer's left edge is the BOX's left edge, because that is
-                what it is about. */}
-            <div className={css.itemPaletteFoot}>
-              <p className={css.itemPaletteHint}>{t('item.palette.hint')}</p>
-            </div>
-          </div>
+          ))}
         </div>
-      )}
-    </>
+
+        {nothing && <p className={css.itemPaletteNothing}>{t('item.palette.nothing')}</p>}
+
+        {/* THE FOOTER IS A SENTENCE. It is not a group: drawing it as a facet
+            row with an EMPTY name cell, to line the footer up with the groups
+            above it, is what an empty name cell cannot do — the row's first
+            track still reserves its width, so the sentence is indented by it and
+            sits in the middle of a box whose every other line starts at the left
+            edge. The footer's left edge is the BOX's left edge, because that is
+            what it is about. */}
+        <div className={css.itemPaletteFoot}>
+          <p className={css.itemPaletteHint}>{t('item.palette.hint')}</p>
+        </div>
+      </div>
+    </div>
   )
 }

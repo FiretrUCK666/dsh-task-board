@@ -136,27 +136,37 @@ function QuietLine({ entries, noteText, label }: {
   return (
     <div className={css.itemQuiet} data-note={note.open ? '' : undefined}>
       <div className={css.itemEmptyGroups} role="group" data-note-hover="">
-        {entries.map((entry, at) => (
-          <span
-            key={entry.word}
-            className={css.itemEmptyGroup}
-            data-last={at === entries.length - 1 ? '' : undefined}
-          >
-            {/* **分隔符不是 DOM 节点，是 `::after` 画的一个标点，且它跟在**后面**那一组。**
-                它曾经是一个 `<span>`，于是成了 `.itemEmptyGroup` 的一个 flex 项：折行时它会
-                独自留在行首（读者截图里那种以「· 刚记下」开头的行），也可能落到上一行末尾。
+        {entries.map((entry, at) => {
+          const last = at === entries.length - 1
+          return (
+            <span
+              key={entry.word}
+              className={css.itemEmptyGroup}
+              data-last={last ? '' : undefined}
+            >
+              {/* **分隔符不是 DOM 节点，是 `::after` 画的一个标点，且它跟在**后面**那一组。**
+                  它曾经是一个 `<span>`，于是成了 `.itemEmptyGroup` 的一个 flex 项：折行时它会
+                  独自留在行首（读者截图里那种以「· 刚记下」开头的行），也可能落到上一行末尾。
 
-                **它在后面，不在前面**，理由是排版：领头的标点把一行说成「从中间开始」，
-                而中文的列举标点本来就跟在被列举的那一项之后（甲、乙、丙）。折行时它落在
-                上一行的末尾，读起来是「这一行还没完」，而不是「这一行多了一个点」。
+                  **它在后面，不在前面**，理由是排版：领头的标点把一行说成「从中间开始」，
+                  而中文的列举标点本来就跟在被列举的那一项之后（甲、乙、丙）。折行时它落在
+                  上一行的末尾，读起来是「这一行还没完」，而不是「这一行多了一个点」。
 
-                伪元素不参与 flex 布局，所以换行只会发生在组与组之间，标点永远跟着自己
-                那一组。最后一组没有标点——由 `[data-last]` 说，不靠 JS 少渲染一个节点。 */}
-            <span className={css.itemEmptyWord}>{entry.word}</span>
-            <i className={css.itemGroupCount}>{entry.count}</i>
-          </span>
-        ))}
-        <NoteEntry note={note} />
+                  标点住在**自己那一组**里（伪元素是那一组的最后一个子项），所以换行只会
+                  发生在组与组之间，标点永远跟着自己那一组。最后一组没有标点——由
+                  `[data-last]` 说，不靠 JS 少渲染一个节点。 */}
+              <span className={css.itemEmptyWord}>{entry.word}</span>
+              <i className={css.itemGroupCount}>{entry.count}</i>
+              {/* **那枚 ⓘ 住在最后一组里**，于是它与最后一组**不可拆**。
+                  它本来是药丸的最后一个子项——而**文字流可以在它前面断开**：量到 390px
+                  那一档它**独自落在第二行**（孤零零一个图标，右边空着 23px），320px 那一档
+                  更是掉到第三行。把它放进最后一组，它就永远跟着「刚记下 3」那一段。
+                  它解释的是**这一行**（可达名与 `aria-controls` 都指着这一句），而它**长在
+                  这一行的末尾**——那正是它该在的地方。 */}
+              {last ? <NoteEntry note={note} /> : null}
+            </span>
+          )
+        })}
       </div>
       <p className={css.itemNote} id={note.id}>{noteText}</p>
     </div>
@@ -197,6 +207,16 @@ export function SchedulePage(props: ItemPageProps) {
         <AgendaSection key={bucket.id} bucket={bucket} english={english} renderRows={props.renderRows} now={props.now} sort={props.sort} />
       ))}
       {quiet.length > 0 && <QuietLine entries={quiet} noteText={t('item.agenda.quietNote')} label={t('item.agenda.quietWhy')} />}
+      {/* **一行日期都没有时，页面不能只剩那一行计数。**
+          读者截图报过一次：正文区整片空白，只有一枚「截止已过 0 · … · 已完成 1 · 刚记下 3」
+          的药丸浮在上面。那在逻辑上是对的（那三条还没排进任何一天、那一条已完成，都确实
+          不进日程），可屏上看起来就是**坏掉了**——安静行那句话解释的是「这些没被列出来」，
+          而不是「今天这一页什么都没有」。所以这里补一句处境说明：读者要知道**为什么空、
+          以及下一步去哪**（那几条在哪一页看得到），而不是对着一片空白猜。
+          判据是 `buckets` 里有没有任何一条进过日期桶。 */}
+      {buckets.every(bucket => bucket.items.length === 0) && (
+        <p className={css.itemAgendaNothing}>{t('item.agenda.nothingDated')}</p>
+      )}
     </div>
   )
 }

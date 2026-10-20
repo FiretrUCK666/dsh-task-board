@@ -21,18 +21,21 @@
  * 与字体、宽度、文案长度都无关。所以它读源码就够，不需要真浏览器——这也是它能进
  * `pnpm verify` 的原因（几何判据进不去，静态判据进得去）。
  *
- * 判定按**生效值的来源**而不是「同一个块里有没有这两行」：本仓库大量使用共享家族规则
- * （`.itemGroupHead, .itemEmptyGroups { block-size: … }`），于是在另一个块里写
- * `flex-wrap: wrap` 同样会撞上。要判得准，就得把同一个选择器出现的所有规则合起来看。
+ * 判定按**生效值的来源**而不是「同一个块里有没有这两行」：同一条规则可以在别处被
+ * 改写（`block-size: auto` 撤销它），而条件档（`@container` / `@media`）里的那一份
+ * 与基础档的那一份**同时**在窄屏上生效——所以要把同一个类在**同一条作用域链**上的
+ * 所有规则合起来看。
  *
  * 用法：`node scripts/verify-fixed-height-wrap.mjs [根目录]`
  * 自测：`--probe-collision`（定高 + 可换行同一个块，必须红）
  *       `--probe-cancelled`（定高被后来改成 auto，必须放行）
  *       `--probe-other-selector`（定高在 A、换行在 B，必须放行）
+ *       `--probe-band-height`（换行在顶层、定高在窄档，必须红——镜像形状）
+ *       `--probe-band-cancel`（窄档自己写 auto 撤销，必须放行）
  */
 
 import { existsSync } from 'node:fs'
-import { rulesOf, declOf } from './css-core.mjs'
+import { rulesOf, declOf, holderClassesOf } from './css-core.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 import { probeOf } from './probe-args.mjs'
 
@@ -41,7 +44,11 @@ import { probeOf } from './probe-args.mjs'
  *
  * 一条选择器可能命中好几个元素，但**盒子只有承载它的那一个**：
  * `.boardModes .notifyBell` 里定高的是铃铛（`.notifyBell`），`.boardModes` 只是祖先。
- * 所以承载盒 = **最后一个类**。
+ *
+ * **判据只有一处**：`scripts/css-core.mjs` 的 `holderClassesOf`（末段 compound 那一族）。
+ * 这一段曾经自己抄了一份，而那份抄件把**伪类里的参数**当成了本体——
+ * `.panel:not(.panelWide)` 会算成 `panelWide`，而那个盒子是 `panel`（`:not(.x)` 是
+ * **条件**，不是**本体**）。抄一份的代价不是那几行，是**改一处不报错**。
  *
  * 组合选择器（`.a, .b`）里每一段各有各的承载盒——`.a` 与 `.b` 是两个盒子。所以这里
  * 返回**数组**：一段组合选择器可以给多个盒子各发一份声明。
@@ -49,16 +56,7 @@ import { probeOf } from './probe-args.mjs'
  * @returns {string[]} 承载盒的类名（不含点）。
  */
 export function holderOf(selector) {
-  const out = []
-  for (const part of selector.split(',')) {
-    const trimmed = part.trim().replace(/\s+/g, ' ')
-    if (trimmed === '') continue
-    /* 伪类/伪元素挂在最后一个类上（`.a:hover` 的盒子还是 `.a`），所以要把它们剥掉。 */
-    const classes = [...trimmed.matchAll(/\.([a-zA-Z][\w-]*)/g)].map((m) => m[1])
-    const last = classes[classes.length - 1]
-    if (last !== undefined && last !== '') out.push(last)
-  }
-  return out
+  return holderClassesOf(selector).flat()
 }
 
 /**
@@ -95,9 +93,14 @@ export function collisionsIn(css) {
    * `.itemEmptyGroups { flex-wrap: wrap }` 被当成两个不同的东西，那个真缺陷**没有被
    * 抓到**（把修复撤掉，门禁照样通过）。
    *
-   * 一个规则给高，命中的是它选择器里出现的**每一个**类；另一条给换行，命中它自己的。
-   * 所以：把每个类名收集起来，再看同一个类名有没有同时被「定高」和「可换行」命中。
-   * 组合选择器因此自然展开——那正是本仓库共享家族规则的写法。
+   * 一个规则给高，命中的是**它选择器的承载盒**（末段 compound 那一族，见
+   * `css-core.mjs` 的 `holderClassesOf`）；另一条给换行，命中它自己的承载盒。
+   * 所以：按承载盒记账，再看同一个盒子有没有同时被「定高」和「可换行」命中。
+   *
+   * **为什么是承载盒而不是「选择器里出现的每一个类」**（这一段曾经写错）：
+   * `.boardModes .notifyBell { block-size: … }` 定高的是**铃铛**，`.boardModes` 只是
+   * 祖先；把它们当成两个盒子就是误报。承载盒 = 末段 compound 里的那些类。
+   * 组合选择器（`.a, .b`）里每一段各有各的承载盒——`.a` 与 `.b` 是两个盒子。
    *
    * ── **作用域怎么算** ──────────────────────────────────────────────────────
    * 第二版按 at-rule 把 key 分开（`scope\0cls`），理由是「宽档的定高与窄档的换行不同时
@@ -158,13 +161,17 @@ export function collisionsIn(css) {
   for (const [cls, heightScopes] of heights) {
     const wrapScopes = wraps.get(cls)
     if (wrapScopes === undefined) continue
-    /* **遍历换行的作用域，而不是定高的作用域。**
-     * 冲突发生在「换行的那一档」——因为定高是它的外层祖先（顶层），而外层的声明在
-     * 内层生效时**不会被撤销**（内层只加不减）。反过来，从定高那一档去找换行是找不到的：
-     * 顶层的 scope 是 `""`，而 `""` 不是任何内层 scope 的前缀。
+    /* **两个方向都要查。**
      *
-     * 于是对每个换行作用域，找这条链上**最终生效**的那一份高度：内层优先，外层兜底
-     * （内层可以写 `auto` 撤销外层的定高）。 */
+     * ① **换行的那一档 → 那条链上最终生效的定高**（内层优先，外层兜底：内层可以写
+     *    `auto` 撤销外层的定高）。「顶层定高 + 窄档换行」在这里撞上 。
+     *
+     * ② **定高的那一档 → 那条链上最终生效的换行**。「顶层换行 + 窄档定高」在这里撞上 *    ——**这一条原来漏报**：顶层的换行在窄档里**仍然生效**（窄档的规则只加不减），
+     *    而窄档把高定死了，于是窄档上内容会溢出。原来的读法只从换行出发找定高，
+     *    而顶层的 scope 是 `""`、不是任何内层 scope 的前缀——所以那一档**够不着**。
+     */
+    /** @type {Map<string, { value: string, line: number }>} 作用域 -> 撞上的那一份 */
+    const conflicting = new Map()
     for (const [wrapScope, wrapEntry] of wrapScopes) {
       const wrapValue = wrapEntry.value
       if (wrapValue !== 'wrap' && wrapValue !== 'wrap-reverse') continue
@@ -175,11 +182,26 @@ export function collisionsIn(css) {
       if (effectiveHeight === undefined) continue
       const value = effectiveHeight[1].value
       if (!isFixedHeight(value)) continue
+      conflicting.set(wrapScope, { value, line: effectiveHeight[1].line })
+    }
+    for (const [heightScope, heightEntry] of heightScopes) {
+      const chain = [...wrapScopes.entries()]
+        .filter(([at]) => at === heightScope || heightScope.startsWith(at))
+        .sort((a, b) => b[0].length - a[0].length)
+      const effectiveWrap = chain[0]
+      if (effectiveWrap === undefined) continue
+      const wrapValue = effectiveWrap[1].value
+      if (wrapValue !== 'wrap' && wrapValue !== 'wrap-reverse') continue
+      const value = heightEntry.value
+      if (!isFixedHeight(value)) continue
+      if (!conflicting.has(heightScope)) conflicting.set(heightScope, { value, line: heightEntry.line })
+    }
+    for (const [scope, one] of conflicting) {
       out.push({
         selector: `.${cls}`,
-        height: value,
-        line: effectiveHeight[1].line,
-        scope: wrapScope === '' ? '（顶层）' : wrapScope,
+        height: one.value,
+        line: one.line,
+        scope: scope === '' ? '（顶层）' : scope,
       })
       break
     }
@@ -208,13 +230,20 @@ export function fixedHeightWrapFindings(root) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector'])
+  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector', '--probe-band-height', '--probe-band-cancel'])
 
   if (probe !== undefined) {
+    const BAND = '@container dsh-tb-item-list (max-width: 559px) {'
     const fixtures = {
       '--probe-collision': { css: '.a { block-size: 24px; flex-wrap: wrap; }', want: 1 },
       '--probe-cancelled': { css: '.a { block-size: 24px; flex-wrap: wrap; }\n.a { block-size: auto; }', want: 0 },
-      '--probe-other-selector': { css: '.a { block-size: 24px; }\n.b { flex-wrap: wrap; }', want: 1 - 1 },
+      '--probe-other-selector': { css: '.a { block-size: 24px; }\n.b { flex-wrap: wrap; }', want: 0 },
+      /* **镜像形状：换行在顶层，定高在窄档。** 顶层的换行在窄档里**仍然生效**（窄档的
+       * 规则只加不减），而窄档把高定死了——于是窄档上内容溢出。这一条原来漏报
+       * （读法只从换行出发找定高，而顶层的 scope 够不着内层）。 */
+      '--probe-band-height': { css: `.a { flex-wrap: wrap; }\n${BAND} .a { block-size: 24px; } }`, want: 1 },
+      /* **窄档自己撤销**：窄档写 `auto`，那一档就不算定高 。 */
+      '--probe-band-cancel': { css: `.a { block-size: 24px; }\n${BAND} .a { flex-wrap: wrap; block-size: auto; } }`, want: 0 },
     }
     const one = fixtures[probe]
     const got = collisionsIn(one.css).length
