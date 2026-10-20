@@ -84,7 +84,12 @@
    * 发丝）；深色里墨是亮的，同样的百分比变成一条亮线——**同一个数在两种极性下都
    * 成立**，这正是这一层所有推导的共同形状。 */
   --dsh-tb-border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
-  --dsh-tb-border-soft: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
+  --dsh-tb-border-soft: 1px solid var(--dsh-tb-hair-color);
+  /* **墨边的颜色本身（不含 `1px solid`）。** 一条 `border` 的值塞不进 `box-shadow`——
+     那是两种语法。而纸面那条边要画在 `box-shadow` 的 inset 里才不占布局（`border`
+     会挤掉内容 2px）。所以颜色单独一个名字，`--dsh-tb-border-soft` 从它派生：
+     **两处同色是构造出来的，不是对齐出来的**——改一处，两条一起变。 */
+  --dsh-tb-hair-color: color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
   /* ── 这里没有「记号的垂直位置」这个令牌，而且不该有 ────────────────────────
    *
    * **判据是结构而不是数字。** 装字的盒子用 `line-height: var(--dsh-tb-text-line-h)`

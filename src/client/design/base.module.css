@@ -150,7 +150,23 @@
      只会让人说「怎么不一样」，说不出哪里不一样。 */
   border: 0;
   background: var(--dsh-tb-paper-plane, var(--dsh-tb-plane-sheet));
-  box-shadow: var(--dsh-tb-paper-cast, var(--dsh-tb-rim), var(--dsh-tb-cast-1));
+  /* **纸面的边交给材质自己的那一笔，不另画一环。**
+   *
+   * 浅色主题下纸面与画布是同一个白（量过：两者都是 `rgb(255,255,255)`），于是这一枚
+   * 和背景之间只剩投影那一层 0.07 的墨——淡一分就没有轮廓。读者报的「浅色背景下八张
+   * 卡片边缘看不清」就是这个：**这张纸没有边**。
+   *
+   * 第一版是加一笔 `inset 0 0 0 1px <色>`。它画出来是对的，但 `verify-decoration-property`
+   * 当场红了——那条门禁的理由是一次**真实事故**：环与材质共用 `box-shadow`，一次呼吸
+   * 动画就把「进行中」那几张卡的纸面抹掉了。而「零偏移 + spread」正是环的形状，我一个
+   * 人认得出它想画的是边，门禁认不出，**下一个人更认不出**。
+   *
+   * 所以这条边不新起一笔，而是**并进 `--dsh-tb-rim` 那一笔**：边光是材质的一部分，
+   * 一条 inset 边也是。页面写 `--dsh-tb-paper-cast` 时把边一起写进去（默认那条
+   * `--dsh-tb-rim` 不含边，所以二十多个自写 `border` 的消费者不受影响）。 */
+  box-shadow:
+    var(--dsh-tb-paper-cast, var(--dsh-tb-rim)),
+    var(--dsh-tb-cast-1);
   border-radius: var(--dsh-tb-paper-radius, var(--dsh-tb-radius-md));
 }
 
