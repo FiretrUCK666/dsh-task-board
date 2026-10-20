@@ -75,12 +75,11 @@
   container-name: dsh-tb-gallery;
 }
 
-/* THE STACK OWNS ITS OWN RHYTHM. The sections used to be separated by a
-   `margin-block-end` on each of them, which is the older mechanism: the spacing
-   belongs to the GROUP, not to every member of it, and a margin on the member is
-   a second way to say the same thing — the one that drifts the moment somebody
-   adds a section with different content. One primitive, declared once, read from
-   the ladder. */
+/* THE STACK OWNS ITS OWN RHYTHM. The spacing between the sections belongs to the
+   GROUP, not to every member of it: one primitive (the group's own `gap`), read
+   from the ladder. A margin on each member would be a second way to say the same
+   thing — the one that drifts the moment somebody adds a section with different
+   content. */
 .galleryBody {
   display: flex;
   flex-direction: column;
@@ -95,10 +94,9 @@
   margin-block-end: var(--dsh-tb-space-5);
 }
 
-/* A GROUP heading inside a section. Smaller than the section's own title, so
-   the two levels read as two levels: the first version of this page had the
-   group at 14px/600 and the section at 12px, which inverted the hierarchy and
-   made every group look like a new section. */
+/* A GROUP heading inside a section. It is one step below the section's own
+   title, so the two levels read as two levels: a group that looks like a
+   section makes every group look like a new section. */
 .gallerySectionTitle {
   margin: 0;
   font-size: 12px;
@@ -193,13 +191,14 @@
   min-inline-size: 0;
 }
 
-/* ── ONE SPECIMEN BOX, FIVE KINDS ────────────────────────────────────────────
+/* ── ONE SPECIMEN BOX, SEVEN KINDS ───────────────────────────────────────────
  *
  * The box reads the token through `--gallery-value`, and `data-kind` decides
  * WHICH of the token's properties is shown. A radius token is not a colour, and
- * a spacing token is not a shape: rendering all of them as filled dots puts a
- * meaningless white square beside `--dsh-tb-radius-md`, and a catalogue whose
- * specimens do not match their subjects teaches the reader to skip them.
+ * a spacing token is not a shape: drawing every one of them as a filled dot
+ * would put a meaningless white square beside `--dsh-tb-radius-md`, and a
+ * catalogue whose specimens do not match their subjects teaches the reader to
+ * skip them.
  *
  * The box's own size is fixed (22px) so a row of specimens reads as a row — a
  * spacing bar is the exception, because its LENGTH is the fact being shown.
@@ -300,13 +299,12 @@
  * The band switch in the head sets the stage's inline size, so this rule is
  * DEMONSTRATED rather than described.
  *
- * POSITION IS NOT COSMETIC. This block was first written next to `.galleryStage`
- * — above `.galleryGrid`'s own base rule — and it did nothing at all: same
- * specificity, so the LATER `.galleryGrid { grid-template-columns: repeat(
- * auto-fit, …) }` won and the page stayed three columns wide at 680px. The
- * screenshot said so and nothing else would have. A band override belongs after
- * everything it overrides; `board.module.css`'s reduced-motion block carries the
- * same warning for the same reason.
+ * POSITION IS NOT COSMETIC. A band override belongs after everything it
+ * overrides: this block sits at the end of the sheet, so the LATER
+ * `.galleryGrid { grid-template-columns: repeat(auto-fit, …) }` cannot win over
+ * it at equal specificity. A screenshot is the only thing that would have said
+ * so otherwise — `board.module.css`'s reduced-motion block carries the same
+ * warning for the same reason.
  */
 @container dsh-tb-gallery (max-width: 720px) {
   .galleryBody {

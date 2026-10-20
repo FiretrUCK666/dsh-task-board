@@ -19,9 +19,9 @@
  *   3. 空列没有「最旧」这回事（`staleDays === undefined`）：不写「0 天没动」，那会把
  *      「没有东西」说成「今天刚动过」。
  *
- * 会话卡里的「等你回答」是 `demand - review`。这不是估出来的差：`BoardDemand` 的定义就是
- * `total = waiting + review`（见 `core/task-demand.ts`），所以这个减法的结果**恒等于**
- * 挂起等你回答的会话数；把 `waiting` 再算第二遍才是会出现两个答案的那种写法。
+ * 会话卡里的「等你回答」由 summary 公布的两个数相减得到：`demand`（总诉求）与 `review`
+ * （待复核），差就是挂起等你回答的那部分会话。这个差只在这一页取一次——同一个数不在
+ * 别处再算一遍。
  *
  * 重画的方式只有一条：`useBoardSnapshot` 订阅看板。清单那一侧不在这里再挂监听——副本只
  * 允许一个远端监听者，而它属于清单面板自己（见 `workbench/stage.ts` 的头注释）；两个与
@@ -42,6 +42,7 @@ import { workbenchStage } from '../workbench/stage.ts'
 import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
+import base from '../design/base.module.css'
 import css from './home.module.css'
 
 /** 四格：哪一格、叫什么、一句说明、按下去去哪。 */
@@ -81,7 +82,7 @@ export function HomePage({ now }: { readonly now?: number }) {
 
   const summary = workbenchStage.summaryOf(at)
   const counts = summary.counts
-  // `total = waiting + review` 是 BoardDemand 的定义，所以这一项不是猜出来的差额。
+  // 等你回答 = 总诉求 − 待复核：summary 公布的是这两档，差在这一页取一次。
   const waiting = counts.demand - counts.review
   const tiles: readonly HomeTile[] = [
     { value: counts.demand, label: 'home.tile.demand', hint: 'home.tile.demandHint', page: 'board' },
@@ -123,9 +124,9 @@ export function HomePage({ now }: { readonly now?: number }) {
   return (
     <HomeShell chrome={chrome}>
       <header className={css.homeHead}>
-        {/* **一个 h1，没有眉题。** 曾经上面还有一行 11px 的「工作台」：它与 17px 的标题
-            只差一档半，读起来是两行一样重的东西，而读者对它的原话是「又小又丑」。主次
-            现在由字号档差建立——这一行 24/700，四格的数 22/700，卡片题 13/600，辅助 12。 */}
+        {/* **一个 h1，没有眉题。** 主次由字号档差建立——句子 24/700、四格的数 30/600、
+            卡片题 11/600、辅助 12；那一组数字与它们的令牌出处写在 `home.module.css`
+            的标题行一段里。 */}
         <h1 className={css.pageTitle}>
           {counts.demand === 0
             ? `${t('home.title')} ${t('home.subtitleCalm')}`
@@ -138,7 +139,7 @@ export function HomePage({ now }: { readonly now?: number }) {
           <button
             key={tile.label}
             type="button"
-            className={css.tile}
+            className={`${css.tile} ${base.paperSheet} ${base.paperLift}`}
             onClick={() => { workbenchStage.navigate(tile.page) }}
           >
             {/* 数与它的标签同一条基线：一枚 30px 的数和 12px 的标签若各占一行，读者要
@@ -153,7 +154,7 @@ export function HomePage({ now }: { readonly now?: number }) {
       </div>
 
       <div className={css.homeColumns}>
-        <section className={css.homeCard}>
+        <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.pipeline')}</h2>
           <div className={css.pipeline}>
             {summary.pipeline.map(row => (
@@ -162,7 +163,7 @@ export function HomePage({ now }: { readonly now?: number }) {
           </div>
         </section>
 
-        <section className={css.homeCard}>
+        <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.throughput')}</h2>
           {flow.p85Days === undefined
             ? <p className={css.homeCardEmpty}>{t('home.flowEmpty')}</p>
@@ -198,7 +199,7 @@ export function HomePage({ now }: { readonly now?: number }) {
             )}
         </section>
 
-        <section className={css.homeCard}>
+        <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.activity')}</h2>
           {summary.recent.length === 0
             ? <p className={css.homeCardEmpty}>{t('home.activityEmpty')}</p>
@@ -223,7 +224,7 @@ export function HomePage({ now }: { readonly now?: number }) {
             )}
         </section>
 
-        <section className={css.homeCard}>
+        <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.sessions')}</h2>
           {counts.running + waiting === 0
             ? <p className={css.homeCardEmpty}>{t('home.sessionsEmpty')}</p>
@@ -231,7 +232,7 @@ export function HomePage({ now }: { readonly now?: number }) {
               <div className={css.sessionStats}>
                 <button
                   type="button"
-                  className={css.sessionStat}
+                  className={`${css.sessionStat} ${base.paperSheet} ${base.paperLift}`}
                   onClick={() => { workbenchStage.navigate('board') }}
                 >
                   <span className={css.sessionValue}>{counts.running}</span>
@@ -239,7 +240,7 @@ export function HomePage({ now }: { readonly now?: number }) {
                 </button>
                 <button
                   type="button"
-                  className={css.sessionStat}
+                  className={`${css.sessionStat} ${base.paperSheet} ${base.paperLift}`}
                   onClick={() => { workbenchStage.navigate('board') }}
                 >
                   <span className={css.sessionValue}>{waiting}</span>
@@ -291,7 +292,7 @@ function PipelineLine({ row, total }: { readonly row: PipelineRow; readonly tota
   const share = total === 0 ? 0 : Math.round((row.count / total) * 100)
   const barStyle: CSSProperties = { inlineSize: `${share}%` }
   return (
-    <button type="button" className={css.pipeRow} onClick={() => { workbenchStage.navigate('board') }}>
+    <button type="button" className={`${css.pipeRow} ${base.paperSheet} ${base.paperLift}`} onClick={() => { workbenchStage.navigate('board') }}>
       <span className={css.homeStatusDot} data-status={row.status} aria-hidden="true" />
       <span className={css.pipeName}>{t(STATUS_KEY[row.status])}</span>
       <span className={css.pipeCount}>{row.count}</span>

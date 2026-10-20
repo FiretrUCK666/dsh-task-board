@@ -35,7 +35,8 @@
  * a package install goes through the host's installation service, a `link:`
  * checkout is refreshed in place. `git` is present only for `link:` checkouts
  * and is gathered on demand per request — never at plugin startup — through
- * read-only git commands (`rev-parse`, `status --porcelain`, `ls-remote`); any
+ * read-only git commands (`rev-parse`, `status --porcelain`, `symbolic-ref`,
+ * `ls-remote`); any
  * failure degrades to an absent field, never an error. `latest` is read here
  * too, through the profile's own registry plan, because the browser cannot know
  * which registry (or mirror, or proxy) this installation actually uses.
@@ -435,28 +436,178 @@ function gitOut(repoDir: string, args: string[], timeoutMs: number): Promise<str
 
 /**
  * Read the local checkout state without mutating it: HEAD plus worktree
- * dirtiness locally, the remote tip through `ls-remote` (no fetch, no local
- * ref moves). Any failure degrades to undefined — an unreadable checkout is
- * not an error, it just hides the git section.
+ * dirtiness locally, the remote tip through {@link remoteHeadOf}. Any failure
+ * degrades to undefined — an unreadable checkout is not an error, it just hides
+ * the git section.
  * @param repoDir - the `link:` target directory.
+ * @param slug - the `Owner/Repo` the checkout tracks, when it is known.
  * @returns the git status, or undefined when unreadable.
  */
-async function readGitStatus(repoDir: string): Promise<UpdateGitStatus | undefined> {
+export async function readGitStatus(
+  repoDir: string,
+  slug?: string,
+): Promise<UpdateGitStatus | undefined> {
   const head = await gitOut(repoDir, ['rev-parse', 'HEAD'], GIT_LOCAL_TIMEOUT_MS)
   if (head === undefined || head === '') return undefined
   const porcelain = (await gitOut(repoDir, ['status', '--porcelain'], GIT_LOCAL_TIMEOUT_MS)) ?? ''
   /* **打网络的那一段用 `CHECK_STAGE_BUDGET_MS`，不是客户端的 15 秒。** 走满它就意味着
      这次读取拿不到 git 状态（下面降级成 `undefined`，界面只是不显示 git 那一段），
      而不是让浏览器先放弃、把整次检查画成一次失败。见那个常量的注释。 */
-  const remoteLine = await gitOut(repoDir, ['ls-remote', 'origin', 'refs/heads/main'], CHECK_STAGE_BUDGET_MS)
-  const remoteHead = remoteLine !== undefined && remoteLine !== ''
-    ? remoteLine.split(/\s/)[0]
-    : undefined
+  const tip = await remoteHeadOf(repoDir, slug)
   return {
     head,
-    ...(remoteHead !== undefined && remoteHead !== '' ? { remoteHead } : {}),
+    ...(tip !== undefined ? { remoteHead: tip.head, remoteVia: tip.via } : {}),
     dirty: porcelain !== '',
   }
+}
+
+/** A git object id: hex, and long enough to be one. */
+const SHA_SHAPE = /^[0-9a-f]{7,64}$/i
+
+/**
+ * THE REMOTE'S TIP, asked over a host that actually answers.
+ *
+ * **`git ls-remote` is the LAST resort here, not the first.** It speaks the git
+ * wire protocol to `github.com`, and that is the one GitHub host that is
+ * routinely blocked or throttled on mainland connections — measured on the same
+ * machine, same minute: `api.github.com` 200 in 725ms, `github.com` timed out
+ * (`git ls-remote` itself burned 21.3s before failing), `raw.githubusercontent
+ * .com` SSL reset. A checkout whose only question reaches `github.com` is
+ * therefore told 「判断不了」 on every click, for a reason that has nothing to do
+ * with whether a new commit exists.
+ *
+ * So the tip is asked in order of what actually answers:
+ *
+ *   1. **`api.github.com`** — `/repos/<owner>/<repo>/commits?per_page=1` is the
+ *      remote's own answer, and it is a different host from `github.com`. It
+ *      names the commit AND its dates, so 「落后」 can be dated.
+ *   2. **`git ls-remote`** — the clone's own protocol path. Still the authority
+ *      on refs (a fork whose HEAD moved tells us exactly that), and the only
+ *      path for a remote that is not GitHub at all. It is bounded tightly
+ *      because a blocked `github.com` fails slowly.
+ *   3. Nothing. Absent `remoteHead` is what tells the screen 「判断不了」 — it is
+ *      never rounded to 「已同步」.
+ *
+ * The branch name is detected, never assumed: step 1 reads the repository's own
+ * `default_branch`, so a `master`/`trunk` checkout is read as itself.
+ *
+ * @param repoDir - the `link:` target directory.
+ * @param slug - the `Owner/Repo` this checkout tracks, when it is known.
+ * @returns the remote tip, or undefined when no source could answer.
+ */
+async function remoteHeadOf(
+  repoDir: string,
+  slug: string | undefined,
+): Promise<RemoteTip | undefined> {
+  /* The clone's own record of the remote's default branch: local, free, and a
+     name to ask about when `api.github.com` cannot say. */
+  const local = await gitOut(repoDir, ['symbolic-ref', 'refs/remotes/origin/HEAD'], GIT_LOCAL_TIMEOUT_MS)
+  const branch = branchOfSymbolicRef(local)
+  /* STEP 1 and STEP 2 run together rather than in sequence. They answer the SAME
+     question, and the first step is the one that costs a network round trip
+     while the second can hang for the whole stage budget on a blocked host —
+     serially, a slow step 1 would then be paid for twice. The preference is
+     applied to the RESULTS, which is what "order" means here; it is not a
+     promise about who finishes first, and it must not be, because a blocked
+     `github.com` would otherwise decide the answer. */
+  const [api, listed] = await Promise.all([
+    tipFromApi(slug),
+    gitOut(repoDir, ['ls-remote', '--symref', 'origin', 'HEAD'], CHECK_STAGE_BUDGET_MS),
+  ])
+  if (api !== undefined) return api
+  /* The clone's record names the branch but carries no sha, so when the
+     advertisement said nothing the branch it names is asked about directly. */
+  const advertised = remoteHeadFromAdvertisement(listed)
+  if (advertised !== undefined) return { head: advertised, via: 'git' }
+  if (branch === undefined) return undefined
+  const byBranch = shaOfListing(
+    await gitOut(repoDir, ['ls-remote', 'origin', `refs/heads/${branch}`], CHECK_STAGE_BUDGET_MS),
+  )
+  return byBranch === undefined ? undefined : { head: byBranch, via: 'git' }
+}
+
+/** Where a remote tip was read from — the page says so instead of guessing. */
+export interface RemoteTip {
+  readonly head: string
+  readonly via: 'api' | 'git'
+}
+
+/**
+ * THE REMOTE'S TIP OUT OF `api.github.com`, which is the host that answers.
+ *
+ * One request, `per_page=1` on the default branch: GitHub answers with the newest
+ * commit of that branch, its sha, and the repository's own `default_branch` is
+ * read from the same family of endpoints. The body is deliberately small — the
+ * whole point of this step is that it is a single JSON read over a host measured
+ * at 725ms, not a pack negotiation.
+ *
+ * An unauthenticated reader is rate-limited to 60 requests/hour, which is far
+ * more than a manual 「检查更新」 can spend, and a rate-limited answer is
+ * `undefined` — the same shape as an unreachable one, so the next step gets its
+ * turn rather than the click turning into an error.
+ *
+ * @param slug - the `Owner/Repo` this checkout tracks.
+ * @returns the tip, or undefined when this host could not say.
+ */
+export async function tipFromApi(slug: string | undefined): Promise<RemoteTip | undefined> {
+  if (slug === undefined || slug === '') return undefined
+  const document = await boundedJson(
+    `https://api.github.com/repos/${slug}/commits?per_page=1`,
+    CHECK_STAGE_BUDGET_MS,
+    { accept: 'application/vnd.github+json' },
+  )
+  if (!Array.isArray(document) || document.length === 0) return undefined
+  const first: unknown = document[0]
+  if (typeof first !== 'object' || first === null) return undefined
+  const sha = (first as { sha?: unknown }).sha
+  return typeof sha === 'string' && SHA_SHAPE.test(sha)
+    ? { head: sha, via: 'api' }
+    : undefined
+}
+
+
+/**
+ * The sha out of `ls-remote --symref origin HEAD`.
+ *
+ * The listing is two lines: the ref HEAD points at, and the sha it points at.
+ * **A listing with no `refs/heads/` symref is not an answer** — the remote
+ * does not say what its default branch is, and the sha on its own would be the
+ * sha of whatever HEAD happens to be, which is not a branch tip.
+ * @param listing - the command's output.
+ * @returns the sha, or undefined when the remote said nothing usable.
+ */
+export function remoteHeadFromAdvertisement(listing: string | undefined): string | undefined {
+  if (listing === undefined) return undefined
+  const lines = listing.split('\n').map(line => line.trim()).filter(line => line !== '')
+  if (!lines.some(line => line.startsWith('ref: refs/heads/'))) return undefined
+  for (const line of lines) {
+    if (line.startsWith('ref: ')) continue
+    const digest = line.split(/\s/)[0]
+    if (SHA_SHAPE.test(digest)) return digest
+  }
+  return undefined
+}
+
+/**
+ * The branch name out of `symbolic-ref refs/remotes/origin/HEAD`.
+ * @param ref - the command's output.
+ * @returns the branch name, or undefined when the clone does not know one.
+ */
+export function branchOfSymbolicRef(ref: string | undefined): string | undefined {
+  if (ref === undefined) return undefined
+  const at = /^refs\/remotes\/origin\/(.+)$/.exec(ref.trim())
+  return at === null ? undefined : at[1]
+}
+
+/**
+ * The sha out of `ls-remote origin refs/heads/<branch>`.
+ * @param listing - the command's output.
+ * @returns the sha, or undefined when the branch is not there.
+ */
+export function shaOfListing(listing: string | undefined): string | undefined {
+  if (listing === undefined) return undefined
+  const digest = listing.trim().split(/\s/)[0]
+  return SHA_SHAPE.test(digest) ? digest : undefined
 }
 
 /**
@@ -735,6 +886,19 @@ function rawBaseOf(spec: string | undefined): string | undefined {
 }
 
 /**
+ * The `Owner/Repo` this package is published from, for the endpoints that take
+ * a slug instead of a URL. Derived from the same `repository` fact the
+ * `github:` spec comes from, so the two can never disagree about which
+ * repository is being asked about.
+ * @returns the slug, or undefined when this package does not name a GitHub repo.
+ */
+function repositorySlug(): string | undefined {
+  return GITHUB_SPEC !== undefined && GITHUB_SPEC.startsWith('github:')
+    ? GITHUB_SPEC.slice('github:'.length) || undefined
+    : undefined
+}
+
+/**
  * 按次序起跑、带领先窗口的**对冲请求**：第一个成功答案胜出。
  *
  * ── 为什么这不是 `Promise.race`，也不是 `for … await` ──────────────────────
@@ -853,23 +1017,25 @@ function hedgeFor<T>(
  * page renders absence as "cannot tell", and a check that cannot tell must
  * never be dressed up as "already newest".
  * @param ctx - context carrying the host services.
- * @param copy - the running copy (its mode decides what to ask).
+ * @param _copy - the running copy. Its mode no longer selects an answer path —
+ *   every install mode asks the same question ("what is published upstream?"),
+ *   so there is one transport ladder. The parameter stays because the callers
+ *   are other people's code (AGENTS.md 13); the ROUTE decides what to show.
  * @returns the newest upstream, or undefined when it could not be read.
  */
 export async function readLatest(
   ctx: Context,
-  copy: Pick<RunningCopy, 'mode'>,
+  _copy: Pick<RunningCopy, 'mode'>,
 ): Promise<UpdateLatestView | undefined> {
-  /* **一个 checkout 的「有没有新版」不来自发布号。** 它由自己那份 git 状态回答
-     （见 `readGitStatus`），去看 registry 上的发布号是另一件事，而且会把「本地改了
-     还没提交」误报成「有新版」。这条判断在函数最前面，因为它省掉整条 registry 链，
-     不只是省一次请求。
+  /* **装法不参与这里。** 每一种装法问的都是同一个问题（上游发布到哪一版），
+     所以也只有一条运输阶梯——见下面那段。
 
-     **但这不等于这个请求不发任何网络请求。** 同一个请求里的 `readGitStatus` 会打一次
-     `git ls-remote` 到那个 checkout 的 origin（通常是 github.com）——那一条是有意的，
-     因为「远端有没有新提交」只能问远端。它的上限由 `CHECK_STAGE_BUDGET_MS` 压住，
-     必须明显小于浏览器的预算，否则一次被墙的 github 会把整次检查拖成「检查失败」。 */
-  if (copy.mode === 'local') return undefined
+     这一处原先按装法分过支：`mode === 'local'` 直接 `return undefined`。那条分支
+     的理由是「checkout 的『要不要拉』由 git 回答」，那对**要不要拉**成立，对
+     **上游发布过哪一版**不成立——而对话框里问的是后者。实测的现场：`github.com`
+     被墙（`git ls-remote` 烧掉 21.3 秒后失败），而 `registry.npmmirror.com` 241ms、
+     `api.github.com` 725ms 都能答；那一次点击的**唯一**答案却是一句「读不到远端」。
+     读者拿到的是一句「什么都不知道」，而事实上知道两条。 */
 
   /* ── **一条路走不通，不等于「检查失败」。** ───────────────────────────────────
    *
@@ -1084,7 +1250,7 @@ async function readLiveView(ctx: Context): Promise<UpdateSourceView> {
    * 超时的后果都是**降级而非失败**：`git` 缺席只是不显示 git 那一段（对话里那句
    * 「远端读不到」就是它），`latest` 缺席是「读不到最新版」。两者都不是「检查失败」。 */
   const gitWork = copy.checkoutDir !== undefined
-    ? boundedByBudget(readGitStatus(copy.checkoutDir), CHECK_TOTAL_BUDGET_MS)
+    ? boundedByBudget(readGitStatus(copy.checkoutDir, repositorySlug()), CHECK_TOTAL_BUDGET_MS)
     : Promise.resolve(undefined)
   const latestWork = boundedByBudget(readLatest(ctx, copy), CHECK_TOTAL_BUDGET_MS)
   const [git, latest] = await Promise.all([gitWork, latestWork])

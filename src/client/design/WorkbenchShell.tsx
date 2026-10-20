@@ -1,21 +1,16 @@
 /**
  * The workbench shell: ONE frame for all three pages.
  *
- * WHY THIS EXISTS AT ALL. The three pages each used to lay out their own frame:
- * the board put `padding: 14px 16px 16px` on its root, the list put the bar in
- * its own padded row and the list content below it, and the overview did the
- * same with different numbers. Every one of them was plausible on its own, and
- * together they meant the bar sat at 16/10/16 in the three pages and the gap
- * under it was 12/0/12. The reader's report was 「点总览/看板/清单，整个页面都
- * 在动」 — and they were right: three separate frames can only agree by
- * coincidence, and coincidence is what a later single edit destroys.
+ * WHY THIS EXISTS AT ALL. The three pages are three separate seats, and the
+ * reader's report was 「点总览/看板/清单，整个页面都在动」: three separate frames can
+ * only agree by coincidence, and coincidence is what a later single edit
+ * destroys. So the frame is a COMPONENT: the page supplies only its content, and
+ * every geometric decision — where the bar sits, how much air surrounds it, how
+ * far the content starts below it — is made here, once, for all three.
  *
  * THE FIX IS STRUCTURAL, NOT NUMERICAL. Aligning three numbers would have been
  * a patch: the next person to add a fourth page (or to touch one page's
- * padding) reintroduces the drift, silently. So the frame is a COMPONENT: the
- * page supplies only its content, and every geometric decision — where the bar
- * sits, how much air surrounds it, how far the content starts below it — is
- * made here, once, for all three.
+ * padding) reintroduces the drift, silently.
  *
  * WHAT A PAGE MAY STILL DO. Its own interior: columns, rows, cards, scrolling.
  * What it may NOT do is decide its own outer air or draw its own bar. Those two
@@ -72,10 +67,10 @@ export interface WorkbenchShellProps {
   /**
    * **每一页都要有的那些弹层。**
    *
-   * 这个插槽存在的理由是一次真实的缺陷：检查更新的按钮由这一层渲染（`checking` /
-   * `onCheck`），而它打开的对话框曾经住在看板那一页的 JSX 里。于是同一个按钮在三页
-   * 里有两种行为——看板页能弹，其余两页什么都不发生。那不是漏改一处，是**一个功能被
-   * 拆在两个地方**：触发在共享层、结果在页面层。
+   * 这个插槽存在的理由：检查更新的按钮由这一层渲染（`checking` / `onCheck`），所以
+   * 它打开的对话框也必须在共享层——否则同一个按钮在三页里有两种行为：这一页能弹，
+   * 其余两页什么都不发生。那不是漏改一处，是**一个功能被拆在两个地方**：触发在共享
+   * 层、结果在页面层。
    *
    * 把内容放这里，等于把「结果」也搬到共享层：壳渲染它一次，每个用壳的页面自动都有，
    * 加第 4、第 5 个页面时不用做任何事。它由**装配层**传入（而不是壳自己 import），

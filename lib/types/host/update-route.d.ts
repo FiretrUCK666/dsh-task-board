@@ -35,7 +35,8 @@
  * a package install goes through the host's installation service, a `link:`
  * checkout is refreshed in place. `git` is present only for `link:` checkouts
  * and is gathered on demand per request — never at plugin startup — through
- * read-only git commands (`rev-parse`, `status --porcelain`, `ls-remote`); any
+ * read-only git commands (`rev-parse`, `status --porcelain`, `symbolic-ref`,
+ * `ls-remote`); any
  * failure degrades to an absent field, never an error. `latest` is read here
  * too, through the profile's own registry plan, because the browser cannot know
  * which registry (or mirror, or proxy) this installation actually uses.
@@ -144,6 +145,62 @@ export interface RunningCopy {
  */
 export declare function installedVersionIn(dir: string | undefined): string | undefined;
 /**
+ * Read the local checkout state without mutating it: HEAD plus worktree
+ * dirtiness locally, the remote tip through {@link remoteHeadOf}. Any failure
+ * degrades to undefined — an unreadable checkout is not an error, it just hides
+ * the git section.
+ * @param repoDir - the `link:` target directory.
+ * @param slug - the `Owner/Repo` the checkout tracks, when it is known.
+ * @returns the git status, or undefined when unreadable.
+ */
+export declare function readGitStatus(repoDir: string, slug?: string): Promise<UpdateGitStatus | undefined>;
+/** Where a remote tip was read from — the page says so instead of guessing. */
+export interface RemoteTip {
+    readonly head: string;
+    readonly via: 'api' | 'git';
+}
+/**
+ * THE REMOTE'S TIP OUT OF `api.github.com`, which is the host that answers.
+ *
+ * One request, `per_page=1` on the default branch: GitHub answers with the newest
+ * commit of that branch, its sha, and the repository's own `default_branch` is
+ * read from the same family of endpoints. The body is deliberately small — the
+ * whole point of this step is that it is a single JSON read over a host measured
+ * at 725ms, not a pack negotiation.
+ *
+ * An unauthenticated reader is rate-limited to 60 requests/hour, which is far
+ * more than a manual 「检查更新」 can spend, and a rate-limited answer is
+ * `undefined` — the same shape as an unreachable one, so the next step gets its
+ * turn rather than the click turning into an error.
+ *
+ * @param slug - the `Owner/Repo` this checkout tracks.
+ * @returns the tip, or undefined when this host could not say.
+ */
+export declare function tipFromApi(slug: string | undefined): Promise<RemoteTip | undefined>;
+/**
+ * The sha out of `ls-remote --symref origin HEAD`.
+ *
+ * The listing is two lines: the ref HEAD points at, and the sha it points at.
+ * **A listing with no `refs/heads/` symref is not an answer** — the remote
+ * does not say what its default branch is, and the sha on its own would be the
+ * sha of whatever HEAD happens to be, which is not a branch tip.
+ * @param listing - the command's output.
+ * @returns the sha, or undefined when the remote said nothing usable.
+ */
+export declare function remoteHeadFromAdvertisement(listing: string | undefined): string | undefined;
+/**
+ * The branch name out of `symbolic-ref refs/remotes/origin/HEAD`.
+ * @param ref - the command's output.
+ * @returns the branch name, or undefined when the clone does not know one.
+ */
+export declare function branchOfSymbolicRef(ref: string | undefined): string | undefined;
+/**
+ * The sha out of `ls-remote origin refs/heads/<branch>`.
+ * @param listing - the command's output.
+ * @returns the sha, or undefined when the branch is not there.
+ */
+export declare function shaOfListing(listing: string | undefined): string | undefined;
+/**
  * Gather the facts every update surface needs, from THIS process. Nothing here
  * assumes a profile name: the profile comes from where this copy runs, and the
  * spec comes from that profile's own manifest.
@@ -220,10 +277,13 @@ export declare function boundedByBudget<T>(work: Promise<T>, ms: number): Promis
  * page renders absence as "cannot tell", and a check that cannot tell must
  * never be dressed up as "already newest".
  * @param ctx - context carrying the host services.
- * @param copy - the running copy (its mode decides what to ask).
+ * @param _copy - the running copy. Its mode no longer selects an answer path —
+ *   every install mode asks the same question ("what is published upstream?"),
+ *   so there is one transport ladder. The parameter stays because the callers
+ *   are other people's code (AGENTS.md 13); the ROUTE decides what to show.
  * @returns the newest upstream, or undefined when it could not be read.
  */
-export declare function readLatest(ctx: Context, copy: Pick<RunningCopy, 'mode'>): Promise<UpdateLatestView | undefined>;
+export declare function readLatest(ctx: Context, _copy: Pick<RunningCopy, 'mode'>): Promise<UpdateLatestView | undefined>;
 /**
  * Register the update route on the host web server: GET reads the view, POST
  * applies the plan.

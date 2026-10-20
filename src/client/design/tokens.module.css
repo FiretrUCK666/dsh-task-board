@@ -38,7 +38,7 @@
   --dsh-tb-bg: var(--dsw-alias-bg-base);
   /* ── 表面：**全部从页面推导**，一级一个名字 ───────────────────────────────────
    *
-   * 这四枚以前直接读宿主的 `bg-layer-1/2`，而宿主在浅色档里把 base 与三层 layer
+   * 这四枚**不借宿主的表面层**：宿主在浅色档里把 base 与三层 layer
    * **全解成同一个值**（实测全是纯白）——于是「页面 / 面板 / 输入框 / 弹层」四层
    * 在白底上同色，只有皮肤把页面染成浅蓝时才露出一条缝：面板硬白、页面浅蓝。
    * 读者报的「展开之后里面变白、旁边还是浅蓝」就是这一条，不是配色没调好。
@@ -76,43 +76,37 @@
   --dsh-tb-mask-blur: 4px;
   /* ── 边界：**从墨推导，带下限** ───────────────────────────────────────────────
    *
-   * 曾经读宿主的 `alias-border-l2` / `-l1`，理由是「边界是几何词汇、不是色相」。
-   * 那条理由在颜色上成立，在**可见性**上不成立：宿主这两枚是一张表里的两个固定
+   * 边界**不读宿主的 `alias-border-l2` / `-l1`**：那两枚是一张表里的两个固定
    * alpha——实测 `l1 = #0000000a`（4% 黑）、`l2 = #0000001a`（10% 黑）。4% 的黑线
    * 画在白纸或浅蓝页上，屏上等于没有；而它们并不随皮肤变深。
    *
-   * 所以边界也从墨推：浅色里墨是暗的，14% 落在 `#dbdbdb` 一档（看得见、仍是一条
+   * 所以边界从墨推：浅色里墨是暗的，14% 落在 `#dbdbdb` 一档（看得见、仍是一条
    * 发丝）；深色里墨是亮的，同样的百分比变成一条亮线——**同一个数在两种极性下都
    * 成立**，这正是这一层所有推导的共同形状。 */
   --dsh-tb-border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
   --dsh-tb-border-soft: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
   /* ── 这里没有「记号的垂直位置」这个令牌，而且不该有 ────────────────────────
    *
-   * 这里曾经声明过 `--dsh-tb-mark-drop: 1px`：行盒会给下行字母留位置，所以行盒心比
-   * 字的视觉中心高，按盒心居中的圆点读起来偏高。那个观察是**对的**，而且当时量出了
-   * 具体数（11px 那一行，x-height 带 182..188、中点 185，圆点中心 184）。
+   * **判据是结构而不是数字。** 装字的盒子用 `line-height: var(--dsh-tb-text-line-h)`
+   * 配 `align-items: center`，记号则是 `align-self: center` 的定尺寸盒子：行盒高等于
+   * 字号时半行距归零、盒心就是墨心，圆点按盒心居中即与文字中线重合。`board.module.css`
+   * 与 `home.module.css` 里那两枚同形状的状态点读同一套声明，所以它们在两页上落在
+   * 同一条中线上。
    *
-   * 但那个结论只在「行盒比墨高」的前提下成立。每段改写 `line-height: 1em` 之后，
-   * 半行距归零、盒心就是墨心，圆点按盒心居中即与文字中线重合——**偏差不存在了，
-   * 于是补偿变成了新的偏差**：留着那 1px，量到的结果是圆点比文字低 1px。
-   *
-   * 它同时是一条**会被继承**的补偿：`--dsh-tb-*` 是自定义属性，任何读了它的后代都会
-   * 平移，而它们各自的墨位未必需要同样的 1px。这与那个已经删掉的运行时墨位校正
-   * （`--dsh-tb-optical-*`）是同一类错误：把「某个盒子的一个测量」写成全局的数。
-   *
-   * 今天的判据是结构而不是数字：装字的盒子用 `line-height: var(--dsh-tb-text-line-h)`
-   * 配 `align-items: center`，记号则是 `align-self: center` 的定尺寸盒子。`board.module.css`
-   * 与 `home.module.css` 里那两枚同形状的状态点现在读同一套声明，所以它们在两页上
-   * 落在同一条中线上。 */
-  /* Deliberately nothing. This was `1px solid var(--dsw-alias-separator-primary)`,
-     and the shell declares no such token (0 declarations across the whole DSH
-     install — only references), so the alias was invalid and every consumer
-     dropped to `none` anyway: the separators never painted. Declaring the intent
-     as `none` says what is actually true and keeps the three consumers honest,
-     instead of a broken `var()` that reads as a hairline to every future reader.
-     If a shell version ever exports the token, this becomes a real border again
-     — `scripts/verify-design-docs.mjs` audits CSS token references and will say
-     so when it exists. */
+   * **为什么不用一枚「记号下沉」令牌补那半像素**：补偿只在「行盒比墨高」的前提下成立，
+   * 而行盒等于墨高——补偿于是变成新的偏差（量到的结果是圆点比文字低 1px）。它同时是
+   * 一条**会被继承**的补偿：`--dsh-tb-*` 是自定义属性，任何读了它的后代都会平移，而
+   * 它们各自的墨位未必需要同样的 1px。把「某个盒子的一个测量」写成全局的数，就是
+   * 这一类错误。 */
+  /* Deliberately nothing. The shell declares no `separator-primary` token
+     (0 declarations across the whole DSH install — only references), so a
+     `var()` naming it would be invalid at computed-value time and every consumer
+     would drop to `none` anyway: the separators never painted. Declaring the
+     intent as `none` says what is actually true and keeps the three consumers
+     honest, instead of a broken `var()` that reads as a hairline to every future
+     reader. If a shell version ever exports the token, this becomes a real
+     border again — `scripts/verify-design-docs.mjs` audits CSS token references
+     and will say so when it exists. */
   --dsh-tb-separator: none;
 
   /* corners: proportional to component size (Apple rhythm). The rounder
@@ -213,10 +207,21 @@
    * 看板清单，位置在不停地移动」有一半就是它。
    *
    * 现在三页只读这一个名字：改一档，三页一起动；量一次，三页一起验。
-   * `--dsh-tb-frame-gap` 是竖着的那一条：栏底到第一个内容块。清单页曾经是 **0**
-   * （栏底 42、顶栏顶 42），于是顶栏直接粘在栏上。 */
+   * `--dsh-tb-frame-gap` 是竖着的那一条：栏底到第一个内容块。这一档必须是正的——
+   * 0 时栏底与顶栏顶同高（量到过栏底 42、顶栏顶 42），顶栏直接粘在栏上。 */
   --dsh-tb-frame-air: 16px;
   --dsh-tb-frame-gap: 12px;
+  /* **行内容盒的内衬**——行卡里第一个字离行卡外沿的那一档。
+     *
+     * 它住在这一层，是因为**共享形态要读它**：条带的横向内衬（`design/base.module.css`
+     * 的两个类）由「框架空气 + 行内衬」两档算出来，而那两条类在共享层里。若这个数住在
+     * 页面表里，共享层读它就成了**层方向倒置**——今天靠 DOM 继承侥幸活着，换一个
+     * 消费者就读不到，于是**整条声明静默丢弃**（`padding-inline` 在计算值阶段失效，
+     * 内衬变 0，屏上没有任何报错）。
+     *
+     * 清单面板那一页按档位改它（窄档 12px、宽档 16px）：那是**覆盖**这一层的默认值，
+     * 不是另立一份——所以行卡内衬与条带内衬永远同一个数，改一处两处一起动。 */
+  --dsh-tb-row-pad: 16px;
   /* The in-list tier. A quiet row action and the text beside it are aligned by
      a DERIVED offset, never by a hand-tuned ±3px (which silently breaks the
      moment either size changes — see .sessionHintRow). */
@@ -242,9 +247,9 @@
   --dsh-tb-hint-line: 18px;
 
   /* depth: 语义级引用材料配方（recipe），一级一个名字。
-     曾经这三枚直接读宿主的 `shadow-lv1/2/3`，而那三档的 alpha 是 **5.1% / 3.9% / 7.8%**
+     这一层**不读宿主的 `shadow-lv1/2/3`**：那三档的 alpha 是 **5.1% / 3.9% / 7.8%**
      且不随主题翻转——一枚 5% 的影在浅色白底上肉眼不可见，这就是「按钮没有阴影」的
-     字面来源。现在语义级指向本层自建的 `cast-*`（材料），消费者仍然只读
+     字面来源。语义级指向本层自建的 `cast-*`（材料），消费者仍然只读
      `--dsh-tb-shadow-N`（「这是第几档抬升」），不必知道影是用什么墨画的。 */
   --dsh-tb-shadow-1: var(--dsh-tb-cast-1);
   --dsh-tb-shadow-2: var(--dsh-tb-cast-2);
@@ -280,14 +285,14 @@
    * 面板各有各的颜色，而屏上不会有人说一句话。
    * 而且有一条断言在「谁又抄了一份」时变红（`tests/panel-render.spec.ts`）。
    *
-   * `running` 与 `review` 用的是 warn 的两档——看板早就这么画了，清单从它那里继承，
+   * `running` 与 `review` 用的是 warn 的两档（看板那一族就这么画，清单从它那里继承），
    * 不另挑颜色。
    *
    * **`backlog` 读二级，不读三级。** 这一族同时是**记号色**（列头与行首那颗珠子）和
    * **文字色**（清单行那枚状态芯片上的状态词），而三级 `#81858c` 是 3.7:1——记号走
-   * 非文字的 3:1 线过得去，文字过不去。三级在这里曾经正是它：`--dsh-tb-text-3` 不再
-   * 画字之后，同一枚值从**这个别名**还在画字（在它自己的 14% 洗底上是 3.19:1，悬停档
-   * 2.92:1）。读二级之后两处都过，灰仍然是灰，五个状态仍然分得开。 */
+   * 非文字的 3:1 线过得去，文字过不去。**这一枚别名不能画字**：它自己的 14% 洗底上
+   * 只有 3.19:1（悬停档 2.92:1），字过不去。读二级之后两处都过，灰仍然是灰，五个状态
+   * 仍然分得开。 */
   --dsh-tb-status-backlog: var(--dsw-alias-label-secondary);
   --dsh-tb-status-todo: var(--dsw-alias-state-business-primary);
   --dsh-tb-status-running: var(--dsw-alias-state-warn-primary);
@@ -388,7 +393,7 @@
   /* 输入面就是**安静控件的那一个面**：一个文本域与一枚安静按钮坐在同一行上时，它们必须
      是同一个材质，否则「哪个能打字」要由读者猜。这一枚只是给它起了一个说「这是输入」的
      名字，值仍然只有 `--dsh-tb-chip-fill` 一条（= 阶梯的嵌面）。
-     曾经它读宿主的 `specific-input-major`：那一枚在两个主题下都是纯白，而本插件的页面在
+     它**不读宿主的 `specific-input-major`**：那一枚在两个主题下都是纯白，而本插件的页面在
      皮肤下是半透明浅蓝——一个纯白的框坐在浅蓝页上，边框又是 4% 黑，于是「框」只剩下
      里面的字。 */
   --dsh-tb-input-bg: var(--dsh-tb-chip-fill);
@@ -425,10 +430,10 @@
    *   recess  凹面——桌面上的浅槽（看板列、清单左栏、分区底）
    *   float   浮面——离开页面的一层（菜单、对话框），比纸面更实
    *
-   * **纸面不是一个固定色，是「画布 + 一档白」。** 以前纸面直接用底层的白，于是
-   * 皮肤把画布染成浅蓝的那一刻，纸面还是硬白——读者看到的「里面变白、旁边浅蓝」
-   * 就是这一条。现在纸面从画布推：画布白，纸面就是白；画布浅蓝，纸面就是更亮一档
-   * 的浅蓝。**两种画布下它都是「同一张桌子上更亮的那张纸」**，而不是两种视觉语言。
+   * **纸面不是一个固定色，是「画布 + 一档白」。** 纸面从画布推：画布白，纸面就是白；
+   * 画布浅蓝，纸面就是更亮一档的浅蓝。**两种画布下它都是「同一张桌子上更亮的那张
+   * 纸」**，而不是两种视觉语言——皮肤把画布染成浅蓝的那一刻，纸面跟着走，读者不会
+   * 看到「里面变白、旁边浅蓝」。
    *
    * **凹面与嵌面朝墨里混。** 方向由主题自己给：浅色里墨是暗的，混出来更深（退后）；
    * 深色里墨是亮的，混出来更亮（浮起）。两种极性下读者看到的都是同一条台阶。
@@ -454,19 +459,17 @@
    * 投影刻意写成双层：外层大模糊负责「离开桌面」，内层 1px 负责「贴着桌面」。深色
    * 下黑色投影几乎不可见，那一半由阶梯与边光承担——这也是为什么三条腿缺一不可。
    *
-   * **第一档要能看见才算第一档。** 原来的 5% / 8% 在白底上量不出来（读者报的
-   * 「没有阴影」就是它），所以静止态抬到 7% / 10%：一枚安静按钮的影不该抢戏，但
-   * 它必须在白纸上留下一条边。
+   * **第一档要能看见才算第一档。** 静止态是 7% / 10%：一枚安静按钮的影不该抢戏，
+   * 但它必须在白纸上留下一条边——比这更浅的一档在白底上量不出来（读者报的
+   * 「没有阴影」就是它）。
    *
    * ── 边光的强度必须**从纸面推**，不能是一个固定的白 ─────────────────────────
    *
-   * 这里曾经是 `inset 0 1px 0 62% 白`。在白纸上它是「纸被光照到」的那一条；可一旦
-   * 皮肤把纸画成**半透明**，同样的 62% 白就画在**壁纸本身**上——屏上是一条硬白边，
-   * 读者对它的原话是「上面有一条白色的东西，整体观感有点丑」。
-   *
-   * 白纸不需要白边（它已经是最亮的了），半透明的纸才需要一点受光；所以边光读的是
-   * `--dsh-tb-paper`：它与纸面同源，纸越亮边越弱、纸越实边越轻。18% 是量出来的
-   * 上限——再高，壁纸模式又会出现那条线；再低，白纸上它就消失。 */
+   * 边光读的是 `--dsh-tb-paper`：它与纸面同源，纸越亮边越弱、纸越实边越轻。白纸
+   * 不需要白边（它已经是最亮的了），半透明的纸才需要一点受光——固定的白画在半透明的
+   * 纸上就落在**壁纸本身**上，屏上是一条硬白边，读者对它的原话是「上面有一条白色的
+   * 东西，整体观感有点丑」。18% 是量出来的上限——再高，壁纸模式又会出现那条线；
+   * 再低，白纸上它就消失。 */
   --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 70%, white), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 4%, transparent);
   --dsh-tb-rim-soft: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 55%, white);
   --dsh-tb-cast-1: 0 1px 2px color-mix(in srgb, var(--dsw-static-neutral-1000) 7%, transparent), 0 5px 12px -5px color-mix(in srgb, var(--dsw-static-neutral-1000) 10%, transparent);
@@ -635,19 +638,13 @@
 
 /* ── 墨位：**这里没有令牌，也不该有** ─────────────────────────────────────────
  *
- * 这里曾经声明过 `--dsh-tb-optical-drop`：运行时量一次字体，写成一个全局值，
- * 每一条胶囊规则用一对块向内衬去读它。那条路走过四次数值（`0.04em`、`0.5px`、
- * `1px`、`1.4px`），每一版都只对齐一部分、把另一部分推歪，屏上表现为
- * 「有的偏上、有的偏下」。
+ * **这里不留一枚「墨位补偿」令牌，因为补偿这条路走不通，理由是结构上的两条**：
+ * 块向内衬挪的是**内容盒**，而 `align-items: center` 会把行盒重新居中到新的内容盒里，
+ * **两者一起走、相对位置一位没变**（实测「行盒心 − 内容盒心」校正前后逐字节相同）；
+ * 它还压扁定高盒子（28px 的按钮写成 20.5px 的内容盒），并且那个变量会**被继承**——
+ * 药丸里的色点读到了药丸那一档，6×6 的圆点变成 6×18 的竖条。
  *
- * **它坏在「以为墨位是一个补出来的数」上。** 后来那一版改成逐元素测量、再写一
- * 个按元素的变量——数值更准了，而问题更大：块向内衬挪的是**内容盒**，而
- * `align-items: center` 会把行盒重新居中到新的内容盒里，**两者一起走、相对位置
- * 一位没变**（实测「行盒心 − 内容盒心」校正前后逐字节相同）。它还在压扁定高盒子
- * （28px 的按钮写成 20.5px 的内容盒），并且那个变量会**被继承**——药丸里的色点
- * 读到了药丸那一档，6×6 的圆点变成 6×18 的竖条。
- *
- * **所以这里不留令牌，因为正确的做法不需要任何一个数**：让行盒高 = 墨高
+ * **正确的做法不需要任何一个数**：让行盒高 = 墨高
  * （`--dsh-tb-text-line-h` = `1em`），再让装字的盒子被居中（`align-items: center`）。
  * 行高等于墨高之后 `halfLeading` 归零，墨心与行盒心重合；行盒又被居中到内容盒，
  * 于是**墨心 = 盒心，与字体、机器、宽度都无关**。
@@ -657,8 +654,7 @@
 
 /* 深色主题**不需要第二套颜色，也就不需要重置块**：六族读的是宿主那几枚语义别名，
    它们自己在深色主题下就解析成深色的那一半（amber/green 同值，accent 与 danger 会翻面）。
-   两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。
-   上一版这里有一块九行的重置，只因为它上游有九条派生；派生没了，它跟着没了。 */
+   两套主题、一套名字——这正是「一个色相就一个色」在深色下省掉的那一块代码。 */
 
 /* ── 阶梯的极性：**这一块是整份文件里唯一按主题分开的取值** ──────────────────
  *

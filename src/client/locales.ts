@@ -759,7 +759,7 @@ export const zh = {
   'board.update.hint.local': '本地开发：也可以在仓库目录里执行下面命令更新。',
   'board.update.gitBehind': '远端已有新提交（{head} → {remote}），更新会拉取它们。',
   'board.update.gitUnreadable': '读不到这份 checkout 的 git 状态（没有 git 命令，或这里不是仓库），所以无法判断远端有没有新提交。下面那条命令仍然可以用。',
-  'board.update.gitRemoteUnread': '读不到远端（github 不可达，或这一问超时了），所以无法判断远端有没有新提交。下面那条命令仍然可以用。',
+  'board.update.gitRemoteUnread': '读不到远端：几种读法都没答（先问 api.github.com，再走 github.com 的 git，两个都不可达或超时）。所以无法判断远端有没有新提交。下面那条命令仍然可以用。',
   'board.update.gitDirty': '工作区有未提交改动，更新前请先存档或提交。',
   'board.update.gitUpToDate': '本地已与远端同步。',
 
@@ -1027,7 +1027,6 @@ export const zh = {
    * 读者截图报过一次：正文区整片空白，只有一枚计数药丸浮在上面。那在逻辑上是对的
    * （那几条确实不进日程），可屏上看起来就是**坏掉了**——安静行解释的是「哪些没被列
    * 出来」，而不是「今天这一页什么都没有」。所以这里要说清**为什么空、以及去哪看**。 */
-  'item.agenda.nothingDated': '这一页按日期排，而现在没有任何一条落在某一天上。上面那行数说的是它们在哪：已完成属于历史，刚记下的还没整理——去「全部」看得到每一条。',
 
   'item.filter.clear': '清空筛选',
   // 表头。**第一列与最后一列没有标签**：勾选圈和 ⋯ 是控件，不是数据，
@@ -1893,7 +1892,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.update.hint.local': 'Local checkout: you can also run the command below in the repository.',
   'board.update.gitBehind': 'New commits on origin ({head} → {remote}) — the update pulls them.',
   'board.update.gitUnreadable': 'This checkout’s git state cannot be read (no git command, or the directory is not a repository), so whether origin has new commits cannot be judged. The command below still works.',
-  'board.update.gitRemoteUnread': 'origin could not be reached (github unreachable, or that lookup timed out), so whether it has new commits cannot be judged. The command below still works.',
+  'board.update.gitRemoteUnread': 'origin could not be reached: every reading was silent (api.github.com first, then github.com over git — both unreachable or timed out), so whether it has new commits cannot be judged. The command below still works.',
   'board.update.gitDirty': 'Uncommitted changes in the worktree — stash or commit before updating.',
   'board.update.gitUpToDate': 'The local checkout is in sync with origin.',
 
@@ -1977,7 +1976,7 @@ export const en: Record<keyof typeof zh, string> = {
   'item.batch.said': 'Changed {n}.',
   'item.batch.saidNone': 'All {n} were already that; nothing changed.',
   'item.batch.refused': 'Changed {n}; {blocked} left alone — {why}',
-  'item.batch.askOne': 'Only the ones hanging off a card can be asked.',
+  'item.batch.askOne': 'Only the ones hanging off a card can be asked — {n} rows were selected.',
   'item.noMatch': 'Nothing matches. Clear the search or pick another filter.',
   'item.noMatch.day': 'Nothing on {when}. Pick another day, or take the date chip off.',
   'item.steps': '{done}/{total}',
@@ -2083,7 +2082,6 @@ export const en: Record<keyof typeof zh, string> = {
   'item.agenda.quietWhy': 'What this line says',
   'item.agenda.inbox': 'just noted',
   'item.agenda.quietNote': 'Which days are empty, and how many rows were left out. Finished rows are off the agenda; rows just noted are not on a day yet.',
-  'item.agenda.nothingDated': 'This page is ordered by date, and right now nothing falls on a day. The counts above say where they are instead: finished rows are history, rows just noted are not filed yet — the All row shows every one of them.',
 
   'item.filter.clear': 'Clear the filter',
   'item.filters.label': 'Filter:',

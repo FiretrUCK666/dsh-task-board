@@ -10,7 +10,7 @@
  *
  * HOW A PAGE USES A CLASS FROM HERE. Import THIS sheet and apply the class:
  * `import base from '../design/base.module.css'` then
- * `className={`${css.itemTag} ${components.chip}`}`. That works because the class map
+ * `className={`${css.itemTag} ${base.paperSheet}`}`. That works because the class map
  * belongs to the SHEET, not to the importing file — the same sheet resolves to
  * the same hashed class wherever it is imported from. What does NOT work is a
  * rule in one sheet naming a class defined in another: that sheet compiles its
@@ -87,3 +87,95 @@
  * 各自的规则拥有——写成一条座位级规则去覆盖它们，就成了「一条要人维护的名单」的另一种
  * 形式，而名单只会漏。**两条声明写在拥有那个盒子的规则里**，是唯一不会有孤儿的地方。
  */
+
+/* ── 纸面：**一张被抬起的纸** ────────────────────────────────────────────────
+ *
+ * 一张纸由三件事同时说：**色调台阶 + 受光的顶边 + 落在桌面上的投影**。三样缺一
+ * 不可——只有底色是「扁的」，只有边是线框，只有影是脏。
+ *
+ * 这三笔是**跨页面的形态**：总览的四格与卡片、看板的卡片、清单的行卡都是同一张纸，
+ * 所以它只在这里声明一次，页面表里不再抄第二份。一份拷贝的代价不是那几行，是
+ * **改一处不报错**：改这张纸的那一处，另一处留在旧值上，而屏上不会有人说一句话。
+ *
+ * **页面自己的几何留在页面表里**：边更轻、角更小、内衬更紧——那些是那一页的选择，
+ * 不是这张纸的形状。页面表的规则特异性更高，所以它写 `border` / `border-radius`
+ * 时盖住这里的两笔；材质那两笔（底色与影）由这里说了算。
+ */
+.paperSheet {
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-radius-lg);
+  background: var(--dsh-tb-plane-sheet);
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+}
+
+/* ── 条带的左右内衬：**一条带子的第一个字与每一行的第一个字站在同一条竖线上** ────
+ *
+ * 版面上有两层横向空气，**一条带子落在哪一层，决定它该付哪一档**：
+ *
+ *   - **滚动体的外面**（顶栏、归档页题头、左栏、归档顶栏）：它吃不到滚动体自己
+ *     付的那一档，所以两端各付**两档**（框架空气 + 行内衬）；
+ *   - **滚动体的里面**（回执、日分段、空态、滚动体里的一切条带）：那一档框架空气
+ *     已经由滚动体付过，它只付**行内衬那一档**。
+ *
+ * 这条形状原先在每一张表里各自抄一遍，抄的代价在某一次真的兑现了：回执是新加出来
+ * 的一条带子，**它一档都没付**，于是它比下面的行各往左 16px，屏上看就是「这一条
+ * 没对齐」。没有任何门禁会红，因为它只是少了一条声明。
+ *
+ * 所以它有一个家，而且是**两个**：付错层次和没付一样错。谁在滚动体里就挂
+ * {@link stripInsetInner}，谁在外面就挂 {@link stripInsetOuter}。
+ *
+ * **两档都读令牌层的那一个旋钮**（`--dsh-tb-row-pad` 与 `--dsh-tb-frame-air`），
+ * 不读页面表声明的变量。那不是洁癖：自定义属性的值在**声明它的那一层**就把
+ * `var()` 展开了，而共享层读页面层的变量是**层方向倒置**——今天靠 DOM 继承侥幸
+ * 活着，换一个消费者就读不到，于是**整条声明静默丢弃**（`padding-inline` 在计算值
+ * 阶段失效，内衬变 0，屏上没有任何报错）。
+ *
+ * 清单面板那一页按档位**覆盖** `--dsh-tb-row-pad`（窄档 12px、宽档 16px）：那是覆盖
+ * 这一层的默认值，不是另立一份——所以行卡内衬与条带内衬永远同一个数。
+ *
+ * **`calc()` 写在这里，不包进一个自定义属性。** 包进去的话它会在声明那一层就被展开，
+ * 于是档位的覆盖看不见——这正是「一个概念一套词汇」在 CSS 里的那条边界。 */
+.stripInsetOuter {
+  padding-inline: calc(var(--dsh-tb-frame-air) + var(--dsh-tb-row-pad));
+}
+
+.stripInsetInner {
+  padding-inline: var(--dsh-tb-row-pad);
+}
+
+/* ── 抬升：**按得动的东西**才有的那一下 ──────────────────────────────────────
+ *
+ * 悬浮是「抬起来」，不是换一层底色：第二档投影 + 1px 位移。按下立刻回位——反馈
+ * 要快，慢一拍就像没反应。不可点的东西不挂这一类，所以「能不能按」在屏上读得出来。
+ *
+ * 焦点环显式带上：座位级那条 `:focus-visible` 与这一条特异性相同，而这一条写在它
+ * 后面，所以「键盘选中 + 鼠标恰好停在上面」那一瞬，环不会被盖掉。
+ */
+.paperLift {
+  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
+}
+
+.paperLift:hover {
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+  transform: translateY(-1px);
+}
+
+.paperLift:active {
+  transform: translateY(0);
+}
+
+.paperLift:focus-visible {
+  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
+}
+
+/* 抬升是一段位移：前庭功能敏感的人读到的应该是同一个盒子，不是一个会往上飘的盒子。
+ * 所以这一档把过渡与位移一起关掉。 */
+@media (prefers-reduced-motion: reduce) {
+  .paperLift {
+    transition: none;
+  }
+
+  .paperLift:hover {
+    transform: none;
+  }
+}

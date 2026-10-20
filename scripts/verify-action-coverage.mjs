@@ -51,6 +51,14 @@ import { readFileSync, readdirSync, existsSync } from 'node:fs'
 import { join, relative, resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { probeOf } from './probe-args.mjs'
+import {
+  bracedRegionOf,
+  caseLabelsOf,
+  firstCodeMatch,
+  firstLiteralMatch,
+  scanSource,
+  stripSourceComments,
+} from './source-core.mjs'
 
 /** The declared verbs, restated as DATA so this gate does not import the TS
  *  module (node cannot load TypeScript) — and so a mismatch is a finding rather
@@ -489,28 +497,12 @@ function readSemanticOf(block) {
  * line of prose about `applyItemStatus` would count as the panel calling it
  * and the gate would go green on a panel that never calls it.
  *
- * STRINGS ARE RESPECTED, in the only way that can be done cheaply: a `//` is
- * a comment only when the text before it on its line carries an even number
- * of quotes, so `https://example.com` inside a string is not a comment and
- * `don't` in a line of prose does not swallow the rest of the file.
+ * HOW THE COMMENTS ARE TAKEN OUT is one implementation, in `source-core.mjs`,
+ * and every gate that scans source imports it. A gate that strips comments
+ * its own way is a gate that reads the same file differently from its
+ * neighbour — and two gates disagreeing about one file is not something a
+ * reader can adjudicate.
  */
-function stripComments(text) {
-  const out = []
-  for (const line of text.split('\n')) {
-    let cut = line.length
-    for (let i = 0; i + 1 < line.length; i++) {
-      if (line[i] !== '/' || line[i + 1] !== '/') continue
-      const before = line.slice(0, i)
-      const quotes = (before.match(/(?<!\\)['"]/g) ?? []).length
-      if (quotes % 2 === 0) { cut = i; break }
-    }
-    const block = line.slice(0, cut)
-    // Block comments are removed whole, with their newlines kept so the line
-    // numbers the findings quote stay the ones a reader sees.
-    out.push(block.replace(/\/\*[\s\S]*?\*\//g, ''))
-  }
-  return out.join('\n')
-}
 
 /**
  * THE CORE CALL GRAPH: which exported core function calls which other one.
@@ -526,7 +518,7 @@ function stripComments(text) {
 function coreCallGraph(coreFiles, coreNames) {
   const bodies = new Map()
   for (const file of coreFiles) {
-    const text = stripComments(file.text)
+    const text = stripSourceComments(file.text)
     for (const m of text.matchAll(/^export\s+(?:async\s+)?function\s+([A-Za-z_$][\w$]*)\s*(?:<[^>]*>)?\s*\(/gm)) {
       const body = bodyAfterSignature(text, m.index + m[0].length - 1)
       if (body !== null) bodies.set(m[1], body)
@@ -602,15 +594,22 @@ function calledCoreFunctions(text, coreNames) {
  * (a fall-through) is an action whose implementation cannot be told apart from
  * its neighbour's, and the gate says so rather than reading the neighbour's
  * body as this action's.
+ *
+ * THE LABELS ARE FOUND AS STRUCTURE, not as wording: `caseLabelsOf` reads the
+ * labels that are CODE, so a `case 'item.update':` written inside a comment is
+ * not a body and a `case 'item.update':` written inside a string is not a body
+ * either. Both were read as one before, which made the gate green on a tool
+ * that never implemented the action.
  */
 function modelCaseBodies(toolsSource) {
-  const text = stripComments(toolsSource)
+  const scan = scanSource(toolsSource)
+  const text = scan.text
   const bodies = new Map()
-  const labels = [...text.matchAll(/case\s+'([a-z]+\.[A-Za-z]+)'\s*:/g)]
+  const labels = caseLabelsOf(scan)
   for (let i = 0; i < labels.length; i++) {
-    const from = labels[i].index + labels[i][0].length
+    const from = labels[i].end
     const to = i + 1 < labels.length ? labels[i + 1].index : text.length
-    bodies.set(labels[i][1], text.slice(from, to))
+    bodies.set(labels[i].id, text.slice(from, to))
   }
   return bodies
 }
@@ -625,7 +624,7 @@ function modelCaseBodies(toolsSource) {
  * how 「通过一张卡」 ended up meaning three different things.
  */
 function controllerMethodBody(controllerText, method) {
-  const text = stripComments(controllerText)
+  const text = stripSourceComments(controllerText)
   const at = new RegExp(`^ {2}(?:async\\s+)?(?:public\\s+|private\\s+|protected\\s+)?(?:readonly\\s+)?${method}\\s*(?:<[^>]*>)?\\s*\\(`, 'm').exec(text)
   if (at === null) return null
   return bodyAfterSignature(text, at.index + at[0].length - 1)
@@ -794,25 +793,17 @@ function methodBindings(ids, bindings) {
  * the slice runs to a character cap, and it sweeps in an unrelated switch
  * further down the file. A heuristic boundary does not fail loudly when the code
  * moves — it starts measuring the wrong thing, which is worse.
+ *
+ * AND IT IS READ AS CODE, not as text: the `if` has to be a real `if` (a
+ * commented-out one is not a decision), and the braces that are counted are the
+ * ones in code (a `{` inside a string does not open a block).
  */
 function relayDecisionRegion(toolsSource) {
-  const braceMatched = from => {
-    const open = toolsSource.indexOf('{', from)
-    if (open === -1) return null
-    let depth = 0
-    for (let i = open; i < toolsSource.length; i++) {
-      if (toolsSource[i] === '{') depth++
-      else if (toolsSource[i] === '}') {
-        depth--
-        if (depth === 0) return toolsSource.slice(from, i + 1)
-      }
-    }
-    return null
-  }
-  const byLane = /if\s*\([^{}]*lane\s*===\s*'engine'[^{}]*\)\s*\{/.exec(toolsSource)
-  if (byLane !== null) return braceMatched(byLane.index)
-  const byCarrier = /if\s*\([^{}]*\brelay\s*===\s*true[^{}]*\)\s*\{/.exec(toolsSource)
-  if (byCarrier !== null) return braceMatched(byCarrier.index)
+  const scan = scanSource(toolsSource)
+  const byLane = firstCodeMatch(scan, /if\s*\([^{}]*lane\s*===\s*'engine'[^{}]*\)\s*\{/)
+  if (byLane !== null) return bracedRegionOf(scan, byLane.index)
+  const byCarrier = firstCodeMatch(scan, /if\s*\([^{}]*\brelay\s*===\s*true[^{}]*\)\s*\{/)
+  if (byCarrier !== null) return bracedRegionOf(scan, byCarrier.index)
   return null
 }
 
@@ -849,10 +840,15 @@ function relayDecisionRegion(toolsSource) {
  */
 
 /** Every action id the agent tool has a `case` for — the execution paths that
- *  really exist. Literal on purpose (see {@link PENDING_EXECUTION}). */
+ *  really exist. Literal on purpose (see {@link PENDING_EXECUTION}).
+ *
+ *  READ AS CODE, so a `case` label that only exists inside a comment or inside
+ *  a string is not an execution path. Both were read as one before, which is
+ *  the shape that hides a missing implementation: the gate went green on a tool
+ *  whose `case` had been commented out. */
 function executedActionIds(toolsSource) {
   if (toolsSource.trim() === '') return null
-  return new Set([...toolsSource.matchAll(/case\s+'([a-z]+\.[A-Za-z]+)'\s*:/g)].map(m => m[1]))
+  return new Set(caseLabelsOf(scanSource(toolsSource)).map(label => label.id))
 }
 
 /**
@@ -1016,11 +1012,15 @@ export function actionCoverageFindings(input) {
     // receiver to classify. The negative lookbehind keeps `obj.applyItemPatch(`
     // and `foo.bar(...)` out — only a name standing on its own is a call to the
     // core function rather than to a method that happens to share its name.
-    for (const m of file.text.matchAll(/(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(/g)) {
+    // The COMMENTS ARE STRIPPED first, because a line of prose naming the
+    // function is not a call to it — and the positions are preserved, so the
+    // line number the finding quotes is still the line a reader sees.
+    const code = stripSourceComments(file.text)
+    for (const m of code.matchAll(/(?<![\w.$])([A-Za-z_$][\w$]*)\s*\(/g)) {
       const name = m[1]
       if (!writeNames.has(name) || handlerNames.has(name)) continue
       if (!called.has(name)) {
-        called.set(name, `${file.path}:${file.text.slice(0, m.index).split('\n').length}`)
+        called.set(name, `${file.path}:${code.slice(0, m.index).split('\n').length}`)
       }
     }
   }
@@ -1073,7 +1073,7 @@ export function actionCoverageFindings(input) {
   const interfaceFiles = input.interfaceFiles ?? input.scanFiles
   const interfaceCalled = new Set()
   for (const file of interfaceFiles) {
-    for (const name of calledCoreFunctions(stripComments(file.text), coreNames)) interfaceCalled.add(name)
+    for (const name of calledCoreFunctions(stripSourceComments(file.text), coreNames)) interfaceCalled.add(name)
   }
   const modelBodies = modelCaseBodies(input.agentToolsText ?? '')
   const sharedReachable = new Set(catalog.actions.filter(a => a.surface !== 'ui').map(a => a.id))
@@ -1330,15 +1330,20 @@ export function actionCoverageFindings(input) {
     // check exists against is the one with NEITHER: a branch generalised on
     // `lane`, forwarding everything to "run this card", where a session, a
     // rename and a message are all silently spent as runs.
-    const readsCarrier = /\.relay\b/.test(branch) && /relay\s*===\s*undefined/.test(branch)
-    const namesActions = /\bid\s*(?:!==|===)|switch\s*\(\s*id\s*\)|\.has\(\s*id\s*\)|ACTIONS\s*\[\s*id\s*\]/.test(branch)
+    /* EACH OF THESE READS CODE, not wording. A comment that says
+     * `relay === undefined` is not a guard that refuses, and a comment that
+     * names an action is not a decision that recognises it — both were read as
+     * one before, so the gate could be satisfied by prose. */
+    const readsCarrier = firstCodeMatch(branch, /\.relay\b/) !== null
+      && firstCodeMatch(branch, /relay\s*===\s*undefined/) !== null
+    const namesActions = firstCodeMatch(branch, /\bid\s*(?:!==|===)|switch\s*\(\s*id\s*\)|\.has\(\s*id\s*\)|ACTIONS\s*\[\s*id\s*\]/) !== null
     if (!readsCarrier && !namesActions) {
       for (const id of engine) {
         fail(`${id}: its lane is 'engine', and the relay decision has NO per-action test — nothing reads the catalog's carrier for it and nothing refuses it, so every engine action is forwarded as one thing: a session, a rename or a message silently spent as a run. Read \`spec.relay\` and refuse when the catalog has none, or name the actions the relay carries`)
       }
     }
     for (const id of engine) {
-      if (new RegExp(`'${id}'`).test(branch)) {
+      if (firstLiteralMatch(branch, new RegExp(`'${id.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}'`)) !== null) {
         fail(`${id}: the relay decision recognises this engine action BY NAME ('${id}'). A name is a line someone has to remember — add an engine action, forget the line, and it is forwarded again. Decide from the catalog's \`relay\` field instead`)
       }
     }
@@ -1454,7 +1459,75 @@ export function readRepo(root) {
  * an error with an exit code of 1 — never a quiet normal run that looks like
  * a passing self-test.
  */
-const PROBES = ['--probe-ui-side', '--probe-model-side']
+const PROBES = ['--probe-ui-side', '--probe-model-side', '--probe-commented-case', '--probe-case-in-string']
+
+/** The action whose execution path the two label probes take away. It has to be
+ *  one the catalog really offers the model, or the probe would be testing a
+ *  finding that cannot fire. */
+const PROBE_LABEL_ACTION = 'task.create'
+
+/** The finding the label probes insist on. */
+function missingCaseMarker(id) {
+  return `no \`case '${id}':\` exists in the agent tool`
+}
+
+/**
+ * Take an action's execution path away, and put the label back where it is NOT
+ * code. Returns null when the repository has no such label to take away.
+ */
+function breakLabel(repo, id, where) {
+  const broken = repo.agentToolsText.replace(`case '${id}':`, `case '${id}Renamed':`)
+  if (broken === repo.agentToolsText) return null
+  return `${broken}\n${where}\n`
+}
+
+/**
+ * A `case` label that only exists inside a COMMENT is not an execution path.
+ *
+ * The gate used to read the source as text, so a commented-out branch counted
+ * as one — and the gate stayed green on a tool that had stopped implementing
+ * the action. This probe takes the label away, writes it into a comment, and
+ * insists the gate says the path is gone.
+ */
+function probeCommentedCase(root) {
+  const repo = readRepo(root)
+  const marker = missingCaseMarker(PROBE_LABEL_ACTION)
+  const already = actionCoverageFindings(repo).filter(finding => finding.includes(marker))
+  if (already.length > 0) {
+    return `the real repository already reports that finding (${already[0]}) — the self-test cannot prove anything about a face that is already red`
+  }
+  const toolsText = breakLabel(repo, PROBE_LABEL_ACTION, `// case '${PROBE_LABEL_ACTION}': prose about the label, not a branch`)
+  if (toolsText === null) {
+    return `the self-test could not break anything: the agent tool has no \`case '${PROBE_LABEL_ACTION}':\` — the gate's own fixture moved, and the self-test must be re-pointed`
+  }
+  const findings = actionCoverageFindings({ ...repo, agentToolsText: toolsText })
+  if (!findings.some(finding => finding.includes(marker))) {
+    return `the commented-out label was NOT reported: the gate read \`case '${PROBE_LABEL_ACTION}':\` out of a COMMENT and counted it as an execution path — the check is blind`
+  }
+  return null
+}
+
+/**
+ * A `case` label that only exists inside a STRING is not an execution path
+ * either — and it is the same blindness with a different disguise.
+ */
+function probeCaseInString(root) {
+  const repo = readRepo(root)
+  const marker = missingCaseMarker(PROBE_LABEL_ACTION)
+  const already = actionCoverageFindings(repo).filter(finding => finding.includes(marker))
+  if (already.length > 0) {
+    return `the real repository already reports that finding (${already[0]}) — the self-test cannot prove anything about a face that is already red`
+  }
+  const toolsText = breakLabel(repo, PROBE_LABEL_ACTION, `const label = "case '${PROBE_LABEL_ACTION}':"`)
+  if (toolsText === null) {
+    return `the self-test could not break anything: the agent tool has no \`case '${PROBE_LABEL_ACTION}':\` — the gate's own fixture moved, and the self-test must be re-pointed`
+  }
+  const findings = actionCoverageFindings({ ...repo, agentToolsText: toolsText })
+  if (!findings.some(finding => finding.includes(marker))) {
+    return `the label inside a string was NOT reported: the gate read \`case '${PROBE_LABEL_ACTION}':\` out of a STRING and counted it as an execution path — the check is blind`
+  }
+  return null
+}
 
 /** Break every call of `name` in the given sources. Null when the name is not
  *  there at all: a self-test that cannot break anything proves nothing, so
@@ -1516,12 +1589,20 @@ function probeModelSide(root) {
   return null
 }
 
+/** Each probe's own check, keyed by the switch that asks for it. */
+const PROBE_CHECKS = {
+  '--probe-ui-side': probeUiSide,
+  '--probe-model-side': probeModelSide,
+  '--probe-commented-case': probeCommentedCase,
+  '--probe-case-in-string': probeCaseInString,
+}
+
 const invokedDirectly = process.argv[1] !== undefined && import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 if (invokedDirectly) {
   const probe = probeOf(PROBES)
   if (probe !== undefined) {
     const root = resolve(process.argv[2] ?? '.')
-    const problem = probe === '--probe-ui-side' ? probeUiSide(root) : probeModelSide(root)
+    const problem = PROBE_CHECKS[probe](root)
     if (problem !== null) {
       console.error(`verify-action-coverage self-test FAILED: ${problem}`)
       process.exit(1)

@@ -1700,29 +1700,27 @@ describe('the inbox is one membership, and the agenda reads it from there', () =
   })
 })
 
-describe('a page with nothing dated says so, instead of showing a blank body', () => {
-  it('when no row falls on a day, the page says why it is empty and where to look', () => {
-    // 读者截图报过一次：正文区整片空白，只有一枚计数药丸浮在上面。那在逻辑上是对的
-    // （那几条确实不进日程），可屏上看起来就是**坏掉了**。
+describe('a page with nothing dated keeps its body quiet', () => {
+  it('when no row falls on a day, the body says nothing extra', () => {
+    // 这一段原先由一句处境说明承担（「这一页按日期排，而现在没有任何一条落在某一天上
+    // ……去『全部』看得到每一条」）。那句话讲的事，顶栏那枚计数药丸（`截止已过 0 · …
+    // 已完成 1 · 刚记下 3`）与左栏的「全部」已经在说了，正文里再讲一遍是同一句话的
+    // 第二种说法——读者要的是「这些在哪」，不是一段解释。
     //
-    // 安静行那句话解释的是「哪些没被列出来」，**不是**「今天这一页什么都没有」——所以
-    // 空的那一档要另有一句处境说明：为什么空、下一步去哪。
-    //
-    // **判据是「有没有任何一条进过日期桶」**，不是「有没有行」：一条已完成的行确实
-    // 在板上，而它不进任何一天，于是这一页仍然是空的。
+    // **判据是「正文里没有那段话」**，不是「有没有行」：一条已完成的行确实在板上，
+    // 而它不进任何一天，于是这一页仍然是空的。
     const panel = mountPanel(fixtures().filter(row => !isAgendaItem(row)), 'schedule', 'wide')
     try {
       const said = panel.surface.querySelector('[class*="itemAgendaNothing"]')
-      expect(said, '一行日期都没有时，页面只留一片空白——读者会以为它坏了').not.toBeNull()
-      expect(said?.textContent ?? '', '那一段是空的，读者读不到任何东西').not.toBe('')
+      expect(said, '一行日期都没有时，正文里又多出了一段说明').toBeNull()
     } finally {
       panel.dispose()
     }
   })
 
-  it('and when a day does have rows, that sentence stays away', () => {
-    // 同一段话**不是一直摆在那儿**：有内容的日子，它的出现就是噪音（而且它说的是
-    // 「这一页什么都没有」——那一句在有内容的页面上是**假话**）。
+  it('and when a day does have rows, it stays away too', () => {
+    // 有内容的日子，那段话的出现就是噪音（而且它说的是「这一页什么都没有」——
+    // 那一句在有内容的页面上是**假话**）。
     const panel = mountPanel(fixtures(), 'schedule', 'wide')
     try {
       const said = panel.surface.querySelector('[class*="itemAgendaNothing"]')

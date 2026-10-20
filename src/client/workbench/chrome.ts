@@ -7,9 +7,9 @@
  *
  *   1. THE KEYS. A page's `main` slot key, its sidebar row id and the workbench
  *      tab id are the same string (the shell resolves a row to its stage by id).
- *      They used to be authored in two files; a tab that spelled it differently
- *      would be a tab that opens a panel the shell never registered, and the
- *      only symptom is a click that does nothing.
+ *      They are authored once, here: a tab that spelled it differently would
+ *      be a tab that opens a panel the shell never registered, and the only
+ *      symptom is a click that does nothing.
  *   2. THE CHROME. Three pages render the same bar. Building its tabs, labels
  *      and status line in one function is what stops page two from showing a
  *      count that page one does not.

@@ -436,8 +436,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 展开与门禁（`verify-design-docs.mjs`）在 `DESIGN.md` 的 Design System 节；其余成文也在那里（间距
 阶梯、断点表与四个容器、`corner-shape` 两条轴、预览页、四步复用顺序）。**改界面前先读那一节。**
 
-清单面板另有一条陷阱成文在 `DESIGN.md`：**`<p>` 上写 `margin` 一律无效**（压死它的是一条属性
-选择器规则，特异性赢过类规则）。要读的字用 padding 让位。
+清单面板的留白走 padding 不走 margin（成文在 `DESIGN.md`）：那条 `<p>` 重置包在 `:where()` 里，
+**给的是零特异性**，所以它只压得住 UA 的默认值，**类规则赢它**。
 
 ### 核心层（`src/core/` 纯逻辑）
 

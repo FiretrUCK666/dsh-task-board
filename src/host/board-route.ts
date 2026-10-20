@@ -282,11 +282,24 @@ function parseItemAddressBody(
   return { ok: true, request: { of: id !== undefined ? { kind: 'id', id } : { kind: 'ref', ref: ref as number }, clientId } }
 }
 
-/** The caller id every commit body must carry. One rule, both documents. */
+/** The longest caller id a body may carry.
+ *
+ *  The id is a key in the pending-command map and it travels to every replica
+ *  over the event stream, so an unbounded one turns a single request into
+ *  unbounded memory and an unbounded broadcast. The limit is part of the rule,
+ *  not a detail of one endpoint. */
+const MAX_CLIENT_ID_LENGTH = 64
+
+/** The caller id every write body must carry. One rule, every route.
+ *
+ *  It is a rule about the CALLER, not about one endpoint: a commit, a lease
+ *  and a relayed command are three bodies and one caller. Two copies of one
+ *  rule are two answers to 「is this a caller」, and two answers disagree —
+ *  which is how one route comes to accept an id the others refuse. */
 function clientIdOf(body: unknown): string | undefined {
   if (typeof body !== 'object' || body === null) return undefined
   const id = (body as Record<string, unknown>).clientId
-  return typeof id === 'string' && id !== '' && id.length <= 64 ? id : undefined
+  return typeof id === 'string' && id !== '' && id.length <= MAX_CLIENT_ID_LENGTH ? id : undefined
 }
 
 /** The deletions a replica observed, with the stamp each was computed against.
@@ -367,29 +380,35 @@ export function parseItemsCommit(body: unknown): ItemsCommit | undefined {
 
 /** Parse the POST body of the lease endpoint. `active` (the tab is visible)
  *  drives the host's visibility preemption; absent = visible (a client that
- *  predates the flag never loses ground it would have kept). */
+ *  predates the flag never loses ground it would have kept).
+ *
+ *  The caller id is read by the SHARED rule, so the lease and the commit
+ *  refuse the same ids: a caller the board route accepts and the lease route
+ *  refuses is one caller the server half believes and half does not. */
 function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; release: boolean; active: boolean } | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
+  const clientId = clientIdOf(body)
+  if (clientId === undefined) return undefined
   const row = body as Record<string, unknown>
-  if (typeof row.clientId !== 'string' || row.clientId === '' || row.clientId.length > 64) return undefined
   return {
-    clientId: row.clientId,
+    clientId,
     ...typeof row.ttlMs === 'number' && Number.isFinite(row.ttlMs) ? { ttlMs: row.ttlMs } : {},
     release: row.release === true,
     active: row.active !== false,
   }
 }
 
-/** Parse the POST body of the command relay. */
+/** Parse the POST body of the command relay. The caller id comes from the
+ *  SHARED rule too, so a relayed command cannot carry an id the other two
+ *  routes would refuse. */
 function parseCommandBody(body: unknown): { clientId: string; command?: BoardCommand } | undefined {
-  if (typeof body !== 'object' || body === null) return undefined
+  const clientId = clientIdOf(body)
+  if (clientId === undefined) return undefined
   const row = body as Record<string, unknown>
-  if (typeof row.clientId !== 'string' || row.clientId === '') return undefined
   const command = row.command as Record<string, unknown> | undefined
-  if (typeof command !== 'object' || command === null) return { clientId: row.clientId }
-  if (command.type !== 'run' || typeof command.taskId !== 'string' || command.taskId === '') return { clientId: row.clientId }
+  if (typeof command !== 'object' || command === null) return { clientId }
+  if (command.type !== 'run' || typeof command.taskId !== 'string' || command.taskId === '') return { clientId }
   const trigger = command.trigger === 'schedule' || command.trigger === 'chain' ? command.trigger : 'manual'
-  return { clientId: row.clientId, command: { type: 'run', taskId: command.taskId, trigger, clientId: row.clientId } }
+  return { clientId, command: { type: 'run', taskId: command.taskId, trigger, clientId } }
 }
 
 /** The revision a `?since=` probe claims to already hold, or NaN when the

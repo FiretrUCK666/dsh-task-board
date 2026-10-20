@@ -36,6 +36,7 @@ import { Button } from '../../design/ui.tsx'
 import { ItemTable } from '../item-table.tsx'
 import type { ItemPageProps } from './page-props.ts'
 import css from '../item.module.css'
+import base from '../../design/base.module.css'
 
 /** The list page's own two additions: nothing but the device's id. */
 interface ItemListPageProps extends ItemPageProps {
@@ -498,7 +499,7 @@ return (
           除」）回去。两种状态都是完整的页面，不是「一张表下面多了一段」。 */}
       {props.archiveOpen
         ? (
-            <div className={css.itemArchivePage}>
+            <div className={`${css.itemArchivePage} ${base.stripInsetOuter}`}>
               {archive === undefined && <p className={css.itemArchiveNote} role="status">{t('item.loading')}</p>}
               {archive !== undefined && archiveLine}
             </div>

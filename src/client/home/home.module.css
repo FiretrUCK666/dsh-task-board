@@ -25,26 +25,20 @@
 
 /* **这一页的容器就是内容列本身。**
  *
- * 这里曾经有一条 `[data-dsh-taskboard-view].homeStage` 规则（`block-size: 100%`、
- * `overflow-y: auto`、`container-type: inline-size`），而 `.homeStage` 这个类**没有任何
- * 组件在使用**——页面经 `WorkbenchShell` 渲染，它的根是 `css.workbenchFrame`。那条规则
- * 整条是死的，包括它的 `container-type`。
+ * `.homeSheet` 是 home 的内容列（`home/panel.tsx` 里唯一包住 children 的那一层），它的
+ * 宽度就是这一页排版真正要问的那个数，所以 `container-type: inline-size` 落在它身上：
+ * 文末那条无名查询量的是**内容列**，不是外壳。
  *
- * 后果不是「少了一条样式」，而是**下面那条无名查询量错了盒子**：`workbenchFrame` 自己
- * 带 `container-type: inline-size`（`design/components.module.css`），所以无名查询落到
- * 了**外壳**上，而外壳比内容列宽出两侧各一条 `--dsh-tb-frame-air`（栏的内衬）。于是
- * 「620 折成两列」实际发生在内容宽约 588 的地方，而不是 620。
+ * 量外壳会量错：页面经 `WorkbenchShell` 渲染，而 `workbenchFrame` 自己带
+ * `container-type: inline-size`（`design/components.module.css`），外壳比内容列宽出两侧
+ * 各一条 `--dsh-tb-frame-air`（栏的内衬）——于是「620 折成两列」会落在内容宽约 588 的
+ * 地方，而不是 620。
  *
- * 修法不是给死规则补一个使用者，而是**把容器放到真正被渲染的那个盒子上**：`.homeSheet`
- * 是 home 的内容列（`home/panel.tsx` 里唯一包住 children 的那一层），它的宽度就是这一页
- * 排版真正要问的那个数。
+ * 为什么无名：命名容器要进 `design/bands.ts` 那张跨页的 JS/CSS 契约表，而这一页的档位
+ * 只有 CSS 需要知道。无名查询不会让 `bands.spec.ts` 把一条没有 JS 侧的界线当成合约。
  *
- * 为什么仍然无名：命名容器要进 `design/bands.ts` 那张跨页的 JS/CSS 契约表，而这一页的
- * 档位只有 CSS 需要知道。无名查询不会让 `bands.spec.ts` 把一条没有 JS 侧的界线当成合约。
- *
- * 为什么不再设自己的滚动与底色：这两件事现在由 `WorkbenchShell` 统一负责（`scrolls`
- * 一档），三页的滚动条因此落在同一个位置——页面自己再开一个滚动容器，就把「三页同一个
- * 框架」这件事拆掉了。 */
+ * 滚动与底色由 `WorkbenchShell` 统一负责（`scrolls` 一档），三页的滚动条因此落在同一个
+ * 位置——页面自己再开一个滚动容器，就把「三页同一个框架」这件事拆掉了。 */
 [data-dsh-taskboard-view] .homeSheet {
   box-sizing: border-box;
   flex: 1 1 auto;
@@ -59,16 +53,18 @@
 }
 
 /* 工作台栏本身属于 `design/`（`components.module.css` 的 `.workbenchFrameBar`）：
-   三页共用同一条栏是那一层存在的理由，所以这一页不再为它写第二份几何——这里曾经有
-   一条 `.homeBar` 规则，而那个类没有任何组件在用。 */
+   三页共用同一条栏是那一层存在的理由，所以这一页不写第二份几何。 */
 
 /* ── 标题行 ────────────────────────────────────────────────────────────────
- * **一个 h1，四档字号，没有眉题。**
+ * **一个 h1，四档字号。**
  *
- * 曾经它上面还有一行 11px 的眉（「工作台」），压在 17px 的标题上：两行只差一档半，
- * 读起来是两行一样重的东西，而读者对它的原话是「又小又丑」。删掉之后主次由**字号档差**
- * 建立——句子 24/700、四格的数 22/700、卡片题 13/600、辅助 12——四档之间彼此拉得开，
- * 而颜色深浅在白底上读不出层级（这一轮早就记过账）。 */
+ * 主次由**字号档差**建立：句子 24/700、四格的数 30/600、卡片题 11/600、辅助 12——
+ * 四档之间彼此拉得开，而颜色深浅在白底上读不出层级。
+ *
+ * 这四档里三档是**令牌**，数字写在 `design/tokens.module.css` 的字阶表上：数读
+ * `--dsh-tb-type-kpi-size`（30px），卡片题读 `--dsh-tb-type-eyebrow-size`（11px），
+ * 辅助读 `--dsh-tb-type-meta-size`（12px）；句子 24/700 是这一页唯一没有对应档位的一档，
+ * 写在这里是因为它只在这一处用。 */
 [data-dsh-taskboard-view] .homeHead {
   display: flex;
   flex-direction: column;
@@ -102,32 +98,14 @@
   gap: var(--dsh-tb-space-2);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-6);
-  /* 三条腿缺一不可：纸面（色阶）+ 墨推出来的边（14%）+ 投影。**只有底色是「扁的」**，
-     而这条边在默认浅色主题下才是读者真正看得见的那条轮廓。 */
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-lg);
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  /* 纸面与抬升是**共享形态**（`design/base.module.css` 的 `.paperSheet` / `.paperLift`），
+     由 `panel.tsx` 一起挂上来：纸面三条腿缺一不可——色阶 + 墨推出来的边 + 投影，
+     **只有底色是「扁的」**，而那条边在默认浅色主题下才是读者真正看得见的那条轮廓。
+     这一页只留自己的几何：内衬、方向、字色。 */
   color: var(--dsh-tb-text-1);
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
-}
-
-[data-dsh-taskboard-view] .tile:hover {
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-  transform: translateY(-1px);
-}
-
-[data-dsh-taskboard-view] .tile:active {
-  transform: translateY(0);
-}
-
-/* 焦点环显式写在这里：本规则比座位级那条 `:focus-visible` 更具体，不把环带上来的话
-   它就是被自己的 `box-shadow` 覆盖掉了——键盘使用者会在一个按得动的格子上看不见焦点。 */
-[data-dsh-taskboard-view] .tile:focus-visible {
-  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
 /* 数与标签同一条基线：30px 的数和 12px 的标签并成一行，读者一眼读完一个读数。 */
@@ -177,12 +155,9 @@
   gap: var(--dsh-tb-space-5);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-7);
-  /* 与四格同一条腿：纸面 + 14% 的墨边 + 第一档投影。卡片不可点，所以它没有 hover——
-     抬升只发生在按得动的东西上，这个区别本身也是可读的。 */
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-lg);
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  /* 纸面是共享形态（`design/base.module.css` 的 `.paperSheet`），与四格同一条腿：
+     纸面 + 14% 的墨边 + 第一档投影。卡片不可点，所以它不挂 `.paperLift`——抬升只发生在
+     按得动的东西上，这个区别本身也是可读的。 */
 }
 
 /* 卡片标题是「眉」：11px、正字距、二级墨。它只说这一块是什么，不跟数字抢眼球。 */
@@ -219,10 +194,8 @@
  * 对齐只能把盒底贴上去；而且 13px 的名字与 12px 的计数在同一条基线上时，两种字的
  * 行盒高度不同，**盒心必然错开**（量到过 19.5 对 20.5，正好一个像素）。
  *
- * 旧写法是「文字按基线、圆点用 `align-self: center` 退出基线」——两套轴线混在同一
- * 行里，正是那个偏差的来源。现在全部按 `center`：每一段的盒心都落在行心，任何字号
- * 组合、以后加任何新记号都齐平。每段自己的 `line-height: 1em` 让段内没有多余半行距，
- * 见下面那组子元素规则。 */
+ * 所以全部按 `center`：每一段的盒心都落在行心，任何字号组合、以后加任何新记号都齐平。
+ * 每段自己的 `line-height: 1em` 让段内没有多余半行距，见下面那组子元素规则。 */
 [data-dsh-taskboard-view] .pipeRow {
   display: grid;
   grid-template-columns: var(--dsh-tb-dot) 5.5em 2.5ch minmax(var(--dsh-tb-space-9), 1fr) auto;
@@ -230,15 +203,14 @@
   gap: var(--dsh-tb-space-3);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-2) var(--dsh-tb-space-3);
+  /* 纸面与抬升是共享形态（`design/base.module.css` 的 `.paperSheet` / `.paperLift`）；
+     这一行是**窄纸**，所以边更轻、角更小——那两笔是这一页自己的几何。 */
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   color: var(--dsh-tb-text-1);
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
 }
 
 /* **这一行的每一段各自 line-height: 1em。** 这是上一条法则的另一半：center 只保证
@@ -252,26 +224,11 @@
   line-height: 1em;
 }
 
-/* 悬停是**抬起来**，不是换一层底色：第二档投影 + 1px 位移，和四格同一个动作。 */
-[data-dsh-taskboard-view] .pipeRow:hover {  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-  transform: translateY(-1px);
-}
-
-[data-dsh-taskboard-view] .pipeRow:active {
-  transform: translateY(0);
-}
-
-[data-dsh-taskboard-view] .pipeRow:focus-visible {
-  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-}
-
 /* 状态点：整行里唯一的彩色记号。色相只经 `--dsh-tb-status-*`（看板那五枚的同一个源头）。
  *
- * **没有 `translateY`，也不需要。** 这里原先挂着 `translateY(var(--dsh-tb-mark-drop))`
- * （1px 的光学下沉），理由是「行盒中心比字的视觉中心高一点」。那个前提在这一行改成
- * 「每段 `line-height: 1em`」之后就不成立了：段里没有多余半行距，盒心就是墨心，圆点
- * 按盒心居中即与文字的中线重合。留着那条下沉，量到的结果正好是圆点比文字低 1px——
- * 它在补偿一个已经不存在的偏差。 */
+ * **没有 `translateY`，也不需要。** 记号按盒心居中，而这一行的每一段都是
+ * `line-height: 1em`：段里没有多余半行距，盒心就是墨心，于是圆点按盒心居中即与文字的
+ * 中线重合。任何额外的光学位移只会在这个前提上再叠一层偏差。 */
 [data-dsh-taskboard-view] .homeStatusDot {
 /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
   flex: none;
@@ -454,10 +411,10 @@
 /* 状态词是一枚小件：高 `--dsh-tb-chip-h`、嵌面底、一条软边光。整行里它不说话最响，
  * 但它是「这条现在在哪一栏」的唯一读数，所以不能只留一颗点（点认不出五档）。
  *
- * **行的墨位由行盒高度决定**（见 `--dsh-tb-text-line-h`）：一枚定高的盒子里
- * `align-items: center` 居中的是**内容盒**，而行盒的中心比字的视觉中心高一点点。多出
- * 2d 的下内衬把内容盒往上推 d，字就落在盒子的光学中间。**这里不能用 transform**——这块
- * 底色就是药丸自己，transform 会把盒与字一起挪走，等于没修（共享 Chip 用的是同一条）。 */
+ * **墨位由行盒高度决定**（见 `--dsh-tb-text-line-h`）：行盒高等于字号时 `halfLeading`
+ * 归零，墨心就是行盒心，而 `align-items: center` 又把行盒居中到盒心——于是墨心 = 盒心，
+ * 任何字体、任何字号都成立。**所以这里不需要任何补偿**：既没有块向内衬，也没有
+ * `transform`——`transform` 会把盒与字一起挪走，等于没修（共享 Chip 用的是同一条）。 */
 [data-dsh-taskboard-view] .recentStatus {
   box-sizing: border-box;
   display: inline-flex;
@@ -465,8 +422,6 @@
   justify-content: center;
   gap: var(--dsh-tb-space-2);
   block-size: var(--dsh-tb-chip-h);
-  /* 行盒 = 墨高：`halfLeading` 归零之后墨心就是盒心，任何字体都成立（见 tokens 表
-     的 `--dsh-tb-text-line-h`）。这里曾经靠下内衬补偿，而那条补偿现在是 0。 */
   padding-inline: var(--dsh-tb-space-3);
   border-radius: var(--dsh-tb-pill);
   background: var(--dsh-tb-plane-inlay);
@@ -486,7 +441,9 @@
 
 /* 两个读数各是一枚按钮：它们把读者送到看板——会话就住在那里。
  * 它们也是**纸**（色阶 + 9% 墨边 + 第一档投影），不是一块浅色底：同一张卡里的所有可点
- * 面读到的是同一种材料。数与标签同一条基线（15px 的数 + 12px 的标签）。 */
+ * 面读到的是同一种材料。纸面与抬升是共享形态（`design/base.module.css` 的 `.paperSheet`
+ * / `.paperLift`），这一枚只留自己的几何：小一号的角、更轻的边、内衬。数与标签同一条
+ * 基线（15px 的数 + 12px 的标签）。 */
 [data-dsh-taskboard-view] .sessionStat {
   box-sizing: border-box;
   display: flex;
@@ -496,28 +453,10 @@
   padding: var(--dsh-tb-space-4) var(--dsh-tb-space-5);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   color: inherit;
   font: inherit;
   text-align: start;
   cursor: pointer;
-  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
-}
-
-[data-dsh-taskboard-view] .sessionStat:hover {
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-  transform: translateY(-1px);
-}
-
-[data-dsh-taskboard-view] .sessionStat:active {
-  transform: translateY(0);
-}
-
-/* 焦点环显式带上：`:hover` 与座位级焦点规则特异性相同且写在本表里（更靠后），只写 hover
- * 的话「键盘选中 + 鼠标恰好停在上面」那一瞬会把环盖掉。 */
-[data-dsh-taskboard-view] .sessionStat:focus-visible {
-  box-shadow: var(--dsh-tb-ring), var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
 [data-dsh-taskboard-view] .sessionValue {
@@ -598,21 +537,5 @@
 
   [data-dsh-taskboard-view] .homeColumns {
     grid-template-columns: minmax(0, 1fr);
-  }
-}
-
-/* 抬升是一段位移：前庭功能敏感的人读到的应该是同一个盒子，不是一个会往上飘的盒子。
- * 抬升的三处（四格、流水线行、会话纸片）一起停，没有一处例外。 */
-@media (prefers-reduced-motion: reduce) {
-  [data-dsh-taskboard-view] .tile,
-  [data-dsh-taskboard-view] .pipeRow,
-  [data-dsh-taskboard-view] .sessionStat {
-    transition: none;
-  }
-
-  [data-dsh-taskboard-view] .tile:hover,
-  [data-dsh-taskboard-view] .pipeRow:hover,
-  [data-dsh-taskboard-view] .sessionStat:hover {
-    transform: none;
   }
 }

@@ -25,9 +25,13 @@ import {
   capabilityView,
   clearIdempotentReplies,
   createTaskboardTools,
+  enginePendingOf,
   enumeratedFilters,
+  firstFailureOf,
+  kindOfReport,
   refuseOp,
   runBatch,
+  type OpReport,
   type ToolCommitFace,
   type ToolDeps,
   type ToolDefinition,
@@ -882,6 +886,103 @@ describe('the receipt a card renders', () => {
   })
 })
 
+describe('the receipt classifies itself by its fields, not by its own wording', () => {
+  /**
+   * THE DEFECT THIS PINS.
+   *
+   * The receipt used to decide its own kind by reading its own sentence:
+   * `detail.startsWith('未执行')` said whether the op was skipped,
+   * `detail.includes('已受理')` said whether the engine still had it, and
+   * `detail.startsWith('这一条已经是这样了')` said whether anything changed.
+   *
+   * So rewording ONE sentence moved a `kind`, moved the 「第一个失败」 to
+   * another op, and moved the summary's count — and **no functional test went
+   * red**, because the wording was the only thing that changed. The facts were
+   * always there as fields (`next.unchanged`, the service's `queued`); they
+   * were dropped on the way into the report and guessed back out of prose.
+   */
+  const SAID = '未执行：上一条失败后本批停止。'
+  const SAID_OTHER_WAY = '没有执行：上一条失败以后这一批就停了。'
+
+  it('a reworded detail leaves the kind alone', () => {
+    const skipped = { op: 'item.create', ok: false, skipped: true, detail: SAID }
+    expect(kindOfReport(skipped)).toBe('skipped')
+    // The same facts, said differently. The kind is a fact about the op, not
+    // about the sentence.
+    expect(kindOfReport({ ...skipped, detail: SAID_OTHER_WAY })).toBe('skipped')
+  })
+
+  it('a reworded detail leaves the first failure pointing at the same op', () => {
+    const reports: OpReport[] = [
+      { op: 'task.create', ok: true, kind: 'created', detail: '已生效。' },
+      { op: 'item.create', ok: false, kind: 'failed', detail: '没写进去：磁盘满了。' },
+      { op: 'item.update', ok: false, kind: 'skipped', skipped: true, detail: SAID },
+    ]
+    expect(firstFailureOf(reports)?.op).toBe('item.create')
+    // The skipped op says the same thing in other words. The pointer must NOT
+    // move to it: it never ran, so blaming it is blaming an op for something
+    // that did not happen to it.
+    const reworded = reports.map(report => report.op === 'item.update'
+      ? { ...report, detail: SAID_OTHER_WAY }
+      : report)
+    expect(firstFailureOf(reworded)?.op).toBe('item.create')
+  })
+
+  it('a reworded detail leaves the engine-pending set alone', () => {
+    const accepted: OpReport = {
+      op: 'task.run', ok: true, kind: 'updated', title: '跑一下', queued: true,
+      detail: '已受理（跑一遍），引擎当前不在线，将在引擎上线后执行。',
+    }
+    const handedOver: OpReport = {
+      op: 'task.run', ok: true, kind: 'updated', title: '另一张卡',
+      detail: '已交给引擎跑一遍。',
+    }
+    expect(enginePendingOf([accepted, handedOver])).toEqual(['跑一下'])
+    const reworded = [{
+      ...accepted,
+      detail: '引擎现在不在线，这一圈已经收下了，等它上线再跑。',
+    }, handedOver]
+    expect(enginePendingOf(reworded)).toEqual(['跑一下'])
+  })
+
+  it('the batch runner writes those fields, so the readers have something to read', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [
+        { op: 'item.create', payload: { body: '第一条' } },
+        { op: 'item.create', payload: {} },          // body is required → fails
+        { op: 'item.create', payload: { body: '第三条' } },
+      ],
+    })
+    expect(result.reports[0]?.skipped, 'a landed op is not skipped').toBeUndefined()
+    expect(result.reports[2]?.skipped, 'the op after the failure never ran').toBe(true)
+    expect(result.reports[2]?.kind).toBe('skipped')
+    // And the summary points at the op that FAILED, not at the one that never ran.
+    expect(result.summary).toContain('第 2 条失败')
+  })
+
+  it('a queued op says so in a field, so the summary can keep it out of the count', async () => {
+    const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
+    expect(result.reports[0]?.queued, 'an accepted-but-unexecuted run says so in a field').toBe(true)
+    expect(result.enginePending).toEqual(['跑一下'])
+    expect(result.summary).toContain('已受理')
+  })
+
+  it('the implementation never reads the detail sentence to classify a report', () => {
+    // The structural half of the same promise. The three readers above are the
+    // only places a kind, a first failure or a pending row is decided, and
+    // they decide it from fields — so a sentence can be reworded freely.
+    const source = readFileSync(join(process.cwd(), 'src', 'host', 'agent', 'tools.ts'), 'utf8')
+    expect(
+      source.match(/detail\.(?:startsWith|includes|endsWith|match)\s*\(/g),
+      'a report is classified by reading its own wording — reword one sentence and the kind, '
+      + 'the first failure and the summary all move, with every functional test still green',
+    ).toBeNull()
+  })
+})
+
 describe('the relay only carries what it can actually carry', () => {
   it('an engine action whose effect IS a run is relayed with no per-action code', async () => {
     const board = face()
@@ -1382,6 +1483,59 @@ describe('a model asks a question about a row, through the same plan the panel u
     // The summary has to say that 「没有卡」 is answered by making one, or a model
     // that wants the row to move will stop at the refusal.
     expect(ACTIONS['item.ask']?.summary).toContain('item.promote')
+  })
+})
+
+describe('模型挂卡与移栏：走的都是界面走的那扇门', () => {
+  /* 这一组钉的是**模型这一侧落位与挂载的方式**——与界面的对答在
+   * `tests/item-board-linkage.spec.ts` 里（那一处两侧各跑一遍，比的是结果）；这里钉的是
+   * 模型自己那一侧的三件事：断链不写、落位有键、挂载一次写完两件事。 */
+
+  it('挂到一张不存在的卡上：明确拒绝，而不是写一条断链', async () => {
+    // 界面那一侧的选择器只列板上真的卡，所以「挂到一张不存在的卡」是模型写得出、界面写不
+    // 出的一个状态。写下去就是一条断链：屏上读不到那张卡，而清单里记着它——面板那个效果
+    // 会把它悄悄清掉，于是回执说「已生效」而链接已经没了。
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, { clientId: 'c', items: [richItem()], deleted: [] }, NOW))
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#7', taskId: 'card-that-is-not-there' } }] })
+    expect(result.reports[0]?.ok, '一条断链被写进去了').toBe(false)
+    expect(result.reports[0]?.detail).toContain('card-that-is-not-there')
+    expect(board.getItemsDoc().items[0]?.taskId, '一条断链落在了清单里').toBeUndefined()
+  })
+
+  it('挂卡：链接与这一行自己那一档一起写——挂上之后显示的那件事由卡回答', async () => {
+    const board = face()
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('挂着的那张卡'), id: 't-review', status: 'review' }] })
+    board.seedItems(applyItemsCommit(board.items, { clientId: 'c', items: [{ ...richItem(), status: 'backlog' }], deleted: [] }, NOW))
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#7', taskId: 't-review' } }] })
+    expect(result.ok).toBe(true)
+    const written = board.getItemsDoc().items[0]
+    expect(written?.taskId).toBe('t-review')
+    expect(written?.status, '挂上之后这一行自己那一档没有跟着那张卡').toBe('review')
+  })
+
+  it('改状态时那张卡落到目标栏的末尾，原来那一栏重新编号——与界面拖动落位一致', async () => {
+    // 名次就是屏上的顺序：只改 `status` 的字段而不重编号，于是「人拖出来的顺序」与「模型
+    // 挪出来的顺序」不一样，而那两样是同一栏里的同一样东西。
+    const board = face()
+    board.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [
+        { ...card('A'), id: 't-a', status: 'todo', order: 0 },
+        { ...card('B'), id: 't-b', status: 'todo', order: 1 },
+        { ...card('C'), id: 't-c', status: 'done', order: 0 },
+      ],
+    })
+    board.seedItems(applyItemsCommit(board.items, { clientId: 'c', items: [{ ...richItem(), taskId: 't-a' }], deleted: [] }, NOW))
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#7', status: 'done' } }] })
+    expect(result.ok).toBe(true)
+    const tasks = board.getDoc().tasks
+    const moved = tasks.find(task => task.id === 't-a')
+    const stayed = tasks.find(task => task.id === 't-b')
+    expect(moved?.status).toBe('done')
+    expect(moved?.order, '落位没有给名次，于是这一栏里的顺序是乱的').toBe(1)
+    // 目标栏重编号，原来那一栏一根键都不碰（界面那一侧也是不碰——手动的位置是手动的）。
+    expect(stayed?.order, '原来那一栏的键被动了').toBe(1)
   })
 })
 

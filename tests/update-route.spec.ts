@@ -19,6 +19,7 @@ import {
   readLatest,
   registryOrderOf,
   runningCopyOf,
+  tipFromApi,
   type UpdateRouteDeps,
   type UpdateSourceView,
 } from '../src/host/update-route.ts'
@@ -552,9 +553,63 @@ describe('readLatest', () => {
     expect(asked.length).toBeGreaterThan(0)
   })
 
-  it('a checkout has nothing to read here: its own git state answers instead', async () => {
-    vi.stubGlobal('fetch', async () => { throw new Error('must not be asked') })
-    expect(await readLatest(fakeCtx({}), { mode: 'local' })).toBeUndefined()
+  it('a checkout reads the published version too: installing mode does not decide reachability', async () => {
+    /* **这条原先断言的是「一个 checkout 在这儿没有可读的」。** 它用「fetch 一律抛错
+       则返回值是 undefined」来证明「根本没有发请求」——而那正是要修的那个行为：
+       `github.com` 被墙时，`git ls-remote` 是唯一去问远端的那条路，于是那一次点击的
+       唯一答案是一句「读不到远端」，尽管同一分钟里 registry 与 `api.github.com` 都能答。
+
+       装法决定的是**「要不要拉」怎么判断**（由 git 状态回答），不是**上游发布过哪一版
+       能不能读**。所以这条现在断言：同一次 `local` 读取，`latest` 是有的。 */
+    answerWith([
+      { url: 'https://registry.npmmirror.com/', body: { versions: {}, 'dist-tags': { latest: '9.9.9' } } },
+    ])
+    const latest = await readLatest(fakeCtx({}), { mode: 'local' })
+    expect(latest?.version).toBe('9.9.9')
+  })
+
+  describe('tipFromApi', () => {
+  /* ── **远端那条问的是 `api.github.com`，不是 `github.com`。** ────────────────
+   *
+   * 两台域名不是一件事，这是这一整块改动的理由。实测（同一台机器、同一分钟）：
+   *
+   *   api.github.com               200 / 725ms
+   *   github.com                   超时（`git ls-remote` 烧掉 21.3 秒后失败）
+   *   raw.githubusercontent.com    SSL 连接被切断
+   *
+   * 原先问「远端有没有新提交」的**唯一**一条路是 `git ls-remote`，它走 git 协议到
+   * `github.com`——于是被墙的网络上每一次点击都得到「判断不了」，而原因与「有没有新
+   * 提交」毫无关系。这条钉住新的第一步。 */
+
+  it('asks the repo commits endpoint and reads the tip out of it', async () => {
+    const asked = answerWith([
+      {
+        url: 'https://api.github.com/repos/FiretrUCK666/dsh-task-board/commits',
+        body: [{ sha: 'abcdef1234567890abcdef1234567890abcdef12' }],
+      },
+    ])
+    const tip = await tipFromApi('FiretrUCK666/dsh-task-board')
+    expect(tip).toEqual({ head: 'abcdef1234567890abcdef1234567890abcdef12', via: 'api' })
+    expect(asked[0]).toContain('api.github.com')
+    expect(asked[0]).toContain('per_page=1')
+  })
+
+  it('a rate-limited or unreachable answer is absent, never a made-up sha', async () => {
+    /* 403 是 GitHub 未登录限流的样子；它必须与「连不上」同一个形状，好让下一步接手，
+       而不是把这次点击画成一次错误。 */
+    answerWith([
+      { url: 'https://api.github.com/', status: 403, body: { message: 'API rate limit exceeded' } },
+    ])
+    expect(await tipFromApi('FiretrUCK666/dsh-task-board')).toBeUndefined()
+    answerWith([{ url: 'https://api.github.com/', status: 200, body: [] }])
+    expect(await tipFromApi('FiretrUCK666/dsh-task-board')).toBeUndefined()
+  })
+
+  it('no slug means nothing to ask, and no request is made', async () => {
+    const asked = answerWith([])
+    expect(await tipFromApi(undefined)).toBeUndefined()
+    expect(asked).toEqual([])
+  })
   })
 })
 

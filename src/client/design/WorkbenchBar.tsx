@@ -14,12 +14,12 @@
  * and a radiogroup would announce "option 2 of 3 selected" for a page change.
  * The visual grammar (a sliding pill in a track) is shared; the meaning is not.
  *
- * WHY THE ACTIVE PILL BELONGS TO THE TAB ITSELF. It used to be one absolutely
- * positioned thumb whose width was `(100% - 4px) / count` and whose offset was
- * `index * 100%` — fractional geometry against a track list, sitting on a nav
- * that could also be squeezed by the status line beside it. The arithmetic was
- * one padding box away from the tracks it was supposed to cover, and the result
- * was exactly what the reader reported: 「点来点去，高亮的位置一直变」.
+ * WHY THE ACTIVE PILL BELONGS TO THE TAB ITSELF. A separate absolutely
+ * positioned thumb would be fractional geometry against a track list (`(100% -
+ * 4px) / count` wide, `index * 100%` off), sitting on a nav that can also be
+ * squeezed by the status line beside it — the arithmetic is one padding box away
+ * from the tracks it is supposed to cover, and the result is exactly what the
+ * reader reports: 「点来点去，高亮的位置一直变」.
  *
  * A pill that is the tab's own background cannot disagree with its own label:
  * there is no second box to place, nothing to re-measure when the sidebar

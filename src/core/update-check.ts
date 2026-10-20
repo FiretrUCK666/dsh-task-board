@@ -343,8 +343,14 @@ export function latestFromPackument(body: unknown): { version: string; published
 export interface UpdateGitStatus {
   /** Full local HEAD SHA. */
   head: string
-  /** Full `origin/main` SHA from `ls-remote` (absent when unreachable). */
+  /** The remote's default-branch tip SHA (absent when it cannot be determined). */
   remoteHead?: string
+  /**
+   * Which source answered for {@link remoteHead}. The page says so, because
+   * 「远端是什么」 is a different claim depending on which host was asked —
+   * and a reader diagnosing a blocked network needs to see WHICH host worked.
+   */
+  remoteVia?: 'api' | 'git'
   /** Whether the worktree has uncommitted changes. */
   dirty: boolean
 }

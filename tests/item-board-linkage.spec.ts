@@ -47,9 +47,9 @@ import { fileURLToPath } from 'node:url'
 import { GROUP_LABEL, STATUS_LABEL } from '../src/client/item/labels.ts'
 import { applyCommit, emptyBoardDoc } from '../src/core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, purgeItemTombstone, type ItemsDoc } from '../src/core/items-doc.ts'
-import { ALL_STATUSES, MANUAL_STATUSES, createTask, type TaskStatus } from '../src/core/tasks.ts'
+import { ALL_STATUSES, MANUAL_STATUSES, createTask, type TaskRecord, type TaskStatus } from '../src/core/tasks.ts'
 import { ITEM_STATUSES, itemStatusOf, type ItemRecord, type ItemStatus } from '../src/core/item.ts'
-import { applyItemStatus, planItemPromotion } from '../src/core/item-transitions.ts'
+import { applyItemStatus, mountItemRecord, planItemPromotion } from '../src/core/item-transitions.ts'
 import {
   DAY_MS,
   EMPTY_ITEM_QUERY,
@@ -57,6 +57,7 @@ import {
   derivedStatusOf,
   itemMatchContextOf,
   linkedCardIdOf,
+  linkedCardOf,
   parseItemQuery,
   scheduleBucketOf,
   scheduleBucketsOf,
@@ -64,6 +65,9 @@ import {
 } from '../src/core/item-view.ts'
 import { ITEM_FLAG_TESTS, flagProbeOf, itemQualifierVocabulary } from '../src/core/item-query.ts'
 import { createTaskboardTools, runBatch, type ToolCommitFace, type ToolDeps } from '../src/host/agent/tools.ts'
+import { BoardController } from '../src/core/controller.ts'
+import { InMemoryTaskStore } from '../src/core/store.ts'
+import { itemContextText } from '../src/core/item-ask.ts'
 
 const NOW = new Date(2026, 9, 12, 9, 0, 0).getTime()
 
@@ -130,15 +134,16 @@ describe('改状态的入口只有一个，而它挂着卡时给的是看板的�
     // 「进行中 / 待审核」是执行器的事实，这一条与看板自己那一排是同一个判据
     // （`MANUAL_STATUSES`）——两边各写一份的话，界面按得动的那一档模型不认。
     const rows = [row({ taskId: 'card-1' })]
+    const card = { id: 'card-1', status: 'todo' as const }
     for (const executorOnly of ['running', 'review'] as const) {
-      const refused = applyItemStatus(rows, 'i-1', executorOnly, 'card-1', NOW + 1_000)
+      const refused = applyItemStatus(rows, 'i-1', executorOnly, card, NOW + 1_000)
       expect(refused.refused, `${executorOnly} 被当成人手写得进去的那一档`).toBe('executorOnly')
       expect(refused.move, '一次被拒的写还是移了卡').toBeUndefined()
       expect(refused.rows[0]?.updatedAt, '一次拒绝盖了一个新的写入戳').toBe(rows[0]?.updatedAt)
     }
     // 人手能给的档：这一行自己写一次，外加移那张卡一次；两处一起写，不是各写各的。
     for (const status of MANUAL_STATUSES) {
-      const written = applyItemStatus(rows, 'i-1', status, 'card-1', NOW + 1_000)
+      const written = applyItemStatus(rows, 'i-1', status, card, NOW + 1_000)
       expect(written.refused, `${status} 是看板允许人手拖的那一档，却被拒了`).toBeUndefined()
       expect(written.rows[0]?.status).toBe(status)
       expect(written.move).toEqual({ cardId: 'card-1', status })
@@ -322,6 +327,220 @@ describe('一条链接、两扇门、两份文档', () => {
        卡是**做它的一次安排**（在哪一栏、谁在做、跑到哪一步）。 */
     expect(hanging.title).toBe('画廊随访')
     expect(hanging.body).toBe('把东墙的灯换掉')
+  })
+})
+
+/**
+ * 一个不执行任何东西的执行面——它只需要**存在**。
+ *
+ * 这一组要读的是控制器**记下**的那句话与**落下**的那张卡，不是它跑出来的效果；所以这个面
+ * 把两个执行入口都答成「什么都没做」，而控制器仍然照常把它该记的记下来（硬性规范 18：
+ * 假面比现实窄，和比现实宽容同样危险——窄到没有那个方法，实现就会在测试里抛错）。
+ */
+const idleExec = {
+  run: async () => {},
+  commentRun: async () => {},
+  reconcile: () => undefined,
+} as never
+
+/**
+ * ── 模型与界面：同一件事，同一个答案 ────────────────────────────────────────
+ *
+ * 这一组钉的是**两侧真的给出同一个答案**，而两侧各自都绿。四条断言各钉一处：
+ *
+ *  1. **改状态**：同一个状态、同一张卡，界面与模型给同一个判决。
+ *  2. **移栏**：模型挪出来的顺序，与人拖出来的顺序逐项相同。
+ *  3. **挂卡**：模型挂出来的那一行，与界面挂出来的那一行，屏上读到的字段逐项相同。
+ *  4. **问 AI**：同一行，界面送出去的话与模型送出去的话逐字相同。
+ *
+ * ── 这四条怎么保证「真的是同一个判定」 ──────────────────────────────────────
+ *
+ * **不是两份各自断言。** 每一处的界面那一侧都是**真的那一段代码**：
+ *
+ *  - 改状态：界面那一侧是共享的那道门本身（`applyItemStatus`），而**面板真的调它**由
+ *    下面那条源码断言钉住（先剥注释再匹配，只认调用不认字样）。所以「界面的判决」不是
+ *    测试里重写一遍的副本，而是界面正在用的那一个函数——两边调用的是同一个函数，
+ *    同一个输入只能有同一个输出。
+ *  - 移栏：界面那一侧是**真的控制器**（`BoardController.moveTask`）——拖动与键盘移动
+ *    走的就是它，而它走的是 `applyCardOrder`（位置）与 `moveTaskToStatus`（内容）。
+ *  - 挂卡：界面那一侧是**真的面板**（`mountPanel` 挂起来、真的按那一枚「挂到哪张卡」）。
+ *  - 问 AI：界面那一侧是**真的控制器**（`askCard` 把这句话送进那张卡的对话里），而那句话
+ *    由共享的那一个写手（`itemContextText`）写出。
+ *
+ * 断言比的是**两侧的结果**，不是各自的期望值——所以哪一侧改了实现而另一侧没改，这一组
+ * 立刻红。
+ */
+describe('模型与界面：同一件事，同一个答案', () => {
+  /* ── ① 改状态 ────────────────────────────────────────────────────────────── */
+
+  /** 一张卡，带着它此刻的样子（哪一栏、上面有没有在飞的一轮 / 排队的一条评论）。 */
+  const boardCard = (patch: Partial<TaskRecord> = {}): TaskRecord => ({
+    ...createTask({ title: '挂着的那张卡', description: '', prompt: 'p' }, NOW, 'card-1'),
+    ...patch,
+  })
+
+  const liveRound = { id: 'e-1', sessionId: 's-1', startedAt: NOW, endedAt: undefined, result: undefined, error: undefined }
+  const queuedComment = {
+    id: 'e-2', sessionId: 's-1', startedAt: NOW,
+    comment: { content: [{ type: 'text', text: '还有一句没注入' }] },
+    injectedAt: undefined, endedAt: undefined, result: undefined, error: undefined,
+  }
+
+  /**
+   * 三种卡，外加两个把两种门分开的那两种。
+   *
+   * 前三种是题面点名的（**有正在跑的会话 / 有评论要处理 / 两样都没有**）；后两种是**把两
+   * 道门分开**的：卡停在「进行中」而没有轮次在飞（只有列在管它），以及卡在「待办」而有一轮
+   * 在飞（只有轮次在管它）。没有后两种，两种门给出同一个答案的场合就钉不住。
+   */
+  const kinds: ReadonlyArray<readonly [string, TaskRecord]> = [
+    ['有正在跑的会话', boardCard({ status: 'running', executions: [liveRound] as never })],
+    ['有评论要处理', boardCard({ status: 'running', executions: [queuedComment] as never })],
+    ['两样都没有', boardCard({ status: 'todo', executions: [] })],
+    ['卡停在进行中，而这一轮已经不在飞', boardCard({ status: 'running', executions: [] })],
+    ['卡在待办，而这一轮还在飞', boardCard({ status: 'todo', executions: [liveRound] as never })],
+  ]
+
+  /** 界面那一侧的回答：共享的那道门（面板与模型调的是同一个函数）。 */
+  const interfaceVerdict = (card: TaskRecord, status: TaskStatus): boolean => {
+    const write = applyItemStatus([row({ taskId: card.id })], 'i-1', status, linkedCardOf(row({ taskId: card.id }), cards([card.id, card.status])), NOW)
+    return write.refused === undefined
+  }
+
+  /** 模型那一侧的回答：真的工具跑一遍。 */
+  const modelVerdict = async (card: TaskRecord, status: TaskStatus): Promise<boolean> => {
+    const board = face()
+    board.doc = { ...emptyBoardDoc(NOW), tasks: [card] }
+    board.items = applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [row({ taskId: card.id })] as never, deleted: [] }, NOW)
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#12', status } }] })
+    return result.ok
+  }
+
+  it('改状态：同一个状态、同一张卡，界面与模型给同一个判决——五种卡逐一比', async () => {
+    for (const [label, card] of kinds) {
+      expect(await modelVerdict(card, 'done'),
+        `模型与界面在「${label}」这张卡上给了不同的判决`).toBe(interfaceVerdict(card, 'done'))
+    }
+    // 而这不是「两边都放行」那种空洞的一致：至少两种卡上两边都拒，而那正是两种门分开的地方。
+    expect(interfaceVerdict(kinds[0]![1], 'done'), '一张在跑的卡被人手工改了栏').toBe(false)
+    expect(interfaceVerdict(kinds[3]![1], 'done'), '一张停在进行中的卡没有被挡住').toBe(false)
+    expect(interfaceVerdict(kinds[2]![1], 'done'), '一张普通的卡不该被挡').toBe(true)
+  })
+
+  it('面板真的走的是共享的那道门——所以「界面的判决」不是测试里重写的一份', () => {
+    // 上面那条比较里的「界面那一侧」是共享的 `applyItemStatus`；这一条钉住**面板真的调
+    // 它**（且是带着「挂着的卡与它在哪一栏」调它）。剥掉注释再匹配，只认调用不认字样。
+    const source = readFileSync(fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    const body = source.slice(source.indexOf('const writeStatus'), source.indexOf('const writeStatus') + 2_000)
+    expect(body, '面板改状态不再走共享的那道门').toContain('applyItemStatus(')
+    expect(body, '面板不再按「挂着的卡与它在哪一栏」读那张卡').toContain('linkedCardOf(')
+  })
+
+  /* ── ② 移栏 ──────────────────────────────────────────────────────────────── */
+
+  it('模型移栏之后，顺序与界面拖动之后逐项相同', async () => {
+    // 界面的拖动走**真的控制器**：`controller.moveTask` 是拖放与键盘移动共同的那扇门，
+    // 它落位走 `applyCardOrder`（位置）与 `moveTaskToStatus`（内容）。模型那一侧走的是
+    // 同一对共享函数，所以两边的名次逐项相同——名次就是屏上的顺序。
+    const start: TaskRecord[] = [
+      { ...boardCard({ id: 't-a', title: 'A', status: 'todo', order: 0 }) },
+      { ...boardCard({ id: 't-b', title: 'B', status: 'todo', order: 1 }) },
+      { ...boardCard({ id: 't-c', title: 'C', status: 'done', order: 0 }) },
+    ]
+    const ui = new BoardController({
+      store: (() => { const store = new InMemoryTaskStore(); store.save(start); return store })(),
+      exec: idleExec,
+      sessions: { list: { getSnapshot: () => ({ byId: {} }), subscribe: () => () => {} }, exists: () => false },
+      now: () => NOW,
+      uuid: () => 'id-ui',
+    })
+    ui.start()
+    ui.moveTask('t-a', 'done')
+    const uiOrder = ui.getSnapshot().tasks.map(task => `${task.id}:${task.status}:${task.order}`)
+
+    const board = face()
+    board.doc = { ...emptyBoardDoc(NOW), tasks: start }
+    await runBatch(deps(board), { ops: [{ op: 'task.move', payload: { of: 't-a', status: 'done' } }] })
+    const modelOrder = board.getDoc().tasks.map(task => `${task.id}:${task.status}:${task.order}`)
+
+    expect(modelOrder, '模型挪出来的顺序与界面拖出来的不一样').toEqual(uiOrder)
+  })
+
+  /* ── ③ 挂卡 ──────────────────────────────────────────────────────────────── */
+
+  it('模型挂出来的卡与界面挂出来的卡，屏上读到的字段逐项相同', async () => {
+    // 界面那一侧：**挂载那一个落点**（`mountItemRecord`）——而下面那条源码断言钉住面板真的
+    // 调它（面板的「挂到哪张卡」那一枚）。模型那一侧调的是同一个函数，所以两边得到的是
+    // **同一行**，而不是两份各写各的账。
+    const card = boardCard({ id: 'task-1', status: 'review' })
+    const before = row({ status: 'backlog' })
+    const interfaceRow = mountItemRecord([before], 'i-1', 'task-1', 'review', NOW)[0]
+
+    const board = face()
+    board.doc = { ...emptyBoardDoc(NOW), tasks: [card] }
+    board.items = applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [before] as never, deleted: [] }, NOW)
+    await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#12', taskId: 'task-1' } }] })
+    const modelRow = board.getItemsDoc().items[0]
+
+    expect(modelRow?.taskId, '模型挂上去的那张卡与界面挂上去的不是同一张').toBe(interfaceRow?.taskId)
+    expect(modelRow?.status, '模型挂上去之后这一行自己那一档没有跟着那张卡').toBe(interfaceRow?.status)
+    // 屏上读到的字段逐项相同（写入戳是两份文档各自的时间，不在屏上）。
+    for (const key of ['title', 'body', 'notes', 'priority', 'taskId'] as const) {
+      expect(modelRow?.[key], `挂好之后「${key}」两边不一样`).toBe(interfaceRow?.[key])
+    }
+    expect(modelRow?.tags, '挂好之后标签两边不一样').toEqual(interfaceRow?.tags)
+    expect(modelRow?.steps, '挂好之后步骤两边不一样').toEqual(interfaceRow?.steps)
+    // 而「屏上读到的那一档」由推导回答（挂卡读卡）——两边同一行，屏上自然同一档。
+    const boardColumns = cards(['task-1', 'review'])
+    expect(derivedStatusOf(modelRow as ItemRecord, boardColumns), '屏上读到的那一档两边不一样')
+      .toBe(derivedStatusOf(interfaceRow as ItemRecord, boardColumns))
+  })
+
+  it('面板挂卡走的是挂载那一个落点——所以「界面的挂卡」不是测试里重写的一份', () => {
+    const source = readFileSync(fileURLToPath(new URL('../src/client/item/panel.tsx', import.meta.url)), 'utf8')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/^\s*\/\/.*$/gm, '')
+    const body = source.slice(source.indexOf('onEdit={(patch'), source.indexOf('onEdit={(patch') + 2_000)
+    expect(body, '面板挂卡不再走挂载那一个落点').toContain('mountItemRecord(')
+  })
+
+  /* ── ④ 问 AI ─────────────────────────────────────────────────────────────── */
+
+  it('同一行，界面看到的上下文与模型看到的上下文逐字相同', async () => {
+    const one = row({ taskId: 'card-1', title: '量一遍地板', body: '在真机上量', notes: '备注', tags: ['画廊'] })
+    // 界面那一侧：**真的控制器**把这句话送进那张卡的对话里，而那句话由共享的那一个写手
+    // （`itemContextText`）写出——所以读到的是「送出去的那句话」，不是「我们以为送出去的」。
+    const store = new InMemoryTaskStore()
+    store.save([{ ...boardCard({ id: 'card-1', binds: [{ kind: 'session', sessionId: 's-1' }] }) }])
+    const ui = new BoardController({
+      store,
+      exec: idleExec,
+      sessions: {
+        list: { getSnapshot: () => ({ byId: { 's-1': { running: false } } }), subscribe: () => () => {} },
+        exists: () => true,
+      },
+      now: () => NOW,
+      uuid: () => 'id-ui',
+    })
+    ui.start()
+    await ui.askCard('card-1', itemContextText(one))
+    const said = ui.getSnapshot().tasks[0]?.executions[0]
+
+    // 模型那一侧：真的工具跑一遍，它送出去的那句话就是回执里那一句。
+    const board = face()
+    const relayed: string[] = []
+    board.submitCommand = (command) => {
+      relayed.push(command.type === 'comment' ? command.text : command.type === 'run' ? String(command.kickoff ?? '') : '')
+      return { queued: false }
+    }
+    board.doc = { ...emptyBoardDoc(NOW), tasks: [boardCard({ id: 'card-1', binds: [{ kind: 'session', sessionId: 's-1' }] })] }
+    board.items = applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [one] as never, deleted: [] }, NOW)
+    await runBatch(deps(board), { ops: [{ op: 'item.ask', payload: { of: '#12' } }] })
+
+    expect(relayed[0], '模型没有送出去任何一句话').toBeDefined()
+    expect(relayed[0], '模型送出去的话与界面送出去的不是同一句').toBe(said?.comment)
   })
 })
 

@@ -71,6 +71,7 @@
  */
 import type { ItemOriginSource, ItemRecord, ItemStep } from './item.ts';
 import { ITEM_FIELDS } from './item.ts';
+import type { ItemCardLink } from './item-membership.ts';
 import { type AttachmentRef } from './attachment.ts';
 import { type TaskStatus } from './tasks.ts';
 /**
@@ -333,6 +334,14 @@ export declare function planItemPromotion(item: ItemRecord, over?: ItemPromotion
  * **每一次改状态都把两边写成同一档**：按已完成 = 标这一行
  * **并且**把卡移过去；按别的 = 移卡 **并且**把那张牌收回。于是那张牌在屏上不是陷阱。
  */
+/**
+ * 这一条挂着的卡，**按这一侧看得见的栏读**——链接与那一栏一起。
+ *
+ * 两样东西必须一起给，因为「挂着的卡在哪一栏」是同一件事的两半：改状态要移那张卡（要它的
+ * id），也要知道它现在在哪一栏（那一栏是「它还在进行中吗」这条门的判据）。分开给就是两处
+ * 各记一半，而两半可以来自不同的读取——于是「这一条挂着的卡」有两个答案。
+ */
+export type { ItemCardLink } from './item-membership.ts';
 export interface ItemStatusWrite {
     /** 写完之后的整份清单。 */
     readonly rows: ItemRecord[];
@@ -341,24 +350,40 @@ export interface ItemStatusWrite {
         readonly cardId: string;
         readonly status: TaskStatus;
     };
-    /** 这一档挂卡时给不了：进行中 / 待审核是执行器的事实。 */
-    readonly refused?: 'executorOnly';
+    /**
+     * 写不上去的两种理由，**各带一个码**。
+     *
+     *  - `cardRunning`——那张卡还在进行中，这一轮没跑完，它现在归执行器管。清单这一侧改它
+     *    的状态就是与执行器抢同一张卡：屏上那一行与那张卡会说出两个故事。
+     *  - `executorOnly`——目标那一档由执行器落（进行中 / 待审核），人手给不了。
+     */
+    readonly refused?: 'cardRunning' | 'executorOnly';
 }
 /**
  * 改一条的状态，或说明为什么改不了。
+ *
+ * **两道门的次序是这里的一部分**：先问「那张卡还在进行中吗」，再问「这一档是不是人给的」。
+ * 两者都成立时，调用点要说的话由先问的那一道决定——次序写在函数里，两边就拿到同一句话；
+ * 写在调用点里，两个调用点各写一次就会有一个先问另一个后问。
+ *
  * @param rows - 整份清单。
  * @param id - 哪一条。
  * @param status - 目标档（五档之一）。
- * @param cardId - 这一条挂着的卡（`linkedCardIdOf` 的答案），没挂卡是 `undefined`。
+ * @param card - 这一条挂着的卡与它所在的栏（`linkedCardOf` 的答案），没挂卡是 `undefined`。
  * @param now - 写入时钟。
  */
-export declare function applyItemStatus(rows: readonly ItemRecord[], id: string, status: TaskStatus, cardId: string | undefined, now: number): ItemStatusWrite;
+export declare function applyItemStatus(rows: readonly ItemRecord[], id: string, status: TaskStatus, card: ItemCardLink | undefined, now: number): ItemStatusWrite;
 /**
  * 把一条挂到一张卡上：**链接与状态一起写**。
  *
  * 摘下（`{ taskId: undefined }`）不需要一个函数：这一行保留最后一次与卡同步过的状态，
  * 那就是它现在的状态（一次普通的补丁）。而挂上必须同时决定「这一行自己那一档是什么」，
  * 因为挂上之后显示那件事由卡回答——两个字段各写各的，就是这一轮修掉的那类账。
+ *
+ * **读者自己按下的「完成了」压过卡片**（`itemStatusOf` 的那一条唯一例外）：挂上去不改读者
+ * 对这一行说过的话。面板那一支「卡换了栏，这一行自己那一档跟着写」也留着这一条例外，
+ * 两边于是对同一行说出同一句话——挂上与换栏是同一条律的两个动作。
+ *
  * @param rows - 整份清单。
  * @param id - 哪一条。
  * @param cardId - 挂到哪张卡。

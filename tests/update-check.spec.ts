@@ -3,8 +3,17 @@
  * classification, numeric version comparison, the plan that updates a copy
  * (and who applies it), the packument reading that answers "what is the latest
  * version", and the local-checkout behind test. Pure logic — no platform seam.
+ *
+ * The last part is not pure: where the checkout's REMOTE tip comes from is
+ * read over real git, against real repositories made for the test — because
+ * the branch a remote defaults to is a fact about that remote, and a fixture
+ * that claimed one would be claiming it rather than reading it.
  */
-import { describe, expect, it } from 'vitest'
+import { afterAll, describe, expect, it } from 'vitest'
+import { execFileSync } from 'node:child_process'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 import {
   classifyInstallSpec,
   commandLineOf,
@@ -20,6 +29,7 @@ import {
   sourceSpecOf,
   updatePlanFor,
 } from '../src/core/update-check.ts'
+import { readGitStatus } from '../src/host/update-route.ts'
 
 describe('classifyInstallSpec', () => {
   it('link: is local development', () => {
@@ -303,5 +313,94 @@ describe('git status helpers', () => {
   it('shortSha keeps short inputs intact', () => {
     expect(shortSha('97b9dec9c8b1')).toBe('97b9dec')
     expect(shortSha('abc')).toBe('abc')
+  })
+})
+
+/** The temporary directories the git fixtures live in, so they can be removed. */
+const GIT_FIXTURES: string[] = []
+
+/** Run one git command in a directory and return its trimmed output. */
+function git(cwd: string, ...args: string[]): string {
+  return execFileSync('git', args, { cwd, encoding: 'utf8' }).trim()
+}
+
+/**
+ * A checkout whose remote's DEFAULT branch is `branch`, and the remote itself.
+ *
+ * The remote is a real bare repository with a real branch on it, and the
+ * remote's HEAD is pointed at that branch the way a hosting service points
+ * it at its default branch. Nothing here says what the default branch is
+ * called — the test passes the name in and the reader has to find it.
+ */
+function checkoutOfRemote(branch: string): { remote: string; checkout: string } {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-git-'))
+  GIT_FIXTURES.push(root)
+  const remote = path.join(root, 'origin.git')
+  const checkout = path.join(root, 'source')
+  git(root, 'init', '--bare', '-q', remote)
+  git(root, 'init', '-q', checkout)
+  git(checkout, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`)
+  git(checkout, 'config', 'user.email', 'test@example.invalid')
+  git(checkout, 'config', 'user.name', 'Test')
+  fs.writeFileSync(path.join(checkout, 'a.txt'), 'x\n')
+  git(checkout, 'add', 'a.txt')
+  git(checkout, '-c', 'commit.gpgsign=false', 'commit', '-q', '-m', 'init')
+  git(checkout, 'remote', 'add', 'origin', remote)
+  git(checkout, 'push', '-q', 'origin', branch)
+  git(remote, 'symbolic-ref', 'HEAD', `refs/heads/${branch}`)
+  return { remote, checkout }
+}
+
+afterAll(() => {
+  for (const root of GIT_FIXTURES) fs.rmSync(root, { recursive: true, force: true })
+})
+
+describe('the checkout\'s remote tip comes from the remote\'s own default branch', () => {
+  /**
+   * THE DEFECT THIS PINS.
+   *
+   * The remote's tip was read as `refs/heads/main` — a branch name written
+   * into the code. A checkout whose default branch is `master` therefore never
+   * got a `remoteHead` at all, and the client tells 「判断不了」 from 「已同步」
+   * by exactly that field: no `remoteHead` means it cannot say. So a `master`
+   * checkout could never be told that it was behind, no matter what the remote
+   * had.
+   *
+   * The branch is DETECTED now, and a remote that does not say which branch is
+   * its default is read as 「判断不了」 — never as 「已同步」.
+   */
+  it('a remote whose default branch is master yields its head', async () => {
+    const { remote, checkout } = checkoutOfRemote('master')
+    // A commit the checkout does not have, so 「behind」 is a real answer here
+    // and not a coincidence of two equal SHAs.
+    git(checkout, '-c', 'commit.gpgsign=false', 'commit', '-q', '--allow-empty', '-m', 'upstream')
+    git(checkout, 'push', '-q', 'origin', 'master')
+    git(checkout, 'reset', '-q', '--hard', 'HEAD~1')
+    const status = await readGitStatus(checkout)
+    expect(status, 'the checkout was not read at all').toBeDefined()
+    expect(
+      status?.remoteHead,
+      'a remote whose default branch is master yielded no head, so the screen can only ever say 「判断不了」',
+    ).toBeDefined()
+    expect(status?.remoteHead).toBe(git(remote, 'rev-parse', 'refs/heads/master'))
+    // And with both SHAs known, the checkout can be told that it is behind —
+    // which is the reading a missing remote head made impossible.
+    expect(isGitBehind({ head: status?.head ?? '', remoteHead: status?.remoteHead, dirty: false })).toBe(true)
+  })
+
+  it('a remote that says nothing about its default branch yields no head at all', async () => {
+    const { remote, checkout } = checkoutOfRemote('master')
+    // The remote's HEAD points at a branch that does not exist, so it
+    // advertises no HEAD and never says which branch is its default.
+    git(remote, 'symbolic-ref', 'HEAD', 'refs/heads/nonexistent')
+    const status = await readGitStatus(checkout)
+    expect(status?.head, 'the local head is still read — the checkout did not break').toBeDefined()
+    expect(
+      status?.remoteHead,
+      'a remote that said nothing was given a head anyway — that is the client reading 「已同步」 out of a guess',
+    ).toBeUndefined()
+    // A missing remote head is never evidence of anything: not of being behind,
+    // and not of being in sync.
+    expect(isGitBehind({ head: status?.head ?? '', dirty: false })).toBe(false)
   })
 })

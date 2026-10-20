@@ -34,6 +34,7 @@
  */
 import { useCallback, useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react'
 import { bandNarrowMax } from '../design/bands.ts'
+import base from '../design/base.module.css'
 import type { ItemRecord, ItemStatusView } from '../../core/item.ts'
 import { itemStatusOf } from '../../core/item.ts'
 import {
@@ -44,6 +45,7 @@ import {
   itemMatches,
   itemRowViewOf,
   linkedCardIdOf,
+  linkedCardOf,
   planItemNavigation,
   itemRailGroupsOf,
   railSiblingsOf,
@@ -704,19 +706,22 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 胶囊都不动，连解释那句也不会出现。收进一个函数之后，那种矛盾在结构上不可能发生。
    */
   const writeStatus = useCallback((item: ItemRecord, status: TaskStatus): string | undefined => {
-    const cardId = linkedCardIdOf(item, cardColumns)
     /* **跑着的时候也要说得出话。**
      *
      * 状态那一排里有两枚灰芯片是**能按**的（`aria-disabled`，按下去要有一句回话），而
      * "这一轮还在跑"与"这一档是执行器给的"是两件事。次序定死：跑着是这一条**现在**的状态，
      * 它比"能不能给这一档"更靠前——卡在跑的时候去改它的栏，看板那边本来也会拒。
      *
-     * **判据在这里，出口在调用点。** 它把「要说的话」**交回去**（没有话说就是 `undefined`），
-     * 由按它的那一处决定放在哪里：状态那一排的芯片放在芯片脚下（一句话讲的正是那一排），
-     * 菜单那一路的项本来就按不动这两档，所以它不需要出口。给回执在这里等于把一句三十多字的
-     * 话塞进一枚不缩的胶囊——412 宽上会顶出卡片右缘。 */
-    if (runningOf(cardColumns, cardId) === true) return t('detail.moveBlockedBusy')
-    const result = applyItemStatus(itemsNow.current, item.id, status, cardId, Date.now())
+     * **判据在共享的那一道门里**（`applyItemStatus`），出口在调用点：它把「要说的话」**交回
+     * 来**（没有话说就是 `undefined`），由按它的那一处决定放在哪里——状态那一排的芯片放在芯
+     * 片脚下（一句话讲的正是那一排），菜单那一路的项本来就按不动这两档，所以它不需要出口。
+     * 给回执在这里等于把一句三十多字的话塞进一枚不缩的胶囊——412 宽上会顶出卡片右缘。
+     *
+     * **模型调的是同一个函数**（`src/host/agent/tools.ts` 的 `item.update`），所以同一张卡在
+     * 同一档上，界面与模型拿到同一个答案——那道门只写一份。 */
+    const card = linkedCardOf(item, cardColumns)
+    const result = applyItemStatus(itemsNow.current, item.id, status, card, Date.now())
+    if (result.refused === 'cardRunning') return t('detail.moveBlockedBusy')
     if (result.refused === 'executorOnly') return t('item.status.executorOnly')
     apply(result.rows)
     if (result.move !== undefined) face.controller?.moveTask(result.move.cardId, result.move.status)
@@ -1117,7 +1122,26 @@ export function ItemListPanel(props: ItemListPanelProps) {
       /* 回执跟着这一行走：它显示在这一行的底排里（与按钮同一条线），而不是散在行的网格上。 */
       receipt={receipt?.id === item.id ? receipt.words : undefined}
       onNewCard={name => { if (item !== undefined) promoteOne(item, { cardTitle: name, another: true }) }}
-      onEdit={(patch: ItemPatch) => { if (item !== undefined) apply(applyItemPatch(items, item.id, patch, Date.now())) }}
+      onEdit={(patch: ItemPatch) => {
+        if (item === undefined) return
+        /* **挂卡不是一次字段补丁——它是挂载。**
+         *
+         * 链接与这一行自己那一档要**一起写**（`mountItemRecord`）：挂上之后「这一行显示什
+         * 么」由卡回答，而两个字段各写各的，就是这一行说待办、那张卡说待审核——屏上两个说
+         * 法，而清单与看板是两份文档。挂载是这一件事的唯一落点，模型那一侧（`item.update`
+         * 带 `taskId`）调的是同一个函数。
+         *
+         * **摘掉链接不走这里**：那是「不挂」那一枚，它带着 `{ taskId: undefined }`——而
+         * 「没提」与「清掉」在补丁里长得一样，所以摘掉由面板那个效果负责（它把链接清掉，
+         * 那一行保留最后一次与卡同步过的状态）。 */
+        if (patch.taskId !== undefined) {
+          const card = cardColumns.get(patch.taskId)
+          if (card === undefined) return
+          apply(mountItemRecord(items, item.id, patch.taskId, card, Date.now()))
+          return
+        }
+        apply(applyItemPatch(items, item.id, patch, Date.now()))
+      }}
       /* **写作框那个数走视图偏好，不走这一条的字段。** 它是读者「习惯写多大一块」，
          同一台设备上五个写作框共用一个值，所以它进 `view-prefs`（与行高、排序同类），
          而不是进文档——两台设备对一块写字的地方多大有不同意见，不是数据冲突。 */
@@ -2037,7 +2061,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
             * 所以同高不是两次巧合。 */}
         {archiveOpen
           ? (
-              <div className={css.itemArchiveTopBar}>
+              <div className={`${css.itemArchiveTopBar} ${base.stripInsetOuter}`}>
                 <h2 className={css.itemArchiveHead}>
                   <button type="button" className={css.itemArchiveToggle} onClick={closeArchive}>
                     <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.archive.title')}</span>
@@ -2054,7 +2078,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
             )
           : (
             <>
-              <div className={css.itemTopBar}>
+              <div className={`${css.itemTopBar} ${base.stripInsetOuter}`}>
                 <p className={css.itemTopCount}>
                   {filtering
                     /* THE MATCH SET, not the detail selection. The sentence claims to
@@ -2208,7 +2232,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               * are what the door has let in: reading order is what you typed, then
               * what that means. */}
           {queryChipsOf(prefs.search, items.map(item => item.tags)).length > 0 && (
-            <div className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+            <div className={`${css.itemTopPanel} ${base.stripInsetOuter}`} role="group" aria-label={t('item.filters.label')}>
               <ItemQueryChips
                 text={prefs.search}
                 tags={items.map(item => item.tags)}
@@ -2222,7 +2246,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               它是从看板那一侧跳过来时带上的（见 `ItemListFace.focusRequest`），按它摘掉就回到
               全量列表——一枚**可摘的芯片**，而不是一个藏在别处、读者找不到也关不掉的过滤器。 */}
           {cardFocus !== undefined && (
-            <div className={css.itemTopPanel} role="group" aria-label={t('item.filters.label')}>
+            <div className={`${css.itemTopPanel} ${base.stripInsetOuter}`} role="group" aria-label={t('item.filters.label')}>
               <button
                 type="button"
                 className={css.itemQueryChip}
@@ -2237,7 +2261,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
           {/* 排序面板，两枚芯片里唯一需要展开面的一枚。它在壳里，不在浮层上：
               一条把自己正在筛的行压暗的筛选，读者要检查两遍才敢信。 */}
           {sortOpen && (
-            <div id={`${topPanels}-sort`} className={css.itemTopPanel} role="group" aria-label={t('item.sort.label')}>
+            <div id={`${topPanels}-sort`} className={`${css.itemTopPanel} ${base.stripInsetOuter}`} role="group" aria-label={t('item.sort.label')}>
               {ITEM_SORTS.map(order => {
                 /* **按当前那一项第二下，就是「倒过来」。**
                  *
@@ -2301,7 +2325,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
                   states BOTH halves of the promise — the undo available now, and
                   the thirty-day window that remains after it is spent. */}
               {undo !== undefined && (
-                <div className={css.itemReceipt} role="status">
+                <div className={`${css.itemReceipt} ${base.stripInsetInner}`} role="status">
                   <span className={css.itemReceiptText}>
                     {restoring !== undefined
                       ? t('item.undo.working')

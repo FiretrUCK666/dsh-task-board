@@ -23,12 +23,13 @@
 
 import { existsSync, readFileSync, readdirSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { stripSourceComments } from './source-core.mjs'
 
 /** 从 `laws.ts` 里读出法则条目（不做完整的 TS 解析，只读它声明的四样东西）。 */
 export function lawsFrom(root) {
   const file = join(root, 'src/client/design/laws.ts')
   if (!existsSync(file)) return []
-  const source = stripComments(readFileSync(file, 'utf8'))
+  const source = stripSourceComments(readFileSync(file, 'utf8'))
   const laws = []
   /* 每条是一个对象字面量：抓 `id:` 到下一个 `}` 之间，再逐个字段取。 */
   const blocks = source.split(/\bid:\s*'/).slice(1)
@@ -40,11 +41,6 @@ export function lawsFrom(root) {
     laws.push({ id, gate, specimen })
   }
   return laws
-}
-
-/** 去掉注释（扫描先剥注释再匹配——注释里出现一个文件名不算一次调用）。 */
-function stripComments(source) {
-  return source.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
 }
 
 /**

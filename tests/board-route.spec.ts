@@ -872,6 +872,68 @@ describe('POST /board/command', () => {
   })
 })
 
+describe('one caller rule, on every route that takes a caller id', () => {
+  /**
+   * THE DEFECT THIS PINS.
+   *
+   * 「A caller id is a non-empty string of at most 64 characters」 was written
+   * out three times: once as the shared reader, once inside the lease parser,
+   * and once inside the command parser — where the length limit had gone
+   * missing. So an over-long id was refused by the board and the checklist,
+   * accepted by the lease, and accepted by the command relay — and the relay
+   * is the one that puts the id into the pending-command map and broadcasts it
+   * to every replica.
+   */
+  const OVERLONG = 'x'.repeat(65)
+
+  it('the lease refuses an over-long caller id and does not take the seat with it', async () => {
+    const h = fakeDeps()
+    const acquired: string[] = []
+    const deps: BoardRouteDeps = {
+      ...h.deps,
+      acquireLease: (clientId, ttlMs, active) => {
+        acquired.push(clientId)
+        return h.deps.acquireLease(clientId, ttlMs, active)
+      },
+    }
+    const handler = createBoardHandler(deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/lease`, { clientId: OVERLONG }), res)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+    expect(acquired, 'the refused id still took the seat').toEqual([])
+  })
+
+  it('the command relay refuses an over-long caller id and relays nothing', async () => {
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const res = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/command`, { clientId: OVERLONG, command: { type: 'run', taskId: 't-1', trigger: 'manual' } }), res)
+    expect(JSON.parse(res.state.body).ok).toBe(false)
+    expect(h.commands, 'the refused id was still relayed to the engine').toEqual([])
+  })
+
+  it('the three routes agree on the boundary: 64 is a caller, 65 is not', async () => {
+    // One rule, so the boundary is one number and not three.
+    const atLimit = 'x'.repeat(64)
+    for (const clientId of [atLimit]) {
+      expect(parseBoardCommit({ clientId, tasks: [] })?.clientId).toBe(clientId)
+      expect(parseItemsCommit({ clientId, items: [] })?.clientId).toBe(clientId)
+    }
+    for (const clientId of [OVERLONG]) {
+      expect(parseBoardCommit({ clientId, tasks: [] })).toBeUndefined()
+      expect(parseItemsCommit({ clientId, items: [] })).toBeUndefined()
+    }
+    const h = fakeDeps()
+    const handler = createBoardHandler(h.deps, BASE)
+    const lease = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/lease`, { clientId: atLimit }), lease)
+    expect(JSON.parse(lease.state.body).ok, 'a 64-character caller id is a caller').toBe(true)
+    const command = fakeRes()
+    await handler(fakeReq('POST', `${BASE}/command`, { clientId: atLimit, command: { type: 'run', taskId: 't-1' } }), command)
+    expect(JSON.parse(command.state.body).ok, 'a 64-character caller id is a caller').toBe(true)
+  })
+})
+
 describe('GET /board/events (SSE)', () => {
   it('opens the stream, forwards events, and cleans up on close', async () => {
     const h = fakeDeps()

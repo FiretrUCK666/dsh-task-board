@@ -12,7 +12,8 @@
  * 这一行注册用的 id 必须等于总览面板注册的 `main` key（shell 靠 id 把行解析到舞台），
  * 所以值从 `register.tsx` 的 `HOME_GROUP` 来，不在这里另写一遍。
  */
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import { usePanelRowExit } from '../design/use-panel-row-exit.ts'
 import css from '../board.module.css'
 
 /** shell 给面板列表项绑定的 props。 */
@@ -36,22 +37,7 @@ export interface HomeIconProps {
  */
 export function HomeIcon({ size, active, onExit }: HomeIconProps) {
   const rootRef = useRef<SVGSVGElement>(null)
-  useEffect(() => {
-    if (onExit === undefined) return
-    // 与另外三枚同一个理由：`closest` 从**我们自己的节点**往上走到 slot 契约里由 shell
-    // 拥有的那个按钮；原生监听在按钮上，比 React 挂在根上的合成事件先跑，所以在这里
-    // 拦下就能让 shell 自己的 `selectPanel(id)` 不触发。只挂 React 的 onClick 会漏掉
-    // 名字和键盘——它们的目标不是这枚图标。
-    const button = rootRef.current?.closest('button')
-    if (!(button instanceof HTMLButtonElement)) return
-    const onClick = (event: Event): void => {
-      if (!active) return // 面板没开着 → 让 shell 自己的处理去打开它
-      event.stopPropagation()
-      onExit()
-    }
-    button.addEventListener('click', onClick)
-    return () => { button.removeEventListener('click', onClick) }
-  }, [active, onExit])
+  usePanelRowExit(rootRef, active, onExit)
   return (
     <svg
       ref={rootRef}

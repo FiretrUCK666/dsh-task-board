@@ -29,16 +29,19 @@ import { attachmentsOf } from '../src/core/attachment.ts'
 import { attachmentLanesOf } from '../src/core/tasks.ts'
 import {
   applyItemPatch,
+  applyItemStatus,
   applyItemStep,
   captureItemRecord,
   isBlankCapture,
   isItemListValue,
   mintStepId,
+  mountItemRecord,
   planItemPromotion,
   readItemStepList,
   removeItemRecord,
   type ItemCapture,
 } from '../src/core/item-transitions.ts'
+import { linkedCardOf } from '../src/core/item-membership.ts'
 
 const T0 = 1_700_000_000_000
 const DAY = 86_400_000
@@ -76,6 +79,95 @@ function withSteps(): ItemRecord {
     ],
   })
 }
+
+/**
+ * 改状态的那一道门——**界面与模型走的是同一个函数**，所以同一个答案只有一处。
+ *
+ * 两道门，次序也是门的一部分：
+ *  - **卡还在进行中**（`cardRunning`）：进行中那一栏是执行器的，这一轮没跑完。这一行与
+ *    那张卡此刻各说各话就是从这里开始的。
+ *  - **这一档由执行器给**（`executorOnly`）：进行中 / 待审核不是人手给的。
+ *
+ * 谁先问，决定了同时成立时**说哪一句话**。次序写在函数里，两边就拿到同一句；写在调用点里，
+ * 两个调用点各写一次就会有一个先问另一个后问——而两个调用点各有各的读者与词表。
+ */
+describe('改状态只有一道门，两道门的次序也在这里', () => {
+  const card = (status: 'todo' | 'running' | 'review' | 'done' | 'backlog') => ({ id: 'card-1', status })
+
+  it('卡还在进行中：这一档写不上去，而这一次写**一次都没有发生**', () => {
+    const rows = [row({ taskId: 'card-1' })]
+    const refused = applyItemStatus(rows, 'i-1', 'done', card('running'), T0 + 1_000)
+    expect(refused.refused, '一张还在跑的卡被人手工改了栏').toBe('cardRunning')
+    expect(refused.move, '一次被拒的写还是移了卡').toBeUndefined()
+    expect(refused.rows[0]?.status, '被拒的那一次写还是改了档').toBe('todo')
+    expect(refused.rows[0]?.updatedAt, '一次拒绝盖了一个新的写入戳').toBe(T0)
+  })
+
+  it('两道门同时成立时，先问的那一道说话', () => {
+    // 卡在进行中，而要写的也是「进行中」：两句话都能解释这一次拒绝，说哪一句由次序决定。
+    // 次序写在这里，所以界面与模型拿到的是同一句。
+    const refused = applyItemStatus([row({ taskId: 'card-1' })], 'i-1', 'running', card('running'), T0 + 1_000)
+    expect(refused.refused, '次序变了，说出来的那句话就变了').toBe('cardRunning')
+  })
+
+  it('卡不在进行中：剩下那道门按它自己的话说', () => {
+    for (const executorOnly of ['running', 'review'] as const) {
+      const refused = applyItemStatus([row({ taskId: 'card-1' })], 'i-1', executorOnly, card('todo'), T0 + 1_000)
+      expect(refused.refused, `${executorOnly} 被当成人手写得进去的那一档`).toBe('executorOnly')
+    }
+  })
+
+  it('没有卡：五档全部写得进去，而一次移卡都没有', () => {
+    for (const status of ['backlog', 'todo', 'running', 'review', 'done'] as const) {
+      const written = applyItemStatus([row()], 'i-1', status, undefined, T0 + 1_000)
+      expect(written.refused, `没挂卡时 ${status} 写不进去`).toBeUndefined()
+      expect(written.rows[0]?.status).toBe(status)
+      expect(written.move, '没挂卡却移了一次卡').toBeUndefined()
+    }
+  })
+
+  it('挂着卡：这一行自己写一次，外加移那张卡一次——两处一起写', () => {
+    const written = applyItemStatus([row({ taskId: 'card-1' })], 'i-1', 'done', card('todo'), T0 + 1_000)
+    expect(written.rows[0]?.status).toBe('done')
+    expect(written.move).toEqual({ cardId: 'card-1', status: 'done' })
+  })
+})
+
+/**
+ * 挂载：**链接与这一行自己那一档一起写**。
+ *
+ * 两个字段各写各的，就是这一行说待办、那张卡说待审核——屏上两个说法，而清单与看板是两份
+ * 文档。挂载是这一件事的唯一落点，所以它必须一次写完。
+ */
+describe('挂载一次写完两件事', () => {
+  it('链接与那一档一起写', () => {
+    const mounted = mountItemRecord([row()], 'i-1', 'card-1', 'review', T0 + 1_000)[0]
+    expect(mounted?.taskId).toBe('card-1')
+    expect(mounted?.status, '挂上之后这一行自己那一档没有跟着那张卡').toBe('review')
+  })
+
+  it('读者自己按下的「已完成」压过卡片——挂上去不改他说过的话', () => {
+    // `itemStatusOf` 的那一条唯一例外：一次显式的勾选是读者对**这一行**说的话。
+    // 面板那一支「卡换了栏，这一行自己那一档跟着写」也留着这一条例外，两边于是同一句话。
+    const mounted = mountItemRecord([row({ status: 'done' })], 'i-1', 'card-1', 'todo', T0 + 1_000)[0]
+    expect(mounted?.status, '挂一张待办的卡，把读者勾掉的「已完成」抹掉了').toBe('done')
+  })
+})
+
+describe('挂没挂卡只有那一个判据', () => {
+  it('卡在板上：链接与它此刻那一栏一起', () => {
+    const link = linkedCardOf(row({ taskId: 'card-1' }), new Map([['card-1', 'review' as const]]))
+    expect(link).toEqual({ id: 'card-1', status: 'review' })
+  })
+
+  it('卡被删了：不算挂着——链接还在，屏上读不到那张卡', () => {
+    expect(linkedCardOf(row({ taskId: 'card-1' }), new Map()), '一张不在板上的卡仍被算作挂着').toBeUndefined()
+  })
+
+  it('看不见看板：也不猜那一栏', () => {
+    expect(linkedCardOf(row({ taskId: 'card-1' }), undefined), '看不见就当看得见').toBeUndefined()
+  })
+})
 
 describe('an edit that changes nothing is not a write', () => {
   it('the SAME patch twice returns the identical array the second time', () => {

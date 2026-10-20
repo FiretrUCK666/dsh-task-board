@@ -200,6 +200,37 @@ interface ItemRow {
     /** The linked card, or `undefined` — never a second copy of its title. */
     readonly taskId: string | undefined;
 }
+/**
+ * The kind a report is filed under, decided from the report's FIELDS.
+ *
+ * The catalog's verb says which kind of change this was; the report's own
+ * fields say whether there WAS one. **Neither is read out of the detail
+ * sentence**: a receipt that classified itself by its own wording turns one
+ * rewording into a wrong kind, a wrong first failure and a wrong summary —
+ * with every functional test still green, because the wording was the only
+ * thing that changed.
+ * @param report - the report as the batch runner built it.
+ * @returns the kind.
+ */
+export declare function kindOfReport(report: Omit<OpReport, 'kind'>): OpReport['kind'];
+/**
+ * The rows the engine ACCEPTED but has not run yet.
+ *
+ * Accepted is not executed: a card that renders these as done is lying, and
+ * the summary that counts them as effects is lying in a bigger way.
+ * @param reports - the batch's reports.
+ * @returns the titles of the accepted-but-pending rows.
+ */
+export declare function enginePendingOf(reports: readonly OpReport[]): string[];
+/**
+ * The op the batch stopped at: the first failure that was actually ATTEMPTED.
+ *
+ * A skipped op is not a failure — it never ran — so pointing the summary at
+ * one would blame an op for something that did not happen to it.
+ * @param reports - the batch's reports.
+ * @returns the first real failure, or undefined when there was none.
+ */
+export declare function firstFailureOf(reports: readonly OpReport[]): OpReport | undefined;
 /** Which of the two synced documents an op moved. */
 export type ActionDocument = 'board' | 'items';
 export interface OpReport {
@@ -227,6 +258,24 @@ export interface OpReport {
      * moved two has to name them.
      */
     readonly documents?: readonly ActionDocument[];
+    /**
+     * THE OP WAS NOT EXECUTED: the batch stopped before it, or the call was
+     * cancelled. It is a field because the sentence that says so is prose, and
+     * prose can be reworded — a receipt that classifies itself by reading its
+     * own wording turns one rewording into a wrong answer with nothing red.
+     */
+    readonly skipped?: boolean;
+    /**
+     * THE HOST TOOK NO CHANGE: the row already looked like this. A field for the
+     * same reason as {@link skipped}.
+     */
+    readonly unchanged?: boolean;
+    /**
+     * THE ENGINE ACCEPTED THE REQUEST AND IS NOT HOLDING THE SEAT, so it runs
+     * when the engine comes back. Accepted is not executed, and a card that
+     * renders this as done is lying.
+     */
+    readonly queued?: boolean;
     /** What happened, or what to change. Never a bare error code. */
     readonly detail: string;
 }

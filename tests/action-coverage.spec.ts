@@ -409,6 +409,86 @@ function execute(doc, items, id, payload) {
   })
 })
 
+describe('1f — the gate reads the source as CODE, not as wording', () => {
+  /**
+   * THE DEFECT THIS PINS.
+   *
+   * The gate read `src/host/agent/tools.ts` as TEXT. So a `case 'task.create':`
+   * written inside a comment counted as an execution path, and the gate went
+   * green on a tool that had stopped implementing the action — and a `case`
+   * label written in a way the regex did not recognise counted as NO
+   * execution path, and the gate went red on a correct one.
+   *
+   * Both are the same defect read from two ends: the判据 read wording instead
+   * of structure. The rule (hard rule 14) is that a check reads structure and
+   * strips comments first — so the readers now do, from one shared scanner.
+   */
+  const MISSING = "no `case 'task.create':` exists in the agent tool"
+
+  it('a case label that only exists inside a COMMENT is not an execution path', () => {
+    const source = tools('    return relay()')
+      .replace("case 'task.create':", "case 'task.createRenamed':")
+      + "// case 'task.create': prose about the label, not a branch\n"
+    expect(findings({ agentToolsText: source })).toContain(MISSING)
+  })
+
+  it('a case label that only exists inside a STRING is not an execution path', () => {
+    const source = tools('    return relay()')
+      .replace("case 'task.create':", "case 'task.createRenamed':")
+      + 'const label = "case \'task.create\':"\n'
+    expect(findings({ agentToolsText: source })).toContain(MISSING)
+  })
+
+  it('a case label written in the other quote style is still an execution path', () => {
+    // The other end of the same defect: a label that IS code must be counted,
+    // however it is spelled — or the gate pushes a correct implementation into
+    // a spelling it happens to like.
+    const source = tools('    return relay()').replace("case 'task.create':", 'case "task.create":')
+    expect(findings({ agentToolsText: source })).not.toContain(MISSING)
+  })
+
+  it('a commented-out relay decision is not the relay decision', () => {
+    // The branch is found by reading the source, so a commented-out `if` is not
+    // a branch — and the gate must say it cannot find the decision rather than
+    // measure the comment.
+    const source = `function applyOne(id: string) {
+  // if (spec.lane === 'engine') {
+  //   return relay()
+  // }
+  return 0
+}
+`
+    expect(findings({ agentToolsText: source }))
+      .toContain('cannot find where src/host/agent/tools.ts decides that an action is a relay')
+  })
+
+  it('a comment about the carrier is not a guard that refuses', () => {
+    // The guard has to be CODE. A comment that names `spec.relay` and says
+    // `relay === undefined` reads exactly like the guard, and it refuses
+    // nothing — so a branch carrying only that comment forwards every engine
+    // action as one thing, which is the incident this check exists against.
+    const source = tools([
+      '    // const relay = spec.relay',
+      "    // if (relay === undefined) return 'refused'",
+      '    return relay()',
+    ].join('\n'))
+    expect(findings({ catalogText: catalog({ lane: 'engine' }), agentToolsText: source }))
+      .toContain('the relay decision has NO per-action test')
+  })
+
+  it('a comment naming an action is not a decision that recognises it', () => {
+    // The other half: an engine action recognised BY NAME is the shape that
+    // regrows the incident — and a comment that names it is not a decision at
+    // all, so it must not be reported as one.
+    const source = tools([
+      "    // if (id !== 'task.create') return 'refused'",
+      '    return relay()',
+    ].join('\n'))
+    expect(findings({ catalogText: catalog({ lane: 'engine' }), agentToolsText: source }))
+      .not.toContain('recognises this engine action BY NAME')
+  })
+})
+
 describe('3 — parameter declarations, fields only', () => {
   it('catches a boolean spelled as two strings', () => {
     // The regression fingerprint: `oneOf: ['true','false']` reaches the host as

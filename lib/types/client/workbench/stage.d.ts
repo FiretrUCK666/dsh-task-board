@@ -4,11 +4,10 @@
  * WHY THERE IS EXACTLY ONE. The three pages are three separate seats in the
  * shell, so "the board" and "the checklist" are not two React trees that could
  * each own a copy — they are one pair of documents read by whichever page is
- * mounted. A second holder is not a duplicate: it is a second TRUTH. The
- * previous round shipped exactly that bug (a second `ItemListStage` bound the
- * live replica while the panel read the module singleton, and the panel sat on
- * "preparing" forever with every test green). So this file exports one instance
- * and the assembly layer binds it; nobody constructs another.
+ * mounted. A second holder is not a duplicate: it is a second TRUTH — one copy
+ * of the replica is bound by it while the panel reads the other, and the panel
+ * then sits on 「准备中」 forever with every test green. So this file exports one
+ * instance and the assembly layer binds it; nobody constructs another.
  *
  * WHY THE COUNTS ARE A READ AND NOT A SUBSCRIPTION. `ChecklistReplica` allows a
  * SINGLE remote listener and the list panel already owns it — subscribing from

@@ -70,7 +70,7 @@ import { itemQualifierVocabulary } from '../../core/item-query.ts'
 import { normalizeAttachmentRefs } from '../../core/attachment.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
-import { createTask, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { createTask, landCardInColumn, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
@@ -107,7 +107,7 @@ import {
   removeItemRecord,
 } from '../../core/item-transitions.ts'
 import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateKey, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
-import { derivedStatusOf } from '../../core/item-membership.ts'
+import { derivedStatusOf, linkedCardOf } from '../../core/item-membership.ts'
 import { planItemAsk } from '../../core/item-ask.ts'
 // THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
 // panel's hand-off route. A second copy of these four lines is a second thing to
@@ -433,6 +433,51 @@ function kindOf(id: string, ok: boolean, unchanged: boolean): OpReport['kind'] {
   return 'updated'
 }
 
+/**
+ * The kind a report is filed under, decided from the report's FIELDS.
+ *
+ * The catalog's verb says which kind of change this was; the report's own
+ * fields say whether there WAS one. **Neither is read out of the detail
+ * sentence**: a receipt that classified itself by its own wording turns one
+ * rewording into a wrong kind, a wrong first failure and a wrong summary —
+ * with every functional test still green, because the wording was the only
+ * thing that changed.
+ * @param report - the report as the batch runner built it.
+ * @returns the kind.
+ */
+export function kindOfReport(report: Omit<OpReport, 'kind'>): OpReport['kind'] {
+  if (report.skipped === true) return 'skipped'
+  return kindOf(report.op, report.ok, report.unchanged === true)
+}
+
+/**
+ * The rows the engine ACCEPTED but has not run yet.
+ *
+ * Accepted is not executed: a card that renders these as done is lying, and
+ * the summary that counts them as effects is lying in a bigger way.
+ * @param reports - the batch's reports.
+ * @returns the titles of the accepted-but-pending rows.
+ */
+export function enginePendingOf(reports: readonly OpReport[]): string[] {
+  const pending: string[] = []
+  for (const report of reports) {
+    if (report.ok && report.title !== undefined && report.queued === true) pending.push(report.title)
+  }
+  return pending
+}
+
+/**
+ * The op the batch stopped at: the first failure that was actually ATTEMPTED.
+ *
+ * A skipped op is not a failure — it never ran — so pointing the summary at
+ * one would blame an op for something that did not happen to it.
+ * @param reports - the batch's reports.
+ * @returns the first real failure, or undefined when there was none.
+ */
+export function firstFailureOf(reports: readonly OpReport[]): OpReport | undefined {
+  return reports.find(report => !report.ok && report.skipped !== true)
+}
+
 /** The host's own JSON value type, DERIVED from the projection's own
  *  signature rather than imported from wherever it happens to live: one
  *  derivation, so a host change moves both at once. */
@@ -510,6 +555,24 @@ export interface OpReport {
    * moved two has to name them.
    */
   readonly documents?: readonly ActionDocument[]
+  /**
+   * THE OP WAS NOT EXECUTED: the batch stopped before it, or the call was
+   * cancelled. It is a field because the sentence that says so is prose, and
+   * prose can be reworded — a receipt that classifies itself by reading its
+   * own wording turns one rewording into a wrong answer with nothing red.
+   */
+  readonly skipped?: boolean
+  /**
+   * THE HOST TOOK NO CHANGE: the row already looked like this. A field for the
+   * same reason as {@link skipped}.
+   */
+  readonly unchanged?: boolean
+  /**
+   * THE ENGINE ACCEPTED THE REQUEST AND IS NOT HOLDING THE SEAT, so it runs
+   * when the engine comes back. Accepted is not executed, and a card that
+   * renders this as done is lying.
+   */
+  readonly queued?: boolean
   /** What happened, or what to change. Never a bare error code. */
   readonly detail: string
 }
@@ -813,11 +876,11 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
 
   for (const step of request.ops) {
     if (signal !== undefined && signal.aborted) {
-      raw.push({ op: step.op, ok: false, detail: '未执行：这次调用已经被取消。' })
+      raw.push({ op: step.op, ok: false, skipped: true, detail: '未执行：这次调用已经被取消。' })
       continue
     }
     if (failed) {
-      raw.push({ op: step.op, ok: false, detail: '未执行：上一条失败后本批停止。' })
+      raw.push({ op: step.op, ok: false, skipped: true, detail: '未执行：上一条失败后本批停止。' })
       continue
     }
     const id = step.op as ActionId
@@ -881,6 +944,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
         title: built.title,
         // Accepted is not executed: the receipt names WHICH action was
         // accepted, or a queued request reads as a finished one.
+        ...(queued ? { queued: true } : {}),
         detail: queued ? `已受理（${RELAY_VERB[relay]}），引擎当前不在线，将在引擎上线后执行。` : `已交给引擎${RELAY_VERB[relay]}。`,
       })
       continue
@@ -943,6 +1007,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
         ok: true,
         ...(purged.kind === 'purged' ? { ref: `#${purged.erased.ref}`, title: itemTitleOf(purged.erased) } : {}),
         ...(wasMoved ? { documents: ['items'] as const } : {}),
+        ...(wasMoved ? {} : { unchanged: true }),
         detail: `${wasMoved ? '已生效。' : '这一条已经是这样了，没有改动。'}${purged.kind === 'purged' ? `（#${purged.erased.ref} 的正文与删除记录已清掉，撤不回来）` : '（这一条已经清干净了，没有可清除的内容）'}`,
       })
       continue
@@ -1043,6 +1108,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       ...(task === undefined ? {} : { title: task.title }),
       ...(item === undefined ? {} : { ref: `#${item.ref}`, title: itemTitleOf(item) }),
       ...(moved.length === 0 ? {} : { documents: moved }),
+      ...(noop ? { unchanged: true } : {}),
       // A one-document op keeps the subject-less sentence, so it needs no
       // document list. The two-document form is the only one that has to name
       // them, because it is the only one that can leave half a state.
@@ -1053,21 +1119,20 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
   }
 
   // The kind is the catalog's word for the op, not a name list written here,
-  // so a new verb cannot be missing from it.
-  reports.push(...raw.map(report => ({
-    ...report,
-    kind: report.detail.startsWith('未执行') ? 'skipped' as const : kindOf(report.op, report.ok, report.detail.startsWith('这一条已经是这样了')),
-  })))
+  // so a new verb cannot be missing from it. And it is decided from the
+  // report's FIELDS — an op that was skipped or that changed nothing says so,
+  // and no reading of its own sentence is involved. A receipt that classified
+  // itself by its wording would turn one rewording into a wrong kind, a wrong
+  // first failure and a wrong summary, with every functional test still green.
+  reports.push(...raw.map(report => ({ ...report, kind: kindOfReport(report) })))
   // The engine-pending set is read BEFORE the summary is written, because the
   // summary must not call an accepted run an effect.
-  for (const report of reports) {
-    if (report.ok && report.title !== undefined && report.detail.includes('已受理')) enginePending.push(report.title)
-  }
+  enginePending.push(...enginePendingOf(reports))
   const counts = { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 0, skipped: 0 }
   for (const report of reports) counts[report.kind] += 1
 
   const done = reports.filter(report => report.ok)
-  const firstFailure = reports.find(report => !report.ok && report.detail.startsWith('未执行') === false)
+  const firstFailure = firstFailureOf(reports)
   const ok = firstFailure === undefined
   const summary = request.dry_run === true
     ? `演练：${done.length} 条会生效${ok ? '' : `，第 ${reports.indexOf(firstFailure!) + 1} 条过不去：${firstFailure!.detail}`}。没有落盘。`
@@ -1180,10 +1245,15 @@ function applyOne(
       if (drop.kind === 'run') {
         return '「进行中」是执行器落的栏：卡跑起来自己会过去，人和模型都不能把它拖过去。'
       }
-      const moved = through(moveTaskToStatus(last, target, now))
-      if (typeof moved === 'string') return moved
-      const tasks = doc.tasks.map(task => (task.id === last!.id ? moved.task : task))
-      return moved.unchanged === true ? { doc, items, task: last, unchanged: true } : { doc: { ...doc, tasks }, items, task: moved.task }
+      /* **落位走界面的那一条路。** 只改 `status` 的字段，卡在目标栏里的名次就还是原来那一栏
+       * 的键——于是「人拖出来的顺序」与「模型挪出来的顺序」不一样，而键就是屏上的顺序。
+       * **位置**归 `applyCardOrder`（`landCardInColumn` 里面就是它），**内容**归
+       * `moveTaskToStatus`——界面拖动（`controller.moveTask`）走的是同一对共享函数。 */
+      const transitioned = moveTaskToStatus(last, target, now)
+      if (!transitioned.ok) return transitioned.why
+      const tasks = landCardInColumn(doc.tasks, last.id, target, undefined, now, transitioned.task)
+      if (tasks === doc.tasks) return { doc, items, task: last, unchanged: true }
+      return { doc: { ...doc, tasks }, items, task: tasks.find(task => task.id === last!.id) ?? last }
     }
     case 'task.approve': {
       last = findTask()
@@ -1586,10 +1656,13 @@ function applyOne(
         if (typeof raw === 'number' && Number.isFinite(raw)) return raw
         return found[field]
       }
-      // 挂卡同理：没传沿用，空是摘掉，非空字符串是换链。
-      const nextTaskId = payload.taskId === undefined
-        ? found.taskId
-        : (payload.taskId === null || payload.taskId === '' ? undefined : (typeof payload.taskId === 'string' ? payload.taskId : found.taskId))
+      // 挂卡：没传 = 不动；空 = 摘掉；非空字符串 = 换链；别的形状 = 没说清（沿用）。
+      const link: 'none' | 'unlink' | { readonly cardId: string } =
+        payload.taskId === null || payload.taskId === ''
+          ? 'unlink'
+          : typeof payload.taskId === 'string' && payload.taskId !== ''
+            ? { cardId: payload.taskId }
+            : 'none'
       // The step list is read once, against the row it will live in, so the ids
       // it mints are the row's own deterministic ones.
       const steps = payload.steps === undefined ? undefined : readItemStepList(payload.steps, found.id)
@@ -1607,6 +1680,8 @@ function applyOne(
       // undefined 是不合法值，所以「没提」就不能出现在补丁里；日期那几项的行内形状
       // 本来就是 `number | undefined`，所以那里 undefined 是**清空**——`nextInstant`
       // 已经把「没提」与「清空」分开了（没提 → 沿用当前值，写回去等于没改）。
+      //
+      // **链接不在这个补丁里**：挂上与摘下是挂载那一条路（下面），不是一个字段的补丁。
       const patch: Parameters<typeof applyItemPatch>[2] = {}
       if (payload.title !== undefined) patch.title = payload.title as string
       if (payload.body !== undefined) patch.body = payload.body as string
@@ -1616,9 +1691,31 @@ function applyOne(
       patch.startsAfter = nextInstant('startsAfter')
       patch.dueAt = nextInstant('dueAt')
       patch.hardDueAt = nextInstant('hardDueAt')
-      patch.taskId = nextTaskId
       if (steps !== undefined) patch.steps = steps.steps
-      const patched = applyItemPatch(items.items, found.id, patch, now)
+      let rows = applyItemPatch(items.items, found.id, patch, now)
+      /* **挂载：链接与这一行自己那一档一起写。**
+       *
+       * 摘掉链接不需要挂载——这一行保留最后一次与卡同步过的状态，那就是它现在的状态（一次
+       * 普通的补丁，与界面那一枚「不挂」一样）。挂上必须同时决定这一行自己那一档是什么：挂上
+       * 之后「这一行显示什么」由卡回答，而两个字段各写各的，就是这一行说待办、那张卡说待审核，
+       * 屏上两个说法。`mountItemRecord` 是挂载的唯一落点（界面提升那一条路调的是它）。
+       *
+       * **挂到一张不存在的卡上是一条断链**：屏上读不到那张卡，而清单里却记着它。界面那一侧
+       * 的选择器只列板上真的卡，所以这个状态模型写不出来——这里明确拒绝，而不是写一条断链
+       * 再让面板那一侧悄悄把它清掉。 */
+      if (link === 'unlink') {
+        rows = applyItemPatch(rows, found.id, { taskId: undefined }, now)
+      } else if (link !== 'none') {
+        const target = doc.tasks.find(task => task.id === link.cardId)
+        if (target === undefined) {
+          const names = doc.tasks.slice(0, 20).map(task => task.title).join('，')
+          return `看板上没有 id 为 ${link.cardId} 的卡片，挂不上去。看板上现在有：${names || '（一张卡都没有）'}`
+        }
+        // 已经是这张卡：挂载与一次普通补丁写的是同一件事，而空转不该烧一次版本。
+        if (target.id !== found.taskId) {
+          rows = mountItemRecord(rows, found.id, target.id, target.status, now)
+        }
+      }
       /* THE STATUS HALF IS ITS OWN WRITE, and it is the INTERFACE's write.
        *
        * `applyItemStatus` is the one door a row's status goes through: the row's
@@ -1626,11 +1723,18 @@ function applyOne(
        * telling two stories is a state the reader cannot explain. The panel's
        * status chips call it; a model that only wrote the field would leave the
        * card where it was — and the panel's own sync would then quietly undo
-       * that write, so the receipt said 「已生效」 about an edit nobody kept. */
-      let rows = patched
+       * that write, so the receipt said 「已生效」 about an edit nobody kept.
+       *
+       * **那道卡按界面那一侧的读法拿**（`linkedCardOf`：卡不在板上就不算挂着），所以「这一条
+       * 挂着哪张卡、它在哪一栏」在两边是同一个答案——而那一栏正是「它还在进行中吗」这条门的
+       * 判据，两边必须拿到同一个。 */
       let cardMove: { readonly cardId: string; readonly status: TaskStatus } | undefined
       if (payload.status !== undefined) {
-        const write = applyItemStatus(rows, found.id, payload.status as TaskStatus, found.taskId, now)
+        const card = linkedCardOf(rows.find(item => item.id === found.id) ?? found, cardsMapOf(doc.tasks))
+        const write = applyItemStatus(rows, found.id, payload.status as TaskStatus, card, now)
+        if (write.refused === 'cardRunning') {
+          return '这一条挂着的卡还在进行中：这一轮跑完再改它的状态——现在改，这一行与那张卡会说出两个故事。'
+        }
         if (write.refused === 'executorOnly') {
           return '这一条挂着看板卡片，状态只能给到待规划 / 待办 / 已完成——进行中与待审核是执行器落的事实，写不上去。'
         }
@@ -1639,20 +1743,18 @@ function applyOne(
         // "did this edit change anything" is decided by the row's own field.
         if (write.rows.find(item => item.id === found.id)?.status !== found.status) rows = write.rows
       }
-      /* AND THE CARD MOVES UNDER `task.move`'s LAW, because that is what moving
-       * it IS: the same gate the drag walks through, so a card with a round in
-       * flight is refused here exactly as it is there. */
+      /* AND THE CARD LANDS THE WAY THE INTERFACE LANDS IT, because that is what
+       * moving it IS: the same two shared functions the drag walks through
+       * （**位置**归 `applyCardOrder`，**内容**归 `moveTaskToStatus`），于是两边的名次
+       * 逐项相同——名次就是屏上的顺序。 */
       let nextDoc = doc
       if (cardMove !== undefined) {
         const target = doc.tasks.find(task => task.id === cardMove!.cardId)
         if (target !== undefined) {
-          const drop = resolveCardDrop(target, cardMove.status)
-          if (drop.kind === 'reject') return BUSY_REASON
-          const moved = moveTaskToStatus(target, cardMove.status, now)
-          if (!moved.ok) return moved.why
-          if (moved.task !== target) {
-            nextDoc = { ...doc, tasks: doc.tasks.map(task => (task.id === target.id ? moved.task : task)) }
-          }
+          const transitioned = moveTaskToStatus(target, cardMove.status, now)
+          if (!transitioned.ok) return transitioned.why
+          const tasks = landCardInColumn(doc.tasks, target.id, cardMove.status, undefined, now, transitioned.task)
+          if (tasks !== doc.tasks) nextDoc = { ...doc, tasks }
         }
       }
       if (rows === items.items && nextDoc === doc) return { doc, items, item: found, unchanged: true }
@@ -1740,14 +1842,19 @@ function applyOne(
     case 'item.ask': {
       const found = findItem()
       if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      /* THE CARD, READ THE WAY THE INTERFACE READS IT.
+       *
+       * 「挂没挂卡」只有那一个判据（`linkedCardIdOf`）：卡不在板上就不算挂着，界面那一侧
+       * 也是这么读的（`cardColumns` 里没有就是没有）。所以模型说「这一条没有挂卡」与界面
+       * 说「没有挂卡」是同一件事——而模型若按文档里那个链接去找卡，就会找到一张已经被删掉的
+       * 卡，然后对一个不存在的对话开口。 */
+      const cardLink = linkedCardOf(found, cardsMapOf(doc.tasks))
+      const card = cardLink === undefined ? undefined : doc.tasks.find(task => task.id === cardLink.id)
       // THE SAME PLAN THE PANEL'S BUTTON CALLS. Which conversation a row's words
       // go to, and whether this is 开始 or 继续, is one judgment — the model asking
       // the same question the person asked must reach the same answer, or the row
       // behaves differently depending on who typed, which is the one thing a
       // shared action cannot be.
-      const card = found.taskId === undefined
-        ? undefined
-        : doc.tasks.find(task => task.id === found.taskId)
       const verdict = planItemAsk({
         item: found,
         card,

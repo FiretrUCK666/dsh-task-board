@@ -81,8 +81,8 @@
 .chipFill {
   /* **它有自己的高。** 20px 是设计给它的数；交给内容去算，高度就跟着字体度量走——
      同一颗芯片在两台设备上一高一矮，而屏上没有任何一处说得出这句话。
-     **它的字靠 flex 居中，不靠行高**：一枚定了高的盒子若不声明对齐，字就贴在顶边（旧写法
-     正是如此：22px 的盒、18px 的行盒，字比几何中心高 2px），而它是这一页最常出现的控件。 */
+     **它的字靠 flex 居中，不靠行高**：一枚定了高的盒子若不声明对齐，字就贴在顶边
+     （22px 的盒配 18px 的行盒，字比几何中心高 2px），而它是这一页最常出现的控件。 */
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -588,17 +588,14 @@
  *
  * ── 段高从轨道推，且**不用 transform** ─────────────────────────────────────
  *
- * 这里曾经是 `height: 22px` + `transform: translateY(-0.04em)`。两处都错：
+ * 段高读 `--dsh-tb-segment-h`（由轨道高与轨道内衬推出来，见 tokens 表），墨位校正
+ * 写成 padding-block-end。28 = 3 + 22 + 3 这条算式只剩一个出处。
  *
- *   1. 22 是一个凭空的第三档高度（轨道 3 + 22 + 3 = 28，靠加法凑到按钮那一档），
- *      于是段高与轨道内衬是两个各自维护的数；
- *   2. `translateY` 把**盒子**整体上移——它移动的不是字在盒子里的位置，而是盒子
- *      本身。读到的效果就是读者报的「按钮偏上来一点」：上间隙 2.5px、下间隙 0.5px。
- *      墨位校正必须是**行盒高度**（见 `--dsh-tb-text-line-h`），因为只有内衬会改变
- *      内容盒的中心。
- *
- * 现在段高读 `--dsh-tb-segment-h`（由轨道高与轨道内衬推出来，见 tokens 表），
- * 校正写成 padding-block-end。28 = 3 + 22 + 3 这条算式只剩一个出处。 */
+ * **两处不许再写回去**：段高不是凭空的第三档（轨道 3 + 22 + 3 = 28 靠加法凑到按钮
+ * 那一档，于是段高与轨道内衬会变成两个各自维护的数）；`translateY` 也不许——它把
+ * **盒子**整体上移，移动的不是字在盒子里的位置，而是盒子本身。读到的效果就是读者报
+ * 的「按钮偏上来一点」：上间隙 2.5px、下间隙 0.5px。墨位校正必须是**行盒高度**
+ * （见 `--dsh-tb-text-line-h`），因为只有内衬会改变内容盒的中心。 */
 .segmentedButton {
   display: inline-flex;
   align-items: center;
@@ -657,13 +654,13 @@
 /* ── ICON-BUTTON SIZE STEPS ───────────────────────────────────────────────────
  *
  * `.iconButton` is 30px — the TOOLBAR size, for a glyph that stands alone in a
- * header. Two rows on this board run tighter than that and used to say so with a
- * descendant selector from their own sheet (`.detailHeader .iconButton`,
- * `.reviewHeader .iconButton`): a rule that crosses a sheet boundary compiles
- * against a name nothing renders, so those declarations were doing nothing at
- * all in the built bundle — silently, because in the source both sides spell the
- * same. They are size steps of the component, so they are declared here, once,
- * and reached through `IconButton`'s `size` prop.
+ * header. Two rows on this board run tighter than that. They are size steps of
+ * the component, so they are declared here, once, and reached through
+ * `IconButton`'s `size` prop — a row that wants a tighter size must not say so
+ * with a descendant selector from its own sheet (`.detailHeader .iconButton`):
+ * a rule that crosses a sheet boundary compiles against a name nothing renders,
+ * so it does nothing at all in the built bundle — silently, because in the source
+ * both sides spell the same.
  *
  * The numbers are the button ladder's own tokens, never re-typed: `md` is the
  * full button height, `sm` the compact one. A row picks its height TIER and
@@ -745,12 +742,12 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  /* **这里原来有 `overflow: hidden`**（经典的「把方的东西裁成圆」那一手），而它
-   * 裁的那件东西是**看不见的**：里面的原生色盘 `opacity: 0`，而它自己 `inset: 0`
-   * 正好填满这一格。留下它只有一个代价——**它把里面那枚色盘伸出去的那一圈也裁掉了**：
-   * 触屏档那一枚色盘的可点范围比这一格大 7px（见下面触屏那一档的写法），伸出去的
-   * 那一圈落在裁剪口外就**够不着**。去掉它，那一圈才真的落在热区上，而屏上一个
-   * 像素都不变（那一圈本来就没有颜色）。 */
+  /* **这一格不许加 `overflow: hidden`**（经典的「把方的东西裁成圆」那一手）：它裁的
+   * 那件东西是**看不见的**（里面的原生色盘 `opacity: 0`，而它自己 `inset: 0` 正好填满
+   * 这一格），而它**会把里面那枚色盘伸出去的那一圈也裁掉**——触屏档那一枚色盘的可点
+   * 范围比这一格大 7px（见下面触屏那一档的写法），伸出去的那一圈落在裁剪口外就
+   * **够不着**。不加它，那一圈才真的落在热区上，而屏上一个像素都不变（那一圈本来就没有
+   * 颜色）。 */
 }
 
 /* The custom-colour affordance: a full hue wheel, because the control's whole job
@@ -786,13 +783,10 @@
 /* AN UNNAMED CONTAINER QUERY, and both halves of that matter.
  *
  * UNNAMED, because a container NAME is hashed from the sheet it is written in,
- * exactly like a class name. This block used to say `@container dsh-tb …` — the
- * name the board sheet declares on the panel root — so the query compiled to this
- * sheet's hash while the container carried the board's, and the whole block was
- * DEAD. It looked alive, because the same rules also had copies sitting outside
- * any at-rule that applied at every width. An unnamed query asks the NEAREST
- * container, whatever it is called, so it works from here — and a shared
- * component stops depending on which panel rendered it.
+ * exactly like a class name: a named query compiles against the name of the
+ * sheet it is written in, so it can only match a container that sheet declares.
+ * An unnamed query asks the NEAREST container, whatever it is called, so it works
+ * from here — and a shared component stops depending on which panel rendered it.
  *
  * A CONTAINER CANNOT QUERY ITSELF, which is why the panel root declares the
  * container and this sheet only asks. Giving `.modalBackdrop` its own
@@ -844,12 +838,12 @@
 
 /* ── THE SHARED LISTS, HALF HERE ──────────────────────────────────────────────
  *
- * Each of these used to be one `:is()` list in the board's sheet naming classes
- * from both sheets — a list that reads as one rule and behaves as none, because
- * a class name is hashed from its filename. The list is split along the boundary
- * it always had: this half names the members the DESIGN owns, and the surface
- * sheet keeps the members it owns. Same grammar, two halves, each declared next
- * to the class it applies to.
+ * Each of these is a LIST, and it is split along the boundary it has to have:
+ * this half names the members the DESIGN owns, and the surface sheet keeps the
+ * members it owns. A single `:is()` list naming classes from both sheets reads
+ * as one rule and behaves as none, because a class name is hashed from its
+ * filename. Same grammar, two halves, each declared next to the class it applies
+ * to.
  */
 
 .modalBackdrop {
@@ -919,10 +913,9 @@
    * 所以把它撑大撑的是**可点的范围**，不是版面——外面那一圈 `.tagCustomWrap` 仍然是
    * 16×16（它的高度决定那一排颜色点的高，桌面档与触屏档一模一样）。
    *
-   * 顺带修掉一处**触屏档才有的位置变化**：这一枚原先也被写进上面那份
-   * `position: relative` 的名单里，于是**触屏档**把它从 `absolute` 改成了
-   * `relative`（它自己那一条规则的后一条赢）——从「不在流里」变成「在流里」，
-   * 正是那份名单不该管它的地方。 */
+   * **它不许进上面那份 `position: relative` 的名单**：那一份会让**触屏档**把它从
+   * `absolute` 改成 `relative`（它自己那一条规则的后一条赢）——从「不在流里」变成
+   * 「在流里」，正是那份名单不该管它的地方。 */
   .tagCustomColor {
     inset: calc(-1 * var(--dsh-tb-hit-ring-block)) calc(-1 * var(--dsh-tb-hit-ring-inline));
     inline-size: calc(100% + 2 * var(--dsh-tb-hit-ring-inline));
@@ -940,12 +933,9 @@
 
 /* The overlay family's chrome — declared once, for the whole family.
  *
- * It used to live in the board's sheet as `.modal, .detail, .review`, which
- * meant the design system's own `Dialog` (binding `css.modal` from HERE) got
- * none of it while the two surface panels got all of it — the same sheet
- * boundary, pointing the other way. It belongs to the class, so it lives with
- * the class; a surface panel that wants the chrome applies `components.modal`
- * alongside its own class.
+ * It belongs to the CLASS, so it lives with the class: the design system's own
+ * `Dialog` (binding `css.modal` from HERE) and the surface panels that want the
+ * chrome all get it by applying `components.modal` alongside their own class.
  */
 
 .modal {
@@ -981,20 +971,16 @@
  * 面板的边缘上：读者报过的正是这件事（检查更新的对话框里每一段正文都贴着左右边缘、
  * 每一枚按钮都贴着下边缘）。
  *
- * **正文与动作这两段原先住在 `board.module.css`，搬到这里是因为它们现在有两个消费
- * 目录**（`board/` 与 `workbench/`——检查更新的对话框在 `workbench/` 里）。按准入
+ * **正文与动作这两段住在这一层，因为它们有两个消费目录**（`board/` 与 `workbench/`
+ * ——检查更新的对话框在 `workbench/` 里）。按准入
  * 判据，一个形态类有了第二个消费目录就归设计系统。
  *
- * 搬之前 `workbench/` 那边只能**自己抄一份**，抄的时候把内衬漏了：那个副本的正文
- * 与动作都没有 `padding`。**漏的不是两个数，是这个族的几何分在了两张表里**——一张表
- * 里的调用点看得到，另一张表里的调用点看不到，于是第二个消费者自己写一份，而自己
- * 写的那份没有内衬。修法是**让这一族只有一处家**，而不是给那个副本补两个 `padding`
- * （补出来的那两个数从此要人记得同步，而「改一处不报错」正是这件事的代价）。
+ * **这一族只有一处家**，所以调用点少写一段，那一段不会贴到面板的边缘上：自己抄
+ * 一份的那条路漏掉的不是两个数，是**这个族的几何分在了两张表里**——一张表里的调用
+ * 点看得到，另一张表里的调用点看不到，于是第二个消费者自己写一份，而自己写的那份
+ * 没有内衬。给那个副本补两个 `padding` 只是把「要人记得同步」这件事留下来。
  *
- * 滚动条那一半与盒子是同一个类：一条贴着盒子内衬边的细条，与盒子是同一件事。它
- * 曾经住在 `design/components.module.css` 而类是 `board/` 的，那一半是**死的**——
- * 类名按表哈希，别的表的选择器匹配不到任何节点，屏上只是「那里没生效」（见
- * `board.module.css` 里那段记录）。 */
+ * 滚动条那一半与盒子是同一个类：一条贴着盒子内衬边的细条，与盒子是同一件事。 */
 .modalScroll {
   display: flex;
   flex-direction: column;
@@ -1050,11 +1036,9 @@
   gap: var(--dsh-tb-space-5);
   padding: 14px 18px;
   border-top: var(--dsh-tb-separator);
-  /* **动作宁可换行，也不许溢出面板的边。** 这一条原先住在看板表里、只挂在窄档
-     （`@container dsh-tb (max-width: 400px)`）；它跟着这一族搬过来以后就**不再挂
-     档**了——因为「换行」是这一格自己的性质，不是某一档的性质：内容装得下时换行
-     什么也不发生（装得下时它本来就只有一行），装不下时它换行，而不是把按钮挤出
-     面板（挤出去的那一枚是够不着的）。 */
+  /* **动作宁可换行，也不许溢出面板的边。** 这一条**不挂档**：「换行」是这一格自己的
+     性质，不是某一档的性质——内容装得下时换行什么也不发生（装得下时它本来就只有一行），
+     装不下时它换行，而不是把按钮挤出面板（挤出去的那一枚是够不着的）。 */
   flex-wrap: wrap;
   /* Pinned: the action row never shrinks out of reach (see .modal). */
   flex: none;
@@ -1177,11 +1161,11 @@ textarea.input {
 
 /* ── 搜索 / 筛选：**两个面板共用的那一格** ──────────────────────────────────────
  *
- * 以前看板与清单各写一条 input 规则（一条读宿主输入面、一条读表面层），两条都配宿主的
- * 4% 黑发丝线——于是同一个工作台里上下两格字段看起来是两个产品，而且白底上都没有边。
- *
  * 这一族只有这一条规则：**外观归这里，位置归页面**（页面通过 `className` 给宽度、
  * flex 与外边距，它不许再写外观）。
+ *
+ * **外观不能由两边各写一份**：一条读宿主输入面、一条读表面层，两条都配宿主的 4% 黑
+ * 发丝线——同一个工作台里上下两格字段就会看起来是两个产品，而且白底上都没有边。
  *
  * 高读按钮那一档（28px）：搜索框与它旁边的按钮是同一排控件，同高才是「一排」；
  * 字读正文档；底读嵌面（比它所在的纸面深一档），边读 14% 墨，顶上再垫一条极淡的
@@ -1247,7 +1231,7 @@ textarea.input {
  *
  * Five hosts in two panels render it (the task form, the comment composers, a
  * session rule's instruction, a checklist row's body), so the chip grammar has
- * ONE home. Both halves of the shared browser lists that used to name these
+ * ONE home. Both halves of the shared browser lists that name these
  * classes travel with them: the hidden bar below, and the touch ring in the
  * media block further down.
  */
@@ -1277,9 +1261,9 @@ textarea.input {
 
    **它只装芯片。** 那几句话（正在传 / 这一台收不了 / 这一条带的附件是什么）一起排在这一行
    旁边，而**它们各自带着一条宽度地板**（`.attachHint` 的 `min-inline-size`）：地板装得下就
-   同排，装不下就**整句换到下一行**。句子与芯片曾经一起被压过——窄屏上 24px 的「＋」与两枚
-   芯片把它挤到只剩一个字宽，**竖着排成一列**（412 上量到过：句子变成「随/这/一/条/保/存…」）。
-   所以这里给的是**让位**：挤不动地板，就换行，不许压扁。
+   同排，装不下就**整句换到下一行**。句子与芯片一起被压过就会出事——窄屏上 24px 的
+   「＋」与两枚芯片能把它挤到只剩一个字宽，**竖着排成一列**（412 上量到过：句子变成
+   「随/这/一/条/保/存…」）。所以这里给的是**让位**：挤不动地板，就换行，不许压扁。
 
    **它不长大。** `flex: 0 1 auto`：这一行的宽就是它装的东西的宽。写成 `flex: 1 1 auto` 时它
    会吃掉整行剩下的空位，于是句子被推到那一行的**最右边**——量到过：736 宽的一格里，装了
@@ -1362,14 +1346,12 @@ textarea.input {
 /* ── THE TRUNCATION FORM ─────────────────────────────────────────────────────
  *
  * One home for 「一个会省略的文字子槽」: a text slot that may be narrower than its
- * text, ellipsizing instead of spilling. The board's sheet used to carry this
- * same four-declaration body three times (the board status text, a card's
- * workspace name, a session row's title) and the chip below carried a fourth —
- * four copies of one form, which is the drift the shared-forms audit exists to
- * catch. They all apply THIS class now, and the one obligation it states is the
- * one every caller has to honour: **the element must be allowed to shrink**
- * (`min-width: 0`), because an ellipsis that never engages is not a truncation,
- * it is a spill.
+ * text, ellipsizing instead of spilling. The board's sheet and the chip below
+ * each carried this same four-declaration body — copies of one form, which is
+ * the drift the shared-forms audit exists to catch. They all apply THIS class
+ * now, and the one obligation it states is the one every caller has to honour:
+ * **the element must be allowed to shrink** (`min-width: 0`), because an
+ * ellipsis that never engages is not a truncation, it is a spill.
  */
 .truncate {
   min-width: 0;
@@ -1485,15 +1467,10 @@ textarea.input {
 
 /* ── 三页共用的框架（`design/WorkbenchShell.tsx`）────────────────────────────
  *
- * **这三条是整页几何的唯一出处。** 以前三页各自摆自己的框：看板把内衬放在根上
- * （14/16/16），清单把栏放在自己那一行、内容另起一层，总览又是第三种。每个单看都
- * 说得通，合起来就是栏在 16/10/16、栏下的间隙 12/0/12——读者看到的「切页时整页都
- * 在动」。
- *
- * 所以框架是一个组件：页面只提供内容，**栏在哪、四周多少空气、内容从多高开始**全在
- * 这里决定一次。页面还可以决定自己的内部（列、行、卡、怎么滚），但不许再决定自己的
- * 外围空气或自己画一条栏——那两样是共用的框架，自己推一遍就是给自己留一个将来会和
- * 兄弟页面对不上的机会。
+ * **这三条是整页几何的唯一出处。** 三页各自的框必须长得一样：栏在哪、四周多少空气、
+ * 内容从多高开始，全在这里决定一次。页面还可以决定自己的内部（列、行、卡、怎么滚），
+ * 但不许再决定自己的外围空气或自己画一条栏——那两样是共用的框架，自己推一遍就是给
+ * 自己留一个将来会和兄弟页面对不上的机会。
  *
  * 栏是滚动体的**兄弟**，不是它的孩子：一个会跟着滚走的栏，是读者离不开也回不去的栏。 */
 .workbenchFrame {
@@ -1563,19 +1540,20 @@ textarea.input {
   align-items: center;
   /* ── 三条轨道**定宽**，不是「至少 84、能宽就宽」 ────────────────────────────
    *
-   * 原来的写法是 `minmax(84px, 1fr)`。`1fr` 在这里拿不到余量（轨道盒子按内容定宽），
-   * 于是每条轨道实际解析成**内容宽**——而三个 tab 的内容不一样宽（「总览」两个字、
-   * 「看板 2」、「清单 1」）。切换到另一页时，高亮那一格的字重从 500 变 600，宽度再
-   * 变一档，**三个格子跟着一起换宽**，整条导航左右抽动。
+   * 轨道**定宽**，不是「至少 84、能宽就宽」：`1fr` 在这里拿不到余量（轨道盒子按内容
+   * 定宽），于是每条轨道实际解析成**内容宽**——而三个 tab 的内容不一样宽（「总览」
+   * 两个字、「看板 2」、「清单 1」）。切换到另一页时，高亮那一格的字重从 500 变 600，
+   * 宽度再变一档，**三个格子跟着一起换宽**，整条导航左右抽动。
    *
    * 这就是读者报的「点总览／看板／清单的时候，它的位置在不停地变来变去」。
    * 定宽之后轨道是常量：切换页面只换颜色与字重，几何一个像素都不动。
    * 96px 是「两个汉字 + 一枚两位计数徽标 + 左右各 10px 内衬」量出来的宽，
    * 再加两档余量给将来出现的三个字的名字。 */
   grid-auto-columns: 100px;
-  /* **不长大、也不靠被挤来让位。** 内容多宽就是多宽（`flex: 0 0 auto`）：这一栏以前是
-     `flex: 0 1 340px`，旁边的状态行一变长就把三条轨道一起压窄——于是切换页面时高亮
-     会跟着「动一下」。窄档装不下时整栏换行（`.workbenchBar` 是 wrap），不压扁。 */
+  /* **不长大、也不靠被挤来让位。** 内容多宽就是多宽（`flex: 0 0 auto`）：可伸缩的
+     那一栏（`flex: 0 1 340px`）在旁边的状态行一变长时会把三条轨道一起压窄——于是切换
+     页面时高亮会跟着「动一下」。窄档装不下时整栏换行（`.workbenchBar` 是 wrap），
+     不压扁。 */
   flex: 0 0 auto;
   box-sizing: border-box;
   block-size: var(--dsh-tb-nav-h);
@@ -1592,10 +1570,9 @@ textarea.input {
 
 /* 当前那一颗 tab 自己就是那枚纸面药丸。
  *
- * 以前高亮是一个**独立的绝对定位浮层**（宽度 `calc((100% - 4px) / 3)`、位移
- * `translateX(index * 100%)`），它和被它盖住的 tab 是两个盒子：一个内衬的账算错，
- * 高亮就偏半格，而屏上没有任何一处会报错。现在高亮是 tab 自己的底——**一个盒子不可能
- * 跟自己错位**，也不需要知道一共有几颗。
+ * 高亮是 tab 自己的底——**一个盒子不可能跟自己错位**，也不需要知道一共有几颗。
+ * （高亮如果是另一个独立的绝对定位浮层，它和被它盖住的 tab 就是两个盒子：一个内衬的
+ * 账算错，高亮就偏半格，而屏上没有任何一处会报错。）
  *
  * 切换时底色与影淡入淡出（同一档 transition），不再横滑：读者要的是「到了」，不是
  * 「旅程」。 */
@@ -1667,7 +1644,7 @@ textarea.input {
 }
 
 /* 计数徽标：**同色淡洗底 + 正文墨**。不拿状态色当字号——琥珀在小字上的对比度
-   是这一页早就记过账的代价，而一枚 11px 的数字没有理由去背它。
+   是这一页接受的代价，而一枚 11px 的数字没有理由去背它。
 
    18px 而不是 16：16 的圆里塞一位 11px 的数字，左右各只剩 2px，读起来像一枚「点」
    而不是一枚计数（读者报的「那个 2 旁边有个很细的小点」就是它被挤出来的边）。
@@ -1833,7 +1810,7 @@ textarea.input {
  *
  * 它有**自己的底与边**，因为它说的是另一类话：上面那一行是读数（一直有、一直在变），
  * 这一条是「出了问题、而且只有一件事要你做」。底板用注意力色的淡洗，字用正文墨——琥珀
- * 小字在白底上过不了 AA，这一条早就记过账。 */
+ * 小字在白底上过不了 AA，这一条是这一页接受的代价。 */
 .workbenchNotice {
   display: flex;
   flex-wrap: wrap;
@@ -1910,10 +1887,10 @@ textarea.input {
   }
 
   .workbenchNav {
-    /* **导航与右簇共处一行，而导航是可收缩的。** 曾经它是 `flex: 1 1 100%`（独占整行，
-       把「检查更新」与出口挤到第二行，左边空着半屏）；改成 `1 1 auto` 之后仍然换行，
-       因为它自己的轨道是**定宽**的 `grid-auto-columns: 100px`——300px 的页签吃掉了整行。
-       所以两件事一起改：外面让它可以被压缩，里面让轨道按可用宽度等分。
+    /* **导航与右簇共处一行，而导航是可收缩的。** 外面让它可以被压缩（`1 1 auto`），
+       里面让轨道按可用宽度等分——两件事一起做才成：独占整行的写法（`1 1 100%`）会把
+       「检查更新」与出口挤到第二行，左边空着半屏；而轨道若是**定宽**的
+       `grid-auto-columns: 100px`，300px 的页签又会吃掉整行，于是它仍然换行。
        412 宽上那一行是宝贵的竖向额度，而「去哪 · 检查更新 · 出去」本来就是同一层级的
        三个去处，挤在一行才读得成一条栏。 */
     flex: 1 1 auto;
@@ -1964,12 +1941,12 @@ textarea.input {
   gap: var(--dsh-tb-space-3);
   padding: var(--dsh-tb-space-3) var(--dsh-tb-frame-air) calc(var(--dsh-tb-space-3) + env(safe-area-inset-bottom, 0px));
   background: var(--dsh-tb-paper);
-  /* **没有线，也没有影。** 这一条曾经画过一条 `--dsh-tb-border-soft` 的上边线（读者的
-     原话：「上面怎么还有一条线，很奇怪」），换成 `--dsh-tb-cast-2` 之后更糟——那是**向下**
-     的投影，而这一条贴着容器下沿，向下的部分被裁掉，只剩模糊的边缘往上溢出，看起来是
-     **一条很长的投影线**；改成朝上的 `0 -2px 8px` 之后仍然是一道可见的灰边。
-     结论：这一条与内容是**同一张纸**上的两段，不是一块浮起来的板。它靠自己的纸面与
-     那一档内衬已经说得够清楚，任何一条线或一层影都是多出来的第四种语言。 */
+  /* **没有线，也没有影。** 这一条与内容是**同一张纸**上的两段，不是一块浮起来的板。
+     它靠自己的纸面与那一档内衬已经说得够清楚，任何一条线或一层影都是多出来的第四种
+     语言：一条 `--dsh-tb-border-soft` 的上边线会被读者读成「上面怎么还有一条线，很
+     奇怪」；一层 `--dsh-tb-cast-2` 更糟——那是**向下**的投影，而这一条贴着容器下沿，
+     向下的部分被裁掉，只剩模糊的边缘往上溢出，看起来是**一条很长的投影线**；朝上的
+     `0 -2px 8px` 同样是一道可见的灰边。 */
 }
 /* **只有主行动吃满剩下的宽度**：拇指要够得到的是「新建」那一枚，不是每一枚。
    把 `ghostButton` 也写进来会让「动态」被拉成一条横幅，而旁边的铃铛被挤到边上

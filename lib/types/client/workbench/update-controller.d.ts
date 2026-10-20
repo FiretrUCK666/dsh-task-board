@@ -1,9 +1,8 @@
 /**
  * The workbench's ONE check-for-updates controller.
  *
- * WHY THIS IS NOT PAGE STATE. It used to live inside the board panel as five
- * `useState` cells. The bar is now shared by three pages, and the reader's rule
- * is that 「检查更新」 sits in the same place on all of them — so the state
+ * WHY THIS IS NOT PAGE STATE. The bar is shared by three pages, and the reader's
+ * rule is that 「检查更新」 sits in the same place on all of them — so the state
  * behind it cannot belong to whichever page happens to be mounted. A panel
  * unmounts every time the reader switches to a conversation, and page-owned
  * state would throw away a check that is still running (or a dialog the reader

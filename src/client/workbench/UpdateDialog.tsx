@@ -3,18 +3,16 @@
  *
  * ── 为什么它必须是一个共享组件，而不是每页写一遍 ───────────────────────────
  *
- * 这个对话框原先住在看板页面的组件里。于是「按了按钮没反应」这件事的成因不是缺陷，
- * 是**装配**：按钮由 `WorkbenchBar` 在三个页面都渲染了（`checking` / `onCheck`），
- * 而对话框只跟着看板那一页的 JSX 走。结果是同一个按钮有两种行为——看板页能弹出、
- * 另外两页什么都不发生。
+ * 触发在共享层、结果也必须在共享层：按钮由 `WorkbenchBar` 在三个页面都渲染了
+ * （`checking` / `onCheck`），所以打开它的对话框不能只跟着某一页的 JSX 走——那会
+ * 让同一个按钮在不同页面上有两种行为：这一页能弹，另外两页什么都不发生。
  *
- * 那不是「漏改一处」，是**一个功能被拆在两个地方**：触发在共享层，结果在页面层。
- * 每加一个新页面，这个缺口就再出现一次，而它不报错、不红、测试也过——因为每一页
- * 各自都「正确地」渲染了自己那份 JSX。
+ * **一个功能被拆在两个地方**是最难发现的一种缺口：它不报错、不红、测试也过——因为
+ * 每一页各自都「正确地」渲染了自己那份 JSX，只是少了一份。
  *
- * 所以修法不是「再去另外两页各挂一份」，而是把整个功能收进一个组件，**由每一页
- * 通过 `WorkbenchOverlays` 渲染同一份**。加第 4、第 5 个页面时照抄一行，而「有没有
- * 抄」由 `design-coverage.spec.ts` 的一个断言回答，不靠记得。
+ * 所以整个功能收进一个组件，**由每一页通过 `WorkbenchOverlays` 渲染同一份**。加第
+ * 4、第 5 个页面时照抄一行，而「有没有抄」由 `design-coverage.spec.ts` 的一个断言
+ * 回答，不靠记得。
  *
  * ── 为什么它可以自足 ────────────────────────────────────────────────────────
  *
@@ -166,8 +164,12 @@ export function UpdateDialog() {
               : t('board.update.latest')}
           </p>
         )}
+        {/* **占位符的键名必须与文案里那个名字一致。** 文案写的是 `发布于 {time}`，
+            这里原先传的是 `{ when }`——于是屏上原样印出「发布于 {time}」，而任何测试
+            都不会红（它只是少了一个变量，不是错误）。这条注释存在的理由是让下一个改
+            这一行的人先读上面那句 `board.update.published`。 */}
         {published !== undefined && (
-          <p className={css.hint}>{t('board.update.published', { when: published })}</p>
+          <p className={css.hint}>{t('board.update.published', { time: published })}</p>
         )}
         {/* 问的是哪个源：读者配了镜像时要能确认读到的是自己那个源，而不是公共源。 */}
         {latest?.registry !== undefined && (
@@ -178,7 +180,13 @@ export function UpdateDialog() {
         )}
         {/* **读不到远端版本，不等于检查失败。** 本地事实（装法、当前版本、怎么更新）
             仍然成立，所以这里说的是「读不到」，而不是把它画成一次错误。 */}
-        {latest === undefined && source !== undefined && source.mode !== 'local' && (
+        {/* **发布号对每一种装法都要说一句，包括 checkout。**
+            这里原先排除掉 `mode === 'local'`，理由是「checkout 的答案来自 git」——
+            那对「要不要拉」成立，对「上游发布过哪一版」不成立。于是 github 被墙的那台
+            机器上，那一次点击的**唯一**答案是「读不到远端」：一个 checkout 明明也能读到
+            发布号（registry / `api.github.com` 都通），却因为这一行什么都不许说，
+            读者看到的是「什么都不知道」。两条独立的事实各自说清，比一句「读不到」好。 */}
+        {latest === undefined && source !== undefined && (
           <p className={css.hint}>{t('board.update.noLatest')}</p>
         )}
         {source?.mode === 'local' && git !== undefined && derived.gitBehind && (
@@ -202,9 +210,10 @@ export function UpdateDialog() {
         )}
         {/* **读到一半也要说。** 本地那两条 git 命令白问；`ls-remote` 才是打网络的那条，
             它超时或失败时 `head` 有值、`remoteHead` 没有。那种状态下面两句话都不成立
-            （不能说「有新提交」，也不能说「已同步」），于是原先是**什么都不说**——
-            读者看着一个关于 git 的对话框，却读不到「远端到底问到了没有」。
-            而按钮那边正是靠这个字段决定说不说「已是最新」，所以它必须在这里被说出来。 */}
+            （不能说「有新提交」，也不能说「已同步」），所以这里必须自己说一句——读者
+            看着一个关于 git 的对话框，却读不到「远端到底问到了没有」，那就等于把一件
+            没被回答的事留成空白。而按钮那边正是靠这个字段决定说不说「已是最新」，
+            所以它必须在这里被说出来。 */}
         {source?.mode === 'local' && git !== undefined && git.remoteHead === undefined && (
           <p className={css.hint}>{t('board.update.gitRemoteUnread')}</p>
         )}

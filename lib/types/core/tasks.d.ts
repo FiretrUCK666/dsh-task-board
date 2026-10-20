@@ -835,6 +835,30 @@ export declare function resolveCardDrop(task: TaskRecord, target: TaskStatus): C
  */
 export declare function applyCardOrder(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, beforeId: string | undefined, now: number): TaskRecord[];
 /**
+ * 手动移栏的落位：**位置**归这里，**内容**由调用方给。
+ *
+ * 两个半各管各的字段，合起来才是「这张卡换了栏」这一件事：**位置**是它在目标栏里的名次
+ * （`applyCardOrder` 算的，连同目标栏与原来那一栏一起重编号——名次就是屏上的顺序），**内容**
+ * 是「换栏意味着什么」（移到已完成解甲排期与会话规则、从已完成出来算一次重生——那是
+ * `moveTaskToStatus` 的半）。两半各写各的字段，于是拼起来的那一行既在正确的名次上，又带着
+ * 正确的后果。
+ *
+ * **内容那一半必须从移动之前的那张卡算出来**（`moveTaskToStatus` 的规矩）：状态历史只追加
+ * 一次，两半各追加一次就是两次——屏上会看到这一张卡换过两回栏。
+ *
+ * 什么都没动时**返回同一份列表**：一份新的数组会让调用方以为有东西变了，于是烧一次版本、
+ * 叫醒每一台设备——而屏上什么都没动。
+ *
+ * @param tasks - 整份台账。
+ * @param movedId - 要落位的那张卡。
+ * @param targetStatus - 目标栏。
+ * @param beforeId - 插到同栏这张卡之前；`undefined` = 栏尾。
+ * @param now - 写入时钟。
+ * @param content - 那张卡换栏之后的那一行（`moveTaskToStatus` 的答案）。
+ * @returns 落位之后的台账；没动时是同一份。
+ */
+export declare function landCardInColumn(tasks: readonly TaskRecord[], movedId: string, targetStatus: TaskStatus, beforeId: string | undefined, now: number, content: TaskRecord): TaskRecord[];
+/**
  * 把若干张卡片顶到各自那一栏的最上方——「最新状态在前」这条律的唯一实现。
  *
  * 单张（{@link promoteToColumnTop}）与批量是同一个函数：批量只是把 entries

@@ -43,6 +43,7 @@ import { t } from '../locales.ts'
 import { CAPTION, WORD } from './labels.ts'
 import { GroupMark, ChevronMark, PriorityMark, StatusMark, type ItemMarkId } from './marks.tsx'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 /** The word each stable key is spoken in. A filter written against a display
  *  name matches nothing the moment that name is reworded, so the core hands over
@@ -147,7 +148,7 @@ export function ItemRail(props: ItemRailProps) {
    * 指向的是**另一份的那块日历**。 */
   const calendarId = useId()
   return (
-    <nav className={css.itemRail} data-dsh-tb-scroll="" data-calendar={props.calendarOpen ? '' : undefined} aria-label={t('item.rail.label')}>
+    <nav className={`${css.itemRail} ${base.stripInsetOuter}`} data-dsh-tb-scroll="" data-calendar={props.calendarOpen ? '' : undefined} aria-label={t('item.rail.label')}>
       {/* ── 日历 ─────────────────────────────────────────────────────────────
         *
         * **它是一枚可以折的日历，不是一行裸数字。** 一行裸数字（一个月题 + 七列

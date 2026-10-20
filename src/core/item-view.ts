@@ -70,7 +70,8 @@ export { DAY_MS, HARD_SOON_DAYS, datePostureOf, startOfDay } from './item-dates.
 export type { DatePosture, SoftPosture } from './item-dates.ts'
 
 // ── item-membership ────────────────────────────────────────────────────────
-export { derivedStatusOf, isAgendaItem, isInboxItem, linkedCardIdOf } from './item-membership.ts'
+export { derivedStatusOf, isAgendaItem, isInboxItem, linkedCardIdOf, linkedCardOf } from './item-membership.ts'
+export type { ItemCardLink } from './item-membership.ts'
 
 // ── item-stale ─────────────────────────────────────────────────────────────
 export { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts'

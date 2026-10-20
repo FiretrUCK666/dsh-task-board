@@ -110,6 +110,41 @@ export function linkedCardIdOf(item: ItemRecord, cards: ReadonlyMap<string, Task
 }
 
 /**
+ * 这一条挂着的卡，**按这一侧看得见的栏读**——链接与那一栏一起。
+ *
+ * 两样东西必须一起给，因为「挂着的卡在哪一栏」是同一件事的两半：改状态要移那张卡（要它的
+ * id），也要知道它现在在哪一栏（那一栏是「它还在进行中吗」这条门的判据）。分开给就是两处
+ * 各记一半，而两半可以来自不同的读取——于是「这一条挂着的卡」有两个答案。
+ */
+export interface ItemCardLink {
+  /** 那张卡的 id。 */
+  readonly id: string
+  /** 那张卡此刻在哪一栏。 */
+  readonly status: TaskStatus
+}
+
+/**
+ * 挂着的卡与它在哪一栏——**「挂没挂卡」只有那一个判据**（`linkedCardIdOf`）。
+ *
+ * 卡被删了就不算挂着（链接还在，屏上读不到那张卡），这一条自己那一档于是由它自己回答；
+ * 看不见卡的那一栏也不猜。模型与界面都读这一个函数，所以「这一条挂着哪张卡、在哪一栏」
+ * 只有一个答案。
+ *
+ * @param item - 那一行。
+ * @param cards - 看板的栏，按卡片 id 索引；`undefined` 表示这一侧看不见看板。
+ * @returns 那张卡与它所在的栏；没有卡就是 `undefined`。
+ */
+export function linkedCardOf(
+  item: ItemRecord,
+  cards: ReadonlyMap<string, TaskStatus> | undefined,
+): ItemCardLink | undefined {
+  const id = linkedCardIdOf(item, cards)
+  if (id === undefined) return undefined
+  const status = cards?.get(id)
+  return status === undefined ? undefined : { id, status }
+}
+
+/**
  * The row's status AS A SURFACE SHOWS IT — the ONE place that question is answered.
  *
  * **A row that hangs off a card is wherever that card is**; a row with no card (or

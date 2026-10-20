@@ -243,8 +243,32 @@ function unownedBoardTransitions(sheet: string): { selector: string; value: stri
  * @param selector - the selector half as the reader returned it.
  * @returns the selector proper.
  */
-function selectorName(selector: string): string {
-  return selector.split('{').pop()?.trim().replace(/\s+/g, ' ') ?? ''
+function selectorName(selector: string): string {  return selector.split('{').pop()?.trim().replace(/\s+/g, ' ') ?? ''
+}
+
+/**
+ * A CSS value's TOP-LEVEL parts.
+ *
+ * The whitespace inside `calc()` does not make it two values: `calc(a + b)` is
+ * ONE value, and as an inline padding it says both ends pay the same. This is
+ * the difference between a value that says one thing and a value that says two,
+ * so it is counted at the top level only.
+ */
+function topLevelParts(value: string): string[] {
+  const parts: string[] = []
+  let depth = 0
+  let current = ''
+  for (const ch of value) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (depth === 0 && /\s/.test(ch)) {
+      if (current !== '') { parts.push(current); current = '' }
+      continue
+    }
+    current += ch
+  }
+  if (current !== '') parts.push(current)
+  return parts
 }
 
 /** Whether a rule's block says a class may give way rather than overflow. */
@@ -1449,8 +1473,8 @@ describe('the rail and in-row detail share one workbench', () => {
  *
  *   1. what the scroller pays is ONE value, declared exactly once and outside
  *      every conditional block;
- *   2. the trailing alias IS the leading one (`--item-inset-x-end` resolves to
- *      `var(--item-inset-x)`), so the right end cannot carry a second sum.
+ *   2. the two ends of a strip pay the SAME number — one declaration, one value,
+ *      so the trailing end cannot carry a second sum.
  *
  * The geometry those two produce is measured where geometry can be measured:
  * `scripts/probes/probe-item-frame.js` walks the container width in a real
@@ -1459,10 +1483,14 @@ describe('the rail and in-row detail share one workbench', () => {
  */
 describe('the frame pays one air at both ends', () => {
   const css = panelCss()
+  /* The shared layer's sheets — where the strip inset (the thing that holds the
+     two ends) lives. It is a different file from the page's own, which is the
+     point: the shape is shared, so it cannot be written per page. */
+  const design = designCss()
 
   /* The invariant as a function rather than as one inline expectation, so it can
    * be pointed at a PLANTED violation and be seen to report. */
-  const frameAirFindings = (cssText: string): string[] => {
+  const frameAirFindings = (cssText: string, designText: string): string[] => {
     const findings: string[] = []
     const live = stripCssComments(cssText)
     const blocks = conditionalRanges(live)
@@ -1509,28 +1537,49 @@ describe('the frame pays one air at both ends', () => {
       }
     }
 
-    // 3. THE TWO ENDS ARE THE SAME NUMBER. The trailing alias is checked as an
-    //    ALIAS rather than as a value: a second sum
-    //    (`calc(var(--item-row-pad) + var(--s2))`) is exactly how the right end
-    //    drifted out of the air's reach in the first place.
-    const leading = declared('--item-inset-x').at(-1)?.[1]?.trim() ?? ''
-    const trailing = declared('--item-inset-x-end').at(-1)?.[1]?.trim() ?? ''
-    if (air !== undefined && !leading.includes(`var(${air})`)) {
-      findings.push(`--item-inset-x does not read the frame's air (${leading || 'missing'}), so the content line can drift from the card's own edge`)
+    // 3. THE TWO ENDS ARE THE SAME NUMBER. This is the question the deleted
+    //    alias pair used to answer, asked of the thing that now holds the two
+    //    ends: the strip inset is ONE inline declaration of ONE value, so both
+    //    ends are that value by construction. A second sum at the trailing end
+    //    is the same defect the pair was checked for — it just needs a different
+    //    shape to hide in.
+    const designLive = stripCssComments(designText)
+    const stripRules = declarationRules(designLive).filter(rule => /stripInsetOuter/.test(rule.selector))
+    const stripPads: string[] = []
+    for (const rule of stripRules) {
+      for (const call of rule.body.matchAll(/(?:^|[;{\s])padding-inline\s*:\s*([^;]+)/g)) stripPads.push((call[1] ?? '').trim())
     }
-    if (trailing !== 'var(--item-inset-x)') {
-      findings.push(`--item-inset-x-end is not the leading alias (${trailing || 'missing'}) — the trailing end is a second sum again, and the two ends can disagree`)
+    if (stripPads.length !== 1) {
+      findings.push(`the strip inset declares ${stripPads.length} inline padding(s) — one declaration is what says both ends pay the same, and a second one is a second answer`)
+    }
+    for (const value of stripPads) {
+      /* A value's TOP-LEVEL parts: the whitespace inside `calc()` does not make
+         it two values. `padding-inline: calc(a + b)` is one value, and it says
+         both ends pay the same; `padding-inline: calc(a + b) 10px` is two, and
+         it says they differ. */
+      if (topLevelParts(value).length !== 1) {
+        findings.push(`the strip inset pays its two ends different values (padding-inline: ${value}) — the left gap and the right gap are two numbers again`)
+      }
+      if (!/var\(\s*(--dsh-tb-frame-air|--item-air)\s*\)/.test(value)) {
+        findings.push(`the strip inset does not read the frame's air (${value}), so the content line can drift from the card's own edge`)
+      }
+    }
+    /* **两个名字必须是一个数。** 滚动体读 `--item-air`，条带读 `--dsh-tb-frame-air`——
+       两个名字，所以这一条要钉住那条别名真的是「同一个数」，否则改一个不会带动另一个。 */
+    const airAlias = declared('--item-air').at(-1)?.[1]?.trim() ?? ''
+    if (air !== undefined && air === '--item-air' && airAlias !== 'var(--dsh-tb-frame-air)') {
+      findings.push(`--item-air is not the frame's air (${airAlias || 'missing'}) — the scroller and the strips would pay two different airs`)
     }
     return findings
   }
 
   it('is quiet on the stylesheet as it stands', () => {
-    expect(frameAirFindings(css)).toEqual([])
+    expect(frameAirFindings(css, design)).toEqual([])
   })
 
   it('reports a banded air, an asymmetric pair, and a second sum at the trailing end', () => {
     const banded = `${css}\n@container dsh-tb-item (min-width: 720px) {\n  .itemWorkbench { --item-air: 0px; }\n}\n`
-    expect(frameAirFindings(banded).join('\n'), 'the gate cannot report the air becoming a function of width').toMatch(/is declared 2 time/)
+    expect(frameAirFindings(banded, design).join('\n'), 'the gate cannot report the air becoming a function of width').toMatch(/is declared 2 time/)
     // THE PLANT NAMES THE SCROLLER, NOT THE FIRST DECLARATION THAT HAPPENS TO READ
     // THE TOKEN. `--item-air` has a second reader now (the workbench bar, which is
     // the root's first row and therefore cannot see the workbench's own aliases),
@@ -1540,18 +1589,26 @@ describe('the frame pays one air at both ends', () => {
     const scroller = /(\.itemFlow \{[^}]*padding-inline: )var\(--item-air\)/
     const asymmetric = css.replace(scroller, '$10px var(--item-air)')
     expect(asymmetric, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(css)
-    expect(frameAirFindings(asymmetric).join('\n')).toMatch(/pays its two ends different values/)
-    const secondSum = css.replace('--item-inset-x-end: var(--item-inset-x);', '--item-inset-x-end: calc(var(--item-row-pad) + var(--s2));')
-    expect(secondSum, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(css)
-    expect(frameAirFindings(secondSum).join('\n')).toMatch(/is not the leading alias/)
+    expect(frameAirFindings(asymmetric, design).join('\n')).toMatch(/pays its two ends different values/)
+    // THE SECOND SUM NOW HIDES IN THE SHARED CLASS, WHICH IS WHERE THE TWO ENDS
+    // LIVE. The plant gives the trailing end its own sum — the same defect the
+    // deleted alias pair was checked for, in the shape it now has.
+    const secondSum = design.replace(
+      /(\.stripInsetOuter \{[^}]*padding-inline: calc\(var\(--dsh-tb-frame-air\) \+ var\(--dsh-tb-row-pad\)\))/,
+      '$1 calc(var(--dsh-tb-frame-air) + var(--s2))',
+    )
+    expect(secondSum, 'the plant found nothing to replace — the fixture is stale, not the gate').not.toBe(design)
+    expect(frameAirFindings(css, secondSum).join('\n')).toMatch(/pays its two ends different values/)
   })
 
   it('does not read a sentence about the air as a declaration of it', () => {
     // This sheet explains itself in prose, so the reader has to survive the token
     // being NAMED where it is not written — the shape that made a sibling gate
-    // demand a deleted rule back.
+    // demand a deleted rule back. The prose is planted in BOTH sheets: the
+    // scroller's and the shared one, since the two ends now live in the latter.
     const prose = `/* the frame pays --item-air at both ends */\n.itemFlow { padding-block: 0; }\n`
-    expect(frameAirFindings(prose).join('\n')).toMatch(/declares 0 inline padding/)
+    const proseDesign = `/* --dsh-tb-frame-air is the frame's air */\n.stripInsetOuter { padding-block: 0; }\n`
+    expect(frameAirFindings(prose, proseDesign).join('\n')).toMatch(/declares 0 inline padding/)
   })
 })
 

@@ -11,7 +11,8 @@
  * The `id` this entry registers under MUST equal the `main` slot key the
  * gallery panel registers; the shell resolves a row to its stage by that id.
  */
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import { usePanelRowExit } from '../design/use-panel-row-exit.ts'
 import css from '../board.module.css'
 
 /** Props the shell binds for a panel-list entry. */
@@ -31,22 +32,7 @@ export interface GalleryIconProps {
  */
 export function GalleryIcon({ size, active, onExit }: GalleryIconProps) {
   const rootRef = useRef<SVGSVGElement>(null)
-  useEffect(() => {
-    if (onExit === undefined) return
-    // `closest` walks from OUR node to the button the slot contract says the
-    // shell owns, and a native listener there runs before React's synthetic one
-    // at the root — so stopping it keeps the shell's own `selectPanel(id)` from
-    // firing. A glyph-only React handler would miss the label and the keyboard.
-    const button = rootRef.current?.closest('button')
-    if (!(button instanceof HTMLButtonElement)) return
-    const onClick = (event: Event): void => {
-      if (!active) return
-      event.stopPropagation()
-      onExit()
-    }
-    button.addEventListener('click', onClick)
-    return () => { button.removeEventListener('click', onClick) }
-  }, [active, onExit])
+  usePanelRowExit(rootRef, active, onExit)
   return (
     <svg
       ref={rootRef}
