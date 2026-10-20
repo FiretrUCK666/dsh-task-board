@@ -278,11 +278,17 @@ describe('a row is legible at rest', () => {
     // the position changes; **wherever the position goes, the selector that measures
     // it goes with it** — an assertion still looking for the former class turns green
     // on an empty string.
-    // The slot wears the SHARED truncation class now, so the selector follows it to
-    // the class that actually renders (the same rule the comment above states: an
-    // assertion looking for a former class turns green on an empty string).
-    const cell = /<span class="[^"]*_truncate[^"]*"[^>]*>([^<]*)</.exec(html)?.[1] ?? ''
-    expect(cell, 'the date reading states no words at all, so the tone below is being read off nothing').not.toBe('')
+    // **判据按内容找，不按「第一个 .truncate」找。**
+    //
+    // 这条原先取的是「页面里第一个 `_truncate` 元素」。`.truncate` 是**共享**的裁剪
+    // 形态，任何一个后来挂上它的元素只要排在日期前面，就会让这条断言读到一段不相干
+    // 的文字（量到过：页签「总览」也是 `.truncate`，于是它读到了「总览」）。
+    //
+    // 一条「哪段字说了落后/超期」的断言本来就该按那段字找。取全部 `.truncate` 里
+    // 唯一那条讲到时间的，找不到就是这条契约被搬走了、或者日期不再用共享形态。
+    const cells = [...html.matchAll(/<span class="[^"]*_truncate[^"]*"[^>]*>([^<]*)</g)].map(m => m[1] ?? '')
+    const cell = cells.find(text => /落后|超期/.test(text)) ?? ''
+    expect(cell, 'no truncate-rendered cell states a time reading at all, so the tone below is being read off nothing').not.toBe('')
     expect(cell).toContain('落后')
     expect(cell, 'a slipped plan is being painted as an overrun — red is reserved for a missed HARD deadline').not.toContain('超期')
   })

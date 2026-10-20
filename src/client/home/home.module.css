@@ -117,11 +117,20 @@
      形状）会拼成 `inset 0 0 0 1px 1px solid ...`——**两个 1px**，整条 `box-shadow`
      在解析阶段作废，纸面连投影一起消失（量到 `shadow: "none"`，整张卡没有影）。
      所以要取那条 border 的**颜色**部分：`--dsh-tb-edge-color`。 */
-  /* **这一枚纸面自己补上那条边，并进材质那一笔。** 浅色主题下纸面与画布是同一个白
-     （量过：两者都是 `rgb(255,255,255)`），两者之间只剩投影那一层 0.07 的墨——淡一分
-     就没有轮廓，读者读到的是「边缘看不清」。这条边是材质（不是环），所以它写进
-     `--dsh-tb-paper-cast` 那一个槽，与默认的边光并成一笔，不另起一条 `box-shadow`。 */
-  --dsh-tb-paper-cast: inset 0 0 0 1px var(--dsh-tb-hair-color), var(--dsh-tb-rim);
+  /* **这一枚纸面自己补上那条边，用的是「看得见」的那一档墨。**
+   *
+   * 浅色主题下纸面与画布是同一个白（量过：两者都是 `rgb(255,255,255)`），所以立体感
+   * 只能靠**轮廓**，不能靠色阶——纸没有比桌面更亮，投影落在同色的底上读作「脏」，
+   * 不读作「浮起来」。读者对它的原话是「不像有质感的按钮」。
+   *
+   * 这条边此前用 9% 的墨（`--dsh-tb-hair-color`）。量出来它在白底上是 `rgb(232,232,232)`，
+   * 对比 1.14:1——**弱到看不见**。而清单页那张行卡用的是 14% 的 `--dsh-tb-border`
+   * （1.24:1），读者对它的评价是「一直看得清」。同一个系统里两档差 5 个百分点，
+   * 而其中一档在屏上读不出轮廓，所以这里取 14% 那一档。
+   *
+   * 边是材质（不是环），所以它写进 `--dsh-tb-paper-cast` 那一个槽，与默认的边光并成
+   * 一笔，不另起一条 `box-shadow`。 */
+  --dsh-tb-paper-cast: inset 0 0 0 1px color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent), var(--dsh-tb-rim);
   --dsh-tb-paper-radius: var(--dsh-tb-radius-lg);}
 
 /* 数与标签同一条基线：30px 的数和 12px 的标签并成一行，读者一眼读完一个读数。 */
@@ -177,11 +186,20 @@
 
   /* **这条墨边与四格那一条是同一个槽、同一个值。** 八张卡是同一族，边就得是同一笔——
      写两处只是两次输入同一个词，不是两个决定。 */
-  /* **这一枚纸面自己补上那条边，并进材质那一笔。** 浅色主题下纸面与画布是同一个白
-     （量过：两者都是 `rgb(255,255,255)`），两者之间只剩投影那一层 0.07 的墨——淡一分
-     就没有轮廓，读者读到的是「边缘看不清」。这条边是材质（不是环），所以它写进
-     `--dsh-tb-paper-cast` 那一个槽，与默认的边光并成一笔，不另起一条 `box-shadow`。 */
-  --dsh-tb-paper-cast: inset 0 0 0 1px var(--dsh-tb-hair-color), var(--dsh-tb-rim);
+  /* **这一枚纸面自己补上那条边，用的是「看得见」的那一档墨。**
+   *
+   * 浅色主题下纸面与画布是同一个白（量过：两者都是 `rgb(255,255,255)`），所以立体感
+   * 只能靠**轮廓**，不能靠色阶——纸没有比桌面更亮，投影落在同色的底上读作「脏」，
+   * 不读作「浮起来」。读者对它的原话是「不像有质感的按钮」。
+   *
+   * 这条边此前用 9% 的墨（`--dsh-tb-hair-color`）。量出来它在白底上是 `rgb(232,232,232)`，
+   * 对比 1.14:1——**弱到看不见**。而清单页那张行卡用的是 14% 的 `--dsh-tb-border`
+   * （1.24:1），读者对它的评价是「一直看得清」。同一个系统里两档差 5 个百分点，
+   * 而其中一档在屏上读不出轮廓，所以这里取 14% 那一档。
+   *
+   * 边是材质（不是环），所以它写进 `--dsh-tb-paper-cast` 那一个槽，与默认的边光并成
+   * 一笔，不另起一条 `box-shadow`。 */
+  --dsh-tb-paper-cast: inset 0 0 0 1px color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent), var(--dsh-tb-rim);
   --dsh-tb-paper-radius: var(--dsh-tb-radius-lg);}
 
 /* 卡片标题是「眉」：11px、正字距、二级墨。它只说这一块是什么，不跟数字抢眼球。 */
@@ -551,7 +569,8 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
   --dsh-tb-paper-plane: var(--dsh-tb-plane-float);
-  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-3);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim);
+  --dsh-tb-paper-lift: var(--dsh-tb-cast-3);
 }
 
 [data-dsh-taskboard-view] .emptyTitle {

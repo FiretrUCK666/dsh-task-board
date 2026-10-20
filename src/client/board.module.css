@@ -1353,7 +1353,7 @@
   /* 一张被抬起的纸：色调台阶（sheet）+ 一条上边光（rim）+ 一条下投影
      （cast-1）。三件事同时成立才叫「纸」——静止态就有投影，这是它与
     下面那张凹面列的唯一区别，也是这次修的东西。 */
-  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim);
   cursor: pointer;
   color: var(--dsh-tb-text-1);
   font-family: inherit;
@@ -1507,7 +1507,7 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
-  --dsh-tb-paper-cast: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim-soft);
   opacity: 0;
   /* An INVISIBLE control must not be able to receive a tap. `opacity: 0` alone
      does not disable hit-testing, so on a touch device (no hover to reveal it) a

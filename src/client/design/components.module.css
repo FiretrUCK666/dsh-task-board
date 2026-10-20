@@ -1690,6 +1690,8 @@ textarea.input {
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
 }
 
+
+
 /* 当前那一颗 tab 自己就是那枚纸面药丸。
  *
  * 高亮是 tab 自己的底——**一个盒子不可能跟自己错位**，也不需要知道一共有几颗。
@@ -1747,7 +1749,10 @@ textarea.input {
 }
 
 /* 被选中的那一格是**纸面**：它从嵌面里浮起来，于是「当前在哪一页」由材质回答，
-   而不是只靠字重变了半档。 */
+   而不是只靠字重变了半档。
+
+   **底色与材质挂在页签自己身上，不挂在另一个盒子上。** 一个盒子不可能跟自己错位，
+   也不需要知道一共有几颗——所以换页那一瞬不存在「两个盒子谁追上谁」的问题。 */
 .workbenchTab[aria-current='page'] {
   background: var(--dsh-tb-plane-sheet);
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
@@ -1759,10 +1764,20 @@ textarea.input {
   background: var(--dsh-tb-plane-sheet);
 }
 
+/* **省略号归共享的 `.truncate`，这里只管行盒高。**
+ *
+ * 裁剪形态（`overflow: hidden` + `text-overflow: ellipsis` + `white-space: nowrap`）
+ * 在共享层已经有一份，页面表再写一遍就是第二份——改一处不报错，而屏上不会有人说一句话。
+ *
+ * 这一条留下来的是**截断那个 bug 的修复**：行盒高必须装得下汉字的墨。
+ * 它此前跟着全系统的 `1em`（13px 字 / 13px 行），行盒与 em 盒等高，而汉字字形的墨
+ * 会超出 em 盒（上下各约 0.1em 到 0.15em）——于是行盒下缘正好切在墨上，读者看到
+ * 「看板」二字的底边被削平了一刀。那不是「差一格内衬」，是**文字画到了盒外**。
+ *
+ * 页签高 26px、行盒 19px，上下各余 3.5px，装得下。 */
 .workbenchTabLabel {
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  line-height: var(--dsh-tb-type-body-line);
 }
 
 /* 计数徽标：**同色淡洗底 + 正文墨**。不拿状态色当字号——琥珀在小字上的对比度

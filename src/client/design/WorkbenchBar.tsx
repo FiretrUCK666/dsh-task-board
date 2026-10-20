@@ -27,6 +27,18 @@
  * (one `background`/`box-shadow` transition) instead of sliding a box across
  * two tracks — the arrival is what the eye needs, not the journey.
  *
+ * **A SLIDING THUMB WAS TRIED AND IS GONE.** It measured the active tab's own
+ * box and wrote `translateX`/`width` — no arithmetic, so it did not have the
+ * failure above. It was still wrong, and the reader said so in four words:
+ * 「那个动效好假」. The reason is in the note above and this attempt did not
+ * answer it: as long as the pill is a box apart from the label, the two can be
+ * caught disagreeing mid-flight. Three fixed-width tracks do not need a thing to
+ * slide between them; the cross-fade already says 「you are here now」.
+ *
+ * Do not bring it back without answering that, and without a reason the reader
+ * can see: this is the second time the question has been asked, and the answer
+ * both times was the note above.
+ *
  * WHAT IT DELIBERATELY DOES NOT DO. No primary action, no search box, no
  * notification bell: every page already owns those in its own toolbar, and two
  * "new" buttons on one screen is how a product ends up with two different
@@ -132,7 +144,9 @@ export function WorkbenchBar({
             title={tab.title}
             onClick={() => { onNavigate(tab.id) }}
           >
-            <span className={css.workbenchTabLabel}>{tab.label}</span>
+            {/* 裁剪形态挂共享的 `css.truncate`（它同时给出「允许被压窄」那一条），
+                这里那一条 `.workbenchTabLabel` 只负责行盒高——汉字墨要装得下。 */}
+            <span className={`${css.workbenchTabLabel} ${css.truncate}`}>{tab.label}</span>
             {tab.badge !== undefined && tab.badge > 0
               ? <span className={css.workbenchTabBadge} aria-hidden="true">{tab.badge > 99 ? '99+' : tab.badge}</span>
               : null}

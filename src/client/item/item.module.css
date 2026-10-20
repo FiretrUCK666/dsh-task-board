@@ -1957,7 +1957,7 @@
    * 三层底色同值），所以「抬起来」由这两条说：`--dsh-tb-rim` 是贴着上沿的一线亮，
    * `--dsh-tb-cast-1` 是它落在底上的那一点影。两条一起画才叫纸——只有边是线框，
    * 只有影是脏。 */
-  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
