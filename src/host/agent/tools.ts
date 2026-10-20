@@ -1569,23 +1569,33 @@ function applyOne(
       // The step list is read once, against the row it will live in, so the ids
       // it mints are the row's own deterministic ones.
       const steps = payload.steps === undefined ? undefined : readItemStepList(payload.steps, found.id)
-      // The patch is a SPREAD, so an explicit undefined clears a promise and an
-      // absent key leaves it alone — and the shared writer stamps `updatedAt`
-      // ONLY when the patch really changed something, which is what keeps a
-      // no-op from burning a revision on every device.
-      const rows = applyItemPatch(items.items, found.id, {
-        title: payload.title as string | undefined,
-        body: payload.body as string | undefined,
-        notes: payload.notes as string | undefined,
-        status: payload.status as ItemRecord['status'] | undefined,
-        priority: payload.priority as ItemRecord['priority'] | undefined,
-        tags: payload.tags === undefined ? found.tags : itemTagsOf(payload.tags),
-        startsAfter: nextInstant('startsAfter'),
-        dueAt: nextInstant('dueAt'),
-        hardDueAt: nextInstant('hardDueAt'),
-        taskId: nextTaskId,
-        ...steps === undefined ? {} : { steps: steps.steps },
-      }, now)
+      // The patch names only the fields the caller actually gave. It used to be a
+      // SPREAD of every field — with `payload.title as string | undefined` — so a
+      // field the model did NOT mention arrived as an explicit `undefined`, and
+      // the spread wrote that undefined over the row. `title: undefined` fails
+      // `isItemRecordShape`, so the WHOLE ROW was dropped by the document grammar
+      // while the receipt said the edit had been applied: **the model could
+      // delete a row by editing it.** The shared writer now refuses to write a
+      // row that is not a row (src/core/item-transitions.ts), and this side
+      // simply stops manufacturing undefineds.
+      //
+      // **两类字段，两种读法**：标题/正文/备注/状态/优先级是**必填**的，补丁里带
+      // undefined 是不合法值，所以「没提」就不能出现在补丁里；日期那几项的行内形状
+      // 本来就是 `number | undefined`，所以那里 undefined 是**清空**——`nextInstant`
+      // 已经把「没提」与「清空」分开了（没提 → 沿用当前值，写回去等于没改）。
+      const patch: Parameters<typeof applyItemPatch>[2] = {}
+      if (payload.title !== undefined) patch.title = payload.title as string
+      if (payload.body !== undefined) patch.body = payload.body as string
+      if (payload.notes !== undefined) patch.notes = payload.notes as string
+      if (payload.status !== undefined) patch.status = payload.status as ItemRecord['status']
+      if (payload.priority !== undefined) patch.priority = payload.priority as ItemRecord['priority']
+      patch.tags = payload.tags === undefined ? found.tags : itemTagsOf(payload.tags)
+      patch.startsAfter = nextInstant('startsAfter')
+      patch.dueAt = nextInstant('dueAt')
+      patch.hardDueAt = nextInstant('hardDueAt')
+      patch.taskId = nextTaskId
+      if (steps !== undefined) patch.steps = steps.steps
+      const rows = applyItemPatch(items.items, found.id, patch, now)
       if (rows === items.items) return { doc, items, item: found, unchanged: true }
       const next = rows.find(item => item.id === found.id) ?? found
       const note = steps === undefined ? undefined : mintedNote(steps.minted)

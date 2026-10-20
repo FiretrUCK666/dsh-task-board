@@ -463,7 +463,8 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   任何门。「等你处理」的唯一集合走 `relatedSessionIdsOf`；拖进来的会话从绑定起归这张卡管，且
   **卡片自己必须出声**（圆点在触屏上不可见）。
 - **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，唯一
-  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**。
+  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
+  **轮次记录只经 `land` 进台账**。
   屏上「更新于」读 `cardUpdatedAtOf(task)` 而不是同步戳 `task.updatedAt`。
 - **活性**（`session-lineage.ts` / `session-activity.ts`）：判定与 `unknown` 的两面见「关键不变量」
   的运行态一条。**裸值边界（改动即反向卡死）**：结算与看门狗一律继续读**原生会话表那一份

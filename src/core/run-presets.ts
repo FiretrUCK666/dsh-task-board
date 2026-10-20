@@ -67,8 +67,15 @@ export const DEPLOY_DEFAULT_PRESET: RunConfigPreset = {
   config: {},
 }
 
-/** The six run-config keys a preset may carry (unknown keys are stripped). */
-const CONFIG_KEYS = ['workspaceId', 'provider', 'model', 'reasoningEffort', 'agentPreset', 'permission'] as const
+/* **键集只有一份，就在那一条导出上。**
+ *
+ * 这一条曾经是 `RUN_CONFIG_KEYS` 的**逐字拷贝**（六项，一字不差），而
+ * `normalizeRunConfig` 循环的是**那份拷贝**——于是**加第七个运行配置字段会在每次
+ * 读取时被静默丢掉**：键集加了，抄的那份没加，读回来的预设里就没有它。
+ * 失败方向是单向的、且**不报错**（多出来的那一项只是不见了）。
+ *
+ * 「键集只写一次」是这个文件头注释一直在承诺的事，而承诺的那一处正是抄的那一处。 */
+const CONFIG_KEYS = RUN_CONFIG_KEYS
 
 /** Persistence seam for run-config presets. */
 export interface RunPresetStore {

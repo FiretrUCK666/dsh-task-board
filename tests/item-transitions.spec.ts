@@ -252,6 +252,43 @@ describe('an inbound step list is repaired, and the repair is REPORTED', () => {
   })
 })
 
+describe('a patch that would write a row that is not a row is refused', () => {
+  it('an explicit undefined on a REQUIRED field never reaches the document', () => {
+    // **这一条曾经是一个会丢行的洞。**
+    //
+    // 补丁是「拼开」的，所以一个**显式**的 `undefined` 会盖住行上原有的值。
+    // `title: undefined` 于是把那一行变成**不合形状的行**（`isItemRecordShape` 要
+    // `typeof row.title === 'string'`），而文档文法**把不合形状的行整条丢掉**——
+    // 于是「改一个标题」把**整行**改没了，调用方却拿着「行还在」的回执。
+    //
+    // 模型那条路正是这么坏的：`src/host/agent/tools.ts` 把「没传的字段」统统写成
+    // `undefined`。所以现在钉住的是**共享写入器**这一层：不合形状的行**不写**。
+    const before = [row({ title: 'A thing' })]
+    const after = applyItemPatch(before, 'i-1', { title: undefined } as never, T0 + 1000)
+    expect(after, 'a patch that would break the row must not be written').toBe(before)
+    expect(after[0]?.title, 'the row keeps its title').toBe('A thing')
+  })
+
+  it('an explicit undefined on a CLEARABLE field (a date) does clear it', () => {
+    // **两类字段，两种读法**——这条不许被上面那条顺手改掉：日期那几项的行内形状
+    // 本来就是 `number | undefined`，所以那里 undefined 是**清空**，不是「没提」。
+    const before = [row({ dueAt: T0 + DAY })]
+    const after = applyItemPatch(before, 'i-1', { dueAt: undefined }, T0 + 1000)
+    expect(after).not.toBe(before)
+    expect(after[0]?.dueAt, 'the promise is gone').toBeUndefined()
+  })
+
+  it('a patch that names nothing is not a write', () => {
+    const before = [row()]
+    expect(applyItemPatch(before, 'i-1', {}, T0 + 1000)).toBe(before)
+  })
+
+  it('a row that is not there is not an error', () => {
+    const before = [row()]
+    expect(applyItemPatch(before, 'nope', { title: 'x' }, T0 + 1000)).toBe(before)
+  })
+})
+
 describe('the shape checks the write path refuses on', () => {
   it('a list is a list, and nothing else is', () => {
     for (const value of [undefined, null, [], [1], ['a']]) expect(isItemListValue(value), JSON.stringify(value)).toBe(true)

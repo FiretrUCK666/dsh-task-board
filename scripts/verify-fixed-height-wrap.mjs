@@ -26,12 +26,28 @@
  * 与基础档的那一份**同时**在窄屏上生效——所以要把同一个类在**同一条作用域链**上的
  * 所有规则合起来看。
  *
+ * ── 这条判据的边界（写下来，免得下一个人以为它看得更全） ────────────────────
+ *
+ * **作用域链 = 自身 + 所有外层作用域**，靠 at-rule 前导的**文本路径**比对
+ * （`@container …` 里面套 `@media …`，后者在前者的路径里）。于是：
+ *
+ *   - **兄弟作用域不互链**：`@media (min-width: 900px) { .a { flex-wrap: wrap } }` 与
+ *     `@media screen { .a { block-size: 24px } }` **可以同时成立**（两个媒体查询不是
+ *     嵌套关系），而本门禁**看不见这一对**——它只比「谁是谁的前缀」。
+ *   - **前缀相关但互为兄弟的会被连上**：`@media screen` 与
+ *     `@media screen and (max-width: 100px)` 会被当成一条链（结论碰巧对，理由不对）。
+ *
+ * **今天仓库里没有这种形状**（全表扫过：兄弟作用域冲突 0 处），所以门禁是**因为真的
+ * 没问题**才绿，不是瞎。写在这里，是因为「它看不见什么」比「它能看见什么」更重要。
+ *
  * 用法：`node scripts/verify-fixed-height-wrap.mjs [根目录]`
  * 自测：`--probe-collision`（定高 + 可换行同一个块，必须红）
  *       `--probe-cancelled`（定高被后来改成 auto，必须放行）
  *       `--probe-other-selector`（定高在 A、换行在 B，必须放行）
  *       `--probe-band-height`（换行在顶层、定高在窄档，必须红——镜像形状）
  *       `--probe-band-cancel`（窄档自己写 auto 撤销，必须放行）
+ *       `--probe-flex-flow`（`flex-flow: row wrap` 与 `flex-wrap: wrap` 是同一件事）
+ *       `--probe-pseudo-holder`（`.a:not(:has(> *))` 的承载盒是 `.a`）
  */
 
 import { existsSync } from 'node:fs'
@@ -74,6 +90,31 @@ export function isFixedHeight(value) {
   if (/^(min|max|fit)-content$/i.test(v)) return false
   /* 百分比随容器，不随内容——它不会因为内容折行而变，所以仍是定高。 */
   return true
+}
+
+/**
+ * The wrapping value of one rule body, **in source order**.
+ *
+ * `flex-wrap` and `flex-flow` are the same property written two ways (`flex-flow`
+ * is the shorthand for `flex-direction` + `flex-wrap`), and CSS resolves them
+ * **by order**: the later declaration wins, and the shorthand resets both longhands.
+ * So the reader walks the body once and keeps the LAST thing that says "wrap" or
+ * "nowrap" — reading the longhand first would make
+ * `flex-wrap: nowrap; flex-flow: row wrap;` read as `nowrap`, when in fact the
+ * shorthand comes last and resets it to `wrap` (that one order then slipped
+ * through the gate).
+ *
+ * @param body - the rule body.
+ * @returns `'wrap'`, `'nowrap'`, or `undefined` when the body says nothing.
+ */
+function lastWrapValueOf(body) {
+  let found
+  const pattern = /(?:^|[;{\s])(flex-wrap|flex-flow)\s*:\s*([^;}]+)/g
+  for (const match of body.matchAll(pattern)) {
+    const value = (match[2] ?? '').trim()
+    found = /\bwrap\b/.test(value) ? 'wrap' : 'nowrap'
+  }
+  return found
 }
 
 /**
@@ -146,12 +187,12 @@ export function collisionsIn(css) {
      * `flex-flow` 是 `flex-direction` 与 `flex-wrap` 的**简写**——写成
      * `flex-flow: row wrap` 的那一枚，**一样会换行**，而只读 `flex-wrap` 的门禁看不见它。
      * 这不是「两种写法」：CSS 自己说它们是同一个属性（简写拆开就是那两条）。
-     */
-    const wrap = declOf(rule.body, 'flex-wrap') ?? (() => {
-      const flow = declOf(rule.body, 'flex-flow')
-      if (flow === undefined) return undefined
-      return /\bwrap\b/.test(flow) ? 'wrap' : undefined
-    })()
+     *
+     * **按源码顺序读，不按「长写优先」。** CSS 是一条声明一条声明叠上去的：同一个块里
+     * `flex-wrap: nowrap;` 写在 `flex-flow: row wrap;` **后面**，那么后写的简写把
+     * `flex-wrap` 重置成 `wrap`（**会换行**）；反过来写才是 `nowrap`。长写优先的读法
+     * 会把这两种顺序读成同一件事——**于是其中一种顺序漏报**。 */
+    const wrap = lastWrapValueOf(rule.body)
     for (const holder of holders) {
       if (height !== undefined) {
         const perScope = heights.get(holder) ?? new Map()
@@ -240,7 +281,7 @@ export function fixedHeightWrapFindings(root) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector', '--probe-band-height', '--probe-band-cancel', '--probe-flex-flow', '--probe-pseudo-holder'])
+  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector', '--probe-band-height', '--probe-band-cancel', '--probe-flex-flow', '--probe-pseudo-holder', '--probe-flex-order', '--probe-flex-order-reverse'])
 
   if (probe !== undefined) {
     const BAND = '@container dsh-tb-item-list (max-width: 559px) {'
@@ -260,6 +301,11 @@ function main() {
       /* **伪类参数里的类不是本体。** `.a:not(:has(> *))` 的承载盒是 `.a`——不是空，
        * 也不是 `:has()` 里的东西（那是**条件**）。仓库里就有两处这个形状。 */
       '--probe-pseudo-holder': { css: '.a:not(:has(> *)) { block-size: 24px; flex-wrap: wrap; }', want: 1 },
+      /* **顺序也要对。** CSS 是一条声明一条声明叠上去的：简写 `flex-flow` 写在后面，
+       * 就把 `flex-wrap` 重置掉。长写优先的读法会把两种顺序读成同一件事——
+       * 于是「简写在后」那一种（真的会换行）**漏报**。 */
+      '--probe-flex-order': { css: '.a { block-size: 24px; flex-wrap: nowrap; flex-flow: row wrap; }', want: 1 },
+      '--probe-flex-order-reverse': { css: '.a { block-size: 24px; flex-flow: row wrap; flex-wrap: nowrap; }', want: 0 },
     }
     const one = fixtures[probe]
     const got = collisionsIn(one.css).length
@@ -283,7 +329,13 @@ function main() {
   }
   console.error(`FAIL ${String(findings.length)} 处「定高 + 可换行」——内容折行时会画到盒子外面：`)
   for (const one of findings) {
-    console.error(`  ${one.file}:${String(one.line)}  ${one.selector}`)
+    /* **报错认人靠的是选择器，不是行号。**
+     *
+     * `css-core` 的行号按**本段文本**算，而 at-rule 里的规则是下降到子块里读的——
+     * 于是那些规则报的行号**偏一**（实测仓库里 157 条）。指着一个错的行号，比不指
+     * 更坏：人去了那行，看到的是别的东西，于是以为门禁在胡说。
+     * 选择器唯一认得出那条规则，所以它才是指路的那一样。 */
+    console.error(`  ${one.file}  ${one.selector}`)
     console.error(`    block-size: ${String(one.height)} 与 flex-wrap: wrap 同时成立：行数不定而高度定死，`)
     console.error('    多出来的行只能溢出。要么把高改成 auto，要么别让它换行。')
   }

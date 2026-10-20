@@ -632,6 +632,22 @@ describe('the checklist verbs a person can reach and a model now shares', () => 
     expect(steps.map(step => [step.id, step.done])).toEqual([['s-1', true], ['s-2', true], ['s-3', false]])
   })
 
+  it('item.update that does not mention the title keeps the row AND its title', async () => {
+    // **这一条曾经是一个会丢行的洞。**
+    //
+    // 模型那条路把补丁拼成「每一个字段都写一遍」，没传的字段写成显式 `undefined`。
+    // 补丁一拼开，那个 `undefined` 就盖住了行上原有的标题——而 `title: undefined`
+    // 过不了形状门，于是**整行被文档文法丢掉**，回执却写着「已生效」。
+    // 也就是说：**模型改一条清单，可能把那条改没了，并且报告成功。**
+    const board = withItem({ title: '原来的标题' })
+    const result = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#1', body: '新正文' } }] })
+    expect(result.ok).toBe(true)
+    const row = board.getItemsDoc().items[0]
+    expect(row, 'the row is still there — an edit that mentions one field must not remove the row').toBeDefined()
+    expect(row?.title, 'and the field nobody mentioned is untouched').toBe('原来的标题')
+    expect(row?.body, 'while the field the model DID mention changed').toBe('新正文')
+  })
+
   it('item.step names the steps that DO exist, rather than failing at "no such step"', async () => {
     const board = withItem({ steps: [{ id: 's-1', text: '第一步', done: false }] })
     const result = await runBatch(deps(board), { ops: [{ op: 'item.step', payload: { of: '#1', step: 's-9', done: true } }] })

@@ -70,7 +70,7 @@
  *    pair disagrees.
  */
 import type { ItemOriginSource, ItemPriority, ItemRecord, ItemStatus, ItemStep } from './item.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_FIELDS, itemInstantOf, itemTagsOf, itemTitleOf, newItem } from './item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_FIELDS, isItemRecordShape, itemInstantOf, itemTagsOf, itemTitleOf, newItem } from './item.ts'
 import { normalizeAttachmentRefs, sameAttachmentRefs, type AttachmentRef } from './attachment.ts'
 import { MANUAL_STATUSES, type TaskStatus } from './tasks.ts'
 
@@ -95,6 +95,24 @@ export type WritableItemKey = {
  * the promise, while a patch that never mentions `dueAt` keeps it. That is the
  * whole reading rule for this type, and it is why the fields are not optional
  * wrappers.
+ *
+ * ── `undefined` IS ONLY A CLEARING FOR A FIELD THAT IS CLEARABLE ─────────────
+ *
+ * 「日期字段的 `undefined` = 清空」**只对可空的字段成立**（日期那几项的行内形状
+ * 本来就是 `number | undefined`）。**必填字段（标题、正文、备注、标签、步骤）的
+ * `undefined` 是非法值**，因为它会把那一行变成**不合形状的行**：`title: undefined`
+ * 过不了 `isItemRecordShape`（它要 `typeof row.title === 'string'`），于是
+ * **整行被文档文法丢掉**——而调用方还以为自己写成功了。
+ *
+ * **这一条曾经写错在这里**：注释说的是「显式的 `undefined` 会清空」，而实现里
+ * 那不是清空，是**把 `undefined` 写进行上**。模型那条路（`src/host/agent/tools.ts`）
+ * 把「没传的字段」统统写成 `undefined`，于是「改一个标题」会把**整行**改没，
+ * 回执却写着「已生效」。
+ *
+ * **两处一起修才是根因级的修法**：① 造补丁的地方**只写它真的有的字段**
+ * （`host/agent/tools.ts` 现在这样做了）；② 共享写入器**不许写出不合形状的行**
+ * （`applyItemPatch` 在写之前过一遍形状门）——一处是修那个调用点，一处是让**这一类
+ * 写坏行**在任何调用点都写不出去。
  *
  * The one thing a patch can never carry is a field the model ruled
  * `derived` or `forbidden`: see {@link WritableItemKey}.
@@ -135,6 +153,10 @@ export const REFUSED_BY_THE_RULING_TABLE: ItemPatch = { ref: 3 }
  */
 function patchChanges(current: ItemRecord, next: ItemRecord, patch: ItemPatch): boolean {
   for (const key of Object.keys(patch) as Array<WritableItemKey>) {
+    /* **补丁里显式的 `undefined` 在必填字段上是非法值**（见 {@link ItemPatch} 的
+       那条律）。`applyItemPatch` 在写出去之前会用形状门挡住它，所以这里读到的
+       `next` 一定是合形状的行——**但这一处不能靠上游的顺序活着**：一个合形状的
+       行里 `tags` 与 `steps` 一定是数组，所以下面直接读它们的长度。 */
     if (key === 'steps') {
       if (!sameSteps(current.steps, next.steps)) return true
       continue
@@ -194,6 +216,16 @@ export function applyItemPatch(
   if (at < 0) return items
   const current = items[at] as ItemRecord
   const next: ItemRecord = { ...current, ...patch }
+  /* **写出去之前先问一句「这还是一行吗」。**
+   *
+   * 补丁里显式的 `undefined` 对**可空字段**是清空（日期那几项的行内形状本来就是
+   * `number | undefined`），对**必填字段**却是非法值：它会把 `title` 变成
+   * `undefined`，而 `isItemRecordShape` 要 `typeof row.title === 'string'`——
+   * 于是**整行被文档文法丢掉**，而调用方拿着「行还在」的回执。
+   *
+   * 这里不写坏行：**不合形状的行一律不写**（返回同一份列表，调用方据此知道
+   * 「什么都没变」）。修的是**这一类**写坏行，不只是某一个调用点。 */
+  if (!isItemRecordShape(next)) return items
   if (!patchChanges(current, next, patch)) return items
   next.updatedAt = now
   const out = items.slice()
