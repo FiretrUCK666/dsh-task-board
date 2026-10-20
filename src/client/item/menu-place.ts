@@ -41,7 +41,7 @@ export interface Rect {
 }
 
 /** Which side of the trigger the menu opens on. */
-export type MenuPlacement = 'below' | 'above'
+type MenuPlacement = 'below' | 'above'
 
 /** The one answer this module gives: a placement and the spot it sits at. */
 export interface MenuSpot {
@@ -60,7 +60,7 @@ export interface MenuSpot {
 }
 
 /** What the caller knows about the menu it is placing. */
-export interface MenuSize {
+interface MenuSize {
   readonly width: number
   readonly height: number
   /**

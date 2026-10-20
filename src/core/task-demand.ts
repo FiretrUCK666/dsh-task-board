@@ -39,7 +39,7 @@
 import type { PendingInteractionKind } from './controller.ts'
 import { sessionUnviewedOf, taskUnviewed } from './session-display.ts'
 import { relatedSessionIdsOf } from './task-live.ts'
-import type { ExecutionRecord, TaskRecord } from './tasks.ts'
+import { isCompletedRound, plainRunsOf, type ExecutionRecord, type TaskRecord } from './tasks.ts'
 
 /**
  * One finished piece of work on a card: a settled round that SUCCEEDED or
@@ -55,16 +55,11 @@ export interface CompletedWork {
   endedAt: number
 }
 
-/** Whether a settled round is work a person could have to rule on. */
-function isCompleted(round: ExecutionRecord): round is ExecutionRecord & { result: 'succeeded' | 'failed'; endedAt: number } {
-  return round.endedAt !== undefined && (round.result === 'succeeded' || round.result === 'failed')
-}
-
 /** The newest completed round of a set (ties resolve to the later record). */
 function newestCompleted(rounds: readonly ExecutionRecord[]): CompletedWork | undefined {
   let best: CompletedWork | undefined
   for (const round of rounds) {
-    if (!isCompleted(round)) continue
+    if (!isCompletedRound(round)) continue
     if (best !== undefined && round.endedAt <= best.endedAt) continue
     best = { roundId: round.id, sessionId: round.sessionId, result: round.result, endedAt: round.endedAt }
   }
@@ -179,6 +174,10 @@ export function waitingSessionsOf(
    *
    * 「等你处理」只能挂在还存在的会话上——一条已经被删除的会话若仍被数进来，卡片会一直停在
    * 等你处理，而读者点进去什么也没有。**看不见 ≠ 不存在**：给不出判决时传 `undefined`。
+   *
+   * **不传这一项 = 一律按「存在」处理（不过滤）**：拿得到存在性判据的调用方（控制器读
+   * `sessionPresentOf`——那是这条判据的唯一去处）必须把它传进来，否则一条已经不在了的
+   * 会话会一直替这张卡亮着「等你处理」。
    */
   isPresentOf: ((sessionId: string) => boolean) | undefined = undefined,
 ): WaitingSession[] {
@@ -201,11 +200,13 @@ export function waitingSessionsOf(
   return out
 }
 
-/** The newest plain run of a conversation (the run sequence is plain runs). */
+/** The newest plain run of a conversation (the run sequence is plain runs —
+ *  `plainRunsOf` is that set's definition, never a second copy of its filter). */
 function newestRunOf(task: TaskRecord, sessionId: string): ExecutionRecord | undefined {
-  for (let index = task.executions.length - 1; index >= 0; index -= 1) {
-    const round = task.executions[index]
-    if (round !== undefined && round.sessionId === sessionId && round.comment === undefined) return round
+  const runs = plainRunsOf(task)
+  for (let index = runs.length - 1; index >= 0; index -= 1) {
+    const round = runs[index]
+    if (round !== undefined && round.sessionId === sessionId) return round
   }
   return undefined
 }
@@ -231,7 +232,10 @@ export function boardDemandOf(
   tasks: readonly TaskRecord[],
   pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined,
   linkedIdsOf: (task: TaskRecord) => readonly string[] = () => [],
-  /** 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`。 */
+  /**
+   * 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`，
+   * 不传则一律按「存在」处理（不过滤）。
+   */
   isPresentOf: ((sessionId: string) => boolean) | undefined = undefined,
 ): BoardDemand {
   let waiting = 0

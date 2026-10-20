@@ -8,10 +8,13 @@
  * would duplicate the board sitting next to it, and two surfaces keeping the
  * same state is how both end up wrong.
  *
- * WHY THE SURFACE IS QUIET. The header carries exactly four things —title,
- * search, the page rail, the capture box —and everything else lives INSIDE the
- * page it acts on, beside the rows it acts on. Low density is not fewer
- * features; it is putting each feature next to the thing it changes.
+ * WHY THE SURFACE IS QUIET. The top bar carries six things — the count, the
+ * search box, the multi-select chip, the 「隐藏已完成」 chip, the sort chip and
+ * 「＋新建一条」 —and everything else lives INSIDE the page it acts on, beside
+ * the rows it acts on: the page rail is in the LEFT column, the filters are
+ * chips UNDER the bar, and the archive is a drawer at the foot of the list
+ * page. Low density is not fewer features; it is putting each feature next to
+ * the thing it changes.
  *
  * FOUR RULES THAT SHAPE EVERY MARKUP BELOW.
  *
@@ -77,7 +80,7 @@ import { ItemCreateDialog } from './item-create-dialog.tsx'
 import { dayTokensIn, freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withFreeText } from './facets.ts'
 import { ItemRail } from './rail.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
-import { SORT_LABEL } from './labels.ts'
+import { ASK_WHY_LABEL, PAGE_LABEL, SORT_LABEL } from './labels.ts'
 import { localDayKey } from './model.ts'
 import {
   NO_SELECTION,
@@ -112,11 +115,6 @@ import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
 import css from './item.module.css'
 
-/** The page names, as closed keys so no name is ever built by template. */
-const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 'item.page.schedule'>> = {
-  list: 'item.page.list',
-  schedule: 'item.page.schedule',
-}
 /* Every closed table moved to `labels.ts`, which is now the one place they live:
    priority, status, group, bucket and the orderings. It is deliberately
    NOT kept here as a second copy: a closed `Record` over `ItemSort` that no
@@ -125,7 +123,7 @@ const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 'item.page.sche
    perfectly happy about both. A table belongs to whoever renders it, and there
    is now exactly one such place. */
 
-export interface ItemListPanelProps {
+interface ItemListPanelProps {
   readonly face: ItemListFace
   readonly signal: AbortSignal
   /**
@@ -192,14 +190,6 @@ function askSaidOf(outcome: AskCardOutcome): string {
   if (outcome.kind === 'started') return t('item.ask.started')
   if (outcome.kind === 'continued') return t('item.ask.said', { sessionId: outcome.sessionId })
   return t('item.ask.refused', { why: t(ASK_WHY_LABEL[outcome.why]) })
-}
-
-/** The refusal codes the ask door answers with, as dictionary keys. */
-const ASK_WHY_LABEL: Readonly<Record<'unknownTask' | 'empty' | 'busy' | 'unavailable', Parameters<typeof t>[0]>> = {
-  unknownTask: 'item.ask.why.unknownTask',
-  empty: 'item.ask.why.empty',
-  busy: 'item.ask.why.busy',
-  unavailable: 'item.ask.why.unavailable',
 }
 
 /**
@@ -382,10 +372,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *
    * They are two different things that happen to both be 「a row」. The cursor is
    * where `J`/`K`/`E`/`1`–`4`/`D` act, and it moves down a list that has nothing
-   * to do with what the detail rail is showing; on the narrow band there is no
-   * rail at all and the cursor still moves. Folding one into the other would
-   * mean every cursor move also rewrites what the reader is reading, which is
-   * why they are two names here and why the key map is handed this one.
+   * to do with the row the reader has opened: the detail opens IN that row, so
+   * moving the cursor must never rewrite what the reader is reading. That is why
+   * they are two names here, and why the key map is handed this one.
    */
   const [cursor, setCursor] = useState<string | undefined>(undefined)
   /**
@@ -397,15 +386,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 账），面板也从不主动清它——清空的竞态与重置的竞态都不存在。
    */
   const [rename, setRename] = useState<{ readonly id: string; readonly nonce: number }>({ id: '', nonce: 0 })
-  /**
-   * The palette's open state STARTS from the view record rather than from `false`.
-   *
-   * It is a `useState` INITIALISER, so it is read once and everything after that
-   * is the reader's own presses: a record cannot re-open the palette mid-session,
-   * and the capture is of a panel that genuinely opened rather than of one held
-   * open by a prop. `view-prefs.ts` has why the key is never written; this is the
-   * other end of it.
-   */
   /**
    * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
    * record so a render can begin with one of them already open.
@@ -439,20 +419,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * 说明，留着会让人以为焦点归位是这里做的。
    */
   const paletteCommands = useRef<PaletteCommands | undefined>(undefined)
-  /* THE ELEMENT THE FOCUS GOES BACK TO when the palette closes — and it is the SEARCH
-   BOX.
-   *
-   * **这里站不下第二枚控件**：邻居 32px 而它 28px、形状也不一样、夹在两枚药丸中间——
-   * 它就变成了「这是什么」。而入口存在的唯一理由是「一个只能键盘打开的控件等于没有」。
-   * **搜索框已经回答了那一条**（点它开面板、打字收窄它，本就是同一件事的两个阶段），
-   * 所以入口就是搜索框，没有第二枚控件。 */
-  /**
-   * THE THREE THINGS THAT ARE OPEN OR SHUT, and each one starts from the view
-   * record so a render can begin with one of them already open.
-   *
-   * `prefs.overlay` is read ONCE, as an initialiser: a record is a snapshot of a
-   * panel that genuinely opened, and nothing after that is a reader's presses.
-   */
   const [showDone, setShowDone] = useState(true)
   /* WHERE THE READER IS STANDS ON THE QUERY, and there is no second copy of it.
    *
@@ -1342,11 +1308,17 @@ export function ItemListPanel(props: ItemListPanelProps) {
     rename: () => { if (cursor !== undefined) setRename(current => ({ id: cursor, nonce: (current.id === cursor ? current.nonce : 0) + 1 })) },
     open: () => { if (cursor !== undefined) setSelected(cursor) },
     close: () => {
-      // ESC 一次只收一层，从最上层开始：带上的浮层（命令面板/新建/排序）先走，
-      // 然后才是行菜单、多选模式、展开的行与选中——不然在新建弹层里按 Esc，会
-      // 先把背后展开的那一行收掉，读者眼前的弹层还开着，背后的工作却没了。
-      // 多选模式排在行菜单之后：勾选框换掉了整列的引导位，它是行之上的一层。
-      if (overlay !== undefined) { openLayer(undefined); return }
+      /* **ESC 的归属：键映射只关它自己管的那几层。**
+       *
+       * 模态浮层（命令面板、新建那张纸）归**共享的 escape stack**——它按栈顶收，一次只收
+       * 最上面那一层，而这张键映射看不见那个栈。所以遇到这两种浮层，这里**什么都不做**：
+       * 若这里替它收，读者在新建那张纸里按 Esc 会顺手把背后展开的那一行也收掉，而眼前的
+       * 纸还开着——读者看到的是「背后的工作没了，而弹层还在」。
+       *
+       * 排序面板**不是** escape stack 里的浮层（它长在顶栏的壳里，不盖住这一层，也不是
+       * 模态），所以它由键映射收。往下依次是：行菜单、多选模式、展开的行、选中的那一行。 */
+      if (overlay === 'palette' || overlay === 'create') return
+      if (overlay === 'sort') { openLayer(undefined); return }
       if (menuRow !== undefined) { setMenuRow(undefined); return }
       if (selection.armed) { setSelection(current => setArmed(current, false)); return }
       if (openRow !== undefined) { setOpenRow(undefined); return }
@@ -1431,7 +1403,9 @@ export function ItemListPanel(props: ItemListPanelProps) {
       /* 占着键盘的层：一个菜单、一张展开的行、或者**任何一个浮层**。浮层那一路不逐个
          点名 id——`overlay !== undefined` 对新增的浮层自动成立，而点名的写法
          （`overlay === 'create' || overlay === 'sort'`）漏掉一个 id 就是一个洞，漏的那一刻
-         屏幕上不会有任何东西报错。`paletteOpen` 另有一份读数给调色板自己的绑定用。 */
+         屏幕上不会有任何东西报错。`paletteOpen` 另有一份读数给调色板自己的绑定用。
+         而**收**的归属是另一件事：模态浮层由共享的 escape stack 收，键映射只关它自己管的
+         那些层——两条路各管各的，见 `keyActions.close`。 */
       somethingOpen: overlay !== undefined || menuRow !== undefined || openRow !== undefined,
       // Its OWN field rather than a reading of `somethingOpen`: the arrows mean
       // one thing on the rows and another inside the box, and a menu being open

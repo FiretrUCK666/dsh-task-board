@@ -446,7 +446,7 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
   （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域
   拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-rail`/`-ask`/`-query`/`-rows`/`-membership`/`-navigate`
-  十个模块，**门面 re-export 全部符号**）——界面与模型读同一份** ·
+  十个模块，**门面 re-export 全部有人读的符号**）——界面与模型读同一份** ·
   `board-actions`（动作目录，见硬性规范 12）· `task-transitions`（看板的语义层）·
   **`item-transitions`（清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/
   `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在

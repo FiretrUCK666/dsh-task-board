@@ -3,9 +3,9 @@
  *
  * THE PANEL IS AN ASSEMBLY LAYER. It owns the state every page shares — the
  * document, the clock, the view preferences, the selection — and it owns the
- * frame around them: the header, the receipt, the workbench, the detail rail.
- * What each page owns is its own body, and the only thing that crosses the line
- * is this bundle.
+ * frame around them: the workbench bar, the notice, the workbench, the list
+ * column and the left rail. What each page owns is its own body, and the only
+ * thing that crosses the line is this bundle.
  *
  * So the bundle is written down. The alternative — passing fifteen positional
  * arguments, or letting a page reach back into the panel's state through a
@@ -14,12 +14,11 @@
  * being a refactor and becomes a migration. Everything a page may touch is in
  * this type, and everything else is off limits by construction.
  *
- * TWO OF THESE ARE FUNCTIONS RATHER THAN VALUES, and that is the load-bearing
- * part. `renderRows` and `renderDetail` are handed in rather than imported,
- * because the row and the detail are shared by all three pages and are the two
- * things a page must NOT grow its own copy of: a second row component is how the
- * three pages end up disagreeing about what a row says, which is the exact
- * failure the whole `core/item-view.ts` layer exists to prevent.
+ * THE LOAD-BEARING MEMBER IS A FUNCTION RATHER THAN A VALUE. `renderRows` is
+ * handed in rather than imported, because the row is shared by all three pages
+ * and is the thing a page must NOT grow its own copy of: a second row component
+ * is how the three pages end up disagreeing about what a row says, which is the
+ * exact failure the whole `core/item-view.ts` layer exists to prevent.
  */
 import type { ReactNode } from 'react'
 import type { ItemRecord } from '../../../core/item.ts'
@@ -83,9 +82,6 @@ export interface ItemPageProps {
    * and a stylesheet owner to fix a word that was not wrong.
    */
   readonly picking: boolean
-  /** The ordering the reader chose, so the table knows whether a day heading is a
-   *  true statement about the rows under it. `now` is already here, so the two
-   *  arrive together. */
   /** Whether the archive drawer is open, and how it reports being left.
    *
    *  A VALUE, not a signal, and it is owned by the panel. It was a counter bumped
@@ -112,6 +108,9 @@ export interface ItemPageProps {
    * which a reader reports as the button not working.
    */
   readonly onRestored?: (row: ItemRecord) => void
+  /** The ordering the reader chose, so the table knows whether a day heading is a
+   *  true statement about the rows under it. `now` is already here, so the two
+   *  arrive together. */
   readonly sort: ItemSort
   /**
    * The batch bar, or nothing.

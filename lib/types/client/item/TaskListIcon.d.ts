@@ -1,5 +1,5 @@
 /** Props the shell binds for a panel-list entry. */
-export interface TaskListIconProps {
+interface TaskListIconProps {
     /** Requested square edge in pixels (the shell sizes wide vs rail). */
     size: number;
     /** Whether this panel is selected in the main column. */
@@ -18,3 +18,4 @@ export interface TaskListIconProps {
  * @returns the icon element.
  */
 export declare function TaskListIcon({ size, active, onExit }: TaskListIconProps): import("react").JSX.Element;
+export {};

@@ -8,6 +8,17 @@ import type { TaskBoardKey } from '../locales.ts';
 /** Status → locale key. */
 export declare const STATUS_KEY: Record<TaskStatus, TaskBoardKey>;
 /**
+ * Manual status → the locale key of its "move here" button. The table is
+ * EXHAUSTIVE BY TYPE: a manual status without a key fails the build here
+ * instead of painting a blank button on the screen — and the keys are named in
+ * one place, so a renamed key has exactly one home.
+ */
+export declare const STATUS_MOVE_KEY: {
+    readonly backlog: "status.move.backlog";
+    readonly todo: "status.move.todo";
+    readonly done: "status.move.done";
+};
+/**
  * Status → SHORT locale key, read by the compact column navigator. Five equal
  * cells on a phone leave roughly one-and-a-half Chinese characters per label,
  * so the full names all collapse to 「待…」「进…」「已…」 and the navigator

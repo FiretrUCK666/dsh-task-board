@@ -1,6 +1,6 @@
 import { type ItemMarkId } from './marks.tsx';
 /** 那一句解释的把手：谁来开、开没开、说的是哪一块。 */
-export interface GroupNoteHandle {
+interface GroupNoteHandle {
     /** 那句话所在元素的 id（`aria-controls` 指过去）。 */
     readonly id: string;
     readonly open: boolean;
@@ -35,7 +35,7 @@ export declare function NoteEntry(props: {
     readonly note: GroupNoteHandle;
     readonly size?: number;
 }): React.ReactElement;
-export interface GroupHeadProps {
+interface GroupHeadProps {
     /** 谁在说话：一块内容的题，还是一段列表的说明。 */
     readonly as?: 'heading' | 'presentation';
     /** 字阶两档，见文件头。 */
@@ -54,3 +54,4 @@ export interface GroupHeadProps {
  * @returns 那一行头。
  */
 export declare function GroupHead(props: GroupHeadProps): React.ReactElement;
+export {};

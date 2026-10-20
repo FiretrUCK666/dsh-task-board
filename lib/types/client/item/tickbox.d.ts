@@ -5,8 +5,9 @@
  *
  * A native checkbox is drawn by the platform, and the platform draws it at the
  * platform's idea of a size, in the platform's ink, at the platform's strike
- * height. Two places on this surface want one — the step board and the archive's
- * multi-select — and both asked for the same thing: a 16px rounded square whose
+ * height. Four places on this surface want one — the batch bar's pick-all, the
+ * list page's per-row pick, the row line's own pick, and the step board's done
+ * state — and all four asked for the same thing: a 16px rounded square whose
  * tick is drawn by *us*.
  *
  * The tick is a rotated border, not a glyph, and that is the whole point. A tick
@@ -23,7 +24,7 @@
  * the surface quieter and the surface unoperable.
  */
 import type { ReactElement } from 'react';
-export interface TickboxProps {
+interface TickboxProps {
     readonly checked: boolean;
     /** What this box is about, in words — never the word 「选中」. */
     readonly label: string;
@@ -37,3 +38,4 @@ export interface TickboxProps {
  * @returns the element.
  */
 export declare function Tickbox(props: TickboxProps): ReactElement;
+export {};

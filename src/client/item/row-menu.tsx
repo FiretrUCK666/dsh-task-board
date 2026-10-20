@@ -48,7 +48,7 @@ export interface RowMenuAction {
   readonly hint?: string
 }
 
-export interface ItemRowMenuProps {
+interface ItemRowMenuProps {
   /** The row's uuid, for the element identity and the capture layer's sibling. */
   readonly rowId: string
   /** The `⋯` control, measured for its own placement. */

@@ -15,7 +15,7 @@ export interface RowMenuAction {
     readonly disabled?: boolean;
     readonly hint?: string;
 }
-export interface ItemRowMenuProps {
+interface ItemRowMenuProps {
     /** The row's uuid, for the element identity and the capture layer's sibling. */
     readonly rowId: string;
     /** The `⋯` control, measured for its own placement. */
@@ -26,3 +26,4 @@ export interface ItemRowMenuProps {
     readonly onClose: () => void;
 }
 export declare function ItemRowMenu(props: ItemRowMenuProps): import("react").JSX.Element;
+export {};

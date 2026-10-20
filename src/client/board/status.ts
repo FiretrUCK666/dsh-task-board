@@ -3,7 +3,7 @@
  * by the board columns and the task detail badge so both surfaces can never
  * drift apart.
  */
-import type { TaskStatus } from '../../core/tasks.ts'
+import type { ManualStatus, TaskStatus } from '../../core/tasks.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
 /** Status → locale key. */
@@ -14,6 +14,18 @@ export const STATUS_KEY: Record<TaskStatus, TaskBoardKey> = {
   review: 'board.status.review',
   done: 'board.status.done',
 }
+
+/**
+ * Manual status → the locale key of its "move here" button. The table is
+ * EXHAUSTIVE BY TYPE: a manual status without a key fails the build here
+ * instead of painting a blank button on the screen — and the keys are named in
+ * one place, so a renamed key has exactly one home.
+ */
+export const STATUS_MOVE_KEY = {
+  backlog: 'status.move.backlog',
+  todo: 'status.move.todo',
+  done: 'status.move.done',
+} as const satisfies Readonly<Record<ManualStatus, TaskBoardKey>>
 
 /**
  * Status → SHORT locale key, read by the compact column navigator. Five equal

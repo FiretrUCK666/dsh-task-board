@@ -15,7 +15,6 @@
 import type { ItemRecord } from '../../core/item.ts';
 import type { ItemSort } from '../../core/item-sort.ts';
 export type ItemDayBucket = 'today' | 'yesterday' | 'beforeYesterday' | 'earlier';
-export declare const ITEM_DAY_BUCKETS: readonly ItemDayBucket[];
 /**
  * WHICH ORDERINGS MAY BE CUT INTO DAYS, and every ordering has an answer.
  *
@@ -34,7 +33,7 @@ export declare const SORT_GROUPS_BY_DAY: Readonly<Record<ItemSort, boolean>>;
 /** Which bucket a moment belongs to, against one clock. */
 export declare function dayBucketOf(at: number, now: number): ItemDayBucket;
 /** One day of rows, in the order the caller handed them over. */
-export interface ItemDayGroup {
+interface ItemDayGroup {
     readonly bucket: ItemDayBucket;
     readonly rows: readonly ItemRecord[];
     /** `rows.length`, because there is no number in this module to go stale. */
@@ -59,3 +58,4 @@ export interface ItemDayGroup {
  * @returns the days, in bucket order, or one group when the order is not by time.
  */
 export declare function itemDayGroupsOf(items: readonly ItemRecord[], now: number, sort: ItemSort): readonly ItemDayGroup[];
+export {};

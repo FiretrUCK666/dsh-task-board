@@ -42,7 +42,7 @@ import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { ITEM_STATUSES, type ItemDateKey, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
 import { DATE_FIELD_KEY, GROUP_LABEL } from './labels.ts'
-import { AttachMark, CardMark, ClockMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
+import { AttachMark, CardMark, ClockMark, DotsMark, PriorityMark, StatusMark, StepsMark } from './marks.tsx'
 import { formatItemDate } from './model.ts'
 import components from '../design/components.module.css'
 import { ItemRowMenu } from './row-menu.tsx'
@@ -516,11 +516,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
         aria-label={t('item.menu.more')}
         onClick={event => { event.stopPropagation(); onMenuToggle() }}
       >
-        <svg viewBox="0 0 4 16" width="4" height="16" aria-hidden="true">
-          <circle cx="2" cy="3" r="1.3" fill="currentColor" />
-          <circle cx="2" cy="8" r="1.3" fill="currentColor" />
-          <circle cx="2" cy="13" r="1.3" fill="currentColor" />
-        </svg>
+        <DotsMark />
       </button>
 
       {/* 回执：**详情展开时它由详情那一排画**（与按钮同一条线）；只有这一行是收着的时候才由

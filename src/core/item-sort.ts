@@ -28,7 +28,7 @@ import { itemPriorityRankOf, itemTitleOf } from './item.ts'
 // promise, and a second copy of five keys would be free to disagree with the
 // first about which of two rows comes first. This is the ONE edge the whole
 // derivation layer has to the document, and it is named here rather than spread.
-import { compareItemOrder } from './items-doc.ts'
+import { compareItemOrder, UNSET_DATE } from './items-doc.ts'
 
 /**
  * How a page orders its rows. ONE order, shared by every page.
@@ -64,22 +64,6 @@ export const ITEM_SORTS: readonly ItemSort[] = ['sequence', 'starts', 'due', 'ha
  * a reader sees is what the document already believes.
  */
 export const DEFAULT_ITEM_SORT: ItemSort = 'sequence'
-
-/**
- * The same sentinel for every date column that has one. Named once because the
- * law is one: a row without this field is not "at the beginning" and not
- * "unbounded", it is at the END, and only a FINITE end can be subtracted.
- *
- * `Infinity` is the tempting value and the one that breaks. Two rows without
- * dates both answer `Infinity`, and `Infinity - Infinity` is `NaN`; a comparator
- * that returns `NaN` makes `Array.prototype.sort` treat the pair as equal and
- * move on, so the two rows are never ordered against each other at all — which
- * quietly makes this NOT a total order, and a list that is not a total order
- * renders differently on two devices holding one document. The defect is
- * invisible on any screen showing a single device and impossible to spot in a
- * screenshot.
- */
-const UNSET_DATE = Number.MAX_SAFE_INTEGER
 
 /**
  * The instant a row is sorted by under the `due` order: the nearest date it owns.

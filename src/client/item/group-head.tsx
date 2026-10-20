@@ -44,7 +44,7 @@ import { GroupMark, InfoMark, type ItemMarkId } from './marks.tsx'
 import css from './item.module.css'
 
 /** 那一句解释的把手：谁来开、开没开、说的是哪一块。 */
-export interface GroupNoteHandle {
+interface GroupNoteHandle {
   /** 那句话所在元素的 id（`aria-controls` 指过去）。 */
   readonly id: string
   readonly open: boolean
@@ -96,7 +96,7 @@ export function NoteEntry(props: { readonly note: GroupNoteHandle; readonly size
   )
 }
 
-export interface GroupHeadProps {
+interface GroupHeadProps {
   /** 谁在说话：一块内容的题，还是一段列表的说明。 */
   readonly as?: 'heading' | 'presentation'
   /** 字阶两档，见文件头。 */

@@ -176,7 +176,7 @@ export type DateBadReason =
   | 'impossible'
 
 /** 一次读日期的结果：读到了那一刻，或者读不懂并说得出是哪一种不懂。 */
-export type DateReading =
+type DateReading =
   | { readonly kind: 'at'; readonly at: number }
   | { readonly kind: 'bad'; readonly reason: DateBadReason }
 
@@ -259,10 +259,10 @@ export function readDateExpression(text: string, now: number): DateReading {
 }
 
 /**
- * 三个日期的**名字表**：一处定义，三个读者（字段那一侧的剥离、一行那一侧的解析、
- * 名字本身的意思）。`早` / `晚` 是打字的活儿留下的单字短写，与 `开始` / `截止` 同义。
+ * 三个日期的**名字表**：一处定义，一处读（剥离式 `DATE_NAME_STRIP` 用它的键）。
+ * `早` / `晚` 是打字的活儿留下的单字短写，与 `开始` / `截止` 同义。
  */
-export const DATE_NAME_FIELD: Readonly<Record<string, ItemDateKey>> = {
+const DATE_NAME_FIELD: Readonly<Record<string, ItemDateKey>> = {
   开始: 'startsAfter', 早: 'startsAfter',
   计划: 'dueAt',
   截止: 'hardDueAt', 晚: 'hardDueAt',

@@ -47,7 +47,7 @@ import css from './item.module.css'
 const PROSE_HEIGHT = '--item-prose-h'
 
 /** What a reader's writing box needs from its surface. */
-export interface ProseFieldProps {
+interface ProseFieldProps {
   readonly value: string
   readonly onChange: (value: string) => void
   readonly placeholder: string

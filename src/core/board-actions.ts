@@ -479,7 +479,7 @@ export const ACTIONS = {
         about: '标到哪一层',
         optional: true,
         oneOf: ['task', 'session', 'round', 'all'],
-        default: '不传 = 整张卡（等价于 markAllViewed 那一路）',
+        default: '不传 = 整张卡（等价于 markTasksViewed 那一路）',
       },
       session: { about: '会话轮', requiredWhen: 'scope 是 session' },
       round: { about: '轮次', requiredWhen: 'scope 是 round' },

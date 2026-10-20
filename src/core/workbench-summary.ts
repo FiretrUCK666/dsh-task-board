@@ -25,10 +25,14 @@ import type { ItemRecord } from './item.ts'
 import { datePostureOf } from './item-dates.ts'
 import { flowSummaryOf } from './flow-metrics.ts'
 import type { BoardDemand } from './task-demand.ts'
-import type { TaskRecord, TaskStatus } from './tasks.ts'
+import { ALL_STATUSES, type TaskRecord, type TaskStatus } from './tasks.ts'
 
-/** The five columns, in reading order. Declared here so callers never re-list them. */
-export const PIPELINE_ORDER: readonly TaskStatus[] = ['backlog', 'todo', 'running', 'review', 'done']
+/**
+ * The five columns, in reading order — the board's own status list
+ * (`ALL_STATUSES`), read rather than re-listed: a column added there shows up
+ * here without anyone remembering to edit a second copy.
+ */
+export const PIPELINE_ORDER: readonly TaskStatus[] = ALL_STATUSES
 
 /** The four numbers the workbench reports. */
 export interface WorkbenchCounts {

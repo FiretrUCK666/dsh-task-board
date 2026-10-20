@@ -126,7 +126,7 @@ export interface PaletteCommands {
   readonly pick: () => void
 }
 
-export interface ItemCommandPaletteProps {
+interface ItemCommandPaletteProps {
   /** The whole query, exactly as the reader typed it. The ONLY state. */
   readonly text: string
   readonly onText: (next: string) => void

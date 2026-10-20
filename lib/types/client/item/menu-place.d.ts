@@ -39,7 +39,7 @@ export interface Rect {
     readonly height: number;
 }
 /** Which side of the trigger the menu opens on. */
-export type MenuPlacement = 'below' | 'above';
+type MenuPlacement = 'below' | 'above';
 /** The one answer this module gives: a placement and the spot it sits at. */
 export interface MenuSpot {
     readonly placement: MenuPlacement;
@@ -56,7 +56,7 @@ export interface MenuSpot {
     readonly maxBlockSize: number;
 }
 /** What the caller knows about the menu it is placing. */
-export interface MenuSize {
+interface MenuSize {
     readonly width: number;
     readonly height: number;
     /**
@@ -84,3 +84,4 @@ export interface MenuSize {
  * @returns the placement and the clamped spot.
  */
 export declare function placeRowMenu(trigger: Rect, panel: Rect, menu: MenuSize): MenuSpot;
+export {};

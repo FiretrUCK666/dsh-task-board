@@ -1,5 +1,5 @@
 import type { ItemRailEntry, ItemRailGroup } from '../../core/item-view.ts';
-export interface ItemRailProps {
+interface ItemRailProps {
     readonly groups: readonly ItemRailGroup[];
     /** Go to a row, a page, or 「wherever this entry points」. */
     readonly onEnter: (entry: ItemRailEntry) => void;
@@ -36,3 +36,4 @@ export interface ItemRailProps {
     readonly onPickDay: (day: string) => void;
 }
 export declare function ItemRail(props: ItemRailProps): import("react").JSX.Element;
+export {};

@@ -54,7 +54,7 @@ type DateKey = typeof DATE_FIELDS[number]
 /** 三个框一开始都是空的：一份，而不是三次 `useState('')`。 */
 const NO_DATES: Readonly<Record<DateKey, string>> = { startsAfter: '', dueAt: '', hardDueAt: '' }
 
-export interface ItemCreateDialogProps {
+interface ItemCreateDialogProps {
   readonly open: boolean
   readonly onClose: () => void
   /**
@@ -103,6 +103,29 @@ export interface ItemCreateDialogProps {
    * ——写成 `expr && <X/>` 的话，读者还没开纸、还没选那一档，表达式就已经求值过一次了。
    */
   readonly cardConfigSlot?: () => ReactNode
+}
+
+/**
+ * 这一张纸在**共享 escape stack** 上的那一格，**只在纸在屏上的时候才占着栈**。
+ *
+ * ── 为什么不能直接把登记写在纸自己的主体里 ─────────────────────────────────────
+ *
+ * 共享栈的契约是「栈顶收 Esc，一次只收最上面那一层」——而栈顶必须真的是**开着的**那一层。
+ * 这张纸的组件是**常驻**的（关着时它 `return null`，但组件还挂着），所以若把 `useEscapeStack`
+ * 写在纸的主体里，**纸关着的时候它仍占着栈底**：于是每一次 Esc 都会去调它的 `onClose`，
+ * 而那一次「关掉」会把**别的**浮层一起收掉——排序面板（它长在顶栏的壳里，本该由键映射收）
+ * 会在纸没开的时候被一次 Esc 收走。
+ *
+ * 所以登记住在一枚**只在纸开着时才挂载**的小组件里：栈顶从此总是真的最上面那一层，而
+ * Esc 的归属也只有一处——共享栈收浮层，键映射收它自己管的那几层（见 `panel.tsx` 的
+ * `keyActions.close`）。
+ *
+ * @param props - 这张纸的关闭把手。
+ * @returns nothing; the hook owns the registration.
+ */
+function SheetEscapeEntry(props: { readonly onClose: () => void }): null {
+  useEscapeStack(props.onClose)
+  return null
 }
 
 /**
@@ -171,7 +194,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   /* Tab stays inside the sheet, and closing hands focus back to whoever opened
      it — the two things `aria-modal` promises. Escape rides the shared stack. */
   const { onKeyDown: onSheetKeyDown } = useDialogFocus(sheet)
-  useEscapeStack(props.onClose)
 
   /* THE WHOLE FORM GOES BACK TO ITS OPENING STATE.
    *
@@ -280,6 +302,9 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
       className={css.itemOverlayMask}
       onPointerDown={event => { if (event.target === event.currentTarget) props.onClose() }}
     >
+      {/* 这一张纸在共享栈上的那一格——**只在纸在屏上的时候才占着栈**。理由在
+          `SheetEscapeEntry` 的注释里。 */}
+      <SheetEscapeEntry onClose={props.onClose} />
       <div
         ref={sheet}
         className={css.itemCreateDialog}

@@ -13,7 +13,7 @@
  */
 import type { PendingInteractionKind } from './controller.ts'
 import type { LinkedSessionRow } from './linked-sessions.ts'
-import { linkedSessionDisplay, sessionActivityOf, sessionDisplay, type SessionDisplay } from './session-display.ts'
+import { conversationWindowOf, linkedSessionDisplay, sessionActivityTimeOf, sessionDisplay, type SessionDisplay } from './session-display.ts'
 import { plainRunsOf, type TaskRecord } from './tasks.ts'
 
 /** One displayed session row (one per real session, de-duplicated). */
@@ -51,30 +51,24 @@ export function sessionRowTitleOf(nativeTitle: string | undefined, fallback: str
 
 /**
  * The activity window a session has ON this task — the earliest round's
- * start, the latest round's end, and the duration between them. The ONE
- * derivation for every session row (a board-run session and a bound
- * session's externally-observed turns read the same records), so the
- * 「开始 / 结束 / 耗时」line of a linked row is never a different grammar
- * from an execution row's. Empty when the session has no rounds.
+ * start, the latest round's end, and the duration between them. The LINKED
+ * row's reading of the shared window facts (`conversationWindowOf` in
+ * session-display.ts — the one derivation both session rows read): the last
+ * SETTLED end, so a conversation that is still working reports when its
+ * newest finished round ended. Empty when the session has no rounds.
  */
 export function sessionWindowOf(task: TaskRecord, sessionId: string | undefined): {
   startedAt?: number
   endedAt?: number
   duration?: number
 } {
-  if (sessionId === undefined) return {}
-  let startedAt: number | undefined
-  let endedAt: number | undefined
-  for (const round of task.executions) {
-    if (round.sessionId !== sessionId) continue
-    if (startedAt === undefined || round.startedAt < startedAt) startedAt = round.startedAt
-    if (round.endedAt !== undefined && (endedAt === undefined || round.endedAt > endedAt)) endedAt = round.endedAt
-  }
-  if (startedAt === undefined) return {}
+  const window = conversationWindowOf(task, sessionId)
+  if (window.startedAt === undefined) return {}
+  const endedAt = window.settledAt
   return {
-    startedAt,
+    startedAt: window.startedAt,
     ...endedAt !== undefined ? { endedAt } : {},
-    ...(endedAt !== undefined && endedAt >= startedAt) ? { duration: endedAt - startedAt } : {},
+    ...(endedAt !== undefined && endedAt >= window.startedAt) ? { duration: endedAt - window.startedAt } : {},
   }
 }
 
@@ -164,7 +158,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       // the unread clock takes, and the same one a run row and a linked row
       // both use. An open round counts as its own start (that is when the work
       // began), a settled one by its end.
-      updatedAt: sessionActivityOf(task, sessionId) || execution.startedAt,
+      updatedAt: sessionActivityTimeOf(task, sessionId) || execution.startedAt,
     })
   }
   const rows: TaskSessionRow[] = []
@@ -207,7 +201,7 @@ export function taskSessionsOf(task: TaskRecord, ctx: TaskSessionContext): TaskS
       // newer. A bound conversation that worked on THIS task is newer news than
       // the host's last touch, and a conversation that only ever worked in the
       // native UI is not demoted by having no rounds here.
-      updatedAt: Math.max(sessionActivityOf(task, linked.sessionId), linked.updatedAt),
+      updatedAt: Math.max(sessionActivityTimeOf(task, linked.sessionId), linked.updatedAt),
     })
   }
   return orderedSessionsOf(task, rows)

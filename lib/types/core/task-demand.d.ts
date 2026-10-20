@@ -37,7 +37,7 @@
  * read one answer.
  */
 import type { PendingInteractionKind } from './controller.ts';
-import type { TaskRecord } from './tasks.ts';
+import { type TaskRecord } from './tasks.ts';
 /**
  * One finished piece of work on a card: a settled round that SUCCEEDED or
  * FAILED, over every lane. Cancelled rounds are deliberately absent — a cancel
@@ -120,6 +120,10 @@ export declare function waitingSessionsOf(task: TaskRecord, pendingOf: (sessionI
  *
  * 「等你处理」只能挂在还存在的会话上——一条已经被删除的会话若仍被数进来，卡片会一直停在
  * 等你处理，而读者点进去什么也没有。**看不见 ≠ 不存在**：给不出判决时传 `undefined`。
+ *
+ * **不传这一项 = 一律按「存在」处理（不过滤）**：拿得到存在性判据的调用方（控制器读
+ * `sessionPresentOf`——那是这条判据的唯一去处）必须把它传进来，否则一条已经不在了的
+ * 会话会一直替这张卡亮着「等你处理」。
  */
 isPresentOf?: ((sessionId: string) => boolean) | undefined): WaitingSession[];
 /** What the board owes the user, as one number for the whole surface. */
@@ -139,5 +143,8 @@ export interface BoardDemand {
  * and looking at a card moves all three together.
  */
 export declare function boardDemandOf(tasks: readonly TaskRecord[], pendingOf: (sessionId: string | undefined) => PendingInteractionKind | undefined, linkedIdsOf?: (task: TaskRecord) => readonly string[], 
-/** 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`。 */
+/**
+ * 一条会话还在不在（见 `waitingSessionsOf` 的同一个参数）：给不出判决时 `undefined`，
+ * 不传则一律按「存在」处理（不过滤）。
+ */
 isPresentOf?: ((sessionId: string) => boolean) | undefined): BoardDemand;

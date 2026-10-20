@@ -46,6 +46,11 @@ import css from './item.module.css'
  * 「一个读不懂的日期怎么讲给人听」只该有一个答案：日期框在自己下面说，快记在输入框下面
  * 说（读者在那里写的是 `@13/45` 这种一行里的写法）。两处各拼一次，就是同一句话的两个
  * 版本，而其中一句会在某次改词里先过期——这一页已经有过一次「同一个词选不同的行」。
+ *
+ * **这一张表住在这里，不去 `labels.ts`。** 门禁 `panel-render.spec.ts` 的「那句话只有一处
+ * 拼出来」钉的正是**这三个键只许出现在这一个文件里**，而它把文件名写死成了这一处。改
+ * 那个门禁是别人的文件，而这一张表的归属已经被一条活着的契约说着——所以它留在这里，
+ * 而别处只**问**它（`dateBadWords`）。
  */
 const DATE_BAD_KEY: Readonly<Record<DateBadReason, TaskBoardKey>> = {
   unreadable: 'item.dates.bad.unreadable',
@@ -64,7 +69,7 @@ export function dateBadWords(reason: DateBadReason, word: string): string {
 }
 
 /** What one date field needs. Nothing about where it is drawn. */
-export interface DateFieldProps {
+interface DateFieldProps {
   /** The text the reader has typed. The field is CONTROLLED: the draft is the
    *  surface's state, because the surface is what finally writes it down. */
   readonly value: string

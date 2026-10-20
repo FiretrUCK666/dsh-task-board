@@ -24,7 +24,7 @@ import { RunConfigRows } from '../board/RunConfigRows.tsx'
 import { NoteEntry, useNote } from './group-head.tsx'
 import css from './item.module.css'
 
-export interface RunConfigBlockProps {
+interface RunConfigBlockProps {
   /** 这一刻要显示的那份配置（卡上的，或这一次要用的草稿）。 */
   readonly config: RunConfigPresetConfig
   /** 折叠头上那一句：这一份是「默认设置」还是「已指定 N 项」。 */

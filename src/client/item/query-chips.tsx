@@ -28,7 +28,7 @@ import { formatDayKey } from './model.ts'
 import { CrossMark } from './marks.tsx'
 import css from './item.module.css'
 
-export interface ItemQueryChipsProps {
+interface ItemQueryChipsProps {
   /** The whole query, exactly as it stands. The ONLY state. */
   readonly text: string
   /** The document's tags, so a tag chip can show the reader's own spelling. */

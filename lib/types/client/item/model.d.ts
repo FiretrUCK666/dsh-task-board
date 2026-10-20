@@ -1,4 +1,3 @@
-import type { ItemDateKey } from '../../core/item.ts';
 /**
  * Mint a row identity.
  *
@@ -96,7 +95,7 @@ export type DateBadReason =
 /** 日历上没有这一天。改法：核对月份与日期。 */
  | 'impossible';
 /** 一次读日期的结果：读到了那一刻，或者读不懂并说得出是哪一种不懂。 */
-export type DateReading = {
+type DateReading = {
     readonly kind: 'at';
     readonly at: number;
 } | {
@@ -143,11 +142,6 @@ export declare function readDateDraft(text: string, now: number): DateDraft;
  * @returns the local midnight of that day, or which of the three refusals it is.
  */
 export declare function readDateExpression(text: string, now: number): DateReading;
-/**
- * 三个日期的**名字表**：一处定义，三个读者（字段那一侧的剥离、一行那一侧的解析、
- * 名字本身的意思）。`早` / `晚` 是打字的活儿留下的单字短写，与 `开始` / `截止` 同义。
- */
-export declare const DATE_NAME_FIELD: Readonly<Record<string, ItemDateKey>>;
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export declare function toItemDateField(at: number | undefined): string;
 /**
@@ -161,3 +155,4 @@ export declare function toItemDateField(at: number | undefined): string;
  * never printed as a bare date without going through here.
  */
 export declare function localDayKey(at: number): string;
+export {};

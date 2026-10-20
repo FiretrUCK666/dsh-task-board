@@ -1,5 +1,5 @@
 import { type ItemKeyActions, type KeyState } from './keyboard.ts';
-export interface UseItemKeysOptions {
+interface UseItemKeysOptions {
     /** What the flow knows when a key is pressed. */
     readonly state: KeyState;
     /** One handler per action the map names. Closed, so a name cannot go missing. */
@@ -18,3 +18,4 @@ export interface UseItemKeysOptions {
  * @returns nothing; the effect owns the listener and returns the disposer.
  */
 export declare function useItemKeys(options: UseItemKeysOptions): void;
+export {};

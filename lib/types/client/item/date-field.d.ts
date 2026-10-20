@@ -7,7 +7,7 @@ import { type DateBadReason } from './model.ts';
  */
 export declare function dateBadWords(reason: DateBadReason, word: string): string;
 /** What one date field needs. Nothing about where it is drawn. */
-export interface DateFieldProps {
+interface DateFieldProps {
     /** The text the reader has typed. The field is CONTROLLED: the draft is the
      *  surface's state, because the surface is what finally writes it down. */
     readonly value: string;
@@ -41,3 +41,4 @@ export interface DateFieldProps {
  * @returns the input and, under it, one line saying what it read or why it could not.
  */
 export declare function DateField(props: DateFieldProps): import("react").JSX.Element;
+export {};

@@ -6,15 +6,14 @@
  * resolves the PLATFORM_MODULES seed words (react / cordis / static UI
  * libraries), dynamic package rows, and registered factories — nothing else.
  * The domain API moved from `connection.api.*` to the Typert-generated
- * `ctx.remote.<ns>.*` surface, and `createSnapshotStore` belongs to the
- * `dsh-client-store` package the shell seeds but this plugin does not require.
+ * `ctx.remote.<ns>.*` surface.
  *
  * This file therefore re-declares, locally and structurally, every runtime
  * face this plugin consumes — the same "framework-free, shape-guarded"
- * discipline the rest of the plugin already uses (see remote.commands) — and
- * provides a dependency-free snapshot-store implementation. No value import
- * crosses into an @deepseek-ai/dsh-client-* package, so the bundle builds
- * against the platform baseline and cannot drift with host versions.
+ * discipline the rest of the plugin already uses (see remote.commands). No
+ * value import crosses into an @deepseek-ai/dsh-client-* package, so the
+ * bundle builds against the platform baseline and cannot drift with host
+ * versions.
  *
  * @module dsh-task-board/client/platform
  */
@@ -32,7 +31,7 @@ export type SessionId = string & { readonly __sessionId: unique symbol }
 /** Branded workspace id. */
 export type WorkspaceId = string & { readonly __workspaceId: unique symbol }
 
-// ─── Snapshot store (dependency-free) ───────────────────────────────────────
+// ─── Snapshot source ─────────────────────────────────────────────────────────
 
 /**
  * Minimal observable snapshot source. Both `Session`-like objects and
@@ -41,56 +40,6 @@ export type WorkspaceId = string & { readonly __workspaceId: unique symbol }
 export interface ObservableSnapshot<T> {
   getSnapshot(): T
   subscribe(fn: () => void): () => void
-}
-
-/**
- * Writable snapshot store (bare data face). Same shape as the official
- * client-store engine; implemented here without zustand/immer so the plugin
- * bundle needs no platform module beyond the baseline.
- */
-export interface SnapshotStore<T> extends ObservableSnapshot<T> {
-  /** Mutate the state through a draft (plain assignment on the draft object). */
-  update(mutator: (draft: T) => void): void
-  /** Replace the state wholesale. */
-  set(next: T): void
-}
-
-/**
- * Create a snapshot store. Synchronous flush (controlled inputs need
- * same-tick echo); persistence is intentionally omitted — this plugin's
- * stores are projections, not durable state.
- *
- * @param init - initial state.
- * @returns the store.
- */
-export function createSnapshotStore<T>(init: T): SnapshotStore<T> {
-  let state = init
-  const listeners = new Set<() => void>()
-  return {
-    getSnapshot: () => state,
-    subscribe: fn => {
-      listeners.add(fn)
-      return () => { listeners.delete(fn) }
-    },
-    update: mutator => {
-      // Rebuild through a shallow draft clone so an immer-style mutator
-      // (which assigns onto the draft) leaves the previous snapshot intact
-      // until the mutation settles.
-      const draft = Array.isArray(state)
-        ? [...state] as T
-        : typeof state === 'object' && state !== null
-          ? { ...state as Record<string, unknown> } as T
-          : state
-      mutator(draft)
-      state = draft
-      for (const listener of [...listeners]) listener()
-    },
-    set: next => {
-      if (next === state) return
-      state = next
-      for (const listener of [...listeners]) listener()
-    },
-  }
 }
 
 // ─── Remote result shapes (Typert protocol) ─────────────────────────────────
@@ -1112,30 +1061,3 @@ export type ClientResponse = {
 
 /** The API face the question tracker consumes (a subset of `ApiFace`). */
 export type IApiClient = ApiFace
-
-// ─── Slots / locale props (local re-declaration) ────────────────────────────
-
-/**
- * The locale dictionary key map this plugin owns (namespace `dsh-task-board`).
- * Locale faces are merge tables in the host; re-declared locally so the card
- * component types without importing a platform package.
- */
-export interface TaskBoardLocaleKeyMap {
-  [key: string]: string
-}
-
-/** The locale prop share a slot component receives (`t` seat). */
-export type PropsLocale = {
-  t: (key: string) => string
-}
-
-/** The inject face share: inject members become component props. */
-export type InjectFace<F> = {
-  [K in keyof F]: F[K]
-}
-
-/**
- * The renderer-bound hook seat: the renderer binds the inject face's `hooks`
- * members to `use<Name>` props, each a selector hook over its snapshot store.
- */
-export type SnapshotSelector<T> = (selector: (snapshot: T) => T) => T

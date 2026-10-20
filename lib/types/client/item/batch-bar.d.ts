@@ -27,7 +27,7 @@
  */
 import type { ReactNode } from 'react';
 import type { ItemPriority, ItemStatus } from '../../core/item.ts';
-export interface ItemBatchBarProps {
+interface ItemBatchBarProps {
     readonly count: number;
     /**
      * THE VALUE ALL HELD ROWS SHARE, when they share one — the Segmented's own
@@ -68,3 +68,4 @@ export interface ItemBatchBarProps {
     readonly configSlot?: () => ReactNode;
 }
 export declare function ItemBatchBar(props: ItemBatchBarProps): import("react").JSX.Element;
+export {};

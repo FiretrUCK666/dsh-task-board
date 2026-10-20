@@ -30,7 +30,7 @@ export interface PaletteCommands {
     /** Run the candidate under the cursor. */
     readonly pick: () => void;
 }
-export interface ItemCommandPaletteProps {
+interface ItemCommandPaletteProps {
     /** The whole query, exactly as the reader typed it. The ONLY state. */
     readonly text: string;
     readonly onText: (next: string) => void;
@@ -62,3 +62,4 @@ export interface ItemCommandPaletteProps {
     readonly onCommands?: (commands: PaletteCommands | undefined) => void;
 }
 export declare function ItemCommandPalette(props: ItemCommandPaletteProps): import("react").JSX.Element;
+export {};

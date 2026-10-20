@@ -31,7 +31,7 @@ import { claimsKey, dispatchKey, type ItemKeyActions, type KeyState } from './ke
 /** The attribute this panel marks its own root with, and the board marks its own. */
 const SURFACE = '[data-dsh-taskboard-view]'
 
-export interface UseItemKeysOptions {
+interface UseItemKeysOptions {
   /** What the flow knows when a key is pressed. */
   readonly state: KeyState
   /** One handler per action the map names. Closed, so a name cannot go missing. */

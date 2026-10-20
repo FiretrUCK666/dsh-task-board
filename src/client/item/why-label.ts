@@ -19,28 +19,8 @@
  * has to be honest tomorrow, and the honest answer to 「I do not know why」 is a
  * sentence that does not pretend.
  */
-import { t, type TaskBoardKey } from '../locales.ts'
-
-/** Every refusal code either host can send, and what the reader is told. */
-const WHY_WORDS: Readonly<Record<string, TaskBoardKey>> = {
-  // ── the archive / restore path ──
-  noSuchItem: 'item.why.noSuchItem',
-  gone: 'item.why.gone',
-  // ── the hand-off path ──
-  noSuchTask: 'item.why.noSuchTask',
-  /**
-   * The request named one card and a row belonging to another. There is no
-   * reader-facing way to cause this — the panel sends its own row — so it is a
-   * guard against a caller that does not, and the sentence says the truth about
-   * the request rather than blaming the reader for a body they never wrote.
-   */
-  rowBelongsElsewhere: 'item.why.rowBelongsElsewhere',
-  // ── the host itself ──
-  hostUnavailable: 'item.why.hostUnavailable',
-  hostStorageMissing: 'item.why.hostUnavailable',
-  malformedAnswer: 'item.why.malformedAnswer',
-  unrecognisedAnswer: 'item.why.malformedAnswer',
-}
+import { t } from '../locales.ts'
+import { WHY_WORDS } from './labels.ts'
 
 /** A code that reads as a transport failure however it is spelled. */
 function isTransport(why: string): boolean {

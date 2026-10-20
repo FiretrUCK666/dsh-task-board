@@ -545,7 +545,7 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     }
     /**
      * 「这一轮已经看过了」：控制器写的就是这一对戳记——任务自己的 `viewedAt` 加上每条轮次的
-     * `viewedAt`（`markTaskViewed` / `markAllViewed`）。读时钟只朝前走，所以传进来的时刻必须
+     * `viewedAt`（`markTaskViewed` / `markTasksViewed`）。读时钟只朝前走，所以传进来的时刻必须
      * 在结算之后，否则卡上会多出一枚「新」。
      */
     const lookedAt = (task: TaskRecord, when: number): TaskRecord => ({

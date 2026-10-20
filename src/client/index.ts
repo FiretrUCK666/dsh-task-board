@@ -1040,43 +1040,6 @@ export function apply(ctx: ClientContext): void {
       },
       ttlMs: 10 * 60_000,
     })
-    // File-lane staging: the EXACT bytes go up first (same session), the
-    // prompt carries only the opaque receipt. Base64 here because the Remote
-    // upload shape is `{data: base64, name?}`; the HTTP binary fallback stays
-    // available on the host for large files (the runtime owns that choice —
-    // the board never picks a transport, it only supplies exact bytes).
-    const readFileAsBase64 = (file: File): Promise<string | undefined> => new Promise(resolve => {
-      const reader = new FileReader()
-      reader.onload = () => {
-        const result = typeof reader.result === 'string' ? reader.result : ''
-        const comma = result.indexOf(',')
-        resolve(comma >= 0 ? result.slice(comma + 1) : undefined)
-      }
-      reader.onerror = () => resolve(undefined)
-      reader.readAsDataURL(file)
-    })
-    const uploadFile = async (sessionId: string, file: File): Promise<
-      | { ok: true; receiptId: string }
-      | { ok: false; error: string }
-    > => {
-      try {
-        const data = await readFileAsBase64(file)
-        if (data === undefined || data === '') return { ok: false as const, error: 'unreadable file' }
-        const response = await api.fileUploads.upload({
-          sessionId: sessionId as SessionId,
-          data,
-          name: file.name,
-        })
-        if (!response.result.ok) {
-          return { ok: false as const, error: `${response.result.error.code}: ${response.result.error.message}` }
-        }
-        return { ok: true as const, receiptId: response.result.value.receiptId }
-      } catch (error) {
-        console.error('[dsh-task-board] file upload failed', error)
-        return { ok: false as const, error: String(error) }
-      }
-    }
-
     // Slash-menu sources (see listSlashCandidates): each fetches one native
     // catalog and degrades to [] on any failure, with the reason logged.
     const fetchSlashCommands = async (sessionId: string): Promise<readonly SlashCandidate[]> => {
@@ -1279,10 +1242,8 @@ export function apply(ctx: ClientContext): void {
       // shape and an empty fold is a real empty, not a missed page).
       transcript: transcriptLoader,
       transcriptPage: readTranscriptPage,
-      // Durable message images (official attachment read, cached/deduped)
-      // + file-lane staging (official upload pre-step, per session).
+      // Durable message images (official attachment read, cached/deduped).
       loadImage: (sessionId, attachmentId) => imageReader(`${sessionId}|${attachmentId}`),
-      uploadFile,
       // The plugin's OWN attachment door (the durable half the official
       // per-Agent upload cannot provide: a checklist row has no session, and a
       // document needs the reference rather than a receipt).

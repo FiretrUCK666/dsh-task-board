@@ -1,6 +1,6 @@
 import { DEFAULT_VIEW_PREFS } from './view-prefs.ts';
 import type { ItemListFace } from './register.tsx';
-export interface ItemListPanelProps {
+interface ItemListPanelProps {
     readonly face: ItemListFace;
     readonly signal: AbortSignal;
     /**

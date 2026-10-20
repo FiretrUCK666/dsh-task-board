@@ -45,7 +45,7 @@ export type ItemKeyAction =
   | 'palettePrev' | 'paletteNext' | 'palettePick'
 
 /** ONE BINDING: what is pressed, and what it names. */
-export interface KeyBinding {
+interface KeyBinding {
   /** What the reader presses, in the spelling a person says out loud (`⌘K`, `↵`, `↓`). */
   readonly keys: string
   /** `KeyboardEvent.key`, lower-cased. */
@@ -200,7 +200,7 @@ const LAYER_TRANSPARENT: ReadonlySet<ItemKeyAction> = new Set<ItemKeyAction>([
 ])
 
 /** The handler for one action. Returning nothing is fine; throwing is not. */
-export type ItemKeyHandler = (arg: ItemPriority | undefined) => void
+type ItemKeyHandler = (arg: ItemPriority | undefined) => void
 
 /**
  * EVERY ACTION, as a CLOSED record.
@@ -215,7 +215,7 @@ export type ItemKeyHandler = (arg: ItemPriority | undefined) => void
 export type ItemKeyActions = Readonly<Record<ItemKeyAction, ItemKeyHandler>>
 
 /** The event fields the flow reads. Narrower than `KeyboardEvent` on purpose. */
-export type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>
+type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>
 
 /** Whether a KEY EVENT is TYPING — the one thing that suspends the flow. */
 function isTypingTarget(target: EventTarget | null): boolean {
@@ -247,7 +247,7 @@ function keysClaimedByTarget(target: EventTarget | null): ReadonlySet<string> {
 }
 
 /** Whether the platform's command modifier is held — ⌘ on macOS, Ctrl elsewhere. */
-export function isCommand(event: KeyEventLike): boolean {
+function isCommand(event: KeyEventLike): boolean {
   return event.metaKey === true || event.ctrlKey === true
 }
 

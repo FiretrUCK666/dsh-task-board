@@ -1,14 +1,9 @@
 /**
- * Every vocabulary the list names, in one place, as CLOSED tables.
+ * 清单自己要写的词，一处定义——**这里放的是清单自己的闭合表**。
  *
- * WHY ONE FILE. Spread across four files, the same handful of words becomes
- * eight answers to four questions: the row and the detail pane each with a
- * `PRIORITY_LABEL`, the row's menu and the property column each with its own
- * status wording (动词形与名词形，见下), the batch bar and the page props each with
- * a priority table, and the overview strip with its own `TILE_ORDER` — a second
- * copy of the model's own status order. The failure mode is not a
- * compile error — it is a word that quietly drifts, or renders `undefined`,
- * while the panel goes on looking finished.
+ * WHY ONE FILE. 抄一份的代价不是那几行，是**改一处不报错**：读者要求「颜色全站同步」
+ * 时，其中一处不会跟着变，而屏上不会有人说一句话。所以**页面里的词表若与它同族，就搬
+ * 进来**——页面文件里不留第二份，一个概念一套词。
  *
  * The rule that makes it safe is CLOSEDNESS, and it is the whole point of the
  * type: `Readonly<Record<ItemPriority, TaskBoardKey>>` cannot be satisfied by a
@@ -19,15 +14,20 @@
  * precisely because the table cannot be trusted to be complete, and it
  * renders a word that is true of no flag at all.
  *
+ * **一处例外：{@link WHY_WORDS} 不是闭合表**，因为它的键是**宿主给的错误码**，而宿主
+ * 随时可能多发一个。它住在这一处，是因为它仍然是**清单自己写的词**——不是因为它是
+ * 闭合的。
+ *
  * WHAT IS DELIBERATELY NOT HERE: any judgment. A table maps a value the model
  * already decided to a word for it. Which rows match a filter, which page a row
  * is on and what a date means are all `core/item-view.ts`, read by this surface
  * and by `taskboard_query` alike.
  */
-import type { ItemDateKey, ItemPriority, ItemStatus } from '../../core/item.ts'
-import type { ItemFlag, ItemSort, ItemStatusView, ScheduleBucketId } from '../../core/item-view.ts'
+import type { ItemDateKey, ItemPriority, ItemRecord, ItemStatus } from '../../core/item.ts'
+import type { ItemFlag, ItemPageId, ItemRailGroupWord, ItemRailKey, ItemSort, ItemStatusView, ScheduleBucketId } from '../../core/item-view.ts'
 import { STATUS_KEY } from '../board/status.ts'
 import type { TaskBoardKey } from '../locales.ts'
+import type { ItemDayBucket } from './day-groups.ts'
 
 /**
  * The seven — now six — orders, and the word for each.
@@ -166,4 +166,122 @@ export const FLAG_LABEL: Readonly<Record<ItemFlag, TaskBoardKey>> = {
   gated: 'item.bucket.gated',
   linked: 'item.flag.linked',
   done: STATUS_KEY.done,
+}
+
+/**
+ * 两个页面的名字，闭合成 `ItemPageId`。
+ *
+ * 加一个页面就编译不过——而这一张表以前住在面板文件里，于是**页面的名字与页面的实现**
+ * 住在同一个文件，读者问「这一页叫什么」时要翻两处。
+ */
+export const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 'item.page.schedule'>> = {
+  list: 'item.page.list',
+  schedule: 'item.page.schedule',
+}
+
+/**
+ * 左栏那些行的词，闭合成 `ItemRailKey`。
+ *
+ * **四档优先级与五栏状态是别处那一份**，不是这里的第二张表：`PRIORITY_LABEL` 是四档的词，
+ * `STATUS_KEY` 是看板那五栏的词。同一枚筛子在两个面板上必须是同一个词，而一张抄过来的
+ * 表会在下一次改词时留下一个角落。
+ */
+export const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
+  all: 'item.rail.all',
+  schedule: 'item.page.schedule',
+  deleted: 'item.rail.deleted',
+  overdue: 'item.rail.overdue',
+  ahead: 'item.rail.ahead',
+  undated: 'item.rail.undated',
+  stale: 'item.rail.stale',
+  urgent: PRIORITY_LABEL.urgent,
+  high: PRIORITY_LABEL.high,
+  normal: PRIORITY_LABEL.normal,
+  low: PRIORITY_LABEL.low,
+  backlog: STATUS_KEY.backlog,
+  todo: STATUS_KEY.todo,
+  running: STATUS_KEY.running,
+  review: STATUS_KEY.review,
+  done: STATUS_KEY.done,
+}
+
+/**
+ * 左栏那几组的小标题，闭合成 `ItemRailGroupWord`。
+ *
+ * **没有 `??` 兜底，而且这正是重点**：用 `?? 'item.rail.all'` 读，这张表会给一个它不认识的
+ * 键印出「全部」——就在那一行自己的真数旁边，而那是这一面上读者唯一核对不了的一个数。
+ * 所以键集闭合成核心能真正产出的那些，新加一枚筛子是一次 `tsc` 错误。
+ */
+export const CAPTION: Readonly<Record<ItemRailGroupWord, TaskBoardKey>> = {
+  when: 'item.rail.when',
+  idle: 'item.rail.idle',
+  rank: 'item.rail.rank',
+  state: 'item.rail.state',
+}
+
+/**
+ * 日分段那四节的词，闭合成 `ItemDayBucket`。
+ *
+ * 「今天 / 昨天 / 前天 / 更早」是相对的说法，而绝对日期在左栏的日历里，也在每一行自己的
+ * 日期读数上——同一批日子，两种读法，各有各的位置。
+ */
+export const DAY_WORD: Readonly<Record<ItemDayBucket, TaskBoardKey>> = {
+  today: 'item.day.today',
+  yesterday: 'item.day.yesterday',
+  beforeYesterday: 'item.day.beforeYesterday',
+  earlier: 'item.day.earlier',
+}
+
+/**
+ * 这一条**从哪里来**：人写的、模型写的、还是导入的。
+ *
+ * 闭合成 `ItemRecord['origin']['source']`——模型多一个来源，这张表就编译不过。
+ */
+export const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
+  human: 'item.origin.human',
+  ai: 'item.origin.ai',
+  import: 'item.origin.import',
+}
+
+/**
+ * 「问 AI」被拒的四种理由，以及每一句该说的话。
+ *
+ * 闭合成这四个码——多一种拒法就编译不过，于是**读者听到的永远是这一句**，而不是一个
+ * 从码里拼出来的句子。
+ */
+export const ASK_WHY_LABEL: Readonly<Record<'unknownTask' | 'empty' | 'busy' | 'unavailable', TaskBoardKey>> = {
+  unknownTask: 'item.ask.why.unknownTask',
+  empty: 'item.ask.why.empty',
+  busy: 'item.ask.why.busy',
+  unavailable: 'item.ask.why.unavailable',
+}
+
+/**
+ * 宿主可能发来的每一个拒绝码，以及读者被告知的那句话。
+ *
+ * **它不是闭合表**，而这一处的其余每一张都是：键是**宿主的码**，宿主随时可能多发一个，
+ * 而这张表要回答的是「读者被告知什么」，不是「宿主一共能发几种」。多一个码不会让编译器
+ * 说一句话——读到的是那句「我不知道为什么」（见 `why-label.ts`）。
+ *
+ * 它住在这一处，是因为它仍然是**清单自己写的词**：别处的表是「某个值叫什么」，这一张是
+ * 「一个码对应哪一句话」，而两处都要保证同一个码在两个面板上说的是同一句话。
+ */
+export const WHY_WORDS: Readonly<Record<string, TaskBoardKey>> = {
+  // ── the archive / restore path ──
+  noSuchItem: 'item.why.noSuchItem',
+  gone: 'item.why.gone',
+  // ── the hand-off path ──
+  noSuchTask: 'item.why.noSuchTask',
+  /**
+   * The request named one card and a row belonging to another. There is no
+   * reader-facing way to cause this — the panel sends its own row — so it is a
+   * guard against a caller that does not, and the sentence says the truth about
+   * the request rather than blaming the reader for a body they never wrote.
+   */
+  rowBelongsElsewhere: 'item.why.rowBelongsElsewhere',
+  // ── the host itself ──
+  hostUnavailable: 'item.why.hostUnavailable',
+  hostStorageMissing: 'item.why.hostUnavailable',
+  malformedAnswer: 'item.why.malformedAnswer',
+  unrecognisedAnswer: 'item.why.malformedAnswer',
 }

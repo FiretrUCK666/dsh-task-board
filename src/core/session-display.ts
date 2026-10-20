@@ -23,13 +23,6 @@ export interface SessionDisplay {
 }
 
 /**
- * Collect every round belonging to an execution's session:
- * - Rounds with the same sessionId (comments injected into this session).
- * - Rounds whose parentExecutionId matches (comments attributed by parent
- *   rather than session — legacy data compatibility).
- * The execution itself is always included.
- */
-/**
  * THE CONVERSATION: every round this task recorded in that session, whatever
  * lane produced it (a run, an injected comment, an observed native turn, a
  * direct steer, a rule instruction). It answers "what has happened in this
@@ -59,7 +52,7 @@ function conversationRoundsOf(task: TaskRecord, sessionId: string | undefined): 
  * {@link conversationRoundsOf}; a surface asking "is there unread content on
  * THIS review page" reads this one.
  */
-export function executionThreadOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
+function executionThreadOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[] {
   const id = execution.id
   const sid = execution.sessionId
   return task.executions.filter(round =>
@@ -165,9 +158,59 @@ export function linkedSessionDisplay(
 }
 
 /**
+ * The window FACTS of one conversation on this task: when it started, when its
+ * last settled round ended, and whether a round is still in flight.
+ *
+ * ONE derivation for both session rows (the run row and the linked row) — the
+ * facts are read once, so the two rows can never disagree about when the
+ * conversation began. Each surface states which READING it shows: the run row
+ * says the conversation has no end time while a round is still open (the
+ * window is not closed), while the linked row reports the last settled end
+ * (the newest thing that actually finished).
+ */
+export interface ConversationWindow {
+  /** The earliest round's start; undefined when the session has no rounds. */
+  readonly startedAt: number | undefined
+  /** The latest settled round's end; undefined when nothing has settled. */
+  readonly settledAt: number | undefined
+  /** Whether a round is still in flight (so the conversation is not over). */
+  readonly open: boolean
+}
+
+/**
+ * The window facts of one conversation on this task.
+ * @param task - the card.
+ * @param sessionId - the conversation; undefined = no conversation.
+ * @returns the start, the last settled end, and whether a round is in flight.
+ */
+export function conversationWindowOf(task: TaskRecord, sessionId: string | undefined): ConversationWindow {
+  if (sessionId === undefined) return { startedAt: undefined, settledAt: undefined, open: false }
+  let startedAt: number | undefined
+  let settledAt: number | undefined
+  let open = false
+  for (const round of task.executions) {
+    if (round.sessionId !== sessionId) continue
+    if (startedAt === undefined || round.startedAt < startedAt) startedAt = round.startedAt
+    if (isOpenRound(round)) {
+      open = true
+      continue
+    }
+    // A zero end stamp is not an end (it is the epoch — the row would read as
+    // 1970), so only a real end counts.
+    if (round.endedAt !== undefined && round.endedAt > 0
+      && (settledAt === undefined || round.endedAt > settledAt)) settledAt = round.endedAt
+  }
+  return { startedAt, settledAt, open }
+}
+
+/**
  * The time window of a conversation on this task (all its rounds, every lane —
  * the same set the state chip and the order key read, so the 开始/结束/耗时
  * line can never describe a different stretch of time than the chip above it).
+ * The RUN row's reading of the shared window facts ({@link conversationWindowOf}
+ * — the one derivation both session rows read): a conversation with a round
+ * still in flight has no end time yet, so the row says the window is not
+ * closed instead of naming a moment that is not the end.
  * - startedAt = earliest round's start.
  * - endedAt = latest settled round's end; undefined if any round is still open.
  * - duration = endedAt - startedAt; undefined if the session is still open.
@@ -177,23 +220,16 @@ export function sessionTimes(task: TaskRecord, execution: ExecutionRecord): {
   endedAt: number | undefined
   duration: number | undefined
 } {
-  const rounds = conversationRoundsOf(task, execution.sessionId)
-  if (rounds.length === 0) {
+  const window = conversationWindowOf(task, execution.sessionId)
+  if (window.startedAt === undefined) {
     return { startedAt: execution.startedAt, endedAt: undefined, duration: undefined }
   }
-
-  const startedAt = Math.min(...rounds.map(r => r.startedAt))
-  // THE open-round judgment (shared with the dispatcher): a round that is
-  // merely saved-and-queued is not work in progress, and a round that has
-  // settled is finished — reading `endedAt` alone here would re-derive the
-  // same rule a second time and drift from it.
-  const anyOpen = rounds.some(r => isOpenRound(r))
-  const endedAt = anyOpen
-    ? undefined
-    : Math.max(...rounds.map(r => r.endedAt ?? 0).filter(t => t > 0))
-  const duration = endedAt !== undefined ? endedAt - startedAt : undefined
-
-  return { startedAt, endedAt, duration }
+  const endedAt = window.open ? undefined : window.settledAt
+  return {
+    startedAt: window.startedAt,
+    endedAt,
+    duration: endedAt !== undefined ? endedAt - window.startedAt : undefined,
+  }
 }
 
 // --- unviewed-content reminders ----------------------------------------------
@@ -222,7 +258,7 @@ function roundActivity(round: ExecutionRecord): number {
  * 原生对话、直发，一视同仁：「这段对话又产出新东西了」不关心是哪条车道产出
  * 的。会话没有轮次时返回 0（读作「没有动过」，调用方自己拿宿主时间兜底）。
  */
-export function sessionActivityOf(task: TaskRecord, sessionId: string): number {
+export function sessionActivityTimeOf(task: TaskRecord, sessionId: string): number {
   let activity = 0
   for (const round of task.executions) {
     if (round.sessionId !== sessionId) continue
@@ -303,7 +339,7 @@ export function taskUnviewedCount(task: TaskRecord): number {
  *
  *  - activity = max(round.endedAt ?? round.startedAt) — an open round counts
  *    as its own start, which never beats an equal-or-later acknowledgment;
- *    {@link sessionActivityOf} is that reading, named once for both callers;
+ *    {@link sessionActivityTimeOf} is that reading, named once for both callers;
  *  - acknowledgment = max(round.viewedAt ?? round.startedAt) — rounds are
  *    born seen (their creator stamps `viewedAt`; storage backfills old rows
  *    to their own activity), and the existing funnels move it forward
@@ -316,7 +352,7 @@ export function taskUnviewedCount(task: TaskRecord): number {
  * coarser task-level clock).
  */
 export function sessionUnviewedOf(task: TaskRecord, sessionId: string): boolean {
-  const activity = sessionActivityOf(task, sessionId)
+  const activity = sessionActivityTimeOf(task, sessionId)
   let acknowledged = 0
   for (const round of task.executions) {
     if (round.sessionId !== sessionId) continue

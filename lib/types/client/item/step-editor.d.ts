@@ -1,5 +1,5 @@
 import type { ItemRecord } from '../../core/item.ts';
-export interface ItemStepsProps {
+interface ItemStepsProps {
     /** The row being edited. Its `id` is what a new step's id is derived from. */
     readonly item: ItemRecord;
     /** Bumped by 「编辑步骤」; the field takes the caret when it changes. */
@@ -15,3 +15,4 @@ export interface ItemStepsProps {
  * @returns the board, then the field that adds to it.
  */
 export declare function ItemSteps(props: ItemStepsProps): import("react").JSX.Element;
+export {};

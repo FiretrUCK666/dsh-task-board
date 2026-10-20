@@ -1,6 +1,6 @@
 import type { BoardController } from '../../core/controller.ts';
 import type { RunConfigPresetConfig } from '../../core/run-presets.ts';
-export interface RunConfigBlockProps {
+interface RunConfigBlockProps {
     /** 这一刻要显示的那份配置（卡上的，或这一次要用的草稿）。 */
     readonly config: RunConfigPresetConfig;
     /** 折叠头上那一句：这一份是「默认设置」还是「已指定 N 项」。 */
@@ -19,3 +19,4 @@ export interface RunConfigBlockProps {
  * @returns the disclosure with the five rows, the editor behind 改, and the note.
  */
 export declare function RunConfigBlock(props: RunConfigBlockProps): import("react").JSX.Element;
+export {};

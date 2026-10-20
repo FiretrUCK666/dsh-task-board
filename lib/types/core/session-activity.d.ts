@@ -23,7 +23,8 @@
  * native turn is never recorded twice, while every NEW turn re-arms it. Past
  * completed turns are never re-fired (a finished turn is not running).
  *
- * THE other half of this module — {@link sessionActivityOf} and the index
+ * THE other half of this module — {@link sessionActivityOf} (the three-valued
+ * answer: own / descendant / idle / unknown) and the index
  * behind it — answers the DIFFERENT question the board's surfaces ask: "is this
  * session still working?" (its own turn OR a subagent descendant it summoned).
  * The two must never be confused: the detector below reads the session's OWN
@@ -98,9 +99,12 @@ export declare function contentTextOf(content: unknown): string;
  * Anything malformed is skipped (never a crash on an unknown part), and a
  * repeated id counts once.
  *
- * THE one reader of that wire shape in the core: the observed-turn recorder
- * reads it to describe what a native message carried, and the review page's
- * image lane derives from the same call rather than parsing the parts again.
+ * The core's one reader of that wire shape: the observed-turn recorder reads it
+ * to describe what a native message carried, and it needs BOTH lanes — images
+ * and files, with their byte sizes — to say 「含 N 张图片 / N 个文件」. The
+ * review page's image lane is a narrower question with a narrower answer (it
+ * renders pictures and has no use for a file's bytes), so it parses the parts
+ * itself rather than reading this one.
  * @param content - a native message's content blocks.
  * @returns the durable refs, in message order.
  */
@@ -205,14 +209,6 @@ export interface SessionActivityIndex {
     /** How many subagent descendants of this session are running right now. */
     descendantRunningCount(sessionId: string): number;
 }
-/**
- * Build the activity index for one snapshot: the lineage rollup plus the
- * O(1) lookups over it.
- * @param rows - the list snapshot's `byId`.
- * @param rollup - the lineage index over those rows (session-lineage.ts).
- * @param ready - the snapshot's readiness (`phase !== 'pending'`).
- */
-export declare function buildSessionActivityIndex(rows: Readonly<Record<string, LineageRow | undefined>>, rollup: LineageIndex, ready?: boolean): SessionActivityIndex;
 /** Build the lineage index + the activity index over one snapshot in one call —
  *  the ONE construction site (the controller's snapshot-keyed cache; tests
  *  build the same pair). */

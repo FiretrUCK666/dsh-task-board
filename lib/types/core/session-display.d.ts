@@ -21,22 +21,6 @@ export interface SessionDisplay {
     waitingKind: PendingInteractionKind | undefined;
 }
 /**
- * THE EXECUTION'S REVIEW THREAD: the execution plus the comments submitted
- * FROM its review page, plus legacy rows attributed by `parentExecutionId`.
- *
- * This is deliberately NOT the conversation. A session-anchored drive comment
- * belongs to the linked conversation's thread and must never make an
- * execution's review page read as live. EXCEPTION: externally-observed rounds
- * (a native-side turn recorded onto the task) keep their thread slot AND count
- * as the execution's unread, because they are that run's own turn happening out
- * of band.
- *
- * A surface asking "what state is this conversation in" reads
- * {@link conversationRoundsOf}; a surface asking "is there unread content on
- * THIS review page" reads this one.
- */
-export declare function executionThreadOf(task: TaskRecord, execution: ExecutionRecord): readonly ExecutionRecord[];
-/**
  * The live state of an execution's SESSION, for a row whose identity is that
  * execution. A session-scoped read of the one conversation derivation: a
  * conversation the task both ran in and later drove from a linked panel is
@@ -54,9 +38,39 @@ export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRec
  */
 export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean): SessionDisplay;
 /**
+ * The window FACTS of one conversation on this task: when it started, when its
+ * last settled round ended, and whether a round is still in flight.
+ *
+ * ONE derivation for both session rows (the run row and the linked row) — the
+ * facts are read once, so the two rows can never disagree about when the
+ * conversation began. Each surface states which READING it shows: the run row
+ * says the conversation has no end time while a round is still open (the
+ * window is not closed), while the linked row reports the last settled end
+ * (the newest thing that actually finished).
+ */
+export interface ConversationWindow {
+    /** The earliest round's start; undefined when the session has no rounds. */
+    readonly startedAt: number | undefined;
+    /** The latest settled round's end; undefined when nothing has settled. */
+    readonly settledAt: number | undefined;
+    /** Whether a round is still in flight (so the conversation is not over). */
+    readonly open: boolean;
+}
+/**
+ * The window facts of one conversation on this task.
+ * @param task - the card.
+ * @param sessionId - the conversation; undefined = no conversation.
+ * @returns the start, the last settled end, and whether a round is in flight.
+ */
+export declare function conversationWindowOf(task: TaskRecord, sessionId: string | undefined): ConversationWindow;
+/**
  * The time window of a conversation on this task (all its rounds, every lane —
  * the same set the state chip and the order key read, so the 开始/结束/耗时
  * line can never describe a different stretch of time than the chip above it).
+ * The RUN row's reading of the shared window facts ({@link conversationWindowOf}
+ * — the one derivation both session rows read): a conversation with a round
+ * still in flight has no end time yet, so the row says the window is not
+ * closed instead of naming a moment that is not the end.
  * - startedAt = earliest round's start.
  * - endedAt = latest settled round's end; undefined if any round is still open.
  * - duration = endedAt - startedAt; undefined if the session is still open.
@@ -75,7 +89,7 @@ export declare function sessionTimes(task: TaskRecord, execution: ExecutionRecor
  * 原生对话、直发，一视同仁：「这段对话又产出新东西了」不关心是哪条车道产出
  * 的。会话没有轮次时返回 0（读作「没有动过」，调用方自己拿宿主时间兜底）。
  */
-export declare function sessionActivityOf(task: TaskRecord, sessionId: string): number;
+export declare function sessionActivityTimeOf(task: TaskRecord, sessionId: string): number;
 /**
  * The viewed baseline of an execution row: when the user last opened its
  * review page; absent, the run's own start (every created/normalized run
@@ -123,7 +137,7 @@ export declare function taskUnviewedCount(task: TaskRecord): number;
  *
  *  - activity = max(round.endedAt ?? round.startedAt) — an open round counts
  *    as its own start, which never beats an equal-or-later acknowledgment;
- *    {@link sessionActivityOf} is that reading, named once for both callers;
+ *    {@link sessionActivityTimeOf} is that reading, named once for both callers;
  *  - acknowledgment = max(round.viewedAt ?? round.startedAt) — rounds are
  *    born seen (their creator stamps `viewedAt`; storage backfills old rows
  *    to their own activity), and the existing funnels move it forward

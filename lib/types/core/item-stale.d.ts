@@ -12,9 +12,9 @@
  * asks is "how long has this been waiting to be touched AND been touchable", and
  * a row failing the second half simply has no answer.
  *
- * （旧的第二条豁免是「读者标了受阻」；那一档已经不存在了——见 `item.ts` 里状态的
- * 来历。留下的这一条是**日期**给的，而日期是这一页上唯一能替读者说「还不能动」的
- * 东西。）
+ * The one exemption is the **date**: a row whose date has not arrived cannot be
+ * touched yet, and the date is the only thing on this page that can say
+ * 「还不能动」 for the reader.
  *
  * The ceiling is the same promise from the other side. A staleness signal with no
  * ceiling turns into a guilt generator: past a certain age a row is not neglected

@@ -16,7 +16,7 @@
 import type { ReactNode } from 'react';
 import type { ItemCapture } from '../../core/item-transitions.ts';
 import { type AttachmentAdmitter } from '../board/composer-attachments.ts';
-export interface ItemCreateDialogProps {
+interface ItemCreateDialogProps {
     readonly open: boolean;
     readonly onClose: () => void;
     /**
@@ -75,3 +75,4 @@ export interface ItemCreateDialogProps {
  * @returns the overlay, or nothing.
  */
 export declare function ItemCreateDialog(props: ItemCreateDialogProps): import("react").JSX.Element | null;
+export {};

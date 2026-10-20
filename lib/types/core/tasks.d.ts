@@ -397,10 +397,17 @@ export interface NewTaskInput {
 /** The five kanban columns, in display order. */
 export declare const COLUMNS: readonly {
     status: TaskStatus;
-    label: string;
 }[];
-/** Statuses a user may move a card to manually (execution states are owned by the runner). */
-export declare const MANUAL_STATUSES: readonly TaskStatus[];
+/**
+ * Statuses a user may move a card to manually (execution states are owned by
+ * the runner). The LIST is the definition and the type is derived from it, so
+ * a manual column is added in one place — and every table that must answer
+ * for each of them (the move buttons' labels, the model's `task.move` range)
+ * is a compile error until it answers.
+ */
+export declare const MANUAL_STATUSES: readonly ["backlog", "todo", "done"];
+/** One manually-movable status (the union of {@link MANUAL_STATUSES}). */
+export type ManualStatus = (typeof MANUAL_STATUSES)[number];
 /**
  * The status one column over, along the board's own COLUMNS order — the keyboard
  * equivalent of dragging a card one column. Pure, and deliberately derived from
@@ -537,16 +544,6 @@ export declare function chainUnlimited(mode: ScheduleMode | undefined, maxRuns: 
  *  outside it are rejected or transcoded at the door; stored rows are
  *  grandfathered, see below). */
 export declare const IMAGE_MEDIA_TYPES: readonly ["image/png", "image/jpeg", "image/webp", "image/gif"];
-/** Whether a raw value is a storable prompt image (non-empty data + a media
- *  type string). Deliberately LENIENT (no whitelist): storage walls must
- *  never retroactively delete what an older version stored — the whitelist
- *  gates new intake and the send layer, never the ledger. Crash-safety (no
- *  undefined derefs downstream) is what storage guarantees. */
-export declare function isWellFormedImage(entry: unknown): entry is TaskImage;
-/** Whether a raw value is a storable file ref (non-empty receipt + name;
- *  bytes only needs to be a number for display math — NaN displays ugly but
- *  never crashes and never deletes). Same leniency law as images above. */
-export declare function isWellFormedFile(entry: unknown): entry is TaskFile;
 /** Keep well-formed prompt images (a dirty element washes out, never the
  *  row and never a downstream crash). */
 export declare function normalizePromptImages(raw: unknown): TaskImage[] | undefined;
@@ -670,6 +667,15 @@ export declare function newDirectRound(options: {
     /** LEGACY pass-through: the file twin of `images`. */
     files?: readonly TaskFile[];
 }): ExecutionRecord;
+/**
+ * Whether a settled round is work a person could have to rule on: it finished,
+ * and it finished with an outcome. A cancelled round is an abort, not work.
+ * ONE predicate, read by the settle decision and by the human gate.
+ */
+export declare function isCompletedRound(round: ExecutionRecord): round is ExecutionRecord & {
+    result: 'succeeded' | 'failed';
+    endedAt: number;
+};
 /**
  * Whether the card already holds completed work awaiting the human gate:
  * any settled round with a succeeded/failed outcome (plain runs,

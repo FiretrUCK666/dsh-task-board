@@ -91,7 +91,6 @@ export {
   itemQualifierVocabulary,
   dayTokenOf,
   parseItemQuery,
-  PRIORITY_BY_TOKEN,
   PRIORITY_DIGIT,
   TOKEN_BY_PRIORITY,
 } from './item-query.ts'
@@ -99,21 +98,20 @@ export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './ite
 
 // ── item-rail ──────────────────────────────────────────────────────────────
 export { itemRailGroupsOf, railSiblingsOf, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS } from './item-rail.ts'
-export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey, ItemRailKind } from './item-rail.ts'
+export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } from './item-rail.ts'
 
 // ── item-navigate ──────────────────────────────────────────────────────────
-export { ITEM_PAGES, itemPageOf, planItemNavigation } from './item-navigate.ts'
-export type { ItemNavigation, ItemNavigationRefusal, ItemPageId } from './item-navigate.ts'
+export { ITEM_PAGES, planItemNavigation } from './item-navigate.ts'
+export type { ItemPageId } from './item-navigate.ts'
 
 // ── item-ask ───────────────────────────────────────────────────────────────
 export { askTargetOf, itemContextText, planItemAsk } from './item-ask.ts'
-export type { ItemAskInput, ItemAskPlan, ItemAskRefusal, ItemAskTarget } from './item-ask.ts'
 
 // ── item-rows ──────────────────────────────────────────────────────────────
 export { ITEM_STATUS_ORDER, itemRefOf, itemRowViewOf, itemSlicesOf } from './item-rows.ts'
-export type { ItemRef, ItemRowContext, ItemRowView, ItemSlice, ItemSliceOptions } from './item-rows.ts'
+export type { ItemRowView } from './item-rows.ts'
 
 // ── item-schedule ──────────────────────────────────────────────────────────
 export { SCHEDULE_BUCKETS, scheduleBucketOf, scheduleBucketsOf } from './item-schedule.ts'
-export type { ScheduleBucket, ScheduleBucketId } from './item-schedule.ts'
+export type { ScheduleBucketId } from './item-schedule.ts'
 

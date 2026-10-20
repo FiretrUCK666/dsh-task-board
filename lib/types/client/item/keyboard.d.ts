@@ -40,7 +40,7 @@ import { type ItemPriority } from '../../core/item-view.ts';
  */
 export type ItemKeyAction = 'quickCapture' | 'moveNext' | 'movePrev' | 'pick' | 'rename' | 'open' | 'close' | 'priority' | 'dueToday' | 'remove' | 'undo' | 'palette' | 'palettePrev' | 'paletteNext' | 'palettePick';
 /** ONE BINDING: what is pressed, and what it names. */
-export interface KeyBinding {
+interface KeyBinding {
     /** What the reader presses, in the spelling a person says out loud (`⌘K`, `↵`, `↓`). */
     readonly keys: string;
     /** `KeyboardEvent.key`, lower-cased. */
@@ -134,7 +134,7 @@ export interface KeyState {
  */
 export declare const ITEM_KEYS: readonly KeyBinding[];
 /** The handler for one action. Returning nothing is fine; throwing is not. */
-export type ItemKeyHandler = (arg: ItemPriority | undefined) => void;
+type ItemKeyHandler = (arg: ItemPriority | undefined) => void;
 /**
  * EVERY ACTION, as a CLOSED record.
  *
@@ -147,9 +147,7 @@ export type ItemKeyHandler = (arg: ItemPriority | undefined) => void;
  */
 export type ItemKeyActions = Readonly<Record<ItemKeyAction, ItemKeyHandler>>;
 /** The event fields the flow reads. Narrower than `KeyboardEvent` on purpose. */
-export type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>;
-/** Whether the platform's command modifier is held — ⌘ on macOS, Ctrl elsewhere. */
-export declare function isCommand(event: KeyEventLike): boolean;
+type KeyEventLike = Pick<KeyboardEvent, 'key' | 'metaKey' | 'ctrlKey' | 'shiftKey' | 'target'>;
 /**
  * THE BINDING A KEY EVENT IS, or `undefined` when this keystroke is not ours.
  *
@@ -191,3 +189,4 @@ export declare function claimsKey(event: KeyEventLike): boolean;
  * @returns whether the event was ours and should not travel further.
  */
 export declare function dispatchKey(event: KeyEventLike, state: KeyState, actions: ItemKeyActions): boolean;
+export {};

@@ -13,7 +13,7 @@
  * layer.
  */
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { ItemDateKey, ItemPriority, ItemRecord, ItemStep } from '../../core/item.ts'
+import type { ItemDateKey, ItemPriority, ItemStep } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, ITEM_STATUSES, itemTitleOf } from '../../core/item.ts'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
@@ -23,7 +23,7 @@ import { Chip } from '../design/Chip.tsx'
 import { DateField } from './date-field.tsx'
 import { ProseField } from './prose-field.tsx'
 import { formatItemDate, readDateDraft, toItemDateField } from './model.ts'
-import { DATE_HINT_KEY, GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
+import { DATE_HINT_KEY, GROUP_LABEL, ORIGIN_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { PriorityMark } from './marks.tsx'
 import { NoteEntry, useNote } from './group-head.tsx'
 import { ItemSteps } from './step-editor.tsx'
@@ -34,12 +34,6 @@ import { AttachmentStrip } from '../design/AttachmentStrip.tsx'
 import { attachBusyLabel, chipsOf, refsOf, useComposerAttachments, type AttachmentAdmitter } from '../board/composer-attachments.ts'
 import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/attach.ts'
 import css from './item.module.css'
-
-const ORIGIN_LABEL: Readonly<Record<ItemRecord['origin']['source'], 'item.origin.human' | 'item.origin.ai' | 'item.origin.import'>> = {
-  human: 'item.origin.human',
-  ai: 'item.origin.ai',
-  import: 'item.origin.import',
-}
 
 /** The four tiers, most important first — the order a row of chips is scanned in.
  *  The order is the MODEL's ({@link ITEM_PRIORITIES_BY_WEIGHT}), not a second sort

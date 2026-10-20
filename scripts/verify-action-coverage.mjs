@@ -264,7 +264,6 @@ const INTERNAL = {
   // catalog is missing this" is to invent a verb for it, and an invented verb
   // teaches the next reader a false thing about that verb.
   recheckSeat: NOT_FOR_MODEL + '检查更新并安装：十二个动词里没有一个是真的——塞进 `run` 等于教下一个读表的人「run 不等于跑卡」。诚实的错配比一个会骗人的动词好。',
-  uploadFile: NOT_FOR_MODEL + '上传附件：对应 `TASK_FIELDS` 里 `attachments` / `promptImages` / `promptFiles` 的 `forbidden` 裁决——模型手里没有上传通道，凭空的引用等于一条画不出来的内容。',
   admitAttachment: NOT_FOR_MODEL + '把一份附件的字节收进官方附件库（每个 composer 的唯一上传口）：与 `uploadFile` 同一条理由——上传是浏览器把字节交出去的动作，模型手里没有字节。',
   answerQuestion: NOT_FOR_MODEL + '作答挂起的问题：作答是「人看过」的陈述，模型替人作答等于替人关掉自己的门——与 `task.ack`（标已读钟）是同一族判断，都是人的动作。',
   cancelQuestion: NOT_FOR_MODEL + '取消挂起的问题：与作答同一族——它替人撤回一句已经说出口的话，人做得到不等于该交给模型。',

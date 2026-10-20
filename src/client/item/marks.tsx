@@ -47,7 +47,8 @@ import css from './item.module.css'
  *
  * 与 {@link CrossMark} 同一条律，理由也在那里：一个图形的墨若不在自己盒子的正中，
  * flex 居中把它放到盒心时墨心就偏着，而那是一个**任何字体、任何缩放都一样的**偏差，
- * 只能靠改路径修。所以下面每一枚的墨都是绕 (5,5) 或 (6.5,6.5) 对称的。
+ * 只能靠改路径修。所以下面每一枚都在自己的注释里写明它的墨跨在哪里：10 单位那族绕
+ * (5,5)，12 单位那族绕 (6,6)，8 单位那枚（`FoldMark`）落在 (4.1,4.6)。
  */
 export type ItemMarkId = 'ring-full' | 'ring-open' | 'door' | 'line' | 'arc' | 'calendar' | 'lid'
 
@@ -344,6 +345,65 @@ export function CrossMark(props: { readonly size?: number } = {}): React.ReactEl
   return (
     <svg data-mark="cross" viewBox="0 0 12 12" width={px} height={px} aria-hidden="true">
       <path d="M3.2 3.2 8.8 8.8M8.8 3.2 3.2 8.8" fill="none" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+    </svg>
+  )
+}
+
+/**
+ * 三个点：**这一行的菜单**。
+ *
+ * ── 为什么它是一枚记号，而不是一个字符 ────────────────────────────────────────
+ *
+ * 「⋮」是一个字符，而字符的墨落在哪几行上由字体决定（`CrossMark` 那段说的是同一条
+ * 律）。三个点是**行上与步骤板上同一个手势**——「这一行的菜单」——两处各画一遍就是两个
+ * 大小、两个位置、两种深浅，而同一个手势必须在每一行上长得一模一样。
+ *
+ * **墨在盒子的正中**：三个点跨 y 1.7..14.3（中心 8，盒高 16）、x 0.7..3.3（中心 2，盒宽
+ * 4）。所以 `align-items: center` 把它放到盒心时**墨心也在盒心**。
+ *
+ * `data-mark` 是**名字**：测试按它找得到这一页上所有的三点，与叉同一套。
+ * @param props - `size` 是盒子的**高**（px），默认 16；宽按 viewBox 的比例跟着走。
+ * @returns 那枚记号；它不是控件，按得动的那个盒子由调用点包在外面。
+ */
+export function DotsMark(props: { readonly size?: number } = {}): React.ReactElement {
+  const height = props.size ?? 16
+  return (
+    <svg data-mark="dots" viewBox="0 0 4 16" width={height / 4} height={height} aria-hidden="true">
+      <circle cx="2" cy="3" r="1.3" fill="currentColor" />
+      <circle cx="2" cy="8" r="1.3" fill="currentColor" />
+      <circle cx="2" cy="13" r="1.3" fill="currentColor" />
+    </svg>
+  )
+}
+
+/**
+ * 折叠的那枚箭头：**收着时向右，开着时转下去**。
+ *
+ * **一次旋转，不两个字形。** 收着的那一句说「可以展开」，开着的那一句说「可以收起」——
+ * 箭头转 90° 就把两句都答了，而两个路径要读者自己认「哪一个是开的」。
+ *
+ * 旋转**住在样式表里**（`.itemStepFold[aria-expanded='true'] .itemStepFoldMark`），
+ * 所以 `className` 由调用点给：这一枚要能被那条规则认领，而规则认的是**类名**。
+ *
+ * 墨跨 x 1.9..6.3、y 1.1..8.1（描边 1.4 的一半外扩之后），中心 (4.1, 4.6)——比 8 单位
+ * 盒子的正中低 0.6 个单位（8px 下 0.6px）。
+ *
+ * `data-mark` 是**名字**：测试按它找得到这一页上所有的折叠箭头，与叉同一套。
+ * @param props - `className` 是样式表认领这一枚用的那个名字，`size` 是边长（px）。
+ * @returns 那枚箭头；它不是控件，按得动的那个盒子由调用点包在外面。
+ */
+export function FoldMark(props: { readonly className?: string; readonly size?: number } = {}): React.ReactElement {
+  const px = props.size ?? 8
+  return (
+    <svg
+      className={props.className}
+      data-mark="fold"
+      viewBox="0 0 8 8"
+      width={px}
+      height={px}
+      aria-hidden="true"
+    >
+      <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   )
 }

@@ -23,8 +23,6 @@ import { type GoalActivationChanged, type GoalServiceFace, type GoalVerbs } from
 import type { TaskStore } from './store.ts';
 import type { SkipLedger } from './scheduler.ts';
 import { type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus } from './tasks.ts';
-/** Default auto-cruise concurrency when the user has not configured one. */
-export declare const DEFAULT_CRUISE_LIMIT = 5;
 /** The concurrency budget's real ceiling — the shared board-doc bound (writes
  *  clamp and reads normalize to one pair). Re-exported so board surfaces
  *  keep importing it from the controller. */
@@ -523,16 +521,6 @@ export interface ControllerDeps {
         data: string;
         mediaType: string;
     } | undefined>;
-    /** Stages one file's exact bytes on a session (the official file-lane
-     *  pre-step: `fileUploads/upload` or the binary HTTP fallback). Absent =
-     *  the file lane is closed (images only). */
-    uploadFile?: (sessionId: string, file: File) => Promise<{
-        ok: true;
-        receiptId: string;
-    } | {
-        ok: false;
-        error: string;
-    }>;
     /**
      * The native goal service for one session's goal strip (the official
      * `remote.goals` verbs + the live binding's `goal` projection for the
@@ -850,20 +838,6 @@ export declare class BoardController {
         data: string;
         mediaType: string;
     } | undefined>;
-    /**
-     * Stage one file's exact bytes on a session (the official file-lane
-     * pre-step): returns a stager bound to `sessionId`, or undefined when the
-     * host serves no upload face. Receipts are per-Agent — a receipt minted
-     * here MUST NOT cross sessions (the execution send layer re-stages by
-     * name when a stored receipt is rejected).
-     */
-    uploadFile(sessionId: string): ((target: string, file: File) => Promise<{
-        ok: true;
-        receiptId: string;
-    } | {
-        ok: false;
-        error: string;
-    }>) | undefined;
     /** The session-config face (review page's model/permission panel), or undefined. */
     sessionConfig(): SessionConfigFace | undefined;
     /**
@@ -988,12 +962,6 @@ export declare class BoardController {
      */
     markExecutionViewed(taskId: string, executionId: string): void;
     closeTask(): void;
-    /**
-     * Mark every task (and every round) viewed — the notification center's
-     * "全部标为已读". One write, one persist: read-state only moves forward
-     * (see board-doc authorship), so a bulk clear never clobbers content.
-     */
-    markAllViewed(): void;
     /**
      * Mark ONE task (and its rounds) viewed without navigating — a triage row's
      * inline "标已读". Same monotone read-state law as the bulk clears, scoped
@@ -1718,6 +1686,15 @@ export declare class BoardController {
      */
     private ruleDeliverable;
     /**
+     * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
+     * carries the task's own list (read at FIRE time, so editing the prompt or its
+     * attachments takes effect on the next firing — the same law the text
+     * follows), and a custom-instruction rule carries its own. ONE reader, so the
+     * three firing paths (cron / on-complete / loop) cannot disagree about what a
+     * rule carries.
+     */
+    private ruleAttachmentsOf;
+    /**
      * The minute heartbeat for CRON session rules (the scheduler's
      * sessionRulesTick): for every enabled cron rule whose due instant has
      * passed, send its preset instruction to the target session (slash-aware;
@@ -1734,15 +1711,6 @@ export declare class BoardController {
      * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
      * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
      */
-    /**
-     * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
-     * carries the task's own list (read at FIRE time, so editing the prompt or its
-     * attachments takes effect on the next firing — the same law the text
-     * follows), and a custom-instruction rule carries its own. ONE reader, so the
-     * three firing paths (cron / on-complete / loop) cannot disagree about what a
-     * rule carries.
-     */
-    private ruleAttachmentsOf;
     tickSessionRules(now: number): Promise<void>;
     /** The raw host send for a direct line (slash-aware, no recording).
      *  What the message carries travels as refs — the wiring turns them into the

@@ -94,6 +94,24 @@ export type WritableItemKey = {
  * whole reading rule for this type, and it is why the fields are not optional
  * wrappers.
  *
+ * ── `undefined` IS ONLY A CLEARING FOR A FIELD THAT IS CLEARABLE ─────────────
+ *
+ * 「日期字段的 `undefined` = 清空」**只对可空的字段成立**（日期那几项的行内形状
+ * 本来就是 `number | undefined`）。**必填字段（标题、正文、备注、标签、步骤）的
+ * `undefined` 是非法值**，因为它会把那一行变成**不合形状的行**：`title: undefined`
+ * 过不了 `isItemRecordShape`（它要 `typeof row.title === 'string'`），于是
+ * **整行被文档文法丢掉**——而调用方还以为自己写成功了。
+ *
+ * **这一条曾经写错在这里**：注释说的是「显式的 `undefined` 会清空」，而实现里
+ * 那不是清空，是**把 `undefined` 写进行上**。模型那条路（`src/host/agent/tools.ts`）
+ * 把「没传的字段」统统写成 `undefined`，于是「改一个标题」会把**整行**改没，
+ * 回执却写着「已生效」。
+ *
+ * **两处一起修才是根因级的修法**：① 造补丁的地方**只写它真的有的字段**
+ * （`host/agent/tools.ts` 现在这样做了）；② 共享写入器**不许写出不合形状的行**
+ * （`applyItemPatch` 在写之前过一遍形状门）——一处是修那个调用点，一处是让**这一类
+ * 写坏行**在任何调用点都写不出去。
+ *
  * The one thing a patch can never carry is a field the model ruled
  * `derived` or `forbidden`: see {@link WritableItemKey}.
  */

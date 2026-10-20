@@ -46,10 +46,10 @@ export interface SessionRule {
   /** Five-segment cron ("分钟 小时 日 月 周"); due instants computed on tick.
    *  Empty for on-complete rules (no schedule slot). */
   cron: string
-  /** Send mode: 'queue' appends to the session's queue; 'steer' is reserved
-   *  for immediate interruption (mapped the same for now — no interrupt RPC
-   *  yet, so steer degrades to queue until the native interrupt surface is
-   *  available). */
+  /** Send mode: 'queue' appends to the session's queue; 'steer' interrupts the
+   *  current turn now (the official prompt disposition — a 插话 is only a 插话
+   *  when the wire says so, so a steer rule's round is born injected and
+   *  launched straight into the session). */
   send: 'queue' | 'steer'
   enabled: boolean
   /** Next due instant (ms); cron rules only, recomputed on fire / when missing. */

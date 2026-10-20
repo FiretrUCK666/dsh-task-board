@@ -44,10 +44,10 @@ import { FLAG_LABEL, PRIORITY_LABEL } from './labels.ts'
 import type { TaskBoardKey } from '../locales.ts'
 
 /** The four faces a filter row offers. */
-export type ItemFacetId = 'status' | 'priority' | 'tag' | 'date'
+type ItemFacetId = 'status' | 'priority' | 'tag' | 'date'
 
 /** One selectable value of a FIXED facet: the token, and a word we have. */
-export interface FacetValue {
+interface FacetValue {
   /** Exactly what is written into the search box. */
   readonly token: string
   /** The stable value, for asking core whether it is already on. */
@@ -61,7 +61,7 @@ export interface FacetValue {
  * — and a chip that renders `undefined` because it reached for a dictionary it
  * was never going to find is the exact failure a closed Record exists to stop.
  */
-export interface TagFacetValue {
+interface TagFacetValue {
   readonly token: string
   /** Lower-cased, because the grammar lower-cases tags and the comparison has to. */
   readonly key: string

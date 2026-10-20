@@ -34,7 +34,7 @@ import { GROUP_LABEL, PRIORITY_LABEL } from './labels.ts'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
 
-export interface ItemBatchBarProps {
+interface ItemBatchBarProps {
   readonly count: number
   /**
    * THE VALUE ALL HELD ROWS SHARE, when they share one — the Segmented's own

@@ -1,6 +1,6 @@
 import type { ItemRowLineProps } from './row-line.tsx';
 import type { ItemSort } from '../../core/item-sort.ts';
-export interface ItemTableProps {
+interface ItemTableProps {
     readonly rows: readonly ItemRowLineProps[];
     /** What the table says when there are no rows at all. */
     readonly empty: string;
@@ -50,3 +50,4 @@ export interface ItemTableProps {
  * @returns the card, its sticky head and its rows or its empty sentence.
  */
 export declare function ItemTable(props: ItemTableProps): import("react").JSX.Element;
+export {};

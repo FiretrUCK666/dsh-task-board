@@ -437,7 +437,7 @@ export declare const ACTIONS: {
                 readonly about: "标到哪一层";
                 readonly optional: true;
                 readonly oneOf: readonly ["task", "session", "round", "all"];
-                readonly default: "不传 = 整张卡（等价于 markAllViewed 那一路）";
+                readonly default: "不传 = 整张卡（等价于 markTasksViewed 那一路）";
             };
             readonly session: {
                 readonly about: "会话轮";

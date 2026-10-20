@@ -18,7 +18,7 @@ import { localDayKey } from './model.ts'
 
 export type ItemDayBucket = 'today' | 'yesterday' | 'beforeYesterday' | 'earlier'
 
-export const ITEM_DAY_BUCKETS: readonly ItemDayBucket[] = ['today', 'yesterday', 'beforeYesterday', 'earlier']
+const ITEM_DAY_BUCKETS: readonly ItemDayBucket[] = ['today', 'yesterday', 'beforeYesterday', 'earlier']
 
 /**
  * WHICH ORDERINGS MAY BE CUT INTO DAYS, and every ordering has an answer.
@@ -57,7 +57,7 @@ export function dayBucketOf(at: number, now: number): ItemDayBucket {
 }
 
 /** One day of rows, in the order the caller handed them over. */
-export interface ItemDayGroup {
+interface ItemDayGroup {
   readonly bucket: ItemDayBucket
   readonly rows: readonly ItemRecord[]
   /** `rows.length`, because there is no number in this module to go stale. */

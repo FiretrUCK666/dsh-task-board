@@ -9,7 +9,7 @@ import type { BoardController } from '../../core/controller.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
 import { sessionDisplay, sessionTimes, sessionUnviewedOf } from '../../core/session-display.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { t } from '../locales.ts'
 import css from '../board.module.css'
 import components from '../design/components.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -32,7 +32,7 @@ import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, IconButton, Section } from '../design/ui.tsx'
-import { STATUS_KEY } from './status.ts'
+import { STATUS_KEY, STATUS_MOVE_KEY } from './status.ts'
 import { titleOrUntitled } from './card-view.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
@@ -871,7 +871,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   disabled={current.status === status || busy}
                   onClick={() => { controller.moveTask(current.id, status) }}
                 >
-                  {t(`status.move.${status}` as TaskBoardKey)}
+                  {t(STATUS_MOVE_KEY[status])}
                 </Button>
               ))}
             </div>

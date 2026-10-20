@@ -1,4 +1,4 @@
-export interface ItemQueryChipsProps {
+interface ItemQueryChipsProps {
     /** The whole query, exactly as it stands. The ONLY state. */
     readonly text: string;
     /** The document's tags, so a tag chip can show the reader's own spelling. */
@@ -9,3 +9,4 @@ export interface ItemQueryChipsProps {
     readonly onClearQualifiers: () => void;
 }
 export declare function ItemQueryChips(props: ItemQueryChipsProps): import("react").JSX.Element | null;
+export {};

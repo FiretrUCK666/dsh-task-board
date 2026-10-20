@@ -38,10 +38,9 @@
  */
 import { useId } from 'react'
 import type { ItemPriority, ItemStatusView } from '../../core/item.ts'
-import type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } from '../../core/item-view.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
-import { STATUS_KEY } from '../board/status.ts'
-import { PRIORITY_LABEL } from './labels.ts'
+import type { ItemRailEntry, ItemRailGroup, ItemRailKey } from '../../core/item-view.ts'
+import { t } from '../locales.ts'
+import { CAPTION, WORD } from './labels.ts'
 import { GroupMark, ChevronMark, PriorityMark, StatusMark, type ItemMarkId } from './marks.tsx'
 import css from './item.module.css'
 
@@ -56,37 +55,8 @@ import css from './item.module.css'
  *  rail shows 「全部 0」 and 「全部 12」 on one screen at once. A fallback on a
  *  WORD TABLE is not robustness; it is a way to say something false without
  *  noticing. So the key set is closed over what the core can actually produce,
- *  and a new flag is a `tsc` error naming this file and nothing else. */
+ *  and a new flag is a `tsc` error naming `labels.ts` and nothing else. */
 /* The closed key set lives in core, beside the tables that build the rail. */
-
-const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>> = {
-  all: 'item.rail.all',
-  schedule: 'item.page.schedule',
-  deleted: 'item.rail.deleted',
-  overdue: 'item.rail.overdue',
-  ahead: 'item.rail.ahead',
-  undated: 'item.rail.undated',
-  stale: 'item.rail.stale',
-  /* **四档优先级、五栏状态都是别处那一份**，不是这里的第二张表：`PRIORITY_LABEL` 是
-   * 四档的词（展开区、批量条、新建纸同读），`STATUS_KEY` 是看板那五栏的词。同一枚筛子
-   * 在两个面板上必须是同一个词，而一张抄过来的表会在下一次改词时留下一个角落。 */
-  urgent: PRIORITY_LABEL.urgent,
-  high: PRIORITY_LABEL.high,
-  normal: PRIORITY_LABEL.normal,
-  low: PRIORITY_LABEL.low,
-  backlog: STATUS_KEY.backlog,
-  todo: STATUS_KEY.todo,
-  running: STATUS_KEY.running,
-  review: STATUS_KEY.review,
-  done: STATUS_KEY.done,
-}
-
-const CAPTION: Readonly<Record<ItemRailGroupWord, TaskBoardKey>> = {
-  when: 'item.rail.when',
-  idle: 'item.rail.idle',
-  rank: 'item.rail.rank',
-  state: 'item.rail.state',
-}
 
 /**
  * ONE MARK PER ENTRY, so the rail is readable with the ink taken away.
@@ -132,7 +102,7 @@ function markOf(entry: ItemRailEntry) {
   }
 }
 
-export interface ItemRailProps {
+interface ItemRailProps {
   readonly groups: readonly ItemRailGroup[]
   /** Go to a row, a page, or 「wherever this entry points」. */
   readonly onEnter: (entry: ItemRailEntry) => void

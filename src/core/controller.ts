@@ -41,9 +41,6 @@ import {
   type ExecutionRecord, type NewTaskInput, type ScheduleMode, type TaskBind, type TaskRecord, type TaskStatus,
 } from './tasks.ts'
 
-/** Default auto-cruise concurrency when the user has not configured one. */
-export const DEFAULT_CRUISE_LIMIT = 5
-
 /** The concurrency budget's real ceiling — the shared board-doc bound (writes
  *  clamp and reads normalize to one pair). Re-exported so board surfaces
  *  keep importing it from the controller. */
@@ -552,13 +549,6 @@ export interface ControllerDeps {
    *  read — the host proves the session references the id). Absent = message
    *  images render as quiet placeholders. */
   loadImage?: (sessionId: string, attachmentId: string) => Promise<{ data: string; mediaType: string } | undefined>
-  /** Stages one file's exact bytes on a session (the official file-lane
-   *  pre-step: `fileUploads/upload` or the binary HTTP fallback). Absent =
-   *  the file lane is closed (images only). */
-  uploadFile?: (sessionId: string, file: File) => Promise<
-    | { ok: true; receiptId: string }
-    | { ok: false; error: string }
-  >
   /**
    * The native goal service for one session's goal strip (the official
    * `remote.goals` verbs + the live binding's `goal` projection for the
@@ -1041,22 +1031,6 @@ export class BoardController {
     return this.deps.loadImage?.(sessionId, attachmentId) ?? Promise.resolve(undefined)
   }
 
-  /**
-   * Stage one file's exact bytes on a session (the official file-lane
-   * pre-step): returns a stager bound to `sessionId`, or undefined when the
-   * host serves no upload face. Receipts are per-Agent — a receipt minted
-   * here MUST NOT cross sessions (the execution send layer re-stages by
-   * name when a stored receipt is rejected).
-   */
-  uploadFile(sessionId: string): ((target: string, file: File) => Promise<
-    | { ok: true; receiptId: string }
-    | { ok: false; error: string }
-  >) | undefined {
-    const upload = this.deps.uploadFile
-    if (upload === undefined) return undefined
-    return (target: string, file: File) => upload(target === sessionId ? sessionId : target, file)
-  }
-
   /** The session-config face (review page's model/permission panel), or undefined. */
   sessionConfig(): SessionConfigFace | undefined {
     return this.deps.sessionConfig
@@ -1312,29 +1286,6 @@ export class BoardController {
     if (this.selectedTaskId === undefined) return
     this.selectedTaskId = undefined
     this.notify()
-  }
-
-  /**
-   * Mark every task (and every round) viewed — the notification center's
-   * "全部标为已读". One write, one persist: read-state only moves forward
-   * (see board-doc authorship), so a bulk clear never clobbers content.
-   */
-  markAllViewed(): void {
-    const at = this.now()
-    let changed = false
-    this.tasks = this.tasks.map(task => {
-      const executions = task.executions.map(round => {
-        if (round.viewedAt === at) return round
-        changed = true
-        return { ...round, viewedAt: at }
-      })
-      if ((task.viewedAt ?? 0) >= at && executions.every((round, index) => round === task.executions[index])) {
-        return task
-      }
-      changed = true
-      return { ...task, viewedAt: Math.max(task.viewedAt ?? 0, at), executions }
-    })
-    if (changed) this.persistAndNotify()
   }
 
   /**
@@ -3280,6 +3231,18 @@ export class BoardController {
   }
 
   /**
+   * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
+   * carries the task's own list (read at FIRE time, so editing the prompt or its
+   * attachments takes effect on the next firing — the same law the text
+   * follows), and a custom-instruction rule carries its own. ONE reader, so the
+   * three firing paths (cron / on-complete / loop) cannot disagree about what a
+   * rule carries.
+   */
+  private ruleAttachmentsOf(task: TaskRecord, rule: SessionRule): PromptAttachment[] {
+    return attachmentsOf(rule.usePrompt === true ? task : rule)
+  }
+
+  /**
    * The minute heartbeat for CRON session rules (the scheduler's
    * sessionRulesTick): for every enabled cron rule whose due instant has
    * passed, send its preset instruction to the target session (slash-aware;
@@ -3296,18 +3259,6 @@ export class BoardController {
    * 行上「下次」一直显示过去时刻；而且跳过与在途两个分支都给 `lastAt` 盖章——
    * 那个戳记的是「上一次真的发出去了」，一条没发过的规则盖上它就是一条假账。
    */
-  /**
-   * What one session rule sends, attachments included: a 「发送任务 Prompt」 rule
-   * carries the task's own list (read at FIRE time, so editing the prompt or its
-   * attachments takes effect on the next firing — the same law the text
-   * follows), and a custom-instruction rule carries its own. ONE reader, so the
-   * three firing paths (cron / on-complete / loop) cannot disagree about what a
-   * rule carries.
-   */
-  private ruleAttachmentsOf(task: TaskRecord, rule: SessionRule): PromptAttachment[] {
-    return attachmentsOf(rule.usePrompt === true ? task : rule)
-  }
-
   async tickSessionRules(now: number): Promise<void> {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const updates = new Map<string, TaskRecord>()

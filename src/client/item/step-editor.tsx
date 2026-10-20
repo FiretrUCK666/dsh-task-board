@@ -35,6 +35,7 @@ import { t } from '../locales.ts'
 import { Button } from '../design/ui.tsx'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
+import { DotsMark, FoldMark } from './marks.tsx'
 import css from './item.module.css'
 
 /**
@@ -57,7 +58,7 @@ interface RowHands {
   readonly onRemove: (stepId: string) => void
 }
 
-export interface ItemStepsProps {
+interface ItemStepsProps {
   /** The row being edited. Its `id` is what a new step's id is derived from. */
   readonly item: ItemRecord
   /** Bumped by 「编辑步骤」; the field takes the caret when it changes. */
@@ -160,9 +161,7 @@ export function ItemSteps(props: ItemStepsProps) {
             aria-controls={moreId}
             onClick={() => setMoreOpen(value => !value)}
           >
-            <svg className={css.itemStepFoldMark} viewBox="0 0 8 8" width="8" height="8" aria-hidden="true">
-              <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+            <FoldMark className={css.itemStepFoldMark} />
             {t(moreOpen ? 'item.steps.moreHide' : 'item.steps.more', { n: String(beyond) })}
           </button>
         )}
@@ -208,11 +207,7 @@ function StepRow(props: RowHands & {
         aria-label={`${t('item.steps.moreMenu')}：${step.text}`}
         onClick={() => props.onToggleMenu(step.id)}
       >
-        <svg viewBox="0 0 4 16" width="4" height="16" aria-hidden="true">
-          <circle cx="2" cy="3" r="1.3" fill="currentColor" />
-          <circle cx="2" cy="8" r="1.3" fill="currentColor" />
-          <circle cx="2" cy="13" r="1.3" fill="currentColor" />
-        </svg>
+        <DotsMark />
       </button>
       {open && (
         /* 与行上那个 ⋯ 不是同一个面板的两次实现，是**同一个面板**：竖排的
@@ -251,9 +246,7 @@ function DoneFold(props: RowHands & { readonly steps: readonly ItemStep[]; reado
       >
         {/* THE DISCLOSURE MARK, drawn and turned by the state: the reader sees a
             control before they read a word, and the turn answers 「还能收吗」。 */}
-        <svg className={css.itemStepFoldMark} viewBox="0 0 8 8" width="8" height="8" aria-hidden="true">
-          <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <FoldMark className={css.itemStepFoldMark} />
         {t(open ? 'item.steps.doneHide' : 'item.steps.doneShow', { n: String(props.steps.length) })}
       </button>
       {open && (

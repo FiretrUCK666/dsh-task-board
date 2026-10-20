@@ -27,22 +27,12 @@ import type { ItemRowLineProps } from './row-line.tsx'
 import { ItemRowLine } from './row-line.tsx'
 import { GroupHead } from './group-head.tsx'
 import { itemDayGroupsOf } from './day-groups.ts'
-import type { ItemDayBucket } from './day-groups.ts'
 import type { ItemSort } from '../../core/item-sort.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { t } from '../locales.ts'
+import { DAY_WORD } from './labels.ts'
 import css from './item.module.css'
 
-/** The word each bucket is spoken in. Closed over the buckets core can produce, and
- *  typed as the dictionary's own key type rather than as the four strings written
- *  out a second time below. */
-const DAY_WORD: Readonly<Record<ItemDayBucket, TaskBoardKey>> = {
-  today: 'item.day.today',
-  yesterday: 'item.day.yesterday',
-  beforeYesterday: 'item.day.beforeYesterday',
-  earlier: 'item.day.earlier',
-}
-
-export interface ItemTableProps {
+interface ItemTableProps {
   readonly rows: readonly ItemRowLineProps[]
   /** What the table says when there are no rows at all. */
   readonly empty: string

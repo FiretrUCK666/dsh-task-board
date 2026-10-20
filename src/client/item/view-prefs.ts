@@ -166,7 +166,7 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   overlay: undefined,
 }
 
-/** The first page is the inbox, because it is the one a thought arrives at. */
+/** Whether a stored value names a page the model knows. */
 function isPage(value: unknown): value is ItemPageId {
   return typeof value === 'string' && (ITEM_PAGES as readonly string[]).includes(value)
 }

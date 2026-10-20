@@ -1,5 +1,5 @@
 /** What a reader's writing box needs from its surface. */
-export interface ProseFieldProps {
+interface ProseFieldProps {
     readonly value: string;
     readonly onChange: (value: string) => void;
     readonly placeholder: string;
@@ -30,3 +30,4 @@ export interface ProseFieldProps {
  * @returns the box, its whole-bottom-edge grip, and nothing else.
  */
 export declare function ProseField(props: ProseFieldProps): import("react").JSX.Element;
+export {};

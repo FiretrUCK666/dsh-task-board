@@ -110,6 +110,23 @@ export interface ItemsDoc {
 /** A fresh empty checklist (host first boot; revision 0 marks "never committed"). */
 export declare function emptyItemsDoc(now: number): ItemsDoc;
 /**
+ * The finite end every "this row has no such value" sort key ends at.
+ *
+ * Named once because the law is one: a row without the field is not "at the
+ * beginning" and not "unbounded", it is at the END, and only a FINITE end can
+ * be subtracted.
+ *
+ * `Infinity` is the tempting value and the one that breaks. Two rows without
+ * dates both answer `Infinity`, and `Infinity - Infinity` is `NaN`; a comparator
+ * that returns `NaN` makes `Array.prototype.sort` treat the pair as equal and
+ * move on, so the two rows are never ordered against each other at all — which
+ * quietly makes this NOT a total order, and a list that is not a total order
+ * renders differently on two devices holding one document. The defect is
+ * invisible on any screen showing a single device and impossible to spot in a
+ * screenshot.
+ */
+export declare const UNSET_DATE: number;
+/**
  * The document's own order, as a COMPARATOR — five keys, in this order:
  * unfinished first, then urgency, then whichever of the three dates is nearest,
  * then age, then the short number.

@@ -440,16 +440,25 @@ export interface NewTaskInput {
 }
 
 /** The five kanban columns, in display order. */
-export const COLUMNS: readonly { status: TaskStatus; label: string }[] = [
-  { status: 'backlog', label: '待规划' },
-  { status: 'todo', label: '待办' },
-  { status: 'running', label: '进行中' },
-  { status: 'review', label: '待审核' },
-  { status: 'done', label: '已完成' },
+export const COLUMNS: readonly { status: TaskStatus }[] = [
+  { status: 'backlog' },
+  { status: 'todo' },
+  { status: 'running' },
+  { status: 'review' },
+  { status: 'done' },
 ]
 
-/** Statuses a user may move a card to manually (execution states are owned by the runner). */
-export const MANUAL_STATUSES: readonly TaskStatus[] = ['backlog', 'todo', 'done']
+/**
+ * Statuses a user may move a card to manually (execution states are owned by
+ * the runner). The LIST is the definition and the type is derived from it, so
+ * a manual column is added in one place — and every table that must answer
+ * for each of them (the move buttons' labels, the model's `task.move` range)
+ * is a compile error until it answers.
+ */
+export const MANUAL_STATUSES = ['backlog', 'todo', 'done'] as const satisfies readonly TaskStatus[]
+
+/** One manually-movable status (the union of {@link MANUAL_STATUSES}). */
+export type ManualStatus = (typeof MANUAL_STATUSES)[number]
 
 /**
  * The status one column over, along the board's own COLUMNS order — the keyboard
@@ -660,7 +669,7 @@ export const IMAGE_MEDIA_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'imag
  *  never retroactively delete what an older version stored — the whitelist
  *  gates new intake and the send layer, never the ledger. Crash-safety (no
  *  undefined derefs downstream) is what storage guarantees. */
-export function isWellFormedImage(entry: unknown): entry is TaskImage {
+function isWellFormedImage(entry: unknown): entry is TaskImage {
   if (typeof entry !== 'object' || entry === null) return false
   const candidate = entry as Record<string, unknown>
   return typeof candidate.data === 'string' && candidate.data !== ''
@@ -670,7 +679,7 @@ export function isWellFormedImage(entry: unknown): entry is TaskImage {
 /** Whether a raw value is a storable file ref (non-empty receipt + name;
  *  bytes only needs to be a number for display math — NaN displays ugly but
  *  never crashes and never deletes). Same leniency law as images above. */
-export function isWellFormedFile(entry: unknown): entry is TaskFile {
+function isWellFormedFile(entry: unknown): entry is TaskFile {
   if (typeof entry !== 'object' || entry === null) return false
   const candidate = entry as Record<string, unknown>
   return typeof candidate.receiptId === 'string' && candidate.receiptId !== ''
@@ -985,6 +994,16 @@ export function newDirectRound(options: {
 }
 
 /**
+ * Whether a settled round is work a person could have to rule on: it finished,
+ * and it finished with an outcome. A cancelled round is an abort, not work.
+ * ONE predicate, read by the settle decision and by the human gate.
+ */
+export function isCompletedRound(round: ExecutionRecord): round is ExecutionRecord & { result: 'succeeded' | 'failed'; endedAt: number } {
+  return round.endedAt !== undefined
+    && (round.result === 'succeeded' || round.result === 'failed')
+}
+
+/**
  * Whether the card already holds completed work awaiting the human gate:
  * any settled round with a succeeded/failed outcome (plain runs,
  * comment continuations, externally-observed turns, direct sends — all are
@@ -995,9 +1014,7 @@ export function newDirectRound(options: {
  * batches/chains or sibling lanes).
  */
 export function hasCompletedWork(task: TaskRecord): boolean {
-  return task.executions.some(round =>
-    round.endedAt !== undefined
-    && (round.result === 'succeeded' || round.result === 'failed'))
+  return task.executions.some(isCompletedRound)
 }
 
 /**

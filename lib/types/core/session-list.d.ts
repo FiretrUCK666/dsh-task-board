@@ -45,11 +45,11 @@ export declare const UNTITLED_SESSION_KEY = "detail.sessionUntitled";
 export declare function sessionRowTitleOf(nativeTitle: string | undefined, fallback: string): string;
 /**
  * The activity window a session has ON this task — the earliest round's
- * start, the latest round's end, and the duration between them. The ONE
- * derivation for every session row (a board-run session and a bound
- * session's externally-observed turns read the same records), so the
- * 「开始 / 结束 / 耗时」line of a linked row is never a different grammar
- * from an execution row's. Empty when the session has no rounds.
+ * start, the latest round's end, and the duration between them. The LINKED
+ * row's reading of the shared window facts (`conversationWindowOf` in
+ * session-display.ts — the one derivation both session rows read): the last
+ * SETTLED end, so a conversation that is still working reports when its
+ * newest finished round ended. Empty when the session has no rounds.
  */
 export declare function sessionWindowOf(task: TaskRecord, sessionId: string | undefined): {
     startedAt?: number;
