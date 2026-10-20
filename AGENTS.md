@@ -93,9 +93,8 @@
 本文件是**项目的契约**（面向 AI），随仓库走：写**机制、架构、不变量、硬性规范、构建/测试/
 发布该做什么**，不写账号、远端、作用域这类取值，也不写一次性的决定。
 
-**取值一律现场读**：仓库地址、包名、远端、署名从 `package.json`、`git remote -v`、
-`git config user.name`、`npm whoami` 取——仓库是这些事实的唯一权威，改真实配置即可。
-**这条只管本文**：README 与 CONTRIBUTING 给人看、要能直接复制粘贴，必须写具体命令。
+**取值一律现场读**（`package.json` / `git remote -v` / `git config user.name` / `npm whoami`）
+——仓库是唯一权威。**这条只管本文**：README 与 CONTRIBUTING 给人看，必须写具体命令。
 
 **本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、与代码不符、覆盖不到、
 有歧义——都应直接改本文并提交，而不是绕过它、只做口头约定、或把特殊处理写死进代码。
@@ -114,7 +113,7 @@
   矛盾时改代码。
 - **不随包发出的文档不 bump 版本**（改完只提交）；README 随包发出，改一个字都要 bump。
 - **中文版是权威**，英文版是它的翻译；改一份必须打开另一份一起看，不要机械对译。
-- **本文是索引，不是副本**：只记别的文档存在、谁是权威、何时同步，不抄内容。
+- **本文是索引，不是副本**：只记别的文档存在、谁是权威、何时同步。
 - **派生内容用工具生成**：两份 README 的目录由 `pnpm toc`（`scripts/sync-toc.mjs`）写在成对
   标记之间，增删或改名二级标题后必须重跑，否则 `pnpm verify` 会红。**锚点不要手写**（写错
   表现为「点了没反应」且不报错）。徽章依赖外部服务，**不进自动检查**。
@@ -283,8 +282,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
 本插件与宿主之间只有下面这些接触面，由 `pnpm verify` 对照**实际安装的 DSH** 逐条核对，少一条即红
-并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot **静默 no-op**；被删的服务成员只在用户
-点击那一刻抛 `TypeError`；缺失的宿主服务让对应半区**等不到依赖，什么也注册不出来**。
+并指名。三者都不会让构建失败，所以必须机械核对——**静默 no-op、延迟到点击那一刻才抛、
+整半区等不到依赖**，都只有用户能发现。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -370,7 +369,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
   **动作目录是它们唯一的权威**；写工具走 `src/core/task-transitions.ts` 的共享纯函数——
   **界面与 AI 调同一套语义实现**。**引擎缺席就明说引擎缺席**。
 - `src/host/session-state.ts`：会话态势推导（看板与 AI 读同一份），答案三态而非布尔。
-- `src/host/http-json.ts` / `src/host/*-route.ts`：路由共用的信封与请求体读取；纯
+- `src/host/http-json.ts` / `src/host/*-route.ts`：请求体读取与路由；信封本身在
+  `core/http-envelope.ts`（两半共用），这一层只是 transport；纯
   `create*Handler`，服务一律 `ctx.get`。
 - `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**；
   同名单元同时只能有一个活句柄；`openBoardUnit` 是单元打开与布局迁移的唯一入口。
@@ -393,19 +393,18 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
   ——**加一个没有处理器的键是编译错误**；**一层东西占着键盘时（菜单 / 展开的行 / 浮层），只有那一层
   自己的键与 `Esc` 活着**。`facets.ts` 是搜索框的**文本编辑器**、`selection.ts` 是纯状态机；
   `labels.ts` 的词与色**从看板那一份导入**。
-  **「问 AI」是唯一通向模型的一按**（`item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**。
+  **「问 AI」是唯一通向模型的一按**（`core/item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**。
   **「运行配置」常驻详情右栏**，按下去跑的就是屏上那一份。**一律不用 Dialog**。
   `hostLostItems()` 为真时说「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder；
-  `surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
-  **归档是一个抽屉、两扇门**：恢复是 host 操作而不是客户端提交（`items-archive.ts`）。
+  `client/surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**；名单本身在 `core/surfaces.ts`（两半都读，所以它住在 core）。
+  **归档是一个抽屉、两扇门**：恢复是 host 操作而不是客户端提交（`client/items-archive.ts`）。
   **寻址键两个、各具名、互不为兜底**：界面撤销传 `id`，模型的 `item.restore` 传 `ref`。
   **恢复没回来就说没回来**。
 - `src/client/chat/`：**AI 动作在对话里的呈现**（`tool.call.toolview` 座位），渲染模型的回执。
 ### 前端架构（**索引**：成文契约在 `DESIGN.md` 的 Design System 节，机制在代码注释里）
 
-**四层各有归属，判据只有一条——有第二个消费者**（「看起来通用」不算）。**「一处」= 一个消费点，
-也就是一个读它 / 渲染它的文件**：同一个目录里的两个文件是**两处**——同一块屏上用两遍，
-就说明它不是「这一页的」东西。
+**四层各有归属，判据只有一条——有第二个消费者**（「看起来通用」不算）。「一处」= 一个读它 /
+渲染它的文件（同目录两个文件是两处）。
 
 | 层 | 位置 | 判据 |
 | --- | --- | --- |
@@ -415,26 +414,32 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | 页面 | `board/` `item/` `home/` `gallery/` `chat/` | 只有这一页的几何与排版 |
 | 装配 | `workbench/` | 三页共用的判定：座位键、唯一持有者、栏的 props。**它不是页面** |
 
-**层方向是门禁**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`）——伸手去读某一页的
-元件，「这形状归谁」就成了「哪一页渲染它」的函数。两个例外都有理由，记在同一张豁免表里。
-**改 CSS 前必须知道**：类名属于**表**（构建按文件名哈希），一张表的选择器写另一张表的类名在生产包里
-匹配不到任何东西，静默失效——所以跨页面共享的形态只能住在 `design/`，**页面表里出现第二份拷贝即
-违规**（硬性规范 20；机械拦：`verify-class-ownership.mjs`）。展开与门禁与**全部成文**在
-`DESIGN.md` 的 Design System 节——**改界面前先读那一节**。
+**层方向是门禁**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`），否则「这形状归谁」
+成了「哪一页渲染它」的函数。两个例外都有理由，记在同一张豁免表里。
+**改 CSS 前必须知道**：类名属于**表**（按文件名哈希），跨表选择器在生产包里静默失效——所以共享形态
+只能住 `design/`，**页面表里出现第二份拷贝即违规**（硬性规范 20；`verify-class-ownership.mjs`）。
+**改界面前先读 `DESIGN.md` 的 Design System 节。**
 
 清单面板的留白走 padding 不走 margin：那条 `<p>` 重置包在 `:where()` 里，**给的是零特异性**，
 所以它只压得住 UA 的默认值，**类规则赢它**。
 
 ### 核心层（`src/core/` 纯逻辑）
 
-- 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
-  `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
-  `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
-  （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域拆成
-  十个模块，**门面 re-export 全部有人读的符号**）——界面与模型读同一份** · `board-actions`
-  （动作目录，见硬性规范 12）· `task-transitions`（看板的语义层）· **`item-transitions`
-  （清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/`session-display`/
-  `session-groups`/`question-rpc`/`store`（`comment-thread` 在 `src/client/board/`）。
+**按域分组；每一组点名「先读哪一个」，其余同域文件在那一组里找。** 不逐个罗列：一份会
+随时过期的花名册，代价是每加一个文件都要来改它，而没人会改第五处——**要列全，就由文件系统列**
+（`scripts/verify-design-docs.mjs` 与各门禁扫的正是真实文件）。判定「有没有」永远读 `src/core/`。
+
+| 域 | 先读这一个 | 这一域还有什么 |
+| --- | --- | --- |
+| **文档真相** | `board-doc` / `host-sync`（同步文法 + 租约） | `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`（墓碑带载荷）· `board-events` · `projections` |
+| **台账与调度** | `controller`（台账 + 调度 + 席位 + 外源双通道） | `automation` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` · `flow-metrics` |
+| **看板语义** | `task-transitions`（语义层） | `tasks` · `task-demand`（要决的门）· `task-live` · `task-search` · `task-templates` · `linked-sessions` |
+| **清单语义** | `item-transitions`（与界面同一批纯函数） | `item`（一行的模型）· **`item-view`（全部推导的门面，按域拆十个模块，re-export 全部有人读的符号）——界面与模型读同一份** · 其余 `item-*` 按名字就是在那一域里做事的 |
+| **会话与执行** | `execution`（投递结算） | `session-list`/`session-display`/`session-groups`/`session-lineage`/`session-agents`/`session-activity` · `question-rpc`/`question-mirror` · `goal-verbs` |
+| **动作与出口** | `board-actions`（动作目录，见硬性规范 12） | `client-report` · `update-check`/`update-view` · `workbench-summary` · `item-ask` |
+| **共用的地基** | `values`（`stringOf`/`messageOf`/`isRecord` 三个收敛后的家） | `http-envelope`（**两个半区共用的信封**）· `surfaces`（面板名单）· `local-day` · `attachment` · `colors` · `store` |
+
+`comment-thread` 不在 core（它住 `src/client/board/`）。
 - **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
   `access` 列**推导**（`WritableItemKey`）。所以那行 `@ts-expect-error` 棘轮是**承重的**
   （退化从此是**构建失败**），同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`。
@@ -486,12 +491,12 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 - **自动化与巡航**：任务 `schedule` 与会话 `rules` 正交；on-complete 永续（`done` 硬停）；每会话至多
   一条规则；巡航 `enabled` 主权。
 - **草稿**：`drafts.ts` 设备本地；未提交回来、提交清槽；评论 v1 信封（键表见该文件）。
-- **稳定性**：受控回退；就近 inline 反馈；订阅必带终止；正文不省略、元信息可省略号。
+- **稳定性**：受控回退；就近 inline 反馈；订阅必带终止。
 
 ## 新增与复用（要加东西之前先读这一节）
 
-**这一节只回答一个问题：你要加的那个东西，已经存在吗？** 答案不是「看起来像」，是**它现在
-住在哪个文件**。最近一次全项目普查找出 **55 处同一段逻辑被抄成多份**，而它们**没有一处会报错**。
+**这一节只回答一个问题：你要加的那个东西，已经存在吗？** 答案不是「看起来像」，是**它住在哪个
+文件**。一次全项目普查找出 **55 处同一段逻辑被抄成多份**，没一处会报错。
 
 ### 一、顺序是硬的
 
@@ -527,7 +532,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
   是**改一处不报错**。
 - **形态**：同一段声明在两个文件里各写一遍 = 违规。第二个家必须在**同一张表**里
   （`verify-class-ownership.mjs` 拦跨表类名，`verify-design-docs.mjs` 拦同体声明）。
-- **重复实现**：同一个容器里两份以上，收敛成一份，**哪怕只有一处用**。
+- **重复实现**：一个容器里两份以上就收敛成一份，**哪怕只有一处用**。
 
 **这一节由三道门禁守着**（都读结构，不读字样）：
 
@@ -599,9 +604,8 @@ pnpm verify      # 静态门禁 + 客户端 bundle 冒烟
 pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 handshake
 ```
 
-**门禁不用记着跑哪一个**：`pnpm verify` 里的 `scripts/run-gates.mjs` 发现磁盘上每一个
-`scripts/verify-*.mjs` 并逐个跑，所以**新写一个门禁脚本就自动生效，不必登记**。CI 每次 push 跑
-build / typecheck / test / verify，与本地同一套命令。
+**门禁不用记着跑哪一个**：`run-gates.mjs` 发现磁盘上每一个 `scripts/verify-*.mjs` 并逐个跑，
+所以**新写一个门禁就自动生效，不必登记**。CI 每次 push 跑与本地同一套命令。
 
 打包器写的是**带内容哈希**的 chunk 名，内容一变就多一个新文件、旧的从不删，所以 `build` 先经
 `scripts/clean-lib.mjs` **清空 `lib/`**（该目录下每个文件都由 `pnpm build` 产生，没有手写文件）。
