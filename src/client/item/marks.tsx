@@ -375,35 +375,3 @@ export function DotsMark(props: { readonly size?: number } = {}): React.ReactEle
     </svg>
   )
 }
-
-/**
- * 折叠的那枚箭头：**收着时向右，开着时转下去**。
- *
- * **一次旋转，不两个字形。** 收着的那一句说「可以展开」，开着的那一句说「可以收起」——
- * 箭头转 90° 就把两句都答了，而两个路径要读者自己认「哪一个是开的」。
- *
- * 旋转**住在样式表里**（`.itemStepFold[aria-expanded='true'] .itemStepFoldMark`），
- * 所以 `className` 由调用点给：这一枚要能被那条规则认领，而规则认的是**类名**。
- *
- * 墨跨 x 1.9..6.3、y 1.1..8.1（描边 1.4 的一半外扩之后），中心 (4.1, 4.6)——比 8 单位
- * 盒子的正中低 0.6 个单位（8px 下 0.6px）。
- *
- * `data-mark` 是**名字**：测试按它找得到这一页上所有的折叠箭头，与叉同一套。
- * @param props - `className` 是样式表认领这一枚用的那个名字，`size` 是边长（px）。
- * @returns 那枚箭头；它不是控件，按得动的那个盒子由调用点包在外面。
- */
-export function FoldMark(props: { readonly className?: string; readonly size?: number } = {}): React.ReactElement {
-  const px = props.size ?? 8
-  return (
-    <svg
-      className={props.className}
-      data-mark="fold"
-      viewBox="0 0 8 8"
-      width={px}
-      height={px}
-      aria-hidden="true"
-    >
-      <path d="M2.6 1.8 L5.6 4.6 L2.6 7.4" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-    </svg>
-  )
-}

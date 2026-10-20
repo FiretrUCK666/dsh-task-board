@@ -3158,6 +3158,59 @@ JS 里没有第二个数——版面与手势不可能各说一个。
 换成 Pointer Events**（桌面与手机同一份实现，列内排序一并恢复），现有 HTML5 落点**只保留**用来接
 宿主的侧栏拖拽。这是一件独立的、有意推迟的事。
 
+## 两条跨页机制（折叠记号 · 层叠）
+
+这两条都不属于某一页，但每一页都在用它们，所以写在这里一份。
+
+### 折叠记号：一枚会转的箭头
+
+**判据只认祖先里的 `aria-expanded`，不绑任何类名或 DOM 结构。**
+
+```css
+[aria-expanded='true']  .foldMark { transform: rotate(0deg); }    /* 朝下 */
+[aria-expanded='false'] .foldMark { transform: rotate(-90deg); }  /* 朝右 */
+```
+
+在 `components.module.css`，全项目唯一一份。要加一个折叠，给它挂 `foldMark` 就够了。
+
+**为什么不能绑结构。** 这条语法看起来只有两行，于是它被抄过四份，每份绑死一个容器类
+（`.detailDisclosure > .detailChevron`、`.notifyMain > .notifyChevron`、
+`.autoTaskExpand > .autoTaskChevron`、`.sessionContextHead > .sessionContextChevron`）。
+
+其中一份在某次改动后真的失效了：动态屉里那个折叠把 `aria-expanded` 挪到了**兄弟按钮**上，
+而规则要求它在 `.notifyMain` 上。于是箭头永远朝下、怎么点都不转，而它下面那块内容是真的
+在开合——**读者被一枚记号骗了**，屏上唯一的线索是「点了没反应」。
+
+**用 `transform` 而不是换字形。** 从 `chevronDown` 换成 `chevronRight` 是瞬切，读者看到的是
+「闪了一下」；`transform` 可以过渡（`--dsh-tb-motion-fast`，110ms）。
+
+门禁：`verify-fold-mark.mjs`（旋转只许在共享层、选择器里不许有类名前缀）。
+
+### 层叠：五档，一张表
+
+`z-index` 只许读令牌，不许写裸数字。
+
+| 令牌 | 值 | 谁在这一层 |
+| --- | --- | --- |
+| `--dsh-tb-layer-content` | 1 | 卡片徽标、吸顶表头、随行小浮块 |
+| `--dsh-tb-layer-menu` | 3 | 行菜单、下拉（必须盖住内容） |
+| `--dsh-tb-layer-rail` | 6 | 底部拇指栏、悬浮主行动 |
+| `--dsh-tb-layer-overlay` | 20 | 命令面板、新建那张纸的遮罩 |
+| `--dsh-tb-layer-modal` | 40 | 真正的模态（连拇指栏一起挡） |
+
+**拇指栏排在弹层下面**：它是常驻的顺手位置，不是「必须被看见」的东西。弹层一打开，读者要做的
+就是弹层里那件事，拇指栏该让路。
+
+**这一条是用一个真 bug 换来的。** 层叠曾经散在两张表里各写一套：清单页 3/4/5，看板与共享层
+12/30/40。两套互不相干，于是**拇指栏（12）压过了新建弹层的遮罩（5）**——弹层其实开了、数据也
+进去了，但一条浮在栏上的按钮盖住了它和它的背景。读者看到的是「点了没反应，什么都新建不了」，
+而那看起来完全像一个逻辑 bug。
+
+数字之间留空档（1/3/6/20/40）不是为好看：中间插一层时不必重排所有数，而**重排所有数**正是
+这类体系腐坏的方式。
+
+门禁：`verify-stacking.mjs`（不许裸数字、五档严格递增）。
+
 ## Do's and Don'ts
 
 ### Do:

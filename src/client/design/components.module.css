@@ -402,7 +402,7 @@
      skin applies to an ancestor (viewport-fixed would be absorbed by it). */
   position: absolute;
   inset: 0;
-  z-index: 40;
+  z-index: var(--dsh-tb-layer-modal);
   display: flex;
   /* The STAGE scrolls (a tall panel must reach its top/bottom) but never
      SHOWS a bar — the dimmed area is not a surface; the one visible bar of a
@@ -417,7 +417,71 @@
   background: var(--dsh-tb-mask);
   -webkit-backdrop-filter: blur(var(--dsh-tb-mask-blur));
   backdrop-filter: blur(var(--dsh-tb-mask-blur));
-  animation: dshTbBoardIn var(--dsh-tb-motion);
+  animation: dshTbBoardIn var(--dsh-tb-motion-enter) backwards;
+}
+
+/* **两个入场动画的定义，供共享层自己用。**
+ *
+ * 它们此前在**这张表里只有引用、没有定义**——定义写在看板表（`board.module.css`）
+ * 里，看板表自己也引用它。而 CSS Modules 会把 `@keyframes` 名**连同表的作用域一起
+ * 哈希**（编译产物里是 `QeuTqq_dshTbBoardIn` 与 `Sr3ygG_dshTbBoardIn` 两个不同的
+ * 名字）：**跨表引用拿不到**。所以共享层那两条 `animation` 指向一个在它自己作用域里
+ * 不存在的名字，浏览器静默忽略——凡是用共享层画的弹层都「瞬间出现」。
+ *
+ * **`@keyframes` 无法只写一处再被别的表引用**，这是这条机制的限制，不是懒得收。
+ * 所以两张表各有一份，而**它们必须逐字相同**：改一处就要改另一处，`verify-motion`
+ * 会把不同步报出来（它比对同名的 keyframes 体）。
+ *
+ * 三条分工：
+ *
+ *   - `dshTbBoardIn` 给**遮罩**：不透明度 + 3px 上移。底色与模糊在动画一开始就到位，
+ *     否则读者会看见背景在一瞬间里从清晰变模糊——那是两层在做两件事。
+ *   - `dshTbDialogIn` 给**面板**：不透明度 + 6px 上移 + 0.985 缩放。0.985 而不是 0.9：
+ *     一个 560px 宽的盒子缩到 0.9 会从边上缩进 56px，那读作「弹出来一个大动作」；
+ *     0.985 只缩 8px，读作「它本来就该在这儿，刚落下」。
+ *
+ * **`backwards` 而不是 `both`**（与清单页那个 `itemOverlayIn` 同一条律）：动画结束后
+ * 元素身上不留任何 `transform`。一个常驻的 `transform` 会给 `position: fixed` 的后代
+ * 换掉包含块，而那类错位在屏上看不出来（清单页的菜单踩过这个坑）。
+ *
+ * `prefers-reduced-motion` 下动画由令牌机制归零（`tokens.module.css` 那一节），
+ * 所以这里不需要再写一遍媒体查询。 */
+@keyframes dshTbBoardIn {
+  from {
+    opacity: 0;
+    transform: translateY(3px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dshTbDialogIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* **只淡入，不动。** 换页时给内容那一层用的。
+ *
+ * 与上面两条同一个机制约束：`@keyframes` 名按表哈希，跨表拿不到，所以看板表里
+ * 那份（给自己的滚动体用的）与这里这份**必须逐字相同**。 */
+@keyframes dshTbFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 .titleStep {
@@ -440,7 +504,7 @@
      一下」。读梯子上最实的一级（浮面），不读面板那枚可能被改的值。
      同一条理由在 board 表的 `.reviewHeader` 上有完整推导。 */
   background: var(--dsh-tb-plane-float);
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-content);
 }
 
 .detailSection {
@@ -504,10 +568,39 @@
   flex: none;
   font-size: 11px;
   color: var(--dsh-tb-text-3);
-  transition: transform var(--dsh-tb-motion);
 }
 
-.detailDisclosure[aria-expanded='false'] .detailChevron {
+/* **折叠记号：全项目唯一的旋转写法。**
+ *
+ * 一枚「可以展开」的箭头，收着朝右、开着朝下。这句话只有一个家——**判据只认
+ * `aria-expanded`，不认任何类名或 DOM 结构**：
+ *
+ *   [aria-expanded='true']  .foldMark → 0deg（朝下）
+ *   [aria-expanded='false'] .foldMark → -90deg（朝右）
+ *
+ * **为什么不能绑具体结构。** 这条语法曾经在四张表里各写一份，每一份都绑死一个
+ * 容器类（`.notifyMain > .notifyChevron`、`.autoTaskExpand > .autoTaskChevron`、
+ * `.sessionContextHead > .sessionContextChevron`，加上这里那份）。于是当某个折叠
+ * 把 `aria-expanded` 挪到**兄弟按钮**上（`TaskBoard` 的 `feedAction` 就是这样），
+ * 规则匹配不到，箭头**永远朝下、怎么点都不转**——而它下面那块内容是真的在开合。
+ * 读者看到的是一枚骗人的记号。
+ *
+ * 所以判据写成「**祖先里有 `aria-expanded`**」：无论那个属性挂在哪一层、挂的是
+ * 按钮还是它的外壳，箭头都跟着转。要加一个新的折叠，给它挂 `.foldMark` 就够了，
+ * 不需要再来这张表里写第五份。
+ *
+ * 旋转用 `transform` 而不是换一个 icon 字形：**字形换不了动画**——从 `chevronDown`
+ * 换成 `chevronRight` 是瞬切，读者看到的是「闪了一下」。`transform` 可以过渡。 */
+.foldMark {
+  flex: none;
+  transition: transform var(--dsh-tb-motion-fast);
+}
+
+[aria-expanded='true'] .foldMark {
+  transform: rotate(0deg);
+}
+
+[aria-expanded='false'] .foldMark {
   transform: rotate(-90deg);
 }
 
@@ -950,7 +1043,9 @@
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
-  animation: dshTbDialogIn var(--dsh-tb-motion);
+  /* `backwards`：动画结束后面板身上不留 `transform`——常驻的那一个会给内部
+   * `position: fixed` 的菜单换掉包含块（清单页的菜单踩过这个坑，屏上看不出来）。 */
+  animation: dshTbDialogIn var(--dsh-tb-motion-enter) backwards;
 }
 
 /* ── 浮层这一族：正文那一格与动作那一格 ─────────────────────────────────────────
@@ -1534,6 +1629,18 @@ textarea.input {
   min-inline-size: 0;
   inline-size: 100%;
   padding-block-start: var(--dsh-tb-frame-gap);
+  /* **换页时内容淡入，不位移。**
+   *
+   * 读者报的是「总览、看板、清单之间跳转是直接换掉，没有一个进入的过程」。给这一层
+   * 加一段入场，就有了「这一页到了」的感觉。
+   *
+   * **只动 `opacity`，一个像素都不位移**——这不是保守，是这一层必须做的事：它内部
+   * 有 `position: fixed` 的后代（行菜单、浮层），而任何作用于这里的 `transform`
+   * 都会给它们**换掉包含块**，症状是菜单跑到别的地方去、而屏上看不出是谁干的
+   * （清单页的 `.itemRowMenu` 与 `board.module.css` 的 `.itemRowMenu` 都写着这个坑）。
+   *
+   * 淡入是这一族唯一安全的方向：它不创建包含块，也不参与层叠重排。 */
+  animation: dshTbFadeIn var(--dsh-tb-motion-enter) backwards;
 }
 
 /* 单文档的页面（总览）由框架滚；两栏的页面（看板 / 清单）各自滚自己那一份，
@@ -1945,7 +2052,7 @@ textarea.input {
   position: absolute;
   inset-inline: 0;
   inset-block-end: 0;
-  z-index: 12;
+  z-index: var(--dsh-tb-layer-rail);
   display: none;
   align-items: center;
   gap: var(--dsh-tb-space-3);

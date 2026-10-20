@@ -269,7 +269,7 @@ export function Disclosure({ title, summary, open, onToggle, children, className
         aria-controls={regionId}
         onClick={onToggle}
       >
-        <Icon name="chevronDown" className={css.detailChevron} />
+        <Icon name="chevronDown" className={`${css.detailChevron} ${css.foldMark}`} />
         <span className={css.detailDisclosureTitle}>{title}</span>
         {summary !== undefined && <span className={`${css.inlineSummary} ${css.truncate}`}>{summary}</span>}
       </button>

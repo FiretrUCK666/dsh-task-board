@@ -3179,18 +3179,6 @@ button.itemRowCardChip {
   background: var(--dsh-tb-hover);
 }
 
-/* 折叠的箭头跟着状态转：收着的那一句说「可以展开」，箭头指向右；开着一句话
- * 说「可以收起」，箭头原地转到下——同一个形状，一次旋转，不是两个字形。 */
-.itemStepFoldMark {
-  flex: none;
-  transform: rotate(0deg);
-  transition: transform var(--dsh-tb-motion);
-}
-
-.itemStepFold[aria-expanded='true'] .itemStepFoldMark {
-  transform: rotate(90deg);
-}
-
 /* ── 勾选框：整个面板只有这一个 ──────────────────────────────────────────
  *
  * **16×16、4px 圆角、1px 描边**，三个数写在下面而不是散在两处，因为步骤板与归档
@@ -3292,7 +3280,7 @@ button.itemRowCardChip {
 
 .itemRowMenu {
   position: fixed;
-  z-index: 3;
+  z-index: var(--dsh-tb-layer-menu);
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-1);
@@ -3319,7 +3307,7 @@ button.itemRowCardChip {
 .itemCommandPalette {
   position: absolute;
   inset: 0;
-  z-index: 4;
+  z-index: var(--dsh-tb-layer-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -6166,7 +6154,7 @@ textarea.itemInput {
 .itemOverlayMask {
   position: absolute;
   inset: 0;
-  z-index: 5;
+  z-index: var(--dsh-tb-layer-overlay);
   display: flex;
   align-items: flex-start;
   justify-content: center;
@@ -6260,8 +6248,20 @@ textarea.itemInput {
  *
  * 参照物是 `.itemListColumn`（它有 `container-type: inline-size`，也已经建了
  * 包含块），所以 `absolute` 落到**这一列**的下沿，而不是视口。
- */
-@container dsh-tb-item (max-width: 880px) {
+ *
+ * **界线是 719，不是 880。** 880 那一档量出来还空着 **222px**：顶栏那一排
+ * （数 47 + 搜索 280 + 工具 349）离满行很远，再放一枚「＋新建一条」绰绰有余。
+ * 在那个宽度就把主行动搬到底部，读者看到的是「明明放得下，它却掉到了最下面」
+ * ——界面在替他做决定，而他看得见那个决定没有道理。
+ *
+ * 719 是 `bands.ts` 里 `dsh-tb-item` **已经登记**的那一档（「新建那张纸的两栏并成
+ * 一栏；内容线那一档」）。主行动搬到底部与「这张纸开始并栏」是同一件事的两半：
+ * 从这一刻起版面真的只剩一列，顶栏那一行也就没有余量了。**不新造一条界线**——
+ * 表里多一行就是多一个要维护、又可能和相邻档只差一个像素的地方。
+ *
+ * 收窄之后，880–719 这一档回到宽档排法：主行动在顶栏带子里（顶栏自己已经折行，
+ * 见上面那条 880），底部的栏杆不画。 */
+@container dsh-tb-item (max-width: 719px) {
   .itemTopBarPrimary {
     display: none;
   }

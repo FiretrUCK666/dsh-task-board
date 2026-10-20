@@ -2342,7 +2342,18 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                         aria-label={headTitle}
                         onClick={() => { setExpandedActivityFold(current => current === fold.key ? undefined : fold.key) }}
                       >
-                        <Icon name="chevronDown" className={css.notifyChevron} />
+                        {/* **这一枚箭头只挂共享的折叠记号。**
+                            *
+                            * 它此前挂的类名**从来没有在样式表里定义过**（只有一条绑在
+                            * `.notifyMain[aria-expanded]` 上的旋转规则，指着一个不存在的类名）。
+                            * 于是这个元素一直在渲染一个 `undefined` 类名：既没有尺寸也没有
+                            * 颜色，箭头靠 `Icon` 自己的默认值活着；而 `aria-expanded` 在**这枚
+                            * 按钮**上、那条规则要求在 `.notifyMain` 上，两者是兄弟——于是箭头
+                            * 永远朝下，怎么点都不转。
+                            *
+                            * `components.foldMark` 的判据只认「祖先里有 `aria-expanded`」，
+                            * 属性挂在哪一层都对。这是全项目唯一的折叠旋转写法。 */}
+                        <Icon name="chevronDown" className={components.foldMark} />
                       </button>
                       <button
                         type="button"

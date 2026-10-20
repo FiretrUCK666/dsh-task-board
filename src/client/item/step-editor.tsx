@@ -32,12 +32,13 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { ItemRecord, ItemStep } from '../../core/item.ts'
 import { t } from '../locales.ts'
-import { Button } from '../design/ui.tsx'
+import { Button, Icon } from '../design/ui.tsx'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
-import { DotsMark, FoldMark } from './marks.tsx'
+import { DotsMark } from './marks.tsx'
 import css from './item.module.css'
 import base from '../design/base.module.css'
+import components from '../design/components.module.css'
 
 /**
  * HOW MANY WAITING STEPS ARE DRAWN BEFORE THE REST GO BEHIND A LINE.
@@ -162,7 +163,7 @@ export function ItemSteps(props: ItemStepsProps) {
             aria-controls={moreId}
             onClick={() => setMoreOpen(value => !value)}
           >
-            <FoldMark className={css.itemStepFoldMark} />
+            <Icon name="chevronDown" className={components.foldMark} />
             {t(moreOpen ? 'item.steps.moreHide' : 'item.steps.more', { n: String(beyond) })}
           </button>
         )}
@@ -247,7 +248,7 @@ function DoneFold(props: RowHands & { readonly steps: readonly ItemStep[]; reado
       >
         {/* THE DISCLOSURE MARK, drawn and turned by the state: the reader sees a
             control before they read a word, and the turn answers 「还能收吗」。 */}
-        <FoldMark className={css.itemStepFoldMark} />
+        <Icon name="chevronDown" className={components.foldMark} />
         {t(open ? 'item.steps.doneHide' : 'item.steps.doneShow', { n: String(props.steps.length) })}
       </button>
       {open && (

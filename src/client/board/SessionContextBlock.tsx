@@ -119,10 +119,12 @@ export function SessionContextBlock({ context, className, sessionId, controller 
         <Icon name="checklist" className={css.sessionContextLead} />
         <span className={css.sessionContextTitle}>{t('review.sessionContext')}</span>
         <span className={components.inlineSummary} title={summary}>{summary}</span>
-        {/* THE shared chevron grammar (same law as every Disclosure): the
-            icon is drawn pointing DOWN (expanded); collapsed it turns to
-            point RIGHT — the fold always reads as a fold. */}
-        <Icon name="chevronDown" className={css.sessionContextChevron} />
+        {/* THE shared chevron grammar: the icon is drawn pointing DOWN
+            (expanded); collapsed it turns to point RIGHT — the fold always reads
+            as a fold. The turn lives in `components.foldMark`, keyed off
+            `aria-expanded` on any ancestor, so this button does not get its own
+            rotation rule. */}
+        <Icon name="chevronDown" className={`${css.sessionContextChevron} ${components.foldMark}`} />
       </button>
       {open && (
         <div className={css.sessionContextPanel} id={panelId}>

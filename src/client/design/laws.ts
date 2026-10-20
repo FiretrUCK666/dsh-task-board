@@ -88,6 +88,30 @@ export const DESIGN_LAWS: readonly DesignLaw[] = [
       + '保证：没有它，加一条法则可以忘了给门禁，加一个门禁也可以忘了登记。',
   },
   {
+    id: 'a-fold-mark-turns-in-one-place',
+    law: '折叠记号（会转的箭头）的旋转只有一处实现，判据只认祖先里的 `aria-expanded`，不绑任何类名或 DOM 结构。',
+    gate: 'verify-fold-mark.mjs',
+    specimen: 'interaction',
+    why:
+      '这条语法看起来只有两行（收着 -90deg、开着 0deg），于是它被抄过四份，每一份都绑死'
+      + '一个容器类。有一天某个折叠把 `aria-expanded` 挪到了兄弟按钮上，那条规则就匹配不到'
+      + '——箭头永远朝下、怎么点都不转，而它下面那块内容是真的在开合。**读者被一枚记号骗了**，'
+      + '屏上唯一的线索是「点了没反应」。判据写成「祖先里有 `aria-expanded`」之后，属性挂在'
+      + '哪一层都对，加一个新折叠也不必再来这张表里写第五份。',
+  },
+  {
+    id: 'stacking-is-one-gradient',
+    law: '层叠只许读 `--dsh-tb-layer-*` 五档（content / menu / rail / overlay / modal），任何表里不许再写一个裸的 `z-index` 数字。',
+    gate: 'verify-stacking.mjs',
+    specimen: 'interaction',
+    why:
+      '层叠曾经散在两张表里各写一套：清单页 3/4/5，看板与共享层 12/30/40。两套互不相干，'
+      + '于是底部的拇指栏（12）压过了新建弹层的遮罩（5）——弹层其实开了，但一条浮在栏上的'
+      + '按钮盖住了它和它的背景，读者眼前看到的是「点了没反应，什么都新建不了」。'
+      + '那不是某一张表的数字挑错了，是项目里没有一张层叠表：每个新浮层都在自己表里挑一个'
+      + '「比旁边几个大」的数，而它没看见的第三张表里有个更大的。',
+  },
+  {
     id: 'hover-opposes-the-paper',
     law: '悬浮态读的那一档必须与它所在的纸**反向**（浅色更沉、深色更亮），并且方向由令牌自己声明，不读静息底、也不直读宿主那一枚 4% 的通用悬浮。',
     gate: 'verify-hover-contrast.mjs',

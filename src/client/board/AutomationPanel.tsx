@@ -69,7 +69,7 @@ function AutomationTaskCard({ controller, task, onClose }: {
         title={t('auto.editAutomation')}
         onClick={() => { setExpanded(value => !value) }}
       >
-        <Icon name="chevronDown" className={css.autoTaskChevron} />
+        <Icon name="chevronDown" className={`${css.autoTaskChevron} ${components.foldMark}`} />
         <span className={css.autoTaskSummary} title={summary}>{summary}</span>
       </button>
       {expanded && <div id={editorId}><AutomationEditor controller={controller} task={task} /></div>}

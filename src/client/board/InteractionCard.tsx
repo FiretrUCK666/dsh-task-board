@@ -48,6 +48,7 @@ import {
 } from '../../core/question-rpc.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { draftStore, questionDraftKey, restoreQuestionDrafts, saveQuestionDrafts } from './drafts.ts'
 import { Markdown } from './Markdown.tsx'
 import { Button } from '../design/ui.tsx'
@@ -411,11 +412,16 @@ function QuestionFlow({ question, sessionId, controller }: {
             disabled={disabled}
             onClick={() => { setMinimized(value => !value) }}>
           
-            {/* The arrow turns around. Expanding to `chevronDown` and collapsing to
-                `arrowDown` is two glyphs half a unit apart, both pointing down — the
-                icon says "down" either way, and only `aria-expanded` carries the
-                state (to screen readers alone). */}
-            <Icon name={minimized ? 'chevronDown' : 'arrowUp'} />
+            {/* **一枚会转的箭头，不是两个字形。**
+                *
+                * 这里曾经这样写：展开时画 `chevronDown`、收起时画 `arrowUp`。两个字形
+                * 只差半个单位、**都朝下**，所以图标在任何状态下都说「往下」，状态只由
+                * `aria-expanded` 带给读屏用户。而换字形是**瞬切**，没有过渡——读者按下
+                * 去，看到的是图标闪了一下，不是箭头转过去。
+                *
+                * `components.foldMark` 只画一个字形（朝下），收着时 `transform` 转到朝右，
+                * 于是它有动画、有方向，而且与全项目每一处折叠用同一句话。 */}
+            <Icon name="chevronDown" className={components.foldMark} />
           </IconButton>
           <IconButton size="sm" quiet
             

@@ -667,11 +667,39 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(cssSource).not.toMatch(/sessionRailHeadToggle/)
     expect(cssSource).not.toMatch(/sessionRailHeadTitle/)
     // The fold grammar turns: collapsed points right, expanded points down.
-    // The shared Disclosure's own turn lives in the design sheet, so this reads
-    // the surface as it renders; the surface's own twin below stays on cssSource.
-    expect(renderedSource).toMatch(/\.detailDisclosure\[aria-expanded='false'\] \.detailChevron\s*\{[^}]*rotate\(-90deg\)/)
-    expect(cssSource).toMatch(/\.sessionContextHead\[aria-expanded='false'\] \.sessionContextChevron\s*\{[^}]*rotate\(-90deg\)/)
+    //
+    // **判据读的是「折叠记号只有一个家」，不是某一个具体选择器。** 这条曾经钉住
+    // `.detailDisclosure[aria-expanded='false'] .detailChevron` 那行字——而它只是
+    // 当时那一个消费者的写法。旋转后来被收进共享的 `.foldMark`（判据只认祖先里的
+    // `aria-expanded`，不绑任何类名或结构），于是钉字样的断言会在一次**正确的收敛**
+    // 之后变红，而它想守的那件事（折叠会转）从头到尾都成立。
+    //
+    // 现在钉四件更硬的事：共享层有那条判据、判据不绑结构、消费者都挂了它、以及
+    // 没有第二处手写旋转。这比原来那条正则更难作弊。
+    expect(renderedSource).toMatch(/\.foldMark\s*\{[^}]*transition:\s*transform/)
+    expect(renderedSource).toMatch(/\[aria-expanded='false'\]\s*\.foldMark\s*\{[^}]*rotate\(-90deg\)/)
+    expect(renderedSource).toMatch(/\[aria-expanded='true'\]\s*\.foldMark\s*\{/)
+    /* 判据不绑结构：`[aria-expanded]` 那一条前面不许出现任何类名。 */
+    expect(renderedSource).not.toMatch(/\.[a-zA-Z][\w-]*\[aria-expanded='(true|false)'\]\s*\.foldMark/)
+    const disclosureSource = readFileSync(
+      fileURLToPath(new URL('../src/client/design/ui.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(disclosureSource, '共享的 Disclosure 没有挂折叠记号').toMatch(/detailChevron\} \$\{css\.foldMark\}/)
+    /* 会话上下文那块在 `SessionContextBlock.tsx`（不是 `session-panel.tsx`）。 */
+    const contextSource = readFileSync(
+      fileURLToPath(new URL('../src/client/board/SessionContextBlock.tsx', import.meta.url)),
+      'utf8',
+    )
+    expect(contextSource, '会话上下文那块自己写了旋转，没走共享记号')
+      .toMatch(/sessionContextChevron\} \$\{components\.foldMark\}/)
     expect(cssSource).not.toMatch(/sessionContextChevronOpen/)
+    /* **全仓不许再有第二处手写旋转。** 折叠记号只有一个家这件事，由这一条兜住。 */
+    const boardSheet = readFileSync(
+      fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)),
+      'utf8',
+    )
+    expect(boardSheet, '看板表里又长出了一条手写旋转').not.toMatch(/rotate\(-90deg\)/)
   })
 
   it('the engine-note dialog body rides the shared .modalScroll (no flush text)', () => {

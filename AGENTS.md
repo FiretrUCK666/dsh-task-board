@@ -164,9 +164,8 @@ Release、**不** `npm publish`。**用户在本会话主动下达维护者动�
 
 ### 发版（只有用户明确说「发版 / 发出去 / npm publish」才触发）
 
-9. `git tag v<版本>` + `git push origin v<版本>`——**其余步骤全部由 `.github/workflows/release.yml`
-   完成，agent 不手动执行任何一步**（重跑全 gate、校验版本、起草更新说明、建 Release、OIDC 发布、
-   回读 registry）。**正常路径不需要 PAT、本机 npm 登录、gh CLI 或 2FA**；失败就重跑工作流（幂等）。
+9. `git tag v<版本>` + `git push origin v<版本>`——**其余步骤全由 `.github/workflows/release.yml` 完成，agent 不手动执行任何一步**（重跑 gate、
+   校验版本、写说明、建 Release、OIDC 发布、回读 registry）。**正常路径不需要 PAT、本机 npm 登录、gh CLI 或 2FA**；失败就重跑工作流（幂等）。
    **它到底做什么，读那个文件本身**。
 10. 唯一的例外：**publish 报 404 / ENEEDAUTH 类是 npmjs.com 的 Trusted Publisher 配错**；按
     `release.yml` 头注释那三项核对，确认没配才退回手动 `npm publish --access public`——需要
@@ -195,12 +194,11 @@ Release、**不** `npm publish`。**用户在本会话主动下达维护者动�
 - **npm 的 `latest` dist-tag 不可信**（可能停在很旧的版本）。**不得用 `npm view <pkg> version`
   判断最新**，一律 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
 
-同步动作（DSH 升级后主动做）：先读**实际运行的**版本作为目标（`node -p
-"require('<dsh 安装目录>/package.json').version"`），逐个确认该版本**存在**，只写进 `package.json`
-的 `devDependencies`（**不动** `peerDependencies` 与 README 的下限），然后 `pnpm install`、
-`pnpm typecheck` + `pnpm test` 全绿（跨版本升级常伴随 API 改名，类型报错就是信号——按新契约改写，
-**不要用 `any` 绕过**）、构建并确认 `lib/index.js` 能 import、`lib/client.js` 的注册 id 等于包名。
-用户可见改动 → bump patch，走日常闭环。
+同步动作（DSH 升级后主动做）：读**实际运行的**版本作为目标（`node -p
+"require('<dsh 安装目录>/package.json').version"`），逐个确认该版本存在，只写进 `devDependencies`
+（**不动** `peerDependencies` 与 README 下限），然后 `pnpm install`、typecheck + test 全绿（跨版本
+升级常伴随 API 改名，类型报错就是信号——按新契约改写，**不要用 `any` 绕过**）、构建并确认
+`lib/index.js` 能 import、`lib/client.js` 注册 id 等于包名。用户可见改动 → bump patch。
 
 ### 最低支持版本（只在真不兼容时上移）
 
@@ -210,11 +208,10 @@ Release、**不** `npm publish`。**用户在本会话主动下达维护者动�
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
-CI 会在 Linux 上重建 `lib/` 并与提交比对，所以**产物不得依赖构建机的绝对路径或行尾**：**绝对路径
-不得进入产物或用来派生标识**（构建脚本一律传仓库相对路径，机制见 `build/tsdown.client.ts` 的
-`portableCssPath()`）；**行尾必须与 `.gitattributes` 一致**（残留 CRLF 会被原样写进
-`lib/client.js.map` 的内嵌源码）。两条都由 CI 与 `pnpm verify` 兜住；**自检**是把仓库复制到另一个
-绝对路径、装依赖、构建，产物应逐字节相同。
+CI 在 Linux 上重建 `lib/` 并与提交比对，所以**产物不得依赖构建机的绝对路径或行尾**：绝对路径不得
+进产物或派生标识（见 `build/tsdown.client.ts` 的 `portableCssPath()`）；行尾须与 `.gitattributes`
+一致（残留 CRLF 会写进 map 的内嵌源码）。两条都由 CI 与 `verify` 兜住；自检是把仓库复制到另一
+绝对路径构建，产物应逐字节相同。
 ### 改名的声明处
 
 工具链（`scripts/*.mjs`、npm scripts）都从 `package.json` 读身份，不在代码里重复写名字。
@@ -266,8 +263,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 ### 启停机制（改任何一处之前先读这段）
 
-**「被组合即启用」是结构性质，不是判断逻辑**：插件不注册设置页、不读自己的启用状态，被关掉时
-一行代码都不跑。开关只有两个层级：**包级**（profile `package.json` 的 `bundles` 增删包名）与
+**「被组合即启用」是结构性质，不是判断逻辑**：插件不读自己的启用状态，被关掉时一行代码都不跑。开关只有两个层级：**包级**（profile `package.json` 的 `bundles` 增删包名）与
 **条目级**（profile `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true`，删掉那行即恢复）。
 
 三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键）；那一行必须是**真实装载的** Loader 条目，
@@ -634,9 +630,8 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 h
    整视图一次性备份到 `dsh.taskBoard.preSync.v1`（只此一次）。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
-7. **独立自包含**：**运行时没有任何依赖**（`dependencies` 为空；schema 层随设置项一起去掉了，
-   host 只 import 类型）；不依赖兄弟插件；界面全部经宿主官方 seat、不依赖任何外部垫片
-   （自打的属性见「宿主契约表」的两条使用纪律）。
+7. **独立自包含**：**运行时没有依赖**（`dependencies` 为空，host 只 import 类型）；不依赖兄弟插件；
+   界面只经官方 seat（自打属性见契约表两条纪律）。
 8. **不引入新依赖**：新增依赖需先说明理由并经确认。确认渠道按角色走（见「先确认角色」）：
    维护者在本会话里确认；贡献者先在 Issue 里讨论，再提 PR。
 9. **从机制上解决问题**：遇到新情况先按「行事总纲」的意图与边界推理，而不是等待
@@ -689,6 +684,9 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 h
     唯一实现三档）——**那里是唯一一份**，此处不重复；机械拦是 `verify-class-ownership.mjs`、
     `verify-design-docs.mjs`，以及「一个家」那三道（`verify-one-implementation.mjs`、
     `verify-client-host-boundary.mjs`、`verify-dead-export.mjs`）。
+21. **折叠记号与层叠各只有一张表。** 折叠旋转只认祖先的 `aria-expanded`（共享类 `.foldMark`）；
+    `z-index` 只许读 `--dsh-tb-layer-*` 五档。正文在 `DESIGN.md` 的「两条跨页机制」，
+    机械拦是 `verify-fold-mark.mjs` 与 `verify-stacking.mjs`。
 
 ## 测试（布局约定）
 

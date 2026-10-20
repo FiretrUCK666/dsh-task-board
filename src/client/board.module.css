@@ -599,7 +599,6 @@
 }
 
 
-
 /* 诉求行：全板最该先说的事，坐在导航行之上。只在真有事在等时渲染。
    它是注意力色上的**静态**指示——呼吸归未读独有，所以「等你」与「有新的」永远
    不会读成同一件事。真按钮（触屏没有 hover），故用 --dsh-tb-hover 做悬停底、
@@ -784,7 +783,7 @@
 .cruisePopover {
   top: calc(100% + 6px);
   right: 0;
-  z-index: 30;
+  z-index: var(--dsh-tb-layer-menu);
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-6);
@@ -1405,7 +1404,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  z-index: 2;
+  z-index: var(--dsh-tb-layer-content);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -1446,7 +1445,6 @@
 }
 
 
-
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
    gap (see drop-position.ts) — the whole feedback, never a column-wide
    highlight. Positioned inside the cards container (relative above).
@@ -1463,7 +1461,7 @@
   background: var(--dsh-tb-accent);
   box-shadow: 0 0 0 1px var(--dsh-tb-paper);
   pointer-events: none;
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-content);
 }
 
 /* A rejected drop: a one-shot danger flash (not a persistent state). */
@@ -1492,7 +1490,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-content);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2037,17 +2035,6 @@
 }
 
 
-
-
-
-
-
-
-
-
-
-
-
 /* Shared spinner (cards + detail execution rows), colored by currentColor.
    display: inline-block keeps its 8x8 box even in a non-flex context (an
    inline span would ignore width/height and collapse to a strip); inside a
@@ -2075,47 +2062,6 @@
 /* --- buttons ------------------------------------------------------------------ */
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* The bell, in its tool-row home, takes the SAME chip surface as the mode
    buttons beside it (fill + hairline + pill), so the row reads as one control
    family at every theme and under any skin — the bare icon between two filled
@@ -2140,10 +2086,6 @@
   inline-size: var(--dsh-tb-button-h);
   block-size: var(--dsh-tb-button-h);
 }
-
-
-
-
 
 
 /* HOW A SECOND PANEL MOUNTS THIS GRAMMAR: with the marker attribute, not with a
@@ -2175,9 +2117,6 @@
 }
 
 
-
-
-
 /* 弹层正文的滚动体与动作条**住在 `design/components.module.css`**（与 `.modal`、
    `.dialogHeader` 同表——它们是同一个族的四段）。它们原先住在本表，而它们现在有两个
    消费目录（`board/` 与 `workbench/`——检查更新的对话框在 `workbench/` 里），按准入
@@ -2196,9 +2135,6 @@
 }
 
 
-
-
-
 /* Template picker row (new-task modal): the select flexes, the delete keeps
    its width — one line, never a dangling lone button (让位不压扁：可伸缩成员
    带 min-width:0 地板，动作簇定宽不断行）。 */
@@ -2211,17 +2147,6 @@
   flex: 1 1 auto;
   min-width: 0;
 }
-
-
-
-
-
-
-
-
-
-
-
 
 
 .formError {
@@ -2287,7 +2212,7 @@
   top: calc(100% + 4px);
   left: 0;
   right: 0;
-  z-index: 30;
+  z-index: var(--dsh-tb-layer-menu);
   max-height: 280px;
   overflow-y: auto;
   padding: 4px;
@@ -2442,35 +2367,6 @@
 }
 
 
-
-
-
-
-
-
-
-
-
-/* Folded feed-group headers reuse the disclosure chevron law verbatim (same
-   11px tertiary glyph, same standard turn): collapsed reads right, expanded
-   reads down. Scoped to feed toggles carrying a chevron — row toggles have
-   none, so their look is untouched. */
-.notifyMain[aria-expanded='false'] .notifyChevron {
-  transform: rotate(-90deg);
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ══ 任务详情：配置与排期 ══════════════════════════════════════════════════════════════
  *
  * 详情里的配置网格（标签/值两列）、任务级排期表单（cron 行、上限行、预设选择）。
@@ -2573,9 +2469,6 @@
 }
 
 
-
-
-
 /* The preset picker's slot in the cron row. (`flex: none` written on the
    SELECT was dead code — the flex item is the WRAPPER, so the intent never
    applied and the box got crushed anyway; the floor lives on the item now.) */
@@ -2621,13 +2514,6 @@
 }
 
 /* --- schedule driving mode (cron / chain segmented control) ------------------- */
-
-
-
-
-
-
-
 
 
 /* --- preset manager ----------------------------------------------------------- */
@@ -2818,7 +2704,7 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-content);
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3397,7 +3283,6 @@
 }
 
 
-
 /* Non-destructive "hide this row" affordance (execution rows + linked rows):
    a quiet ghost-text action that only removes the row from display — never
    deletes or archives — and keeps numbering stable. */
@@ -3583,9 +3468,7 @@
    the icon is drawn pointing DOWN (expanded); collapsed it turns to point
    RIGHT. The old rotate(180deg)-when-open was the reversed direction the
    whole board had retired. */
-.autoTaskExpand[aria-expanded='false'] .autoTaskChevron {
-  transform: rotate(-90deg);
-}
+
 
 .autoTaskSummary {
   flex: 1;
@@ -3771,9 +3654,6 @@
 }
 
 
-
-
-
 .moveRow {
   display: flex;
   gap: var(--dsh-tb-space-4);
@@ -3934,16 +3814,10 @@
 }
 
 
-
-
-
-
-
 /* --- 焦点：搜索那一格自己的环在 `SearchField` 里（design 表），此处只剩排期预设那一格 --- */
 .schedulePreset:focus {
   border-color: var(--dsh-tb-focus-color);
 }
-
 
 
 /* --- auto-cruise (board header) ---------------------------------------------- */
@@ -4043,7 +3917,7 @@
    * 唯一一处「下面有东西滚过去」的地方。`z-index` 一并给上，让它在同一层里永远
    * 盖住滚动的正文。 */
   background: var(--dsh-tb-plane-float);
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-content);
 }
 
 /* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
@@ -5667,9 +5541,6 @@
    the capability is there and the rule should come back with its user. */
 
 
-
-
-
 /* Drop-anywhere affordance: the composer CONTAINER carries
    [data-dsh-tb-dndover] while a FILES drag is over it (the shared
    useComposerImages hook), so a desktop user can drop a picture anywhere on
@@ -5688,8 +5559,6 @@
   margin-inline-start: 6px;
   color: var(--dsh-tb-text-2);
 }
-
-
 
 
 /* The deterministic session-context readout — HARNESS-ISOMORPHIC todo grammar
@@ -5750,9 +5619,7 @@
    is drawn pointing DOWN (expanded); collapsed it turns to point RIGHT.
    A fold that never turns reads as a dead button — the "没有展开的感觉"
    complaint this rule family exists to end. */
-.sessionContextHead[aria-expanded='false'] .sessionContextChevron {
-  transform: rotate(-90deg);
-}
+
 
 .sessionContextPanel {
   top: calc(100% + 6px);
@@ -5762,7 +5629,7 @@
      replaces every line of this anchor math with grid placement. */
   left: 14px;
   right: 14px;
-  z-index: 1;
+  z-index: var(--dsh-tb-layer-menu);
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-3);
@@ -6200,25 +6067,6 @@
 .card:focus-within .cardColorBar {
   display: flex;
 }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 /* --- organize (tidy) mode bar: the board header strip for bulk tagging and
