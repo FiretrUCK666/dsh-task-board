@@ -140,6 +140,15 @@
  * 是因为那张小纸片恰好不读这一档；靠「恰好」活着的东西没有第二次机会。
  */
 .paperSheet {
+  /* **纸面的第一件事是把元素自己的外观归零。** 这一条不是装饰，是「复用」成立的前提：
+     同一份纸面挂在 `<section>` 上是一张干净的纸，挂在 `<button>` 上却带出 UA 的
+     `2px outset` 边框——量过，两者圆角、底色、影全部相同，**只有那 2px 边把同一张纸
+     画成了两种东西**。读者说「上下两块的样式不一样」，根因就在这里。
+
+     一支形态要能被不同标签使用，它就得自己抹掉标签带来的默认值；指望每个消费者
+     各自记得写一行 `border: 0`，就是把这件事交给记忆——而那 2px 在截图里不刺眼，
+     只会让人说「怎么不一样」，说不出哪里不一样。 */
+  border: 0;
   background: var(--dsh-tb-paper-plane, var(--dsh-tb-plane-sheet));
   box-shadow: var(--dsh-tb-paper-cast, var(--dsh-tb-rim), var(--dsh-tb-cast-1));
   border-radius: var(--dsh-tb-paper-radius, var(--dsh-tb-radius-md));

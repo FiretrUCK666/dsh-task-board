@@ -165,6 +165,7 @@
 /* 卡片标题是「眉」：11px、正字距、二级墨。它只说这一块是什么，不跟数字抢眼球。 */
 [data-dsh-taskboard-view] .homeCardTitle {
   margin: 0;
+  flex: none;
   font-size: var(--dsh-tb-type-eyebrow-size);
   line-height: var(--dsh-tb-type-eyebrow-line);
   letter-spacing: var(--dsh-tb-type-eyebrow-track);
@@ -172,8 +173,20 @@
   color: var(--dsh-tb-text-2);
 }
 
+/* **空态吃掉卡片里多出来的高度，而不是让空白全堆在底部。**
+ *
+ * 卡片是 grid 的一格，被同行更高的那一张拉高；而「吞吐」在数据不足时只有一句
+ * `<p>`。原来那句话贴着标题、底下留一大片空纸——量过：卡片 217 高，内容只有 60，
+ * 下面一百多像素什么都没有，宽档下最刺眼（读者报的就是这一张）。
+ *
+ * 让它 `flex: 1` 只是把盒子拉高、字仍贴着顶。所以改成**居中**：这段空气的用途是
+ * 「这一块暂时没内容」，让那句话落在卡片中线上，读者看到的是「这张卡在等数据」，
+ * 而不是「这张卡塌了一半」。 */
 [data-dsh-taskboard-view] .homeCardEmpty {
   margin: 0;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
   color: var(--dsh-tb-text-2);
   font-size: var(--dsh-tb-type-meta-size);
   line-height: var(--dsh-tb-type-meta-line);
@@ -322,12 +335,29 @@
  * 板子，「四周的趋势」这件事反而读不出来；一条 120px 宽的小图才是它该有的体量。 */
 [data-dsh-taskboard-view] .weekChart {
   display: flex;
-  align-self: flex-start;
   align-items: flex-end;
   gap: var(--dsh-tb-space-3);
-  block-size: 40px;
+  /* **地板而不是定高。** 原先这里是 `block-size: 40px`——一个定高会把上面那条
+   * `align-self: stretch` 直接废掉（显式高总是赢过拉伸），于是空白照旧堆在底部。
+   * 改成地板：矮的卡上它就是 40px（四个零也读得出是一条线），高的卡上它跟着长。 */
+  min-block-size: 40px;
   min-inline-size: 0;
   border-block-end: var(--dsh-tb-border-soft);
+  /* **这一块吃掉卡片里多出来的高度，空白就不会全堆在底部。**
+   *
+   * 上面一行数字是固定高的，卡片是 grid 的一格、被同行更高的那一张拉高——于是多出来的
+   * 高度全落在最后这一块下面，宽档下像一张写了两行字的空纸（量过：卡 217 高，柱子只有
+   * 40，底下剩一百多像素什么都没有）。
+   *
+   * 原来这里写的是 `align-self: flex-start`：那是「我按自己的高度站好，别拉我」，于是
+   * 拉伸被拒、空白留在末段。改成 `stretch`（默认值）之后，这一块跟着卡片长高，而它自己
+   * 是 `align-items: flex-end`——**柱子仍然站在底线上**，长出来的是柱子上面那段空气。
+   * 「四周有一个上限」的判据没变：条宽是 `flex: 0 0 24px`，长高不长宽。 */
+  align-self: stretch;
+  /* 但它自己也有一个上限：一张很矮的卡不该被一根很高的柱子撑成图表页。
+     用 `--dsh-tb-space-9`（32px）的三倍——这不是随手挑的数：40px 是柱图原本的高度，
+     给它两倍多一点的天花板，宽档下能填掉那段空白，而不会把四根柱子拉成四根长条。 */
+  max-block-size: calc(3 * var(--dsh-tb-space-9));
 }
 
 [data-dsh-taskboard-view] .weekBar {
