@@ -25,6 +25,7 @@ import type { BoardController } from '../../core/controller.ts'
 import { UNGROUPED_KEY, type SessionGroup } from '../../core/session-groups.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Dialog } from '../design/Dialog.tsx'
 import { Button, Disclosure, Icon } from '../design/ui.tsx'
 
@@ -82,7 +83,7 @@ export function SessionPickerDialog({ controller, exclude, title, submitLabel, o
 
   return (
     <Dialog title={title} label={title} onClose={onClose} portal>
-      <div className={css.modalScroll}>
+      <div className={components.modalScroll}>
         <Input
           type="search"
           value={query}
@@ -110,7 +111,7 @@ export function SessionPickerDialog({ controller, exclude, title, submitLabel, o
           ))
         )}
       </div>
-      <footer className={css.modalFooter}>
+      <footer className={components.modalFooter}>
         {/* The count owns the free space (flex), so the actions sit right
             WITHOUT a `margin-left:auto` — auto margins right-align whichever
             item happens to start a wrapped line, which is the banned

@@ -269,6 +269,7 @@
   const glyphInk = (el, runs) => {
     const boxes = []
     const lineTops = new Set()
+    const lineBoxes = []
     let hl = Number.POSITIVE_INFINITY
     let hr = Number.NEGATIVE_INFINITY
     let lineBox = 0
@@ -301,6 +302,7 @@
         hl = Math.min(hl, Math.max(one.left, clipL))
         hr = Math.max(hr, Math.min(one.right, clipR))
         lineTops.add(round(one.top))
+        lineBoxes.push({ t: one.top, b: one.bottom })
       }
       lineBox = Math.max(lineBox, st.lineHeight === 'normal' ? ink.fontAsc + ink.fontDesc : px(st.lineHeight))
       boxes.push({ t: baseline - ink.asc, b: baseline + ink.desc })
@@ -324,6 +326,10 @@
       r: Number.isFinite(hr) ? round(hr) : null,
       t: round(Math.min(...boxes.map((b) => b.t))),
       b: round(Math.max(...boxes.map((b) => b.b))),
+      /* **行盒的上下沿**：布局把这一串字放在哪儿的那一格。判据量的是**它**，
+       * 理由见 `scan()` 里 offY 那一段。 */
+      lineTop: lineBoxes.length === 0 ? null : round(Math.min(...lineBoxes.map((b) => b.t))),
+      lineBottom: lineBoxes.length === 0 ? null : round(Math.max(...lineBoxes.map((b) => b.b))),
       lines,
       lineBox: round(lineBox),
     }
@@ -384,16 +390,48 @@
     }
   }
 
-  /** 墨框的并集（字与记号各是一块墨；「这一排内容居中了吗」问的是并集）。 */
-  const unionInk = (a, b) => {
-    if (a === null) return b
-    if (b === null) return a
+  /** 一枚记号的**盒子**：布局把它放在哪儿的那一格。 */
+  const markBoxOf = (el) => {
+    const markEl = leadMark(el)
+    if (markEl === null) return null
+    const r = markEl.getBoundingClientRect()
+    return { l: round(r.left), r: round(r.right), t: round(r.top), b: round(r.bottom) }
+  }
+
+  /** 这一枚胶囊里**画了底的子盒**（一枚计数徽标、一枚药丸）：读者看得见它们的那一格，
+   *  所以它们是「这一排内容」的一部分。
+   *
+   *  **为什么它们要单列。** 一枚徽标是**一枚画了底的小盒子**，而它自己的那串字（一个
+   *  数字）只占这枚盒子中间的一小块——18px 的徽标里那个 11px 的数字，前进宽度只有 6px。
+   *  只量字，量到的那一排就少了徽标的两侧内衬，于是**明明居中的一排**被报成偏了 3px
+   *  （实测：工作台页签「看板 ③」的可见内容是 154–204，盒心 179，**正中**；而只量
+   *  字算出来是 154–198，偏 −2.97）。这一条是**读法**的错，不是版面的错。 */
+  const paintedChildBoxes = (el) => {
+    const out = []
+    const own = el.getBoundingClientRect()
+    for (const child of el.children) {
+      const st = getComputedStyle(child)
+      const painted = st.backgroundColor !== 'rgba(0, 0, 0, 0)'
+        || px(st.borderTopWidth) > 0
+        || st.backgroundImage !== 'none'
+      if (!painted) continue
+      const r = child.getBoundingClientRect()
+      if (r.width < 2 || r.height < 2) continue
+      /* 一枚占据大半个盒子的盒子不是内容，是背景层。 */
+      if (r.width > own.width * 0.6) continue
+      out.push({ l: round(r.left), r: round(r.right), t: round(r.top), b: round(r.bottom) })
+    }
+    return out
+  }
+
+  /** 若干个盒子并起来的那一格。 */
+  const unionBoxes = (list) => {
+    if (list.length === 0) return null
     return {
-      l: a.l === null || b.l === null ? null : Math.min(a.l, b.l),
-      r: a.r === null || b.r === null ? null : Math.max(a.r, b.r),
-      t: Math.min(a.t, b.t),
-      b: Math.max(a.b, b.b),
-      lines: a.lines,
+      l: round(Math.min(...list.map((one) => one.l))),
+      r: round(Math.max(...list.map((one) => one.r))),
+      t: round(Math.min(...list.map((one) => one.t))),
+      b: round(Math.max(...list.map((one) => one.b))),
     }
   }
 
@@ -514,7 +552,31 @@
         const box = boxOf(el)
         const ink = glyphInk(el, runs)
         const mark = strokeInk(el)
-        const content = unionInk(ink, mark)
+        const markBox = markBoxOf(el)
+        /* **判据量的是「布局把这一行字放在哪儿」，不是「字体把这一行字的墨放在哪儿」。**
+         *
+         * 一行字的墨在行盒里的位置是**字体与字串的事**，与版面无关：行盒高 = L 时，
+         * 基线在 `halfLeading + ascent`，而 `halfLeading = (L − (A+D)) / 2`——**L 消失了**，
+         * 于是「墨心 − 行盒心」恒等于 `((A−D) − (inkAsc−inkDesc)) / 2`：一个**只由字体与
+         * 那一串字决定**的数。汉字的墨几乎占满 em 盒（A−D 与墨的差 ≈ 0），于是它 ≈ 0；
+         * 拉丁小写字母的墨只有 x 高、下面没有降部，同一个式子给出 **+1.5px**——而**没有
+         * 一条 CSS 声明能改它**（改 `line-height` 不改它，改内衬是「补」，用 `translateY`
+         * 是拿一个常数去补一族字符串）。
+         *
+         * 所以判据量**行盒**（布局的那一格）：行盒与盒心差多少，就是版面差多少。墨的
+         * 绝对位置照样量、照样报（`inkOffY` / `inkVsMark`），只是**不拿它判红**——那
+         * 一段是字形的残差，判它红就是逼着实现去补一个补不掉的数（硬性规范 14：先怀疑
+         * 检查的读法）。
+         *
+         * 横向同理：那一排是**字 + 记号 + 画了底的子盒**（一枚徽标也是这一排的一部分）。 */
+        const lineBoxBox = ink === null || ink.lineTop === null || ink.lineBottom === null
+          ? null
+          : { l: ink.l, r: ink.r, t: ink.lineTop, b: ink.lineBottom }
+        const content = unionBoxes([
+          ...(lineBoxBox === null ? [] : [lineBoxBox]),
+          ...(markBox === null ? [] : [markBox]),
+          ...paintedChildBoxes(el),
+        ])
         /* 切割逐串字求，取最大的那一边。 */
         let cutTop = 0
         let cutBottom = 0
@@ -552,14 +614,20 @@
           policy: horizPolicy(st),
           lines: ink === null ? null : ink.lines,
           hasTextSlot: el.querySelector('[data-dsh-tb-pilltext]') !== null || el.hasAttribute('data-dsh-tb-pilltext'),
-          offY: ink === null ? null : round(cy(ink) - cy(box)),
-          /* **横着问的是「这一排内容居中了吗」，不是「字的墨心居中了吗」。** 一枚「图标 + 标签」
-           * 的按钮，居中的是那两件东西并起来的一排；只量字，会把「图标占了左边 7px」报成缺陷
-           * （量过：面板顶栏那颗新建按钮就是这样，7px 正好是图标宽加间距的一半）。
-           * 纵着仍然只量字：读者说「字没居中于它的胶囊」时，说的是字。 */
+          /* **判红的那一个**：行盒在盒子里偏了多少。 */
+          offY: lineBoxBox === null ? null : round(cy(lineBoxBox) - cy(box)),
+          /* 墨的绝对位置：**量出来、报出来，不判红**（理由见上面那一段）。 */
+          inkOffY: ink === null ? null : round(cy(ink) - cy(box)),
+          /* **横着问的是「这一排内容居中了吗」**：字 + 记号 + 画了底的子盒并起来的一排。
+           * 一枚「图标 + 标签」的按钮，居中的是那两件东西并起来的一排；只量字，会把
+           * 「图标占了左边 7px」报成缺陷（量过：面板顶栏那颗新建按钮就是这样，7px 正好是
+           * 图标宽加间距的一半）。 */
           offX: content === null || cx(content) === null ? null : round(cx(content) - cx(box)),
           markOffY: mark === null ? null : round(cy(mark) - cy(box)),
-          textVsMark: ink === null || mark === null ? null : round(cy(ink) - cy(mark)),
+          /* 字与记号：**量的是行盒与记号盒子**（布局把两者放在哪儿）；墨心与墨心
+           * 的那一份照样报（`inkVsMark`），它是字形残差，不是版面。 */
+          textVsMark: lineBoxBox === null || markBox === null ? null : round(cy(lineBoxBox) - cy(markBox)),
+          inkVsMark: ink === null || mark === null ? null : round(cy(ink) - cy(mark)),
           cutTop: round(cutTop),
           cutBottom: round(cutBottom),
           cutLeft: round(cutLeft),
@@ -870,9 +938,16 @@
       clippedRings: clippedRings.length,
       deadRings: deadRings.length,
     },
-    worst: { offY: clean.worstV, offX: clean.worstH, textVsMark: clean.worstMark },
+    worst: {
+      offY: clean.worstV,
+      offX: clean.worstH,
+      textVsMark: clean.worstMark,
+      /* **墨的绝对位置**：字形残差，报出来给人看（诊断档与报告里都看得见）。 */
+      inkOffY: worst(clean.labels.map((c) => c.inkOffY)),
+      inkVsMark: worst(clean.labels.map((c) => c.inkVsMark)),
+    },
     offenders: {
-      offY: clean.offendersV.map((c) => ({ key: c.key, label: c.label, offY: c.offY, h: c.h, lineHeight: c.lineHeight, padBlock: c.padBlock, markOffY: c.markOffY, slot: c.hasTextSlot })),
+      offY: clean.offendersV.map((c) => ({ key: c.key, label: c.label, offY: c.offY, inkOffY: c.inkOffY, h: c.h, lineHeight: c.lineHeight, padBlock: c.padBlock, markOffY: c.markOffY, slot: c.hasTextSlot })),
       offX: clean.offendersH.map((c) => ({ key: c.key, label: c.label, offX: c.offX, h: c.h, justify: c.justify })),
       cut: clean.cutOffenders.map((c) => ({ key: c.key, label: c.label, cutTop: c.cutTop, cutBottom: c.cutBottom, h: c.h, lineHeight: c.lineHeight, by: c.cutBy })),
       squeezed: clean.floorOffenders.map((c) => ({ key: c.key, label: c.label, h: c.h, contentBox: c.contentBox, lineBox: c.floor, lineHeight: c.lineHeight, padBlock: c.padBlock })),

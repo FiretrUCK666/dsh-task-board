@@ -2303,63 +2303,12 @@
 
 
 
-/* The dialog's ONE scroll region: the same insets as the edit panel's
-   .detailBody (14px 18px), so the native bar sits at the panel edge inside
-   those insets — never a half-panel floating bar, never full-height.
- *
- * BOX AND BAR GRAMMAR IN ONE SHEET, because they are one class. The bar half
- * used to live in `design/components.module.css` — where `.modal` (the panel this
- * scrolls inside) is declared — and that made it DEAD: every one of this class's
- * call sites reads the alias bound to THIS sheet, so the element carries this
- * sheet's hash and the other sheet's rules matched nothing. The bar was the
- * platform default while the design system's own comment described a thin bar
- * flush to the panel edge.
- *
- * It belongs here by the admission rule, not by taste: a class reaches the design
- * system when it has a SECOND consumer directory, and `.modalScroll` has one
- * (`board/`). `.modal` stays in the design system because `Dialog` renders it too. */
-.modalScroll {
-  display: flex;
-  flex-direction: column;
-  gap: var(--dsh-tb-space-7);
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px 18px;
-}
-
-/* The standard-bar path, behind the SAME gate as the surface's half of this
-   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
-   in Chromium, and the bar loses its styling in the one engine that needs the
-   gate. */
-@supports not selector(::-webkit-scrollbar) {
-  .modalScroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--dsh-tb-text-3) transparent;
-  }
-}
-
-.modalScroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.modalScroll::-webkit-scrollbar-thumb {
-  background: var(--dsh-tb-text-3);
-  border-radius: 4px;
-  background-clip: padding-box;
-}
-
-.modalScroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.modalScroll::-webkit-scrollbar-button {
-  display: none;
-}
-
-
-
+/* 弹层正文的滚动体与动作条**住在 `design/components.module.css`**（与 `.modal`、
+   `.dialogHeader` 同表——它们是同一个族的四段）。它们原先住在本表，而它们现在有两个
+   消费目录（`board/` 与 `workbench/`——检查更新的对话框在 `workbench/` 里），按准入
+   判据该归设计系统；本表的那份副本一删，屏上的东西一点不变，而 `workbench/` 那个
+   消费者从此拿到的是**这一族自己的**正文与动作（它原先自己抄了一份，把内衬漏了，
+   于是每一段正文都贴着面板边缘——读者报的那件事）。 */
 
 
 .confirmMessage {
@@ -2369,23 +2318,6 @@
   color: var(--dsh-tb-text-2);
   white-space: pre-wrap;
   overflow-wrap: break-word;
-}
-
-.modalFooter {
-  display: flex;
-  /* **这一条是承重的，不是排版偏好。** 没有它，子项按 `stretch` 拉满整条脚注的
-     高度，而里面的字是按自己的行盒画的——于是一句「已选 0 个」贴着顶部，旁边两枚
-     28px 的按钮却垂直居中，两者差着七八个像素（读者报的「它没有和右边的按钮水平
-     对齐，往上偏了」）。
-     居中对齐放在容器上，是因为它说的就是「这一行的东西在同一条中线上」——写进
-     `.pickerCount` 的 `line-height` 只会让那一句话自己居中，下一句文案又得再来一次。 */
-  align-items: center;
-  justify-content: flex-end;
-  gap: var(--dsh-tb-space-5);
-  padding: 14px 18px;
-  border-top: var(--dsh-tb-separator);
-  /* Pinned: the action row never shrinks out of reach (see .modal). */
-  flex: none;
 }
 
 
@@ -6831,7 +6763,6 @@
   
 
   /* Action rows wrap rather than overflow off the panel edge. */
-  .modalFooter,
   .reviewComposerRow {
     flex-wrap: wrap;
   }

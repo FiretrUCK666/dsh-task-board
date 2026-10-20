@@ -10,6 +10,7 @@ import {
 } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { TaskForm } from './TaskForm.tsx'
@@ -118,7 +119,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
       >
         {/* The ONE scroll region of the dialog: the fields scroll, the header
             and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
-        <div className={css.modalScroll}>
+        <div className={components.modalScroll}>
           {templates.length > 0 && (
             <Field wrap="div" label={t('new.fromTemplate')} htmlFor="dsh-tb-template-picker">
               
@@ -168,7 +169,7 @@ export function NewTaskModal({ controller, onClose }: { controller: BoardControl
           />
         </div>
 
-        <footer className={css.modalFooter}>
+        <footer className={components.modalFooter}>
           <Button onClick={onClose}>
             {t('new.cancel')}
           </Button>

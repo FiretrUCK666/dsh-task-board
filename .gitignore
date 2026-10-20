@@ -60,6 +60,10 @@ coverage/
 # 静态渲染台架的产物：每跑一次出图就冒一个，verify 会因为「根目录有未申报的文件」变红
 tmp-*.html
 
+# 几何审计的工件页：`node scripts/audit-render.mjs` 造出来的那一批（`tmp/audit-pages/`）。
+# 每次跑一遍就重来一遍，所以它从来不该被提交。
+tmp/
+
 # Local design scratch: screenshots, candidate pages, one-off probes. Never tracked and
 # never packed, and never cited by DESIGN.md: a path written into the design doc has to
 # point at something a clean clone can open, so the instruments a section names live in

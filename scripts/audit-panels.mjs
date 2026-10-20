@@ -1,8 +1,9 @@
 // 两块面板的胶囊与滚动体审计：把 `shot-panel.mjs` 按一张矩阵跑一遍，然后判真假。
 //
 // usage:
-//   node scripts/audit-panels.mjs [--dir <where the artifact pages live>] [--json <report path>]
-//   node scripts/audit-panels.mjs --pages a.html,b.html
+//   node scripts/audit-panels.mjs                      # 先造后量：造一批被审页，量那一批
+//   node scripts/audit-panels.mjs --dir <where the artifact pages live>
+//   node scripts/audit-panels.mjs --pages a.html,b.html [--json <report path>]
 //
 // ── 为什么是这张矩阵 ─────────────────────────────────────────────────────────
 //
@@ -45,17 +46,25 @@
 //
 // ── 工件从哪来 ───────────────────────────────────────────────────────────────
 //
-// 本脚本**不生成工件**：它量你给它的那一页。工件由台架写（`DSH_PANEL_HTML=<path> pnpm test`），
-// 生成命令与页面清单写在 README 的开发者一节与 `AGENTS.md` 的闭环验证里。报告里每一页都会
-// 打出**大小与修改时间**，所以「量了一张没重新生成的旧页」看得出来——那是这个项目已经栽过的
-// 一次（`shot-panel.mjs` 里那条拒绝截图 4 字节文件的守卫就是这么来的）。
+// **被审的是哪几页，由 `audit-pages.mjs` 一处定义**，本脚本只引用它。
+//
+// 裸跑（不给 `--pages`、不给 `--dir`）时它**先造后量**：造一批新的工件，量那同一批。
+// 理由是这一条审计唯一量得到的东西是「现在这份代码画出来是什么样」，而一份放在
+// `%TEMP%` 里的旧页量的是几小时前的实现——上一位同事就因此报过一条已经不存在的
+// 缺陷（那条规则当天早上就修好了，而那张页是凌晨生成的）。
+//
+// **旧页的问题由生成器解决，不由过滤器掩盖**：这里换掉的是「量哪几页」的**来源**
+// （现造现量），不是「把旧页藏起来」——`--pages` 与 `--dir` 仍然量你给的那几页，
+// 而报告里每一页都打出**大小与修改时间**，所以「量了一张没重新生成的旧页」仍然看得见。
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
+import { AUDIT_PAGES, auditPageFiles, generateAuditPages } from './audit-pages.mjs'
 
 const HERE = dirname(fileURLToPath(import.meta.url))
+const ROOT = resolve(HERE, '..')
 const SHOT_PANEL = join(HERE, 'shot-panel.mjs')
 /** 框架空气那一支探针（见头注释的第二条判据）。 */
 const FRAME_PROBE = join(HERE, 'probes', 'probe-item-frame.js')
@@ -80,7 +89,11 @@ const BANDS = [
   { id: 'w390x3-touch-altfont', width: 390, height: 844, scale: 3, touch: true, font: '"SimSun", serif', diagnostic: true },
 ]
 
-/** 这三条读的是**墨的位置**，会跟着字体度量走：诊断档里它们只报数、不判红。 */
+/** 这三条在诊断档里只报数、不判红。
+ *
+ *  **它们读的是版面**（行盒与记号盒子各自被放在哪儿），而诊断档换的是**整套字体度量**
+ *  ——那一档的用处是分开两件事：版面的错位与字形的残差。版面那一份在每一档都判；
+ *  字形那一份（`inkV=` / `inkVsMark=`）只报数，它落在诊断档里看得见。 */
 const FONT_DEPENDENT = new Set(['capsulesCentredV', 'capsulesCentredH', 'textVsMarkAligned'])
 
 /** 框架空气那一档：**不是**一条设备档，是一次容器宽度的阶梯（阶梯在探针里）。 */
@@ -109,7 +122,7 @@ const STRIP_CRITERIA = [
 ]
 
 function parseArgs(argv) {
-  const out = { dir: tmpdir(), pages: '', json: '', keep: false, only: '' }
+  const out = { dir: '', pages: '', json: '', keep: false, only: '' }
   for (let i = 0; i < argv.length; i += 1) {
     const flag = argv[i].replace(/^--/, '')
     const key = Object.keys(out).find((name) => name === flag)
@@ -134,24 +147,59 @@ const args = parseArgs(process.argv.slice(2))
  * 每一轮一个唯一目录，就踩不到别人。 */
 const outDir = mkdtempSync(join(tmpdir(), 'tb-audit-'))
 
-/** 工件页：显式给了就按给的，否则把目录里 `tb-*.html` 全带上。 */
+/** 这一轮造出来的那一批工件（裸跑时才有）：收尾时清掉。 */
+let generated = null
+
+/** 要量的那几页。 */
 function pages() {
   if (args.pages !== '') {
     return args.pages.split(',').map((one) => resolve(one.trim())).filter((one) => existsSync(one))
   }
-  if (!existsSync(args.dir)) return []
-  return readdirSync(args.dir)
-    .filter((name) => /^tb-.*\.html$/.test(name))
-    .map((name) => join(args.dir, name))
-    .sort()
+  if (args.dir !== '') {
+    /* **给了目录就量那个目录里的被审页**——仍然是「被审的那几张」，不是目录里
+     * 所有 `tb-*.html`：多出来的那几页不是这一轮要审的东西。 */
+    return AUDIT_PAGES
+      .flatMap((page) => auditPageFiles(args.dir, page.stem).map((name) => join(args.dir, name)))
+      .sort()
+  }
+  /* **裸跑：先造后量，同一批。** 造出来的那一批就是这一轮量的那一批——不是
+   * 「造一批新的、量目录里旧的」。 */
+  generated = mkdtempSync(join(tmpdir(), 'tb-audit-pages-'))
+  return generateAuditPages(generated)
 }
 
 const found = pages()
 if (found.length === 0) {
-  console.error(`audit-panels: no artifact pages found in ${args.dir}`)
-  console.error('  Generate them first, e.g.:')
-  console.error('    $env:DSH_PANEL_HTML="C:\\path\\tb-items.html"; pnpm test tests/panel-render.spec.ts')
+  if (args.dir !== '') {
+    console.error(`audit-panels: 被审的那几页不在 ${args.dir} 里。`)
+    console.error('  它们是：' + AUDIT_PAGES.map((page) => page.stem).join(' / '))
+  } else {
+    console.error('audit-panels: no artifact pages found')
+  }
+  console.error('  造工件：node scripts/audit-render.mjs   （或者直接裸跑本脚本，它自己造）')
   process.exit(2)
+}
+
+/* ── 有没有浏览器 ────────────────────────────────────────────────────────────
+ *
+ * **缺一台浏览器是关于这台机器的事实，不是这次改动的失败。** 所以这里打印 SKIP 并
+ * 退出 0——但它**绝不假装量过**：输出里明写「未测量」，于是「绿」与「没跑」在报告里
+ * 长得不一样（硬性规范 15）。这与 `shot-panel.mjs` 的立场一致。 */
+const probe = spawnSync(process.execPath, [
+  SHOT_PANEL,
+  '--out', join(outDir, 'probe.png'),
+  '--url', pathToFileURL(found[0]).href,
+  '--width', '400',
+  '--wait', '200',
+], { cwd: ROOT, encoding: 'utf8' })
+const probeOut = `${probe.stdout ?? ''}${probe.stderr ?? ''}`
+if ((probe.status ?? 1) !== 0 || /no browser|找不到|not found/i.test(probeOut)) {
+  console.log('audit SKIP: 这台机器上找不到可驱动的 Chromium——**未测量**，不是通过。')
+  console.log('  装上 Chromium（或设 DSH_SHOT_BROWSER=<路径>）之后重跑 `pnpm run audit`。')
+  console.log('  静态门禁仍然守住了写法（`verify-capsule-centring` 等），但「墨心是否落在盒心」只有这里能量。')
+  if (generated !== null) rmSync(generated, { recursive: true, force: true })
+  rmSync(outDir, { recursive: true, force: true })
+  process.exit(0)
 }
 
 /** 一个 band 的一页量一次；返回它的审计读数。 */
@@ -202,7 +250,8 @@ for (const page of found) {
     const { pass, counts, worst } = reading
     console.log(`   ${band.id.padEnd(20)} tier=${pass.tier.padEnd(7)} capsules=${counts.capsules} labels=${counts.labels} start=${counts.startAligned} slot=${counts.withTextSlot} ` +
       `worstV=${worst.offY} worstH=${worst.offX} vsMark=${worst.textVsMark} cut=${counts.cut} squeezed=${counts.squeezed} rings=${counts.rings}/${counts.clippedRings} scrollers=${counts.scrollers} ` +
-      `V=${pass.capsulesCentredV} H=${pass.capsulesCentredH} mark=${pass.textVsMarkAligned} cutP=${pass.inkNotCut} squeezeP=${pass.capsulesNotSqueezed} ring=${pass.ringsInsideClip} self=${pass.selfTest}`)
+      `V=${pass.capsulesCentredV} H=${pass.capsulesCentredH} mark=${pass.textVsMarkAligned} cutP=${pass.inkNotCut} squeezeP=${pass.capsulesNotSqueezed} ring=${pass.ringsInsideClip} self=${pass.selfTest} ` +
+      `inkV=${worst.inkOffY} inkVsMark=${worst.inkVsMark}`)
 
     // A TIER THAT DID NOT TURN ON PROVES NOTHING. `--touch` exists because a
     // narrow width alone leaves `(pointer: coarse)` false; if the emulation ever
@@ -369,6 +418,12 @@ if (args.json !== '') {
 
 if (!args.keep) rmSync(outDir, { recursive: true, force: true })
 else console.log(`audit-panels: shots kept in ${outDir}`)
+/* 这一轮自己造的那批工件也一并清掉（`--keep` 时留着：那一批是这一轮量的对象，
+   留着才能对着它复看）。 */
+if (generated !== null) {
+  if (args.keep) console.log(`audit-panels: pages kept in ${generated}`)
+  else rmSync(generated, { recursive: true, force: true })
+}
 
 console.log(`\naudit-panels: ${found.length} page(s), ${findings.length} finding(s), ${notes.length} note(s)`)
 for (const one of notes.slice(0, 12)) {

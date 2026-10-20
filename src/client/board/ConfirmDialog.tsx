@@ -4,6 +4,7 @@
  */
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Dialog } from '../design/Dialog.tsx'
 import { Button } from '../design/ui.tsx'
 
@@ -25,10 +26,10 @@ export function ConfirmDialog({ title, message, confirmLabel, danger, onCancel, 
     <Dialog title={title} label={title} onClose={onCancel} portal>
       {/* The ONE scroll region of the dialog (a long message scrolls; the
           actions stay pinned — see .modal / .modalScroll). */}
-      <div className={css.modalScroll}>
+      <div className={components.modalScroll}>
         <p className={css.confirmMessage}>{message}</p>
       </div>
-      <footer className={css.modalFooter}>
+      <footer className={components.modalFooter}>
         <Button onClick={onCancel}>
           {t('delete.cancel')}
         </Button>

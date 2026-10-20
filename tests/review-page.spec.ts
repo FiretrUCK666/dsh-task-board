@@ -675,14 +675,20 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
   })
 
   it('the engine-note dialog body rides the shared .modalScroll (no flush text)', () => {
-    // Every other Dialog wraps its children in .modalScroll; the one call
-    // site that skipped it printed the explanation flush against the panel.
+    // Every other Dialog wraps its children in the SHARED scroll body; the one
+    // call site that skipped it printed the explanation flush against the panel.
+    // The shared body lives with the overlay family (design/), beside `.modal`
+    // and `.dialogHeader` — so it is read from there, not from a page sheet.
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
     const at = board.indexOf('engineNote !== undefined')
     expect(at).toBeGreaterThan(-1)
     const dialog = board.slice(at, at + 1500)
-    expect(dialog).toContain('css.modalScroll')
+    expect(dialog).toContain('components.modalScroll')
+    // …and the shared body really carries the inset. Without it the text
+    // prints flush against the panel edge — the defect this call site once had
+    // (a page-local copy of the body, with the padding left out).
+    expect(ruleOf('modalScroll')).toMatch(/padding:\s*14px 18px/)
   })
 
   it('the context popover caps in px, never a viewport unit', () => {

@@ -130,7 +130,7 @@ function CruiseSettingsHost({ narrow, label, id, onClose, children }: {
   }
   return (
     <Dialog title={label} label={label} onClose={onClose} portal className={css.autoModal}>
-      <div className={css.modalScroll} id={id}>{children}</div>
+      <div className={components.modalScroll} id={id}>{children}</div>
     </Dialog>
   )
 }
@@ -1578,7 +1578,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
             onClose={() => { setEngineNote(undefined) }}
             portal
           >
-            <div className={css.modalScroll}>
+            <div className={components.modalScroll}>
               <p className={css.detailText}>
                 {t(engineNote === 'stale' ? 'board.engineStaleHint' : 'board.engineViewerHint')}
               </p>
@@ -1601,7 +1601,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                 </>
               )}
             </div>
-            <footer className={css.modalFooter}>
+            <footer className={components.modalFooter}>
               {controller.canRecheckSeat() && (
                 <Button onClick={() => { void controller.recheckSeat() }}>
                   {t('board.engineNoteRecheck')}
@@ -1973,7 +1973,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
       )}
       {showNotify && (
         <Dialog title={t('board.notify')} label={t('board.notify')} onClose={() => { setShowNotify(false) }} portal>
-          <div className={css.modalScroll}>
+          <div className={components.modalScroll}>
             <div className={css.feedTools} role="group" aria-label={t('board.notify')}>
               <span className={css.feedFilterGroup}>
                 {/* THE classification, and its sizes, in one place. The three
@@ -2189,7 +2189,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
       )}
       {showActivity && (
         <Dialog title={t('board.activity')} label={t('board.activity')} onClose={() => { setShowActivity(false) }} portal>
-          <div className={css.modalScroll}>
+          <div className={components.modalScroll}>
             {/* **这一排是共享控件，不是第五套药丸。**
              *
              * 它们曾经是手写的 `.feedFilter`：24px、12px 字、`background: none`，而且

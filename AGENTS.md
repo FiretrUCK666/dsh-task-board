@@ -621,8 +621,10 @@ scripts 与 `scripts/`**。
     很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0，
     而只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
 19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们由 `shot-panel.mjs` 开真 Chromium 量（`pnpm run audit:ci` 造工件再跑矩阵；没有浏览器
-    时它**明说 SKIP**，不假装量过）。**每一个这样的数都写进 `DESIGN.md` 并写清量法**。
+    它们由 `shot-panel.mjs` 开真 Chromium 量（`pnpm run audit` **先造工件再量那一批**；没有浏览器
+    时它**明说 SKIP**，不假装量过）。**被审的页集由 `scripts/audit-pages.mjs` 一处定义**，
+    `audit-render.mjs` 造、`audit-panels.mjs` 量。
+    **每一个这样的数都写进 `DESIGN.md` 并写清量法**。
     **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
     `translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
     var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——

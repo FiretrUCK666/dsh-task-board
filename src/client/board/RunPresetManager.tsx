@@ -16,6 +16,7 @@ import type {
 import { DEPLOY_DEFAULT_PRESET_ID, findRunPreset } from '../../core/run-presets.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Button } from '../design/ui.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
@@ -130,7 +131,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
       {/* The ONE scroll region: the preset list and the add/edit form scroll
           together; the hint footer stays pinned (see .modal / .modalScroll)
           — a tall form never clips or hides its actions. */}
-      <div className={css.modalScroll}>
+      <div className={components.modalScroll}>
         <div className={css.presetList}>
           <div className={css.runPresetRow}>
             <span className={css.runPresetName} title={t('runPreset.deployDefaultHint')}>
@@ -203,7 +204,7 @@ export function RunPresetManager({ store, doc, current, controller, onChanged, o
           a tall RunConfigEditor must never push them below the fold (the
           PresetManager grammar, applied here). */}
       {formKey !== undefined && (
-        <footer className={css.modalFooter}>
+        <footer className={components.modalFooter}>
           <Button size="sm" onClick={() => { setFormKey(undefined); setName(''); setError(undefined) }}>
             {t('detail.cancel')}
           </Button>

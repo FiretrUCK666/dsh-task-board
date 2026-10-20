@@ -10,6 +10,7 @@ import { useState } from 'react'
 import { isValidCron } from '../../core/schedule.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import {
   DEFAULT_PRESETS, mergePresets, type PresetStore, type SchedulePreset,
 } from '../../core/presets.ts'
@@ -150,7 +151,7 @@ export function PresetManager({ store, onClose }: {
     >
       {/* The ONE scroll region of the dialog: the preset list scrolls, the
           footer stays pinned (see .modal / .modalScroll). */}
-      <div className={css.modalScroll}>
+      <div className={components.modalScroll}>
         <ul className={css.presetList}>
           {custom.length === 0 && <li className={css.presetEmpty}>{t('detail.schedule.presets.empty')}</li>}
           {custom.map(preset => (
@@ -190,7 +191,7 @@ export function PresetManager({ store, onClose }: {
           whole row of their own floating above an empty list (that is what
           made the phone dialog read as "a big blank top with one stray
           button"). */}
-      <footer className={css.modalFooter}>
+      <footer className={components.modalFooter}>
         <Button onClick={() => { setConfirmRestore(true) }}>
           {t('detail.schedule.presets.restore')}
         </Button>

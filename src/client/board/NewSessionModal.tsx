@@ -16,6 +16,7 @@ import type { RunConfigPresetConfig } from '../../core/run-presets.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Dialog } from '../design/Dialog.tsx'
 import { newSessionDraftKey, draftStore } from './drafts.ts'
 import { RunConfigFields } from './RunConfigFields.tsx'
@@ -120,7 +121,7 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
       >
         {/* The ONE scroll region of the dialog: the fields scroll, the header
             and the 创建/取消 footer stay pinned (see .modal / .modalScroll). */}
-        <div className={css.modalScroll}>
+        <div className={components.modalScroll}>
           <p className={css.detailHint}>{t('detail.sessionNewHint')}</p>
           {partial !== undefined && <p className={css.detailHint}>{partial}</p>}
           {error !== undefined && <p className={css.formError}>{error}</p>}
@@ -138,7 +139,7 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
           />
         </div>
 
-        <footer className={css.modalFooter}>
+        <footer className={components.modalFooter}>
           <Button onClick={onClose}>
             {t('new.cancel')}
           </Button>

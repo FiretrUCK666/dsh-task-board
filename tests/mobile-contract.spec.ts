@@ -313,7 +313,12 @@ describe('compact columns + panel geometry', () => {
   })
 
   it('the session row is a NAMED GRID (structural slots, never content-driven wrap)', () => {
-    expect(compact).toMatch(/\.modalFooter[\s\S]*?flex-wrap:\s*wrap/)
+    // The action row wraps rather than overflowing off the panel edge. It is
+    // the overlay FAMILY's rule (design/, beside `.modal` and `.dialogHeader`)
+    // rather than one surface's narrow band: every dialog renders that one
+    // footer, so the guarantee has to be the family's — and it now holds at
+    // every width, not only under a container query.
+    expect(ruleTextOf(source, '.modalFooter')).toMatch(/flex-wrap:\s*wrap/)
     // Base: one row, three structural columns (lead flexes, chip + act hug
     // their tracks) — so the chip/actions land at the SAME x on every row no
     // matter the title length (the 「没对齐」 class, closed structurally).

@@ -745,7 +745,12 @@
   width: 16px;
   height: 16px;
   border-radius: 50%;
-  overflow: hidden;
+  /* **这里原来有 `overflow: hidden`**（经典的「把方的东西裁成圆」那一手），而它
+   * 裁的那件东西是**看不见的**：里面的原生色盘 `opacity: 0`，而它自己 `inset: 0`
+   * 正好填满这一格。留下它只有一个代价——**它把里面那枚色盘伸出去的那一圈也裁掉了**：
+   * 触屏档那一枚色盘的可点范围比这一格大 7px（见下面触屏那一档的写法），伸出去的
+   * 那一圈落在裁剪口外就**够不着**。去掉它，那一圈才真的落在热区上，而屏上一个
+   * 像素都不变（那一圈本来就没有颜色）。 */
 }
 
 /* The custom-colour affordance: a full hue wheel, because the control's whole job
@@ -821,14 +826,20 @@
   }
 }
 
-@media (hover: none) and (pointer: coarse) {
-  /* The 16px color dots are too small to tap; grow the swatch itself. */
-    .tagSwatch,
-    .tagCustomWrap {
-      width: 24px;
-      height: 24px;
-  }
-}
+/* ── 触屏那一档：只许加热区，不许改几何 ────────────────────────────────────────
+ *
+ * 触屏是**另一个轴**（DESIGN.md）：`@media (hover: none) and (pointer: coarse)` 里的
+ * 规则只扩热区、放大输入字号，**不改任何视觉几何**——手机上看到的与桌面逐像素一致。
+ *
+ * **所以那一排颜色的小圆点不长大。** 它先前在触屏档从 16px 长到 24px（"16px 的点
+ * 太小，按不着"），而那一改**动了版面**：展页上那一排的高从 16 变成 24，页面因此
+ * 在两档之间多出 17px 的滚动距离——那正是配对判据要抓的东西（"只切指针能力，
+ * 版面不许变"）。
+ *
+ * 改法是**用这一档自己的那件工具**：热区环（`::before` + 负的 inset）。它把可点的
+ * 那一圈撑到 30px，而**一个像素的版面都不动**——这正是这一族控件在触屏档该有的样子，
+ * 也是它们本来就在用的那件工具。 */
+
 
 
 /* ── THE SHARED LISTS, HALF HERE ──────────────────────────────────────────────
@@ -872,7 +883,7 @@
   .segmentedButton,
   .detailDisclosure,
   .attachRemove,
-  .tagCustomColor {
+  .tagSwatch {
     position: relative;
   }
 
@@ -887,11 +898,35 @@
   .segmentedButton::before,
   .detailDisclosure::before,
   .attachRemove::before,
-  .tagCustomColor::before {
+  .tagSwatch::before {
     content: '';
     position: absolute;
     inset: calc(-1 * var(--dsh-tb-hit-ring-block)) calc(-1 * var(--dsh-tb-hit-ring-inline));
     border-radius: inherit;
+  }
+
+  /* **那颗自定义颜色点：可点的那一格在触屏档长大，而版面一个像素不动。**
+   *
+   * 它不能像别的控件那样靠**环**：环是那一枚控件自己的 `::before`，而这一枚控件
+   * 是**原生色盘**——UA 给了它 `overflow: clip`（`!important`，作者样式压不过，
+   * 实测：连行内 `!important` 都改不动），于是它的环**永远长不出自己那一格**，
+   * 环是死的。
+   *
+   * 所以这一枚用**它自己那一格**长大：往外扩的那半寸与环用的是**同一个令牌**
+   * （`--dsh-tb-hit-ring-block/-inline`），写的是**同一个式子**。
+   *
+   * **而它一个像素也不动版面**：它是 `position: absolute`（`inset: 0`），**不在流里**，
+   * 所以把它撑大撑的是**可点的范围**，不是版面——外面那一圈 `.tagCustomWrap` 仍然是
+   * 16×16（它的高度决定那一排颜色点的高，桌面档与触屏档一模一样）。
+   *
+   * 顺带修掉一处**触屏档才有的位置变化**：这一枚原先也被写进上面那份
+   * `position: relative` 的名单里，于是**触屏档**把它从 `absolute` 改成了
+   * `relative`（它自己那一条规则的后一条赢）——从「不在流里」变成「在流里」，
+   * 正是那份名单不该管它的地方。 */
+  .tagCustomColor {
+    inset: calc(-1 * var(--dsh-tb-hit-ring-block)) calc(-1 * var(--dsh-tb-hit-ring-inline));
+    inline-size: calc(100% + 2 * var(--dsh-tb-hit-ring-inline));
+    block-size: calc(100% + 2 * var(--dsh-tb-hit-ring-block));
   }
 }
 
@@ -933,6 +968,96 @@
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
   animation: dshTbDialogIn var(--dsh-tb-motion);
+}
+
+/* ── 浮层这一族：正文那一格与动作那一格 ─────────────────────────────────────────
+ *
+ * **这一族是四段几何，而四段住在同一张表里才成其为「一族」**：面板（`.modal`，自己
+ * 不带内衬）→ 头（`.dialogHeader`，14px 18px 加一道分隔线）→ 正文（`.modalScroll`，
+ * 14px 18px，它自己滚）→ 动作（`.modalFooter`，14px 18px 加一道分隔线）。
+ *
+ * **每一段自带自己的内衬，面板不带。** 面板那句「NO panel padding」正是这四段能
+ * 成立的**前提**——它把内衬的责任交给了下面三段。于是调用点少写一段，那一段就贴到
+ * 面板的边缘上：读者报过的正是这件事（检查更新的对话框里每一段正文都贴着左右边缘、
+ * 每一枚按钮都贴着下边缘）。
+ *
+ * **正文与动作这两段原先住在 `board.module.css`，搬到这里是因为它们现在有两个消费
+ * 目录**（`board/` 与 `workbench/`——检查更新的对话框在 `workbench/` 里）。按准入
+ * 判据，一个形态类有了第二个消费目录就归设计系统。
+ *
+ * 搬之前 `workbench/` 那边只能**自己抄一份**，抄的时候把内衬漏了：那个副本的正文
+ * 与动作都没有 `padding`。**漏的不是两个数，是这个族的几何分在了两张表里**——一张表
+ * 里的调用点看得到，另一张表里的调用点看不到，于是第二个消费者自己写一份，而自己
+ * 写的那份没有内衬。修法是**让这一族只有一处家**，而不是给那个副本补两个 `padding`
+ * （补出来的那两个数从此要人记得同步，而「改一处不报错」正是这件事的代价）。
+ *
+ * 滚动条那一半与盒子是同一个类：一条贴着盒子内衬边的细条，与盒子是同一件事。它
+ * 曾经住在 `design/components.module.css` 而类是 `board/` 的，那一半是**死的**——
+ * 类名按表哈希，别的表的选择器匹配不到任何节点，屏上只是「那里没生效」（见
+ * `board.module.css` 里那段记录）。 */
+.modalScroll {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-7);
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 18px;
+}
+
+/* The standard-bar path, behind the SAME gate as the surface's half of this
+   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
+   in Chromium, and the bar loses its styling in the one engine that needs the
+   gate. */
+@supports not selector(::-webkit-scrollbar) {
+  .modalScroll {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsh-tb-text-3) transparent;
+  }
+}
+
+.modalScroll::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.modalScroll::-webkit-scrollbar-thumb {
+  background: var(--dsh-tb-text-3);
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+.modalScroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.modalScroll::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* 动作那一格：面板的最后一段。**它自己带那道分隔线**——正文与动作之间要有线，否则
+   动作像是浮在正文中间。 */
+.modalFooter {
+  display: flex;
+  /* **这一条是承重的，不是排版偏好。** 没有它，子项按 `stretch` 拉满整条脚注的
+     高度，而里面的字是按自己的行盒画的——于是一句「已选 0 个」贴着顶部，旁边两枚
+     28px 的按钮却垂直居中，两者差着七八个像素（读者报的「它没有和右边的按钮水平
+     对齐，往上偏了」）。
+     居中对齐放在容器上，是因为它说的就是「这一行的东西在同一条中线上」——写进
+     `.pickerCount` 的 `line-height` 只会让那一句话自己居中，下一句文案又得再来一次。 */
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--dsh-tb-space-5);
+  padding: 14px 18px;
+  border-top: var(--dsh-tb-separator);
+  /* **动作宁可换行，也不许溢出面板的边。** 这一条原先住在看板表里、只挂在窄档
+     （`@container dsh-tb (max-width: 400px)`）；它跟着这一族搬过来以后就**不再挂
+     档**了——因为「换行」是这一格自己的性质，不是某一档的性质：内容装得下时换行
+     什么也不发生（装得下时它本来就只有一行），装不下时它换行，而不是把按钮挤出
+     面板（挤出去的那一枚是够不着的）。 */
+  flex-wrap: wrap;
+  /* Pinned: the action row never shrinks out of reach (see .modal). */
+  flex: none;
 }
 
 
@@ -1010,7 +1135,15 @@
 textarea.input {
   height: auto;
   padding: 8px 12px;
-  line-height: 1.5;
+  /* **行盒高是一个长度，不是一个比例。** 这一格的高度是**内容推出来的**（几行 × 行盒），
+   * 而触屏那一档要把输入的字号从 13px 放大到 16px（"16px 的输入文字阻止 iOS 聚焦时
+   * 自动放大"）——**比例会跟着字号走**（`1.5` 在 16px 上是 24px），于是这一格在两档
+   * 之间长了 9px，页面也跟着长：展页上那一条配对判据量到的正是那 17px。
+   *
+   * 触屏那一档只许**加热区**、不许改几何（DESIGN.md），而「放大输入字号」是允许的
+   * ——**两样都成立的办法是让行盒高与字号无关**：写成 `1.5 × 13px` 这个长度，字号怎么
+   * 变，这一格都还是那么高（数字与上面那一条 `--dsh-tb-write-max` 的算法一致）。 */
+  line-height: calc(1.5 * 13px);
   max-block-size: var(--dsh-tb-write-max, calc(12 * 1.5 * 13px));
   overflow-y: auto;
   overscroll-behavior: contain;

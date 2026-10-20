@@ -27,6 +27,7 @@
  */
 import { Fragment } from 'react'
 import { Button } from '../design/ui.tsx'
+import components from '../design/components.module.css'
 import { Dialog } from '../design/Dialog.tsx'
 import { t } from '../locales.ts'
 import { updateController } from './update-controller.ts'
@@ -135,7 +136,7 @@ export function UpdateDialog() {
       onClose={close}
       portal
     >
-      <div className={css.body}>
+      <div className={components.modalScroll}>
         <p className={css.text}>{t('board.update.current', { v: derived.current })}</p>
         {/* 这是哪一份：同一台机器上 Web 端与桌面端是两份独立安装，读者
             最先要确认的就是「我现在看的是哪一份」。 */}
@@ -295,7 +296,7 @@ export function UpdateDialog() {
           <p className={css.warn}>{t('board.update.unrouted', { spec: source?.spec ?? source?.mode ?? '' })}</p>
         )}
       </div>
-      <footer className={css.footer}>
+      <footer className={components.modalFooter}>
         {source !== undefined && plan !== undefined && plan.apply !== 'none' && !actionSpent && (
           <Button
             variant={canApply ? 'primary' : 'ghost'}

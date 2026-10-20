@@ -18,6 +18,7 @@ import { automationTasksOf } from '../../core/automation.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 import { Chip } from '../design/Chip.tsx'
 import { Dialog } from '../design/Dialog.tsx'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
@@ -96,7 +97,7 @@ export function AutomationPanel({ controller, onClose }: {
           into the full automation editor) scroll together; the header stays
           pinned — tall editors never clip their own bottom (save buttons
           stay reachable). See .modal / .modalScroll. */}
-      <div className={css.modalScroll}>
+      <div className={components.modalScroll}>
         {automated.length === 0 ? (
           <p className={css.autoEmpty}>{t('auto.empty')}</p>
         ) : (

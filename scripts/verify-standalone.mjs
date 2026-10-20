@@ -266,6 +266,11 @@ const ROOT_ALLOWED = new Set([
 const ROOT_DIRS_ALLOWED = new Set([
   '.agent-teams', '.design', '.git', '.github', '.impeccable',
   'build', 'lib', 'locale', 'node_modules', 'scripts', 'src', 'tests',
+  // `tmp/` — the geometry audit's artifacts: `node scripts/audit-render.mjs`
+  // writes the pages it measures there. Build output, never committed (the
+  // .gitignore says so), and present in a working tree but absent in a clone —
+  // the same case the list above already covers.
+  'tmp',
 ])
 {
   const stray = readdirSync(root, { withFileTypes: true })
