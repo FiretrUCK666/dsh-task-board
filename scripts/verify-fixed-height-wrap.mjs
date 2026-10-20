@@ -141,7 +141,17 @@ export function collisionsIn(css) {
     const holders = holderOf(rule.selector)
     if (holders.length === 0) continue
     const height = declOf(rule.body, 'block-size') ?? declOf(rule.body, 'height')
-    const wrap = declOf(rule.body, 'flex-wrap')
+    /* **`flex-flow: row wrap` 与 `flex-wrap: wrap` 是同一件事。**
+     *
+     * `flex-flow` 是 `flex-direction` 与 `flex-wrap` 的**简写**——写成
+     * `flex-flow: row wrap` 的那一枚，**一样会换行**，而只读 `flex-wrap` 的门禁看不见它。
+     * 这不是「两种写法」：CSS 自己说它们是同一个属性（简写拆开就是那两条）。
+     */
+    const wrap = declOf(rule.body, 'flex-wrap') ?? (() => {
+      const flow = declOf(rule.body, 'flex-flow')
+      if (flow === undefined) return undefined
+      return /\bwrap\b/.test(flow) ? 'wrap' : undefined
+    })()
     for (const holder of holders) {
       if (height !== undefined) {
         const perScope = heights.get(holder) ?? new Map()
@@ -164,7 +174,7 @@ export function collisionsIn(css) {
     /* **两个方向都要查。**
      *
      * ① **换行的那一档 → 那条链上最终生效的定高**（内层优先，外层兜底：内层可以写
-     *    `auto` 撤销外层的定高）。「顶层定高 + 窄档换行」在这里撞上 。
+     *    `auto` 撤销外层的定高）。「顶层定高 + 窄档换行」在这里撞上。
      *
      * ② **定高的那一档 → 那条链上最终生效的换行**。「顶层换行 + 窄档定高」在这里撞上 *    ——**这一条原来漏报**：顶层的换行在窄档里**仍然生效**（窄档的规则只加不减），
      *    而窄档把高定死了，于是窄档上内容会溢出。原来的读法只从换行出发找定高，
@@ -230,7 +240,7 @@ export function fixedHeightWrapFindings(root) {
 
 function main() {
   const root = process.argv[2] ?? '.'
-  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector', '--probe-band-height', '--probe-band-cancel'])
+  const probe = probeOf(['--probe-collision', '--probe-cancelled', '--probe-other-selector', '--probe-band-height', '--probe-band-cancel', '--probe-flex-flow', '--probe-pseudo-holder'])
 
   if (probe !== undefined) {
     const BAND = '@container dsh-tb-item-list (max-width: 559px) {'
@@ -242,8 +252,14 @@ function main() {
        * 规则只加不减），而窄档把高定死了——于是窄档上内容溢出。这一条原来漏报
        * （读法只从换行出发找定高，而顶层的 scope 够不着内层）。 */
       '--probe-band-height': { css: `.a { flex-wrap: wrap; }\n${BAND} .a { block-size: 24px; } }`, want: 1 },
-      /* **窄档自己撤销**：窄档写 `auto`，那一档就不算定高 。 */
+      /* **窄档自己撤销**：窄档写 `auto`，那一档就不算定高。 */
       '--probe-band-cancel': { css: `.a { block-size: 24px; }\n${BAND} .a { flex-wrap: wrap; block-size: auto; } }`, want: 0 },
+      /* **`flex-flow: row wrap` 与 `flex-wrap: wrap` 是同一件事**（CSS 说 `flex-flow`
+       * 就是那两条的简写）。只读 `flex-wrap` 的门禁看不见 `flex-flow` 那一枚。 */
+      '--probe-flex-flow': { css: '.a { block-size: 24px; flex-flow: row wrap; }', want: 1 },
+      /* **伪类参数里的类不是本体。** `.a:not(:has(> *))` 的承载盒是 `.a`——不是空，
+       * 也不是 `:has()` 里的东西（那是**条件**）。仓库里就有两处这个形状。 */
+      '--probe-pseudo-holder': { css: '.a:not(:has(> *)) { block-size: 24px; flex-wrap: wrap; }', want: 1 },
     }
     const one = fixtures[probe]
     const got = collisionsIn(one.css).length

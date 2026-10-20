@@ -42,6 +42,29 @@ const clientRoot = fileURLToPath(new URL('../src/client', import.meta.url))
  */
 const DICTIONARY_FILE = 'locales.ts'
 
+/**
+ * **键集合的指纹。**
+ *
+ * 键集合变了就要改这一行——**刻意**改，不是顺手改。孤儿扫描看不见「键和它的读者
+ * 一起被删」那一种（键没了，它就不是孤儿），zh↔en 的对称性也由类型跟着一起少，
+ * 所以这种删除**全绿**：屏幕上那句话没了，而没有任何门禁会报。
+ *
+ * 指纹用 **FNV-1a**（短、够用、不是密码学用途）：它要回答的只是「键集合是不是
+ * 同一个」，不是「内容是不是没被人动过」。
+ */
+const KEY_SET_DIGEST = '4140d969'
+
+/** 键集合的指纹（升序、拼起来算）。 */
+function digestOf(list: readonly string[]): string {
+  const text = [...list].sort().join('\n')
+  let hash = 0x811c9dc5
+  for (let i = 0; i < text.length; i++) {
+    hash ^= text.charCodeAt(i)
+    hash = Math.imul(hash, 0x01000193) >>> 0
+  }
+  return hash.toString(16).padStart(8, '0')
+}
+
 /** Every .ts / .tsx file under the client half, minus the dictionary. */
 function clientSources(dir: string): string[] {
   const out: string[] = []
@@ -114,6 +137,28 @@ describe('locale dictionaries have no rot', () => {
   it('every dictionary key is referenced in client code', () => {
     const orphans = orphansIn(sources, keys)
     expect(orphans, 'keys with no reader — delete them (copy that nothing shows is dead weight)').toEqual([])
+  })
+
+  it('the key set only changes on purpose', () => {
+    // **「一个键和它的读者一起被删」是上面那道孤儿扫描看不见的那一种。**
+    //
+    // 孤儿扫描问的是「这个键还有人读吗」——**键没了，它就不是孤儿**（不是没人读，是
+    // 不存在了）。zh 与 en 的对称性由类型保证（`en: Record<keyof typeof zh, string>`），
+    // 而类型**跟着键一起少**，所以「两边同时删」这件事**全绿**：没有孤儿、没有类型错、
+    // 没有任何门禁会报。
+    //
+    // 真发生过：日程页「一行日期都没有时」的处境说明（`item.agenda.nothingDated`）与
+    // 它的渲染被一起删掉，屏幕上那句话就没了——**没有一处变红**。
+    //
+    // 所以键集合要有一道**指纹**：键集合变了，这一条就红，并把**新的指纹值**印出来
+    // （改这一行是刻意的动作，不是顺手）。
+    const digest = digestOf(keys)
+    expect(digest, [
+      'locale 的键集合变了。',
+      '如果是有意的（加了词、改了名、删了不用的词），把下面这个值填进本文件的那一行：',
+      digest,
+      '如果不是有意的——**键和它的读者一起被删**了，屏幕上那句话就没了，而没有任何门禁会报。',
+    ].join('\n')).toBe(KEY_SET_DIGEST)
   })
 
   it('the orphan scan can actually fail', () => {

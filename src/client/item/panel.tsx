@@ -425,15 +425,18 @@ export function ItemListPanel(props: ItemListPanelProps) {
   const sortOpen = overlay === 'sort'
   const topPanels = useId()
   /**
-   * What the command box can be asked to do, and where the focus goes back to.
+   * What the command box can be asked to do.
    *
-   * Two refs, two directions, and no state: the box PUBLISHES its four commands
-   * here (they are derived from its own text, so they are not this panel's to
-   * compute), and this panel OWNS the trigger that opened it — so when the box
-   * reports that it closed, the focus goes back to the control the reader
-   * actually pressed. A modal surface that takes the caret and never gives it
-   * back leaves the panel with no focus at all, and the next key answers to
-   * nothing.
+   * The box PUBLISHES its commands here (they are derived from its own text, so
+   * they are not this panel's to compute), and this panel forwards the arrow
+   * keys to them.
+   *
+   * **焦点不归这里管。** 读者按下 ⌘K 时，焦点在那枚搜索框上；面板打开时焦点进到
+   * 面板里，**关闭时还回那一枚**——那是**组件的生死**做的事（面板开着才渲染它，
+   * 于是挂载/卸载那一对自然成立，`dialog-focus.ts` 那一处机制就够了）。
+   * 这里曾经有一段注释说「本面板拥有那个入口，所以盒子报关闭时把焦点还回去」——
+   * 而**这样的代码并不存在**，也没有第二个 ref：那是一个已经不存在的做法留下的
+   * 说明，留着会让人以为焦点归位是这里做的。
    */
   const paletteCommands = useRef<PaletteCommands | undefined>(undefined)
   /* THE ELEMENT THE FOCUS GOES BACK TO when the palette closes — and it is the SEARCH

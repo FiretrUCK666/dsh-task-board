@@ -428,6 +428,8 @@ DeepSeek Harness 的内部接口会随版本变化，本插件需要跟着改。
 | host 存储单元 | `dsh_task_board`（`documents/` 下每种数据一个文件） |
 | 看板舞台 slot | `main`（`key: dsh-task-board`） |
 | 任务清单舞台 slot | `main`（`key: dsh-task-board-items`，与看板同一个座位、不同键） |
+| 总览舞台 slot | `main`（`key: dsh-task-board-home`） |
+| 设计预览舞台 slot | `main`（`key: dsh-task-board-design`，只在开发环境注册） |
 | 侧栏入口 slot | `sidebar.panellist`（`id` 与各自的 `main` 键一致） |
 | localStorage 键 | `dsh.taskBoard.v1` 等 |
 

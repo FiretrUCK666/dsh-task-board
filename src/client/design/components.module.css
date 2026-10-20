@@ -1087,7 +1087,11 @@ textarea.input {
  *
    **两种引擎各有一个选择器**：WebKit 的是 `::-webkit-search-cancel-button`，Gecko 的是
  * `::-moz-search-clear`（Firefox 从来没有 WebKit 那个）。只藏一个，等于**在另一个引擎上
-   留着那个按钮**——而那句话（「去掉它」）在两个引擎上都得成立。 */
+   留着那个按钮**——而那句话（「去掉它」）在两个引擎上都得成立。
+   *
+   * （Firefox 的 search 框默认**不画**清除钮，所以它那一条多半是空转；留着是因为
+   * 「万一它画了」时不必再改一遍——**代价是四行，不是一段推理**。基础规则里的
+   * `appearance: none` 是另一道保险。） */
 .searchField::-webkit-search-cancel-button {
   -webkit-appearance: none;
   appearance: none;

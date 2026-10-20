@@ -411,6 +411,8 @@ row in the sidebar to go back to it, or "back to conversation" to leave either p
 | Host storage unit | `dsh_task_board` (one file per data kind under `documents/`) |
 | Board stage slot | `main` (`key: dsh-task-board`) |
 | Task list stage slot | `main` (`key: dsh-task-board-items`; same seat as the board, different key) |
+| Overview stage slot | `main` (`key: dsh-task-board-home`) |
+| Design preview stage slot | `main` (`key: dsh-task-board-design`; registered in development only) |
 | Sidebar entry slot | `sidebar.panellist` (`id` matches each panel's `main` key) |
 | `localStorage` keys | `dsh.taskBoard.v1` and friends |
 

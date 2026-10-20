@@ -33,8 +33,9 @@
  * so a reader who opened it with the mouse and changed their mind had nothing to
  * press. A modal surface that declares `aria-modal` owes the reader two things —
  * a way to dismiss it, and its focus back — so the mask answers a press that
- * LANDED ON IT (`target === currentTarget`), and {@link ItemCommandPaletteProps.onClosed}
- * hands the caller the moment to give the focus back.
+ * LANDED ON IT (`target === currentTarget`), and the focus comes back **because
+ * this component mounts and unmounts with the palette** (see the note at
+ * `useDialogFocus` below).
  *
  * **THE FOOTNOTE PROMISED KEYS THAT DID NOTHING.** It said 「回车执行」 over a
  * screen with no selection anywhere on it: no `activeIndex`, no `Enter` handler,
@@ -251,7 +252,6 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
   // every other control is a capsule (reader: 「它怎么是方的长方形的框」).
   // A field's look is not a page decision: `SearchField` is THE one search field
   // (design/ui.tsx), and a page may only place it (width, flex, margins).
-  //
 
   const groups = useMemo<readonly PaletteGroup[]>(() => {
     const out: PaletteGroup[] = []

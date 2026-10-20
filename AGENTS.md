@@ -381,15 +381,12 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   测试扫源码禁掉它有任何写路径。
 - `src/host/http-json.ts` / `src/host/*-route.ts`：路由共用的信封与请求体读取（禁各写一套）；
   纯 `create*Handler`，服务一律 `ctx.get`。
-- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**
-  （持有 + 持久化 + 先落盘后应答 + SSE；缺 hub 则 localStorage）。两份文档由同一个 service
-  持有，同名单元同时只能有一个活句柄。`openBoardUnit` 是单元打开与**一次性**布局迁移的唯一入口，
-  旧文件与新文档树**必须顺序开关**；迁移只对**完全空树**发生，**所以删掉数据根仍是一次真正的
-  重置**。`KvUnit` 的形状以类型为准。
+- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**。
+  两份文档由同一个 service 持有，同名单元同时只能有一个活句柄；`openBoardUnit` 是单元打开与
+  **一次性**布局迁移的唯一入口，迁移只对**完全空树**发生，**所以删掉数据根仍是一次真正的重置**。
 - `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把迁移前的旧整体文件
-  改名让位。三道守卫缺一不可（数据已在新位置、文件确属本单元那个版本、目标名没被占）；**改名
-  不是删除**，新名字不以 `.json` 结尾。新增任何直接读写数据根的代码都要先想清楚为什么不能经
-  `ctx.storage`。
+  改名让位。**改名不是删除**，新名字不以 `.json` 结尾。新增任何直接读写数据根的代码都要先想清楚
+  为什么不能经 `ctx.storage`。
 
 ### client 半区（浏览器）
 
@@ -455,25 +452,22 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在
   `src/client/board/`，不在核心层）。
 - **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
-  `access` 列**推导**（`WritableItemKey`）。失效方向只有一个、且不报错：标注一放宽，推导塌成
-  `never` → `ItemPatch` 变 `{}` → **`{}` 接受任何对象字面量**，写错的字段静默通过。所以那行
-  `@ts-expect-error` 棘轮是承重的（退化从此是**构建失败**），且它放在 core 而非 spec。同族第二
-  实例在 `item-sort.ts` 的 `KEY_GAPS`。**手写的「我列全了吗」永远该由类型或文件系统回答**。
-- **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**，
-  抽屉的分类就是那两类（`notifications.ts`）。两处不要写错的地方在代码注释里：`openTask`
-  （点卡片）**绝不动轮次戳**；「第 N 次执行」只在真有编号运行时说。
+  `access` 列**推导**（`WritableItemKey`）。推导塌掉时不报错，所以那行 `@ts-expect-error` 棘轮是
+  **承重的**（退化从此是**构建失败**），且它放在 core 而非 spec。同族第二实例在 `item-sort.ts` 的
+  `KEY_GAPS`。**手写的「我列全了吗」永远该由类型或文件系统回答**。
+- **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**。
+  两处不要写错的地方在代码注释里：`openTask`（点卡片）**绝不动轮次戳**；「第 N 次执行」只在真有
+  编号运行时说。
 - **轮次集合只有两份**（`session-display.ts` / `execution.ts`）：**会话**回答「这段对话在这张卡上
   发生过什么」，**执行复核线程**回答「这一页复核页上有什么没看的」；`cancelled` 不是工作，不进
-  任何门。「等你处理」的唯一集合走 `relatedSessionIdsOf`（绑定 + 轮次 + 工作区当前成员 − 已删除）；
-  拖进来的会话从绑定起归这张卡管，且**卡片自己必须出声**（圆点在触屏上不可见）。
+  任何门。「等你处理」的唯一集合走 `relatedSessionIdsOf`；拖进来的会话从绑定起归这张卡管，且
+  **卡片自己必须出声**（圆点在触屏上不可见）。
 - **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，唯一
-  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
-  **轮次记录只经 `land` 进台账**。屏上「更新于」读 `cardUpdatedAtOf(task)` 而不是同步戳
-  `task.updatedAt`。
+  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**。
+  屏上「更新于」读 `cardUpdatedAtOf(task)` 而不是同步戳 `task.updatedAt`。
 - **活性**（`session-lineage.ts` / `session-activity.ts`）：判定与 `unknown` 的两面见「关键不变量」
-  的运行态一条。**裸值边界（改动即反向卡死）**：结算与看门狗（`execution.ts`、`zombieRoundEvent`、
-  active-run 兜底、`cancelSpuriousExternal`、`reconcileBoundTask`、外源轮检测）一律继续读**原生会话
-  表那一份 `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**。
+  的运行态一条。**裸值边界（改动即反向卡死）**：结算与看门狗一律继续读**原生会话表那一份
+  `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**。
 - **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定）。
 
 ### 关键不变量（改前先读对应文件；这里只记边界，细节在代码）

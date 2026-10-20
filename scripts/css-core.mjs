@@ -89,6 +89,15 @@ export function rulesOf(css, at = '', base = 0) {
       }
     } else if (prelude !== '') {
       rules.push({ selector: prelude, body, line, at, offset, endOffset: base + j })
+    } else {
+      /* **匿名块也要下降。** 前导为空的 `{ … }` 在 CSS 里装的是**规则**（不是声明）——
+       * CSS Nesting 里它就是「没有条件的嵌套」。
+
+       * 这一条曾经是「空前导 = 跳过」，于是**脚本侧读不到匿名块里的规则**，
+       * 而测试侧（`tests/panel-harness.ts` 的 `allRules`）读得到——**同一段 CSS
+       * 两个答案**。仓库今天没有匿名块，所以两边结果相同；可那不是「都对」，
+       * 是「今天恰好没有」。读法只有一份的规矩就在这里：两边必须给同一个答案。 */
+      rules.push(...rulesOf(body, at, base + open + 1))
     }
     i = j
   }
@@ -201,18 +210,96 @@ export function declaredClassesOf(css) {
  */
 export function holderClassesOf(selector) {
   const out = []
-  for (const part of selector.split(',')) {
+  for (const part of splitSelectorList(selector)) {
     const trimmed = part.trim()
     if (trimmed === '') continue
-    /* 末段 compound：从最后一个非复合连接符之后开始。连接符是空格、`>`、`+`、`~`。 */
-    const compounds = trimmed.split(/\s*[>+~]\s*|\s+/)
+    const compounds = splitCompounds(trimmed)
     const last = compounds[compounds.length - 1] ?? ''
-    /* 末段里可能挂着多个类（`.card.dragging`）与伪类/属性——**每一个类都是被
-       声明出来的**，因为它们共同构成「选中哪个元素」。伪类里的参数
-       （`:not(.x)`）不算：那是条件，不是本体。 */
-    const withoutPseudoArgs = last.replace(/\((?:[^()]|\([^()]*\))*\)/g, '')
-    const names = [...withoutPseudoArgs.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1])
-    if (names.length > 0) out.push(names)
+    for (const names of subjectGroupsOf(last)) out.push(names)
   }
   return out
+}
+
+/**
+ * 按**顶层**逗号把选择器拆成若干段（逗号在括号里不是分隔符）。
+ *
+ * `:is(.a, .b)` 里那个逗号**不是**「两个选择器」——它是 `:is()` 的参数表。
+ * 按普通逗号切会把 `:is(.a, .b)` 切成两段**坏掉**的文本。
+ * @param {string} selector - 一条选择器。
+ * @returns {string[]} 每一段。
+ */
+function splitSelectorList(selector) {
+  const out = []
+  let depth = 0
+  let current = ''
+  for (const ch of selector) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (ch === ',' && depth === 0) {
+      out.push(current)
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  out.push(current)
+  return out
+}
+
+/**
+ * 按**括号外**的连接符把一段选择器切成 compound。
+ *
+ * 连接符是空格、`>`、`+`、`~`——但**括号里的不算**：`.a:not(:has(> *))` 里的那个 `>`
+ * 是 `:has()` 的参数（选的是子元素），不是「子代」连接符。按普通分隔符切，
+ * 整条选择器会被切成两半，末段读成 `*))`——**承载盒读成空**。
+ * @param {string} text - 一段选择器。
+ * @returns {string[]} 各个 compound。
+ */
+function splitCompounds(text) {
+  const out = []
+  let depth = 0
+  let current = ''
+  for (const ch of text) {
+    if (ch === '(') depth++
+    else if (ch === ')') depth--
+    if (depth === 0 && (ch === ' ' || ch === '\t' || ch === '\n' || ch === '>' || ch === '+' || ch === '~')) {
+      if (current.trim() !== '') out.push(current.trim())
+      current = ''
+      continue
+    }
+    current += ch
+  }
+  if (current.trim() !== '') out.push(current.trim())
+  return out
+}
+
+/**
+ * 一个 compound 的**本体**分成几组（每组 = 同一个盒子上的那些类）。
+ *
+ * 两种伪类的参数含义**相反**：
+ *
+ *   - `:is(.a)` / `:where(.a)`（以及旧别名 `:matches` / `:any`）：参数里的类**就是**
+ *     被选中的那个元素——`:where(.a)` 选的就是 `.a`。所以它们**算本体**。
+ *   - `:not(.a)` / `:has(.a)`：参数是**条件**（那个盒子此刻不是 `.a`；`:has(.a)`
+ *     是「它里面有 `.a`」）。所以它们**不算本体**。
+ *
+ * **`:is(.a, .b)` 是两个盒子**（它选的是「是 .a 或者是 .b」的元素），
+ * 而 **`.a:is(.b)` 是同一个盒子**（既是 .a 又匹配 .b）——所以：
+ * compound 自己有类时，`:is()` 的参数并进本体；自己没有类时，参数表里每一项各成一组。
+ *
+ * @param {string} compound - 一个 compound。
+ * @returns {string[][]} 本体的分组。
+ */
+function subjectGroupsOf(compound) {
+  /* 去掉**所有**伪类参数（含嵌套一层的那种），只留本体上的类。 */
+  const own = [...compound.replace(/\((?:[^()]|\([^()]*\))*\)/g, ' ').matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((m) => m[1])
+  const argGroups = []
+  for (const m of compound.matchAll(/:(?:is|where|matches|any)\(([^()]*)\)/g)) {
+    for (const arg of splitSelectorList(m[1])) {
+      const names = [...arg.matchAll(/\.(-?[_a-zA-Z][\w-]*)/g)].map((x) => x[1])
+      if (names.length > 0) argGroups.push(names)
+    }
+  }
+  if (own.length === 0) return argGroups
+  return [[...own, ...argGroups.flat()]]
 }
