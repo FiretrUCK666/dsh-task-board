@@ -50,7 +50,7 @@
 // 打出**大小与修改时间**，所以「量了一张没重新生成的旧页」看得出来——那是这个项目已经栽过的
 // 一次（`shot-panel.mjs` 里那条拒绝截图 4 字节文件的守卫就是这么来的）。
 import { spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join, resolve } from 'node:path'
 import { fileURLToPath, pathToFileURL } from 'node:url'
@@ -126,7 +126,13 @@ function parseArgs(argv) {
 }
 
 const args = parseArgs(process.argv.slice(2))
-const outDir = join(tmpdir(), 'tb-audit')
+/** **每一轮一个自己的目录。**
+ *
+ * 这个目录原来是**固定**的 `%TEMP%/tb-audit`，于是**同一台机器上并行的两轮审计互相踩**：
+ * 一轮收尾时的清理把另一轮正在写的读数删掉，那一轮于是报 `NO READING`——
+ * **一条与那一页毫无关系的假失败**（实测：`ENOENT … tb-audit/…audit.json`）。
+ * 每一轮一个唯一目录，就踩不到别人。 */
+const outDir = mkdtempSync(join(tmpdir(), 'tb-audit-'))
 
 /** 工件页：显式给了就按给的，否则把目录里 `tb-*.html` 全带上。 */
 function pages() {
@@ -177,7 +183,6 @@ const findings = []
 /* 报出来、但不判红的那一类：一个被裁掉的轴上内容更长，条不出现、滚动也不变。 */
 const notes = []
 const report = { bands: BANDS.map((band) => band.id), pages: [], findings, notes }
-if (!existsSync(outDir)) mkdirSync(outDir, { recursive: true })
 
 for (const page of found) {
   const stamp = statSync(page)
