@@ -35,6 +35,7 @@ import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/att
 import { useDialogFocus } from '../design/dialog-focus.ts'
 import { useEscapeStack } from '../design/escape-stack.ts'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 /** 四档，按重量排（最重的在最左）：顺序来自模型，不在这里重排一遍。 */
 const PRIORITIES: readonly ItemPriority[] = ITEM_PRIORITIES_BY_WEIGHT
@@ -344,7 +345,7 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
               <span className={css.itemCreateDialogLabel}>{t('item.field.title')}</span>
               <input
                 ref={titleField}
-                className={css.itemCreateDialogTitleField}
+                className={`${css.itemCreateDialogTitleField} ${base.focusHalo}`}
                 value={title}
                 placeholder={t('item.create.titlePlaceholder')}
                 aria-label={t('item.field.title')}
@@ -533,7 +534,11 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 这一格一句常驻的解释有五行，而它回答的是读者**问出来之后**才有的问题
                 （「挂卡会动到什么」）——所以它挂在自己那一行上的一枚 `InfoMark` 后面：
                 指着字段名偷看一句，按下或聚焦真开（触屏只有这一条路）。 */}
-            <div className={css.itemOptRow} data-note={cardNote.open ? '' : undefined}>
+            {/* **这一行是一节，不是一行两列**：它装的是「挂哪张卡」，也就是一句
+              长度由用户定的标题。右栏只有 292px，并排时那一格只剩 183px，一句话要
+              折成四行——所以它自己上下排（字段名一行，卡片占满整行）。判据是内容的
+              形状，不是一个只为它服务的开关。 */}
+          <div className={css.itemOptRow} data-card-row="" data-note={cardNote.open ? '' : undefined}>
               <p className={css.itemOptName} data-note-hover="">
                 {/* **字段名自己是一枚盒子**（`.itemOptNameText`）：它与那枚 ⓘ 同一条线，而这一行
                     按中线把两者各自居中——记号绕 viewBox 中心对称，字装在它自己的盒子里。 */}
@@ -551,15 +556,20 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   {t('item.field.noCard')}
                 </button>
                 {props.cards.map(card => (
+                  /* Same control as the detail pane's, so same shape: the
+                     sentence-sized form plus the text slot. Bare text in a flex
+                     pill is an anonymous item and lands differently per browser
+                     and per font. */
                   <button
                     key={card.id}
                     type="button"
-                    className={css.itemOpt}
+                    className={css.itemOpt + ' ' + css.itemOptCard}
                     data-on={pendingCard === undefined && taskId === card.id ? '' : undefined}
                     aria-pressed={pendingCard === undefined && taskId === card.id}
+                    title={card.title}
                     onClick={() => { setTaskId(card.id); setPendingCard(undefined) }}
                   >
-                    {card.title}
+                    <span className={css.itemPillText} data-dsh-tb-pilltext>{card.title}</span>
                   </button>
                 ))}
                 {cardNaming ? (

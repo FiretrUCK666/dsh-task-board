@@ -412,11 +412,6 @@ export interface BoundSessionFace {
   }
 }
 
-/** The structural slice of the `remote.goals` Typert stub the goal verbs
- *  call (positional `(sessionId, ref, …)`, GoalView results — verbatim the
- *  calls the harness's own GoalBar makes). Absent = the goal strip hides. */
-export type GoalsRemoteFace = import('../core/goal-verbs.ts').GoalsRemoteFace
-
 /** One live binding record: the session object driving a host session. */
 export interface SessionBinding {
   readonly session: BoundSessionFace

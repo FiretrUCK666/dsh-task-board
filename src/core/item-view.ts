@@ -87,6 +87,7 @@ export {
   ITEM_FLAG_TESTS,
   flagProbeOf,
   isItemQualifierToken,
+  isItemTagToken,
   itemMatchContextOf,
   itemMatches,
   itemQualifierVocabulary,

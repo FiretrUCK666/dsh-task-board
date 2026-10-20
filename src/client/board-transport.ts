@@ -10,19 +10,24 @@
 import type { BoardSyncTransport, ItemsSyncFetchResult, SyncFetchResult } from '../core/host-sync.ts'
 import type { BoardCommit, BoardCommand, BoardEvent, LeaseWire } from '../core/board-doc.ts'
 import type { ItemsCommit } from '../core/items-doc.ts'
+import type { RouteEnvelope } from '../core/http-envelope.ts'
 import { routeUrl } from './route-base.ts'
 
 /** The board route base (the naming matrix's `/api/dsh-task-board/*`) as this
  *  document addresses it: document-relative, so a subpath mount stays reachable. */
 const ROUTE = routeUrl('/api/dsh-task-board/board')
 
-/** The route envelope the board handler answers with. The lease is the WIRE
- *  shape (an older host may answer without `proto`/`bootedAt` — that absence
- *  IS the stale-host evidence, so it must survive to the sync client). */
-interface BoardEnvelope {
-  ok: boolean
-  value?: SyncFetchResult & { lease?: LeaseWire }
-}
+/**
+ * The value the board route answers with.
+ *
+ * The lease is the WIRE shape (an older host may answer without
+ * `proto`/`bootedAt` — that absence IS the stale-host evidence, so it must
+ * survive to the sync client). The ENVELOPE around it is the plugin's one
+ * shared one (`core/http-envelope.ts`), not a local spelling: a route that
+ * answers `{ ok, value }` here and `{ ok, data }` there is a reader that
+ * silently reads nothing.
+ */
+type BoardRouteValue = SyncFetchResult & { lease?: LeaseWire }
 
 /**
  * Build the transport. `EventSource` is feature-detected: an environment
@@ -61,7 +66,7 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
           if (since !== undefined) params.set('since', String(since))
           const response = await fetch(`${ROUTE}?${params.toString()}`, { headers: { accept: 'application/json' }, signal })
           if (!response.ok) return undefined
-          const envelope = await response.json() as BoardEnvelope
+          const envelope = await response.json() as RouteEnvelope<BoardRouteValue>
           return envelope.ok ? envelope.value : undefined
         } catch {
           return undefined
@@ -82,7 +87,7 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
           // reads as a "transport hiccup" — the phone's toggle then dies
           // silently and refresh reverts it).
           if (!response.ok) return undefined
-          const envelope = await response.json() as BoardEnvelope
+          const envelope = await response.json() as RouteEnvelope<BoardRouteValue>
           return envelope.ok ? envelope.value : undefined
         } catch {
           return undefined
@@ -96,7 +101,7 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
           if (since !== undefined) params.set('since', String(since))
           const response = await fetch(`${ROUTE}/items?${params.toString()}`, { headers: { accept: 'application/json' }, signal })
           if (!response.ok) return undefined
-          const envelope = await response.json() as { ok: boolean; value?: ItemsSyncFetchResult }
+          const envelope = await response.json() as RouteEnvelope<ItemsSyncFetchResult>
           return envelope.ok ? envelope.value : undefined
         } catch {
           return undefined
@@ -113,7 +118,7 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
             signal,
           })
           if (!response.ok) return undefined
-          const envelope = await response.json() as { ok: boolean; value?: ItemsSyncFetchResult }
+          const envelope = await response.json() as RouteEnvelope<ItemsSyncFetchResult>
           return envelope.ok ? envelope.value : undefined
         } catch {
           return undefined
@@ -135,7 +140,7 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
                 }),
             signal,
           })
-          const envelope = await response.json() as BoardEnvelope
+          const envelope = await response.json() as RouteEnvelope<BoardRouteValue>
           return envelope.ok ? envelope.value?.lease : undefined
         } catch {
           return undefined

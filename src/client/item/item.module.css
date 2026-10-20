@@ -1944,14 +1944,14 @@
    * 第一个字落在那条线上，靠的是**行卡的外沿 + 行自己的内衬**两笔加起来。 */
   padding: var(--s2) var(--dsh-tb-row-pad);
   position: relative;
-  background: var(--item-surface);
+  --dsh-tb-paper-plane: var(--item-surface);
   border: var(--item-hair-strong);
-  border-radius: var(--dsh-tb-radius-md);
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-md);
   /* **一张被抬起的纸 = 一条上边光 + 一条下投影。** 颜色在浅色主题里分不出前后（宿主
    * 三层底色同值），所以「抬起来」由这两条说：`--dsh-tb-rim` 是贴着上沿的一线亮，
    * `--dsh-tb-cast-1` 是它落在底上的那一点影。两条一起画才叫纸——只有边是线框，
    * 只有影是脏。 */
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   cursor: pointer;
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -3265,10 +3265,6 @@ button.itemRowCardChip {
   display: block;
 }
 
-.itemTick > input:focus-visible + i {
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
-}
-
 .itemStepsAdd {
   display: flex;
   align-items: center;
@@ -3523,9 +3519,7 @@ button.itemRowCardChip {
   max-inline-size: 100%;
   justify-content: flex-start;
   text-align: start;
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
   line-height: var(--dsh-tb-text-line-h);
 }
 
@@ -3629,7 +3623,6 @@ button.itemRowCardChip {
 
 .itemInput:focus {
   border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* ── 这一页只有一个写入框，它自己的规则在 `.itemProse` 一处 ──────────────────
@@ -3684,8 +3677,6 @@ textarea.itemInput {
   line-height: 22px;
   color: var(--item-ink-1);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .itemQueryChipRemove {
@@ -3784,9 +3775,12 @@ textarea.itemInput {
   line-height: var(--dsh-tb-text-line-h);
   max-inline-size: 100%;
   text-align: start;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  /* **这一枚的地板是 24px，而共享形态的默认地板是 0。** 所以它只说自己的那个数，
+     机制（三条声明）不重抄——`.truncate` 读 `--dsh-tb-clip-floor`，槽位的值由
+     页面给。为了门禁变绿去打掉一颗地板，是门禁在指挥设计；反过来把地板写进
+     共享形态，则成了「一个消费者的数被钉进所有人的家」。槽位是这两者之间唯一
+     诚实的位置。 */
+  --dsh-tb-clip-floor: 24px;
   color: var(--item-ink-2);
   background: none;
   border: var(--item-hair);
@@ -4146,7 +4140,6 @@ textarea.itemInput {
 
 .itemCreateDialogTitleField:focus {
   border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 /* 日期那一格里的框：**形状与行为都来自 `.itemDateField`**（详情里那一根，见
@@ -4324,9 +4317,6 @@ textarea.itemInput {
 
 .itemArchiveTitle {
   min-inline-size: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: 13px;
   line-height: 20px;
   color: var(--item-ink-2);
@@ -4388,8 +4378,7 @@ textarea.itemInput {
   background: var(--dsh-tb-plane-sheet);
   border: var(--item-hair);
   box-shadow: var(--dsh-tb-rim);
-  border-radius: var(--dsh-tb-radius-md);
-}
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-md);}
 
 /* **字段区的两列几何：一个宽、一条沟，两处读同一对令牌。**
  *
@@ -4724,6 +4713,62 @@ textarea.itemInput {
   flex: none;
 }
 
+/* **装句子的那一行不是「一行两列」，是一节。** 右栏 292px：`.itemOptRow` 的
+   `76px minmax(0,1fr)` 网格把第二列压到 183px，一句 60 字的标题在里面折成 4 行，
+   读起来是一根竖条。把栏加宽是拿左栏正文的地方换（压扁另一边），所以让**这一节**
+   换个排法：字段名一行，值占满整行、按行流动。
+
+   判据是内容的形状，不是一个开关：这一行装的是句子，所以它不参与「名 + 值并排」
+   那一档。 */
+.itemOptRow[data-card-row] {
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: var(--s1);
+  align-items: start;
+}
+
+.itemOpts > .itemOptCard {
+  /* **一句话不是一枚「值」。** `.itemOpts > *` 的 `flex: none` 说的是状态词、
+     优先级那类两三个字的答案；装卡片那一格装的是**卡的标题**，长度由用户定。
+     跟着短词一起不许收缩的结果，是一枚装不下也不肯变窄的药丸：宽度按最长的
+     一行算，溢出到面板右沿，再被 `.itemOpen` 的 `overflow` 硬切——量过，55 个字
+     里只看得见 22 个，没有省略号、没有 title、也没有可读的名字。
+
+     **宽度跟着字走，不跟通栏走。** `flex: 0 1 auto` 是三句话：不拉伸
+     （`grow 0`——一枚「值」不该占满一整行，那是通栏字段的排法）、可以收缩
+     （`shrink 1`——装不下时它让位，而不是把邻居顶出去）、基础宽度是内容自己的
+     （`basis auto`）。再给一个 100% 的天花板：短标题就是它自己那么宽，长标题
+     长到这一栏的右边就停，然后折行。 */
+  flex: 0 1 auto;
+  min-inline-size: 0;
+  max-inline-size: 100%;
+  /* 高度由内容定：定高的药丸是给两三个字设计的，套在一句话上，字只会被挤出盒子。 */
+  block-size: auto;
+  padding-block: 6px;
+  justify-content: flex-start;
+  text-align: start;
+}
+
+/* 里面的文字槽跟着折行。药丸的文字槽是 `nowrap`（短词不需要换行），装句子的
+   这一枚要把那条解掉，并且允许在任意位置断——一个没有空格的长串也得断在盒里。 */
+.itemOpts > .itemOptCard .itemPillText {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+/* **而一句话不是一枚「值」。** 上面那条「值不换行」说的是状态词、优先级这类
+   两三个字的答案；挂卡片那一格装的是**卡的标题**，它是一句话，长度由用户定。
+   跟着短词一起 `flex: none` 的结果，是一枚装不下也不肯收缩的药丸：宽度按最长的
+   一行算，溢出到面板右沿，再被 `.itemOpen` 的 `overflow` 硬切 —— 量过，55 个字
+   里只看得见 22 个，**没有省略号、没有 title、也没有 aria-label**，读者连「这里
+   被截了」都不知道。
+
+   所以它从那一族分出去：允许收缩、允许折行；短的时候与别的值并排，长的时候
+   自己占掉一整行（那个 18em 的地板是让位，不是压扁）。 */
+/* 一枚**装句子的**选择块：与短值药丸共用一套面与悬停反馈，但高度由内容定、
+   字靠左、可以折行 —— 定高的药丸是为两三个字设计的，套在一句话上，字只会被
+   挤出盒子。 */
+/* 里面的文字槽跟着折行。药丸的文字槽是 `nowrap`（短词不需要换行），装句子的
+   那一枚要把这条解掉，并且允许在任意位置断——一个没有空格的长串也得断在盒里。 */
 /* **而那一句按需出现的说明不是「值」。** 它是这一行的注解，所以它自己占一整行
    （`flex: 1 1 100%`，上面的 `flex: none` 会让它按最宽的一行排、从这一栏右边溢出去——
    量出来的：说明被面板右沿裁掉了尾巴），宽度再由 `.itemNote` 的 46ch 限一次。 */
@@ -5662,9 +5707,6 @@ textarea.itemInput {
 .itemRecentTitleText {
   display: block;
   min-inline-size: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .itemOriginRow {

@@ -202,12 +202,12 @@ function PickerGroup({ group, open, onToggle, picked, onToggleSession }: {
     tooltip. An id helps nobody choose a session, and a tooltip that appears to
     answer the ellipsis while answering something else is worse than one that
     admits it cannot. */}
-                <span className={css.addSessionLabel} title={session.title}>{session.title}</span>
+                <span className={`${css.addSessionLabel} ${components.truncate}`} title={session.title}>{session.title}</span>
                 {/* The folder label only earns its place in the UNGROUPED
                     group: inside a workspace group every row would repeat the
                     heading the group already says. */}
                 {group.key === UNGROUPED_KEY && session.workspaceLabel !== undefined && (
-                  <span className={css.addSessionFolder}>{session.workspaceLabel}</span>
+                  <span className={`${css.addSessionFolder} ${components.truncate}`}>{session.workspaceLabel}</span>
                 )}
               </button>
             </li>

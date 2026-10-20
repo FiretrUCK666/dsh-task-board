@@ -47,7 +47,7 @@ function AutomationTaskCard({ controller, task, onClose }: {
   return (
     <section className={css.autoTask}>
       <header className={css.autoTaskHead}>
-        <span className={css.autoTaskTitle} title={task.title}>{task.title}</span>
+        <span className={`${css.autoTaskTitle} ${components.truncate}`} title={task.title}>{task.title}</span>
         <Chip kind="muted">{t(STATUS_KEY[task.status])}</Chip>
         <Button
           size="sm"

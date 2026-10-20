@@ -16,8 +16,7 @@ import { agentPresetNameOf } from '../../core/session-agents.ts'
 import { permissionLabel } from '../permission-label.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-/** Model-select value encoding: provider + model, joined by a NUL separator. */
-const MODEL_SEP = '\u0000'
+import { modelSelectParts, modelSelectValue } from './model-select.ts'
 
 /** The run configuration field editor (see module doc). */
 export function RunConfigEditor({ value, onChange, controller }: {
@@ -127,11 +126,11 @@ export function RunConfigEditor({ value, onChange, controller }: {
 
   /** Select a provider/model pair; the effort resets with the model. */
   const setModel = (key: string): void => {
-    const sepIndex = key.indexOf(MODEL_SEP)
+    const parts = modelSelectParts(key)
     onChange({
       ...value,
-      provider: sepIndex >= 0 ? key.slice(0, sepIndex) : undefined,
-      model: sepIndex >= 0 ? key.slice(sepIndex + 1) : undefined,
+      provider: parts?.provider,
+      model: parts?.model,
       reasoningEffort: undefined,
     })
   }
@@ -181,14 +180,14 @@ export function RunConfigEditor({ value, onChange, controller }: {
       <Field label={t('new.model')}>
         <span className={css.selectWrap}>
           <Select
-            value={value.provider !== undefined && value.model !== undefined ? `${value.provider}${MODEL_SEP}${value.model}` : ''}
+            value={value.provider !== undefined && value.model !== undefined ? modelSelectValue(value.provider, value.model) : ''}
             onChange={event => { setModel(event.target.value) }}
           >
             <option value="">{t('new.modelDefault')}</option>
             {groups.map(group => (
               <optgroup key={group.provider} label={group.provider}>
                 {group.models.map(model => (
-                  <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
+                  <option key={modelSelectValue(group.provider, model.id)} value={modelSelectValue(group.provider, model.id)}>
                     {model.name ?? model.id}
                   </option>
                 ))}

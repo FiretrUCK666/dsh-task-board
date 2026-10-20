@@ -178,11 +178,9 @@ export const zh = {
   'board.flowDays': 'p85 {n}天',
   'board.flowSubDay': 'p85 1天内',
   'board.flowThroughput': '吞吐 {n}/周',
-  'new.title': '标题',
   'new.titlePlaceholder': '一句话描述要做什么',
   'new.description': '描述',
   'new.descriptionPlaceholder': '补充背景、范围与验收（可选）',
-  'new.prompt': '执行 Prompt',
   'new.promptPlaceholder': '发给 agent 的完整指令（可选）',
   'new.status': '初始状态',
   'new.statusHint': '开启自动化的任务会按计划自动执行（无需先手动执行）；未配置自动化的待办任务需手动「执行」或开启板级「自动巡航」才会跑。',
@@ -300,7 +298,6 @@ export const zh = {
   'detail.sessionNewHint': '按下方运行配置创建一个全新会话并加入本任务的会话列表；标题/描述/Prompt 属于任务，不在此设置。',
   'detail.sessionNewSubmit': '创建',
   'detail.sessionNewTitleLabel': '会话标题（选填）',
-  'detail.sessionNewTitlePlaceholder': '一句话描述要做什么',
   'detail.sessionNewTitleHint': '留空 = 交给宿主自动命名（首次对话后自动生成）；填写 = 立即以此命名并固定，不再被自动改名。',
   'detail.sessionNewTitleFailed': '会话已创建并加入列表，但标题设置未生效：{error}（可在会话行上重命名）',
   'detail.sessionUntitled': '未命名',
@@ -438,7 +435,6 @@ export const zh = {
   'auto.rule.deleteArmed': '「{name}」这条规则现在是开着的，到点会自己往那个会话里发话。删掉它就再也不会发了。',
   'auto.form.new': '新增会话规则',
   'auto.form.session': '目标会话',
-  'auto.form.instruction': '执行 Prompt',
   'auto.form.instructionPlaceholder': '定时发送给该会话的自定义指令；/ 开头走原生命令注册表…',
   'auto.form.content': '指令内容',
   'auto.content.custom': '自定义指令',
@@ -1100,9 +1096,8 @@ export const zh = {
   // 那一列顺序倒过来读（按当前那一项第二下）。它不是另一个排序，所以它是一个后缀，
   // 而不是一个编出来的反义词——「标题 · 倒过来」说的是同一列、另一个方向。
   'item.sort.desc': '· 倒过来',
-  /* 三个日期档**不在这里**：它们读字段自己那一份词（`item.field.*`），一个概念一套词。 */
+  /* 三个日期档与标题档**不在这里**：它们读字段自己那一份词（`item.field.*`），一个概念一套词。 */
   'item.sort.priority': '优先级',
-  'item.sort.title': '标题',
 
   // 转成看板卡片：唯一一个同时写两份文档的动作，所以回执说的是「发生了什么」
   // 而不是一句「已生效」。五种说法是五种事实——已经连着的、没有标题的、
@@ -1341,11 +1336,9 @@ export const en: Record<keyof typeof zh, string> = {
   'board.flowDays': 'p85 {n}d',
   'board.flowSubDay': 'p85 under a day',
   'board.flowThroughput': 'throughput {n}/wk',
-  'new.title': 'Title',
   'new.titlePlaceholder': 'What should be done, in one line',
   'new.description': 'Description',
   'new.descriptionPlaceholder': 'Background, scope, acceptance criteria (optional)',
-  'new.prompt': 'Run Prompt',
   'new.promptPlaceholder': 'The full instruction sent to the agent (optional)',
   'new.status': 'Initial status',
   'new.statusHint': 'Tasks with automation enabled run on their own plan (no manual first run needed); plain todo tasks without automation only run when you hit Run or switch on the board\'s auto-cruise.',
@@ -1463,7 +1456,6 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.sessionNewHint': 'Creates a fresh session from the run configuration below and adds it to this task\'s session list; title/description/prompt belong to the task and are not set here.',
   'detail.sessionNewSubmit': 'Create',
   'detail.sessionNewTitleLabel': 'Session title (optional)',
-  'detail.sessionNewTitlePlaceholder': 'What should be done, in one line',
   'detail.sessionNewTitleHint': 'Leave blank to let the host name it automatically (generated after the first message); fill it in to name it now and pin the title against auto-renaming.',
   'detail.sessionNewTitleFailed': 'The session was created and added to the list, but the title did not apply: {error} (rename it on the session row)',
   'detail.sessionUntitled': 'Untitled',
@@ -1592,7 +1584,6 @@ export const en: Record<keyof typeof zh, string> = {
   'auto.rule.deleteArmed': 'The rule for “{name}” is switched ON — it posts into that conversation on its own schedule. Deleting it stops that for good.',
   'auto.form.new': 'New session rule',
   'auto.form.session': 'Target session',
-  'auto.form.instruction': 'Run prompt',
   'auto.form.instructionPlaceholder': 'The custom instruction to send this session on schedule; a leading / runs through the native command registry…',
   'auto.form.content': 'Content',
   'auto.content.custom': 'Custom instruction',
@@ -2125,10 +2116,9 @@ export const en: Record<keyof typeof zh, string> = {
   'item.sort.label': 'Sort',
   'item.sort.sequence': 'Loudest first',
   'item.sort.desc': '· reversed',
-  /* The three date orders are not here: they read the fields' own words
-     (`item.field.*`), because one concept has one vocabulary. */
+  /* The three date orders and the title order are not here: they read the
+     fields' own words (`item.field.*`), because one concept has one vocabulary. */
   'item.sort.priority': 'Priority',
-  'item.sort.title': 'Title',
 
   // Making a board card: the one action that writes two documents, so the
   // receipt says what happened rather than a single "done". Five sentences are
@@ -2198,9 +2188,6 @@ export const en: Record<keyof typeof zh, string> = {
 
 /** The dictionary key union. */
 export type TaskBoardKey = keyof typeof zh
-
-/** The settings-card slice of the task-board dictionary. */
-export type SettingsCardKey = TaskBoardKey
 
 /** Whether the active UI language is English (drives unit-style formatting). */
 export function isEnglish(): boolean {

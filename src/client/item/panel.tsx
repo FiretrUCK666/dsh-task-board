@@ -56,7 +56,7 @@ import {
   type ItemRailEntry,
   type ItemRowView,
 } from '../../core/item-view.ts'
-import type { TaskStatus, TaskRecord } from '../../core/tasks.ts'
+import { cardStatusMapOf, type TaskStatus, type TaskRecord } from '../../core/tasks.ts'
 import type { AskCardOutcome, BoardController } from '../../core/controller.ts'
 import type { ItemStatus } from '../../core/item.ts'
 import { SORT_GROUPS_BY_DAY, itemDayGroupsOf } from './day-groups.ts'
@@ -83,7 +83,7 @@ import { dayTokensIn, freeTextOf, isTokenIn, queryChipsOf, withFacetToken, withF
 import { ItemRail } from './rail.tsx'
 import { ItemQueryChips } from './query-chips.tsx'
 import { ASK_WHY_LABEL, PAGE_LABEL, SORT_LABEL } from './labels.ts'
-import { localDayKey } from './model.ts'
+import { localDayKey } from '../../core/local-day.ts'
 import {
   NO_SELECTION,
   allPicked,
@@ -149,23 +149,6 @@ interface ItemListPanelProps {
    * capture still ticks, and a real panel starts at the real clock.
    */
   readonly now?: number
-}
-
-/**
- * **看板的栏，按卡片 id 索引。** 清单的状态读的就是这一栏——一条挂卡的行走在哪一栏，是看板
- * 的事实，清单只读。所以这里给的是整栏，而不是「那张卡在不在跑」；名字说的就是这件事。
- *
- * 读的是快照里的 `status`（卡片自己那一栏），不是 `liveStateOf` 的活性判决——那是
- * 另一件事（它在不在工作），而「在哪一栏」就是 `status`。
- *
- * **它读的是订阅到的那一份快照**（见 `useBoardSnapshot`）：这三张映射不能按
- * `[face.controller, items]` memo，两者都不随看板变，于是卡拖到另一栏、卡被删掉，
- * 清单这一屏都不会重画。
- */
-function cardsMapOf(board: BoardSnapshot | undefined): Map<string, TaskStatus> {
-  const map = new Map<string, TaskStatus>()
-  for (const task of board?.tasks ?? []) map.set(task.id, task.status)
-  return map
 }
 
 /** Cards a row may hang off, already titled. Never assembled here. */
@@ -275,7 +258,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
      判据**：卡被删之后列表会为一条死链接继续收窄，而同一行在卡片那一格、`has:linked` 与
      左栏计数里都已经不算挂着卡了——同一屏上两个说法。 */
   const board = useBoardSnapshot(face.controller)
-  const cardColumns = useMemo(() => cardsMapOf(board), [board])
+  /**
+   * **看板的栏，按卡片 id 索引。** 清单的状态读的就是这一栏——一条挂卡的行走在哪一栏，是
+   * 看板的事实，清单只读。读的是快照里的 `status`（卡片自己那一栏），不是 `liveStateOf`
+   * 的活性判决——那是另一件事（它在不在工作）。
+   *
+   * **那一份实现住在 core**（`cardStatusMapOf`）：宿主与清单问的是同一件事（模型要把一张
+   * 卡连同它的栏位一起说出来），而这件事曾经各写一份——改一处不动另一处，屏上不会有人
+   * 说得清为什么某张卡的栏位在两个动作里不一样。
+   *
+   * **它读的是订阅到的那一份快照**（见 `useBoardSnapshot`）：这张映射不能按
+   * `[face.controller, items]` memo，两者都不随看板变，于是卡拖到另一栏、卡被删掉，
+   * 清单这一屏都不会重画。
+   */
+  const cardColumns = useMemo(() => cardStatusMapOf(board?.tasks ?? []), [board])
   /**
    * 这一页**唯一**的附件入口，交给两个写作面（展开区那一栏、新建那条那张纸）。
    *

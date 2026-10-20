@@ -729,23 +729,38 @@ describe('card no-breakout CSS contract', () => {
     // （设计系统的 `.truncate`，四个文字子槽共用），所以这里断言两件事：形态本身带着
     // 省略号三件套，而这一处**应用**了它——第二句读的是结构，不是字样。
     const ellipsis = expectRule('truncate')
-    expect(ellipsis).toContain('min-width: 0')
+    /* 地板是一条**槽**（`min-inline-size: var(--dsh-tb-clip-floor, 0)`），不是写死的
+     * 零：一枚药丸有自己的 24px 地板，共享形态不该把它钉成 0。所以判据读的是
+     * 「它声明了一条可以收缩的地板」，而不是那个字面的 0。 */
+    expect(ellipsis).toMatch(/min-(?:inline-)?(?:width|size):\s*var\(--dsh-tb-clip-floor/)
     expect(ellipsis).toContain('text-overflow: ellipsis')
     const cardTsx = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
     expect(cardTsx, '卡片的工作区名没有应用省略号那一类').toMatch(/components\.truncate\}>\{sourceLabel\}/)
 
-    // Updated-at label: shrinkable (never flex: none) so the ellipsis trio
-    // engages instead of overflowing the card.
+    // Updated-at label: shrinkable (never flex: none) so it gives way before the
+    // workspace name does, and it carries its full reading in `title` — a time is
+    // meta, and meta is allowed an ellipsis but never a lie about what it says.
     const time = expectRule('cardTime')
     expect(time).toContain('flex: 0 1 auto')
-    expect(time).toContain('min-width: 0')
-    expect(time).toContain('text-overflow: ellipsis')
     expect(time).not.toContain('flex: none')
+    expect(cardTsx, '更新时刻没有把完整读数挂进 title').toMatch(/css\.cardTime\}[\s\S]{0,120}title=\{formatDateTime/)
   })
 
   it('layer 2: title and excerpt wrap unbreakable tokens instead of overflowing', () => {
-    expect(expectRule('cardTitle')).toContain('overflow-wrap: anywhere')
-    expect(expectRule('cardExcerpt')).toContain('overflow-wrap: anywhere')
+    /* **标题与摘要都折行，不夹断。** 夹断那一族曾经住在这里，现在连那个家也不要了：
+     * 一张卡的标题是「这是哪一件事」的唯一答案，摘要是「这件事要做什么」的那句话，
+     * 夹掉就是让人读半句。形态住在共享的 `.titleText`（它带着断词规则），两个调用点
+     * 挂它；这一页自己不写 `-webkit-line-clamp`。
+     *
+     * 判据读三件事：那种形态带着断词与折行、两个调用点挂着它、这张表里没有夹断。 */
+    const wrap = expectRule('titleText')
+    expect(wrap).toContain('overflow-wrap: anywhere')
+    expect(wrap).toContain('white-space: normal')
+    const cardTsx = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    expect(cardTsx, '卡片标题没有应用折行那一类').toMatch(/css\.cardTitle\} \$\{components\.titleText\}/)
+    expect(cardTsx, '卡片摘要没有应用折行那一类').toMatch(/css\.cardExcerpt\} \$\{components\.titleText\}/)
+    expect(expectRule('cardTitle'), '标题又长出了夹断').not.toContain('-webkit-line-clamp')
+    expect(expectRule('cardExcerpt'), '摘要又长出了夹断').not.toContain('-webkit-line-clamp')
   })
 
   it('layer 2/3: badges truncate on their body instead of stretching (component-level)', () => {
@@ -1202,10 +1217,19 @@ describe('card reading measure (one line for what IS vs HAS)', () => {
     // A doubled title is one wide card away from fitting; a doubled verb is
     // a second reading of the same state the primary chip already names.
     // The excerpt carries the only longer thought on the card.
+    //
+    // The single-line clamp lives in the shared `.truncate`; `.cardNext` mounts
+    // it and keeps no clamp of its own. Two reads, both structural: the form
+    // carries the trio, the call site applies it, and neither re-declares a
+    // line clamp on the card.
     const next = ruleOfMeasure('cardNext')
-    expect(next).toContain('white-space: nowrap')
-    expect(next).toContain('text-overflow: ellipsis')
     expect(next).not.toContain('-webkit-line-clamp')
+    expect(next).not.toContain('white-space: nowrap')
+    const form = expectRule('truncate')
+    expect(form).toContain('white-space: nowrap')
+    expect(form).toContain('text-overflow: ellipsis')
+    const cardTsx = readFileSync(fileURLToPath(new URL('../src/client/board/TaskCard.tsx', import.meta.url)), 'utf8')
+    expect(cardTsx, '事实行没有应用省略号那一类').toMatch(/css\.cardNext\} \$\{components\.truncate\}/)
   })
 
   it('rendered links read as links (colour alone is not an affordance)', () => {

@@ -12,6 +12,7 @@
  * hides), never a throw — the same degrade law as every board host face.
  * Pure enough to unit-test with fakes.
  */
+import { isRecord, messageOf } from './values.ts'
 
 /** Compare-and-set identity for one exact goal revision. */
 export interface GoalRef {
@@ -60,10 +61,6 @@ export function noCurrentGoal(): GoalVerbFailure {
   return { ok: false, error: { code: 'no-current-goal', message: 'no current goal to mutate' } }
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
-
 /**
  * The session's current projected CAS ref, read at verb call time (no
  * staleness fence: the RPC's CAS is the guard). undefined = no current goal.
@@ -76,10 +73,6 @@ export function goalRefOf(binding: GoalBindingFace | undefined): GoalRef | undef
   if (typeof inner.id !== 'string' || inner.id === '') return undefined
   if (typeof inner.revision !== 'number' || !Number.isFinite(inner.revision)) return undefined
   return { id: inner.id, revision: inner.revision }
-}
-
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /** Normalize one verb call outcome: a Typert `{ok}` envelope passes through;

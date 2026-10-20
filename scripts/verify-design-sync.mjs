@@ -164,6 +164,11 @@ const NON_VISUAL = new Set([
   'verify-host-contracts.mjs',
   'verify-action-coverage.mjs',
   'verify-design-docs.mjs',
+  'verify-one-implementation.mjs',
+  'verify-client-host-boundary.mjs',
+  'verify-dead-export.mjs',
+  'verify-address-grammar.mjs',
+  'verify-truncation-form.mjs',
 ])
 
 export function check(root) {

@@ -20,6 +20,7 @@
  * document is a write nobody asked for).
  * @module dsh-task-board/core/attachment
  */
+import { stringOf } from './values.ts'
 
 /**
  * One durable attachment as a document carries it (bytes live in the store).
@@ -121,11 +122,6 @@ export interface AttachmentCarrier {
   promptImages?: readonly { mediaType?: string; data?: string; name?: string }[]
   /** Legacy: staged receipts persisted by an older revision. */
   promptFiles?: readonly { receiptId?: string; name?: string; bytes?: number }[]
-}
-
-/** Read a string field that must be present and non-empty. */
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined
 }
 
 /** Read a finite, non-negative number. */

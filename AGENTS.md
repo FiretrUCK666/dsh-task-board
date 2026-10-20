@@ -97,12 +97,9 @@
 `git config user.name`、`npm whoami` 取——仓库是这些事实的唯一权威，改真实配置即可。
 **这条只管本文**：README 与 CONTRIBUTING 给人看、要能直接复制粘贴，必须写具体命令。
 
-**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、与代码不符、
-覆盖不到、有歧义——都应直接改本文并提交，而不是绕过它、只做口头约定、或把特殊处理
-写死进代码。
-
-**编辑本文时**：面向 AI、与代码一致、写意图不写快照、精炼、禁 emoji、涉及用户可见能力
-或命令时同步 README。
+**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、与代码不符、覆盖不到、
+有歧义——都应直接改本文并提交，而不是绕过它、只做口头约定、或把特殊处理写死进代码。
+编辑时：面向 AI、与代码一致、写意图不写快照、精炼、禁 emoji、涉及用户可见能力或命令时同步 README。
 
 ### 几份文档的分工
 
@@ -239,10 +236,10 @@ bundle 的注册 id 必须等于包名**（不是插件 id）：加载器按包�
 
 ## 项目定位
 
-DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列看板 + 任务经 DSH 会话机制
-真实执行 + 5 段 cron 定时调度。**看板数据持久化在 DSH host 端（存储单元 `dsh_task_board`），
-任意设备/浏览器（桌面 + 手机，跨 origin）经 SSE 实时同步看到的是同一块板；窄屏为紧凑布局。**
-单一 npm 包，cordis 插件，host/client 双半区，MIT 许可，零历史仓库引用。
+DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 DSH 会话机制真实执行 + 5 段 cron 定时
+调度。**看板数据持久化在 DSH host 端（存储单元 `dsh_task_board`），任意设备/浏览器（桌面 + 手机，
+跨 origin）经 SSE 实时同步看到的是同一块板；窄屏为紧凑布局。** 单一 npm 包，cordis 插件，host/client
+双半区，MIT 许可，零历史仓库引用。
 
 ### 命名矩阵（硬性规范 3，新增标识不得偏离）
 
@@ -274,22 +271,20 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 一行代码都不跑。开关只有两个层级：**包级**（profile `package.json` 的 `bundles` 增删包名）与
 **条目级**（profile `cordis.patch.yml` 里 `- id: <插件id>` + `disabled: true`，删掉那行即恢复）。
 
-三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键）；那一行必须是**真实装载的** Loader
-条目，否则插件管理页会把两个开关锁成 `unaddressable`；插件详情页
-的「包含的组件」是**区块标题**，枚举的是 `insert:` 条目行、与 slot 名无关，真实开关只有右上角
-「启用」与每行「启用组件」两个。挂载由 `package.json` 的 `dsh.bundle.patch` 指向包内
-`cordis.patch.yml`，三种安装方式一致，**手写 patch 反而会造成同一个插件出现两条**。
+三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键）；那一行必须是**真实装载的** Loader 条目，
+否则插件管理页会把两个开关锁成 `unaddressable`；插件详情页的「包含的组件」是**区块标题**，
+枚举的是 `insert:` 条目行、与 slot 名无关。挂载由 `package.json` 的 `dsh.bundle.patch` 指向包内
+`cordis.patch.yml`，**手写 patch 反而会造成同一个插件出现两条**。
 
 **开发仪器由环境门控，不由 profile 行门控**：设计系统预览页的 surface 由**包行**在
-`DSH_TASK_BOARD_DESIGN_PREVIEW=1` 时宣告——给它一行就等于给每个用户的插件详情页多一个开关，
-而它是开发仪器不是产品面板。浏览器侧读不到宿主时它的默认是**不注册**（`surfaceEnabled` 的第三
-个参数），与两个产品面板**相反**：读不到宿主时把一份设计目录摆到用户面前，比不显示它更糟。
+`DSH_TASK_BOARD_DESIGN_PREVIEW=1` 时宣告——给它一行就等于给每个用户的插件详情页多一个开关，而它是
+开发仪器不是产品面板。浏览器侧读不到宿主时它的默认是**不注册**，与两个产品面板**相反**。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
-本插件与宿主之间只有下面这些接触面，由 `pnpm verify` 对照**实际安装的 DSH** 逐条核对，少一条即
-红并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot **静默 no-op**；被删的服务成员
-只在用户点击那一刻抛 `TypeError`；缺失的宿主服务让对应半区**等不到依赖，什么也注册不出来**。
+本插件与宿主之间只有下面这些接触面，由 `pnpm verify` 对照**实际安装的 DSH** 逐条核对，少一条即红
+并指名。三者都不会让构建失败，所以必须机械核对：未声明的 slot **静默 no-op**；被删的服务成员只在用户
+点击那一刻抛 `TypeError`；缺失的宿主服务让对应半区**等不到依赖，什么也注册不出来**。
 
 ### 插件依赖的 slot（必须由宿主声明）
 
@@ -369,23 +364,17 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 ### host 半区（DSH 主进程）
 
 - `src/index.ts`：inject 只有 `webServer`；`ctx.effect` 各注册一条路由。**模型的整个面在它自己的
-  一行**（`src/host-agent.ts`），关掉「AI 接口」是装配层的事。**启停不在代码里判断**（见「启停机制」）。
-- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：面板的开关只能由宿主侧那一行先宣告
-  （`host-home.ts` / `host-board.ts` / `host-items.ts`）。
+  一行**（`src/host-agent.ts`）。**启停不在代码里判断**（见「启停机制」）。
+- `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：面板的开关只能由宿主侧那一行先宣告。
 - `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
-  **动作目录是它们的唯一权威**（`actions` 枚举按构造取自目录，筛选词表取自 `task-search.ts` 的
-  注册表）；写工具走 `core/task-transitions.ts` 的共享纯函数——**界面与 AI 调同一套语义实现**。
-  批量顺序执行、首个失败即停、**不回滚**、逐条报告；`dry_run` 跑同一套文法的克隆。**引擎缺席就
-  明说引擎缺席**。
-- `src/host/session-state.ts`：会话态势推导（看板与 AI 读同一份）。答案三态而非布尔。纯读取模块，
-  测试扫源码禁掉它有任何写路径。
-- `src/host/http-json.ts` / `src/host/*-route.ts`：路由共用的信封与请求体读取（禁各写一套）；
-  纯 `create*Handler`，服务一律 `ctx.get`。
-- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**。
-  两份文档由同一个 service 持有，同名单元同时只能有一个活句柄；`openBoardUnit` 是单元打开与
-  **一次性**布局迁移的唯一入口，迁移只对**完全空树**发生，**所以删掉数据根仍是一次真正的重置**。
-- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**，只做一件事——把迁移前的旧整体文件
-  改名让位。**改名不是删除**，新名字不以 `.json` 结尾。新增任何直接读写数据根的代码都要先想清楚
+  **动作目录是它们唯一的权威**；写工具走 `src/core/task-transitions.ts` 的共享纯函数——
+  **界面与 AI 调同一套语义实现**。**引擎缺席就明说引擎缺席**。
+- `src/host/session-state.ts`：会话态势推导（看板与 AI 读同一份），答案三态而非布尔。
+- `src/host/http-json.ts` / `src/host/*-route.ts`：路由共用的信封与请求体读取；纯
+  `create*Handler`，服务一律 `ctx.get`。
+- `src/host/board-service.ts` + `board-route.ts`：**文档真相服务（看板 + 清单，各有 revision）**；
+  同名单元同时只能有一个活句柄；`openBoardUnit` 是单元打开与布局迁移的唯一入口。
+- `src/host/data-root.ts`：**全插件唯一自己碰介质的地方**。新增任何直接读写数据根的代码都要先想清楚
   为什么不能经 `ctx.storage`。
 
 ### client 半区（浏览器）
@@ -393,83 +382,68 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
 - `src/client/index.ts`：inject 六服务；offline-first 挂载（副本常驻 → 接线 → 即时可用 → 后台
   收敛）；官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`。
   **没有启用判断**（被组合即启用），生命周期挂在一个 `ctx.effect` 上。
-- `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；host 侧注册路径保持绝对，
-  浏览器侧任何 `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方
-  seat 组件。`board-transport.ts`：fetch + EventSource（缺席降轮询）。
+- `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；浏览器侧任何
+  `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。
+  `board-transport.ts`：fetch + EventSource（缺席降轮询）。
 - `src/client/item/`：**清单面板**，与看板同形状的第二个主舞台面板（**座位见宿主契约表**）。
   **骨架是「左栏 + 一列」**：方向只在左栏（`rail.tsx` 吃 `item-rail.ts` 的推导）；顶栏只有
-  **搜索 · 排序 · ＋新建一条**，**筛选不在顶栏**。列表按**日**分段。几何与四条版面判据在
+  **搜索 · 排序 · ＋新建一条**，**筛选不在顶栏**；列表按**日**分段。几何与四条版面判据在
   `DESIGN.md`。
   **键盘是一等公民**：`keyboard.ts` 一张映射表 + 一个注册点 + disposer，`ItemKeyActions` 闭合
-  ——**加一个没有处理器的键是编译错误**；**一层东西占着键盘时（菜单 / 展开的行 / 浮层），只有
-  那一层自己的键与 `Esc` 活着**（让位的是**裸键**，`⌘` 和弦仍属于这一面）。`facets.ts` 是搜索框
-  的**文本编辑器**、`selection.ts` 是纯状态机，**两者都不持有状态**；`labels.ts` 只放清单自己要
-  写的词，**五档的词与色从看板那一份导入**；`day-groups.ts` 说**哪些排序可以按日分段**（对
-  `ItemSort` 穷尽）。`tickbox.tsx` 是这一页**唯一的勾选框**；**「问 AI」是唯一通向模型的一按**
-  （`item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**；**配置不是一道门**——「运行
-  配置」常驻详情右栏（读 `RunConfigRows`、写 `RunConfigFields`），按下去跑的就是屏上那一份
-  （挂卡的读那张卡，其余读 `drafts.ts` 的草稿槽）。**一律不用 Dialog**。
-  `hostLostItems()` 为真时说「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder
-  （`workbenchStage`）；`surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
-  **归档是一个抽屉、两扇门**：左栏「已删除」那一行用一个**计数器信号**打开（不是布尔：挂载时
-  读到的布尔会漏掉那一下），恢复是 host 操作而不是客户端提交（`items-archive.ts`）。
+  ——**加一个没有处理器的键是编译错误**；**一层东西占着键盘时（菜单 / 展开的行 / 浮层），只有那一层
+  自己的键与 `Esc` 活着**。`facets.ts` 是搜索框的**文本编辑器**、`selection.ts` 是纯状态机；
+  `labels.ts` 的词与色**从看板那一份导入**。
+  **「问 AI」是唯一通向模型的一按**（`item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**。
+  **「运行配置」常驻详情右栏**，按下去跑的就是屏上那一份。**一律不用 Dialog**。
+  `hostLostItems()` 为真时说「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder；
+  `surfaces.ts` 开机读一次 `/board/surfaces`，**读不到就什么都不收窄**。
+  **归档是一个抽屉、两扇门**：恢复是 host 操作而不是客户端提交（`items-archive.ts`）。
   **寻址键两个、各具名、互不为兜底**：界面撤销传 `id`，模型的 `item.restore` 传 `ref`。
   **恢复没回来就说没回来**。
+- `src/client/chat/`：**AI 动作在对话里的呈现**（`tool.call.toolview` 座位），渲染模型的回执。
 ### 前端架构（**索引**：成文契约在 `DESIGN.md` 的 Design System 节，机制在代码注释里）
 
-**四层各有归属，判据只有一条——有第二个消费者**（「看起来通用」不算），数的是**消费者目录**：
+**四层各有归属，判据只有一条——有第二个消费者**（「看起来通用」不算）。**「一处」= 一个消费点，
+也就是一个读它 / 渲染它的文件**：同一个目录里的两个文件是**两处**——同一块屏上用两遍，
+就说明它不是「这一页的」东西。
 
 | 层 | 位置 | 判据 |
 | --- | --- | --- |
-| 令牌 | `design/tokens.module.css` | 一个值被两处以上消费 |
-| 形态 | `design/base.module.css` | **至少两个表面消费它** |
-| 组件 | `design/<X>.tsx` + `design/components.module.css` | **至少两个文件渲染它**；**两个面板都渲染的必须在这里**（都由 `design-coverage.spec.ts` 管：在外面的要么搬进来，要么在豁免表里写明理由，理由过时即红） |
-| 页面 | `board/` `item/` `home/` `gallery/` | 只有这一页的几何与排版 |
-| 装配 | `workbench/` | 三页共用的判定：座位键（`chrome.ts`）、唯一持有者（`stage.ts`）、栏的 props。**它不是页面** |
+| 令牌 | `design/tokens.module.css` | 一个值被**两处以上**消费 |
+| 形态 | `design/base.module.css` | **至少两处**消费它 |
+| 组件 | `design/<X>.tsx` + `design/components.module.css` | **至少两个渲染点**；两个面板都渲染的必须在这里 |
+| 页面 | `board/` `item/` `home/` `gallery/` `chat/` | 只有这一页的几何与排版 |
+| 装配 | `workbench/` | 三页共用的判定：座位键、唯一持有者、栏的 props。**它不是页面** |
 
 **层方向是门禁**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`）——伸手去读某一页的
-元件，又成了「哪一页渲染它」的函数。两个例外都有理由：`escape-stack` / `dialog-focus` /
-`modal-inert` 只有 board 一个消费者，搬走会让 `design/` 反过来 import `board/`；运行配置那一对
-记在同一张豁免表里。**改 CSS 前必须知道**：类名属于**表**（构建按文件名哈希），一张表的选择器写
-另一张表的类名在生产包里匹配不到任何东西，静默失效——所以跨页面共享的形态只能住在 `design/`，
-**页面表里出现第二份拷贝即违规**（硬性规范 20；机械拦：`verify-class-ownership.mjs`）。
-展开与门禁（`verify-design-docs.mjs`）在 `DESIGN.md` 的 Design System 节；其余成文也在那里（间距
-阶梯、断点表与四个容器、`corner-shape` 两条轴、预览页、四步复用顺序）。**改界面前先读那一节。**
+元件，「这形状归谁」就成了「哪一页渲染它」的函数。两个例外都有理由，记在同一张豁免表里。
+**改 CSS 前必须知道**：类名属于**表**（构建按文件名哈希），一张表的选择器写另一张表的类名在生产包里
+匹配不到任何东西，静默失效——所以跨页面共享的形态只能住在 `design/`，**页面表里出现第二份拷贝即
+违规**（硬性规范 20；机械拦：`verify-class-ownership.mjs`）。展开与门禁与**全部成文**在
+`DESIGN.md` 的 Design System 节——**改界面前先读那一节**。
 
-清单面板的留白走 padding 不走 margin（成文在 `DESIGN.md`）：那条 `<p>` 重置包在 `:where()` 里，
-**给的是零特异性**，所以它只压得住 UA 的默认值，**类规则赢它**。
+清单面板的留白走 padding 不走 margin：那条 `<p>` 重置包在 `:where()` 里，**给的是零特异性**，
+所以它只压得住 UA 的默认值，**类规则赢它**。
 
 ### 核心层（`src/core/` 纯逻辑）
 
 - 模块：`tasks` · `task-demand` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` ·
   `automation` · `execution`（投递结算）· `controller`（台账 + 调度 + 席位 + 外源双通道）·
   `board-doc`/`host-sync` · `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`
-  （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域
-  拆成 `item-dates`/`-stale`/`-sort`/`-schedule`/`-rail`/`-ask`/`-query`/`-rows`/`-membership`/`-navigate`
-  十个模块，**门面 re-export 全部有人读的符号**）——界面与模型读同一份** ·
-  `board-actions`（动作目录，见硬性规范 12）· `task-transitions`（看板的语义层）·
-  **`item-transitions`（清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/
-  `session-display`/`session-groups`/`question-rpc`/`store`（`comment-thread` 在
-  `src/client/board/`，不在核心层）。
+  （清单文档，墓碑带载荷）· `item`（清单一行的模型）· **`item-view`（清单全部推导的门面：按域拆成
+  十个模块，**门面 re-export 全部有人读的符号**）——界面与模型读同一份** · `board-actions`
+  （动作目录，见硬性规范 12）· `task-transitions`（看板的语义层）· **`item-transitions`
+  （清单的语义层，与界面同一批纯函数）**· `colors`/`session-list`/`session-display`/
+  `session-groups`/`question-rpc`/`store`（`comment-thread` 在 `src/client/board/`）。
 - **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
-  `access` 列**推导**（`WritableItemKey`）。推导塌掉时不报错，所以那行 `@ts-expect-error` 棘轮是
-  **承重的**（退化从此是**构建失败**），且它放在 core 而非 spec。同族第二实例在 `item-sort.ts` 的
-  `KEY_GAPS`。**手写的「我列全了吗」永远该由类型或文件系统回答**。
+  `access` 列**推导**（`WritableItemKey`）。所以那行 `@ts-expect-error` 棘轮是**承重的**
+  （退化从此是**构建失败**），同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`。
+  **手写的「我列全了吗」永远该由类型或文件系统回答**。
 - **要决的门**在 `task-demand.ts`：三个子句一条推导，卡片芯片 / 板顶诉求行 / 通知抽屉**三处同读**。
-  两处不要写错的地方在代码注释里：`openTask`（点卡片）**绝不动轮次戳**；「第 N 次执行」只在真有
-  编号运行时说。
-- **轮次集合只有两份**（`session-display.ts` / `execution.ts`）：**会话**回答「这段对话在这张卡上
-  发生过什么」，**执行复核线程**回答「这一页复核页上有什么没看的」；`cancelled` 不是工作，不进
-  任何门。「等你处理」的唯一集合走 `relatedSessionIdsOf`；拖进来的会话从绑定起归这张卡管，且
-  **卡片自己必须出声**（圆点在触屏上不可见）。
-- **落位**（`tasks.ts`）：引擎派生的换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，唯一
-  落点是 `controller.land`/`landMany`；**留在原栏的结算不重排，用户手动拖动的位置永不被覆盖**；
-  **轮次记录只经 `land` 进台账**。
-  屏上「更新于」读 `cardUpdatedAtOf(task)` 而不是同步戳 `task.updatedAt`。
-- **活性**（`session-lineage.ts` / `session-activity.ts`）：判定与 `unknown` 的两面见「关键不变量」
-  的运行态一条。**裸值边界（改动即反向卡死）**：结算与看门狗一律继续读**原生会话表那一份
-  `running`**——**局部变量名常是 `summary`，它就是 `byId[id]`**。
-- **唯一推导**：`task-live` + `linked-sessions`（相关集/运行态；链接只来自显式 session 绑定）。
+- **轮次集合只有两份**（`session-display.ts` / `execution.ts`）：**会话**与**执行复核线程**各答一件事。
+- **落位**（`tasks.ts`）：换栏与「会话开始或结束工作」都把对象顶到目标列**最上方**，唯一落点是
+  `controller.land`/`landMany`。
+- **唯一推导**：`task-live` + `linked-sessions`。
 
 ### 关键不变量（改前先读对应文件；这里只记边界，细节在代码）
 
@@ -481,43 +455,138 @@ DSH Web GUI 的任务看板插件：侧边栏「任务看板」入口 + 多列�
   ref（`ctx.attachments`，字节不进文档、禁自建桥），发送那一刻才物化。
 - **附件即内容**：判空只有一处 `isBlankMessage`（文字空且无图无文件才算空）——只发图不发字是真消息，
   任何发送路径都不得拒它。**ref 整份走**：只许 `omit` 掉本插件两代老形状（`data`/`receiptId`），
-  **逐项列举字段就是漏字段**（手抄表丢掉官方 ref 的字段，于是每张图必坏）；通则见
-  `src/core/attachment.ts` 的 ref 注释。
+  **逐项列举字段就是漏字段**（手抄表丢掉官方 ref 的字段，于是每张图必坏）。
 - **归档是「可恢复的隐藏」，不是删除**：只从 `ctx.workspaces.list` 快照派生 + 订阅，**任何界面不得
-  缓存归档结论、不得写进台账**。判据三处挑选面共用一套闸门；规则不向归档会话投递但**保留 due
-  槽**；`sessionAvailability()` 是「不可用」的唯一判据。
-- **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；评论与
-  插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
+  缓存归档结论、不得写进台账**。规则不向归档会话投递但**保留 due 槽**；`sessionAvailability()` 是
+  「不可用」的唯一判据。
+- **执行门禁**：`taskExecutable` 唯一判定；`ruleReadiness` 次序 disabled→blocked→paused→active；
+  评论与插话永不封；`runTask` 单点拦截。空标题/描述从 Prompt 补（永不覆盖）。
 - **卡片是 view-model 的投影，不是第二个判断者**：`cardViewModelOf.primary` 就是那颗主芯片，
-  「下一句话」行读同一个 `primary`，所以一张卡不可能在相邻两行说两件事。`hasOpenRun` 是这唯一的
-  谓词名——第二个名字只会让人以为有「显示/门禁」之分。
+  「下一句话」行读同一个 `primary`，所以一张卡不可能在相邻两行说两件事。
+- **`hasOpenRun` 是「进行中」这唯一的谓词名**——第二个名字只会让人以为有「显示/门禁」之分。
 - **当前值与历史值必须分开读**（权限那类 bug 的根）：历史页捎带的 projections 是「这个会话当时
-  做过什么」，**描述会话「现在是什么设置」的一律走活投影读**（`SessionConfigFace.readPermission`
-  → `remote.session.projections`）——`/permission` 不开新一轮对话，历史页里那份拷贝永远不刷新。
-  **宿主把两件事分开存**：`permissions` 投影线上**只有 `{ currentValue: string }`**，候选项来自
-  **另一个** `permissionPresets` 目录（`catalog.listPermissions()`）——索要一个 `options` 数组就
-  把好好的值判成「读不到」。**活值读不到就说读不到**，绝不拿「默认」顶替；目录里没有的当前值
-  **照原样显示**。
-- **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动（`sessions.binding` 文档原文：
-  "or undefined without a retained generation"）。所以**拥有**一段工作的一次运行、一次续跑、一次
-  新建会话配置，一律经 `execution.sessions.hold` 借到**结算为止**（`platform.sessionHoldFactory`
-  是唯一实现）；`binding` 只留给不得比持有者活得久的读（目标条目的即时投影、结算 reconcile 的
-  一次探测、重命名降级）。借不到就诚实失败：开不了会话按 `configError` 带着宿主给的原因上报。
+  做过什么」，**描述会话「现在是什么设置」的一律走活投影读**——`/permission` 不开新一轮对话，
+  历史页里那份拷贝永远不刷新。**宿主把两件事分开存**：`permissions` 投影线上**只有
+  `{ currentValue: string }`**，候选项来自**另一个** `permissionPresets` 目录——索要一个
+  `options` 数组就把好好的值判成「读不到」。**活值读不到就说读不到**，绝不拿「默认」顶替；
+  目录里没有的当前值**照原样显示**。
+- **借用必持有**：宿主只在**有人持有**某个会话代次时才借出驱动。所以**拥有**一段工作的一次运行、
+  一次续跑、一次新建会话配置，一律经 `execution.sessions.hold` 借到**结算为止**；`binding` 只留给
+  不得比持有者活得久的读。借不到就诚实失败：开不了会话按 `configError` 带着宿主给的原因上报。
 - **自动化不许有「上着却跑不起来」的规则**（死臂）：任务级排期与**会话规则**同一条律，读侧
   （`ruleReadiness` / `sessionRuleReadiness` 报 blocked）与写侧（`setSchedule` 拒绝上臂、
   `controller.deadArmedRule` 三条会话写入路径共用）缺一不可。**送达闸门同理唯一**：
-  `controller.ruleDeliverable`（在场且未归档）由 cron 心跳、`fireOnCompleteRules`、`fireLoopRule`
-  三条路径共用。跳过/暂停的档期一律**前滚到下一个匹配**，且**不盖 `lastAt`**：那个戳记的是
-  「真的发出去过」，跳过不是发送。
+  `controller.ruleDeliverable` 由 cron 心跳、`fireOnCompleteRules`、`fireLoopRule` 三条路径共用。
+  跳过/暂停的档期一律**前滚到下一个匹配**，且**不盖 `lastAt`**——那个戳记的是「真的发出去过」。
 - **车道 = 会话**：`isOpenRound` 唯一判定；预算数轮；卡片离进行中唯一判定 `leaveRunningTargetOf`
   （open/live/schedule 三腿），不另起特判。
-- **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 带 `answer`/`dismiss`（官方那两个动作名，
-  `verify-host-contracts.mjs` 从已装 DSH 核对）时才就地作答，身份不符即拒、失败留卡报错——
-  **能不能就地答按会话判**；数据型的降级跳回原生；**board 永不注册 waterfall**。
+- **交互卡**：只订阅 `uiSession.sessionStatus`；carrier 带 `answer`/`dismiss`（官方那两个动作名）
+  时才就地作答，身份不符即拒、失败留卡报错——**能不能就地答按会话判**；数据型的降级跳回原生；
+  **board 永不注册 waterfall**。
 - **自动化与巡航**：任务 `schedule` 与会话 `rules` 正交；on-complete 永续（`done` 硬停）；每会话至多
   一条规则；巡航 `enabled` 主权。
 - **草稿**：`drafts.ts` 设备本地；未提交回来、提交清槽；评论 v1 信封（键表见该文件）。
 - **稳定性**：受控回退；就近 inline 反馈；订阅必带终止；正文不省略、元信息可省略号。
+
+## 新增与复用（要加东西之前先读这一节）
+
+**这一节只回答一个问题：你要加的那个东西，已经存在吗？** 答案不是「看起来像」，是**它现在
+住在哪个文件**。最近一次全项目普查找出 **55 处同一段逻辑被抄成多份**，而它们**没有一处会报错**。
+
+### 一、顺序是硬的
+
+**复用 → 扩展 → 新增**，每一步都要说得出**为什么上一步不行**。允许「新增」的触发只有两个：
+
+- 用户明确要求一个新东西——此时「像已有的」不是理由，需求本身是；
+- 确实没有可用的——**说得出「最近的那个是什么、为什么它不行」**。
+
+「这个场景特殊」「以后可能用得上」「先这样，以后再抽」**都不是触发**。最后一个尤其贵：两份已经
+分家，而下一个人看到的是两个长得一样的东西。
+
+### 二、新增的东西先落共享层
+
+**先落共享层，再在需要的地方调用**——哪怕它现在只有一处消费者。
+
+| 加什么 | 落哪 | 为什么是那儿 |
+| --- | --- | --- |
+| 一个形状（一段共用的几何 / 底色 / 影） | `src/client/design/base.module.css` | 跨页面共享的形态只能住这一层 |
+| 一个组件（一块可渲染的东西） | `src/client/design/<X>.tsx` + `design/components.module.css` | 两个面板都渲染的必须在这里 |
+| 一个值（颜色 / 间距 / 圆角 / 档位） | `src/client/design/tokens.module.css` | 令牌层是值的唯一家 |
+| 一段纯逻辑 | `src/core/` | 界面与模型读同一份 |
+| 一个词 | `src/client/locales.ts` | 词表只有一份，zh 与 en 同时改 |
+| 一条动作 | `src/core/board-actions.ts` | 动作目录是界面与模型之间唯一的同步面 |
+
+**不在页面表就地写一份。**「等第二个消费者出现再搬」不算办法——到那时两份已经分家，
+而其中一份永远不会被想起来。
+
+### 三、唯一实现
+
+同一件事在项目里只能有**一处实现**，其余全部 import。三档分别这么判：
+
+- **值**：一个枚举、一张对照表、一个颜色——只有一处定义。抄一份的代价不是那几行，
+  是**改一处不报错**。
+- **形态**：同一段声明在两个文件里各写一遍 = 违规。第二个家必须在**同一张表**里
+  （`verify-class-ownership.mjs` 拦跨表类名，`verify-design-docs.mjs` 拦同体声明）。
+- **重复实现**：同一个容器里两份以上，收敛成一份，**哪怕只有一处用**。
+
+**这一节由三道门禁守着**（都读结构，不读字样）：
+
+| 门禁 | 守什么 |
+| --- | --- |
+| `scripts/verify-one-implementation.mjs` | **一个名字只能有一个家**：同名同体是拷贝，同名异体是两个家（跨半区的会单独标出来） |
+| `scripts/verify-client-host-boundary.mjs` | **两个半区不许互相伸手**：client 打进浏览器、host 打进 Node，两边都要用的就住 `core/` |
+| `scripts/verify-dead-export.mjs` | **没人用的东西不许留着**：没人读的导出是死代码，它会骗人（紧挨 `@ts-expect-error` 的棘轮不算） |
+
+**依赖单向**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`）。**令牌上移是同一个
+道理**：共享层读页面表声明的变量，今天靠 DOM 继承侥幸活着，换一个消费者就读不到，于是**整条声明
+静默丢弃**（`padding-inline` 在计算值阶段失效，内衬变 0，屏上没有任何报错）。
+
+**同一门文法也是一个家。** `#12` 指一张卡、`#要做` 是搜索限定词——两门文法各有一个家
+（`scripts/verify-address-grammar.mjs` 守着）。地址文法曾经被抄了十份，其中六份少一个
+`.trim()`，于是 `# 12` 在一个动作里找得到、在另一个动作里找不到，**而没有一条测试会红**。
+
+### 四、留痕：新增登记
+
+**新增一个共享单元要留一条记录**（`src/client/design/addition-records.ts`，四个字段）：
+
+| 字段 | 写什么 |
+| --- | --- |
+| 单元 | 加了什么 |
+| 最接近的既有 | 现有最像它的那一个（**必须真的存在**） |
+| 为什么不能用 | 说不出就是没查过 |
+| 谁要求新增 | 用户明确要求 / 门禁发现 / 机械拆出来的 |
+
+后两个空着即红。**理由写在实现之前**——实现之后补的理由都是借口。
+
+### 五、新增一条法则或门禁
+
+**几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以它们由
+`shot-panel.mjs` 开真 Chromium 量（`pnpm run audit` **先造工件再量那一批**；没有浏览器时它**明说
+SKIP**，不假装量过）。**被审的页集由 `scripts/audit-pages.mjs` 一处定义**。**每一个这样的数都写进
+`DESIGN.md` 并写清量法**。
+**混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
+`translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
+var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——那个
+补法在结构上无效，还会裁掉字、并让那个变量**被继承**。判据读结构、不读数值与类名，
+`verify-capsule-centring.mjs` 守着（`--probe-blindspots`）；**压滚动内容的头自带不透明底**
+（`verify-pinned-surface.mjs`）。法则在 `design/laws.ts`，`verify-design-sync` 双向对账：
+加法则给门禁与标本，**门禁也必须进表**；**「文件里有、但 `verify` 没调用」也算红**
+（`--probe-orphan-gate`）。**自测开关一律经 `scripts/probe-args.mjs` 读**：拼错的
+`--probe-*` 必须报错退出，不能静默变成一次正常跑。
+
+**新增一条门禁**（`scripts/verify-<名>.mjs`）时：`scripts/run-gates.mjs` 会**自动发现**它，
+不必登记；但它**必须进法则表**（`design/laws.ts`，守视觉的）或**进 `NON_VISUAL`**
+（`scripts/verify-design-sync.mjs` 里那唯一一份手写白名单，守逻辑的）——漏了报 `unlisted`。
+**证明它会红只能在 `tests/` 里种**（硬性规范 16）：在真实文件里改一下再改回来，证的是
+「改动生效」而不是「门禁会红」。
+
+### 六、每条可判定的规则都指得出门禁
+
+**指不出的，要么补门禁，要么把那条删掉**——没有门禁守着的规则是**假线索**：它让人以为这件事有人管。
+一条规则的责任是「它红了就有人得动手」，不是「它写得很对」。
+
+关系是双向的：规则指门禁，门禁进法则表，而两者由 `verify-design-sync` 双向对账。**新增一个门禁
+而没有把它列进某张表，得到的不是「多一道保险」，是一道没人认领的红。**
 
 ## 构建与验证（改完必跑，全绿才算完成）
 
@@ -531,21 +600,20 @@ pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 h
 ```
 
 **门禁不用记着跑哪一个**：`pnpm verify` 里的 `scripts/run-gates.mjs` 发现磁盘上每一个
-`scripts/verify-*.mjs` 并逐个跑，所以**新写一个门禁脚本就自动生效，不必登记**。
-CI（`.github/workflows/ci.yml`）每次 push 跑 build / typecheck / test / verify，与本地同一套命令。
+`scripts/verify-*.mjs` 并逐个跑，所以**新写一个门禁脚本就自动生效，不必登记**。CI 每次 push 跑
+build / typecheck / test / verify，与本地同一套命令。
 
 打包器写的是**带内容哈希**的 chunk 名，内容一变就多一个新文件、旧的从不删，所以 `build` 先经
 `scripts/clean-lib.mjs` **清空 `lib/`**（该目录下每个文件都由 `pnpm build` 产生，没有手写文件）。
 
-**看渲染结果**用 `node scripts/shot-panel.mjs`（**不在 `files` 里、不进包**）。
+**看渲染结果**用 `node scripts/shot-panel.mjs`（**不进包**）。
 
 ### 闭环验证与操作规范
 
 **改完必看**（通则见行事总纲）：门禁全绿只证明规则没被破坏。界面改动 = 两档截图亲眼看过；
-行为改动 = 真实交互走一遍（点击、按键、滚动、边界情况），并在 `tests/` 里留下
-spec。**触屏那一档要真的渲染出来**：`pnpm run audit` 跑两档宽 × 三档 DPR × 两种指针能力 + 一档换
-字体——**窄宽不等于触屏**。量法见硬性规范 19；工具名与用法**现场读 `package.json` 的
-scripts 与 `scripts/`**。
+行为改动 = 真实交互走一遍，并在 `tests/` 里留下 spec。**触屏那一档要真的渲染出来**：
+`pnpm run audit` 跑两档宽 × 三档 DPR × 两种指针能力 + 一档换字体——**窄宽不等于触屏**。
+量法见硬性规范 19；工具名与用法**现场读 `package.json` 的 scripts 与 `scripts/`**。
 
 ## 硬性规范
 
@@ -571,98 +639,66 @@ scripts 与 `scripts/`**。
    规则增补或把特殊处理写死进代码；当真实的新场景反复出现时，按「本文件的定位与
    编辑规则」更新本文，而不是增加一次性补丁条款。
 10. **非 ASCII 内容一律不经 shell 传递**：中文写进文件、拼进命令行、或由 shell 拼进请求体，都可能被
-    **静默改写**——共性是**不报错**（命令成功、API 2xx、文件看着正常）。**做法**：用文件工具写内容，
-    确需脚本时让它按字节处理并**回读比对**。三种已确认的形态——**U+FFFD**、**UTF-8 BOM**、**CRLF**
-    （残留的会原样进 `lib/client.js.map` 的内嵌源码）——**不改任何逻辑，所以没有一条功能测试会红**，
-    这正是它们必须由 `verify-standalone.mjs` 的 encoding 审计抓的原因（随 `pnpm verify` 跑；
-    `.bat` / `.cmd` 按 `.gitattributes` 豁免；自测 `--probe-encoding`）。
-11. **双端同治（移动端不是一等公民之外的二等公民，而是同一等）**：任何 UI、交互、
-    文案、动效改动，**必须同时给出桌面与窄屏（手机）两档的结论**，且只能用
-    「换行 / 换列 / 让位 / 短名 / 折叠 / 提高地板」表达——**禁止靠藏掉标签、藏掉
-    控件、缩小字号来"省地方"**，禁止为窄屏另写一套组件或交互副路径。只在一档验证
-    过的改动视为**未完成**。三条硬底线：① 装不下时让位而非压扁（裸 `1fr` 轨道、
-    无地板的 `flex:1 1 0` 都算没做完）；② 文字永不画在盒外，截断只发生在"文字子槽"；
-    ③ 触屏没有 hover——承载必要信息的说明不能只挂 `title=`，必须可点可达。
+    **静默改写**——共性是**不报错**。**做法**：用文件工具写内容，确需脚本时让它按字节处理并**回读
+    比对**。三种已确认的形态——**U+FFFD**、**UTF-8 BOM**、**CRLF**——**不改任何逻辑，所以没有一条功能
+    测试会红**，这正是它们必须由 `verify-standalone.mjs` 的 encoding 审计抓的原因（自测
+    `--probe-encoding`）。
+11. **双端同治（移动端不是二等公民，而是同一等）**：任何 UI、交互、文案、动效改动，**必须同时给出
+    桌面与窄屏两档的结论**，且只能用「换行 / 换列 / 让位 / 短名 / 折叠 / 提高地板」表达——**禁止靠
+    藏掉标签、缩小字号来"省地方"**，禁止为窄屏另写一套组件或交互副路径。只在一档验证过的改动视为
+    **未完成**。三条硬底线：① 装不下时让位而非压扁（裸 `1fr` 轨道、无地板的 `flex:1 1 0` 都不算
+    做完）；② 文字永不画在盒外；③ 触屏没有 hover——承载必要信息的说明不能只挂 `title=`。
 12. **动作目录是界面与模型之间唯一的同步面，改界面必须同时改它**：
     `src/core/board-actions.ts` 是动作目录（一条表，四个表面读它：工具 schema、能力查询、
     指令规则、覆盖门禁）。**改界面的任何一处之前先问「目录里有同名同参的动作吗」**：两个方向
     各有各的门禁（字段方向编译期、界面方向静态扫描），缺一不可，**门禁红了就改实现，别改门禁**。
     读投影与视图开关不是动作，进 `INTERNAL` 时**必须写清理由**——没有理由的豁免与漏掉一个没有
-    区别；`DEBT: ` 开头的理由是如实记下的欠账，每次运行都把笔数打出来。
-    **说清不等于说得进去**：一句写在散文里的默认值，门禁读不到；`ParamSpec.default` 里的同一个
-    默认值，门禁与渲染器都读得到。**任何要跨表面同步的判定，都必须落在字段上**，不是落在
-    `summary` 里。机制细节与自测方式见 `scripts/verify-action-coverage.mjs` 的头注释。
-13. **共享接线的参数签名就是接口，改它等于改别人的文件。** 模块之间靠参数传递的形状
-    （`registerItemList(ctx, itemStage)` 这类）是**接口**，调用方是别人：把两个参数改成一个，
-    不会让调用方「顺带更新」，只会让它在自己的时刻坏掉。**要改签名，先把所有调用点找出来**；
-    改不动就加一个新入口、把旧的留着。
+    区别；`DEBT: ` 开头的理由是如实记下的欠账。**说清不等于说得进去**：一句写在散文里的默认值，
+    门禁读不到；`ParamSpec.default` 里的同一个默认值，门禁与渲染器都读得到。**任何要跨表面同步的
+    判定，都必须落在字段上**。机制细节见 `scripts/verify-action-coverage.mjs` 的头注释。
+13. **共享接线的参数签名就是接口，改它等于改别人的文件。** 模块之间靠参数传递的形状是**接口**，
+    调用方是别人：把两个参数改成一个，不会让调用方「顺带更新」，只会让它在自己的时刻坏掉。
+    **要改签名，先把所有调用点找出来**；改不动就加一个新入口、把旧的留着。
 14. **一个不看上下文的检查器，会逼着人改对的东西来迁就它。** 判据只许读**结构**，不许读
     字样：注释里出现「令牌」两个字不是一次令牌使用，所以扫描**先剥注释再匹配**。
     遇到一条让实现变得不如以前的检查，先怀疑检查的读法，别先怀疑实现。
-15. **「我没查过」和「我查过」在报告里长得一模一样。** 报告里写过「核了 X、核了 Y」，
-    就意味着没核的那几处不会有人替你核——而它们常常正是地基。**核过的逐条列出来，没核的
-    明说没核**：含糊的肯定比一句「这条我没看」贵。
+15. **「我没查过」和「我查过」在报告里长得一模一样。** 报告里写过「核了 X、核了 Y」，就意味着没核的
+    那几处不会有人替你核——而它们常常正是地基。**核过的逐条列出来，没核的明说没核**。
 16. **证明门禁会红，只能在 `tests/` 里种。** 在真实文件里改一下再改回来，证的是**改动生效**
     而非**门禁会红**。根因是**两个写者共用一个工作区而互不知情**，所以共享工作区里
     **`git add -A` 与「在 `src/` 上做临时改动」互相回避**；要种就种在 `tests/` 里。
 17. **一个概念只有一套词汇，别的地方导入，不抄。** 值的枚举、词的对照表、颜色、形状——凡是有
     「同一件事在两处出现」的地方，只有一处是定义处，其余全部 import。抄一份的代价不是那几行，
     是**改一处不报错**：读者要「两处颜色一致」时，其中一处不会跟着变，而屏上不会有人说一句话。
-    判据是结构性的：清单的状态读看板那五个（`ITEM_STATUS_VIEWS = ALL_STATUSES`）、清单的五个
-    状态词读看板那五个（`STATUS_KEY`）、清单的五个颜色读 `--dsh-tb-status-*`——三样都是**导入**，
-    所以加一栏、改一个词、换一个颜色都只动看板那一处，而清单这边由类型与门禁跟着变。
-    一个**只有一份拷贝**的 `counts` 模块、一张**抄来的**词表、一个**改名后留下的**旧 token
-    都是同一种债（见下一条）。
-    **颜色**：色相只经 `--dsh-tb-*`，洗底深浅只读梯子（`--dsh-tb-wash*` / `--dsh-tb-edge`）——
-    本层已命名的宿主令牌，调用点再直读就是同一个色的第二条路。机械拦：`verify-palette.mjs`。
+    判据是结构性的：清单的状态、状态词与颜色都**导入**看板那一份（`ITEM_STATUS_VIEWS` /
+    `STATUS_KEY` / `--dsh-tb-status-*`），所以加一栏、改一个词、换一个颜色都只动看板那一处，
+    清单这边由类型与门禁跟着变。**颜色**：色相只经 `--dsh-tb-*`，洗底深浅只读梯子
+    （`--dsh-tb-wash*` / `--dsh-tb-edge`）——本层已命名的宿主令牌，调用点再直读就是同一个色的
+    第二条路。机械拦：`verify-palette.mjs`。
 18. **删一个词、一档状态、一个组件，是那次改名的一部分，不是下一件事。** 同一个改动里要一起清干净：
-    孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟
-    真相的 fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来
-    很权威的假线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0，
-    而只剩定义与 re-export、屏上一个读数都没有的函数，连同它的 spec 一起删。
-19. **几何判据要量，而量法要留档。** 对齐、居中这类事**jsdom 给不出答案**（没有布局），所以
-    它们由 `shot-panel.mjs` 开真 Chromium 量（`pnpm run audit` **先造工件再量那一批**；没有浏览器
-    时它**明说 SKIP**，不假装量过）。**被审的页集由 `scripts/audit-pages.mjs` 一处定义**，
-    `audit-render.mjs` 造、`audit-panels.mjs` 量。
-    **每一个这样的数都写进 `DESIGN.md` 并写清量法**。
-    **混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
-    `translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
-    var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——
-    那个补法在结构上无效（挪内容盒而行盒跟着重新居中，相对位置一位不变），还会压扁定高盒子、
-    裁掉字、并让那个变量**被继承**（药丸里的圆点读到药丸那一档，变成竖条）。
-    判据读结构、不读数值与类名，`verify-capsule-centring.mjs` 守着（`--probe-blindspots`：
-    at-rule 里的行、驼峰类名、后代选择器都必须被读到）；**压滚动内容的头自带不透明底**
-    （`verify-pinned-surface.mjs`）。法则在 `design/laws.ts`，`verify-design-sync` 双向对账：
-    加法则给门禁与标本，**门禁也必须进表**；**「文件里有、但 `verify` 没调用」也算红**
-    （`--probe-orphan-gate`）。**自测开关一律经 `scripts/probe-args.mjs` 读**：拼错的
-    `--probe-*` 必须报错退出，不能静默变成一次正常跑。
-20. **开发页面先复用，再扩展，最后才新增。** 顺序是硬的，每一步都要说得出为什么上一步不行：
-    ① 开发页面时**必须优先复用** `src/client/design/` 与页面目录里已有的组件；② 已有组件能通过
-    `props` / `variant` / `size` / `className` 扩展时，**优先扩展它**，不新建一个相似的；
-    ③ 只有现有组件确实满足不了时才新增。**共用文法只有一处家**：
-    任何跨页面的形态声明属于 `design/`（组件或共享类），**页面表里出现第二份拷贝即违规**——
-    它不会报错，只会在下一次改一处时让另一处留在旧值上（机械拦：`verify-class-ownership.mjs`；
-    声明体相同的抄法另由 `verify-design-docs.mjs` 拦）。
-    **「预览页会不会自动覆盖」分两半**：**枚举会**（`map` 的是导出本身）；**组件不会**（标本手写）。
-    两条各有一道门禁（`tests/design-coverage.spec.ts`）：每个导出的组件**都要被预览页渲染**、
-    **都要有两处渲染点**，跨 surface 的数每次运行打出来。
+    孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟真相的
+    fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来很权威的假
+    线索」比缺一行注释贵得多。判据：`pnpm verify` 的孤儿键与类漂移审计必须是 0。
+19. **几何判据要量，而量法要留档。** 正文在「新增与复用」第五节（量法、法则表三联、门禁进表、
+    自测开关经 `scripts/probe-args.mjs`）——**那里是唯一一份**，此处不重复，只留这一句索引。
+20. **开发页面先复用，再扩展，最后才新增。** 正文在「新增与复用」第一至三节（顺序、新增落哪一层、
+    唯一实现三档）——**那里是唯一一份**，此处不重复；机械拦是 `verify-class-ownership.mjs`、
+    `verify-design-docs.mjs`，以及「一个家」那三道（`verify-one-implementation.mjs`、
+    `verify-client-host-boundary.mjs`、`verify-dead-export.mjs`）。
 
 ## 测试（布局约定）
 
 - **一个 src 模块一个 spec，契约按表面/域分组**，清单以 `tests/` 目录为准。**新增逻辑即配测试**
   ——测试是契约不是附件；先归入对应域的现有 spec。
-- **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约全状态机（席位
-  `(held, proto, bootedAt)` 任一半变化都要触发监听）；`board-service` 带 **LeaseState 唯一构造
-  点**的机械禁令；`board-http` 用真实存储 + 真实 `http.Server` + 真实 SSE；`controller` 是唯一大
-  文件（端到端，共享 harness 不拆分）；`session-groups` 是会话选择器名单的**唯一**规则处（官方
-  `sessionVisible` 逐字镜像）；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` /
+- **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约状态机；
+  `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实 SSE；
+  `controller` 是唯一大文件；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` /
   `review-page`，**清单**的全在 `panel-render.spec.ts` 与 `locales.spec.ts`；`item-board-linkage`
-  钉**两个面板之间**的一致性；`file-reference-grammar` / `session-mention` 是官方包逐字镜像。
-  看渲染结果：`DSH_PANEL_HTML=<path> pnpm test` 出页面，再 `node scripts/shot-panel.mjs` 截图。
+  钉**两个面板之间**的一致性。看渲染结果：`DSH_PANEL_HTML=<path> pnpm test` 出页面，
+  再 `node scripts/shot-panel.mjs` 截图。
 - **`execution.spec.ts` 的假环境必须如实模拟宿主的持有语义**：`binding` 只对**被持有**的会话返回
   驱动（`hold` 才是入口）。一个从 Map 里直接发驱动的假面会让整份 suite 在线上全线失败时依然全绿
   ——**假面比现实宽容或比现实窄同样危险**。
-- **`task-demand.spec.ts` 钉的是「三处同读一个门」**：`gateOf` / `sessionGateOf` /
-  `boardDemandOf` 的每条用例钉的都是一对必须说同一句话的表面；**任何把它退回单条车道的改动
-  （加回 `comment === undefined` 过滤）都必须让这里变红**。`session-permission.spec.ts` 同理
-  钉住「权限只读活投影、无本地副本、选择器无取消项」。
+- **`task-demand.spec.ts` 钉的是「三处同读一个门」**：每条用例钉的都是一对必须说同一句话的表面；
+  **任何把它退回单条车道的改动都必须让这里变红**。`session-permission.spec.ts` 同理钉住「权限只读活
+  投影、无本地副本、选择器无取消项」。

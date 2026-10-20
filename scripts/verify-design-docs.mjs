@@ -954,9 +954,13 @@ function crossSheetRefs(css, mine, foreign) {
  * being broken, and the copy that goes stale is the one nobody looks at.
  *
  * @param sheets - [relative path, css text] pairs.
- * @returns one finding per body shared by two or more sheets.
+ * @param minDeclarations - how many declarations a body needs before it counts
+ *   as a SHARED FORM rather than a coincidence. Three is the line: a two-line
+ *   body is a fragment of a bigger shape (the ring width, the hover tint, the
+ *   line box), and a body that small is legitimately re-spelled per sheet.
+ *   @returns one finding per body shared by two or more sheets.
  */
-function duplicateBodies(sheets, minDeclarations = 4) {
+function duplicateBodies(sheets, minDeclarations = 3) {
   const byBody = new Map()
   for (const [rel, text] of sheets) {
     const css = text.replace(/\/\*[\s\S]*?\*\//g, '')
@@ -1128,6 +1132,18 @@ function orphanDataAttrs(files) {
  * TOKENS, and those live in the token layer.
  */
 const PER_SHEET_FORMS = [
+  {
+    match: 'display: inline-flex;justify-content: center',
+    why: '行内弹性居中这一条文法：药丸、芯片、选项在三个表里各写一遍。**选择器不能跨表**（类名按表哈希），而这一条本身只有三行声明、没有令牌可依——它是一句「把这个盒子摆正」的话，谁用谁写。共享的部分是**它摆正后读的那几个令牌**（间距、字号、颜色），那些各有其家。',
+  },
+  {
+    match: 'color: var(--dsh-tb-text-2);font-size: 12px;margin: 0',
+    why: '一段说明文字（空态提示、展页里的「为什么这样」）：同一档字号与颜色在两个表里各写一遍。选择器不能跨表，而这三行都是**令牌**（第二档墨 + 12px），令牌才是共享的那一份。',
+  },
+  {
+    match: 'display: flex;flex-direction: column;min-inline-size: 0',
+    why: '竖排的一列（展页的色板文字、清单的议程、展开体侧栏）：一行弹性列 + 不许被内容撑宽，三个表各写一遍。选择器不能跨表；**那一列能不能缩**是这句文法的全部内容，而它没有令牌可读（宽度是布局决定的，不是值）。',
+  },
   {
     match: '--dsh-tb-hit-ring-block',
     why: 'DEBT: the invisible touch ring. Its declarations are identical in both sheets on purpose — the selectors cannot be, because a class name is hashed per sheet, so one rule cannot reach the board\'s controls and the design system\'s at once. What is shared is the SPEC, and that is the token (--dsh-tb-hit-ring-*), which is declared once.',

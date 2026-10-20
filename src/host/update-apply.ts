@@ -20,6 +20,8 @@
 
 import { spawn } from 'node:child_process'
 import type { UpdatePlan, UpdateStep } from '../core/update-check.ts'
+import type { UpdateApplyOutcome, UpdateApplyResult } from '../core/update-view.ts'
+import { stringOf, messageOf } from '../core/values.ts'
 
 /** How long one update run may take before it is killed (milliseconds). */
 const RUN_TIMEOUT_MS = 600_000
@@ -88,47 +90,6 @@ export interface CheckoutUpdate {
   dirty: boolean
 }
 
-/**
- * How an applied update landed.
- *
- * `unchanged` is the case the installation service cannot report: it answers
- * with what the package manager did, and a package manager asked for "the
- * latest" that resolves to the version already installed exits successfully
- * having done nothing at all. A package update's whole subject is its version,
- * so a run that left the version alone is not an update — and reporting one is
- * how a page tells a reader they are current when the resolution was merely
- * held back (an installer's release-age policy does exactly that to a version
- * that was published minutes ago). Only `npm` mode claims it: a branch install
- * can move without any version changing.
- */
-export type UpdateApplyOutcome = 'applied' | 'restart-required' | 'rebuilt' | 'unchanged'
-
-/** Why an update could not be applied (a stable code the page turns into copy). */
-export type UpdateApplyError =
-  /** This install mode has no host-side update path at all. */
-  | 'unsupported'
-  /** The update path exists but this host is missing what runs it. */
-  | 'unavailable'
-  /** The checkout has uncommitted changes. */
-  | 'dirty'
-  /** A command the update needs is not installed. */
-  | 'tool-missing'
-  | 'timeout'
-  | 'failed'
-
-/** What applying an update did. */
-export interface UpdateApplyResult {
-  ok: boolean
-  /** Present when `ok`: how the change landed. */
-  outcome?: UpdateApplyOutcome
-  /** The version now on disk, when it could be read back. */
-  version?: string
-  /** The tail of what the update printed, kept for failures. */
-  output?: string
-  /** Present when not `ok`: why it did not happen. */
-  error?: UpdateApplyError
-}
-
 /** Everything applying an update reads or touches. */
 export interface UpdateApplyDeps {
   /** The plan built from the running copy's own facts. */
@@ -157,11 +118,6 @@ function tailText(text: string, limit = OUTPUT_LIMIT): string {
   return trimmed.length <= limit ? trimmed : `...${trimmed.slice(trimmed.length - limit)}`
 }
 
-/** Read a string field off a record that may not carry one. */
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined
-}
-
 /**
  * Uninstall the running copy, the first half of a reinstall.
  *
@@ -183,7 +139,7 @@ async function removeInstalled(
   try {
     record = await remove(name)
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = messageOf(error)
     return { ok: false, error: 'failed', output: tailText(`remove ${name}: ${message}`) }
   }
   const output = stringOf(record?.error?.diagnostic) ?? stringOf(record?.packageResult?.output)
@@ -235,7 +191,7 @@ async function applyPackage(
   try {
     record = await installer.installBundle(spec, { enabled: true })
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error)
+    const message = messageOf(error)
     return { ok: false, error: 'failed', output: tailText(message) }
   }
   const output = stringOf(record.packageResult?.output) ?? stringOf(record.error?.diagnostic)

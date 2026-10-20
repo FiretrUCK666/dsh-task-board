@@ -18,6 +18,11 @@
  *
  * The `id` this entry registers under MUST equal the `main` slot key the board
  * panel registers — the shell resolves a panel row to its stage by that id.
+ *
+ * THE TOGGLE ITSELF IS NOT WRITTEN HERE. The mechanism (which button the
+ * listener lands on, why it must be a native listener, and the disposer that
+ * takes it off again) lives in `design/use-panel-row-exit.ts` — one hook, four
+ * panel rows (home, board, list, gallery), so the four cannot drift apart.
  */
 /** Props the shell binds for a panel-list entry. */
 export interface TaskBoardIconProps {

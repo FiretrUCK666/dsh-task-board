@@ -43,6 +43,30 @@ import { isAgendaItem } from './item-membership.ts'
 export const ITEM_PAGES = ['list', 'schedule'] as const
 export type ItemPageId = typeof ITEM_PAGES[number]
 
+/**
+ * 一条清单条目的**短号**，按人说话的样子读回来。
+ *
+ * ── 为什么这是一处实现 ──────────────────────────────────────────────────────
+ *
+ * 短号是**说出来**的（`#12`），不是**写下来**的（`12`）。所以读它的地方都要先
+ * 把那句「说出来的话」剥成数字——而这一句剥法曾经被抄了十份，其中**六份少了
+ * 一个 `.trim()`**。
+ *
+ * 后果不是报错，是**同一个动作族给出两个答案**：`# 12`（带一个空格）在
+ * `item.restore` / `item.purge` 找得到，在 `item.update` 找不到——同一行、同一
+ * 个模型、同一个短号。读代码的人看不出差别，因为两处写的是同一个意思的两份
+ * 拷贝。
+ *
+ * 所以这一处的规矩是：**唯一一处把「说出的话」剥成数字的地方**，其余全部导入它。
+ * 它也只做这一件事——不判断这个短号存不存在（那是读文档那一处的活）。
+ *
+ * @param spoken - 说出／写下的那个短号（`#12`、`# 12`、`12`、或一个 uuid）。
+ * @returns 剥掉 `#` 与首尾空白后的字符串；什么都不是时是空串。
+ */
+export function refOf(spoken: unknown): string {
+  return String(spoken ?? '').replace('#', '').trim()
+}
+
 export type ItemNavigationRefusal = 'nothingAsked' | 'noSuchItem'
 
 export type ItemNavigation =

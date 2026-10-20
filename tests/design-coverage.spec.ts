@@ -39,6 +39,8 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { SHARED_CANDIDATES } from '../src/client/gallery/shared-candidates.ts'
+import { ADDITION_RECORDS } from '../src/client/design/addition-records.ts'
+import { pathsIn } from '../scripts/verify-one-implementation.mjs'
 
 const root = fileURLToPath(new URL('..', import.meta.url))
 const designDir = join(root, 'src', 'client', 'design')
@@ -77,11 +79,63 @@ function clientTsx(): { path: string; text: string }[] {
 
 const files = clientTsx()
 
+/**
+ * The units that carry an addition record.
+ *
+ * The ledger writes 「路径 —— 一句话」, so the path is the FIRST word; that is
+ * what `pathsIn` picks out. A component is 「recorded」 when a record's unit
+ * names the file it is declared in.
+ */
+const recordedUnits = new Set<string>(
+  ADDITION_RECORDS.flatMap(record => pathsIn(record.unit)),
+)
+
+/**
+ * A COMPONENT CANDIDATE: an exported binding whose name starts with a capital.
+ *
+ * The scan is deliberately wider than 「export function」: a component written as
+ * `export const Chip = () => …` or `export class Chip` is still a component, and
+ * a scan that only sees functions judges the code by how it was typed rather
+ * than by what it is.
+ *
+ * Wider means more candidates than components, so the next filter decides.
+ *
+ * ── 那道过滤是什么 ──────────────────────────────────────────────────────────
+ *
+ * **导出的是不是函数。** 一个组件是**能渲染的东西**；一个枚举数组是被 `map`
+ * 的常量。两者都是「首字母大写的导出」，所以光看名字分不开——但它们的**值**分得开：
+ * 前者的值是一个函数，后者的值是一个数组。
+ *
+ * 判的是**结构**（初始化式是不是函数），不是「名字里有没有 KINDS」这种字样。
+ */
+const COMPONENT_CANDIDATE = /^export (?:function|const|class) ([A-Z]\w*)/gm
+
+/**
+ * Is this export a FUNCTION (or a class)?
+ *
+ * `export function X` and `export class X` are yes. `export const X = …` counts
+ * only when what follows the `=` is a function — which is what tells a
+ * component (`= (props) => …`) from an enumerated list (`= ['a', 'b']`).
+ *
+ * @param {string} text - the whole file.
+ * @param {RegExpExecArray} m - the candidate match.
+ * @returns {boolean}
+ */
+function isFunctionExport(text: string, m: RegExpExecArray): boolean {
+  // 关键字是 TypeScript 的词，不是散文里的字样 
+  if (m[0].startsWith('export function') || m[0].startsWith('export class')) return true
+  const after = text.slice(m.index + m[0].length)
+  const eq = after.indexOf('=')
+  if (eq < 0) return false
+  return /^(async\s+)?(\(|<)/.test(after.slice(eq + 1).trimStart())
+}
+
 /** The components the design system exports, and where each is declared. */
 const exported = new Map<string, string>()
 for (const f of files) {
   if (!f.path.startsWith(designDir)) continue
-  for (const m of f.text.matchAll(/^export function ([A-Z]\w+)/gm)) {
+  for (const m of f.text.matchAll(COMPONENT_CANDIDATE)) {
+    if (!isFunctionExport(f.text, m)) continue
     if (!exported.has(m[1])) exported.set(m[1], relative(root, f.path).replace(/\\/g, '/'))
   }
 }
@@ -90,7 +144,8 @@ for (const f of files) {
 const declaredOutside = new Map<string, string>()
 for (const f of files) {
   if (f.path.startsWith(designDir)) continue
-  for (const m of f.text.matchAll(/^export function ([A-Z]\w+)/gm)) {
+  for (const m of f.text.matchAll(COMPONENT_CANDIDATE)) {
+    if (!isFunctionExport(f.text, m)) continue
     if (!declaredOutside.has(m[1])) declaredOutside.set(m[1], relative(root, f.path).replace(/\\/g, '/'))
   }
 }
@@ -204,19 +259,23 @@ describe('the design system and its preview page stay in step', () => {
       .toEqual([])
   })
 
-  it('no design component is a one-off — every one has at least two render sites', () => {
-    // SITES, not distinct files. The original name said 「两个文件」 and the code
-    // counted occurrences, so a component rendered twice inside ONE file would
-    // have satisfied it. No such case exists today; the name now says what the
-    // assertion does, so the next reader is not told something stronger than the
-    // check delivers.
+  it('a design component with one consumer carries a recorded reason', () => {
+    // 一处消费者也可以住在共享层——「新增即入共享层，哪怕只被用一次」是规矩。
+    // 但那不是默认：**默认是两处**，一处的那份必须**留一条记录**（新增登记），
+    // 说得出「谁要求新增」与「为什么不能用最接近的那个」。
+    //
+    // 这条以前是「一处就搬走」。那与新章节直接打架：规矩说新增先落共享层，
+    // 门禁却把刚落的那个推回页面——于是下一个人只能绕过共享层，
+    // 因为「先落共享层」在这个项目里会被门禁当场撤销。
     const oneOff = []
     for (const name of exported.keys()) {
       const sites = renderSites(name).filter(site => !site.startsWith('src/client/gallery/'))
       if (sites.length >= 2) continue
-      oneOff.push(`${name} (${sites.join(', ') || 'nowhere'})`)
+      const where = exported.get(name) ?? ''
+      if (recordedUnits.has(where)) continue
+      oneOff.push(`${name} (${sites.join(', ') || 'nowhere'}; ${where})`)
     }
-    expect(oneOff, `these are in design/ but exactly one file renders them — move them to that file's own layer: ${oneOff.join('; ')}`)
+    expect(oneOff, `these are in design/ with one consumer and no record — either give them a second consumer, or record the addition in src/client/design/addition-records.ts: ${oneOff.join('; ')}`)
       .toEqual([])
   })
 

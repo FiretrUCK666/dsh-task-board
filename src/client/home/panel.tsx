@@ -6,7 +6,8 @@
  * 不在这里另算一遍：
  *
  *   - 「等你处理 / 待审核」 = `workbenchStage.summaryOf()` 的 `counts.demand` / `review`，
- *     也就是看板板头与通知抽屉读的那一对（`boardDemandOf`）。
+ *     也就是看板板头与通知抽屉读的那一对（`boardDemandOf`）；会话卡上的「等你回答」
+ *     读的是同一次推导里的 `counts.waiting`。
  *   - 「今天到期 / 已逾期」 = 同一个 summary 的 `dueToday` / `overdue`，与清单每一行标题
  *     下面印的那个判决同源（`datePostureOf`）。
  *   - 流水线、吞吐、最近动态全都来自 `core/workbench-summary.ts` 的同一个视图模型。
@@ -19,9 +20,10 @@
  *   3. 空列没有「最旧」这回事（`staleDays === undefined`）：不写「0 天没动」，那会把
  *      「没有东西」说成「今天刚动过」。
  *
- * 会话卡里的「等你回答」由 summary 公布的两个数相减得到：`demand`（总诉求）与 `review`
- * （待复核），差就是挂起等你回答的那部分会话。这个差只在这一页取一次——同一个数不在
- * 别处再算一遍。
+ * 会话卡里的「等你回答」读的是 summary 公布的 `waiting`——`boardDemandOf` 里那一档，
+ * 挂起等你回答的那些会话。**它不是减出来的**：以前这一页写的是「总诉求减待复核」，
+ * 那个减法今天成立只因为 `total = waiting + review`；等诉求多出第三种，它就静默算错了，
+ * 而屏上没有任何东西会说明为什么。
  *
  * 重画的方式只有一条：`useBoardSnapshot` 订阅看板。清单那一侧不在这里再挂监听——副本只
  * 允许一个远端监听者，而它属于清单面板自己（见 `workbench/stage.ts` 的头注释）；两个与
@@ -44,6 +46,7 @@ import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import base from '../design/base.module.css'
 import css from './home.module.css'
+import components from '../design/components.module.css'
 
 /** 四格：哪一格、叫什么、一句说明、按下去去哪。 */
 interface HomeTile {
@@ -82,8 +85,6 @@ export function HomePage({ now }: { readonly now?: number }) {
 
   const summary = workbenchStage.summaryOf(at)
   const counts = summary.counts
-  // 等你回答 = 总诉求 − 待复核：summary 公布的是这两档，差在这一页取一次。
-  const waiting = counts.demand - counts.review
   const tiles: readonly HomeTile[] = [
     { value: counts.demand, label: 'home.tile.demand', hint: 'home.tile.demandHint', page: 'board' },
     { value: counts.review, label: 'home.tile.review', hint: 'home.tile.reviewHint', page: 'board' },
@@ -226,7 +227,7 @@ export function HomePage({ now }: { readonly now?: number }) {
 
         <section className={`${css.homeCard} ${base.paperSheet}`}>
           <h2 className={css.homeCardTitle}>{t('home.sessions')}</h2>
-          {counts.running + waiting === 0
+          {counts.running + counts.waiting === 0
             ? <p className={css.homeCardEmpty}>{t('home.sessionsEmpty')}</p>
             : (
               <div className={css.sessionStats}>
@@ -243,7 +244,7 @@ export function HomePage({ now }: { readonly now?: number }) {
                   className={`${css.sessionStat} ${base.paperSheet} ${base.paperLift}`}
                   onClick={() => { workbenchStage.navigate('board') }}
                 >
-                  <span className={css.sessionValue}>{waiting}</span>
+                  <span className={css.sessionValue}>{counts.waiting}</span>
                   <span className={css.sessionLabel}>{t('home.sessionsWaiting')}</span>
                 </button>
               </div>
@@ -294,7 +295,7 @@ function PipelineLine({ row, total }: { readonly row: PipelineRow; readonly tota
   return (
     <button type="button" className={`${css.pipeRow} ${base.paperSheet} ${base.paperLift}`} onClick={() => { workbenchStage.navigate('board') }}>
       <span className={css.homeStatusDot} data-status={row.status} aria-hidden="true" />
-      <span className={css.pipeName}>{t(STATUS_KEY[row.status])}</span>
+      <span className={`${css.pipeName} ${components.titleText}`}>{t(STATUS_KEY[row.status])}</span>
       <span className={css.pipeCount}>{row.count}</span>
       <span className={css.pipeTrack} aria-hidden="true">
         <span className={css.pipeFill} style={barStyle} />

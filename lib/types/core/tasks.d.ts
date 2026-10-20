@@ -920,3 +920,20 @@ export declare function startedOrSettledSessions(before: TaskRecord | undefined,
  *    浮到最上，两条律各管各的。
  */
 export declare function promoteSessionsToTop(task: TaskRecord, sessionIds: readonly string[], now: number): TaskRecord;
+/**
+ * 卡片 id → 它在哪一栏。
+ *
+ * **两个半区问的是同一件事**（清单要知道自己挂着的卡在哪一栏；模型要把一张卡
+ * 连同它的栏位一起说出来），而这件事曾经各写一份——两边的算法一样，改一处不动
+ * 另一处，屏上不会有人说得清为什么某张卡的栏位在两个动作里不一样。
+ *
+ * 参数写**结构上的最小形状**而不是 `TaskRecord`，所以两个半区各自的快照类型
+ * 都能直接喂进来（它们对「一张卡有哪些字段」的说法并不一样）。
+ *
+ * @param tasks - 卡片们。
+ * @returns 卡片 id → 那一栏。
+ */
+export declare function cardStatusMapOf(tasks: readonly {
+    readonly id: string;
+    readonly status: TaskStatus;
+}[]): Map<string, TaskStatus>;

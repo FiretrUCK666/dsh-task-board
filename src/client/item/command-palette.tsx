@@ -60,6 +60,7 @@ import { useDialogFocus } from '../design/dialog-focus.ts'
 import { useEscapeStack } from '../design/escape-stack.ts'
 import { SearchField } from '../design/ui.tsx'
 import css from './item.module.css'
+import components from '../design/components.module.css'
 
 /** One answer in the palette: a label, and what pressing it does. */
 export interface PaletteAction {
@@ -466,7 +467,7 @@ export function ItemCommandPalette(props: ItemCommandPaletteProps) {
                       key={option.id}
                       type="button"
                       id={`${listboxId}-${option.id}`}
-                      className={css.itemFacetChip}
+                      className={`${css.itemFacetChip} ${components.truncate}`}
                       role="option"
                       aria-selected={on}
                       data-selected={on ? '' : undefined}

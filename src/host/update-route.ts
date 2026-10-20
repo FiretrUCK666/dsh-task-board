@@ -71,9 +71,11 @@ import {
   applyUpdate,
   spawnStep,
   type PackageInstaller,
-  type UpdateApplyResult,
 } from './update-apply.ts'
-import { readClientReports, type ClientReport } from './client-report-route.ts'
+import { json } from './http-json.ts'
+import { messageOf } from '../core/values.ts'
+import type { UpdateApplyResult, UpdateEvidence, UpdateSourceView } from '../core/update-view.ts'
+import { readClientReports } from './client-report-route.ts'
 import packageJson from '../../package.json'
 
 /** Package identity, read live from the manifest (never repeated in code). */
@@ -136,66 +138,6 @@ interface ProfileContextLike {
   packageManager?: unknown
 }
 
-/** How the running copy's own location was established. */
-export interface UpdateEvidence {
-  /** This copy IS a link into a checkout, rather than a copy installed in a profile. */
-  linked: boolean
-  /** The host declared a profile at all. */
-  declared: boolean
-  /** The declaration named a different copy than the one actually running. */
-  disagreement: boolean
-}
-
-/** The update-source view served to the browser half. */
-export interface UpdateSourceView {
-  /** Package name (the npm update command's subject). */
-  packageName: string
-  /** The running copy's version (the comparison baseline). */
-  version: string
-  /** Raw profile-manifest declaration (absent when the manifest is unreadable). */
-  spec?: string
-  /** Classified install mode. */
-  mode: UpdateInstallMode
-  /** The profile carrying this copy (absent when the running profile is unreadable). */
-  profile?: string
-  /** The profile's directory, or the checkout this copy runs from. */
-  dir?: string
-  /** The profile belongs to a packaged application, which installs through its own runtime. */
-  appManaged: boolean
-  /** How this copy's identity was established. */
-  evidence: UpdateEvidence
-  /** The `github:` install spec (absent when the repo URL is not GitHub). */
-  githubSpec?: string
-  /** How to update this copy, and who applies it. */
-  plan: UpdatePlan
-  /** The newest upstream, when the host could read one (absent is "cannot tell"). */
-  latest?: UpdateLatestView
-  /** Local-checkout git state (only for `local` installs). */
-  git?: UpdateGitStatus
-  /** Self-reports from the pages that are currently open (newest first). */
-  clients?: ClientReport[]
-}
-
-/** Success envelope carrying the update-source view or an apply result. */
-export interface UpdateRouteOk {
-  ok: true
-  value: UpdateSourceView | UpdateApplyResult
-}
-
-/** Failure envelope carrying a stable business error code. */
-export interface UpdateRouteFail {
-  ok: false
-  error: { code: string; message: string }
-}
-
-export type UpdateRouteEnvelope = UpdateRouteOk | UpdateRouteFail
-
-/** Write one JSON envelope response (same discipline as the settings route). */
-function json(res: ServerResponse, envelope: UpdateRouteEnvelope, status = 200): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(envelope))
-}
-
 /** The service face the pure handler needs (real readers or fakes). */
 export interface UpdateRouteDeps {
   /** Read the current update-source view (reading the newest upstream is I/O). */
@@ -219,8 +161,7 @@ export function createUpdateHandler(
       try {
         view = await deps.read()
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        json(res, { ok: false as const, error: { code: 'update', message } })
+        json(res, { ok: false as const, error: { code: 'update', message: messageOf(error) } })
         return
       }
       json(res, { ok: true as const, value: view })
@@ -231,8 +172,7 @@ export function createUpdateHandler(
       try {
         result = await deps.apply()
       } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        json(res, { ok: false as const, error: { code: 'update', message } })
+        json(res, { ok: false as const, error: { code: 'update', message: messageOf(error) } })
         return
       }
       json(res, { ok: true as const, value: result })

@@ -1,9 +1,4 @@
-/** One measured box in CSS pixels (viewport-relative). */
-export interface MeasuredBox {
-    top: number;
-    bottom: number;
-    height: number;
-}
+import type { ClientReport, ReportedBox } from '../core/client-report.ts';
 /** Landmark → class name. The caller supplies the real (scoped) class names,
  *  so this module never guesses a selector. The list is exactly the landmarks
  *  the board still renders: a key whose element no longer exists reports
@@ -20,19 +15,17 @@ export interface LandmarkClasses {
     primary: string;
 }
 /** One element's box, or undefined when it is absent or has no area. */
-export declare function boxOf(element: Element | null | undefined): MeasuredBox | undefined;
-/** The report body the host route accepts. */
-export interface ClientReportBody {
-    version: string;
-    href: string;
-    ua?: string;
-    viewport?: {
-        width: number;
-        height: number;
-    };
-    dpr?: number;
-    boxes?: Record<string, MeasuredBox>;
-}
+export declare function boxOf(element: Element | null | undefined): ReportedBox | undefined;
+/**
+ * The report body the host route accepts: the report minus the receipt
+ * instant, which is the HOST's to stamp.
+ *
+ * It is derived from the core shape (`core/client-report.ts`) rather than
+ * written out here: the browser measures and the host reads the SAME
+ * description of a box, and two descriptions of a box are two chances for the
+ * host to read one and the browser to send another.
+ */
+export type ClientReportBody = Omit<ClientReport, 'receivedAt'>;
 /**
  * Measure the board's live geometry through the caller's own class names.
  * Reads only what exists: an unmounted board reports no boxes, never throws.
@@ -40,7 +33,7 @@ export interface ClientReportBody {
  * @param root - the subtree to search (the document in production).
  * @returns the box map keyed by landmark name.
  */
-export declare function collectBoardBoxes(landing: LandmarkClasses, root?: ParentNode): Record<string, MeasuredBox>;
+export declare function collectBoardBoxes(landing: LandmarkClasses, root?: ParentNode): Record<string, ReportedBox>;
 /**
  * Compose and send one report. Never throws and never blocks the board: the
  * request is fire-and-forget with a short bound.

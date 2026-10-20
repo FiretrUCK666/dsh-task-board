@@ -106,7 +106,8 @@
   font: inherit;
   text-align: start;
   cursor: pointer;
-}
+
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-lg);}
 
 /* 数与标签同一条基线：30px 的数和 12px 的标签并成一行，读者一眼读完一个读数。 */
 [data-dsh-taskboard-view] .tileFigures {
@@ -158,7 +159,8 @@
   /* 纸面是共享形态（`design/base.module.css` 的 `.paperSheet`），与四格同一条腿：
      纸面 + 14% 的墨边 + 第一档投影。卡片不可点，所以它不挂 `.paperLift`——抬升只发生在
      按得动的东西上，这个区别本身也是可读的。 */
-}
+
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-lg);}
 
 /* 卡片标题是「眉」：11px、正字距、二级墨。它只说这一块是什么，不跟数字抢眼球。 */
 [data-dsh-taskboard-view] .homeCardTitle {
@@ -206,7 +208,7 @@
   /* 纸面与抬升是共享形态（`design/base.module.css` 的 `.paperSheet` / `.paperLift`）；
      这一行是**窄纸**，所以边更轻、角更小——那两笔是这一页自己的几何。 */
   border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-sm);
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-sm);
   color: var(--dsh-tb-text-1);
   font: inherit;
   text-align: start;
@@ -247,9 +249,6 @@
 
 [data-dsh-taskboard-view] .pipeName {
   min-inline-size: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
   font-size: var(--dsh-tb-type-body-size);
   line-height: var(--dsh-tb-type-body-line);
 }
@@ -452,7 +451,7 @@
   min-inline-size: 0;
   padding: var(--dsh-tb-space-4) var(--dsh-tb-space-5);
   border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-md);
   color: inherit;
   font: inherit;
   text-align: start;
@@ -491,8 +490,8 @@
   padding: var(--dsh-tb-space-8);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
-  background: var(--dsh-tb-plane-float);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-3);
+  --dsh-tb-paper-plane: var(--dsh-tb-plane-float);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-3);
 }
 
 [data-dsh-taskboard-view] .emptyTitle {

@@ -341,7 +341,9 @@ describe('compact columns + panel geometry', () => {
     // cannot see is no navigator). All five always fit; names ellipsize.
     expect(compact).toMatch(/\.columnTabs\s*\{\s*\n?\s*display:\s*grid/)
     expect(compact).toMatch(/grid-template-columns:\s*repeat\(5,\s*minmax\(0,\s*1fr\)\)/)
-    expect(compact).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
+    expect(compact, '窄档的页签名没有占住自己那一格').toMatch(/\.columnTabLabel\s*\{[^}]*overflow:\s*hidden/)
+    expect(readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8'),
+      '页签名没有应用省略号那一类').toMatch(/css\.columnTabLabel\} \$\{components\.truncate\}/)
     // The strip owns symmetric breathing from the ONE strip token (never a
     // hand-typed px pair that rots apart — the 「上面有空隙下面紧贴」 class).
     expect(ruleExact(compact, '.columnTabs')).toMatch(/padding:\s*0/)
@@ -421,7 +423,11 @@ describe('form-row grammar (give way, never crush)', () => {
     const wrap = ruleOf('selectWrap')
     expect(wrap).toMatch(/--dsh-tb-select-arrow-inset:/)
     expect(ruleOf('selectWrap select')).toMatch(/padding-right:\s*var\(--dsh-tb-select-arrow-inset\)/)
-    expect(ruleOf('selectWrap select')).toMatch(/text-overflow:\s*ellipsis/)
+    // 省略号住共享形态（那一处唯一的家）；这里读的是「渲染它的控件挂着它」，
+    // 而不是在这一页再抄一遍那三条声明。
+    expect(ruleOf('selectWrap select')).not.toMatch(/text-overflow:\s*ellipsis/)
+    expect(readFileSync(fileURLToPath(new URL('../src/client/design/Field.tsx', import.meta.url)), 'utf8'),
+      'Select 没有挂省略号那一类').toMatch(/controlClass/)
     // The dead `flex: none` on the inner select (the flex item is the WRAPPER)
     // must not come back — it "fixed" nothing and hid the real cause.
     expect(source).not.toMatch(/\.schedulePreset\s*\{[^}]*flex:\s*none/)
@@ -499,7 +505,9 @@ describe('board header and navigator legibility', () => {
     // header below already carries it), and the full name survives as the
     // tab's accessible name.
     expect(compact).toMatch(/\.columnTab \.statusDot\s*\{\s*\n?\s*display:\s*none/)
-    expect(source).toMatch(/\.columnTabLabel\s*\{[^}]*text-overflow:\s*ellipsis/)
+    expect(source, '页签名没有占住自己那一格').toMatch(/\.columnTabLabel\s*\{[^}]*overflow:\s*hidden/)
+    expect(readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8'),
+      '页签名没有应用省略号那一类').toMatch(/css\.columnTabLabel\} \$\{components\.truncate\}/)
     const tsxPath = fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url))
     const board = readFileSync(tsxPath, 'utf8')
     expect(board).toMatch(/t\(STATUS_SHORT_KEY\[column\.status\]\)/)
@@ -876,8 +884,10 @@ describe('session row overlap fix', () => {
   it('the workspace chip shrinks + ellipsizes (never pushes actions over the title)', () => {
     const ws = ruleOf('sessionRowWorkspace')
     expect(ws).toMatch(/flex:\s*0 1 auto/)
-    expect(ws).toMatch(/min-width:\s*0/)
-    expect(ws).toMatch(/text-overflow:\s*ellipsis/)
+    // 省略号与地板住共享形态；这一条读挂点。
+    expect(ws).not.toMatch(/text-overflow:\s*ellipsis/)
+    expect(readFileSync(fileURLToPath(new URL('../src/client/board/TaskDetail.tsx', import.meta.url)), 'utf8'),
+      '工作区芯片没有应用省略号那一类').toMatch(/css\.sessionRowWorkspace\} \$\{components\.truncate\}/)
   })
 
   it('compact session rows: actions ride the TITLE line, the pill is content-width', () => {
@@ -1070,6 +1080,10 @@ describe('button geometry (one base for every variant)', () => {
     /* `segmentedRow` 不在这张名单上，理由是形状而不是宽容：它是**装着若干胶囊的
      * 一条轨道**，圆角必须与里面的胶囊一致（都是 pill），否则轨道两端的半圆与第一
      * 枚胶囊的半圆不同心，读起来像两个不同的控件叠在一起。它属于上面那一族。 */
+    /* `card` 与 `column` 的圆角现在走**纸面的槽**（`--dsh-tb-paper-radius`）：共享的
+     * `.paperSheet` 读它、页面写它，两条声明作用于不同属性，所以不打同一场特异性官司。
+     * 判据因此跟着读槽位——它要说的仍然是「这一档是 md」，只是那个值现在写在一个变量的
+     * 右边，而不是 `border-radius` 的右边。 */
     for (const [name, ladder] of [
       ['card', 'md'],
       ['column', 'lg'],
@@ -1079,7 +1093,12 @@ describe('button geometry (one base for every variant)', () => {
     ] as const) {
       const rule = ruleOf(name)
       expect(rule, `.${name} missing`).not.toBe('')
-      expect(rule, `.${name} must stay ${ladder}`).toMatch(new RegExp(`border-radius:\\s*var\\(--dsh-tb-radius-${ladder}\\)`))
+      /* 两种写法都算：自己写 `border-radius`（表单控件那一族不在纸上），或者把档位
+         写进纸面的槽（`--dsh-tb-paper-radius`）。**判据说的是「这一档是 md」，不是
+         「它拼在哪个属性上」**——后者是实现，前者才是这条规则的意思。 */
+      expect(rule, `.${name} must stay ${ladder}`).toMatch(
+        new RegExp(`(?:border-radius|--dsh-tb-paper-radius):\\s*var\\(--dsh-tb-radius-${ladder}\\)`),
+      )
     }
     for (const panel of ['modal', 'detail', 'review']) {
       expect(ruleOf(panel), `.${panel} missing`).not.toBe('')
@@ -1272,9 +1291,14 @@ describe('no raw color literals leak in (design-system rule)', () => {
     // and tier 2 is that step.
     const excerpt = ruleOf('notifyExcerpt')
     expect(excerpt).toContain('flex: 1 1 100%')
-    expect(excerpt).toContain('-webkit-line-clamp: 2')
     expect(excerpt, 'the excerpt must stay a step quieter than the row title').toContain('var(--dsh-tb-text-2)')
-    expect(excerpt).toContain('overflow-wrap: anywhere')
+    /* **摘要折行，不夹断。** 它是「这件事要做什么」的那句话，夹掉就是让人读半句。
+     * 形态住在共享的 `.titleText`（带着断词与折行），这一处挂它。 */
+    const wrap = ruleOf('titleText')
+    expect(wrap).toContain('overflow-wrap: anywhere')
+    expect(wrap).toContain('white-space: normal')
+    expect(readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8'),
+      '通知摘要是给人读的一句话，该折行').toMatch(/css\.notifyExcerpt\} \$\{components\.titleText\}/)
   })
 })
 
@@ -1502,10 +1526,12 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     // line instead of overflowing.
     expect(ruleOf('notifyMain')).toMatch(/min-width:\s*min\(100%,\s*16rem\)/)
     // Both titles ellipsize at their own floors; the status chip never shrinks.
+    // 地板是这一处自己的数（6em / 4em），写在页面里；怎么收尾归共享形态。
     expect(ruleOf('notifyTask')).toMatch(/min-width:\s*6em/)
-    expect(ruleOf('notifyTask')).toMatch(/text-overflow:\s*ellipsis/)
     expect(ruleOf('notifySession')).toMatch(/min-width:\s*4em/)
     expect(ruleOf('notifySession')).toMatch(/max-width:\s*40%/)
+    const feed = readFileSync(fileURLToPath(new URL('../src/client/board/FeedRow.tsx', import.meta.url)), 'utf8')
+    expect(feed, '通知行的任务名没有应用省略号那一类').toMatch(/css\.notifyTask\} \$\{components\.truncate\}/)
     expect(source).toMatch(/\.notifyMainChip\s*\{[^}]*flex:\s*none/)
   })
 
@@ -1605,8 +1631,13 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     // 「there is a hairline above」, not 「it is spelled this way」.
     expect(section).toMatch(/border-top:\s*(?:1px solid|var\(--dsh-tb-border-soft\))/)
     // It stays a quiet label: ellipsis for long session names, never a control.
-    expect(section).toContain('text-overflow: ellipsis')
-    expect(section).toContain('white-space: nowrap')
+    /* 一个分节标题是**一句话**，不是元信息：它折行、不省略（共享的 `.titleText`）。
+   以前这里要求省略号，那是把「标题」当成了「索引」——一条被切掉尾巴的组名认不出是哪一组。 */
+    expect(section).not.toContain('text-overflow: ellipsis')
+    expect(readFileSync(fileURLToPath(new URL('../src/client/board/TaskBoard.tsx', import.meta.url)), 'utf8'),
+      '分节标题没有应用折行那一类').toMatch(/css\.feedSection\} \$\{components\.titleText\}/)
+    /* 折行意味着它**不再**是 nowrap：那一句是「标题当索引」时代的断言。 */
+    expect(section).not.toContain('white-space: nowrap')
   })
 
   it('the row status word comes from ONE table; both dictionaries carry every state', () => {
@@ -1679,17 +1710,13 @@ describe('content-box family + interaction-card containment (the desktop truncat
     expect(ruleOf('interactionOptionLabel')).toMatch(/overflow-wrap:\s*anywhere/)
     // The plan's reading window is the card's ONE scroller, and it rides the ONE
     // scrollbar grammar (its bar looks like every other bar on the board — thin
-    // and themed, not the system default that outed the desktop-only bug). The
-    // list is a claim about WHICH regions scroll, so every member must declare
-    // its own scroll — a class that never produces a bar is a scrolling rule for
-    // something that cannot scroll.
-    expect(source).toMatch(/:is\([^)]*\.interactionPlanBody[^)]*\)\s*\{/)
-    const listed = /:is\(([^)]+)\)::-webkit-scrollbar-button/.exec(source)?.[1]
-      ?.split(',').map(name => name.trim()).filter(name => name.startsWith('.'))
-      ?? []
-    expect(listed.length, 'the scrollbar grammar lost its member list').toBeGreaterThan(4)
-    const notScrolling = listed.filter(name => !/overflow(-y)?:\s*(auto|scroll)/.test(ruleOf(name.slice(1))))
-    expect(notScrolling, 'these ride the scrollbar grammar but never scroll — a bar that can never appear').toEqual([])
+    // and themed, not the system default that outed the desktop-only bug).
+    //
+    // **那份文法现在住在共享层**（`design/base.module.css`），而且是**座位级**的：
+    // 「哪些区域在滚」不再是一张要人维护的名单——每一个滚动的区域自动读同一份。
+    // 名单那种写法只会漏：加一个滚动区域忘了加进名单，于是那一处留着系统默认的粗条，
+    // 而屏上不会有人说一句话。所以这里不再检查名单，而是检查**文法本身**。
+    expect(ruleOf('interactionPlanBody')).toMatch(/overflow(-y)?:\s*(auto|scroll)/)
     // 咬得动：一个不滚动的成员必须被判出来（种在测试里，硬性规范 16）。
     const scrolls = (text: string): boolean => /overflow(-y)?:\s*(auto|scroll)/.test(text)
     expect(scrolls('.interactionBody { overflow-y: auto; }'), 'the predicate stopped seeing a scroller').toBe(true)
@@ -1701,9 +1728,9 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // the ONLY thin+color declaration, and the webkit path must hide its
     // buttons explicitly — strip the gate and no thin may remain; the button
     // pseudo must be display:none.
-    // 判据读结构，不读字样（硬性规范 14）：注释里提到一个属性不是一次声明，而两张表
-    // 现在各自解释这条文法，所以扫描先剥注释再匹配——否则一次措辞改动就会让这条红。
-    const structural = stripCssComments(source)
+    // 判据读结构，不读字样（硬性规范 14）：注释里提到一个属性不是一次声明，所以扫描
+    // 先剥注释再匹配——否则一次措辞改动就会让这条红。
+    const structural = stripCssComments(readFileSync(new URL('../src/client/design/base.module.css', import.meta.url), 'utf8'))
     const gate = /@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/.exec(structural)
     expect(gate, 'the standard scrollbar props must live behind the webkit gate').not.toBeNull()
     expect(gate?.[0]).toContain('scrollbar-width: thin')
@@ -1711,6 +1738,15 @@ describe('content-box family + interaction-card containment (the desktop truncat
     const ungated = structural.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/g, '')
     expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
     expect(structural).toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
+    // **共享层这一份是唯一的**：看板表与共享组件表里都不许再写一份。
+    // （读的是那两张表自己——`panelCss()` 把所有表拼在一起，而共享层那一份正是
+    // **那一个家**，它当然有。）
+    expect(stripCssComments(readFileSync(new URL('../src/client/board.module.css', import.meta.url), 'utf8')),
+      'the board sheet grew a second scrollbar grammar — it lives in the shared sheet now')
+      .not.toContain('::-webkit-scrollbar-thumb')
+    expect(stripCssComments(readFileSync(new URL('../src/client/design/components.module.css', import.meta.url), 'utf8')),
+      'the shared component sheet grew a second scrollbar grammar — it lives in the shared shape sheet now')
+      .not.toContain('::-webkit-scrollbar-thumb')
   })
 
   it('a plan card body keeps a floor computed from its own line box, and the card yields', () => {

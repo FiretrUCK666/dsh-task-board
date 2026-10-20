@@ -80,8 +80,6 @@ export interface BoardEventContext {
  * when the caller filters them — the derivation never drops facts.
  */
 export declare function boardEventsOf(tasks: readonly TaskRecord[], ctx?: BoardEventContext): ActivityEvent[];
-/** Day bucket key (local calendar day) for activity grouping — pure. */
-export declare function dayBucketOf(at: number): string;
 /**
  * Group events into day buckets (newest day first, events newest-first
  * inside). Pure — the view renders one section per bucket.

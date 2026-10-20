@@ -116,7 +116,7 @@ describe('board stage (official main panel)', () => {
     expect(css).not.toMatch(/@media\s*\(max-width/)
   })
 
-  it('draws its glyph, owns no row chrome, and reads no selectors (one documented seam)', () => {
+  it('draws its glyph, owns no row chrome, and reads the shared row-exit hook', () => {
     // The shell owns the button, its geometry, hover/active fill, the selected
     // highlight and the label; a second row implementation would drift from the
     // native entries (the rejected alternative). The ONE behavior this
@@ -130,9 +130,43 @@ describe('board stage (official main panel)', () => {
     expect(icon).toContain('onExit?: () => void')
     const code = stripComments(icon)
     expect(code).not.toMatch(/querySelector|getElementsBy|classList|getAttribute|setAttribute|insertBefore|appendChild/)
-    expect(code).toContain("closest('button')")
-    expect(code).toContain('addEventListener')
-    expect(code).toContain('removeEventListener')
+    // THE MECHANISM IS NOT WRITTEN HERE. It lives in one place
+    // (`design/use-panel-row-exit.ts`) and every panel row reads it, so this
+    // spec asserts the STRUCTURE (an import plus a call) rather than the
+    // literal `closest('button')`. A literal check pins the very COPY this
+    // repo forbids: pasting the effect back here would satisfy it while being
+    // exactly the duplicate a reader would then have to keep in sync.
+    expect(icon).toMatch(/import\s+\{\s*usePanelRowExit\s*\}\s+from\s+'[^']*design\/use-panel-row-exit\.ts'/)
+    expect(code).toContain('usePanelRowExit(rootRef, active, onExit)')
+    // And the icon itself carries NO listener of its own -- the copy is gone.
+    expect(code).not.toContain('closest(')
+    expect(code).not.toContain('addEventListener')
+    expect(code).not.toContain('removeEventListener')
+    // The shared hook is where the pair lives, and it is a matched pair: the
+    // listener goes onto the shell's button and comes off the same button.
+    const hook = stripComments(read('../src/client/design/use-panel-row-exit.ts'))
+    expect(hook).toContain("closest('button')")
+    expect(hook).toContain('addEventListener')
+    expect(hook).toContain('removeEventListener')
+  })
+
+  it('every panel row reads that one hook (no second copy of the effect)', () => {
+    // The duplication this pins: home / board / list / gallery are four
+    // consumers of ONE mechanism. The moment one of them pastes its own
+    // effect back in, the four stop being one thing -- and nothing else in
+    // the tree would say so.
+    const rows = [
+      '../src/client/home/HomeIcon.tsx',
+      '../src/client/TaskBoardIcon.tsx',
+      '../src/client/item/TaskListIcon.tsx',
+      '../src/client/gallery/GalleryIcon.tsx',
+    ]
+    for (const row of rows) {
+      const code = stripComments(read(row))
+      expect(code, `${row} must read the shared row-exit hook`).toMatch(/usePanelRowExit\(rootRef, active, onExit\)/)
+      expect(code, `${row} must not carry its own listener`).not.toContain('closest(')
+      expect(code, `${row} must not carry its own listener`).not.toContain('addEventListener')
+    }
   })
 
   it('has no DOM-guessing mount module left in the tree', () => {

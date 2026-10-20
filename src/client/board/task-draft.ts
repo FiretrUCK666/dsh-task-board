@@ -194,13 +194,13 @@ export function draftFromTemplate(template: TaskTemplate): TaskDraft {
 }
 
 /** The stored refs of a draft's ledger (the local chip key is not persisted). */
-function refsOf(attachments: readonly DraftAttachment[]): Array<Omit<DraftAttachment, 'id'>> {
+function storedRefsOf(attachments: readonly DraftAttachment[]): Array<Omit<DraftAttachment, 'id'>> {
   return attachments.map(({ id: _id, ...ref }) => ref)
 }
 
 /** Draft → create input; empty fields are omitted (fall back to defaults). */
 export function draftToNewInput(draft: TaskDraft): NewTaskInput {
-  const attachments = refsOf(draft.attachments)
+  const attachments = storedRefsOf(draft.attachments)
   const promptImages = draft.legacyImages.map(image => ({ mediaType: image.mediaType, data: image.data, name: image.name }))
   return {
     title: draft.title,
@@ -234,7 +234,7 @@ export function draftToUpdatePatch(draft: TaskDraft): TaskUpdatePatch {
     // The whole set is rewritten on every save (present key semantics), and the
     // legacy keys are CLEARED in the same write: the bytes just became refs, so
     // keeping the old fields would leave two answers about one attachment.
-    attachments: refsOf(draft.attachments),
+    attachments: storedRefsOf(draft.attachments),
     promptImages: [],
     promptFiles: [],
     agentPreset: draft.agentPreset !== '' ? draft.agentPreset : undefined,

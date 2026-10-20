@@ -15,13 +15,7 @@
  * @module dsh-task-board/client/client-report
  */
 import { routeUrl } from './route-base.ts'
-
-/** One measured box in CSS pixels (viewport-relative). */
-export interface MeasuredBox {
-  top: number
-  bottom: number
-  height: number
-}
+import type { ClientReport, ReportedBox } from '../core/client-report.ts'
 
 /** Landmark → class name. The caller supplies the real (scoped) class names,
  *  so this module never guesses a selector. The list is exactly the landmarks
@@ -45,22 +39,23 @@ function round(value: number): number {
 }
 
 /** One element's box, or undefined when it is absent or has no area. */
-export function boxOf(element: Element | null | undefined): MeasuredBox | undefined {
+export function boxOf(element: Element | null | undefined): ReportedBox | undefined {
   if (element === null || element === undefined) return undefined
   const rect = element.getBoundingClientRect()
   if (rect.width === 0 && rect.height === 0) return undefined
   return { top: round(rect.top), bottom: round(rect.bottom), height: round(rect.height) }
 }
 
-/** The report body the host route accepts. */
-export interface ClientReportBody {
-  version: string
-  href: string
-  ua?: string
-  viewport?: { width: number; height: number }
-  dpr?: number
-  boxes?: Record<string, MeasuredBox>
-}
+/**
+ * The report body the host route accepts: the report minus the receipt
+ * instant, which is the HOST's to stamp.
+ *
+ * It is derived from the core shape (`core/client-report.ts`) rather than
+ * written out here: the browser measures and the host reads the SAME
+ * description of a box, and two descriptions of a box are two chances for the
+ * host to read one and the browser to send another.
+ */
+export type ClientReportBody = Omit<ClientReport, 'receivedAt'>
 
 /**
  * Measure the board's live geometry through the caller's own class names.
@@ -69,8 +64,8 @@ export interface ClientReportBody {
  * @param root - the subtree to search (the document in production).
  * @returns the box map keyed by landmark name.
  */
-export function collectBoardBoxes(landing: LandmarkClasses, root: ParentNode = document): Record<string, MeasuredBox> {
-  const boxes: Record<string, MeasuredBox> = {}
+export function collectBoardBoxes(landing: LandmarkClasses, root: ParentNode = document): Record<string, ReportedBox> {
+  const boxes: Record<string, ReportedBox> = {}
   const add = (key: string, selector: string): void => {
     const box = boxOf(root.querySelector(`.${selector}`))
     if (box !== undefined) boxes[key] = box

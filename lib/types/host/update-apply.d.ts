@@ -18,6 +18,7 @@
  * @module dsh-task-board/host/update-apply
  */
 import type { UpdatePlan, UpdateStep } from '../core/update-check.ts';
+import type { UpdateApplyResult } from '../core/update-view.ts';
 /** One command's outcome, in the vocabulary the update reports in. */
 export interface CommandOutcome {
     /** The exit code, or null when the command never started. */
@@ -78,42 +79,6 @@ export interface CheckoutUpdate {
     dir: string;
     /** Uncommitted changes: refreshing over them would mix two states. */
     dirty: boolean;
-}
-/**
- * How an applied update landed.
- *
- * `unchanged` is the case the installation service cannot report: it answers
- * with what the package manager did, and a package manager asked for "the
- * latest" that resolves to the version already installed exits successfully
- * having done nothing at all. A package update's whole subject is its version,
- * so a run that left the version alone is not an update — and reporting one is
- * how a page tells a reader they are current when the resolution was merely
- * held back (an installer's release-age policy does exactly that to a version
- * that was published minutes ago). Only `npm` mode claims it: a branch install
- * can move without any version changing.
- */
-export type UpdateApplyOutcome = 'applied' | 'restart-required' | 'rebuilt' | 'unchanged';
-/** Why an update could not be applied (a stable code the page turns into copy). */
-export type UpdateApplyError = 
-/** This install mode has no host-side update path at all. */
-'unsupported'
-/** The update path exists but this host is missing what runs it. */
- | 'unavailable'
-/** The checkout has uncommitted changes. */
- | 'dirty'
-/** A command the update needs is not installed. */
- | 'tool-missing' | 'timeout' | 'failed';
-/** What applying an update did. */
-export interface UpdateApplyResult {
-    ok: boolean;
-    /** Present when `ok`: how the change landed. */
-    outcome?: UpdateApplyOutcome;
-    /** The version now on disk, when it could be read back. */
-    version?: string;
-    /** The tail of what the update printed, kept for failures. */
-    output?: string;
-    /** Present when not `ok`: why it did not happen. */
-    error?: UpdateApplyError;
 }
 /** Everything applying an update reads or touches. */
 export interface UpdateApplyDeps {

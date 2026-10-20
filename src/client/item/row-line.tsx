@@ -37,7 +37,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ItemRowView } from '../../core/item-view.ts'
 import { DEFAULT_STALE_DAYS } from '../../core/item-view.ts'
-import { t, type TaskBoardKey } from '../locales.ts'
+import { isEnglish, t, type TaskBoardKey } from '../locales.ts'
 import { MANUAL_STATUSES, type TaskStatus } from '../../core/tasks.ts'
 import { ITEM_STATUSES, type ItemDateKey, type ItemStatus } from '../../core/item.ts'
 import { PRIORITY_LABEL, STATUS_LABEL } from './labels.ts'
@@ -48,6 +48,7 @@ import components from '../design/components.module.css'
 import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 type DueTone = 'set' | 'soon' | 'soft-late' | 'over'
 
@@ -227,7 +228,12 @@ export function ItemRowLine(props: ItemRowLineProps) {
   /* 卡片的 id 取成一个 const：守卫里的收窄进不了回调（`onClick` 是另一个函数作用域），
      而 `view.cardId` 是一个属性访问——TS 不会相信它在闭包里还窄着。 */
   const cardId = view.cardId
-  const english = t('item.field.title') === 'Title'
+  // Whether the interface is English is a fact about the LANGUAGE, not about
+  // what some particular word happens to be translated into. Comparing the
+  // translation of one field's name with the literal 'Title' reads the wording
+  // instead of the structure: change that field's English copy and this row's
+  // date reading silently flips to the other language's format.
+  const english = isEnglish()
   const [editing, setEditing] = useState(false)
   const [draft, setDraft] = useState(item.title)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -262,7 +268,7 @@ export function ItemRowLine(props: ItemRowLineProps) {
   return (
     <div
       ref={rowRef}
-      className={css.itemRow}
+      className={`${css.itemRow} ${base.paperSheet}`}
       role="listitem"
 
       data-status={view.status}

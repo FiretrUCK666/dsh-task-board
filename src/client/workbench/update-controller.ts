@@ -17,7 +17,7 @@
  * spec exercises the same functions the panel calls.
  */
 import type { UpdateApplyResult, UpdateSourceView } from '../update-source.ts'
-import { applyUpdate, BUNDLED_VERSION, fetchUpdateSource } from '../update-source.ts'
+import { requestUpdateApply, BUNDLED_VERSION, fetchUpdateSource } from '../update-source.ts'
 import { isGitBehind, isNewerVersion } from '../../core/update-check.ts'
 
 /** What pressing the button last did. */
@@ -281,7 +281,7 @@ export class UpdateController {
     this.apply = { phase: 'running' }
     this.emit()
     void (async () => {
-      const result = await applyUpdate()
+      const result = await requestUpdateApply()
       const source = await fetchUpdateSource()
       if (source !== undefined) this.source = source
       const reported = result !== undefined && result.ok === true ? result : undefined

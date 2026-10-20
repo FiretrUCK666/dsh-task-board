@@ -33,6 +33,7 @@ import {
 } from '../../core/tasks.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
+import base from '../design/base.module.css'
 import { AttachmentStrip } from '../design/AttachmentStrip.tsx'
 import { attachBusyLabel, chipsOf, refsOf, useComposerAttachments, type DraftAttachment } from './composer-attachments.ts'
 import { MAX_TASK_IMAGES, TASK_IMAGE_BUDGET } from './attach.ts'
@@ -47,6 +48,7 @@ import { Chip } from '../design/Chip.tsx'
 import { sessionUnavailableReasonOf } from './session-chip.ts'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { useFocusOnChange } from '../design/dialog-focus.ts'
+import components from '../design/components.module.css'
 
 /**
  * The one cron grammar: text input + preset dropdown (+ optional preset
@@ -80,8 +82,12 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
         onKeyDown={event => { if (event.key === 'Enter') onCommit?.(value) }}
       />
       <span className={css.selectWrap}>
-        <select
-          className={css.schedulePreset}
+        {/* **走共享的 `Select`，不手写原生标签。** 手写的那一枚绕开了组件层，
+            于是它的裁剪只能靠 `.selectWrap select` 这条元素选择器给——一条样式
+            规则被「谁渲染的」偶然决定，而下一个不用 `.selectWrap` 包着的 select
+            就得不到它。`Select` 已经收 className，挂共享形态是透传，不是新增口子。 */}
+        <Select
+          className={`${css.schedulePreset} ${base.focusHalo} ${components.truncate}`}
           value=""
           aria-label={t('detail.schedule.presets')}
           onChange={event => {
@@ -97,7 +103,7 @@ export function CronField({ value, presets, onChange, onCommit, onPreset, onMana
               {!presetIsDefault(preset) ? ` (${t('detail.schedule.presets.custom')})` : ''}
             </option>
           ))}
-        </select>
+        </Select>
       </span>
       {onManagePresets !== undefined && (
         <Button className={css.scheduleManageButton} onClick={onManagePresets}>
@@ -216,7 +222,7 @@ function SessionRuleRow({ task, controller, row, onEdit }: {
       <span className={css.autoRuleTop}>
         <span className={css.autoRuleSession}>
           <Icon name="link" className={css.autoMetaIcon} />
-          <span className={css.autoRuleSessionTitle} title={title}>{title}</span>
+          <span className={`${css.autoRuleSessionTitle} ${components.truncate}`} title={title}>{title}</span>
         </span>
         {/* 发送方式带「发送：」前缀：裸「排队」在这个位置读起来像**状态**（「它
             正在排队」），而它其实是**设置**（这条规则怎么把话送出去）。两枚
@@ -547,7 +553,7 @@ function SessionRuleForm({ task, controller, ruleId, onClose }: {
                所以这一块看上去仍然是一个字段（与清单新建那张纸同一条律）。 */
             <div className={css.autoField} {...attach.dropProps}>
               <label className={css.autoField}>
-                <span className={css.autoFieldLabel}>{t('auto.form.instruction')}</span>
+                <span className={css.autoFieldLabel}>{t('detail.prompt')}</span>
                 <PromptInput
                   value={instruction}
                   onChange={next => { setInstruction(next); setError(undefined); draftStore.set(draftKey, next) }}

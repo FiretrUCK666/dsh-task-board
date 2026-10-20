@@ -37,6 +37,7 @@ import { ItemTable } from '../item-table.tsx'
 import type { ItemPageProps } from './page-props.ts'
 import css from '../item.module.css'
 import base from '../../design/base.module.css'
+import components from '../../design/components.module.css'
 
 /** The list page's own two additions: nothing but the device's id. */
 interface ItemListPageProps extends ItemPageProps {
@@ -463,7 +464,7 @@ export function ListPage(props: ItemListPageProps) {
                         onToggle={() => toggleArchivePick(row.id)}
                       />
                       <span className={css.itemArchiveCell}>
-                        <span className={css.itemArchiveTitle}><span className={css.itemRecentTitleText}>{itemTitleOf(row)}</span></span>
+                        <span className={`${css.itemArchiveTitle} ${components.titleText}`}><span className={`${css.itemRecentTitleText} ${components.titleText}`}>{itemTitleOf(row)}</span></span>
                         <span className={css.itemArchiveMeta}>
                           <span className={css.itemRefChip}>{itemRefOf(row).text ?? '—'}</span>
                           {/* THE CLOCK SAYS ITSELF ONLY WHEN THE HOST SENT THE STAMP.

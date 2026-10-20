@@ -18,11 +18,12 @@
  * off must therefore never be reported as on, and a surface the host cannot
  * answer for must never be reported as off — the failure has to leave the
  * reader with what it would have done anyway.
+ *
+ * THE LIST ITSELF lives in `core/surfaces.ts`: the browser half reads the same
+ * list, so it cannot live in the host half. This module is only the host's
+ * side of it — which rows announced themselves.
  */
-/** The surfaces a row can announce. The package row itself is not one. */
-export type SurfaceId = 'home' | 'board' | 'items' | 'agent' | 'design';
-/** Every surface id, so a caller cannot announce one this file does not know. */
-export declare const SURFACE_IDS: readonly SurfaceId[];
+import { type SurfaceId, type SurfaceManifest } from '../core/surfaces.ts';
 /**
  * Announce that a surface's row is loaded, which is the same fact as "its
  * switch is on".
@@ -39,12 +40,10 @@ export declare function markSurfaceActive(id: SurfaceId): void;
  * answered no" stay different values — a reader that gets `undefined` for
  * everything must narrow nothing, while one that gets `false` must not
  * register that surface.
+ *
+ * DERIVED from {@link SURFACE_IDS}: every surface id is answered, so a surface
+ * added to the list cannot be missing here — a missing key would read as
+ * 「读不到」 on the browser side and silently narrow that surface away.
  * @returns which surfaces the host says are on.
  */
-export declare function surfaceManifest(): {
-    home: boolean;
-    board: boolean;
-    items: boolean;
-    agent: boolean;
-    design: boolean;
-};
+export declare function surfaceManifest(): SurfaceManifest;

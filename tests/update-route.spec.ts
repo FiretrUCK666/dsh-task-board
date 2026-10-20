@@ -21,10 +21,9 @@ import {
   runningCopyOf,
   tipFromApi,
   type UpdateRouteDeps,
-  type UpdateSourceView,
 } from '../src/host/update-route.ts'
 import { commandLineOf, PUBLIC_REGISTRIES, updatePlanFor } from '../src/core/update-check.ts'
-import type { UpdateApplyResult } from '../src/host/update-apply.ts'
+import type { UpdateApplyResult, UpdateSourceView } from '../src/core/update-view.ts'
 
 const PKG = '@firetruck666/dsh-task-board'
 

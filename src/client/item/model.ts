@@ -33,6 +33,7 @@
  * `core/item-transitions.ts`.
  */
 import { DAY_MS, startOfDay } from '../../core/item-view.ts'
+import { localDayKey } from '../../core/local-day.ts'
 import type { ItemDateKey } from '../../core/item.ts'
 
 /**
@@ -192,15 +193,28 @@ export function readDateDraft(text: string, now: number): DateDraft {
   return readDateExpression(text, now)
 }
 
-/** Weekday words, Monday first, to match `Date.getDay()` after the offset. */
+/**
+ * Weekday words, Monday first, to match `Date.getDay()` after the offset.
+ *
+ * **这张表的键是那个字本身**（`三`），不是带壳的写法：`周三` 与 `三` 说的是同一件事，
+ * `下三` 与 `周三` 也是同一件事——壳（`周`、`下`）只是**读者说话的方式**，所以先剥壳
+ * 再查表。以前壳没剥，于是 `周三` 与 `下周三`（PRODUCT.md 认的那两个写法）**读不出来**，
+ * 而这正是「按字样判断而不是按结构判断」：表里有那个字，读者写的是带壳的词。
+ */
 const WEEKDAYS: Readonly<Record<string, number>> = {
   '一': 1, '二': 2, '三': 3, '四': 4, '五': 5, '六': 6, '日': 7, '天': 7,
 }
 
-/** Fixed words for the near days. */
+/**
+ * Fixed words for the near days.
+ *
+ * **「下周」也在这张表里**（+7 天）。它原来写在自己的判据里（`word === '下周'`），
+ * 于是「一套日期词」这张表少了一个词——而**写在外面的词永远不归这张表管**：读者在
+ * 哪里学到这个写法、改了哪个词对不对，都看不出来。英文读者打 `next week` 同样认得。
+ */
 const NEAR_DAYS: Readonly<Record<string, number>> = {
-  前天: -2, 昨天: -1, 今天: 0, 今日: 0, 明天: 1, 明日: 1, 后天: 2, 大后天: 3,
-  yesterday: -1, today: 0, tomorrow: 1,
+  前天: -2, 昨天: -1, 今天: 0, 今日: 0, 明天: 1, 明日: 1, 后天: 2, 大后天: 3, 下周: 7,
+  yesterday: -1, today: 0, tomorrow: 1, 'next week': 7,
 }
 
 /**
@@ -239,8 +253,7 @@ export function readDateExpression(text: string, now: number): DateReading {
   if (word === '') return { kind: 'bad', reason: 'unreadable' }
   const offset = NEAR_DAYS[word]
   if (offset !== undefined) return { kind: 'at', at: today + offset * DAY_MS }
-  if (word === '下周') return { kind: 'at', at: today + 7 * DAY_MS }
-  const weekday = WEEKDAYS[word.replace(/^下/, '')]
+  const weekday = WEEKDAYS[word.replace(/^下/, '').replace(/^周/, '')]
   if (weekday !== undefined) {
     // Strictly forward: a weekday that has already passed this week means the next
     // one, and saying so is arithmetic rather than a guess. `下X` pins the following
@@ -340,20 +353,4 @@ function momentOf(day: CalendarDay, now: number): DateReading {
 /** Render a moment for a `yyyy-mm-dd` date field. */
 export function toItemDateField(at: number | undefined): string {
   return at === undefined ? '' : localDayKey(at)
-}
-
-/**
- * A moment as `yyyy-mm-dd`, in LOCAL time.
- *
- * LOCAL, not UTC, and that is the whole comment. The reader's calendar is local:
- * a row due today is due today on the machine they are sitting at, and a key
- * built from `toISOString()` puts every row that falls after the evening
- * cutoff — or anywhere west of Greenwich — on the wrong day. It is the same
- * reason `startOfDay` is local in core, and the same reason a stored instant is
- * never printed as a bare date without going through here.
- */
-export function localDayKey(at: number): string {
-  const date = new Date(at)
-  const pad = (n: number): string => String(n).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`
 }

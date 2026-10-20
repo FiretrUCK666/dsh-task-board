@@ -31,8 +31,6 @@ export interface CruiseWindow {
 }
 /** The tick granularity for boundary detection (the scheduler heartbeat). */
 export declare const CRUISE_TICK_MS = 60000;
-/** One calendar day (cross-midnight normalization). */
-export declare const DAY_MS = 86400000;
 /** Brand an unknown value as a valid window (persisted-state guard). */
 export declare function isCruiseWindow(value: unknown): value is CruiseWindow;
 /**

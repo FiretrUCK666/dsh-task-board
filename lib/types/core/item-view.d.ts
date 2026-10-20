@@ -69,7 +69,7 @@ export type { ItemCardLink } from './item-membership.ts';
 export { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts';
 export { DEFAULT_ITEM_SORT, ITEM_SORTS, sortItemsOf } from './item-sort.ts';
 export type { ItemSort } from './item-sort.ts';
-export { EMPTY_ITEM_QUERY, ITEM_FLAGS, ITEM_FLAG_TESTS, flagProbeOf, isItemQualifierToken, itemMatchContextOf, itemMatches, itemQualifierVocabulary, dayTokenOf, parseItemQuery, PRIORITY_DIGIT, TOKEN_BY_PRIORITY, } from './item-query.ts';
+export { EMPTY_ITEM_QUERY, ITEM_FLAGS, ITEM_FLAG_TESTS, flagProbeOf, isItemQualifierToken, isItemTagToken, itemMatchContextOf, itemMatches, itemQualifierVocabulary, dayTokenOf, parseItemQuery, PRIORITY_DIGIT, TOKEN_BY_PRIORITY, } from './item-query.ts';
 export type { ItemFlag, ItemFlagProbe, ItemMatchContext, ItemQuery } from './item-query.ts';
 export { itemRailGroupsOf, railSiblingsOf, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS } from './item-rail.ts';
 export type { ItemRailEntry, ItemRailGroup, ItemRailGroupWord, ItemRailKey } from './item-rail.ts';

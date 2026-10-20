@@ -16,12 +16,17 @@
  * as the board transport's bounded fetch.
  */
 import type {
-  UpdateGitStatus,
   UpdateInstallMode,
   UpdateLatestView,
   UpdatePlan,
   UpdateStep,
 } from '../core/update-check.ts'
+import type {
+  UpdateApplyResult,
+  UpdateEvidence,
+  UpdateSourceView,
+} from '../core/update-view.ts'
+import type { ClientReport, ReportedBox } from '../core/client-report.ts'
 import { routeUrl } from './route-base.ts'
 import packageJson from '../../package.json'
 
@@ -29,53 +34,8 @@ import packageJson from '../../package.json'
 export const BUNDLED_VERSION =
   (packageJson as { version?: string }).version ?? 'unknown'
 
-/** How the host established which copy is running. */
-export interface UpdateEvidence {
-  /** This copy is a link into a checkout, not a copy installed in a profile. */
-  linked: boolean
-  /** The host declared a profile at all. */
-  declared: boolean
-  /** The declaration named a different copy than the one actually running. */
-  disagreement: boolean
-}
-
-/** The installed-source view the host update route serves. */
-export interface UpdateSourceView {
-  /** Package name (the npm update command's subject). */
-  packageName: string
-  /** The running copy's version. */
-  version: string
-  /** Raw profile-manifest declaration (absent when the host cannot read it). */
-  spec?: string
-  /** Classified install mode. */
-  mode: UpdateInstallMode
-  /** The profile carrying this copy (absent when the host cannot read it). */
-  profile?: string
-  /** The profile's directory, or the checkout this copy runs from. */
-  dir?: string
-  /** The profile belongs to a packaged application, which installs through its own runtime. */
-  appManaged: boolean
-  /** How the host established which copy is running (absent from an older host). */
-  evidence?: UpdateEvidence
-  /** The `github:` install spec (absent when the repo URL is not GitHub). */
-  githubSpec?: string
-  /** How to update this copy, and who applies it. */
-  plan: UpdatePlan
-  /** The newest upstream the host could read (absent is "cannot tell"). */
-  latest?: UpdateLatestView
-  /** Local-checkout git state (only for `local` installs). */
-  git?: UpdateGitStatus
-}
-
-/** What one applied update did, as the host reported it. */
-export interface UpdateApplyResult {
-  ok: boolean
-  /** `unchanged` means the run reported success and the version did not move. */
-  outcome?: 'applied' | 'restart-required' | 'rebuilt' | 'unchanged'
-  version?: string
-  output?: string
-  error?: 'unsupported' | 'unavailable' | 'dirty' | 'tool-missing' | 'timeout' | 'failed'
-}
+/** The wire shapes this file reads - they live in core (one home per shape). */
+export type { UpdateEvidence, UpdateSourceView, UpdateApplyResult }
 
 /** Fetch one JSON document with a hard bound; any failure reads as undefined. */
 async function boundedJson(
@@ -170,6 +130,62 @@ function parseLatest(value: unknown): UpdateLatestView | undefined {
 }
 
 /**
+ * The measured boxes of one self-report, as numbers or nothing.
+ *
+ * A box that does not read as three numbers is dropped, not guessed: the whole
+ * point of a self-report is that it says what the page actually measured.
+ * @param value - the candidate map.
+ * @returns the boxes, or undefined when the value is not a map of boxes.
+ */
+function parseBoxes(value: unknown): Record<string, ReportedBox> | undefined {
+  if (typeof value !== 'object' || value === null) return undefined
+  const raw = value as Record<string, unknown>
+  const boxes: Record<string, ReportedBox> = {}
+  for (const [key, item] of Object.entries(raw)) {
+    if (typeof item !== 'object' || item === null) continue
+    const box = item as Record<string, unknown>
+    if (typeof box.top !== 'number' || typeof box.bottom !== 'number' || typeof box.height !== 'number') continue
+    boxes[key] = { top: box.top, bottom: box.bottom, height: box.height }
+  }
+  return boxes
+}
+
+/**
+ * The self-reports the host retained: one per page that reported, newest
+ * first.
+ *
+ * The host has been sending this field all along, and the reader used to drop
+ * it on the floor — which reads exactly like "no page has reported", so a
+ * reader asking "which page is running the old bundle?" gets a confident
+ * empty answer. A report that does not read as one is skipped, not repaired.
+ * @param value - the wire value.
+ * @returns the reports, or undefined when the value is not a list.
+ */
+function parseClients(value: unknown): readonly ClientReport[] | undefined {
+  if (!Array.isArray(value)) return undefined
+  const reports: ClientReport[] = []
+  for (const item of value) {
+    if (typeof item !== 'object' || item === null) continue
+    const raw = item as Record<string, unknown>
+    if (typeof raw.version !== 'string' || typeof raw.href !== 'string' || typeof raw.receivedAt !== 'number') continue
+    const viewport = raw.viewport as Record<string, unknown> | undefined
+    const boxes = parseBoxes(raw.boxes)
+    reports.push({
+      version: raw.version,
+      href: raw.href,
+      ...(typeof raw.ua === 'string' ? { ua: raw.ua } : {}),
+      ...(viewport !== undefined && typeof viewport.width === 'number' && typeof viewport.height === 'number'
+        ? { viewport: { width: viewport.width, height: viewport.height } }
+        : {}),
+      ...(typeof raw.dpr === 'number' ? { dpr: raw.dpr } : {}),
+      ...(boxes !== undefined ? { boxes } : {}),
+      receivedAt: raw.receivedAt,
+    })
+  }
+  return reports
+}
+
+/**
  * Read the installed source through the host route. An old host without the
  * route answers 404 (or hangs), which degrades to undefined like any other
  * failure — the button then compares the bundle version against npm with an
@@ -192,6 +208,7 @@ export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourc
   if (plan === undefined) return undefined
   const git = value.git as Record<string, unknown> | undefined
   const latest = parseLatest(value.latest)
+  const clients = parseClients(value.clients)
   return {
     packageName: value.packageName,
     version: value.version,
@@ -204,6 +221,7 @@ export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourc
     ...(typeof value.githubSpec === 'string' ? { githubSpec: value.githubSpec } : {}),
     plan,
     ...(latest !== undefined ? { latest } : {}),
+    ...(clients !== undefined ? { clients } : {}),
     ...(git !== undefined && typeof git === 'object' && git !== null
       && typeof git.head === 'string'
       && typeof git.dirty === 'boolean'
@@ -228,8 +246,12 @@ export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourc
  * answer lost to a live reload is not mistaken for a failed update.
  * @param timeoutMs - per-request bound (default 10 minutes).
  * @returns the result, or undefined when the answer never arrived.
+ *
+ * NOT named `applyUpdate`: that name belongs to the HOST's action (the one
+ * that really installs something). This one only ASKS. Two different acts
+ * under one name is how a reader stops trusting either of them.
  */
-export async function applyUpdate(timeoutMs = 600_000): Promise<UpdateApplyResult | undefined> {
+export async function requestUpdateApply(timeoutMs = 600_000): Promise<UpdateApplyResult | undefined> {
   const body = await boundedJson(
     routeUrl('/api/dsh-task-board/update'),
     timeoutMs,

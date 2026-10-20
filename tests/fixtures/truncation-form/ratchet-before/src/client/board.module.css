@@ -1,0 +1,10 @@
+/* Fake face, first half of the ratchet: the exempted shape, spelled exactly
+   as the exemption table records it. */
+
+.boardExcerpt {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+}

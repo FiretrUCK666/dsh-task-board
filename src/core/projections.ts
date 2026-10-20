@@ -27,10 +27,7 @@ import type {
   TranscriptLoadResult,
   TranscriptProjectionsShape,
 } from './controller.ts'
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === 'object' && value !== null
-}
+import { isRecord } from './values.ts'
 
 function num(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined

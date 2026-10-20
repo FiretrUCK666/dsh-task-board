@@ -186,24 +186,40 @@ components:
 
 ### 四层，各有归属，判据只有一条
 
-**判据是「有第二个消费者」。「看起来通用」不是准入理由**——一个只有一页用的东西放进设计系统，
-就是给下一个人一个错误的暗示。而「第二个」数的是**消费者目录**：同一个目录里十个人用，仍然是
-一个消费者。
+**判据是「有第二个消费者」。「看起来通用」不是准入理由**——一个只有一处用的东西放进设计系统，
+就是给下一个人一个错误的暗示。而「一处」= **一个消费点**，也就是一个读它 / 渲染它的**文件**：
+同一个目录里的两个文件是**两处**——同一块屏上用两遍，就说明它不是「这一页的」东西。
 
 | 层 | 位置 | 判据 |
 | --- | --- | --- |
-| 令牌 | `src/client/design/tokens.module.css` | 一个值被两处以上消费 |
-| 形态 | `src/client/design/base.module.css` | **至少两个表面消费它** |
-| 组件 | `src/client/design/<X>.tsx` + `design/components.module.css` | **至少两个消费者目录**；两个面板都渲染的**必须在这里** |
-| 页面 | `src/client/board/`、`src/client/item/`、`src/client/gallery/` | 只有这一页的几何与排版 |
+| 令牌 | `src/client/design/tokens.module.css` | 一个值被**两处以上**消费 |
+| 形态 | `src/client/design/base.module.css` | **至少两处**消费它 |
+| 组件 | `src/client/design/<X>.tsx` + `design/components.module.css` | **至少两个渲染点**；两个面板都渲染的**必须在这里** |
+| 页面 | `src/client/board/`、`src/client/item/`、`src/client/home/`、`src/client/gallery/`、`src/client/chat/` | 只有这一页的几何与排版 |
 
 **一条规则两个家**：组件的类写在 `design/components.module.css`（`ui.tsx` / `Chip.tsx` /
 `Dialog.tsx` / `Field.tsx` / `AttachmentStrip.tsx` 都从那里取），令牌写在 `tokens.module.css`，
 页面自己的几何留在页面
-表里。判定同上是**消费者目录数**，另有一种例外：**被搬走的东西依赖的模块跟着搬**——
+表里。判定同上是**消费点数**，另有一种例外：**被搬走的东西依赖的模块跟着搬**——
 `escape-stack` / `dialog-focus` / `modal-inert` 留在原地会让 `design/` 反过来 `import` `board/`，
 层方向就反了，而方向比数量更硬。它们今天也**确实有了第二个消费者**（`design/Dialog.tsx` 各读一个，
 两个浮层与 `automation-ui` 也读），所以这条早已不只是例外。
+
+**跨表同体的门槛是「三条声明」。** `scripts/verify-design-docs.mjs` 的 check 5d（`duplicateBodies`）
+判的是「**逐字完全相同**的声明体出现在两张表里」，它现在**三条声明起算**（原先是四条）：两条声明的
+声明体是一段更大形状的碎片（环宽、悬停的色、行盒），而那么小的形状**本来就该各表各写**。**四条带
+理由的豁免**（那张表里的 `PER_SHEET_FORMS`），理由都是**结构性的**：
+
+| 豁免的那一段 | 为什么它必须各表各写 |
+| --- | --- |
+| 行内弹性居中这一条文法（`display: inline-flex; justify-content: center`） | **选择器不能跨表**（类名按表哈希），而这一条本身只有三行声明、没有令牌可依——它是一句「把这个盒子摆正」的话，谁用谁写。共享的部分是**它摆正后读的那几个令牌**（间距、字号、颜色），那些各有其家 |
+| 一段说明文字的第二档墨与 12px | 同上：那三行**全是令牌**（第二档墨 + 12px），而令牌才是共享的那一份 |
+| 竖排的一列（`display: flex; flex-direction: column; min-inline-size: 0`） | 「那一列能不能缩」是这句文法的全部内容，而它**没有令牌可读**——宽度由布局决定，不是一个值 |
+| 命中环的假底（`--dsh-tb-hit-ring-block`） | DEBT：那一段在两张表里逐字相同是**有意的**——选择器不能（类名按表哈希），一条规则到不了看板的控件与设计系统的控件两处。共享的是**那份规格**，而规格就是令牌（`--dsh-tb-hit-ring-*`），它声明了一次 |
+
+**所以「选择器不同、声明相同」的那一份不是违规。** 抄一份的病不是「两处长得一样」，是「**改一处
+不报错**」；而形状相同、选择器不同的那两份，改一处的时候另一处**也不会**跟着变——它们本来就不是
+一件事，共享的那一份是**令牌**。
 
 **三件事都由 `tests/design-coverage.spec.ts` 机械守着**（改这一层之前先读它）：每个导出的组件都要
 被预览、都要被至少两个文件渲染；**跨两个面板的元件必须在 `design/` 里**，除非它在那一份的豁免表
@@ -252,6 +268,28 @@ components:
 
 字号**故意没有做成令牌**。字阶是一条**规则**（哪四档、各用在哪），不是一组被消费的值；把它做成
 令牌只会多出一层没人读的间接，而 `DESIGN.md` 与 spec 断言本来就已经钉住了那四档。
+
+**量出来的对齐值也是令牌，但住在令牌层。** `--dsh-tb-row-pad`（16px）是**行内容盒的内衬**那一档：
+它由**量**得来（不是阶梯上的某一格），却是**多处共享**——所以它在 `tokens.module.css` 声明，
+条带的横向内衬（`design/base.module.css` 的 `.stripInsetOuter` / `.stripInsetInner`）与行卡自己
+都读它。
+
+**它为什么必须在令牌层，而不是页面表。** 共享形态读页面表声明的变量，等于**层方向倒置**：
+今天靠 DOM 继承侥幸活着，换一个消费者就读不到，于是**整条声明在计算值阶段静默丢弃**
+（`padding-inline` 失效，内衬变 0）——**屏上没有任何报错**。这一条由
+`tests/strip-inset.spec.ts` 守着：判据是「一份 padding 声明同时带上了两档」，那正是**两份拷贝**
+的样子。
+
+**档位覆盖走令牌的值，不走共享形态。** 清单面板那一页按档位覆盖 `--dsh-tb-row-pad`
+（窄档 12px、宽档 16px）——**页面表重新声明这个令牌的值**，而共享形态
+（`.stripInsetOuter` / `.stripInsetInner`）始终读那一个名字。
+
+**这两件事必须分开，否则有一件会静默失效。** 自定义属性的值在**声明它的那一层**就把
+`var()` 展开了：共享形态若自己写 `calc(var(--页面表的变量) + var(--页面表的另一个))`，
+它读到的是**自己那层**的值，页面改了对它无效；反之，共享形态若在**自己这层**把两个值
+算好写死，页面连覆盖的入口都没有。所以分工是：**算在用的地方**（共享形态里是
+`calc(var(--dsh-tb-frame-air) + var(--dsh-tb-row-pad))`），**覆盖在声明值的那一层**
+（页面表重写 `--dsh-tb-row-pad`）。
 
 ### 断点只有一处
 
@@ -839,9 +877,91 @@ active 去长占。
 | 凹面 | `--dsh-tb-plane-recess` | 看板列、清单左栏、详情内分区——桌面上的浅槽 |
 | 浮面 | `--dsh-tb-plane-float` | 菜单、对话框——比纸面更实的一层 |
 
+**材质那三笔：底色 + 影 + 一枚角，共享层画，页面只说哪一档。** 一张纸由三件事同时说：**色调台阶 +
+受光的顶边 + 落在桌面上的投影**，外加**一枚角**——直角的白底方块不是这张系统里的纸。这四样都是
+**跨页面的形态**：总览的四格与卡片、看板的卡、看板卡上那张小纸片、清单的行卡、清单的展开体、
+总览的空态、展页的表面标本，全是同一张纸。
+
+**边是页面自己的几何**（清单那一行要更轻的一条边），**角不是**——这一条是量出来的教训：角原先被划
+成「页面自己的几何」，于是每个装纸的页面类都得自己记得写 `border-radius`，而「记得」是一种会在
+下一个人手里失效的机制。总览页的四格、两张卡、那条流水线一起变成直角，页面上没有任何报错，也没有
+一条门禁会红：**缺一条声明是沉默的**。
+
+所以它只声明一次，在 `design/base.module.css` 的 **`.paperSheet`**：
+
+```css
+.paperSheet {
+  background: var(--dsh-tb-paper-plane, var(--dsh-tb-plane-sheet));
+  box-shadow: var(--dsh-tb-paper-cast, var(--dsh-tb-rim), var(--dsh-tb-cast-1));
+  border-radius: var(--dsh-tb-paper-radius, var(--dsh-tb-radius-md));
+}
+```
+
+**那三个槽不是令牌层的值，是共享层与页面之间的接口。** 令牌层给的是**级**（`--dsh-tb-plane-sheet` /
+`-inlay` / `-recess` / `-float`、`--dsh-tb-rim*`、`--dsh-tb-cast-1/2/3`、`--dsh-tb-radius-sm/md/lg`）；
+槽里装的是**这一页这一枚自己挑的那一档**（`--dsh-tb-paper-plane` 是底，`--dsh-tb-paper-cast` 是影，
+可以有多笔，`--dsh-tb-paper-radius` 是角）。**页面写槽、不写 `background`、`box-shadow`、
+`border-radius` 本身**：重写那几条声明要打同一场特异性官司（页面类与共享类都是单类，谁赢靠源码
+顺序——那是一条脆弱面），而变量**不打**：几条声明作用于不同属性，顺序永远不参与决定。
+
+**页面选的是「哪一档角」，不是「有没有角」。** 什么都不写就是 `--dsh-tb-radius-md`（14px）；要更大
+就写 `--dsh-tb-radius-lg`（20px）。**没有「直角」这个选项**——它不在梯子上。
+
+**各页各写自己那一档：**
+
+| 那一枚 | 它自己的档 |
+| --- | --- |
+| 看板的卡 | `--dsh-tb-paper-plane: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-plane-sheet))`（`board.module.css` 的 `.card`）——底被那颗色相染了 6%，色相只经 `--card-tint` 进来；角读默认 md |
+| 看板卡上那张小纸片 | `--dsh-tb-paper-plane: var(--dsh-tb-plane-sheet)` + `--dsh-tb-paper-cast: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1)`（`.cardQuickRun`）——**它坐在卡片里面**，不自己写就会跟着卡片泛蓝 |
+| 清单的行卡 | `--dsh-tb-paper-plane: var(--item-surface)`（`item.module.css` 的 `.itemRow`），角 md |
+| 清单的展开体 | `--dsh-tb-paper-cast: var(--dsh-tb-rim)`（`.itemOpen`）——它贴在纸上，不浮起来，所以**只有一条边光、没有投影**；角 md |
+| 总览的空态 | `--dsh-tb-paper-plane: var(--dsh-tb-plane-float)` + `--dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-3)`（`home.module.css` 的 `.emptySheet`）——它浮起来 |
+| 总览的四格与两张卡 | 角 `--dsh-tb-radius-lg`（`.tile` / `.homeCard`）——一页上第一层的东西角更大 |
+| 总览的状态格 | 角 `--dsh-tb-radius-md`（`.sessionStat`） |
+| 总览的流水线一行 | 角 `--dsh-tb-radius-sm`（`.pipeRow`）——一行是一条信息，不是一块面板 |
+| 展页的表面标本 | `--dsh-tb-paper-plane: var(--gallery-value)` + `--dsh-tb-paper-cast: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1)`（`gallery.module.css` 的 `.gallerySpecimenBox[data-kind='surface']`）——**标本与实物读同一份**，才不会有一枚只在这一页成立的纸 |
+
+**三处有理由的例外：**
+
+1. **看板的 `.detail`**（`board.module.css` 的 `[data-dsh-taskboard-view] .detail`）——它与共享弹层
+   `.modal` **叠在同一个元素上**（`TaskDetail.tsx`：`className={`${components.modal} ${css.detail}`}`），
+   而**共享的材质类必须弱于抬升类**：详情那一档比纸面高一级、比列高两级，它读浮面的纸与最深的一档
+   投影。所以**它自己的底色与影仍由这一页写**（座位限定 + 更高特异性，压得住 `.modal`）。
+2. **共享组件 `.workbenchTab[aria-current='page']`**（`design/components.module.css`）——它是**组件
+   自己的那一档**（底 = `--dsh-tb-plane-sheet`，影 = `--dsh-tb-rim` + `--dsh-tb-cast-1`）：被选中的
+   那一格是**纸面**，它从嵌面里浮起来，于是「当前在哪一页」由材质回答，而不只是字重变了半档。挂它的
+   `design/WorkbenchBar.tsx` 不在本次范围。
+3. **展页 `.gallerySpecimenBox[data-kind='rim']`**（`gallery.module.css`）——它是**标本**：它画的就是
+   「边光令牌」那一样东西（`--dsh-tb-rim` 是**内**阴影，`--dsh-tb-cast-*` 是**外**阴影），所以
+   **影的一半是标本值本身**（`box-shadow: var(--gallery-value), var(--dsh-tb-cast-2)`）——把它换成共享
+   的材质，标本就画不出它要说的那一样东西了。
+
 **为什么必须自建。** 宿主浅色主题把 `bg-base` 与 `layer-1/2/3` 全解成同一个白，三档阴影的
 alpha 只有 5.1% / 3.9% / 7.8% 且不随主题翻转——**令牌表里根本没有第二个表面色可读**，白卡叠在
 白页上抬不起来。深色主题才有 `#151517 → #353638` 的台阶，而深色下黑投影又几乎不可见。
+
+**装不下的字怎么收尾：两档答案，都在共享层。** 这件事以前散在页面表里——普查量出 **31 处**
+各自抄了一份「`white-space: nowrap` + `text-overflow: ellipsis`」，其中 **6 处连 `min-width: 0`
+都没有**，也就是那些省略号从来没有生效过（不缩的盒子不裁剪，它是溢出）。判据是**这段话是什么**：
+
+| 这段话是什么 | 怎么收尾 | 那个家 |
+| --- | --- | --- |
+| **元信息**：时间、路径、工作区名、页签名 | 单行省略号，盒子高度不变 | `design/components.module.css` 的 `.truncate` |
+| **一句话**：标题、摘要、状态行、通知正文 | **折行**，一个字都不丢 | 同表的 `.titleText` |
+
+**`min-inline-size` 是一条槽，不是写死的零。** 一枚药丸有自己的 24px 地板、一条 feed 行的名字有
+自己那一条——把地板钉进共享形态，等于替所有消费者做了决定；不钉又会让那些盒子回到「省略号失效」
+的老毛病。所以 `.truncate` 读 `var(--dsh-tb-clip-floor, 0)`：**默认零，页面要地板就写自己那个数**。
+槽的默认值在令牌层声明（共享层读一个只有页面声明的变量，今天靠 DOM 继承活着，换一个消费者就静默
+失效）。
+
+**标题这一族现在只剩一个答案。** 曾经有三处「两行夹」（`-webkit-line-clamp: 2`），收进共享层时做成了
+第二个形态 `.titleClamp2`；但「卡片不许有截断」这条要求一旦落地，那个形态就**没有任何消费者**了——于是
+它被删掉，而不是留着一个没人敢删的孤儿类。留下的判据是：**标题折行，元信息才省略**。
+
+**裁断的代价不是那几行，是改一处不报错。** 31 份拷贝里没有一处会在改另一处时跟着变，而屏上不会有人
+说一句话。机械拦是 `scripts/verify-truncation-form.mjs`（页面表里同一条规则同时声明「不可换行」+
+「省略号」即违规；两行夹同判），**豁免 0 条**——豁免一多，这道门禁自己就得上了同一个病。
 
 **纸面不是一个固定色，是「画布 + 一档白」。** 这是这一节最容易做错的一条：纸面曾经直接读宿主的
 `layer-1`（一个硬白），于是皮肤把画布染成浅蓝的那一刻，纸面还是白——读者看到的就是「展开之后里面
@@ -904,6 +1024,31 @@ alpha 只有 5.1% / 3.9% / 7.8% 且不随主题翻转——**令牌表里根本�
 从墨推导的同一个百分比在两种极性下都成立：浅色里墨是暗的，14% 落在 `#dbdbdb` 一档；深色里墨是
 亮的，同样的数字变成一条亮线。
 
+**焦点环：宽度是一条共享的事实，颜色是两件事。** 环上有**两枚颜色**，分工不同，**别混**：
+
+- `--dsh-tb-focus-color` 是**实环**的颜色——「现在选中的是它」那一枚实边；
+- `--dsh-tb-focus-ring` 是**柔晕**的颜色——「这个字段活了」那一枚软晕。
+
+两者是**两种笔法，不是两个色相**：同一个 accent，一个原样、一个洗到底。而**环有多宽是第三件事**，
+它现在有自己的名字 `--dsh-tb-ring-w`（`design/tokens.module.css`）= **2px**，**实环与柔晕共用这一档**；
+`--dsh-tb-ring` 改读它（`0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-color)`）。原先环宽是一个裸的
+`2px` 与一个裸的 `3px` 散在四张表里——挑一次就分家：改一处，另一处留在旧值上，而屏上不会有人说一句
+话。
+
+**环色归 `--dsh-tb-focus-color`，强调色归「强调」那一层。** 原先的 `outline: 2px solid
+var(--dsh-tb-accent)` 一律改成：
+
+```css
+outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-color);
+```
+
+`--dsh-tb-accent` 说的是「强调」，不是「焦点」——拿它在焦点环上，等于让一枚环去回答一个别的问题。
+原先调用点有三种写法（accent 本尊、`--dsh-tb-focus-color` 这个别名、直接读 accent），于是「焦点环是什么
+颜色」有三个答案；现在环只读这两枚。
+
+**量法：环宽 = `--dsh-tb-ring-w` = 2px。** 读法：环的**宽度**取那一枚令牌的字面值；环的**颜色**取
+`--dsh-tb-focus-color`（实环）或 `--dsh-tb-focus-ring`（柔晕）——**两者不可互换**：实环是边，柔晕是晕。
+
 ### 边光与投影
 
 - **边光**是两条 `inset`（`--dsh-tb-rim`：上白下黑；凹面用 `--dsh-tb-rim-soft`），不是 `border`：
@@ -935,6 +1080,11 @@ display: inline-flex;
 align-items: center;                       /* 装字的盒子居中到内容盒 */
 line-height: var(--dsh-tb-text-line-h);    /* 行盒 = 1em = 一个汉字的墨高 */
 ```
+
+**量法：混排行每段 `line-height: var(--dsh-tb-text-line-h)`（= 1em）+ 容器 `align-items: center`。**
+**两种写法都算**——那条令牌的值就是 `1em`，而 `var(--dsh-tb-text-line-h)` 与裸的 `1em` 是同一档；
+判据读的是「有没有那两条声明」，不读它写的是哪一个名字。所以这一节的**结论**不需要任何测量，
+而「量得对不对」交给 `pnpm run audit`（见下面「怎么守」）。
 
 读者反复报的「所有文案都没有垂直居中于它的胶囊」，根因不在布局里：
 
@@ -1089,6 +1239,20 @@ line-height: var(--dsh-tb-text-line-h);    /* 行盒 = 1em = 一个汉字的墨�
 
 - **Style:** 12px / 字重 500 / 行高 1.5，字号用的是次级文本色；填充态加共享 chip 底 + 药丸 +
   `2px 8px` 内边距。
+- **药丸底（填充态那一层底）：** 读共享 chip 底 `--dsh-tb-chip-fill`（= 嵌面
+  `--dsh-tb-plane-inlay`）。**但共享的 `.chipFill` 把「底」与「高度」捆在一起**（底 + 药丸 +
+  `--dsh-tb-chip-h` = 20px + 内衬 8px），所以**要另一档高的药丸就自己写那一档的底**——这不是
+  抄一份，理由是结构性的：
+  - **看板那一处**（`src/client/board.module.css`）：诉求行 `.boardDemand` 与列标签 `.columnTab`
+    各自写 `background: var(--dsh-tb-chip-fill)` + `border-radius: var(--dsh-tb-pill)`，高度取
+    **按钮那一档** `--dsh-tb-button-h`（28px）而不是 `.chipFill` 的 20px；`.boardModes .notifyBell`
+    同理（它要一枚 28×28 的方章）。**挂上去再覆盖高度**等于同一件事写两遍，而跨表的高度覆盖还要
+    打同一场特异性官司（谁赢靠源码顺序——那是一条脆弱面）。列标签**选中那一档把底换成强调色的
+    洗底**（`color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash), transparent)`）+ 一条
+    强调色边——它回答的是「现在在哪一页」，那是一句**强调**，不是关于工作的事实。
+  - 清单那一侧的选择芯片另有一条自己的条文（按下 = 实墨药丸）——见 Buttons·Toggle 态的例外；
+    而清单的标签药丸（`.itemTag`）也自己写那一层底，读的是自己的 `--item-fill`——它是
+    `--dsh-tb-chip-fill` 的别名，理由与上面同一条。
 - **两槽文法（关键）:** 每个 chip 由「几何槽」（`.chipLead`，承载图标或转圈）与「文本槽」
   （`.chipBody`，负责省略号）组成，两者都是 chip 的 flex 子项。文本槽吸收收缩并省略，
   几何槽永不收缩——所以标签被截断时图标不会被一起吃掉。

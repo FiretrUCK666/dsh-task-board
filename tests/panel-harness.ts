@@ -1471,7 +1471,7 @@ function cardsFor(items: readonly ItemRecord[], only?: readonly string[]): { id:
   return [...new Set(ids)].map(id => ({ id, title: titles[id] ?? `看板上的 ${id}` }))
 }
 
-export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string }[] = [{ id: 'task-1', title: '画廊第二版' }], admit?: AttachmentAdmitter) {
+export function fakeController(calls: string[], tasks: { id: string; title: string; description?: string; status?: string; prompt?: string }[] = [{ id: 'task-1', title: '画廊第二版' }], admit?: AttachmentAdmitter) {
   const minted: TaskRecord[] = []
   let rows: readonly { readonly id: string; readonly title: string; readonly description?: string; readonly status?: string; readonly prompt?: string }[] = tasks
   /**

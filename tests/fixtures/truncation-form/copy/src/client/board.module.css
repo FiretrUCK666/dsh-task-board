@@ -1,0 +1,13 @@
+/* Fake face: a PAGE sheet that spells out the truncation form itself.
+   The shared layer has a home for this shape (design/components.module.css
+   `.truncate`), so re-spelling it here is the copy this gate is for. */
+
+.boardTitle {
+  color: var(--dsh-tb-text-1);
+  font-size: 13px;
+  font-weight: 600;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

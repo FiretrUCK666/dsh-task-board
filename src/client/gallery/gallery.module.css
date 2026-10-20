@@ -258,8 +258,11 @@
   block-size: 40px;
   border: 0;
   border-radius: var(--dsh-tb-radius-sm);
-  background: var(--gallery-value);
-  box-shadow: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
+  /* **材质那两笔由共享层给**（`design/base.module.css` 的 `.paperSheet`）：这一块
+   * 展示的正是「一个面令牌长成一张纸」的样子，所以它用的就是**生产里那一份**材质——
+   * 标本与实物读同一份，才不会有一枚只在这一页成立的纸。 */
+  --dsh-tb-paper-plane: var(--gallery-value);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
 }
 
 /* ── 边光与投影：一块**真纸**，让那一对阴影各自落在它该落的位置上 ────────────
@@ -337,7 +340,7 @@
  * （占比条会因此收成零宽）。行高决定行盒高度，`block` 不影响它。 */
 .mixedRowSpecimen > * {
   display: block;
-  line-height: 1em;
+  line-height: var(--dsh-tb-text-line-h);
 }
 
 .mixedRowDot {

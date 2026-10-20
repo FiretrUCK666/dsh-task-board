@@ -405,7 +405,7 @@
   /* **它是一条记录，所以它有纸面。** 之前是 `background: none` + 无边框：一行里的
      名字、时间、按钮各自浮在弹层的底上，读起来是「几段散落的字」，而不是「一条
      发生了的事」。纸面 + 发丝边 + 悬停读全系统那一档——与行卡、列表行同一个材质。 */
-  background: var(--dsh-tb-plane-sheet);
+  --dsh-tb-paper-plane: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
   text-align: left;
@@ -508,8 +508,6 @@
   color: var(--dsh-tb-text-1);
   border-top: var(--dsh-tb-border-soft);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 /* THE identity slot order — task first, its session right beside it, status
    after: the task and the conversation that produced the row read as one
@@ -524,8 +522,6 @@
   min-width: 6em;
   max-width: 10em;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
 }
 .notifySession {
@@ -533,8 +529,6 @@
   min-width: 4em;
   max-width: 40%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
   /* Identity, not metadata: the session is WHO produced this row — the
      secondary ink (not tertiary) keeps it readable beside the task; the
@@ -553,15 +547,11 @@
    ask. Tertiary ink: metadata, never the message. */
 .notifyExcerpt {
   flex: 1 1 100%;
-  min-width: 0;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
+  /* 折行的机制在共享层（`.titleText`）：通知抽屉里那句摘要是一个标题，不是一条
+     元信息，所以它跟看板卡片的标题走同一条律。这一条只说字号与位置。 */
   font-size: 12px;
   line-height: 1.45;
   color: var(--dsh-tb-text-2);
-  overflow-wrap: anywhere;
 }
 
 /* 工具行 = 搜索（左，它与下面的列是同一件事的两端）+ 报告簇 + 弹性留白 +
@@ -657,7 +647,7 @@
 }
 
 .boardDemand:focus-visible {
-  outline: 2px solid var(--dsh-tb-focus-color);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-color);
   outline-offset: 2px;
 }
 
@@ -677,9 +667,6 @@
      （字体自己的内容区）墨就整个在里面，而**字的位置一个像素都不动**：墨心与行盒中心差的是字体
      度量，与行盒多高无关（半行距在上下对称地加减）。 */
   line-height: 16px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* Fresh-arrival flash for the demand row: while the board stays open, a new
@@ -780,7 +767,7 @@
 }
 
 .cruiseMore:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -855,9 +842,6 @@
 
 .cruiseStateLine {
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 11px;
   /* Tier 2, not 3, on purpose. The third tier's documented meaning is "faint,
      disposable" (它承载时间戳、占位符这类可舍弃的元信息), and this line is the
@@ -897,8 +881,6 @@
   min-width: 0;
   display: block;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
   font-variant-numeric: tabular-nums;
   color: var(--dsh-tb-text-2);
@@ -985,7 +967,7 @@
 }
 
 .timeFieldCalendar:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -1018,9 +1000,6 @@
    track — so a new hidden-bar surface joins the list instead of re-typing. */
 :is(.columnTabs, .cards, .columns) {
   scrollbar-width: none;
-}
-:is(.columnTabs, .cards, .columns)::-webkit-scrollbar {
-  display: none;
 }
 
 
@@ -1078,7 +1057,7 @@
 }
 
 .columnTab:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -1236,8 +1215,6 @@
   font-weight: 600;
   color: var(--dsh-tb-text-1);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* 计数药丸：**一个盒子，不是一枚读不成形的读数。** 嵌面（比列头的洗底再深
@@ -1371,13 +1348,13 @@
      8px dot on the title line carries the exact picked color, identical to
      the palette swatch, so the card never looks 偏色). Applied as data
      through --card-tint, never a CSS literal; unset cards stay plain. */
-  background: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-plane-sheet));
+  --dsh-tb-paper-plane: color-mix(in srgb, var(--card-tint, transparent) 6%, var(--dsh-tb-plane-sheet));
   border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-md);
+  --dsh-tb-paper-radius: var(--dsh-tb-radius-md);
   /* 一张被抬起的纸：色调台阶（sheet）+ 一条上边光（rim）+ 一条下投影
      （cast-1）。三件事同时成立才叫「纸」——静止态就有投影，这是它与
     下面那张凹面列的唯一区别，也是这次修的东西。 */
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   cursor: pointer;
   color: var(--dsh-tb-text-1);
   font-family: inherit;
@@ -1451,17 +1428,10 @@
      lift is carried by the cast (a hover that re-colours the edge too reads as
      a different surface, not the same sheet raised). */
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
-  transform: translateY(-1px);
 }
 
-/* 按下：立刻回位。反馈要快——慢一拍就像没反应。 */
-.card:active {
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
-  transform: translateY(0);
-  transition:
-    box-shadow var(--dsh-tb-motion-fast),
-    transform var(--dsh-tb-motion-fast);
-}
+/* 按下回位**住共享层**（`.paperLift:active`）：位移与影一起回位、读「快」那一档，
+   那是纸面对指针的统一反应，不是这一页的。看板这里原本逐字抄了一份，两份会分家。 */
 
 /* Selection wins over hover while the pointer stays on the card: equal
    specificity with .card:hover (written later) would replace the selection
@@ -1475,15 +1445,7 @@
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
 }
 
-/* A selected card still answers the press: the ring is selection-bound, the
-   compression is the click's own feedback. */
-.card.selectedCard:active {
-  transform: translateY(0);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
-  transition:
-    box-shadow var(--dsh-tb-motion-fast),
-    transform var(--dsh-tb-motion-fast);
-}
+
 
 /* Same-column reorder: a bold accent bar drawn exactly at the insertion
    gap (see drop-position.ts) — the whole feedback, never a column-wide
@@ -1544,7 +1506,7 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
-  box-shadow: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
+  --dsh-tb-paper-cast: var(--dsh-tb-rim-soft), var(--dsh-tb-cast-1);
   opacity: 0;
   /* An INVISIBLE control must not be able to receive a tap. `opacity: 0` alone
      does not disable hit-testing, so on a touch device (no hover to reveal it) a
@@ -1691,19 +1653,18 @@
 
 .cardTitle {
   min-width: 0;
-  /* Title step: 15/600, a declared 22px line box, two lines and then an
-     ellipsis. The line height is spelled from the type ladder, not left to the
-     font — the mark above is centred against it. */
+  /* Title step: 15/600, a declared 22px line box. The line height is spelled
+     from the type ladder, not left to the font — the card's colour mark is
+     centred against it.
+
+     **标题折行，不夹断。** 夹断那一族（`-webkit-line-clamp` 与它要的两条配套）
+     住在共享的 `.titleText` 里：一张卡的标题是「这是哪一件事」的唯一答案，夹掉
+     后半句，读者就得靠猜，而猜错的代价是点开一张不该点的卡。这一条只说字号、
+     字重与断词——一个没有空格的长串也得断在盒里，不许顶出卡片。 */
   font-size: var(--dsh-tb-type-title-size);
   line-height: var(--dsh-tb-type-title-line);
   font-weight: 600;
-  overflow: hidden;
-  /* A single unbreakable token (URL, a run-on word in any font) also
-     breaks instead of pushing past the clamped box. */
   overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 .cardExcerpt {
@@ -1714,11 +1675,6 @@
   line-height: var(--dsh-tb-type-body-line);
   font-weight: 400;
   color: var(--dsh-tb-text-2);
-  overflow: hidden;
-  overflow-wrap: anywhere;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 /* Two-row meta shared by every status: row 1 = workspace + last activity,
@@ -1799,8 +1755,6 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .cardBadges {
@@ -1934,8 +1888,6 @@
   color: var(--dsh-tb-text-2);
   overflow: hidden;
   overflow-wrap: anywhere;
-  white-space: nowrap;
-  text-overflow: ellipsis;
 }
 
 /* Feed tools: filter group + search + actions in one wrapping row. Labels
@@ -1966,9 +1918,6 @@
   overflow-x: auto;
   padding: 2px 0 6px;
   scrollbar-width: none;
-}
-.filterChips::-webkit-scrollbar {
-  display: none;
 }
 .filterChip {
   display: inline-flex;
@@ -2187,85 +2136,10 @@
   block-size: var(--dsh-tb-button-h);
 }
 
-/* --- iOS-style switch (Switch component) -------------------------------------- */
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* --- modals ------------------------------------------------------------------- */
-
-
-
-/* THE single scrollbar grammar for every panel scroll body: a THIN bar that
-   sits flush against the surface edge (each of these owns its region's full
-   height, so the bar never floats in a gutter). ONE list, ONE rule set —
-   adding a scroll region means adding its selector here, never re-inventing a
-   width or color (the 「滚动条颜色粗细不一套」 fix: every bar on the board
-   reads the same).
-
-   WHICH IMPLEMENTATION WINS: in Chromium the standard `scrollbar-width` /
-   `scrollbar-color` SILENCE the `::-webkit-scrollbar` pseudo-elements
-   entirely — measured on the running Edge: both declared → the native 10px
-   bar with arrow buttons rendered and every rule below was dead code (the
-   「电脑端冒出原生箭头」 in the plan/question card). So the standard
-   properties are gated behind `@supports not selector(::-webkit-scrollbar)`:
-   engines that speak webkit (Chromium) take the styled path below — 8px,
-   thumb-colored, NO arrow buttons (the button pseudo must be hidden
-   explicitly or the default arrows come back); engines that don't get
-   thin+themed standard bars from the gate. One bar, one look, both engines —
-   never STYLING (thin + color) declarations of scrollbar-width outside this
-   gate; the hide-lists elsewhere (`scrollbar-width: none`) are fine because
-   both implementations agree on the outcome: hidden. */
-/* THE SHARED SCROLL MOUNT. One class, applied by every scroll region on the
-   surface, so the list panel's own stylesheet never has to restate the
-   scrollbar grammar below — a second copy of those twenty lines is a second
-   implementation path, and the two drift on the first Chromium change.
-
-   It lives here rather than beside the surfaces that use it because the RULE it
-   mounts is the one mechanism those surfaces have in common; a mount that
-   travelled to whichever stylesheet happened to be edited first would move the
-   mechanism again, and this list has already moved twice for no reason. */
-
-@supports not selector(::-webkit-scrollbar) {
-  :is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll]) {
-    scrollbar-width: thin;
-    scrollbar-color: var(--dsh-tb-text-3) transparent;
-  }
-}
-
-:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-thumb {
-  background: var(--dsh-tb-text-3);
-  border-radius: 4px;
-  background-clip: padding-box;
-}
-
-:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-:is(.detailBody, .commentsScroll, .sessionRailFolds, .reviewTranscriptScroll, .interactionPlanBody, .slashMenu, .sessionContextPanel, [data-dsh-tb-scroll])::-webkit-scrollbar-button {
-  display: none;
-}
 
 /* HOW A SECOND PANEL MOUNTS THIS GRAMMAR: with the marker attribute, not with a
    class. `.sessionContextPanel` and the rest are hashed by CSS Modules **inside
@@ -2284,10 +2158,6 @@
    「it breaks through the sky」 a reader sees on a phone. One step of inset at
    each end puts the bar's ends on the straight part of the edge, where they read
    as a bar that belongs to the rows rather than to the card. */
-[data-dsh-tb-scroll]::-webkit-scrollbar-track {
-  background: transparent;
-  margin-block: 10px;
-}
 
 @keyframes dshTbDialogIn {
   from { opacity: 0; transform: translateY(6px) scale(0.985); }
@@ -2379,11 +2249,9 @@
   width: 100%;
   min-width: 0;
   padding-right: var(--dsh-tb-select-arrow-inset);
-  /* The box may be narrower than its text: ellipsize, do not overlap. */
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   cursor: pointer;
+  /* 裁剪形态归共享层（渲染它的 `Select` 挂着 `.truncate`）：那三条不再写第二遍。
+     13 处 `.selectWrap` 包的全是 `Select`，元素选择器只是「谁渲染的」的偶然事实。 */
 }
 
 .selectWrap::after {
@@ -2481,8 +2349,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--dsh-tb-text-2);
 }
 
@@ -3153,8 +3019,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
   color: var(--dsh-tb-text-1);
 }
@@ -3218,7 +3082,7 @@
 }
 
 .sessionRow:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: -2px;
 }
 
@@ -3226,7 +3090,7 @@
    Button component (one keyboard grammar, no stray browser outline). */
 .sessionRowHandle:focus-visible,
 .rowHide:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: 2px;
 }
 
@@ -3355,7 +3219,7 @@
 }
 
 .addSessionRow:focus-visible {
-  outline: 2px solid var(--dsh-tb-focus-color);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-color);
   outline-offset: 1px;
 }
 
@@ -3373,8 +3237,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* The folder a row belongs to, shown only in the picker's 未分组 group (where
@@ -3385,8 +3247,6 @@
   min-width: 0;
   max-width: 40%;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 11px;
   color: var(--dsh-tb-text-2);
 }
@@ -3522,8 +3382,6 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--dsh-tb-text-2);
 }
 
@@ -3574,7 +3432,6 @@
   flex: 0 1 auto;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   font-size: 11px;
   font-weight: 400;
   color: var(--dsh-tb-text-2);
@@ -3583,7 +3440,6 @@
      translucent row under a glass skin). */
   background: var(--dsh-tb-surface-sunken);
   border-radius: var(--dsh-tb-pill);
-  white-space: nowrap;
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
 }
 
@@ -3683,8 +3539,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
   font-weight: 600;
   color: var(--dsh-tb-text-1);
@@ -3808,8 +3662,6 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 12px;
   font-weight: 600;
   color: var(--dsh-tb-text-1);
@@ -4085,7 +3937,6 @@
 /* --- 焦点：搜索那一格自己的环在 `SearchField` 里（design 表），此处只剩排期预设那一格 --- */
 .schedulePreset:focus {
   border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
 }
 
 
@@ -4117,7 +3968,7 @@
    not the 2px outline every sibling carries — and a colour-only shift is
    invisible to anyone who cannot distinguish it. Same grammar as `.cruiseMore`. */
 .cruiseLimit:focus-visible {
-  outline: 2px solid var(--dsh-tb-accent);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-accent);
   outline-offset: 1px;
 }
 
@@ -4214,8 +4065,6 @@
   letter-spacing: -0.01em;
   line-height: 1.4;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .reviewBadge {
@@ -4714,11 +4563,9 @@
   grid-area: figures;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
   font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 /* The colored composition bar: 4px rounded track, hairline gaps, min-width
@@ -4768,12 +4615,11 @@
   min-width: 0;
 }
 
-.reviewMeterRow > :nth-child(2) {
+/* 第二格是这一行的名字（第一格色标、第三格数值）。它以前靠 `:nth-child(2)`
+   定位——**结构位置不是身份**，中间插一格就会指错。给它一个名字；裁剪形态在共享层，
+   这一条只说它在网格里占哪个区。 */
+.reviewMeterLabel {
   grid-area: label;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 .reviewMeterValue {
@@ -4847,9 +4693,7 @@
      when the difference is deliberate rather than accidental. */
   font-size: 12px;
   color: var(--dsh-tb-text-2);
-  white-space: nowrap;
   overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .reviewConfigRow > .selectWrap {
@@ -4895,8 +4739,6 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
 /* ══ 评论与 Markdown 渲染 ══════════════════════════════════════════════════════════════
@@ -6756,8 +6598,6 @@
   /* The label is the ellipsis slot (the dot and the count never shrink). */
   .columnTabLabel {
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
   }
 
   
@@ -7110,8 +6950,6 @@
 .toolCardOpTitle {
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   color: var(--dsh-tb-text-1);
 }
 

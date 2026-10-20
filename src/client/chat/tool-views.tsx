@@ -22,6 +22,7 @@
 import { useState } from 'react'
 import { t, type TaskBoardKey } from '../locales.ts'
 import { Button, Icon } from '../design/ui.tsx'
+import type { ActionKind } from '../../core/board-actions.ts'
 import css from '../board.module.css'
 
 /** The tool names this plugin contributes, spelled as they travel on the wire. */
@@ -47,8 +48,15 @@ interface OpReport {
   readonly detail: string
 }
 
-/** The classifications, spelled as the catalog's verb comes back. */
-type OpKind = 'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped'
+/**
+ * The classifications, spelled as the catalog's verb comes back.
+ *
+ * **动作那几档来自动作目录**（`core/board-actions.ts` 的 `ActionKind`），不是这里
+ * 手抄的一份：目录里加一种动作，host 那边会编译红，作者去改 host；而这一份是另一个
+ * 名字、另一个文件，**没有任何东西逼它改**——新动作在对话里那张卡上就没有标签，
+ * 不报编译错、不报运行错。
+ */
+type OpKind = ActionKind | 'unchanged' | 'failed' | 'skipped'
 
 /**
  * THE FIELDS THIS CARD READS.
@@ -194,7 +202,15 @@ function ExecuteRow(props: ToolCallViewProps) {
               <span className={css.toolCardOpKind}>{t(KIND_KEYS[report.kind])}</span>
               {report.ref !== undefined && <span className={css.toolCardOpRef}>{report.ref}</span>}
               {report.title !== undefined && report.title !== '' && (
-                <span className={css.toolCardOpTitle}>{report.title}</span>
+                /* The title WRAPS now (`.toolCardOpTitle` carries no clamp) — the
+                   receipt is the only place that says what the action touched, so
+                   it was the worst thing on the panel to cut at one line. The
+                   tooltip and the accessible name repeat it because touch has no
+                   hover: the visible text can still be reading in a narrow host
+                   column, and neither of those two ever is. */
+                <span className={css.toolCardOpTitle} title={report.title}>
+                  {report.title}
+                </span>
               )}
               <span className={css.toolCardOpDetail}>{report.detail}</span>
             </li>

@@ -9,9 +9,13 @@
  * WHAT IT DOES NOT DO. It does not invent numbers. Every field is either
  * derived from the two documents or absent:
  *
- *   - `demand` / `review` come from `boardDemandOf`, the SAME function the
- *     board header and the notification drawer read, so the three surfaces
- *     cannot disagree by construction.
+ *   - `demand` / `waiting` / `review` come from `boardDemandOf`, the SAME
+ *     function the board header and the notification drawer read, so the
+ *     surfaces cannot disagree by construction. `waiting` is the half of
+ *     `demand` that is a suspended conversation — it is CARRIED, never
+ *     re-derived by subtracting `review` from `demand`: that subtraction is
+ *     only true while `total === waiting + review`, and the day it stops
+ *     being true the home page would be quietly wrong instead of red.
  *   - `overdue` / `dueToday` come from `datePostureOf`, the same verdict the
  *     list row prints under its title.
  *   - `p85Days` is absent until real completions exist (see `flow-metrics.ts`),
@@ -34,6 +38,17 @@ export declare const PIPELINE_ORDER: readonly TaskStatus[];
 export interface WorkbenchCounts {
     /** Cards plus conversations waiting on a human (`boardDemandOf().total`). */
     readonly demand: number;
+    /**
+     * The half of `demand` that is a suspended conversation
+     * (`boardDemandOf().waiting`) — the conversations stopped on a question,
+     * an approval or a plan.
+     *
+     * It is CARRIED here rather than derived by `demand - review`: that
+     * subtraction holds only while `total === waiting + review`, and the day
+     * the gate grows a third kind of work it silently turns into a wrong
+     * number instead of a red build.
+     */
+    readonly waiting: number;
     /** Cards whose finished work nobody has looked at yet. */
     readonly review: number;
     /** Cards whose column is 进行中. */

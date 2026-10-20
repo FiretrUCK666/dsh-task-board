@@ -17,35 +17,7 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
-/** One box as the page measured it (CSS pixels, viewport-relative). */
-export interface ReportedBox {
-    /** Top edge in CSS px. */
-    top: number;
-    /** Bottom edge in CSS px. */
-    bottom: number;
-    /** Height in CSS px. */
-    height: number;
-}
-/** One page's self-report (all fields best-effort). */
-export interface ClientReport {
-    /** The bundle version baked into the reporting page. */
-    version: string;
-    /** The page URL the report came from. */
-    href: string;
-    /** The browser's user agent. */
-    ua?: string;
-    /** Viewport size in CSS px. */
-    viewport?: {
-        width: number;
-        height: number;
-    };
-    /** Device pixel ratio. */
-    dpr?: number;
-    /** The landmark boxes (absent when the board was not mounted yet). */
-    boxes?: Record<string, ReportedBox>;
-    /** Server-side receipt instant (ms). */
-    receivedAt: number;
-}
+import type { ClientReport } from '../core/client-report.ts';
 /** Read the retained reports, newest first (a copy — callers never mutate). */
 export declare function readClientReports(): ClientReport[];
 /** Drop everything (test seam). */

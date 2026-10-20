@@ -1,0 +1,11 @@
+/* Fake face, second half of the ratchet: the SAME site, one declaration
+   changed (the clamp count). The exemption is keyed by the shape, so it no
+   longer applies and the gate must report the site again. */
+
+.boardExcerpt {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+}

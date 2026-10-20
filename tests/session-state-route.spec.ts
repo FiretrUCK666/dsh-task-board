@@ -63,7 +63,7 @@ describe('queryParamOf', () => {
 })
 
 describe('createSessionStateHandler', () => {
-  it('400 without a session id, else 200 with the ok envelope', async () => {
+  it('400 without a session id, else 200 with the shared envelope', async () => {
     const handler = createSessionStateHandler({ sessions: { get: () => 'agent' }, planMode, goals })
     const res400: { status: number; body: string | undefined } = { status: 0, body: undefined }
     await handler({ url: '/api/dsh-task-board/session-state' } as never, { writeHead: (status: number) => { res400.status = status }, end: (body?: string) => { res400.body = body } } as never)
@@ -71,7 +71,10 @@ describe('createSessionStateHandler', () => {
     const res: { status: number; body: string | undefined } = { status: 0, body: undefined }
     await handler({ url: '/api/dsh-task-board/session-state?sessionId=s1' } as never, { writeHead: (status: number) => { res.status = status }, end: (body?: string) => { res.body = body } } as never)
     expect(res.status).toBe(200)
-    const parsed = JSON.parse(res.body as string) as Record<string, unknown>
-    expect(parsed.plan).toEqual({ active: true, pending: true })
+    const parsed = JSON.parse(res.body as string) as { ok: boolean; value: Record<string, unknown> }
+    // The SHARED envelope: every route answers `{ok, value}` — the view is in
+    // `value`, not spread over the top level.
+    expect(parsed.ok).toBe(true)
+    expect(parsed.value.plan).toEqual({ active: true, pending: true })
   })
 })

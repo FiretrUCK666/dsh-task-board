@@ -25,8 +25,10 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import { json, readJsonBodyDetailed, type RouteEnvelope } from './http-json.ts'
+import { json, readJsonBodyDetailed } from './http-json.ts'
+import type { RouteEnvelope } from '../core/http-envelope.ts'
 import type { AttachmentRef } from '../core/attachment.ts'
+import { messageOf, stringOf } from '../core/values.ts'
 
 /** How much of a request body this route accepts (base64 expands by 4/3). */
 const MAX_BODY_BYTES = 40 * 1024 * 1024
@@ -105,11 +107,6 @@ function bytesOf(data: string): Uint8Array | undefined {
 /** Base64 of raw bytes (canonical, no data-URL prefix). */
 function base64Of(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64')
-}
-
-/** Read a non-empty string field. */
-function stringOf(value: unknown): string | undefined {
-  return typeof value === 'string' && value !== '' ? value : undefined
 }
 
 /**
@@ -213,11 +210,6 @@ async function readStored(
   } catch (error) {
     return { ok: false, code: 'unreadable', message: messageOf(error) }
   }
-}
-
-/** One error's message, never a throw. */
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : String(error)
 }
 
 /**

@@ -128,7 +128,7 @@ export function NewSessionModal({ controller, task, onClose, onCreated }: {
           <Field label={t('detail.sessionNewTitleLabel')} hint={t('detail.sessionNewTitleHint')}>
             <Input
               value={title}
-              placeholder={t('detail.sessionNewTitlePlaceholder')}
+              placeholder={t('new.titlePlaceholder')}
               onChange={event => { setTitle(event.target.value); stash(event.target.value, config) }}
             />
           </Field>

@@ -59,6 +59,7 @@ import {
   itemSheet,
   itemSheetPath,
   itemSurfaceFiles,
+  openRowOfEnv,
   panelCss,
   readSource,
   renderPanel,
@@ -963,8 +964,14 @@ describe('the panel fills the stage it is given', () => {
     // table paints nothing.
     const rowBase = (rulesOf(stripCssComments(css), 'itemRow')[0] ?? '').replace(/\s+/g, ' ')
     expect(rowBase, 'the row has no base rule — the card is painted by no rule').not.toBe('')
-    expect(rowBase, `.itemRow's base rule does not paint the one card surface: ${rowBase}`)
-      .toContain('background: var(--item-surface)')
+    // **THE CARD SURFACE IS STILL PAINTED BY THE ROW — it just says so through the
+    // shared material's slot.** The row names the surface it stands on
+    // (`--item-surface`) and the shared material class paints it; what this
+    // assertion forbids is a row that borrows somebody else's surface (the shell
+    // card painting a second opaque layer over the row cards) — the white wall
+    // again, the thing this panel is being cured of.
+    expect(rowBase, `.itemRow's base rule does not name the one card surface: ${rowBase}`)
+      .toContain('--dsh-tb-paper-plane: var(--item-surface)')
     expect(rowBase, 'the row card is partly transparent, so text lands on whatever is behind the panel')
       .not.toMatch(/transparent/)
     // **AND IT IS THE SHADOW, not nothing.** In the light theme the host's three
@@ -979,18 +986,31 @@ describe('the panel fills the stage it is given', () => {
     // palette rule exists to remove. So the gate reads what the claim actually
     // needs: a cast from the ladder AND the lit top edge that makes the card read
     // as a raised sheet rather than a shaded box.
-    const rowShadow = /(?:^|[;{\s])box-shadow\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
-    expect(rowShadow, '.itemRow has no shadow, so in the light theme — where the host\'s three background layers are the SAME colour — nothing says this card is in front of the page')
-      .toContain('var(--dsh-tb-cast-1)')
-    expect(rowShadow, 'the row card lost its lit top edge — a cast with no rim is a shadow under a box, not a raised sheet')
+    //
+    // **Those two strokes are the shared material's now** (`design/base.module.css`):
+    // the row hands the material its surface and says nothing about the shadow —
+    // so the claim is read on the shared sheet, and the row must not carry a second
+    // shadow of its own (two homes is the thing being removed).
+    const materialSheet = readFileSync(new URL('../src/client/design/base.module.css', import.meta.url), 'utf8')
+    const material = (rulesOf(stripCssComments(materialSheet), 'paperSheet')[0] ?? '').replace(/\s+/g, ' ')
+    expect(material, 'the shared material class is gone — nothing paints a card surface any more').not.toBe('')
+    expect(material, 'the shared material lost the lit top edge — a cast with no rim is a shadow under a box, not a raised sheet')
       .toContain('var(--dsh-tb-rim)')
+    expect(material, 'the shared material lost the first cast, so in the light theme — where the host\'s three background layers are the SAME colour — nothing says this card is in front of the page')
+      .toContain('var(--dsh-tb-cast-1)')
+    expect(rowBase, '.itemRow paints a shadow of its own — the material has two homes again')
+      .not.toMatch(/box-shadow/)
     // THE EDGE AND THE SHAPE: a card reads as an object — a hairline edge and the
     // card radius the board's own cards read (a card inside a panel is a THING,
     // not another panel).
     const rowBorder = /(?:^|[;{\s])border\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
     expect(rowBorder, 'the row card has no hairline edge — a card without an edge is a wash, not a card')
       .toBe('var(--item-hair-strong)')
-    const rowRadius = /(?:^|[;{\s])border-radius\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
+    /* **圆角走纸面的槽。** 共享的 `.paperSheet` 读 `--dsh-tb-paper-radius`、页面写它，
+       两条声明作用于不同属性，不打同一场特异性官司（`border-radius` 与 `border-radius`
+       是同一条属性，谁赢取决于两张表在产物里的先后——那是一条会在某次构建里静悄悄
+       翻转的脆弱面）。判据要说的仍然是「这一档是 md」，只是那个值现在写在变量的右边。 */
+    const rowRadius = /(?:^|[;{\s])--dsh-tb-paper-radius\s*:\s*([^;]+)/.exec(rowBase)?.[1] ?? ''
     expect(rowRadius, 'the row card is not on the card radius the board\'s own cards read')
       .toBe('var(--dsh-tb-radius-md)')
     for (const skeleton of ['itemShell', 'itemTable']) {
@@ -1973,7 +1993,11 @@ describe('a fact that does not fit is truncated in its own text slot', () => {
      * that no longer exists and say nothing about what renders. */
     const slot = rulesOf(designCss(), 'truncate').join('\n')
     expect(slot, 'the shared text slot does not declare how it ends when it is full').toMatch(/text-overflow\s*:\s*ellipsis/)
-    expect(slot, 'the shared text slot does not declare a floor of its own, so it pushes its neighbours').toMatch(/min-width\s*:\s*0/)
+    /* 地板是一条**槽**而不是写死的零：一枚药丸有自己的 24px 地板，共享形态把它钉成 0
+     * 就等于替所有消费者做了决定。判据因此读「它声明了一条可以收缩的地板」，而槽的
+     * 默认值就是零——`var(--dsh-tb-clip-floor, 0)`。 */
+    expect(slot, 'the shared text slot does not declare a floor of its own, so it pushes its neighbours')
+      .toMatch(/min-(?:inline-)?(?:width|size)\s*:\s*var\(--dsh-tb-clip-floor,\s*0\)/)
   })
 
   it('the probe bites, and a track that resolves too narrow is reported', () => {
@@ -2655,7 +2679,10 @@ describe('一行里的记号与字：胶囊居中自己的盒子，几块字共�
         .toBe('center')
     }
     expect(css, 'itemGroupText 的段没有自己的行盒，1em 就不会按字号解析')
-      .toMatch(/\.itemGroupText > \*\s*\{[\s\S]{0,200}?line-height:\s*1em/)
+      // **两种写法都是同一条法则**：字面 `1em`，或者令牌 `--dsh-tb-text-line-h`
+      // （它就是 `1em`）。判据读「这一段有没有自己的行盒」，不读那一个数怎么写——
+      // `scripts/verify-capsule-centring.mjs` 也按这两族一起认。
+      .toMatch(/\.itemGroupText > \*\s*\{[\s\S]{0,200}?line-height:\s*(?:1em|var\(--dsh-tb-text-line-h\))/)
   })
 
   it('而这把尺子咬得动：把其中一处改回基线共线，它就报', () => {
@@ -3625,7 +3652,7 @@ describe('the render artifact', () => {
     // on this panel, so 「nobody looked at it」 is not a state it may stay in. It
     // is its OWN variable: `DSH_PANEL_OPEN` names a layer, and one variable
     // cannot answer both questions at once.
-    const openRow = process.env.DSH_PANEL_ROW
+    const openRow = openRowOfEnv()
     writeRenderArtifact(target, empty ? [] : fixtures(), band, page, scheme, openRow === '' ? undefined : openRow)
     expect(existsSync(target)).toBe(true)
   })

@@ -10,10 +10,11 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  CRUISE_TICK_MS, DAY_MS, applyManualToggle, coveringWindow, cruiseStatusLineOf, cruiseWindowGrammarOf,
+  CRUISE_TICK_MS, applyManualToggle, coveringWindow, cruiseStatusLineOf, cruiseWindowGrammarOf,
   duplicateWindowOf, isWindowActive, normalizeWindow, setCruiseSchedule, sortWindows, tickCruise,
   windowRangeIssueOf, windowSortKeyOf, type CruiseWindow,
 } from '../src/core/cruise.ts'
+import { DAY_MS } from '../src/core/item-dates.ts'
 import { BoardController, type CruiseState, type SessionsControllerFace } from '../src/core/controller.ts'
 import { BoardSyncClient, SyncedCruiseStore, SyncedTaskStore, type BoardSyncTransport } from '../src/core/host-sync.ts'
 import { applyCommit, emptyBoardDoc, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'

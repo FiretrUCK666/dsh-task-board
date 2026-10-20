@@ -122,6 +122,10 @@ export declare const PAGE_LABEL: Readonly<Record<ItemPageId, 'item.page.list' | 
  * **四档优先级与五栏状态是别处那一份**，不是这里的第二张表：`PRIORITY_LABEL` 是四档的词，
  * `STATUS_KEY` 是看板那五栏的词。同一枚筛子在两个面板上必须是同一个词，而一张抄过来的
  * 表会在下一次改词时留下一个角落。
+ *
+ * **那两组的键也是从那两张表里摊开的，不是逐个写下来的**（`...PRIORITY_LABEL` /
+ * `...STATUS_KEY`）：键集跟着它们走——看板加一栏状态，`STATUS_KEY` 认得它，这张表也就带着它，
+ * 不必在这里再抄一遍五个键；而这里少一个键仍然是**编译错误**，不是屏上少一个词。
  */
 export declare const WORD: Readonly<Record<ItemRailKey, TaskBoardKey>>;
 /**

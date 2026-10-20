@@ -61,7 +61,16 @@ export interface SessionStateFaces {
 export declare function readSessionState(faces: SessionStateFaces, sessionId: string): Promise<SessionStateView>;
 /** Extract a query parameter out of a raw request URL (no URL dependency). */
 export declare function queryParamOf(rawUrl: string | undefined, key: string): string | undefined;
-/** HTTP handler: GET /api/dsh-task-board/session-state?sessionId=… → { ok, plan?, goal? }. */
+/**
+ * HTTP handler: GET /api/dsh-task-board/session-state?sessionId=… → the shared
+ * envelope `{ ok: true, value: { plan?, goal?, subagents? } }`.
+ *
+ * THE ENVELOPE IS THE SHARED ONE. This route used to answer a FLAT envelope
+ * (`{ ok: true, plan?, goal? }`) — its own dialect on the same plugin — which
+ * meant a reader had to know which of the two shapes each route answers. Now
+ * it answers exactly what every other route answers, and the browser reads
+ * `value` like everywhere else.
+ */
 export declare function createSessionStateHandler(faces: SessionStateFaces, read?: (faces: SessionStateFaces, sessionId: string) => Promise<SessionStateView>): (req: {
     url?: string;
 }, res: {

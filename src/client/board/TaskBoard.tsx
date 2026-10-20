@@ -34,9 +34,10 @@ import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from '../design/Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, reorderTargetOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
-import { cruiseStatusLineOf, cruiseWindowGrammarOf, DAY_MS, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
+import { cruiseStatusLineOf, cruiseWindowGrammarOf, duplicateWindowOf, normalizeWindow, windowRangeIssueOf, type CruiseWindow, type CruiseWindowRangeIssue } from '../../core/cruise.ts'
+import { DAY_MS } from '../../core/item-dates.ts'
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
-import { dayBucketOf } from '../../core/board-events.ts'
+import { localDayKey } from '../../core/local-day.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { SessionPickerDialog } from './SessionPickerDialog.tsx'
 import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
@@ -99,7 +100,7 @@ import { sendClientReport } from '../client-report.ts'
  */
 function dayLabelOf(day: string, today: string): string {
   if (day === today) return t('board.dayToday')
-  const yesterday = dayBucketOf(Date.now() - 86_400_000)
+  const yesterday = localDayKey(Date.now() - 86_400_000)
   if (day === yesterday) return t('board.dayYesterday')
   return day.slice(5)
 }
@@ -424,7 +425,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
     activityFoldInitRef.current = true
     const first = activityFeed[0]
     if (first === undefined) return
-    setExpandedActivityFold(activityFoldKeyOf(first.taskId, dayBucketOf(first.at)))
+    setExpandedActivityFold(activityFoldKeyOf(first.taskId, localDayKey(first.at)))
   }, [showActivity, activityFeed])
   useEffect(() => {
     if (!showActivity) activityFoldInitRef.current = false
@@ -1131,7 +1132,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
             }}
           >
             <span className={css.boardDemandDot} aria-hidden="true" />
-            <span className={css.boardDemandText}>
+            <span className={`${css.boardDemandText} ${components.titleText}`}>
               {t('board.demand', { n: String(demand.waiting), m: String(demand.review) })}
             </span>
           </button>
@@ -1283,7 +1284,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                 <div className={css.cruiseSchedule}>
                   <div className={css.cruiseScheduleHead}>
                     <span className={css.cruiseScheduleTitle}>{t('board.cruiseSchedule')}</span>
-                    <span className={css.cruiseStateLine}>{cruiseStateLine}</span>
+                    <span className={`${css.cruiseStateLine} ${components.titleText}`}>{cruiseStateLine}</span>
                   </div>
                   {cruiseSchedule.length === 0 ? (
                     <p className={css.detailHint}>{t('board.cruiseScheduleEmpty')}</p>
@@ -1298,7 +1299,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                               on-now-until-end; a cross-midnight range already
                               reads 次日 inside the label). The exact instants
                               live in the tooltip; the list itself auto-sorts. */}
-                          <span className={css.cruiseWindowTime} title={cruiseWindowTitleOf(window)}>{cruiseWindowLabelOf(window, cruiseNow)}</span>
+                          <span className={`${css.cruiseWindowTime} ${components.truncate}`} title={cruiseWindowTitleOf(window)}>{cruiseWindowLabelOf(window, cruiseNow)}</span>
                           <button
                             type="button"
                             className={css.rowHide}
@@ -1452,7 +1453,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                 >
                   <span className={css.srOnly}>{t(STATUS_KEY[column.status])}</span>
                   <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-                  <span className={css.columnTabLabel}>{t(STATUS_SHORT_KEY[column.status])}</span>
+                  <span className={`${css.columnTabLabel} ${components.truncate}`}>{t(STATUS_SHORT_KEY[column.status])}</span>
                   <span className={css.columnTabCount}>{String(count)}</span>
                 </button>
               )
@@ -1726,7 +1727,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                 * landmark that is not real. */}
               <div className={css.columnHeader}>
                 <span className={css.statusDot} data-status={column.status} aria-hidden="true" />
-                <h3 className={css.columnTitle} title={t(STATUS_KEY[column.status])}>
+                <h3 className={`${css.columnTitle} ${components.truncate}`} title={t(STATUS_KEY[column.status])}>
                   {/* **短名，不是全名。** 顶上那排列导航用的也是这张短表，所以在手机上
                     * 「规划」（药丸）与「待规划」（列头）会同屏出现——同一个状态说了两个
                     * 名字，读者会当成两件不同的事，而那一列其实只有一列。
@@ -2236,10 +2237,10 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
               const shown = feed.slice(0, activityShown)
               // Day groups (data-driven buckets, no fixed windows): one header
               // per local calendar day, newest day first.
-              const todayBucket = dayBucketOf(Date.now())
+              const todayBucket = localDayKey(Date.now())
               const groups = new Map<string, typeof shown>()
               for (const item of shown) {
-                const day = dayBucketOf(item.at)
+                const day = localDayKey(item.at)
                 const list = groups.get(day)
                 if (list !== undefined) list.push(item)
                 else groups.set(day, [item])
@@ -2349,7 +2350,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                         title={fold.taskTitle}
                         onClick={() => { setShowActivity(false); openTaskAtSession(fold.taskId, head.sessionId) }}
                       >
-                        <span className={css.notifyTask}>{headTitle}</span>
+                        <span className={`${css.notifyTask} ${components.truncate}`}>{headTitle}</span>
                         <Chip kind="neutral" fill={false} className={css.notifyMainChip}>{`×${fold.items.length}`}</Chip>
                       </button>
                       <span className={css.notifyActions}>
@@ -2368,7 +2369,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                         {sections.map(section => (
                           <Fragment key={section.sessionId ?? `${fold.key}|task`}>
                             {section.sessionId !== undefined && (
-                              <li className={css.feedSection}>
+                              <li className={`${css.feedSection} ${components.titleText}`}>
                                 {controller.sessionTitle(section.sessionId) ?? section.sessionId}
                               </li>
                             )}
@@ -2404,7 +2405,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                     <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
                       <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>
                       <ul className={css.notifyList}>
-                        {foldFeedByTaskDay(items, dayBucketOf).map(renderFold)}
+                        {foldFeedByTaskDay(items, localDayKey).map(renderFold)}
                       </ul>
                     </section>
                   ))}

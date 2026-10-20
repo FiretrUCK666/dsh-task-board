@@ -339,8 +339,17 @@
    * **环贴着盒沿（没有 offset）。** 那 2px 空气，在影这一
    * 族里画不出来：影是不透明的，一层「空气」要么得知道背后是什么颜色，要么就得再加
    * 一个伪元素。贴着盒沿是这一族的成立条件，换来的是「环与边永远同形」；环也因此更紧、
-   * 更像一条边，而不是一枚飘在盒子外面的圈。 */
-  --dsh-tb-ring: 0 0 0 2px var(--dsh-tb-accent);
+   * 更像一条边，而不是一枚飘在盒子外面的圈。
+   *
+   * **环宽是**一枚令牌：环有多宽是**一条共享的事实**（实环与柔晕共用同一档），
+   * 不是每处自己挑的一个数。原先它是一个裸的 `2px` 与一个裸的 `3px` 散在四张表里，
+   * 挑一次就分家——改一处，另一处留在旧值上，而屏上不会有人说一句话。 */
+  --dsh-tb-ring-w: 2px;
+  /* 裁剪形态的宽度地板：默认 0（可以压到零），页面要地板就覆盖它。
+     写在令牌层而不是让页面自己声明——共享层读一个只有页面声明的变量，
+     今天靠 DOM 继承活着，换一个消费者就静默失效。 */
+  --dsh-tb-clip-floor: 0;
+  --dsh-tb-ring: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-color);
 
   /* THE text colour for text sitting ON a light-hued fill.
      The state fills have fixed hues that do not follow the theme (warn, success
@@ -406,6 +415,11 @@
      nothing — the documented 3px halo never once appeared).
      One alpha ladder, read from the ladder: never a second set of numbers. */
   --dsh-tb-focus-ring: color-mix(in srgb, var(--dsh-tb-accent) var(--dsh-tb-wash-strong), transparent);
+  /* **实环的颜色**，与柔晕那一枚（`--dsh-tb-focus-ring`）成对：柔晕是「这个字段活了」
+   * 那一枚软晕，实环是「现在选中的是它」那一枚实边。**两枚是两种笔法，不是两个色
+   * 相**——同一个 accent，一个原样、一个洗到底。原先调用点三处写法（accent 本尊、
+   * 这一枚的别名、还有直接读 accent 的），于是「焦点环是什么颜色」有三个答案；
+   * 现在环只读这两枚，accent 留给「强调」而不是「焦点」。 */
   --dsh-tb-focus-color: var(--dsh-tb-accent);
   --dsh-tb-motion: 160ms var(--dsh-tb-ease);
   --dsh-tb-breath: 2.6s ease-in-out;

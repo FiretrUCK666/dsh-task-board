@@ -24,6 +24,7 @@
  */
 import { attachmentsOf, type PromptAttachment } from './attachment.ts'
 import type { ExecutionRecord, TaskRecord } from './tasks.ts'
+import { messageOf } from './values.ts'
 
 /** Session ids whose history-probe failure already logged (reconcile loop hot
  *  path: warn once per session). Plain Set with no eviction: ids are durable
@@ -258,12 +259,6 @@ export interface SessionLaunchConfig {
 export type SessionLaunchResult =
   | { ok: true; sessionId: string; configError?: string }
   | { ok: false; error: string }
-
-/** Human copy for a run failure. */
-function messageOf(error: unknown): string {
-  if (error instanceof Error) return error.message
-  return String(error)
-}
 
 /**
  * Default command-turn detection window: how long a matched command's session

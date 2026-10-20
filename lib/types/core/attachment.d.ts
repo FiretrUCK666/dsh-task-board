@@ -1,26 +1,4 @@
 /**
- * Attachments, in ONE place: what a document stores, what the send path
- * consumes, and the one bridge between them.
- *
- * WHERE THE BYTES LIVE. The harness already owns a durable, content-addressed
- * attachment store (`ctx.attachments`, the objects under the DSH data root) and
- * the native composer has always uploaded through it. This plugin therefore
- * stores NOTHING itself: a document carries a reference, and the bytes are read
- * back through the host route that fronts that same store. A plugin-owned folder
- * would be a second home for the same bytes — two places to back up, two places
- * to outlive their refs, and one of them invisible to the harness.
- *
- * THREE AGES OF THE SAME FIELD, and only one reader. `attachments` is what new
- * writes produce. Two older shapes still sit in real documents:
- * `promptImages` (base64 temporary bytes) and `promptFiles` (per-Agent
- * receipts). {@link attachmentsOf} is the ONLY reader of those two — the send
- * path, the comment caption and every surface go through it, so nothing else in
- * the plugin has to know that an older document exists. A record is migrated
- * when it is next EDITED (never on load: a background rewrite of every replica's
- * document is a write nobody asked for).
- * @module dsh-task-board/core/attachment
- */
-/**
  * One durable attachment as a document carries it (bytes live in the store).
  *
  * ── THE REF IS THE OFFICIAL VALUE, AND ITS FIELD TABLE IS NOT OURS TO COPY ───

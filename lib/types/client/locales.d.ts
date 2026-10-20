@@ -175,11 +175,9 @@ export declare const zh: {
     'board.flowDays': string;
     'board.flowSubDay': string;
     'board.flowThroughput': string;
-    'new.title': string;
     'new.titlePlaceholder': string;
     'new.description': string;
     'new.descriptionPlaceholder': string;
-    'new.prompt': string;
     'new.promptPlaceholder': string;
     'new.status': string;
     'new.statusHint': string;
@@ -297,7 +295,6 @@ export declare const zh: {
     'detail.sessionNewHint': string;
     'detail.sessionNewSubmit': string;
     'detail.sessionNewTitleLabel': string;
-    'detail.sessionNewTitlePlaceholder': string;
     'detail.sessionNewTitleHint': string;
     'detail.sessionNewTitleFailed': string;
     'detail.sessionUntitled': string;
@@ -426,7 +423,6 @@ export declare const zh: {
     'auto.rule.deleteArmed': string;
     'auto.form.new': string;
     'auto.form.session': string;
-    'auto.form.instruction': string;
     'auto.form.instructionPlaceholder': string;
     'auto.form.content': string;
     'auto.content.custom': string;
@@ -926,7 +922,6 @@ export declare const zh: {
     'item.sort.sequence': string;
     'item.sort.desc': string;
     'item.sort.priority': string;
-    'item.sort.title': string;
     'item.promote.said': string;
     'item.promote.already': string;
     'item.promote.noTitle': string;
@@ -982,8 +977,6 @@ export declare const zh: {
 export declare const en: Record<keyof typeof zh, string>;
 /** The dictionary key union. */
 export type TaskBoardKey = keyof typeof zh;
-/** The settings-card slice of the task-board dictionary. */
-export type SettingsCardKey = TaskBoardKey;
 /** Whether the active UI language is English (drives unit-style formatting). */
 export declare function isEnglish(): boolean;
 /** Translate a key with optional {name} template params. */

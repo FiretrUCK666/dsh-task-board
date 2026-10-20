@@ -32,20 +32,47 @@ function fakeResponse(): { res: ServerResponse; status: () => number; body: () =
   return { res, status: () => code, body: () => text }
 }
 
-/** A stand-in request carrying a JSON body. */
+/** A stand-in request carrying a JSON body.
+ *
+ *  It is an ASYNC ITERABLE, exactly like a real socket: the shared body reader
+ *  (`host/http-json.ts`) reads the request that way, and a fake that only
+ *  speaks `on('data')` would let the route keep its own private reader alive
+ *  — the very thing this route no longer has. */
 function fakeRequest(method: string, body?: unknown): IncomingMessage {
   const listeners = new Map<string, (arg?: unknown) => void>()
+  let payload = body === undefined ? undefined : Buffer.from(JSON.stringify(body), 'utf8')
   const req = {
     method,
     on: (event: string, fn: (arg?: unknown) => void) => { listeners.set(event, fn); return req },
     destroy: () => {},
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        if (payload === undefined) return { done: true, value: undefined }
+        const chunk = payload
+        payload = undefined
+        return { done: false, value: chunk }
+      },
+    }),
   } as unknown as IncomingMessage
-  // Deliver the body on the next tick, exactly like a real socket.
-  setTimeout(() => {
-    if (body !== undefined) listeners.get('data')?.(Buffer.from(JSON.stringify(body), 'utf8'))
-    listeners.get('end')?.()
-  }, 0)
   return req
+}
+
+/** A stand-in request whose body is raw text (not JSON). */
+function fakeRawRequest(method: string, text: string): IncomingMessage {
+  let payload = Buffer.from(text, 'utf8')
+  return {
+    method,
+    on: () => undefined,
+    destroy: () => {},
+    [Symbol.asyncIterator]: () => ({
+      next: async () => {
+        if (payload.length === 0) return { done: true, value: undefined }
+        const chunk = payload
+        payload = Buffer.alloc(0)
+        return { done: false, value: chunk }
+      },
+    }),
+  } as unknown as IncomingMessage
 }
 
 describe('normalizeClientReport', () => {
@@ -102,12 +129,7 @@ describe('the report route', () => {
     for (const payload of ['not json at all', { nothing: true }]) {
       const { res, status, body } = fakeResponse()
       const req = payload === 'not json at all'
-        ? (() => {
-          const listeners = new Map<string, (arg?: unknown) => void>()
-          const raw = { method: 'POST', on: (e: string, fn: (a?: unknown) => void) => { listeners.set(e, fn); return raw }, destroy: () => {} } as unknown as IncomingMessage
-          setTimeout(() => { listeners.get('data')?.(Buffer.from('not json at all', 'utf8')); listeners.get('end')?.() }, 0)
-          return raw
-        })()
+        ? fakeRawRequest('POST', payload)
         : fakeRequest('POST', payload)
       await handler(req, res)
       expect(status()).toBe(200)

@@ -94,7 +94,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
 
   return (
     <>
-      <Field label={t('new.title')}>
+      <Field label={t('item.field.title')}>
         <Input
           value={draft.title}
           data-autofocus
@@ -125,7 +125,7 @@ export function TaskForm({ draft, onChange, controller, withStatus = false, sess
           以及「其他类型请去会话留言里加」——规则不是操作这一格的人每一眼都要读的东西
           （读者要求：添加附件的这类文案全部删掉）。上限与去处由条子自己说：选不进去时它
           就地报错，发出去时它跟着字一起走。 */}
-      <Field wrap="div" label={t('new.prompt')} wrapperProps={attachments.dropProps}>
+      <Field wrap="div" label={t('detail.prompt')} wrapperProps={attachments.dropProps}>
         <PromptInput
           value={draft.prompt}
           onChange={next => { onChange({ ...draft, prompt: next }) }}

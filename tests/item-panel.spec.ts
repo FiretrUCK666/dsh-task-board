@@ -24,7 +24,7 @@ import type { ItemRecord } from '../src/core/item.ts'
 import { ITEM_PAGES, type ItemPageId } from '../src/core/item-view.ts'
 import { zh } from '../src/client/locales.ts'
 import { ItemListPanel } from '../src/client/item/panel.tsx'
-import { formatItemDate } from '../src/client/item/model.ts'
+import { formatItemDate, readDateExpression } from '../src/client/item/model.ts'
 import { ItemRowMenu, type RowMenuAction } from '../src/client/item/row-menu.tsx'
 import {
   NO_SELECTION,
@@ -670,5 +670,63 @@ it('a date prints its year only when the year is not this year', () => {
       expect(read(reader), `${reader} does not read the inbox predicate, so it has its own answer to 「unfiled」`)
         .toContain('isInboxItem')
     }
+  })
+})
+
+describe('the date words are ONE table, and every word in it resolves', () => {
+  // 「下周」原来写在自己的判据里（`word === '下周'`），于是「一套日期词」这张表
+  // 少了一个词——而**写在外面的词永远不归那张表管**：读者在哪儿学到这个写法、
+  // 改了哪个词对不对，都看不出来。
+  //
+  // 这条钉的是两件事：那张表认得它（读得回来），而它**不在表外面**（改一处就够）。
+  const day = 86_400_000
+  const midnight = (at: number): number => {
+    const d = new Date(at)
+    d.setHours(0, 0, 0, 0)
+    return d.getTime()
+  }
+  const NOW = new Date(2026, 8, 29, 10, 0, 0).getTime() // 2026-09-29 10:00 local
+  const today = midnight(NOW)
+
+  it('reads 下周 as seven days on, in both languages', () => {
+    expect(readDateExpression('下周', NOW)).toEqual({ kind: 'at', at: today + 7 * day })
+    expect(readDateExpression('next week', NOW)).toEqual({ kind: 'at', at: today + 7 * day })
+  })
+
+  it('still reads the neighbours it always read', () => {
+    expect(readDateExpression('今天', NOW)).toEqual({ kind: 'at', at: today })
+    expect(readDateExpression('today', NOW)).toEqual({ kind: 'at', at: today })
+    expect(readDateExpression('明天', NOW)).toEqual({ kind: 'at', at: today + day })
+    expect(readDateExpression('tomorrow', NOW)).toEqual({ kind: 'at', at: today + day })
+  })
+
+  it('reads the weekday words, shell and all', () => {
+    // 「周」与「下」是**壳**，不是另一个词：`周三` 与 `三` 说的是同一件事。
+    // 壳没剥的时候，PRODUCT.md 认的那两个写法（周一~周日、下周三）**读不出来**，
+    // 而表里明明有那个字——这就是「按字样判断而不是按结构判断」。
+    const bare = readDateExpression('三', NOW)
+    const shelled = readDateExpression('周三', NOW)
+    expect(shelled).toEqual(bare)
+    expect(bare.kind).toBe('at')
+  })
+
+  it('keeps 下周三 on the weekday grammar, not on the near-days table', () => {
+    // 「下周三」是**下周的星期三**（不是「三天后」），而它与「下周」是两件事：
+    // 前者按星期几算，后者按天数算。两者挤进同一张表会互相顶掉。
+    const wednesday = readDateExpression('下周三', NOW)
+    expect(wednesday.kind).toBe('at')
+    if (wednesday.kind !== 'at') return
+    const at = new Date(wednesday.at)
+    expect(at.getDay()).toBe(3)
+    expect(at.getTime()).toBeGreaterThan(today + 7 * day)
+  })
+
+  it('has NO word outside the table: the near days live in one place', () => {
+    // 判据是结构性的：邻近的那几天**只能**由 `NEAR_DAYS` 认，而表里没有的写法
+    // 一律读不出来。以前那张表与外头的判据各认一部分，于是「表」并不是那份词表。
+    const model = readFileSync(fileURLToPath(new URL('../src/client/item/model.ts', import.meta.url)), 'utf8')
+    const body = model.replace(/\/\*[\s\S]*?\*\//g, '').replace(/^\s*\/\/.*$/gm, '')
+    expect(body, 'a near-day word is judged outside NEAR_DAYS').not.toMatch(/word === '[^']+'/)
+    expect(body, 'the near-days table is gone').toContain('const NEAR_DAYS')
   })
 })

@@ -27,6 +27,7 @@ import { queryChipsOf, withFacetToken, type QueryChip } from './facets.ts'
 import { formatDayKey } from './model.ts'
 import { CrossMark } from './marks.tsx'
 import css from './item.module.css'
+import components from '../design/components.module.css'
 
 interface ItemQueryChipsProps {
   /** The whole query, exactly as it stands. The ONLY state. */
@@ -69,7 +70,7 @@ export function ItemQueryChips(props: ItemQueryChipsProps) {
     <div className={css.itemQueryChips} role="group" aria-label={t('item.search.label')}>
       {chips.map(chip => (
         <span key={chip.token.toLowerCase()} className={css.itemQueryChip}>
-          <span className={css.itemQueryChipLabel}>{chipLabel(chip)}</span>
+          <span className={`${css.itemQueryChipLabel} ${components.truncate}`}>{chipLabel(chip)}</span>
           <button
             type="button"
             className={css.itemQueryChipRemove}

@@ -25,6 +25,7 @@
  */
 import type { ReactElement } from 'react'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 interface TickboxProps {
   readonly checked: boolean
@@ -57,7 +58,11 @@ export function Tickbox(props: TickboxProps): ReactElement {
           four hand-placed numbers, and two rounds of reading 「偏左」 then
           「偏右」 proved the point: an eyeballed L never has both its optical
           AND its bounding centres inside the box. A path does. */}
-      <i aria-hidden="true">
+      {/* The halo is the SHARED form (the shape sheet): this drawing is
+          what the keyboard actually focuses, because the real `<input>` on top of it
+          is `appearance: none`. Painting a second box-shadow here was the same
+          recipe written twice. */}
+      <i className={base.focusHalo} aria-hidden="true">
         <svg viewBox="0 0 16 16" width="16" height="16" focusable="false">
           <path
             d="M3.5 8.1 L6.8 11.4 L12.5 4.6"

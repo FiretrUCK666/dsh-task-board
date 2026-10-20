@@ -112,7 +112,7 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
             {/* The title is single-line (a wrapping title would push the badge
                 and close off the plane); the full name is reachable via the
                 tooltip + the dialog's aria-label. */}
-            <h2 className={css.reviewTitle} title={title}>{title}</h2>
+            <h2 className={`${css.reviewTitle} ${components.truncate}`} title={title}>{title}</h2>
             {badge !== undefined && <span className={css.reviewBadge}>{badge}</span>}
           </div>
           {context !== undefined && (

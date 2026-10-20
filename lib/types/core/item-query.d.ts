@@ -148,6 +148,19 @@ export declare function itemQualifierVocabulary(): readonly string[];
  * @returns whether the grammar would read it as a qualifier.
  */
 export declare function isItemQualifierToken(token: string): boolean;
+/**
+ * Is this token a TAG — the reader's own word behind the `#` sigil?
+ *
+ * **这一门文法的家。** 搜索框把读者敲的 `#要做` 认成一枚标签，而认不认只有这一处说了算；
+ * 清单那几处（搜索芯片、筛选栏）问的是同一个问题，于是它们 import 这一份，而不是各自
+ * 再写一遍「以 `#` 开头、后面还得有东西」——抄一份改一个数（这里改的是「要不要 trim」）
+ * 的后果是：同一个词在一个动作里认得，在另一个动作里不认，而没有任何一条测试会红。
+ *
+ * `#` 单独一个不是标签。
+ * @param token - one whitespace-separated word from the query text.
+ * @returns whether the grammar reads it as a tag.
+ */
+export declare function isItemTagToken(token: string): boolean;
 /** A parsed query: free words plus recognised qualifiers. */
 export interface ItemQuery {
     readonly words: readonly string[];

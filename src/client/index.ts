@@ -18,7 +18,11 @@ import './design/tokens.module.css'
 // import covers every surface the plugin renders.
 import './design/base.module.css'
 import './design/components.module.css'
-import type { ApiFace, BoundSessionFace, ClientContext, GoalsRemoteFace, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
+import type { ApiFace, BoundSessionFace, ClientContext, ILayoutFace, IUiSessionFace, IUiWorkspaceFace, SessionId, WorkspaceId } from './platform.ts'
+/* The `remote.goals` stub's shape lives in core, with the verbs that call it:
+   an alias here would be a second name for one thing, and the day the two
+   drift apart the client would satisfy the alias and fail at the call. */
+import type { GoalsRemoteFace } from '../core/goal-verbs.ts'
 import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'

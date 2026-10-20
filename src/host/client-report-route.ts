@@ -19,34 +19,8 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-
-/** One box as the page measured it (CSS pixels, viewport-relative). */
-export interface ReportedBox {
-  /** Top edge in CSS px. */
-  top: number
-  /** Bottom edge in CSS px. */
-  bottom: number
-  /** Height in CSS px. */
-  height: number
-}
-
-/** One page's self-report (all fields best-effort). */
-export interface ClientReport {
-  /** The bundle version baked into the reporting page. */
-  version: string
-  /** The page URL the report came from. */
-  href: string
-  /** The browser's user agent. */
-  ua?: string
-  /** Viewport size in CSS px. */
-  viewport?: { width: number; height: number }
-  /** Device pixel ratio. */
-  dpr?: number
-  /** The landmark boxes (absent when the board was not mounted yet). */
-  boxes?: Record<string, ReportedBox>
-  /** Server-side receipt instant (ms). */
-  receivedAt: number
-}
+import type { ClientReport, ReportedBox } from '../core/client-report.ts'
+import { json, readJsonBody } from './http-json.ts'
 
 /** Keep the last N reports: enough for phone + desktop, bounded forever. */
 const MAX_REPORTS = 8
@@ -116,30 +90,8 @@ export function recordClientReport(report: ClientReport): void {
   if (reports.length > MAX_REPORTS) reports.length = MAX_REPORTS
 }
 
-/** Write one JSON envelope (same discipline as every other host route). */
-function json(res: ServerResponse, payload: unknown, status = 200): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(payload))
-}
-
-/** Read a bounded request body as text (a diagnostic never eats the socket). */
-function readBody(req: IncomingMessage, limitBytes = 32 * 1024): Promise<string> {
-  return new Promise(resolve => {
-    let size = 0
-    const chunks: Buffer[] = []
-    req.on('data', (chunk: Buffer) => {
-      size += chunk.length
-      if (size > limitBytes) {
-        resolve('')
-        req.destroy()
-        return
-      }
-      chunks.push(chunk)
-    })
-    req.on('end', () => { resolve(Buffer.concat(chunks).toString('utf8')) })
-    req.on('error', () => { resolve('') })
-  })
-}
+/** How much of a request body this route accepts (a diagnostic never eats the socket). */
+const MAX_BODY_BYTES = 32 * 1024
 
 /**
  * Build the pure report-route processor (unit-testable without a server).
@@ -155,15 +107,11 @@ export function createClientReportHandler(
       res.end()
       return
     }
-    const text = await readBody(req)
-    let body: unknown
-    try {
-      body = JSON.parse(text)
-    } catch {
-      json(res, { ok: true, value: { stored: false } })
-      return
-    }
-    const report = normalizeClientReport(body, now())
+    // The SHARED body reader: one way to read a body, one size cap, one
+    // failure story. A route that reads its own body is a route that can
+    // answer 「读到了」 in a shape no other route answers in.
+    const body = await readJsonBody(req, MAX_BODY_BYTES)
+    const report = body === null ? undefined : normalizeClientReport(body, now())
     if (report === undefined) {
       json(res, { ok: true, value: { stored: false } })
       return

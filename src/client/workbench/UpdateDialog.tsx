@@ -32,7 +32,7 @@ import { updateController } from './update-controller.ts'
 import { useUpdateState } from './use-update.ts'
 import { commandLineOf, commandWordsOf } from '../../core/update-check.ts'
 import type { UpdateInstallMode } from '../../core/update-check.ts'
-import type { UpdateApplyResult } from '../../host/update-apply.ts'
+import type { UpdateApplyResult } from '../../core/update-view.ts'
 import css from './update-dialog.module.css'
 
 /**

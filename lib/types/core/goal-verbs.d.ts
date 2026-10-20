@@ -1,17 +1,3 @@
-/**
- * Native goal verbs for the board's session surfaces (pure domain logic):
- * the same five Remote mutations the harness's own GoalBar calls
- * (`remote.goals` get/edit/pause/resume/clear), with the CAS ref read at
- * verb call time from the live binding's `goal` projection — verbatim the
- * official grammar (no staleness fence on our side: the RPC's
- * compare-and-set is the guard, and a stale ref surfaces as an inline
- * error, never a silent no-op).
- *
- * Framework-free and structurally guarded: an absent binding, an absent
- * projection, or an absent remote degrades to a named failure (the strip
- * hides), never a throw — the same degrade law as every board host face.
- * Pure enough to unit-test with fakes.
- */
 /** Compare-and-set identity for one exact goal revision. */
 export interface GoalRef {
     id: string;

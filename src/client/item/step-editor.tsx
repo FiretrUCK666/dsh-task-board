@@ -37,6 +37,7 @@ import { ItemRowMenu } from './row-menu.tsx'
 import { Tickbox } from './tickbox.tsx'
 import { DotsMark, FoldMark } from './marks.tsx'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 /**
  * HOW MANY WAITING STEPS ARE DRAWN BEFORE THE REST GO BEHIND A LINE.
@@ -274,7 +275,7 @@ readonly field: { current: HTMLInputElement | null }
     <div className={css.itemStepsAdd}>
       <input
         ref={props.field}
-        className={css.itemInput}
+        className={`${css.itemInput} ${base.focusHalo}`}
         value={props.draft}
         placeholder={t('item.steps.placeholder')}
         aria-label={t('item.steps.placeholder')}

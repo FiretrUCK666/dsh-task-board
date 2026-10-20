@@ -12,6 +12,7 @@ import { t } from '../locales.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { PRIORITY_LABEL } from '../item/labels.ts'
 import css from '../board.module.css'
+import base from '../design/base.module.css'
 import { scheduleSummary } from './automation-ui.tsx'
 import { cardLightOf, cardUpdatedAtOf, titleOrUntitled, type CardPrimary, type CardSessionDot, type CardViewModel } from './card-view.ts'
 import { Chip } from '../design/Chip.tsx'
@@ -155,11 +156,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
     <div
       role="button"
       tabIndex={0}
-      className={`${css.card}${dragging ? ` ${css.dragging}` : ''}${selected ? ` ${css.selectedCard}` : ''}`}
+      className={`${css.card} ${base.paperSheet} ${base.paperLift}${dragging ? ` ${css.dragging}` : ''}${selected ? ` ${css.selectedCard}` : ''}`}
       style={task.color !== undefined ? ({ '--card-tint': task.color } as CSSProperties) : undefined}
       data-status={task.status}
       data-task-id={task.id}
       data-light={light}
+      /* **抬起的那一档住在共享层**（`.paperLift`）：被选中与被悬停抬起来是同一样，
+       * 所以这一页只说「它被选中了」，不重抄一遍投影与位移。 */
+      data-raised={selected ? 'true' : undefined}
       draggable
       onClick={onClick}
       onKeyDown={event => {
@@ -170,7 +174,11 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         // guards as data, so a new binding cannot forget one.
         if (dispatchCardKey(event, cardKeyState, cardKeyActions)) event.preventDefault()
       }}
-      title={task.description !== '' ? task.description : task.title}
+      /* The tooltip carries BOTH: the title is the card's name, the description is
+         its context, and the old form dropped whichever one lost. Touch has no
+         hover, so the description is also spelled in the excerpt above — the
+         tooltip is an extra, never the only copy. */
+      title={task.description !== '' ? `${task.title}\n\n${task.description}` : task.title}
       onDragStart={event => {
         setDragging(true)
         event.dataTransfer.setData('text/plain', task.id)
@@ -223,7 +231,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
       </span>
       {onQuickRun !== undefined && (
         <span
-          className={css.cardQuickRun}
+          className={`${css.cardQuickRun} ${base.paperSheet}`}
           data-ghost-hide=""
           role="button"
           tabIndex={view.running ? -1 : 0}
@@ -259,11 +267,18 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         {task.color !== undefined && (
           <span className={css.cardColorMark} style={{ background: task.color }} aria-hidden="true" />
         )}
-        <span className={css.cardTitle}>
+        {/* **标题折行，不夹断。** 一张卡的标题是「这是哪一件事」的唯一答案：夹掉
+            后半句，读者就得靠猜——而猜错的代价是点开一张不该点的卡。涨两三行是可
+            接受的代价，认不出是不可以的。机制在共享形态里（`.titleText`），这一页
+            只说它是一枚折行的标题。 */}
+        <span className={`${css.cardTitle} ${components.titleText}`}>
           {titleOrUntitled(task.title, t('card.untitled'))}
         </span>
       </span>
-      {task.description !== '' && <span className={css.cardExcerpt}>{task.description}</span>}
+      {/* 摘要同理：它是「这件事要做什么」的那句话，夹掉就是让人读半句。 */}
+      {task.description !== '' && (
+        <span className={`${css.cardExcerpt} ${components.titleText}`}>{task.description}</span>
+      )}
       {/* The next-action line sits directly under the content, BEFORE the meta
           block. It is the card's verb — "what do I do about this" — so it cannot be
           the last child: smallest type, last in reading order, and the first thing
@@ -272,7 +287,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
           truncation all tell the same wrong story about the least decorative line
           on the card. */}
       {nextAction !== undefined && nextAction !== '' && (
-        <span className={css.cardNext}>{nextAction}</span>
+        <span className={`${css.cardNext} ${components.truncate}`}>{nextAction}</span>
       )}
       <span className={css.cardMeta}>
         {/* Row 1 is identical on every card: source line (when there IS one

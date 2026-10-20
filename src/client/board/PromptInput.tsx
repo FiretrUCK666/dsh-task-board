@@ -27,6 +27,7 @@ import {
 } from './slash-token.ts'
 import { catalogSessionRowsOf, listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
+import components from '../design/components.module.css'
 /** Menu row cap: keeps the list scannable and scrollbar-free. */
 const MAX_ROWS = 8
 
@@ -367,7 +368,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
             >
               <span className={css.slashMenuName}>{mention.name}</span>
               {mention.description !== undefined && (
-                <span className={css.slashMenuDesc}>{mention.description}</span>
+                <span className={`${css.slashMenuDesc} ${components.truncate}`}>{mention.description}</span>
               )}
             </button>,
           )
@@ -392,7 +393,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
         value={value}
         placeholder={placeholder}
         spellCheck={false}
-        aria-label={t('new.prompt')}
+        aria-label={t('detail.prompt')}
         onKeyDown={onKeyDown}
         onChange={onInput}
         onSelect={onSelect}
@@ -421,7 +422,7 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
                 onClick={() => { accept(slash) }}
               >
                 <span className={css.slashMenuName}>/{slash.name}</span>
-                <span className={css.slashMenuDesc}>{slash.description}</span>
+                <span className={`${css.slashMenuDesc} ${components.truncate}`}>{slash.description}</span>
                 {slash.hint !== undefined && <span className={css.slashMenuHint}>{slash.hint}</span>}
               </button>
             )

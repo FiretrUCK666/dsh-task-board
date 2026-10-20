@@ -82,25 +82,6 @@ export interface ItemsRouteView {
      */
     deleted?: ItemRecord[];
 }
-/** Success envelope carrying a route's value. */
-export interface RouteOk<T> {
-    ok: true;
-    value: T;
-}
-/** Success envelope carrying a board view. */
-export type BoardRouteOk = RouteOk<BoardRouteView>;
-/** Success envelope carrying a checklist view. */
-export type ItemsRouteOk = RouteOk<ItemsRouteView>;
-/** Failure envelope carrying a stable business error code. */
-export interface BoardRouteFail {
-    ok: false;
-    error: {
-        code: string;
-        message: string;
-    };
-}
-export type BoardRouteEnvelope = BoardRouteOk | BoardRouteFail;
-export type ItemsRouteEnvelope = ItemsRouteOk | BoardRouteFail;
 /** The service face the route needs (the real service or a test fake).
  *
  *  `itemsDoc` / `commitItems` are the SECOND document's two ends, beside the
@@ -167,8 +148,14 @@ export type ItemAddress = {
     readonly kind: 'ref';
     readonly ref: number;
 };
-/** What a restore asks for: which row, and who is asking. */
-export interface RestoreRequest {
+/**
+ * What an operation on a deleted row asks for: which row, and who is asking.
+ *
+ * Named for the OPERATION, not for the restore: the purge asks the same
+ * question and is answered by the same reader, so a name saying 「restore」
+ * would be wrong half the time.
+ */
+export interface ItemAddressRequest {
     readonly of: ItemAddress;
     readonly clientId: string;
 }

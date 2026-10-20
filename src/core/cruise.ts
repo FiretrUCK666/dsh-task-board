@@ -22,6 +22,7 @@
  * Framework-free and fully unit-testable.
  */
 import type { CruiseState } from './controller.ts'
+import { DAY_MS } from './item-dates.ts'
 
 /** One scheduled cruise window (epoch ms); at least one of startAt/endAt is set. */
 export interface CruiseWindow {
@@ -33,9 +34,6 @@ export interface CruiseWindow {
 
 /** The tick granularity for boundary detection (the scheduler heartbeat). */
 export const CRUISE_TICK_MS = 60_000
-
-/** One calendar day (cross-midnight normalization). */
-export const DAY_MS = 86_400_000
 
 /** Brand an unknown value as a valid window (persisted-state guard). */
 export function isCruiseWindow(value: unknown): value is CruiseWindow {

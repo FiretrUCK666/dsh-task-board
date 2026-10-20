@@ -37,9 +37,8 @@ import { PromptInput } from './PromptInput.tsx'
 import { Button, Disclosure, SendModeToggle } from '../design/ui.tsx'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
-
-/** Model-select value encoding: provider + model, joined by a NUL separator. */
-const MODEL_SEP = '\u0000'
+import { modelSelectParts, modelSelectValue } from './model-select.ts'
+import components from '../design/components.module.css'
 
 /**
  * One message image: the durable ref is read back through the official
@@ -258,14 +257,14 @@ export function SessionFacts({ info, agentPresets = [] }: {
   return (
     <>
       <span className={css.reviewConfigRow}>
-        <span className={css.reviewConfigLabel}>{t('review.sessionWorkspace')}</span>
-        <span className={css.reviewConfigValue} title={info.cwd ?? undefined}>
+        <span className={`${css.reviewConfigLabel} ${components.truncate}`}>{t('review.sessionWorkspace')}</span>
+        <span className={`${css.reviewConfigValue} ${components.truncate}`} title={info.cwd ?? undefined}>
           {info.cwd !== undefined ? workspaceLabelOf(info.cwd) : t('review.sessionUnknown')}
         </span>
       </span>
       <span className={css.reviewConfigRow}>
-        <span className={css.reviewConfigLabel}>{t('review.sessionAgent')}</span>
-        <span className={css.reviewConfigValue} title={agentPreset}>
+        <span className={`${css.reviewConfigLabel} ${components.truncate}`}>{t('review.sessionAgent')}</span>
+        <span className={`${css.reviewConfigValue} ${components.truncate}`} title={agentPreset}>
           {agentPreset ?? t('review.sessionDefaultAgent')}
         </span>
       </span>
@@ -321,7 +320,7 @@ export function ContextMeterPanel({ projections, usage }: {
         <div className={css.reviewMeterHead}>
           <span className={css.reviewMeterReading}>{t('review.meterUsed')}</span>
           <span className={css.reviewMeterPercent}>{occupancy.percent}%</span>
-          <span className={css.reviewMeterFigures}>
+          <span className={`${css.reviewMeterFigures} ${components.truncate}`}>
             {t('review.meterFigures', {
               used: formatTokens(occupancy.usedTokens),
               window: formatTokens(occupancy.contextWindow),
@@ -344,17 +343,17 @@ export function ContextMeterPanel({ projections, usage }: {
             <div className={css.reviewMeterRows}>
               <span className={css.reviewMeterRow}>
                 <span className={`${css.reviewMeterSwatch} ${css.meterSystem}`} aria-hidden="true" />
-                <span>{t('review.meterSystem')}</span>
+                <span className={`${css.reviewMeterLabel} ${components.truncate}`}>{t('review.meterSystem')}</span>
                 <span className={css.reviewMeterValue}>~{formatTokens(breakdown.systemTokens)}</span>
               </span>
               <span className={css.reviewMeterRow}>
                 <span className={`${css.reviewMeterSwatch} ${css.meterTools}`} aria-hidden="true" />
-                <span>{t('review.meterTools')}</span>
+                <span className={`${css.reviewMeterLabel} ${components.truncate}`}>{t('review.meterTools')}</span>
                 <span className={css.reviewMeterValue}>~{formatTokens(breakdown.toolsTokens)}</span>
               </span>
               <span className={css.reviewMeterRow}>
                 <span className={`${css.reviewMeterSwatch} ${css.meterMessages}`} aria-hidden="true" />
-                <span>{t('review.meterMessages')}</span>
+                <span className={`${css.reviewMeterLabel} ${components.truncate}`}>{t('review.meterMessages')}</span>
                 <span className={css.reviewMeterValue}>~{formatTokens(breakdown.messageTokens)}</span>
               </span>
             </div>
@@ -552,10 +551,9 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
   /** Apply a new model selection to the session. */
   const applyModel = (key: string): void => {
     if (sessionConfig === undefined || sessionModels === undefined) return
-    const sepIndex = key.indexOf(MODEL_SEP)
-    if (sepIndex < 0) return
-    const provider = key.slice(0, sepIndex)
-    const model = key.slice(sepIndex + 1)
+    const parts = modelSelectParts(key)
+    if (parts === undefined) return
+    const { provider, model } = parts
     const group = sessionModels.groups.find(candidate => candidate.provider === provider)
     const row = group?.models.find(candidate => candidate.id === model)
     const effort = row?.reasoning?.defaultEffort
@@ -635,17 +633,17 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
               affordance); the selects apply instantly. */}
           <SessionFacts info={controller.sessionInfo(sessionId)} agentPresets={agentPresetRows} />
           <span className={css.reviewConfigRow}>
-            <span className={css.reviewConfigLabel}>{t('review.model')}</span>
+            <span className={`${css.reviewConfigLabel} ${components.truncate}`}>{t('review.model')}</span>
             <span className={css.selectWrap}>
               <Select
-                value={`${sessionModels.current.provider}${MODEL_SEP}${sessionModels.current.model}`}
+                value={modelSelectValue(sessionModels.current.provider, sessionModels.current.model)}
                 disabled={configBusy}
                 onChange={event => { applyModel(event.target.value) }}
               >
                 {sessionModels.groups.map(group => (
                   <optgroup key={group.provider} label={group.provider}>
                     {group.models.map(model => (
-                      <option key={`${group.provider}${MODEL_SEP}${model.id}`} value={`${group.provider}${MODEL_SEP}${model.id}`}>
+                      <option key={modelSelectValue(group.provider, model.id)} value={modelSelectValue(group.provider, model.id)}>
                         {model.name ?? model.id}
                       </option>
                     ))}
@@ -661,7 +659,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
             if (efforts.length === 0) return null
             return (
               <span className={css.reviewConfigRow}>
-                <span className={css.reviewConfigLabel}>{t('review.effort')}</span>
+                <span className={`${css.reviewConfigLabel} ${components.truncate}`}>{t('review.effort')}</span>
                 <span className={css.selectWrap}>
                   <Select
                     value={sessionModels.current.reasoningEffort ?? ''}
@@ -683,7 +681,7 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
                「默认」 is a lie the user cannot detect, and the whole point of
                the row is to state what the session IS doing. */
             <span className={css.reviewConfigRow}>
-              <span className={css.reviewConfigLabel}>{t('review.permission')}</span>
+              <span className={`${css.reviewConfigLabel} ${components.truncate}`}>{t('review.permission')}</span>
               <span className={css.reviewConfigUnavailable}>{t('review.permissionUnreadable')}</span>
             </span>
           ) : (

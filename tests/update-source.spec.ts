@@ -10,7 +10,7 @@
  * view, because only the host knows which registry this profile uses.
  */
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { applyUpdate, fetchUpdateSource } from '../src/client/update-source.ts'
+import { fetchUpdateSource, requestUpdateApply } from '../src/client/update-source.ts'
 
 afterEach(() => { vi.unstubAllGlobals() })
 
@@ -160,7 +160,7 @@ describe('fetchUpdateSource', () => {
   })
 })
 
-describe('applyUpdate', () => {
+describe('requestUpdateApply', () => {
   it('POSTs to the update route and carries no installation target of its own', async () => {
     const calls: Array<{ url: string; init?: RequestInit }> = []
     vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
@@ -170,7 +170,7 @@ describe('applyUpdate', () => {
         value: { ok: true, outcome: 'applied', version: '0.9.60' },
       }), { status: 200, headers: { 'content-type': 'application/json' } })
     })
-    expect(await applyUpdate(1_000)).toEqual({ ok: true, outcome: 'applied', version: '0.9.60' })
+    expect(await requestUpdateApply(1_000)).toEqual({ ok: true, outcome: 'applied', version: '0.9.60' })
     expect(calls).toHaveLength(1)
     expect(calls[0]?.url).toContain('api/dsh-task-board/update')
     expect(calls[0]?.init?.method).toBe('POST')
@@ -179,23 +179,23 @@ describe('applyUpdate', () => {
 
   it('keeps a refusal and its reason', async () => {
     answerJson({ ok: true, value: { ok: false, error: 'dirty', output: 'git: exit 1' } })
-    expect(await applyUpdate(1_000)).toEqual({ ok: false, error: 'dirty', output: 'git: exit 1' })
+    expect(await requestUpdateApply(1_000)).toEqual({ ok: false, error: 'dirty', output: 'git: exit 1' })
   })
 
   it('carries the unchanged outcome through (it is not a success to be reshaped)', async () => {
     answerJson({ ok: true, value: { ok: true, outcome: 'unchanged', version: '1.1.0' } })
-    expect(await applyUpdate(1_000)).toEqual({ ok: true, outcome: 'unchanged', version: '1.1.0' })
+    expect(await requestUpdateApply(1_000)).toEqual({ ok: true, outcome: 'unchanged', version: '1.1.0' })
   })
 
   it('an outcome this version does not know is dropped, not guessed', async () => {
     answerJson({ ok: true, value: { ok: true, outcome: 'staged', version: '1.1.0' } })
-    expect(await applyUpdate(1_000)).toEqual({ ok: true, version: '1.1.0' })
+    expect(await requestUpdateApply(1_000)).toEqual({ ok: true, version: '1.1.0' })
   })
 
   it('malformed answers and hangs degrade to undefined', async () => {
     answerJson({ ok: true, value: { application: 'applied' } })
-    expect(await applyUpdate(1_000)).toBeUndefined()
+    expect(await requestUpdateApply(1_000)).toBeUndefined()
     hangFetch()
-    expect(await applyUpdate(30)).toBeUndefined()
+    expect(await requestUpdateApply(30)).toBeUndefined()
   })
 })

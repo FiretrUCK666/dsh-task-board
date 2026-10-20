@@ -61,7 +61,7 @@ function CommentSummary({ task, sessionId, cruiseOn }: {
     <span className={css.executionComments} title={latest.text}>
       <span className={css.executionCommentsCount}>{t('detail.comments', { n: String(comments.length) })}</span>
       {latest.text !== '' && (
-        <span className={css.executionCommentsLatest}>{t('detail.latestComment', { text: latest.text })}</span>
+        <span className={`${css.executionCommentsLatest} ${components.truncate}`}>{t('detail.latestComment', { text: latest.text })}</span>
       )}
       <span className={css.executionCommentsTime}>{latest.at !== undefined ? formatTime(latest.at) : ''}</span>
     </span>
@@ -133,7 +133,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
                 along; nothing carried the class, so it never applied. */}
             <span className={`${components.truncate} ${css.sessionRowName}`}>{row.title}</span>
             {runWorkspace !== '' && runWorkspace !== row.title && (
-              <span className={css.sessionRowWorkspace}>{runWorkspace}</span>
+              <span className={`${css.sessionRowWorkspace} ${components.truncate}`}>{runWorkspace}</span>
             )}
           </span>
         }
@@ -203,7 +203,7 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
               unnamed child in the `icon` cell. */}
           <span className={`${components.truncate} ${css.sessionRowName}`} title={row.title}>{row.title}</span>
           {row.workspaceLabel !== undefined && row.workspaceLabel !== row.title && (
-            <span className={css.sessionRowWorkspace}>{row.workspaceLabel}</span>
+            <span className={`${css.sessionRowWorkspace} ${components.truncate}`}>{row.workspaceLabel}</span>
           )}
         </span>
       }
@@ -840,7 +840,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   <ul className={css.hiddenTrayList}>
                     {Array.from(hiddenIds).map(sessionId => (
                       <li key={sessionId} className={css.hiddenTrayRow}>
-                        <span className={css.hiddenTrayName} title={sessionId}>
+                        <span className={`${css.hiddenTrayName} ${components.truncate}`} title={sessionId}>
                           {controller.sessionTitle(sessionId) ?? sessionId}
                         </span>
                         {/* ONE right-clustered action group: restore (ghost) ‖

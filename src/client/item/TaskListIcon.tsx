@@ -18,8 +18,14 @@
  *
  * The `id` this entry registers under MUST equal the `main` slot key the list
  * panel registers — the shell resolves a row to its stage by that id.
+ *
+ * THE TOGGLE ITSELF IS NOT WRITTEN HERE. The mechanism (which button the
+ * listener lands on, why it must be a native listener, and the disposer that
+ * takes it off again) lives in `design/use-panel-row-exit.ts` — one hook, four
+ * panel rows (home, board, list, gallery), so the four cannot drift apart.
  */
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import { usePanelRowExit } from '../design/use-panel-row-exit.ts'
 import css from '../board.module.css'
 
 /** Props the shell binds for a panel-list entry. */
@@ -44,23 +50,7 @@ interface TaskListIconProps {
  */
 export function TaskListIcon({ size, active, onExit }: TaskListIconProps) {
   const rootRef = useRef<SVGSVGElement>(null)
-  useEffect(() => {
-    if (onExit === undefined) return
-    // Same shape as the board's icon, and for the same reasons: `closest`
-    // walks from OUR node to the button the slot contract says the shell owns,
-    // and a native listener there runs BEFORE React's synthetic one at the root,
-    // so stopping it keeps the shell's own `selectPanel(id)` from firing. A
-    // glyph-only React handler would miss the label and the keyboard.
-    const button = rootRef.current?.closest('button')
-    if (!(button instanceof HTMLButtonElement)) return
-    const onClick = (event: Event): void => {
-      if (!active) return // list closed → let the shell's own handler open it
-      event.stopPropagation()
-      onExit()
-    }
-    button.addEventListener('click', onClick)
-    return () => { button.removeEventListener('click', onClick) }
-  }, [active, onExit])
+  usePanelRowExit(rootRef, active, onExit)
   return (
     <svg
       ref={rootRef}

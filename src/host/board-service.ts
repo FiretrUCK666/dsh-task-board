@@ -413,7 +413,7 @@ export class DocumentService {
        * next restart — still sees a consistent truth.
        *
        * The caller is the route, which turns a rejection into this prefix's own
-       * `BoardRouteFail` — a 200 carrying `{ok:false,error:{code:'persist_failed'}}`,
+       * `RouteFail` — a 200 carrying `{ok:false,error:{code:'persist_failed'}}`,
        * which is what `/items/restore` already answers for the same class of
        * problem. */
       if (this.unit !== undefined) {

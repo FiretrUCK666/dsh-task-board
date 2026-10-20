@@ -56,9 +56,11 @@ import {
   BOARD_VERBS,
   EXECUTE_ENVELOPE_PARAMS,
   TOOL_ACTION_IDS,
+  VERB_KIND,
   type ActionDanger,
   type ActionDomain,
   type ActionId,
+  type ActionKind,
   type ActionLane,
   type ActionSurface,
   type ParamSpec,
@@ -67,10 +69,12 @@ import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery, 
 import { hasLiveAutomation } from '../../core/automation.ts'
 import { taskUnviewed } from '../../core/session-display.ts'
 import { itemQualifierVocabulary } from '../../core/item-query.ts'
+import { refOf } from '../../core/item-navigate.ts'
+import { messageOf } from '../../core/values.ts'
 import { normalizeAttachmentRefs } from '../../core/attachment.ts'
 import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
-import { createTask, landCardInColumn, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
+import { cardStatusMapOf, createTask, landCardInColumn, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
@@ -421,16 +425,16 @@ function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>
 /* ── op resolution: the catalog decides what exists and who may do it ────── */
 
 /** The kind a report is filed under, read from the CATALOG's verb — the one
- *  classification in this system. A hand-written op→kind map would be a
- *  second place to forget a new verb. */
+ *  classification in this system. The verb→kind table lives in the catalog
+ *  (`VERB_KIND`), so a verb added there cannot fall through to a default. */
 function kindOf(id: string, ok: boolean, unchanged: boolean): OpReport['kind'] {
   if (!ok) return 'failed'
   if (unchanged) return 'unchanged'
   const verb = ACTIONS[id as ActionId]?.verb
-  if (verb === 'create') return 'created'
-  if (verb === 'delete') return 'deleted'
-  if (verb === 'move') return 'moved'
-  return 'updated'
+  // An op the catalog does not know has no kind of its own; the catalog's own
+  // table answers for every verb it declares, and anything else is reported
+  // as an update — the one kind that says 「something happened」.
+  return verb === undefined ? 'updated' : VERB_KIND[verb]
 }
 
 /**
@@ -536,7 +540,7 @@ export interface OpReport {
   readonly ok: boolean
   /** Which kind of change this was, from the catalog's verb — the only
    *  classification in the system, so a card and the model read one thing. */
-  readonly kind: 'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped'
+  readonly kind: ActionKind | 'unchanged' | 'failed' | 'skipped'
   /** The short number and title this op touched, when it touched one. */
   readonly ref?: string
   readonly title?: string
@@ -663,7 +667,7 @@ export interface ExecuteResult {
   /** The batch in the tool's OWN vocabulary, so a card can render it without
    *  re-reading prose. The kinds come from the catalog's `verb`, never from a
    *  name list written here. */
-  readonly counts: Readonly<Record<'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped', number>>
+  readonly counts: Readonly<Record<ActionKind | 'unchanged' | 'failed' | 'skipped', number>>
   /** Rows this op handed to the engine while no replica held the seat. They
    *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
   readonly enginePending: readonly string[]
@@ -959,7 +963,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     // would be the exact failure this tool must not ship: the receipt would say
     // 「已生效」 about words that are still on the disk.
     if (next.purge !== undefined) {
-      const said = `#${String(payload.of ?? '').replace('#', '').trim()}`
+      const said = `#${refOf(payload.of)}`
       if (request.dry_run === true) {
         // A rehearsal touches nothing, so it says what WOULD go — and for this one
         // action the tense is the whole message, because it is the only action on
@@ -979,7 +983,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
         raw.push({
           op: step.op,
           ok: false,
-          detail: `没写进去：${error instanceof Error ? error.message : String(error)}正文还在，没有回滚。`,
+          detail: `没写进去：${messageOf(error)}正文还在，没有回滚。`,
         })
         failed = true
         continue
@@ -1082,7 +1086,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
           op: step.op,
           ok: false,
           ...(moved.length === 0 ? {} : { documents: moved }),
-          detail: `没写进去：${error instanceof Error ? error.message : String(error)}${kept}`,
+          detail: `没写进去：${messageOf(error)}${kept}`,
         })
         // `failed` is the loop's OWN stop signal, so the ops after this one are
         // reported by the same branch that reports them after any other failure —
@@ -1156,7 +1160,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       // different statuses for the same row.
       changed: {
         tasks: changedTasks.map(taskRow),
-        items: changedItems.map(row => itemRow(row, cardsMapOf(doc.tasks))),
+        items: changedItems.map(row => itemRow(row, cardStatusMapOf(doc.tasks))),
       },
     }),
   }
@@ -1218,7 +1222,7 @@ function applyOne(
   const edited = (task: TaskRecord): TaskRecord => ({ ...task, updatedAt: now })
   const findTask = (): TaskRecord | undefined => doc.tasks.find(task => task.id === payload.of || task.title === payload.of)
   const findItem = (): ItemRecord | undefined => {
-    const key = String(payload.of ?? '').replace('#', '')
+    const key = refOf(payload.of)
     return items.items.find(item => item.id === payload.of) ?? items.items.find(item => String(item.ref) === key)
   }
   /**
@@ -1629,7 +1633,7 @@ function applyOne(
     }
     case 'item.update': {
       const found = findItem()
-      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found === undefined) return `清单里没有 #${refOf(payload.of)}。`
       // 文本三件只认字符串：非字符串不是“空”，是“没说清”，直接拒而不是落盘一个数字。
       for (const field of ['title', 'body', 'notes'] as const) {
         if (payload[field] !== undefined && typeof payload[field] !== 'string') {
@@ -1730,7 +1734,7 @@ function applyOne(
        * 判据，两边必须拿到同一个。 */
       let cardMove: { readonly cardId: string; readonly status: TaskStatus } | undefined
       if (payload.status !== undefined) {
-        const card = linkedCardOf(rows.find(item => item.id === found.id) ?? found, cardsMapOf(doc.tasks))
+        const card = linkedCardOf(rows.find(item => item.id === found.id) ?? found, cardStatusMapOf(doc.tasks))
         const write = applyItemStatus(rows, found.id, payload.status as TaskStatus, card, now)
         if (write.refused === 'cardRunning') {
           return '这一条挂着的卡还在进行中：这一轮跑完再改它的状态——现在改，这一行与那张卡会说出两个故事。'
@@ -1766,7 +1770,7 @@ function applyOne(
     }
     case 'item.delete': {
       const found = findItem()
-      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found === undefined) return `清单里没有 #${refOf(payload.of)}。`
       // The list half only. The tombstone that makes this recoverable is the
       // merge grammar's, and the receipt says 「已生效」 either way — which is
       // true, because a tombstoned delete IS the deletion this document means.
@@ -1775,7 +1779,7 @@ function applyOne(
     }
     case 'item.step': {
       const found = findItem()
-      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found === undefined) return `清单里没有 #${refOf(payload.of)}。`
       if (typeof payload.done !== 'boolean') return 'done 要么是 true（勾上）要么是 false（取消勾上），没给就不知道你想干什么。'
       const stepId = String(payload.step ?? '')
       const at = found.steps.findIndex(step => step.id === stepId)
@@ -1797,7 +1801,7 @@ function applyOne(
     }
     case 'item.promote': {
       const found = findItem()
-      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found === undefined) return `清单里没有 #${refOf(payload.of)}。`
       // The four judgments are the SHARED plan, and the panel's 转成卡片 button
       // goes through the very same one — a row that the model may promote and a
       // row a person may promote have to be the same question, or the button and
@@ -1841,14 +1845,14 @@ function applyOne(
     }
     case 'item.ask': {
       const found = findItem()
-      if (found === undefined) return `清单里没有 #${String(payload.of).replace('#', '')}。`
+      if (found === undefined) return `清单里没有 #${refOf(payload.of)}。`
       /* THE CARD, READ THE WAY THE INTERFACE READS IT.
        *
        * 「挂没挂卡」只有那一个判据（`linkedCardIdOf`）：卡不在板上就不算挂着，界面那一侧
        * 也是这么读的（`cardColumns` 里没有就是没有）。所以模型说「这一条没有挂卡」与界面
        * 说「没有挂卡」是同一件事——而模型若按文档里那个链接去找卡，就会找到一张已经被删掉的
        * 卡，然后对一个不存在的对话开口。 */
-      const cardLink = linkedCardOf(found, cardsMapOf(doc.tasks))
+      const cardLink = linkedCardOf(found, cardStatusMapOf(doc.tasks))
       const card = cardLink === undefined ? undefined : doc.tasks.find(task => task.id === cardLink.id)
       // THE SAME PLAN THE PANEL'S BUTTON CALLS. Which conversation a row's words
       // go to, and whether this is 开始 or 继续, is one judgment — the model asking
@@ -1891,7 +1895,7 @@ function applyOne(
       // So the row is found among the deletions first, exactly as the restore
       // finds it — and a number that is in neither list is answered out loud
       // rather than by guessing which of the two situations it is.
-      const wanted = String(payload.of).replace('#', '').trim()
+      const wanted = refOf(payload.of)
       const carried = deletedItemsOf(items).find(item => String(item.ref) === wanted)
       if (carried === undefined) {
         // A row that is STILL THERE is the one refusal worth making: answering
@@ -1915,7 +1919,7 @@ function applyOne(
       return { doc, items: outcome.doc, item: carried, purge: carried.id }
     }
     case 'item.restore': {
-      const wanted = String(payload.of).replace('#', '').trim()
+      const wanted = refOf(payload.of)
       // The row to bring back is the one the TOMBSTONE holds, not one rebuilt
       // from what the caller remembers — and it is re-stamped above the
       // tombstone, because a tombstone outranks the row it removed and would
@@ -1969,23 +1973,6 @@ function livenessOf(sources: SessionPostureSources, task: TaskRecord): TaskLiveS
   if (seen.some(value => value === true)) return 'running'
   if (seen.some(value => value === 'unknown')) return 'unknown'
   return 'idle'
-}
-
-/**
- * 看板的栏，按卡片 id 索引 —— 每一个需要「这一行现在在哪一栏」的清单推导都问它。
- *
- * **读的是卡片自己那一栏（`TaskRecord.status`），不是活性判决。** 一条行在哪一栏就是卡片
- * 所处的栏，那是卡片自己的字段——于是宿主与面板读**同一个字段**（面板读
- * `controller.getSnapshot().tasks[].status`），不各自算一次「在不在跑」。各自算就是两个名字
- * 同一件事（面板读 `liveStateOf`、宿主读 `livenessOf`），而两个名字迟早会给出两个答案。
- *
- * @param tasks - the cards to read, which is the whole board ledger.
- * @returns card id → 那一栏。
- */
-function cardsMapOf(tasks: readonly TaskRecord[]): Map<string, TaskStatus> {
-  const cards = new Map<string, TaskStatus>()
-  for (const task of tasks) cards.set(task.id, task.status)
-  return cards
 }
 
 /** The sentence a caller shows when steps had to be given ids. */
@@ -2342,7 +2329,7 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
   // 看板的栏跟着一起进去，而这不是优化：一条挂卡的行「在哪一栏」由那张卡回答，不带上
   // 它，`status:` 就成了界面给得出、这个查询复现不了的筛子——模型会被告知某一行是
   // 待办，而它在待审核。表读的是**卡片自己那一栏**，与面板读的是同一个字段。
-  const itemCtx = itemSearchContext(deps.now(), undefined, cardsMapOf(doc.tasks))
+  const itemCtx = itemSearchContext(deps.now(), undefined, cardStatusMapOf(doc.tasks))
   const cards = itemCtx.cards
   const matchedItems = items.items
     .filter(item => matchItemQuery(item, filter, itemCtx))

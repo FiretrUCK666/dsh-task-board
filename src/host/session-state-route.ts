@@ -19,6 +19,7 @@
  *   'diagnostic' row is not a child.
  */
 import type { Context } from '@deepseek-ai/cordis'
+import { json } from './http-json.ts'
 
 /** The validated, shape-safe view a surface can render. */
 export interface SessionStateView {
@@ -117,7 +118,16 @@ export function queryParamOf(rawUrl: string | undefined, key: string): string | 
   return undefined
 }
 
-/** HTTP handler: GET /api/dsh-task-board/session-state?sessionId=… → { ok, plan?, goal? }. */
+/**
+ * HTTP handler: GET /api/dsh-task-board/session-state?sessionId=… → the shared
+ * envelope `{ ok: true, value: { plan?, goal?, subagents? } }`.
+ *
+ * THE ENVELOPE IS THE SHARED ONE. This route used to answer a FLAT envelope
+ * (`{ ok: true, plan?, goal? }`) — its own dialect on the same plugin — which
+ * meant a reader had to know which of the two shapes each route answers. Now
+ * it answers exactly what every other route answers, and the browser reads
+ * `value` like everywhere else.
+ */
 export function createSessionStateHandler(
   faces: SessionStateFaces,
   read: (faces: SessionStateFaces, sessionId: string) => Promise<SessionStateView> = readSessionState,
@@ -130,8 +140,7 @@ export function createSessionStateHandler(
       return
     }
     const view = await read(faces, sessionId)
-    res.writeHead(200, { 'content-type': 'application/json; charset=utf-8' })
-    res.end(JSON.stringify({ ok: true, ...view }))
+    json(res, { ok: true, value: view })
   }
 }
 

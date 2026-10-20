@@ -17,19 +17,22 @@
  * Read ONCE per registration, before the panel is contributed. Reading per
  * render would make a surface appear and disappear under the reader's cursor.
  */
+import { SURFACE_IDS, type SurfaceId, type SurfaceManifest } from '../core/surfaces.ts'
 import { routeUrl } from './route-base.ts'
 
-/** The answer's shape, exactly as the host spells it. */
-export interface SurfaceManifest {
-  readonly home: boolean
-  readonly board: boolean
-  readonly items: boolean
-  readonly agent: boolean
-  readonly design: boolean
-}
+/**
+ * The answer's shape and the names a registration may ask about — ONE home.
+ *
+ * Both come from `core/surfaces.ts`, where the plugin's surface list lives
+ * (`SURFACE_IDS`). The browser half used to spell its own list of names, and
+ * it was one short: the host can announce the agent row, and the browser had
+ * no name for it. A shorter list does not error — it just means the browser
+ * can never ask about that surface — so the list is derived, not written out.
+ */
+export type { SurfaceManifest }
 
-/** Which surface a registration is asking about. */
-export type SurfaceName = 'home' | 'board' | 'items' | 'design'
+/** Which surface a registration is asking about: the plugin's own surface list. */
+export type SurfaceName = SurfaceId
 
 /** The route, named here once so the manifest has a single home. */
 const SURFACES_URL = routeUrl('/api/dsh-task-board/board/surfaces')
@@ -41,9 +44,9 @@ const READ_TIMEOUT_MS = 3_000
  * Ask the host which surfaces are on.
  *
  * Resolves to `undefined` for EVERY failure — network, non-200, malformed JSON,
- * a shape that is not three booleans, or a timeout. There is no "partially
- * known" answer, because a half-answer would make some surfaces vanish and
- * others not, which is the one outcome a reader cannot act on.
+ * a shape that is not one boolean per surface, or a timeout. There is no
+ * "partially known" answer, because a half-answer would make some surfaces
+ * vanish and others not, which is the one outcome a reader cannot act on.
  * @param fetchImpl - injected for tests.
  * @returns the manifest, or `undefined` when it could not be read.
  */
@@ -62,8 +65,8 @@ export async function readSurfaceManifest(
     if (typeof body !== 'object' || body === null) return undefined
     // Unwrap the plugin's shared envelope FIRST, then judge the value. Checking
     // the envelope for the manifest's own shape can never pass — the envelope
-    // carries `ok` and `value`, not three booleans — and a check that can never
-    // pass is worse than no check: it answers `undefined` for a perfectly good
+    // carries `ok` and `value`, not the per-surface flags — and a check that can
+    // never pass is worse than no check: it answers `undefined` for a perfectly good
     // answer, which here means "narrow nothing" and hides the switch.
     return isManifest((body as { value?: unknown }).value) ? (body as { value: SurfaceManifest }).value : undefined
   } catch {
@@ -76,17 +79,18 @@ export async function readSurfaceManifest(
 /**
  * Is this the manifest shape? A plain structural test, because a value that
  * merely LOOKS right would silently switch a surface off.
+ *
+ * The keys are read off the plugin's own surface list, not written out here:
+ * a spelled-out copy of the list is a list that goes short the day a surface
+ * is added — and it goes short SILENTLY, because a missing key only means the
+ * whole manifest is dropped, which reads as "the host said nothing".
  * @param value - the candidate.
- * @returns whether it carries three booleans.
+ * @returns whether it carries one boolean per surface.
  */
 function isManifest(value: unknown): value is SurfaceManifest {
   if (typeof value !== 'object' || value === null) return false
   const record = value as Record<string, unknown>
-  return typeof record.home === 'boolean'
-    && typeof record.board === 'boolean'
-    && typeof record.items === 'boolean'
-    && typeof record.agent === 'boolean'
-    && typeof record.design === 'boolean'
+  return SURFACE_IDS.every(id => typeof record[id] === 'boolean')
 }
 
 /**

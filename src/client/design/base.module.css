@@ -56,6 +56,22 @@
   }
 }
 
+/* ── 输入框的焦点晕：**一处** ────────────────────────────────────────────────
+ *
+ * 「这个字段活了」的那一圈：一枚**柔的晕**，不是实环。原先它在四张表里各写一遍
+ * （共享的那枚输入框、清单的两个字段、看板的那一个预设），逐字相同，只差所在
+ * 的那张表——而「只差所在的那张表」正是抄一份的代价：改一处，另一处留在旧值上，
+ * 屏上不会有人说一句话。
+ *
+ * **环宽读令牌 `--dsh-tb-ring-w`**：环有多宽是**一条共享的事实**，不是每处自己
+ * 挑的一个数。挑一次就分家。
+ *
+ * **这一条只给输入框**；按钮、行、卡片读座位级那条实环（实环看得见，晕是给
+ * 「正在打字」的那一种状态用的）。 */
+.focusHalo:focus {
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
+}
+
 /* ── 墨位：这一节记的是**为什么这里没有补偿规则** ──────────────────────────────
  *
  * `align-items: center` 居中的是**行盒**，读者看的是**字的墨**，两者不同心。
@@ -88,24 +104,45 @@
  * 形式，而名单只会漏。**两条声明写在拥有那个盒子的规则里**，是唯一不会有孤儿的地方。
  */
 
-/* ── 纸面：**一张被抬起的纸** ────────────────────────────────────────────────
+/* ── 材质：**底色 + 影 + 一枚角** ─────────────────────────────────────────────
  *
  * 一张纸由三件事同时说：**色调台阶 + 受光的顶边 + 落在桌面上的投影**。三样缺一
  * 不可——只有底色是「扁的」，只有边是线框，只有影是脏。
  *
- * 这三笔是**跨页面的形态**：总览的四格与卡片、看板的卡片、清单的行卡都是同一张纸，
- * 所以它只在这里声明一次，页面表里不再抄第二份。一份拷贝的代价不是那几行，是
- * **改一处不报错**：改这张纸的那一处，另一处留在旧值上，而屏上不会有人说一句话。
+ * 这三笔是**跨页面的形态**：总览的四格与卡片、看板的卡片、清单的行卡、展页的
+ * 标本盒都是同一张纸，所以它只在这里声明一次，页面表里不再抄第二份。一份拷贝的
+ * 代价不是那几行，是**改一处不报错**：改这张纸的那一处，另一处留在旧值上，而屏上
+ * 不会有人说一句话。
  *
- * **页面自己的几何留在页面表里**：边更轻、角更小、内衬更紧——那些是那一页的选择，
- * 不是这张纸的形状。页面表的规则特异性更高，所以它写 `border` / `border-radius`
- * 时盖住这里的两笔；材质那两笔（底色与影）由这里说了算。
+ * **圆角在这里，不归页面自选。** 这一条是量出来的教训：它原先被划成「页面自己的
+ * 几何」，于是每个装纸的页面类都得自己记得写 `border-radius` —— 而「记得」是
+ * 一种会在下一个人手里失效的机制。总览页的四格、两张卡、那条流水线一起变成直角，
+ * 页面上没有任何报错，也没有一条门禁会红：缺一条声明是**沉默的**。
+ *
+ * **页面仍然能选角的大小**（总览那格要更大的一枚角、清单那一行要更轻的一枚），
+ * 但它选的是**哪一档**，不是**有没有**：写 `--dsh-tb-paper-radius` 就换一档，
+ * 什么都不写就是「一张纸」的那一档。**没有「没有角」这个选项**——一张直角的白
+ * 底方块不是这张系统里的纸。
+ *
+ * **两个槽**：底色一档、影一档（影可以有多笔）。页面要换档就写这些变量，
+ * **不写 `background`、`box-shadow`、`border-radius` 本身**。
+ *
+ * **为什么是变量而不是让页面重写那几条声明**：重写要打同一场特异性官司（页面类
+ * 与共享类都是单类，谁赢靠源码顺序——那是一条脆弱面），而变量**不打**：共享类读
+ * 它、页面写它，两条声明作用于不同属性，顺序永远不参与决定。
+ *
+ * **默认值就是「一张纸」**：面 + 受光顶边 + 第一档投影 + 中档圆角。多数消费者要的
+ * 正是这一档，所以它们什么都不用写。
+ *
+ * **变量会继承，所以每个消费者都要在自己身上写自己的档。** 这一条不是洁癖：
+ * 看板那张卡把自己的色相调淡了 6%，而它里面那枚「就地跑一下」的小纸片如果读到
+ * 卡片那一档，底色就跟着染上卡片的颜色——一张白纸片忽然泛蓝。今天没有人踩到，
+ * 是因为那张小纸片恰好不读这一档；靠「恰好」活着的东西没有第二次机会。
  */
 .paperSheet {
-  border: var(--dsh-tb-border);
-  border-radius: var(--dsh-tb-radius-lg);
-  background: var(--dsh-tb-plane-sheet);
-  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
+  background: var(--dsh-tb-paper-plane, var(--dsh-tb-plane-sheet));
+  box-shadow: var(--dsh-tb-paper-cast, var(--dsh-tb-rim), var(--dsh-tb-cast-1));
+  border-radius: var(--dsh-tb-paper-radius, var(--dsh-tb-radius-md));
 }
 
 /* ── 条带的左右内衬：**一条带子的第一个字与每一行的第一个字站在同一条竖线上** ────
@@ -148,20 +185,47 @@
  * 悬浮是「抬起来」，不是换一层底色：第二档投影 + 1px 位移。按下立刻回位——反馈
  * 要快，慢一拍就像没反应。不可点的东西不挂这一类，所以「能不能按」在屏上读得出来。
  *
+ * **抬升只有一个速度。** 影与位移是同一件事的两半（一起动才读作「抬起」），
+ * 所以它们读同一枚 `--dsh-tb-motion-lift`。抄成两档的代价不是那几行，是**两处
+ * 会分家**：改一处另一处留在旧值上，而屏上没有人说得清「这一下为什么比那一下慢」。
+ * 边与底色是**状态变化**（卡片换状态色那一瞬），它们读状态那一档，与抬升无关。
+ *
  * 焦点环显式带上：座位级那条 `:focus-visible` 与这一条特异性相同，而这一条写在它
  * 后面，所以「键盘选中 + 鼠标恰好停在上面」那一瞬，环不会被盖掉。
  */
 .paperLift {
-  transition: box-shadow var(--dsh-tb-motion-lift), transform var(--dsh-tb-motion-fast);
+  transition:
+    box-shadow var(--dsh-tb-motion-lift),
+    transform var(--dsh-tb-motion-lift),
+    border-color var(--dsh-tb-motion),
+    background var(--dsh-tb-motion);
 }
 
-.paperLift:hover {
+/* **抬起的那一档只有一个家。** 悬停与「被选中」是两种不同的理由，抬起的样子却是同
+ * 一样：第二档投影 + 1px 位移。所以它们读同一条规则——`[data-raised]` 是被选中那一
+ * 种理由的入口（看板那张被选中的卡挂它），而它是**这一层的接口**：页面不必自己写
+ * 那两笔。
+ *
+ * **为什么不写成两份**（一份给悬停、一份给选中）：两份会分家——改一处，另一处留在
+ * 旧值上，而屏上不会有人说一句话。 */
+.paperLift:hover,
+.paperLift[data-raised='true'] {
   box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);
   transform: translateY(-1px);
 }
 
+/* 按下立刻回位：**影也回到静止那一档**，不只是位移回去。少了这一句，纸在按住
+ * 那一瞬仍然是抬起来的——那一下按下去像是没按到。
+ *
+ * **按下读「快」那一档**（`--dsh-tb-motion-fast`）：反馈要立刻，慢一拍就像没反应。
+ * 悬停抬起读「抬升」那一档——两件事两档速度，不是因为抄了一份改了一个数，而是
+ * **按下去**与**悬上去**本来就是两件事。 */
 .paperLift:active {
+  box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-1);
   transform: translateY(0);
+  transition:
+    box-shadow var(--dsh-tb-motion-fast),
+    transform var(--dsh-tb-motion-fast);
 }
 
 .paperLift:focus-visible {
@@ -177,5 +241,60 @@
 
   .paperLift:hover {
     transform: none;
+  }
+}
+
+/* ── 细滚动条：**一处** ──────────────────────────────────────────────────────
+ *
+ * 这一族的三件套（8px 宽、滑块一枚、轨道透明、按钮藏起来）原先在共享层与看板表
+ * 各抄一遍。两份拷贝不会报错，只会在有人改一处时让另一处留在旧值上。
+ *
+ * **零特异性**：`:where()` 把它压到比任何页面规则都低，于是**页面要藏滚动条时
+ * 藏得过它**——看板的列区与筛选条、弹层的背板、附件行都写 `display: none`，
+ * 那些规则必须赢过这一条。
+ *
+ * **它落在座位里而不是落在某个类上**：滚动容器是哪几个元素，是每一页自己的事；
+ * 而「滚动条长什么样」是**一件共享的事**，所以它住在共享层，用座位级选择器
+ * 一次覆盖所有页面。 */
+:where([data-dsh-taskboard-view])::-webkit-scrollbar,
+:where([data-dsh-taskboard-panel])::-webkit-scrollbar,
+:where([data-dsh-taskboard-view]) ::-webkit-scrollbar,
+:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+:where([data-dsh-taskboard-view])::-webkit-scrollbar-thumb,
+:where([data-dsh-taskboard-panel])::-webkit-scrollbar-thumb,
+:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb,
+:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
+  background: var(--dsh-tb-text-3);
+  border-radius: 4px;
+  background-clip: padding-box;
+}
+
+:where([data-dsh-taskboard-view])::-webkit-scrollbar-track,
+:where([data-dsh-taskboard-panel])::-webkit-scrollbar-track,
+:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-track,
+:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+:where([data-dsh-taskboard-view])::-webkit-scrollbar-button,
+:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button,
+:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button,
+:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button {
+  display: none;
+}
+
+/* 不认 `::-webkit-scrollbar` 的浏览器走这一条。`scrollbar-width` **不继承**，
+ * 所以它落在每一个可能滚动的元素上——不滚动的元素读它没有代价。 */
+@supports not selector(::-webkit-scrollbar) {
+  :where([data-dsh-taskboard-view]),
+  :where([data-dsh-taskboard-panel]),
+  :where([data-dsh-taskboard-view]) *,
+  :where([data-dsh-taskboard-panel]) * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--dsh-tb-text-3) transparent;
   }
 }

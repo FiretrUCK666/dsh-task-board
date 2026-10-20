@@ -16,6 +16,7 @@
  * Pure and framework-free so every consumer unit-tests in isolation.
  */
 import type { PendingInteractionKind } from './controller.ts'
+import { localDayKey } from './local-day.ts'
 import { relatedSessionIdsOf } from './task-live.ts'
 import { isOpenRound, type TaskRecord } from './tasks.ts'
 
@@ -218,15 +219,6 @@ export function boardEventsOf(
   return events.sort((a, b) => b.at - a.at)
 }
 
-/** Day bucket key (local calendar day) for activity grouping — pure. */
-export function dayBucketOf(at: number): string {
-  const date = new Date(at)
-  const year = date.getFullYear()
-  const month = `${date.getMonth() + 1}`.padStart(2, '0')
-  const day = `${date.getDate()}`.padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
 /**
  * Group events into day buckets (newest day first, events newest-first
  * inside). Pure — the view renders one section per bucket.
@@ -234,7 +226,7 @@ export function dayBucketOf(at: number): string {
 export function groupEventsByDay(events: readonly ActivityEvent[]): Array<{ day: string; items: ActivityEvent[] }> {
   const buckets = new Map<string, ActivityEvent[]>()
   for (const event of events) {
-    const day = dayBucketOf(event.at)
+    const day = localDayKey(event.at)
     const list = buckets.get(day)
     if (list !== undefined) list.push(event)
     else buckets.set(day, [event])

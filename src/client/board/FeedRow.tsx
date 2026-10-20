@@ -27,6 +27,7 @@
 import type { ReactNode } from 'react'
 import { Chip, type ChipKind } from '../design/Chip.tsx'
 import css from '../board.module.css'
+import components from '../design/components.module.css'
 
 /** Props of one feed row. */
 export interface FeedRowProps {
@@ -83,7 +84,7 @@ export function FeedRow({
         {...(mainControls !== undefined ? { 'aria-controls': mainControls } : {})}
         onClick={onMainClick}
       >
-        {task !== undefined && <span className={css.notifyTask}>{task}</span>}
+        {task !== undefined && <span className={`${css.notifyTask} ${components.truncate}`}>{task}</span>}
         {session !== undefined && (
           <span className={css.notifySession} {...(sessionTitle !== undefined ? { title: sessionTitle } : {})}>
             {session}
@@ -92,7 +93,7 @@ export function FeedRow({
         <Chip kind={status.kind} fill={false} className={css.notifyMainChip}>{status.label}</Chip>
       </button>
       {excerpt !== undefined && excerpt !== '' && (
-        <p className={css.notifyExcerpt}>{excerpt}</p>
+        <p className={`${css.notifyExcerpt} ${components.titleText}`}>{excerpt}</p>
       )}
       <span className={css.notifyActions}>
         <span className={css.notifyActionCluster}>{actions}</span>

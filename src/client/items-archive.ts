@@ -26,15 +26,13 @@
 import { routeUrl } from './route-base.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { isItemRecordShape } from '../core/item.ts'
+import { DAY_MS } from '../core/item-dates.ts'
 
 /** How long to wait before telling the reader the host could not be reached. */
 const ARCHIVE_TIMEOUT_MS = 8_000
 
 /** The retention window, in days — the number the sentences say. */
 const ARCHIVE_WINDOW_DAYS = 30
-
-/** One day, in milliseconds — the unit the clock sentences count in. */
-const DAY_MS = 86_400_000
 
 /**
  * HOW LONG A TOMBSTONE HAS LEFT, read from the stamp the host keeps.

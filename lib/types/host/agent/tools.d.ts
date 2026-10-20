@@ -51,7 +51,7 @@
  * A relayed command is accepted, not executed: the honest answer is "已受理，
  * 引擎当前不在线，将在引擎上线后执行". Pretending it ran is the failure mode.
  */
-import { type ActionDanger, type ActionDomain, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
+import { type ActionDanger, type ActionDomain, type ActionKind, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
 import { type BoardCommand, type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
 import { type ItemStatus, type ItemStatusView } from '../../core/item.ts';
@@ -239,7 +239,7 @@ export interface OpReport {
     readonly ok: boolean;
     /** Which kind of change this was, from the catalog's verb — the only
      *  classification in the system, so a card and the model read one thing. */
-    readonly kind: 'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped';
+    readonly kind: ActionKind | 'unchanged' | 'failed' | 'skipped';
     /** The short number and title this op touched, when it touched one. */
     readonly ref?: string;
     readonly title?: string;
@@ -323,7 +323,7 @@ export interface ExecuteResult {
     /** The batch in the tool's OWN vocabulary, so a card can render it without
      *  re-reading prose. The kinds come from the catalog's `verb`, never from a
      *  name list written here. */
-    readonly counts: Readonly<Record<'created' | 'updated' | 'moved' | 'deleted' | 'unchanged' | 'failed' | 'skipped', number>>;
+    readonly counts: Readonly<Record<ActionKind | 'unchanged' | 'failed' | 'skipped', number>>;
     /** Rows this op handed to the engine while no replica held the seat. They
      *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
     readonly enginePending: readonly string[];

@@ -14,7 +14,7 @@
  */
 import type { ItemRecord } from '../../core/item.ts'
 import type { ItemSort } from '../../core/item-sort.ts'
-import { localDayKey } from './model.ts'
+import { localDayKey } from '../../core/local-day.ts'
 
 export type ItemDayBucket = 'today' | 'yesterday' | 'beforeYesterday' | 'earlier'
 
@@ -43,8 +43,19 @@ export const SORT_GROUPS_BY_DAY: Readonly<Record<ItemSort, boolean>> = {
   title: false,
 }
 
-/** Which bucket a moment belongs to, against one clock. */
-export function dayBucketOf(at: number, now: number): ItemDayBucket {
+/**
+ * Which bucket a moment belongs to, against one clock.
+ *
+ * **It is a BUCKET, not a key.** The key — the local calendar day itself —
+ * is `localDayKey` in core, and it used to have a second name here that
+ * matched another module's function exactly: two names, one algorithm, and
+ * the day the two drifted apart nothing would say so. So the bucket keeps
+ * its own name and the key keeps the one home.
+ * @param at - the moment.
+ * @param now - the reading clock.
+ * @returns the bucket that moment falls in.
+ */
+export function itemDayBucketOf(at: number, now: number): ItemDayBucket {
   const day = 86_400_000
   const today = localDayKey(now)
   const yesterday = localDayKey(now - day)
@@ -91,7 +102,7 @@ export function itemDayGroupsOf(
   if (!SORT_GROUPS_BY_DAY[sort]) return [{ bucket: 'earlier', rows: items, n: items.length }]
   const byBucket = new Map<ItemDayBucket, ItemRecord[]>()
   for (const item of items) {
-    const bucket = dayBucketOf(item.updatedAt, now)
+    const bucket = itemDayBucketOf(item.updatedAt, now)
     const list = byBucket.get(bucket)
     if (list === undefined) byBucket.set(bucket, [item])
     else list.push(item)

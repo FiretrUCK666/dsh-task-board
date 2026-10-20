@@ -18,9 +18,15 @@
  *
  * The `id` this entry registers under MUST equal the `main` slot key the board
  * panel registers — the shell resolves a panel row to its stage by that id.
+ *
+ * THE TOGGLE ITSELF IS NOT WRITTEN HERE. The mechanism (which button the
+ * listener lands on, why it must be a native listener, and the disposer that
+ * takes it off again) lives in `design/use-panel-row-exit.ts` — one hook, four
+ * panel rows (home, board, list, gallery), so the four cannot drift apart.
  */
 
-import { useEffect, useRef } from 'react'
+import { useRef } from 'react'
+import { usePanelRowExit } from './design/use-panel-row-exit.ts'
 import css from './board.module.css'
 
 /** Props the shell binds for a panel-list entry. */
@@ -47,33 +53,7 @@ export interface TaskBoardIconProps {
  */
 export function TaskBoardIcon({ size, active, onExit }: TaskBoardIconProps) {
   const rootRef = useRef<SVGSVGElement>(null)
-  useEffect(() => {
-    if (onExit === undefined) return
-    // `closest('button')` starts at OUR OWN node and walks up to the button
-    // the slot contract says the shell owns — no selector guessing, no shell
-    // class or attribute, no writes to shell nodes. Why a native listener on
-    // that button (and not a React onClick on the glyph): React 18 dispatches
-    // synthetic events at the ROOT container, so a native bubble listener on
-    // the button runs FIRST — stopping it there keeps the shell's own
-    // `selectPanel(id)` from ever firing — and every activation path reaches
-    // this button: a click on the glyph, a click on the label, and a keyboard
-    // Enter (whose target IS the button). A glyph-only React handler would
-    // miss the label and the keyboard.
-    //
-    // Failure mode is a missing feature, never a broken page: if the shell
-    // one day renders the glyph outside a button, `closest` returns null, no
-    // listener attaches, and the row keeps opening the board exactly as the
-    // shell intends.
-    const button = rootRef.current?.closest('button')
-    if (!(button instanceof HTMLButtonElement)) return
-    const onClick = (event: Event): void => {
-      if (!active) return // board closed → let the shell's own handler open it
-      event.stopPropagation()
-      onExit()
-    }
-    button.addEventListener('click', onClick)
-    return () => { button.removeEventListener('click', onClick) }
-  }, [active, onExit])
+  usePanelRowExit(rootRef, active, onExit)
   return (
     <svg
       ref={rootRef}

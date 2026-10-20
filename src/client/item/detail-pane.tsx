@@ -34,6 +34,7 @@ import { AttachmentStrip } from '../design/AttachmentStrip.tsx'
 import { attachBusyLabel, chipsOf, refsOf, useComposerAttachments, type AttachmentAdmitter } from '../board/composer-attachments.ts'
 import { MAX_ITEM_FILES, MAX_ITEM_IMAGES, TASK_IMAGE_BUDGET } from '../board/attach.ts'
 import css from './item.module.css'
+import base from '../design/base.module.css'
 
 /** The four tiers, most important first — the order a row of chips is scanned in.
  *  The order is the MODEL's ({@link ITEM_PRIORITIES_BY_WEIGHT}), not a second sort
@@ -423,7 +424,7 @@ export function ItemDetail(props: ItemDetailProps) {
     shutDateEdit()
   }
   return (
-    <div className={css.itemOpen}>
+    <div className={`${css.itemOpen} ${base.paperSheet}`}>
       <div className={css.itemOpenMain}>
         {/* 左边那一列：**正文、步骤、上下文备注——三段，每段有自己的段名**。
             段名不是装饰：读者在这一列里看到两段话，而「哪一段是正文、哪一段是备注」是他
@@ -648,7 +649,11 @@ export function ItemDetail(props: ItemDetailProps) {
           {/* 挂到哪张卡。**「不挂」是一种正当状态**，所以它是一枚按钮而不是一个空框；
               而「新开一张」也在同一排——挂不上的那一条正是最需要新卡的那一条。按下它
               只是**就地起一个名字**：回车把卡建成并挂上，Esc 与点开别处都收回。 */}
-          <div className={css.itemOptRow} data-note={cardNote.open ? '' : undefined}>
+          {/* **这一行是一节，不是一行两列**：它装的是「挂哪张卡」，也就是一句
+              长度由用户定的标题。右栏只有 292px，并排时那一格只剩 183px，一句话要
+              折成四行——所以它自己上下排（字段名一行，卡片占满整行）。判据是内容的
+              形状，不是一个只为它服务的开关。 */}
+          <div className={css.itemOptRow} data-card-row="" data-note={cardNote.open ? '' : undefined}>
             <p className={css.itemOptName} data-note-hover="">
               {/* **与新建那张纸上的同一格逐字同形**（`item-create-dialog.tsx`）：两边说的是
                   同一件事（挂已有的卡 vs 新建一张），所以那句话、那枚入口与「字段名 + 记号」
@@ -667,12 +672,21 @@ export function ItemDetail(props: ItemDetailProps) {
                 <span className={css.itemPillText} data-dsh-tb-pilltext>{t('item.field.noCard')}</span>
               </button>
               {props.cards.map(card => (
+                /* **A card's title is a SENTENCE, not a short value.** The sibling
+                   pills above hold two-or-three-character answers and are pinned
+                   with `flex: none` — right for them, wrong for this: measured, a
+                   long title stayed at full width, ran past the pane's right edge,
+                   and was hard-cut by `.itemOpen`'s overflow — 22 of 55 characters
+                   visible, no ellipsis, no tooltip, no accessible name. So it gets
+                   its own form (`.itemOptCard`): it shrinks, wraps, and takes a
+                   whole line when it needs one. */
                 <button
                   key={card.id}
                   type="button"
-                  className={css.itemOpt}
+                  className={css.itemOpt + ' ' + css.itemOptCard}
                   data-on={cardId === card.id ? '' : undefined}
                   aria-pressed={cardId === card.id}
+                  title={card.title}
                   onClick={() => props.onEdit({ taskId: card.id })}
                 >
                   <span className={css.itemPillText} data-dsh-tb-pilltext>{card.title}</span>

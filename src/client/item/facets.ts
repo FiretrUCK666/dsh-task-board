@@ -35,7 +35,7 @@
  * file is a text editor with a vocabulary, and the vocabulary is the grammar
  * core already speaks.
  */
-import { isItemQualifierToken, ITEM_FLAGS, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
+import { isItemQualifierToken, isItemTagToken, ITEM_FLAGS, ITEM_RAIL_DATE_FLAGS, ITEM_RAIL_IDLE_FLAGS, type ItemFlag, type ItemQuery, type ItemStatusView } from '../../core/item-view.ts'
 import { ITEM_STATUS_VIEWS } from '../../core/item.ts'
 import type { ItemPriority } from '../../core/item.ts'
 import { ITEM_PRIORITIES_BY_WEIGHT, TOKEN_BY_PRIORITY } from '../../core/item-view.ts'
@@ -251,8 +251,11 @@ export function queryChipsOf(text: string, tags: readonly (readonly string[])[] 
     chips.push({ facet: 'item.facet.tag', value: null, tag: spelled, day: null, token })
   }
   for (const part of text.split(/\s+/)) {
+    // The tag grammar has ONE home (core/item-query.ts): whether a word is a
+    // tag is that grammar's question, so this asks it rather than re-deciding
+    // "starts with a # and has something after it" on its own.
+    if (!isItemTagToken(part)) continue
     const lower = part.toLowerCase()
-    if (lower === '' || !lower.startsWith('#') || lower.length < 2) continue
     if (byTag.has(lower)) continue
     if (chips.some(chip => chip.token.toLowerCase() === lower)) continue
     chips.push({ facet: 'item.facet.tag', value: null, tag: part.slice(1), day: null, token: part })

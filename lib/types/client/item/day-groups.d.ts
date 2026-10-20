@@ -30,8 +30,19 @@ export type ItemDayBucket = 'today' | 'yesterday' | 'beforeYesterday' | 'earlier
  * all of them」 is the defect, not the fix.**
  */
 export declare const SORT_GROUPS_BY_DAY: Readonly<Record<ItemSort, boolean>>;
-/** Which bucket a moment belongs to, against one clock. */
-export declare function dayBucketOf(at: number, now: number): ItemDayBucket;
+/**
+ * Which bucket a moment belongs to, against one clock.
+ *
+ * **It is a BUCKET, not a key.** The key — the local calendar day itself —
+ * is `localDayKey` in core, and it used to have a second name here that
+ * matched another module's function exactly: two names, one algorithm, and
+ * the day the two drifted apart nothing would say so. So the bucket keeps
+ * its own name and the key keeps the one home.
+ * @param at - the moment.
+ * @param now - the reading clock.
+ * @returns the bucket that moment falls in.
+ */
+export declare function itemDayBucketOf(at: number, now: number): ItemDayBucket;
 /** One day of rows, in the order the caller handed them over. */
 interface ItemDayGroup {
     readonly bucket: ItemDayBucket;

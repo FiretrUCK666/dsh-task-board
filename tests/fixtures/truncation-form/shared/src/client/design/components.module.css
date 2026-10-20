@@ -1,0 +1,9 @@
+/* Fake face: the shared layer's OWN copy of the truncation form.
+   That one is the home — it must never be reported. */
+
+.truncate {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

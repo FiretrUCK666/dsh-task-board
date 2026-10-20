@@ -123,11 +123,19 @@ export function useSessionContext(controller: BoardController, sessionId: string
     const pollSessionState = (): void => {
       void fetch(`${STATE_URL}?sessionId=${encodeURIComponent(sessionId)}`)
         .then(response => (response.ok ? response.json() as Promise<{
-          goal?: { title: string; active: boolean }
-          subagents?: Array<{ title: string; status?: string }>
+          ok: boolean
+          value?: {
+            goal?: { title: string; active: boolean }
+            subagents?: Array<{ title: string; status?: string }>
+          }
         }> : undefined))
-        .then(view => {
+        .then(envelope => {
           if (!alive) return
+          // The host answers in the plugin's shared envelope: the view sits in
+          // `value`. An answer that is not `ok` reads as "cannot tell" — the
+          // same discipline as everywhere else: read nothing rather than read
+          // half of it.
+          const view = envelope?.ok === true ? envelope.value : undefined
           setContext(current => ({
             ...current,
             // The bridge only fills the goal when the projection said nothing

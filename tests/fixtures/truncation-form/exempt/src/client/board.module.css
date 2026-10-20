@@ -1,0 +1,10 @@
+/* Fake face: the two-line clamp family, which the exemption table records
+   with a structural reason (the shared layer has no home for it yet). */
+
+.boardExcerpt {
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  display: -webkit-box;
+  min-width: 0;
+  overflow: hidden;
+}

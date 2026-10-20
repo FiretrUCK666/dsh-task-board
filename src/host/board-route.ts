@@ -37,8 +37,11 @@ import type {} from '@deepseek-ai/dsh-host-webserver'
 import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
 import { deletedItemsOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
+import { refOf } from '../core/item-navigate.ts'
+import { messageOf } from '../core/values.ts'
+import type { RouteFail } from '../core/http-envelope.ts'
 import { acquireBoardService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
-import { readJsonBody } from './http-json.ts'
+import { json, readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
 /** The commit body size cap: the whole ledger travels per commit. */
@@ -88,37 +91,8 @@ export interface ItemsRouteView {
   deleted?: ItemRecord[]
 }
 
-/** Success envelope carrying a route's value. */
-export interface RouteOk<T> {
-  ok: true
-  value: T
-}
-
-/** Success envelope carrying a board view. */
-export type BoardRouteOk = RouteOk<BoardRouteView>
-
-/** Success envelope carrying a checklist view. */
-export type ItemsRouteOk = RouteOk<ItemsRouteView>
-
-/** Failure envelope carrying a stable business error code. */
-export interface BoardRouteFail {
-  ok: false
-  error: { code: string; message: string }
-}
-
-export type BoardRouteEnvelope = BoardRouteOk | BoardRouteFail
-export type ItemsRouteEnvelope = ItemsRouteOk | BoardRouteFail
-
 /** The shared malformed-request failure (same shape as the settings route). */
-const MALFORMED: BoardRouteFail = { ok: false, error: { code: 'internal', message: 'malformed request' } }
-
-/** Write one JSON envelope response, for either document (same discipline as
- *  the settings route): ONE writer, generic over the value it carries, so a
- *  second document cannot grow a second response dialect. */
-function json<T>(res: ServerResponse, envelope: RouteOk<T> | BoardRouteFail, status = 200): void {
-  res.writeHead(status, { 'content-type': 'application/json; charset=utf-8' })
-  res.end(JSON.stringify(envelope))
-}
+const MALFORMED: RouteFail = { ok: false, error: { code: 'internal', message: 'malformed request' } }
 
 /** The service face the route needs (the real service or a test fake).
  *
@@ -180,8 +154,14 @@ export interface BoardRouteDeps {
  */
 export type ItemAddress = { readonly kind: 'id'; readonly id: string } | { readonly kind: 'ref'; readonly ref: number }
 
-/** What a restore asks for: which row, and who is asking. */
-export interface RestoreRequest {
+/**
+ * What an operation on a deleted row asks for: which row, and who is asking.
+ *
+ * Named for the OPERATION, not for the restore: the purge asks the same
+ * question and is answered by the same reader, so a name saying 「restore」
+ * would be wrong half the time.
+ */
+export interface ItemAddressRequest {
   readonly of: ItemAddress
   readonly clientId: string
 }
@@ -261,14 +241,17 @@ export interface PurgeRouteView {
 function parseItemAddressBody(
   body: unknown,
   what: 'restore' | 'purge',
-): { readonly ok: true; readonly request: { readonly of: ItemAddress; readonly clientId: string } } | { readonly ok: false; readonly why: string } {
+): { readonly ok: true; readonly request: ItemAddressRequest } | { readonly ok: false; readonly why: string } {
   if (typeof body !== 'object' || body === null) return { ok: false, why: `${what} needs a JSON body` }
   const record = body as Record<string, unknown>
   // A `#` is how the number is SPOKEN, not how it is sent — the same rule the
-  // model's `item.restore` follows, and one reader for every caller.
-  const rawRef = typeof record.ref === 'string'
-    ? Number(record.ref.replace('#', '').trim())
-    : record.ref
+  // model's `item.restore` follows, and ONE reader for every caller
+  // (`core/item-navigate.ts`).
+  // ONLY a string or a number is a ref. `refOf` stringifies anything, so
+  // `String([12])` is `'12'` — and this route can PURGE a row, so a widened
+  // input domain here means 「destroy row 12」 on a body nobody meant as a ref.
+  const raw = record.ref
+  const rawRef = (typeof raw === 'string' || typeof raw === 'number') ? Number(refOf(raw)) : undefined
   const ref = typeof rawRef === 'number' && Number.isInteger(rawRef) && rawRef > 0 ? rawRef : undefined
   const id = typeof record.id === 'string' && record.id !== '' ? record.id : undefined
   const clientId = clientIdOf(record)
@@ -563,7 +546,7 @@ export function createBoardHandler(
         const view: BoardRouteView = { available: true, revision: doc.revision, doc }
         json(res, { ok: true as const, value: view })
       } catch (error) {
-        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: messageOf(error) } })
       }
       return
     }
@@ -586,7 +569,7 @@ export function createBoardHandler(
         const doc = await deps.commitItems(commit)
         json(res, { ok: true as const, value: { available: true, revision: doc.revision, doc } satisfies ItemsRouteView })
       } catch (error) {
-        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: messageOf(error) } })
       }
       return
     }
@@ -627,7 +610,7 @@ export function createBoardHandler(
           value: { available: true, revision: deps.itemsDoc().revision, restored } satisfies RestoreRouteView,
         })
       } catch (error) {
-        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: messageOf(error) } })
       }
       return
     }
@@ -664,7 +647,7 @@ export function createBoardHandler(
           } satisfies PurgeRouteView,
         })
       } catch (error) {
-        json(res, { ok: false as const, error: { code: 'persist_failed', message: error instanceof Error ? error.message : String(error) } })
+        json(res, { ok: false as const, error: { code: 'persist_failed', message: messageOf(error) } })
       }
       return
     }

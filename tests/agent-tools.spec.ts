@@ -736,6 +736,36 @@ describe('the checklist verbs a person can reach and a model now shares', () => 
     expect(board.getItemsDoc().items).toEqual([])
   })
 
+  it('a short number is read the SAME way by every action of the family', async () => {
+    // **这一条曾经是两个答案。**
+    //
+    // 短号是**说出来**的：`# 12`（带一个空格）与 `#12` 是同一句话，而读它的
+    // 地方曾经有十份拷贝——其中六份少了那一个 `.trim()`。后果不是报错，是
+    // **同一个动作族给出两个答案**：`# 1` 在 item.restore / item.purge 找得到，
+    // 在 item.update 找不到。
+    //
+    // 所以这里钉的是**一致性**，不是某一种写法：带空格、不带空格、纯数字，
+    // 都要指到同一行。
+    const spaced = await runBatch(deps(withItem()), { ops: [{ op: 'item.update', payload: { of: '# 1', body: '改过的' } }] })
+    expect(spaced.ok, '「# 1」要能改到第 1 条').toBe(true)
+    expect(spaced.reports[0]?.ok).toBe(true)
+
+    const plain = await runBatch(deps(withItem()), { ops: [{ op: 'item.update', payload: { of: '#1', body: '改过的' } }] })
+    expect(plain.ok).toBe(true)
+
+    const bare = await runBatch(deps(withItem()), { ops: [{ op: 'item.update', payload: { of: '1', body: '改过的' } }] })
+    expect(bare.ok, '「1」也是那一条').toBe(true)
+  })
+
+  it('item.restore reads a short number the same way item.update does', async () => {
+    const board = withItem()
+    await runBatch(deps(board), { ops: [{ op: 'item.delete', payload: { of: '# 1' } }] })
+    expect(board.getItemsDoc().items, '「# 1」要能删掉第 1 条').toHaveLength(0)
+    const back = await runBatch(deps(board), { ops: [{ op: 'item.restore', payload: { of: '# 1' } }] })
+    expect(back.ok, '「# 1」要能找回第 1 条').toBe(true)
+    expect(board.getItemsDoc().items.map(item => item.id)).toEqual(['i-1'])
+  })
+
   it('item.purge refuses a row that is still in the list, and says which action does that', async () => {
     // 「已彻底删除」 about a row the reader can scroll up and see is the one lie
     // this tool must not tell, and the fix is named rather than merely refused:

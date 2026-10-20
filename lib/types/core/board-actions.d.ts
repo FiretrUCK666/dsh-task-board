@@ -8,6 +8,21 @@ export type { FieldSpec };
 /** The thirteen verbs. The table is a CONTRACT: a fourteenth verb is a decision,
  *  not a convenience, and the catalog is written to fit inside these. */
 export type BoardVerb = 'create' | 'update' | 'move' | 'delete' | 'run' | 'speak' | 'bind' | 'automate' | 'cruise' | 'ack' | 'navigate' | 'restore' | 'query';
+/**
+ * 一次改动归到哪一档——收据说出口的那几个词。
+ *
+ * 这一档是**动词的属性**，不是某个动作的属性：两个动作只要动词相同，回执里
+ * 说的就是同一件事。所以对照表按**动词**写在这里（目录旁边），而不是在写收据
+ * 的那一半里按**动作 id** 再认一遍。
+ *
+ * 表是**穷尽**的（`Record<BoardVerb, ActionKind>`）：目录里加一个动词而这里
+ * 没加，`tsc` 立刻报「少了这一项」。这一条正是它存在的理由——一份「三个动词
+ * 认得、其余一律算更新」的表，会让**新加的动词静默落进 `'updated'`**，而屏上
+ * 没有任何东西说得出它被归错了。
+ */
+export type ActionKind = 'created' | 'updated' | 'moved' | 'deleted';
+/** Every verb's kind — the catalog's own table, exhaustive by construction. */
+export declare const VERB_KIND: Readonly<Record<BoardVerb, ActionKind>>;
 /** Which document a section of the surface speaks about. */
 export type ActionDomain = 'board' | 'item' | 'preset' | 'session';
 /**
@@ -88,18 +103,6 @@ export interface ParamSpec {
     readonly appliesWhen?: string;
 }
 /**
- * Per-action parameter TYPING, keyed by action id. Deliberately empty: writing
- * parameter types before anyone has agreed on them would be a contract nobody
- * read, and an invented type is harder to remove than a missing one. The tool
- * schema knife adds entries here; until then every action's `params` is the
- * widened description table, and this interface is the seam it narrows.
- */
-export interface ActionParamTypes {
-}
-/** The parameter table of one action: the per-action typing where it exists,
- *  the widened description table everywhere else. */
-export type ActionParams<K extends ActionId> = K extends keyof ActionParamTypes ? ActionParamTypes[K] : Readonly<Record<string, ParamSpec>>;
-/**
  * What an action IS — every field except the per-action typing of `params`.
  * Split out because the catalog table must be checkable against a type that
  * does not mention {@link ActionId}: the id union IS derived from that table,
@@ -161,10 +164,6 @@ export interface ActionShape {
      * `case`, and reports a side that does not call what this row names.
      */
     readonly semanticOf?: readonly string[];
-}
-/** What an action IS. Never how it is carried out — that is the lane's job. */
-export interface ActionSpec<K extends ActionId> extends ActionShape {
-    readonly params: ActionParams<K>;
 }
 /**
  * Every field the task patch may carry, ruled on. The key set is

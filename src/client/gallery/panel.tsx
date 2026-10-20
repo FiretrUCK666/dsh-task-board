@@ -47,6 +47,7 @@ import { ThumbRail } from '../design/ThumbRail.tsx'
 import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
+import base from '../design/base.module.css'
 import { SHARED_CANDIDATES } from './shared-candidates.ts'
 
 /**
@@ -264,7 +265,7 @@ export function DesignGallery() {
                 {group.names.map(name => (
                   <div key={name} className={css.gallerySwatch}>
                     <span
-                      className={css.gallerySpecimenBox}
+                      className={`${css.gallerySpecimenBox}${group.kind === 'surface' ? ` ${base.paperSheet}` : ''}`}
                       data-kind={group.kind}
                       style={{ ['--gallery-value' as string]: `var(${name})` }}
                     />

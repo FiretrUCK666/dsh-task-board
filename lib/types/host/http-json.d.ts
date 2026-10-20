@@ -1,29 +1,30 @@
 /**
- * Shared HTTP envelope helpers for this plugin's host routes: read a JSON
- * request body with a bounded size, and write a JSON response.
+ * Shared HTTP transport for this plugin's host routes: read a JSON request
+ * body with a bounded size, and write one JSON envelope.
  *
  * Both live here because every route uses the same wire discipline — one
  * envelope shape, one size cap, one content type — so no route can drift into
  * its own dialect. The readers are split from the handlers that use them so the
  * response logic stays unit-testable without a live server.
+ *
+ * THE ENVELOPE ITSELF lives in `core/http-envelope.ts`: it is a protocol the
+ * browser half reads too, so it cannot live in the host half. This module is
+ * only the transport — how a body comes in, how an envelope goes out.
  * @module dsh-task-board/host/http-json
  */
-import type { IncomingMessage, ServerResponse } from 'node:http';
-/** Success envelope carrying a route's value. */
-export interface RouteOk<T> {
-    ok: true;
-    value: T;
+import type { IncomingMessage } from 'node:http';
+import type { RouteEnvelope } from '../core/http-envelope.ts';
+/**
+ * The part of a response the writer needs.
+ *
+ * Structural on purpose: the real `ServerResponse` satisfies it, and so does a
+ * test double — so ONE writer serves every route without any of them having
+ * to take the whole node type, and without a route growing its own dialect.
+ */
+export interface JsonResponse {
+    writeHead(status: number, headers?: Record<string, string>): void;
+    end(body?: string): void;
 }
-/** Failure envelope carrying a stable business error code. */
-export interface RouteFail {
-    ok: false;
-    error: {
-        code: string;
-        message: string;
-    };
-}
-/** Route envelope: ok carries a value, fail carries an error, both over HTTP 200. */
-export type RouteEnvelope<T = unknown> = RouteOk<T> | RouteFail;
 /**
  * Read a JSON request body into an unknown value; null when unparseable.
  * @param req - the incoming request stream.
@@ -48,5 +49,14 @@ export declare function readJsonBodyDetailed(req: IncomingMessage, maxBytes: num
     ok: false;
     reason: 'oversize' | 'malformed' | 'empty';
 }>;
-/** Write one JSON envelope response. */
-export declare function json(res: ServerResponse, envelope: RouteEnvelope<unknown>, status?: number): void;
+/**
+ * Write one JSON envelope response.
+ *
+ * The ONE writer: a route that wants to answer does not get to decide how the
+ * answer is spelled, and a second writer would be a second dialect on one
+ * prefix.
+ * @param res - the response to write to.
+ * @param envelope - the envelope (see `core/http-envelope.ts`).
+ * @param status - the HTTP status; business refusals still answer 200.
+ */
+export declare function json(res: JsonResponse, envelope: RouteEnvelope<unknown>, status?: number): void;

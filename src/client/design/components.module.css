@@ -376,7 +376,7 @@
 }
 
 .switch input:focus-visible + .switchTrack {
-  outline: 2px solid var(--dsh-tb-focus-color);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-color);
   outline-offset: 2px;
 }
 
@@ -715,7 +715,9 @@
 }
 
 .tagSwatchOn {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
+  /* 双环：一枚纸色的垫环 + 一枚 accent 的实环。两枚的宽度都读同一枚环宽令牌
+   * （垫环一档、实环两档——**两档之间那一圈空气**就是「选中」被看见的地方）。 */
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-surface-float), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
 }
 
 /* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
@@ -762,7 +764,7 @@
 }
 
 .tagCustomWrap:focus-within {
-  box-shadow: 0 0 0 2px var(--dsh-tb-surface-float), 0 0 0 4px var(--dsh-tb-accent);
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-surface-float), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
 }
 
 .tagCustomColor {
@@ -991,35 +993,9 @@
   padding: 14px 18px;
 }
 
-/* The standard-bar path, behind the SAME gate as the surface's half of this
-   grammar: outside it, `scrollbar-width: thin` silences the webkit rules below
-   in Chromium, and the bar loses its styling in the one engine that needs the
-   gate. */
-@supports not selector(::-webkit-scrollbar) {
-  .modalScroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--dsh-tb-text-3) transparent;
-  }
-}
-
-.modalScroll::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
-
-.modalScroll::-webkit-scrollbar-thumb {
-  background: var(--dsh-tb-text-3);
-  border-radius: 4px;
-  background-clip: padding-box;
-}
-
-.modalScroll::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.modalScroll::-webkit-scrollbar-button {
-  display: none;
-}
+/* 细滚动条**不住在这一层**：那一族（8px 宽、滑块一枚、轨道透明、按钮藏起来）原先
+   在这张表与看板表各抄一遍。现在它住在 `design/base.module.css` 的座位级规则里，
+   弹层的滚动体与看板的滚动体读的是同一份。 */
 
 /* 动作那一格：面板的最后一段。**它自己带那道分隔线**——正文与动作之间要有线，否则
    动作像是浮在正文中间。 */
@@ -1135,7 +1111,10 @@ textarea.input {
 
 .input:focus {
   border-color: var(--dsh-tb-focus-color);
-  box-shadow: 0 0 0 3px var(--dsh-tb-focus-ring);
+  /* 环宽读令牌；这一枚晕的**配方**住在 `design/base.module.css` 的 `.focusHalo`
+   * （页面那几个输入框挂的就是它）。这里只差一个选择器，所以它读的是同一对
+   * 令牌——环的宽度与颜色都从令牌来，不在调用点各挑一个数。 */
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
 }
 
 .input::placeholder {
@@ -1223,7 +1202,7 @@ textarea.input {
      环也画在同一个属性里就会与材质共用——而那一条冲突在本文件里被记过一次。 */
   border-color: var(--dsh-tb-focus-color);
   box-shadow: var(--dsh-tb-rim-soft);
-  outline: 3px solid var(--dsh-tb-focus-ring);
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-ring);
   outline-offset: 0;
 }
 
@@ -1353,12 +1332,77 @@ textarea.input {
  * **the element must be allowed to shrink** (`min-width: 0`), because an
  * ellipsis that never engages is not a truncation, it is a spill.
  */
+/* TWO answers, and the difference is what the text IS.
+ *
+ * META (a time, a path, a workspace name, a tab label) is an index: you scan it,
+ * you rarely read it whole. Cutting it with an ellipsis is honest, and the box it
+ * sits in keeps its height.
+ *
+ * A SENTENCE (a title, an excerpt, a status line) is body text. Cutting it hands
+ * the reader a sentence they cannot finish, so it gets a line instead of losing a
+ * word — `.titleText` below.
+ *
+ * BOTH live here and nowhere else. A page sheet that declares this clip idiom a
+ * second time is the defect `verify-truncation-form.mjs` looks for: the copies do
+ * not agree, and nothing on screen says so.
+ *
+ * THE FLOOR IS A SLOT, NOT A CONSTANT. `text-overflow` only renders when the box
+ * can be narrower than its text — an element that refuses to shrink is not being
+ * clipped, it is overflowing. So the clip form has to say "you may shrink", and a
+ * page that has a real width floor (a feed row's name, a facet chip) must be able
+ * to say so WITHOUT the two declarations fighting over cascade order across two
+ * stylesheets. It reads a custom property whose only value is whatever the page
+ * declares — the same interface idea as `.paperSheet`'s `--dsh-tb-paper-plane`:
+ * the shared form owns the mechanism, the page owns its number.
+ */
 .truncate {
-  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-inline-size: var(--dsh-tb-clip-floor, 0);
 }
+
+/* ── THE TITLE FORM ──────────────────────────────────────────────────────────
+ *
+ * One home for 「一个标题」: a title that may be narrower than its text, and which
+ * WRAPS instead of being cut. The law is the project's own — 标题**折行，不省略**:
+ * a title is body text, so the honest way to lose the width is to lose a LINE, not
+ * a word. 一行放不下就让它占两行，行高自己长.
+ *
+ * (`.truncate` above is the candidatos' other half of the pair: 元信息可省略号.)
+ *
+ * The obligation this class states is the one every caller has to honour:
+ * **the element must be allowed to shrink** (min-width: 0), and white-space must
+ * be free to wrap (normal) — a title that inherits nowrap from an ancestor is a
+ * title that hard-clips, and a hard clip is a sentence the reader cannot finish.
+ */
+.titleText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+
+/* ── THE TITLE FORM ──────────────────────────────────────────────────────────
+ *
+ * One home for 「一个标题」: a title that may be narrower than its text, and which
+ * WRAPS instead of being cut. The law is the project's own — 标题**折行，不省略**:
+ * a title is body text, so the honest way to lose the width is to lose a LINE, not
+ * a word. 一行放不下就让它占两行，行高自己长.
+ *
+ * (`.truncate` above is the candidatos' other half of the pair: 元信息可省略号.)
+ *
+ * The obligation this class states is the one every caller has to honour:
+ * **the element must be allowed to shrink** (min-width: 0), and white-space must
+ * be free to wrap (normal) — a title that inherits nowrap from an ancestor is a
+ * title that hard-clips, and a hard clip is a sentence the reader cannot finish.
+ */
+.titleText {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
 
 /* The file chip's byte size: quiet meta beside the name, never truncated
    itself (the name yields first). */
