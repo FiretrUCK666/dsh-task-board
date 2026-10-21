@@ -933,11 +933,32 @@ describe('the expansion does not move geometry, only the content fades in', () =
     expect(rule.replace(/\s+/g, ' '), 'the expansion clips its own content again, which only made sense while its height was moving')
       .not.toMatch(/overflow\s*:\s*hidden/)
 
-    // The only animating thing is the content's opacity.
-    const child = bodyOf('.itemRow > .itemDetail > *')
-    expect(child, 'there is no rule for the expanded child').not.toBe('')
-    expect(child.replace(/\s+/g, ' '), 'nothing animates the content at all, so an expansion has no transition whatsoever')
+    /* AND IT animates the paper's CONTENT, never the paper itself.
+     *
+     * The paper (`.itemOpen`) is an OPAQUE WHITE plane sitting on the row's pale
+     * BLUE tint. Animating the paper's opacity therefore reads as 「the whole
+     * 741px sheet turns pale blue, then turns white」 — measured start
+     * `rgb(225,233,251)` against an end of `rgb(255,255,255)`, which is **30
+     * levels of grey difference across a full screen**. That is the 「闪一下」
+     * the reader reported after the previous fix.
+     *
+     * So the fade lives on the paper's children: the sheet is its own colour from
+     * the first frame. Measured again after the change — the paper's computed
+     * background is identical at 0 / 30 / 60 / 109ms.
+     *
+     * EVERY child, not just the first: the sheet holds three blocks (the two text
+     * columns, the run-config fold, the act row). Fading only the first leaves
+     * the other two at full brightness on a dimmed sheet, which is the same
+     * flash seen the other way round. */
+    const content = bodyOf('.itemOpen > *')
+    expect(content, 'there is no rule fading the paper content, so an expansion has no transition whatsoever').not.toBe('')
+    expect(content.replace(/\s+/g, ' '), 'the content is not the thing being animated')
       .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-fast\)/)
+
+    // The paper itself must NOT animate: that is the pale-blue flash.
+    const paper = bodyOf('.itemOpen')
+    expect(paper.replace(/\s+/g, ' '), 'the paper animates its own opacity again, so the whole sheet flashes pale blue before turning white')
+      .not.toMatch(/animation\s*:/)
 
     const frames = /@keyframes\s+itemDetailIn\s*\{([\s\S]*?)\n\}/.exec(sheet)?.[1] ?? ''
     expect(frames, 'there is no itemDetailIn keyframes block').not.toBe('')
