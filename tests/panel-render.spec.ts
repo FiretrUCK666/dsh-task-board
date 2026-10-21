@@ -964,50 +964,87 @@ describe('growth motion is peak-bounded, because distance decides the curve', ()
       .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-grow\)/)
   })
 
-  it('the expansion grows without fading, and without a strip of row colour under it', () => {
-    /* TWO DEFECTS, ONE PLACE, AND EACH ONE MADE THE OTHER WORSE.
+  it('the expansion grows to the CONTENT height, not to a grid track', () => {
+    /* THE MECHANISM IS THE FIX, NOT THE NUMBERS.
      *
-     * BOTH were found by looking at the frames, after every gate was green and
-     * after the first fix (the peak-bounded curve) had already shipped. That is
-     * the point of the entry: 「曲线算得对」 and 「这一帧看着对」 are different
-     * claims, and only the second one answers 「还是卡」.
+     * `grid-template-rows: 0fr → 1fr` was tried and abandoned, because on this
+     * panel it has two scales that disagree:
      *
-     * 1. THE FADE. The keyframes animated `opacity` from 0 alongside the growth,
-     *    so for 62% of the 120ms the body text sat at less than 90% opacity
-     *    (measured: 0.61 at 40ms) while the height was already past halfway.
-     *    Semi-transparent text over a coloured row reads as blurred, and blurred
-     *    reads as stuttering — the exact complaint the motion change was for.
-     *    It also contradicts the animation's own metaphor: this is 「the row
-     *    unfolds its own paper」, not 「a new block fades in」.
+     *   - mid-animation the TRACK is taller than the PAPER. Measured at 1440:
+     *     at 40ms the track was 455px while the paper was 265px, leaving **190px
+     *     of row colour hanging under the content** (49px still at 80ms, zero
+     *     only on the last frame).
+     *   - pinning the paper so it cannot be stretched (`align-self: start`) is
+     *     worse: the paper then holds its FULL height and spills past the row,
+     *     covering the rows below.
      *
-     * 2. THE COLOURED STRIP. `.itemDetail` carries 16px of top padding plus a
-     *    hairline border ABOVE the paper, and its child stretched to fill the
-     *    track — so mid-animation the track was taller than the paper. Measured
-     *    at 1440: at 40ms the track was 455px while the paper was 265px, leaving
-     *    **190px of row colour hanging under the content**, still 49px at 80ms,
-     *    zero only on the last frame. `align-self: start` makes the paper occupy
-     *    its own height and lets the track clip the remainder.
+     * `height: 0 → auto` has one scale — the content's own height — so there is
+     * no second box to disagree with. Every frame measured on the real panel has
+     * `band === 0` (the paper's bottom edge coincides with the clip line) at both
+     * 1440 and 412, and the paper is clipped by `overflow: hidden` rather than
+     * allowed to spill.
      *
-     * Neither is visible in a passing test suite and neither is a duration
-     * problem, which is why the assertions are structural: no `opacity` in the
-     * keyframes, and an explicit `align-self` on the stretched child. */
+     * The keyword interpolation is what makes `auto` a destination; without it the
+     * expansion lands at once, which is still CORRECT (no band, no spill) — which
+     * is why the mechanism is safe even where the feature is missing. */
     const sheet = stripCssComments(itemSheet())
+    const rule = rulesOf(sheet, 'itemRow > .itemDetail').join('\n')
+    expect(rule, 'there is no in-row detail rule').not.toBe('')
+
+    // The single scale: the element's own height.
+    expect(rule.replace(/\s+/g, ' '), 'the expansion is back on a grid track, so a second scale can disagree with the paper again')
+      .not.toMatch(/grid-template-rows\s*:\s*1fr/)
+    expect(rule.replace(/\s+/g, ' '), 'the expansion does not clip, so the paper can spill past its own row and cover the rows below')
+      .toMatch(/overflow\s*:\s*hidden/)
+    expect(rule.replace(/\s+/g, ' '), 'the expansion still animates, and it reads the growth token')
+      .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-grow\)/)
+
+    // The keyframes go 0 → auto, and animate nothing else.
     const frames = /@keyframes\s+itemDetailIn\s*\{([\s\S]*?)\n\}/.exec(sheet)?.[1] ?? ''
     expect(frames, 'there is no itemDetailIn keyframes block').not.toBe('')
+    expect(frames.replace(/\s+/g, ' '), 'the expansion no longer grows (no block-size in the keyframes)')
+      .toMatch(/block-size\s*:\s*0/)
+    expect(frames.replace(/\s+/g, ' '), 'the expansion does not grow TO the content height, so it lands on an arbitrary size')
+      .toMatch(/block-size\s*:\s*auto/)
     expect(frames, 'the expansion animates opacity again, so the body text goes translucent over the row colour and reads as blur')
       .not.toMatch(/opacity/)
-    expect(frames, 'the expansion no longer animates its height, so it is no longer a growth')
-      .toMatch(/grid-template-rows/)
 
-    // The strip: the child must not be stretched to the track.
+    // And the child is not stretched to a track any more.
     const child = rulesOf(sheet, 'itemRow > .itemDetail > *').join('\n')
-    expect(child, 'the expanded child is not clipped by its track, so it can push the row taller than its own content')
-      .toMatch(/overflow\s*:\s*hidden/)
-    expect(child.replace(/\s+/g, ' '), 'the expanded child is stretched to the whole track again, so the row colour shows as a strip under the paper')
-      .toMatch(/align-self\s*:\s*start/)
+    expect(child.replace(/\s+/g, ' '), 'the child is anchored to the track again, which is the spill that covered the rows below')
+      .not.toMatch(/align-self\s*:\s*start/)
   })
 
-  it('and the detector bites on the shape it was written for', () => {
+  it('the keyword interpolation is declared once, at the root', () => {
+    // `block-size: auto` only interpolates under `interpolate-size: allow-keywords`.
+    // Declaring it per component would write one decision N times, and the copy
+    // someone forgets loses its animation in silence.
+    //
+    // AND IT HAS TO BE ON THE ROOT, not on the expansion itself: a per-component
+    // declaration is the second copy of a product-wide policy, and the panel is
+    // reached through both scopes (the view and the standalone panel), so one
+    // selector list has to cover both.
+    const tokens = stripCssComments(tokenSheet)
+    expect(tokens.replace(/\s+/g, ' '), 'nothing enables keyword interpolation, so height:0 -> auto lands instantly')
+      .toMatch(/interpolate-size\s*:\s*allow-keywords/)
+    // Read the rule that DECLARES it and check its selector is a root scope, rather
+    // than assuming a particular spelling of that scope. A gate that hard-coded
+    // `:where` would go quiet the day the scope is spelled another way — and it
+    // would look exactly like passing.
+    const declaring = declarationRules(tokens)
+      .filter(rule => /(?:^|[;{\s])interpolate-size\s*:\s*allow-keywords/.test(rule.body))
+    expect(declaring.length, 'no rule declares the keyword interpolation').toBeGreaterThan(0)
+    expect(
+      declaring.some(rule => /data-dsh-taskboard-(?:view|panel)/.test(rule.selector)),
+      `the keyword interpolation is not on a surface root, so a panel mounted outside that scope loses the growth (declared on: ${declaring.map(rule => rule.selector).join(' | ')})`,
+    ).toBe(true)
+    // The expansion must NOT carry its own copy — that is the drift this pins.
+    expect(stripCssComments(itemSheet()).replace(/\s+/g, ' '),
+      'the expansion declares interpolate-size itself, which is the second copy of a root-level decision')
+      .not.toMatch(/interpolate-size/)
+  })
+
+  it('the detector bites on the shape it was written for', () => {
     // THE CONTROL. `--dsh-tb-ease` is the curve this whole section exists to move
     // away from, so it is the honest negative sample: a detector that accepted it
     // would pass on the sheet before the fix as well as after, and prove nothing.

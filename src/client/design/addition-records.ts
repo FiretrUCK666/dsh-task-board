@@ -48,15 +48,14 @@ export const ADDITION_RECORDS: readonly AdditionRecord[] = [
     askedBy: '用户报告：任务清单面板里点开一行的展开区，动效卡卡的、而且太慢',
   },
   {
-    /** 生长动画里去掉了淡入：文字必须从第一帧就是实的。 */
-    unit: 'src/client/item/item.module.css —— @keyframes itemDetailIn 去掉 opacity，只留高度生长',
-    nearest: 'src/client/design/components.module.css 的 dshTbBoardIn / dshTbDialogIn（入场一律带一段淡入）',
-    whyNot: '那一族是**入场**：一块原本不存在的东西要「出现」，所以淡入成立，而且它动的是 3px 位移与 0.985 缩放，'
-      + '淡入是它全部的画面。展开区不是入场——内容是那一行本来就有的，动的是**高度**：'
-      + '把 opacity 并进去，120ms 里前 62% 的时间正文不到九成不透明（40ms 时 0.61），而高度已经走完一半，'
-      + '**半透明的字压在行底色上读起来就是糊的，而糊被读成「卡」**——这正是读者报的那个感觉，'
-      + '而且曲线已经改对了、门禁也全绿之后它依然存在。',
-    askedBy: '用户再次报告：改完曲线之后「还是卡卡的感觉，展开得很缓慢」（逐帧截图查出淡入是原因之一）',
+    /** 根上的关键词插值策略：height 0 → auto 能成为一段动画。 */
+    unit: 'src/client/design/tokens.module.css —— interpolate-size: allow-keywords，声明在根上一次',
+    nearest: 'src/client/item/item.module.css 的展开区（它自己需要 height 0 → auto 可插值）',
+    whyNot: '声明在消费点等于把同一个决定写 N 份——这是**整个产品的插值策略**，不是某一处的参数。'
+      + '漏写的那一处不会报错，只会悄悄失去动画（高度直接跳到 auto），而屏上看起来「展开没有过程」，'
+      + '没人能从代码里看出少了什么。声明在根上一次，第二个需要「长到自己该有的高」的消费者出现时'
+      + '不必回来改这里。',
+    askedBy: '用户明确要求：清掉原来的展开动效，重新设计一个不卡、也不慢的',
   },
   {
     /** 裁剪形态的门禁：页面表不许自己抄「一个会裁剪的文字」这一族形态。 */

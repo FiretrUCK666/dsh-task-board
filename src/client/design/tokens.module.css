@@ -668,15 +668,29 @@
    *   尺寸生长（长距离）  峰值受限的曲线，均匀地长开
    *
    * 下面这条曲线的起步斜率 1.67、峰值 1.94（不到前一条的三分之一），于是把同样
-   * 的位移摊到每一帧：单帧最大位移 **23% / 24%**，七帧全程连续，总时长还更短。
+   * 的位移摊到每一帧：单帧最大位移 **两成出头**，全程连续，总时长还更短。
    * 以后任何「向下长开」的东西读这一条，不是只修展开区那一个。
    *
-   * **时长为什么是 120ms 而不是更短**：100ms 时单帧跳到 30%（峰值没变，帧数变少
-   * 了——总位移固定，帧越少每帧越大）。120ms 是「更短」与「每帧更小」的交点，
-   * 再短就等于把曲线换回去。判据由 `tests/panel-render.spec.ts` 算出峰值速度守着。
+   * **时长为什么是 130ms**：700px 的内容上实测，90ms 单帧跳 35%、110ms 27%、
+   * 130ms **23%**、150ms 20%。130 是「明显更快」与「每帧仍然小」的交点——再短就开始
+   * 跳，再长只是慢。判据由 `tests/panel-render.spec.ts` 算出峰值速度与时长守着。
    */
   --dsh-tb-ease-grow: cubic-bezier(0.3, 0.55, 0.45, 1);
-  --dsh-tb-motion-grow: 120ms var(--dsh-tb-ease-grow);
+  --dsh-tb-motion-grow: 130ms var(--dsh-tb-ease-grow);
+}
+
+/* `height: 0 → auto` 可以插值（展开区靠它）。
+ *
+ * 关键帧里写 `to { block-size: auto }` 只有在 `interpolate-size: allow-keywords`
+ * 生效时才是**一段动画**；没有它，浏览器把 `auto` 当成不可插值，那一格从 0 直接
+ * 跳到内容高——展开依然是正确的，只是没有过程。
+ *
+ * 它声明在根上而不是逐个组件：这是**整个产品的插值策略**，不是某一处的参数。声明在
+ * 消费点就等于把同一个决定写了 N 份，而漏写的那一处不会报错，只会悄悄失去动画。
+ * 目前唯一读它的是清单的展开区，但它是「元素长到自己该有的高」这一族的开关，
+ * 第二个消费者出现时不该再来改这里。 */
+:where([data-dsh-taskboard-view], [data-dsh-taskboard-panel]) {
+  interpolate-size: allow-keywords;
 }
 
 /* The corner SHAPE, declared once for the whole board surface.
