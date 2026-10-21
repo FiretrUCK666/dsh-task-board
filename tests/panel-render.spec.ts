@@ -855,6 +855,170 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
   })
 })
 
+/**
+ * AN EXPANSION GROWS HUNDREDS OF PIXELS, SO IT CANNOT USE THE STATE-CHANGE CURVE.
+ *
+ * This section exists because 「展开区卡了一下」 is not a performance problem and
+ * cannot be diagnosed as one. Measured on the real panel in headless Chromium
+ * (1440 and 412, same numbers on both bands): during the expansion the frame
+ * time never left the idle range (mean 16.68ms animating vs 16.54ms idle, zero
+ * dropped frames), so nothing here was ever slow to LAY OUT. What the reader
+ * experienced was the SHAPE of the curve.
+ *
+ * `--dsh-tb-ease` has an initial slope of 6.25, and its peak velocity is also
+ * 6.25. On the three-pixel changes it was tuned for (a colour, a border, a
+ * shadow) that is right: short distances should arrive at once. On a 741px
+ * expansion — 1365px on the narrow band — it means ONE FRAME CARRIES 44% of the
+ * whole travel, on the FIRST frame, and then the last 71ms of a 160ms animation
+ * moves by nothing at all. The reader gets 「猛地一跳，然后慢慢爬，最后不动了」,
+ * which they reasonably report as both 卡 and 慢 because it is both, and it is
+ * one cause.
+ *
+ * So the split is DISTANCE, not 「this component is special」: short state
+ * changes keep the front-loaded curve, long size growth gets a peak-bounded one.
+ * The assertions below are the numbers that split rests on, computed from the
+ * bezier control points rather than restated as magic constants — a test that
+ * hard-coded 6.25 would keep passing after someone edited the token.
+ */
+describe('growth motion is peak-bounded, because distance decides the curve', () => {
+  const tokenSheet = readFileSync(new URL('../src/client/design/tokens.module.css', import.meta.url), 'utf8')
+
+  /**
+   * The peak of d(y)/d(x) for a `cubic-bezier` timing function.
+   *
+   * This is the number a reader feels as 「一帧跳多远」: the derivative of
+   * progress against time, before the duration multiplies it. It is computed
+   * from the control points because a timing function's shape is the thing
+   * being constrained — the duration only scales it.
+   * @param points - the four control numbers from `cubic-bezier(...)`.
+   * @returns the maximum velocity; 1 means linear.
+   */
+  function peakVelocity(points: readonly [number, number, number, number]): number {
+    const [x1, y1, x2, y2] = points
+    const curveX = (t: number): number => 3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t * t * x2 + t ** 3
+    const curveY = (t: number): number => 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t * t * y2 + t ** 3
+    const solve = (x: number): number => {
+      let low = 0
+      let high = 1
+      for (let step = 0; step < 60; step += 1) {
+        const mid = (low + high) / 2
+        if (curveX(mid) < x) low = mid
+        else high = mid
+      }
+      return (low + high) / 2
+    }
+    let peak = 0
+    const steps = 4000
+    for (let index = 1; index <= steps; index += 1) {
+      const before = curveY(solve((index - 1) / steps))
+      const after = curveY(solve(index / steps))
+      peak = Math.max(peak, (after - before) * steps)
+    }
+    return peak
+  }
+
+  /** The four numbers of a named timing-function token, read from the token sheet. */
+  function pointsOf(name: string): [number, number, number, number] {
+    const declared = new RegExp(`${name}\\s*:\\s*cubic-bezier\\(([^)]+)\\)`).exec(stripCssComments(tokenSheet))?.[1]
+    expect(declared, `${name} is not declared as a cubic-bezier in the token sheet`).toBeDefined()
+    const numbers = (declared ?? '').split(',').map(part => Number(part.trim()))
+    expect(numbers, `${name} does not carry four control points`).toHaveLength(4)
+    return numbers as [number, number, number, number]
+  }
+
+  it('the growth curve is bounded where the state-change curve is not', () => {
+    // 1.94 measured; the ceiling is set at 2.6 so a small refinement still passes
+    // while anything that drifts back toward the front-loaded shape goes red.
+    const growth = peakVelocity(pointsOf('--dsh-tb-ease-grow'))
+    expect(growth, `the growth curve's peak velocity is ${growth.toFixed(2)}, so a frame again carries too much of a long expansion`).toBeLessThanOrEqual(2.6)
+    // And it has to stay slower than the curve it exists to replace, or the split
+    // has collapsed back into one curve with two names.
+    expect(growth, 'the growth curve is as front-loaded as the state-change curve, so the split buys nothing')
+      .toBeLessThan(peakVelocity(pointsOf('--dsh-tb-ease')) / 2)
+    // Not linear either: a straight line reads mechanical on a surface whose
+    // whole motion language is 「东西自己安定下来」.
+    expect(growth, 'the growth curve is linear, which reads mechanical beside every other motion on this surface')
+      .toBeGreaterThan(1.5)
+  })
+
+  it('the growth duration is short enough that the last frames still move', () => {
+    // 120ms is the intersection of 「shorter than 160」 and 「more frames per
+    // pixel」: at 100ms the peak per-frame step climbs back to 30% because the
+    // travel is fixed and the frames run out. The ceiling pins the duration; the
+    // floor keeps someone from 「fixing」 stutter by making it instantaneous.
+    const duration = /--dsh-tb-motion-grow\s*:\s*(\d+)ms/.exec(stripCssComments(tokenSheet))?.[1]
+    expect(duration, 'the growth duration is not declared in whole milliseconds').toBeDefined()
+    const millis = Number(duration)
+    expect(millis, `the growth duration is ${millis}ms — long enough to read as 慢 again`).toBeLessThanOrEqual(130)
+    expect(millis, `the growth duration is ${millis}ms — too short to be a growth rather than a cut`).toBeGreaterThanOrEqual(100)
+  })
+
+  it('the in-row expansion reads the growth token, not the state-change one', () => {
+    // The token has a reader, and it is the thing that reported the defect. A
+    // token nobody reads is a token that answers nothing (`verify-design-docs`
+    // check 5b separately forbids that), and an expansion that drifts back to
+    // `--dsh-tb-motion` is exactly the defect this section exists for.
+    const detail = rulesOf(stripCssComments(itemSheet()), 'itemRow > .itemDetail').join('\n')
+    expect(detail, 'there is no in-row detail rule').not.toBe('')
+    expect(detail.replace(/\s+/g, ' '), 'the expansion still reads the state-change token, so the 44%-per-frame jump is back')
+      .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-grow\)/)
+  })
+
+  it('the expansion grows without fading, and without a strip of row colour under it', () => {
+    /* TWO DEFECTS, ONE PLACE, AND EACH ONE MADE THE OTHER WORSE.
+     *
+     * BOTH were found by looking at the frames, after every gate was green and
+     * after the first fix (the peak-bounded curve) had already shipped. That is
+     * the point of the entry: 「曲线算得对」 and 「这一帧看着对」 are different
+     * claims, and only the second one answers 「还是卡」.
+     *
+     * 1. THE FADE. The keyframes animated `opacity` from 0 alongside the growth,
+     *    so for 62% of the 120ms the body text sat at less than 90% opacity
+     *    (measured: 0.61 at 40ms) while the height was already past halfway.
+     *    Semi-transparent text over a coloured row reads as blurred, and blurred
+     *    reads as stuttering — the exact complaint the motion change was for.
+     *    It also contradicts the animation's own metaphor: this is 「the row
+     *    unfolds its own paper」, not 「a new block fades in」.
+     *
+     * 2. THE COLOURED STRIP. `.itemDetail` carries 16px of top padding plus a
+     *    hairline border ABOVE the paper, and its child stretched to fill the
+     *    track — so mid-animation the track was taller than the paper. Measured
+     *    at 1440: at 40ms the track was 455px while the paper was 265px, leaving
+     *    **190px of row colour hanging under the content**, still 49px at 80ms,
+     *    zero only on the last frame. `align-self: start` makes the paper occupy
+     *    its own height and lets the track clip the remainder.
+     *
+     * Neither is visible in a passing test suite and neither is a duration
+     * problem, which is why the assertions are structural: no `opacity` in the
+     * keyframes, and an explicit `align-self` on the stretched child. */
+    const sheet = stripCssComments(itemSheet())
+    const frames = /@keyframes\s+itemDetailIn\s*\{([\s\S]*?)\n\}/.exec(sheet)?.[1] ?? ''
+    expect(frames, 'there is no itemDetailIn keyframes block').not.toBe('')
+    expect(frames, 'the expansion animates opacity again, so the body text goes translucent over the row colour and reads as blur')
+      .not.toMatch(/opacity/)
+    expect(frames, 'the expansion no longer animates its height, so it is no longer a growth')
+      .toMatch(/grid-template-rows/)
+
+    // The strip: the child must not be stretched to the track.
+    const child = rulesOf(sheet, 'itemRow > .itemDetail > *').join('\n')
+    expect(child, 'the expanded child is not clipped by its track, so it can push the row taller than its own content')
+      .toMatch(/overflow\s*:\s*hidden/)
+    expect(child.replace(/\s+/g, ' '), 'the expanded child is stretched to the whole track again, so the row colour shows as a strip under the paper')
+      .toMatch(/align-self\s*:\s*start/)
+  })
+
+  it('and the detector bites on the shape it was written for', () => {
+    // THE CONTROL. `--dsh-tb-ease` is the curve this whole section exists to move
+    // away from, so it is the honest negative sample: a detector that accepted it
+    // would pass on the sheet before the fix as well as after, and prove nothing.
+    // Small refinement of the growth curve is the positive sample, so the reader
+    // is not merely measuring 「is it exactly 1.94」.
+    const frontLoaded = peakVelocity([0.16, 1, 0.3, 1])
+    expect(frontLoaded, 'the detector cannot see the front-loaded curve it exists to reject').toBeGreaterThan(2.6)
+    expect(peakVelocity([0.3, 0.55, 0.45, 1])).toBeLessThanOrEqual(2.6)
+  })
+})
+
 describe('the panel fills the stage it is given', () => {
   const css = panelCss()
 

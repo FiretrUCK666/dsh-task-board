@@ -37,6 +37,28 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    /** 生长那一档动效：峰值受限的曲线与它的时长。 */
+    unit: 'src/client/design/tokens.module.css —— --dsh-tb-ease-grow 与 --dsh-tb-motion-grow，尺寸生长专用那一档',
+    nearest: 'src/client/design/tokens.module.css 里的 --dsh-tb-ease / --dsh-tb-motion（状态变化那一档）',
+    whyNot: '它是为「几个像素」调的：起步斜率与峰值速度都是 6.25，也就是**一帧能跳掉一大半位移**。'
+      + '状态变化三五个像素，这是对的（慢一拍像没反应比跳更糟）；可尺寸生长动的是几百像素——'
+      + '实测展开区 741px / 窄档 1365px，第一帧跳掉 44% / 47%，前 97% 在 89ms 里走完、剩下的时间一个像素都不动。'
+      + '读者同时读成「卡」和「慢」，而帧率一次都没掉过（16.68ms vs 空闲 16.54ms），所以它不是性能问题，是曲线的形状问题。'
+      + '两者也不能互相借：状态变化借了生长曲线会发糊（起步就慢），生长借了状态曲线就是这次这个缺陷。',
+    askedBy: '用户报告：任务清单面板里点开一行的展开区，动效卡卡的、而且太慢',
+  },
+  {
+    /** 生长动画里去掉了淡入：文字必须从第一帧就是实的。 */
+    unit: 'src/client/item/item.module.css —— @keyframes itemDetailIn 去掉 opacity，只留高度生长',
+    nearest: 'src/client/design/components.module.css 的 dshTbBoardIn / dshTbDialogIn（入场一律带一段淡入）',
+    whyNot: '那一族是**入场**：一块原本不存在的东西要「出现」，所以淡入成立，而且它动的是 3px 位移与 0.985 缩放，'
+      + '淡入是它全部的画面。展开区不是入场——内容是那一行本来就有的，动的是**高度**：'
+      + '把 opacity 并进去，120ms 里前 62% 的时间正文不到九成不透明（40ms 时 0.61），而高度已经走完一半，'
+      + '**半透明的字压在行底色上读起来就是糊的，而糊被读成「卡」**——这正是读者报的那个感觉，'
+      + '而且曲线已经改对了、门禁也全绿之后它依然存在。',
+    askedBy: '用户再次报告：改完曲线之后「还是卡卡的感觉，展开得很缓慢」（逐帧截图查出淡入是原因之一）',
+  },
+  {
     /** 裁剪形态的门禁：页面表不许自己抄「一个会裁剪的文字」这一族形态。 */
     unit: 'scripts/verify-truncation-form.mjs —— 页面表不许自己抄「一个会裁剪的文字」这一族形态',
     nearest: 'scripts/verify-design-docs.mjs —— check 5d 的 duplicateBodies',
