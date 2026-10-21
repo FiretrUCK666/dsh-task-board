@@ -25,9 +25,17 @@ runs:
         status=$?
         tail -300 "$RUNNER_TEMP/verify.log"
         if [ "$status" -ne 0 ]; then
-          # 单条注解有长度上限，6000 字符足够装下几十行诊断；`tr` 把换行压成空格，
-          # 否则 GitHub 只显示第一行。
-          summary="$(tail -60 "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          # **只捞失败那几行，不捞整段输出。**
+          #
+          # 第一版取的是 `tail -60`：门禁每跑一步都打印自己的自测结论，六十行
+          # 全是 `OK 自测：…`，真正那句 `FAILED` 根本挤不进去——注解发出去了，
+          # 里面却没有答案，等于白跑一轮。这里改成按关键字筛，失败那几行必然
+          # 带着 FAIL / FAILED / 错误，而成功的自测行带着 OK，正好分得开。
+          summary="$(grep -nE 'FAIL|FAILED|rror|MISMATCH|not declared|missing' "$RUNNER_TEMP/verify.log" | tail -25 | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          # 一行都筛不出来时退回尾部，至少还有上下文。
+          if [ -z "$summary" ]; then
+            summary="$(tail -25 "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          fi
           echo "::error title=verify gates failed::$summary"
         fi
         exit "$status"
