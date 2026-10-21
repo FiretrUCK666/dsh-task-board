@@ -87,15 +87,21 @@ describe('# 的两门文法各有一个家', () => {
     /* **自证：读仓库自己的根，家都在。**
      *
      * 取根那条式子曾经是 `new URL('..', import.meta.url).pathname.replace(/^\//, '')`。
-     * 它在 Windows 上碰巧是对的（`/C:/Users/...` 去掉那个斜杠就是 `C:/Users/...`），
-     * 在 Linux 上是错的：`/home/runner/work/...` 去掉开头那个斜杠就变成**相对路径**
-     * `home/runner/work/...`，于是 `existsSync` 全部落空，这条断言报「家不存在」。
+     * 它在 Windows 上碰巧是对的：`pathname` 是盘符为第一段的样子，去掉开头那个斜杠
+     * 仍然是绝对路径。在 POSIX 上是错的：`pathname` 以根目录开头，**去掉那个斜杠
+     * 就变成了相对路径**，于是 `existsSync` 全部落空，这条断言报「家不存在」。
      *
      * 它只在 CI 上红，而 CI 一直红在别处（Node 版本那件事），所以这一条被盖住了；
      * 本地是 Windows，一直是绿的。**判据本身没问题，取根的方式不跨平台。**
      *
      * `fileURLToPath` 就是为这件事存在的：它按平台的规则把 file URL 还原成路径，
-     * 两个平台都对，也不需要手写那个 `replace`。 */
+     * 两个平台都对，也不需要手写那个 `replace`。
+     *
+     * **这段注释里不许写出真实的家目录形态。** `verify-standalone` 的家目录泄漏
+     * 检查认的是「任何人的家目录形态」，不只是本机的：在 CI 上 `homedir()` 就是
+     * runner 的家目录，而一句拿它当例子的注释会被判成泄漏——本地看不出问题，
+     * 因为本机的家目录拼写不一样。举例要举抽象的：说「盘符为第一段」和「以根目录
+     * 开头」，不写具体路径。 */
     const root = fileURLToPath(new URL('..', import.meta.url))
     expect(missingHomes(root)).toEqual([])
   })
