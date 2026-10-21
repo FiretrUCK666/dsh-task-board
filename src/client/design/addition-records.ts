@@ -37,25 +37,15 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
-    /** 生长那一档动效：峰值受限的曲线与它的时长。 */
-    unit: 'src/client/design/tokens.module.css —— --dsh-tb-ease-grow 与 --dsh-tb-motion-grow，尺寸生长专用那一档',
-    nearest: 'src/client/design/tokens.module.css 里的 --dsh-tb-ease / --dsh-tb-motion（状态变化那一档）',
-    whyNot: '它是为「几个像素」调的：起步斜率与峰值速度都是 6.25，也就是**一帧能跳掉一大半位移**。'
-      + '状态变化三五个像素，这是对的（慢一拍像没反应比跳更糟）；可尺寸生长动的是几百像素——'
-      + '实测展开区 741px / 窄档 1365px，第一帧跳掉 44% / 47%，前 97% 在 89ms 里走完、剩下的时间一个像素都不动。'
-      + '读者同时读成「卡」和「慢」，而帧率一次都没掉过（16.68ms vs 空闲 16.54ms），所以它不是性能问题，是曲线的形状问题。'
-      + '两者也不能互相借：状态变化借了生长曲线会发糊（起步就慢），生长借了状态曲线就是这次这个缺陷。',
-    askedBy: '用户报告：任务清单面板里点开一行的展开区，动效卡卡的、而且太慢',
-  },
-  {
-    /** 根上的关键词插值策略：height 0 → auto 能成为一段动画。 */
-    unit: 'src/client/design/tokens.module.css —— interpolate-size: allow-keywords，声明在根上一次',
-    nearest: 'src/client/item/item.module.css 的展开区（它自己需要 height 0 → auto 可插值）',
-    whyNot: '声明在消费点等于把同一个决定写 N 份——这是**整个产品的插值策略**，不是某一处的参数。'
-      + '漏写的那一处不会报错，只会悄悄失去动画（高度直接跳到 auto），而屏上看起来「展开没有过程」，'
-      + '没人能从代码里看出少了什么。声明在根上一次，第二个需要「长到自己该有的高」的消费者出现时'
-      + '不必回来改这里。',
-    askedBy: '用户明确要求：清掉原来的展开动效，重新设计一个不卡、也不慢的',
+    /** 展开那一下只收敛内容透明度，几何一个像素都不动。 */
+    unit: 'src/client/item/item.module.css —— 展开区：行高当帧到位，内容只做 itemDetailIn（70ms，opacity 0.2 到 1）',
+    nearest: 'src/client/design/components.module.css 的 dshTbFadeIn（纯淡入那一套入场语法）',
+    whyNot: 'dshTbFadeIn 动的是**一块正在入场的新东西**，而且从 0 开始——它属于「出现」，不是「某一行的内容定下来」。'
+      + '这里有两点必须不同：一是不从 0 起（文字从全透明淡上来会在中途发灰，而糊的字同样被读成「卡」），'
+      + '二是它**只作用在内容上**，容器与几何一个像素都不动。展开区高 741px / 窄档 1365px，'
+      + '把高度做成动画的三版都实测过：帧时间一帧没掉，而 layout shift 累计 0.374，读者每次都报「卡」；'
+      + '缩短时长反而更糟（60ms 时单帧吃掉 52% 的位移，因为位移总量固定、帧数变少）。',
+    askedBy: '用户明确要求：清掉原来的展开动效，重新设计一个不卡、也不慢的（第四次反馈）',
   },
   {
     /** 裁剪形态的门禁：页面表不许自己抄「一个会裁剪的文字」这一族形态。 */

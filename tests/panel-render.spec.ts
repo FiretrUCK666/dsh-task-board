@@ -854,205 +854,115 @@ describe('reduced motion is honoured by the TOKEN, not by a list of names', () =
     ).toEqual(['.reviewCommentCancel'])
   })
 })
-
-/**
- * AN EXPANSION GROWS HUNDREDS OF PIXELS, SO IT CANNOT USE THE STATE-CHANGE CURVE.
+/* ── THE EXPANSION DOES NOT MOVE GEOMETRY ─────────────────────────────────────
  *
- * This section exists because 「展开区卡了一下」 is not a performance problem and
- * cannot be diagnosed as one. Measured on the real panel in headless Chromium
- * (1440 and 412, same numbers on both bands): during the expansion the frame
- * time never left the idle range (mean 16.68ms animating vs 16.54ms idle, zero
- * dropped frames), so nothing here was ever slow to LAY OUT. What the reader
- * experienced was the SHAPE of the curve.
+ * 「展开有点卡」 was reported four times, and three fixes were shipped that all
+ * tuned the ANIMATION OF HEIGHT — a different curve, then a different duration,
+ * then a different mechanism. All three were measured as smooth (frame time
+ * never left the idle range) and all three were still reported as 卡.
  *
- * `--dsh-tb-ease` has an initial slope of 6.25, and its peak velocity is also
- * 6.25. On the three-pixel changes it was tuned for (a colour, a border, a
- * shadow) that is right: short distances should arrive at once. On a 741px
- * expansion — 1365px on the narrow band — it means ONE FRAME CARRIES 44% of the
- * whole travel, on the FIRST frame, and then the last 71ms of a 160ms animation
- * moves by nothing at all. The reader gets 「猛地一跳，然后慢慢爬，最后不动了」,
- * which they reasonably report as both 卡 and 慢 because it is both, and it is
- * one cause.
+ * The measurement that finally explained it is not about frame time at all:
+ * `layout-shift` and LoAF observers on the real panel, at 1440 and 412.
  *
- * So the split is DISTANCE, not 「this component is special」: short state
- * changes keep the front-loaded curve, long size growth gets a peak-bounded one.
- * The assertions below are the numbers that split rests on, computed from the
- * bezier control points rather than restated as magic constants — a test that
- * hard-coded 6.25 would keep passing after someone edited the token.
+ *   height animated, 130ms       cumulative layout shift 0.374
+ *   height animated,  60ms       shift 0.416, one frame carried 52% of travel
+ *   height instant + 70ms fade   shift 0
+ *
+ * An expansion here holds 741px of content (1365px narrow). While the HEIGHT
+ * moves, that much page is in motion every frame — and a reader calls that
+ * stuttering no matter how even the curve is. Shortening the duration makes it
+ * worse, not better: the travel is fixed, so fewer frames means each one jumps
+ * further. **「更快」 and 「不卡」 are mutually exclusive while height animates.**
+ *
+ * So the row's height lands on the press, and only the content's opacity
+ * animates — 70ms, from 0.2 rather than 0, because text fading up from fully
+ * transparent sits as blurred grey for part of the transition and blurred text
+ * also reads as 卡. The tests below pin the STRUCTURE that makes this true:
+ * no `animation` on the container, no size property in the keyframes.
  */
-describe('growth motion is peak-bounded, because distance decides the curve', () => {
-  const tokenSheet = readFileSync(new URL('../src/client/design/tokens.module.css', import.meta.url), 'utf8')
-
-  /**
-   * The peak of d(y)/d(x) for a `cubic-bezier` timing function.
-   *
-   * This is the number a reader feels as 「一帧跳多远」: the derivative of
-   * progress against time, before the duration multiplies it. It is computed
-   * from the control points because a timing function's shape is the thing
-   * being constrained — the duration only scales it.
-   * @param points - the four control numbers from `cubic-bezier(...)`.
-   * @returns the maximum velocity; 1 means linear.
-   */
-  function peakVelocity(points: readonly [number, number, number, number]): number {
-    const [x1, y1, x2, y2] = points
-    const curveX = (t: number): number => 3 * (1 - t) ** 2 * t * x1 + 3 * (1 - t) * t * t * x2 + t ** 3
-    const curveY = (t: number): number => 3 * (1 - t) ** 2 * t * y1 + 3 * (1 - t) * t * t * y2 + t ** 3
-    const solve = (x: number): number => {
-      let low = 0
-      let high = 1
-      for (let step = 0; step < 60; step += 1) {
-        const mid = (low + high) / 2
-        if (curveX(mid) < x) low = mid
-        else high = mid
-      }
-      return (low + high) / 2
-    }
-    let peak = 0
-    const steps = 4000
-    for (let index = 1; index <= steps; index += 1) {
-      const before = curveY(solve((index - 1) / steps))
-      const after = curveY(solve(index / steps))
-      peak = Math.max(peak, (after - before) * steps)
-    }
-    return peak
-  }
-
-  /** The four numbers of a named timing-function token, read from the token sheet. */
-  function pointsOf(name: string): [number, number, number, number] {
-    const declared = new RegExp(`${name}\\s*:\\s*cubic-bezier\\(([^)]+)\\)`).exec(stripCssComments(tokenSheet))?.[1]
-    expect(declared, `${name} is not declared as a cubic-bezier in the token sheet`).toBeDefined()
-    const numbers = (declared ?? '').split(',').map(part => Number(part.trim()))
-    expect(numbers, `${name} does not carry four control points`).toHaveLength(4)
-    return numbers as [number, number, number, number]
-  }
-
-  it('the growth curve is bounded where the state-change curve is not', () => {
-    // 1.94 measured; the ceiling is set at 2.6 so a small refinement still passes
-    // while anything that drifts back toward the front-loaded shape goes red.
-    const growth = peakVelocity(pointsOf('--dsh-tb-ease-grow'))
-    expect(growth, `the growth curve's peak velocity is ${growth.toFixed(2)}, so a frame again carries too much of a long expansion`).toBeLessThanOrEqual(2.6)
-    // And it has to stay slower than the curve it exists to replace, or the split
-    // has collapsed back into one curve with two names.
-    expect(growth, 'the growth curve is as front-loaded as the state-change curve, so the split buys nothing')
-      .toBeLessThan(peakVelocity(pointsOf('--dsh-tb-ease')) / 2)
-    // Not linear either: a straight line reads mechanical on a surface whose
-    // whole motion language is 「东西自己安定下来」.
-    expect(growth, 'the growth curve is linear, which reads mechanical beside every other motion on this surface')
-      .toBeGreaterThan(1.5)
-  })
-
-  it('the growth duration is short enough that the last frames still move', () => {
-    // 120ms is the intersection of 「shorter than 160」 and 「more frames per
-    // pixel」: at 100ms the peak per-frame step climbs back to 30% because the
-    // travel is fixed and the frames run out. The ceiling pins the duration; the
-    // floor keeps someone from 「fixing」 stutter by making it instantaneous.
-    const duration = /--dsh-tb-motion-grow\s*:\s*(\d+)ms/.exec(stripCssComments(tokenSheet))?.[1]
-    expect(duration, 'the growth duration is not declared in whole milliseconds').toBeDefined()
-    const millis = Number(duration)
-    expect(millis, `the growth duration is ${millis}ms — long enough to read as 慢 again`).toBeLessThanOrEqual(130)
-    expect(millis, `the growth duration is ${millis}ms — too short to be a growth rather than a cut`).toBeGreaterThanOrEqual(100)
-  })
-
-  it('the in-row expansion reads the growth token, not the state-change one', () => {
-    // The token has a reader, and it is the thing that reported the defect. A
-    // token nobody reads is a token that answers nothing (`verify-design-docs`
-    // check 5b separately forbids that), and an expansion that drifts back to
-    // `--dsh-tb-motion` is exactly the defect this section exists for.
-    const detail = rulesOf(stripCssComments(itemSheet()), 'itemRow > .itemDetail').join('\n')
-    expect(detail, 'there is no in-row detail rule').not.toBe('')
-    expect(detail.replace(/\s+/g, ' '), 'the expansion still reads the state-change token, so the 44%-per-frame jump is back')
-      .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-grow\)/)
-  })
-
-  it('the expansion grows to the CONTENT height, not to a grid track', () => {
-    /* THE MECHANISM IS THE FIX, NOT THE NUMBERS.
+describe('the expansion does not move geometry, only the content fades in', () => {
+  it('the expansion does NOT animate its height, because the height is what cost', () => {
+    /* THE FINDING THAT ENDED THREE EARLIER ATTEMPTS.
      *
-     * `grid-template-rows: 0fr → 1fr` was tried and abandoned, because on this
-     * panel it has two scales that disagree:
+     * Every version before this one animated the height, and every one was
+     * reported as 「卡」. The reason was never the curve and never the duration:
+     * an expansion here holds 741px of content (1365px on the narrow band), so
+     * WHILE THE HEIGHT MOVES, A LARGE AREA OF THE PAGE IS IN MOTION EVERY FRAME.
+     * That is what a reader calls stuttering, and no curve fixes it.
      *
-     *   - mid-animation the TRACK is taller than the PAPER. Measured at 1440:
-     *     at 40ms the track was 455px while the paper was 265px, leaving **190px
-     *     of row colour hanging under the content** (49px still at 80ms, zero
-     *     only on the last frame).
-     *   - pinning the paper so it cannot be stretched (`align-self: start`) is
-     *     worse: the paper then holds its FULL height and spills past the row,
-     *     covering the rows below.
+     * Measured with LoAF and `layout-shift` observers on the real panel, at both
+     * 1440 and 412:
      *
-     * `height: 0 → auto` has one scale — the content's own height — so there is
-     * no second box to disagree with. Every frame measured on the real panel has
-     * `band === 0` (the paper's bottom edge coincides with the clip line) at both
-     * 1440 and 412, and the paper is clipped by `overflow: hidden` rather than
-     * allowed to spill.
+     *   height animated, 130ms            cumulative layout shift 0.374
+     *   height animated,  60ms            shift 0.416, and ONE frame carried 52%
+     *   height instant + 70ms fade        shift 0
      *
-     * The keyword interpolation is what makes `auto` a destination; without it the
-     * expansion lands at once, which is still CORRECT (no band, no spill) — which
-     * is why the mechanism is safe even where the feature is missing. */
+     * The middle row is the trap: shortening a FIXED amount of travel buys
+     * 「faster」 only by making each frame jump further. 「更快」 and 「不卡」 are
+     * mutually exclusive while the height is the thing being animated.
+     *
+     * So the row's height lands on the frame of the press, and the only thing
+     * that animates is the content's opacity. Zero geometry moves. */
     const sheet = stripCssComments(itemSheet())
-    const rule = rulesOf(sheet, 'itemRow > .itemDetail').join('\n')
+    /* READ THE RULE THAT STARTS WITH THIS EXACT SELECTOR.
+     *
+     * `rulesOf` answers 「which rules MENTION this class」, so `.itemDetail > *`
+     * (where the fade correctly lives) also comes back under `.itemDetail`, and
+     * the assertion below would read the child's `animation` as if the container
+     * had one. `ruleTextOf` wants the selector alone on its line, which these
+     * two are not, so the body is taken by brace matching from the exact
+     * selector — strict about WHICH rule, indifferent to spelling. */
+    const bodyOf = (selector: string): string => {
+      const at = sheet.indexOf(`\n${selector} {`)
+      if (at < 0) return ''
+      let depth = 0
+      for (let i = at; i < sheet.length; i += 1) {
+        if (sheet[i] === '{') depth += 1
+        else if (sheet[i] === '}') {
+          depth -= 1
+          if (depth === 0) return sheet.slice(at, i + 1)
+        }
+      }
+      return ''
+    }
+
+    const rule = bodyOf('.itemRow > .itemDetail')
     expect(rule, 'there is no in-row detail rule').not.toBe('')
+    expect(rule.replace(/\s+/g, ' '), 'the expansion animates again — with 741px of content that means a large area moving every frame, which is the 「卡」 this replaced')
+      .not.toMatch(/animation\s*:/)
+    expect(rule.replace(/\s+/g, ' '), 'the expansion clips its own content again, which only made sense while its height was moving')
+      .not.toMatch(/overflow\s*:\s*hidden/)
 
-    // The single scale: the element's own height.
-    expect(rule.replace(/\s+/g, ' '), 'the expansion is back on a grid track, so a second scale can disagree with the paper again')
-      .not.toMatch(/grid-template-rows\s*:\s*1fr/)
-    expect(rule.replace(/\s+/g, ' '), 'the expansion does not clip, so the paper can spill past its own row and cover the rows below')
-      .toMatch(/overflow\s*:\s*hidden/)
-    expect(rule.replace(/\s+/g, ' '), 'the expansion still animates, and it reads the growth token')
-      .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-grow\)/)
+    // The only animating thing is the content's opacity.
+    const child = bodyOf('.itemRow > .itemDetail > *')
+    expect(child, 'there is no rule for the expanded child').not.toBe('')
+    expect(child.replace(/\s+/g, ' '), 'nothing animates the content at all, so an expansion has no transition whatsoever')
+      .toMatch(/animation\s*:\s*itemDetailIn\s+var\(--dsh-tb-motion-fast\)/)
 
-    // The keyframes go 0 → auto, and animate nothing else.
     const frames = /@keyframes\s+itemDetailIn\s*\{([\s\S]*?)\n\}/.exec(sheet)?.[1] ?? ''
     expect(frames, 'there is no itemDetailIn keyframes block').not.toBe('')
-    expect(frames.replace(/\s+/g, ' '), 'the expansion no longer grows (no block-size in the keyframes)')
-      .toMatch(/block-size\s*:\s*0/)
-    expect(frames.replace(/\s+/g, ' '), 'the expansion does not grow TO the content height, so it lands on an arbitrary size')
-      .toMatch(/block-size\s*:\s*auto/)
-    expect(frames, 'the expansion animates opacity again, so the body text goes translucent over the row colour and reads as blur')
-      .not.toMatch(/opacity/)
-
-    // And the child is not stretched to a track any more.
-    const child = rulesOf(sheet, 'itemRow > .itemDetail > *').join('\n')
-    expect(child.replace(/\s+/g, ' '), 'the child is anchored to the track again, which is the spill that covered the rows below')
-      .not.toMatch(/align-self\s*:\s*start/)
+    // Opacity only — the moment a size property appears here, geometry moves again.
+    expect(frames.replace(/\s+/g, ' '), 'the keyframes move a size again, and a moving size is the cost this replaced')
+      .not.toMatch(/block-size|height|grid-template-rows/)
+    expect(frames.replace(/\s+/g, ' '), 'the fade starts from too low a value, so the body text sits as blurred semi-transparent text over the row colour')
+      .toMatch(/from\s*\{\s*opacity:\s*0\.[2-9]/)
   })
 
-  it('the keyword interpolation is declared once, at the root', () => {
-    // `block-size: auto` only interpolates under `interpolate-size: allow-keywords`.
-    // Declaring it per component would write one decision N times, and the copy
-    // someone forgets loses its animation in silence.
-    //
-    // AND IT HAS TO BE ON THE ROOT, not on the expansion itself: a per-component
-    // declaration is the second copy of a product-wide policy, and the panel is
-    // reached through both scopes (the view and the standalone panel), so one
-    // selector list has to cover both.
-    const tokens = stripCssComments(tokenSheet)
-    expect(tokens.replace(/\s+/g, ' '), 'nothing enables keyword interpolation, so height:0 -> auto lands instantly')
-      .toMatch(/interpolate-size\s*:\s*allow-keywords/)
-    // Read the rule that DECLARES it and check its selector is a root scope, rather
-    // than assuming a particular spelling of that scope. A gate that hard-coded
-    // `:where` would go quiet the day the scope is spelled another way — and it
-    // would look exactly like passing.
-    const declaring = declarationRules(tokens)
-      .filter(rule => /(?:^|[;{\s])interpolate-size\s*:\s*allow-keywords/.test(rule.body))
-    expect(declaring.length, 'no rule declares the keyword interpolation').toBeGreaterThan(0)
-    expect(
-      declaring.some(rule => /data-dsh-taskboard-(?:view|panel)/.test(rule.selector)),
-      `the keyword interpolation is not on a surface root, so a panel mounted outside that scope loses the growth (declared on: ${declaring.map(rule => rule.selector).join(' | ')})`,
-    ).toBe(true)
-    // The expansion must NOT carry its own copy — that is the drift this pins.
-    expect(stripCssComments(itemSheet()).replace(/\s+/g, ' '),
-      'the expansion declares interpolate-size itself, which is the second copy of a root-level decision')
-      .not.toMatch(/interpolate-size/)
-  })
-
-  it('the detector bites on the shape it was written for', () => {
-    // THE CONTROL. `--dsh-tb-ease` is the curve this whole section exists to move
-    // away from, so it is the honest negative sample: a detector that accepted it
-    // would pass on the sheet before the fix as well as after, and prove nothing.
-    // Small refinement of the growth curve is the positive sample, so the reader
-    // is not merely measuring 「is it exactly 1.94」.
-    const frontLoaded = peakVelocity([0.16, 1, 0.3, 1])
-    expect(frontLoaded, 'the detector cannot see the front-loaded curve it exists to reject').toBeGreaterThan(2.6)
-    expect(peakVelocity([0.3, 0.55, 0.45, 1])).toBeLessThanOrEqual(2.6)
+  it('and the detector bites on the shapes it was written for', () => {
+    // THE CONTROLS. Each assertion above is exercised on a sample it cannot have
+    // been tuned against, so a green here means the READER works rather than that
+    // the sheet happens to be tidy.
+    const ruleOf = (text: string): string => rulesOf(text, 'itemRow > .itemDetail').join('\n').replace(/\s+/g, ' ')
+    // A growth animation on the container is exactly what was removed.
+    expect(ruleOf('.itemRow > .itemDetail { animation: itemDetailIn var(--dsh-tb-motion-grow) both; }'))
+      .toMatch(/animation\s*:/)
+    // Opacity-only keyframes pass the size check; a size in them does not.
+    const sizeInFrames = (text: string): boolean => /block-size|grid-template-rows/.test(text)
+    expect(sizeInFrames('@keyframes x { from { opacity: 0.2 } to { opacity: 1 } }')).toBe(false)
+    expect(sizeInFrames('@keyframes x { from { block-size: 0 } to { block-size: auto } }')).toBe(true)
+    // And a fade from 0 is the blur this design exists to avoid.
+    expect(/from\s*\{\s*opacity:\s*0\.[2-9]/.test('from { opacity: 0.2 }')).toBe(true)
+    expect(/from\s*\{\s*opacity:\s*0\.[2-9]/.test('from { opacity: 0 }')).toBe(false)
   })
 })
 
