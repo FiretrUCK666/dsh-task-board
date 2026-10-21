@@ -25,16 +25,21 @@ runs:
         status=$?
         tail -300 "$RUNNER_TEMP/verify.log"
         if [ "$status" -ne 0 ]; then
-          # **只捞失败那几行，不捞整段输出。**
+          # **失败行前后都要带上，只带失败行等于没带。**
           #
-          # 第一版取的是 `tail -60`：门禁每跑一步都打印自己的自测结论，六十行
-          # 全是 `OK 自测：…`，真正那句 `FAILED` 根本挤不进去——注解发出去了，
-          # 里面却没有答案，等于白跑一轮。这里改成按关键字筛，失败那几行必然
-          # 带着 FAIL / FAILED / 错误，而成功的自测行带着 OK，正好分得开。
-          summary="$(grep -nE 'FAIL|FAILED|rror|MISMATCH|not declared|missing' "$RUNNER_TEMP/verify.log" | tail -25 | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
-          # 一行都筛不出来时退回尾部，至少还有上下文。
-          if [ -z "$summary" ]; then
-            summary="$(tail -25 "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          # 门禁的格式是「一个 FAILED 抬头 + 若干行 `- 细节`」：抬头那行带
+          # FAILED，真正的原因在下面那几行里，而它们**不带任何关键字**。
+          # 第一版只 grep 关键字，于是注解里只有 `verify-standalone FAILED`
+          # 和 `run-gates FAILED at:`，原因一个字都没进去——白跑一轮。
+          #
+          # 这里改成：先定位第一个 FAILED，再取它前面 3 行、后面 25 行。
+          # 前面几行常常是「在跑哪一步」，后面几行才是「为什么」。
+          line="$(grep -nE 'FAILED|FAIL ' "$RUNNER_TEMP/verify.log" | head -1 | cut -d: -f1)"
+          if [ -z "$line" ]; then
+            summary="$(tail -30 "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          else
+            from=$((line > 4 ? line - 4 : 1))
+            summary="$(sed -n "${from},$((line + 25))p" "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
           fi
           echo "::error title=verify gates failed::$summary"
         fi
