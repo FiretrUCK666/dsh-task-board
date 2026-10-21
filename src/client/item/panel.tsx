@@ -401,6 +401,20 @@ export function ItemListPanel(props: ItemListPanelProps) {
    *  so it is read from `overlay` at every call site rather than from a
    *  function that both reads and writes. */
   const openLayer = (next: ItemOverlay | undefined): void => setOverlay(current => (current === next ? undefined : next))
+
+  /* **主行动是「打开」，不是「切换」。**
+   *
+   * `openLayer` 是切换语义：`current === next` 就关掉它。对**一行工具**
+   * （排序那个小浮层）这是对的——再按一次收起来很自然。对**主行动**它是错的：
+   * 读者按「新建一条」的意图永远是「给我一张纸」，永远不是「把这张纸收起来」。
+   *
+   * 这个错法在屏上表现为「点了没反应」：那张纸已经开着、但因为某种原因读者没看到
+   * （被裁在视口外、或他刚关掉的是同一个浮层而状态没复位），于是那一下点击正好是在
+   * **关**它——屏幕一动不动，而代码没抛错、门禁也不会有意见。
+   *
+   * 关这张纸有它自己的两扇门：纸上那枚关闭按钮，与 `Esc`。一个主行动不该兼职当
+   * 它的第三扇门。 */
+  const openCreate = (): void => { setOverlay('create') }
   const paletteOpen = overlay === 'palette'
   const sortOpen = overlay === 'sort'
   const topPanels = useId()
@@ -1323,7 +1337,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
    * failure the batch holding has.
    */
   const keyActions = useMemo<ItemKeyActions>(() => ({
-    quickCapture: () => openLayer('create'),
+    quickCapture: () => openCreate(),
     moveNext: () => setCursor(current => stepCursor(current, 1)),
     movePrev: () => setCursor(current => stepCursor(current, -1)),
     pick: () => { if (cursor !== undefined) setSelection(current => togglePicked(current, cursor)) },
@@ -1394,8 +1408,19 @@ export function ItemListPanel(props: ItemListPanelProps) {
       // 带上的浮层里只有排序面板没有自己的遮罩（面板/新建的遮罩自己收
       // 自己）。按在排序面板与开它的顶栏之外，就收它；按在任何一个有自己的遮罩
       // 的浮层里，归那个浮层管，这里不插手——所以豁免名单里有它们。
+      //
+      // **底部栏杆也必须在名单里，而且它就是那个「主行动」的容器。**
+      //
+      // 这条名单原先只有顶栏那一族（`TopBar`）。而清单页的主行动在**窄档搬到了
+      // 底部栏杆**（`ThumbRail`），于是同一件事变成：按下去 → 那张纸打开 →
+      // 同一个 click 冒泡到这里 → 这里看见「有浮层，但目标不在名单里」→ **当帧关掉**。
+      // 屏幕上什么都不发生，代码不抛错，门禁也没有意见——而顶栏那一枚能开，
+      // 因为它的容器叫 `TopBar`。
+      //
+      // 判据是「这个容器开浮层」，不是「这个容器在顶上」：名单漏一个容器，就是
+      // 那条路上的主行动静默失效。所以 `ThumbRail` 与 `TopBar` 并列放在这里。
       if (dismissRef.current.overlay !== undefined
-        && target.closest('[class*="TopPanel"i], [class*="TopBar"i], [class*="Palette"i], [class*="CreateDialog"i]') === null) {
+        && target.closest('[class*="TopPanel"i], [class*="TopBar"i], [class*="Palette"i], [class*="CreateDialog"i], [data-dsh-tb-thumbrail]') === null) {
         openLayer(undefined)
       }
       const card = target.closest('[data-dsh-tb-scroll]')
@@ -2197,7 +2222,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
               <Button
                 variant="primary"
                 className={css.itemTopBarPrimary}
-                onClick={() => openLayer('create')}
+                onClick={() => openCreate()}
               >
                 {/* 同一枚加号，与看板那一枚是**同一个组件**（`design/ui.tsx` 的
                     `PlusIcon`）：两页各画一次，就会出现一个 11 单位、一个字面 `+` 的
@@ -2219,7 +2244,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
             * 挤成两行；主行动搬走之后那一行只剩搜索与工具，行的数量少一条，而栏杆
             * 不占内容的额度（`absolute`，浮在列表底部）。 */}
           <ThumbRail label={t('item.topbar.create')}>
-            <Button variant="primary" onClick={() => openLayer('create')}>
+            <Button variant="primary" onClick={() => openCreate()}>
               <PlusIcon />
               <span>{t('item.topbar.create')}</span>
             </Button>
