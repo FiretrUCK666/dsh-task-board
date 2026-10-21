@@ -1,0 +1,33 @@
+# 跑 `pnpm verify`，并在失败时把原因写成一条**注解**。
+#
+# 为什么是一个 composite action 而不是两处各写一遍：`ci.yml` 与 `release.yml`
+# 都要跑这一整套门禁，而它们对「失败意味着什么」的看法必须一致——两个地方各写
+# 一份 `run:`，第一次有人给其中一处加一句诊断，另一处就悄悄落后了，而落后的那
+# 一处正好是真正发版的那一处。
+#
+# 为什么失败时要写注解：日志正文是异步加载的。`actions/jobs/<id>/logs` 要认证
+# 才给，HTML 页面里只有壳；于是「红在别人机器上的 CI」排查时只能靠「本地是绿的」
+# 反复猜。注解走另一条路——`check-runs/<job>/annotations` 匿名可读，`::error::`
+# 那一行连同标题一起进得去。这样下一个人（或下一个 agent）不必再要一个 token。
+name: verify gates
+description: Run the full gate chain and surface any failure as an annotation
+
+runs:
+  using: composite
+  steps:
+    - name: Run gates
+      shell: bash
+      run: |
+        set +e
+        # 写到文件再 tail：`pnpm verify` 的输出有几百行，直接透传会让注解那一步
+        # 淹没在里面，而这里要的正是最后那几十行。
+        pnpm verify > "$RUNNER_TEMP/verify.log" 2>&1
+        status=$?
+        tail -300 "$RUNNER_TEMP/verify.log"
+        if [ "$status" -ne 0 ]; then
+          # 单条注解有长度上限，6000 字符足够装下几十行诊断；`tr` 把换行压成空格，
+          # 否则 GitHub 只显示第一行。
+          summary="$(tail -60 "$RUNNER_TEMP/verify.log" | tr '\n' ' ' | tr -s ' ' | cut -c1-6000)"
+          echo "::error title=verify gates failed::$summary"
+        fi
+        exit "$status"

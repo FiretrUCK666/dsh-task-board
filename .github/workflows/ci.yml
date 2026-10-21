@@ -61,7 +61,7 @@ jobs:
         run: pnpm test
 
       - name: Verify standalone gate
-        run: pnpm verify
+        uses: ./.github/actions/verify
 
       - name: Committed artifacts match a fresh build
         run: |

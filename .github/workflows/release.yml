@@ -98,7 +98,7 @@ jobs:
         run: pnpm test
 
       - name: Verify
-        run: pnpm verify
+        uses: ./.github/actions/verify
 
       # GitHub Release 起草中文说明：提交记录本来就是中文人话，收集即正文。
       # 无上一标签的首版也能起草（全量提交），不会交英文白卷。
