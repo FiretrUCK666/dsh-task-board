@@ -82,11 +82,11 @@ interface ItemCreateDialogProps {
   /**
    * **写作框那个数，与详情里那五个是一份。**
    *
-   * 它是视图偏好（同一台设备上一个尺寸），所以从面板下来、拖完原路回去；这张纸与
-   * 展开区共用同一个控件，也就共用同一个尺寸——不然「同一个东西」会在这两处差一截。
+   * 它是视图偏好，所以从面板下来、拖完原路回去；这张纸与展开区共用同一个控件。
+   * **但尺寸跟着字段走，不跟着控件走**：这张纸的正文与展开区的正文是同一个字段
+   * （同一个槽，两处同高），而正文与上下文备注是两个字段，各存各的——拖一个不会
+   * 把另一个也拉起来。
    */
-  readonly proseHeight?: number
-  readonly onProseHeight?: (px: number) => void
   /**
    * 收进官方附件库的那一次上传，与展开区那一栏**是同一个能力**（同一个钩子、同一条路由）。
    * 没有它（没接上看板、宿主没接上附件库）时，「＋」照样在，点它会明说收不了。
@@ -369,8 +369,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                   onChange={setBody}
                   placeholder={t('item.field.bodyHint')}
                   ariaLabel={t('item.field.body')}
-                  height={props.proseHeight}
-                  onHeight={props.onProseHeight}
                 />
               </label>
               {/* 附件在**同一个字段里**：它是正文那一段的一部分，不是这张纸的第 7 个字段
@@ -395,8 +393,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 onChange={setSteps}
                 placeholder={t('item.create.stepsPlaceholder')}
                 ariaLabel={t('item.create.steps')}
-                height={props.proseHeight}
-                onHeight={props.onProseHeight}
               />
             </label>
 
@@ -407,8 +403,6 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
                 onChange={setNotes}
                 placeholder={t('item.field.notesHint')}
                 ariaLabel={t('item.field.notes')}
-                height={props.proseHeight}
-                onHeight={props.onProseHeight}
               />
             </label>
           </div>

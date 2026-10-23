@@ -11,6 +11,22 @@
  * that no `<textarea>` exists anywhere else under `src/client/item/`, so a
  * second one cannot appear.
  *
+ * ── ONE CONTROL, AND EACH BOX OWNS ITS OWN HEIGHT ───────────────────────────
+ *
+ * The five boxes are ONE control; the height is NOT one value. It lives in this
+ * component's own state, so it belongs to one box for as long as that box is on
+ * screen, and dies with it.
+ *
+ * It was a stored preference, tried twice: first ONE number shared by all five
+ * (dragging 正文 resized 上下文备注 — a box the reader never touched), then one
+ * number per field. Both were wrong for the same reason: a size chosen for one
+ * moment outlived the moment. The reader closes the row and opens it again and
+ * expects the layout's own height back, and a remembered number quietly gave them
+ * a height they no longer remembered choosing.
+ *
+ * Consequence worth stating: two boxes cannot affect each other even in principle,
+ * because there is no shared thing for them to affect.
+ *
  * ── THE HEIGHT BELONGS TO THE READER ─────────────────────────────────────────
  *
  * The height is FIXED, the text scrolls inside, and the drag zone is the WHOLE
@@ -52,47 +68,45 @@ interface ProseFieldProps {
   readonly onChange: (value: string) => void
   readonly placeholder: string
   readonly ariaLabel: string
-  /**
-   * The height this reader last dragged a box to, in px.
-   *
-   * `undefined` while nobody has ever dragged one, and that is the honest state
-   * rather than a default: the stylesheet's own starting height is what a box
-   * nobody sized is drawn at, and writing that number into storage would freeze
-   * a layout decision into a reader's preference file.
-   */
-  readonly height?: number
-  /**
-   * ONE SETTLED SIZE, ONCE PER GESTURE.
-   *
-   * A drag reports on release, a keystroke on the press. Reporting every
-   * `pointermove` would write a preference sixty times a second for a number
-   * nobody reads until the gesture is over.
-   */
-  readonly onHeight?: (px: number) => void
   /** Take the caret when the box appears. */
   readonly takeCaret?: boolean
 }
 
 /**
  * One writing box.
- * @param props - the text, the words it wears, and where its size goes.
+ * @param props - the text, the words it wears, and whether it takes the caret.
  * @returns the box, its whole-bottom-edge grip, and nothing else.
  */
 export function ProseField(props: ProseFieldProps) {
   const field = useRef<HTMLTextAreaElement | null>(null)
   const drag = useRef<{ readonly from: number; readonly height: number } | undefined>(undefined)
   /**
-   * The live height, beside the state that draws it.
+   * THE HEIGHT LIVES HERE AND NOWHERE ELSE, so it dies with this box.
    *
-   * The handlers read THIS and not the state, because a pointer move is a
-   * continuous event and React is free to batch a frame of them: a drag that
-   * read the last committed render would lag its own pointer by a frame, and a
-   * release that read it could write a size the reader had already passed
-   * through. The state is for drawing and for assistive technology; the ref is
-   * for arithmetic.
+   * A reader drags the grip to make THIS box comfortable while they are writing in
+   * it. Collapse the row and open it again and the box is back at the layout's own
+   * starting height — because 「how big was this one while I was typing」 is a fact
+   * about the last few seconds, not a preference about the product.
+   *
+   * ── WHY NOT REMEMBERED ──────────────────────────────────────────────────────
+   *
+   * It used to be a stored preference, first ONE number shared by all five boxes
+   * (so dragging 正文 resized 上下文备注 — a box the reader never touched), then
+   * one number per field. Both were wrong for the same reason: a size chosen for
+   * one moment outlived the moment, and every later visit inherited a height the
+   * reader no longer remembered choosing. The page is a list of many rows, and a
+   * row is opened to be looked at briefly.
+   *
+   * So there is no prop, no storage key, and no slot: the state below is the whole
+   * of it. Two boxes therefore cannot affect each other even in principle — there
+   * is no shared thing for them to affect.
+   *
+   * The handlers read the REF rather than the state, because a pointer move is a
+   * continuous event and React is free to batch a frame of them: a drag that read
+   * the last committed render would lag its own pointer by a frame.
    */
-  const live = useRef<number | undefined>(props.height)
-  const [height, setHeight] = useState<number | undefined>(props.height)
+  const live = useRef<number | undefined>(undefined)
+  const [height, setHeight] = useState<number | undefined>(undefined)
   /**
    * The floor and the ceiling, read off the layout ONCE, because both are fixed
    * lengths declared in the stylesheet — they do not answer to the panel's width,
@@ -113,15 +127,7 @@ export function ProseField(props: ProseFieldProps) {
     })
   }, [])
 
-  /* The remembered size can arrive after the mount — a box opened on a row, a
-   * preference read later — so the state follows the prop. It only runs when the
-   * value actually changes, so it can never fight a drag in progress. */
-  useEffect(() => {
-    live.current = props.height
-    setHeight(props.height)
-  }, [props.height])
-
-  /* THE CARET COMES WITH THE BOX, AND THE PANEL DOES NOT MOVE.
+  /* The caret comes with the box, and the panel does not move.
    *
    * `preventScroll` is not a micro-optimisation. The box appears where the reader
    * just pressed, so it is already on screen; a focus that scrolls the panel to
@@ -177,10 +183,9 @@ export function ProseField(props: ProseFieldProps) {
     if (event.currentTarget.hasPointerCapture(event.pointerId)) {
       event.currentTarget.releasePointerCapture(event.pointerId)
     }
-    /* A PRESS THAT MOVED NOTHING WRITES NOTHING. Dragging a box away and back, or
-     * simply pressing the grip, must not turn the stylesheet's starting height
-     * into a stored preference — the store is for sizes the reader chose. */
-    if (live.current !== undefined && live.current !== started.height) props.onHeight?.(live.current)
+    /* Nothing left to write: the size has nowhere to go but this component's own
+     * state, which already holds it. A press that moved nothing leaves no trace,
+     * which is now true by construction rather than by a guard. */
   }
 
   /* ONE LINE PER PRESS. The step is the box's own line-height — the unit the
@@ -194,7 +199,6 @@ export function ProseField(props: ProseFieldProps) {
     event.preventDefault()
     const before = current()
     resize(before + (event.key === 'ArrowDown' ? line : -line))
-    if (live.current !== undefined && live.current !== before) props.onHeight?.(live.current)
   }
 
   const style = height === undefined ? undefined : ({ [PROSE_HEIGHT]: `${height}px` } as CSSProperties)

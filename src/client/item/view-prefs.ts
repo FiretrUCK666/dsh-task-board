@@ -39,6 +39,8 @@ import { ITEM_PAGES } from '../../core/item-view.ts'
  */
 export const VIEW_PREFS_KEY = 'dsh.taskBoard.itemView.v1'
 
+
+
 /** Everything remembered about how the list is shown. */
 export interface ItemViewPrefs {
   /** Which page was open. */
@@ -51,18 +53,6 @@ export interface ItemViewPrefs {
    * 不然读者选「标题」时会得到一个他上一步选的反向，而那一步说的是另一列）。
    */
   readonly sortDesc: boolean
-  /**
-   * **写作框有多高**（px），读者自己拉出来的那个数。
-   *
-   * 它在这里而不是在文档里，理由与「行高」是同一条（见本文头部）：这是读者的习惯，
-   * 不是关于他的工作的事实。它也不在组件里：五个写作框是同一个控件、共用同一个数
-   * ——同一台设备上「我习惯写多大一块」只有一个答案，而一个每次重开都归零的尺寸会让
-   * 那条抓条看起来是坏的。
-   *
-   * `undefined` = 没人拉过，于是版面自己的起始高度说了算。**没拉过就不写**：这条纪律让
-   * 版面上的一个数不会被冻进读者的偏好文件里，改版时那个数仍归版面。
-   */
-  readonly proseHeight?: number
   /**
    * `showDone` IS NOT HERE, and the reason is where its control lives: it is the
    * list page's own switch, drawn on that page next to what it filters (the
@@ -157,7 +147,6 @@ export const DEFAULT_VIEW_PREFS: ItemViewPrefs = {
   // charge. Named here rather than left off the object for the same reason
   // `overlay` is below: one shape, rather than 「present on some reads and absent
   // on others」, which is the difference between a field and a rumour.
-  proseHeight: undefined,
   search: '',
   // Never written, so this is `undefined` on every real read. It is named here
   // rather than left off the object so the shape is one value rather than
@@ -202,15 +191,6 @@ export function readViewPrefs(): ItemViewPrefs {
     page: isPage(record.page) ? record.page : DEFAULT_VIEW_PREFS.page,
     sort: isSort(record.sort) ? record.sort : DEFAULT_VIEW_PREFS.sort,
     sortDesc: record.sortDesc === true,
-    /* THE DRAGGED HEIGHT, VALIDATED LIKE EVERY OTHER READ. A stored number is
-     * JSON written by another build or by a hand, and a size that is not a size
-     * would be handed straight to a box's `block-size`. The bounds are a sanity
-     * range rather than the box's own floor and ceiling — those live in the
-     * stylesheet, and the box clamps to them whatever this file lets through. */
-    ...(typeof record.proseHeight === 'number' && Number.isFinite(record.proseHeight)
-      && record.proseHeight >= 40 && record.proseHeight <= 2000
-      ? { proseHeight: record.proseHeight }
-      : {}),
     // `record.showDone`, `record.density` AND `record.collapsed` ARE DELIBERATELY
     // NEVER NAMED HERE, and that is the whole upgrade path for all three: a field
     // is removed by not reading it, so a record written by any build at all parses
@@ -242,9 +222,6 @@ export function writeViewPrefs(prefs: ItemViewPrefs): void {
       /* 方向只在与默认相反时写：`false` 是每一条真实记录都有的那个值，写它只是把默认值抄进
          存储。读侧对「不是 true 的一切」都读成 false，所以省略与写着 false 完全等价。 */
       ...(prefs.sortDesc ? { sortDesc: true } : {}),
-      /* 写作框的高度只在一个读者真的拉过它之后才写：`undefined` 是「没人拉过」，
-         而把版面的起始高度抄进存储会让改版时那个数不再跟着版面变。 */
-      ...(prefs.proseHeight === undefined ? {} : { proseHeight: prefs.proseHeight }),
       // `search` and `overlay` are ABSENT from this object on purpose. Both are
       // part of the view and not part of the memory, and a key that appears here
       // once appears forever: the day somebody adds it to the serialised shape

@@ -1157,8 +1157,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
       /* **写作框那个数走视图偏好，不走这一条的字段。** 它是读者「习惯写多大一块」，
          同一台设备上五个写作框共用一个值，所以它进 `view-prefs`（与行高、排序同类），
          而不是进文档——两台设备对一块写字的地方多大有不同意见，不是数据冲突。 */
-      proseHeight={prefs.proseHeight}
-      onProseHeight={px => choose({ proseHeight: px })}
       /* 正文那一段的附件：与新建那张纸**同一个入口**（见 `admitAttachment`）。 */
       admit={admitAttachment}
       /* 挂着卡的那一行改的是**那张卡在哪一栏**（`task.move`），**并且**把这一行自己写成同一档
@@ -1975,8 +1973,6 @@ export function ItemListPanel(props: ItemListPanelProps) {
           onClose={() => openLayer(undefined)}
           cards={cards.map(card => ({ id: card.id, title: card.title }))}
           /* 同一份偏好、同一个数：这张纸上的写作框与展开区那五个是同一个控件。 */
-          proseHeight={prefs.proseHeight}
-          onProseHeight={px => choose({ proseHeight: px })}
           admit={admitAttachment}
           /* 这张纸的「新建卡片」那一档：**卡是在这里诞生的，它带着什么出生就该让读者看见**。
              用的是同一块（`RunConfigBlock`）、同一段读法（`configDraftOf`）、同一处清槽

@@ -1624,7 +1624,7 @@ export function mountPanel(
   items: readonly ItemRecord[],
   page: Page = 'list',
   band: Band = 'wide',
-  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; proseHeight?: number; focus?: { readonly token: number; readonly cardId: string }; admit?: AttachmentAdmitter } = {},
+  over: { hostLost?: boolean; synced?: boolean; deleted?: readonly ItemRecord[]; openCard?: (cardId: string) => void; cards?: readonly string[]; focus?: { readonly token: number; readonly cardId: string }; admit?: AttachmentAdmitter } = {},
 ): MountedPanel {
   const g = globalThis as Record<string, unknown>
   g.IS_REACT_ACT_ENVIRONMENT = true
@@ -1775,7 +1775,7 @@ export function mountPanel(
      * here rather than writing storage behind the bench's back: the bench owns
      * this record for the length of the mount and puts the previous one back, so
      * a write from outside is one it is entitled to overwrite. */
-    withPrefs({ page, ...(over.proseHeight === undefined ? {} : { proseHeight: over.proseHeight }) }, () => { settle() })
+    withPrefs({ page }, () => { settle() })
     // The band is read by an effect, so the first render guessed; re-render once
     // now that the measurement answers.
     settle()

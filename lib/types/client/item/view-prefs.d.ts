@@ -49,18 +49,6 @@ export interface ItemViewPrefs {
      */
     readonly sortDesc: boolean;
     /**
-     * **写作框有多高**（px），读者自己拉出来的那个数。
-     *
-     * 它在这里而不是在文档里，理由与「行高」是同一条（见本文头部）：这是读者的习惯，
-     * 不是关于他的工作的事实。它也不在组件里：五个写作框是同一个控件、共用同一个数
-     * ——同一台设备上「我习惯写多大一块」只有一个答案，而一个每次重开都归零的尺寸会让
-     * 那条抓条看起来是坏的。
-     *
-     * `undefined` = 没人拉过，于是版面自己的起始高度说了算。**没拉过就不写**：这条纪律让
-     * 版面上的一个数不会被冻进读者的偏好文件里，改版时那个数仍归版面。
-     */
-    readonly proseHeight?: number;
-    /**
      * `showDone` IS NOT HERE, and the reason is where its control lives: it is the
      * list page's own switch, drawn on that page next to what it filters (the
      * 「隐藏已完成」 chip), so it belongs to the page rather than to the memory of

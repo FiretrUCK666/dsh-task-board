@@ -4843,7 +4843,7 @@ describe('the mounted-page artifact, for the states a static render cannot reach
        * 偏好（读者拉过）和一段真的溢出，所以它是一屏按下之后的样子。 */
       const long = Array.from({ length: 30 }, (_, i) => `第 ${i + 1} 行：这一段比框长，它该在框里滚。`).join('\n')
       const rows = [{ ...(oneRow({})[0] as ItemRecord), id: 'r-1', ref: 1, body: long }]
-      const panel = mountPanel(rows, 'list', band === 'narrow' ? 'narrow' : 'wide', { proseHeight: 400 })
+      const panel = mountPanel(rows, 'list', band === 'narrow' ? 'narrow' : 'wide')
       try {
         const row = [...panel.surface.querySelectorAll('[data-status]')][0] as HTMLElement | undefined
         if (row === undefined) throw new Error('the list page drew no row to open')
@@ -5530,56 +5530,164 @@ describe('写入框：高度是读者的，整条下沿都能拉', () => {
     }
   })
 
-  it('拉多远就是多高，而且这个数落进视图偏好', () => {
-    // **基准不是 jsdom 量出来的高度。** 台架先把这个面板放进「读者已经拉过一次」的视图
-    // 状态里（240），于是这一格的起点是产品自己那个数，而这次手势是「在它上面加了 120」
-    // ——jsdom 没有布局，一个从 `getBoundingClientRect()` 起算的断言在这里读到的是 0，
-    // 那是仪器的问题，不是产品的问题。
-    const panel = mountPanel(oneRow({}), 'list', 'wide', { proseHeight: 240 })
+  it('拉多远就是多高，而且只在这一格里算数', () => {
+    /* THE SIZE IS TEMPORARY, AND THAT IS THE REQUIREMENT.
+     *
+     * A reader drags the grip to make THIS box comfortable while they are writing
+     * in it. Close the row and open it again and the box is back at the layout's
+     * own starting height — 「how big was this one while I was typing」 is a fact
+     * about the last few seconds, not a preference about the product.
+     *
+     * It used to be a stored preference, which meant every later visit inherited a
+     * height the reader no longer remembered choosing. */
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const { grip, box } = openBody(panel)
-      expect(box.style.getPropertyValue('--item-prose-h'), '记住的高度没有画到框上').toBe('240px')
+      expect(box.style.getPropertyValue('--item-prose-h'), '一个没人拉过的框自己带了一个高度').toBe('')
+      /* THE START IS WHATEVER THE BOX IS DRAWN AT, so the assertion is the
+       * DIFFERENCE the gesture made — not an absolute number. jsdom has no layout:
+       * the bench stubs `getBoundingClientRect` to a fixed box so the band is
+       * answerable, which means the box's own starting height here is the stub's,
+       * not the stylesheet's. That is a property of the instrument; what belongs
+       * to the product is 「drag 120px and the box grows 120px」. */
+      const start = proseHeightOf(box)
       drag(grip, 300, 420, [350, 400])
-      expect(box.style.getPropertyValue('--item-prose-h'), '拖了 120px，框却不是 360px').toBe('360px')
-      expect(readViewPrefs().proseHeight, '拉出来的高度没有落进视图偏好——下一次开还是老尺寸，那条抓条看起来就是坏的')
-        .toBe(360)
+      expect(proseHeightOf(box) - start, '拖了 120px，框却没有跟着长 120px').toBe(120)
     } finally {
       panel.dispose()
     }
   })
 
   it('按一下没动：什么都不写，因为那不是读者选的尺寸', () => {
-    /* 这一格从「没人拉过」开始。面板把偏好**直接写进存储**，而台架守着的只是挂载那一段
-       ——上一次手势的写入落在守卫之外，会留到这里，于是「这次写没写」就量不出来了。 */
-    window.localStorage.removeItem(VIEW_PREFS_KEY)
     const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const { grip, box } = openBody(panel)
       drag(grip, 200, 200)
-      expect(readViewPrefs().proseHeight, '按了一下抓条，就把版面的起始高度写成了读者的偏好').toBeUndefined()
       expect(box.style.getPropertyValue('--item-prose-h'), '没动的拖拽也给框写了一个高度').toBe('')
     } finally {
       panel.dispose()
     }
   })
 
-  it('新建那条那张纸上的三个框，是同一个尺寸', () => {
-    // 五个写入框是**同一个控件**，所以尺寸也是一个：它是这台设备上「我习惯写多大一块」，
-    // 不是某一条的字段，也不是某一个表面的字段。
-    const panel = mountPanel(oneRow({}), 'list', 'wide', { proseHeight: 300 })
+  it('收起再展开，高度回到初始值——拉伸只在这一次展开里算数', async () => {
+    /* THE REQUIREMENT, STATED AS A SENTENCE BY THE READER: 「我点击收回再展开，它又变回来了」.
+     *
+     * The box is rebuilt when the row collapses (`expanded && <div className={css.itemDetail}>`),
+     * so its component state is gone and the next mount starts at the layout's
+     * height. This test pins that the rebuild actually happens rather than the
+     * box being hidden and shown with its state intact. */
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const first = openBody(panel)
+      const initial = proseHeightOf(first.box)
+      drag(first.grip, 300, 420, [350, 400])
+      expect(proseHeightOf(first.box), '拖完没有高度，这一条测的就不是「收回后归位」').toBeGreaterThan(0)
+
+      // Collapse by pressing the row itself, then open it again the same way.
+      const row = rowEls(panel.surface)[0]
+      if (row === undefined) throw new Error('the list page drew no row')
+      click(row)
+      await settle()
+      expect(panel.surface.querySelector('[class*="itemDetail"]'), '按行没有把它收起来').toBeNull()
+
+      const again = openBody(panel)
+      expect(again.box.style.getPropertyValue('--item-prose-h'),
+        '重新展开之后框还记着上一次拉出来的高度——它应该回到初始值').toBe('')
+      expect(proseHeightOf(again.box), '重新展开的框不是展开时的初始高度').toBe(initial)
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('拉正文不会把上下文备注也拉起来', () => {
+    /* THE DEFECT THIS REPLACES. All five boxes once shared ONE height, so dragging
+     * 正文 also resized 上下文备注 and 步骤 — boxes the reader never touched, moving
+     * because of an edit made somewhere else. The reader reported exactly that:
+     * 「怎么现在会影响到别的东西了」.
+     *
+     * Now there is no shared thing to leak through: the height lives in each box's
+     * own state. Two boxes cannot affect each other even in principle. */
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const { box: bodyBox, grip: bodyGrip } = openBody(panel)
+      const notesBox = boxByLabel(panel, '上下文备注')
+      drag(bodyGrip, 300, 420, [350, 400])
+      expect(proseHeightOf(bodyBox), '拖正文，正文没跟着动').toBeGreaterThan(0)
+      expect(notesBox.style.getPropertyValue('--item-prose-h'),
+        '拖正文把上下文备注也拉高了——那是读者没有碰过的框').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('新建那条那张纸上的三个框，各拉各的', () => {
+    /* ONE CONTROL, THREE FIELDS. They are the same component with the same grip,
+     * but a size chosen for 正文 is not a size chosen for 步骤. */
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
     try {
       const open = [...panel.surface.querySelectorAll('button')].find(node => (node.textContent ?? '').includes('新建一条'))
       click(open)
       const boxes = [...panel.surface.querySelectorAll('textarea')].map(field => field.parentElement)
       expect(boxes.length, '那张纸上不是三个写作框').toBe(3)
-      for (const box of boxes) {
-        expect(box?.style.getPropertyValue('--item-prose-h'), '同一张纸上的框各有各的尺寸').toBe('300px')
-      }
+      // Nothing has been dragged, so none of them carries a height.
+      expect(boxes.map(box => box?.style.getPropertyValue('--item-prose-h') ?? ''),
+        '没人拉过的框被塞进了尺寸').toEqual(['', '', ''])
+
+      const bodyGrip = boxes[0]?.querySelector('[role="separator"]')
+      drag(bodyGrip, 300, 400, [350])
+      expect(proseHeightOf(boxes[0] as HTMLElement), '拖了第一步那个框，它没动').toBeGreaterThan(0)
+      expect(boxes[1]?.style.getPropertyValue('--item-prose-h'), '拖正文把步骤也拉高了').toBe('')
+      expect(boxes[2]?.style.getPropertyValue('--item-prose-h'), '拖正文把上下文备注也拉高了').toBe('')
+    } finally {
+      panel.dispose()
+    }
+  })
+
+  it('而且这些尺寸从不出现在视图偏好里', () => {
+    /* THE STORAGE KEY IS THE OTHER HALF OF 「temporary」. A size that is not stored
+     * cannot come back on the next mount, and a preference file is the last place
+     * anyone looks when a box opens the wrong size. */
+    window.localStorage.removeItem(VIEW_PREFS_KEY)
+    const panel = mountPanel(oneRow({}), 'list', 'wide')
+    try {
+      const { grip } = openBody(panel)
+      drag(grip, 300, 420, [350, 400])
+      const stored = window.localStorage.getItem(VIEW_PREFS_KEY) ?? ''
+      expect(stored, '拖完之后存储里出现了写入框的尺寸').not.toContain('proseHeight')
+      expect(readViewPrefs(), '视图偏好里没有这个字段').not.toHaveProperty('proseHeight')
     } finally {
       panel.dispose()
     }
   })
 })
+
+/**
+ * The writing box that writes a given field, found by the label it wears.
+ * @param panel - the mounted panel.
+ * @param label - the field's visible name (正文 / 步骤 / 上下文备注).
+ * @returns the box element carrying the height variable.
+ */
+function boxByLabel(panel: ReturnType<typeof mountPanel>, label: string): HTMLElement {
+  const field = [...panel.surface.querySelectorAll('textarea')]
+    .find(node => node.getAttribute('aria-label') === label)
+  if (field === undefined) throw new Error(`the panel has no writing box labelled ${label}`)
+  return field.parentElement as HTMLElement
+}
+/**
+ * What a writing box is actually drawn at, as a number.
+ *
+ * The inline variable when the reader has dragged the box; otherwise the height
+ * the layout gives it. Under jsdom that second number comes from the bench's
+ * `getBoundingClientRect` stub — which is why the assertions above compare
+ * BEFORE and AFTER rather than restating a pixel value the instrument made up.
+ * @param box - the box element carrying `--item-prose-h`.
+ * @returns its height in px.
+ */
+function proseHeightOf(box: HTMLElement): number {
+  const declared = box.style.getPropertyValue('--item-prose-h')
+  const parsed = Number.parseFloat(declared)
+  return Number.isFinite(parsed) ? parsed : Math.round(box.getBoundingClientRect().height)
+}
 
 describe('新建一条：读不懂的日期不存下这一条，而是当场说', () => {
   /** 打开那张纸，写下标题，返回「存下这一条」那一枚。 */
