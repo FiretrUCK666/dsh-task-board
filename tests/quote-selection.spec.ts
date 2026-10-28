@@ -60,7 +60,15 @@ let onQuote: ReturnType<typeof vi.fn>
 
 beforeEach(() => {
   host = document.createElement('div')
+  /* **替身必须与真实面板同形，否则这条判据就没人验。**
+     真实的会话面板（`SessionFrame.tsx`）是 `role="dialog"` + `aria-modal="true"`，
+     而本 spec 的裁决范围正是它。曾经这里只造了个普通 `<div>`，于是排除名单里那枚
+     `[role="dialog"]` 在真实面板上命中了**面板自己**、按钮一次都不出现，而这份 spec
+     全绿——假面比现实宽松，线上就全崩。
+     所以这三个属性是**契约的一部分**，不是装饰：面板换角色，这里必须跟着换。 */
   host.setAttribute('data-dsh-taskboard-panel', '')
+  host.setAttribute('role', 'dialog')
+  host.setAttribute('aria-modal', 'true')
   const paragraph = document.createElement('p')
   paragraph.textContent = '这是一段会被引用的话'
   host.appendChild(paragraph)
@@ -103,6 +111,20 @@ describe('QuoteSelection', () => {
     /* 按钮浮出来了：这是整条链路的入口，它不出现在就什么都不用谈。 */
     expect(document.querySelector('button')).not.toBeNull()
     expect(document.querySelector('button')?.textContent).toContain('引用')
+  })
+
+  it('works when the panel root is itself a dialog — the real session panel is one', async () => {
+    /* 这一条钉的是一次真实的失效：排除名单里曾写着 `[role="dialog"]`（本意是「别的
+       弹窗里的字不算可引用」），而会话面板**自己**就是 `role="dialog"`——于是 `closest()`
+       命中了面板根，每一次选区都被判成不成立，按钮一次都不出现，屏上却没有任何报错。
+       判据读的是「选区碰到的祖先里有没有可编辑/可操作的东西」，**不读容器角色**。 */
+    expect(host.getAttribute('role')).toBe('dialog')
+    await mount()
+    await act(async () => {
+      selectText(host.querySelector('p') as Node)
+      document.dispatchEvent(new Event('selectionchange'))
+    })
+    expect(document.querySelector('button')).not.toBeNull()
   })
 
   it('hands over the encoded quote when the action is pressed', async () => {

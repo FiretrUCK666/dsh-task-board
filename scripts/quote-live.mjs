@@ -165,7 +165,10 @@ async function pageHtml() {
 </head>
 <body>
 <div id="board" data-dsh-taskboard-view="">
-  <div id="panel" data-dsh-taskboard-panel="">
+  <!-- 面板的三个属性与真实的一致（SessionFrame.tsx：data-dsh-taskboard-panel +
+       role="dialog" + aria-modal）。曾经这里只是个普通 div，于是排除名单里那枚
+       [role="dialog"] 在真实面板上命中了面板自己、按钮永不出现，而这一页照样全绿。 -->
+  <div id="panel" data-dsh-taskboard-panel="" role="dialog" aria-modal="true">
     <p id="text">第一句话在这里。第二句话用来验证跨行选中的情况。第三句话收尾。</p>
     <textarea id="box"></textarea>
   </div>
@@ -187,7 +190,7 @@ function snapshotOf(host) {
   const anchor = range.commonAncestorContainer;
   const element = anchor.nodeType === 1 ? anchor : anchor.parentElement;
   if (!element || !host.contains(element)) return undefined;
-  if (element.closest('textarea, input, [contenteditable="true"], button, select, [role="menu"], [role="dialog"]')) return undefined;
+  if (element.closest('textarea, input, [contenteditable="true"], button, select, [role="menu"], [role="listbox"]')) return undefined;
   const boxRect = range.getBoundingClientRect();
   if (boxRect.width === 0 || boxRect.height === 0) return undefined;
   return { quote, rect: { top: boxRect.top, left: boxRect.left, width: boxRect.width, height: boxRect.height } };
@@ -352,6 +355,15 @@ await withBrowser(async wsUrl => {
 
     const findings = []
     const check = (ok, message) => { findings.push({ ok, message }) }
+
+    /* 0. 这一页的面板与真实面板同形。**先验夹具，再验被测物**：一个普通 div 会让排除
+          名单里的容器角色悄悄命中面板自己，而下面的读数照样「通过」。 */
+    const panelShape = await evaluate(`(() => {
+      const panel = document.getElementById('panel');
+      return { role: panel.getAttribute('role'), modal: panel.getAttribute('aria-modal'), marked: panel.hasAttribute('data-dsh-taskboard-panel') };
+    })()`)
+    check(panelShape.role === 'dialog' && panelShape.modal === 'true' && panelShape.marked,
+      `面板与真实面板同形（role=${panelShape.role} / aria-modal=${panelShape.modal}）`)
 
     /* 1. 真选区真的有矩形。 */
     const rectProbe = await evaluate(`(() => {
