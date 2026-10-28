@@ -31,7 +31,7 @@ The Chinese [README.md](README.md) is the source of truth; this file mirrors it.
 
 ## Requirements
 
-- DeepSeek Harness `0.1.7-rc.2` or later. `0.1.7-rc.2` is the **minimum supported version**, not "the current one": anything older is untested, and there is no upper bound — the plugin is updated alongside DSH, so just install the latest build after upgrading DSH. If loading fails, follow the Troubleshooting section.
+- DeepSeek Harness `0.2.2-alpha.2` or later. This is the **minimum supported version** (the release the plugin is built and tested against), not "the current one": anything older is untested, and there is no upper bound — the plugin is updated alongside DSH, so just install the latest build after upgrading DSH. If loading fails, follow the Troubleshooting section.
 - For the web GUI (a `dsh web` you started yourself): Node.js `^22.19.0` or `>= 24.0.0`, and pnpm 10 or newer.
 - The **desktop app needs neither**: it ships its own Node and pnpm and runs package operations on its own runtime.
 

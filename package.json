@@ -1,7 +1,7 @@
 {
   "name": "@firetruck666/dsh-task-board",
   "description": "Kanban board and task-list panels for the DSH web GUI: tasks run for real through DSH sessions and write their status back, with schedules, session rules and auto-cruise. Data lives on the host, so desktop and phone see one board.",
-  "version": "1.3.31",
+  "version": "1.3.32",
   "type": "module",
   "main": "lib/index.js",
   "types": "lib/types/index.d.ts",
@@ -47,7 +47,7 @@
   "icon": "./icon.svg",
   "engines": {
     "node": "^22.19.0 || >=24.0.0",
-    "dsh": ">=0.1.7-rc.2"
+    "dsh": ">=0.2.2-alpha.2"
   },
   "keywords": [
     "deepseek-harness",
@@ -95,25 +95,25 @@
     "prepublishOnly": "pnpm build && pnpm typecheck && pnpm test && pnpm verify"
   },
   "peerDependencies": {
-    "@deepseek-ai/dsh-client-connection": ">=0.1.7-rc.2",
-    "@deepseek-ai/dsh-host-webserver": ">=0.1.7-rc.2",
+    "@deepseek-ai/dsh-client-connection": ">=0.2.2-alpha.2",
+    "@deepseek-ai/dsh-host-webserver": ">=0.2.2-alpha.2",
     "react": "^18.2.0"
   },
   "dependencies": {},
   "devDependencies": {
-    "@deepseek-ai/cordis": "^4.0.5-alpha.1",
-    "@deepseek-ai/dsh-agent": "0.2.1-alpha.3",
-    "@deepseek-ai/dsh-api-session-controller": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-client-connection": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-client-locale": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-client-ui-primitives": "0.2.1-alpha.3",
-    "@deepseek-ai/dsh-client-ui-slots": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-commands": "0.2.1-alpha.3",
-    "@deepseek-ai/dsh-host-webserver": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-llm": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-storage-json": "^0.2.1-alpha.3",
-    "@deepseek-ai/dsh-system-prompt": "0.2.1-alpha.3",
-    "@deepseek-ai/dsh-tools": "0.2.1-alpha.3",
+    "@deepseek-ai/cordis": "~4.0.6-alpha.1",
+    "@deepseek-ai/dsh-agent": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-api-session-controller": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-client-connection": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-client-locale": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-client-ui-primitives": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-client-ui-slots": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-commands": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-host-webserver": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-llm": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-storage-json": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-system-prompt": "0.2.2-alpha.2",
+    "@deepseek-ai/dsh-tools": "0.2.2-alpha.2",
     "@types/node": "^22.20.0",
     "@types/react": "~18.3.1",
     "@types/react-dom": "^18.3.5",
