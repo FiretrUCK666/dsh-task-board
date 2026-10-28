@@ -29,7 +29,6 @@ import { createPortal } from 'react-dom'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Icon } from '../design/ui.tsx'
-import { boardBox } from '../design/Dialog.tsx'
 import { quoteAnchorOf } from './quote-anchor.ts'
 import { quoteTextOf } from './quote-text.ts'
 
@@ -132,18 +131,18 @@ export function QuoteSelection({ host, onQuote }: {
    * ——按钮永远出不来，而屏上没有任何报错。所以尺寸取「量到就用真值，量不到就用
    * `ASSUMED`」，摆位永远算得出来；量到真尺寸后（第二次 render）再校正一次。
    *
-   * 另一件事同样承重：选区矩形是**视口坐标**，而浮层被 portal 进看板盒
-   * （`position: relative`）。所以这里减去容纳盒的原点，把坐标换算到同一套空间——
-   * 混用的后果是整体偏出一个侧栏的宽度，而它看起来只是「位置有点怪」。 */
+   * 坐标系：浮层 portal 进 `host`（面板本身），而**绝对定位的包含块是它的内边距盒**——
+   * 不是边框盒。`getBoundingClientRect()` 给的是边框盒，所以还要补上 `clientLeft` /
+   * `clientTop`（那 1px 的边框宽）。差这一格不会报错，只表现为整体偏 1px。 */
   useLayoutEffect(() => {
     if (pending === undefined || host === null) { setSpot(undefined); return }
-    const layer = boardBox()
     const bounds = host.getBoundingClientRect()
-    const origin = layer.getBoundingClientRect()
+    const originLeft = bounds.left + host.clientLeft
+    const originTop = bounds.top + host.clientTop
     const measured = actionRef.current?.getBoundingClientRect()
     const anchorSpot = quoteAnchorOf(
-      { top: pending.rect.top - origin.top, left: pending.rect.left - origin.left, width: pending.rect.width, height: pending.rect.height },
-      { top: bounds.top - origin.top, left: bounds.left - origin.left, width: bounds.width, height: bounds.height },
+      { top: pending.rect.top - originTop, left: pending.rect.left - originLeft, width: pending.rect.width, height: pending.rect.height },
+      { top: 0, left: 0, width: host.clientWidth, height: host.clientHeight },
       {
         width: measured === undefined || measured.width === 0 ? ASSUMED.width : measured.width,
         height: measured === undefined || measured.height === 0 ? ASSUMED.height : measured.height,
@@ -180,9 +179,22 @@ export function QuoteSelection({ host, onQuote }: {
     window.getSelection()?.removeAllRanges()
   }, [pending, onQuote])
 
-  if (pending === undefined || spot === undefined) return null
-  /* 落进看板盒：面板本身 `overflow: hidden`，浮层留在面板 DOM 里会被它的圆角与裁剪切掉；
-     看板盒是这一族浮层共同的锚点（同 Dialog / SessionFrame）。 */
+  /* 两个未定都不渲染；`host` 也一并判掉——portal 的目标必须是真实节点，而它和 `spot`
+     在同一趟里才被算出来，所以这里让类型收窄，而不是在 portal 处断言。 */
+  if (pending === undefined || spot === undefined || host === null) return null
+  /* **落进面板自己，不落进看板盒。**
+   *
+   * 落在看板盒是错的，而且错得很隐蔽：`SessionFrame` 的遮罩自己也 portal 到看板盒，它的
+   * `z-index` 是 `--dsh-tb-layer-modal`（40），而这枚按钮按「浮层」排在
+   * `--dsh-tb-layer-menu`（3）——于是按钮**确实渲染了、尺寸也对、数据也对**，只是被遮罩
+   * 整片压在下面，读者看到的是「什么都没有」。任何「有没有出现 / 在不在范围内」的判据
+   * 都会通过。
+   *
+   * 落进面板就没有这场官司：面板自己是一个层叠上下文，按钮在它内部只需要盖住同级内容，
+   * 而整块面板（连按钮一起）本来就在遮罩上面。这也顺带让坐标只用减面板原点一处。
+   *
+   * 面板不裁剪它：`.review` 是 `overflow: visible`——裁的是它内部的滚动体，不是它自己；
+   * 而按钮被 `quoteAnchorOf` 夹在可摆范围之内，本来也不会出去。 */
   return createPortal(
     <div className={css.quoteLayer} style={{ top: `${spot.top}px`, left: `${spot.left}px` }}>
       <button
@@ -198,6 +210,6 @@ export function QuoteSelection({ host, onQuote }: {
         <span>{t('review.quoteSelection')}</span>
       </button>
     </div>,
-    boardBox(),
+    host,
   )
 }

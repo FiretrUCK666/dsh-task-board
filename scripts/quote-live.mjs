@@ -153,11 +153,19 @@ async function pageHtml() {
 <style>
   html, body { margin: 0; height: 100%; background: #fff; }
   #board { position: relative; height: 100%; }
+  /* 遮罩必须在这页里真实存在，否则测不到层叠。
+     真实的复核页是 SessionFrame：一个 z-index 为 --dsh-tb-layer-modal（40）的遮罩铺满
+     看板盒，面板在遮罩里面。浮层一旦 portal 到看板盒、又只排在 --dsh-tb-layer-menu（3），
+     就被遮罩整片盖住——按钮渲染了、尺寸对、数据对，而读者看到的是「什么都没有」。
+     这一页此前没有遮罩，于是那个 bug 在这里永远显示不出来。 */
+  #backdrop { position: absolute; inset: 0; z-index: var(--dsh-tb-layer-modal);
+              display: flex; padding: 24px; overflow-y: auto;
+              background: var(--dsh-tb-mask); }
   /* 面板宽度**跟着视口走**，不写死 560px。写死的话窄屏那一档里面板会横向溢出屏幕，
      选区矩形与桌面一模一样——两档跑出来的数字相同，看起来「两档都验过了」，其实只验了
      一档，而窄屏那档正是按钮最容易被逼到墙角的地方。 */
-  #panel { position: relative; margin: 20px; padding: 20px; box-sizing: border-box;
-           width: min(560px, calc(100vw - 40px));
+  #panel { position: relative; margin: auto; padding: 20px; box-sizing: border-box;
+           width: min(560px, 100%);
            border: 1px solid #ddd; border-radius: 12px; overflow: hidden; }
   #text { margin: 0 0 16px; font: 13px/20px sans-serif; }
   #box { width: 100%; box-sizing: border-box; font: 13px/20px sans-serif; height: 72px; }
@@ -165,12 +173,14 @@ async function pageHtml() {
 </head>
 <body>
 <div id="board" data-dsh-taskboard-view="">
-  <!-- 面板的三个属性与真实的一致（SessionFrame.tsx：data-dsh-taskboard-panel +
-       role="dialog" + aria-modal）。曾经这里只是个普通 div，于是排除名单里那枚
-       [role="dialog"] 在真实面板上命中了面板自己、按钮永不出现，而这一页照样全绿。 -->
-  <div id="panel" data-dsh-taskboard-panel="" role="dialog" aria-modal="true">
-    <p id="text">第一句话在这里。第二句话用来验证跨行选中的情况。第三句话收尾。</p>
-    <textarea id="box"></textarea>
+  <div id="backdrop">
+    <!-- 面板的三个属性与真实的一致（SessionFrame.tsx：data-dsh-taskboard-panel +
+         role="dialog" + aria-modal）。曾经这里只是个普通 div，于是排除名单里那枚
+         [role="dialog"] 在真实面板上命中了面板自己、按钮永不出现，而这一页照样全绿。 -->
+    <div id="panel" data-dsh-taskboard-panel="" role="dialog" aria-modal="true">
+      <p id="text">第一句话在这里。第二句话用来验证跨行选中的情况。第三句话收尾。</p>
+      <textarea id="box"></textarea>
+    </div>
   </div>
 </div>
 <script>
@@ -211,7 +221,9 @@ document.addEventListener('selectionchange', () => {
       + '</svg>'
       + '<span>引用文本</span>'
       + '</button>';
-    board.appendChild(layer);
+    /* 落进面板自己，与真实实现一致（QuoteSelection.tsx 就是 portal 到 host）。
+       落进看板盒会被上面那层遮罩盖住，而按钮本身毫无瑕疵。 */
+    panel.appendChild(layer);
     layer.querySelector('#qa').addEventListener('pointerdown', event => event.preventDefault());
     layer.querySelector('#qa').addEventListener('click', () => {
       const caret = box.selectionStart;
@@ -224,18 +236,19 @@ document.addEventListener('selectionchange', () => {
       window.getSelection().removeAllRanges();
     });
   }
+  /* 坐标：面板的**内边距盒**是绝对定位的包含块，所以补上那 1px 边框。 */
   const bounds = panel.getBoundingClientRect();
-  const origin = board.getBoundingClientRect();
+  const originLeft = bounds.left + panel.clientLeft;
+  const originTop = bounds.top + panel.clientTop;
   const action = layer.querySelector('#qa').getBoundingClientRect();
   const spot = quoteAnchorOf(
-    { top: pending.rect.top - origin.top, left: pending.rect.left - origin.left, width: pending.rect.width, height: pending.rect.height },
-    { top: bounds.top - origin.top, left: bounds.left - origin.left, width: bounds.width, height: bounds.height },
+    { top: pending.rect.top - originTop, left: pending.rect.left - originLeft, width: pending.rect.width, height: pending.rect.height },
+    { top: 0, left: 0, width: panel.clientWidth, height: panel.clientHeight },
     { width: action.width || 88, height: action.height || 28 },
   );
   layer.style.top = spot.top + 'px';
   layer.style.left = spot.left + 'px';
   window.__spot = spot;
-  window.__bounds = { top: bounds.top - origin.top, left: bounds.left - origin.left, width: bounds.width, height: bounds.height };
 });
 
 window.__ready = true;
@@ -394,6 +407,24 @@ await withBrowser(async wsUrl => {
     check(floated.exists === true, '按钮在选中之后浮出来了')
     check(floated.w > 0 && floated.h > 0, `按钮量到真实尺寸（${Math.round(floated.w)}x${Math.round(floated.h)}）`)
     check(floated.inside === true, '按钮整个落在面板之内（没有被裁掉一半）')
+
+    /* 2b. **按钮真的能被看见——它必须是那个位置上最上层的元素。**
+     *
+     * 这一条是本轮真正的教训。上面那几条（存在、有尺寸、在面板内）在「按钮被遮罩整片压在
+     * 下面」时**全部通过**：DOM 里有它、尺寸量得到、矩形也在面板里，而读者看到的是「什么都
+     * 没有」。所以唯一诚实的判据是问浏览器：这个点上最上层的是谁？
+     * `elementFromPoint` 给的正是那个答案——它会把层级、裁剪、`pointer-events` 一起算进去。 */
+    const hittable = await evaluate(`(() => {
+      const button = document.getElementById('qa');
+      if (!button) return { exists: false };
+      const b = button.getBoundingClientRect();
+      const x = b.left + b.width / 2;
+      const y = b.top + b.height / 2;
+      const top = document.elementFromPoint(x, y);
+      return { exists: true, topIsButton: top !== null && (top === button || button.contains(top)), topTag: top === null ? 'null' : top.tagName + (top.id ? '#' + top.id : '') };
+    })()`)
+    check(hittable.exists === true && hittable.topIsButton === true,
+      `按钮在那个点上是最上层（命中的是 ${hittable.topTag}）——不是被遮罩盖住`)
 
     /* 3. 按钮**不许盖住正在被引用的那几个字**。
      *

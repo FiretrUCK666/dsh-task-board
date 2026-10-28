@@ -37,6 +37,17 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    /** 「引用选中的文字」那一条手势的三个单元：文法、几何、接线。 */
+    unit: 'src/client/board/quote-text.ts + quote-anchor.ts + QuoteSelection.tsx —— 选中文字后浮出按钮，以 `> ` 引用行写进输入框',
+    nearest: 'src/client/board/markdown-parser.ts（引用的展示那一半：它认 `>` 引用块，Markdown.tsx 把它渲染成 .mdQuote）',
+    whyNot: '展示那一半只**读**引用，不**写**引用——它没有「选区」这个概念，也不知道该插到光标的哪里，所以那两件事只能新增。'
+      + '写的那一半本来想直接复用宿主：@deepseek-ai/dsh-message-quotes 就是同一个模型（引用是文本写法，不是消息类型也不是元数据），'
+      + '但它**没有可复用的出口**——引用逻辑在 lib/client.js 里，那是给宿主自己的加载器用的 __ModuleLoader__ 闭包工厂，取不到任何函数；'
+      + 'exports 虽有 ./src/*，files 却不含 src/，安装时根本没下载。抄它的内部实现是最容易随它一起过期的做法，'
+      + '所以选了与它对表：tests/quote-contract.spec.ts 在已安装的宿主里取出它那个 quoteTextOf，喂我们生成的行，要求解码一字不差。',
+    askedBy: '用户明确要求：DSH 新版有这个功能，插件的评论区也要有',
+  },
+  {
     /** 展开那一下只收敛内容透明度，几何一个像素都不动。 */
     unit: 'src/client/item/item.module.css —— 展开区：行高当帧到位，内容只做 itemDetailIn（70ms，opacity 0.2 到 1）',
     nearest: 'src/client/design/components.module.css 的 dshTbFadeIn（纯淡入那一套入场语法）',
