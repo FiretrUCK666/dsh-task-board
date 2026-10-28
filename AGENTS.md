@@ -185,26 +185,28 @@ Release、**不** `npm publish`。**用户在本会话主动下达维护者动�
 - 发布前必查 `pnpm verify`，并把 `npm pack` 产物装进隔离 profile 真实加载一遍。
 - 不提交 `node_modules/`；**`lib/` 必须提交**（安装时不执行构建，缺了别人起不来）。
 
-### 依赖版本同步（硬性，不必每次交代）
+### 依赖版本同步（一条命令，不必每次交代）
 
-**SDK 版本必须跟随实际运行的 DSH**，每次现场查，不写死、也不靠宽松范围蒙过去。两条规律：
+**SDK 版本必须跟随实际运行的 DSH**，每次现场查，不写死。两条规律：`@deepseek-ai/dsh-*` 与
+DSH 本体同号（个别包会停更，逐个确认目标版本存在）；**npm 的 `latest` dist-tag 不可信**，
+所以**不得用 `npm view <pkg> version` 判断最新**，一律加 `versions --json` 取完整列表从末尾找。
+`@deepseek-ai/cordis` 走自己的线，目标从 DSH 自己的依赖里读。
 
-- **SDK 与 DSH 本体同号**：`@deepseek-ai/dsh-*` 的版本与正在运行的 DSH 一致；`@deepseek-ai/cordis`
-  走自己的线。**个别包会停更**，所以每个包都要单独确认目标版本确实存在。
-- **npm 的 `latest` dist-tag 不可信**（可能停在很旧的版本）。**不得用 `npm view <pkg> version`
-  判断最新**，一律 `npm view <pkg> versions --json` 取完整列表，从末尾找目标版本。
+**同步就一条命令**：`pnpm sync-sdk`（读正在运行的 DSH，把 `devDependencies`、门槛
+`engines.dsh`、`peerDependencies`、README 门槛、`pnpm-workspace.yaml` 的冷静期白名单一次改对；
+`--dry-run` 只看不改，`--raise-floor` 见下一节）。然后 `pnpm install` → typecheck + test 全绿
+（跨版本升级常伴随 API 改名，类型报错就是信号——按新契约改写，**不要用 `any` 绕过**）→
+`pnpm build` → `pnpm verify`。用户可见改动 → bump patch。
 
-同步动作（DSH 升级后主动做）：读**实际运行的**版本作为目标（`node -p
-"require('<dsh 安装目录>/package.json').version"`），逐个确认该版本存在，只写进 `devDependencies`
-（**不动** `peerDependencies` 与 README 下限），然后 `pnpm install`、typecheck + test 全绿（跨版本
-升级常伴随 API 改名，类型报错就是信号——按新契约改写，**不要用 `any` 绕过**）、构建并确认
-`lib/index.js` 能 import、`lib/client.js` 注册 id 等于包名。用户可见改动 → bump patch。
+**「要改哪些地方」由门禁回答，不由本文列清单**：`verify-version-sync.mjs` 拿 `package.json` 当
+唯一权威，查门槛、冷静期白名单、`lib/` 内嵌版号是否都跟着它——它守的是**分家时不出声**的那几处
+（白名单写旧版会让别人装不上）。加一处会跟着版本变的东西，就加一条判据。
 
 ### 最低支持版本（只在真不兼容时上移）
 
 跟着 DSH 走的是 `devDependencies`；**上移的是** `peerDependencies` 的 `>=` 值 + README「环境要求」
 那一行，而它**只在真不兼容时上移**（新版本才有的 API，或在旧版上实测加载失败）。**「插件在新版上
-照常可用」恰恰说明旧下限仍成立**——这时不要动它。
+照常可用」恰恰说明旧下限仍成立**——这时不要动它，`pnpm sync-sdk` 因此**默认不动门槛**。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
@@ -387,8 +389,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
   `DESIGN.md`。
   **键盘是一等公民**：`keyboard.ts` 一张映射表 + 一个注册点 + disposer，`ItemKeyActions` 闭合
   ——**加一个没有处理器的键是编译错误**；**一层东西占着键盘时（菜单 / 展开的行 / 浮层），只有那一层
-  自己的键与 `Esc` 活着**。`facets.ts` 是搜索框的**文本编辑器**、`selection.ts` 是纯状态机；
-  `labels.ts` 的词与色**从看板那一份导入**。
+  自己的键与 `Esc` 活着**。`facets.ts` 是搜索框的**文本编辑器**、`selection.ts` 是纯状态机。
   **「问 AI」是唯一通向模型的一按**（`core/item-ask.ts`）：没挂卡的行也按得动，**开始还是继续由卡自己说**。
   **「运行配置」常驻详情右栏**，按下去跑的就是屏上那一份。**一律不用 Dialog**。
   `hostLostItems()` 为真时说「读不到」，**不能画成「你一条都没有」**。副本只存在**一个** holder；
@@ -412,18 +413,15 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 **层方向是门禁**：`design/` 不许 import 任何一页（只许客户端根部与 `core/`），否则「这形状归谁」
 成了「哪一页渲染它」的函数。两个例外都有理由，记在同一张豁免表里。
-**改 CSS 前必须知道**：类名属于**表**（按文件名哈希），跨表选择器在生产包里静默失效——所以共享形态
-只能住 `design/`，**页面表里出现第二份拷贝即违规**（硬性规范 20；`verify-class-ownership.mjs`）。
+**改 CSS 前必须知道**：类名属于**表**（按文件名哈希），跨表选择器静默失效——共享形态只能住
+`design/`，页面表里出现第二份拷贝即违规（硬性规范 20）。
 **改界面前先读 `DESIGN.md` 的 Design System 节。**
-
-清单面板的留白走 padding 不走 margin：那条 `<p>` 重置包在 `:where()` 里，**给的是零特异性**，
-所以它只压得住 UA 的默认值，**类规则赢它**。
 
 ### 核心层（`src/core/` 纯逻辑）
 
-**按域分组；每一组点名「先读哪一个」，其余同域文件在那一组里找。** 不逐个罗列：一份会
-随时过期的花名册，代价是每加一个文件都要来改它，而没人会改第五处——**要列全，就由文件系统列**
-（`scripts/verify-design-docs.mjs` 与各门禁扫的正是真实文件）。判定「有没有」永远读 `src/core/`。
+**按域分组；每组点名「先读哪一个」，其余同域文件在那一组里找。** 不逐个罗列：一份随时会过期的
+花名册，代价是每加一个文件都要来改它，而没人会改第五处——**要列全就由文件系统列**
+（`verify-design-docs.mjs` 与各门禁扫的正是真实文件）。判定「有没有」永远读 `src/core/`。
 
 | 域 | 先读这一个 | 这一域还有什么 |
 | --- | --- | --- |
@@ -597,7 +595,7 @@ pnpm build       # clean-lib + tsc + tsdown → lib/index.js + lib/client.js
 pnpm typecheck   # tsc --noEmit
 pnpm test        # vitest run
 pnpm verify      # 静态门禁 + 客户端 bundle 冒烟
-pnpm smoke       # 只跑客户端 bundle 冒烟：真的执行一遍加载器 handshake
+pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
 ```
 
 **门禁不用记着跑哪一个**：`run-gates.mjs` 发现磁盘上每一个 `scripts/verify-*.mjs` 并逐个跑，

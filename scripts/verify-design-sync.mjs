@@ -169,6 +169,7 @@ const NON_VISUAL = new Set([
   'verify-dead-export.mjs',
   'verify-address-grammar.mjs',
   'verify-truncation-form.mjs',
+  'verify-version-sync.mjs',
 ])
 
 export function check(root) {
