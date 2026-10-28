@@ -2,7 +2,8 @@
 name: 任务看板 (dsh-task-board)
 description: DSH Web 界面里的任务看板插件——借来的色阶、密集的 11-14px 层级、全药丸形状，靠状态呼吸而不是靠装饰说话。
 colors:
-  # 解析快照（DSH 0.1.5-rc.1，浅色主题）。规范源是 --dsw-* 令牌，不是这些值。
+  # 解析快照（浅色主题）。规范源是宿主的 --dsw-alias-* / --dsw-static-* 令牌，不是这些值——
+  # 这里的十六进制只是「当时解析出来长这样」，宿主改一档色阶它就会偏，所以永远读令牌、不抄这些数字。
   canvas: "#ffffff"
   surface-layer-1: "#ffffff"
   surface-layer-2: "#ffffff"

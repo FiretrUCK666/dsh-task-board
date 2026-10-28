@@ -5,7 +5,7 @@
  * error, it is a runtime TypeError. These tests pin the wiring so a host
  * upgrade that renames an endpoint surfaces here, not in the browser.
  *
- * Verified host endpoints (dsh 0.1.2-alpha.3):
+ * Verified host endpoints (dsh 0.2.2-alpha.2):
  *   session/attachment | session/create | session/follow | session/modelCatalog
  *   session/prompt | session/rename | session/selectModel
  *   skills/list | agentPresets/list | agentPresets/select
