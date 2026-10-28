@@ -52,7 +52,7 @@ const DICTIONARY_FILE = 'locales.ts'
  * 指纹用 **FNV-1a**（短、够用、不是密码学用途）：它要回答的只是「键集合是不是
  * 同一个」，不是「内容是不是没被人动过」。
  */
-const KEY_SET_DIGEST = '696bb8d9'
+const KEY_SET_DIGEST = '247673fb'
 
 /** 键集合的指纹（升序、拼起来算）。 */
 function digestOf(list: readonly string[]): string {

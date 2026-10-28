@@ -528,6 +528,7 @@ export declare const zh: {
     'review.noComments': string;
     'review.commentPlaceholder': string;
     'review.commentSend': string;
+    'review.quoteSelection': string;
     'review.attachFile': string;
     'review.attachBusy': string;
     'review.attachFileBusy': string;

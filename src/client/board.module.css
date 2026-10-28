@@ -6857,6 +6857,61 @@
    cannot save them, because they spell their own durations instead of reading
    it — that is the whole reason they are named here at all. */
 
+/* --- 引用选中的文字：浮在选区旁的那一枚按钮 --------------------------------
+ *
+ * 一个只由 JS 决定位置的浮层（`QuoteSelection.tsx` 每次选中都重算坐标），所以几何
+ * 只写「怎么画」，不写「画在哪」——位置来自行内 `top`/`left`，单位是看板盒的坐标。
+ *
+ * 为什么用 `position: absolute` 而不是 `fixed`：看板盒与面板都声明了
+ * `container-type`，而容器查询会给 `position: fixed` 换掉包含块。跟着别人换掉之后
+ * 坐标的含义就悄悄变了，而屏上只表现为「偏了一点」，最难查。绝对定位对着容纳盒
+ * （看板盒是 `position: relative`），坐标的含义由调用方一处换算说清楚。
+ *
+ * 为什么底色读 `--dsh-tb-bg-raised` 而不是浮面令牌：这一枚按钮压的是**正文**——别人
+ * 正在读的字。半透明的底会让下面的字透上来，读者读不清按钮，也读不清被它压住的那行。
+ */
+.quoteLayer {
+  position: absolute;
+  z-index: var(--dsh-tb-layer-menu);
+}
+
+.quoteAction {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-1);
+  height: var(--dsh-tb-button-h);
+  padding: 0 var(--dsh-tb-space-3);
+  color: var(--dsh-tb-text-1);
+  background: var(--dsh-tb-bg-raised);
+  border: var(--dsh-tb-border);
+  border-radius: var(--dsh-tb-button-radius);
+  box-shadow: var(--dsh-tb-shadow-2);
+  font-family: inherit;
+  font-size: var(--dsh-tb-type-meta-size);
+  line-height: var(--dsh-tb-text-line-h);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* 悬浮态读的是本表的 hover 令牌（方向由主题块翻面），不直读宿主那一枚通用悬浮：
+   4% 的墨压在这种小按钮上几乎看不见（见设计法则 hover-opposes-the-paper）。 */
+.quoteAction:hover {
+  background: var(--dsh-tb-hover);
+  border: var(--dsh-tb-border);
+}
+
+.quoteAction:focus-visible {
+  outline: var(--dsh-tb-ring-w) solid var(--dsh-tb-focus-color);
+  outline-offset: var(--dsh-tb-ring-w);
+}
+
+/* 图标与字同一平面：`align-items: center` 居中的是行盒，而图标与字各自的行盒高度不同，
+   所以图标自己不许带行高（`flex: none` + 固定的 viewBox 尺寸）。这是 mixed-row-axis
+   那条法则的用法，不是一次像素补偿。 */
+.quoteAction > svg {
+  flex: none;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),

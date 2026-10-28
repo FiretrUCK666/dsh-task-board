@@ -1,0 +1,87 @@
+/**
+ * 引用按钮摆在哪里：一个纯几何判断，因此它能被单独测，而不是靠肉眼看。
+ *
+ * ── 为什么单独一个模块 ───────────────────────────────────────────────────────
+ *
+ * 「浮在选区旁边」有两件容易做错、且错了没有任何报错的事：
+ *
+ *   1. **贴边**——选区靠近左右边缘时，按钮按选区中心摆放会有一半跑到外面，读者只
+ *      看见半个词，会以为那是一块装饰；
+ *   2. **越界**——选区贴着面板顶部时，按钮往上摆就整个落在看不见的地方，而读者看到
+ *      的是「按了没反应」：按钮其实压根没出现。
+ *
+ * 两件事都只依赖几个矩形，所以判据写成纯函数：输入是选区矩形、可摆范围的矩形、按钮
+ * 自身尺寸，输出坐标与朝向。与 `menu-place.ts`（行菜单的落位）同一种做法，理由也
+ * 相同：位置决策离开 DOM 就能测。
+ *
+ * ── 坐标系只有一种：相对那个容纳浮层的盒子 ───────────────────────────────────
+ *
+ * 浮层被 portal 进看板盒，而看板盒是 `position: relative`——它的**内边距盒原点是
+ * 子元素绝对定位的原点**，不是视口原点（侧栏、版面内衬都让它偏移）。所以这里所有
+ * 输入输出都是「相对容纳盒」的坐标，由调用方把视口矩形减去容纳盒的原点得到。把两套
+ * 坐标混用的后果是按钮整体偏出一个侧栏的宽度，而它看起来只是「位置有点怪」。
+ *
+ * ── 为什么不复用 `menu-place.ts` ─────────────────────────────────────────────
+ *
+ * 那两个函数回答的是不同的问题。行菜单要**贴着触发器的右肩**、**优先朝下**，还要被
+ * 裁出 `maxBlockSize` 上限（它可能很长）。引用按钮要**以选区为中心**、**优先朝上**
+ * （选区下方通常还有读者没读的正文），尺寸固定、不需要上限。把两种需求塞进一个函数
+ * 就要加方向与对齐两个开关，而那两个开关只有其中一种用法会用到——那正是「一个签名
+ * 服务两个几何」的开始（硬性规范 13）。所以各自一个纯函数，各自的判据由各自的测试钉。
+ */
+
+/** 一个矩形，只需要这里用到的四个数。坐标系由调用方保证一致。 */
+export interface QuoteRect {
+  top: number
+  left: number
+  width: number
+  height: number
+}
+
+/** 按钮与选区之间的空隙。 */
+const GAP = 6
+
+/** 按钮离可摆范围边缘的最小留白：贴边会显得像被裁掉。 */
+const MARGIN = 8
+
+/** 按钮摆放的结果，坐标与入参同一坐标系。 */
+export interface QuoteAnchor {
+  top: number
+  left: number
+  placement: 'above' | 'below'
+}
+
+/**
+ * 算出引用按钮该摆在哪里。
+ *
+ * 三条规矩：
+ *
+ * 1. **横向以选区中心为准，然后夹进可摆范围。** 夹这一步是承重的：越界的半个按钮
+ *    比没有按钮更糟。
+ * 2. **默认朝上。** 选区下方通常紧接着读者还没读的内容，按钮压在上方不挡它。
+ * 3. **上方放不下就翻到下方；两边都放不下时贴着上方留白。** 宁可贴着边缘，也不能
+ *    落在看得见的范围之外——那是「按了没反应」的另一种来源。
+ *
+ * @param selection - 选区矩形。
+ * @param bounds - 按钮可以出现的盒子（本面板），不是视口：面板是内缩且被滚动的，
+ *   用视口当范围会给出读者根本够不到的位置。
+ * @param action - 按钮自身的尺寸（渲染后量到的真实值，靠它才夹得准）。
+ * @returns 按钮的坐标与朝向，坐标与入参同一坐标系。
+ */
+export function quoteAnchorOf(selection: QuoteRect, bounds: QuoteRect, action: { width: number; height: number }): QuoteAnchor {
+  const boundsRight = bounds.left + bounds.width
+  const boundsBottom = bounds.top + bounds.height
+  const maxLeft = boundsRight - MARGIN - action.width
+  const centered = selection.left + selection.width / 2 - action.width / 2
+  /* 按钮比可摆范围还宽时上下界会倒挂，此时钉在左留白上——夹反了会把它顶到负数外面。 */
+  const left = maxLeft < bounds.left + MARGIN
+    ? bounds.left + MARGIN
+    : Math.min(Math.max(centered, bounds.left + MARGIN), maxLeft)
+  const aboveTop = selection.top - GAP - action.height
+  if (aboveTop >= bounds.top + MARGIN) return { top: aboveTop, left, placement: 'above' }
+  const belowTop = selection.top + selection.height + GAP
+  const maxTop = boundsBottom - MARGIN - action.height
+  if (belowTop <= maxTop) return { top: belowTop, left, placement: 'below' }
+  /* 两边都挤：贴着上方留白。这是「被夹了一下」而不是「消失」。 */
+  return { top: bounds.top + MARGIN, left, placement: 'above' }
+}

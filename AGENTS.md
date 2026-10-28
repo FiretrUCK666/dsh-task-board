@@ -435,7 +435,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | **动作与出口** | `board-actions`（动作目录，见硬性规范 12） | `client-report` · `update-check`/`update-view` · `workbench-summary` · `item-ask` |
 | **共用的地基** | `values`（`stringOf`/`messageOf`/`isRecord` 三个收敛后的家） | `http-envelope`（**两个半区共用的信封**）· `surfaces`（面板名单）· `local-day` · `attachment` · `colors` · `store` |
 
-`comment-thread` 不在 core（它住 `src/client/board/`）。
+`comment-thread`、`quote-text`、`quote-anchor` 也不在 core（同住 `src/client/board/`）。
 - **清单的补丁类型是从裁定表派生的，而派生会静默塌掉**：`ItemPatch` 的键集由 `ITEM_FIELDS` 的
   `access` 列**推导**（`WritableItemKey`）。所以那行 `@ts-expect-error` 棘轮是**承重的**
   （退化从此是**构建失败**），同族第二实例在 `item-sort.ts` 的 `KEY_GAPS`。

@@ -117,17 +117,29 @@ const COMPONENT_CANDIDATE = /^export (?:function|const|class) ([A-Z]\w*)/gm
  * only when what follows the `=` is a function — which is what tells a
  * component (`= (props) => …`) from an enumerated list (`= ['a', 'b']`).
  *
+ * **`forwardRef(…)` AND `memo(…)` COUNT, and they must be named here.** Both are
+ * higher-order calls whose RESULT is a component — React renders them exactly like
+ * a plain function component. A judgement that only accepted a bare `(` would call
+ * a ref-forwarding component "not a component", and the two failures that produces
+ * are both silent: the component disappears from the coverage count (so the
+ * single-consumer record it owes goes unchecked), and the preview-page lists that
+ * cross-check this map would report it as "a name design/ does not export".
+ *
+ * The judgement stays structural — it asks whether the initialiser EVALUATES to a
+ * component, not whether the name looks like one.
+ *
  * @param {string} text - the whole file.
  * @param {RegExpExecArray} m - the candidate match.
  * @returns {boolean}
  */
 function isFunctionExport(text: string, m: RegExpExecArray): boolean {
-  // 关键字是 TypeScript 的词，不是散文里的字样 
+  // 关键字是 TypeScript 的词，不是散文里的字样
   if (m[0].startsWith('export function') || m[0].startsWith('export class')) return true
   const after = text.slice(m.index + m[0].length)
   const eq = after.indexOf('=')
   if (eq < 0) return false
-  return /^(async\s+)?(\(|<)/.test(after.slice(eq + 1).trimStart())
+  /* 三种形状都是组件：箭头函数 / 泛型箭头，以及两个高阶包装器（它们返回的仍是组件）。 */
+  return /^(async\s+)?(\(|<|forwardRef\s*[(<]|memo\s*[(<])/.test(after.slice(eq + 1).trimStart())
 }
 
 /** The components the design system exports, and where each is declared. */
@@ -407,5 +419,38 @@ describe('the design system and its preview page stay in step', () => {
     expect(barUsers.length, 'no page renders the workbench bar — the scan is broken, not the pages').toBeGreaterThan(1)
     expect(missing, `these pages show the 检查更新 button but never mount its dialog, so the button does nothing there: ${missing.join(', ')}`)
       .toEqual([])
+  })
+})
+
+/**
+ * 组件识别的自测：**它认得出几种形状，也认得出哪些不是组件**。
+ *
+ * 没有这一节，上面所有计数都可以在「解析器一个都没认出来」的情况下全绿——那正是
+ * 一条读不出东西的门禁最危险的地方：它安静地报告 0，而 0 看起来像「没有问题」。
+ */
+describe('the component-export judgement reads structure, not spelling', () => {
+  /** 跑一遍判据，返回它认不认为这是一个组件导出。 */
+  function judges(source: string): boolean {
+    const candidate = /^export (?:function|const|class) ([A-Z]\w*)/gm.exec(source)
+    if (candidate === null) throw new Error('the probe source has no component candidate')
+    return isFunctionExport(source, candidate)
+  }
+
+  it('accepts every shape that evaluates to a component', () => {
+    expect(judges('export function Chip() { return null }')).toBe(true)
+    expect(judges('export class Chip { render() { return null } }')).toBe(true)
+    expect(judges('export const Chip = () => null')).toBe(true)
+    expect(judges('export const Chip = <T,>() => null')).toBe(true)
+    /* 两个高阶包装器的**结果**仍是组件——React 渲染它们与渲染普通函数组件毫无区别。 */
+    expect(judges('export const Chip = forwardRef(function Chip(props, ref) { return null })')).toBe(true)
+    expect(judges('export const Chip = memo(function Chip() { return null })')).toBe(true)
+  })
+
+  it('rejects a capitalised export whose value is not a component', () => {
+    /* 首字母大写的枚举数组不是组件：它会被 `map`，不会被渲染。 */
+    expect(judges("export const KINDS = ['a', 'b']")).toBe(false)
+    expect(judges('export const FIGURES = { a: 1 }')).toBe(false)
+    /* 一个返回值的普通调用也不是组件。 */
+    expect(judges('export const FIGURES = makeFigures()')).toBe(false)
   })
 })

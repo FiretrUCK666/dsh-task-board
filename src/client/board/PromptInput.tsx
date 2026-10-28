@@ -25,6 +25,7 @@ import {
   commandTokenAt, insertCommand, insertMention, mentionTokenAt, filterSlashCandidates,
   referenceMenuAvailable, continueAfterPick, type CommandToken,
 } from './slash-token.ts'
+import { insertQuote as insertQuoteText } from './quote-text.ts'
 import { catalogSessionRowsOf, listReferenceRows, type ReferenceDiag, type ReferenceRow } from './reference-source.ts'
 import { shouldFlipMenuUp } from './menu-direction.ts'
 import components from '../design/components.module.css'
@@ -73,7 +74,7 @@ function sameMentionSpan(a: CommandToken, b: CommandToken): boolean {
 }
 
 /** Prompt textarea with a slash-command and official-reference dropdown. */
-export function PromptInput({ value, onChange, placeholder, rows, controller, sessionId, invalid }: {
+export function PromptInput({ value, onChange, placeholder, rows, controller, sessionId, invalid, quote, onQuoteConsumed }: {
   value: string
   onChange: (next: string) => void
   placeholder?: string
@@ -84,12 +85,30 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
   sessionId?: string
   /** Validation error state: the field's invalid border. */
   invalid?: boolean
+  /**
+   * A quote to splice in at the CURRENT caret.
+   *
+   * The caret lives here (this component's own textarea is its only owner), so the
+   * splice must happen here too: a caller that computed an insertion position would
+   * be guessing at a number this component already knows. Each arriving quote is
+   * consumed exactly once — `onQuoteConsumed` clears the caller's slot, so a later
+   * re-render cannot insert the same quote twice (the double-quote bug).
+   */
+  quote?: string
+  /** Called after `quote` has been spliced in (the caller clears its slot). */
+  onQuoteConsumed?: () => void
 }) {
   const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const fieldRef = useRef<HTMLDivElement | null>(null)
   // Latest text/caret read by the sync pass (props/state settle a tick late).
   const valueRef = useRef(value)
-  const caretRef = useRef(0)
+  /* 光标初值是**文本末尾**，不是 0。
+   *
+   * 0 是「还没点过这个框」时的默认位置，而引用的插入正好发生在这个状态之后：读者把一句话
+   * 写了一半，再去会话里选中一段话按「引用」。若光标读成 0，引用会被插到他**自己那句话的
+   * 前面**——屏上没有任何报错，只表现为「引用跑到了前面」。而末尾正是他刚才打字停下的地方
+   * （浏览器在挂载后也是把光标放在末尾的）。 */
+  const caretRef = useRef(value.length)
   // undefined = still loading; null = unavailable (no menu); array = ready.
   const [catalog, setCatalog] = useState<readonly SlashCandidate[] | undefined | null>(undefined)
   const [menu, setMenu] = useState<TriggerMenuState | undefined>(undefined)
@@ -184,6 +203,32 @@ export function PromptInput({ value, onChange, placeholder, rows, controller, se
     element.style.height = `${next}px`
     element.style.overflowY = element.scrollHeight > TEXTAREA_MAX_HEIGHT ? 'auto' : 'hidden'
   }, [value])
+
+  /**
+   * 收下一段引用，插在当前光标处。
+   *
+   * 插在**光标处**而不是末尾：读者可能已经把一句话写了一半，再回去引用刚才那段。
+   * 插完把光标放到引用之后（`insertQuote` 的返回值），于是他接着就能说自己的话。
+   *
+   * 三重保险对付「同一段引用插两次」：`quote` 是字符串（同一段文字连续引用两次是
+   * 合法需求，所以不能按值去重），`onQuoteConsumed` 在插入后立刻清空调用方的槽，
+   * 而这里的 effect 只依赖 `quote` 本身——清空之后它变成 undefined，不会再触发。
+   */
+  useEffect(() => {
+    if (quote === undefined || quote === '') return
+    const result = insertQuoteText(valueRef.current, caretRef.current, quote)
+    valueRef.current = result.text
+    caretRef.current = result.caret
+    onChange(result.text)
+    onQuoteConsumed?.()
+    requestAnimationFrame(() => {
+      const element = textareaRef.current
+      if (element === null) return
+      element.focus()
+      element.setSelectionRange(result.caret, result.caret)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quote])
 
   /** Recompute the menu from the latest text/caret (no-op without a trigger token). */
   const syncMenu = (): void => {

@@ -34,6 +34,7 @@ import { COMMENT_IMAGE_BUDGET, MAX_COMMENT_IMAGES } from './attach.ts'
 import { attachBusyLabel, decodeCommentDraft, encodeCommentDraft, useComposerAttachments, type CommentDraftSnapshot, type DraftAttachment } from './composer-attachments.ts'
 import { commentDraftKey, draftStore } from './drafts.ts'
 import { PromptInput } from './PromptInput.tsx'
+import { QuoteSelection } from './QuoteSelection.tsx'
 import { Button, Disclosure, SendModeToggle } from '../design/ui.tsx'
 import { workspaceLabelOf } from '../../core/linked-sessions.ts'
 import { waitingKeyOf } from './session-chip.ts'
@@ -990,6 +991,16 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
     decodeCommentDraft(storeKey !== undefined ? draftStore.get(storeKey) : undefined))
   const [draft, setDraft] = useState<string>(restored.text)
   const [steer, setSteer] = useState(false)
+  /* 待插入的引用。它是**一次性指令**而不是草稿的一部分：插进去之后立刻清空，否则下一次
+     重渲染会把同一段引用再插一遍（「粘了两遍」）。 */
+  const [pendingQuote, setPendingQuote] = useState<string | undefined>(undefined)
+  /* 「引用」手势的裁决范围：会话面板的根。向上找我们自己打的那枚属性——不读宿主的 DOM
+     或类名（契约表两条纪律），而它一定存在：这个输入框只可能挂在面板里。 */
+  const composerRef = useRef<HTMLDivElement | null>(null)
+  const [quoteHost, setQuoteHost] = useState<HTMLElement | null>(null)
+  useEffect(() => {
+    setQuoteHost(composerRef.current?.closest<HTMLElement>('[data-dsh-taskboard-panel]') ?? null)
+  }, [])
   // The attachment ledger is the SHARED hook: pick / drop-anywhere / paste,
   // image compression, admission into the official store, count caps and every
   // rejection said out loud. The composer container carries the drop/paste
@@ -1076,7 +1087,7 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
   // settled ledger — a file being admitted is not in the ledger yet.
   const busyLabel = attachments.busy ? attachBusyLabel(attachments.busyKind) : undefined
   return (
-    <div className={css.reviewComposer} {...dropProps}>
+    <div className={css.reviewComposer} {...dropProps} ref={composerRef}>
       <PromptInput
         value={draft}
         onChange={next => { setDraft(next) }}
@@ -1084,7 +1095,12 @@ export function SessionComposer({ controller, taskId, sessionId, placeholder, di
         rows={3}
         controller={controller}
         sessionId={sessionId}
+        quote={pendingQuote}
+        onQuoteConsumed={() => { setPendingQuote(undefined) }}
       />
+      {/* 引用手势挂在这里：它自己裁决选区（落在面板里、且不在输入框里），只在有选中
+          文字时浮出那一枚按钮。位置为零尺寸的占位组件，不占版面。 */}
+      <QuoteSelection host={quoteHost} onQuote={quote => { setPendingQuote(quote) }} />
       {/* The attachment strip is its OWN row between the input and the action
           row: chips wrap there and can never grow the action row, so the send
           button stays visible + tappable no matter how many files are

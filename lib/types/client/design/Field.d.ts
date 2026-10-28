@@ -20,24 +20,36 @@
  * moment the user clicks into the field to fix it) is a decision the design
  * system should hold once.
  */
-import type { ComponentPropsWithRef, ReactNode } from 'react';
+import { type ComponentPropsWithRef, type ReactNode } from 'react';
 /** A single-line text field. */
 export declare function Input({ invalid, className, ...rest }: ComponentPropsWithRef<'input'> & {
     /** The field is holding a value the user must fix. */
     invalid?: boolean;
 }): import("react").JSX.Element;
-/** A multi-line text field. `textarea.input` raises the height and re-pads the
- *  box for wrapped text, so this is a real variant and not just a tag swap.
+/**
+ * A multi-line text field. `textarea.input` raises the height and re-pads the
+ * box for wrapped text, so this is a real variant and not just a tag swap.
  *
- *  **`data-dsh-tb-scroll` IS WHAT MAKES A LONG ANSWER REACHABLE.** The height has a
- *  ceiling (twelve lines, declared in `components.module.css`), so a paragraph that
- *  outgrows it has to scroll INSIDE the box — and the shared scroll grammar (the
- *  8px bar whose track is inset at both ends) is keyed on that attribute, the same
- *  one the list panel's writing box mounts. Without it the box either clipped its
- *  own tail or drew the raw platform bar through its rounded corner. */
-export declare function TextArea({ invalid, className, ...rest }: ComponentPropsWithRef<'textarea'> & {
+ * **`data-dsh-tb-scroll` IS WHAT MAKES A LONG ANSWER REACHABLE.** The height has a
+ * ceiling (twelve lines, declared in `components.module.css`), so a paragraph that
+ * outgrows it has to scroll INSIDE the box — and the shared scroll grammar (the
+ * 8px bar whose track is inset at both ends) is keyed on that attribute, the same
+ * one the list panel's writing box mounts. Without it the box either clipped its
+ * own tail or drew the raw platform bar through its rounded corner.
+ *
+ * **IT FORWARDS THE REF TO THE `<textarea>` IT RENDERS, and that is load-bearing.**
+ * The prop type says `ComponentPropsWithRef`, so every caller that passes `ref`
+ * COMPILES — but a plain function component drops it under React 18: the ref stays
+ * null forever and the only trace is a console warning. The composer reads that ref
+ * for three things it cannot do otherwise (auto-grow, restoring the caret after a
+ * quote is spliced in, focusing the field), so a null ref makes all three silently
+ * no-op — a textarea that never grows and a caret that never comes back.
+ */
+export declare const TextArea: import("react").ForwardRefExoticComponent<Omit<Omit<import("react").DetailedHTMLProps<import("react").TextareaHTMLAttributes<HTMLTextAreaElement>, HTMLTextAreaElement>, "ref"> & {
+    ref?: ((instance: HTMLTextAreaElement | null) => void | import("react").DO_NOT_USE_OR_YOU_WILL_BE_FIRED_CALLBACK_REF_RETURN_VALUES[keyof import("react").DO_NOT_USE_OR_YOU_WILL_BE_FIRED_CALLBACK_REF_RETURN_VALUES]) | import("react").RefObject<HTMLTextAreaElement> | null | undefined;
+} & {
     invalid?: boolean;
-}): import("react").JSX.Element;
+}, "ref"> & import("react").RefAttributes<HTMLTextAreaElement>>;
 /** A select. */
 export declare function Select({ invalid, className, children, ...rest }: ComponentPropsWithRef<'select'> & {
     invalid?: boolean;

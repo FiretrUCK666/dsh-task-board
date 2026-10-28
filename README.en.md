@@ -268,6 +268,10 @@ order.
   works the same way — approve it, or send it back to the composer, without a trip into the
   conversation. Each card's comments ARE its DSH session: queue or steer, and drag images and files
   straight in.
+- **Quote a line, then ask about it.** Select text in the conversation and a "Quote text" button
+  appears beside it. Pressing it puts that text into the composer as a quote line, so you can carry
+  on writing underneath it. What goes in is plain text, and it renders as a quote block in the
+  thread — the same thing as quoting a line in a DSH conversation.
 - **Drag a session or a workspace in from the sidebar and you get a card bound to it.**
 - The review page is the full record of one run, with "pass" and "send back" right there.
 - Multi-select, then recolour, run or delete the whole selection in one go. Save the detail as a
