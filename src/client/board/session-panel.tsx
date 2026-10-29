@@ -80,12 +80,12 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
 }) {
   /* 读者点开的折：**这一屏的选择**，不是会话数据。放在这里而不是每一轮各自存，
      是因为它们必须活过「重新读一次尾窗口」（重读会换掉整个轮列表的引用）。 */
-  const [openTurns, setOpenTurns] = useState<ReadonlySet<number>>(() => new Set())
-  const toggleTurn = useCallback((turn: number): void => {
+  const [openTurns, setOpenTurns] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleTurn = useCallback((key: string): void => {
     setOpenTurns(previous => {
       const next = new Set(previous)
-      if (next.has(turn)) next.delete(turn)
-      else next.add(turn)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }, [])

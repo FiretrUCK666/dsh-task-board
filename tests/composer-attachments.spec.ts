@@ -25,19 +25,22 @@ describe('busyKindOf', () => {
 })
 
 describe('attachBusyLabel', () => {
-  it('names the lane in flight (an unknown kind falls back to the image line)', () => {
-    const lines = new Set([
-      attachBusyLabel(undefined),
-      attachBusyLabel('image'),
-      attachBusyLabel('file'),
-      attachBusyLabel('mixed'),
-    ])
-    // The image line is the fallback, so it is shared with `undefined`; the
-    // other two say something the ledger could not (file / both lanes).
-    expect(lines.size).toBe(3)
-    expect(attachBusyLabel(undefined)).toBe(attachBusyLabel('image'))
+  it('每一档都说自己那一件事；分不出车道时用**中性**那句', () => {
+    /* 选件/拖入的第一帧还分不出车道（那个瞬间没有 lane）。这时用图片那句，
+       就会给每一个文档闪一下「图片压缩中…」——读者说的是「没区分出来」。
+       所以兜底是中性那句，三句话各自只属于自己那一档。 */
+    expect(attachBusyLabel(undefined)).toBe(attachBusyLabel('mixed'))
+    expect(attachBusyLabel(undefined)).not.toBe(attachBusyLabel('image'))
+    expect(attachBusyLabel(undefined)).not.toBe(attachBusyLabel('file'))
     expect(attachBusyLabel('file')).not.toBe(attachBusyLabel('image'))
-    expect(attachBusyLabel('mixed')).not.toBe(attachBusyLabel('file'))
+    const lines = new Set([attachBusyLabel(undefined), attachBusyLabel('image'), attachBusyLabel('file')])
+    expect(lines.size).toBe(3)
+  })
+
+  it('中性那句确实是「正在处理附件」，不是图片那句', () => {
+    expect(attachBusyLabel(undefined)).toBe('正在处理附件…')
+    expect(attachBusyLabel('image')).toBe('图片压缩中…')
+    expect(attachBusyLabel('file')).toBe('文件上传中…')
   })
 })
 

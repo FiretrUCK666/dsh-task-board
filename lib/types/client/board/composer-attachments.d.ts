@@ -37,6 +37,11 @@ export declare function busyKindOf(images: number, files: number): IntakeBusyKin
  * The busy line for an in-flight intake, named by WHAT is in flight (never the
  * settled ledger — a file being admitted is not in the ledger yet).
  *
+ * The unnamed case falls back to the NEUTRAL sentence (`正在处理附件…`), not to
+ * the image one: the first frame after a pick or a drop has no lane yet, and
+ * saying `图片压缩中…` over a dragged document is a sentence about the wrong
+ * thing — it flickers on for every file, so every file looks like an image.
+ *
  * It lives HERE, with the kind it reads, rather than on the strip that renders
  * it: the strip is the design system's (it draws chips and knows nothing about
  * intakes), and this is the ledger's own vocabulary. Every host that renders the

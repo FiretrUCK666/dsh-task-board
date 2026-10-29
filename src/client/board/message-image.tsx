@@ -24,15 +24,21 @@ export function MessageImage({ controller, sessionId, image }: {
 }) {
   const [src, setSrc] = useState<string | undefined>(undefined)
   const [failed, setFailed] = useState(false)
+  /* The durable reference IS the identity (content-addressed). Re-folding the
+     tail hands us a fresh object every poll; depending on the object would
+     re-run the effect on every fold. The ref's own fields are the stable key. */
+  const refKey = `${image.attachmentId}|${image.mediaType}|${image.bytes}|${image.width}x${image.height}`
   useEffect(() => {
     let alive = true
-    void controller.loadImage(sessionId, image.attachmentId).then(value => {
+    /* **整份引用交给读法**：官方那扇门按契约校验 ID、格式、字节数、宽高，
+       发一个只剩 id 的瘦身版会被当场拒掉（界面只能降级成 `[图片]`）。 */
+    void controller.loadImage(sessionId, image).then(value => {
       if (!alive) return
       if (value === undefined) setFailed(true)
       else setSrc(`data:${value.mediaType};base64,${value.data}`)
     })
     return () => { alive = false }
-  }, [controller, sessionId, image.attachmentId])
+  }, [controller, sessionId, refKey])
   if (failed) {
     return <span className={css.reviewImageMissing} title={image.name ?? ''}>{t('review.imageMissing')}</span>
   }

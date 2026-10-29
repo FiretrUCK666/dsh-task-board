@@ -60,38 +60,59 @@ const scoped = hostCss.replace(
 )
 
 /* 一轮的三种折法，写死成三份静态标记：这一页只回答「画出来长什么样」，
-   判据（哪一轮该折）在 work-steps.ts 里，由 spec 钉住。 */
+   判据（哪一轮该折）在 work-steps.ts 里，由 spec 钉住。
+
+   **过程行的次序就是真实到达次序**：`flowOf` 按它排序，所以这里也照真实形状摆——
+   思考、调工具、**说一句**、再调工具。中途那句话夹在过程**中间**，正是读者说
+   「对不上哪一条在哪一条的顺序」时看的那种轮。 */
 const TURNS = [
   {
     prompt: '把东墙那盏灯换掉',
     summary: '3 次工具调用 · 2 段思考 · 1 条上下文',
-    steps: [
-      ['read', '已完成'],
-      ['思考', '412 字'],
-      ['bash', '已完成'],
-      ['思考', '88 字'],
-      ['上下文注入', 'AGENTS.md'],
-      ['write', '已完成'],
+    flow: [
+      { kind: 'step', name: 'read', state: '已完成' },
+      { kind: 'step', name: '思考 · 先看现场那两盏的接线', state: '412 字' },
+      { kind: 'step', name: 'bash', state: '已完成' },
+      { kind: 'reply', text: '我看了一下现场，两盏是同一条回路，先断电再换。' },
+      { kind: 'step', name: '思考 · 确认轨道灯的卡扣方向', state: '88 字' },
+      { kind: 'step', name: '上下文注入', state: 'AGENTS.md' },
+      { kind: 'step', name: 'write', state: '已完成' },
     ],
     answer: '换好了：东墙那盏换成了轨道灯，位置没动天花板。',
   },
   {
     prompt: '顺便看一下客厅的色温',
     summary: '1 次工具调用',
-    steps: [['grep', '已完成']],
+    /* 读者在这一轮里**插了一句话**，所以它永不折，整体摊着；插话按它打断的位置画。 */
+    flow: [
+      { kind: 'step', name: 'grep', state: '已完成' },
+      { kind: 'reader', text: '别动客厅那盏，先只看读数' },
+      { kind: 'step', name: '思考 · 客厅那盏是 2700K', state: '36 字' },
+    ],
     answer: '客厅现在是 2700K 的暖白，与东墙那盏 3000K 差一档。要不要一起调？',
   },
 ]
+
+/** 一条流单元的标记（过程行 / 中途回复 / 读者插话）。 */
+function flowMarkup(item) {
+  if (item.kind === 'reader') {
+    return `<li class="reviewStepReply"><div class="reviewMessage" data-role="user"><div class="reviewMessageText"><p>${item.text}</p></div></div></li>`
+  }
+  if (item.kind === 'reply') {
+    return `<li class="reviewStepReply"><div class="reviewMessageText"><p>${item.text}</p></div></li>`
+  }
+  return `<li class="reviewStep"><span class="reviewStepName truncate">${item.name}</span><span class="reviewStepState">${item.state}</span></li>`
+}
 
 const lines = []
 for (const turn of TURNS) {
   lines.push('<li class="reviewTurn">')
   lines.push(`<div class="reviewMessage" data-role="user"><div class="reviewMessageText"><p>${turn.prompt}</p></div></div>`)
-  if (MODE === 'verbose') {
+  const flat = turn.flow.some(item => item.kind === 'reader') || MODE === 'verbose'
+  if (flat) {
+    /* 摊着的一支：过程与回复**按到达次序**交错，读者插的话夹在它打断的位置上。 */
     lines.push('<ul class="reviewStepList">')
-    for (const [name, state] of turn.steps) {
-      lines.push(`<li class="reviewStep"><span class="reviewStepName truncate">${name}</span><span class="reviewStepState">${state}</span></li>`)
-    }
+    for (const item of turn.flow) lines.push(flowMarkup(item))
     lines.push('</ul>')
     lines.push(`<div class="reviewMessage" data-role="assistant"><div class="reviewMessageText"><p>${turn.answer}</p></div></div>`)
   } else {
@@ -99,9 +120,7 @@ for (const turn of TURNS) {
     lines.push(`<section class="detailSection reviewWorkSteps"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="w"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${turn.summary}</span></button>`)
     if (open) {
       lines.push('<div class="detailSectionBody"><ul class="reviewStepList">')
-      for (const [name, state] of turn.steps) {
-        lines.push(`<li class="reviewStep"><span class="reviewStepName truncate">${name}</span><span class="reviewStepState">${state}</span></li>`)
-      }
+      for (const item of turn.flow) lines.push(flowMarkup(item))
       lines.push('</ul></div>')
     }
     lines.push('</section>')

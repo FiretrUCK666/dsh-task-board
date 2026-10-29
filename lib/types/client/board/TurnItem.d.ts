@@ -1,5 +1,5 @@
 import type { BoardController } from '../../core/controller.ts';
-import { type WorkStepsPrefs, type WorkStepsShape } from './work-steps.ts';
+import { type WorkStepsPolicy, type WorkStepsPrefs } from './work-steps.ts';
 import type { TranscriptTurn } from './review-transcript.ts';
 /**
  * 一轮对话。
@@ -9,7 +9,7 @@ import type { TranscriptTurn } from './review-transcript.ts';
  */
 export declare const TurnItem: import("react").NamedExoticComponent<{
     turn: TranscriptTurn;
-    shape: WorkStepsShape;
+    policy: WorkStepsPolicy;
     /** 它是不是最新那一轮（`next-input` 时机要用）。 */
     isLatest: boolean;
     /** 读者把这一折点开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
@@ -19,7 +19,7 @@ export declare const TurnItem: import("react").NamedExoticComponent<{
     controller?: BoardController;
 }>;
 /**
- * 一组轮：把折法算一次，逐轮画。
+ * 一组轮：把策略算一次，逐轮画。
  *
  * 每轮的折开状态存在这里（`Set<turn>`），因为它是**读者这一次看的时候的选择**，
  * 不是会话数据：重新读一次尾窗口不该把读者点开的折又合上。
@@ -29,6 +29,6 @@ export declare const TurnList: import("react").NamedExoticComponent<{
     prefs: WorkStepsPrefs;
     sessionId?: string;
     controller?: BoardController;
-    openTurns: ReadonlySet<number>;
-    onToggle: (turn: number) => void;
+    openTurns: ReadonlySet<string>;
+    onToggle: (key: string) => void;
 }>;

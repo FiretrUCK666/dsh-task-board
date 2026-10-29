@@ -178,9 +178,26 @@ export interface ApiFace {
       sessionId: SessionId
       title: string
     }): Promise<{ result: RemoteResult<{ title: string; seq: number }> }>
+    /**
+     * Read one durable image back as base64.
+     *
+     * The request carries the **whole official reference**, not just its id:
+     * `SessionAttachmentRequest` is `{ sessionId, attachment: ImageAttachmentRef }`
+     * and the host verifies id, media type, byte length and dimensions against
+     * the stored object. A flattened `{ sessionId, attachmentId }` fails that
+     * check, and the surface can only fall back to `[图片]` — which reads as
+     * "the picture is broken" while the picture is fine.
+     */
     attachment(request: {
       sessionId: SessionId
-      attachmentId: string
+      attachment: {
+        attachmentId: string
+        mediaType: string
+        bytes: number
+        width: number
+        height: number
+        name?: string
+      }
     }): Promise<{ result: RemoteResult<{ attachment: { mediaType: string }; data: string }> }>
     models(request: { sessionId?: SessionId }): Promise<{ result: RemoteResult<ModelCatalog> }>
   }
@@ -809,8 +826,11 @@ export function buildApi(ctx: ClientContext): ApiFace {
       attachment: request => {
         const call = methodOf('session', 'attachment', remoteSession?.attachment)
         if (call === undefined) return unavailable('session.attachment')
+        /* 请求体照官方契约原样走：`{ sessionId, attachment: <完整引用> }`。
+           曾经这里发的是 `{ sessionId, attachmentId }`——那不在合法 union 里，
+           宿主按契约校验必拒，而界面只能把每张图都降级成 `[图片]`。 */
         return asResult<{ attachment: { mediaType: string }; data: string }>('session.attachment',
-          call({ sessionId: request.sessionId, attachmentId: request.attachmentId as never }),
+          call({ sessionId: request.sessionId, attachment: request.attachment }),
         )
       },
       models: async () => {

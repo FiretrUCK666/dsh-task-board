@@ -123,11 +123,14 @@ describe('buildApi endpoint wiring', () => {
     expect(calls[0].args[0]).toEqual({ sessionId: 's1', title: 'New title' })
   })
 
-  it('attachment routes to session/attachment', async () => {
+  it('attachment forwards the WHOLE official reference, not a flattened id', async () => {
     const { api, calls } = fakeApi()
-    await api.sessions.attachment({ sessionId: 's1' as never, attachmentId: 'att-1' })
+    const image = { attachmentId: 'att-1', mediaType: 'image/png', bytes: 1234, width: 40, height: 30 }
+    await api.sessions.attachment({ sessionId: 's1' as never, attachment: image })
     expect(calls[0]).toMatchObject({ ns: 'session', method: 'attachment' })
-    expect(calls[0].args[0]).toEqual({ sessionId: 's1', attachmentId: 'att-1' })
+    /* 官方请求体是 `{ sessionId, attachment: ImageAttachmentRef }`：宿主按契约
+       校验 id / 格式 / 字节数 / 宽高。发扁平 id 会被拒，界面只能降级成 `[图片]`。 */
+    expect(calls[0].args[0]).toEqual({ sessionId: 's1', attachment: image })
   })
 
   it('models routes to session/modelCatalog and maps default -> current', async () => {

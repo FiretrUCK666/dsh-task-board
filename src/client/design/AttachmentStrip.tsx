@@ -113,7 +113,10 @@ export function AttachmentStrip({ attachments, onAdd, onRemove, busy, busyLabel,
           </span>
         ))}
       </div>
-      {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachBusy')}</span>}
+      {/* 兜底那句是**中性**的（「正在处理附件…」），不是图片那句：选件或拖入的
+          第一帧还分不出车道，用图片文案盖在一个文档上就是在说另一件事——
+          它会为每个文件闪一下，于是每个文件看起来都像图片。 */}
+      {busy === true && <span className={css.attachHint}>{busyLabel ?? t('review.attachWorking')}</span>}
       {error !== undefined && error !== '' && <span className={css.errorLine}>{error}</span>}
     </div>
   )

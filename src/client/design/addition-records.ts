@@ -37,22 +37,37 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    /** 一轮的画序：到达次序 + 最终回答边界（这两件事一起让「顺序对不上」消失）。 */
+    unit: 'src/client/board/review-transcript.ts 的 `order` / `answerBoundaryOf` / `flowOf` —— 过程行、回复、读者插话各记一个到达序号，按它排成一条流；最终回答由官方 `answerStep` 边界算出',
+    nearest: 'src/client/board/review-transcript.ts 的 `foldTurns`（它本来就把事件折成「过程数组 + 回复数组」——两个数组、各归各类）',
+    whyNot: '两个数组本身没答「谁在谁之前」：画的时候只能先摆完一类再摆另一类，于是真实发生的'
+      + '「思考 → 调工具 → 说一句 → 再调工具」被画成了「几十行堆在上面、两句话接在下面」，'
+      + '而**没有任何一条用例会红**——两边的内容都在，只有位置错了。'
+      + '所以新增的不是第二个折法，而是折的时候多记一个数（到达次序），以及把「哪一条是回答」从'
+      + '「最后一条带文字的消息」换成官方那条边界（最后一步、带文字、那一步没有工具调用）。',
+    askedBy: '用户明确要求：过程和回复「对不上哪一条在哪一条的顺序」，牛头不对马嘴',
+  },
+  {
     /** 评论区按「轮」折叠：判据、折行标题、以及那个跟着官方设置走的单例。 */
     unit: 'src/client/board/work-steps.ts + TurnItem.tsx + src/client/chat-settings.ts —— 一轮对话折成「触发句 + 过程折行 + 最后那段话」，折法读官方 `ui-chat` 设置',
     nearest: 'src/client/design/ui.tsx 的 `Disclosure`（本项目唯一的折叠语法：`aria-expanded` + `aria-controls` + 折记号只认祖先状态）',
     whyNot: '`Disclosure` 是**一个折长什么样**，它答不了「这一轮该不该折、折里放多细、折外留哪几条回复」——那是三件来自官方设置的选择。'
-      + '复用它的部分正是画法（折行、折记号、展开区域），一行都没重写；新增的只有判据（`shapeOfWorkSteps` / `shouldFoldTurn`）与那个把设置读进来的单例。'
+      + '复用它的部分正是画法（折行、折记号、展开区域），一行都没重写；新增的只有判据（`policyOfWorkSteps` / `groupsSteps` / `shouldFoldTurn`）与那个把设置读进来的单例。'
       + '官方聊天节点不能直接复用：它注册在会话流的 keyed slot 上，不是可复用组件，而跨包值导入会被 bundle 纯度门禁拒（会内联第二份运行时）。'
-      + '设置本身也不许自己再做一套：同一件事两个开关，迟早一处改了另一处不动而屏上没人说话，所以按名读 `configForms` 的 `ui-chat`。',
+      + '设置本身也不许自己再做一套：同一件事两个开关，迟早一处改了另一处不动而屏上没人说话，所以按名读 `configForms` 的 `ui-chat`。'
+      + '**四个能力字段（`foldCompletedTurns` / `stepGrouping` / `liveProcessDetail` / `settledReasoningPreview`）是照官方策略表镜像的**：'
+      + '先写成六个自造布尔，观感就「像那么回事但不对劲」——自造的名字一出现，判断就跟着自己发明，而不是跟着官方的效果。',
     askedBy: '用户明确要求：评论区要「我一句、它一段」，中间的过程折起来，并复用官方那三个机制',
   },
   {
-    /** 滚动条不越圆角：共享层一条轨道规则 + 各圆角滚动体声明缩进量。 */
-    unit: 'src/client/design/base.module.css 的 `::-webkit-scrollbar-track { margin: var(--dsh-tb-scroll-inset, 0) }` + 各圆角滚动体声明该变量',
+    /** 滚动条不越圆角：共享层一条轨道规则 + 各圆角滚动体声明缩进量 + 滑块圆角读同一变量。 */
+    unit: 'src/client/design/base.module.css 的 `::-webkit-scrollbar-track { margin: var(--dsh-tb-scroll-inset, 0) }` 与 `::-webkit-scrollbar-thumb { border-radius: var(--dsh-tb-scroll-inset, 4px) }` + 各圆角滚动体声明该变量',
     nearest: 'src/client/board.module.css 的 `.reviewTranscriptScroll { border-radius: inherit }`（同一个病的那一次修法：把圆角搬到不滚动的祖先上）',
     whyNot: '`border-radius: inherit` 要求**有一个不滚动的祖先**接住圆角，而输入框自己是滚动体、没有那一层；'
       + '而且它只在自定义滚动条存在时成立，系统条不参与。轨道缩进不需要任何新结构，也不依赖谁在滚——'
-      + '它直接改的正是那个几何事实（条跑在方角轨道上、盒子右下角是圆的）。',
+      + '它直接改的正是那个几何事实（条跑在方角轨道上、盒子右下角是圆的）。'
+      + '但**只缩轨道不够**：条到顶时它自己的头仍是方的，方头的两个角照样顶穿那段弧——'
+      + '所以滑块圆角也读同一个变量，两件事是同一个几何问题的两面。',
     askedBy: '用户明确要求：滚动条「要冲出来了」，把它的位置挪一下',
   },
   {

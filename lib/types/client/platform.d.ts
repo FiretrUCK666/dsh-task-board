@@ -203,9 +203,26 @@ export interface ApiFace {
                 seq: number;
             }>;
         }>;
+        /**
+         * Read one durable image back as base64.
+         *
+         * The request carries the **whole official reference**, not just its id:
+         * `SessionAttachmentRequest` is `{ sessionId, attachment: ImageAttachmentRef }`
+         * and the host verifies id, media type, byte length and dimensions against
+         * the stored object. A flattened `{ sessionId, attachmentId }` fails that
+         * check, and the surface can only fall back to `[图片]` — which reads as
+         * "the picture is broken" while the picture is fine.
+         */
         attachment(request: {
             sessionId: SessionId;
-            attachmentId: string;
+            attachment: {
+                attachmentId: string;
+                mediaType: string;
+                bytes: number;
+                width: number;
+                height: number;
+                name?: string;
+            };
         }): Promise<{
             result: RemoteResult<{
                 attachment: {

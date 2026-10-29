@@ -515,9 +515,20 @@ export interface ControllerDeps {
      *  along; absent = the transcript shows the tail only). */
     transcriptPage?: (sessionId: string, beforeSeq: number, throughSeq?: number) => Promise<TranscriptPage | undefined>;
     /** Reads one durable image back as base64 (the official `sessions.attachment`
-     *  read — the host proves the session references the id). Absent = message
-     *  images render as quiet placeholders. */
-    loadImage?: (sessionId: string, attachmentId: string) => Promise<{
+     *  read). Absent = message images render as quiet placeholders.
+     *
+     *  It takes the **whole reference**, not just its id: the request is
+     *  `{ sessionId, attachment: ImageAttachmentRef }`, and the host verifies the
+     *  media type, byte length and dimensions against the stored object. A
+     *  flattened id fails that check and the surface can only say `[图片]`. */
+    loadImage?: (sessionId: string, image: {
+        attachmentId: string;
+        mediaType: string;
+        bytes: number;
+        width: number;
+        height: number;
+        name?: string;
+    }) => Promise<{
         data: string;
         mediaType: string;
     } | undefined>;
@@ -834,7 +845,14 @@ export declare class BoardController {
     loadTranscriptPage(sessionId: string, beforeSeq: number, throughSeq?: number): Promise<TranscriptPage | undefined>;
     /** Read one durable message image back as base64 (official attachment read,
      *  cached + deduped by the wiring); undefined when unavailable. */
-    loadImage(sessionId: string, attachmentId: string): Promise<{
+    loadImage(sessionId: string, image: {
+        attachmentId: string;
+        mediaType: string;
+        bytes: number;
+        width: number;
+        height: number;
+        name?: string;
+    }): Promise<{
         data: string;
         mediaType: string;
     } | undefined>;

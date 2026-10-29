@@ -1022,20 +1022,23 @@ export function apply(ctx: ClientContext): void {
         return () => clearTimeout(timer)
       },
     })
-    // Durable message images read back through the OFFICIAL attachment RPC
-    // (the host proves the session references the id). Attachments are
-    // immutable, so the same freshness layer runs with a long TTL — one
-    // fetch per image however many rows/surfaces show it, and a hung read
-    // still cannot spin forever.
+    // Durable message images read back through the OFFICIAL attachment RPC.
+    // The cache key is the image's **whole durable reference** (stringified),
+    // because that is exactly what the request must carry — the host verifies
+    // id, media type, byte length and dimensions, so a cache key of "id only"
+    // would be a key to a request that can never succeed. Attachments are
+    // immutable, so the freshness layer runs with a long TTL: one fetch per
+    // image however many surfaces show it.
     const imageReader = createTranscriptReader<{ data: string; mediaType: string }>({
       read: async key => {
-        const split = key.indexOf('|')
-        const sessionId = key.slice(0, split)
-        const attachmentId = key.slice(split + 1)
+        const parsed = JSON.parse(key) as {
+          sessionId: string
+          image: { attachmentId: string; mediaType: string; bytes: number; width: number; height: number; name?: string }
+        }
         try {
           const response = await api.sessions.attachment({
-            sessionId: sessionId as SessionId,
-            attachmentId: attachmentId as never,
+            sessionId: parsed.sessionId as SessionId,
+            attachment: parsed.image,
           })
           if (!response.result.ok) return undefined
           return { data: response.result.value.data, mediaType: response.result.value.attachment.mediaType }
@@ -1253,7 +1256,8 @@ export function apply(ctx: ClientContext): void {
       transcript: transcriptLoader,
       transcriptPage: readTranscriptPage,
       // Durable message images (official attachment read, cached/deduped).
-      loadImage: (sessionId, attachmentId) => imageReader(`${sessionId}|${attachmentId}`),
+      // The key carries the whole reference: it is what the request needs.
+      loadImage: (sessionId, image) => imageReader(JSON.stringify({ sessionId, image })),
       // The plugin's OWN attachment door (the durable half the official
       // per-Agent upload cannot provide: a checklist row has no session, and a
       // document needs the reference rather than a receipt).

@@ -297,8 +297,15 @@
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
   background: var(--dsh-tb-text-3);
-  border-radius: 4px;
   background-clip: padding-box;
+  /* 滑块自己的圆角读**和轨道缩进同一个值**，因为这两件事是同一个几何问题的两面：
+     盒子的角是一段半径 R 的弧，滑块是一条方头长条。缩进只解决了「条的行程别伸进
+     弧里」，可条到顶时**它自己的头仍是方的**——方头的两个角仍然会顶穿那段弧。
+     把滑块的圆角也设成 R，它到顶时头部的弧与盒子的弧同心，于是无论滚到哪一端都
+     严丝合缝地贴在弧里侧。
+
+     方角的滚动体读不到这个变量，滑块的圆角落回 4px——正是它一直以来的样子。 */
+  border-radius: var(--dsh-tb-scroll-inset, 4px);
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-track,

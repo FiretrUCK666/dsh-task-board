@@ -1028,7 +1028,7 @@ describe('foldTurns', () => {
     const [turn] = foldTurns(events)
     expect(turn.turn).toBe(1)
     expect(turn.trigger).toMatchObject({ id: 'm1', text: '你好' })
-    expect(turn.steps).toEqual([
+    expect(turn.steps).toMatchObject([
       { kind: 'tool', id: 'c1', name: 'read', state: 'settled', step: 1 },
       { kind: 'reasoning', id: 'a1:r0', chars: 3, preview: '想一想', step: 1 },
     ])
@@ -1036,6 +1036,11 @@ describe('foldTurns', () => {
     expect(turn.replies.map(reply => reply.text)).toEqual(['途中说一句', '最后那段话'])
     expect(turn.endedAt).toBe(2000)
     expect(turn.endReason).toBe('completed')
+    /* 最终回答边界也在这里算好了（官方判据）：最后一步里带文字、且那一步没有工具
+       调用 → 第 2 步的「最后那段话」，它之前那条回复算过程（`messageCount` 1）。 */
+    expect(turn.answer).toEqual({ step: 2, replyId: 'a2', messageCount: 1 })
+    /* 到达次序贯穿过程与回复：工具 1 → 思考 2 → 回复 3 → 回复 4，画的时候按它排。 */
+    expect([...turn.steps, ...turn.replies].map(one => one.order)).toEqual([1, 2, 3, 4])
   })
 
   it('轮里的注入是过程，不是读者的话', () => {
@@ -1046,7 +1051,7 @@ describe('foldTurns', () => {
     ]
     const [turn] = foldTurns(events)
     expect(turn.trigger).toMatchObject({ text: '真正的问题' })
-    expect(turn.steps).toEqual([
+    expect(turn.steps).toMatchObject([
       { kind: 'context', id: 'c1', producer: 'time-context', summary: '', at: 1000 },
     ])
   })
@@ -1120,16 +1125,20 @@ describe('foldTurns', () => {
           role: 'user',
           source: { kind: 'user' },
           content: [
-            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' } },
-            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png' } },
-            { type: 'image', attachment: { mediaType: 'image/png' } },
+            /* 官方 `ImageAttachmentRef` 的 required 集合：ID + 格式 + 字节数 + 宽高。
+               少了任何一项，读图那扇门就会按契约拒掉——所以折叠这一层要求整份。 */
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 100, width: 4, height: 3, name: 'a.png' } },
+            /* 同一个 ID 的第二次出现：去重（一条消息里同一张图只算一张）。 */
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', bytes: 100, width: 4, height: 3 } },
+            /* 缺字段的那一张：跳过，而不是发一份注定被拒的引用。 */
+            { type: 'image', attachment: { attachmentId: 'att-2', mediaType: 'image/png' } },
           ],
         },
       },
     ]
     const [turn] = foldTurns(events)
     expect(turn.trigger?.text).toBe('')
-    expect(turn.trigger?.images).toEqual([{ attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' }])
+    expect(turn.trigger?.images).toEqual([{ attachmentId: 'att-1', mediaType: 'image/png', bytes: 100, width: 4, height: 3, name: 'a.png' }])
   })
 
   it('sumUsage 遍历每一轮里的回复', () => {

@@ -124,6 +124,23 @@ export function declaresInset(body) {
 }
 
 /**
+ * 共享滚动条那几条规则里，**滑块自己的圆角**有没有也读同一个缩进变量。
+ *
+ * 缩进只解决了「条的行程别伸进弧里」；条到顶时**它自己的头仍是方的**，方头的两个角
+ * 照样会顶穿那段弧——量出来就是读者截图里那两个角。所以滑块圆角必须跟着同一个值走。
+ * @param css - 一张表的文本。
+ * @returns 是否读了。
+ */
+export function thumbRadiusFollowsInset(css) {
+  for (const rule of rulesOf(css)) {
+    if (!rule.selector.includes('::-webkit-scrollbar-thumb')) continue
+    const radius = declsOf(rule.body).find((decl) => decl.property === 'border-radius')
+    if (radius !== undefined && radius.value.includes(SCROLL_INSET_VAR)) return true
+  }
+  return false
+}
+
+/**
  * 把一张表里**同一个承载盒**的全部声明合起来。
  *
  * 这是判据能看见 `textarea.input` 的前提：它声明「会滚」，圆角却在 `.input` 那条。
@@ -198,11 +215,19 @@ if (probeOf(['--probe-scroll-corner']) === '--probe-scroll-corner') {
 const root = process.argv[2] ?? '.'
 const findings = []
 let checked = 0
+/* 滑块自己的圆角必须跟着同一个缩进走：只缩轨道，方头的条到顶时仍然顶穿弧。 */
+let thumbFollows = 0
 for (const sheet of clientSheetFiles(root)) {
   for (const holder of offendersIn(sheet.css)) {
     findings.push(`${sheet.rel}: .${holder} 会滚、画了圆角，却没有声明 ${SCROLL_INSET_VAR}——它的滚动条滑块会跑到圆角那段弧上`)
   }
+  if (thumbRadiusFollowsInset(sheet.css)) thumbFollows += 1
   checked += mergedHolders(sheet.css).size
+}
+/* 共享滚动条语法只住一张表，所以「滑块圆角读同一变量」只需要在这一张表里出现一次。
+   为 0 说明那一条被谁删了，而所有圆角盒子的滑块又会变回方头。 */
+if (thumbFollows === 0) {
+  findings.push(`没有任何一张表让滑块的圆角读 ${SCROLL_INSET_VAR}——轨道缩了，但方头的滑块到顶时仍会顶穿圆角`)
 }
 
 if (findings.length > 0) {
