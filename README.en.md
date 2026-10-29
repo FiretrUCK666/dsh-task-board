@@ -272,6 +272,11 @@ order.
   appears beside it. Pressing it puts that text into the composer as a quote line, so you can carry
   on writing underneath it. What goes in is plain text, and it renders as a quote block in the
   thread — the same thing as quoting a line in a DSH conversation.
+- **The conversation folds one turn at a time: you say one thing, it answers with one thing.**
+  The process in between (which tools ran, a moment of thinking, which context was injected)
+  folds into one expandable row, leaving only the final answer once the run finishes. Open the
+  row to read the detail. How much folds, when it folds, and which replies survive the fold all
+  follow the three settings under "Settings · General" — this panel does not open a second set.
 - **Drag a session or a workspace in from the sidebar and you get a card bound to it.**
 - The review page is the full record of one run, with "pass" and "send back" right there.
 - Multi-select, then recolour, run or delete the whole selection in one go. Save the detail as a

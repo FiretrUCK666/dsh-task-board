@@ -574,6 +574,21 @@ export function DesignGallery() {
                 </span>
               </div>
             </div>
+            {/* 圆角滚动盒：**滚动条不越圆角**这条法则的现场。
+                外面那个盒子画了圆角、里面装的东西比它高，所以它自己会滚——滚动条的
+                轨道于是按那个圆角缩进（`--dsh-tb-scroll-inset`，轨道规则在共享层）。
+                把轨道缩进拿掉，滑块的两头就会压到右下角那段弧上，看上去像从圆角里
+                长出去。 */}
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="scroll-corner">
+              <p className={css.galleryLabel}>圆角滚动盒</p>
+              <div className={css.scrollCornerSpecimen}>
+                {Array.from({ length: 12 }, (_, line) => (
+                  <p key={line} className={css.galleryNote}>
+                    {t('gallery.scrollCornerLine')}
+                  </p>
+                ))}
+              </div>
+            </div>
           </div>
         </Section>
 

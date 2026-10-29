@@ -89,6 +89,8 @@ const CONTROLLER_RECEIVERS = new Set(['controller', 'this', 'board'])
  */
 const FOREIGN_CALLS = {
   'ctx.pendingInteractionOf': 'the host uiSession service, not the board controller',
+  'form.getSnapshot': 'the official `configForms` settings form (the host user-settings document); it shares the board snapshot method name and is unrelated',
+  'form.subscribe': 'the official `configForms` settings form; its subscribe is a settings-change listener, unrelated to the board controller snapshot',
   'freshness.subscribe': 'the bundle-freshness watcher',
   'questionTracker.dispose': 'the question tracker (pluginPage lifecycle)',
   'scheduler.dispose': 'the board scheduler',

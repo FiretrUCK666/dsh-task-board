@@ -1,5 +1,5 @@
 import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts';
-import { type TranscriptLine } from './review-transcript.ts';
+import { type TranscriptTurn } from './review-transcript.ts';
 /** How close to the bottom a scroll position counts as "at the latest". */
 export declare const NEAR_BOTTOM_PX = 24;
 /**
@@ -59,8 +59,8 @@ export declare function JumpToLatest({ atBottom, onJump }: {
 }): import("react").JSX.Element | null;
 /** The transcript-tail state + controls a consumer binds to its scroll region. */
 interface TranscriptTailState {
-    /** Folded transcript lines; undefined while the first load is in flight. */
-    lines: readonly TranscriptLine[] | undefined;
+    /** Folded turns; undefined while the first load is in flight. */
+    turns: readonly TranscriptTurn[] | undefined;
     /** Whether the last load failed (the session/reader is unavailable). */
     error: boolean;
     /** Whether the host holds messages older than the loaded window. */

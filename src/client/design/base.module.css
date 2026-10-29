@@ -306,6 +306,27 @@
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-track,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-track {
   background: transparent;
+  /* 轨道两头各让一档 —— **滚动条永远跑在一条方角的轨道上，而盒子右下角是圆的**。
+     轨道铺到那截弧上时，滑块就压在弧外面，读者看到的是「滚动条的头要冲出来」。
+     缩进的是**轨道**，不是盒子：滑块的整个行程于是被关在直边以内，与圆角多大、
+     内容多长都无关。
+
+     值经 `--dsh-tb-scroll-inset` 读，**不写死一个像素数**：会滚且自己画圆角的盒子
+     各自把它声明成自己那一档圆角（`textarea.input` / `.slashMenu` /
+     `.sessionContextPanel` / `.itemRowMenu` / `.itemProse` / `.output`），圆角改档
+     时滚动条跟着走，不会留下一个对不上的旧数。方角的滚动体读不到这个变量，缩进为
+     0——长对话、清单列表、看板列区一个像素都不动。
+
+     **这一条补的是一句早就写着、却从未落地的承诺**：本表的注释与
+     `board.module.css` 都说过「轨道两端各让一档」，而四张表里 `scrollbar-track`
+     原先只有 `background: transparent`。承诺没有实现，读者就先看见了。
+
+     **边界（写下来，免得下一个人以为它管得更全）**：这是 `::-webkit-scrollbar`
+     那一档的缩进；`@supports` 下面那条走的是系统自己画的条，它参与布局、不按像素
+     内缩。所以本插件在 Chromium 系浏览器上完全受控，在只认 `scrollbar-width` 的
+     引擎上只是细条，没有这条缩进。`verify-scroll-corner.mjs` 守的是「声明了圆角
+     的滚动体有没有声明缩进」，它不假装能修系统条。 */
+  margin: var(--dsh-tb-scroll-inset, 0);
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-button,
@@ -313,6 +334,21 @@
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button {
   display: none;
+}
+
+/* 缩进的**默认值**：座位里每一个元素都从 0 起算。
+ *
+ * **为什么需要这一条，而不是把 0 写在令牌层。** 自定义属性会被继承，而
+ * `::-webkit-scrollbar-track` 从它所属的元素继承——于是一个声明了 14px 的圆角滚动体
+ * 会把 14px **传给它内部所有的滚动体**，其中方角的那些就白让了一档。
+ * `:where()` 零特异性，所以「谁自己声明，谁就赢」，没声明的回到 0；
+ * 嵌套的方角滚动体于是不会被外层的圆角连累。
+ *
+ * （`@property { inherits: false }` 是这一件事的另一条写法，但它会同时掐断
+ * 伪元素的继承——轨道就读不到所属元素那个值了，那样整条机制失效。所以不这么做。） */
+:where([data-dsh-taskboard-view]) *,
+:where([data-dsh-taskboard-panel]) * {
+  --dsh-tb-scroll-inset: 0;
 }
 
 /* 不认 `::-webkit-scrollbar` 的浏览器走这一条。`scrollbar-width` **不继承**，

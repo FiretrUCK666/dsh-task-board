@@ -3294,6 +3294,8 @@ button.itemRowCardChip {
   border-radius: var(--item-radius-card);
   /* 全表唯一的一处阴影，只有一层，而且只在浮层上。 */
   box-shadow: var(--dsh-tb-shadow-3);
+  /* 圆角 + 会滚：轨道按这个圆角缩进（见 `design/base.module.css`）。 */
+  --dsh-tb-scroll-inset: var(--item-radius-card);
 }
 
 /* 调色板：宽度有地板，`100%` 是遮罩的内容盒，而遮罩有内衬，所以它**永远不比
@@ -4494,6 +4496,9 @@ textarea.itemInput {
   resize: none;
   overflow: auto;
   outline: none;
+  /* 圆角 + 会滚：轨道按这个圆角缩进（见 `design/base.module.css`）。这一格是清单
+     页的正文写入框，也是拖出来的高度由读者定的那个——它一定滚得动。 */
+  --dsh-tb-scroll-inset: var(--item-radius-ctl);
 }
 
 /* 抓条**压在框内下沿之上**（`inset-block-end: 0` 是盒子的内沿），所以拉它不会把盒子

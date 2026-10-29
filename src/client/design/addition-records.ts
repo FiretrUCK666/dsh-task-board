@@ -37,6 +37,25 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    /** 评论区按「轮」折叠：判据、折行标题、以及那个跟着官方设置走的单例。 */
+    unit: 'src/client/board/work-steps.ts + TurnItem.tsx + src/client/chat-settings.ts —— 一轮对话折成「触发句 + 过程折行 + 最后那段话」，折法读官方 `ui-chat` 设置',
+    nearest: 'src/client/design/ui.tsx 的 `Disclosure`（本项目唯一的折叠语法：`aria-expanded` + `aria-controls` + 折记号只认祖先状态）',
+    whyNot: '`Disclosure` 是**一个折长什么样**，它答不了「这一轮该不该折、折里放多细、折外留哪几条回复」——那是三件来自官方设置的选择。'
+      + '复用它的部分正是画法（折行、折记号、展开区域），一行都没重写；新增的只有判据（`shapeOfWorkSteps` / `shouldFoldTurn`）与那个把设置读进来的单例。'
+      + '官方聊天节点不能直接复用：它注册在会话流的 keyed slot 上，不是可复用组件，而跨包值导入会被 bundle 纯度门禁拒（会内联第二份运行时）。'
+      + '设置本身也不许自己再做一套：同一件事两个开关，迟早一处改了另一处不动而屏上没人说话，所以按名读 `configForms` 的 `ui-chat`。',
+    askedBy: '用户明确要求：评论区要「我一句、它一段」，中间的过程折起来，并复用官方那三个机制',
+  },
+  {
+    /** 滚动条不越圆角：共享层一条轨道规则 + 各圆角滚动体声明缩进量。 */
+    unit: 'src/client/design/base.module.css 的 `::-webkit-scrollbar-track { margin: var(--dsh-tb-scroll-inset, 0) }` + 各圆角滚动体声明该变量',
+    nearest: 'src/client/board.module.css 的 `.reviewTranscriptScroll { border-radius: inherit }`（同一个病的那一次修法：把圆角搬到不滚动的祖先上）',
+    whyNot: '`border-radius: inherit` 要求**有一个不滚动的祖先**接住圆角，而输入框自己是滚动体、没有那一层；'
+      + '而且它只在自定义滚动条存在时成立，系统条不参与。轨道缩进不需要任何新结构，也不依赖谁在滚——'
+      + '它直接改的正是那个几何事实（条跑在方角轨道上、盒子右下角是圆的）。',
+    askedBy: '用户明确要求：滚动条「要冲出来了」，把它的位置挪一下',
+  },
+  {
     /** 「引用选中的文字」那一条手势的三个单元：文法、几何、接线。 */
     unit: 'src/client/board/quote-text.ts + quote-anchor.ts + QuoteSelection.tsx —— 选中文字后浮出按钮，以 `> ` 引用行写进输入框',
     nearest: 'src/client/board/markdown-parser.ts（引用的展示那一半：它认 `>` 引用块，Markdown.tsx 把它渲染成 .mdQuote）',

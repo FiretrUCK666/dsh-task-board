@@ -17,6 +17,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
+import { useWorkSteps } from '../chat-settings.ts'
 import { sessionStateChip, sessionUnavailableReasonOf } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
@@ -58,7 +59,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   // The same live transcript tail as every other session surface (load /
   // watermark-gated poll / auto-follow / 滑到最新) — one mechanism everywhere.
   const {
-    lines,
+    turns,
     error: transcriptError,
     hasMore: transcriptHasMore,
     loadingEarlier: transcriptLoadingEarlier,
@@ -76,6 +77,9 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     undefined,
     (result) => { setProjections(result.projections) },
   )
+
+  /** 工作步骤的折法：三项都读官方 `ui-chat` 设置（读不到时是产品默认）。 */
+  const workSteps = useWorkSteps()
 
   // The session's own comment thread (the session-scoped model): drive-mode
   // rounds from this panel and comments from an execution review page land in
@@ -139,7 +143,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         ) : (
           <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
             <SessionTranscript
-              lines={lines}
+              turns={turns}
+              prefs={workSteps}
               error={transcriptError}
               atBottom={atBottom}
               jumpToBottom={jumpToBottom}
@@ -163,7 +168,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           sessionId={sessionId}
           controller={controller}
           projections={projections}
-          lines={lines}
+          turns={turns}
           onChanged={reload}
           task={task}
           thread={thread}

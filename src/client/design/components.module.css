@@ -1193,6 +1193,10 @@ textarea.input {
   max-block-size: var(--dsh-tb-write-max, calc(12 * 1.5 * 13px));
   overflow-y: auto;
   overscroll-behavior: contain;
+  /* 这个框自己画圆角，所以它的滚动条要按那个圆角缩进——不声明的话滑块会跑到
+     右下角那段弧上，读者看到的是「滚动条的头要冲出来」。缩进量读的是**同一个
+     圆角令牌**，所以将来圆角改档，条跟着走。 */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
 }
 
 .input:focus {

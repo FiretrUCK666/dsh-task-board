@@ -24,6 +24,7 @@ import type { ApiFace, BoundSessionFace, ClientContext, ILayoutFace, IUiSessionF
    drift apart the client would satisfy the alias and fail at the call. */
 import type { GoalsRemoteFace } from '../core/goal-verbs.ts'
 import { buildApi, createChecklistMirror, sessionDriverOf, sessionHoldFactory, SESSION_HOLD_SOURCE } from './platform.ts'
+import { bindWorkSteps } from './chat-settings.ts'
 import { QuestionTracker } from './board/question-tracker.ts'
 import { PendingMirror, type UiSessionMirrorFace } from './board/pending-mirror.ts'
 import { BoardController, type ReferenceRemoteFace, type SessionConfigFace, type SlashCandidate, type TranscriptEventShape, type TranscriptLoadResult, type TranscriptPage } from '../core/controller.ts'
@@ -500,6 +501,11 @@ export const inject = ['slots', 'sessions', 'workspaces', 'locale', 'remote', 'u
  */
 export function apply(ctx: ClientContext): void {
   ctx.effect(() => ctx.locale.register(NS, { zh, en }), 'dsh-task-board: dictionaries')
+  // 官方「工作步骤」那三个开关：读一次、随后跟随。**必须在任何面板挂载之前**——
+  // 它是外部事实，挂在渲染时才读会先画一帧默认值再跳到真值（折行会闪一下）。
+  // 读不到（这个部署没有 `configForms` / 没有 `ui-chat`）时它保持产品默认，
+  // 于是这条绑定在任何组合下都是安全的。
+  ctx.effect(() => bindWorkSteps(ctx), 'dsh-task-board: work-steps settings')
   // Stale-bundle self-heal (see bundle-freshness.ts). This runs BEFORE any
   // mounting work: the client half is an immutable, revisioned artifact, so a
   // document that is already open keeps rendering the bundle it booted with —

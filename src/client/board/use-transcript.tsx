@@ -26,7 +26,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
-import { foldTranscript, type TranscriptLine } from './review-transcript.ts'
+import { foldTurns, type TranscriptTurn } from './review-transcript.ts'
 import { Icon } from '../design/ui.tsx'
 
 /** How close to the bottom a scroll position counts as "at the latest". */
@@ -166,8 +166,8 @@ export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: 
 
 /** The transcript-tail state + controls a consumer binds to its scroll region. */
 interface TranscriptTailState {
-  /** Folded transcript lines; undefined while the first load is in flight. */
-  lines: readonly TranscriptLine[] | undefined
+  /** Folded turns; undefined while the first load is in flight. */
+  turns: readonly TranscriptTurn[] | undefined
   /** Whether the last load failed (the session/reader is unavailable). */
   error: boolean
   /** Whether the host holds messages older than the loaded window. */
@@ -252,9 +252,9 @@ export function useTranscriptTail(
   // would loop reloads and fight the user's scroll position).
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
-  const lines = events === undefined ? undefined : foldTranscript(events)
+  const turns = events === undefined ? undefined : foldTurns(events)
   // One follow mechanism (resolved scroller + capture listener + pinning).
-  const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, lines)
+  const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, turns)
 
   /** Fold + publish a successful tail read (the reload AND the poll share
    *  it — one settlement grammar). */
@@ -430,5 +430,5 @@ export function useTranscriptTail(
   // Scroll measurement, bottom-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.
 
-  return { lines, error, hasMore, loadingEarlier, pageError, pageUnsupported, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
+  return { turns, error, hasMore, loadingEarlier, pageError, pageUnsupported, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
 }

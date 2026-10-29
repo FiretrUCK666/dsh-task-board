@@ -105,4 +105,6 @@
   color: var(--dsh-tb-text-1);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* 圆角 + 会滚：轨道按这个圆角缩进（见 `design/base.module.css`）。 */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-sm);
 }

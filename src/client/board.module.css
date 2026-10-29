@@ -2222,6 +2222,9 @@
   background: var(--dsh-tb-surface-menu);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsh-tb-shadow-3);
+  /* 圆角 + 会滚 = 滚动条要按那个圆角缩进（轨道规则在 `design/base.module.css`）。
+     少了这一句，长菜单的滑块会压在右下角那段弧上。 */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
 }
 
 /* Not enough room below the field (the composer sits at the bottom of the
@@ -4366,6 +4369,79 @@
   background: var(--dsw-specific-bubble-highlight, var(--dsw-static-deepseek-200));
 }
 
+/* ── 一轮对话：触发句 + 过程折行 + 最后那段话 ─────────────────────────────────
+ *
+ * 折行的圆角与间距由共享 `Disclosure` 提供（`.detailSection` / `.detailDisclosure`），
+ * 这里只声明**它在会话流里的位置**：一轮是一格，格内三段的垂直节奏由这一格给。
+ * 位置与外观分开写，是因为外观只有一个家（design/ 那一份），而「一格多宽多紧」
+ * 每一页都说得出自己的值。 */
+.reviewTurn {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-4);
+  min-inline-size: 0;
+}
+
+/* 折行本身比会话正文弱一档：读者先看见「我一句、它一段」，过程是点开才读的东西。
+   两份声明（段落的 gap 与折行的底色）都读共享令牌，所以换肤时跟着走。 */
+.reviewWorkSteps {
+  flex: none;
+}
+
+/* 折里的过程清单：一条一行、弱色、不占行距。
+ *
+ * **摊着的那一支多一条左边线**（`> .reviewStepList` 只命中「不折」的轮：折起来
+ * 的过程住在 `.detailSectionBody` 里，不是直接子元素）。它读的是**结构位置**而不是
+ * 一个 `data-` 标记：一个写着却没人读的属性会骗人，而结构位置说的一直是真话。
+ * 摊着的过程要在视觉上仍然读作「过程」，不是读作回答。 */
+.reviewStepList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-1);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--dsh-tb-text-2);
+}
+
+.reviewTurn > .reviewStepList {
+  padding-inline-start: var(--dsh-tb-space-4);
+  border-inline-start: 2px solid var(--dsh-tb-border-soft);
+}
+
+.reviewStep {
+  display: flex;
+  align-items: baseline;
+  gap: var(--dsh-tb-space-4);
+  min-inline-size: 0;
+}
+
+/* 名字可以被压（工具名可能很长），状态词不许被压：状态是那一行的读数。
+ * 压窄之后收成省略号读的是**共享形态** `.truncate`（`design/components.module.css`），
+ * 这里不再抄一遍那三条声明——抄一份的代价是「两处裁法一致」时其中一处不跟着变。 */
+.reviewStepName {
+  min-inline-size: 0;
+  color: var(--dsh-tb-text-1);
+}
+
+.reviewStepState {
+  flex: none;
+  color: var(--dsh-tb-text-3);
+}
+
+/* 折里那些「没露在折外」的回复：它们与露在外面的回复是同一件事的两种位置，
+   所以段落语法相同，只是收在折里。 */
+.reviewStepReply {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-2);
+  min-inline-size: 0;
+  padding-block-start: var(--dsh-tb-space-3);
+  border-block-start: 1px solid var(--dsh-tb-border-soft);
+}
+
 /* Context injections (system/plugin rows): a weak one-line row, never a
    user bubble — collapsed here; the full text lives in the session page. */
 .reviewContext {
@@ -5642,6 +5718,8 @@
   background: var(--dsh-tb-surface-menu);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsh-tb-shadow-2);
+  /* 圆角 + 会滚：轨道按这个圆角缩进（见 `design/base.module.css`）。 */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
 }
 
 .sessionContextRow {

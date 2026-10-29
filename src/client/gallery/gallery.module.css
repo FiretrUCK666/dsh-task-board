@@ -138,6 +138,19 @@
   min-inline-size: 0;
 }
 
+/* 圆角滚动盒的标本：真的会滚（内容比它高），而滚动条的轨道按它自己的圆角缩进。
+   这一格存在的意义是**看得见**——拿掉 `--dsh-tb-scroll-inset` 那一行，滑块的两头
+   就会压到右下角那段弧上，看上去像从圆角里长出去。 */
+.scrollCornerSpecimen {
+  max-block-size: 120px;
+  overflow-y: auto;
+  padding: var(--dsh-tb-space-4) var(--dsh-tb-space-5);
+  background: var(--dsh-tb-plane-inlay);
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
+}
+
 .galleryLabel {
   margin: 0;
   font-size: 11px;

@@ -76,6 +76,7 @@ export declare const zh: {
     'gallery.surfaceSheet': string;
     'gallery.surfaceFloat': string;
     'gallery.surfaceRecess': string;
+    'gallery.scrollCornerLine': string;
     'gallery.readoutSpecimen': string;
     'gallery.thumbRail': string;
     'gallery.chips': string;
@@ -500,6 +501,16 @@ export declare const zh: {
     'review.statsTtft': string;
     'review.transcriptEmpty': string;
     'review.transcriptUnavailable': string;
+    'review.stepsTools': string;
+    'review.stepsReasoning': string;
+    'review.stepsContext': string;
+    'review.stepsRunning': string;
+    'review.stepsCompleted': string;
+    'review.stepRunning': string;
+    'review.stepSettled': string;
+    'review.stepUnsettled': string;
+    'review.stepThought': string;
+    'review.stepChars': string;
     'review.retry': string;
     'review.loadEarlier': string;
     'review.loadingEarlierBusy': string;

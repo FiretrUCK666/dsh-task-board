@@ -90,15 +90,14 @@
 
 ## 本文件的定位与编辑规则
 
-本文件是**项目的契约**（面向 AI），随仓库走：写**机制、架构、不变量、硬性规范、构建/测试/
-发布该做什么**，不写账号、远端、作用域这类取值，也不写一次性的决定。
+本文件是**项目的契约**（面向 AI），随仓库走：写**机制、架构、不变量、硬性规范、构建/测试/发布该做什么**，
+不写账号、远端、作用域这类取值，也不写一次性的决定。
 
 **取值一律现场读**（`package.json` / `git remote -v` / `git config user.name` / `npm whoami`）
 ——仓库是唯一权威。**这条只管本文**：README 与 CONTRIBUTING 给人看，必须写具体命令。
 
-**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、与代码不符、覆盖不到、
-有歧义——都应直接改本文并提交，而不是绕过它、只做口头约定、或把特殊处理写死进代码。
-编辑时：面向 AI、与代码一致、写意图不写快照、精炼、禁 emoji、涉及用户可见能力或命令时同步 README。
+**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、有歧义——都应直接
+改本文并提交，而不是绕过它或把特殊处理写死进代码。写的时候：面向 AI、与代码一致、写意图不写快照。
 
 ### 几份文档的分工
 
@@ -212,10 +211,9 @@ DSH 本体同号（个别包会停更，逐个确认目标版本存在）；**np
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
-CI 在 Linux 上重建 `lib/` 并与提交比对，所以**产物不得依赖构建机的绝对路径或行尾**：绝对路径不得
-进产物或派生标识（见 `build/tsdown.client.ts` 的 `portableCssPath()`）；行尾须与 `.gitattributes`
-一致（残留 CRLF 会写进 map 的内嵌源码）。两条都由 CI 与 `verify` 兜住；自检是把仓库复制到另一
-绝对路径构建，产物应逐字节相同。
+CI 在 Linux 上重建 `lib/` 并与提交比对，所以**产物不得依赖构建机的绝对路径或行尾**（见
+`build/tsdown.client.ts` 的 `portableCssPath()`；CRLF 会进 map 的内嵌源码）。两条都由 CI 与
+`verify` 兜住；自检是把仓库复制到另一绝对路径构建，产物应逐字节相同。
 ### 改名的声明处
 
 工具链（`scripts/*.mjs`、npm scripts）都从 `package.json` 读身份，不在代码里重复写名字。
@@ -228,7 +226,7 @@ CI 在 Linux 上重建 `lib/` 并与提交比对，所以**产物不得依赖构
 | `tsdown.config.ts` 的 `PACKAGE_NAME` | 浏览器 bundle 的注册 id（漏改则界面加载失败） |
 | README / CONTRIBUTING 的安装命令 | 给人看的现成命令 |
 
-**插件 id 不跟着包名变**（它由文件夹名与 `cordis.patch.yml` 的 `id:` 决定，路由此派生）。**客户端
+**插件 id 不跟着包名变**（见命名矩阵）。**客户端
 bundle 的注册 id 必须等于包名**（不是插件 id）：加载器按包名给 bundle 定键，注册成别的名字会被拒
 （报 `loaded without registering <name>`）。`pnpm verify` 内置此检查。
 
@@ -260,7 +258,9 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | **插件行的开关** | `cordis.patch.yml` 的五行 = 详情页的五个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
-**本插件没有设置项**：每个行为都是看板上的数据，在界面里直接编辑。
+**看板本身没有设置项**：每个行为都是看板上的数据，在界面里直接编辑。评论区那三个显示开关
+（工作步骤展示 / 收起时机 / 收起后显示的回复）读的是官方 `ui-chat` 命名空间（见契约表），
+不是本插件的设置，所以设置页只存在一份。
 
 **本插件向 agent 播报的是行为准则，不是能力清单**：注入 `systemPrompt` 的 `tool:taskboard` 一节是
 **固定文本**（变动会击穿提示缓存）；能力清单一律走 `taskboard_capabilities` 按需查。
@@ -273,7 +273,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 三条容易踩的：**行级开关不需要预埋基准行**（`id` 是覆盖键）；那一行必须是**真实装载的** Loader 条目，
 否则插件管理页会把两个开关锁成 `unaddressable`；插件详情页的「包含的组件」是**区块标题**，
 枚举的是 `insert:` 条目行、与 slot 名无关。挂载由 `package.json` 的 `dsh.bundle.patch` 指向包内
-`cordis.patch.yml`，**手写 patch 反而会造成同一个插件出现两条**。
+`cordis.patch.yml`，**手写 patch 会让同一个插件出现两条**。
 
 **开发仪器由环境门控，不由 profile 行门控**：设计系统预览页的 surface 由**包行**在
 `DSH_TASK_BOARD_DESIGN_PREVIEW=1` 时宣告——给它一行就等于给每个用户的插件详情页多一个开关，而它是
@@ -331,7 +331,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | client | `uiSession` | `sessionStatus` | `@deepseek-ai/dsh-client-ui-session` |
 
 **每个注入都是负债**：声明一个实际不用的服务，在那个半区永不激活的部署里白等。
-所以 `inject` 只列真正用到的（**不**注入 `settings` / `configForms`，也**不**注入右栏那个服务）。
+所以 `inject` 只列真正用到的——`settings`、右栏服务都不注入，`configForms` 按名读（见上表）。
 该脚本另带反向自测（`--probe-removed` / `--probe-services` / `--probe-attachment-face`）：拿
 **不可能存在**的成员与服务名各扫一次，**都必须报红**——否则检查本身失效了。
 
@@ -346,6 +346,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | host | `pluginManager` | `installBundle`、`removeBundle`、`registries` | `@deepseek-ai/dsh-plugin-manager` |
 | host | `hmr` | `hmr` | `@deepseek-ai/dsh-hmr` |
 | host | `attachments` | `admitEncodedFile`、`saveImage`、`readImage`、`readFileStream` | `@deepseek-ai/dsh-attachment` |
+| client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
 
 **两条使用纪律**：
 

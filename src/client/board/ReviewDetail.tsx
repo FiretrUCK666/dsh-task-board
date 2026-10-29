@@ -35,6 +35,7 @@ import { formatDateTime } from './format-time.ts'
 import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
+import { useWorkSteps } from '../chat-settings.ts'
 import { useTranscriptTail } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
@@ -90,7 +91,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // The review page additionally reads the native projections riding the
   // tail page for its context meter.
   const {
-    lines,
+    turns,
     error: transcriptError,
     hasMore: transcriptHasMore,
     loadingEarlier: transcriptLoadingEarlier,
@@ -108,6 +109,9 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     current.executions.length,
     (result) => { setProjections(result.projections) },
   )
+
+  /** 工作步骤的折法：三项都读官方 `ui-chat` 设置（读不到时是产品默认）。 */
+  const workSteps = useWorkSteps()
 
   /** Full refresh (manual 刷新 / after a config change): transcript + the
    *  shared config editor (via its reload key). */
@@ -202,7 +206,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
             <p className={css.detailText}>{t('review.noSession')}</p>
           ) : (
             <SessionTranscript
-              lines={lines}
+              turns={turns}
+              prefs={workSteps}
               error={transcriptError}
               atBottom={transcriptAtBottom}
               jumpToBottom={jumpTranscript}
@@ -240,7 +245,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           sessionId={sessionId}
           controller={controller}
           projections={projections}
-          lines={lines}
+          turns={turns}
           onChanged={reload}
           reloadKey={configReloadKey}
           task={current}

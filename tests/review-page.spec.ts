@@ -7,7 +7,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { foldTranscript, sumUsage, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
+import { foldTurns, sumUsage, reasoningOf, type TranscriptEvent } from '../src/client/board/review-transcript.ts'
 import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from '../src/client/board/context-meter.ts'
 import { shouldFlipMenuUp } from '../src/client/board/menu-direction.ts'
 import { contextWorthOf, isOpenTodo, latestSessionTodos } from '../src/client/board/interaction.ts'
@@ -46,7 +46,8 @@ function withoutComments(text: string): string {
  *  so indented @container rules are also findable). */
 /** One class's own rule text, as THIS SURFACE renders it.
  *
- *  Reads enderedSource (board + design system) rather than the board sheet
+ *  Reads 
+enderedSource (board + design system) rather than the board sheet
  *  alone, because these assertions are about what an element gets when the
  *  review page renders — and half of what it gets now comes from the shared
  *  components' sheet. Board first, so at equal specificity the surface's own
@@ -986,7 +987,14 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
   })
 })
 
-describe('foldTranscript', () => {
+/**
+ * 折叠的语法：**一轮一个组**，过程归在过程里，最后那段话露在外面。
+ *
+ * 这一节钉的是读者报上来的那句话：「我评论一句，他回复一段话，而不是出现一些过程中
+ * 可能思考了一下又说了一句话」。所以每条用例都在问同一件事——**一条消息的归属**：
+ * 它属于「触发句」「过程」还是「最后那段话」。
+ */
+describe('foldTurns', () => {
   const base = { seq: 1, time: 1000 }
 
   /** A user/message event with the native flat shape. */
@@ -994,207 +1002,149 @@ describe('foldTranscript', () => {
     return {
       ...base,
       type: 'user/message',
-      data: {
-        id,
-        role: 'user',
-        content: [{ type: 'text', text }],
-        source: { kind: sourceKind, ...extra },
-      },
+      data: { id, role: 'user', content: [{ type: 'text', text }], source: { kind: sourceKind, ...extra } },
     }
   }
 
-  it('folds user messages (flat shape) and assistant messages (wrapped message)', () => {
+  /** An assistant/message event with the native wrapped shape. */
+  function assistant(turn: number, step: number, id: string, blocks: unknown[], usage?: Record<string, number>): TranscriptEvent {
+    return {
+      ...base,
+      type: 'assistant/message',
+      data: { turn, step, message: { id, role: 'assistant', content: blocks }, ...usage !== undefined ? { usage } : {} },
+    }
+  }
+
+  it('按轮分组：触发句、过程、回复各归各位', () => {
     const events: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
       userMessage('m1', '你好'),
-      {
-        ...base,
-        seq: 2,
-        time: 2000,
-        type: 'assistant/message',
-        data: {
-          turn: 1,
-          step: 1,
-          message: { id: 'm2', role: 'assistant', content: [{ type: 'text', text: '你好，我是 agent' }] },
-        },
-      },
+      { ...base, seq: 3, type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'read' } },
+      { ...base, seq: 4, type: 'tool/result', data: { turn: 1, step: 1, message: { toolCallId: 'c1', isError: false } } },
+      assistant(1, 1, 'a1', [{ type: 'reasoning', text: '想一想' }, { type: 'text', text: '途中说一句' }]),
+      assistant(1, 2, 'a2', [{ type: 'text', text: '最后那段话' }]),
+      { ...base, seq: 7, time: 2000, type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
     ]
-    expect(foldTranscript(events)).toEqual([
-      { kind: 'message', id: 'm1', role: 'user', text: '你好', at: 1000 },
-      { kind: 'message', id: 'm2', role: 'assistant', text: '你好，我是 agent', at: 2000 },
+    const [turn] = foldTurns(events)
+    expect(turn.turn).toBe(1)
+    expect(turn.trigger).toMatchObject({ id: 'm1', text: '你好' })
+    expect(turn.steps).toEqual([
+      { kind: 'tool', id: 'c1', name: 'read', state: 'settled', step: 1 },
+      { kind: 'reasoning', id: 'a1:r0', chars: 3, preview: '想一想', step: 1 },
+    ])
+    // 两条回复都在；「最后那段话」是第几条由 `finalReplyOf` 判（下一节）。
+    expect(turn.replies.map(reply => reply.text)).toEqual(['途中说一句', '最后那段话'])
+    expect(turn.endedAt).toBe(2000)
+    expect(turn.endReason).toBe('completed')
+  })
+
+  it('轮里的注入是过程，不是读者的话', () => {
+    const events: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      userMessage('c1', 'Current runtime context…', 'time-context', { form: 'snapshot' }),
+      userMessage('m1', '真正的问题'),
+    ]
+    const [turn] = foldTurns(events)
+    expect(turn.trigger).toMatchObject({ text: '真正的问题' })
+    expect(turn.steps).toEqual([
+      { kind: 'context', id: 'c1', producer: 'time-context', summary: '', at: 1000 },
     ])
   })
 
-  it('keeps durable image refs (the host-promoted form) and image-only messages', () => {
+  it('读者中途插话进 interjections——那一轮因此永不折', () => {
     const events: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      userMessage('m1', '第一句'),
+      assistant(1, 1, 'a1', [{ type: 'text', text: '好的' }]),
+      userMessage('m2', '顺便再问一句'),
+    ]
+    const [turn] = foldTurns(events)
+    expect(turn.trigger).toMatchObject({ id: 'm1' })
+    expect(turn.interjections.map(one => one.text)).toEqual(['顺便再问一句'])
+  })
+
+  it('窗口切掉轮头时，用助手消息自带的轮号合成一组——不吞内容', () => {
+    const events: TranscriptEvent[] = [
+      assistant(7, 3, 'a1', [{ type: 'text', text: '这轮的后半段' }]),
+      { ...base, seq: 2, type: 'turn/end', data: { turn: 7, reason: { kind: 'completed' } } },
+    ]
+    const turns = foldTurns(events)
+    expect(turns).toHaveLength(1)
+    expect(turns[0].turn).toBe(7)
+    expect(turns[0].trigger).toBeUndefined()
+    expect(turns[0].replies.map(reply => reply.text)).toEqual(['这轮的后半段'])
+  })
+
+  it('有调用没结果：轮已结束说 unsettled，还在跑说 running——不谎称失败', () => {
+    const ended: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      { ...base, seq: 2, type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash' } },
+      { ...base, seq: 3, time: 2000, type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } },
+    ]
+    expect(foldTurns(ended)[0].steps[0]).toMatchObject({ kind: 'tool', state: 'unsettled' })
+    const running: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      { ...base, seq: 2, type: 'tool/call', data: { turn: 1, step: 1, callId: 'c1', name: 'bash' } },
+    ]
+    expect(foldTurns(running)[0].steps[0]).toMatchObject({ kind: 'tool', state: 'running' })
+  })
+
+  it('思考只留字数与首行（正文不进折行）', () => {
+    const blocks = [{ type: 'reasoning', text: '第一行想法\n第二行不该出现' }]
+    expect(reasoningOf(blocks)).toEqual([{ chars: 13, preview: '第一行想法' }])
+    const long = reasoningOf([{ type: 'reasoning', text: 'x'.repeat(200) }])
+    expect(long[0].preview.length).toBe(81)
+    expect(long[0].preview.endsWith('…')).toBe(true)
+  })
+
+  it('空内容与无关事件都不产生轮', () => {
+    expect(foldTurns([])).toEqual([])
+    expect(foldTurns([{ ...base, type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } }][0] === undefined ? [] : [])).toEqual([])
+    const empty: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      { ...base, seq: 2, type: 'user/message', data: { id: 'm1', role: 'user', content: [], source: { kind: 'user' } } },
+    ]
+    /* 开过的轮留在列表里（它真的发生过），但没有触发句、没有回复。 */
+    expect(foldTurns(empty)).toEqual([{ turn: 1, interjections: [], steps: [], replies: [] }])
+  })
+
+  it('图片按耐久 ref 去重，纯图片消息照样成条', () => {
+    const events: TranscriptEvent[] = [
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
       {
         ...base,
+        seq: 2,
         type: 'user/message',
         data: {
           id: 'm1',
           role: 'user',
           source: { kind: 'user' },
           content: [
-            { type: 'text', text: '看这张图' },
-            // The stored (post-admission) shape: a durable ref, not bytes.
-            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png', bytes: 10, width: 2, height: 2 } },
-            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png' } }, // dup → dropped
-            { type: 'image', attachment: { mediaType: 'image/png' } }, // no id → skipped
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' } },
+            { type: 'image', attachment: { attachmentId: 'att-1', mediaType: 'image/png' } },
+            { type: 'image', attachment: { mediaType: 'image/png' } },
           ],
         },
       },
-      {
-        ...base,
-        seq: 2,
-        type: 'user/message',
-        data: { id: 'm2', role: 'user', source: { kind: 'user' }, content: [{ type: 'image', attachment: { attachmentId: 'att-2', mediaType: 'image/jpeg' } }] },
-      },
     ]
-    const lines = foldTranscript(events)
-    expect(lines).toHaveLength(2)
-    expect(lines[0]).toMatchObject({ kind: 'message', text: '看这张图', images: [{ attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' }] })
-    // An image-only message is NOT dropped (empty text, one image).
-    expect(lines[1]).toMatchObject({ kind: 'message', text: '', images: [{ attachmentId: 'att-2' }] })
+    const [turn] = foldTurns(events)
+    expect(turn.trigger?.text).toBe('')
+    expect(turn.trigger?.images).toEqual([{ attachmentId: 'att-1', mediaType: 'image/png', name: 'a.png' }])
   })
 
-  it('turns non-user injections into context rows, never user bubbles', () => {
+  it('sumUsage 遍历每一轮里的回复', () => {
     const events: TranscriptEvent[] = [
-      // Runtime-context injection (V4 durable source: a kind + its form).
-      userMessage('c1', 'Current runtime context…', 'time-context', { form: 'snapshot' }),
-      // A notice-form injection carries a one-line summary.
-      userMessage('c2', '…', 'cron', { form: 'notice', summary: 'cron: 每天 9 点任务已触发' }),
-      // A real user message still becomes a bubble.
-      userMessage('m1', '真正的问题', 'user'),
+      { ...base, seq: 1, type: 'turn/start', data: { turn: 1 } },
+      assistant(1, 1, 'a1', [{ type: 'text', text: '1' }], { inputTokens: 10, outputTokens: 5 }),
+      assistant(1, 2, 'a2', [{ type: 'text', text: '2' }], { inputTokens: 4, outputTokens: 1, cacheWriteTokens: 7, reasoningTokens: 2 }),
     ]
-    expect(foldTranscript(events)).toEqual([
-      { kind: 'context', id: 'c1', producer: 'time-context', summary: '', at: 1000 },
-      { kind: 'context', id: 'c2', producer: 'cron', summary: 'cron: 每天 9 点任务已触发', at: 1000 },
-      { kind: 'message', id: 'm1', role: 'user', text: '真正的问题', at: 1000 },
-    ])
-  })
-
-  it('names each context row from the durable source kind (the official producer grammar)', () => {
-    // The V4 source grammar. Three kinds point at the data they injected, so
-    // the row names THAT (the official `contextProducer` label); every other
-    // kind is its own label. Distinct values are deduped, in appearance order.
-    const events: TranscriptEvent[] = [
-      userMessage('c1', '<system-reminder>instructions…</system-reminder>', 'agent-instructions', {
-        changes: [
-          { scope: 'workspace', action: 'add', path: 'AGENTS.md' },
-          { scope: 'workspace', action: 'add', path: 'AGENTS.md' },
-          { scope: 'user', action: 'add', path: '~/.dsh/AGENTS.md' },
-        ],
-      }),
-      // A baseline injection carries no changes: the kind is the label.
-      userMessage('c2', '…', 'agent-instructions', { baseline: true, changes: [] }),
-      userMessage('c3', '…', 'skill-invocation', { name: 'project-forge', form: 'instructions' }),
-      userMessage('c4', '…', 'session-reference', {
-        references: [{ sessionId: 's-1', label: '看板重构' }, { sessionId: 's-2', label: '看板重构' }],
-      }),
-      // The label never comes from a `plugin` member, and a source with no
-      // usable kind is the generic context row.
-      {
-        ...base,
-        seq: 5,
-        type: 'user/message',
-        data: { id: 'c5', role: 'user', content: [{ type: 'text', text: '…' }], source: { plugin: 'dsh-cron' } },
-      },
-    ]
-    expect(foldTranscript(events)).toEqual([
-      { kind: 'context', id: 'c1', producer: 'AGENTS.md, ~/.dsh/AGENTS.md', summary: '', at: 1000 },
-      { kind: 'context', id: 'c2', producer: 'agent-instructions', summary: '', at: 1000 },
-      { kind: 'context', id: 'c3', producer: 'project-forge', summary: '', at: 1000 },
-      { kind: 'context', id: 'c4', producer: '看板重构', summary: '', at: 1000 },
-      { kind: 'context', id: 'c5', producer: 'context', summary: '', at: 1000 },
-    ])
-  })
-
-  it('joins multiple text blocks and skips empty messages and non-message events', () => {
-    const events: TranscriptEvent[] = [
-      {
-        ...base,
-        type: 'user/message',
-        data: { id: 'm1', role: 'user', content: [{ type: 'text', text: '  a ' }, { type: 'text', text: ' b ' }], source: { kind: 'user' } },
-      },
-      // Empty content and non-message events are skipped.
-      { ...base, seq: 2, type: 'user/message', data: { id: 'm2', role: 'user', content: [], source: { kind: 'user' } } },
-      { ...base, seq: 3, type: 'turn/start', data: { turn: 1 } },
-      { ...base, seq: 4, type: 'tool/call', data: { name: 'bash' } },
-      { ...base, seq: 5, type: 'tool/result', data: { message: { role: 'user', content: [{ type: 'tool-result', toolCallId: 't', content: [] }] } } },
-    ]
-    expect(foldTranscript(events)).toEqual([
-      { kind: 'message', id: 'm1', role: 'user', text: 'a\nb', at: 1000 },
-    ])
-  })
-
-  it('falls back to the event sequence for messages without an id', () => {
-    const events: TranscriptEvent[] = [
-      { ...base, type: 'assistant/message', data: { message: { role: 'assistant', content: [{ type: 'text', text: 'ok' }] } } },
-    ]
-    const folded = foldTranscript(events)
-    expect(folded[0].kind).toBe('message')
-    if (folded[0].kind === 'message') expect(folded[0].id).toBe('1')
-  })
-
-  it('returns an empty list for an empty or all-skipped event list', () => {
-    expect(foldTranscript([])).toEqual([])
-    expect(foldTranscript([{ ...base, type: 'turn/end', data: { turn: 1 } }])).toEqual([])
-  })
-})
-
-describe('transcript usage', () => {
-  const base = { seq: 1, time: 1000 }
-
-  it('carries the native usage payload on assistant messages', () => {
-    const events: TranscriptEvent[] = [
-      {
-        ...base,
-        type: 'assistant/message',
-        data: {
-          turn: 1,
-          step: 1,
-          message: { id: 'm1', role: 'assistant', content: [{ type: 'text', text: 'ok' }] },
-          usage: { inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, reasoningTokens: 3 },
-        },
-      },
-    ]
-    const folded = foldTranscript(events)
-    expect(folded[0].kind).toBe('message')
-    if (folded[0].kind === 'message') {
-      expect(folded[0].usage).toEqual({ inputTokens: 10, outputTokens: 5, cacheReadTokens: 2, reasoningTokens: 3 })
-    }
-  })
-
-  it('sums usage across assistant messages, skipping optional fields when absent', () => {
-    const lines = [
-      { kind: 'message' as const, id: 'a', role: 'user' as const, text: 'q', at: 0 },
-      { kind: 'message' as const, id: 'b', role: 'assistant' as const, text: '1', at: 1, usage: { inputTokens: 10, outputTokens: 5 } },
-      { kind: 'context' as const, id: 'c', producer: 'x', summary: '', at: 2 },
-      { kind: 'message' as const, id: 'd', role: 'assistant' as const, text: '2', at: 3, usage: { inputTokens: 4, outputTokens: 1, cacheWriteTokens: 7, reasoningTokens: 2 } },
-    ]
-    expect(sumUsage(lines)).toEqual({
+    expect(sumUsage(foldTurns(events))).toEqual({
       inputTokens: 14,
       outputTokens: 6,
       cacheWriteTokens: 7,
       reasoningTokens: 2,
     })
-    expect(sumUsage([lines[0]])).toBeUndefined()
-  })
-
-  it('the meter prefers whole-log projection totals over the paged-window sum', () => {
-    // P7: `tokenUsage` is durable whole-log; the 30-message `sumUsage` is
-    // only the fallback when the meter package is absent. The stats line
-    // comes from `sessionStats` (turns/steps/times), never recomputed.
-    const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
-    const panel = readFileSync(panelPath, 'utf8')
-    expect(panel).toMatch(/projections\?\.tokenUsage/)
-    expect(panel).toMatch(/review\.usageTotal/)
-    expect(panel).toMatch(/review\.usageCacheWrite/)
-    expect(panel).toMatch(/projections\?\.sessionStats/)
-    expect(panel).toMatch(/review\.statsTurns/)
-    // Every picked figure renders: TTFT average, decode rate, hit rate.
-    expect(panel).toMatch(/review\.statsTtft/)
-    expect(panel).toMatch(/review\.usageTps/)
-    expect(panel).toMatch(/review\.usageHitRate/)
+    expect(sumUsage(foldTurns([{ ...base, seq: 1, type: 'turn/start', data: { turn: 1 } }]))).toBeUndefined()
   })
 })
 
@@ -1434,4 +1384,3 @@ describe('session context panel row grammar (badge never spills over the text)',
     expect(ruleOf('goalStripActions')).toContain('flex: none')
   })
 })
-

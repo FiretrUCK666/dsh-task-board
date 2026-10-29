@@ -10,7 +10,7 @@
  * session id.
  */
 import { Select } from '../design/Field.tsx'
-import { memo, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { bandNarrowMax } from '../design/bands.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
@@ -21,8 +21,9 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { cacheHitRate, contextOccupancy, contextSegments, formatTokens, formatTps } from './context-meter.ts'
 import { formatDuration } from './format-time.ts'
-import { Markdown } from './Markdown.tsx'
-import { sumUsage, type TranscriptImage, type TranscriptLine } from './review-transcript.ts'
+import { sumUsage, type TranscriptTurn } from './review-transcript.ts'
+import { TurnList } from './TurnItem.tsx'
+import type { WorkStepsPrefs } from './work-steps.ts'
 import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
 import { Chip, type ChipKind } from '../design/Chip.tsx'
@@ -42,93 +43,19 @@ import { modelSelectParts, modelSelectValue } from './model-select.ts'
 import components from '../design/components.module.css'
 
 /**
- * One message image: the durable ref is read back through the official
- * attachment RPC (cached + single-flighted by the wiring), then shown as a
- * click-to-open thumbnail. While loading it keeps its box (no layout jump);
- * a failed/absent read degrades to a quiet name chip, never a broken icon.
- */
-function MessageImage({ controller, sessionId, image }: {
-  controller: BoardController
-  sessionId: string
-  image: TranscriptImage
-}) {
-  const [src, setSrc] = useState<string | undefined>(undefined)
-  const [failed, setFailed] = useState(false)
-  useEffect(() => {
-    let alive = true
-    void controller.loadImage(sessionId, image.attachmentId).then(value => {
-      if (!alive) return
-      if (value === undefined) setFailed(true)
-      else setSrc(`data:${value.mediaType};base64,${value.data}`)
-    })
-    return () => { alive = false }
-  }, [controller, sessionId, image.attachmentId])
-  if (failed) {
-    return <span className={css.reviewImageMissing} title={image.name ?? ''}>{t('review.imageMissing')}</span>
-  }
-  if (src === undefined) {
-    return <span className={css.reviewImageBox} aria-hidden="true" />
-  }
-  return (
-    <a className={css.reviewImageBox} href={src} target="_blank" rel="noreferrer" title={image.name ?? ''}>
-      <img className={css.reviewImage} src={src} alt={image.name ?? ''} loading="lazy" />
-    </a>
-  )
-}
-
-/**
- * One memoized transcript row. Props are the primitive render facts (never
- * the line object), so a light poll that re-folds the tail only re-renders
- * the rows whose content actually changed — long transcripts stay smooth.
- */
-const TranscriptRow = memo(function TranscriptRow(props:
-  | { kind: 'context'; producer: string; summary: string }
-  | { kind: 'message'; role: 'user' | 'assistant'; text: string; sessionId?: string; controller?: BoardController; images?: TranscriptImage[] }
-) {
-  if (props.kind === 'context') {
-    return (
-      <li className={css.reviewContext} title={props.summary}>
-        {t('review.contextInjection')} · {props.producer}
-      </li>
-    )
-  }
-  const images = props.images ?? []
-  const { controller, sessionId } = props
-  return (
-    <li className={css.reviewMessage} data-role={props.role}>
-      {images.length > 0 && controller !== undefined && sessionId !== undefined && (
-        <span className={css.reviewImageRow}>
-          {images.map(image => (
-            <MessageImage key={image.attachmentId} controller={controller} sessionId={sessionId} image={image} />
-          ))}
-        </span>
-      )}
-      {props.text !== '' && (
-        <div className={css.reviewMessageText}>
-          <Markdown text={props.text} />
-        </div>
-      )}
-    </li>
-  )
-})
-
-/**
  * The shared transcript-region content: optional header (the review page's
  * outcome banner), the waiting banner, error/loading/empty states, the
- * folded message list (optionally capped to the trailing N, with the native
- * "load earlier" affordance above it when the host holds older messages)
- * and the "滑到最新" pill. Callers own their scroll region and the tail
+ * folded turn list (with the native "load earlier" affordance above it when
+ * the host holds older messages) and the "滑到最新" pill. Callers own their scroll region and the tail
  * hook; this is pure rendering, so every live session surface looks and
  * behaves identically.
  */
-export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller }: {
-  lines: readonly TranscriptLine[] | undefined
+export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
+  turns: readonly TranscriptTurn[] | undefined
   error: boolean
   atBottom: boolean
   jumpToBottom: () => void
   waiting?: PendingInteractionKind
-  /** Render only the trailing N lines (a capped preview surface's cap). */
-  maxLines?: number
   /** The host holds messages older than the loaded window. */
   hasMore?: boolean
   /** An earlier page is being fetched right now. */
@@ -148,19 +75,23 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
    *  their bytes through the official attachment RPC; absent = refs only). */
   sessionId?: string
   controller?: BoardController
+  /** 工作步骤的折法（三件事都来自官方设置；读不到时是产品默认）。 */
+  prefs: WorkStepsPrefs
 }) {
-  const shown = lines === undefined ? undefined : maxLines === undefined ? lines : lines.slice(-maxLines)
-  // The native "load earlier" row belongs ABOVE the list (older messages
-  // live above), capped to the uncapped surface — a capped tail
-  // never pages (its window is a preview, not the log). It renders whenever
-  // the host says there IS more — even over an empty window (a misaligned
-  // tail that folds to zero lines with hasMore must still offer the way
-  // back; an empty text with no button is a dead end that reads as "没有了").
-  // Terminal case: the deployment serves no page endpoint — the button goes
-  // away (retrying a missing endpoint is the infinite dead loop) and the
-  // line names the missing server capability instead.
-  const paging = hasMore === true && maxLines === undefined && onLoadEarlier !== undefined && pageUnsupported !== true
-  const pagingDead = hasMore === true && maxLines === undefined && pageUnsupported === true
+  /* 读者点开的折：**这一屏的选择**，不是会话数据。放在这里而不是每一轮各自存，
+     是因为它们必须活过「重新读一次尾窗口」（重读会换掉整个轮列表的引用）。 */
+  const [openTurns, setOpenTurns] = useState<ReadonlySet<number>>(() => new Set())
+  const toggleTurn = useCallback((turn: number): void => {
+    setOpenTurns(previous => {
+      const next = new Set(previous)
+      if (next.has(turn)) next.delete(turn)
+      else next.add(turn)
+      return next
+    })
+  }, [])
+  /* 「加载更早」这一行只属于**不封顶**的表面：封顶的尾窗口是一段预览，不是日志。 */
+  const paging = hasMore === true && onLoadEarlier !== undefined && pageUnsupported !== true
+  const pagingDead = hasMore === true && pageUnsupported === true
   return (
     <>
       {before}
@@ -187,31 +118,19 @@ export function SessionTranscript({ lines, error, atBottom, jumpToBottom, waitin
             <Button size="sm" onClick={onRetry}>{t('review.retry')}</Button>
           )}
         </div>
-      ) : shown === undefined ? (
+      ) : turns === undefined ? (
         <p className={css.detailText}>{t('review.loading')}</p>
-      ) : shown.length === 0 ? (
+      ) : turns.length === 0 ? (
         <p className={css.detailText}>{t('review.transcriptEmpty')}</p>
       ) : (
-        <ul className={css.reviewTranscript}>
-          {shown.map(line => line.kind === 'context' ? (
-            <TranscriptRow
-              key={line.id}
-              kind="context"
-              producer={line.producer}
-              summary={line.summary}
-            />
-          ) : (
-            <TranscriptRow
-              key={line.id}
-              kind="message"
-              role={line.role}
-              text={line.text}
-              sessionId={sessionId}
-              controller={controller}
-              images={line.images}
-            />
-          ))}
-        </ul>
+        <TurnList
+          turns={turns}
+          prefs={prefs}
+          sessionId={sessionId}
+          controller={controller}
+          openTurns={openTurns}
+          onToggle={toggleTurn}
+        />
       )}
       <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
     </>
@@ -725,16 +644,16 @@ export function SessionConfigEditor({ sessionId, controller, onChanged, reloadKe
  * composed in the order every session panel shows them. SessionRail renders
  * it inside the shared Disclosure (the fold + chevron grammar) within the
  * rail's single scroll body; callers pass what they read from their
- * transcript hook (projections via onResult, folded lines). The permission
+ * transcript hook (projections via onResult, folded turns). The permission
  * switcher's projection mapping is derived HERE — one source for every panel
  * (a caller-level mapping is how the linked panel lost it).
  */
-export function SessionRailHead({ sessionId, controller, projections, lines, onChanged, reloadKey }: {
+export function SessionRailHead({ sessionId, controller, projections, turns, onChanged, reloadKey }: {
   sessionId: string | undefined
   controller: BoardController
   projections: TranscriptProjectionsShape | undefined
-  /** The folded transcript lines (token-accounting fallback for the meter). */
-  lines: readonly TranscriptLine[] | undefined
+  /** The folded turns (token-accounting fallback for the meter). */
+  turns: readonly TranscriptTurn[] | undefined
   onChanged?: () => void
   reloadKey?: unknown
 }) {
@@ -748,7 +667,7 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
   // the user has just re-permissioned.
   return (
     <>
-      <ContextMeterPanel projections={projections} usage={sumUsage(lines ?? [])} />
+      <ContextMeterPanel projections={projections} usage={sumUsage(turns ?? [])} />
       <SessionConfigEditor
         sessionId={sessionId}
         controller={controller}
@@ -792,14 +711,14 @@ export function SessionRailHead({ sessionId, controller, projections, lines, onC
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
   sessionId: string | undefined
   controller: BoardController
   projections: TranscriptProjectionsShape | undefined
-  lines: readonly TranscriptLine[] | undefined
+  turns: readonly TranscriptTurn[] | undefined
   onChanged?: () => void
   reloadKey?: unknown
   task: TaskRecord
@@ -900,7 +819,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
               sessionId={sessionId}
               controller={controller}
               projections={projections}
-              lines={lines}
+              turns={turns}
               onChanged={onChanged}
               reloadKey={reloadKey}
             />

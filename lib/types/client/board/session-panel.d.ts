@@ -3,27 +3,25 @@ import type { BoardController, PendingInteractionKind, TranscriptProjectionsShap
 import type { WireQuestion } from '../../core/question-rpc.ts';
 import { type AgentPresetLabelSource } from '../../core/session-agents.ts';
 import type { TaskRecord } from '../../core/tasks.ts';
-import { type TranscriptLine } from './review-transcript.ts';
+import { type TranscriptTurn } from './review-transcript.ts';
+import type { WorkStepsPrefs } from './work-steps.ts';
 import { type ChipKind } from '../design/Chip.tsx';
 import type { CommentView } from './comment-thread.ts';
 import { type DraftAttachment } from './composer-attachments.ts';
 /**
  * The shared transcript-region content: optional header (the review page's
  * outcome banner), the waiting banner, error/loading/empty states, the
- * folded message list (optionally capped to the trailing N, with the native
- * "load earlier" affordance above it when the host holds older messages)
- * and the "滑到最新" pill. Callers own their scroll region and the tail
+ * folded turn list (with the native "load earlier" affordance above it when
+ * the host holds older messages) and the "滑到最新" pill. Callers own their scroll region and the tail
  * hook; this is pure rendering, so every live session surface looks and
  * behaves identically.
  */
-export declare function SessionTranscript({ lines, error, atBottom, jumpToBottom, waiting, maxLines, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller }: {
-    lines: readonly TranscriptLine[] | undefined;
+export declare function SessionTranscript({ turns, error, atBottom, jumpToBottom, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
+    turns: readonly TranscriptTurn[] | undefined;
     error: boolean;
     atBottom: boolean;
     jumpToBottom: () => void;
     waiting?: PendingInteractionKind;
-    /** Render only the trailing N lines (a capped preview surface's cap). */
-    maxLines?: number;
     /** The host holds messages older than the loaded window. */
     hasMore?: boolean;
     /** An earlier page is being fetched right now. */
@@ -43,6 +41,8 @@ export declare function SessionTranscript({ lines, error, atBottom, jumpToBottom
      *  their bytes through the official attachment RPC; absent = refs only). */
     sessionId?: string;
     controller?: BoardController;
+    /** 工作步骤的折法（三件事都来自官方设置；读不到时是产品默认）。 */
+    prefs: WorkStepsPrefs;
 }): import("react").JSX.Element;
 export declare function SessionWaitingNotice({ waiting }: {
     waiting: PendingInteractionKind | undefined;
@@ -104,16 +104,16 @@ export declare function SessionConfigEditor({ sessionId, controller, onChanged, 
  * composed in the order every session panel shows them. SessionRail renders
  * it inside the shared Disclosure (the fold + chevron grammar) within the
  * rail's single scroll body; callers pass what they read from their
- * transcript hook (projections via onResult, folded lines). The permission
+ * transcript hook (projections via onResult, folded turns). The permission
  * switcher's projection mapping is derived HERE — one source for every panel
  * (a caller-level mapping is how the linked panel lost it).
  */
-export declare function SessionRailHead({ sessionId, controller, projections, lines, onChanged, reloadKey }: {
+export declare function SessionRailHead({ sessionId, controller, projections, turns, onChanged, reloadKey }: {
     sessionId: string | undefined;
     controller: BoardController;
     projections: TranscriptProjectionsShape | undefined;
-    /** The folded transcript lines (token-accounting fallback for the meter). */
-    lines: readonly TranscriptLine[] | undefined;
+    /** The folded turns (token-accounting fallback for the meter). */
+    turns: readonly TranscriptTurn[] | undefined;
     onChanged?: () => void;
     reloadKey?: unknown;
 }): import("react").JSX.Element | null;
@@ -150,7 +150,7 @@ export declare function SessionRailHead({ sessionId, controller, projections, li
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export declare function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, lines, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
+export declare function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
     /** The live state row (chip + updated time); absent hides the whole row. */
     stateChip?: {
         kind: ChipKind;
@@ -161,7 +161,7 @@ export declare function SessionRail({ stateChip, updatedAt, sessionId, controlle
     sessionId: string | undefined;
     controller: BoardController;
     projections: TranscriptProjectionsShape | undefined;
-    lines: readonly TranscriptLine[] | undefined;
+    turns: readonly TranscriptTurn[] | undefined;
     onChanged?: () => void;
     reloadKey?: unknown;
     task: TaskRecord;
