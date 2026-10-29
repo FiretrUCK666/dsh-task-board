@@ -89,4 +89,20 @@ describe('version sync', () => {
     expect(compareWithPreRelease('0.2.2', '0.2.2')).toBe(0)
     expect(compareWithPreRelease('0.3.0', '0.2.2')).toBeGreaterThan(0)
   })
+
+  it('catches build deps that lag the DSH actually running here', () => {
+    /* 现实对应：DSH 升级了，而我们的 devDependencies 还钉在上一版。
+       那种情况下仓库内部**完全自洽**——旧版类型照样编译通过，上面每一条判据都不会红。
+       所以这一格喂的是**外部事实**（实际运行的那台 DSH），而不是仓库里的另一份文件。 */
+    const problems = versionSyncProblems({ manifest: baseline(), runningDsh: '0.3.0' })
+    expect(problems.some(problem => problem.includes('落后于实际运行的 DSH'))).toBe(true)
+  })
+
+  it('stays quiet when the running DSH is the same version or older', () => {
+    /* 反向：同版不报；比我们旧也不报（旧 DSH 上能跑说明下限还成立，那是另一条判据管的事）。 */
+    expect(versionSyncProblems({ manifest: baseline(), runningDsh: '0.2.2-alpha.2' })).toEqual([])
+    expect(versionSyncProblems({ manifest: baseline(), runningDsh: '0.2.1-alpha.3' })).toEqual([])
+    /* 读不到实际版本时**不说谎也不误报**——这是它缺席时的诚实降级。 */
+    expect(versionSyncProblems({ manifest: baseline() })).toEqual([])
+  })
 })

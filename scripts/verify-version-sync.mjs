@@ -21,6 +21,25 @@ function readIfPresent(path) {
 }
 
 /**
+ * 找出**实际正在运行的那台 DSH** 的安装目录。
+ *
+ * 不写死路径：全局 npm 的安装位置因平台与包管理器而异，所以把常见位置都试一遍。
+ * 找不到就返回 `undefined`——那时这条判据**静默不生效**，而不是报一个假红。
+ *
+ * @returns {string | undefined} DSH 的 package.json 路径。
+ */
+function runningDshManifest() {
+  const candidates = [
+    join(process.env.APPDATA ?? '', 'npm', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
+    join(process.env.HOME ?? '', '.npm', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
+    join(process.env.HOME ?? '', '.local', 'share', 'pnpm', 'global', '5', 'node_modules', '@deepseek-ai', 'dsh', 'package.json'),
+    '/usr/local/lib/node_modules/@deepseek-ai/dsh/package.json',
+    '/usr/lib/node_modules/@deepseek-ai/dsh/package.json',
+  ]
+  return candidates.find(candidate => existsSync(candidate))
+}
+
+/**
  * 跑一次检查。
  *
  * @param {string} root - 仓库根目录。
@@ -31,11 +50,17 @@ async function collect(root) {
      而不是判定来源）。所以从 `src/` 直接取——Node 24 能跑 `.ts`。 */
   const { versionSyncProblems } = await import(pathToFileURL(join(root, 'src/host/version-sync.ts')).href)
   const manifest = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'))
+  /* 实际运行的那台 DSH 的版本：读得到就交上去（那条判据才生效），读不到就留空。 */
+  const dshManifestPath = runningDshManifest()
+  const runningDsh = dshManifestPath === undefined
+    ? undefined
+    : JSON.parse(readFileSync(dshManifestPath, 'utf8')).version
   const input = {
     manifest,
     workspace: readIfPresent(join(root, 'pnpm-workspace.yaml')),
     lock: readIfPresent(join(root, 'pnpm-lock.yaml')),
     bundle: readIfPresent(join(root, 'lib/client.js')),
+    runningDsh,
   }
   return versionSyncProblems(input)
 }

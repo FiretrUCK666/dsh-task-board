@@ -119,6 +119,22 @@ export interface VersionSyncInput {
   readonly lock?: string | undefined
   /** `lib/client.js` 全文；缺省表示还没构建。 */
   readonly bundle?: string | undefined
+  /**
+   * **实际正在运行的那台 DSH 的版本**。缺省表示读不到（没装 / 判断不了）。
+   *
+   * ── 为什么它必须在 ──────────────────────────────────────────────────────
+   *
+   * 上面那几条判据比对的是**仓库里几份文件之间**的一致性。它们查不出最重要的那种漂移：
+   * **DSH 升级了，而我们的 `devDependencies` 还钉在上一版**。
+   *
+   * 那种漂移**不会让构建失败**（旧版类型照样能编译），但会让插件按**上一代契约**去写，
+   * 而用户装的是新一代 DSH——于是「我们以为还对」的代码在用户那边静默失效。它也不会让任何
+   * 现有判据变红，因为仓库内部**是自洽的**。
+   *
+   * 所以这条判据必须读**外部事实**（实际运行的那台 DSH 的版本），而不是仓库内部。这样
+   * 「升了 DSH 忘了同步」会在 `pnpm verify` 时报红，而不是靠谁记得去跑一条命令。
+   */
+  readonly runningDsh?: string | undefined
 }
 
 /** 读一个对象里的字符串字段。 */
@@ -155,6 +171,18 @@ export function versionSyncProblems(input: VersionSyncInput): string[] {
     problems.push(`devDependencies 里 DSH 生态的包版本不一致（${detail}）——它们来自同一个发行版，必须同号`)
   }
   const buildVersion = [...buildVersions][0]
+
+  /* 0. **构建版本必须跟得上实际运行的那台 DSH。** 这一条是唯一读「外部事实」的判据，
+        也是唯一能抓住「升了 DSH 忘了同步」的判据——上面几条只查仓库内部自洽，
+        而仓库在那种情况下**是自洽的**（旧版类型照样编译通过）。
+        读不到实际版本时不说谎（`runningDsh` 缺省），也不误报。 */
+  if (input.runningDsh !== undefined && input.runningDsh !== '') {
+    const behind = compareWithPreRelease(buildVersion, input.runningDsh) < 0
+    if (behind) {
+      problems.push(`构建版本（${buildVersion}）落后于实际运行的 DSH（${input.runningDsh}）`
+        + '——插件会按上一代契约去写，而用户装的是新版；跑 `pnpm sync-sdk` 把各处一次改对')
+    }
+  }
 
   /* 1. 门槛不得高于构建版本。 */
   const engines = (manifest as { engines?: Record<string, string> }).engines

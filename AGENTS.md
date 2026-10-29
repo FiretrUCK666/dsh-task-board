@@ -190,7 +190,6 @@ Release、**不** `npm publish`。**用户在本会话主动下达维护者动�
 **SDK 版本必须跟随实际运行的 DSH**，每次现场查，不写死。两条规律：`@deepseek-ai/dsh-*` 与
 DSH 本体同号（个别包会停更，逐个确认目标版本存在）；**npm 的 `latest` dist-tag 不可信**，
 所以**不得用 `npm view <pkg> version` 判断最新**，一律加 `versions --json` 取完整列表从末尾找。
-`@deepseek-ai/cordis` 走自己的线，目标从 DSH 自己的依赖里读。
 
 **同步就一条命令**：`pnpm sync-sdk`（读正在运行的 DSH，把 `devDependencies`、门槛
 `engines.dsh`、`peerDependencies`、README 门槛、`pnpm-workspace.yaml` 的冷静期白名单一次改对；
@@ -199,8 +198,11 @@ DSH 本体同号（个别包会停更，逐个确认目标版本存在）；**np
 `pnpm build` → `pnpm verify`。用户可见改动 → bump patch。
 
 **「要改哪些地方」由门禁回答，不由本文列清单**：`verify-version-sync.mjs` 拿 `package.json` 当
-唯一权威，查门槛、冷静期白名单、`lib/` 内嵌版号是否都跟着它——它守的是**分家时不出声**的那几处
-（白名单写旧版会让别人装不上）。加一处会跟着版本变的东西，就加一条判据。
+唯一权威，查门槛、冷静期白名单、`lib/` 内嵌版号是否都跟着它。加一处会跟着版本变的就加一条判据。
+
+**它同时守「升了 DSH 忘了同步」**——那种漂移仓库内部**完全自洽**（旧版类型照样编译通过），
+所以只有读**外部事实**才抓得住：门禁去读实际运行的那台 DSH，比构建版本新就报红。**因此不必
+有人记得跑命令**：`pnpm verify` 自己会说。
 
 ### 最低支持版本（只在真不兼容时上移）
 
