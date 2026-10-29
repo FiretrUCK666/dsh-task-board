@@ -17,10 +17,15 @@ describe('parseMarkdown blocks', () => {
     expect(blocks).toEqual([{ t: 'paragraph', children: [{ t: 'text', s: 'hello\nworld' }] }])
   })
 
-  it('parses headings with levels 1-3', () => {
-    const blocks = parseMarkdown('# T1\n\n## T2\n\n### T3')
-    expect(blocks.map(block => (block as { t: string; level?: number }).t)).toEqual(['heading', 'heading', 'heading'])
-    expect(blocks.map(block => (block as { t: string; level?: number }).level)).toEqual([1, 2, 3])
+  it('parses all six heading levels, like the official parser', () => {
+    const blocks = parseMarkdown('# T1\n\n## T2\n\n### T3\n\n#### T4\n\n##### T5\n\n###### T6')
+    expect(blocks.map(block => (block as { t: string }).t))
+      .toEqual(['heading', 'heading', 'heading', 'heading', 'heading', 'heading'])
+    expect(blocks.map(block => (block as { level?: number }).level)).toEqual([1, 2, 3, 4, 5, 6])
+  })
+
+  it('七个井号不是标题（官方也只认六个）', () => {
+    expect(parseMarkdown('####### 太多')[0]?.t).toBe('paragraph')
   })
 
   it('parses fenced code blocks with a language', () => {
@@ -175,7 +180,8 @@ describe('the renderer draws the source as elements, never as its own markers', 
       '| :-- | --: |',
       '| 我 | 明天 |',
     ].join('\n'))
-    expect(out).toContain('<h3')
+    // `##` 出的是 `<h2>`——**标签跟着级别走**，不再六级一律 `<h3>`。
+    expect(out).toContain('<h2')
     expect(out).toContain('<ul')
     expect(out).toContain('<ol')
     expect(out).toContain('<table')
@@ -189,6 +195,26 @@ describe('the renderer draws the source as elements, never as its own markers', 
     expect(out).toContain('先看现场')
     expect(out).toContain('断电线')
     expect(out).toContain('明天')
+  })
+
+  it('all six heading levels become their own tag', () => {
+    /* 标签跟着级别走：`#` → `<h1>` … `######` → `<h6>`。
+       曾经六级一律 `<h3>`，只靠 `data-level` 分大小——语义上等于说「这些都是三级」，
+       而读屏器与文档大纲读到的就是那个假话。 */
+    for (const level of [1, 2, 3, 4, 5, 6] as const) {
+      const out = html(`${'#'.repeat(level)} 第${level}级`)
+      expect(out, `${level} 级没有出 <h${level}>`).toContain(`<h${level}`)
+      expect(out, `${level} 级出了别的标题标签`).toContain(`data-level="${level}"`)
+    }
+  })
+
+  it('a fourth-level heading is a HEADING, not a paragraph with its井号 printed', () => {
+    /* 这是那条真实缺陷：解析器只认 `#{1,3}`，于是 agent 写的 `#### 小节` 落进
+       普通段落，把四个井号连同文字一起印在屏上。 */
+    const out = html('#### 四级小节')
+    expect(out, '#### 被当成了段落').toContain('<h4')
+    expect(out, '井号被原样打印出来了').not.toContain('####')
+    expect(out).toContain('四级小节')
   })
 
   it('the checkbox is drawn, and it carries the state as an attribute rather than as text', () => {

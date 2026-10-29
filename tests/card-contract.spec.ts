@@ -932,8 +932,6 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     const SCALE = new Set(['11px', '12px', '13px', '14px', '16px'])
     const CONTENT_PASS: { px: string; why: RegExp }[] = [
       { px: '12.5px', why: /mdCodeBlock/ },
-      { px: '15px', why: /mdHeading/ },
-      { px: '17px', why: /mdHeading/ },
     ]
     const bad: string[] = []
     for (const [label, text] of [
@@ -955,6 +953,38 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       })
     }
     expect(bad, 'font sizes must be on 11/12/13/14/16, or join the content-pass allowlist with a reason').toEqual([])
+  })
+
+  it('Markdown 标题用官方那套**比例**，不写像素、也不搬官方绝对值', () => {
+    // 「标题全都一样大」那一次的根：三级标题写成 13px，与评论正文同号，而二级只大
+    // 2px。根因不是数字挑错了，是**这一族本来就不该自己挑数字**。
+    //
+    // 但「搬官方绝对值」是另一个错：官方那六个值是给它自己那种 14px 正文配的，
+    // 而转写区正文 16px、评论区 13px。实测把 21/19/18/14 直接搬进来，转写区的 h4
+    // 量到 14px —— **比 16px 正文还小**（0.88 倍），四级标题看起来像注脚。
+    //
+    // 所以判据是：每一级都写成 `calc(官方的数 / 14 * 1em)` 或 `1em`（四五级与正文
+    // 同号，官方也是），一个像素值都不许出现。
+    const headingRules: { level: string; body: string }[] = []
+    for (const block of source.matchAll(/([^{}]*)\{([^}]*)\}/g)) {
+      const selector = block[1]
+      if (!selector.includes('.mdHeading[data-level=')) continue
+      for (const level of [...selector.matchAll(/\.mdHeading\[data-level='(\d+)'\]/g)].map(match => match[1])) {
+        headingRules.push({ level, body: block[2] })
+      }
+    }
+    expect(headingRules.length, '没有一条 .mdHeading[data-level] 规则——这条断言在空转').toBeGreaterThan(0)
+    expect(headingRules.map(rule => rule.level).sort(), '六级标题没有一一定义')
+      .toEqual(['1', '2', '3', '4', '5', '6'])
+
+    const offenders: string[] = []
+    for (const rule of headingRules) {
+      const size = /font-size:\s*([^;]+)/.exec(rule.body)?.[1]?.trim() ?? ''
+      const relative = size === '1em' || /^calc\(\s*[\d.]+\s*\/\s*14\s*\*\s*1em\s*\)$/.test(size)
+      if (!relative) offenders.push(`level ${rule.level} 的字号不是相对写法: ${size || '(缺失)'}`)
+      if (/\d+(?:\.\d+)?px/.test(rule.body)) offenders.push(`level ${rule.level} 写了像素: ${rule.body.trim()}`)
+    }
+    expect(offenders, 'Markdown 标题必须写成正文的倍数（写像素就与所在容器的正文脱节）').toEqual([])
   })
 
   it('an invisible control cannot receive a tap, and the unread light outranks in-flight work', () => {

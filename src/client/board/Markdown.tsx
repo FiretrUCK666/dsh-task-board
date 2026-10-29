@@ -10,7 +10,7 @@ import { useMemo } from 'react'
 import type { ReactNode } from 'react'
 import css from '../board.module.css'
 import { Icon } from '../design/ui.tsx'
-import { parseMarkdown, type BlockNode, type InlineNode, type ListItem } from './markdown-parser.ts'
+import { parseMarkdown, type BlockNode, type HeadingLevel, type InlineNode, type ListItem } from './markdown-parser.ts'
 
 function renderInline(node: InlineNode, key: number): ReactNode {
   switch (node.t) {
@@ -52,12 +52,26 @@ function renderItem(item: ListItem, key: number): ReactNode {
   )
 }
 
+/**
+ * 标题：**标签跟着级别走**（`#` 出 `<h1>`，`###` 出 `<h3>`，一直到 `<h6>`）。
+ *
+ * 曾经六级一律出 `<h3>`、只靠 `data-level` 区分大小——那在语义上是错的（等于说
+ * 「这些都是三级」），而且层级只活在视觉里：读屏器、文档大纲、以及任何按标签取
+ * 标题的代码都读不到它。标题层级是**文档结构**，不是打扮。
+ *
+ * 大小由 `.mdHeading[data-level=…]` 读官方字体令牌（见 `board.module.css`）。
+ */
+function Heading({ level, children }: { level: HeadingLevel; children: ReactNode }) {
+  const Tag = `h${level}` as const
+  return <Tag className={css.mdHeading} data-level={level}>{children}</Tag>
+}
+
 function renderBlock(block: BlockNode, key: number): ReactNode {
   switch (block.t) {
     case 'paragraph':
       return <p key={key} className={css.mdParagraph}>{block.children.map(renderInline)}</p>
     case 'heading':
-      return <h3 key={key} className={css.mdHeading} data-level={block.level}>{block.children.map(renderInline)}</h3>
+      return <Heading key={key} level={block.level}>{block.children.map(renderInline)}</Heading>
     case 'codeblock':
       return (
         <pre key={key} className={css.mdCodeBlock}>

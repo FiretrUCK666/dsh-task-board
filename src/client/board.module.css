@@ -4745,17 +4745,40 @@
   margin-top: 8px;
 }
 
+/* 标题的大小用**官方那套比例**，不用官方那套绝对值。
+ *
+ * 官方那六个值是给**它自己那种 14px 正文**配的：h1 = 21/30、h2 = 19/28、
+ * h3 = 18/26、h4~h6 = 14/24（加粗）。而这两处正文不是 14px——转写区 16px、
+ * 评论区 13px。把绝对值搬进来当场就错：转写区里 h4 量到 14px，**比 16px 正文还小**
+ * （实测 0.88 倍），于是「四级标题」看起来像被压下去的一句注脚。那是把一个旧病
+ * 换成另一个新病。
+ *
+ * 所以搬的是**比例**：`calc(21 / 14 * 1em)` 里的两个数就是官方那两个数（它在 14px
+ * 正文上量到 21px），所以这个写法把「官方认为 h1 是正文的 1.5 倍」原样带过来，
+ * 到哪个容器都成立——16px 的转写区量到 24px，13px 的评论区量到 19.5px，
+ * 而 h4 永远等于正文字号、只靠字重说话（官方也是这么定的）。
+ *
+ * **为什么不是 `var(--dsw-font-markdown-h1)`。** 那个令牌带
+ * `+ var(--dsh-content-font-delta)`，看起来更「跟随用户设置」，但它是**绝对像素**：
+ * 用户把正文字号从 14 调到 16 时它只跟着涨 2px，而这边的正文压根不是从那个变量来的，
+ * 于是「正文变了吗、标题跟上了吗」两处对不上。比例读的是**容器自己的字号**，
+ * 所以容器怎么变它就怎么变，这才是那件事的正解。
+ *
+ * 行高同样按比例给（`30 / 21` 这类写法就是官方那一对数的比值），不写成
+ * `line-height: 1.4`：那样每一级会得到与官方不同的行距。 */
 .mdHeading {
   margin: 12px 0 6px;
-  font-weight: 600;
-  line-height: 1.4;
   letter-spacing: -0.01em;
   color: var(--dsh-tb-text-1);
 }
 
-.mdHeading[data-level='1'] { font-size: 17px; }
-.mdHeading[data-level='2'] { font-size: 15px; }
-.mdHeading[data-level='3'] { font-size: 13px; }
+.mdHeading[data-level='1'] { font-size: calc(21 / 14 * 1em); font-weight: 700; line-height: 1.43; }
+.mdHeading[data-level='2'] { font-size: calc(19 / 14 * 1em); font-weight: 700; line-height: 1.47; }
+.mdHeading[data-level='3'] { font-size: calc(18 / 14 * 1em); font-weight: 700; line-height: 1.44; }
+/* 四五级与正文同号，只靠字重区分——官方 h4 就是 14px/600，h5/h6 是 base-strong。 */
+.mdHeading[data-level='4'],
+.mdHeading[data-level='5'],
+.mdHeading[data-level='6'] { font-size: 1em; font-weight: 600; line-height: 1.71; }
 
 .mdStrong {
   font-weight: 600;

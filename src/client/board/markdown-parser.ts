@@ -3,7 +3,8 @@
  * the plan under review). Produces a small node tree; the renderer
  * (Markdown.tsx) maps it to React elements — there is NO HTML string output, so
  * there is no injection surface. Only the safe, common subset is supported:
- * paragraph text, `#`–`###` headings, fenced code blocks, bullet/numbered lists
+ * paragraph text, `#`–`######` headings (all six, like the official parser),
+ * fenced code blocks, bullet/numbered lists
  * (one or more levels deep, with task-list marks `- [ ]` / `- [x]`),
  * blockquotes, thematic breaks, pipe tables with an alignment row, and inline
  * **bold**, *italic* (single emphasis), `code` and [links](url). Everything
@@ -44,17 +45,21 @@ export interface ListItem {
 /** How one table column is aligned (read off the separator row). */
 export type TableAlign = 'left' | 'center' | 'right'
 
+/** 标题级别。**六级全收**：官方的解析器认 `#{1,6}`，而我们曾经只认前三级，
+ *  于是 agent 写的 `#### 小节` 会被当成普通段落，把四个井号连同文字一起印在屏上。 */
+export type HeadingLevel = 1 | 2 | 3 | 4 | 5 | 6
+
 /** One top-level block. */
 export type BlockNode =
   | { t: 'paragraph'; children: InlineNode[] }
-  | { t: 'heading'; level: 1 | 2 | 3; children: InlineNode[] }
+  | { t: 'heading'; level: HeadingLevel; children: InlineNode[] }
   | { t: 'codeblock'; lang: string; text: string }
   | { t: 'list'; ordered: boolean; items: ListItem[] }
   | { t: 'quote'; children: BlockNode[] }
   | { t: 'table'; align: readonly TableAlign[]; head: InlineNode[][]; rows: InlineNode[][][] }
   | { t: 'hr' }
 
-const HEADING_RE = /^(#{1,3})\s+(.*)$/
+const HEADING_RE = /^(#{1,6})\s+(.*)$/
 const FENCE_RE = /^```([\w-]*)\s*$/
 const HR_RE = /^-{3,}$|^\*{3,}$|^_{3,}$/
 const QUOTE_RE = /^>\s?(.*)$/
@@ -254,7 +259,7 @@ export function parseMarkdown(source: string): BlockNode[] {
       blocks.push(table.block)
       index = table.next
     } else if (heading !== null) {
-      blocks.push({ t: 'heading', level: heading[1].length as 1 | 2 | 3, children: parseInline(heading[2]) })
+      blocks.push({ t: 'heading', level: heading[1].length as HeadingLevel, children: parseInline(heading[2]) })
       index += 1
     } else if (fence !== null) {
       const lang = fence[1] ?? ''
