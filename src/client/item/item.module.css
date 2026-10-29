@@ -1958,6 +1958,8 @@
    * `--dsh-tb-cast-1` 是它落在底上的那一点影。两条一起画才叫纸——只有边是线框，
    * 只有影是脏。 */
   --dsh-tb-paper-cast: var(--dsh-tb-rim);
+  /* 整行是一个「按一下开、再按一下关」的按钮，所以光标是手。
+     展开区（`.itemDetail`）长在行里面，它自己把光标改回来——见那条规则。 */
   cursor: pointer;
   transition: background var(--dsh-tb-motion), border-color var(--dsh-tb-motion);
 }
@@ -5758,6 +5760,14 @@ textarea.itemInput {
   border-block-start: var(--item-hair);
   /* 没有 `animation`，也没有 `overflow: hidden`：这一格不参与任何尺寸过渡，
      所以不需要裁切，也不会在某一帧比它的内容高或矮。 */
+  /* **光标改回箭头。** 行本身是一个「按一下开、再按一下关」的按钮，所以
+     `.itemRow` 上是 `cursor: pointer`；而这一格长在行**里面**，于是继承到那只手——
+     读者把鼠标停在展开区里的空白处（正文下面、步骤之间、两栏之间的空气上）时，
+     看到的是「这里能按」，而那里按下去只会把整行收起来。手形光标是一句承诺，
+     空白处不该作这个承诺。展开区自己吃掉冒泡（`row-line.tsx`），行为上已经不是
+     一个按钮，光标就该跟着说同一件事。里面真正可点的件各自声明 `cursor: pointer`，
+     所以它们仍然是手——这一条只把「空白的默认值」改回箭头。 */
+  cursor: default;
 }
 
 /* 孩子只占它自己的高度，不参与任何拉伸。 */
