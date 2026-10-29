@@ -281,28 +281,33 @@ export function foldKeyOf(turn: TranscriptTurn): string {
 }
 
 /**
- * 一轮里的一块：**一段过程**（一个 step 小折叠）或**一条回复**。
+ * 一轮里的一块：**一段过程**（自己的一个小折）或**一条回复**。
+ *
+ * `reader: true` 的那一块是**读者插的话**：它是流里独立的一块，永远摊着不套折——
+ * 读者自己的话被收进某个折里，是这套界面里最不能接受的一件事。
  */
 export type TurnBlock =
-  | { kind: 'cluster'; key: string; step: number; items: TurnFlowItem[]; order: number }
+  | { kind: 'cluster'; key: string; step: number; items: TurnFlowItem[]; order: number; reader?: boolean }
   | { kind: 'reply'; reply: TranscriptReply; order: number }
 
 /**
- * 把一轮排成「按真实次序的一块块」：过程按**步**聚成 cluster，回复单独一块。
+ * 把一轮排成「按真实次序的一块块」：连续的过程聚成一块，回复单独一块。
  *
- * ── 为什么必须是一组一组，而不是一整块 ────────────────────────────────────────
+ * ── 官方的切法：**按「一段连续的過程」切，不按步切** ──────────────────────────
  *
- * 官方那一层是两级的：**整轮一个折**，轮里**每一步又是自己的一个小折**
- * （`ProcessGroup`：`rebuild()` 在「当前节点的 `previous` 不再等于上一个节点」时
- * 切断当前组，也就是在**步与步的边界**上分组；遇到带文字的回复则先把组收掉、
- * 把回复单独摆出来）。
+ * 官方 `TurnGroups.rebuild()` 里 `pending` 只在这三种情况下被 `flush`：
  *
- * 我们只有上一级：一轮里所有工具与思考挤进同一个折。于是一轮跑了四十步之后，
- * 点开那一个折看到的是一条四十行的长带子——读者要的是「每步能各自收起来」，
- * 也就是读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」。
+ *   1. 顺序异常（`position.previous !== previous`，节点不相邻）；
+ *   2. 节点落在过程范围**之外**（`isAtOrOutside(node, 'process')`）；
+ *   3. 遇到**带文字的回复**（`if (reply(node)) flush(true)`）。
  *
- * 分组键是**步号**加**回复边界**：一条回复出现就把上一组收掉（回复永远在组外），
- * 步号变了就另起一组。到达次序仍然是唯一真相，所以组与块之间的先后不会乱。
+ * **步与步的边界不在其中。** 也就是说：一个组覆盖**一整段连续的过程**，只有在
+ * 中间说了话（或出现过程之外的节点）时才分成两组。
+ *
+ * 这条读错过一次，代价是屏幕上一串「1 次工具调用」的小折——每个只有一次调用的步
+ * 都成了自己的一个组，而官方根本不会那么切。**逐条读判据，不要按直觉归纳。**
+ *
+ * 到达次序仍然是唯一真相，所以块与块之间的先后不会乱。
  * @param turn - 一轮。
  * @returns 按 `order` 升序的块。
  */
@@ -311,19 +316,30 @@ export function blocksOf(turn: TranscriptTurn): TurnBlock[] {
   let current: Extract<TurnBlock, { kind: 'cluster' }> | undefined
   for (const item of flowOf(turn)) {
     if (item.kind === 'reply') {
-      /* 回复切断当前组：它自己摆在外面，之后的工具另起一组。 */
+      /* 回复切断当前组（官方的第 3 条）：它自己摆在外面，之后的工具另起一组。 */
       current = undefined
       blocks.push({ kind: 'reply', reply: item.reply, order: item.order })
       continue
     }
-    /* `context` 行没有步号（它是注入，不属于任何一步）：落进当前这一组，
-       有组就跟着走、没组就另起一组——绝不因为拿不到步号而把它吞掉。 */
-    const step = item.kind === 'reader'
-      ? item.interjection.step
-      : item.step.kind === 'context' ? undefined : item.step.step
-    if (current === undefined || (step !== undefined && current.step !== step)) {
+    /* 读者插话也切断当前组（它落在过程范围之外，官方第 2 条），而且它**自己不是
+       过程**：读者的话永远露在组外，不能因为「同属一段连续的内容」就被收进某个折里。
+       所以它既切断前面的组，也不开启新组——它是流里独立的一块。 */
+    if (item.kind === 'reader') {
+      current = undefined
+      blocks.push({
+        kind: 'cluster',
+        key: `i${item.order}`,
+        step: item.interjection.step,
+        items: [item],
+        order: item.order,
+        /** 这一块是读者的话：永远摊着，不套折。 */
+        reader: true,
+      })
+      continue
+    }
+    if (current === undefined) {
       const cluster: Extract<TurnBlock, { kind: 'cluster' }> = {
-        kind: 'cluster', key: `g${item.order}`, step: step ?? -1, items: [], order: item.order,
+        kind: 'cluster', key: `g${item.order}`, step: stepOf(item.step), items: [], order: item.order,
       }
       current = cluster
       blocks.push(cluster)
@@ -331,6 +347,15 @@ export function blocksOf(turn: TranscriptTurn): TurnBlock[] {
     current.items.push(item)
   }
   return blocks
+}
+
+/**
+ * 一条过程行属于哪一步；`context` 行没有步号（它是注入，不属于任何一步）。
+ * @param step - 过程行。
+ * @returns 步号；拿不到时 -1。
+ */
+function stepOf(step: TranscriptStep): number {
+  return step.kind === 'context' ? -1 : step.step
 }
 
 /**

@@ -104,13 +104,13 @@ function flowMarkup(item) {
   return `<li class="reviewStep"><span class="reviewStepName truncate">${item.name}</span><span class="reviewStepState">${item.state}</span></li>`
 }
 
-/** 一组过程 = 轮里自己的一个小折（官方 `ProcessGroup` 那一级）。 */
+/** 一段连续过程 = 轮里自己的一个小折（官方 `ProcessGroup` 那一级）。 */
 let groupId = 0
 function clusterMarkup(group, open) {
   groupId += 1
   const id = `g${groupId}`
   const body = group.map(item => flowMarkup(item)).join('')
-  return `<section class="detailSection reviewStepGroup"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${id}"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${group.length} 步</span></button>${open ? `<div class="detailSectionBody" id="${id}"><ul class="reviewStepList">${body}</ul></div>` : ''}</section>`
+  return `<section class="detailSection reviewStepGroup"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${id}"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${group.length} 项</span></button>${open ? `<div class="detailSectionBody" id="${id}"><ul class="reviewStepList">${body}</ul></div>` : ''}</section>`
 }
 
 const lines = []
@@ -125,23 +125,38 @@ for (const turn of TURNS) {
     lines.push('</ul>')
     lines.push(`<div class="reviewMessage" data-role="assistant"><div class="reviewMessageText"><p>${turn.answer}</p></div></div>`)
   } else {
-    /* 两级折：整轮一个折，折里**每一组过程各自一个小折**（官方 `ProcessGroup`）。
-       展开态下组默认展开；收起态下整轮收着，里面不画。 */
+    /* 两级折：整轮一个折，里面**每一段连续过程**各自一个小折（官方 `ProcessGroup`）。
+       切分点只有「说了话」，**不是步与步的边界**；一轮里只有一段时不再套那一层。
+       展开态下组默认收着（官方 `useDisclosure` 初值），这里画成收着的样子。 */
     const open = MODE === 'expanded'
     lines.push(`<section class="detailSection reviewWorkSteps"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="w"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${turn.summary}</span></button>`)
     if (open) {
-      lines.push('<div class="detailSectionBody"><div class="reviewStepList">')
-      /* `flow` 里连续的过程行归一组；`reply` 切开组（与 `blocksOf` 同一条规则）。 */
-      let cluster = []
-      const flushCluster = () => {
-        if (cluster.length > 0) lines.push(clusterMarkup(cluster, true))
-        cluster = []
-      }
+      /* 按官方的 `blocksOf` 切：回复与读者插话把过程切成多段。 */
+      const segments = []
+      let segment = []
       for (const item of turn.flow) {
-        if (item.kind === 'reply') { flushCluster(); lines.push(flowMarkup(item)); continue }
-        cluster.push(item)
+        if (item.kind === 'reply' || item.kind === 'reader') {
+          if (segment.length > 0) segments.push({ kind: 'steps', items: segment })
+          segment = []
+          segments.push({ kind: item.kind, items: [item] })
+          continue
+        }
+        segment.push(item)
       }
-      flushCluster()
+      if (segment.length > 0) segments.push({ kind: 'steps', items: segment })
+      const stepSegments = segments.filter(one => one.kind === 'steps').length
+      lines.push('<div class="detailSectionBody"><div class="reviewStepList">')
+      for (const one of segments) {
+        if (one.kind !== 'steps') { lines.push(flowMarkup(one.items[0])); continue }
+        /* 只有一段过程就不套第二层（与渲染器同一条判据）。 */
+        if (stepSegments <= 1) {
+          lines.push('<ul class="reviewStepList">')
+          for (const item of one.items) lines.push(flowMarkup(item))
+          lines.push('</ul>')
+          continue
+        }
+        lines.push(clusterMarkup(one.items, false))
+      }
       lines.push('</div></div>')
     }
     lines.push('</section>')

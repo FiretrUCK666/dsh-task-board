@@ -70,36 +70,58 @@ describe('一轮一折的渲染', () => {
   it('点开之后过程按发生顺序露出来，折记号翻过来', () => {
     const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
     expect(html).toContain('aria-expanded="true"')
-    const read = html.indexOf('>read<')
-    const thought = html.indexOf('先看现场')
-    const write = html.indexOf('>write<')
+    /* 组默认收着（官方 `useDisclosure` 初值），所以先把两组都点开，才看得到内容。 */
+    const opened = renderToStaticMarkup(createElement(TurnItem, {
+      turn: turnOf(),
+      policy: policyOfWorkSteps({ view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }),
+      isLatest: false,
+      open: true,
+      onToggle: () => {},
+      /* 组键 = `foldKeyOf(turn)` + '#' + 组键。`turnOf()` 的 `answerStep` 是 2，
+         两段过程的第一条到达序号分别是 1 与 4。 */
+      openGroups: new Set(['1#2#g1', '1#2#g4']),
+      onToggleGroup: () => {},
+    }))
+    const read = opened.indexOf('>read<')
+    const thought = opened.indexOf('先看现场')
+    const midway = opened.indexOf('我看了一下现场')
+    const write = opened.indexOf('>write<')
+    /* 真实次序：read → 思考 → 中途那句 → write。**中途那句话把过程切成两段**
+       （官方 `flush(true)` 只在遇到带文字的回复时发生），所以两段各自成折。 */
     expect(read, '工具 read 不在折里').toBeGreaterThan(-1)
     expect(thought, '思考行不在折里').toBeGreaterThan(read)
-    expect(write, '工具 write 不在思考之后').toBeGreaterThan(thought)
-    /* **中途那句话按官方的规则切开了组**：一条带文字的回复出现就把上一组收掉
-       （`blocksOf` 的「回复永远在组外」），于是它成为边界。真实次序是：
-       read → 思考 → 这句 → write，所以它在 write **之前**——顺序对了，
-       分组也对了（它不属于任何一组，第二组从 write 开始）。 */
-    const midway = html.indexOf('我看了一下现场')
-    expect(midway, '中途那句没有画出来').toBeGreaterThan(-1)
-    expect(midway, '中途那句排到了 read 之前').toBeGreaterThan(read)
-    expect(midway, '中途那句排到了 write 之后——真实次序是它在 write 之前').toBeLessThan(write)
+    expect(midway, '中途那句没有画出来').toBeGreaterThan(thought)
+    expect(write, '工具 write 排到了中途那句之前').toBeGreaterThan(midway)
   })
 
-  it('每一组过程各自是一个小折（官方的两级折）', () => {
-    /* 读者要的是「每个 step 用到的那些东西可以单独折叠收纳」。一轮里两个 step
-       → 整轮一个折 + 里面两个组折。 */
-    const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
-    const groupFolds = html.match(/reviewStepGroup/g)?.length ?? 0
-    expect(groupFolds, '轮里没有分组的小折——过程又成了一条长带子').toBe(2)
+  it('只有一段过程的轮不套第二层折（否则屏上是一列「1 次工具调用」）', () => {
+    /* 官方那个分组只在**一轮里有多段**时才有意义。一段连续过程就是一轮的全部内容，
+       再套一层的话读者要连点两次才看到第一行，而每一轮都会长出一个空折。
+       读者截图里那一列「1 次工具调用」正是这么来的。 */
+    const single = turnOf({
+      steps: [
+        { kind: 'tool', id: 'c1', name: 'read', state: 'settled', step: 1, order: 1 },
+        { kind: 'tool', id: 'c2', name: 'write', state: 'settled', step: 2, order: 2 },
+      ],
+      replies: [{ id: 'a2', text: '换好了：东墙那盏换成了轨道灯。', at: 2, step: 2, order: 3 }],
+      answer: { step: 2, replyId: 'a2', messageCount: 0 },
+    })
+    const html = renderTurn(single, { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
+    expect(html.match(/reviewStepGroup/g)?.length ?? 0, '一段过程却套了组折').toBe(0)
+    expect(html, '过程没画出来').toContain('>read<')
+    expect(html, '过程没画出来').toContain('>write<')
   })
 
-  it('组默认展开：点开整轮就能看见第一行过程', () => {
-    /* 两级折都默认收着的话，读者要连点两次才看到一行——那把官方那两级折的
-       意思读反了。组只有被读者**主动收起来**时才收。 */
+  it('一轮里有多段过程时，每段各自是一个小折', () => {
+    /* `turnOf()` 的中途那句把过程切成两段 → 两个组折。这是官方那种「多段各自收放」。 */
     const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
-    expect(html, '组默认是收着的').toContain('aria-expanded="true"')
-    expect(html, '点开整轮后组里没有内容').toContain('detailSectionBody')
+    expect(html.match(/reviewStepGroup/g)?.length, '多段过程没有各自成折').toBe(2)
+  })
+
+  it('组默认收着（官方 useDisclosure 的初值）', () => {
+    const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
+    const groups = html.match(/aria-expanded="false"/g)?.length ?? 0
+    expect(groups, '组默认是展开的').toBeGreaterThan(0)
   })
 
   it('all 档：中途那几句也露在折外', () => {

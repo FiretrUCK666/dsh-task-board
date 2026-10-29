@@ -137,19 +137,33 @@ function FoldedRow({ item, policy, sessionId, controller }: {
   )
 }
 
-/** 折里那一段过程的渲染：**每一组自己的一个小折**（官方 `ProcessGroup`）。 */
-function ClusterFold({ cluster, policy, open, onToggle, sessionId, controller }: {
+/** 折里那一段过程的渲染：**每段过程自己的一个小折**（官方 `ProcessGroup`）。 */
+function ClusterFold({ cluster, policy, open, onToggle, grouped, sessionId, controller }: {
   cluster: Extract<ReturnType<typeof blocksOf>[number], { kind: 'cluster' }>
   policy: WorkStepsPolicy
   open: boolean
   onToggle: () => void
+  /** 一轮里有多段过程：这一段才需要自己的折。只有一段时它就是内容本身。 */
+  grouped: boolean
   sessionId?: string
   controller?: BoardController
 }) {
-  /* **每一组都是自己的一个小折**（读者要的正是这个）。
-     一行两行的组也做成折：把阈值写成「超过 N 行才折」，读者就得先数一眼才知道
-     能不能点——而这一层存在的意义就是「每步都能单独收起来」，折叠与否不该取决于
-     那一天它跑了几行。标题里写着这一组做了什么，收起时那一行本身就是读数。 */
+  const rows = (
+    <ul className={css.reviewStepList}>
+      {cluster.items.map(item => (
+        <FoldedRow
+          key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
+          item={item} policy={policy} sessionId={sessionId} controller={controller}
+        />
+      ))}
+    </ul>
+  )
+  /* 读者插话那一块：**永远摊着**，不套折（读者自己的话被收起来是最糟的读法）。 */
+  if (cluster.reader === true) return rows
+  /* 一轮只有一段过程：**不再套一层折**。官方那两级折的存在理由是「一轮里有多段，
+     每段能各自收放」；只有一段时再套一层，读者要连点两次才看到第一行，那一层
+     就成了纯负担——而且屏上会出现一整列「1 次工具调用」的空折（读者截图里那个）。 */
+  if (!grouped) return rows
   return (
     <Disclosure
       title={summaryOfItems(cluster.items, policy, WORDS)}
@@ -157,26 +171,21 @@ function ClusterFold({ cluster, policy, open, onToggle, sessionId, controller }:
       onToggle={onToggle}
       className={css.reviewStepGroup}
     >
-      <ul className={css.reviewStepList}>
-        {cluster.items.map(item => (
-          <FoldedRow
-            key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
-            item={item} policy={policy} sessionId={sessionId} controller={controller}
-          />
-        ))}
-      </ul>
+      {rows}
     </Disclosure>
   )
 }
 
 /** 折里的一整段内容：按块画——过程块各自成折、回复按 block 摆在外面的流里。 */
-function FoldedBody({ blocks, policy, sessionId, controller, isOpen, onToggle }: {
+function FoldedBody({ blocks, policy, sessionId, controller, isOpen, onToggle, grouped }: {
   blocks: ReturnType<typeof blocksOf>
   policy: WorkStepsPolicy
   sessionId?: string
   controller?: BoardController
   isOpen: (key: string) => boolean
   onToggle: (key: string) => void
+  /** 一轮里有多段过程：每段各自成折；只有一段时不套那一层。 */
+  grouped: boolean
 }) {
   return (
     <>
@@ -193,6 +202,7 @@ function FoldedBody({ blocks, policy, sessionId, controller, isOpen, onToggle }:
           policy={policy}
           open={isOpen(block.key)}
           onToggle={() => onToggle(block.key)}
+          grouped={grouped}
           sessionId={sessionId}
           controller={controller}
         />
@@ -207,12 +217,12 @@ function FoldedBody({ blocks, policy, sessionId, controller, isOpen, onToggle }:
  * 折与不折由 `shouldFoldTurn` 判，**不在这里再判一次**：判据只有一个家，
  * 两处各判一次就会在某个组合下互相打架，而屏上看起来只是「有时候不折」。
  *
- * ── 两级折：整轮一个，轮里每组再一个 ────────────────────────────────────────
+ * ── 两级折：整轮一个，轮里**多段**过程时每段再一个 ──────────────────────────
  *
- * 官方是两级的（`ProcessGroup`：整轮一个折，轮里按**步**再分组，每组自己收放）。
- * 我们此前只有上一级，于是一轮跑了四十步之后，点开那一个折看到的是一条四十行的
- * 长带子——读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」
- * 指的就是缺了这一级。
+ * 官方是两级的（`ProcessGroup`）：整轮一个折，轮里按**连续的一段过程**再分组
+ * （切分点只有「说了话」与「过程之外的节点」，**不是步与步的边界**——
+ * 见 `blocksOf` 的注释）。这一级只在**一轮里真的有多段**时才出现：只有一段时
+ * 再套一层要连点两次才看到第一行，而屏上会多出一整列「1 次工具调用」的空折。
  */
 export const TurnItem = memo(function TurnItem(props: {
   turn: TranscriptTurn
@@ -223,7 +233,7 @@ export const TurnItem = memo(function TurnItem(props: {
   open: boolean
   onToggle: () => void
   /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
-  collapsedGroups?: ReadonlySet<string>
+  openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
   sessionId?: string
   controller?: BoardController
@@ -238,14 +248,17 @@ export const TurnItem = memo(function TurnItem(props: {
   /* 块的切分是**一次**的：折里与摊着两支共用同一份，两处不各切一次。 */
   const blocks = blocksOf(turn)
   const groupPrefix = foldKeyOf(turn)
-  /* 组的默认开合：**展开**。读者点开整轮那个折，就是想看这一轮到底干了什么；
-     若里面每个组又各自收着，他还得再点一次才看到第一行——那是把官方那两级
-     折的意思读反了。
-     官方的 `ProcessGroup` 在轮结束时把组标成 `closed`，但官方同时把**整轮那个折**
-     也收着，两者互为前提：读者一动手点开整轮，看到的就是过程本身。
-     所以这里记的是**读者主动收起来的组**（`collapsedGroups`）：不在集合里 = 展开。 */
-  const isGroupOpen = (key: string): boolean => props.collapsedGroups?.has(`${groupPrefix}#${key}`) !== true
+  /* 组的默认开合：**收起来**（官方 `useDisclosure()` 的 `expanded` 初值是 `null`，
+     也就是收着）。只有这一个组、而整轮那个折被读者点开时，外面那层不再套——
+     官方那两级折的存在理由是「一轮里有多段过程，每段能各自收放」；只有一段时
+     再套一层，读者要连点两次才看到第一行，那一层就成了纯负担。
+     `openGroup` 记的是读者**点开过的**组；`isGroupOpen` 见下。 */
+  const isGroupOpen = (key: string): boolean => props.openGroups?.has(`${groupPrefix}#${key}`) === true
   const toggleGroup = (key: string): void => { props.onToggleGroup?.(`${groupPrefix}#${key}`) }
+  /* 分组只有在一轮里**确实有多段**时才成立（官方那个 `grouped` 开关）；
+     一段过程直接摊开，不套空折。 */
+  const clusterCount = blocks.filter(block => block.kind === 'cluster').length
+  const multiCluster = clusterCount > 1
   /* 这一支画哪些块：过程块全部画，**回复块只画那些属于「折里」的**
      （折外那些在下面单独成流，画两遍就是重复）。
      `verbose` 档（`stepGrouping: 'none'`）里所有回复都露在外面，于是这里一条回复都不剩。 */
@@ -273,6 +286,7 @@ export const TurnItem = memo(function TurnItem(props: {
                 controller={controller}
                 isOpen={isGroupOpen}
                 onToggle={toggleGroup}
+                grouped={multiCluster}
               />
             </div>
           </Disclosure>
@@ -301,6 +315,7 @@ export const TurnItem = memo(function TurnItem(props: {
                   controller={controller}
                   isOpen={isGroupOpen}
                   onToggle={toggleGroup}
+                grouped={multiCluster}
                 />
               </div>
             </Disclosure>
@@ -313,6 +328,7 @@ export const TurnItem = memo(function TurnItem(props: {
                 controller={controller}
                 isOpen={isGroupOpen}
                 onToggle={toggleGroup}
+                grouped={multiCluster}
               />
             </div>
           )}
@@ -341,7 +357,7 @@ export const TurnList = memo(function TurnList(props: {
   openTurns: ReadonlySet<string>
   onToggle: (key: string) => void
   /** 轮里某一组的开合（键含轮的 `foldKeyOf`，见 `TurnItem`）。 */
-  collapsedGroups?: ReadonlySet<string>
+  openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
 }) {
   const policy = policyOfWorkSteps(props.prefs)
@@ -359,7 +375,7 @@ export const TurnList = memo(function TurnList(props: {
             isLatest={index === props.turns.length - 1}
             open={props.openTurns.has(key)}
             onToggle={() => props.onToggle(key)}
-            collapsedGroups={props.collapsedGroups}
+            openGroups={props.openGroups}
             onToggleGroup={props.onToggleGroup}
             sessionId={props.sessionId}
             controller={props.controller}

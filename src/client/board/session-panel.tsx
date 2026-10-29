@@ -89,11 +89,12 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
       return next
     })
   }, [])
-  /* 轮里每一组过程的小折（官方 `ProcessGroup` 那一级）。也是**这一屏的选择**：
-     重新读一次尾窗口不该把读者点开的组又合上。 */
-  const [collapsedGroups, setcollapsedGroups] = useState<ReadonlySet<string>>(() => new Set())
+  /* 轮里每段过程的小折（官方 `ProcessGroup` 那一级）。也是**这一屏的选择**：
+     重新读一次尾窗口不该把读者点开的组又合上。
+     记的是读者**点开过的组**（组默认收着，与官方 `useDisclosure` 的初值一致）。 */
+  const [openGroups, setOpenGroups] = useState<ReadonlySet<string>>(() => new Set())
   const toggleGroup = useCallback((key: string): void => {
-    setcollapsedGroups(previous => {
+    setOpenGroups(previous => {
       const next = new Set(previous)
       if (next.has(key)) next.delete(key)
       else next.add(key)
@@ -141,7 +142,7 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
           controller={controller}
           openTurns={openTurns}
           onToggle={toggleTurn}
-          collapsedGroups={collapsedGroups}
+          openGroups={openGroups}
           onToggleGroup={toggleGroup}
         />
       )}

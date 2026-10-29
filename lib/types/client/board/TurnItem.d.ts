@@ -7,12 +7,12 @@ import type { TranscriptTurn } from './review-transcript.ts';
  * 折与不折由 `shouldFoldTurn` 判，**不在这里再判一次**：判据只有一个家，
  * 两处各判一次就会在某个组合下互相打架，而屏上看起来只是「有时候不折」。
  *
- * ── 两级折：整轮一个，轮里每组再一个 ────────────────────────────────────────
+ * ── 两级折：整轮一个，轮里**多段**过程时每段再一个 ──────────────────────────
  *
- * 官方是两级的（`ProcessGroup`：整轮一个折，轮里按**步**再分组，每组自己收放）。
- * 我们此前只有上一级，于是一轮跑了四十步之后，点开那一个折看到的是一条四十行的
- * 长带子——读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」
- * 指的就是缺了这一级。
+ * 官方是两级的（`ProcessGroup`）：整轮一个折，轮里按**连续的一段过程**再分组
+ * （切分点只有「说了话」与「过程之外的节点」，**不是步与步的边界**——
+ * 见 `blocksOf` 的注释）。这一级只在**一轮里真的有多段**时才出现：只有一段时
+ * 再套一层要连点两次才看到第一行，而屏上会多出一整列「1 次工具调用」的空折。
  */
 export declare const TurnItem: import("react").NamedExoticComponent<{
     turn: TranscriptTurn;
@@ -23,7 +23,7 @@ export declare const TurnItem: import("react").NamedExoticComponent<{
     open: boolean;
     onToggle: () => void;
     /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
-    collapsedGroups?: ReadonlySet<string>;
+    openGroups?: ReadonlySet<string>;
     onToggleGroup?: (key: string) => void;
     sessionId?: string;
     controller?: BoardController;
@@ -42,6 +42,6 @@ export declare const TurnList: import("react").NamedExoticComponent<{
     openTurns: ReadonlySet<string>;
     onToggle: (key: string) => void;
     /** 轮里某一组的开合（键含轮的 `foldKeyOf`，见 `TurnItem`）。 */
-    collapsedGroups?: ReadonlySet<string>;
+    openGroups?: ReadonlySet<string>;
     onToggleGroup?: (key: string) => void;
 }>;
