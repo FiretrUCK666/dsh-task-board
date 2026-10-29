@@ -72,14 +72,34 @@ describe('一轮一折的渲染', () => {
     expect(html).toContain('aria-expanded="true"')
     const read = html.indexOf('>read<')
     const thought = html.indexOf('先看现场')
-    const midway = html.indexOf('我看了一下现场')
     const write = html.indexOf('>write<')
     expect(read, '工具 read 不在折里').toBeGreaterThan(-1)
     expect(thought, '思考行不在折里').toBeGreaterThan(read)
-    /* 中途那句话是在 read/思考**之后**、write **之前**发生的：折里也必须这样排，
-       否则读者对不上「哪句话说在哪一步之后」。 */
-    expect(midway, '中途那句没有排在真实位置').toBeGreaterThan(thought)
-    expect(write, '工具 write 不在中途那句之后').toBeGreaterThan(midway)
+    expect(write, '工具 write 不在思考之后').toBeGreaterThan(thought)
+    /* **中途那句话按官方的规则切开了组**：一条带文字的回复出现就把上一组收掉
+       （`blocksOf` 的「回复永远在组外」），于是它成为边界。真实次序是：
+       read → 思考 → 这句 → write，所以它在 write **之前**——顺序对了，
+       分组也对了（它不属于任何一组，第二组从 write 开始）。 */
+    const midway = html.indexOf('我看了一下现场')
+    expect(midway, '中途那句没有画出来').toBeGreaterThan(-1)
+    expect(midway, '中途那句排到了 read 之前').toBeGreaterThan(read)
+    expect(midway, '中途那句排到了 write 之后——真实次序是它在 write 之前').toBeLessThan(write)
+  })
+
+  it('每一组过程各自是一个小折（官方的两级折）', () => {
+    /* 读者要的是「每个 step 用到的那些东西可以单独折叠收纳」。一轮里两个 step
+       → 整轮一个折 + 里面两个组折。 */
+    const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
+    const groupFolds = html.match(/reviewStepGroup/g)?.length ?? 0
+    expect(groupFolds, '轮里没有分组的小折——过程又成了一条长带子').toBe(2)
+  })
+
+  it('组默认展开：点开整轮就能看见第一行过程', () => {
+    /* 两级折都默认收着的话，读者要连点两次才看到一行——那把官方那两级折的
+       意思读反了。组只有被读者**主动收起来**时才收。 */
+    const html = renderTurn(turnOf(), { view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }, true)
+    expect(html, '组默认是收着的').toContain('aria-expanded="true"')
+    expect(html, '点开整轮后组里没有内容').toContain('detailSectionBody')
   })
 
   it('all 档：中途那几句也露在折外', () => {

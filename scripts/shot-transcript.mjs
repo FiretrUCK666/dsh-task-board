@@ -104,6 +104,15 @@ function flowMarkup(item) {
   return `<li class="reviewStep"><span class="reviewStepName truncate">${item.name}</span><span class="reviewStepState">${item.state}</span></li>`
 }
 
+/** 一组过程 = 轮里自己的一个小折（官方 `ProcessGroup` 那一级）。 */
+let groupId = 0
+function clusterMarkup(group, open) {
+  groupId += 1
+  const id = `g${groupId}`
+  const body = group.map(item => flowMarkup(item)).join('')
+  return `<section class="detailSection reviewStepGroup"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="${id}"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${group.length} 步</span></button>${open ? `<div class="detailSectionBody" id="${id}"><ul class="reviewStepList">${body}</ul></div>` : ''}</section>`
+}
+
 const lines = []
 for (const turn of TURNS) {
   lines.push('<li class="reviewTurn">')
@@ -116,12 +125,24 @@ for (const turn of TURNS) {
     lines.push('</ul>')
     lines.push(`<div class="reviewMessage" data-role="assistant"><div class="reviewMessageText"><p>${turn.answer}</p></div></div>`)
   } else {
+    /* 两级折：整轮一个折，折里**每一组过程各自一个小折**（官方 `ProcessGroup`）。
+       展开态下组默认展开；收起态下整轮收着，里面不画。 */
     const open = MODE === 'expanded'
     lines.push(`<section class="detailSection reviewWorkSteps"><button type="button" class="detailDisclosure" aria-expanded="${open ? 'true' : 'false'}" aria-controls="w"><svg class="detailChevron foldMark" viewBox="0 0 16 16" width="16" height="16"><path d="M3 6 8 11 13 6" fill="none" stroke="currentColor" stroke-width="1.5"/></svg><span class="detailDisclosureTitle">${turn.summary}</span></button>`)
     if (open) {
-      lines.push('<div class="detailSectionBody"><ul class="reviewStepList">')
-      for (const item of turn.flow) lines.push(flowMarkup(item))
-      lines.push('</ul></div>')
+      lines.push('<div class="detailSectionBody"><div class="reviewStepList">')
+      /* `flow` 里连续的过程行归一组；`reply` 切开组（与 `blocksOf` 同一条规则）。 */
+      let cluster = []
+      const flushCluster = () => {
+        if (cluster.length > 0) lines.push(clusterMarkup(cluster, true))
+        cluster = []
+      }
+      for (const item of turn.flow) {
+        if (item.kind === 'reply') { flushCluster(); lines.push(flowMarkup(item)); continue }
+        cluster.push(item)
+      }
+      flushCluster()
+      lines.push('</div></div>')
     }
     lines.push('</section>')
     lines.push(`<div class="reviewMessage" data-role="assistant"><div class="reviewMessageText"><p>${turn.answer}</p></div></div>`)

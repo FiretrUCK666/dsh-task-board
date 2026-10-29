@@ -129,7 +129,7 @@ export function policyOfWorkSteps(prefs: WorkStepsPrefs): WorkStepsPolicy {
  * 而屏上只会少一种行，没有任何报错。
  */
 export type { TranscriptReply, TranscriptTurn, TranscriptStep as WorkStep, TranscriptInterjection, TurnAnswerBoundary, TurnFlowItem } from './review-transcript.ts'
-import type { TranscriptTurn } from './review-transcript.ts'
+import type { TranscriptReply, TranscriptStep, TranscriptTurn, TurnFlowItem } from './review-transcript.ts'
 
 /**
  * 一轮里「过程行 / 回复 / 读者插话」按**真实发生顺序**排成一条流。
@@ -142,6 +142,7 @@ import type { TranscriptTurn } from './review-transcript.ts'
  * 这里只做转出，免得渲染层去认识两个模块名。
  */
 export { flowOf } from './review-transcript.ts'
+import { flowOf } from './review-transcript.ts'
 
 /**
  * 这一步要不要分组画（官方 `grouped`）。
@@ -277,6 +278,117 @@ export function foldSummaryOf(
  */
 export function foldKeyOf(turn: TranscriptTurn): string {
   return `${turn.turn}#${turn.answer?.step ?? 0}`
+}
+
+/**
+ * 一轮里的一块：**一段过程**（一个 step 小折叠）或**一条回复**。
+ */
+export type TurnBlock =
+  | { kind: 'cluster'; key: string; step: number; items: TurnFlowItem[]; order: number }
+  | { kind: 'reply'; reply: TranscriptReply; order: number }
+
+/**
+ * 把一轮排成「按真实次序的一块块」：过程按**步**聚成 cluster，回复单独一块。
+ *
+ * ── 为什么必须是一组一组，而不是一整块 ────────────────────────────────────────
+ *
+ * 官方那一层是两级的：**整轮一个折**，轮里**每一步又是自己的一个小折**
+ * （`ProcessGroup`：`rebuild()` 在「当前节点的 `previous` 不再等于上一个节点」时
+ * 切断当前组，也就是在**步与步的边界**上分组；遇到带文字的回复则先把组收掉、
+ * 把回复单独摆出来）。
+ *
+ * 我们只有上一级：一轮里所有工具与思考挤进同一个折。于是一轮跑了四十步之后，
+ * 点开那一个折看到的是一条四十行的长带子——读者要的是「每步能各自收起来」，
+ * 也就是读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」。
+ *
+ * 分组键是**步号**加**回复边界**：一条回复出现就把上一组收掉（回复永远在组外），
+ * 步号变了就另起一组。到达次序仍然是唯一真相，所以组与块之间的先后不会乱。
+ * @param turn - 一轮。
+ * @returns 按 `order` 升序的块。
+ */
+export function blocksOf(turn: TranscriptTurn): TurnBlock[] {
+  const blocks: TurnBlock[] = []
+  let current: Extract<TurnBlock, { kind: 'cluster' }> | undefined
+  for (const item of flowOf(turn)) {
+    if (item.kind === 'reply') {
+      /* 回复切断当前组：它自己摆在外面，之后的工具另起一组。 */
+      current = undefined
+      blocks.push({ kind: 'reply', reply: item.reply, order: item.order })
+      continue
+    }
+    /* `context` 行没有步号（它是注入，不属于任何一步）：落进当前这一组，
+       有组就跟着走、没组就另起一组——绝不因为拿不到步号而把它吞掉。 */
+    const step = item.kind === 'reader'
+      ? item.interjection.step
+      : item.step.kind === 'context' ? undefined : item.step.step
+    if (current === undefined || (step !== undefined && current.step !== step)) {
+      const cluster: Extract<TurnBlock, { kind: 'cluster' }> = {
+        kind: 'cluster', key: `g${item.order}`, step: step ?? -1, items: [], order: item.order,
+      }
+      current = cluster
+      blocks.push(cluster)
+    }
+    current.items.push(item)
+  }
+  return blocks
+}
+
+/**
+ * 一组过程的标题词。
+ * @param items - 这一组里的过程行（读者插话不算过程，不计入计数）。
+ */
+function stepCountsOf(items: readonly TurnFlowItem[]): TranscriptStep[] {
+  return items.filter((item): item is Extract<TurnFlowItem, { kind: 'step' }> => item.kind === 'step')
+    .map(item => item.step)
+}
+
+/**
+ * 折行标题里那句「做了什么」。
+ *
+ * 正在跑时（`liveProcessDetail`）说「正在跑最后那个工具」——读者扫一眼想知道的是
+ * 「它现在在动什么」；跑完了就退回计数。没有工具时退回思考与上下文的计数，
+ * **每一档都有话说**，不出现一个只有箭头的空折行。
+ * @param steps - 这一段过程的过程行。
+ * @param policy - 这一屏的折法。
+ * @param words - 各个词；由调用方从词表取（本函数不读词表，因此可单测）。
+ * @returns 一行字。
+ */
+export function summaryOfSteps(
+  steps: readonly TranscriptStep[],
+  policy: WorkStepsPolicy,
+  words: { tools: (n: number) => string; reasoning: (n: number) => string; context: (n: number) => string; running: (name: string) => string; completed: string },
+): string {
+  const tools = steps.filter((step): step is Extract<TranscriptStep, { kind: 'tool' }> => step.kind === 'tool')
+  const reasoning = steps.filter(step => step.kind === 'reasoning').length
+  const context = steps.filter(step => step.kind === 'context').length
+  const running = tools.find(step => step.state === 'running')
+  if (policy.liveProcessDetail && running !== undefined) return words.running(running.name)
+  const parts: string[] = []
+  if (tools.length > 0) parts.push(words.tools(tools.length))
+  if (reasoning > 0) parts.push(words.reasoning(reasoning))
+  if (context > 0) parts.push(words.context(context))
+  if (parts.length === 0) return words.completed
+  return parts.join(' · ')
+}
+
+/**
+ * 一整段的标题（整轮那一个折，或轮里某一组的折）。
+ * @param items - 这一段的过程行（一组，或整轮的全部）。
+ */
+export function summaryOfItems(
+  items: readonly TurnFlowItem[],
+  policy: WorkStepsPolicy,
+  words: Parameters<typeof summaryOfSteps>[2],
+): string {
+  return summaryOfSteps(stepCountsOf(items), policy, words)
+}
+
+/**
+ * 一轮里所有过程行（喂给整轮那个折的标题）。
+ * @param turn - 一轮。
+ */
+export function itemsOfTurn(turn: TranscriptTurn): TurnFlowItem[] {
+  return turn.steps.map(step => ({ kind: 'step' as const, order: step.order, step }))
 }
 
 /**

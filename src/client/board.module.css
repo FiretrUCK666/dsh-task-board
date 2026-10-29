@@ -4411,6 +4411,21 @@
   border-inline-start: 2px solid var(--dsh-tb-border-soft);
 }
 
+/* 轮里**每一组过程自己的小折**（官方 `ProcessGroup` 那一级）。
+ *
+ * 它比整轮那个折轻一档：整轮的折是「这一轮干了什么」的目录，组是目录里的一节。
+ * 所以它只缩进一档、左线细一档（1px 对 2px）——两级折长成一样，读者就分不出
+ * 哪一级是哪一级。
+ *
+ * **它自己的几何只有缩进与线**：方向、间距、最小宽度这些已经是 `.detailSection`
+ * （共享折形态）的事，再写一遍就是第二份拷贝，改一处另一处不跟着变。
+ * 左线读的是**结构位置**（`.reviewStepList > .reviewStepGroup`），不是一个 `data-`
+ * 标记：写着却没人读的属性会骗人，而结构位置说的一直是真话。 */
+.reviewStepList > .reviewStepGroup {
+  padding-inline-start: var(--dsh-tb-space-3);
+  border-inline-start: 1px solid var(--dsh-tb-border-soft);
+}
+
 .reviewStep {
   display: flex;
   align-items: baseline;

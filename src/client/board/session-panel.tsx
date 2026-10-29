@@ -89,6 +89,17 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
       return next
     })
   }, [])
+  /* 轮里每一组过程的小折（官方 `ProcessGroup` 那一级）。也是**这一屏的选择**：
+     重新读一次尾窗口不该把读者点开的组又合上。 */
+  const [collapsedGroups, setcollapsedGroups] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleGroup = useCallback((key: string): void => {
+    setcollapsedGroups(previous => {
+      const next = new Set(previous)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }, [])
   /* 「加载更早」这一行只属于**不封顶**的表面：封顶的尾窗口是一段预览，不是日志。 */
   const paging = hasMore === true && onLoadEarlier !== undefined && pageUnsupported !== true
   const pagingDead = hasMore === true && pageUnsupported === true
@@ -130,6 +141,8 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
           controller={controller}
           openTurns={openTurns}
           onToggle={toggleTurn}
+          collapsedGroups={collapsedGroups}
+          onToggleGroup={toggleGroup}
         />
       )}
       <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />

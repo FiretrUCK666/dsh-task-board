@@ -102,7 +102,7 @@ export declare function policyOfWorkSteps(prefs: WorkStepsPrefs): WorkStepsPolic
  * 而屏上只会少一种行，没有任何报错。
  */
 export type { TranscriptReply, TranscriptTurn, TranscriptStep as WorkStep, TranscriptInterjection, TurnAnswerBoundary, TurnFlowItem } from './review-transcript.ts';
-import type { TranscriptTurn } from './review-transcript.ts';
+import type { TranscriptReply, TranscriptStep, TranscriptTurn, TurnFlowItem } from './review-transcript.ts';
 /**
  * 一轮里「过程行 / 回复 / 读者插话」按**真实发生顺序**排成一条流。
  *
@@ -207,6 +207,68 @@ export declare function foldSummaryOf(turn: TranscriptTurn, policy: WorkStepsPol
  * @returns 稳定的键。
  */
 export declare function foldKeyOf(turn: TranscriptTurn): string;
+/**
+ * 一轮里的一块：**一段过程**（一个 step 小折叠）或**一条回复**。
+ */
+export type TurnBlock = {
+    kind: 'cluster';
+    key: string;
+    step: number;
+    items: TurnFlowItem[];
+    order: number;
+} | {
+    kind: 'reply';
+    reply: TranscriptReply;
+    order: number;
+};
+/**
+ * 把一轮排成「按真实次序的一块块」：过程按**步**聚成 cluster，回复单独一块。
+ *
+ * ── 为什么必须是一组一组，而不是一整块 ────────────────────────────────────────
+ *
+ * 官方那一层是两级的：**整轮一个折**，轮里**每一步又是自己的一个小折**
+ * （`ProcessGroup`：`rebuild()` 在「当前节点的 `previous` 不再等于上一个节点」时
+ * 切断当前组，也就是在**步与步的边界**上分组；遇到带文字的回复则先把组收掉、
+ * 把回复单独摆出来）。
+ *
+ * 我们只有上一级：一轮里所有工具与思考挤进同一个折。于是一轮跑了四十步之后，
+ * 点开那一个折看到的是一条四十行的长带子——读者要的是「每步能各自收起来」，
+ * 也就是读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」。
+ *
+ * 分组键是**步号**加**回复边界**：一条回复出现就把上一组收掉（回复永远在组外），
+ * 步号变了就另起一组。到达次序仍然是唯一真相，所以组与块之间的先后不会乱。
+ * @param turn - 一轮。
+ * @returns 按 `order` 升序的块。
+ */
+export declare function blocksOf(turn: TranscriptTurn): TurnBlock[];
+/**
+ * 折行标题里那句「做了什么」。
+ *
+ * 正在跑时（`liveProcessDetail`）说「正在跑最后那个工具」——读者扫一眼想知道的是
+ * 「它现在在动什么」；跑完了就退回计数。没有工具时退回思考与上下文的计数，
+ * **每一档都有话说**，不出现一个只有箭头的空折行。
+ * @param steps - 这一段过程的过程行。
+ * @param policy - 这一屏的折法。
+ * @param words - 各个词；由调用方从词表取（本函数不读词表，因此可单测）。
+ * @returns 一行字。
+ */
+export declare function summaryOfSteps(steps: readonly TranscriptStep[], policy: WorkStepsPolicy, words: {
+    tools: (n: number) => string;
+    reasoning: (n: number) => string;
+    context: (n: number) => string;
+    running: (name: string) => string;
+    completed: string;
+}): string;
+/**
+ * 一整段的标题（整轮那一个折，或轮里某一组的折）。
+ * @param items - 这一段的过程行（一组，或整轮的全部）。
+ */
+export declare function summaryOfItems(items: readonly TurnFlowItem[], policy: WorkStepsPolicy, words: Parameters<typeof summaryOfSteps>[2]): string;
+/**
+ * 一轮里所有过程行（喂给整轮那个折的标题）。
+ * @param turn - 一轮。
+ */
+export declare function itemsOfTurn(turn: TranscriptTurn): TurnFlowItem[];
 /**
  * 把宿主给的字符串读成四档之一；读不出来就是「没读到」，由调用方回落到默认。
  *

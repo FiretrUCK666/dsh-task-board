@@ -24,10 +24,11 @@ import { t } from '../locales.ts'
 import css from '../board.module.css'
 import components from '../design/components.module.css'
 import {
-  flowOf as flowOfTurn, foldedRepliesOf, foldKeyOf, foldSummaryOf, groupsSteps,
-  policyOfWorkSteps, shouldFoldTurn, visibleRepliesOf,
+  blocksOf, foldKeyOf, groupsSteps, itemsOfTurn,
+  policyOfWorkSteps, shouldFoldTurn, summaryOfItems, visibleRepliesOf,
   type WorkStepsPolicy, type WorkStepsPrefs,
 } from './work-steps.ts'
+import type { TurnFlowItem } from './work-steps.ts'
 import type { TranscriptImage, TranscriptStep, TranscriptTurn } from './review-transcript.ts'
 import { MessageImages } from './message-image.tsx'
 import { Markdown } from './Markdown.tsx'
@@ -116,7 +117,7 @@ function stepKeyOf(step: TranscriptStep): string {
 
 /** 折里的一行：过程行或一条被收起来的中途回复。 */
 function FoldedRow({ item, policy, sessionId, controller }: {
-  item: ReturnType<typeof flowOfTurn>[number]
+  item: TurnFlowItem
   policy: WorkStepsPolicy
   sessionId?: string
   controller?: BoardController
@@ -136,11 +137,82 @@ function FoldedRow({ item, policy, sessionId, controller }: {
   )
 }
 
+/** 折里那一段过程的渲染：**每一组自己的一个小折**（官方 `ProcessGroup`）。 */
+function ClusterFold({ cluster, policy, open, onToggle, sessionId, controller }: {
+  cluster: Extract<ReturnType<typeof blocksOf>[number], { kind: 'cluster' }>
+  policy: WorkStepsPolicy
+  open: boolean
+  onToggle: () => void
+  sessionId?: string
+  controller?: BoardController
+}) {
+  /* **每一组都是自己的一个小折**（读者要的正是这个）。
+     一行两行的组也做成折：把阈值写成「超过 N 行才折」，读者就得先数一眼才知道
+     能不能点——而这一层存在的意义就是「每步都能单独收起来」，折叠与否不该取决于
+     那一天它跑了几行。标题里写着这一组做了什么，收起时那一行本身就是读数。 */
+  return (
+    <Disclosure
+      title={summaryOfItems(cluster.items, policy, WORDS)}
+      open={open}
+      onToggle={onToggle}
+      className={css.reviewStepGroup}
+    >
+      <ul className={css.reviewStepList}>
+        {cluster.items.map(item => (
+          <FoldedRow
+            key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
+            item={item} policy={policy} sessionId={sessionId} controller={controller}
+          />
+        ))}
+      </ul>
+    </Disclosure>
+  )
+}
+
+/** 折里的一整段内容：按块画——过程块各自成折、回复按 block 摆在外面的流里。 */
+function FoldedBody({ blocks, policy, sessionId, controller, isOpen, onToggle }: {
+  blocks: ReturnType<typeof blocksOf>
+  policy: WorkStepsPolicy
+  sessionId?: string
+  controller?: BoardController
+  isOpen: (key: string) => boolean
+  onToggle: (key: string) => void
+}) {
+  return (
+    <>
+      {blocks.map(block => block.kind === 'reply' ? (
+        <FoldedRow
+          key={`r:${block.reply.id}`}
+          item={{ kind: 'reply', order: block.order, reply: block.reply }}
+          policy={policy} sessionId={sessionId} controller={controller}
+        />
+      ) : (
+        <ClusterFold
+          key={block.key}
+          cluster={block}
+          policy={policy}
+          open={isOpen(block.key)}
+          onToggle={() => onToggle(block.key)}
+          sessionId={sessionId}
+          controller={controller}
+        />
+      ))}
+    </>
+  )
+}
+
 /**
  * 一轮对话。
  *
  * 折与不折由 `shouldFoldTurn` 判，**不在这里再判一次**：判据只有一个家，
  * 两处各判一次就会在某个组合下互相打架，而屏上看起来只是「有时候不折」。
+ *
+ * ── 两级折：整轮一个，轮里每组再一个 ────────────────────────────────────────
+ *
+ * 官方是两级的（`ProcessGroup`：整轮一个折，轮里按**步**再分组，每组自己收放）。
+ * 我们此前只有上一级，于是一轮跑了四十步之后，点开那一个折看到的是一条四十行的
+ * 长带子——读者说的「每一个 step 用到的那些东西好像都可以单独折叠收纳起来」
+ * 指的就是缺了这一级。
  */
 export const TurnItem = memo(function TurnItem(props: {
   turn: TranscriptTurn
@@ -150,6 +222,9 @@ export const TurnItem = memo(function TurnItem(props: {
   /** 读者把这一折点开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
   open: boolean
   onToggle: () => void
+  /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
+  collapsedGroups?: ReadonlySet<string>
+  onToggleGroup?: (key: string) => void
   sessionId?: string
   controller?: BoardController
 }) {
@@ -159,20 +234,22 @@ export const TurnItem = memo(function TurnItem(props: {
     hasReaderTurn: turn.interjections.length > 0,
   })
   const visible = visibleRepliesOf(turn, policy)
-  const hidden = foldedRepliesOf(turn, policy)
   const visibleIds = new Set(visible.map(reply => reply.id))
-  const hiddenIds = new Set(hidden.map(reply => reply.id))
-  /* 折里那一行：过程行按真实次序，中途回复（`final` 档才进折）夹在它发生的位置上。 */
-  const foldRows = [
-    ...flowOfTurn(turn).filter(item => item.kind === 'step'
-      || (item.kind === 'reply' && hiddenIds.has(item.reply.id))),
-    /* 折里的插话不会走到这里（有插话的轮永不折），但保持它可画：宁可多一行，不可吞一句。 */
-    ...flowOfTurn(turn).filter(item => item.kind === 'reader'),
-  ].sort((a, b) => a.order - b.order)
-  const grouped = groupsSteps(policy, { isHistorical: folded, deferCollapse: !folded && props.isLatest })
-  /* 摊着那一支的内容：①按真实次序的**一条流**（过程行 / 中途回复 / 读者插话交错），
-     折外回复另摆。 */
-  const openRows = flowOfTurn(turn).filter(item => item.kind !== 'reply' || !visibleIds.has(item.reply.id))
+  /* 块的切分是**一次**的：折里与摊着两支共用同一份，两处不各切一次。 */
+  const blocks = blocksOf(turn)
+  const groupPrefix = foldKeyOf(turn)
+  /* 组的默认开合：**展开**。读者点开整轮那个折，就是想看这一轮到底干了什么；
+     若里面每个组又各自收着，他还得再点一次才看到第一行——那是把官方那两级
+     折的意思读反了。
+     官方的 `ProcessGroup` 在轮结束时把组标成 `closed`，但官方同时把**整轮那个折**
+     也收着，两者互为前提：读者一动手点开整轮，看到的就是过程本身。
+     所以这里记的是**读者主动收起来的组**（`collapsedGroups`）：不在集合里 = 展开。 */
+  const isGroupOpen = (key: string): boolean => props.collapsedGroups?.has(`${groupPrefix}#${key}`) !== true
+  const toggleGroup = (key: string): void => { props.onToggleGroup?.(`${groupPrefix}#${key}`) }
+  /* 这一支画哪些块：过程块全部画，**回复块只画那些属于「折里」的**
+     （折外那些在下面单独成流，画两遍就是重复）。
+     `verbose` 档（`stepGrouping: 'none'`）里所有回复都露在外面，于是这里一条回复都不剩。 */
+  const bodyBlocks = blocks.filter(block => block.kind === 'cluster' || !visibleIds.has(block.reply.id))
   return (
     <li className={css.reviewTurn}>
       {turn.trigger !== undefined && (
@@ -183,22 +260,21 @@ export const TurnItem = memo(function TurnItem(props: {
       {folded ? (
         <>
           <Disclosure
-            title={foldSummaryOf(turn, policy, WORDS)}
+            title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
             open={props.open}
             onToggle={props.onToggle}
             className={css.reviewWorkSteps}
           >
-            <ul className={css.reviewStepList}>
-              {foldRows.map(item => (
-                <FoldedRow
-                  key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
-                  item={item}
-                  policy={policy}
-                  sessionId={sessionId}
-                  controller={controller}
-                />
-              ))}
-            </ul>
+            <div className={css.reviewStepList}>
+              <FoldedBody
+                blocks={bodyBlocks}
+                policy={policy}
+                sessionId={sessionId}
+                controller={controller}
+                isOpen={isGroupOpen}
+                onToggle={toggleGroup}
+              />
+            </div>
           </Disclosure>
           {visible.map(reply => (
             <div key={reply.id} className={css.reviewMessage} data-role="assistant">
@@ -209,39 +285,36 @@ export const TurnItem = memo(function TurnItem(props: {
       ) : (
         <>
           {/* 摊着也分两种（官方 `stepGrouping`）：简洁/标准连**在跑**的过程都收在一个
-              可折叠的组里（默认展开），详细档只给历史轮分组——所以在跑的轮平铺。
-              这就是「什么时候开始把过程收起来」的那半个开关。 */}
-          {grouped ? (
+              可折叠的组里（默认展开），详细档只给历史轮分组——所以在跑的轮平铺。 */}
+          {groupsSteps(policy, { isHistorical: false, deferCollapse: props.isLatest }) ? (
             <Disclosure
-              title={foldSummaryOf(turn, policy, WORDS)}
+              title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
               open={props.open}
               onToggle={props.onToggle}
               className={css.reviewWorkSteps}
             >
-              <ul className={css.reviewStepList}>
-                {openRows.map(item => (
-                  <FoldedRow
-                    key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
-                    item={item}
-                    policy={policy}
-                    sessionId={sessionId}
-                    controller={controller}
-                  />
-                ))}
-              </ul>
-            </Disclosure>
-          ) : (
-            <ul className={css.reviewStepList}>
-              {openRows.map(item => (
-                <FoldedRow
-                  key={item.kind === 'step' ? stepKeyOf(item.step) : item.kind === 'reader' ? `i:${item.interjection.id}` : `r:${item.reply.id}`}
-                  item={item}
+              <div className={css.reviewStepList}>
+                <FoldedBody
+                  blocks={bodyBlocks}
                   policy={policy}
                   sessionId={sessionId}
                   controller={controller}
+                  isOpen={isGroupOpen}
+                  onToggle={toggleGroup}
                 />
-              ))}
-            </ul>
+              </div>
+            </Disclosure>
+          ) : (
+            <div className={css.reviewStepList}>
+              <FoldedBody
+                blocks={bodyBlocks}
+                policy={policy}
+                sessionId={sessionId}
+                controller={controller}
+                isOpen={isGroupOpen}
+                onToggle={toggleGroup}
+              />
+            </div>
           )}
           {visible.map(reply => (
             <div key={reply.id} className={css.reviewMessage} data-role="assistant">
@@ -267,6 +340,9 @@ export const TurnList = memo(function TurnList(props: {
   controller?: BoardController
   openTurns: ReadonlySet<string>
   onToggle: (key: string) => void
+  /** 轮里某一组的开合（键含轮的 `foldKeyOf`，见 `TurnItem`）。 */
+  collapsedGroups?: ReadonlySet<string>
+  onToggleGroup?: (key: string) => void
 }) {
   const policy = policyOfWorkSteps(props.prefs)
   return (
@@ -283,6 +359,8 @@ export const TurnList = memo(function TurnList(props: {
             isLatest={index === props.turns.length - 1}
             open={props.openTurns.has(key)}
             onToggle={() => props.onToggle(key)}
+            collapsedGroups={props.collapsedGroups}
+            onToggleGroup={props.onToggleGroup}
             sessionId={props.sessionId}
             controller={props.controller}
           />

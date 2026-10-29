@@ -4,7 +4,7 @@
  * delete (with confirmation), manual status moves, and a jump to the
  * execution's session transcript.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useId, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { MANUAL_STATUSES, hasOpenRun, plainRunsOf, taskBindsOf, taskExecutable, type ExecutionRecord, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import { hiddenSessionIdsOf, sessionWindowOf } from '../../core/session-list.ts'
@@ -378,6 +378,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // between runs, so `running` alone must not disable the button; a pending
   // comment round (task not running) must never disable it either.
   const busy = hasOpenRun(current)
+  /* The disabled reason is not printed to the eye (see the note at its render
+     site) but a screen reader still needs it: the four buttons point here. */
+  const moveBlockedId = useId()
 
   // Run-config summary for the collapsed disclosure (单来源:重算于每次渲染).
   const customizedCount = [
@@ -869,25 +872,29 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                 <Button
                   key={status}
                   disabled={current.status === status || busy}
+                  /* 四个换栏键在跑着的时候都按不动；为什么按不动，由那一句**只给读屏器**
+                     的说明回答（它就在这一行下面）。视觉上没有那句话，但理由没有丢。 */
+                  {...busy ? { 'aria-describedby': moveBlockedId } : {}}
                   onClick={() => { controller.moveTask(current.id, status) }}
                 >
                   {t(STATUS_MOVE_KEY[status])}
                 </Button>
               ))}
             </div>
-            {/* WHY THE FOUR ARE DEAD, said on the page.
+            {/* WHY THE FOUR ARE DEAD — **said to assistive tech only**.
                 While a run is open all four are disabled, and they said nothing —
                 four dead buttons in a row with no explanation, 30px from a run
-                button that DOES carry a hint. A `title` is not the answer here:
-                hard rule 11③ says a finger has no hover, so a reason that only
-                lives in a tooltip is a reason the reader on a phone never gets.
-                This is the same one-line-beside-the-control grammar the schedule
-                switch and the session-rule switch now use, for the same reason:
-                an unusable control that does not say why is worse than no
-                control. Only the busy case needs a line — a button disabled
-                because it is ALREADY that status is self-explaining. */}
+                button that DOES carry a hint. A `title` is not the answer: hard
+                rule 11③ says a finger has no hover, so a reason that only lives
+                in a tooltip is a reason the reader on a phone never gets.
+
+                **But it is not a visible line either.** A disabled button plus one
+                sentence under the row read as noise on a screen whose whole point
+                is that the row is calm; the reader asked for the sentence to go.
+                So the reason stays in the DOM, reachable by a screen reader
+                through `aria-describedby`, and stops competing for the eye. */}
             {busy && (
-              <p className={css.scheduleMeta}>{t('detail.moveBlockedBusy')}</p>
+              <p className={css.srOnly} id={moveBlockedId}>{t('detail.moveBlockedBusy')}</p>
             )}
           </Section>
         </div>
