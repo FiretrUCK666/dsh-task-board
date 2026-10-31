@@ -35,7 +35,7 @@
 | --- | --- |
 | `src/` | 源码。host 半区（Node 主进程）、client 半区（浏览器）、`core/` 纯逻辑三层；各自的入口与职责见 `AGENTS.md` 的「架构」 |
 | `lib/` | 构建产物，**但它入库**：安装来源（npm / GitHub / 本地链接）都不执行构建，缺了它别人起不来。改完源码必须 `pnpm build` 再一起提交，CI 会比对 |
-| `tests/` | 测试。一个 src 模块一个 spec；`panel-harness.ts` 是被多个 spec 共用的渲染台架，不是测试本身 |
+| `tests/` | 测试。按域组织：一个 src 模块通常对应一个 `tests/<模块>.spec.ts`，入口与纯类型定义除外；`panel-harness.ts` 是被多个 spec 共用的渲染台架，不是测试本身 |
 | `scripts/` | 能直接 `node` 跑的程序：`verify-*` 是随 `pnpm verify` 跑的静态门禁，其余是构建、发版与开发工具。**门禁不用登记**：`scripts/run-gates.mjs` 发现磁盘上每一个 `verify-*.mjs` 并逐个跑（连同它们各自的自测开关），所以新写一个门禁脚本就自动生效——清单会过时，发现不会 |
 | `scripts/probes/` | **探针**：不能自己跑，只能当载荷交给 `shot-panel --eval-file` 在真 Chromium 里求值。`DESIGN.md` 里每一条「量法」点的就是这里 |
 | `build/` | 构建配置：打包器的预设与它用的平台模块表，由根目录的 `tsdown.config.ts` 导入 |
@@ -65,15 +65,30 @@ dsh plugin --profile web add .
 
 ## 提交 PR 前
 
-CI 会检查以下几条，本地跑一遍能省一轮：
+CI 跑七步，本地跑下面这条能省一轮——它覆盖了 CI 的每一步，包括最后那条最容易漏的：
 
 ```sh
-pnpm build && pnpm typecheck && pnpm test && pnpm verify
+pnpm install --frozen-lockfile && pnpm build && pnpm typecheck && pnpm test && pnpm verify
+git diff --exit-code --stat -- lib   # 产物与源码一致：有输出就说明你忘了 pnpm build 后再提交
 ```
 
-- **`lib/` 必须与源码一起提交**。它是发布产物，但仓库里的安装来源不执行构建（见 README 的说明）。CI 会在 Linux 上重新构建并与提交比对，不一致就失败——所以本地改完源码后一定要 `pnpm build` 再提交。
+| CI 步骤 | 本地对应 |
+| --- | --- |
+| Script syntax（`node --check` 扫 `scripts/` 全部脚本） | 上面那条不覆盖，见下 |
+| Install dependencies | `pnpm install --frozen-lockfile` |
+| Build / Typecheck / Test | `pnpm build` / `pnpm typecheck` / `pnpm test` |
+| Verify standalone gate | `pnpm verify` |
+| Committed artifacts match a fresh build | `git diff --exit-code --stat -- lib` |
+
+- **`lib/` 必须与源码一起提交**。它是发布产物，但仓库里的安装来源不执行构建（见 README 的说明）。CI 会在 Linux 上重新构建并与提交比对，不一致就失败——所以本地改完源码后一定要 `pnpm build` 再提交，并用上面那条 `git diff` 自查。
+- **`scripts/` 里的脚本要能解析**。CI 用 `node --check` 逐个扫，因为发版脚本只在打 tag 时才跑，语法错误会一路混到发布失败才暴露。改过脚本的话，本地跑一遍：
+
+  ```sh
+  node --check scripts/<你改的那个>.mjs
+  ```
+
 - **用户可见改动 bump 一个 patch**：行为、界面、报错文案、README 任一变了就算；纯重构、测试、内部文档不用。
-- **新增或修改行为要带测试**。测试按模块组织：一个 src 模块一个 spec，新增逻辑归入对应域的现有 spec。
+- **新增或修改行为要带测试**。测试按域组织：一个 src 模块通常对应一个 spec（入口与纯类型定义除外），新增逻辑归入对应域的现有 spec。
 - **遵守项目的硬性规范**（见下）。
 
 ## 硬性规范
@@ -84,7 +99,7 @@ pnpm build && pnpm typecheck && pnpm test && pnpm verify
 - **只使用官方 `@deepseek-ai/*` SDK**；不修改 DeepSeek Harness 源码；`tsconfig` 不得指向外部目录。
 - **文档与代码、文案一律不用 emoji**。
 - **命名不得偏离既有约定**（包名、插件 id、路由、存储单元名、localStorage 键）。这些标识与已装用户的数据绑定，改名会造成数据错位。
-- **任何界面改动都要同时给出桌面与窄屏两档的处理**，且不能靠藏掉标签、藏掉控件或缩小字号来省空间。
+- **任何界面改动都要同时给出桌面与窄屏两档的处理**，且不能靠藏掉标签、藏掉控件或缩小字号来省空间。**这一条没有自动门禁，靠评审把关**——改界面时请自己说清楚两档各是什么样；写新面板或新断点时，`tests/bands.spec.ts` 那份「JS 与 CSS 对同一条边界必须给出同一个答案」的断言可以照抄，它守的是两档的**判定一致**，不替代你对布局本身的判断。
 
 ## 关于 AGENTS.md
 
