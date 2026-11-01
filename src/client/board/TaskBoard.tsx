@@ -30,7 +30,7 @@ import css from '../board.module.css'
 import components from '../design/components.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
-import { activeColumnIndexAt, scrollLeftForColumn } from './column-tabs.ts'
+import { columnIndexAtScroll, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from '../design/Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, reorderTargetOf, type InsertionGap } from './drop-position.ts'
 import { useDragAutoScroll } from './drag-autoscroll.ts'
@@ -635,7 +635,19 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
     if (root === null) return
     const sections = Array.from(root.querySelectorAll<HTMLElement>('section[data-status]'))
     if (sections.length === 0) return
-    const at = activeColumnIndexAt(root.scrollLeft, sections.map(section => section.offsetLeft))
+    /* `offsetLeft` is read against the SCROLLER, which owns a `position: relative`
+       for exactly this reason (see `.columns` in `board.module.css`). Without it
+       the offsets came from the outer `.board` and carried its padding, so the
+       numbers were in a different coordinate system than `scrollLeft` — and the
+       last column's offset exceeded the maximum scroll, making its tab
+       unreachable by dragging. The end-of-track rule lives beside the arithmetic
+       in `column-tabs.ts`, not here. */
+    const at = columnIndexAtScroll(
+      root.scrollLeft,
+      sections.map(section => section.offsetLeft),
+      root.scrollWidth,
+      root.clientWidth,
+    )
     const status = sections[at]?.dataset.status as TaskStatus | undefined
     if (status !== undefined) setActiveColumn(status)
   }, [])

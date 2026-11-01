@@ -21,7 +21,7 @@
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
-import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
+import { activeColumnIndexAt, columnIndexAtScroll, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
 import { allRules, fontSizePx, panelCss, ruleTextOf, spacingPx, stripCssComments } from './panel-harness.ts'
 
@@ -1337,6 +1337,67 @@ describe('column tab math', () => {
     expect(scrollLeftForColumn(4, [0, 240, 480, 720, 960], 500, 1400)).toBe(900)
     expect(scrollLeftForColumn(-1, [0, 240], 500, 1400)).toBe(0)
     expect(scrollLeftForColumn(0, [], 500, 1400)).toBe(0)
+  })
+
+  /* ── THE LAST TAB HAS TO BE REACHABLE BY DRAGGING ──────────────────────────
+   *
+   * Reported from a phone with a screenshot: the reader dragged the column
+   * track all the way right, the 「完成」 column filled the screen, and the tab
+   * strip still highlighted 「审核」. It looked like a tab that refused to
+   * select.
+   *
+   * Two causes, and they had to be fixed together:
+   *
+   *   1. The scroller was `position: static`, so every column's `offsetLeft`
+   *      was measured from the outer panel and carried its padding — a
+   *      different coordinate system than `scrollLeft`. Fixed in CSS; the
+   *      numbers below are the ones MEASURED in a real browser afterwards.
+   *   2. Even with both numbers in one space, "nearest left edge" cannot
+   *      express the last column: a column is ~212px wide and overscroll is
+   *      zero, so at maximum scroll the last column's left edge is still far
+   *      from the scroller's left edge and its neighbour is always nearer.
+   *      The end of the track is its own case.
+   */
+  it('the end of the track belongs to the last column, not to its neighbour', () => {
+    // The measured geometry of a 390px phone (five columns, 212px apart).
+    const lefts = [0, 212, 424, 636, 848]
+    const scrollWidth = 1050
+    const clientWidth = 366
+    const max = scrollWidth - clientWidth // 684
+
+    // THE DEFECT, pinned so it cannot come back: the plain rule answers 3.
+    expect(activeColumnIndexAt(max, lefts), 'the old rule never reached the last column').toBe(3)
+    // THE BEHAVIOUR: at the end of the track the last column owns the tab.
+    expect(columnIndexAtScroll(max, lefts, scrollWidth, clientWidth)).toBe(4)
+    // "Within a hair of the end" is the end — smooth scrolls land fractional.
+    expect(columnIndexAtScroll(max - 1, lefts, scrollWidth, clientWidth)).toBe(4)
+    // …but a real mid-track position still follows the nearest edge, so the
+    // end case did not swallow the normal case.
+    expect(columnIndexAtScroll(424, lefts, scrollWidth, clientWidth)).toBe(2)
+    expect(columnIndexAtScroll(0, lefts, scrollWidth, clientWidth)).toBe(0)
+  })
+
+  it('a track that does not scroll has no end to be at', () => {
+    // Five columns inside a desk-width viewport: scrollWidth == clientWidth, so
+    // "max scroll" is 0 and every position would look like the end. The plain
+    // nearest-edge rule is the whole answer there.
+    const lefts = [0, 200, 400, 600, 800]
+    expect(columnIndexAtScroll(0, lefts, 900, 900)).toBe(0)
+    expect(columnIndexAtScroll(0, lefts, 800, 900)).toBe(0)
+    expect(columnIndexAtScroll(0, [], 900, 900)).toBe(0)
+  })
+
+  it('the scroller is its own offset parent, or the offsets are in another space', () => {
+    // The structural cause of the reported bug, held by a gate rather than by a
+    // comment: `offsetLeft` is measured from the nearest POSITIONED ancestor, so
+    // without this declaration the board's padding leaks into every column
+    // offset and the last column's offset exceeds the track's scrollable range.
+    const css = panelCss()
+    const block = /\.columns\s*\{[^}]*\}/g
+    const blocks = [...css.matchAll(block)].map(m => m[0])
+    const narrow = blocks.find(b => b.includes('overflow-x: auto'))
+    expect(narrow, 'the scrolling column track was not found by its overflow rule').toBeDefined()
+    expect(narrow, 'the scroller must be the offset parent of its columns').toContain('position: relative')
   })
 })
 

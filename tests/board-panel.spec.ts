@@ -1771,3 +1771,74 @@ describe('交互卡：能答就画成能按的，不能答就说清楚', () => {
     expect(markup).toContain('离开计划模式，从下一步开始照着它做')
   })
 })
+
+/**
+ * 拖到最右端时，最后一枚 tab 必须亮起来。
+ *
+ * ── 报上来的是什么 ──────────────────────────────────────────────────────────
+ *
+ * 读者在手机上把列轨拖到底，「完成」那一栏已经整个在看，底下那枚 tab 却还亮着
+ * 「审核」。看起来是一枚点不动的 tab。**根因是两个数字不在同一个坐标系里**：
+ * `scrollLeft` 量的是滚动容器自己的内容原点，而 `offsetLeft` 量的是最近的有定位的
+ * 祖先。`.columns` 从前是 `static`，于是每一列的偏移都带着外层 `.board` 的内衬
+ * （实测 +12px），而最后一列的偏移（848）比整条轨道的最大滚动量（684）还大——
+ * 「左边缘最接近」这个判据**永远够不到它**。
+ *
+ * ── 这条 spec 为什么挂在挂载路径上 ──────────────────────────────────────────
+ *
+ * 静态工件是 `renderToStaticMarkup` 出来的，没有事件处理器，把 `scrollLeft` 改掉
+ * 也不会让 tab 重算——用它验这件事，永远是绿的。所以这里挂真面板、派发真的
+ * `scroll` 事件、再读 `aria-selected`：走的是产品那条路。
+ */
+describe('the column track: the last tab is reachable by dragging', () => {
+  /** Put a scroll geometry on the track that jsdom does not compute. */
+  function armTrack(host: HTMLElement): HTMLElement {
+    const track = host.querySelector<HTMLElement>('[data-dsh-tb-columns]')
+    expect(track, 'the scrolling column track is missing').not.toBeNull()
+    const el = track!
+    // jsdom computes neither layout nor scrollWidth, so the five columns are laid
+    // out by hand — the numbers a 390px phone measures (212px apart, 366px of
+    // viewport, 1050px of content).
+    const sections = Array.from(el.querySelectorAll<HTMLElement>('section[data-status]'))
+    sections.forEach((section, index) => {
+      Object.defineProperty(section, 'offsetLeft', { configurable: true, value: index * 212 })
+    })
+    Object.defineProperty(el, 'clientWidth', { configurable: true, value: 366 })
+    Object.defineProperty(el, 'scrollWidth', { configurable: true, value: 1050 })
+    return el
+  }
+
+  /** The 0-based index of the lit tab, or -1 when none is. */
+  function activeTabIndex(host: HTMLElement): number {
+    return Array.from(host.querySelectorAll('[role="tab"]')).findIndex(t => t.getAttribute('aria-selected') === 'true')
+  }
+
+  it('dragging to the end lights the LAST column, not its neighbour', async () => {
+    const { host, unmount } = await mountBoard({})
+    const track = armTrack(host)
+    const count = track.querySelectorAll('section[data-status]').length
+    expect(count, 'no columns rendered').toBe(5)
+
+    await act(async () => {
+      track.scrollLeft = 1050 - 366 // the maximum: the end of the track
+      track.dispatchEvent(new Event('scroll'))
+    })
+
+    expect(activeTabIndex(host), 'at the end of the track the LAST tab owns the highlight').toBe(count - 1)
+    unmount()
+  })
+
+  it('a mid-track scroll still follows the nearest column', async () => {
+    // The end case must not swallow the normal one: at 424 the third column's
+    // edge is exactly here, so the third tab is the answer.
+    const { host, unmount } = await mountBoard({})
+    const track = armTrack(host)
+    await act(async () => {
+      track.scrollLeft = 424
+      track.dispatchEvent(new Event('scroll'))
+    })
+
+    expect(activeTabIndex(host), 'the third column edge is exactly at 424').toBe(2)
+    unmount()
+  })
+})

@@ -6490,6 +6490,18 @@
     overflow-x: auto;
     overflow-y: hidden;
     /* Hidden bar: covered by the shared :is() hidden-bar rule above. */
+    /* **THE SCROLLER IS THE OFFSET PARENT, and that is load-bearing.**
+       The active-tab rule compares each column's `offsetLeft` with `scrollLeft`.
+       `scrollLeft` is measured from the scroller's own content origin, while
+       `offsetLeft` is measured from the nearest POSITIONED ancestor. With this
+       box `static`, every column's offset came from the outer `.board` and
+       carried that element's padding (+12px measured) — a different coordinate
+       system. The visible damage was the last column: its offset (860px) was
+       larger than the track's whole scrollable range (684px), so "nearest left
+       edge" could never reach it, and dragging all the way right left the
+       「审核」 tab lit while 「完成」 sat on screen. It looked like a tab that
+       would not select; it was two numbers that were never in the same space. */
+    position: relative;
   }
 
   .column {

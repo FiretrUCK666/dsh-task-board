@@ -500,6 +500,25 @@
   --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 5%, var(--dsh-tb-paper));
   --dsh-tb-plane-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 92%, var(--dsh-tb-bg));
 
+  /* ── 实心浮层：**唯一不从画布推导的那一层** ────────────────────────────────────
+   *
+   * 上面五级**全部从画布推**，那是它们该做的事：皮肤把页面染成浅蓝，纸面跟着蓝，
+   * 于是台阶成立。**代价是画布一旦半透明，整条链一起半透明**——实测皮肤给
+   * `--dsh-tb-bg` 35% 时，`paper` 解析成 `color(… / 0.857)`，而读它的提示条也变成
+   * `0.864`。壁纸、毛玻璃、任何「画布可透」的皮肤都会击穿它。
+   *
+   * 有一类东西不能跟着透：**浮在内容上、压着字的那一小条**（回执、撤销、「读不到
+   * 主机」）。它下面可能是任意颜色的壁纸，半透明就等于让那行字变成可读性赌注。
+   * 宿主对这种情况有现成的一层——`--dsw-static-neutral-bluish-00` 是**两档主题都是
+   * 纯白**的静态色，不带 alpha，所以它不参与任何颜色混合，天然是实心的。
+   *
+   * 深色档不用它：深色里的纯白是荧光。那一档在下面的深色块里另给一次（纸面朝白混
+   * 6%，与其余深色极性同源）。两级加起来就是「这一层不跟画布走」的全部内容。
+   *
+   * **判据**：谁读这一枚，谁就承诺「我的底是不透明的」。一个小小的浮层药丸该读它；
+   * 一整块卡片不该——卡片是页面的一部分，它该跟着页面走。 */
+  --dsh-tb-solid-float: var(--dsw-static-neutral-bluish-00);
+
   /* ── 边光与投影（The Lit Edge）────────────────────────────────────────────────
    *
    * 一张被抬起的纸有且只有一条上边光与一条下投影——两者一起画才叫「纸」，只画
@@ -754,6 +773,11 @@ body[data-ds-dark-theme] [data-dsh-taskboard-panel] {
   --dsh-tb-plane-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 10%, var(--dsh-tb-bg));
   --dsh-tb-plane-recess: color-mix(in srgb, var(--dsh-tb-text-1) 4.5%, var(--dsh-tb-bg));
   --dsh-tb-plane-inlay: color-mix(in srgb, var(--dsh-tb-text-1) 7%, var(--dsh-tb-paper));
+  /* 实心浮层的深色档：**纯白是荧光，所以这里不用宿主的静态白**，改用「纸面朝白
+     再混一档」——与其余深色极性同源。它仍然**不从画布推导**：底色是纸面（本身已由
+     6% 白压过画布），再往白走 10%，算出来是一个固定的深灰，不是「画布 + 透明」。
+     这一枚的承诺与浅色那一档相同：读到它的人拿到的是一个不带 alpha 的底。 */
+  --dsh-tb-solid-float: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 22%, var(--dsh-tb-paper));
   /* 边光在暗纸上只需要一条能读出来的轮廓——它仍然**从纸面推**（见上面浅色那一块的
      说明），暗纸比画布亮，所以同一条公式在这里给出一条柔和的亮沿，而不是荧光白。 */
   --dsh-tb-rim: inset 0 1px 0 color-mix(in srgb, var(--dsh-tb-paper) 60%, white), inset 0 -1px 0 color-mix(in srgb, var(--dsw-static-neutral-1000) 30%, transparent);

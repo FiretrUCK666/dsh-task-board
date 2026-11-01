@@ -2012,7 +2012,19 @@ textarea.input {
   flex-wrap: wrap;
   border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-edge), transparent);
   border-radius: var(--dsh-tb-pill);
-  background: var(--dsh-tb-plane-inlay);
+  /* **THE SOLID FLOAT, not the inlay plane.**
+   *
+   * This bar floats OVER the list and presses against the reader's own words (a
+   * receipt, an undo, "can't reach the host"). It read `--dsh-tb-plane-inlay`,
+   * which is derived from the canvas — so a skin that makes the canvas
+   * translucent (wallpaper, frosted glass) made THIS bar translucent too, and
+   * whatever sat behind it showed through the text. On a plain white page it also
+   * read as "no background at all", because the inlay is only 5-7% darker than
+   * the paper.
+   *
+   * `--dsh-tb-solid-float` is the one surface token that does NOT derive from the
+   * canvas, so its opacity is a property of the token rather than of the skin. */
+  background: var(--dsh-tb-solid-float);
   color: var(--dsh-tb-text-1);
   font: inherit;
   font-size: var(--dsh-tb-type-meta-size);
