@@ -1,7 +1,7 @@
 import type { BoardController } from '../../core/controller.ts';
 import { type TaskRecord } from '../../core/tasks.ts';
 /** Task detail overlay. */
-export declare function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed }: {
+export declare function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed, onLaunched }: {
     controller: BoardController;
     task: TaskRecord;
     /** Resolve a workspace id to its display title (raw id when unknown). */
@@ -19,4 +19,9 @@ export declare function TaskDetail({ controller, task, workspaceTitleOf, dragSou
     requestSessionId?: string;
     /** Fired after a session request has been consumed (parent resets it). */
     onRequestSessionConsumed?: () => void;
+    /** Fired with the card's title when a launch is ACCEPTED. The parent owns the
+     *  receipt line because this sheet unmounts on the same tick (it closes so the
+     *  board stays visible while the task runs) — a receipt set here would be
+     *  unmounted before it could be read. */
+    onLaunched?: (title: string) => void;
 }): import("react").JSX.Element;

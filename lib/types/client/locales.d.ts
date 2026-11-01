@@ -154,6 +154,7 @@ export declare const zh: {
     'board.statusRunning': string;
     'board.statusQueued': string;
     'board.statusSkipped': string;
+    'board.runReceipt': string;
     'board.heartbeatStale': string;
     'board.status': string;
     'board.status.todo': string;
@@ -318,6 +319,7 @@ export declare const zh: {
     'status.move.backlog': string;
     'status.move.todo': string;
     'status.move.done': string;
+    'status.move.confirm': string;
     'board.dragRejectBusy': string;
     'detail.runBlockedBusy': string;
     'detail.rerunHint': string;
@@ -673,6 +675,7 @@ export declare const zh: {
     'card.sessionsForAt': string;
     'card.awaitingDecisionTitle': string;
     'card.dotUnread': string;
+    'card.openUnread': string;
     'card.pendingItemSession': string;
     'board.demand': string;
     'board.demandTitle': string;

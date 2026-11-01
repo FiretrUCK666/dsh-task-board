@@ -16,7 +16,7 @@ export declare function settledChipLabel(runs: number): string;
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onReorder, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, nextAction, dotTitleOf }: {
+export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onReorder, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, onOpenSession, nextAction, dotTitleOf }: {
     task: TaskRecord;
     /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
     selected?: boolean;
@@ -67,6 +67,14 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     };
     /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目。缺席时它是一枚读数。 */
     onOpenMounted?: () => void;
+    /**
+     * 打开某条会话那面的门（`cardSessionDoor`）。
+     *
+     * 只在卡片手里有一条**未看过**的会话时用得上：那一格的职责是告诉读者「有新完成
+     * 没看」，而一句不能点的提示等于让读者自己去记「这标题对应哪次会话」。缺席时那一格
+     * 退回纯读数（与 `onOpenMounted` 同一条规矩）。
+     */
+    onOpenSession?: (sessionId: string) => void;
     /** One quiet next-action sentence (localized by the caller). */
     nextAction?: string;
     /** Tooltip for a session dot (session title + state). */

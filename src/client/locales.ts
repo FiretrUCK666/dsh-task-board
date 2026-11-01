@@ -157,6 +157,9 @@ export const zh = {
   'board.statusRunning': '正在跑 {n}',
   'board.statusQueued': '待启动 {n}',
   'board.statusSkipped': '跳过 {n}',
+  /* 执行被受理后的唯一回执。它点出卡片的名字，因为读者刚关掉的是一张卡的面板——
+     一句不带名字的「已投递」要他自己回想是哪一个动作发了出去。 */
+  'board.runReceipt': '已投递「{title}」· 正在启动会话',
   'board.heartbeatStale': '心跳停止 · 自 {time} 无调度',
   'board.status': '状态',
   'board.status.todo': '待办',
@@ -323,6 +326,10 @@ export const zh = {
   'status.move.backlog': '移到待规划',
   'status.move.todo': '移到待办',
   'status.move.done': '移到已完成',
+  /* 审核卡上的同一个动作**不叫「移到」**：那张卡上的芯片写的是「待你确认完成」，
+     读者被许诺的是一个确认，却要给一个写着「移到已完成」的按钮做翻译。同一个动作、
+     同一个落点，只是这一栏里它就是在确认——所以它照实说。 */
+  'status.move.confirm': '确认完成',
   'board.dragRejectBusy': '这条还有一轮在跑，所以不能移到{column}。等它结束，或先插话。',
   'detail.runBlockedBusy': '这条任务已经有一轮在跑了：等它结束，或先插话。',
   'detail.rerunHint': '以当前最新执行 Prompt 开启全新一轮执行（评论是在旧会话中继续对话）',
@@ -712,14 +719,20 @@ export const zh = {
   'card.sessionsForAt': '相关会话 {n} 个：{sessions}',
   'card.awaitingDecisionTitle': '这个会话跑完了，你还没看过它、也还没裁决。点开卡片只是看摘要——要让这条消失，得进那个会话的评论区，或者直接通过 / 打回。',
   'card.dotUnread': '有新完成未看',
+  /* 那枚未读点变成门之后的**可访问名字**：圆点是装饰，不读屏就没有名字，所以这一句
+     就是它唯一的名字，也说明按下去会去哪儿（进那条会话的评论区）。 */
+  'card.openUnread': '打开这条会话，看它跑完说了什么',
   'card.pendingItemSession': '会话「{session}」：{kind}',
   /* Header demand row: the board stating, in words, what it owes the user.
      Both halves are counted by `task-demand`, the same derivation the card's
      待你决断 chip and the drawer's rows read — so the number here, the chip on
      a card and the row in the drawer are one fact, and looking retires all
      three together. */
-  'board.demand': '等你处理 {n} 项 · 待审核 {m} 张',
-  'board.demandTitle': '等你处理 = 有会话挂起等你作答；待审核 = 有卡片跑完了、你还没看过那个会话、也还没通过或打回。点开卡片只是看摘要，要让提醒消失请进那个会话的评论区。',
+  /* 这一行**不说「等你处理」**：那四个字是工作台顶栏的合计数（`workbench.status`），
+     在同一个屏幕上把同一件事说两遍、还给出两个数，正是 `DESIGN.md:3595` 明令禁止的。
+     这里只说这块板自己的两半分项：等的是会话，看的是卡片；合计留给顶栏。 */
+  'board.demand': '会话停着 {n} 项 · 跑完没看 {m} 张',
+  'board.demandTitle': '会话停着 = 有会话挂起等你作答；跑完没看 = 有卡片跑完了、你还没看过那个会话、也还没通过或打回。点开卡片只是看摘要，要让提醒消失请进那个会话的评论区。',
   'prompt.commandList': '命令列表',
   'prompt.noCommands': '无匹配命令',
   'prompt.noReferences': '没有匹配的文件或会话',
@@ -1338,6 +1351,7 @@ export const en: Record<keyof typeof zh, string> = {
   'board.statusRunning': 'Running {n}',
   'board.statusQueued': 'Launching {n}',
   'board.statusSkipped': 'Skipped {n}',
+  'board.runReceipt': 'Sent "{title}" · starting session',
   'board.heartbeatStale': 'Heartbeat stale · none since {time}',
   'board.status': 'Status',
   'board.status.todo': 'To Do',
@@ -1502,6 +1516,7 @@ export const en: Record<keyof typeof zh, string> = {
   'status.move.backlog': 'Move to Backlog',
   'status.move.todo': 'Move to To Do',
   'status.move.done': 'Move to Done',
+  'status.move.confirm': 'Confirm done',
   'board.dragRejectBusy': 'A round is still running, so this cannot move to {column}. Wait for it, or steer it.',
   'detail.runBlockedBusy': 'This task already has a round running: wait for it, or steer it.',
   'detail.rerunHint': 'Start a fresh round with the current run prompt (comments continue the old session)',
@@ -1861,9 +1876,12 @@ export const en: Record<keyof typeof zh, string> = {
   'card.sessionsForAt': '{n} related session(s): {sessions}',
   'card.awaitingDecisionTitle': 'That conversation finished and you have neither read it nor ruled on it. Opening the card only shows a summary — to clear this, open that session, or approve / send it back.',
   'card.dotUnread': 'Has an unreviewed finish',
+  'card.openUnread': 'Open that session to see what the run said',
   'card.pendingItemSession': 'Session "{session}": {kind}',
-  'board.demand': '{n} need you · {m} in review',
-  'board.demandTitle': 'Need you = a session is suspended on your answer. In review = a card finished and you have neither opened that session nor approved or sent it back. Opening the card only shows a summary; to clear a reminder, open the session.',
+  /* The combined total lives in the workbench bar (`workbench.status`); saying it
+     here too puts the same word twice on one screen with two different numbers. */
+  'board.demand': '{n} session paused · {m} finished, unread',
+  'board.demandTitle': 'Session paused = a session is suspended on your answer. Finished, unread = a card finished and you have neither opened that session nor approved or sent it back. Opening the card only shows a summary; to clear a reminder, open the session.',
   'prompt.commandList': 'Command list',
   'prompt.noCommands': 'No matching commands',
   'prompt.noReferences': 'No matching files or sessions',

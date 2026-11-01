@@ -3,7 +3,7 @@
  * by the board columns and the task detail badge so both surfaces can never
  * drift apart.
  */
-import type { TaskStatus } from '../../core/tasks.ts';
+import type { ManualStatus, TaskStatus } from '../../core/tasks.ts';
 import type { TaskBoardKey } from '../locales.ts';
 /** Status → locale key. */
 export declare const STATUS_KEY: Record<TaskStatus, TaskBoardKey>;
@@ -18,6 +18,18 @@ export declare const STATUS_MOVE_KEY: {
     readonly todo: "status.move.todo";
     readonly done: "status.move.done";
 };
+/**
+ * The ONE place where 「移到已完成」 is the wrong verb for what the button does.
+ *
+ * A card in 审核 carries a chip that says 待你确认完成 — the board is telling the
+ * reader "this is the decision I am waiting for". Opening it and finding a
+ * button called 「移到已完成」 asks the reader to work out that the confirm they
+ * were promised is spelled as a column move. Same action, different word: when
+ * the source column IS review, the move to done IS the confirmation, so it says
+ * so. Every other source keeps the plain column verb, because there the move is
+ * a move.
+ */
+export declare function statusMoveKeyOf(from: TaskStatus, to: ManualStatus): TaskBoardKey;
 /**
  * Status → SHORT locale key, read by the compact column navigator. Five equal
  * cells on a phone leave roughly one-and-a-half Chinese characters per label,

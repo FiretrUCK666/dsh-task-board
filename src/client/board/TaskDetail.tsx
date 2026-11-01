@@ -32,7 +32,7 @@ import { SessionRow } from './SessionRow.tsx'
 import { latestCommentView, sessionCommentsOf } from './comment-thread.ts'
 import { editDraftKey, draftStore } from './drafts.ts'
 import { Button, Disclosure, Icon, IconButton, Section } from '../design/ui.tsx'
-import { STATUS_KEY, STATUS_MOVE_KEY } from './status.ts'
+import { STATUS_KEY, statusMoveKeyOf } from './status.ts'
 import { titleOrUntitled } from './card-view.ts'
 import { candidateExternalDrag, externalDragOf } from '../sidebar-drag.ts'
 
@@ -279,7 +279,7 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
 }
 
 /** Task detail overlay. */
-export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed }: {
+export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed, onLaunched }: {
   controller: BoardController
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
@@ -295,6 +295,11 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   requestSessionId?: string
   /** Fired after a session request has been consumed (parent resets it). */
   onRequestSessionConsumed?: () => void
+  /** Fired with the card's title when a launch is ACCEPTED. The parent owns the
+   *  receipt line because this sheet unmounts on the same tick (it closes so the
+   *  board stays visible while the task runs) — a receipt set here would be
+   *  unmounted before it could be read. */
+  onLaunched?: (title: string) => void
 }) {
   // Escape closes the detail through the family's ONE stack: a confirm dialog
   // or nested modal opened OVER the detail closes first (one press, one
@@ -877,7 +882,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   {...busy ? { 'aria-describedby': moveBlockedId } : {}}
                   onClick={() => { controller.moveTask(current.id, status) }}
                 >
-                  {t(STATUS_MOVE_KEY[status])}
+                  {t(statusMoveKeyOf(current.status, status))}
                 </Button>
               ))}
             </div>
@@ -931,7 +936,14 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                   if (!taskExecutable(current)) return
                   setRunError(undefined)
                   void controller.rerunTask(current.id).then(accepted => {
-                    if (accepted) { controller.closeTask(); return }
+                    if (accepted) {
+                      // Say so BEFORE the sheet goes away: the parent's receipt is
+                      // the only evidence the launch was accepted, and closing
+                      // without it made a start and a no-op look identical.
+                      onLaunched?.(current.title)
+                      controller.closeTask()
+                      return
+                    }
                     setRunError(t('detail.runBlockedBusy'))
                   })
                 }}

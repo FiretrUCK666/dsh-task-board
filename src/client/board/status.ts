@@ -28,6 +28,22 @@ export const STATUS_MOVE_KEY = {
 } as const satisfies Readonly<Record<ManualStatus, TaskBoardKey>>
 
 /**
+ * The ONE place where 「移到已完成」 is the wrong verb for what the button does.
+ *
+ * A card in 审核 carries a chip that says 待你确认完成 — the board is telling the
+ * reader "this is the decision I am waiting for". Opening it and finding a
+ * button called 「移到已完成」 asks the reader to work out that the confirm they
+ * were promised is spelled as a column move. Same action, different word: when
+ * the source column IS review, the move to done IS the confirmation, so it says
+ * so. Every other source keeps the plain column verb, because there the move is
+ * a move.
+ */
+export function statusMoveKeyOf(from: TaskStatus, to: ManualStatus): TaskBoardKey {
+  if (from === 'review' && to === 'done') return 'status.move.confirm'
+  return STATUS_MOVE_KEY[to]
+}
+
+/**
  * Status → SHORT locale key, read by the compact column navigator. Five equal
  * cells on a phone leave roughly one-and-a-half Chinese characters per label,
  * so the full names all collapse to 「待…」「进…」「已…」 and the navigator

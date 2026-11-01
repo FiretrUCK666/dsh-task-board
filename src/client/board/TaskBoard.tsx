@@ -164,6 +164,17 @@ function cruiseWindowTitleOf(window: CruiseWindow): string {
   return formatDateTime(grammar.endAt)
 }
 
+/**
+ * How long an accepted-launch receipt stays on screen.
+ *
+ * Long enough to be read on the way back from a closing sheet (the sheet's own
+ * exit animation plus the reader re-orienting), short enough that it is gone
+ * before the card it names has visibly moved into 进行中 — so the receipt never
+ * competes with the live status it predicts. 4s is the shortest value that still
+ * survives a glance elsewhere and back.
+ */
+const RUN_RECEIPT_MS = 4000
+
 /** Board component; subscribes to the controller snapshot.
  *
  *  WHY THIS IS ONE LONG FUNCTION, AND WHY SPLITTING IT IS NOT THE FIX.
@@ -435,6 +446,18 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
   // The engine-seat note the header chip opens (touch has no hover, so the
   // explanation must be a real, reachable surface — not a `title`).
   const [engineNote, setEngineNote] = useState<'stale' | 'viewer' | undefined>(undefined)
+  // The one-line receipt for an accepted launch (see the status slot below).
+  // Held here rather than in the detail because the detail CLOSES on acceptance —
+  // a receipt living in the sheet would be unmounted in the same tick it was set.
+  const [runReceipt, setRunReceipt] = useState<string | undefined>(undefined)
+  // It retires itself: a receipt that stays becomes furniture, and this board's
+  // discipline is 「只在真有事时说话」. Timer is cancelled on unmount and on the
+  // next receipt, so two launches in a row never stack two sentences.
+  useEffect(() => {
+    if (runReceipt === undefined) return
+    const timer = setTimeout(() => { setRunReceipt(undefined) }, RUN_RECEIPT_MS)
+    return () => { clearTimeout(timer) }
+  }, [runReceipt])
   // 常驻检查更新：**三页共用的那个控制器**（`workbench/update-controller.ts`）。
   // 状态不归这一页——读者切到对话时这一页会卸载，而一次还在跑的检查不该因此丢掉。
   // 按钮的脸也共用（`workbench/use-update.ts`），所以三页说的是同一句话。
@@ -1122,7 +1145,15 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
             只在真的有事在等时出现，安静时整个簇消失（与状态行同一条纪律）。
             它是真按钮：触屏没有 hover，一个写着「等你处理」却点不动的横幅比不
             写更糟。三处数字各自的含义由 title 与 aria-label 说明。
-            不加新的颜色：它复用注意力色，与卡片上的「待你决断」chip 同族。 */}
+            不加新的颜色：它复用注意力色，与卡片上的「待你决断」chip 同族。
+
+            **它不再说「等你处理」。** 那四个字属于工作台顶栏（`workbench.status`），
+            而两处说的是同一件事的两种拆法：顶栏说合计 `waiting + review`，这里说
+            「会话停着 n 项 · 跑完没看 m 张」。读者看到的是同一个词在两个相邻行给出
+            两个数（手机档尤其刺眼：顶栏 `1`、下一行 `0 项`）——而 `DESIGN.md:3595`
+            自己写着「同一句话在一页里只出现一次，且相邻两行内不许出现同一个数」。
+            所以这里改用**沉默的测量词**：等的是会话，看的是卡片，两半各自点名，
+            合计数只留在顶栏那一处。 */}
         {demand.total > 0 && (
           <button
             type="button"
@@ -1206,10 +1237,25 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
              * 它曾经同时装着 `正在跑 1` 和「服务端仍在跑旧版本…需重启 dsh web」——两件
              * 性质完全不同的事挤在同一条 12px 的句子里，于是读者来查「还有多少活」，却
              * 先读到一条重启说明。警告搬去了工作台级的条（`design/WorkbenchNotice.tsx`），
-             * 三页都有、位置一致；这里只留一直在变、一直需要的那几个数。 */
-            if (stateParts.length === 0) return null
+             * 三页都有、位置一致；这里只留一直在变、一直需要的那几个数。
+             *
+             * **回执也住这里，而且它不是警告。** 点「执行」之后弹窗立刻关掉，那样
+             * 「已投递」与「什么都没发生」在屏幕上一模一样（唯一的区别是板深处一个
+             * 计数从 2 变成 3）。回执就是这一句：它说这张卡的名字 + 已投递，几秒后
+             * 自己消失。放这一槽的理由与 `正在跑 1` 相同——它是关于「刚刚发生了什么」
+             * 的读数，不是一件要人去修的事。 */
+            const receiptParts = runReceipt !== undefined
+              ? [t('board.runReceipt', { title: runReceipt })]
+              : []
+            if (stateParts.length === 0 && receiptParts.length === 0) return null
             return (
               <span className={css.boardState}>
+                {receiptParts.length > 0 && (
+                  <span className={css.boardStatus} role="status" aria-live="polite">
+                    <span className={css.boardStatusDot} aria-hidden="true" />
+                    <span className={components.truncate}>{receiptParts.join(' · ')}</span>
+                  </span>
+                )}
                 {stateParts.length > 0 && (
                   <span className={css.boardStatus}>
                     <span className={css.boardStatusDot} aria-hidden="true" />
@@ -1879,6 +1925,11 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                          `TaskBoardPanelProps.mountedOf`）。看板独立使用时它是 `undefined`。 */
                       mounted={mountedOf?.(task.id)}
                       onOpenMounted={onOpenRows === undefined ? undefined : () => onOpenRows(task.id)}
+                      /* The door behind 「有新完成未看」：走的是**同一个漏斗**
+                         （`openTaskAtSession`），所以它既打开那条会话的评论区，
+                         也按同一套规则清掉未读时钟——不需要第二份「打开并标记已读」。
+                         未知会话由那个漏斗自己降级成普通打开。 */
+                      onOpenSession={sessionId => { openTaskAtSession(task.id, sessionId) }}
                       nextAction={nextAction}
                       dotTitleOf={sessionId => {
                         const title = controller.sessionTitle(sessionId) ?? sessionId
@@ -1921,7 +1972,13 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
         {/* **窄档的主行动在这里。** 它在工具带里那一枚窄档 `display: none`（见样式表），
             而这一枚是窄档唯一可见的那一个——所以「一个动作一个入口」在**每一档**都成立，
             只是入口换了位置。两档各渲染一次的那份代码是同一条 JSX：`variant`、图标、
-            `onClick` 一个字都不差。 */}
+            `onClick` 一个字都不差。
+
+            **栏杆里只放这一枚。** 「动态」和通知铃曾经也在这里渲染了一份，于是手机档
+            屏幕上同一行出现两遍（模式簇一份、栏杆一份）——而注释早就写着「不再有拇指栏
+            孪生节点」。这条栏杆存在的理由是**主行动不占内容额度**（见上方那段实测），
+            那个理由只对「新建任务」成立：模式开关本来就在同一屏的工具带里看得见，
+            没有第二份的必要。孪生节点删掉，入口数不变。 */}
         <Button
           variant="primary"
           className={css.thumbPrimary}
@@ -1930,14 +1987,6 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
           <PlusIcon />
           {t('board.new')}
         </Button>
-        <Button
-          variant="ghost"
-          title={t('board.activityTitle')}
-          onClick={() => { setFeedBase(-1); setShowActivity(true) }}
-        >
-          {t('board.activity')}
-        </Button>
-        {renderNotifyBell()}
       </ThumbRail>
 
       {selected !== undefined && (
@@ -1950,6 +1999,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
             ? detailSessionRequest.sessionId
             : undefined}
           onRequestSessionConsumed={() => { setDetailSessionRequest(undefined) }}
+          onLaunched={title => { setRunReceipt(title) }}
         />
       )}
       {showNew && (

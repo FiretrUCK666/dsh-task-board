@@ -881,6 +881,20 @@
    * 位置比这里靠后，照样赢。 */
   overflow-x: hidden;
   overscroll-behavior: contain;
+  /* ── 左栏自己那一根滚动条：细、淡、不占版面 ────────────────────────────────────
+   *
+   * 共享层已经用 `::-webkit-scrollbar` 统一过外观，但那条路有一个**结构性边界**：
+   * 它只在「经典滚动条」的引擎上生效。宿主若让滚动条走 overlay（macOS 与部分
+   * Chromium 配置默认如此），伪元素规则不预留任何槽位——实测那个环境里
+   * `width - clientWidth = 1`，即**一像素都没留**，于是浏览器自己画一根浮在内容上的
+   * 条：贯穿整栏、贴着纸边、压着日历。读者的话是「丑到爆而且太长了」。
+   *
+   * 所以这一栏**另走一条所有引擎都认的路**：`scrollbar-width: thin` 是标准属性，
+   * 它不依赖伪元素；`scrollbar-color` 给滑块与轨道各一档。两条都写在这里而不是共享
+   * 层，因为这根条的具体长相属于「这一栏怎么滚」，而共享层管的是「滚动条长什么样」
+   * ——前者在这一页只有这一处，后者才需要一处。 */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-wash-strong), transparent) transparent;
   /* **左右各一档 `--s2`——但只在这一档。**
    *
    * 左栏在画布上的空气由工作台与栏自己两层给出——月题与数字不贴玻璃边。而**窄档这一

@@ -67,7 +67,7 @@ export function settledChipLabel(runs: number): string {
  *  paused / queued / new). The run window (start/end/duration) and
  *  the comment timeline live in the detail — cards never carry content that
  *  belongs to the conversation pages. */
-export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onReorder, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, nextAction, dotTitleOf }: {
+export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendingTitle, view, onMoveStep, onReorder, onClick, onQuickRun, onColorPick, dots, overflowDots, mounted, onOpenMounted, onOpenSession, nextAction, dotTitleOf }: {
   task: TaskRecord
   /** Whether the card is picked in multi-select (Ctrl/Cmd+click or organize mode). */
   selected?: boolean
@@ -115,6 +115,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
   mounted?: { readonly count: number; readonly loudest?: ItemPriority }
   /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目。缺席时它是一枚读数。 */
   onOpenMounted?: () => void
+  /**
+   * 打开某条会话那面的门（`cardSessionDoor`）。
+   *
+   * 只在卡片手里有一条**未看过**的会话时用得上：那一格的职责是告诉读者「有新完成
+   * 没看」，而一句不能点的提示等于让读者自己去记「这标题对应哪次会话」。缺席时那一格
+   * 退回纯读数（与 `onOpenMounted` 同一条规矩）。
+   */
+  onOpenSession?: (sessionId: string) => void
   /** One quiet next-action sentence (localized by the caller). */
   nextAction?: string
   /** Tooltip for a session dot (session title + state). */
@@ -445,29 +453,54 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
           non-focusable span inside an `aria-hidden` container makes "which of my
           sessions is working, and how many are there" a fact only sighted hovering
           users can get. So the strip keeps the dots decorative and states the same
-          thing in words for assistive tech, exactly as the notification bell does. */}
-      {dots !== undefined && dots.length > 0 && (
-        <span className={css.cardSessions}>
-          {dots.map(dot => (
-            <span
-              key={dot.sessionId}
-              className={css.cardSessionDot}
-              data-state={dot.state}
-              title={dotTitleOf?.(dot.sessionId) ?? dot.sessionId}
-              aria-hidden="true"
-            />
-          ))}
-          {(overflowDots ?? 0) > 0 && (
-            <span className={css.cardSessionMore} aria-hidden="true">+{String(overflowDots)}</span>
-          )}
-          <span className={css.visuallyHidden}>
-            {t('card.sessionsForAt', {
-              sessions: dots.map(dot => dotTitleOf?.(dot.sessionId) ?? dot.sessionId).join('；'),
-              n: String((dots.length + (overflowDots ?? 0))),
-            })}
+          thing in words for assistive tech, exactly as the notification bell does.
+
+          **「有新完成未看」必须是一条能走的路。** 它原来的全部内容是一句 `title`：
+          触屏没有 hover（硬性规范 11③），所以手机上这行字根本不存在；即使在桌面，
+          它告诉读者「有新东西你没看过」，却指不出一条进去的路——读者只能自己记住
+          「这个标题对应那次会话」，而那正是这个产品想消灭的事。所以当卡片手里有一条
+          *未看过* 的会话、装配层也给了门时，这一格**变成门**，落点就是那条会话；
+          没有门时就退回纯读数（与上面「挂着几条清单条目」同一条规矩：按下去什么都
+          不会发生的控件，比一句没有更糟）。 */}
+      {dots !== undefined && dots.length > 0 && (() => {
+        const strip = (
+          <span className={css.cardSessions}>
+            {dots.map(dot => (
+              <span
+                key={dot.sessionId}
+                className={css.cardSessionDot}
+                data-state={dot.state}
+                title={dotTitleOf?.(dot.sessionId) ?? dot.sessionId}
+                aria-hidden="true"
+              />
+            ))}
+            {(overflowDots ?? 0) > 0 && (
+              <span className={css.cardSessionMore} aria-hidden="true">+{String(overflowDots)}</span>
+            )}
+            <span className={css.visuallyHidden}>
+              {t('card.sessionsForAt', {
+                sessions: dots.map(dot => dotTitleOf?.(dot.sessionId) ?? dot.sessionId).join('；'),
+                n: String((dots.length + (overflowDots ?? 0))),
+              })}
+            </span>
           </span>
-        </span>
-      )}
+        )
+        const unread = dots.find(dot => dot.state === 'unread')
+        if (unread === undefined || onOpenSession === undefined) return strip
+        return (
+          <button
+            type="button"
+            className={css.cardSessionDoor}
+            /* The accessible name states the ONE thing this door is for — the dot
+               itself is decorative, so without this the button would be nameless. */
+            aria-label={t('card.openUnread')}
+            title={t('card.openUnread')}
+            onClick={event => { event.stopPropagation(); onOpenSession(unread.sessionId) }}
+          >
+            {strip}
+          </button>
+        )
+      })()}
       {onColorPick !== undefined && (
         <span className={css.cardColorBar} data-ghost-hide="" onClick={event => { event.stopPropagation() }}>
           <ColorSwatches value={task.color} onChange={color => { onColorPick(color) }} />
