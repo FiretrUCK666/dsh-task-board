@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it } from 'vitest'
 import { activeColumnIndexAt, scrollLeftForColumn } from '../src/client/board/column-tabs.ts'
 import { keyboardOverlapPx } from '../src/client/board/keyboard-inset.ts'
-import { allRules, panelCss, ruleTextOf, spacingPx, stripCssComments } from './panel-harness.ts'
+import { allRules, fontSizePx, panelCss, ruleTextOf, spacingPx, stripCssComments } from './panel-harness.ts'
 
 /**
  * The `gap` inside a rule body, in pixels.
@@ -758,8 +758,16 @@ describe('alignment grammar (the OCD contract)', () => {
     // rejected the 16px title tier the design system itself sanctions, so a size
     // moving UP onto the scale failed a test about sizes shrinking.
     // The real invariant: interface text never goes below 11px.
+    //
+    // THE READING FOLLOWS THE VALUE. A size may be a literal or a ladder token,
+    // and this assertion is about the SIZE, not about how it is spelled — a
+    // `font-size: (\d+)px` match on a token read `NaN` and reported a title that
+    // moved up onto the ladder as a title that shrank. `fontSizePx` resolves
+    // both, so moving a step onto the ladder can never look like a regression.
     for (const name of ['interactionTitle', 'interactionOptionLabel', 'interactionProgress']) {
-      const size = Number(/font-size:\s*(\d+(?:\.\d+)?)px/.exec(ruleOf(name) ?? '')?.[1])
+      const declared = /font-size:\s*([^;]+)/.exec(ruleOf(name) ?? '')?.[1]
+      const size = fontSizePx(declared?.trim())
+      expect(size, `.${name} declares a font-size this harness cannot resolve`).toBeDefined()
       expect(size, `.${name} must not shrink below the 11px floor`).toBeGreaterThanOrEqual(11)
     }
     expect(ruleOf('interactionOptionLabel')).toContain('overflow-wrap: anywhere')

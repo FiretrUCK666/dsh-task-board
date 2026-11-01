@@ -973,6 +973,84 @@ export function spacingPx(value: string | undefined): number | undefined {
 }
 
 /**
+ * A `font-size` declaration as a number of pixels — a literal `13px`, or ANY
+ * `--dsh-tb-*` token that resolves to one.
+ *
+ * A SIZE ASSERTION THAT ONLY READS LITERALS IS AN ASSERTION ABOUT SPELLING, not
+ * about size. `mobile-contract.spec.ts` asserted "the title never shrinks below
+ * 11px" by matching `font-size: (\d+)px`; the day the title moved onto the ladder
+ * and read `var(--dsh-tb-type-title-size)`, the match returned nothing, `Number()`
+ * of it became `NaN`, and a test about SHRINKING failed on a size moving UP. The
+ * reading has to follow the value wherever it now lives.
+ *
+ * Resolution walks the token to its declaration on the client half, following one
+ * level of `var()` so a token that aliases another token still answers with a
+ * number. Returns `undefined` when it cannot be resolved — the caller decides
+ * whether that is a failure, rather than silently comparing against `NaN`.
+ * @param value - a declaration value: `13px`, `var(--dsh-tb-type-body-size)`.
+ * @returns the number, or `undefined` when this value resolves to no size.
+ */
+export function fontSizePx(value: string | undefined): number | undefined {
+  if (value === undefined) return undefined
+  const text = value.trim()
+  const literal = /^([\d.]+)px$/.exec(text)
+  if (literal !== null) return Number(literal[1])
+  const token = /^var\((--dsh-tb-[a-z0-9-]+)\)$/.exec(text)
+  if (token === null) return undefined
+  for (const sheet of clientSheets()) {
+    const declared = new RegExp(`(?:^|[;{\\s])${token[1]}\\s*:\\s*([^;}]+)`).exec(stripCssComments(sheet.css))
+    if (declared === null) continue
+    const resolved = declared[1]!.trim()
+    const px = /^([\d.]+)px$/.exec(resolved)
+    if (px !== null) return Number(px[1])
+    // One level of aliasing is all this ladder uses; deeper chains would mean the
+    // token layer has grown a second indirection nobody asked for.
+    return fontSizePx(resolved)
+  }
+  return undefined
+}
+
+/**
+ * The catalogue judgement: what does the preview page fail to show?
+ *
+ * PURE, and exported so the probe spec can plant inputs against the REAL
+ * judgement instead of a copy of it. Three answers, because the failure has three
+ * shapes and they need different fixes:
+ *
+ *   - `hidden` — declared, not shown, not excused. The token nobody can see.
+ *   - `hollowExcuses` — excused with something that is not a reason ("n/a", "").
+ *     An excuse nobody had to write is an omission nobody will ever audit.
+ *   - `staleExcuses` — an excuse for a token the layer no longer declares. Worse
+ *     than a missing reason: it silently excuses the NEXT token to take that name.
+ *
+ * A minimum reason length is part of the judgement rather than the caller's
+ * business, so a probe that plants a real reason and a probe that plants a
+ * placeholder exercise the same rule the gate runs.
+ * @param declared - every `--dsh-tb-*` name the token layer declares.
+ * @param shown - every `--dsh-tb-*` name the page renders.
+ * @param excuses - the recorded reasons for tokens that cannot be shown.
+ * @returns the three findings, each sorted for a readable diff.
+ */
+export function catalogueGaps(
+  declared: ReadonlySet<string>,
+  shown: ReadonlySet<string>,
+  excuses: Readonly<Record<string, string>>,
+): { hidden: string[]; hollowExcuses: string[]; staleExcuses: string[] } {
+  const hollow = (why: string | undefined): boolean =>
+    why === undefined || why.trim().length < 40 || /^(n\/?a|none|todo|\?)$/i.test(why.trim())
+  /* A placeholder is NOT an excuse. This is the one line where the two findings
+     have to agree: if `hollowExcuses` names a token while `hidden` lets it through,
+     the gate reports the hole and then behaves as if it were filled — and "TODO"
+     becomes a permanent silence. So the test is the same one in both places. */
+  const excused = (name: string): boolean => name in excuses && !hollow(excuses[name])
+  return {
+    hidden: [...declared].filter(name => !shown.has(name) && !excused(name)).sort(),
+    hollowExcuses: Object.entries(excuses).filter(([, why]) => hollow(why)).map(([name]) => name).sort(),
+    staleExcuses: Object.keys(excuses).filter(name => !declared.has(name)).sort(),
+  }
+}
+
+/**
  * The panel's own stylesheets, as written (the module class names are literal
  * here). Every sheet under `src/client`, so a surface with a sheet of its own
  * is rendered from the day it exists.

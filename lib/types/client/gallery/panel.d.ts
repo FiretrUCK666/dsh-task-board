@@ -25,17 +25,29 @@ export declare const GALLERY_TOKEN_GROUPS: readonly {
     readonly names: readonly string[];
 }[];
 /**
- * The interface type ladder, as DESIGN.md states it.
+ * The interface type ladder, DERIVED from the tokens.
  *
- * Literal sizes rather than tokens: the ladder is a RULE about which sizes the
- * interface may use, and the sheets apply it by writing those sizes. Declaring
- * tokens nothing consumes would be a third vocabulary for the same fact — see
- * `tests/gallery.spec.ts`, which checks each row against the sheets' own
- * declarations so this table cannot describe a ladder nobody uses.
+ * The sizes are token names rather than numbers, and the page reads each one off
+ * a live element (`getComputedStyle`), so this table cannot drift from the
+ * stylesheets: a re-mapped ladder moves the page with it, and a renamed token is
+ * a compile error rather than a stale row. That is the same arrangement the
+ * enumerations above use — the definition is the array, not a copy of it.
+ *
+ * **The ladder is six steps.** `title` / `emphasis` / `body` / `meta` / `eyebrow`
+ * are the reading ladder the sheets apply to text; `kpi` is the one display step
+ * (a dashboard's big number) and is listed last because it is not part of the
+ * prose hierarchy. Each row names where the step appears, which is what the
+ * names alone cannot say.
+ *
+ * A size that is NOT on this ladder is not automatically wrong — the content pass
+ * (Markdown prose) and the platform floor (16px on coarse pointers, which stops
+ * mobile browsers zooming a focused field) are both deliberately off-scale. The
+ * scale gate names those two exemptions by sheet location rather than by size, so
+ * "off-scale" stays a decision instead of becoming a hole.
  */
 export declare const GALLERY_TYPE_LADDER: readonly {
     readonly label: string;
-    readonly size: number;
+    readonly token: string;
     readonly weight: number;
     readonly where: string;
 }[];

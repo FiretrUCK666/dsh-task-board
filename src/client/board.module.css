@@ -150,7 +150,7 @@
   height: 100%;
   margin: 0;
   color: var(--dsh-tb-text-2);
-  font-size: 14px;
+  font-size: var(--dsh-tb-type-emphasis-size);
 }
 
 /* Paragraphs carry NO inherited spacing inside the board. The UA's `1em`
@@ -789,7 +789,7 @@
   gap: var(--dsh-tb-space-6);
   width: 300px;
   padding: 14px;
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
@@ -2219,7 +2219,7 @@
   /* The native menu surface (layer-3) — an opaque popup, like the shell's
      own dropdowns under a glass skin. Border rides the shared popover
      chrome above (same computed value as --dsh-tb-border). */
-  background: var(--dsh-tb-surface-menu);
+  background: var(--dsh-tb-plane-float);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsh-tb-shadow-3);
   /* 圆角 + 会滚 = 滚动条要按那个圆角缩进（轨道规则在 `design/base.module.css`）。
@@ -2348,7 +2348,7 @@
   margin: 0;
   flex: 1;
   min-width: 0;
-  font-size: 16px;
+  font-size: var(--dsh-tb-type-title-size);
   font-weight: 600;
   letter-spacing: -0.01em;
   overflow-wrap: break-word;
@@ -2376,7 +2376,7 @@
  */
 .detailText {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--dsh-tb-type-emphasis-size);
   line-height: 1.55;
   color: var(--dsh-tb-text-1);
   white-space: pre-wrap;
@@ -2715,7 +2715,7 @@
   height: 26px;
   padding: 0;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
@@ -2864,7 +2864,7 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-2);
   padding: 10px 12px;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
 }
@@ -3033,7 +3033,7 @@
   gap: var(--dsh-tb-lead-gap);
   min-width: 0;
   line-height: var(--dsh-tb-row-line);
-  font-size: 14px;
+  font-size: var(--dsh-tb-type-emphasis-size);
   font-weight: 500;
   color: var(--dsh-tb-text-1);
 }
@@ -3331,7 +3331,7 @@
   padding: 1px 7px;
   /* Single-layer solid capsule (an rgba fill would double-fade on the
      translucent row under a glass skin). */
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border-radius: var(--dsh-tb-pill);
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
 }
@@ -3416,7 +3416,7 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-4);
   padding: 12px;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
 }
@@ -3530,7 +3530,7 @@
      off-grid values that read as "these gaps are all slightly different". */
   gap: var(--dsh-tb-space-2);
   padding: 8px 10px;
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   border-radius: var(--dsh-tb-radius-sm);
 }
 
@@ -3623,7 +3623,7 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-6);
   padding: 12px;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
 }
@@ -3901,20 +3901,20 @@
    *
    * 面板（`.modal`）已经有一层背景，所以「头部不写背景」看起来只省了一行。
    * 它省掉的是一次**依赖**：正文在头部下面滚过时，读者看见的是谁的底，取决于
-   * 父元素那层是否真的不透明。第三方皮肤重写 `--dsh-tb-surface-float`
+   * 父元素那层是否真的不透明。第三方皮肤重写 `--dsh-tb-plane-sheet`
    * （半透明、渐变、或带一点模糊）之后，头部就成一扇窗——正文从标题与状态胶囊
    * 后面透出来，读作「上面被砍了一下」。
    *
-   * **为什么这里不能直接读面板那枚令牌**：`--dsh-tb-surface-float` 与
+   * **为什么这里不能直接读面板那枚令牌**：`--dsh-tb-plane-sheet` 与
    * `--dsh-tb-plane-sheet` 最终都指向 `--dsh-tb-paper`，而 paper 是
    * `color-mix(… 与 --dsh-tb-bg)`。皮肤改一个，三个一起变——量过，写成
-   * `var(--dsh-tb-surface-float)` 之后头部的计算值是 `rgba(0, 0, 0, 0)`，
+   * `var(--dsh-tb-plane-sheet)` 之后头部的计算值是 `rgba(0, 0, 0, 0)`，
    * 与面板一模一样，等于没改。
    *
    * 所以这里读洗底梯子里**最实的那一级**：`--dsh-tb-plane-float`（92% 白 + 8%
    * 底），它是梯子上为「浮起来的面」准备的那一档，比纸面（78%）实得多。它仍然
    * 由本表的令牌层派生，所以深色主题、壁纸模式下都跟着走——但它**不读**面板那枚
-   * `--dsh-tb-surface-float`，于是皮肤把它调透时，头部仍然是实心的。
+   * `--dsh-tb-plane-sheet`，于是皮肤把它调透时，头部仍然是实心的。
    *
    * 这不是为某个皮肤打的补丁：任何把面板底做透的主题都会撞上同一现象，而头部是
    * 唯一一处「下面有东西滚过去」的地方。`z-index` 一并给上，让它在同一层里永远
@@ -3942,7 +3942,7 @@
 .reviewTitle {
   margin: 0;
   min-width: 0;
-  font-size: 16px;
+  font-size: var(--dsh-tb-type-title-size);
   font-weight: 600;
   letter-spacing: -0.01em;
   line-height: 1.4;
@@ -4105,7 +4105,7 @@
   overflow: hidden;
   border-left: var(--dsh-tb-separator);
   /* An inner floating surface; the separator alone marks the rail. */
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
 }
 
 /* The rail head (context meter + live run config): ONE Disclosure fold.
@@ -4300,6 +4300,12 @@
      column (the transcript "冲出右边缘" bug). */
   min-width: 0;
   max-width: 100%;
+  /* CONTENT PASS, not a type step. This is the Markdown transcript's body — prose
+     laid out for reading, not interface chrome — so it is deliberately larger than
+     the interface's own 15px title step and does not read the ladder's tokens.
+     16px in the interface would be an off-scale size; here it is the size prose
+     needs. `board.module.css` is the sheet, and the distinction is why the scale
+     gate names a content-pass allowlist rather than opening 16px everywhere. */
   font-size: 16px;
   line-height: 28px;
   color: var(--dsh-tb-text-1);
@@ -4336,7 +4342,7 @@
   max-height: 40cqw;
   border-radius: var(--dsh-tb-radius-md);
   overflow: hidden;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
 }
 .reviewImage {
@@ -4729,7 +4735,7 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-2);
   padding: 8px 12px;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
@@ -5023,7 +5029,7 @@
   height: 26px;
   padding: 0;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-bg-raised);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-pill);
   cursor: pointer;
@@ -5056,7 +5062,7 @@
   /* An opaque bottom band: the comments above it end at its edge, so a
      translucent or unpainted composer lets the thread bleed through the seam
      (the 「输入框和评论叠在一起」 read). */
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
 }
 
 /* No composer child may shrink below its content. The composer is a
@@ -5117,7 +5123,7 @@
   flex: none;
   min-width: 0;
   margin: 0 var(--dsh-tb-rail-inset) 2px;
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-md);
   color: var(--dsh-tb-text-1);
@@ -5163,7 +5169,7 @@
    detector cannot see CSS Modules at all, so nothing was going to report it. */
 .interactionTitle {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--dsh-tb-type-title-size);
   font-weight: 500;
   line-height: 1.4;
   overflow-wrap: anywhere;
@@ -5753,7 +5759,7 @@
      family bans vh for panel geometry. */
   max-height: 320px;
   overflow-y: auto;
-  background: var(--dsh-tb-surface-menu);
+  background: var(--dsh-tb-plane-float);
   border-radius: var(--dsh-tb-radius-md);
   box-shadow: var(--dsh-tb-shadow-2);
   /* 圆角 + 会滚：轨道按这个圆角缩进（见 `design/base.module.css`）。 */
@@ -6265,7 +6271,7 @@
   font-size: 13px;
   line-height: 1.5;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-bg-raised);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-sm);
 }
@@ -6817,7 +6823,15 @@
 
   
 
-  /* 16px input text stops iOS/Android auto-zoom on focus. */
+  /* 16px input text stops iOS/Android auto-zoom on focus.
+   *
+   * This 16px is a PLATFORM FLOOR, not a type step: below 16px the mobile
+   * browsers zoom the whole page when the field takes focus, which throws the
+   * layout off-screen mid-typing. It outranks the ladder on coarse pointers for
+   * that reason — the ladder's own control step (13px) is what the field reads
+   * everywhere else. A gate that demanded "every font-size reads a token" would
+   * force this back under the zoom threshold, so the scale gate exempts the
+   * coarse-pointer block by name rather than the size. */
   .promptTextarea,
   .search,
   .selectWrap select,
@@ -6844,7 +6858,7 @@
   padding: 6px 8px;
   border: 1px solid var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
 }
 
 .toolCard[data-ok] {
@@ -6983,7 +6997,7 @@
  * 坐标的含义就悄悄变了，而屏上只表现为「偏了一点」，最难查。绝对定位对着容纳盒
  * （看板盒是 `position: relative`），坐标的含义由调用方一处换算说清楚。
  *
- * 为什么底色读 `--dsh-tb-bg-raised` 而不是浮面令牌：这一枚按钮压的是**正文**——别人
+ * 为什么底色读 `--dsh-tb-plane-sheet` 而不是浮面令牌：这一枚按钮压的是**正文**——别人
  * 正在读的字。半透明的底会让下面的字透上来，读者读不清按钮，也读不清被它压住的那行。
  */
 .quoteLayer {
@@ -6998,7 +7012,7 @@
   height: var(--dsh-tb-button-h);
   padding: 0 var(--dsh-tb-space-3);
   color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-bg-raised);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-button-radius);
   box-shadow: var(--dsh-tb-shadow-2);

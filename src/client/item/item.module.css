@@ -7,7 +7,7 @@
  *
  *   1. **三个表面台阶，不多不少。** 画布 `.itemRoot` 直读 --dsh-tb-bg（皮肤下
  *      可以透，顶栏、左栏与空态都站在这层上）、行卡 `--item-surface`
- *      （--dsh-tb-bg-raised，不透明）、浮层 `--item-float`（--dsh-tb-surface-float）。
+ *      （--dsh-tb-plane-sheet，不透明）、浮层 `--item-float`（--dsh-tb-plane-sheet）。
  *      **卡面绝不写 `background: none`、绝不写 transparent、绝不用
  *      `color-mix(... transparent)`**——一张透明的卡会让壁纸从正文底下透上来，
  *      底下那一行字会压在正文上。与看板同律：**画布可透、内层卡不透明**。
@@ -107,7 +107,7 @@
    * 而颜色推导的方向在两个主题里相反）。**这一层是这一节唯一一处允许卡面带投影
    * 的地方**：下面浮层那一张才是投影最重的，因为它压在文字上。
    */
-  --item-surface: var(--dsh-tb-bg-raised);
+  --item-surface: var(--dsh-tb-plane-sheet);
   --item-float: var(--dsh-tb-plane-float);
   /* 卡影**不在这里再起一个名字**：设计系统的投影阶梯（`--dsh-tb-cast-1/2/3`）就是它，
      多一跳别名只会让「卡用哪一档影」变成两个地方才能回答的问题。 */
@@ -253,8 +253,10 @@
 
   --item-inset: 24px;      /* 浮层遮罩离面板边缘的空气 */
   --item-card-pad: 24px;   /* 卡内衬 */
-  --dsh-tb-row-pad: 16px;    /* 行内衬 */
   --item-gap: 16px;        /* 卡与卡的间距 */
+  /* `--dsh-tb-row-pad` 不在这一组里：它管的是**跨页共享的行内衬**，家在令牌层。
+   * 页面这一级只按档位重写它的值（下面 `.itemWorkbench` 的基准档与宽档各一处），
+   * 而共享形态始终读那一个名字——所以在这里再声明一次同值，是同一个值的第二个家。 */
   /* **每一个「写一段话」的框：它多高，以及它最高到哪，两个数。**
    *
    * 它们管着**五处**——展开区的正文与备注、新建面板的正文、步骤、上下文备注——因为那

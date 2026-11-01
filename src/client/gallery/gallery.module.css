@@ -125,7 +125,7 @@
   gap: var(--dsh-tb-space-4);
   min-inline-size: 0;
   padding: var(--dsh-tb-space-5);
-  background: var(--dsh-tb-bg-raised);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
 }
@@ -235,7 +235,7 @@
 }
 
 .gallerySpecimenBox[data-kind='shadow'] {
-  background: var(--dsh-tb-bg-raised);
+  background: var(--dsh-tb-plane-sheet);
   border: 0;
   box-shadow: var(--gallery-value);
 }

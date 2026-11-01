@@ -307,7 +307,7 @@
   border-radius: var(--dsh-tb-pill);
   color: var(--dsh-tb-text-2);
   cursor: pointer;
-  font-size: 14px;
+  font-size: var(--dsh-tb-type-emphasis-size);
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion);
   line-height: var(--dsh-tb-text-line-h);
 }
@@ -486,7 +486,7 @@
 
 .titleStep {
   margin: 0;
-  font-size: 16px;
+  font-size: var(--dsh-tb-type-title-size);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
@@ -705,7 +705,7 @@
 
 .segmentedActive {
   color: var(--dsh-tb-text-1);
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   box-shadow: var(--dsh-tb-shadow-1);
 }
 
@@ -801,7 +801,7 @@
 .tagSwatchOn {
   /* 双环：一枚纸色的垫环 + 一枚 accent 的实环。两枚的宽度都读同一枚环宽令牌
    * （垫环一档、实环两档——**两档之间那一圈空气**就是「选中」被看见的地方）。 */
-  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-surface-float), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-plane-sheet), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
 }
 
 /* The 「移除颜色」 dot: an empty circle with a hairline — reads as "no
@@ -848,7 +848,7 @@
 }
 
 .tagCustomWrap:focus-within {
-  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-surface-float), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-plane-sheet), 0 0 0 calc(var(--dsh-tb-ring-w) * 2) var(--dsh-tb-focus-color);
 }
 
 .tagCustomColor {
@@ -1038,7 +1038,7 @@
   width: min(520px, 100%);
   max-height: 100%;
   overflow: hidden;
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
   box-shadow: var(--dsh-tb-shadow-3);
@@ -1366,7 +1366,7 @@ textarea.input {
   width: 24px;
   height: 24px;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-sunken);
+  background: var(--dsh-tb-plane-recess);
   border: 1px solid var(--dsw-alias-border-l2);
   /* Round icon button (same family as .iconButton/.cardQuickRun 999px) —
      sm read square. */
@@ -1389,7 +1389,7 @@ textarea.input {
   max-width: 180px;
   font-size: 12px;
   color: var(--dsh-tb-text-2);
-  background: var(--dsh-tb-surface-float);
+  background: var(--dsh-tb-plane-sheet);
   border: 1px solid var(--dsw-alias-border-l2);
   /* A chip is a pill (same family as .chipFill: 999px) — sm read square. */
   border-radius: var(--dsh-tb-pill);

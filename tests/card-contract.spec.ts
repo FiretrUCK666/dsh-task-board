@@ -34,14 +34,22 @@ import { allRules, designCss, pageCss, ruleTextOf, spacingPx } from './panel-har
  * The board surface AS IT RENDERS: the board's own sheets plus the design layer
  * every surface reads.
  *
- * NOT every sheet in the client half. The design variables (`--dsh-tb-*`) are
- * declared once for the whole plugin, so a claim about a token has to read the
- * layer — but the type ladder and the radius allowlist below are claims about
- * THIS surface, and the task list has a ladder of its own. Reading one path made
- * these assertions answer 「which file」 instead of 「does the rule hold」; reading
- * everything would make the list panel's numbers findings against the board.
+ * NOT every sheet in the client half: the claims below are about a SURFACE, and
+ * reading everything would make the list panel's numbers findings against the
+ * board.
+ *
+ * **The type ladder is the exception, and it is why `itemSource` exists.** The
+ * ladder used to be two tables — the board's (11/12/13/14/16) and the list's
+ * (11/12/13/15) — so reading one path was correct. It is now ONE table of six
+ * token-backed steps shared by both panels, which means a scale claim that reads
+ * only the board is a claim about half the interface. That is not hypothetical:
+ * with the ladder unified, the list sheet carried twelve off-scale sizes that no
+ * assertion had ever counted.
  */
 const source = pageCss('board') + '\n' + designCss()
+
+/** The list panel's own sheet — the other half of the shared type ladder. */
+const itemSource = pageCss('item')
 
 /** The [start, end) character ranges of every conditional block of one kind
  *  (`@media` / `@container`), found by brace-walking — used to prove a rule is
@@ -929,13 +937,45 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     // A new size must either join this allowlist with its reason, or move onto
     // the scale. Keep the list short; the point is that the scale is a decision,
     // not a drift.
-    const SCALE = new Set(['11px', '12px', '13px', '14px', '16px'])
+    //
+    // THE SCALE IS READ FROM THE TOKEN LAYER, not restated here. A test-side copy
+    // of the ladder is the very defect the ladder exists to remove — one concept,
+    // two names — and it goes stale in silence: the token layer could gain or move
+    // a step and this set would keep asserting the old numbers against sheets that
+    // no longer use them. Reading it means a step that moves moves this gate too,
+    // which is the only way "a size is on the scale" can mean what it says.
+    const SCALE = new Set(
+      [...readFileSync(fileURLToPath(new URL('../src/client/design/tokens.module.css', import.meta.url)), 'utf8')
+        .matchAll(/--dsh-tb-type-[a-z]+-size:\s*(\d+(?:\.\d+)?)px/g)].map(m => `${m[1]}px`),
+    )
+    expect(SCALE.size, 'the token layer declares no type steps — this gate would pass while checking nothing').toBeGreaterThan(3)
+    // CONTENT_PASS is keyed by POSITION, not by size. Keying it by number would
+    // make 16px legal everywhere — which is a hole, not an exemption: the next
+    // person writes 16px on a button and the gate has already said yes.
     const CONTENT_PASS: { px: string; why: RegExp }[] = [
       { px: '12.5px', why: /mdCodeBlock/ },
+      // The Markdown transcript's body (and the reader's own bubble). Prose, laid
+      // out for reading, deliberately a step above the interface's title floor.
+      { px: '16px', why: /reviewMessageText/ },
+      // The platform floor: below 16px, a focused field makes mobile browsers zoom
+      // the whole page. It outranks the ladder on coarse pointers.
+      { px: '16px', why: /@media \(hover: none\) and \(pointer: coarse\)/ },
+      // The list's month heading. A DISPLAY size, not a reading size: it heads one
+      // section of the rail and is the only place in either panel that needs to be
+      // 26px. One site does not make a step — promotion comes from a second
+      // consumer, not from a decision made here — so it stays where it is used,
+      // with this reason. The day a second surface needs it, it becomes a token.
+      { px: '26px', why: /itemRailMonth/ },
     ]
     const bad: string[] = []
+    // BOTH PANELS' SHEETS. The ladder is one table shared by the board and the
+    // list, so a check that reads only `board.module.css` leaves half the
+    // interface unchecked — and that is exactly how `item.module.css` carried
+    // eight 15px sites and four 14px sites nobody was counting. A guarantee that
+    // covers the surface which happened to be correct is a guarantee about luck.
     for (const [label, text] of [
       ['board.module.css', source],
+      ['item.module.css', itemSource],
     ] as const) {
       const lines = text.split('\n')
       lines.forEach((line, index) => {
@@ -943,10 +983,18 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
         if (hit === null) return
         const px = hit[1]
         if (SCALE.has(px)) return
-        // Nearest enclosing selector, same walk as the radius allowlist above.
+        // The exemption is a claim about WHERE this declaration sits, so the
+        // context must reach the enclosing block, not the enclosing RULE: a size
+        // inside `@media (hover: none)` is excused by that media block, and the
+        // nearest `{` above it is a selector tens of lines in. The walk therefore
+        // takes the nearest enclosing AT-RULE as well as the nearest selector, and
+        // keeps going when it meets neither — a fixed window would decide the
+        // exemption by how far up the developer happened to indent it.
         let open = index
-        while (open >= 0 && open > index - 40 && !lines[open].includes('{')) open--
-        const context = lines.slice(Math.max(0, open), index + 1).join('\n')
+        while (open > 0 && !/\{\s*$/.test(lines[open] ?? '')) open--
+        let atRule = index
+        while (atRule > 0 && !/^\s*@(?:media|container|supports)\b/.test(lines[atRule] ?? '')) atRule--
+        const context = lines.slice(Math.min(open, atRule), index + 1).join('\n')
         if (!CONTENT_PASS.some(entry => entry.px === px && entry.why.test(context))) {
           bad.push(`${label} L${index + 1}: ${line.trim()}`)
         }

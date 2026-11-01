@@ -73,28 +73,29 @@ export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain' | 'sur
  */
 export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly why: string; readonly kind: TokenKind; readonly names: readonly string[] }[] = [
   {
-    title: '表面',
-    why: '画布可透、内层不透明。三个台阶，不多不少。',
-    kind: 'color',
-    names: ['--dsh-tb-bg', '--dsh-tb-bg-raised', '--dsh-tb-surface-float', '--dsh-tb-surface-sunken', '--dsh-tb-surface-menu', '--dsh-tb-chip-fill'],
-  },
-  {
-    /* **材料阶梯：深度的那一整组令牌。**
+    /* **表面阶梯：五级，一级一个名字，就是这一组。**
      *
-     * DESIGN.md 说的深度观是「三张摊在同一张桌子上的纸，不是三层毛玻璃」——而说这句话
-     * 的那些令牌（纸面、三个平面台阶、两档边光、三档投影，共 10 枚）就是这一组。
-     * 一张纸由三件事同时说：**色调台阶 + 受光顶边 + 投影**，所以它们必须**并排**看才有
-     * 意义——分开看，读者只会以为那是一堆灰色。
-     *
-     * `kind: 'surface'` 而不是 `'color'`：这些令牌的值在白纸上与白纸差几个百分点，用一个
+     * `kind: 'surface'` 而不是 `'color'`：这些值在白纸上与白纸差几个百分点，用一个
      * 22px 的圆点展示等于什么都没展示。surface 是一块**有面积的纸**，读者要看见的是
      * 「比旁边那块浅一点」，而不是「这里有个色块」。
      *
-     * 顺序就是深度从低到高：桌面 → 纸 → 浮 → 凹 → 嵌。 */
-    title: '材料（一张纸的三件事）',
+     * 顺序就是深度从低到高：画布 → 纸面 → 嵌面 → 凹面 → 浮面。`--dsh-tb-paper` 排第二，
+     * 因为它是纸面的**推导源**（其余几级从它和画布推出来），不是一个好听的别名。
+     *
+     * **每一级只列一次。** 同一级挂两个名字，读者会以为那是两个台阶，而这正是
+     * 「改一处不报错」的两个入口——调用点随机挑一个，另一个留在旧值上。 */
+    title: '表面（五级，一级一个名字）',
     why: '深度只有三个来源：色调台阶、受光的顶边、投影。没有毛玻璃。',
     kind: 'surface',
-    names: ['--dsh-tb-paper', '--dsh-tb-plane-sheet', '--dsh-tb-plane-float', '--dsh-tb-plane-recess', '--dsh-tb-plane-inlay'],
+    names: ['--dsh-tb-bg', '--dsh-tb-paper', '--dsh-tb-plane-sheet', '--dsh-tb-plane-inlay', '--dsh-tb-plane-recess', '--dsh-tb-plane-float'],
+  },
+  {
+    /* 一个控件该拿什么底：这一枚与上面那一组分开，因为它答的不是「深度第几级」，
+     * 而是「这只能按的东西读哪一级」。它读嵌面，所以换皮肤时跟着走。 */
+    title: '控件底',
+    why: '一只能按的安静控件（搜索框、安静按钮、标签页）读嵌面——皮肤把页面染蓝时它跟着走。',
+    kind: 'color',
+    names: ['--dsh-tb-chip-fill'],
   },
   {
     /* 边光是**内阴影**（受光顶边），投影是**外阴影**（纸与桌面之间的接触暗影）。
@@ -127,16 +128,27 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
     names: ['--dsh-tb-status-backlog', '--dsh-tb-status-todo', '--dsh-tb-status-running', '--dsh-tb-status-review', '--dsh-tb-status-done'],
   },
   {
+    /* 半径决定角多大，`corner-shape` 决定角是不是圆弧——**两条轴**，所以两条都列。
+     *
+     * 只列半径会漏掉第二条：本插件把 `--dsh-tb-corner` 明说成换肤入口，皮肤一旦换成
+     * 超椭圆族，全表的角一起变形状。一枚只换形状、不换大小的令牌，只有摆出来才看得见。
+     * `button-radius` 也在这一组：它是按钮那一枚角，读 `--dsh-tb-pill`，而把名字单列出来
+     * 是为了「按钮的角要改」有一个可改的入口，不用去动药丸本身。 */
     title: '圆角与形状',
-    why: '半径决定角多大，corner-shape 决定角是不是圆弧——两条轴。',
+    why: '半径决定角多大，corner-shape 决定角是不是圆弧——两条轴，两条都列。',
     kind: 'radius',
-    names: ['--dsh-tb-radius-sm', '--dsh-tb-radius-md', '--dsh-tb-radius-lg', '--dsh-tb-radius-xl', '--dsh-tb-pill'],
+    names: ['--dsh-tb-radius-sm', '--dsh-tb-radius-md', '--dsh-tb-radius-lg', '--dsh-tb-radius-xl', '--dsh-tb-pill', '--dsh-tb-corner', '--dsh-tb-button-radius'],
   },
   {
+    /* 静息态是平的；阴影是状态的响应，不是身份的声明。
+     *
+     * `paper-lift` 与 `shadow-1` 今天同值，但它们是**两件事**：前者是「一张纸被抬起时
+     * 那一条接触暗影」这个语义，后者是阴影梯子的第一级。皮肤重映射梯子时，纸的抬升不该
+     * 跟着变——所以它们是两个名字。 */
     title: '阴影',
     why: '静息态是平的；阴影是状态的响应，不是身份的声明。',
     kind: 'shadow',
-    names: ['--dsh-tb-shadow-1', '--dsh-tb-shadow-2', '--dsh-tb-shadow-3'],
+    names: ['--dsh-tb-shadow-1', '--dsh-tb-shadow-2', '--dsh-tb-shadow-3', '--dsh-tb-paper-lift'],
   },
   {
     title: '间距阶梯',
@@ -146,27 +158,133 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
   },
   {
     title: '几何与动效',
-    why: '量出来的数各自成令牌；动效只有一个时长，减弱动效把它归零。',
+    why: '量出来的数各自成令牌；动效只有一个时长与一条曲线，减弱动效把它归零。',
     kind: 'plain',
-    names: ['--dsh-tb-button-h', '--dsh-tb-button-h-sm', '--dsh-tb-row-line', '--dsh-tb-hint-line', '--dsh-tb-dot', '--dsh-tb-hit-ring-block', '--dsh-tb-hit-ring-inline', '--dsh-tb-motion', '--dsh-tb-ring'],
+    names: ['--dsh-tb-button-h', '--dsh-tb-button-h-sm', '--dsh-tb-row-line', '--dsh-tb-hint-line', '--dsh-tb-dot', '--dsh-tb-hit-ring-block', '--dsh-tb-hit-ring-inline', '--dsh-tb-ring'],
+  },
+  {
+    /* ── 动效：**一套词，一个曲线** ─────────────────────────────────────────────
+     *
+     * `--dsh-tb-motion` 是标准时长。其余七枚各有含义，不是一个时长的七种写法：
+     * `-fast` 是状态反馈（颜色、边、影那三五像素），`-enter` / `-lift` 是浮层与
+     * 抬起的到场，`-tint` 是内容透明度那一次收敛，`-spin` / `-cycle` 是循环
+     * （运行转圈、呼吸），`-reject` 是「这件事没成」的一下。
+     *
+     * **`--dsh-tb-ease` 是唯一曲线**，峰值速度是平均速度的 6.25 倍——短距离立刻到位
+     * 是对的，几百像素的位移那件事**根本不做动画**（见 DESIGN.md 的 Overview）。 */
+    title: '动效',
+    why: '时长全读令牌，曲线只有一条；减弱动效把时长归零，把循环减速——绝不置零。',
+    kind: 'plain',
+    names: ['--dsh-tb-motion', '--dsh-tb-motion-fast', '--dsh-tb-motion-tint', '--dsh-tb-motion-enter', '--dsh-tb-motion-lift', '--dsh-tb-motion-reject', '--dsh-tb-motion-spin', '--dsh-tb-motion-cycle', '--dsh-tb-ease'],
+  },
+  {
+    /* ── 层叠：**五档，一张表** ─────────────────────────────────────────────────
+     *
+     * `z-index` 只许读这五枚，裸数字由 `verify-stacking.mjs` 拦。五档严格递增，
+     * 顺序就是「谁盖住谁」：正文 < 菜单 < 侧轨 < 遮罩 < 模态。 */
+    title: '层叠五档',
+    why: 'z-index 只读令牌，五档严格递增：正文 < 菜单 < 侧轨 < 遮罩 < 模态。',
+    kind: 'plain',
+    names: ['--dsh-tb-layer-content', '--dsh-tb-layer-menu', '--dsh-tb-layer-rail', '--dsh-tb-layer-overlay', '--dsh-tb-layer-modal'],
+  },
+  {
+    /* ── 行高：正文行盒，与字号成对 ──────────────────────────────────────────────
+     *
+     * 六档里有五档和字号成对（kpi / title / body / meta / eyebrow）——行盒是排版的
+     * 一半，只给字号等于让行高由字体度量决定，换设备就变。`eyebrow-track` 是小字号的
+     * 正字距：11px 在屏上会被字距挤成一团，`+0.06em` 是这一档的成对值。
+     *
+     * **只有一行字的控件不读这一组**，读 `--dsh-tb-text-line-h`（= 1em）——
+     * 两套行高用途不同，不是两份规矩。 */
+    title: '行高（正文行盒）',
+    why: '行盒是排版的一半：字号与行高成对声明，换设备也不会被字体度量改掉。',
+    kind: 'plain',
+    names: ['--dsh-tb-type-kpi-line', '--dsh-tb-type-title-line', '--dsh-tb-type-body-line', '--dsh-tb-type-meta-line', '--dsh-tb-type-eyebrow-line', '--dsh-tb-type-eyebrow-track'],
+  },
+  {
+    /* ── 边与光：**从墨推导，带下限** ─────────────────────────────────────────────
+     *
+     * 边界不是一条固定灰线：它是「墨的一档」，所以深浅主题下都成立，而宿主那三档
+     * 边框（4% 黑一类）在白纸与浅蓝皮肤上都看不见。发丝与分隔各有一枚，因为它们是
+     * 两种厚度、两种场合。 */
+    title: '边与光',
+    why: '边界从墨推导（不是固定灰线），所以深浅主题都成立；发丝与分隔是两种厚度。',
+    kind: 'color',
+    names: ['--dsh-tb-border', '--dsh-tb-border-soft', '--dsh-tb-edge', '--dsh-tb-hair-color', '--dsh-tb-separator', '--dsh-tb-nav-edge'],
+  },
+  {
+    /* ── 洗底梯子：**悬停与选中各一档，方向由主题决定** ───────────────────────────
+     *
+     * `--dsh-tb-hover` 是**反向**的：浅色里往暗里压、深色里往亮里提，所以它读墨而不是
+     * 读一个固定色。`wash` / `wash-strong` 是洗底深浅两档——它们是**百分比**，由
+     * 调用点拿去和某个色相混，不是一个可以单独当颜色用的值。 */
+    title: '洗底梯子',
+    why: '悬停是反方向的（浅色压暗、深色提亮）；洗底是两档百分比，不单独当颜色用。',
+    kind: 'plain',
+    names: ['--dsh-tb-hover', '--dsh-tb-hover-mix', '--dsh-tb-wash', '--dsh-tb-wash-strong'],
+  },
+  {
+    /* ── 焦点与状态环：**一枚环，一个假底** ───────────────────────────────────────
+     *
+     * 命中的环要落在纸上而不吃掉纸（`ring-w` 是环宽），而「呼吸」那一族是**消息**：
+     * 在跑 / 未读 / 等你。衰减幅度与半径各一枚，因为它们是同一个环的三个数。 */
+    title: '焦点与状态环',
+    why: '焦点环落在纸上、不吃掉纸；呼吸是消息而不是装饰，所以它有名字。',
+    kind: 'plain',
+    names: ['--dsh-tb-focus-color', '--dsh-tb-focus-ring', '--dsh-tb-ring-w', '--dsh-tb-attention-alpha', '--dsh-tb-breath', '--dsh-tb-breath-halo', '--dsh-tb-breath-spread'],
+  },
+  {
+    /* ── 量出来的几何：**每枚都说得出它是量什么得来的** ───────────────────────────
+     *
+     * 这些不是间距阶梯上的某一格，而是**实测值**：控件高、行内衬、框架空气、导轨
+     * 缩进、药丸高、片段高、片段内衬、图标槽、前导间距、条带间距、裁切下限。
+     * 它们各自成令牌，是因为**多处要读同一个数**——一个只在一处用的数留在那一处。 */
+    title: '量出来的几何',
+    why: '每一枚都是量出来的，不是一个可以被「调一调」的偏好；多处读同一个数才成令牌。',
+    kind: 'space',
+    names: ['--dsh-tb-chip-h', '--dsh-tb-pill-h', '--dsh-tb-segment-h', '--dsh-tb-segment-pad', '--dsh-tb-nav-h', '--dsh-tb-nav-pad', '--dsh-tb-row-pad', '--dsh-tb-frame-air', '--dsh-tb-frame-gap', '--dsh-tb-lead-gap', '--dsh-tb-lead-icon', '--dsh-tb-strip-gap', '--dsh-tb-rail-inset', '--dsh-tb-clip-floor'],
+  },
+  {
+    /* ── 墨的反面与输入面：**字压在实色上时读哪一枚** ──────────────────────────────
+     *
+     * `ink-on-fill` / `ink-on-solid` 是「底是一块实心色，写字该用哪个墨」——它不能
+     * 读 `text-1`，因为那块底可能本来就是深色。`input-bg` 是输入框自己的面，
+     * `mask` / `mask-blur` 是遮罩与它那一点模糊。 */
+    title: '实色上的墨与遮罩',
+    why: '字压在实心色上时不能读正文墨——那块的深浅由底决定，不由主题决定。',
+    kind: 'plain',
+    names: ['--dsh-tb-ink-on-fill', '--dsh-tb-ink-on-solid', '--dsh-tb-input-bg', '--dsh-tb-mask', '--dsh-tb-mask-blur', '--dsh-tb-text-line-h'],
   },
 ]
 
 /**
- * The interface type ladder, as DESIGN.md states it.
+ * The interface type ladder, DERIVED from the tokens.
  *
- * Literal sizes rather than tokens: the ladder is a RULE about which sizes the
- * interface may use, and the sheets apply it by writing those sizes. Declaring
- * tokens nothing consumes would be a third vocabulary for the same fact — see
- * `tests/gallery.spec.ts`, which checks each row against the sheets' own
- * declarations so this table cannot describe a ladder nobody uses.
+ * The sizes are token names rather than numbers, and the page reads each one off
+ * a live element (`getComputedStyle`), so this table cannot drift from the
+ * stylesheets: a re-mapped ladder moves the page with it, and a renamed token is
+ * a compile error rather than a stale row. That is the same arrangement the
+ * enumerations above use — the definition is the array, not a copy of it.
+ *
+ * **The ladder is six steps.** `title` / `emphasis` / `body` / `meta` / `eyebrow`
+ * are the reading ladder the sheets apply to text; `kpi` is the one display step
+ * (a dashboard's big number) and is listed last because it is not part of the
+ * prose hierarchy. Each row names where the step appears, which is what the
+ * names alone cannot say.
+ *
+ * A size that is NOT on this ladder is not automatically wrong — the content pass
+ * (Markdown prose) and the platform floor (16px on coarse pointers, which stops
+ * mobile browsers zooming a focused field) are both deliberately off-scale. The
+ * scale gate names those two exemptions by sheet location rather than by size, so
+ * "off-scale" stays a decision instead of becoming a hole.
  */
-export const GALLERY_TYPE_LADDER: readonly { readonly label: string; readonly size: number; readonly weight: number; readonly where: string }[] = [
-  { label: 'Title', size: 16, weight: 600, where: '板名、弹窗标题、详情与复核页主标题' },
-  { label: 'Emphasis', size: 14, weight: 500, where: '卡片标题、详情正文、会话名、入口行' },
-  { label: 'Control', size: 13, weight: 500, where: '按钮、输入框、下拉框、列名、次级标题' },
-  { label: 'Body', size: 12, weight: 400, where: '界面主力：说明文字、列表行、芯片、状态行' },
-  { label: 'Meta', size: 11, weight: 400, where: '时间戳、路径、徽标数字' },
+export const GALLERY_TYPE_LADDER: readonly { readonly label: string; readonly token: string; readonly weight: number; readonly where: string }[] = [
+  { label: 'Title', token: '--dsh-tb-type-title-size', weight: 600, where: '板名、卡片标题、弹窗标题、详情与复核页主标题' },
+  { label: 'Emphasis', token: '--dsh-tb-type-emphasis-size', weight: 500, where: '详情正文、会话行的主文字、图标按钮的字形' },
+  { label: 'Body', token: '--dsh-tb-type-body-size', weight: 400, where: '界面主力：说明文字、列表行、芯片、状态行、控件字' },
+  { label: 'Meta', token: '--dsh-tb-type-meta-size', weight: 400, where: '时间戳、路径、徽标数字、次要标记' },
+  { label: 'Eyebrow', token: '--dsh-tb-type-eyebrow-size', weight: 400, where: '分组眉、段落眉（带正字距）' },
+  { label: 'KPI', token: '--dsh-tb-type-kpi-size', weight: 600, where: '总览的大数字（唯一一档展示级）' },
 ]
 
 /** The three widths the stage can be driven to, so the container query fires. */
@@ -309,8 +427,12 @@ export function DesignGallery() {
         <Section title={t('gallery.type')}>          <div className={css.galleryGrid}>
             {GALLERY_TYPE_LADDER.map(step => (
               <div key={step.label} className={css.gallerySpecimen}>
-                <p className={css.galleryLabel}>{step.label} · {step.size}px / {step.weight}</p>
-                <p className={css.galleryTypeSpecimen} style={{ fontSize: step.size, fontWeight: step.weight }}>
+                <p className={css.galleryLabel}>{step.label} · {step.token} / {step.weight}</p>
+                {/* The specimen reads the token itself, so the row shows what the
+                    ladder actually resolves to in this theme — not a number the
+                    table carries alongside it. A re-mapped ladder therefore moves
+                    the specimen too, which is the whole reason the row names a token. */}
+                <p className={css.galleryTypeSpecimen} style={{ fontSize: `var(${step.token})`, fontWeight: step.weight }}>
                   {t('gallery.typeSpecimen')}
                 </p>
                 <p className={css.galleryValue}>{step.where}</p>
