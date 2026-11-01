@@ -37,12 +37,53 @@ const ROOT = path.resolve(import.meta.dirname, '..')
 const SHAPE_SHEET = 'src/client/design/base.module.css'
 const COMPONENT_SHEET = 'src/client/design/components.module.css'
 const TOKEN_SHEET = 'src/client/design/tokens.module.css'
-const PAGE_SHEETS = [
-  'src/client/board.module.css',
-  'src/client/item/item.module.css',
-  'src/client/home/home.module.css',
-  'src/client/gallery/gallery.module.css',
-]
+
+/**
+ * EVERY page sheet, discovered — never listed.
+ *
+ * ── 为什么不写名单 ──────────────────────────────────────────────────────────
+ *
+ * 这个数组原先手写着四张表，而仓库里已经有八张 `*.module.css`。手写名单只会在
+ * 写它的那一天是对的：`workbench/update-dialog.module.css` 从诞生那一刻起就没被
+ * 这一族判据看过一眼，而它的 `box-shadow`、`overflow`、焦点环全部在判据范围内。
+ *
+ * 同一条道理 `scripts/sheet-files.mjs` 的头注释早就写过（"名单只会在写它的那一天
+ * 是对的，目录会一直对"），`verify-design-docs.mjs` 也早就走目录了。这里原本是
+ * 全仓**最后一处**手写的样式表名单。
+ *
+ * ── 谁不算「页面表」 ────────────────────────────────────────────────────────
+ *
+ * `design/` 下那三张是共享层，它们各自有专门的变量（`SHAPE_SHEET` 等）——把它们
+ * 混进来会让「页面表里有没有第二份」这个判据开始审查那个**本来就该有**的家。
+ *
+ * 所以排除规则是**结构性的一条**：路径里含有 `src/client/design/` 的不要。
+ * 加一张新的页面表（首页拆出第二张、某个页面搬进子目录）时，这一条自动覆盖它，
+ * 不需要回来改这里。
+ */
+const PAGE_SHEETS: string[] = (() => {
+  const found: string[] = []
+  const walk = (dir: string): void => {
+    for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+      const full = path.join(dir, entry.name)
+      if (entry.isDirectory()) {
+        walk(full)
+        continue
+      }
+      if (!entry.name.endsWith('.module.css')) continue
+      const rel = path.relative(ROOT, full).split(path.sep).join('/')
+      if (rel.startsWith('src/client/design/')) continue
+      found.push(rel)
+    }
+  }
+  walk(path.join(ROOT, 'src', 'client'))
+  return found.sort()
+})()
+
+/* 读不到表就是判据失效，不是"这张表没问题"——一条静默的空数组会让下面每一条
+   断言都通过，而它们守的东西一个都没看。 */
+if (PAGE_SHEETS.length < 4) {
+  throw new Error(`css-shapes: 只发现到 ${String(PAGE_SHEETS.length)} 张页面表——扫描器坏了，不是仓库变干净了`)
+}
 
 function read(rel: string): string {
   return fs.readFileSync(path.join(ROOT, rel), 'utf8')

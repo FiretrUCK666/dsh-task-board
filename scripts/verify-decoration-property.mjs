@@ -20,16 +20,31 @@
  * `spread` 只为画一圈的写法），就是违规。允许的是：读材质令牌（`--dsh-tb-cast-*`
  * / `--dsh-tb-rim` / `--dsh-tb-shadow-*`）、以及纯粹的偏移投影（有 y 偏移与模糊）。
  *
- * 用法：`node scripts/verify-decoration-property.mjs .`（随 `pnpm verify` 跑）。
+ * 用法：`node scripts/verify-decoration-property.mjs [根目录]`（随 `pnpm verify` 跑）。
  * 自测：`--probe-decoration`（种四条，两对两错）。
+ *
+ * **自测开关必须经 `probe-args.mjs` 读。** 这里原先是 `process.argv.includes(…)`：
+ * 它对着一串不存在的字样回答 false，于是拼错的探针会走进正常分支、跑完全部检查、
+ * 打印 OK、退出 0 —— 调用方以为它验了探针，实际它跑的是另一件事。
  */
-import { readFileSync } from 'node:fs'
 import { declOf, rulesOf } from './css-core.mjs'
+import { probeOf } from './probe-args.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 
-const target = process.argv[2] ?? ''
+const target = process.argv[2] ?? '.'
 /* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
 const SHEETS = clientSheetFiles(target)
+
+/**
+ * **一张表都没找到就是判据失效，不是「仓库很干净」。**
+ *
+ * 根目录缺省成空串时这里曾拿到零张表：循环一次都不跑，脚本打印 OK 并退出 0。
+ * 那是一条永远绿的门禁——它看起来在守，实际一个字节都没读。
+ */
+if (probeOf(['--probe-decoration']) === undefined && SHEETS.length === 0) {
+  console.error(`FAIL 一张样式表都没找到（根目录给的是 "${target}"）——判据没读任何东西，不能报 OK。`)
+  process.exit(1)
+}
 
 /**
  * 一份 `box-shadow` 值里有没有「环」。
@@ -59,7 +74,7 @@ export function hasRing(value) {
   return false
 }
 
-if (process.argv.includes('--probe-decoration')) {
+if (probeOf(['--probe-decoration']) === '--probe-decoration') {
   const planted = [
     { selector: '.ok', body: 'box-shadow: var(--dsh-tb-rim), var(--dsh-tb-cast-2);' },
     { selector: '.ok2', body: 'box-shadow: 0 4px 18px rgba(0,0,0,.08);' },
@@ -84,13 +99,9 @@ if (process.argv.includes('--probe-decoration')) {
 const findings = []
 let checked = 0
 for (const sheet of SHEETS) {
-  let css
-  try {
-    css = readFileSync(sheet.path, 'utf8')
-  } catch {
-    continue
-  }
-  for (const rule of rulesOf(css)) {
+  /* `clientSheetFiles()` 已经把文本一起给了——再 `readFileSync` 一次既多余，
+     读不到时那个 `continue` 还会让一条都没查的运行打印 OK。 */
+  for (const rule of rulesOf(sheet.css)) {
     const shadow = declOf(rule.body, 'box-shadow')
     if (shadow === undefined) continue
     checked += 1

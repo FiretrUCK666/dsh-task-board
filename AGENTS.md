@@ -95,7 +95,6 @@
 
 **取值一律现场读**（`package.json` / `git remote -v` / `git config user.name` / `npm whoami`）
 ——仓库是唯一权威。**这条只管本文**：README 与 CONTRIBUTING 给人看，必须写具体命令。
-
 **本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、有歧义——都应直接
 改本文并提交，而不是绕过它或把特殊处理写死进代码。写的时候：面向 AI、与代码一致、写意图不写快照。
 
@@ -493,7 +492,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 ## 新增与复用（要加东西之前先读这一节）
 
 **这一节只回答一个问题：你要加的那个东西，已经存在吗？** 答案不是「看起来像」，是**它住在哪个
-文件**。一次全项目普查找出 **55 处同一段逻辑被抄成多份**，没一处会报错。
+文件**。一次全项目普查就找出几十处同一段逻辑被抄成多份，没一处会报错。
 
 ### 一、顺序是硬的
 
@@ -627,8 +626,9 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
    `scripts/verify-standalone.mjs` 内置防回归黑名单（其自身文件豁免）。
 5. **数据键稳定**：`dsh.taskBoard.v1` 不得改名。同步模式下这些键是**离线镜像 / 草稿 / preSync
    备份**（真相在 host 存储单元），回退模式下它们就是真相——两种模式下用户数据都不因升级丢失。
+   由 `scripts/verify-storage-keys.mjs` 守着。
    首次连上 host 时：host 为空则本地整视图 bootstrap；host 有数据则按 LWW 逐记录并入，分歧的
-   整视图一次性备份到 `dsh.taskBoard.preSync.v1`（只此一次）。
+   整视图一次性备份到 `dsh.taskBoard.preSync.v1`。
 6. **生命周期纪律**：订阅/监听/定时器/observer 全部注册 disposer；DOM 失败
    console.error 不抛；`ctx.effect` 内创建的资源随 effect 清理。
 7. **独立自包含**：**运行时没有依赖**（`dependencies` 为空，host 只 import 类型）；不依赖兄弟插件；
@@ -691,8 +691,8 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
 
 ## 测试（布局约定）
 
-- **一个 src 模块一个 spec，契约按表面/域分组**，清单以 `tests/` 目录为准。**新增逻辑即配测试**
-  ——测试是契约不是附件；先归入对应域的现有 spec。
+- **一个 src 模块通常对应一个 spec，契约按表面/域分组**，清单以 `tests/` 目录为准。**新增逻辑即配测试**
+  ——先归入对应域的现有 spec。
 - **非显然的分工**（细节在各 spec 里）：`host-sync`/`board-doc` 是同步文法与租约状态机；
   `board-service` 带 **LeaseState 唯一构造点**的机械禁令；`board-http` 用真实存储 + 真实 SSE；
   `controller` 是唯一大文件；**看板**的 CSS 布局契约在 `card-contract` / `mobile-contract` /

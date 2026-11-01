@@ -2836,7 +2836,7 @@
 }
 
 .sessionDropZone[data-bindactive] {
-  box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
   /* The breath rides the outline's COLOUR; its width is constant (same
      mechanism as the card ring — a state light never animates geometry). */
   outline: var(--dsh-tb-breath-spread) solid transparent;
@@ -3371,7 +3371,7 @@
  */
 .column[data-dropaccept='link'] {
   border-color: var(--dsh-tb-accent);
-  box-shadow: 0 0 0 2px var(--dsh-tb-focus-ring);
+  box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
   /* Constant-width outline, colour-only breath (see the card ring). */
   outline: var(--dsh-tb-breath-spread) solid transparent;
   outline-offset: 0;

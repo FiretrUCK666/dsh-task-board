@@ -31,16 +31,34 @@
  *
  * 不判 `min-width`：横向的地板不会被视口高度压塌，那一条没有同一个病。
  *
- * 用法：`node scripts/verify-scroll-floor.mjs .`（随 `pnpm verify` 跑）。
+ * 用法：`node scripts/verify-scroll-floor.mjs [根目录]`（随 `pnpm verify` 跑）。
  * 自测：`--probe-scroll-floor`（种四条，两对两错）。
+ *
+ * **自测开关必须经 `probe-args.mjs` 读。** 这里原先是 `process.argv.includes(…)`，
+ * 而它对着一串不存在的字样回答 false —— 于是
+ * `node scripts/verify-scroll-floor.mjs . --probe-typo` 会走进正常分支、跑完全部
+ * 检查、打印 OK、退出 0，而调用方以为它验了探针。探针拼错不会报错，只会**静默地
+ * 变成一次没人要求过的正常检查**。
  */
-import { readFileSync } from 'node:fs'
 import { declOf, rulesOf } from './css-core.mjs'
+import { probeOf } from './probe-args.mjs'
 import { clientSheetFiles } from './sheet-files.mjs'
 
-const target = process.argv[2] ?? ''
+const target = process.argv[2] ?? '.'
 /* 走目录，不列名单：新加一张表的那天它就被检查，不必有人记得回来改这里。 */
 const SHEETS = clientSheetFiles(target)
+
+/**
+ * **一张表都没找到就是判据失效，不是「仓库很干净」。**
+ *
+ * 这里原先在 `target` 缺省成空串时拿到零张表，于是循环一次都不跑、`checked` 停在
+ * 0、脚本打印 `OK: 0 overflow rule(s) checked` 并退出 0。那是一条**永远绿**的
+ * 门禁：它看起来在守，实际上一个字节都没读。一条静默的空扫描比没有门禁更糟。
+ */
+if (SHEETS.length === 0) {
+  console.error(`FAIL 一张样式表都没找到（根目录给的是 "${target}"）——判据没读任何东西，不能报 OK。`)
+  process.exit(1)
+}
 
 /**
  * 这条规则是不是「滚动 + flex 项 + 固定地板」。
@@ -66,7 +84,7 @@ export function badFloorOf(body) {
   return /^\d+(\.\d+)?px$/.test(minHeight) ? minHeight : undefined
 }
 
-if (process.argv.includes('--probe-scroll-floor')) {
+if (probeOf(['--probe-scroll-floor']) === '--probe-scroll-floor') {
   const planted = [
     /* 合法：滚动 + flex，但地板归零。 */
     { selector: '.ok', body: 'flex: 1; min-height: 0; overflow-y: auto;' },
@@ -95,13 +113,9 @@ if (process.argv.includes('--probe-scroll-floor')) {
 const findings = []
 let checked = 0
 for (const sheet of SHEETS) {
-  let css
-  try {
-    css = readFileSync(sheet.path, 'utf8')
-  } catch {
-    continue
-  }
-  for (const rule of rulesOf(css)) {
+  /* `clientSheetFiles()` 已经把文本一起给了——再 `readFileSync` 一次是多余的，
+     而且那份文件读不到时它会静默 `continue`，于是一条都没查却打印 OK。 */
+  for (const rule of rulesOf(sheet.css)) {
     if (!/overflow/.test(rule.body)) continue
     checked += 1
     const floor = badFloorOf(rule.body)

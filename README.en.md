@@ -360,8 +360,11 @@ you see there is what the panels render.
 DSH_TASK_BOARD_DESIGN_PREVIEW=1 pnpm dsh web   # or add that variable to however you start it
 ```
 
-It is registered only when that variable is set, so without it the page **does not exist at all** — no
-extra switch on the plugin page, and nothing for an ordinary user to run into.
+It is registered only when that variable is set, so without it the page is **never registered** — it is
+not in the sidebar, it is not a switch on the plugin page, and an ordinary user never runs into it. (Its
+code ships in the same browser bundle as the two panels; what keeps it out of the interface is two gates:
+the host announces the surface only when that variable is set, and the browser registers nothing when it
+cannot read the announcement.)
 
 ## Contributing
 

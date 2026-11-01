@@ -170,6 +170,11 @@ const NON_VISUAL = new Set([
   'verify-address-grammar.mjs',
   'verify-truncation-form.mjs',
   'verify-version-sync.mjs',
+  /* 守的是「检查者的覆盖从哪来」，不是画出来的东西：它判门禁与测试里有没有
+     手写样式表名单。加一张表时手写名单不会跟着变，而屏上不会有声音。 */
+  'verify-sheet-discovery.mjs',
+  /* 守的是数据契约（localStorage 的键不得改名），不解码任何渲染结果。 */
+  'verify-storage-keys.mjs',
 ])
 
 export function check(root) {

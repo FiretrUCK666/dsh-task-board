@@ -28,7 +28,7 @@ import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
 import { withSessionRules } from '../src/core/automation.ts'
-import { allRules, designCss, pageCss, ruleTextOf, spacingPx } from './panel-harness.ts'
+import { allRules, clientSheets, designCss, pageCss, ruleTextOf, spacingPx } from './panel-harness.ts'
 
 /**
  * The board surface AS IT RENDERS: the board's own sheets plus the design layer
@@ -38,18 +38,16 @@ import { allRules, designCss, pageCss, ruleTextOf, spacingPx } from './panel-har
  * reading everything would make the list panel's numbers findings against the
  * board.
  *
- * **The type ladder is the exception, and it is why `itemSource` exists.** The
- * ladder used to be two tables — the board's (11/12/13/14/16) and the list's
- * (11/12/13/15) — so reading one path was correct. It is now ONE table of six
- * token-backed steps shared by both panels, which means a scale claim that reads
- * only the board is a claim about half the interface. That is not hypothetical:
- * with the ladder unified, the list sheet carried twelve off-scale sizes that no
- * assertion had ever counted.
+ * **The type ladder reads EVERY sheet, by discovery.** The ladder used to be two
+ * tables — the board's (11/12/13/14/16) and the list's (11/12/13/15) — so reading
+ * one path was correct. It is now ONE table of six token-backed steps shared by
+ * both panels, which means a scale claim that reads only the board is a claim
+ * about half the interface. That is not hypothetical: with the ladder unified,
+ * the list sheet carried twelve off-scale sizes that no assertion had ever
+ * counted — and three more sheets (`home`, `gallery`, `workbench/update-dialog`)
+ * were never read at all, one of which carried an unwatched 24px title.
  */
 const source = pageCss('board') + '\n' + designCss()
-
-/** The list panel's own sheet — the other half of the shared type ladder. */
-const itemSource = pageCss('item')
 
 /** The [start, end) character ranges of every conditional block of one kind
  *  (`@media` / `@container`), found by brace-walking — used to prove a rule is
@@ -966,18 +964,29 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       // consumer, not from a decision made here — so it stays where it is used,
       // with this reason. The day a second surface needs it, it becomes a token.
       { px: '26px', why: /itemRailMonth/ },
+      // The home page's title. A DISPLAY size: it is the one `h1` on the overview,
+      // and 24px is the shell's own display step rather than a reading size. The
+      // exemption is by POSITION, like the two above: the day a second surface
+      // wants 24px, it stops being "this page's title" and becomes a step.
+      { px: '24px', why: /pageTitle/ },
     ]
     const bad: string[] = []
-    // BOTH PANELS' SHEETS. The ladder is one table shared by the board and the
-    // list, so a check that reads only `board.module.css` leaves half the
-    // interface unchecked — and that is exactly how `item.module.css` carried
-    // eight 15px sites and four 14px sites nobody was counting. A guarantee that
-    // covers the surface which happened to be correct is a guarantee about luck.
-    for (const [label, text] of [
-      ['board.module.css', source],
-      ['item.module.css', itemSource],
-    ] as const) {
-      const lines = text.split('\n')
+    // EVERY SHEET IN THE CLIENT HALF, discovered — never listed.
+    //
+    // The claim is "interface type sits on the ladder", and that claim is about the
+    // whole interface, not about the two sheets that happened to be read first.
+    // This loop used to name `board` and `item` only, which left three sheets
+    // entirely unjudged: `home`, `gallery` and `workbench/update-dialog`. Home was
+    // carrying a 24px title that no assertion had ever seen — the same shape of
+    // defect the paragraph above describes for `item.module.css`.
+    //
+    // Reading by discovery means a sheet added tomorrow is judged on the day it
+    // exists. A hand-written list would be right only until the next sheet.
+    const sheets = clientSheets()
+    expect(sheets.length, 'no stylesheets found — this gate would pass while checking nothing').toBeGreaterThan(6)
+    for (const { rel, css } of sheets) {
+      const label = rel.replace('src/client/', '')
+      const lines = css.split('\n')
       lines.forEach((line, index) => {
         const hit = line.match(/font-size:\s*(\d+(?:\.\d+)?px)/)
         if (hit === null) return
@@ -1000,7 +1009,8 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
         }
       })
     }
-    expect(bad, 'font sizes must be on 11/12/13/14/16, or join the content-pass allowlist with a reason').toEqual([])
+    expect(bad, 'font sizes must sit on the declared ladder, or join the content-pass allowlist with a position reason (every stylesheet in the client half is read):\n'
+      + bad.join('\n')).toEqual([])
   })
 
   it('Markdown 标题用官方那套**比例**，不写像素、也不搬官方绝对值', () => {
