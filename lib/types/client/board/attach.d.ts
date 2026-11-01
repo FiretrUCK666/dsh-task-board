@@ -88,8 +88,21 @@ export declare const MAX_ITEM_FILES = 3;
 export declare const MAX_UPLOAD_BYTES: number;
 /**
  * PURE decision for one candidate file (unit-tested): the intake route.
- * Images route to the canvas lane; EVERYTHING else routes to the file lane
- * (upload-then-receipt) — a non-image is never a "type rejection".
+ *
+ * **The test is the whitelist, not the prefix.** It used to be
+ * `type.startsWith('image/')`, which is true of every image-ish type a browser
+ * knows — including `image/vnd.adobe.photoshop`, `image/tiff`,
+ * `image/svg+xml` and `image/x-icon`. Those are images in the everyday sense
+ * and **none of them can go through a canvas**: the decode fails, and the
+ * reader is told their `.psd` "could not be decoded as an image" or, worse,
+ * "is still too large after compression" — a sentence about a compression pass
+ * that never had a chance to run. A format this plugin cannot actually read is
+ * a FILE: it goes up byte-for-byte, and nothing tries to shrink it.
+ *
+ * So the branch reads {@link IMAGE_MEDIA_TYPES} — the same four types the
+ * encoder's result gate enforces. One list, two readers: a type can never be
+ * "an image" to the decision and "not an image" to the gate.
+ *
  * A pre-compression image may exceed maxBytes and still be fine (the
  * re-encode shrinks it), so size only rejects a PASSTHROUGH (gif) or the
  * final encoded result — never a re-encode candidate up front.

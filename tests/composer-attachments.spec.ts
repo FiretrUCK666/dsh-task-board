@@ -12,6 +12,7 @@ import {
   attachBusyLabel, busyKindOf, decodeCommentDraft, encodeCommentDraft, pickedHasFiles, rejectMessage,
 } from '../src/client/board/composer-attachments.ts'
 import { createAttachmentBridge } from '../src/client/index.ts'
+import { en, zh } from '../src/client/locales.ts'
 import type { ApiFace } from '../src/client/platform.ts'
 import type { AttachmentRef } from '../src/core/attachment.ts'
 
@@ -103,6 +104,57 @@ describe('rejectMessage', () => {
     expect(rejectMessage('size', 'big.png')).toContain('big.png')
     expect(rejectMessage('decode', 'odd.heic')).toContain('odd.heic')
     expect(rejectMessage('count', 'extra.png', 3)).toContain('3')
+  })
+})
+
+/**
+ * **The file lane must not speak the image lane's words.**
+ *
+ * `rejectMessage` takes `ImageRejectReason` — `size` means "still too large
+ * after compression", `decode` means "could not be decoded". A non-image file
+ * is never compressed and never decoded, so every one of those sentences is
+ * false about a dropped PDF even though the refusal itself is right.
+ *
+ * The shape this guards against: one shared message table used by two lanes
+ * whose failures have nothing in common. It reached the screen as
+ * "「季度报告.pdf」无法解码为图片" on a plain drag-and-drop.
+ */
+describe('the file lane has its own reasons', () => {
+  /** The image words that must never reach a non-image file. */
+  const IMAGE_ONLY = ['压缩', '解码', '图片', '张', 'compress', 'decode', 'image']
+
+  /** Every file-lane message this plugin can emit. */
+  const FILE_LANE_MESSAGES = ['attach.rejectFileSize', 'attach.rejectFileEmpty', 'attach.rejectFileRead'] as const
+
+  /** Fill a template the way `t()` does, without depending on the active locale. */
+  const fill = (template: string, params: Record<string, string>): string =>
+    template.replace(/\{(\w+)\}/g, (whole, name: string) => params[name] ?? whole)
+
+  it('no file-lane message borrows an image word', () => {
+    for (const key of FILE_LANE_MESSAGES) {
+      const zhText = fill(zh[key], { name: '季度报告.pdf', max: '25' })
+      const enText = fill(en[key], { name: 'report.pdf', max: '25' })
+      for (const word of IMAGE_ONLY) {
+        expect(zhText, `${key} (zh) says "${word}" about a file that is never an image`).not.toContain(word)
+        expect(enText.toLowerCase(), `${key} (en) says "${word}" about a file that is never an image`)
+          .not.toContain(word)
+      }
+      // Each one still names the file — a refusal the reader cannot trace is worse.
+      expect(zhText).toContain('季度报告.pdf')
+      expect(enText).toContain('report.pdf')
+    }
+  })
+
+  it('the size message carries the limit as a number, not a promise about compression', () => {
+    const zhText = fill(zh['attach.rejectFileSize'], { name: 'a.bin', max: '25' })
+    expect(zhText).toContain('25')
+    expect(zhText).toContain('MB')
+  })
+
+  it('the image lane keeps its own accurate words (do not blur the two together)', () => {
+    // A "make it generic" edit would strip the one sentence that is TRUE about
+    // an oversized GIF: it really was compressed and really is still too big.
+    expect(rejectMessage('size', 'big.gif')).toContain('压缩')
   })
 })
 

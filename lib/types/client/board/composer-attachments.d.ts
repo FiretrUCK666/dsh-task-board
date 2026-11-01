@@ -80,7 +80,15 @@ export declare function encodeCommentDraft(text: string, attachments: readonly D
  * agreed on three keys and disagreed about everything else.
  */
 export declare function decodeCommentDraft(raw: string | undefined): CommentDraftSnapshot;
-/** Whether a picked batch contains any non-image (a re-add clears stale notices). */
+/**
+ * Whether a picked batch contains anything that is NOT one of the four images
+ * this plugin can actually re-encode.
+ *
+ * Same list as {@link intakeDecision} — a `.psd` is a FILE here for the same
+ * reason it is one there. Two answers ("is it an image?") read two different
+ * tests is how a batch of one PSD counted as "all images, clear the file
+ * notice" while the intake routed it down the file lane.
+ */
 export declare function pickedHasFiles(files: FileList | File[]): boolean;
 /** One human line for one rejection reason (locale-owned). */
 export declare function rejectMessage(reason: ImageRejectReason, name: string, max?: number): string;

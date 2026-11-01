@@ -22,7 +22,7 @@ import { useCallback, useRef, useState } from 'react'
 import { normalizeAttachmentRefs, wholeRefOf, type AttachmentRef } from '../../core/attachment.ts'
 import { t } from '../locales.ts'
 import {
-  encodeImageFile, intakeDecision, MAX_COMMENT_FILES, MAX_UPLOAD_BYTES, readFileBase64,
+  encodeImageFile, IMAGE_MEDIA_TYPES, intakeDecision, MAX_COMMENT_FILES, MAX_UPLOAD_BYTES, readFileBase64,
   type EncodedImage, type ImageBudget, type ImageRejectReason,
 } from './attach.ts'
 
@@ -200,9 +200,19 @@ export function decodeCommentDraft(raw: string | undefined): CommentDraftSnapsho
   }
 }
 
-/** Whether a picked batch contains any non-image (a re-add clears stale notices). */
+/**
+ * Whether a picked batch contains anything that is NOT one of the four images
+ * this plugin can actually re-encode.
+ *
+ * Same list as {@link intakeDecision} — a `.psd` is a FILE here for the same
+ * reason it is one there. Two answers ("is it an image?") read two different
+ * tests is how a batch of one PSD counted as "all images, clear the file
+ * notice" while the intake routed it down the file lane.
+ */
 export function pickedHasFiles(files: FileList | File[]): boolean {
-  return Array.from(files).some(file => !file.type.startsWith('image/'))
+  return Array.from(files).some(file => (
+    !IMAGE_MEDIA_TYPES.includes(file.type as (typeof IMAGE_MEDIA_TYPES)[number])
+  ))
 }
 
 /** One human line for one rejection reason (locale-owned). */
@@ -367,18 +377,35 @@ export function useComposerAttachments(options: ComposerAttachmentOptions): Comp
           }
           // File lane: the exact bytes go up, the ref comes back. No session is
           // involved, so a checklist row can attach a file exactly like a card.
+          //
+          // **This lane says its own words.** Every failure below used to borrow
+          // `rejectMessage`, whose four reasons are the IMAGE reasons — so
+          // dropping a PDF said "could not be decoded as an image" (it is never
+          // decoded) and an oversized one said "still too large after
+          // compression" (it is never compressed). Neither sentence was false
+          // about the reader's file being refused; both were false about why.
           const fileCount = next.filter(entry => entry.mediaType === undefined).length
           if (fileCount >= maxFiles) {
             setError(t('attach.rejectFileCount', { name: file.name, max: String(maxFiles) }))
             break
           }
           if (file.size > MAX_UPLOAD_BYTES) {
-            setError(rejectMessage('size', file.name))
+            setError(t('attach.rejectFileSize', {
+              name: file.name,
+              max: String(Math.round(MAX_UPLOAD_BYTES / (1024 * 1024))),
+            }))
+            continue
+          }
+          /* An empty file is its own answer: it is not a read failure, and
+             calling it one sends the reader to check permissions on a file that
+             is simply empty. */
+          if (file.size === 0) {
+            setError(t('attach.rejectFileEmpty', { name: file.name }))
             continue
           }
           const data = await readFileBase64(file)
           if (data === '') {
-            setError(rejectMessage('decode', file.name))
+            setError(t('attach.rejectFileRead', { name: file.name }))
             continue
           }
           const ref = await admitRefOf(admit, { name: file.name, data }, setError)

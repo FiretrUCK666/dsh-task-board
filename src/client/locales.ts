@@ -571,6 +571,17 @@ export const zh = {
   'attach.rejectDecode': '「{name}」无法解码为图片',
   'attach.rejectCount': '最多 {max} 张，「{name}」未添加',
   'attach.rejectFileCount': '最多 {max} 个文件，「{name}」未添加',
+  /* ── 文件通道自己的三条 ─────────────────────────────────────────────
+   *
+   * 上面那四条说的是**图片**才成立的事：压缩、解码、张数。一条非图片的文件
+   * 走的是另一条路（原样上传，不压缩、不解码），所以它失败时不能借用图片的
+   * 说法——「无法解码为图片」摆在一次 PDF 拖放上，读者会以为插件认错了文件。
+   *
+   * 界限按**通道**分，不按「说得含糊一点」分：含糊化会让真正该说「压缩后仍
+   * 超限」的那一次也失去准确的原因。 */
+  'attach.rejectFileSize': '「{name}」超过 {max} MB 的上限',
+  'attach.rejectFileEmpty': '「{name}」是空文件，没有内容可以上传',
+  'attach.rejectFileRead': '「{name}」读不出来：文件可能已被移动或没有读取权限',
   'attach.rejectUpload': '「{name}」上传失败：{error}',
   'attach.rejectNoStore': '这台 host 没有附件库，「{name}」暂时传不了',
   'attach.legacyFilesLost': '这些旧附件找不回字节了，请重新选择：{names}',
@@ -1723,6 +1734,10 @@ export const en: Record<keyof typeof zh, string> = {
   'attach.rejectDecode': '"{name}" could not be decoded as an image',
   'attach.rejectCount': 'At most {max} images — "{name}" not added',
   'attach.rejectFileCount': 'At most {max} files — "{name}" not added',
+  /* The file lane's own three (see the zh block for why they are separate). */
+  'attach.rejectFileSize': '"{name}" is over the {max} MB limit',
+  'attach.rejectFileEmpty': '"{name}" is empty — there is nothing to upload',
+  'attach.rejectFileRead': '"{name}" could not be read — the file may have moved or be unreadable',
   'attach.rejectUpload': '"{name}" upload failed: {error}',
   'attach.rejectNoStore': 'This host has no attachment store, so "{name}" cannot be attached',
   'attach.legacyFilesLost': 'These older attachments cannot be recovered — please pick them again: {names}',

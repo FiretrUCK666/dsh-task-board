@@ -549,6 +549,9 @@ export declare const zh: {
     'attach.rejectDecode': string;
     'attach.rejectCount': string;
     'attach.rejectFileCount': string;
+    'attach.rejectFileSize': string;
+    'attach.rejectFileEmpty': string;
+    'attach.rejectFileRead': string;
     'attach.rejectUpload': string;
     'attach.rejectNoStore': string;
     'attach.legacyFilesLost': string;

@@ -8,6 +8,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   COMMENT_IMAGE_BUDGET,
+  IMAGE_MEDIA_TYPES,
   MAX_TASK_IMAGES,
   TASK_IMAGE_BUDGET,
   finishEncoded,
@@ -16,11 +17,11 @@ import {
 } from '../src/client/board/attach.ts'
 
 describe('intakeDecision (route every file, say why for rejects)', () => {
-  it('routes any decodable image to the re-encode path (pre-size never rejects)', () => {
+  it('routes a whitelisted image to the re-encode path (pre-size never rejects)', () => {
     // A 12 MB phone photo is NOT rejected up front — the canvas shrinks it.
     expect(intakeDecision('image/jpeg', 12 * 1024 * 1024, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reencode' })
-    expect(intakeDecision('image/heic', 2 * 1024 * 1024, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reencode' })
-    expect(intakeDecision('image/bmp', 100, TASK_IMAGE_BUDGET)).toEqual({ kind: 'reencode' })
+    expect(intakeDecision('image/png', 3 * 1024 * 1024, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'reencode' })
+    expect(intakeDecision('image/webp', 100, TASK_IMAGE_BUDGET)).toEqual({ kind: 'reencode' })
   })
 
   it('passes an in-budget gif through untouched (a canvas would kill the animation)', () => {
@@ -33,6 +34,45 @@ describe('intakeDecision (route every file, say why for rejects)', () => {
     expect(intakeDecision('application/pdf', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
     expect(intakeDecision('', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
     expect(intakeDecision('video/mp4', 10, COMMENT_IMAGE_BUDGET)).toEqual({ kind: 'file' })
+  })
+
+  /**
+   * **"Starts with `image/`" is not the question — "can a canvas read it" is.**
+   *
+   * The decision used to test the prefix, which is true of
+   * `image/vnd.adobe.photoshop`, `image/tiff`, `image/svg+xml` and
+   * `image/x-icon`. Every one of them took the canvas lane, failed to decode,
+   * and reached the reader as a sentence about compression or decoding — for a
+   * `.psd` that was never going to be either.
+   *
+   * These formats are FILES: uploaded byte-for-byte, never shrunk, never
+   * described in image words. This is the exact case that produced
+   * "「积木少女-原生重绘-v1.psd」压缩后仍超过大小上限".
+   */
+  it('routes an image-ish format the canvas CANNOT read to the file lane', () => {
+    for (const type of [
+      'image/vnd.adobe.photoshop', // .psd
+      'image/tiff',
+      'image/svg+xml',
+      'image/x-icon',
+      'image/avif',
+      'image/heic',
+      'image/bmp',
+    ]) {
+      expect(
+        intakeDecision(type, 4096, COMMENT_IMAGE_BUDGET),
+        `${type} is not one of the four types this plugin can re-encode, so nothing may try to compress it`,
+      ).toEqual({ kind: 'file' })
+    }
+  })
+
+  it('the decision and the result gate agree on what an image is (one list, two readers)', () => {
+    // If these ever disagree, a type goes down the image lane and then fails
+    // the gate — which is how a file ends up with a compression sentence.
+    for (const type of IMAGE_MEDIA_TYPES) {
+      expect(intakeDecision(type, 1024, COMMENT_IMAGE_BUDGET).kind, `${type} must take the image lane`)
+        .not.toBe('file')
+    }
   })
 })
 
