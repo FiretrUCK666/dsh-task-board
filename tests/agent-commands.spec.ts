@@ -67,11 +67,57 @@ describe('the two commands', () => {
   const invoke = async (index: number, agent: CommandAgent, rawInput: string) =>
     await createTaskboardCommands()[index]!.handler({ agent: agent as unknown as HostAgent, rawInput } as never)
 
-  it('/task hands the person\'s own words to the session model, unedited', async () => {
+  it('/task hands the person\'s own words to the session model, unedited, behind the board directive', async () => {
     const box = agent()
     expect(await invoke(0, box, '  把刚才说的三件事记下来  ')).toEqual({ kind: 'success' })
     expect(box.handed).toHaveLength(1)
-    expect(box.handed[0]?.content[0]?.text).toBe('把刚才说的三件事记下来')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    // The person's words arrive EXACTLY as typed — the directive is prepended,
+    // never woven in, so the model cannot misread which part is theirs.
+    expect(sent.endsWith('把刚才说的三件事记下来')).toBe(true)
+    // ...and they arrive with the one instruction the command promises: use the
+    // board's tools. Without it the command was literally indistinguishable from
+    // plain chat, and measured against a real board it left no card at all.
+    expect(sent).toContain('/task')
+    expect(sent).toContain('看板的工具')
+  })
+
+  it('the directive does not try to be a workflow', async () => {
+    // It names WHAT to do (record it on the board), never HOW — no tool name, no
+    // field list, no order. The injected prompt teaches the steps; a command that
+    // also scripted them would be a second set of rules to keep in step.
+    const box = agent()
+    await invoke(0, box, '记一下')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    expect(sent).not.toContain('task.create')
+    expect(sent).not.toContain('taskboard_execute')
+  })
+
+  it('/task DECLARES input, so clicking it in the menu claims instead of executing', () => {
+    // THE CLICK CONTRACT, and it is not cosmetic. The host's dispatcher keeps two
+    // behaviours behind this one field — its own comment names them: 「host input
+    // → claim; host bare → detached execute」.
+    //
+    //   input declared  -> picking it leaves `/task ` in the composer and waits
+    //                      for the sentence; the handler does NOT run
+    //   input absent    -> picking it runs the command immediately with no
+    //                      argument, i.e. the person who only wanted to USE the
+    //                      command instead gets a usage message
+    //
+    // This command shipped without `input`, so a click behaved like a submit.
+    // The report was 「我点一下，它什么都没运行，然后弹出一段东西，很奇怪」 — and
+    // that is exactly what the absent field produces.
+    const task = createTaskboardCommands()[0]!
+    expect(task.input, 'a command that needs a sentence must declare input').toBeDefined()
+    expect(task.input?.hint.trim(), 'the hint is what tells the reader to keep typing').not.toBe('')
+  })
+
+  it('/task-continue takes no argument, so it must NOT declare input', () => {
+    // The other half of the same rule. `/task-continue` answers a question about
+    // what is outstanding and by design carries no argument — declaring `input`
+    // would claim the composer and wait for words that the command would ignore.
+    const cont = createTaskboardCommands()[1]!
+    expect(cont.input, 'continue asks nothing, so it claims nothing').toBeUndefined()
   })
 
   it('success carries no text: the model answers in the conversation, not here', async () => {
@@ -94,25 +140,27 @@ describe('the two commands', () => {
     expect(message.id.length).toBeGreaterThan(0)
   })
 
-  it('a blank /task ANSWERS with the usage line — and does not paint a failure', async () => {
-    // `kind: 'error'` is what the client paints RED. So the most likely first
-    // move in a brand-new session — type `/task` and press enter to see what it
-    // does — must not put a red card on the screen carrying a perfectly good
-    // sentence of help. Nothing has failed; a red card would say it had, and the
-    // reader would be told the command is broken.
+  it('a blank /task says what to do in ONE line — and does not paint a failure', async () => {
+    // `kind: 'error'` is what the client paints RED, so a blank submit must stay
+    // `success`: nothing failed, the person just had not typed the sentence yet.
     //
-    // The host's own contract is what makes this more than a shade: 「a
-    // thrown/aborted handler settles as `kind: 'error'`」. So `error` means the
-    // command FAILED, and a usage hint is not a failure — it is the command doing
-    // the one thing it can do with no argument.
-    //
-    // Nothing that reads the sentence is affected: only the kind differs, and
-    // that is the whole point.
+    // The OTHER half of this is the length. This branch used to answer with a
+    // three-step tutorial about building, configuring and running a card — and
+    // that teaching already lives in the injected prompt, where it reaches the
+    // model every turn. Repeating it on a blank submit spent the reader's
+    // attention on the screen where they were least stuck.
     const box = agent()
     const result = await invoke(0, box, '   ')
     expect(result.kind, 'a blank /task is answered, not failed — the reader is not shown red for asking').toBe('success')
     expect(box.handed, 'a blank /task must not guess and hand something over').toHaveLength(0)
-    expect('text' in result && result.text).toContain('/task')
+    const text = 'text' in result ? result.text ?? '' : ''
+    expect(text).toContain('/task')
+    // One line: no paragraph, no second sentence of tutorial.
+    expect(text, 'a blank submit is answered in one line, not a paragraph').not.toContain('\n')
+    expect(text.length, 'the hint is a sentence, not a manual').toBeLessThan(120)
+    // The three-step teaching belongs to the prompt; it must not be duplicated here.
+    expect(text).not.toContain('task.create')
+    expect(text).not.toContain('session.create')
   })
 
   it('a REAL failure still paints as a failure', async () => {

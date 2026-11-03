@@ -42,40 +42,88 @@ export interface CommandRegistrar {
 }
 
 /**
- * `/task` with no argument has nothing to hand over, and a blank door is a worse
- * experience than being told what the command is for.
+ * What `/task` says when someone presses enter with no sentence after it.
  *
- * It now also teaches the THREE STEPS, because the way this plugin failed people
- * was not 「命令不会用」 — it was 「建了卡却跑不起来」: a card is built, then its
- * run configuration is set, then it is run, and a person who does not know that
- * ends up with a card that has never done anything and no message saying so.
- * The tools now accept the configuration at creation, so the honest hint is two
- * steps, and it says which.
+ * ONE LINE, not a paragraph. This branch used to carry a three-step tutorial
+ * about building, configuring and running a card — but that teaching already
+ * lives in the injected prompt (`tool:taskboard` rules 4 and 5), where it
+ * reaches the model on every turn instead of only when somebody submits a blank
+ * command. Repeating it here spent the reader's attention on the one screen
+ * where they were least stuck: they had the command, they just had not typed the
+ * sentence yet.
  */
-const TASK_HINT = '用法：/task 后面直接写你要记的事，例如「/task 把刚才说的三件事记下来」。我不会替你猜——你原话是什么，我就把什么交给这个会话里的模型。\n\n顺带说一句这件事的三步：建卡（task.create，运行配置可以在这一步一起给）→ 需要的话再调（task.update / 排期 / 会话规则）→ 跑（task.run）。「跑一次这张卡」和「只建一条会话挂上来」不是一回事（后者是 session.create）。'
+const TASK_HINT = '在 /task 后面写上你要记的事再发一次，例如「/task 把刚才说的三件事记下来」。'
 
 /** `/task-continue` carries no argument by design: "continue" is a question
  *  about what is outstanding, and an argument would only narrow it wrongly. */
 const CONTINUE_PROMPT = '读一下任务清单里还没完成的事项，把它们列出来，然后问我要从哪一条开始。不要替我挑。'
 
 /**
+ * THE FIELD THAT DECIDES WHAT HAPPENS WHEN SOMEONE CLICKS `/task` IN THE MENU.
+ *
+ * The host's command dispatcher keeps two different behaviours behind one
+ * boolean, and its own comment names them: 「host input → claim; host bare →
+ * detached execute」. A command that declares `input` is CLAIMED — the picker
+ * leaves `/task ` in the composer with the caret after it, waiting for the
+ * sentence. A command that declares nothing is EXECUTED on the spot with an
+ * empty argument.
+ *
+ * This command shipped without `input`, so clicking it did the second thing: it
+ * ran immediately with nothing to hand over, and the only thing it could do was
+ * answer with the usage paragraph. To the person clicking it that reads as
+ * 「我点了一下，它跑起来了，然后给我一篇说明书」 — the command looked broken
+ * because the click behaved like a submit.
+ *
+ * Declaring `input` fixes the interaction at its source rather than dressing up
+ * the empty-argument branch: the click now produces a composer holding `/task `,
+ * which is exactly what a command that needs a sentence should do. The hint is
+ * the placeholder that says so before anyone has to guess.
+ */
+const TASK_INPUT = {
+  hint: '要记的事，例如：把刚才说的三件事记下来',
+} as const
+
+/**
+ * The one line `/task` prepends before handing the sentence over.
+ *
+ * WHY THIS EXISTS — the report that put it here: 「我发出去之后看起来和普通
+ * 聊天一模一样」. Measured against the real board, that was literally true: no card
+ * had been created, because the model answered in prose and never reached for a
+ * tool. The command called itself a door, and a door that only forwards words
+ * makes a person unable to tell whether it worked.
+ *
+ * So the sentence travels with an instruction that names the ONE thing `/task`
+ * promises: use the board tools. It is deliberately not a workflow — it does not
+ * say which tool, in what order, or with what fields; the model decides that, and
+ * the injected `tool:taskboard` section already teaches the three steps. This is
+ * only the difference between 「想想这件事」 and 「把它记到板上」, which is the
+ * difference the command is supposed to make.
+ */
+const TASK_DIRECTIVE = '（这是通过 /task 记到任务看板上的请求：请用看板的工具把这件事真的记下来或做掉，不要只用文字回复。）\n\n'
+
+/**
  * Hand one sentence to a session's model.
  *
- * THE ONE PATH from this plugin into a model. Both slash commands call it, and
- * so does the panel's one-click hand-off (`/board/ask`), because the reader is
- * asking for the same thing in two places: one `followup`, one message shape,
- * one failure story. A second copy of these four lines is a second thing to keep
- * in step, and the day they drift is the day one of the two paths quietly
- * stops saying what it says.
+ * THE ONE PATH from this plugin's COMMANDS into a model. Both slash commands
+ * call it, so the two share one `followup`, one message shape and one failure
+ * story — a second copy of these four lines is a second thing to keep in step,
+ * and the day they drift is the day one of the two paths quietly stops saying
+ * what it says. (The checklist panel's 「问 AI」 is a separate path with a
+ * different job: it carries a row's own text and starts or continues a card, so
+ * it lives in `core/item-ask.ts` rather than being bent into this one.)
+ *
+ * `lead` is how a caller adds its own instruction without forking the path: the
+ * directive travels in the SAME message as the person's words, so the model reads
+ * one request rather than two competing ones.
  *
  * Success carries no `text` on purpose: the model answers in the conversation
  * right after this, in its own words and with its own tool cards, and a text
  * here would put a second, weaker rendering of the same turn in front of the
  * person.
  */
-export function handOver(agent: CommandAgent, text: string): CommandResult {
+export function handOver(agent: CommandAgent, text: string, lead = ''): CommandResult {
   try {
-    agent.followup(createUserMessage({ content: [{ type: 'text', text }], source: { kind: 'user' } }))
+    agent.followup(createUserMessage({ content: [{ type: 'text', text: `${lead}${text}` }], source: { kind: 'user' } }))
     return { kind: 'success' }
   } catch (error) {
     // The registry shows this to the person who typed the command, so it says
@@ -90,32 +138,29 @@ export function createTaskboardCommands(): readonly CommandDefinition[] {
     {
       name: 'task',
       description: '把这句话交给当前会话的模型（它看得到这轮对话的上下文）',
+      input: TASK_INPUT,
       recordInput: false,
       handler: ({ agent, rawInput }) => {
         const text = rawInput.trim()
-        /* AN EMPTY ARGUMENT IS A HINT, NOT A FAILURE — and the host's own
-           contract says why the difference is not cosmetic:
-           「a thrown/aborted handler settles as `kind: 'error'`」, i.e. `error` is
-           what the client paints as a FAILED command.
+        /* A BLANK ARGUMENT STILL ARRIVES HERE, and now only one way: the person
+           typed `/task` and pressed enter without a sentence. Picking the
+           command from the menu no longer reaches this branch at all — the
+           `input` claim above keeps the composer open instead.
 
-           So typing `/task` on its own and pressing enter — which is exactly what
-           someone does in a brand-new session to see what the command does — put a
-           RED card on the screen carrying a perfectly good sentence of help. A
-           reader who has done nothing wrong was shown the colour for having done
-           something wrong.
-
-           The command did its job: it told the reader how to use it. That is a
-           success with words in it. Only a genuine failure to hand the sentence
-           over is an error, and that one keeps `handOver`'s catch. */
+           So this branch is a fact about a submit, not about a click, and it
+           answers in one line instead of a paragraph: the reader is one word
+           away from what they wanted, and a wall of text is the last thing that
+           helps. `kind: 'success'` is unchanged and load-bearing — the client
+           paints `error` red, and nothing failed here. */
         if (text === '') return { kind: 'success', text: TASK_HINT } satisfies CommandResult
-        return handOver(agent, text)
+        return handOver(agent, text, TASK_DIRECTIVE)
       },
     },
     {
       name: 'task-continue',
       description: '让模型读出清单里未完成的事项，并问你从哪一条开始',
       recordInput: false,
-      handler: ({ agent }) => handOver(agent, CONTINUE_PROMPT),
+      handler: ({ agent }) => handOver(agent, CONTINUE_PROMPT, TASK_DIRECTIVE),
     },
   ]
 }
