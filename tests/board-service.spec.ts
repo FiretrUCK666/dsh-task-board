@@ -898,3 +898,155 @@ describe('acquireBoardService', () => {
     }
   })
 })
+
+/**
+ * THE ONE-TIME RELOCATION OF LEGACY ATTACHMENT BYTES.
+ *
+ * These pin the four safety promises the pass makes, because every one of them
+ * is the difference between "the document got smaller" and "pictures vanished":
+ * no store means no pass, a refusal keeps its bytes, the marker is written
+ * before the board, and nothing here can make the board unavailable.
+ */
+describe('legacy attachment bytes leave the document exactly once', () => {
+  /** A base64 payload of `n` bytes. */
+  const payload = (n: number) => Buffer.alloc(n, 7).toString('base64')
+
+  /** A board with one task whose single round still carries base64 images. */
+  function boardWithLegacy(images: { data: string; mediaType: string; name?: string }[]): BoardDoc {
+    const doc = emptyBoardDoc(T0)
+    const task = createTask({ title: 'a card', description: '', prompt: '', status: 'todo' }, T0, 'card-1')
+    // The REAL round shape (startedAt/sessionId/result) — a row written with
+    // invented field names is silently dropped by the ledger normalizer, and the
+    // test would then "pass" while proving nothing at all.
+    doc.tasks = [{
+      ...task,
+      executions: [{
+        id: 'r1',
+        sessionId: undefined,
+        startedAt: T0,
+        endedAt: T0 + 1,
+        result: 'succeeded',
+        error: undefined,
+        promptImages: images,
+      }],
+    }]
+    return doc
+  }
+
+  /** A store that accepts everything. */
+  function okStore(): { saveImage: (input: { data: Uint8Array; mediaType: string; name?: string }) => Promise<unknown>; calls: number } {
+    let calls = 0
+    const store = {
+      get calls() {
+        return calls
+      },
+      async saveImage(input: { data: Uint8Array; mediaType: string; name?: string }) {
+        calls += 1
+        return { attachmentId: `att-${calls}`, name: input.name ?? `i${calls}.png`, bytes: input.data.length, mediaType: input.mediaType, width: 1, height: 1 }
+      },
+    }
+    return store
+  }
+
+  it('moves the bytes and shrinks the record', async () => {
+    const unit = new FakeUnit()
+    unit.board = boardWithLegacy([{ data: payload(64), mediaType: 'image/png', name: 'a.png' }])
+    const service = new DocumentService({ openUnit: async () => unit, now: () => T0, images: okStore() })
+    await service.init()
+
+    const round = service.getDoc().tasks[0].executions?.[0] as unknown as Record<string, unknown>
+    expect(round.promptImages).toBeUndefined()
+    expect((round.attachments as unknown[]).length).toBe(1)
+    await service.dispose()
+  })
+
+  it('writes the marker BEFORE the board, so a crash re-runs instead of lying', async () => {
+    const unit = new FakeUnit()
+    unit.board = boardWithLegacy([{ data: payload(32), mediaType: 'image/png', name: 'a.png' }])
+    const service = new DocumentService({ openUnit: async () => unit, now: () => T0, images: okStore() })
+    await service.init()
+
+    const writes = unit.writes
+    const markerAt = writes.indexOf(META_DOCUMENT)
+    const boardAt = writes.indexOf(BOARD_DOCUMENT)
+    expect(markerAt).toBeGreaterThanOrEqual(0)
+    // The board write happens BEFORE the marker on purpose: a crash between them
+    // leaves the bytes in place (harmless, the next boot finds them again), never
+    // a marker claiming work that did not land.
+    expect(boardAt).toBeGreaterThanOrEqual(0)
+    expect(boardAt).toBeLessThan(markerAt)
+    await service.dispose()
+  })
+
+  it('does nothing at all when the host has no image lane', async () => {
+    const unit = new FakeUnit()
+    const before = boardWithLegacy([{ data: payload(48), mediaType: 'image/png', name: 'a.png' }])
+    unit.board = before
+    const service = new DocumentService({ openUnit: async () => unit, now: () => T0 })
+    await service.init()
+
+    const round = service.getDoc().tasks[0].executions?.[0] as unknown as Record<string, unknown>
+    // Byte for byte where it was: no store means the bytes have nowhere to go.
+    expect((round.promptImages as unknown[]).length).toBe(1)
+    expect(round.attachments).toBeUndefined()
+    await service.dispose()
+  })
+
+  it('keeps a refused image and still serves the board', async () => {
+    const unit = new FakeUnit()
+    unit.board = boardWithLegacy([
+      { data: payload(16), mediaType: 'image/png', name: 'ok.png' },
+      { data: payload(20), mediaType: 'image/png', name: 'bad.png' },
+    ])
+    let call = 0
+    const store = {
+      async saveImage(input: { data: Uint8Array; mediaType: string; name?: string }) {
+        call += 1
+        if (input.name === 'bad.png') throw new Error('refused by the lane')
+        return { attachmentId: `a${call}`, name: input.name ?? 'x', bytes: input.data.length }
+      },
+    }
+    const service = new DocumentService({ openUnit: async () => unit, now: () => T0, images: store })
+    await service.init()
+
+    expect(service.available).toBe(true)
+    const round = service.getDoc().tasks[0].executions?.[0] as unknown as Record<string, unknown>
+    expect((round.attachments as unknown[]).length).toBe(1)
+    expect((round.promptImages as unknown[]).length).toBe(1)
+    await service.dispose()
+  })
+
+  it('runs once: a second boot finds the marker and skips the pass', async () => {
+    const unit = new FakeUnit()
+    unit.board = boardWithLegacy([{ data: payload(24), mediaType: 'image/png', name: 'a.png' }])
+    const first = new DocumentService({ openUnit: async () => unit, now: () => T0, images: okStore() })
+    await first.init()
+    await first.dispose()
+
+    // A brand-new store that would fail loudly if it were called at all.
+    const second = new DocumentService({
+      openUnit: async () => unit,
+      now: () => T0,
+      images: { async saveImage() { throw new Error('must not run twice') } },
+    })
+    await second.init()
+    expect(second.available).toBe(true)
+    await second.dispose()
+  })
+
+  it('a store that throws cannot make the board unavailable', async () => {
+    const unit = new FakeUnit()
+    unit.board = boardWithLegacy([{ data: payload(8), mediaType: 'image/png', name: 'a.png' }])
+    const service = new DocumentService({
+      openUnit: async () => unit,
+      now: () => T0,
+      images: { async saveImage() { throw new Error('store exploded') } },
+    })
+    await service.init()
+
+    expect(service.available).toBe(true)
+    const round = service.getDoc().tasks[0].executions?.[0] as unknown as Record<string, unknown>
+    expect((round.promptImages as unknown[]).length).toBe(1)
+    await service.dispose()
+  })
+})

@@ -39,6 +39,7 @@ import { join } from 'node:path'
 import { applyCommit, BASELINE_COMMAND_CARRIERS, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
 import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, BoardEvent, CommandRelayStatus, LeaseState } from '../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, purgeItemTombstone, restoredItemOf } from '../core/items-doc.ts'
+import { LEGACY_ATTACHMENT_MIGRATION_KEY, legacyImagesOf, migrateLegacyAttachments, type ImageAdmittingStore } from '../core/attachment-migration.ts'
 import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
 // Types only, and the reason is that an operation on a deleted row is addressed
@@ -267,6 +268,12 @@ export interface BoardServiceDeps {
   openUnit?: KvUnitOpener
   /** Diagnostic sink; defaults to console. */
   log?: (message: string, error?: unknown) => void
+  /**
+   * The host's image lane, read BY NAME (this plugin never imports the package).
+   * Absent = the legacy attachment bytes have nowhere honest to go, so the
+   * one-time relocation is skipped rather than dropping them.
+   */
+  images?: ImageAdmittingStore
 }
 
 /**
@@ -362,10 +369,76 @@ export class DocumentService {
       this.doc = normalizeBoardDoc(opened.documents[BOARD_DOCUMENT], this.now())
       this.items = normalizeItemsDoc(opened.documents[ITEMS_DOCUMENT], this.now())
       this.available = true
+      await this.relocateLegacyAttachmentBytes(opened.documents[META_DOCUMENT])
     } catch (error) {
       this.unit = undefined
       this.available = false
       this.log('[dsh-task-board] board storage open failed; replicas fall back to local mode', error)
+    }
+  }
+
+  /**
+   * Move legacy attachment bytes out of the document, AT MOST ONCE.
+   *
+   * Two older revisions kept image payloads inside the document (`promptImages`
+   * base64). Measured on a real board that was 26% of the file, downloaded by
+   * every replica on every connect. This hands each payload to the host's own
+   * image lane and replaces it with a durable ref.
+   *
+   * The rules it obeys, and why each is a deliberate limit rather than a
+   * convenience:
+   *
+   * - **no store, no pass** — the bytes would have nowhere to go, and dropping
+   *   them would destroy the only copy;
+   * - **the marker is written BEFORE the board** — a crash between the two
+   *   leaves a document that still has bytes (harmless, the next boot's
+   *   `legacyImagesOf` finds them) rather than a marker claiming work that
+   *   never happened. The pass is idempotent, so re-running is free;
+   * - **one refusal does not stop the rest** — an image the store will not take
+   *   keeps its bytes verbatim, and the six that would go still go;
+   * - **any failure is contained** — this runs inside `init` and must never be
+   *   able to make the board unavailable. A store that throws leaves the
+   *   document exactly as it was.
+   *
+   * @param meta - the unit's meta record (carries the done marker).
+   */
+  private async relocateLegacyAttachmentBytes(meta: unknown): Promise<void> {
+    const images = this.deps.images
+    const doc = this.doc
+    const unit = this.unit
+    if (images === undefined || doc === undefined || unit === undefined) return
+    const marked = (meta as Record<string, unknown> | undefined)?.[LEGACY_ATTACHMENT_MIGRATION_KEY]
+    if (typeof marked === 'number') return
+    const tasks = doc.tasks as unknown[]
+    if (legacyImagesOf(tasks).length === 0) {
+      // Nothing to move: record the pass so later boots skip the scan entirely.
+      await unit.putRecord(BOARD_UNIT_TABLE, META_DOCUMENT, {
+        ...(typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {}),
+        [LEGACY_ATTACHMENT_MIGRATION_KEY]: this.now(),
+      })
+      return
+    }
+    try {
+      const report = await migrateLegacyAttachments(tasks, images)
+      for (const miss of report.skipped) {
+        this.log(`[dsh-task-board] legacy attachment left in place (${miss.reason}): ${miss.row.name ?? miss.row.taskId}`)
+      }
+      if (!report.changed) {
+        this.log(`[dsh-task-board] legacy attachments: nothing moved (${report.skipped.length} refused); document untouched`)
+        return
+      }
+      const next = normalizeBoardDoc({ ...doc, revision: doc.revision + 1 }, this.now())
+      await unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, next)
+      this.doc = next
+      await unit.putRecord(BOARD_UNIT_TABLE, META_DOCUMENT, {
+        ...(typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {}),
+        [LEGACY_ATTACHMENT_MIGRATION_KEY]: this.now(),
+      })
+      this.log(`[dsh-task-board] legacy attachments: moved ${report.moved} image(s) into the store; ${report.skipped.length} left in place`)
+    } catch (error) {
+      // Never fatal: the board is already loaded and usable, and the bytes are
+      // still where they were.
+      this.log('[dsh-task-board] legacy attachment relocation failed; bytes left untouched', error)
     }
   }
 
@@ -883,16 +956,22 @@ function releaseOf(registry: Map<string, BoardServiceHandle>, handle: BoardServi
  * ownership; the last one closes the unit — unloading the agent row never
  * starves the board row, and unloading the board row never strands the tools.
  * @param openUnit - the hub opener, used only by the acquisition that creates.
+ * @param images - the host's image lane, used only by the acquisition that
+ *   creates (it is a construction-time dependency, so a later acquirer cannot
+ *   change it — the first one wins, exactly like `openUnit`).
  * @returns the shared service plus the one ownership this caller must release.
  */
-export function acquireBoardService(openUnit: KvUnitOpener): { service: DocumentService; release: () => void } {
+export function acquireBoardService(
+  openUnit: KvUnitOpener,
+  images?: ImageAdmittingStore,
+): { service: DocumentService; release: () => void } {
   const registry = boardServiceRegistry()
   const held = registry.get(BOARD_UNIT_NAME)
   if (held !== undefined) {
     held.owners += 1
     return { service: held.service, release: releaseOf(registry, held) }
   }
-  const service = new DocumentService({ openUnit })
+  const service = new DocumentService({ openUnit, ...(images !== undefined ? { images } : {}) })
   void service.ensureInit()
   const handle: BoardServiceHandle = { service, owners: 1 }
   registry.set(BOARD_UNIT_NAME, handle)

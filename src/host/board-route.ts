@@ -43,6 +43,7 @@ import { refOf } from '../core/item-navigate.ts'
 import { messageOf } from '../core/values.ts'
 import type { RouteFail } from '../core/http-envelope.ts'
 import { acquireBoardService, storageHubOpener, type BoardEvent } from './board-service.ts'
+import type { ImageAdmittingStore } from '../core/attachment-migration.ts'
 import { json, readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
@@ -852,7 +853,18 @@ export function registerBoardRoute(ctx: Context, ns: string): () => void {
   // ctx.get('storage') after boot settlement), never via inject: a
   // composition without the hub degrades to fallback mode, it must not
   // wedge the whole plugin.
-  const { service, release } = acquireBoardService(storageHubOpener(() => ctx.get('storage')))
+  //
+  // The image lane rides along for ONE reason: the one-time relocation of legacy
+  // attachment bytes. It is read by name and LAZILY (absent = that pass is
+  // skipped and the bytes stay where they are), because registration happens
+  // before the plugin settles: a service looked up at register time can still be
+  // undefined, and a silently skipped migration is exactly the failure this
+  // plugin refuses to ship. Reading it at call time catches it once it is there.
+  const imageLane = (): ImageAdmittingStore | undefined => ctx.get('attachments') as ImageAdmittingStore | undefined
+  const { service, release } = acquireBoardService(
+    storageHubOpener(() => ctx.get('storage')),
+    { saveImage: input => imageLane()?.saveImage(input) ?? Promise.reject(new Error('no image lane')) },
+  )
   const deps: BoardRouteDeps = {
     ready: () => service.ensureInit(),
     available: () => service.available,

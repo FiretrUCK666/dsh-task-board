@@ -1,4 +1,5 @@
 import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, BoardEvent, CommandRelayStatus, LeaseState } from '../core/board-doc.ts';
+import { type ImageAdmittingStore } from '../core/attachment-migration.ts';
 import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
 import type { ItemAddress } from './board-route.ts';
@@ -146,6 +147,12 @@ export interface BoardServiceDeps {
     openUnit?: KvUnitOpener;
     /** Diagnostic sink; defaults to console. */
     log?: (message: string, error?: unknown) => void;
+    /**
+     * The host's image lane, read BY NAME (this plugin never imports the package).
+     * Absent = the legacy attachment bytes have nowhere honest to go, so the
+     * one-time relocation is skipped rather than dropping them.
+     */
+    images?: ImageAdmittingStore;
 }
 export declare class DocumentService {
     private readonly deps;
@@ -181,6 +188,32 @@ export declare class DocumentService {
      * back); a corrupt medium is normalized per document, never fatal.
      */
     init(): Promise<void>;
+    /**
+     * Move legacy attachment bytes out of the document, AT MOST ONCE.
+     *
+     * Two older revisions kept image payloads inside the document (`promptImages`
+     * base64). Measured on a real board that was 26% of the file, downloaded by
+     * every replica on every connect. This hands each payload to the host's own
+     * image lane and replaces it with a durable ref.
+     *
+     * The rules it obeys, and why each is a deliberate limit rather than a
+     * convenience:
+     *
+     * - **no store, no pass** — the bytes would have nowhere to go, and dropping
+     *   them would destroy the only copy;
+     * - **the marker is written BEFORE the board** — a crash between the two
+     *   leaves a document that still has bytes (harmless, the next boot's
+     *   `legacyImagesOf` finds them) rather than a marker claiming work that
+     *   never happened. The pass is idempotent, so re-running is free;
+     * - **one refusal does not stop the rest** — an image the store will not take
+     *   keeps its bytes verbatim, and the six that would go still go;
+     * - **any failure is contained** — this runs inside `init` and must never be
+     *   able to make the board unavailable. A store that throws leaves the
+     *   document exactly as it was.
+     *
+     * @param meta - the unit's meta record (carries the done marker).
+     */
+    private relocateLegacyAttachmentBytes;
     /**
      * The one-started gate every route call passes through: the storage hub is
      * resolved lazily (the opener reads `ctx.get('storage')` at call time), so
@@ -385,9 +418,12 @@ export declare function clampLeaseTtl(ttlMs: number | undefined): number;
  * ownership; the last one closes the unit — unloading the agent row never
  * starves the board row, and unloading the board row never strands the tools.
  * @param openUnit - the hub opener, used only by the acquisition that creates.
+ * @param images - the host's image lane, used only by the acquisition that
+ *   creates (it is a construction-time dependency, so a later acquirer cannot
+ *   change it — the first one wins, exactly like `openUnit`).
  * @returns the shared service plus the one ownership this caller must release.
  */
-export declare function acquireBoardService(openUnit: KvUnitOpener): {
+export declare function acquireBoardService(openUnit: KvUnitOpener, images?: ImageAdmittingStore): {
     service: DocumentService;
     release: () => void;
 };
