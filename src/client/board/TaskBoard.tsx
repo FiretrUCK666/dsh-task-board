@@ -2442,6 +2442,9 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                         {sections.map(section => (
                           <Fragment key={section.sessionId ?? `${fold.key}|task`}>
                             {section.sessionId !== undefined && (
+                              /* 那条发丝线由 CSS 的 `:first-child` 决定画不画——判据是
+                                 「这条标题上面有没有别的内容」，而不是「它是不是标题」。
+                                 说明写在 `.feedSection` 那一条规则里。 */
                               <li className={`${css.feedSection} ${components.titleText}`}>
                                 {controller.sessionTitle(section.sessionId) ?? section.sessionId}
                               </li>

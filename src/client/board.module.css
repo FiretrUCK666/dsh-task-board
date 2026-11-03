@@ -509,6 +509,20 @@
   border-top: var(--dsh-tb-border-soft);
   overflow: hidden;
 }
+/* **那条线只画在「真的分隔了两段内容」的地方。**
+ *
+ * 它是一条分隔线，职责是分开上下两段；而一组标题上面没有别的内容可分隔——那里
+ * 只有折叠头。线于是悬在两块留白之间，读起来是一条谁也不分隔的浮线，比没有更难看。
+ *
+ * 判据因此是「上面有没有东西」，不是「它是不是第一个」：`:first-child` 直接就是
+ * 那句话。组与组之间那条线照旧保留，读者照样分得出边界。
+ *
+ * 用选择器而不是往 JSX 里传一个 `index === 0` 的类名：这是样式决定，而样式决定
+ * 该由样式表回答——传一个标记进来，第二个渲染点就得记得也传。 */
+.feedSection:first-child {
+  border-top: none;
+  padding-top: 4px;
+}
 /* THE identity slot order — task first, its session right beside it, status
    after: the task and the conversation that produced the row read as one
    unit, and the status sits next to the actions it explains. All three

@@ -1707,6 +1707,16 @@ describe('feed row grammar (notify + activity share one line: give way, never cr
     // token that no skin could move. Either form passes — the assertion is
     // 「there is a hairline above」, not 「it is spelled this way」.
     expect(section).toMatch(/border-top:\s*(?:1px solid|var\(--dsh-tb-border-soft\))/)
+    /* **第一条不画那条线。**
+     *
+     * 线是一条分隔线，职责是分开上下两段。而一组的上面没有别的内容可分隔——那里
+     * 只有折叠头——线于是悬在两块留白之间，读起来是一条谁也不分隔的浮线。
+     *
+     * 判据写成 `:first-child`，不是「第 0 个」：它说的正是「上面没有东西」。
+     * 组与组之间那条线照旧，边界还在。量过的样子在真 Chromium 里：第一条
+     * `0px / none`，第二条 `1px / solid`。 */
+    const firstChild = ruleOf('feedSection:first-child')
+    expect(firstChild, '第一条分节标题必须没有上边线').toMatch(/border-top:\s*none/)
     // It stays a quiet label: ellipsis for long session names, never a control.
     /* 一个分节标题是**一句话**，不是元信息：它折行、不省略（共享的 `.titleText`）。
    以前这里要求省略号，那是把「标题」当成了「索引」——一条被切掉尾巴的组名认不出是哪一组。 */
