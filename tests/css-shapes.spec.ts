@@ -325,3 +325,58 @@ describe('the shape layer has one home', () => {
     expect(readers.length, 'the ring width token has no reader').toBeGreaterThan(0)
   })
 })
+
+/**
+ * THE CLASS-NAME JUDGEMENT MUST NOT READ INTO A URL.
+ *
+ * `verify-design-docs` finds "a class nobody reads" by matching a dot followed by
+ * letters — which is the right shape for a selector and the wrong one for anything
+ * that merely LOOKS like one. An inline SVG needs its XML namespace,
+ * `http://www.w3.org/2000/svg`, and `w3.org` contains two such sequences: the gate
+ * reported `.w3` and `.org` as declared-and-unread, i.e. a correct stylesheet
+ * accused of carrying dead code.
+ *
+ * That is hard rule 14 exactly: a judgement reads STRUCTURE, never text. A URL
+ * payload is not a selector, so it is stripped before the scan — and this case
+ * exists so the stripping cannot silently become "stop finding real dead classes".
+ * Both halves are asserted: the URL is invisible, and a genuine orphan still bites.
+ */
+describe('the dead-class judgement strips url() payloads, and still bites', () => {
+  const strip = (source: string): string => source
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/g, 'url()')
+
+  /** The class names a scan would report from `css`, given `read` as the readers. */
+  const orphansIn = (css: string, read: readonly string[]): string[] => {
+    const body = strip(css)
+    const declared = [...new Set([...body.matchAll(/\.([a-zA-Z_][\w-]*)/g)].map(m => m[1]!))]
+    return declared.filter(name => !read.includes(name))
+  }
+
+  it('does not see the SVG namespace as two classes', () => {
+    // The exact shape that produced the false finding.
+    const css = `.arrow {
+      mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3C/svg%3E");
+    }`
+    const found = orphansIn(css, [])
+    // `.arrow` is a real orphan in this fixture; w3 and org must NOT be, because
+    // they exist only inside the URL.
+    expect(found, 'the URL payload leaked into the class scan').toEqual(['arrow'])
+  })
+
+  it('still reports a genuinely unread class', () => {
+    // The half that keeps the fix honest: stripping must not stop the judgement.
+    expect(orphansIn('.nobodyUsesThis { color: red; }', [])).toEqual(['nobodyUsesThis'])
+    expect(orphansIn('.readBySomeone { color: red; }', ['readBySomeone'])).toEqual([])
+  })
+
+  it('strips all three url spellings, quoted and bare', () => {
+    for (const css of [
+      '.x { background: url("data:image/svg+xml,a.b") }',
+      ".x { background: url('data:image/svg+xml,a.b') }",
+      '.x { background: url(data:image/svg+xml,a.b) }',
+    ]) {
+      expect(orphansIn(css, []), `a url spelling leaked: ${css}`).toEqual(['x'])
+    }
+  })
+})

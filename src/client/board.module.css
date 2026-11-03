@@ -50,10 +50,24 @@
    so an outer edge is impossible there by construction; the card keeps its
    static rim, cast and yellow border for the whole run. The peak uses the FULL
    attention step because the inset is the only channel this light has left:
-   the soft 10% step measured invisible against the card's own border. */
+   the soft 10% step measured invisible against the card's own border.
+
+   ── WHY THIS ANIMATES `opacity` AND NOT `box-shadow` ──────────────────────
+   It used to keyframe the shadow itself, which is a PAINT property: every frame
+   re-rasterized the whole card, the column, and — because the scroll container
+   had no isolation — everything else sharing that layer. With one running card
+   that is invisible; the board regularly has several, they are all infinite, and
+   they keep painting whether or not the reader is scrolling. That is a permanent
+   tax on every frame of every gesture, and it is paid exactly while the reader is
+   dragging the list, which is what 「不跟手」 means.
+   `opacity` is owned by the compositor: the card is rasterized ONCE with the
+   shadow at full strength and the layer is then faded in and out on the GPU. Same
+   light, same timing, same colour, one paint instead of one per frame.
+   The shadow itself is now static and declared on the layer, so the peak value
+   still comes from `--dsh-tb-breath-halo`. */
 @keyframes dshTbBreathHalo {
-  0%, 100% { box-shadow: inset 0 0 0 0 transparent; }
-  50% { box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 /* One-shot arrival replay for the bell's unseen dot: the dot itself is the
@@ -1300,6 +1314,34 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+  /* ── PAINT ISOLATION FOR THE SCROLLING COLUMN ────────────────────────────
+   *
+   * `contain: layout paint` tells the engine that nothing inside this box can
+   * affect anything outside it — which lets the column be rasterized as its own
+   * unit instead of sharing a layer with the four other columns and the whole
+   * board around them.
+   *
+   * WHY IT MATTERS HERE SPECIFICALLY: this element is the scroller, and it holds
+   * every card in the column (a busy column is thirty of them, each with a rim,
+   * a cast and a rounded clip). Without isolation a scroll invalidates the layer
+   * the board header, the mode row and the other four columns also live on, so
+   * one column's gesture made the entire panel repaint. With it, the work is
+   * bounded by the box that is actually moving.
+   *
+   * `contain: paint` is safe on THIS box because it already clips
+   * (`overflow-y: auto`) and nothing in it is positioned outside — the one child
+   * that hangs out is the drop indicator, and it is positioned INSIDE the padding
+   * this rule keeps. `contain: layout` does not change what the cards measure
+   * (the box is a flex column, not a two-way size container), which is why the
+   * geometry gates still pass unchanged.
+   *
+   * NOT `content-visibility: auto` here, and the reason is worth writing down:
+   * it skips rendering off-screen children, which would be the bigger win, but it
+   * also makes them unmeasurable until they are rendered — and this board
+   * measures cards (card heights for the drop gap, `offsetTop` for scroll
+   * anchoring). Trading correctness of drag-and-drop for frames is not a trade
+   * this surface can make. */
+  contain: layout paint;
   /* 滚动条不画在这条轨道上（见共享层那条隐藏规则）。 */
   /* NO `scroll-behavior: smooth` HERE, and the comment that used to sit on it
      is worth correcting rather than deleting, because it was confidently wrong:
@@ -1613,7 +1655,14 @@
 }
 
 .card[data-light='halo']::after {
+  /* The glow is STATIC here; only its opacity breathes. See the keyframes for
+     why that split is the whole performance point. */
+  box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
+  opacity: 0;
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
+  /* Its own compositor layer, so the fade costs no paint and no layout: the
+     card underneath is untouched while the halo breathes. */
+  will-change: opacity;
 }
 
 /* The title line: the card's solid color mark (exact picked color, 100% of

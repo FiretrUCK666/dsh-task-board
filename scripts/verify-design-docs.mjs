@@ -764,7 +764,16 @@ function judgeReference(ref, classesOf, defined) {
   }
   walk(clientDir)
 
-  const stripCssComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, '')
+  /* 剥注释，**并剥掉 url(...) 里的字符串**。
+   *
+   * 后者是必须的，不是顺手：一个内联 SVG 的背景/遮罩写成
+   * `url("data:image/svg+xml,...http://www.w3.org/2000/svg...")`，而"类名"的判据是
+   * 「一个点后面跟字母」。命名空间里的 `w3.org` 于是被读成两个类 `.w3` 和 `.org`，
+   * 报成「声明了没人用」——一份完全正确的样式表被判成死代码。
+   * 硬性规范 14：判据只许读**结构**，不许读字样。URL 里的内容不是选择器。 */
+  const stripCssComments = (t) => t
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .replace(/url\(\s*(?:"[^"]*"|'[^']*'|[^)]*)\s*\)/g, 'url()')
   const defined = new Set()
   /** Each sheet's OWN classes, so a reference can be judged against the sheet it
    *  actually resolves to rather than against the union of all of them. */

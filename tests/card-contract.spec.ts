@@ -1127,16 +1127,34 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     expect(ringPeak, 'the ring must not touch the material property').not.toContain('box-shadow')
     expect(ringPeak, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
     expect(ringPeak, 'the ring must not animate its geometry').not.toMatch(/outline-width|outline-style|outline:/)
+    /* THE HALO SPLIT: the SHADOW is static on the layer, only its OPACITY breathes.
+     *
+     * The claim is unchanged — the live light is an INSET shadow with the halo
+     * amplitude at the attention step, never an outer edge on a clipped layer.
+     * What moved is WHERE that shadow is declared, and the reason is performance:
+     * keyframing `box-shadow` repaints the whole card every frame, forever,
+     * whether or not the reader is scrolling — one of the two measured costs
+     * behind 「滚动不跟手」. `opacity` is composited instead, so the layer is
+     * rasterised once and faded on the GPU. Same light, one paint instead of one
+     * per frame.
+     *
+     * So the peak frame is the opacity, and the shadow is read off the rule. */
     const haloPeak = peakOf('dshTbBreathHalo')
-    expect(haloPeak, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
-    expect(haloPeak, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
-    expect(haloPeak, 'the halo peaks at the attention step').toContain('var(--dsh-tb-attention-alpha)')
-    expect(haloPeak, 'the halo must not grow an outer edge on a clipped layer')
+    expect(haloPeak, 'the halo breathes by OPACITY, the one composited channel').toContain('opacity')
+    expect(haloPeak, 'the halo must not animate a paint property — that repaints the card every frame')
+      .not.toContain('box-shadow')
+    const haloPaintRule = /\.card\[data-light='halo'\]::after\s*\{([\s\S]*?)\n\}/.exec(source)?.[1] ?? ''
+    expect(haloPaintRule, 'the live halo must be an INSET shadow').toMatch(/\binset\b/)
+    expect(haloPaintRule, 'the halo amplitude token is the inset blur').toContain('var(--dsh-tb-breath-halo)')
+    expect(haloPaintRule, 'the halo peaks at the attention step').toContain('var(--dsh-tb-attention-alpha)')
+    expect(haloPaintRule, 'the halo must not grow an outer edge on a clipped layer')
       .not.toMatch(/,\s*0 0 var\(--dsh-tb-breath-spread\)/)
+    expect(haloPaintRule, 'the halo layer must rest invisible, or the pulse is a permanent glow')
+      .toMatch(/opacity:\s*0/)
     expect(source, 'the ring must rest transparent (a pulse, not a permanent glow)')
       .toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ outline-color: transparent; \}/)
-    expect(source, 'the halo must rest transparent (a pulse, not a permanent glow)')
-      .toMatch(/@keyframes dshTbBreathHalo \{\s*0%, 100% \{ box-shadow: inset 0 0 0 0 transparent; \}/)
+    expect(source, 'the halo must rest invisible (a pulse, not a permanent glow)')
+      .toMatch(/@keyframes dshTbBreathHalo \{\s*0%, 100% \{ opacity: 0; \}/)
 
     // 4. THE GENERAL LAW, AS A GATE: **a decoration may never share the property
     //    that carries the material.** Concretely — no animation applied to `.card`
