@@ -1810,22 +1810,6 @@
      /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
 }
 
-/* **带语义色的卡片芯片补上那层洗底。**
-   `fill={false}` 的定义是「退出药丸、变纯字」——这个定义在**中性**芯片上没问题，
-   在语义色芯片上却把字直接放到卡片底上：琥珀 2.15:1、绿 2.28:1（深色档更差）。
-   `DESIGN.md:692-696` 写明这个代价只能**换形状**来还（同色淡洗底 + 近黑字），
-   而 `components.module.css` 的 `.chipFill` 已经实现了那一半——所以这里只做一件事：
-   让语义色的卡片芯片拿到洗底。色相一个没动，字由 `.chipFill` 那条规则换深墨。
-
-   **顺序是承重的**：`currentColor` 必须在任何改 `color` 的规则之前解析，否则洗底会
-   跟着变成深墨色（一层灰底），而屏上不会有人报错。所以洗底写在这里，而换字色的
-   `.chipFill` 规则留在组件表里（它在层叠里更晚生效，改的只是字，不是底）。
-   中性芯片不加：它没有色相要救，加了只是让卡片多出一圈底。 */
-.cardBadge[data-kind='success'] { background-color: color-mix(in srgb, var(--dsh-tb-success) var(--dsh-tb-wash), transparent); }
-.cardBadge[data-kind='error'] { background-color: color-mix(in srgb, var(--dsh-tb-danger) var(--dsh-tb-wash), transparent); }
-.cardBadge[data-kind='warn'] { background-color: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash), transparent); }
-.cardBadge[data-kind='muted'] { background-color: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-wash), transparent); }
-
 /* **「挂着 N 条清单条目」那枚读数同时是一扇门**（跳到清单、只看挂着这张卡的条目）。
    它外面包一层按钮，所以按钮自己不许有边框、底色或内衬——那枚芯片的样子全由 `.chip` 说了算，
    否则同一枚芯片会有两套皮肤，而其中一套只在可点的时候出现。 */
@@ -6433,15 +6417,6 @@
 
   .boardRowTools .cruiseWrap {
     grid-area: cruise;
-    /* **巡航是一枚开关，它挨着的是主行动——而主行动在右。**
-     *
-     * 这一格原先 `justify-self: end`，cell 的右沿紧贴「新建」，看起来是挨着的；
-     * 但两枚之间隔着 `column-gap`（12px），而它与下面模式组的距离是 `strip-gap`（10px）
-     * ——**只差 2px**，读者读不出「巡航跟谁是一组」，它于是像一枚悬在中间的控件。
-     *
-     * 现在它贴住自己那一行的末端，中间那条缝由行内 gap 统一给：它与「新建」之间的距离
-     * **等于**模式簇内部的 gap，而它与模式组的距离是**跨带**的那一档——两段距离从此
-     * 差得出来，归属由距离说话，一个数值都不新造。 */
     justify-self: end;
   }
 

@@ -84,11 +84,60 @@ export type BoardDelete = MergeDelete
  * carrier nothing can select; an action marked `relay` without a variant here
  * is a request with nowhere to go. Both are gaps the coverage gate reports.
  */
+/**
+ * THE CARRIER NAMES, and the ONE place they are written down.
+ *
+ * Every carrier is a promise made to a caller in another process: the host
+ * builds the command, a browser performs it. The promise is only kept if BOTH
+ * ends know the name — and until this list existed there was no way to ask a
+ * browser which names it knew. A `session.create` reached a page that had never
+ * heard of it, the page dropped it, and the host reported 「已落盘，1 条已生效」.
+ *
+ * So the names live HERE, in data, and three things derive from them instead of
+ * restating them: the {@link BoardCommand} union below, the browser's dispatch
+ * table (a `Record` over this union — a missing branch is a compile error), and
+ * the relay's capability check. A carrier added here without a performer is then
+ * a build failure rather than a request nobody can make.
+ */
+export const BOARD_COMMAND_CARRIERS = ['run', 'comment', 'session.create', 'session.rename'] as const
+
+/** One relayed carrier name. */
+export type BoardCommandCarrier = typeof BOARD_COMMAND_CARRIERS[number]
+
 export type BoardCommand =
   | { type: 'run'; taskId: string; trigger: 'manual' | 'schedule' | 'chain'; clientId: string; /** The first message of the run, when the caller has one (the checklist hands a row's own words to a card whose prompt may say something else — see `controller.runTask`). Absent = the card's own prompt, which is every other launch. */ kickoff?: string; /** 那一句话带的图片与文件（同一份 ref 形状）。缺席 = 只有文字，是绝大多数启动；带上传的那一条来自清单的「问 AI」，而它**必须跟着走**——不然同一按在两台机器上送出两种东西（引擎那一台带图、中转那一台只有字）。 */ attachments?: AttachmentRef[] }
-  | { type: 'comment'; taskId: string; sessionId: string; text: string; clientId: string; /** 与 `run` 同一个理由：这句话带的东西一起中转。 */ attachments?: AttachmentRef[] }
-  | { type: 'session.create'; taskId: string; config: BoardCommandConfig; clientId: string }
+  | { type: 'comment'; taskId: string; sessionId: string; text: string; clientId: string; /** 与 `run` 同一个理由：这句话带的东西一起中转。 */ attachments?: AttachmentRef[]; /** 排队还是插话。THE CALLER DECIDES, and the caller may be the model: a queue waits for the current run to settle, a steer lands mid-run. Absent = queue, which is the recoverable branch (a queued line can still be cancelled; a steer already said cannot be unsaid). */ send?: CommentSendMode }
+  | { type: 'session.create'; taskId: string; config: BoardCommandConfig; clientId: string; /** The name to pin on the new session. Separate from `config` because a name is not a run setting: putting it in the config made `RUN_CONFIG_KEYS` drop it, which is why a named session came out called after its card. Absent = the host's own naming chain names it. */ title?: string }
   | { type: 'session.rename'; sessionId: string; title: string; clientId: string }
+
+/** How a comment line is delivered to a running session. */
+export type CommentSendMode = 'queue' | 'steer'
+
+/**
+ * What the relay actually did with one command — THREE states, not two.
+ *
+ * `queued` and `broadcast` were the only two, and the missing third is the one
+ * that lied: a command the live engine does not know how to perform was
+ * broadcast, dropped in the browser, and reported as a success. `unsupported`
+ * is that state, and it is the reason the lease reports capabilities at all.
+ */
+export type CommandRelayStatus =
+  /** A live engine that declares this carrier took it. It is now that page's
+   *  work; the answer still does not mean it has finished. */
+  | { readonly status: 'broadcast' }
+  /** No live engine: parked, and replayed when the next seat is granted. */
+  | { readonly status: 'queued' }
+  /** A live engine that does NOT declare this carrier. Nothing was sent, and
+   *  nothing was parked — replaying it later would be a second lie. */
+  | { readonly status: 'unsupported'; readonly carrier: BoardCommandCarrier }
+
+/**
+ * What a browser can perform. Absent on the wire = a page that predates this
+ * field, which performs exactly the two carriers the relay has always had; a
+ * host that assumed otherwise would either refuse work an old page CAN do or
+ * promise work it cannot.
+ */
+export const BASELINE_COMMAND_CARRIERS: readonly BoardCommandCarrier[] = ['run', 'comment']
 
 /** The run configuration a created session is composed with (every field
  *  optional: an omitted one is resolved by the host's own default chain). It
@@ -143,6 +192,19 @@ export interface LeaseState {
    *  dialog shows it, so "我明明重启了" is answered by a clock reading rather
    *  than by a guess (old process vs. a different instance behind the URL). */
   bootedAt: number
+  /**
+   * Which relay carriers the HOLDER can perform.
+   *
+   * The lease already says who may act; it never said what they can do, and the
+   * gap is what let the relay promise work to a page that had no branch for it.
+   * Absent = a page from before this field, which is {@link BASELINE_COMMAND_CARRIERS}.
+   *
+   * It describes the HOLDER, so it is only meaningful while `held`. A lease
+   * answer with `held: false` carries it as `undefined` — there is nobody to
+   * describe, and a stale list here would be a capability of a page that is
+   * gone.
+   */
+  carriers?: readonly BoardCommandCarrier[]
 }
 
 /** A lease answer from an untrusted host: only `held` is guaranteed (any

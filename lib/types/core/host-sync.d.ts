@@ -58,7 +58,17 @@
  */
 import type { BoardDoc, BoardView } from './board-doc.ts';
 import { type PromptAttachment } from './attachment.ts';
-import type { BoardCommit, BoardCommand, BoardEvent, CruiseValue, LeaseWire } from './board-doc.ts';
+/**
+ * The lease-protocol version that introduced DIFF COMMITS.
+ *
+ * THE NUMBER IS THE PROTOCOL, so it lives here as one named constant rather than
+ * as a literal in a comparison: a host and a replica that disagree about which
+ * number means "diff" would ship a payload the other misreads, and the symptom
+ * would be cards disappearing on one device. `LEASE_PROTOCOL_ACTIVE` on the host
+ * side is the same number; the two are checked against each other in the specs.
+ */
+export declare const DIFF_COMMIT_PROTOCOL = 3;
+import type { BoardCommandCarrier, BoardCommit, BoardCommand, BoardEvent, CruiseValue, LeaseWire } from './board-doc.ts';
 import type { ItemsCommit, ItemsDoc } from './items-doc.ts';
 import type { ItemRecord } from './item.ts';
 import type { RunPresetStore, RunPresetsDocument } from './run-presets.ts';
@@ -95,6 +105,7 @@ export interface BoardSyncTransport {
         ttlMs?: number;
         release?: boolean;
         active?: boolean;
+        carriers?: readonly BoardCommandCarrier[];
     }): Promise<LeaseWire | undefined>;
     command(clientId: string, command: BoardCommand): Promise<void>;
     /** Open the SSE change stream for this replica; the returned disposer closes it. */
@@ -134,6 +145,16 @@ export interface BoardSyncDeps {
      *  evidence that lets the replica say "the host cannot read it" instead of
      *  rendering an empty list as if the person had written nothing. */
     checklistMirror?: ChecklistMirrorFace;
+    /**
+     * The relay carriers THIS replica can perform, declared with every lease.
+     *
+     * The seat answers "who may act"; this answers "what can they do", and the
+     * host needs both before it promises a caller that a command will run. It is
+     * supplied by the WIRING rather than derived here, because only the browser
+     * half knows which controller doors it actually wired — the sync layer
+     * forwards commands, it never performs them.
+     */
+    carriers?: readonly BoardCommandCarrier[];
     log?: (message: string, error?: unknown) => void;
 }
 export declare class BoardSyncClient {
@@ -285,9 +306,39 @@ export declare class BoardSyncClient {
      *  request carries this tab's VISIBILITY — the host lets a visible replica
      *  preempt a hidden holder, so the engine always sits where the user is. */
     renewLease(): Promise<void>;
-    /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption);
-     *  undefined until the first lease read — "not yet known" is not "old". */
+    /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption,
+     *  3 = it reads a diff commit); undefined until the first lease read —
+     *  "not yet known" is not "old". */
     hostProtoVersion(): number | undefined;
+    /**
+     * Whether this commit may carry only the rows it speaks about.
+     *
+     * GATED ON EVIDENCE, NEVER ON HOPE. A host from before the diff protocol reads
+     * a short array as "these are the rows", so sending a diff to one would be a
+     * silent rewrite of everything it did not mention. The gate is the lease's own
+     * protocol number: unread (`undefined`) means no evidence, which counts as
+     * old, which sends the full array. That is the branch that costs bandwidth;
+     * the other branch costs data.
+     */
+    private diffable;
+    /**
+     * The rows one commit has to carry, given the view it is sending.
+     *
+     * THREE REASONS A ROW MUST RIDE, and each is a different failure if omitted:
+     *
+     *  · CLAIMED — this replica edited it, and the claim is what makes the host
+     *    take the content unconditionally. A claimed row that did not arrive would
+     *    be a claim about nothing.
+     *  · NEW — the baseline has never held it, so no host copy exists to merge
+     *    against; leaving it out loses a card the user just created.
+     *  · STAMP MOVED — a read-state join or an edit outside the claim set. Cheap
+     *    to include and the only defence against a claim the accrual missed.
+     *
+     * Everything else is a row this replica merely CARRIES, and the host already
+     * has it. `changedIdsOf` is reused rather than re-implemented: two answers to
+     * "what changed" is how a claim and its payload disagree.
+     */
+    private changedRowsOf;
     /** When the answering host process booted; undefined until the first lease
      *  read. The stale-host dialog shows it so "我明明重启了" is settled by a
      *  clock reading (old process vs. a different instance behind the URL). */

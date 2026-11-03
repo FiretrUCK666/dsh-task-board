@@ -315,24 +315,15 @@
 :where([data-dsh-taskboard-panel])::-webkit-scrollbar,
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar {
-  /* **6px，不是 8。** 8px 配 `text-3` 的实心填充，在壁纸上是一条贯穿整栏的灰带
-     ——读者对它的原话是「丑到爆」。滚动条的职责是「让你知道还能滚」，不是画一根柱子：
-     6px 足够看见，又不到打断横向阅读的宽度。 */
-  width: 6px;
-  height: 6px;
+  width: 8px;
+  height: 8px;
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-panel])::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
-  /* **滚动体是墨的一档淡，不是一枚文字色。** 原来这里直读 `--dsh-tb-text-3`——那是
-     第三档正文墨，它按「字要读得清」定的值；拿它去填一根 6px 的条，等于把一句话的
-     对比度要求用在一个谁也不读的形状上，于是它在浅色下亮、在壁纸下更亮，成为整屏
-     最显眼的灰块。
-     现在读墨的一档淡（`--dsh-tb-wash-strong`），悬停才加深：静止时它几乎融进纸里，
-     指针停在上面时它才说「我在」。这与本项目的灰阶纪律同源——深浅只从梯子来。 */
-  background: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-wash-strong), transparent);
+  background: var(--dsh-tb-text-3);
   background-clip: padding-box;
   /* 滑块自己的圆角读**和轨道缩进同一个值**，因为这两件事是同一个几何问题的两面：
      盒子的角是一段半径 R 的弧，滑块是一条方头长条。缩进只解决了「条的行程别伸进
@@ -342,13 +333,6 @@
 
      方角的滚动体读不到这个变量，滑块的圆角落回 4px——正是它一直以来的样子。 */
   border-radius: var(--dsh-tb-scroll-inset, 4px);
-}
-
-/* 指针在滚动容器上时，滚动体才加深到一眼可辨。触屏没有 hover，所以那一边永远停在
-   安静档——而触屏本来就不靠这条细线滚动。 */
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb:hover,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--dsh-tb-text-1) var(--dsh-tb-edge), transparent);
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-track,

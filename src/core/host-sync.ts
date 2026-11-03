@@ -59,7 +59,19 @@
 import type { BoardDoc, BoardView } from './board-doc.ts'
 import { relayLaneOf, type PromptAttachment } from './attachment.ts'
 import { boardViewOf, changedIdsOf, emptyBoardDoc, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
+
+/**
+ * The lease-protocol version that introduced DIFF COMMITS.
+ *
+ * THE NUMBER IS THE PROTOCOL, so it lives here as one named constant rather than
+ * as a literal in a comparison: a host and a replica that disagree about which
+ * number means "diff" would ship a payload the other misreads, and the symptom
+ * would be cards disappearing on one device. `LEASE_PROTOCOL_ACTIVE` on the host
+ * side is the same number; the two are checked against each other in the specs.
+ */
+export const DIFF_COMMIT_PROTOCOL = 3
 import type {
+  BoardCommandCarrier,
   BoardCommit,
   BoardCommand,
   BoardEvent,
@@ -103,7 +115,7 @@ export interface BoardSyncTransport {
   itemsFetch?(clientId: string, since: number | undefined): Promise<ItemsSyncFetchResult | undefined>
   /** The checklist's write end (absent together with {@link itemsFetch}). */
   itemsCommit?(commit: ItemsCommit): Promise<ItemsSyncFetchResult | undefined>
-  lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean }): Promise<LeaseWire | undefined>
+  lease(clientId: string, options: { ttlMs?: number; release?: boolean; active?: boolean; carriers?: readonly BoardCommandCarrier[] }): Promise<LeaseWire | undefined>
   command(clientId: string, command: BoardCommand): Promise<void>
   /** Open the SSE change stream for this replica; the returned disposer closes it. */
   openStream(clientId: string, handlers: {
@@ -144,6 +156,16 @@ export interface BoardSyncDeps {
    *  evidence that lets the replica say "the host cannot read it" instead of
    *  rendering an empty list as if the person had written nothing. */
   checklistMirror?: ChecklistMirrorFace
+  /**
+   * The relay carriers THIS replica can perform, declared with every lease.
+   *
+   * The seat answers "who may act"; this answers "what can they do", and the
+   * host needs both before it promises a caller that a command will run. It is
+   * supplied by the WIRING rather than derived here, because only the browser
+   * half knows which controller doors it actually wired — the sync layer
+   * forwards commands, it never performs them.
+   */
+  carriers?: readonly BoardCommandCarrier[]
   log?: (message: string, error?: unknown) => void
 }
 
@@ -649,7 +671,34 @@ export class BoardSyncClient {
       this.refire = true
       return
     }
-    const tasks = this.dirty.tasks ?? this.baseline.tasks
+    /* WHAT RIDES THE WIRE IS THE DIFF, ONCE THE HOST SAYS IT READS ONE.
+     *
+     * `tasks` used to be the replica's ENTIRE array — every card, every round,
+     * every legacy base64 image — on every commit. The document here is ~1.9 MB,
+     * so moving one card shipped 1.9 MB and the host re-serialised all of it, on
+     * every edit, on every device.
+     *
+     * SENDING LESS IS SAFE BECAUSE THE GRAMMAR ALREADY SAYS SO: `applyRowCommit`
+     * documents that ABSENCE IS NOT A DELETE — deletes are the explicit list, so
+     * remote rows a replica never sent survive. The array therefore narrows to
+     * the rows this commit actually speaks about:
+     *
+     *  · claimed rows — this replica's own edits, taken unconditionally;
+     *  · rows the baseline does not hold — new cards, which no claim can place
+     *    because the host has never seen them;
+     *  · rows whose stamp moved away from the baseline — a read-state join or an
+     *    edit that the claim set missed, kept so nothing is dropped silently.
+     *
+     * A row the replica merely CARRIES — untouched, unclaimed — needs no trip.
+     *
+     * IT IS GATED ON THE HOST'S PROTOCOL, not assumed: a host from before this
+     * change would read a short array as "these are all the rows" and could then
+     * behave as though the rest had been withdrawn. `diffTasks` is a lease-protocol
+     * version bump for exactly that reason — one number, one meaning, and a
+     * replica that has not yet read a lease sends the full array because
+     * `hostProtoVersion()` is undefined ("not yet known" is not "new"). */
+    const fullView = this.dirty.tasks ?? this.baseline.tasks
+    const tasks = this.diffable() ? this.changedRowsOf(fullView) : fullView
     const snapshot: DirtyState = {}
     if (this.dirty.tasks !== undefined) snapshot.tasks = this.dirty.tasks
     if (this.dirty.cruise !== undefined) snapshot.cruise = this.dirty.cruise
@@ -842,7 +891,7 @@ export class BoardSyncClient {
   async renewLease(): Promise<void> {
     if (this.mode !== 'synced' || this.disposed) return
     const state = await this.deps.transport
-      .lease(this.clientId, { ttlMs: this.leaseTtlMs, active: this.deps.visibility?.is() ?? true })
+      .lease(this.clientId, { ttlMs: this.leaseTtlMs, active: this.deps.visibility?.is() ?? true, ...(this.deps.carriers === undefined ? {} : { carriers: this.deps.carriers }) })
       .catch(() => undefined)
     if (state === undefined) return
     // A host without the lease protocol version predates visibility
@@ -862,10 +911,49 @@ export class BoardSyncClient {
     if (changed) this.engineListener?.(state.held)
   }
 
-  /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption);
-   *  undefined until the first lease read — "not yet known" is not "old". */
+  /** The host's engine-lease protocol (1 = pre-visibility, 2 = preemption,
+   *  3 = it reads a diff commit); undefined until the first lease read —
+   *  "not yet known" is not "old". */
   hostProtoVersion(): number | undefined {
     return this.hostLeaseProto
+  }
+
+  /**
+   * Whether this commit may carry only the rows it speaks about.
+   *
+   * GATED ON EVIDENCE, NEVER ON HOPE. A host from before the diff protocol reads
+   * a short array as "these are the rows", so sending a diff to one would be a
+   * silent rewrite of everything it did not mention. The gate is the lease's own
+   * protocol number: unread (`undefined`) means no evidence, which counts as
+   * old, which sends the full array. That is the branch that costs bandwidth;
+   * the other branch costs data.
+   */
+  private diffable(): boolean {
+    const proto = this.hostLeaseProto
+    return proto !== undefined && proto >= DIFF_COMMIT_PROTOCOL
+  }
+
+  /**
+   * The rows one commit has to carry, given the view it is sending.
+   *
+   * THREE REASONS A ROW MUST RIDE, and each is a different failure if omitted:
+   *
+   *  · CLAIMED — this replica edited it, and the claim is what makes the host
+   *    take the content unconditionally. A claimed row that did not arrive would
+   *    be a claim about nothing.
+   *  · NEW — the baseline has never held it, so no host copy exists to merge
+   *    against; leaving it out loses a card the user just created.
+   *  · STAMP MOVED — a read-state join or an edit outside the claim set. Cheap
+   *    to include and the only defence against a claim the accrual missed.
+   *
+   * Everything else is a row this replica merely CARRIES, and the host already
+   * has it. `changedIdsOf` is reused rather than re-implemented: two answers to
+   * "what changed" is how a claim and its payload disagree.
+   */
+  private changedRowsOf(view: readonly TaskRecord[]): readonly TaskRecord[] {
+    const known = new Set(this.baseline.tasks.map(task => task.id))
+    const moved = new Set(changedIdsOf(this.baseline.tasks, view))
+    return view.filter(task => this.claims.has(task.id) || !known.has(task.id) || moved.has(task.id))
   }
 
   /** When the answering host process booted; undefined until the first lease

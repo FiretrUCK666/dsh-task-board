@@ -533,7 +533,7 @@ describe('模型与界面：同一件事，同一个答案', () => {
     const relayed: string[] = []
     board.submitCommand = (command) => {
       relayed.push(command.type === 'comment' ? command.text : command.type === 'run' ? String(command.kickoff ?? '') : '')
-      return { queued: false }
+      return { status: 'broadcast' }
     }
     board.doc = { ...emptyBoardDoc(NOW), tasks: [boardCard({ id: 'card-1', binds: [{ kind: 'session', sessionId: 's-1' }] })] }
     board.items = applyItemsCommit(emptyItemsDoc(NOW), { clientId: 'c', items: [one] as never, deleted: [] }, NOW)
@@ -580,7 +580,7 @@ function face(): Face {
       if (outcome.doc !== box.items) box.items = outcome.doc
       return outcome
     },
-    submitCommand: () => ({ queued: false }),
+    submitCommand: () => ({ status: 'broadcast' }),
   }
   return box
 }

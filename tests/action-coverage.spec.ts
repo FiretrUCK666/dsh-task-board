@@ -113,8 +113,12 @@ const BASE = {
   agentToolsText: tools("    if (id !== 'task.run') { return 'refused' }\n    return relay()"),
   pendingExecution: {},
   // The engine's carriers. The synthetic catalog declares two and both actions
-  // ride one, so the two sides agree until a test makes them disagree.
-  boardDocText: `export type BoardCommand =
+  // ride one, so the two sides agree until a test makes them disagree. The
+  // declared LIST is part of the fixture because the real file has it: a fixture
+  // that omits a structure the gate reads proves the gate green on a shape the
+  // product does not have.
+  boardDocText: `export const BOARD_COMMAND_CARRIERS = ['alpha.run', 'alpha.move'] as const
+export type BoardCommand =
   | { type: 'alpha.run'; taskId: string; clientId: string }
   | { type: 'alpha.move'; taskId: string; clientId: string }
 `,
@@ -584,9 +588,29 @@ describe('3e — carriers, both directions', () => {
 
   it('catches a carrier the engine can carry but the catalog does not name', () => {
     const out = findings({
-      boardDocText: "export type BoardCommand =\n  | { type: 'alpha.run'; taskId: string }\n  | { type: 'alpha.move'; taskId: string }\n  | { type: 'task.archive'; taskId: string }\n",
+      boardDocText: "export const BOARD_COMMAND_CARRIERS = ['alpha.run', 'alpha.move', 'task.archive'] as const\nexport type BoardCommand =\n  | { type: 'alpha.run'; taskId: string }\n  | { type: 'alpha.move'; taskId: string }\n  | { type: 'task.archive'; taskId: string }\n",
     })
     expect(out).toContain("the engine can carry `type: 'task.archive'` but the catalog does not name it")
+  })
+
+  it('catches a union member the declared carrier list forgot', () => {
+    // The union-only direction, and its consequence is specific: no page can
+    // declare the name, so the relay answers 「不支持」 to every caller about a
+    // carrier this build actually implements.
+    const out = findings({
+      boardDocText: "export const BOARD_COMMAND_CARRIERS = ['alpha.run'] as const\nexport type BoardCommand =\n  | { type: 'alpha.run'; taskId: string }\n  | { type: 'alpha.move'; taskId: string }\n",
+    })
+    expect(out).toContain("BOARD_COMMAND_CARRIERS does not list it")
+  })
+
+  it('catches a declared name the union cannot build', () => {
+    // The other direction: a page promises a command that has no shape, so the
+    // promise can never be kept and the relay's own check answers about a
+    // carrier that cannot exist.
+    const out = findings({
+      boardDocText: "export const BOARD_COMMAND_CARRIERS = ['alpha.run', 'alpha.move', 'task.ghost'] as const\nexport type BoardCommand =\n  | { type: 'alpha.run'; taskId: string }\n  | { type: 'alpha.move'; taskId: string }\n",
+    })
+    expect(out).toContain("BOARD_COMMAND_CARRIERS lists \"task.ghost\" but the BoardCommand union has no")
   })
 
   it('catches a declared carrier the engine cannot carry at all', () => {

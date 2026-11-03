@@ -302,6 +302,9 @@ Some things are not ready to be worked on yet. Write them down first.
 - **Auto-cruise**: one switch in the board header, with a cap on how many run at once and the hours they may run in.
 - Your phone opens the same data, and changes sync live. It works offline and catches up when the connection returns.
 - `/task` hands your sentence to the current session's model. `/task-continue` asks it to pick up where it left off.
+- **The AI can read what it writes.** It can read a card down to its run configuration, schedule, session rules and attached sessions, so "add a rule to this card" no longer needs you to copy a session id off the screen. It reads the shape of the board by default and goes deeper only when it needs to.
+- **"Accepted" is not "done".** A receipt separates three things: really written, handed to the engine and not finished, or queued until the engine comes online. And one more it says outright: "not executed", because the browser holding the seat is running a build that cannot do that action.
+- **The session dots on a card open.** With something unread they open that session; otherwise they open the card's session list. Same on a phone.
 - Keyboard: `A` new, `J`/`K` move, `X` multi-select, `1`–`4` priority, `E` rename, `⌘Z` undo, `Esc` closes one layer.
 
 **What the words on a card mean.**

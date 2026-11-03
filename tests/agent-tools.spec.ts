@@ -101,7 +101,7 @@ function face(overrides: Partial<ToolCommitFace> = {}): FakeFace {
       if (outcome.doc !== box.items) box.items = outcome.doc
       return outcome
     },
-    submitCommand: () => ({ queued: false }),
+    submitCommand: () => ({ status: 'broadcast' }),
     ...overrides,
   }
   return box
@@ -137,13 +137,21 @@ function runningSources(
     }),
   }
 }
-function deps(board: ToolCommitFace | undefined = face(), sources: ToolDeps['sources'] = runningSources({})): ToolDeps {
+function deps(
+  board: ToolCommitFace | undefined = face(),
+  sources: ToolDeps['sources'] = runningSources({}),
+  /** Optional `sessionId → title`, so a test can prove the deep read NAMES the
+   *  sessions it hands over. Absent = this host cannot name any, which is the
+   *  honest shape of a host without a session registry. */
+  sessionTitles?: Readonly<Record<string, string>>,
+): ToolDeps {
   return {
     board: () => board,
-    posture: async () => ({
-      sessionId: 's', running: { value: false }, archived: { value: false },
+    posture: async (sessionId: string) => ({
+      sessionId, running: { value: false }, archived: { value: false },
       awaitingApproval: { value: false }, awaitingAnswer: { value: false },
-    }),
+      ...sessionTitles?.[sessionId] === undefined ? {} : { title: sessionTitles[sessionId] },
+    } as never),
     sources,
     now: () => NOW,
     uuid: () => `id-${++seq}`,
@@ -157,8 +165,13 @@ function toolNamed(name: string): ToolDefinition {
 }
 
 /** Run the read tool and return the value it hands the model. */
-async function query(args: Record<string, unknown>, board = face()): Promise<Record<string, unknown>> {
-  const tool = createTaskboardTools(deps(board)).find(candidate => candidate.name === 'taskboard_query')
+async function query(
+  args: Record<string, unknown>,
+  board = face(),
+  sessionTitles?: Readonly<Record<string, string>>,
+): Promise<Record<string, unknown>> {
+  const tool = createTaskboardTools(deps(board, runningSources({}), sessionTitles))
+    .find(candidate => candidate.name === 'taskboard_query')
   if (tool === undefined || tool.execute === undefined) throw new Error('no taskboard_query')
   return await tool.execute(args, undefined as never) as Record<string, unknown>
 }
@@ -256,7 +269,10 @@ describe('the read tool answers what it says it answers', () => {
     // And the stored tier is still reachable, under its own name.
     const detailed = await tool.execute!({ detail: 'full', filter: 'status:running' }, undefined as never) as { items: { storedStatus: string; taskId?: string }[] }
     expect(detailed.items[0]?.storedStatus).toBe('todo')
-    expect(detailed.items[0]?.taskId).toBe('card-live')
+    // The link prints the card's NAME, not its uuid: the uuid is an identifier
+    // the model can neither remember nor say back, and the same field is what
+    // `item.update` accepts — so the value shown is the value expected back.
+    expect(detailed.items[0]?.taskId).toBe('live')
     // The control: a host with no board answers with the row's OWN two values — the honest
     // shape of 「看不见那张卡」, never a guess at a column and never an empty lie. (The same
     // row is seeded here WITHOUT its card, so this is a real answer and not an empty document
@@ -276,6 +292,128 @@ describe('the read tool answers what it says it answers', () => {
     }, NOW))
     expect((await query({ limit: 1 }, box)).truncated, 'the notes list hit the limit and nobody said so').toBe(true)
     expect((await query({ limit: 50 }, box)).truncated).toBe(false)
+  })
+
+  it('a list that EXACTLY fills the limit is not called truncated', async () => {
+    /* 「还有更多」 is a measurement, not a comparison with the cap.
+     *
+     * The old rule was `rows.length >= limit`, which reports 「还有更多」 on a board
+     * that holds exactly `limit` rows — the whole answer is in hand and the flag
+     * still says the caller is missing something. Its next move is to narrow a
+     * filter that did not need narrowing, and after two of those it learns the
+     * flag is noise. */
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [richItem(), { ...richItem(), id: 'i-2', ref: 8 }], deleted: [],
+    }, NOW))
+    const exact = await query({ detail: 'full', limit: 2 }, box)
+    expect(exact.items, 'the fixture is two rows and the cap is two').toHaveLength(2)
+    expect(exact.truncated, 'a complete answer was reported as incomplete').toBe(false)
+    // One fewer is genuinely truncated, so the flag is not simply always false.
+    expect((await query({ detail: 'full', limit: 1 }, box)).truncated).toBe(true)
+  })
+})
+
+describe('the deep read hands over what the model may write', () => {
+  it('reads a card whole: run config, schedule, rules, sessions, and its rows', async () => {
+    /* THE DEFECT THIS CLOSES, stated as a test: the write surface was larger than
+     * the read surface. `rule.create` requires a session id and NO query returned
+     * one, so 「给这张卡加一条规则」 could only be done by guessing. */
+    const box = face()
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{
+        ...card('深读的卡'),
+        id: 'card-deep',
+        provider: 'p',
+        model: 'm',
+        schedule: { mode: 'cron', cron: '0 9 * * *', enabled: true, maxRuns: 3, runCount: 1 } as never,
+        rules: [{
+          id: 'rule-1', sessionId: 's-1', instruction: '', usePrompt: true,
+          trigger: 'on-complete', cron: '', send: 'steer', enabled: true,
+        }] as never,
+        binds: [{ kind: 'session', sessionId: 's-1' }],
+        executions: [{ id: 'r-1', sessionId: 's-1', startedAt: NOW, endedAt: NOW, result: 'succeeded', error: undefined, comment: '' }] as never,
+      }],
+    })
+    const answer = await query({ of: '深读的卡' }, box, { 's-1': '第一条会话' }) as {
+      ok: boolean
+      detail: string
+      tasks: {
+        runConfig: Record<string, string>
+        schedule?: { mode: string; cron: string; enabled: boolean }
+        rules?: { session: string; trigger: string; send: string; sends: string }[]
+        binds?: string[]
+        sessions?: { session: string; title: string | null; rounds: number }[]
+      }[]
+    }
+    expect(answer.ok).toBe(true)
+    expect(answer.detail).toBe('deep')
+    const deep = answer.tasks[0]
+    expect(deep?.runConfig, 'the run config the model may SET was not readable').toEqual({ provider: 'p', model: 'm' })
+    expect(deep?.schedule).toEqual({ mode: 'cron', cron: '0 9 * * *', enabled: true, maxRuns: 3, runCount: 1 })
+    // The rule carries the SESSION ID (what rule.create takes) and what it sends.
+    expect(deep?.rules?.[0]).toMatchObject({ session: 's-1', trigger: 'on-complete', send: 'steer', sends: '这张卡自己的执行 Prompt' })
+    expect(deep?.binds).toEqual(['会话：第一条会话'])
+    expect(deep?.sessions?.[0]).toMatchObject({ session: 's-1', title: '第一条会话', rounds: 1 })
+  })
+
+  it('refuses a title two cards share, and names both', async () => {
+    /* The old lookup was `find(t => t.title === of)` — it picked the first, moved
+     * one of the two, said 「已生效」, and nothing mentioned there had been two. A
+     * wrong answer that looks like a right one. */
+    const box = face()
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{ ...card('收尾'), id: 'a' }, { ...card('收尾'), id: 'b' }],
+    })
+    const answer = await query({ of: '收尾' }, box) as { ok: boolean; detail: string }
+    expect(answer.ok).toBe(false)
+    expect(answer.detail).toContain('有 2 张卡都叫「收尾」')
+    // And the unique case still works, or the refusal would just be a wall.
+    box.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('唯一'), id: 'c' }] })
+    expect((await query({ of: '唯一' }, box) as { ok: boolean }).ok).toBe(true)
+  })
+
+  it('returns comments in FULL and only when asked, because they are the person&#39;s own words', async () => {
+    const box = face()
+    const long = '这是一条很长的评论，'.repeat(40)
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{
+        ...card('有评论的卡'),
+        id: 'card-c',
+        executions: [{ id: 'r-1', sessionId: 's-1', startedAt: NOW, endedAt: NOW, result: 'succeeded', error: undefined, comment: long }] as never,
+      }],
+    })
+    // Default: the words are NOT there. They are not secret — they are the
+    // person's own writing, and dragging them into every 「看一下板」 makes their
+    // own words the most expensive thing in the context.
+    const plain = await query({ of: '有评论的卡' }, box) as { comments?: unknown }
+    expect(plain.comments).toBeUndefined()
+    const asked = await query({ of: '有评论的卡', include: ['comments'] }, box) as {
+      comments?: { session: string; rounds: { text: string }[] }[]
+    }
+    // FULL, not a summary: the product requirement is that the whole comment and
+    // its whole context are readable.
+    expect(asked.comments?.[0]?.rounds[0]?.text).toBe(long)
+  })
+
+  it('an unlinked checklist row answers instead of failing the whole read', async () => {
+    /* `taskId: undefined` in a row literal made the host's lossless-JSON check
+     * reject the ENTIRE answer — not one wrong row, the whole query. A board with
+     * one unlinked note was a board that could not be read at all. */
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [richItem()], deleted: [],
+    }, NOW))
+    const answer = await query({ detail: 'full' }, box) as { ok: boolean; items: { taskId?: string }[] }
+    expect(answer.ok).toBe(true)
+    expect(answer.items).toHaveLength(1)
+    // Absent, not undefined: the field must not exist at all.
+    expect('taskId' in (answer.items[0] ?? {})).toBe(false)
+    // The whole answer survives the host's own serialisation rule.
+    expect(() => JSON.parse(JSON.stringify(answer))).not.toThrow()
   })
 })
 
@@ -588,7 +726,7 @@ describe('the batch laws', () => {
   })
 
   it('says the engine is absent instead of pretending a run happened', async () => {
-    const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
+    const board = face({ submitCommand: () => ({ status: 'queued' }) } as Partial<ToolCommitFace>)
     board.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...emptyBoardDoc(NOW).tasks[0] } as never] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: 'nope' } }] })
     expect(result.reports[0]?.ok).toBe(false)
@@ -906,7 +1044,7 @@ describe('the receipt a card renders', () => {
   })
 
   it('an engine op with no seat reads as ACCEPTED, not as executed', async () => {
-    const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
+    const board = face({ submitCommand: () => ({ status: 'queued' }) } as Partial<ToolCommitFace>)
     board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
     expect(result.enginePending).toEqual(['跑一下'])
@@ -960,11 +1098,19 @@ describe('the receipt classifies itself by its fields, not by its own wording', 
 
   it('a reworded detail leaves the engine-pending set alone', () => {
     const accepted: OpReport = {
-      op: 'task.run', ok: true, kind: 'updated', title: '跑一下', queued: true,
+      op: 'task.run',
+      ok: true,
+      kind: 'updated',
+      title: '跑一下',
+      outcome: { lane: 'engine', status: 'queued', carrier: 'run' },
       detail: '已受理（跑一遍），引擎当前不在线，将在引擎上线后执行。',
     }
     const handedOver: OpReport = {
-      op: 'task.run', ok: true, kind: 'updated', title: '另一张卡',
+      op: 'task.run',
+      ok: true,
+      kind: 'updated',
+      title: '另一张卡',
+      outcome: { lane: 'engine', status: 'broadcast', carrier: 'run' },
       detail: '已交给引擎跑一遍。',
     }
     expect(enginePendingOf([accepted, handedOver])).toEqual(['跑一下'])
@@ -992,12 +1138,37 @@ describe('the receipt classifies itself by its fields, not by its own wording', 
   })
 
   it('a queued op says so in a field, so the summary can keep it out of the count', async () => {
-    const board = face({ submitCommand: () => ({ queued: true }) } as Partial<ToolCommitFace>)
+    const board = face({ submitCommand: () => ({ status: 'queued' }) } as Partial<ToolCommitFace>)
     board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '跑一下', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
-    expect(result.reports[0]?.queued, 'an accepted-but-unexecuted run says so in a field').toBe(true)
+    expect(result.reports[0]?.outcome, 'an accepted-but-unexecuted run says so in a field').toEqual({
+      lane: 'engine',
+      status: 'queued',
+      carrier: 'run',
+    })
     expect(result.enginePending).toEqual(['跑一下'])
     expect(result.summary).toContain('已受理')
+  })
+
+  it('an engine that cannot perform the carrier is reported as NOT EXECUTED, never as done', async () => {
+    /* THE THIRD STATE, which the two-state vocabulary could not express.
+     *
+     * A live page whose build has no `session.create` branch received the frame
+     * and dropped it; the caller was told the batch had landed. This pins the
+     * receipt for that case: a field that says `unsupported`, a summary that
+     * does NOT count it as an effect, and a sentence that says nothing happened.
+     */
+    const board = face({
+      submitCommand: command => ({ status: 'unsupported', carrier: command.type }),
+    } as Partial<ToolCommitFace>)
+    board.seed({ ...emptyBoardDoc(NOW), tasks: [{ id: 't-1', title: '建会话', description: '', prompt: 'p', status: 'todo', order: 0, createdAt: NOW, updatedAt: NOW, executions: [] }] })
+    const result = await runBatch(deps(board), { ops: [{ op: 'session.create', payload: { of: '建会话' } }] })
+    expect(result.reports[0]?.outcome).toEqual({ lane: 'engine', status: 'unsupported', carrier: 'session.create' })
+    expect(result.engineUnsupported).toEqual(['建会话'])
+    // The two lists are different facts and neither may absorb the other.
+    expect(result.enginePending).toEqual([])
+    expect(result.summary).toContain('没有执行')
+    expect(result.summary, 'a refused relay is not an effect').not.toContain('已生效')
   })
 
   it('the implementation never reads the detail sentence to classify a report', () => {
@@ -1018,7 +1189,7 @@ describe('the relay only carries what it can actually carry', () => {
     const board = face()
     const relayed: string[] = []
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('跑一下')] })
-    board.submitCommand = (command) => { relayed.push(command.type); return { queued: true } }
+    board.submitCommand = (command) => { relayed.push(command.type); return { status: 'queued' } }
     const result = await runBatch(deps(board), { ops: [{ op: 'task.run', payload: { of: '跑一下' } }] })
     expect(relayed).toEqual(['run'])
     expect(result.enginePending).toEqual(['跑一下'])
@@ -1033,7 +1204,7 @@ describe('the relay only carries what it can actually carry', () => {
     const board = face()
     const relayed: unknown[] = []
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
-    board.submitCommand = (command) => { relayed.push(command); return { queued: true } }
+    board.submitCommand = (command) => { relayed.push(command); return { status: 'queued' } }
     const renamed = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
     expect(renamed.ok).toBe(true)
     // `of` is the catalog's ADDRESSING (which card this belongs to); the
@@ -1046,9 +1217,25 @@ describe('the relay only carries what it can actually carry', () => {
     expect(renamed.enginePending).toEqual(['新名字'])
 
     // A comment carries its own fields, and refuses without the ones it needs.
+    //
+    // `send` is on the command because the CATALOG publishes it: absent means
+    // queue, and the value travels so the engine does not have to guess which of
+    // the two doors the caller meant. A command without it would make the
+    // engine's choice the authority, which is exactly the 「用户开关定」 rule
+    // this parameter replaced.
     const commented = await runBatch(deps(board), { ops: [{ op: 'task.comment', payload: { of: '要改名的卡', session: 's-1', text: '接着说' } }] })
     expect(commented.ok).toBe(true)
-    expect(relayed[1]).toEqual({ type: 'comment', taskId: 't-要改名的卡', sessionId: 's-1', text: '接着说', clientId: 'model' })
+    expect(relayed[1]).toEqual({ type: 'comment', taskId: 't-要改名的卡', sessionId: 's-1', text: '接着说', clientId: 'model', send: 'queue' })
+    // And the choice is READ, not just published: a caller that asks to steer
+    // gets a steer.
+    const steered = await runBatch(deps(board), { ops: [{ op: 'task.comment', payload: { of: '要改名的卡', session: 's-1', text: '插一句', send: 'steer' } }] })
+    expect(steered.ok).toBe(true)
+    expect(relayed[2]).toEqual({ type: 'comment', taskId: 't-要改名的卡', sessionId: 's-1', text: '插一句', clientId: 'model', send: 'steer' })
+    // The receipt says WHICH one happened, because 「说进去了」 about a line still
+    // waiting for the run to settle is the same lie as calling an accepted run a
+    // finished one.
+    expect(commented.reports[0]?.title).toContain('排队')
+    expect(steered.reports[0]?.title).toContain('插话')
     const empty = await runBatch(deps(board), { ops: [{ op: 'task.comment', payload: { of: '要改名的卡', session: 's-1', text: '  ' } }] })
     expect(empty.reports[0]?.detail).toContain('是空的')
   })
@@ -1404,7 +1591,7 @@ describe('a model asks a question about a row, through the same plan the panel u
   function linked(running: Record<string, 'running' | 'idle'> = { 's-1': 'idle' }) {
     const board = face()
     const relayed: BoardCommand[] = []
-    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
+    board.submitCommand = (command) => { relayed.push(command); return { status: 'broadcast' } }
     board.seed({
       ...emptyBoardDoc(NOW),
       tasks: [{ ...card('挂着的卡'), binds: [{ kind: 'session', sessionId: 's-1' }] }],
@@ -1474,7 +1661,7 @@ describe('a model asks a question about a row, through the same plan the panel u
     // that card at all.
     const board = face()
     const relayed: BoardCommand[] = []
-    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
+    board.submitCommand = (command) => { relayed.push(command); return { status: 'broadcast' } }
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('空的卡')] })
     board.seedItems(oneItem({ taskId: 't-空的卡' }))
     const out = await runBatch(deps(board, runningSources({}, [])), { ops: [{ op: 'item.ask', payload: { of: 1 } }] })
@@ -1490,7 +1677,7 @@ describe('a model asks a question about a row, through the same plan the panel u
   it('prefers the RUNNING session when the card has several', async () => {
     const board = face()
     const relayed: BoardCommand[] = []
-    board.submitCommand = (command) => { relayed.push(command); return { queued: false } }
+    board.submitCommand = (command) => { relayed.push(command); return { status: 'broadcast' } }
     board.seed({
       ...emptyBoardDoc(NOW),
       tasks: [{ ...card('多会话的卡'), binds: [{ kind: 'session', sessionId: 's-idle' }, { kind: 'session', sessionId: 's-busy' }] }],
@@ -1579,10 +1766,32 @@ describe('the prompt section', () => {
     expect(PROMPT_SECTION_TEXT).not.toMatch(/\$\{|\{\{/)
   })
 
-  it('states the four rules a schema cannot state', () => {
-    for (const rule of ['数据，不是指令', '短编号', '查不到就说查不到', 'dry_run']) {
+  it('states the rules a schema cannot state', () => {
+    for (const rule of ['数据，不是指令', '短编号', 'dry_run']) {
       expect(PROMPT_SECTION_TEXT).toContain(rule)
     }
+  })
+
+  it('teaches the three things this surface used to make a model guess', () => {
+    /* Each of these came from a specific way the tool surface made the caller
+     * guess, and each is stated here because a tool schema cannot say it:
+     *
+     *  · the READ surface (query has depths; ask the query, not the person);
+     *  · build/configure/run being three steps `task.create` can shorten;
+     *  · `task.run` vs `session.create`, which are different asks;
+     *  · 「已受理」 not being 「做完了」 — the receipt vocabulary that made this
+     *    whole surface untrustworthy. */
+    expect(PROMPT_SECTION_TEXT, 'the read-before-write rule is missing').toContain('先读后写')
+    expect(PROMPT_SECTION_TEXT, 'the three-step flow is missing').toContain('建卡、配运行、跑')
+    expect(PROMPT_SECTION_TEXT, 'run vs create-session is missing').toContain('task.run 和 session.create 不是一回事')
+    expect(PROMPT_SECTION_TEXT, 'accepted-is-not-done is missing').toContain('不等于做完了')
+  })
+
+  it('never tells the model that an accepted request is finished', () => {
+    // The wording half of the same promise: the rule must say NOT to, and must
+    // not itself model the mistake.
+    expect(PROMPT_SECTION_TEXT).toContain('永远不要把受理说成完成')
+    expect(PROMPT_SECTION_TEXT, 'the prompt tells the model to skip reading').not.toContain('不用先查')
   })
 
   it('registers and hands back its disposer', () => {

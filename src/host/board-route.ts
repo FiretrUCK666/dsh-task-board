@@ -34,13 +34,15 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
-import type { BoardCommit, BoardDoc } from '../core/board-doc.ts'
+import { BOARD_COMMAND_CARRIERS } from '../core/board-doc.ts'
+import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, CommentSendMode, CommandRelayStatus, LeaseState } from '../core/board-doc.ts'
+import type { AttachmentRef } from '../core/attachment.ts'
 import { deletedItemsOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { refOf } from '../core/item-navigate.ts'
 import { messageOf } from '../core/values.ts'
 import type { RouteFail } from '../core/http-envelope.ts'
-import { acquireBoardService, storageHubOpener, type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts'
+import { acquireBoardService, storageHubOpener, type BoardEvent } from './board-service.ts'
 import { json, readJsonBody } from './http-json.ts'
 import { surfaceManifest } from './surfaces.ts'
 
@@ -61,8 +63,8 @@ export interface BoardRouteView {
   unchanged?: boolean
   /** The current engine-lease state (replicas bootstrap from it). */
   lease?: LeaseState
-  /** The relay receipt for a submitted command. */
-  command?: { queued: boolean }
+  /** The relay receipt for a submitted command — three states, not two. */
+  command?: CommandRelayStatus
 }
 
 /** The checklist view — the same envelope, a document of its own.
@@ -106,12 +108,12 @@ export interface BoardRouteDeps {
   commit(commit: BoardCommit): Promise<BoardDoc>
   itemsDoc(): ItemsDoc
   commitItems(commit: ItemsCommit): Promise<ItemsDoc>
-  acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState
+  acquireLease(clientId: string, ttlMs?: number, active?: boolean, carriers?: readonly BoardCommandCarrier[]): LeaseState
   releaseLease(clientId: string): LeaseState
   noteActivity(clientId: string | undefined): void
   noteStreamOpen(clientId: string | undefined): void
   noteDisconnect(clientId: string | undefined): void
-  submitCommand(command: BoardCommand): { queued: boolean }
+  submitCommand(command: BoardCommand): CommandRelayStatus
   /**
    * Bring one deleted checklist row back, by whichever name the caller holds.
    *
@@ -368,7 +370,7 @@ export function parseItemsCommit(body: unknown): ItemsCommit | undefined {
  *  The caller id is read by the SHARED rule, so the lease and the commit
  *  refuse the same ids: a caller the board route accepts and the lease route
  *  refuses is one caller the server half believes and half does not. */
-function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; release: boolean; active: boolean } | undefined {
+function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; release: boolean; active: boolean; carriers?: readonly BoardCommandCarrier[] } | undefined {
   const clientId = clientIdOf(body)
   if (clientId === undefined) return undefined
   const row = body as Record<string, unknown>
@@ -377,21 +379,126 @@ function parseLeaseBody(body: unknown): { clientId: string; ttlMs?: number; rele
     ...typeof row.ttlMs === 'number' && Number.isFinite(row.ttlMs) ? { ttlMs: row.ttlMs } : {},
     release: row.release === true,
     active: row.active !== false,
+    ...carriersOf(row.carriers) === undefined ? {} : { carriers: carriersOf(row.carriers) as readonly BoardCommandCarrier[] },
   }
 }
 
-/** Parse the POST body of the command relay. The caller id comes from the
- *  SHARED rule too, so a relayed command cannot carry an id the other two
- *  routes would refuse. */
+/**
+ * The carriers a lease request declares, or `undefined` when it declared none.
+ *
+ * ABSENT AND EMPTY ARE DIFFERENT ANSWERS, and collapsing them is how a page
+ * loses work it could do. Absent = a build from before the field, which the
+ * service reads as {@link BASELINE_COMMAND_CARRIERS}. Empty = a build that
+ * declares the field and implements nothing — it must NOT be upgraded to the
+ * baseline, or the relay would promise it work it just said it cannot do.
+ *
+ * Unknown names are dropped rather than refused: a newer page may declare a
+ * carrier this host has never heard of, and refusing the whole lease over it
+ * would cost that page the seat for a feature it is not asking for.
+ */
+function carriersOf(raw: unknown): readonly BoardCommandCarrier[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const known = new Set<string>(BOARD_COMMAND_CARRIERS)
+  return raw.filter((name): name is BoardCommandCarrier => typeof name === 'string' && known.has(name))
+}
+
+/**
+ * Parse the POST body of the command relay. The caller id comes from the
+ * SHARED rule too, so a relayed command cannot carry an id the other two
+ * routes would refuse.
+ *
+ * EVERY CARRIER IS READ HERE, and that is the whole point: this used to accept
+ * `run` and silently DROP everything else, so a `session.create` never reached
+ * a browser and the caller was still told the batch had landed. The carrier set
+ * is the shared {@link BOARD_COMMAND_CARRIERS} list, so a carrier added to the
+ * union cannot be forgotten here — and one that fails its own required fields
+ * answers `malformed` instead of being rebuilt into a different command.
+ */
 function parseCommandBody(body: unknown): { clientId: string; command?: BoardCommand } | undefined {
   const clientId = clientIdOf(body)
   if (clientId === undefined) return undefined
   const row = body as Record<string, unknown>
   const command = row.command as Record<string, unknown> | undefined
   if (typeof command !== 'object' || command === null) return { clientId }
-  if (command.type !== 'run' || typeof command.taskId !== 'string' || command.taskId === '') return { clientId }
-  const trigger = command.trigger === 'schedule' || command.trigger === 'chain' ? command.trigger : 'manual'
-  return { clientId, command: { type: 'run', taskId: command.taskId, trigger, clientId } }
+  const text = (value: unknown): string => (typeof value === 'string' ? value : '')
+  switch (command.type) {
+    case 'run': {
+      const taskId = text(command.taskId)
+      if (taskId === '') return { clientId }
+      const trigger = command.trigger === 'schedule' || command.trigger === 'chain' ? command.trigger : 'manual'
+      return {
+        clientId,
+        command: {
+          type: 'run',
+          taskId,
+          trigger,
+          clientId,
+          ...text(command.kickoff) === '' ? {} : { kickoff: text(command.kickoff) },
+          ...attachmentsOf(command.attachments),
+        },
+      }
+    }
+    case 'comment': {
+      const taskId = text(command.taskId)
+      const sessionId = text(command.sessionId)
+      const line = text(command.text)
+      if (taskId === '' || sessionId === '' || line === '') return { clientId }
+      const send: CommentSendMode = command.send === 'steer' ? 'steer' : 'queue'
+      return {
+        clientId,
+        command: {
+          type: 'comment',
+          taskId,
+          sessionId,
+          text: line,
+          clientId,
+          send,
+          ...attachmentsOf(command.attachments),
+        },
+      }
+    }
+    case 'session.create': {
+      const taskId = text(command.taskId)
+      if (taskId === '') return { clientId }
+      if (typeof command.config !== 'object' || command.config === null) return { clientId }
+      const config = command.config as Record<string, unknown>
+      const pick = (key: string): string | undefined => (text(config[key]) === '' ? undefined : text(config[key]))
+      return {
+        clientId,
+        command: {
+          type: 'session.create',
+          taskId,
+          clientId,
+          config: {
+            ...pick('workspaceId') === undefined ? {} : { workspaceId: pick('workspaceId') as string },
+            ...pick('provider') === undefined ? {} : { provider: pick('provider') as string },
+            ...pick('model') === undefined ? {} : { model: pick('model') as string },
+            ...pick('reasoningEffort') === undefined ? {} : { reasoningEffort: pick('reasoningEffort') as string },
+            ...pick('agentPreset') === undefined ? {} : { agentPreset: pick('agentPreset') as string },
+            ...pick('permission') === undefined ? {} : { permission: pick('permission') as string },
+          },
+          ...text(command.title) === '' ? {} : { title: text(command.title) },
+        },
+      }
+    }
+    case 'session.rename': {
+      const sessionId = text(command.sessionId)
+      const title = text(command.title)
+      if (sessionId === '' || title === '') return { clientId }
+      return { clientId, command: { type: 'session.rename', sessionId, title, clientId } }
+    }
+    default:
+      // Not a carrier at all. `{ clientId }` with no command is the answer the
+      // route turns into `malformed` — never a command rebuilt into something
+      // the caller did not ask for.
+      return { clientId }
+  }
+}
+
+/** Attachment refs a relayed command carries, as the `{ attachments }` spread. */
+function attachmentsOf(raw: unknown): { attachments: AttachmentRef[] } | Record<string, never> {
+  if (!Array.isArray(raw) || raw.length === 0) return {}
+  return { attachments: raw as AttachmentRef[] }
 }
 
 /** The revision a `?since=` probe claims to already hold, or NaN when the
@@ -658,7 +765,9 @@ export function createBoardHandler(
         json(res, MALFORMED)
         return
       }
-      const lease = parsed.release ? deps.releaseLease(parsed.clientId) : deps.acquireLease(parsed.clientId, parsed.ttlMs, parsed.active)
+      const lease = parsed.release
+        ? deps.releaseLease(parsed.clientId)
+        : deps.acquireLease(parsed.clientId, parsed.ttlMs, parsed.active, parsed.carriers)
       json(res, { ok: true as const, value: { available: deps.available(), revision: deps.doc().revision, lease } satisfies BoardRouteView })
       return
     }
@@ -669,8 +778,8 @@ export function createBoardHandler(
         json(res, MALFORMED)
         return
       }
-      const { queued } = deps.submitCommand(parsed.command)
-      const view: BoardRouteView = { available: deps.available(), revision: deps.doc().revision, command: { queued } }
+      const command = deps.submitCommand(parsed.command)
+      const view: BoardRouteView = { available: deps.available(), revision: deps.doc().revision, command }
       json(res, { ok: true as const, value: view })
       return
     }

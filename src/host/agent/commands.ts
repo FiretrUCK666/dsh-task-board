@@ -41,9 +41,18 @@ export interface CommandRegistrar {
   register(definition: CommandDefinition): () => void
 }
 
-/** `/task` with no argument has nothing to hand over, and a blank door is a
- *  worse experience than being told what the command is for. */
-const TASK_HINT = '用法：/task 后面直接写你要记的事，例如「/task 把刚才说的三件事记下来」。我不会替你猜——你原话是什么，我就把什么交给这个会话里的模型。'
+/**
+ * `/task` with no argument has nothing to hand over, and a blank door is a worse
+ * experience than being told what the command is for.
+ *
+ * It now also teaches the THREE STEPS, because the way this plugin failed people
+ * was not 「命令不会用」 — it was 「建了卡却跑不起来」: a card is built, then its
+ * run configuration is set, then it is run, and a person who does not know that
+ * ends up with a card that has never done anything and no message saying so.
+ * The tools now accept the configuration at creation, so the honest hint is two
+ * steps, and it says which.
+ */
+const TASK_HINT = '用法：/task 后面直接写你要记的事，例如「/task 把刚才说的三件事记下来」。我不会替你猜——你原话是什么，我就把什么交给这个会话里的模型。\n\n顺带说一句这件事的三步：建卡（task.create，运行配置可以在这一步一起给）→ 需要的话再调（task.update / 排期 / 会话规则）→ 跑（task.run）。「跑一次这张卡」和「只建一条会话挂上来」不是一回事（后者是 session.create）。'
 
 /** `/task-continue` carries no argument by design: "continue" is a question
  *  about what is outstanding, and an argument would only narrow it wrongly. */

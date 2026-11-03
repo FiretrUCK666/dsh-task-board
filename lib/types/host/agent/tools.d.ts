@@ -52,8 +52,9 @@
  * 引擎当前不在线，将在引擎上线后执行". Pretending it ran is the failure mode.
  */
 import { type ActionDanger, type ActionDomain, type ActionKind, type ActionLane, type ActionSurface } from '../../core/board-actions.ts';
-import { type BoardCommand, type BoardCommit, type BoardDoc } from '../../core/board-doc.ts';
+import { type BoardCommand, type BoardCommandCarrier, type BoardCommit, type BoardDoc, type CommandRelayStatus } from '../../core/board-doc.ts';
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
+import { type TaskRecord } from '../../core/tasks.ts';
 import { type ItemStatus, type ItemStatusView } from '../../core/item.ts';
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts';
 import type { ItemAddress } from '../board-route.ts';
@@ -80,12 +81,12 @@ export interface ToolCommitFace {
      * otherwise be told 「已生效」 about words that are still on disk.
      */
     purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>;
-    /** Relay one command to whichever replica holds the seat. `queued` = no
-     *  engine. The whole union: the catalog decides which carrier an action
-     *  rides, and the relay carries it as-is. */
-    submitCommand(command: BoardCommand): {
-        queued: boolean;
-    };
+    /** Relay one command to whichever replica holds the seat, and ANSWER WITH
+     *  WHAT HAPPENED: a live engine that knows the carrier took it, nobody was
+     *  there so it parked, or the live engine does not implement it and nothing
+     *  was sent or parked. The whole union rides through: the catalog decides
+     *  which carrier an action rides, and the relay carries it as-is. */
+    submitCommand(command: BoardCommand): CommandRelayStatus;
     available: boolean;
 }
 export interface ToolDeps {
@@ -201,6 +202,35 @@ interface ItemRow {
     readonly taskId: string | undefined;
 }
 /**
+ * The ONE place a card is looked up by what a caller said.
+ *
+ * A card is named by its TITLE, and titles are not unique — two cards called
+ * 「收尾」 is an ordinary thing to have. The old lookup was
+ * `tasks.find(t => t.id === of || t.title === of)`, which SILENTLY picked the
+ * first: the model said 「把收尾移到已完成」, one of the two moved, the receipt
+ * said 「已生效」, and nothing anywhere mentioned there had been two. A wrong
+ * answer that looks like a right one is the exact failure mode this surface is
+ * being rebuilt around.
+ *
+ * So a title that matches more than one card is a REFUSAL that lists them, and a
+ * caller that meant one of them says which. The uuid keeps working (a caller that
+ * has one has it for real), and a title wins over nothing.
+ * @param tasks - the board.
+ * @param spoken - what the caller said: a title, or an id.
+ * @returns the card, or the sentence explaining which cards it could have meant.
+ */
+export declare function resolveCard(tasks: readonly TaskRecord[], spoken: unknown): {
+    kind: 'found';
+    task: TaskRecord;
+} | {
+    kind: 'missing';
+} | {
+    kind: 'ambiguous';
+    matches: readonly TaskRecord[];
+};
+/** The refusal sentence for an ambiguous title, naming every candidate. */
+export declare function ambiguousCardWhy(spoken: unknown, matches: readonly TaskRecord[]): string;
+/**
  * The kind a report is filed under, decided from the report's FIELDS.
  *
  * The catalog's verb says which kind of change this was; the report's own
@@ -222,6 +252,15 @@ export declare function kindOfReport(report: Omit<OpReport, 'kind'>): OpReport['
  * @returns the titles of the accepted-but-pending rows.
  */
 export declare function enginePendingOf(reports: readonly OpReport[]): string[];
+/**
+ * The rows the relay REFUSED because the live engine cannot perform them.
+ *
+ * A separate list from {@link enginePendingOf} on purpose: 「等引擎上线」 and
+ * 「这个页面做不了」 are different facts with different next moves (wait vs.
+ * reload / use another device), and one list holding both would push the reader
+ * toward the wrong one.
+ */
+export declare function engineUnsupportedOf(reports: readonly OpReport[]): string[];
 /**
  * The op the batch stopped at: the first failure that was actually ATTEMPTED.
  *
@@ -271,14 +310,47 @@ export interface OpReport {
      */
     readonly unchanged?: boolean;
     /**
-     * THE ENGINE ACCEPTED THE REQUEST AND IS NOT HOLDING THE SEAT, so it runs
-     * when the engine comes back. Accepted is not executed, and a card that
-     * renders this as done is lying.
+     * WHERE THIS OP LANDED, as a value rather than as a sentence.
+     *
+     * The receipt used to carry a single `queued` boolean, and the boolean could
+     * not express the case that mattered: a live engine that does not implement
+     * the carrier. That one is neither "done" nor "queued", and the two-state
+     * vocabulary had nowhere to put it, so it was reported as done.
+     *
+     * Every branch below assigns exactly one of these, and the sentence the model
+     * reads is RENDERED from it — so 「已生效」 can only come out of the branch
+     * that really wrote, and 「没有执行」 can only come out of a branch that
+     * really did not.
      */
-    readonly queued?: boolean;
-    /** What happened, or what to change. Never a bare error code. */
+    readonly outcome?: OpOutcome;
+    /** What happened, or what to change. Never a bare error code. Rendered
+     *  FROM {@link outcome} for the engine lane, so the two cannot disagree. */
     readonly detail: string;
 }
+/**
+ * One op's landing place. THREE lanes, because the batch has three:
+ *
+ *  · `document` — the host wrote a document. Only this lane may be counted as
+ *    an effect;
+ *  · `engine` — a command was relayed, and the STATUS says what the relay did
+ *    with it. `broadcast` still is not "done": the engine took the request;
+ *  · `none` — nothing was written and nothing was sent, with a reason.
+ */
+export type OpOutcome = {
+    readonly lane: 'document';
+    /** Which documents the write landed in — the two-document op names both. */
+    readonly wrote: readonly ActionDocument[];
+    /** True when the write changed nothing (the row already looked like this). */
+    readonly unchanged?: true;
+} | {
+    readonly lane: 'engine';
+    readonly status: CommandRelayStatus['status'];
+    /** Which carrier, and — for `unsupported` — the one the page lacks. */
+    readonly carrier: BoardCommandCarrier;
+} | {
+    readonly lane: 'none';
+    readonly why: 'skipped' | 'refused' | 'rehearsed';
+};
 /** Why an op cannot run, in the words the catalog itself uses. */
 export declare function refuseOp(id: string): {
     ok: false;
@@ -327,6 +399,12 @@ export interface ExecuteResult {
     /** Rows this op handed to the engine while no replica held the seat. They
      *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
     readonly enginePending: readonly string[];
+    /** Rows the relay REFUSED because the live engine does not implement their
+     *  carrier. A separate field from {@link enginePending}, not folded into it:
+     *  「等引擎上线」 and 「这个页面做不了」 have different next moves (wait vs.
+     *  reload / another device), and one list holding both points the reader at
+     *  the wrong one. */
+    readonly engineUnsupported: readonly string[];
     /**
      * Set when this answer is an earlier one's, replayed because the caller
      * retried with the same key. Nothing ran this time — and saying so is the

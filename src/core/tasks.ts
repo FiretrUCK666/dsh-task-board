@@ -437,6 +437,14 @@ export interface NewTaskInput {
   permission?: string
   /** Accent color (hex string data, never CSS); absent = no accent. */
   color?: string
+  /**
+   * The sources this card is born bound to (a session and/or whole workspace
+   * folders). Passed at construction because the alternative is a card that
+   * exists for a moment with no sources — and "create it, then bind it" is two
+   * writes with a plainly wrong state in between, which every other replica
+   * gets to render.
+   */
+  binds?: readonly TaskBind[]
 }
 
 /** The five kanban columns, in display order. */
@@ -734,6 +742,11 @@ export function createTask(input: NewTaskInput, now: number, id: string, order =
     ...input.agentPreset !== undefined ? { agentPreset: input.agentPreset } : {},
     ...input.permission !== undefined ? { permission: input.permission } : {},
     ...input.color !== undefined && input.color !== '' ? { color: input.color } : {},
+    // Copied, never shared: two cards holding one array would let an edit to
+    // either rewrite the other's sources.
+    ...input.binds !== undefined && input.binds.length > 0
+      ? { binds: input.binds.map(bind => ({ ...bind })) }
+      : {},
   }
 }
 

@@ -41,7 +41,8 @@ import { BoardSyncClient, SyncedCruiseStore, SyncedPresetStore, SyncedRunPresetS
 import { createTranscriptReader } from './transcript-cache.ts'
 import { watchSessionActivity } from './board/activity-wake.ts'
 import { nativeTurnOf } from '../core/session-activity.ts'
-import type { BoardView, CruiseValue } from '../core/board-doc.ts'
+import { BOARD_COMMAND_CARRIERS } from '../core/board-doc.ts'
+import type { BoardCommand, BoardCommandCarrier, BoardView, CruiseValue } from '../core/board-doc.ts'
 import { createBoardTransport } from './board-transport.ts'
 import { routeUrl } from './route-base.ts'
 import { TaskBoardPanel } from './TaskBoardPanel.tsx'
@@ -741,6 +742,19 @@ export function apply(ctx: ClientContext): void {
          and a default that silently constructs one is a default nobody can find
          at the call site — which is exactly how this went missing. */
       checklistMirror: createChecklistMirror(),
+      /* WHAT THIS PAGE CAN PERFORM, declared with every lease.
+       *
+       * The list is the shared union itself, and that is not a shortcut — it is
+       * TRUE BY CONSTRUCTION here: the dispatch table below is typed as a
+       * `Record` over the same union, so a carrier with no branch is a compile
+       * error in this very file. Exhaustive table + the union = the set of
+       * carriers this build performs, with no second list to drift.
+       *
+       * It has to be declared at construction because the HOST reads it: the
+       * relay refuses to promise a command to a page that cannot perform it,
+       * and a page that declared nothing would be treated as an old build and
+       * promised the two carriers it may not have. */
+      carriers: BOARD_COMMAND_CARRIERS,
       defer: (fn, ms) => {
         const timer = setTimeout(fn, ms)
         return () => clearTimeout(timer)
@@ -1518,19 +1532,58 @@ export function apply(ctx: ClientContext): void {
       controller.setHostBoot(sync.hostBootTime())
       controller.setEngine(held)
     })
-    // A relayed command: the replica holding the seat performs it. The two
-    // carriers that name a card map onto the controller's own doors — a launch
-    // (with whatever first message the requester brought) and a message into a
-    // conversation the card already has. The remaining two (creating a session,
-    // renaming one) are the engine's work, not a board run.
-    sync.onCommand(command => {
-      if (command.type === 'run') {
+    /* A RELAYED COMMAND: the replica holding the seat performs it.
+     *
+     * The table is keyed by the shared carrier union, so a carrier added to
+     * `BOARD_COMMAND_CARRIERS` without a performer here is a COMPILE ERROR.
+     * That is the whole point: the bug this replaces was not a wrong branch, it
+     * was a MISSING one — `session.create` and `session.rename` reached no
+     * branch at all, were dropped without a word, and the host still reported
+     * 「已落盘，1 条已生效」 to the caller.
+     *
+     * The keys of this object are also what this page DECLARES to the host with
+     * every lease (`syncDeps.carriers` below). One list, two readers: a page
+     * that cannot perform a carrier must not be promised it, and the two
+     * statements come from the same object on purpose.
+     */
+    const commandDoors: { readonly [K in BoardCommandCarrier]: (command: Extract<BoardCommand, { type: K }>) => void } = {
+      run: command => {
         void controller.runTask(command.taskId, command.trigger, command.kickoff, command.attachments)
-        return
-      }
-      if (command.type === 'comment') {
+      },
+      comment: command => {
+        // 排队还是插话由调用方说。The two doors are genuinely different: a
+        // queued line waits for the current run to settle, a steer lands inside
+        // it. This is the engine half of that choice — the decision was made
+        // before the command was built, and re-deciding it here would be a
+        // second opinion nobody asked for.
+        if (command.send === 'steer') {
+          void controller.steerComment(command.taskId, command.sessionId, command.text, command.attachments)
+          return
+        }
+        // A `false` here means the card or the session is gone on this replica;
+        // the controller reports the refusal next to the card, so there is
+        // nothing to invent at this layer.
         controller.askCardSession(command.taskId, command.sessionId, command.text, command.attachments)
-      }
+      },
+      // Creating a session is the engine's work, not a board run: it opens a
+      // native session, applies the run config, and binds it to the card.
+      'session.create': command => {
+        void controller.createTaskSession(command.taskId, {
+          ...command.config,
+          ...command.title === undefined ? {} : { title: command.title },
+        })
+      },
+      'session.rename': command => {
+        void controller.renameSession(command.sessionId, command.title)
+      },
+    }
+    /** What this page performs — derived from the table above, never a second list. */
+    sync.onCommand(command => {
+      // One dispatch, keyed by the union, so no `if` chain can silently omit a
+      // carrier. The cast is the standard discriminant narrowing a mapped type
+      // needs; the KEY is what the compiler already checked.
+      const door = commandDoors[command.type] as (accepted: BoardCommand) => void
+      door(command)
     })
 
     // Scheduled runs: a browser-side heartbeat that triggers due tasks through

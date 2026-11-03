@@ -449,11 +449,21 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 ### 关键不变量（改前先读对应文件；这里只记边界，细节在代码）
 
 - **多端同步**：真相 = host `BoardDoc`；浏览器乐观写 + 去抖提交 + `applyRemote` 永不回写；单引擎泵
-  （租约；席位任一半变即通知）。
+  （租约；席位任一半变即通知）。**提交带差量**（`DIFF_COMMIT_PROTOCOL` 起）：只发自己改的 + 基线
+  没有的 + 戳动过的行；**旧宿主照旧发整份**（`hostProtoVersion()` 未读按旧算）。
 - **运行态唯一推导**：`live` 腿读**会话活跃度**（`own ∨ descendant`），不是裸 `running`；结算的列门
   读同一条腿（轮的期限不因后代延长）；卡片黄边与呼吸同源。
-- **统一会话与评论单轨**：同会话同一线程；排队/插话两态只由用户开关定；附件一律是官方附件库里的
-  ref（`ctx.attachments`，字节不进文档、禁自建桥），发送那一刻才物化。
+- **统一会话与评论单轨**：同会话同一线程；**排队/插话由调用方说**（`task.comment.send`，缺省排队），
+  回执写明是哪一种；附件一律是官方附件库里的 ref（`ctx.attachments`，字节不进文档）。
+  **模型没有字节也没有取得 ref 的路**：`TASK_FIELDS.attachments` 是 `forbidden`，`task.comment`
+  不提供该参数。
+- **回执不许骗调用者**（三条同源）：一、只报事实——文档写了 / 引擎收了（`broadcast`）/ 排队等引擎
+  （`queued`）/ **这一页做不了（`unsupported`）**，句子从 `OpReport.outcome` 渲染，租约带 `carriers`
+  说明持席位那页会做什么；二、载具三端必须齐（`BOARD_COMMAND_CARRIERS` ↔ `BoardCommand` 联合 ↔
+  浏览器分派表，`verify-carrier-parity`）；三、能写的必须能读回来，或进 `NOT_A_FIELD` 写清理由
+  （`verify-read-write-parity`）。
+- **寻址只有一处**：清单 `#12`（`refOf`），卡片用标题，会话用深读给出的那条。**标题重名拒绝并列出
+  候选**（`resolveCard`），不许静默挑第一个。
 - **附件即内容**：判空只有一处 `isBlankMessage`（文字空且无图无文件才算空）——只发图不发字是真消息，
   任何发送路径都不得拒它。**ref 整份走**：只许 `omit` 掉本插件两代老形状（`data`/`receiptId`），
   **逐项列举字段就是漏字段**（手抄表丢掉官方 ref 的字段，于是每张图必坏）。
@@ -565,15 +575,9 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 `shot-panel.mjs` 开真 Chromium 量（`pnpm run audit` **先造工件再量那一批**；没有浏览器时它**明说
 SKIP**，不假装量过）。**被审的页集由 `scripts/audit-pages.mjs` 一处定义**。**每一个这样的数都写进
 `DESIGN.md` 并写清量法**。
-**混排行只用 `center` + 每段 `line-height: 1em`**，`baseline` 留给纯文字行；记号上单独的
-`translateY` 补偿必须一起删。**装字的定高盒子让行盒高 = 墨高**（`line-height:
-var(--dsh-tb-text-line-h)`）**并用 `align-items: center` 居中，不许用块向内衬去补墨位**——那个
-补法在结构上无效，还会裁掉字、并让那个变量**被继承**。判据读结构、不读数值与类名，
-`verify-capsule-centring.mjs` 守着（`--probe-blindspots`）；**压滚动内容的头自带不透明底**
-（`verify-pinned-surface.mjs`）。法则在 `design/laws.ts`，`verify-design-sync` 双向对账：
-加法则给门禁与标本，**门禁也必须进表**；**「文件里有、但 `verify` 没调用」也算红**
-（`--probe-orphan-gate`）。**自测开关一律经 `scripts/probe-args.mjs` 读**：拼错的
-`--probe-*` 必须报错退出，不能静默变成一次正常跑。
+
+法则在 `design/laws.ts`，`verify-design-sync` 双向对账：加法则给门禁与标本，**门禁也必须进表**；
+**「文件里有、但 `verify` 没调用」也算红**（`--probe-orphan-gate`）——机制细节读那个脚本的头注释。
 
 **新增一条门禁**（`scripts/verify-<名>.mjs`）时：`scripts/run-gates.mjs` 会**自动发现**它，
 不必登记；但它**必须进法则表**（`design/laws.ts`，守视觉的）或**进 `NON_VISUAL`**
@@ -667,14 +671,10 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
 16. **证明门禁会红，只能在 `tests/` 里种。** 在真实文件里改一下再改回来，证的是**改动生效**
     而非**门禁会红**。根因是**两个写者共用一个工作区而互不知情**，所以共享工作区里
     **`git add -A` 与「在 `src/` 上做临时改动」互相回避**；要种就种在 `tests/` 里。
-17. **一个概念只有一套词汇，别的地方导入，不抄。** 值的枚举、词的对照表、颜色、形状——凡是有
-    「同一件事在两处出现」的地方，只有一处是定义处，其余全部 import。抄一份的代价不是那几行，
-    是**改一处不报错**：读者要「两处颜色一致」时，其中一处不会跟着变，而屏上不会有人说一句话。
-    判据是结构性的：清单的状态、状态词与颜色都**导入**看板那一份（`ITEM_STATUS_VIEWS` /
-    `STATUS_KEY` / `--dsh-tb-status-*`），所以加一栏、改一个词、换一个颜色都只动看板那一处，
-    清单这边由类型与门禁跟着变。**颜色**：色相只经 `--dsh-tb-*`，洗底深浅只读梯子
-    （`--dsh-tb-wash*` / `--dsh-tb-edge`）——本层已命名的宿主令牌，调用点再直读就是同一个色的
-    第二条路。机械拦：`verify-palette.mjs`。
+17. **一个概念只有一套词汇，别的地方导入，不抄。** 值的枚举、词的对照表、颜色、形状——同一件事
+    只有一处定义，其余全部 import。抄一份的代价不是那几行，是**改一处不报错**。清单的状态、状态词
+    与颜色都导入看板那一份（`ITEM_STATUS_VIEWS` / `STATUS_KEY` / `--dsh-tb-status-*`）；色相只经
+    `--dsh-tb-*`，洗底深浅只读梯子（`--dsh-tb-wash*` / `--dsh-tb-edge`）。机械拦：`verify-palette.mjs`。
 18. **删一个词、一档状态、一个组件，是那次改名的一部分，不是下一件事。** 同一个改动里要一起清干净：
     孤儿 locale 键、没人读的 CSS 类、变成死代码的函数、只给死代码写的测试、以及**已经不再如实模拟真相的
     fixture**。留着它们的代价不是难看，是**下一个人会以为它们还被需要**——而「一个看起来很权威的假

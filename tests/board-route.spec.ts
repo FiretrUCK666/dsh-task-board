@@ -172,7 +172,7 @@ function fakeDeps() {
     noteDisconnect: clientId => disconnects.push(clientId),
     submitCommand: command => {
       commands.push(command)
-      return { queued: !lease.held }
+      return { status: lease.held ? 'broadcast' : 'queued' }
     },
     subscribe: listener => {
       listeners.add(listener)
@@ -859,7 +859,7 @@ describe('POST /board/command', () => {
     const res = fakeRes()
     await handler(fakeReq('POST', `${BASE}/command`, { clientId: 'x', command: { type: 'run', taskId: 't-1', trigger: 'manual' } }), res)
     const envelope = JSON.parse(res.state.body)
-    expect(envelope.value.command).toEqual({ queued: true })
+    expect(envelope.value.command).toEqual({ status: 'queued' })
     expect(h.commands).toEqual([{ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' }])
   })
 

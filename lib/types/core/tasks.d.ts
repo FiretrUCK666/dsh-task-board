@@ -393,6 +393,14 @@ export interface NewTaskInput {
     permission?: string;
     /** Accent color (hex string data, never CSS); absent = no accent. */
     color?: string;
+    /**
+     * The sources this card is born bound to (a session and/or whole workspace
+     * folders). Passed at construction because the alternative is a card that
+     * exists for a moment with no sources — and "create it, then bind it" is two
+     * writes with a plainly wrong state in between, which every other replica
+     * gets to render.
+     */
+    binds?: readonly TaskBind[];
 }
 /** The five kanban columns, in display order. */
 export declare const COLUMNS: readonly {

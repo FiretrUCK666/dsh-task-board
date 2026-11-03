@@ -99,11 +99,12 @@
    黄在浅色主题下的真实底上只到 1.63:1，这是本表收下的代价：把字改深就是同一块屏上的
    第二枚黄，而两枚黄比一个字淡更难解释。
 
-   **但「收下的代价」只对没有底的芯片成立。** 一枚 `fill` 芯片自带浅洗底，读同一族色
-   的浅字压在同一族色的浅底上，等于把那个代价又付了一次——且这次是可以避免的：底已经
-   换成了浅洗，字就不再需要靠色相说话。所以**有洗底时字一律换深墨**（`ink-on-fill`，
-   两档主题都不带 alpha 的静态色），色相由底继续承担，读者两边都拿得到。
-   这一条写在选择器里而不是逐个调用点：同一枚芯片不该因为「密度不同」而有两套可读性。 */
+   **这一条只管「没有底」的芯片。** 有洗底的那一族（`fill`）在下面另有一条：它们把
+   字换成深墨，色相由底承担。两条分开写，因为它们是两个决定，不是一个。
+   曾经把「洗底就换深墨」写成一条不限范围的规则——那条规则把**整份插件**每一枚带底
+   的芯片都染成了深墨：会话面板的转圈、评论区的成功/失败、发送回执全丢了语义色。
+   一处「想让它更好读」的改动，代价是十五个文件的颜色语义。所以这里**不加**任何
+   全局的 `fill` 规则；需要深墨的地方，由那一页自己声明。 */
 .chip[data-kind='success'] { color: var(--dsh-tb-status-done); }
 
 .chip[data-kind='error'] { color: var(--dsh-tb-danger); }
@@ -111,17 +112,6 @@
 .chip[data-kind='warn'] { color: var(--dsh-tb-status-running); }
 
 .chip[data-kind='muted'] { color: var(--dsh-tb-text-2); }
-
-/* 洗底芯片：字换深墨。位置在四条 kind 之后，所以它盖得住它们（同特异性、后者胜）——
-   顺序是承重的，移到上面去就会失效，且屏上不会有人说一句话。 */
-.chipFill[data-kind='success'],
-.chipFill[data-kind='error'],
-.chipFill[data-kind='warn'] {
-  color: var(--dsh-tb-ink-on-fill);
-}
-
-/* `muted` 与默认档的洗底是浅灰，深墨同样合格；一枚芯片两种写法会让读者以为它们不同。 */
-.chipFill { color: var(--dsh-tb-ink-on-fill); }
 
 /* One button standard: primary / ghost / danger share the native button
    rhythm (same radius and type scale as the shell's buttons) so every row

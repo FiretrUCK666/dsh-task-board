@@ -26,6 +26,7 @@ import {
   BOARD_UNIT_TABLE,
   BOARD_DOCUMENT,
   ITEMS_DOCUMENT,
+  LEASE_PROTOCOL_ACTIVE,
   openBoardUnit,
 } from '../src/host/board-service.ts'
 import { createBoardHandler, type BoardRouteDeps } from '../src/host/board-route.ts'
@@ -394,7 +395,7 @@ describe('board route over a real HTTP server', () => {
     expect(first.held).toBe(true)
     expect(first.holder).toBe('a')
     // The GRANTED answer is the one every implementation remembered to fill…
-    expect(first.proto).toBe(2)
+    expect(first.proto).toBe(LEASE_PROTOCOL_ACTIVE)
     expect(typeof first.bootedAt).toBe('number')
     // …and the REJECTED answer must not be the hand-built form
     // `{ held, holder, expiresAt }`, which silently drops `proto`. Every
@@ -403,12 +404,12 @@ describe('board route over a real HTTP server', () => {
     // answer must carry the exact same evidence as the granted one.
     const second = await leasePost({ clientId: 'b' })
     expect(second.held).toBe(false)
-    expect(second.proto).toBe(2)
+    expect(second.proto).toBe(LEASE_PROTOCOL_ACTIVE)
     expect(typeof second.bootedAt).toBe('number')
     expect(second.bootedAt).toBe(first.bootedAt)
     const release = await leasePost({ clientId: 'a', release: true })
     expect(release.held).toBe(false)
-    expect(release.proto).toBe(2)
+    expect(release.proto).toBe(LEASE_PROTOCOL_ACTIVE)
     expect(typeof release.bootedAt).toBe('number')
   })
 

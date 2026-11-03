@@ -633,16 +633,48 @@ function controllerMethodBody(controllerText, method) {
 }
 
 /**
- * The carrier variants the engine's command union can actually carry. Read from
- * the union's own `type:` literals, because a hand-written list of carrier names
- * here would be exactly the list this check exists to keep honest — a carrier
- * added to the core and not to the catalog would simply never be mentioned.
+ * The carrier variants the engine's command union can actually carry.
+ *
+ * TWO READS, and both are needed now that the names have a declared home:
+ *
+ *  · {@link carrierListOf} reads the DECLARED list (`BOARD_COMMAND_CARRIERS`) —
+ *    the one place the names are written down, and what the browser declares to
+ *    the host with every lease;
+ *  · {@link unionVariantsOf} reads the union's own `type:` literals.
+ *
+ * Neither is a convenience. A carrier declared and not in the union is a name
+ * the relay will accept and no payload exists for; a union member missing from
+ * the declared list is a carrier the host can never check a performer against,
+ * so the page's capability promise quietly omits it. Comparing the two catches
+ * exactly the drift that has no other witness.
+ * @param docText - the source of `src/core/board-doc.ts`.
+ * @returns the union's variants, or null when the source could not be read.
  */
 function boardCommandVariants(docText) {
-  const at = docText.indexOf('export type BoardCommand')
+  return unionVariantsOf(docText)
+}
+
+/** The declared carrier list, straight out of the source's own array literal. */
+function carrierListOf(docText) {
+  const at = docText.indexOf('BOARD_COMMAND_CARRIERS')
   if (at === -1) return null
+  const open = docText.indexOf('[', at)
+  const close = docText.indexOf(']', open)
+  if (open === -1 || close === -1) return null
+  const names = [...docText.slice(open, close).matchAll(/'([^']*)'/g)].map(m => m[1])
+  return names.length === 0 ? null : names
+}
+
+/** The union's own `type:` literals. */
+function unionVariantsOf(docText) {
+  // MATCHED ON THE WHOLE DECLARATION, not on a prefix: `export type
+  // BoardCommandCarrier` starts with the same characters, and a prefix search
+  // lands on the one-line alias that sits above the union — reads no members,
+  // and reports the union as unreadable.
+  const at = /^export type BoardCommand\s*=/m.exec(docText)
+  if (at === null) return null
   const variants = []
-  for (const line of docText.slice(at).split('\n').slice(1)) {
+  for (const line of docText.slice(at.index).split('\n').slice(1)) {
     const isUnionMember = /^\s*\|/.test(line) || /^\s{2}\*\s/.test(line) || line.trim() === ''
     if (!isUnionMember) break
     for (const m of line.matchAll(/type:\s*'([^']*)'/g)) variants.push(m[1])
@@ -1270,13 +1302,34 @@ export function actionCoverageFindings(input) {
   // go). One rule about who is allowed to invent a field produces both, so
   // checking one without the other would leave half the root cause unguarded.
   const variants = boardCommandVariants(input.boardDocText ?? '')
+  const published = carrierListOf(input.boardDocText ?? '')
   if (variants === null) {
     fail('cannot read the carrier variants out of the BoardCommand union in src/core/board-doc.ts — no `type:` literals were found, so every carrier check below would have passed on an empty input. This is a FINDING, not a skip')
+  } else if (published === null) {
+    fail('cannot read BOARD_COMMAND_CARRIERS out of src/core/board-doc.ts — that array is the one place a carrier name is written down and what the browser declares to the host with every lease. Without it the relay cannot tell a page that implements a carrier from one that does not, and a command is promised to a page that drops it')
   } else if (catalog.declaredRelays === null) {
     fail('cannot read the declared carrier names off ActionShape in src/core/board-actions.ts (`readonly relay?: ...`) — if that field is gone then no action can be relayed at all, and the checks below would pass on nothing. If the field was removed on purpose, delete this check with it rather than leaving it vacuous')
   } else {
     const carriers = new Set(variants)
     const declared = new Set(catalog.declaredRelays)
+    /* THE DECLARED LIST AND THE UNION MUST NAME THE SAME CARRIERS.
+     *
+     * The list is what a page promises the host it can perform; the union is
+     * what a command can actually be. A name in one and not the other is a
+     * promise about something that cannot exist (list-only) or a command whose
+     * performer is never asked for (union-only) — and in the union-only case the
+     * page's declared set silently omits it, so a live page is told 「不支持」
+     * about work it does implement. */
+    for (const name of published) {
+      if (!carriers.has(name)) {
+        fail(`BOARD_COMMAND_CARRIERS lists "${name}" but the BoardCommand union has no \`type: '${name}'\` — a page would declare it can perform a command that cannot be built`)
+      }
+    }
+    for (const name of carriers) {
+      if (!published.includes(name)) {
+        fail(`the BoardCommand union carries \`type: '${name}'\` but BOARD_COMMAND_CARRIERS does not list it — no page can declare it, so the relay answers 「不支持」 to every caller about a carrier this build implements`)
+      }
+    }
     for (const name of declared) {
       if (!carriers.has(name)) {
         fail(`the catalog declares the carrier "${name}" but the BoardCommand union has no \`type: '${name}'\`: any action riding it is a request with nowhere to go — the model will send it and the host will refuse`)

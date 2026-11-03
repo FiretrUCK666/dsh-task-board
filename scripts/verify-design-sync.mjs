@@ -175,6 +175,14 @@ const NON_VISUAL = new Set([
   'verify-sheet-discovery.mjs',
   /* 守的是数据契约（localStorage 的键不得改名），不解码任何渲染结果。 */
   'verify-storage-keys.mjs',
+  /* 守的是跨进程的一条承诺：载具的名字、命令的形状、浏览器里那一支，三处必须
+     相等。它读的是三个源文件里的结构，不解码任何渲染结果。漏了它的后果与别的
+     门禁不同：一个没有执行者的命令会被回执说成「已生效」，而屏上一切正常。 */
+  'verify-carrier-parity.mjs',
+  /* 守的是「能写的东西必须读得回来」：可写面大于可读面时，调用者只能猜，而猜
+     出来的东西在出事之前和答案长得一模一样。它读的是两处源码里的结构，不解码
+     任何渲染结果。 */
+  'verify-read-write-parity.mjs',
 ])
 
 export function check(root) {

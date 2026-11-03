@@ -39,6 +39,45 @@ export const RUN_CONFIG_KEYS = ['workspaceId', 'provider', 'model', 'reasoningEf
 /** The run-config fields a preset may pin (the task card's own keys). */
 export type RunConfigPresetConfig = { [K in typeof RUN_CONFIG_KEYS[number]]?: string }
 
+/**
+ * One sentence per run-config key, for the catalog's parameter table.
+ *
+ * DERIVED FROM THE KEY LIST, not written beside it, because four actions
+ * publish these six parameters (`task.create`, `task.update`, `session.create`,
+ * and the preset writes read the same shape) and each used to spell them out
+ * again. Four spellings of one field is four places to forget the seventh field
+ * — and the failure is silent in the direction that matters: a key that exists in
+ * the type and in the reader but in nobody's parameter table cannot be set by
+ * the model at all, and no test fails because nothing is broken, merely absent.
+ *
+ * A key added to {@link RUN_CONFIG_KEYS} without a sentence here is a COMPILE
+ * ERROR: the `Record` below is total over the union.
+ */
+const RUN_CONFIG_ABOUT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>> = {
+  workspaceId: '跑在哪台机器上',
+  provider: '模型供应方',
+  model: '模型',
+  reasoningEffort: '思考档位',
+  agentPreset: '代理预设',
+  permission: '权限预设，只能填目录里真实存在的键',
+}
+
+/**
+ * The six run-config parameters as the action catalog publishes them.
+ *
+ * Every one is optional with the SAME absent-case sentence, because the absent
+ * case is the same fact for all six: the host's own default chain resolves it.
+ * That sameness is the reason this is one table and not eighteen lines: a
+ * parameter whose "not given" case differs from its siblings is a parameter that
+ * needs its own sentence, and none of these six does.
+ */
+export const RUN_CONFIG_PARAMS: Readonly<Record<string, { about: string; optional: true; appliesWhen: string }>> =
+  Object.fromEntries(RUN_CONFIG_KEYS.map(key => [key, {
+    about: RUN_CONFIG_ABOUT[key],
+    optional: true as const,
+    appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析',
+  }]))
+
 /** One named preset: a (partial) run configuration. */
 export interface RunConfigPreset {
   /** Stable id (uuid for custom entries). */

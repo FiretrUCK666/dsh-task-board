@@ -137,6 +137,10 @@ export function createBoardTransport(options?: { timeoutMs?: number }): BoardSyn
                   clientId,
                   ...options.ttlMs !== undefined ? { ttlMs: options.ttlMs } : {},
                   ...options.active === false ? { active: false } : {},
+                  // Declared on every renew, so a page that reloaded into an
+                  // older build withdraws a carrier instead of keeping a stale
+                  // promise alive for as long as it holds the seat.
+                  ...options.carriers === undefined ? {} : { carriers: options.carriers },
                 }),
             signal,
           })

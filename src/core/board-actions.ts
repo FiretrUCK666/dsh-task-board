@@ -52,6 +52,11 @@ import * as itemNavigate from './item-navigate.ts'
 import { ITEM_FIELDS, ITEM_PRIORITIES, ITEM_STATUSES, type FieldSpec } from './item.ts'
 import * as itemsDocument from './items-doc.ts'
 import { ITEM_PAGES } from './item-view.ts'
+// The six run-config parameters are ONE declaration, imported and spread into
+// every action that publishes them (`task.create`, `task.update`). Spelling
+// them out per action is how a seventh field ends up settable in one place and
+// invisible in another.
+import { RUN_CONFIG_PARAMS } from './run-presets.ts'
 
 // The field-verdict vocabulary belongs to the models (item.ts), not here: this
 // catalog only rules on the task patch. Re-exported so both verdicts read from
@@ -337,7 +342,7 @@ export const ACTIONS = {
     lane: 'document',
     danger: 'reversible',
     surface: 'ui+ai',
-    summary: '建一张新卡。执行 Prompt 是它能跑起来的唯一原因，所以必填。',
+    summary: '建一张新卡。执行 Prompt 是它能跑起来的唯一原因，所以必填。运行配置与来源可以在这一步一起给——建完再改一次是两步，而两步之间那张卡的状态是半成品。',
     params: {
       prompt: { about: '执行 Prompt：这条卡跑起来时真正送出去的那段话' },
       title: { about: '一行标题', optional: true, appliesWhen: '留空时由执行 Prompt 补，不会覆盖已填的标题' },
@@ -349,6 +354,12 @@ export const ACTIONS = {
         optional: true,
         list: 'object',
       },
+      // The run configuration, in the SAME six fields `task.update` publishes and
+      // from the same declaration: a card built with its config is one write,
+      // and a card built without it is a half-finished card plus a second call
+      // the model has to remember to make.
+      ...RUN_CONFIG_PARAMS,
+      color: { about: '卡片强调色', optional: true },
     },
   },
   'task.duplicate': {
@@ -374,12 +385,10 @@ export const ACTIONS = {
       title: { about: '一行标题', optional: true },
       description: { about: '详情正文', optional: true },
       prompt: { about: '执行 Prompt', optional: true },
-      workspaceId: { about: '跑在哪台机器上', optional: true },
-      provider: { about: '模型供应方', optional: true },
-      model: { about: '模型', optional: true },
-      reasoningEffort: { about: '思考档位', optional: true },
-      agentPreset: { about: '代理预设', optional: true },
-      permission: { about: '权限预设，只能填目录里存在的键', optional: true },
+      // THE six run-config parameters, from their one declaration. `task.create`
+      // spreads the same object, so the two actions cannot drift about which
+      // fields a card's run configuration has.
+      ...RUN_CONFIG_PARAMS,
       color: { about: '卡片强调色', optional: true },
     },
   },
@@ -470,12 +479,28 @@ export const ACTIONS = {
     // A comment rides its OWN carrier, not the run one: it has to reach a
     // session, and forwarded as a run it would spend a run and deliver no text.
     relay: 'comment',
-    summary: '对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由用户的开关定，不接受指定。',
+    summary: '对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由调用方说：不传就是排队（排队还能撤回，插话已经说出口就收不回来）。',
     params: {
       of: { about: '目标卡' },
       session: { about: '目标会话', requiredWhen: '这张卡挂了不止一个会话时必须指明' },
       text: { about: '要发的话' },
       command: { about: '这是一条斜杠命令而不是一句话', optional: true, boolean: true },
+      send: {
+        about: '排队还是插话：排队等这一轮跑完再送，插话直接进正在跑的那一轮',
+        optional: true,
+        oneOf: ['queue', 'steer'],
+        default: '不传 = 排队（插话说出去就收不回来，所以默认取可撤回的那一半）',
+      },
+      // NO `attachments` HERE, and the absence is a decision rather than an
+      // omission. A comment's pictures come from the interface — the person
+      // picked a file, the store gave back a ref, and the ref travels. The model
+      // has no bytes and cannot obtain a ref, so a parameter it can only fill
+      // with a guess is a parameter whose every honest use fails: it would write
+      // an id nothing can resolve and the round would render as a blank picture.
+      // 「声明了却做不到」 is the defect this whole surface is being rebuilt
+      // around, and it is not repaired by adding one more of them.
+      // (The `TASK_FIELDS.attachments` verdict says the same thing on the card
+      // side, and the catalog gate holds the two together.)
     },
   },
   'task.cancelComment': {

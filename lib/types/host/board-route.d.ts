@@ -33,10 +33,10 @@
  */
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { Context } from '@deepseek-ai/cordis';
-import type { BoardCommit, BoardDoc } from '../core/board-doc.ts';
+import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, CommandRelayStatus, LeaseState } from '../core/board-doc.ts';
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
-import { type BoardCommand, type BoardEvent, type LeaseState } from './board-service.ts';
+import { type BoardEvent } from './board-service.ts';
 /** The commit body size cap: the whole ledger travels per commit. */
 export declare const BOARD_BODY_LIMIT_BYTES: number;
 /** The SSE keep-alive cadence (below common proxy idle timeouts). */
@@ -52,10 +52,8 @@ export interface BoardRouteView {
     unchanged?: boolean;
     /** The current engine-lease state (replicas bootstrap from it). */
     lease?: LeaseState;
-    /** The relay receipt for a submitted command. */
-    command?: {
-        queued: boolean;
-    };
+    /** The relay receipt for a submitted command — three states, not two. */
+    command?: CommandRelayStatus;
 }
 /** The checklist view — the same envelope, a document of its own.
  *
@@ -94,14 +92,12 @@ export interface BoardRouteDeps {
     commit(commit: BoardCommit): Promise<BoardDoc>;
     itemsDoc(): ItemsDoc;
     commitItems(commit: ItemsCommit): Promise<ItemsDoc>;
-    acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState;
+    acquireLease(clientId: string, ttlMs?: number, active?: boolean, carriers?: readonly BoardCommandCarrier[]): LeaseState;
     releaseLease(clientId: string): LeaseState;
     noteActivity(clientId: string | undefined): void;
     noteStreamOpen(clientId: string | undefined): void;
     noteDisconnect(clientId: string | undefined): void;
-    submitCommand(command: BoardCommand): {
-        queued: boolean;
-    };
+    submitCommand(command: BoardCommand): CommandRelayStatus;
     /**
      * Bring one deleted checklist row back, by whichever name the caller holds.
      *

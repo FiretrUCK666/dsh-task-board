@@ -676,6 +676,7 @@ export declare const zh: {
     'card.awaitingDecisionTitle': string;
     'card.dotUnread': string;
     'card.openUnread': string;
+    'card.openSessions': string;
     'card.pendingItemSession': string;
     'board.demand': string;
     'board.demandTitle': string;

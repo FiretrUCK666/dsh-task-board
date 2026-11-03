@@ -68,13 +68,17 @@ export declare function TaskCard({ task, selected, workspaceTitleOf, boundTitleO
     /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目。缺席时它是一枚读数。 */
     onOpenMounted?: () => void;
     /**
-     * 打开某条会话那面的门（`cardSessionDoor`）。
+     * 打开某个会话那面的门（`cardSessionDoor`）。
      *
-     * 只在卡片手里有一条**未看过**的会话时用得上：那一格的职责是告诉读者「有新完成
-     * 没看」，而一句不能点的提示等于让读者自己去记「这标题对应哪次会话」。缺席时那一格
-     * 退回纯读数（与 `onOpenMounted` 同一条规矩）。
+     * 整串圆点都是这扇门。`sessionId` 有值时落点是那条会话（未读数优先，与原来的
+     * 行为一致）；`undefined` 表示「这张卡的会话列表」——而装配层的漏斗
+     * （`openTaskAtSession`）本来就把 `undefined` 当作「普通打开这张卡」，所以两种
+     * 落点走的是同一条路，不需要第二扇门。
+     *
+     * 缺席时这一格退回纯读数（与 `onOpenMounted` 同一条规矩：按下去什么都不会发生的
+     * 控件，比一句没有更糟）。
      */
-    onOpenSession?: (sessionId: string) => void;
+    onOpenSession?: (sessionId: string | undefined) => void;
     /** One quiet next-action sentence (localized by the caller). */
     nextAction?: string;
     /** Tooltip for a session dot (session title + state). */

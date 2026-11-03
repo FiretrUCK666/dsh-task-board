@@ -38,6 +38,20 @@ export declare const RUN_CONFIG_KEYS: readonly ["workspaceId", "provider", "mode
 export type RunConfigPresetConfig = {
     [K in typeof RUN_CONFIG_KEYS[number]]?: string;
 };
+/**
+ * The six run-config parameters as the action catalog publishes them.
+ *
+ * Every one is optional with the SAME absent-case sentence, because the absent
+ * case is the same fact for all six: the host's own default chain resolves it.
+ * That sameness is the reason this is one table and not eighteen lines: a
+ * parameter whose "not given" case differs from its siblings is a parameter that
+ * needs its own sentence, and none of these six does.
+ */
+export declare const RUN_CONFIG_PARAMS: Readonly<Record<string, {
+    about: string;
+    optional: true;
+    appliesWhen: string;
+}>>;
 /** One named preset: a (partial) run configuration. */
 export interface RunConfigPreset {
     /** Stable id (uuid for custom entries). */

@@ -722,6 +722,13 @@ export const zh = {
   /* 那枚未读点变成门之后的**可访问名字**：圆点是装饰，不读屏就没有名字，所以这一句
      就是它唯一的名字，也说明按下去会去哪儿（进那条会话的评论区）。 */
   'card.openUnread': '打开这条会话，看它跑完说了什么',
+  /* THE DOOR FOR THE DOTS THEMSELVES, not only for the unread one.
+     那一串圆点过去只是**读数**，除非其中一条有未读：人在手机上看得见「这张卡有
+     三个会话」，却点不开任何一个——圆点的名字挂在 `title` 上，而触屏没有 hover。
+     卡片是不进详情就能看见会话的唯一地方，所以它必须是一扇门。
+     名字说的是**去哪儿**（这张卡的会话列表），不是「更多」——「更多」承诺一个
+     菜单、却给出另一个屏幕。 */
+  'card.openSessions': '打开这张卡的会话列表',
   'card.pendingItemSession': '会话「{session}」：{kind}',
   /* Header demand row: the board stating, in words, what it owes the user.
      Both halves are counted by `task-demand`, the same derivation the card's
@@ -1877,6 +1884,7 @@ export const en: Record<keyof typeof zh, string> = {
   'card.awaitingDecisionTitle': 'That conversation finished and you have neither read it nor ruled on it. Opening the card only shows a summary — to clear this, open that session, or approve / send it back.',
   'card.dotUnread': 'Has an unreviewed finish',
   'card.openUnread': 'Open that session to see what the run said',
+  'card.openSessions': 'Open this card\u2019s session list',
   'card.pendingItemSession': 'Session "{session}": {kind}',
   /* The combined total lives in the workbench bar (`workbench.status`); saying it
      here too puts the same word twice on one screen with two different numbers. */

@@ -461,8 +461,8 @@ describe('DocumentService command relay', () => {
     service.noteStreamOpen('a')
     const events: BoardEvent[] = []
     service.subscribe(e => events.push(e))
-    const { queued } = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
-    expect(queued, 'a genuinely live engine was told its command was queued').toBe(false)
+    const relayed = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
+    expect(relayed, 'a genuinely live engine was told its command was queued').toEqual({ status: 'broadcast' })
     expect(events).toEqual([{ type: 'command', command: { type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' } }])
   })
 
@@ -484,7 +484,7 @@ describe('DocumentService command relay', () => {
     const ghost: BoardEvent[] = []
     service.subscribe(e => ghost.push(e))
     const first = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
-    expect(first.queued, 'a vanished engine was told the launch was delivered').toBe(true)
+    expect(first, 'a vanished engine was told the launch was delivered').toEqual({ status: 'queued' })
     expect(ghost.filter(e => e.type === 'command'), 'the frame went to nobody who can act on it').toEqual([])
 
     // A real engine takes the seat — the ghost is gone, either because it let go
@@ -526,8 +526,8 @@ describe('DocumentService command relay', () => {
     await service.init()
     const events: BoardEvent[] = []
     service.subscribe(e => events.push(e))
-    const { queued } = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
-    expect(queued).toBe(true)
+    const relayed = service.submitCommand({ type: 'run', taskId: 't-1', trigger: 'manual', clientId: 'x' })
+    expect(relayed).toEqual({ status: 'queued' })
     expect(events.filter(e => e.type === 'command')).toHaveLength(0)
     // A lease grant drains the parked command.
     service.acquireLease('a')

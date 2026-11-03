@@ -340,6 +340,55 @@ describe('BoardSyncClient commit', () => {
     expect(t.calls.commit[0].cruise.value.enabled).toBe(true)
   })
 
+  it('sends only the rows the commit speaks about, once the host reads a diff', async () => {
+    /* THE 1.9 MB PROBLEM, stated as a test.
+     *
+     * Every commit used to carry the replica's ENTIRE array — every card, every
+     * round, every legacy base64 image — so moving one card shipped the whole
+     * document and the host re-serialised it. The merge grammar has always said
+     * ABSENCE IS NOT A DELETE, which is what makes a short array safe; what it
+     * was missing was a host that agrees.
+     *
+     * The host says so with its lease protocol. This pins BOTH branches, because
+     * only one of them is safe to get wrong by accident: sending a diff to an old
+     * host loses rows, and sending a full array to a new one only costs bytes. */
+    const { client, t, timers } = makeClient()
+    // A host at the diff protocol (3 = it reads a short array correctly).
+    t.setLeaseProto(3)
+    await client.start()
+    // Two cards, then an edit to ONE of them. The other is a row the replica
+    // merely carries.
+    client.setTasks([task('a'), task('b')])
+    await timers.advance(300)
+    expect(t.calls.commit.at(-1)?.tasks.map(x => x.id).sort(), 'the creation commit must carry both').toEqual(['a', 'b'])
+    const createdB = t.calls.commit.at(-1)?.tasks.find(x => x.id === 'b')
+    client.setTasks([{ ...(createdB ?? task('b')), title: 'renamed' }, task('a')])
+    // Wait out the debounce, then assert the CARRIED row no longer rides.
+    await timers.advance(300)
+    const last = t.calls.commit.at(-1)
+    expect(last?.tasks.map(x => x.id), 'an untouched card rode the wire — that is the megabyte').toEqual(['b'])
+    expect(last?.changed).toContain('b')
+  })
+
+  it('falls back to the full array when the host has not said it reads a diff', async () => {
+    // The DANGEROUS direction, and the reason the narrowing is gated rather than
+    // assumed: a host from before this protocol reads a short array as "these are
+    // the rows", so a diff sent to it would look like a withdrawal of the rest.
+    // `undefined` (no lease read yet — "not yet known") counts as old for the same
+    // reason: the cost of guessing wrong here is a card disappearing.
+    for (const proto of [2, undefined] as const) {
+      const { client, t, timers } = makeClient()
+      t.setLeaseProto(proto)
+      await client.start()
+      client.setTasks([task('a'), task('b')])
+      await timers.advance(300)
+      const createdB = t.calls.commit.at(-1)?.tasks.find(x => x.id === 'b')
+      client.setTasks([{ ...(createdB ?? task('b')), title: 'renamed' }, task('a')])
+      await timers.advance(300)
+      expect(t.calls.commit.at(-1)?.tasks.map(x => x.id).sort(), `proto ${String(proto)} must get the whole view`).toEqual(['a', 'b'])
+    }
+  })
+
   it('refires when a write lands mid-flight', async () => {
     const { client, t, timers } = makeClient()
     await client.start()

@@ -190,8 +190,12 @@ export declare const ACTIONS: {
         readonly lane: "document";
         readonly danger: "reversible";
         readonly surface: "ui+ai";
-        readonly summary: "建一张新卡。执行 Prompt 是它能跑起来的唯一原因，所以必填。";
+        readonly summary: "建一张新卡。执行 Prompt 是它能跑起来的唯一原因，所以必填。运行配置与来源可以在这一步一起给——建完再改一次是两步，而两步之间那张卡的状态是半成品。";
         readonly params: {
+            readonly color: {
+                readonly about: "卡片强调色";
+                readonly optional: true;
+            };
             readonly prompt: {
                 readonly about: "执行 Prompt：这条卡跑起来时真正送出去的那段话";
             };
@@ -243,6 +247,10 @@ export declare const ACTIONS: {
         readonly surface: "ui+ai";
         readonly summary: "改一张卡的字段。只改传了的字段；图片与文件不可写（没有上传通道，凭引用只会画出空白）。";
         readonly params: {
+            readonly color: {
+                readonly about: "卡片强调色";
+                readonly optional: true;
+            };
             readonly of: {
                 readonly about: "要改的卡";
             };
@@ -256,34 +264,6 @@ export declare const ACTIONS: {
             };
             readonly prompt: {
                 readonly about: "执行 Prompt";
-                readonly optional: true;
-            };
-            readonly workspaceId: {
-                readonly about: "跑在哪台机器上";
-                readonly optional: true;
-            };
-            readonly provider: {
-                readonly about: "模型供应方";
-                readonly optional: true;
-            };
-            readonly model: {
-                readonly about: "模型";
-                readonly optional: true;
-            };
-            readonly reasoningEffort: {
-                readonly about: "思考档位";
-                readonly optional: true;
-            };
-            readonly agentPreset: {
-                readonly about: "代理预设";
-                readonly optional: true;
-            };
-            readonly permission: {
-                readonly about: "权限预设，只能填目录里存在的键";
-                readonly optional: true;
-            };
-            readonly color: {
-                readonly about: "卡片强调色";
                 readonly optional: true;
             };
         };
@@ -402,7 +382,7 @@ export declare const ACTIONS: {
         readonly danger: "guarded";
         readonly surface: "ui+ai";
         readonly relay: "comment";
-        readonly summary: "对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由用户的开关定，不接受指定。";
+        readonly summary: "对某个会话说一句话，接着上次的对话继续。它骑的是**发言**那条载波，不是 run 载波——**走 run 中继只会白跑一次卡，那句话一个字也发不出去**。排队还是插话由调用方说：不传就是排队（排队还能撤回，插话已经说出口就收不回来）。";
         readonly params: {
             readonly of: {
                 readonly about: "目标卡";
@@ -418,6 +398,12 @@ export declare const ACTIONS: {
                 readonly about: "这是一条斜杠命令而不是一句话";
                 readonly optional: true;
                 readonly boolean: true;
+            };
+            readonly send: {
+                readonly about: "排队还是插话：排队等这一轮跑完再送，插话直接进正在跑的那一轮";
+                readonly optional: true;
+                readonly oneOf: readonly ["queue", "steer"];
+                readonly default: "不传 = 排队（插话说出去就收不回来，所以默认取可撤回的那一半）";
             };
         };
     };

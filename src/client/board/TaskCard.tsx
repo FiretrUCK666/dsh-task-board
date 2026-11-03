@@ -116,13 +116,17 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
   /** 按那枚读数时走的那扇门：抬清单面板 + 只看挂着这张卡的条目。缺席时它是一枚读数。 */
   onOpenMounted?: () => void
   /**
-   * 打开某条会话那面的门（`cardSessionDoor`）。
+   * 打开某个会话那面的门（`cardSessionDoor`）。
    *
-   * 只在卡片手里有一条**未看过**的会话时用得上：那一格的职责是告诉读者「有新完成
-   * 没看」，而一句不能点的提示等于让读者自己去记「这标题对应哪次会话」。缺席时那一格
-   * 退回纯读数（与 `onOpenMounted` 同一条规矩）。
+   * 整串圆点都是这扇门。`sessionId` 有值时落点是那条会话（未读数优先，与原来的
+   * 行为一致）；`undefined` 表示「这张卡的会话列表」——而装配层的漏斗
+   * （`openTaskAtSession`）本来就把 `undefined` 当作「普通打开这张卡」，所以两种
+   * 落点走的是同一条路，不需要第二扇门。
+   *
+   * 缺席时这一格退回纯读数（与 `onOpenMounted` 同一条规矩：按下去什么都不会发生的
+   * 控件，比一句没有更糟）。
    */
-  onOpenSession?: (sessionId: string) => void
+  onOpenSession?: (sessionId: string | undefined) => void
   /** One quiet next-action sentence (localized by the caller). */
   nextAction?: string
   /** Tooltip for a session dot (session title + state). */
@@ -458,10 +462,15 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
           **「有新完成未看」必须是一条能走的路。** 它原来的全部内容是一句 `title`：
           触屏没有 hover（硬性规范 11③），所以手机上这行字根本不存在；即使在桌面，
           它告诉读者「有新东西你没看过」，却指不出一条进去的路——读者只能自己记住
-          「这个标题对应那次会话」，而那正是这个产品想消灭的事。所以当卡片手里有一条
-          *未看过* 的会话、装配层也给了门时，这一格**变成门**，落点就是那条会话；
-          没有门时就退回纯读数（与上面「挂着几条清单条目」同一条规矩：按下去什么都
-          不会发生的控件，比一句没有更糟）。 */}
+          「这个标题对应那次会话」，而那正是这个产品想消灭的事。
+
+          **而现在它整串都是门，不只是有未读的那一格。** 过去没有未读时这一串退回
+          纯读数：人能看见「这张卡有三个会话」，却一个都点不开——卡片是不进详情就能
+          看见会话的唯一地方，所以它必须始终是路。落点优先是那条未读会话（与原来的
+          行为一致），没有未读时是这个会话列表本身。两者都走同一个漏斗
+          （`openTaskAtSession`），未知会话由它自己降级成普通打开。
+          没有门时（装配层没给 `onOpenSession`）仍退回纯读数，与上面「挂着几条清单
+          条目」同一条规矩：按下去什么都不会发生的控件，比一句没有更糟。 */}
       {dots !== undefined && dots.length > 0 && (() => {
         const strip = (
           <span className={css.cardSessions}>
@@ -485,17 +494,24 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
             </span>
           </span>
         )
+        if (onOpenSession === undefined) return strip
         const unread = dots.find(dot => dot.state === 'unread')
-        if (unread === undefined || onOpenSession === undefined) return strip
+        // An unread session is the more specific destination and keeps the old
+        // behaviour; otherwise the door is the card's session list, and
+        // `undefined` is what `openTaskAtSession` treats as "just open the card".
+        const label = unread === undefined ? t('card.openSessions') : t('card.openUnread')
         return (
           <button
             type="button"
             className={css.cardSessionDoor}
-            /* The accessible name states the ONE thing this door is for — the dot
-               itself is decorative, so without this the button would be nameless. */
-            aria-label={t('card.openUnread')}
-            title={t('card.openUnread')}
-            onClick={event => { event.stopPropagation(); onOpenSession(unread.sessionId) }}
+            /* The accessible name states the ONE thing this door is for — the dots
+               are decorative, so without this the button would be nameless. */
+            aria-label={label}
+            title={label}
+            onClick={event => {
+              event.stopPropagation()
+              onOpenSession(unread?.sessionId)
+            }}
           >
             {strip}
           </button>

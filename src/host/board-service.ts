@@ -36,8 +36,8 @@
  * the next lease is granted.
  */
 import { join } from 'node:path'
-import { applyCommit, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
-import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts'
+import { applyCommit, BASELINE_COMMAND_CARRIERS, emptyBoardDoc, normalizeBoardDoc } from '../core/board-doc.ts'
+import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, BoardEvent, CommandRelayStatus, LeaseState } from '../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, purgeItemTombstone, restoredItemOf } from '../core/items-doc.ts'
 import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
@@ -243,8 +243,16 @@ export const STREAM_ALIVE_MAX_MS = 4 * LEASE_DEFAULT_TTL_MS
 /** The engine-lease protocol version. A client that predates the visibility
  *  flag never sends `active`; a client that sees NO version in the response
  *  knows the host is stale (pre-preemption) and can say so on the board —
- *  the "修了但没生效" mystery made visible. */
-export const LEASE_PROTOCOL_ACTIVE = 2
+ *  the "修了但没生效" mystery made visible.
+ *
+ *  3 = THE HOST READS A DIFF COMMIT. `applyRowCommit` has always treated an
+ *  absent row as "not mine to judge" rather than as a deletion, so a replica may
+ *  send only the rows a commit speaks about — which takes a 1.9 MB payload down
+ *  to a few KB per edit. A host from before this version still expects the full
+ *  array, so the replica keeps sending it until a lease has told it otherwise;
+ *  `hostProtoVersion()` is undefined until then, and "not yet known" is not
+ *  "new". One number, one meaning, and the older side keeps working. */
+export const LEASE_PROTOCOL_ACTIVE = 3
 
 /** The cap on parked launch commands (newest-per-task dedup keeps this small). */
 export const PENDING_COMMAND_LIMIT = 20
@@ -301,7 +309,7 @@ export class DocumentService {
   private doc: BoardDoc = emptyBoardDoc(0)
   private items: ItemsDoc = emptyItemsDoc(0)
   private unit: KvUnitLike | undefined
-  private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean; lastTouchAt: number } | undefined
+  private lease: { clientId: string; expiresAt: number; ttl: number; active: boolean; lastTouchAt: number; carriers?: readonly BoardCommandCarrier[] } | undefined
   /** Live SSE connections per clientId. An open stream is the holder's
    *  liveness proof: unlike client timers it survives background-tab timer
    *  throttling, so the engine lease never flaps while its stream is up. */
@@ -577,7 +585,7 @@ export class DocumentService {
    * keeps the seat while it renews; an all-hidden fleet keeps the last holder
    * (scheduled automation survives nobody-looking).
    */
-  acquireLease(clientId: string, ttlMs?: number, active = true): LeaseState {
+  acquireLease(clientId: string, ttlMs?: number, active = true, carriers?: readonly BoardCommandCarrier[]): LeaseState {
     const now = this.now()
     const ttl = clampLeaseTtl(ttlMs)
     const current = this.leaseState(now)
@@ -594,13 +602,16 @@ export class DocumentService {
         return { ...current, held: false }
       }
       // Preemption: a visible device takes the seat from a hidden holder.
-      this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now }
+      this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now, ...(carriers === undefined ? {} : { carriers }) }
       this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
       this.drainPendingCommands()
       return this.leaseState(this.now())
     }
     const renewing = current.held && current.holder === clientId
-    this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now }
+    // Capabilities are re-declared on every renew, and that is deliberate: a
+    // page that reloaded into an older build must be able to WITHDRAW a
+    // carrier, not keep a stale promise alive for as long as it holds the seat.
+    this.lease = { clientId, expiresAt: now + ttl, ttl, active, lastTouchAt: now, ...(carriers === undefined ? {} : { carriers }) }
     if (!renewing) this.broadcast({ type: 'lease', holder: clientId, expiresAt: this.lease.expiresAt })
     this.drainPendingCommands()
     return this.leaseState(this.now())
@@ -652,6 +663,10 @@ export class DocumentService {
     if (this.lease === undefined) {
       return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
     }
+    // The holder's declared carriers ride the answer ONLY while the seat is
+    // actually held: a capability list attached to `held: false` would describe
+    // a page that is not going to perform anything.
+    const carriers = this.lease.carriers === undefined ? BASELINE_COMMAND_CARRIERS : this.lease.carriers
     // Stream-alive renewal keeps a THROTTLED background tab (whose timers
     // crawl but whose JS still runs) in the seat it legitimately holds — but
     // only while it still TOUCHES the API. A half-open socket from a frozen
@@ -664,12 +679,12 @@ export class DocumentService {
       if (this.lease.expiresAt < now + this.lease.ttl) {
         this.lease = { ...this.lease, expiresAt: now + this.lease.ttl }
       }
-      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
+      return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt, carriers }
     }
     if (this.lease.expiresAt <= now) {
       return { held: false, holder: undefined, expiresAt: undefined, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
     }
-    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt }
+    return { held: true, holder: this.lease.clientId, expiresAt: this.lease.expiresAt, proto: LEASE_PROTOCOL_ACTIVE, bootedAt: this.bootedAt, carriers }
   }
 
   /** An SSE connection for `clientId` opened (route layer, stream accepted). */
@@ -699,18 +714,40 @@ export class DocumentService {
    * the receipt becomes the honest `queued: true` — 「已受理，引擎当前不在线」.
    * Parking is the recoverable branch, and these two states are
    * indistinguishable from here, so the recoverable one is the right default.
+   *
+   * ── AND THE THIRD STATE, which is the one that used to lie ────────────────
+   *
+   * 「能干事」 is TWO questions, not one: is somebody listening, AND do they know
+   * this carrier. The seam only asked the first. A live page whose build had no
+   * `session.create` branch received the frame, dropped it, and left the caller
+   * with 「已交给引擎执行一次」 — work promised to a performer that had already
+   * refused it in silence.
+   *
+   * So the holder declares its carriers with the lease, and a carrier outside
+   * that list is neither broadcast nor parked: parking it would replay it to
+   * the same page later, which is the same lie with a delay. It answers
+   * `unsupported` and says which carrier, because the caller's next move
+   * depends on it (a stale page → reload; a carrier no build implements → it
+   * is the wrong action entirely).
    */
-  submitCommand(command: BoardCommand): { queued: boolean } {
+  submitCommand(command: BoardCommand): CommandRelayStatus {
     const now = this.now()
     const state = this.leaseState(now)
     const holder = state.held ? this.lease?.clientId : undefined
     const holderIsListening = holder !== undefined && (this.streams.get(holder) ?? 0) > 0
     if (!state.held || !holderIsListening) {
       this.parkCommand(command)
-      return { queued: true }
+      return { status: 'queued' }
+    }
+    // A holder that declared nothing is a page from before the field existed,
+    // and what such a page performs is exactly the baseline — never "nothing",
+    // which would refuse work the page can actually do.
+    const declared = state.carriers ?? BASELINE_COMMAND_CARRIERS
+    if (!declared.includes(command.type)) {
+      return { status: 'unsupported', carrier: command.type }
     }
     this.broadcast({ type: 'command', command })
-    return { queued: false }
+    return { status: 'broadcast' }
   }
 
   /** Subscribe to board events (the SSE layer). @returns the disposer. */
@@ -746,9 +783,23 @@ export class DocumentService {
 
   private drainPendingCommands(): void {
     if (this.pendingCommands.size === 0) return
+    const state = this.leaseState(this.now())
+    const declared = state.carriers ?? BASELINE_COMMAND_CARRIERS
     const commands = [...this.pendingCommands.values()]
     this.pendingCommands.clear()
-    for (const command of commands) this.broadcast({ type: 'command', command })
+    /* A parked command is replayed ONLY to a seat that can perform it. The
+       command was parked because there was no live engine, not because anyone
+       judged it performable — so the check has to happen here as well as in
+       `submitCommand`, or a carrier the new holder does not implement is
+       broadcast a second time and dropped a second time. The ones left behind
+       stay parked (they are not lost): the next seat may implement them. */
+    for (const command of commands) {
+      if (declared.includes(command.type)) {
+        this.broadcast({ type: 'command', command })
+        continue
+      }
+      this.pendingCommands.set(commandKeyOf(command), command)
+    }
   }
 
   private broadcast(event: BoardEvent): void {

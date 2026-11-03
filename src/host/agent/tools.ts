@@ -67,12 +67,12 @@ import {
 } from '../../core/board-actions.ts'
 import { QUALIFIER_KEYS, completeBoardQuery, itemSearchContext, matchItemQuery, matchTask } from '../../core/task-search.ts'
 import { hasLiveAutomation } from '../../core/automation.ts'
-import { taskUnviewed } from '../../core/session-display.ts'
+import { sessionUnviewedOf, taskUnviewed } from '../../core/session-display.ts'
 import { itemQualifierVocabulary } from '../../core/item-query.ts'
 import { refOf } from '../../core/item-navigate.ts'
 import { messageOf } from '../../core/values.ts'
-import { normalizeAttachmentRefs } from '../../core/attachment.ts'
-import { clampCruiseLimit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardView, type CruiseValue } from '../../core/board-doc.ts'
+import { attachmentCountsOf, attachmentsOf, normalizeAttachmentRefs } from '../../core/attachment.ts'
+import { clampCruiseLimit, type BoardCommand, type BoardCommandCarrier, type BoardCommit, type BoardDoc, type BoardView, type CommandRelayStatus, type CruiseValue } from '../../core/board-doc.ts'
 import { applyItemsCommit, deletedItemsOf, purgeItemTombstone, restoredItemOf, type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts'
 import { cardStatusMapOf, createTask, landCardInColumn, resolveCardDrop, taskBindsOf, type TaskBind, type TaskRecord, type TaskStatus } from '../../core/tasks.ts'
 import type { SessionRule } from '../../core/automation.ts'
@@ -93,6 +93,61 @@ function readRunConfig(raw: unknown): RunConfigPresetConfig {
   }
   return config
 }
+
+/**
+ * Read the `bind` list a card is born with, or the sentence saying why not.
+ *
+ * THE SHAPE IS CHECKED, NOT COERCED, and every refusal names what to send. A
+ * `bind` entry is a discriminated pair — `{ kind: 'session', sessionId }` or
+ * `{ kind: 'workspace', workspaceId }` — and a reader that accepted anything
+ * with a `sessionId` on it would store a bind whose `kind` is a typo, which no
+ * reader of `taskBindsOf` would ever match again. A card that silently has no
+ * sources is exactly the state this parameter exists to prevent.
+ *
+ * Sources are NOT verified against a live registry here: this host can bind a
+ * session it cannot currently see (the sidebar lists a workspace's sessions, and
+ * the board is not the registry). What IS refused is a malformed entry, because
+ * that is a fact about the REQUEST rather than about the world.
+ * @param raw - the payload's `bind` value.
+ * @returns the binds, or a refusal sentence.
+ */
+function readBinds(raw: unknown): TaskBind[] | string {
+  if (raw === undefined || raw === null) return []
+  if (!Array.isArray(raw)) return 'bind 要么是一份列表，要么别传；现在这个不是列表，所以这张卡没有建。'
+  const binds: TaskBind[] = []
+  for (const entry of raw) {
+    if (typeof entry !== 'object' || entry === null) {
+      return 'bind 的每一项都要写成 { kind, sessionId } 或 { kind, workspaceId }，收到了一项不是对象的。'
+    }
+    const row = entry as Record<string, unknown>
+    const kind = row.kind
+    if (kind === 'session') {
+      const sessionId = typeof row.sessionId === 'string' ? row.sessionId.trim() : ''
+      if (sessionId === '') return 'bind 里有一项 kind 是 session，但没有给 sessionId。'
+      binds.push({ kind: 'session', sessionId })
+      continue
+    }
+    if (kind === 'workspace') {
+      const workspaceId = typeof row.workspaceId === 'string' ? row.workspaceId.trim() : ''
+      if (workspaceId === '') return 'bind 里有一项 kind 是 workspace，但没有给 workspaceId。'
+      binds.push({ kind: 'workspace', workspaceId })
+      continue
+    }
+    return `bind 的每一项都要有 kind，只能是 session 或 workspace，收到的是「${String(kind)}」。`
+  }
+  // One entry per source: two identical entries are one source written twice,
+  // and every reader of the list would show it twice.
+  const seen = new Set<string>()
+  for (const bind of binds) {
+    const key = bind.kind === 'session' ? `s:${bind.sessionId}` : `w:${bind.workspaceId}`
+    if (seen.has(key)) {
+      const named = bind.kind === 'session' ? `会话 ${bind.sessionId}` : `工作区 ${bind.workspaceId}`
+      return `${named} 在 bind 里出现了两次。卡片只挂一次来源就够了，所以这张卡没有建。`
+    }
+    seen.add(key)
+  }
+  return binds
+}
 import { approveTaskToStatus, armSchedule, BUSY_REASON, moveTaskToStatus, removeSessionFromTask, type TransitionResult } from '../../core/task-transitions.ts'
 // The checklist's write semantics: the SAME functions the capture box and
 // the detail pane call. A field write the tool does itself is a second answer to
@@ -110,7 +165,7 @@ import {
   readItemStepList,
   removeItemRecord,
 } from '../../core/item-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateKey, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateKey, type ItemPriority, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
 import { derivedStatusOf, linkedCardOf } from '../../core/item-membership.ts'
 import { planItemAsk } from '../../core/item-ask.ts'
 // THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
@@ -152,10 +207,12 @@ export interface ToolCommitFace {
    * otherwise be told 「已生效」 about words that are still on disk.
    */
   purgeItem(of: ItemAddress, clientId: string): Promise<ItemPurge>
-  /** Relay one command to whichever replica holds the seat. `queued` = no
-   *  engine. The whole union: the catalog decides which carrier an action
-   *  rides, and the relay carries it as-is. */
-  submitCommand(command: BoardCommand): { queued: boolean }
+  /** Relay one command to whichever replica holds the seat, and ANSWER WITH
+   *  WHAT HAPPENED: a live engine that knows the carrier took it, nobody was
+   *  there so it parked, or the live engine does not implement it and nothing
+   *  was sent or parked. The whole union rides through: the catalog decides
+   *  which carrier an action rides, and the relay carries it as-is. */
+  submitCommand(command: BoardCommand): CommandRelayStatus
   available: boolean
 }
 
@@ -366,6 +423,12 @@ interface ItemDetail extends ItemRow {
   readonly body: string
   readonly notes: string
   readonly tags: readonly string[]
+  /**
+   * The tier as it is stored. Writable by the model (`item.create` /
+   * `item.update` publish `priority`) and therefore readable — a field a caller
+   * can set and cannot read back is a field it can only set by guessing.
+   */
+  readonly priority: ItemPriority
   readonly steps: readonly { readonly id: string; readonly text: string; readonly done: boolean }[]
   /** Millisecond stamps; read them as whole local days (see the catalog). */
   readonly startsAfter: number | undefined
@@ -382,45 +445,285 @@ interface ItemDetail extends ItemRow {
  * where a number comes from, and it comes from the document.
  */
 function taskRow(task: TaskRecord): TaskRow {
-  return { title: task.title, status: task.status }
+  return compact({ title: task.title, status: task.status })
+}
+
+/**
+ * DROP every `undefined` FIELD, one level deep, and keep the rest.
+ *
+ * THE HOST'S TOOL PIPELINE REQUIRES LOSSLESS JSON, and `JSON.stringify` cannot
+ * tell `{ a: undefined }` from `{}` — so a single undefined field makes the
+ * whole answer fail with 「value is not lossless JSON」. That is what a checklist
+ * row with no card did: `taskId: undefined` went into the object literal and
+ * every query of a board containing one such row came back as a tool ERROR —
+ * not a wrong row, the entire read.
+ *
+ * The repair is here rather than at each of the eight row builders because the
+ * next optional field added anywhere would reintroduce it: `{...cond ? {} : {}}`
+ * is a rule each site has to remember, and a helper they all call is a rule
+ * nobody can forget. Values are otherwise untouched — `null` stays (`null` IS
+ * lossless), so this cannot silently widen the shapes columns rely on.
+ */
+function compact<T extends object>(row: T): T {
+  return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== undefined)) as T
 }
 
 /** The same row with its written content, for `detail: 'full'`. */
 function taskDetailRow(task: TaskRecord): TaskDetail {
-  return { ...taskRow(task), description: task.description, prompt: task.prompt }
+  return compact({ ...taskRow(task), description: task.description, prompt: task.prompt })
 }
 
 /**
  * An item's number is the document-minted one (`#12`), never its uuid — and its
  * status is the DERIVED one, read through the very function the panel reads, so
- * a query answer and the row on screen cannot disagree about the same row.
+ * a query answer and a row on screen cannot disagree about the same row.
+ *
+ * `taskId` PRINTS THE CARD'S TITLE WHEN THE CARD IS KNOWN, and both halves of
+ * that matter:
+ *
+ *  · The uuid is an identifier the model can neither remember nor say back, and
+ *    printing it in a row contradicts this surface's own rule 「引用用短编号、
+ *    不要用内部 id」 — a rule every linked row then broke.
+ *  · The same field is what a WRITE accepts (`item.update`'s `taskId` resolves a
+ *    title), so the value shown is the value expected back. Showing one and
+ *    accepting the other teaches a model to paste a uuid into a field that only
+ *    ever matches a title.
+ *
+ * A row hanging off a card this document cannot resolve keeps the raw id: 「there
+ * is a link and I cannot name its target」 is a fact, and dropping the field would
+ * report the row as unlinked.
  */
-function itemRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>): ItemRow {
-  return {
+function itemRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>, titles?: ReadonlyMap<string, string>): ItemRow {
+  const cardTitle = item.taskId === undefined ? undefined : titles?.get(item.taskId)
+  return compact({
     ref: `#${item.ref}`,
     id: item.id,
     title: itemTitleOf(item),
     status: derivedStatusOf(item, cards),
     storedStatus: item.status,
-    taskId: item.taskId,
-  }
+    taskId: cardTitle ?? item.taskId,
+  })
+}
+
+/** `taskId → title`, built once per query so a hundred rows cost one pass. */
+function cardTitlesOf(tasks: readonly TaskRecord[]): ReadonlyMap<string, string> {
+  return new Map(tasks.map(task => [task.id, task.title]))
 }
 
 /** The same row with everything a reader typed, for `detail: 'full'`. */
-function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>): ItemDetail {
-  const read = itemRow(item, cards)
-  return {
+function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>, titles?: ReadonlyMap<string, string>): ItemDetail {
+  const read = itemRow(item, cards, titles)
+  return compact({
     ...read,
     body: item.body,
     notes: item.notes,
     tags: [...item.tags],
+    priority: item.priority,
     steps: item.steps.map(step => ({ id: step.id, text: step.text, done: step.done })),
     startsAfter: item.startsAfter,
     dueAt: item.dueAt,
     hardDueAt: item.hardDueAt,
     progress: itemProgressOf(item),
-  }
+  })
 }
+/* ── the deep card: everything the model may WRITE, readable ─────────────── */
+
+/**
+ * One card, as `detail: 'deep'` (or `of`) hands it over.
+ *
+ * THE FIELD LIST IS THE POINT, and it is derived from the same declarations the
+ * writes come from: the six run-config keys, the schedule rule, the session
+ * rules, the binds, the sessions. Before this existed, a card read as
+ * `{ title, status }` — so the write surface was strictly LARGER than the read
+ * surface. A model told to 「给这张卡加一条规则」 could not learn which sessions
+ * the card had, and `rule.create` requires exactly that; the only remaining move
+ * is to guess, or to ask the person to copy an id out of the interface.
+ *
+ * `sessions` carries titles because a session is addressed by its id and read by
+ * its name. `rules` carries both for the same reason.
+ */
+interface TaskDeep extends TaskDetail {
+  /** The same six fields as a nested record, for printing. */
+  readonly runConfig: Readonly<Record<string, string>>
+  readonly schedule?: {
+    readonly mode: 'cron' | 'chain'
+    readonly cron: string
+    readonly enabled: boolean
+    readonly maxRuns: number | undefined
+    readonly runCount: number | undefined
+  }
+  readonly rules?: readonly {
+    readonly id: string
+    readonly session: string
+    readonly trigger: 'cron' | 'on-complete'
+    readonly cron: string
+    readonly send: string
+    readonly enabled: boolean
+    /** The words the rule sends, or a marker that it sends the card's own prompt. */
+    readonly sends: string
+  }[]
+  readonly binds?: readonly string[]
+  readonly sessions?: readonly {
+    readonly session: string
+    readonly title: string | null
+    readonly rounds: number
+    readonly unread: boolean
+  }[]
+  readonly attachments?: number
+  readonly color?: string
+  readonly createdAt?: number
+  readonly updatedAt?: number
+  readonly unread?: boolean
+  readonly live?: string
+}
+
+/**
+ * The deep projection of one card.
+ *
+ * EVERY FIELD IS EITHER COPIED OR DERIVED FROM A SHARED FUNCTION — nothing here
+ * invents a judgement. `taskUnviewed`, `taskLiveStateOf`'s inputs and the round
+ * count all come from the modules the board itself reads, so a query cannot
+ * disagree with the panel about whether a card is unread or live.
+ *
+ * Absent fields are OMITTED, not set to undefined (`compact`), because the host's
+ * tool pipeline requires lossless JSON and one undefined field fails the whole
+ * answer rather than one column.
+ * @param task - the card.
+ * @param sessionTitles - `sessionId → title`, when this host knows one.
+ * @param live - the card's live state, or undefined when it cannot be known.
+ */
+function taskDeepRow(
+  task: TaskRecord,
+  sessionTitles?: ReadonlyMap<string, string>,
+  live?: string,
+): TaskDeep {
+  const runConfig: Record<string, string> = {}
+  for (const key of RUN_CONFIG_KEYS) {
+    const value = task[key]
+    if (typeof value === 'string' && value !== '') runConfig[key] = value
+  }
+  const rounds = new Map<string, number>()
+  for (const round of task.executions) {
+    if (round.sessionId === undefined) continue
+    rounds.set(round.sessionId, (rounds.get(round.sessionId) ?? 0) + 1)
+  }
+  return compact({
+    ...taskDetailRow(task),
+    /* THE SIX RUN-CONFIG FIELDS, BY THEIR OWN NAMES, beside the nested copy.
+     *
+     * `runConfig` is the convenient shape for printing; the FLAT names are the
+     * ones a WRITE takes (`task.update` publishes `provider`, `model`, …). A
+     * projection that only nested them left the reader translating
+     * `runConfig.provider` back into `provider` — and a tool that can write what
+     * it cannot read BY NAME makes its caller guess, which is the whole defect
+     * `verify-read-write-parity` exists for.
+     *
+     * Written out rather than spread from RUN_CONFIG_KEYS on purpose: the parity
+     * gate reads STRUCTURE, and a runtime-built object has no keys to read. A
+     * seventh run-config field therefore fails two ways at once — this literal
+     * does not mention it, and the gate says so. */
+    workspaceId: task.workspaceId,
+    provider: task.provider,
+    model: task.model,
+    reasoningEffort: task.reasoningEffort,
+    agentPreset: task.agentPreset,
+    permission: task.permission,
+    runConfig,
+    schedule: task.schedule === undefined ? undefined : {
+      mode: task.schedule.mode === 'chain' ? 'chain' : 'cron',
+      cron: task.schedule.cron ?? '',
+      enabled: task.schedule.enabled === true,
+      maxRuns: task.schedule.maxRuns,
+      runCount: task.schedule.runCount,
+    },
+    rules: task.rules === undefined || task.rules.length === 0 ? undefined : task.rules.map(rule => compact({
+      id: rule.id,
+      session: rule.sessionId,
+      trigger: rule.trigger === 'on-complete' ? 'on-complete' as const : 'cron' as const,
+      cron: rule.cron ?? '',
+      send: rule.send === 'steer' ? 'steer' : 'queue',
+      enabled: rule.enabled === true,
+      // 「送什么」 is the one field a caller can act on without a second read.
+      sends: rule.usePrompt === true ? '这张卡自己的执行 Prompt' : (rule.instruction ?? ''),
+    })),
+    binds: taskBindsOf(task).length === 0 ? undefined : taskBindsOf(task).map(bind =>
+      bind.kind === 'session' ? `会话：${sessionTitles?.get(bind.sessionId) ?? bind.sessionId}` : `工作区：${bind.workspaceId}`),
+    sessions: relatedSessionIdsOf(task, undefined, undefined).length === 0 ? undefined
+      : relatedSessionIdsOf(task, undefined, undefined).map(fact => compact({
+        session: fact.sessionId,
+        title: sessionTitles === undefined ? null : sessionTitles.get(fact.sessionId) ?? null,
+        rounds: rounds.get(fact.sessionId) ?? 0,
+        unread: sessionUnviewedOf(task, fact.sessionId),
+      })),
+    // The count, never the bytes: a card's pictures belong to the attachment
+    // store, and a query that inlined them would rebuild the 1.9 MB document in
+    // the model's context one card at a time.
+    attachments: attachmentTotalOf(task),
+    color: task.color,
+    createdAt: task.createdAt,
+    updatedAt: task.updatedAt,
+    unread: taskUnviewed(task),
+    live,
+  })
+}
+
+/**
+ * How many images and files a card's execution prompt carries, or `undefined`
+ * when it carries none.
+ *
+ * ONE reader of all three attachment ages (`attachmentsOf`), which is the only
+ * place the two legacy shapes and the current one are joined — a second reader
+ * here would count a card's pictures differently from the `.1 MB` measure the
+ * interface shows.
+ */
+function attachmentTotalOf(task: TaskRecord): number | undefined {
+  const counts = attachmentCountsOf(attachmentsOf(task))
+  const total = counts.images + counts.files
+  return total === 0 ? undefined : total
+}
+
+/**
+ * The ONE place a card is looked up by what a caller said.
+ *
+ * A card is named by its TITLE, and titles are not unique — two cards called
+ * 「收尾」 is an ordinary thing to have. The old lookup was
+ * `tasks.find(t => t.id === of || t.title === of)`, which SILENTLY picked the
+ * first: the model said 「把收尾移到已完成」, one of the two moved, the receipt
+ * said 「已生效」, and nothing anywhere mentioned there had been two. A wrong
+ * answer that looks like a right one is the exact failure mode this surface is
+ * being rebuilt around.
+ *
+ * So a title that matches more than one card is a REFUSAL that lists them, and a
+ * caller that meant one of them says which. The uuid keeps working (a caller that
+ * has one has it for real), and a title wins over nothing.
+ * @param tasks - the board.
+ * @param spoken - what the caller said: a title, or an id.
+ * @returns the card, or the sentence explaining which cards it could have meant.
+ */
+export function resolveCard(
+  tasks: readonly TaskRecord[],
+  spoken: unknown,
+): { kind: 'found'; task: TaskRecord } | { kind: 'missing' } | { kind: 'ambiguous'; matches: readonly TaskRecord[] } {
+  const said = String(spoken ?? '').trim()
+  if (said === '') return { kind: 'missing' }
+  const byId = tasks.find(task => task.id === said)
+  if (byId !== undefined) return { kind: 'found', task: byId }
+  const matches = tasks.filter(task => task.title.trim() === said)
+  if (matches.length === 0) return { kind: 'missing' }
+  if (matches.length === 1) return { kind: 'found', task: matches[0] as TaskRecord }
+  return { kind: 'ambiguous', matches }
+}
+
+/** The refusal sentence for an ambiguous title, naming every candidate. */
+export function ambiguousCardWhy(spoken: unknown, matches: readonly TaskRecord[]): string {
+  const named = matches.slice(0, 10).map(task => {
+    const where = task.status
+    const since = localDayOf(task.createdAt)
+    return `「${task.title}」（在 ${where}，${since} 建的）`
+  }).join('、')
+  return `有 ${matches.length} 张卡都叫「${String(spoken)}」：${named}。要动哪一张？把标题改到唯一，或者先 task.update 给它们改成不同的名字。`
+}
+
 
 /* ── op resolution: the catalog decides what exists and who may do it ────── */
 
@@ -451,7 +754,20 @@ function kindOf(id: string, ok: boolean, unchanged: boolean): OpReport['kind'] {
  */
 export function kindOfReport(report: Omit<OpReport, 'kind'>): OpReport['kind'] {
   if (report.skipped === true) return 'skipped'
-  return kindOf(report.op, report.ok, report.unchanged === true)
+  // A refused relay is not an effect either: the engine lane's own status is
+  // the field that says so, and reading it here keeps the classification off
+  // the sentence. It is ALSO not a failure — the op was legal, the seat holder
+  // simply cannot perform it — so it stays out of both `failed` and the
+  // effect kinds by riding the document lane's "nothing moved" answer.
+  if (report.outcome?.lane === 'engine' && report.outcome.status === 'unsupported') return 'unchanged'
+  // "DID ANYTHING MOVE" HAS ONE HOME PER LANE: the document outcome carries it
+  // for the ops that build one, and the purge branch — which predates outcomes
+  // — still reports it on the report itself. Both are read, and neither is
+  // allowed to win by default.
+  const movedNothing = report.outcome?.lane === 'document'
+    ? report.outcome.unchanged === true
+    : report.unchanged === true
+  return kindOf(report.op, report.ok, movedNothing)
 }
 
 /**
@@ -465,9 +781,30 @@ export function kindOfReport(report: Omit<OpReport, 'kind'>): OpReport['kind'] {
 export function enginePendingOf(reports: readonly OpReport[]): string[] {
   const pending: string[] = []
   for (const report of reports) {
-    if (report.ok && report.title !== undefined && report.queued === true) pending.push(report.title)
+    if (report.ok && report.title !== undefined && isEngineLane(report.outcome, 'queued')) pending.push(report.title)
   }
   return pending
+}
+
+/**
+ * The rows the relay REFUSED because the live engine cannot perform them.
+ *
+ * A separate list from {@link enginePendingOf} on purpose: 「等引擎上线」 and
+ * 「这个页面做不了」 are different facts with different next moves (wait vs.
+ * reload / use another device), and one list holding both would push the reader
+ * toward the wrong one.
+ */
+export function engineUnsupportedOf(reports: readonly OpReport[]): string[] {
+  const refused: string[] = []
+  for (const report of reports) {
+    if (report.ok && report.title !== undefined && isEngineLane(report.outcome, 'unsupported')) refused.push(report.title)
+  }
+  return refused
+}
+
+/** Whether an outcome is the engine lane in one particular relay state. */
+function isEngineLane(outcome: OpOutcome | undefined, status: CommandRelayStatus['status']): boolean {
+  return outcome !== undefined && outcome.lane === 'engine' && outcome.status === status
 }
 
 /**
@@ -506,6 +843,9 @@ function presentationOf(result: ExecuteResult): HostJson {
     tasks: result.changed?.tasks ?? [],
     // Accepted, not executed — a card that renders these as "已执行" lies.
     enginePending: result.enginePending,
+    // Refused, not even accepted: the seat holder cannot perform the carrier.
+    // Its own field because its own next move (reload / another device).
+    engineUnsupported: result.engineUnsupported,
     reports: result.reports.map(report => ({ ...report })),
   } as unknown as HostJson
 }
@@ -572,14 +912,48 @@ export interface OpReport {
    */
   readonly unchanged?: boolean
   /**
-   * THE ENGINE ACCEPTED THE REQUEST AND IS NOT HOLDING THE SEAT, so it runs
-   * when the engine comes back. Accepted is not executed, and a card that
-   * renders this as done is lying.
+   * WHERE THIS OP LANDED, as a value rather than as a sentence.
+   *
+   * The receipt used to carry a single `queued` boolean, and the boolean could
+   * not express the case that mattered: a live engine that does not implement
+   * the carrier. That one is neither "done" nor "queued", and the two-state
+   * vocabulary had nowhere to put it, so it was reported as done.
+   *
+   * Every branch below assigns exactly one of these, and the sentence the model
+   * reads is RENDERED from it — so 「已生效」 can only come out of the branch
+   * that really wrote, and 「没有执行」 can only come out of a branch that
+   * really did not.
    */
-  readonly queued?: boolean
-  /** What happened, or what to change. Never a bare error code. */
+  readonly outcome?: OpOutcome
+  /** What happened, or what to change. Never a bare error code. Rendered
+   *  FROM {@link outcome} for the engine lane, so the two cannot disagree. */
   readonly detail: string
 }
+
+/**
+ * One op's landing place. THREE lanes, because the batch has three:
+ *
+ *  · `document` — the host wrote a document. Only this lane may be counted as
+ *    an effect;
+ *  · `engine` — a command was relayed, and the STATUS says what the relay did
+ *    with it. `broadcast` still is not "done": the engine took the request;
+ *  · `none` — nothing was written and nothing was sent, with a reason.
+ */
+export type OpOutcome =
+  | {
+    readonly lane: 'document'
+    /** Which documents the write landed in — the two-document op names both. */
+    readonly wrote: readonly ActionDocument[]
+    /** True when the write changed nothing (the row already looked like this). */
+    readonly unchanged?: true
+  }
+  | {
+    readonly lane: 'engine'
+    readonly status: CommandRelayStatus['status']
+    /** Which carrier, and — for `unsupported` — the one the page lacks. */
+    readonly carrier: BoardCommandCarrier
+  }
+  | { readonly lane: 'none'; readonly why: 'skipped' | 'refused' | 'rehearsed' }
 
 /** Why an op cannot run, in the words the catalog itself uses. */
 export function refuseOp(id: string): { ok: false; detail: string } {
@@ -671,6 +1045,12 @@ export interface ExecuteResult {
   /** Rows this op handed to the engine while no replica held the seat. They
    *  are ACCEPTED, not done — a card that renders them as "已执行" is lying. */
   readonly enginePending: readonly string[]
+  /** Rows the relay REFUSED because the live engine does not implement their
+   *  carrier. A separate field from {@link enginePending}, not folded into it:
+   *  「等引擎上线」 and 「这个页面做不了」 have different next moves (wait vs.
+   *  reload / another device), and one list holding both points the reader at
+   *  the wrong one. */
+  readonly engineUnsupported: readonly string[]
   /**
    * Set when this answer is an earlier one's, replayed because the caller
    * retried with the same key. Nothing ran this time — and saying so is the
@@ -770,6 +1150,15 @@ function buildRelay(
     case 'run': {
       const found = card()
       if (found === undefined) return missingCard
+      /* THE TRIGGER IS THE CALLER'S, and hardcoding it here is the exact shape
+       * of a declared-but-unread parameter: the catalog publishes
+       * `trigger: manual | schedule | chain`, a caller that sends `schedule`
+       * gets `manual` on the record, and **nothing anywhere says the value was
+       * dropped** — the run happens, the receipt is green, and the attribution
+       * on the card is wrong forever. */
+      const requested = String(payload.trigger ?? '')
+      const trigger: 'manual' | 'schedule' | 'chain' =
+        requested === 'schedule' || requested === 'chain' ? requested : 'manual'
       // The FIRST MESSAGE, when the caller brought one: the checklist hands a row
       // of its own to a card whose prompt may say something else entirely, and the
       // run reads this instead. Absent = the card's own prompt, unchanged.
@@ -780,7 +1169,7 @@ function buildRelay(
       const carried = normalizeAttachmentRefs(payload.attachments) ?? []
       return {
         command: {
-          type: 'run', taskId: found.id, trigger: 'manual', clientId,
+          type: 'run', taskId: found.id, trigger, clientId,
           ...kickoff === '' ? {} : { kickoff },
           ...carried.length === 0 ? {} : { attachments: carried },
         },
@@ -796,18 +1185,41 @@ function buildRelay(
       const carried = normalizeAttachmentRefs(payload.attachments) ?? []
       // 与别处同一条律：**只有附件、没有字，是一条真消息**（`isBlankMessage`）。
       if (text === '' && carried.length === 0) return '要发的话是空的。'
+      /* QUEUE OR STEER IS THE CALLER'S CALL, and the catalog publishes the
+       * choice. Absent = queue: a queued line can still be cancelled, a steer
+       * already said cannot be unsaid, so the recoverable one is the default. */
+      const send = payload.send === 'steer' ? 'steer' : 'queue'
       return {
         command: {
-          type: 'comment', taskId: found.id, sessionId, text, clientId,
+          type: 'comment', taskId: found.id, sessionId, text, clientId, send,
           ...carried.length === 0 ? {} : { attachments: carried },
         },
-        title: found.title,
+        // The receipt must say which of the two happened: 「说进去了」 about a
+        // line still waiting for the run to settle is the same class of lie as
+        // calling an accepted run a finished one.
+        title: `${found.title}（${send === 'steer' ? '插话' : '排队'}）`,
       }
     }
     case 'session.create': {
       const found = card()
       if (found === undefined) return missingCard
-      return { command: { type: 'session.create', taskId: found.id, config: readRunConfig(payload), clientId }, title: found.title }
+      /* THE NAME TRAVELS BESIDE THE CONFIG, not inside it.
+       *
+       * `readRunConfig` filters through `RUN_CONFIG_KEYS` — six run settings —
+       * so a `title` riding that object is dropped without a word, and the new
+       * session came out named after its card. A name is not a run setting: it
+       * is a separate field on the command, and it is read here as one. */
+      const named = String(payload.title ?? '').trim()
+      return {
+        command: {
+          type: 'session.create',
+          taskId: found.id,
+          config: readRunConfig(payload),
+          clientId,
+          ...named === '' ? {} : { title: named },
+        },
+        title: named === '' ? found.title : `${found.title} → ${named}`,
+      }
     }
     case 'session.rename': {
       const sessionId = String(payload.session ?? '')
@@ -837,6 +1249,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       itemsRevision: 0,
       counts: { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 1, skipped: 0 },
       enginePending: [],
+      engineUnsupported: [],
     }
   }
   if (board === undefined || !board.available) {
@@ -851,6 +1264,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       itemsRevision: 0,
       counts: { created: 0, updated: 0, moved: 0, deleted: 0, unchanged: 0, failed: 1, skipped: 0 },
       enginePending: [],
+      engineUnsupported: [],
     }
   }
 
@@ -938,18 +1352,32 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
         continue
       }
       if (request.dry_run === true) {
-        raw.push({ op: step.op, ok: true, title: built.title, detail: `会经引擎${RELAY_VERB[relay]}。` })
+        raw.push({
+          op: step.op,
+          ok: true,
+          title: built.title,
+          outcome: { lane: 'none', why: 'rehearsed' },
+          detail: `会经引擎${RELAY_VERB[relay]}。`,
+        })
         continue
       }
-      const { queued } = board.submitCommand(built.command)
+      /* THREE ANSWERS, and the third one is why this is a switch and not a
+       * boolean. `broadcast` still is NOT "done" — the engine took the request,
+       * the work has not happened — so the sentence says what was handed over,
+       * not what was accomplished. */
+      const relayed = board.submitCommand(built.command)
       raw.push({
         op: step.op,
         ok: true,
         title: built.title,
-        // Accepted is not executed: the receipt names WHICH action was
-        // accepted, or a queued request reads as a finished one.
-        ...(queued ? { queued: true } : {}),
-        detail: queued ? `已受理（${RELAY_VERB[relay]}），引擎当前不在线，将在引擎上线后执行。` : `已交给引擎${RELAY_VERB[relay]}。`,
+        outcome: { lane: 'engine', status: relayed.status, carrier: built.command.type },
+        detail: relayed.status === 'broadcast'
+          ? `已交给引擎${RELAY_VERB[relay]}——它收到请求了，工作还没做完。`
+          : relayed.status === 'queued'
+            ? `已受理（${RELAY_VERB[relay]}），引擎当前不在线，将在引擎上线后执行。`
+            // 第三种状态：有人在线，但它做不了这件事。既不广播也不排队——排队只会
+            // 把它晚一点再丢一次，那是一句延迟的谎。
+            : `没有执行：当前持席位的浏览器不支持「${relayed.carrier}」这条载具（它实现的是更早的一版）。这一条什么都没发生——刷新页面或换一台设备再来一次。`,
       })
       continue
     }
@@ -1112,10 +1540,11 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       ...(task === undefined ? {} : { title: task.title }),
       ...(item === undefined ? {} : { ref: `#${item.ref}`, title: itemTitleOf(item) }),
       ...(moved.length === 0 ? {} : { documents: moved }),
-      ...(noop ? { unchanged: true } : {}),
-      // A one-document op keeps the subject-less sentence, so it needs no
-      // document list. The two-document form is the only one that has to name
-      // them, because it is the only one that can leave half a state.
+      outcome: {
+        lane: 'document',
+        wrote: moved,
+        ...(noop || declined ? { unchanged: true } : {}),
+      },
       detail: `${declined
         ? '这一条没有改成——另一台设备刚改过它，这次没写进去。'
         : noop ? '这一条已经是这样了，没有改动。' : landedWord(request.dry_run === true, moved)}${next.note ?? ''}`,
@@ -1129,6 +1558,19 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
   // itself by its wording would turn one rewording into a wrong kind, a wrong
   // first failure and a wrong summary, with every functional test still green.
   reports.push(...raw.map(report => ({ ...report, kind: kindOfReport(report) })))
+  /* THE COUNTS THE SUMMARY IS BUILT FROM, each read off a FIELD.
+   *
+   * 「已生效」 used to be `done.length - enginePending.length` — one subtraction
+   * standing in for four different facts. It could not express the third relay
+   * state at all, so an op the engine refused counted as an effect. Now each
+   * number comes from its own predicate over the same outcome value, and a
+   * sentence can only be built from numbers that were actually measured. */
+  const wrote = reports.filter(report => report.ok
+    && report.outcome?.lane === 'document'
+    && report.outcome.unchanged !== true
+    && report.outcome.wrote.length > 0).length
+  const relayed = reports.filter(report => isEngineLane(report.outcome, 'broadcast')).length
+  const unsupported = engineUnsupportedOf(reports).length
   // The engine-pending set is read BEFORE the summary is written, because the
   // summary must not call an accepted run an effect.
   enginePending.push(...enginePendingOf(reports))
@@ -1138,13 +1580,21 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
   const done = reports.filter(report => report.ok)
   const firstFailure = firstFailureOf(reports)
   const ok = firstFailure === undefined
+  // The clauses the summary is assembled from, each one a measured fact and
+  // each one able to stand alone: a batch of pure writes prints only the first,
+  // and a batch of pure relays prints only the relay clauses.
+  const clauses = [
+    wrote > 0 ? `${wrote} 条已生效（文档已经写进去了）` : '',
+    relayed > 0 ? `${relayed} 条已交给引擎，工作还没做完` : '',
+    enginePending.length > 0 ? `${enginePending.length} 条已受理（${enginePending.join('、')}）但引擎当前不在线，将在引擎上线后执行` : '',
+    unsupported > 0 ? `${unsupported} 条没有执行——持席位的浏览器不支持这条载具，那一条什么都没发生` : '',
+  ].filter(clause => clause !== '')
   const summary = request.dry_run === true
     ? `演练：${done.length} 条会生效${ok ? '' : `，第 ${reports.indexOf(firstFailure!) + 1} 条过不去：${firstFailure!.detail}`}。没有落盘。`
     : ok
-      // An accepted-but-unexecuted run is NOT an effect: saying "生效" for a
-      // row that is only queued is the one sentence this tool must never say.
-      ? `${done.length - enginePending.length} 条已生效${enginePending.length > 0 ? `，${enginePending.length} 条已受理（${enginePending.join('、')}）但引擎当前不在线，将在引擎上线后执行` : ''}。`
+      ? `${clauses.length === 0 ? '这一批没有产生任何写入。' : `${clauses.join('；')}。`}`
       : `前 ${done.length} 条已生效，第 ${reports.indexOf(firstFailure!) + 1} 条失败：${firstFailure!.detail}。已生效的不回滚。`
+  const unsupportedTitles = engineUnsupportedOf(reports)
   const result: ExecuteResult = {
     dryRun: request.dry_run === true,
     ok,
@@ -1154,6 +1604,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
     itemsRevision: items.revision,
     counts,
     enginePending,
+    engineUnsupported: unsupportedTitles,
     ...(request.dry_run === true ? {} : {
       // The same derivation the query answers with, over the document as it
       // stands AFTER the batch — so a receipt and a query cannot print two
@@ -1586,11 +2037,28 @@ function applyOne(
       return { doc: { ...doc, tasks: doc.tasks.map(task => (task.id === found.id ? next : task)) }, items, task: next }
     }
     case 'task.create': {
+      /* THE CARD IS BUILT ONCE, WITH EVERYTHING THE CATALOG SAYS IT ACCEPTS.
+       *
+       * `bind` was published and never read: a model that named a source got a
+       * card with none, and the receipt said the card had been created — true,
+       * and not what was asked for. The run configuration was the same story
+       * from the other side: not published at all on this action, so "build a
+       * card and run it" was necessarily TWO calls, with a half-finished card
+       * visible in between.
+       *
+       * Both are read here now, and the config loop reads the SAME key list the
+       * detail pane and the preset reader read, so a seventh field cannot be
+       * settable in one place and invisible in another. */
+      const binds = readBinds(payload.bind)
+      if (typeof binds === 'string') return binds
       const created = createTask({
         title: String(payload.title ?? ''),
         description: String(payload.description ?? ''),
         prompt: String(payload.prompt ?? ''),
         ...(payload.status === undefined ? {} : { status: payload.status as TaskStatus }),
+        ...binds.length === 0 ? {} : { binds },
+        ...readRunConfig(payload),
+        ...(payload.color === undefined || payload.color === '' ? {} : { color: String(payload.color) }),
       }, now, deps.uuid())
       return { doc: { ...doc, tasks: [...doc.tasks, created] }, items, task: created }
     }
@@ -2015,6 +2483,54 @@ function taskBodyOf(row: TaskRow & Partial<TaskDetail>): string {
     .join('\n')
 }
 
+/**
+ * The deep half of a card, as prose: what the model may WRITE, printed so that a
+ * model can read it before it writes it.
+ *
+ * THIS RENDERS WHAT THE PROJECTION CARRIES. A deep query that put the schedule
+ * and the rules into JSON and printed nothing here would repeat the exact defect
+ * the `detail` parameter used to have — the answer is right there, the reader
+ * still cannot use it, and nothing says so.
+ *
+ * Only the PARTS THAT EXIST are printed, and each one carries the words a WRITE
+ * uses (`runConfig`, the rule's trigger and send, the schedule's mode). Reading
+ * one vocabulary and writing another is how 「cron」 becomes 「schedule」 and the
+ * model's next call is refused for a field name.
+ */
+function taskDeepBodyOf(row: TaskRow & Partial<TaskDetail> & Partial<TaskDeep>): string {
+  const lines: string[] = []
+  const config = row.runConfig ?? {}
+  const configKeys = Object.keys(config)
+  if (configKeys.length > 0) {
+    lines.push(`  运行配置：${configKeys.map(key => `${key}=${config[key]}`).join('、')}`)
+  }
+  if (row.schedule !== undefined) {
+    const schedule = row.schedule
+    // 「排期」 in the exact words `task.schedule` takes: mode, cron, and whether
+    // it is armed right now.
+    lines.push(`  排期：${schedule.enabled ? '已上膛' : '未上膛'}，mode=${schedule.mode}${schedule.mode === 'cron' ? `，cron=${schedule.cron}` : ''}${schedule.maxRuns === undefined ? '' : `，最多 ${schedule.maxRuns} 次`}${schedule.runCount === undefined ? '' : `，已跑 ${schedule.runCount} 次`}`)
+  }
+  if (row.rules !== undefined && row.rules.length > 0) {
+    lines.push(`  会话规则（${row.rules.length} 条）：`)
+    for (const rule of row.rules) {
+      lines.push(`    ${rule.enabled ? '[上膛]' : '[解甲]'} trigger=${rule.trigger}${rule.trigger === 'cron' ? ` cron=${rule.cron}` : ''} send=${rule.send} 送到 ${rule.session}，内容是「${rule.sends}」（规则 id ${rule.id}）`)
+    }
+  }
+  if (row.binds !== undefined && row.binds.length > 0) lines.push(`  挂的来源：${row.binds.join('、')}`)
+  if (row.sessions !== undefined && row.sessions.length > 0) {
+    lines.push(`  会话（${row.sessions.length} 条）：`)
+    for (const session of row.sessions) {
+      // The id AND the name: the id is what every session action takes, and the
+      // name is what the reader can recognize.
+      lines.push(`    ${session.title ?? '（没有名字）'}（${session.session}，${session.rounds} 轮${session.unread ? '，有未读' : ''}）`)
+    }
+  }
+  if (row.attachments !== undefined) lines.push(`  附件：${row.attachments} 个`)
+  if (row.live !== undefined) lines.push(`  现在：${row.live}（running = 正在跑，waiting = 等你，idle = 闲着，unknown = 这台机器看不见它的会话）`)
+  if (row.unread === true) lines.push('  有未读的回复')
+  return lines.join('\n') === '' ? '' : `\n${lines.join('\n')}`
+}
+
 /** The written content of a checklist row, as prose, or nothing on a brief row. */
 function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   if (row.body === undefined) return ''
@@ -2138,14 +2654,24 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
           type: 'string',
           description: `${filterHelp().syntax}。可用的筛选：${filterHelp().keys.join(' ')}。可用的取值：${filterHelp().values.join(' ')}`,
         },
+        of: {
+          type: 'string',
+          description: '只读一条：给一张卡的名字或它的短编号（清单条目用 #12）。回来的是这一条的全部——运行配置、排期、会话规则、挂的来源、它的会话、附件数量、在跑还是闲。重名会给一句拒绝并列出候选，不会替你挑一张。',
+        },
         detail: {
           type: 'string',
-          enum: ['brief', 'full'],
-          // The description is the whole contract for this parameter, so it states
-          // what each value RETURNS rather than gesturing at "more": a phrase like
-          // 「full 连正文一起回」 describes a value that no branch has to read.
-          description: 'brief 只回编号、标题与状态；full 连正文、备注、步骤、标签、进度与三个日期一起回。full 的体积大得多，请配合 limit 用——清单条目的状态是「派生」的：挂在正在跑的卡上的行读作 inProgress（存的那一档在 storedStatus 里）。',
+          enum: ['brief', 'full', 'deep'],
+          /* The description is the whole contract for this parameter, so it states
+           * what each value RETURNS rather than gesturing at "more": a phrase like
+           * 「full 连正文一起回」 describes a value no branch has to read. */
+          description: 'brief：编号、标题、状态（默认，只回答「板子上有什么」）。full：再加正文、备注、步骤、标签、进度与三个日期。deep：再加你能写的全部东西——六项运行配置、排期、会话规则、挂的来源、它的会话（名字、几轮、未读）、附件数量、在跑还是闲。deep 贵得多，配合 limit 用。清单条目的状态是「派生」的：挂在正在跑的卡上的行读作 inProgress（存的那一档在 storedStatus 里）。',
         },
+        include: {
+          type: 'array',
+          items: { type: 'string', enum: ['comments', 'rounds'] },
+          description: '点名要才回的重内容。comments：这张卡的完整评论（按会话分组、全文，不截断）；rounds：执行轮次账目（哪条会话、何时、怎么结束，可配 rounds 限条数）。默认都不回：评论是你自己写的话，不该被每一次「看一下板」顺手倒进上下文。',
+        },
+        rounds: { type: 'number', description: 'include 里有 rounds 时，最多回多少条轮次（默认 50，上限 200）。' },
         limit: { type: 'number', description: '最多回多少行（默认 20，上限 100）。AI 侧查询在服务端就截断，不会把整份清单塞进上下文。' },
         posture: { type: 'string', description: '给一个会话 id，连它的在跑/归档/等批准/等回答态势一起回。态势是会话的事实，卡片不是会话，所以要会话 id。' },
       },
@@ -2183,16 +2709,31 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
           detail?: string
           filter?: string
           truncated?: boolean
-          tasks?: (TaskRow & Partial<TaskDetail>)[]
-          items?: (ItemRow & Partial<ItemDetail>)[]
+          narrow?: string
+          tasks?: readonly (TaskRow & Partial<TaskDetail> & Partial<TaskDeep>)[]
+          items?: readonly (ItemRow & Partial<ItemDetail>)[]
+          comments?: readonly { session: string; title?: string; rounds: readonly { at: number; text: string; state: string }[] }[]
+          rounds?: readonly { round: string; session?: string; at?: number; result?: string; error?: string }[]
         }
         if (result.ok === false) return text([(result as { detail?: string }).detail ?? '这次查询没有读到数据。'])
         const tasks = result.tasks ?? []
         const items = result.items ?? []
         return text([
           `卡片 ${tasks.length} 条，清单条目 ${items.length} 条${result.filter === undefined || result.filter === '' ? '' : `（筛选：${result.filter}）`}。${result.truncated === true ? '（已达 limit 的上限，还有更多。）' : ''}`,
-          ...tasks.map(row => `卡片：${row.title}（${row.status}）\n${taskBodyOf(row)}`),
+          ...(result.narrow === undefined ? [] : [result.narrow]),
+          ...tasks.map(row => `卡片：${row.title}（${row.status}）\n${taskBodyOf(row)}${taskDeepBodyOf(row)}`),
           ...items.map(row => `${row.ref} ${row.title}（${row.status}）\n${itemBodyOf(row)}`),
+          // The heavy halves, rendered because the model asked for them: a
+          // projection that carries the words in JSON and prints nothing here
+          // would be the same lie the detail parameter used to tell.
+          ...(result.comments ?? []).map(group => [
+            `评论（${group.title ?? group.session}）：`,
+            ...group.rounds.map(entry => `  [${entry.state}] ${entry.text}`),
+          ]).flat(),
+          ...(result.rounds ?? []).length === 0 ? [] : [
+            `轮次（${(result.rounds ?? []).length} 条，最近在后）：`,
+            ...(result.rounds ?? []).map(entry => `  ${entry.result ?? '未结算'}${entry.error === undefined ? '' : `：${entry.error}`}`),
+          ],
         ])
       },
     },
@@ -2245,7 +2786,24 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
       // be wrong.
       render: (_args, value) => {
         const result = value as unknown as ExecuteResult
-        const head = result.dryRun ? '演练：一个字节都没有落盘。' : '已落盘。'
+        /* THE FIRST LINE IS A MEASUREMENT, NOT AN OPENING COURTESY.
+         *
+         * It used to be `dryRun ? 演练 : 已落盘` — so a batch that only relayed a
+         * run to the engine, and wrote no document at all, opened with
+         * 「已落盘」. Nothing had been written; the model's next turn was built
+         * on that sentence. Now the head is derived from what the reports say
+         * landed, and the "nothing was written" case has words of its own. */
+        const wroteAny = result.reports.some(report => report.outcome?.lane === 'document'
+          && report.outcome.unchanged !== true
+          && report.outcome.wrote.length > 0)
+        const relayedAny = result.reports.some(report => report.outcome?.lane === 'engine')
+        const head = result.dryRun
+          ? '演练：一个字节都没有落盘。'
+          : wroteAny ? '已落盘。'
+            // Pure-relay batches land here: a real thing happened, and it was
+            // NOT a write.
+            : relayedAny ? '这一批只交给了引擎，没有写文档。'
+              : '这一批没有产生任何写入。'
         const touched = [
           ...(result.changed?.items ?? []).map(row => `${row.ref} ${row.title}`),
           ...(result.changed?.tasks ?? []).map(row => `卡片「${row.title}」`),
@@ -2255,6 +2813,11 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
           result.summary,
           ...(touched.length > 0 ? [`受影响的：${touched.join('、')}`] : []),
           ...(result.enginePending.length > 0 ? [`已受理但引擎不在线：${result.enginePending.join('、')}`] : []),
+          // The third state, in the model's own words: nothing happened, and
+          // the reason is the page, not the board.
+          ...(result.engineUnsupported.length > 0
+            ? [`没有执行（持席位的浏览器不支持这条载具，换一台设备或刷新后再试）：${result.engineUnsupported.join('、')}`]
+            : []),
           ...result.reports.filter(report => !report.ok).map(report => `未生效：${report.op} —— ${report.detail}`),
         ])
       },
@@ -2266,99 +2829,263 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
   return [capabilities, query, execute]
 }
 
-/** The read tool's body: rows carry their short number, the truncation happens
- *  here so the model never receives a whole board in one context. */
+/**
+ * The read tool's body.
+ *
+ * ── WHY THIS IS THE HALF THAT MATTERED ─────────────────────────────────────
+ *
+ * The write surface has always been larger than the read surface. A model could
+ * set six run-config fields, arm a schedule, create a session rule, bind a
+ * source — and `taskboard_query` could tell it a card's TITLE and STATUS. So
+ * 「给这张卡加一条规则」 was impossible to do correctly: `rule.create` requires a
+ * session id, and no query in the system returned one. The model's remaining
+ * moves were to guess, or to ask the person to copy an identifier out of the
+ * screen they were looking at.
+ *
+ * A tool that can write what it cannot read is a tool that makes its caller
+ * guess, and a guess is indistinguishable from an answer until something breaks.
+ *
+ * ── THREE DEPTHS, AND WHY THE DEFAULT IS THE SHALLOW ONE ───────────────────
+ *
+ *  · `brief` — the name and the column. The default, because 「看一下板上有什
+ *    么」 is the overwhelmingly common question and the answer to it is a list;
+ *  · `full` — plus what a person typed (body, notes, steps, dates);
+ *  · `deep` — plus everything the model may WRITE: run config, schedule, session
+ *    rules, binds, sessions, attachment counts, live state.
+ *
+ * `deep` is not the default because it is not free: a card's sessions and rules
+ * are paid for in context on EVERY turn, and a model that only wanted the board's
+ * shape should not carry them. Depth is the caller's decision, `limit` is the
+ * other knob, and `truncated` is what tells the caller the two interacted.
+ *
+ * `of` is the fourth way in: one card, by title or short number, in deep — the
+ * 「X 这张卡现在什么情况」 question, which is a different question from 「板上有
+ * 什么」 and deserves its own answer rather than a filtered list of one.
+ *
+ * ── THE HEAVY THINGS ARE OPT-IN (`include`) ────────────────────────────────
+ *
+ * Round transcripts and comment threads are the person's own words. They are
+ * readable in full — that is a product requirement, not an optimisation target —
+ * but they are not what 「看一下板」 means, so they are read only when asked for.
+ * A default that dragged every comment into context would make the person's own
+ * writing the most expensive thing in the tool.
+ */
 async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): Promise<unknown> {
   if (exec?.signal.aborted === true) return { ok: false, detail: '这次调用已经被取消，没有读到数据。' }
   const board = deps.board()
   if (board === undefined || !board.available) {
     return { ok: false, detail: '看板存储不可用，这次查询没有读到任何数据。' }
   }
-  const request = (args ?? {}) as { filter?: string; detail?: string; limit?: number; posture?: string }
+  const request = (args ?? {}) as {
+    filter?: string
+    of?: unknown
+    detail?: string
+    include?: readonly string[]
+    limit?: number
+    posture?: string
+    rounds?: number
+  }
   const limit = Math.min(100, Math.max(1, request.limit ?? 20))
-  /* `detail` USED TO BE A LIE, and it was the worst kind of lie this tool can
-     tell: the parameter was declared, described in prose as 「full 连正文一起回」,
-     destructured here — and then never read by a single branch below. Every row
-     comes back with its title and its status whatever the caller asked for, so a
-     model that asks for the contents of a note and is handed a title has no way
-     to tell that it has been given the wrong answer; it just believes it.
-
-     So it is read here, and it decides the PROJECTION, not the wording: `full`
-     is the whole written row and `brief` is the name. Both are the model's
-     choice, and `limit` is still the only knob that bounds the size — which is
-     why the parameter's own text tells the caller to bring it down with `full`. */
-  const full = request.detail === 'full'
+  const requested = request.detail
+  const depth: 'brief' | 'full' | 'deep' = requested === 'deep' ? 'deep' : requested === 'full' ? 'full' : 'brief'
   const doc = board.getDoc()
   const items = board.getItemsDoc()
   const filter = (request.filter ?? '').trim()
-  /* The CARDS run the board's own grammar, the same one the board's search box
-   * runs. A whole-string `includes` against the
-   * title, while `filterHelp()` advertises `has:auto` / `is:unread` / `ws:` as
-   * usable values, returns the cards whose TITLE
-   * happens to contain those characters and a zero everywhere else. The
-   * checklist half below runs its real grammar, so a filter that
-   * 「does nothing」 for half the document and works on the other half is what
-   * the asymmetry buys.
+  /* THE TWO SIDE TABLES every projection reads, built once.
    *
-   * The facets are the ones the board itself supplies, from the same core
+   * `cards` is the status map the FILTER judged with, so the rows a filter
+   * returned and the status printed on them come from one read of the board — a
+   * row that matched `status:review` cannot come back labelled `todo`.
+   * `titles` is what turns a row's `taskId` from a uuid into the name a caller
+   * can say back. */
+  const itemCtx = itemSearchContext(deps.now(), undefined, cardStatusMapOf(doc.tasks))
+  const cards = itemCtx.cards
+  const titles = cardTitlesOf(doc.tasks)
+
+  /* `of` — ONE TARGET, READ COMPLETELY.
+   *
+   * A title that names more than one card is a REFUSAL listing them, not a
+   * silent first match: 「把收尾移到已完成」 about two cards called 收尾 used to
+   * move one of them and report success, and nothing anywhere said there had
+   * been two. */
+  if (request.of !== undefined && String(request.of).trim() !== '') {
+    const looked = resolveCard(doc.tasks, request.of)
+    if (looked.kind === 'missing') {
+      return { ok: false, detail: `看板上没有叫「${String(request.of)}」的卡。用 filter 先看一眼板上有哪些卡。` }
+    }
+    if (looked.kind === 'ambiguous') {
+      return { ok: false, detail: ambiguousCardWhy(request.of, looked.matches) }
+    }
+    const card = looked.task
+    const sessionTitles = await sessionTitlesOf(deps, card)
+    const deep = taskDeepRow(card, sessionTitles, liveOf(deps, card))
+    return compact({
+      ok: true,
+      filter,
+      detail: 'deep',
+      tasks: [deep],
+      items: items.items
+        .filter(item => item.taskId === card.id)
+        .map(item => itemDetailRow(item, cards, titles)),
+      truncated: false,
+      ...await includedOf(deps, request.include, card, request.rounds),
+    })
+  }
+
+  /* The CARDS run the board's own grammar, the same one the board's search box
+   * runs. The facets are the ones the board itself supplies, from the same core
    * functions its own components read (`hasLiveAutomation`, `taskUnviewed`), so
    * 「which cards are on fire」 has one answer rather than one per surface. A
    * workspace title is the one facet the HOST owns, so it is passed in rather
    * than guessed: a card with no workspace is not in any workspace, and saying
-   * so is better than matching it against a name nobody gave it.
-   */
+   * so is better than matching it against a name nobody gave it. */
   const workspaceTitle = deps.workspaceTitle
-  const tasks = doc.tasks
-    .filter(task => matchTask(task, filter, [], {
-      ...(task.workspaceId !== undefined && workspaceTitle !== undefined
-        ? { workspaceTitle: workspaceTitle(task.workspaceId) }
-        : {}),
-      hasAutomation: hasLiveAutomation(task),
-      isUnviewed: taskUnviewed(task),
-    }))
-    .slice(0, limit)
-  const rows = full ? tasks.map(taskDetailRow) : tasks.map(taskRow)
+  const matchedTasks = doc.tasks.filter(task => matchTask(task, filter, [], {
+    ...(task.workspaceId !== undefined && workspaceTitle !== undefined
+      ? { workspaceTitle: workspaceTitle(task.workspaceId) }
+      : {}),
+    hasAutomation: hasLiveAutomation(task),
+    isUnviewed: taskUnviewed(task),
+  }))
   // The checklist is matched by the SAME grammar the search box a person types
-  // into uses, reached through the one door that leads to it. A
-  // second haystack assembled here gives two search boxes that agree today and
-  // disagree after the next change — exactly the defect nobody reports until
-  // someone says a filter "does nothing". The context is built ONCE and the
-  // same clock is handed to every row, so one answer cannot disagree with
-  // itself about what "stale" or "overdue" means.
-  //
-  // 看板的栏跟着一起进去，而这不是优化：一条挂卡的行「在哪一栏」由那张卡回答，不带上
-  // 它，`status:` 就成了界面给得出、这个查询复现不了的筛子——模型会被告知某一行是
-  // 待办，而它在待审核。表读的是**卡片自己那一栏**，与面板读的是同一个字段。
-  const itemCtx = itemSearchContext(deps.now(), undefined, cardStatusMapOf(doc.tasks))
-  const cards = itemCtx.cards
-  const matchedItems = items.items
-    .filter(item => matchItemQuery(item, filter, itemCtx))
-    .slice(0, limit)
-  // The SAME map the filter was judged with is handed to the projection, so the
-  // rows a filter returned and the status printed on them come from one read of
-  // the board — a row that matched `status:review` cannot come back labelled
-  // `todo`, which is the whole point.
-  const itemRows = full
-    ? matchedItems.map(item => itemDetailRow(item, cards))
-    : matchedItems.map(item => itemRow(item, cards))
-  // Truncation is reported for BOTH lists, not just the cards: the number the
-  // caller is given is "how many rows came back", and the two lists are capped
-  // by the same `limit`, so a full board of cards could otherwise hide an
-  // unbounded list of notes behind a `truncated: false`.
-  const truncated = tasks.length >= limit || matchedItems.length >= limit
-  if (request.posture !== undefined && request.posture !== '') {
-    // Posture is a fact about a SESSION, and a card is not a session — so the
-    // caller names the session, rather than this tool guessing which of a
-    // card's bindings it meant.
-    return {
-      ok: true,
-      filter,
-      detail: full ? 'full' : 'brief',
-      tasks: rows,
-      items: itemRows,
-      truncated,
-      posture: await deps.posture(request.posture),
-    }
+  // into uses, reached through the one door that leads to it. 看板的栏跟着一起
+  // 进去，而这不是优化：一条挂卡的行「在哪一栏」由那张卡回答，不带上它，
+  // `status:` 就成了界面给得出、这个查询复现不了的筛子。
+  const matchedItems = items.items.filter(item => matchItemQuery(item, filter, itemCtx))
+
+  /* TRUNCATION IS MEASURED, NOT INFERRED FROM THE CAP.
+   *
+   * It used to be `list.length >= limit`, which answers a DIFFERENT question:
+   * a board holding exactly `limit` cards reported 「还有更多」 with the whole
+   * board in hand. The caller's next move is to narrow the filter, so a false
+   * positive costs a turn and teaches the model that the flag is noise. Taking
+   * one MORE row than asked for is what makes 「there is more」 a fact. */
+  const taskSlice = matchedTasks.slice(0, limit)
+  const itemSlice = matchedItems.slice(0, limit)
+  const truncated = matchedTasks.length > limit || matchedItems.length > limit
+
+  const rows = depth === 'deep'
+    ? await Promise.all(taskSlice.map(async task =>
+      taskDeepRow(task, await sessionTitlesOf(deps, task), liveOf(deps, task))))
+    : depth === 'full' ? taskSlice.map(taskDetailRow) : taskSlice.map(taskRow)
+  const itemRows = depth === 'brief'
+    ? itemSlice.map(item => itemRow(item, cards, titles))
+    : itemSlice.map(item => itemDetailRow(item, cards, titles))
+
+  const view = compact({
+    ok: true,
+    filter,
+    detail: depth,
+    tasks: rows,
+    items: itemRows,
+    truncated,
+    // The three ways to get a bigger answer, stated where the caller is
+    // deciding rather than only in the parameter's own description.
+    ...truncated ? { narrow: '结果被 limit 截断了：加 filter 收窄，或把 limit 调大（上限 100）。' } : {},
+    ...request.posture !== undefined && request.posture !== ''
+      // Posture is a fact about a SESSION, and a card is not a session — so the
+      // caller names the session, rather than this tool guessing which of a
+      // card's bindings it meant.
+      ? { posture: await deps.posture(request.posture) }
+      : {},
+  })
+  return view
+}
+
+/** A card's live state, or undefined when this host cannot see its sessions. */
+function liveOf(deps: ToolDeps, task: TaskRecord): string | undefined {
+  const sessions = relatedSessionIdsOf(task, undefined, undefined)
+  if (sessions.length === 0) return undefined
+  const seen = sessions.map(fact => sessionRunningOf(deps.sources, fact.sessionId).value)
+  if (seen.some(value => value === true)) return 'running'
+  if (seen.some(value => value === 'unknown')) return 'unknown'
+  return 'idle'
+}
+
+/**
+ * `sessionId → title` for the sessions this card is related to.
+ *
+ * Read one card at a time and only when the row is deep: the titles are a nicety
+ * on a brief row and a necessity on a deep one, and paying for them on every
+ * list would make 「看一下板上有什么」 cost a lookup per card.
+ *
+ * A session this host cannot name is reported by its id rather than dropped:
+ * 「there is a session I cannot name」 is a fact, and a missing row would read as
+ * a card with fewer sessions than it has.
+ */
+async function sessionTitlesOf(deps: ToolDeps, task: TaskRecord): Promise<ReadonlyMap<string, string> | undefined> {
+  const ids = relatedSessionIdsOf(task, undefined, undefined).map(fact => fact.sessionId)
+  if (ids.length === 0) return undefined
+  const out = new Map<string, string>()
+  for (const id of ids) {
+    const facts = await deps.posture(id)
+    const title = typeof (facts as { title?: unknown }).title === 'string' ? String((facts as { title?: unknown }).title) : ''
+    if (title !== '') out.set(id, title)
   }
-  return { ok: true, filter, detail: full ? 'full' : 'brief', tasks: rows, items: itemRows, truncated }
+  return out.size === 0 ? undefined : out
+}
+
+/**
+ * The opt-in heavy content: comment threads and round transcripts.
+ *
+ * `include` is a list because these are independent questions and a caller
+ * sometimes needs one without the other. Neither is ever returned by default:
+ * they are the person's own words, and a tool that dragged them into every
+ * 「看一下板」 would make their writing the most expensive thing in the context.
+ * @returns the extra fields, or an empty object when nothing was asked for.
+ */
+async function includedOf(
+  deps: ToolDeps,
+  include: readonly string[] | undefined,
+  task: TaskRecord,
+  rounds: number | undefined,
+): Promise<Record<string, unknown>> {
+  const asked = new Set((include ?? []).map(name => String(name)))
+  if (asked.size === 0) return {}
+  const extra: Record<string, unknown> = {}
+  // ONE lookup, shared by both halves: the threads are grouped by session, and a
+  // group headed by an id is a group the reader cannot name.
+  const titles = asked.has('comments') ? await sessionTitlesOf(deps, task) : undefined
+  if (asked.has('comments')) {
+    // FULL text, per round, grouped by session. The product requirement is that
+    // a person can read their whole comment and its whole context; this is the
+    // model's view of the same words, not a summary of them.
+    const bySession = new Map<string, { round: string; at: number; text: string; state: string }[]>()
+    for (const round of task.executions) {
+      const text = round.comment ?? ''
+      if (text === '') continue
+      const key = round.sessionId ?? '(未定会话)'
+      const list = bySession.get(key) ?? []
+      list.push({
+        round: round.id,
+        at: round.startedAt,
+        text,
+        state: round.result ?? (round.injectedAt === undefined ? 'queued' : 'sent'),
+      })
+      bySession.set(key, list)
+    }
+    extra.comments = [...bySession].map(([session, list]) => compact({
+      session,
+      title: titles?.get(session),
+      rounds: list,
+    }))
+  }
+  if (asked.has('rounds')) {
+    // The ledger, without the payloads: which session, when, how it ended.
+    const cap = Math.min(200, Math.max(1, rounds ?? 50))
+    extra.rounds = task.executions.slice(-cap).map(round => compact({
+      round: round.id,
+      session: round.sessionId,
+      at: round.startedAt,
+      endedAt: round.endedAt,
+      result: round.result,
+      error: round.error,
+      direct: round.direct,
+      // Whether this round ran the line as a slash command rather than sending
+      // it as text. Writable (`task.comment` publishes `command`), so readable:
+      // it is also the difference between 「说了一句话」 and 「执行了一条命令」.
+      command: round.command,
+    }))
+  }
+  return extra
 }

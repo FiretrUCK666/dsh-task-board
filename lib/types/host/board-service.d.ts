@@ -1,4 +1,4 @@
-import type { BoardCommand, BoardCommit, BoardDoc, BoardEvent, LeaseState } from '../core/board-doc.ts';
+import type { BoardCommand, BoardCommandCarrier, BoardCommit, BoardDoc, BoardEvent, CommandRelayStatus, LeaseState } from '../core/board-doc.ts';
 import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts';
 import type { ItemRecord } from '../core/item.ts';
 import type { ItemAddress } from './board-route.ts';
@@ -125,8 +125,16 @@ export declare const STREAM_ALIVE_MAX_MS: number;
 /** The engine-lease protocol version. A client that predates the visibility
  *  flag never sends `active`; a client that sees NO version in the response
  *  knows the host is stale (pre-preemption) and can say so on the board —
- *  the "修了但没生效" mystery made visible. */
-export declare const LEASE_PROTOCOL_ACTIVE = 2;
+ *  the "修了但没生效" mystery made visible.
+ *
+ *  3 = THE HOST READS A DIFF COMMIT. `applyRowCommit` has always treated an
+ *  absent row as "not mine to judge" rather than as a deletion, so a replica may
+ *  send only the rows a commit speaks about — which takes a 1.9 MB payload down
+ *  to a few KB per edit. A host from before this version still expects the full
+ *  array, so the replica keeps sending it until a lease has told it otherwise;
+ *  `hostProtoVersion()` is undefined until then, and "not yet known" is not
+ *  "new". One number, one meaning, and the older side keeps working. */
+export declare const LEASE_PROTOCOL_ACTIVE = 3;
 /** The cap on parked launch commands (newest-per-task dedup keeps this small). */
 export declare const PENDING_COMMAND_LIMIT = 20;
 /** One relayed user action lives in the shared core (see BoardCommand). */
@@ -296,7 +304,7 @@ export declare class DocumentService {
      * keeps the seat while it renews; an all-hidden fleet keeps the last holder
      * (scheduled automation survives nobody-looking).
      */
-    acquireLease(clientId: string, ttlMs?: number, active?: boolean): LeaseState;
+    acquireLease(clientId: string, ttlMs?: number, active?: boolean, carriers?: readonly BoardCommandCarrier[]): LeaseState;
     /** Voluntary release (page teardown): frees the seat immediately. */
     releaseLease(clientId: string): LeaseState;
     /** Any API touch from the holder renews the lease for its granted TTL
@@ -340,10 +348,23 @@ export declare class DocumentService {
      * the receipt becomes the honest `queued: true` — 「已受理，引擎当前不在线」.
      * Parking is the recoverable branch, and these two states are
      * indistinguishable from here, so the recoverable one is the right default.
+     *
+     * ── AND THE THIRD STATE, which is the one that used to lie ────────────────
+     *
+     * 「能干事」 is TWO questions, not one: is somebody listening, AND do they know
+     * this carrier. The seam only asked the first. A live page whose build had no
+     * `session.create` branch received the frame, dropped it, and left the caller
+     * with 「已交给引擎执行一次」 — work promised to a performer that had already
+     * refused it in silence.
+     *
+     * So the holder declares its carriers with the lease, and a carrier outside
+     * that list is neither broadcast nor parked: parking it would replay it to
+     * the same page later, which is the same lie with a delay. It answers
+     * `unsupported` and says which carrier, because the caller's next move
+     * depends on it (a stale page → reload; a carrier no build implements → it
+     * is the wrong action entirely).
      */
-    submitCommand(command: BoardCommand): {
-        queued: boolean;
-    };
+    submitCommand(command: BoardCommand): CommandRelayStatus;
     /** Subscribe to board events (the SSE layer). @returns the disposer. */
     subscribe(listener: (event: BoardEvent) => void): () => void;
     /** Drain the unit and stop serving. */
