@@ -1845,3 +1845,85 @@ describe('the column track: the last tab is reachable by dragging', () => {
     unmount()
   })
 })
+/**
+ * OPENING A CARD MUST NOT BLANK THE PANEL.
+ *
+ * This is the one path the rest of this file never rendered: `boardStub` pins
+ * `selectedTaskId: undefined`, so every case here draws the CLOSED board. The card
+ * detail was therefore only ever checked by reading its SOURCE as text — and a
+ * source-reading check cannot see a temporal dead zone.
+ *
+ * What shipped and what it cost: `archivedSessions` was computed one line ABOVE the
+ * `const hiddenIds` it filters against. `const` is in a temporal dead zone until its
+ * declaration runs, so opening any card threw
+ * `ReferenceError: Cannot access 'hiddenIds' before initialization` during render —
+ * inside a React tree with no error boundary, that replaces the whole panel with
+ * blank. Every gate was green, 3380 tests passed, and the failure was one click deep.
+ *
+ * So this case mounts the REAL snapshot with a card SELECTED and asserts the render
+ * produces something. A component that throws fails here; a component that draws an
+ * empty div would too, which is why the content is checked and not merely "no throw".
+ */
+describe('opening a card renders it, rather than blanking the panel', () => {
+  /** A card with a name, in a column a person can see. */
+  function oneCard(): TaskRecord {
+    return createTask({ title: '一张能点开的卡', description: '', prompt: '把这件事做掉' }, 1_700_000_000_000, 'card-open-1')
+  }
+
+  /** The panel's controller, with that card OPENED. */
+  function openedBoard(tasks: readonly TaskRecord[]): BoardController {
+    const stub = boardStub(tasks) as Record<string, unknown>
+    const proxy = new Proxy(stub, {
+      get(target, key) {
+        if (key === 'getSnapshot') {
+          return () => ({ ...(stub.getSnapshot as () => Record<string, unknown>)(), selectedTaskId: tasks[0]?.id })
+        }
+        return Reflect.get(target, key)
+      },
+    })
+    return proxy as unknown as BoardController
+  }
+
+  it('draws the detail of the selected card', () => {
+    const card = oneCard()
+    let html: string
+    expect(() => {
+      html = renderToStaticMarkup(createElement(TaskBoardPanel, {
+        controller: openedBoard([card]),
+      } as never))
+    }, 'opening a card threw during render — with no error boundary that blanks the whole panel').not.toThrow()
+    // Content, not merely "it did not throw": an empty shell is the same blank page
+    // one layer down.
+    expect(html!).toContain('一张能点开的卡')
+    expect(html!.length).toBeGreaterThan(200)
+  })
+
+  it('survives a card whose linked rows include an archived one', () => {
+    // `linkedOf` keeps an archived row and marks it, so this is a shape the detail
+    // really sees. It must render — and it must NOT list the conversation: a card
+    // shows its work, and a put-away conversation is not work. A tray naming them
+    // shipped once and filled half the panel with 29 titles; the reader's question
+    // is 「这张卡在跑什么」, not 「这张卡历史上绑过谁」.
+    const card = oneCard()
+    const stub = boardStub([card]) as Record<string, unknown>
+    const proxy = new Proxy(stub, {
+      get(target, key) {
+        if (key === 'getSnapshot') {
+          return () => ({ ...(stub.getSnapshot as () => Record<string, unknown>)(), selectedTaskId: card.id })
+        }
+        if (key === 'linkedOf') return () => [{ sessionId: 's-archived', title: '放起来的会话', running: false, updatedAt: 1, archived: true }]
+        if (key === 'sessionsOf') return () => []
+        return Reflect.get(target, key)
+      },
+    })
+    let html: string
+    expect(() => {
+      html = renderToStaticMarkup(createElement(TaskBoardPanel, {
+        controller: proxy as unknown as BoardController,
+      } as never))
+    }).not.toThrow()
+    expect(html!, 'an archived conversation is being listed on the card again').not.toContain('放起来的会话')
+    // The card itself still renders — "no tray" must not mean "no detail".
+    expect(html!).toContain('一张能点开的卡')
+  })
+})

@@ -1300,16 +1300,20 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
-  /* Scrollbar-less scrolling: the list scrolls on any trackpad/wheel gesture
-     but never paints a visible scrollbar (see the shared hidden-bar rule). */
-  /* Smooth wheel/trackpad movement — the list glides instead of snapping,
-     one more native-feel detail; reduced-motion degrades to instant. */
-  scroll-behavior: smooth;
-}
-@media (prefers-reduced-motion: reduce) {
-  .cards {
-    scroll-behavior: auto;
-  }
+  /* 滚动条不画在这条轨道上（见共享层那条隐藏规则）。 */
+  /* NO `scroll-behavior: smooth` HERE, and the comment that used to sit on it
+     is worth correcting rather than deleting, because it was confidently wrong:
+     it said smooth made the list 「glide instead of snapping, one more
+     native-feel detail」. The measured effect is the opposite.
+     `scroll-behavior: smooth` does not smooth a wheel gesture — it makes EVERY
+     programmatic scroll animate, and more importantly Chromium routes wheel and
+     trackpad input through the same animation channel, so each event of one
+     gesture RESTARTS a tween that has not finished. One flick arrives as a dozen
+     small animations, each interrupted by the next, and the result is exactly
+     the 「一卡一卡、不跟手」 report: the bar jumps in steps, the content lags the
+     fingers, and it feels worse the faster you scroll.
+     A wheel gesture is already smooth — it is the platform's own inertial
+     scrolling. The native-feel answer is to add nothing. */
 }
 
 .columnEmpty {

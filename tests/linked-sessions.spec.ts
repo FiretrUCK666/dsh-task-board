@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest'
-import { readFileSync } from 'node:fs'
-import { join } from 'node:path'
 import {
   boundSourceTitle,
   deriveLinkedSessions,
@@ -170,51 +168,5 @@ describe('an archived session is a fact the row carries, not an absence', () => 
     // session — so unlike archiving it really does remove the row. Keeping the
     // two apart is the whole point: one is 「不看」, the other is 「放起来了」.
     expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-1' }, sources(['s-1']))).toHaveLength(0)
-  })
-})
-
-/**
- * THE FLAG HAS TO REACH THE SCREEN, OR THE FIX IS HALF DONE.
- *
- * `controller.linkedOf` keeps an archived row and marks it — but the first version
- * of that change stopped there. Nothing in `src/client` read `.archived`, so on the
- * card an archived conversation still just vanished: exactly as indistinguishable
- * from a deleted one as before, while a comment in the controller claimed 「a reader
- * can see the session is still bound」. A field that is written and never read is
- * the 「假线索」 hard rule 18 calls out, and it is worse than the bug it replaced,
- * because the comment makes the next reader believe the case is handled.
- *
- * These two cases pin both halves: the client READS the flag, and the tray it
- * feeds is excluded from the 会话 list (which is about work, not ownership).
- */
-describe('the archived flag reaches the card, and stays out of the work list', () => {
-  const detail = readFileSync(join(process.cwd(), 'src', 'client', 'board', 'TaskDetail.tsx'), 'utf8')
-
-  it('the card reads row.archived and renders a named tray for it', () => {
-    // The read exists at all — this is the half that was missing.
-    expect(detail, 'src/client never reads the archived flag, so the row invisibly vanishes').toContain('row.archived')
-    // And it is RENDERED, not merely computed: a computed-only array is the same
-    // silent absence one refactor later.
-    expect(detail).toContain('archivedSessions.length > 0')
-    expect(detail).toContain('detail.archivedTrayTitle')
-  })
-
-  it('the archived tray is NOT folded into the 会话 list', () => {
-    // `sessionsOf` is 「what is going on」 and leaves archived conversations out.
-    // Putting them back there would make this list disagree with the board's dots
-    // (which read the same unified list) and would call a put-away conversation
-    // outstanding work. The tray is a separate line, filtered against the list.
-    expect(detail).toContain('!sessions.some(session => session.sessionId === row.sessionId)')
-    expect(detail, 'the archived rows were merged into the work list').not.toContain('sessionsOf(current).concat')
-  })
-
-  it('says where to bring it back rather than offering a button it cannot honour', () => {
-    // Un-archiving is a NATIVE sidebar operation; this plugin does not perform it,
-    // so a 「恢复」 button here would be a promise the panel cannot keep. The copy
-    // names the place instead.
-    const locales = readFileSync(join(process.cwd(), 'src', 'client', 'locales.ts'), 'utf8')
-    expect(locales).toContain('detail.archivedTrayTitle')
-    // Both languages, because a missing key renders as the key itself.
-    expect(locales.match(/detail\.archivedTrayTitle/g)?.length, 'the archived tray title is not translated in both languages').toBe(2)
   })
 })

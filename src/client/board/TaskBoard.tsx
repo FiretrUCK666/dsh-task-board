@@ -651,13 +651,56 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
   /** The track's column left-edges (identity order = COLUMNS order). */
   const columnLefts = (root: HTMLElement): number[] =>
     Array.from(root.querySelectorAll<HTMLElement>('section[data-status]')).map(section => section.offsetLeft)
-  const columnIndex = (status: TaskStatus): number =>
-    COLUMNS.findIndex(column => column.status === status)
+  const columnIndex = (status: TaskStatus): number => {
+    return COLUMNS.findIndex(column => column.status === status)
+  }
+  /**
+   * The column edges, MEASURED ONCE PER LAYOUT — never on a scroll event.
+   *
+   * ── WHY THIS IS A CACHE AND NOT A QUERY ────────────────────────────────
+   *
+   * This used to run `querySelectorAll` + one `offsetLeft` per column on EVERY
+   * scroll event. `offsetLeft` is a LAYOUT property: reading it while the
+   * scroller is moving forces the browser to flush pending style and layout
+   * work synchronously before it can answer — a swallowed frame, per event, for
+   * as long as the gesture lasts. That is the mechanism behind 「所有能上下滑的
+   * 地方都不跟手」: not one slow component, but a forced reflow inside the input
+   * path, and it lands on whichever scroller the reader happens to be dragging.
+   *
+   * The edges only change when the layout does — a column resize, a font swap, a
+   * panel width change. `ResizeObserver` reports exactly those moments, so the
+   * measurement happens where layout is already settled and the scroll path does
+   * nothing but arithmetic on cached numbers.
+   *
+   * Reading is still correct when the cache is cold (first paint, or a resize
+   * that has not been observed yet): a missing cache measures once. That keeps
+   * the correctness of the old code and drops its cost.
+   */
+  const columnEdgesRef = useRef<{ readonly lefts: readonly number[]; readonly scrollWidth: number; readonly clientWidth: number } | undefined>(undefined)
+  const measureColumns = useCallback((root: HTMLElement): { readonly lefts: readonly number[]; readonly scrollWidth: number; readonly clientWidth: number } => {
+    const lefts = columnLefts(root)
+    const measured = { lefts, scrollWidth: root.scrollWidth, clientWidth: root.clientWidth }
+    columnEdgesRef.current = measured
+    return measured
+  }, [])
+  useEffect(() => {
+    const root = columnsRef.current
+    if (root === null || typeof ResizeObserver === 'undefined') return
+    // The observer watches the TRACK and each COLUMN: a column's width is what
+    // moves its left edge, and the track's own width decides `clientWidth`.
+    const observer = new ResizeObserver(() => { measureColumns(root) })
+    observer.observe(root)
+    for (const section of root.querySelectorAll<HTMLElement>('section[data-status]')) observer.observe(section)
+    return () => { observer.disconnect() }
+  }, [measureColumns])
   const syncActiveColumn = useCallback((): void => {
     const root = columnsRef.current
     if (root === null) return
-    const sections = Array.from(root.querySelectorAll<HTMLElement>('section[data-status]'))
-    if (sections.length === 0) return
+    /* NO DOM READ IN THE SCROLL PATH. Everything below comes from the cache or
+     * from `scrollLeft` (which is not a layout read — the scroller already
+     * knows where it is). */
+    const edges = columnEdgesRef.current ?? measureColumns(root)
+    if (edges.lefts.length === 0) return
     /* `offsetLeft` is read against the SCROLLER, which owns a `position: relative`
        for exactly this reason (see `.columns` in `board.module.css`). Without it
        the offsets came from the outer `.board` and carried its padding, so the
@@ -667,13 +710,13 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
        in `column-tabs.ts`, not here. */
     const at = columnIndexAtScroll(
       root.scrollLeft,
-      sections.map(section => section.offsetLeft),
-      root.scrollWidth,
-      root.clientWidth,
+      edges.lefts,
+      edges.scrollWidth,
+      edges.clientWidth,
     )
-    const status = sections[at]?.dataset.status as TaskStatus | undefined
+    const status = COLUMNS[at]?.status
     if (status !== undefined) setActiveColumn(status)
-  }, [])
+  }, [measureColumns])
   const jumpToColumn = (status: TaskStatus): void => {
     const root = columnsRef.current
     if (root === null) return

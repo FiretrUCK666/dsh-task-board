@@ -399,23 +399,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // The unified session list (run + linked, de-duplicated by session id):
   // the single source for the 会话 section — a session reached from an
   // execution page or a linked panel is one row here, one comment thread.
+  //
+  // ARCHIVED CONVERSATIONS ARE NOT LISTED, and that is a product decision taken
+  // against an earlier one. A tray naming them shipped once; on a real card it
+  // filled half the panel with 29 titles nobody had asked to see, which is noise
+  // wearing the costume of information. The reader of a card wants 「this card's
+  // work」, and a put-away conversation is not that.
+  //
+  // What the card still owes the reader is the truth about AVAILABILITY, and it
+  // says it where the reader acts: opening an archived session's detail discloses
+  // 「已归档」 and disables the composer rather than silently accepting a message.
   const sessions = controller.sessionsOf(current)
-  /* THE ARCHIVED SESSIONS THIS CARD STILL OWNS, named so a reader can tell
-   * 「放起来了」 from 「没了」.
-   *
-   * `sessionsOf` is 「what is going on」, so it leaves archived conversations out —
-   * correctly, since an archived session is not outstanding work. But archiving is
-   * a RECOVERABLE hide, and while the row simply vanished the card reported an
-   * absence it could not attest: a person who tidied their sidebar saw a session
-   * disappear and had no way to distinguish that from having deleted it. The
-   * linked rows carry the fact now, and this is where it reaches the screen.
-   *
-   * They are NOT added to the 会话 list: a put-away conversation is not work, and
-   * putting it there would make the count disagree with the board's dots (which
-   * read the same unified list). They get their own line instead. */
-  const archivedSessions = controller.linkedOf(current)
-    .filter(row => row.archived && !hiddenIds.has(row.sessionId))
-    .filter(row => !sessions.some(session => session.sessionId === row.sessionId))
   // The hidden sessions (unified set), for the per-session restore tray.
   const hiddenIds = hiddenSessionIdsOf(current)
 
@@ -878,29 +872,6 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
                           <Button size="sm" variant="dangerGhost" onClick={() => { setConfirmRemoveSession(sessionId) }}>
                             {t('detail.delete')}
                           </Button>
-                        </span>
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              )}
-              {/* 归档托盘：**它原来根本不存在**，而归档会话在卡片上直接就消失了。
-                  归档是这个项目明确定义的「可恢复的隐藏」，不是删除——所以让它在屏上
-                  与删除长得一模一样，等于卡片报告了一个它无法证明的「没有」。
-                  这里不给「恢复」按钮：取消归档是原生侧栏的操作，本插件不替用户做，
-                  所以只说清去哪取消。 */}
-              {archivedSessions.length > 0 && (
-                <div className={css.hiddenTray}>
-                  <div className={css.hiddenTrayHead}>
-                    <span className={css.hiddenTrayTitle}>
-                      {t('detail.archivedTrayTitle', { n: String(archivedSessions.length) })}
-                    </span>
-                  </div>
-                  <ul className={css.hiddenTrayList}>
-                    {archivedSessions.map(row => (
-                      <li key={row.sessionId} className={css.hiddenTrayRow}>
-                        <span className={`${css.hiddenTrayName} ${components.truncate}`} title={row.title}>
-                          {row.title}
                         </span>
                       </li>
                     ))}

@@ -315,8 +315,15 @@
 :where([data-dsh-taskboard-panel])::-webkit-scrollbar,
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  /* ONE WIDTH FOR THE WHOLE PLUGIN, and it is READ from the token layer rather
+   * than typed here: every surface that scrolls gets the same bar, because a
+   * second number anywhere is a second appearance nobody compares.
+   *
+   * 8px is the floor that still shows a two-pixel thumb on a 1x screen; the
+   * arrows below share it, which is what makes the three pieces look assembled
+   * instead of stacked. */
+  width: var(--dsh-tb-scroll-bar);
+  height: var(--dsh-tb-scroll-bar);
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-thumb,
@@ -325,14 +332,21 @@
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
   background: var(--dsh-tb-text-3);
   background-clip: padding-box;
-  /* 滑块自己的圆角读**和轨道缩进同一个值**，因为这两件事是同一个几何问题的两面：
-     盒子的角是一段半径 R 的弧，滑块是一条方头长条。缩进只解决了「条的行程别伸进
-     弧里」，可条到顶时**它自己的头仍是方的**——方头的两个角仍然会顶穿那段弧。
-     把滑块的圆角也设成 R，它到顶时头部的弧与盒子的弧同心，于是无论滚到哪一端都
-     严丝合缝地贴在弧里侧。
-
-     方角的滚动体读不到这个变量，滑块的圆角落回 4px——正是它一直以来的样子。 */
-  border-radius: var(--dsh-tb-scroll-inset, 4px);
+  /* THE THIN BAR IS A BORDER, NOT A SMALLER ELEMENT.
+   *
+   * `::-webkit-scrollbar-thumb` always fills the scrollbar's width — there is no
+   * width property to shrink. So the visible thickness is made by a TRANSPARENT
+   * border whose width is half the difference: the element is `--dsh-tb-scroll-bar`
+   * wide, the paint stops at the padding box, and what a reader sees is
+   * `--dsh-tb-scroll-thumb`. Rounding the padding box (not the border box) is what
+   * makes the end caps round on a bar that is 4px wide.
+   *
+   * This is also why the corner radius reads `--dsh-tb-scroll-inset` first: the
+   * thumb must fit inside a rounded container's arc, and a 4px lozenge inside a
+   * 14px corner needs the same radius the container declared. */
+  border: calc((var(--dsh-tb-scroll-bar) - var(--dsh-tb-scroll-thumb)) / 2) solid transparent;
+  border-radius: var(--dsh-tb-scroll-inset, 999px);
+  min-height: 2rem;
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-track,
@@ -363,11 +377,35 @@
   margin: var(--dsh-tb-scroll-inset, 0);
 }
 
+/* THE ARROWS, WHICH USED TO BE HIDDEN.
+ *
+ * `display: none` was here, and it is why the plugin's bars read as an
+ * unstyled browser strip: Chromium draws a scrollbar as THREE pieces (buttons,
+ * track, thumb), so hiding the buttons leaves one flat rectangle that looks
+ * nothing like the rest of this interface. The bars belong to a product that
+ * draws every other control itself; leaving one control to the platform is what
+ * made it look foreign.
+ *
+ * So they are drawn, in the same three pieces the platform assembles: a short
+ * button at each end, the track between them, the thumb riding the track. The
+ * arrow GLYPH is the platform's own (`::-webkit-scrollbar-button` at zero content
+ * still paints its chevron in Chromium when sized), so this rule only decides
+ * size, spacing and colour — it does not try to be a triangle drawn with borders,
+ * which is how scrollbar arrows usually end up off-centre by a pixel.
+ *
+ * `background-clip: padding-box` + an inset border is what makes the piece a
+ * ROUNDED lozenge rather than a square slab: the visible shape is the padding
+ * box, so the transparent border becomes the gap on both sides.
+ */
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-button,
 :where([data-dsh-taskboard-panel])::-webkit-scrollbar-button,
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button {
-  display: none;
+  display: block;
+  width: var(--dsh-tb-scroll-bar);
+  height: var(--dsh-tb-scroll-bar);
+  background: transparent;
+  color: var(--dsh-tb-text-3);
 }
 
 /* 缩进的**默认值**：座位里每一个元素都从 0 起算。
