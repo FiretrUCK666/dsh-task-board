@@ -12,6 +12,7 @@
  * to 部署默认, so there is no broken state and no migration: the 部署默认 preset
  * IS the deployment default.
  */
+import type { ParameterVocabulary } from './board-actions.ts';
 /**
  * The run-config fields, as ONE list.
  *
@@ -45,11 +46,16 @@ export type RunConfigPresetConfig = {
  * six fields, one declaration, so a seventh field cannot be settable in one place
  * and invisible in another — but it no longer claims the six mean the same thing
  * when omitted, because they do not.
+ *
+ * Two of them also carry a {@link ParamSpec.vocabulary}, which is what puts them
+ * through the reader's-word door. That declaration has to live HERE rather than
+ * beside each action, or the three actions would each have to remember it.
  */
 export declare const RUN_CONFIG_PARAMS: Readonly<Record<typeof RUN_CONFIG_KEYS[number], {
     about: string;
     optional: true;
     appliesWhen: string;
+    vocabulary?: ParameterVocabulary;
 }>>;
 /**
  * The two keys whose wrong value is DAMAGE rather than a preference, so a caller

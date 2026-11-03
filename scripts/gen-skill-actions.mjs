@@ -26,13 +26,20 @@
 
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from 'node:fs'
 import { join, dirname } from 'node:path'
-import { pathToFileURL } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 /** 输出路径，相对仓库根。 */
 const OUTPUT = 'skills/taskboard/references/actions.md'
 
-/** 仓库根：这个脚本在 scripts/ 下。 */
-const root = join(dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1')), '..')
+/**
+ * 仓库根：这个脚本在 scripts/ 下。
+ *
+ * 用 `fileURLToPath` 而不是 `new URL(...).pathname`：pathname 不解百分号转义，把
+ * 仓库克隆到带空格或中文的目录（Windows 的用户目录很常见）时会得到一个不存在的
+ * 路径，`pnpm verify` 就在这一句报「找不到动作目录」。scripts/ 下其它脚本都是这么
+ * 写的。
+ */
+const root = join(dirname(fileURLToPath(import.meta.url)), '..')
 
 /** 一句「这份是生成的」，放在文件最前面，免得有人手改。 */
 const BANNER = [
@@ -172,6 +179,96 @@ function sharedParamsOf(name) {
 }
 
 /**
+ * Resolve a `oneOf` / `default` that names a CONSTANT instead of writing a literal
+ * array — and THROW when it cannot.
+ *
+ * ── WHY THIS IS NOT OPTIONAL POLITENESS ──────────────────────────────────
+ *
+ * The catalog keeps its value sets in constants shared with the code that enforces
+ * them (`MOVABLE` is `taskModel.MANUAL_STATUSES`, `ITEM_STATUS_VALUES` is
+ * `ITEM_STATUSES`, `ITEM_PAGES` is imported). The first version of this generator
+ * only understood ARRAY LITERALS, so every one of those refs resolved to nothing
+ * and the whole column was dropped — measured: 7 of 18 `oneOf` declarations and 6
+ * of 18 `default` declarations vanished, so the reference's 「可选值」 column was
+ * blank for `item.create.status`, `item.update.priority`, `task.move.status`,
+ * `item.navigate.page` and the three date fields. The file looked complete.
+ *
+ * That is the exact failure this generator's header claims to prevent, so the rule
+ * is the same as for spreads: resolve it, or fail loudly.
+ *
+ * @param {string} name - the constant, e.g. `MOVABLE`.
+ * @returns {readonly string[] | undefined} its values, or undefined when the
+ *   reference was a `Record`-style lookup this script does not model.
+ */
+function constantValuesOf(name) {
+  const sources = catalogSources()
+  /**
+   * The array a constant IS, following ALIASES as far as they go.
+   *
+   * `ITEM_STATUS_VALUES = ITEM_STATUSES`, and `ITEM_STATUSES = ALL_STATUSES`, which
+   * lives in yet another module — so one hop is not enough and a fixed hop count
+   * would be a magic number that breaks the next time somebody adds a re-export.
+   * Following until the chain ends is the only version that does not need editing
+   * when a constant moves house.
+   * @param {string} from - the constant to resolve.
+   * @param {Set<string>} seen - guards a cycle, which would otherwise spin forever.
+   * @returns {readonly string[] | undefined}
+   */
+  const resolve = (from, seen) => {
+    if (seen.has(from)) return undefined
+    seen.add(from)
+    // A literal array anywhere in the read sources.
+    for (const source of sources.values()) {
+      const literal = new RegExp(`const\\s+${from}\\s*(?::[^=]+)?=\\s*\\[([\\s\\S]*?)\\]`).exec(source)
+      if (literal !== null) {
+        const values = [...literal[1].matchAll(/'([^']*)'/g)].map(entry => entry[1])
+        if (values.length > 0) return values
+      }
+    }
+    // An alias, possibly through a namespace (`taskModel.MANUAL_STATUSES`).
+    for (const source of sources.values()) {
+      const alias = new RegExp(`const\\s+${from}\\s*(?::[^=]+)?=\\s*([A-Za-z_$][\\w$]*(?:\\.[A-Za-z_$][\\w$]*)?)\\s*(?:\\n|$)`).exec(source)
+      if (alias === null) continue
+      const next = alias[1].split('.').pop()
+      if (next === from) continue
+      const found = resolve(next, seen)
+      if (found !== undefined) return found
+    }
+    return undefined
+  }
+  return resolve(name, new Set())
+}
+
+/**
+ * Every source file a catalog constant may live in, keyed by relative path.
+ *
+ * Read once and cached: the generator runs per-verify and these files are small.
+ * @returns {ReadonlyMap<string, string>}
+ */
+let catalogSourcesCache
+function catalogSources() {
+  if (catalogSourcesCache !== undefined) return catalogSourcesCache
+  const files = [
+    'src/core/board-actions.ts',
+    'src/core/tasks.ts',
+    'src/core/item.ts',
+    'src/core/item-view.ts',
+    'src/core/item-navigate.ts',
+    'src/core/run-presets.ts',
+  ]
+  const out = new Map()
+  for (const rel of files) {
+    try {
+      out.set(rel, readFileSync(join(root, ...rel.split('/')), 'utf8'))
+    } catch {
+      // A file that moved is caught by the caller: an unresolvable constant throws.
+    }
+  }
+  catalogSourcesCache = out
+  return out
+}
+
+/**
  * 读一个参数的声明。
  * @param {string} name - 参数名。
  * @param {string} spec - 它的源码片段。
@@ -180,27 +277,69 @@ function sharedParamsOf(name) {
 function paramOf(name, spec, constants) {
   const about = /about:\s*'([^']*)'/.exec(spec)
   // `oneOf` 有两种形状：字面量数组，或一个常量名。第二种不解析就会把「可选值」整段
-  // 丢掉——而丢掉的方式是静默的，渲染出来的表照旧完整，只是少了一列。
+  // 丢掉——而丢掉的方式是静默的，渲染出来的表照旧完整，只是少了一列。这正是这份文
+  // 档存在的理由（见 constantValuesOf 的注释），所以解析不了就抛。
   let oneOf
   const literal = /oneOf:\s*\[([^\]]*)\]/.exec(spec)
   if (literal !== null) oneOf = [...literal[1].matchAll(/'([^']*)'/g)].map(entry => entry[1])
   else {
     const named = /oneOf:\s*([A-Z][A-Z0-9_]*)/.exec(spec)
-    if (named !== null) oneOf = constants.get(named[1])
+    if (named !== null) {
+      oneOf = constants.get(named[1]) ?? constantValuesOf(named[1])
+      if (oneOf === undefined || oneOf.length === 0) {
+        throw new Error(`gen-skill-actions: parameter \`${name}\` declares \`oneOf: ${named[1]}\`, and that constant could not be resolved — the reference would print an EMPTY legal-values column, which reads as 「no constraint」`)
+      }
+    }
   }
+  /* `default` and `appliesWhen` are PROSE, not value sets: a default may name a
+   * constant (`default: DATE_GRANULARITY`) or state a sentence. Only the former is
+   * a value the reader could compare against, so a string literal is copied and a
+   * constant is resolved; anything else stays out rather than printing a symbol. */
   const text = key => {
     const match = new RegExp(`${key}:\\s*'([^']*)'`).exec(spec)
     return match === null ? undefined : match[1]
+  }
+  const bare = key => {
+    const match = new RegExp(`${key}:\\s*([A-Z][A-Z0-9_]*)`).exec(spec)
+    if (match === null) return undefined
+    const values = constants.get(match[1]) ?? constantValuesOf(match[1])
+    return Array.isArray(values) && values.length > 0 ? values.join(' / ') : `（${match[1]}）`
   }
   return {
     name,
     about: about === null ? '' : about[1],
     optional: /optional:\s*true/.test(spec),
     ...oneOf === undefined || oneOf.length === 0 ? {} : { oneOf },
-    ...text('appliesWhen') === undefined ? {} : { appliesWhen: text('appliesWhen') },
-    ...text('default') === undefined ? {} : { default: text('default') },
-    ...text('requiredWhen') === undefined ? {} : { requiredWhen: text('requiredWhen') },
+    // An object's keys are part of its SHAPE, and a shape nobody publishes leaves
+    // the reader guessing which keys are legal — the same defect as a closed set
+    // with an empty legal-values column.
+    ...objectKeysOf(spec) === undefined ? {} : { keys: objectKeysOf(spec) },
+    ...text('appliesWhen') !== undefined ? { appliesWhen: text('appliesWhen') } : bare('appliesWhen') !== undefined ? { appliesWhen: bare('appliesWhen') } : {},
+    ...text('default') !== undefined ? { default: text('default') } : bare('default') !== undefined ? { default: bare('default') } : {},
+    ...text('requiredWhen') !== undefined ? { requiredWhen: text('requiredWhen') } : {},
+    ...text('vocabulary') === undefined ? {} : { vocabulary: text('vocabulary') },
   }
+}
+
+/**
+ * The keys of an `object` / `list.object` parameter, resolving a constant the way
+ * `oneOf` does.
+ * @param {string} spec - the parameter's source fragment.
+ * @returns {readonly string[] | undefined}
+ */
+function objectKeysOf(spec) {
+  const literal = /object:\s*\[([^\]]*)\]/.exec(spec)
+  if (literal !== null) {
+    const values = [...literal[1].matchAll(/'([^']*)'/g)].map(entry => entry[1])
+    return values.length > 0 ? values : undefined
+  }
+  const named = /object:\s*([A-Z][A-Z0-9_]*)/.exec(spec)
+  if (named === null) return undefined
+  const values = constantValuesOf(named[1])
+  if (values === undefined || values.length === 0) {
+    throw new Error(`gen-skill-actions: \`object: ${named[1]}\` could not be resolved — the reference would print a shape with no keys`)
+  }
+  return values
 }
 
 /** 把 `|` 和换行压掉，免得一个参数值把表格撑坏。 */
@@ -232,7 +371,9 @@ export function render(actions) {
         const required = param.requiredWhen === undefined
           ? (param.optional ? '否' : '**是**')
           : `条件：${param.requiredWhen}`
-        const values = param.oneOf === undefined ? '' : param.oneOf.map(value => `\`${value}\``).join(' / ')
+        const listed = param.oneOf === undefined ? [] : param.oneOf.map(value => `\`${value}\``)
+        const shape = param.keys === undefined ? [] : [`键：${param.keys.map(key => `\`${key}\``).join(' / ')}`]
+        const values = [...listed, ...shape].join('；')
         // 缺省含义优先说 `appliesWhen`，其次 `default`：两者都说时合并，因为它们回
         // 答的是同一件事的两半（什么时候没有意义、没有时是什么）。
         const absent = [param.appliesWhen, param.default].filter(part => part !== undefined).join('；')

@@ -40,6 +40,7 @@
  * card made from this very row receive it identically.
  */
 import { itemTagsOf, type ItemRecord, type ItemStep } from './item.ts'
+import { localDayKey } from './local-day.ts'
 // The `!N` ladder, from its one declaration: `urgency` and the row's own mark
 // are the same tier list, and a second digit table here would be a second answer.
 import { PRIORITY_DIGIT } from './item-query.ts'
@@ -155,7 +156,7 @@ export function itemContextText(item: ItemRecord): string {
    * rest of this composer follows. */
   if (item.priority !== 'normal') lines.push(`优先级：${priorityWordsOf(item.priority)}`)
   for (const [label, at] of [['开始', item.startsAfter], ['计划', item.dueAt], ['截止', item.hardDueAt]] as const) {
-    if (at !== undefined) lines.push(`${label}：${localDayOf(at)}`)
+    if (at !== undefined) lines.push(`${label}：${localDayKey(at)}`)
   }
   if (item.body.trim() !== '') lines.push('正文：', item.body.trim())
   const steps = stepLinesOf(item.steps)
@@ -180,13 +181,6 @@ function priorityWordsOf(priority: ItemRecord['priority']): string {
   return digit === undefined ? priority : `${priority}（!${digit}）`
 }
 
-/** A stamp as the local calendar day it names, for a reader that thinks in days. */
-function localDayOf(at: number): string {
-  const date = new Date(at)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
 
 /** The checklist as it stands, one ticked box per line — the model sees what is
  *  done and what is not, which is half of what a step list is FOR. */

@@ -16,11 +16,9 @@ import { describe, expect, it } from 'vitest'
 import {
   builtinCandidatesOf,
   candidatesFor,
-  priorityOfResolved,
   resolveKeyOf,
   resolveValue,
   resolveWhy,
-  statusOfResolved,
   type ResolveCandidate,
   type ResolveContext,
 } from '../src/core/resolve.ts'
@@ -196,18 +194,34 @@ describe('the reading rule itself', () => {
   })
 })
 
-describe('the narrowed readers do not cast', () => {
-  it('hands back a status only when the value really is one', () => {
-    const ok = resolveValue('status', '进行中', builtin)
-    expect(ok.ok && statusOfResolved(ok)).toBe('running')
-    // A value outside the union is undefined rather than a cast that would make
-    // the resolver's answer a lie about the document.
-    expect(statusOfResolved({ ok: true, value: 'nonsense' })).toBeUndefined()
+/**
+ * `resolveWhy` IS THE ONE PLACE A REFUSAL SENTENCE IS BUILT.
+ *
+ * It existed first as a helper nothing called — a function whose only consumer was
+ * its own spec, which is dead code by hard rule 18, and worse than dead code when
+ * its doc-comment described a caller that did not exist. The door in `tools.ts` now
+ * asks `ParamResolver.whyNot` (implemented in `register.ts` on top of this), so the
+ * wording of a refusal is written once.
+ */
+describe('a refusal is one sentence, and it says what to send instead', () => {
+  it('carries the value that was said and the full legal list', () => {
+    const resolved = resolveValue('status', '进行重', builtin)
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    const why = resolveWhy('status', resolved)
+    expect(why).toContain('进行重')
+    // Both spellings per candidate: the caller must send the stored key, and the
+    // label is what the person recognises.
+    expect(why).toContain('running（进行中）')
+    expect(why).toContain('backlog（待规划）')
   })
 
-  it('hands back a priority only when the value really is one', () => {
-    const ok = resolveValue('priority', '紧急', builtin)
-    expect(ok.ok && priorityOfResolved(ok)).toBe('urgent')
-    expect(priorityOfResolved({ ok: true, value: 'nonsense' })).toBeUndefined()
+  it('does not invent a candidate list when the deployment has none', () => {
+    // 「I cannot tell you the values」 is the honest sentence; printing an empty
+    // list would read as 「nothing is legal」.
+    const resolved = resolveValue('permission', 'anything', builtin)
+    expect(resolved.ok).toBe(false)
+    if (resolved.ok) return
+    expect(resolveWhy('permission', resolved)).not.toContain('可选：')
   })
 })

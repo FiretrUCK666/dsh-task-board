@@ -15,7 +15,7 @@ import type { Context } from '@deepseek-ai/cordis'
 import { acquireBoardService, storageHubOpener } from '../board-service.ts'
 import { attachQuestionWaitRecorder, createQuestionWaitRecorder, sessionPostureOf, type SessionPostureSources } from '../session-state.ts'
 import { createTaskboardTools, type ParamResolver, type ToolDeps } from './tools.ts'
-import { candidatesFor, resolveValue, type ResolveCandidate, type ResolveKind } from '../../core/resolve.ts'
+import { candidatesFor, namesOfCandidates, resolveValue, resolveWhy, type ResolveCandidate, type ResolveKind } from '../../core/resolve.ts'
 import { registerTaskboardCommands, type CommandRegistrar } from './commands.ts'
 import { registerTaskboardPromptSection, type PromptSectionTarget } from './prompt.ts'
 import { registerTaskboardSkill, type SkillRegistrar } from './skill.ts'
@@ -100,6 +100,8 @@ function workspaceTitles(ctx: Context): ((workspaceId: string) => string) | unde
  * @returns the resolver face, or undefined when no source can be read.
  */
 function paramResolver(ctx: Context): ParamResolver | undefined {
+  /** The deployment's agent-preset roster, filled asynchronously (see below). */
+  let presetCache: readonly ResolveCandidate[] = []
   /** The permission catalog, from the same service the browser half's selector reads. */
   const permissions = (): readonly ResolveCandidate[] => {
     const service = ctx.get('permissionPresets') as { names?: readonly string[]; optionOf?(name: string): { value: string; name: string } } | undefined
@@ -116,43 +118,76 @@ function paramResolver(ctx: Context): ParamResolver | undefined {
       return { value: name, spellings: label === undefined ? [name] : [name, label], ...label === undefined ? {} : { label } }
     })
   }
-  /** Agent presets, from the registry the shell's own picker reads. */
-  const presets = (): readonly ResolveCandidate[] => {
-    const registry = ctx.get('agentPresets') as { roster?(): unknown } | undefined
-    if (registry === undefined) return []
-    let rows: unknown
+  /**
+   * Agent presets, from the registry the shell's own picker reads.
+   *
+   * `AgentPresetRegistry` (see `@deepseek-ai/dsh-agent-preset-registry`) exposes
+   * `list(): Promise<AgentPreset[]>` — ASYNC — and no synchronous roster. The first
+   * version of this read `registry.roster?.()`, a member that does not exist, so the
+   * optional call resolved to undefined and this function always returned an empty
+   * list: `agentPreset` could never resolve, silently, and the only place that
+   * surfaced was a refusal saying the deployment had no candidates.
+   *
+   * A synchronous resolver cannot await, so the cache below is the seam: the list is
+   * READ ASYNCHRONOUSLY when the agent half starts and on every miss, and a miss
+   * degrades to 「no candidates」 (the honest answer) rather than a wrong one. Callers
+   * that need a guaranteed-fresh list go through `refreshPresets`.
+   */
+  const presets = (): readonly ResolveCandidate[] => presetCache
+  const service = (): { list?(): Promise<readonly { id?: unknown; name?: unknown }[]> } | undefined =>
+    ctx.get('agentPresets') as { list?(): Promise<readonly { id?: unknown; name?: unknown }[]> } | undefined
+  const refreshPresets = async (): Promise<void> => {
+    const registry = service()
+    if (registry === undefined || typeof registry.list !== 'function') return
     try {
-      rows = registry.roster?.()
+      const rows = await registry.list()
+      const next: ResolveCandidate[] = []
+      for (const row of Array.isArray(rows) ? rows : []) {
+        if (typeof row !== 'object' || row === null) continue
+        const id = (row as { id?: unknown }).id
+        if (typeof id !== 'string' || id === '') continue
+        const name = (row as { name?: unknown }).name
+        const label = typeof name === 'string' && name !== '' ? name : undefined
+        next.push({ value: id, spellings: label === undefined ? [id] : [id, label], ...label === undefined ? {} : { label } })
+      }
+      presetCache = next
     } catch {
-      return []
+      // A registry that throws is 「I cannot read it」, and an empty list is the
+      // honest answer — never an invented roster.
+      presetCache = []
     }
-    // The roster's shape is the host's, so it is read structurally and every
-    // field is optional: a shape this cannot read yields no candidates, which is
-    // 「this host cannot tell you」 rather than a wrong list.
-    const list = Array.isArray(rows) ? rows : []
-    const out: ResolveCandidate[] = []
-    for (const row of list) {
-      if (typeof row !== 'object' || row === null) continue
-      const id = (row as { id?: unknown }).id
-      if (typeof id !== 'string' || id === '') continue
-      const name = (row as { name?: unknown }).name
-      const label = typeof name === 'string' && name !== '' ? name : undefined
-      out.push({ value: id, spellings: label === undefined ? [id] : [id, label], ...label === undefined ? {} : { label } })
-    }
-    return out
   }
+  // Kick the first read off eagerly; it lands before any tool call in practice, and
+  // a caller that beats it gets 「no candidates」 rather than a wrong value.
+  void refreshPresets()
   return {
     resolve: (kind: ResolveKind, value: unknown): string | undefined => {
       const fromHost = kind === 'permission' ? permissions()
         : kind === 'agentPreset' ? presets()
           // `workspace` and `model` need the id↔name pairs the models route owns;
           // until that read is wired, the built-in rule applies and their strict
-      // reading is unchanged — an honest gap, not a silent one.
+          // reading is unchanged — an honest gap, not a silent one.
           : []
       const candidates = candidatesFor(kind, fromHost)
       if (candidates.length === 0) return undefined
       const resolved = resolveValue(kind, value, { candidatesOf: () => candidates })
       return resolved.ok ? resolved.value : undefined
+    },
+    // The same candidate list a refusal prints, so a caller that missed learns
+    // what this deployment actually holds — those values are not in the catalog,
+    // so the refusal is the only place they can come from.
+    candidatesOf: (kind: ResolveKind): readonly string[] => {
+      const fromHost = kind === 'permission' ? permissions() : kind === 'agentPreset' ? presets() : []
+      return namesOfCandidates(candidatesFor(kind, fromHost))
+    },
+    // The refusal SENTENCE, from the one place that builds it — so a caller that
+    // asks the wrong question gets the same wording whether the miss came from a
+    // tool parameter or from anything else that resolves a value.
+    whyNot: (kind: ResolveKind, value: unknown): string => {
+      const fromHost = kind === 'permission' ? permissions() : kind === 'agentPreset' ? presets() : []
+      const candidates = candidatesFor(kind, fromHost)
+      const resolved = resolveValue(kind, value, { candidatesOf: () => candidates })
+      return resolved.ok ? '' : resolveWhy(kind, resolved)
     },
   }
 }

@@ -78,7 +78,7 @@ import { cardStatusMapOf, createTask, landCardInColumn, resolveCardDrop, taskBin
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
-import { RUN_CONFIG_KEYS, RUN_CONFIG_DEFAULTED, RUN_CONFIG_MUST_ASK, type RunConfigPresetConfig, type RunPresetsDocument } from '../../core/run-presets.ts'
+import { RUN_CONFIG_KEYS, RUN_CONFIG_MUST_ASK, type RunConfigPresetConfig, type RunPresetsDocument } from '../../core/run-presets.ts'
 
 /** Read a run-config patch, keeping only the keys the preset model actually
  *  has. An unknown key is dropped rather than stored: the section's grammar
@@ -169,6 +169,9 @@ import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf
 // The date verdicts, from the one module that owns what a date MEANS: the
 // conflict test, the day normalization, and the posture a read can print.
 import { DATE_KEYS, datePostureOf, itemDateWriteOf } from '../../core/item-dates.ts'
+// The local-day spelling has ONE home; a second copy here drifted the moment the
+// first was edited, and a date printed two ways is a bug with no error message.
+import { localDayKey } from '../../core/local-day.ts'
 // The vocabulary bridge: what a caller SAID, read into what this system stores.
 // The candidate lists stay in this repository's own enums plus whatever the
 // deployment supplies, so the resolver does not become a third vocabulary. The
@@ -322,6 +325,17 @@ function renderParam(spec: ParamSpec): CapabilityAction['params'][string] {
     ...(spec.requiredWhen === undefined ? {} : { requiredWhen: spec.requiredWhen }),
     ...(spec.appliesWhen === undefined ? {} : { appliesWhen: spec.appliesWhen }),
     ...(spec.oneOf === undefined ? {} : { oneOf: spec.oneOf }),
+    /* THE OBJECT'S KEYS, which reached nobody before.
+     *
+     * `ParamSpec.object` declared the shape of `preset.*.config` — six run-config
+     * keys — and NOTHING read it: not this renderer, not the generator, so the
+     * model was shown a parameter with no indication of what goes in it. A shape
+     * declared and never published is the same defect as a field a writer can set
+     * and a reader cannot read: the answer exists, the reader still cannot use it.
+     *
+     * `keys` rather than `object` because this is a capability PAYLOAD, and the
+     * model reads it as 「which keys may I send」. */
+    ...(spec.object === undefined ? {} : { keys: spec.object }),
   }
 }
 
@@ -642,11 +656,11 @@ function datePostureWordsOf(item: ItemRecord, now: number): string | undefined {
   switch (posture.kind) {
     case 'none': return undefined
     case 'contradiction': {
-      const a = DATE_FIELD_WORDS[posture.conflict.field] ?? posture.conflict.field
-      const b = DATE_FIELD_WORDS[posture.conflict.limitField] ?? posture.conflict.limitField
+      const a = DATE_FIELD_WORDS[posture.conflict.field]
+      const b = DATE_FIELD_WORDS[posture.conflict.limitField]
       return `这组日期自相矛盾：${a} 晚于 ${b}`
     }
-    case 'gated': return `还没到可开始的日子（${localDayOf(posture.startsAfter)} 起）`
+    case 'gated': return `还没到可开始的日子（${localDayKey(posture.startsAfter)} 起）`
     case 'hardOverdue': return `已过截止日 ${posture.days} 天`
     case 'hardSoon': return `截止日在 ${posture.days} 天内`
     case 'hardAhead': return `离截止日还有 ${posture.days} 天`
@@ -895,7 +909,7 @@ export function resolveCard(
 export function ambiguousCardWhy(spoken: unknown, matches: readonly TaskRecord[]): string {
   const named = matches.slice(0, 10).map(task => {
     const where = task.status
-    const since = localDayOf(task.createdAt)
+    const since = localDayKey(task.createdAt)
     return `「${task.title}」（在 ${where}，${since} 建的）`
   }).join('、')
   return `有 ${matches.length} 张卡都叫「${String(spoken)}」：${named}。要动哪一张？把标题改到唯一，或者先 task.update 给它们改成不同的名字。`
@@ -1248,20 +1262,41 @@ function checkParams(id: ActionId, payload: Record<string, unknown>, resolver?: 
     const value = paramOf(payload, name)
     const missing = value === undefined || value === null || value === ''
     if (!missing) {
-      if (p.oneOf !== undefined && !p.oneOf.includes(String(value))) {
-        // THE RESOLVER GETS FIRST REFUSAL. A closed set is the one place the two
-        // vocabularies collided: the catalog's `about` names the READER's words
-        // and `oneOf` holds the STORED ones, so a caller that followed the
-        // description was refused by a list it had never been shown. The resolver
-        // reads the human spellings into the stored value, and the payload is
-        // REWRITTEN so what the gate accepts is what the writer stores — a gate
-        // that accepted 进行中 and let it through unchanged would put a word in a
-        // field typed `TaskStatus`.
-        const stored = resolveParamValue(id, name, value, p, resolver)
-        if (stored === undefined) {
-          return `${name} 只能是 ${p.oneOf.join(' / ')}，收到的是「${String(value)}」`
-        }
+      /* THE RESOLVER GETS FIRST REFUSAL, and it runs on the DECLARED VOCABULARY
+       * rather than on the presence of a `oneOf`.
+       *
+       * The `oneOf` guard used to sit in front, which meant the four parameters
+       * whose members live in the deployment (`permission`, `agentPreset`, …) were
+       * never read at all: any string was accepted and stored, and the failure
+       * arrived later as a config error mid-run. See `resolveParamValue`.
+       *
+       * The payload is REWRITTEN so what the gate accepts is what the writer
+       * stores — a gate that accepted 进行中 and let it through unchanged would
+       * put a reader's word in a field typed `TaskStatus`. */
+      const stored = resolveParamValue(value, p, resolver)
+      if (stored !== undefined) {
         payload[name] = stored
+      } else if (p.oneOf !== undefined && !p.oneOf.includes(String(value))) {
+        return `${name} 只能是 ${p.oneOf.join(' / ')}，收到的是「${String(value)}」`
+      } else if (p.vocabulary !== undefined && p.oneOf === undefined && resolver !== undefined) {
+        /* A DECLARED VOCABULARY WITH NO `oneOf` IS THE DEPLOYMENT'S TABLE, so an
+         * unreadable value must be refused rather than passed through — accepting
+         * it would hand the run a key the deployment will reject, at the most
+         * expensive possible moment.
+         *
+         * TWO GUARDS, and both are load-bearing:
+         *  · `p.oneOf === undefined` — when the catalog DOES list the values, the
+         *    branch above already judged this one, and its message is the better
+         *    one (a real set, not a deployment guess).
+         *  · `resolver !== undefined` — with no resolver the honest reading is
+         *    「this deployment cannot say」, and refusing there would turn a host
+         *    that simply has no preset table into one that cannot create cards at
+         *    all. That case degrades to the old pass-through, which is what every
+         *    status/priority write relies on when nothing is wired.
+         *
+         * The candidates are the reason this beats the old silence: the caller
+         * corrects itself in one retry instead of watching the card fail. */
+        return resolver.whyNot?.(p.vocabulary, value) || `${name} 认不出「${String(value)}」。可填：${resolver.candidatesOf(p.vocabulary).join(' / ') || '（这个部署没有给出候选，先留空）'}`
       }
       continue
     }
@@ -1294,24 +1329,54 @@ export interface ParamResolver {
    * @returns the stored value, or undefined when it is not readable.
    */
   resolve(kind: ResolveKind, value: unknown): string | undefined
+  /**
+   * The legal values, for a refusal to print.
+   *
+   * A REFUSAL WITHOUT THE LIST COSTS A SEARCH. 「认不出 Full access」 leaves the
+   * caller with the same guess it already made; the list turns the correction into
+   * a glance. This is also the only way a caller learns what a DEPLOYMENT's table
+   * holds — those values are not in the catalog by design.
+   * @param kind - the vocabulary.
+   * @returns `value（label）` per candidate, empty when the host cannot say.
+   */
+  candidatesOf(kind: ResolveKind): readonly string[]
+  /**
+   * The refusal sentence for a value this face could not read.
+   *
+   * OPTIONAL because a face may only know how to READ and not how to explain; when
+   * absent the caller falls back to its own sentence built from `candidatesOf`. It
+   * exists so the wording lives in one place (`resolveWhy`) instead of being
+   * re-typed at every door that refuses a value.
+   * @param kind - the vocabulary.
+   * @param value - what was said.
+   * @returns the sentence, or '' when the value actually resolved.
+   */
+  whyNot?(kind: ResolveKind, value: unknown): string
 }
 
 /**
- * Which vocabulary a parameter speaks, when it is a closed set the resolver knows.
+ * Read one parameter through the resolver, MUTATING the payload.
  *
- * NOT derived from the parameter's NAME alone, and that is deliberate: `status`
- * appears on both documents with the same vocabulary, while `permission` and
- * `agentPreset` are the deployment's and cannot be assumed. The table therefore
- * pairs an action's parameter with a kind only where the vocabulary is REALLY the
- * one the resolver owns; everything else keeps the catalog's stricter reading.
- */
-const PARAM_VOCABULARIES: Readonly<Record<string, ResolveKind>> = {
-  status: 'status',
-  priority: 'priority',
-}
-
-/**
- * Read one closed-set parameter through the resolver, MUTATING the payload.
+ * ── THE VOCABULARY COMES FROM THE DECLARATION, NEVER FROM THE NAME ─────────
+ *
+ * The first version of this door keyed a table by PARAMETER NAME (`status` →
+ * 'status') and required the parameter to have a `oneOf`. Both halves were wrong
+ * in the same direction, and the cost was exactly the defect the whole resolver
+ * exists to remove:
+ *
+ *  · `permission`, `agentPreset`, `workspaceId` and `model` have NO `oneOf` — their
+ *    members belong to the deployment, not to this catalog — so the guard
+ *    `spec.oneOf === undefined → return undefined` skipped them entirely. Measured:
+ *    `permission: 'Full access'` (the exact text the selector prints) was accepted,
+ *    written to the card, and reported 「已生效」; the run then built
+ *    `/permission Full access`, the host refused the unknown preset, and the card
+ *    failed at the most expensive moment. The reader had followed its instructions.
+ *  · the name is not the meaning. A table keyed by name would apply the wrong
+ *    reading the first time two parameters shared a spelling with different
+ *    vocabularies, and nothing would say so.
+ *
+ * So the vocabulary is a FIELD on the parameter ({@link ParamSpec.vocabulary}),
+ * declared next to the field it describes — one place, checked by the type.
  *
  * MUTATION IS THE POINT. A resolver that only VALIDATED would leave the human
  * spelling in the payload, and the writer downstream would store it — so 进行中
@@ -1319,26 +1384,25 @@ const PARAM_VOCABULARIES: Readonly<Record<string, ResolveKind>> = {
  * The value is rewritten in place to the stored spelling, so what the gate
  * accepted is exactly what lands in the document.
  *
- * @param id - the action, for the refusal sentence.
  * @param name - the parameter.
  * @param value - what the caller said.
- * @param spec - its declaration.
+ * @param spec - its declaration, which names the vocabulary.
  * @param resolver - the face, when one was supplied.
- * @returns the stored value, or undefined when the resolver cannot read it (which
- *   leaves the caller's own refusal to fire).
+ * @returns the stored value, or undefined when nothing could read it.
  */
 function resolveParamValue(
-  _id: string,
-  name: string,
   value: unknown,
   spec: ParamSpec,
   resolver: ParamResolver | undefined,
 ): string | undefined {
-  const kind = PARAM_VOCABULARIES[name]
-  if (kind === undefined || spec.oneOf === undefined || resolver === undefined) return undefined
+  const kind = spec.vocabulary
+  if (kind === undefined || resolver === undefined) return undefined
   const stored = resolver.resolve(kind, value)
   if (stored === undefined) return undefined
-  return spec.oneOf.includes(stored) ? stored : undefined
+  // A declared `oneOf` is still the authority where it exists: a vocabulary may
+  // translate a reader's word, but it may not smuggle in a value the catalog does
+  // not accept.
+  return spec.oneOf === undefined || spec.oneOf.includes(stored) ? stored : undefined
 }
 
 /**
@@ -1375,11 +1439,55 @@ function createdConfigNote(id: ActionId, task: TaskRecord | undefined, dryRun: b
     // next turn able to fix it.
     return `\n运行配置：一个都没指定，会全部走宿主默认（工作区与权限也在其中——这两项选错会跑到别的目录、或改坏文件）。要指定就先 task.update 补上 ${RUN_CONFIG_MUST_ASK.join(' / ')}。`
   }
+  /* "WHAT WAS LEFT OUT" IS MEASURED OVER THE SIX, NOT OVER THE FOUR THAT MAY
+   * TAKE A DEFAULT.
+   *
+   * The first version computed the remainder as `RUN_CONFIG_DEFAULTED − given`,
+   * and `RUN_CONFIG_DEFAULTED` deliberately EXCLUDES the two must-ask keys. So the
+   * moment a caller specified ANY one field, `workspaceId` and `permission` left
+   * the remainder and were never mentioned again — measured: a card created with
+   * only `workspaceId` reported 「其余 provider / model / reasoningEffort /
+   * agentPreset 用的是宿主默认」, silently omitting that its permission was also
+   * the host's. And with all four preferences given the remainder came out EMPTY
+   * while two of six were unset, so the receipt said 「全部由你指定」 — a direct lie
+   * about the one thing this line exists to disclose.
+   *
+   * The two sets answer different questions and must not be conflated: MUST_ASK is
+   * 「which of these should have been asked about」, DEFAULTED is 「which may take a
+   * default」, and the remainder for disclosure purposes is simply 「the six, minus
+   * the ones given」. */
+  const omitted = RUN_CONFIG_KEYS.filter(key => !given.includes(key))
   const named = given.map(key => `${key}=${String(task[key])}`).join('、')
-  const rest = RUN_CONFIG_DEFAULTED.filter(key => !given.includes(key))
-  return rest.length === 0
-    ? `\n运行配置：${named}（全部由你指定）。`
-    : `\n运行配置：${named}（你指定的）；其余 ${rest.join(' / ')} 用的是宿主默认。`
+  const mustAskOmitted = omitted.filter(key => RUN_CONFIG_MUST_ASK.includes(key))
+  const defaultedOmitted = omitted.filter(key => !RUN_CONFIG_MUST_ASK.includes(key))
+  const parts: string[] = [`\n运行配置：${named}（你指定的）`]
+  if (defaultedOmitted.length > 0) {
+    parts.push(`其余 ${defaultedOmitted.join(' / ')} 用的是宿主默认`)
+  }
+  if (mustAskOmitted.length > 0) {
+    // These two are named SEPARATELY and with their consequence, because a wrong
+    // value is damage rather than a preference — and because the all-default
+    // branch already promised the caller it would hear about them.
+    parts.push(`**${mustAskOmitted.join(' / ')} 也没指定，同样走宿主默认**（这两项选错会跑到别的目录、或改坏文件）`)
+  }
+  /* A VALUE THAT WAS SET AND WILL NOT BE EXECUTED IS NOT 「你指定的」.
+   *
+   * The model route is ONE decision in three fields — `execution.ts` applies it
+   * under `provider !== undefined && model !== undefined`, with `reasoningEffort`
+   * read inside that guard. So a card created with only a model runs on the
+   * deployment's default model. Reporting it as a chosen value is not a wording
+   * problem: the next turn answers the user from it, and explains cost or
+   * capability for a model that never ran.
+   *
+   * Said out loud rather than fixed silently here, because the receipt's job is to
+   * describe what will happen — the fix is in the caller's hands (give both), and
+   * it cannot make one without being told. */
+  const routeIncomplete = (given.includes('model') || given.includes('reasoningEffort')) && !given.includes('provider')
+  if (routeIncomplete) {
+    parts.push('**注意：没给 provider，所以 model 与 reasoningEffort 不会生效**——供应方与模型要一起给，这一轮跑的是宿主默认模型')
+  }
+  const allGiven = omitted.length === 0
+  return allGiven ? `\n运行配置：${named}（六项全部由你指定）。` : `${parts.join('；')}。`
 }
 
 /* ── the batch runner ────────────────────────────────────────────────────── */
@@ -2981,7 +3089,7 @@ function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   // 三个日期的**词与界面、与动作目录同一套**（开始 / 计划 / 截止）：这一行是模型读给自己
   // 听的，而它答给读者的那句话里会带上这些词——一个词两套写法，读者看到的是两个名字指同一件事。
   for (const [label, at] of [['开始', row.startsAfter], ['计划', row.dueAt], ['截止', row.hardDueAt]] as const) {
-    if (at !== undefined) lines.push(`  ${label}：${at}（${localDayOf(at)}）`)
+    if (at !== undefined) lines.push(`  ${label}：${at}（${localDayKey(at)}）`)
   }
   /* THE VERDICT, printed — not left for the caller to derive.
    *
@@ -3000,13 +3108,6 @@ function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   return lines.join('\n')
 }
 
-/** A stamp as the local calendar day it names, for a reader that thinks in days. */
-function localDayOf(at: number): string {
-  const date = new Date(at)
-  const month = String(date.getMonth() + 1).padStart(2, '0')
-  const day = String(date.getDate()).padStart(2, '0')
-  return `${date.getFullYear()}-${month}-${day}`
-}
 
 /* ── the three tools, assembled from the catalog ─────────────────────────── */
 
@@ -3049,14 +3150,19 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
     parameters: {
       type: 'object',
       properties: {
-        /* THE COST STRUCTURE, FIXED. This tool is documented as 「先查后做」, and its
-         * full answer is ~7,000 characters for 36 actions — so every single write
-         * began by paying for the entire catalog a caller about to move one card
-         * did not need. Narrowing here means the common call pays for the names
-         * and the rare call pays for the parameters. */
+        /* THE TOPIC VALUES ARE DERIVED, NOT LISTED.
+         *
+         * The first version hand-wrote them — `task / item / board / session /
+         * rule / preset / cruise` — and three of the seven were not topics at all:
+         * the catalog's domains are only `board / item / preset / session`, while
+         * `task` and `rule` happen to work through the id-prefix rule and `cruise`
+         * matched NOTHING (cruise actions are `board.cruise`). A hand-written list
+         * of a derived thing is the defect this whole surface exists to remove, so
+         * the description says what the parameter MEANS and lets the capability
+         * answer name the values. */
         topic: {
           type: 'string',
-          description: '不填 = 摘要（动作名 + 一句话 + 有哪些域，不含参数）。给一个域（task / item / board / session / rule / preset / cruise）看那个域的全部动作；给一个动作 id（task.create）看那一个的完整参数。',
+          description: '不填 = 摘要（动作名 + 一句话 + 有哪些域，不含参数）。给一个域看那个域的全部动作，给一个动作 id（task.create）看那一个的完整参数，给一个 id 前缀（task）看这一族。可用的域与动作名以不填时的回答为准。',
         },
       },
       additionalProperties: false,
@@ -3103,8 +3209,14 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
             .map(([name, spec]) => {
               const condition = spec.required ? '（必填）' : spec.requiredWhen === undefined ? '' : `（${spec.requiredWhen} 时必填）`
               const allowed = spec.oneOf === undefined || spec.oneOf.length === 0 ? '' : `（可选：${spec.oneOf.join(' / ')}）`
+              // An object's SHAPE, printed: without it the model is told a
+              // parameter takes an object and never learns which keys. Rendered
+              // from the declaration, so a seventh run-config key appears here
+              // without anybody remembering to update a sentence.
+              const keys = (spec as { keys?: readonly string[] }).keys
+              const shape = keys === undefined || keys.length === 0 ? '' : `（键：${keys.join(' / ')}）`
               const absent = spec.appliesWhen === undefined ? '' : `（${spec.appliesWhen}）`
-              return `    ${name}${condition}：${spec.about}${allowed}${absent}`
+              return `    ${name}${condition}：${spec.about}${allowed}${shape}${absent}`
             })
             .join('\n')
           const head = `${action.id} —— ${action.summary}`
@@ -3358,7 +3470,14 @@ function queryRefusal(detail: string, filter = ''): {
  *  follow. Kept here rather than derived from the locale table, which the host
  *  half cannot read — and rather than in the catalog, because the catalog's job
  *  is what a parameter IS, not what to say when two of them disagree. */
-const DATE_FIELD_WORDS: Readonly<Record<string, string>> = {
+/* THE WORD FOR EACH DATE KEY, total over the union.
+ *
+ * `Record<string, string>` with a `?? field` fallback compiled fine and would have
+ * printed a RAW KEY NAME to the model the day one of the three was renamed — the
+ * interface would keep saying 「开始」 while the model read `startsAfterAt`. Typing it
+ * over {@link ItemDateKey} makes that rename a build failure instead, and the
+ * fallbacks below are gone because the type already guarantees every key is here. */
+const DATE_FIELD_WORDS: Readonly<Record<ItemDateKey, string>> = {
   startsAfter: '开始（startsAfter）',
   dueAt: '计划（dueAt）',
   hardDueAt: '截止（hardDueAt）',
@@ -3375,8 +3494,8 @@ const DATE_FIELD_WORDS: Readonly<Record<string, string>> = {
  * @returns the sentence the model reads.
  */
 function dateConflictSentence(conflict: ItemDateConflict): string {
-  const a = DATE_FIELD_WORDS[conflict.field] ?? conflict.field
-  const b = DATE_FIELD_WORDS[conflict.limitField] ?? conflict.limitField
+  const a = DATE_FIELD_WORDS[conflict.field]
+  const b = DATE_FIELD_WORDS[conflict.limitField]
   return `${a} 不能晚于 ${b}：这一组日期自相矛盾，所以什么都没写。改掉其中一个再来，或者先只写一个日期。`
 }
 

@@ -432,6 +432,11 @@ describe('session-list drop dispatch (TaskDetail)', () => {
       get(_target, key) {
         asked.add(key)
         if (key === 'sessionsOf') return () => rows
+        // `TaskDetail` reads the linked rows too — it names the sessions this card
+        // owns but the host has archived. A stub that omits it makes a correct
+        // implementation throw, which is a fixture narrower than reality and a
+        // false defect against the code (hard rule 18).
+        if (key === 'linkedOf') return () => []
         if (key === 'reorderTaskSession') return (taskId: string, sessionId: string, beforeId?: string) => {
           reorders.push({ taskId, sessionId, ...(beforeId !== undefined ? { beforeId } : {}) })
           return true
@@ -510,7 +515,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
     // The stub answered every member the detail asked for: a new dependency
     // arriving later lands here as a named miss instead of a silent undefined.
     const unhandled = [...asked].filter(key => ![
-      'sessionsOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
+      'sessionsOf', 'linkedOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
       'sessionTitle', 'sessionActiveOf', 'pendingInteractionOf', 'sessionLabelsOf',
       'externalKindOf', 'ts',
     ].includes(String(key)))

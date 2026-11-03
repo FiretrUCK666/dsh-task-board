@@ -49,6 +49,10 @@ export interface CoverageInput {
   /** The text of src/host/agent/commands.ts — the slash commands. The other face
    *  rule 22 holds to the catalog. */
   commandsText: string
+  /** The hand-written skill manual. The third face rule 22 holds to the catalog —
+   *  it is prose that tells the model what to do, so a copied action name in it
+   *  goes stale with nothing on screen to say so. */
+  skillsText: string
   /** Repo-relative paths that exist, as the check needs to know them. */
   presentFiles: string[]
   /** Action id -> the controller methods carrying it. Injectable so a test can

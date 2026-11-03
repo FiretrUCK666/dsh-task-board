@@ -79,6 +79,43 @@ describe('the skill the plugin ships', () => {
     expect(body).toContain('记一下明天买牛奶')
   })
 
+  it('keeps the frontmatter description equal to the constant the catalog publishes', () => {
+    // `skill.ts` says 「The file's own copy is checked by the gate that keeps the two
+    // equal」. It was not: the constant is what the session catalog shows, and the
+    // file's frontmatter is what a reader sees after opening the skill — two model
+    // -visible copies of one sentence, with nothing keeping them in step. A comment
+    // claiming a gate that does not exist is the 「假线索」 hard rule 22 names, and it
+    // is worse than no comment: the next person changes one copy and believes it is
+    // checked.
+    //
+    // This IS that gate, and it lives here because hard rule 16 says a gate is
+    // proven by planting it in `tests/`.
+    const raw = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8')
+    const front = /^---\r?\n([\s\S]*?)\r?\n---/u.exec(raw)?.[1] ?? ''
+    const described = /^description:\s*(.+)$/mu.exec(front)?.[1]?.trim() ?? ''
+    expect(described, 'the skill file has no description in its frontmatter').not.toBe('')
+    expect(described, 'the catalog description and the file description have drifted apart').toBe(SKILL_DESCRIPTION)
+    const named = /^name:\s*(.+)$/mu.exec(front)?.[1]?.trim() ?? ''
+    expect(named, 'the frontmatter name and the registered name have drifted apart').toBe(SKILL_NAME)
+  })
+
+  it('names no field the catalog owns', () => {
+    // The manual says 「字段名、枚举值一律不写在这里」. It then wrote `prompt` in
+    // backticks — a real task parameter. The existing guard only scanned ACTION
+    // IDS, so a renamed parameter would leave the manual teaching a name that no
+    // longer exists while every gate stayed green.
+    const body = readFileSync(join(SKILL_DIR, 'SKILL.md'), 'utf8')
+    // Every parameter name the catalog declares, minus the ones that are also
+    // ordinary words in a sentence about task boards.
+    const params = new Set<string>()
+    for (const action of Object.values(ACTIONS)) {
+      for (const name of Object.keys(action.params)) params.add(name)
+    }
+    const quoted = [...body.matchAll(/`([A-Za-z_][\w.]*)`/g)].map(match => match[1])
+    const offenders = quoted.filter(token => params.has(token))
+    expect(offenders, `the manual names catalog fields in backticks (${offenders.join(', ')}) — that is the second copy rule 22 forbids`).toEqual([])
+  })
+
   it('keeps the directory small enough to be worth loading', () => {
     // The body is injected when it is opened, so it is not free. The budget is a
     // design constraint, not a formatting preference: at some size the manual is

@@ -130,6 +130,10 @@ export type BoardCommand =
   // that named a real product action would fail against a synthetic catalog.
   promptText: '第 3 条：先用 task.create 建卡，再用 task.move 挪栏。',
   commandsText: 'const DIRECTIVE = "用 task.create 把这件事记下来"\n',
+  // The third face: the hand-written skill manual. It names the fixture catalog's
+  // own action for the same reason the other two do — a fixture that named nothing
+  // would pass the check vacuously.
+  skillsText: '要建卡就调 task.create，别只回文字。\n',
   presentFiles: ['src/core/board-actions.ts'],
   // The checklist's own write layer: the functions a panel may call to change a
   // document. The gate asks the CATALOG's `ITEM_HANDLERS` whether each one it
@@ -947,6 +951,37 @@ describe('4b — a surface that names an action is held to the catalog', () => {
     const out = findings({ commandsText: 'const DIRECTIVE = "用 task.mov 挪栏"\n' })
     expect(out).toContain('the slash commands')
     expect(out).toContain('names "task.mov"')
+  })
+
+  /**
+   * THE MANUAL IS A MODEL-VISIBLE SURFACE, so rule 22's third clause covers it.
+   *
+   * It is the likeliest place for a copied action name — hand-written prose about
+   * what to do — and leaving it out meant the one layer added alongside the rule
+   * itself sat outside it. This case is planted here because hard rule 16 says a
+   * gate is proven in `tests/`, never by editing a real file and putting it back.
+   */
+  it('catches a misspelled action in the skill manual, and says why that face matters', () => {
+    const out = findings({ skillsText: '要建卡就调 task.creat，别只回文字。\n' })
+    expect(out).toContain('the bundled skill manual')
+    expect(out).toContain('names "task.creat"')
+    expect(out).toContain('did you mean "task.create"')
+    // The reason travels with the finding, or the next reader deletes the face.
+    expect(out).toContain('goes stale silently')
+  })
+
+  it('holds all three hand-written faces, not just the first two', () => {
+    // A table that silently lost a row would restore exactly the gap this closed.
+    // Naming each label here means removing one is a red test rather than a quietly
+    // narrower judgement.
+    const out = findings({
+      promptText: '用 task.creat 建卡',
+      commandsText: 'const D = "用 task.mov 挪栏"',
+      skillsText: '要建卡就调 task.updat',
+    })
+    expect(out).toContain('the injected system-prompt section')
+    expect(out).toContain('the slash commands')
+    expect(out).toContain('the bundled skill manual')
   })
 
   it('does NOT count a name that only appears in a comment', () => {

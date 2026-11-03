@@ -25,7 +25,7 @@ import type { ItemRecord } from '../src/core/item.ts'
 import { captureItemRecord } from '../src/core/item-transitions.ts'
 // The vocabulary bridge's built-in half, for the end-to-end cases that prove a
 // Chinese column label lands in the document as the stored enum member.
-import { builtinCandidatesOf, resolveValue } from '../src/core/resolve.ts'
+import { builtinCandidatesOf, namesOfCandidates, resolveValue } from '../src/core/resolve.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import { itemQualifierVocabulary } from '../src/core/item-query.ts'
 import {
@@ -838,8 +838,15 @@ describe('the run-config field list exists once', () => {
         .toMatch(/跑|改坏|目录|危险/)
     }
     for (const key of ['provider', 'model', 'reasoningEffort', 'agentPreset'] as const) {
-      expect(params[key]?.appliesWhen, `${key} does not promise the default will be disclosed`)
-        .toContain('回执')
+      // These four may take a default — but the default must be DISCLOSED, so the
+      // sentence says the receipt will name the field as taking one. It must NOT
+      // promise 「the receipt says what value was used」: the host's default is
+      // resolved at run time and the receipt is built before any session exists,
+      // so that promise could never be kept.
+      expect(params[key]?.appliesWhen, `${key} does not say the default is disclosed`)
+        .toMatch(/回执|宿主默认/)
+      expect(params[key]?.appliesWhen, `${key} promises a value the receipt cannot know`)
+        .not.toContain('实际用了什么')
     }
     // And the six are no longer one sentence: a table where every value is equal
     // is a table that has not been decided.
@@ -1826,6 +1833,7 @@ describe('a value said in the reader\'s words is stored as the system\'s word', 
         const out = resolveValue(kind, value, { candidatesOf: () => candidates })
         return out.ok ? out.value : undefined
       },
+      candidatesOf: kind => namesOfCandidates(builtinCandidatesOf(kind)),
     },
   })
 
@@ -1880,6 +1888,136 @@ describe('a value said in the reader\'s words is stored as the system\'s word', 
       ops: [{ op: 'item.update', payload: { of: '#44', status: '进行中' } }],
     })
     expect(result.ok, 'without a resolver the Chinese label must still be refused').toBe(false)
+  })
+})
+
+/**
+ * THE FOUR PARAMETERS WHOSE VALUES LIVE IN THE DEPLOYMENT.
+ *
+ * `permission`, `agentPreset`, `workspaceId` and `model` have no `oneOf` — their
+ * members belong to the host, not to this catalog — so the resolver's first
+ * version never ran on them at all: it required a `oneOf` to fire. Measured, the
+ * exact text the selector prints was accepted, written, and reported 「已生效」:
+ *
+ *   task.create { permission: 'Full access' }  ->  stored "Full access"
+ *
+ * and the run then built `/permission Full access`, the host refused the unknown
+ * preset, and the card failed at the most expensive moment with a config error.
+ *
+ * The vocabulary is now a FIELD on the declaration (`ParamSpec.vocabulary`), so
+ * the door runs on what the parameter SAYS rather than on whether it happens to
+ * carry an enum — and the refusal carries the deployment's real candidate list,
+ * which is the only place those values can come from.
+ */
+describe('a value from the deployment\'s own table is read at the door, not stored as typed', () => {
+  /** A host whose permission table looks like the real one: keys plus printed labels. */
+  const PERMISSIONS = [
+    { value: 'read-only', spellings: ['read-only', 'Read Only'], label: 'Read Only' },
+    { value: 'danger-full-access', spellings: ['danger-full-access', 'Full access'], label: 'Full access' },
+  ]
+  const withHostTable = (board: ToolCommitFace): ToolDeps => ({
+    ...deps(board),
+    resolver: {
+      resolve: (kind, value) => {
+        const candidates = kind === 'permission' ? PERMISSIONS : builtinCandidatesOf(kind)
+        if (candidates.length === 0) return undefined
+        const out = resolveValue(kind, value, { candidatesOf: () => candidates })
+        return out.ok ? out.value : undefined
+      },
+      candidatesOf: kind => namesOfCandidates(kind === 'permission' ? PERMISSIONS : builtinCandidatesOf(kind)),
+    },
+  })
+
+  it('stores the preset KEY when the caller sends the printed label', async () => {
+    const board = face()
+    const result = await runBatch(withHostTable(board), {
+      ops: [{ op: 'task.create', payload: { prompt: 'p', title: '带权限', permission: 'Full access' } }],
+    })
+    expect(result.ok).toBe(true)
+    // THE DOCUMENT. Storing the label is what produced `/permission Full access`
+    // and a config error at run time.
+    expect(board.getDoc().tasks[0]?.permission, 'the printed label was stored as if it were the key').toBe('danger-full-access')
+  })
+
+  it('refuses an unknown value and lists what THIS deployment has', async () => {
+    const board = face()
+    const result = await runBatch(withHostTable(board), {
+      ops: [{ op: 'task.create', payload: { prompt: 'p', title: 'x', permission: 'Full Access Please' } }],
+    })
+    expect(result.ok, 'an unreadable preset was accepted and will fail mid-run').toBe(false)
+    const detail = result.reports[0]?.detail ?? ''
+    // Both halves: the stored key the caller must send, and the label it recognises.
+    expect(detail).toContain('danger-full-access')
+    expect(detail).toContain('Full access')
+    expect(board.getDoc().tasks, 'the refused card still landed').toHaveLength(0)
+  })
+
+  it('says so plainly when the host cannot list the values at all', async () => {
+    // 「I cannot tell you」 is not 「your value is wrong」. A deployment with no
+    // preset table must not accuse a perfectly good key — but it also must not
+    // hand the run a value nothing can resolve, so the refusal says WHICH of the
+    // two situations this is.
+    const board = face()
+    const result = await runBatch(withHostTable(board), {
+      ops: [{ op: 'task.create', payload: { prompt: 'p', title: 'x', agentPreset: 'Code Reviewer' } }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reports[0]?.detail ?? '').toContain('没有给出候选')
+  })
+
+  it('passes through unchanged when NO resolver is wired, so a bare host still works', async () => {
+    // The degradation that matters: a deployment with no preset service at all
+    // must still create cards. Refusing here would turn 「this host cannot say」
+    // into 「this host cannot work」.
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'task.create', payload: { prompt: 'p', title: 'x', permission: 'read-only' } }],
+    })
+    expect(result.ok, 'a host without a resolver was made unable to create cards').toBe(true)
+    expect(board.getDoc().tasks[0]?.permission).toBe('read-only')
+  })
+})
+
+/**
+ * THE RECEIPT'S REMAINDER IS OVER THE SIX, NOT OVER THE FOUR THAT MAY DEFAULT.
+ *
+ * `RUN_CONFIG_DEFAULTED` deliberately excludes the two must-ask keys. Reading the
+ * remainder off THAT set meant that as soon as a caller specified any one field,
+ * `workspaceId` and `permission` left the remainder and were never mentioned
+ * again: a card created with only `workspaceId` said 「其余 provider / model /
+ * reasoningEffort / agentPreset 用的是宿主默认」 — silently omitting that its
+ * permission was also the host's. And with all four preferences given the
+ * remainder came out EMPTY while two of six were unset, so the receipt said
+ * 「全部由你指定」, which is the exact opposite of what the line exists to disclose.
+ */
+describe('the run-config receipt discloses defaults over all six fields', () => {
+  const noteOf = async (payload: Record<string, unknown>): Promise<string> => {
+    const board = face()
+    const out = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { prompt: 'p', title: 'T', ...payload } }] })
+    return out.reports[0]?.detail ?? ''
+  }
+
+  it('names a must-ask field that is still on the host default', async () => {
+    const note = await noteOf({ workspaceId: 'ws-9' })
+    expect(note, 'the receipt never mentions that permission was left to the host').toContain('permission')
+    expect(note).toContain('宿主默认')
+  })
+
+  it('never says 「全部由你指定」 unless all six really were', async () => {
+    // Four given, two (workspaceId, permission) unset.
+    const note = await noteOf({ provider: 'p', model: 'm', reasoningEffort: 'high', agentPreset: 'a' })
+    expect(note, 'the receipt claimed every field was chosen while two were not').not.toContain('全部由你指定')
+    expect(note).toContain('workspaceId')
+    expect(note).toContain('permission')
+  })
+
+  it('warns that a model without a provider will not be used', async () => {
+    // `execution.ts` applies the model route under `provider !== undefined &&
+    // model !== undefined`, with effort read inside that guard — so a card with
+    // only a model runs on the deployment's default model. Reporting it as a
+    // chosen value is not a wording problem: the next turn answers from it.
+    const note = await noteOf({ model: 'm-1' })
+    expect(note, 'the receipt reports a model that will never be executed').toContain('不会生效')
   })
 })
 
@@ -2590,7 +2728,7 @@ describe('模型读到的词与界面是同一套（硬性规范 17）', () => {
   it('三个日期同时印原始戳和那一天', () => {
     // 读这一行的是个被告诉过「单位是天」的模型，所以一个光秃秃的 13 位数只会让它去猜。这条
     // 把它钉在同一个模板上：两个都给。
-    expect(tools, '日期只印了原始戳，模型得自己猜那是哪一天').toContain('（${localDayOf(at)}）')
+    expect(tools, '日期只印了原始戳，模型得自己猜那是哪一天').toContain('（${localDayKey(at)}）')
   })
 
   it('行自己存的状态与它显示的不同时，两个都说出来', () => {

@@ -1481,6 +1481,23 @@ const ACTION_NAME_FACES = [
     label: 'the slash commands (src/host/agent/commands.ts)',
     why: 'a directive that names an action the catalog does not have sends the model looking for a tool it cannot call',
   },
+  {
+    /* THE MANUAL IS A MODEL-VISIBLE SURFACE, so hard rule 22's third clause covers
+     * it: 「任何说得出动作名的表面，都必须被门禁对着目录核一遍」.
+     *
+     * It is the surface most likely to name one, too — it is prose written by hand
+     * about what to do, and the boundary it must respect is exactly 「决策才手写，
+     * 字段与动作名不许抄」. Leaving it out left the one layer added by the same
+     * commit outside the judgement that commit wrote down, which means the first
+     * person to type 「先用 task.creat 建卡」 into it would be caught by nobody.
+     *
+     * `references/actions.md` is NOT listed: it is GENERATED from the catalog and
+     * `gen-skill-actions --check` holds it byte-for-byte. Checking a generated file
+     * against its own source would only ever duplicate that. */
+    field: 'skillsText',
+    label: 'the bundled skill manual (skills/taskboard/SKILL.md)',
+    why: 'it is hand-written prose that tells the model what to do, so an action name in it is a copied fact that goes stale silently — the exact thing the manual promises not to contain',
+  },
 ]
 
 /**
@@ -1623,11 +1640,15 @@ export function readRepo(root) {
       ...coreExports(coreFiles.filter(f => /item-transitions|items-doc/.test(f.path))),
     ],
     agentsText: existsSync(at('AGENTS.md')) ? readFileSync(at('AGENTS.md'), 'utf8') : '',
-    // The two faces that may spell an action name (AGENTS.md rule 22). Read here
+    // The faces that may spell an action name (AGENTS.md rule 22). Read here
     // so a surface the catalog rule covers is covered by the file, not by
     // somebody remembering to pass it in.
     promptText: existsSync(at('src', 'host', 'agent', 'prompt.ts')) ? readFileSync(at('src', 'host', 'agent', 'prompt.ts'), 'utf8') : '',
     commandsText: existsSync(at('src', 'host', 'agent', 'commands.ts')) ? readFileSync(at('src', 'host', 'agent', 'commands.ts'), 'utf8') : '',
+    // The hand-written manual. `references/actions.md` is deliberately NOT read: it
+    // is generated from this same catalog and `gen-skill-actions --check` holds it
+    // byte-for-byte, so checking it here would duplicate that gate.
+    skillsText: existsSync(at('skills', 'taskboard', 'SKILL.md')) ? readFileSync(at('skills', 'taskboard', 'SKILL.md'), 'utf8') : '',
     presentFiles,
   }
 }

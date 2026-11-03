@@ -347,6 +347,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | host | `attachments` | `admitEncodedFile`、`saveImage`、`readImage`、`readFileStream` | `@deepseek-ai/dsh-attachment` |
 | host | `workspaceRegistry` | `list` | `@deepseek-ai/dsh-workspace` |
 | host | `skills` | `register` | `@deepseek-ai/dsh-skill` |
+| host | `permissionPresets` | `names`、`optionOf` | `@deepseek-ai/dsh-permission-presets` |
+| host | `agentPresets` | `list` | `@deepseek-ai/dsh-agent-preset-registry` |
 | client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
 
 **两条使用纪律**：
@@ -655,8 +657,9 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
     **未完成**。三条硬底线：① 装不下时让位而非压扁（裸 `1fr` 轨道、无地板的 `flex:1 1 0` 都不算
     做完）；② 文字永不画在盒外；③ 触屏没有 hover——承载必要信息的说明不能只挂 `title=`。
 12. **动作目录是界面与模型之间唯一的同步面，改界面必须同时改它**：
-    `src/core/board-actions.ts` 是动作目录（一条表，三处从它渲染：工具 schema、能力查询、
-    覆盖门禁）。**改界面的任何一处之前先问「目录里有同名同参的动作吗」**：两个方向
+    `src/core/board-actions.ts` 是动作目录（一条表，**四处从它渲染**：工具 schema、能力查询、
+    覆盖门禁、生成的 Skill 参考 `skills/taskboard/references/actions.md`）。**改界面的任何一处之前先问
+    「目录里有同名同参的动作吗」**：两个方向
     各有各的门禁（字段方向编译期、界面方向静态扫描），缺一不可，**门禁红了就改实现，别改门禁**。
     读投影与视图开关不是动作，进 `INTERNAL` 时**必须写清理由**——没有理由的豁免与漏掉一个没有
     区别；`DEBT: ` 开头的理由是如实记下的欠账。**说清不等于说得进去**：一句写在散文里的默认值，

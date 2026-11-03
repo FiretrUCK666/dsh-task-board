@@ -277,6 +277,9 @@ export const zh = {
   'detail.restoreHidden': '恢复全部已隐藏',
   'detail.restoreOne': '恢复',
   'detail.hiddenTrayTitle': '已隐藏 {n} 个会话',
+  // 归档是「可恢复的隐藏」，不是删除。这一行让读者分得清「放起来了」和「没了」——
+  // 卡片曾经让它凭空消失，与彻底删掉的样子一模一样。
+  'detail.archivedTrayTitle': '已归档 {n} 个会话（在原生侧栏取消归档就会回到这里）',
   'detail.sessionRemoveTitle': '移除「{name}」的全部记录？',
   'detail.sessionRemoveConfirm': '该会话在本任务中的评论与执行记录将被永久删除，且不可恢复；任务与其余会话不受影响。',
   'detail.sessionRemoveOk': '移除',
@@ -1476,6 +1479,7 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.restoreHidden': 'Restore all hidden',
   'detail.restoreOne': 'Restore',
   'detail.hiddenTrayTitle': '{n} hidden sessions',
+  'detail.archivedTrayTitle': '{n} archived sessions (un-archive one in the native sidebar and it returns here)',
   'detail.sessionRemoveTitle': 'Remove every record of "{name}"?',
   'detail.sessionRemoveConfirm': 'This session\'s comments and run records on this task will be deleted permanently and cannot be recovered; the task and its other sessions stay untouched.',
   'detail.sessionRemoveOk': 'Remove',

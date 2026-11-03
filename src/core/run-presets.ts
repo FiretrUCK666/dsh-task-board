@@ -12,6 +12,7 @@
  * to 部署默认, so there is no broken state and no migration: the 部署默认 preset
  * IS the deployment default.
  */
+import type { ParameterVocabulary } from './board-actions.ts'
 
 /**
  * The run-config fields, as ONE list.
@@ -89,12 +90,56 @@ const RUN_CONFIG_ABOUT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>>
  * @see RUN_CONFIG_ABSENT
  */
 const RUN_CONFIG_ABSENT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>> = {
-  workspaceId: '留空 = 用宿主默认工作区。**它决定文件落在哪**：只在这次要跑东西、而且用户没说在哪儿时，先问一句再填',
-  provider: '留空 = 用宿主默认供应方（回执会写出实际用了什么）',
-  model: '留空 = 用宿主默认模型（回执会写出实际用了什么）',
-  reasoningEffort: '留空 = 用宿主默认档位（回执会写出实际用了什么）',
-  agentPreset: '留空 = 用宿主默认代理（回执会写出实际用了什么）',
+  workspaceId: '留空 = 落到最近用过的工作区（没有就取列表第一个；一个都没有时这张卡跑不起来）。**它决定文件落在哪**：只在这次要跑东西、而且用户没说在哪儿时，先问一句再填',
+  /* THE MODEL ROUTE IS ONE DECISION IN THREE FIELDS, not three independent ones.
+   *
+   * `execution.ts` applies it under a single guard — `provider !== undefined &&
+   * model !== undefined` — with `reasoningEffort` read INSIDE that guard. So a task
+   * with only a model runs on the deployment's default model, silently. Publishing
+   * these as three unrelated optionals made the receipt report a value that would
+   * never be executed: 「model=m-1（你指定的）」 about a run that uses neither.
+   *
+   * The sentences say the coupling, because a caller reading a parameter table has
+   * no way to see a guard in another module. */
+  provider: '留空 = 用宿主默认供应方。**供应方与模型要一起给才生效**：只给其中一个等于都没给',
+  model: '留空 = 用宿主默认模型。**要和 provider 一起给才生效**：只给模型不会改变这次运行用的模型',
+  reasoningEffort: '留空 = 用宿主默认档位。**依附于 provider + model**：那两个没给时这一项不生效',
+  agentPreset: '留空 = 用宿主默认代理（回执会说明这一项走的是宿主默认）',
   permission: '留空 = 用宿主默认权限。**它决定能做什么危险操作**：涉及删除或覆盖文件时，先问一句再填',
+}
+
+/**
+ * WHICH of the six are said in a vocabulary the host can read — and which are
+ * free text.
+ *
+ * ── THE DEFECT THIS FIELD CLOSES ──────────────────────────────────────────
+ *
+ * `permission` and `agentPreset` take values from the DEPLOYMENT's own tables, so
+ * the catalog cannot list them. It used to publish them as plain optional strings
+ * with no `oneOf` — and the door that reads a reader's word into a stored key only
+ * ran when a parameter HAD a `oneOf`. So `permission: 'Full access'` (the exact
+ * text the selector prints) was accepted, written to the card, and reported
+ * 「已生效」 — then the run built `/permission Full access` and the host refused
+ * it, so the card failed at the most expensive moment with a config error. The
+ * reader had followed the description it was given.
+ *
+ * The three that are NOT listed are genuinely free text or a uuid the host owns:
+ * a workspace id, a provider key, a model id and an effort tier are not
+ * enumerable here, and pretending otherwise would make the door refuse legal
+ * values.
+ *
+ * `workspaceId` is deliberately absent even though it is a closed set in practice:
+ * its members come from the workspace registry, which this table cannot read, and
+ * the honest degradation for an unknown id is 「the run says it cannot find that
+ * workspace」 rather than 「this tool refuses a workspace that exists」.
+ */
+const RUN_CONFIG_VOCABULARY: Readonly<Record<typeof RUN_CONFIG_KEYS[number], ParameterVocabulary | undefined>> = {
+  workspaceId: undefined,
+  provider: undefined,
+  model: undefined,
+  reasoningEffort: undefined,
+  agentPreset: 'agentPreset',
+  permission: 'permission',
 }
 
 /**
@@ -104,13 +149,28 @@ const RUN_CONFIG_ABSENT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>
  * six fields, one declaration, so a seventh field cannot be settable in one place
  * and invisible in another — but it no longer claims the six mean the same thing
  * when omitted, because they do not.
+ *
+ * Two of them also carry a {@link ParamSpec.vocabulary}, which is what puts them
+ * through the reader's-word door. That declaration has to live HERE rather than
+ * beside each action, or the three actions would each have to remember it.
  */
-export const RUN_CONFIG_PARAMS: Readonly<Record<typeof RUN_CONFIG_KEYS[number], { about: string; optional: true; appliesWhen: string }>> =
+export const RUN_CONFIG_PARAMS: Readonly<Record<typeof RUN_CONFIG_KEYS[number], {
+  about: string
+  optional: true
+  appliesWhen: string
+  vocabulary?: ParameterVocabulary
+}>> =
   Object.fromEntries(RUN_CONFIG_KEYS.map(key => [key, {
     about: RUN_CONFIG_ABOUT[key],
     optional: true as const,
     appliesWhen: RUN_CONFIG_ABSENT[key],
-  }])) as Readonly<Record<typeof RUN_CONFIG_KEYS[number], { about: string; optional: true; appliesWhen: string }>>
+    ...RUN_CONFIG_VOCABULARY[key] === undefined ? {} : { vocabulary: RUN_CONFIG_VOCABULARY[key] as ParameterVocabulary },
+  }])) as Readonly<Record<typeof RUN_CONFIG_KEYS[number], {
+    about: string
+    optional: true
+    appliesWhen: string
+    vocabulary?: ParameterVocabulary
+  }>>
 
 /**
  * The two keys whose wrong value is DAMAGE rather than a preference, so a caller

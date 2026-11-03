@@ -272,6 +272,7 @@ export declare const zh: {
     'detail.restoreHidden': string;
     'detail.restoreOne': string;
     'detail.hiddenTrayTitle': string;
+    'detail.archivedTrayTitle': string;
     'detail.sessionRemoveTitle': string;
     'detail.sessionRemoveConfirm': string;
     'detail.sessionRemoveOk': string;

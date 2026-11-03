@@ -1,46 +1,3 @@
-/**
- * The resolver: what a caller SAID, turned into the value this system stores.
- *
- * ── WHY THIS EXISTS ──────────────────────────────────────────────────────────
- *
- * The tools ask for INTERNAL values — `running`, `danger-full-access`, a
- * workspace uuid — while a person says 进行中, the interface prints 「Full access」,
- * and the configuration file keys it as `danger-full-access`. Three vocabularies
- * for one fact, and the model sat in the middle with nothing to translate with:
- * its only move was to memorise, and memorising is writing down, which goes
- * stale the moment a rule renames.
- *
- * The result was measurable, not theoretical: the catalog's own description said
- * `status` was 「五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成」 while the
- * validator compared against `backlog/todo/running/review/done`. A model that
- * followed the description was refused EVERY time, and the refusal named values
- * the description had never shown it.
- *
- * So the fix is not more rules — it is a translation layer between the words
- * callers actually use and the one spelling the document stores.
- *
- * ── WHAT IT IS NOT ──────────────────────────────────────────────────────────
- *
- *  · NOT a second validator. `checkParams` still owns "is this legal"; this owns
- *    "what did they mean". One is a gate, the other is a reading.
- *  · NOT a source of truth for the candidate lists. A resolver that hard-coded
- *    `read-only / workspace-write / danger-full-access` would be exactly the
- *    「写死」 this project forbids: the deployment's preset table is the authority,
- *    and it changes without this file. The candidates are PASSED IN.
- *  · NOT a guesser. An input it cannot read is REFUSED with the candidates
- *    attached; silently picking the nearest would be a confident wrong answer,
- *    which is the class of defect this whole surface is being rebuilt around.
- *
- * ── THE RULE FOR ADDING A VOCABULARY ────────────────────────────────────────
- *
- * A table is added here only when the SAME fact already has two spellings in this
- * repository (a stored value and a displayed word). A tidy synonym list invented
- * here would be a third vocabulary, and a third is worse than two: it would drift
- * from both.
- *
- * @module dsh-task-board/core/resolve
- */
-import { type ItemPriority, type ItemStatusView } from './item.ts';
 /** Which vocabulary a value belongs to. */
 export type ResolveKind = 
 /** A board column / checklist status. */
@@ -132,6 +89,17 @@ export declare function builtinCandidatesOf(kind: ResolveKind): readonly Resolve
  */
 export declare function resolveValue(kind: ResolveKind, input: unknown, ctx: ResolveContext): Resolved;
 /**
+ * The strings a refusal prints for a candidate list.
+ *
+ * BOTH HALVES, because a refusal is read by a caller that has to pick one and by
+ * a person reading over its shoulder: the stored value is what must be sent back,
+ * and the label is what the caller recognises. Printing only the stored value is
+ * the 「说明写中文、校验认英文」 defect in a new place.
+ * @param candidates - the legal candidates.
+ * @returns one `value（label）` string per candidate, or the bare value.
+ */
+export declare function namesOfCandidates(candidates: readonly ResolveCandidate[]): string[];
+/**
  * The sentence a failed resolution becomes, ready to return to a caller.
  *
  * One place, so every refusal from this layer has the same shape: what was said,
@@ -158,23 +126,3 @@ export declare function resolveWhy(kind: ResolveKind, resolved: Extract<Resolved
  * @returns the candidate list to resolve against.
  */
 export declare function candidatesFor(kind: ResolveKind, fromHost: readonly ResolveCandidate[]): readonly ResolveCandidate[];
-/**
- * The stored status a view might have come from, or undefined.
- *
- * A tiny convenience over {@link resolveValue} for the one caller that wants the
- * narrow type back. It exists rather than a cast because a cast at the call site
- * is how a resolver's answer becomes a lie about the document.
- * @param resolved - a successful resolution of kind `status`.
- * @returns the value, narrowed to the status union when it really is one.
- */
-export declare function statusOfResolved(resolved: Extract<Resolved, {
-    ok: true;
-}>): ItemStatusView | undefined;
-/**
- * The priority tier a resolution produced, or undefined.
- * @param resolved - a successful resolution of kind `priority`.
- * @returns the tier, narrowed when it really is one.
- */
-export declare function priorityOfResolved(resolved: Extract<Resolved, {
-    ok: true;
-}>): ItemPriority | undefined;

@@ -194,7 +194,36 @@ export interface ParamSpec {
   readonly requiredWhen?: string
   /** Meaningless unless this holds — so a model does not invent it. */
   readonly appliesWhen?: string
+  /**
+   * WHICH VOCABULARY this value is said in — and therefore who may translate it.
+   *
+   * A parameter whose value comes from a table the deployment owns (a permission
+   * preset, an agent preset) cannot be validated by a list here: the list is not
+   * this repository's. Declaring the VOCABULARY is what lets the host read a
+   * reader's word into the stored key at the door — `Full access` → the preset
+   * key — instead of accepting any string and letting the run fail.
+   *
+   * It exists as a FIELD rather than being inferred from the parameter's name
+   * because the name is not the meaning: `status` on a card and `status` on a
+   * checklist row are the same vocabulary by coincidence, while `permission` is a
+   * different one from anything else in the catalog, and a table keyed by NAME
+   * would silently apply the wrong reading the first time two of them disagreed.
+   * A vocabulary declared here is one the READER is held to; one that is only
+   * implied by a name is one nobody can check.
+   */
+  readonly vocabulary?: ParameterVocabulary
 }
+
+/**
+ * The vocabularies a parameter's value can be said in.
+ *
+ * `status` and `priority` are THIS repository's (the enum is here, so the labels
+ * are derivable here). `permission` and `agentPreset` are the DEPLOYMENT's: its
+ * preset table is the authority, changes without this plugin, and is read live at
+ * the door. Splitting them is what keeps 「写死」 impossible in one direction and
+ * 「读不到」 impossible in the other.
+ */
+export type ParameterVocabulary = 'status' | 'priority' | 'permission' | 'agentPreset'
 
 /**
  * What an action IS — every field except the per-action typing of `params`.
@@ -347,7 +376,7 @@ export const ACTIONS = {
       prompt: { about: '执行 Prompt：这条卡跑起来时真正送出去的那段话' },
       title: { about: '一行标题', optional: true, appliesWhen: '留空时由执行 Prompt 补，不会覆盖已填的标题' },
       description: { about: '详情正文', optional: true },
-      status: { about: '落哪一栏', optional: true, oneOf: MOVABLE, appliesWhen: '只能落在人手能拖过去的栏；「进行中」「待审核」归执行器' },
+      status: { about: '落哪一栏', optional: true, oneOf: MOVABLE, vocabulary: 'status', appliesWhen: '只能落在人手能拖过去的栏；「进行中」「待审核」归执行器' },
       beforeId: { about: '插到这张卡前面', optional: true, appliesWhen: '只在同一栏内排序时需要' },
       bind: {
         about: '建卡时直接挂上的来源（可多项）：kind 是 session 时给 { kind, sessionId }，是 workspace 时给 { kind, workspaceId }',
@@ -403,7 +432,7 @@ export const ACTIONS = {
     semanticOf: ['resolveCardDrop', 'moveTaskToStatus'],
     params: {
       of: { about: '要移动的卡' },
-      status: { about: '目标栏', oneOf: MOVABLE },
+      status: { about: '目标栏', oneOf: MOVABLE, vocabulary: 'status' },
       beforeId: { about: '插到同栏这张卡之前', optional: true, appliesWhen: '只在同一栏内排序时需要' },
     },
   },
@@ -851,8 +880,8 @@ export const ACTIONS = {
         optional: true,
         list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
       },
-      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成', optional: true, oneOf: ITEM_STATUS_VALUES },
-      priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
+      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成', optional: true, oneOf: ITEM_STATUS_VALUES, vocabulary: 'status' },
+      priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES, vocabulary: 'priority' },
       tags: { about: '自由标签', optional: true, list: 'string' },
       // The granularity is a FIELD on all three dates, and in the same words.
       // Prose in one `about` and silence in the other is a third reading of the
@@ -887,8 +916,8 @@ export const ACTIONS = {
         optional: true,
         list: { about: '一步：text 是那行字，done 是勾没勾；id 由文档分配，不要自己编', object: ['text', 'done'] },
       },
-      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时改的是那张卡在哪一栏，两处一起写；挂着卡时进行中与待审核给不了——那是执行器落的事实）', optional: true, oneOf: ITEM_STATUS_VALUES },
-      priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES },
+      status: { about: '五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成（这一条挂着卡时改的是那张卡在哪一栏，两处一起写；挂着卡时进行中与待审核给不了——那是执行器落的事实）', optional: true, oneOf: ITEM_STATUS_VALUES, vocabulary: 'status' },
+      priority: { about: '四档优先级', optional: true, oneOf: ITEM_PRIORITY_VALUES, vocabulary: 'priority' },
       tags: { about: '自由标签（整份替换）', optional: true, list: 'string' },
       // The same field, the same value, for the same reason as `item.create`'s.
       startsAfter: { about: '开始', optional: true, default: DATE_GRANULARITY },

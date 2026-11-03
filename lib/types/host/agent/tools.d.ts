@@ -403,6 +403,29 @@ export interface ParamResolver {
      * @returns the stored value, or undefined when it is not readable.
      */
     resolve(kind: ResolveKind, value: unknown): string | undefined;
+    /**
+     * The legal values, for a refusal to print.
+     *
+     * A REFUSAL WITHOUT THE LIST COSTS A SEARCH. 「认不出 Full access」 leaves the
+     * caller with the same guess it already made; the list turns the correction into
+     * a glance. This is also the only way a caller learns what a DEPLOYMENT's table
+     * holds — those values are not in the catalog by design.
+     * @param kind - the vocabulary.
+     * @returns `value（label）` per candidate, empty when the host cannot say.
+     */
+    candidatesOf(kind: ResolveKind): readonly string[];
+    /**
+     * The refusal sentence for a value this face could not read.
+     *
+     * OPTIONAL because a face may only know how to READ and not how to explain; when
+     * absent the caller falls back to its own sentence built from `candidatesOf`. It
+     * exists so the wording lives in one place (`resolveWhy`) instead of being
+     * re-typed at every door that refuses a value.
+     * @param kind - the vocabulary.
+     * @param value - what was said.
+     * @returns the sentence, or '' when the value actually resolved.
+     */
+    whyNot?(kind: ResolveKind, value: unknown): string;
 }
 export interface ExecuteRequest {
     readonly ops: readonly {

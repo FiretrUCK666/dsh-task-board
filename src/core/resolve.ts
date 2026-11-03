@@ -40,7 +40,7 @@
  *
  * @module dsh-task-board/core/resolve
  */
-import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS, type ItemPriority, type ItemStatusView } from './item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS } from './item.ts'
 import { PRIORITY_BY_TOKEN } from './item-query.ts'
 
 /** Which vocabulary a value belongs to. */
@@ -108,16 +108,37 @@ export function resolveKeyOf(raw: string): string {
 /**
  * The values a status may be written as, with the words a reader sees.
  *
- * THE SPELLINGS COME FROM THE ENUM AND THE DICTIONARY, not from a list typed
- * here: the stored values are `ITEM_STATUS_VIEWS`, and the Chinese words are the
- * same ones the columns are labelled with. A hand-written synonym table would be
- * the third vocabulary this module's header refuses.
+ * THE STORED VALUES COME FROM THE ENUM; THE CHINESE WORDS ARE TYPED HERE, and the
+ * first version of this comment claimed both came from elsewhere — which is the
+ * kind of comment that gets believed. `STATUS_LABELS` below carries a `DEBT:` note
+ * naming the second copy in `client/locales.ts` and what extracting it costs.
  *
- * English additions (`doing`, `in progress`, `wip`) are NOT added: they are not
- * spellings THIS repository uses anywhere, and a synonym nobody writes is a
- * synonym that only adds surface for a wrong guess to land on. The three that
- * matter are the stored key, the Chinese label, and the label with its CJK
- * punctuation stripped by `resolveKeyOf`.
+ * English synonyms (`doing`, `in progress`, `wip`) are NOT added: they are not
+ * spellings THIS repository uses anywhere, and a synonym nobody writes is surface
+ * for a wrong guess to land on. The two that matter are the stored key and the
+ * label the columns print.
+ */
+/**
+ * The Chinese words for the five columns, as a reader sees them.
+ *
+ * `DEBT: a SECOND copy of these ten strings lives in src/client/locales.ts`
+ * (`board.status.*` / `item.priority.*`), and nothing keeps the two equal — this
+ * module cannot import the client's dictionary because the half-boundary forbids
+ * it. Hard rule 17 says one concept gets one vocabulary, and this is the one place
+ * its violation is structural rather than careless: today the two copies are
+ * character-for-character identical, and the day somebody rewords a column header
+ * the resolver silently stops recognising the new word while every gate stays
+ * green.
+ *
+ * The fix is to lift these ten strings into `core/` (which both halves may read)
+ * and have `locales.ts` take them from there. That is a change to the dictionary's
+ * own shape and is recorded here rather than half-done: an extraction that moved
+ * only the five status words would leave the four tiers behind, which is the same
+ * defect with a smaller count.
+ *
+ * The EN labels are not listed at all, and that is also a known gap: a deployment
+ * running the English dictionary prints `In Progress`, and the resolver does not
+ * recognise it. The delivery is Chinese, so this is the smaller half of the debt.
  */
 const STATUS_LABELS: Readonly<Record<string, string>> = {
   backlog: '待规划',
@@ -219,7 +240,7 @@ export function builtinCandidatesOf(kind: ResolveKind): readonly ResolveCandidat
 export function resolveValue(kind: ResolveKind, input: unknown, ctx: ResolveContext): Resolved {
   const said = typeof input === 'string' ? input : input === undefined || input === null ? '' : String(input)
   if (said.trim() === '') {
-    return { ok: false, why: '这个值不能是空的', candidates: namesOf(ctx.candidatesOf(kind)) }
+    return { ok: false, why: '这个值不能是空的', candidates: namesOfCandidates(ctx.candidatesOf(kind)) }
   }
   const candidates = ctx.candidatesOf(kind)
   if (candidates.length === 0) {
@@ -245,7 +266,7 @@ export function resolveValue(kind: ResolveKind, input: unknown, ctx: ResolveCont
   return {
     ok: false,
     why: `「${said.trim()}」不是认识的值`,
-    candidates: namesOf(candidates),
+    candidates: namesOfCandidates(candidates),
   }
 }
 
@@ -259,7 +280,7 @@ export function resolveValue(kind: ResolveKind, input: unknown, ctx: ResolveCont
  * @param candidates - the legal candidates.
  * @returns one `value（label）` string per candidate, or the bare value.
  */
-function namesOf(candidates: readonly ResolveCandidate[]): string[] {
+export function namesOfCandidates(candidates: readonly ResolveCandidate[]): string[] {
   return candidates.map(candidate =>
     candidate.label === undefined || candidate.label === candidate.value
       ? candidate.value
@@ -297,30 +318,4 @@ export function resolveWhy(kind: ResolveKind, resolved: Extract<Resolved, { ok: 
 export function candidatesFor(kind: ResolveKind, fromHost: readonly ResolveCandidate[]): readonly ResolveCandidate[] {
   const builtin = builtinCandidatesOf(kind)
   return builtin.length > 0 ? builtin : fromHost
-}
-
-/**
- * The stored status a view might have come from, or undefined.
- *
- * A tiny convenience over {@link resolveValue} for the one caller that wants the
- * narrow type back. It exists rather than a cast because a cast at the call site
- * is how a resolver's answer becomes a lie about the document.
- * @param resolved - a successful resolution of kind `status`.
- * @returns the value, narrowed to the status union when it really is one.
- */
-export function statusOfResolved(resolved: Extract<Resolved, { ok: true }>): ItemStatusView | undefined {
-  return (ITEM_STATUS_VIEWS as readonly string[]).includes(resolved.value)
-    ? resolved.value as ItemStatusView
-    : undefined
-}
-
-/**
- * The priority tier a resolution produced, or undefined.
- * @param resolved - a successful resolution of kind `priority`.
- * @returns the tier, narrowed when it really is one.
- */
-export function priorityOfResolved(resolved: Extract<Resolved, { ok: true }>): ItemPriority | undefined {
-  return (ITEM_PRIORITIES as readonly string[]).includes(resolved.value)
-    ? resolved.value as ItemPriority
-    : undefined
 }
