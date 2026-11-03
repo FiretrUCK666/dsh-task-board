@@ -82,10 +82,14 @@ export interface TaskSessionContext {
      *  while the agent is genuinely busy. */
     sessionActiveOf?(sessionId: string): boolean;
     /** Whether the session is ARCHIVED natively (the registry's archive set).
-     *  An archived conversation is put away: its row leaves the card on every
-     *  replica the instant the native state moves (derived, never ledger — zero
-     *  sync delay by construction); the rounds stay in the ledger, so
-     *  un-archiving brings the row back with its full history. */
+     *
+     *  An archived conversation is PUT AWAY, not gone — archiving is 「可恢复的隐藏」.
+     *  So this list leaves it out (an archived session is not outstanding work, and
+     *  the rounds stay in the ledger so un-archiving brings it straight back), while
+     *  `controller.linkedOf` keeps the row and marks it, so the card can still show
+     *  that it owns that conversation. The two answer different questions on
+     *  purpose: this list is 「what is going on」, the linked rows are 「what belongs
+     *  to this card」, and only the second one must survive archiving. */
     archivedOf?(sessionId: string): boolean;
     /** The localized 未命名 placeholder (native title absent → row shows it). */
     untitledLabel?: string;

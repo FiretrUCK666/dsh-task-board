@@ -301,7 +301,7 @@ Some things are not ready to be worked on yet. Write them down first.
 - **Rules** that send a session an instruction on the same triggers; the instruction can carry images and files, and the row says how many it holds.
 - **Auto-cruise**: one switch in the board header, with a cap on how many run at once and the hours they may run in.
 - Your phone opens the same data, and changes sync live. It works offline and catches up when the connection returns.
-- `/task` hands your sentence to the current session's model. `/task-continue` asks it to pick up where it left off.
+- **Four slash commands.** `/task` hands your sentence to the current session's model, which decides whether it belongs on the board or the checklist. `/task-continue` lists what is unfinished on both and asks which one to start. `/task-status` reports the state and changes nothing. `/task-cleanup` tidies both: recoverable deletes happen, and anything irreversible is put to you first.
 - **The AI can read what it writes.** It can read a card down to its run configuration, schedule, session rules and attached sessions, so "add a rule to this card" no longer needs you to copy a session id off the screen. It reads the shape of the board by default and goes deeper only when it needs to.
 - **"Accepted" is not "done".** A receipt separates three things: really written, handed to the engine and not finished, or queued until the engine comes online. And one more it says outright: "not executed", because the browser holding the seat is running a build that cannot do that action.
 - **The session dots on a card open.** With something unread they open that session; otherwise they open the card's session list. Same on a phone.

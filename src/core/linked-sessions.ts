@@ -52,6 +52,25 @@ export interface LinkedSessionRow {
   running: boolean
   pendingInteraction?: PendingInteractionKind
   updatedAt: number
+  /**
+   * The session is ARCHIVED natively: put away, still there.
+   *
+   * ── WHY THE ROW EXISTS AND IS MARKED, INSTEAD OF BEING SKIPPED ────────────
+   *
+   * Archiving is reversible ("可恢复的隐藏"), and the derivation used to apply it by
+   * `continue`ing past the row — so on the card, an archived conversation became
+   * INDISTINGUISHABLE FROM A DELETED ONE. A person who tidied their sidebar saw
+   * the card quietly lose a session it still owns, and the only way to tell
+   * 「放起来了」 from 「没了」 was to go and un-archive it in the native sidebar to
+   * find out. That is the same class of lie this project refuses everywhere: a
+   * surface reporting an absence it cannot actually attest.
+   *
+   * The row stays and says so, so a reader can see the session is still bound.
+   * `hidden` is different and remains a pure display choice the person made ON THE
+   * CARD (`task.hidden.sessions`) — those rows are dropped here, because hiding is
+   * an instruction about this panel rather than a fact about the session.
+   */
+  archived: boolean
 }
 
 /** Inputs the derivation needs from the native domains (read-only snapshots). */
@@ -128,6 +147,11 @@ function rowOf(sessionId: string, source: LinkedSessionSource): LinkedSessionRow
     ...workspaceLabel !== undefined ? { workspaceLabel } : {},
     running: source.running,
     updatedAt: source.updatedAt,
+    // The pure derivation does not know the archive set (it is a registry-global
+    // concern applied one level up, in the controller), so the row says "not
+    // archived" here and the caller that knows overrides it. Stating it rather
+    // than leaving it optional keeps every consumer reading a definite answer.
+    archived: false,
   }
 }
 

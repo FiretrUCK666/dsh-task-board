@@ -511,6 +511,13 @@ export const ACTIONS = {
     surface: 'ui+ai',
     summary: '撤掉一条还在排队的评论轮次（已经注入出去的那条撤不回来）。',
     params: {
+      // `of` IS REQUIRED HERE because the round is addressed WITHIN a card: a
+      // round id alone says nothing about which card's ledger to search, and the
+      // implementation reads it before it can find anything. It was missing from
+      // this row while the case body already needed it — a parameter the code
+      // requires and the catalog does not publish is a call the model can never
+      // get right, and the unknown-key check is what found it.
+      of: { about: '这条评论挂在哪张卡上' },
       round: { about: '要撤的轮次' },
     },
   },
@@ -663,12 +670,12 @@ export const ACTIONS = {
         optional: true,
         appliesWhen: '留空 = 一个字都不发，会话由宿主自己的命名链在第一句真话之后命名；给了名字就用官方改名接口钉住它，宿主之后不会再自动改名',
       },
-      workspaceId: { about: '跑在哪台机器上', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
-      provider: { about: '模型供应方', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
-      model: { about: '模型', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
-      reasoningEffort: { about: '思考档位', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
-      agentPreset: { about: '代理预设', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
-      permission: { about: '权限预设，只能填目录里真实存在的键', optional: true, appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析' },
+      // THE SAME SIX FIELDS FROM THE SAME DECLARATION as `task.create` and
+      // `task.update`. They were spelled out here by hand — a fifth copy of the
+      // list that `run-presets.ts` already warns about — so a field added to
+      // {@link RUN_CONFIG_KEYS} would have been invisible on session creation, and
+      // the failure would have been silent: the parameter simply would not exist.
+      ...RUN_CONFIG_PARAMS,
     },
   },
   'session.bind': {

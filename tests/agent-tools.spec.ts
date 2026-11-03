@@ -14,11 +14,18 @@ import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { RUN_CONFIG_KEYS } from '../src/core/run-presets.ts'
+import { RUN_CONFIG_DEFAULTED, RUN_CONFIG_KEYS, RUN_CONFIG_MUST_ASK } from '../src/core/run-presets.ts'
 import { ACTIONS, TOOL_ACTION_IDS } from '../src/core/board-actions.ts'
 import { emptyBoardDoc, applyCommit, type BoardCommand, type BoardDoc } from '../src/core/board-doc.ts'
 import { emptyItemsDoc, applyItemsCommit, deletedItemsOf, purgeItemTombstone, type ItemsDoc } from '../src/core/items-doc.ts'
 import type { ItemRecord } from '../src/core/item.ts'
+// The shared constructor, for the one assertion that the INTERFACE's behaviour is
+// unchanged by the model's door: the capture sheet still saves a contradictory
+// row on purpose, and only the model is refused.
+import { captureItemRecord } from '../src/core/item-transitions.ts'
+// The vocabulary bridge's built-in half, for the end-to-end cases that prove a
+// Chinese column label lands in the document as the stored enum member.
+import { builtinCandidatesOf, resolveValue } from '../src/core/resolve.ts'
 import { QUALIFIER_KEYS } from '../src/core/task-search.ts'
 import { itemQualifierVocabulary } from '../src/core/item-query.ts'
 import {
@@ -158,6 +165,23 @@ function deps(
   }
 }
 
+/**
+ * A deps face that CAN name workspaces, for the one filter that reads a name.
+ *
+ * `ToolDeps.workspaceTitle` was declared, documented and never wired — so `ws:`,
+ * an advertised filter value, could not match a card at all. Two tests below need
+ * a host that really knows the names, and one needs the absence to stay honest.
+ * @param titles - `workspaceId → displayed name`.
+ * @param board - the commit face, when a test needs its own.
+ * @returns deps carrying the lookup.
+ */
+function depsWithWorkspaces(
+  titles: Readonly<Record<string, string>>,
+  board: ToolCommitFace = face(),
+): ToolDeps {
+  return { ...deps(board), workspaceTitle: (id: string) => titles[id] ?? id }
+}
+
 function toolNamed(name: string): ToolDefinition {
   const tool = createTaskboardTools(deps()).find(candidate => candidate.name === name)
   if (tool === undefined) throw new Error(`no tool named ${name}`)
@@ -169,9 +193,12 @@ async function query(
   args: Record<string, unknown>,
   board = face(),
   sessionTitles?: Readonly<Record<string, string>>,
+  /** A deps face to use instead of the default one, for the queries that depend
+   *  on a host capability (naming a workspace) rather than on the board. */
+  override?: (board: ToolCommitFace) => ToolDeps,
 ): Promise<Record<string, unknown>> {
-  const tool = createTaskboardTools(deps(board, runningSources({}), sessionTitles))
-    .find(candidate => candidate.name === 'taskboard_query')
+  const built = override === undefined ? deps(board, runningSources({}), sessionTitles) : override(board)
+  const tool = createTaskboardTools(built).find(candidate => candidate.name === 'taskboard_query')
   if (tool === undefined || tool.execute === undefined) throw new Error('no taskboard_query')
   return await tool.execute(args, undefined as never) as Record<string, unknown>
 }
@@ -182,6 +209,22 @@ async function queryText(args: Record<string, unknown>, board = face()): Promise
   if (tool === undefined || tool.execute === undefined) throw new Error('no taskboard_query')
   const value = await tool.execute(args, undefined as never)
   const rendered = tool.output.render(args, value as never)
+  return rendered.map(block => (block.type === 'text' ? block.text : '')).join('\n')
+}
+
+/**
+ * The capabilities text the model reads, rendered exactly as the tool renders it.
+ *
+ * FULL, not the compact default: the default answer carries the action names and
+ * their one-line summaries and NO parameters (that is what makes the common call
+ * cheap), so a test asking about parameters has to ask about one action, which is
+ * what a caller does too.
+ * @param topic - a domain or an action id. `'task.create'` is the usual one here.
+ */
+function renderCapabilities(topic?: string): string {
+  const tool = createTaskboardTools(deps()).find(candidate => candidate.name === 'taskboard_capabilities')
+  if (tool === undefined) throw new Error('no taskboard_capabilities')
+  const rendered = tool.output.render({ topic }, capabilityView(topic) as never)
   return rendered.map(block => (block.type === 'text' ? block.text : '')).join('\n')
 }
 
@@ -314,6 +357,132 @@ describe('the read tool answers what it says it answers', () => {
   })
 })
 
+/**
+ * `of` answers for BOTH documents.
+ *
+ * The description has always promised 「一张卡的名字或它的短编号（清单条目用 #12）」
+ * while the implementation only ever asked `resolveCard`. The cost is exact: a
+ * receipt hands the model `#54`, the model asks about `#54`, and the surface
+ * answers 「看板上没有叫「#54」的卡」 — telling it the row it just created does not
+ * exist.
+ */
+/**
+ * `ws:` COULD NOT MATCH ANYTHING.
+ *
+ * `matchQualifier` reads `facets.workspaceTitle ?? ''`, and the host never
+ * supplied the face — `ToolDeps.workspaceTitle` was declared, documented, and
+ * unwired. So the qualifier compared against the empty string and every card
+ * failed it: a documented filter that silently matches nothing, which the caller
+ * cannot distinguish from 「there are none」.
+ */
+describe('a workspace can be named, so `ws:` filters and cards report one', () => {
+  const titled = (board: ToolCommitFace) => depsWithWorkspaces({ 'ws-1': 'DeepSeek default', 'ws-2': 'EnvProxy' }, board)
+
+  it('matches the cards in a workspace by the name a person reads', async () => {
+    const box = face()
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{ ...card('在默认工作区'), workspaceId: 'ws-1' }, { ...card('在代理工作区'), workspaceId: 'ws-2' }],
+    })
+    const answer = await query({ filter: 'ws:"DeepSeek default"' }, box, undefined, titled) as { tasks: { title: string }[] }
+    const titles = answer.tasks.map(row => row.title)
+    expect(titles, '`ws:` matched nothing, which is what an unwired face always did').toContain('在默认工作区')
+    expect(titles).not.toContain('在代理工作区')
+  })
+
+  it('matches case-insensitively, the way the qualifier always promised', async () => {
+    const box = face()
+    box.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('在默认工作区'), workspaceId: 'ws-1' }] })
+    const answer = await query({ filter: 'ws:"deepseek DEFAULT"' }, box, undefined, titled) as { tasks: unknown[] }
+    expect(answer.tasks).toHaveLength(1)
+  })
+
+  it('does NOT fold the workspace name into the free-text haystack', async () => {
+    // The workspace is reached through `ws:` and nowhere else. Folding it into the
+    // haystack would make a bare `deepseek` match every card in that workspace,
+    // which is a different question from 「this card mentions deepseek」 — and the
+    // two would then be impossible to tell apart.
+    const box = face()
+    box.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('在默认工作区'), workspaceId: 'ws-1' }] })
+    const hit = await query({ filter: 'deepseek' }, box, undefined, titled) as { tasks: unknown[] }
+    expect(hit.tasks, 'a bare word matched on the workspace name').toHaveLength(0)
+    // The qualifier is the door, and it works.
+    const viaQualifier = await query({ filter: 'ws:"DeepSeek default"' }, box, undefined, titled) as { tasks: unknown[] }
+    expect(viaQualifier.tasks).toHaveLength(1)
+  })
+
+  it('keeps `ws:` unavailable — not silently empty — when the host cannot name workspaces', async () => {
+    // An absent face is the honest degradation the declaration describes: the
+    // qualifier must not start claiming matches out of a name nobody provided.
+    const box = face()
+    box.seed({ ...emptyBoardDoc(NOW), tasks: [{ ...card('在默认工作区'), workspaceId: 'ws-1' }] })
+    const answer = await query({ filter: 'ws:"DeepSeek default"' }, box) as { tasks: unknown[] }
+    expect(answer.tasks).toHaveLength(0)
+  })
+})
+
+describe('the read tool answers a short number, and refuses in a shape the schema accepts', () => {
+  const seeded = () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test',
+      items: [{ ...richItem(), ref: 54, title: '用编号查的我' }],
+      deleted: [],
+    }, NOW))
+    return box
+  }
+
+  it('reads a checklist row by the short number a receipt hands out', async () => {
+    const box = seeded()
+    for (const of of ['#54', '54']) {
+      const answer = await query({ of }, box) as { ok: boolean; items: { ref: string; title: string }[]; tasks: unknown[] }
+      expect(answer.ok, `of: ${of} was refused`).toBe(true)
+      expect(answer.items, `of: ${of} did not resolve to the row`).toHaveLength(1)
+      expect(answer.items[0]?.ref).toBe('#54')
+      expect(answer.items[0]?.title).toBe('用编号查的我')
+    }
+  })
+
+  it('says which numbers DO exist instead of claiming the row is a missing card', async () => {
+    // The old answer was 「看板上没有叫「#99」的卡」, which is doubly wrong: it is the
+    // wrong document and it withholds the list the caller needs to correct itself.
+    const box = seeded()
+    const answer = await query({ of: '#99' }, box) as { ok: boolean; detail: string }
+    expect(answer.ok).toBe(false)
+    expect(answer.detail).toContain('清单里没有 #99')
+    expect(answer.detail, 'the refusal does not list what exists').toContain('#54')
+  })
+
+  it('refuses a missing card in a SCHEMA-COMPLETE shape, so the sentence survives', async () => {
+    /* THE ERROR PATH VIOLATED ITS OWN CONTRACT: the output schema requires
+     * `ok/filter/detail/tasks/items`, every refusal returned `{ ok, detail }`, and
+     * the host's validator therefore rejected the answer — 「missing required
+     * property "value.filter"」. A model asking about a row that does not exist got
+     * a tool ERROR instead of the correction written for it. */
+    const box = seeded()
+    for (const of of ['不存在的卡', '#99']) {
+      const answer = await query({ of }, box) as Record<string, unknown>
+      expect(answer.ok).toBe(false)
+      for (const field of ['filter', 'detail', 'tasks', 'items'] as const) {
+        expect(answer, `a refusal dropped the required field ${field}`).toHaveProperty(field)
+      }
+      expect(Array.isArray(answer.tasks)).toBe(true)
+      expect(Array.isArray(answer.items)).toBe(true)
+      expect(lossless(answer), 'the refusal itself is not lossless JSON').toBe(true)
+    }
+  })
+
+  it('keeps `#54` meaning the TAG in a filter, not the ref', async () => {
+    // Two grammars starting with `#` is the collision `verify-address-grammar`
+    // exists to keep separate: `of` reads an ADDRESS, the search box reads the
+    // reader's own TAG. Teaching the filter to read a ref would make `#54` mean
+    // one thing in one parameter and another in the next.
+    const box = seeded()
+    const answer = await query({ filter: '#54' }, box) as { items: unknown[] }
+    expect(answer.items, 'the filter matched the ref, so `#54` now means two things').toHaveLength(0)
+  })
+})
+
 describe('the deep read hands over what the model may write', () => {
   it('reads a card whole: run config, schedule, rules, sessions, and its rows', async () => {
     /* THE DEFECT THIS CLOSES, stated as a test: the write surface was larger than
@@ -412,8 +581,103 @@ describe('the deep read hands over what the model may write', () => {
     expect(answer.items).toHaveLength(1)
     // Absent, not undefined: the field must not exist at all.
     expect('taskId' in (answer.items[0] ?? {})).toBe(false)
-    // The whole answer survives the host's own serialisation rule.
-    expect(() => JSON.parse(JSON.stringify(answer))).not.toThrow()
+    // The whole answer survives the host's own rule — which is DEEP EQUALITY
+    // after a round trip, not "serialisation does not throw".
+    expect(lossless(answer)).toBe(true)
+  })
+})
+
+/**
+ * The host's own rule, applied the way the host applies it.
+ *
+ * `JSON.stringify` cannot tell `{ a: undefined }` from `{}`, so
+ * `JSON.parse(JSON.stringify(x))` never throws on an undefined field — an
+ * assertion written that way passes on exactly the value the pipeline REJECTS.
+ * That is how a nested `undefined` in one row took out every scheduled card's
+ * read with a green suite.
+ *
+ * The rule is that the value survives a round trip UNCHANGED, so the assertion
+ * has to be a deep equality against the round-tripped copy.
+ * @param value - what a tool returned.
+ * @returns whether it is lossless JSON.
+ */
+function lossless(value: unknown): boolean {
+  const round = JSON.parse(JSON.stringify(value)) as unknown
+  return deepEqualJson(value, round)
+}
+
+/** Structural equality over plain JSON values (objects, arrays, scalars). */
+function deepEqualJson(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  if (typeof a !== 'object' || typeof b !== 'object' || a === null || b === null) return false
+  if (Array.isArray(a) !== Array.isArray(b)) return false
+  if (Array.isArray(a) && Array.isArray(b)) {
+    return a.length === b.length && a.every((entry, index) => deepEqualJson(entry, b[index]))
+  }
+  const left = a as Record<string, unknown>
+  const right = b as Record<string, unknown>
+  const keys = Object.keys(left)
+  if (keys.length !== Object.keys(right).length) return false
+  return keys.every(key => key in right && deepEqualJson(left[key], right[key]))
+}
+
+/**
+ * EVERY NESTED OBJECT a deep read can carry, each of which can hide one undefined.
+ *
+ * The original defect was one field (`maxRuns`) inside one nested object
+ * (`schedule`); the same shape exists in `rules`, `binds`, `sessions`, `runConfig`
+ * and the item rows' optionals. One case per family, because "the row that broke"
+ * and "the family it belongs to" are different claims and only the second one
+ * keeps the next field from repeating it.
+ */
+describe('a deep read is lossless for every nested object it can carry', () => {
+  it('carries a scheduled card whose optional fields are absent', async () => {
+    const box = face()
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{
+        ...card('带排期的卡'),
+        id: 'card-sched',
+        // A CHAIN schedule with no budget: `maxRuns` and `runCount` are both
+        // undefined, which is the ordinary shape and the one that broke.
+        schedule: { mode: 'chain', cron: '', nextRunAt: undefined, enabled: true, maxRuns: undefined, runCount: 0, lastTriggeredAt: undefined },
+      } as never],
+    })
+    const answer = await query({ of: '带排期的卡' }, box)
+    expect(lossless(answer), 'a scheduled card makes the whole answer lossy').toBe(true)
+  })
+
+  it('carries session rules, binds and related sessions together', async () => {
+    const box = face()
+    box.seed({
+      ...emptyBoardDoc(NOW),
+      tasks: [{
+        ...card('挂着东西的卡'),
+        id: 'card-rich',
+        rules: [{
+          id: 'rule-1', sessionId: 's-1', instruction: '', usePrompt: true,
+          trigger: 'on-complete', cron: '', nextAt: undefined, send: 'queue', enabled: false,
+        }],
+        binds: [{ kind: 'workspace', workspaceId: 'ws-1' }],
+      } as never],
+    })
+    const answer = await query({ of: '挂着东西的卡' }, box)
+    expect(lossless(answer), 'rules/binds with absent optionals make the answer lossy').toBe(true)
+  })
+
+  it('carries a checklist row with no card, no dates and no steps', async () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [richItem()], deleted: [],
+    }, NOW))
+    for (const detail of ['brief', 'full'] as const) {
+      expect(lossless(await query({ detail }, box)), `detail: ${detail} is lossy`).toBe(true)
+    }
+  })
+
+  it('carries an empty board without inventing fields', async () => {
+    const box = face()
+    expect(lossless(await query({ detail: 'deep' }, box))).toBe(true)
   })
 })
 
@@ -549,6 +813,88 @@ describe('the run-config field list exists once', () => {
     expect(again.counts.unchanged, 'the receipt calls a no-op an update').toBe(1)
     expect(board.commits, 'an update that changed nothing still cost a revision and woke every device').toBe(commitsBefore)
   })
+
+  /**
+   * THE SIX ARE NOT ONE KIND OF THING, so they no longer carry one sentence.
+   *
+   * All six used to say 「留空 = 不指定，由宿主按自己的默认链解析」 — and six of the
+   * seven cards on this machine came out with no run configuration at all. A model
+   * that reads instructions correctly drew the only available conclusion.
+   *
+   * The split is by CONSEQUENCE: a wrong workspace or permission is damage (it
+   * lands files in the wrong directory, or destroys them), while a wrong model or
+   * effort is a different flavour of the same work. One rule for six fields gets
+   * four of them wrong in one direction or the other.
+   */
+  it('says what a wrong choice COSTS, not one sentence repeated six times', () => {
+    const params = ACTIONS['task.create'].params
+    for (const key of RUN_CONFIG_KEYS) {
+      expect(params[key], `task.create no longer publishes ${key}`).toBeDefined()
+    }
+    // The two that can cause damage say so; the four that are a preference say a
+    // default will be disclosed.
+    for (const key of ['workspaceId', 'permission'] as const) {
+      expect(params[key]?.appliesWhen, `${key} does not warn that a wrong value has consequences`)
+        .toMatch(/跑|改坏|目录|危险/)
+    }
+    for (const key of ['provider', 'model', 'reasoningEffort', 'agentPreset'] as const) {
+      expect(params[key]?.appliesWhen, `${key} does not promise the default will be disclosed`)
+        .toContain('回执')
+    }
+    // And the six are no longer one sentence: a table where every value is equal
+    // is a table that has not been decided.
+    const distinct = new Set(RUN_CONFIG_KEYS.map(key => params[key]?.appliesWhen))
+    expect(distinct.size, 'the six absent-case sentences are still interchangeable').toBeGreaterThan(1)
+  })
+
+  it('names the two fields whose wrong value is damage, in one place', () => {
+    // A LIST rather than a boolean per key: 「which of these must be asked」 has one
+    // answer, and the catalog's own sentences describe the same two.
+    expect([...RUN_CONFIG_MUST_ASK]).toEqual(['workspaceId', 'permission'])
+    expect([...RUN_CONFIG_DEFAULTED].sort()).toEqual(
+      RUN_CONFIG_KEYS.filter(key => !RUN_CONFIG_MUST_ASK.includes(key)).sort(),
+    )
+  })
+
+  it('reports an UNDISCLOSED default instead of letting it pass silently', async () => {
+    // The other half of the bargain: a default is acceptable, an undisclosed one is
+    // not. A caller that leaves all six out gets a card that will run on choices
+    // nobody made, so the receipt says which ones those are.
+    const board = face()
+    const made = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { title: '什么都没配', prompt: '跑一下' } }] })
+    expect(made.ok).toBe(true)
+    const detail = made.reports[0]?.detail ?? ''
+    expect(detail, 'the receipt never mentions the run configuration').toContain('运行配置')
+    expect(detail, 'an all-default card does not say it will run on host defaults').toContain('宿主默认')
+    // The two that can cause damage are named, so the next turn can fix them.
+    expect(detail).toContain('workspaceId')
+    expect(detail).toContain('permission')
+  })
+
+  it('names what the caller DID choose, and what it left to the host', async () => {
+    const board = face()
+    const made = await runBatch(deps(board), {
+      ops: [{ op: 'task.create', payload: { prompt: '跑一下', workspaceId: 'ws-9', model: 'm-1' } }],
+    })
+    expect(made.ok).toBe(true)
+    const detail = made.reports[0]?.detail ?? ''
+    // The chosen ones are reported with their values: the person can see what will
+    // actually run, not just that something was set.
+    expect(detail).toContain('workspaceId=ws-9')
+    expect(detail).toContain('model=m-1')
+    // And the remainder is named as the host's, not silently omitted.
+    expect(detail).toContain('宿主默认')
+  })
+
+  it('says nothing about run configuration on a card that was not created', async () => {
+    // The line is about a NEW card's configuration. Attaching it to every update
+    // would be a paragraph about a decision the caller did not make.
+    const board = face()
+    await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { prompt: 'p', title: '已存在的' } }] })
+    const card = board.getDoc().tasks[0]
+    const updated = await runBatch(deps(board), { ops: [{ op: 'task.update', payload: { of: String(card?.id), title: '改个名' } }] })
+    expect(updated.reports[0]?.detail ?? '').not.toContain('运行配置')
+  })
 })
 
 describe('the capability answer is the catalog, rendered', () => {
@@ -563,14 +909,101 @@ describe('the capability answer is the catalog, rendered', () => {
   })
 
   it('renders each parameter with its own condition, not a flattened "optional"', () => {
-    const create = capabilityView().actions.find(action => action.id === 'task.create')!
+    // Asked for by ACTION, which is how a caller asks: the compact default answer
+    // carries no parameters at all (that is what makes the common call cheap).
+    const create = capabilityView('task.create').actions[0]!
     expect(create.params.prompt.required).toBe(true)
     expect(create.params.title.required).toBe(false)
     // A conditional requirement is stated, never silently downgraded.
-    const rule = capabilityView().actions.find(action => action.id === 'rule.create')!
+    const rule = capabilityView('rule.create').actions[0]!
     expect(rule.params.cron.required).toBe(false)
     expect(rule.params.cron.requiredWhen).toContain('cron')
     expect(rule.params.send.required).toBe(true)
+  })
+
+  /**
+   * THE COST STRUCTURE, FIXED.
+   *
+   * The full answer is ~7,000 characters for 36 actions, and this tool is
+   * documented as 「先查后做」 — so EVERY write began by paying for the whole
+   * catalog a caller about to move one card did not need. These cases pin the
+   * three sizes, because a narrowing that silently stopped narrowing would put
+   * the cost straight back with nothing red.
+   */
+  it('answers the compact default without parameters, and says how to get more', () => {
+    const compact = capabilityView()
+    expect(compact.actions).toHaveLength(Object.keys(ACTIONS).length)
+    // The NAMES are all there — this is a summary, not a subset.
+    expect(compact.actions.map(action => action.id).sort()).toEqual(Object.keys(ACTIONS).sort())
+    // The PARAMETERS are not: that is the whole saving.
+    for (const action of compact.actions) expect(Object.keys(action.params)).toHaveLength(0)
+    // And it says where to go next, so a caller that needs detail is not stuck.
+    expect(compact.hint).toContain('topic')
+    expect(compact.domains, 'the domains a caller can narrow to are not listed').toBeDefined()
+  })
+
+  it('narrows to one domain, in full', () => {
+    // A DOMAIN is the document an action speaks about (`board` / `item` / `session`
+    // / `preset`), which is NOT the action id's prefix — `task.create` belongs to
+    // the `board` domain. Both spellings are accepted for exactly that reason:
+    // asking by prefix is the intuitive move, and refusing it would be a turn spent
+    // discovering a distinction nobody needs to know.
+    const board = capabilityView('board')
+    expect(board.scoped).toBe('board')
+    expect(board.actions.length).toBeGreaterThan(1)
+    expect(board.actions.every(action => action.id.startsWith('task.') || action.id.startsWith('board.'))).toBe(true)
+    // Full means parameters came back — otherwise this is the compact answer again.
+    expect(Object.keys(board.actions[0]?.params ?? {}).length).toBeGreaterThan(0)
+  })
+
+  it('accepts the id PREFIX as a topic too, because that is the intuitive ask', () => {
+    // `task` is not a domain, but a caller asking for it means the task actions.
+    const task = capabilityView('task')
+    expect(task.actions.length).toBeGreaterThan(1)
+    expect(task.actions.every(action => action.id.startsWith('task.'))).toBe(true)
+  })
+
+  it('narrows to one action, in full', () => {
+    const one = capabilityView('task.create')
+    expect(one.actions).toHaveLength(1)
+    expect(one.actions[0]?.id).toBe('task.create')
+    expect(one.actions[0]?.params.prompt).toBeDefined()
+  })
+
+  it('answers an unknown topic with the list of real ones instead of refusing', () => {
+    // A refusal costs a turn and teaches nothing; the list is a next move.
+    const wrong = capabilityView('tak.create')
+    expect(wrong.actions).toHaveLength(0)
+    expect(wrong.hint).toContain('task.create')
+  })
+
+  /**
+   * THE LEGAL VALUES REACH THE MODEL, printed with the rule that enforces them.
+   *
+   * `renderParam` always carried `oneOf`; the template printed only `about`, so
+   * the closed value set of every enum parameter was dropped on the way to the
+   * model. What that cost is the whole defect this rebuild is about: the
+   * description said `status` was 「五档之一：待规划 / 待办 / …」 (the reader's
+   * words) while `checkParams` compared against `backlog/todo/…` (the stored
+   * words), so a model that followed the description exactly was refused EVERY
+   * time, by a message naming values the description had never shown it.
+   */
+  it('prints the legal values, so the description and the validator say one thing', () => {
+    const rendered = renderCapabilities('item.update')
+    // `item.update` is the action whose status enum the report was written about.
+    expect(rendered, 'the capability answer never names the status values').toContain('可选：backlog / todo / running / review / done')
+    // And the words the model reads must not pretend the Chinese labels are the
+    // accepted values: the enum is what `checkParams` compares.
+    expect(rendered).not.toContain('可选：待规划 / 待办 / 进行中')
+  })
+
+  it('prints the legal values for the other closed sets too, not only status', () => {
+    // One case per shape family, so a fix that only covered `status` fails here:
+    // an enum on a move, a two-value choice, a priority ladder. Each is asked for
+    // by the action that carries it, which is how a caller asks too.
+    expect(renderCapabilities('task.move'), 'task.move lost its target columns').toContain('可选：backlog / todo / done')
+    expect(renderCapabilities('task.comment'), 'task.comment lost its queue/steer choice').toContain('可选：queue / steer')
+    expect(renderCapabilities('item.update'), 'item.update lost its priority tiers').toContain('可选：low / normal / high / urgent')
   })
 })
 
@@ -1205,7 +1638,7 @@ describe('the relay only carries what it can actually carry', () => {
     const relayed: unknown[] = []
     board.seed({ ...emptyBoardDoc(NOW), tasks: [card('要改名的卡')] })
     board.submitCommand = (command) => { relayed.push(command); return { status: 'queued' } }
-    const renamed = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { of: '要改名的卡', session: 's-1', title: '新名字' } }] })
+    const renamed = await runBatch(deps(board), { ops: [{ op: 'session.rename', payload: { session: 's-1', title: '新名字' } }] })
     expect(renamed.ok).toBe(true)
     // `of` is the catalog's ADDRESSING (which card this belongs to); the
     // carrier's own fields are the session and the name. The tool passes what
@@ -1310,6 +1743,337 @@ describe('a shape the writer got wrong is REFUSED, and nothing is half-written',
     const badSteps = await runBatch(deps(board), { ops: [{ op: 'item.update', payload: { of: '#1', steps: 'oops' } }] })
     const badTags = await runBatch(deps(board), { ops: [{ op: 'item.create', payload: { body: 'x', tags: 123 } }] })
     expect(badSteps.reports[0]?.detail).not.toBe(badTags.reports[0]?.detail)
+  })
+
+  /**
+   * A KEY THE CATALOG DOES NOT HAVE IS REFUSED, NOT DROPPED.
+   *
+   * The required-parameter loop walked only the parameters the catalog DECLARES,
+   * so a misspelled key was never examined by anything. `provider` typed as
+   * `proivder` produced a card with no provider, a receipt saying 「已生效」, and no
+   * sentence anywhere connecting the two — the model's next turn was built on
+   * the belief that it had set something it had not.
+   */
+  it('refuses a misspelled parameter by name, and names the one that was meant', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'task.update', payload: { of: '要改的卡', proivder: 'opendesign' } }],
+    })
+    expect(result.ok).toBe(false)
+    const detail = result.reports[0]?.detail ?? ''
+    expect(detail, 'the typo was silently dropped').toContain('proivder')
+    // The suggestion is what turns a refusal into one correction; without it the
+    // caller is left trying spellings.
+    expect(detail).toContain('provider')
+    // And it must not go create the card anyway.
+    expect(board.getDoc().tasks).toHaveLength(0)
+  })
+
+  it('lists the parameters the action really takes, so the correction is complete', async () => {
+    // A refusal that only says 「不认识」 leaves the caller guessing at the whole
+    // set; naming it is the difference between one retry and a search.
+    const board = face()
+    const result = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { prompt: 'x', titel: 'y' } }] })
+    const detail = result.reports[0]?.detail ?? ''
+    expect(detail).toContain('title')
+    expect(detail, 'the refusal does not say what the action accepts').toContain('prompt')
+  })
+
+  it('judges the KEY before the VALUE, so a typo is not reported as a bad value', async () => {
+    // `stauts: '进行中'` has two problems; the one the caller must fix first is the
+    // key. Reporting 「status 只能是 …」 about it sends them to change a value that
+    // was already going to be refused for a different reason.
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.update', payload: { of: '#1', stauts: '进行中' } }],
+    })
+    const detail = result.reports[0]?.detail ?? ''
+    expect(detail).toContain('stauts')
+    expect(detail).not.toContain('只能是 backlog')
+  })
+
+  it('leaves a well-spelled payload alone, including the envelope keys', async () => {
+    // The check must not fire on `op` (the catalog does not declare it) or on a
+    // legal call, or every batch would be refused.
+    const board = face()
+    const ok = await runBatch(deps(board), { ops: [{ op: 'task.create', payload: { prompt: '写点什么' } }] })
+    expect(ok.ok, 'a legal call was refused as an unknown key').toBe(true)
+    expect(board.getDoc().tasks).toHaveLength(1)
+  })
+})
+
+/**
+ * THE DESCRIPTION AND THE VALIDATOR NOW SAY ONE THING.
+ *
+ * The measured defect: the catalog's `about` printed 「五档之一：待规划 / 待办 /
+ * 进行中 / 待审核 / 已完成」 while `checkParams` compared against
+ * `backlog/todo/running/review/done`. A model obeying the description was refused
+ * EVERY time — and the refusal named values the description had never shown it.
+ *
+ * These cases are end-to-end on purpose: they assert the DOCUMENT holds the
+ * stored value, not merely that the call was accepted. A gate that accepted
+ * 进行中 and let it through unchanged would put a reader's word in a field typed
+ * `TaskStatus`, which is a worse defect than refusing.
+ */
+describe('a value said in the reader\'s words is stored as the system\'s word', () => {
+  /** deps carrying the resolver, built the way `register.ts` builds it. */
+  const resolved = (board: ToolCommitFace): ToolDeps => ({
+    ...deps(board),
+    resolver: {
+      resolve: (kind, value) => {
+        const candidates = builtinCandidatesOf(kind)
+        if (candidates.length === 0) return undefined
+        const out = resolveValue(kind, value, { candidatesOf: () => candidates })
+        return out.ok ? out.value : undefined
+      },
+    },
+  })
+
+  it('stores `running` when the caller says 进行中', async () => {
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test', items: [{ ...richItem(), ref: 41, status: 'todo' }], deleted: [],
+    }, NOW))
+    const result = await runBatch(resolved(board), {
+      ops: [{ op: 'item.update', payload: { of: '#41', status: '进行中' } }],
+    })
+    expect(result.ok, 'the Chinese column label was refused — this is the defect itself').toBe(true)
+    // THE DOCUMENT, not the receipt: the stored value must be the enum member.
+    expect(board.getItemsDoc().items[0]?.status).toBe('running')
+  })
+
+  it('stores the tier when the caller says 紧急', async () => {
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test', items: [{ ...richItem(), ref: 42 }], deleted: [],
+    }, NOW))
+    const result = await runBatch(resolved(board), {
+      ops: [{ op: 'item.update', payload: { of: '#42', priority: '紧急' } }],
+    })
+    expect(result.ok, 'the Chinese tier was refused').toBe(true)
+    expect(board.getItemsDoc().items[0]?.priority).toBe('urgent')
+  })
+
+  it('still refuses a value nobody could have meant, and lists the legal ones', async () => {
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test', items: [{ ...richItem(), ref: 43 }], deleted: [],
+    }, NOW))
+    const result = await runBatch(resolved(board), {
+      ops: [{ op: 'item.update', payload: { of: '#43', status: '进行重' } }],
+    })
+    expect(result.ok).toBe(false)
+    const detail = result.reports[0]?.detail ?? ''
+    // The list is what turns a refusal into one correction.
+    expect(detail).toContain('backlog')
+    expect(board.getItemsDoc().items[0]?.status, 'the refused value still landed').toBe('todo')
+  })
+
+  it('keeps the strict reading when no resolver is supplied', async () => {
+    // A deployment without the face degrades to the old behaviour — never to a
+    // guess. This is the honest absence the declaration promises.
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test', items: [{ ...richItem(), ref: 44 }], deleted: [],
+    }, NOW))
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.update', payload: { of: '#44', status: '进行中' } }],
+    })
+    expect(result.ok, 'without a resolver the Chinese label must still be refused').toBe(false)
+  })
+})
+
+/**
+ * THE THREE DATES, JUDGED AND SNAPPED AT THE MODEL'S DOOR.
+ *
+ * Two defects, one place: a contradiction could be written and could not be read
+ * back as one, and the "a date is a DAY" rule lived in the catalog's prose with
+ * nothing enforcing it.
+ *
+ * The refusal is deliberately HERE and not in the shared writer: the capture
+ * sheet saves a contradictory row on purpose (the reader can fix one field
+ * later), while a model's call is one complete intent with no "later".
+ */
+describe('a model writing dates: contradicts, snaps to a day, and does not touch what it did not mention', () => {
+  const day = (d: number): number => new Date(2026, 10, d, 4, 30).getTime()
+
+  it('refuses a start date after the plan date, and names the pair', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { title: '自相矛盾', body: 'x', startsAfter: day(8), dueAt: day(7) } }],
+    })
+    expect(result.ok, 'a row that cannot keep its own promise was written').toBe(false)
+    const detail = result.reports[0]?.detail ?? ''
+    // NAMES BOTH ENDS: 「日期有矛盾」 leaves three candidates and no next step.
+    expect(detail).toContain('startsAfter')
+    expect(detail).toContain('dueAt')
+    expect(board.getItemsDoc().items, 'the refused row still landed').toHaveLength(0)
+  })
+
+  it('refuses a plan date after the deadline, the pair that cannot be renegotiated', async () => {
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { title: '晚于截止', body: 'x', dueAt: day(14), hardDueAt: day(10) } }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('hardDueAt')
+  })
+
+  it('accepts a legal set and SNAPS each date to local midnight', async () => {
+    // The catalog says a date is 「毫秒时间戳，但它标的是一天：给本地零点」, and that rule
+    // was enforced by nothing. A model sending "now" put a row at 05:20, which
+    // made 「今天到期」 wrong at the day boundary.
+    const board = face()
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.create', payload: { title: '合法日期', body: 'x', dueAt: day(7) } }],
+    })
+    expect(result.ok).toBe(true)
+    const stored = board.getItemsDoc().items[0]
+    const midnight = new Date(2026, 10, 7, 0, 0, 0, 0).getTime()
+    expect(stored?.dueAt, 'the day was not normalized, so 今天到期 is wrong near midnight').toBe(midnight)
+  })
+
+  it('does NOT refuse an edit that mentions no date, however impossible the row already is', async () => {
+    // Otherwise 「把标题改一下」 fails forever on a row somebody else made impossible —
+    // and the fix they were asked for would be impossible to perform.
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test',
+      items: [{ ...richItem(), ref: 3, startsAfter: day(9), dueAt: day(5) }],
+      deleted: [],
+    }, NOW))
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.update', payload: { of: '#3', title: '只改标题' } }],
+    })
+    expect(result.ok, 'an unrelated edit was refused for a contradiction it did not create').toBe(true)
+    expect(board.getItemsDoc().items[0]?.title).toBe('只改标题')
+  })
+
+  it('refuses an edit that CREATES a contradiction, naming the pair it would make', async () => {
+    const board = face()
+    board.seedItems(applyItemsCommit(board.items, {
+      clientId: 'test',
+      items: [{ ...richItem(), ref: 4, dueAt: day(5) }],
+      deleted: [],
+    }, NOW))
+    const result = await runBatch(deps(board), {
+      ops: [{ op: 'item.update', payload: { of: '#4', startsAfter: day(9) } }],
+    })
+    expect(result.ok).toBe(false)
+    expect(result.reports[0]?.detail).toContain('startsAfter')
+    expect(board.getItemsDoc().items[0]?.startsAfter, 'the refused date still landed').toBeUndefined()
+  })
+
+  it('keeps the capture sheet able to save a contradictory row', async () => {
+    // THE INTERFACE'S BEHAVIOUR IS NOT CHANGED BY THE MODEL'S DOOR. The sheet saves
+    // it on purpose so a reader mid-thought is not locked out; only the model is
+    // refused. This asserts the shared writer is still permissive.
+    const board = face()
+    const made = captureItemRecord({
+      title: '人写的矛盾', body: 'x', notes: '', origin: 'human',
+      startsAfter: day(8), dueAt: day(7),
+    }, NOW, () => 'i-h')
+    expect(made.item.startsAfter).toBe(day(8))
+    expect(made.item.dueAt).toBe(day(7))
+    void board
+  })
+})
+
+/**
+ * THE DATE VERDICT REACHES THE MODEL.
+ *
+ * Three bare timestamps are not a verdict: 「已逾期 3 天」 and 「还没到可开始的日子」
+ * are judgments with a precedence order and a local-day boundary, and a row whose
+ * own dates contradict each other has no honest "how late" answer at all. The
+ * interface has printed this all along; the model had to recompute it.
+ */
+describe('a read carries what the dates MEAN, not only when they are', () => {
+  const rowWith = (patch: Record<string, unknown>) => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test', items: [{ ...richItem(), ref: 21, ...patch }], deleted: [],
+    }, NOW))
+    return box
+  }
+
+  it('says a contradiction out loud, naming the pair', async () => {
+    // The row is stored as written (the document keeps it), so the READ is the one
+    // place that can say the three dates cannot all be true.
+    const box = rowWith({ startsAfter: NOW + 9 * 86_400_000, dueAt: NOW + 5 * 86_400_000 })
+    const answer = await query({ of: '#21' }, box) as { items: { datePosture?: string }[] }
+    const posture = answer.items[0]?.datePosture
+    expect(posture, 'a self-contradicting row read as a normal schedule').toBeDefined()
+    expect(posture).toContain('自相矛盾')
+    expect(posture).toContain('startsAfter')
+    expect(posture).toContain('dueAt')
+  })
+
+  it('says a passed deadline is passed, and by how long', async () => {
+    const box = rowWith({ hardDueAt: NOW - 3 * 86_400_000 })
+    const answer = await query({ of: '#21' }, box) as { items: { datePosture?: string }[] }
+    expect(answer.items[0]?.datePosture).toContain('截止')
+  })
+
+  it('says a gate has not opened yet, which is not the same as late', async () => {
+    const box = rowWith({ startsAfter: NOW + 5 * 86_400_000 })
+    const answer = await query({ of: '#21' }, box) as { items: { datePosture?: string }[] }
+    expect(answer.items[0]?.datePosture).toContain('还没到')
+  })
+
+  it('omits the verdict for a row with no dates at all', async () => {
+    // Absent, not undefined: a row that made no promise has no verdict, and the
+    // same "absent rather than blank" rule the rest of the projection follows.
+    const box = rowWith({})
+    const answer = await query({ of: '#21' }, box) as { items: { datePosture?: string }[] }
+    expect('datePosture' in (answer.items[0] ?? {})).toBe(false)
+  })
+
+  it('prints the verdict in the prose the model reads, not only in the JSON', async () => {
+    // A projection that carries it in JSON and prints nothing is the same lie the
+    // `detail` parameter used to tell: the answer is there, the reader still
+    // cannot use it.
+    const box = rowWith({ hardDueAt: NOW - 2 * 86_400_000 })
+    const text = await queryText({ of: '#21' }, box)
+    expect(text, 'the verdict never reached the prose').toContain('日期态势')
+  })
+})
+
+/**
+ * A BROKEN LINK SAYS IT IS BROKEN.
+ *
+ * `itemRow` kept the raw uuid for a row whose card is gone, because 「there is a
+ * link and I cannot name its target」 is a fact. But a bare uuid is a fact in a
+ * shape nobody can act on: `2e1254d5-7464-…` looks exactly like an ordinary
+ * reference, so the model could not tell a dangling row from a linked one.
+ */
+describe('a dangling card link is a readable fact', () => {
+  it('marks the link as dead instead of printing a bare uuid', async () => {
+    const box = face()
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test',
+      // A taskId no card on this board has — the state a deleted card leaves.
+      items: [{ ...richItem(), ref: 31, taskId: '2e1254d5-7464-4f35-a1ba-2a1ae318ccf3' }],
+      deleted: [],
+    }, NOW))
+    const answer = await query({ of: '#31' }, box) as { items: { taskId?: string }[] }
+    const said = answer.items[0]?.taskId ?? ''
+    expect(said, 'the dead link reads as a normal reference').toContain('已失效')
+    expect(said, 'the whole uuid is unreadable and unquotable').not.toBe('2e1254d5-7464-4f35-a1ba-2a1ae318ccf3')
+  })
+
+  it('still names a link that resolves, and omits the field when there is none', async () => {
+    const box = face()
+    box.seed({ ...emptyBoardDoc(NOW), tasks: [card('还在的卡')] })
+    const cardId = box.getDoc().tasks[0]?.id ?? ''
+    box.seedItems(applyItemsCommit(box.items, {
+      clientId: 'test',
+      items: [{ ...richItem(), ref: 32, taskId: cardId }, { ...richItem(), id: 'i-2', ref: 33, taskId: undefined }],
+      deleted: [],
+    }, NOW))
+    const linked = await query({ of: '#32' }, box) as { items: { taskId?: string }[] }
+    expect(linked.items[0]?.taskId, 'a live link lost its title').toBe('还在的卡')
+    const free = await query({ of: '#33' }, box) as { items: { taskId?: string }[] }
+    expect('taskId' in (free.items[0] ?? {}), 'no link is reported as a link').toBe(false)
   })
 })
 

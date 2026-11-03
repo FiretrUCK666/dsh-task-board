@@ -54,29 +54,83 @@ export type RunConfigPresetConfig = { [K in typeof RUN_CONFIG_KEYS[number]]?: st
  * ERROR: the `Record` below is total over the union.
  */
 const RUN_CONFIG_ABOUT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>> = {
-  workspaceId: '跑在哪台机器上',
+  workspaceId: '跑在哪台机器上（决定文件放哪、能访问什么；选错会跑到别的项目目录里）',
   provider: '模型供应方',
-  model: '模型',
-  reasoningEffort: '思考档位',
-  agentPreset: '代理预设',
-  permission: '权限预设，只能填目录里真实存在的键',
+  model: '模型（决定能力与成本）',
+  reasoningEffort: '思考档位（决定质量与耗时）',
+  agentPreset: '代理预设（决定这条会话由谁扮演）',
+  permission: '权限预设（决定它能做什么；选错可能改坏文件）',
+}
+
+/**
+ * What an ABSENT value means, PER KEY — because the six are not one kind of thing.
+ *
+ * ── THE DEFECT THIS REPLACES, MEASURED ──────────────────────────────────────
+ *
+ * All six used to carry the SAME sentence: 「留空 = 不指定，由宿主按自己的默认链
+ * 解析」. A model that reads instructions correctly drew the only conclusion
+ * available — these are all optional, so leave them out — and six of the seven
+ * cards on this machine were created with NO run configuration at all. It was not
+ * laziness; the documentation said not to ask.
+ *
+ * ── WHY ONE SENTENCE WAS WRONG FOR SIX FIELDS ───────────────────────────────
+ *
+ * The six differ in what a wrong choice COSTS, and that is the only thing a
+ * caller needs in order to decide whether to ask:
+ *
+ *  · `workspaceId` and `permission` decide which directory work lands in and what
+ *    it may destroy. A wrong value is not a preference, it is damage — so the
+ *    absent case must say「ask when it matters」 rather than「the host will pick」.
+ *  · `provider`, `model`, `reasoningEffort`, `agentPreset` decide how the work is
+ *    done. A wrong value is a different flavour, not a different folder — so a
+ *    default is fine, but the DEFAULT MUST BE SAID OUT LOUD in the receipt.
+ *
+ * One rule for six fields gets four of them wrong in one direction or the other.
+ * @see RUN_CONFIG_ABSENT
+ */
+const RUN_CONFIG_ABSENT: Readonly<Record<typeof RUN_CONFIG_KEYS[number], string>> = {
+  workspaceId: '留空 = 用宿主默认工作区。**它决定文件落在哪**：只在这次要跑东西、而且用户没说在哪儿时，先问一句再填',
+  provider: '留空 = 用宿主默认供应方（回执会写出实际用了什么）',
+  model: '留空 = 用宿主默认模型（回执会写出实际用了什么）',
+  reasoningEffort: '留空 = 用宿主默认档位（回执会写出实际用了什么）',
+  agentPreset: '留空 = 用宿主默认代理（回执会写出实际用了什么）',
+  permission: '留空 = 用宿主默认权限。**它决定能做什么危险操作**：涉及删除或覆盖文件时，先问一句再填',
 }
 
 /**
  * The six run-config parameters as the action catalog publishes them.
  *
- * Every one is optional with the SAME absent-case sentence, because the absent
- * case is the same fact for all six: the host's own default chain resolves it.
- * That sameness is the reason this is one table and not eighteen lines: a
- * parameter whose "not given" case differs from its siblings is a parameter that
- * needs its own sentence, and none of these six does.
+ * EACH CARRIES ITS OWN absent-case sentence now. The table is still ONE table —
+ * six fields, one declaration, so a seventh field cannot be settable in one place
+ * and invisible in another — but it no longer claims the six mean the same thing
+ * when omitted, because they do not.
  */
-export const RUN_CONFIG_PARAMS: Readonly<Record<string, { about: string; optional: true; appliesWhen: string }>> =
+export const RUN_CONFIG_PARAMS: Readonly<Record<typeof RUN_CONFIG_KEYS[number], { about: string; optional: true; appliesWhen: string }>> =
   Object.fromEntries(RUN_CONFIG_KEYS.map(key => [key, {
     about: RUN_CONFIG_ABOUT[key],
     optional: true as const,
-    appliesWhen: '留空 = 不指定，由宿主按自己的默认链解析',
-  }]))
+    appliesWhen: RUN_CONFIG_ABSENT[key],
+  }])) as Readonly<Record<typeof RUN_CONFIG_KEYS[number], { about: string; optional: true; appliesWhen: string }>>
+
+/**
+ * The two keys whose wrong value is DAMAGE rather than a preference, so a caller
+ * that is about to run something should ask before leaving them out.
+ *
+ * A LIST, not a boolean per key: the question 「which of these must be asked」 has
+ * one answer and this is it. A caller reading it gets the same two the catalog's
+ * sentences describe, so the rule and the prose cannot disagree.
+ */
+export const RUN_CONFIG_MUST_ASK: readonly (typeof RUN_CONFIG_KEYS[number])[] = ['workspaceId', 'permission']
+
+/**
+ * The four keys that may take a default, PROVIDED the receipt says what was used.
+ *
+ * Silent defaults are the other half of the measured defect: a card built with no
+ * configuration ran on something nobody had described. A default is acceptable;
+ * an UNDISCLOSED default is not.
+ */
+export const RUN_CONFIG_DEFAULTED: readonly (typeof RUN_CONFIG_KEYS[number])[] = RUN_CONFIG_KEYS
+  .filter(key => !RUN_CONFIG_MUST_ASK.includes(key))
 
 /** One named preset: a (partial) run configuration. */
 export interface RunConfigPreset {

@@ -128,6 +128,46 @@ describe('一句话里写什么', () => {
     expect(said).not.toContain('标题：')
     expect(said).toContain('正文：\n第一行就是它\n第二行')
   })
+
+  /**
+   * HOW URGENT IT IS, AND WHEN IT IS DUE.
+   *
+   * The hand-off carried 「标题 / 标签 / 正文 / 步骤 / 备注」 and nothing else, so a
+   * row reading 「紧急、周五截止」 arrived as a body of text: the model could not
+   * tell a hard deadline from a note, and could not order two rows it was handed.
+   * Both facts were in the document the whole time.
+   */
+  it('优先级随这一条一起送过去，两种写法都给', () => {
+    // `urgent` is what `item.update` accepts; `!1` is the mark the reader sees.
+    // A hand-off naming only one of them teaches a value the model cannot connect
+    // to the field it may write.
+    const said = itemContextText(row({ priority: 'urgent' }))
+    expect(said, 'the tier never reached the model').toContain('优先级：urgent')
+    expect(said, 'the mark the reader sees is missing').toContain('!1')
+  })
+
+  it('三个日期都送，而且是各自的名字，不挤成一个「到期」', () => {
+    // 开始 / 计划 / 截止 are three different promises. Collapsing them into one
+    // "due date" is a different fact from the one the row holds.
+    const said = itemContextText(row({
+      startsAfter: Date.UTC(2026, 10, 1, 4),
+      dueAt: Date.UTC(2026, 10, 6, 4),
+      hardDueAt: Date.UTC(2026, 10, 13, 4),
+    }))
+    expect(said).toContain('开始：')
+    expect(said).toContain('计划：')
+    expect(said).toContain('截止：')
+    // Printed as a DAY, which is the unit, so no 13-digit stamp reaches the model.
+    expect(said, 'a raw stamp reached the model').not.toMatch(/\d{13}/)
+  })
+
+  it('普通优先级与没填的日期都不留空标题', () => {
+    // The same rule the rest of this composer follows: an empty field is OMITTED
+    // rather than sent as a blank label, or the model reads a form nobody filled.
+    const said = itemContextText(row({ title: '普通的事', priority: 'normal' }))
+    expect(said, 'the neutral tier is a label for nothing').not.toContain('优先级：')
+    for (const label of ['开始：', '计划：', '截止：']) expect(said).not.toContain(label)
+  })
 })
 
 describe('整件事：两条车道与两种拒绝', () => {

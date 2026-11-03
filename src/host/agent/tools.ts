@@ -78,7 +78,7 @@ import { cardStatusMapOf, createTask, landCardInColumn, resolveCardDrop, taskBin
 import type { SessionRule } from '../../core/automation.ts'
 import { nextRunAtMs, isValidCron } from '../../core/schedule.ts'
 import type { SchedulePreset } from '../../core/presets.ts'
-import { RUN_CONFIG_KEYS, type RunConfigPresetConfig, type RunPresetsDocument } from '../../core/run-presets.ts'
+import { RUN_CONFIG_KEYS, RUN_CONFIG_DEFAULTED, RUN_CONFIG_MUST_ASK, type RunConfigPresetConfig, type RunPresetsDocument } from '../../core/run-presets.ts'
 
 /** Read a run-config patch, keeping only the keys the preset model actually
  *  has. An unknown key is dropped rather than stored: the section's grammar
@@ -165,7 +165,16 @@ import {
   readItemStepList,
   removeItemRecord,
 } from '../../core/item-transitions.ts'
-import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateKey, type ItemPriority, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUSES, itemProgressOf, itemTagsOf, itemTitleOf, type ItemDateConflict, type ItemDateKey, type ItemPriority, type ItemRecord, type ItemStatus, type ItemStatusView } from '../../core/item.ts'
+// The date verdicts, from the one module that owns what a date MEANS: the
+// conflict test, the day normalization, and the posture a read can print.
+import { DATE_KEYS, datePostureOf, itemDateWriteOf } from '../../core/item-dates.ts'
+// The vocabulary bridge: what a caller SAID, read into what this system stores.
+// The candidate lists stay in this repository's own enums plus whatever the
+// deployment supplies, so the resolver does not become a third vocabulary. The
+// assembly itself lives in `register.ts` — this module only declares the FACE it
+// needs, so the tool stays a pure function of its deps.
+import type { ResolveKind } from '../../core/resolve.ts'
 import { derivedStatusOf, linkedCardOf } from '../../core/item-membership.ts'
 import { planItemAsk } from '../../core/item-ask.ts'
 // THE ONE PATH INTO A MODEL, shared with the two slash commands and with the
@@ -233,6 +242,14 @@ export interface ToolDeps {
    * `ws:` — which is the honest answer, and the same one the board gives.
    */
   workspaceTitle?: (workspaceId: string) => string
+  /**
+   * The vocabulary bridge, when this host can supply one.
+   *
+   * OPTIONAL for the same reason the workspace face is: a deployment without it
+   * still works — the closed sets then keep the catalog's stricter reading — and
+   * an absent face must degrade to 「the old behaviour」 rather than to a guess.
+   */
+  resolver?: ParamResolver
   now: () => number
   uuid: () => string
 }
@@ -326,20 +343,82 @@ export function capabilityActions(): readonly CapabilityAction[] {
 }
 
 /** What `taskboard_capabilities` answers: the model's own reach, stated first,
- *  so a caller that only wants to know "what may I do" reads two lines. */
-export function capabilityView(): {
+ *  so a caller that only wants to know "what may I do" reads two lines.
+ *
+ *  NARROWING IS THE POINT OF `topic`, and the reason is a cost measurement rather
+ *  than tidiness: the full answer is ~7,000 characters (36 actions × their
+ *  parameters) and the tool is documented as 「先查后做」, so EVERY write began by
+ *  paying for the whole catalog. That structure is wrong — a caller about to move
+ *  one card does not need the nine preset actions — so the answer can now be
+ *  asked for in three sizes:
+ *
+ *   · no topic        — the reach (verbs, reachable, humanOnly) plus the action
+ *                       IDS and their one-line summaries, no parameters
+ *   · `topic: 'task'` — one domain, in full
+ *   · `topic: 'task.create'` — one action, in full
+ *
+ *  The sizes are DERIVED from the same catalog, so a compact answer cannot omit
+ *  an action the full one has: it is the same list, sliced.
+ */
+export function capabilityView(topic?: string): {
   verbs: readonly string[]
   reachable: readonly string[]
   humanOnly: readonly string[]
   actions: readonly CapabilityAction[]
+  /** What this answer covered, echoed so a caller can tell a slice from the whole. */
+  scoped?: string
+  /** The domains an unscoped answer can be narrowed to. */
+  domains?: readonly string[]
+  /** How to ask for more, when this answer was narrowed. */
+  hint?: string
 } {
-  return {
+  const all = capabilityActions()
+  const reach = {
     verbs: BOARD_VERBS,
     reachable: TOOL_ACTION_IDS,
     // Named, not omitted: a capability list that silently drops what the model
     // cannot do invites a turn spent discovering it.
     humanOnly: Object.keys(ACTIONS).filter(id => !TOOL_ACTION_IDS.includes(id as ActionId)),
-    actions: capabilityActions(),
+  }
+  const domains = [...new Set(all.map(action => action.domain))].sort()
+  const said = (topic ?? '').trim()
+  if (said === '') {
+    // THE COMPACT DEFAULT: what may I do, and what is each thing called. No
+    // parameters — those are what made the answer expensive, and most calls only
+    // need to know which verb exists.
+    return {
+      ...reach,
+      actions: all.map(action => ({ ...action, params: {} })),
+      domains,
+      hint: '这是摘要（只有动作名与一句话）。要看某个域或某个动作的完整参数：topic 给 "task" 或 "task.create"。',
+    }
+  }
+  const exact = all.find(action => action.id === said)
+  if (exact !== undefined) return { ...reach, actions: [exact], scoped: exact.id }
+  const inDomain = all.filter(action => action.domain === said)
+  if (inDomain.length > 0) return { ...reach, actions: inDomain, scoped: said, domains }
+  /* THE ID PREFIX IS ALSO A TOPIC, and this is not charity.
+   *
+   * A domain is the DOCUMENT an action speaks about (`board` / `item` / `session` /
+   * `preset`), while every reader of an action id sees the SUBJECT first
+   * (`task.create` → `task`). Those are different vocabularies, and a caller that
+   * asks for `task` means the task actions — refusing that because the catalog
+   * files them under `board` would cost a turn to learn a distinction that buys it
+   * nothing. The prefix match is exact, not fuzzy: a topic that is not a whole
+   * leading segment does not match.
+   *
+   * The domain list still leads, so the canonical spelling is visible first. */
+  const prefixed = all.filter(action => action.id.startsWith(`${said}.`))
+  if (prefixed.length > 0) return { ...reach, actions: prefixed, scoped: said, domains }
+  // AN UNKNOWN TOPIC IS ANSWERED, NOT REFUSED: the caller asked about something
+  // this catalog does not group, and the useful reply is the list of groups it
+  // does have — a refusal would cost a turn and teach it nothing.
+  return {
+    ...reach,
+    actions: [],
+    scoped: said,
+    domains,
+    hint: `没有「${said}」这个域或动作。可以给的值：${[...domains, ...all.map(action => action.id)].slice(0, 40).join(' / ')}`,
   }
 }
 
@@ -435,6 +514,24 @@ interface ItemDetail extends ItemRow {
   readonly dueAt: number | undefined
   readonly hardDueAt: number | undefined
   readonly progress: { readonly done: number; readonly total: number } | undefined
+  /**
+   * WHAT THE THREE DATES MEAN RIGHT NOW, in one word a caller can act on.
+   *
+   * A row can be 「已逾期 3 天」, 「今天到期」, 「还没到可开始的日子」, or — the case that
+   * matters most — `contradiction`: its own three dates cannot all be true. The
+   * interface has printed that verdict since `datePostureOf` existed; the model
+   * got three bare timestamps and had to derive it, which it cannot do correctly
+   * (the derivation has a precedence order and a local-day boundary).
+   *
+   * A READER THAT CANNOT SEE THE VERDICT CANNOT ACT ON IT: 「紧急、周五截止」 handed to
+   * a model that only sees `dueAt: 1794…` is a deadline it has to compute, and a
+   * contradiction looks exactly like a normal schedule.
+   *
+   * OPTIONAL because a row with no dates has no verdict — and because `compact`
+   * omits it then, which is the same "absent, not undefined" rule every other
+   * optional field here follows.
+   */
+  readonly datePosture?: string
 }
 
 /**
@@ -501,7 +598,23 @@ function itemRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>, titl
     title: itemTitleOf(item),
     status: derivedStatusOf(item, cards),
     storedStatus: item.status,
-    taskId: cardTitle ?? item.taskId,
+    /**
+     * THE LINK, NAMED WHEN IT CAN BE AND MARKED WHEN IT CANNOT.
+     *
+     * A row hanging off a card this document cannot resolve keeps a value, because
+     * 「there is a link and I cannot name its target」 is a fact and dropping the
+     * field would report the row as unlinked. But printing the BARE uuid was a
+     * fact in a shape the reader cannot act on: the model saw
+     * `2e1254d5-7464-4f35-a1ba-2a1ae318ccf3` and could not tell a broken link from
+     * an ordinary reference — one long identifier looks exactly like another.
+     *
+     * So the broken case says it is broken, and keeps enough of the id to be
+     * quoted back. `null` is reserved for "linked, target unknown" — the value a
+     * reader must not confuse with "not linked", which is the field being absent.
+     */
+    taskId: item.taskId === undefined
+      ? undefined
+      : cardTitle ?? `（已失效）${item.taskId.slice(0, 8)}…`,
   })
 }
 
@@ -510,8 +623,41 @@ function cardTitlesOf(tasks: readonly TaskRecord[]): ReadonlyMap<string, string>
   return new Map(tasks.map(task => [task.id, task.title]))
 }
 
+/**
+ * The date verdict as ONE READABLE SENTENCE, from the shared derivation.
+ *
+ * NOT a second judgement: every branch here is `datePostureOf`'s own verdict,
+ * translated. The precedence (contradiction → gate → hard deadline → soft plan)
+ * lives in that function, so a row cannot be 「还没到开始日」 on one surface and
+ * 「已逾期」 on another.
+ *
+ * The contradiction branch names the PAIR, because 「日期有矛盾」 leaves the reader
+ * with three candidates and no next step.
+ * @param item - the row.
+ * @param now - the reading clock, so two rows in one answer cannot disagree.
+ * @returns the sentence, or undefined when the row carries no dates at all.
+ */
+function datePostureWordsOf(item: ItemRecord, now: number): string | undefined {
+  const posture = datePostureOf(item, now)
+  switch (posture.kind) {
+    case 'none': return undefined
+    case 'contradiction': {
+      const a = DATE_FIELD_WORDS[posture.conflict.field] ?? posture.conflict.field
+      const b = DATE_FIELD_WORDS[posture.conflict.limitField] ?? posture.conflict.limitField
+      return `这组日期自相矛盾：${a} 晚于 ${b}`
+    }
+    case 'gated': return `还没到可开始的日子（${localDayOf(posture.startsAfter)} 起）`
+    case 'hardOverdue': return `已过截止日 ${posture.days} 天`
+    case 'hardSoon': return `截止日在 ${posture.days} 天内`
+    case 'hardAhead': return `离截止日还有 ${posture.days} 天`
+    case 'dueToday': return '今天到期'
+    case 'behind': return `计划日已过 ${posture.days} 天`
+    case 'upcoming': return `计划日在 ${posture.days} 天后`
+  }
+}
+
 /** The same row with everything a reader typed, for `detail: 'full'`. */
-function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>, titles?: ReadonlyMap<string, string>): ItemDetail {
+function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>, titles?: ReadonlyMap<string, string>, now?: number): ItemDetail {
   const read = itemRow(item, cards, titles)
   return compact({
     ...read,
@@ -524,6 +670,9 @@ function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>
     dueAt: item.dueAt,
     hardDueAt: item.hardDueAt,
     progress: itemProgressOf(item),
+    // The clock is an ARGUMENT, never read inside: one answer, one `now`, so two
+    // rows cannot disagree about whether a day has passed.
+    ...now === undefined ? {} : { datePosture: datePostureWordsOf(item, now) },
   })
 }
 /* ── the deep card: everything the model may WRITE, readable ─────────────── */
@@ -545,12 +694,22 @@ function itemDetailRow(item: ItemRecord, cards?: ReadonlyMap<string, TaskStatus>
 interface TaskDeep extends TaskDetail {
   /** The same six fields as a nested record, for printing. */
   readonly runConfig: Readonly<Record<string, string>>
+  /**
+   * The schedule, with its optionals OMITTED rather than set to `undefined`.
+   *
+   * The declaration used to type them as `number | undefined`, and the row
+   * builder wrote them literally — which is what made a board with ONE scheduled
+   * card unreadable: `{ maxRuns: undefined }` is not lossless JSON, so the host
+   * rejected the ENTIRE answer. The type now says what the value must be, so
+   * putting the undefined back is a compile error rather than a runtime defect
+   * that only shows up on a board somebody happens to have scheduled.
+   */
   readonly schedule?: {
     readonly mode: 'cron' | 'chain'
     readonly cron: string
     readonly enabled: boolean
-    readonly maxRuns: number | undefined
-    readonly runCount: number | undefined
+    readonly maxRuns?: number
+    readonly runCount?: number
   }
   readonly rules?: readonly {
     readonly id: string
@@ -629,13 +788,31 @@ function taskDeepRow(
     agentPreset: task.agentPreset,
     permission: task.permission,
     runConfig,
-    schedule: task.schedule === undefined ? undefined : {
-      mode: task.schedule.mode === 'chain' ? 'chain' : 'cron',
+    /* SPREAD PER FIELD, NEVER A LITERAL WITH `undefined` INSIDE.
+     *
+     * `compact` drops undefined fields of the object it is handed, ONE LEVEL
+     * DEEP. So `{ maxRuns: task.schedule.maxRuns }` inside this literal survived
+     * it: the schedule object itself is not undefined, its CHILD is. The host's
+     * tool pipeline then applied its own lossless-JSON rule to the WHOLE answer
+     * — `{ maxRuns: undefined }` round-trips to `{}`, which is not the same
+     * value — and every read of a board holding ONE scheduled card came back as
+     * a tool ERROR rather than a wrong row.
+     *
+     * The repair is per field rather than a recursive `compact`, and the choice
+     * is deliberate: this project's shape is to make a structure's fields
+     * VISIBLE at the site that builds it. A recursive compactor would fix this
+     * object and silently change what every other row means, and the next
+     * optional field added anywhere would be back to "remember to ask". */
+    schedule: task.schedule === undefined ? undefined : compact({
+      // `as const` because `compact` widens a literal's type through its generic
+      // return — the row is a projection, and the union is a fact about the
+      // document, so it is asserted here rather than widened away.
+      mode: (task.schedule.mode === 'chain' ? 'chain' : 'cron') as 'cron' | 'chain',
       cron: task.schedule.cron ?? '',
       enabled: task.schedule.enabled === true,
-      maxRuns: task.schedule.maxRuns,
-      runCount: task.schedule.runCount,
-    },
+      ...task.schedule.maxRuns === undefined ? {} : { maxRuns: task.schedule.maxRuns },
+      ...task.schedule.runCount === undefined ? {} : { runCount: task.schedule.runCount },
+    }),
     rules: task.rules === undefined || task.rules.length === 0 ? undefined : task.rules.map(rule => compact({
       id: rule.id,
       session: rule.sessionId,
@@ -977,18 +1154,114 @@ function paramOf(payload: Record<string, unknown>, name: string): unknown {
   return payload[name]
 }
 
+/**
+ * The declared parameter a mistyped key most likely meant, for the correction.
+ *
+ * Absent when nothing is close, because a confident wrong guess about the intent
+ * is worse than no guess: `q` is two edits from neither `of` nor `title`, and
+ * telling a caller it probably meant `of` sends them to fix the wrong thing.
+ * The budget is 2 — enough for a transposition or a dropped letter (`proivder`,
+ * `stauts`), short enough that unrelated short names never collide.
+ * @param said - the key the caller sent.
+ * @param declared - every parameter the action takes.
+ * @returns the nearest declared key, or undefined when none is close.
+ */
+function nearestKey(said: string, declared: readonly string[]): string | undefined {
+  let best: string | undefined
+  let bestDistance = Infinity
+  for (const name of declared) {
+    const distance = editDistanceAtMost(said, name, 2)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = name
+    }
+  }
+  return bestDistance <= 2 ? best : undefined
+}
+
+/**
+ * Levenshtein distance, abandoned once it exceeds `limit`.
+ *
+ * The early exit is what makes this cheap enough to run over every declared
+ * parameter for every mistyped key: parameter names are short and usually differ
+ * in the first couple of characters, so most pairs bail out in the first row.
+ * @param a - one string.
+ * @param b - the other.
+ * @param limit - the distance past which the answer stops mattering.
+ * @returns the distance, or `limit + 1` when it is larger.
+ */
+function editDistanceAtMost(a: string, b: string, limit: number): number {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i]
+    let rowBest = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      const value = Math.min(previous[j]! + 1, current[j - 1]! + 1, previous[j - 1]! + cost)
+      current.push(value)
+      if (value < rowBest) rowBest = value
+    }
+    if (rowBest > limit) return limit + 1
+    previous = current
+  }
+  return previous[b.length]!
+}
+
 /** The one required-parameter check, driven by the catalog's own conditions.
  *  A conditional requirement cannot be decided from the payload alone (it
  *  names a fact about another field), so those are reported as a reminder
  *  rather than guessed at. */
-function checkParams(id: ActionId, payload: Record<string, unknown>): string | undefined {
+function checkParams(id: ActionId, payload: Record<string, unknown>, resolver?: ParamResolver): string | undefined {
   const spec = ACTIONS[id]
+  /* A KEY THE CATALOG DOES NOT HAVE IS REFUSED, NOT DROPPED.
+   *
+   * This loop used to walk only the parameters the catalog DECLARES — so a
+   * misspelled key was never looked at by anything. `provider` typed as
+   * `proivder` produced a card with no provider, a receipt that said 「已生效」,
+   * and no sentence anywhere connecting the two. The model's next turn was built
+   * on the belief that it had set something it had not.
+   *
+   * THE SUGGESTION IS THE POINT. A refusal that only says 「不认识的参数」 sends the
+   * model looking for a different spelling by trial; naming the nearest declared
+   * parameter turns it into one correction. This is the same correction the
+   * catalog's own refusals carry, and the reason the check lives here rather
+   * than in the JSON schema: the host's schema subset supports `properties` but
+   * `payload` is published as a bare object (one discriminated union of 36
+   * branches would be carried on EVERY request, which costs more than it saves).
+   *
+   * A key that names something the action does not take is a CALLER MISTAKE, not
+   * a value error, so it is reported before any value is judged: reporting 「status
+   * 只能是 …」 about a `stauts` typo would send the caller to fix a value that was
+   * already right.
+   */
+  const declared = Object.keys(spec.params)
+  const unknown = Object.keys(payload).filter(key => key !== 'op' && !declared.includes(key))
+  if (unknown.length > 0) {
+    const described = unknown.slice(0, 5).map(key => {
+      const near = nearestKey(key, declared)
+      return near === undefined ? `「${key}」` : `「${key}」（是不是 ${near}？）`
+    })
+    return `${id} 不认识 ${described.join('、')} 这个参数，所以什么都没写。这个动作的参数只有：${declared.join(' / ')}`
+  }
   for (const [name, p] of Object.entries(spec.params)) {
     const value = paramOf(payload, name)
     const missing = value === undefined || value === null || value === ''
     if (!missing) {
       if (p.oneOf !== undefined && !p.oneOf.includes(String(value))) {
-        return `${name} 只能是 ${p.oneOf.join(' / ')}，收到的是「${String(value)}」`
+        // THE RESOLVER GETS FIRST REFUSAL. A closed set is the one place the two
+        // vocabularies collided: the catalog's `about` names the READER's words
+        // and `oneOf` holds the STORED ones, so a caller that followed the
+        // description was refused by a list it had never been shown. The resolver
+        // reads the human spellings into the stored value, and the payload is
+        // REWRITTEN so what the gate accepts is what the writer stores — a gate
+        // that accepted 进行中 and let it through unchanged would put a word in a
+        // field typed `TaskStatus`.
+        const stored = resolveParamValue(id, name, value, p, resolver)
+        if (stored === undefined) {
+          return `${name} 只能是 ${p.oneOf.join(' / ')}，收到的是「${String(value)}」`
+        }
+        payload[name] = stored
       }
       continue
     }
@@ -1003,6 +1276,110 @@ function checkParams(id: ActionId, payload: Record<string, unknown>): string | u
     return `${name} 必填：${p.about}`
   }
   return undefined
+}
+
+/**
+ * The resolver face this module takes, when the host has one.
+ *
+ * Declared structurally and passed in (never imported as a value from core, never
+ * as a host service) because it must work in tests and in a deployment where the
+ * workspace registry is absent: absent = the resolver only knows the built-in
+ * vocabularies, which is the honest degradation.
+ */
+export interface ParamResolver {
+  /**
+   * Read one value into its stored spelling.
+   * @param kind - the vocabulary.
+   * @param value - what the caller said.
+   * @returns the stored value, or undefined when it is not readable.
+   */
+  resolve(kind: ResolveKind, value: unknown): string | undefined
+}
+
+/**
+ * Which vocabulary a parameter speaks, when it is a closed set the resolver knows.
+ *
+ * NOT derived from the parameter's NAME alone, and that is deliberate: `status`
+ * appears on both documents with the same vocabulary, while `permission` and
+ * `agentPreset` are the deployment's and cannot be assumed. The table therefore
+ * pairs an action's parameter with a kind only where the vocabulary is REALLY the
+ * one the resolver owns; everything else keeps the catalog's stricter reading.
+ */
+const PARAM_VOCABULARIES: Readonly<Record<string, ResolveKind>> = {
+  status: 'status',
+  priority: 'priority',
+}
+
+/**
+ * Read one closed-set parameter through the resolver, MUTATING the payload.
+ *
+ * MUTATION IS THE POINT. A resolver that only VALIDATED would leave the human
+ * spelling in the payload, and the writer downstream would store it — so 进行中
+ * would be accepted by the gate and then written to a field typed `TaskStatus`.
+ * The value is rewritten in place to the stored spelling, so what the gate
+ * accepted is exactly what lands in the document.
+ *
+ * @param id - the action, for the refusal sentence.
+ * @param name - the parameter.
+ * @param value - what the caller said.
+ * @param spec - its declaration.
+ * @param resolver - the face, when one was supplied.
+ * @returns the stored value, or undefined when the resolver cannot read it (which
+ *   leaves the caller's own refusal to fire).
+ */
+function resolveParamValue(
+  _id: string,
+  name: string,
+  value: unknown,
+  spec: ParamSpec,
+  resolver: ParamResolver | undefined,
+): string | undefined {
+  const kind = PARAM_VOCABULARIES[name]
+  if (kind === undefined || spec.oneOf === undefined || resolver === undefined) return undefined
+  const stored = resolver.resolve(kind, value)
+  if (stored === undefined) return undefined
+  return spec.oneOf.includes(stored) ? stored : undefined
+}
+
+/**
+ * WHAT RUN CONFIGURATION THIS CARD WILL ACTUALLY USE — said out loud.
+ *
+ * ── THE DEFECT THIS CLOSES ──────────────────────────────────────────────────
+ *
+ * Six of the seven cards on this machine were created with NO run configuration,
+ * and every receipt said only 「已生效」. The person then had a card that would run
+ * on a workspace, a model, an effort and a permission nobody had chosen and
+ * nobody had been told about — the platform's defaults, silently.
+ *
+ * The catalog now says which of the six must be asked about (a wrong workspace or
+ * permission is damage, not preference) and which may take a default. The other
+ * half of that bargain is this: A DEFAULT IS ACCEPTABLE, AN UNDISCLOSED DEFAULT
+ * IS NOT. So the receipt names the fields the caller DID set and says plainly
+ * that the rest are the host's.
+ *
+ * @param id - the action, so only a card-creating action pays this line.
+ * @param task - the card as written, which already carries the resolved config.
+ * @param dryRun - a rehearsal has no card, and saying 「会这样跑」 would invent one.
+ * @returns the sentence to append, or nothing.
+ */
+function createdConfigNote(id: ActionId, task: TaskRecord | undefined, dryRun: boolean): string {
+  if (id !== 'task.create' || task === undefined || dryRun) return ''
+  const given = RUN_CONFIG_KEYS.filter(key => {
+    const value = task[key]
+    return typeof value === 'string' && value !== ''
+  })
+  if (given.length === 0) {
+    // THE LOUD CASE. Nothing was chosen, so the card will run on whatever this
+    // deployment happens to default to — which the caller cannot see and the
+    // person did not pick. Naming the two that matter most is what makes the
+    // next turn able to fix it.
+    return `\n运行配置：一个都没指定，会全部走宿主默认（工作区与权限也在其中——这两项选错会跑到别的目录、或改坏文件）。要指定就先 task.update 补上 ${RUN_CONFIG_MUST_ASK.join(' / ')}。`
+  }
+  const named = given.map(key => `${key}=${String(task[key])}`).join('、')
+  const rest = RUN_CONFIG_DEFAULTED.filter(key => !given.includes(key))
+  return rest.length === 0
+    ? `\n运行配置：${named}（全部由你指定）。`
+    : `\n运行配置：${named}（你指定的）；其余 ${rest.join(' / ')} 用的是宿主默认。`
 }
 
 /* ── the batch runner ────────────────────────────────────────────────────── */
@@ -1309,7 +1686,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       continue
     }
     const payload = (step.payload ?? {}) as Record<string, unknown>
-    const problem = checkParams(id, payload)
+    const problem = checkParams(id, payload, deps.resolver)
     if (problem !== undefined) {
       raw.push({ op: step.op, ok: false, detail: problem })
       failed = true
@@ -1547,7 +1924,7 @@ export async function runBatch(deps: ToolDeps, request: ExecuteRequest, exec?: T
       },
       detail: `${declined
         ? '这一条没有改成——另一台设备刚改过它，这次没写进去。'
-        : noop ? '这一条已经是这样了，没有改动。' : landedWord(request.dry_run === true, moved)}${next.note ?? ''}`,
+        : noop ? '这一条已经是这样了，没有改动。' : landedWord(request.dry_run === true, moved)}${createdConfigNote(id, task, request.dry_run === true)}${next.note ?? ''}`,
     })
   }
 
@@ -2074,6 +2451,24 @@ function applyOne(
       if (!isItemListValue(payload.steps) || !isItemListValue(payload.tags)) {
         return 'steps 与 tags 要么是一份列表，要么别传；现在这个不是列表，所以什么都没写。'
       }
+      /* THE DATES ARE JUDGED AND SNAPPED AT THIS DOOR, and only the ones sent.
+       *
+       * A row whose three dates contradict each other is a promise that cannot be
+       * kept: 「开始」 after 「计划」, or a plan after the un-moveable deadline. The
+       * interface deliberately still saves such a row (the reader is mid-thought
+       * and can fix one field later, and the row keeps saying so) — but a model's
+       * call is one complete, re-issuable intent with no "later", so the refusal
+       * belongs HERE rather than inside the shared writer that the capture sheet
+       * also uses. See `itemDateWriteOf`.
+       *
+       * The granularity is the second half: a date means a DAY, and the model
+       * sending "now" put a row at 05:20, which made 「今天到期」 wrong at the day
+       * boundary. The catalog stated that rule in prose and nothing enforced it. */
+      const dates = itemDateWriteOf(
+        { startsAfter: payload.startsAfter as number | undefined, dueAt: payload.dueAt as number | undefined, hardDueAt: payload.hardDueAt as number | undefined },
+        new Set(DATE_KEYS.filter(key => payload[key] !== undefined)),
+      )
+      if (!dates.ok) return dateConflictSentence(dates.conflict)
       const link = linkOf(payload.taskId)
       const made = captureItemRecord({
         title: typeof payload.title === 'string' ? payload.title : '',
@@ -2088,9 +2483,9 @@ function applyOne(
         priority: payload.priority,
         steps: payload.steps,
         tags: payload.tags,
-        startsAfter: payload.startsAfter,
-        dueAt: payload.dueAt,
-        hardDueAt: payload.hardDueAt,
+        startsAfter: dates.values.startsAfter,
+        dueAt: dates.values.dueAt,
+        hardDueAt: dates.values.hardDueAt,
         ...link === undefined ? {} : { taskId: link },
       }, now, deps.uuid)
       // The row arrives with no number at all: the document mints it, which is
@@ -2128,6 +2523,41 @@ function applyOne(
         if (typeof raw === 'number' && Number.isFinite(raw)) return raw
         return found[field]
       }
+      /* THE DATES THIS CALL WILL LEAVE ON THE ROW, judged and snapped — see
+       * `item.create`'s note for why the refusal lives at this door and not in the
+       * shared writer.
+       *
+       * JUDGED ON THE RESULT, NOT ON THE PAYLOAD. A merge is what an update
+       * produces, so the conflict that matters is the one the ROW WILL HOLD — and
+       * the first version of this check compared only the keys the payload
+       * mentioned, so 「把开始日改成 9 号」 on a row planned for the 5th sailed
+       * through and created exactly the contradiction the check exists to stop.
+       * A test caught it, which is the point of asserting the OUTCOME rather than
+       * the mechanism.
+       *
+       * `mentioned` still decides what is WRITTEN (`nextInstant` owns 「没提 / 清空 /
+       * 新值」), while `judged` is the merged triple. Splitting the two is what
+       * keeps 「把标题改一下」 from being refused over a contradiction somebody else
+       * put in the row: an edit that mentions no date is not asked to fix one. */
+      const mentionedDates = new Set(DATE_KEYS.filter(key => payload[key] !== undefined))
+      /* AN EDIT THAT MENTIONS NO DATE IS NOT ASKED TO FIX ONE.
+       *
+       * The merge is what an update produces, so the conflict that matters is the
+       * one the ROW WILL HOLD — but only when this call is what puts it there. A
+       * row somebody else made impossible must stay editable by title, or the
+       * person is locked out of the very fix they were asked to make.
+       *
+       * So the two questions are answered separately: `attempted` is the merged
+       * triple, judged for the conflict; `mentionedDates` is what gets written.
+       * The conflict test runs only when the caller touched a date at all. */
+      const attempted: Record<string, number | undefined> = {}
+      for (const key of DATE_KEYS) {
+        attempted[key] = mentionedDates.has(key) ? nextInstant(key) : found[key]
+      }
+      const writtenDates = mentionedDates.size === 0
+        ? { ok: true as const, values: {} }
+        : itemDateWriteOf(attempted as Pick<ItemRecord, ItemDateKey>, mentionedDates)
+      if (!writtenDates.ok) return dateConflictSentence(writtenDates.conflict)
       // 挂卡：没传 = 不动；空 = 摘掉；非空字符串 = 换链；别的形状 = 没说清（沿用）。
       const link: 'none' | 'unlink' | { readonly cardId: string } =
         payload.taskId === null || payload.taskId === ''
@@ -2160,9 +2590,12 @@ function applyOne(
       if (payload.notes !== undefined) patch.notes = payload.notes as string
       if (payload.priority !== undefined) patch.priority = payload.priority as ItemRecord['priority']
       patch.tags = payload.tags === undefined ? found.tags : itemTagsOf(payload.tags)
-      patch.startsAfter = nextInstant('startsAfter')
-      patch.dueAt = nextInstant('dueAt')
-      patch.hardDueAt = nextInstant('hardDueAt')
+      // The SNAPPED values, from the same read that judged the conflict — not
+      // `nextInstant` again, which would be a second reading of one payload and
+      // could disagree with the one that was just validated.
+      patch.startsAfter = 'startsAfter' in writtenDates.values ? writtenDates.values.startsAfter : found.startsAfter
+      patch.dueAt = 'dueAt' in writtenDates.values ? writtenDates.values.dueAt : found.dueAt
+      patch.hardDueAt = 'hardDueAt' in writtenDates.values ? writtenDates.values.hardDueAt : found.hardDueAt
       if (steps !== undefined) patch.steps = steps.steps
       let rows = applyItemPatch(items.items, found.id, patch, now)
       /* **挂载：链接与这一行自己那一档一起写。**
@@ -2550,6 +2983,16 @@ function itemBodyOf(row: ItemRow & Partial<ItemDetail>): string {
   for (const [label, at] of [['开始', row.startsAfter], ['计划', row.dueAt], ['截止', row.hardDueAt]] as const) {
     if (at !== undefined) lines.push(`  ${label}：${at}（${localDayOf(at)}）`)
   }
+  /* THE VERDICT, printed — not left for the caller to derive.
+   *
+   * The three stamps above say WHEN; this says WHAT IT MEANS, and the two are
+   * different questions: the precedence between a gate, a hard deadline and a
+   * soft plan is a judgment with an order, and a row whose dates contradict each
+   * other has no honest "how late" answer at all. The interface has printed this
+   * verdict all along (`datePostureOf`); the model was handed three numbers and
+   * had to recompute a derivation it cannot reproduce correctly — local-day
+   * boundaries included. */
+  if (row.datePosture !== undefined) lines.push(`  日期态势：${row.datePosture}`)
   if (row.taskId !== undefined && row.taskId !== '') lines.push(`  关联卡片：${row.taskId}`)
   if (row.storedStatus !== undefined && row.storedStatus !== row.status) {
     lines.push(`  存储状态：${row.storedStatus}`)
@@ -2603,7 +3046,21 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
   const capabilities: ToolDefinition = {
     name: 'taskboard_capabilities',
     description: CAPABILITIES_DESCRIPTION,
-    parameters: { type: 'object', properties: {}, additionalProperties: false },
+    parameters: {
+      type: 'object',
+      properties: {
+        /* THE COST STRUCTURE, FIXED. This tool is documented as 「先查后做」, and its
+         * full answer is ~7,000 characters for 36 actions — so every single write
+         * began by paying for the entire catalog a caller about to move one card
+         * did not need. Narrowing here means the common call pays for the names
+         * and the rare call pays for the parameters. */
+        topic: {
+          type: 'string',
+          description: '不填 = 摘要（动作名 + 一句话 + 有哪些域，不含参数）。给一个域（task / item / board / session / rule / preset / cruise）看那个域的全部动作；给一个动作 id（task.create）看那一个的完整参数。',
+        },
+      },
+      additionalProperties: false,
+    },
     output: {
       schema: {
         type: 'object',
@@ -2612,6 +3069,9 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
           reachable: { type: 'array', items: { type: 'string' } },
           humanOnly: { type: 'array', items: { type: 'string' } },
           actions: { type: 'array', items: { type: 'object' } },
+          scoped: { type: 'string' },
+          domains: { type: 'array', items: { type: 'string' } },
+          hint: { type: 'string' },
         },
         required: ['verbs', 'reachable', 'humanOnly', 'actions'],
         additionalProperties: false,
@@ -2623,20 +3083,51 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
       render: (_args, value) => {
         const view = value as unknown as ReturnType<typeof capabilityView>
         const lines = view.actions.map(action => {
-          const params = Object.entries(action.params)
-            .map(([name, spec]) => `    ${name}${spec.required ? '（必填）' : ''}${spec.requiredWhen === undefined ? '' : `（${spec.requiredWhen} 时必填）`}：${spec.about}`)
+          /* THE LEGAL VALUES ARE PART OF THE RULE, so they are printed with it.
+           *
+           * `renderParam` has always carried `oneOf` into the data — and this
+           * template then printed only `about`, so THIRTY-SIX actions' closed
+           * value sets never reached the model. What that produced is the defect
+           * this whole surface is being rebuilt around: the description said
+           * 「五档之一：待规划 / 待办 / 进行中 / 待审核 / 已完成」 (the reader's words)
+           * while `checkParams` compared against `backlog/todo/running/review/done`
+           * (the stored words), so a model that followed the description exactly
+           * was refused every time — and the refusal named values the
+           * description had never shown it.
+           *
+           * A default stated in prose is not a default anybody can check; the
+           * same sentence here, rendered from the FIELD the validator reads, is
+           * one fact with one home. */
+          const entries = Object.entries(action.params)
+          const params = entries
+            .map(([name, spec]) => {
+              const condition = spec.required ? '（必填）' : spec.requiredWhen === undefined ? '' : `（${spec.requiredWhen} 时必填）`
+              const allowed = spec.oneOf === undefined || spec.oneOf.length === 0 ? '' : `（可选：${spec.oneOf.join(' / ')}）`
+              const absent = spec.appliesWhen === undefined ? '' : `（${spec.appliesWhen}）`
+              return `    ${name}${condition}：${spec.about}${allowed}${absent}`
+            })
             .join('\n')
-          return `${action.id} —— ${action.summary}\n  危险级 ${action.danger}；经 ${action.lane} 写入\n${params}`
+          const head = `${action.id} —— ${action.summary}`
+          // A compact answer carries no parameters, so it must not print an empty
+          // 「危险级…」 block either: that would be three lines per action saying
+          // nothing the summary has not said.
+          return entries.length === 0 ? head : `${head}\n  危险级 ${action.danger}；经 ${action.lane} 写入\n${params}`
         })
         return text([
           `你能用 ${view.reachable.length} 个动作，动词只有这些：${view.verbs.join(' / ')}`,
           `只有人能做（别试）：${view.humanOnly.join('、') || '（无）'}`,
+          ...(view.scoped === undefined ? [] : [`范围：${view.scoped}`]),
+          ...(view.domains === undefined || view.domains.length === 0 ? [] : [`可以按域查：${view.domains.join(' / ')}`]),
+          ...(view.hint === undefined ? [] : [view.hint]),
           '',
           ...lines,
         ])
       },
     },
-    execute: async () => capabilityView(),
+    execute: async (args) => {
+      const topic = (args as { topic?: unknown }).topic
+      return capabilityView(typeof topic === 'string' ? topic : undefined)
+    },
   }
 
   const query: ToolDefinition = {
@@ -2830,6 +3321,66 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
 }
 
 /**
+ * THE ONE CONSTRUCTOR FOR A READ THAT FOUND NOTHING.
+ *
+ * The query's output schema declares five REQUIRED fields. Every `ok: false`
+ * branch used to return `{ ok, detail }` and nothing else, so the host's own
+ * validator rejected the answer — 「missing required property "value.filter"」 —
+ * and a model that asked about a row which does not exist got a TOOL ERROR
+ * instead of the sentence the branch had carefully written for it.
+ *
+ * That is the worst class of defect this project names: THE ERROR PATH VIOLATED
+ * ITS OWN CONTRACT. The refusal sentence existed and was correct; the envelope
+ * around it was malformed, so the caller never saw it.
+ *
+ * One constructor, so the next branch cannot forget: a refusal is a first-class
+ * ANSWER (nothing matched, here is what I looked for) with empty lists, not a
+ * malformed success.
+ * @param detail - the sentence the caller reads.
+ * @param filter - what was asked, echoed as the success path does.
+ * @returns a schema-complete refusal.
+ */
+function queryRefusal(detail: string, filter = ''): {
+  readonly ok: false
+  readonly filter: string
+  readonly detail: string
+  readonly tasks: readonly never[]
+  readonly items: readonly never[]
+} {
+  return { ok: false, filter, detail, tasks: [], items: [] }
+}
+
+/** The words each date field uses, in the model's own vocabulary AND the reader's.
+ *
+ *  Two labels because the two must be sayable back: the model reads the field
+ *  name in the catalog (`startsAfter`) and the person reads 「开始」 on the row, and
+ *  a refusal that names only one of them is a refusal the other party cannot
+ *  follow. Kept here rather than derived from the locale table, which the host
+ *  half cannot read — and rather than in the catalog, because the catalog's job
+ *  is what a parameter IS, not what to say when two of them disagree. */
+const DATE_FIELD_WORDS: Readonly<Record<string, string>> = {
+  startsAfter: '开始（startsAfter）',
+  dueAt: '计划（dueAt）',
+  hardDueAt: '截止（hardDueAt）',
+}
+
+/**
+ * The refusal for a row whose three dates cannot all be true.
+ *
+ * NAMES THE PAIR, not just the field: 「日期有矛盾」 leaves the caller to work out
+ * which two, and it has three candidates. The conflict already carries both ends
+ * (`field` and `limitField`) — printing one of them would name a field that was
+ * never in conflict while pointing at the one that was.
+ * @param conflict - the pair that disagrees.
+ * @returns the sentence the model reads.
+ */
+function dateConflictSentence(conflict: ItemDateConflict): string {
+  const a = DATE_FIELD_WORDS[conflict.field] ?? conflict.field
+  const b = DATE_FIELD_WORDS[conflict.limitField] ?? conflict.limitField
+  return `${a} 不能晚于 ${b}：这一组日期自相矛盾，所以什么都没写。改掉其中一个再来，或者先只写一个日期。`
+}
+
+/**
  * The read tool's body.
  *
  * ── WHY THIS IS THE HALF THAT MATTERED ─────────────────────────────────────
@@ -2871,10 +3422,10 @@ export function createTaskboardTools(deps: ToolDeps): readonly ToolDefinition[] 
  * writing the most expensive thing in the tool.
  */
 async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): Promise<unknown> {
-  if (exec?.signal.aborted === true) return { ok: false, detail: '这次调用已经被取消，没有读到数据。' }
+  if (exec?.signal.aborted === true) return queryRefusal('这次调用已经被取消，没有读到数据。')
   const board = deps.board()
   if (board === undefined || !board.available) {
-    return { ok: false, detail: '看板存储不可用，这次查询没有读到任何数据。' }
+    return queryRefusal('看板存储不可用，这次查询没有读到任何数据。')
   }
   const request = (args ?? {}) as {
     filter?: string
@@ -2898,23 +3449,64 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
    * row that matched `status:review` cannot come back labelled `todo`.
    * `titles` is what turns a row's `taskId` from a uuid into the name a caller
    * can say back. */
-  const itemCtx = itemSearchContext(deps.now(), undefined, cardStatusMapOf(doc.tasks))
+  /* ONE CLOCK FOR THE WHOLE ANSWER. Read once, so two rows in one reply cannot
+   * disagree about whether a day has passed — the same rule the date module
+   * states by taking `now` as an argument. */
+  const clock = deps.now()
+  const itemCtx = itemSearchContext(clock, undefined, cardStatusMapOf(doc.tasks))
   const cards = itemCtx.cards
   const titles = cardTitlesOf(doc.tasks)
 
   /* `of` — ONE TARGET, READ COMPLETELY.
    *
-   * A title that names more than one card is a REFUSAL listing them, not a
-   * silent first match: 「把收尾移到已完成」 about two cards called 收尾 used to
-   * move one of them and report success, and nothing anywhere said there had
-   * been two. */
+   * TWO DOCUMENTS, ONE ADDRESS PARAMETER. The description has always promised
+   * 「一张卡的名字或它的短编号（清单条目用 #12）」, but this branch only ever asked
+   * `resolveCard` — so the checklist half of the promise was a sentence with no
+   * implementation behind it, and 「#54」 came back as 「看板上没有叫「#54」的卡」.
+   * That is the worst possible answer: the model has just been handed `#54` by a
+   * receipt, and the surface tells it the row does not exist.
+   *
+   * WHICH DOCUMENT IS DECIDED BY THE SPELLING, and the spelling is the grammar
+   * this project already has: a `#`-prefixed number is a checklist address
+   * (`refOf` is the one home of that grammar, and `verify-address-grammar` keeps
+   * it that way). A bare number is ALSO a checklist ref — cards have no short
+   * numbers at all, so nothing else could be meant. Everything else is a card
+   * title or id, exactly as before.
+   *
+   * `#` STAYS OUT OF `filter`. `#54` in the search box is a TAG (the reader's own
+   * word) under `item-query`'s grammar, and two grammars starting with the same
+   * character is the collision the address-grammar gate exists to keep separate.
+   * Teaching `filter` to read it as a ref would make `#54` mean one thing in `of`
+   * and another in `filter`. */
   if (request.of !== undefined && String(request.of).trim() !== '') {
-    const looked = resolveCard(doc.tasks, request.of)
+    const spoken = String(request.of).trim()
+    const looksLikeRef = /^#?\d+$/.test(spoken)
+    if (looksLikeRef) {
+      const ref = Number(refOf(spoken))
+      const found = items.items.find(item => item.ref === ref)
+        // A caller that opened a card and got its title might paste the row's
+        // URL-bearing id instead; the number is the documented address, but
+        // matching the id too costs one comparison and cannot confuse the two.
+        ?? items.items.find(item => item.id === spoken)
+      if (found === undefined) {
+        const known = items.items.slice(0, 20).map(item => `#${item.ref} ${itemTitleOf(item)}`).join('、')
+        return queryRefusal(`清单里没有 #${ref}。清单上现在有：${known || '（一条都没有）'}`)
+      }
+      return compact({
+        ok: true,
+        filter,
+        detail: 'full',
+        tasks: [],
+        items: [itemDetailRow(found, cards, titles, clock)],
+        truncated: false,
+      })
+    }
+    const looked = resolveCard(doc.tasks, spoken)
     if (looked.kind === 'missing') {
-      return { ok: false, detail: `看板上没有叫「${String(request.of)}」的卡。用 filter 先看一眼板上有哪些卡。` }
+      return queryRefusal(`看板上没有叫「${spoken}」的卡。用 filter 先看一眼板上有哪些卡。`)
     }
     if (looked.kind === 'ambiguous') {
-      return { ok: false, detail: ambiguousCardWhy(request.of, looked.matches) }
+      return queryRefusal(ambiguousCardWhy(spoken, looked.matches))
     }
     const card = looked.task
     const sessionTitles = await sessionTitlesOf(deps, card)
@@ -2926,7 +3518,7 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
       tasks: [deep],
       items: items.items
         .filter(item => item.taskId === card.id)
-        .map(item => itemDetailRow(item, cards, titles)),
+        .map(item => itemDetailRow(item, cards, titles, clock)),
       truncated: false,
       ...await includedOf(deps, request.include, card, request.rounds),
     })
@@ -2970,7 +3562,7 @@ async function runQuery(deps: ToolDeps, args: unknown, exec?: ToolRunContext): P
     : depth === 'full' ? taskSlice.map(taskDetailRow) : taskSlice.map(taskRow)
   const itemRows = depth === 'brief'
     ? itemSlice.map(item => itemRow(item, cards, titles))
-    : itemSlice.map(item => itemDetailRow(item, cards, titles))
+    : itemSlice.map(item => itemDetailRow(item, cards, titles, clock))
 
   const view = compact({
     ok: true,

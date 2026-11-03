@@ -1710,8 +1710,17 @@ export class BoardController {
         byId: byId as unknown as Readonly<Record<string, LinkedSessionSource>>,
         hidden: task.hidden?.sessions ?? [],
       })) {
-        if (seen.has(row.sessionId) || removed.includes(row.sessionId) || this.archivedOf(row.sessionId)) continue
+        // PERMANENTLY REMOVED sessions never re-derive — a deleted source must
+        // stay deleted (hidden would still re-appear; removed cannot).
+        //
+        // AN ARCHIVED one is NOT removed, and that distinction used to be thrown
+        // away here: `this.archivedOf(...) → continue` made an archived
+        // conversation vanish from the card exactly like a deleted one. Archiving
+        // is reversible by design, so the row stays and is MARKED — see
+        // {@link LinkedSessionRow.archived} for why that matters.
+        if (seen.has(row.sessionId) || removed.includes(row.sessionId)) continue
         seen.add(row.sessionId)
+        const archived = this.archivedOf(row.sessionId)
         // The row's `running` is the ACTIVITY answer (own turn or a running
         // subagent descendant — the official sidebar's semantics), applied
         // here so the linked panel, the unified session list and every other
@@ -1724,6 +1733,7 @@ export class BoardController {
         rows.push({
           ...row,
           running: activity.active(row.sessionId),
+          archived,
           ...pendingInteraction !== undefined ? { pendingInteraction } : {},
         })
       }

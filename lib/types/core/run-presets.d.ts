@@ -41,17 +41,33 @@ export type RunConfigPresetConfig = {
 /**
  * The six run-config parameters as the action catalog publishes them.
  *
- * Every one is optional with the SAME absent-case sentence, because the absent
- * case is the same fact for all six: the host's own default chain resolves it.
- * That sameness is the reason this is one table and not eighteen lines: a
- * parameter whose "not given" case differs from its siblings is a parameter that
- * needs its own sentence, and none of these six does.
+ * EACH CARRIES ITS OWN absent-case sentence now. The table is still ONE table —
+ * six fields, one declaration, so a seventh field cannot be settable in one place
+ * and invisible in another — but it no longer claims the six mean the same thing
+ * when omitted, because they do not.
  */
-export declare const RUN_CONFIG_PARAMS: Readonly<Record<string, {
+export declare const RUN_CONFIG_PARAMS: Readonly<Record<typeof RUN_CONFIG_KEYS[number], {
     about: string;
     optional: true;
     appliesWhen: string;
 }>>;
+/**
+ * The two keys whose wrong value is DAMAGE rather than a preference, so a caller
+ * that is about to run something should ask before leaving them out.
+ *
+ * A LIST, not a boolean per key: the question 「which of these must be asked」 has
+ * one answer and this is it. A caller reading it gets the same two the catalog's
+ * sentences describe, so the rule and the prose cannot disagree.
+ */
+export declare const RUN_CONFIG_MUST_ASK: readonly (typeof RUN_CONFIG_KEYS[number])[];
+/**
+ * The four keys that may take a default, PROVIDED the receipt says what was used.
+ *
+ * Silent defaults are the other half of the measured defect: a card built with no
+ * configuration ran on something nobody had described. A default is acceptable;
+ * an UNDISCLOSED default is not.
+ */
+export declare const RUN_CONFIG_DEFAULTED: readonly (typeof RUN_CONFIG_KEYS[number])[];
 /** One named preset: a (partial) run configuration. */
 export interface RunConfigPreset {
     /** Stable id (uuid for custom entries). */

@@ -213,7 +213,15 @@ export function versionSyncProblems(input: VersionSyncInput): string[] {
         .map(match => `${match[1]}@${match[2]}`),
     )
     const installed = new Set<string>()
-    for (const match of input.lock.matchAll(/'?(@deepseek-ai\/dsh-[a-z0-9-]+)@(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)'?/g)) {
+    /* 范围是**所有 `@deepseek-ai/*`**，不是只有 `dsh-*`。
+     *
+     * `pnpm install` 的冷静期判据是「这个版本是不是刚落进冷静期」，它不区分包名
+     * 前缀——所以 DSH 依赖里那族不带 `dsh-` 的 alpha 包（`cordis`、`cosmokit`、
+     * `schemastery`、cordis 的插件族）一样会被拦住，一样需要豁免。判据写窄成
+     * `dsh-` 时，这族包会被判成「白名单里多了没在装的条目」，于是唯一的修法是把它
+     * 们从白名单删掉——然后 `pnpm install` 在别人机器上装不上。两个判据必须同一个
+     * 范围，否则修好一个必然弄坏另一个。 */
+    for (const match of input.lock.matchAll(/'?(@deepseek-ai\/[a-z0-9-]+)@(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)'?/g)) {
       installed.add(`${match[1]}@${match[2]}`)
     }
     const missing = [...installed].filter(entry => !excluded.has(entry)).sort()

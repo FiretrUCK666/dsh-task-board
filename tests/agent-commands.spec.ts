@@ -46,10 +46,10 @@ function agent(): CommandAgent & {
   }
 }
 
-describe('the two commands', () => {
-  it('registers /task and /task-continue, neither recording its input', () => {
+describe('the four commands', () => {
+  it('registers all four, none of them recording its input', () => {
     const commands = createTaskboardCommands()
-    expect(commands.map(c => c.name)).toEqual(['task', 'task-continue'])
+    expect(commands.map(c => c.name)).toEqual(['task', 'task-continue', 'task-status', 'task-cleanup'])
     for (const command of commands) {
       // The sentence is already a message in the session; recording it again
       // would put the same words in the log twice.
@@ -76,10 +76,36 @@ describe('the two commands', () => {
     // never woven in, so the model cannot misread which part is theirs.
     expect(sent.endsWith('把刚才说的三件事记下来')).toBe(true)
     // ...and they arrive with the one instruction the command promises: use the
-    // board's tools. Without it the command was literally indistinguishable from
-    // plain chat, and measured against a real board it left no card at all.
+    // tools. Without it the command was literally indistinguishable from plain
+    // chat, and measured against a real board it left no card at all.
     expect(sent).toContain('/task')
-    expect(sent).toContain('看板的工具')
+    expect(sent).toContain('工具')
+  })
+
+  /**
+   * `/task` NO LONGER SAYS 「记到看板上」.
+   *
+   * It used to, and that directive was wrong for the commonest case. 「记一下明天
+   * 买牛奶」 is a checklist entry; a card is a thing that gets EXECUTED, so building
+   * one for a shopping reminder fills the board with reminders waiting to run —
+   * the plugin creating the mess the person asked it to absorb.
+   *
+   * The command cannot decide the surface, and should not: that is a judgment about
+   * intent, and the manual is where it is taught. So the directive names the JOB
+   * and both surfaces, and says to ask when the intent is unclear.
+   */
+  it('/task names both surfaces and does not assume the board', async () => {
+    const box = agent()
+    await invoke(0, box, '记一下明天买牛奶')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    // Both documents are named: a directive naming one of them forgets the other
+    // for every request that belonged to it.
+    expect(sent).toContain('看板')
+    expect(sent).toContain('清单')
+    // And the judgment is handed over rather than pre-empted.
+    expect(sent).toContain('判断')
+    // The old, single-surface phrasing is gone — not merely supplemented.
+    expect(sent).not.toContain('请用看板的工具把这件事真的记下来')
   })
 
   it('the directive does not try to be a workflow', async () => {
@@ -180,6 +206,75 @@ describe('the two commands', () => {
     expect(box.handed[0]?.content[0]?.text).toContain('从哪一条开始')
   })
 
+  /**
+   * EACH COMMAND CARRIES ITS OWN JOB, because a shared directive lied.
+   *
+   * All four used to travel with `/task`'s sentence — 「请用看板的工具把这件事真的
+   * 记下来」 — which is right for `/task` and wrong for the rest: 「继续」 is not
+   * 「记下来」, 「现在什么情况」 is not a write at all, and 「清理一下」 that begins by
+   * creating cards has made the mess bigger. A directive naming the wrong job is
+   * worse than none, because the model follows it.
+   */
+  it('/task-continue says both surfaces, not just the checklist', async () => {
+    // The old prompt read 「读一下任务清单里还没完成的事项」 — 「任务清单」 is the
+    // checklist, so cards sitting in 进行中 were never read, and the answer was a
+    // resumption plan for strictly half of what was outstanding.
+    const box = agent()
+    await invoke(1, box, '')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    expect(sent).toContain('看板')
+    expect(sent).toContain('清单')
+    // And it must not have inherited the writing directive.
+    expect(sent).not.toContain('真的把它处理掉')
+  })
+
+  it('/task-status is READ ONLY, and says so before the model can tidy anything', async () => {
+    // 「板子上现在什么情况」 is a question. Handing it to a command whose directive
+    // says 「真的把它处理掉」 gets the asker a diff instead of a number.
+    const box = agent()
+    await invoke(2, box, '')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    expect(sent).toContain('只读不写')
+    expect(sent).toContain('不要新建')
+    // It names BOTH surfaces, which is the same requirement cleanup has.
+    expect(sent).toContain('看板')
+    expect(sent).toContain('清单')
+  })
+
+  it('/task-cleanup keeps the three delete costs apart, and asks before the irreversible two', async () => {
+    // THREE different deletes, and they are not interchangeable:
+    //   item.delete  — tombstone, comes back with item.restore. Safe by default.
+    //   item.purge   — throws the tombstone's body away. Irreversible.
+    //   task.delete  — a card keeps no tombstone; rounds and sessions go too.
+    // A directive that says 「清理一下」 and leaves the choice invites the one move
+    // that cannot be undone.
+    const box = agent()
+    await invoke(3, box, '')
+    const sent = box.handed[0]?.content[0]?.text ?? ''
+    // The recoverable one is authorised outright.
+    expect(sent).toContain('item.delete')
+    expect(sent).toContain('能恢复')
+    // The two irreversible ones are named AND gated behind a question.
+    expect(sent).toContain('item.purge')
+    expect(sent).toContain('task.delete')
+    expect(sent).toContain('先问我')
+    // Both surfaces: a mess does not respect the panel boundary.
+    expect(sent).toContain('看板')
+    expect(sent).toContain('清单')
+  })
+
+  it('accepts a scope argument without requiring one', async () => {
+    // 「只收拾已完成那一栏」 narrows the work; a blank submit means 「全部」. Neither
+    // is an error, which is why these two declare `input` as a hint rather than a
+    // requirement.
+    const blank = agent()
+    expect(await invoke(3, blank, '')).toEqual({ kind: 'success' })
+    expect(blank.handed[0]?.content[0]?.text).toContain('帮我收拾')
+    const scoped = agent()
+    expect(await invoke(3, scoped, '只收拾已完成那一栏')).toEqual({ kind: 'success' })
+    expect(scoped.handed[0]?.content[0]?.text).toContain('只收拾已完成那一栏')
+  })
+
   it('a delivery failure is reported in words, not swallowed', async () => {
     const failing: CommandAgent = { followup() { throw new Error('会话已关闭') } }
     const result = await invoke(0, failing, '记一下')
@@ -187,10 +282,10 @@ describe('the two commands', () => {
     if (result.kind === 'error') expect(result.text).toContain('会话已关闭')
   })
 
-  it('one disposer takes both commands off', () => {
+  it('one disposer takes all four commands off', () => {
     const box = registry()
     const dispose = registerTaskboardCommands(box)
-    expect([...box.registered.keys()]).toEqual(['task', 'task-continue'])
+    expect([...box.registered.keys()]).toEqual(['task', 'task-continue', 'task-status', 'task-cleanup'])
     dispose()
     expect(box.registered.size).toBe(0)
   })

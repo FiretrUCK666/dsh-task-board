@@ -196,6 +196,36 @@ export declare const ACTIONS: {
                 readonly about: "卡片强调色";
                 readonly optional: true;
             };
+            readonly workspaceId: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly provider: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly model: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly reasoningEffort: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly agentPreset: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly permission: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
             readonly prompt: {
                 readonly about: "执行 Prompt：这条卡跑起来时真正送出去的那段话";
             };
@@ -250,6 +280,36 @@ export declare const ACTIONS: {
             readonly color: {
                 readonly about: "卡片强调色";
                 readonly optional: true;
+            };
+            readonly workspaceId: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly provider: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly model: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly reasoningEffort: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly agentPreset: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly permission: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
             };
             readonly of: {
                 readonly about: "要改的卡";
@@ -415,6 +475,9 @@ export declare const ACTIONS: {
         readonly surface: "ui+ai";
         readonly summary: "撤掉一条还在排队的评论轮次（已经注入出去的那条撤不回来）。";
         readonly params: {
+            readonly of: {
+                readonly about: "这条评论挂在哪张卡上";
+            };
             readonly round: {
                 readonly about: "要撤的轮次";
             };
@@ -626,6 +689,36 @@ export declare const ACTIONS: {
         readonly relay: "session.create";
         readonly summary: "按给定的运行配置建一条新的原生会话，**并且同时把它挂到这张卡上**——所以这条既是 create 也是 bind，不给 of 就没法用（要挂来源但不想建会话，去 session.bind）。它骑的是**建会话**那条载波，不是 run 载波——**走 run 中继同样只会白跑一次卡，会话不会被建出来**。卡本身不动：不产生执行记录、不进派发队列、不碰任何自动化。会话是原生侧真实存在的东西，绑定可以摘掉，关掉它要用户自己在原生界面做。会话创建在宿主缺席时直接失败，不会假装排队。";
         readonly params: {
+            readonly workspaceId: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly provider: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly model: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly reasoningEffort: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly agentPreset: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
+            readonly permission: {
+                about: string;
+                optional: true;
+                appliesWhen: string;
+            };
             readonly of: {
                 readonly about: "要挂到哪张卡上";
             };
@@ -633,36 +726,6 @@ export declare const ACTIONS: {
                 readonly about: "会话名";
                 readonly optional: true;
                 readonly appliesWhen: "留空 = 一个字都不发，会话由宿主自己的命名链在第一句真话之后命名；给了名字就用官方改名接口钉住它，宿主之后不会再自动改名";
-            };
-            readonly workspaceId: {
-                readonly about: "跑在哪台机器上";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
-            };
-            readonly provider: {
-                readonly about: "模型供应方";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
-            };
-            readonly model: {
-                readonly about: "模型";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
-            };
-            readonly reasoningEffort: {
-                readonly about: "思考档位";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
-            };
-            readonly agentPreset: {
-                readonly about: "代理预设";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
-            };
-            readonly permission: {
-                readonly about: "权限预设，只能填目录里真实存在的键";
-                readonly optional: true;
-                readonly appliesWhen: "留空 = 不指定，由宿主按自己的默认链解析";
             };
         };
     };

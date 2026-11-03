@@ -42,6 +42,13 @@ export interface CoverageInput {
   itemWriteNames: string[]
   /** The text of AGENTS.md, for the rule/thing agreement check. */
   agentsText: string
+  /** The text of src/host/agent/prompt.ts — the injected system-prompt section.
+   *  One of the faces AGENTS.md rule 22 holds to the catalog: every action name
+   *  it spells must exist. */
+  promptText: string
+  /** The text of src/host/agent/commands.ts — the slash commands. The other face
+   *  rule 22 holds to the catalog. */
+  commandsText: string
   /** Repo-relative paths that exist, as the check needs to know them. */
   presentFiles: string[]
   /** Action id -> the controller methods carrying it. Injectable so a test can

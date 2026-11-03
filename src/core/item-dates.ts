@@ -17,8 +17,100 @@
  * render, one `now`, and two rows cannot disagree about whether a day has
  * passed; and a test does not need a fake timer to pin a deadline verdict.
  */
-import type { ItemDateConflict, ItemRecord } from './item.ts'
+import type { ItemDateConflict, ItemDateKey, ItemRecord } from './item.ts'
 import { itemDateConflict } from './item.ts'
+
+/**
+ * The three dates, as a WRITER's payload carries them, read into the three
+ * values that will be stored — or refused with the pair that contradicts.
+ *
+ * ── WHY THIS IS NOT THE SHARED WRITER'S RULE ────────────────────────────────
+ *
+ * `applyItemPatch` and `captureItemRecord` deliberately ACCEPT a contradictory
+ * row: the capture sheet says so in its own words — 「矛盾照样存得下。拦住这一下会把
+ * 读者卡在一个他还没想好的顺序里（先改哪一个都错），而落进文档之后行尾自己会说同一句话
+ * ——把话说出去，比把人拦在门外便宜」. That is a decision about a PERSON mid-thought,
+ * and it is right: they can fix one field later, and the row keeps saying so.
+ *
+ * A MODEL's call is the opposite situation. It is a complete, re-issuable intent
+ * made in one shot: there is no "later" to fix one field, and a row written with
+ * an impossible pair is a promise the model did not mean to make. So the refusal
+ * belongs at the MODEL's door, and this function is that door — not a second
+ * opinion inside the shared writer, which would also silently change what the
+ * capture sheet does.
+ *
+ * ── AND THE DAY NORMALIZATION ───────────────────────────────────────────────
+ *
+ * A date in this product means A DAY, and the interface's `<input type="date">`
+ * already hands over local midnight. A model sending "now" instead put a row at
+ * 05:20 and made 「今天到期」 wrong on the day boundary — the rule was written in the
+ * catalog's prose and enforced by nothing. So the values are snapped to local
+ * midnight here, which is the one unit `startOfDay` exists to name.
+ *
+ * ONLY THE FIELDS THE CALLER WROTE are judged. A payload that touches no date
+ * must not be refused for a contradiction it did not create — otherwise
+ * 「把标题改一下」 would fail forever on a row somebody else made impossible.
+ *
+ * @param raw - the three values as they arrived (any shape), plus which keys the
+ *   caller actually mentioned.
+ * @param mentioned - the date keys present in the payload.
+ * @returns the normalized instants, or the conflict to refuse with.
+ */
+export type ItemDateWrite =
+  | { readonly ok: true; readonly values: Partial<Record<ItemDateKey, number | undefined>> }
+  | { readonly ok: false; readonly conflict: ItemDateConflict }
+
+/**
+ * Read a writer's three dates into what will be stored, or report the pair that
+ * cannot both be true.
+ *
+ * TWO INPUTS, TWO QUESTIONS, and keeping them apart is the whole design:
+ *
+ *  · `written` — which keys this call SETS. A key absent here is not returned, so
+ *    the caller keeps whatever it had; that is what makes 「把标题改一下」 a legal
+ *    edit on a row whose dates somebody else made impossible.
+ *  · `resulting` — the full triple as it will stand AFTER the write. The conflict
+ *    is judged on THIS, because a contradiction can be created by one new value
+ *    meeting an old one (`startsAfter` moved to the 9th, `dueAt` left on the 5th)
+ *    and judging only the payload would let exactly that through.
+ *
+ * The first version of the model-side check conflated them, and a test caught it:
+ * the edit sailed through and created the contradiction the check exists for.
+ * @param resulting - the three values the row will hold after this write.
+ * @param written - which of the three this call actually sets.
+ * @returns the normalized values for `written`, or the conflict.
+ */
+export function itemDateWriteOf(
+  resulting: Pick<ItemRecord, ItemDateKey>,
+  written: ReadonlySet<ItemDateKey>,
+): ItemDateWrite {
+  const values: Partial<Record<ItemDateKey, number | undefined>> = {}
+  for (const key of DATE_KEYS) {
+    if (!written.has(key)) continue
+    const at = resulting[key]
+    values[key] = at === undefined ? undefined : startOfDay(at)
+  }
+  // Snapped FIRST, then judged: two instants on the same local day are not a
+  // contradiction however far apart their hours were, so judging the raw values
+  // would refuse a legal edit.
+  const merged = { ...resulting }
+  for (const key of DATE_KEYS) {
+    if (key in values) merged[key] = values[key]
+  }
+  const conflict = itemDateConflict(merged)
+  return conflict === undefined ? { ok: true, values } : { ok: false, conflict }
+}
+
+/**
+ * THE THREE DATE KEYS, in reading order, exported so a caller can iterate them
+ * instead of typing the names again.
+ *
+ * `ItemDateKey` is the type; this is the same three in a runtime list. Two
+ * readers had already written the triple out by hand (the patch writer and the
+ * capture reader), and a fourth spelling is a fourth place for the list to
+ * disagree with the type.
+ */
+export const DATE_KEYS: readonly ItemDateKey[] = ['startsAfter', 'dueAt', 'hardDueAt']
 
 /** A whole day, in milliseconds — the unit every date verdict counts in. */
 export const DAY_MS = 86_400_000

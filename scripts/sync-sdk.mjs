@@ -167,13 +167,21 @@ function main() {
   }
 
   /* 4. 冷静期白名单：从 lockfile 重新生成（lockfile 是「实际装了什么」的权威）。
-     这一步在 install 之后做才有意义，所以此处只在文件已存在时重写它的**版本段**。 */
+     这一步在 install 之后做才有意义，所以此处只在文件已存在时重写它的**版本段**。
+
+     ── 范围是 `@deepseek-ai/*`，与 `pnpm install` 的判据和门禁逐字一致 ────────
+     冷静期的判据是「这个版本是不是刚落进冷静期」，它不区分包名前缀。DSH 的依赖里
+     有整族不带 `dsh-` 前缀的 alpha 包（`cordis`、`cosmokit`、`schemastery`、cordis
+     的插件族），它们同样会被拦住、同样要豁免。只写 `dsh-*` 时这族整族落在表外，
+     表现为 `pnpm install` 在别人机器上装不上——而本地因为先装过所以看不出来。
+     门禁 `src/host/version-sync.ts` 用同一个范围数「漏了几个」，所以两处是同一件事
+     的两个写法，改一处就要改另一处。 */
   const workspacePath = join(ROOT, 'pnpm-workspace.yaml')
   const lockPath = join(ROOT, 'pnpm-lock.yaml')
   if (existsSync(workspacePath) && existsSync(lockPath)) {
     const lock = readFileSync(lockPath, 'utf8')
     const pairs = new Map()
-    for (const match of lock.matchAll(/'?(@deepseek-ai\/dsh-[a-z0-9-]+)@(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)'?/g)) {
+    for (const match of lock.matchAll(/'?(@deepseek-ai\/[a-z0-9-]+)@(\d+\.\d+\.\d+(?:-[a-z]+\.\d+)?)'?/g)) {
       if (!pairs.has(match[1])) pairs.set(match[1], match[2])
     }
     const entries = [...pairs.entries()]

@@ -56,6 +56,7 @@ import { type BoardCommand, type BoardCommandCarrier, type BoardCommit, type Boa
 import { type ItemPurge, type ItemsCommit, type ItemsDoc } from '../../core/items-doc.ts';
 import { type TaskRecord } from '../../core/tasks.ts';
 import { type ItemStatus, type ItemStatusView } from '../../core/item.ts';
+import type { ResolveKind } from '../../core/resolve.ts';
 import type { SessionPosture, SessionPostureSources } from '../session-state.ts';
 import type { ItemAddress } from '../board-route.ts';
 export interface ToolCommitFace {
@@ -106,6 +107,14 @@ export interface ToolDeps {
      * `ws:` — which is the honest answer, and the same one the board gives.
      */
     workspaceTitle?: (workspaceId: string) => string;
+    /**
+     * The vocabulary bridge, when this host can supply one.
+     *
+     * OPTIONAL for the same reason the workspace face is: a deployment without it
+     * still works — the closed sets then keep the catalog's stricter reading — and
+     * an absent face must degrade to 「the old behaviour」 rather than to a guess.
+     */
+    resolver?: ParamResolver;
     now: () => number;
     uuid: () => string;
 }
@@ -144,12 +153,34 @@ export interface CapabilityAction {
  */
 export declare function capabilityActions(): readonly CapabilityAction[];
 /** What `taskboard_capabilities` answers: the model's own reach, stated first,
- *  so a caller that only wants to know "what may I do" reads two lines. */
-export declare function capabilityView(): {
+ *  so a caller that only wants to know "what may I do" reads two lines.
+ *
+ *  NARROWING IS THE POINT OF `topic`, and the reason is a cost measurement rather
+ *  than tidiness: the full answer is ~7,000 characters (36 actions × their
+ *  parameters) and the tool is documented as 「先查后做」, so EVERY write began by
+ *  paying for the whole catalog. That structure is wrong — a caller about to move
+ *  one card does not need the nine preset actions — so the answer can now be
+ *  asked for in three sizes:
+ *
+ *   · no topic        — the reach (verbs, reachable, humanOnly) plus the action
+ *                       IDS and their one-line summaries, no parameters
+ *   · `topic: 'task'` — one domain, in full
+ *   · `topic: 'task.create'` — one action, in full
+ *
+ *  The sizes are DERIVED from the same catalog, so a compact answer cannot omit
+ *  an action the full one has: it is the same list, sliced.
+ */
+export declare function capabilityView(topic?: string): {
     verbs: readonly string[];
     reachable: readonly string[];
     humanOnly: readonly string[];
     actions: readonly CapabilityAction[];
+    /** What this answer covered, echoed so a caller can tell a slice from the whole. */
+    scoped?: string;
+    /** The domains an unscoped answer can be narrowed to. */
+    domains?: readonly string[];
+    /** How to ask for more, when this answer was narrowed. */
+    hint?: string;
 };
 /** Every `key:value` the board's own filter box can offer — derived by asking
  *  the registry itself, one key at a time. A key added there appears here with
@@ -356,6 +387,23 @@ export declare function refuseOp(id: string): {
     ok: false;
     detail: string;
 };
+/**
+ * The resolver face this module takes, when the host has one.
+ *
+ * Declared structurally and passed in (never imported as a value from core, never
+ * as a host service) because it must work in tests and in a deployment where the
+ * workspace registry is absent: absent = the resolver only knows the built-in
+ * vocabularies, which is the honest degradation.
+ */
+export interface ParamResolver {
+    /**
+     * Read one value into its stored spelling.
+     * @param kind - the vocabulary.
+     * @param value - what the caller said.
+     * @returns the stored value, or undefined when it is not readable.
+     */
+    resolve(kind: ResolveKind, value: unknown): string | undefined;
+}
 export interface ExecuteRequest {
     readonly ops: readonly {
         op: string;

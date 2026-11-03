@@ -2687,18 +2687,31 @@ describe('linked sessions & bind', () => {
     await flush()
     const current = () => controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!
     expect(controller.sessionsOf(current()).map(row => row.sessionId)).toEqual(['s-1'])
-    // Native archive (the registry set flips + notifies): the row leaves the
-    // card on this replica immediately — derived, never ledger, zero sync lag.
+    /* Native archive (the registry set flips + notifies).
+     *
+     * THE ROW STAYS AND IS MARKED — it does not disappear. Archiving is
+     * 「可恢复的隐藏」, so a card that dropped the row made an archived conversation
+     * indistinguishable from a deleted one: the person tidied their sidebar and
+     * the card quietly lost a session it still owns, with no way to tell
+     * 「放起来了」 from 「没了」 without going to un-archive it to find out.
+     *
+     * `sessionsOf` (the unified list, which is about work) still leaves it out —
+     * an archived session is not outstanding work. `linkedOf` keeps it, flagged,
+     * because 「this card still owns this session」 is a fact about the binding and
+     * archiving does not change it. */
     wss.archivedSessionIds = ['s-1']
     wss.notify()
     await flush()
-    expect(controller.sessionsOf(current())).toHaveLength(0)
-    expect(controller.linkedOf(current())).toHaveLength(0)
+    expect(controller.sessionsOf(current()), 'an archived session is not outstanding work').toHaveLength(0)
+    const archivedRow = controller.linkedOf(current())
+    expect(archivedRow, 'the card lost a session it still owns — indistinguishable from a deleted one').toHaveLength(1)
+    expect(archivedRow[0]?.archived, 'the row is there but does not say it was archived').toBe(true)
     // Un-archive restores the row (the bind and its history were never touched).
     wss.archivedSessionIds = []
     wss.notify()
     await flush()
     expect(controller.sessionsOf(current()).map(row => row.sessionId)).toEqual(['s-1'])
+    expect(controller.linkedOf(current())[0]?.archived, 'the row still claims to be archived after un-archiving').toBe(false)
   })
 
   it('an archived session with a run round hides the row but keeps the ledger round', async () => {

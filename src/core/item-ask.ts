@@ -40,6 +40,9 @@
  * card made from this very row receive it identically.
  */
 import { itemTagsOf, type ItemRecord, type ItemStep } from './item.ts'
+// The `!N` ladder, from its one declaration: `urgency` and the row's own mark
+// are the same tier list, and a second digit table here would be a second answer.
+import { PRIORITY_DIGIT } from './item-query.ts'
 import { attachmentsOf, type PromptAttachment } from './attachment.ts'
 import type { RelatedSessionFact } from './task-live.ts'
 import type { TaskRecord } from './tasks.ts'
@@ -132,12 +135,57 @@ export function itemContextText(item: ItemRecord): string {
   if (item.title.trim() !== '') lines.push(`标题：${item.title.trim()}`)
   const tags = itemTagsOf(item.tags)
   if (tags.length > 0) lines.push(`标签：${tags.join('、')}`)
+  /* HOW URGENT IT IS, AND WHEN IT IS DUE — the two facts that decide what to do
+   * FIRST.
+   *
+   * Without them the hand-off was 「标题 / 标签 / 正文 / 步骤 / 备注」 and nothing
+   * else: a row reading 「紧急、周五截止」 arrived as a body of text, so the model
+   * could not tell a hard deadline from a note, and could not order two rows it
+   * was given. The information was in the document the whole time.
+   *
+   * PRIORITY IS PRINTED IN BOTH VOCABULARIES, because both are said out loud: the
+   * stored tier is `urgent` (what `item.update` takes) and the mark the reader sees
+   * is `!1`. A model told only one of them cannot connect the row it was handed
+   * to the field it may write.
+   *
+   * The dates keep the three-way distinction the row itself keeps — 开始 / 计划 /
+   * 截止 are three different promises, and collapsing them into one "due date"
+   * would be a different fact. They print as local days, which is the unit; an
+   * empty one is omitted rather than sent as a blank label, the same rule the
+   * rest of this composer follows. */
+  if (item.priority !== 'normal') lines.push(`优先级：${priorityWordsOf(item.priority)}`)
+  for (const [label, at] of [['开始', item.startsAfter], ['计划', item.dueAt], ['截止', item.hardDueAt]] as const) {
+    if (at !== undefined) lines.push(`${label}：${localDayOf(at)}`)
+  }
   if (item.body.trim() !== '') lines.push('正文：', item.body.trim())
   const steps = stepLinesOf(item.steps)
   if (steps !== '') lines.push('步骤：', steps)
   if (item.notes.trim() !== '') lines.push('上下文备注：', item.notes.trim())
   lines.push('', '请处理它，并告诉我你打算怎么做。')
   return lines.join('\n')
+}
+
+/**
+ * A tier in the two words the reader and the tool each use for it.
+ *
+ * `urgent` is what `item.update` accepts; `!1` is what the row's own mark shows,
+ * and the two are the same ladder (`PRIORITY_DIGIT` is the one table behind the
+ * second). A hand-off that named only one taught the model a value it could not
+ * connect to the field it may write.
+ * @param priority - the stored tier.
+ * @returns both spellings.
+ */
+function priorityWordsOf(priority: ItemRecord['priority']): string {
+  const digit = PRIORITY_DIGIT[priority]
+  return digit === undefined ? priority : `${priority}（!${digit}）`
+}
+
+/** A stamp as the local calendar day it names, for a reader that thinks in days. */
+function localDayOf(at: number): string {
+  const date = new Date(at)
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${date.getFullYear()}-${month}-${day}`
 }
 
 /** The checklist as it stands, one ticked box per line — the model sees what is

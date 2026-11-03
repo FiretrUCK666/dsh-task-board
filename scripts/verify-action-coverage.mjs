@@ -1218,6 +1218,45 @@ export function actionCoverageFindings(input) {
     notes.push('AGENTS.md says nothing about the action catalog, so the doc/code agreement check has nothing to compare')
   }
 
+  // 4b. EVERY SURFACE THAT CAN SAY AN ACTION NAME is held to the catalog.
+  //
+  // AGENTS.md rule 22 splits the model-facing layers by the one question each
+  // answers, and its third clause is the only one a machine can enforce: a layer
+  // that NAMES an action must be naming one that exists. Without this check the
+  // split is a preference stated in prose — and prose does not notice when
+  // `task.create` is renamed in the catalog and stays spelled the old way in a
+  // file every conversation carries, so the model is told about a tool it cannot
+  // call while the whole suite stays green.
+  //
+  // NOT A PROSE CHECK. It reads the shape of a dotted lowercase token, which is
+  // the spelling an action id has and almost nothing else in these files does.
+  // Rule 14 is the reason the readers below strip comments first: a name quoted
+  // inside a comment is not this surface saying the name.
+  //
+  // A surface may legitimately name an id the model cannot REACH but the catalog
+  // still carries — an action with `surface: 'ui'` exists, and the prompt is
+  // allowed to say it is human-only. So membership is judged against the whole
+  // catalog, not against the tool's op enum.
+  const known = new Set(catalog.ids)
+  for (const face of ACTION_NAME_FACES) {
+    const text = input[face.field]
+    if (typeof text !== 'string' || text.trim() === '') {
+      // A FINDING, not a skip: a surface this gate cannot read is a surface
+      // whose names were never compared, and reporting success there is the
+      // exact failure mode this file's header refuses.
+      fail(`${face.label} could not be read (CoverageInput.${face.field} is empty) — the action names it says were never compared against the catalog, so this run proves nothing about it`)
+      continue
+    }
+    const source = stripSourceComments(text)
+    const said = new Set()
+    for (const match of source.matchAll(ACTION_NAME_PATTERN)) said.add(match[0])
+    for (const name of [...said].sort()) {
+      if (known.has(name)) continue
+      const near = nearestActionId(name, catalog.ids)
+      fail(`${face.label} names "${name}", which is not an action in the catalog${near === undefined ? '' : ` — did you mean "${near}"?`} (${face.why})`)
+    }
+  }
+
   const paramCount = catalog.actions.reduce((sum, a) => sum + a.params.length, 0)
   // The two marked groups, counted and named SEPARATELY. Summing them would
   // make a deliberate product call indistinguishable from an oversight, and
@@ -1419,6 +1458,95 @@ export function actionCoverageFindings(input) {
   return failures.slice()
 }
 
+/**
+ * THE SURFACES THAT MAY SAY AN ACTION NAME, and what each one is for.
+ *
+ * AGENTS.md rule 22 splits the model-facing layers by the one question each
+ * answers. This table is the mechanical half of that rule: whichever face can
+ * spell an action id is listed here, and the check below holds every spelling it
+ * finds to the catalog.
+ *
+ * `field` names the {@link CoverageInput} member carrying the file's text, so a
+ * face added to the rule is added HERE and wired by `readRepo` — not remembered
+ * in two places.
+ */
+const ACTION_NAME_FACES = [
+  {
+    field: 'promptText',
+    label: 'the injected system-prompt section (src/host/agent/prompt.ts)',
+    why: 'every conversation carries this text, so a renamed action stays wrong here long after the catalog moved, and nothing on screen says so',
+  },
+  {
+    field: 'commandsText',
+    label: 'the slash commands (src/host/agent/commands.ts)',
+    why: 'a directive that names an action the catalog does not have sends the model looking for a tool it cannot call',
+  },
+]
+
+/**
+ * The SHAPE of an action name: `<subject>.<verb>`, lowercase, hyphen-free beyond
+ * the verb's letters.
+ *
+ * Deliberately anchored on the subjects the catalog uses rather than on any
+ * dotted pair, because the files read here also contain versions, file names and
+ * `ctx.member` reads — a looser pattern would report those as misspelled
+ * actions, and a gate that cries wolf gets its findings ignored.
+ */
+const ACTION_NAME_PATTERN = /\b(?:task|item|board|cruise|rule|session|preset)\.[a-z][a-z-]*\b/g
+
+/**
+ * The catalog id closest to a misspelling, for the correction in the finding.
+ *
+ * Small edit distance over the whole-dot ids: the common mistake is a dropped or
+ * transposed letter (`task.creat`), and naming the intended action turns a red
+ * build into a one-keystroke fix. Absent when nothing is close enough — a
+ * confident wrong guess about the intent is worse than none.
+ * @param said - the name the surface used.
+ * @param ids - the catalog's real ids.
+ * @returns the nearest id within a small budget, or undefined.
+ */
+function nearestActionId(said, ids) {
+  let best
+  let bestDistance = Infinity
+  for (const id of ids) {
+    const distance = editDistanceAtMost(said, id, 3)
+    if (distance < bestDistance) {
+      bestDistance = distance
+      best = id
+    }
+  }
+  return bestDistance <= 2 ? best : undefined
+}
+
+/**
+ * Levenshtein distance, abandoned as soon as it exceeds `limit`.
+ *
+ * Abandoning early is what keeps this cheap enough to run over the whole catalog
+ * for every name said: the ids are long and mostly differ early, so almost every
+ * pair bails out in the first row.
+ * @param a - one string.
+ * @param b - the other.
+ * @param limit - the distance past which the answer stops mattering.
+ * @returns the distance, or `limit + 1` when it is larger than `limit`.
+ */
+function editDistanceAtMost(a, b, limit) {
+  if (Math.abs(a.length - b.length) > limit) return limit + 1
+  let previous = Array.from({ length: b.length + 1 }, (_, index) => index)
+  for (let i = 1; i <= a.length; i++) {
+    const current = [i]
+    let rowBest = i
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      const value = Math.min(previous[j] + 1, current[j - 1] + 1, previous[j - 1] + cost)
+      current.push(value)
+      if (value < rowBest) rowBest = value
+    }
+    if (rowBest > limit) return limit + 1
+    previous = current
+  }
+  return previous[b.length]
+}
+
 /** Read the repository into the input shape. Separated from the findings so the
  *  tests can feed the checks broken copies instead of a broken checkout. */
 export function readRepo(root) {
@@ -1495,6 +1623,11 @@ export function readRepo(root) {
       ...coreExports(coreFiles.filter(f => /item-transitions|items-doc/.test(f.path))),
     ],
     agentsText: existsSync(at('AGENTS.md')) ? readFileSync(at('AGENTS.md'), 'utf8') : '',
+    // The two faces that may spell an action name (AGENTS.md rule 22). Read here
+    // so a surface the catalog rule covers is covered by the file, not by
+    // somebody remembering to pass it in.
+    promptText: existsSync(at('src', 'host', 'agent', 'prompt.ts')) ? readFileSync(at('src', 'host', 'agent', 'prompt.ts'), 'utf8') : '',
+    commandsText: existsSync(at('src', 'host', 'agent', 'commands.ts')) ? readFileSync(at('src', 'host', 'agent', 'commands.ts'), 'utf8') : '',
     presentFiles,
   }
 }

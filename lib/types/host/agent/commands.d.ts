@@ -15,13 +15,13 @@ export interface CommandRegistrar {
 /**
  * Hand one sentence to a session's model.
  *
- * THE ONE PATH from this plugin's COMMANDS into a model. Both slash commands
- * call it, so the two share one `followup`, one message shape and one failure
- * story — a second copy of these four lines is a second thing to keep in step,
- * and the day they drift is the day one of the two paths quietly stops saying
- * what it says. (The checklist panel's 「问 AI」 is a separate path with a
- * different job: it carries a row's own text and starts or continues a card, so
- * it lives in `core/item-ask.ts` rather than being bent into this one.)
+ * THE ONE PATH from this plugin's COMMANDS into a model. All four slash commands
+ * call it, so they share one `followup`, one message shape and one failure story —
+ * a second copy of these four lines is a second thing to keep in step, and the day
+ * they drift is the day one of the paths quietly stops saying what it says. (The
+ * checklist panel's 「问 AI」 is a separate path with a different job: it carries a
+ * row's own text and starts or continues a card, so it lives in
+ * `core/item-ask.ts` rather than being bent into this one.)
  *
  * `lead` is how a caller adds its own instruction without forking the path: the
  * directive travels in the SAME message as the person's words, so the model reads
@@ -33,7 +33,7 @@ export interface CommandRegistrar {
  * person.
  */
 export declare function handOver(agent: CommandAgent, text: string, lead?: string): CommandResult;
-/** The two command definitions, ready to register. */
+/** The four command definitions, ready to register. */
 export declare function createTaskboardCommands(): readonly CommandDefinition[];
-/** Register both, and return one disposer that takes them both off. */
+/** Register all four, and return one disposer that takes them all off. */
 export declare function registerTaskboardCommands(registry: CommandRegistrar): () => void;

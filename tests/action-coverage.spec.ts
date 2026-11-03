@@ -124,6 +124,12 @@ export type BoardCommand =
 `,
   coreExportNames: ['moveTaskToStatus', 'resolveCardDrop'],
   agentsText: '新增动作必须进 src/core/board-actions.ts。',
+  // The two faces AGENTS.md rule 22 holds to the catalog. Both name the fixture
+  // catalog's OWN actions, so the baseline is green for the right reason: a
+  // fixture that named nothing would pass the new check vacuously, and a fixture
+  // that named a real product action would fail against a synthetic catalog.
+  promptText: '第 3 条：先用 task.create 建卡，再用 task.move 挪栏。',
+  commandsText: 'const DIRECTIVE = "用 task.create 把这件事记下来"\n',
   presentFiles: ['src/core/board-actions.ts'],
   // The checklist's own write layer: the functions a panel may call to change a
   // document. The gate asks the CATALOG's `ITEM_HANDLERS` whether each one it
@@ -916,5 +922,52 @@ describe('4 — the rule must not outlive the thing it rules', () => {
 
   it('is quiet when the rule and the catalog agree', () => {
     expect(run({})).toEqual([])
+  })
+})
+
+/**
+ * AGENTS.md rule 22's mechanically enforceable clause: a layer that NAMES an
+ * action must name one that exists.
+ *
+ * Each case below is a way the split between the model-facing layers stops being
+ * a structure and becomes a preference: a filed-down name that only prose would
+ * notice, a face the gate silently cannot read, and a comment that must NOT
+ * count as the surface saying the name (rule 14).
+ */
+describe('4b — a surface that names an action is held to the catalog', () => {
+  it('catches a misspelled action in the injected prompt, and suggests the real one', () => {
+    const out = findings({ promptText: '第 3 条：先用 task.creat 建卡。' })
+    expect(out).toContain('names "task.creat"')
+    expect(out).toContain('did you mean "task.create"')
+    // The finding must say WHY this face matters, not only that it is wrong.
+    expect(out).toContain('every conversation carries this text')
+  })
+
+  it('catches a misspelled action in a slash command', () => {
+    const out = findings({ commandsText: 'const DIRECTIVE = "用 task.mov 挪栏"\n' })
+    expect(out).toContain('the slash commands')
+    expect(out).toContain('names "task.mov"')
+  })
+
+  it('does NOT count a name that only appears in a comment', () => {
+    // Rule 14: a judgement reads STRUCTURE. A comment quoting the old spelling
+    // is a note about the past, not this surface telling the model to call it.
+    const out = findings({ promptText: '// 以前用过 task.creat，现在改了\n第 3 条：先用 task.create 建卡。' })
+    expect(out).not.toContain('task.creat')
+  })
+
+  it('reports an unreadable face as a finding rather than passing over it', () => {
+    // The failure this guards: a face the gate cannot read is a face whose names
+    // were never compared, and a green there would claim a check that never ran.
+    const out = findings({ promptText: '' })
+    expect(out).toContain('the injected system-prompt section')
+    expect(out).toContain('could not be read')
+  })
+
+  it('accepts an action the catalog carries but the tool cannot reach', () => {
+    // `surface: 'ui'` actions exist and the prompt may say one is human-only, so
+    // membership is judged against the whole catalog — not the tool's op enum.
+    const out = findings({ promptText: '第 3 条：先用 task.create 建卡。' })
+    expect(out).not.toContain('names "task.create"')
   })
 })

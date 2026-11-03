@@ -345,6 +345,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | host | `pluginManager` | `installBundle`、`removeBundle`、`registries` | `@deepseek-ai/dsh-plugin-manager` |
 | host | `hmr` | `hmr` | `@deepseek-ai/dsh-hmr` |
 | host | `attachments` | `admitEncodedFile`、`saveImage`、`readImage`、`readFileStream` | `@deepseek-ai/dsh-attachment` |
+| host | `workspaceRegistry` | `list` | `@deepseek-ai/dsh-workspace` |
+| host | `skills` | `register` | `@deepseek-ai/dsh-skill` |
 | client | `configForms` | `get` | `@deepseek-ai/dsh-client-ui-settings` |
 
 **两条使用纪律**：
@@ -653,8 +655,8 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
     **未完成**。三条硬底线：① 装不下时让位而非压扁（裸 `1fr` 轨道、无地板的 `flex:1 1 0` 都不算
     做完）；② 文字永不画在盒外；③ 触屏没有 hover——承载必要信息的说明不能只挂 `title=`。
 12. **动作目录是界面与模型之间唯一的同步面，改界面必须同时改它**：
-    `src/core/board-actions.ts` 是动作目录（一条表，四个表面读它：工具 schema、能力查询、
-    指令规则、覆盖门禁）。**改界面的任何一处之前先问「目录里有同名同参的动作吗」**：两个方向
+    `src/core/board-actions.ts` 是动作目录（一条表，三处从它渲染：工具 schema、能力查询、
+    覆盖门禁）。**改界面的任何一处之前先问「目录里有同名同参的动作吗」**：两个方向
     各有各的门禁（字段方向编译期、界面方向静态扫描），缺一不可，**门禁红了就改实现，别改门禁**。
     读投影与视图开关不是动作，进 `INTERNAL` 时**必须写清理由**——没有理由的豁免与漏掉一个没有
     区别；`DEBT: ` 开头的理由是如实记下的欠账。**说清不等于说得进去**：一句写在散文里的默认值，
@@ -688,6 +690,18 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
 21. **折叠记号与层叠各只有一张表。** 折叠旋转只认祖先的 `aria-expanded`（共享类 `.foldMark`）；
     `z-index` 只许读 `--dsh-tb-layer-*` 五档。正文在 `DESIGN.md` 的「两条跨页机制」，
     机械拦是 `verify-fold-mark.mjs` 与 `verify-stacking.mjs`。
+22. **模型那一面每层只答一个别层答不了的问题；字段类只许生成，说得出动作名的都要被门禁核。**
+    这是本条对第 12 条的延伸：第 12 条管「动作在目录里有没有」，本条管「它被几层讲过、每层讲了什么」。
+    层与它唯一该答的问题：**工具 schema** 答「这个动作有哪些字段、什么类型」；**能力查询**
+    答「现在有哪些动作」；**Skill** 答「这种场景怎么组合」；**系统提示词**答「什么绝对不能违反」；
+    **斜杠指令**答「把这句话交给谁」。**同一个事实只有一层是主人，其余层只能指向它**——
+    字段名与枚举的主人永远是目录，所以任何一层都不许手抄一份（抄了必然过时，而过时没有声音）。
+    三条硬边界：① **字段类只许从 `ACTIONS` 渲染**，决策类（哪条铁律、哪种场景怎么拼、这句话交给谁）
+    才手写；② **系统提示词不写能力清单**（它是每轮都进的固定文本，为保住缓存，见
+    `verify-standalone.mjs` 的 interpolated 检查），需要清单就去查能力查询或 Skill；
+    ③ **任何说得出动作名的表面，都必须被门禁对着目录核一遍**——现在由
+    `scripts/verify-action-coverage.mjs` 同时读系统提示词与斜杠指令，新增一层就把它加进那一条检查，
+    **没有门禁守着的「请保持同步」是假线索**。
 
 ## 测试（布局约定）
 

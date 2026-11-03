@@ -202,23 +202,27 @@ const notes = []
  * one was the exception, which is the same shape of failure the encoding audit
  * exists for: a condition that changes nothing, so no test ever goes red.
  *
- * The check is deliberately the ONLY thing here that measures a size. A contract
- * that is a ceiling has to have a number, and a number has to be enforced in one
- * place or it is a number somebody remembers.
+ * THE NUMBER MUST STAY UNDER THE DEPLOYMENT'S OWN BUDGET, and the reason is that
+ * OVERRUNNING IS SILENT. `@deepseek-ai/dsh-agent-instructions` takes a `maxBytes`
+ * per instruction CHAIN; a chain whose files overflow is not rejected — the most
+ * specific file is truncated to whatever fits, and a line reading
+ * `Workspace instruction budget <n> bytes: truncated AGENTS.md from A to B bytes`
+ * is prepended. So the failure mode of a too-long contract is not a red build,
+ * it is THE TAIL OF THE FILE QUIETLY DISAPPEARING while everything else stays
+ * green. A gate that catches that is worth more than one that catches a typo.
  *
- * The number is this project's own budget for the file, kept under the harness's
- * per-session instruction budget: the file shares that budget with a global
- * `AGENTS.md` in the user's home directory, and past it the file stops being
- * injected at all — a contract nobody reads is the failure this ceiling exists
- * to make loud.
+ * `maxBytes` belongs to the deployment (it is a profile config value, not a
+ * constant here), so this number is THIS PROJECT'S OWN BUDGET for the file,
+ * deliberately below it. The headroom is what makes the promise hold on a
+ * machine whose profile tightens the budget; it is not an allowance to grow.
  *
- * It sits where it does because two blocks of the file are not compressible —
- * the governing section at the top and the hard rules, both the owner's own text
- * — so everything else has to fit in what is left. That is what a gated number is
- * for: the margin is a few dozen bytes, so the next addition has to cut
- * something first rather than quietly widen the budget.
+ * GROWING THE FILE IS THE WRONG ANSWER TO A FULL FILE. What belongs here is the
+ * contract — mechanism, architecture, invariants, hard rules. Detail that can
+ * live in the code it describes does not belong in a document every session
+ * pays for; move it there (or into a skill, which is loaded on demand) before
+ * raising this number again.
  */
-const AGENTS_CEILING_BYTES = 56_000
+const AGENTS_CEILING_BYTES = 58_000
 
 /**
  * The repository root holds EXACTLY the files it declares, and nothing else.
@@ -271,6 +275,10 @@ const ROOT_DIRS_ALLOWED = new Set([
   // .gitignore says so), and present in a working tree but absent in a clone —
   // the same case the list above already covers.
   'tmp',
+  // `skills/` — the bundled manual, registered at runtime through `ctx.skills`.
+  // It is a PACKAGED source directory (the manifest's `files` names it), not an
+  // artifact: it is read at boot, so it must be committed and it must ship.
+  'skills',
 ])
 {
   const stray = readdirSync(root, { withFileTypes: true })

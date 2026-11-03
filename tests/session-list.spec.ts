@@ -30,6 +30,7 @@ function linkedRow(overrides: Partial<LinkedSessionRow> = {}): LinkedSessionRow 
     running: false,
     pendingInteraction: undefined,
     updatedAt: NOW + 2,
+    archived: false,
     ...overrides,
   }
 }

@@ -132,3 +132,41 @@ describe('resolveExternalKind', () => {
     expect(resolveExternalKind('nope', ctx)).toBeUndefined()
   })
 })
+
+/**
+ * ARCHIVING IS NOT DELETION, AND THE ROW HAS TO SAY WHICH.
+ *
+ * This pure derivation does not know the archive set (it is a registry-global
+ * concern applied one level up), so every row it produces says `archived: false`
+ * and the controller — the one caller that can know — overrides it. Stating it
+ * here rather than leaving it optional is what keeps "did anybody set this?" from
+ * being a question a consumer has to ask.
+ *
+ * The reason the field exists at all: archiving used to make the row DISAPPEAR,
+ * so on the card an archived conversation looked exactly like a deleted one. The
+ * person tidied their sidebar and the card lost a session it still owns, with no
+ * way to tell 「放起来了」 from 「没了」.
+ */
+describe('an archived session is a fact the row carries, not an absence', () => {
+  const sources = (hidden: readonly string[] = []) => ({
+    byId: {
+      's-1': { blank: false, running: false, updatedAt: 10, title: '会话一' },
+    },
+    hidden,
+  })
+
+  it('derives a row and marks it not-archived by default', () => {
+    // The derivation is archive-blind by design; the controller knows and
+    // overrides. `false` (not `undefined`) keeps the answer definite.
+    const rows = deriveLinkedSessions({ kind: 'session', sessionId: 's-1' }, sources())
+    expect(rows).toHaveLength(1)
+    expect(rows[0]?.archived).toBe(false)
+  })
+
+  it('still drops a session the person hid ON THE CARD', () => {
+    // Hide is a display instruction about this panel, not a fact about the
+    // session — so unlike archiving it really does remove the row. Keeping the
+    // two apart is the whole point: one is 「不看」, the other is 「放起来了」.
+    expect(deriveLinkedSessions({ kind: 'session', sessionId: 's-1' }, sources(['s-1']))).toHaveLength(0)
+  })
+})
