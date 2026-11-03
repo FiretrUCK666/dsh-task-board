@@ -934,7 +934,7 @@ export const ACTIONS = {
     surface: 'ui+ai',
     semantic: true,
     semanticOf: ['removeItemRecord'],
-    summary: '删一条清单条目。走墓碑，所以能恢复；但没有撤销层，删之前值得先说一句。',
+    summary: '删一条清单条目。走墓碑，所以 item.restore 能把它原样找回来；但清单界面没有撤销层，删之前值得先说一句。',
     params: {
       of: { about: '要删的条目编号：填那个数字本身（12），不要带 # 号' },
     },

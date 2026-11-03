@@ -1235,7 +1235,10 @@ describe('看板的另外几处界面（规则表单的附件条 / 只读计划�
          `{ presets }` 那个对象——运行配置预设的 store 才是那样）。假面给错形状，
          渲染时抛的是 `custom.map is not a function`，看起来像组件坏了。 */
       presetStore: () => ({ load: () => [], save: () => undefined, clear: () => undefined }),
-      sessionAvailability: () => ({ kind: 'available' }),
+      /* `SessionAvailability` 是字符串联合（'visible' / 'archived' / 'removed' /
+         'gone'），不是对象——假面给错形状时，读它的一方要么判成「不可用」而把
+         输入框禁用，要么静默拿不到答案，两种都像组件坏了。 */
+      sessionAvailability: () => 'visible' as const,
       attachmentsAvailable: () => false,
       admitAttachment: async () => ({ ok: false as const, error: 'no-store' }),
       /* 指令那个框里的 `/` 菜单要读它（`PromptInput` 一挂载就读）。**没有运行目录是

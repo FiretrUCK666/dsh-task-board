@@ -18,7 +18,7 @@
  * passed; and a test does not need a fake timer to pin a deadline verdict.
  */
 import type { ItemDateConflict, ItemDateKey, ItemRecord } from './item.ts'
-import { itemDateConflict } from './item.ts'
+import { itemDateConflict, itemInstantOf } from './item.ts'
 
 /**
  * The three dates, as a WRITER's payload carries them, read into the three
@@ -88,7 +88,24 @@ export function itemDateWriteOf(
   for (const key of DATE_KEYS) {
     if (!written.has(key)) continue
     const at = resulting[key]
-    values[key] = at === undefined ? undefined : startOfDay(at)
+    /* THE VALUES GO THROUGH `itemInstantOf`, the SAME GUARD THE STORED ROW USES.
+     *
+     * `resulting` is typed `number | undefined`, but the model's payload is not: a
+     * JSON `null` and a date string both arrive here and BOTH used to pass the
+     * `=== undefined` test and reach `startOfDay`. Measured (TZ=+08):
+     *
+     *   { dueAt: null }            -> -28800000  -> stored as 1970-01-01
+     *   { dueAt: '2026-11-05' }    -> parsed as UTC -> a day early in +08
+     *
+     * `itemInstantOf` is where this repository decides what counts as an instant
+     * (`typeof === 'number' && Number.isFinite`), and the row parser already uses
+     * it — so a `null` meaning 「clear this date」 now clears it instead of writing
+     * 1970, which the read side would report as 「计划日已过两万天」.
+     *
+     * This is the ONE place that decides, on both the write and the read path: a
+     * second `typeof` check here would be the second answer to the same question. */
+    const instant = itemInstantOf(at)
+    values[key] = instant === undefined ? undefined : startOfDay(instant)
   }
   // Snapped FIRST, then judged: two instants on the same local day are not a
   // contradiction however far apart their hours were, so judging the raw values

@@ -44,10 +44,18 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // The live row, re-derived every render from the native snapshots
-  // (undefined once the session is hidden, archived or deleted — the panel
-  // then degrades to the raw id and disables the composer).
+  // The live row, re-derived every render from the native snapshots.
+  //
+  // ARCHIVED IS STILL A ROW NOW, and that is why this reads AVAILABILITY rather
+  // than existence. `linkedOf` keeps an archived session and marks it (a card must
+  // be able to show a conversation it still owns), so `row === undefined` no longer
+  // means 「gone」 — it means 「not bound here」. The old gate therefore let the
+  // composer send into an archived session, while `controller.ruleDeliverable`
+  // refuses exactly that for automated delivery: one rule, two answers. Archived
+  // is 「可恢复的隐藏」 — the person put it away, and neither a rule nor a keystroke
+  // should quietly bring it back.
   const row = controller.linkedOf(task).find(candidate => candidate.sessionId === sessionId)
+  const availability = controller.sessionAvailability(sessionId)
   const waiting = row?.pendingInteraction
   // Native projections (context pressure / breakdown / permissions) ride the
   // history tail page — the same source as the execution review page.
@@ -92,11 +100,19 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
   const context = useSessionContext(controller, sessionId)
   const pendingInteraction = useAwaitingCard(controller, sessionId)
 
-  // Send gates: a gone session is the only disable — a comment is the user's
-  // own words, never gated by the task's execution prompt (that gate belongs
-  // to task execution only: runTask / scheduler / chain / cruise / usePrompt
+  // Send gates: only an UNAVAILABLE session disables the composer — a comment is
+  // the user's own words, never gated by the task's execution prompt (that gate
+  // belongs to task execution only: runTask / scheduler / chain / cruise / usePrompt
   // rules).
-  const liveGone = row === undefined
+  //
+  // UNAVAILABLE, not 「the row is missing」. `linkedOf` keeps an archived row now,
+  // so existence stopped answering this question: the old gate let a keystroke
+  // reach an archived conversation while `controller.ruleDeliverable` refuses
+  // exactly that for automated delivery. Archived is 「可恢复的隐藏」 — the person
+  // put it away. `sessionAvailability` is the one judgement (the same one the chips
+  // and ruleDeliverable read), and it is what the note below renders its reason
+  // from, so the note and the disabled state cannot disagree.
+  const liveGone = availability !== undefined && availability !== 'visible'
 
   // The live state row: waiting / running — THE one state-chip derivation. An
   // idle bound session shows no state row at all: the host session row carries
