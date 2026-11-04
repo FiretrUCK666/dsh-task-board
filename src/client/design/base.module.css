@@ -299,32 +299,24 @@
   }
 }
 
-/* ── THE SCROLLBAR: ONE SOLID LOZENGE ──────────────────────────────────────
+/* ── THE SCROLLBAR: A THIN DRAWN STRIP WITH ROUND CAPS ─────────────────────
  *
- * ONE piece, not an assembly. The bar is a rounded strip that slides; there is no
- * trough behind it, no arrow button at either end, and no transparent inset inside
- * it. Each of those had been added at some point as an improvement, and together
- * they made the scrollbar look laminated — 「夹了一层又一层」, which is exactly
- * what it was: a track, a thumb, a border inside the thumb, and two buttons,
- * stacked to draw one object.
+ * Drawn with `::-webkit-scrollbar`, not with `scrollbar-width`. The standard
+ * properties can make a bar slim but they cannot round its caps — the engine draws
+ * a square-end thumb — and the rounded strip is the shape this interface uses.
+ * So the drawn path stays, and "thinner" is expressed as a smaller width token.
  *
- * The width is read from the token layer so every scrollable surface in the plugin
- * gets the same bar. It is deliberately wide enough to see: at 6-8px the strip
- * disappears against the paper on a high-DPI screen, and a scrollbar nobody can
- * see is a scrollbar nobody can use.
+ * 8px is the floor: below that the strip disappears into the paper on a high-DPI
+ * screen, and a scrollbar a reader cannot see is one they cannot use. During a
+ * gesture 「不知道自己在哪」 is very hard to tell apart from 「卡」.
  *
- * ── WHY `[data-...]` AND NOT `:where([data-...])` ─────────────────────────
+ * These selectors are NOT `:where(...)`-wrapped, and that is load-bearing: the UA
+ * stylesheet styles these pseudo-elements too, so a zero-specificity rule loses
+ * and the bar silently renders as the platform's own.
  *
- * These are pseudo-elements, and the UA stylesheet styles them too. A
- * zero-specificity `:where()` rule loses to it — which is how an earlier attempt
- * laid the bar out correctly and painted nothing at all.
- *
- * ── THE FALLBACK ────────────────────────────────────────────────────────────
- *
- * Browsers that do not support `::-webkit-scrollbar` get `scrollbar-width` and
- * `scrollbar-color` below, behind an `@supports not` gate. The gate is
- * load-bearing: declaring `scrollbar-width` unconditionally would silence every
- * webkit rule here in Chromium and hand the bar back to the platform. */
+ * Browsers without the pseudo-elements fall back to the standard properties below,
+ * behind an `@supports not` gate. The gate matters: declaring `scrollbar-width`
+ * unconditionally would silence every webkit rule here in Chromium. */
 [data-dsh-taskboard-view]::-webkit-scrollbar,
 [data-dsh-taskboard-panel]::-webkit-scrollbar,
 [data-dsh-taskboard-view] ::-webkit-scrollbar,
@@ -337,23 +329,19 @@
 [data-dsh-taskboard-panel]::-webkit-scrollbar-thumb,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-thumb,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-thumb {
-  /* The whole bar. `min-block-size` keeps a very long list from squashing it to a
-     line: without a floor the height is a pure ratio of content length. */
+  /* A round-capped strip. `min-block-size` keeps a long list from squashing it to a
+     line: without a floor its height is a pure ratio of content length. */
   background-color: var(--dsh-tb-scroll-thumb-color);
-  /* A round cap, read through the container's own inset where it declared one:
-     that keeps the thumb inside a rounded box's corner arc instead of poking
-     through it. 999px is the fallback for square scrollers, where a fully round
-     cap is simply the right shape. */
+  /* Round caps, read through the container's own inset where it declared one so the
+     strip stays inside a rounded box's corner arc; 999px is the square-box case. */
   border-radius: var(--dsh-tb-scroll-inset, 999px);
-  min-block-size: 2.5rem;
+  min-block-size: 2rem;
 }
 
 [data-dsh-taskboard-view]::-webkit-scrollbar-track,
 [data-dsh-taskboard-panel]::-webkit-scrollbar-track,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-track,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-track {
-  /* No trough: the bar IS the strip. A painted track was tried and made the bar
-     read as a channel with a block inside it — one more layer. */
   background: transparent;
 }
 
@@ -361,30 +349,19 @@
 [data-dsh-taskboard-panel]::-webkit-scrollbar-button,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-button,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-button {
-  /* No end buttons. Removing them is not a style preference: they take real
-     height at both ends of every scrollable, and at the sizes this interface
-     renders they read as two small marks that belong to nothing. */
   display: none;
   width: 0;
   height: 0;
 }
 
-[data-dsh-taskboard-view]::-webkit-scrollbar-corner,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-corner,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-corner,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-corner {
-  background: transparent;
-}
-
-
-/* 不认 `::-webkit-scrollbar` 的浏览器走这一条。`scrollbar-width` **不继承**，
- * 所以它落在每一个可能滚动的元素上——不滚动的元素读它没有代价。 */
 @supports not selector(::-webkit-scrollbar) {
   :where([data-dsh-taskboard-view]),
   :where([data-dsh-taskboard-panel]),
   :where([data-dsh-taskboard-view]) *,
   :where([data-dsh-taskboard-panel]) * {
     scrollbar-width: thin;
-    scrollbar-color: var(--dsh-tb-text-3) transparent;
+    scrollbar-color: var(--dsh-tb-scroll-thumb-color) transparent;
   }
 }
+
+

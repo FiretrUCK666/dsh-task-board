@@ -1608,9 +1608,6 @@
     scrollbar-width: none;
   }
 
-  .itemRailChips::-webkit-scrollbar {
-    display: none;
-  }
 
   .itemRail[data-calendar] .itemRailChips {
     flex: none;

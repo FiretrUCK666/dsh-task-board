@@ -689,7 +689,7 @@
    * board columns, the detail page, the comment thread, the checklist and every
    * overlay. Five copies of one pixel count is five places to change and two that
    * get changed. */
-  --dsh-tb-scroll-bar: 14px;
+  --dsh-tb-scroll-bar: 8px;
   /* The second text tier, not the third: a scrollbar is chrome, but chrome nobody
      can see is chrome that does not exist. At 14px on a high-DPI screen the third
      tier disappears into the paper. */
