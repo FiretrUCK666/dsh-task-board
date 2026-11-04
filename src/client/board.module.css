@@ -1021,11 +1021,23 @@
 
 /* --- columns ------------------------------------------------------------------ */
 
-/* Hidden scrollbars (one rule): these surfaces scroll without ever painting a
-   bar (the board's quiet aesthetic). One :is() list covers every hidden-bar
-   surface — .columnTabs, .cards, .modalBackdrop and the compact .columns
-   track — so a new hidden-bar surface joins the list instead of re-typing. */
-:is(.columnTabs, .cards, .columns) {
+/* THE SCROLLBARS ARE PAINTED, NOT HIDDEN.
+ *
+ * This rule used to say `scrollbar-width: none` for the board's scroll areas, on
+ * the theory that a quiet aesthetic means no bar at all. Measured, it is worse
+ * than quiet: `scrollbar-width` OUTRANKS the whole `::-webkit-scrollbar` family,
+ * so every piece styled in the shared sheet — thumb, track, buttons — was thrown
+ * away and the column had NO indicator of any kind. A list you cannot see the
+ * extent of reads as a list with nothing below it.
+ *
+ * Removing it is what actually makes the three-piece bar appear; styling the
+ * pseudo-elements alone could never have worked while this line was here.
+ *
+ * The horizontal strip under the column tabs keeps its hidden bar: it is a
+ * one-row affordance on a compact layout, it is not the vertical reading surface,
+ * and a bar there costs a row of height. That exception is stated here rather
+ * than left implicit. */
+:is(.columnTabs) {
   scrollbar-width: none;
 }
 
@@ -1314,6 +1326,14 @@
   overflow-y: auto;
   flex: 1;
   min-height: 0;
+  /* THE COLUMN'S CORNER RADIUS, so its scrollbar holds its arrows off the arc.
+   *
+   * This box scrolls and the column it lives in is rounded, so the shared track
+   * rule insets the bar by this value at both ends. Without the declaration the
+   * inset is 0 and the arrowheads sit ON the corner — a square mark poking out of
+   * a rounded box, which is the reported defect. It reads the column's own radius
+   * token, so the bar follows if that radius ever changes. */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
   /* ── PAINT ISOLATION FOR THE SCROLLING COLUMN ────────────────────────────
    *
    * `contain: layout paint` tells the engine that nothing inside this box can

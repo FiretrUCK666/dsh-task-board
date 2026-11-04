@@ -330,23 +330,32 @@
 :where([data-dsh-taskboard-panel])::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb,
 :where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
-  background: var(--dsh-tb-text-3);
-  background-clip: padding-box;
-  /* THE THIN BAR IS A BORDER, NOT A SMALLER ELEMENT.
+  /* THE THUMB IS THE SAME GREY AS THE ARROWS, and it FILLS the bar's width.
    *
-   * `::-webkit-scrollbar-thumb` always fills the scrollbar's width — there is no
-   * width property to shrink. So the visible thickness is made by a TRANSPARENT
-   * border whose width is half the difference: the element is `--dsh-tb-scroll-bar`
-   * wide, the paint stops at the padding box, and what a reader sees is
-   * `--dsh-tb-scroll-thumb`. Rounding the padding box (not the border box) is what
-   * makes the end caps round on a bar that is 4px wide.
+   * It used to be a 4px hairline floated inside a 10px bar by a transparent
+   * border, on the theory that thin reads as elegant. Measured on screen it read
+   * as ABSENT: 4px of grey inside 10px of nothing, next to two 3px arrows, is a
+   * column of air with a thread down the middle. The report said the bar looked
+   * transparent, and it was right.
    *
-   * This is also why the corner radius reads `--dsh-tb-scroll-inset` first: the
-   * thumb must fit inside a rounded container's arc, and a 4px lozenge inside a
-   * 14px corner needs the same radius the container declared. */
+   * So the thumb is solid and full-width. Rounded ends keep it from looking like
+   * a raw rectangle, and the radius comes from `--dsh-tb-scroll-inset` where the
+   * scrollable box declared one — the thumb then nests inside the container's own
+   * corner arc instead of poking through it.
+   *
+   * `min-block-size` matters for the same reason: without it a very long list
+   * squashes the thumb to a few pixels and the bar again reads as a line. */
+  background-color: var(--dsh-tb-scroll-arrow-color);
+  /* A round lozenge floating in the bar rather than a slab filling it. */
   border: calc((var(--dsh-tb-scroll-bar) - var(--dsh-tb-scroll-thumb)) / 2) solid transparent;
+  background-clip: padding-box;
+  /* The thumb's own corners read the SAME inset the track used, so at either end
+     of its travel its cap is concentric with the container's corner instead of
+     poking through the arc. 999px is the fallback for scrollers that declared no
+     inset (a square list): there the bar is straight, and a fully round cap is
+     the right shape. */
   border-radius: var(--dsh-tb-scroll-inset, 999px);
-  min-height: 2rem;
+  min-block-size: 2.5rem;
 }
 
 :where([data-dsh-taskboard-view])::-webkit-scrollbar-track,
@@ -374,103 +383,108 @@
      内缩。所以本插件在 Chromium 系浏览器上完全受控，在只认 `scrollbar-width` 的
      引擎上只是细条，没有这条缩进。`verify-scroll-corner.mjs` 守的是「声明了圆角
      的滚动体有没有声明缩进」，它不假装能修系统条。 */
-  margin: var(--dsh-tb-scroll-inset, 0);
+  /* The end gap, held small ON PURPOSE. This used to read the container's corner
+     radius (14px on a board column), which is larger than the whole bar is wide —
+     the track was inset by more than its own height at each end, so the two
+     arrow buttons were squeezed out entirely and the bar rendered as a bare
+     rectangle. The gap only has to clear the ARC, not the radius: half the arrow
+     is enough, and it is expressed as a fraction of the bar so it stays right if
+     the bar's width changes. */
+  margin-block: calc(var(--dsh-tb-scroll-bar) / 2);
 }
 
-/* THE ARROWS, DRAWN AS TRIANGLES.
+/* ── THE SCROLLBAR, AS THREE PIECES OF ONE COLOUR ──────────────────────────
  *
- * `display: none` was here, and it is why the plugin's bars read as an unstyled
- * browser strip: Chromium draws a scrollbar as THREE pieces (buttons, track,
- * thumb), so hiding the buttons leaves one flat rectangle that looks nothing like
- * the rest of this interface.
+ * Top to bottom: a triangle arrow, the track, the thumb riding it, and a second
+ * arrow at the other end. All three pieces are the SAME grey.
  *
- * ── WHY A BACKGROUND IMAGE AND NOT A BORDER TRIANGLE ───────────────────────
+ * ── THE SELECTORS ARE NOT :where(), AND THAT IS THE WHOLE FIX ──────────────
  *
- * The obvious way to draw a triangle is a zero-size box with three transparent
- * borders and one coloured. That cannot be used here: `::-webkit-scrollbar-button`
- * IS already a pseudo-element, and a pseudo-element cannot carry another one — so
- * `...::-webkit-scrollbar-button::before` is invalid CSS and the bundler refuses
- * the whole stylesheet (`SyntaxError: Invalid state`, found the hard way). Giving
- * the BUTTON the triangle borders instead is also wrong: the button is a real box
- * that has to stay square, or the two arrows stop fitting the bar's width.
+ * Every rule here used to be wrapped in `:where(...)` to keep specificity at
+ * zero. That is right for normal elements and WRONG for scrollbar
+ * pseudo-elements: the UA stylesheet paints its own chevron into
+ * `::-webkit-scrollbar-button` as a background-image, and a zero-specificity
+ * author rule LOSES to it. Measured, in this order:
  *
- * So the triangle is an inline SVG background — four points, no font, no glyph
- * table, and it scales with the bar. `currentColor` inside the SVG is what lets
- * `color` drive the arrow, so the tip still reads ONE token.
+ *   · buttons laid out correctly (painting them red proved the boxes exist);
+ *   · `background-color` from a high-specificity probe DID show;
+ *   · `background-image` from the `:where()` rules showed NOTHING — the UA
+ *     chevron was there, but its own glyph is invisible against a transparent
+ *     button, so the ends looked empty.
  *
- * The platform's own chevron is suppressed by clearing the background FIRST and
- * then setting the image: Chromium paints its glyph as a background on this same
- * pseudo-element, so a rule that only adds a background would sit underneath it. */
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button {
+ * So the base rules use a real attribute selector: `[data-dsh-taskboard-view]`
+ * (0,1,0) instead of `:where([data-dsh-taskboard-view])` (0,0,0). That is
+ * enough to beat the UA origin without touching anything else.
+ *
+ * ── WHY A BACKGROUND IMAGE ─────────────────────────────────────────────────
+ *
+ * A border triangle needs `::before`, and a pseudo-element cannot carry another
+ * one — `::-webkit-scrollbar-button::before` is invalid and the bundler rejects
+ * the entire sheet. A mask was tried next: it parsed, reserved its width, and
+ * painted nothing (masking is not supported on these pseudo-elements). A
+ * background image is the channel they have always honoured.
+ *
+ * The colour is baked into the SVG, trading theme-following for the arrow simply
+ * existing. It is chrome at ~3.6:1 against paper, not content, so one grey is
+ * right; the value is the same one the thumb uses.
+ *
+ * ── THE ENDS ARE HELD OFF THE CORNERS ──────────────────────────────────────
+ *
+ * Board columns and rails are ROUNDED, and a bar flush with the top puts its
+ * arrowhead on the arc — a square mark poking out of a rounded box. The track
+ * carries a small end margin (`--dsh-tb-scroll-bar / 2`, not the container's
+ * radius: a radius-sized gap is wider than the whole bar and squeezes the
+ * buttons out entirely, which is what a previous attempt did). */
+[data-dsh-taskboard-view]::-webkit-scrollbar-button,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button {
   display: block;
-  /* The button's own box: pinned to the bar width so the three pieces look
-     assembled rather than stacked. Chromium's ~15px default would be taller than
-     the bar is wide. */
   inline-size: var(--dsh-tb-scroll-bar);
   block-size: var(--dsh-tb-scroll-bar);
-  /* The MASK carries the shape and the BACKGROUND COLOUR carries the token, so
-     the arrow follows `--dsh-tb-scroll-arrow-color` in both themes. Painting the
-     triangle into the SVG instead would freeze one hex value and lose the theme. */
-  background-color: var(--dsh-tb-scroll-arrow-color);
-  mask-repeat: no-repeat;
-  mask-position: center;
-  mask-size: var(--dsh-tb-scroll-arrow) var(--dsh-tb-scroll-arrow);
-  /* WebKit still wants the prefixed pair on some builds for mask-size. */
-  -webkit-mask-repeat: no-repeat;
-  -webkit-mask-position: center;
-  -webkit-mask-size: var(--dsh-tb-scroll-arrow) var(--dsh-tb-scroll-arrow);
   border: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: var(--dsh-tb-scroll-arrow) var(--dsh-tb-scroll-arrow);
 }
 
-/* The up / left arrow: pointing up, a solid triangle. */
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:vertical:start:decrement,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:vertical:start:decrement,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:vertical:start:decrement,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:vertical:start:decrement {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M4 1.5 7.5 6.5H.5z'/%3E%3C/svg%3E");
-  background-color: var(--dsh-tb-scroll-arrow-color);
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 3L8.5 7L1.5 7Z'/%3E%3C/svg%3E");
 }
 
-/* The down / right arrow: the same triangle flipped. */
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:vertical:end:increment,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:vertical:end:increment,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:vertical:end:increment,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:vertical:end:increment {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M4 6.5.5 1.5h7z'/%3E%3C/svg%3E");
-  background-color: var(--dsh-tb-scroll-arrow-color);
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 7L1.5 3L8.5 3Z'/%3E%3C/svg%3E");
 }
 
-/* The left / right pair, for a horizontal bar. */
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:horizontal:start:decrement,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:horizontal:start:decrement,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:horizontal:start:decrement,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:horizontal:start:decrement {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M1.5 4 6.5.5v7z'/%3E%3C/svg%3E");
-  background-color: var(--dsh-tb-scroll-arrow-color);
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M3 5L7 1.5L7 8.5Z'/%3E%3C/svg%3E");
 }
 
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:horizontal:end:increment,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:horizontal:end:increment,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:horizontal:end:increment,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:horizontal:end:increment {
-  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 8 8'%3E%3Cpath d='M6.5 4 .5 6.5v-7z'/%3E%3C/svg%3E");
-  background-color: var(--dsh-tb-scroll-arrow-color);
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M7 5L3 8.5L3 1.5Z'/%3E%3C/svg%3E");
 }
 
-/* Chromium also emits button pseudo-elements for the "double" track pieces on some
-   platforms. They are not part of this design, so they are zeroed rather than left
-   to the platform — an unaccounted band is how a three-piece bar becomes five. */
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:double-button,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:double-button,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:double-button,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:double-button,
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-button:single-button:horizontal,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-button:single-button:horizontal,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-button:single-button:horizontal,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-button:single-button:horizontal {
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:double-button,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:double-button,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:double-button,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:double-button,
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:single-button:horizontal,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:single-button:horizontal,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:single-button:horizontal,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:single-button:horizontal {
   display: none;
 }
 
