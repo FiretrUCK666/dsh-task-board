@@ -163,7 +163,7 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
       })
     }
     window.addEventListener('resize', schedule)
-    window.addEventListener('scroll', schedule, true)
+    window.addEventListener('scroll', schedule, { capture: true, passive: true })
     return () => {
       window.removeEventListener('resize', schedule)
       window.removeEventListener('scroll', schedule, true)

@@ -133,16 +133,26 @@ export function useFollowScroll(
     atBottomKnown.current = next
     setAtBottom(next)
   }, [scrollRef, setAtBottom])
-  /* ONE MEASUREMENT PER FRAME.
+  /* THE LISTENER BELONGS TO THE SCROLLER, NOT TO THE DOCUMENT.
    *
-   * This listener is on `document` in the CAPTURE phase, so it fires for every
-   * scroll of every scroller in the panel — not just this transcript. Without
-   * coalescing, one wheel gesture produced a burst of layouts reads, and every
-   * one of them forced style+layout to be resolved before it could answer
-   * (`scrollHeight` is a layout property). A frame is the finest granularity a
-   * reader can perceive, so measuring once per frame loses nothing and stops the
-   * panel from doing work it throws away. */
+   * It used to sit on `document` in the CAPTURE phase, so it ran for every scroll
+   * of every scroller on the page — and each run read three layout properties
+   * (`scrollHeight`, `scrollTop`, `clientHeight`). Chrome cannot take its fast
+   * path for a capture-phase scroll listener that reads layout: it has to
+   * synchronise with the main thread around the gesture before it can commit the
+   * frame. A reader feels exactly that as 「滚了，等一下才动」 — and it happens
+   * regardless of how little content is on screen, because the cost is the
+   * synchronisation, not the content.
+   *
+   * The question this listener answers is only about ITS OWN scroller — 「is this
+   * pinned to the bottom」 — so it belongs on that element. Every other scroll
+   * (another panel, the sidebar, a dialog) stops paying for it.
+   *
+   * Still coalesced to one measurement per frame: a wheel gesture delivers many
+   * scroll events, and the answer cannot change twice between two paints. */
   useEffect(() => {
+    const root = resolveScroller(scrollRef.current)
+    if (root === null) return
     let frame: number | undefined
     const handler = (): void => {
       if (frame !== undefined) return
@@ -151,12 +161,12 @@ export function useFollowScroll(
         measure()
       })
     }
-    document.addEventListener('scroll', handler, true)
+    root.addEventListener('scroll', handler, { passive: true })
     return () => {
-      document.removeEventListener('scroll', handler, true)
+      root.removeEventListener('scroll', handler)
       if (frame !== undefined) cancelAnimationFrame(frame)
     }
-  }, [measure])
+  }, [measure, scrollRef, remountKey])
   // Follow the latest content while at the bottom.
   useEffect(() => {
     const root = resolveScroller(scrollRef.current)

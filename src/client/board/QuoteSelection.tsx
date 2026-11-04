@@ -162,7 +162,12 @@ export function QuoteSelection({ host, onQuote }: {
   useEffect(() => {
     if (pending === undefined) return
     const dismiss = (): void => { setPending(undefined) }
-    window.addEventListener('scroll', dismiss, true)
+    /* `passive` is not a micro-optimisation here: it is the promise that this
+       listener never calls preventDefault, which is what lets Chrome run the
+       gesture without first waiting for the main thread. This fires for every
+       scroll on the page while a selection is showing, so an unpromised listener
+       would tax scrolling globally. */
+    window.addEventListener('scroll', dismiss, { capture: true, passive: true })
     window.addEventListener('resize', dismiss)
     return () => {
       window.removeEventListener('scroll', dismiss, true)

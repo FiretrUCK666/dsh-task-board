@@ -31,14 +31,25 @@ export function keyboardOverlapPx(
 export function watchKeyboardInset(root: HTMLElement): () => void {
   const viewport = globalThis.visualViewport
   if (viewport === undefined || viewport === null) return () => {}
+  /* The last value written, so a scroll that does not change the keyboard overlap
+   * does not touch the DOM. `visualViewport` fires this on EVERY scroll of a page
+   * that is being pinch-zoomed or has a keyboard open; writing a custom property
+   * each time invalidates style for the whole subtree that inherits it.
+   *
+   * The listeners are `passive`: this code never calls `preventDefault`, and
+   * saying so is what lets the browser run the gesture without waiting for the
+   * main thread first. */
+  let lastPx: number | undefined
   const apply = (): void => {
     const px = keyboardOverlapPx(globalThis.innerHeight, viewport.height, viewport.offsetTop)
+    if (px === lastPx) return
+    lastPx = px
     if (px === 0) root.style.removeProperty('--dsh-tb-kb')
     else root.style.setProperty('--dsh-tb-kb', `${px}px`)
   }
   apply()
-  viewport.addEventListener('resize', apply)
-  viewport.addEventListener('scroll', apply)
+  viewport.addEventListener('resize', apply, { passive: true })
+  viewport.addEventListener('scroll', apply, { passive: true })
   return () => {
     viewport.removeEventListener('resize', apply)
     viewport.removeEventListener('scroll', apply)

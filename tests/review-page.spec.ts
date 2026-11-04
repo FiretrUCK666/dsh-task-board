@@ -788,13 +788,24 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
   const panelPath = fileURLToPath(new URL('../src/client/board/session-panel.tsx', import.meta.url))
   const panelSource = readFileSync(panelPath, 'utf8')
 
-  it('the tail resolves the real scroller and listens in the capture phase', () => {
-    // The stacked panel scrolls its BODY, not the inner region: following must
-    // follow the resolved scroller, and scroll events (which do not bubble)
-    // are seen through a window-level capture listener.
+  it('the tail follows the REAL scroller and listens on THAT element', () => {
+    // The stacked panel scrolls its BODY, not the inner region, so the hook has
+    // to resolve which element actually scrolls. That part was always right.
     expect(followSource).toMatch(/export function resolveScroller/)
-    expect(followSource).toMatch(/addEventListener\('scroll', handler, true\)/)
     expect(followSource).toMatch(/export function useFollowScroll/)
+
+    // WHERE the listener goes is the part that changed, and the reason is
+    // performance rather than taste. A capture-phase listener on `document` runs
+    // for every scroll on the page and reads three layout properties; Chrome
+    // cannot take its gesture fast path around such a listener, so it waits for
+    // the main thread before committing the frame — 「滚了，等一下才动」, and it
+    // costs the same whether the panel holds one message or two hundred.
+    // Bound to the scroller itself, only that scroller pays, and it is passive.
+    expect(followSource, 'the scroll listener must be passive').toMatch(/addEventListener\('scroll', handler, \{ passive: true \}\)/)
+    expect(followSource, 'the scroll listener must not sit on document in the capture phase')
+      .not.toMatch(/document\.addEventListener\('scroll'/)
+    expect(followSource, 'the scroll listener must not sit on window in the capture phase')
+      .not.toMatch(/window\.addEventListener\('scroll'/)
   })
 
   it('the comment thread reuses the same hook instead of re-rolling it', () => {
