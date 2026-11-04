@@ -390,7 +390,7 @@
      rectangle. The gap only has to clear the ARC, not the radius: half the arrow
      is enough, and it is expressed as a fraction of the bar so it stays right if
      the bar's width changes. */
-  margin-block: calc(var(--dsh-tb-scroll-bar) / 2);
+  margin-block: var(--dsh-tb-scroll-breath);
 }
 
 /* ── THE SCROLLBAR, AS THREE PIECES OF ONE COLOUR ──────────────────────────

@@ -1322,7 +1322,31 @@
      would be clipped by the scroll container and render thinner. The bottom
      padding is the column's breathing room — the last card never sits flush
      against the board edge or gets clipped at maximum scroll. */
-  padding: 6px 8px 22px;
+  /* THE GUTTER BELONGS TO THE BAR, NOT TO THE CARDS.
+   *
+   * Measured on the real board at 1440: the scrollbar sat flush against the
+   * column's right edge (1px of air), so it cost the cards 14px of width and
+   * still read as something stuck on from outside. The cards are inset 8px from
+   * the column; the bar should live in that inset, not push the content over.
+   *
+   * So the right padding is the bar's width plus the cards' own air: the bar
+   * occupies a lane of its own inside the inset, and the cards keep exactly the
+   * geometry they always had. Written as a sum of the token so changing the bar's
+   * width moves the lane with it. */
+  /* THE BAR GETS ITS OWN LANE — AND PADDING CANNOT DO IT.
+   *
+   * Measured: this box was flush with the column's right edge, so the scrollbar
+   * painted 1px from that edge and read as something bolted on from outside. The
+   * first attempt added right PADDING, which changed nothing: padding moves the
+   * CONTENT, while a webkit scrollbar paints against the border box's inner edge.
+   * The content cannot be moved away from a bar that is itself pinned to the edge.
+   *
+   * A right MARGIN moves the scroller, and the bar moves with it — so the bar
+   * lands in the visual gap between the cards and the column's rounded edge,
+   * which is where an inset bar belongs. The cards keep their own 8px inset; the
+   * margin is pure gutter. */
+  margin-right: 6px;
+  padding: 6px 4px 22px 8px;
   overflow-y: auto;
   flex: 1;
   min-height: 0;
