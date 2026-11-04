@@ -1102,8 +1102,14 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     const ringRule = ruleFor(".card[data-light='ring']")
     expect(ringRule, 'the unread card must have its own light rule').not.toBe('')
     expect(ringRule, 'the unread ring must use a breath animation').toMatch(/animation:\s*dshTbBreathRing/)
-    expect(ringRule, 'the unread ring must breathe an OUTLINE, not the card’s material')
-      .toContain('outline: var(--dsh-tb-breath-spread) solid transparent')
+    /* The ring is STILL an outline — never the card's material — but its colour is
+       now static and the breathing is done by opacity. Animating `outline-color`
+       re-rasterises the stroke every frame on every lit element, and these lights
+       are infinite on exactly the elements that are on screen during a scroll. */
+    expect(ringRule, 'the unread ring must be an OUTLINE, not the card’s material')
+      .toMatch(/outline:\s*var\(--dsh-tb-breath-spread\) solid var\(--dsh-tb-breath-color/)
+    expect(ringRule, 'the ring must start invisible so the pulse is a pulse')
+      .toMatch(/opacity:\s*0/)
     expect(ringRule, 'the unread ring still takes the card’s box-shadow').not.toContain('box-shadow')
     const haloRule = ruleFor(".card[data-light='halo']::after")
     expect(haloRule, 'the in-flight halo must breathe on its own ::after layer').not.toBe('')
@@ -1128,9 +1134,14 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       return /50%\s*\{([^}]*)\}/.exec(block ?? '')?.[1] ?? ''
     }
     const ringPeak = peakOf('dshTbBreathRing')
-    expect(ringPeak, 'the unread ring is an outline colour').toContain('outline-color')
+    /* The peak frame is the OPACITY now. Animating `outline-color` re-rasterises the
+       stroke every frame on every lit element, and these lights are infinite on
+       exactly the elements visible during a scroll — the shell's own sidebar has no
+       such animation, which is why the lag was reported as 「只有插件卡」. */
+    expect(ringPeak, 'the unread ring breathes by opacity, the composited channel').toContain('opacity')
     expect(ringPeak, 'the ring must not touch the material property').not.toContain('box-shadow')
-    expect(ringPeak, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
+    // The colour moved onto the RULE (it is static now), so it is read from there.
+    expect(ringRule, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
     expect(ringPeak, 'the ring must not animate its geometry').not.toMatch(/outline-width|outline-style|outline:/)
     /* THE HALO SPLIT: the SHADOW is static on the layer, only its OPACITY breathes.
      *
@@ -1156,8 +1167,8 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       .not.toMatch(/,\s*0 0 var\(--dsh-tb-breath-spread\)/)
     expect(haloPaintRule, 'the halo layer must rest invisible, or the pulse is a permanent glow')
       .toMatch(/opacity:\s*0/)
-    expect(source, 'the ring must rest transparent (a pulse, not a permanent glow)')
-      .toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ outline-color: transparent; \}/)
+    expect(source, 'the ring must rest invisible (a pulse, not a permanent glow)')
+      .toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ opacity: 0; \}/)
     expect(source, 'the halo must rest invisible (a pulse, not a permanent glow)')
       .toMatch(/@keyframes dshTbBreathHalo \{\s*0%, 100% \{ opacity: 0; \}/)
 
@@ -1488,10 +1499,10 @@ describe('session unread glow family (row breath + dot breath, one clock)', () =
     // declare the constant outline the colour breath rides on (the card gets it
     // from its own rule). Without it the pulse would have nothing to colour.
     expect(rule, 'the unread dot must declare the outline the shared ring breathes')
-      .toMatch(/outline:\s*var\(--dsh-tb-breath-spread\)\s+solid\s+transparent/)
+      .toMatch(/outline:\s*var\(--dsh-tb-breath-spread\)\s+solid\s+var\(--dsh-tb-breath-color/)
     // The shared keyframe rests transparent (a pulse, not a permanent glow) and
     // animates the OUTLINE COLOUR — never geometry, never the material property.
-    expect(source).toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ outline-color: transparent; \}/)
+    expect(source).toMatch(/@keyframes dshTbBreathRing \{\s*0%, 100% \{ opacity: 0; \}/)
     expect(source, 'the ring must not animate box-shadow').not.toMatch(/@keyframes dshTbBreathRing \{[^}]*box-shadow/)
   })
 

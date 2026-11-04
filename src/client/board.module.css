@@ -40,9 +40,20 @@
  * indicator (it IS the message "this is live / this is unread"), and a static
  * ring reads as "stuck" — the opposite of the truth. Same law the spinner
  * follows. */
+/* THE STATE LIGHT BREATHES BY OPACITY, NOT BY OUTLINE COLOUR.
+ *
+ * `outline-color` is a PAINT property: every frame re-rasterises the element's
+ * stroke, and these lights are infinite and live on cards, session rows and
+ * notification rows — the elements that are on screen while a reader scrolls. The
+ * shell's own sidebar has no such animation, which is why the lag was reported as
+ * 「只有插件卡」.
+ *
+ * `opacity` is owned by the compositor: the element is rasterised once with the
+ * ring at full strength, and the layer is then faded on the GPU. Same light, same
+ * timing, one paint instead of one per frame. */
 @keyframes dshTbBreathRing {
-  0%, 100% { outline-color: transparent; }
-  50% { outline-color: var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha)); }
+  0%, 100% { opacity: 0; }
+  50% { opacity: 1; }
 }
 
 /* The in-flight halo: an INSET glow on the card's ::after layer (see the rule
@@ -1674,8 +1685,10 @@
      declared once (not animated), so the card never reflows and the ring is
      never clipped by the card's own `overflow: hidden` — outlines are not
      descendants. */
-  outline: var(--dsh-tb-breath-spread) solid transparent;
+  /* Static stroke, animated opacity — see the keyframes for why. */
+  outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
+  opacity: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
@@ -1976,8 +1989,10 @@
   /* The shared ring keyframes breathe `outline-color`, so every non-card
      consumer declares the constant outline width here — the pulse is the
      colour, never the geometry. */
-  outline: var(--dsh-tb-breath-spread) solid transparent;
+  /* Static stroke, animated opacity — see the keyframes for why. */
+  outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
+  opacity: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 .cardSessionMore {
@@ -2973,8 +2988,10 @@
   box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
   /* The breath rides the outline's COLOUR; its width is constant (same
      mechanism as the card ring — a state light never animates geometry). */
-  outline: var(--dsh-tb-breath-spread) solid transparent;
+  /* Static stroke, animated opacity — see the keyframes for why. */
+  outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
+  opacity: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
@@ -3507,8 +3524,10 @@
   border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
   /* Constant-width outline, colour-only breath (see the card ring). */
-  outline: var(--dsh-tb-breath-spread) solid transparent;
+  /* Static stroke, animated opacity — see the keyframes for why. */
+  outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
+  opacity: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
 
