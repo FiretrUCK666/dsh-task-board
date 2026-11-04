@@ -419,11 +419,23 @@
   overflow-x: hidden;
   padding: 24px 24px calc(24px + var(--dsh-tb-kb, 0px));
   overscroll-behavior: contain;
-  /* 比原生 mask-1 实一档，免得磨砂列线在弹层边缘闪光；再带一档极轻的模糊——弹层
-     下面是同一页，它该「退后」而不是消失（见 `--dsh-tb-mask-blur` 的说明）。 */
+  /* ── NO `backdrop-filter` ON THE FULL-SCREEN BACKDROP ────────────────────
+   *
+   * It carried `blur(4px)` as a "the page behind should recede, not vanish"
+   * nicety. A 4px blur over a 40%-solid mask is nearly invisible — and it is
+   * paid for on EVERY FRAME of every scroll inside it, because the whole session
+   * panel (the comment thread and the transcript) is PORTALLED INTO this element
+   * (see SessionFrame). Chromium has to keep re-sampling and re-blurring what is
+   * behind a backdrop-filter, and the cost scales with the blurred AREA times the
+   * content beneath it — not with how much text is in the list. That is exactly
+   * the shape of the report: 「面板一打开就卡，只加载一轮也卡，别的 session 也卡」.
+   *
+   * The shell's own conversation surface has no such layer anywhere on its scroll
+   * path, which is why 「宿主不卡、只有这个插件卡」.
+   *
+   * The colour stays. The mask is already solid enough to read as a scrim, and a
+   * blur nobody can see is not worth a per-frame composite of the full panel. */
   background: var(--dsh-tb-mask);
-  -webkit-backdrop-filter: blur(var(--dsh-tb-mask-blur));
-  backdrop-filter: blur(var(--dsh-tb-mask-blur));
   animation: dshTbBoardIn var(--dsh-tb-motion-enter) backwards;
 }
 
