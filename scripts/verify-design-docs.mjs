@@ -497,7 +497,9 @@ function declaredClassesOf(css) {
 }
 
 const designPath = join(root, 'DESIGN.md')
-const sidecarPath = join(root, '.impeccable', 'design.json')
+/* No design sidecar: DESIGN.md is the only document this check reads,
+   so its token references and its recorded values are checked against the live
+   token tables alone. */
 if (!existsSync(designPath)) {
   console.log('verify-design-docs SKIP: DESIGN.md not present in this checkout')
   process.exit(0)
@@ -507,7 +509,7 @@ const design = readFileSync(designPath, 'utf8')
 // JSON.parse throw on the first character, so a doc that merely acquired one (a
 // Windows editor or shell redirect is enough) must not read as "the check broke".
 const stripBom = (s) => (s.charCodeAt(0) === 0xfeff ? s.slice(1) : s)
-const sidecarText = existsSync(sidecarPath) ? stripBom(readFileSync(sidecarPath, 'utf8')) : null
+
 
 // --- check 1: every token name the docs rely on still exists -----------------
 
@@ -522,7 +524,6 @@ const snapshotFiles = (() => {
 
 const DOC_FILES = [
   ['DESIGN.md', design],
-  ...(sidecarText === null ? [] : [['.impeccable/design.json', sidecarText]]),
 ]
 for (const [label, text] of DOC_FILES) {
   // Two things in prose look like token references but are not:
@@ -633,53 +634,6 @@ for (const [label, text] of DOC_FILES) {
     )
   }
   notes.push(`${CLIENT_STYLESHEETS.length} stylesheet(s) audited: ${localAliases.size} custom properties declared, ${aliasRefs.size} alias references resolved against them`)
-}
-
-// --- check 2: the values the docs record are the values the tokens resolve to --
-
-const sidecar = sidecarText === null ? null : JSON.parse(sidecarText)
-if (sidecar !== null) {
-  const meta = sidecar.extensions?.colorMeta ?? {}
-  const entries = Object.entries(meta)
-  const unmapped = entries.filter(([, e]) => typeof e.token !== 'string').map(([k]) => k)
-  // Regenerating the sidecar (a `document` run) rewrites it from scratch and does
-  // not know about the `token` field. Without this guard the color half of the
-  // check would quietly compare nothing and still report success — a checker that
-  // passes because it ran on empty input is worse than no checker.
-  if (entries.length > 0 && unmapped.length > entries.length / 2) {
-    failures.push(
-      `.impeccable/design.json: ${unmapped.length}/${entries.length} colorMeta entries have no "token" field, so no color value could be verified — the sidecar looks regenerated (a document re-run drops the field). Re-add each entry's source token and re-run.`,
-    )
-  }
-  let checked = 0
-  let notRemarked = 0
-  for (const [key, entry] of entries) {
-    // The key is a display slug (canvas, text-primary); the source token is
-    // declared in the entry itself so nothing has to be guessed here.
-    const token = entry.token
-    if (typeof token !== 'string') continue
-    let compared = false
-    for (const [field, table, scheme] of [
-      ['canonical', lightTable, 'light'],
-      ['darkValue', darkTable, 'dark'],
-    ]) {
-      const recorded = entry[field]
-      if (typeof recorded !== 'string') continue
-      const resolved = resolveToken(token, table)
-      if (resolved === undefined) continue // check 1 already reported a missing name
-      // A token that resolves to a `color-mix()`/alpha expression is intentionally
-      // not comparable to a plain hex; report it instead of failing on it.
-      if (rgba(resolved) === null) { notes.push(`colorMeta.${key}.${field}: ${token} resolves to "${resolved}" (not a plain color) — not compared`); continue }
-      if (rgba(recorded) === null) { notes.push(`colorMeta.${key}.${field}: recorded "${recorded}" is not a plain hex — not compared`); continue }
-      checked++
-      compared = true
-      if (!sameColor(recorded, resolved)) {
-        failures.push(`colorMeta.${key}.${field} (${scheme}): the sidecar records ${recorded}, but ${token} resolves to ${resolved} today`)
-      }
-    }
-    if (!compared) notRemarked++
-  }
-  notes.push(`colorMeta: ${checked} recorded values compared against live token resolution (${notRemarked} mapped entries had nothing comparable)`)
 }
 
 // --- check 5: no CSS class drifts away from the components ---------------------
@@ -1277,8 +1231,8 @@ if (failures.length > 0) {
   console.error(`verify-design-docs FAILED (${failures.length})`)
   for (const f of failures) console.error('  - ' + f)
   for (const n of notes) console.error('  context: ' + n)
-  console.error('  Either the shell moved (re-run /impeccable document), or the docs cite a token')
-  console.error('  the shell never declared (fix DESIGN.md / the sidecar). Neither is auto-repaired here.')
+  console.error('  Either the shell moved, or the docs cite a token the shell never')
+  console.error('  declared (fix DESIGN.md). Neither is auto-repaired here.')
   process.exit(1)
 }
 for (const n of notes) console.log('note: ' + n)

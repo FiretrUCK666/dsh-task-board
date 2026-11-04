@@ -40,7 +40,6 @@
 | `scripts/probes/` | **探针**：不能自己跑，只能当载荷交给 `shot-panel --eval-file` 在真 Chromium 里求值。`DESIGN.md` 里每一条「量法」点的就是这里 |
 | `build/` | 构建配置：打包器的预设与它用的平台模块表，由根目录的 `tsdown.config.ts` 导入 |
 | `locale/` | 界面文案的中英词条 |
-| `.impeccable/` | `impeccable` 设计技能的状态；`design.json` 与 `config.json` 入库，`pnpm verify` 的设计文档检查要读它们 |
 | `.design/` | 本地草稿：截图、候选页、一次性探针。**不入库，也不许被 `DESIGN.md` 引用**——正文里写的路径必须是干净克隆也打得开的 |
 
 ## 开发环境
