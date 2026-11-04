@@ -58,7 +58,7 @@
  */
 import type { BoardDoc, BoardView } from './board-doc.ts'
 import { relayLaneOf, type PromptAttachment } from './attachment.ts'
-import { boardViewOf, changedIdsOf, emptyBoardDoc, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
+import { boardViewOf, changedIdsOf, emptyBoardDoc, readStateKeyOf, DEFAULT_CRUISE_VALUE } from './board-doc.ts'
 
 /**
  * The lease-protocol version that introduced DIFF COMMITS.
@@ -953,7 +953,29 @@ export class BoardSyncClient {
   private changedRowsOf(view: readonly TaskRecord[]): readonly TaskRecord[] {
     const known = new Set(this.baseline.tasks.map(task => task.id))
     const moved = new Set(changedIdsOf(this.baseline.tasks, view))
-    return view.filter(task => this.claims.has(task.id) || !known.has(task.id) || moved.has(task.id))
+    /* READ STATE IS COMMITTED TOO, and it needs its own test.
+     *
+     * `changedIdsOf` compares AUTHORSHIP, which deliberately excludes `viewedAt`:
+     * opening a card is not editing it, and a viewer riding a stale baseline must
+     * not claim the row (that claim would win and revert a column the engine just
+     * wrote).
+     *
+     * Both rules are right on their own; together they dropped a case. A row whose
+     * ONLY change is `viewedAt` satisfies none of claim / new / moved, so it was
+     * never sent — 「标已读」 reached the local store and never the host, and the
+     * next read from the host brought the unread state back. That is the reported
+     * 「我标了已读它还弹出来」.
+     *
+     * Read movement is therefore its own comparison against the same baseline. It
+     * never touches the claim set, so the authorship law is untouched. */
+    const before = new Map(this.baseline.tasks.map(task => [task.id, readStateKeyOf(task)]))
+    const readMoved = new Set<string>()
+    for (const task of view) {
+      const previous = before.get(task.id)
+      if (previous !== undefined && previous !== readStateKeyOf(task)) readMoved.add(task.id)
+    }
+    return view.filter(task =>
+      this.claims.has(task.id) || !known.has(task.id) || moved.has(task.id) || readMoved.has(task.id))
   }
 
   /** When the answering host process booted; undefined until the first lease

@@ -279,6 +279,22 @@ export declare function normalizeBoardDoc(value: unknown, now?: number): BoardDo
  * Read-state writes still propagate: they simply merge under plain LWW.
  */
 export declare function changedIdsOf(baseline: readonly TaskRecord[], next: readonly TaskRecord[]): string[];
+/**
+ * One row's READ-STATE fingerprint: exactly what {@link authorshipKey} strips.
+ *
+ * The two exist because "did the content change" and "did the reader look at it"
+ * are different questions with different answers, and a commit needs both:
+ *
+ *  - authorship decides CLAIMS, and must ignore `viewedAt` — a viewer whose
+ *    commit rode a stale baseline would otherwise claim the row and, since
+ *    claims win, revert a column the engine had just written;
+ *  - read state still has to REACH the host, or 「标已读」 lives only in this
+ *    replica's store and comes back unread at the next read. That is the reported
+ *    「我标了已读它还弹出来」.
+ *
+ * So the same exclusion is stated once as a function, and a commit that finds
+ * only this changed still sends the row. */
+export declare function readStateKeyOf(task: TaskRecord): string;
 /** Structural equality of two documents (the "did anything move" test that
  *  keeps a no-op commit from bumping the revision and storming replicas).
  *  Composed from the kernel's part plus this document's own sections — and it

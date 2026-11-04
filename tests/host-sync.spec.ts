@@ -5,8 +5,8 @@
  * transport/timer/clock seams are faked so every path is driven directly.
  */
 import { describe, expect, it } from 'vitest'
-import { BoardSyncClient, ChecklistReplica, SyncedCruiseStore, SyncedItemsStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger } from '../src/core/host-sync.ts'
-import { emptyBoardDoc, applyCommit, type BoardCommand, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
+import { BoardSyncClient, ChecklistReplica, SyncedCruiseStore, SyncedItemsStore, SyncedPresetStore, SyncedRunPresetStore, SyncedTaskStore, type BoardSyncTransport, type SyncFetchResult, type SyncLedger, DIFF_COMMIT_PROTOCOL } from '../src/core/host-sync.ts'
+import { changedIdsOf, emptyBoardDoc, applyCommit, readStateKeyOf, type BoardCommand, type BoardCommit, type BoardDoc, type BoardEvent, type BoardView, type CruiseValue } from '../src/core/board-doc.ts'
 import { applyItemsCommit, emptyItemsDoc, type ItemsCommit, type ItemsDoc } from '../src/core/items-doc.ts'
 import { parseItems, type ItemRecord } from '../src/core/item.ts'
 import { createTask, type TaskRecord } from '../src/core/tasks.ts'
@@ -1282,5 +1282,133 @@ describe('the checklist replica', () => {
     const before = items.commit.length
     await timers.advance(60_000)
     expect(items.commit).toHaveLength(before)
+  })
+})
+
+/**
+ * READ STATE MUST REACH THE HOST.
+ *
+ * 「标已读」是本地一次很小的写入，而它要跨过两道各自都正确的规则才能到达 host：
+ *
+ *  - 提交哪些行由 `changedRowsOf` 决定；
+ *  - 「哪些行的内容变了」由 `changedIdsOf` 决定，而它的指纹**刻意排除 `viewedAt`**
+ *    ——看一眼不是编辑，否则一个陈旧副本会声称作者身份，把引擎刚写的轮次覆盖掉。
+ *
+ * 两条规则单独看都对，合起来漏了一种情况：**只有 `viewedAt` 变的行三条判据都不满足**，
+ * 于是它从来没被提交。已读只落在本地，下一次从 host 读回来又是未读——这就是读者报的
+ * 「我明明点进去看过了，它还弹」。
+ *
+ * 这一组钉的是「读状态单独算一类变更」，并且钉住它**不会**污染作者身份：claims 仍然
+ * 不因已读而增加。
+ */
+describe('read-state changes are committed, without claiming authorship', () => {
+  const task = (id: string): TaskRecord => createTask({ title: id, description: '', prompt: 'p' }, T0, id)
+
+  it('a viewedAt-only change moves the read fingerprint and not the authorship one', () => {
+    const before = task('t1')
+    const after: TaskRecord = { ...before, viewedAt: T0 + 5_000 }
+    // The two fingerprints answer different questions, and this is the case that
+    // made the difference visible.
+    expect(readStateKeyOf(after), 'the read fingerprint must see the mark').not.toBe(readStateKeyOf(before))
+    expect(changedIdsOf([before], [after]), 'reading a card is not authoring it').toEqual([])
+  })
+
+  it('a round-level viewedAt also counts as read movement', () => {
+    // 「标已读」 scoped to one conversation stamps the ROUND, not just the task.
+    const before: TaskRecord = {
+      ...task('t2'),
+      executions: [{ id: 'r1', sessionId: 's1', startedAt: T0, endedAt: T0 + 1_000, result: 'succeeded' } as never],
+    }
+    const after: TaskRecord = {
+      ...before,
+      executions: [{ ...(before.executions[0] as never as object), viewedAt: T0 + 9_000 } as never],
+    }
+    expect(readStateKeyOf(after), 'a round-level mark must be visible to the read fingerprint')
+      .not.toBe(readStateKeyOf(before))
+    expect(changedIdsOf([before], [after])).toEqual([])
+  })
+
+  it('an untouched row reads the same twice, so it is not re-sent every commit', () => {
+    // The fix must not turn every commit into a full-board push: a row nobody
+    // touched has an identical fingerprint.
+    const row = task('t3')
+    expect(readStateKeyOf(row)).toBe(readStateKeyOf({ ...row }))
+  })
+})
+
+/**
+ * END TO END: 只改 viewedAt，提交里必须带这一行。
+ *
+ * 上一组测试钉的是两个指纹函数各自正确——但那证明不了提交路径用上了它们。
+ * 实测：把 `changedRowsOf` 里的 readMoved 去掉，那一组依然全绿。这正是硬性规范 16
+ * 说的区别，「改动生效」不等于「门禁会红」。
+ *
+ * 所以这一条走真实的提交链路：启动客户端 → 只动 viewedAt → 推进计时器 → 读 transport
+ * 收到的 commit，看那行在不在里面。撤掉修复它会红。
+ */
+
+/**
+ * END TO END: a viewedAt-only edit must reach the transport.
+ *
+ * This case exists because its first version was a FAKE test. It drove the
+ * project's fake timer queue, and when the fix was removed it still passed — the
+ * queue never actually reached the commit. That is the difference hard rule 16
+ * draws: 「改动生效」 is not 「门禁会红」. So this version builds a client with real
+ * timers and reads what `transport.commit` actually receives.
+ *
+ * The case it pins: 「标已读」 is a tiny local write, and it has to cross two rules
+ * that are each correct on their own — commits send CHANGED rows, and
+ * `changedIdsOf` compares AUTHORSHIP, which deliberately ignores `viewedAt` (a
+ * reader who merely looked must not claim the row; that claim wins and would
+ * revert a column the engine just wrote). Together they dropped the one case where
+ * read state is the only change: the mark stayed local and came back unread at the
+ * next read from the host — the reported 「我标了已读它还弹出来」.
+ */
+describe('a viewedAt-only edit reaches the host', () => {
+  it('commits the row whose only change is read state', async () => {
+    const commits: Array<{ tasks?: Array<{ id: string; viewedAt?: number }> }> = []
+    let doc = emptyBoardDoc(T0)
+    const row = task('read-1')
+    doc = applyCommit(doc, commitOf({ tasks: [row] }), T0)
+
+    const client = new BoardSyncClient({
+      clientId: 'read-state',
+      transport: {
+        fetch: async () => ({ available: true, revision: doc.revision, doc }),
+        commit: async (commit: never) => {
+          commits.push(JSON.parse(JSON.stringify(commit)))
+          return { available: true, revision: doc.revision, doc }
+        },
+        /* proto 3 is NOT incidental: it is what makes this replica DIFFABLE.
+           At proto < DIFF_COMMIT_PROTOCOL the client sends the FULL array, so a
+           viewedAt-only change rides along for free and this case would pass even
+           with the fix removed — which it did, until the protocol was set right. */
+        lease: async (_id: string, options: { release?: boolean }) => ({
+          held: options.release !== true, holder: 'read-state', expiresAt: T0 + 9e9,
+          proto: DIFF_COMMIT_PROTOCOL,
+        }),
+        command: async () => {},
+        openStream: () => () => {},
+      },
+      store: { load: () => [], save: () => {}, clear: () => {} },
+      defer: (fn: () => void, _ms: number) => {
+        const handle = setTimeout(fn, 0)
+        return () => { clearTimeout(handle) }
+      },
+      now: () => T0,
+      uuid: () => 'read-state',
+      commitDebounceMs: 10,
+    } as never)
+
+    expect(await client.start()).toBe('synced')
+    expect(client.view().tasks.map(entry => entry.id)).toEqual(['read-1'])
+
+    // The ONLY change: the human opened the conversation.
+    client.setTasks([{ ...row, viewedAt: T0 + 60_000 }])
+    await new Promise(resolve => setTimeout(resolve, 400))
+
+    const committed = commits.at(-1)?.tasks?.find(entry => entry.id === 'read-1')
+    expect(committed, 'the viewedAt-only row was never committed, so the mark lives only in this replica').toBeDefined()
+    expect(committed?.viewedAt, 'the row was sent without the mark').toBe(T0 + 60_000)
   })
 })
