@@ -4386,7 +4386,21 @@
    * The shell's own chat scroll does exactly this in its following state
    * (`overflow-anchor: none` on the tail-following scroller), for the same reason. */
   overflow-anchor: none;
-}
+
+  /* ── `contain: layout`, AND DELIBERATELY NOT `paint` ─────────────────────
+   *
+   * The comment thread is one self-contained block: nothing inside it is read by
+   * its siblings, and nothing outside depends on where things landed inside it.
+   * `contain: layout` tells the engine that, so layout inside this box stays
+   * inside this box instead of invalidating the whole panel.
+   *
+   * The distinction is load-bearing. `contain: layout paint` shipped here once
+   * and was withdrawn: `paint` makes the box a paint-containing block, so every
+   * scroll re-composites a layer, which on a high-DPI laptop shows up as the
+   * gesture lagging the wheel (see the regression note on the board's column).
+   * `layout` alone keeps the layout win and leaves the paint path untouched. */
+
+  contain: layout;}
 
 /* The fold rows get a comfortable tap height (they sit at the top of a phone
    screen where a 16px line is too small a target). */
@@ -4457,7 +4471,11 @@
    * The shell's own chat scroll does exactly this in its following state
    * (`overflow-anchor: none` on the tail-following scroller), for the same reason. */
   overflow-anchor: none;
-}
+
+  /* Same reason as the comment thread: this transcript is one self-contained block,
+     and `layout` bounds its layout work to itself. NOT `paint` — see the long note
+     on `.commentsScroll` and the regression record on the board column. */
+  contain: layout;}
 
 /* The run's outcome banner: what the agent came back with. */
 .reviewOutcome {

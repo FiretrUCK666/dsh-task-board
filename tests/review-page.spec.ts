@@ -1523,3 +1523,44 @@ describe('the jump-to-latest control keeps its layout space at the bottom', () =
     expect(body, 'and it must leave the accessibility and tab order').toMatch(/aria-hidden=\{atBottom\}/)
   })
 })
+
+/**
+ * 会话滚动区可以要 \`contain: layout\`，绝不可以要 \`contain: paint\`。
+ *
+ * 这不是风格偏好，是这个仓库里踩过的一次事故：\`contain: layout paint\` 曾放在看板
+ * 列上，headless 量出中性所以发了出去；真实笔记本 + 外接高分屏上，\`paint\` 让这个
+ * 盒子成为独立的绘制包含块，每次滚动都重新合成一层，手势跟不上滚轮，最后撤回
+ * （记录在 board.module.css 那条回归注释里）。
+ *
+ * \`layout\` 只建立布局边界，不动绘制路径，所以它拿得到布局的收益而不付那笔代价。
+ * 这条测试把那个区分钉住：以后谁想顺手把 \`paint\` 加回来，必须在这里先红一次。
+ */
+describe('the session scrollers bound layout, never paint', () => {
+  const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+  /* The rule body WITHOUT its comments.
+     The prose in this file legitimately NAMES the forbidden value while explaining
+     why it is forbidden, so a judgement that reads text rather than structure
+     would force that explanation to be deleted (rule 14). Strip comments, then
+     judge declarations. */
+  const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, '')
+  const ruleOf = (name: string): string => {
+    const at = sheet.indexOf(`.${name} {`)
+    if (at < 0) throw new Error(`rule .${name} not found`)
+    let depth = 0
+    for (let i = sheet.indexOf('{', at); i < sheet.length; i += 1) {
+      if (sheet[i] === '{') depth += 1
+      if (sheet[i] === '}') { depth -= 1; if (depth === 0) return stripComments(sheet.slice(at, i + 1)) }
+    }
+    throw new Error(`rule .${name} unterminated`)
+  }
+
+  for (const name of ['commentsScroll', 'reviewTranscriptScroll']) {
+    it(`.${name} contains layout and not paint`, () => {
+      const rule = ruleOf(name)
+      expect(rule, `.${name} must bound its layout work to itself`)
+        .toMatch(/contain:\s*layout\s*;/)
+      expect(rule, `.${name} must not contain paint — that is the mechanism the regression note names as the cost on high-DPI hardware`)
+        .not.toMatch(/contain:[^;]*\bpaint\b/)
+    })
+  }
+})
