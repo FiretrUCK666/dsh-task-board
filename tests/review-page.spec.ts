@@ -1467,3 +1467,31 @@ describe('the session poll does not re-render when nothing changed', () => {
       .not.toMatch(/setContext\(current => \(\{\s*\n\s*\.\.\.current,/)
   })
 })
+
+/**
+ * 周期性的投影提交必须去重——这是同一个病根的第二、三处。
+ *
+ * `useTranscriptTail` 每 3 秒回一次结果，而 `setProjections(result.projections)`
+ * 拿到的是**每次全新的对象**。setState 按引用比较，所以哪怕投影内容一个字没变，
+ * 每 3 秒也必然重渲染一次整个面板（SessionDetail 211 行、零处 useMemo）。
+ * 滚动撞上那一刻就是一卡——「滑动条一抽一抽」。
+ *
+ * 第一处（useSessionContext）上一轮修过；这两处是当时漏掉的，所以这里一并钉住：
+ * 三个周期性的 setState 都必须先按值比较。
+ */
+describe('periodic projection commits are deduplicated', () => {
+  const read = (rel: string): string =>
+    readFileSync(fileURLToPath(new URL(`../src/client/board/${rel}`, import.meta.url)), 'utf8')
+
+  for (const file of ['SessionDetail.tsx', 'ReviewDetail.tsx']) {
+    it(`${file} commits projections only when they changed`, () => {
+      const source = read(file)
+      // The defect, stated as a ban: a bare commit of a fresh object from the poll.
+      expect(source, 'the projection commit takes the poll result straight into setState — that re-renders the panel on a timer')
+        .not.toMatch(/\(result\) => \{ setProjections\(result\.projections\) \}/)
+      // And the fix must be present in the shape that compares first.
+      expect(source, 'the projection commit must compare before storing')
+        .toMatch(/setProjections\(current => JSON\.stringify\(current\) === JSON\.stringify\(next\) \? current : next\)/)
+    })
+  }
+})

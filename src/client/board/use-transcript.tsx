@@ -82,9 +82,17 @@ export function useResizeFollow(
   useEffect(() => {
     const content = scrollRef.current
     if (content === null) return
+    /* A ResizeObserver fires on every content growth, including the growth a
+     * scroll causes when a page of history is prepended. Writing an out-of-range
+     * `scrollHeight` here asks the browser to clamp on every one of those, and the
+     * clamp is indistinguishable from a small jump. Write the clamped target, and
+     * only when the scroller is not already sitting on it. */
     const apply = (): void => {
       const root = resolveScroller(content)
-      if (root !== null && atBottomRef.current) root.scrollTop = root.scrollHeight
+      if (root === null || !atBottomRef.current) return
+      const target = root.scrollHeight - root.clientHeight
+      if (Math.abs(root.scrollTop - target) < 1) return
+      root.scrollTop = target
     }
     const observer = new ResizeObserver(apply)
     observer.observe(content)
@@ -167,16 +175,32 @@ export function useFollowScroll(
       if (frame !== undefined) cancelAnimationFrame(frame)
     }
   }, [measure, scrollRef, remountKey])
-  // Follow the latest content while at the bottom.
+  /* Follow the latest content while at the bottom — and ONLY when it moved.
+   *
+   * Two things were wrong here, and together they read as a bounce at the bottom:
+   *
+   *  · `scrollTop = scrollHeight` over-assigns by design: scrollTop is clamped to
+   *    `scrollHeight - clientHeight`, so the browser has to clamp a value that is
+   *    already out of range. Assigning the clamped value directly is the same
+   *    result without the wasted write.
+   *  · The effect re-ran on every `changedKey`, including the ones a reader causes
+   *    by scrolling to the end themselves. A write that moves the offset by zero
+   *    still forces a scroll update, and Chromium's own anchoring correction can
+   *    answer it — which is the 「滑到底就弹一下」 the report describes.
+   *
+   * So: compute the target, and do nothing when the scroller is already there. */
   useEffect(() => {
     const root = resolveScroller(scrollRef.current)
     if (root === null || !atBottom) return
-    root.scrollTop = root.scrollHeight
+    const target = root.scrollHeight - root.clientHeight
+    if (Math.abs(root.scrollTop - target) < 1) return
+    root.scrollTop = target
   }, [scrollRef, changedKey, atBottom, remountKey])
   const jumpToBottom = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    root.scrollTop = root.scrollHeight
+    // The clamped maximum, not `scrollHeight` — see the follow effect above.
+    root.scrollTop = root.scrollHeight - root.clientHeight
     setAtBottom(true)
   }, [scrollRef, setAtBottom])
   return { measure, jumpToBottom }

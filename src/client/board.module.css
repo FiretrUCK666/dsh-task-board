@@ -4429,6 +4429,18 @@
   flex: 1;
   overflow-y: auto;
   padding-right: 14px;
+  /* NO SCROLL ANCHORING — it fights the follow, and the fight is visible as a
+   * bounce at the very bottom.
+   *
+   * This scroller is pinned to the end by writing `scrollTop = scrollHeight` on
+   * every new round and every poll. Chromium's scroll anchoring also tries to keep
+   * the visual position stable when content changes above the viewport, so the two
+   * corrections run against each other: pin, anchor pulls back, next pin jumps
+   * forward. At the bottom edge the reader sees exactly 「滑到底就弹一下」.
+   *
+   * The shell's own chat scroller declares this in its following state for the
+   * same reason. */
+  overflow-anchor: none;
   /* 滚动条画在自己的圆角内：`overflow-y: auto` 的滚动条在某些引擎里会画到
    * `border-radius` 之外，加一条同半径的裁剪把它关进来。 */
   border-radius: inherit;

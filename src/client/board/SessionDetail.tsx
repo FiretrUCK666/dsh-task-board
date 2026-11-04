@@ -83,7 +83,14 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     controller,
     liveSessionId,
     undefined,
-    (result) => { setProjections(result.projections) },
+    /* An unchanged projection must not re-render this panel. The poll hands back a
+     FRESH object every 3 seconds, and setState compares by reference — so without
+     this comparison the whole surface (211 lines, no memo) re-renders on a timer,
+     and a scroll that lands on that tick stutters. Compare by value instead. */
+    (result) => {
+      const next = result.projections
+      setProjections(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+    },
   )
 
   /** 工作步骤的折法：三项都读官方 `ui-chat` 设置（读不到时是产品默认）。 */
