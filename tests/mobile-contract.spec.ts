@@ -1831,25 +1831,30 @@ describe('content-box family + interaction-card containment (the desktop truncat
     expect(gate?.[0]).toContain('scrollbar-color:')
     const ungated = structural.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/g, '')
     expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
-    // The bar is a track and a thumb, and the thumb has to be VISIBLE: full width,
-    // no transparent border insetting it to a hairline, and painted from a text
-    // tier deep enough to read against paper. All three were wrong at once and the
-    // report called it "transparent" — which, on screen, it was.
-    // The end buttons ARE drawn now, and the reference shape is why: arrow, track,
-    // thumb, one width, one colour — three pieces of a single control. They were
-    // hidden for one release; that left a bare slot with no ends.
-    expect(structural, 'the scrollbar must draw its own end arrows').toMatch(/::-webkit-scrollbar-button[^{]*\{[\s\S]*?display:\s*block/)
-    // And the trough is painted, not transparent: a reader who cannot see which
-    // part of the list they are in describes that as lag, not as a missing bar.
-    expect(structural, 'the track must be painted').toMatch(/::-webkit-scrollbar-track[^{]*\{[\s\S]*?background:\s*var\(--dsh-tb-scroll-track\)/)
+    // ONE PIECE: a solid rounded strip. No end buttons, no trough, no inset border.
+    //
+    // Every version before this one assembled the bar out of parts — buttons at the
+    // ends, a painted track behind them, a transparent border inside the thumb to
+    // thin it. Each part was added for its own good reason, and together they made
+    // the scrollbar look laminated (「夹了一层又一层」). The assertions below pin
+    // the absence of those layers, because "fewer pieces" is a design decision that
+    // only a test can hold in place.
     const thumbRule = /::-webkit-scrollbar-thumb[^{]*\{([\s\S]*?)\n\}/.exec(structural)?.[1] ?? ''
     expect(thumbRule, 'the thumb must be declared').not.toBe('')
-    expect(thumbRule, 'the thumb must not be inset by a transparent border — that is the hairline that read as absent')
-      .not.toMatch(/border:\s*calc/)
     expect(thumbRule, 'the thumb must paint from a defined colour').toMatch(/background-color:\s*var\(--dsh-tb-scroll-thumb-color\)/)
-    // The buttons ARE hidden now — that is the current design, and the assertion
-    // above pins it. This line used to assert the opposite, from the period when a
-    // drawn triangle was the intent.
+    expect(thumbRule, 'no transparent inset border — that is the layer that thinned it to a hairline')
+      .not.toMatch(/border(-inline)?:\s*calc/)
+    // A round cap, read through the container's inset where it declared one so the
+    // thumb stays inside a rounded box's corner arc; 999px is the square-box case.
+    expect(thumbRule, 'a round cap is the whole shape')
+      .toMatch(/border-radius:\s*var\(--dsh-tb-scroll-inset,\s*999px\)/)
+    // No end buttons: they cost real height at both ends and read as two marks that
+    // belong to nothing at this interface's sizes.
+    expect(structural, 'the end buttons must be hidden').toMatch(/::-webkit-scrollbar-button[^{]*\{[\s\S]*?display:\s*none/)
+    // No painted trough: a track behind the thumb is one more layer, and the strip
+    // reads clearly without it.
+    const trackRule = /::-webkit-scrollbar-track[^{]*\{([\s\S]*?)\n\}/.exec(structural)?.[1] ?? ''
+    expect(trackRule, 'the trough must stay invisible').toMatch(/background:\s*transparent/)
     expect(structural, 'the bar width belongs to the token layer, not to this sheet').toContain('var(--dsh-tb-scroll-bar)')
     // **共享层这一份是唯一的**：看板表与共享组件表里都不许再写一份。
     // （读的是那两张表自己——`panelCss()` 把所有表拼在一起，而共享层那一份正是
