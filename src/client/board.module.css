@@ -5262,6 +5262,15 @@
   /* 墨位校正：胶囊里的字要比盒心高半档（见 base.module.css 的墨位一节）。 */
 }
 
+/* Hidden at the bottom WITHOUT leaving the layout: `visibility` keeps the box and
+   its space, so the content height does not change and the scroller is never
+   re-clamped under the reader's finger. Removing the node instead is what made
+   the view spring a few pixels on arrival at the end. */
+.reviewJumpLatest[data-hidden='true'] {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .reviewJumpLatest:hover {
   background: var(--dsh-tb-hover);
   border: var(--dsh-tb-border);

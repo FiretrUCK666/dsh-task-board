@@ -1495,3 +1495,31 @@ describe('periodic projection commits are deduplicated', () => {
     })
   }
 })
+
+/**
+ * 「滑到最新」按钮到底时必须**留在布局里**，只可以失去墨与可点性。
+ *
+ * 它是一个真实占据滚动内容空间的东西（sticky、flex: none、26px 高 + margin）。
+ * 到底时 `return null` 把它从 DOM 摘掉，内容总高当场少掉它自己那一截——而那正好是
+ * 读者刚抵达底部的时刻，浏览器于是重新夹一次 scrollTop，画面就弹几像素。
+ * 两处滚动区都渲染同一个组件，所以两处都弹。
+ *
+ * 这条测试钉的是「不卸载」这个决定本身：把 `return null` 加回去，它必须变红。
+ */
+describe('the jump-to-latest control keeps its layout space at the bottom', () => {
+  const source = readFileSync(fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url)), 'utf8')
+  const body = /export function JumpToLatest\([\s\S]*?\n\}/.exec(source)?.[0] ?? ''
+
+  it('the component is never unmounted on the atBottom branch', () => {
+    expect(body, 'JumpToLatest not found').not.toBe('')
+    // The defect: bailing out before the element exists.
+    expect(body, 'returning null at the bottom removes its height from the content and re-clamps the scroller')
+      .not.toMatch(/if \(atBottom\) return null/)
+  })
+
+  it('it becomes inert instead, so a hidden control is neither seen nor reachable', () => {
+    expect(body, 'the hidden state must be expressed, not unmounted').toMatch(/data-hidden=\{atBottom \? 'true' : undefined\}/)
+    expect(body, 'a control nobody can see must not be clickable').toMatch(/disabled=\{atBottom\}/)
+    expect(body, 'and it must leave the accessibility and tab order').toMatch(/aria-hidden=\{atBottom\}/)
+  })
+})

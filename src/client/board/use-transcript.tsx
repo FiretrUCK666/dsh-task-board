@@ -213,14 +213,30 @@ export function useFollowScroll(
  * where new content already auto-follows.
  */
 export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
-  if (atBottom) return null
+  /* THE BUTTON KEEPS ITS SPACE WHEN IT IS NOT USABLE.
+   *
+   * It is a real layout element in the scroll content (sticky, flex: none, 26px
+   * tall plus its margins). Unmounting it at the bottom shortens the content by
+   * its own height — and that is exactly when the reader has just arrived at the
+   * bottom, so the browser re-clamps scrollTop and the view springs a few pixels.
+   * 「拖到底就弹一下，几像素，像吸一下」, and it appeared on both scrollers because
+   * both render this one component.
+   *
+   * So it stays mounted and keeps occupying its space; only its ink and its
+   * hit-target go away. `visibility` is the correct hiding tool here precisely
+   * because it preserves layout, and `disabled` keeps a control nobody can see
+   * from being focusable or clickable through another route. */
   return (
     <button
       type="button"
       className={css.reviewJumpLatest}
-      onClick={onJump}
-      title={t('review.jumpLatest')}
-      aria-label={t('review.jumpLatest')}
+      data-hidden={atBottom ? 'true' : undefined}
+      disabled={atBottom}
+      aria-hidden={atBottom}
+      tabIndex={atBottom ? -1 : undefined}
+      onClick={atBottom ? undefined : onJump}
+      title={atBottom ? undefined : t('review.jumpLatest')}
+      aria-label={atBottom ? undefined : t('review.jumpLatest')}
     >
       <Icon name="arrowDown" />
     </button>

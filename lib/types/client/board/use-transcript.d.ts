@@ -56,7 +56,7 @@ remountKey?: unknown): {
 export declare function JumpToLatest({ atBottom, onJump }: {
     atBottom: boolean;
     onJump: () => void;
-}): import("react").JSX.Element | null;
+}): import("react").JSX.Element;
 /** The transcript-tail state + controls a consumer binds to its scroll region. */
 interface TranscriptTailState {
     /** Folded turns; undefined while the first load is in flight. */
