@@ -1358,34 +1358,27 @@
    * a rounded box, which is the reported defect. It reads the column's own radius
    * token, so the bar follows if that radius ever changes. */
   --dsh-tb-scroll-inset: var(--dsh-tb-radius-md);
-  /* ── PAINT ISOLATION FOR THE SCROLLING COLUMN ────────────────────────────
+  /* ── NO `contain` HERE, AND THIS IS A REGRESSION FIX ─────────────────────
    *
-   * `contain: layout paint` tells the engine that nothing inside this box can
-   * affect anything outside it — which lets the column be rasterized as its own
-   * unit instead of sharing a layer with the four other columns and the whole
-   * board around them.
+   * `contain: layout paint` sat on this box for one release. The reasoning read
+   * well — bound the paint to the column that is scrolling instead of letting it
+   * share a layer with the four columns beside it — and it measured NEUTRAL in a
+   * headless browser, which is why it shipped.
    *
-   * WHY IT MATTERS HERE SPECIFICALLY: this element is the scroller, and it holds
-   * every card in the column (a busy column is thirty of them, each with a rim,
-   * a cast and a rounded clip). Without isolation a scroll invalidates the layer
-   * the board header, the mode row and the other four columns also live on, so
-   * one column's gesture made the entire panel repaint. With it, the work is
-   * bounded by the box that is actually moving.
+   * It was not neutral on real hardware. `contain: paint` forces this box to be a
+   * separate paint-containing block, so every scroll re-composites a new layer;
+   * on a laptop driving an external high-DPI screen that cost is paid in device
+   * pixels and shows up as the gesture lagging behind the wheel. The report that
+   * identified it was 「两天前的版本是正常的」 — this property was added inside
+   * that window, and removing it is the only change here.
    *
-   * `contain: paint` is safe on THIS box because it already clips
-   * (`overflow-y: auto`) and nothing in it is positioned outside — the one child
-   * that hangs out is the drop indicator, and it is positioned INSIDE the padding
-   * this rule keeps. `contain: layout` does not change what the cards measure
-   * (the box is a flex column, not a two-way size container), which is why the
-   * geometry gates still pass unchanged.
+   * The lesson worth keeping: a headless frame measurement that reads 16.7ms says
+   * the RENDERER kept up, not that the COMPOSITOR did. Layer-count changes are
+   * invisible to it, so they cannot be validated by it.
    *
-   * NOT `content-visibility: auto` here, and the reason is worth writing down:
-   * it skips rendering off-screen children, which would be the bigger win, but it
-   * also makes them unmeasurable until they are rendered — and this board
-   * measures cards (card heights for the drop gap, `offsetTop` for scroll
-   * anchoring). Trading correctness of drag-and-drop for frames is not a trade
-   * this surface can make. */
-  contain: layout paint;
+   * `content-visibility: auto` was never added for a different reason — it makes
+   * off-screen cards unmeasurable, and this board measures them for the drop gap
+   * and scroll anchoring. */
   /* 滚动条不画在这条轨道上（见共享层那条隐藏规则）。 */
   /* NO `scroll-behavior: smooth` HERE, and the comment that used to sit on it
      is worth correcting rather than deleting, because it was confidently wrong:
@@ -1704,9 +1697,15 @@
   box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   opacity: 0;
   animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
-  /* Its own compositor layer, so the fade costs no paint and no layout: the
-     card underneath is untouched while the halo breathes. */
-  will-change: opacity;
+  /* NO `will-change` HERE. It was added to promote this halo to its own
+   * compositor layer, which is the textbook advice for an opacity animation — and
+   * it is advice for a page that animates ONE such element. The board can have
+   * several cards breathing at once, and every promoted layer is another surface
+   * the compositor has to keep and blend while the reader scrolls. On a high-DPI
+   * screen that cost is paid in device pixels.
+   *
+   * The keyframes still animate `opacity` rather than `box-shadow` (the paint
+   * property): that part is right and stays. What is gone is the extra layer. */
 }
 
 /* The title line: the card's solid color mark (exact picked color, 100% of
