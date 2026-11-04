@@ -326,34 +326,25 @@
   height: var(--dsh-tb-scroll-bar);
 }
 
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-thumb,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-thumb,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-thumb,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-thumb {
-  /* THE THUMB IS THE SAME GREY AS THE ARROWS, and it FILLS the bar's width.
+[data-dsh-taskboard-view]::-webkit-scrollbar-thumb,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-thumb,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-thumb,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-thumb {
+  /* ONE SOLID LOZENGE, THE FULL WIDTH OF THE BAR.
    *
-   * It used to be a 4px hairline floated inside a 10px bar by a transparent
-   * border, on the theory that thin reads as elegant. Measured on screen it read
-   * as ABSENT: 4px of grey inside 10px of nothing, next to two 3px arrows, is a
-   * column of air with a thread down the middle. The report said the bar looked
-   * transparent, and it was right.
+   * It was a hairline floated inside a wider bar by a transparent border, on the
+   * theory that thin reads as elegant. On screen it read as ABSENT — a thread of
+   * grey in a column of nothing, which is what 「那个滑动条还是透明的」 was
+   * describing. The border is gone and the paint covers the bar's whole width.
    *
-   * So the thumb is solid and full-width. Rounded ends keep it from looking like
-   * a raw rectangle, and the radius comes from `--dsh-tb-scroll-inset` where the
-   * scrollable box declared one — the thumb then nests inside the container's own
-   * corner arc instead of poking through it.
+   * `min-block-size` is what stops a very long list from squashing the thumb into
+   * a line: without a floor the thumb's height is a pure ratio of content length,
+   * and the longer the list the less of a thumb there is.
    *
-   * `min-block-size` matters for the same reason: without it a very long list
-   * squashes the thumb to a few pixels and the bar again reads as a line. */
+   * The radius reads `--dsh-tb-scroll-inset` where the scrollable box declared
+   * one, so the thumb nests inside the container's corner arc; 999px is the
+   * fallback for square scrollers, where a fully round cap is the right shape. */
   background-color: var(--dsh-tb-scroll-arrow-color);
-  /* A round lozenge floating in the bar rather than a slab filling it. */
-  border: calc((var(--dsh-tb-scroll-bar) - var(--dsh-tb-scroll-thumb)) / 2) solid transparent;
-  background-clip: padding-box;
-  /* The thumb's own corners read the SAME inset the track used, so at either end
-     of its travel its cap is concentric with the container's corner instead of
-     poking through the arc. 999px is the fallback for scrollers that declared no
-     inset (a square list): there the bar is straight, and a fully round cap is
-     the right shape. */
   border-radius: var(--dsh-tb-scroll-inset, 999px);
   min-block-size: 2.5rem;
 }
@@ -393,98 +384,36 @@
   margin-block: var(--dsh-tb-scroll-breath);
 }
 
-/* ── THE SCROLLBAR, AS THREE PIECES OF ONE COLOUR ──────────────────────────
+/* ── THE SCROLLBAR: ONE SOLID THUMB, NO END BUTTONS ────────────────────────
  *
- * Top to bottom: a triangle arrow, the track, the thumb riding it, and a second
- * arrow at the other end. All three pieces are the SAME grey.
+ * An earlier version drew a three-piece bar (triangle, track, thumb, triangle).
+ * It was removed on request: the arrows read as too small and too fine at the
+ * sizes this interface actually renders, and the whole assembly looked fussier
+ * than the surface it belonged to. What is left is the piece that carries the
+ * information — where you are in the list, and how much is left.
  *
- * ── THE SELECTORS ARE NOT :where(), AND THAT IS THE WHOLE FIX ──────────────
+ * The buttons are `display: none`, which also removes their reserved height, so
+ * the track runs the full height of the box and the thumb can travel end to end.
  *
- * Every rule here used to be wrapped in `:where(...)` to keep specificity at
- * zero. That is right for normal elements and WRONG for scrollbar
- * pseudo-elements: the UA stylesheet paints its own chevron into
- * `::-webkit-scrollbar-button` as a background-image, and a zero-specificity
- * author rule LOSES to it. Measured, in this order:
+ * ── WHY THIS IS NOT :where() ───────────────────────────────────────────────
  *
- *   · buttons laid out correctly (painting them red proved the boxes exist);
- *   · `background-color` from a high-specificity probe DID show;
- *   · `background-image` from the `:where()` rules showed NOTHING — the UA
- *     chevron was there, but its own glyph is invisible against a transparent
- *     button, so the ends looked empty.
+ * The UA stylesheet styles these pseudo-elements too. A zero-specificity author
+ * rule loses to it — which is how an earlier attempt ended up laying the pieces
+ * out correctly and painting nothing. `[data-dsh-taskboard-view]` (0,1,0) is
+ * enough to win without touching anything else.
  *
- * So the base rules use a real attribute selector: `[data-dsh-taskboard-view]`
- * (0,1,0) instead of `:where([data-dsh-taskboard-view])` (0,0,0). That is
- * enough to beat the UA origin without touching anything else.
+ * ── THE THUMB IS OPAQUE AND FULL WIDTH ─────────────────────────────────────
  *
- * ── WHY A BACKGROUND IMAGE ─────────────────────────────────────────────────
- *
- * A border triangle needs `::before`, and a pseudo-element cannot carry another
- * one — `::-webkit-scrollbar-button::before` is invalid and the bundler rejects
- * the entire sheet. A mask was tried next: it parsed, reserved its width, and
- * painted nothing (masking is not supported on these pseudo-elements). A
- * background image is the channel they have always honoured.
- *
- * The colour is baked into the SVG, trading theme-following for the arrow simply
- * existing. It is chrome at ~3.6:1 against paper, not content, so one grey is
- * right; the value is the same one the thumb uses.
- *
- * ── THE ENDS ARE HELD OFF THE CORNERS ──────────────────────────────────────
- *
- * Board columns and rails are ROUNDED, and a bar flush with the top puts its
- * arrowhead on the arc — a square mark poking out of a rounded box. The track
- * carries a small end margin (`--dsh-tb-scroll-bar / 2`, not the container's
- * radius: a radius-sized gap is wider than the whole bar and squeezes the
- * buttons out entirely, which is what a previous attempt did). */
+ * Its thickness used to be a transparent border floating a 4px hairline inside a
+ * wider bar. Against paper that reads as ABSENT, not as subtle — the report said
+ * the bar looked transparent, and it was right. So the thumb fills the bar's
+ * width, has no inset border, and is painted with the SECOND text tier rather
+ * than the third: a scrollbar is chrome, but chrome that cannot be seen is a
+ * scrollbar that does not exist. */
 [data-dsh-taskboard-view]::-webkit-scrollbar-button,
 [data-dsh-taskboard-panel]::-webkit-scrollbar-button,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-button,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-button {
-  display: block;
-  inline-size: var(--dsh-tb-scroll-bar);
-  block-size: var(--dsh-tb-scroll-bar);
-  border: 0;
-  background-color: transparent;
-  background-repeat: no-repeat;
-  background-position: center;
-  background-size: var(--dsh-tb-scroll-arrow) var(--dsh-tb-scroll-arrow);
-}
-
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:start:decrement,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:start:decrement,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:start:decrement,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:start:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 3L8.5 7L1.5 7Z'/%3E%3C/svg%3E");
-}
-
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:end:increment,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:end:increment,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:end:increment,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:end:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 7L1.5 3L8.5 3Z'/%3E%3C/svg%3E");
-}
-
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:start:decrement,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:start:decrement,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:start:decrement,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:start:decrement {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M3 5L7 1.5L7 8.5Z'/%3E%3C/svg%3E");
-}
-
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:end:increment,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:end:increment,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:end:increment,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:end:increment {
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M7 5L3 8.5L3 1.5Z'/%3E%3C/svg%3E");
-}
-
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:double-button,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:double-button,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:double-button,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:double-button,
-[data-dsh-taskboard-view]::-webkit-scrollbar-button:single-button:horizontal,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button:single-button:horizontal,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button:single-button:horizontal,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:single-button:horizontal {
   display: none;
 }
 

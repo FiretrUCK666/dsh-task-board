@@ -118,15 +118,44 @@ export function useFollowScroll(
   const atBottomRef = useRef(atBottom)
   useEffect(() => { atBottomRef.current = atBottom })
   useResizeFollow(scrollRef, atBottomRef, remountKey)
+  /* THE LAST MEASURED ANSWER, so an unchanged scroll position costs nothing.
+   *
+   * `setAtBottom` with the same boolean is a no-op in React's output but not in
+   * its WORK: it schedules a render, walks the tree, compares. During a gesture
+   * that happens a hundred times a second, and it is invisible in any single
+   * frame — which is exactly the shape of 「整个画面有点延迟」. */
+  const atBottomKnown = useRef<boolean | undefined>(undefined)
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    setAtBottom(root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX)
+    const next = root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX
+    if (next === atBottomKnown.current) return
+    atBottomKnown.current = next
+    setAtBottom(next)
   }, [scrollRef, setAtBottom])
+  /* ONE MEASUREMENT PER FRAME.
+   *
+   * This listener is on `document` in the CAPTURE phase, so it fires for every
+   * scroll of every scroller in the panel — not just this transcript. Without
+   * coalescing, one wheel gesture produced a burst of layouts reads, and every
+   * one of them forced style+layout to be resolved before it could answer
+   * (`scrollHeight` is a layout property). A frame is the finest granularity a
+   * reader can perceive, so measuring once per frame loses nothing and stops the
+   * panel from doing work it throws away. */
   useEffect(() => {
-    const handler = (): void => measure()
+    let frame: number | undefined
+    const handler = (): void => {
+      if (frame !== undefined) return
+      frame = requestAnimationFrame(() => {
+        frame = undefined
+        measure()
+      })
+    }
     document.addEventListener('scroll', handler, true)
-    return () => document.removeEventListener('scroll', handler, true)
+    return () => {
+      document.removeEventListener('scroll', handler, true)
+      if (frame !== undefined) cancelAnimationFrame(frame)
+    }
   }, [measure])
   // Follow the latest content while at the bottom.
   useEffect(() => {

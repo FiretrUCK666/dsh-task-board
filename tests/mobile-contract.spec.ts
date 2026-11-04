@@ -1815,16 +1815,15 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // the ONLY thin+color declaration — strip it and no thin may remain.
     //
     // THE BUTTONS ARE DRAWN BY US NOW, NOT HIDDEN. Both answers were tried and
-    // they were answers to DIFFERENT problems:
-    //  · `display: none` removed the native chevrons that leaked in when the gate
-    //    was missing. Correct at the time, but it left a scrollbar with no end
-    //    pieces at all — a flat rectangle next to a control set that draws
-    //    everything else, which is what made it read as unstyled browser chrome.
-    //  · drawing them gives the three-piece bar the rest of this interface looks
-    //    like: button, track, thumb, one width, one colour.
-    // What must NOT happen is the platform drawing them for us, which is why the
-    // gate still owns `scrollbar-width` exclusively — that is the actual guard
-    // against 「冒原生箭头」. The webkit path styles its own.
+    // END BUTTONS ARE NOT DRAWN, and that is a decision rather than an omission.
+    // They were drawn once (a triangle at each end) and removed: at the sizes this
+    // interface actually renders they read as too small and too fine, and the whole
+    // assembly was fussier than the surface it belonged to. What is left is the
+    // piece that carries information — where you are in the list.
+    //
+    // What must NOT happen either way is the platform drawing its own chevrons,
+    // which is why the gate still owns `scrollbar-width` exclusively — that is the
+    // actual guard against 「冒原生箭头」.
     const structural = stripCssComments(readFileSync(new URL('../src/client/design/base.module.css', import.meta.url), 'utf8'))
     const gate = /@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/.exec(structural)
     expect(gate, 'the standard scrollbar props must live behind the webkit gate').not.toBeNull()
@@ -1832,9 +1831,19 @@ describe('content-box family + interaction-card containment (the desktop truncat
     expect(gate?.[0]).toContain('scrollbar-color:')
     const ungated = structural.replace(/@supports not selector\(::-webkit-scrollbar\) \{[\s\S]*?\n\}/g, '')
     expect(ungated, 'no styling scrollbar-width outside the gate — it silences the webkit rules in Chromium').not.toContain('scrollbar-width: thin')
-    // The three pieces, each declared in the ONE shared place.
-    expect(structural, 'the scrollbar must draw its own end buttons').toMatch(/::-webkit-scrollbar-button\s*\{[\s\S]*?display:\s*block/)
-    expect(structural, 'a hidden button is the flat strip this replaced').not.toMatch(/::-webkit-scrollbar-button\s*\{\s*display:\s*none/)
+    // The bar is a track and a thumb, and the thumb has to be VISIBLE: full width,
+    // no transparent border insetting it to a hairline, and painted from a text
+    // tier deep enough to read against paper. All three were wrong at once and the
+    // report called it "transparent" — which, on screen, it was.
+    expect(structural, 'the end buttons must stay hidden').toMatch(/::-webkit-scrollbar-button\s*\{[\s\S]*?display:\s*none/)
+    const thumbRule = /::-webkit-scrollbar-thumb[^{]*\{([\s\S]*?)\n\}/.exec(structural)?.[1] ?? ''
+    expect(thumbRule, 'the thumb must be declared').not.toBe('')
+    expect(thumbRule, 'the thumb must not be inset by a transparent border — that is the hairline that read as absent')
+      .not.toMatch(/border:\s*calc/)
+    expect(thumbRule, 'the thumb must paint from a defined colour').toMatch(/background-color:\s*var\(--dsh-tb-scroll-arrow-color\)/)
+    // The buttons ARE hidden now — that is the current design, and the assertion
+    // above pins it. This line used to assert the opposite, from the period when a
+    // drawn triangle was the intent.
     expect(structural, 'the bar width belongs to the token layer, not to this sheet').toContain('var(--dsh-tb-scroll-bar)')
     // **共享层这一份是唯一的**：看板表与共享组件表里都不许再写一份。
     // （读的是那两张表自己——`panelCss()` 把所有表拼在一起，而共享层那一份正是

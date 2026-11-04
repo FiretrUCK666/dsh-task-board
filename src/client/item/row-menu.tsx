@@ -149,11 +149,25 @@ export function ItemRowMenu(props: ItemRowMenuProps) {
       if (trigger === undefined || panel === undefined || box === undefined) return
       setSpot(placeRowMenu(trigger, panel, { width: box.width, height: box.height }))
     }
-    window.addEventListener('resize', onReflow)
-    window.addEventListener('scroll', onReflow, true)
+    /* ONE REPOSITION PER FRAME. `onReflow` reads three layout rectangles and
+     * commits a state update; a wheel gesture delivers many scroll events per
+     * frame, and the menu cannot move twice within one. Coalescing keeps the
+     * menu glued to its trigger without making every other scroller in the panel
+     * pay for layout reads it will not use. */
+    let frame: number | undefined
+    const schedule = (): void => {
+      if (frame !== undefined) return
+      frame = requestAnimationFrame(() => {
+        frame = undefined
+        onReflow()
+      })
+    }
+    window.addEventListener('resize', schedule)
+    window.addEventListener('scroll', schedule, true)
     return () => {
-      window.removeEventListener('resize', onReflow)
-      window.removeEventListener('scroll', onReflow, true)
+      window.removeEventListener('resize', schedule)
+      window.removeEventListener('scroll', schedule, true)
+      if (frame !== undefined) cancelAnimationFrame(frame)
     }
   }, [props.trigger, props.panel])
 
