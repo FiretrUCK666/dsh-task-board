@@ -869,6 +869,11 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       { px: '22px', why: /reviewMessage/ },
       { px: '3px', why: /dropIndicator/ },
       { px: '4px', why: /scrollbar-thumb|mdCode|attachRemove|mdTaskBox/ },
+      /* 999px is the "fully round" spelling for a scrollbar cap: the thumb and the
+         trough are roundENDED strips whose radius must exceed half their height at
+         any length, so a token ladder cannot express it — the ladder describes
+         borders on boxes, not the caps of a moving strip. */
+      { px: '999px', why: /scrollbar-(thumb|track)/ },
       { px: '1px', why: /MeterSegment/ },
       { px: '2px', why: /MeterSwatch/ },
     ]

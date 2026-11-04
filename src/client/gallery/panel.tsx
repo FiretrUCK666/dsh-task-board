@@ -179,7 +179,7 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
     title: '几何与动效',
     why: '量出来的数各自成令牌；动效只有一个时长与一条曲线，减弱动效把它归零。',
     kind: 'plain',
-    names: ['--dsh-tb-button-h', '--dsh-tb-button-h-sm', '--dsh-tb-row-line', '--dsh-tb-hint-line', '--dsh-tb-dot', '--dsh-tb-hit-ring-block', '--dsh-tb-hit-ring-inline', '--dsh-tb-ring', '--dsh-tb-scroll-bar', '--dsh-tb-scroll-thumb', '--dsh-tb-scroll-arrow', '--dsh-tb-scroll-arrow-color', '--dsh-tb-scroll-breath'],
+    names: ['--dsh-tb-button-h', '--dsh-tb-button-h-sm', '--dsh-tb-row-line', '--dsh-tb-hint-line', '--dsh-tb-dot', '--dsh-tb-hit-ring-block', '--dsh-tb-hit-ring-inline', '--dsh-tb-ring', '--dsh-tb-scroll-bar', '--dsh-tb-scroll-thumb', '--dsh-tb-scroll-arrow', '--dsh-tb-scroll-arrow-color', '--dsh-tb-scroll-breath', '--dsh-tb-scroll-track', '--dsh-tb-scroll-thumb-color'],
   },
   {
     /* ── 动效：**一套词，一个曲线** ─────────────────────────────────────────────

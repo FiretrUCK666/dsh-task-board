@@ -330,93 +330,95 @@
 [data-dsh-taskboard-panel]::-webkit-scrollbar-thumb,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-thumb,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-thumb {
-  /* ONE SOLID LOZENGE, THE FULL WIDTH OF THE BAR.
+  /* A LIGHT LOZENGE RIDING IN A PAINTED TROUGH.
    *
-   * It was a hairline floated inside a wider bar by a transparent border, on the
-   * theory that thin reads as elegant. On screen it read as ABSENT — a thread of
-   * grey in a column of nothing, which is what 「那个滑动条还是透明的」 was
-   * describing. The border is gone and the paint covers the bar's whole width.
+   * The shape is three pieces of one control — arrow, track, thumb — the way the
+   * reference screenshot reads. Two earlier choices broke that:
+   *  - the thumb filled the bar's entire width, so there was no trough to see and
+   *    the bar looked like a block sliding along the edge;
+   *  - the track was transparent, so a reader could not tell where they were in
+   *    the list. During a gesture 「不知道自己在哪」 is almost indistinguishable
+   *    from 「卡」, which is why this kept being reported as lag.
    *
-   * `min-block-size` is what stops a very long list from squashing the thumb into
-   * a line: without a floor the thumb's height is a pure ratio of content length,
-   * and the longer the list the less of a thumb there is.
+   * The transparent inline border is what makes the visible thumb narrower than
+   * the bar without a second width token: the element is the bar's width, and the
+   * paint stops at the padding box, leaving the trough visible on both sides.
    *
-   * The radius reads `--dsh-tb-scroll-inset` where the scrollable box declared
-   * one, so the thumb nests inside the container's corner arc; 999px is the
-   * fallback for square scrollers, where a fully round cap is the right shape. */
-  background-color: var(--dsh-tb-scroll-arrow-color);
+   * `min-block-size` stops a very long list from squashing the thumb into a line:
+   * without a floor its height is a pure ratio of content length. */
+  background-color: var(--dsh-tb-scroll-thumb-color);
+  background-clip: padding-box;
+  border-inline: calc((var(--dsh-tb-scroll-bar) - var(--dsh-tb-scroll-thumb)) / 2) solid transparent;
   border-radius: var(--dsh-tb-scroll-inset, 999px);
   min-block-size: 2.5rem;
 }
 
-:where([data-dsh-taskboard-view])::-webkit-scrollbar-track,
-:where([data-dsh-taskboard-panel])::-webkit-scrollbar-track,
-:where([data-dsh-taskboard-view]) ::-webkit-scrollbar-track,
-:where([data-dsh-taskboard-panel]) ::-webkit-scrollbar-track {
-  background: transparent;
-  /* 轨道两头各让一档 —— **滚动条永远跑在一条方角的轨道上，而盒子右下角是圆的**。
-     轨道铺到那截弧上时，滑块就压在弧外面，读者看到的是「滚动条的头要冲出来」。
-     缩进的是**轨道**，不是盒子：滑块的整个行程于是被关在直边以内，与圆角多大、
-     内容多长都无关。
-
-     值经 `--dsh-tb-scroll-inset` 读，**不写死一个像素数**：会滚且自己画圆角的盒子
-     各自把它声明成自己那一档圆角（`textarea.input` / `.slashMenu` /
-     `.sessionContextPanel` / `.itemRowMenu` / `.itemProse` / `.output`），圆角改档
-     时滚动条跟着走，不会留下一个对不上的旧数。方角的滚动体读不到这个变量，缩进为
-     0——长对话、清单列表、看板列区一个像素都不动。
-
-     **这一条补的是一句早就写着、却从未落地的承诺**：本表的注释与
-     `board.module.css` 都说过「轨道两端各让一档」，而四张表里 `scrollbar-track`
-     原先只有 `background: transparent`。承诺没有实现，读者就先看见了。
-
-     **边界（写下来，免得下一个人以为它管得更全）**：这是 `::-webkit-scrollbar`
-     那一档的缩进；`@supports` 下面那条走的是系统自己画的条，它参与布局、不按像素
-     内缩。所以本插件在 Chromium 系浏览器上完全受控，在只认 `scrollbar-width` 的
-     引擎上只是细条，没有这条缩进。`verify-scroll-corner.mjs` 守的是「声明了圆角
-     的滚动体有没有声明缩进」，它不假装能修系统条。 */
-  /* The end gap, held small ON PURPOSE. This used to read the container's corner
-     radius (14px on a board column), which is larger than the whole bar is wide —
-     the track was inset by more than its own height at each end, so the two
-     arrow buttons were squeezed out entirely and the bar rendered as a bare
-     rectangle. The gap only has to clear the ARC, not the radius: half the arrow
-     is enough, and it is expressed as a fraction of the bar so it stays right if
-     the bar's width changes. */
+[data-dsh-taskboard-view]::-webkit-scrollbar-track,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-track,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-track,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-track {
+  /* THE TROUGH IS PAINTED, not transparent: it is half of "where am I". */
+  background: var(--dsh-tb-scroll-track);
+  border-radius: 999px;
+  /* The end gap that holds the arrows off a rounded container's arc. A fixed
+     breath, not the container's radius — a radius-sized gap is wider than the
+     whole bar and squeezes the end buttons out of existence. */
   margin-block: var(--dsh-tb-scroll-breath);
 }
 
-/* ── THE SCROLLBAR: ONE SOLID THUMB, NO END BUTTONS ────────────────────────
+/* ── THE END ARROWS ──────────────────────────────────────────────────────
  *
- * An earlier version drew a three-piece bar (triangle, track, thumb, triangle).
- * It was removed on request: the arrows read as too small and too fine at the
- * sizes this interface actually renders, and the whole assembly looked fussier
- * than the surface it belonged to. What is left is the piece that carries the
- * information — where you are in the list, and how much is left.
+ * They were removed for one release and restored from the reference screenshot,
+ * which shows them: the bar reads as a control with two ends rather than a bare
+ * slot. Drawn as background images because that is the only paint channel these
+ * pseudo-elements honour — a border triangle needs ::before, and a pseudo-element
+ * cannot carry another one (invalid CSS; the bundler rejects the whole sheet),
+ * while a mask parses and paints nothing.
  *
- * The buttons are `display: none`, which also removes their reserved height, so
- * the track runs the full height of the box and the thumb can travel end to end.
- *
- * ── WHY THIS IS NOT :where() ───────────────────────────────────────────────
- *
- * The UA stylesheet styles these pseudo-elements too. A zero-specificity author
- * rule loses to it — which is how an earlier attempt ended up laying the pieces
- * out correctly and painting nothing. `[data-dsh-taskboard-view]` (0,1,0) is
- * enough to win without touching anything else.
- *
- * ── THE THUMB IS OPAQUE AND FULL WIDTH ─────────────────────────────────────
- *
- * Its thickness used to be a transparent border floating a 4px hairline inside a
- * wider bar. Against paper that reads as ABSENT, not as subtle — the report said
- * the bar looked transparent, and it was right. So the thumb fills the bar's
- * width, has no inset border, and is painted with the SECOND text tier rather
- * than the third: a scrollbar is chrome, but chrome that cannot be seen is a
- * scrollbar that does not exist. */
+ * The colour is baked into the SVG. A scrollbar arrow is chrome at ~3.6:1 against
+ * paper, not content, so one grey is the honest answer; it matches the thumb. */
 [data-dsh-taskboard-view]::-webkit-scrollbar-button,
 [data-dsh-taskboard-panel]::-webkit-scrollbar-button,
 [data-dsh-taskboard-view] ::-webkit-scrollbar-button,
 [data-dsh-taskboard-panel] ::-webkit-scrollbar-button {
-  display: none;
+  display: block;
+  inline-size: var(--dsh-tb-scroll-bar);
+  block-size: var(--dsh-tb-scroll-bar);
+  border: 0;
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: var(--dsh-tb-scroll-arrow) var(--dsh-tb-scroll-arrow);
 }
 
+
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:start:decrement,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 3L8.5 7L1.5 7Z'/%3E%3C/svg%3E");
+}
+
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:vertical:end:increment,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:vertical:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M5 7L1.5 3L8.5 3Z'/%3E%3C/svg%3E");
+}
+
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:start:decrement,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:start:decrement {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M3 5L7 1.5L7 8.5Z'/%3E%3C/svg%3E");
+}
+
+[data-dsh-taskboard-view]::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-panel]::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button:horizontal:end:increment,
+[data-dsh-taskboard-panel] ::-webkit-scrollbar-button:horizontal:end:increment {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath fill='%2381858c' d='M7 5L3 8.5L3 1.5Z'/%3E%3C/svg%3E");
+}
 /* 缩进的**默认值**：座位里每一个元素都从 0 起算。
  *
  * **为什么需要这一条，而不是把 0 写在令牌层。** 自定义属性会被继承，而

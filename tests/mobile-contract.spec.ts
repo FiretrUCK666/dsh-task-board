@@ -1835,12 +1835,18 @@ describe('content-box family + interaction-card containment (the desktop truncat
     // no transparent border insetting it to a hairline, and painted from a text
     // tier deep enough to read against paper. All three were wrong at once and the
     // report called it "transparent" — which, on screen, it was.
-    expect(structural, 'the end buttons must stay hidden').toMatch(/::-webkit-scrollbar-button\s*\{[\s\S]*?display:\s*none/)
+    // The end buttons ARE drawn now, and the reference shape is why: arrow, track,
+    // thumb, one width, one colour — three pieces of a single control. They were
+    // hidden for one release; that left a bare slot with no ends.
+    expect(structural, 'the scrollbar must draw its own end arrows').toMatch(/::-webkit-scrollbar-button[^{]*\{[\s\S]*?display:\s*block/)
+    // And the trough is painted, not transparent: a reader who cannot see which
+    // part of the list they are in describes that as lag, not as a missing bar.
+    expect(structural, 'the track must be painted').toMatch(/::-webkit-scrollbar-track[^{]*\{[\s\S]*?background:\s*var\(--dsh-tb-scroll-track\)/)
     const thumbRule = /::-webkit-scrollbar-thumb[^{]*\{([\s\S]*?)\n\}/.exec(structural)?.[1] ?? ''
     expect(thumbRule, 'the thumb must be declared').not.toBe('')
     expect(thumbRule, 'the thumb must not be inset by a transparent border — that is the hairline that read as absent')
       .not.toMatch(/border:\s*calc/)
-    expect(thumbRule, 'the thumb must paint from a defined colour').toMatch(/background-color:\s*var\(--dsh-tb-scroll-arrow-color\)/)
+    expect(thumbRule, 'the thumb must paint from a defined colour').toMatch(/background-color:\s*var\(--dsh-tb-scroll-thumb-color\)/)
     // The buttons ARE hidden now — that is the current design, and the assertion
     // above pins it. This line used to assert the opposite, from the period when a
     // drawn triangle was the intent.
