@@ -28,6 +28,7 @@ import { useCallback, useEffect, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { hasOpenRun, type ExecutionRecord, type TaskRecord } from '../../core/tasks.ts'
 import { sessionDisplay } from '../../core/session-display.ts'
+import { sameValue } from '../../core/values.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { Chip } from '../design/Chip.tsx'
@@ -113,7 +114,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
      and a scroll that lands on that tick stutters. Compare by value instead. */
     (result) => {
       const next = result.projections
-      setProjections(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
+      setProjections(current => sameValue(current, next) ? current : next)
     },
   )
 

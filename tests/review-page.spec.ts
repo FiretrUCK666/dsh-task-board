@@ -1451,12 +1451,17 @@ describe('the session poll does not re-render when nothing changed', () => {
   it('both polling updaters compare before committing', () => {
     // Each `setContext` in this hook that builds a value must return `current`
     // when the built value is equal.
+    //
+    // Judged on SHAPE, not on a serialiser's name (rule 14): what has to hold is
+    // "some comparison decides, and equality yields the existing reference". An
+    // assertion pinned to `JSON.stringify` — or to any one comparator — fails the
+    // moment the comparison is made better, which is the opposite of protection.
     const updaters = hook.match(/setContext\(current =>[\s\S]*?\n      \}\)/g) ?? []
     expect(updaters.length, 'the polling updaters must be findable').toBeGreaterThan(0)
     for (const updater of updaters) {
       if (!updater.includes('const next')) continue
       expect(updater, 'a polling updater builds an object without comparing it')
-        .toMatch(/JSON\.stringify\(next\) === JSON\.stringify\(current\) \? current : next/)
+        .toMatch(/return\s+[\w.]+\s*\([^)]*\)\s*\?\s*current\s*:\s*next/)
     }
   })
 
@@ -1489,9 +1494,11 @@ describe('periodic projection commits are deduplicated', () => {
       // The defect, stated as a ban: a bare commit of a fresh object from the poll.
       expect(source, 'the projection commit takes the poll result straight into setState — that re-renders the panel on a timer')
         .not.toMatch(/\(result\) => \{ setProjections\(result\.projections\) \}/)
-      // And the fix must be present in the shape that compares first.
+      // And the fix must be present in the shape that compares first — judged on
+      // shape, not on the comparator's name (rule 14): "some comparison decides,
+      // and equality yields the existing reference".
       expect(source, 'the projection commit must compare before storing')
-        .toMatch(/setProjections\(current => JSON\.stringify\(current\) === JSON\.stringify\(next\) \? current : next\)/)
+        .toMatch(/setProjections\(current =>\s*[\w.]+\s*\([^)]*\)\s*\?\s*current\s*:\s*next\s*\)/)
     })
   }
 })

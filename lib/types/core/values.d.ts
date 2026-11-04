@@ -47,3 +47,28 @@ export declare function messageOf(error: unknown): string;
  * @returns whether it is a plain object.
  */
 export declare function isRecord(value: unknown): value is Record<string, unknown>;
+/**
+ * 两份「读回来的值」在结构上是否相同。
+ *
+ * ── 为什么需要它，而不是 `JSON.stringify(a) === JSON.stringify(b)` ──────────
+ *
+ * 各处轮询读回来的投影每次都构造**新对象**，而 React 按引用比较，所以必须在
+ * 「值和上一份一样」时把旧引用还回去，否则整块面板按定时器重渲染。用 JSON 串
+ * 比较是够快，但它有两个真实缺陷：
+ *
+ * - **键顺序会变**：同一份数据由两个来源拼出来、或后端序列化顺序不同，串就不同，
+ *   于是被判成「变了」——白重渲染一次。这正是这套比较要消灭的东西。
+ * - **`undefined` 与「缺这个键」串出来一样**：`{a:1,b:undefined}` 和 `{a:1}` 都
+ *   是 `{"a":1}`，于是一条真实的「这个字段没了」被判成没变，界面停在旧值上。
+ *
+ * 所以按值递归比较，键集合也要一致：多一个键（哪怕值是 `undefined`）就是不同。
+ *
+ * 与 `sameBoardDocs` 的分工：那一份是**看板文档**的结构相等（它可以对某些段落
+ * 直接串比较，因为字段顺序由它自己固定写死）；这一份是**任意读回来的值**的，
+ * 面向投影与视图这类形状由外部决定的数据。两者不是同一个判断，所以不合并。
+ *
+ * @param a - one value.
+ * @param b - the other value.
+ * @returns whether they are structurally the same.
+ */
+export declare function sameValue(a: unknown, b: unknown): boolean;
