@@ -94,29 +94,46 @@ export function useSessionContext(controller: BoardController, sessionId: string
               roundsStarted: projected.roundsStarted,
               ...projected.blockedReason !== undefined ? { blockedReason: projected.blockedReason } : {},
             }
-        setContext(current => ({
-          ...current,
-          // The official `todos` projection FIRST (the harness's own TodoPanel
-          // reads the same host-computed whole list), the transcript snapshot
-          // parse as the legacy fallback when no deployment serves it.
-          todos: result.projections?.todos ?? latestSessionTodos(result.events),
-          // A projected goal (or its null) wins over the bridge; undefined
-          // leaves whatever the bridge reported. Activation survives
-          // re-polls while the goal id is unchanged (it arrives on its own
-          // channel below); a new id drops the stale value.
-          ...goal !== undefined
-            ? {
-              goal: goal === null
-                ? undefined
-                : {
-                  ...goal,
-                  ...goal.id !== undefined && current.goal?.id === goal.id && current.goal.activation !== undefined
-                    ? { activation: current.goal.activation }
-                    : {},
-                },
-            }
-            : {},
-        }))
+        /* THE POLL MUST BE A NO-OP WHEN NOTHING MOVED.
+         *
+         * This runs every 3 seconds for as long as the panel is open, and its two
+         * consumers (`SessionDetail`, `ReviewDetail`) are whole session panels.
+         * Building a fresh object each time makes React re-render them even when
+         * every field is identical — and a reader scrolling while that lands feels
+         * one stuck frame. That is the 「滑动条一抽一抽」 report, and it explains why
+         * it never depended on how much content was on screen: the cost is the
+         * queued re-render, not the list length.
+         *
+         * Comparing by value is the fix, and JSON is the honest way to do it here:
+         * these values are tiny (a few todos, one goal), and a hand-written
+         * field-by-field comparison silently stops covering a field the day one is
+         * added — which is exactly how this class of bug comes back. */
+        setContext(current => {
+          const next = {
+            ...current,
+            // The official `todos` projection FIRST (the harness's own TodoPanel
+            // reads the same host-computed whole list), the transcript snapshot
+            // parse as the legacy fallback when no deployment serves it.
+            todos: result.projections?.todos ?? latestSessionTodos(result.events),
+            // A projected goal (or its null) wins over the bridge; undefined
+            // leaves whatever the bridge reported. Activation survives
+            // re-polls while the goal id is unchanged (it arrives on its own
+            // channel below); a new id drops the stale value.
+            ...goal !== undefined
+              ? {
+                goal: goal === null
+                  ? undefined
+                  : {
+                    ...goal,
+                    ...goal.id !== undefined && current.goal?.id === goal.id && current.goal.activation !== undefined
+                      ? { activation: current.goal.activation }
+                      : {},
+                  },
+              }
+              : {},
+          }
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next
+        })
       })
     }
 
@@ -136,14 +153,19 @@ export function useSessionContext(controller: BoardController, sessionId: string
           // same discipline as everywhere else: read nothing rather than read
           // half of it.
           const view = envelope?.ok === true ? envelope.value : undefined
-          setContext(current => ({
-            ...current,
-            // The bridge only fills the goal when the projection said nothing
-            // (undefined) — a projected null (cleared) stays hidden even if
-            // the bridge still echoes a stale row.
-            ...current.goal === undefined ? { goal: view?.goal } : {},
-            subagents: view?.subagents,
-          }))
+          /* Same 3-second cadence as the transcript poll above, so the same rule
+             applies: an unchanged read must not re-render the whole panel. */
+          setContext(current => {
+            const next = {
+              ...current,
+              // The bridge only fills the goal when the projection said nothing
+              // (undefined) — a projected null (cleared) stays hidden even if
+              // the bridge still echoes a stale row.
+              ...current.goal === undefined ? { goal: view?.goal } : {},
+              subagents: view?.subagents,
+            }
+            return JSON.stringify(next) === JSON.stringify(current) ? current : next
+          })
         })
         .catch(() => { /* bridge unavailable — silence */ })
     }

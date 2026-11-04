@@ -1426,3 +1426,44 @@ describe('session context panel row grammar (badge never spills over the text)',
     expect(ruleOf('goalStripActions')).toContain('flex: none')
   })
 })
+
+/**
+ * THE 3-SECOND POLL MUST BE A NO-OP WHEN NOTHING MOVED.
+ *
+ * `useSessionContext` re-reads the transcript every 3 seconds for as long as a
+ * session panel is open. Its result was committed with a fresh object literal each
+ * time, so React saw a new reference and re-rendered the whole panel — `SessionDetail`
+ * and `ReviewDetail` are both consumers, and both are the entire visible surface.
+ *
+ * A reader scrolling while one of those lands feels one stuck frame: 「滑动条一抽一抽」.
+ * It never depended on content length, which is why 「其他 session 也卡」 and why the
+ * board's columns (no polling) never did.
+ *
+ * This checks the shape of the write rather than running timers: the updater must
+ * compare before committing. A future refactor that goes back to returning a fresh
+ * object unconditionally would silently restore the stutter, so the assertion is on
+ * the comparator's presence in each polling updater.
+ */
+describe('the session poll does not re-render when nothing changed', () => {
+  const hookPath = fileURLToPath(new URL('../src/client/board/use-interaction.ts', import.meta.url))
+  const hook = readFileSync(hookPath, 'utf8')
+
+  it('both polling updaters compare before committing', () => {
+    // Each `setContext` in this hook that builds a value must return `current`
+    // when the built value is equal.
+    const updaters = hook.match(/setContext\(current =>[\s\S]*?\n      \}\)/g) ?? []
+    expect(updaters.length, 'the polling updaters must be findable').toBeGreaterThan(0)
+    for (const updater of updaters) {
+      if (!updater.includes('const next')) continue
+      expect(updater, 'a polling updater builds an object without comparing it')
+        .toMatch(/JSON\.stringify\(next\) === JSON\.stringify\(current\) \? current : next/)
+    }
+  })
+
+  it('no polling updater commits an unconditional fresh object', () => {
+    // The original defect, stated as a ban: `setContext(current => ({ ...current,`
+    // followed directly by a commit is exactly the shape that stuttered.
+    expect(hook, 'a poll commits a fresh object every cycle — that re-renders the whole panel')
+      .not.toMatch(/setContext\(current => \(\{\s*\n\s*\.\.\.current,/)
+  })
+})
