@@ -833,6 +833,10 @@
   box-shadow: var(--dsh-tb-shadow-3);
   color: var(--dsh-tb-text-1);
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 .cruisePopoverHead {
@@ -1179,6 +1183,13 @@
    absent from its previous snapshot), so a scrolled, hovered or re-rendered
    card never replays it. One keyframes block owns the family — a future
    entrance joins this list instead of minting a new keyframes. */
+/* An arrival, played once. It animates `transform`, which makes the element a
+ * compositing/containing block — fine for the ~200ms it runs, and NOT fine if it
+ * persists: this animation is used on comment rows and transcript replies, so a
+ * retained transform means one layer per row, and a scrolling list then pays to
+ * composite dozens of layers. Every use below therefore declares
+ * `animation-fill-mode: none`; both endpoints equal the static state (opaque, no
+ * offset), so dropping the fill frame cannot flash. */
 @keyframes dshTbBoardIn {
   from { opacity: 0; transform: translateY(3px); }
   to { opacity: 1; transform: translateY(0); }
@@ -1187,6 +1198,10 @@
 .boardHeader,
 .columns {
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 .columnHeader {
@@ -3950,6 +3965,10 @@
    can see. */
 .card[data-fresh] {
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -4466,6 +4485,10 @@
   display: flex;
   max-width: 100%;
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 .reviewMessage[data-role='user'] {
@@ -4652,6 +4675,10 @@
   border-left: 2px solid var(--dsh-tb-text-3);
   opacity: 0.85;
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 /* The "waiting for you" notice: shown while the execution session is blocked
@@ -4918,6 +4945,10 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   animation: dshTbBoardIn var(--dsh-tb-motion-enter);
+  /* NO FILL MODE, ON PURPOSE — see the note on the keyframes. The animation plays
+     and then the element stops being a separate compositing layer; keeping its
+     final frame would keep every row a layer forever. */
+  animation-fill-mode: none;
 }
 
 .reviewCommentText {
