@@ -343,26 +343,10 @@ export function useTranscriptTail(
     setHasMore(result.hasMore === true)
     // A fresh tail REPLACES the window (reload / poll / session switch) —
     // earlier pages belong to the previous window and must not linger.
-    const previous = watermarkRef.current
     floorRef.current = result.floorSeq
     throughSeqRef.current = result.throughSeq
     watermarkRef.current = next
-    /* THE WATERMARK ALREADY ANSWERS "did anything arrive", so use it.
-     *
-     * The poll re-reads the tail every 3 seconds. Committing `[...result.events]`
-     * unconditionally hands React a NEW ARRAY each time, and every derived value
-     * (the fold, the step clusters, every row's identity) recomputes even when the
-     * session produced nothing — a full re-render on a timer, which a reader
-     * scrolling at that moment feels as 「一卡一卡」.
-     *
-     * `next === previous` means the newest seq did not move, i.e. the tail is the
-     * same conversation from end to end. Skipping the write there keeps the array
-     * identity stable, so React skips the subtree.
-     *
-     * The CALLBACK still runs: `onResult` feeds the projection panel, which does
-     * its own value comparison and must keep receiving fresh reads even when the
-     * message list did not change. */
-    if (next !== previous) setEvents([...result.events])
+    setEvents([...result.events])
     onResultRef.current?.(result)
   }, [])
 
