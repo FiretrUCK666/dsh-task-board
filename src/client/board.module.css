@@ -4231,14 +4231,22 @@
   flex: 1 1 auto;
   min-height: 0;
   min-width: 0;
-  /* THE region's own scroll, declared at BOTH tiers. On a wide rail it is the
-     last resort (a fully-rendered config that even a zero-height comments
-     region cannot absorb); on a phone it is the folds block's normal scroll.
-     The rail itself does not scroll (see `.reviewRail`): a scrollport that
-     contains the composer is how the send box gets pushed out of reach,
-     and a `display: contents` rail cannot scroll at all — a declared-but-dead
-     scroller is a lie `resolveScroller` could walk into. */
-  overflow-y: auto;
+  /* ONE SCROLLPORT, NOT TWO — on a phone this block scrolls; on a wide rail it
+     must not, because the comments region inside it already does.
+   *
+   * Two nested scrollers is what made the comment surface the one place that
+   * lagged: every gesture has to be hit-tested against the inner port and then
+   * walked up the scroll chain to decide whether the remainder goes to the outer
+   * one. The board's columns have no such nesting, and they never lagged.
+   *
+   * The rail itself still does not scroll (see `.reviewRail`): a scrollport that
+   * contains the composer is how the send box gets pushed out of reach, and a
+   * `display: contents` rail cannot scroll at all — a declared-but-dead scroller
+   * is a lie `resolveScroller` could walk into.
+   *
+   * Phones keep the outer scroll (below, in the compact block): there the whole
+   * folds block IS the reading surface, because the comments start folded. */
+  overflow-y: hidden;
   overflow-x: hidden;
 }
 
@@ -6170,6 +6178,14 @@
 
   .sessionRailFolds {
     grid-area: folds;
+    /* ON A PHONE THE FOLDS BLOCK IS THE SCROLLER.
+     *
+     * The wide rail hides its own overflow so exactly one scrollport is live (see
+     * the reasoning on the base rule): two nested ports make every gesture walk a
+     * scroll chain, which is what made the comment surface the one lagging place.
+     * Here the comments start FOLDED, so this block itself is the reading surface
+     * and must scroll — one port at either tier, never two. */
+    overflow-y: auto;
     /* ONE rhythm for the whole narrow rail: every segment (state row, head
        fold, comments fold) sits 10px apart — the old stack of ad-hoc values
        (8px row pads + 12px head bottom + 10px block pads + 14px transcript

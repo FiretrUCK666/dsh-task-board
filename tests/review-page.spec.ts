@@ -114,16 +114,38 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
       .not.toContain('overscroll-behavior')
   })
 
-  it('the rail clips horizontally; the FOLDS block owns the only scroll', () => {
+  it('the rail clips horizontally; EXACTLY ONE scrollport is live per tier', () => {
     // Horizontal: nothing spills past and covers other UI. Vertical: the rail
-    // does NOT scroll — a scrollport that contains the composer is exactly how
-    // the send box gets pushed out of reach, and a `display: contents`
-    // rail cannot scroll at all (a declared-but-dead scroller is a lie the
-    // follow logic could walk into). The folds block owns the last resort.
+    // itself never scrolls — a scrollport that contains the composer is how the
+    // send box gets pushed out of reach, and a `display: contents` rail cannot
+    // scroll at all (a declared-but-dead scroller is a lie the follow logic could
+    // walk into).
     expect(ruleOf('reviewRail')).toContain('overflow: hidden')
     expect(ruleOf('reviewRail')).not.toMatch(/overflow-y:\s*auto/)
-    expect(ruleOf('sessionRailFolds')).toMatch(/overflow-y:\s*auto/)
     expect(ruleOf('sessionRailFolds')).toMatch(/min-height:\s*0/)
+
+    /* ONE LIVE PORT, NOT TWO.
+     *
+     * The folds block used to scroll at BOTH tiers while the comments region inside
+     * it also scrolled. Two nested ports mean every gesture is hit-tested against
+     * the inner one and then walked up the scroll chain — on the main thread, for
+     * every wheel event. The comment surface was the only place that lagged, and
+     * the board's columns (which have no nesting) never did.
+     *
+     * On the wide rail the comments region is the reading surface, so the outer
+     * block must not scroll; on the narrow tier the comments start folded and the
+     * folds block IS the surface, so it must. Both tiers have exactly one. */
+    expect(ruleOf('sessionRailFolds'), 'the wide rail must not add a second scrollport').toMatch(/overflow-y:\s*hidden/)
+    // Looser on purpose: the narrow block carries a comment explaining why it
+    // restores the outer scroll, so anchoring on the first declaration after the
+    // selector would pin prose rather than structure.
+    const narrowAt = renderedSource.indexOf('@container dsh-tb-panel (max-width: 600px)')
+    expect(narrowAt, 'the narrow container query must exist').toBeGreaterThan(0)
+    const narrowBlock = renderedSource.slice(narrowAt)
+    const foldsAt = narrowBlock.indexOf('.sessionRailFolds {')
+    expect(foldsAt, 'the narrow tier must name the folds block').toBeGreaterThan(0)
+    expect(narrowBlock.slice(foldsAt, foldsAt + 900), 'the narrow tier restores the outer scroll')
+      .toContain('overflow-y: auto')
   })
 
   it('action rows wrap instead of bursting the card right edge', () => {

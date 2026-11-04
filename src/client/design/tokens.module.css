@@ -693,7 +693,14 @@
   /* The second text tier, not the third: a scrollbar is chrome, but chrome nobody
      can see is chrome that does not exist. At 14px on a high-DPI screen the third
      tier disappears into the paper. */
-  --dsh-tb-scroll-thumb-color: var(--dsh-tb-text-2);
+  /* Between the second and third text tiers, which is where a scrollbar belongs:
+     the third is invisible against paper at this width (the report called it
+     "transparent"), the second is loud enough to compete with the content (「太显眼」).
+     A translucent second tier lands in between — grey without becoming a dark bar
+     down the side of every panel.
+     NOT fully transparent: a bar a reader cannot find is a bar they cannot use, and
+     "where am I in this list" during a gesture is indistinguishable from lag. */
+  --dsh-tb-scroll-thumb-color: color-mix(in srgb, var(--dsh-tb-text-2) 55%, transparent);
   /* 滚动条两端离盒子上下的**呼吸**：列的圆角是 20px，条若从顶端开始，箭头就压在
      那段弧上，看着像从圆角里长出来。这个值比条宽大一档，正好把两个箭头端按钮推进
      直边以内，又不至于像「读容器圆角」那样把按钮整个挤掉（圆角 20px 比 10px 的条还
