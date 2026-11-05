@@ -1564,3 +1564,44 @@ describe('the session scrollers bound layout, never paint', () => {
     })
   }
 })
+
+/**
+ * 评论列表与「是否在底部」的判定，都不许在滚动/父级重渲染时做重复工作。
+ *
+ * 依据是一次**真实的性能录制**（读者提供的 Performance 轨迹）：INP 286ms（正常低于
+ * 200ms），主线程 JS 块几乎铺满整段录制。两条各自的成因：
+ *
+ * 1. `atBottom` 用**单一 24px 阈值**判定。读者停在底部附近时，滚轮每动一格都会跨过
+ *    那条线，于是 `atBottom` 反复翻转，整个面板（列表、输入框、折叠状态）跟着重渲染
+ *    —— 一次手势一次重渲染。修法是**迟滞**：进底部 24px，离开要 120px。
+ * 2. `CommentsThread` 没有 memo。父级每 3 秒轮询、状态行更新、折叠切换都会重画整个
+ *    评论列表（每条一个 `<li>`，内含 markdown、芯片、附件簿记）。修法是按内容 memo
+ *    ——按**值**比较轮次 id 与状态，因为 props 本身在上游每次都是新对象。
+ */
+describe('the comment surface does no per-scroll or per-poll rework', () => {
+  const boardDir = fileURLToPath(new URL('../src/client/board/', import.meta.url))
+  const read = (name: string): string => readFileSync(boardDir + name, 'utf8')
+
+  it('the at-bottom decision has hysteresis, not a single threshold', () => {
+    const hook = read('use-transcript.tsx')
+    expect(hook, 'a second, larger threshold must exist for leaving the bottom')
+      .toMatch(/LEAVE_BOTTOM_PX\s*=\s*\d+/)
+    expect(hook, 'measure must consult the previous answer to pick the threshold')
+      .toMatch(/wasAtBottom/)
+    // The defect, stated as a ban: one threshold for both directions makes the
+    // reader's tremor near the end toggle the state on every wheel tick.
+    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(hook)?.[0] ?? ''
+    expect(measure, 'measure not found').not.toBe('')
+    expect(measure, 'a single-threshold comparison re-renders the panel on every crossing')
+      .not.toMatch(/const next = root\.scrollHeight - root\.scrollTop - root\.clientHeight < NEAR_BOTTOM_PX/)
+  })
+
+  it('the comment thread is memoised on its content', () => {
+    const source = read('CommentsThread.tsx')
+    expect(source, 'CommentsThread must be wrapped in memo — every parent render otherwise repaints every comment')
+      .toMatch(/export const CommentsThread = memo\(function CommentsThread/)
+    // Identity comparison would never hit: `views` is a fresh array each poll.
+    expect(source, 'the comparison must be by value, not object identity')
+      .toMatch(/x\.round\.id !== y\.round\.id \|\| x\.state !== y\.state/)
+  })
+})

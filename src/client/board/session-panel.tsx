@@ -10,7 +10,7 @@
  * session id.
  */
 import { Select } from '../design/Field.tsx'
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useRef, useState, type ReactNode, useMemo } from 'react'
 import type { BoardController, PendingInteractionKind, SessionModelChoice, SessionModelGroup, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { bandNarrowMax } from '../design/bands.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
@@ -768,7 +768,12 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // conversation), folded on a phone (an open thread would bury the
   // conversation + context — the tap toggles either way, one grammar).
   const [commentsOpen, setCommentsOpen] = useState(!narrowPanel)
-  const threadFingerprint = thread.map(view => `${view.round.id}:${view.state}`).join('|')
+  /* Memoised: this string is a dependency of the follow effect, so rebuilding it
+     on every render re-arms that effect for nothing. */
+  const threadFingerprint = useMemo(
+    () => thread.map(view => `${view.round.id}:${view.state}`).join('|'),
+    [thread],
+  )
   // Content card OR honest shell: either one means the session is awaiting
   // the user and owns every force-open/follow behavior below — one boolean,
   // never two parallel conditions to drift apart.

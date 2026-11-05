@@ -6,6 +6,7 @@
  * the slash-command marker and the settled outcome text — so both panels
  * always read as the same widget.
  */
+import { memo } from 'react'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -16,7 +17,22 @@ import { Markdown } from './Markdown.tsx'
 import { formatDateTime } from './format-time.ts'
 
 /** Renders the task's comment views (oldest first) with cancel affordances. */
-export function CommentsThread({ task, views, onCancel }: {
+/* MEMOISED ON THE THREAD'S CONTENT, NOT ON OBJECT IDENTITY.
+ *
+ * The panel re-renders on its own schedule (a poll every 3s, state row updates,
+ * fold toggles) and every one of those re-renders walked this list — one <li> per
+ * comment, each with markdown, chips and its own attachment bookkeeping. The
+ * comment rows did not change; the parent's props objects did.
+ *
+ * The comparison is by VALUE (round ids and their states), because the props
+ * themselves are rebuilt upstream: `views` is a fresh array each poll and `task`
+ * is a document row. Comparing identities would never hit; comparing the shape
+ * that is actually drawn does. `onCancel` is compared by identity — it is a
+ * useCallback upstream, and a genuinely different handler must re-render.
+ *
+ * `task` is compared by id: the rows read its queue positions, which move only
+ * when the thread's own states move — and those are compared above. */
+export const CommentsThread = memo(function CommentsThread({ task, views, onCancel }: {
   task: TaskRecord
   views: readonly CommentView[]
   /** Cancel a pending round (a saved/queued round is removed on true). */
@@ -86,4 +102,14 @@ export function CommentsThread({ task, views, onCancel }: {
       })}
     </ul>
   )
-}
+}, (a, b) => {
+  if (a.onCancel !== b.onCancel) return false
+  if (a.task.id !== b.task.id) return false
+  if (a.views.length !== b.views.length) return false
+  for (let i = 0; i < a.views.length; i += 1) {
+    const x = a.views[i]
+    const y = b.views[i]
+    if (x.round.id !== y.round.id || x.state !== y.state) return false
+  }
+  return true
+})

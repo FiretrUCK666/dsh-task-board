@@ -2,6 +2,9 @@ import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape 
 import { type TranscriptTurn } from './review-transcript.ts';
 /** How close to the bottom a scroll position counts as "at the latest". */
 export declare const NEAR_BOTTOM_PX = 24;
+/** How much clearance it takes to LEAVE the bottom once you are there. Larger than
+ *  NEAR_BOTTOM_PX on purpose — see the hysteresis note on `measure`. */
+export declare const LEAVE_BOTTOM_PX = 120;
 /**
  * The element that OWNS the scroll for a piece of content: the nearest
  * self-or-ancestor that DECLARES itself a scroll container (`overflow-y:

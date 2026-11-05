@@ -31,6 +31,9 @@ import { Icon } from '../design/ui.tsx'
 
 /** How close to the bottom a scroll position counts as "at the latest". */
 export const NEAR_BOTTOM_PX = 24
+/** How much clearance it takes to LEAVE the bottom once you are there. Larger than
+ *  NEAR_BOTTOM_PX on purpose — see the hysteresis note on `measure`. */
+export const LEAVE_BOTTOM_PX = 120
 
 /**
  * The element that OWNS the scroll for a piece of content: the nearest
@@ -133,10 +136,27 @@ export function useFollowScroll(
    * that happens a hundred times a second, and it is invisible in any single
    * frame — which is exactly the shape of 「整个画面有点延迟」. */
   const atBottomKnown = useRef<boolean | undefined>(undefined)
+  /* HYSTERESIS, because a single threshold makes the reader's gesture oscillate.
+   *
+   * Entering "at the bottom" and leaving it used ONE 24px line. A reader resting
+   * near the end crosses that line on almost every wheel tick, and each crossing
+   * flips `atBottom` — which re-renders the whole panel (the transcript list, the
+   * composer, the fold states). On a long conversation that is a render per scroll
+   * event, which is exactly a saturated main thread: the recorded trace shows
+   * INP 286ms with the JS row filled end to end, and the report is 「滑到底往上拉
+   * 就卡」 — the gesture that lives on that line.
+   *
+   * Two thresholds instead of one. Coming TO the bottom still needs 24px, so
+   * following stays as tight as it was; leaving requires a full
+   * LEAVE_BOTTOM_PX of clearance, so ordinary tremor around the end cannot
+   * toggle the state at all. */
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    const next = root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX
+    const distance = root.scrollHeight - root.scrollTop - root.clientHeight
+    // Was it at the bottom? Then it takes LEAVE_BOTTOM_PX to say otherwise.
+    const wasAtBottom = atBottomKnown.current === true
+    const next = wasAtBottom ? distance < LEAVE_BOTTOM_PX : distance < NEAR_BOTTOM_PX
     if (next === atBottomKnown.current) return
     atBottomKnown.current = next
     setAtBottom(next)
