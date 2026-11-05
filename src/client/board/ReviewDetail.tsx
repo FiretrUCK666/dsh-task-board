@@ -100,6 +100,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     pageUnsupported: transcriptPageUnsupported,
     atBottom: transcriptAtBottom,
     scrollRef: transcriptScrollRef,
+    onScroll: onTranscriptScroll,
     jumpToBottom: jumpTranscript,
     reload: reloadTranscript,
     loadEarlier: loadEarlierTranscript,
@@ -207,7 +208,7 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
         <div
           className={css.reviewTranscriptScroll}
           ref={transcriptScrollRef}
-         
+          onScroll={onTranscriptScroll}
         >
           {sessionId === undefined ? (
             <p className={css.detailText}>{t('review.noSession')}</p>
