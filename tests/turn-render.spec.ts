@@ -9,10 +9,12 @@
  * 「几十行工具堆在上面、两句话接在下面」——那正是读者说「对不上」的那种观感。
  */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { TurnItem, TurnList } from '../src/client/board/TurnItem.tsx'
-import { policyOfWorkSteps } from '../src/client/board/work-steps.ts'
+import { foldKeyOf, policyOfWorkSteps } from '../src/client/board/work-steps.ts'
 import type { TranscriptTurn } from '../src/client/board/review-transcript.ts'
 
 /**
@@ -47,6 +49,8 @@ function renderTurn(turn: TranscriptTurn, prefs: Parameters<typeof policyOfWorkS
     policy: policyOfWorkSteps(prefs),
     isLatest: false,
     open,
+    // The key, not a bound callback — see the prop's note in TurnItem.
+    foldKey: foldKeyOf(turn),
     onToggle: () => {},
   }))
 }
@@ -76,6 +80,7 @@ describe('一轮一折的渲染', () => {
       policy: policyOfWorkSteps({ view: 'detailed', collapseTiming: 'completion', foldedReplies: 'final' }),
       isLatest: false,
       open: true,
+      foldKey: foldKeyOf(turnOf()),
       onToggle: () => {},
       /* 组键 = `foldKeyOf(turn)` + '#' + 组键。`turnOf()` 的 `answerStep` 是 2，
          两段过程的第一条到达序号分别是 1 与 4。 */
@@ -185,5 +190,47 @@ describe('一轮一折的渲染', () => {
     expect(html.match(/reviewTurn/g)?.length).toBe(2)
     expect(html, '第二轮的折没打开').toContain('aria-expanded="true"')
     expect(html, '第一轮的折被顺手打开了').toContain('aria-expanded="false"')
+  })
+})
+
+/**
+ * `TurnItem` 的 memo 必须**真的**起作用——每行对话不能让整段会话重画。
+ *
+ * ── 为什么这条要单独钉 ────────────────────────────────────────────────────────
+ *
+ * 组件早就写着 `memo(...)`，所以「它被 memo 包着」这个事实从来没被怀疑过。但 memo
+ * 只做**浅比较**，而父级曾经为每一行现造一个 `() => onToggle(key)`，并把
+ * `policyOfWorkSteps(...)` 每次新建的对象作为 prop 传下去——**两个 prop 每次渲染都是
+ * 新引用**，于是 memo 一次都没生效过。屏上的表现不是「错误」，是「卡」；而没有任何
+ * 功能测试会因此变红。
+ *
+ * 所以这里钉的不是「有 memo」，是**喂给它的 prop 是稳定形状**：回调由父级稳定传入
+ * （下面 `onToggle` 的签名收的是键），而每行自己用 `useCallback` 包一个闭包——闭包不是
+ * prop，不会破坏比较。
+ */
+describe('the transcript row keeps its memo effective', () => {
+  const source = readFileSync(fileURLToPath(new URL('../src/client/board/TurnItem.tsx', import.meta.url)), 'utf8')
+  const turnList = /export const TurnList = memo\(function TurnList\([\s\S]*?\n\}\)\n/.exec(source)?.[0] ?? /export const TurnList = memo\(function TurnList\([\s\S]*$/.exec(source)?.[0] ?? ''
+
+  it('TurnList passes a key, not a per-row callback', () => {
+    expect(turnList, 'TurnList not found').not.toBe('')
+    // The defect: a fresh closure per row, which no memo can compare.
+    expect(turnList, 'a per-row arrow function defeats memo — the prop is a new reference on every render')
+      .not.toMatch(/onToggle=\{\(\)\s*=>\s*props\.onToggle\(/)
+    expect(turnList, 'the row must receive its fold key as a primitive prop')
+      .toMatch(/foldKey=\{key\}/)
+  })
+
+  it('the policy object is derived through useMemo, not rebuilt per render', () => {
+    // `policyOfWorkSteps` returns a fresh object literal on each call, and `policy` is
+    // a prop of every row — rebuilding it re-renders all of them.
+    expect(turnList, 'policyOfWorkSteps is called inline, so every row sees a new policy object')
+      .not.toMatch(/const policy = policyOfWorkSteps\(props\.prefs\)/)
+    expect(turnList, 'the policy must be memoised on the preference fields').toMatch(/useMemo\(/)
+  })
+
+  it('TurnItem builds its own stable toggle instead of receiving one', () => {
+    expect(source, 'the row must wrap its key in useCallback so the callback is not a prop')
+      .toMatch(/const toggleSelf = useCallback\(/)
   })
 })
