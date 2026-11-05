@@ -1571,3 +1571,37 @@ describe('the session scrollers bound layout, never paint', () => {
     })
   }
 })
+
+/**
+ * `resolveScroller` 不许出现在滚动/尺寸回调里——它每层祖先都调一次
+ * `getComputedStyle`，那是强制样式重算，是滚动处理器能做的**最贵**的事。
+ *
+ * ── 为什么这条要单独钉 ────────────────────────────────────────────────────────
+ *
+ * 读者反复说「卡、不跟手」，而这条路径上正好有一个便宜得离谱的错误：`measure()`
+ * 每次滚动都重新解析一次滚动容器，而解析是「从节点一路向上，每层问一句 overflow-y
+ * 是什么」。一次手势几十个事件 × 若干层祖先 = 每秒几十次强制样式刷新。
+ *
+ * 它在小规模下看不出问题，功能也完全正常——所以除了「卡」之外没有任何信号。这类
+ * 缺陷只能用结构判据守：**昂贵的解析只许在建立期发生一次，不许在回调里。**
+ */
+describe('the scroller is resolved once, not on every scroll', () => {
+  const source = readFileSync(fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url)), 'utf8')
+
+  it('measure does not re-resolve the scroller per event', () => {
+    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(source)?.[0] ?? ''
+    expect(measure, 'measure not found').not.toBe('')
+    expect(measure, 'resolving the scroller inside measure forces a style recalc on every scroll event')
+      .not.toMatch(/resolveScroller\(/)
+    expect(measure, 'measure must go through the cached resolver').toMatch(/scrollerOf\(\)/)
+  })
+
+  it('the resize-follow callback does not re-resolve the scroller', () => {
+    // That callback is the one that only continues while the reader is at the
+    // bottom — precisely the condition the reader described.
+    const apply = /const apply = \(\): void => \{[\s\S]*?\n    \}/.exec(source)?.[0] ?? ''
+    expect(apply, 'the resize-follow callback not found').not.toBe('')
+    expect(apply, 'the bottom-pinned resize callback must not walk ancestors for getComputedStyle')
+      .not.toMatch(/resolveScroller\(/)
+  })
+})
