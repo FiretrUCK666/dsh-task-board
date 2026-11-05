@@ -7334,6 +7334,31 @@
   flex: none;
 }
 
+/* ── THE BOARD STOPS ANIMATING UNDER AN OVERLAY ───────────────────────────
+ *
+ * Six infinite animations live on the board (card state lights, the in-flight
+ * spinner, drop zones). Opening a card or a session panel COVERS the board; it does
+ * not unmount it. So every one of those animations keeps ticking and repainting the
+ * cards behind whatever the reader is now scrolling — the recorded traces show the
+ * frames staying busy for the whole capture while only a fraction of it is a
+ * gesture.
+ *
+ * `:has()` states the condition in CSS: a view that CONTAINS an open backdrop pauses
+ * what is behind it. No component has to carry an "am I covered" flag, and when the
+ * overlay closes the selector stops matching — the animations resume where they
+ * were, with nothing to re-arm.
+ *
+ * `animation-play-state` rather than removing the animation, so a card mid-breath
+ * does not jump when the panel closes.
+ *
+ * Placed before the reduced-motion block on purpose: that block must stay last, or
+ * at equal specificity it would be overridden (a contract pins it). */
+[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_card'],
+[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_column'],
+[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class*='_column '] {
+  animation-play-state: paused;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),
