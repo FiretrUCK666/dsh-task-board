@@ -7334,29 +7334,29 @@
   flex: none;
 }
 
-/* ── THE BOARD STOPS ANIMATING UNDER AN OVERLAY ───────────────────────────
+/* ── THE BOARD STOPS BEING A RENDER TARGET UNDER AN OVERLAY ───────────────
  *
- * Six infinite animations live on the board (card state lights, the in-flight
- * spinner, drop zones). Opening a card or a session panel COVERS the board; it does
- * not unmount it. So every one of those animations keeps ticking and repainting the
- * cards behind whatever the reader is now scrolling — the recorded traces show the
- * frames staying busy for the whole capture while only a fraction of it is a
- * gesture.
+ * The columns and the card detail panel are SIBLINGS. Opening a card lays an
+ * absolutely positioned overlay over the board, but the board underneath stays in
+ * the layout tree, stays painted, and keeps its infinite animations ticking — for
+ * the whole time the reader is scrolling the panel on top of it.
  *
- * `:has()` states the condition in CSS: a view that CONTAINS an open backdrop pauses
- * what is behind it. No component has to carry an "am I covered" flag, and when the
- * overlay closes the selector stops matching — the animations resume where they
- * were, with nothing to re-arm.
+ * That is the shape the recorded traces show: 「未归因主线程耗时」 as the largest
+ * entry on every capture, frame after frame, whether or not the reader is moving.
  *
- * `animation-play-state` rather than removing the animation, so a card mid-breath
- * does not jump when the panel closes.
+ * Pausing the animations was a patch — it still left the columns as a paint target,
+ * and it needed a selector per animated element, so it would have to grow every time
+ * something new animates. `content-visibility: hidden` states the actual requirement:
  *
- * Placed before the reduced-motion block on purpose: that block must stay last, or
- * at equal specificity it would be overridden (a contract pins it). */
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_card'],
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_column'],
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class*='_column '] {
-  animation-play-state: paused;
+ *   · LAYOUT: the subtree's contents are not laid out.
+ *   · PAINT: nothing inside is painted.
+ *   · The element keeps its BOX, so nothing shifts when the overlay closes.
+ *
+ * Hiding the covered region cannot hide the overlay: they are siblings.
+ * `:has()` keeps the condition in CSS — no component carries an "am I covered" flag,
+ * and closing the panel restores rendering with nothing to re-arm. */
+[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_columns'] {
+  content-visibility: hidden;
 }
 
 @media (prefers-reduced-motion: reduce) {
