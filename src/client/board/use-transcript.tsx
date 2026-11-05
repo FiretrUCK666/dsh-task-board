@@ -87,18 +87,8 @@ export function useResizeFollow(
      * `scrollHeight` here asks the browser to clamp on every one of those, and the
      * clamp is indistinguishable from a small jump. Write the clamped target, and
      * only when the scroller is not already sitting on it. */
-    /* RESOLVED ONCE PER EFFECT, NOT PER CALLBACK.
-     *
-     * The callback runs on every observed resize — and this whole path only
-     * continues while the reader is AT THE BOTTOM (`atBottomRef.current`), which is
-     * exactly the condition under which the stutter was reported. Resolving the
-     * scroller inside it meant walking the ancestor chain with `getComputedStyle`
-     * (a forced style recalculation) on each of those callbacks.
-     *
-     * The element cannot change while this effect is alive — a change remounts the
-     * region, which tears the observer down and re-runs this effect. */
-    const root = resolveScroller(content)
     const apply = (): void => {
+      const root = resolveScroller(content)
       if (root === null || !atBottomRef.current) return
       const target = root.scrollHeight - root.clientHeight
       if (Math.abs(root.scrollTop - target) < 1) return
@@ -106,6 +96,7 @@ export function useResizeFollow(
     }
     const observer = new ResizeObserver(apply)
     observer.observe(content)
+    const root = resolveScroller(content)
     if (root !== null && root !== content) observer.observe(root)
     apply()
     return () => { observer.disconnect() }
@@ -142,36 +133,14 @@ export function useFollowScroll(
    * that happens a hundred times a second, and it is invisible in any single
    * frame — which is exactly the shape of 「整个画面有点延迟」. */
   const atBottomKnown = useRef<boolean | undefined>(undefined)
-  /* THE SCROLLER IS RESOLVED ONCE, NOT ON EVERY SCROLL EVENT.
-   *
-   * `resolveScroller` walks UP the ancestor chain calling `getComputedStyle` on each
-   * node until it finds one whose `overflow-y` scrolls. `getComputedStyle` forces a
-   * style recalculation — the most expensive thing a scroll handler can do — and this
-   * ran on EVERY scroll event, once per ancestor level. During a gesture that is
-   * dozens of forced style flushes per second, which is exactly what "does not keep
-   * up with the finger" is made of.
-   *
-   * The element it walks from is the one the ref points at, and that element does not
-   * change while the list is mounted, so the answer is resolved once and cached. The
-   * cache is keyed on the node it was computed from: when the ref target changes (a
-   * fold unmounts and remounts the region), the next call recomputes. */
-  const scrollerRef = useRef<{ from: HTMLElement | null; root: HTMLElement | null } | null>(null)
-  const scrollerOf = useCallback((): HTMLElement | null => {
-    const from = scrollRef.current
-    const cached = scrollerRef.current
-    if (cached !== null && cached.from === from) return cached.root
-    const root = resolveScroller(from)
-    scrollerRef.current = { from, root }
-    return root
-  }, [scrollRef])
   const measure = useCallback((): void => {
-    const root = scrollerOf()
+    const root = resolveScroller(scrollRef.current)
     if (root === null) return
     const next = root.scrollHeight - root.scrollTop - root.clientHeight < NEAR_BOTTOM_PX
     if (next === atBottomKnown.current) return
     atBottomKnown.current = next
     setAtBottom(next)
-  }, [scrollerOf, setAtBottom])
+  }, [scrollRef, setAtBottom])
   /* THE LISTENER BELONGS TO THE SCROLLER, NOT TO THE DOCUMENT.
    *
    * It used to sit on `document` in the CAPTURE phase, so it ran for every scroll

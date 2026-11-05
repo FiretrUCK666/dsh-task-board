@@ -6209,25 +6209,6 @@
   }
 }
 
-/* ── ANIMATION STOPS WHEN AN OVERLAY COVERS IT ────────────────────────────
- *
- * Opening a card or a session panel covers the board; it does not unmount it. The
- * board keeps its columns, its cards and their breathing lights all running —
- * behind whatever the reader is now scrolling. Every one of those frames repaints
- * something nobody can see, and it is paid on top of the scroll in progress.
- *
- * `:has()` puts the condition in CSS, so no component has to carry an "something
- * is covering me" flag down the tree: a view that CONTAINS an open backdrop pauses
- * what is behind it. When the overlay closes the selector stops matching and the
- * animations resume where they left off — nothing has to be re-armed.
- *
- * `animation-play-state` rather than removing the animation, so a card mid-breath
- * does not jump when the panel closes. */
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) :is(.card, .column, .sessionRow),
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) :is(.card, .column, .sessionRow)::after {
-  animation-play-state: paused;
-}
-
 @container dsh-tb-panel (max-width: 600px) {
   /* The narrow panel is a THREE-ROW GRID, not a flex chain fighting over one
      box: [folds] → [conversation] → [composer]. This is the structural end of
@@ -7332,25 +7313,6 @@
   flex: none;
 }
 
-/* ── THE SESSION PANEL DOES NOT DOUBLE-SCROLL ─────────────────────────────
- *
- * `.modalBackdrop` scrolls in general: a dialog taller than the stage has to reach
- * its own top and bottom. The session panel is the exception — it manages its own
- * scrolling INSIDE (.commentsScroll and .reviewTranscriptScroll are the reading
- * surfaces), so with the backdrop scrolling too there are two nested scroll ports
- * on one gesture.
- *
- * Nested ports are what made the comment surface the one place that lagged: every
- * gesture is hit-tested against the inner port and then walked up the scroll chain
- * to decide whether the remainder goes to the outer one, on the main thread, for
- * every wheel event. The board's columns have no such nesting and never lagged.
- *
- * Matched by the panel it contains, so every other dialog keeps the stage scroll it
- * needs: only a backdrop holding THIS panel stops scrolling. */
-[class*="modalBackdrop"]:has(> .review) {
-  overflow-y: hidden;
-}
-
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),
@@ -7464,5 +7426,3 @@
     animation-duration: 1.8s;
   }
 }
-
-

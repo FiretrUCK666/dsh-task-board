@@ -19,19 +19,9 @@ export declare const TurnItem: import("react").NamedExoticComponent<{
     policy: WorkStepsPolicy;
     /** 它是不是最新那一轮（`next-input` 时机要用）。 */
     isLatest: boolean;
-    /** 读者把这一折点开开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
+    /** 读者把这一折点开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
     open: boolean;
-    /**
-     * 这一折的**键**，不是绑好的回调。
-     *
-     * `TurnItem` 是 `memo` 包着的，而 memo 只做浅比较。父级若为每一行现造一个
-     * `() => onToggle(key)`，那个 prop 每次渲染都是新引用，memo 于是**从未生效**——
-     * 一行对话的数量级是几百到几千节点，这条失效等于每轮次都把整个会话重画一遍。
-     *
-     * 传键过来、让这一层自己调稳定的回调，prop 就是原始值，比较得动。
-     */
-    foldKey: string;
-    onToggle: (key: string) => void;
+    onToggle: () => void;
     /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
     openGroups?: ReadonlySet<string>;
     onToggleGroup?: (key: string) => void;

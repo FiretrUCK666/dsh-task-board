@@ -17,7 +17,7 @@
  * 本文件只把它判出来的结果画出来：还在跑的轮、读者插过话的轮、结束得不干净的轮、
  * 以及 `next-input` 时机下最新那一轮——都摊着。判据不在这里，所以两处不会各判一次而打架。
  */
-import { memo, useCallback, useMemo } from 'react'
+import { memo } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { Disclosure } from '../design/ui.tsx'
 import { t } from '../locales.ts'
@@ -229,19 +229,9 @@ export const TurnItem = memo(function TurnItem(props: {
   policy: WorkStepsPolicy
   /** 它是不是最新那一轮（`next-input` 时机要用）。 */
   isLatest: boolean
-  /** 读者把这一折点开开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
+  /** 读者把这一折点开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
   open: boolean
-  /**
-   * 这一折的**键**，不是绑好的回调。
-   *
-   * `TurnItem` 是 `memo` 包着的，而 memo 只做浅比较。父级若为每一行现造一个
-   * `() => onToggle(key)`，那个 prop 每次渲染都是新引用，memo 于是**从未生效**——
-   * 一行对话的数量级是几百到几千节点，这条失效等于每轮次都把整个会话重画一遍。
-   *
-   * 传键过来、让这一层自己调稳定的回调，prop 就是原始值，比较得动。
-   */
-  foldKey: string
-  onToggle: (key: string) => void
+  onToggle: () => void
   /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
   openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
@@ -249,18 +239,6 @@ export const TurnItem = memo(function TurnItem(props: {
   controller?: BoardController
 }) {
   const { turn, policy, sessionId, controller } = props
-  /* THE FOLD CALLBACK IS BUILT HERE, NOT PASSED IN.
-   *
-   * It closes over `foldKey` (a primitive) and the caller's `onToggle`, which is a
-   * `useCallback` in `SessionTranscript` — so this stays a fresh function but nothing
-   * upstream has to re-create a prop to produce it. That is the point: a prop that is
-   * re-created by the PARENT defeats `memo`, a closure created by the CHILD does not,
-   * because it is not a prop.
-   *
-   * `foldKey` itself is `foldKeyOf(turn)`, which is derived from the turn and therefore
-   * stable for the same turn, so the primitive props compare equal across renders. */
-  const foldKey = props.foldKey
-  const toggleSelf = useCallback((): void => { props.onToggle(foldKey) }, [props.onToggle, foldKey])
   const folded = shouldFoldTurn(turn, policy, {
     isLatest: props.isLatest,
     hasReaderTurn: turn.interjections.length > 0,
@@ -297,7 +275,7 @@ export const TurnItem = memo(function TurnItem(props: {
           <Disclosure
             title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
             open={props.open}
-            onToggle={toggleSelf}
+            onToggle={props.onToggle}
             className={css.reviewWorkSteps}
           >
             <div className={css.reviewStepList}>
@@ -326,7 +304,7 @@ export const TurnItem = memo(function TurnItem(props: {
             <Disclosure
               title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
               open={props.open}
-              onToggle={toggleSelf}
+              onToggle={props.onToggle}
               className={css.reviewWorkSteps}
             >
               <div className={css.reviewStepList}>
@@ -382,16 +360,7 @@ export const TurnList = memo(function TurnList(props: {
   openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
 }) {
-  /* THE POLICY OBJECT MUST ALSO BE STABLE, for the same reason as the callback.
-   *
-   * `policyOfWorkSteps` returns a fresh object literal on every call, and `policy` is
-   * a prop of every `TurnItem` — so even with a stable callback, `memo` would still see
-   * a changed prop and re-render every row. Deriving it through `useMemo` on the three
-   * preference fields keeps its identity while the preferences do not move. */
-  const policy = useMemo(
-    () => policyOfWorkSteps(props.prefs),
-    [props.prefs.view, props.prefs.collapseTiming, props.prefs.foldedReplies],
-  )
+  const policy = policyOfWorkSteps(props.prefs)
   return (
     <ul className={css.reviewTranscript}>
       {props.turns.map((turn, index) => {
@@ -405,9 +374,7 @@ export const TurnList = memo(function TurnList(props: {
             policy={policy}
             isLatest={index === props.turns.length - 1}
             open={props.openTurns.has(key)}
-            /* A KEY, NOT A BOUND CALLBACK: see the prop's own note on TurnItem. */
-            foldKey={key}
-            onToggle={props.onToggle}
+            onToggle={() => props.onToggle(key)}
             openGroups={props.openGroups}
             onToggleGroup={props.onToggleGroup}
             sessionId={props.sessionId}

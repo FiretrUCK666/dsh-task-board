@@ -700,12 +700,6 @@
      down the side of every panel.
      NOT fully transparent: a bar a reader cannot find is a bar they cannot use, and
      "where am I in this list" during a gesture is indistinguishable from lag. */
-  /* Fallback FIRST, mix SECOND: if `color-mix` is unsupported the second
-     declaration is dropped by the parser and the plain tier stands, so the thumb
-     is still visible. Without this the variable would simply not resolve and the
-     scrollbar would vanish — a silent failure, since an unresolved custom property
-     in `background-color` paints nothing and raises no error. */
-  --dsh-tb-scroll-thumb-color: var(--dsh-tb-text-3);
   --dsh-tb-scroll-thumb-color: color-mix(in srgb, var(--dsh-tb-text-2) 55%, transparent);
   /* 滚动条两端离盒子上下的**呼吸**：列的圆角是 20px，条若从顶端开始，箭头就压在
      那段弧上，看着像从圆角里长出来。这个值比条宽大一档，正好把两个箭头端按钮推进

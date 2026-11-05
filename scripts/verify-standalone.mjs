@@ -268,7 +268,7 @@ const ROOT_ALLOWED = new Set([
  * in a clone; a declaration covers both.
  */
 const ROOT_DIRS_ALLOWED = new Set([
-  '.agent-teams', '.design', '.git', '.github',
+  '.agent-teams', '.design', '.git', '.github', '.impeccable',
   'build', 'lib', 'locale', 'node_modules', 'scripts', 'src', 'tests',
   // `tmp/` — the geometry audit's artifacts: `node scripts/audit-render.mjs`
   // writes the pages it measures there. Build output, never committed (the
@@ -413,7 +413,9 @@ for (const file of textFiles) {
  * a gitignored file is never committed, never packed and never pushed, so
  * nothing in it can escape this machine — machine-local scratch of any name is
  * covered, and a file that stops being ignored is audited again with no edit
- *
+ * here. (Skip-list names are how `.impeccable/critique/` snapshots came to be
+ * scanned at all: they are ignored locally, hold absolute paths by nature, and
+ * cannot ship.)
  *
  * When Git cannot answer, the set is null and every file is audited exactly as
  * before — an environment that cannot resolve ignores must not lose coverage.

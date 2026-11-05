@@ -18,7 +18,6 @@ import { useEffect, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { awaitingOf } from '../../core/question-mirror.ts'
-import { sameValue } from '../../core/values.ts'
 import type { WireQuestion } from '../../core/question-rpc.ts'
 import { routeUrl } from '../route-base.ts'
 import { latestSessionTodos, type SessionTodo } from './interaction.ts'
@@ -133,7 +132,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
               }
               : {},
           }
-          return sameValue(next, current) ? current : next
+          return JSON.stringify(next) === JSON.stringify(current) ? current : next
         })
       })
     }
@@ -165,7 +164,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
               ...current.goal === undefined ? { goal: view?.goal } : {},
               subagents: view?.subagents,
             }
-            return sameValue(next, current) ? current : next
+            return JSON.stringify(next) === JSON.stringify(current) ? current : next
           })
         })
         .catch(() => { /* bridge unavailable — silence */ })

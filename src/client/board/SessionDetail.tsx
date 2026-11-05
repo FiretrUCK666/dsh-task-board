@@ -11,7 +11,6 @@
 import { useEffect, useState } from 'react'
 import type { BoardController, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { type TaskRecord } from '../../core/tasks.ts'
-import { sameValue } from '../../core/values.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { formatDateTime } from './format-time.ts'
@@ -90,7 +89,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
      and a scroll that lands on that tick stutters. Compare by value instead. */
     (result) => {
       const next = result.projections
-      setProjections(current => sameValue(current, next) ? current : next)
+      setProjections(current => JSON.stringify(current) === JSON.stringify(next) ? current : next)
     },
   )
 
