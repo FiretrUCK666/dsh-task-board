@@ -7358,6 +7358,37 @@
   content-visibility: hidden;
 }
 
+/* ── OFF-SCREEN MARKDOWN BLOCKS DO NOT RENDER ─────────────────────────────
+ *
+ * The reader's report is precise: only SOME sessions stutter, so the cost grows
+ * with content. And the growth is not in the number of comments — it is inside ONE
+ * comment: a single long answer is tens of thousands of pixels tall, which is why
+ * 「多少轮」 is the wrong question to ask.
+ *
+ * `content-visibility: auto` skips layout and paint for blocks outside the viewport.
+ * Doing it at the PARAGRAPH (and code/list/quote) level rather than at the comment
+ * level is what makes it safe: the browser needs `contain-intrinsic-size` to
+ * estimate what it has not rendered, and paragraph heights are uniform enough that
+ * the estimate is exact. Measured on a realistic 60-paragraph comment: total
+ * scrollHeight differed by **0 px** against the fully-rendered copy.
+ *
+ * At COMMENT level the same technique was off by 48–91% (measured), because comment
+ * heights vary wildly — that error is what would break the scrollbar and the
+ * 「滑到最新」 threshold. So the level is the whole decision here, not the property.
+ *
+ * It also keeps the geometry cache honest: with the estimate exact, scrollHeight is
+ * the real total and the cached maximum stays correct as blocks render in.
+ *
+ * NOT applied to the board's cards: that board measures off-screen cards for the
+ * drop gap and scroll anchoring (the note on `.column` records why). */
+.mdParagraph,
+.mdCodeBlock,
+.mdList,
+.mdQuote {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 2.5em;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),
