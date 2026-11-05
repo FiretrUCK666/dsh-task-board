@@ -773,7 +773,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // the user and owns every force-open/follow behavior below — one boolean,
   // never two parallel conditions to drift apart.
   const awaiting = interaction !== undefined || shellWaiting !== undefined
-  const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
+  const { jumpToBottom: jumpComments } = useFollowScroll(
     commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
     /* Remount signal: folding the comments unmounts .commentsScroll; the fold
        state flips back on re-expand, so the observer + follow effects re-bind
@@ -863,7 +863,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
                user just saw. */
             onToggle={() => { if (!awaiting) setCommentsOpen(!commentsOpen) }}
           >
-            <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
+            <div className={css.commentsScroll} ref={commentsScrollRef}>
               <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
               {awaiting && sessionId !== undefined && (
                 <InteractionCard

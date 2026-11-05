@@ -792,8 +792,20 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // (the 「对话消息另起一行」 family).
     expect(cssSource).toMatch(/\.reviewMeterHead\s*\{[^}]*white-space:\s*nowrap/)
     expect(cssSource).toMatch(/\.reviewMeterRows\s*\{[^}]*display:\s*grid/)
-    // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix).
-    expect(panelSource).toMatch(/onCommentsScroll/)
+    /* 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix), and the
+       scroll POSITION is measured by exactly one listener.
+     *
+     * The scroll position used to be measured twice on the same element: once by
+     * `useFollowScroll`'s own `{ passive: true }` listener and once by React's
+     * `onScroll`, which is not registered passive for scroll — so the browser paid
+     * a main-thread-synchronised dispatch, and `measure` read three layout
+     * properties twice per event. The binding name is gone; what must hold now is
+     * that the comments scroller still gets its follow behaviour, and that no
+     * React `onScroll` re-measures it. */
+    expect(panelSource, 'the comments scroller must still be the one this hook follows')
+      .toMatch(/useFollowScroll\(\s*\n?\s*commentsScrollRef/)
+    expect(panelSource, 'a React onScroll on the comments scroller re-measures it a second time, and not passively')
+      .not.toMatch(/onScroll=\{onCommentsScroll\}/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {
@@ -1570,4 +1582,45 @@ describe('the session scrollers bound layout, never paint', () => {
         .not.toMatch(/contain:[^;]*\bpaint\b/)
     })
   }
+})
+
+/**
+ * 滚动位置只许有一条测量路径，而且那条必须是 passive 的。
+ *
+ * ── 这条钉的是什么 ────────────────────────────────────────────────────────────
+ *
+ * `useFollowScroll` 自己为容器挂了 `{ passive: true }` 的 scroll 监听器，用 rAF
+ * 合并到每帧一次。三个会话容器**又**通过 React 的 `onScroll` 把同一个 `measure`
+ * 挂第二遍，而 React 的 passive 名单只有 wheel / touchstart / touchmove —— scroll
+ * 不在里面，于是每次滚动多走一遍需要与主线程同步的派发路径，`measure` 里那三个
+ * 布局属性也就被读两遍。
+ *
+ * 重复**既贵又不对**：贵的是一次非 passive 派发，不对的是同一个答案算两遍（第二次
+ * 读到的是第一次之后已经变化的布局）。读者的感受就是「不跟手、有点延迟」。
+ *
+ * 所以这里同时钉两面：容器上不许再有 React `onScroll`，而 hook 里那条监听必须声明
+ * `passive: true`。
+ */
+describe('the scroll position is measured once, passively', () => {
+  const boardDir = fileURLToPath(new URL('../src/client/board/', import.meta.url))
+  const read = (name: string): string => readFileSync(boardDir + name, 'utf8')
+
+  for (const name of ['SessionDetail.tsx', 'ReviewDetail.tsx', 'session-panel.tsx']) {
+    it(`${name} does not re-measure the scroller through React`, () => {
+      const source = read(name)
+      // The scrollers are identified by their CSS classes, so the ban is scoped to
+      // those elements rather than "no onScroll anywhere" (other surfaces may
+      // legitimately use it).
+      const scrollerTag = /<div[^>]*className=\{(?:css\.)?(?:reviewTranscriptScroll|commentsScroll)[^>]*>/.exec(source)?.[0] ?? ''
+      expect(scrollerTag, `the scrolling element in ${name} should be findable`).not.toBe('')
+      expect(scrollerTag, 'a React onScroll on this element measures it a second time, and not passively')
+        .not.toMatch(/onScroll=/)
+    })
+  }
+
+  it('the one listener in the hook is declared passive', () => {
+    const hook = read('use-transcript.tsx')
+    expect(hook, 'the scroll listener must be passive so the browser never waits on the main thread for it')
+      .toMatch(/addEventListener\('scroll', handler, \{ passive: true \}\)/)
+  })
 })

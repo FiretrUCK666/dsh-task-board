@@ -76,7 +76,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     pageUnsupported: transcriptPageUnsupported,
     atBottom,
     scrollRef,
-    onScroll,
     jumpToBottom,
     reload,
     loadEarlier,
@@ -165,7 +164,7 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         row === undefined ? (
           <p className={css.detailText}>{goneReason ?? t('detail.sessionUnavailable')}</p>
         ) : (
-          <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
+          <div className={css.reviewTranscriptScroll} ref={scrollRef}>
             <SessionTranscript
               turns={turns}
               prefs={workSteps}
