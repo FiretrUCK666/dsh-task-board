@@ -1658,3 +1658,45 @@ describe('the scroll path reads no layout', () => {
       .not.toMatch(/scrollHeight|clientHeight/)
   })
 })
+
+/**
+ * 滚动容器内部不许有 `position: sticky` 元素。
+ *
+ * ── 依据 ──────────────────────────────────────────────────────────────────────
+ *
+ * 读者提供的两份 Performance 录制里，最大的一项始终是**未归因主线程耗时**
+ * （5,051ms / 5,318ms），而「执行脚本」只有 1,325ms 左右。也就是说主线程绝大部分
+ * 时间不是在跑 JS，而是在做引擎内部的布局工作。
+ *
+ * sticky 元素正是这种工作的来源：它要求引擎**在滚动的每一帧重新计算位置**，而且
+ * 「看不见」不改变这一点——\`visibility: hidden\` 保留盒子，盒子仍要每帧被定位。
+ * 一个滚动容器里只要有一个 sticky 子元素，滚动路径上就永远有布局参与者。
+ *
+ * 所以「滑到最新」那个角落按钮改成 absolute（贴着容器的定位边缘，布局一次即可）。
+ * 这条钉的是结构：那两个会话滚动容器里，不许再出现 sticky。
+ */
+describe('no sticky element lives inside a session scroll container', () => {
+  const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+
+  // Judge DECLARATIONS, not prose: the rule explains the old value by name, and a
+  // text-reading check would force that explanation to be deleted (rule 14).
+  const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, ' ')
+  it('the jump affordance is absolutely positioned, not sticky', () => {
+    const rule = stripComments(/\.reviewJumpLatest \{[\s\S]*?\n\}/.exec(sheet)?.[0] ?? '')
+    expect(rule, 'the jump affordance rule not found').not.toBe('')
+    expect(rule, 'a sticky element inside the scroller is repositioned on every scroll frame')
+      .not.toMatch(/position:\s*sticky/)
+    expect(rule, 'it must be absolutely positioned instead')
+      .toMatch(/position:\s*absolute/)
+  })
+
+  it('its containing block is the scroll container itself', () => {
+    // Without this the absolute button would anchor to some unrelated ancestor.
+    for (const cls of ['commentsScroll', 'reviewTranscriptScroll']) {
+      const rule = new RegExp(`\\.${cls} \\{[\\s\\S]*?\\n\\}`).exec(sheet)?.[0] ?? ''
+      expect(rule, `.${cls} rule not found`).not.toBe('')
+      expect(rule, `.${cls} must establish the containing block for the corner affordance`)
+        .toMatch(/position:\s*relative/)
+    }
+  })
+})

@@ -4354,6 +4354,9 @@
    documented last resort for exactly that state. The floor only binds under
    that squeeze: an unfloored box already stretches to its leftover share. */
 .commentsScroll {
+  /* The containing block for the absolute jump affordance — see that rule for
+     why it is not sticky. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-5);
@@ -4430,6 +4433,9 @@
    with breathing, so the conversation keeps the same 14px on both sides and
    never hugs the thumb. */
 .reviewTranscriptScroll {
+  /* The containing block for the absolute jump affordance — see that rule for
+     why it is not sticky. */
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-7);
@@ -5259,11 +5265,26 @@
    hovers above the content's bottom-right; sized explicitly so it can never
    balloon, and lifted with a soft shadow like a floating Apple control. */
 .reviewJumpLatest {
-  position: sticky;
-  bottom: 8px;
-  align-self: flex-end;
-  margin: 8px 6px 0 0;
-  flex: none;
+  /* ── ABSOLUTE, NOT STICKY ────────────────────────────────────────────────
+   *
+   * It was `position: sticky`, which asks the engine to recompute this element's
+   * position on EVERY scroll frame for as long as the region scrolls — including
+   * the frames where the button is hidden (visibility: hidden keeps the box, and a
+   * sticky box is still positioned per frame). One sticky element per scroll
+   * container is enough to keep the scroll path doing layout work, which is the
+   * 「未归因主线程耗时」 the recorded traces show as their largest entry.
+   *
+   * Absolutely positioned instead: it sits against the scroll content's bottom
+   * corner and is laid out once, with the content. The visual result is the same —
+   * it is a corner affordance over the end of the list — and the scroll path no
+   * longer has a per-frame participant in it.
+   *
+   * The offset is relative to the nearest positioned ancestor (the scroll content
+   * is the containing block via the scroll container's own `position: relative`
+   * below), so it stays glued to the region rather than to the viewport. */
+  position: absolute;
+  bottom: 12px;
+  right: 20px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
