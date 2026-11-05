@@ -135,6 +135,29 @@ export function useFollowScroll(
    * its WORK: it schedules a render, walks the tree, compares. During a gesture
    * that happens a hundred times a second, and it is invisible in any single
    * frame — which is exactly the shape of 「整个画面有点延迟」. */
+  /* ── NO FORCED LAYOUT IN THE SCROLL PATH ──────────────────────────────────
+   *
+   * The recorded trace of this panel showed **5,051 ms of unattributed main-thread
+   * time** — Chrome could not attribute it to any function, which is what forced
+   * layout looks like — on top of 2,031 ms rendering and 1,508 ms painting.
+   *
+   * The cause sat in this handler:
+   *
+   *     root.scrollHeight - root.scrollTop - root.clientHeight
+   *
+   * `scrollHeight` and `clientHeight` are LAYOUT reads: asking for them makes the
+   * engine finish every pending style and layout job first. Doing that once per
+   * animation frame during a gesture means the main thread can never get ahead.
+   *
+   * `scrollTop` is NOT a layout read — it is a stored offset the engine already
+   * has. So the two expensive values are cached here and refreshed only when the
+   * geometry can actually have changed: the element resizes, its content resizes,
+   * or the region remounts. Between those moments, a scroll measurement is one
+   * cheap read and a subtraction.
+   *
+   * This is the whole difference between "measure on every frame" and "measure on
+   * every geometry change", and geometry changes are not what a scroll gesture is. */
+  const maxScrollRef = useRef<number>(0)
   const atBottomKnown = useRef<boolean | undefined>(undefined)
   /* HYSTERESIS, because a single threshold makes the reader's gesture oscillate.
    *
@@ -153,7 +176,8 @@ export function useFollowScroll(
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    const distance = root.scrollHeight - root.scrollTop - root.clientHeight
+    // `scrollTop` only — see the note on `maxScrollRef`. No layout is read here.
+    const distance = maxScrollRef.current - root.scrollTop
     // Was it at the bottom? Then it takes LEAVE_BOTTOM_PX to say otherwise.
     const wasAtBottom = atBottomKnown.current === true
     const next = wasAtBottom ? distance < LEAVE_BOTTOM_PX : distance < NEAR_BOTTOM_PX
@@ -181,6 +205,18 @@ export function useFollowScroll(
   useEffect(() => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
+    /* THE GEOMETRY CACHE, filled where geometry can change and read nowhere else.
+     *
+     * `scrollHeight` and `clientHeight` force layout; this effect runs on mount and
+     * whenever `remountKey` changes (the region was rebuilt). A ResizeObserver below
+     * refreshes it for in-place growth — a new round arriving, an image decoding, a
+     * fold opening. Those are the only moments the maximum offset can move, and
+     * none of them is a scroll. */
+    const refreshGeometry = (): void => {
+      maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
+    }
+    refreshGeometry()
+
     let frame: number | undefined
     const handler = (): void => {
       if (frame !== undefined) return
@@ -190,9 +226,21 @@ export function useFollowScroll(
       })
     }
     root.addEventListener('scroll', handler, { passive: true })
+
+    /* Content growth: refresh the cached maximum off the scroll path entirely. The
+     * observer's own callback is a good place for a layout read — it already runs
+     * as part of the engine's layout pass, so the values are current and asking for
+     * them forces nothing. */
+    let observer: ResizeObserver | undefined
+    if (typeof ResizeObserver !== 'undefined') {
+      observer = new ResizeObserver(() => { refreshGeometry() })
+      observer.observe(root)
+      if (root.firstElementChild !== null) observer.observe(root.firstElementChild)
+    }
     return () => {
       root.removeEventListener('scroll', handler)
       if (frame !== undefined) cancelAnimationFrame(frame)
+      observer?.disconnect()
     }
   }, [measure, scrollRef, remountKey])
   /* Follow the latest content while at the bottom — and ONLY when it moved.
@@ -212,15 +260,20 @@ export function useFollowScroll(
   useEffect(() => {
     const root = resolveScroller(scrollRef.current)
     if (root === null || !atBottom) return
-    const target = root.scrollHeight - root.clientHeight
+    /* Content changed, so the cached maximum is stale: refresh it here, off the
+       scroll path. This runs per new round / per page, not per gesture. */
+    maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
+    const target = maxScrollRef.current
     if (Math.abs(root.scrollTop - target) < 1) return
     root.scrollTop = target
   }, [scrollRef, changedKey, atBottom, remountKey])
   const jumpToBottom = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    // The clamped maximum, not `scrollHeight` — see the follow effect above.
-    root.scrollTop = root.scrollHeight - root.clientHeight
+    // A click, not a gesture: one layout read here is the right trade (the offset
+    // must be exact), and it keeps the cache honest for the scroll that follows.
+    maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
+    root.scrollTop = maxScrollRef.current
     setAtBottom(true)
   }, [scrollRef, setAtBottom])
   return { measure, jumpToBottom }

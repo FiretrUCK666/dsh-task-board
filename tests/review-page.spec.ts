@@ -1605,3 +1605,56 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
       .toMatch(/x\.round\.id !== y\.round\.id \|\| x\.state !== y\.state/)
   })
 })
+
+/**
+ * 滚动路径上一个布局属性都不许读。
+ *
+ * ── 依据 ──────────────────────────────────────────────────────────────────────
+ *
+ * 读者提供的两次真实 Performance 录制里，最能说明问题的是这一项：**未归因主线程
+ * 耗时 5,051ms**（占比最大），同期渲染 2,031ms、绘制 1,508ms。「未归因」是 Chrome
+ * 无法归到任何函数的强制重排——不是任何一个回调慢，而是主线程一直在被要求把布局
+ * 做完。
+ *
+ * 来源是这段判定：
+ *
+ *     root.scrollHeight - root.scrollTop - root.clientHeight
+ *
+ * `scrollHeight` 与 `clientHeight` 是**布局读取**：问它们会让引擎先把所有待处理的
+ * 样式与布局算完。每帧问一次，主线程就永远追不上合成器。而 `scrollTop` 只是已存的
+ * 一个偏移，读它不触发布局。
+ *
+ * 所以这条钉的是结构：**`measure` 里只许出现 `scrollTop`**，昂贵的那两个值来自
+ * 缓存，缓存在几何真的会变的地方（挂载、内容尺寸变化、区域重建）刷新。滚动不是
+ * 几何变化。
+ */
+describe('the scroll path reads no layout', () => {
+  const source = readFileSync(fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url)), 'utf8')
+
+  it('measure reads only scrollTop', () => {
+    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(source)?.[0] ?? ''
+    expect(measure, 'measure not found').not.toBe('')
+    expect(measure, 'scrollHeight forces a layout pass — reading it per frame is what saturated the main thread')
+      .not.toMatch(/\.scrollHeight/)
+    expect(measure, 'clientHeight forces a layout pass too')
+      .not.toMatch(/\.clientHeight/)
+    expect(measure, 'the answer must come from the cached maximum').toMatch(/maxScrollRef\.current/)
+    expect(measure, 'scrollTop is the only scroll property that is safe to read here').toMatch(/\.scrollTop/)
+  })
+
+  it('the geometry cache is refreshed off the scroll path', () => {
+    // It has to be filled somewhere, or the measurement is meaningless: once on
+    // mount/remount, and again when the observed box changes size.
+    expect(source, 'the cached maximum must be (re)computed from real geometry')
+      .toMatch(/maxScrollRef\.current = Math\.max\(0, root\.scrollHeight - root\.clientHeight\)/)
+    expect(source, 'a ResizeObserver must keep it current as content grows').toMatch(/new ResizeObserver/)
+  })
+
+  it('the scroll listener itself does not read geometry', () => {
+    // The listener schedules `measure`; the ban is on doing layout work in it.
+    const listener = /root\.addEventListener\('scroll', handler[\s\S]{0,400}/.exec(source)?.[0] ?? ''
+    expect(listener, 'scroll listener not found').not.toBe('')
+    expect(listener, 'the scroll listener must not read layout directly')
+      .not.toMatch(/scrollHeight|clientHeight/)
+  })
+})
