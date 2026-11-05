@@ -7334,30 +7334,7 @@
   flex: none;
 }
 
-/* ── THE BOARD STOPS BEING A RENDER TARGET UNDER AN OVERLAY ───────────────
- *
- * The columns and the card detail panel are SIBLINGS. Opening a card lays an
- * absolutely positioned overlay over the board, but the board underneath stays in
- * the layout tree, stays painted, and keeps its infinite animations ticking — for
- * the whole time the reader is scrolling the panel on top of it.
- *
- * That is the shape the recorded traces show: 「未归因主线程耗时」 as the largest
- * entry on every capture, frame after frame, whether or not the reader is moving.
- *
- * Pausing the animations was a patch — it still left the columns as a paint target,
- * and it needed a selector per animated element, so it would have to grow every time
- * something new animates. `content-visibility: hidden` states the actual requirement:
- *
- *   · LAYOUT: the subtree's contents are not laid out.
- *   · PAINT: nothing inside is painted.
- *   · The element keeps its BOX, so nothing shifts when the overlay closes.
- *
- * Hiding the covered region cannot hide the overlay: they are siblings.
- * `:has()` keeps the condition in CSS — no component carries an "am I covered" flag,
- * and closing the panel restores rendering with nothing to re-arm. */
-[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [class$='_columns'] {
-  content-visibility: hidden;
-}
+
 
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],

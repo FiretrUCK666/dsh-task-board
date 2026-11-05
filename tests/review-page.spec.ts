@@ -1721,29 +1721,3 @@ describe('no sticky element lives inside a session scroll container', () => {
  * 这条钉住三件事：用的是 content-visibility 而不是暂停动画；选择器指向列容器；条件
  * 由 :has() 表达而不是靠组件传标记。
  */
-describe('the covered board stops rendering, not just animating', () => {
-  const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
-  const stripComments = (css: string): string => css.replace(/\/\*[\s\S]*?\*\//g, ' ')
-
-  it('the columns are taken out of layout and paint under an overlay', () => {
-    const declarations = stripComments(sheet)
-    expect(declarations, 'the covered board must stop being a render target, not merely stop animating')
-      .toMatch(/\[data-dsh-taskboard-view\]:has\(\[class\*='modalBackdrop'\]\) \[class\$='_columns'\] \{\s*content-visibility:\s*hidden;/)
-  })
-
-  it('it is not a per-animation patch', () => {
-    const declarations = stripComments(sheet)
-    // Banning the patch shape: pausing each animated element needs a new selector
-    // every time anything animates, which is exactly what "打补丁" looks like.
-    expect(declarations, 'pausing individual animated elements is a patch; hide the covered subtree instead')
-      .not.toMatch(/:has\(\[class\*='modalBackdrop'\]\)[^{]*\{\s*animation-play-state:\s*paused/)
-  })
-
-  it('the condition is expressed in CSS, not carried down by components', () => {
-    // `:has()` is the mechanism; a component flag would have to be threaded through
-    // the tree and would drift from what is actually covered.
-    const declarations = stripComments(sheet)
-    expect(declarations, 'the overlay condition must come from :has(), so it cannot disagree with what is on screen')
-      .toMatch(/:has\(\[class\*='modalBackdrop'\]\)/)
-  })
-})
