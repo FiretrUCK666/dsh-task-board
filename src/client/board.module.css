@@ -7336,6 +7336,28 @@
 
 
 
+/* ── THE COVERED BOARD STOPS RENDERING ────────────────────────────────────
+ *
+ * The columns and the detail panel are SIBLINGS. Opening a card lays an absolutely
+ * positioned overlay over the board, but the board stays in the tree, stays painted,
+ * and keeps six infinite animations ticking — while the reader scrolls a completely
+ * different region on top of it. The recorded traces show that as 「未归因主线程耗时」
+ * being the largest entry on every capture.
+ *
+ * `content-visibility: hidden` skips the subtree's LAYOUT and PAINT, and it keeps the
+ * element's own box, so nothing shifts when the panel closes.
+ *
+ * The selector is `[data-dsh-tb-columns]`, NOT a class suffix: it is the one stable
+ * attribute this plugin puts on that grid (exactly one occurrence in the tree). An
+ * earlier attempt matched `[class$='_columns']` and hit elements INSIDE the panel,
+ * which blanked the panel's own background — the attribute cannot do that.
+ *
+ * Why this is not `display: none`: that would drop the grid's box, so the board would
+ * collapse while the panel is open and jump back on close. */
+[data-dsh-taskboard-view]:has([class*='modalBackdrop']) [data-dsh-tb-columns] {
+  content-visibility: hidden;
+}
+
 @media (prefers-reduced-motion: reduce) {
   [data-dsh-taskboard-view],
   [data-dsh-taskboard-view] :where(*),

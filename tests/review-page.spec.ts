@@ -1721,3 +1721,48 @@ describe('no sticky element lives inside a session scroll container', () => {
  * 这条钉住三件事：用的是 content-visibility 而不是暂停动画；选择器指向列容器；条件
  * 由 :has() 表达而不是靠组件传标记。
  */
+
+/**
+ * 面板盖住看板时，看板列退出渲染——但**只许是那一个**。
+ *
+ * ── 为什么这条要写得这么细 ────────────────────────────────────────────────────
+ *
+ * 这个需求被做错过一次：上一版用类名后缀 `[class$='_columns']` 定位看板列，那个后缀在
+ * 卡片详情面板**内部**也会命中，于是 `content-visibility: hidden` 把面板自己的内容连同
+ * 背景一起从渲染里拿掉，读者看到的是「点开之后后面什么都没有了」。
+ *
+ * 所以下面钉的不是「有没有那条规则」，是两个必须同时成立的东西：
+ *
+ *   1. 定位只能用 `[data-dsh-tb-columns]`——那是本插件打在这个网格上的唯一稳定属性，
+ *      全树只有一处；
+ *   2. 判断只能来自 `:has([class*='modalBackdrop'])`，也就是「这个视图里有一个打开的
+ *      遮罩」，它是从 DOM 事实读出来的，不是组件传下来的标记。
+ *
+ * 类名后缀 `_columns` 这种写法必须被禁止：它看起来更短，但它匹配的是**任意**以它结尾
+ * 的类，包括面板内部的元素。
+ */
+describe('the covered board stops rendering, and only the board', () => {
+  const sheet = readFileSync(fileURLToPath(new URL('../src/client/board.module.css', import.meta.url)), 'utf8')
+  const declarations = sheet.replace(/\/\*[\s\S]*?\*\//g, ' ')
+
+  it('the column grid is taken out of layout and paint', () => {
+    expect(declarations, 'the covered board must stop being a render target')
+      .toMatch(/\[data-dsh-taskboard-view\]:has\(\[class\*='modalBackdrop'\]\) \[data-dsh-tb-columns\] \{\s*content-visibility:\s*hidden;/)
+  })
+
+  it('it is located by the one stable attribute, never by a class suffix', () => {
+    // The exact shape that blanked the panel last time.
+    expect(declarations, 'a class-suffix selector also matches elements INSIDE the detail panel — that is how the panel lost its own background')
+      .not.toMatch(/content-visibility:\s*hidden[\s\S]{0,80}\[class\$='_columns'\]/)
+    expect(declarations, 'the target must be the dedicated grid attribute')
+      .toMatch(/\[data-dsh-tb-columns\]\s*\{\s*content-visibility:\s*hidden;/)
+  })
+
+  it('the box is kept, so closing the panel does not shift the board', () => {
+    // `display: none` would drop the grid's box and make the board jump on close.
+    const rule = /\[data-dsh-tb-columns\] \{[^}]*\}/.exec(declarations)?.[0] ?? ''
+    expect(rule, 'the rule not found').not.toBe('')
+    expect(rule, 'display:none would collapse the grid and make the board jump back on close')
+      .not.toMatch(/display:\s*none/)
+  })
+})
