@@ -36,7 +36,7 @@ import { sessionCommentsOf } from './comment-thread.ts'
 import { SessionFrame } from './SessionFrame.tsx'
 import { SessionComposer, SessionRail, SessionTranscript } from './session-panel.tsx'
 import { useWorkSteps } from '../chat-settings.ts'
-import { useTranscriptTail } from './use-transcript.tsx'
+import { useTranscriptTail, TailFrame } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 import { Button } from '../design/ui.tsx'
@@ -97,10 +97,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
     loadingEarlier: transcriptLoadingEarlier,
     pageError: transcriptPageError,
     pageUnsupported: transcriptPageUnsupported,
-    atBottom: transcriptAtBottom,
+    pin: transcriptPin,
     scrollRef: transcriptScrollRef,
-    onScroll: onTranscriptScroll,
-    jumpToBottom: jumpTranscript,
     reload: reloadTranscript,
     loadEarlier: loadEarlierTranscript,
   } = useTranscriptTail(
@@ -204,29 +202,27 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
         </>
       }
       main={
-        <div
-          className={css.reviewTranscriptScroll}
-          ref={transcriptScrollRef}
-          onScroll={onTranscriptScroll}
-        >
-          {sessionId === undefined ? (
-            <p className={css.detailText}>{t('review.noSession')}</p>
-          ) : (
-            <SessionTranscript
-              turns={turns}
-              prefs={workSteps}
-              error={transcriptError}
-              atBottom={transcriptAtBottom}
-              jumpToBottom={jumpTranscript}
-              waiting={waiting}
-              hasMore={transcriptHasMore}
-              loadingEarlier={transcriptLoadingEarlier}
-              pageError={transcriptPageError}
-              pageUnsupported={transcriptPageUnsupported}
-              onLoadEarlier={loadEarlierTranscript}
-              onRetry={reloadTranscript}
-              sessionId={sessionId}
-              controller={controller}
+        <TailFrame pin={transcriptPin}>
+          <div
+            className={css.reviewTranscriptScroll}
+            ref={transcriptScrollRef}
+          >
+            {sessionId === undefined ? (
+              <p className={css.detailText}>{t('review.noSession')}</p>
+            ) : (
+              <SessionTranscript
+                turns={turns}
+                prefs={workSteps}
+                error={transcriptError}
+                waiting={waiting}
+                hasMore={transcriptHasMore}
+                loadingEarlier={transcriptLoadingEarlier}
+                pageError={transcriptPageError}
+                pageUnsupported={transcriptPageUnsupported}
+                onLoadEarlier={loadEarlierTranscript}
+                onRetry={reloadTranscript}
+                sessionId={sessionId}
+                controller={controller}
               before={
                 <div className={css.reviewOutcome}>
                   <Chip
@@ -243,7 +239,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
               }
             />
           )}
-        </div>
+          </div>
+        </TailFrame>
       }
       rail={
         <SessionRail

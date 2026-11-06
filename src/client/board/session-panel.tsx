@@ -24,7 +24,7 @@ import { formatDuration } from './format-time.ts'
 import { sumUsage, type TranscriptTurn } from './review-transcript.ts'
 import { TurnList } from './TurnItem.tsx'
 import type { WorkStepsPrefs } from './work-steps.ts'
-import { JumpToLatest, useFollowScroll } from './use-transcript.tsx'
+import { TailFrame, useFollowScroll } from './use-transcript.tsx'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
 import { Chip, type ChipKind } from '../design/Chip.tsx'
 import { CommentsThread } from './CommentsThread.tsx'
@@ -44,17 +44,15 @@ import components from '../design/components.module.css'
 
 /**
  * The shared transcript-region content: optional header (the review page's
- * outcome banner), the waiting banner, error/loading/empty states, the
- * folded turn list (with the native "load earlier" affordance above it when
- * the host holds older messages) and the "滑到最新" pill. Callers own their scroll region and the tail
- * hook; this is pure rendering, so every live session surface looks and
- * behaves identically.
+ * outcome banner), the waiting banner, error/loading/empty states and the folded
+ * turn list (with the native "load earlier" affordance above it when the host
+ * holds older messages). Callers own their scroll region, its frame and the
+ * 「滑到最新」 pill — this is pure rendering inside the scroller, so every live
+ * session surface looks and behaves identically.
  */
-export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
+export function SessionTranscript({ turns, error, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
   turns: readonly TranscriptTurn[] | undefined
   error: boolean
-  atBottom: boolean
-  jumpToBottom: () => void
   waiting?: PendingInteractionKind
   /** The host holds messages older than the loaded window. */
   hasMore?: boolean
@@ -146,7 +144,6 @@ export function SessionTranscript({ turns, error, atBottom, jumpToBottom, waitin
           onToggleGroup={toggleGroup}
         />
       )}
-      <JumpToLatest atBottom={atBottom} onJump={jumpToBottom} />
     </>
   )
 }
@@ -747,11 +744,10 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   composer: ReactNode
 }) {
   // The comment thread follows its latest round through the SAME mechanism as
-  // the transcript (resolved scroller + capture listener + pinning). The ROOT
+  // the transcript (resolved scroller + passive listener + pinning). The ROOT
   // is the comments box itself at every width — 滑到最新 always drives the
   // region that actually holds the comments.
   const commentsScrollRef = useRef<HTMLDivElement | null>(null)
-  const [commentsAtBottom, setCommentsAtBottom] = useState(true)
   // Both folds start with the config head FOLDED on a phone: the
   // conversation and the send box are the first screen, while the comments
   // fold starts OPEN on desktop and FOLDED on a phone (one grammar —
@@ -778,11 +774,11 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // the user and owns every force-open/follow behavior below — one boolean,
   // never two parallel conditions to drift apart.
   const awaiting = interaction !== undefined || shellWaiting !== undefined
-  const { measure: onCommentsScroll, jumpToBottom: jumpComments } = useFollowScroll(
-    commentsScrollRef, commentsAtBottom, setCommentsAtBottom, threadFingerprint,
+  const commentsPin = useFollowScroll(
+    commentsScrollRef, threadFingerprint,
     /* Remount signal: folding the comments unmounts .commentsScroll; the fold
        state flips back on re-expand, so the observer + follow effects re-bind
-       to the NEW element — without it, a fold→expand loop loses bottom-follow
+       to the NEW element — without it, a fold→expand loop loses end-following
        and the 滑到最新 button. */
     commentsOpen || awaiting,
   )
@@ -790,7 +786,7 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   // (a manual tap, or a pending question force-opening it) lands on the
   // newest comment, and a new ask pins again so the question is always the
   // thing in view (the default-open mount is pinned by the follow effect
-  // itself, atBottom starts true). Answering never moves the reader: only
+  // itself, which starts pinned). Answering never moves the reader: only
   // open edges and a live ask trigger, so scrolling up while reading stays
   // put. The pin scrolls the comment box itself — the fold head lives
   // outside that box, so it can never be pushed off-screen by it.
@@ -799,8 +795,8 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
     const open = commentsOpen || awaiting
     const opened = open && !openEdgeRef.current
     openEdgeRef.current = open
-    if (awaiting || opened) jumpComments()
-  }, [commentsOpen, awaiting, interaction?.rpcId, shellWaiting, jumpComments])
+    if (awaiting || opened) commentsPin.jump()
+  }, [commentsOpen, awaiting, interaction?.rpcId, shellWaiting, commentsPin])
   // The collapsed head still says something: the live context occupancy
   // rides the disclosure summary (zero-omission quietness, same as every
   // other summary — no projection, no line).
@@ -868,19 +864,28 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
                user just saw. */
             onToggle={() => { if (!awaiting) setCommentsOpen(!commentsOpen) }}
           >
-            <div className={css.commentsScroll} ref={commentsScrollRef} onScroll={onCommentsScroll}>
-              <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
-              {awaiting && sessionId !== undefined && (
-                <InteractionCard
-                  key={interaction !== undefined ? interaction.rpcId : `shell-${sessionId}`}
-                  question={interaction}
-                  shellWaiting={interaction === undefined ? shellWaiting : undefined}
-                  sessionId={sessionId}
-                  controller={controller}
-                />
-              )}
-              <JumpToLatest atBottom={commentsAtBottom} onJump={jumpComments} />
-            </div>
+            {/* NO `onScroll` HERE. The listener lives on this element already (one
+                passive listener inside `useFollowScroll`); a React `onScroll` would
+                be a SECOND dispatch of the same measurement, and React does not
+                mark `scroll` passive — every scroll event would pay a
+                main-thread-synchronising hop before the frame could commit.
+
+                `TailFrame` owns the pill and its containing block: the pill is a
+                SIBLING of this scroller, never a child of it (see that component). */}
+            <TailFrame pin={commentsPin}>
+              <div className={css.commentsScroll} ref={commentsScrollRef}>
+                <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+                {awaiting && sessionId !== undefined && (
+                  <InteractionCard
+                    key={interaction !== undefined ? interaction.rpcId : `shell-${sessionId}`}
+                    question={interaction}
+                    shellWaiting={interaction === undefined ? shellWaiting : undefined}
+                    sessionId={sessionId}
+                    controller={controller}
+                  />
+                )}
+              </div>
+            </TailFrame>
           </Disclosure>
         </div>
       </div>

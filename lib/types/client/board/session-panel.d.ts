@@ -10,17 +10,15 @@ import type { CommentView } from './comment-thread.ts';
 import { type DraftAttachment } from './composer-attachments.ts';
 /**
  * The shared transcript-region content: optional header (the review page's
- * outcome banner), the waiting banner, error/loading/empty states, the
- * folded turn list (with the native "load earlier" affordance above it when
- * the host holds older messages) and the "滑到最新" pill. Callers own their scroll region and the tail
- * hook; this is pure rendering, so every live session surface looks and
- * behaves identically.
+ * outcome banner), the waiting banner, error/loading/empty states and the folded
+ * turn list (with the native "load earlier" affordance above it when the host
+ * holds older messages). Callers own their scroll region, its frame and the
+ * 「滑到最新」 pill — this is pure rendering inside the scroller, so every live
+ * session surface looks and behaves identically.
  */
-export declare function SessionTranscript({ turns, error, atBottom, jumpToBottom, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
+export declare function SessionTranscript({ turns, error, waiting, hasMore, loadingEarlier, pageError, pageUnsupported, onLoadEarlier, before, onRetry, sessionId, controller, prefs }: {
     turns: readonly TranscriptTurn[] | undefined;
     error: boolean;
-    atBottom: boolean;
-    jumpToBottom: () => void;
     waiting?: PendingInteractionKind;
     /** The host holds messages older than the loaded window. */
     hasMore?: boolean;

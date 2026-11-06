@@ -4354,9 +4354,12 @@
    documented last resort for exactly that state. The floor only binds under
    that squeeze: an unfloored box already stretches to its leftover share. */
 .commentsScroll {
-  /* The containing block for the absolute jump affordance — see that rule for
-     why it is not sticky. */
-  position: relative;
+  /* THE PILL'S CONTAINING BLOCK IS THE FRAME, NOT THIS BOX — see
+     `.sessionScrollFrame` below. This box therefore stays a plain flex column:
+     declaring `position: relative` here was enough to make the pill `absolute`
+     against a box that SCROLLS, and the pill then travelled with the content
+     (measured: at scrollTop 0 it sat in the corner, at half-way it was 292px
+     above the visible area). */
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-5);
@@ -4405,6 +4408,40 @@
 
   contain: layout;}
 
+/* ── THE CORNER AFFORDANCE'S FRAME ────────────────────────────────────────────
+ *
+ * 滑到最新 must sit in the region's VISIBLE bottom-right corner. `position:
+ * fixed` is wrong (it would be viewport-relative), and `sticky` is wrong (it asks
+ * the engine to reposition the element on every scroll frame — the
+ * 「未归因主线程耗时」 the recorded traces show as their largest entry). So the
+ * pill is `absolute`, and the question is only WHICH box it is absolute against.
+ *
+ * It must NOT be the scroll box. `position: absolute` against a box that scrolls
+ * still rides that box's scroll offset — the containing block decides the
+ * coordinates, the scroll decides which part of them is visible. Measured
+ * (`scripts/probes/probe-pill-anchor.{cjs,js}`, three placements x three
+ * offsets): declared against a positioned scroller the pill sat at
+ * `topInBox: 203` at scrollTop 0 and at `-292` half-way down — it had left the
+ * screen entirely, which is the one moment it is supposed to be visible. A reader
+ * who is AT the end never sees the pill, so an at-the-end screenshot cannot show
+ * this bug at all.
+ *
+ * So each scroll region gets a wrapper that does not scroll: this one. The
+ * wrapper is the containing block, the pill is its child, and the pill therefore
+ * holds the corner at every offset (same probe: `topInBox` constant, `visible:
+ * true` at all three).
+ *
+ * `display: contents` is not usable here, for the usual reason: a box that
+ * generates no box cannot be a containing block. */
+.sessionScrollFrame {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+}
+
 /* The fold rows get a comfortable tap height (they sit at the top of a phone
    screen where a 16px line is too small a target). */
 .railDisclosure {
@@ -4433,9 +4470,10 @@
    with breathing, so the conversation keeps the same 14px on both sides and
    never hugs the thumb. */
 .reviewTranscriptScroll {
-  /* The containing block for the absolute jump affordance — see that rule for
-     why it is not sticky. */
-  position: relative;
+  /* THE PILL'S CONTAINING BLOCK IS THE FRAME, NOT THIS BOX — see
+     `.sessionScrollFrame` below. This box therefore stays a plain flex column:
+     declaring `position: relative` here was enough to make the pill `absolute`
+     against a box that SCROLLS, and the pill then travelled with the content. */
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-7);
@@ -6374,6 +6412,17 @@
   .commentsScroll {
     overflow-y: auto;
     max-height: 300px;
+  }
+
+  /* THE FRAME SHRINK-WRAPS HERE, because the box has a cap of its own.
+     Wide, the frame is what fills the rail and the box fills the frame — one
+     height, two roles. Narrow, the box carries the 300px ceiling, so a frame that
+     still GROWS would be taller than the box under it and the pill (absolute
+     against the frame) would hover below the bottom edge of the thread. Taking the
+     growth away leaves the frame exactly as tall as the capped box, at every
+     content length — and the cap itself stays the one number above. */
+  .sessionScrollFrame {
+    flex: 0 1 auto;
   }
 
   /* 有一张卡等着被回答时，这条 300px 也要解。它与折叠块那条封顶是**同一个顾虑写在这一层上

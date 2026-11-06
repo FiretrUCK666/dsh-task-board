@@ -792,8 +792,12 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     // (the 「对话消息另起一行」 family).
     expect(cssSource).toMatch(/\.reviewMeterHead\s*\{[^}]*white-space:\s*nowrap/)
     expect(cssSource).toMatch(/\.reviewMeterRows\s*\{[^}]*display:\s*grid/)
-    // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix).
-    expect(panelSource).toMatch(/onCommentsScroll/)
+    // 滑到最新 binds ONLY the comments scroller (the 「跳转范围错误」 fix). The
+    // pill reads the COMMENTS pin and nothing else — and it lives in that region's
+    // frame as a SIBLING of the scroller, because an absolute child of a scroller
+    // rides the scroll offset (measured; see `.sessionScrollFrame`).
+    expect(panelSource).toMatch(/<TailFrame pin=\{commentsPin\}>/)
+    expect(panelSource, 'the pill must not be a child of the scroller').not.toMatch(/<div className=\{css\.commentsScroll\}[^>]*>\s*<CommentsThread[\s\S]{0,600}<TailPill/)
   })
 
   it('the rail is flexible in the base layout (two columns survive down to the floor)', () => {
@@ -836,12 +840,18 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     // the only scrollTop writes are the follow/jump/anchor paths).
     const writes = panelSource.match(/scrollTop\s*=/g) ?? []
     expect(writes.length).toBe(0)
+    // …and no second dispatch of the measurement: the hook already owns a passive
+    // listener on this very element, and React does not mark `scroll` passive, so
+    // an `onScroll` prop here would make every scroll event wait for the main
+    // thread before its frame could commit.
+    expect(panelSource, 'a React onScroll is a second dispatch of the same measurement')
+      .not.toMatch(/onScroll=/)
     // OPEN / NEW ASK = LATEST: opening the comments fold (manual tap or a
     // pending question force-opening it) and every new ask pin the box to the
     // newest comment; the old per-open opt-out (`initialToBottom`) is gone —
     // there is exactly one semantic, not a first-open/re-open fork.
     expect(panelSource).toMatch(/const openEdgeRef = useRef\(commentsOpen \|\| awaiting\)/)
-    expect(panelSource).toMatch(/if \(awaiting \|\| opened\) jumpComments\(\)/)
+    expect(panelSource).toMatch(/if \(awaiting \|\| opened\) commentsPin\.jump\(\)/)
     expect(panelSource).not.toMatch(/initialToBottom/)
     expect(followSource).not.toMatch(/initialToBottom/)
   })
@@ -1499,21 +1509,24 @@ describe('periodic projection commits are deduplicated', () => {
 /**
  * 「滑到最新」按钮到底时必须**留在布局里**，只可以失去墨与可点性。
  *
- * 它是一个真实占据滚动内容空间的东西（sticky、flex: none、26px 高 + margin）。
- * 到底时 `return null` 把它从 DOM 摘掉，内容总高当场少掉它自己那一截——而那正好是
- * 读者刚抵达底部的时刻，浏览器于是重新夹一次 scrollTop，画面就弹几像素。
- * 两处滚动区都渲染同一个组件，所以两处都弹。
+ * 它是一个真实占据滚动内容空间的东西（absolute、26px 高）。到底时 `return null` 把它从
+ * DOM 摘掉，内容总高当场少掉它自己那一截——而那正好是读者刚抵达末尾的时刻，浏览器于是
+ * 重新夹一次 scrollTop，画面就弹几像素。两处滚动区都渲染同一个组件，所以两处都弹。
  *
  * 这条测试钉的是「不卸载」这个决定本身：把 `return null` 加回去，它必须变红。
+ *
+ * 它同时钉住**它从哪里拿那个布尔值**：`TailPill` 读的是 pin 的订阅，不是面板的
+ * `useState`。这一条与「滚动不重画」是同一件事的两面——值若经 props 从面板传下来，
+ * 面板就得为此重画一次。
  */
-describe('the jump-to-latest control keeps its layout space at the bottom', () => {
+describe('the jump-to-latest control keeps its layout space at the end', () => {
   const source = readFileSync(fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url)), 'utf8')
-  const body = /export function JumpToLatest\([\s\S]*?\n\}/.exec(source)?.[0] ?? ''
+  const body = /function TailPill\(\{ pin \}[\s\S]*?\n\}/.exec(source)?.[0] ?? ''
 
   it('the component is never unmounted on the atBottom branch', () => {
-    expect(body, 'JumpToLatest not found').not.toBe('')
+    expect(body, 'TailPill not found').not.toBe('')
     // The defect: bailing out before the element exists.
-    expect(body, 'returning null at the bottom removes its height from the content and re-clamps the scroller')
+    expect(body, 'returning null at the end removes its height from the content and re-clamps the scroller')
       .not.toMatch(/if \(atBottom\) return null/)
   })
 
@@ -1521,6 +1534,20 @@ describe('the jump-to-latest control keeps its layout space at the bottom', () =
     expect(body, 'the hidden state must be expressed, not unmounted').toMatch(/data-hidden=\{atBottom \? 'true' : undefined\}/)
     expect(body, 'a control nobody can see must not be clickable').toMatch(/disabled=\{atBottom\}/)
     expect(body, 'and it must leave the accessibility and tab order').toMatch(/aria-hidden=\{atBottom\}/)
+  })
+
+  it('it reads the pin through a subscription, not through panel state', () => {
+    // A prop drilled from the panel would re-render the panel on every crossing;
+    // that is exactly the cost this surface was paying.
+    expect(body, 'the pill must subscribe to the pin instead of receiving a boolean').toMatch(/useSyncExternalStore\(pin\.subscribe, pin\.visible\)/)
+  })
+
+  it('it is reachable only through its frame', () => {
+    // The pill is `absolute`, and its containing block must be the frame that does
+    // not scroll. Exporting the pill alone invites rendering it inside a scroller —
+    // which is the measured defect, not a style preference.
+    expect(source, 'TailPill must stay private; TailFrame is the way in').not.toMatch(/export function TailPill/)
+    expect(source, 'the frame must render the pill').toMatch(/<TailPill pin=\{pin\} \/>/)
   })
 })
 
@@ -1582,18 +1609,45 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
   const boardDir = fileURLToPath(new URL('../src/client/board/', import.meta.url))
   const read = (name: string): string => readFileSync(boardDir + name, 'utf8')
 
-  it('the at-bottom decision has hysteresis, not a single threshold', () => {
+  it('the pill keeps hysteresis, and the FOLLOW gate does not use it', () => {
     const hook = read('use-transcript.tsx')
-    expect(hook, 'a second, larger threshold must exist for leaving the bottom')
+    expect(hook, 'a second, larger threshold must exist for showing the pill')
       .toMatch(/LEAVE_BOTTOM_PX\s*=\s*\d+/)
-    expect(hook, 'measure must consult the previous answer to pick the threshold')
-      .toMatch(/wasAtBottom/)
+    expect(hook, 'measure must consult the previous visibility to pick the threshold')
+      .toMatch(/wasVisible/)
     // The defect, stated as a ban: one threshold for both directions makes the
-    // reader's tremor near the end toggle the state on every wheel tick.
+    // pill flicker — and, before it was a subscription, re-rendered the panel.
     const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(hook)?.[0] ?? ''
     expect(measure, 'measure not found').not.toBe('')
-    expect(measure, 'a single-threshold comparison re-renders the panel on every crossing')
+    expect(measure, 'a single-threshold comparison toggles the pill on every crossing')
       .not.toMatch(/const next = root\.scrollHeight - root\.scrollTop - root\.clientHeight < NEAR_BOTTOM_PX/)
+    /* AND THE TWO ANSWERS MUST NOT BE ONE.
+     *
+     * 「还要不要跟随」 is asked every frame and must be a subtraction; 「胶囊该不该显示」
+     * is a visual fact with a 120px leave-line. Sharing the leave-line would leave a
+     * reader who scrolled 100px up still 「在底部」 — so an arriving round would pull
+     * them back to the end mid-read. */
+    expect(hook, 'the follow gate needs its own, tighter line').toMatch(/FOLLOW_SLACK_PX\s*=\s*\d+/)
+    expect(measure, 'the follow gate must be set from its own line, not from the pill hysteresis')
+      .toMatch(/pinnedRef\.current = distance < FOLLOW_SLACK_PX/)
+  })
+
+  it('no scroll event can re-render the panel', () => {
+    const hook = read('use-transcript.tsx')
+    // The mechanism, stated as a structure: the pin's two answers live in refs, and
+    // the only thing that hears about a crossing is the pill's subscription.
+    const follow = /export function useFollowScroll\([\s\S]*?\n  return \{ subscribe, visible, jump, anchor \}\n\}/.exec(hook)?.[0] ?? ''
+    expect(follow, 'useFollowScroll not found').not.toBe('')
+    expect(follow, 'scroll state must not live in React state — every crossing would re-render the panel')
+      .not.toMatch(/useState/)
+    expect(follow, 'the pin is a ref, written on every measure')
+      .toMatch(/const pinnedRef = useRef\(true\)/)
+    expect(follow, 'the pill hears about a crossing through a subscription')
+      .toMatch(/const subscribe = useCallback\(/)
+    // The fold is derived once per window, so its result is reference-stable and the
+    // memo on TurnList/TurnItem can actually hit.
+    expect(hook, 'foldTurns must be memoised on the window (otherwise every render refolds and every row re-renders)')
+      .toMatch(/const turns = useMemo\(\(\) => \(events === undefined \? undefined : foldTurns\(events\)\), \[events\]\)/)
   })
 
   it('the comment thread is memoised on its content', () => {
@@ -1638,16 +1692,27 @@ describe('the scroll path reads no layout', () => {
       .not.toMatch(/\.scrollHeight/)
     expect(measure, 'clientHeight forces a layout pass too')
       .not.toMatch(/\.clientHeight/)
-    expect(measure, 'the answer must come from the cached maximum').toMatch(/maxScrollRef\.current/)
+    expect(measure, 'the answer must come from the cached maximum').toMatch(/maxScroll\.current/)
     expect(measure, 'scrollTop is the only scroll property that is safe to read here').toMatch(/\.scrollTop/)
   })
 
   it('the geometry cache is refreshed off the scroll path', () => {
     // It has to be filled somewhere, or the measurement is meaningless: once on
     // mount/remount, and again when the observed box changes size.
-    expect(source, 'the cached maximum must be (re)computed from real geometry')
-      .toMatch(/maxScrollRef\.current = Math\.max\(0, root\.scrollHeight - root\.clientHeight\)/)
+    //
+    // The read itself is allowed to exist in exactly ONE place — `maxScrollOf` — so
+    // that "who may pay for a layout read" is a question with one answer in the file
+    // rather than a rule every future editor has to remember. Every refresh of the
+    // cache goes through it.
+    expect(source, 'the layout read must live in one named helper')
+      .toMatch(/function maxScrollOf\(root: HTMLElement\): number \{\n  return Math\.max\(0, root\.scrollHeight - root\.clientHeight\)\n\}/)
+    expect(source, 'the cache must be filled from real geometry')
+      .toMatch(/maxScroll\.current = maxScrollOf\(root\)/)
     expect(source, 'a ResizeObserver must keep it current as content grows').toMatch(/new ResizeObserver/)
+    // …and nowhere else reads that geometry: one helper, one call site family.
+    const reads = source.match(/\.scrollHeight - root\.clientHeight/g) ?? []
+    expect(reads.length, 'a second copy of the layout read is a second place to forget it is expensive')
+      .toBe(1)
   })
 
   it('the scroll listener itself does not read geometry', () => {
@@ -1690,14 +1755,24 @@ describe('no sticky element lives inside a session scroll container', () => {
       .toMatch(/position:\s*absolute/)
   })
 
-  it('its containing block is the scroll container itself', () => {
-    // Without this the absolute button would anchor to some unrelated ancestor.
+  it('its containing block is a frame OUTSIDE the scroller', () => {
+    // 「绝对定位的子元素住在滚动容器里」看着对，实际会跟着内容滚走——`topInBox`
+    // 在 scrollTop 0 处是 203，滚到一半是 -292，也就是说读者离开末尾、胶囊本该露面的
+    // 那一刻它已经在屏幕外。量法在 `scripts/probes/probe-pill-anchor.{cjs,js}`。
+    //
+    // 所以包含块必须是滚动体**外面**那一层，而且那一层自己不许滚。
+    /* `[^}]*` 而不是 `[\s\S]*?\n\}`：这个文件的规则体以 `;}` 收尾（分号与花括号同
+       一行），用「换行 + }」找结束会越过本条一直吃到下一条，读到别人的 `position`。 */
     for (const cls of ['commentsScroll', 'reviewTranscriptScroll']) {
-      const rule = new RegExp(`\\.${cls} \\{[\\s\\S]*?\\n\\}`).exec(sheet)?.[0] ?? ''
+      const rule = stripComments(new RegExp(`\\.${cls} \\{[^}]*\\}`).exec(sheet)?.[0] ?? '')
       expect(rule, `.${cls} rule not found`).not.toBe('')
-      expect(rule, `.${cls} must establish the containing block for the corner affordance`)
-        .toMatch(/position:\s*relative/)
+      expect(rule, `.${cls} must NOT establish a containing block for the pill — it scrolls, so the pill would ride it`)
+        .not.toMatch(/position:\s*relative/)
     }
+    const frame = stripComments(/\.sessionScrollFrame \{[^}]*\}/.exec(sheet)?.[0] ?? '')
+    expect(frame, 'the frame rule not found').not.toBe('')
+    expect(frame, 'the frame must be the containing block').toMatch(/position:\s*relative/)
+    expect(frame, 'a scroller as the frame would put the pill back inside one').not.toMatch(/overflow/)
   })
 })
 

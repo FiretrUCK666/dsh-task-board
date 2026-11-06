@@ -20,7 +20,7 @@ import { SessionComposer, SessionRail, SessionTranscript } from './session-panel
 import { useWorkSteps } from '../chat-settings.ts'
 import { sessionStateChip, sessionUnavailableReasonOf } from './session-chip.ts'
 import { sessionRowTitleOf } from '../../core/session-list.ts'
-import { useTranscriptTail } from './use-transcript.tsx'
+import { TailFrame, useTranscriptTail } from './use-transcript.tsx'
 import { Button } from '../design/ui.tsx'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 
@@ -73,10 +73,8 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
     loadingEarlier: transcriptLoadingEarlier,
     pageError: transcriptPageError,
     pageUnsupported: transcriptPageUnsupported,
-    atBottom,
+    pin,
     scrollRef,
-    onScroll,
-    jumpToBottom,
     reload,
     loadEarlier,
   } = useTranscriptTail(
@@ -164,24 +162,24 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
         row === undefined ? (
           <p className={css.detailText}>{goneReason ?? t('detail.sessionUnavailable')}</p>
         ) : (
-          <div className={css.reviewTranscriptScroll} ref={scrollRef} onScroll={onScroll}>
-            <SessionTranscript
-              turns={turns}
-              prefs={workSteps}
-              error={transcriptError}
-              atBottom={atBottom}
-              jumpToBottom={jumpToBottom}
-              waiting={waiting}
-              hasMore={transcriptHasMore}
-              loadingEarlier={transcriptLoadingEarlier}
-              pageError={transcriptPageError}
-              pageUnsupported={transcriptPageUnsupported}
-              onLoadEarlier={loadEarlier}
-              onRetry={reload}
-              sessionId={sessionId}
-              controller={controller}
-            />
-          </div>
+          <TailFrame pin={pin}>
+            <div className={css.reviewTranscriptScroll} ref={scrollRef}>
+              <SessionTranscript
+                turns={turns}
+                prefs={workSteps}
+                error={transcriptError}
+                waiting={waiting}
+                hasMore={transcriptHasMore}
+                loadingEarlier={transcriptLoadingEarlier}
+                pageError={transcriptPageError}
+                pageUnsupported={transcriptPageUnsupported}
+                onLoadEarlier={loadEarlier}
+                onRetry={reload}
+                sessionId={sessionId}
+                controller={controller}
+              />
+            </div>
+          </TailFrame>
         )
       }
       rail={

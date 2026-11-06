@@ -21,19 +21,76 @@
  * body, and the same code must work on both. Hard-coding "the region is the
  * scroller" is what made mobile open a transcript at the TOP, hide the jump
  * pill forever, and force a manual drag through dozens of screens.
+ *
+ * ── SCROLL POSITION IS NOT PANEL STATE ───────────────────────────────────────
+ *
+ * Whether the reader is at the end used to be a `useState` living in the panel
+ * (`ReviewDetail` / `SessionDetail` / `SessionRail`). Every crossing therefore
+ * re-rendered a whole panel — and the recorded artifact says what one such
+ * re-render costs: 40 rounds of transcript plus 40 comments is 928 nodes, and
+ * rebuilding them measures 17.8 ms median / 22.3 ms worst (one frame budget is
+ * 16.7 ms). So the frame the reader spends scrolling away from the end is a
+ * frame that cannot be painted: 「在底部往上一滑，画面会瞬间卡一下」.
+ *
+ * The two questions were also never the same question:
+ *
+ *   · 「还要不要继续跟随新内容」 — answered every frame, must cost a subtraction
+ *     and nothing else. It is a REF (`pinnedRef`), and it flips on a tight
+ *     `FOLLOW_SLACK_PX` line.
+ *   · 「那个『滑到最新』胶囊现在该不该显示」 — a VISUAL fact with hysteresis, read
+ *     only by the pill. It is delivered to the pill alone, through a
+ *     subscription (`ScrollPin`), so a crossing re-renders one button instead
+ *     of the panel.
+ *
+ * Keeping them apart is what makes a scroll re-render nothing at all.
  */
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore, type ReactNode } from 'react'
 import type { BoardController, TranscriptEventShape, TranscriptProjectionsShape } from '../../core/controller.ts'
 import { t } from '../locales.ts'
 import css from '../board.module.css'
 import { foldTurns, type TranscriptTurn } from './review-transcript.ts'
 import { Icon } from '../design/ui.tsx'
 
-/** How close to the bottom a scroll position counts as "at the latest". */
+/** How close to the end a scroll position counts as "要显示滑到最新" — the pill's
+ *  ENTER line, and nothing else. */
 export const NEAR_BOTTOM_PX = 24
-/** How much clearance it takes to LEAVE the bottom once you are there. Larger than
- *  NEAR_BOTTOM_PX on purpose — see the hysteresis note on `measure`. */
+/** How much clearance it takes to LEAVE — see the hysteresis note on `measure`. */
 export const LEAVE_BOTTOM_PX = 120
+/**
+ * How close to the end a scroll position counts as "still following".
+ *
+ * Deliberately a SEPARATE, much tighter line than the pill's. This one answers a
+ * mechanical question asked on every frame (「这一帧该不该把读者拽到末尾」) and
+ * its only cost may be a subtraction. Eight pixels is wider than sub-pixel
+ * jitter and narrower than any deliberate flick: a reader who has moved even a
+ * few pixels up has left the end, and nothing may pull them back.
+ */
+export const FOLLOW_SLACK_PX = 8
+
+/**
+ * How to reach one live scroll region's tail: jump to it, or watch whether the
+ * pill should show. `visible` is a SNAPSHOT function (not a captured boolean)
+ * because it is read through `useSyncExternalStore` — a captured value would be
+ * stale by the time the subscription reports a change.
+ */
+export interface ScrollPin {
+  /** Subscribe to pill-visibility changes. Returns the disposer. */
+  subscribe(listener: () => void): () => void
+  /** Whether the 「滑到最新」 pill should show right now. */
+  visible(): boolean
+  /** Scroll to the end and resume following. */
+  jump(): void
+  /**
+   * Put the reader back `distance` px from the end after content was PREPENDED
+   * above the viewport (the "加载更早" grammar), and refresh the geometry cache.
+   *
+   * It belongs here rather than at the call site because the pin owns both the
+   * scroller's offset and the cached maximum: a write from outside would leave
+   * the cache describing the pre-page geometry, and the next measure would then
+   * read a distance that is wrong by exactly the page's height.
+   */
+  anchor(distance: number): void
+}
 
 /**
  * The element that OWNS the scroll for a piece of content: the nearest
@@ -67,6 +124,19 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
 }
 
 /**
+ * The largest offset a scroller can hold — **the only read of that geometry in this
+ * module**.
+ *
+ * `scrollHeight` and `clientHeight` force layout, so every caller of this function is
+ * a caller that has decided its moment is one where geometry may have changed: mount,
+ * a resize notification, a page prepend, a click. A scroll gesture is not one of those,
+ * and `measure` (the only per-frame reader) uses the cached value instead.
+ */
+function maxScrollOf(root: HTMLElement): number {
+  return Math.max(0, root.scrollHeight - root.clientHeight)
+}
+
+/**
  * Keep a following scroll region pinned to its latest output whenever its
  * size changes — a ResizeObserver (registered a disposer) re-scrolls to the
  * bottom while the user is at the bottom. This also fires once on
@@ -76,10 +146,15 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
  * watches BOTH the content region and its resolved scroller, so a width
  * change that moves the scroll elsewhere is still covered. Content-driven
  * re-scrolls stay with the caller's follow effects; this only covers layout.
+ *
+ * `maxScroll` is the caller's geometry cache: the observer ALREADY runs inside
+ * the engine's layout pass, so reading `scrollHeight` here is free and it is the
+ * one place allowed to refresh that cache.
  */
 export function useResizeFollow(
   scrollRef: React.RefObject<HTMLDivElement>,
-  atBottomRef: React.MutableRefObject<boolean>,
+  pinnedRef: React.MutableRefObject<boolean>,
+  maxScroll: React.MutableRefObject<number>,
   remountKey?: unknown,
 ): void {
   useEffect(() => {
@@ -92,8 +167,10 @@ export function useResizeFollow(
      * only when the scroller is not already sitting on it. */
     const apply = (): void => {
       const root = resolveScroller(content)
-      if (root === null || !atBottomRef.current) return
-      const target = root.scrollHeight - root.clientHeight
+      if (root === null) return
+      maxScroll.current = maxScrollOf(root)
+      if (!pinnedRef.current) return
+      const target = maxScroll.current
       if (Math.abs(root.scrollTop - target) < 1) return
       root.scrollTop = target
     }
@@ -103,38 +180,36 @@ export function useResizeFollow(
     if (root !== null && root !== content) observer.observe(root)
     apply()
     return () => { observer.disconnect() }
-  }, [scrollRef, remountKey])
+  }, [scrollRef, pinnedRef, maxScroll, remountKey])
 }
 
 /**
  * One FOLLOW mechanism, shared by every live list (transcript tail, comment
  * thread): measure and pin against the RESOLVED scroller, and see its scroll
- * events through a window-level capture listener (scroll does not bubble, but
- * it does run the capture phase from the window down). A surface therefore
- * keeps following, reporting and jumping correctly whether its own region
- * scrolls (wide panel) or an ancestor does (stacked narrow panel) — no
+ * events through a listener ON that scroller (scroll does not bubble, and a
+ * capture listener on `window` would run for every scroll on the page). A
+ * surface therefore keeps following and jumping correctly whether its own
+ * region scrolls (wide panel) or an ancestor does (stacked narrow panel) — no
  * per-mode code, no mobile fork.
+ *
+ * It rations out THREE facts with three different costs, and mixing them up is
+ * what made this panel feel heavy:
+ *
+ *   · `pinnedRef` — keep following? Written on every measure, read by the follow
+ *     effects. NEVER a state: a scroll must not re-render anything.
+ *   · the pill's visibility — a visual fact with hysteresis, delivered through
+ *     `subscribe` to the pill alone.
+ *   · the geometry cache (`maxScroll`) — refreshed only where geometry changes.
  */
 export function useFollowScroll(
   scrollRef: React.RefObject<HTMLDivElement>,
-  atBottom: boolean,
-  setAtBottom: (value: boolean) => void,
   changedKey: unknown,
   /** When the scroll region itself UNMOUNTS and REMOUNTS (a fold that hides
    *  its children — the comments Disclosure), the observer + follow effects
    *  must re-bind to the NEW element; passing a value that changes with the
    *  fold (its open state) does that. */
   remountKey?: unknown,
-): { measure: () => void; jumpToBottom: () => void } {
-  const atBottomRef = useRef(atBottom)
-  useEffect(() => { atBottomRef.current = atBottom })
-  useResizeFollow(scrollRef, atBottomRef, remountKey)
-  /* THE LAST MEASURED ANSWER, so an unchanged scroll position costs nothing.
-   *
-   * `setAtBottom` with the same boolean is a no-op in React's output but not in
-   * its WORK: it schedules a render, walks the tree, compares. During a gesture
-   * that happens a hundred times a second, and it is invisible in any single
-   * frame — which is exactly the shape of 「整个画面有点延迟」. */
+): ScrollPin {
   /* ── NO FORCED LAYOUT IN THE SCROLL PATH ──────────────────────────────────
    *
    * The recorded trace of this panel showed **5,051 ms of unattributed main-thread
@@ -157,34 +232,48 @@ export function useFollowScroll(
    *
    * This is the whole difference between "measure on every frame" and "measure on
    * every geometry change", and geometry changes are not what a scroll gesture is. */
-  const maxScrollRef = useRef<number>(0)
-  const atBottomKnown = useRef<boolean | undefined>(undefined)
-  /* HYSTERESIS, because a single threshold makes the reader's gesture oscillate.
+  const maxScroll = useRef<number>(0)
+  /* THE FOLLOW GATE — the only thing the follow effects ask.
    *
-   * Entering "at the bottom" and leaving it used ONE 24px line. A reader resting
-   * near the end crosses that line on almost every wheel tick, and each crossing
-   * flips `atBottom` — which re-renders the whole panel (the transcript list, the
-   * composer, the fold states). On a long conversation that is a render per scroll
-   * event, which is exactly a saturated main thread: the recorded trace shows
-   * INP 286ms with the JS row filled end to end, and the report is 「滑到底往上拉
-   * 就卡」 — the gesture that lives on that line.
+   * It flips on `FOLLOW_SLACK_PX`, NOT on the pill's hysteresis, and the
+   * difference is not cosmetic: with the pill's 120px leave-line a reader who has
+   * scrolled 100px up is still 「在底部」, so an arriving round (the 3-second poll
+   * makes one arrive often) would yank them back to the end mid-read — 「滑动条
+   * 也跟着卡一下」. Eight pixels is the honest answer to 「他还在末尾吗」. */
+  const pinnedRef = useRef(true)
+  /* THE PILL'S ANSWER, and it leaves through a subscription rather than a state:
+   * see the module doc. `visibleRef` is the snapshot; `listeners` is who to tell. */
+  const visibleRef = useRef(false)
+  const listeners = useRef(new Set<() => void>())
+
+  const publish = useCallback((next: boolean): void => {
+    if (next === visibleRef.current) return
+    visibleRef.current = next
+    for (const listener of listeners.current) listener()
+  }, [])
+  /* HYSTERESIS, because a single threshold makes the pill flicker.
    *
-   * Two thresholds instead of one. Coming TO the bottom still needs 24px, so
-   * following stays as tight as it was; leaving requires a full
-   * LEAVE_BOTTOM_PX of clearance, so ordinary tremor around the end cannot
-   * toggle the state at all. */
+   * Entering and leaving used ONE 24px line. A reader resting near the end
+   * crosses it on almost every wheel tick, and each crossing flips the pill —
+   * which, before this was a subscription, re-rendered the whole panel. On a long
+   * conversation that is a render per scroll event: the recorded trace shows INP
+   * 286ms with the JS row filled end to end, and the report is 「滑到底往上拉就卡」.
+   *
+   * Two thresholds instead of one. Coming TO the end still needs 24px, so the
+   * pill appears as promptly as it did; leaving requires a full `LEAVE_BOTTOM_PX`
+   * of clearance, so ordinary tremor around the end cannot toggle it at all. */
   const measure = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
-    // `scrollTop` only — see the note on `maxScrollRef`. No layout is read here.
-    const distance = maxScrollRef.current - root.scrollTop
-    // Was it at the bottom? Then it takes LEAVE_BOTTOM_PX to say otherwise.
-    const wasAtBottom = atBottomKnown.current === true
-    const next = wasAtBottom ? distance < LEAVE_BOTTOM_PX : distance < NEAR_BOTTOM_PX
-    if (next === atBottomKnown.current) return
-    atBottomKnown.current = next
-    setAtBottom(next)
-  }, [scrollRef, setAtBottom])
+    // `scrollTop` only — see the note on `maxScroll`. No layout is read here.
+    const distance = maxScroll.current - root.scrollTop
+    pinnedRef.current = distance < FOLLOW_SLACK_PX
+    // The pill keeps its own hysteresis, unchanged: it appears once the reader is
+    // a comfortable 120px away and comes back as soon as they are within 24px.
+    // Nothing is rendered for the pin, so these two lines cost a subtraction each.
+    const wasVisible = visibleRef.current
+    publish(wasVisible ? distance >= LEAVE_BOTTOM_PX : distance >= NEAR_BOTTOM_PX)
+  }, [scrollRef, publish])
   /* THE LISTENER BELONGS TO THE SCROLLER, NOT TO THE DOCUMENT.
    *
    * It used to sit on `document` in the CAPTURE phase, so it ran for every scroll
@@ -197,7 +286,7 @@ export function useFollowScroll(
    * synchronisation, not the content.
    *
    * The question this listener answers is only about ITS OWN scroller — 「is this
-   * pinned to the bottom」 — so it belongs on that element. Every other scroll
+   * pinned to the end」 — so it belongs on that element. Every other scroll
    * (another panel, the sidebar, a dialog) stops paying for it.
    *
    * Still coalesced to one measurement per frame: a wheel gesture delivers many
@@ -212,10 +301,7 @@ export function useFollowScroll(
      * refreshes it for in-place growth — a new round arriving, an image decoding, a
      * fold opening. Those are the only moments the maximum offset can move, and
      * none of them is a scroll. */
-    const refreshGeometry = (): void => {
-      maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
-    }
-    refreshGeometry()
+    maxScroll.current = maxScrollOf(root)
 
     let frame: number | undefined
     const handler = (): void => {
@@ -226,14 +312,15 @@ export function useFollowScroll(
       })
     }
     root.addEventListener('scroll', handler, { passive: true })
-
     /* Content growth: refresh the cached maximum off the scroll path entirely. The
      * observer's own callback is a good place for a layout read — it already runs
      * as part of the engine's layout pass, so the values are current and asking for
      * them forces nothing. */
     let observer: ResizeObserver | undefined
     if (typeof ResizeObserver !== 'undefined') {
-      observer = new ResizeObserver(() => { refreshGeometry() })
+      observer = new ResizeObserver(() => {
+        maxScroll.current = maxScrollOf(root)
+      })
       observer.observe(root)
       if (root.firstElementChild !== null) observer.observe(root.firstElementChild)
     }
@@ -243,9 +330,10 @@ export function useFollowScroll(
       observer?.disconnect()
     }
   }, [measure, scrollRef, remountKey])
-  /* Follow the latest content while at the bottom — and ONLY when it moved.
+  useResizeFollow(scrollRef, pinnedRef, maxScroll, remountKey)
+  /* Follow the latest content while pinned — and ONLY when it moved.
    *
-   * Two things were wrong here, and together they read as a bounce at the bottom:
+   * Two things were wrong here, and together they read as a bounce at the end:
    *
    *  · `scrollTop = scrollHeight` over-assigns by design: scrollTop is clamped to
    *    `scrollHeight - clientHeight`, so the browser has to clamp a value that is
@@ -256,44 +344,98 @@ export function useFollowScroll(
    *    still forces a scroll update, and Chromium's own anchoring correction can
    *    answer it — which is the 「滑到底就弹一下」 the report describes.
    *
-   * So: compute the target, and do nothing when the scroller is already there. */
+   * So: compute the target from the cache, and do nothing when the scroller is
+   * already there. The gate is read from the ref, so a reader who has moved up a
+   * few pixels is never pulled back — and this effect no longer depends on any
+   * render state at all. */
   useEffect(() => {
     const root = resolveScroller(scrollRef.current)
-    if (root === null || !atBottom) return
+    if (root === null || !pinnedRef.current) return
     /* Content changed, so the cached maximum is stale: refresh it here, off the
-       scroll path. This runs per new round / per page, not per gesture. */
-    maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
-    const target = maxScrollRef.current
+     * scroll path. This runs per new round / per page, not per gesture. */
+    maxScroll.current = maxScrollOf(root)
+    const target = maxScroll.current
     if (Math.abs(root.scrollTop - target) < 1) return
     root.scrollTop = target
-  }, [scrollRef, changedKey, atBottom, remountKey])
-  const jumpToBottom = useCallback((): void => {
+  }, [scrollRef, changedKey, remountKey])
+  const jump = useCallback((): void => {
     const root = resolveScroller(scrollRef.current)
     if (root === null) return
     // A click, not a gesture: one layout read here is the right trade (the offset
     // must be exact), and it keeps the cache honest for the scroll that follows.
-    maxScrollRef.current = Math.max(0, root.scrollHeight - root.clientHeight)
-    root.scrollTop = maxScrollRef.current
-    setAtBottom(true)
-  }, [scrollRef, setAtBottom])
-  return { measure, jumpToBottom }
+    maxScroll.current = maxScrollOf(root)
+    root.scrollTop = maxScroll.current
+    pinnedRef.current = true
+    publish(false)
+  }, [scrollRef, publish])
+  const subscribe = useCallback((listener: () => void): (() => void) => {
+    listeners.current.add(listener)
+    return () => { listeners.current.delete(listener) }
+  }, [])
+  const visible = useCallback((): boolean => visibleRef.current, [])
+  const anchor = useCallback((distance: number): void => {
+    const root = resolveScroller(scrollRef.current)
+    if (root === null) return
+    // Geometry moved with the prepend, so the cache and the offset are refreshed in
+    // the same breath: one layout read, and the next measure reads a maximum that is
+    // true rather than one describing the pre-page geometry. The reader keeps the SAME
+    // distance from the end, which is where they were looking.
+    const height = root.scrollHeight
+    maxScroll.current = Math.max(0, height - root.clientHeight)
+    root.scrollTop = Math.max(0, height - distance)
+  }, [scrollRef])
+  return { subscribe, visible, jump, anchor }
 }
 
 /**
- * The sticky "滑到最新" affordance shown in a scroll region (transcript or
- * comment thread) when the user has scrolled away from the bottom: one click
- * returns to the latest output. Hidden while the region is at the bottom,
- * where new content already auto-follows.
+ * The frame a session scroll region lives in: the scroller as its only flexible
+ * child, and the 「滑到最新」 pill as a SIBLING of that scroller.
+ *
+ * Why a sibling, in one sentence: `position: absolute` against a box that SCROLLS
+ * still rides that box's scroll offset, so a pill declared against the scroller
+ * leaves the screen exactly when it is supposed to appear. Measured in
+ * `scripts/probes/probe-pill-anchor.{cjs,js}` (three placements x three offsets):
+ * against the scroller it sat at `topInBox: 203` at scrollTop 0 and at `-292`
+ * half-way down; against a wrapper that does not scroll, `topInBox` is constant
+ * and it stays visible at every offset.
+ *
+ * It is a component rather than three lines copied into each surface for the
+ * usual reason: the containing block is a LAYOUT fact, and a second copy of it is
+ * a second place that can silently stop being one.
  */
-export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: () => void }) {
+export function TailFrame({ pin, children }: { pin: ScrollPin; children: ReactNode }) {
+  return (
+    <div className={css.sessionScrollFrame}>
+      {children}
+      <TailPill pin={pin} />
+    </div>
+  )
+}
+
+/**
+ * The floating "滑到最新" affordance shown in a scroll region (transcript or
+ * comment thread) when the reader has scrolled away from the end: one click
+ * returns to the latest output. Hidden while the region is at the end, where new
+ * content already auto-follows.
+ *
+ * It reads the pin THROUGH A SUBSCRIPTION (`useSyncExternalStore`), so a
+ * crossing re-renders this one button — not the list, not the composer, not the
+ * panel around it.
+ *
+ * Not exported: `TailFrame` is the only way in, because the pill's containing
+ * block is the frame — rendering the pill without its frame is what put it inside
+ * a scroller in the first place.
+ */
+function TailPill({ pin }: { pin: ScrollPin }) {
+  const atBottom = !useSyncExternalStore(pin.subscribe, pin.visible)
   /* THE BUTTON KEEPS ITS SPACE WHEN IT IS NOT USABLE.
    *
-   * It is a real layout element in the scroll content (sticky, flex: none, 26px
-   * tall plus its margins). Unmounting it at the bottom shortens the content by
-   * its own height — and that is exactly when the reader has just arrived at the
-   * bottom, so the browser re-clamps scrollTop and the view springs a few pixels.
-   * 「拖到底就弹一下，几像素，像吸一下」, and it appeared on both scrollers because
-   * both render this one component.
+   * It is a real layout element in the scroll content (absolute, 26px tall). The
+   * version that unmounted it at the end shortened the content by its own height
+   * — and that is exactly when the reader has just arrived at the end, so the
+   * browser re-clamped scrollTop and the view sprang a few pixels. 「拖到底就弹一下，
+   * 几像素，像吸一下」, and it appeared on both scrollers because both render this
+   * one component.
    *
    * So it stays mounted and keeps occupying its space; only its ink and its
    * hit-target go away. `visibility` is the correct hiding tool here precisely
@@ -307,7 +449,7 @@ export function JumpToLatest({ atBottom, onJump }: { atBottom: boolean; onJump: 
       disabled={atBottom}
       aria-hidden={atBottom}
       tabIndex={atBottom ? -1 : undefined}
-      onClick={atBottom ? undefined : onJump}
+      onClick={atBottom ? undefined : pin.jump}
       title={atBottom ? undefined : t('review.jumpLatest')}
       aria-label={atBottom ? undefined : t('review.jumpLatest')}
     >
@@ -340,14 +482,16 @@ interface TranscriptTailState {
    * the infinite dead loop, never an offered action.
    */
   pageUnsupported: boolean
-  /** Whether the user is at (or near) the bottom of the scroll region. */
-  atBottom: boolean
+  /**
+   * The region's tail, as a pin: `pin.jump()` scrolls to the end and resumes
+   * following, and the pill reads its visibility through it. There is NO
+   * `atBottom` boolean on this interface on purpose — a boolean here is a
+   * render-state fact, and every crossing would re-render the panel (see the
+   * module doc).
+   */
+  pin: ScrollPin
   /** Ref to attach to the content region (the scroller is resolved from it). */
   scrollRef: React.RefObject<HTMLDivElement>
-  /** The scroll handler to attach to the container (updates `atBottom`). */
-  onScroll: () => void
-  /** Scroll to the latest output and resume following. */
-  jumpToBottom: () => void
   /** Reload immediately (e.g. after a comment was injected). */
   reload: () => void
   /** Prepend one earlier page above the current window (no-op at the floor). */
@@ -376,7 +520,6 @@ export function useTranscriptTail(
   const [pageError, setPageError] = useState(false)
   /** The deployment serves no page endpoint (terminal — the button goes away). */
   const [pageUnsupported, setPageUnsupported] = useState(false)
-  const [atBottom, setAtBottom] = useState(true)
   const scrollRef = useRef<HTMLDivElement | null>(null)
   // The accumulated window, oldest-first: the tail, then every earlier page
   // prepended ABOVE it (never appended — order is a layout fact). The floor
@@ -404,9 +547,17 @@ export function useTranscriptTail(
   // would loop reloads and fight the user's scroll position).
   const onResultRef = useRef(onResult)
   onResultRef.current = onResult
-  const turns = events === undefined ? undefined : foldTurns(events)
-  // One follow mechanism (resolved scroller + capture listener + pinning).
-  const { measure, jumpToBottom } = useFollowScroll(scrollRef, atBottom, setAtBottom, turns)
+  /* FOLD ONCE PER WINDOW, not once per render.
+   *
+   * `foldTurns` walks every event of the loaded window. Called straight from the
+   * render body it re-ran on every render of the panel — and it also produced new
+   * `TranscriptTurn` objects each time, which is what quietly defeated the memo on
+   * `TurnList` / `TurnItem`: their props were equal by value but never by
+   * reference. One `useMemo` on the window makes both of those true at once. */
+  const turns = useMemo(() => (events === undefined ? undefined : foldTurns(events)), [events])
+  // One follow mechanism (resolved scroller + passive listener + pinning). The
+  // content key is the folded window: a new round is what may need a re-pin.
+  const pin = useFollowScroll(scrollRef, turns)
 
   /** Fold + publish a successful tail read (the reload AND the poll share
    *  it — one settlement grammar). */
@@ -548,8 +699,7 @@ export function useTranscriptTail(
       setPageUnsupported(false)
       const root = resolveScroller(scrollRef.current)
       const distance = root === null ? undefined : root.scrollHeight - root.scrollTop
-      setEvents(current => {
-        const known = new Set<number>()
+      setEvents(current => {        const known = new Set<number>()
         if (current !== undefined) {
           for (const event of current) {
             if (event.seq !== undefined) known.add(event.seq)
@@ -568,19 +718,18 @@ export function useTranscriptTail(
       setHasMore(page.hasMore === true)
       // Restore the reader's place AFTER paint (double rAF): the prepended
       // content grows the scroller above the viewport, and scrollTop alone
-      // would leave the reader staring at older messages.
-      if (root !== null && distance !== undefined) {
+      // would leave the reader staring at older messages. The write goes through
+      // the pin so the geometry cache is corrected in the same breath.
+      if (distance !== undefined) {
         requestAnimationFrame(() => {
-          requestAnimationFrame(() => {
-            root.scrollTop = root.scrollHeight - distance
-          })
+          requestAnimationFrame(() => { pin.anchor(distance) })
         })
       }
     })
-  }, [controller, sessionId, loadingEarlier])
+  }, [controller, sessionId, loadingEarlier, pin])
 
-  // Scroll measurement, bottom-following and the jump all live in
+  // Scroll measurement, end-following and the jump all live in
   // `useFollowScroll` above — one mechanism for every live list.
 
-  return { turns, error, hasMore, loadingEarlier, pageError, pageUnsupported, atBottom, scrollRef, onScroll: measure, jumpToBottom, reload, loadEarlier }
+  return { turns, error, hasMore, loadingEarlier, pageError, pageUnsupported, pin, scrollRef, reload, loadEarlier }
 }
