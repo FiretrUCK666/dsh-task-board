@@ -1913,7 +1913,6 @@ textarea.input {
   font: inherit;
   font-size: var(--dsh-tb-type-meta-size);
   font-weight: 500;
-  line-height: var(--dsh-tb-text-line-h);
   white-space: nowrap;
   cursor: pointer;
   transition: background var(--dsh-tb-motion), color var(--dsh-tb-motion), border-color var(--dsh-tb-motion);

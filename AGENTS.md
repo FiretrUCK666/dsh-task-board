@@ -369,7 +369,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 - `src/index.ts`：inject 只有 `webServer`；`ctx.effect` 各注册一条路由。**模型的整个面在它自己的
   一行**（`src/host-agent.ts`）。**启停不在代码里判断**（见「启停机制」）。
 - `src/host/surfaces.ts` 与 `cordis.patch.yml` 的五行：面板的开关只能由宿主侧那一行先宣告。
-- `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、两条斜杠命令、系统提示那一节。
+- `src/host/agent/`：三个工具（能力查询 / 查询 / 执行）、四条斜杠命令（`/task`、`/task-continue`、
+  `/task-status`、`/task-cleanup`）、系统提示那一节。
   **动作目录是它们唯一的权威**；写工具走 `src/core/task-transitions.ts` 的共享纯函数——
   **界面与 AI 调同一套语义实现**。**引擎缺席就明说引擎缺席**。
 - `src/host/session-state.ts`：会话态势推导（看板与 AI 读同一份），答案三态而非布尔。

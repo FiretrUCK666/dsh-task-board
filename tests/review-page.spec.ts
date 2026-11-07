@@ -138,14 +138,15 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
     expect(ruleOf('sessionRailFolds'), 'the wide rail must not add a second scrollport').toMatch(/overflow-y:\s*hidden/)
     // Looser on purpose: the narrow block carries a comment explaining why it
     // restores the outer scroll, so anchoring on the first declaration after the
-    // selector would pin prose rather than structure.
+    // selector would pin prose rather than structure. The rule itself is read with
+    // the shared rule reader, so its length is nobody's business.
     const narrowAt = renderedSource.indexOf('@container dsh-tb-panel (max-width: 600px)')
     expect(narrowAt, 'the narrow container query must exist').toBeGreaterThan(0)
     const narrowBlock = renderedSource.slice(narrowAt)
     const foldsAt = narrowBlock.indexOf('.sessionRailFolds {')
     expect(foldsAt, 'the narrow tier must name the folds block').toBeGreaterThan(0)
-    expect(narrowBlock.slice(foldsAt, foldsAt + 900), 'the narrow tier restores the outer scroll')
-      .toContain('overflow-y: auto')
+    expect(ruleTextOf(narrowBlock, '.sessionRailFolds') ?? '', 'the narrow tier restores the outer scroll')
+      .toMatch(/overflow-y:\s*auto/)
   })
 
   it('action rows wrap instead of bursting the card right edge', () => {
@@ -827,7 +828,7 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     // the main thread before committing the frame — 「滚了，等一下才动」, and it
     // costs the same whether the panel holds one message or two hundred.
     // Bound to the scroller itself, only that scroller pays, and it is passive.
-    expect(followSource, 'the scroll listener must be passive').toMatch(/addEventListener\('scroll', handler, \{ passive: true \}\)/)
+    expect(followSource, 'the scroll listener must be passive').toMatch(/addEventListener\('scroll', onScroll, \{ passive: true \}\)/)
     expect(followSource, 'the scroll listener must not sit on document in the capture phase')
       .not.toMatch(/document\.addEventListener\('scroll'/)
     expect(followSource, 'the scroll listener must not sit on window in the capture phase')
@@ -866,6 +867,23 @@ describe('scroll-follow is ONE mechanism (no per-mode fork)', () => {
     expect(followSource).toMatch(/floorRef/)
     expect(followSource).toMatch(/scrollHeight/)
     expect(followSource).toMatch(/scrollTop/)
+    /* THE ANCHOR IS TAKEN WHEN THE PAGE LANDS, NOT WHEN THE TAP HAPPENS.
+     *
+     * The distance that must survive the prepend is 「where the reader is when the
+     * page arrives」 — they keep reading while the read is in flight, so a reading
+     * taken at the click describes a position they have already left. Structural
+     * form: `pin.hold()` appears AFTER the page request and BEFORE `setEvents`, so
+     * the DOM it measures is still the pre-prepend one. */
+    const pageAt = followSource.indexOf('controller.loadTranscriptPage(')
+    const settleAt = followSource.indexOf('pin.hold()')
+    const setEventsAt = followSource.indexOf('setEvents(', pageAt)
+    expect(pageAt, 'loadEarlier must ask the host for a page').toBeGreaterThan(-1)
+    expect(settleAt, 'the reader\'s place must be captured through the pin').toBeGreaterThan(-1)
+    expect(setEventsAt, 'loadEarlier must repaint the window').toBeGreaterThan(-1)
+    expect(settleAt, 'the anchor must be measured on the page that landed, not at the click')
+      .toBeGreaterThan(pageAt)
+    expect(settleAt, 'the anchor must be read before the window is replaced, or it measures the new one')
+      .toBeLessThan(setEventsAt)
     const platformPath = fileURLToPath(new URL('../src/client/platform.ts', import.meta.url))
     const platformSource = readFileSync(platformPath, 'utf8')
     expect(platformSource).toMatch(/beforeSeq/)
@@ -1613,14 +1631,17 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
     const hook = read('use-transcript.tsx')
     expect(hook, 'a second, larger threshold must exist for showing the pill')
       .toMatch(/LEAVE_BOTTOM_PX\s*=\s*\d+/)
-    expect(hook, 'measure must consult the previous visibility to pick the threshold')
-      .toMatch(/wasVisible/)
     // The defect, stated as a ban: one threshold for both directions makes the
     // pill flicker — and, before it was a subscription, re-rendered the panel.
-    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(hook)?.[0] ?? ''
+    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[publish\]\)/.exec(hook)?.[0] ?? ''
     expect(measure, 'measure not found').not.toBe('')
     expect(measure, 'a single-threshold comparison toggles the pill on every crossing')
       .not.toMatch(/const next = root\.scrollHeight - root\.scrollTop - root\.clientHeight < NEAR_BOTTOM_PX/)
+    /* THE PILL'S THRESHOLD DEPENDS ON ITS OWN PREVIOUS ANSWER — that IS the
+     * hysteresis, and it has to be read from the live value rather than captured,
+     * otherwise every measurement would use the same side of the fork. */
+    expect(measure, 'the pill must pick its threshold from its current visibility')
+      .toMatch(/visibleRef\.current \? distance >= LEAVE_BOTTOM_PX : distance >= NEAR_BOTTOM_PX/)
     /* AND THE TWO ANSWERS MUST NOT BE ONE.
      *
      * 「还要不要跟随」 is asked every frame and must be a subtraction; 「胶囊该不该显示」
@@ -1636,7 +1657,7 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
     const hook = read('use-transcript.tsx')
     // The mechanism, stated as a structure: the pin's two answers live in refs, and
     // the only thing that hears about a crossing is the pill's subscription.
-    const follow = /export function useFollowScroll\([\s\S]*?\n  return \{ subscribe, visible, jump, anchor \}\n\}/.exec(hook)?.[0] ?? ''
+    const follow = /export function useFollowScroll\([\s\S]*?\n  return \{ subscribe, visible, jump, hold \}\n\}/.exec(hook)?.[0] ?? ''
     expect(follow, 'useFollowScroll not found').not.toBe('')
     expect(follow, 'scroll state must not live in React state — every crossing would re-render the panel')
       .not.toMatch(/useState/)
@@ -1685,42 +1706,79 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
 describe('the scroll path reads no layout', () => {
   const source = readFileSync(fileURLToPath(new URL('../src/client/board/use-transcript.tsx', import.meta.url)), 'utf8')
 
-  it('measure reads only scrollTop', () => {
-    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[/.exec(source)?.[0] ?? ''
+  it('measure reads only scrollTop, and never resolves the scroller', () => {
+    const measure = /const measure = useCallback\(\(\): void => \{[\s\S]*?\n  \}, \[publish\]\)/.exec(source)?.[0] ?? ''
     expect(measure, 'measure not found').not.toBe('')
     expect(measure, 'scrollHeight forces a layout pass — reading it per frame is what saturated the main thread')
       .not.toMatch(/\.scrollHeight/)
     expect(measure, 'clientHeight forces a layout pass too')
       .not.toMatch(/\.clientHeight/)
-    expect(measure, 'the answer must come from the cached maximum').toMatch(/maxScroll\.current/)
+    /* AND IT MUST NOT RESOLVE THE SCROLLER EITHER.
+     *
+     * `resolveScroller` walks the ancestors calling `getComputedStyle`, which forces
+     * a style recalculation. Called from the per-frame path it is the SAME defect as
+     * reading `scrollHeight`: the main thread can never get ahead, and because it
+     * only costs when the styles are actually dirty, the result is jank that comes
+     * and goes — 「有时候掉帧有时候又还好」. Measured before the fix
+     * (`scripts/probes/probe-follow-cost.{cjs,js}`): 40 frames of scrolling produced
+     * 40 style resolutions. After: 0.
+     *
+     * The root is resolved once per layout change instead, and the per-frame path
+     * reads it from a ref. */
+    expect(measure, 'resolving the scroller on the scroll path forces a style recalculation every frame')
+      .not.toMatch(/resolveScroller|getComputedStyle/)
+    expect(measure, 'the scroller must come from the ref the owner keeps').toMatch(/rootRef\.current/)
+    expect(measure, 'the answer must come from the cached geometry').toMatch(/geometry\.current/)
     expect(measure, 'scrollTop is the only scroll property that is safe to read here').toMatch(/\.scrollTop/)
   })
 
-  it('the geometry cache is refreshed off the scroll path', () => {
-    // It has to be filled somewhere, or the measurement is meaningless: once on
-    // mount/remount, and again when the observed box changes size.
+  it('the geometry cache is refreshed off the scroll path, through one read', () => {
+    // It has to be filled somewhere, or the measurement is meaningless: on setup, on
+    // a resize notification, and whenever content arrives.
     //
-    // The read itself is allowed to exist in exactly ONE place — `maxScrollOf` — so
-    // that "who may pay for a layout read" is a question with one answer in the file
-    // rather than a rule every future editor has to remember. Every refresh of the
-    // cache goes through it.
+    // The read itself exists in exactly ONE function — `geometryOf` — so that "who
+    // may pay for a layout read" is a question with one answer in the file rather
+    // than a rule every future editor has to remember.
     expect(source, 'the layout read must live in one named helper')
-      .toMatch(/function maxScrollOf\(root: HTMLElement\): number \{\n  return Math\.max\(0, root\.scrollHeight - root\.clientHeight\)\n\}/)
-    expect(source, 'the cache must be filled from real geometry')
-      .toMatch(/maxScroll\.current = maxScrollOf\(root\)/)
+      .toMatch(/function geometryOf\(root: HTMLElement\): \{ height: number; max: number \}/)
+    expect(source, 'the cache must be filled through that helper')
+      .toMatch(/geometry\.current = geometryOf\(root\)/)
     expect(source, 'a ResizeObserver must keep it current as content grows').toMatch(/new ResizeObserver/)
-    // …and nowhere else reads that geometry: one helper, one call site family.
-    const reads = source.match(/\.scrollHeight - root\.clientHeight/g) ?? []
-    expect(reads.length, 'a second copy of the layout read is a second place to forget it is expensive')
-      .toBe(1)
+    // …and nowhere else reads that geometry: one helper, and inside it the two
+    // property reads happen once. `height` is read once and reused, so a future
+    // edit cannot re-introduce a second `scrollHeight` by accident.
+    //
+    // COMMENTS ARE STRIPPED FIRST (hard rule 14): the long notes above explain the
+    // property names, and a check that counted prose would force the explanation to
+    // be deleted.
+    const code = source.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/.*$/gm, '$1')
+    const a = code.match(/\.scrollHeight/g) ?? []
+    const b = code.match(/\.clientHeight/g) ?? []
+    expect(a.length, 'a second read of scrollHeight is a second place to forget it is expensive').toBe(1)
+    expect(b.length, 'a second read of clientHeight is a second place to forget it is expensive').toBe(1)
+  })
+
+  it('one region has one observer and one listener', () => {
+    // The shape that made this unmaintainable: two ResizeObservers over the same
+    // element (each resize read the layout twice) and four separate writers of the
+    // same `scrollTop`. The probe counts them on a real page
+    // (`scripts/probes/probe-follow-cost`): 2 observers over 3 nodes before, 1 over
+    // 1 after.
+    const observers = source.match(/new ResizeObserver/g) ?? []
+    expect(observers.length, 'a second observer over the same region reads the same layout twice').toBe(1)
+    const listeners = source.match(/addEventListener\('scroll'/g) ?? []
+    expect(listeners.length, 'a second scroll listener dispatches the same measurement twice').toBe(1)
+    // One write path: the owner. Commands move the reader; nothing else does.
+    const writes = source.split('\n').filter(line => /\.scrollTop\s*=/.test(line))
+    expect(writes.length, 'a hand-rolled scrollTop write outside the owner is a second owner').toBeLessThanOrEqual(3)
   })
 
   it('the scroll listener itself does not read geometry', () => {
     // The listener schedules `measure`; the ban is on doing layout work in it.
-    const listener = /root\.addEventListener\('scroll', handler[\s\S]{0,400}/.exec(source)?.[0] ?? ''
+    const listener = /\.addEventListener\('scroll', onScroll[\s\S]{0,400}/.exec(source)?.[0] ?? ''
     expect(listener, 'scroll listener not found').not.toBe('')
     expect(listener, 'the scroll listener must not read layout directly')
-      .not.toMatch(/scrollHeight|clientHeight/)
+      .not.toMatch(/scrollHeight|clientHeight|getComputedStyle/)
   })
 })
 

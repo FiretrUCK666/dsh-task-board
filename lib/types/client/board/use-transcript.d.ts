@@ -76,15 +76,16 @@ export interface ScrollPin {
     /** Scroll to the end and resume following. */
     jump(): void;
     /**
-     * Put the reader back `distance` px from the end after content was PREPENDED
-     * above the viewport (the "加载更早" grammar), and refresh the geometry cache.
+     * Capture where the reader is now, relative to the END, and hand back the action
+     * that puts them back there after content was PREPENDED above the viewport (the
+     * "加载更早" grammar).
      *
-     * It belongs here rather than at the call site because the pin owns both the
-     * scroller's offset and the cached maximum: a write from outside would leave
-     * the cache describing the pre-page geometry, and the next measure would then
-     * read a distance that is wrong by exactly the page's height.
+     * It belongs here rather than at the call site because the owner holds both the
+     * scroller's offset and the cached geometry: a write from outside would leave the
+     * cache describing the pre-page heights, and the next measurement would then read
+     * a distance that is wrong by exactly the page's height.
      */
-    anchor(distance: number): void;
+    hold(): () => void;
 }
 /**
  * The element that OWNS the scroll for a piece of content: the nearest
@@ -102,44 +103,46 @@ export interface ScrollPin {
  */
 export declare function resolveScroller(element: HTMLElement | null): HTMLElement | null;
 /**
- * Keep a following scroll region pinned to its latest output whenever its
- * size changes — a ResizeObserver (registered a disposer) re-scrolls to the
- * bottom while the user is at the bottom. This also fires once on
- * registration, so a surface opened before its layout settles (e.g. the
- * review page's right rail grows as its async context meter / config load,
- * shrinking the comment thread) still lands on the latest. The observer
- * watches BOTH the content region and its resolved scroller, so a width
- * change that moves the scroll elsewhere is still covered. Content-driven
- * re-scrolls stay with the caller's follow effects; this only covers layout.
- *
- * `maxScroll` is the caller's geometry cache: the observer ALREADY runs inside
- * the engine's layout pass, so reading `scrollHeight` here is free and it is the
- * one place allowed to refresh that cache.
- */
-export declare function useResizeFollow(scrollRef: React.RefObject<HTMLDivElement>, pinnedRef: React.MutableRefObject<boolean>, maxScroll: React.MutableRefObject<number>, remountKey?: unknown): void;
-/**
  * One FOLLOW mechanism, shared by every live list (transcript tail, comment
- * thread): measure and pin against the RESOLVED scroller, and see its scroll
- * events through a listener ON that scroller (scroll does not bubble, and a
- * capture listener on `window` would run for every scroll on the page). A
- * surface therefore keeps following and jumping correctly whether its own
- * region scrolls (wide panel) or an ancestor does (stacked narrow panel) — no
- * per-mode code, no mobile fork.
+ * thread).
  *
- * It rations out THREE facts with three different costs, and mixing them up is
- * what made this panel feel heavy:
+ * ── ONE OWNER, NOT A PILE OF EFFECTS ─────────────────────────────────────────
  *
- *   · `pinnedRef` — keep following? Written on every measure, read by the follow
- *     effects. NEVER a state: a scroll must not re-render anything.
- *   · the pill's visibility — a visual fact with hysteresis, delivered through
+ * "Follow the latest" is one job, and it used to be spread across four scrollTop
+ * writers, six refreshes of the same cached geometry, two ResizeObservers and a
+ * per-frame style resolution. Each piece was added to fix a real symptom, and
+ * together they made the region impossible to reason about: two observers watching
+ * the same element, a cache written from places that had no business knowing it
+ * exists, and — the one that costs every frame — `resolveScroller` called from
+ * `measure`, i.e. a `getComputedStyle` walk on every scroll frame. Measured
+ * (`scripts/probes/probe-follow-cost.{cjs,js}`): 40 frames of scrolling produced
+ * **40 style resolutions**, and the region had **2 observers over 3 nodes**.
+ * A style resolution per frame is a forced style recalculation per frame, which is
+ * exactly 「上下滑动都掉帧」 — and it comes and goes because it only costs when the
+ * styles are actually dirty.
+ *
+ * So the region now has ONE owner, and the ownership is visible in the shape:
+ *
+ *   · `rootRef` — the element that scrolls, resolved ONLY where layout can change
+ *     (setup, a resize notification, a remount). Never on the scroll path.
+ *   · `geometry` — the cached content height and maximum offset, written only by
+ *     `refresh` / `jump` / `hold`'s restore, all through the single `geometryOf` read.
+ *   · `pinnedRef` — keep following? Written by `measure` and the commands, read by
+ *     the follow path. NEVER React state: a scroll must not re-render anything.
+ *   · pill visibility — a visual fact with hysteresis, delivered through
  *     `subscribe` to the pill alone.
- *   · the geometry cache (`maxScroll`) — refreshed only where geometry changes.
+ *   · ONE ResizeObserver and ONE passive scroll listener, both on this region.
+ *
+ * Three commands move the reader, each a distinct intent: `jump` (asked for the
+ * end), `hold` (take a reading now, hand back the restore that keeps the same
+ * distance from the end after a prepend), and the internal `refresh` (content
+ * changed and the reader is pinned). Nothing else writes `scrollTop`.
  */
 export declare function useFollowScroll(scrollRef: React.RefObject<HTMLDivElement>, changedKey: unknown, 
 /** When the scroll region itself UNMOUNTS and REMOUNTS (a fold that hides
- *  its children — the comments Disclosure), the observer + follow effects
- *  must re-bind to the NEW element; passing a value that changes with the
- *  fold (its open state) does that. */
+ *  its children — the comments Disclosure), the owner must re-bind to the NEW
+ *  element; passing a value that changes with the fold (its open state) does
+ *  that. */
 remountKey?: unknown): ScrollPin;
 /**
  * The frame a session scroll region lives in: the scroller as its only flexible

@@ -4490,11 +4490,11 @@
   /* NO SCROLL ANCHORING — it fights the follow, and the fight is visible as a
    * bounce at the very bottom.
    *
-   * This scroller is pinned to the end by writing `scrollTop = scrollHeight` on
-   * every new round and every poll. Chromium's scroll anchoring also tries to keep
-   * the visual position stable when content changes above the viewport, so the two
-   * corrections run against each other: pin, anchor pulls back, next pin jumps
-   * forward. At the bottom edge the reader sees exactly 「滑到底就弹一下」.
+   * The follow pins this scroller on every new round and every poll. Chromium's
+   * scroll anchoring also tries to keep the visual position stable when content
+   * changes above the viewport, so the two corrections run against each other: pin,
+   * anchor pulls back, next pin jumps forward. At the bottom edge the reader sees
+   * exactly 「滑到底就弹一下」.
    *
    * The shell's own chat scroller declares this in its following state for the
    * same reason. */
@@ -4503,18 +4503,6 @@
    * `border-radius` 之外，加一条同半径的裁剪把它关进来。 */
   border-radius: inherit;
   overscroll-behavior: contain;
-  /* NO SCROLL ANCHORING — it fights the follow.
-   *
-   * This scroller is pinned to the bottom by writing `scrollTop = scrollHeight`
-   * (the follow effect, and again on every poll and every new round). Chromium's
-   * scroll anchoring tries to keep the visual position stable when content above
-   * the viewport changes — so on each pin the browser shifts the offset back and
-   * the next pin moves it forward again. A reader feels that as the bar advancing
-   * in stutters: 「滑动条一抽一抽」.
-   *
-   * The shell's own chat scroll does exactly this in its following state
-   * (`overflow-anchor: none` on the tail-following scroller), for the same reason. */
-  overflow-anchor: none;
 
   /* Same reason as the comment thread: this transcript is one self-contained block,
      and `layout` bounds its layout work to itself. NOT `paint` — see the long note
@@ -6315,7 +6303,15 @@
      * the reasoning on the base rule): two nested ports make every gesture walk a
      * scroll chain, which is what made the comment surface the one lagging place.
      * Here the comments start FOLDED, so this block itself is the reading surface
-     * and must scroll — one port at either tier, never two. */
+     * and must scroll — one port at either tier, never two.
+     *
+     * It is also CAPPED, so an expanded context/comments body fills the fold area
+     * (and scrolls inside it) instead of growing the whole panel and pushing the
+     * transcript/composer off the phone screen (「上下文占满整屏」). The cap is a px
+     * floor against the board box, never a container-height unit.
+     *
+     * `min-height: 0` lets the row give its space back; the fold bodies inside it
+     * still render FULLY — one bar per region is the whole point. */
     overflow-y: auto;
     /* ONE rhythm for the whole narrow rail: every segment (state row, head
        fold, comments fold) sits 10px apart — the old stack of ad-hoc values
@@ -6324,16 +6320,8 @@
        height inside their boxes; the gap owns BETWEEN. Desktop keeps its own
        rhythm untouched (base rules above). */
     gap: var(--dsh-tb-space-5);
-    /* The area's ONE scroller (the base rule already declares it; `min-height:
-       0` lets the row give its space back). The fold bodies inside it still
-       render FULLY — one bar per region is the whole point. */
     min-height: 0;
-    /* The fold block is CAPPED so an expanded context/comments body fills the
-       fold area (and scrolls inside it) instead of growing the whole panel and
-       pushing the transcript/composer off the phone screen (「上下文占满整屏」).
-       The cap is a px floor against the board box, never a container-height unit. */
     max-height: 340px;
-    overflow-y: auto;
     padding: 10px 0;
     border-bottom: var(--dsh-tb-separator);
   }

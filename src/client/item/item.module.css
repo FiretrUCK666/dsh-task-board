@@ -3981,7 +3981,6 @@ textarea.itemInput {
    * 这一张纸自己的（窄档右栏落到下面时才用得上）。写成 `gap` 会把两者绑成一个数，
    * 于是「列间沟与详情一致」这句话在纸上就不成立了。 */
   row-gap: var(--s3);
-  column-gap: var(--item-field-gap);
   flex: 1 1 auto;
   min-block-size: 0;
   /* **横向内衬只付左边，右边留给滚动条自己那一档。**

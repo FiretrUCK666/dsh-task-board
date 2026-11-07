@@ -81,15 +81,16 @@ export interface ScrollPin {
   /** Scroll to the end and resume following. */
   jump(): void
   /**
-   * Put the reader back `distance` px from the end after content was PREPENDED
-   * above the viewport (the "加载更早" grammar), and refresh the geometry cache.
+   * Capture where the reader is now, relative to the END, and hand back the action
+   * that puts them back there after content was PREPENDED above the viewport (the
+   * "加载更早" grammar).
    *
-   * It belongs here rather than at the call site because the pin owns both the
-   * scroller's offset and the cached maximum: a write from outside would leave
-   * the cache describing the pre-page geometry, and the next measure would then
-   * read a distance that is wrong by exactly the page's height.
+   * It belongs here rather than at the call site because the owner holds both the
+   * scroller's offset and the cached geometry: a write from outside would leave the
+   * cache describing the pre-page heights, and the next measurement would then read
+   * a distance that is wrong by exactly the page's height.
    */
-  anchor(distance: number): void
+  hold(): () => void
 }
 
 /**
@@ -124,90 +125,67 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
 }
 
 /**
- * The largest offset a scroller can hold — **the only read of that geometry in this
- * module**.
+ * One geometry read, and **the only one in this module**.
  *
- * `scrollHeight` and `clientHeight` force layout, so every caller of this function is
- * a caller that has decided its moment is one where geometry may have changed: mount,
- * a resize notification, a page prepend, a click. A scroll gesture is not one of those,
- * and `measure` (the only per-frame reader) uses the cached value instead.
- */
-function maxScrollOf(root: HTMLElement): number {
-  return Math.max(0, root.scrollHeight - root.clientHeight)
-}
-
-/**
- * Keep a following scroll region pinned to its latest output whenever its
- * size changes — a ResizeObserver (registered a disposer) re-scrolls to the
- * bottom while the user is at the bottom. This also fires once on
- * registration, so a surface opened before its layout settles (e.g. the
- * review page's right rail grows as its async context meter / config load,
- * shrinking the comment thread) still lands on the latest. The observer
- * watches BOTH the content region and its resolved scroller, so a width
- * change that moves the scroll elsewhere is still covered. Content-driven
- * re-scrolls stay with the caller's follow effects; this only covers layout.
+ * `scrollHeight` and `clientHeight` are LAYOUT reads: asking for them makes the
+ * engine finish every pending style and layout job first. So every caller of this
+ * function is a caller that has decided its moment is one where geometry may have
+ * changed: mount, a resize notification, a page prepend, a click. A scroll gesture
+ * is not one of those, and the measure path uses the cached value instead.
  *
- * `maxScroll` is the caller's geometry cache: the observer ALREADY runs inside
- * the engine's layout pass, so reading `scrollHeight` here is free and it is the
- * one place allowed to refresh that cache.
+ * Both numbers come back together because the two callers need different ones — the
+ * follow wants the maximum offset, the anchor wants the content height — and two
+ * functions reading the same two properties would be two places to forget why they
+ * are expensive.
  */
-export function useResizeFollow(
-  scrollRef: React.RefObject<HTMLDivElement>,
-  pinnedRef: React.MutableRefObject<boolean>,
-  maxScroll: React.MutableRefObject<number>,
-  remountKey?: unknown,
-): void {
-  useEffect(() => {
-    const content = scrollRef.current
-    if (content === null) return
-    /* A ResizeObserver fires on every content growth, including the growth a
-     * scroll causes when a page of history is prepended. Writing an out-of-range
-     * `scrollHeight` here asks the browser to clamp on every one of those, and the
-     * clamp is indistinguishable from a small jump. Write the clamped target, and
-     * only when the scroller is not already sitting on it. */
-    const apply = (): void => {
-      const root = resolveScroller(content)
-      if (root === null) return
-      maxScroll.current = maxScrollOf(root)
-      if (!pinnedRef.current) return
-      const target = maxScroll.current
-      if (Math.abs(root.scrollTop - target) < 1) return
-      root.scrollTop = target
-    }
-    const observer = new ResizeObserver(apply)
-    observer.observe(content)
-    const root = resolveScroller(content)
-    if (root !== null && root !== content) observer.observe(root)
-    apply()
-    return () => { observer.disconnect() }
-  }, [scrollRef, pinnedRef, maxScroll, remountKey])
+function geometryOf(root: HTMLElement): { height: number; max: number } {
+  const height = root.scrollHeight
+  return { height, max: Math.max(0, height - root.clientHeight) }
 }
 
 /**
  * One FOLLOW mechanism, shared by every live list (transcript tail, comment
- * thread): measure and pin against the RESOLVED scroller, and see its scroll
- * events through a listener ON that scroller (scroll does not bubble, and a
- * capture listener on `window` would run for every scroll on the page). A
- * surface therefore keeps following and jumping correctly whether its own
- * region scrolls (wide panel) or an ancestor does (stacked narrow panel) — no
- * per-mode code, no mobile fork.
+ * thread).
  *
- * It rations out THREE facts with three different costs, and mixing them up is
- * what made this panel feel heavy:
+ * ── ONE OWNER, NOT A PILE OF EFFECTS ─────────────────────────────────────────
  *
- *   · `pinnedRef` — keep following? Written on every measure, read by the follow
- *     effects. NEVER a state: a scroll must not re-render anything.
- *   · the pill's visibility — a visual fact with hysteresis, delivered through
+ * "Follow the latest" is one job, and it used to be spread across four scrollTop
+ * writers, six refreshes of the same cached geometry, two ResizeObservers and a
+ * per-frame style resolution. Each piece was added to fix a real symptom, and
+ * together they made the region impossible to reason about: two observers watching
+ * the same element, a cache written from places that had no business knowing it
+ * exists, and — the one that costs every frame — `resolveScroller` called from
+ * `measure`, i.e. a `getComputedStyle` walk on every scroll frame. Measured
+ * (`scripts/probes/probe-follow-cost.{cjs,js}`): 40 frames of scrolling produced
+ * **40 style resolutions**, and the region had **2 observers over 3 nodes**.
+ * A style resolution per frame is a forced style recalculation per frame, which is
+ * exactly 「上下滑动都掉帧」 — and it comes and goes because it only costs when the
+ * styles are actually dirty.
+ *
+ * So the region now has ONE owner, and the ownership is visible in the shape:
+ *
+ *   · `rootRef` — the element that scrolls, resolved ONLY where layout can change
+ *     (setup, a resize notification, a remount). Never on the scroll path.
+ *   · `geometry` — the cached content height and maximum offset, written only by
+ *     `refresh` / `jump` / `hold`'s restore, all through the single `geometryOf` read.
+ *   · `pinnedRef` — keep following? Written by `measure` and the commands, read by
+ *     the follow path. NEVER React state: a scroll must not re-render anything.
+ *   · pill visibility — a visual fact with hysteresis, delivered through
  *     `subscribe` to the pill alone.
- *   · the geometry cache (`maxScroll`) — refreshed only where geometry changes.
+ *   · ONE ResizeObserver and ONE passive scroll listener, both on this region.
+ *
+ * Three commands move the reader, each a distinct intent: `jump` (asked for the
+ * end), `hold` (take a reading now, hand back the restore that keeps the same
+ * distance from the end after a prepend), and the internal `refresh` (content
+ * changed and the reader is pinned). Nothing else writes `scrollTop`.
  */
 export function useFollowScroll(
   scrollRef: React.RefObject<HTMLDivElement>,
   changedKey: unknown,
   /** When the scroll region itself UNMOUNTS and REMOUNTS (a fold that hides
-   *  its children — the comments Disclosure), the observer + follow effects
-   *  must re-bind to the NEW element; passing a value that changes with the
-   *  fold (its open state) does that. */
+   *  its children — the comments Disclosure), the owner must re-bind to the NEW
+   *  element; passing a value that changes with the fold (its open state) does
+   *  that. */
   remountKey?: unknown,
 ): ScrollPin {
   /* ── NO FORCED LAYOUT IN THE SCROLL PATH ──────────────────────────────────
@@ -216,24 +194,17 @@ export function useFollowScroll(
    * time** — Chrome could not attribute it to any function, which is what forced
    * layout looks like — on top of 2,031 ms rendering and 1,508 ms painting.
    *
-   * The cause sat in this handler:
+   * Two kinds of read cause it, and both are now off the scroll path:
    *
-   *     root.scrollHeight - root.scrollTop - root.clientHeight
+   *     root.scrollHeight - root.scrollTop - root.clientHeight   (layout read)
+   *     getComputedStyle(node)                                    (style recalc)
    *
-   * `scrollHeight` and `clientHeight` are LAYOUT reads: asking for them makes the
-   * engine finish every pending style and layout job first. Doing that once per
-   * animation frame during a gesture means the main thread can never get ahead.
-   *
-   * `scrollTop` is NOT a layout read — it is a stored offset the engine already
-   * has. So the two expensive values are cached here and refreshed only when the
-   * geometry can actually have changed: the element resizes, its content resizes,
-   * or the region remounts. Between those moments, a scroll measurement is one
-   * cheap read and a subtraction.
-   *
-   * This is the whole difference between "measure on every frame" and "measure on
-   * every geometry change", and geometry changes are not what a scroll gesture is. */
-  const maxScroll = useRef<number>(0)
-  /* THE FOLLOW GATE — the only thing the follow effects ask.
+   * `scrollTop` is NOT one of them — it is a stored offset the engine already has.
+   * So the per-frame path reads exactly that one number and subtracts it from a
+   * cache; everything else happens where layout actually changes. */
+  const rootRef = useRef<HTMLElement | null>(null)
+  const geometry = useRef({ height: 0, max: 0 })
+  /* THE FOLLOW GATE — the only thing the follow path asks.
    *
    * It flips on `FOLLOW_SLACK_PX`, NOT on the pill's hysteresis, and the
    * difference is not cosmetic: with the pill's 120px leave-line a reader who has
@@ -242,15 +213,15 @@ export function useFollowScroll(
    * 也跟着卡一下」. Eight pixels is the honest answer to 「他还在末尾吗」. */
   const pinnedRef = useRef(true)
   /* THE PILL'S ANSWER, and it leaves through a subscription rather than a state:
-   * see the module doc. `visibleRef` is the snapshot; `listeners` is who to tell. */
+   * `visibleRef` is the snapshot; `listeners` is who to tell. */
   const visibleRef = useRef(false)
   const listeners = useRef(new Set<() => void>())
-
   const publish = useCallback((next: boolean): void => {
     if (next === visibleRef.current) return
     visibleRef.current = next
     for (const listener of listeners.current) listener()
   }, [])
+
   /* HYSTERESIS, because a single threshold makes the pill flicker.
    *
    * Entering and leaving used ONE 24px line. A reader resting near the end
@@ -263,128 +234,138 @@ export function useFollowScroll(
    * pill appears as promptly as it did; leaving requires a full `LEAVE_BOTTOM_PX`
    * of clearance, so ordinary tremor around the end cannot toggle it at all. */
   const measure = useCallback((): void => {
-    const root = resolveScroller(scrollRef.current)
+    const root = rootRef.current
     if (root === null) return
-    // `scrollTop` only — see the note on `maxScroll`. No layout is read here.
-    const distance = maxScroll.current - root.scrollTop
+    // `scrollTop` only — see the note above. No layout, no style resolution.
+    const distance = geometry.current.max - root.scrollTop
     pinnedRef.current = distance < FOLLOW_SLACK_PX
-    // The pill keeps its own hysteresis, unchanged: it appears once the reader is
-    // a comfortable 120px away and comes back as soon as they are within 24px.
-    // Nothing is rendered for the pin, so these two lines cost a subtraction each.
-    const wasVisible = visibleRef.current
-    publish(wasVisible ? distance >= LEAVE_BOTTOM_PX : distance >= NEAR_BOTTOM_PX)
-  }, [scrollRef, publish])
-  /* THE LISTENER BELONGS TO THE SCROLLER, NOT TO THE DOCUMENT.
+    publish(visibleRef.current ? distance >= LEAVE_BOTTOM_PX : distance >= NEAR_BOTTOM_PX)
+  }, [publish])
+
+  /* THE ONE PLACE THAT READS LAYOUT, and it is never on the scroll path: setup, a
+   * resize notification, a remount, or new content. Re-resolving the root belongs
+   * here too — a container-query band change can move the scroll to an ancestor,
+   * and doing it once per layout change keeps that promise without paying for it
+   * per frame. */
+  const refresh = useCallback((): void => {
+    const content = scrollRef.current
+    if (content === null) return
+    const root = resolveScroller(content) ?? content
+    rootRef.current = root
+    geometry.current = geometryOf(root)
+    if (!pinnedRef.current) return
+    /* A ResizeObserver fires on every content growth, including the growth a
+     * scroll causes when a page of history is prepended. Writing an out-of-range
+     * `scrollHeight` here asks the browser to clamp on every one of those, and the
+     * clamp is indistinguishable from a small jump. Write the clamped target, and
+     * only when the scroller is not already sitting on it. */
+    if (Math.abs(root.scrollTop - geometry.current.max) < 1) return
+    root.scrollTop = geometry.current.max
+  }, [scrollRef])
+
+  /* ONE OBSERVER AND ONE LISTENER FOR THIS REGION.
    *
-   * It used to sit on `document` in the CAPTURE phase, so it ran for every scroll
-   * of every scroller on the page — and each run read three layout properties
-   * (`scrollHeight`, `scrollTop`, `clientHeight`). Chrome cannot take its fast
-   * path for a capture-phase scroll listener that reads layout: it has to
-   * synchronise with the main thread around the gesture before it can commit the
-   * frame. A reader feels exactly that as 「滚了，等一下才动」 — and it happens
-   * regardless of how little content is on screen, because the cost is the
-   * synchronisation, not the content.
+   * The listener belongs to the scroller, not to the document: a capture-phase
+   * scroll listener on `document` runs for every scroll on the page and stops the
+   * engine taking its gesture fast path. It stays passive and coalesces a whole
+   * wheel gesture into one measurement — the answer cannot change twice between
+   * two paints.
    *
-   * The question this listener answers is only about ITS OWN scroller — 「is this
-   * pinned to the end」 — so it belongs on that element. Every other scroll
-   * (another panel, the sidebar, a dialog) stops paying for it.
-   *
-   * Still coalesced to one measurement per frame: a wheel gesture delivers many
-   * scroll events, and the answer cannot change twice between two paints. */
+   * The listener follows the ROOT rather than binding once to whatever scrolled at
+   * setup: a container-query band change can hand the scroll to an ancestor, and a
+   * listener left on the old element would stop measuring, so the pill would never
+   * appear again. Re-binding happens inside the observer callback — a layout
+   * moment — never on the scroll path. */
   useEffect(() => {
-    const root = resolveScroller(scrollRef.current)
-    if (root === null) return
-    /* THE GEOMETRY CACHE, filled where geometry can change and read nowhere else.
-     *
-     * `scrollHeight` and `clientHeight` force layout; this effect runs on mount and
-     * whenever `remountKey` changes (the region was rebuilt). A ResizeObserver below
-     * refreshes it for in-place growth — a new round arriving, an image decoding, a
-     * fold opening. Those are the only moments the maximum offset can move, and
-     * none of them is a scroll. */
-    maxScroll.current = maxScrollOf(root)
+    const content = scrollRef.current
+    if (content === null) return
+    refresh()
 
     let frame: number | undefined
-    const handler = (): void => {
+    const onScroll = (): void => {
       if (frame !== undefined) return
       frame = requestAnimationFrame(() => {
         frame = undefined
         measure()
       })
     }
-    root.addEventListener('scroll', handler, { passive: true })
-    /* Content growth: refresh the cached maximum off the scroll path entirely. The
-     * observer's own callback is a good place for a layout read — it already runs
-     * as part of the engine's layout pass, so the values are current and asking for
-     * them forces nothing. */
+    let listening: HTMLElement | null = null
     let observer: ResizeObserver | undefined
+    const watched = new Set<HTMLElement>()
+    /* ONE place says "this node is part of the region": it is listened to, and it
+     * is observed so a change in its size can hand the scroll to a different root.
+     * Both facts move together, so they cannot drift into "observed but not
+     * listened to" — a region that measures its size and never hears the scroll. */
+    const track = (node: HTMLElement): void => {
+      if (listening !== node) {
+        if (listening !== null) listening.removeEventListener('scroll', onScroll)
+        listening = node
+        node.addEventListener('scroll', onScroll, { passive: true })
+      }
+      if (observer === undefined || watched.has(node)) return
+      watched.add(node)
+      observer.observe(node)
+    }
     if (typeof ResizeObserver !== 'undefined') {
       observer = new ResizeObserver(() => {
-        maxScroll.current = maxScrollOf(root)
+        refresh()
+        const current = rootRef.current
+        if (current !== null) track(current)
       })
-      observer.observe(root)
-      if (root.firstElementChild !== null) observer.observe(root.firstElementChild)
     }
+    track(content)
+    track(rootRef.current ?? content)
     return () => {
-      root.removeEventListener('scroll', handler)
+      if (listening !== null) listening.removeEventListener('scroll', onScroll)
       if (frame !== undefined) cancelAnimationFrame(frame)
       observer?.disconnect()
+      rootRef.current = null
     }
-  }, [measure, scrollRef, remountKey])
-  useResizeFollow(scrollRef, pinnedRef, maxScroll, remountKey)
-  /* Follow the latest content while pinned — and ONLY when it moved.
-   *
-   * Two things were wrong here, and together they read as a bounce at the end:
-   *
-   *  · `scrollTop = scrollHeight` over-assigns by design: scrollTop is clamped to
-   *    `scrollHeight - clientHeight`, so the browser has to clamp a value that is
-   *    already out of range. Assigning the clamped value directly is the same
-   *    result without the wasted write.
-   *  · The effect re-ran on every `changedKey`, including the ones a reader causes
-   *    by scrolling to the end themselves. A write that moves the offset by zero
-   *    still forces a scroll update, and Chromium's own anchoring correction can
-   *    answer it — which is the 「滑到底就弹一下」 the report describes.
-   *
-   * So: compute the target from the cache, and do nothing when the scroller is
-   * already there. The gate is read from the ref, so a reader who has moved up a
-   * few pixels is never pulled back — and this effect no longer depends on any
-   * render state at all. */
-  useEffect(() => {
-    const root = resolveScroller(scrollRef.current)
-    if (root === null || !pinnedRef.current) return
-    /* Content changed, so the cached maximum is stale: refresh it here, off the
-     * scroll path. This runs per new round / per page, not per gesture. */
-    maxScroll.current = maxScrollOf(root)
-    const target = maxScroll.current
-    if (Math.abs(root.scrollTop - target) < 1) return
-    root.scrollTop = target
-  }, [scrollRef, changedKey, remountKey])
+  }, [measure, refresh, scrollRef, remountKey])
+
+  /* New content while pinned: the geometry moved, so refresh it and land on the
+   * end. This runs per new round / per page — not per gesture — and it is the same
+   * function the observer uses, so there is one write path rather than two. */
+  useEffect(() => { refresh() }, [refresh, changedKey, remountKey])
+
   const jump = useCallback((): void => {
-    const root = resolveScroller(scrollRef.current)
+    const root = rootRef.current
     if (root === null) return
     // A click, not a gesture: one layout read here is the right trade (the offset
     // must be exact), and it keeps the cache honest for the scroll that follows.
-    maxScroll.current = maxScrollOf(root)
-    root.scrollTop = maxScroll.current
+    geometry.current = geometryOf(root)
+    root.scrollTop = geometry.current.max
     pinnedRef.current = true
     publish(false)
-  }, [scrollRef, publish])
+  }, [publish])
   const subscribe = useCallback((listener: () => void): (() => void) => {
     listeners.current.add(listener)
     return () => { listeners.current.delete(listener) }
   }, [])
   const visible = useCallback((): boolean => visibleRef.current, [])
-  const anchor = useCallback((distance: number): void => {
-    const root = resolveScroller(scrollRef.current)
-    if (root === null) return
-    // Geometry moved with the prepend, so the cache and the offset are refreshed in
-    // the same breath: one layout read, and the next measure reads a maximum that is
-    // true rather than one describing the pre-page geometry. The reader keeps the SAME
-    // distance from the end, which is where they were looking.
-    const height = root.scrollHeight
-    maxScroll.current = Math.max(0, height - root.clientHeight)
-    root.scrollTop = Math.max(0, height - distance)
-  }, [scrollRef])
-  return { subscribe, visible, jump, anchor }
+  /* HOLD: read the distance ONCE, hand back the restore action. The caller says
+   * "capture now", the owner says "put them back" — neither side needs to know how
+   * the distance is computed, and the geometry cache is corrected by the same hand
+   * that moved the offset. */
+  const hold = useCallback((): (() => void) => {
+    const root = rootRef.current
+    if (root === null) return () => undefined
+    /* A click, not a gesture: reading the geometry here is the right trade, and it
+     * is what makes the anchor exact — the cache may predate the last growth, and a
+     * distance computed from a stale height puts the reader a whole page off. */
+    geometry.current = geometryOf(root)
+    const distance = geometry.current.height - root.scrollTop
+    return () => {
+      const current = rootRef.current
+      if (current === null) return
+      // Geometry moved with the prepend: the cache and the offset are refreshed in
+      // the same breath, and the reader keeps the SAME distance from the end, which
+      // is where they were looking.
+      geometry.current = geometryOf(current)
+      current.scrollTop = Math.max(0, geometry.current.height - distance)
+    }
+  }, [])
+  return { subscribe, visible, jump, hold }
 }
 
 /**
@@ -697,9 +678,15 @@ export function useTranscriptTail(
       }
       setPageError(false)
       setPageUnsupported(false)
-      const root = resolveScroller(scrollRef.current)
-      const distance = root === null ? undefined : root.scrollHeight - root.scrollTop
-      setEvents(current => {        const known = new Set<number>()
+      /* Capture the reader's place HERE, not at the click: between the tap and the
+       * page arriving they may have kept reading, and the number that has to survive
+       * the prepend is where they are when it happens. The DOM is still pre-prepend
+       * at this point (`setEvents` has not rendered yet), which is exactly the
+       * moment the distance is meant to describe. The owner computes it and hands
+       * back the restore action. */
+      const restore = pin.hold()
+      setEvents(current => {
+        const known = new Set<number>()
         if (current !== undefined) {
           for (const event of current) {
             if (event.seq !== undefined) known.add(event.seq)
@@ -718,13 +705,8 @@ export function useTranscriptTail(
       setHasMore(page.hasMore === true)
       // Restore the reader's place AFTER paint (double rAF): the prepended
       // content grows the scroller above the viewport, and scrollTop alone
-      // would leave the reader staring at older messages. The write goes through
-      // the pin so the geometry cache is corrected in the same breath.
-      if (distance !== undefined) {
-        requestAnimationFrame(() => {
-          requestAnimationFrame(() => { pin.anchor(distance) })
-        })
-      }
+      // would leave the reader staring at older messages.
+      requestAnimationFrame(() => { requestAnimationFrame(() => { restore() }) })
     })
   }, [controller, sessionId, loadingEarlier, pin])
 
