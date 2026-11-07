@@ -446,7 +446,19 @@ function installBrowserFakes(): void {
  * A controller that answers every member the board's render reads.
  * @param tasks - 板上放哪些卡；不传就是空板（其余用例的行为一字不变）。
  */
-function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
+function boardStub(
+  tasks: readonly TaskRecord[] = [],
+  /**
+   * Which conversations are suspended on the user, by session id.
+   *
+   * A stub that answers `undefined` to every `pendingInteractionOf` call can
+   * render the ordinary board but **cannot render the state the card exists
+   * to shout about** — so the one artifact that shows the board to a human was
+   * structurally unable to contain a 等你处理 card. Optional, so the many call
+   * sites that do not care about that state stay one argument.
+   */
+  pending: Readonly<Record<string, string>> = {},
+): Record<string, unknown> {
   const snapshot = () => ({
     tasks,
     boardOpen: true,
@@ -469,7 +481,10 @@ function boardStub(tasks: readonly TaskRecord[] = []): Record<string, unknown> {
       if (key === 'relatedSessionIdSet') return () => new Set<string>()
       if (key === 'liveStateOf') return () => 'idle'
       if (key === 'sessionActiveOf') return () => false
-      if (key === 'pendingInteractionOf' || key === 'questionPendingOf') return () => undefined
+      if (key === 'pendingInteractionOf') return (sessionId: string) => pending[sessionId]
+      /* 另一件事：那是**问题正文**（`{ questions: [...] }`），不是闸门种类。两者共用一个
+         回答就是假面比现实窄的另一种形状——通知抽屉会拿种类去读 `.questions.length`。 */
+      if (key === 'questionPendingOf') return () => undefined
       if (key === 'sessionTitle') return () => undefined
       if (key === 'boundSourceTitleOf') return () => ''
       if (key === 'runCatalog') return () => undefined
@@ -608,13 +623,28 @@ describe('stale-bundle status line (rendered through the panel)', () => {
           parentExecutionId: 'run-task-queued',
         })],
       }, at + 5_000),
+      /* **一张卡欠人一句话。** 工件里必须有它，否则这张图证明不了「要你动手的卡长什么样」
+         ——而那是这一页最该被看见的一档。两种闸门各一张（提问 / 计划确认），因为它们在屏上
+         必须一模一样，只有「·」后面那个词不同。 */
+      ran('task-ask-question', '有一条会话在等你回答问题', 'sess-ask-q'),
+      ran('task-ask-plan', '有一条会话在等你确认计划', 'sess-ask-plan'),
+      /* **一张在跑的卡。** 四档光里它是「活动」那一档：工件必须同时画得出来，否则
+         「这四种到底分不分得开」这个问题在这张图上没有答案。 */
+      startExecution(
+        createTask({ title: '正在跑：Agent 在做事，不用你管', description: '', prompt: '慢慢做', status: 'todo' }, at, 'task-live'),
+        at + 2_000,
+        'run-task-live',
+      ).task,
     ]
   }
+
+  /** 那张生产现场：哪条会话卡在哪种人间闸门上。 */
+  const WAITING = { 'sess-ask-q': 'question', 'sess-ask-plan': 'plan-review' } as const
 
   function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light'): string {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
-        controller: boardStub(boardFixture()) as unknown as BoardController,
+        controller: boardStub(boardFixture(), WAITING) as unknown as BoardController,
         ...mountedOf === undefined ? {} : { mountedOf },
       } as never)),
       panelCss(),
@@ -657,6 +687,12 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     /* 结算成功那一枚的**词**是「N 次执行」（`board.runs`），它的**成功**在底色上——底色由
        `resultChipKind` 那一个映射给，所以这里钉的是那个映射的结果，不是一个写死的色名。 */
     expect(markup, '结算成功的那一枚芯片没有成功的底色').toContain(`data-kind="${resultChipKind('succeeded')}"`)
+    /* **四档光必须同时出现在这张图上。** 少了任何一档，这张图就答不了它唯一该回答的问题：
+       「这四种状态在屏上到底分不分得开」。这一条也钉住了夹具本身——一张没了「要你动手」的
+       工件，是**安静地**少画了一档（渲染照旧成功），而看图的人会照它下结论。 */
+    for (const light of ['none', 'ring', 'halo', 'ask']) {
+      expect(markup, `工件里没有 ${light} 这一档光——那张图证明不了四种状态分得开`).toContain(`data-light="${light}"`)
+    }
   })
 
   /* THE STRIP IS RENDERED BY THE WORKBENCH BAR, NOT BY THE BOARD.

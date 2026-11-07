@@ -13,7 +13,7 @@
  * Pure and unit-testable.
  */
 import { type AttachmentRef } from './attachment.ts';
-import type { TaskRecord } from './tasks.ts';
+import type { PausingStatus, TaskRecord } from './tasks.ts';
 /** A rule's trigger: cron (schedule) or on-complete (fires at run settle). */
 export type SessionRuleTrigger = 'cron' | 'on-complete';
 /** One session-scoped automation rule of a task. */
@@ -86,7 +86,7 @@ export type SessionRuleReadiness = {
     kind: 'blocked';
 } | {
     kind: 'paused';
-    status: 'backlog' | 'review' | 'done';
+    status: PausingStatus;
 } | {
     kind: 'active';
 };

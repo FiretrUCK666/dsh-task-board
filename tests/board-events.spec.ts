@@ -3,7 +3,7 @@
  * notifications/activity/cards — kinds, states, ordering, day grouping.
  */
 import { describe, expect, it } from 'vitest'
-import { boardEventsOf, groupEventsByDay } from '../src/core/board-events.ts'
+import { boardEventsOf, bucketByDay } from '../src/core/board-events.ts'
 import { localDayKey } from '../src/core/local-day.ts'
 import { createTask, newCommentRound, newDirectRound, newExternalRound, startExecution } from '../src/core/tasks.ts'
 
@@ -79,7 +79,7 @@ describe('boardEventsOf', () => {
 describe('day grouping', () => {
   it('buckets by local calendar day, newest day first', () => {
     expect(typeof localDayKey(NOW)).toBe('string')
-    const grouped = groupEventsByDay(boardEventsOf([
+    const grouped = bucketByDay(boardEventsOf([
       createTask({ title: 'A', description: '', prompt: 'p' }, NOW, 'a'),
       createTask({ title: 'B', description: '', prompt: 'p' }, NOW + 86_400_000, 'b'),
     ]))

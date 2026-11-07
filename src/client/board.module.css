@@ -1659,6 +1659,68 @@
   cursor: default;
 }
 
+/* **『要你动手』是一档自己的光，不是『在跑』的加强版。**
+ *
+ * 一条会话停在提问 / 计划确认 / 权限审批上时，有人在**等你**——在那之前它一步都
+ * 走不了。而这三种此前和「正在跑」戴同一盏内晕、同一颗灰字芯片，于是整栏读起来
+ * 是「三张都在跑」，其中一张其实卡住了。读者原话：「我一眼看上去都没发现原来是
+ * 要我去回答」。
+ *
+ * 三件事同时变，缺一件都不成立：
+ *
+ *   1. **整块的底换了颜色**（不是只换一圈边）：22% 注意色洗在纸面上，一张卡在整栏
+ *      里是唯一一块暖的——这是「整个卡片有变化」那一半；
+ *   2. **一圈实心环**，且**不呼吸**：请求不该有一半时间是看不见的（未读那一档的环
+ *      是脉冲，因为它说的是「有新东西」，不是「不处理就卡死」）；
+ *   3. **主芯片变成实心药丸 + 主墨字**：灰字换成一块有底的标签，扫视时它是这一行
+ *      唯一有形状的东西。
+ *
+ * 三种 kind 走**同一条**路径（判据是 `primary.kind === 'waiting'`，与具体是哪一种
+ * 无关），只有「·」后面那个词不同——提问、计划确认、权限审批本来就该长得一样。
+ *
+ * 一律不碰 `box-shadow`：那个属性承载纸面（边光 + 投影），是本表的铁律。
+ */
+.card[data-light='ask'] {
+  /* 洗底压过卡片自己的颜色气氛（`--card-tint` 那 6%）：需要你动手的时候，
+     这一张卡的「我是哪一类」让位给「我现在要你做什么」。 */
+  --dsh-tb-paper-plane: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), var(--dsh-tb-plane-sheet));
+  border-color: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
+}
+
+.card[data-light='ask']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  /* 内描边而不是外描边：卡片是硬裁剪边界（`overflow: hidden`），画在外面的环
+     会被自己裁掉。宽度静态、颜色静态——这一档是常亮的，不是脉冲。 */
+  box-shadow: inset 0 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-attention-alpha);
+  pointer-events: none;
+}
+
+/* 这一行的主芯片：**有底、有边、主墨字**。色相由底承担，字读 `--dsh-tb-text-1`
+ * ——那枚墨在两个主题下自己翻面，所以这一对在浅底与深底上都读得出来（这正是
+ * 「同色淡洗底 + 近黑字」那条处方，见令牌层的色族律）。
+ *
+ * 选择器读的是**光的属性**而不是「这枚芯片碰巧是什么状态」：需要你动手的卡片只有
+ * 一种，它的每个强调都从同一个 `data-light` 派生，不可能与环分家。 */
+.card[data-light='ask'] .cardAskChip {
+  background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
+  border-color: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
+  color: var(--dsh-tb-text-1);
+  font-weight: 600;
+}
+
+/* 那一行「要你做什么」的句子从灰升到主墨：整张卡只有这一句是动作，它不该与
+ * 「更新于 18m」同一个颜色。
+ *
+ * 选择器读属性：卡片上的每一处强调都从同一个 `data-light` 派生，不可能与环分家
+ * （这也是它不叫 `cardAskNext` 的原因——没有那个类，就不存在「忘了挂上它」）。 */
+.card[data-light='ask'] .cardNext {
+  color: var(--dsh-tb-text-1);
+  font-weight: 500;
+}
+
 /* THE two card lights, split by MEANING — two states, two forms.
    One `animation: dshTbBreathRing` at one timing and one colour makes "a run
    finished and you have not looked" and "work is in flight" one identical
@@ -1689,14 +1751,28 @@
    slower and gentler — which is this project's rule for state indicators (they
    are messages, so they are never `animation: none`). There is no "quiet static
    ring" for reduced motion, and no rule that would produce one. */
-.card[data-light='ring'] {
-  /* A constant-width outline whose COLOUR breathes. The width and offset are
-     declared once (not animated), so the card never reflows and the ring is
-     never clipped by the card's own `overflow: hidden` — outlines are not
-     descendants. */
-  /* Static stroke, animated opacity — see the keyframes for why. */
+/* THE UNREAD RING — a hard stroke that PULSES, on a layer of its own.
+ *
+ * 这一档说的是「跑完了，这份内容你还没看过」：那是一份**报告**，不是请求，所以它
+ * 用**脉冲**（有一半时间不在），而「要你动手」那一档是**常亮**且整块换了底。两种
+ * 光在屏上的差别是形状与节奏，不是同一个形状的两个浓度。
+ *
+ * **它住在伪元素上，卡片自己不淡。** 这条是量出来的：环原先直接写在卡片上，
+ * `opacity` 关键帧于是把**整张卡**在 0.005 与 0.995 之间淡进淡出——标题、时间、
+ * 芯片连同它背后的纸，每 2.6 秒消失一次。读者最该读到的那一条恰好是最看不清的
+ * 一条。判据在 `scripts/verify-breath-fades-decoration.mjs`。
+ *
+ * **`outline-offset` 是负的**：`outline` 画在盒**外面**，而卡片是硬裁剪边界
+ * （`overflow: hidden`），正偏移的那一圈会被自己的裁剪吃掉一半。负偏移把它折进
+ * 盒内，于是整圈都在裁剪范围里，形状仍是**硬描边**（不是 halo 那种模糊内晕）。 */
+.card[data-light='ring']::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
-  outline-offset: 0;
+  outline-offset: calc(-1 * var(--dsh-tb-breath-spread));
+  pointer-events: none;
   opacity: 0;
   animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
 }
@@ -2994,10 +3070,18 @@
 }
 
 .sessionDropZone[data-bindactive] {
+  position: relative;
   box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
-  /* The breath rides the outline's COLOUR; its width is constant (same
-     mechanism as the card ring — a state light never animates geometry). */
-  /* Static stroke, animated opacity — see the keyframes for why. */
+}
+
+/* 光住在一层没有内容的皮上（见 `verify-breath-fades-decoration`）：淡这一层，
+ * 里面那句「把会话拖进来」一个字都不会跟着闪。 */
+.sessionDropZone[data-bindactive]::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
   outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
   opacity: 0;
@@ -3530,10 +3614,19 @@
  * 自动化弹层：空态、任务列表、每条任务的可展开行与折叠箭头、会话规则块与新建规则表单。
  */
 .column[data-dropaccept='link'] {
+  position: relative;
   border-color: var(--dsh-tb-accent);
   box-shadow: 0 0 0 var(--dsh-tb-ring-w) var(--dsh-tb-focus-ring);
-  /* Constant-width outline, colour-only breath (see the card ring). */
-  /* Static stroke, animated opacity — see the keyframes for why. */
+}
+
+/* 光住在一层没有内容的皮上：整列里是卡片，把列本身淡掉等于把「往这儿拖」这句话
+ * 连同它装着的东西一起闪（见 `verify-breath-fades-decoration`）。 */
+.column[data-dropaccept='link']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
   outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   outline-offset: 0;
   opacity: 0;

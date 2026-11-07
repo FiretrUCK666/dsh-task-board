@@ -6,11 +6,13 @@
  * the user's text). Pure and framework-free so it unit-tests in isolation.
  */
 
+import { localDayKey } from '../../core/local-day.ts'
+
 /** Format an epoch millisecond as the field's canonical text (`YYYY-MM-DD HH:mm`). */
 export function formatTimeInput(ms: number): string {
   const date = new Date(ms)
   const pad = (value: number): string => String(value).padStart(2, '0')
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`
+  return `${localDayKey(ms)} ${pad(date.getHours())}:${pad(date.getMinutes())}`
 }
 
 /**

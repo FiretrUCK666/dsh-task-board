@@ -13,7 +13,7 @@
  * Pure and unit-testable.
  */
 import { normalizeAttachmentRefs, type AttachmentRef } from './attachment.ts'
-import type { TaskRecord } from './tasks.ts'
+import type { PausingStatus, TaskRecord } from './tasks.ts'
 import { ruleReadiness, taskColumnAllowsAutomation, taskExecutable } from './tasks.ts'
 import { nextRunAtMs } from './schedule.ts'
 import { latestCompletedOf } from './task-demand.ts'
@@ -143,7 +143,7 @@ export function sessionRuleOf(row: Extract<AutomationRow, { kind: 'session-rule'
 export type SessionRuleReadiness =
   | { kind: 'disabled' }
   | { kind: 'blocked' }
-  | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
+  | { kind: 'paused'; status: PausingStatus }
   | { kind: 'active' }
 
 export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): SessionRuleReadiness {
@@ -155,7 +155,7 @@ export function sessionRuleReadiness(task: TaskRecord, rule: SessionRule): Sessi
   if (rule.trigger === 'on-complete') return { kind: 'active' }
   return taskColumnAllowsAutomation(task)
     ? { kind: 'active' }
-    : { kind: 'paused', status: task.status as 'backlog' | 'review' | 'done' }
+    : { kind: 'paused', status: task.status as PausingStatus }
 }
 
 /**

@@ -18,6 +18,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import type { Context } from '@deepseek-ai/cordis'
 import type {} from '@deepseek-ai/dsh-host-webserver'
+import { messageOf } from '../core/values.ts'
 import { json } from './http-json.ts'
 
 /** One selectable permission preset, as the task form renders it. */
@@ -81,7 +82,7 @@ export function createPermissionHandler(
     try {
       view = deps.read()
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error)
+      const message = messageOf(error)
       json(res, { ok: false as const, error: { code: 'permissions', message } })
       return
     }

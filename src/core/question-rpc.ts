@@ -16,6 +16,8 @@
  * the requested frame's rpcId, never a minted one.
  */
 
+import { isRecord } from './values.ts'
+
 /** One normalized question item (unknown shapes trimmed to the wire contract). */
 export interface WireQuestionItem {
   /** Stable caller-provided question id, echoed in the answer. */
@@ -171,7 +173,7 @@ export function normalizeWireQuestion(value: unknown): WireQuestionItem | undefi
   }
   if (source.multiSelect === true || source.multiSelect === 'true') item.multiSelect = true
   const intent = source.intent
-  if (typeof intent === 'object' && intent !== null) {
+  if (isRecord(intent)) {
     const intentSource = intent as Record<string, unknown>
     if (intentSource.kind === 'plan-review' && typeof intentSource.approve === 'string') {
       item.intent = { kind: 'plan-review', approve: intentSource.approve }

@@ -9,7 +9,7 @@
  */
 import { describe, expect, it, vi } from 'vitest'
 import {
-  countSessions, offerableSessionGroups, UNGROUPED_KEY,
+  offerableSessionGroups, UNGROUPED_KEY,
   type GroupSessionRow, type GroupWorkspaceRow,
 } from '../src/core/session-groups.ts'
 
@@ -162,7 +162,7 @@ describe('offerableSessionGroups', () => {
     expect(list(groups)).toEqual([['w1', ['s1']]])
   })
 
-  it('counts the sessions across groups', () => {
+  it('offers every session exactly once across the groups', () => {
     const groups = offerableSessionGroups(sources({
       rows: { s1: { title: 'A' }, s2: { title: 'B' }, s3: { title: 'C' } },
       ids: ['s1', 's2', 's3'],
@@ -171,7 +171,8 @@ describe('offerableSessionGroups', () => {
         { id: 'w2', title: 'Other', sessionIds: ['s3'] },
       ],
     }), { untitledLabel: UNTITLED, ungroupedLabel: UNGROUPED })
-    expect(countSessions(groups)).toBe(3)
+    const offered = groups.flatMap(group => group.sessions.map(session => session.sessionId))
+    expect([...offered].sort()).toEqual(['s1', 's2', 's3'])
   })
 
   it('derives nothing from a clock: the same snapshots always give the same list', () => {

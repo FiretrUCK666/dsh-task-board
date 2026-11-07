@@ -36,6 +36,7 @@
  */
 import { createUserMessage } from '@deepseek-ai/dsh-llm'
 import type { CommandDefinition, CommandResult } from '@deepseek-ai/dsh-commands'
+import { messageOf } from '../../core/values.ts'
 
 /** The structural face of one agent. The COMMAND types below are the host's
  *  own, imported — a hand-written copy of them compiles just as happily and
@@ -216,7 +217,7 @@ export function handOver(agent: CommandAgent, text: string, lead = ''): CommandR
   } catch (error) {
     // The registry shows this to the person who typed the command, so it says
     // what went wrong in words rather than swallowing it.
-    return { kind: 'error', text: `这句话没能送进会话：${error instanceof Error ? error.message : String(error)}` }
+    return { kind: 'error', text: `这句话没能送进会话：${messageOf(error)}` }
   }
 }
 

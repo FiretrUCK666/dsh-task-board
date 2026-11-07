@@ -74,6 +74,7 @@ import { ITEM_PRIORITIES, ITEM_STATUSES, ITEM_FIELDS, isItemRecordShape, itemIns
 import type { ItemCardLink } from './item-membership.ts'
 import { normalizeAttachmentRefs, sameAttachmentRefs, type AttachmentRef } from './attachment.ts'
 import { MANUAL_STATUSES, type TaskStatus } from './tasks.ts'
+import { isRecord } from './values.ts'
 
 /**
  * The keys a patch may carry, DERIVED from the ruling table instead of being
@@ -717,7 +718,7 @@ function stepIdOf(entry: unknown): string | undefined {
  * only shows work that is there.
  */
 function stepDoneOf(entry: unknown): boolean {
-  return typeof entry === 'object' && entry !== null && (entry as { done?: unknown }).done === true
+  return isRecord(entry) && (entry as { done?: unknown }).done === true
 }
 
 /**

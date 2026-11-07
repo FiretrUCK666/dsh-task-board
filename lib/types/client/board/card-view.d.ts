@@ -82,22 +82,33 @@ export declare function titleOrUntitled(title: string, untitled: string): string
  */
 export declare function cardUpdatedAtOf(task: TaskRecord): number;
 /** Which light a card wears. ONE light at a time — see {@link cardLightOf}. */
-export type CardLight = 'none' | 'halo' | 'ring';
+export type CardLight = 'none' | 'halo' | 'ring' | 'ask';
 /**
- * THE card light table, in code (the board's 光效规则表, one row per card):
+ * THE card light table, in code (the board's 光效规则表, one row per card).
+ * The four rows are ordered by **what the reader owes**, not by how busy the
+ * card is — that ordering IS the rule:
  *
- *   'halo' — state-bound brightness: the card is working (waiting / running).
- *           Inset and soft: work in flight is not a request;
+ *   'ask'  — a conversation is suspended on you (question / plan / approval).
+ *            Somebody is BLOCKED until you act. Solid ring: visible for the
+ *            whole cycle, not only at the pulse's peak.
  *   'ring' — unread: a run finished and this content has not been looked at.
- *            Outer and stronger: it IS a request to look;
+ *            A report, not a request: same hue at the wash step.
+ *   'halo' — state-bound brightness: the card is working. Inset and soft: work
+ *            in flight is not a request at all.
  *   'none' — read and settled, or idle.
  *
- * A card that is BOTH working and unread wears the halo — this function is the
- * single place that decides, so the precedence is stated rather than inherited
- * from stylesheet order (both lights set the same `animation` property through
- * ONE `data-light` switch, so there is no second rule to fight).
+ * The precedence is the argument: **a request outranks a report, and a report
+ * outranks activity.** A card that needs you must never be quieter than a card
+ * that is merely working — which is exactly what it used to be: `waiting` fell
+ * through to the same soft halo as `running`, so a blocked conversation and a
+ * busy one wore one light and one chip shape, and the board read as 「三张都在
+ * 跑」 when one of them was waiting for a person.
+ *
+ * The argument is ONE value, not three booleans: three call-site flags are
+ * three chances for the render to disagree with the model, and this light is
+ * read by exactly one render.
  */
-export declare function cardLightOf(active: boolean, unviewed: boolean): CardLight;
+export declare function cardLightOf(view: Pick<CardViewModel, 'primary' | 'active' | 'unviewed'>): CardLight;
 /**
  * THE session-dot state — one derivation for every dot a card renders, so the
  * strip can never answer "which conversation is which" differently from the

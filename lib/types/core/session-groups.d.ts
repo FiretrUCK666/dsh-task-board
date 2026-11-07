@@ -58,5 +58,3 @@ export interface SessionGroupOptions {
  * （闸门 2-4）。
  */
 export declare function offerableSessionGroups(sources: SessionGroupSources, options: SessionGroupOptions): SessionGroup[];
-/** 分组里会话的总数（面板底部的「已选/共 N」与空态判断都读它）。 */
-export declare function countSessions(groups: readonly SessionGroup[]): number;

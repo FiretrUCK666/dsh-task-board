@@ -38,6 +38,7 @@ import { cruiseStatusLineOf, cruiseWindowGrammarOf, duplicateWindowOf, normalize
 import { DAY_MS } from '../../core/item-dates.ts'
 import { formatCruiseTime, cruiseWindowLabelOf, formatDateTime, formatTime } from './format-time.ts'
 import { localDayKey } from '../../core/local-day.ts'
+import { bucketByDay } from '../../core/board-events.ts'
 import { NewTaskModal } from './NewTaskModal.tsx'
 import { SessionPickerDialog } from './SessionPickerDialog.tsx'
 import { STATUS_KEY, STATUS_SHORT_KEY } from './status.ts'
@@ -2340,16 +2341,10 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
               const { frozen: feed, fresh } = freezeFeed(live, feedBase)
               if (feed.length === 0) return <p className={css.detailText}>{t('board.activityEmpty')}</p>
               const shown = feed.slice(0, activityShown)
-              // Day groups (data-driven buckets, no fixed windows): one header
-              // per local calendar day, newest day first.
               const todayBucket = localDayKey(Date.now())
-              const groups = new Map<string, typeof shown>()
-              for (const item of shown) {
-                const day = localDayKey(item.at)
-                const list = groups.get(day)
-                if (list !== undefined) list.push(item)
-                else groups.set(day, [item])
-              }
+              // Day groups: one header per local calendar day, newest day first —
+              // `bucketByDay` is the one implementation of that split.
+              const groups = bucketByDay(shown)
               // Hierarchy: day → TASK FOLD → session section → row. Rows and
               // headers share the FeedRow skeleton with the notify drawer
               // (one widget, never two dialects); inside a fold the TITLES
@@ -2520,7 +2515,7 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                       {t('board.activityNew', { n: String(fresh) })}
                     </button>
                   )}
-                  {[...groups.entries()].map(([day, items]) => (
+                  {groups.map(({ day, items }) => (
                     <section key={day} aria-label={dayLabelOf(day, todayBucket)}>
                       <h3 className={css.feedDay}>{dayLabelOf(day, todayBucket)}</h3>
                       <ul className={css.notifyList}>

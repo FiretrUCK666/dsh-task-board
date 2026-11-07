@@ -24,7 +24,7 @@
  */
 import { attachmentsOf, type PromptAttachment } from './attachment.ts'
 import type { ExecutionRecord, TaskRecord } from './tasks.ts'
-import { messageOf } from './values.ts'
+import { isRecord, messageOf } from './values.ts'
 
 /** Session ids whose history-probe failure already logged (reconcile loop hot
  *  path: warn once per session). Plain Set with no eviction: ids are durable
@@ -269,10 +269,9 @@ export const DEFAULT_COMMAND_GRACE_MS = 2_000
 
 /** Whether a `turn/end` payload closed the turn with an error reason. */
 function isErrorTurnEnd(data: unknown): boolean {
-  if (typeof data !== 'object' || data === null) return false
+  if (!isRecord(data)) return false
   const reason = (data as { reason?: unknown }).reason
-  return typeof reason === 'object' && reason !== null
-    && (reason as { kind?: unknown }).kind === 'error'
+  return isRecord(reason) && (reason as { kind?: unknown }).kind === 'error'
 }
 
 /** Launch options for {@link ExecutionService.run}. */

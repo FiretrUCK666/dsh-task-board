@@ -27,6 +27,7 @@ import { routeUrl } from './route-base.ts'
 import type { ItemRecord } from '../core/item.ts'
 import { isItemRecordShape } from '../core/item.ts'
 import { DAY_MS } from '../core/item-dates.ts'
+import { messageOf } from '../core/values.ts'
 
 /** How long to wait before telling the reader the host could not be reached. */
 const ARCHIVE_TIMEOUT_MS = 8_000
@@ -126,7 +127,7 @@ export async function itemsArchive(
     if (!Array.isArray(deleted)) return { ok: false, why: 'unrecognisedAnswer' }
     return { ok: true, deleted: deleted.filter(archivedRow) }
   } catch (error) {
-    return { ok: false, why: error instanceof Error ? error.message : String(error) }
+    return { ok: false, why: messageOf(error) }
   } finally {
     clearTimeout(timer)
   }
@@ -251,7 +252,7 @@ async function postToArchive(
     if (record.available !== true) return { ok: false, why: 'hostUnavailable' }
     return { ok: true, value: record, revision: decided }
   } catch (error) {
-    return { ok: false, why: error instanceof Error ? error.message : String(error) }
+    return { ok: false, why: messageOf(error) }
   } finally {
     clearTimeout(timer)
   }

@@ -42,6 +42,7 @@ import { applyItemsCommit, deletedItemsOf, emptyItemsDoc, normalizeItemsDoc, pur
 import { LEGACY_ATTACHMENT_MIGRATION_KEY, legacyImagesOf, migrateLegacyAttachments, type ImageAdmittingStore } from '../core/attachment-migration.ts'
 import type { ItemPurge, ItemsCommit, ItemsDoc } from '../core/items-doc.ts'
 import type { ItemRecord } from '../core/item.ts'
+import { isRecord } from '../core/values.ts'
 // Types only, and the reason is that an operation on a deleted row is addressed
 // by TWO names: the wire shape and the row it names are one decision, and a
 // service that declared its own copy of the address would be free to disagree
@@ -145,7 +146,17 @@ export interface OpenedDocuments {
 /** The records of the declared table, or an empty view when it holds none. */
 function documentsOf(snapshot: { tables?: Record<string, Record<string, unknown>> }): Record<string, unknown> {
   const table = snapshot.tables?.[BOARD_UNIT_TABLE]
-  return typeof table === 'object' && table !== null ? table : {}
+  return isRecord(table) ? table : {}
+}
+
+/**
+ * The `meta` document as a spreadable record. Two call sites rewrite it (the
+ * legacy-attachment pass records itself), and both must PRESERVE whatever else
+ * it already holds — so both read it through the same narrowing instead of each
+ * spelling out "object, not null" and silently drifting apart.
+ */
+function metaOf(meta: unknown): Record<string, unknown> {
+  return isRecord(meta) ? meta : {}
 }
 
 /**
@@ -413,7 +424,7 @@ export class DocumentService {
     if (legacyImagesOf(tasks).length === 0) {
       // Nothing to move: record the pass so later boots skip the scan entirely.
       await unit.putRecord(BOARD_UNIT_TABLE, META_DOCUMENT, {
-        ...(typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {}),
+        ...metaOf(meta),
         [LEGACY_ATTACHMENT_MIGRATION_KEY]: this.now(),
       })
       return
@@ -431,7 +442,7 @@ export class DocumentService {
       await unit.putRecord(BOARD_UNIT_TABLE, BOARD_DOCUMENT, next)
       this.doc = next
       await unit.putRecord(BOARD_UNIT_TABLE, META_DOCUMENT, {
-        ...(typeof meta === 'object' && meta !== null ? (meta as Record<string, unknown>) : {}),
+        ...metaOf(meta),
         [LEGACY_ATTACHMENT_MIGRATION_KEY]: this.now(),
       })
       this.log(`[dsh-task-board] legacy attachments: moved ${report.moved} image(s) into the store; ${report.skipped.length} left in place`)

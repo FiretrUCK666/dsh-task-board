@@ -63,6 +63,21 @@ import { SHARED_CANDIDATES } from './shared-candidates.ts'
 export type TokenKind = 'color' | 'radius' | 'shadow' | 'space' | 'plain' | 'surface' | 'rim'
 
 /**
+ * The surface group's FLOOR — the canvas itself, not a sheet lying on it.
+ *
+ * Every other surface token is a step ABOVE the page, so the specimen gives them
+ * `.paperSheet` (the production material: tone + rim + cast). The floor has no
+ * step to show: it IS the page, and being the same colour as the canvas is what
+ * it means. Giving it the sheet material drew a piece of paper whose tone equals
+ * the desk it sits on — the one picture a surface ladder must not paint — and it
+ * is what the dark-theme audit reported as 纸面与画布同色.
+ *
+ * So it is named here, once, and the render reads the name: a specimen that is
+ * the floor by definition cannot be mistaken for a paper that lost its step.
+ */
+const CANVAS_FLOOR = '--dsh-tb-bg'
+
+/**
  * The design variables this page displays, GROUPED BY WHAT THEY ARE FOR.
  *
  * A curated catalogue rather than a dump: a reader wants 「表面有哪几级」, not
@@ -402,8 +417,13 @@ export function DesignGallery() {
                 {group.names.map(name => (
                   <div key={name} className={css.gallerySwatch}>
                     <span
-                      className={`${css.gallerySpecimenBox}${group.kind === 'surface' ? ` ${base.paperSheet}` : ''}`}
+                      className={`${css.gallerySpecimenBox}${group.kind === 'surface' && name !== CANVAS_FLOOR ? ` ${base.paperSheet}` : ''}`}
                       data-kind={group.kind}
+                      /* **地板不是一张纸。** 这一格展示的是画布本身——页面自己的底色。
+                         给它挂 `.paperSheet` 就是把「画布」画成「浮在画布上的一张纸」，
+                         而它与画布同色是**定义**，不是缺陷：读者在这一格里要看的正是
+                         「其余五级从哪儿长出来」。所以它只描一条边，不领纸张的材质。 */
+                      {...(name === CANVAS_FLOOR ? { 'data-floor': '' } : {})}
                       style={{ ['--gallery-value' as string]: `var(${name})` }}
                     />
                     <span className={css.gallerySwatchText}>

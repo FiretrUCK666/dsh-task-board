@@ -41,6 +41,18 @@ export interface DesignLaw {
  */
 export const DESIGN_LAWS: readonly DesignLaw[] = [
   {
+    id: 'breath-fades-a-decoration',
+    law: '一盏状态呼吸光的 `opacity` 关键帧只许住在没有内容的那一层上（伪元素 / 空记号），承载文字与控件的那一层永远满不透明度。',
+    gate: 'verify-breath-fades-decoration.mjs',
+    specimen: 'interaction',
+    why:
+      '一条 `opacity` 关键帧写在有内容的元素上时，淡的是**那块内容本身**——未读的卡片'
+      + '每 2.6 秒整块消失一次，而它正是最该被读到的那一条（「跑完了，你还没看过」）。'
+      + '源码看起来完全正常：`outline` 加 `animation`，合法、不报错、两种主题都渲染得出，'
+      + '它只在屏上暴露。实测（`probe-ring-fade.js`）那张卡的 computed `opacity` 在 0.005 与'
+      + ' 0.995 之间来回——卡片自己就是那盏灯。',
+  },
+  {
     id: 'mixed-row-axis',
     law: '一行里只要有图形或两种以上字号，容器用 align-items: center，且每一段自己的 line-height 是 1em。',
     gate: 'verify-capsule-centring.mjs',

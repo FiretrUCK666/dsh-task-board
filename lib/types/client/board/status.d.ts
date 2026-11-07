@@ -3,7 +3,7 @@
  * by the board columns and the task detail badge so both surfaces can never
  * drift apart.
  */
-import type { ManualStatus, TaskStatus } from '../../core/tasks.ts';
+import type { ManualStatus, PausingStatus, TaskStatus } from '../../core/tasks.ts';
 import type { TaskBoardKey } from '../locales.ts';
 /** Status → locale key. */
 export declare const STATUS_KEY: Record<TaskStatus, TaskBoardKey>;
@@ -43,5 +43,8 @@ export declare const STATUS_SHORT_KEY: Record<TaskStatus, TaskBoardKey>;
  * Paused-rule explanation keyed by the pausing status: ONE map read by both
  * automation surfaces (the detail editor and the overview row derive the same
  * readiness reason, so the reason copy can never drift).
+ *
+ * The KEY TYPE is `PausingStatus`, not a hand-written union: add a column that
+ * pauses automation and this table fails the build until it explains the pause.
  */
-export declare const PAUSED_REASON_KEY: Record<'backlog' | 'review' | 'done', TaskBoardKey>;
+export declare const PAUSED_REASON_KEY: Record<PausingStatus, TaskBoardKey>;

@@ -130,6 +130,7 @@ export function policyOfWorkSteps(prefs: WorkStepsPrefs): WorkStepsPolicy {
  */
 export type { TranscriptReply, TranscriptTurn, TranscriptStep as WorkStep, TranscriptInterjection, TurnAnswerBoundary, TurnFlowItem } from './review-transcript.ts'
 import type { TranscriptReply, TranscriptStep, TranscriptTurn, TurnFlowItem } from './review-transcript.ts'
+import { isRecord } from '../../core/values.ts'
 
 /**
  * 一轮里「过程行 / 回复 / 读者插话」按**真实发生顺序**排成一条流。
@@ -459,7 +460,7 @@ export function foldedRepliesChoiceOf(raw: unknown): FoldedReplies | undefined {
  * @returns 三件事，永远完整。
  */
 export function prefsOf(raw: unknown): WorkStepsPrefs {
-  const row = typeof raw === 'object' && raw !== null ? raw as Record<string, unknown> : {}
+  const row = isRecord(raw) ? raw : {}
   return {
     view: viewOf(row.transcriptView) ?? DEFAULT_WORK_STEPS.view,
     collapseTiming: collapseTimingOf(row.collapseTiming) ?? DEFAULT_WORK_STEPS.collapseTiming,

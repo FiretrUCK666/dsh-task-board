@@ -27,6 +27,7 @@ import type {
   UpdateSourceView,
 } from '../core/update-view.ts'
 import type { ClientReport, ReportedBox } from '../core/client-report.ts'
+import { isRecord } from '../core/values.ts'
 import { routeUrl } from './route-base.ts'
 import packageJson from '../../package.json'
 
@@ -222,7 +223,7 @@ export async function fetchUpdateSource(timeoutMs = 15_000): Promise<UpdateSourc
     plan,
     ...(latest !== undefined ? { latest } : {}),
     ...(clients !== undefined ? { clients } : {}),
-    ...(git !== undefined && typeof git === 'object' && git !== null
+    ...(git !== undefined && isRecord(git)
       && typeof git.head === 'string'
       && typeof git.dirty === 'boolean'
       ? {

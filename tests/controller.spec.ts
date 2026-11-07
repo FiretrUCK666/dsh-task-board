@@ -5644,19 +5644,18 @@ describe('session activity: subagent descendants keep the card live', () => {
     expect(controller.liveStateOf(task.id)).toBe('running')
     // 有黄边、没呼吸 is the PAIR disagreeing, and the pair is the whole claim:
     // the yellow border is `data-status={task.status}` and the breath is
-    // `data-light={cardLightOf(view.active, view.unviewed)}`. Two separate
-    // expectations cannot see it — asserting `active` true and then feeding
-    // `cardLightOf` a literal `false` only re-confirms the light TABLE (which
-    // answers 'halo' for ANY active) and says nothing about this card. So the
+    // `data-light={cardLightOf(view)}`. Two separate expectations cannot see it
+    // — asserting `active` true and then feeding `cardLightOf` a literal view
+    // only re-confirms the light TABLE and says nothing about this card. So the
     // pair is read in ONE expression, from the view model the controller
-    // actually produced, with BOTH light inputs taken from it.
+    // actually produced.
     // The breath itself — that the halo rule carries an animation at all — is
     // the stylesheet half, and it is pinned where the CSS contracts live
     // (card-contract.spec.ts); from a core spec it is not reachable, and saying
     // so is part of the claim.
     const view = cardViewModelOf(task)
     expect(
-      { column: task.status, light: cardLightOf(view.active, view.unviewed) },
+      { column: task.status, light: cardLightOf(view) },
       '有黄边、没呼吸: a card in the running column must wear the halo (column and light are one pair)',
     ).toEqual({ column: 'running', light: 'halo' })
   })

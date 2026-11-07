@@ -11,7 +11,7 @@
 import { describe, expect, it } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { cardLightOf, cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled } from '../src/client/board/card-view.ts'
+import { cardLightOf, cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled, type CardPrimary } from '../src/client/board/card-view.ts'
 import type { WaitingSession } from '../src/core/task-demand.ts'
 import { createTask, newCommentRound, newDirectRound, newExternalRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
@@ -101,13 +101,14 @@ describe('cardViewModelOf', () => {
     for (const [what, card] of holders) {
       const view = cardViewModelOf(card, {})
       expect(view.active, `${what} must wear the halo`).toBe(true)
-      expect(cardLightOf(view.active, false), `${what} must animate`).toBe('halo')
+      expect(cardLightOf(view), `${what} must animate`).toBe('halo')
     }
     // Quiet rows: everything settled and out of the column.
     const settledRun = { ...task(), status: 'review' as const, executions: [{ ...openRound, endedAt: NOW, result: 'succeeded' as const }] }
     expect(cardViewModelOf(settledRun, {}).active).toBe(false)
     expect(cardViewModelOf(settledRun, {}).active, 'unread alone is the RING, never the halo').toBe(false)
-    expect(cardLightOf(cardViewModelOf(settledRun, {}).active, true)).toBe('ring')
+    expect(cardLightOf(cardViewModelOf(settledRun, {}))).toBe('none')
+    expect(cardLightOf({ ...cardViewModelOf(settledRun, {}), unviewed: true })).toBe('ring')
   })
 
   it('the light table: waiting/running pulse, queued/gate/runs/idle do not', () => {
@@ -265,14 +266,24 @@ describe('cardSessionDotStateOf (one dot, one loudest truth)', () => {
 })
 
 describe('cardLightOf (ONE light at a time, precedence stated not inherited)', () => {
-  it('a working card wears the halo, an unread settled one the ring, else none', () => {
-    expect(cardLightOf(false, false)).toBe('none')
-    expect(cardLightOf(false, true)).toBe('ring')
-    expect(cardLightOf(true, false)).toBe('halo')
+  /** A view model with only the three fields the light reads. */
+  const lightView = (primary: CardPrimary, extra: { active?: boolean; unviewed?: boolean } = {}) => ({
+    primary, active: extra.active ?? false, unviewed: extra.unviewed ?? false,
+  })
+
+  it('a request outranks a report, a report outranks activity', () => {
+    expect(cardLightOf(lightView({ kind: 'idle' }))).toBe('none')
+    expect(cardLightOf(lightView({ kind: 'idle' }, { unviewed: true }))).toBe('ring')
+    expect(cardLightOf(lightView({ kind: 'running' }, { active: true }))).toBe('halo')
     // Working AND unread: the halo wins — work in flight is newer than the
-    // content it produced, and it is not a request. Stated here once, because
-    // both lights set the same `animation` property.
-    expect(cardLightOf(true, true)).toBe('halo')
+    // content it produced, and it is not a request.
+    expect(cardLightOf(lightView({ kind: 'running' }, { active: true, unviewed: true }))).toBe('halo')
+    // THE ROW THAT WAS MISSING: a conversation suspended on the reader is not
+    // activity, it is a request — it outranks both, and it must not fall through
+    // to the soft halo that a merely-busy card wears.
+    expect(cardLightOf(lightView({ kind: 'waiting', waiting: 'question', count: 1 }, { active: true }))).toBe('ask')
+    expect(cardLightOf(lightView({ kind: 'waiting', waiting: 'plan-review', count: 1 }, { active: true, unviewed: true }))).toBe('ask')
+    expect(cardLightOf(lightView({ kind: 'waiting', waiting: 'approval', count: 2 }))).toBe('ask')
   })
 
   it('the card renders exactly that one light through ONE attribute', () => {

@@ -142,10 +142,9 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
     task.workspaceId !== undefined ? workspaceTitleOf(task.workspaceId) : '',
   )
   // The breath is owned by the view model (same priority as the primary chip);
-  // ONE light at a time, decided in one place (cardLightOf): a card that is
-  // working AND unread wears the in-flight halo — never both, and never a
-  // winner left to stylesheet order.
-  const light = cardLightOf(view.active, view.unviewed)
+  // ONE light at a time, decided in one place (cardLightOf), reading the WHOLE
+  // view model so the render cannot pass a different subset than the model used.
+  const light = cardLightOf(view)
   /* What this card can actually do, and the handlers for exactly the actions
      the map can name. The record is CLOSED: a name added to the table with no
      handler here is a compile error, not a key that does nothing. */
@@ -334,7 +333,7 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
         {(() => {
           const primary = view.primary
           const primaryChip = primary.kind === 'waiting' ? (
-            <Chip className={css.cardBadge} kind="warn" fill={false} title={pendingTitle !== ''
+            <Chip className={`${css.cardBadge} ${css.cardAskChip}`} kind="warn" fill={false} title={pendingTitle !== ''
               ? pendingTitle
               : t('card.waitingTitle', { kind: t(waitingKeyOf(primary.waiting)) })}>
               {primaryChipLabel(primary)}

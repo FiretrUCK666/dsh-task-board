@@ -3,7 +3,7 @@
  */
 import { describe, expect, it } from 'vitest'
 import {
-  adjacentStatus, applyCardOrder, canMoveManually, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, latestExecutionOf, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, startedOrSettledSessions, supplementLaunchFields, taskExecutable,
+  adjacentStatus, applyCardOrder, cardSourceLabel, COLUMNS, createTask, disarmSchedule, hasCompletedWork, hasOpenRun, landingStatusOf, lastPlainResult, MANUAL_STATUSES, newCommentRound, newDirectRound, newExternalRound, normalizePromptFiles, normalizePromptImages, openRoundsOf, pendingCommentCount, plainRunsOf, promoteManyToColumnTop, promoteSessionsToTop, promoteToColumnTop, resolveCardDrop, ruleReadiness, sessionIsBusy, settleColumnOf, startedOrSettledSessions, supplementLaunchFields, taskExecutable,
   settleExecution, startExecution, withSchedule, withStatus,
   type TaskRecord,
 } from '../src/core/tasks.ts'
@@ -399,12 +399,10 @@ describe('the session list reads the same law, one column down', () => {
 })
 
 describe('status transitions', () => {
-  it('manual moves are allowed to backlog/todo/done', () => {
-    expect(canMoveManually('todo', 'backlog')).toBe(true)
-    expect(canMoveManually('review', 'todo')).toBe(true)
-    expect(canMoveManually('done', 'backlog')).toBe(true)
-    expect(canMoveManually('todo', 'running')).toBe(false)
-    expect(canMoveManually('backlog', 'review')).toBe(false)
+  it('the manual columns are exactly backlog/todo/done', () => {
+    // The SET is the definition (MANUAL_STATUSES) and the board's UI derives its
+    // move buttons from it; this pins the set itself, not a predicate over it.
+    expect([...MANUAL_STATUSES]).toEqual(['backlog', 'todo', 'done'])
   })
 
   it('withStatus bumps updatedAt and swaps the status', () => {
@@ -900,7 +898,10 @@ describe('hasOpenRun', () => {
       ],
     }
     expect(lastPlainResult(withLanes)).toBe('failed')
-    expect(latestExecutionOf(withLanes)?.result).toBeUndefined()
+    // The newest row is the still-open comment round, and its absence of a
+    // result is exactly what the naive "read the last execution" would have
+    // reported as this card's outcome.
+    expect(withLanes.executions[withLanes.executions.length - 1]?.result).toBeUndefined()
     expect(lastPlainResult(sampleTask())).toBeUndefined()
   })
 })

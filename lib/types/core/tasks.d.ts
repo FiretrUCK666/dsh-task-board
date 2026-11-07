@@ -417,6 +417,16 @@ export declare const MANUAL_STATUSES: readonly ["backlog", "todo", "done"];
 /** One manually-movable status (the union of {@link MANUAL_STATUSES}). */
 export type ManualStatus = (typeof MANUAL_STATUSES)[number];
 /**
+ * The statuses whose column PAUSES an armed rule: shelved (backlog), a human
+ * decision pending (review), completed (done). {@link taskColumnAllowsAutomation}
+ * is its only reader, so the two cannot disagree — and every surface that has to
+ * explain a pause keys off `TaskStatus` minus this set, which means a new column
+ * is a compile error there rather than a missing sentence.
+ */
+export declare const PAUSING_STATUSES: readonly ["backlog", "review", "done"];
+/** One pausing status (the union of {@link PAUSING_STATUSES}). */
+export type PausingStatus = (typeof PAUSING_STATUSES)[number];
+/**
  * The status one column over, along the board's own COLUMNS order — the keyboard
  * equivalent of dragging a card one column. Pure, and deliberately derived from
  * COLUMNS rather than from a second hand-written list: a column added or
@@ -428,7 +438,22 @@ export type ManualStatus = (typeof MANUAL_STATUSES)[number];
  * answers "which column is next", never "may I".
  */
 export declare function adjacentStatus(status: TaskStatus, direction: -1 | 1): TaskStatus | undefined;
-/** All valid statuses (closed union guard). */
+/**
+ * All valid statuses (closed union guard).
+ *
+ * DERIVED from {@link COLUMNS}, not written out a second time: the column order
+ * and the set of legal statuses are the same fact, and a hand-kept copy of it is
+ * a copy that stops matching the day a column is added — silently, because the
+ * guard would simply refuse the new column.
+ *
+ * `COLUMN_STATUSES` is the ARRAY FORM of that derivation, and it exists as its
+ * own export because a `.map()` is not a literal: the Skill reference generator
+ * resolves `oneOf` constants by reading literal arrays out of the source (it
+ * cannot execute TypeScript), and a derived array has no literals to read. So
+ * the derivation is written ONCE here as a tuple and both readers take it —
+ * the runtime guard reads it, and the generator can read it too.
+ */
+export declare const COLUMN_STATUSES: readonly ["backlog", "todo", "running", "review", "done"];
 export declare const ALL_STATUSES: readonly TaskStatus[];
 /** Brand an unknown string as a status; undefined when it is not one. */
 export declare function isTaskStatus(value: unknown): value is TaskStatus;
@@ -461,7 +486,7 @@ export type RuleReadiness = {
     kind: 'blocked';
 } | {
     kind: 'paused';
-    status: 'backlog' | 'review' | 'done';
+    status: PausingStatus;
 } | {
     kind: 'active';
 };
@@ -520,14 +545,6 @@ export declare function ruleArmingBlocked(task: TaskRecord): boolean;
  * no rule or an already-disarmed one.
  */
 export declare function disarmSchedule(task: TaskRecord, now: number): TaskRecord;
-/** Whether a manual move target is allowed from the given status. */
-export declare function canMoveManually(_from: TaskStatus, to: TaskStatus): boolean;
-/**
- * The task's latest execution (rounds are appended chronologically). The ONE
- * "what's the newest round" derivation every surface reads — the card's
- * settled chip, the board's waiting probe, the detail's failure hint.
- */
-export declare function latestExecutionOf(task: TaskRecord): ExecutionRecord | undefined;
 /**
  * The outcome of the card's OWN most recent plain run — the answer to "how did
  * this task's last execution end?", used by every surface that tints, labels

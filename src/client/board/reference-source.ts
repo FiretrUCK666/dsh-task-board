@@ -25,6 +25,7 @@
  */
 import { formatFileMention } from './file-reference-grammar.ts'
 import { formatSessionReferenceMention } from './session-mention.ts'
+import { isRecord } from '../../core/values.ts'
 import { t } from '../locales.ts'
 import type {
   ReferenceFileCandidate,
@@ -92,7 +93,7 @@ async function domainOf<T>(
     const result = await face(sessionId, query, signal)
     if (result.ok) return { ok: true, items: result.value }
     const error = result.error
-    const code = typeof error === 'object' && error !== null
+    const code = isRecord(error)
       && typeof (error as { code?: unknown }).code === 'string'
       ? (error as { code: string }).code
       : undefined

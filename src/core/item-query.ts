@@ -35,6 +35,7 @@ import { datePostureOf } from './item-dates.ts'
 import type { DatePosture } from './item-dates.ts'
 import { DEFAULT_STALE_DAYS, staleDaysOf } from './item-stale.ts'
 import { derivedStatusOf, isInboxItem, isLiveItem } from './item-membership.ts'
+import { localDayKey } from './local-day.ts'
 
 /** Qualifier keys the grammar recognises, mapped onto STABLE field values.
  *
@@ -486,11 +487,6 @@ export function itemMatches(item: ItemRecord, query: ItemQuery, ctx: ItemMatchCo
 export function itemDatesOf(item: ItemRecord): readonly string[] {
   const days = [item.dueAt, item.hardDueAt, item.startsAfter]
     .filter((at): at is number => at !== undefined)
-    .map(at => {
-      const when = new Date(at)
-      const month = String(when.getMonth() + 1).padStart(2, '0')
-      const date = String(when.getDate()).padStart(2, '0')
-      return `${when.getFullYear()}-${month}-${date}`
-    })
+    .map(localDayKey)
   return [...new Set(days)]
 }

@@ -469,6 +469,18 @@ export const MANUAL_STATUSES = ['backlog', 'todo', 'done'] as const satisfies re
 export type ManualStatus = (typeof MANUAL_STATUSES)[number]
 
 /**
+ * The statuses whose column PAUSES an armed rule: shelved (backlog), a human
+ * decision pending (review), completed (done). {@link taskColumnAllowsAutomation}
+ * is its only reader, so the two cannot disagree — and every surface that has to
+ * explain a pause keys off `TaskStatus` minus this set, which means a new column
+ * is a compile error there rather than a missing sentence.
+ */
+export const PAUSING_STATUSES = ['backlog', 'review', 'done'] as const satisfies readonly TaskStatus[]
+
+/** One pausing status (the union of {@link PAUSING_STATUSES}). */
+export type PausingStatus = (typeof PAUSING_STATUSES)[number]
+
+/**
  * The status one column over, along the board's own COLUMNS order — the keyboard
  * equivalent of dragging a card one column. Pure, and deliberately derived from
  * COLUMNS rather than from a second hand-written list: a column added or
@@ -485,10 +497,24 @@ export function adjacentStatus(status: TaskStatus, direction: -1 | 1): TaskStatu
   return COLUMNS[at + direction]?.status
 }
 
-/** All valid statuses (closed union guard). */
-export const ALL_STATUSES: readonly TaskStatus[] = [
-  'backlog', 'todo', 'running', 'review', 'done',
-]
+/**
+ * All valid statuses (closed union guard).
+ *
+ * DERIVED from {@link COLUMNS}, not written out a second time: the column order
+ * and the set of legal statuses are the same fact, and a hand-kept copy of it is
+ * a copy that stops matching the day a column is added — silently, because the
+ * guard would simply refuse the new column.
+ *
+ * `COLUMN_STATUSES` is the ARRAY FORM of that derivation, and it exists as its
+ * own export because a `.map()` is not a literal: the Skill reference generator
+ * resolves `oneOf` constants by reading literal arrays out of the source (it
+ * cannot execute TypeScript), and a derived array has no literals to read. So
+ * the derivation is written ONCE here as a tuple and both readers take it —
+ * the runtime guard reads it, and the generator can read it too.
+ */
+export const COLUMN_STATUSES = ['backlog', 'todo', 'running', 'review', 'done'] as const satisfies readonly TaskStatus[]
+
+export const ALL_STATUSES: readonly TaskStatus[] = COLUMN_STATUSES
 
 /** Brand an unknown string as a status; undefined when it is not one. */
 export function isTaskStatus(value: unknown): value is TaskStatus {
@@ -524,7 +550,7 @@ export function landingStatusOf(dropStatus: TaskStatus): TaskStatus {
 export type RuleReadiness =
   | { kind: 'disabled' }
   | { kind: 'blocked' }
-  | { kind: 'paused'; status: 'backlog' | 'review' | 'done' }
+  | { kind: 'paused'; status: PausingStatus }
   | { kind: 'active' }
 
 /**
@@ -569,7 +595,7 @@ export function supplementLaunchFields(task: TaskRecord): { title?: string; desc
  * (completed) pause whichever rule armed them.
  */
 export function taskColumnAllowsAutomation(task: TaskRecord): boolean {
-  return task.status !== 'backlog' && task.status !== 'review' && task.status !== 'done'
+  return !(PAUSING_STATUSES as readonly TaskStatus[]).includes(task.status)
 }
 
 /** The readiness of a task's schedule rule (see {@link RuleReadiness}). */
@@ -624,20 +650,6 @@ export function disarmSchedule(task: TaskRecord, now: number): TaskRecord {
   const schedule = task.schedule
   if (schedule === undefined || !schedule.enabled) return task
   return withSchedule(task, { enabled: false, nextRunAt: undefined }, now)
-}
-
-/** Whether a manual move target is allowed from the given status. */
-export function canMoveManually(_from: TaskStatus, to: TaskStatus): boolean {
-  return (MANUAL_STATUSES as readonly TaskStatus[]).includes(to)
-}
-
-/**
- * The task's latest execution (rounds are appended chronologically). The ONE
- * "what's the newest round" derivation every surface reads — the card's
- * settled chip, the board's waiting probe, the detail's failure hint.
- */
-export function latestExecutionOf(task: TaskRecord): ExecutionRecord | undefined {
-  return task.executions[task.executions.length - 1]
 }
 
 /**

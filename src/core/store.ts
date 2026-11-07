@@ -16,6 +16,7 @@ import { isValidCron } from './schedule.ts'
 import { normalizeSessionRules } from './automation.ts'
 import type { ScheduleRule, TaskRecord, TaskStatus } from './tasks.ts'
 import { isScheduleMode, isTaskStatus, normalizePromptFiles, normalizePromptImages, type TaskBind } from './tasks.ts'
+import { isRecord } from './values.ts'
 
 /** Persistence seam for the task ledger. */
 export interface TaskStore {
@@ -219,7 +220,7 @@ export function parseLedger(raw: string | null): TaskRecord[] {
       const ids = value.filter((item): item is string => typeof item === 'string')
       return ids.length > 0 ? ids : undefined
     }
-    if (rawHidden !== null && typeof rawHidden === 'object') {
+    if (isRecord(rawHidden)) {
       const executions = cleanIdArray((rawHidden as { executions?: unknown }).executions)
       const sessions = cleanIdArray((rawHidden as { sessions?: unknown }).sessions)
       if (executions !== undefined || sessions !== undefined) {
@@ -276,7 +277,7 @@ export function parseLedger(raw: string | null): TaskRecord[] {
     if (Array.isArray(rawHistory)) {
       const history = rawHistory
         .filter((entry): entry is { status: TaskStatus; at: number } =>
-          typeof entry === 'object' && entry !== null
+          isRecord(entry)
           && isTaskStatus((entry as Record<string, unknown>).status)
           && typeof (entry as Record<string, unknown>).at === 'number'
           && Number.isFinite((entry as Record<string, unknown>).at)

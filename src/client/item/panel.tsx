@@ -117,6 +117,7 @@ import { updateController } from '../workbench/update-controller.ts'
 import { updateLabelOf, useUpdateState } from '../workbench/use-update.ts'
 import { WorkbenchOverlays } from '../workbench/WorkbenchOverlays.tsx'
 import { workbenchChromeOf } from '../workbench/chrome.ts'
+import { messageOf } from '../../core/values.ts'
 import css from './item.module.css'
 
 /* Every closed table moved to `labels.ts`, which is now the one place they live:
@@ -895,7 +896,7 @@ export function ItemListPanel(props: ItemListPanelProps) {
         const outcome = await controller.askCard(cardId, itemContextText(item), attachmentsOf(item))
         setReceipt({ id: item.id, words: askSaidOf(outcome) })
       } catch (error) {
-        setReceipt({ id: item.id, words: t('item.ask.refused', { why: whyLabelOf(error instanceof Error ? error.message : String(error)).words }) })
+        setReceipt({ id: item.id, words: t('item.ask.refused', { why: whyLabelOf(messageOf(error)).words }) })
       } finally {
         setAsking(undefined)
       }

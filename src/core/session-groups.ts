@@ -153,10 +153,3 @@ export function offerableSessionGroups(
   push(UNGROUPED_KEY, options.ungroupedLabel)
   return groups
 }
-
-/** 分组里会话的总数（面板底部的「已选/共 N」与空态判断都读它）。 */
-export function countSessions(groups: readonly SessionGroup[]): number {
-  let total = 0
-  for (const group of groups) total += group.sessions.length
-  return total
-}

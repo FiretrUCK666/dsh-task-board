@@ -1099,18 +1099,30 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     //    and an animation on it replaces both for the whole run. That is the
     //    reported flat 进行中 card: the one card the reader looks at most lost its
     //    paper exactly when it mattered.
-    const ringRule = ruleFor(".card[data-light='ring']")
-    expect(ringRule, 'the unread card must have its own light rule').not.toBe('')
-    expect(ringRule, 'the unread ring must use a breath animation').toMatch(/animation:\s*dshTbBreathRing/)
+    /* THE RING LIVES ON A DECORATION LAYER, not on the card itself: an `opacity`
+       keyframe on the card fades the card (title, time, chips and its paper) in
+       and out every 2.6s — measured 0.005 … 0.995 by `probe-ring-fade.js`. So
+       the whole light — stroke, offset and animation — is declared on
+       `::before`, and the card keeps no light rule of its own at all (one owner,
+       so the two halves cannot drift). */
+    const ringLayer = ruleFor(".card[data-light='ring']::before")
+    expect(ringLayer, 'the unread ring must breathe on its own decoration layer').not.toBe('')
+    expect(ringLayer, 'the unread ring must use a breath animation').toMatch(/animation:\s*dshTbBreathRing/)
+    expect(ruleFor(".card[data-light='ring']"), 'the card itself must carry no light rule — that is what faded the content')
+      .toBe('')
     /* The ring is STILL an outline — never the card's material — but its colour is
        now static and the breathing is done by opacity. Animating `outline-color`
        re-rasterises the stroke every frame on every lit element, and these lights
        are infinite on exactly the elements that are on screen during a scroll. */
-    expect(ringRule, 'the unread ring must be an OUTLINE, not the card’s material')
+    expect(ringLayer, 'the unread ring must be an OUTLINE, not the card’s material')
       .toMatch(/outline:\s*var\(--dsh-tb-breath-spread\) solid var\(--dsh-tb-breath-color/)
-    expect(ringRule, 'the ring must start invisible so the pulse is a pulse')
+    /* 卡片是硬裁剪边界：画在盒**外面**的描边会被自己的 `overflow: hidden` 吃掉一半，
+       所以环折进盒内（负偏移），整圈才都在裁剪范围里。形状仍是硬描边。 */
+    expect(ringLayer, 'the ring must fold inside the card’s clip boundary')
+      .toMatch(/outline-offset:\s*calc\(-1 \* var\(--dsh-tb-breath-spread\)\)/)
+    expect(ringLayer, 'the ring must start invisible so the pulse is a pulse')
       .toMatch(/opacity:\s*0/)
-    expect(ringRule, 'the unread ring still takes the card’s box-shadow').not.toContain('box-shadow')
+    expect(ringLayer, 'the unread ring still takes no material of its own').not.toContain('box-shadow')
     const haloRule = ruleFor(".card[data-light='halo']::after")
     expect(haloRule, 'the in-flight halo must breathe on its own ::after layer').not.toBe('')
     expect(haloRule, 'the in-flight halo must use a breath animation').toMatch(/animation:\s*dshTbBreathHalo/)
@@ -1140,8 +1152,8 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
        such animation, which is why the lag was reported as 「只有插件卡」. */
     expect(ringPeak, 'the unread ring breathes by opacity, the composited channel').toContain('opacity')
     expect(ringPeak, 'the ring must not touch the material property').not.toContain('box-shadow')
-    // The colour moved onto the RULE (it is static now), so it is read from there.
-    expect(ringRule, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
+    // The colour lives on the LAYER (it is static now), so it is read from there.
+    expect(ringLayer, 'the ring wears the stronger alpha step').toContain('var(--dsh-tb-attention-alpha)')
     expect(ringPeak, 'the ring must not animate its geometry').not.toMatch(/outline-width|outline-style|outline:/)
     /* THE HALO SPLIT: the SHADOW is static on the layer, only its OPACITY breathes.
      *
@@ -1235,6 +1247,52 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     ).toEqual([])
   })
 
+  it('a card that is blocked on the reader is a different ANIMAL, not a louder halo', () => {
+    // The reported defect: a card whose conversation is suspended on a question
+    // wore the same inset halo as a card that is merely running, and its only
+    // distinguishing word was a low-contrast amber chip. The reader's words:
+    // 「我一眼看上去都没发现原来是要我去回答」. A request and a report cannot share
+    // one form — that is the whole claim, and it is asserted in four places,
+    // because a light that changes only one of them is not a different animal.
+    const askRule = ruleFor(".card[data-light='ask']")
+    expect(askRule, 'the ask light must exist as its own rule').not.toBe('')
+    // 1. The WHOLE block changes colour, not just its edge. A ring alone is a
+    //    two-pixel difference at scan distance; the wash is what makes one card
+    //    in the column read as warm.
+    expect(askRule, 'the ask card must repaint its own plane, not only its border')
+      .toMatch(/--dsh-tb-paper-plane:\s*color-mix\(/)
+    expect(askRule, 'the border is the attention colour at the edge step')
+      .toMatch(/border-color:\s*color-mix\(in srgb, var\(--dsh-tb-attention\) var\(--dsh-tb-edge\)/)
+    // 2. It does NOT breathe. The unread ring may pulse — it reports. A request
+    //    that is invisible half the time is a request the reader misses.
+    expect(askRule, 'a request must not be invisible half the time').not.toMatch(/animation:/)
+    // 3. Nor does it touch the material: `box-shadow` on `.card` carries rim and
+    //    cast (hard rule 19 / the one-property-one-owner law).
+    expect(askRule, 'the ask card must not take the card’s material').not.toMatch(/box-shadow/)
+
+    // 4. The chip and the next-action line derive from the SAME attribute, so a
+    //    card cannot wear the ring and a quiet grey chip at once.
+    const askChip = /\.card\[data-light='ask'\]\s+\.cardAskChip\s*\{([\s\S]*?)\n\}/.exec(source)?.[1] ?? ''
+    expect(askChip, 'the ask chip must derive from the light attribute, not from a second flag').not.toBe('')
+    expect(askChip, 'the ask chip is a filled pill, not coloured text').toMatch(/background:\s*color-mix\(/)
+    expect(askChip, 'the ask chip reads the primary ink, which flips per theme').toContain('var(--dsh-tb-text-1)')
+    expect(source, 'the next-action line rises to the primary ink on the ask card')
+      .toMatch(/\.card\[data-light='ask'\]\s+\.cardNext\s*\{[^}]*var\(--dsh-tb-text-1\)/)
+
+    // 5. The three human gates are ONE shape: plan review and question must not
+    //    get a different treatment from an approval. The light reads
+    //    `primary.kind === 'waiting'`, which is kind-agnostic by construction —
+    //    asserted at the derivation, because a per-kind branch there is exactly
+    //    how the three would drift apart again.
+    const view = readFileSync(fileURLToPath(new URL('../src/client/board/card-view.ts', import.meta.url)), 'utf8')
+    const lightBody = /export function cardLightOf\([\s\S]*?\n\}/.exec(view)?.[0] ?? ''
+    expect(lightBody, 'cardLightOf must exist').not.toBe('')
+    expect(lightBody, 'the ask light keys off the gate, never off which gate it is')
+      .toContain("view.primary.kind === 'waiting'")
+    expect(lightBody, 'no waiting kind may be singled out for a different light')
+      .not.toMatch(/plan-review|'question'|'approval'/)
+  })
+
   it('the light and the yellow border are ONE end-agnostic pair (both ends read the same two attributes)', () => {
     // The reported defect was a card with the yellow border and no breath: the
     // border read `task.status`, the light read `executing(task)`. They are one
@@ -1256,7 +1314,7 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
     //    board's only compact query touching `.card` is the colour-bar hover —
     //    it drives neither the border nor the breath.)
     const ranges = [...conditionalRanges(source, '@media'), ...conditionalRanges(source, '@container')]
-    for (const selector of [".card[data-status='running']", ".card[data-light='halo']", ".card[data-light='ring']"]) {
+    for (const selector of [".card[data-status='running']", ".card[data-light='halo']", ".card[data-light='ring']", ".card[data-light='ask']"]) {
       const at = source.indexOf(selector)
       expect(at, `${selector} must exist`).toBeGreaterThan(-1)
       expect(
@@ -1382,9 +1440,9 @@ describe('card chip label composition', () => {
 
   it('running state: each user-blocking kind is named (zh)', () => {
     useLanguage('zh')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('等待回应 · 权限审批')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('等待回应 · 计划确认')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('等待回应 · 提问')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('需你处理 · 权限审批')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('需你处理 · 计划确认')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('需你处理 · 提问')
   })
 
   it('several blocked conversations say so in one word, not a list', () => {
@@ -1404,9 +1462,9 @@ describe('card chip label composition', () => {
   it('running state: english mirror', () => {
     useLanguage('en')
     expect(primaryChipLabel({ kind: 'running' })).toBe('Running')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('Waiting for you · Approval')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('Waiting for you · Plan review')
-    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('Waiting for you · Question')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'approval', count: 1 })).toBe('Yours to do · Approval')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'plan-review', count: 1 })).toBe('Yours to do · Plan review')
+    expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 1 })).toBe('Yours to do · Question')
   })
 
   it('the chip is the model\'s primary, not a second chain beside it', () => {

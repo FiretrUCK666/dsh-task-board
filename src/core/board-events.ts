@@ -220,16 +220,22 @@ export function boardEventsOf(
 }
 
 /**
- * Group events into day buckets (newest day first, events newest-first
- * inside). Pure — the view renders one section per bucket.
+ * Bucket anything carrying an instant into LOCAL calendar days: newest day
+ * first, the items inside each day in the order they arrived.
+ *
+ * Generic over the row rather than over {@link ActivityEvent}: the activity
+ * drawer buckets a VIEW-MODEL of these events, and it had its own copy of this
+ * loop. One algorithm, two consumers, no second answer to 「哪一天」.
+ *
+ * Pure — the view renders one section per bucket.
  */
-export function groupEventsByDay(events: readonly ActivityEvent[]): Array<{ day: string; items: ActivityEvent[] }> {
-  const buckets = new Map<string, ActivityEvent[]>()
-  for (const event of events) {
-    const day = localDayKey(event.at)
+export function bucketByDay<T extends { readonly at: number }>(rows: readonly T[]): Array<{ day: string; items: T[] }> {
+  const buckets = new Map<string, T[]>()
+  for (const row of rows) {
+    const day = localDayKey(row.at)
     const list = buckets.get(day)
-    if (list !== undefined) list.push(event)
-    else buckets.set(day, [event])
+    if (list !== undefined) list.push(row)
+    else buckets.set(day, [row])
   }
   return [...buckets.entries()]
     .sort((a, b) => (a[0] < b[0] ? 1 : a[0] > b[0] ? -1 : 0))
