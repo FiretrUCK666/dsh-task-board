@@ -349,24 +349,45 @@
    * （`homeStatusDot`），于是「图标 + 标签」那一排的并集里少了它，`offX` 报出 5px
    * 的假红（正好是点宽 + 间距的一半）。判据读错对象，就会逼着人把对的胶囊改歪
    * （硬性规范 14）。判据因此按**结构**认：不含文字、有尺寸、画了底或边。
+   *
+   * **它还要能穿过一枚「槽」。** 胶囊的两格文法里，记号住在自己的槽（`.chipLead`）：
+   * 那枚槽自己没有底也没有边——这是对的，槽是几何，记号才是墨。判据若只看直接子元素，
+   * 就会在槽上判「没画底，不是记号」，然后**把整枚转圈漏掉**，于是那一排被算成
+   * 「只有字」，报出 9.5px 的假红（实测：转圈 14px + 间隔 5px，正好是它的一半）——
+   * 而那一排其实是**正中**的。所以槽要往下走一层。
    */
   const leadMark = (el) => {
-    const svg = el.querySelector('svg')
-    if (svg !== null) return svg
-    for (const child of el.children) {
-      if ((child.textContent ?? '').trim() !== '') continue
-      const st = getComputedStyle(child)
-      const r = child.getBoundingClientRect()
-      if (r.width < 2 || r.height < 2) continue
-      const painted = st.backgroundColor !== 'rgba(0, 0, 0, 0)'
+    /** 一枚记号盒子：不含文字、有尺寸、自己画了底/边/图。 */
+    const paintedMark = (node) => {
+      if ((node.textContent ?? '').trim() !== '') return false
+      const st = getComputedStyle(node)
+      const r = node.getBoundingClientRect()
+      if (r.width < 2 || r.height < 2) return false
+      /* 一枚占据大半个盒子的盒子不是记号，是背景层。 */
+      if (r.width > el.getBoundingClientRect().width * 0.6) return false
+      return st.backgroundColor !== 'rgba(0, 0, 0, 0)'
         || px(st.borderTopWidth) > 0
         || st.backgroundImage !== 'none'
-      if (!painted) continue
-      /* 一枚占据大半个盒子的盒子不是记号，是背景层。 */
-      if (r.width > el.getBoundingClientRect().width * 0.6) continue
-      return child
     }
-    return null
+    /**
+     * 往下找，**穿过没有字的槽**。
+     * @param node - 从这一层开始找。
+     * @param depth - 只穿两层：槽（`.chipLead`）与它里面那一枚记号。
+     */
+    const walk = (node, depth) => {
+      if (depth > 2) return null
+      for (const child of node.children) {
+        if (child.tagName.toLowerCase() === 'svg') return child
+        const nested = child.querySelector('svg')
+        if (nested !== null) return nested
+        if ((child.textContent ?? '').trim() !== '') continue
+        if (paintedMark(child)) return child
+        const inside = walk(child, depth + 1)
+        if (inside !== null) return inside
+      }
+      return null
+    }
+    return walk(el, 0)
   }
 
   const strokeInk = (el) => {

@@ -40,8 +40,9 @@
  *
  * @module dsh-task-board/core/resolve
  */
-import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS } from './item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS, PRIORITY_WORDS } from './item.ts'
 import { PRIORITY_BY_TOKEN } from './item-query.ts'
+import { STATUS_WORDS } from './tasks.ts'
 
 /** Which vocabulary a value belongs to. */
 export type ResolveKind =
@@ -108,53 +109,19 @@ export function resolveKeyOf(raw: string): string {
 /**
  * The values a status may be written as, with the words a reader sees.
  *
- * THE STORED VALUES COME FROM THE ENUM; THE CHINESE WORDS ARE TYPED HERE, and the
- * first version of this comment claimed both came from elsewhere — which is the
- * kind of comment that gets believed. `STATUS_LABELS` below carries a `DEBT:` note
- * naming the second copy in `client/locales.ts` and what extracting it costs.
+ * THE STORED VALUES COME FROM THE ENUM, THE CHINESE WORDS FROM THE ONE TABLE THAT
+ * OWNS THEM (`STATUS_WORDS` in `tasks.ts`, which the interface prints through
+ * `board.status.*`). This module used to type its own copy of those nine strings
+ * and carried a `DEBT:` note about it: `core/` may not import the client half, so
+ * the note said the words would have to be lifted into `core/` before the second
+ * copy could go. They were lifted, and that is why this file reads them instead of
+ * spelling them.
  *
  * English synonyms (`doing`, `in progress`, `wip`) are NOT added: they are not
  * spellings THIS repository uses anywhere, and a synonym nobody writes is surface
  * for a wrong guess to land on. The two that matter are the stored key and the
  * label the columns print.
  */
-/**
- * The Chinese words for the five columns, as a reader sees them.
- *
- * `DEBT: a SECOND copy of these ten strings lives in src/client/locales.ts`
- * (`board.status.*` / `item.priority.*`), and nothing keeps the two equal — this
- * module cannot import the client's dictionary because the half-boundary forbids
- * it. Hard rule 17 says one concept gets one vocabulary, and this is the one place
- * its violation is structural rather than careless: today the two copies are
- * character-for-character identical, and the day somebody rewords a column header
- * the resolver silently stops recognising the new word while every gate stays
- * green.
- *
- * The fix is to lift these ten strings into `core/` (which both halves may read)
- * and have `locales.ts` take them from there. That is a change to the dictionary's
- * own shape and is recorded here rather than half-done: an extraction that moved
- * only the five status words would leave the four tiers behind, which is the same
- * defect with a smaller count.
- *
- * The EN labels are not listed at all, and that is also a known gap: a deployment
- * running the English dictionary prints `In Progress`, and the resolver does not
- * recognise it. The delivery is Chinese, so this is the smaller half of the debt.
- */
-const STATUS_LABELS: Readonly<Record<string, string>> = {
-  backlog: '待规划',
-  todo: '待办',
-  running: '进行中',
-  review: '待审核',
-  done: '已完成',
-}
-
-/** The same, for the four priority tiers. */
-const PRIORITY_LABELS: Readonly<Record<string, string>> = {
-  urgent: '紧急',
-  high: '高',
-  normal: '普通',
-  low: '低',
-}
 
 /**
  * The candidates for a status.
@@ -163,8 +130,8 @@ const PRIORITY_LABELS: Readonly<Record<string, string>> = {
 function statusCandidates(): readonly ResolveCandidate[] {
   return ITEM_STATUS_VIEWS.map(value => ({
     value,
-    spellings: [value, STATUS_LABELS[value] ?? value],
-    label: STATUS_LABELS[value] ?? value,
+    spellings: [value, STATUS_WORDS[value]],
+    label: STATUS_WORDS[value],
   }))
 }
 
@@ -185,10 +152,10 @@ function priorityCandidates(): readonly ResolveCandidate[] {
       value,
       spellings: [
         value,
-        PRIORITY_LABELS[value] ?? value,
+        PRIORITY_WORDS[value],
         ...(token === '' ? [] : [token, `!${digit}`]),
       ],
-      label: PRIORITY_LABELS[value] ?? value,
+      label: PRIORITY_WORDS[value],
     }
   })
 }

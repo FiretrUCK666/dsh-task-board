@@ -22,7 +22,9 @@ import {
   type ResolveCandidate,
   type ResolveContext,
 } from '../src/core/resolve.ts'
-import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS } from '../src/core/item.ts'
+import { ITEM_PRIORITIES, ITEM_STATUS_VIEWS, PRIORITY_WORDS } from '../src/core/item.ts'
+import { STATUS_WORDS } from '../src/core/tasks.ts'
+import { zh } from '../src/client/locales.ts'
 
 /** A context over the built-in vocabularies only — the shape a bare host has. */
 const builtin: ResolveContext = { candidatesOf: kind => builtinCandidatesOf(kind) }
@@ -68,14 +70,12 @@ describe('the words a reader sees resolve to the value stored', () => {
   it('every Chinese column label resolves — this is the defect that was measured', () => {
     // 进行中 is the exact string the catalog's `about` printed and the validator
     // rejected. If this test fails, that defect is back.
-    const pairs: Array<[string, string]> = [
-      ['待规划', 'backlog'],
-      ['待办', 'todo'],
-      ['进行中', 'running'],
-      ['待审核', 'review'],
-      ['已完成', 'done'],
-    ]
-    for (const [said, stored] of pairs) {
+    //
+    // The words are READ from `STATUS_WORDS`, not typed again here: the whole
+    // point of that table is that there is one home for them, and a test that
+    // spelled them out would be the third copy — green while the two real ones
+    // drift apart.
+    for (const [stored, said] of Object.entries(STATUS_WORDS)) {
       const resolved = resolveValue('status', said, builtin)
       expect(resolved.ok, `「${said}」 was refused, which is the defect itself`).toBe(true)
       expect(resolved.ok && resolved.value).toBe(stored)
@@ -85,9 +85,33 @@ describe('the words a reader sees resolve to the value stored', () => {
     }
   })
 
+  it('the resolver reads the SAME words the interface prints — one table, not two', () => {
+    // This is the claim the extraction is FOR. `locales.ts` takes these nine
+    // strings from `core/`, so the column header a person reads and the word the
+    // resolver recognises cannot be two different strings — which is exactly what
+    // they were: two hand-typed copies that happened to match, with nothing
+    // keeping them equal.
+    //
+    // The comparison is a FUNCTION so the self-test below can run the very same
+    // one over a pair it knows has drifted: an assertion that has never failed is
+    // not evidence (a green here would mean nothing if the reader were wrong).
+    const driftIn = (dictionary: Readonly<Record<string, string>>): string[] => {
+      const out: string[] = []
+      for (const [status, word] of Object.entries(STATUS_WORDS)) {
+        if (dictionary[`board.status.${status}`] !== word) out.push(`board.status.${status}`)
+      }
+      for (const [tier, word] of Object.entries(PRIORITY_WORDS)) {
+        if (dictionary[`item.priority.${tier}`] !== word) out.push(`item.priority.${tier}`)
+      }
+      return out
+    }
+    expect(driftIn(zh), 'the dictionary and the resolver disagree about a word').toEqual([])
+    // …and the reader can see a drift, on a dictionary built to have one.
+    expect(driftIn({ ...zh, 'board.status.running': '进行中（旧）' })).toEqual(['board.status.running'])
+  })
+
   it('every Chinese priority label resolves', () => {
-    const pairs: Array<[string, string]> = [['紧急', 'urgent'], ['高', 'high'], ['普通', 'normal'], ['低', 'low']]
-    for (const [said, stored] of pairs) {
+    for (const [stored, said] of Object.entries(PRIORITY_WORDS)) {
       expect(resolveValue('priority', said, builtin), `「${said}」 was refused`).toMatchObject({ ok: true, value: stored })
     }
   })

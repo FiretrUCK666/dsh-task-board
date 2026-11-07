@@ -3,7 +3,16 @@
  * by the document language. Kept dependency-free (no dsh locale service) so
  * the DOM-injected entry row and the standalone board tree share one tiny
  * lookup.
+ *
+ * **The two vocabulary groups are NOT typed here.** The five column words and the
+ * four priority words have a second reader — the resolver in `core/resolve.ts`,
+ * which has to recognise 「进行中」 when a caller sends it back as a `status` — and
+ * `core/` may not import the client half. So those nine strings live in `core/`
+ * (`STATUS_WORDS` / `PRIORITY_WORDS`) and are spread in here. This file still owns
+ * every other word; it just stopped owning the ones with a second reader.
  */
+import { PRIORITY_WORDS } from '../core/item.ts'
+import { STATUS_WORDS } from '../core/tasks.ts'
 
 /** zh dictionary (key-set source of truth). */
 export const zh = {
@@ -153,7 +162,7 @@ export const zh = {
   'board.cruiseStatusScheduled': '关闭 · {time} 自动开启',
   'board.cruiseStatusOff': '当前关闭 · 未排程',
   'board.empty': '暂无任务',
-  'board.status.backlog': '待规划',
+  'board.status.backlog': STATUS_WORDS.backlog,
   'board.statusRunning': '正在跑 {n}',
   'board.statusQueued': '待启动 {n}',
   'board.statusSkipped': '跳过 {n}',
@@ -162,10 +171,10 @@ export const zh = {
   'board.runReceipt': '已投递「{title}」· 正在启动会话',
   'board.heartbeatStale': '心跳停止 · 自 {time} 无调度',
   'board.status': '状态',
-  'board.status.todo': '待办',
-  'board.status.running': '进行中',
-  'board.status.review': '待审核',
-  'board.status.done': '已完成',
+  'board.status.todo': STATUS_WORDS.todo,
+  'board.status.running': STATUS_WORDS.running,
+  'board.status.review': STATUS_WORDS.review,
+  'board.status.done': STATUS_WORDS.done,
   'board.statusShort.backlog': '规划',
   'board.statusShort.todo': '待办',
   'board.statusShort.running': '进行',
@@ -968,10 +977,10 @@ export const zh = {
   'toolOp.failed': '失败',
   'toolOp.skipped': '未执行',
   'toolOp.nothing': '没有改动',
-  'item.priority.low': '低',
-  'item.priority.normal': '普通',
-  'item.priority.high': '高',
-  'item.priority.urgent': '紧急',
+  'item.priority.low': PRIORITY_WORDS.low,
+  'item.priority.normal': PRIORITY_WORDS.normal,
+  'item.priority.high': PRIORITY_WORDS.high,
+  'item.priority.urgent': PRIORITY_WORDS.urgent,
   'item.origin.human': '你记的',
   'item.origin.ai': 'AI 记的',
   'item.origin.import': '导入的',

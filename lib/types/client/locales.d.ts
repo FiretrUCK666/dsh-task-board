@@ -1,9 +1,3 @@
-/**
- * Task-board copy: zh-first dictionaries with an English fallback, selected
- * by the document language. Kept dependency-free (no dsh locale service) so
- * the DOM-injected entry row and the standalone board tree share one tiny
- * lookup.
- */
 /** zh dictionary (key-set source of truth). */
 export declare const zh: {
     'entry.label': string;

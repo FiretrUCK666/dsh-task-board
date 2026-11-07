@@ -516,6 +516,35 @@ export const COLUMN_STATUSES = ['backlog', 'todo', 'running', 'review', 'done'] 
 
 export const ALL_STATUSES: readonly TaskStatus[] = COLUMN_STATUSES
 
+/**
+ * The Chinese word for each column, as a reader sees it.
+ *
+ * **THE ONE HOME FOR THESE FIVE STRINGS.** Two readers need them and neither may
+ * own the other: the interface prints them (the column header, the card's status
+ * chip, the list's rail), and the RESOLVER in `resolve.ts` has to recognise what a
+ * caller typed — a model that was told 「待规划 / 待办 / 进行中 / 待审核 / 已完成」
+ * sends one of those words back as a `status`, and a resolver that only knows the
+ * stored ids refuses every one of them.
+ *
+ * That is why the words live HERE, in `core/`, rather than in the dictionary: the
+ * client half may read `core/`, but `core/` may not read the client half. Putting
+ * them in `locales.ts` would have left the resolver with a hand-typed second copy
+ * — which is exactly what this table replaces. `locales.ts` spreads this object
+ * into its `board.status.*` keys, so the screen and the resolver read one set.
+ *
+ * **English is not here**, and that is deliberate: the delivery is Chinese, and a
+ * resolver that recognised an English word would have to guess which of two
+ * dictionaries the deployment runs. A caller writing `In Progress` gets the
+ * refusal, and the refusal PRINTS every legal word including the Chinese ones.
+ */
+export const STATUS_WORDS: Readonly<Record<TaskStatus, string>> = {
+  backlog: '待规划',
+  todo: '待办',
+  running: '进行中',
+  review: '待审核',
+  done: '已完成',
+}
+
 /** Brand an unknown string as a status; undefined when it is not one. */
 export function isTaskStatus(value: unknown): value is TaskStatus {
   return typeof value === 'string' && (ALL_STATUSES as readonly string[]).includes(value)

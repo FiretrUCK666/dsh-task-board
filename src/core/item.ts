@@ -75,6 +75,20 @@ export type ItemStatusView = TaskStatus
 /** The four priority tiers, lowest first (the list sorts on this). */
 export type ItemPriority = 'low' | 'normal' | 'high' | 'urgent'
 
+/**
+ * The Chinese word for each priority tier.
+ *
+ * Same argument as `STATUS_WORDS` (see `tasks.ts`): the interface prints it and
+ * the resolver must recognise it, so it lives in `core/` where both halves may
+ * read it. `locales.ts` spreads it into `item.priority.*`.
+ */
+export const PRIORITY_WORDS: Readonly<Record<ItemPriority, string>> = {
+  low: '低',
+  normal: '普通',
+  high: '高',
+  urgent: '紧急',
+}
+
 /** Who wrote this row, and when. Kept so a bad row can be traced to its author. */
 export type ItemOriginSource = 'human' | 'ai' | 'import'
 
