@@ -138,6 +138,40 @@ export function fadingContentLayersIn(rel, css) {
   return out
 }
 
+/**
+ * 一份样式表里的违规：**会呼吸却不画任何东西**的层。
+ *
+ * 「呼吸」是一条 `opacity` 0→1→0 的关键帧。它只有落在一层**画了东西**的盒子上才
+ * 看得见：底色、影、描边、边框、或背景图。少了一样，那条动画就在一层全透明的空气
+ * 上跑——规则合法、关键帧在跑、`data-*` 属性也对，**屏上什么也没有**。
+ *
+ * 这不是假设。会话行那盏「冒黄光的呼吸」正是这样消失的：`::after` 只有 `content`、
+ * `inset`、`opacity` 与 `animation`，没有任何可见声明，于是 `opacity: 0 → 1` 在一层
+ * 透明盒子上闪了很久，而「会话在冒黄光」这件事静默地不存在了。
+ *
+ * 判据是「**这一条规则自己**要画」。不追查「另一条选择器可能画了同一个元素」——那
+ * 需要判断两个选择器是否命中同一颗节点，而猜错的代价是漏报（正是要防的那一种）。
+ * 反过来要求自画会带来一次误报，那一次会在它出现时被读到并改写；漏报永远不会。
+ * @param {string} rel - 相对路径（报错用）。
+ * @param {string} css - 源文本。
+ * @returns {{rel: string, selector: string, animation: string}[]}
+ */
+export function invisibleBreathsIn(rel, css) {
+  const fading = opacityKeyframes(css)
+  const PAINTS = /(?:^|[\s;{])(background|background-color|background-image|box-shadow|outline|border|border-top|border-color)\s*:/
+  const out = []
+  for (const rule of rulesOf(css)) {
+    if (rule.selector.startsWith('@')) continue
+    if (!loopsForever(rule.body)) continue
+    for (const name of animationNamesOf(rule.body)) {
+      if (!fading.has(name)) continue
+      if (PAINTS.test(rule.body)) continue
+      out.push({ rel: basename(rel), selector: rule.selector.trim(), animation: name })
+    }
+  }
+  return out
+}
+
 function sheetsOf(root) {
   const found = []
   const walk = (dir) => {
@@ -152,8 +186,27 @@ function sheetsOf(root) {
 }
 
 function main() {
-  const probe = probeOf(['--probe-card', '--probe-layer'])
+  const probe = probeOf(['--probe-card', '--probe-layer', '--probe-empty-light'])
   const root = resolve(process.argv[2] ?? '.')
+
+  if (probe === '--probe-empty-light') {
+    const planted = `@keyframes fade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
+.sessionRow::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  animation: fade 2.6s infinite;
+}
+`
+    const found = invisibleBreathsIn('probe.module.css', planted)
+    if (found.length === 0) {
+      console.error('FAIL 自测：种了一条「会呼吸却不画东西」的规则，判据没认出来。')
+      process.exit(1)
+    }
+    console.log(`OK 自测：空动画被认出来（${found[0]?.selector ?? ''}）。`)
+    return
+  }
 
   if (probe === '--probe-card') {
     const planted = `@keyframes fade { 0%, 100% { opacity: 0; } 50% { opacity: 1; } }
@@ -190,7 +243,8 @@ function main() {
 
   const problems = sheetsOf(root).flatMap((abs) => {
     const rel = abs.split(/[\\/]/).slice(-5).join('/').replace(/^.*?(src\/)/, '$1')
-    return fadingContentLayersIn(rel, readFileSync(abs, 'utf8'))
+    const css = readFileSync(abs, 'utf8')
+    return [...fadingContentLayersIn(rel, css), ...invisibleBreathsIn(rel, css)]
   })
 
   for (const cls of Object.keys(SELF_OWNED)) {
@@ -198,17 +252,20 @@ function main() {
   }
 
   if (problems.length === 0) {
-    console.log('verify-breath-fades-decoration OK: 每一盏呼吸光都住在没有内容的那一层上。')
+    console.log('verify-breath-fades-decoration OK: 每一盏呼吸光都住在没有内容、又真的画了东西的那一层上。')
     return
   }
-  console.error(`FAIL ${String(problems.length)} 处：呼吸把承载内容的层一起淡掉了。`)
+  console.error(`FAIL ${String(problems.length)} 处呼吸光不是「不存在」就是「闪错了东西」。`)
   for (const one of problems) {
     console.error(`  ${one.rel}  ${one.selector}  (animation: ${one.animation})`)
   }
   console.error('')
-  console.error('  一条 `opacity` 关键帧住在有内容的元素上，淡的就是那块内容本身：')
-  console.error('  未读的卡片每 2.6 秒整块消失一次，而它正是最该被读到的那一条。')
-  console.error('  治法是把光挪到一个没有内容的层上（伪元素 / 空记号），淡那一层。')
+  console.error('  两种坏法：')
+  console.error('  1. 一条 `opacity` 关键帧住在有内容的元素上 —— 淡的是那块内容本身，')
+  console.error('     未读的卡片每 2.6 秒整块消失一次，而它正是最该被读到的那一条。')
+  console.error('     治法：把光挪到一个没有内容的层上（伪元素 / 空记号），淡那一层。')
+  console.error('  2. 会呼吸的那一层自己什么也没画 —— 底色、影、描边、边框、背景图，')
+  console.error('     至少要一样，否则 `opacity: 0 → 1` 闪的是一层空气。')
   process.exit(1)
 }
 

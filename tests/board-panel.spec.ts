@@ -458,6 +458,24 @@ function boardStub(
    * sites that do not care about that state stay one argument.
    */
   pending: Readonly<Record<string, string>> = {},
+  /**
+   * Which conversations each card shows, by task id, plus which of them are
+   * WORKING right now.
+   *
+   * The dot strip is the only place a card says **which of its conversations**
+   * is the one waiting on a person, and a stub with an empty `sessionsOf` renders
+   * no strip at all — so the artifact could not show the very thing the reader
+   * was asking about. Optional, like `pending`: the call sites that do not care
+   * stay one argument.
+   *
+   * `active` decides `running`; `pending` decides `waiting`; a conversation in
+   * neither that owns a finished, unlooked-at round reads `unread` (the same read
+   * clock as the card's ring) — the three dot states the strip has to keep apart.
+   */
+  sessions: {
+    readonly of?: Readonly<Record<string, readonly string[]>>
+    readonly active?: readonly string[]
+  } = {},
 ): Record<string, unknown> {
   const snapshot = () => ({
     tasks,
@@ -474,13 +492,15 @@ function boardStub(
       if (key === 'getSnapshot') return snapshot
       if (key === 'subscribe' || key === 'subscribeQuestions') return () => () => {}
       if (key === 'linkedOf') return () => []
-      /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合）。少了这一个
-         成员，假面就比现实窄：「空板」渲染得出来，「有卡片」的渲染一读就 `undefined.map` 崩
-         ——正好在需要它的那一刻暴露（硬性规范 18）。 */
-      if (key === 'sessionsOf') return () => []
+      /* **卡片的圆点读它**（`controller.sessionsOf`，与卡里那份列表同一个集合），返回的是**行**
+         （圆点只读其中的 `sessionId`）。少了这一个成员，假面就比现实窄：「空板」渲染得出来，
+         「有卡片」的渲染一读就 `undefined.map` 崩——正好在需要它的那一刻暴露（硬性规范 18）。 */
+      if (key === 'sessionsOf') {
+        return (task: TaskRecord) => (sessions.of?.[task.id] ?? []).map(sessionId => ({ sessionId }))
+      }
       if (key === 'relatedSessionIdSet') return () => new Set<string>()
       if (key === 'liveStateOf') return () => 'idle'
-      if (key === 'sessionActiveOf') return () => false
+      if (key === 'sessionActiveOf') return (sessionId: string) => (sessions.active ?? []).includes(sessionId)
       if (key === 'pendingInteractionOf') return (sessionId: string) => pending[sessionId]
       /* 另一件事：那是**问题正文**（`{ questions: [...] }`），不是闸门种类。两者共用一个
          回答就是假面比现实窄的另一种形状——通知抽屉会拿种类去读 `.questions.length`。 */
@@ -641,10 +661,26 @@ describe('stale-bundle status line (rendered through the panel)', () => {
   /** 那张生产现场：哪条会话卡在哪种人间闸门上。 */
   const WAITING = { 'sess-ask-q': 'question', 'sess-ask-plan': 'plan-review' } as const
 
+  /**
+   * 每张卡各自挂着哪几条会话，以及哪条正在跑。
+   *
+   * 三条点各占一档，工件才有资格回答「一栏三个点，能不能指出是哪一条卡住你」：
+   * 等你回答（外圈呼吸）、进行中（实心主琥珀）、未读（整颗闪）。
+   */
+  const SESSIONS = {
+    of: {
+      'task-ask-question': ['sess-ask-q', 'sess-ask-q2'],
+      'task-ask-plan': ['sess-ask-plan'],
+      'task-live': ['sess-live'],
+      'task-review': ['sess-review'],
+    },
+    active: ['sess-live'],
+  } as const
+
   function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light'): string {
     const aligned = alignClassNames(
       renderToStaticMarkup(createElement(TaskBoardPanel, {
-        controller: boardStub(boardFixture(), WAITING) as unknown as BoardController,
+        controller: boardStub(boardFixture(), WAITING, SESSIONS) as unknown as BoardController,
         ...mountedOf === undefined ? {} : { mountedOf },
       } as never)),
       panelCss(),
@@ -692,6 +728,12 @@ describe('stale-bundle status line (rendered through the panel)', () => {
        工件，是**安静地**少画了一档（渲染照旧成功），而看图的人会照它下结论。 */
     for (const light of ['none', 'ring', 'halo', 'ask']) {
       expect(markup, `工件里没有 ${light} 这一档光——那张图证明不了四种状态分得开`).toContain(`data-light="${light}"`)
+    }
+    /* 会话点那一排同样要真的画出来，而且要同时有「等你回答」与「进行中」两档：
+       「一栏三个点，能不能指出是哪一条卡住你」只在这张图上回答得了。 */
+    for (const state of ['waiting', 'running']) {
+      expect(markup, `工件里没有 ${state} 这一档会话点——那张图证明不了点也能指出是哪一条`)
+        .toContain(`data-state="${state}"`)
     }
   })
 

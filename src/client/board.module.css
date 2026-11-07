@@ -1687,13 +1687,48 @@
   border-color: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-edge), transparent);
 }
 
+/* ── 这一档是「常亮的基线 + 会呼吸的整块」两层 ──────────────────────────────
+ *
+ * 为什么是两层：读者对**动**的察觉远早于对**颜色差**的察觉——颜色要正眼看过去
+ * 才发现，一闪余光就抓到了；可如果整块淡到看不见，又会有半秒读不到它要你做什么。
+ * 两件事只能由两层各答一半，所以：
+ *
+ *   · `::after`（画在内容**上面**，但只占最外 3px）——一圈**常亮**的实心内描边。
+ *     呼吸走到最低点时，这一圈和暖洗底都还在，卡片永远读得清；
+ *   · `::before`（画在内容**下面**）——一整块注意力色的洗底，`opacity` 0→1→0。
+ *     闪的是**纸**，字一直在满对比度上，所以「很显眼」不是拿可读性换的。
+ *
+ * 闪的是整块而不是一圈 3px 的描边：同样的注意力，面积大一个数量级。这也让它与
+ * 另外两档在**形状**上分得开——未读是白纸上的一圈硬描边在跳，进行中是边缘的内晕
+ * 在跳，而它是**整张卡在暖起来**。 */
 .card[data-light='ask']::before {
   content: '';
   position: absolute;
   inset: 0;
   border-radius: inherit;
+  /* **两条通道，同一支呼吸、同相位**：整块暖起来 + 边亮起来。
+   *
+   * 只做洗底时，实测屏上的振幅不够——两个相位并排看几乎分不出来。原因是纯色面
+   * 的变化靠**饱和度**传达，而余光对饱和度不敏感、对**边**敏感。所以这一层同时
+   * 画一圈描边：峰值时它叠在常亮那圈上（0.22 → 0.39），边是真的亮一下。
+   *
+   * 两样都在同一层上，所以永远是同一个 opacity 在驱动，不可能一半到一半没到。 */
+  background: color-mix(in srgb, var(--dsh-tb-attention) var(--dsh-tb-wash-strong), transparent);
+  outline: var(--dsh-tb-breath-spread) solid var(--dsh-tb-attention-alpha);
+  outline-offset: calc(-1 * var(--dsh-tb-breath-spread));
+  pointer-events: none;
+  opacity: 0;
+  /* 与另外两盏灯同一个节拍、同一个关键帧：全项目只有一支呼吸。 */
+  animation: dshTbBreathHalo var(--dsh-tb-breath) infinite;
+}
+
+.card[data-light='ask']::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
   /* 内描边而不是外描边：卡片是硬裁剪边界（`overflow: hidden`），画在外面的环
-     会被自己裁掉。宽度静态、颜色静态——这一档是常亮的，不是脉冲。 */
+     会被自己裁掉。宽度与颜色都静态——这一圈是**基线**，它从不消失。 */
   box-shadow: inset 0 0 0 var(--dsh-tb-breath-spread) var(--dsh-tb-attention-alpha);
   pointer-events: none;
 }
@@ -2056,6 +2091,7 @@
   min-width: 0;
 }
 .cardSessionDot {
+  position: relative;
   width: 8px;
   height: 8px;
   border-radius: 50%;
@@ -2063,7 +2099,25 @@
   background: var(--dsh-tb-text-3);
 }
 .cardSessionDot[data-state='running'] { background: var(--dsh-tb-attention); }
-.cardSessionDot[data-state='waiting'] { background: var(--dsh-tb-status-review); }
+.cardSessionDot[data-state='waiting'] {
+  background: var(--dsh-tb-status-review);
+}
+/* 「这条会话在等你回答」：**点一直在，外面那一圈会呼吸。**
+ *
+ * 与未读那一点的分工是**形态**，不是浓度——未读是整颗点在闪（它是一份报告，
+ * 闪完了事），而这一颗是**常亮的实心点 + 一圈向外呼吸的琥珀环**：点从不消失，
+ * 所以一栏里三个点你永远找得到是哪一条卡住了；环在动，所以余光就能抓到。
+ * 两者都住在这枚 8px 的空记号上（没有字可淡），环那一层是伪元素，
+ * 见 `scripts/verify-breath-fades-decoration.mjs`。 */
+.cardSessionDot[data-state='waiting']::after {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--dsh-tb-breath-spread));
+  border-radius: 50%;
+  border: var(--dsh-tb-breath-spread) solid var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
+  opacity: 0;
+  animation: dshTbBreathRing var(--dsh-tb-breath) infinite;
+}
 /* A finished run on this card that has not been reviewed: the same amber,
    now BREATHING (the outer ring the unread card wears, at dot scale) — the
    strip answers "which session just finished" instead of only "which card".
@@ -3198,6 +3252,12 @@
   position: absolute;
   inset: 0;
   border-radius: var(--dsh-tb-radius-sm);
+  /* **这一层是画出来的光，不是一层空气。** 它此前只声明了 `opacity` 与
+   * `animation`，却没有任何底色或影——于是一条 `opacity: 0 → 1` 的呼吸在一层
+   * 全透明的盒子上闪，屏上什么也没有。规则合法、动画在跑、`data-glow` 也在，
+   * 唯一缺的是那盏灯本身；而「会话在冒黄光」这件事就这样静默消失了。
+   * 影是静态的，呼吸只淡它的 opacity（同一个理由见卡片内晕那一段）。 */
+  box-shadow: inset 0 0 var(--dsh-tb-breath-halo) var(--dsh-tb-breath-color, var(--dsh-tb-attention-alpha));
   pointer-events: none;
   opacity: 0;
   transition: opacity var(--dsh-tb-motion);

@@ -1263,12 +1263,38 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       .toMatch(/--dsh-tb-paper-plane:\s*color-mix\(/)
     expect(askRule, 'the border is the attention colour at the edge step')
       .toMatch(/border-color:\s*color-mix\(in srgb, var\(--dsh-tb-attention\) var\(--dsh-tb-edge\)/)
-    // 2. It does NOT breathe. The unread ring may pulse — it reports. A request
-    //    that is invisible half the time is a request the reader misses.
-    expect(askRule, 'a request must not be invisible half the time').not.toMatch(/animation:/)
-    // 3. Nor does it touch the material: `box-shadow` on `.card` carries rim and
-    //    cast (hard rule 19 / the one-property-one-owner law).
+    // 2. Nor does the CARD touch the material: `box-shadow` on `.card` carries rim
+    //    and cast (hard rule 19 / the one-property-one-owner law).
     expect(askRule, 'the ask card must not take the card’s material').not.toMatch(/box-shadow/)
+
+    /* 3. THE TWO HALVES OF "LOUDEST".
+     *
+     * This state needs BOTH, and each half answers a different failure:
+     *
+     *   · MOTION — a difference in colour has to be looked at; motion is caught
+     *     from the corner of the eye. The reader's verdict on a static version:
+     *     「现在那个卡片肯定要一闪一闪的」. So the block itself pulses.
+     *   · A BASE THAT NEVER LEAVES — the pulse rests at opacity 0, and a request
+     *     that is invisible half the time is a request that gets missed. So the
+     *     wash under the ink and the constant inner stroke stay painted no matter
+     *     where the pulse is.
+     *
+     * The split is also what keeps the card's TEXT at full contrast: the moving
+     * wash is `::before` (painted BELOW the content, so it tints the paper), while
+     * the constant stroke is `::after` (painted above, but only the outer 3px,
+     * where no glyph reaches). A card whose own layer animated would fade title,
+     * time and chips with it — that is the defect `verify-breath-fades-decoration`
+     * exists for.
+     */
+    expect(askRule, 'the card itself must never animate — that fades the content').not.toMatch(/animation:/)
+    const askWash = ruleFor(".card[data-light='ask']::before")
+    expect(askWash, 'the ask card must breathe on its own decoration layer').not.toBe('')
+    expect(askWash, 'the request must MOVE — a static request is missed').toMatch(/animation:\s*dshTbBreathHalo/)
+    expect(askWash, 'the moving half is a wash that tints the paper').toMatch(/background:\s*color-mix\(/)
+    const askStroke = ruleFor(".card[data-light='ask']::after")
+    expect(askStroke, 'the constant stroke must be its own layer').not.toBe('')
+    expect(askStroke, 'the constant stroke must NOT animate — it is the trough\'s floor').not.toMatch(/animation:/)
+    expect(askStroke, 'the constant stroke must be painted').toMatch(/box-shadow:\s*inset/)
 
     // 4. The chip and the next-action line derive from the SAME attribute, so a
     //    card cannot wear the ring and a quiet grey chip at once.
@@ -1291,6 +1317,39 @@ describe('design-system contracts: pill geometry + compact rhythm', () => {
       .toContain("view.primary.kind === 'waiting'")
     expect(lightBody, 'no waiting kind may be singled out for a different light')
       .not.toMatch(/plan-review|'question'|'approval'/)
+  })
+
+  it('the session that is waiting on you breathes where it can be seen, and the row glow paints', () => {
+    /* THE PER-SESSION HALF OF THE SAME REQUEST: 「包括它卡片里面的那个 session」.
+     *
+     * Two surfaces carry one conversation's state, and both had gone quiet:
+     *
+     *   · the 8px dot on the card — a waiting session was a SOLID dot, the only
+     *     unanimated state in the strip, so the one dot that means "I am blocked
+     *     on you" was the quietest one there;
+     *   · the session ROW in the detail — its glow layer declared `opacity` and an
+     *     animation and NO paint at all, so `opacity: 0 → 1` pulsed a fully
+     *     transparent box. The amber glow the reader remembers was painting air.
+     *
+     * The dot's form differs from unread on purpose: unread is a REPORT (the whole
+     * dot blinks, then it is done), while waiting is a CALL — the dot stays solid
+     * and a ring breathes around it, so in a strip of three dots the reader can
+     * still point at which conversation is blocking them.
+     */
+    const waitingDot = ruleFor(".cardSessionDot[data-state='waiting']")
+    expect(waitingDot, 'the waiting dot must keep its solid fill — it never disappears').toMatch(/background:/)
+    expect(waitingDot, 'the waiting dot itself must not animate').not.toMatch(/animation:/)
+    const waitingRing = ruleFor(".cardSessionDot[data-state='waiting']::after")
+    expect(waitingRing, 'the call must be a breathing ring on its own layer').not.toBe('')
+    expect(waitingRing, 'the ring must breathe').toMatch(/animation:\s*dshTbBreathRing/)
+    expect(waitingRing, 'the ring must be painted, or it pulses air').toMatch(/border:\s*var\(--dsh-tb-breath-spread\)/)
+
+    const rowLayer = ruleFor('.sessionRow::after') ?? ''
+    expect(rowLayer, 'the session row must own a glow layer').toContain('inset: 0')
+    expect(rowLayer, 'the row glow must keep breathing').toMatch(/animation:\s*dshTbBreathHalo/)
+    expect(rowLayer, 'the row glow must PAINT — a transparent layer cannot glow').toMatch(/box-shadow:\s*inset/)
+    // Paused, never cancelled: a settle mid-pulse fades instead of tearing a frame.
+    expect(rowLayer, 'the row glow must rest paused, not cancelled').toMatch(/animation-play-state:\s*paused/)
   })
 
   it('the light and the yellow border are ONE end-agnostic pair (both ends read the same two attributes)', () => {
