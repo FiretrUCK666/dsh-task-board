@@ -39,53 +39,11 @@ export declare function formatItemDate(at: number, english: boolean, now?: numbe
  */
 export declare function formatDayKey(key: string, english: boolean, now?: number): string;
 /**
- * Parse a date field back into a moment, or `undefined` when unreadable.
- *
- * The field speaks a day and not a clock, and it speaks three ways — the same
- * three the reader has met everywhere else on this surface: `2026-10-15`, the
- * word form (`明天`/`today`), and the `@`-prefixed word. A field that taught a
- * reader one spelling in the capture and then refused it in place was a
- * grammar that changed between two steps of the same edit.
- *
- * Building the moment in local time is the whole point: a date typed as 28
- * September must land on 28 September for the person who typed it, whatever
- * timezone the browser happens to be in. `undefined` here is not a failure — it
- * is how a cleared field says 「no promise any more」 (an empty field), and the
- * patch it goes into is a spread, so an explicit `undefined` clears the date
- * while an absent key leaves it alone.
- * @param value - the field's value.
- * @param now - the reading clock; a WORD resolves against it, so a test pins
- *   `明天` with a fixed clock instead of the machine's today.
- * @returns the moment, or `undefined` for an empty or unparseable field.
- */
-export declare function parseItemDate(value: string, now?: number): number | undefined;
-/**
- * WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`.
- *
- * `parseItemDate` answers 「which moment is this」, and it folds two different
- * facts into a single `undefined`: **no promise at all** (an empty field) and
- * **I could not read this**. Every surface that WRITES a date needs those two
- * apart, because one of them is a legitimate answer and the other must never be
- * dropped quietly. A new-row sheet that calls `parseItemDate` directly and spreads
- * the result into the capture turns a date it cannot read into
- * `{ dueAt: undefined }` — the row is saved, the day the reader typed is
- * gone, and nothing on screen says a word about it. That is a silent data loss,
- * and it is the difference between a refusal and an omission.
- *
- * So both readers of a date draft — the detail's in-place field and the sheet's
- * field — ask THIS function instead of each deciding what `undefined` means.
- * One verdict table, two consumers: 「读不懂就不写，并且当场说」 is then a
- * property of the vocabulary rather than a habit each surface has to remember.
- * @param text - what the reader has typed so far.
- * @param now - the reading clock; a WORD resolves against it.
- * @returns empty, unreadable, or the moment it named.
- */
-/**
  * 读不懂的三种原因。**三件事，三种改法**——所以它们不是同一句话。
  *
- * `parseItemDate` 把所有读不出来的字都折成一个 `undefined`（它回答的是「这是哪一刻」），
- * 而一处**拒绝**要回答的是「接下来改什么」：换一种写法、把年份补上、还是核对月份与日期。
- * 一句话盖住三种情况，就是把三种改法说成一种。
+ * 把一次读日期折成一个 `undefined` 回答的是「这是哪一刻」，而一处**拒绝**要回答的是
+ * 「接下来改什么」：换一种写法、把年份补上、还是核对月份与日期。一句话盖住三种情况，
+ * 就是把三种改法说成一种。
  */
 export type DateBadReason = 
 /** 这串字不在这门语言里。改法：换一种写法。 */
@@ -102,7 +60,23 @@ type DateReading = {
     readonly kind: 'bad';
     readonly reason: DateBadReason;
 };
-/** WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`. */
+/**
+ * WHAT A DATE FIELD SAYS, IN THREE ANSWERS INSTEAD OF ONE `undefined`.
+ *
+ * A single `undefined` folds two different facts into one: **no promise at all**
+ * (an empty field) and **I could not read this**. Every surface that WRITES a date
+ * needs those two apart, because one of them is a legitimate answer and the other
+ * must never be dropped quietly. A new-row sheet that read the field as a moment
+ * and spread the result into the capture would turn a date it cannot read into
+ * `{ dueAt: undefined }` — the row is saved, the day the reader typed is gone, and
+ * nothing on screen says a word about it. That is a silent data loss, and it is the
+ * difference between a refusal and an omission.
+ *
+ * So both readers of a date draft — the detail's in-place field and the sheet's
+ * field — ask THIS function instead of each deciding what `undefined` means. One
+ * verdict table, two consumers: 「读不懂就不写，并且当场说」 is then a property of
+ * the vocabulary rather than a habit each surface has to remember.
+ */
 export type DateDraft = {
     readonly kind: 'empty';
 } | {
@@ -112,7 +86,8 @@ export type DateDraft = {
     readonly kind: 'at';
     readonly at: number;
 };
-/** Read a date field's draft. See {@link DateDraft} for why this is not `parseItemDate`. */
+/** Read a date field's draft. See {@link DateDraft} for why the answer has three
+ *  shapes instead of a moment-or-`undefined`. */
 export declare function readDateDraft(text: string, now: number): DateDraft;
 /**
  * **一套日期词，一处定义。**

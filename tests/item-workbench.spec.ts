@@ -5705,8 +5705,8 @@ describe('新建一条：读不懂的日期不存下这一条，而是当场说'
     [...panel.surface.querySelectorAll('input')].find(node => (node.getAttribute('aria-label') ?? '').startsWith(label))
 
   it('一个读不懂的日期：条目不落进文档，那句话说在字段下面', () => {
-    // 这一条钉的是一次**静默的数据损失**：`parseItemDate` 的 `undefined` 一旦被铺进
-    // capture，读者写的「下个月中旬」就变成 `{ dueAt: undefined }`——条目照建、日期没了、
+    // 这一条钉的是一次**静默的数据损失**：只答「这是哪一刻」的读法一旦被铺进 capture，
+    // 读者写的「下个月中旬」就变成 `{ dueAt: undefined }`——条目照建、日期没了、
     // 屏上没有一个字。展开区那一栏的规矩是「读不懂就不写、并且说一句」，这张纸读同一个
     // 判定、说同一句话。
     const panel = mountPanel(oneRow({}), 'list', 'wide')

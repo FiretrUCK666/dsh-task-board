@@ -2249,8 +2249,7 @@ button.itemRowCardChip {
 
 /* **这一枚的焦点环不自己画一遍。** `outline: 2px solid var(--dsh-tb-ring)` 里的令牌
  * 是一条**影**（`0 0 0 2px accent`），塞进 outline 简写会让整条声明作废——这枚芯片
- * 的键盘焦点环就**根本不存在**。全表的 `:focus-visible` 是
- * `.itemRoot :focus-visible { outline: none; box-shadow: var(--dsh-tb-ring) }`
+ * 的键盘焦点环就**根本不存在**。座位级那条 `[data-dsh-taskboard-view] :focus-visible`
  * 一处管的，这一枚本来就领得到。 */
 
 /* 悬停时这一枚**稍微实一点**：它是一枚门，而门要能被人看出来。只动底色，不动尺寸、不动字
@@ -5826,26 +5825,14 @@ textarea.itemInput {
 
 /* ── 14. 焦点 ────────────────────────────────────────────────────────────── */
 
-/* 焦点环全表一个族，而且**它是一条影，不是一条 outline**。
+/* **这一页不自己画焦点环。** 环是一条影（`--dsh-tb-ring`），不是 `outline`：
+ * `outline` 由浏览器按 `border-radius` 画、不读 `corner-shape`，换肤把角换成超椭圆族
+ * 之后环会在每个角与自己的边分叉。这一条的理由与那条影一起写在
+ * `design/base.module.css` 的座位级规则上——`.itemRoot` 永远渲染在
+ * `[data-dsh-taskboard-view]` 里面（`item/panel.tsx` 的两个根都是这个形状），
+ * 所以座位级那条已经覆盖整棵子树，这里再写一遍只是第二个家。
  *
- * 理由量在 `board.module.css` 的 `--dsh-tb-ring` 上：`outline` 由浏览器按
- * `border-radius` 画，不读 `corner-shape`，而换肤入口 `--dsh-tb-corner` 换的正是后者
- * ——皮肤一换成超椭圆族，环与自己的边在每个角上分叉，读者看到的是「线框的四个边角
- * 像缺了一块」。影跟着角走，所以族是影。
- *
- * 强行色模式（forced-colors）会把影抹掉，那里把 outline 放回来：那个模式下颜色由
- * 浏览器接管，一条 outline 就是「看得见的环」的唯一写法。 */
-.itemRoot :focus-visible {
-  outline: none;
-  box-shadow: var(--dsh-tb-ring);
-}
-
-@media (forced-colors: active) {
-  .itemRoot :focus-visible {
-    outline: 2px solid;
-  }
-}
-
+ * 菜单与芯片的**内环**是另一件事，写在下面：环进到盒子里才不会把邻居推开。 */
 .itemRowMenuItem:focus-visible,
 .itemQueryChipRemove:focus-visible,
 .itemFacetChip:focus-visible {

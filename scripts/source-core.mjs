@@ -61,6 +61,37 @@ function startsRegex(lastChar, lastWord) {
 }
 
 /**
+ * 从 `from` 起，同一行里有没有一个能收尾的 `/`。
+ *
+ * **一条正则字面量不允许跨行**（换行必须写成 `\n`），所以「这一行的后面还有一个
+ * 未转义的 `/`」是它能成为正则的**必要条件**。少了这条判据，JSX 的结束标签会被读成
+ * 一个正则的开头：
+ *
+ *     const a = <div>hi</div>
+ *     /* 这一行本来是注释 *\/
+ *
+ * `<` 之后按「表达式可以开始」的读法是正则，于是 `</div>` 那个 `/` 把后面整段源码
+ * 吞进字面量，**从那以后所有注释都不再被剥掉**——门禁读到的「代码」里混着注释文本，
+ * 于是注释里提到过的每一个名字都成了「有人读」。实测这一条让 33 个文件（`.tsx` 与
+ * 4 个 spec）的剥离失效，而它一个字都不报错。
+ *
+ * 加一条同行的收尾要求不会误解除法：除号两侧的上下文已由 `startsRegex` 的
+ * 「前一个词」判掉，这里只否决那些**根本收不了尾**的候选。
+ * @param {string} source - 源码全文。
+ * @param {number} from - 那个 `/` 的位置。
+ * @returns {boolean} 同一行后面有没有一个未转义的 `/`。
+ */
+function closesOnThisLine(source, from) {
+  for (let i = from + 1; i < source.length; i++) {
+    const ch = source[i]
+    if (ch === '\n') return false
+    if (ch === '\\') { i += 1; continue }
+    if (ch === '/') return true
+  }
+  return false
+}
+
+/**
  * 扫一遍源码，给每个字符标出它在哪。
  *
  * **位置原样保留**：注释被换成等长的空格（换行留着），所以报错的行号与偏移仍然
@@ -98,7 +129,7 @@ export function scanSource(source) {
         state[i] = SOURCE_LITERAL; out[i] = ch
         i += 1; continue
       }
-      if (ch === '/' && startsRegex(lastChar, lastWord)) {
+      if (ch === '/' && startsRegex(lastChar, lastWord) && closesOnThisLine(source, i)) {
         mode = 4; inClass = false
         state[i] = SOURCE_LITERAL; out[i] = ch
         i += 1; continue

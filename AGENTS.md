@@ -95,8 +95,8 @@
 
 **取值一律现场读**（`package.json` / `git remote -v` / `git config user.name` / `npm whoami`）
 ——仓库是唯一权威。**这条只管本文**：README 与 CONTRIBUTING 给人看，必须写具体命令。
-**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、有歧义——都应直接
-改本文并提交，而不是绕过它或把特殊处理写死进代码。写的时候：面向 AI、与代码一致、写意图不写快照。
+**本文是活的**：与代码不符时以「本文意图 + 代码现状」为准并修正本文；过时、有歧义都应直接改本文
+并提交，而不是绕过它或把特殊处理写死进代码。写的时候：面向 AI、与代码一致、写意图不写快照。
 
 ### 几份文档的分工
 
@@ -112,9 +112,9 @@
 - **不随包发出的文档不 bump 版本**（改完只提交）；README 随包发出，改一个字都要 bump。
 - **中文版是权威**，英文版是它的翻译；改一份必须打开另一份一起看，不要机械对译。
 - **本文是索引，不是副本**：只记别的文档存在、谁是权威、何时同步。
-- **派生内容用工具生成**：两份 README 的目录由 `pnpm toc`（`scripts/sync-toc.mjs`）写在成对
-  标记之间，增删或改名二级标题后必须重跑，否则 `pnpm verify` 会红。**锚点不要手写**（写错
-  表现为「点了没反应」且不报错）。徽章依赖外部服务，**不进自动检查**。
+- **派生内容用工具生成**：两份 README 的目录由 `pnpm toc` 写在成对标记之间，增删或改名二级标题
+  后必须重跑，否则 `pnpm verify` 会红。**锚点不要手写**（写错表现为「点了没反应」且不报错）。
+  徽章依赖外部服务，**不进自动检查**。
 
 ## 环境与上下文（以实际环境为准，不依赖固定值）
 
@@ -204,9 +204,9 @@ DSH 本体同号（个别包会停更，逐个确认目标版本存在）；**np
 
 ### 最低支持版本（只在真不兼容时上移）
 
-跟着 DSH 走的是 `devDependencies`；**上移的是** `peerDependencies` 的 `>=` 值 + README「环境要求」
-那一行，而它**只在真不兼容时上移**（新版本才有的 API，或在旧版上实测加载失败）。**「插件在新版上
-照常可用」恰恰说明旧下限仍成立**——这时不要动它，`pnpm sync-sdk` 因此**默认不动门槛**。
+跟着 DSH 走的是 `devDependencies`；**上移的只有** `peerDependencies` 的 `>=` 与 README「环境要求」
+那一行，且**只在真不兼容时**（新版本才有的 API，或旧版实测加载失败）。「插件在新版上照常可用」
+说明旧下限仍成立——不要动它，`pnpm sync-sdk` 默认不动门槛。
 
 ### 构建可复现（硬性：产物必须与构建机无关）
 
@@ -245,7 +245,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 | 维度 | 值 |
 | --- | --- |
-| **插件 id**（行 id / 文件夹名 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 两个 slot 的 id） | `dsh-task-board` |
+| **插件 id**（行 id / 文件夹名 / locale 命名空间 / `/api/<id>/*` 路由 / 存储单元 / 每个 `main` 舞台与它那行侧栏入口的 key） | `dsh-task-board` |
 | **包名**（`package.json` name / 依赖键 / `dsh.profile.bundles` 项 / `cordis.patch.yml` 行 `name:` / bundle 注册 id / `/plugins/<包名>/client.js`） | 以 `package.json` 的 `name` 为准（当前 `@firetruck666/dsh-task-board`，**含作用域**） |
 | 权限预设路由 | `/api/dsh-task-board/permissions` |
 | 看板数据路由（前缀） | `/api/dsh-task-board/board`（看板本身在根 tail；`/items` 是第二份文档；`/lease` `/command` `/events` SSE 子路径） |
@@ -257,12 +257,11 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | **插件行的开关** | `cordis.patch.yml` 的五行 = 详情页的五个开关；关掉 `dsh-task-board-agent` 之后**所有会话的 AI 都看不到本插件的工具、命令与提示词** |
 | localStorage 键（同步模式下是离线镜像/草稿/备份） | `dsh.taskBoard.v1` 等（**不得改名**，见硬性规范 5） |
 
-**看板本身没有设置项**：每个行为都是看板上的数据，在界面里直接编辑。评论区那三个显示开关
-（工作步骤展示 / 收起时机 / 收起后显示的回复）读的是官方 `ui-chat` 命名空间（见契约表），
-不是本插件的设置，所以设置页只存在一份。
+**看板本身没有设置项**：每个行为都是看板上的数据，在界面里直接编辑。评论区那三个显示开关读的是
+官方 `ui-chat` 命名空间（见契约表），不是本插件的设置，所以设置页只存在一份。
 
-**本插件向 agent 播报的是行为准则，不是能力清单**：注入 `systemPrompt` 的 `tool:taskboard` 一节是
-**固定文本**（变动会击穿提示缓存）；能力清单一律走 `taskboard_capabilities` 按需查。
+**注入 `systemPrompt` 的 `tool:taskboard` 一节是固定文本**（变动会击穿提示缓存），它写的是行为
+准则，**不是能力清单**——清单走 `taskboard_capabilities` 按需查。
 
 ### 启停机制（改任何一处之前先读这段）
 
@@ -276,7 +275,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 **开发仪器由环境门控，不由 profile 行门控**：设计系统预览页的 surface 由**包行**在
 `DSH_TASK_BOARD_DESIGN_PREVIEW=1` 时宣告——给它一行就等于给每个用户的插件详情页多一个开关，而它是
-开发仪器不是产品面板。浏览器侧读不到宿主时它的默认是**不注册**，与两个产品面板**相反**。
+开发仪器不是产品面板。浏览器侧读不到宿主时它的默认是**不注册**，与三个产品面板**相反**。
 
 ## 宿主契约表（外部插件只能这样接；由 `scripts/verify-host-contracts.mjs` 机械校验）
 
@@ -310,8 +309,9 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 ### 插件注入的宿主服务（服务名必须由宿主提供，成员必须存在）
 
-**这张表是声明，不是副本**——`verify-host-contracts.mjs` 逐条解析它，与实际安装的 DSH 和源码里
-各半区的 `inject` 列表对照，少一行即红。
+**这张表是声明，不是副本**——`verify-host-contracts.mjs` 逐条解析它，到**实际安装的 DSH** 里核对
+每个 slot、每个注入的服务、每个被读的成员是否真的存在，少一条即红。**它读的方向是「声明 vs 宿主」**：
+源码里的 `inject` 数组与它是否一致**不由这道门禁回答**，所以加一条注入时这一节要跟着改。
 
 | 半区 | 服务名 | 读取的成员 | 提供包 |
 | --- | --- | --- | --- |
@@ -353,9 +353,9 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 
 **两条使用纪律**：
 
-1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面两个官方 slot；
-   自打的属性只标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），
-   不读写 shell 的节点或类名——那是唯一兜不住的脆弱面。
+1. **只用宿主自己声明的 seat，禁止猜 shell 的 DOM 或类名。** 界面全部经上面那三个 slot；自打的属性
+   只标记**自己的**子树（`data-dsh-taskboard-view` / `data-dsh-taskboard-panel`），不读写 shell 的
+   节点或类名——那是唯一兜不住的脆弱面。
 2. **接口只按名读，绝不 `instanceof`、绝不跨包值导入。** 宿主成员缺失时降级并说真话
    （`openSession` 返回 `false` 让 UI 就近报错），不抛、不假装成功。
 
@@ -385,7 +385,8 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 ### client 半区（浏览器）
 
 - `src/client/index.ts`：inject 六服务；offline-first 挂载（副本常驻 → 接线 → 即时可用 → 后台
-  收敛）；官方 seat 两处注册（`main` 面板 / `sidebar.panellist` 入口）；宿主面全经 `platform.ts`。
+  收敛）；官方 seat 的注册分在半区根部（`main` 面板 / `sidebar.panellist` 入口 / `tool.call.toolview`）
+  与三个页自己的 `register.tsx`（清单与设计系统各自注册它们的 `main` 与侧栏入口）；宿主面全经 `platform.ts`。
   **没有启用判断**（被组合即启用），生命周期挂在一个 `ctx.effect` 上。
 - `route-base.ts`：**浏览器侧路由的唯一出口**（交给 `document.baseURI`）；浏览器侧任何
   `/api/...` 都必须经它。`TaskBoardPanel.tsx` / `TaskBoardIcon.tsx`：看板的两个官方 seat 组件。
@@ -435,7 +436,7 @@ DSH Web GUI 的任务看板插件：侧边栏入口 + 多列看板 + 任务经 D
 | **文档真相** | `board-doc` / `host-sync`（同步文法 + 租约） | `board-merge-core`（合并文法核，**两份文档共用一份**）· `items-doc`（墓碑带载荷）· `board-events` · `projections` |
 | **台账与调度** | `controller`（台账 + 调度 + 席位 + 外源双通道） | `automation` · `schedule`/`scheduler` · `cruise` · `presets`/`run-presets` · `flow-metrics` |
 | **看板语义** | `task-transitions`（语义层） | `tasks` · `task-demand`（要决的门）· `task-live` · `task-search` · `task-templates` · `linked-sessions` |
-| **清单语义** | `item-transitions`（与界面同一批纯函数） | `item`（一行的模型）· **`item-view`（全部推导的门面，按域拆十个模块，re-export 全部有人读的符号）——界面与模型读同一份** · 其余 `item-*` 按名字就是在那一域里做事的 |
+| **清单语义** | `item-transitions`（与界面同一批纯函数） | `item`（一行的模型）· **`item-view`（全部推导的门面，按域拆成十来个模块，re-export 全部有人读的符号）——界面与模型读同一份** · 其余 `item-*` 按名字就是在那一域里做事的 |
 | **会话与执行** | `execution`（投递结算） | `session-list`/`session-display`/`session-groups`/`session-lineage`/`session-agents`/`session-activity` · `question-rpc`/`question-mirror` · `goal-verbs` |
 | **动作与出口** | `board-actions`（动作目录，见硬性规范 12） | `client-report` · `update-check`/`update-view` · `workbench-summary` · `item-ask` |
 | **共用的地基** | `values`（`stringOf`/`messageOf`/`isRecord` 三个收敛后的家） | `http-envelope`（**两个半区共用的信封**）· `surfaces`（面板名单）· `local-day` · `attachment` · `colors` · `store` |
@@ -620,9 +621,8 @@ pnpm smoke       # 只跑 bundle 冒烟：真的执行一遍加载器 handshake
 ### 闭环验证与操作规范
 
 **改完必看**（通则见行事总纲）：门禁全绿只证明规则没被破坏。界面改动 = 两档截图亲眼看过；
-行为改动 = 真实交互走一遍，并在 `tests/` 里留下 spec。**触屏那一档要真的渲染出来**：
-`pnpm run audit` 跑两档宽 × 三档 DPR × 两种指针能力 + 一档换字体——**窄宽不等于触屏**。
-量法见硬性规范 19；工具名与用法**现场读 `package.json` 的 scripts 与 `scripts/`**。
+行为改动 = 真实交互走一遍，并在 `tests/` 里留下 spec。触屏那一档要真的渲染出来（**窄宽不等于触屏**）。
+量法见硬性规范 19；工具名与用法**现场读 `package.json` 与 `scripts/`**。
 
 ## 硬性规范
 

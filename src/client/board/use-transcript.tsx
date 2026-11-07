@@ -1,9 +1,8 @@
 /**
  * Shared transcript-tail logic: load a session's recent history, page
  * backward on demand (the native "load earlier" grammar), poll the tail
- * lightly (watermark-gated, so an idle session costs nothing), and follow
- * the latest output while the user is at the bottom — with a "滑到最新"
- * escape when they scroll up. Used by the review page and
+ * lightly, and follow the latest output while the user is at the bottom — with a
+ * "滑到最新" escape when they scroll up. Used by the review page and
  * anywhere else a live session tail is shown, so every surface
  * behaves identically.
  *
@@ -15,7 +14,7 @@
  * host reports `hasMore`, the earlier pages stay reachable through
  * `loadEarlier`, never silently dropped.
  *
- * EVERY follow/anchor/jump action runs against the RESOLVED scroller (see
+ * EVERY follow/hold/jump action runs against the RESOLVED scroller (see
  * `resolveScroller`), never against the content region by assumption: a wide
  * panel scrolls its inner region, a narrow stacked panel scrolls the whole
  * body, and the same code must work on both. Hard-coding "the region is the
@@ -134,7 +133,7 @@ function watermarkOf(result: { events: readonly TranscriptEventShape[] }): numbe
  * is not one of those, and the measure path uses the cached value instead.
  *
  * Both numbers come back together because the two callers need different ones — the
- * follow wants the maximum offset, the anchor wants the content height — and two
+ * follow wants the maximum offset, `hold` wants the content height — and two
  * functions reading the same two properties would be two places to forget why they
  * are expensive.
  */
@@ -350,9 +349,10 @@ export function useFollowScroll(
   const hold = useCallback((): (() => void) => {
     const root = rootRef.current
     if (root === null) return () => undefined
-    /* A click, not a gesture: reading the geometry here is the right trade, and it
-     * is what makes the anchor exact — the cache may predate the last growth, and a
-     * distance computed from a stale height puts the reader a whole page off. */
+    /* Not a gesture but a settled moment: reading the geometry here is the right
+     * trade, and it is what makes the restore exact — the cache may predate the last
+     * growth, and a distance computed from a stale height puts the reader a whole
+     * page off. */
     geometry.current = geometryOf(root)
     const distance = geometry.current.height - root.scrollTop
     return () => {
@@ -585,15 +585,21 @@ export function useTranscriptTail(
     reload()
   }, [reload, reloadKey, sessionId])
 
-  // Light poll at 3s while mounted; paused while the tab is hidden (the
-  // native rhythm), with an immediate catch-up on return. ANY success also
-  // clears a previous error — this is the tail's self-healing retry. The
-  // poll NEVER replaces the window with a SHORTER tail: it only extends it
-  // (append new events) or re-folds it, so a refresh can never flash
-  // 「暂无对话内容」 over a loaded conversation.
+  // Light poll at 3s while the tab is VISIBLE; a hidden tab costs nothing, and
+  // coming back polls at once (`visibilitychange`). ANY success also clears a
+  // previous error — this is the tail's self-healing retry. The poll NEVER replaces
+  // the window with a SHORTER tail: it only extends it (append new events) or
+  // re-folds it, so a refresh can never flash 「暂无对话内容」 over a loaded
+  // conversation.
   useEffect(() => {
     if (sessionId === undefined) return
     const poll = (): void => {
+      /* THE TICK IS NOT THE TRIGGER. Hiding the tab leaves the interval running, and
+       * a read per 3s into a surface nobody is looking at is pure cost on the host —
+       * so the tick asks first and does nothing when the document is hidden. The
+       * return leg is `visibilitychange` below, which polls immediately: a reader
+       * who comes back sees the latest without waiting out a tick. */
+      if (document.hidden) return
       void controller.loadTranscript(sessionId).then(result => {
         if (!aliveRef.current || result === undefined) return
         setError(false)
@@ -641,9 +647,9 @@ export function useTranscriptTail(
   }, [controller, sessionId, settle])
 
   /** Prepend one earlier page above the window (the native "load earlier"
-   *  grammar). Anchored: the scroller's offset from the BOTTOM is preserved
-   *  (not scrollTop), so the reader stays on the same message instead of
-   *  jumping to the top. At the floor, or without a page reader, a no-op.
+   *  grammar). The scroller's offset from the BOTTOM is preserved (not scrollTop),
+   *  so the reader stays on the same message instead of jumping to the top. At the
+   *  floor, or without a page reader, a no-op.
    *
    *  The floor is the host's `floorSeq` when it sends one; otherwise the
    *  window's own first seq (a host that reports `hasMore` without a floor

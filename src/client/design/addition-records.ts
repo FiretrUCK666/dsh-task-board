@@ -60,14 +60,14 @@ export const ADDITION_RECORDS: readonly AdditionRecord[] = [
     askedBy: '用户明确要求：评论区要「我一句、它一段」，中间的过程折起来，并复用官方那三个机制',
   },
   {
-    /** 滚动条不越圆角：共享层一条轨道规则 + 各圆角滚动体声明缩进量 + 滑块圆角读同一变量。 */
-    unit: 'src/client/design/base.module.css 的 `::-webkit-scrollbar-track { margin: var(--dsh-tb-scroll-inset, 0) }` 与 `::-webkit-scrollbar-thumb { border-radius: var(--dsh-tb-scroll-inset, 4px) }` + 各圆角滚动体声明该变量',
+    /** 滚动条不越圆角：各圆角滚动体声明缩进量，滑块圆角读同一个变量。 */
+    unit: 'src/client/design/base.module.css 的 `::-webkit-scrollbar-thumb { border-radius: var(--dsh-tb-scroll-inset, 999px) }` + 各圆角滚动体声明该变量',
     nearest: 'src/client/board.module.css 的 `.reviewTranscriptScroll { border-radius: inherit }`（同一个病的那一次修法：把圆角搬到不滚动的祖先上）',
     whyNot: '`border-radius: inherit` 要求**有一个不滚动的祖先**接住圆角，而输入框自己是滚动体、没有那一层；'
-      + '而且它只在自定义滚动条存在时成立，系统条不参与。轨道缩进不需要任何新结构，也不依赖谁在滚——'
+      + '而且它只在自定义滚动条存在时成立，系统条不参与。滑块圆角读一个变量不需要任何新结构，也不依赖谁在滚——'
       + '它直接改的正是那个几何事实（条跑在方角轨道上、盒子右下角是圆的）。'
-      + '但**只缩轨道不够**：条到顶时它自己的头仍是方的，方头的两个角照样顶穿那段弧——'
-      + '所以滑块圆角也读同一个变量，两件事是同一个几何问题的两面。',
+      + '**调色板那条轨道规则不参与这件事**：轨道只画透明底，缩进写在滑块自己的圆角上；'
+      + '把 `margin` 放到轨道上会让轨道的绘制盒变窄，而滑块的定位仍在原来那条方角轨道里，两处的弧对不上。',
     askedBy: '用户明确要求：滚动条「要冲出来了」，把它的位置挪一下',
   },
   {

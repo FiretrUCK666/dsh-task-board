@@ -1,9 +1,8 @@
 /**
  * Shared transcript-tail logic: load a session's recent history, page
  * backward on demand (the native "load earlier" grammar), poll the tail
- * lightly (watermark-gated, so an idle session costs nothing), and follow
- * the latest output while the user is at the bottom — with a "滑到最新"
- * escape when they scroll up. Used by the review page and
+ * lightly, and follow the latest output while the user is at the bottom — with a
+ * "滑到最新" escape when they scroll up. Used by the review page and
  * anywhere else a live session tail is shown, so every surface
  * behaves identically.
  *
@@ -15,7 +14,7 @@
  * host reports `hasMore`, the earlier pages stay reachable through
  * `loadEarlier`, never silently dropped.
  *
- * EVERY follow/anchor/jump action runs against the RESOLVED scroller (see
+ * EVERY follow/hold/jump action runs against the RESOLVED scroller (see
  * `resolveScroller`), never against the content region by assumption: a wide
  * panel scrolls its inner region, a narrow stacked panel scrolls the whole
  * body, and the same code must work on both. Hard-coding "the region is the

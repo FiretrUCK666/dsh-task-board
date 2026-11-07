@@ -319,7 +319,11 @@
   line-height: var(--dsh-tb-text-line-h);
 }
 
-.iconButton:hover {
+/* A DISABLED BUTTON MUST NOT REACT TO THE POINTER, so the guard is part of the
+   hover rule itself. Written as a separate `:hover` above it, the unguarded copy
+   wins for a disabled element too (same specificity tier, later in the sheet) and
+   the guard describes something that never happens. */
+.iconButton:hover:not(:disabled) {
   background: var(--dsh-tb-hover);
   color: var(--dsh-tb-text-1);
 }
@@ -742,13 +746,8 @@
   transform: translateY(1px);
 }
 
-/* --- guarded hover for the remaining icon/link buttons (defensive: never
-       disabled today, but a disabled element must not react to hover) --- */
-.iconButton:hover:not(:disabled) {
-  background: var(--dsh-tb-hover);
-  color: var(--dsh-tb-text-1);
-}
-
+/* --- icon/link buttons: the hover guard lives on the rule above (a disabled
+       element must not react to hover), and `:active` carries the same guard) --- */
 .iconButton:disabled {
   opacity: 0.45;
   cursor: default;

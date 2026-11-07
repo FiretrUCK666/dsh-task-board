@@ -150,9 +150,10 @@ export function ItemCreateDialog(props: ItemCreateDialogProps) {
   /**
    * **读不懂的日期一个也不许悄悄丢掉。**
    *
-   * `parseItemDate` 的 `undefined` 一旦被铺进 capture，读者写的「明天」没被读懂时就变成
-   * `{ dueAt: undefined }`——条目照建、日期没了、屏上没有一个字解释。所以两处读同一个
-   * 判定（`readDateDraft`）、说同一行字（`DateField`），而这一份状态只管一件事：**哪几个框正在说那句话**。
+   * 只答「这是哪一刻」的读法会把读者写的「明天」在没读懂时变成一个 `undefined`——铺进
+   * capture 就成了 `{ dueAt: undefined }`：条目照建、日期没了、屏上没有一个字解释。所以
+   * 两处读同一个判定（`readDateDraft`）、说同一行字（`DateField`），而这一份状态只管一件事：
+   * **哪几个框正在说那句话**。
    */
   const [badDates, setBadDates] = useState<ReadonlySet<string>>(new Set())
   /** 三个日期框的焦点把手：拒绝之后光标要落在**第一个**读不懂的那一格里。 */

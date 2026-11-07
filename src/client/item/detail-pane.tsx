@@ -399,7 +399,7 @@ export function ItemDetail(props: ItemDetailProps) {
   const confirmDateEdit = (): void => {
     const field = dateEdit
     if (field === undefined) return
-    /* **三态，不是两态。** `parseItemDate` 把「没写」与「读不懂」折成同一个
+    /* **三态，不是两态。** 只答「这是哪一刻」的读法把「没写」与「读不懂」折成同一个
        `undefined`，而这两件事在这里的答案是相反的：空着是撤掉这个日期（一句实的说法），
        读不懂是**一个字都不许写**——一行没写就丢的词是「写了又丢」。判定与新建那条那张
        纸共用 `readDateDraft`，所以同一个词在两处得到同一个答案。字面日期以**面板的钟**

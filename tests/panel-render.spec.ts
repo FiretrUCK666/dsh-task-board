@@ -4013,7 +4013,7 @@ describe('写入框与日期框：一处实现，一处拒绝', () => {
       expect(source, `${file} 没有用那个共用的写入框`).toContain("from './prose-field.tsx'")
       expect(source, `${file} 没有用那个共用的日期框`).toContain("from './date-field.tsx'")
       expect(source, `${file} 自己读日期了：判定必须是 readDateDraft，拒绝由 DateField 说`)
-        .not.toMatch(/\bparseItemDate\s*\(/)
+        .not.toMatch(/\breadDateExpression\s*\(/)
     }
   })
 
