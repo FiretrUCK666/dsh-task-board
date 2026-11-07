@@ -35,6 +35,7 @@
  *
  * usage: node scripts/verify-host-contracts.mjs [plugin-dir]
  *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-removed
+ *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-inject
  *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-services
  *        node scripts/verify-host-contracts.mjs [plugin-dir] --probe-attachment-face
  */
@@ -46,7 +47,7 @@ import { probeOf } from './probe-args.mjs'
 
 const root = resolve(process.argv[2] ?? '.')
 /* 自测开关先过一遍：拼错要红，不能静默变成一次正常跑（见 `probe-args.mjs`）。 */
-probeOf(['--probe-removed', '--probe-services', '--probe-attachment-face'])
+probeOf(['--probe-removed', '--probe-inject', '--probe-services', '--probe-attachment-face'])
 const args = new Set(process.argv.slice(2).filter(arg => arg.startsWith('--')))
 const failures = []
 const notes = []
@@ -405,6 +406,122 @@ function serviceFailures(rows) {
 }
 
 failures.push(...serviceFailures(services))
+
+// --- the inject arrays say the same thing as the table ------------------------
+// The table is a DECLARATION; `export const inject = [...]` in each half is the
+// thing that actually runs. They can disagree, and the ways they can are not
+// symmetric:
+//
+//   · table row without a matching `inject` entry — the service is documented as
+//     required but the half never waits for it, so it reads `undefined` and the
+//     feature quietly does not appear on a host where it is merely late;
+//   · `inject` entry without a table row — the half waits forever on a service
+//     nobody in review ever saw named, which is the read-the-code-and-shrug state
+//     that this gate exists to end.
+//
+// BOTH directions are reported. The reader finds the three arrays by DISCOVERY
+// (any `export const inject` in `src/`), not from a list here: a list would have
+// to be edited the day a fourth half appears, and the day nobody edits it the new
+// half is unchecked while the gate stays green — the exact failure shape this
+// whole script is about.
+//
+// Over-approximation is deliberate. A host service a half reads WITHOUT injecting
+// (`ctx.get('attachments')`) belongs in the other table, whose contract is
+// 「absent means degraded」, so a name there that also appears in an `inject`
+// array is reported: the two tables would be describing one dependency twice, and
+// a reader would not know which promise holds.
+
+/** The inject arrays, by the source file that declares them. */
+function injectArraysOf(root) {
+  const found = []
+  const walk = (dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) { walk(path); continue }
+      if (!entry.name.endsWith('.ts') || entry.name.endsWith('.d.ts')) continue
+      const text = readFileSync(path, 'utf8')
+      for (const match of text.matchAll(/export const inject\s*=\s*\[([^\]]*)\]/g)) {
+        found.push({
+          file: path.slice(root.length + 1).replace(/\\/g, '/'),
+          names: [...(match[1] ?? '').matchAll(/'([^']+)'/g)].map(one => one[1]),
+        })
+      }
+    }
+  }
+  walk(join(root, 'src'))
+  return found
+}
+
+/**
+ * The names the 「absent means degraded」 table owns: read with `ctx.get`, never
+ * injected. A row there is not expected in any `inject` array, so the comparison
+ * must not ask for one.
+ *
+ * It is READ FROM AGENTS.md, not typed here: a second list would be the third
+ * table, and the day the document gains a row the gate would report it as a
+ * missing inject on every run — a false red trains people to ignore red.
+ */
+function bypassNamesOf(agents) {
+  const start = agents.indexOf('### 插件按名读的宿主服务')
+  if (start === -1) return new Set()
+  const rest = agents.slice(start)
+  const end = rest.indexOf('\n### ', 1)
+  const section = end === -1 ? rest : rest.slice(0, end)
+  const names = new Set()
+  for (const line of section.split('\n')) {
+    const row = /^\|\s*(?:host|client)\s*\|\s*`([a-zA-Z][a-zA-Z0-9.]*)`\s*\|/.exec(line)
+    if (row !== null) names.add(row[1])
+  }
+  return names
+}
+
+/**
+ * Every disagreement between the declared inject arrays and the table.
+ *
+ * `halves` maps a source file to the half it belongs to. The mapping is by PATH
+ * PREFIX (`src/client/` is the client half, everything else is the host half),
+ * because that is the structural fact; naming files here would go stale.
+ * @param arrays - the inject arrays found in the source.
+ * @param rows - the table's service rows.
+ * @param bypass - the names the 「absent means degraded」 table owns.
+ * @returns one sentence per disagreement.
+ */
+function injectFailures(arrays, rows, bypass) {
+  const declared = new Map()
+  for (const row of rows) {
+    if (!declared.has(row.half)) declared.set(row.half, new Set())
+    declared.get(row.half).add(row.name)
+  }
+  const found = []
+  const seen = new Set()
+  for (const one of arrays) {
+    const half = one.file.startsWith('src/client/') ? 'client' : 'host'
+    const table = declared.get(half) ?? new Set()
+    for (const name of one.names) {
+      seen.add(`${half}:${name}`)
+      if (!table.has(name) && !bypass.has(name)) {
+        found.push(`${one.file} injects "${name}", and the 宿主契约表 declares no such ${half} service — one of the two is wrong, and the host is the authority`)
+      }
+    }
+  }
+  for (const [half, names] of declared) {
+    for (const name of names) {
+      if (seen.has(`${half}:${name}`)) continue
+      // A row whose member is read WITHOUT a fiber inject edge belongs to the
+      // other table; the caller's `bypass` set names those, and a name in it is
+      // not expected to appear in an `inject` array at all.
+      if (bypass.has(name)) continue
+      found.push(`the 宿主契约表 declares "${name}" as a ${half} service the plugin injects, but no \`export const inject\` in that half names it — the row is documentation, not behaviour`)
+    }
+  }
+  return found
+}
+
+failures.push(...injectFailures(
+  injectArraysOf(root),
+  services,
+  bypassNamesOf(agents),
+))
 
 // --- the pending-question carrier's action names ------------------------------
 // The board answers a pending question IN PLACE through the object the official
@@ -1039,6 +1156,29 @@ if (args.has('--probe-removed')) {
 // `--probe-services` feeds the service check one name no package provides and one
 // member no package carries, and requires a finding for EACH. A green run means
 // the check cannot see the failure it exists for.
+if (args.has('--probe-inject')) {
+  // Both directions, on a table and arrays that cannot be right: one service the
+  // table declares and no half injects, one a half injects and nothing declares.
+  const rows = [
+    { half: 'host', name: 'declaredButNeverInjected', member: 'register', pkg: '@deepseek-ai/dsh-tools' },
+    { half: 'client', name: 'realOne', member: 'register', pkg: '@deepseek-ai/dsh-client-locale' },
+  ]
+  const arrays = [
+    { file: 'src/index.ts', names: ['realOne'] },
+    { file: 'src/client/index.ts', names: ['realOne', 'injectedButNeverDeclared'] },
+  ]
+  const findings = injectFailures(arrays, rows, new Set())
+  const seenDeclared = findings.some(finding => finding.includes('declaredButNeverInjected'))
+  const seenInjected = findings.some(finding => finding.includes('injectedButNeverDeclared'))
+  if (!seenDeclared || !seenInjected) {
+    console.error('verify-host-contracts FAIL: the inject comparison missed one of the two directions — the check is blind')
+    for (const finding of findings) console.error(`  - ${finding}`)
+    process.exit(1)
+  }
+  console.log(`verify-host-contracts inject self-test OK: both directions report (${findings.length} findings for a table and arrays that disagree)`)
+  process.exit(0)
+}
+
 if (args.has('--probe-services')) {
   const probe = [
     { half: 'host', name: 'dsh-task-board-no-such-service', member: 'describe', pkg: '@deepseek-ai/dsh-settings' },
