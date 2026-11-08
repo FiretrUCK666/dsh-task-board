@@ -7,6 +7,7 @@
  * Pure functions — no side effects, fully unit-testable.
  */
 import type { PendingInteractionKind } from './controller.ts'
+import type { SessionActivity } from './session-activity.ts'
 import { isOpenRound, type TaskRecord, type ExecutionRecord } from './tasks.ts'
 
 /**
@@ -14,8 +15,16 @@ import { isOpenRound, type TaskRecord, type ExecutionRecord } from './tasks.ts'
  * the session: the original run and its comments).
  */
 export interface SessionDisplay {
-  /** The session's current state (waiting > running > latest settled). */
-  state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+  /**
+   * The session's current state (waiting > delegating > running > latest settled).
+   *
+   * `delegating` is the one that used to be invisible: the session's OWN turn is
+   * not running, but a subagent it dispatched still is. Everything rolls up to
+   * "working" (`sessionActiveOf` = own ∨ descendant), so the row, the card and
+   * its light all read as 进行中 — and the reader cannot see that the agent they
+   * are talking to has already stopped and is merely waiting for its children.
+   */
+  state: 'running' | 'delegating' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
   /** When the session last saw activity (started or settled a round). */
   lastActivity: number | undefined
   /** The interaction kind if the session is waiting on the user. */
@@ -83,24 +92,26 @@ function lastStartOf(rounds: readonly ExecutionRecord[]): number | undefined {
  * there is nothing in the ledger to read, and the host session row carries no
  * outcome of its own.
  *
- * `active` is the NATIVE truth, supplied by the caller and never re-derived
- * here: this session's own turn OR a running subagent descendant it summoned
- * (session-activity.ts). TRUE means the agent is working no matter which
- * surface started the turn (a plain run, an injected comment, a direct steer,
- * a session rule, an out-of-band native chat) and no matter whose turn holds
- * the session. It only ADDS the native truth; a board round keeps its own
- * semantics above.
+ * `activity` is the NATIVE truth, supplied by the caller and never re-derived
+ * here: this session's own turn (`own`), a running subagent descendant it
+ * summoned (`descendant`), neither (`idle`), or no verdict (`unknown`). It
+ * carries one more bit than a boolean on purpose — `descendant` is the case the
+ * reader could not see: the agent they are talking to has stopped and is only
+ * waiting for its children, while every rolled-up surface still says 进行中.
+ * `unknown` is never rendered as working (no verdict is not a verdict).
  */
 function conversationDisplayOf(
   task: TaskRecord,
   waitingKind: PendingInteractionKind | undefined,
-  active: boolean,
+  activity: SessionActivity,
   sessionId: string | undefined,
 ): SessionDisplay {
   const rounds = conversationRoundsOf(task, sessionId)
   if (waitingKind !== undefined) {
     return { state: 'waiting', lastActivity: lastStartOf(rounds), waitingKind }
   }
+  /** 这一条会话「在跑」的那一行，名字取决于**跑的是谁**。 */
+  const workingState: SessionDisplay['state'] = activity === 'descendant' ? 'delegating' : 'running'
   // An open round is real work in flight. A plain run is open from its start
   // (it carries no `injectedAt`); a comment round is open only once actually
   // injected — a saved/queued comment has not started and must never make the
@@ -108,10 +119,10 @@ function conversationDisplayOf(
   // IS the native turn, never a queued comment).
   const open = rounds.filter(isOpenRound)
   if (open.length > 0) {
-    return { state: 'running', lastActivity: lastStartOf(open), waitingKind: undefined }
+    return { state: workingState, lastActivity: lastStartOf(open), waitingKind: undefined }
   }
-  if (active) {
-    return { state: 'running', lastActivity: lastStartOf(rounds), waitingKind: undefined }
+  if (activity === 'own' || activity === 'descendant') {
+    return { state: workingState, lastActivity: lastStartOf(rounds), waitingKind: undefined }
   }
   let latest: ExecutionRecord | undefined
   for (const round of rounds) {
@@ -136,9 +147,9 @@ export function sessionDisplay(
   task: TaskRecord,
   execution: ExecutionRecord,
   waitingKind: PendingInteractionKind | undefined,
-  active = false,
+  activity: SessionActivity = 'idle',
 ): SessionDisplay {
-  return conversationDisplayOf(task, waitingKind, active, execution.sessionId)
+  return conversationDisplayOf(task, waitingKind, activity, execution.sessionId)
 }
 
 /**
@@ -152,9 +163,9 @@ export function linkedSessionDisplay(
   task: TaskRecord,
   sessionId: string,
   waitingKind: PendingInteractionKind | undefined,
-  active: boolean,
+  activity: SessionActivity,
 ): SessionDisplay {
-  return conversationDisplayOf(task, waitingKind, active, sessionId)
+  return conversationDisplayOf(task, waitingKind, activity, sessionId)
 }
 
 /**

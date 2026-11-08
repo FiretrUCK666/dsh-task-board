@@ -96,9 +96,10 @@ function SessionActionRow({ row, task, controller, cruiseOn, workspaceTitleOf, o
   if (isRun) {
     const execution = task.executions.find(candidate => candidate.id === row.executionId)
     if (execution === undefined) return null
-    const session = sessionDisplay(task, execution, row.display.waitingKind, controller.sessionActiveOf(sessionId))
+    const session = sessionDisplay(task, execution, row.display.waitingKind, controller.sessionActivityOf(sessionId))
     const times = sessionTimes(task, execution)
-    const isActive = session.state === 'running' || session.state === 'waiting'
+    // 「等子 Agent」也是活的：那一轮还没结束，卡片与这一行都还在工作。
+    const isActive = session.state === 'running' || session.state === 'delegating' || session.state === 'waiting'
     // The ONE workspace chip grammar with the linked rows: a run row names
     // its workspace (the task's configured workspace) the same way a linked
     // row names its own — no row family reads differently.

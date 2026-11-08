@@ -5718,9 +5718,17 @@ describe('session activity: subagent descendants keep the card live', () => {
     // The linked row carries the activity answer, not the bare flag.
     const linked = controller.linkedOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)
     expect(linked.map(row => [row.sessionId, row.running])).toEqual([['P', true]])
-    // …and so does the unified session row's display state.
+    // …and so does the unified session row's display state. **P's own turn is
+    // stopped** (`setRunning('P', false)`); what is running is the subagent C it
+    // spawned — so the row names the truth rather than borrowing 进行中 from the
+    // rollup. This is the assertion the reader's report changed: the same
+    // activity value that lights the row must also say WHO is working.
     const row = controller.sessionsOf(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!)[0]
-    expect(row?.display.state).toBe('running')
+    expect(row?.display.state).toBe('delegating')
+    // The two readings stay one derivation: the boolean is the same fact,
+    // uncollapsed, and it still says "working" (which is what a light needs).
+    expect(controller.sessionActivityOf('P')).toBe('descendant')
+    expect(controller.sessionActiveOf('P')).toBe(true)
   })
 
   it('an ARCHIVED descendant still counts (the rollup follows the official one; archive is a display concern)', async () => {

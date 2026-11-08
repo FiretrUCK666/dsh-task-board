@@ -418,7 +418,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
     sessionId: execution.sessionId as string,
     title: execution.sessionId as string,
     executionId: execution.id,
-    display: sessionDisplay(task, execution, undefined, false),
+    display: sessionDisplay(task, execution, undefined, 'idle'),
     updatedAt: execution.startedAt,
     unviewed: false,
   }))
@@ -516,7 +516,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
     // arriving later lands here as a named miss instead of a silent undefined.
     const unhandled = [...asked].filter(key => ![
       'sessionsOf', 'linkedOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
-      'sessionTitle', 'sessionActiveOf', 'pendingInteractionOf', 'sessionLabelsOf',
+      'sessionTitle', 'sessionActiveOf', 'sessionActivityOf', 'pendingInteractionOf', 'sessionLabelsOf',
       'externalKindOf', 'ts',
     ].includes(String(key)))
     expect(unhandled).toEqual([])

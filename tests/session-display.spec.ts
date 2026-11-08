@@ -123,7 +123,7 @@ describe('sessionDisplay', () => {
         comment: '现在立刻做',
         sessionAnchor: 's1',
       })
-      const result = sessionDisplay(taskWith([exec]), exec, undefined, true)
+      const result = sessionDisplay(taskWith([exec]), exec, undefined, 'own')
       expect(result.state).toBe('running')
     })
 
@@ -137,7 +137,7 @@ describe('sessionDisplay', () => {
         comment: '现在立刻做',
         sessionAnchor: 's1',
       })
-      const result = sessionDisplay(taskWith([exec]), exec, 'question', true)
+      const result = sessionDisplay(taskWith([exec]), exec, 'question', 'own')
       expect(result.state).toBe('waiting')
       expect(result.waitingKind).toBe('question')
     })
@@ -149,7 +149,7 @@ describe('sessionDisplay', () => {
         endedAt: 150,
         result: 'succeeded',
       })
-      const result = sessionDisplay(taskWith([exec]), exec, undefined, false)
+      const result = sessionDisplay(taskWith([exec]), exec, undefined, 'idle')
       expect(result.state).toBe('succeeded')
     })
 
@@ -313,23 +313,42 @@ describe('linkedSessionDisplay (a bound session row)', () => {
   it('a ledger-empty binding reads idle (未运行): the host session row serves no outcome', () => {
     // The task's own rounds are the row's only outcome source — with none there
     // is nothing to read, so the row is idle, never "finished".
-    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, false))
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, 'idle'))
       .toEqual({ state: 'cancelled', lastActivity: undefined, waitingKind: undefined })
   })
 
   it('waiting, open, active then settled rounds each decide, in that order', () => {
     const settled = round('c1', { startedAt: 100, endedAt: 200, result: 'succeeded' as const, sessionId: 's-1' })
-    expect(linkedSessionDisplay(taskWith([settled]), 's-1', undefined, false).state).toBe('succeeded')
+    expect(linkedSessionDisplay(taskWith([settled]), 's-1', undefined, 'idle').state).toBe('succeeded')
     // A live native turn with no ledger round still reads running (observed activity).
-    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, true).state).toBe('running')
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, 'own').state).toBe('running')
     // Waiting outranks the settled round; an open round outranks idle activity.
-    expect(linkedSessionDisplay(taskWith([settled]), 's-1', 'question', false))
+    expect(linkedSessionDisplay(taskWith([settled]), 's-1', 'question', 'idle'))
       .toMatchObject({ state: 'waiting', waitingKind: 'question' })
     const open = round('c2', { startedAt: 300, sessionId: 's-1' })
-    expect(linkedSessionDisplay(taskWith([settled, open]), 's-1', undefined, false).state).toBe('running')
+    expect(linkedSessionDisplay(taskWith([settled, open]), 's-1', undefined, 'idle').state).toBe('running')
     // Another session's rounds are not this row's activity.
     const other = round('c3', { startedAt: 100, endedAt: 200, result: 'succeeded' as const, sessionId: 'other' })
-    expect(linkedSessionDisplay(taskWith([other]), 's-1', undefined, false).state).toBe('cancelled')
+    expect(linkedSessionDisplay(taskWith([other]), 's-1', undefined, 'idle').state).toBe('cancelled')
+  })
+
+  it('a stopped agent with running subagents reads 等子 Agent, never 进行中', () => {
+    /* THE STATE THAT HAD NO NAME. The activity derivation answers `descendant`
+     * when this session's own turn has stopped and only the subagents it
+     * dispatched are working — and every surface used to flatten that to
+     * "working". The row must now say the truth, from both doors: a ledger round
+     * (a board run) and a bare native turn (nothing in the ledger). */
+    const open = round('c1', { startedAt: 300, sessionId: 's-1' })
+    expect(linkedSessionDisplay(taskWith([open]), 's-1', undefined, 'descendant').state).toBe('delegating')
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, 'descendant').state).toBe('delegating')
+    const execution = round('c1', { startedAt: 300, sessionId: 's-1' })
+    expect(sessionDisplay(taskWith([execution]), execution, undefined, 'descendant').state).toBe('delegating')
+    // The two live readings must stay apart: `own` is the agent talking.
+    expect(linkedSessionDisplay(taskWith([open]), 's-1', undefined, 'own').state).toBe('running')
+    // No verdict is not a verdict: with nothing else to read, `unknown` stays
+    // quiet instead of borrowing "working". (A round still open outranks even
+    // this — that is a ledger fact, not an observation.)
+    expect(linkedSessionDisplay(taskWith([]), 's-1', undefined, 'unknown').state).toBe('cancelled')
   })
 })
 

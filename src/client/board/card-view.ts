@@ -20,6 +20,7 @@
  */
 import type { PendingInteractionKind } from '../../core/controller.ts'
 import { blockedCauseOf, type RuleBlockedCause } from '../../core/automation.ts'
+import type { SessionActivity } from '../../core/session-activity.ts'
 import { sessionUnviewedOf, taskUnviewed, taskUnviewedCount } from '../../core/session-display.ts'
 import { gateOf, latestCompletedOf, type GateState, type WaitingSession } from '../../core/task-demand.ts'
 import {
@@ -37,6 +38,11 @@ import {
  *   waiting — a session of this card is suspended on the user right now
  *            (approval / plan review / question). The human's turn outranks
  *            everything, including work still in flight.
+ *   delegating — the card is live, but the agent the reader is talking to has
+ *            STOPPED: only the subagents it dispatched are still working. It
+ *            ranks inside the running bracket because the card is genuinely
+ *            busy — it just is not busy *here*, and the reader could not tell
+ *            those two apart before this kind existed.
  *   running — the card or one of its conversations is working.
  *   queued  — comments are saved and waiting for the dispatcher.
  *   gate    — work finished, nobody has looked at it yet, nobody has ruled on
@@ -47,18 +53,42 @@ import {
  */
 export type CardPrimary =
   | { kind: 'waiting'; waiting: PendingInteractionKind; count: number }
+  | { kind: 'delegating'; count: number }
   | { kind: 'running' }
   | { kind: 'queued'; count: number }
   | { kind: 'gate'; failed: boolean }
   | { kind: 'runs'; count: number; failed: boolean }
   | { kind: 'idle' }
 
+/**
+ * Who is doing the work, rolled over one card's conversations — the ONE input
+ * that lets a card say 等子 Agent instead of 进行中.
+ *
+ * `own` — at least one conversation's OWN turn is running (the agent the reader
+ *         is addressing is working);
+ * `descendants` — how many subagents are running across those conversations.
+ *
+ * The card reads both, because the interesting state is a CONJUNCTION:
+ * `!own ∧ descendants > 0` — nobody is working on this card's behalf except the
+ * children, and until this was passed in the card had no way to know.
+ */
+export interface CardAgentWork {
+  readonly own: boolean
+  readonly descendants: number
+}
+
 /** One related-session dot (max 3 rendered, +N overflow). */
 export interface CardSessionDot {
   sessionId: string
-  /** waiting/running = live; unread = a finished run this card has not had
-   *  reviewed yet (same clock as the detail row's glow); idle otherwise. */
-  state: 'waiting' | 'running' | 'unread' | 'idle'
+  /**
+   * waiting / running / delegating = live; unread = a finished run this card has
+   * not had reviewed yet (same clock as the detail row's glow); idle otherwise.
+   *
+   * `delegating` is the dot's half of 「主 Agent 停了」: the conversation is alive
+   * through its subagents only, so the dot keeps its amber but loses its fill —
+   * activity that is not here.
+   */
+  state: 'waiting' | 'running' | 'delegating' | 'unread' | 'idle'
 }
 
 /** Display title: the raw title, or the untitled placeholder when blank.
@@ -128,27 +158,32 @@ export function cardLightOf(view: Pick<CardViewModel, 'primary' | 'active' | 'un
  * strip can never answer "which conversation is which" differently from the
  * detail's rows:
  *
- *   waiting  — the session is suspended on a question / plan / approval;
- *   running  — its own turn or a running subagent descendant works now;
- *   unread   — a finished run on THIS card has not been reviewed yet
- *              (the per-session clock `sessionUnviewedOf`, the exact clock
- *              the detail's session-row glow reads);
- *   idle     — settled and seen (or a session with no run and no read state).
+ *   waiting    — the session is suspended on a question / plan / approval;
+ *   delegating — its own turn has STOPPED; only the subagents it dispatched are
+ *                working (the dot keeps its amber but loses its fill);
+ *   running    — its own turn works right now;
+ *   unread     — a finished run on THIS card has not been reviewed yet
+ *                (the per-session clock `sessionUnviewedOf`, the exact clock
+ *                the detail's session-row glow reads);
+ *   idle       — settled and seen (or a session with no run and no read state).
  *
  * Live states outrank unread: a conversation that is both working and
  * unreviewed reads as working — one dot, one loudest truth. Pure: the board
- * supplies the two live faces, the precedence lives here once.
+ * supplies the live face, the precedence lives here once.
  */
 export function cardSessionDotStateOf(
   task: TaskRecord,
   sessionId: string,
   ctx: {
     pendingInteractionOf: (sessionId: string) => PendingInteractionKind | undefined
-    activeOf: (sessionId: string) => boolean
+    /** The three-valued activity (`controller.sessionActivityOf`). */
+    activityOf: (sessionId: string) => SessionActivity
   },
 ): CardSessionDot['state'] {
   if (ctx.pendingInteractionOf(sessionId) !== undefined) return 'waiting'
-  if (ctx.activeOf(sessionId)) return 'running'
+  const activity = ctx.activityOf(sessionId)
+  if (activity === 'own') return 'running'
+  if (activity === 'descendant') return 'delegating'
   if (sessionUnviewedOf(task, sessionId)) return 'unread'
   return 'idle'
 }
@@ -216,9 +251,13 @@ export function cardViewModelOf(
   opts: {
     /** Sessions of this card suspended on the user (the related set). */
     waiting?: readonly WaitingSession[]
+    /** Who is doing this card's work right now — see {@link CardAgentWork}.
+     *  Absent = the caller cannot tell, and the card assumes the agent works. */
+    agentWork?: CardAgentWork
   } = {},
 ): CardViewModel {
   const waitingSessions = opts.waiting ?? []
+  const agentWork = opts.agentWork
   const running = hasOpenRun(task)
   const queued = pendingCommentCount(task)
   const runs = plainRunsOf(task)
@@ -240,7 +279,19 @@ export function cardViewModelOf(
   if (waitingSessions.length > 0) {
     primary = { kind: 'waiting', waiting: waitingSessions[0].waitingKind, count: waitingSessions.length }
   } else if (running) {
-    primary = { kind: 'running' }
+    /* THE one place the card decides 进行中 vs 等子 Agent.
+     *
+     * Both are "the card is live", and that is why they share the running
+     * bracket. What separates them is WHO is working, which the board can only
+     * answer from the session's three-valued activity: `own` false with
+     * descendants running means the agent the reader is talking to has already
+     * stopped and is only waiting for its children. `agentWork` is optional so
+     * the surfaces that genuinely cannot answer (and the pure tests) keep
+     * working — absent means "assume the agent is working", which is the
+     * behaviour every version before this one had. */
+    primary = agentWork !== undefined && !agentWork.own && agentWork.descendants > 0
+      ? { kind: 'delegating', count: agentWork.descendants }
+      : { kind: 'running' }
   } else if (queued > 0) {
     primary = { kind: 'queued', count: queued }
   } else if (gate.state === 'unseen') {
@@ -260,6 +311,7 @@ export function cardViewModelOf(
   // structural property. Keep this the ONLY place the mapping lives.
   const active = task.status === 'running'
     || primary.kind === 'waiting'
+    || primary.kind === 'delegating'
     || primary.kind === 'running'
 
   return {
@@ -288,9 +340,10 @@ export function cardViewModelOf(
 export function cardNextActionOf(
   view: CardViewModel,
   task: TaskRecord,
-): { kind: 'waiting' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain'; count?: number } | undefined {
+): { kind: 'waiting' | 'delegating' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain'; count?: number } | undefined {
   switch (view.primary.kind) {
     case 'waiting': return { kind: 'waiting', count: view.primary.count }
+    case 'delegating': return { kind: 'delegating', count: view.primary.count }
     case 'running': return { kind: 'running' }
     case 'queued': return { kind: 'queued', count: view.primary.count }
     case 'gate': return view.primary.failed ? { kind: 'failed' } : { kind: 'review' }

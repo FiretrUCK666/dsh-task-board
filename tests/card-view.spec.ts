@@ -111,6 +111,35 @@ describe('cardViewModelOf', () => {
     expect(cardLightOf({ ...cardViewModelOf(settledRun, {}), unviewed: true })).toBe('ring')
   })
 
+  it('a card whose agent stopped and only its subagents work says so — 等子 Agent, not 进行中', () => {
+    /* THE REPORTED GAP. `sessionActiveOf` = own ∨ descendant, so a conversation
+     * whose own turn has stopped while its subagents run reads "working" — and
+     * the card drew 进行中 for an agent that was not doing anything. The board
+     * now passes the split down; this is the table it produces. */
+    const live = startExecution(task(), NOW, 'e1').task
+    const delegating = cardViewModelOf(live, { agentWork: { own: false, descendants: 2 } })
+    expect(delegating.primary).toEqual({ kind: 'delegating', count: 2 })
+    expect(delegating.active, 'it is still live work — the halo keeps breathing').toBe(true)
+    expect(cardNextActionOf(delegating, live)).toEqual({ kind: 'delegating', count: 2 })
+    // Its own turn working outranks the children: one card, and the agent the
+    // reader is addressing is genuinely busy.
+    expect(cardViewModelOf(live, { agentWork: { own: true, descendants: 2 } }).primary).toEqual({ kind: 'running' })
+    // A request still outranks both.
+    const waited = cardViewModelOf(live, {
+      waiting: [{ sessionId: 's-1', waitingKind: 'question' }],
+      agentWork: { own: false, descendants: 2 },
+    })
+    expect(waited.primary).toMatchObject({ kind: 'waiting' })
+    // A caller that cannot tell (no `agentWork`) keeps the old reading — absent
+    // is not "delegating", because inventing a stop is worse than not naming it.
+    expect(cardViewModelOf(live, {}).primary).toEqual({ kind: 'running' })
+    // Subagents with no card work at all is NOT delegating: nothing is open, so
+    // the card has no work to be waiting on.
+    const settled = { ...task(), status: 'review' as const }
+    expect(cardViewModelOf(settled, { agentWork: { own: false, descendants: 3 } }).primary)
+      .not.toMatchObject({ kind: 'delegating' })
+  })
+
   it('the light table: waiting/running pulse, queued/gate/runs/idle do not', () => {
     // The board's 光效规则表 as a table: only these two primaries breathe
     // (plus the card's own 进行中 column). `queued` is deliberately quiet —
@@ -234,9 +263,9 @@ describe('cardSessionDotStateOf (one dot, one loudest truth)', () => {
       ...(viewedAt !== undefined ? { viewedAt } : {}),
     }],
   })
-  const faces = (over: { waiting?: boolean; active?: boolean } = {}) => ({
+  const faces = (over: { waiting?: boolean; activity?: 'own' | 'descendant' | 'idle' } = {}) => ({
     pendingInteractionOf: (id: string) => (over.waiting === true && id === 's-1' ? 'question' as const : undefined),
-    activeOf: (id: string) => over.active === true && id === 's-1',
+    activityOf: (id: string) => (id === 's-1' ? over.activity ?? 'idle' : 'idle' as const),
   })
 
   it('an unreviewed finish reads unread — the dot answering "which session just finished"', () => {
@@ -247,11 +276,19 @@ describe('cardSessionDotStateOf (one dot, one loudest truth)', () => {
     expect(cardSessionDotStateOf(finished(NOW + 10), 's-1', faces())).toBe('idle')
   })
 
-  it('live states outrank unread (waiting > running > unread > idle)', () => {
-    expect(cardSessionDotStateOf(finished(), 's-1', faces({ waiting: true, active: true }))).toBe('waiting')
-    expect(cardSessionDotStateOf(finished(), 's-1', faces({ active: true }))).toBe('running')
+  it('live states outrank unread (waiting > own > subagents > unread > idle)', () => {
+    expect(cardSessionDotStateOf(finished(), 's-1', faces({ waiting: true, activity: 'own' }))).toBe('waiting')
+    expect(cardSessionDotStateOf(finished(), 's-1', faces({ activity: 'own' }))).toBe('running')
     expect(cardSessionDotStateOf(finished(), 's-1', faces())).toBe('unread')
     expect(cardSessionDotStateOf(finished(NOW + 10), 's-1', faces())).toBe('idle')
+    // **THE ROW THAT WAS MISSING**: this conversation's own turn has stopped;
+    // only the subagents it dispatched are working. The dot must stop saying
+    // "running" — that word is the reader's evidence that the agent they are
+    // talking to is busy, and here it is not.
+    expect(cardSessionDotStateOf(finished(NOW + 10), 's-1', faces({ activity: 'descendant' }))).toBe('delegating')
+    // …and it outranks unread for the same reason live states do: one dot, one
+    // loudest truth.
+    expect(cardSessionDotStateOf(finished(), 's-1', faces({ activity: 'descendant' }))).toBe('delegating')
   })
 
   it('a session with no plain run honestly reads idle (no review state to show)', () => {

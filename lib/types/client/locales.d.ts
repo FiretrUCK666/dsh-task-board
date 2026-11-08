@@ -259,6 +259,8 @@ export declare const zh: {
     'detail.result.failed': string;
     'detail.result.cancelled': string;
     'detail.result.running': string;
+    'detail.result.delegating': string;
+    'detail.result.delegatingHint': string;
     'detail.comments': string;
     'detail.latestComment': string;
     'detail.hide': string;
@@ -653,6 +655,10 @@ export declare const zh: {
     'card.nextWaiting': string;
     'card.nextWaitingMany': string;
     'card.nextRunning': string;
+    'card.nextDelegating': string;
+    'card.nextDelegatingOne': string;
+    'card.delegating': string;
+    'card.delegatingTitle': string;
     'card.nextQueued': string;
     'card.nextFailed': string;
     'card.nextReview': string;

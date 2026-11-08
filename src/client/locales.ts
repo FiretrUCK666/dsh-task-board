@@ -279,6 +279,10 @@ export const zh = {
   'detail.result.failed': '失败',
   'detail.result.cancelled': '已取消',
   'detail.result.running': '进行中',
+  /* 「主 Agent 停了、只剩子 Agent 在跑」——它与「进行中」是两件事，而此前屏上
+     只有前者。词短、不带数字：计数器在会话行的时间线上，这一格只回答状态。 */
+  'detail.result.delegating': '等子 Agent',
+  'detail.result.delegatingHint': '主 Agent 已经停下，在等它派出去的子 Agent 回来；子 Agent 都回来之后它才会继续',
   'detail.comments': '评论 {n}',
   'detail.latestComment': '最新：「{text}」',
   'detail.hide': '隐藏',
@@ -705,6 +709,12 @@ export const zh = {
   'card.nextWaiting': '现在要你动手 · 点开去处理',
   'card.nextWaitingMany': '{n} 个会话在等你 · 点开逐个处理',
   'card.nextRunning': 'Agent 工作中 · 无需操作',
+  /* 卡片上那一行「现在是什么情况」。它必须说清**谁停了**：读者要能一眼看出
+     主 Agent 已经交出去、正在等结果，而不是以为它还在埋头干活。 */
+  'card.nextDelegating': '主 Agent 已停下 · 等 {n} 个子 Agent 回来',
+  'card.nextDelegatingOne': '主 Agent 已停下 · 等 1 个子 Agent 回来',
+  'card.delegating': '等子 Agent',
+  'card.delegatingTitle': '主 Agent 已停下，在等它派出去的子 Agent 回来（正在跑：{n} 个）',
   'card.nextQueued': '已排队 {n} 条 · 巡航开启后按序注入',
   'card.nextFailed': '失败待决策 · 留言或重跑',
   'card.nextReview': '待你确认完成',
@@ -1478,6 +1488,8 @@ export const en: Record<keyof typeof zh, string> = {
   'detail.result.failed': 'Failed',
   'detail.result.cancelled': 'Cancelled',
   'detail.result.running': 'Running',
+  'detail.result.delegating': 'Waiting on subagents',
+  'detail.result.delegatingHint': 'The agent has stopped and is waiting for the subagents it dispatched; it continues once they are back',
   'detail.comments': '{n} comments',
   'detail.latestComment': 'Latest: "{text}"',
   'detail.hide': 'Hide',
@@ -1876,6 +1888,10 @@ export const en: Record<keyof typeof zh, string> = {
   'card.nextWaiting': 'Yours to do now · open to handle',
   'card.nextWaitingMany': '{n} sessions need you · open to handle them one by one',
   'card.nextRunning': 'Agent working · nothing to do',
+  'card.nextDelegating': 'Main agent stopped · waiting on {n} subagents',
+  'card.nextDelegatingOne': 'Main agent stopped · waiting on 1 subagent',
+  'card.delegating': 'On subagents',
+  'card.delegatingTitle': 'The main agent has stopped and is waiting for the subagents it dispatched ({n} running)',
   'card.nextQueued': 'Queued {n} · injects in order when cruise is on',
   'card.nextFailed': 'Failed · steer with a comment or rerun',
   'card.nextReview': 'Awaiting your confirmation',

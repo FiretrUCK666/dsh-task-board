@@ -237,9 +237,17 @@ describe('linked rows read the SAME state derivation as run rows (no second dial
     // No rounds + still working (native turn observed elsewhere): running.
     const activeCtx = {
       ...ctx([linkedRow()]),
-      sessionActiveOf: () => true,
+      sessionActivityOf: () => 'own' as const,
     }
     expect(taskSessionsOf(bound(), activeCtx)[0]?.display.state).toBe('running')
+    // …and when only that session's SUBAGENTS are working, the row says so —
+    // the same activity answer, one value further along (the state that used to
+    // be flattened into 进行中 and hid a stopped agent).
+    const delegatingCtx = {
+      ...ctx([linkedRow()]),
+      sessionActivityOf: () => 'descendant' as const,
+    }
+    expect(taskSessionsOf(bound(), delegatingCtx)[0]?.display.state).toBe('delegating')
     // No rounds and not working: nothing in the ledger to read — the idle row.
     expect(taskSessionsOf(bound(), ctx([linkedRow()]))[0]?.display.state).toBe('cancelled')
   })

@@ -1921,23 +1921,47 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
                    * 一个集合只能有一个答案，而这个问题问的是**显示**：看得见几条就数几条。
                    * 「在不在工作」是另一个问题（`liveStateOf` 那条腿），它读的是工作集合。 */
                   const relatedIds = controller.sessionsOf(task).map(row => row.sessionId)
-                  const dotStateOf = (sessionId: string): 'waiting' | 'running' | 'unread' | 'idle' =>
+                  /* **谁在跑** — the three-valued activity, rolled over this card's
+                   * conversations. It is the ONE fact that lets the card say
+                   * 「等子 Agent」 instead of 「进行中」: `own` is the agent the
+                   * reader is talking to, `descendants` are the subagents it
+                   * dispatched. Reading a bare "is anything working" here is what
+                   * made a stopped main agent look busy. */
+                  let ownWorking = false
+                  let descendantsWorking = 0
+                  for (const sessionId of relatedIds) {
+                    const activity = controller.sessionActivityOf(sessionId)
+                    if (activity === 'own') ownWorking = true
+                    else if (activity === 'descendant') descendantsWorking += controller.descendantRunningCountOf(sessionId)
+                  }
+                  const dotStateOf = (sessionId: string): 'waiting' | 'running' | 'delegating' | 'unread' | 'idle' =>
                     cardSessionDotStateOf(task, sessionId, {
                       pendingInteractionOf: id => controller.pendingInteractionOf(id),
-                      activeOf: id => controller.sessionActiveOf(id),
+                      activityOf: id => controller.sessionActivityOf(id),
                     })
                   const dots = relatedIds.slice(0, 3).map(sessionId => ({ sessionId, state: dotStateOf(sessionId) }))
                   const overflowDots = Math.max(0, relatedIds.length - dots.length)
                   // One quiet next-action sentence, derived from the SAME
                   // `view.primary` the chip above renders — so the two lines
                   // can never name different states one line apart.
-                  const view = cardViewModelOf(task, { waiting: waitingSessions })
+                  const view = cardViewModelOf(task, {
+                    waiting: waitingSessions,
+                    agentWork: { own: ownWorking, descendants: descendantsWorking },
+                  })
                   const nextFact = cardNextActionOf(view, task)
                   const nextAction = nextFact === undefined ? undefined : (() => {
                     switch (nextFact.kind) {
                       case 'waiting': return nextFact.count !== undefined && nextFact.count > 1
                         ? t('card.nextWaitingMany', { n: String(nextFact.count) })
                         : t('card.nextWaiting')
+                      /* 「主 Agent 已停下 · 等 N 个子 Agent 回来」——这句话是这一档
+                         的主要载体：芯片只有四个字，而这里说得出**谁停了、在等几个**。 */
+                      case 'delegating': {
+                        const count = nextFact.count ?? 0
+                        return count === 1
+                          ? t('card.nextDelegatingOne')
+                          : t('card.nextDelegating', { n: String(count) })
+                      }
                       case 'running': return t('card.nextRunning')
                       case 'queued': return t('card.nextQueued', { n: String(nextFact.count ?? 0) })
                       case 'failed': return t('card.nextFailed')

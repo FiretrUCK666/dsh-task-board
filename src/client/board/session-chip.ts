@@ -12,7 +12,7 @@ import { t, type TaskBoardKey } from '../locales.ts'
 import type { ChipKind } from '../design/Chip.tsx'
 
 /** The live session state every row derives (execution kind). */
-export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
+export type SessionRowState = 'running' | 'delegating' | 'waiting' | 'succeeded' | 'failed' | 'cancelled'
 
 /** The chip's data (kind + label + spinner + optional explainer) — the row
  *  renders it; `title` carries the state's one-line meaning (hover). */
@@ -79,6 +79,11 @@ export function sessionStateChip(state: SessionRowState, waitingKind: PendingInt
         : { kind: 'warn', label: t('detail.result.running'), spinner: true }
     case 'running':
       return { kind: 'warn', label: t('detail.result.running'), spinner: true }
+    /* 「主 Agent 停下了，只剩它派出去的子 Agent 还在跑」——这一档**没有转圈**：
+     * 转圈说的是「这里有东西在转」，而这里恰恰没有。词是这句话唯一诚实的载体，
+     * 而它此前根本不存在（rollup 把两件事压成了一个「在跑」）。 */
+    case 'delegating':
+      return { kind: 'warn', label: t('detail.result.delegating'), title: t('detail.result.delegatingHint') }
     case 'succeeded':
       return { kind: 'success', label: t(settled) }
     case 'failed':

@@ -7,14 +7,23 @@
  * Pure functions — no side effects, fully unit-testable.
  */
 import type { PendingInteractionKind } from './controller.ts';
+import type { SessionActivity } from './session-activity.ts';
 import { type TaskRecord, type ExecutionRecord } from './tasks.ts';
 /**
  * The live state of an execution's session (aggregating all rounds that share
  * the session: the original run and its comments).
  */
 export interface SessionDisplay {
-    /** The session's current state (waiting > running > latest settled). */
-    state: 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
+    /**
+     * The session's current state (waiting > delegating > running > latest settled).
+     *
+     * `delegating` is the one that used to be invisible: the session's OWN turn is
+     * not running, but a subagent it dispatched still is. Everything rolls up to
+     * "working" (`sessionActiveOf` = own ∨ descendant), so the row, the card and
+     * its light all read as 进行中 — and the reader cannot see that the agent they
+     * are talking to has already stopped and is merely waiting for its children.
+     */
+    state: 'running' | 'delegating' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
     /** When the session last saw activity (started or settled a round). */
     lastActivity: number | undefined;
     /** The interaction kind if the session is waiting on the user. */
@@ -28,7 +37,7 @@ export interface SessionDisplay {
  * the outcome of the run that opened the row. (Session-less legacy rows read
  * their own execution, which is all they have.)
  */
-export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRecord, waitingKind: PendingInteractionKind | undefined, active?: boolean): SessionDisplay;
+export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRecord, waitingKind: PendingInteractionKind | undefined, activity?: SessionActivity): SessionDisplay;
 /**
  * The live state of a LINKED session on one task — the same derivation
  * {@link sessionDisplay} uses, addressed by session id. Two entry points into
@@ -36,7 +45,7 @@ export declare function sessionDisplay(task: TaskRecord, execution: ExecutionRec
  * the narrower one win for a session that is both run and bound, so the row
  * reports an outcome that has already been superseded.
  */
-export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, active: boolean): SessionDisplay;
+export declare function linkedSessionDisplay(task: TaskRecord, sessionId: string, waitingKind: PendingInteractionKind | undefined, activity: SessionActivity): SessionDisplay;
 /**
  * The window FACTS of one conversation on this task: when it started, when its
  * last settled round ended, and whether a round is still in flight.

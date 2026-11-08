@@ -15,7 +15,7 @@
 import { ExecutionService } from './execution.ts';
 import { type AttachmentRef, type PromptAttachment } from './attachment.ts';
 import { type LinkedSessionRow } from './linked-sessions.ts';
-import { type LatestUserMessage } from './session-activity.ts';
+import { type LatestUserMessage, type SessionActivity } from './session-activity.ts';
 import { type TaskLiveState } from './task-live.ts';
 import { type TaskSessionRow } from './session-list.ts';
 import type { PendingInteractionKind, QuestionAnswerEntry, QuestionRpcFace, WireQuestion } from './question-rpc.ts';
@@ -2096,6 +2096,23 @@ export declare class BoardController {
      *  "did MY turn finish?" and must keep reading `byId[id].running` verbatim
      *  (see the byId declaration and session-activity.ts). */
     sessionActiveOf(sessionId: string): boolean;
+    /**
+     * **是「谁」在跑** —— the same derivation as {@link sessionActiveOf}, before it
+     * is collapsed to a boolean.
+     *
+     * The collapse is what hid a real state: a main agent that has stopped and is
+     * only waiting for the subagents it dispatched reads as `active` (its
+     * descendants are working), so every surface drew 进行中 and the reader could
+     * not see that the agent they were talking to was idle. Surfaces that WRITE
+     * about the state ask this; surfaces that only need a light keep asking the
+     * boolean.
+     */
+    sessionActivityOf(sessionId: string): SessionActivity;
+    /**
+     * How many subagent descendants of this session are running right now — the
+     * 「等 N 个子 Agent」 number. Zero for a session working on its own turn.
+     */
+    descendantRunningCountOf(sessionId: string): number;
     /**
      * The two-pass discipline for an INCOMPLETE live verdict (`'unknown'`: a
      * related row the snapshot does not carry, or a list that has not arrived).

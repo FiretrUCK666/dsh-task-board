@@ -11,7 +11,7 @@ import type { PendingInteractionKind } from '../../core/controller.ts';
 import { type TaskBoardKey } from '../locales.ts';
 import type { ChipKind } from '../design/Chip.tsx';
 /** The live session state every row derives (execution kind). */
-export type SessionRowState = 'running' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
+export type SessionRowState = 'running' | 'delegating' | 'waiting' | 'succeeded' | 'failed' | 'cancelled';
 /** The chip's data (kind + label + spinner + optional explainer) — the row
  *  renders it; `title` carries the state's one-line meaning (hover). */
 export type SessionChipShape = {

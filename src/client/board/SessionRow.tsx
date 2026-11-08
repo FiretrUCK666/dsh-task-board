@@ -62,14 +62,17 @@ export function SessionRow({ state, chip, leading, meta, footer, handle, session
   unviewed?: boolean
 }) {
   // ONE state-bound glow, two semantic values, one amber breath:
-  // 'attention' — the session is live right now (waiting / running);
+  // 'attention' — the session is live right now (waiting / running), **including
+  //               a session whose own turn stopped and whose subagents are still
+  //               working**: that conversation is still in flight, so its row
+  //               keeps breathing even though its chip now says 等子 Agent;
   // 'unread'    — content finished after the last acknowledgment (same
   //               clock the card's session dot reads), so the row and the
   //               dot can never disagree about which conversation is new.
   // A live state outranks unread — one glow, one loudest truth; read and
   // idle rows stay quiet. The animation pauses (never cancels) between the
   // states, so a settle mid-pulse fades instead of tearing a frame.
-  const glow = state === 'waiting' || state === 'running'
+  const glow = state === 'waiting' || state === 'running' || state === 'delegating'
     ? 'attention'
     : unviewed === true ? 'unread' : 'none'
   // Inline rename state: idle → editing → (saving). The pencil flips the

@@ -20,6 +20,7 @@
  */
 import type { PendingInteractionKind } from '../../core/controller.ts';
 import { type RuleBlockedCause } from '../../core/automation.ts';
+import type { SessionActivity } from '../../core/session-activity.ts';
 import { type GateState, type WaitingSession } from '../../core/task-demand.ts';
 import { type TaskRecord } from '../../core/tasks.ts';
 /**
@@ -30,6 +31,11 @@ import { type TaskRecord } from '../../core/tasks.ts';
  *   waiting — a session of this card is suspended on the user right now
  *            (approval / plan review / question). The human's turn outranks
  *            everything, including work still in flight.
+ *   delegating — the card is live, but the agent the reader is talking to has
+ *            STOPPED: only the subagents it dispatched are still working. It
+ *            ranks inside the running bracket because the card is genuinely
+ *            busy — it just is not busy *here*, and the reader could not tell
+ *            those two apart before this kind existed.
  *   running — the card or one of its conversations is working.
  *   queued  — comments are saved and waiting for the dispatcher.
  *   gate    — work finished, nobody has looked at it yet, nobody has ruled on
@@ -41,6 +47,9 @@ import { type TaskRecord } from '../../core/tasks.ts';
 export type CardPrimary = {
     kind: 'waiting';
     waiting: PendingInteractionKind;
+    count: number;
+} | {
+    kind: 'delegating';
     count: number;
 } | {
     kind: 'running';
@@ -57,12 +66,34 @@ export type CardPrimary = {
 } | {
     kind: 'idle';
 };
+/**
+ * Who is doing the work, rolled over one card's conversations — the ONE input
+ * that lets a card say 等子 Agent instead of 进行中.
+ *
+ * `own` — at least one conversation's OWN turn is running (the agent the reader
+ *         is addressing is working);
+ * `descendants` — how many subagents are running across those conversations.
+ *
+ * The card reads both, because the interesting state is a CONJUNCTION:
+ * `!own ∧ descendants > 0` — nobody is working on this card's behalf except the
+ * children, and until this was passed in the card had no way to know.
+ */
+export interface CardAgentWork {
+    readonly own: boolean;
+    readonly descendants: number;
+}
 /** One related-session dot (max 3 rendered, +N overflow). */
 export interface CardSessionDot {
     sessionId: string;
-    /** waiting/running = live; unread = a finished run this card has not had
-     *  reviewed yet (same clock as the detail row's glow); idle otherwise. */
-    state: 'waiting' | 'running' | 'unread' | 'idle';
+    /**
+     * waiting / running / delegating = live; unread = a finished run this card has
+     * not had reviewed yet (same clock as the detail row's glow); idle otherwise.
+     *
+     * `delegating` is the dot's half of 「主 Agent 停了」: the conversation is alive
+     * through its subagents only, so the dot keeps its amber but loses its fill —
+     * activity that is not here.
+     */
+    state: 'waiting' | 'running' | 'delegating' | 'unread' | 'idle';
 }
 /** Display title: the raw title, or the untitled placeholder when blank.
  *  THE one blank-title judgment — card, board rows, detail header and delete
@@ -114,20 +145,23 @@ export declare function cardLightOf(view: Pick<CardViewModel, 'primary' | 'activ
  * strip can never answer "which conversation is which" differently from the
  * detail's rows:
  *
- *   waiting  — the session is suspended on a question / plan / approval;
- *   running  — its own turn or a running subagent descendant works now;
- *   unread   — a finished run on THIS card has not been reviewed yet
- *              (the per-session clock `sessionUnviewedOf`, the exact clock
- *              the detail's session-row glow reads);
- *   idle     — settled and seen (or a session with no run and no read state).
+ *   waiting    — the session is suspended on a question / plan / approval;
+ *   delegating — its own turn has STOPPED; only the subagents it dispatched are
+ *                working (the dot keeps its amber but loses its fill);
+ *   running    — its own turn works right now;
+ *   unread     — a finished run on THIS card has not been reviewed yet
+ *                (the per-session clock `sessionUnviewedOf`, the exact clock
+ *                the detail's session-row glow reads);
+ *   idle       — settled and seen (or a session with no run and no read state).
  *
  * Live states outrank unread: a conversation that is both working and
  * unreviewed reads as working — one dot, one loudest truth. Pure: the board
- * supplies the two live faces, the precedence lives here once.
+ * supplies the live face, the precedence lives here once.
  */
 export declare function cardSessionDotStateOf(task: TaskRecord, sessionId: string, ctx: {
     pendingInteractionOf: (sessionId: string) => PendingInteractionKind | undefined;
-    activeOf: (sessionId: string) => boolean;
+    /** The three-valued activity (`controller.sessionActivityOf`). */
+    activityOf: (sessionId: string) => SessionActivity;
 }): CardSessionDot['state'];
 /** Everything TaskCard renders (no JSX here — testable). */
 export interface CardViewModel {
@@ -189,6 +223,9 @@ export interface CardViewModel {
 export declare function cardViewModelOf(task: TaskRecord, opts?: {
     /** Sessions of this card suspended on the user (the related set). */
     waiting?: readonly WaitingSession[];
+    /** Who is doing this card's work right now — see {@link CardAgentWork}.
+     *  Absent = the caller cannot tell, and the card assumes the agent works. */
+    agentWork?: CardAgentWork;
 }): CardViewModel;
 /**
  * One quiet "what's next" sentence for the card (scanning aid, never a
@@ -198,6 +235,6 @@ export declare function cardViewModelOf(task: TaskRecord, opts?: {
  * this returns the structured fact so copy lives in one place.
  */
 export declare function cardNextActionOf(view: CardViewModel, task: TaskRecord): {
-    kind: 'waiting' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain';
+    kind: 'waiting' | 'delegating' | 'running' | 'queued' | 'failed' | 'review' | 'scheduled' | 'chain';
     count?: number;
 } | undefined;

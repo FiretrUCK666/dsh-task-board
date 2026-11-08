@@ -24,6 +24,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { primaryChipLabel, settledChipLabel } from '../src/client/board/TaskCard.tsx'
+import { t } from '../src/client/locales.ts'
 import { blockedCauseOf } from '../src/core/automation.ts'
 import { cardUpdatedAtOf } from '../src/client/board/card-view.ts'
 import { createTask, withSchedule } from '../src/core/tasks.ts'
@@ -1509,6 +1510,22 @@ describe('card chip label composition', () => {
     expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 3 })).toBe('待处理 3')
     useLanguage('en')
     expect(primaryChipLabel({ kind: 'waiting', waiting: 'question', count: 3 })).toBe('Pending 3')
+  })
+
+  it('a card waiting on subagents says so in one word, in both languages', () => {
+    // The word is the whole point of this state: every rolled-up surface used to
+    // answer 「进行中」 for a session whose own turn had stopped (`own ∨
+    // descendant` collapses exactly here), so the reader could not tell a busy
+    // agent from one that had handed the work out and was waiting.
+    useLanguage('zh')
+    expect(primaryChipLabel({ kind: 'delegating', count: 1 })).toBe('等子 Agent')
+    expect(primaryChipLabel({ kind: 'delegating', count: 3 })).toBe('等子 Agent')
+    useLanguage('en')
+    expect(primaryChipLabel({ kind: 'delegating', count: 2 })).toBe('On subagents')
+    // The count belongs to the sentence, not the chip: the card is narrow, and
+    // the number is what the next line has room for.
+    expect(t('card.nextDelegating', { n: '2' })).toContain('2')
+    expect(t('card.nextDelegatingOne')).not.toContain('{n}')
   })
 
   it('the gate names its outcome, and the run counter is history (zh)', () => {

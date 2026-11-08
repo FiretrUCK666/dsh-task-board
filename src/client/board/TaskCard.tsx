@@ -45,6 +45,10 @@ export function primaryChipLabel(primary: CardPrimary): string {
         : `${t('card.waiting')} · ${t(waitingKeyOf(primary.waiting))}`
     case 'running':
       return t('detail.result.running')
+    /* 「等子 Agent」而不是「进行中」：这张卡确实还在忙，但**忙的不是它自己**。
+     * 数字不进芯片（卡片窄，而计数在下面那一行有地方说），芯片只回答状态。 */
+    case 'delegating':
+      return t('card.delegating')
     case 'queued':
       return `${t('card.commentQueue')} ${String(primary.count)}`
     case 'gate':
@@ -340,6 +344,14 @@ export function TaskCard({ task, selected, workspaceTitleOf, boundTitleOf, pendi
             </Chip>
           ) : primary.kind === 'running' ? (
             <Chip className={css.cardBadge} kind="warn" fill={false} icon={<span className={css.spinner} aria-hidden="true" />}>
+              {primaryChipLabel(primary)}
+            </Chip>
+          ) : primary.kind === 'delegating' ? (
+            /* **转圈换成一个停住的记号。** 这一档说的是「这里已经停了」——真正的
+               工作在子 Agent 那边。给它一枚转圈会把它讲成反话（那个圈属于 running），
+               所以用暂停记号：词与记号同时说同一件事。 */
+            <Chip className={css.cardBadge} kind="warn" fill={false} icon={<Icon name="pause" />}
+              title={t('card.delegatingTitle', { n: String(primary.count) })}>
               {primaryChipLabel(primary)}
             </Chip>
           ) : primary.kind === 'queued' ? (

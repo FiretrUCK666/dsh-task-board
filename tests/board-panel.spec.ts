@@ -475,6 +475,16 @@ function boardStub(
   sessions: {
     readonly of?: Readonly<Record<string, readonly string[]>>
     readonly active?: readonly string[]
+    /**
+     * The three-valued activity per session (`own` / `descendant` / `idle`).
+     *
+     * Without it the artifact can only draw "working", so the one state this
+     * family exists for — **the agent stopped, only its subagents run** — could
+     * never appear on the picture a human reviews. `descendants` supplies the
+     * 「等 N 个子 Agent」 number.
+     */
+    readonly activity?: Readonly<Record<string, 'own' | 'descendant' | 'idle'>>
+    readonly descendants?: Readonly<Record<string, number>>
   } = {},
 ): Record<string, unknown> {
   const snapshot = () => ({
@@ -500,7 +510,17 @@ function boardStub(
       }
       if (key === 'relatedSessionIdSet') return () => new Set<string>()
       if (key === 'liveStateOf') return () => 'idle'
-      if (key === 'sessionActiveOf') return (sessionId: string) => (sessions.active ?? []).includes(sessionId)
+      if (key === 'sessionActiveOf') return (sessionId: string) => {
+        const activity = sessions.activity?.[sessionId]
+        if (activity !== undefined) return activity === 'own' || activity === 'descendant'
+        return (sessions.active ?? []).includes(sessionId)
+      }
+      if (key === 'sessionActivityOf') return (sessionId: string) => {
+        const activity = sessions.activity?.[sessionId]
+        if (activity !== undefined) return activity
+        return (sessions.active ?? []).includes(sessionId) ? 'own' as const : 'idle' as const
+      }
+      if (key === 'descendantRunningCountOf') return (sessionId: string) => sessions.descendants?.[sessionId] ?? 0
       if (key === 'pendingInteractionOf') return (sessionId: string) => pending[sessionId]
       /* 另一件事：那是**问题正文**（`{ questions: [...] }`），不是闸门种类。两者共用一个
          回答就是假面比现实窄的另一种形状——通知抽屉会拿种类去读 `.questions.length`。 */
@@ -655,6 +675,14 @@ describe('stale-bundle status line (rendered through the panel)', () => {
         at + 2_000,
         'run-task-live',
       ).task,
+      /* **一张「主 Agent 停了、只剩子 Agent 在跑」的卡。** 它是这一族最容易被
+         画漏的一档：滚在一起来的活动值把「谁在跑」压成了布尔，于是卡片说「进行中」。
+         工件里必须有它，否则那张图证明不了这一档长得出来。 */
+      startExecution(
+        createTask({ title: '主 Agent 交出去了：两个子 Agent 还在跑', description: '', prompt: '派两个子任务', status: 'todo' }, at, 'task-delegating'),
+        at + 2_000,
+        'run-task-delegating',
+      ).task,
     ]
   }
 
@@ -672,9 +700,19 @@ describe('stale-bundle status line (rendered through the panel)', () => {
       'task-ask-question': ['sess-ask-q', 'sess-ask-q2'],
       'task-ask-plan': ['sess-ask-plan'],
       'task-live': ['sess-live'],
+      'task-delegating': ['sess-delegating'],
       'task-review': ['sess-review'],
     },
-    active: ['sess-live'],
+    activity: {
+      'sess-ask-q': 'idle',
+      'sess-ask-q2': 'idle',
+      'sess-ask-plan': 'idle',
+      'sess-live': 'own',
+      // 自己的轮停了，只剩派出去的两个子 Agent 在跑 —— 这一档此前在屏上没有名字。
+      'sess-delegating': 'descendant',
+      'sess-review': 'idle',
+    },
+    descendants: { 'sess-delegating': 2 },
   } as const
 
   function writeBoardArtifact(target: string, mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: 'low' | 'normal' | 'high' | 'urgent' } | undefined, scheme: 'light' | 'dark' = process.env.DSH_PANEL_DARK === '1' ? 'dark' : 'light'): string {
@@ -731,10 +769,16 @@ describe('stale-bundle status line (rendered through the panel)', () => {
     }
     /* 会话点那一排同样要真的画出来，而且要同时有「等你回答」与「进行中」两档：
        「一栏三个点，能不能指出是哪一条卡住你」只在这张图上回答得了。 */
-    for (const state of ['waiting', 'running']) {
+    for (const state of ['waiting', 'running', 'delegating']) {
       expect(markup, `工件里没有 ${state} 这一档会话点——那张图证明不了点也能指出是哪一条`)
         .toContain(`data-state="${state}"`)
     }
+    /* **「主 Agent 停了」必须在纸上看得见。** 这一档此前只是「进行中」，所以它
+       既要有那句话，也要有不再是转圈的那枚芯片。 */
+    expect(markup, '工件里没有「等子 Agent」这一档卡——那张图证明不了主 Agent 停下长什么样')
+      .toContain(t('card.delegating'))
+    expect(markup, '「等子 Agent」那张卡没有说出它在等几个')
+      .toContain(t('card.nextDelegating', { n: '2' }))
   })
 
   /* THE STRIP IS RENDERED BY THE WORKBENCH BAR, NOT BY THE BOARD.

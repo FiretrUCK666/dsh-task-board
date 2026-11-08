@@ -208,6 +208,8 @@ const INTERNAL = {
   sessionConfig: '会话**此刻**的配置（活投影：只读会一直拿到最新值，不带任何历史拷贝）',
   sessionLabelsOf: '会话的工作区归属标签（面板上那些胶囊）',
   sessionActiveOf: '会话是否还在工作（活性层：会话自己或它召唤的后代有轮次在跑）',
+  sessionActivityOf: '**是谁**在跑（三值：自己的轮 / 只有子 Agent / 没有）。`sessionActiveOf` 把前两者压成一个布尔，而那正是卡片看不出「主 Agent 已经停了」的原因；读它同样是纯投影，改不了任何文档',
+  descendantRunningCountOf: '这条会话派出去、此刻还在跑的子 Agent 有几个（「等 N 个子 Agent」里那个数）。纯读：名单来自原生会话表，不带任何写入',
   liveStateOf: '这张卡此刻的活性判决（三值，panel 只在明确 `running` 时显示进行中，看不见的 `unknown` 不写成在跑）。任务清单的「在不在跑」只从这里取——同一个问题只许有一个答案。',
   sessionAvailability: '会话是否可用。**这是「不可用」的唯一判据**（归档、已删除都走它），别处不要另写一套',
   pendingInteractionOf: '会话上挂着的交互（审批 / 计划确认 / 提问）。**读它不是动作，作答才是**——作答是人的动作，在下面「决定不给模型」那一组里',

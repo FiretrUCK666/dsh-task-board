@@ -20,7 +20,7 @@ import { approveTaskToStatus, armSchedule, markTaskViewedAt, moveTaskToStatus, r
 import { deriveLinkedSessions, type LinkedSessionRow, type LinkedSessionSource } from './linked-sessions.ts'
 import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-sessions.ts'
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
-import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage, type SessionActivityIndex } from './session-activity.ts'
+import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage, type SessionActivity, type SessionActivityIndex } from './session-activity.ts'
 import type { LineageRow } from './session-lineage.ts'
 import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { askTargetOf } from './item-ask.ts'
@@ -1785,7 +1785,7 @@ export class BoardController {
       linked: this.linkedOf(task),
       titleOf: sessionId => this.sessionTitle(sessionId),
       pendingInteractionOf: sessionId => this.pendingInteractionOf(sessionId),
-      sessionActiveOf: sessionId => this.sessionActiveOf(sessionId),
+      sessionActivityOf: sessionId => this.sessionActivityOf(sessionId),
       archivedOf: sessionId => this.archivedOf(sessionId),
       untitledLabel: this.untitledSessionLabel,
     })
@@ -4457,6 +4457,29 @@ export class BoardController {
    *  (see the byId declaration and session-activity.ts). */
   sessionActiveOf(sessionId: string): boolean {
     return this.activity().active(sessionId)
+  }
+
+  /**
+   * **是「谁」在跑** —— the same derivation as {@link sessionActiveOf}, before it
+   * is collapsed to a boolean.
+   *
+   * The collapse is what hid a real state: a main agent that has stopped and is
+   * only waiting for the subagents it dispatched reads as `active` (its
+   * descendants are working), so every surface drew 进行中 and the reader could
+   * not see that the agent they were talking to was idle. Surfaces that WRITE
+   * about the state ask this; surfaces that only need a light keep asking the
+   * boolean.
+   */
+  sessionActivityOf(sessionId: string): SessionActivity {
+    return this.activity().activityOf(sessionId)
+  }
+
+  /**
+   * How many subagent descendants of this session are running right now — the
+   * 「等 N 个子 Agent」 number. Zero for a session working on its own turn.
+   */
+  descendantRunningCountOf(sessionId: string): number {
+    return this.activity().descendantRunningCount(sessionId)
   }
 
   /**

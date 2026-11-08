@@ -2109,6 +2109,18 @@
  * 所以一栏里三个点你永远找得到是哪一条卡住了；环在动，所以余光就能抓到。
  * 两者都住在这枚 8px 的空记号上（没有字可淡），环那一层是伪元素，
  * 见 `scripts/verify-breath-fades-decoration.mjs`。 */
+/* 「等子 Agent」：这一条会话自己的轮已经**停了**，还在跑的是它派出去的子 Agent。
+ *
+ * 形态是**空心**：实心说的是「这里有人在做事」，而这里恰恰没有——它只剩一个壳，
+ * 活动在外面。四种点因此各有各的形状（实心 = 本会话在跑；实心 + 呼吸环 = 等你回答；
+ * 空心 = 只剩子 Agent；整颗闪 = 未读），颜色仍然是同一个注意力色。
+ *
+ * 不闪：闪的那两档说的是「有事要你看 / 有东西在动」，而这一档只是**如实**——卡片
+ * 与它的会话行上都有文字说清「主 Agent 已停下」，一枚 8px 的点不需要再喊一次。 */
+.cardSessionDot[data-state='delegating'] {
+  background: transparent;
+  border: 2px solid var(--dsh-tb-attention);
+}
 .cardSessionDot[data-state='waiting']::after {
   content: '';
   position: absolute;

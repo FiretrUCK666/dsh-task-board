@@ -13,6 +13,7 @@
  */
 import type { PendingInteractionKind } from './controller.ts';
 import type { LinkedSessionRow } from './linked-sessions.ts';
+import type { SessionActivity } from './session-activity.ts';
 import { type SessionDisplay } from './session-display.ts';
 import { type TaskRecord } from './tasks.ts';
 /** One displayed session row (one per real session, de-duplicated). */
@@ -74,13 +75,13 @@ export interface TaskSessionContext {
     titleOf(sessionId: string): string | undefined;
     /** Resolve a session's pending interaction. */
     pendingInteractionOf(sessionId: string): PendingInteractionKind | undefined;
-    /** Resolve the session's ACTIVITY: is it still working right now (its own
-     *  turn or a running subagent descendant)? The controller wires the one
-     *  activity derivation (session-activity.ts) here; a direct steer's round is
-     *  settled at birth and a session whose own turn paused but whose subagent
-     *  keeps working is still working, so a bare flag would leave the row dark
-     *  while the agent is genuinely busy. */
-    sessionActiveOf?(sessionId: string): boolean;
+    /** Resolve the session's ACTIVITY: is it still working right now, and — when
+     *  it is — **whose** turn is doing the work? The controller wires the one
+     *  activity derivation (session-activity.ts) here. The three-valued answer
+     *  matters: `own` is the agent the reader is talking to, `descendant` is only
+     *  its subagents (the agent has stopped and is waiting for them), and a bare
+     *  boolean collapses those into one row that says 进行中 either way. */
+    sessionActivityOf?(sessionId: string): SessionActivity;
     /** Whether the session is ARCHIVED natively (the registry's archive set).
      *
      *  An archived conversation is PUT AWAY, not gone — archiving is 「可恢复的隐藏」.
