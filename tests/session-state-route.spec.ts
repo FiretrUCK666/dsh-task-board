@@ -1,9 +1,17 @@
 /**
  * Session-state bridge (host, session-state-route.ts): the narrow read-only
  * plan/goal/subagent view and its HTTP envelope — native shapes only
- * (GoalView objective/phase, SubagentListEntry label/activity, async
- * listChildren keyed by the parent session id); missing faces and malformed
- * leaves degrade to absent blocks (no command catalog here, by design).
+ * (GoalView objective/phase, **SubagentCatalogEntry `{ id, createdAt, mode,
+ * label? }`** and async `listChildren` keyed by the parent session id); missing
+ * faces and malformed leaves degrade to absent blocks (no command catalog here,
+ * by design).
+ *
+ * THE SUBAGENT FIXTURE IS THE POINT OF THIS FILE. It used to be
+ * `{ kind: 'child', label, activity }` — a shape the installed host never
+ * returns — so this spec was green while the bridge dropped every child and the
+ * comment panel showed nothing. A fake that is WIDER than reality hides the bug
+ * it is supposed to catch; the fixture is now copied from
+ * `@deepseek-ai/dsh-subagent/projection-types` (`SubagentCatalogEntry`).
  */
 import { describe, expect, it } from 'vitest'
 import { createSessionStateHandler, queryParamOf, readSessionState } from '../src/host/session-state-route.ts'
@@ -15,13 +23,14 @@ const goals = {
     ? { objective: '发布 v2', phase: 'active' }
     : undefined,
 }
-// Native SubagentListEntry shape: kind/label/activity (async, session-id keyed).
+// Native SubagentCatalogEntry shape (async, session-id keyed): id + createdAt +
+// mode, where only the continuable mode guarantees a label.
 const subagents = {
   listChildren: (parent: string) => parent === 's1' ? Promise.resolve([
-    { kind: 'child', id: 'c1', activity: 'running', hasChildren: false, mode: 'continuable', label: '子任务 A' },
-    { kind: 'child', id: 'c2', activity: 'inactive', hasChildren: true, mode: 'one-shot', label: '已结束 B' },
-    { kind: 'diagnostic', id: 'c3', reason: 'corrupt' },
-    { kind: 'child', id: 'c4', activity: 'running', hasChildren: false, mode: 'one-shot' },
+    { id: 'c1', createdAt: 1, mode: 'continuable', label: '子任务 A' },
+    { id: 'c2', createdAt: 2, mode: 'one-shot', label: '已结束 B' },
+    { id: 'c3', createdAt: 3, mode: 'unknown' },
+    { createdAt: 4, mode: 'external', label: '没有 id 的行' },
   ]) : Promise.resolve([]),
 }
 
@@ -38,9 +47,21 @@ describe('readSessionState (structural read of native plan/goal/subagents)', () 
     expect(view.goal).toBeUndefined()
   })
 
-  it('reads LIVE subagents: kind child + label + activity running (async, by session id)', async () => {
+  it('reads the subagent CATALOG as it is: id + label, no invented status', async () => {
     const view = await readSessionState({ sessions: { get: () => 'agent' }, subagents }, 's1')
-    expect(view.subagents).toEqual([{ title: '子任务 A', status: 'running' }])
+    // Every row with an id is listed — including the unknown-mode child the old
+    // `kind === 'child' && label` filter would have dropped.
+    expect(view.subagents).toEqual([
+      { id: 'c1', title: '子任务 A' },
+      { id: 'c2', title: '已结束 B' },
+      { id: 'c3', title: 'c3' },
+    ])
+    // …and the row without an id is the one thing dropped: nothing could look it
+    // up, so showing it would be a line that cannot be checked.
+    expect(view.subagents?.some(row => row.title === '没有 id 的行')).toBe(false)
+    // Liveness is NOT this layer's claim (the catalog carries none); the client
+    // asks its own activity derivation by id.
+    expect(view.subagents?.every(row => !('status' in row))).toBe(true)
   })
 
   it('unknown session → no blocks; a throwing service degrades that block only', async () => {

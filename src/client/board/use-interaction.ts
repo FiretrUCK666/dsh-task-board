@@ -42,6 +42,16 @@ export interface SessionGoalView {
   activation?: 'armed' | 'disarmed'
 }
 export interface SessionSubagentView {
+  /**
+   * The child session's id — what makes this row CHECKABLE.
+   *
+   * The host's catalog carries `{ id, mode, label }` and no activity state, so
+   * "is it still running" is answered here by the board's own activity
+   * derivation (`controller.sessionActiveOf(id)`) — the same answer the card's
+   * 「等 N 个子 Agent」 prints. Absent on older bridge payloads, where the row
+   * falls back to whatever `status` the host sent.
+   */
+  id?: string
   title: string
   status?: string
 }
@@ -143,7 +153,7 @@ export function useSessionContext(controller: BoardController, sessionId: string
           ok: boolean
           value?: {
             goal?: { title: string; active: boolean }
-            subagents?: Array<{ title: string; status?: string }>
+            subagents?: Array<{ id?: string; title: string; status?: string }>
           }
         }> : undefined))
         .then(envelope => {

@@ -325,6 +325,29 @@ function git(cwd: string, ...args: string[]): string {
 }
 
 /**
+ * Where the throwaway git repositories are built.
+ *
+ * **Inside the repository's own gitignored `tmp/`, not `os.tmpdir()`.** The
+ * system temp directory is outside the working tree, so a confined run (the
+ * Windows sandbox — `workspace-write`) may refuse to create or clean it up, and
+ * the failure surfaces as `EPERM` from a real `git` call: the suite turns red for
+ * a reason that has nothing to do with the code under test. A fixture that needs
+ * a writable scratch directory should ask for one where it is guaranteed to be
+ * allowed, and `tmp/` is already the repository's own scratch (it is gitignored).
+ *
+ * `os.tmpdir()` stays as the fallback for a checkout that has no `tmp/`.
+ */
+function scratchOf(): string {
+  const local = path.join(process.cwd(), 'tmp')
+  try {
+    fs.mkdirSync(local, { recursive: true })
+    return local
+  } catch {
+    return os.tmpdir()
+  }
+}
+
+/**
  * A checkout whose remote's DEFAULT branch is `branch`, and the remote itself.
  *
  * The remote is a real bare repository with a real branch on it, and the
@@ -333,7 +356,7 @@ function git(cwd: string, ...args: string[]): string {
  * called — the test passes the name in and the reader has to find it.
  */
 function checkoutOfRemote(branch: string): { remote: string; checkout: string } {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-tb-git-'))
+  const root = fs.mkdtempSync(path.join(scratchOf(), 'dsh-tb-git-'))
   GIT_FIXTURES.push(root)
   const remote = path.join(root, 'origin.git')
   const checkout = path.join(root, 'source')

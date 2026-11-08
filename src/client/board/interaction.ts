@@ -65,7 +65,7 @@ export const FINISHED_SUBAGENT_STATUS = new Set(['inactive', 'finished', 'comple
 export function contextWorthOf(context: {
   todos?: readonly { content?: string; status?: string }[]
   goal?: { title?: string; active?: boolean }
-  subagents?: readonly { title?: string; status?: string }[]
+  subagents?: readonly { id?: string; title?: string; status?: string }[]
 }): boolean {
   if ((context.todos ?? []).some(todo => todo.status !== 'completed')) return true
   if (context.goal?.active === true) return true

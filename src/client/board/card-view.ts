@@ -259,6 +259,17 @@ export function cardViewModelOf(
   const waitingSessions = opts.waiting ?? []
   const agentWork = opts.agentWork
   const running = hasOpenRun(task)
+  /* **列也算活的证据。** `running` 只问「这张卡自己有没有未结算的轮」——而那漏掉了
+   * 一整类卡：**从没被看板跑过、只是绑了一条会话**的卡（会话建卡就是这种）。它的轮
+   * 次表是空的，可会话在干活，看板那条活性腿就把列顶到了「进行中」。于是卡片顶着黄边、
+   * 会话点在闪，主芯片却是空的：读者看到一张什么都不说的卡。
+   *
+   * 所以活性的判据是两个：自己有一轮在跑，**或者**列已经在「进行中」而这条会话确实
+   * 有活动。第二个子句要求在 `agentWork` 看见活动——列可能是过期的，而「有东西在跑」
+   * 是当下的观测，两者同时成立才写「进行中」。 */
+  const liveByColumn = task.status === 'running'
+    && agentWork !== undefined
+    && (agentWork.own || agentWork.descendants > 0)
   const queued = pendingCommentCount(task)
   const runs = plainRunsOf(task)
   const lastRun = runs[runs.length - 1]
@@ -278,7 +289,7 @@ export function cardViewModelOf(
   let primary: CardPrimary
   if (waitingSessions.length > 0) {
     primary = { kind: 'waiting', waiting: waitingSessions[0].waitingKind, count: waitingSessions.length }
-  } else if (running) {
+  } else if (running || liveByColumn) {
     /* THE one place the card decides 进行中 vs 等子 Agent.
      *
      * Both are "the card is live", and that is why they share the running

@@ -25,8 +25,15 @@ import { json } from './http-json.ts'
 export interface SessionStateView {
   plan?: { active: boolean; pending: boolean }
   goal?: { title: string; active: boolean }
-  /** Child subagent thumbnails of the session (read-only directory view). */
-  subagents?: Array<{ title: string; status?: string }>
+  /**
+   * The session's DIRECT children, as the host's catalog knows them.
+   *
+   * `id` is what makes the row actionable and checkable: the client asks its own
+   * activity derivation whether that child is still working (the same answer the
+   * card's 「等 N 个子 Agent」 prints), so this layer never invents a status it
+   * cannot read.
+   */
+  subagents?: Array<{ id: string; title: string }>
 }
 
 /** Service faces the host wiring supplies (each optional). */
@@ -40,12 +47,6 @@ export interface SessionStateFaces {
 
 function isStr(value: unknown): value is string {
   return typeof value === 'string' && value !== ''
-}
-
-/** Subagent finished words (native 'inactive' = finished; tolerate reshares). */
-function subagentFinished(status: string | undefined): boolean {
-  return status === 'inactive' || status === 'finished' || status === 'completed'
-    || status === 'done' || status === 'settled'
 }
 
 /**
@@ -87,16 +88,30 @@ export async function readSessionState(
     try {
       const list = await faces.subagents.listChildren(sessionId)
       if (Array.isArray(list)) {
+        /* **宿主给的是一张目录，不是一张状态表。**
+         *
+         * 安装的 DSH 里 `listChildren` 返回的是 `SubagentCatalogEntry`：
+         * `{ id, createdAt, mode }`（`mode` 为 one-shot / continuable / external /
+         * unknown，续跑型的 `label` 必有、一次性的可能没有）。它**不带**活动状态。
+         *
+         * 这里以前按 `{ kind: 'child', label, activity }` 过滤，于是**每一条都被丢掉**
+         * ——评论区里一个子 Agent 也看不见，而这条路由照常 200。判据读错对象比读不到
+         * 更坏：它让「没有」看起来像「宿主没给」。
+         *
+         * 所以这一层只回答它真能回答的：**有哪些子 Agent、各自叫什么**。谁还在跑是
+         * 活性问题，客户端按 id 问自己的活性推导（`controller.sessionActiveOf`）——
+         * 那个答案与卡片上「等 N 个子 Agent」用的是同一个。 */
         const subagents = list
-          .filter(row => {
-            const entry = row as Record<string, unknown>
-            return entry.kind === 'child' && isStr(entry.label)
-          })
-          .map(row => {
-            const entry = row as Record<string, unknown>
-            return { title: entry.label as string, status: isStr(entry.activity) ? entry.activity : undefined }
-          })
-          .filter(item => !subagentFinished(item.status))
+          .map(row => row as Record<string, unknown>)
+          .filter(row => isStr(row.id))
+          .map(row => ({
+            id: row.id as string,
+            title: isStr(row.label)
+              ? row.label as string
+              // 没有标签时用宿主给的短 id：一行「未命名」比少一行好，而 id 至少
+              // 还能与卡片上的会话对上。
+              : (row.id as string).slice(0, 8),
+          }))
         if (subagents.length > 0) view.subagents = subagents
       }
     } catch { /* degraded silently */ }

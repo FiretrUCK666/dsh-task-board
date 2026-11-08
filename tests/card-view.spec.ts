@@ -13,7 +13,7 @@ import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { cardLightOf, cardNextActionOf, cardSessionDotStateOf, cardViewModelOf, titleOrUntitled, type CardPrimary } from '../src/client/board/card-view.ts'
 import type { WaitingSession } from '../src/core/task-demand.ts'
-import { createTask, newCommentRound, newDirectRound, newExternalRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
+import { createTask, hasOpenRun, newCommentRound, newDirectRound, newExternalRound, startExecution, withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -138,6 +138,31 @@ describe('cardViewModelOf', () => {
     const settled = { ...task(), status: 'review' as const }
     expect(cardViewModelOf(settled, { agentWork: { own: false, descendants: 3 } }).primary)
       .not.toMatchObject({ kind: 'delegating' })
+  })
+
+  it('a BOUND card (no board round) still names who is working — the reported card', () => {
+    /* THE REPORTED SHAPE, photographed: the board column said 进行中 and the card's
+     * session dot was hollow (delegating), yet the chip row and the next-action
+     * line were both EMPTY — the two surfaces of one card disagreed in public.
+     *
+     * Cause: the card's live gate was `hasOpenRun(task)`, and a card that was never
+     * RUN by the board (a session-bound card) has no rounds at all. The live leg
+     * held it in 进行中; the view model never reached the running branch. */
+    const bound = withStatus(task(), 'running', NOW)
+    expect(hasOpenRun(bound), 'this fixture is the point: no round of its own').toBe(false)
+    const view = cardViewModelOf(bound, { agentWork: { own: false, descendants: 2 } })
+    expect(view.primary).toEqual({ kind: 'delegating', count: 2 })
+    expect(view.active, 'the column is live work — it keeps breathing').toBe(true)
+    // The agent's own turn wins the word, exactly as it does for a card with a round.
+    expect(cardViewModelOf(bound, { agentWork: { own: true, descendants: 2 } }).primary)
+      .toEqual({ kind: 'running' })
+    // A card in ANOTHER column keeps the old chain: a native turn observed on a
+    // settled card must not overwrite 待你决断 (the reader's outstanding decision).
+    const settled = withStatus(task(), 'review', NOW)
+    expect(cardViewModelOf(settled, { agentWork: { own: true, descendants: 0 } }).primary)
+      .not.toEqual({ kind: 'running' })
+    // No activity to observe = no claim. The column alone is not evidence.
+    expect(cardViewModelOf(bound, {}).primary).toEqual({ kind: 'idle' })
   })
 
   it('the light table: waiting/running pulse, queued/gate/runs/idle do not', () => {

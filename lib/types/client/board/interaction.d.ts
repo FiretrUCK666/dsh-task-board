@@ -45,6 +45,7 @@ export declare function contextWorthOf(context: {
         active?: boolean;
     };
     subagents?: readonly {
+        id?: string;
         title?: string;
         status?: string;
     }[];

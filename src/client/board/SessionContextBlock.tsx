@@ -81,10 +81,22 @@ export function SessionContextBlock({ context, className, sessionId, controller 
   const done = todos.filter(item => item.status === 'completed').length
   const active = todos.filter(item => item.status === 'in_progress').length
   const pending = todos.length - done - active
-  // The host bridge already serves only LIVE subagents (finished ones are not
-  // in flight); an unknown status still counts as live (never hides work).
-  const liveSubagents = (context.subagents ?? []).filter(sub =>
-    sub.status === undefined || !FINISHED_SUBAGENT_STATUS.has(sub.status))
+  // **谁还在跑由活性推导回答，不由这张目录回答。**
+  //
+  // 宿主那张子 Agent 目录只说「有哪些、各自叫什么」（`{ id, title }`）——它不带
+  // 活动状态，而这一块要的是「还在跑的」。所以每一行按 id 去问 `sessionActiveOf`：
+  // 那个答案与卡片上「等 N 个子 Agent」同源，两边不会各说各的。
+  //
+  // 拿不到 id 或没有 controller 时退回旧判据（`status` 缺席算在跑）：**看不见不等于
+  // 跑完了**，宁可多显示一行，也不把正在干活的藏起来。
+  const subagentRows = (context.subagents ?? []).map(sub => {
+    const known = sub.id !== undefined && controller !== undefined
+      ? controller.sessionActiveOf(sub.id)
+      : undefined
+    const live = known ?? (sub.status === undefined || !FINISHED_SUBAGENT_STATUS.has(sub.status))
+    return { ...sub, live }
+  })
+  const liveSubagents = subagentRows.filter(sub => sub.live)
   const subagentCount = liveSubagents.length
   const goalActive = context.goal?.active === true
   // THE display rule: only UNFINISHED things are worth the block — a fully
@@ -166,7 +178,7 @@ export function SessionContextBlock({ context, className, sessionId, controller 
                   ellipsize away: the whole crew is visible at a glance. */}
               <ul className={css.sessionContextSubList}>
                 {liveSubagents.map(sub => (
-                  <li key={sub.title} className={css.sessionContextSubItem}>
+                  <li key={sub.id ?? sub.title} className={css.sessionContextSubItem}>
                     <span className={css.sessionContextSubDot} aria-hidden="true" />
                     <span className={css.sessionContextText} title={sub.status ?? undefined}>
                       {sub.title}

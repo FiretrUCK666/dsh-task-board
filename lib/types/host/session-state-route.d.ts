@@ -29,10 +29,17 @@ export interface SessionStateView {
         title: string;
         active: boolean;
     };
-    /** Child subagent thumbnails of the session (read-only directory view). */
+    /**
+     * The session's DIRECT children, as the host's catalog knows them.
+     *
+     * `id` is what makes the row actionable and checkable: the client asks its own
+     * activity derivation whether that child is still working (the same answer the
+     * card's 「等 N 个子 Agent」 prints), so this layer never invents a status it
+     * cannot read.
+     */
     subagents?: Array<{
+        id: string;
         title: string;
-        status?: string;
     }>;
 }
 /** Service faces the host wiring supplies (each optional). */
