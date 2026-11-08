@@ -38,16 +38,22 @@
   flex: 0 1 auto;
   font-size: 12px;
   font-weight: 500;
-  /* **行盒按小件那一档推出来，不写 `1.5`。**
+  /* **行盒 = 墨高（`1em`），不是「差不多」。**
    *
-   * `1.5` 在 12px 上是 18px，而小件只有 20px——减掉上下各 1px 的边（内容盒 18）刚好
-   * 装下，再减掉墨位校正那 1.92px 的**下内衬**，内容盒只剩 **17.04px**：比行盒还矮，
-   * 字被自己的盒子挤压（`pnpm run audit` 的 `capsulesNotSqueezed` 逐档都量到同一个数）。
+   * 这里原本写 `16px`：12px 的字住在 16px 行盒里，多出来的 4px 半行距按字体的
+   * ascent / descent 分给上下，而 CJK 的墨并不在 em 盒正中——于是**墨心比盒心低
+   * 半个 halfLeading**，4 倍放大下一眼就看出来，而换一款字体偏差还换个方向。
    *
-   * 所以行盒从件高推：件高减去上下两条边。20 − 2 = 18 是**上限**，而校正要吃掉 1.92，
-   * 于是行盒给 16px——12px 的字在 16px 行盒里，墨（约 12px 高）上下各留 2px，装得下。
-   * 这一条与 `.chipFill` 的高度是一对；改一个不改另一个，compress 就回来了。 */
-  line-height: 16px;
+   * 处方与按钮那一族是同一条：行高设成墨高，`halfLeading` 归零，墨心就是盒心，
+   * 任何字体、任何字号都成立。丢掉的那 4px 用 `padding-block: 2px` 补回到盒子上，
+   * 所以胶囊的高度不变（`.chipFill` 的 `--dsh-tb-chip-h` 也不动）——**推的是行盒，
+   * 不是盒子**，这正是「胶囊自己没偏」的那一半。
+   *
+   * 不用 `text-box-trim`：这个 Chromium 里它被接受、读得出 `trim-both`，行盒却
+   * 一个像素都不变（见下面按钮那一族的记录）。 */
+  line-height: var(--dsh-tb-text-line-h);
+  padding-block: 2px;
+  box-sizing: border-box;
   color: var(--dsh-tb-text-2);
   white-space: nowrap;
 }
@@ -60,6 +66,11 @@
    .chipLead below, never here. */
 .chipBody {
   display: block;
+  /* 行盒是墨高（`1em`，见 `.chip`），而 CJK 的墨可以比 em 盒高一点点——`.truncate`
+     那三件套里的 `overflow: hidden` 会把它裁掉 1px（`pnpm run audit` 的
+     `inkNotCut` 量的就是这个）。上下各留 2px：盒子长大，行盒不变，所以**墨仍然居
+     中**，只是不再被自己的裁剪边切到。 */
+  padding-block: 2px;
   /* 裁剪三件套归 `.truncate`（chip 里的文字槽：它是省略号落点，但现在自己抄了一份三件套。）——共享层内部也只有一个家。 */
 }
 

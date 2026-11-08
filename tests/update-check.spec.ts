@@ -375,7 +375,16 @@ function checkoutOfRemote(branch: string): { remote: string; checkout: string } 
 }
 
 afterAll(() => {
-  for (const root of GIT_FIXTURES) fs.rmSync(root, { recursive: true, force: true })
+  for (const root of GIT_FIXTURES) {
+    /* **清理失败不许让整份 suite 变红。** Windows 上 `git` 会在 `.git` 里留下只读
+     * 文件，`rmSync` 会抛 `EPERM`；`force: true` 只忽略「不存在」，不管这个。而这条
+     * `afterAll` 的职责是收尾，不是断言——它一抛，37 条用例里真正跑过的那 35 条
+     * 结果全被盖掉，看起来像产品坏了。重试几次，仍不行就留下目录（`tmp/` 是
+     * gitignore 的），把「没清干净」降级成噪音。 */
+    try {
+      fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 })
+    } catch { /* a locked .git is a cleanup nuisance, not a verdict */ }
+  }
 })
 
 describe('the checkout\'s remote tip comes from the remote\'s own default branch', () => {
