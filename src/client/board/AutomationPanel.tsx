@@ -12,7 +12,7 @@
  * the editor (one switch, one place, no duplicated affordances), and the
  * board has every capability the detail has (including 完成后接续).
  */
-import { useEffect, useId, useState } from 'react'
+import { useId, useState } from 'react'
 import { type BoardController } from '../../core/controller.ts'
 import { automationTasksOf } from '../../core/automation.ts'
 import type { TaskRecord } from '../../core/tasks.ts'
@@ -24,6 +24,7 @@ import { Dialog } from '../design/Dialog.tsx'
 import { AutomationEditor, scheduleSummary } from './automation-ui.tsx'
 import { Button, Icon } from '../design/ui.tsx'
 import { STATUS_KEY } from './status.ts'
+import { useRequiredBoardSnapshot } from './use-board-snapshot.ts'
 
 /** One automated task in the overview: identity + ONE expand row (live
  *  summary) + the shared full editor when expanded. */
@@ -82,11 +83,8 @@ export function AutomationPanel({ controller, onClose }: {
   controller: BoardController
   onClose: () => void
 }) {
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot())
-  useEffect(
-    () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
-    [controller],
-  )
+  // The ONE subscription seam (see use-board-snapshot.ts).
+  const snapshot = useRequiredBoardSnapshot(controller)
 
   // Tasks with LIVE automation (enabled schedule or session rules).
   const automated = automationTasksOf(snapshot.tasks)

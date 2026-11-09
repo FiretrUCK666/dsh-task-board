@@ -39,6 +39,7 @@ import { useWorkSteps } from '../chat-settings.ts'
 import { useTranscriptTail, TailFrame } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
+import { useRequiredBoardSnapshot } from './use-board-snapshot.ts'
 import { Button } from '../design/ui.tsx'
 import { useMemo } from 'react'
 
@@ -51,8 +52,8 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   execution: ExecutionRecord
   onClose: () => void
 }) {
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot())
-  useEffect(() => controller.subscribe(() => setSnapshot(controller.getSnapshot())), [controller])
+  // The ONE subscription seam (see use-board-snapshot.ts).
+  const snapshot = useRequiredBoardSnapshot(controller)
   // The live task record: the clicked execution may have been superseded.
   const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   const sessionId = execution.sessionId

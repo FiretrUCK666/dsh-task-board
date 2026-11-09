@@ -91,6 +91,7 @@ import { flowSummaryOf } from '../../core/flow-metrics.ts'
 import { Chip } from '../design/Chip.tsx'
 import { ThumbRail } from '../design/ThumbRail.tsx'
 import { FeedRow } from './FeedRow.tsx'
+import { useRequiredBoardSnapshot } from './use-board-snapshot.ts'
 
 import { sendClientReport } from '../client-report.ts'
 
@@ -199,11 +200,10 @@ const RUN_RECEIPT_MS = 4000
  *  something else. Until then the three section markers in the return are what
  *  the reader navigates by. */
 export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: BoardController; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined; onOpenRows?: (cardId: string) => void }) {
-  const [snapshot, setSnapshot] = useState(controller.getSnapshot())
-  useEffect(
-    () => controller.subscribe(() => setSnapshot(controller.getSnapshot())),
-    [controller],
-  )
+  // The ONE subscription seam (see use-board-snapshot.ts): every page reads the
+  // board's snapshot through the same hook, so a change to how subscribing works
+  // cannot land in one page and miss another.
+  const snapshot = useRequiredBoardSnapshot(controller)
   // A wait that fires while the board is OPEN must surface, never hide: the
   // controller keeps the board open for its own staged sessions (see
   // `isBoardStagedSession`), so the fresh arrival is visible right here — but

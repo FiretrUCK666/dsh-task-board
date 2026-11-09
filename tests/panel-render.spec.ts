@@ -40,9 +40,9 @@
  * asserting about a host that is not running.
  */
 import { describe, expect, it } from 'vitest'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync } from 'node:fs'
 import * as lightningcss from 'lightningcss'
-import { join } from 'node:path'
+import { join, relative, sep } from 'node:path'
 import { designCss, itemSurfaceSource, PAGES, repoRoot, type Page } from './panel-harness.ts'
 import { clientSheets, pageCss } from './panel-harness.ts'
 import {
@@ -4395,5 +4395,64 @@ describe('药丸的几何只写一次', () => {
     const label = declarationRules(css).find(rule => rule.selector.replace(/\s+/g, ' ').trim() === '.itemDateAxis li > b')
     expect(declsOf(label?.body ?? '').get('line-height'), '标签那一行不再声明行盒，珠子就没有可算的中线')
       .toBe('var(--item-date-line)')
+  })
+})
+
+/**
+ * 订阅看板快照，只有一处实现。
+ *
+ * ── 为什么这条要由门禁守 ────────────────────────────────────────────────────
+ *
+ * `useState(getSnapshot()) + useEffect(subscribe)` 这三行曾经在五个文件里各写一遍，
+ * 其中三份逐字相同。那不是「重复的几行代码」，是**同一个机制有五个家**：订阅要不要
+ * 补一次首读、controller 换了要不要重订、没看板时返回什么——每处答案都可能不同，而
+ * **屏上没有任何一处会说这件事**。改一处不会改到另一处，正是它最难被发现的地方。
+ *
+ * 订阅现在只发生在 `use-board-snapshot.ts`。**别再手写一份**：要快照就调那个 hook，
+ * 它有两种签名（这个页面必有看板 / 可能没有看板），已经是全部需要的情形。
+ *
+ * 判据读的是**结构**（有没有第二处 `controller.subscribe(...setSnapshot...)` 的写法），
+ * 不是字样：注释里提一句 `subscribe` 不算第二份实现。
+ */
+describe('the board snapshot has ONE subscription seam', () => {
+  const SEAM = 'src/client/board/use-board-snapshot.ts'
+
+  /** Every client .ts/.tsx whose CODE (comments stripped) subscribes to the controller. */
+  const subscribers = (): string[] => {
+    const out: string[] = []
+    const walk = (dir: string): void => {
+      for (const entry of readdirSync(dir, { withFileTypes: true })) {
+        const full = join(dir, entry.name)
+        if (entry.isDirectory()) { walk(full); continue }
+        if (!/\.(ts|tsx)$/.test(entry.name)) continue
+        const rel = relative(repoRoot, full).split(sep).join('/')
+        if (rel === SEAM) continue
+        // Comments are stripped first: a comment that NAMES subscribe is not one.
+        const code = readFileSync(full, 'utf8')
+          .replace(/\/\*[\s\S]*?\*\//g, '')
+          .replace(/^\s*\/\/.*$/gm, '')
+        if (/\.subscribe\s*\(\s*\(\)\s*=>\s*setSnapshot\s*\(/.test(code)) out.push(rel)
+      }
+    }
+    walk(join(repoRoot, 'src/client'))
+    return out
+  }
+
+  it('no file outside the seam writes its own setSnapshot-on-subscribe', () => {
+    const found = subscribers()
+    expect(found, `这些文件各自写了一份订阅；改订阅逻辑会漏掉它们，而屏上不会说：${found.join(', ')}`)
+      .toEqual([])
+  })
+
+  it('the probe bites: the pattern it looks for is the one that was removed', () => {
+    // The exact three lines that used to live in five files.
+    const planted = 'useEffect(() => controller.subscribe(() => setSnapshot(controller.getSnapshot())), [controller])'
+    expect(/\.subscribe\s*\(\s*\(\)\s*=>\s*setSnapshot\s*\(/.test(planted), 'the detector no longer recognises the shape it removed').toBe(true)
+  })
+
+  it('the seam is the one place that subscribes, and it reads the snapshot there', () => {
+    const seam = readFileSync(join(repoRoot, SEAM), 'utf8')
+    expect(seam).toMatch(/controller\.subscribe\(/)
+    expect(seam).toMatch(/controller\.getSnapshot\(\)/)
   })
 })
