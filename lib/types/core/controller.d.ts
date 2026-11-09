@@ -696,7 +696,9 @@ export type SessionAvailability = 'visible' | 'archived' | 'removed' | 'gone';
  */
 export declare class BoardController {
     private readonly deps;
-    private tasks;
+    private ledger;
+    private get ledgerRows();
+    private set ledgerRows(value);
     private boardOpen;
     private selectedTaskId;
     private listeners;
@@ -738,6 +740,7 @@ export declare class BoardController {
      * are preserved by the sync client's dirty overlay before this is called.
      */
     applyRemote(view: import('./board-doc.ts').BoardView): void;
+    private cachedSnapshot;
     getSnapshot(): ControllerSnapshot;
     /** Whether multi-device sync is live (the wiring reports it once at boot);
      *  in fallback mode this device is always the engine and the lease story
@@ -1102,7 +1105,9 @@ export declare class BoardController {
      * by itself. Dragging more session sources in ADDS to the set (same
      * session, one row).
      */
+    private linkedCache;
     linkedOf(task: TaskRecord): LinkedSessionRow[];
+    private deriveLinkedOf;
     /** Hide one session of the task (run or linked) — the unified per-session
      *  hide: recorded in both families (the derived hidden-session set in
      *  session-list.ts reads either, so a run session and a linked view of the

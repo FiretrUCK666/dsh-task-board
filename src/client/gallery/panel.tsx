@@ -48,6 +48,7 @@ import { t } from '../locales.ts'
 import { BANDS } from '../design/bands.ts'
 import css from './gallery.module.css'
 import base from '../design/base.module.css'
+import { ToolCallCard } from '../design/ToolCallCard.tsx'
 import { SHARED_CANDIDATES } from './shared-candidates.ts'
 
 /**
@@ -910,6 +911,33 @@ export function DesignGallery() {
                 <span className={css.galleryLabel}>{status}</span>
               </span>
             ))}
+          </div>
+        </Section>
+
+        {/* ── 工具的调用回执：唯一画在别人树里的那张卡 ───────────────────────
+            它不是本插件的面板，而是 SHELL 在会话流里渲染的那张：所以它自带一个小
+            词汇表（`--card-*`），而不是复用面板的 `--dsh-tb-*`。摆在这里是为了让
+            「这张卡长什么样」有一处可看的地方——它在真实界面里只出现在对话里。 */}
+        <Section title={t('gallery.toolCard')}>
+          <div className={css.gallerySpecimenRow}>
+            <ToolCallCard
+              ok
+              headline="created 2 ops"
+              summary="task.comment.send"
+              ops={[
+                { kind: 'created', ref: '#12', title: 'Write the convergence survey', detail: 'board', ok: true },
+                { kind: 'updated', ref: '#7', title: 'Fix the border token shape', detail: 'item', ok: true },
+              ]}
+            />
+          </div>
+          <div className={css.gallerySpecimenRow}>
+            <ToolCallCard
+              ok={false}
+              headline="refused 1 op"
+              summary="task.create"
+              notes={['nothing was written']}
+              ops={[{ kind: 'refused', detail: 'missing title', ok: false }]}
+            />
           </div>
         </Section>
 

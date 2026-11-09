@@ -707,7 +707,25 @@ function randomUuid(): string {
  * persist through the store; UI and DOM mounts subscribe and re-render.
  */
 export class BoardController {
-  private tasks: TaskRecord[] = []
+  /* THE LEDGER'S SETTER DROPS THE CACHED SNAPSHOT — STRUCTURALLY, NOT BY
+   * DISCIPLINE.
+   *
+   * `getSnapshot` is cached so subscribers can compare by identity (see there).
+   * That cache is only correct if EVERY replacement of the ledger invalidates it,
+   * and the ledger is assigned from twenty-odd places. Asking each of them to
+   * remember is the kind of rule that is right until someone adds the
+   * twenty-sixth — and the failure is silent: a stale `tasks` array keeps being
+   * served until some unrelated notify happens to land.
+   *
+   * So the assignment is the invalidation point. `notify()` still drops it too,
+   * because non-ledger fields (cruise, selection, engine seat) change without
+   * touching this. */
+  private ledger: TaskRecord[] = []
+  private get ledgerRows(): TaskRecord[] { return this.ledger }
+  private set ledgerRows(next: TaskRecord[]) {
+    this.ledger = next
+    this.cachedSnapshot = undefined
+  }
   private boardOpen = false
   private selectedTaskId: string | undefined
   private listeners = new Set<() => void>()
@@ -736,7 +754,7 @@ export class BoardController {
 
   /** Load the persisted ledger and start the navigation/status subscriptions. */
   start(): void {
-    this.tasks = this.deps.store.load()
+    this.ledgerRows = this.deps.store.load()
     // The first pass waits for the list baseline (the SAME gate as the
     // scheduler's first tick — one readiness discipline, not two): a pass
     // against a still-loading list sees no running sessions while the user
@@ -837,7 +855,7 @@ export class BoardController {
    */
   applyRemote(view: import('./board-doc.ts').BoardView): void {
     if (this.disposed) return
-    this.tasks = [...view.tasks]
+    this.ledgerRows = [...view.tasks]
     this.cruiseState = normalizeCruiseValue(view.cruise)
     this.notify()
     if (this.engine) this.dispatch()
@@ -845,9 +863,28 @@ export class BoardController {
 
   // --- snapshot / subscription ------------------------------------------------
 
+  /* THE SNAPSHOT IS CACHED, AND THE IDENTITY IS THE POINT — NOT THE ALLOCATION.
+   *
+   * Every surface subscribes with `setSnapshot(controller.getSnapshot())`, and
+   * React compares that value by identity. A getter that builds a fresh object
+   * each call therefore tells EVERY subscriber that something changed, on every
+   * notification — including notifications that only touched a field the
+   * subscriber never reads. The board re-renders its whole tree for a scheduler
+   * heartbeat, the item panel re-derives its three maps for a cruise toggle.
+   *
+   * `tasks` is the ledger and it is replaced (never mutated) on every change, so
+   * it is the honest identity of "did the data change". When it is unchanged the
+   * derived members below recompute from the same inputs, so the previous object
+   * is still correct — and returning it lets subscribers skip.
+   *
+   * Invalidation has two owners, and both are structural: the ledger setter
+   * (any `tasks` assignment) and `notify()` (every announced change). */
+  private cachedSnapshot: ControllerSnapshot | undefined
+
   getSnapshot(): ControllerSnapshot {
-    return {
-      tasks: this.tasks,
+    if (this.cachedSnapshot !== undefined) return this.cachedSnapshot
+    this.cachedSnapshot = {
+      tasks: this.ledgerRows,
       boardOpen: this.boardOpen,
       selectedTaskId: this.selectedTaskId,
       cruise: { ...this.cruiseState },
@@ -856,6 +893,7 @@ export class BoardController {
       heartbeat: { lastOkAt: this.schedulerHeartbeatOkAt },
       engine: { held: this.engine, synced: this.syncActive, hostProto: this.hostProto, bootedAt: this.hostBootedAt },
     }
+    return this.cachedSnapshot
   }
 
   /** Whether multi-device sync is live (the wiring reports it once at boot);
@@ -908,7 +946,7 @@ export class BoardController {
 
   /** Set (or clear, with undefined) a task's accent color. */
   setTaskColor(taskId: string, color: string | undefined): void {
-    this.tasks = this.tasks.map(task => task.id === taskId
+    this.ledgerRows = this.ledgerRows.map(task => task.id === taskId
       ? withTaskColor({ ...task, updatedAt: this.now() }, color)
       : task)
     this.persistAndNotify()
@@ -960,7 +998,7 @@ export class BoardController {
    */
   referenceSessionOf(taskId: string | undefined): string | undefined {
     if (taskId !== undefined) {
-      const task = this.tasks.find(candidate => candidate.id === taskId)
+      const task = this.ledgerRows.find(candidate => candidate.id === taskId)
       if (task !== undefined) {
         for (const { sessionId } of this.relatedSessionsOf(task)) {
           if (sessionId !== undefined) return sessionId
@@ -1191,7 +1229,7 @@ export class BoardController {
   sessionAvailability(sessionId: string | undefined): SessionAvailability {
     if (sessionId === undefined) return 'gone'
     if (this.archivedOf(sessionId)) return 'archived'
-    if (this.tasks.some(task => (task.removedSessions ?? []).includes(sessionId))) return 'removed'
+    if (this.ledgerRows.some(task => (task.removedSessions ?? []).includes(sessionId))) return 'removed'
     if (this.deps.sessions.list.getSnapshot().byId[sessionId] === undefined) return 'gone'
     return 'visible'
   }
@@ -1244,7 +1282,7 @@ export class BoardController {
   }
 
   openTask(id: string): void {
-    if (!this.tasks.some(task => task.id === id)) return
+    if (!this.ledgerRows.some(task => task.id === id)) return
     // Opening the card clears the CARD-level unread reminder only — the ring,
     // the「新 N」chip, the 未运行 dots. It is a summary: reading the card is not
     // reading the conversation, so it must NOT touch the per-round read clock.
@@ -1258,7 +1296,7 @@ export class BoardController {
     // conversation it is about.
     const at = this.now()
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (task.id !== id || task.viewedAt === at) return task
       changed = true
       return { ...task, viewedAt: at }
@@ -1279,7 +1317,7 @@ export class BoardController {
   markExecutionViewed(taskId: string, executionId: string): void {
     const at = this.now()
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (task.id !== taskId) return task
       if (!task.executions.some(round => round.id === executionId)) return task
       const executions = task.executions.map(round => {
@@ -1314,7 +1352,7 @@ export class BoardController {
   markTaskViewed(taskId: string): void {
     const at = this.now()
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (task.id !== taskId) return task
       // The read clock is ONE stamp, written by the shared function: the card's
       // own baseline and every round's, and nothing else. A second copy of the
@@ -1336,7 +1374,7 @@ export class BoardController {
    * review pages). Unknown ids are ignored.
    */
   openTaskFromNotification(id: string, sessionId?: string): void {
-    if (!this.tasks.some(task => task.id === id)) return
+    if (!this.ledgerRows.some(task => task.id === id)) return
     if (sessionId !== undefined) this.markTaskSessionViewed(id, sessionId)
     else this.markTaskViewed(id)
     this.selectedTaskId = id
@@ -1354,7 +1392,7 @@ export class BoardController {
     const at = this.now()
     let changed = false
     let matched = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (task.id !== taskId) return task
       const executions = task.executions.map(round => {
         if (round.sessionId !== sessionId || round.viewedAt === at) return round
@@ -1381,7 +1419,7 @@ export class BoardController {
     const wanted = new Set(taskIds)
     const at = this.now()
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (!wanted.has(task.id)) return task
       const executions = task.executions.map(round => {
         if (round.viewedAt === at) return round
@@ -1419,9 +1457,9 @@ export class BoardController {
     // empty-headed when the content was already there.
     const task = this.supplementedTask(createTask(input, this.now(), this.uuid(), this.nextOrder()))
     // A fresh card reads as the newest of its layout column.
-    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
+    this.ledgerRows = promoteToColumnTop([...this.ledgerRows, task], task.id, task.status, this.now())
     this.persistAndNotify()
-    return this.tasks.find(candidate => candidate.id === task.id) ?? task
+    return this.ledgerRows.find(candidate => candidate.id === task.id) ?? task
   }
 
   /**
@@ -1454,7 +1492,7 @@ export class BoardController {
         ? [bind, ...this.snapshotWorkspaceSessions(bind.workspaceId).map(sessionId => ({ kind: 'session' as const, sessionId }))]
         : [bind]),
     }
-    this.tasks = promoteToColumnTop([...this.tasks, boundTask], boundTask.id, boundTask.status, this.now())
+    this.ledgerRows = promoteToColumnTop([...this.ledgerRows, boundTask], boundTask.id, boundTask.status, this.now())
     this.persistAndNotify()
     // A freshly bound source may be RUNNING right now (the user dragged in a
     // session/workspace mid-conversation, or picked a live conversation into
@@ -1556,7 +1594,7 @@ export class BoardController {
    * @returns the new task, or undefined when the source is unknown.
    */
   copyTask(id: string): TaskRecord | undefined {
-    const source = this.tasks.find(task => task.id === id)
+    const source = this.ledgerRows.find(task => task.id === id)
     if (source === undefined) return undefined
     const now = this.now()
     // Birth supplement runs here too (copy/instantiate are births, not
@@ -1612,11 +1650,11 @@ export class BoardController {
     // A template is a NEW card: it lands at the top of its landing column
     // (待规划) exactly like a manually created task — a copied card reads as
     // the newest of the column, never appended to the bottom.
-    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
+    this.ledgerRows = promoteToColumnTop([...this.ledgerRows, task], task.id, task.status, this.now())
     this.persistAndNotify()
     // Re-read the promoted row (createTask's contract): the copy the caller
     // sees IS the card on the board, never the pre-promotion object.
-    return this.tasks.find(candidate => candidate.id === task.id) ?? task
+    return this.ledgerRows.find(candidate => candidate.id === task.id) ?? task
   }
 
   /**
@@ -1637,7 +1675,7 @@ export class BoardController {
    * @returns the saved template, or undefined when the source is unknown.
    */
   saveTemplate(id: string, name?: string): import('./task-templates.ts').TaskTemplate | undefined {
-    const source = this.tasks.find(task => task.id === id)
+    const source = this.ledgerRows.find(task => task.id === id)
     if (source === undefined) return undefined
     const store = this.deps.templateStore ?? new LocalStorageTemplateStore()
     const taken = new Set(store.load().map(template => template.name))
@@ -1675,9 +1713,9 @@ export class BoardController {
       templateToNewInput(template),
       this.now(), this.uuid(), this.nextOrder(),
     ))
-    this.tasks = promoteToColumnTop([...this.tasks, task], task.id, task.status, this.now())
+    this.ledgerRows = promoteToColumnTop([...this.ledgerRows, task], task.id, task.status, this.now())
     this.persistAndNotify()
-    return this.tasks.find(candidate => candidate.id === task.id) ?? task
+    return this.ledgerRows.find(candidate => candidate.id === task.id) ?? task
   }
 
   /** Whether a session is natively archived (registry-global archive set).
@@ -1695,7 +1733,33 @@ export class BoardController {
    * by itself. Dragging more session sources in ADDS to the set (same
    * session, one row).
    */
+  /* LINKED ROWS ARE DERIVED ONCE PER (record, notification), NOT PER CALL.
+   *
+   * A card asks for its linked rows while rendering; the board renders every card
+   * of every column on each pass, and the same rows are asked for again by the
+   * session list, the detail panel and the dot derivations. The body below walks
+   * every bind, builds a Set, and per row asks the archive and activity faces —
+   * so per-call cost is not small, and callers are not rare.
+   *
+   * The cache key is the RECORD ITSELF. Task records are replaced (never mutated)
+   * on every change, so object identity is an exact "this card's data is the same"
+   * — no version counter to keep in sync, and no way to serve a stale row for a
+   * changed record. The whole memo is dropped on notify(), which is the one place
+   * any underlying input (session list, workspace archive set, activity) reports a
+   * change; the rows must not outlive that. */
+  private linkedCache = new WeakMap<TaskRecord, LinkedSessionRow[]>()
+
   linkedOf(task: TaskRecord): LinkedSessionRow[] {
+    const cached = this.linkedCache.get(task)
+    if (cached !== undefined) return cached
+    const rows = this.deriveLinkedOf(task)
+    // An empty result is cached too: most cards have no binds, and "no binds"
+    // is the common case on a board with many plain tasks.
+    this.linkedCache.set(task, rows)
+    return rows
+  }
+
+  private deriveLinkedOf(task: TaskRecord): LinkedSessionRow[] {
     const binds = taskBindsOf(task)
     if (binds.length === 0) return []
     const byId = this.deps.sessions.list.getSnapshot().byId
@@ -1853,7 +1917,7 @@ export class BoardController {
     if (this.deps.exec.createSession === undefined) {
       return { ok: false, error: 'session creation is unavailable' }
     }
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return { ok: false, error: 'unknown task' }
     const title = config.title?.trim() ?? ''
     const { title: _ignored, ...launchConfig } = config
@@ -1883,7 +1947,7 @@ export class BoardController {
   async renameTaskSession(taskId: string, sessionId: string, title: string): Promise<{ ok: true } | { ok: false; error: string }> {
     const trimmed = title.trim()
     if (trimmed === '') return { ok: false, error: 'empty title' }
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return { ok: false, error: 'unknown task' }
     // The session must be a related session of THIS task (a run session,
     // a bound session, or a linked workspace member) — renaming through a
@@ -2032,7 +2096,7 @@ export class BoardController {
     // The whole delete+leave is one user edit (one persist for the deletion);
     // the leave then goes through the one landing funnel, so the moved row
     // reads as newest of its landed column.
-    const landed = this.tasks.find(candidate => candidate.id === taskId)
+    const landed = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (landed !== undefined && landed.status !== 'running') {
       this.land(taskId, landed, this.now())
       this.persistAndNotify()
@@ -2045,7 +2109,7 @@ export class BoardController {
     this.activityBook.externalSince.delete(sessionId)
     this.activityWake.delete(sessionId)
     this.directGraceUntil.delete(sessionId)
-    const current = this.tasks.find(candidate => candidate.id === taskId)
+    const current = this.ledgerRows.find(candidate => candidate.id === taskId)
     const fallback = current !== undefined ? this.directFallbackRounds.get(taskId) : undefined
     if (fallback !== undefined && current !== undefined
       && !current.executions.some(round => round.id === fallback)) {
@@ -2098,7 +2162,7 @@ export class BoardController {
   /** Next column sort key: one past the largest order in the ledger. */
   private nextOrder(): number {
     let max = -1
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       if (task.order > max) max = task.order
     }
     return max + 1
@@ -2117,7 +2181,7 @@ export class BoardController {
    * @returns true when applied, false when rejected (unknown task).
    */
   updateTask(id: string, patch: TaskUpdatePatch): boolean {
-    const task = this.tasks.find(candidate => candidate.id === id)
+    const task = this.ledgerRows.find(candidate => candidate.id === id)
     if (task === undefined) return false
     const title = patch.title?.trim() ?? ''
     const applied: Partial<TaskRecord> = {}
@@ -2155,7 +2219,7 @@ export class BoardController {
     if ('color' in patch) {
       applied.color = patch.color !== undefined && patch.color !== '' ? patch.color : undefined
     }
-    this.tasks = this.tasks.map(candidate => candidate.id === id
+    this.ledgerRows = this.ledgerRows.map(candidate => candidate.id === id
       // Edit path never supplements: clearing the title is a real intent
       // (supplementing runs at birth and at launch only — "填则守" guards
       // what the user filled AND what the user just cleared).
@@ -2185,12 +2249,12 @@ export class BoardController {
    * 移动卡片不会误杀链").
    */
   moveTask(id: string, status: TaskStatus, beforeId?: string): void {
-    const previous = this.tasks.find(task => task.id === id)
+    const previous = this.ledgerRows.find(task => task.id === id)
     if (previous === undefined) return
     // One gesture, one instant: both halves below must stamp the same moment,
     // or a stepping clock would give the row two different "now"s.
     const now = this.now()
-    const moved = applyCardOrder(this.tasks, id, status, beforeId, now)
+    const moved = applyCardOrder(this.ledgerRows, id, status, beforeId, now)
     // Same-spot no-op: the pure layer returns identical element refs when
     // nothing moved — skip disarm checks AND persistence (no authorship, no
     // dirty commit, no SSE churn for a drop that changed nothing).
@@ -2206,14 +2270,14 @@ export class BoardController {
     // that lands is the transition's own row carrying the board's slot and
     // stamp: a same-column reorder changes no content at all (the transition
     // hands its row straight back), and the drag must still leave its mark.
-    this.tasks = moved.map(task => {
+    this.ledgerRows = moved.map(task => {
       if (task.id !== id) return task
       return { ...(transitioned.ok ? transitioned.task : task), order: task.order, updatedAt: task.updatedAt }
     })
     // An armed-but-never-run chain leaving backlog for todo starts its first
     // run (arming already covers any column; this stays as the idempotent
     // resume path — hasOpenRun/taskExecutable gate it either way).
-    const after = this.tasks.find(task => task.id === id)
+    const after = this.ledgerRows.find(task => task.id === id)
     if (after !== undefined && previous !== undefined && previous.status === 'backlog'
       && status === 'todo' && after.schedule?.enabled === true && after.schedule.mode === 'chain') {
       void this.runTask(id, 'chain')
@@ -2238,7 +2302,7 @@ export class BoardController {
    * @returns true when approved; false when unknown or busy (state untouched).
    */
   approveTask(taskId: string): boolean {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return false
     const now = this.now()
     const approved = approveTaskToStatus(task, now)
@@ -2247,8 +2311,8 @@ export class BoardController {
     if (!approved.ok) return false
     // THE SLOT: the same funnel a manual move uses, so the card lands in
     // 「已完成」 exactly where a drag would have put it.
-    const moved = applyCardOrder(this.tasks, taskId, 'done', undefined, now)
-    this.tasks = moved.map(candidate => candidate.id === taskId
+    const moved = applyCardOrder(this.ledgerRows, taskId, 'done', undefined, now)
+    this.ledgerRows = moved.map(candidate => candidate.id === taskId
       ? { ...approved.task, order: candidate.order, updatedAt: candidate.updatedAt }
       : candidate)
     this.persistAndNotify()
@@ -2256,7 +2320,7 @@ export class BoardController {
   }
 
   deleteTask(id: string): void {
-    this.tasks = this.tasks.filter(task => task.id !== id)
+    this.ledgerRows = this.ledgerRows.filter(task => task.id !== id)
     if (this.selectedTaskId === id) this.selectedTaskId = undefined
     this.persistAndNotify()
   }
@@ -2284,7 +2348,7 @@ export class BoardController {
    * @returns true when applied, false when rejected (invalid cron / unknown task).
    */
   setSchedule(id: string, patch: { enabled?: boolean; cron?: string; maxRuns?: number; mode?: ScheduleMode }): boolean {
-    const task = this.tasks.find(candidate => candidate.id === id)
+    const task = this.ledgerRows.find(candidate => candidate.id === id)
     if (task === undefined) return false
     // The arm itself — the dead-arm law, cron validity, the budget reset and the
     // due instant — is {@link armSchedule}, the same function the model calls.
@@ -2293,7 +2357,7 @@ export class BoardController {
     const armed = armSchedule(task, patch, this.now())
     if (!armed.ok) return false
     const next = armed.task.schedule
-    this.tasks = this.tasks.map(candidate => candidate.id === id ? armed.task : candidate)
+    this.ledgerRows = this.ledgerRows.map(candidate => candidate.id === id ? armed.task : candidate)
     this.persistAndNotify()
     // "完成后接续" arms AND starts: an enabled chain launches its first run
     // at once whenever the prompt is executable and no run is open — ANY
@@ -2325,7 +2389,7 @@ export class BoardController {
    *  cards made 「并行数 3」 silently mean 「三张卡，每卡一条」. */
   private inFlightCount(): number {
     let count = 0
-    for (const task of this.tasks) count += openRoundsOf(task).length
+    for (const task of this.ledgerRows) count += openRoundsOf(task).length
     return count
   }
 
@@ -2401,7 +2465,7 @@ export class BoardController {
     const queued = this.queuedLaunches[0]
     if (queued === undefined) return false
     this.queuedLaunches.shift()
-    const task = this.tasks.find(candidate => candidate.id === queued.taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === queued.taskId)
     // A rule may no longer drive the task (moved to review/backlog/done, or
     // deleted): the request is stale — drop it. A busy task also drops its
     // queued auto run (the same "skip when busy" semantics as a direct hit).
@@ -2483,7 +2547,7 @@ export class BoardController {
     }
     const scan = (rule: boolean): { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined => {
       let best: { kind: 'comment'; task: TaskRecord; round: ExecutionRecord } | undefined
-      for (const task of this.tasks) {
+      for (const task of this.ledgerRows) {
         if (task.status === 'done') continue
         const round = head(task, rule)
         if (round !== undefined && (best === undefined || round.startedAt < best.round.startedAt)) {
@@ -2504,7 +2568,7 @@ export class BoardController {
     // comments stay saved and todo tasks stay idle.
     const best = ruleRound ?? scan(false)
     if (best !== undefined) return best
-    const todo = this.tasks.find(task => {
+    const todo = this.ledgerRows.find(task => {
       if (task.status !== 'todo' || hasOpenRun(task)) return false
       // Automation never starts a blank-prompt card (the new-task default).
       if (!taskExecutable(task)) return false
@@ -2573,7 +2637,7 @@ export class BoardController {
     this.persistAndNotify()
     this.activeExecutionIds.add(round.id)
     void this.deps.exec.commentRun(
-      this.tasks.find(candidate => candidate.id === task.id) ?? running,
+      this.ledgerRows.find(candidate => candidate.id === task.id) ?? running,
       marked,
       round.sessionId,
       round.comment,
@@ -2603,7 +2667,7 @@ export class BoardController {
    * nothing, so every other gate, threshold and outcome here is unchanged.
    */
   async runTask(id: string, trigger: RunTrigger = 'manual', kickoff?: string, attachments?: readonly PromptAttachment[]): Promise<boolean> {
-    const task = this.tasks.find(candidate => candidate.id === id)
+    const task = this.ledgerRows.find(candidate => candidate.id === id)
     if (task === undefined) return false
     // NOTHING can execute an empty prompt — manual, quick-run, re-run,
     // drag-rerun, schedule fire, cruise pickup and chain hand-off all funnel
@@ -2653,7 +2717,7 @@ export class BoardController {
    * instead of losing the link.
    */
   private maybeContinueChain(id: string): void {
-    const task = this.tasks.find(candidate => candidate.id === id)
+    const task = this.ledgerRows.find(candidate => candidate.id === id)
     const schedule = task?.schedule
     if (schedule === undefined || !schedule.enabled || schedule.mode !== 'chain') return
     if (task === undefined) return
@@ -2705,7 +2769,7 @@ export class BoardController {
     runCount?: number,
     disable?: boolean,
   ): void {
-    this.tasks = this.tasks.map(task =>
+    this.ledgerRows = this.ledgerRows.map(task =>
       task.id === id && task.schedule !== undefined
         ? withSchedule(task, {
             nextRunAt,
@@ -2761,7 +2825,7 @@ export class BoardController {
    * a caller with nothing to say about a refusal may still ignore the answer.
    */
   async rerunTask(id: string): Promise<boolean> {
-    const task = this.tasks.find(candidate => candidate.id === id)
+    const task = this.ledgerRows.find(candidate => candidate.id === id)
     if (task === undefined) return false
     if (task.status === 'done') {
       // Through moveTask (never a hand-rolled withStatus): leaving done is
@@ -2841,7 +2905,7 @@ export class BoardController {
       // The turn this direct-send starts is already recorded as a direct
       // round — keep the running flip from ALSO becoming an external round.
       this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
-      const card = this.tasks.find(task => task.id === taskId)
+      const card = this.ledgerRows.find(task => task.id === taskId)
       if (card !== undefined) {
         // Through the landing funnel: the round is born, so the session list
         // reads "this conversation just started working" on the same pass.
@@ -2892,7 +2956,7 @@ export class BoardController {
   async askCard(taskId: string, text: string, attachments?: readonly PromptAttachment[]): Promise<AskCardOutcome> {
     const trimmed = text.trim()
     if (isBlankMessage(trimmed, attachments)) return { kind: 'refused', why: 'empty' }
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return { kind: 'refused', why: 'unknownTask' }
     const target = askTargetOf(this.relatedSessionsOf(task), sessionId => this.sessionActiveOf(sessionId))
     if (target.kind === 'continue') {
@@ -2931,7 +2995,7 @@ export class BoardController {
    * @returns whether the round was recorded and sent.
    */
   askCardSession(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): boolean {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return false
     if (!this.relatedSessionsOf(task).some(row => row.sessionId === sessionId)) return false
     if (isBlankMessage(text, attachments)) return false
@@ -2953,10 +3017,10 @@ export class BoardController {
    */
   private commentNow(taskId: string, sessionId: string, text: string, attachments?: readonly PromptAttachment[]): void {
     if (isBlankMessage(text, attachments)) return
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
-    const latest = this.tasks.find(candidate => candidate.id === taskId) ?? task
+    const latest = this.ledgerRows.find(candidate => candidate.id === taskId) ?? task
     const round = newCommentRound({
       id: this.uuid(),
       now: this.now(),
@@ -2969,7 +3033,7 @@ export class BoardController {
     // round records enter the ledger, so the session list reads "this
     // conversation just started working" on the same pass.
     this.land(taskId, { ...latest, updatedAt: this.now(), executions: [...latest.executions, round] }, this.now())
-    this.launchComment(this.tasks.find(candidate => candidate.id === taskId) ?? latest, round, 'queue')
+    this.launchComment(this.ledgerRows.find(candidate => candidate.id === taskId) ?? latest, round, 'queue')
   }
 
   /**
@@ -2994,7 +3058,7 @@ export class BoardController {
    * binds) made the list longer still. 「已归了档的还会显示出来」.
    */
   sessionLabelsOf(taskId: string): Array<{ sessionId: string; title: string }> {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return []
     const byId = this.deps.sessions.list.getSnapshot().byId
     const hidden = hiddenSessionIdsOf(task)
@@ -3043,7 +3107,7 @@ export class BoardController {
       // The direct-sent turn is already what the steer created — keep the
       // running flip from ALSO becoming an external round.
       this.directGraceUntil.set(sessionId, this.now() + DIRECT_GRACE_MS)
-      const card = this.tasks.find(task => task.id === taskId)
+      const card = this.ledgerRows.find(task => task.id === taskId)
       if (card !== undefined) {
         // Through the landing funnel: the round is born, so the session list
         // reads "this conversation just started working" on the same pass.
@@ -3089,7 +3153,7 @@ export class BoardController {
      *  文件在写入这一步就被丢掉，而屏上不会有人说一句话。 */
     attachments?: readonly PromptAttachment[]
   }): import('./automation.ts').SessionRule | undefined {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     const instruction = input.instruction.trim()
     const usePrompt = input.usePrompt === true
@@ -3301,7 +3365,7 @@ export class BoardController {
   async tickSessionRules(now: number): Promise<void> {
     const byId = this.deps.sessions.list.getSnapshot().byId
     const updates = new Map<string, TaskRecord>()
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       if (task.rules === undefined || task.rules.length === 0) continue
       const rules = task.rules.map(rule => ({ ...rule }))
       let taskChanged = false
@@ -3381,14 +3445,14 @@ export class BoardController {
       }
       if (taskChanged) {
         // The send already attached a direct round and persisted a NEW task
-        // object (this.tasks was replaced in place); layer the rule bookkeeping
+        // object (this.ledgerRows was replaced in place); layer the rule bookkeeping
         // onto that latest object, never the stale iteration copy.
-        const latest = this.tasks.find(candidate => candidate.id === task.id) ?? task
+        const latest = this.ledgerRows.find(candidate => candidate.id === task.id) ?? task
         updates.set(task.id, withSessionRules(latest, rules))
       }
     }
     if (updates.size > 0) {
-      this.tasks = this.tasks.map(task => updates.get(task.id) ?? task)
+      this.ledgerRows = this.ledgerRows.map(task => updates.get(task.id) ?? task)
       this.persistAndNotify()
     }
   }
@@ -3449,7 +3513,7 @@ export class BoardController {
     // Attachments are content: a message carrying one and no words is a real
     // message (see isBlankMessage).
     if (isBlankMessage(text, attachments)) return undefined
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     // A comment on a completed task revives it (moved back to 待办) — the
     // same rule as the linked-session composer; the work is driven, never
@@ -3477,7 +3541,7 @@ export class BoardController {
     // card's session list is judged by the same law whether the round was born
     // queued here or injected later. The column does not move: the revival
     // above already moved it, and a same-column landing promotes no card.
-    const queued = this.tasks.find(candidate => candidate.id === taskId)
+    const queued = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (queued !== undefined) {
       this.land(taskId, {
         ...queued,
@@ -3492,7 +3556,7 @@ export class BoardController {
   /** A comment on a completed task revives it: moving the task back to 待办 is   *  the SAME column transition as a drag (the schedule re-arms per column
    *  rules), so the comment drives the task instead of hitting a dead end. */
   private reviveTaskIfDone(taskId: string): void {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined || task.status !== 'done') return
     // The budget reset rides moveTask (leaving done = new life, whichever
     // hand moves it) — one persist, no intermediate state, no second write.
@@ -3522,7 +3586,7 @@ export class BoardController {
     const trimmed = text.trim()
     // Same blank rule as every other path: attachments alone are a message.
     if (isBlankMessage(text, attachments)) return undefined
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
     return this.queueRuleComment(taskId, sessionId, trimmed, command, undefined, undefined, attachments)
@@ -3545,7 +3609,7 @@ export class BoardController {
     const trimmed = text.trim()
     // Same blank rule as every other path: attachments alone are a message.
     if (isBlankMessage(text, attachments)) return undefined
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return undefined
     if (task.status === 'done') this.reviveTaskIfDone(taskId)
     const round = {
@@ -3568,7 +3632,7 @@ export class BoardController {
     // Same one-door rule as every other round (see `submitComment`): a steer
     // rule round is born already injected, so THIS landing is the moment that
     // session started working and the card's session list promotes it.
-    const current = this.tasks.find(candidate => candidate.id === taskId)
+    const current = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (current !== undefined) {
       this.land(taskId, {
         ...current,
@@ -3589,13 +3653,13 @@ export class BoardController {
    * @returns true when the round was removed.
    */
   cancelComment(executionId: string): boolean {
-    const task = this.tasks.find(candidate =>
+    const task = this.ledgerRows.find(candidate =>
       candidate.executions.some(execution => execution.id === executionId))
     if (task === undefined) return false
     const round = task.executions.find(candidate => candidate.id === executionId)
     if (round === undefined || round.comment === undefined) return false
     if (round.injectedAt !== undefined || round.endedAt !== undefined) return false
-    this.tasks = this.tasks.map(candidate => candidate.id === task.id
+    this.ledgerRows = this.ledgerRows.map(candidate => candidate.id === task.id
       ? { ...candidate, updatedAt: this.now(), executions: candidate.executions.filter(execution => execution.id !== executionId) }
       : candidate)
     this.persistAndNotify()
@@ -3716,7 +3780,7 @@ export class BoardController {
       // "this session started working" fact for it. It goes through the
       // landing funnel so the card's session list promotes that conversation
       // (a same-column landing promotes no card, so the column is untouched).
-      const before = this.tasks.find(task => task.id === event.taskId)
+      const before = this.ledgerRows.find(task => task.id === event.taskId)
       if (before !== undefined) {
         this.land(event.taskId, attachSessionId(before, event.executionId, event.sessionId, this.now()), this.now())
       }
@@ -3724,7 +3788,7 @@ export class BoardController {
       return
     }
     this.activeExecutionIds.delete(event.executionId)
-    const before = this.tasks.find(task => task.id === event.taskId)
+    const before = this.ledgerRows.find(task => task.id === event.taskId)
     const settledRound = before?.executions.find(round => round.id === event.executionId)
     if (before !== undefined) {
       // The one landing funnel: a just-settled card ranks newest at the top of
@@ -3804,13 +3868,13 @@ export class BoardController {
       this.ruleAttachmentsOf(task, rule),
     )
     if (round === undefined) return
-    this.tasks = this.tasks.map(candidate => candidate.id === task.id
+    this.ledgerRows = this.ledgerRows.map(candidate => candidate.id === task.id
       ? withSessionRules(candidate, (candidate.rules ?? []).map(candidateRule =>
         candidateRule.id === rule.id ? { ...candidateRule, lastAt: this.now() } : candidateRule))
       : candidate)
     this.persistAndNotify()
     if (rule.send === 'steer') {
-      const current = this.tasks.find(candidate => candidate.id === task.id)
+      const current = this.ledgerRows.find(candidate => candidate.id === task.id)
       const currentRound = current?.executions.find(candidate => candidate.id === round.id)
       if (current !== undefined && currentRound !== undefined) {
         this.launchComment(current, currentRound, 'steer')
@@ -3828,7 +3892,7 @@ export class BoardController {
    * 列暂停不适用：结算瞬间任务刚被移动，这里的"完成"才是约定本身。
    */
   async fireOnCompleteRules(taskId: string): Promise<void> {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined || task.rules === undefined || task.rules.length === 0) return
     const byId = this.deps.sessions.list.getSnapshot().byId
     // 同一完成时刻的多个规则：插话先发（立即注入、排在队头），排队按序——每个
@@ -3853,7 +3917,7 @@ export class BoardController {
    * 内容不可用即停；用户手写评论（无 ruleId）永不触发。
    */
   async fireLoopRule(taskId: string, ruleId: string, sessionId: string): Promise<void> {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     const rule = task?.rules?.find(candidate => candidate.id === ruleId)
     if (task === undefined || rule === undefined || rule.trigger !== 'on-complete' || !rule.enabled) return
     if (rule.sessionId !== sessionId) return
@@ -3936,7 +4000,7 @@ export class BoardController {
     if (entries.length === 0) return
     // 只有换栏的那些参与重排；留在原栏的记录照写不误。
     const moved = entries.filter(entry => {
-      const current = this.tasks.find(task => task.id === entry.id)
+      const current = this.ledgerRows.find(task => task.id === entry.id)
       return current !== undefined && current.status !== entry.after.status
     })
     // 同一落里，会话列的顶格与卡片的顶格是同一条律的两半：这一落让哪个会话
@@ -3945,7 +4009,7 @@ export class BoardController {
     // 旁听轮次那条路）就等于什么都没发生——那正是那几处必须改走本方法的原因。
     const promoted = new Map<string, string[]>()
     for (const entry of entries) {
-      const current = this.tasks.find(task => task.id === entry.id)
+      const current = this.ledgerRows.find(task => task.id === entry.id)
       if (current === undefined) continue
       const started = startedOrSettledSessions(current, entry.after)
       if (started.length > 0) promoted.set(entry.id, started)
@@ -3957,10 +4021,10 @@ export class BoardController {
         : promoteSessionsToTop(entry.after, sessions, now)
       return [entry.id, after]
     }))
-    this.tasks = this.tasks.map(task => records.get(task.id) ?? task)
+    this.ledgerRows = this.ledgerRows.map(task => records.get(task.id) ?? task)
     if (moved.length === 0) return
-    this.tasks = promoteManyToColumnTop(
-      this.tasks,
+    this.ledgerRows = promoteManyToColumnTop(
+      this.ledgerRows,
       moved.map(entry => ({ id: entry.id, status: entry.after.status })),
       now,
     )
@@ -4144,7 +4208,7 @@ export class BoardController {
       // the session stops, the steer's completion lands in 待审核 through
       // the SAME post-settle appointments as any completion. Linked ids ride
       // along so a bound workspace's live members count toward the state.
-      const linkedIds = this.tasks.map(task => ({ task, ids: this.linkedOf(task).map(row => row.sessionId) }))
+      const linkedIds = this.ledgerRows.map(task => ({ task, ids: this.linkedOf(task).map(row => row.sessionId) }))
       if (this.driveLiveStates(linkedIds)) changed = true
 
       // Stage 1 — reconcile every task with an open round worth settling:
@@ -4155,7 +4219,7 @@ export class BoardController {
       // native turn of its session, the exact "行亮着、卡片永远不动" machine.
       type Settled = Extract<ExecutionEvent, { kind: 'settled' }>
       const events: Array<{ taskId: string; round: ExecutionRecord | undefined; event: Settled; externalText: string | undefined }> = []
-      for (const task of this.tasks) {
+      for (const task of this.ledgerRows) {
         // EVERY open round, not just the newest one: a card can have several
         // sessions in flight, and a round that is not the last record would
         // otherwise never be swept — it would hold its slot forever.
@@ -4216,7 +4280,7 @@ export class BoardController {
       const applied: Array<{ round: ExecutionRecord | undefined; event: Settled }> = []
       const landings: Array<{ id: string; after: TaskRecord; at: number }> = []
       for (const { taskId, round, event, externalText } of events) {
-        const current = this.tasks.find(candidate => candidate.id === taskId)
+        const current = this.ledgerRows.find(candidate => candidate.id === taskId)
         if (current === undefined) continue
         const next = this.settleRound(current, event.executionId, event.outcome, event.error)
         if (next === current) continue
@@ -4321,7 +4385,7 @@ export class BoardController {
     const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
       linked?.find(entry => entry.task.id === taskId)?.ids
     let changed = false
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       // The newest direct-like round, WHEREVER it sits: a steer round is
       // settled at birth, so any later row (a saved comment on another lane,
       // an observed native turn) pushes it off the end of the array. Reading
@@ -4381,7 +4445,7 @@ export class BoardController {
    *  rounds; a workspace bind contributes none), so the card and its rows
    *  always answer the same question from the same set. */
   liveStateOf(taskId: string): TaskLiveState {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return 'idle'
     return this.liveStateFor(task, this.linkedOf(task).map(row => row.sessionId))
   }
@@ -4576,7 +4640,7 @@ export class BoardController {
       if (byId[sessionId] === undefined) continue
       woken.add(sessionId)
     }
-    const candidates = this.tasks.map(task => ({
+    const candidates = this.ledgerRows.map(task => ({
       taskId: task.id,
       candidate: {
         sessions: this.relatedSessionsOf(task),
@@ -4600,7 +4664,7 @@ export class BoardController {
     for (const sessionId of woken) {
       if (turns.some(turn => turn.sessionId === sessionId)) continue
       const related: string[] = []
-      for (const task of this.tasks) {
+      for (const task of this.ledgerRows) {
         const candidate = this.relatedSessionsOf(task).find(entry => entry.sessionId === sessionId)
         if (candidate !== undefined) related.push(task.id)
       }
@@ -4638,7 +4702,7 @@ export class BoardController {
   ): boolean {
     const now = this.now()
     let changed = false
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       if (task.id !== taskId) continue
       // Re-check every guard on the CURRENT record (the transcript read and
       // the live frame both await; another channel may have recorded meanwhile).
@@ -4698,7 +4762,7 @@ export class BoardController {
   recordNativeTurn(sessionId: string, turn: LatestUserMessage): void {
     if (this.disposed || !this.engine) return
     let related = false
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       const candidate = this.relatedSessionsOf(task).find(entry => entry.sessionId === sessionId)
       if (candidate === undefined) continue
       related = true
@@ -4784,7 +4848,7 @@ export class BoardController {
    * activity derivation.
    */
   private async reconcileBoundTask(taskId: string): Promise<void> {
-    const task = this.tasks.find(candidate => candidate.id === taskId)
+    const task = this.ledgerRows.find(candidate => candidate.id === taskId)
     if (task === undefined) return
     const byId = this.deps.sessions.list.getSnapshot().byId
     const now = this.now()
@@ -4835,7 +4899,7 @@ export class BoardController {
     if (!this.recordExternalRound(taskId, runningSessionId, msg)) return
     // Unviewed on purpose: this external round is brand-new content the
     // user has not seen (it happened before/while they bound it).
-    this.tasks = this.tasks.map(candidate =>
+    this.ledgerRows = this.ledgerRows.map(candidate =>
       candidate.id === taskId ? { ...candidate, viewedAt: now - 1 } : candidate)
     this.persistAndNotify()
   }
@@ -4868,7 +4932,7 @@ export class BoardController {
       linked.find(entry => entry.task.id === taskId)?.ids
     let changed = false
     const now = this.now()
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       if (task.status !== 'running') continue
       if (newestDirectLike(task) !== undefined) continue
       const live = this.conclusiveLiveState(task.id, this.liveStateFor(task, linkedIdsOf(task.id)))
@@ -4895,7 +4959,7 @@ export class BoardController {
     if (!this.sessionsReady()) return false
     const byId = this.deps.sessions.list.getSnapshot().byId
     let changed = false
-    for (const task of this.tasks) {
+    for (const task of this.ledgerRows) {
       // EVERY open external round: with per-session lanes a later row (a
       // steer, a second conversation's round) HIDES a noisy first one, which
       // strands the card or lets the history sweep settle it optimistically on
@@ -4935,7 +4999,7 @@ export class BoardController {
    */
   private userEdit(taskId: string, mutate: (task: TaskRecord) => TaskRecord): boolean {
     let changed = false
-    this.tasks = this.tasks.map(task => {
+    this.ledgerRows = this.ledgerRows.map(task => {
       if (task.id !== taskId) return task
       const next = mutate(task)
       if (next === task) return task
@@ -4947,7 +5011,7 @@ export class BoardController {
   }
 
   private persistAndNotify(): void {
-    this.deps.store.save(this.tasks)
+    this.deps.store.save(this.ledgerRows)
     this.notify()
     // Every ledger mutation re-evaluates the execution queue: a freed slot,
     // a new comment, a moved card or a cruise switch all funnel through the
@@ -4956,6 +5020,12 @@ export class BoardController {
   }
 
   private notify(): void {
+    /* The announced-change invalidation point (see `getSnapshot`). The ledger
+     * setter covers data swaps; this covers every non-ledger field. The linked-row
+     * memo below is dropped here too: its inputs (session list, archive set,
+     * activity) all report through this same notification. */
+    this.cachedSnapshot = undefined
+    this.linkedCache = new WeakMap()
     for (const fn of [...this.listeners]) fn()
   }
 }

@@ -76,6 +76,7 @@ export declare const zh: {
     'gallery.chips': string;
     'gallery.statuses': string;
     'gallery.icons': string;
+    'gallery.toolCard': string;
     'gallery.palette': string;
     'gallery.bands': string;
     'gallery.overlay': string;

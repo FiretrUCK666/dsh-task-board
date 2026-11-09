@@ -37,6 +37,15 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    unit: 'src/client/design/ToolCallCard.tsx + tool-card.module.css —— 工具调用在对话里的那张回执卡（标题句、操作行、备注、展开）',
+    nearest: 'src/client/chat/tool-views.tsx 自己手写的那段 JSX（同一个东西在搬家之前就长在那里），以及 src/client/design/ui.tsx 的 `Disclosure`（对话里唯一的折叠语法，卡片的展开按钮复用它）',
+    whyNot: '它不是「看起来通用」——它有第二个消费者：这张卡由 SHELL 在会话树里渲染，同时它读本插件的令牌，'
+      + '也就是**唯一一处画在我们自己座位之外的界面**。搬家之前它住在 board.module.css 里，'
+      + '借一份七千行的页面表拿形状和值，而 chat/ 因此一直没有自己的样式表；'
+      + '不给它一个家，就只能继续借别人的表。',
+    askedBy: '门禁发现：`verify-class-ownership` 与样式归属审计指出它读的是另一页的表',
+  },
+  {
     /** 一轮的画序：到达次序 + 最终回答边界（这两件事一起让「顺序对不上」消失）。 */
     unit: 'src/client/board/review-transcript.ts 的 `order` / `answerBoundaryOf` / `flowOf` —— 过程行、回复、读者插话各记一个到达序号，按它排成一条流；最终回答由官方 `answerStep` 边界算出',
     nearest: 'src/client/board/review-transcript.ts 的 `foldTurns`（它本来就把事件折成「过程数组 + 回复数组」——两个数组、各归各类）',

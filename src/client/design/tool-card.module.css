@@ -45,6 +45,13 @@
   --card-edge: 1px solid var(--card-hair);
   --card-radius: 14px;
   --card-sheet: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 78%, var(--dsw-alias-bg-base));
+  /* The touch ring's outset, in THIS scope's vocabulary (`--card-*`), because a
+     custom property declared on the layer is not visible here: this subtree lives
+     in the shell's tree, outside `[data-dsh-taskboard-view]`. The value matches
+     the layer's 7px, and `verify-island-scope` compares the two spellings so a
+     change upstream turns this red instead of leaving a stale ring here. */
+  --card-ring-block: 7px;
+  --card-ring-inline: 7px;
 }
 
 .toolCard {
@@ -154,10 +161,19 @@
 
 /* ── 触屏：只加热区，不改视觉几何 ─────────────────────────────────────────────
  *
- * The card's only control is 24px tall and sits alone on its own line, so a 7px
- * ring cannot reach a neighbour. It was listed in the board's touch tier before
- * the family moved here; a rule in another page's sheet naming this sheet's class
- * cannot match, so the tier comes with the component. */
+ * The card's only control is 24px tall and sits alone on its own line, so a ring
+ * cannot reach a neighbour. It was listed in the board's touch tier before the
+ * family moved here; a rule in another page's sheet naming this sheet's class
+ * cannot match, so the tier comes with the component.
+ *
+ * WHY `--card-ring-*` AND NOT THE LAYER'S `--dsh-tb-hit-ring-*`. The layer's
+ * token is not visible in this subtree: the card is drawn inside the SHELL's
+ * conversation, outside `[data-dsh-taskboard-view]`. Reading a name that resolves
+ * to nothing would leave `inset: calc(-1 * )` — an invalid declaration the browser
+ * drops silently, i.e. no ring at all, and nothing would say so. So the outset is
+ * declared in this scope's own vocabulary at the layer's value, and
+ * `verify-island-scope` compares the two spellings: a change to the shared spec
+ * turns this red instead of leaving a stale ring here. */
 @media (hover: none) and (pointer: coarse) {
   .more {
     position: relative;
@@ -166,7 +182,7 @@
   .more::before {
     content: '';
     position: absolute;
-    inset: -7px;
+    inset: calc(-1 * var(--card-ring-block)) calc(-1 * var(--card-ring-inline));
     border-radius: inherit;
   }
 }

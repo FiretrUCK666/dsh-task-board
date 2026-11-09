@@ -51,4 +51,10 @@ export const SHARED_CANDIDATES: readonly SharedCandidate[] = [
   { name: 'SendModeToggle', why: '排队/插话两态只属于看板的发送器' },
   { name: 'Switch', why: '表单原件；清单的开关是行上的勾选框，语义不同' },
   { name: 'TextArea', why: '表单原件；清单的正文是就地展开的行，不是独立输入框' },
+  /* The odd one on this list, and worth naming as such: its single consumer is
+     the SHELL's conversation transcript, not one of our panels. It is in
+     `design/` because `chat/` renders it inside someone else's tree while reading
+     this plugin's values — the one surface drawn outside our own seats. Its
+     second consumer is the preview page itself, which does not count. */
+  { name: 'ToolCallCard', why: '它的消费者是 SHELL 的会话树，不在本插件任何一面板里；`design/` 是它唯一可归的家' },
 ]

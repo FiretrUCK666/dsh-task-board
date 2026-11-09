@@ -6437,4 +6437,64 @@ describe('「问 AI」：开始还是继续由卡自己说，界面只说「交�
     expect(stub.runCalls).toHaveLength(1)
     expect(stub.runCalls[0]?.options, '没有 kickoff 却传了一个运行选项').toBeUndefined()
   })
+
+describe('snapshot identity (what makes a subscription cheap)', () => {
+  /* A SUBSCRIBER COMPARES BY IDENTITY. `useState(controller.getSnapshot())` and
+   * every `useSyncExternalStore` in this codebase decide "did anything change"
+   * with `Object.is`. A getter that builds a fresh object each call therefore
+   * reports a change on every notification — including the ones that touched a
+   * field the subscriber never reads. With a dozen subscribers and a scheduler
+   * heartbeat firing often, that is the whole board re-rendering for nothing.
+   *
+   * These cases pin the contract, not an implementation: "same state ⇒ same
+   * object" and "new state ⇒ new object". */
+  it('same state returns the SAME object (so a subscriber can skip)', () => {
+    const { controller } = makeController()
+    const first = controller.getSnapshot()
+    expect(controller.getSnapshot()).toBe(first)
+    expect(controller.getSnapshot()).toBe(first)
+  })
+
+  it('a ledger change returns a NEW object carrying the new tasks', () => {
+    const { controller } = makeController()
+    const before = controller.getSnapshot()
+    controller.createTask({ title: '新的一张', description: '', prompt: 'p' })
+    const after = controller.getSnapshot()
+    expect(after).not.toBe(before)
+    expect(after.tasks).not.toBe(before.tasks)
+    expect(after.tasks).toHaveLength(before.tasks.length + 1)
+  })
+
+  it('a non-ledger change also returns a NEW object', () => {
+    // `setCruiseLimit` writes a field that lives outside the ledger, so it proves
+    // the invalidation is not tied to \`tasks\` alone (a notify that only touched
+    // cruise must still give subscribers a fresh value).
+    const { controller } = makeController()
+    const before = controller.getSnapshot()
+    controller.setCruiseLimit(3)
+    const after = controller.getSnapshot()
+    expect(after).not.toBe(before)
+    expect(after.cruise.limit).toBe(3)
+  })
+
+  it('a read between a ledger write and its notify still sees the write', () => {
+    /* The ledger is replaced from paths that do NOT notify immediately (several
+     * rounds are rewritten and one persist lands at the end). A read in between
+     * must still see the new rows — the cache is dropped by the ASSIGNMENT, not by
+     * the notify. Pinned through a public path that replaces the ledger and then
+     * returns to its caller before anything notifies. */
+    const { controller } = makeController()
+    const task = controller.createTask({ title: '第一张', description: '', prompt: 'p' })
+    const first = controller.getSnapshot()
+    expect(first.tasks.find(row => row.id === task?.id)?.title).toBe('第一张')
+    // A second write that reuses the same snapshot accessor: if the cache survived
+    // the ledger replacement, this read would still report one task.
+    controller.createTask({ title: '第二张', description: '', prompt: 'p' })
+    const next = controller.getSnapshot()
+    expect(next).not.toBe(first)
+    expect(next.tasks).toHaveLength(first.tasks.length + 1)
+    // And the SAME state read twice is still one object (the cache is real).
+    expect(controller.getSnapshot()).toBe(next)
+  })
+})
 })
