@@ -173,8 +173,19 @@
    * looked like it had lines. A third and fourth name for 「一条线」 is how you get
    * seven of them pointing at nothing, so they are gone and the seven say which of
    * the two they mean.
+   *
+   * **AND EACH LINE HAS A COLOUR FACE FOR THE OTHER DIRECTION.** The same mistake
+   * runs backwards: `border-color: var(--item-hair)` hands a whole
+   * `1px solid <colour>` to a slot that accepts ONE `<colour>`, so the declaration
+   * is dropped and that chip loses its outline while the rule stays in the sheet.
+   * Measured in the browser: `border-top-color: rgb(0, 0, 0)` on a rule that asked
+   * for the hair line. So a slot that wants one part reads `-color`, and a slot
+   * that wants the whole shorthand reads the pair above — `verify-border-shape.mjs`
+   * holds both directions.
    */
   --item-hair-strong: var(--dsh-tb-border);
+  --item-hair-color: var(--dsh-tb-hair-color);
+  --item-hair-strong-color: var(--dsh-tb-hair-strong-color);
   /* ── 一行里的对齐 ───────────────────────────────────────────────────────────
    *
    * **字居中于它自己的胶囊，由胶囊的结构给**：这一页每一族药丸的基规则都写着
@@ -2587,14 +2598,14 @@ button.itemRowCardChip {
   /* **20% 不是一个族洗底，是本页中性面的那一档**（12% 在白底上等于没有，量过）。
      所以它读自己的数，不读色族那条梯子：梯子管的是彩色族的深浅，这一枚是灰面。 */
   background: color-mix(in srgb, var(--item-ink-3) 20%, transparent);
-  border-color: var(--item-hair);
+  border-color: var(--item-hair-color);
 }
 
 /* 第四档：形状与前三档一样，只是**不填充**、墨再浅一档、边最淡。 */
 .itemPrioChip[data-tone='low'] {
   color: var(--item-ink-2);
   background: none;
-  border-color: var(--item-hair);
+  border-color: var(--item-hair-color);
 }
 
 /* 选中的那枚：描边进墨，外圈再画一枚 2px 墨环——环与芯片之间留 2px 空气，所以
@@ -4892,7 +4903,7 @@ textarea.itemInput {
  * 这一条的属性。 */
 .itemOpt[data-add] {
   color: var(--item-ink-2);
-  border-color: var(--item-hair-strong);
+  border-color: var(--item-hair-strong-color);
 }
 
 /* 「新建卡片」按下之后不是「去哪」，是**就地起名**：芯片换成一枚同高的输入框。
@@ -6116,8 +6127,13 @@ textarea.itemInput {
  * 代码的人留三个看起来很权威的假线索。** */
 @container dsh-tb-item (min-width: 1081px) {
   .itemWorkbench {
+    /* `--dsh-tb-row-pad` is deliberately NOT re-declared here. The 720px band
+       already sets it to the same 16px, and `min-width: 1081px` implies
+       `min-width: 720px` — so at every width that could reach this block the
+       inner one has already supplied that exact value. A third copy of a number
+       that can never win is the kind of declaration this file's own note above
+       warns about: it reads as load-bearing and is not. */
     --item-card-pad: 24px;
-    --dsh-tb-row-pad: 16px;
   }
 }
 /* ── 16. 触屏：只加热区，不改任何视觉几何 ────────────────────────────────── */

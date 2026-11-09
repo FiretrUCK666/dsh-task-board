@@ -283,4 +283,40 @@ export const DESIGN_LAWS: readonly DesignLaw[] = [
       + '因此进得了 `pnpm verify`；而「到底越界了几个像素」是几何判据，归 `shot-panel`。'
       + '缩进量不许写死一个像素值——它读的是这个盒子自己那一档圆角令牌，圆角改档时条跟着走。',
   },
+  {
+    id: 'a-border-token-fits-its-slot',
+    law:
+      '一枚值里带 `<长度> <线型>` 的边令牌，只能读进整个 `border` / `border-<side>`；'
+      + '只要一段的槽（`border-color` / `-width` / `-style`、`box-shadow`）必须读那枚**只有颜色**的孪生令牌。',
+    gate: 'verify-border-shape.mjs',
+    specimen: 'surfaces',
+    why:
+      '同一个「边」在 CSS 里是两种语法，而它们的**形状不一样**：`border: <宽> <线型> <色>` 一次说三件事，'
+      + '`border-color` 只要一段。把整枚塞进只收一段的槽里，浏览器**丢弃整条声明**——规则还在表里、'
+      + '选择器还匹配、样式表合法、类型不报错，屏上只是没有那条线。'
+      + '实测（Chromium，同一页同一份令牌）：`border-color: var(--dsh-tb-border)` 读出来是初始值 '
+      + '`rgb(0, 0, 0)`；`box-shadow: inset 0 0 0 1px var(--dsh-tb-border)` 读出来是 `none`；'
+      + '`border-inline-start: 2px solid var(--dsh-tb-border-soft)` 读出来宽度是 `0px`（两个宽度，整条丢弃）。'
+      + '它是同一个错误的两个方向：早先 `--item-hair-strong` 只存颜色，于是 `border: var(--item-hair-strong)` '
+      + '声明了一条没有宽度和线型的边（`border-style: none`，边根本不画）；补上完整值之后，'
+      + '反过来写的那几处 `border-color:` 又开始丢。所以**每条线有两个名字**，判据按槽选名字。'
+      + '这条判据纯语法、机械可判；「这条线该是分隔还是对象的边」是语义，归人。',
+  },
+  {
+    id: 'a-keyframe-is-read-by-its-own-sheet',
+    law:
+      '一张表定义的 `@keyframes` 必须被**同一张表**里至少一条 `animation` 读到；'
+      + '同名关键帧出现在多张表时，它们的帧体必须逐字相同。',
+    gate: 'verify-keyframes.mjs',
+    specimen: 'interaction',
+    why:
+      'CSS Modules 把关键帧名**连同表的作用域一起哈希**（产物里是 `QeuTqq_dshTbBoardIn` 与 '
+      + '`Sr3ygG_dshTbBoardIn` 两个不同的名字），所以一张表的 `animation` 永远拿不到另一张表的定义'
+      + '——两条路都**不报错**：指向别的表时不跑（屏上只是「没有动画」），而抄过来的旧拷贝没人删时'
+      + '也看不出来（它和活的那一份长得一模一样）。这个仓库同时存在过这两种残留：看板表里两个关键帧'
+      + '零个读者，而那里本该守住「两处必须逐字相同」的那句话——注释写着 `verify-motion` 会比对，'
+      + '**而它从来没有比对过**（那条门禁判的是「时长不许裸数字」与「遮罩只许一处」）。'
+      + '所以判据补上两半：孤儿即残留，同名异体即两份实现。'
+      + '「这段动画该不该存在」是语义，归人；「有没有人读它、同名的是不是同一段」是机械事实。',
+  },
 ]

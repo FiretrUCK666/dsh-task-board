@@ -279,6 +279,11 @@ const ROOT_DIRS_ALLOWED = new Set([
   // It is a PACKAGED source directory (the manifest's `files` names it), not an
   // artifact: it is read at boot, so it must be committed and it must ship.
   'skills',
+  // `.design-system-forge/` — the convergence round's own working notes (its
+  // survey, the decisions taken, the before-change baseline and the acceptance
+  // record). Local scratch of exactly the kind this list already covers: present
+  // in a working tree, absent in a clone, ignored through `.git/info/exclude`.
+  '.design-system-forge',
 ])
 {
   const stray = readdirSync(root, { withFileTypes: true })

@@ -447,7 +447,7 @@
      纸面互相独立（纸面常在，高亮只属于指针）。 */
   .notifyRow:hover {
     background: var(--dsh-tb-hover);
-    border-color: var(--dsh-tb-border);
+    border-color: var(--dsh-tb-hair-strong-color);
   }
   .notifyRow:hover {
     background: var(--dsh-tb-hover);
@@ -2397,16 +2397,6 @@
    each end puts the bar's ends on the straight part of the edge, where they read
    as a bar that belongs to the rows rather than to the card. */
 
-@keyframes dshTbDialogIn {
-  from { opacity: 0; transform: translateY(6px) scale(0.985); }
-  to { opacity: 1; transform: translateY(0) scale(1); }
-}
-
-@keyframes dshTbFadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
-}
-
 
 /* 弹层正文的滚动体与动作条**住在 `design/components.module.css`**（与 `.modal`、
    `.dialogHeader` 同表——它们是同一个族的四段）。它们原先住在本表，而它们现在有两个
@@ -2448,15 +2438,20 @@
 
 /* --- select wrapper ----------------------------------------------------------- */
 
-/* Hosts a custom chevron so every dropdown arrow sits a uniform 12px from
-   the right edge (the native arrow cannot be positioned with CSS). */
 /* Select affordance — ONE grammar, one owner of the arrow inset. The chevron
    is a painted overlay (it costs no layout), so the text must be given an
    explicit right inset or a truncated label slides UNDER the arrow (the
-   "预设… 与箭头重叠" bug). Both numbers come from one token, so they can
-   never drift apart again. */
+   "预设… 与箭头重叠" bug). Both numbers come from one variable, so they can
+   never drift apart again.
+
+   WHY IT IS NOT `--dsh-tb-select-arrow-inset`. This inset belongs to THIS
+   wrapper: the shared `Select` renders a bare `<select>` with no box of its
+   own, so `.selectWrap` is the board's geometry and nothing outside this sheet
+   reads the number. A `--dsh-tb-` prefix says "declared in the token layer",
+   and that would be a name that lies about where it lives — the page's own
+   variables carry no prefix (`--card-gutter`, `--column-frame`, `--plan-body-*`). */
 .selectWrap {
-  --dsh-tb-select-arrow-inset: 30px;
+  --select-arrow-inset: 30px;
   position: relative;
   display: block;
   /* As a flex/grid item it must be able to give way to its row (never push a
@@ -2469,7 +2464,7 @@
   -webkit-appearance: none;
   width: 100%;
   min-width: 0;
-  padding-right: var(--dsh-tb-select-arrow-inset);
+  padding-right: var(--select-arrow-inset);
   cursor: pointer;
   /* 裁剪形态归共享层（渲染它的 `Select` 挂着 `.truncate`）：那三条不再写第二遍。
      13 处 `.selectWrap` 包的全是 `Select`，元素选择器只是「谁渲染的」的偶然事实。 */
@@ -2479,7 +2474,7 @@
   content: '';
   position: absolute;
   top: 50%;
-  right: calc(var(--dsh-tb-select-arrow-inset) / 2 - 3px);
+  right: calc(var(--select-arrow-inset) / 2 - 3px);
   width: 7px;
   height: 7px;
   transform: translateY(-70%) rotate(45deg);
@@ -4853,7 +4848,7 @@
 
 .reviewTurn > .reviewStepList {
   padding-inline-start: var(--dsh-tb-space-4);
-  border-inline-start: 2px solid var(--dsh-tb-border-soft);
+  border-inline-start: 2px solid var(--dsh-tb-hair-color);
 }
 
 /* 轮里**每一组过程自己的小折**（官方 `ProcessGroup` 那一级）。
@@ -4868,7 +4863,7 @@
  * 标记：写着却没人读的属性会骗人，而结构位置说的一直是真话。 */
 .reviewStepList > .reviewStepGroup {
   padding-inline-start: var(--dsh-tb-space-3);
-  border-inline-start: 1px solid var(--dsh-tb-border-soft);
+  border-inline-start: 1px solid var(--dsh-tb-hair-color);
 }
 
 .reviewStep {
@@ -4899,7 +4894,7 @@
   gap: var(--dsh-tb-space-2);
   min-inline-size: 0;
   padding-block-start: var(--dsh-tb-space-3);
-  border-block-start: 1px solid var(--dsh-tb-border-soft);
+  border-block-start: 1px solid var(--dsh-tb-hair-color);
 }
 
 /* The "waiting for you" notice: shown while the execution session is blocked
@@ -7338,13 +7333,13 @@
   flex-direction: column;
   gap: var(--dsh-tb-space-2);
   padding: 6px 8px;
-  border: 1px solid var(--dsh-tb-border-soft);
+  border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-md);
   background: var(--dsh-tb-plane-sheet);
 }
 
 .toolCard[data-ok] {
-  border-color: var(--dsh-tb-border-soft);
+  border-color: var(--dsh-tb-hair-color);
 }
 
 .toolCardHeadline {
@@ -7613,7 +7608,7 @@
   .dropIndicator {
     /* Static ring only: the indicator has no entrance animation to strip,
        this keeps its reduced-motion look hairline-bordered. */
-    box-shadow: inset 0 0 0 1px var(--dsh-tb-border);
+    box-shadow: inset 0 0 0 1px var(--dsh-tb-hair-strong-color);
   }
 
   .sessionDropZone[data-bindactive] {

@@ -244,7 +244,7 @@ export const GALLERY_TOKEN_GROUPS: readonly { readonly title: string; readonly w
     title: '边与光',
     why: '边界从墨推导（不是固定灰线），所以深浅主题都成立；发丝与分隔是两种厚度。',
     kind: 'color',
-    names: ['--dsh-tb-border', '--dsh-tb-border-soft', '--dsh-tb-edge', '--dsh-tb-hair-color', '--dsh-tb-separator', '--dsh-tb-nav-edge'],
+    names: ['--dsh-tb-border', '--dsh-tb-border-soft', '--dsh-tb-hair-color', '--dsh-tb-hair-strong-color', '--dsh-tb-edge', '--dsh-tb-separator', '--dsh-tb-nav-edge'],
   },
   {
     /* ── 洗底梯子：**悬停与选中各一档，方向由主题决定** ───────────────────────────

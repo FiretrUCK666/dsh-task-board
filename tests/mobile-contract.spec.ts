@@ -419,10 +419,14 @@ describe('form-row grammar (give way, never crush)', () => {
     expect(ruleOf('scheduleCronRow')).toMatch(/flex-wrap:\s*wrap/)
   })
 
-  it('the select arrow inset comes from ONE token (text can never slide under it)', () => {
+  it('the select arrow inset comes from ONE variable (text can never slide under it)', () => {
     const wrap = ruleOf('selectWrap')
-    expect(wrap).toMatch(/--dsh-tb-select-arrow-inset:/)
-    expect(ruleOf('selectWrap select')).toMatch(/padding-right:\s*var\(--dsh-tb-select-arrow-inset\)/)
+    // A PAGE-LOCAL variable, deliberately without the `--dsh-tb-` prefix: it is
+    // the board's own geometry (`.selectWrap` wraps a bare `<select>`; no shared
+    // sheet renders one), and a token-layer prefix on a value that lives in one
+    // page sheet is a name that lies about where it is declared.
+    expect(wrap).toMatch(/--select-arrow-inset:/)
+    expect(ruleOf('selectWrap select')).toMatch(/padding-right:\s*var\(--select-arrow-inset\)/)
     // 省略号住共享形态（那一处唯一的家）；这里读的是「渲染它的控件挂着它」，
     // 而不是在这一页再抄一遍那三条声明。
     expect(ruleOf('selectWrap select')).not.toMatch(/text-overflow:\s*ellipsis/)
