@@ -2438,20 +2438,47 @@
 
 /* --- select wrapper ----------------------------------------------------------- */
 
-/* Select affordance — ONE grammar, one owner of the arrow inset. The chevron
-   is a painted overlay (it costs no layout), so the text must be given an
-   explicit right inset or a truncated label slides UNDER the arrow (the
-   "预设… 与箭头重叠" bug). Both numbers come from one variable, so they can
-   never drift apart again.
+/* Select affordance — ONE grammar, one owner of the arrow geometry.
 
-   WHY IT IS NOT `--dsh-tb-select-arrow-inset`. This inset belongs to THIS
-   wrapper: the shared `Select` renders a bare `<select>` with no box of its
-   own, so `.selectWrap` is the board's geometry and nothing outside this sheet
-   reads the number. A `--dsh-tb-` prefix says "declared in the token layer",
-   and that would be a name that lies about where it lives — the page's own
-   variables carry no prefix (`--card-gutter`, `--column-frame`, `--plan-body-*`). */
+   The chevron is a painted overlay (it costs no layout), so the text needs an
+   explicit right inset or a truncated label slides UNDER the arrow (the
+   "预设… 与箭头重叠" bug).
+
+   THREE NUMBERS, DERIVED — NOT THREE NUMBERS THAT MUST AGREE. This used to be a
+   single `--select-arrow-inset: 30px` doing double duty: the glyph was placed at
+   `inset / 2 - 3px` and the text was padded by `inset`. Those two derivations had
+   no shared reason, so the glyph ended up 12px from the right edge — a gutter
+   wider than the glyph itself, which at pill widths makes the chevron read as
+   crowding the corner. Measured before the fix: glyph right edge 12px from the
+   box edge, glyph visual width 9.9px.
+
+   So the ARROW owns its own placement (`--select-arrow-gutter`, measured from the
+   box's right edge to the glyph's right edge), and the text's padding is DERIVED
+   from the arrow rather than typed beside it:
+
+       padding-right = gutter + arrow + air
+
+   One number to tune, and the other two cannot drift away from it. The pill is
+   999px-rounded, so the gutter is deliberately larger than a square box needs:
+   it is the space the corner arc eats, and at 10px the glyph sits inside the
+   straight part of the edge instead of on the arc.
+
+   WHY IT IS NOT `--dsh-tb-select-arrow-inset`. This geometry belongs to THIS
+   wrapper: the shared `Select` renders a bare `<select>` with no box of its own,
+   so `.selectWrap` is the board's, and nothing outside this sheet reads it. A
+   `--dsh-tb-` prefix says "declared in the token layer", which would be a name
+   that lies about where it lives — the page's own variables carry no prefix
+   (`--card-gutter`, `--column-frame`, `--plan-body-*`). */
 .selectWrap {
-  --select-arrow-inset: 30px;
+  /* Gap between the glyph's right edge and the box's right edge. Larger than a
+     square box would need because the pill's corner arc is a 999px radius: this is
+     the air that keeps the chevron off the curve. */
+  --select-arrow-gutter: 10px;
+  /* The drawn chevron's own size (it is rotated 45deg, so its visual width is
+     this x sqrt(2)). */
+  --select-arrow-size: 7px;
+  /* Air between the label's last glyph and the chevron's left edge. */
+  --select-arrow-air: 6px;
   position: relative;
   display: block;
   /* As a flex/grid item it must be able to give way to its row (never push a
@@ -2464,7 +2491,12 @@
   -webkit-appearance: none;
   width: 100%;
   min-width: 0;
-  padding-right: var(--select-arrow-inset);
+  /* DERIVED, never typed: gutter + the glyph's diagonal + the air. */
+  padding-right: calc(
+    var(--select-arrow-gutter)
+    + var(--select-arrow-size) * 1.414
+    + var(--select-arrow-air)
+  );
   cursor: pointer;
   /* 裁剪形态归共享层（渲染它的 `Select` 挂着 `.truncate`）：那三条不再写第二遍。
      13 处 `.selectWrap` 包的全是 `Select`，元素选择器只是「谁渲染的」的偶然事实。 */
@@ -2474,9 +2506,12 @@
   content: '';
   position: absolute;
   top: 50%;
-  right: calc(var(--select-arrow-inset) / 2 - 3px);
-  width: 7px;
-  height: 7px;
+  /* The glyph's right edge sits exactly `--select-arrow-gutter` from the box's
+     right edge. The box's own right border is subtracted because `right` measures
+     from the padding box while the reader's eye measures from the border. */
+  right: calc(var(--select-arrow-gutter) - 1px);
+  width: var(--select-arrow-size);
+  height: var(--select-arrow-size);
   transform: translateY(-70%) rotate(45deg);
   border-right: 1.5px solid var(--dsh-tb-text-3);
   border-bottom: 1.5px solid var(--dsh-tb-text-3);
@@ -7268,14 +7303,6 @@
   .feedAction,
   .autoTaskExpand,
   .sessionContextHead,
-  /* The conversation's tool card. It is the fourth product surface and lives
-     outside every panel, so nothing in this file was written with it in mind —
-     and its only control was 24px tall with no ring. It sits alone on its own
-     line inside the card, so a 7px ring cannot reach a neighbour. */
-  .toolCardMore {
-    position: relative;
-  }
-
   .rowHide::before,
   .cruiseMore::before,
   .sessionRowHandle::before,
@@ -7321,114 +7348,7 @@
   }
 }
 
-/* ── the model's work, in the reader's language ────────────────────────────
-   A card exists so the person can read what the machine just did. Three
-   things it must never do: call a rehearsal a change, call an accepted
-   hand-off a run, or bury the failure below the success. So the headline
-   carries the distinction, the ops carry the specifics, and colour is only
-   ever a second channel on top of the words. */
 
-.toolCard {
-  display: flex;
-  flex-direction: column;
-  gap: var(--dsh-tb-space-2);
-  padding: 6px 8px;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-plane-sheet);
-}
-
-.toolCard[data-ok] {
-  border-color: var(--dsh-tb-hair-color);
-}
-
-.toolCardHeadline {
-  display: flex;
-  align-items: center;
-  gap: var(--dsh-tb-space-3);
-  margin: 0;
-  font-size: 13px;
-  color: var(--dsh-tb-text-1);
-}
-
-.toolCardIcon {
-  flex: none;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCard[data-ok] .toolCardIcon {
-  color: var(--dsh-tb-success);
-}
-
-.toolCardSummary,
-.toolCardNote {
-  margin: 0;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCardNote {
-  color: var(--dsh-tb-attention);
-}
-
-.toolCardOps {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--dsh-tb-space-1);
-}
-
-.toolCardOps > li {
-  display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--dsh-tb-space-2);
-  min-height: 20px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCardOps > li[data-ok] .toolCardOpKind {
-  color: var(--dsh-tb-success);
-}
-
-.toolCardOpKind {
-  flex: none;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCardOpRef {
-  flex: none;
-  font-variant-numeric: tabular-nums;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCardOpTitle {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--dsh-tb-text-1);
-}
-
-.toolCardOpDetail {
-  min-width: 0;
-  color: var(--dsh-tb-text-2);
-}
-
-.toolCardMore {
-  align-self: start;
-  min-height: 24px;
-  padding: 0;
-  border: 0;
-  background: none;
-  color: inherit;
-  font: inherit;
-  font-size: 12px;
-  cursor: pointer;
-}
 /* --- reduced motion: ONE TOKEN, not a list of names ----------------------------
    A hand-written list of every selector that happens
    to carry a transition or an animation is the wrong instrument, and it fails in

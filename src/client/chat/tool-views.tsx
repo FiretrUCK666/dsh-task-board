@@ -39,9 +39,10 @@
  */
 import { useState } from 'react'
 import { t, type TaskBoardKey } from '../locales.ts'
-import { Button, Icon } from '../design/ui.tsx'
+import { Button } from '../design/ui.tsx'
+import { ToolCallCard } from '../design/ToolCallCard.tsx'
 import type { ActionKind } from '../../core/board-actions.ts'
-import css from '../board.module.css'
+import cardCss from '../design/tool-card.module.css'
 
 /** The tool names this plugin contributes, spelled as they travel on the wire. */
 const EXECUTE_TOOL = 'taskboard_execute'
@@ -198,58 +199,48 @@ function ExecuteRow(props: ToolCallViewProps) {
   const visible = showAll ? reports : reports.slice(0, 3)
 
   return (
-    <div className={css.toolCard} data-ok={meta.ok ? '' : undefined} data-dsh-taskboard-panel="">
-      <p className={css.toolCardHeadline}>
-        <Icon name={meta.ok ? 'checklist' : 'close'} className={css.toolCardIcon} />
-        {rehearsing ? t('toolCard.rehearsed', { what: headline }) : headline}
-      </p>
-      {meta.summary !== '' && (
-        <p className={css.toolCardSummary}>{meta.summary}</p>
+    <ToolCallCard
+      ok={meta.ok === true}
+      headline={rehearsing ? t('toolCard.rehearsed', { what: headline }) : headline}
+      summary={meta.summary}
+      notes={[
+        ...(rehearsing ? [t('toolCard.dryRunNote')] : []),
+        ...(!rehearsing && !wrote ? [t('toolCard.notWrittenNote')] : []),
+        // Accepted is not executed. Drawing these as done is the exact lie the
+        // tool definition went out of its way to avoid.
+        ...(!rehearsing && meta.enginePending === true ? [t('toolCard.enginePendingNote')] : []),
+      ]}
+      ops={visible.map(report => ({
+        kind: t(KIND_KEYS[report.kind]),
+        ref: report.ref,
+        // The title WRAPS (the card carries no clamp) - the receipt is the only
+        // place that says what the action touched, so it was the worst thing on
+        // the panel to cut at one line. The tooltip and the accessible name
+        // repeat it because touch has no hover.
+        title: report.title,
+        detail: report.detail,
+        ok: report.ok,
+      }))}
+      more={(
+        <>
+          {reports.length > 3 && (
+            <Button
+              variant="ghost"
+              size="sm"
+              pressed={showAll}
+              onClick={() => setShowAll(!showAll)}
+            >
+              {showAll ? t('toolCard.less') : t('toolCard.more', { n: String(reports.length - 3) })}
+            </Button>
+          )}
+          {meta.dryRun !== true && meta.enginePending === true && (
+            <button type="button" className={cardCss.more} onClick={disclosure.toggle}>
+              {disclosure.open ? t('toolCard.less') : t('toolCard.detail')}
+            </button>
+          )}
+        </>
       )}
-      {rehearsing && <p className={css.toolCardNote}>{t('toolCard.dryRunNote')}</p>}
-      {!rehearsing && !wrote && <p className={css.toolCardNote}>{t('toolCard.notWrittenNote')}</p>}
-      {/* Accepted is not executed. Drawing these as done is the exact lie the
-          tool definition went out of its way to avoid. */}
-      {!rehearsing && meta.enginePending === true && (
-        <p className={css.toolCardNote}>{t('toolCard.enginePendingNote')}</p>
-      )}
-      {visible.length > 0 && (
-        <ul className={css.toolCardOps}>
-          {visible.map((report, index) => (
-            <li key={`${report.op}-${index}`} data-kind={report.kind} data-ok={report.ok ? '' : undefined}>
-              <span className={css.toolCardOpKind}>{t(KIND_KEYS[report.kind])}</span>
-              {report.ref !== undefined && <span className={css.toolCardOpRef}>{report.ref}</span>}
-              {report.title !== undefined && report.title !== '' && (
-                /* The title WRAPS now (`.toolCardOpTitle` carries no clamp) — the
-                   receipt is the only place that says what the action touched, so
-                   it was the worst thing on the panel to cut at one line. The
-                   tooltip and the accessible name repeat it because touch has no
-                   hover: the visible text can still be reading in a narrow host
-                   column, and neither of those two ever is. */
-                <span className={css.toolCardOpTitle} title={report.title}>
-                  {report.title}
-                </span>
-              )}
-              <span className={css.toolCardOpDetail}>{report.detail}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {reports.length > 3 && (
-        <Button
-          variant="ghost"
-          size="sm"
-          pressed={showAll}
-          onClick={() => setShowAll(!showAll)}
-        >
-          {showAll ? t('toolCard.less') : t('toolCard.more', { n: String(reports.length - 3) })}
-        </Button>
-      )}
-      {meta.dryRun !== true && meta.enginePending === true && (
-        <button type="button" className={css.toolCardMore} onClick={disclosure.toggle}>
-          {disclosure.open ? t('toolCard.less') : t('toolCard.detail')}
-        </button>
-      )}
-    </div>
+    />
   )
 }
+

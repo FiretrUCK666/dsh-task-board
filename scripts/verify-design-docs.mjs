@@ -1166,6 +1166,14 @@ const PER_SHEET_FORMS = [
     match: '--dsh-tb-hit-ring-block',
     why: 'DEBT: the invisible touch ring. Its declarations are identical in both sheets on purpose — the selectors cannot be, because a class name is hashed per sheet, so one rule cannot reach the board\'s controls and the design system\'s at once. What is shared is the SPEC, and that is the token (--dsh-tb-hit-ring-*), which is declared once.',
   },
+  {
+    match: 'display: flex;flex-direction: column;gap: var(--dsh-tb-space-1);list-style: none;margin: 0;padding: 0',
+    why: 'A reset list stacked as a column with the tightest rung between rows. Its whole content is three UA-reset lines plus one token, and the selectors CANNOT be shared (`tool-card.module.css` and `board.module.css` are hashed separately) — so the choice is one line of grammar per sheet or an empty class on every <ul> in the board. Same shape, same token, two owners of the syntax; what a reader could see drift is the GAP, and that is `--dsh-tb-space-1`, declared once.',
+  },
+  {
+    match: 'color: var(--dsh-tb-text-2);font-size: 12px;line-height: 18px;margin: 0',
+    why: 'One line of secondary explanatory text: reset, the 12/18 pair, the second ink level. Three of those four are tokens, and the pair is the host transcript\'s own density — the tool card sits in the conversation, not on a panel. The shared sheet cannot supply it because a class name is hashed per sheet, so the alternative is a compose-only class that every caller has to remember to add; the token is what is actually shared, and the pair is pinned by the type-ladder gate.',
+  },
 ]
 
 // --- check 5d: a shared form lives in ONE sheet -------------------------------

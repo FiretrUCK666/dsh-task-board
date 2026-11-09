@@ -1,0 +1,119 @@
+/* THE TOOL-CALL CARD's shapes.
+ *
+ * Moved out of `board.module.css` with the component: the card is rendered by the
+ * shell in the conversation tree, so it was always borrowing another page's
+ * stylesheet, and that page's sheet is 7000 lines that belong to the board.
+ *
+ * The scope it reads is the plugin's real token scope. The card carries
+ * `data-dsh-taskboard-panel` for that reason and nothing else — see
+ * `ToolCallCard.tsx` for why the full scope, not a narrowed one.
+ *
+ * Sizes are literal here on purpose and the gate knows why: this family sits in
+ * the host's transcript at the host's density, and its 13/12px pair is the
+ * conversation's own type, not this plugin's six-step interface ladder. The board
+ * keeps its ladder for the board. */
+
+.toolCard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-2);
+  padding: 6px 8px;
+  border: var(--dsh-tb-border-soft);
+  border-radius: var(--dsh-tb-radius-md);
+  background: var(--dsh-tb-plane-sheet);
+}
+
+.toolCard[data-ok] {
+  border-color: var(--dsh-tb-hair-color);
+}
+
+.headline {
+  display: flex;
+  align-items: center;
+  gap: var(--dsh-tb-space-3);
+  margin: 0;
+  font-size: 13px;
+  color: var(--dsh-tb-text-1);
+}
+
+.headlineIcon {
+  flex: none;
+  color: var(--dsh-tb-text-2);
+}
+
+.toolCard[data-ok] .headlineIcon {
+  color: var(--dsh-tb-success);
+}
+
+.summary,
+.note {
+  margin: 0;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-2);
+}
+
+.note {
+  color: var(--dsh-tb-attention);
+}
+
+.ops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--dsh-tb-space-1);
+}
+
+.ops > li {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--dsh-tb-space-2);
+  min-height: 20px;
+  font-size: 12px;
+  line-height: 18px;
+  color: var(--dsh-tb-text-2);
+}
+
+.ops > li[data-ok] .opKind {
+  color: var(--dsh-tb-success);
+}
+
+.opKind {
+  flex: none;
+  color: var(--dsh-tb-text-2);
+}
+
+.opRef {
+  flex: none;
+  font-variant-numeric: tabular-nums;
+  color: var(--dsh-tb-text-2);
+}
+
+.opTitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--dsh-tb-text-1);
+}
+
+.opDetail {
+  min-width: 0;
+  color: var(--dsh-tb-text-2);
+}
+
+/* The disclosure that opens the full detail when the engine has not run yet.
+   It sits inside the card, so it reads the card's own ink rather than inventing
+   a button face: `color: inherit` keeps it on the headline's tone. */
+.more {
+  align-self: start;
+  min-height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
