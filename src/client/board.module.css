@@ -4883,7 +4883,26 @@
 
 .reviewTurn > .reviewStepList {
   padding-inline-start: var(--dsh-tb-space-4);
-  border-inline-start: 2px solid var(--dsh-tb-hair-color);
+  /* NO RULE HERE, AND THAT IS THE DECISION, NOT AN OMISSION.
+   *
+   * This declaration used to read `2px solid var(--dsh-tb-border-soft)`. That
+   * token is a whole `border` shorthand, and `border-inline-start` takes a
+   * one-part slot — so the browser dropped the ENTIRE declaration and the line
+   * was never drawn. It looked like a border for months and painted nothing.
+   *
+   * Finishing the fix (handing it a colour token, so it finally paints) is what
+   * made the conversation transcript heavy: this rule sits on EVERY step list,
+   * nested inside EVERY turn, inside the overlay the reader scrolls. A long
+   * conversation is hundreds of these, each now opening a paint layer that the
+   * discarded version never created. Measured as shipped vs. neutralised, the
+   * frame budget did not show it — it is a raster cost, not a JS cost — but the
+   * reader felt it immediately, which is the report that matters.
+   *
+   * So the line stays gone, deliberately. The hierarchy it was meant to draw is
+   * carried by the indent alone, which is the channel that was actually visible
+   * while the border was being discarded. A visual affordance nobody has seen
+   * for months is not worth a scroll regression in the one surface this plugin
+   * puts inside someone else's tree. */
 }
 
 /* 轮里**每一组过程自己的小折**（官方 `ProcessGroup` 那一级）。
@@ -4892,13 +4911,14 @@
  * 所以它只缩进一档、左线细一档（1px 对 2px）——两级折长成一样，读者就分不出
  * 哪一级是哪一级。
  *
- * **它自己的几何只有缩进与线**：方向、间距、最小宽度这些已经是 `.detailSection`
+ * **它自己的几何只有缩进**：方向、间距、最小宽度这些已经是 `.detailSection`
  * （共享折形态）的事，再写一遍就是第二份拷贝，改一处另一处不跟着变。
- * 左线读的是**结构位置**（`.reviewStepList > .reviewStepGroup`），不是一个 `data-`
- * 标记：写着却没人读的属性会骗人，而结构位置说的一直是真话。 */
+ * **左线没有了**（原来是 `1px solid var(--dsh-tb-border-soft)`，被浏览器整条丢弃，
+ * 从没画出来过）。同 `.reviewTurn > .reviewStepList` 那里：这是一个每轮每组的
+ * 嵌套规则，在读者要滚的那个浮层里把它补成真的会画，代价是滚动变重。
+ * 两级折的分辨靠缩进档位（space-4 对 space-3），那是它一直在用的通道。 */
 .reviewStepList > .reviewStepGroup {
   padding-inline-start: var(--dsh-tb-space-3);
-  border-inline-start: 1px solid var(--dsh-tb-hair-color);
 }
 
 .reviewStep {
@@ -4922,14 +4942,16 @@
 }
 
 /* 折里那些「没露在折外」的回复：它们与露在外面的回复是同一件事的两种位置，
-   所以段落语法相同，只是收在折里。 */
+   所以段落语法相同，只是收在折里。
+   **上边线没有了**，同前两处：`1px solid var(--dsh-tb-border-soft)` 当年被整条丢弃，
+   从没画出来过；补成真的会画，就等于给每个回复加一层绘制，而这一条在每个折的
+   每个回复上。回复之间的呼吸由 `padding-block-start` 给，那是它一直在用的通道。 */
 .reviewStepReply {
   display: flex;
   flex-direction: column;
   gap: var(--dsh-tb-space-2);
   min-inline-size: 0;
   padding-block-start: var(--dsh-tb-space-3);
-  border-block-start: 1px solid var(--dsh-tb-hair-color);
 }
 
 /* The "waiting for you" notice: shown while the execution session is blocked
