@@ -463,8 +463,12 @@
  * 不存在的名字，浏览器静默忽略——凡是用共享层画的弹层都「瞬间出现」。
  *
  * **`@keyframes` 无法只写一处再被别的表引用**，这是这条机制的限制，不是懒得收。
- * 所以两张表各有一份，而**它们必须逐字相同**：改一处就要改另一处，`verify-motion`
- * 会把不同步报出来（它比对同名的 keyframes 体）。
+ * 所以凡是用到它的那几张表**各有一份**，而且**同名的必须逐字相同**：改一处就要改
+ * 其余几处，`verify-keyframes` 会把不同步报出来（它比对同名的关键帧体）。同一条门禁
+ * 还判另一头——**本表定义、本表却没人读**的那一份是残留的旧拷贝，报孤儿。
+ *
+ * 这两条判据合起来才是完整的一句话：**跨表共享靠「各写一份且必须相同」，不靠引用。**
+ * 少了孤儿那一半，旧拷贝会一直躺在表里，而它看起来和活的那一份一模一样。
  *
  * 三条分工：
  *
@@ -1930,7 +1934,7 @@ textarea.input {
 
 .workbenchCheck:hover:not(:disabled) {
   background: var(--dsh-tb-hover);
-  border-color: var(--dsh-tb-border);
+  border-color: var(--dsh-tb-hair-strong-color);
   color: var(--dsh-tb-text-1);
 }
 

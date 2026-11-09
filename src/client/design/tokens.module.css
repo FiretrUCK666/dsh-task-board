@@ -83,13 +83,24 @@
    * 所以边界从墨推：浅色里墨是暗的，14% 落在 `#dbdbdb` 一档（看得见、仍是一条
    * 发丝）；深色里墨是亮的，同样的百分比变成一条亮线——**同一个数在两种极性下都
    * 成立**，这正是这一层所有推导的共同形状。 */
-  --dsh-tb-border: 1px solid color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
-  --dsh-tb-border-soft: 1px solid var(--dsh-tb-hair-color);
-  /* **墨边的颜色本身（不含 `1px solid`）。** 一条 `border` 的值塞不进 `box-shadow`——
-     那是两种语法。而纸面那条边要画在 `box-shadow` 的 inset 里才不占布局（`border`
-     会挤掉内容 2px）。所以颜色单独一个名字，`--dsh-tb-border-soft` 从它派生：
-     **两处同色是构造出来的，不是对齐出来的**——改一处，两条一起变。 */
+  /* **每条边有两个名字：一个含 `1px solid`，一个只有颜色。** 这不是重复，是两种语法。
+   *
+   * `border: var(--dsh-tb-border)` 要的是整个 shorthand；而 `border-color`、
+   * `border-inline-start-width`、`box-shadow: inset 0 0 0 1px …` 各自只要**一段**。
+   * 把含 `1px solid` 的那个塞进只收一段的槽里，浏览器**整条声明丢弃**——规则还在表里、
+   * 选择器还匹配、屏上只是没有那条线，而校验器一声不响。
+   *
+   * 所以颜色先声明一次，两个含线的值都从它派生：**同色是构造出来的，不是对齐出来的**
+   * （改一处，四条一起变）。读的时候按槽选名字：
+   *
+   *   | 槽只要一段（颜色 / 宽度 / 线型 / `box-shadow`） | `--dsh-tb-hair-color` / `--dsh-tb-hair-strong-color` |
+   *   | 槽是整个 `border` / `border-<side>`             | `--dsh-tb-border-soft` / `--dsh-tb-border`          |
+   *
+   * `scripts/verify-border-shape.mjs` 按这条判据机械核对，读错槽即红。 */
   --dsh-tb-hair-color: color-mix(in srgb, var(--dsh-tb-text-1) 9%, transparent);
+  --dsh-tb-hair-strong-color: color-mix(in srgb, var(--dsh-tb-text-1) 14%, transparent);
+  --dsh-tb-border: 1px solid var(--dsh-tb-hair-strong-color);
+  --dsh-tb-border-soft: 1px solid var(--dsh-tb-hair-color);
   /* **纸面抬升那一档的默认（第一档）。**
    *
    * 共享层的 `.paperSheet` 读它，所以它必须在这里有一个默认值——页面想换一档投影

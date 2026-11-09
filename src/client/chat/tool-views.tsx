@@ -18,6 +18,24 @@
  * definition computes and the host persists on the result. This file invents
  * nothing: a field it cannot read is simply not shown, because a summary that
  * guesses is the same defect as one that lies.
+ *
+ * WHY THE CARD CARRIES `data-dsh-taskboard-panel`. It reads the board's
+ * stylesheet, and every value in that sheet is a `--dsh-tb-*` token — 19 reads,
+ * none of them with a fallback. Those tokens are declared on this plugin's two
+ * seat attributes (`design/tokens.module.css`), and a transcript card is
+ * rendered by the SHELL, in the shell's own tree: no seat attribute is above
+ * it. Measured in Chromium with the same markup on the same page, inside the
+ * seat versus appended to `body`:
+ *
+ *              inside                          outside
+ *   tokens     all resolve                     `--dsh-tb-text-2` reads ""
+ *   card       border, radius, sheet, gap      background rgba(0,0,0,0), radius 0
+ *   row        gap 4px, min-height 20px        gap normal, min-height 20px
+ *
+ * A property that is invalid at computed-value time takes the whole declaration
+ * with it, so nothing errored and nothing failed — the card was simply unframed
+ * and unspaced for every reader. The attribute is the fix: it says "this subtree
+ * is ours", which is what the other four surfaces already say.
  */
 import { useState } from 'react'
 import { t, type TaskBoardKey } from '../locales.ts'
@@ -180,7 +198,7 @@ function ExecuteRow(props: ToolCallViewProps) {
   const visible = showAll ? reports : reports.slice(0, 3)
 
   return (
-    <div className={css.toolCard} data-ok={meta.ok ? '' : undefined}>
+    <div className={css.toolCard} data-ok={meta.ok ? '' : undefined} data-dsh-taskboard-panel="">
       <p className={css.toolCardHeadline}>
         <Icon name={meta.ok ? 'checklist' : 'close'} className={css.toolCardIcon} />
         {rehearsing ? t('toolCard.rehearsed', { what: headline }) : headline}
