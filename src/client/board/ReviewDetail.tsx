@@ -40,6 +40,7 @@ import { useTranscriptTail, TailFrame } from './use-transcript.tsx'
 import { sessionStateChip } from './session-chip.ts'
 import { useSessionContext, useAwaitingCard } from './use-interaction.ts'
 import { Button } from '../design/ui.tsx'
+import { useMemo } from 'react'
 
 /** The review page (see module doc). */
 export function ReviewDetail({ controller, task, execution, onClose }: {
@@ -59,9 +60,23 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
   // This execution's session thread (the session-scoped model — comments
   // submitted from any surface for this session, execution page or linked
   // panel, are visible together here).
-  const comments = sessionId !== undefined
-    ? sessionCommentsOf(current, sessionId, cruiseOn)
-    : []
+  //
+  // MEMOISED, AND THAT IS A CORRECTNESS-ADJACENT FIX, NOT A MICRO-OPTIMISATION.
+  // `sessionCommentsOf` filters the task's whole execution list and builds a NEW
+  // object per round. Called straight from render it produced a fresh array
+  // identity on every pass, and this component re-renders on EVERY controller
+  // snapshot — not only when the thread changed. A changed `thread` prop then
+  // invalidates the rail's memo chain, so the entire comment list and the
+  // transcript beneath it were rebuilt for snapshots that had nothing to do with
+  // them. On a task with hundreds of rounds that is a rebuild per snapshot, and
+  // the reader experiences it as a scroll that keeps dropping frames.
+  //
+  // Keyed on the three inputs that actually decide the answer: the record, the
+  // session, and the cruise flag (which classifies a round's state).
+  const comments = useMemo(
+    () => (sessionId === undefined ? [] : sessionCommentsOf(current, sessionId, cruiseOn)),
+    [current, sessionId, cruiseOn],
+  )
 
   // The open native interaction (plan confirm / question): the card over the
   // composer renders the SAME request the native composer renders and settles

@@ -76,7 +76,22 @@ export interface ToolCallCardProps {
 export function ToolCallCard(props: ToolCallCardProps) {
   const { headline, summary, notes = [], ops = [], ok, more } = props
   return (
-    <div className={css.toolCard} data-ok={ok ? '' : undefined} data-dsh-taskboard-panel="">
+    /* `data-dsh-tb-toolcard` IS THE CARD'S OWN TOKEN SCOPE, AND IT IS SMALL ON
+     * PURPOSE.
+     *
+     * The card is rendered by the SHELL, in the conversation tree — the one place
+     * this plugin draws that its own token scope does not already cover. So the
+     * card has to declare the tokens it reads, or every one of them resolves to
+     * the empty string and the border, ink and radius all silently vanish.
+     *
+     * What it must NOT do is wear `data-dsh-taskboard-panel`: that is the FULL
+     * scope, 119 properties, and custom properties INHERIT — so each card would
+     * re-declare the whole palette and stream it down to every descendant. A
+     * conversation with hundreds of cards pays that hundreds of times, for eleven
+     * values. `./tool-card.module.css` declares exactly those eleven, spelled
+     * from the same host aliases the full scope uses, so the card matches the
+     * panel it sits beside without restating everything the panel knows. */
+    <div className={css.toolCard} data-ok={ok ? '' : undefined} data-dsh-tb-toolcard="">
       <p className={css.headline}>
         {/* The glyph is the shared Icon set, not a text character: a check mark
             typed as text is an emoji-plane risk (it is banned here outright) and

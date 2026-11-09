@@ -4,45 +4,79 @@
  * shell in the conversation tree, so it was always borrowing another page's
  * stylesheet, and that page's sheet is 7000 lines that belong to the board.
  *
- * The scope it reads is the plugin's real token scope. The card carries
- * `data-dsh-taskboard-panel` for that reason and nothing else — see
- * `ToolCallCard.tsx` for why the full scope, not a narrowed one.
+ * ── THE CARD OWNS A SMALL, PRIVATE VOCABULARY ───────────────────────────────
  *
- * Sizes are literal here on purpose and the gate knows why: this family sits in
- * the host's transcript at the host's density, and its 13/12px pair is the
+ * It has to resolve its own values: the shell's conversation tree is the one
+ * place this plugin draws that its token scope does not already cover, so an
+ * undeclared `--dsh-tb-*` resolves to the empty string and the border, the ink
+ * and the radius all disappear without an error being raised.
+ *
+ * It must NOT redeclare `--dsh-tb-*`. Two reasons, and the second is the one that
+ * bites:
+ *
+ *  1. `data-dsh-taskboard-panel` is the FULL scope — 119 properties, all
+ *     inheriting — so a card wearing it re-declares the whole palette, per card,
+ *     and streams it down to every descendant. A long conversation has hundreds
+ *     of cards and each reads eleven values.
+ *  2. `--dsh-tb-text-1` is the ALIAS LAYER's signature: `verify-palette` treats
+ *     the sheet that declares it as the layer, and there must be exactly one.
+ *     A component that redeclares the layer's names is not "a second scope", it
+ *     is a second home for one concept — which is how a colour family ends up
+ *     with two values.
+ *
+ * So the card speaks `--card-*`, exactly eleven of them, resolved from the same
+ * host aliases the real layer uses. `--card-sheet` must match the layer's paper
+ * derivation EXACTLY (canvas + 78% white): a card whose sheet differs from the
+ * panel's reads as a foreign object pasted into the conversation.
+ *
+ * Sizes are literal on purpose and the gate knows why: this family sits in the
+ * host's transcript at the host's density, and its 13/12px pair is the
  * conversation's own type, not this plugin's six-step interface ladder. The board
  * keeps its ladder for the board. */
+[data-dsh-tb-toolcard] {
+  --card-gap-1: 2px;
+  --card-gap-2: 4px;
+  --card-gap-3: 6px;
+  --card-ink-1: var(--dsw-alias-label-primary);
+  --card-ink-2: var(--dsw-alias-label-secondary);
+  --card-success: var(--dsw-alias-state-success-primary);
+  --card-attention: var(--dsw-alias-state-warn-primary);
+  --card-hair: color-mix(in srgb, var(--card-ink-1) 9%, transparent);
+  --card-edge: 1px solid var(--card-hair);
+  --card-radius: 14px;
+  --card-sheet: color-mix(in srgb, var(--dsw-static-neutral-bluish-00) 78%, var(--dsw-alias-bg-base));
+}
 
 .toolCard {
   display: flex;
   flex-direction: column;
-  gap: var(--dsh-tb-space-2);
+  gap: var(--card-gap-2);
   padding: 6px 8px;
-  border: var(--dsh-tb-border-soft);
-  border-radius: var(--dsh-tb-radius-md);
-  background: var(--dsh-tb-plane-sheet);
+  border: var(--card-edge);
+  border-radius: var(--card-radius);
+  background: var(--card-sheet);
 }
 
 .toolCard[data-ok] {
-  border-color: var(--dsh-tb-hair-color);
+  border-color: var(--card-hair);
 }
 
 .headline {
   display: flex;
   align-items: center;
-  gap: var(--dsh-tb-space-3);
+  gap: var(--card-gap-3);
   margin: 0;
   font-size: 13px;
-  color: var(--dsh-tb-text-1);
+  color: var(--card-ink-1);
 }
 
 .headlineIcon {
   flex: none;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 .toolCard[data-ok] .headlineIcon {
-  color: var(--dsh-tb-success);
+  color: var(--card-success);
 }
 
 .summary,
@@ -50,11 +84,11 @@
   margin: 0;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 .note {
-  color: var(--dsh-tb-attention);
+  color: var(--card-attention);
 }
 
 .ops {
@@ -63,44 +97,44 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: var(--dsh-tb-space-1);
+  gap: var(--card-gap-1);
 }
 
 .ops > li {
   display: flex;
   align-items: baseline;
   flex-wrap: wrap;
-  gap: var(--dsh-tb-space-2);
+  gap: var(--card-gap-2);
   min-height: 20px;
   font-size: 12px;
   line-height: 18px;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 .ops > li[data-ok] .opKind {
-  color: var(--dsh-tb-success);
+  color: var(--card-success);
 }
 
 .opKind {
   flex: none;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 .opRef {
   flex: none;
   font-variant-numeric: tabular-nums;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 .opTitle {
   min-width: 0;
   overflow: hidden;
-  color: var(--dsh-tb-text-1);
+  color: var(--card-ink-1);
 }
 
 .opDetail {
   min-width: 0;
-  color: var(--dsh-tb-text-2);
+  color: var(--card-ink-2);
 }
 
 /* The disclosure that opens the full detail when the engine has not run yet.
@@ -116,4 +150,23 @@
   font: inherit;
   font-size: 12px;
   cursor: pointer;
+}
+
+/* ── 触屏：只加热区，不改视觉几何 ─────────────────────────────────────────────
+ *
+ * The card's only control is 24px tall and sits alone on its own line, so a 7px
+ * ring cannot reach a neighbour. It was listed in the board's touch tier before
+ * the family moved here; a rule in another page's sheet naming this sheet's class
+ * cannot match, so the tier comes with the component. */
+@media (hover: none) and (pointer: coarse) {
+  .more {
+    position: relative;
+  }
+
+  .more::before {
+    content: '';
+    position: absolute;
+    inset: -7px;
+    border-radius: inherit;
+  }
 }
