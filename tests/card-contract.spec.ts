@@ -1744,6 +1744,27 @@ describe('session picker contract', () => {
     expect(ruleOf('addSessionRow')).toMatch(/box-sizing:\s*border-box/)
   })
 
+  it('the drawn scrollbar belongs to OUR surfaces, not to the token scope', () => {
+    // `-view` = a surface this plugin owns and draws. `-panel` = a TOKEN SCOPE:
+    // anything reading `--dsh-tb-*` while living elsewhere carries it, most
+    // visibly a tool-call card inside the SHELL's conversation transcript.
+    //
+    // The two used to be treated as one, so every descendant of a card got a
+    // `::-webkit-scrollbar` defined for it — inside a transcript this plugin
+    // does not own and does not scroll. Measured on the real page: 32 elements
+    // reached before, 2 after. A token scope is not a claim about who owns the
+    // scrollers underneath it, so the drawn bar anchors on `-view` only.
+    const base = readFileSync(fileURLToPath(new URL('../src/client/design/base.module.css', import.meta.url)), 'utf8')
+    const scrollbarRules = base.split('\n')
+      .filter(line => line.includes('::-webkit-scrollbar') && line.includes('{') === false)
+      .join('\n')
+    expect(scrollbarRules, 'a scrollbar selector must not anchor on the token scope').not.toMatch(/\[data-dsh-taskboard-panel\]/)
+    // And the fallback gate, which is where the same mistake would hide.
+    const gate = base.slice(base.indexOf('@supports not selector(::-webkit-scrollbar)'))
+    expect(gate.slice(0, gate.indexOf('}')), 'the scrollbar-width fallback must not reach the token scope either')
+      .not.toMatch(/data-dsh-taskboard-panel/)
+  })
+
   it('the list is the CORE derivation, never a flattened catalog re-filtered in the view', () => {
     expect(picker).toContain('controller.offerableSessionGroups(exclude)')
     // The two shapes this must never take again, frozen so they cannot come back:

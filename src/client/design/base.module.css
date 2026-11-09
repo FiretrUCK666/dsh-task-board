@@ -314,21 +314,27 @@
  * stylesheet styles these pseudo-elements too, so a zero-specificity rule loses
  * and the bar silently renders as the platform's own.
  *
- * Browsers without the pseudo-elements fall back to the standard properties below,
- * behind an `@supports not` gate. The gate matters: declaring `scrollbar-width`
- * unconditionally would silence every webkit rule here in Chromium. */
+ * THESE ANCHOR ON THE SURFACE (`-view`), NOT ON THE TOKEN SCOPE (`-panel`).
+ * The two markers answer different questions and this file used to treat them as
+ * one. `-view` is a surface this plugin owns and draws. `-panel` is a TOKEN
+ * SCOPE: anything that reads `--dsh-tb-*` while living somewhere else carries it
+ * — most visibly a tool-call card inside the SHELL's conversation transcript,
+ * which is the longest scroller a reader actually drags and which this plugin
+ * neither owns nor scrolls. Reaching every descendant of `-panel` defined a drawn
+ * scrollbar for boxes that are not ours. Measured on the real page: 32 elements
+ * reached before the split, 2 after.
+ *
+ * A `-panel` subtree that genuinely needs a drawn bar declares
+ * `--dsh-tb-scroll-inset` in its OWN sheet, which is where a box's scrollbar
+ * belongs anyway (`item/` and the update dialog already do exactly that). */
 [data-dsh-taskboard-view]::-webkit-scrollbar,
-[data-dsh-taskboard-panel]::-webkit-scrollbar,
-[data-dsh-taskboard-view] ::-webkit-scrollbar,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar {
+[data-dsh-taskboard-view] ::-webkit-scrollbar {
   width: var(--dsh-tb-scroll-bar);
   height: var(--dsh-tb-scroll-bar);
 }
 
 [data-dsh-taskboard-view]::-webkit-scrollbar-thumb,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-thumb,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-thumb,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-thumb {
+[data-dsh-taskboard-view] ::-webkit-scrollbar-thumb {
   /* A round-capped strip. `min-block-size` keeps a long list from squashing it to a
      line: without a floor its height is a pure ratio of content length. */
   background-color: var(--dsh-tb-scroll-thumb-color);
@@ -339,16 +345,12 @@
 }
 
 [data-dsh-taskboard-view]::-webkit-scrollbar-track,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-track,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-track,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-track {
+[data-dsh-taskboard-view] ::-webkit-scrollbar-track {
   background: transparent;
 }
 
 [data-dsh-taskboard-view]::-webkit-scrollbar-button,
-[data-dsh-taskboard-panel]::-webkit-scrollbar-button,
-[data-dsh-taskboard-view] ::-webkit-scrollbar-button,
-[data-dsh-taskboard-panel] ::-webkit-scrollbar-button {
+[data-dsh-taskboard-view] ::-webkit-scrollbar-button {
   display: none;
   width: 0;
   height: 0;
@@ -356,9 +358,7 @@
 
 @supports not selector(::-webkit-scrollbar) {
   :where([data-dsh-taskboard-view]),
-  :where([data-dsh-taskboard-panel]),
-  :where([data-dsh-taskboard-view]) *,
-  :where([data-dsh-taskboard-panel]) * {
+  :where([data-dsh-taskboard-view]) * {
     scrollbar-width: thin;
     scrollbar-color: var(--dsh-tb-scroll-thumb-color) transparent;
   }
