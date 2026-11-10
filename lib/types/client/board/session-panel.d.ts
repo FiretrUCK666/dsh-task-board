@@ -148,7 +148,7 @@ export declare function SessionRailHead({ sessionId, controller, projections, tu
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export declare function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
+export declare function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, interaction, shellWaiting, composer }: {
     /** The live state row (chip + updated time); absent hides the whole row. */
     stateChip?: {
         kind: ChipKind;
@@ -164,7 +164,6 @@ export declare function SessionRail({ stateChip, updatedAt, sessionId, controlle
     reloadKey?: unknown;
     task: TaskRecord;
     thread: readonly CommentView[];
-    onCancelComment: (roundId: string) => boolean;
     /** The pending native question (plan confirm / ask); absent hides the card. */
     interaction: WireQuestion | undefined;
     /** Proven wait without parsed content (carrier-shape backstop): renders the

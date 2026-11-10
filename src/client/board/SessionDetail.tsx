@@ -193,7 +193,6 @@ export function SessionDetail({ controller, task, sessionId, onClose }: {
           onChanged={reload}
           task={task}
           thread={thread}
-          onCancelComment={id => controller.cancelComment(id)}
           interaction={pendingInteraction.question}
           shellWaiting={pendingInteraction.shell}
           composer={

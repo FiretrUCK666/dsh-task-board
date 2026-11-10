@@ -38,7 +38,7 @@
  * 家」那道门禁读成两个家（它判的是声明次数，读不到「这是重载」这个意图）。两个名字
  * 没有这个歧义，也让调用处一眼看得出自己拿的是哪一种。
  */
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 
 /** 看板快照的形状由 controller 自己说了算，这里不写第二遍。 */
@@ -47,10 +47,18 @@ export type BoardSnapshot = ReturnType<BoardController['getSnapshot']>
 /**
  * Subscribe to the board's snapshot, or `undefined` when there is no board.
  * @param controller - 装配层给的看板控制器；`undefined` = 这一屏没有看板。
+ * @param held - 这一层此刻是不是**被盖着**（见 `design/cover.ts`）。被盖着的表面不
+ *   接收新快照：它的可见输出没有人在看，而每次通知都意味着一整棵子树的重算；重算本身
+ *   不发生在读者眼里，代价却落在读者正滚动的那个面板的手感上。
  * @returns 当前快照，或 `undefined`（没有看板）。controller 变了或看板改了都会重画。
  */
-export function useBoardSnapshot(controller: BoardController | undefined): BoardSnapshot | undefined {
+export function useBoardSnapshot(controller: BoardController | undefined, held = false): BoardSnapshot | undefined {
   const [snapshot, setSnapshot] = useState<BoardSnapshot | undefined>(() => controller?.getSnapshot())
+  /* `held` 走 ref，不进依赖数组：它一变就重建订阅的话，揭开那一刻要在同一个提交里
+   * 先注销再重新挂上，而这两步之间到达的通知会被丢掉——丢掉的是「揭开之后该显示什么」。
+   * 订阅只认 controller，这是它唯一真正的依赖。 */
+  const heldRef = useRef(held)
+  heldRef.current = held
   useEffect(() => {
     if (controller === undefined) {
       setSnapshot(undefined)
@@ -58,8 +66,24 @@ export function useBoardSnapshot(controller: BoardController | undefined): Board
     }
     // 先读一次：controller 可能在两次渲染之间就换过（或刚回来）。
     setSnapshot(controller.getSnapshot())
-    return controller.subscribe(() => setSnapshot(controller.getSnapshot()))
+    return controller.subscribe(() => {
+      // 盖着的时候**不接收**：这一跳就是「一个字的活都不干」的全部实现。
+      if (heldRef.current) return
+      setSnapshot(controller.getSnapshot())
+    })
   }, [controller])
+  /* 揭开的那一刻补读一次，把被盖住期间错过的改动对齐。
+   *
+   * 这一次读是必须的，不是保险：`getSnapshot()` 的缓存被每一次 `notify()` 丢掉（见
+   * controller），所以盖着期间到达的通知已经把缓存清了；不补读，揭开后看到的就是
+   * 打开面板那一刻的旧数据，直到下一次通知。而它只在边沿发生一次——不是每帧。 */
+  useEffect(() => {
+    if (held || controller === undefined) return
+    setSnapshot(current => {
+      const next = controller.getSnapshot()
+      return next === current ? current : next
+    })
+  }, [controller, held])
   return snapshot
 }
 
@@ -69,12 +93,13 @@ export function useBoardSnapshot(controller: BoardController | undefined): Board
  * One line, and the line is the point: it states once that this caller cannot be
  * without a board, instead of making every field of every snapshot read assert it.
  * @param controller - 装配层给的看板控制器（必填）。
+ * @param held - 这一层此刻是不是被盖着（见 `useBoardSnapshot`）。
  * @returns 当前快照；controller 变了或看板改了都会重画。
  */
-export function useRequiredBoardSnapshot(controller: BoardController): BoardSnapshot {
+export function useRequiredBoardSnapshot(controller: BoardController, held = false): BoardSnapshot {
   // `?? controller.getSnapshot()` is unreachable in practice (the argument is not
   // undefined) and is not a fallback for a missing board: it keeps the type honest
   // without a cast, so a future change to the nullable hook cannot silently start
   // handing `undefined` to a caller that has no branch for it.
-  return useBoardSnapshot(controller) ?? controller.getSnapshot()
+  return useBoardSnapshot(controller, held) ?? controller.getSnapshot()
 }

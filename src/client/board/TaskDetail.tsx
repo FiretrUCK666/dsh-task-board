@@ -15,6 +15,8 @@ import components from '../design/components.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { RunConfigRows } from './RunConfigRows.tsx'
 import { useEscapeStack } from '../design/escape-stack.ts'
+import { useCover } from '../design/cover.ts'
+import { useRequiredBoardSnapshot } from './use-board-snapshot.ts'
 import { useDialogFocus } from '../design/dialog-focus.ts'
 import { Chip, type ChipKind } from '../design/Chip.tsx'
 import { formatDateTime, formatDuration, formatTime } from './format-time.ts'
@@ -282,6 +284,9 @@ function AutomationSection({ controller, task }: { controller: BoardController; 
 /** Task detail overlay. */
 export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed, onLaunched }: {
   controller: BoardController
+  /** The card this sheet is open on, as the opener resolved it. The sheet re-reads
+   *  the live record itself (see `current`) — this is the FLOOR for the frame where
+   *  the ledger no longer carries the id (a delete in flight), not the value shown. */
   task: TaskRecord
   /** Resolve a workspace id to its display title (raw id when unknown). */
   workspaceTitleOf: (workspaceId: string) => string
@@ -313,6 +318,9 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   // The stack callback is editing-aware (declared below): Escape in edit
   // mode cancels the edit, it never closes the detail from under the form.
   useEscapeStack(() => { detailEscape() })
+  /* 这一层盖住了看板：声明给 `design/cover.ts`，被盖住的那一层就不再做没人看的活。
+     面板自己反过来**自己订阅**快照（见 `current`）——盖住的是别人，不是它自己。 */
+  useCover(true)
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
@@ -348,10 +356,17 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   const [showNewSession, setShowNewSession] = useState(false)
   const [showAddSession, setShowAddSession] = useState(false)
 
-  // The record IS the prop: the parent re-renders with every ledger change
-  // (the selected snapshot is a fresh record), so a prop-to-state mirror
-  // would only render a stale frame and then re-render for nothing.
-  const current = task
+  /* THE SHEET READS THE LIVE RECORD ITSELF.
+   *
+   * It cannot inherit it from the opener any more: the board's own snapshot
+   * subscription is HELD while a covering layer is open (`useCovered`), because a
+   * board nobody can see must not spend a render — so a record threaded down from
+   * there would freeze the moment this sheet appeared. The sheet is the surface
+   * that is being looked at, so it carries the live value; the opener's copy is
+   * only the floor for the frame where the ledger no longer holds the id (a
+   * delete in flight), which is what the old prop-only form already rendered. */
+  const snapshot = useRequiredBoardSnapshot(controller)
+  const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   // The ONE session scoping every composer's official '@' reference menu on
   // this surface: the task's own first related session (deterministic).
   const referenceSession = controller.referenceSessionOf(current.id)

@@ -37,6 +37,19 @@ export interface AdditionRecord {
  */
 export const ADDITION_RECORDS: readonly AdditionRecord[] = [
   {
+    /** 覆盖层的「谁正盖着什么」：渲染层读的那一个事实。 */
+    unit: 'src/client/design/cover.ts —— 模块级的覆盖登记表（`useCover` 登记、`useCovered` 订阅），一层浮层打开时告诉被它盖住的表面「现在没人看你」',
+    nearest: 'src/client/design/escape-stack.ts（同一形状：模块级栈 + 一个 hook 登记、一个共享监听器分发）',
+    whyNot: '`escape-stack` 答的是「按一次 Esc 该关哪一层」——它记的是**层序**，而且只对键盘成立：'
+      + '一层没有登记 Esc（例如一个只靠遮罩点击关闭的面板）在它眼里不存在。'
+      + '这里要问的是另一件事：**此刻有没有东西盖住了我**。两者合并成一个计数，就会出现'
+      + '「Esc 栈里有一层，但它其实没盖住看板」和「盖住了，但它不响应 Esc」两种错配，'
+      + '而错配的后果是看板该停的时候没停、或不该停的时候停了——两种都只在滚动时手感上出现，屏上不说话。'
+      + 'CSS 那条 `:has(.modalBackdrop)` 也答不了：它只能让**样式**里的东西停（动画、绘制），'
+      + '而 React 的重算读不到选择器的匹配结果。所以这份事实必须由 JS 侧持有一次，样式与渲染各读它一次。',
+    askedBy: '用户明确要求：评论区「上下滑动很卡、移动条跳帧」，要治本、不许打补丁',
+  },
+  {
     unit: 'src/client/design/ToolCallCard.tsx + tool-card.module.css —— 工具调用在对话里的那张回执卡（标题句、操作行、备注、展开）',
     nearest: 'src/client/chat/tool-views.tsx 自己手写的那段 JSX（同一个东西在搬家之前就长在那里），以及 src/client/design/ui.tsx 的 `Disclosure`（对话里唯一的折叠语法，卡片的展开按钮复用它）',
     whyNot: '它不是「看起来通用」——它有第二个消费者：这张卡由 SHELL 在会话树里渲染，同时它读本插件的令牌，'

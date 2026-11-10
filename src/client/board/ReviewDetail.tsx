@@ -270,7 +270,6 @@ export function ReviewDetail({ controller, task, execution, onClose }: {
           reloadKey={configReloadKey}
           task={current}
           thread={comments}
-          onCancelComment={id => controller.cancelComment(id)}
           interaction={pendingInteraction.question}
           shellWaiting={pendingInteraction.shell}
           composer={

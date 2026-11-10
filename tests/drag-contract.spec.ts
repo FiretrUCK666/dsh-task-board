@@ -458,6 +458,13 @@ describe('session-list drop dispatch (TaskDetail)', () => {
         if (key === 'sessionLabelsOf') return () => []
         if (key === 'externalKindOf') return () => undefined
         if (key === 'ts') return () => 0
+        /* `TaskDetail` subscribes to the board snapshot itself (the sheet is the
+         * surface being looked at, so it carries the live record; the board behind
+         * it holds its subscription while covered). A stub that answers this with
+         * a function returning `undefined` would still work — `subscribe`'s answer
+         * IS a disposer — but modelling it explicitly keeps the fixture honest
+         * instead of accidentally right. */
+        if (key === 'subscribe') return () => () => undefined
         return () => undefined
       },
     })
@@ -517,7 +524,7 @@ describe('session-list drop dispatch (TaskDetail)', () => {
     const unhandled = [...asked].filter(key => ![
       'sessionsOf', 'linkedOf', 'reorderTaskSession', 'getSnapshot', 'referenceSessionOf',
       'sessionTitle', 'sessionActiveOf', 'sessionActivityOf', 'pendingInteractionOf', 'sessionLabelsOf',
-      'externalKindOf', 'ts',
+      'externalKindOf', 'ts', 'subscribe',
     ].includes(String(key)))
     expect(unhandled).toEqual([])
   })

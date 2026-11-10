@@ -1530,7 +1530,7 @@ describe('reduced-motion functional exemption', () => {
     // The stamp lives exactly one frame batch beside the candidate loop that
     // already knows newcomers are not FLIP-eligible (no old rect to play
     // from) — one structural filter, not two mechanisms disagreeing.
-    expect(flip).toContain('flipCandidatesOf(previousStructures.current, structures)')
+    expect(flip).toContain('flipCandidatesOf(previousStructures.current, region.structures)')
   })
 })
 

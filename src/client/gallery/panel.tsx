@@ -982,13 +982,25 @@ export function DesignGallery() {
           </div>
         </Section>
 
-        {/* ── 浮层：真的能点开 ───────────────────────────────────────────── */}
+        {/* ── 浮层：真的能点开 ─────────────────────────────────────────────
+            这一格同时也是「盖住的那一层不干活」那条法则的标本：对话框打开时，
+            它背后的一切在动画、绘制、布局、重算四件事上都停下来（前两件由
+            `:has()` 的选择器管，后两件读 `design/cover.ts` 登记的那一条事实）。 */}
         <Section title={t('gallery.overlay')}>
-          <div className={css.gallerySpecimenRow}>
-            <Button variant="primary" onClick={() => { setDialogOpen(true) }}>{t('gallery.openDialog')}</Button>
-            <span className={css.galleryValue}>
-              {dialogOpen ? t('gallery.dialogOpen') : t('gallery.dialogClosed')}
-            </span>
+          <div className={css.galleryGrid}>
+            <div className={css.gallerySpecimen} data-dsh-taskboard-specimen="covered">
+              <p className={css.galleryLabel}>{t('gallery.covered')}</p>
+              <p className={css.galleryNote}>{t('gallery.coveredWhy')}</p>
+            </div>
+            <div className={css.gallerySpecimen}>
+              <p className={css.galleryNote}>{t('gallery.coveredSpecimen')}</p>
+              <div className={css.gallerySpecimenRow}>
+                <Button variant="primary" onClick={() => { setDialogOpen(true) }}>{t('gallery.openDialog')}</Button>
+                <span className={css.galleryValue}>
+                  {dialogOpen ? t('gallery.dialogOpen') : t('gallery.dialogClosed')}
+                </span>
+              </div>
+            </div>
           </div>
         </Section>
         </div>

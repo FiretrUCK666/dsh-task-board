@@ -387,6 +387,24 @@ afterAll(() => {
   }
 })
 
+/**
+ * How long a test that BUILDS A GIT REPOSITORY gets.
+ *
+ * Vitest's default is 5000 ms, and that number was never measured against this
+ * fixture: `checkoutOfRemote` alone shells out to `git` eleven times (`init`,
+ * `symbolic-ref`, two `config`, `add`, `commit`, `remote add`, `push`,
+ * `symbolic-ref` again), and the two cases below add five more. On this machine
+ * that is 1.7–1.9 s in isolation — comfortably inside 5 s — but the suite runs
+ * files in parallel and this file's `collect` alone takes over 100 s, so under
+ * contention the same work crosses 5 s and the case reports `Test timed out`
+ * instead of its result. The failure then moves between cases run to run, which
+ * is the signature of a budget that was never about the code.
+ *
+ * So the budget is stated here, once, from the measured cost — not nudged per
+ * case when a run happens to be slow.
+ */
+const GIT_FIXTURE_TIMEOUT_MS = 30_000
+
 describe('the checkout\'s remote tip comes from the remote\'s own default branch', () => {
   /**
    * THE DEFECT THIS PINS.
@@ -418,7 +436,7 @@ describe('the checkout\'s remote tip comes from the remote\'s own default branch
     // And with both SHAs known, the checkout can be told that it is behind —
     // which is the reading a missing remote head made impossible.
     expect(isGitBehind({ head: status?.head ?? '', remoteHead: status?.remoteHead, dirty: false })).toBe(true)
-  })
+  }, GIT_FIXTURE_TIMEOUT_MS)
 
   it('a remote that says nothing about its default branch yields no head at all', async () => {
     const { remote, checkout } = checkoutOfRemote('master')
@@ -434,5 +452,5 @@ describe('the checkout\'s remote tip comes from the remote\'s own default branch
     // A missing remote head is never evidence of anything: not of being behind,
     // and not of being in sync.
     expect(isGitBehind({ head: status?.head ?? '', dirty: false })).toBe(false)
-  })
+  }, GIT_FIXTURE_TIMEOUT_MS)
 })

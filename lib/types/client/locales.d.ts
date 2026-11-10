@@ -80,6 +80,9 @@ export declare const zh: {
     'gallery.palette': string;
     'gallery.bands': string;
     'gallery.overlay': string;
+    'gallery.covered': string;
+    'gallery.coveredWhy': string;
+    'gallery.coveredSpecimen': string;
     'gallery.sharedCandidates': string;
     'gallery.sharedCandidatesWhy': string;
     'gallery.openDialog': string;

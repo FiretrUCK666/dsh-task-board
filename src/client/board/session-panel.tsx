@@ -722,7 +722,7 @@ export function SessionRailHead({ sessionId, controller, projections, turns, onC
  * Callers pass data and their send semantics; the grammar, the folds and the
  * hint line live here exactly once — no panel can drift again.
  */
-export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, onCancelComment, interaction, shellWaiting, composer }: {
+export function SessionRail({ stateChip, updatedAt, sessionId, controller, projections, turns, onChanged, reloadKey, task, thread, interaction, shellWaiting, composer }: {
   /** The live state row (chip + updated time); absent hides the whole row. */
   stateChip?: { kind: ChipKind; label: string; spinner?: boolean }
   updatedAt?: string
@@ -734,7 +734,6 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
   reloadKey?: unknown
   task: TaskRecord
   thread: readonly CommentView[]
-  onCancelComment: (roundId: string) => boolean
   /** The pending native question (plan confirm / ask); absent hides the card. */
   interaction: WireQuestion | undefined
   /** Proven wait without parsed content (carrier-shape backstop): renders the
@@ -781,6 +780,13 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
        to the NEW element — without it, a fold→expand loop loses end-following
        and the 滑到最新 button. */
     commentsOpen || awaiting,
+  )
+  /* 取消一条待发评论：**稳定引用**（`controller` 变了才换）。它不是这一次渲染的
+     产物，而是 controller 的一个门；写成 `useCallback` 而不是内联箭头，是因为下游
+     `CommentsThread` 的 memo 先比函数身份——现场箭头让整条评论列表每次父层重渲染都重建。 */
+  const cancelComment = useCallback(
+    (roundId: string): boolean => controller.cancelComment(roundId),
+    [controller],
   )
   // OPEN / NEW ASK = LATEST — one grammar at every width: opening the fold
   // (a manual tap, or a pending question force-opening it) lands on the
@@ -874,7 +880,12 @@ export function SessionRail({ stateChip, updatedAt, sessionId, controller, proje
                 SIBLING of this scroller, never a child of it (see that component). */}
             <TailFrame pin={commentsPin}>
               <div className={css.commentsScroll} ref={commentsScrollRef}>
-                <CommentsThread task={task} views={thread} onCancel={onCancelComment} />
+                {/* 取消一条待发评论走的是**rail 自己手里的 controller**，不由调用方
+                    递一个函数进来：两个调用点传的本来就是同一句
+                    `id => controller.cancelComment(id)`，而那个每次渲染新建的箭头正是
+                    `CommentsThread` 的 memo 永远不命中的原因——列表因此每次父层重渲染
+                    都整条重建一遍，而父层每 3 秒就有一次。接线少一根，就没有第二处要同步。 */}
+                <CommentsThread task={task} views={thread} onCancel={cancelComment} />
                 {awaiting && sessionId !== undefined && (
                   <InteractionCard
                     key={interaction !== undefined ? interaction.rpcId : `shell-${sessionId}`}

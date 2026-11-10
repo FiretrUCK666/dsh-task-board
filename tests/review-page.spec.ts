@@ -1678,6 +1678,35 @@ describe('the comment surface does no per-scroll or per-poll rework', () => {
     // Identity comparison would never hit: `views` is a fresh array each poll.
     expect(source, 'the comparison must be by value, not object identity')
       .toMatch(/x\.round\.id !== y\.round\.id \|\| x\.state !== y\.state/)
+    /* AND THE MEMO MUST BE ABLE TO HIT.
+     *
+     * The comparator checks `onCancel` by identity FIRST, so an inline arrow at the
+     * call site made that memo miss on every parent render since the day it was
+     * written — and the parent re-renders on a 3-second poll. The whole thread
+     * (markdown trees, chips, attachment arithmetic) was rebuilt each time, which is
+     * what the reader felt as scroll jank on the comment surface.
+     *
+     * So the handler now comes from the rail's own `useCallback`, and the call site
+     * takes no handler at all: there is nothing left to remember to stabilise. */
+    expect(read('session-panel.tsx'), 'the rail must own the cancel handler (one stable reference per controller)')
+      .toMatch(/const cancelComment = useCallback\(\s*\(roundId: string\): boolean => controller\.cancelComment\(roundId\),\s*\[controller\]/)
+    expect(read('session-panel.tsx'), 'the call site must not pass a handler that could be rebuilt each render')
+      .not.toMatch(/onCancelComment/)
+  })
+
+  /* 同一族的第二个漏点：`TurnItem` 收着每项现场新建的箭头，它的 memo 也一样失效。
+   * 判据看的是**形状**：那一项收到的必须是「键 + 稳定函数」，不许是 `() => …`。 */
+  it('the turn rows receive stable props too', () => {
+    const source = read('TurnItem.tsx')
+    const itemTag = /<TurnItem[\s\S]*?\/>/.exec(source)?.[0] ?? ''
+    expect(itemTag, 'the TurnItem call site was not found').not.toBe('')
+    expect(itemTag, 'an inline arrow here defeats TurnItem\'s memo on every list render')
+      .not.toMatch(/onToggle=\{\(\)\s*=>/)
+    expect(itemTag, 'the stable handler is passed straight through').toMatch(/onToggle=\{props\.onToggle\}/)
+    // The policy object is rebuilt each render unless it is memoised on `prefs`
+    // (which `useSyncExternalStore` hands over as a stable reference).
+    expect(source, 'a fresh policy object per render defeats TurnItem\'s memo just as surely')
+      .toMatch(/const policy = useMemo\(\(\) => policyOfWorkSteps\(props\.prefs\), \[props\.prefs\]\)/)
   })
 })
 

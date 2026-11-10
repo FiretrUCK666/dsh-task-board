@@ -30,6 +30,7 @@ import css from '../board.module.css'
 import components from '../design/components.module.css'
 import { useFlipRegion } from './use-flip.ts'
 import { useSurfaceNarrow } from '../design/use-narrow.ts'
+import { useCovered } from '../design/cover.ts'
 import { columnIndexAtScroll, scrollLeftForColumn } from './column-tabs.ts'
 import { Dialog } from '../design/Dialog.tsx'
 import { indicatorTopOf, insertionGapOf, reorderTargetOf, type InsertionGap } from './drop-position.ts'
@@ -200,10 +201,15 @@ const RUN_RECEIPT_MS = 4000
  *  something else. Until then the three section markers in the return are what
  *  the reader navigates by. */
 export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: BoardController; mountedOf?: (cardId: string) => { readonly count: number; readonly loudest?: ItemPriority } | undefined; onOpenRows?: (cardId: string) => void }) {
+  /* 「有没有东西盖着我」——由 `design/cover.ts` 那一张登记表回答，覆盖族里任何一层
+     打开时它都为真。两条腿读同一个事实：**订阅**（数据不再更新）与 **FLIP**（不再同步
+     排版）。少了前者，跑着的会话每次会话列表变动都会把整块板重算一遍；少了后者，每次
+     重算都在同一帧里对每张卡读一次框。两者都在读者正滚动的那个面板后面发生。 */
+  const covered = useCovered()
   // The ONE subscription seam (see use-board-snapshot.ts): every page reads the
   // board's snapshot through the same hook, so a change to how subscribing works
   // cannot land in one page and miss another.
-  const snapshot = useRequiredBoardSnapshot(controller)
+  const snapshot = useRequiredBoardSnapshot(controller, covered)
   // A wait that fires while the board is OPEN must surface, never hide: the
   // controller keeps the board open for its own staged sessions (see
   // `isBoardStagedSession`), so the fresh arrival is visible right here — but
@@ -642,8 +648,11 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
     if (rejectTimer.current !== undefined) clearTimeout(rejectTimer.current)
   }, [])
   // Structure-driven FLIP, fully suppressed while a card drag is
-  // active (the post-drop settle is the moment it plays).
-  useFlipRegion(boardRef, dragId !== undefined)
+  // active (the post-drop settle is the moment it plays). The third argument is
+  // the reveal edge (`covered`): closing a covering layer resets the measured
+  // baseline and plays nothing — cards flying into place behind a closing panel is
+  // noise, not feedback, and the board was not even tracking scrolls while hidden.
+  useFlipRegion(boardRef, dragId !== undefined, covered)
   // Compact column navigator: the tabs mirror the horizontal track's scroll
   // position and jump a column into view on tap (hidden on desktop by the
   // base CSS — this state simply rides along).
@@ -2060,6 +2069,8 @@ export function TaskBoard({ controller, mountedOf, onOpenRows }: { controller: B
       {selected !== undefined && (
         <TaskDetail
           controller={controller}
+          /* 面板自己重新读活记录（见 `TaskDetail` 的 `current`），所以盖住期间看板的
+             订阅可以停：这一份只是「台账已经不再有这一张」那一帧的地板。 */
           task={selected}
           workspaceTitleOf={workspaceTitleOf}
           dragSourceRef={dragSourceRef}

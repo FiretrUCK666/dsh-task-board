@@ -17,7 +17,7 @@
  * 本文件只把它判出来的结果画出来：还在跑的轮、读者插过话的轮、结束得不干净的轮、
  * 以及 `next-input` 时机下最新那一轮——都摊着。判据不在这里，所以两处不会各判一次而打架。
  */
-import { memo } from 'react'
+import { memo, useMemo } from 'react'
 import type { BoardController } from '../../core/controller.ts'
 import { Disclosure } from '../design/ui.tsx'
 import { t } from '../locales.ts'
@@ -231,7 +231,9 @@ export const TurnItem = memo(function TurnItem(props: {
   isLatest: boolean
   /** 读者把这一折点开了吗（由 `SessionTranscript` 记，跨重渲染保持）。 */
   open: boolean
-  onToggle: () => void
+  /** 换这一轮的折：**收键、不收已绑好的闭包**（键 = `foldKeyOf(turn)`，这一项自己
+   *  算得出，所以渲染期不必新建箭头——现场箭头会让这里的 memo 每次都穿透）。 */
+  onToggle: (key: string) => void
   /** 轮里某一组的开合（键 = `foldKeyOf(turn)` + 组 key，也是读者这一次的选择）。 */
   openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
@@ -248,6 +250,9 @@ export const TurnItem = memo(function TurnItem(props: {
   /* 块的切分是**一次**的：折里与摊着两支共用同一份，两处不各切一次。 */
   const blocks = blocksOf(turn)
   const groupPrefix = foldKeyOf(turn)
+  /* 折自己的开合键 = `groupPrefix`：它就是本轮的 `foldKeyOf`，所以收键之后这里不必
+     再依赖父层知道「我是第几项」。这一枚只在点击时被调用，不是 memo 的 prop。 */
+  const toggleTurn = (): void => { props.onToggle(groupPrefix) }
   /* 组的默认开合：**收起来**（官方 `useDisclosure()` 的 `expanded` 初值是 `null`，
      也就是收着）。只有这一个组、而整轮那个折被读者点开时，外面那层不再套——
      官方那两级折的存在理由是「一轮里有多段过程，每段能各自收放」；只有一段时
@@ -275,7 +280,7 @@ export const TurnItem = memo(function TurnItem(props: {
           <Disclosure
             title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
             open={props.open}
-            onToggle={props.onToggle}
+            onToggle={toggleTurn}
             className={css.reviewWorkSteps}
           >
             <div className={css.reviewStepList}>
@@ -304,7 +309,7 @@ export const TurnItem = memo(function TurnItem(props: {
             <Disclosure
               title={summaryOfItems(itemsOfTurn(turn), policy, WORDS)}
               open={props.open}
-              onToggle={props.onToggle}
+              onToggle={toggleTurn}
               className={css.reviewWorkSteps}
             >
               <div className={css.reviewStepList}>
@@ -348,6 +353,14 @@ export const TurnItem = memo(function TurnItem(props: {
  *
  * 每轮的折开状态存在这里（`Set<turn>`），因为它是**读者这一次看的时候的选择**，
  * 不是会话数据：重新读一次尾窗口不该把读者点开的折又合上。
+ *
+ * ── 每一项收到的 props 必须**引用稳定**，否则 `TurnItem` 的 memo 形同不存在 ──
+ *
+ * `onToggle` 曾经写成 `() => props.onToggle(key)`——一个每渲染新建的箭头，于是
+ * 列表一画，每一项的 props 都是新的，memo 每一次都穿透。折的开关本身不是热路径，
+ * 但同一形状的东西长在**每 3 秒就重渲染一次的父层**下面（评论列表就是），
+ * 那就是一整个列表每 3 秒重建一遍。所以这里递的是**键**与两个稳定函数：
+ * 每项自己带着自己的键去调，箭头由那一项自己在点击时创建，不在渲染时创建。
  */
 export const TurnList = memo(function TurnList(props: {
   turns: readonly TranscriptTurn[]
@@ -360,7 +373,10 @@ export const TurnList = memo(function TurnList(props: {
   openGroups?: ReadonlySet<string>
   onToggleGroup?: (key: string) => void
 }) {
-  const policy = policyOfWorkSteps(props.prefs)
+  /* 策略对象每渲染重建一次会让 `TurnItem` 的 `policy` prop 每次都变——那和现场箭头
+   * 是同一个病。`prefs` 本身由 `useSyncExternalStore` 提供（引用稳定），所以只在
+   * 阅读者的三项设置真的变了时才重算。 */
+  const policy = useMemo(() => policyOfWorkSteps(props.prefs), [props.prefs])
   return (
     <ul className={css.reviewTranscript}>
       {props.turns.map((turn, index) => {
@@ -374,7 +390,9 @@ export const TurnList = memo(function TurnList(props: {
             policy={policy}
             isLatest={index === props.turns.length - 1}
             open={props.openTurns.has(key)}
-            onToggle={() => props.onToggle(key)}
+            /* 稳定函数，不是现场箭头：这一轮自己的键由它自己算（`foldKeyOf(turn)`，
+               它本来就要用），所以渲染期不新建任何闭包。 */
+            onToggle={props.onToggle}
             openGroups={props.openGroups}
             onToggleGroup={props.onToggleGroup}
             sessionId={props.sessionId}

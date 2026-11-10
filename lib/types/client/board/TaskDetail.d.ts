@@ -3,6 +3,9 @@ import { type TaskRecord } from '../../core/tasks.ts';
 /** Task detail overlay. */
 export declare function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, requestSessionId, onRequestSessionConsumed, onLaunched }: {
     controller: BoardController;
+    /** The card this sheet is open on, as the opener resolved it. The sheet re-reads
+     *  the live record itself (see `current`) — this is the FLOOR for the frame where
+     *  the ledger no longer carries the id (a delete in flight), not the value shown. */
     task: TaskRecord;
     /** Resolve a workspace id to its display title (raw id when unknown). */
     workspaceTitleOf: (workspaceId: string) => string;

@@ -34,6 +34,7 @@ import { Icon, IconButton } from './ui.tsx'
 import { useEscapeStack } from './escape-stack.ts'
 import { useDialogFocus } from './dialog-focus.ts'
 import { useModalInert } from './modal-inert.ts'
+import { useCover } from './cover.ts'
 
 /** The board box: the anchor every board dialog's backdrop covers. Exported
  *  for overlay shells that portal directly (SessionFrame). */
@@ -80,6 +81,9 @@ export function Dialog({ title, label, onClose, className, children, portal = tr
      一个键盘使用者能从打开的弹窗里 Tab 出去操作他看不见的板，而读屏念的是弹窗底下
      那一页。 */
   useModalInert(panelRef, true)
+  /* 同一句承诺的另一半：外面的一切**也不该再算**。盖着的板每收到一次通知就重算一遍、
+     每重算一次就同步读一遍每张卡的框，而这些代价落在读者正滚动的那个面板的手感上。 */
+  useCover(true)
   const titleId = useId()
   const panel = (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>

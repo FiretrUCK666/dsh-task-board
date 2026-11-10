@@ -51,6 +51,7 @@ import { Icon, IconButton } from '../design/ui.tsx'
 import { SessionContextBlock } from './SessionContextBlock.tsx'
 import { boardBox } from '../design/Dialog.tsx'
 import { useEscapeStack } from '../design/escape-stack.ts'
+import { useCover } from '../design/cover.ts'
 import { useDialogFocus } from '../design/dialog-focus.ts'
 import type { BoardController } from '../../core/controller.ts'
 import type { SessionContext } from './use-interaction.ts'
@@ -85,6 +86,10 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
   // together with what sits on top of it. Focus loops through the shared
   // hook (initial / trap / return), like every Dialog.
   useEscapeStack(onClose)
+  /* 「盖住」这件事的四层里的后两层（布局与重算）：这一层声明了 `aria-modal`，
+     外面的东西对读屏与键盘已经不成立（`useModalInert` 管那一半），那它也不该再算
+     ——被盖住的看板每收到一次通知就重算一遍，代价落在读者正滚动的评论区上。 */
+  useCover(true)
   const panelRef = useRef<HTMLDivElement | null>(null)
   const { onKeyDown } = useDialogFocus(panelRef)
   return createPortal(
