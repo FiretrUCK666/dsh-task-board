@@ -7,8 +7,8 @@
 import { describe, expect, it } from 'vitest'
 import { withSchedule, withStatus, type TaskRecord } from '../src/core/tasks.ts'
 import {
-  DIRECT_FALLBACK_STATUS, isDirectLike, leaveRunningTargetOf, relatedSessionIdsOf,
-  runningJustificationOf, scheduleGapHolds, taskLiveStateOf,
+  DIRECT_FALLBACK_STATUS, isDirectLike, leaveRunningTargetOf, reenterRunningTargetOf,
+  relatedSessionIdsOf, runningJustificationOf, scheduleGapHolds, taskLiveStateOf,
   type TaskLiveState,
 } from '../src/core/task-live.ts'
 
@@ -253,5 +253,73 @@ describe('leave-running judgment (删空即离场的唯一判定)', () => {
       2,
     )
     expect(scheduleGapHolds(emptyPrompt)).toBe(false)
+  })
+})
+
+/**
+ * The RE-ENTRY judgment — the mirror of the leave judgment above, and the
+ * writer the board was missing. The machine this pins: the main agent hands the
+ * job to a subagent and stops; its own round settles one instant before the
+ * child flips `running`, so the card lands in 待审核 and NOTHING ever moved it
+ * back while the child kept working.
+ *
+ * Every case is a pair of surfaces that must say the same sentence — the column
+ * the card wears and the word its chip shows — so this file cannot go green
+ * while the board says 「待你决断」 about a card that is busy.
+ */
+describe('re-entry judgment (子 Agent 还在跑 ⇒ 回到进行中)', () => {
+  const settledCard = (status: 'todo' | 'review' | 'running' | 'done'): TaskRecord =>
+    withStatus(taskWith([{ sessionId: 'P', endedAt: 5 }]), status, 99)
+
+  it('a 待审核 card whose work is only its subagents goes back to 进行中', () => {
+    // THE reported state, verbatim: the card sits in 待审核 (the main agent's
+    // turn ended) while the subagent it dispatched is still working.
+    expect(reenterRunningTargetOf(settledCard('review'), 'running', { delegating: true })).toBe('running')
+  })
+
+  it('a 待办 card in the same state goes back too (the column claims no work)', () => {
+    // 待办 and 待审核 make the SAME claim about the present — "nothing of this
+    // card is in flight". Only the second also claims the work finished, so both
+    // are refuted by the same live fact.
+    expect(reenterRunningTargetOf(settledCard('todo'), 'running', { delegating: true })).toBe('running')
+  })
+
+  it('a card already in 进行中 is left alone (nothing to correct)', () => {
+    expect(reenterRunningTargetOf(settledCard('running'), 'running', { delegating: true })).toBeUndefined()
+  })
+
+  it('已完成 is never dragged back — that conclusion has its own door', () => {
+    // `done` is a human's decision (moveTaskToStatus / reviveTaskIfDone). An
+    // automatic derivation must not overrule it; the comment and steer paths
+    // revive a done card on their own, deliberately.
+    expect(reenterRunningTargetOf(settledCard('done'), 'running', { delegating: true })).toBeUndefined()
+  })
+
+  it('a session working on its OWN turn is 进行中, not 等子 Agent (no re-entry)', () => {
+    // The `delegating` gate is a CONJUNCTION: some descendant runs AND no
+    // session runs on its own turn. An own turn is the 进行中 lane written by
+    // its own paths (external round / steer drive) — this door is not its writer.
+    expect(reenterRunningTargetOf(settledCard('review'), 'running', { delegating: false })).toBeUndefined()
+  })
+
+  it('POSITIVE evidence only: an incomplete snapshot never moves a card', () => {
+    // 'unknown' is not a verdict anywhere in this module — the same two-pass law
+    // the leave side follows. A lagging list must not shuffle the board.
+    expect(reenterRunningTargetOf(settledCard('review'), 'unknown', { delegating: true })).toBeUndefined()
+    // 'waiting' means a conversation is suspended on the human: that is the
+    // 待你决断 chip's business, not a re-entry.
+    expect(reenterRunningTargetOf(settledCard('review'), 'waiting', { delegating: true })).toBeUndefined()
+  })
+
+  it('the two judgments are exact mirrors: a card can never satisfy both', () => {
+    // If both could fire on one card, every pass would ping-pong it between
+    // 进行中 and 待审核. They read opposite columns, so the property holds
+    // structurally — pinned so a future widening of either arm breaks loudly.
+    const review = settledCard('review')
+    expect(reenterRunningTargetOf(review, 'running', { delegating: true })).toBe('running')
+    expect(leaveRunningTargetOf(review, 'running'), 'a non-running card never leaves').toBeUndefined()
+    const running = settledCard('running')
+    expect(reenterRunningTargetOf(running, 'running', { delegating: true })).toBeUndefined()
+    expect(leaveRunningTargetOf(running, 'running'), 'a live descendant justifies staying').toBeUndefined()
   })
 })

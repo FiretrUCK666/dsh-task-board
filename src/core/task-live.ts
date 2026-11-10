@@ -248,6 +248,69 @@ export function leaveRunningTargetOf(
 }
 
 /**
+ * THE re-entry judgment — the mirror of {@link leaveRunningTargetOf}, and the
+ * half that did not exist.
+ *
+ * ── WHY THIS IS NOT A PATCH ────────────────────────────────────────────────
+ *
+ * The column has writers in ONE direction only. Rounds SETTLE (and
+ * `settleColumnOf` decides where they land); {@link leaveRunningTargetOf}
+ * empties a `running` card whose evidence is gone. Nothing ever wrote a card
+ * BACK into 进行中 once it had left, so a card could sit in 待审核 while real
+ * work was still in flight under it — the reported state: the main agent had
+ * handed the job to a subagent, its own turn ended, the card landed in 待审核,
+ * and the subagent kept working for another 40 minutes with the board saying
+ * 「待你决断」.
+ *
+ * Why the settle path cannot catch it: a settle judges with the facts of ITS
+ * OWN instant (`settleExecution`'s `stillWorking`). The main agent stops and
+ * dispatches in the same breath, so at that instant the descendant often has
+ * not flipped `running` yet. One frame later it has — and by then the card is
+ * no longer `running`, so the leave sweep does not consider it either. The
+ * window between "the round ended" and "the child started" is the hole, and it
+ * is unavoidable in the settle direction: no reader can predict a subagent
+ * that has not been spawned yet.
+ *
+ * So the fix is the missing direction, not a stricter settle. The facts are the
+ * same facts; only the writer was absent.
+ *
+ * ── WHY THE `delegating` GATE, AND NOT "any live session" ──────────────────
+ *
+ * `delegating` (主 Agent 停了、子 Agent 还在跑) is the ONE lane with no writer
+ * of its own. Every other lane already drives the column on its own path: a
+ * native turn becomes an external round (`recordExternalRound` → 进行中), a
+ * steer is driven by `driveLiveStates`, a run/appointment has its settle. Only
+ * "the parent stopped and left its children working" arrives with no round and
+ * no event, so only that one needs this door. Widening it to every live
+ * session would fight the user's own manual placement, which the board
+ * deliberately allows whenever no round is in flight (`resolveCardDrop`).
+ *
+ * `live` must be `'running'` — POSITIVE evidence. `'unknown'` is never a
+ * verdict (the same law as everywhere else in this file), and `'waiting'`
+ * means a conversation is suspended on the human, which is not this door's
+ * business.
+ *
+ * @param task - the card, read for its current column.
+ * @param live - the caller's ONE live derivation (`taskLiveStateOf`).
+ * @param opts.delegating - whether a related session is working ONLY through
+ *   its subagent descendants (some related session's activity is `'descendant'`).
+ * @returns `'running'` when the card must re-enter, undefined when it stays.
+ */
+export function reenterRunningTargetOf(
+  task: TaskRecord,
+  live: TaskLiveState,
+  opts: { delegating?: boolean } = {},
+): TaskStatus | undefined {
+  if (opts.delegating !== true) return undefined
+  if (live !== 'running') return undefined
+  /* 只有「声称没有活在飞」的那两栏要被纠正：待办与待审核。`done` 有自己的门
+     （`reviveTaskIfDone`）——那是用户已经确认过的结论，不归这条自动推导改；`backlog`
+     根本还没开工，列本身没说谎；已经在 `running` 的不用动。 */
+  if (task.status !== 'todo' && task.status !== 'review') return undefined
+  return 'running'
+}
+
+/**
  * Whether a round is "direct-like": a direct steer round is settled at birth
  * and has NO host turn/end settle event — its completion is only visible as
  * the native session flipping back to idle, so the controller's fallback has

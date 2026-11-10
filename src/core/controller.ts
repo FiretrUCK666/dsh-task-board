@@ -22,7 +22,7 @@ import { boundSourceTitle, realTitleOf, resolveExternalKind } from './linked-ses
 import { applyManualToggle, setCruiseSchedule as applySchedule, tickCruise as tickSchedule } from './cruise.ts'
 import { DIRECT_GRACE_MS, EXTERNAL_SETTLE_GRACE_MS, buildSessionActivity, detectExternalTurns, latestUserMessage, withinGrace, type ActivityBook, type LatestUserMessage, type SessionActivity, type SessionActivityIndex } from './session-activity.ts'
 import type { LineageRow } from './session-lineage.ts'
-import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
+import { DIRECT_FALLBACK_STATUS, leaveRunningTargetOf, newestDirectLike, reenterRunningTargetOf, relatedSessionIdsOf, taskLiveStateOf, type TaskLiveState } from './task-live.ts'
 import { askTargetOf } from './item-ask.ts'
 import { normalizeCruiseValue, clampCruiseLimit, CRUISE_LIMIT_MAX } from './board-doc.ts'
 import { withTaskColor } from './colors.ts'
@@ -4339,6 +4339,14 @@ export class BoardController {
       // so the sweep skips them.
       if (this.sweepOrphanRunning(linkedIds)) changed = true
 
+      // Stage 3.6 — the re-entry sweep: the mirror direction, for the one lane
+      // that arrives with no round and no event (see `sweepDelegatingReentry`).
+      // Ordered AFTER the leave sweep on purpose: a card that must leave and a
+      // card that must re-enter can never be the same card (the two judgments
+      // read opposite columns), so the order changes no outcome — it only keeps
+      // each pass's writes adjacent to their own justification.
+      if (this.sweepDelegatingReentry(linkedIds)) changed = true
+
       if (changed) this.persistAndNotify()
       // Stage 4 — the SAME post-settle appointments as a live settle: a
       // recovery/background settlement is a completion too, and automation
@@ -4942,6 +4950,70 @@ export class BoardController {
       changed = true
     }
     return changed
+  }
+
+  /**
+   * The re-entry sweep — the mirror of {@link sweepOrphanRunning}, and the
+   * writer that was missing. A card that CLAIMS no work is in flight (待审核 /
+   * 待办) while a related session is working ONLY through the subagents it
+   * dispatched goes back to 进行中 through the single re-entry judgment.
+   *
+   * The reported machine this closes: the main agent hands the job to a
+   * subagent and stops. Its own round settles — one instant too early to see
+   * the child light up — so the card lands in 待审核. Nothing considered it
+   * afterwards: the settle had already run, and the leave sweep only looks at
+   * `running` cards. The subagent kept working for another 40 minutes with the
+   * board saying 「待你决断」.
+   *
+   * WHY THIS ONE NEEDS A SWEEP AT ALL: every other live lane has a writer of
+   * its own (a native turn records an external round, a steer is driven by
+   * `driveLiveStates`, a run settles). "The parent stopped and left its
+   * children working" is the only lane that arrives with no round and no event
+   * — so it is the only lane that has to be noticed by a pass.
+   *
+   * POSITIVE EVIDENCE ONLY (`live === 'running'`): an incomplete snapshot never
+   * moves a card, exactly like the leave side's two-pass discipline. And it
+   * reads the SAME `delegatingNowFor` derivation the card's chip reads, so the
+   * column this writes and the word the card says can never disagree.
+   */
+  private sweepDelegatingReentry(linked: ReadonlyArray<{ task: TaskRecord; ids: readonly string[] }>): boolean {
+    // A list that has not arrived is not evidence (same law as the leave sweep).
+    if (!this.sessionsReady()) return false
+    const linkedIdsOf = (taskId: string): readonly string[] | undefined =>
+      linked.find(entry => entry.task.id === taskId)?.ids
+    let changed = false
+    const now = this.now()
+    for (const task of this.ledgerRows) {
+      if (task.status !== 'todo' && task.status !== 'review') continue
+      const ids = linkedIdsOf(task.id)
+      const live = this.liveStateFor(task, ids)
+      const target = reenterRunningTargetOf(task, live, { delegating: this.delegatingNowFor(task, ids) })
+      if (target === undefined) continue
+      this.land(task.id, withStatus(task, target, now), now)
+      changed = true
+    }
+    return changed
+  }
+
+  /**
+   * Whether this card's work right now is ONLY its subagents — the `delegating`
+   * half of the card's own chip, read over the same related set and the same
+   * activity derivation (`sessionActivityOf`). "Some related session is working
+   * through descendants" and "none of them is working on its own turn" is the
+   * exact conjunction: one session's own turn working is 进行中, not 等子 Agent,
+   * so the presence of `own` disqualifies it.
+   *
+   * Reading it from the caller (never re-deriving lineage here) is what keeps
+   * this sweep and `cardViewModelOf` naming one state instead of two.
+   */
+  private delegatingNowFor(task: TaskRecord, linkedIds: readonly string[] | undefined): boolean {
+    let delegating = false
+    for (const { sessionId } of relatedSessionIdsOf(task, linkedIds, this.sessionPresentOf())) {
+      const activity = this.sessionActivityOf(sessionId)
+      if (activity === 'own') return false
+      if (activity === 'descendant') delegating = true
+    }
+    return delegating
   }
 
   /**

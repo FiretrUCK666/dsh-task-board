@@ -2270,6 +2270,43 @@ export declare class BoardController {
      */
     private sweepOrphanRunning;
     /**
+     * The re-entry sweep — the mirror of {@link sweepOrphanRunning}, and the
+     * writer that was missing. A card that CLAIMS no work is in flight (待审核 /
+     * 待办) while a related session is working ONLY through the subagents it
+     * dispatched goes back to 进行中 through the single re-entry judgment.
+     *
+     * The reported machine this closes: the main agent hands the job to a
+     * subagent and stops. Its own round settles — one instant too early to see
+     * the child light up — so the card lands in 待审核. Nothing considered it
+     * afterwards: the settle had already run, and the leave sweep only looks at
+     * `running` cards. The subagent kept working for another 40 minutes with the
+     * board saying 「待你决断」.
+     *
+     * WHY THIS ONE NEEDS A SWEEP AT ALL: every other live lane has a writer of
+     * its own (a native turn records an external round, a steer is driven by
+     * `driveLiveStates`, a run settles). "The parent stopped and left its
+     * children working" is the only lane that arrives with no round and no event
+     * — so it is the only lane that has to be noticed by a pass.
+     *
+     * POSITIVE EVIDENCE ONLY (`live === 'running'`): an incomplete snapshot never
+     * moves a card, exactly like the leave side's two-pass discipline. And it
+     * reads the SAME `delegatingNowFor` derivation the card's chip reads, so the
+     * column this writes and the word the card says can never disagree.
+     */
+    private sweepDelegatingReentry;
+    /**
+     * Whether this card's work right now is ONLY its subagents — the `delegating`
+     * half of the card's own chip, read over the same related set and the same
+     * activity derivation (`sessionActivityOf`). "Some related session is working
+     * through descendants" and "none of them is working on its own turn" is the
+     * exact conjunction: one session's own turn working is 进行中, not 等子 Agent,
+     * so the presence of `own` disqualifies it.
+     *
+     * Reading it from the caller (never re-deriving lineage here) is what keeps
+     * this sweep and `cardViewModelOf` naming one state instead of two.
+     */
+    private delegatingNowFor;
+    /**
      * Cancel an open external round whose session has already finished WITHOUT
      * any real turn evidence past the settle grace — the flip was spurious
      * (a session created/unarchived, a transient signal) and the card must not

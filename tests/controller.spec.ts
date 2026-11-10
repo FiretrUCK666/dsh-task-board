@@ -5976,6 +5976,65 @@ describe('session activity: subagent descendants keep the card live', () => {
     expect(controller.getSnapshot().tasks.find(candidate => candidate.id === task.id)!.status).toBe('review')
   })
 
+  /**
+   * THE reported machine, end to end: the main agent hands the job to a
+   * subagent and stops. Its own round settles at an instant when the child has
+   * not flipped `running` yet, so the card lands in 待审核 — and NOTHING used to
+   * move it back while the child kept working for another 40 minutes.
+   *
+   * The fix is the missing DIRECTION, so the test drives the direction: a card
+   * already sitting in 待审核 (built that way, exactly as the settle left it)
+   * and a child that starts working AFTERWARDS. The card must re-enter 进行中 on
+   * the next pass, and must land back in 待审核 once the chain really stops —
+   * otherwise the fix would just trade one wrong column for another.
+   */
+  it('AC6: a 待审核 card re-enters 进行中 when a subagent starts working after the settle', async () => {
+    const stub = new StubExec()
+    const store = new InMemoryTaskStore()
+    const sessions = new FakeSessions()
+    // The state the settle left behind: the parent's own turn is over (so its
+    // round settled and the card landed in 待审核), and no child is running yet.
+    sessions.setRunning('P', false)
+    const seeded = createTask({ title: '交棒给子 Agent', description: '', prompt: 'run', status: 'review' }, NOW, 'task-handoff')
+    store.save([{
+      ...seeded,
+      executions: [{ id: 'e1', sessionId: 'P', startedAt: NOW - 1000, endedAt: NOW - 500, result: 'succeeded' as const, error: undefined }],
+    }])
+    const controller = new BoardController({
+      store, exec: stub as unknown as ExecutionService,
+      sessions, now: () => NOW, uuid, reconcileDebounceMs: 0,
+    })
+    controller.start()
+    await flush()
+    await flush()
+    expect(
+      controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-handoff')!.status,
+      'nothing is in flight yet — the card is rightly in 待审核',
+    ).toBe('review')
+    // …and then the subagent it dispatched starts working, with no round and no
+    // event of its own (this is the lane that had no writer).
+    sessions.setSubagent('C', 'P', true)
+    await flush()
+    await flush()
+    await flush()
+    const reentered = controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-handoff')!
+    expect(controller.sessionActivityOf('P'), 'the parent works only through its child').toBe('descendant')
+    expect(reentered.status, 'the column must not claim nothing is in flight while the child works').toBe('running')
+    // The chip and the column are ONE statement: the card says 等子 Agent, and
+    // the light breathes — the pair the reader could not reconcile before.
+    const view = cardViewModelOf(reentered, { agentWork: { own: false, descendants: 1 } })
+    expect({ column: reentered.status, primary: view.primary.kind, light: cardLightOf(view) })
+      .toEqual({ column: 'running', primary: 'delegating', light: 'halo' })
+    // The chain really stops → the card lands back in 待审核 exactly once.
+    sessions.setRunning('C', false)
+    await flush()
+    await flush()
+    expect(
+      controller.getSnapshot().tasks.find(candidate => candidate.id === 'task-handoff')!.status,
+      'the re-entry must not become a card that can never settle',
+    ).toBe('review')
+  })
+
   it('AC5: the settle/watchdog paths still read the RAW flag (a descendant cannot extend a round)', () => {
     // Mechanical proof at the source level: the two files whose reads decide a
     // round's life never reach the activity derivation. Comments come off
