@@ -2663,6 +2663,12 @@
   border-bottom: var(--dsh-tb-border);
   box-shadow: var(--dsh-tb-rim-soft);
   flex: none;
+  /* The panel stopped clipping its children (see `.modal` in the shared sheet —
+     rounding a scroller's ancestor is what puts that scroller on the main thread), so
+     the band painting the panel's top edge declares the corners. `- 1px` keeps the inner
+     arc concentric with the panel's border-box arc. */
+  border-start-start-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  border-start-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 .detailTitle {
@@ -4036,6 +4042,12 @@
   background: var(--dsh-tb-plane-inlay);
   border-top: var(--dsh-tb-border);
   flex: none;
+  /* The panel stopped clipping its children (see `.modal` in the shared sheet —
+     rounding a scroller's ancestor is what puts that scroller on the main thread), so
+     the band that paints the panel's bottom edge declares its own corners. `- 1px`
+     keeps the inner arc concentric with the panel's border-box arc. */
+  border-end-start-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  border-end-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 /* Group rhythm: 8px inside a group; the group wraps WITHIN its own slot, never
@@ -4278,6 +4290,12 @@
    * 盖住滚动的正文。 */
   background: var(--dsh-tb-plane-float);
   z-index: var(--dsh-tb-layer-content);
+  /* 面板不再裁切自己的孩子（见共享表 `.modal`：圆角 + 裁切同时出现在滚动体的祖先上，
+     那条滚动体就落回主线程）。所以「谁铺到了面板的哪条边，谁自己声明那个角」。
+     这一条与上面那句背景是同一件事的两半：头部既然拥有不透明的底，它也拥有那个角。
+     `- 1px` 让内圈与外圈同心（面板的边是一根 1px 的发丝线）。 */
+  border-start-start-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  border-start-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 /* 同一排控件同级高: the close glyph rides the SAME 24px box as the small
@@ -4393,7 +4411,6 @@
    * is why this container's bar sat flush against the panel's rounded side while
    * the board's column (which uses a margin) had it inset. Same rule, applied
    * here: a right margin moves the scroller and the bar with it. */
-
   margin-right: 5px;
 }
 
@@ -4478,8 +4495,17 @@
      contract exists to end. */
   overflow: hidden;
   border-left: var(--dsh-tb-separator);
-  /* An inner floating surface; the separator alone marks the rail. */
-  background: var(--dsh-tb-plane-sheet);
+  /* NO PAPER OF ITS OWN, AND NO RADIUS. Both follow from the same sentence: a box that
+     rounds AND clips sends every scrolling descendant to the main thread (see `.modal`
+     in the shared sheet for the measurement). The clip has to stay — it is the rail's
+     whole contract, see above — so the round cannot live here.
+   *
+   * It does not need to. The rail's plane was the SAME paper as the panel's
+   * (`--dsh-tb-plane-sheet` on both), so painting it gained nothing but one opaque
+   * layer over the panel's own sheet. Transparent, the panel's rounded sheet shows
+   * through, and the two bands that actually reach an edge — `.reviewHeader` on top,
+   * `.reviewComposer` at the bottom — carry the corners themselves. The separator still
+   * marks the split. */
 }
 
 /* The rail head (context meter + live run config): ONE Disclosure fold.
@@ -5564,8 +5590,19 @@
   border-top: var(--dsh-tb-separator);
   /* An opaque bottom band: the comments above it end at its edge, so a
      translucent or unpainted composer lets the thread bleed through the seam
-     (the 「输入框和评论叠在一起」 read). */
+     (the 「输入框和评论叠在一起」 read).
+     The panel stopped clipping its children (see `.modal` in the shared sheet — rounding
+     and clipping a scroller's ancestor is what puts that scroller on the main thread),
+     so this band, which is the one reaching the panel's bottom edge inside the rail,
+     declares that corner itself. `- 1px` keeps the inner arc concentric with the
+     panel's border-box arc. */
   background: var(--dsh-tb-plane-sheet);
+  border-end-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  /* The composer can take a scroll of its own when the panel is squeezed on a phone
+     (see the stacked band below, which sets `overflow-y: auto`). A drawn bar on a
+     rounded corner paints straight over the arc — the reader reported it as
+     「滚动条的头要冲出来」 — so the lane is inset by the radius actually in play. */
+  --dsh-tb-scroll-inset: var(--dsh-tb-radius-xl);
 }
 
 /* No composer child may shrink below its content. The composer is a

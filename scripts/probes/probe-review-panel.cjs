@@ -166,30 +166,9 @@ const HTML = (css, bundle) => `<!doctype html><html lang="zh"><head><meta charse
 <script>${bundle}</script>
 </body></html>`
 
-/** 宿主的令牌表：本插件每个 `--dsh-tb-*` 都从 `--dsw-*` 派生，缺了它颜色全是空的。 */
-function hostThemeCss() {
-  const candidates = [
-    path.join(process.env.APPDATA ?? '', 'npm', 'node_modules'),
-    path.join(process.env.HOME ?? '', '.npm', 'node_modules'),
-  ]
-  const bundle = candidates
-    .map(root => path.join(root, '@deepseek-ai', 'dsh', 'node_modules', '@deepseek-ai', 'dsh-client-ui-theme', 'lib', 'client.js'))
-    .find(one => fs.existsSync(one))
-  if (bundle === undefined) return ''
-  const source = fs.readFileSync(bundle, 'utf8')
-  const sheets = []
-  for (const match of source.matchAll(/(\w+)_css_default\s*=\s*"/g)) {
-    const open = match.index + match[0].length - 1
-    let end = open + 1
-    while (end < source.length) {
-      if (source[end] === '\\') { end += 2; continue }
-      if (source[end] === '"') break
-      end += 1
-    }
-    try { sheets.push(JSON.parse(source.slice(open, end + 1))) } catch { /* skip */ }
-  }
-  return sheets.join('\n')
-}
+/** 宿主的令牌表：本插件每个 `--dsh-tb-*` 都从 `--dsw-*` 派生，缺了它颜色全是空的。
+ *  读法只有一份，住在 `host-theme.cjs`。 */
+const { hostThemeCss } = require('./host-theme.cjs')
 
 function resolveVite() {
   try {

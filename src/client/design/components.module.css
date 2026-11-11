@@ -543,6 +543,11 @@
      同一条理由在 board 表的 `.reviewHeader` 上有完整推导。 */
   background: var(--dsh-tb-plane-float);
   z-index: var(--dsh-tb-layer-content);
+  /* The panel no longer clips its children (see `.modal` above), so the band that paints
+     its top edge carries the corners. Any dialog whose header is its first band gets
+     this for free, which is every dialog. */
+  border-start-start-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  border-start-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 .detailSection {
@@ -1067,7 +1072,50 @@
      gap: header / body / footer own their insets. */
   width: min(520px, 100%);
   max-height: 100%;
-  overflow: hidden;
+  /* ── NO `overflow: hidden` HERE, AND IT IS THE MOST EXPENSIVE LINE WE EVER WROTE ──
+   *
+   * Rounded clip + a scrolling descendant is a main-thread scroll in Chromium. The pair
+   * is what costs it: an ancestor that both rounds a corner and clips cannot hand a
+   * descendant its own compositing layer, because a child layer cannot be clipped by a
+   * rounded rect. So the scroller never leaves the main thread, and then EVERY wheel
+   * event queues behind whatever the main thread is doing.
+   *
+   * MEASURED on this panel, real Chromium, 90 real wheel events (`run-trace-probe.mjs`,
+   * counting `WidgetInputHandlerManager::FindScrollTargetOnMainThread` — the engine's own
+   * name for 「this event had to come back to the main thread to find its scroller」):
+   *
+   *     today (radius 28 + overflow hidden)                         90 of 90 on main thread
+   *     overflow: visible                                           0  of 90
+   *     border-radius: 0, overflow: hidden                          0  of 90
+   *     overview: clip instead of hidden                            90 of 90
+   *     radius 8 + hidden                                           90 of 90
+   *     radius 1 + hidden                                           0  of 90  (rounds to nothing)
+   *     contain: paint on the scroller                              90 of 90
+   *     will-change / translateZ(0) on the scroller                 90 of 90
+   *     isolation: isolate on the scroller                          90 of 90
+   *
+   * Nothing you put ON THE SCROLLER can fix it — the decision is made by the ancestor.
+   * The only two ways out are 「do not clip」 and 「do not round」. Rounding is the
+   * material's signature; clipping is an implementation detail. So clipping goes.
+   *
+   * WHAT PAYS FOR IT. The panel's own `background` + `border-radius` still paint the
+   * rounded sheet — a radius is painted whether or not the box clips. What breaks is
+   * only this: a CHILD that paints its OWN opaque plane all the way to an edge used to
+   * be trimmed by the panel's arc, and now it squares off the corner. So any band that
+   * reaches an edge declares that edge's corner on itself:
+   *
+   *     .modal > :first-child  → the top two corners
+   *     .modal > :last-child   → the bottom two corners
+   *
+   * The two rules below cover the ordinary shape (a header band on top, a footer band on
+   * the bottom). A panel whose edge-touching plane is NOT its first or last child — the
+   * review panel's rail, whose composer sits above the bottom edge — declares its own
+   * corner in its own sheet, next to the rule that paints that plane.
+   *
+   * HOW TO CHECK IT. `node scripts/probes/run-trace-probe.mjs --page <artifact>` prints
+   * the main-thread count; it must read 0. And the corners must be pixel-identical to
+   * the clipped build: `probe-pixel-diff.cjs` compares two screenshots and reports the
+   * differing pixels per corner. */
   background: var(--dsh-tb-plane-sheet);
   border: var(--dsh-tb-border);
   border-radius: var(--dsh-tb-radius-xl);
@@ -1077,6 +1125,38 @@
    * `position: fixed` 的菜单换掉包含块（清单页的菜单踩过这个坑，屏上看不出来）。 */
   animation: dshTbDialogIn var(--dsh-tb-motion-enter) backwards;
 }
+
+/* ── A ROUNDED BOX MUST NOT CLIP ITS CHILDREN ──────────────────────────────────
+ *
+ * The rule this interface now follows, and the reason `.modal` dropped `overflow`:
+ *
+ *     rounding + clipping + a scrolling descendant = that scroller runs on the MAIN
+ *     THREAD. Both halves are needed; either one alone is harmless.
+ *
+ * So the corner of a panel is painted by a box that does NOT clip. Its own
+ * `background` + `border-radius` paints the rounded sheet, which is why the panels
+ * look unchanged; the children are simply no longer trimmed to the arc.
+ *
+ * WHAT THIS MEANS FOR A CONSUMER. A band that paints an opaque plane all the way to an
+ * edge covers the panel's arc, so that band — not the panel — has to carry the corner.
+ * Two conditions, both required:
+ *
+ *   1. it must not clip (see above), and
+ *   2. it must actually be the surface reaching that edge.
+ *
+ * There is deliberately NO blanket `:first-child` / `:last-child` rule here. Such a
+ * rule would hand the corner to any last child, including one that clips, and would
+ * silently rebuild exactly the pair this change removes — which is what happened on the
+ * first attempt at this fix: the corner was passed to `.reviewBody`, which clips, and
+ * the scroller stayed on the main thread. Declaring it per consumer costs one line
+ * next to the plane it describes, and that line is checkable (`run-trace-probe.mjs`
+ * must read 0 main-thread scroll targets).
+ *
+ * `- 1px` and not the radius itself: the band's box starts one hairline inside the
+ * panel's outer edge (`--dsh-tb-border` is `1px solid`), so a band carrying the full
+ * radius would sit one pixel wide of the arc and leave a bright hairline on a high-DPI
+ * screen. Subtracting the hairline makes the two arcs concentric. */
+
 
 /* ── 浮层这一族：正文那一格与动作那一格 ─────────────────────────────────────────
  *
@@ -1134,6 +1214,13 @@
   flex-wrap: wrap;
   /* Pinned: the action row never shrinks out of reach (see .modal). */
   flex: none;
+  /* The panel stopped clipping its children (see `.modal` above — a rounded clip on a
+     scroller's ancestor is what puts that scroller on the main thread), so the band that
+     paints the panel's bottom edge declares its own corners. Any dialog whose footer is
+     its last band gets this for free; a dialog whose last band is something else
+     declares that band's corners in its own sheet. */
+  border-end-start-radius: calc(var(--dsh-tb-radius-xl) - 1px);
+  border-end-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 
