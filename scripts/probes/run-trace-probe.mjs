@@ -183,32 +183,52 @@ async function main() {
     return result.result?.value
   }
 
-  /* The scroller to drive. Default: the tallest scrollable box on the page. */
-  const box = await evaluate(`(() => {
+  /* ── every scrollable box, not just the tallest one ─────────────────────────
+   *
+   * The report this probe exists for was 「各种 session 里的评论区都容易卡」 — a CLASS
+   * of boxes. A probe that wheels one box answers about one box, and the one it picked
+   * was whichever had the most room to scroll, which is not the same thing as the one
+   * that was slow. So it enumerates all of them and wheels each in turn; the summary
+   * then reports per box, and a box that stayed on the main thread can never hide
+   * behind its tall neighbour.
+   *
+   * A box counts as scrollable when it has more than 200px of room — below that a wheel
+   * gesture is over before it latches, and the reading would be about the harness. */
+  const boxes = await evaluate(`(() => {
     const pick = [];
     for (const el of document.querySelectorAll('*')) {
       const style = getComputedStyle(el)
       if (style.overflowY !== 'auto' && style.overflowY !== 'scroll') continue
       const room = el.scrollHeight - el.clientHeight
-      if (room > 200) pick.push({ el, room })
+      if (room <= 200) continue
+      const rect = el.getBoundingClientRect()
+      if (rect.width < 40 || rect.height < 40) continue
+      const id = el.id !== '' ? '#' + el.id : ''
+      const cls = (el.className !== '' && typeof el.className === 'string')
+        ? '.' + el.className.trim().split(/\\s+/).map(one => one.replace(/_[a-z0-9]+$/i, '')).join('.')
+        : ''
+      pick.push({
+        room,
+        label: (el.tagName.toLowerCase() + id + cls).slice(0, 60),
+        x: Math.round(rect.left + rect.width / 2),
+        y: Math.round(rect.top + Math.min(rect.height / 2, 300)),
+      })
     }
-    if (pick.length === 0) return null
     pick.sort((a, b) => b.room - a.room)
-    const target = pick[0].el
-    const rect = target.getBoundingClientRect()
-    return {
-      room: pick[0].room,
-      x: Math.round(rect.left + rect.width / 2),
-      y: Math.round(rect.top + Math.min(rect.height / 2, 300)),
-      scrollableBoxes: pick.length,
-    }
+    return pick
   })()`)
-  if (box === null) {
+  if (boxes === null || boxes.length === 0) {
     browser.close()
     child.kill()
     console.error('run-trace-probe: 这一页没有可滚动的盒子')
     process.exit(5)
   }
+
+  /* How many wheel events per box. The first pass used 90 on one box; split across
+   * several boxes it stays at 90 each, because the number that matters is whether the
+   * scroller ever took the compositor path — one event that went to the main thread is
+   * already a defect, and a smaller sample only risks missing it. */
+  const WHEELS = 90
 
   /* ── the recording ─────────────────────────────────────────────────────────
    * `devtools.timeline` gives the renderer's own event names (UpdateLayoutTree,
@@ -216,24 +236,35 @@ async function main() {
    * path — where a non-composited scroller shows up as main-thread input work. */
   const collected = []
   let finished = false
+  const perBox = []
   browser.on('Tracing.dataCollected', (params) => { collected.push(...(params.value ?? [])) })
-  browser.on('Tracing.tracingComplete', () => { finished = true })
 
-  await browser.send('Tracing.start', {
-    categories: 'devtools.timeline,disabled-by-default-devtools.timeline,cc,input,benchmark,toplevel',
-    transferMode: 'ReportEvents',
-  }, sessionId)
-
-  for (let step = 0; step < 90; step += 1) {
-    await browser.send('Input.dispatchMouseEvent', {
-      type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: 110, pointerType: 'mouse',
+  /* One recording per box. The categories stay the same; only the wheel target moves,
+   * so the numbers are comparable across boxes. */
+  for (const box of boxes) {
+    finished = false
+    collected.length = 0
+    const boxEvents = []
+    browser.on('Tracing.tracingComplete', () => { finished = true })
+    await browser.send('Tracing.start', {
+      categories: 'devtools.timeline,disabled-by-default-devtools.timeline,cc,input,benchmark,toplevel',
+      transferMode: 'ReportEvents',
     }, sessionId)
-    await sleep(16)
-  }
-  await sleep(500)
 
-  await browser.send('Tracing.end', {}, sessionId)
-  for (let attempt = 0; attempt < 120 && !finished; attempt += 1) await sleep(100)
+    for (let step = 0; step < WHEELS; step += 1) {
+      await browser.send('Input.dispatchMouseEvent', {
+        type: 'mouseWheel', x: box.x, y: box.y, deltaX: 0, deltaY: 110, pointerType: 'mouse',
+      }, sessionId)
+      await sleep(16)
+    }
+    await sleep(500)
+
+    await browser.send('Tracing.end', {}, sessionId)
+    for (let attempt = 0; attempt < 120 && !finished; attempt += 1) await sleep(100)
+    boxEvents.push(...collected)
+    perBox.push({ box, events: boxEvents.slice() })
+  }
+  finished = true
 
   /* ── DID THE INJECTION LAND? ───────────────────────────────────────────────
    * A run that says 「改了也没用」 has two readings with opposite conclusions: the
@@ -271,33 +302,56 @@ async function main() {
   browser.close()
   child.kill()
 
-  const report = summarise(collected)
-
   /* ── 主线程滚动的判据 ───────────────────────────────────────────────────────
    * Chromium 把「这个滚动体能不能在合成线程上滚」写成一组理由位，名字里带
    * `main_thread_scrolling_reasons`。它不是性能数字，是**机制**：只要有理由，每一个
    * 滚轮事件都必须回到主线程处理，主线程上任何一段活都会变成一次卡顿。
    *
    * 自定义画法的滚动条正是其中一个理由（`kCustomScrollbarScrolling`）。所以这一节
-   * 直接回答「我们这个滚动体到底在哪条线程上滚」——不靠猜，也不靠帧时推断。 */
-  const scrollEvents = collected.filter(one => typeof one.name === 'string' && /scroll/i.test(one.name))
-  const reasons = new Map()
-  for (const event of scrollEvents) {
-    const text = JSON.stringify(event.args ?? {})
-    const match = /"main_thread_scrolling_reasons?"\s*:\s*(\d+)/.exec(text)
-    const flag = match === null ? 'absent' : match[1]
-    const key = `${event.name} :: ${flag}`
-    reasons.set(key, (reasons.get(key) ?? 0) + 1)
+   * 直接回答「我们这个滚动体到底在哪条线程上滚」——不靠猜，也不靠帧时推断。
+   *
+   * 判据只在**那一个盒子自己的那段录制**里数：把三个盒子混在一起数，一条坏消息会被
+   * 两条好消息平均掉，而那正是这个 bug 藏了两轮的方式。 */
+  const readBox = (events) => {
+    const reasons = new Map()
+    for (const event of events) {
+      if (typeof event.name !== 'string' || !/scroll/i.test(event.name)) continue
+      const text = JSON.stringify(event.args ?? {})
+      const match = /"main_thread_scrolling_reasons?"\s*:\s*(\d+)/.exec(text)
+      const flag = match === null ? 'absent' : match[1]
+      const key = `${event.name} :: ${flag}`
+      reasons.set(key, (reasons.get(key) ?? 0) + 1)
+    }
+    const mainThread = events.filter(one => typeof one.name === 'string'
+      && /FindScrollTargetOnMainThread/.test(one.name)).length
+    return { reasons, mainThread, report: summarise(events) }
   }
+  const readings = perBox.map(one => ({ box: one.box, ...readBox(one.events) }))
 
   console.log('')
-  console.log(`trace: ${report.events} 条事件，90 次真滚轮，滚动盒 ${box.scrollableBoxes} 个，可滚 ${box.room}px`)
+  console.log('每个滚动体各自一段录制（这才是「都容易卡」能被回答的方式）：')
   console.log('')
-  console.log('按总耗时排前 26：')
+  for (const reading of readings) {
+    const verdict = reading.mainThread === 0 ? 'OK 合成线程' : `BAD 主线程 ${reading.mainThread}/${WHEELS}`
+    console.log(`  ${verdict.padEnd(18)} 可滚 ${String(reading.box.room).padStart(5)}px  ${reading.box.label}`)
+  }
+  const bad = readings.filter(one => one.mainThread > 0)
   console.log('')
-  console.log('  毫秒    次数  事件')
-  for (const row of report.rows.slice(0, 26)) {
-    console.log(`  ${String(row.ms).padStart(6)}  ${String(row.count).padStart(5)}  ${row.name}`)
+  console.log(bad.length === 0
+    ? `  结论：${readings.length} 个滚动体，0 次回主线程找滚动目标。`
+    : `  结论：${bad.length}/${readings.length} 个滚动体仍在主线程上滚。`)
+  console.log('')
+
+  /* The heaviest each box gets its own top list; merging them would answer 「整页谁贵」
+     for a question that is about one box at a time. */
+  for (const reading of readings) {
+    console.log('')
+    console.log(`按总耗时排前 12（${reading.box.label}）：`)
+    console.log('')
+    console.log('  毫秒    次数  事件')
+    for (const row of reading.report.rows.slice(0, 12)) {
+      console.log(`  ${String(row.ms).padStart(6)}  ${String(row.count).padStart(5)}  ${row.name}`)
+    }
   }
 
   /* The top list is dominated by task-runner wrappers that NEST each other, so it
@@ -308,20 +362,23 @@ async function main() {
     'UpdateLayoutTree', 'Layout', 'PrePaint', 'Paint', 'Layerize', 'RasterTask',
     'Commit', 'CompositeLayers', 'UpdateLayer', 'HitTest', 'ParseHTML', 'RecalcStyle',
   ]
+  const merged = summarise(perBox.flatMap(one => one.events))
   console.log('')
   console.log('渲染管线（这些名字才描述 DOM 的代价）：')
   console.log('')
   for (const name of PIPELINE) {
-    const row = report.rows.find(one => one.name === name)
+    const row = merged.rows.find(one => one.name === name)
     console.log(`  ${String(row === undefined ? 0 : row.ms).padStart(6)}ms  ${String(row === undefined ? 0 : row.count).padStart(5)} 次  ${name}`)
   }
 
-  console.log('')
-  console.log('滚动事件：名字 + main_thread_scrolling_reasons')
-  console.log('')
-  const ranked = [...reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 14)
-  for (const [key, count] of ranked) console.log(`  ${String(count).padStart(5)}  ${key}`)
-  if (ranked.length === 0) console.log('  （trace 里没有名字带 scroll 的事件——这一项没测到）')
+  for (const reading of readings) {
+    console.log('')
+    console.log(`滚动事件：名字 + main_thread_scrolling_reasons（${reading.box.label}）`)
+    console.log('')
+    const ranked = [...reading.reasons.entries()].sort((a, b) => b[1] - a[1]).slice(0, 12)
+    for (const [key, count] of ranked) console.log(`  ${String(count).padStart(5)}  ${key}`)
+    if (ranked.length === 0) console.log('  （trace 里没有名字带 scroll 的事件——这一项没测到）')
+  }
 
   if (landed !== null) {
     console.log('')
