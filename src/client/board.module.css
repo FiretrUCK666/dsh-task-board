@@ -1127,7 +1127,17 @@
   border: var(--dsh-tb-border-soft);
   border-radius: var(--dsh-tb-radius-lg);
   box-shadow: var(--dsh-tb-rim-soft);
-  overflow: hidden;
+  /* NO `overflow: hidden` HERE, and it is not a style choice. A box that rounds AND
+     clips sends every scrolling descendant to the main thread: the compositor cannot tell
+     which box a wheel belongs to, so each event goes back to the main thread to ask
+     (measured on this column's own scroller: 90/90 wheel events on the main thread with
+     the clip, 0/90 with either the clip or the radius removed). The reader feels it as
+     the cards jumping in steps, not as low frame rate.
+   *
+   * The clip was only ever there to trim the first and last row to the rounded outer
+   * edge. Nothing needs it now: the scrolling box inside is transparent, so the column's
+   * own rounded recess shows through at the bottom, and the one band that paints to an
+   * edge — `.columnHeader`, whose wash covers the top — declares that corner itself. */
   /* ── THE RAIL, AND WHAT IS IN IT ─────────────────────────────────────────
      Four numbers, and every place on this surface that needs one reads one of
      them, so the places below cannot be edited apart from each other.
@@ -1241,6 +1251,12 @@
      读成「嵌在凹槽上的一枚带子」而不是一层平涂。 */
   border-bottom: var(--dsh-tb-border-soft);
   box-shadow: var(--dsh-tb-rim-soft);
+  /* The column no longer clips its children (see `.column` — a rounded clip on a
+     scroller's ancestor puts that scroller on the main thread), so this band, which sits
+     on the column's top edge and paints its own wash, carries that corner. `- 1px` keeps
+     the inner arc concentric with the column's hairline. */
+  border-start-start-radius: calc(var(--dsh-tb-radius-lg) - 1px);
+  border-start-end-radius: calc(var(--dsh-tb-radius-lg) - 1px);
 }
 .columnHeader > .statusDot {
   position: absolute;

@@ -237,7 +237,9 @@ async function main() {
   const collected = []
   let finished = false
   const perBox = []
-  browser.on('Tracing.dataCollected', (params) => { collected.push(...(params.value ?? [])) })
+  /* `push(...array)` spread overflows the stack on a board-sized page (tens of thousands
+     of events per chunk), and the crash lands on the probe rather than on a finding. */
+  browser.on('Tracing.dataCollected', (params) => { for (const one of params.value ?? []) collected.push(one) })
 
   /* One recording per box. The categories stay the same; only the wheel target moves,
    * so the numbers are comparable across boxes. */
@@ -261,7 +263,8 @@ async function main() {
 
     await browser.send('Tracing.end', {}, sessionId)
     for (let attempt = 0; attempt < 120 && !finished; attempt += 1) await sleep(100)
-    boxEvents.push(...collected)
+    /* Same reason as the receive path: this array is board-sized. */
+    for (const one of collected) boxEvents.push(one)
     perBox.push({ box, events: boxEvents.slice() })
   }
   finished = true
