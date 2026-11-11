@@ -12,7 +12,7 @@ import css from '../board.module.css'
 import type { TaskRecord } from '../../core/tasks.ts'
 import { attachmentCountsOf, attachmentsOf } from '../../core/attachment.ts'
 import { Chip } from '../design/Chip.tsx'
-import { commentKindOf, commentStateKey, queuePositionOf, type CommentView } from './comment-thread.ts'
+import { commentKindOf, commentStateKey, queuePositionsOf, type CommentView } from './comment-thread.ts'
 import { Markdown } from './Markdown.tsx'
 import { formatDateTime } from './format-time.ts'
 
@@ -39,10 +39,13 @@ export const CommentsThread = memo(function CommentsThread({ task, views, onCanc
   onCancel: (roundId: string) => boolean
 }) {
   if (views.length === 0) return <p className={css.detailText}>{t('review.noComments')}</p>
+  /* ONE pass for the whole list — see `queuePositionsOf`. Asking per row costs the
+     square of the row count, and this list re-renders on every 3s poll. */
+  const positions = queuePositionsOf(task)
   return (
     <ul className={css.reviewComments}>
       {views.map(view => {
-        const position = queuePositionOf(task, view.round.id)
+        const position = positions.get(view.round.id) ?? 0
         const cancellable = view.state === 'saved' || view.state === 'queued'
         const counts = attachmentCountsOf(attachmentsOf(view.round))
         return (

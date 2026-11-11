@@ -15,7 +15,7 @@ import components from '../design/components.module.css'
 import { ConfirmDialog } from './ConfirmDialog.tsx'
 import { RunConfigRows } from './RunConfigRows.tsx'
 import { useEscapeStack } from '../design/escape-stack.ts'
-import { useCover } from '../design/cover.ts'
+import { useCover, useCovered } from '../design/cover.ts'
 import { useRequiredBoardSnapshot } from './use-board-snapshot.ts'
 import { useDialogFocus } from '../design/dialog-focus.ts'
 import { Chip, type ChipKind } from '../design/Chip.tsx'
@@ -320,7 +320,16 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
   useEscapeStack(() => { detailEscape() })
   /* 这一层盖住了看板：声明给 `design/cover.ts`，被盖住的那一层就不再做没人看的活。
      面板自己反过来**自己订阅**快照（见 `current`）——盖住的是别人，不是它自己。 */
-  useCover(true)
+  /* 卡片详情盖住看板，而它自己会被更上层的会话面板盖住——所以它报的是自己的层名，
+     不是「我盖住了」。见 `design/cover.ts` 的次序表。 */
+  useCover('detail')
+  /* AND IT IS COVERED TOO. Opening a session panel over this sheet used to leave it
+   * re-deriving the whole card — description, run config, every session row, the
+   * status row — on the same 3-second poll that drives the panel the reader is
+   * scrolling. The sheet was the layer that spent the money, and it was the one
+   * layer nothing stopped: a boolean 「is anything open」 can only ever answer for
+   * the bottom of the stack. */
+  const covered = useCovered('detail')
   const detailPanelRef = useRef<HTMLDivElement | null>(null)
   const [confirmDelete, setConfirmDelete] = useState(false)
   // Red-flag per-session removal (hidden-tray only): the session's rounds
@@ -365,7 +374,7 @@ export function TaskDetail({ controller, task, workspaceTitleOf, dragSourceRef, 
    * that is being looked at, so it carries the live value; the opener's copy is
    * only the floor for the frame where the ledger no longer holds the id (a
    * delete in flight), which is what the old prop-only form already rendered. */
-  const snapshot = useRequiredBoardSnapshot(controller)
+  const snapshot = useRequiredBoardSnapshot(controller, covered)
   const current = snapshot.tasks.find(candidate => candidate.id === task.id) ?? task
   // The ONE session scoping every composer's official '@' reference menu on
   // this surface: the task's own first related session (deterministic).

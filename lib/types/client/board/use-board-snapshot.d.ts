@@ -4,9 +4,9 @@ export type BoardSnapshot = ReturnType<BoardController['getSnapshot']>;
 /**
  * Subscribe to the board's snapshot, or `undefined` when there is no board.
  * @param controller - 装配层给的看板控制器；`undefined` = 这一屏没有看板。
- * @param held - 这一层此刻是不是**被盖着**（见 `design/cover.ts`）。被盖着的表面不
- *   接收新快照：它的可见输出没有人在看，而每次通知都意味着一整棵子树的重算；重算本身
- *   不发生在读者眼里，代价却落在读者正滚动的那个面板的手感上。
+ * @param held - 这一层此刻是不是**被盖着**（见 `design/cover.ts`）。被盖着时只跳过
+ *   **数据**通知：位置一变照样收（见 `samePlace`）。一个表面不可能靠「什么都收不到」
+ *   来省下重算——它需要知道的是**自己还该不该在**。
  * @returns 当前快照，或 `undefined`（没有看板）。controller 变了或看板改了都会重画。
  */
 export declare function useBoardSnapshot(controller: BoardController | undefined, held?: boolean): BoardSnapshot | undefined;

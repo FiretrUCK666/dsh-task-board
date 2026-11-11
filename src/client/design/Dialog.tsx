@@ -83,7 +83,8 @@ export function Dialog({ title, label, onClose, className, children, portal = tr
   useModalInert(panelRef, true)
   /* 同一句承诺的另一半：外面的一切**也不该再算**。盖着的板每收到一次通知就重算一遍、
      每重算一次就同步读一遍每张卡的框，而这些代价落在读者正滚动的那个面板的手感上。 */
-  useCover(true)
+  /* 最上面那一层：任何 Dialog 都画在已经打开的面板之上。 */
+  useCover('dialog')
   const titleId = useId()
   const panel = (
     <div className={css.modalBackdrop} onMouseDown={event => { if (event.target === event.currentTarget) onClose() }}>

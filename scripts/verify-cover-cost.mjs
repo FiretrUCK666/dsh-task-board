@@ -138,13 +138,26 @@ for (const rel of modalShells) {
 }
 
 /* The registry itself must be the ONE fact both JS layers read. Two copies is how the
- * subscription and the FLIP come to disagree about whether the board is covered. */
+ * subscription and the FLIP come to disagree about whether the board is covered.
+ *
+ * THE SHAPE IT CHECKS IS THE LAYERED ONE. The registry started as a `Set<symbol>`
+ * (a boolean answer: 「is anything covering the board」) and that shape could not
+ * express 「is anything covering ME」 — so the detail sheet under a session panel kept
+ * working. It is now `Set<{ layer, token }>` plus a declared order; this gate names
+ * that shape, because a copy that reverts to symbols would answer only for the
+ * bottom layer again and every static check would still pass. */
 const registry = stripComments(read('src/client/design/cover.ts'))
 if (registry === '') {
   findings.push('src/client/design/cover.ts: 文件读不到——「盖住」这件事在 JS 侧没有事实来源了')
 } else {
-  if (!/const covers = new Set<symbol>\(\)/.test(registry)) {
-    findings.push('src/client/design/cover.ts: 登记表不是模块级集合——两个读取者会拿到两份答案')
+  if (!/const covers = new Set<\{ layer: Layer; token: symbol \}>\(\)/.test(registry)) {
+    findings.push('src/client/design/cover.ts: 登记表不是「层 + 令牌」的模块级集合——两层会拿到两份答案，或者只答得了最底下那一层')
+  }
+  if (!/export const LAYERS = \[[^\]]*\] as const/.test(registry)) {
+    findings.push('src/client/design/cover.ts: 层的次序没有一处声明——「我上面还有没有东西」就只能靠挂载先后去猜，而 effect 是子先父后跑的')
+  }
+  if (!/top > rankOf\(me\)/.test(registry)) {
+    findings.push('src/client/design/cover.ts: 被盖住的判据不是「有更高的一层」——同一层的两个浮层会互相当成盖住自己的那一层')
   }
   if (/useState/.test(registry)) {
     findings.push('src/client/design/cover.ts: 用 state 存这个事实会让首帧读到错的答案，而那一帧正好是要省掉的那一帧')

@@ -89,7 +89,8 @@ export function SessionFrame({ title, badge, ariaLabel, actions, context, contex
   /* 「盖住」这件事的四层里的后两层（布局与重算）：这一层声明了 `aria-modal`，
      外面的东西对读屏与键盘已经不成立（`useModalInert` 管那一半），那它也不该再算
      ——被盖住的看板每收到一次通知就重算一遍，代价落在读者正滚动的评论区上。 */
-  useCover(true)
+  /* 会话与复核面板画在卡片详情之上、确认弹窗之下。 */
+  useCover('panel')
   const panelRef = useRef<HTMLDivElement | null>(null)
   const { onKeyDown } = useDialogFocus(panelRef)
   return createPortal(

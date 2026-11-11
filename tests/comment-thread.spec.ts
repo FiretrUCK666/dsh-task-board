@@ -1,8 +1,10 @@
 /** The comment-thread pure logic: one session-scoped thread model, display
  *  state, and the task-level queue position behind the session chips. */
 import { describe, expect, it } from 'vitest'
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createTask, newDirectRound, newExternalRound, pendingCommentCount, settleExecution, startExecution, type ExecutionRecord, type TaskRecord } from '../src/core/tasks.ts'
-import { commentKindOf, commentRoundState, commentStateKey, latestCommentView, queuePositionOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
+import { commentKindOf, commentRoundState, commentStateKey, latestCommentView, queuePositionOf, queuePositionsOf, sessionCommentsOf } from '../src/client/board/comment-thread.ts'
 
 const NOW = 1_700_000_000_000
 
@@ -224,6 +226,68 @@ describe('queuePositionOf', () => {
     expect(queuePositionOf(task, 'c9')).toBe(0)
     expect(queuePositionOf(task, 'e1')).toBe(0)
     expect(queuePositionOf(task, 'missing')).toBe(0)
+  })
+})
+
+describe('queuePositionsOf (the whole list in one pass)', () => {
+  /** Task with pending comments on two sessions, one settled and one injected. */
+  function mixed(): TaskRecord {
+    const base = withTwoRuns()
+    return {
+      ...base,
+      executions: [
+        ...base.executions,
+        commentRound({ id: 'a1', parentExecutionId: 'e1', startedAt: NOW + 10 }),
+        commentRound({ id: 'a2', parentExecutionId: 'e1', startedAt: NOW + 11 }),
+        commentRound({ id: 'a3', parentExecutionId: 'e1', startedAt: NOW + 12, injectedAt: NOW + 13 }),
+        commentRound({ id: 'a4', parentExecutionId: 'e1', startedAt: NOW + 14, endedAt: NOW + 15, result: 'succeeded' }),
+        commentRound({ id: 'b1', sessionId: 's-2', parentExecutionId: 'e2', startedAt: NOW + 16 }),
+      ],
+    }
+  }
+
+  it('agrees with queuePositionOf row by row — one lane grammar, two shapes', () => {
+    const task = mixed()
+    const table = queuePositionsOf(task)
+    for (const round of task.executions) {
+      expect(table.get(round.id) ?? 0, `round ${round.id}`).toBe(queuePositionOf(task, round.id))
+    }
+  })
+
+  it('numbers only pending rounds, per lane, in submission order', () => {
+    const table = queuePositionsOf(mixed())
+    // Lane s-1: a1, a2 wait; a3 is running (not a position); a4 settled.
+    expect(table.get('a1')).toBe(1)
+    expect(table.get('a2')).toBe(2)
+    expect(table.has('a3')).toBe(false)
+    expect(table.has('a4')).toBe(false)
+    // Lane s-2 starts at 1 again — another conversation's queue is not in front.
+    expect(table.get('b1')).toBe(1)
+    expect(table.has('e1')).toBe(false)
+  })
+
+  it('is EMPTY, not wrong, when nothing is pending', () => {
+    const base = withTwoRuns()
+    expect(queuePositionsOf(base).size).toBe(0)
+  })
+
+  it('is asked ONCE by the list, not once per row', () => {
+    /* A timer-based ratio test was tried here and withdrawn: it passed alone and failed
+       occasionally in the full run, because how long 400 objects take depends on what else
+       the machine is doing. A flaky gate is worse than no gate — it teaches people to
+       re-run. What actually must hold is STRUCTURAL: the list asks for the whole table
+       before it starts mapping rows, and never asks per row inside the map. So this reads
+       the call sites instead of the clock. */
+    const read = (relative: string): string =>
+      readFileSync(join(process.cwd(), relative), 'utf8')
+    const list = read('src/client/board/CommentsThread.tsx')
+    const table = list.indexOf('queuePositionsOf(task)')
+    const rows = list.indexOf('views.map(')
+    expect(table, 'the list must build the table').toBeGreaterThan(0)
+    expect(rows, 'the list must render rows').toBeGreaterThan(0)
+    expect(table, 'the table must be built BEFORE the rows are mapped').toBeLessThan(rows)
+    // The per-row entry has no business in a component at all.
+    expect(list).not.toMatch(/queuePositionOf\(/)
   })
 })
 

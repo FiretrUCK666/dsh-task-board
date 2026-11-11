@@ -59,9 +59,10 @@ function Board() {
 }
 
 /* The overlay: a shell that registers its cover while open, exactly as
-   Dialog / TaskDetail / SessionFrame do. */
+   Dialog / TaskDetail / SessionFrame do. The layer name is what the registry
+   keys on now — a boolean could only ever answer for the bottom layer. */
 function Overlay() {
-  useCover(true)
+  useCover('panel')
   return createElement('p', { id: 'overlay' }, 'overlay')
 }
 

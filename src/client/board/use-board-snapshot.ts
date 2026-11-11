@@ -45,11 +45,27 @@ import type { BoardController } from '../../core/controller.ts'
 export type BoardSnapshot = ReturnType<BoardController['getSnapshot']>
 
 /**
+ * 「读者此刻在哪一页」—— 快照里那部分**决定这个表面还该不该存在**的字段。
+ *
+ * 快照把两种东西装进同一个对象，而它们的更新频率和消费者都不一样：
+ *
+ * - **数据**：台账、会话、活跃度。重，而且被盖住时没人看得见；
+ * - **位置**：哪张卡的面板开着、看板是不是当前舞台。轻，而且它一变，外面的那一层
+ *   必须立刻知道——否则它不知道自己该不该还在。
+ *
+ * 这个区分是**结构性**的，不是优化：一个被盖住的表面如果连位置变化都收不到，它就永远
+ * 不知道盖着它的那一层已经关了。
+ */
+function samePlace(a: BoardSnapshot, b: BoardSnapshot): boolean {
+  return a.selectedTaskId === b.selectedTaskId && a.boardOpen === b.boardOpen
+}
+
+/**
  * Subscribe to the board's snapshot, or `undefined` when there is no board.
  * @param controller - 装配层给的看板控制器；`undefined` = 这一屏没有看板。
- * @param held - 这一层此刻是不是**被盖着**（见 `design/cover.ts`）。被盖着的表面不
- *   接收新快照：它的可见输出没有人在看，而每次通知都意味着一整棵子树的重算；重算本身
- *   不发生在读者眼里，代价却落在读者正滚动的那个面板的手感上。
+ * @param held - 这一层此刻是不是**被盖着**（见 `design/cover.ts`）。被盖着时只跳过
+ *   **数据**通知：位置一变照样收（见 `samePlace`）。一个表面不可能靠「什么都收不到」
+ *   来省下重算——它需要知道的是**自己还该不该在**。
  * @returns 当前快照，或 `undefined`（没有看板）。controller 变了或看板改了都会重画。
  */
 export function useBoardSnapshot(controller: BoardController | undefined, held = false): BoardSnapshot | undefined {
@@ -59,6 +75,8 @@ export function useBoardSnapshot(controller: BoardController | undefined, held =
    * 订阅只认 controller，这是它唯一真正的依赖。 */
   const heldRef = useRef(held)
   heldRef.current = held
+  const snapshotRef = useRef(snapshot)
+  snapshotRef.current = snapshot
   useEffect(() => {
     if (controller === undefined) {
       setSnapshot(undefined)
@@ -67,9 +85,13 @@ export function useBoardSnapshot(controller: BoardController | undefined, held =
     // 先读一次：controller 可能在两次渲染之间就换过（或刚回来）。
     setSnapshot(controller.getSnapshot())
     return controller.subscribe(() => {
-      // 盖着的时候**不接收**：这一跳就是「一个字的活都不干」的全部实现。
-      if (heldRef.current) return
-      setSnapshot(controller.getSnapshot())
+      const next = controller.getSnapshot()
+      /* 盖着的时候**只跳过数据**：位置不变就直接返回（这一跳是「一个字的活都不干」的
+       * 全部实现），位置变了必须放行——盖着我的那一层可能刚刚关了，而「我还该不该在」
+       * 只有这一条通知会告诉我。 */
+      const previous = snapshotRef.current
+      if (heldRef.current && previous !== undefined && samePlace(previous, next)) return
+      setSnapshot(next)
     })
   }, [controller])
   /* 揭开的那一刻补读一次，把被盖住期间错过的改动对齐。

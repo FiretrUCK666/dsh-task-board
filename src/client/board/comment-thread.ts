@@ -68,34 +68,92 @@ export function sessionCommentsOf(task: TaskRecord, sessionId: string, cruiseOn:
 }
 
 /**
+ * 一条回合排在**哪条队列**里。
+ *
+ * 队列是会话，不是卡：等另一段对话的评论不排在这一条前面，否则它会读到「第 3 位」
+ * 而它自己那条会话明明空着、下一秒就该轮到它。两处读位次的代码共用这一句，所以
+ * 「lanes 怎么分」只有一处能改。
+ */
+function laneKeyOf(round: ExecutionRecord): string {
+  return round.sessionId ?? round.sessionAnchor ?? ''
+}
+
+/**
+ * 这一条**还在排队**吗。
+ *
+ * 三条排除各有一次真实的翻车：外部观察到的回合是自己跑的（不排任何队）；已经有
+ * `injectedAt` 的那条是**正在跑**、不是还没跑——把它算进去，第一条真排队的话会读成
+ * 「第 2 位」而屏上没有任何一条说「第 1 位」；结算过的不排队。
+ *
+ * 与 `laneKeyOf` 一样，两个读位次的入口共用这一句。
+ */
+function isPendingRound(round: ExecutionRecord): boolean {
+  return round.comment !== undefined
+    && round.endedAt === undefined
+    && round.injectedAt === undefined
+    && round.external !== true
+}
+
+/**
  * The 1-based queue position of a pending round within ITS OWN SESSION'S
  * lane (saved comments for that session, submission order) — what a
  * 「排队中 · 第 N 位」 chip shows.
  *
- * The lane is the session, not the card: comments waiting for a DIFFERENT
- * conversation are not ahead of this one, and would otherwise read as
- * 「第 3 位」 while their own session is idle and about to take them. Returns
- * 0 when the round is not in the pending set (settled, injected, or not a
- * comment round at all).
+ * **One row at a time — never in a loop.** This function re-scans the whole card on
+ * every call, so asking it once per comment row costs `n²`. A list asks
+ * `queuePositionsOf` once instead; this entry stays for the callers that genuinely
+ * have one row (a test, a single chip) and it shares the lane/pending judgement with
+ * that one so the two can never disagree about a row.
+ *
+ * @param task - the card holding the round.
+ * @param roundId - the round to locate.
+ * @returns its 1-based position in its lane, or 0 when it is not pending.
  */
 export function queuePositionOf(task: TaskRecord, roundId: string): number {
   const target = task.executions.find(round => round.id === roundId)
   if (target === undefined) return 0
-  const lane = target.sessionId ?? target.sessionAnchor
+  const lane = laneKeyOf(target)
   const pending = task.executions
-    // External rounds are never queued (they run out-of-band) — exclude them.
-    // An ALREADY-INJECTED round is running, not waiting: counting it would
-    // make the first genuinely queued comment read 「第 2 位」 with no visible
-    // 第 1 位 in front of it (its own chip says 进行中).
-    .filter(round => round.comment !== undefined
-      && round.endedAt === undefined
-      && round.injectedAt === undefined
-      && round.external !== true)
-    // The lane: only the rounds that target the SAME session stand in front.
-    .filter(round => (round.sessionId ?? round.sessionAnchor) === lane)
+    .filter(round => isPendingRound(round) && laneKeyOf(round) === lane)
     .sort((a, b) => a.startedAt - b.startedAt)
   const index = pending.findIndex(round => round.id === roundId)
   return index < 0 ? 0 : index + 1
+}
+
+/**
+ * **Every** pending round's queue position, computed in ONE pass.
+ *
+ * ── 为什么必须有这一个，而不是让调用方多调几次上面那个 ────────────────────────
+ *
+ * 上面那个函数回答「这一条排第几」，而它每次都要把整张卡的执行列表过滤一遍、排序一遍、
+ * 再扫一遍。评论列表是一行一条，于是一屏 n 行就是 n 次全表扫描——成本随条数**平方**
+ * 增长。实测（`scripts/probes/bench-comment-queue.mjs`，同一份数据、同一个函数）：
+ * 50 条 0.14ms、200 条 1.5ms、400 条 5.5ms、800 条 21.3ms。一屏评论里只要挂过几十上百
+ * 条，光算这一列位次就吃掉半帧；而它每 3 秒随轮询又算一次，正好落在读者上下滑动的那
+ * 一下上。
+ *
+ * 位次是**整条 lane 的属性**，不是某一行的属性：所以正确的形状是「一条 lane 算一次，
+ * 逐行只查」，而不是「每行自己算一遍」。一次算的价钱与条数成**线性**（同一个 bench：
+ * 800 条 0.06ms）。
+ *
+ * @param task - 那张卡（评论回合挂在它的执行列表里）。
+ * @returns `roundId → 1-based 位次`；不在排队集合里的 id 不在表里（等价于 0）。
+ */
+export function queuePositionsOf(task: TaskRecord): Map<string, number> {
+  const lanes = new Map<string, ExecutionRecord[]>()
+  for (const round of task.executions) {
+    if (!isPendingRound(round)) continue
+    const key = laneKeyOf(round)
+    const bucket = lanes.get(key)
+    if (bucket === undefined) lanes.set(key, [round])
+    else bucket.push(round)
+  }
+  const positions = new Map<string, number>()
+  for (const bucket of lanes.values()) {
+    bucket.sort((a, b) => a.startedAt - b.startedAt)
+    for (let index = 0; index < bucket.length; index += 1) positions.set(bucket[index].id, index + 1)
+  }
+  return positions
 }
 
 /** The chip color of a comment display state. */
