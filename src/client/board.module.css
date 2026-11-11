@@ -4420,14 +4420,12 @@
   overflow: hidden;
   min-height: 0;
   flex: 1;
-  /* THE BAR GETS A LANE, NOT A PADDING.
-   *
-   * `padding` moves the CONTENT; a webkit scrollbar paints against the border
-   * box's inner edge, so padding cannot move the bar away from that edge — which
-   * is why this container's bar sat flush against the panel's rounded side while
-   * the board's column (which uses a margin) had it inset. Same rule, applied
-   * here: a right margin moves the scroller and the bar with it. */
-  margin-right: 5px;
+  /* NO RIGHT LANE HERE. This box does not scroll, so a margin on it moves no
+     scrollbar — it only narrows the rail, and the rail is the band that has to
+     reach the panel's bottom-right corner (the panel no longer clips, so the corner
+     is declared by the band itself). Five pixels of margin here pulls that arc five
+     pixels away from the panel's own and the corner reads as a broken edge.
+     The lane belongs to the box that scrolls: `.commentsScroll`. */
 }
 
 /* Left column: the conversation, full height — a long transcript never
@@ -4504,24 +4502,27 @@
   width: min(344px, 46cqw);
   min-width: 0;
   min-height: 0;
-  /* Hard clip, never a scroll of its own: the folds block is the region that
-     scrolls (it owns the last-resort bar at both widths), and the composer is
-     the rail's only other child — a scrolling rail would therefore be able to
-     push the send box out of reach again, which is the exact bug this whole
-     contract exists to end. */
-  overflow: hidden;
-  border-left: var(--dsh-tb-separator);
-  /* NO PAPER OF ITS OWN, AND NO RADIUS. Both follow from the same sentence: a box that
-     rounds AND clips sends every scrolling descendant to the main thread (see `.modal`
-     in the shared sheet for the measurement). The clip has to stay — it is the rail's
-     whole contract, see above — so the round cannot live here.
+  /* NO CLIP, AND THAT IS THE ONE THING THIS BOX MUST NOT DO.
    *
-   * It does not need to. The rail's plane was the SAME paper as the panel's
-   * (`--dsh-tb-plane-sheet` on both), so painting it gained nothing but one opaque
-   * layer over the panel's own sheet. Transparent, the panel's rounded sheet shows
-   * through, and the two bands that actually reach an edge — `.reviewHeader` on top,
-   * `.reviewComposer` at the bottom — carry the corners themselves. The separator still
-   * marks the split. */
+   * It used to carry `overflow: hidden` as 「hard clip, never a scroll of its own」:
+   * the folds block is the region that scrolls and the composer must never be pushed
+   * out of reach. The intent is right; the property is what broke the panel. A box
+   * that rounds AND clips sends every scrolling descendant to the main thread — each
+   * wheel event then goes back to the main thread to ask which box it belongs to.
+   * Measured on this very rail: with the clip the comments scroller was 90/90 on the
+   * main thread, without it 0/90 (see `.modal` in the shared sheet).
+   *
+   * The intent does not need the property. The folds block carries `min-height: 0`, so
+   * it gives way instead of overflowing; there is nothing here to hide.
+   *
+   * Once this box does not clip it can — and must — round: it is the band that reaches
+   * the panel's bottom-right corner, and the panel no longer clips its children (an
+   * unclipped panel cannot paint that corner itself). `- 1px` keeps the inner arc
+   * concentric with the panel's hairline. */
+  border-left: var(--dsh-tb-separator);
+  /* An inner floating surface; the separator alone marks the rail. */
+  background: var(--dsh-tb-plane-sheet);
+  border-end-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
 }
 
 /* The rail head (context meter + live run config): ONE Disclosure fold.
@@ -5608,10 +5609,11 @@
      translucent or unpainted composer lets the thread bleed through the seam
      (the 「输入框和评论叠在一起」 read).
      The panel stopped clipping its children (see `.modal` in the shared sheet — rounding
-     and clipping a scroller's ancestor is what puts that scroller on the main thread),
-     so this band, which is the one reaching the panel's bottom edge inside the rail,
-     declares that corner itself. `- 1px` keeps the inner arc concentric with the
-     panel's border-box arc. */
+     and clipping a scroller's ancestor is what puts that scroller on the main thread).
+     This band sits at the panel's bottom edge, so it carries the SAME corner as the rail
+     behind it: if this one squared off while the rail rounded, its opaque paper would
+     cover the rail's arc and the edge would read broken. Two boxes reaching one corner
+     carry one number. `- 1px` keeps the inner arc concentric with the panel's hairline. */
   background: var(--dsh-tb-plane-sheet);
   border-end-end-radius: calc(var(--dsh-tb-radius-xl) - 1px);
   /* The composer can take a scroll of its own when the panel is squeezed on a phone

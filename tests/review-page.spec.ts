@@ -114,14 +114,23 @@ describe('rail layout CSS contract (interaction card never bursts the rail)', ()
       .not.toContain('overscroll-behavior')
   })
 
-  it('the rail clips horizontally; EXACTLY ONE scrollport is live per tier', () => {
-    // Horizontal: nothing spills past and covers other UI. Vertical: the rail
-    // itself never scrolls — a scrollport that contains the composer is how the
-    // send box gets pushed out of reach, and a `display: contents` rail cannot
-    // scroll at all (a declared-but-dead scroller is a lie the follow logic could
-    // walk into).
-    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
-    expect(ruleOf('reviewRail')).not.toMatch(/overflow-y:\s*auto/)
+  it('the rail never scrolls; EXACTLY ONE scrollport is live per tier', () => {
+    // The rail is NOT a scroll container: a scrollport that contains the composer is
+    // how the send box gets pushed out of reach, and a `display: contents` rail cannot
+    // scroll at all (a declared-but-dead scroller is a lie the follow logic could walk
+    // into).
+    //
+    // The assertion is the INVARIANT, not one way of expressing it. It used to read
+    // `overflow: hidden` — and that literal is exactly what broke the panel: a box that
+    // rounds AND clips sends every scrolling descendant to the main thread, so the
+    // comments scroller took 90 of 90 wheel events on the main thread (see the note on
+    // `.modal` in the shared sheet, and DESIGN.md's Shapes section for the method).
+    // The rail is the band that reaches the panel's bottom-right corner, so it has to
+    // round; therefore it must not clip. `visible` is not a scroller either, and the
+    // folds block inside clips its own content.
+    expect(ruleOf('reviewRail')).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/)
+    expect(ruleOf('reviewRail'), 'the rail rounds, so it must not clip — that pair is what costs the scroller its thread')
+      .not.toMatch(/overflow(-[xy])?:\s*(hidden|clip)/)
     expect(ruleOf('sessionRailFolds')).toMatch(/min-height:\s*0/)
 
     /* ONE LIVE PORT, NOT TWO.
@@ -470,10 +479,10 @@ describe('review rail scroll contract (ONE scroll body + pinned composer, every 
     expect(ruleOf('sessionFacts')).toMatch(/padding-inline:\s*var\(--dsh-tb-rail-inset\)/)
     // Inside the comments region the interaction card drops its margin.
     expect(cssSource).toMatch(/\.commentsScroll \.interactionCard\s*\{[^}]*margin:\s*0 0 2px/)
-    // The rail clips on both axes; the folds block is the only scroller
-    // (check the rail layout contract — a scrolling rail could push the
-    // composer out of reach again).
-    expect(ruleOf('reviewRail')).toContain('overflow: hidden')
+    // The rail is not a scroll container (see the rail layout contract above); the
+    // folds block is the only scroller, so a scrolling rail can never push the
+    // composer out of reach again.
+    expect(ruleOf('reviewRail')).not.toMatch(/overflow(-[xy])?:\s*(auto|scroll)/)
     // No trace of the retired single-scroll-body / dock grammars.
     expect(cssSource).not.toMatch(/\.sessionRailScroll\s*\{/)
     expect(cssSource).not.toMatch(/\.sessionContextDock\s*\{/)
